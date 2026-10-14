@@ -34,3 +34,5 @@ entries               // every variable and rule with its value, source and whet
   mr / bl bc br) hold names, and they're checked too.
 - **display:** values for a lighter on-screen copy (fewer segments, no fine detail). They aren't checked and they
   don't change what prints.
+- **`lint(source)`** lists the number literals in a design's code that should be variables. Only 0, 1 and 2 pass, plus
+  anything in comments or strings. It's how "every measurement is a variable" gets checked.

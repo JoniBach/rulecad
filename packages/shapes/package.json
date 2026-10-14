@@ -1,0 +1,38 @@
+{
+  "name": "@rulecad/shapes",
+  "version": "0.1.0",
+  "description": "Shape helpers for printed JSCAD designs: text that prints cleanly, anchors on a face, and clean local cuts.",
+  "type": "module",
+  "exports": "./shapes.mjs",
+  "files": [
+    "shapes.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "jscad",
+    "3d-printing",
+    "text",
+    "engraving",
+    "cad"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/shapes"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@rulecad/variables": "^0.1.0"
+  },
+  "peerDependencies": {
+    "@jscad/modeling": "^2.12.0"
+  }
+}

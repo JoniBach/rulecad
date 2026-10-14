@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluate, resolve, fmt } from '@rulecad/variables';
+import { evaluate, resolve, fmt, lint } from '@rulecad/variables';
 
 test('expressions: arithmetic, brackets, functions and degrees', () => {
   assert.equal(evaluate('0.42 * 3', () => 0), 0.42 * 3);
@@ -44,4 +44,8 @@ test('resolve: only tweakable variables can be set, and only within range', () =
 test('fmt: two decimals at most, names left alone', () => {
   assert.equal(fmt(1.23456), '1.23');
   assert.equal(fmt('oem'), 'oem');
+});
+
+test('lint: numbers in a design are flagged, except 0, 1, 2, comments and strings', () => {
+  assert.deepEqual(lint('const a = v.x * 2 // 45 degrees\nconst b = "12" + 0.5\n/* 9 */ f(v.y, 1)'), [{ line: 2, text: '0.5' }]);
 });

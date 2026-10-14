@@ -135,3 +135,15 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
 
 // Round for display: at most 2 decimals, no trailing zeros.
 export const fmt = (n) => (typeof n === 'number' ? String(Number(n.toFixed(2))) : String(n)); // choices are names
+
+// lint(source) -> [{ line, text }]: number literals in a design's code that should be variables. Every measurement
+// belongs in a variable that says where it comes from; only 0, 1 and 2 (and numbers in comments and strings) pass.
+export function lint(source) {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/.*$/gm, '')
+    .replace(/(['"`])(?:\\.|(?!\1).)*\1/g, (m) => m.replace(/./g, ' '));
+  const found = [];
+  code.split('\n').forEach((l, i) => {
+    for (const m of l.matchAll(/(?<![\w.])(\d+\.\d+|\.\d+|\d+)(?![\w.])/g)) if (!['0', '1', '2'].includes(m[1])) found.push({ line: i + 1, text: m[1] });
+  });
+  return found;
+}

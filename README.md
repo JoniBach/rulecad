@@ -1,7 +1,8 @@
 # rulecad
 
 A kit for designing physical things you can trace, check, share and print. Small pieces, each useful alone: plain
-JavaScript modules with **no dependencies**, the same in a browser and in Node 18+, no build step, MIT licensed.
+JavaScript modules with **no dependencies** (shapes uses the JSCAD you already have), the same in a browser and in
+Node 18+, no build step, MIT licensed.
 
 | Package | What it gives you |
 |---|---|
@@ -10,6 +11,8 @@ JavaScript modules with **no dependencies**, the same in a browser and in Node 1
 | [`@rulecad/variables`](packages/variables) | Design values you can trace: every number says where it comes from; expressions are parsed, never run. |
 | [`@rulecad/fit`](packages/fit) | Do these parts fit? The closest gap between two meshes, fast enough for a whole keyboard. |
 | [`@rulecad/keyboard-layout`](packages/keyboard-layout) | A plain JSON keyboard layout: rows of keys with widths and any per-key properties. |
+| [`@rulecad/versions`](packages/versions) | Semver for physical parts: a change to what other parts fit against is major, so you know when an old print stops fitting. |
+| [`@rulecad/shapes`](packages/shapes) | For JSCAD designs: text that prints cleanly, anchors on a face, cuts that leave no hairline gaps. Needs JSCAD (peer). |
 
 ```sh
 npm install @rulecad/printcheck
@@ -43,9 +46,9 @@ npm install   # links the packages to each other; JSCAD comes in only to make te
 npm test      # node:test, no other tools
 ```
 
-Each package is one `.mjs` file with its documentation at the top. Rules for changes: no dependencies (a test checks),
+Each package is one `.mjs` file with its documentation at the top. Rules for changes: no dependencies but each other and a CAD kernel as a peer (a test checks),
 nothing that only runs in Node, and new behaviour comes with a test.
 
 The kit grew out of [mirror-cad](https://github.com/JoniBach/mirror-cad), a rule-driven design tool for 3D printing.
-More of it is on its way here: the design and assembly tools, a model viewer you can host yourself, keyboard circuit
+More of it is on its way here: the design and assembly tools with their command line, a model viewer you can host yourself, keyboard circuit
 boards, and researched rule sets (printers, Cherry MX switches, keycap profiles) as open data.
