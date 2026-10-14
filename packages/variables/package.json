@@ -1,0 +1,32 @@
+{
+  "name": "@rulecad/variables",
+  "version": "0.1.0",
+  "description": "Design values you can trace: every number says where it comes from, and expressions are parsed, never run.",
+  "type": "module",
+  "exports": "./variables.mjs",
+  "files": [
+    "variables.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "parametric",
+    "cad",
+    "variables",
+    "expressions",
+    "provenance"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/variables"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

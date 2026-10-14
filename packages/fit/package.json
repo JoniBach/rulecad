@@ -1,0 +1,35 @@
+{
+  "name": "@rulecad/fit",
+  "version": "0.1.0",
+  "description": "Do these parts fit? The closest gap between two meshes, fast enough for whole keyboards.",
+  "type": "module",
+  "exports": "./fit.mjs",
+  "files": [
+    "fit.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "3d-printing",
+    "mesh",
+    "collision",
+    "clearance",
+    "fit"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/fit"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@rulecad/printcheck": "^0.1.0"
+  }
+}

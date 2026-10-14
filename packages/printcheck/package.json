@@ -1,0 +1,32 @@
+{
+  "name": "@rulecad/printcheck",
+  "version": "0.1.0",
+  "description": "Is this mesh printable? Bed fit, flat base, overhangs, bridges, breakaway supports and watertightness, for any FDM printer.",
+  "type": "module",
+  "exports": "./printcheck.mjs",
+  "files": [
+    "printcheck.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "3d-printing",
+    "fdm",
+    "mesh",
+    "printability",
+    "stl"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/printcheck"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
