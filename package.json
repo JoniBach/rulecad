@@ -15,5 +15,8 @@
   },
   "devDependencies": {
     "@jscad/modeling": "^2.13.0"
+  },
+  "overrides": {
+    "@tscircuit/math-utils": "0.0.36"
   }
 }

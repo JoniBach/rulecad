@@ -1,0 +1,15 @@
+{
+  "_doc": "Pro Micro footprint controllers with USB-C (SparkFun Pro Micro RP2040 and the clones that copy it), and the cable that plugs into them. kind as in x1c.json.",
+  "name": "promicro",
+  "rules": {
+    "length": { "value": 33, "unit": "mm", "rule": "Board length, 1.3 in", "kind": "spec", "source": "https://learn.sparkfun.com/tutorials/pro-micro-rp2040-hookup-guide", "checked": "2026-10-12" },
+    "width": { "value": 17.8, "unit": "mm", "rule": "Board width, 0.7 in", "kind": "spec", "source": "https://learn.sparkfun.com/tutorials/pro-micro-rp2040-hookup-guide", "checked": "2026-10-12" },
+    "pcb": { "value": 1.6, "unit": "mm", "rule": "Board thickness", "kind": "community", "source": "Standard PCB thickness; hotswap_pcb_generator mcu_pcb_thickness, https://github.com/50an6xy06r6n/hotswap_pcb_generator", "checked": "2026-10-12" },
+    "usb_overhang": { "value": 1.27, "unit": "mm", "rule": "The USB-C socket sticks out past the board's edge by about 0.05 in", "kind": "spec", "source": "https://learn.sparkfun.com/tutorials/pro-micro-rp2040-hookup-guide", "checked": "2026-10-12" },
+    "usb_width": { "value": 8.94, "unit": "mm", "rule": "USB-C socket shell width", "kind": "community", "source": "Common top-mount USB-C receptacles (8.94 × 3.26 mm shell)", "checked": "2026-10-12" },
+    "usb_height": { "value": 3.26, "unit": "mm", "rule": "USB-C socket shell height above the board", "kind": "community", "source": "Common top-mount USB-C receptacles (8.94 × 3.26 mm shell)", "checked": "2026-10-12" },
+    "usb_depth": { "value": 7.35, "unit": "mm", "rule": "USB-C socket shell length, front to back", "kind": "community", "source": "Common top-mount USB-C receptacles", "checked": "2026-10-12" },
+    "plug_width": { "value": 13, "unit": "mm", "rule": "A USB-C cable's plug housing is about this wide: the case opening must let it in", "kind": "community", "source": "hotswap_pcb_generator mcu_connector_width, https://github.com/50an6xy06r6n/hotswap_pcb_generator", "checked": "2026-10-12" },
+    "plug_height": { "value": 8, "unit": "mm", "rule": "A USB-C cable's plug housing is about this tall", "kind": "community", "source": "hotswap_pcb_generator mcu_connector_height, https://github.com/50an6xy06r6n/hotswap_pcb_generator", "checked": "2026-10-12" }
+  }
+}

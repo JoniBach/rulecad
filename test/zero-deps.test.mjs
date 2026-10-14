@@ -7,7 +7,9 @@ import path from 'node:path';
 
 const PEERS = ['@jscad/modeling'];
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const packages = fs.readdirSync(path.join(root, 'packages'));
+// The tool (cad), the board engine (pcb) and the data (rules) are what the small packages are for: they may depend on more.
+const TOOLS = ['cad', 'pcb', 'rules'];
+const packages = fs.readdirSync(path.join(root, 'packages')).filter((p) => !TOOLS.includes(p));
 
 for (const p of packages) test(`@rulecad/${p} needs nothing but other @rulecad packages`, () => {
   const pj = JSON.parse(fs.readFileSync(path.join(root, 'packages', p, 'package.json'), 'utf8'));

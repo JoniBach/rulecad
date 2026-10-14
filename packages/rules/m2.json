@@ -1,0 +1,11 @@
+{
+  "_doc": "M2 screws and brass heat-set inserts, for holding printed parts together. kind as in x1c.json.",
+  "name": "m2",
+  "rules": {
+    "clearance": { "value": 2.4, "unit": "mm", "rule": "Clearance hole for an M2 screw, medium fit", "kind": "spec", "source": "ISO 273", "checked": "2026-10-12" },
+    "head": { "value": 3.8, "unit": "mm", "rule": "M2 socket head cap screw head diameter", "kind": "spec", "source": "ISO 4762", "checked": "2026-10-12" },
+    "head_height": { "value": 2, "unit": "mm", "rule": "M2 socket head cap screw head height", "kind": "spec", "source": "ISO 4762", "checked": "2026-10-12" },
+    "insert_hole": { "value": 3.2, "unit": "mm", "rule": "Printed hole for an M2 heat-set insert (already sized for printing: no hole compensation)", "kind": "spec", "source": "Heat-set insert specs, https://www.albanycountyfasteners.com/media/64/3d/5a/1764619189/heat-set-insert-specs.pdf", "checked": "2026-10-12" },
+    "insert_length": { "value": 3, "unit": "mm", "rule": "CNC Kitchen M2 × 3 heat-set insert length", "kind": "spec", "source": "https://west3d.com/products/cnc-kitchen-heat-set-inserts-various-sizes", "checked": "2026-10-12" }
+  }
+}

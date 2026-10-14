@@ -1,0 +1,190 @@
+// Designs: projects/<project>/objects/<object>.js (the shape) and <object>.json (its variables and metadata).
+// The .js exports main(v), where v holds the resolved variables (v.stem_arm) and rule sets (v.x1c.line). It
+// should hold no measurements of its own: lint() flags number literals other than 0, 1 and 2.
+// main() returns a shape, or named parts ({ cap, pillar }) described in the .json's "parts":
+//   { "pillar": { "role": "support", "label": "Breakaway pillar" } }   role: part (default) or support (printed, then
+//   removed). Checks and print files use every part; the mirror shows only real parts.
+//   "filament": "legend" prints the part in another of the project's filaments (project.json "filaments"); "mirror":
+//   false leaves it off the on-screen copy (fine detail); "optional": true lets main() leave it out (a keycap with no legend).
+// Variants: named sets of inputs in the .json ("variants": { "oem-r3": { "profile": "oem", "row": "R3" } }), built as
+// keyboard/keycap:oem-r3. Versions are the design over time; variants are alternatives that exist side by side.
+// Layouts: a "type": "layout" variable picks a file in the project's layouts/; the design gets every layout it can pick
+// as v.layouts[name] = { …the file, keys (each key's centre and properties), width, depth } (lib/layout.mjs).
+// Boards: "engine": "pcb" in the .json makes main(v) return a tscircuit board ({ board, matrix }, built with v.pcb, as
+// @rulecad/pcb describes); the build then carries its Circuit JSON (circuit) and matrix, and one part: the bare board
+// (its copper is in the 2D views).
+// Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import crypto from 'node:crypto';
+import { resolve, loadRuleSet } from './rules.mjs';
+import { WS, paths, printerOf } from './workspace.mjs';
+import { readLayout, hasLayout, keys, width, depth } from './layout.mjs';
+import * as shapes from '@rulecad/shapes';
+import { engineId, packageVersion } from './versions.mjs';
+
+const require = createRequire(import.meta.url);
+const jscad = require('@jscad/modeling');
+
+// "keyboard/keycap", "keyboard/keycap:oem-r3" (a variant) or a path to the .js or .json
+//   -> { project, name, js, json, dir, variant }
+export function locate(ref) {
+  const [plain, variant] = String(ref).split(':');
+  ref = plain;
+  let base = ref.replace(/\.(js|json)$/, '');
+  if (!base.includes(path.sep) || !fs.existsSync(`${base}.json`)) {
+    const [project, name] = ref.split('/');
+    if (!project || !name) throw new Error(`name a design as <project>/<object>, e.g. keyboard/keycap (got "${ref}")`);
+    base = path.join(paths.project(project), 'objects', name);
+  }
+  if (!fs.existsSync(`${base}.json`) || !fs.existsSync(`${base}.js`)) throw new Error(`no design at ${path.relative(WS, base)}.{js,json}`);
+  const dir = path.dirname(path.dirname(base));
+  return { project: path.basename(dir), name: path.basename(base), js: `${base}.js`, json: `${base}.json`, dir, ...(variant ? { variant } : {}) };
+}
+
+// The layouts an object can pick, by name, from its layout variables' choices (built-ins like grid have no file)
+export function layoutsOf(d, object) {
+  const out = {};
+  for (const v of Object.values(object.variables || {})) if (v.type === 'layout') {
+    for (const n of v.choice || [v.value]) if (hasLayout(d.project, n, d.layoutsDir)) out[n] = readLayout(d.project, n, d.layoutsDir);
+  }
+  return out;
+}
+
+// A variant's inputs, under what's set explicitly
+export function variantSet(d, object, set = {}) {
+  if (!d.variant) return set;
+  const v = (object.variants || {})[d.variant];
+  if (!v) throw new Error(`${d.name} has no variant "${d.variant}" (variants: ${Object.keys(object.variants || {}).join(', ') || 'none'})`);
+  return { ...v, ...set };
+}
+
+const CACHE = paths.cache('builds'), CACHE_VERSION = 2;
+const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
+// What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
+// boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
+const own = source(import.meta.url) + source(import.meta.resolve('@rulecad/shapes')) + packageVersion('@jscad/modeling');
+export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
+  if (e.code === 'ERR_MODULE_NOT_FOUND' && /@rulecad\/pcb/.test(e.message)) throw new Error('boards need the board engine: npm install @rulecad/pcb');
+  throw e;
+});
+
+export const readObject = (d) => JSON.parse(fs.readFileSync(d.json, 'utf8'));
+
+// build(design, set, { mirror }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export) }
+//   parts: [{ name, role, label, geometry, polygons, triangles }]; polygons and triangles: every part together
+export async function build(d, set = {}, { mirror = false } = {}) {
+  const object = readObject(d);
+  set = variantSet(d, object, set);
+  const sets = d.rulesDir ? Object.fromEntries((object.uses || []).map((u) => [u, loadRuleSet(u, d.rulesDir)])) : {}; // a release's own rules
+  const display = mirror ? object.mirror || {} : {};
+  const { values, entries } = resolve(object, { set, sets, display }); // mirror: lighter for the display
+  const files = layoutsOf(d, object);
+  if (object.layouts) values.layouts = object.layouts; // older designs kept layouts in their .json
+  if (Object.keys(files).length) values.layouts = Object.fromEntries(Object.entries(files).map(([n, l]) => [n, { ...l, keys: keys(l), width: width(l), depth: depth(l) }]));
+
+  // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether
+  const ruleText = (object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u)));
+  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : '', fs.readFileSync(d.js, 'utf8'), JSON.stringify(object), ruleText, files, set, display])).digest('hex');
+  const hit = path.join(CACHE, `${key}.json`);
+  if (!process.env.CAD_NO_CACHE && fs.existsSync(hit)) {
+    const c = JSON.parse(fs.readFileSync(hit, 'utf8'));
+    try { const now = new Date(); fs.utimesSync(hit, now, now); } catch {} // recently used: kept when the cache is pruned
+    for (const e of entries) if (c.used.includes(e.name)) e.used = true;
+    const parts = c.parts.map(({ solid: f, ...p }) => ({ ...p, geometry: fromFaces(f) }));
+    if (c.circuit) Object.assign(values, (await pcbEngine()).outputs(c.circuit, c.matrix));
+    return { object, values, entries, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
+  }
+
+  const mod = await import(`${d.js}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
+    // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
+    if (e.code === 'ERR_MODULE_NOT_FOUND' && /@jscad\/modeling/.test(e.message)) throw new Error(`designs need JSCAD in the workspace: npm install @jscad/modeling (in ${WS})`);
+    if (/import statement outside a module/.test(e.message)) throw new Error(`designs are ES modules: set "type": "module" in ${path.join(WS, 'package.json')}`);
+    throw e;
+  });
+  if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
+  // Rules the code reads directly (v.mx.housing_top) count as used too, so estimates it relies on get flagged
+  const read = new Set(), watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
+    ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
+  const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
+  watched.shapes = shapes; if (pcb) watched.pcb = pcb;
+  let made = await mod.main(watched), board = null;
+  if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part
+    const { board: b, matrix } = made && made.board ? made : { board: made };
+    board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}) };
+    Object.assign(values, pcb.outputs(board.circuit, matrix)); // what it tells the parts around it: outline, Pico
+    made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth });
+  }
+  const parts = named(made, object.parts || {});
+  for (const e of entries) if (read.has(e.name)) e.used = true;
+  try {
+    fs.mkdirSync(CACHE, { recursive: true });
+    prune();
+    fs.writeFileSync(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}) }));
+  } catch {} // a cache that can't be written is only slower
+  return { object, values, entries, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}) };
+}
+
+// The cache keeps its most recently used builds, about CACHE_KEEP of them (an old version's builds go first)
+const CACHE_KEEP = 800;
+function prune() {
+  if (Math.random() > 0.05) return; // now and then is enough
+  const files = fs.readdirSync(CACHE).map((f) => { const p = path.join(CACHE, f); return { p, t: fs.statSync(p).mtimeMs }; }).sort((a, b) => b.t - a.t);
+  for (const { p } of files.slice(CACHE_KEEP)) fs.rmSync(p, { force: true });
+}
+
+// A design's result as parts: named ({ cap, pillar }) or one unnamed shape ("body").
+function named(result, meta) {
+  const isShape = (r) => Array.isArray(r) || jscad.geometries.geom3.isA(r) || jscad.geometries.geom2.isA(r);
+  const entries = isShape(result) ? [['body', result]] : Object.entries(result || {});
+  const empty = (g) => g == null || (Array.isArray(g) && !g.length);
+  for (const k of Object.keys(meta)) if (!meta[k].optional && !entries.some(([n, g]) => n === k && !empty(g))) throw new Error(`parts in the .json lists "${k}", but main() returns no such part`);
+  return entries.filter(([name, g]) => !(empty(g) && meta[name]?.optional)).map(([name, g]) => {
+    const m = meta[name] || {};
+    if (m.role && !['part', 'support'].includes(m.role)) throw new Error(`part ${name}: role is part or support`);
+    // The solid for booleans (fit checks) is JSCAD's own, exactly; a cached build restores the very same faces
+    const geometry = solid(g);
+    return { name, role: m.role || 'part', label: m.label || name, ...(m.filament ? { filament: m.filament } : {}), ...(m.mirror === false ? { mirror: false } : {}),
+      geometry, polygons: polygons(g), triangles: polygons(g, { triangulate: true }) };
+  });
+}
+
+// A part's result as one JSCAD solid with its transforms applied (several solids become one set of faces), and back from
+// the exact faces a cache keeps: the same numbers, so booleans on a cached build agree with a fresh one.
+const { geom3, poly3 } = jscad.geometries;
+const solid = (g) => geom3.create([g].flat(Infinity).filter((x) => geom3.isA(x)).flatMap((x) => geom3.toPolygons(x)));
+const faces = (g) => geom3.toPolygons(g).map((p) => p.vertices.map((v) => [v[0], v[1], v[2]]));
+const fromFaces = (list) => geom3.create(list.map((vs) => poly3.create(vs)));
+
+// The rules of the printer a build is checked against (the project's, else the workspace's), resolved
+export const printer = (b, d) => { const n = printerOf(d.project); return b.values[n] || resolve({ uses: [n] }).values[n]; };
+
+// Only some parts: --part cap (by name), the real parts without supports, or what the mirror shows (no supports, and
+// no parts marked mirror: false).
+export function pick(b, { part, noSupports = false, forMirror = false } = {}) {
+  let parts = b.parts;
+  if (part) { parts = parts.filter((p) => p.name === part); if (!parts.length) throw new Error(`no part "${part}" (parts: ${b.parts.map((p) => p.name).join(', ')})`); }
+  if (noSupports || forMirror) parts = parts.filter((p) => p.role !== 'support');
+  if (forMirror) parts = parts.filter((p) => p.mirror !== false);
+  return { ...b, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
+}
+
+// Any JSCAD result -> polygons (corner lists), transforms applied. triangulate: also split faces at T-junctions (a
+// corner of one face in the middle of a neighbour's edge, left by booleans) so every edge pairs up, as slicers want.
+export function polygons(result, { triangulate = false } = {}) {
+  const { geom3, geom2 } = jscad.geometries;
+  const out = [];
+  for (const g of [result].flat(Infinity)) {
+    if (geom2.isA(g)) throw new Error("2D shapes can't be printed or shown: extrude them first");
+    if (!geom3.isA(g)) continue;
+    const fixed = jscad.modifiers.generalize({ snap: true, triangulate }, g);
+    for (const p of geom3.toPolygons(fixed)) out.push(p.vertices.map((v) => [v[0], v[1], v[2]]));
+  }
+  if (!out.length) throw new Error('the design has no 3D shapes');
+  return out;
+}
+
+export { lint } from '@rulecad/variables'; // number literals that should be variables
+
+export { jscad };

@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- Preview sheet: six views of a design in a dark style (black ground, light as the only material), for people
+     and for Claude to look at before printing. Rendered headlessly by lib/preview.mjs; data from /data.json. -->
+<html><head><meta charset="utf-8"><title>preview</title>
+<style>
+  html, body { margin: 0; background: #000; color: #b4b4b4; font: 400 22px -apple-system, "Helvetica Neue", sans-serif; }
+  canvas { display: block; }
+  .label { position: absolute; color: #5c5c5c; font-size: 18px; letter-spacing: 0.12em; text-transform: uppercase; }
+  #title { position: absolute; left: 32px; top: 24px; color: #fff; font-size: 30px; }
+  #meta { position: absolute; left: 32px; top: 64px; }
+</style>
+<script type="importmap">{ "imports": { "three": "/three/three.module.js" } }</script>
+</head><body>
+<div id="title"></div><div id="meta"></div>
+<script type="module">
+import * as THREE from 'three';
+const W = 1800, H = 1200, V = 600; // three views across, two down
+const data = await (await fetch('/data.json')).json();
+document.getElementById('title').textContent = data.title;
+document.getElementById('meta').textContent = data.meta;
+
+// Each part as its own geometry, Z-up (JSCAD, the bed) turned Y-up. Exploded: supports drop below, and in an
+// assembly each item rises above the one before, so what touches what can be seen.
+const geos = data.parts.map((p) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p.positions, 3)); g.rotateX(-Math.PI / 2); g.computeVertexNormals(); g.computeBoundingBox(); return g; });
+if (data.explode) {
+  const all = new THREE.Box3(); geos.forEach((g) => all.union(g.boundingBox));
+  const gap = (all.max.y - all.min.y) * 0.8;
+  let drop = 0;
+  data.parts.forEach((p, i) => { if (p.role === 'support') { drop += gap; geos[i].translate(0, -drop, 0); geos[i].computeBoundingBox(); } });
+  const items = [...new Set(data.parts.map((p) => p.item).filter(Boolean))]; // assemblies: each item above the last
+  data.parts.forEach((p, i) => { const k = items.indexOf(p.item); if (k > 0) { geos[i].translate(0, k * gap, 0); geos[i].computeBoundingBox(); } });
+}
+const box = new THREE.Box3(); geos.forEach((g) => box.union(g.boundingBox));
+const center = box.getCenter(new THREE.Vector3()), radius = box.getSize(new THREE.Vector3()).length() / 2;
+geos.forEach((g) => g.translate(-center.x, -center.y, -center.z));
+const geo = { boundingBox: box.translate(center.clone().negate()), computeBoundingBox() {} };
+
+const scene = new THREE.Scene();
+// Faces: dark, flat-lit, so shape reads without lighting up the screen. Creases: thin ink lines. Supports: faint
+// lines only (ink-3), so the part they hold up shows through them; references (not printed) the same.
+data.parts.forEach((p, i) => {
+  if (p.role === 'part') scene.add(new THREE.Mesh(geos[i], new THREE.MeshLambertMaterial({ color: 0x3a3a3a, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })));
+  scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(geos[i], 25), new THREE.LineBasicMaterial({ color: p.role === 'part' ? 0xffffff : 0x5c5c5c })));
+});
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(-1, 2, 1.5); scene.add(sun);
+const under = new THREE.DirectionalLight(0xffffff, 1.2); under.position.set(1, -2, 1); scene.add(under); // so views from below aren't black
+// The bed as a faint grid, so up and down are clear
+const grid = new THREE.GridHelper(radius * 4, 16, 0x2a2a2a, 0x1a1a1a);
+grid.position.y = geo.boundingBox.min.y; scene.add(grid);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.setScissorTest(true); renderer.setClearColor(0x000000);
+document.body.append(renderer.domElement);
+
+const d = radius * 3.2;
+const views = [
+  ['front', [0, 0, d]], ['side', [d, 0, 0]], ['3/4', [d * 0.62, d * 0.5, d * 0.62]],
+  ['top', [0, d, 0.0001]], ['bottom', [0, -d, 0.0001]], ['3/4 below', [d * 0.62, -d * 0.5, d * 0.62]],
+];
+views.forEach(([name, pos], i) => {
+  const x = (i % 3) * V, y = i < 3 ? V : 0; // WebGL's y runs up: the first row is the top half
+  const cam = new THREE.OrthographicCamera(-radius * 1.25, radius * 1.25, radius * 1.25, -radius * 1.25, 0.01, d * 4);
+  cam.position.set(...pos); cam.lookAt(0, 0, 0);
+  renderer.setViewport(x, y, V, V); renderer.setScissor(x, y, V, V);
+  renderer.render(scene, cam);
+  const l = document.createElement('div'); l.className = 'label'; l.textContent = name;
+  l.style.left = `${x + 32}px`; l.style.top = `${(i < 3 ? 112 : V + 24)}px`; document.body.append(l);
+});
+document.body.dataset.ready = '1';
+</script>
+</body></html>

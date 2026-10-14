@@ -1,0 +1,65 @@
+{
+  "name": "@rulecad/cad",
+  "version": "0.1.0",
+  "description": "The cad command: JSCAD designs from traceable rules, checked for printing and fit, versioned by what fits, shared as links and exported as Bambu 3MF.",
+  "type": "module",
+  "bin": {
+    "cad": "bin/cad.mjs"
+  },
+  "exports": {
+    "./workspace": "./lib/workspace.mjs",
+    "./rules": "./lib/rules.mjs",
+    "./design": "./lib/design.mjs",
+    "./layout": "./lib/layout.mjs",
+    "./assembly": "./lib/assembly.mjs",
+    "./versions": "./lib/versions.mjs",
+    "./preview": "./lib/preview.mjs",
+    "./targets": "./lib/targets.mjs",
+    "./threemf": "./lib/threemf.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "cad",
+    "jscad",
+    "3d-printing",
+    "bambu-lab",
+    "parametric",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/cad"
+  },
+  "dependencies": {
+    "@rulecad/variables": "^0.1.0",
+    "@rulecad/keyboard-layout": "^0.1.0",
+    "@rulecad/printcheck": "^0.1.0",
+    "@rulecad/fit": "^0.1.0",
+    "@rulecad/model-link": "^0.1.0",
+    "@rulecad/versions": "^0.1.0",
+    "@rulecad/shapes": "^0.1.0",
+    "@rulecad/rules": "^0.1.0",
+    "@jscad/modeling": "^2.12.0",
+    "fflate": "^0.8.2",
+    "three": "^0.186.1"
+  },
+  "peerDependencies": {
+    "@rulecad/pcb": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@rulecad/pcb": {
+      "optional": true
+    }
+  }
+}

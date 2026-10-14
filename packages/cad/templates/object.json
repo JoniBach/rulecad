@@ -1,0 +1,14 @@
+{
+  "name": "NAME",
+  "title": "NAME",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "material": "PLA",
+  "orientation": "Flat side down on the bed.",
+  "variables": {
+    "width": { "value": 40, "unit": "mm", "rule": "Overall width", "label": "Width", "show": true, "tweak": { "min": 10, "max": 200 } },
+    "depth": { "value": 30, "unit": "mm", "rule": "Overall depth", "label": "Depth", "show": true, "tweak": { "min": 10, "max": 200 } },
+    "height": { "value": "x1c.layer * 50", "unit": "mm", "rule": "Overall height: a whole number of layers", "label": "Height", "show": true },
+    "chamfer": { "value": "x1c.chamfer", "unit": "mm", "rule": "Bottom edges are chamfered, not rounded" }
+  }
+}

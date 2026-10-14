@@ -1,0 +1,28 @@
+{
+  "name": "@rulecad/rules",
+  "version": "0.1.0",
+  "description": "Researched rule sets as open data: a Bambu Lab X1C, Cherry MX switches, OEM keycaps, M2 inserts, the Raspberry Pi Pico and more, each value with its source.",
+  "type": "module",
+  "exports": {
+    "./*": "./*"
+  },
+  "files": [
+    "*.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "CC0-1.0",
+  "keywords": [
+    "3d-printing",
+    "cherry-mx",
+    "keycaps",
+    "raspberry-pi-pico",
+    "bambu-lab",
+    "open-data"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/rules"
+  }
+}

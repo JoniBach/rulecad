@@ -2,7 +2,21 @@
 
 A kit for designing physical things you can trace, check, share and print. Small pieces, each useful alone: plain
 JavaScript modules with **no dependencies** (shapes uses the JSCAD you already have), the same in a browser and in
-Node 18+, no build step, MIT licensed.
+Node 18+, no build step, MIT licensed (the rule data is CC0).
+
+**The tool:** [`@rulecad/cad`](packages/cad) is the `cad` command that puts them together. Design in JSCAD from
+rules you can trace, check for printing and fit, version by what fits, share as a link, and export for the printer:
+
+```sh
+npm init -y && npm pkg set type=module && npm install @rulecad/cad @jscad/modeling
+npx cad new bathroom/soap-tray && npx cad check bathroom/soap-tray && npx cad export bathroom/soap-tray
+```
+
+Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM), and
+[`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico)
+as public-domain data, each value with its source.
+
+**The pieces**, each useful alone:
 
 | Package | What it gives you |
 |---|---|
@@ -49,6 +63,5 @@ npm test      # node:test, no other tools
 Each package is one `.mjs` file with its documentation at the top. Rules for changes: no dependencies but each other and a CAD kernel as a peer (a test checks),
 nothing that only runs in Node, and new behaviour comes with a test.
 
-The kit grew out of [mirror-cad](https://github.com/JoniBach/mirror-cad), a rule-driven design tool for 3D printing.
-More of it is on its way here: the design and assembly tools with their command line, a model viewer you can host yourself, keyboard circuit
-boards, and researched rule sets (printers, Cherry MX switches, keycap profiles) as open data.
+The kit grew out of a rule-driven design project for 3D printing: a keyboard, its keycaps, case and circuit boards.
+Still to come: a model viewer you can host yourself, and `npm create rulecad` to start a project in one line.

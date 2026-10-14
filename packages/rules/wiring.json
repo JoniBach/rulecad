@@ -1,0 +1,7 @@
+{
+  "_doc": "Handwiring: a 1N4148 diode on each switch and bare wires along the rows and columns, soldered to the switch pins. kind as in x1c.json.",
+  "name": "wiring",
+  "rules": {
+    "room": { "value": 3, "unit": "mm", "rule": "Room below the switch pins for diode legs and row and column wires soldered across them, and the wires going to the controller", "kind": "estimate", "source": "Estimate: a DO-35 diode body is about 2 mm across, plus a wire. Measure the deepest point once wired", "checked": "2026-10-12" }
+  }
+}
