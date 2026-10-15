@@ -17,7 +17,7 @@ const SITE = fileURLToPath(new URL('../packages/viewer/site/', import.meta.url))
 const CHROME = process.env.CAD_CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/chromium', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium'].find((f) => fs.existsSync(f));
 const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript' };
 
-test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome' }, async () => {
+test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', timeout: 120000 }, async () => {
   const { cuboid } = jscad.primitives, { translate } = jscad.transforms, { union } = jscad.booleans;
   const tee = tri(union(translate([0, 0, 5], cuboid({ size: [4, 4, 10] })), translate([0, 0, 11], cuboid({ size: [20, 4, 2] }))));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'viewer-')), file = path.join(dir, 'tee.stl');
@@ -31,11 +31,11 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome' }, as
   const port = server.address().port;
   const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
   try {
-    const wsUrl = await new Promise((res, rej) => { let s = ''; chrome.stderr.on('data', (d) => { s += d; const m = s.match(/ws:\/\/\S+/); if (m) res(m[0]); }); setTimeout(() => rej(new Error('Chrome did not start')), 20000); });
+    const wsUrl = await new Promise((res, rej) => { let s = ''; chrome.stderr.on('data', (d) => { s += d; const m = s.match(/ws:\/\/\S+/); if (m) res(m[0]); }); setTimeout(() => rej(new Error('Chrome did not start')), 20000).unref(); });
     const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
     let id = 0; const waiting = new Map();
     ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
-    const send = (method, params = {}, sessionId) => new Promise((r) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params, sessionId })); });
+    const send = (method, params = {}, sessionId) => new Promise((r, no) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params, sessionId })); setTimeout(() => no(new Error(`Chrome didn't answer ${method}`)), 30000).unref(); });
     const { result: { targetId } } = await send('Target.createTarget', { url: `http://localhost:${port}/` });
     const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
     const run = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)).result.result.value;
@@ -57,8 +57,14 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome' }, as
     await shot('viewer.png');
     ws.close();
   } finally {
-    const gone = new Promise((r) => chrome.once('exit', r));
-    chrome.kill(); server.close(); await gone;
+    // Stop Chrome and wait for it (its profile folder is in use until then). It can ignore a polite stop, and while its
+    // output pipe is open Node can't finish, so after 3 s it's killed outright.
+    server.close();
+    const exited = () => chrome.exitCode !== null || chrome.signalCode !== null;
+    const gone = (ms) => (exited() ? Promise.resolve(true) : Promise.race([new Promise((r) => chrome.once('exit', () => r(true))), new Promise((r) => setTimeout(() => r(false), ms).unref())]));
+    chrome.kill();
+    if (!(await gone(3000))) { chrome.kill('SIGKILL'); await gone(3000); }
+    chrome.stderr.destroy();
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} // a temp folder: the system clears it anyway
   }
 });
