@@ -5,3 +5,4 @@ packages/viewer/site/printcheck.mjs
 test/viewer.png
 test/viewer-drop.png
 packages/*/*.d.mts
+rules/

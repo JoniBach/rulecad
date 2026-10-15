@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
-import { loadRuleSet } from '@rulecad/cad/rules';
+import { createRequire } from 'node:module';
+const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
 import { grid, keyboard, render, checks, fabFiles, kicadFiles, views } from '@rulecad/pcb';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
