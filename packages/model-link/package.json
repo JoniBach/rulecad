@@ -24,7 +24,7 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "https://github.com/JoniBach/rulecad.git",
+    "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/model-link"
   },
   "scripts": {
