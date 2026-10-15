@@ -23,7 +23,7 @@ function find() {
 export const WS = find();
 export const config = (() => {
   const f = path.join(WS, 'cad.config.json');
-  return { printer: 'x1c', viewUrl: 'https://jonibach.github.io/mirror-cad-view/', targets: {}, ...(fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {}) };
+  return { printer: 'x1c', viewUrl: 'https://jonibach.github.io/rulecad/', targets: {}, ...(fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {}) };
 })();
 
 // Rule sets: the workspace's own first (your copies, with your measurements), then the published ones (@rulecad/rules).

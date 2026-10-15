@@ -1,11 +1,15 @@
 {
   "name": "@rulecad/printcheck",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Is this mesh printable? Bed fit, flat base, overhangs, bridges, breakaway supports and watertightness, for any FDM printer.",
   "type": "module",
-  "exports": "./printcheck.mjs",
+  "exports": {
+    "types": "./printcheck.d.mts",
+    "default": "./printcheck.mjs"
+  },
   "files": [
     "printcheck.mjs",
+    "printcheck.d.mts",
     "README.md",
     "LICENSE"
   ],
@@ -28,5 +32,6 @@
   },
   "scripts": {
     "test": "node --test"
-  }
+  },
+  "types": "./printcheck.d.mts"
 }

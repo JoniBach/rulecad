@@ -2,6 +2,9 @@
 // bounds: it runs in browsers and Node alike. Faces are [[x, y, z], …] polygons, triangulated here.
 import { bounds } from '@rulecad/printcheck';
 
+/** @typedef {[number, number, number]} Point a corner in mm, Z up */
+/** @typedef {Point[]} Face a polygon: three or more corners, counter-clockwise seen from outside */
+
 // Distance from point (px, py, pz) to triangle t = [a, b, c] (Ericson, Real-Time Collision Detection 5.1.5), in plain
 // numbers: this runs millions of times in a big assembly's checks, so it makes no arrays.
 function toTriangle(px, py, pz, t) {
@@ -59,6 +62,12 @@ function grid(T, cell) {
 
 // The closest gap between two sets of faces (mm), from each one's corners and edge midpoints to the other's faces.
 // Only points near the other's bounding box are measured. Infinity if they're far apart (more than reach mm).
+/**
+ * The smallest gap between two meshes, in mm: 0 if they touch, Infinity if farther apart than reach.
+ * @param {Face[]} polysA @param {Face[]} polysB
+ * @param {number} [reach] how far to look, in mm (2)
+ * @returns {number}
+ */
 export function closest(polysA, polysB, reach = 2) {
   const A = tris(polysA), B = tris(polysB);
   const near = (p, bx) => p.every((c, k) => c >= bx.lo[k] - reach && c <= bx.hi[k] + reach);

@@ -9,13 +9,15 @@
   "license": "MIT",
   "scripts": {
     "test": "node --test packages/*/test.mjs test/*.test.mjs",
-    "test:browser": "node --test test/viewer.browser.mjs"
+    "test:browser": "node --test test/viewer.browser.mjs",
+    "types": "node scripts/types.mjs"
   },
   "engines": {
     "node": ">=18"
   },
   "devDependencies": {
-    "@jscad/modeling": "^2.13.0"
+    "@jscad/modeling": "^2.13.0",
+    "typescript": "^5.9.3"
   },
   "overrides": {
     "@tscircuit/math-utils": "0.0.36"

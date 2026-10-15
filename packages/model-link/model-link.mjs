@@ -14,6 +14,9 @@
 //     (a 3 × 4 transform by rows, in mm). decode() expands them, so the rest of the page sees one model.
 // "1." is the format version: newer pages must keep reading old links.
 
+/** @typedef {[[number, number, number], [number, number, number], [number, number, number]]} Triangle corners in mm, counter-clockwise seen from outside, Z up */
+/** @typedef {{ title?: string, version?: string, src?: string, material?: string, orientation?: string, rules?: [string, any, string][], q?: number, p?: number[], t?: number[], parts?: any[], shapes?: any[], place?: any[], views?: [string, string][] }} Model */
+
 export const VERSION = 1;
 export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 8, viewSize: 4e6 }; // every keycap with its own legend is its own shape
 
@@ -22,6 +25,7 @@ const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/'
 async function pipe(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
 
 // fromTriangles([[[x,y,z] ×3], …]) -> { q, p, t }: shared corners merged on a grid ~1/5000 of the model's size.
+/** @param {Triangle[]} tris @returns {{ q: number, p: number[], t: number[] }} */
 export function fromTriangles(tris) {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; // a loop: spreading big models overflows the stack
   for (const tri of tris) for (const v of tri) for (let k = 0; k < 3; k++) { if (v[k] < lo[k]) lo[k] = v[k]; if (v[k] > hi[k]) hi[k] = v[k]; }
@@ -36,6 +40,7 @@ export function fromTriangles(tris) {
 }
 
 // fromParts([{ name, role, label, triangles }]) -> { q, p, t, parts }: shared corners merged across parts.
+/** @param {{ name: string, role?: 'part' | 'support' | 'reference', label?: string, slot?: number, triangles: Triangle[] }[]} list @returns {{ q: number, p: number[], t: number[], parts: any[] }} */
 export function fromParts(list) {
   const m = fromTriangles(list.flatMap((x) => x.triangles)), parts = [];
   // fromTriangles drops triangles that snapping collapses, so count each part's survivors in order
@@ -49,6 +54,7 @@ export function fromParts(list) {
   return { ...m, parts };
 }
 
+/** A model as a link token ('1.' + compressed data), for #m= in a URL. @param {Model} model @returns {Promise<string>} */
 export async function encode(model) {
   const bytes = await pipe(new TextEncoder().encode(JSON.stringify(model)), new CompressionStream('deflate-raw'));
   return `${VERSION}.${b64(bytes)}`;
@@ -56,12 +62,14 @@ export async function encode(model) {
 
 // The model link's parts from a location hash: { token, gist, get }. A short link (#s=<id>) names a GitHub Gist
 // holding the token.
+/** @param {string} hash location.hash @returns {{ token: string | null, gist: string | null, get: string | null }} */
 export function parseHash(hash) {
   const params = new URLSearchParams(String(hash).replace(/^#/, ''));
   return { token: params.get('m'), gist: params.get('s'), get: params.get('get') };
 }
 
 // The token from a short link's Gist (GitHub's API allows this without signing in, about 60 times an hour).
+/** A short link's token, from its GitHub Gist. @param {string} id @returns {Promise<string>} */
 export async function fromGist(id) {
   if (!/^[0-9a-f]{20,40}$/i.test(String(id))) throw new Error("this short link's ID isn't a Gist ID");
   const r = await fetch(`https://api.github.com/gists/${id}`);
@@ -72,6 +80,7 @@ export async function fromGist(id) {
   return (f.truncated ? await (await fetch(f.raw_url)).text() : f.content).trim();
 }
 
+/** A link token back to a model, checked: damaged, newer or oversized links are refused. @param {string} token @returns {Promise<Model>} */
 export async function decode(token) {
   const m = String(token || '').match(/^(\d+)\.([\w-]+)$/);
   if (!m) throw new Error("this isn't a model link");
@@ -122,6 +131,7 @@ export function fromShapes(list) {
 }
 
 // Triangles in mm: [[[x,y,z] ×3], …], all of them or one part's ([name, role, label, first, count]).
+/** The model's triangles, or one part's. @param {Model} m @param {any[]} [part] @returns {Triangle[]} */
 export function triangles(m, part) {
   const v = (i) => [m.p[3 * i] * m.q, m.p[3 * i + 1] * m.q, m.p[3 * i + 2] * m.q], out = [];
   const [from, to] = part ? [part[3] * 3, (part[3] + part[4]) * 3] : [0, m.t.length];
@@ -142,6 +152,7 @@ const chosen = (m, keep) => partsOf(m).filter((x, i) => (keep ? keep.has(i) : x[
 // Binary STL (mm): the parts picked, as one mesh, each part mended (mesh) as for 3MF.
 // fromSTL(bytes) -> triangles [[[x, y, z] ×3], …] from an STL file, binary or text (ASCII). Units are as the file has
 // them (millimetres, by convention). Throws on anything that isn't an STL.
+/** @param {ArrayBuffer | Uint8Array} bytes binary or text STL @returns {Triangle[]} */
 export function fromSTL(bytes) {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
@@ -161,6 +172,7 @@ export function fromSTL(bytes) {
 }
 
 // generator: the name the file says made it (rulecad by default)
+/** A binary STL of the printed parts (or those kept). @param {Model} m @param {(part: any[]) => boolean} [keep] @param {{ generator?: string }} [options] @returns {Uint8Array} */
 export function stl(m, keep, { generator = 'rulecad' } = {}) {
   const tris = chosen(m, keep).flatMap((x) => { const { verts, tris: t } = mesh(triangles(m, x)); return t.map((ids) => ids.map((i) => verts[i])); }), buf = new ArrayBuffer(84 + 50 * tris.length), dv = new DataView(buf);
   const head = `${generator} ${m.src || m.title || ''}`.slice(0, 80);
@@ -181,6 +193,7 @@ export const thingOf = (name) => { const bits = String(name).split('.'); return 
 
 // 3MF of the parts picked, in Bambu Studio's layout (bambu3mf): one object per printed thing, its parts on their AMS
 // slots (parts' sixth field; slot 1 without one).
+/** A 3MF in Bambu Studio's layout, each part on its filament slot. @param {Model} m @param {(part: any[]) => boolean} [keep] @param {{ generator?: string }} [options] @returns {Promise<Uint8Array>} */
 export async function threemf(m, keep, { generator = 'rulecad' } = {}) {
   const things = new Map();
   for (const x of chosen(m, keep)) {
@@ -297,6 +310,7 @@ const uuid = (n, kind) => `${kind.toString(16).padStart(4, '0')}${(n & 0xffff).t
 const IDENTITY = '1 0 0 0 1 0 0 0 1 0 0 0', IDENTITY4 = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1';
 const NS = 'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"';
 
+/** @param {{ name: string, parts: { name: string, triangles: Triangle[], slot?: number }[] }[]} objects @param {{ centre?: [number, number], generator?: string, date?: string, title?: string }} [options] @returns {Promise<Uint8Array>} a .3mf (a zip) */
 export async function bambu3mf(objects, { centre = [128, 128], generator = 'rulecad', date } = {}) {
   const files = {}, rels = [], resources = [], build = [], settings = [], instances = [];
   let id = 0;

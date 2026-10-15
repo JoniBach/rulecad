@@ -21,3 +21,4 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm ci
       - run: npm test
+      - run: npm run types # the JSDoc must make valid declarations

@@ -1,11 +1,15 @@
 {
   "name": "@rulecad/fit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Do these parts fit? The closest gap between two meshes, fast enough for whole keyboards.",
   "type": "module",
-  "exports": "./fit.mjs",
+  "exports": {
+    "types": "./fit.d.mts",
+    "default": "./fit.mjs"
+  },
   "files": [
     "fit.mjs",
+    "fit.d.mts",
     "README.md",
     "LICENSE"
   ],
@@ -31,5 +35,6 @@
   },
   "dependencies": {
     "@rulecad/printcheck": "^0.1.0"
-  }
+  },
+  "types": "./fit.d.mts"
 }

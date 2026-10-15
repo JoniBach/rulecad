@@ -7,6 +7,11 @@
 // No imports and no file access: it runs in a browser as well. Rule sets are handed in (sets) or fetched by name
 // through load(name), such as one that reads rules/<name>.json.
 
+/** @typedef {{ value: number | string, unit?: string, rule?: string, kind?: 'spec' | 'community' | 'default' | 'estimate' | 'measured', source?: string, checked?: string, label?: string, show?: boolean, interface?: boolean, tweak?: { min: number, max: number }, choice?: string[], type?: 'text' | 'anchor' | 'layout' }} Variable */
+/** @typedef {{ name?: string, rules: Record<string, Variable> }} RuleSet */
+/** @typedef {{ uses?: string[], variables?: Record<string, Variable>, [field: string]: any }} DesignObject */
+/** @typedef {{ name: string, value: number | string, used?: boolean, set?: boolean, [field: string]: any }} Entry */
+
 export const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 // A variable that holds a name or text, and the names it may hold (null: any text)
 export const isName = (d) => !!(d.choice || ['text', 'anchor', 'layout'].includes(d.type));
@@ -35,6 +40,12 @@ function tokens(src) {
 }
 
 // evaluate("line * 3", lookup) -> number. lookup(name) gives a name's value.
+/**
+ * One expression: + - * / and brackets, min, max, round, sind, cosd, tand, over numbers and names. Never runs code.
+ * @param {string | number} src
+ * @param {(name: string) => number} lookup the value of a name
+ * @returns {number}
+ */
 export function evaluate(src, lookup) {
   if (typeof src === 'number') return src;
   const t = tokens(String(src));
@@ -79,6 +90,12 @@ export function evaluate(src, lookup) {
 //   { "type": "text", "value": "", "max": 8 }                  free text, e.g. a keycap's legend
 //   { "type": "anchor", "value": "mc" }                        one of 9 places on a face: tl tc tr, ml mc mr, bl bc br
 //   { "type": "layout", "value": "grid", "choice": [...] }     a layout file in the project's layouts/ (or a built-in)
+/**
+ * Every variable's value, and an entry for each variable and rule for checks and rule cards.
+ * @param {DesignObject} object
+ * @param {{ sets?: Record<string, RuleSet>, set?: Record<string, number | string>, display?: Record<string, number | string>, load?: (name: string) => RuleSet }} [options]
+ * @returns {{ values: Record<string, any>, entries: Entry[] }}
+ */
 export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}) {
   const ruleSets = Object.fromEntries((object.uses || []).map((u) => {
     const s = sets[u] || (load ? load(u) : null);
@@ -134,10 +151,16 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
 }
 
 // Round for display: at most 2 decimals, no trailing zeros.
+/** A number to two decimals at most; a name as it is. @param {number | string} n @returns {string} */
 export const fmt = (n) => (typeof n === 'number' ? String(Number(n.toFixed(2))) : String(n)); // choices are names
 
 // lint(source) -> [{ line, text }]: number literals in a design's code that should be variables. Every measurement
 // belongs in a variable that says where it comes from; only 0, 1 and 2 (and numbers in comments and strings) pass.
+/**
+ * Number literals in a design's code other than 0, 1 and 2 (outside comments and strings).
+ * @param {string} source
+ * @returns {{ line: number, text: string }[]}
+ */
 export function lint(source) {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/.*$/gm, '')
     .replace(/(['"`])(?:\\.|(?!\1).)*\1/g, (m) => m.replace(/./g, ' '));

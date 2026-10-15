@@ -1,0 +1,31 @@
+# The public model page (@rulecad/viewer's site) on GitHub Pages: https://jonibach.github.io/rulecad/
+# Deployed from main whenever the viewer or the packages it copies in change.
+name: pages
+on:
+  push:
+    branches: [main]
+    paths: [packages/viewer/**, packages/model-link/**, packages/printcheck/**, .github/workflows/pages.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: pages
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node packages/viewer/scripts/build.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/viewer/site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,11 +1,15 @@
 {
   "name": "@rulecad/variables",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Design values you can trace: every number says where it comes from, and expressions are parsed, never run.",
   "type": "module",
-  "exports": "./variables.mjs",
+  "exports": {
+    "types": "./variables.d.mts",
+    "default": "./variables.mjs"
+  },
   "files": [
     "variables.mjs",
+    "variables.d.mts",
     "README.md",
     "LICENSE"
   ],
@@ -28,5 +32,6 @@
   },
   "scripts": {
     "test": "node --test"
-  }
+  },
+  "types": "./variables.d.mts"
 }

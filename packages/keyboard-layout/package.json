@@ -1,11 +1,15 @@
 {
   "name": "@rulecad/keyboard-layout",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A plain JSON keyboard layout format: rows of keys with widths and any per-key properties.",
   "type": "module",
-  "exports": "./keyboard-layout.mjs",
+  "exports": {
+    "types": "./keyboard-layout.d.mts",
+    "default": "./keyboard-layout.mjs"
+  },
   "files": [
     "keyboard-layout.mjs",
+    "keyboard-layout.d.mts",
     "README.md",
     "LICENSE"
   ],
@@ -26,5 +30,6 @@
   },
   "scripts": {
     "test": "node --test"
-  }
+  },
+  "types": "./keyboard-layout.d.mts"
 }

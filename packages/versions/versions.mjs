@@ -9,8 +9,11 @@ import { fmt } from '@rulecad/variables';
 import { project } from '@rulecad/keyboard-layout';
 
 // ---------- semver ----------
+/** @typedef {{ object: object, entries: { name: string, value: any }[], js: string, layouts?: Record<string, object>, engine?: string }} Snapshot a design: its .json, resolve()'s entries and its code */
+
 const KINDS = ['patch', 'minor', 'major'];
 export const parse = (v) => { const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)$/); if (!m) throw new Error(`"${v}" isn't a version like 1.2.0`); return m.slice(1).map(Number); };
+/** The next version. @param {string} v '1.2.3' @param {'major' | 'minor' | 'patch'} kind @returns {string} */
 export function bump(v, kind) {
   const [a, b, c] = parse(v);
   return kind === 'major' ? `${a + 1}.0.0` : kind === 'minor' ? `${a}.${b + 1}.0` : `${a}.${b}.${c + 1}`;
@@ -20,6 +23,7 @@ export const bigger = (k1, k2) => (KINDS.indexOf(k1) >= KINDS.indexOf(k2) ? k1 :
 
 
 // satisfies('0.2.1', '^0.2.0') -> true
+/** Whether a version is in a range (^1.2.0, ~1.2.0 or 1.2.0); ^0.2.0 takes 0.3.0. @param {string} version @param {string} range @returns {boolean} */
 export function satisfies(version, range) {
   const m = String(range).match(/^([~^]?)(\d+\.\d+\.\d+)$/);
   if (!m) throw new Error(`"${range}" isn't a version range like ^1.2.0, ~1.2.0 or 1.2.0`);
@@ -32,6 +36,11 @@ export function satisfies(version, range) {
 // ---------- what changed ----------
 // compare(before, after) -> { kind: 'major'|'minor'|'patch'|null, reasons }
 // before/after: { object, entries, js } (entries from resolve(), js the design's source).
+/**
+ * What changed between two snapshots of a design, and the bump that needs.
+ * @param {Snapshot} before @param {Snapshot} after
+ * @returns {{ kind: 'major' | 'minor' | 'patch' | null, reasons: { kind: 'major' | 'minor' | 'patch', text: string }[] }}
+ */
 export function compare(before, after) {
   const reasons = [], add = (kind, text) => reasons.push({ kind, text });
   const val = (r, name) => r.entries.find((e) => e.name === name);

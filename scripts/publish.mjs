@@ -10,6 +10,7 @@ const dry = process.argv.includes('--dry-run');
 const onNpm = (name, version) => {
   try { execFileSync('npm', ['view', `${name}@${version}`, 'version'], { stdio: ['ignore', 'pipe', 'ignore'] }); return true; } catch { return false; }
 };
+execFileSync(process.execPath, ['scripts/types.mjs'], { stdio: 'inherit' }); // declarations for editors, from the JSDoc
 let published = 0;
 for (const dir of fs.readdirSync('packages').sort()) {
   const { name, version, private: hidden } = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8'));

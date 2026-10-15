@@ -1,6 +1,7 @@
 # @rulecad/viewer
 
-A model page you can host anywhere, as plain static files: no server code, no build, no accounts.
+A model page you can host anywhere, as plain static files: no server code, no build, no accounts. Try it at
+[jonibach.github.io/rulecad](https://jonibach.github.io/rulecad/): drop an STL on it.
 
 - **Open a model link** (`#m=…`, made by `cad link` or `@rulecad/model-link`): the model turns slowly, and you can
   drag to turn it yourself. A parts panel shows, hides and restyles each part and ticks the ones a download holds.

@@ -2,7 +2,7 @@
 
 A kit for designing physical things you can trace, check, share and print. Small pieces, each useful alone: plain
 JavaScript modules with **no dependencies** (shapes uses the JSCAD you already have), the same in a browser and in
-Node 18+, no build step, MIT licensed (the rule data is CC0).
+Node 18+, no build step, with types for your editor, MIT licensed (the rule data is CC0).
 
 **The tool:** [`@rulecad/cad`](packages/cad) is the `cad` command that puts them together. Design in JSCAD from
 rules you can trace, check for printing and fit, version by what fits, share as a link, and export for the printer:
@@ -15,7 +15,8 @@ npx cad export home/soap-tray      # a 3MF for your slicer
 ```
 
 [`@rulecad/viewer`](packages/viewer) is a model page you can host anywhere: it opens model links, or **drop an STL on
-it** to see it, check it for printing and get a link to share. Nothing is uploaded.
+it** to see it, check it for printing and get a link to share. Nothing is uploaded. Try it now, with nothing to
+install: [jonibach.github.io/rulecad](https://jonibach.github.io/rulecad/).
 
 Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM), and
 [`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico)

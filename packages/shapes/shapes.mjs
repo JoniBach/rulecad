@@ -18,6 +18,11 @@ function arrow(char, height) {
   return [[[0, -h], [0, h]], [[-head, h - head], [0, h], [head, h - head]]].map((l) => l.map(r));
 }
 
+/**
+ * Text as a 2D outline that prints: JSCAD's single-line font, a capital `height` tall, lines `stroke` wide.
+ * @param {{ text: string, height: number, stroke: number, segments?: number }} options
+ * @returns {object} a JSCAD geom2
+ */
 export function text({ text: input, height, stroke, segments = 8 }) {
   if (!input) throw new Error('text: nothing to write');
   if (input in ARROWS) return union(...arrow(input, height).map((l) => expand({ delta: stroke / 2, corners: 'round', segments }, path2.fromPoints({}, l))));
@@ -46,6 +51,12 @@ export function text({ text: input, height, stroke, segments = 8 }) {
   return strokes.length > 1 ? union(...strokes) : strokes[0];
 }
 
+/**
+ * Where something w × d goes on a face width × depth (centred on 0, y to the back).
+ * @param {{ width: number, depth: number }} face @param {[number, number]} size
+ * @param {'tl'|'tc'|'tr'|'ml'|'mc'|'mr'|'bl'|'bc'|'br'} [at]
+ * @returns {[number, number]}
+ */
 export function anchor({ width, depth }, [w, d], at = 'mc') {
   if (!ANCHORS.includes(at)) throw new Error(`anchor: one of ${ANCHORS.join(', ')} (got "${at}")`);
   const col = { l: -1, c: 0, r: 1 }[at[1]], row = { t: 1, m: 0, b: -1 }[at[0]];
@@ -55,6 +66,7 @@ export function anchor({ width, depth }, [w, d], at = 'mc') {
 // cut(a, b): a with b taken out, touching only a's faces near b. JSCAD's subtract splits every face of a along the
 // planes of b's faces, however far away, and the splits can leave tiny gaps (a keycap's skirt, cut by its legend 8 mm
 // above). Here the faces clear of b's box pass through unchanged, and only the rest are cut.
+/** a with b taken out, cutting only a's faces near b. @param {object} a JSCAD geom3 @param {object} b JSCAD geom3 @param {number} [margin] @returns {object} */
 export function cut(a, b, margin = 0.05) {
   const { geom3 } = jscad.geometries, [lo, hi] = measureBoundingBox(b);
   const near = [], far = [];

@@ -17,6 +17,16 @@ function areaNormal(poly) {
 
 const OVERHANG_SLACK = 0.5; // degrees
 
+/**
+ * The box around faces.
+ * @param {Face[]} polys
+ * @returns {{ lo: Point, hi: Point, size: Point }}
+ */
+/** @typedef {[number, number, number]} Point a corner in mm, Z up */
+/** @typedef {Point[]} Face a polygon: three or more corners, counter-clockwise seen from outside */
+/** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number }} Printer mm and degrees */
+/** @typedef {{ level: 'pass' | 'warn' | 'fail', text: string }} Finding */
+
 export function bounds(polys) {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; // a loop: spreading big models overflows the stack
   for (const p of polys) for (const v of p) for (let k = 0; k < 3; k++) { if (v[k] < lo[k]) lo[k] = v[k]; if (v[k] > hi[k]) hi[k] = v[k]; }
@@ -26,6 +36,13 @@ export function bounds(polys) {
 // parts ([{ triangles, role }]): when parts print together (a keycap and its inlaid legend), an underside resting on
 // another part isn't an overhang, and each part must be closed on its own (their shared faces are inside the print).
 // printer: the printer's rules, any printer: { bed, overhang (degrees), layer, support_gap?, bridge? } in mm.
+/**
+ * Is it printable? Findings in plain words, each pass, warn or fail.
+ * @param {Face[]} polys the model as faces (triangles are fine), Z up, the bed at z = 0
+ * @param {Printer} printer the printer's limits
+ * @param {{ eps?: number, parts?: { triangles: Face[], role?: 'part' | 'support' }[] }} [options]
+ * @returns {Finding[]}
+ */
 export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   const out = [], f = (level, text) => out.push({ level, text });
   const solids = (parts || []).filter((p) => p.role !== 'support').map((p) => ({ tris: p.triangles, box: bounds(p.triangles) }));
@@ -114,6 +131,11 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
 // (held(a, b) -> true), or to the tops of breakaway supports one layer below (under: faces): its diameter in mm, the
 // gap a bridge has to span. null if nothing holds it up.
 // Sampled: points spread over each face, each measured to the held edges of the region's outline and to the supports.
+/**
+ * The widest circle that fits in an underside, measured to its held-up edges (the bridge it makes).
+ * @param {Face[]} polys @param {(edge: [Point, Point]) => boolean} [held] @param {Face[]} [under]
+ * @returns {number} mm
+ */
 export function widest(polys, held = () => true, under = []) {
   const key = (v) => `${v[0].toFixed(3)},${v[1].toFixed(3)}`, count = new Map(), edges = [];
   for (const p of polys) p.forEach((a, i) => { const b = p[(i + 1) % p.length], k = [key(a), key(b)].sort().join('|'); count.set(k, (count.get(k) || 0) + 1); edges.push([k, a, b]); });
@@ -163,6 +185,11 @@ function pointToTriangle(p, a, b, c) { // Ericson, Real-Time Collision Detection
   const den = 1 / (va + vb + vc);
   return at(mix(1 - vb * den - vc * den, vb * den, vc * den));
 }
+/**
+ * Open edges, sorted: real gaps, T-junctions (closed) and hairline seams (closed).
+ * @param {Face[]} polys @param {number} [eps]
+ * @returns {{ gaps: number, tjunctions: number, hairlines: number }}
+ */
 export function seams(polys, eps = 1e-3) {
   const key = (v) => v.map((c) => Math.round(c / eps)).join(','), segs = [], count = new Map();
   for (const p of polys) p.forEach((a, i) => { const b = p[(i + 1) % p.length]; if (key(a) !== key(b)) { segs.push([a, b]); const k = `${key(a)}|${key(b)}`; count.set(k, (count.get(k) || 0) + 1); } });
