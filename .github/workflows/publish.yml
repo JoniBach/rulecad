@@ -1,0 +1,24 @@
+# On main: publish every package whose version isn't on npm yet (scripts/publish.mjs). To release, bump a package's
+# version in its package.json and merge. npm trusts this workflow for each package (trusted publishing), so there are
+# no tokens or one-time passwords, and every release carries provenance.
+name: publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write # proves to npm that this workflow, in this repository, is publishing
+concurrency: publish
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # npm 11.5 or later for trusted publishing
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm test
+      - run: node scripts/publish.mjs

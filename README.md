@@ -60,6 +60,10 @@ with it, no permission needed. If you improve it, sharing back is welcome, never
 
 ## Working on it
 
+**Releasing:** bump a package's `version` in its package.json and merge to `main`. The publish workflow runs the
+tests, then publishes every package whose version isn't on npm yet, with provenance. npm trusts that workflow for
+each package (`scripts/trust.sh`, once per package, by a maintainer), so there are no tokens to keep.
+
 ```sh
 npm install   # links the packages to each other; JSCAD comes in only to make test shapes
 npm test      # node:test, no other tools
