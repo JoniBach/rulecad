@@ -29,7 +29,7 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome' }, as
     r.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r);
   }).listen(0);
   const port = server.address().port;
-  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
   try {
     const wsUrl = await new Promise((res, rej) => { let s = ''; chrome.stderr.on('data', (d) => { s += d; const m = s.match(/ws:\/\/\S+/); if (m) res(m[0]); }); setTimeout(() => rej(new Error('Chrome did not start')), 20000); });
     const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));

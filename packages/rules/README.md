@@ -25,5 +25,6 @@ as KiCad's library or KeyV2), **default** (a setting that works), or **estimate*
 and correct it). Use them with `@rulecad/variables` (`uses: ['x1c']`, then `x1c.line * 3` in any expression), or read
 the JSON from anywhere.
 
-**Corrections are the most useful contribution.** If you measured something, open a pull request with the value,
+**Corrections are the most useful contribution.** If you measured something, use the "Correct a rule" issue form on
+GitHub, or open a pull request with the value,
 `"kind": "measured"`, how you measured it, and the date.

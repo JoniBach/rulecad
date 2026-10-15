@@ -35,6 +35,7 @@ npx cad rules bathroom/soap-tray                 # every variable, its rule and 
 npx cad check bathroom/soap-tray --set width=60   # change variables that have a tweak range
 npx cad variants keyboard/keycap                 # named sets of inputs: keyboard/keycap:legend-f
 npx cad compare keyboard/keycap dsa legend-f     # two variants (or releases) side by side
+npx cad import-kle layout.json keyboard/mine     # a layout from keyboard-layout-editor.com, into layouts/
 ```
 
 The keyboard examples below come from the project rulecad grew out of: a keycap, a switch plate, a case and their

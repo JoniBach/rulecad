@@ -18,6 +18,9 @@ npx cad export home/soap-tray      # a 3MF for your slicer
 it** to see it, check it for printing and get a link to share. Nothing is uploaded. Try it now, with nothing to
 install: [jonibach.github.io/rulecad](https://jonibach.github.io/rulecad/).
 
+Every new project gets an `AGENTS.md`: how an AI agent (Claude Code and others) should design there. Rules first,
+look at the preview, report fits with numbers. `npx cad agents` adds it to an existing project.
+
 Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM), and
 [`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico)
 as public-domain data, each value with its source.
@@ -60,6 +63,9 @@ shared in the open. What's made from the commons belongs back in the commons: us
 with it, no permission needed. If you improve it, sharing back is welcome, never required.
 
 ## Working on it
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The most useful contribution is a measurement: if a rule is wrong for your
+printer or parts, the "Correct a rule" issue form takes a minute.
 
 **Releasing:** bump a package's `version` in its package.json and merge to `main`. The publish workflow runs the
 tests, then publishes every package whose version isn't on npm yet, with provenance. npm trusts that workflow for

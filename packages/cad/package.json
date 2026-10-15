@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/cad",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The cad command: JSCAD designs from traceable rules, checked for printing and fit, versioned by what fits, shared as links and exported as Bambu 3MF.",
   "type": "module",
   "bin": {
@@ -22,7 +22,8 @@
     "lib",
     "templates",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "AGENTS.md"
   ],
   "license": "MIT",
   "keywords": [
@@ -43,7 +44,7 @@
   },
   "dependencies": {
     "@rulecad/variables": "^0.1.0",
-    "@rulecad/keyboard-layout": "^0.1.0",
+    "@rulecad/keyboard-layout": "^0.1.2",
     "@rulecad/printcheck": "^0.1.0",
     "@rulecad/fit": "^0.1.0",
     "@rulecad/model-link": "^0.1.0",

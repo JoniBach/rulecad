@@ -66,3 +66,28 @@ test('"display" settings and parts are read as the on-screen copy ("mirror", the
     assert.equal(o.parts.cap.mirror, undefined);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('import-kle: a keyboard-layout-editor.com layout into the project, with notes on what it had to change', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.writeFileSync(path.join(ws, 'kle.json'), JSON.stringify([['Esc', { x: 0.5 }, 'F1'], [{ w: 1.5 }, 'Tab', { r: 10 }, 'Q']]));
+    const out = cad('import-kle', 'kle.json', 'keys/mine');
+    assert.match(out, /made projects\/keys\/layouts\/mine\.json: 2 rows, 4 keys/);
+    assert.match(out, /note: rotated keys/);
+    const layout = JSON.parse(fs.readFileSync(path.join(ws, 'projects/keys/layouts/mine.json'), 'utf8'));
+    assert.deepEqual(layout.rows[0], ['Esc', { gap: 0.5 }, 'F1']);
+    assert.match(cad('import-kle', 'kle.json', 'keys/mine'), /already exists/);
+  } finally { done(); }
+});
+
+test('cad agents: AGENTS.md for AI agents, included from CLAUDE.md without losing what was there', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.writeFileSync(path.join(ws, 'CLAUDE.md'), 'Our own notes.\n');
+    assert.match(cad('agents'), /wrote AGENTS\.md/);
+    assert.match(fs.readFileSync(path.join(ws, 'AGENTS.md'), 'utf8'), /Rules first/);
+    assert.equal(fs.readFileSync(path.join(ws, 'CLAUDE.md'), 'utf8'), 'Our own notes.\n\n@AGENTS.md\n');
+    cad('agents');
+    assert.equal(fs.readFileSync(path.join(ws, 'CLAUDE.md'), 'utf8'), 'Our own notes.\n\n@AGENTS.md\n', 'only once');
+  } finally { done(); }
+});

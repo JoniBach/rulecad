@@ -1,0 +1,26 @@
+name: Correct a rule
+description: A value in a rule set is wrong for your printer or parts, or you measured an estimate.
+labels: [rules]
+body:
+  - type: input
+    id: rule
+    attributes:
+      label: Which rule
+      description: The set and the name, as designs write it.
+      placeholder: mx.housing_top
+    validations:
+      required: true
+  - type: input
+    id: value
+    attributes:
+      label: What you measured
+      placeholder: 11.4 mm
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How you measured it
+      description: Calipers, a test print, a datasheet (a link)... and on which part, printer or filament.
+    validations:
+      required: true

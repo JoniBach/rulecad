@@ -17,3 +17,5 @@ npx cad new home/hook                           # your own design
   printer and correct them: every design that uses them follows.
 - `cad.config.json` names the printer. For another printer, copy `rules/x1c.json` under a new name and change the
   values.
+- `AGENTS.md` tells an AI agent (Claude Code and others) how to design here: rules first, look at the preview,
+  report fits with numbers. `CLAUDE.md` includes it.

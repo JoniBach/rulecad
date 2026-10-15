@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { keys, width, depth, project } from '@rulecad/keyboard-layout';
+import { keys, width, depth, project, fromKLE } from '@rulecad/keyboard-layout';
 
 const layout = {
   defaults: { legend: '@label' },
@@ -29,4 +29,20 @@ test('project: only the fields something reads, so other edits are not changes t
   const before = project(layout, ['homing']);
   const edited = { ...layout, defaults: { legend: 'x' } };
   assert.deepEqual(project(edited, ['homing']), before);
+});
+
+test('gaps: space between keys moves the keys after it and counts in the width', () => {
+  const l = { rows: [['Esc', { gap: 0.5 }, 'F1'], [['Tab', 2.5]]] };
+  assert.equal(width(l), 2.5);
+  assert.deepEqual(keys(l).map((k) => [k.label, k.col, k.x]), [['Esc', 0, -0.75], ['F1', 1, 0.75], ['Tab', 0, 0]]);
+});
+
+test('fromKLE: rows, widths, gaps and shifted legends from keyboard-layout-editor.com', () => {
+  const raw = '["Esc",{x:0.5},"F1"],\n["~\\n`","!\\n1",{w:2},"Backspace"],\n[{w:1.5},"Tab",{y:0.25},"Q"]';
+  const { layout, notes } = fromKLE(raw);
+  assert.deepEqual(layout.rows, [['Esc', { gap: 0.5 }, 'F1'], [{ label: '`', u: 1, legend2: '~' }, { label: '1', u: 1, legend2: '!' }, ['Backspace', 2]], [['Tab', 1.5], 'Q']]);
+  assert.deepEqual(notes, ['rows nudged up or down are placed one row apart']);
+  assert.equal(width(layout), 4);
+  assert.deepEqual(fromKLE([{ name: 'Mine' }, ['A']]).layout, { title: 'Mine', rows: [['A']] });
+  assert.throws(() => fromKLE('hello'), /isn't keyboard-layout-editor data/);
 });

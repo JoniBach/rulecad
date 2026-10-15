@@ -1,0 +1,56 @@
+# Designing with rulecad: notes for AI agents
+
+This project designs physical things with the `cad` command (rulecad). Every measurement is a variable, and every
+variable says which rule it comes from. Follow these steps; they're what makes a design traceable and printable.
+(`npx cad help` lists the commands; the full guide is @rulecad/cad's README.)
+
+## A new part
+1. **Rules first.** Find the facts the part depends on: standards, the thing it fits, the printer. Put shared ones in
+   `rules/<set>.json` with `kind`, `source` and `checked`. Research them, don't guess. Ask the person to measure what
+   can't be looked up, and record it as `"kind": "measured"`; something nobody has published goes in as
+   `"kind": "estimate"`, and the check will flag it.
+2. `npx cad new <project>/<object>`, then write the variables in the .json and the shape in the .js. No numbers in
+   the .js other than 0, 1 and 2: `cad check` fails on any other.
+3. `npx cad check`, then `npx cad preview`, and **look at the preview image** before saying it's done. Check the views
+   from below for anything that fits onto something else.
+4. Mark the variables that matter to the person `show` (six at most, short `label`s), and the ones other parts depend
+   on `interface` (versions follow them). Give sensible `tweak` ranges to the ones they may want to change.
+5. `npx cad export` for printing; `npx cad link --md` for a link to share.
+
+## Changing a design
+1. `npx cad history <project>/<object>` first: read the print log. A failed print is the reason for most changes:
+   fix the rule or variable it points at (a measured fit beats a community rule).
+2. Change, then check, preview and look, as for a new part.
+3. `npx cad release <project>/<object> -m "what changed, for the person" --dry-run` shows the bump and why. If it's
+   major, tell the person which interface values changed: earlier prints may no longer fit.
+4. Release only when the person agrees. Don't use `--force` without asking.
+
+## Shapes
+- Z is up, the bed is z = 0: model the part in its print orientation, and describe it in `orientation`.
+- Walls are whole numbers of print lines (`x1c.line * 3`, or your printer's set), heights whole numbers of layers.
+- Holes and slots get the printer's hole compensation; parts that slide together get its fit clearance. Chamfer
+  bottom edges.
+- An overhang warning means supports: say so in `orientation`, or change the shape or orientation.
+- Something printed under the part and removed afterwards is a named `support` part (`return { cap, pillar }`, both
+  described in the .json's `parts`), not part of the shape. Look at `cad preview --explode` too.
+
+## Alternatives, layouts, colours
+- To try an alternative, add a **variant** (named inputs in the .json) rather than a copy of the object; `cad compare`
+  shows two side by side. Remove trial variants before a release.
+- What differs key by key on a keyboard belongs in a **layout file**, read through `per`. `cad import-kle` brings
+  one in from keyboard-layout-editor.com.
+- A part in another colour is a part with a `filament` from `project.json`: the 3MF puts it on its own AMS slot.
+- Fine detail a screen doesn't need goes in `display` settings (fewer segments, no legends).
+
+## Fits
+- To check how parts go together, make a `fit` assembly with the thing it fits as a `reference` object, and `fits`
+  with ranges from rules. An overlap or gap outside its range is a finding: report it with the numbers, and never
+  widen a range to make it pass without saying why.
+- Build bigger things from checked assemblies used as items, rather than placing their objects again.
+
+## Talking to the person
+- Give links as one labelled line (`npx cad link <project>/<object> --md`), never a raw URL. If it says
+  "(not a release)", say so.
+- Say what the checks found, with numbers. Ask before anything that leaves the computer: releases with `--push`,
+  ordering boards, publishing.
+- Designs are code: only run designs you or the person trust. Links and rule files are data and never run.

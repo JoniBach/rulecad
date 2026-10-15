@@ -5,6 +5,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fmt, loadRuleSet } from '../lib/rules.mjs';
 import { WS, TOOL, paths, config, printerOf } from '../lib/workspace.mjs';
+import { fromKLE } from '@rulecad/keyboard-layout';
 import { target, hasTarget } from '../lib/targets.mjs';
 import { locate, build, pick, lint, readObject, printer, pcbEngine } from '../lib/design.mjs';
 import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, prints, printsFile, engineId } from '../lib/versions.mjs';
@@ -34,6 +35,8 @@ const VIEW = process.env.CAD_VIEW_URL || config.viewUrl;
 const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
   cad new <project>/<object>        start a design from the template (makes the project if needed)
+  cad import-kle <file> <project>/<name>   a keyboard layout from keyboard-layout-editor.com, into layouts/
+  cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure)
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
@@ -96,6 +99,26 @@ async function main() {
     return console.log(`made projects/${project}/objects/${name}.{js,json}`);
   }
 
+  if (cmd === 'agents') { // the notes for AI agents, into this workspace (AGENTS.md, and CLAUDE.md pointing at it)
+    const to = path.join(WS, 'AGENTS.md');
+    fs.copyFileSync(path.join(TOOL, 'AGENTS.md'), to);
+    const claude = path.join(WS, 'CLAUDE.md');
+    if (!fs.existsSync(claude)) fs.writeFileSync(claude, '@AGENTS.md\n');
+    else if (!fs.readFileSync(claude, 'utf8').includes('@AGENTS.md')) fs.appendFileSync(claude, '\n@AGENTS.md\n');
+    return console.log(`wrote ${path.relative(process.cwd(), to) || 'AGENTS.md'}: how an AI agent should design here (CLAUDE.md includes it)`);
+  }
+  if (cmd === 'import-kle') { // a layout from keyboard-layout-editor.com into a project's layouts/
+    const [project, name] = String(args[2] || '').split('/');
+    if (!ref || !fs.existsSync(ref) || !project || !/^[a-z][a-z0-9-]*$/.test(name || '')) throw new Error('usage: cad import-kle <layout.json> <project>/<name> (the JSON download, or a file with its Raw data)');
+    const { layout, notes } = fromKLE(fs.readFileSync(ref, 'utf8'));
+    const to = path.join(paths.project(project), 'layouts', `${name}.json`);
+    if (fs.existsSync(to) && !opt('force')) throw new Error(`${path.relative(WS, to)} already exists (--force to replace it)`);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.writeFileSync(to, `${JSON.stringify({ title: layout.title || name, ...layout }, null, 1)}\n`);
+    console.log(`made ${path.relative(WS, to)}: ${layout.rows.length} rows, ${layout.rows.flat().filter((k) => !k.gap).length} keys`);
+    for (const n of notes) console.log(`  note: ${n}`);
+    return;
+  }
   if (cmd === 'status') return status(ref);
   if (!ref) throw new Error(`usage: cad ${cmd} <project>/<object>`);
   if (cmd === 'release') return ref.includes('/') ? releaseObject(locate(ref)) : opt('all') ? releaseAll(ref) : releaseProject(ref);

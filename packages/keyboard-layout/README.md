@@ -27,3 +27,16 @@ depth(layout)  // 2 rows
 - Rows run back to front and start at the same left edge. `x` and `y` are each key's centre in key units, with the
   layout centred on 0 (x to the right, y to the back). Multiply by your pitch (19.05 mm for Cherry MX).
 - `project(layout, fields)` keeps only the fields something reads, so you can tell whether an edit matters to it.
+- `{ "gap": 0.5 }` in a row is space between keys, such as the groups of a function row.
+
+## From keyboard-layout-editor.com
+
+```js
+import { fromKLE } from '@rulecad/keyboard-layout';
+
+const { layout, notes } = fromKLE(rawData);   // its JSON download, or the text from its "Raw data" tab
+```
+
+Rows, widths, gaps and legends come across, and a shifted legend ("!" over "1") becomes `legend2`. What this format
+has no place for (rotated keys, rows nudged up or down, tall or stepped keys such as ISO Enter) is listed in `notes`,
+and those keys keep their place in the row. With the `cad` command: `npx cad import-kle layout.json keyboard/mine`.
