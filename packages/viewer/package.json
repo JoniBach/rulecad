@@ -1,0 +1,37 @@
+{
+  "name": "@rulecad/viewer",
+  "version": "0.1.0",
+  "description": "A model page you can host anywhere: open model links, or drop an STL to see it, check it for printing and share it. Plain static files; nothing is uploaded.",
+  "type": "module",
+  "files": [
+    "site",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "3d-viewer",
+    "stl",
+    "3mf",
+    "3d-printing",
+    "static-site",
+    "github-pages"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/viewer"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "node scripts/build.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@rulecad/model-link": "^0.1.0",
+    "@rulecad/printcheck": "^0.1.0",
+    "esbuild": "^0.25.12",
+    "three": "^0.186.1"
+  }
+}

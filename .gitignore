@@ -1,2 +1,6 @@
 node_modules/
 .DS_Store
+packages/viewer/site/model-link.mjs
+packages/viewer/site/printcheck.mjs
+test/viewer.png
+test/viewer-drop.png

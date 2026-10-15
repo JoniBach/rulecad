@@ -12,6 +12,9 @@ npm init -y && npm pkg set type=module && npm install @rulecad/cad @jscad/modeli
 npx cad new bathroom/soap-tray && npx cad check bathroom/soap-tray && npx cad export bathroom/soap-tray
 ```
 
+[`@rulecad/viewer`](packages/viewer) is a model page you can host anywhere: it opens model links, or **drop an STL on
+it** to see it, check it for printing and get a link to share. Nothing is uploaded.
+
 Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM), and
 [`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico)
 as public-domain data, each value with its source.
@@ -64,4 +67,4 @@ Each package is one `.mjs` file with its documentation at the top. Rules for cha
 nothing that only runs in Node, and new behaviour comes with a test.
 
 The kit grew out of a rule-driven design project for 3D printing: a keyboard, its keycaps, case and circuit boards.
-Still to come: a model viewer you can host yourself, and `npm create rulecad` to start a project in one line.
+Still to come: `npm create rulecad`, to start a project in one line.

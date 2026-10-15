@@ -140,6 +140,26 @@ export const filename = (m, ext, picked = '') => `${[String(m.src || m.title || 
 const chosen = (m, keep) => partsOf(m).filter((x, i) => (keep ? keep.has(i) : x[1] !== 'reference'));
 
 // Binary STL (mm): the parts picked, as one mesh, each part mended (mesh) as for 3MF.
+// fromSTL(bytes) -> triangles [[[x, y, z] ×3], …] from an STL file, binary or text (ASCII). Units are as the file has
+// them (millimetres, by convention). Throws on anything that isn't an STL.
+export function fromSTL(bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const count = u8.byteLength >= 84 ? view.getUint32(80, true) : -1;
+  if (count >= 0 && 84 + count * 50 === u8.byteLength) { // binary: a header, a count, then 50 bytes a triangle
+    if (count > LIMITS.triangles) throw new Error(`${count} triangles: more than a link can hold (${LIMITS.triangles})`);
+    const tris = [];
+    for (let i = 0, o = 84; i < count; i++, o += 50) tris.push([0, 1, 2].map((v) => [0, 1, 2].map((k) => view.getFloat32(o + 12 + v * 12 + k * 4, true))));
+    return tris;
+  }
+  const text = new TextDecoder().decode(u8);
+  if (!/^\s*solid\b/.test(text) || !/\bvertex\b/.test(text)) throw new Error("this isn't an STL file");
+  const v = [...text.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]);
+  if (v.length % 3 || v.some((p) => p.some((c) => !Number.isFinite(c)))) throw new Error('this STL file is damaged');
+  if (v.length / 3 > LIMITS.triangles) throw new Error(`${v.length / 3} triangles: more than a link can hold (${LIMITS.triangles})`);
+  return Array.from({ length: v.length / 3 }, (_, i) => v.slice(i * 3, i * 3 + 3));
+}
+
 // generator: the name the file says made it (rulecad by default)
 export function stl(m, keep, { generator = 'rulecad' } = {}) {
   const tris = chosen(m, keep).flatMap((x) => { const { verts, tris: t } = mesh(triangles(m, x)); return t.map((ids) => ids.map((i) => verts[i])); }), buf = new ArrayBuffer(84 + 50 * tris.length), dv = new DataView(buf);
