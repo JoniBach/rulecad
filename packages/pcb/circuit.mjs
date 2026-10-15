@@ -251,8 +251,8 @@ function fixedTraces(input) {
 }
 
 async function defaultRouter(json, toRoute) {
-  // The autorouter uses Map.groupBy (Node 21+): on Node 20, a stand-in, only where it's missing
-  Map.groupBy ??= (items, key) => { const m = new Map(); let i = 0; for (const x of items) { const k = key(x, i++); m.set(k, [...(m.get(k) || []), x]); } return m; };
+  // The autorouter uses JavaScript features from Node 22 (iterator helpers): say so, rather than fail inside it
+  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
   const { AutoroutingPipelineSolver } = await import('@tscircuit/capacity-autorouter');
   const srj = await routeInput(json, toRoute);
   const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null });

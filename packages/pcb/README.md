@@ -27,7 +27,8 @@ npx cad export macropad/board     # <name>-fab.zip for JLCPCB, KiCad files, the 
 ```
 
 - The board is also a solid, so it takes part in fit checks: switches on the board, plate over it, board in the case.
-- A Pico under the board has its connections autorouted (that takes minutes, then the build cache keeps it).
+- A Pico under the board has its connections autorouted (that needs Node 22 or newer; boards drawn wholly by rule build on
+  Node 20 too). That takes minutes; then the build cache keeps it.
   Everything else is drawn by rule.
 - The autorouter and footprint versions are pinned, so a board builds the same until rulecad moves them on; each move is
   checked against boards built before it (same tracks, same checks, same fab files). Nothing to add to your

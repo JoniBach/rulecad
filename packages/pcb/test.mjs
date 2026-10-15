@@ -29,11 +29,17 @@ test('a keyboard board with no framework: every track drawn by rule, the checks 
   assert.ok(drawn.every(([, svg]) => svg.startsWith('<svg')), 'board and schematic drawings');
 });
 
-test('the Pico under the board: its connections autorouted around the drawn tracks, cleanly', async () => {
+const node22 = Number(process.versions.node.split('.')[0]) >= 22;
+test('the Pico under the board: its connections autorouted around the drawn tracks, cleanly', { skip: !node22 && 'the autorouter needs Node 22' }, async () => {
   const v = values({ controller: { value: 'under', choice: ['beside', 'under'] }, margin: { value: -2 }, mount_holes: { value: 0 } });
   const { json, matrix } = await build(v, 4, 6);
   assert.deepEqual(failures(await checks(json, v, matrix)), []);
   const routed = json.filter((e) => e.type === 'pcb_trace').length;
   assert.equal(routed, json.filter((e) => e.type === 'source_trace').length, 'every connection is routed');
   for (const via of json.filter((e) => e.type === 'pcb_via')) assert.ok(json.some((t) => t.pcb_trace_id === via.pcb_trace_id && t.type === 'pcb_trace'), 'each via belongs to a track');
+});
+
+test('on Node 20, routing says what it needs instead of failing inside the router', { skip: node22 && 'Node 22 or newer' }, async () => {
+  const v = values({ controller: { value: 'under', choice: ['beside', 'under'] }, margin: { value: -2 }, mount_holes: { value: 0 } });
+  await assert.rejects(build(v, 4, 6), /needs Node 22 or newer/);
 });
