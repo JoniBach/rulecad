@@ -39,7 +39,8 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     const { result: { targetId } } = await send('Target.createTarget', { url: `http://localhost:${port}/` });
     const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
     const run = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)).result.result.value;
-    const until = async (expr, ms = 45000) => // a cold CI machine can be slow to load the page { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) if (await run(expr)) return true; return false; };
+    // (45 s: a cold CI machine can be slow to load the page)
+    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) if (await run(expr)) return true; return false; };
 
     assert.ok(await until(`!!document.querySelector('.drop input')`), 'the drop screen shows without a link');
     const shot = async (name) => fs.writeFileSync(new URL(`./${name}`, import.meta.url), Buffer.from((await send('Page.captureScreenshot', { format: 'png' }, sessionId)).result.data, 'base64'));
