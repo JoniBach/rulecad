@@ -6,9 +6,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const SITE = new URL('../site/', import.meta.url).pathname;
+const SITE = fileURLToPath(new URL('../site/', import.meta.url));
 fs.copyFileSync(require.resolve('@rulecad/model-link'), path.join(SITE, 'model-link.mjs'));
 fs.copyFileSync(require.resolve('@rulecad/printcheck'), path.join(SITE, 'printcheck.mjs')); // a dropped STL is checked here
 

@@ -4,12 +4,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2), install = !args.includes('--no-install');
 const dir = path.resolve(args.find((a) => !a.startsWith('--')) || 'my-designs'), name = path.basename(dir);
 if (fs.existsSync(dir) && fs.readdirSync(dir).length) { console.error(`${dir} isn't empty: name a new folder (npm create rulecad my-designs)`); process.exit(1); }
 
-const TEMPLATE = new URL('./template/', import.meta.url).pathname;
+const TEMPLATE = fileURLToPath(new URL('./template/', import.meta.url));
 fs.cpSync(TEMPLATE, dir, { recursive: true });
 fs.renameSync(path.join(dir, 'gitignore'), path.join(dir, '.gitignore')); // npm drops files named .gitignore from packages
 const readme = path.join(dir, 'README.md');

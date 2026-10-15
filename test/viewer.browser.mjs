@@ -8,11 +8,12 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import jscad from '@jscad/modeling';
 import { fromTriangles, stl } from '@rulecad/model-link';
 import { tri } from './jscad.mjs';
 
-const SITE = new URL('../packages/viewer/site/', import.meta.url).pathname;
+const SITE = fileURLToPath(new URL('../packages/viewer/site/', import.meta.url));
 const CHROME = process.env.CAD_CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/chromium', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium'].find((f) => fs.existsSync(f));
 const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript' };
 

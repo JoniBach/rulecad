@@ -16,6 +16,7 @@
 // Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import crypto from 'node:crypto';
 import { resolve, loadRuleSet } from './rules.mjs';
@@ -104,7 +105,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     return { object, values, entries, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
   }
 
-  const mod = await import(`${d.js}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
+  const mod = await import(`${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
     // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
     if (e.code === 'ERR_MODULE_NOT_FOUND' && /@jscad\/modeling/.test(e.message)) throw new Error(`designs need JSCAD in the workspace: npm install @jscad/modeling (in ${WS})`);
     if (/import statement outside a module/.test(e.message)) throw new Error(`designs are ES modules: set "type": "module" in ${path.join(WS, 'package.json')}`);

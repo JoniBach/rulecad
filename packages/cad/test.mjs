@@ -4,16 +4,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const BIN = new URL('./bin/cad.mjs', import.meta.url).pathname;
-const ROOT_MODULES = new URL('../../node_modules', import.meta.url).pathname; // stands in for npm install @jscad/modeling
+const BIN = fileURLToPath(new URL('./bin/cad.mjs', import.meta.url));
+const ROOT_MODULES = fileURLToPath(new URL('../../node_modules', import.meta.url)); // stands in for npm install @jscad/modeling
 
 // A fresh workspace, as the README's quick start makes one
 function workspace(config) {
   const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-'));
   fs.writeFileSync(path.join(ws, 'package.json'), JSON.stringify({ type: 'module' }));
   if (config) fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify(config));
-  fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'));
+  fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction');
   const cad = (...a) => { try { return execFileSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', stdio: 'pipe' }); } catch (e) { return `${e.stdout}${e.stderr}`; } };
   return { ws, cad, done: () => fs.rmSync(ws, { recursive: true, force: true }) };
 }

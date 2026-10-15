@@ -4,9 +4,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const PEERS = ['@jscad/modeling'];
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = fileURLToPath(new URL('..', import.meta.url));
 // The tool (cad), the board engine (pcb), the data (rules) and the site (viewer) are what the small packages are for:
 // they may depend on more.
 const TOOLS = ['cad', 'pcb', 'rules', 'viewer', 'create-rulecad'];

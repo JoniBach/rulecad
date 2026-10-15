@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const TOOL = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+export const TOOL = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]$/, '');
 
 function find() {
   if (process.env.CAD_WORKSPACE) return path.resolve(process.env.CAD_WORKSPACE);
