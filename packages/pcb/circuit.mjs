@@ -48,7 +48,8 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     const sourcePorts = pads.map((p, i) => add('source_port', { name: names[i].name, pin_number: names[i].n, port_hints: names[i].hints,
       source_component_id: comp.source_component_id, subcircuit_id: SUB }));
     if (part.ftype === 'simple_chip') { // pins with the same label are joined inside the part (a Pico's GND pins)
-      const groups = Object.values(Object.groupBy(sourcePorts, (s) => s.name)).filter((g) => g.length > 1);
+      const byName = new Map(); for (const sp of sourcePorts) byName.set(sp.name, [...(byName.get(sp.name) || []), sp]); // (Object.groupBy needs Node 21)
+      const groups = [...byName.values()].filter((g) => g.length > 1);
       if (groups.length) comp.internally_connected_source_port_ids = groups.map((g) => g.map((s) => s.source_port_id));
       for (const g of groups) add('source_component_internal_connection', { source_component_id: comp.source_component_id, subcircuit_id: SUB, source_port_ids: g.map((s) => s.source_port_id) });
     }
