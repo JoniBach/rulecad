@@ -251,6 +251,8 @@ function fixedTraces(input) {
 }
 
 async function defaultRouter(json, toRoute) {
+  // The autorouter uses Map.groupBy (Node 21+): on Node 20, a stand-in, only where it's missing
+  Map.groupBy ??= (items, key) => { const m = new Map(); let i = 0; for (const x of items) { const k = key(x, i++); m.set(k, [...(m.get(k) || []), x]); } return m; };
   const { AutoroutingPipelineSolver } = await import('@tscircuit/capacity-autorouter');
   const srj = await routeInput(json, toRoute);
   const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null });
