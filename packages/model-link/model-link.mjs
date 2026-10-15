@@ -297,7 +297,7 @@ const uuid = (n, kind) => `${kind.toString(16).padStart(4, '0')}${(n & 0xffff).t
 const IDENTITY = '1 0 0 0 1 0 0 0 1 0 0 0', IDENTITY4 = '1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1';
 const NS = 'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"';
 
-export async function bambu3mf(objects, { centre = [128, 128], generator = 'rulecad' } = {}) {
+export async function bambu3mf(objects, { centre = [128, 128], generator = 'rulecad', date } = {}) {
   const files = {}, rels = [], resources = [], build = [], settings = [], instances = [];
   let id = 0;
   objects.forEach((o, n) => {
@@ -313,7 +313,7 @@ export async function bambu3mf(objects, { centre = [128, 128], generator = 'rule
       + parts.map((p) => `    <part id="${p.id}" subtype="normal_part">\n      <metadata key="name" value="${esc(p.name)}"/>\n      <metadata key="matrix" value="${IDENTITY4}"/>\n      <metadata key="extruder" value="${p.slot || 1}"/>\n    </part>\n`).join('') + '  </object>\n');
     instances.push(`    <model_instance>\n      <metadata key="object_id" value="${parent}"/>\n      <metadata key="instance_id" value="0"/>\n      <metadata key="identify_id" value="${n + 1}"/>\n    </model_instance>\n`);
   });
-  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n', today = new Date().toISOString().slice(0, 10);
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n', today = date || new Date().toISOString().slice(0, 10); // date: '2026-10-14' for a reproducible file
   return zip([
     ['[Content_Types].xml', `${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n</Types>\n`],
     ['_rels/.rels', `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>\n`],

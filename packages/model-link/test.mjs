@@ -41,3 +41,9 @@ test('fromSTL reads what stl() writes, and text STL too', async () => {
   assert.deepEqual(fromSTL(new TextEncoder().encode(ascii)), tris);
   assert.throws(() => fromSTL(new TextEncoder().encode('hello')), /isn't an STL/);
 });
+
+test('bambu3mf with a date gives the same bytes every time', async () => {
+  const objects = [{ name: 'Key', parts: [{ name: 'cap', triangles: tris, slot: 1 }] }];
+  const [a, b] = [await bambu3mf(objects, { date: '2026-01-01' }), await bambu3mf(objects, { date: '2026-01-01' })];
+  assert.deepEqual(a, b);
+});

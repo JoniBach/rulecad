@@ -31,5 +31,7 @@ const zip = await threemf(back);         // Uint8Array, a .3mf (one object, two 
   `fromGist(id)` fetches it without signing in.
 - **The file says who made it:** `stl(m, keep, { generator })` and `threemf(m, keep, { generator })`; the default is
   `rulecad`.
+- **Reproducible files:** a 3MF records the day it was made; `bambu3mf(objects, { date: '2026-10-14' })` fixes it, so
+  the same model gives the same bytes.
 - `bambu3mf([{ name, parts: [{ name, triangles, slot }] }])` writes a 3MF from triangles directly. It has been
   checked by loading the files back into Bambu Studio; other slicers read the same file as plain objects.

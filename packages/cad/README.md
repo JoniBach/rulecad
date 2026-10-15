@@ -101,7 +101,7 @@ which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a rel
     The design gets `v.layouts[name]`: the file, plus `keys` (each key's centre and properties), `width` and `depth`.
     `fields` names the key properties it reads besides place and width, so a release only counts changes to those:
     the plate reads `["u"]`, so changing a legend in the layout isn't a change to the plate.
-- `mirror`: inputs for the on-screen copy only (`cad show`; the name comes from the smart mirror rulecad grew up on), e.g. `{ "smooth": 24, "legend": "" }`: fewer segments, no legends, so a big
+- `display`: inputs for the on-screen copy only (`cad show`; `mirror`, its first name, still works), e.g. `{ "smooth": 24, "legend": "" }`: fewer segments, no legends, so a big
   assembly fits a display's face limit. They win over everything; checks, exports and links use the real values.
 - `variants`: named sets of inputs, `{ "legend-f": { "profile": "oem", "row": "R3", "legend": "F" } }`, built as
   `keyboard/keycap:legend-f` by any command and in assemblies (`"object": "keycap:legend-f"`). Versions are the design
@@ -153,7 +153,7 @@ out. `--part cap` works on one part; `cad preview --explode` moves the parts apa
 - `"filament": "legend"`: the part prints in another filament, from `project.json`'s `filaments` (`{ "base": { "slot":
   1 }, "legend": { "slot": 2 } }`, AMS slots). A keycap's inlaid legend is the piece cut from the cap's top, so the two
   fill each other exactly.
-- `"mirror": false`: fine detail the on-screen copy leaves out. `"optional": true`: main() may leave the part out (a blank key).
+- `"display": false`: fine detail the on-screen copy leaves out (or `"mirror": false`). `"optional": true`: main() may leave the part out (a blank key).
 - Print files (`cad export`) are written in Bambu Studio's own project layout (copied from a project it saved, and
   checked by loading ours back with its command line): one object per printed thing (a keycap), its parts' meshes in
   `3D/Objects/`, each part's name and AMS slot in `Metadata/model_settings.config`, all on plate 1. So the file opens

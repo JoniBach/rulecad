@@ -53,3 +53,15 @@ test('your own printer, and no extras configured', () => {
     assert.match(cad('show', 'demo/block'), /no "show" target/);
   } finally { done(); }
 });
+
+test('"display" settings and parts are read as the on-screen copy ("mirror", the old name, too)', async () => {
+  const { readObject } = await import('./lib/design.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'display-')), json = path.join(dir, 'x.json');
+  try {
+    fs.writeFileSync(json, JSON.stringify({ display: { smooth: 8 }, parts: { legend: { display: false }, cap: {} } }));
+    const o = readObject({ json });
+    assert.deepEqual(o.mirror, { smooth: 8 });
+    assert.equal(o.parts.legend.mirror, false);
+    assert.equal(o.parts.cap.mirror, undefined);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

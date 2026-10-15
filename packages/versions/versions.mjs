@@ -75,7 +75,8 @@ export function compare(before, after) {
   if (before.js.trimEnd() !== after.js.trimEnd()) add('patch', 'shape code changed');
   if (before.engine != null && after.engine != null && before.engine.trimEnd() !== after.engine.trimEnd()) add('patch', 'board engine changed (footprints, routing)');
   for (const k of ['material', 'orientation', 'title']) if (before.object[k] !== after.object[k]) add('patch', `${k} changed`);
-  if (JSON.stringify(before.object.mirror || {}) !== JSON.stringify(after.object.mirror || {})) add('patch', 'mirror settings changed'); // display settings (the object's "mirror")
+  const shown = (o) => JSON.stringify(o.display || o.mirror || {}); // on-screen settings ("display", once "mirror")
+  if (shown(before.object) !== shown(after.object)) add('patch', 'display settings changed');
   // Variants: a new one is a new way to build it; changing or removing one changes what was built under that name
   const vb = before.object.variants || {}, va = after.object.variants || {};
   for (const [k, v] of Object.entries(vb)) {

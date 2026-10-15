@@ -70,7 +70,14 @@ export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
   throw e;
 });
 
-export const readObject = (d) => JSON.parse(fs.readFileSync(d.json, 'utf8'));
+// An object's on-screen settings are "display" ({ "smooth": 24 }), and a part left off screen is "display": false.
+// Their first name, "mirror", still works: read here, the rest of the tool sees it as mirror either way.
+export const readObject = (d) => {
+  const o = JSON.parse(fs.readFileSync(d.json, 'utf8'));
+  if (o.display && !o.mirror) o.mirror = o.display;
+  for (const p of Object.values(o.parts || {})) if (p.display === false) p.mirror = false;
+  return o;
+};
 
 // build(design, set, { mirror }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export) }
 //   parts: [{ name, role, label, geometry, polygons, triangles }]; polygons and triangles: every part together

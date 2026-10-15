@@ -30,3 +30,9 @@ test('added interface or a new option is minor; other changes are patch; nothing
   assert.equal(compare(a, snap({ wall: { value: 1 } }, 'y')).kind, 'patch');
   assert.equal(compare(a, snap({ wall: { value: 1 } }, 'x\n')).kind, null);
 });
+
+test('display settings (once called mirror) are a patch, and renaming the field is no change', () => {
+  const a = snap({ w: { value: 1 } }, 'x', { mirror: { smooth: 8 } });
+  assert.equal(compare(a, snap({ w: { value: 1 } }, 'x', { display: { smooth: 8 } })).kind, null);
+  assert.equal(compare(a, snap({ w: { value: 1 } }, 'x', { display: { smooth: 16 } })).kind, 'patch');
+});
