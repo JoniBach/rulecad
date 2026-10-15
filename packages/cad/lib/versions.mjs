@@ -65,15 +65,16 @@ export function materialise(d, version) {
 // ---------- what changed: compare() is @rulecad/versions' (exported above) ----------
 
 // The board engine's identity: its code and the tscircuit it runs on. A board's release tag records it ("engine: …").
-// A package's version, from the package.json above its entry point (some packages don't export their package.json)
-export function packageVersion(name) {
-  for (let dir = path.dirname(createRequire(import.meta.url).resolve(name)); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+// A package's version, from the package.json above its entry point (some packages don't export their package.json).
+// from: where to look from (a file URL), when it's another package's dependency, as tscircuit is the board engine's
+export function packageVersion(name, from = import.meta.url) {
+  for (let dir = path.dirname(createRequire(from).resolve(name)); dir !== path.dirname(dir); dir = path.dirname(dir)) {
     const f = path.join(dir, 'package.json');
     if (fs.existsSync(f)) { const pj = JSON.parse(fs.readFileSync(f, 'utf8')); if (pj.name === name) return pj.version; }
   }
   return '';
 }
-const tscircuitVersion = () => packageVersion('tscircuit');
+const tscircuitVersion = () => packageVersion('tscircuit', import.meta.resolve('@rulecad/pcb'));
 const engineHash = (code) => crypto.createHash('sha256').update(`${code.trimEnd()}\n${tscircuitVersion()}`).digest('hex').slice(0, 16);
 export const engineId = () => engineHash(fs.readFileSync(new URL(import.meta.resolve('@rulecad/pcb')), 'utf8'));
 // From a tag's message, or for releases before tags recorded it, from the engine's code in the repo at the tag

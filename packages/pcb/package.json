@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/pcb",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Keyboard circuit boards from rules: every matrix track drawn by rule, footprints from datasheets, Gerbers, KiCad files and a JLCPCB BOM. Built on tscircuit.",
   "type": "module",
   "exports": "./pcb.mjs",
@@ -34,6 +34,6 @@
     "circuit-json-to-kicad": "0.0.231",
     "circuit-json-to-pnp-csv": "0.0.20",
     "circuit-to-svg": "0.0.450",
-    "tscircuit": "0.0.2885"
+    "tscircuit": "0.0.2895"
   }
 }
