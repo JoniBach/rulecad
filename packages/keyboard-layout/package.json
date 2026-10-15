@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/keyboard-layout",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A plain JSON keyboard layout format: rows of keys with widths and any per-key properties.",
   "type": "module",
   "exports": {
@@ -20,7 +20,7 @@
     "mechanical-keyboard"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "sideEffects": false,
   "repository": {

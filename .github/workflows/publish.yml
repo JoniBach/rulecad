@@ -7,7 +7,7 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write # a GitHub Release for each published version
   id-token: write # proves to npm that this workflow, in this repository, is publishing
 concurrency: publish
 jobs:
@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # history and tags, for each release's notes
       - uses: actions/setup-node@v4
         with:
           node-version: 24 # npm 11.5 or later for trusted publishing
@@ -23,3 +25,5 @@ jobs:
       - run: npm test
       - run: test/fresh-install.sh # as a stranger installs them, with no lockfile
       - run: node scripts/publish.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}

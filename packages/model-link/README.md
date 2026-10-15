@@ -3,7 +3,7 @@
 Share a printable model as a link. The model is compressed into the URL's `#fragment`, which browsers never send to
 the server, so a public web page can open a private design and nothing is uploaded. It also writes STL files, and 3MF
 files in Bambu Studio's project layout with each part on its own filament (AMS) slot. No dependencies: it uses the
-browser's own `CompressionStream`, which Node 18+ has too.
+browser's own `CompressionStream`, which Node 20+ has too.
 
 ```js
 import { fromParts, encode, decode, stl, threemf } from '@rulecad/model-link';

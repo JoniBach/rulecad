@@ -1,7 +1,7 @@
 # @rulecad/keyboard-layout
 
 A keyboard layout as plain JSON that everything else can read: the plate, the keycaps, the case and the circuit board
-all take their positions from one file. No dependencies; browsers and Node 18+.
+all take their positions from one file. No dependencies; browsers and Node 20+.
 
 ```json
 {

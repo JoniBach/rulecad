@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/shapes",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shape helpers for printed JSCAD designs: text that prints cleanly, anchors on a face, and clean local cuts.",
   "type": "module",
   "exports": {
@@ -22,7 +22,7 @@
     "cad"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "sideEffects": false,
   "repository": {

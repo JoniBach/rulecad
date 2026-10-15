@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/fit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Do these parts fit? The closest gap between two meshes, fast enough for whole keyboards.",
   "type": "module",
   "exports": {
@@ -22,7 +22,7 @@
     "fit"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "sideEffects": false,
   "repository": {

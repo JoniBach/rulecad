@@ -2,7 +2,7 @@
 
 A kit for designing physical things you can trace, check, share and print. Small pieces, each useful alone: plain
 JavaScript modules with **no dependencies** (shapes uses the JSCAD you already have), the same in a browser and in
-Node 18+, no build step, with types for your editor, MIT licensed (the rule data is CC0).
+Node 20+, no build step, with types for your editor, MIT licensed (the rule data is CC0).
 
 **The tool:** [`@rulecad/cad`](packages/cad) is the `cad` command that puts them together. Design in JSCAD from
 rules you can trace, check for printing and fit, version by what fits, share as a link, and export for the printer:

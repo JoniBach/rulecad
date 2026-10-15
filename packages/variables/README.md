@@ -3,7 +3,7 @@
 Design values you can trace. Every measurement is a variable, and every variable can say where it comes from: a
 printer's spec, a standard, a community figure, or something you measured (`kind`: spec, community, measured or
 estimate, with its `source`). Expressions are parsed, never `eval`'d, so a JSON file can't run code. No dependencies;
-browsers and Node 18+.
+browsers and Node 20+.
 
 ```js
 import { resolve } from '@rulecad/variables';

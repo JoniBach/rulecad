@@ -1,7 +1,7 @@
 # @rulecad/printcheck
 
 Is this mesh printable on an FDM printer? Hand it triangles and your printer's limits; get back findings in plain
-words. No dependencies; browsers and Node 18+.
+words. No dependencies; browsers and Node 20+.
 
 ```js
 import { check } from '@rulecad/printcheck';
