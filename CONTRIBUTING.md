@@ -24,6 +24,7 @@ git clone https://github.com/JoniBach/rulecad && cd rulecad
 npm install
 npm test               # every package, with node:test
 npm run test:browser   # the model page in headless Chrome (needs Chrome or Chromium)
+test/fresh-install.sh  # the packages installed as a stranger gets them: no lockfile
 ```
 
 - One package, one `.mjs` file, documented at the top and with JSDoc on what it exports (types are made from that).

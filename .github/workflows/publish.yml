@@ -21,4 +21,5 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm test
+      - run: test/fresh-install.sh # as a stranger installs them, with no lockfile
       - run: node scripts/publish.mjs

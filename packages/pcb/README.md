@@ -24,5 +24,6 @@ npx cad export macropad/board     # <name>-fab.zip for JLCPCB, KiCad files, the 
 - A Pico under the board has its connections autorouted (that takes minutes, then the build cache keeps it).
   Everything else is drawn by rule.
 - tscircuit is pinned (0.0.2895), so a board builds the same until rulecad moves it on; each move is checked against
-  boards built before it (same tracks, same checks).
+  boards built before it (same tracks, same checks). Nothing to add to your package.json: 0.1.1 needed an override
+  on a fresh install, 0.1.2 doesn't.
 - Ordering is your click: `cad export` makes the fab zip and never places an order.

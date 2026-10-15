@@ -41,3 +41,14 @@ jobs:
           name: viewer-screenshots
           path: test/viewer*.png
           if-no-files-found: ignore
+  fresh-install:
+    # The packages as a stranger installs them: packed, no lockfile, every dependency resolved afresh.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: test/fresh-install.sh
