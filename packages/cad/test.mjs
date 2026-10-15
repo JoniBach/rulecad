@@ -72,7 +72,7 @@ test('import-kle: a keyboard-layout-editor.com layout into the project, with not
   try {
     fs.writeFileSync(path.join(ws, 'kle.json'), JSON.stringify([['Esc', { x: 0.5 }, 'F1'], [{ w: 1.5 }, 'Tab', { r: 10 }, 'Q']]));
     const out = cad('import-kle', 'kle.json', 'keys/mine');
-    assert.match(out, /made projects\/keys\/layouts\/mine\.json: 2 rows, 4 keys/);
+    assert.match(out, /made projects[\\/]keys[\\/]layouts[\\/]mine\.json: 2 rows, 4 keys/); // \ on Windows
     assert.match(out, /note: rotated keys/);
     const layout = JSON.parse(fs.readFileSync(path.join(ws, 'projects/keys/layouts/mine.json'), 'utf8'));
     assert.deepEqual(layout.rows[0], ['Esc', { gap: 0.5 }, 'F1']);
