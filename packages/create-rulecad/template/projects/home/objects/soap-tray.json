@@ -1,0 +1,20 @@
+{
+  "name": "soap-tray",
+  "title": "Soap tray",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "material": "PLA",
+  "orientation": "Flat side down on the bed. Walls are straight up, so it prints without supports.",
+  "variables": {
+    "length": { "value": 110, "unit": "mm", "rule": "Long enough for a bar of soap", "label": "Length", "show": true, "tweak": { "min": 70, "max": 180 } },
+    "width": { "value": 75, "unit": "mm", "rule": "Wide enough for a bar of soap", "label": "Width", "show": true, "tweak": { "min": 50, "max": 120 } },
+    "height": { "value": "x1c.layer * 60", "unit": "mm", "rule": "A whole number of layers", "label": "Height", "show": true },
+    "wall": { "value": "x1c.line * 4", "unit": "mm", "rule": "Four print lines: stiff, and no gaps between lines", "label": "Wall" },
+    "floor": { "value": "x1c.layer * 8", "unit": "mm", "rule": "Eight layers under the ribs" },
+    "rib_height": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Holds the soap up out of the water", "label": "Rib height", "show": true },
+    "rib_width": { "value": "x1c.line * 4", "unit": "mm", "rule": "Four print lines" },
+    "pitch": { "value": 12, "unit": "mm", "rule": "Ribs this far apart: soap rests on several, water runs between", "label": "Rib spacing", "show": true, "tweak": { "min": 8, "max": 20 } },
+    "slot": { "value": "3 + x1c.hole_comp", "unit": "mm", "rule": "Drain slots between the ribs, widened for how holes print small" },
+    "margin": { "value": 6, "unit": "mm", "rule": "Solid floor between the slots and the walls" }
+  }
+}

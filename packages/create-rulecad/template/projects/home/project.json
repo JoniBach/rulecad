@@ -1,0 +1,6 @@
+{
+  "name": "home",
+  "description": "Things for the house.",
+  "material": "PLA",
+  "objects": ["soap-tray"]
+}

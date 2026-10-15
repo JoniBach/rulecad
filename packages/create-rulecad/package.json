@@ -1,0 +1,31 @@
+{
+  "name": "create-rulecad",
+  "version": "0.1.0",
+  "description": "Start a rulecad project: npm create rulecad my-designs. A workspace with a soap tray to start from, ready to check, preview, export and share.",
+  "type": "module",
+  "bin": {
+    "create-rulecad": "index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "template",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "rulecad",
+    "create",
+    "3d-printing",
+    "jscad",
+    "scaffold"
+  ],
+  "engines": {
+    "node": ">=20.6"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/create-rulecad"
+  }
+}

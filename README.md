@@ -8,8 +8,10 @@ Node 18+, no build step, MIT licensed (the rule data is CC0).
 rules you can trace, check for printing and fit, version by what fits, share as a link, and export for the printer:
 
 ```sh
-npm init -y && npm pkg set type=module && npm install @rulecad/cad @jscad/modeling
-npx cad new bathroom/soap-tray && npx cad check bathroom/soap-tray && npx cad export bathroom/soap-tray
+npm create rulecad my-designs      # a project with a soap tray to start from
+cd my-designs
+npx cad check home/soap-tray       # printable? and every measurement a variable?
+npx cad export home/soap-tray      # a 3MF for your slicer
 ```
 
 [`@rulecad/viewer`](packages/viewer) is a model page you can host anywhere: it opens model links, or **drop an STL on
@@ -67,4 +69,3 @@ Each package is one `.mjs` file with its documentation at the top. Rules for cha
 nothing that only runs in Node, and new behaviour comes with a test.
 
 The kit grew out of a rule-driven design project for 3D printing: a keyboard, its keycaps, case and circuit boards.
-Still to come: `npm create rulecad`, to start a project in one line.
