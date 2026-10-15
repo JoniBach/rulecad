@@ -20,7 +20,7 @@ npm pack @rulecad/viewer && tar xzf rulecad-viewer-*.tgz   # package/site/ is th
 ```
 
 - **GitHub Pages:** put the files of `site/` in a repository and turn on Pages (Settings → Pages → deploy from
-  branch). Add an empty `.nojekyll` file so they're served as they are.
+  branch). `site/` already has the `.nojekyll` file that makes Pages serve the files as they are.
 - **Anything else:** Netlify, Cloudflare Pages, a Raspberry Pi running `python3 -m http.server`. It needs no headers
   or rewrites, just a `.mjs` file served as JavaScript.
 - Then point `cad` at it: `"viewUrl": "https://you.github.io/models/"` in your `cad.config.json`.
