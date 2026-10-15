@@ -215,10 +215,10 @@ async function board(cmd, d, b, { title, version, tag }) {
   }
   // export: exports/<project>/<name>-fab.zip (Gerbers, drills, BOM, placement: upload it to JLCPCB as it is), KiCad's
   // board and schematic beside it, and the matrix for firmware
-  const dir = paths.exports(d.project), { zipSync, strToU8 } = await import('fflate');
+  const dir = paths.exports(d.project), { zip: zipOf } = await import('@rulecad/model-link');
   fs.mkdirSync(dir, { recursive: true });
   const fab = await pcb.fabFiles(b.circuit, d.name), zip = path.join(dir, `${name}-fab.zip`);
-  fs.writeFileSync(zip, zipSync(Object.fromEntries(Object.entries(fab).map(([f, t]) => [f, strToU8(t)])), { level: 6 }));
+  fs.writeFileSync(zip, await zipOf(Object.entries(fab)));
   const written = [zip];
   for (const [f, t] of Object.entries(await pcb.kicadFiles(b.circuit, name))) { fs.writeFileSync(path.join(dir, f), t); written.push(path.join(dir, f)); }
   if (b.matrix) { const f = path.join(dir, `${name}-matrix.json`); fs.writeFileSync(f, JSON.stringify(b.matrix, null, 2) + '\n'); written.push(f); }

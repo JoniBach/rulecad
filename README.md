@@ -21,7 +21,7 @@ install: [jonibach.github.io/rulecad](https://jonibach.github.io/rulecad/).
 Every new project gets an `AGENTS.md`: how an AI agent (Claude Code and others) should design there. Rules first,
 look at the preview, report fits with numbers. `npx cad agents` adds it to an existing project.
 
-Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM), and
+Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM, no framework), and
 [`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico)
 as public-domain data, each value with its source.
 

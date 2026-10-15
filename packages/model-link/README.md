@@ -35,3 +35,4 @@ const zip = await threemf(back);         // Uint8Array, a .3mf (one object, two 
   the same model gives the same bytes.
 - `bambu3mf([{ name, parts: [{ name, triangles, slot }] }])` writes a 3MF from triangles directly. It has been
   checked by loading the files back into Bambu Studio; other slicers read the same file as plain objects.
+- `zip([[name, text], …])` writes a ZIP of text files, with the platform's own compression (no library).

@@ -1,11 +1,12 @@
 {
   "name": "@rulecad/pcb",
-  "version": "0.1.2",
-  "description": "Keyboard circuit boards from rules: every matrix track drawn by rule, footprints from datasheets, Gerbers, KiCad files and a JLCPCB BOM. Built on tscircuit.",
+  "version": "0.1.3",
+  "description": "Keyboard circuit boards from rules: every matrix track drawn by rule, footprints from datasheets, Gerbers, KiCad files and a JLCPCB BOM. Circuit JSON written directly: no React.",
   "type": "module",
   "exports": "./pcb.mjs",
   "files": [
     "pcb.mjs",
+    "circuit.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -27,14 +28,21 @@
     "directory": "packages/pcb"
   },
   "dependencies": {
+    "@flatten-js/core": "1.6.14",
     "@jscad/modeling": "^2.12.0",
     "@resvg/resvg-js": "2.6.2",
     "@rulecad/cad": "^0.1.0",
+    "@tscircuit/capacity-autorouter": "0.0.982",
+    "@tscircuit/checks": "0.0.253",
+    "@tscircuit/circuit-json-util": "0.0.122",
+    "@tscircuit/footprinter": "0.0.431",
     "@tscircuit/math-utils": "0.0.36",
+    "circuit-json": "0.0.525",
+    "circuit-json-to-connectivity-map": "0.0.34",
     "circuit-json-to-gerber": "0.0.113",
     "circuit-json-to-kicad": "0.0.231",
     "circuit-json-to-pnp-csv": "0.0.20",
     "circuit-to-svg": "0.0.450",
-    "tscircuit": "0.0.2895"
+    "schematic-symbols": "0.0.248"
   }
 }

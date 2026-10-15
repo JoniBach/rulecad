@@ -341,8 +341,12 @@ export async function bambu3mf(objects, { centre = [128, 128], generator = 'rule
 const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
 const crc32 = (b) => { let c = 0xffffffff; for (const x of b) c = CRC[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 
-// A ZIP, each file deflated with the browser's (or Node's) own CompressionStream: no library needed.
-async function zip(entries) {
+/**
+ * A ZIP file, each file deflated with the browser's (or Node's) own CompressionStream: no library needed.
+ * @param {[string, string][]} entries [name, text] pairs
+ * @returns {Promise<Uint8Array>}
+ */
+export async function zip(entries) {
   const enc = new TextEncoder(), parts = [], dir = [];
   let offset = 0;
   for (const [name, text] of entries) {

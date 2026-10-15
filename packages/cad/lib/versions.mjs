@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { resolve, loadRuleSet } from './rules.mjs';
 import { WS, paths } from './workspace.mjs';
@@ -64,7 +65,8 @@ export function materialise(d, version) {
 
 // ---------- what changed: compare() is @rulecad/versions' (exported above) ----------
 
-// The board engine's identity: its code and the tscircuit it runs on. A board's release tag records it ("engine: …").
+// The board engine's identity: all its code, and the versions of the libraries that route, place and check a board. A
+// board's release tag records it ("engine: …"), and the build cache keys boards on it.
 // A package's version, from the package.json above its entry point (some packages don't export their package.json).
 // from: where to look from (a file URL), when it's another package's dependency, as tscircuit is the board engine's
 export function packageVersion(name, from = import.meta.url) {
@@ -74,9 +76,13 @@ export function packageVersion(name, from = import.meta.url) {
   }
   return '';
 }
-const tscircuitVersion = () => packageVersion('tscircuit', import.meta.resolve('@rulecad/pcb'));
-const engineHash = (code) => crypto.createHash('sha256').update(`${code.trimEnd()}\n${tscircuitVersion()}`).digest('hex').slice(0, 16);
-export const engineId = () => engineHash(fs.readFileSync(new URL(import.meta.resolve('@rulecad/pcb')), 'utf8'));
+const ENGINE_LIBS = ['@tscircuit/capacity-autorouter', '@tscircuit/footprinter', '@tscircuit/checks', 'schematic-symbols'];
+const engineLibs = () => ENGINE_LIBS.map((n) => `${n}@${packageVersion(n, import.meta.resolve('@rulecad/pcb'))}`).join(' ');
+const engineHash = (code) => crypto.createHash('sha256').update(`${code.trimEnd()}\n${engineLibs()}`).digest('hex').slice(0, 16);
+export const engineId = () => {
+  const dir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/pcb')));
+  return engineHash(fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n'));
+};
 // From a tag's message, or for releases before tags recorded it, from the engine's code in the repo at the tag
 function taggedEngine(tag) {
   const m = git('tag', '-l', '--format=%(contents)', tag).match(/^engine: (\w+)$/m);

@@ -1,6 +1,6 @@
-// Boards: a design whose .json says "engine": "pcb". Its main(v) returns a tscircuit board (circuits as code, from npm:
-// github.com/tscircuit/tscircuit), which this file builds into Circuit JSON, and from that a solid (previews, fits, the
-// on-screen copy), checks and the files a fab needs. Designs get it as v.pcb.
+// Boards: a design whose .json says "engine": "pcb". Its main(v) returns a board, described as plain data (parts, the
+// tracks the rules draw, silkscreen), which circuit.mjs builds into Circuit JSON (tscircuit's open format, no React);
+// from that come a solid (previews, fits, the on-screen copy), checks and the files a fab needs. Designs get it as v.pcb.
 //
 // The keyboard: keys in a matrix, one diode each, and a Pico beside them. Nothing is autorouted: the keyboard router
 // draws every track by rule, from the switch's footprint (mx rules) and our margins (the board's track and clear):
@@ -13,11 +13,9 @@
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
 import fs from 'node:fs';
 import path from 'node:path';
-import { Circuit, createElement as h } from 'tscircuit';
+import { circuitJson } from './circuit.mjs';
 import { loadRuleSet } from '@rulecad/cad/rules';
 import jscad from '@jscad/modeling';
-
-export { h };
 
 // A rows × cols grid of keys at the key pitch, centred on the origin: [{ r, c, x, y, n }], n counting from 1, row 0
 // at the back (+y)
@@ -28,15 +26,15 @@ export function grid(rows, cols, pitch) {
 }
 
 // ---------- footprints, from rules ----------
-const pad = (pin, x, y, drill, size) => h('platedhole', { portHints: [pin], pcbX: x, pcbY: y, shape: 'circle', holeDiameter: drill, outerDiameter: size });
-const hole = (x, y, d) => h('hole', { pcbX: x, pcbY: y, diameter: d });
+const pad = (pin, x, y, hole, outer) => ({ pin, x, y, hole, outer }); // plated, round, relative to the part
+const hole = (x, y, d) => ({ x, y, d });
 
 // An MX switch, PCB mount: two pins, the centre post and the two fixing pegs
 export function mx(name, x, y, m, sch = {}) {
-  return h('switch', { name, pcbX: x, pcbY: y, ...sch, manufacturerPartNumber: 'Cherry MX (PCB mount)', footprint: h('footprint', {},
-    pad('pin1', m.pcb_pin1_x, m.pcb_pin1_y, m.pcb_pin_drill, m.pcb_pin_pad), pad('pin2', m.pcb_pin2_x, m.pcb_pin2_y, m.pcb_pin_drill, m.pcb_pin_pad),
-    hole(0, 0, m.pcb_centre_hole), hole(-m.pcb_peg_x, 0, m.pcb_peg_hole), hole(m.pcb_peg_x, 0, m.pcb_peg_hole),
-    h('courtyardrect', { pcbX: 0, pcbY: 0, width: m.pcb_body, height: m.pcb_body })) }); // the housing's footprint on the board
+  return { name, ftype: 'simple_switch', mpn: 'Cherry MX (PCB mount)', x, y, layer: 'top', sch,
+    pads: [pad('pin1', m.pcb_pin1_x, m.pcb_pin1_y, m.pcb_pin_drill, m.pcb_pin_pad), pad('pin2', m.pcb_pin2_x, m.pcb_pin2_y, m.pcb_pin_drill, m.pcb_pin_pad)],
+    holes: [hole(0, 0, m.pcb_centre_hole), hole(-m.pcb_peg_x, 0, m.pcb_peg_hole), hole(m.pcb_peg_x, 0, m.pcb_peg_hole)],
+    courtyard: { w: m.pcb_body, h: m.pcb_body } }; // the housing's footprint on the board
 }
 
 // A Raspberry Pi Pico on header pins, USB at the back (+y): pins 1 to 20 down its left edge, 21 to 40 up its right
@@ -46,7 +44,7 @@ export function pico(name, x, y, p, sch = {}) {
     const left = n <= 20, i = left ? n - 1 : 40 - n;
     pins.push(pad(`pin${n}`, (left ? -1 : 1) * p.pin_rows / 2, (19 / 2 - i) * p.pin_pitch, p.pin_hole, p.pin_pad));
   }
-  return h('chip', { name, pcbX: x, pcbY: y, ...sch, manufacturerPartNumber: 'Raspberry Pi Pico', footprint: h('footprint', {}, ...pins, h('courtyardrect', { pcbX: 0, pcbY: 0, width: p.width, height: p.length })) });
+  return { name, ftype: 'simple_chip', mpn: 'Raspberry Pi Pico', x, y, layer: 'top', sch, pads: pins, courtyard: { w: p.width, h: p.length } };
 }
 // Where a Pico pin is, from its centre
 export const picoPin = (n, p) => { const left = n <= 20, i = left ? n - 1 : 40 - n; return { x: (left ? -1 : 1) * p.pin_rows / 2, y: (19 / 2 - i) * p.pin_pitch }; };
@@ -80,7 +78,7 @@ export function fromLayout(list, pitch) {
   return ks;
 }
 
-// keyboard(v, keys) -> { board (a tscircuit <board>), matrix }; v holds the mx, pico, sod123, m2 and jlcpcb rules and
+// keyboard(v, keys) -> { board (as circuit.mjs describes it), matrix }; v holds the mx, pico, sod123, m2 and jlcpcb rules and
 // the board's variables:
 //   track, clear      our track width and the gap we keep to anything
 //   margin            board edge beyond the keys (and the Pico, beside them)
@@ -113,7 +111,7 @@ export function keyboard(v, keys) {
   const other = Object.entries(loadRuleSet('pico').rules.other_pins.pins).map(([pin, name]) => ({ pin: Number(pin), gpio: name }));
   const gpio = [...picoGpio('left'), ...picoGpio('right')];
   const pinLabels = Object.fromEntries([...gpio, ...other].map((g) => [`pin${g.pin}`, g.gpio]));
-  const sch = { schX: (cols.length + 1.5) * SX, schY: -(rows.length - 1) * SY / 2, pinLabels };
+  const sch = { x: (cols.length + 1.5) * SX, y: -(rows.length - 1) * SY / 2, pinLabels };
   let left = keyBox.left - v.margin, right = keyBox.right + v.margin, pico0, pinAt, pinRows = [];
   if (under) {
     // Its pin rows in the gaps below key rows mcu_row and mcu_row + 1: clear of the row line above (back copper), the
@@ -140,15 +138,16 @@ export function keyboard(v, keys) {
     pico0 = { x: cx, y: cy };
     right = cx + p.width / 2 + v.margin;
   }
-  const picoPart = h('chip', { name: 'U1', pcbX: pico0.x, pcbY: pico0.y, ...sch, manufacturerPartNumber: 'Raspberry Pi Pico',
-    footprint: h('footprint', {}, ...Array.from({ length: 40 }, (_, i) => { const q = pinAt(i + 1); return pad(`pin${i + 1}`, q.x - pico0.x, q.y - pico0.y, p.pin_hole, p.pin_pad); }),
-      ...(under ? [] : [h('courtyardrect', { pcbX: 0, pcbY: 0, width: p.width, height: p.length })])) });
+  const picoPart = { name: 'U1', ftype: 'simple_chip', mpn: 'Raspberry Pi Pico', x: pico0.x, y: pico0.y, layer: 'top', sch,
+    pads: Array.from({ length: 40 }, (_, i) => { const q = pinAt(i + 1); return pad(`pin${i + 1}`, q.x - pico0.x, q.y - pico0.y, p.pin_hole, p.pin_pad); }),
+    courtyard: under ? null : { w: p.width, h: p.length } };
 
   const parts = [picoPart], traces = [];
-  const rel = (pts, ox, oy) => pts.map(([x, y]) => ({ x: x - ox, y: y - oy })); // tscircuit paths are relative to the part they start from
+  const pts = (list) => list.map(([x, y]) => ({ x, y })); // a track's corners between its two pads, on the board
   for (const k of keys) {
-    parts.push(mx(`K${k.n}`, k.x, k.y, m, { schX: k.c * SX, schY: -k.r * SY }), h('diode', { name: `D${k.n}`, footprint: 'sod123', schX: k.c * SX + 1, schY: -k.r * SY - 0.8, schRotation: 270, pcbX: k.x + diode.x, pcbY: k.y + diode.y, layer: 'bottom', manufacturerPartNumber: '1N4148W' }));
-    traces.push(h('trace', { from: `.D${k.n} > .anode`, to: `.K${k.n} > .pin1`, thickness: v.track, pcbPath: rel([[k.x + anodeX, k.y + m.pcb_pin1_y]], k.x + diode.x, k.y + diode.y) }));
+    parts.push(mx(`K${k.n}`, k.x, k.y, m, { x: k.c * SX, y: -k.r * SY }),
+      { name: `D${k.n}`, ftype: 'simple_diode', footprint: 'sod123', mpn: '1N4148W', x: k.x + diode.x, y: k.y + diode.y, layer: 'bottom', sch: { x: k.c * SX + 1, y: -k.r * SY - 0.8 } });
+    traces.push({ from: [`D${k.n}`, 'anode'], to: [`K${k.n}`, 'pin1'], width: v.track, path: pts([[k.x + anodeX, k.y + m.pcb_pin1_y]]) });
   }
 
   // ---- rows: cathode to cathode along the back ----
@@ -156,7 +155,7 @@ export function keyboard(v, keys) {
     const ks = keys.filter((k) => k.r === r).sort((a, b) => a.x - b.x);
     for (let i = 1; i < ks.length; i++) {
       const a = ks[i - 1], b = ks[i];
-      traces.push(h('trace', { from: `.D${a.n} > .cathode`, to: `.D${b.n} > .cathode`, thickness: v.track, pcbPath: rel([[a.x + cathodeX, a.y + lineY], [b.x + cathodeX, b.y + lineY]], a.x + diode.x, a.y + diode.y) }));
+      traces.push({ from: [`D${a.n}`, 'cathode'], to: [`D${b.n}`, 'cathode'], width: v.track, path: pts([[a.x + cathodeX, a.y + lineY], [b.x + cathodeX, b.y + lineY]]) });
     }
   }
 
@@ -195,7 +194,7 @@ export function keyboard(v, keys) {
     const ks = keys.filter((k) => k.c === c).sort((a, b) => a.r - b.r);
     for (let j = 1; j < ks.length; j++) {
       const a = ks[j - 1], b = ks[j];
-      traces.push(h('trace', { from: `.K${a.n} > .pin2`, to: `.K${b.n} > .pin2`, thickness: v.track, pcbPath: rel(columnPath(a, b), a.x, a.y) }));
+      traces.push({ from: [`K${a.n}`, 'pin2'], to: [`K${b.n}`, 'pin2'], width: v.track, path: pts(columnPath(a, b)) });
     }
   }
 
@@ -203,8 +202,8 @@ export function keyboard(v, keys) {
   const rowPin = {}, colPin = {};
   if (under) {
     // Each row and column takes the free GPIO nearest it, nearest pairs first; then a track the autorouter finds
-    const ends = [...rows.map((r) => ({ kind: 'row', id: r, at: keys.filter((k) => k.r === r).map((k) => ({ x: k.x + cathodeX, y: k.y + diode.y, sel: `.D${k.n} > .cathode` })) })),
-      ...cols.map((c) => ({ kind: 'col', id: c, at: keys.filter((k) => k.c === c).map((k) => ({ x: k.x + m.pcb_pin2_x, y: k.y + m.pcb_pin2_y, sel: `.K${k.n} > .pin2` })) }))];
+    const ends = [...rows.map((r) => ({ kind: 'row', id: r, at: keys.filter((k) => k.r === r).map((k) => ({ x: k.x + cathodeX, y: k.y + diode.y, sel: [`D${k.n}`, 'cathode'] })) })),
+      ...cols.map((c) => ({ kind: 'col', id: c, at: keys.filter((k) => k.c === c).map((k) => ({ x: k.x + m.pcb_pin2_x, y: k.y + m.pcb_pin2_y, sel: [`K${k.n}`, 'pin2'] })) }))];
     const free = [...gpio];
     const dist = (e, g) => Math.min(...e.at.map((q) => Math.hypot(q.x - pinAt(g.pin).x, q.y - pinAt(g.pin).y)));
     const left_ = [...ends];
@@ -215,7 +214,7 @@ export function keyboard(v, keys) {
       left_.splice(left_.indexOf(best.e), 1); free.splice(free.indexOf(best.g), 1);
       (best.e.kind === 'row' ? rowPin : colPin)[best.e.id] = best.g;
       const q = pinAt(best.g.pin), near = [...best.e.at].sort((a, b) => Math.hypot(a.x - q.x, a.y - q.y) - Math.hypot(b.x - q.x, b.y - q.y))[0];
-      traces.push(h('trace', { from: near.sel, to: `.U1 > .pin${best.g.pin}`, thickness: v.track }));
+      traces.push({ from: near.sel, to: ['U1', `pin${best.g.pin}`], width: v.track }); // no path: the autorouter's
     }
   } else {
     // Beside: rows take the free left-edge pins nearest their row line, columns the lowest of the rest; every track
@@ -232,13 +231,13 @@ export function keyboard(v, keys) {
     cols.forEach((c, i) => { colPin[c] = lowest[i]; });
     for (const r of rows) {
       const last = keys.filter((k) => k.r === r).sort((a, b) => a.x - b.x).at(-1), pinY = pinAt(rowPin[r].pin).y;
-      traces.push(h('trace', { from: `.D${last.n} > .cathode`, to: `.U1 > .pin${rowPin[r].pin}`, thickness: v.track,
-        pcbPath: rel([[last.x + cathodeX, last.y + lineY], [nearPins - lane, last.y + lineY], [nearPins - lane, pinY]], last.x + diode.x, last.y + diode.y) }));
+      traces.push({ from: [`D${last.n}`, 'cathode'], to: ['U1', `pin${rowPin[r].pin}`], width: v.track,
+        path: pts([[last.x + cathodeX, last.y + lineY], [nearPins - lane, last.y + lineY], [nearPins - lane, pinY]]) });
     }
     cols.forEach((c, i) => {
       const last = keys.filter((k) => k.c === c).sort((a, b) => b.r - a.r)[0], depth = keyBox.bottom - (cols.length - i) * lane, laneX = nearPins - i * lane;
-      traces.push(h('trace', { from: `.K${last.n} > .pin2`, to: `.U1 > .pin${colPin[c].pin}`, thickness: v.track,
-        pcbPath: rel([[last.x + jogX, last.y + m.pcb_pin2_y - slant], [last.x + jogX, depth], [laneX, depth], [laneX, pinAt(colPin[c].pin).y]], last.x, last.y) }));
+      traces.push({ from: [`K${last.n}`, 'pin2'], to: ['U1', `pin${colPin[c].pin}`], width: v.track,
+        path: pts([[last.x + jogX, last.y + m.pcb_pin2_y - slant], [last.x + jogX, depth], [laneX, depth], [laneX, pinAt(colPin[c].pin).y]]) });
     });
   }
 
@@ -251,16 +250,16 @@ export function keyboard(v, keys) {
   // Silkscreen for whoever solders it: the Pico's outline (on the side it's fitted) with USB marked, each switch's
   // outline, and a bar at each diode's cathode (on the back, between its pads, next to the cathode)
   const silk = v.jlcpcb.silk_line * 2, text = v.jlcpcb.silk_text * 2;
-  const outline = (x, y, w, ht, layer = 'top') => [h('silkscreenrect', { pcbX: x, pcbY: y + ht / 2, width: w, height: silk, layer }), h('silkscreenrect', { pcbX: x, pcbY: y - ht / 2, width: w, height: silk, layer }),
-    h('silkscreenrect', { pcbX: x - w / 2, pcbY: y, width: silk, height: ht, layer }), h('silkscreenrect', { pcbX: x + w / 2, pcbY: y, width: silk, height: ht, layer })];
+  const rect = (x, y, w, ht, layer) => ({ rect: { x, y, w, h: ht }, layer });
+  const outline = (x, y, w, ht, layer = 'top') => [rect(x, y + ht / 2, w, silk, layer), rect(x, y - ht / 2, w, silk, layer), rect(x - w / 2, y, silk, ht, layer), rect(x + w / 2, y, silk, ht, layer)];
   const usbAt = under ? { x: pico0.x + (pico0.toLeft ? -1 : 1) * (p.length / 2 - text * 1.5), y: pico0.y } : { x: pico0.x, y: pico0.y + p.length / 2 - text };
   const marks = [...(under ? outline(pico0.x, pico0.y, p.length, p.width, 'bottom') : outline(pico0.x, pico0.y, p.width, p.length)),
-    h('silkscreentext', { text: 'USB', pcbX: usbAt.x, pcbY: usbAt.y, fontSize: text, layer: under ? 'bottom' : 'top' }),
+    { text: 'USB', x: usbAt.x, y: usbAt.y, size: text, layer: under ? 'bottom' : 'top' },
     ...keys.flatMap((k) => outline(k.x, k.y, m.pcb_body, m.pcb_body)),
-    ...keys.map((k) => h('silkscreenrect', { pcbX: k.x + cathodeX + d.pad_w / 2 + silk * 2, pcbY: k.y + diode.y, width: silk, height: d.pad_h, layer: 'bottom' })),
-    ...(v.margin >= text * 2 ? [h('silkscreentext', { text: 'rulecad: diodes point to the rows', pcbX: (keyBox.left + keyBox.right) / 2, pcbY: bottom + v.margin / 2, fontSize: text, layer: 'bottom' })] : [])];
-  const board = h('board', { width: right - left, height: top - bottom, pcbX: cx, pcbY: cy, thickness: v.thickness, ...(under ? {} : { autorouter: 'none' }) },
-    ...parts, ...traces, ...marks, ...corners.map(([x, y]) => hole(x, y, v.m2.clearance)));
+    ...keys.map((k) => rect(k.x + cathodeX + d.pad_w / 2 + silk * 2, k.y + diode.y, silk, d.pad_h, 'bottom')),
+    ...(v.margin >= text * 2 ? [{ text: 'rulecad: diodes point to the rows', x: (keyBox.left + keyBox.right) / 2, y: bottom + v.margin / 2, size: text, layer: 'bottom' }] : [])];
+  const board = { center: { x: cx, y: cy }, width: right - left, height: top - bottom, thickness: v.thickness, autoroute: under,
+    parts, traces, silk: marks, holes: corners.map(([x, y]) => hole(x, y, v.m2.clearance)) };
   const matrix = {
     keys: keys.map((k) => ({ key: `K${k.n}`, ...(k.label ? { label: k.label } : {}), row: k.r, col: k.c })),
     rows: Object.fromEntries(rows.map((r) => [r, rowPin[r].gpio])), cols: Object.fromEntries(cols.map((c) => [c, colPin[c].gpio])),
@@ -270,32 +269,8 @@ export function keyboard(v, keys) {
 }
 
 // ---------- building ----------
-// render(board) -> Circuit JSON. A board element's own positions are relative to the board's centre in tscircuit, so
-// the board is wrapped at the origin and its parts placed absolutely.
-export async function render(board) {
-  const circuit = new Circuit();
-  const { pcbX = 0, pcbY = 0, ...props } = board.props, kids = [board.props.children].flat(Infinity).filter(Boolean);
-  // tscircuit places children relative to the board's centre: move them so the numbers given stay absolute
-  const moved = kids.map((k) => h(k.type, { ...k.props, ...(k.props.pcbX != null ? { pcbX: k.props.pcbX - pcbX } : {}), ...(k.props.pcbY != null ? { pcbY: k.props.pcbY - pcbY } : {}) }));
-  const { children, ...rest } = props;
-  circuit.add(h('board', rest, ...moved));
-  await circuit.renderUntilSettled();
-  const json = circuit.getCircuitJson();
-  // Put it back where it was drawn, so the board sits around the numbers in the design
-  return pcbX || pcbY ? json.map((e) => shiftElement(e, pcbX, pcbY)) : json;
-}
-
-// Every x/y in a Circuit JSON element moved by (dx, dy)
-function shiftElement(e, dx, dy) {
-  const move = (o) => {
-    if (Array.isArray(o)) return o.map(move);
-    if (!o || typeof o !== 'object') return o;
-    const out = {};
-    for (const [k, v] of Object.entries(o)) out[k] = (k === 'x' && typeof v === 'number') ? v + dx : (k === 'y' && typeof v === 'number') ? v + dy : move(v);
-    return out;
-  };
-  return e.type?.startsWith('schematic_') ? e : move(e);
-}
+// render(board) -> Circuit JSON (circuit.mjs)
+export const render = (board) => circuitJson(board);
 
 // The board as a solid (previews, fits, the on-screen copy, the model page): the bare board, drilled, bottom at z = 0. Its
 // copper is drawn in the 2D views (views), not in 3D. The board is a 2D outline with its holes, extruded: its faces
