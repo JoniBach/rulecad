@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, part, header, xiao, qwiic, jstph } from '@rulecad/pcb';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph } from '@rulecad/pcb';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -98,4 +98,9 @@ test('a sensor node from rule-set parts: XIAO, two Qwiic sockets (one turned), a
   const bom = (await fabFiles(json, 'node'))['node-bom.csv'];
   assert.match(bom, /JST SM04B-SRSS-TB/);
   assert.match(bom, /Seeed Studio XIAO/);
+});
+
+test('drawings for links are lighter and look the same: coordinates rounded, labels and elements kept', () => {
+  const svg = '<svg width="800"><path class="t" d="M 21.310602024507205 570.6446457112413 L 1.5 2" data-type="pcb_trace" data-pcb-layer="top"/><style></style><text x="10.123456">0.30000000000000004 mm</text></svg>';
+  assert.equal(light(svg), '<svg width="800"><path class="t" d="M 21.31 570.64 L 1.5 2" data-pcb-layer="top"/><text x="10.12">0.30000000000000004 mm</text></svg>');
 });

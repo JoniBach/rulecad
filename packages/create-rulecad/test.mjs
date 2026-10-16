@@ -21,6 +21,10 @@ test('npm create rulecad: a workspace whose soap tray passes every check', () =>
     assert.doesNotMatch(out, /✗|!/, out);
     assert.match(out, /every measurement is a variable/);
     assert.throws(() => execFileSync(process.execPath, [CREATE, dir, '--no-install'], { stdio: 'pipe' }), /isn't empty/);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'cad.config.json'), 'utf8')).targets.shorten, undefined, 'asked no one: links stay long');
+    const short = path.join(root, 'short');
+    assert.match(execFileSync(process.execPath, [CREATE, short, '--no-install', '--share', 'gist'], { encoding: 'utf8' }), /short links/);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(short, 'cad.config.json'), 'utf8')).targets.shorten, 'gist');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

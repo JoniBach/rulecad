@@ -69,9 +69,13 @@ fragment, which never reaches the web host, so the public page can open private 
 which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a release). The page is to become `@rulecad/viewer`;
 `scripts/publish-view.sh "message"` publishes it (only that folder) to the public repo.
 
-- **Short links** (`--short`, and the default for `--md`): the link's data goes in a secret GitHub Gist (unlisted,
-  but anyone with the link can open it) and the link carries only its ID: `…/#s=<id>`. The page fetches it from
-  GitHub's API. The same model reuses its Gist (`.cache/links.json`).
+- **Short links** (`--short`, and the default for `--md`, once `"shorten": "gist"` is in `cad.config.json`'s
+  `targets`): the link's data goes in a secret GitHub Gist (unlisted, but anyone with the link can open it) and the
+  link carries only its ID: `…/#s=<id>`. The page fetches it from GitHub's API. The same model reuses its Gist
+  (`.cache/links.json`). `npm create rulecad` asks which you want. Without it, links carry the model, and `cad link`
+  says when one is too long for chat or email (over 8,000 characters).
+- **Boards** travel light: the board drawn from both sides (the page makes the front and back views from its layers)
+  and the schematic, with coordinates rounded to what a screen can show.
 - **Parts panel:** the page lists parts by kind (keycap ×9), opening to each copy (key-1-1). Each row shows or hides
   its parts and sets their style (solid, wireframe, x-ray, faint); the view has a mode, an explode slider, and
   switches for supports and references. Click a part in the model to select its copy and see its size.

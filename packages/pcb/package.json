@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/pcb",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Circuit boards from rules: parts from rule sets or any standard footprint, quarter-turn rotation, nets and autorouting; keyboards with every matrix track drawn by rule. Gerbers, KiCad files and a JLCPCB BOM. Circuit JSON written directly: no React.",
   "type": "module",
   "exports": "./pcb.mjs",
