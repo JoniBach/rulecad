@@ -16,7 +16,7 @@ fs.renameSync(path.join(dir, 'gitignore'), path.join(dir, '.gitignore')); // npm
 const readme = path.join(dir, 'README.md');
 fs.writeFileSync(readme, fs.readFileSync(readme, 'utf8').replaceAll('NAME', name));
 // $RULECAD_LOCAL: a rulecad checkout to use instead of npm (to try unpublished changes)
-const from = (pkg) => (process.env.RULECAD_LOCAL ? `file:${path.join(path.resolve(process.env.RULECAD_LOCAL), 'packages', pkg)}` : '^0.1.0');
+const from = (pkg) => (process.env.RULECAD_LOCAL ? `file:${path.join(path.resolve(process.env.RULECAD_LOCAL), 'packages', pkg)}` : '^0.2.0');
 fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
   name, private: true, type: 'module',
   scripts: { check: 'cad check home/soap-tray' },

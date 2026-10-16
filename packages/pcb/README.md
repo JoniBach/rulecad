@@ -38,6 +38,8 @@ export function main(v) {
   `jst4_sh`, `pinrow4` (SMD or through-hole). Options: `rotation` (0, 90, 180, 270), `layer`, `mpn`, `labels`.
 - **Nets:** each net's pins are joined by the shortest set of links between them, at `board.track` (or the net's own
   `{ pins, width }`); pins are named `part.pin` by label, name or number. The schematic labels them by net.
+- **What a board tells the parts around it:** `board_x`, `board_y`, `board_w`, `board_d` and its mounting holes, so
+  a case can read it (`"uses": ["node/carrier"]` in @rulecad/cad) and a holes fit can check the screws find their inserts.
 - **Keyboards** are one recipe built on the same parts: every matrix track drawn by rule, one diode per key.
 
 A keyboard:

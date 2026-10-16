@@ -324,7 +324,7 @@ export const render = (board) => circuitJson(board);
 // The board as a solid (previews, fits, the on-screen copy, the model page): the bare board, drilled, bottom at z = 0. Its
 // copper is drawn in the 2D views (views), not in 3D. The board is a 2D outline with its holes, extruded: its faces
 // triangulate cleanly (cylinders subtracted from a block leave long slivers).
-export function solids(json, { thickness, smooth }) {
+export function solids(json, { thickness, smooth = 16 }) { // smooth: segments per hole (a board without the variable gets 16)
   const { rectangle, circle } = jscad.primitives, { subtract } = jscad.booleans, { extrudeLinear } = jscad.extrusions;
   const b = json.find((e) => e.type === 'pcb_board');
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole' || e.type === 'pcb_via')
@@ -339,6 +339,12 @@ export function outputs(json, matrix) {
   const b = json.find((e) => e.type === 'pcb_board');
   return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}) };
 }
+
+/**
+ * A board's mounting holes (the board's own holes, not a part's): [{ x, y, d }] in mm, in the board's frame (as
+ * board_x and board_y). A case reads them to put its bosses under them; a holes fit checks screws find their inserts.
+ */
+export const holes = (json) => json.filter((e) => e.type === 'pcb_hole' && !e.pcb_component_id).map((e) => ({ x: e.x, y: e.y, d: e.hole_diameter }));
 
 // ---------- checks ----------
 const mm = (x) => String(Number(x.toFixed(3))); // 0.30000000000000004 reads as 0.3

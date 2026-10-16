@@ -23,7 +23,8 @@ import { resolve, loadRuleSet } from './rules.mjs';
 import { WS, paths, printerOf } from './workspace.mjs';
 import { readLayout, hasLayout, keys, width, depth } from './layout.mjs';
 import * as shapes from '@rulecad/shapes';
-import { engineId, packageVersion } from './versions.mjs';
+import { engineId, packageVersion, materialise } from './versions.mjs';
+import { satisfies } from '@rulecad/versions';
 
 const require = createRequire(import.meta.url);
 const jscad = require('@jscad/modeling');
@@ -42,6 +43,36 @@ export function locate(ref) {
   if (!fs.existsSync(`${base}.json`) || !fs.existsSync(`${base}.js`)) throw new Error(`no design at ${path.relative(WS, base)}.{js,json}`);
   const dir = path.dirname(path.dirname(base));
   return { project: path.basename(dir), name: path.basename(base), js: `${base}.js`, json: `${base}.json`, dir, ...(variant ? { variant } : {}) };
+}
+
+// ---------- objects that read each other ----------
+// "uses": ["node/carrier"] reads another object's numbers as a rule set named after it (carrier.board_w in an
+// expression, v.carrier.board_w in code): its variables, and what a board tells the parts around it (board_x, board_y,
+// board_w, board_d, and board_holes for code). The object is built (cached) first. "node/carrier@^0.2.0" also checks
+// its version; "node/carrier@0.2.0" reads that release instead of the working copy.
+export const isObjectRef = (u) => String(u).includes('/');
+const building = new Set();
+export async function objectSets(d, object) {
+  const refs = (object.uses || []).filter(isObjectRef), sets = {}, extra = {};
+  if (!refs.length) return { sets, extra };
+  const self = `${d.project}/${d.name}`;
+  building.add(self);
+  try {
+    for (const u of refs) {
+      const [ref, want] = u.split('@'), exact = /^\d+\.\d+\.\d+$/.test(want || '');
+      if (building.has(ref)) throw new Error(`${self} and ${ref} read each other's numbers: one of them has to give its numbers to the other, not both`);
+      const base = locate(ref), b = await build(exact ? materialise(base, want) : base), version = b.object.version;
+      if (want && !exact && !satisfies(version, want)) throw new Error(`${self} uses ${ref} ${want}, but ${ref} is ${version}: change the range, or the design to suit ${version}`);
+      const units = Object.fromEntries(Object.entries(b.object.variables || {}).map(([k, x]) => [k, x.unit]));
+      const rules = {};
+      for (const [k, v] of Object.entries(b.values)) if (typeof v === 'number' && Number.isFinite(v)) {
+        rules[k] = { value: v, unit: units[k] ?? 'mm', rule: `${ref}'s ${k}`, kind: 'design', source: `${ref}@${version}` };
+      }
+      sets[u] = { name: base.name, rules };
+      if (b.circuit) extra[base.name] = { board_holes: (await pcbEngine()).holes(b.circuit) };
+    }
+  } finally { building.delete(self); }
+  return { sets, extra };
 }
 
 // The layouts an object can pick, by name, from its layout variables' choices (built-ins like grid have no file)
@@ -85,15 +116,17 @@ export const readObject = (d) => {
 export async function build(d, set = {}, { mirror = false } = {}) {
   const object = readObject(d);
   set = variantSet(d, object, set);
-  const sets = d.rulesDir ? Object.fromEntries((object.uses || []).map((u) => [u, loadRuleSet(u, d.rulesDir)])) : {}; // a release's own rules
+  const refs = await objectSets(d, object); // other objects' numbers, when it reads them
+  const sets = { ...(d.rulesDir ? Object.fromEntries((object.uses || []).filter((u) => !isObjectRef(u)).map((u) => [u, loadRuleSet(u, d.rulesDir)])) : {}), ...refs.sets }; // a release's own rules
   const display = mirror ? object.mirror || {} : {};
   const { values, entries } = resolve(object, { set, sets, display }); // mirror: lighter for the display
+  for (const [n, x] of Object.entries(refs.extra)) Object.assign(values[n], x);
   const files = layoutsOf(d, object);
   if (object.layouts) values.layouts = object.layouts; // older designs kept layouts in their .json
   if (Object.keys(files).length) values.layouts = Object.fromEntries(Object.entries(files).map(([n, l]) => [n, { ...l, keys: keys(l), width: width(l), depth: depth(l) }]));
 
   // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether
-  const ruleText = (object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u)));
+  const ruleText = [...(object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u))), JSON.stringify(refs.extra)];
   const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : '', fs.readFileSync(d.js, 'utf8'), JSON.stringify(object), ruleText, files, set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
   if (!process.env.CAD_NO_CACHE && fs.existsSync(hit)) {

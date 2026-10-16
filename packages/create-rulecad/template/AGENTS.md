@@ -48,8 +48,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   widen a range to make it pass without saying why.
 - Build bigger things from checked assemblies used as items, rather than placing their objects again.
 - A part is named in fits as `<item>.<part>`; an object that returns one unnamed shape has one part, `body`.
-- A fit measures the gap between solids, not whether holes line up: after changing a board or a part with holes,
-  check its holes against the bosses or inserts they screw into, with the numbers.
+- A gap fit can't tell whether holes line up. Where a board screws into a part, add a holes fit
+  (`{ "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length" }`).
+- A part built around another (a case around its board) reads it: `"uses": ["node/carrier"]`, then
+  `carrier.board_w` and `v.carrier.board_holes`. Never copy another object's numbers by hand.
 
 ## Circuit boards
 - `"engine": "pcb"` in the .json; `main(v)` returns a board built with `v.pcb` (see @rulecad/pcb's README).

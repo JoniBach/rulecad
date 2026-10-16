@@ -83,3 +83,29 @@ export function closest(polysA, polysB, reach = 2) {
   probe(A, B); probe(B, A);
   return best;
 }
+
+/**
+ * Is a point inside a closed solid? A ray from the point is followed through the solid's faces: an odd number of
+ * crossings means inside. Used to follow a screw's path: clear where it should be a hole, solid where it should grip.
+ * @param {Point} p @param {Face[]} faces a closed solid
+ * @returns {boolean}
+ */
+export function inside(p, faces) {
+  const d = [1, 0.000317, 0.000137]; // an odd direction, so the ray misses the edges and corners of square shapes
+  let n = 0;
+  for (const [a, b, c] of tris(faces)) if (crosses(p, d, a, b, c)) n++;
+  return n % 2 === 1;
+}
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+// Does the ray o + t·d (t > 0) pass through triangle a b c? (Möller and Trumbore's test)
+function crosses(o, d, a, b, c) {
+  const e1 = sub(b, a), e2 = sub(c, a), h = cross(d, e2), det = dot(e1, h);
+  if (Math.abs(det) < 1e-12) return false; // the ray runs along the triangle's plane
+  const s = sub(o, a), u = dot(s, h) / det;
+  if (u < 0 || u > 1) return false;
+  const q = cross(s, e1), v = dot(d, q) / det;
+  if (v < 0 || u + v > 1) return false;
+  return dot(e2, q) / det > 1e-9;
+}

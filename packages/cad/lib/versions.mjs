@@ -39,7 +39,7 @@ const layoutNames = (d, object) => Object.values(object.variables || {}).filter(
 // The files a design depends on, relative to the workspace (its git repo): its .js and .json, the rule sets and the layouts it uses.
 // (A board's engine is the tool's code, not the workspace's: its release records engineId() instead.)
 export function files(d, object) {
-  return [path.relative(WS, d.js), path.relative(WS, d.json), ...(object.uses || []).map((u) => `rules/${u}.json`),
+  return [path.relative(WS, d.js), path.relative(WS, d.json), ...(object.uses || []).filter((u) => !u.includes('/')).map((u) => `rules/${u}.json`),
     ...layoutNames(d, object).map((n) => `projects/${d.project}/layouts/${n}.json`)];
 }
 
@@ -54,7 +54,7 @@ export function materialise(d, version) {
   const js = path.join(base, `${d.name}.js`), json = path.join(base, `${d.name}.json`);
   fs.writeFileSync(js, show(path.relative(WS, d.js)));
   fs.writeFileSync(json, JSON.stringify(object, null, 2));
-  for (const u of object.uses || []) fs.writeFileSync(path.join(base, 'rules', `${u}.json`), show(`rules/${u}.json`));
+  for (const u of (object.uses || []).filter((x) => !x.includes('/'))) fs.writeFileSync(path.join(base, 'rules', `${u}.json`), show(`rules/${u}.json`)); // objects it reads are released on their own
   // The layouts it could pick, as they were then (only files that existed in that release)
   fs.mkdirSync(path.join(base, 'layouts'), { recursive: true });
   for (const v of Object.values(object.variables || {})) if (v.type === 'layout') for (const n of v.choice || [v.value]) {
@@ -91,9 +91,10 @@ function taggedEngine(tag) {
 }
 
 // Resolve a design as it is on disk, or as materialised from a release.
-export function snapshot(d) {
+// refs: the numbers of objects it reads (design.mjs objectSets), which a snapshot can't build itself.
+export function snapshot(d, refs = {}) {
   const object = JSON.parse(fs.readFileSync(d.json, 'utf8'));
-  const sets = d.rulesDir ? Object.fromEntries((object.uses || []).map((u) => [u, loadRuleSet(u, d.rulesDir)])) : {};
+  const sets = { ...(d.rulesDir ? Object.fromEntries((object.uses || []).filter((u) => !u.includes('/')).map((u) => [u, loadRuleSet(u, d.rulesDir)])) : {}), ...refs };
   const layouts = Object.fromEntries(layoutNames(d, object).map((n) => [n, readLayout(d.project, n, d.layoutsDir)]));
   // A board is also made by the board engine (footprints, the router): which engine, as recorded at the release
   const engine = object.engine === 'pcb' ? (d.tag ? taggedEngine(d.tag) : engineId()) : null;

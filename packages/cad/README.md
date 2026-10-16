@@ -92,6 +92,12 @@ which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a rel
 
 - `value`: a number, or arithmetic over numbers and names (`+ - * /`, brackets, `min`, `max`, `round`). Rule sets are
   `<namespace>.<rule>`; the object's own variables are bare names. Parsed, never evaluated as code.
+- **Other objects' numbers:** `"uses": ["node/carrier"]` reads another object as a rule set named after it:
+  `carrier.board_w` in an expression, `v.carrier.board_w` in code. It gets the object's variables and, from a board, its
+  outline (`board_x`, `board_y`, `board_w`, `board_d`) and, in code, its mounting holes (`v.carrier.board_holes`, each
+  `{ x, y, d }`). So a case follows its board: change the board and the case rebuilds around it. `"node/carrier@^0.2.0"`
+  also checks the version; `"node/carrier@0.2.0"` reads that release. `cad rules` shows each borrowed number with the
+  object and version it came from; two objects can't read each other.
 - `show`: on the rules card `cad show` hands its target (six at most). `interface`: other parts depend on it (versioning will compare these).
 - `tweak: { min, max }`: may be changed with `--set`. Variables without one are fixed by their rule.
 - Inputs that hold names or text, not numbers (the design reads them; expressions can't), all settable with `--set`:
@@ -196,6 +202,10 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - A fit with `*` applies to every copy: `{ "a": "plate", "b": "key-*.switch.bottom", … }`. With `*` on both sides,
   each copy is checked against every other copy near it: `{ "a": "key-*.cap", "b": "key-*.cap", "min": 0.5 }`. Repeated fits are reported
   together: the worst case, and how many of the copies are in range.
+- **Holes fits** follow a board's mounting holes into what they screw into: `{ "holes": "pcb.board", "into":
+  "case.body", "depth": "m2.insert_length" }`. Each screw's path must be clear for `depth` mm and solid within `ring`
+  mm of it (default: the hole's diameter) half way down. A gap fit can't see this: a board that rests on its bosses
+  passes even when the bosses are in the wrong place. `"direction": "up"` for screws from below.
 - `requires` pins versions (`^` same major, at least this version, 0.x included, since a minor release never breaks a
   fit here; `~` same minor); an item can use a release: `"object": "keycap@0.2.1"`, or a variant: `"keycap:oem-r3"`.
 - The check names any `estimate` rule an assembly relies on, through its positions or its objects, so guesses get
@@ -254,6 +264,8 @@ about 10 s, and a re-check after an edit measures only what the edit moved. The 
 recently used builds.
 
 ### Assemblies: values from other parts
+(An object can also read another object directly, outside any assembly: see "Other objects' numbers" under Variables.
+That suits a case built around one board; `from` suits values that only mean something where items meet.)
 An item's `from` sets inputs from other items' values, in the assembly's names: `"from": { "usb_y":
 "board.pcb.pico_y" }`. Every item is built before any is placed, so positions can refer to items listed after them
 (the board placed under the case's top while the case is built from the board's Pico position). `"place": false`

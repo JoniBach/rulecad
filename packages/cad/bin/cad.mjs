@@ -7,7 +7,7 @@ import { fmt, loadRuleSet } from '../lib/rules.mjs';
 import { WS, TOOL, paths, config, printerOf } from '../lib/workspace.mjs';
 import { fromKLE } from '@rulecad/keyboard-layout';
 import { target, hasTarget } from '../lib/targets.mjs';
-import { locate, build, pick, lint, readObject, printer, pcbEngine } from '../lib/design.mjs';
+import { locate, build, pick, lint, readObject, printer, pcbEngine, objectSets } from '../lib/design.mjs';
 import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, prints, printsFile, engineId } from '../lib/versions.mjs';
 import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
@@ -299,7 +299,7 @@ async function assembly(cmd, ref) {
 // ---------- links ----------
 // The model as a link: full print precision (triangles), the rules card, and exactly which version it is.
 async function links(d, b, set) {
-  const s = d.tag ? { kind: null } : since(d), fil = filaments(d.project);
+  const s = d.tag ? { kind: null } : await since(d), fil = filaments(d.project);
   const version = d.version || b.object.version || '0.0.0';
   const src = `${d.project}/${d.name}${d.variant ? `:${d.variant}` : ''}@${version}${s.kind && s.kind !== 'first' ? '+changes' : s.kind === 'first' ? '+unreleased' : ''}`;
   const model = {
@@ -353,10 +353,12 @@ const KINDS = ['patch', 'minor', 'major'];
 const today = () => new Date().toISOString().slice(0, 10);
 
 // Unreleased changes: compare with the last release. -> { last, kind, reasons } (kind null: nothing changed)
-function since(d) {
+// A design that reads other objects is resolved with their numbers (each side with the objects it named then).
+const snap = async (d) => snapshot(d, (await objectSets(d, readObject(d))).sets);
+async function since(d) {
   const last = tags(d.project, d.name).at(-1);
   if (!last) return { last: null, kind: 'first', reasons: [] };
-  return { last, ...compare(snapshot(materialise(d, last.version)), snapshot(d)) };
+  return { last, ...compare(await snap(materialise(d, last.version)), await snap(d)) };
 }
 
 // Only the design's own files (and its project's changelog and print log) may have uncommitted changes.
@@ -391,7 +393,7 @@ async function releaseObject(d, { batch = false } = {}) {
   const raw = lint(fs.readFileSync(d.js, 'utf8')), fails = (b.circuit ? await (await pcbEngine()).checks(b.circuit, b.values, b.matrix) // boards: the board's checks
     : b.object.role === 'reference' ? [] : check(b.triangles, printer(b, d), { parts: b.parts })).filter((r) => r.level === 'fail'); // references aren't printed
   if (raw.length || fails.length) throw new Error(`fix the check first: ${[...raw.map((r) => `raw number ${r.text} on line ${r.line}`), ...fails.map((f) => f.text)].join('; ')}`);
-  let { last, kind, reasons } = since(d);
+  let { last, kind, reasons } = await since(d);
   if (!kind) throw new Error(`nothing has changed since ${last.version}`);
   const asked = opt('bump');
   if (asked && last) {
@@ -419,7 +421,7 @@ async function releaseProject(project) {
   if (!fs.existsSync(pj)) throw new Error(`no project "${project}"`);
   const p = JSON.parse(fs.readFileSync(pj, 'utf8')), manifest = {};
   for (const name of p.objects) {
-    const d = locate(`${project}/${name}`), s = since(d);
+    const d = locate(`${project}/${name}`), s = await since(d);
     if (!s.last) throw new Error(`${name} has no release yet: cad release ${project}/${name} -m "…"`);
     if (s.kind) throw new Error(`${name} has changes since ${s.last.version}: release it first`);
     manifest[name] = s.last.version;
@@ -453,7 +455,8 @@ async function releaseProject(project) {
 // Release every object in a project that changed, then the project: the tree may hold changes only to their files.
 async function releaseAll(project) {
   const pj = JSON.parse(fs.readFileSync(path.join(paths.project(project), 'project.json'), 'utf8'));
-  const changed = pj.objects.map((n) => locate(`${project}/${n}`)).filter((d) => since(d).kind);
+  const changed = [];
+  for (const n of pj.objects) { const d = locate(`${project}/${n}`); if ((await since(d)).kind) changed.push(d); }
   const allowed = new Set([`projects/${project}/project.json`, `projects/${project}/CHANGELOG.md`, `projects/${project}/prints.jsonl`,
     ...changed.flatMap((d) => files(d, readObject(d)))]);
   onlyChanged([...allowed]);
@@ -482,25 +485,25 @@ async function compareVariants(d, a, b) {
   console.log(out);
 }
 
-function status(project) {
+async function status(project) {
   for (const p of project ? [project] : fs.readdirSync(paths.projects)) {
     const pj = JSON.parse(fs.readFileSync(path.join(paths.project(p), 'project.json'), 'utf8'));
     console.log(`${p}${pj.version ? `@${pj.version}` : ''}`);
     for (const name of pj.objects) {
-      const s = since(locate(`${p}/${name}`));
+      const s = await since(locate(`${p}/${name}`));
       console.log(`  ${name.padEnd(16)} ${s.last ? s.last.version.padEnd(8) : 'unreleased'} ${s.kind === 'first' ? '' : s.kind ? `changed since: needs a ${s.kind} release` : 'up to date'}`);
     }
   }
 }
 
-function history(ref) {
+async function history(ref) {
   const [project, name] = ref.split('/');
   if (!name) {
     for (const t of tags(project).reverse()) console.log(`${t.tag}  ${t.date}  ${t.kind}  ${t.message}`);
     return status(project);
   }
   const d = locate(ref), done = prints(d);
-  const s = since(d);
+  const s = await since(d);
   if (s.kind && s.last) { console.log(`unreleased (needs ${s.kind}):`); for (const r of s.reasons) console.log(`  ${r.text}`); }
   for (const t of tags(d.project, d.name).reverse()) {
     console.log(`${t.version.padEnd(8)} ${t.date}  ${t.kind.padEnd(5)}  ${t.message}`);
@@ -508,9 +511,9 @@ function history(ref) {
   }
 }
 
-function diff(d, from, to) {
+async function diff(d, from, to) {
   if (!from) throw new Error('usage: cad diff <project>/<object> <from> [<to>]');
-  const a = snapshot(materialise(d, from)), b = snapshot(to ? materialise(d, to) : d);
+  const a = await snap(materialise(d, from)), b = await snap(to ? materialise(d, to) : d);
   const r = compare(a, b);
   console.log(`${d.project}/${d.name} ${from} → ${to || 'now'}: ${r.kind ? `a ${r.kind} change` : 'no changes'}`);
   for (const x of r.reasons) console.log(`  ${x.kind.padEnd(5)} ${x.text}`);
