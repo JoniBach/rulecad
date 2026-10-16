@@ -48,7 +48,7 @@ export function locate(ref) {
 // ---------- objects that read each other ----------
 // "uses": ["node/carrier"] reads another object's numbers as a rule set named after it (carrier.board_w in an
 // expression, v.carrier.board_w in code): its variables, and what a board tells the parts around it (board_x, board_y,
-// board_w, board_d, and board_holes for code). The object is built (cached) first. "node/carrier@^0.2.0" also checks
+// board_w, board_d, and for code board_holes, board_parts (where each part is) and board_outline, for a shaped board). The object is built (cached) first. "node/carrier@^0.2.0" also checks
 // its version; "node/carrier@0.2.0" reads that release instead of the working copy.
 export const isObjectRef = (u) => String(u).includes('/');
 const building = new Set();
@@ -69,7 +69,7 @@ export async function objectSets(d, object) {
         rules[k] = { value: v, unit: units[k] ?? 'mm', rule: `${ref}'s ${k}`, kind: 'design', source: `${ref}@${version}` };
       }
       sets[u] = { name: base.name, rules };
-      if (b.circuit) extra[base.name] = { board_holes: (await pcbEngine()).holes(b.circuit) };
+      if (b.circuit) { const e = await pcbEngine(), board = b.circuit.find((x) => x.type === 'pcb_board'); extra[base.name] = { board_holes: e.holes(b.circuit), board_parts: e.parts ? e.parts(b.circuit) : {}, ...(board.outline ? { board_outline: board.outline } : {}) }; }
     }
   } finally { building.delete(self); }
   return { sets, extra };

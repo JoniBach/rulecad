@@ -146,6 +146,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
       values[s][r] = lookup(`${s}.${r}`);
       entries.push({ name: `${s}.${r}`, ...d, value: values[s][r], expr: typeof d.value === 'string' ? d.value : undefined, used: used.has(`${s}.${r}`) });
     }
+    if (rs.footprints) values[s].footprints = rs.footprints; // pad data for boards (v.esp32c6.footprints.module), as the set gives it
   }
   return { values, entries };
 }

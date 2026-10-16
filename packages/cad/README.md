@@ -191,6 +191,8 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   Objects with `"role": "reference"` (the MX switch) model things you don't print: drawn faint, never exported.
 - **plate** assemblies lay objects out on the bed: they're checked as one print and `export` writes one 3MF with an
   object per part. Supports are kept.
+- **Turning:** `"rotate": [0, 180, 0]` turns an item (degrees about x, y, z, in that order) about its own origin
+  before `at` moves it: a pod on a side mount, or a lid modelled face down as it prints.
 - **Components:** an item can be a whole assembly (`"assembly": "keycap-on-switch"`). Its parts, fits and `requires`
   come along, named per copy (`key-1-1.cap.cap`), and its overlaps are still checked inside each copy.
 - **Repeats:** `"repeat": { "x": { "count": "plate.cols", "step": "plate.pitch" }, "y": { … } }` places a grid of

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph } from '@rulecad/pcb';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs } from '@rulecad/pcb';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -103,4 +103,29 @@ test('a sensor node from rule-set parts: XIAO, two Qwiic sockets (one turned), a
 test('drawings for links are lighter and look the same: coordinates rounded, labels and elements kept', () => {
   const svg = '<svg width="800"><path class="t" d="M 21.310602024507205 570.6446457112413 L 1.5 2" data-type="pcb_trace" data-pcb-layer="top"/><style></style><text x="10.123456">0.30000000000000004 mm</text></svg>';
   assert.equal(light(svg), '<svg width="800"><path class="t" d="M 21.31 570.64 L 1.5 2" data-pcb-layer="top"/><text x="10.12">0.30000000000000004 mm</text></svg>');
+});
+
+test('a shaped board: a round one routes inside its outline, mills to its shape, and tells a case where its parts are', async () => {
+  const outline = shape.circle(30, { segments: 48 });
+  const json = await render({ outline, thickness: 1.6, track: 0.3, autoroute: true,
+    parts: [part('R1', '0603', -6, 0), part('R2', '0603', 6, 0)], nets: { A: ['R1.1', 'R2.1'], B: ['R1.2', 'R2.2'] } });
+  const b = json.find((e) => e.type === 'pcb_board');
+  assert.equal(b.outline.length, 48);
+  assert.ok(Math.abs(b.width - 30) < 1e-9 && Math.abs(b.center.x) < 1e-9, 'centre and size from the outline');
+  const found = await checks(json, { jlcpcb: values({}).jlcpcb, track: 0.3 });
+  assert.deepEqual(failures(found), []);
+  assert.ok(found.some((f) => f.level === 'pass' && /shaped board \(48 points\)/.test(f.text)), 'pads inside');
+  assert.equal(json.filter((e) => e.type === 'pcb_trace').length, 2, 'both nets routed');
+  assert.match((await fabFiles(json, 'disc'))['disc.GKO'], /X/, 'an edge cut');
+  assert.equal(outputs(json).board_outline.length, 48);
+  assert.deepEqual(Object.keys(parts(json)).sort(), ['R1', 'R2']);
+  assert.ok(Math.abs(parts(json).R2.x - 6) < 1e-9);
+  const { board } = solids(json, { thickness: 1.6 });
+  assert.ok(board.polygons.length > 48, 'a round solid');
+});
+
+test('board shapes: rounded and bevelled outlines keep their size', () => {
+  const r = shape.rounded(40, 20, 4), w = Math.max(...r.map((p) => p.x)) - Math.min(...r.map((p) => p.x));
+  assert.ok(Math.abs(w - 40) < 1e-9 && r.length === 36);
+  assert.equal(shape.bevelled(40, 20, 3, { at: [1, 2] })[0].x, -16);
 });

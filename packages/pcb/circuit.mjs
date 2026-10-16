@@ -3,14 +3,17 @@
 // read the result. Only two tscircuit libraries are used, and neither needs a framework: footprinter (standard
 // footprints such as SOD-123) and the capacity autorouter (connections a board leaves to it).
 //
-// board: { center: { x, y }, width, height, thickness, parts, traces, nets, track, silk, holes, autoroute }
+// board: { center: { x, y }, width, height, thickness, parts, traces, nets, track, silk, holes, autoroute }, or
+//   { outline: [{ x, y }, ...], thickness, ... }: any shape, a closed polygon (counter-clockwise); its centre and size
+//   are its bounds. pcb.shape makes common ones (rounded, bevelled, circle).
 //   part   { name, ftype: 'simple_switch' | 'simple_chip' | 'simple_diode', mpn, x, y, layer: 'top' | 'bottom',
 //            rotation: 0 | 90 | 180 | 270 (counter-clockwise, seen from the side the part is on; default 0),
-//            pads: [{ pin, x, y, hole, outer }] (plated, relative to the part) or [{ pin, smd: true, hint, x, y, w, h }],
+//            pads: [{ pin, x, y, hole, outer }] (plated, relative to the part) or [{ pin, smd: true, hint, x, y, w, h }]
+//            or [{ pin, smd: true, x, y, points: [[x, y], ...] }] (copper of any shape; x, y: where tracks join it),
 //            holes: [{ x, y, d }], courtyard: { w, h } | null,
 //            footprint: 'sod123' | 'jst4_sh' | 'pinrow4' ... (a footprinter string, SMD or through-hole, instead of pads),
 //            sch: { x, y, symbol?, pinLabels? } }
-//   trace  { from: [part, port], to: [part, port], width, path: [{ x, y }] (absolute, between the two ports) }; a trace
+//   trace  { from: [part, port], to: [part, port], width, path: [{ x, y }] (absolute, between the two ports), layer }; a trace
 //            without a path is left to the autorouter when board.autoroute is set
 //   nets   { GND: ['U1.GND', 'J1.1', 'J2.1'] } or { GND: { pins: [...], width } }: each net's pins are joined by the
 //            shortest set of connections between them (a minimum spanning tree), left to the autorouter, at the net's
@@ -35,7 +38,50 @@ const FAB_MINIMUMS = { min_trace_width: 0.1, min_via_hole_diameter: 0.2, min_via
   min_trace_to_hole_edge_clearance: 0.2, min_trace_to_pad_edge_clearance: 0.1, min_pad_edge_to_pad_edge_clearance: 0.1,
   min_plated_hole_drill_edge_to_drill_edge_clearance: 0.15, min_board_edge_clearance: 0.2 };
 
+// A board with an outline: its centre and size from the outline's bounds (an explicit centre, width or height wins)
+export function bounds(points) {
+  const xs = points.map((p) => p.x), ys = points.map((p) => p.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return { center: { x: (x0 + x1) / 2, y: (y0 + y1) / 2 }, width: x1 - x0, height: y1 - y0 };
+}
+
+// Is the point inside the polygon ([{ x, y }])? (even-odd rule)
+function insidePolygon(points, { x, y }) {
+  let hit = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j];
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+  }
+  return hit;
+}
+
+// A polygon as horizontal strips step tall (each the span of the polygon across its middle): boxes a router can use
+function strips(points, step) {
+  const ys = points.map((q) => q.y), y0 = Math.min(...ys), y1 = Math.max(...ys), out = [];
+  for (let y = y0; y < y1; y += step) {
+    const mid = Math.min(y + step / 2, y1), xs = [];
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const a = points[i], b = points[j];
+      if ((a.y > mid) !== (b.y > mid)) xs.push(a.x + ((mid - a.y) * (b.x - a.x)) / (b.y - a.y));
+    }
+    xs.sort((p, q) => p - q);
+    for (let k = 0; k + 1 < xs.length; k += 2) out.push({ x: (xs[k] + xs[k + 1]) / 2, y: y + Math.min(step, y1 - y) / 2, w: xs[k + 1] - xs[k], h: Math.min(step, y1 - y) });
+  }
+  return out;
+}
+
+// An SMD pad's box: a rectangle's own, a polygon's bounds
+export function smtBounds(e) {
+  if (e.shape !== 'polygon') return { x: e.x, y: e.y, w: e.width, h: e.height };
+  const xs = e.points.map((q) => q.x), ys = e.points.map((q) => q.y), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+}
+
 export async function circuitJson(board, { route = defaultRouter } = {}) {
+  board = { parts: [], traces: [], silk: [], ...board }; // the lists are optional
+  if (board.outline) {
+    if (board.outline.length < 3) throw new Error('a board outline needs at least 3 points');
+    board = { ...bounds(board.outline), ...board };
+  }
   const out = [], next = {}, id = (type) => `${type}_${(next[type] = (next[type] ?? -1) + 1)}`;
   const add = (type, fields) => { const e = { type, [`${type}_id`]: id(type), ...fields }; out.push(e); return e; };
 
@@ -60,7 +106,11 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
         ? { smd: true, pin: `pin${e.port_hints[0]}`, hint: e.port_hints[0], ...at(e.x, e.y), ...size(e.width, e.height) }
         : { pin: `pin${e.port_hints[0]}`, hint: e.port_hints[0], ...at(e.x, e.y), hole: e.hole_diameter ?? Math.min(e.hole_width, e.hole_height),
           outer: e.outer_diameter ?? Math.max(e.rect_pad_width ?? e.outer_width ?? 0, e.rect_pad_height ?? e.outer_height ?? 0) })
-      : part.pads.map((p) => ({ ...p, ...at(p.x, p.y), ...(p.smd ? size(p.w, p.h) : {}) }));
+      : part.pads.map((p) => {
+        if (!p.points) return { ...p, ...at(p.x, p.y), ...(p.smd ? size(p.w, p.h) : {}) };
+        const poly = p.points.map(([x, y]) => at(x, y)), xs = poly.map((q) => q.x), ys = poly.map((q) => q.y);
+        return { ...p, ...at(p.x, p.y), poly, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), cx: (Math.max(...xs) + Math.min(...xs)) / 2, cy: (Math.max(...ys) + Math.min(...ys)) / 2 };
+      });
     const names = portNames(part, pads);
     const sourcePorts = pads.map((p, i) => add('source_port', { name: names[i].name, pin_number: names[i].n, port_hints: names[i].hints,
       source_component_id: comp.source_component_id, subcircuit_id: SUB }));
@@ -73,11 +123,11 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     placed.push({ part, comp, pads, sourcePorts, fpEls, at, mirror, size });
   }
   add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: 2,
-    width: board.width, height: board.height, material: 'fr4', ...FAB_MINIMUMS });
+    width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS });
 
   for (const { part, comp, pads, sourcePorts, fpEls, at, mirror, size } of placed) {
     // The component sits at the middle of its pads and holes (as tscircuit places it: pick-and-place reads this)
-    const extent = [...pads.map((p) => (p.smd ? [p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2] : [p.x - p.outer / 2, p.y - p.outer / 2, p.x + p.outer / 2, p.y + p.outer / 2])),
+    const extent = [...pads.map((p) => (p.poly ? [p.cx - p.w / 2, p.cy - p.h / 2, p.cx + p.w / 2, p.cy + p.h / 2] : p.smd ? [p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2] : [p.x - p.outer / 2, p.y - p.outer / 2, p.x + p.outer / 2, p.y + p.outer / 2])),
       ...(part.holes || []).map((h) => { const q = at(h.x, h.y); return [q.x - h.d / 2, q.y - h.d / 2, q.x + h.d / 2, q.y + h.d / 2]; })];
     const box = [Math.min(...extent.map((e) => e[0])), Math.min(...extent.map((e) => e[1])), Math.max(...extent.map((e) => e[2])), Math.max(...extent.map((e) => e[3]))];
     const pc = add('pcb_component', { center: { x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2 }, width: box[2] - box[0], height: box[3] - box[1],
@@ -86,7 +136,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     pads.forEach((p, i) => {
       const layers = p.smd ? [part.layer] : ['top', 'bottom'];
       const port = add('pcb_port', { pcb_component_id: pc.pcb_component_id, layers, subcircuit_id: SUB, x: p.x, y: p.y, source_port_id: sourcePorts[i].source_port_id });
-      if (p.smd) {
+      if (p.poly) { // copper of any shape: no paste (a contact, not a joint)
+        add('pcb_smtpad', { ...own, pcb_port_id: port.pcb_port_id, layer: part.layer, shape: 'polygon', points: p.poly, port_hints: [p.hint ?? p.pin.replace(/^pin/, '')], is_covered_with_solder_mask: false });
+      } else if (p.smd) {
         const pad = add('pcb_smtpad', { ...own, pcb_port_id: port.pcb_port_id, layer: part.layer, shape: 'rect', width: p.w, height: p.h, port_hints: [p.hint], is_covered_with_solder_mask: false, x: p.x, y: p.y });
         add('pcb_solder_paste', { layer: part.layer, shape: 'rect', width: p.w * PASTE, height: p.h * PASTE, x: p.x, y: p.y, pcb_component_id: pc.pcb_component_id, pcb_smtpad_id: pad.pcb_smtpad_id, subcircuit_id: SUB });
       } else {
@@ -116,7 +168,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       display_name: `.${t.from.join(' > .')} to .${t.to.join(' > .')}`, min_trace_thickness: t.width });
     if (!t.path) { toRoute.push({ t, a, b, id: st.source_trace_id }); continue; }
     // A drawn track runs on the layer its first pad is on (a through-hole pad: the front)
-    const layer = a.layers.length === 1 ? a.layers[0] : 'top';
+    const layer = t.layer ?? (a.layers.length === 1 ? a.layers[0] : 'top'); // or the layer it names
     const pts = [{ x: a.x, y: a.y }, ...t.path, { x: b.x, y: b.y }];
     add('pcb_trace', { route: pts.map((q, i) => ({ route_type: 'wire', x: q.x, y: q.y, width: t.width, layer,
       ...(i === 0 ? { start_pcb_port_id: a.pcb.pcb_port_id } : {}), ...(i === pts.length - 1 ? { end_pcb_port_id: b.pcb.pcb_port_id } : {}) })), source_trace_id: st.source_trace_id, subcircuit_id: SUB });
@@ -182,7 +234,7 @@ function schematic(out, add, placed, board, port) {
       const half = Math.ceil(sourcePorts.length / 2), size = { width: 1.9, height: (half + 1) * 0.2 };
       const c = add('schematic_component', { center: { x: s.x, y: s.y }, rotation: 0, size, pin_spacing: 0.2, port_labels: part.sch?.pinLabels || {},
         source_component_id: comp.source_component_id, is_box_with_pins: true, schematic_group_id: 'schematic_group_0' });
-      add('schematic_text', { text: part.mpn, schematic_component_id: c.schematic_component_id, anchor: 'left', rotation: 0,
+      add('schematic_text', { text: part.mpn ?? part.name, schematic_component_id: c.schematic_component_id, anchor: 'left', rotation: 0,
         position: { x: s.x - size.width / 2, y: s.y - size.height / 2 - 0.23 }, color: '#006464', font_size: 0.18 });
       sourcePorts.forEach((sp, i) => {
         const left = i < half, k = left ? i : sourcePorts.length - 1 - i, side = left ? 'left' : 'right';
@@ -238,8 +290,13 @@ export async function routeInput(json, toRoute) {
   const joined = (e) => { const ids = inside.get(pcbPort[e.pcb_port_id]?.source_port_id); return ids ? { offBoardConnectsTo: ids, netIsAssignable: true } : {}; };
   const b = json.find((e) => e.type === 'pcb_board'), obstacles = [];
   for (const kind of ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole']) for (const e of json.filter((x) => x.type === kind)) { // by kind, as core lists them
-    if (e.type === 'pcb_smtpad') obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
-      center: { x: e.x, y: e.y }, width: e.width, height: e.height, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) });
+    if (e.type === 'pcb_smtpad' && e.shape === 'polygon') { // copper of any shape, as strips the router can see round
+      for (const b of strips(e.points, 0.25)) obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
+        center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) });
+      continue;
+    }
+    if (e.type === 'pcb_smtpad') { const b = smtBounds(e); obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
+      center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) }); }
     if (e.type === 'pcb_plated_hole') obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_plated_hole_id'), componentId: e.pcb_component_id, type: 'oval', layers: ['top', 'bottom'],
       center: { x: e.x, y: e.y }, width: e.outer_diameter, height: e.outer_diameter, connectedTo: linked(e.pcb_plated_hole_id), ...joined(e) });
     if (e.type === 'pcb_hole') obstacles.push({ componentId: e.pcb_component_id, obstacleId: e.pcb_hole_id, isNonPlatedHole: true, type: 'rect', shape: 'circle',
@@ -249,9 +306,10 @@ export async function routeInput(json, toRoute) {
     connection_name: e.source_trace_id, connectsTo: [e.route[0].start_pcb_port_id, e.route.at(-1).end_pcb_port_id],
     route: e.route.map((p) => ({ route_type: p.route_type, x: p.x, y: p.y, width: p.width, layer: p.layer })) }));
   const connections = toRoute.map(({ t, a, b: z, id }) => ({ name: id, source_trace_id: id, nominalTraceWidth: t.width, width: t.width,
-    pointsToConnect: [a, z].map((q) => ({ x: q.x, y: q.y, layer: q.layers.length === 1 ? q.layers[0] : 'top', pointId: q.pcb.pcb_port_id, pcb_port_id: q.pcb.pcb_port_id,
+    pointsToConnect: [a, z].map((q) => ({ x: q.x, y: q.y, layer: q.layers.length === 1 ? q.layers[0] : 'top', ...(q.layers.length === 1 ? { onlyLayer: q.layers[0] } : {}), pointId: q.pcb.pcb_port_id, pcb_port_id: q.pcb.pcb_port_id,
       port_selector: `${comp[q.source.source_component_id]}.${q.source.name}` })) }));
   return fixedTraces({ bounds: { minX: b.center.x - b.width / 2, maxX: b.center.x + b.width / 2, minY: b.center.y - b.height / 2, maxY: b.center.y + b.height / 2 },
+    ...(b.outline ? { outline: b.outline } : {}), // the router keeps tracks inside a shaped board
     obstacles, connections, traces, layerCount: 2, allowBlindAndBuriedVias: false, minTraceWidth: 0.15, nominalTraceWidth: 0.15, // tscircuit's defaults
     // the board's fab minimums, under the names the router reads
     minViaDiameter: b.min_via_pad_diameter, minViaHoleDiameter: b.min_via_hole_diameter, minViaPadDiameter: b.min_via_pad_diameter,
@@ -300,16 +358,37 @@ async function defaultRouter(json, toRoute) {
   // its second, as tscircuit records them
   const traces = [], asked = new Map(srj.connections.map((c) => [c.name, c.pointsToConnect]));
   const far = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+  // The router hands back each net as pieces of track, named after one of its connections. A piece's ends are named
+  // by the pads they finish on; a piece that reaches a one-sided pad on the other layer gets a via there (the router
+  // sometimes leaves it out), set back along the piece just clear of the pad, and a short track on the pad's layer.
+  const pads = json.filter((e) => e.type === 'pcb_smtpad' || e.type === 'pcb_plated_hole').map((e) => e.type === 'pcb_smtpad'
+    ? { port: e.pcb_port_id, ...smtBounds(e), layer: e.layer, points: e.points } : { port: e.pcb_port_id, x: e.x, y: e.y, w: e.outer_diameter, h: e.outer_diameter, layer: null });
+  const within = (d, p) => Math.abs(p.x - d.x) <= d.w / 2 + 1e-6 && Math.abs(p.y - d.y) <= d.h / 2 + 1e-6 && (!d.points || insidePolygon(d.points, p));
+  const padAt = (p) => pads.filter((d) => within(d, p)).sort((a, b) => a.w * a.h - b.w * b.h)[0]; // the smallest pad there
+  const edge = json.find((e) => e.type === 'pcb_board')?.min_trace_to_pad_edge_clearance ?? 0.1;
+  const onto = (pad, p, q) => {
+    if (!pad?.layer || p.route_type !== 'wire' || p.layer === pad.layer) return [];
+    const back = Math.max(pad.w, pad.h) / 2 + srj.minViaPadDiameter / 2 + edge;
+    const len = Math.hypot(q.x - p.x, q.y - p.y) || 1, t = Math.min(back / len, 1), v = { x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t };
+    return [{ route_type: 'wire', x: p.x, y: p.y, width: p.width, layer: pad.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: pad.layer },
+      { route_type: 'via', x: v.x, y: v.y, from_layer: pad.layer, to_layer: p.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: p.layer }];
+  };
   for (const t of solver.getOutputSimplifiedPcbTraces()) {
-    const ends = asked.get(t.connection_name);
-    if (!ends) continue;
+    if (!asked.has(t.connection_name)) continue;
     let route = t.route.map((p) => ({ ...p }));
-    if (far(route[0], ends[0]) > far(route.at(-1), ends[0])) route = route.reverse(); // (a via keeps its layer labels, as in tscircuit)
-    route[0].start_pcb_port_id = ends[0].pcb_port_id;
-    route.at(-1).end_pcb_port_id = ends[1].pcb_port_id;
+    const first = padAt(route[0]), last = padAt(route.at(-1));
+    const head = onto(first, route[0], route[1] || route[0]), tail = onto(last, route.at(-1), route.at(-2) || route.at(-1));
+    if (head.length) route = [...head, ...route.slice(1)];
+    if (tail.length) route = [...route.slice(0, -1), ...tail.reverse().map((q) => (q.route_type === 'via' ? { ...q, from_layer: q.to_layer, to_layer: q.from_layer } : q))];
+    if (first) route[0].start_pcb_port_id = first.port;
+    if (last) route.at(-1).end_pcb_port_id = last.port;
     traces.push({ route, source_trace_id: t.connection_name, vias: route.filter((p) => p.route_type === 'via').map((p) => ({ x: p.x, y: p.y,
       hole_diameter: srj.minViaHoleDiameter, outer_diameter: srj.minViaPadDiameter, layers: ['top', 'bottom'], from_layer: p.from_layer, to_layer: p.to_layer })) });
   }
-  if (traces.length < srj.connections.length) throw new Error(`the autorouter routed ${traces.length} of ${srj.connections.length} connections`);
+  // Every pad asked for has a track (a pad counts as reached when another pad of the same pin, joined in its part, is)
+  const pinOf = new Map(json.filter((e) => e.type === 'pcb_port').map((e) => { const sp = json.find((x) => x.type === 'source_port' && x.source_port_id === e.source_port_id); return [e.pcb_port_id, `${sp?.source_component_id}:${sp?.name}`]; }));
+  const reached = new Set(traces.flatMap((t) => [t.route[0].start_pcb_port_id, t.route.at(-1).end_pcb_port_id]).map((id) => pinOf.get(id)));
+  const missing = srj.connections.flatMap((c) => c.pointsToConnect).filter((p) => !reached.has(pinOf.get(p.pcb_port_id)));
+  if (missing.length) throw new Error(`the autorouter left ${missing.length} pads without a track (first: ${missing[0].port_selector})`);
   return { traces };
 }
