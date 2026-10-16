@@ -1,0 +1,9 @@
+{
+  "_doc": "JST PH (2.0 mm), the usual connector on battery packs and LiPo cells. Through-hole, top entry (B*B-PH-K-S). kind as in x1c.json.",
+  "name": "jstph",
+  "rules": {
+    "pitch": { "value": 2.0, "unit": "mm", "rule": "Contact pitch", "kind": "spec", "source": "JST PH series datasheet", "checked": "2026-10-16" },
+    "drill": { "value": 0.8, "unit": "mm", "rule": "Hole for the 0.64 mm square post (datasheet 0.7 mm, plus fab tolerance)", "kind": "community", "source": "KiCad library, JST_PH_B2B-PH-K", "checked": "2026-10-16" },
+    "pad": { "value": 1.5, "unit": "mm", "rule": "Round pad", "kind": "community", "source": "KiCad library, JST_PH_B2B-PH-K", "checked": "2026-10-16" }
+  }
+}

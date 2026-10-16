@@ -12,6 +12,10 @@
 // Positions are expressions over rules (mx.pitch) and items' variables (cap.lift); rotate is degrees about x, y, z,
 // applied before at (a repeated item turns as a whole, its copies with it). An item can pin a release: "object": "keycap@0.2.1". fits measure the closest gap between two
 // items or item.parts; a negative min allows a press fit to overlap.
+// A holes fit follows each of a board's mounting holes down its screw's path into another part:
+//   { "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length", "label": "Screws find their inserts" }
+// The path must be clear for depth mm (it lands in a hole) and solid within "ring" mm of it (default: the hole's
+// diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -21,7 +25,7 @@ import { locate, build, readObject, jscad } from './design.mjs';
 import { materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 import { bounds } from '@rulecad/printcheck';
-import { closest } from '@rulecad/fit';
+import { closest, inside } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -181,7 +185,8 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   }
   // A fit with * applies to every copy: "key-*.switch.bottom" becomes one fit for key-0-0, key-0-1, …
   // With * on both sides, each copy is checked against all the others: { "a": "key-*.cap", "b": "key-*.cap" }
-  for (const x of a.fits || []) {
+  for (let x of a.fits || []) {
+    if (x.holes) x = { ...x, a: x.holes, b: x.into }; // a holes fit: a board's holes (a) over what its screws go into (b)
     const star = [x.a, x.b].find((n) => n.includes('*'));
     if (!star) { fits.push({ ...x, num }); continue; }
     const match = (n) => { const re = new RegExp(`^${n.split('.')[0].replace(/[-]/g, '\\-').replace('*', '([\\w-]+)')}$`); return ids.filter((id) => re.test(id)); };
@@ -258,6 +263,7 @@ export function checkAssembly(s) {
   const pick = (n) => (Array.isArray(n) ? n.flatMap(pick) : s.parts.filter((p) => named(p, n)));
   const groups = new Map();
   for (const x of s.fits) {
+    if (x.holes) { holesFit(x); continue; }
     const A = pick(x.a), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
     const reach = Math.max(2, ...[lo, hi].filter(Number.isFinite)) + 1; // look past the range, so a gap near it is measured
@@ -280,6 +286,27 @@ export function checkAssembly(s) {
     const label = (x.label || x.a).replace(/ \(.*\)$/, '');
     f(worst.ok ? 'pass' : 'warn', `${key}: ${say(worst.gap)}${n}${worst.ok ? '' : `, wanted ${lo === -Infinity ? '' : `${mm(lo)} `}to ${hi === Infinity ? 'any' : mm(hi)} mm (${results.filter((r) => !r.ok).map((r) => r.id).join(', ')})`}`,
       `${label}: ${worst.gap < 0 ? `press fit ${mm(-worst.gap)} mm³` : worst.gap === Infinity ? 'apart' : `gap ${Number(worst.gap.toFixed(2))} mm`}${worst.ok ? '' : ' (out of range)'}`);
+  }
+  // Holes fits: each mounting hole's screw path, clear into a hole, with material round it
+  function holesFit(x) {
+    const A = pick(x.a), B = pick(x.b), label = x.label || `${x.a} into ${x.b}`;
+    const board = A.length && s.objects.find((o) => o.id === A[0].leaf)?.built;
+    if (!board?.circuit) return f('fail', `${label}: ${x.a} isn't a circuit board, so it has no mounting holes to follow`);
+    if (!B.length) return f('fail', `${label}: no such ${x.b}`);
+    const holes = board.circuit.filter((e) => e.type === 'pcb_hole' && !e.pcb_component_id);
+    if (!holes.length) return f('fail', `${label}: ${x.a} has no mounting holes`);
+    const depth = x.num(x.depth), down = x.direction === 'up' ? 1 : -1, faces = B.flatMap((p) => p.triangles);
+    const base = down < 0 ? 0 : board.values.thickness ?? 0, at = (h, dx, dy, t) => jscad.maths.vec3.transform([0, 0, 0], [h.x + dx, h.y + dy, base + down * t], A[0].m);
+    const steps = 8, misses = [];
+    for (const h of holes) {
+      const ring = x.ring != null ? x.num(x.ring) : h.hole_diameter, where = `hole at ${mm(h.x)}, ${mm(h.y)} mm`;
+      const blocked = Array.from({ length: steps }, (_, i) => (depth * (i + 0.5)) / steps).find((t) => inside(at(h, 0, 0, t), faces));
+      if (blocked != null) { misses.push(`${where}: solid ${mm(blocked)} mm along the screw's path`); continue; }
+      const round = Array.from({ length: steps }, (_, i) => (2 * Math.PI * i) / steps).filter((a) => !inside(at(h, ring * Math.cos(a), ring * Math.sin(a), depth / 2), faces));
+      if (round.length) misses.push(`${where}: no material ${mm(ring)} mm from the screw on ${round.length} of ${steps} sides`);
+    }
+    f(misses.length ? 'fail' : 'pass', misses.length ? `${label}: ${misses.join('; ')}` : `${label}: ${holes.length} of ${holes.length} holes clear for ${mm(depth)} mm, with material around each`,
+      `${label}: ${misses.length ? `${misses.length} of ${holes.length} miss` : `${holes.length} of ${holes.length} line up`}`);
   }
   // Plates print everything: no references
   if (s.a.kind === 'plate') {

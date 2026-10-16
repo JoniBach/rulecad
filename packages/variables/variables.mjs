@@ -17,10 +17,10 @@ export const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 export const isName = (d) => !!(d.choice || ['text', 'anchor', 'layout'].includes(d.type));
 export const options = (d) => (d.type === 'anchor' ? ANCHORS : d.type === 'text' ? null : d.choice);
 export function checkName(name, d, v) {
-  const s = String(v), opts = options(d);
-  if (opts && !opts.includes(s)) throw new Error(`${name} is one of ${opts.join(', ')} (got "${s}")`);
+  const s = String(v), opts = options(d), match = opts?.find((o) => String(o) === s);
+  if (opts && match === undefined) throw new Error(`${name} is one of ${opts.join(', ')} (got "${s}")`);
   if (!opts && s.length > (d.max ?? 16)) throw new Error(`${name} is at most ${d.max ?? 16} characters`);
-  return s;
+  return typeof match === 'number' ? match : s; // choices can be numbers too (a rotation: 0, 90, 180, 270)
 }
 const DEG = Math.PI / 180;
 const FNS = { min: Math.min, max: Math.max, round: (x, step = 1) => Math.round(x / step) * step,

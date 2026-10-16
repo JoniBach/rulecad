@@ -1,6 +1,6 @@
 # @rulecad/pcb
 
-Keyboard circuit boards from rules, for `@rulecad/cad` designs with `"engine": "pcb"`. Footprints come from rule sets
+Circuit boards from rules, for `@rulecad/cad` designs with `"engine": "pcb"`. Footprints come from rule sets
 (datasheets, KiCad's library) rather than numbers in code. The keyboard router draws every matrix track by rule, with
 one diode per key on the back. The output is what a fab needs: Gerbers, drill files, a JLCPCB BOM and placement file,
 and KiCad files.
@@ -10,6 +10,39 @@ data format, and the work is done by tscircuit's framework-free libraries: footp
 the design checks, and the Gerber, KiCad and drawing exporters. React, which tscircuit's own board-building layer uses,
 is never loaded. Two of those libraries list tscircuit among their dependencies, so React may be installed alongside
 them, unused; rulecad's tests fail if it's ever loaded.
+
+**Any board.** Place parts from rule sets or any standard footprint, turn them in quarter turns, join their pins with
+nets, and let the autorouter draw the tracks:
+
+```js
+// projects/node/objects/carrier.js: a radio module, two Qwiic sensor sockets, a battery socket and its diode
+export function main(v) {
+  const { xiao, qwiic, jstph, part } = v.pcb;
+  return {
+    center: { x: 7.5, y: -2.2 }, width: 35.5, height: 25.4, thickness: v.thickness, track: v.track, autoroute: true,
+    parts: [
+      xiao('U1', 0, 0, v.xiao),                                  // pins labelled D0..D10, 3V3, GND, 5V from the xiao rules
+      qwiic('J1', v.qwiic_x, v.qwiic_y, v.qwiic),                // plug in from the top edge
+      qwiic('J2', v.j2_x, 0, v.qwiic, { rotation: v.j2_turn }),  // turned to face the right edge
+      jstph('J3', v.qwiic_x, v.bat_y, v.jstph, { labels: { pin1: 'BAT', pin2: 'BATGND' } }),
+      part('D1', 'sod123', v.qwiic_x, v.diode_y, { mpn: 'B5819W' })
+    ],
+    nets: { GND: ['U1.GND', 'J1.GND', 'J2.GND', 'J3.BATGND'], SDA: ['U1.D4', 'J1.SDA', 'J2.SDA'], /* ... */ },
+    traces: [], silk: [], holes: []
+  };
+}
+```
+
+- **Parts:** `xiao`, `qwiic`, `jstph` and `header` take their sizes and pinouts from rule sets in @rulecad/rules (each
+  value with its source); `part(name, footprint, x, y)` takes any footprinter name: `soic8`, `0603`, `sot23`,
+  `jst4_sh`, `pinrow4` (SMD or through-hole). Options: `rotation` (0, 90, 180, 270), `layer`, `mpn`, `labels`.
+- **Nets:** each net's pins are joined by the shortest set of links between them, at `board.track` (or the net's own
+  `{ pins, width }`); pins are named `part.pin` by label, name or number. The schematic labels them by net.
+- **What a board tells the parts around it:** `board_x`, `board_y`, `board_w`, `board_d` and its mounting holes, so
+  a case can read it (`"uses": ["node/carrier"]` in @rulecad/cad) and a holes fit can check the screws find their inserts.
+- **Keyboards** are one recipe built on the same parts: every matrix track drawn by rule, one diode per key.
+
+A keyboard:
 
 ```js
 // projects/macropad/objects/board.js: main(v) returns a board, built with v.pcb

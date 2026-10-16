@@ -51,6 +51,55 @@ export const picoPin = (n, p) => { const left = n <= 20, i = left ? n - 1 : 40 -
 // The Pico's GPIO pins down one edge: [{ pin, gpio }]
 export const picoGpio = (side) => Object.entries(loadRuleSet('pico').rules[`gpio_${side}`].pins).map(([pin, gpio]) => ({ pin: Number(pin), gpio }));
 
+// ---------- any board ----------
+// Parts for any board, not only keyboards. Each returns a part as circuit.mjs describes it: put them in board.parts, join
+// their pins with board.nets, and set board.autoroute. o (all optional): { rotation: 0 | 90 | 180 | 270, layer,
+// mpn, labels: { pin1: 'GND', ... }, sch: { x, y } }. Pin labels name the pins in nets ('U1.GND') and on the schematic.
+const chip = (name, x, y, o, more) => ({ name, ftype: 'simple_chip', x, y, layer: o.layer ?? 'top', rotation: o.rotation ?? 0, mpn: o.mpn,
+  courtyard: o.courtyard ?? null, sch: { x: o.sch?.x ?? x / 2, y: o.sch?.y ?? y / 2, pinLabels: o.labels ?? {} }, ...more });
+const pinNo = (p) => Number(p.pin.replace(/\D/g, ''));
+// A rule set's pin map ({ "1": "GND", ... }) as pin labels ({ pin1: 'GND', ... })
+const labelsFrom = (set, rule) => Object.fromEntries(Object.entries(loadRuleSet(set).rules[rule].pins).map(([n, l]) => [`pin${n}`, l]));
+
+/**
+ * Any standard footprint as a part, by its footprinter name: 'jst4_sh', 'pinrow4', 'soic8', '0603', 'sot23' ...
+ * (SMD and through-hole). Pins are numbered as the footprint numbers them.
+ * @param {string} name @param {string} footprint @param {number} x @param {number} y @param {object} [o]
+ */
+export const part = (name, footprint, x, y, o = {}) => chip(name, x, y, o, { footprint });
+
+/**
+ * A pin header from rules (r: pitch, drill, pad; row_spacing for two rows): o.pins pins per row, o.rows 1 or 2.
+ * Two rows are numbered as a DIP: 1 to n down the left, n + 1 to 2n up the right.
+ */
+export function header(name, x, y, r, o = {}) {
+  const n = o.pins, two = (o.rows ?? 1) === 2, pads = [];
+  for (let i = 0; i < n; i++) {
+    const py = ((n - 1) / 2 - i) * r.pitch;
+    pads.push(pad(`pin${i + 1}`, two ? -r.row_spacing / 2 : 0, py, r.drill, r.pad));
+    if (two) pads.push(pad(`pin${2 * n - i}`, r.row_spacing / 2, py, r.drill, r.pad));
+  }
+  return chip(name, x, y, o, { pads: pads.sort((a, b) => pinNo(a) - pinNo(b)) });
+}
+
+/** A Seeed Studio XIAO module (any of the family) on header pins, USB at +y, from the xiao rules; pins labelled D0..D10, 5V, GND, 3V3. */
+export const xiao = (name, x, y, r, o = {}) =>
+  header(name, x, y, r, { pins: r.pins / 2, rows: 2, mpn: 'Seeed Studio XIAO', courtyard: { w: r.width, h: r.length }, labels: labelsFrom('xiao', 'pins'), ...o });
+
+/** A Qwiic / STEMMA QT socket (JST SH, 4 pins, side entry), from the qwiic rules: the plug goes in from +y, the tabs' side. */
+export function qwiic(name, x, y, r, o = {}) {
+  const n = r.pins, smd = (k, x, y, w, h) => ({ pin: `pin${k}`, smd: true, hint: String(k), x, y, w, h });
+  const pads = Array.from({ length: n }, (_, i) => smd(i + 1, (i - (n - 1) / 2) * r.pitch, r.pad_y, r.pad_w, r.pad_h))
+    .concat([-1, 1].map((side, i) => smd(n + i + 1, side * r.tab_x, r.tab_y, r.tab_w, r.tab_h)));
+  return chip(name, x, y, { mpn: 'JST SM04B-SRSS-TB', labels: { ...labelsFrom('qwiic', 'pins'), pin5: 'TAB1', pin6: 'TAB2' }, ...o }, { pads });
+}
+
+/** A JST PH socket (2.0 mm, through-hole), from the jstph rules: o.pins pins in a row along x (default 2). */
+export function jstph(name, x, y, r, o = {}) {
+  const n = o.pins ?? 2;
+  return chip(name, x, y, { mpn: `JST B${n}B-PH-K-S`, ...o }, { pads: Array.from({ length: n }, (_, i) => pad(`pin${i + 1}`, (i - (n - 1) / 2) * r.pitch, 0, r.drill, r.pad)) });
+}
+
 // ---------- the keyboard ----------
 // Keys from a layout file (lib/layout.mjs keys, in key units) -> [{ r, c, x, y, u, n, label }] in mm. The matrix row is
 // the layout row; the matrix column comes from lining every row up with the widest one: each row's keys take, in order,
@@ -270,12 +319,12 @@ export function keyboard(v, keys) {
 
 // ---------- building ----------
 // render(board) -> Circuit JSON (circuit.mjs)
-export const render = (board) => circuitJson(board);
+export const render = (board, options) => circuitJson(board, options); // options.route: a router in place of the autorouter
 
 // The board as a solid (previews, fits, the on-screen copy, the model page): the bare board, drilled, bottom at z = 0. Its
 // copper is drawn in the 2D views (views), not in 3D. The board is a 2D outline with its holes, extruded: its faces
 // triangulate cleanly (cylinders subtracted from a block leave long slivers).
-export function solids(json, { thickness, smooth }) {
+export function solids(json, { thickness, smooth = 16 }) { // smooth: segments per hole (a board without the variable gets 16)
   const { rectangle, circle } = jscad.primitives, { subtract } = jscad.booleans, { extrudeLinear } = jscad.extrusions;
   const b = json.find((e) => e.type === 'pcb_board');
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole' || e.type === 'pcb_via')
@@ -291,7 +340,14 @@ export function outputs(json, matrix) {
   return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}) };
 }
 
+/**
+ * A board's mounting holes (the board's own holes, not a part's): [{ x, y, d }] in mm, in the board's frame (as
+ * board_x and board_y). A case reads them to put its bosses under them; a holes fit checks screws find their inserts.
+ */
+export const holes = (json) => json.filter((e) => e.type === 'pcb_hole' && !e.pcb_component_id).map((e) => ({ x: e.x, y: e.y, d: e.hole_diameter }));
+
 // ---------- checks ----------
+const mm = (x) => String(Number(x.toFixed(3))); // 0.30000000000000004 reads as 0.3
 // checks(json, v) -> findings ({ level, text }): tscircuit's own design checks, the fab's limits, and the matrix
 export async function checks(json, v, matrix) {
   const { runAllChecks } = await import('@tscircuit/checks');
@@ -302,7 +358,7 @@ export async function checks(json, v, matrix) {
   const traces = json.filter((e) => e.type === 'pcb_trace'), unrouted = json.filter((e) => e.type === 'source_trace').length - traces.length;
   out.push(unrouted > 0 ? { level: 'fail', text: `${unrouted} connections have no track` } : { level: 'pass', text: `every connection is routed (${traces.length} tracks, ${json.filter((e) => e.type === 'pcb_via').length} vias)` });
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
-  out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${v.track} mm, gaps ${v.clear} mm: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
+  out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole').map((e) => e.hole_diameter ?? e.hole_width);
   out.push(Math.min(...drills) < j.drill_min ? { level: 'fail', text: `a hole under JLCPCB's ${j.drill_min} mm` } : { level: 'pass', text: `${drills.length} holes, smallest ${Math.min(...drills)} mm (JLCPCB: ${j.drill_min} mm)` });
   const b = json.find((e) => e.type === 'pcb_board'), size = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm`;
