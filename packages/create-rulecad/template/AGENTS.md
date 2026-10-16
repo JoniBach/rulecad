@@ -62,7 +62,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 
 ## Talking to the person
 - Give links as one labelled line (`npx cad link <project>/<object> --md`), never a raw URL. If it says
-  "(not a release)", say so.
+  "(not a release)", say so. If it says the link is too long for chat, don't paste it: tell the person, and offer
+  short links (a secret Gist), which upload the model, so ask first.
 - Say what the checks found, with numbers. Ask before anything that leaves the computer: releases with `--push`,
   ordering boards, publishing.
 - Designs are code: only run designs you or the person trust. Links and rule files are data and never run.

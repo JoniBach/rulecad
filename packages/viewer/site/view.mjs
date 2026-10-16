@@ -260,7 +260,9 @@ function show(model) {
 // ---------- 2D views ----------
 // A board's copper and its schematic come in the link as SVG drawings ([[name, svg]]). They're shown as images (an
 // <img> never runs anything inside an SVG), in tabs over the 3D view: "Board: front" and "Board: back" are choices
-// inside the Board tab. Drag to pan, wheel or pinch to zoom, double-click to fit.
+// inside the Board tab. A link may carry only "Board: both sides" with each element's copper layer marked
+// (data-pcb-layer): front and back are then made here, by a style inside the drawing hiding the other side.
+// Drag to pan, wheel or pinch to zoom, double-click to fit.
 function flatViews(model) {
   const list = (model.views || []).filter((v) => Array.isArray(v) && typeof v[0] === 'string' && typeof v[1] === 'string');
   if (!list.length) return;
@@ -271,6 +273,12 @@ function flatViews(model) {
     let x = groups.find((y) => y.name === g);
     if (!x) groups.push(x = { name: g, items: [] });
     x.items.push({ label: sub || g, svg, url: null });
+  }
+  for (const g of groups) {
+    const svg = g.items[0].svg;
+    if (g.items.length !== 1 || !/data-pcb-layer="top"/.test(svg) || !/data-pcb-layer="bottom"/.test(svg)) continue;
+    const only = (hide) => svg.replace(/<svg\b[^>]*>/, (open) => `${open}<style>[data-pcb-layer="${hide}"]{display:none}</style>`);
+    g.items.push({ label: 'front', svg: only('bottom'), url: null }, { label: 'back', svg: only('top'), url: null });
   }
   const at = { s: 1, x: 0, y: 0 }, place = () => { img.style.transform = `translate(${at.x}px, ${at.y}px) scale(${at.s})`; };
   const fit = () => {

@@ -330,8 +330,11 @@ async function shorten(l) {
 
 // --md: one line of labelled Markdown links, the form agents paste into chat (CLAUDE.md, "Replies with links").
 // Short (a Gist) unless --long; plain output is long (nothing uploaded) unless --short.
+const TOO_LONG = 8000; // characters: past this, chat apps and email cut a link short or refuse it
 async function printLinks(l) {
   if ((opt('md') && !opt('long')) || opt('short')) l = await shorten(l);
+  if (!l.short && l.view.length > TOO_LONG) console.error(`this link is ${(l.view.length / 1024).toFixed(0)} KB, too long for chat or email. ${hasTarget('shorten')
+    ? 'Leave out --long for a short one.' : 'For short links, add "shorten": "gist" to "targets" in cad.config.json: each model you share is then stored in a secret GitHub Gist (needs the gh command, signed in).'}`);
   // One link: the page picks which parts go in a download (all of them, one key, only the case)
   if (opt('md')) return console.log(`**${[l.title, l.version].filter(Boolean).join(' ')}**${l.src.includes('+') ? ' (not a release)' : ''}: [View and download](${l.view})`);
   console.log(`${l.src}, ${l.short ? 'short links (data in a secret Gist)' : `${(l.size / 1024).toFixed(1)} KB links`}${l.src.includes('+') ? ' (not a release: the link shows it)' : ''}`);

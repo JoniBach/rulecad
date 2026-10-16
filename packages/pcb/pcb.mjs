@@ -415,11 +415,22 @@ export async function kicadFiles(json, name) {
 export async function views(json) {
   const { convertCircuitJsonToPcbSvg, convertCircuitJsonToSchematicSvg } = await import('circuit-to-svg');
   return [
-    ['Board: both sides', convertCircuitJsonToPcbSvg(json)],
-    ['Board: front', convertCircuitJsonToPcbSvg(json, { layer: 'top' })],
-    ['Board: back', convertCircuitJsonToPcbSvg(json, { layer: 'bottom' })],
+    ['Board: both sides', convertCircuitJsonToPcbSvg(json)], // the model page makes front and back from its layers
     ['Schematic', convertCircuitJsonToSchematicSvg(json)],
-  ];
+  ].map(([name, svg]) => [name, light(svg)]);
+}
+
+/**
+ * A drawing made lighter for a link, looking the same: numbers in attributes rounded to 0.01 (the drawings are
+ * 800 px wide, so that's invisible; text keeps every digit), tscircuit's data-* attributes gone but each element's
+ * copper layer (data-pcb-layer, which the model page uses to show one side), and empty style tags gone.
+ * A board's link was mostly its drawings' 15-digit coordinates, which don't compress.
+ * @param {string} svg @returns {string}
+ */
+export function light(svg) {
+  const round = (v) => v.replace(/-?\d+\.\d{3,}/g, (n) => String(Math.round(Number(n) * 100) / 100));
+  return svg.replace(/ data-(?!pcb-layer=)[\w-]+="[^"]*"/g, '').replace(/<style><\/style>/g, '')
+    .replace(/(<[^>]+>)/g, (tag) => tag.replace(/="([^"]*)"/g, (_, v) => `="${round(v)}"`));
 }
 
 // The schematic as a PNG

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const BIN = fileURLToPath(new URL('./bin/cad.mjs', import.meta.url));
@@ -107,6 +107,17 @@ const BOX = `import jscad from '@jscad/modeling'
 const { cuboid } = jscad.primitives, { translate } = jscad.transforms
 export function main (v) { return translate([0, 0, v.h / 2], cuboid({ size: [v.w, v.d, v.h] })) }
 `;
+
+test('a link too long for chat says so, and how to get short ones', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/ball', { variables: { r: { value: 10, unit: 'mm', rule: 'Radius' }, n: { value: 256, unit: 'segments', rule: 'Smooth' } } },
+      "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.transforms.translate([0, 0, v.r], jscad.primitives.sphere({ radius: v.r, segments: v.n })) }\n");
+    const r = spawnSync(process.execPath, [BIN, 'link', 'demo/ball', '--md'], { cwd: ws, encoding: 'utf8' });
+    assert.ok(/too long for chat or email\. For short links, add "shorten": "gist"/.test(r.stderr), 'the warning is on stderr'); // (no regex match: the link is huge)
+    assert.equal(r.stdout.trim().split('\n').length, 1, '--md still prints one line');
+  } finally { done(); }
+});
 
 test('objects read each other: a frame sized from a plate follows it, versions are checked, and loops are named', () => {
   const { ws, cad, done } = workspace();

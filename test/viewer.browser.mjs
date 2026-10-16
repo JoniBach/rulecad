@@ -10,7 +10,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import jscad from '@jscad/modeling';
-import { fromTriangles, stl } from '@rulecad/model-link';
+import { fromTriangles, stl, encode } from '@rulecad/model-link';
 import { tri } from './jscad.mjs';
 
 const SITE = fileURLToPath(new URL('../packages/viewer/site/', import.meta.url));
@@ -56,6 +56,13 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     assert.match(await run('location.hash'), /^#m=1\./, 'the address is now the model\'s link');
     await new Promise((r) => setTimeout(r, 1500)); // a frame or two of the model turning
     await shot('viewer.png');
+    // A board link carrying only "both sides": the page makes front and back from its layer marks
+    const board = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"><rect width="80" height="60" data-pcb-layer="global"/><path d="M0 0L80 60" stroke="red" data-pcb-layer="top"/><path d="M80 0L0 60" stroke="blue" data-pcb-layer="bottom"/></svg>';
+    const link = await encode({ title: 'board', ...fromTriangles(tee), views: [['Board: both sides', board], ['Schematic', '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>']] });
+    await run(`location.hash = '#m=${link}'; location.reload(); true`).catch(() => {});
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'board'`), 'the board link opens');
+    await run(`[...document.querySelectorAll('#tabs button')].find((b) => b.textContent === 'Board').click(); true`);
+    assert.equal(await run(`[...document.querySelectorAll('#subtabs button')].map((b) => b.textContent).join(', ')`), 'both sides, front, back');
     ws.close();
   } finally {
     // Stop Chrome and wait for it (its profile folder is in use until then). It can ignore a polite stop, and while its
