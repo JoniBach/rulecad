@@ -3,13 +3,18 @@
 // read the result. Only two tscircuit libraries are used, and neither needs a framework: footprinter (standard
 // footprints such as SOD-123) and the capacity autorouter (connections a board leaves to it).
 //
-// board: { center: { x, y }, width, height, thickness, parts, traces, silk, holes, autoroute }
+// board: { center: { x, y }, width, height, thickness, parts, traces, nets, track, silk, holes, autoroute }
 //   part   { name, ftype: 'simple_switch' | 'simple_chip' | 'simple_diode', mpn, x, y, layer: 'top' | 'bottom',
-//            pads: [{ pin, x, y, hole, outer }] (plated, relative to the part), holes: [{ x, y, d }],
-//            courtyard: { w, h } | null, footprint: 'sod123' (a footprinter string, instead of pads),
+//            rotation: 0 | 90 | 180 | 270 (counter-clockwise, seen from the side the part is on; default 0),
+//            pads: [{ pin, x, y, hole, outer }] (plated, relative to the part) or [{ pin, smd: true, hint, x, y, w, h }],
+//            holes: [{ x, y, d }], courtyard: { w, h } | null,
+//            footprint: 'sod123' | 'jst4_sh' | 'pinrow4' ... (a footprinter string, SMD or through-hole, instead of pads),
 //            sch: { x, y, symbol?, pinLabels? } }
 //   trace  { from: [part, port], to: [part, port], width, path: [{ x, y }] (absolute, between the two ports) }; a trace
 //            without a path is left to the autorouter when board.autoroute is set
+//   nets   { GND: ['U1.GND', 'J1.1', 'J2.1'] } or { GND: { pins: [...], width } }: each net's pins are joined by the
+//            shortest set of connections between them (a minimum spanning tree), left to the autorouter, at the net's
+//            width or board.track; pins are named part.pin, by the pin's label, its name or its number
 //   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer }
 //   holes  [{ x, y, d }] in the board (mounting holes)
 // All positions are in mm, in the board's own frame. A part on the bottom is seen from above: mirrored in x.
@@ -17,7 +22,14 @@ import { fp } from '@tscircuit/footprinter';
 import { symbols } from 'schematic-symbols';
 
 const SUB = 'subcircuit_source_group_0';
-const PASTE = 0.7; // solder paste, as a share of an SMD pad (what tscircuit uses)
+const PASTE = 0.7;
+// Quarter turns, counter-clockwise, as exact cosines and sines (no rounding error in pad positions)
+const QUARTER = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
+function quarter(r = 0) {
+  const t = QUARTER[((r % 360) + 360) % 360];
+  if (!t) throw new Error(`a part's rotation is ${r}°: boards take 0, 90, 180 or 270`);
+  return t;
+} // solder paste, as a share of an SMD pad (what tscircuit uses)
 // The board's manufacturing minimums (mm): tscircuit's defaults, within what common fabs make. The router keeps to them.
 const FAB_MINIMUMS = { min_trace_width: 0.1, min_via_hole_diameter: 0.2, min_via_pad_diameter: 0.3, min_via_hole_edge_to_via_hole_edge_clearance: 0.1,
   min_trace_to_hole_edge_clearance: 0.2, min_trace_to_pad_edge_clearance: 0.1, min_pad_edge_to_pad_edge_clearance: 0.1,
@@ -39,12 +51,17 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       are_pins_interchangeable: part.ftype === 'simple_switch', source_group_id: 'source_group_0', subcircuit_id: SUB });
     const fpEls = part.footprint ? fp.string(part.footprint).circuitJson() : [];
     const mirror = part.layer === 'bottom' ? -1 : 1;
-    const at = (x, y) => ({ x: part.x + mirror * x, y: part.y + y });
-    // Pads: plated holes from the description, or a footprint's SMD pads (pin n: hints ['n'])
+    const [cos, sin] = quarter(part.rotation), swap = sin !== 0;
+    const at = (x, y) => ({ x: part.x + mirror * (cos * x - sin * y), y: part.y + (sin * x + cos * y) });
+    const size = (w, h) => (swap ? { w: h, h: w } : { w, h }); // a rectangle turned a quarter swaps its sides
+    // Pads: from the description, or a footprint's SMD pads and plated holes (pin n: hints ['n'])
     const pads = part.footprint
-      ? fpEls.filter((e) => e.type === 'pcb_smtpad').map((e) => ({ smd: true, pin: `pin${e.port_hints[0]}`, hint: e.port_hints[0], ...at(e.x, e.y), w: e.width, h: e.height }))
-      : part.pads.map((p) => ({ ...p, ...at(p.x, p.y) }));
-    const names = portNames(part);
+      ? fpEls.filter((e) => e.type === 'pcb_smtpad' || e.type === 'pcb_plated_hole').map((e) => e.type === 'pcb_smtpad'
+        ? { smd: true, pin: `pin${e.port_hints[0]}`, hint: e.port_hints[0], ...at(e.x, e.y), ...size(e.width, e.height) }
+        : { pin: `pin${e.port_hints[0]}`, hint: e.port_hints[0], ...at(e.x, e.y), hole: e.hole_diameter ?? Math.min(e.hole_width, e.hole_height),
+          outer: e.outer_diameter ?? Math.max(e.rect_pad_width ?? e.outer_width ?? 0, e.rect_pad_height ?? e.outer_height ?? 0) })
+      : part.pads.map((p) => ({ ...p, ...at(p.x, p.y), ...(p.smd ? size(p.w, p.h) : {}) }));
+    const names = portNames(part, pads);
     const sourcePorts = pads.map((p, i) => add('source_port', { name: names[i].name, pin_number: names[i].n, port_hints: names[i].hints,
       source_component_id: comp.source_component_id, subcircuit_id: SUB }));
     if (part.ftype === 'simple_chip') { // pins with the same label are joined inside the part (a Pico's GND pins)
@@ -53,18 +70,18 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       if (groups.length) comp.internally_connected_source_port_ids = groups.map((g) => g.map((s) => s.source_port_id));
       for (const g of groups) add('source_component_internal_connection', { source_component_id: comp.source_component_id, subcircuit_id: SUB, source_port_ids: g.map((s) => s.source_port_id) });
     }
-    placed.push({ part, comp, pads, sourcePorts, fpEls, at, mirror });
+    placed.push({ part, comp, pads, sourcePorts, fpEls, at, mirror, size });
   }
   add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: 2,
     width: board.width, height: board.height, material: 'fr4', ...FAB_MINIMUMS });
 
-  for (const { part, comp, pads, sourcePorts, fpEls, at, mirror } of placed) {
+  for (const { part, comp, pads, sourcePorts, fpEls, at, mirror, size } of placed) {
     // The component sits at the middle of its pads and holes (as tscircuit places it: pick-and-place reads this)
     const extent = [...pads.map((p) => (p.smd ? [p.x - p.w / 2, p.y - p.h / 2, p.x + p.w / 2, p.y + p.h / 2] : [p.x - p.outer / 2, p.y - p.outer / 2, p.x + p.outer / 2, p.y + p.outer / 2])),
       ...(part.holes || []).map((h) => { const q = at(h.x, h.y); return [q.x - h.d / 2, q.y - h.d / 2, q.x + h.d / 2, q.y + h.d / 2]; })];
     const box = [Math.min(...extent.map((e) => e[0])), Math.min(...extent.map((e) => e[1])), Math.max(...extent.map((e) => e[2])), Math.max(...extent.map((e) => e[3]))];
     const pc = add('pcb_component', { center: { x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2 }, width: box[2] - box[0], height: box[3] - box[1],
-      layer: part.layer, rotation: 0, source_component_id: comp.source_component_id, subcircuit_id: SUB });
+      layer: part.layer, rotation: part.rotation ?? 0, source_component_id: comp.source_component_id, subcircuit_id: SUB });
     const own = { pcb_component_id: pc.pcb_component_id, subcircuit_id: SUB };
     pads.forEach((p, i) => {
       const layers = p.smd ? [part.layer] : ['top', 'bottom'];
@@ -80,20 +97,20 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       for (const key of [sourcePorts[i].name, ...sourcePorts[i].port_hints]) ports.set(`${part.name}.${key}`, { source: sourcePorts[i], pcb: port, x: p.x, y: p.y, layers });
     });
     for (const h of part.holes || []) { const q = at(h.x, h.y); add('pcb_hole', { ...own, hole_shape: 'circle', hole_diameter: h.d, x: q.x, y: q.y, is_covered_with_solder_mask: false }); }
-    if (part.courtyard) add('pcb_courtyard_rect', { ...own, layer: part.layer, center: { x: part.x, y: part.y }, width: part.courtyard.w, height: part.courtyard.h });
+    if (part.courtyard) { const c = size(part.courtyard.w, part.courtyard.h); add('pcb_courtyard_rect', { ...own, layer: part.layer, center: { x: part.x, y: part.y }, width: c.w, height: c.h }); }
     // A footprint's own marks, mirrored with it on the bottom: fab notes, the reference, the courtyard
     for (const e of fpEls) {
       if (e.type === 'pcb_fabrication_note_path') add(e.type, { ...own, layer: part.layer, route: e.route.map((q) => at(q.x, q.y)), stroke_width: e.stroke_width });
       if (e.type === 'pcb_fabrication_note_text' || e.type === 'pcb_silkscreen_text') add(e.type, { anchor_alignment: 'center', anchor_position: at(e.anchor_position.x, e.anchor_position.y),
         font: e.font, font_size: e.type === 'pcb_silkscreen_text' ? 0.5 : e.font_size, layer: part.layer, ...(e.type === 'pcb_silkscreen_text' ? { text: e.text.replace('{REF}', part.name), ccw_rotation: 0 } : { ccw_rotation: mirror < 0 ? 180 : 0, text: e.text }), ...own });
-      if (e.type === 'pcb_courtyard_rect') add(e.type, { ...own, layer: part.layer, center: at(e.center.x, e.center.y), width: e.width, height: e.height });
+      if (e.type === 'pcb_courtyard_rect') { const c = size(e.width, e.height); add(e.type, { ...own, layer: part.layer, center: at(e.center.x, e.center.y), width: c.w, height: c.h }); }
     }
   }
 
   // ---- traces: drawn by rule, or left to the autorouter ----
   const port = (part, name) => { const p = ports.get(`${part}.${name}`); if (!p) throw new Error(`no port ${part}.${name}`); return p; };
-  const toRoute = [];
-  for (const t of board.traces) {
+  const toRoute = [], traces = [...(board.traces || []), ...netTraces(board, port)];
+  for (const t of traces) {
     const a = port(...t.from), b = port(...t.to);
     const st = add('source_trace', { connected_source_port_ids: [a.source.source_port_id, b.source.source_port_id], connected_source_net_ids: [], subcircuit_id: SUB,
       display_name: `.${t.from.join(' > .')} to .${t.to.join(' > .')}`, min_trace_thickness: t.width });
@@ -122,16 +139,37 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     }
   }
 
-  schematic(out, add, placed, board, port);
+  schematic(out, add, placed, { ...board, traces }, port);
   return out;
 }
 
 // A part's port names, in pad order: a switch's pin1 and pin2, a diode's anode and cathode, a chip's pins by label
-function portNames(part) {
+function portNames(part, pads) {
   if (part.ftype === 'simple_diode') return [{ name: 'pin1', n: 1, hints: ['pin1', 'pos', 'anode', 'left', '1'] }, { name: 'pin2', n: 2, hints: ['pin2', 'neg', 'cathode', 'right', '2'] }];
-  return part.pads.map((p) => {
+  return (part.pads || pads).map((p) => {
     const n = Number(p.pin.replace(/\D/g, '')), label = part.sch?.pinLabels?.[p.pin];
     return { name: label || p.pin, n, hints: label ? [label, p.pin, String(n)] : [p.pin, String(n)] };
+  });
+}
+
+// A net's connections: its pins joined by the shortest set of straight links between them (Prim's minimum spanning
+// tree, ties to the earlier pin), so the router gets short, sensible connections to route rather than a long chain
+function netTraces(board, port) {
+  return Object.entries(board.nets || {}).flatMap(([net, spec]) => {
+    const list = Array.isArray(spec) ? spec : spec.pins, width = (Array.isArray(spec) ? undefined : spec.width) ?? board.track;
+    if (!width) throw new Error(`net ${net}: no track width. Give the board a track width (board.track) or the net one ({ pins, width })`);
+    const pins = list.map((p) => { const i = String(p).indexOf('.'); if (i < 1) throw new Error(`net ${net}: "${p}" should name a part and a pin, like U1.GND`); return [p.slice(0, i), p.slice(i + 1)]; });
+    const at = pins.map((p) => port(...p)), linked = [0], links = [];
+    while (linked.length < pins.length) {
+      let best = null;
+      for (const a of linked) for (let b = 0; b < pins.length; b++) {
+        if (linked.includes(b)) continue;
+        const d = Math.hypot(at[a].x - at[b].x, at[a].y - at[b].y);
+        if (!best || d < best.d) best = { a, b, d };
+      }
+      linked.push(best.b); links.push({ from: pins[best.a], to: pins[best.b], width, net });
+    }
+    return links;
   });
 }
 
@@ -167,9 +205,9 @@ function schematic(out, add, placed, board, port) {
   for (const t of board.traces) {
     const a = port(...t.from), b = port(...t.to), pa = sch.get(a.source.source_port_id), pb = sch.get(b.source.source_port_id);
     const chip = [a, b].find((q) => placed.find((p) => p.sourcePorts.includes(q.source)).part.ftype === 'simple_chip');
-    if (chip) {
+    if (chip || t.net) { // a net's ends are labelled with the net's name
       // At the chip, the label points out from its side of the box; at the matrix, it hangs below the pin
-      for (const [q, sp] of [[pa, a], [pb, b]]) add('schematic_net_label', { text: chip.source.name, anchor_position: q.center, center: q.center,
+      for (const [q, sp] of [[pa, a], [pb, b]]) add('schematic_net_label', { text: t.net ?? chip.source.name, anchor_position: q.center, center: q.center,
         anchor_side: q.side_of_component === 'left' ? 'right' : q.side_of_component === 'right' ? 'left' : 'top', source_port_id: sp.source.source_port_id });
       continue;
     }

@@ -49,3 +49,9 @@ test('fmt: two decimals at most, names left alone', () => {
 test('lint: numbers in a design are flagged, except 0, 1, 2, comments and strings', () => {
   assert.deepEqual(lint('const a = v.x * 2 // 45 degrees\nconst b = "12" + 0.5\n/* 9 */ f(v.y, 1)'), [{ line: 2, text: '0.5' }]);
 });
+
+test('choices can be numbers: the value matches one and comes back as a number', () => {
+  const { values } = resolve({ variables: { turn: { value: 270, choice: [0, 90, 180, 270] } } });
+  assert.equal(values.turn, 270);
+  assert.throws(() => resolve({ variables: { turn: { value: 45, choice: [0, 90, 180, 270] } } }), /is one of 0, 90, 180, 270/);
+});

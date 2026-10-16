@@ -47,6 +47,16 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   with ranges from rules. An overlap or gap outside its range is a finding: report it with the numbers, and never
   widen a range to make it pass without saying why.
 - Build bigger things from checked assemblies used as items, rather than placing their objects again.
+- A part is named in fits as `<item>.<part>`; an object that returns one unnamed shape has one part, `body`.
+- A fit measures the gap between solids, not whether holes line up: after changing a board or a part with holes,
+  check its holes against the bosses or inserts they screw into, with the numbers.
+
+## Circuit boards
+- `"engine": "pcb"` in the .json; `main(v)` returns a board built with `v.pcb` (see @rulecad/pcb's README).
+- Parts come from rule sets where one exists (`v.pcb.xiao`, `qwiic`, `jstph`, `header`), or any standard footprint by
+  name (`v.pcb.part('U2', 'soic8', x, y)`). Turn parts in quarter turns with `rotation`, held in a variable.
+- Join pins with `nets` (`GND: ['U1.GND', 'J1.GND']`) and let the autorouter draw them; `cad check` runs the fab's
+  design rules. Look at the copper preview: connectors should face the edge their plug comes from.
 
 ## Talking to the person
 - Give links as one labelled line (`npx cad link <project>/<object> --md`), never a raw URL. If it says
