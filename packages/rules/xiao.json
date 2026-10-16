@@ -1,0 +1,15 @@
+{
+  "_doc": "Seeed Studio XIAO modules (ESP32-C3/C6/S3, nRF52840, RP2040, RP2350, SAMD21 ...): one size and pinout across the family, so a board can take any of them. kind as in x1c.json.",
+  "name": "xiao",
+  "rules": {
+    "length": { "value": 21, "unit": "mm", "rule": "Module length, USB end to far end", "kind": "spec", "source": "https://wiki.seeedstudio.com/xiao_rp2350_arduino", "checked": "2026-10-16" },
+    "width": { "value": 17.8, "unit": "mm", "rule": "Module width", "kind": "spec", "source": "https://wiki.seeedstudio.com/xiao_rp2350_arduino", "checked": "2026-10-16" },
+    "pitch": { "value": 2.54, "unit": "mm", "rule": "Pitch of the 7 pins down each side", "kind": "spec", "source": "https://wiki.seeedstudio.com/XIAO-RP2040", "checked": "2026-10-16" },
+    "row_spacing": { "value": 15.24, "unit": "mm", "rule": "Centre to centre of the two pin rows (0.6 in: the width less one castellation each side)", "kind": "estimate", "source": "17.8 mm module less 2 x 1.27 mm. Check against Seeed's KiCad footprint or measure", "checked": "2026-10-16" },
+    "drill": { "value": 1.0, "unit": "mm", "rule": "Hole for a 0.64 mm square header pin", "kind": "community", "source": "KiCad library, PinHeader_2.54mm", "checked": "2026-10-16" },
+    "pad": { "value": 1.7, "unit": "mm", "rule": "Round pad around a header hole", "kind": "community", "source": "KiCad library, PinHeader_2.54mm", "checked": "2026-10-16" },
+    "height": { "value": 3.5, "unit": "mm", "rule": "Module above the board it sits on: its board plus the USB-C socket, the tallest part", "kind": "estimate", "source": "USB-C receptacle about 3.2 mm on a 1 mm module board. Measure one", "checked": "2026-10-16" },
+    "pins": { "value": 14, "unit": "pins", "rule": "Seen from above, USB at the top: D0 to D6 down the left (pins 1 to 7), D7 to D10, 3V3, GND, 5V up the right (pins 8 to 14). D4 is SDA and D5 SCL on every XIAO", "kind": "spec", "source": "https://wiki.seeedstudio.com/xiao_rp2350_arduino", "checked": "2026-10-16",
+      "pins": { "1": "D0", "2": "D1", "3": "D2", "4": "D3", "5": "D4", "6": "D5", "7": "D6", "8": "D7", "9": "D8", "10": "D9", "11": "D10", "12": "3V3", "13": "GND", "14": "5V" } }
+  }
+}

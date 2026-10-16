@@ -319,7 +319,7 @@ export function keyboard(v, keys) {
 
 // ---------- building ----------
 // render(board) -> Circuit JSON (circuit.mjs)
-export const render = (board) => circuitJson(board);
+export const render = (board, options) => circuitJson(board, options); // options.route: a router in place of the autorouter
 
 // The board as a solid (previews, fits, the on-screen copy, the model page): the bare board, drilled, bottom at z = 0. Its
 // copper is drawn in the 2D views (views), not in 3D. The board is a 2D outline with its holes, extruded: its faces
