@@ -57,7 +57,7 @@ test('choices can be numbers: the value matches one and comes back as a number',
 });
 
 test('a rule set named with a hyphen is read with an underscore (a - is a minus in expressions)', () => {
-  const sets = { 'station/pod-th': { name: 'pod-th', rules: { width: { value: 72 } } } };
-  const { values } = resolve({ uses: ['station/pod-th'], variables: { w: { value: 'pod_th.width / 2' } } }, { sets });
-  assert.equal(values.w, 36);
+  const sets = { 'keyboard/mx-switch': { name: 'mx-switch', rules: { housing_top: { value: 11.6 } } } };
+  const { values } = resolve({ uses: ['keyboard/mx-switch'], variables: { lift: { value: 'mx_switch.housing_top / 2' } } }, { sets });
+  assert.equal(values.lift, 5.8);
 });

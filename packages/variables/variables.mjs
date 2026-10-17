@@ -120,7 +120,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     let src, where;
     if (name.includes('.')) {
       let [s, r] = name.split('.');
-      if (!ruleSets[s] && ruleSets[s.replace(/_/g, '-')]) s = s.replace(/_/g, '-'); // pod_th.width reads the set named pod-th (a - is a minus here)
+      if (!ruleSets[s] && ruleSets[s.replace(/_/g, '-')]) s = s.replace(/_/g, '-'); // mx_switch.housing_top reads the set named mx-switch (a - is a minus here)
       if (!ruleSets[s]) throw new Error(`"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
       if (!ruleSets[s].rules[r]) throw new Error(`"${name}": no rule "${r}" in ${s}`);
       src = ruleSets[s].rules[r].value; where = (n) => (n.includes('.') ? n : `${s}.${n}`); // a rule's names are its own set's

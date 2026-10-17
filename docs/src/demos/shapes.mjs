@@ -1,5 +1,5 @@
-// @rulecad/shapes, live: a shell, its lid (printed face down, shown lifted and turned over) and a dovetail rail,
-// remade as the sliders move. The same calls a design makes.
+// @rulecad/shapes, live: a macropad's case as a shell, its lid (printed face down, shown lifted and turned over) and a
+// dovetail rail, remade as the sliders move. The same calls a design makes.
 import jscad from '@jscad/modeling'
 import { shell, lid, dovetail, gabled } from '@rulecad/shapes'
 import { fromParts, encode } from '@rulecad/model-link'
@@ -7,7 +7,7 @@ import { stage, triangles, slider } from '../view3d.mjs'
 
 const { translate, rotateX } = jscad.transforms, { extrudeLinear } = jscad.extrusions, { subtract } = jscad.booleans
 const el = document.getElementById('demo'), controls = el.querySelector('.controls'), view = stage(el.querySelector('.stage'))
-const v = { width: 72, height: 48, depth: 20, round: 6, edge: 2, wall: 2.1 }
+const v = { width: 66, height: 66, depth: 14, round: 4, edge: 1.2, wall: 1.68 } // a case for a 3 × 3 macropad (19.05 mm keys)
 const fit = 0.2, line = 0.42, lift = 14
 
 function make () {
@@ -35,6 +35,6 @@ draw(true)
 
 el.querySelector('#open').addEventListener('click', async () => {
   const lidFlat = translate([v.width + 10, 0, 0], lid({ width: v.width, height: v.height, round: v.round, thick: 2.4, edge: Math.min(v.edge, 2.3), wall: v.wall, fit, lip: 2, ring: line * 3 }))
-  const model = { title: 'Box from @rulecad/shapes', version: '0.2.0', ...fromParts([{ name: 'shell', triangles: triangles(jscad, [parts.body, parts.rail]) }, { name: 'lid', triangles: triangles(jscad, lidFlat) }]) }
+  const model = { title: 'Macropad case from @rulecad/shapes', version: '0.2.0', ...fromParts([{ name: 'shell', triangles: triangles(jscad, [parts.body, parts.rail]) }, { name: 'lid', triangles: triangles(jscad, lidFlat) }]) }
   window.open(`../../#m=${await encode(model)}`, '_blank', 'noopener')
 })
