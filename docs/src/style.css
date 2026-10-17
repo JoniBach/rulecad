@@ -1,0 +1,64 @@
+/* rulecad docs: the viewer's Glass inks on Glass ground, set for reading */
+:root { --ground: #000; --panel: #0b0b0b; --ink-1: #fff; --ink-2: #b4b4b4; --ink-3: #6e6e6e; --line: #262626; --accent: #fff; --code: #111; --pass: #8fd19e; --warn: #f0c36b; --fail: #ff8a80; }
+* { box-sizing: border-box; }
+html { background: var(--ground); }
+body { margin: 0; background: var(--ground); color: var(--ink-1); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+a { color: var(--ink-1); text-underline-offset: 3px; text-decoration-color: var(--ink-3); }
+a:hover { text-decoration-color: var(--ink-1); }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--ink-1); outline-offset: 2px; }
+header.top { border-bottom: 1px solid var(--line); }
+header.top nav { max-width: 1100px; margin: 0 auto; padding: 14px 16px; display: flex; gap: 6px 18px; flex-wrap: wrap; align-items: baseline; font-size: 14px; }
+header.top nav a { color: var(--ink-2); text-decoration: none; }
+header.top nav a[aria-current] { color: var(--ink-1); }
+header.top nav .home { color: var(--ink-1); font-weight: 600; margin-right: 8px; }
+main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 80px; }
+h1 { font-size: 40px; font-weight: 500; margin: 0 0 6px; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 500; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+h3 { font-size: 17px; font-weight: 600; margin: 28px 0 8px; }
+h4, h5, h6 { font-size: 15px; margin: 20px 0 6px; }
+p, li { color: var(--ink-2); max-width: 75ch; }
+p b, li b { color: var(--ink-1); font-weight: 600; }
+.lede { font-size: 19px; color: var(--ink-2); max-width: 70ch; margin: 0 0 20px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+.chip { font-size: 13px; color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; text-decoration: none; }
+code { font: 0.9em/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: var(--code); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--ink-1); }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; border: 0; padding: 0; font-size: 13.5px; }
+.table { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 7px 12px 7px 0; vertical-align: top; color: var(--ink-2); }
+th { color: var(--ink-1); font-weight: 500; }
+blockquote { margin: 0; padding-left: 14px; border-left: 2px solid var(--line); }
+/* Demos */
+.demo { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+.demo.stack { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 760px) { .demo { grid-template-columns: minmax(0, 1fr); } }
+.controls { display: grid; gap: 10px; align-content: start; }
+.controls label { display: grid; grid-template-columns: 9ch minmax(0, 1fr) 6ch; gap: 10px; align-items: center; font-size: 14px; color: var(--ink-2); }
+.controls output { color: var(--ink-1); font-variant-numeric: tabular-nums; text-align: right; }
+input[type=range] { width: 100%; accent-color: var(--ink-1); }
+textarea, select, input[type=text] { width: 100%; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-1); background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+textarea { min-height: 220px; resize: vertical; }
+button, .button { font: inherit; font-size: 14px; color: var(--ink-1); background: none; border: 1px solid var(--ink-3); border-radius: 6px; padding: 7px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+button:hover, .button:hover { border-color: var(--ink-1); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.stage { position: relative; min-height: 320px; border-radius: 8px; background: #000; border: 1px solid var(--line); touch-action: none; cursor: grab; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 8px; }
+.stage .hint { position: absolute; left: 10px; bottom: 8px; font-size: 12px; color: var(--ink-3); pointer-events: none; }
+ul.findings { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 14px; }
+ul.findings li { display: grid; grid-template-columns: 5.5ch minmax(0, 1fr); gap: 8px; color: var(--ink-2); max-width: none; }
+.lv { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.lv.pass { color: var(--pass); } .lv.warn, .lv.info { color: var(--warn); } .lv.fail { color: var(--fail); }
+.out { font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-1); white-space: pre-wrap; background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0; overflow-x: auto; }
+.muted { color: var(--ink-3); font-size: 13px; }
+.figure { background: #fff; border-radius: 8px; padding: 8px; overflow: auto; }
+.figure img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.figure svg { display: block; width: 100%; height: auto; max-height: 520px; margin: 0 auto; }
+.out.nowrap { white-space: pre; }
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.card { border: 1px solid var(--line); border-radius: 12px; padding: 16px; text-decoration: none; display: grid; gap: 6px; background: var(--panel); }
+.card:hover { border-color: var(--ink-3); }
+.card h3 { margin: 0; font-size: 17px; }
+.card p { margin: 0; font-size: 14px; }
+.card .kind { font-size: 12px; color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; }
+footer.site { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; color: var(--ink-3); font-size: 13px; border-top: 1px solid var(--line); }
