@@ -119,7 +119,8 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     busy.add(name);
     let src, where;
     if (name.includes('.')) {
-      const [s, r] = name.split('.');
+      let [s, r] = name.split('.');
+      if (!ruleSets[s] && ruleSets[s.replace(/_/g, '-')]) s = s.replace(/_/g, '-'); // pod_th.width reads the set named pod-th (a - is a minus here)
       if (!ruleSets[s]) throw new Error(`"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
       if (!ruleSets[s].rules[r]) throw new Error(`"${name}": no rule "${r}" in ${s}`);
       src = ruleSets[s].rules[r].value; where = (n) => (n.includes('.') ? n : `${s}.${n}`); // a rule's names are its own set's
@@ -146,6 +147,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
       values[s][r] = lookup(`${s}.${r}`);
       entries.push({ name: `${s}.${r}`, ...d, value: values[s][r], expr: typeof d.value === 'string' ? d.value : undefined, used: used.has(`${s}.${r}`) });
     }
+    if (rs.footprints) values[s].footprints = rs.footprints; // pad data for boards (v.esp32c6.footprints.module), as the set gives it
   }
   return { values, entries };
 }

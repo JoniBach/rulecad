@@ -13,7 +13,8 @@
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
 import fs from 'node:fs';
 import path from 'node:path';
-import { circuitJson } from './circuit.mjs';
+import { circuitJson, bounds } from './circuit.mjs';
+export { bounds };
 import { loadRuleSet } from '@rulecad/cad/rules';
 import jscad from '@jscad/modeling';
 
@@ -317,6 +318,76 @@ export function keyboard(v, keys) {
   return { board, matrix };
 }
 
+// ---------- footprints from KiCad ----------
+/**
+ * A KiCad footprint (.kicad_mod text) as pad data: { pads, courtyard: { w, h } }, in mm, y up (KiCad's y is down).
+ * Keep the result in a rule set's "footprints" (with its source), and place it with footprint(): a design never
+ * reads files. SMD pads: { pin, smd: true, x, y, w, h } (a turned pad's w and h swapped); plated holes: { pin, x, y,
+ * hole, outer }. Pads named alike (several GND pads) keep their name; unnamed pads (mechanical) are left out.
+ * @param {string} text @returns {{ pads: object[], courtyard: { w: number, h: number } | null }}
+ */
+export function fromKicad(text) {
+  const num = (s) => Number(s), pads = [];
+  for (const m of text.matchAll(/\(pad\s+"([^"]*)"\s+(smd|thru_hole|np_thru_hole)\s+(\w+)([\s\S]*?)\(layers/g)) {
+    const [, name, kind, , rest] = m;
+    if (!name) continue;
+    const at = rest.match(/\(at\s+([-\d.]+)\s+([-\d.]+)(?:\s+([-\d.]+))?\)/), sz = rest.match(/\(size\s+([-\d.]+)\s+([-\d.]+)\)/);
+    if (!at || !sz) continue;
+    const turn = ((num(at[3] || 0) % 180) + 180) % 180 === 90, w = num(turn ? sz[2] : sz[1]), h = num(turn ? sz[1] : sz[2]);
+    const x = +num(at[1]).toFixed(4), y = +(-num(at[2])).toFixed(4);
+    if (kind === 'smd') pads.push({ pin: name, smd: true, x, y, w, h });
+    else if (kind === 'thru_hole') { const d = rest.match(/\(drill\s+(?:oval\s+)?([-\d.]+)/); pads.push({ pin: name, x, y, hole: num(d[1]), outer: Math.max(w, h) }); }
+  }
+  const pts = text.split(/\n\s*(?=\(fp_|\(pad|\(model|\(zone)/).filter((el) => /^\(fp_(?:line|rect|poly)/.test(el) && /\(layer\s+"F\.CrtYd"\)/.test(el)) // the courtyard's corners
+    .flatMap((el) => [...el.matchAll(/\((?:start|end|xy)\s+([-\d.]+)\s+([-\d.]+)\)/g)].map((m) => [num(m[1]), num(m[2])]));
+  const span = (k) => Math.max(...pts.map((p) => p[k])) - Math.min(...pts.map((p) => p[k]));
+  return { pads, courtyard: pts.length ? { w: +span(0).toFixed(3), h: +span(1).toFixed(3) } : null };
+}
+
+/**
+ * A part from footprint data (fromKicad's, kept in a rule set): pads as given, pins named by pad name (GND pads
+ * alike are joined in the part); data.labels ({ pin1: 'GND' }) and data.mpn name them. o: as part() (rotation,
+ * layer, mpn, labels, sch).
+ */
+export function footprint(name, data, x, y, o = {}) {
+  const pads = data.pads.map((p, i) => p.smd ? { pin: `pin${p.pin}`, smd: true, hint: String(p.pin), x: p.x, y: p.y, w: p.w, h: p.h } : pad(`pin${p.pin}`, p.x, p.y, p.hole, p.outer));
+  return chip(name, x, y, { courtyard: data.courtyard, mpn: data.mpn, labels: data.labels, ...o }, { pads });
+}
+
+// ---------- board shapes ----------
+// Outlines for board.outline: closed polygons, counter-clockwise, centred on at (default the origin). Curves are cut
+// into segments (default 8 per quarter circle: fine for a router and a fab, which mills them as arcs anyway).
+const arc = (cx, cy, r, a0, n) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + (Math.PI / 2) * (i / n); return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }; });
+export const shape = {
+  rect: (w, h, { at = [0, 0] } = {}) => shape.polygon([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]], { at }),
+  // corners rounded to radius r
+  rounded: (w, h, r, { at = [0, 0], segments = 8 } = {}) => {
+    if (r <= 0) return shape.rect(w, h, { at });
+    const x = w / 2 - r, y = h / 2 - r;
+    return [...arc(x, -y, r, -Math.PI / 2, segments), ...arc(x, y, r, 0, segments), ...arc(-x, y, r, Math.PI / 2, segments), ...arc(-x, -y, r, Math.PI, segments)]
+      .map((p) => ({ x: p.x + at[0], y: p.y + at[1] }));
+  },
+  // corners cut at 45 degrees, b along each side
+  bevelled: (w, h, b, { at = [0, 0] } = {}) => shape.polygon([[-w / 2 + b, -h / 2], [w / 2 - b, -h / 2], [w / 2, -h / 2 + b], [w / 2, h / 2 - b], [w / 2 - b, h / 2], [-w / 2 + b, h / 2], [-w / 2, h / 2 - b], [-w / 2, -h / 2 + b]], { at }),
+  // a ring from radius r0 to r1, open by gap at angle (radians) so it is one outline: for a contact ring's copper
+  ring: (r0, r1, { gap = 0.3, angle = 0, segments = 48, at = [0, 0] } = {}) => {
+    const a0 = angle + gap / r1 / 2, a1 = angle + Math.PI * 2 - gap / r1 / 2, b0 = angle + gap / r0 / 2, b1 = angle + Math.PI * 2 - gap / r0 / 2;
+    const arcAt = (r, s, e) => Array.from({ length: segments + 1 }, (_, i) => { const a = s + ((e - s) * i) / segments; return [at[0] + r * Math.cos(a), at[1] + r * Math.sin(a)]; });
+    return [...arcAt(r1, a0, a1), ...arcAt(r0, b1, b0)];
+  },
+  circle: (d, { at = [0, 0], segments = 32 } = {}) => Array.from({ length: segments }, (_, i) => ({ x: at[0] + (d / 2) * Math.cos((Math.PI * 2 * i) / segments), y: at[1] + (d / 2) * Math.sin((Math.PI * 2 * i) / segments) })),
+  polygon: (points, { at = [0, 0] } = {}) => points.map(([x, y]) => ({ x: x + at[0], y: y + at[1] }))
+};
+// Is the point inside the polygon? (even-odd rule)
+export function inside(points, x, y) {
+  let hit = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j];
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+  }
+  return hit;
+}
+
 // ---------- building ----------
 // render(board) -> Circuit JSON (circuit.mjs)
 export const render = (board, options) => circuitJson(board, options); // options.route: a router in place of the autorouter
@@ -325,11 +396,11 @@ export const render = (board, options) => circuitJson(board, options); // option
 // copper is drawn in the 2D views (views), not in 3D. The board is a 2D outline with its holes, extruded: its faces
 // triangulate cleanly (cylinders subtracted from a block leave long slivers).
 export function solids(json, { thickness, smooth = 16 }) { // smooth: segments per hole (a board without the variable gets 16)
-  const { rectangle, circle } = jscad.primitives, { subtract } = jscad.booleans, { extrudeLinear } = jscad.extrusions;
+  const { rectangle, circle, polygon } = jscad.primitives, { subtract } = jscad.booleans, { extrudeLinear } = jscad.extrusions;
   const b = json.find((e) => e.type === 'pcb_board');
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole' || e.type === 'pcb_via')
     .map((e) => circle({ center: [e.x, e.y], radius: (e.hole_diameter ?? e.hole_width) / 2, segments: smooth }));
-  const outline = rectangle({ center: [b.center.x, b.center.y], size: [b.width, b.height] });
+  const outline = b.outline ? polygon({ points: b.outline.map((p) => [p.x, p.y]) }) : rectangle({ center: [b.center.x, b.center.y], size: [b.width, b.height] });
   return { board: extrudeLinear({ height: thickness }, drills.length ? subtract(outline, ...drills) : outline) };
 }
 
@@ -337,13 +408,22 @@ export function solids(json, { thickness, smooth = 16 }) { // smooth: segments p
 // size, mm, in the layout's frame) and, with the Pico under it, the Pico's centre
 export function outputs(json, matrix) {
   const b = json.find((e) => e.type === 'pcb_board');
-  return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}) };
+  return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(b.outline ? { board_outline: b.outline } : {}), ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}) };
 }
 
 /**
  * A board's mounting holes (the board's own holes, not a part's): [{ x, y, d }] in mm, in the board's frame (as
  * board_x and board_y). A case reads them to put its bosses under them; a holes fit checks screws find their inserts.
  */
+/**
+ * Where a board's parts are, by name: { U1: { x, y, w, h, layer } } in mm, in the board's frame (w and h as placed,
+ * so a turned part's are swapped). A case reads them to put openings over a USB socket, a light or a button.
+ */
+export function parts(json) {
+  const names = Object.fromEntries(json.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e.name]));
+  return Object.fromEntries(json.filter((e) => e.type === 'pcb_component').map((e) => [names[e.source_component_id], { x: e.center.x, y: e.center.y, w: e.width, h: e.height, layer: e.layer, rotation: e.rotation ?? 0 }]));
+}
+
 export const holes = (json) => json.filter((e) => e.type === 'pcb_hole' && !e.pcb_component_id).map((e) => ({ x: e.x, y: e.y, d: e.hole_diameter }));
 
 // ---------- checks ----------
@@ -352,7 +432,13 @@ const mm = (x) => String(Number(x.toFixed(3))); // 0.30000000000000004 reads as 
 export async function checks(json, v, matrix) {
   const { runAllChecks } = await import('@tscircuit/checks');
   const out = [], j = v.jlcpcb;
-  const drc = await runAllChecks(json), problems = [...json, ...drc].filter((e) => /_error$/.test(e.type));
+  const board = json.find((e) => e.type === 'pcb_board');
+  // On a shaped board, a part's box can reach past a curved edge when its copper doesn't (a ring on a round disc): that
+  // part is checked here pad by pad against the outline instead (below)
+  const padsOf = (id) => json.filter((e) => e.pcb_component_id === id && ['pcb_smtpad', 'pcb_plated_hole'].includes(e.type));
+  const fits = (id) => board.outline && padsOf(id).every((e) => (e.points || [e]).every((q) => inside(board.outline, q.x, q.y)));
+  const drc = (await runAllChecks(json)).filter((e) => !(e.type === 'pcb_component_outside_board_error' && fits(e.pcb_component_id)));
+  const problems = [...json, ...drc].filter((e) => /_error$/.test(e.type));
   const seen = new Set(), errors = problems.filter((e) => !seen.has(e.message) && seen.add(e.message));
   out.push(errors.length ? { level: 'fail', text: `${errors.length} design-rule errors: ${errors.slice(0, 3).map((e) => e.message).join('; ')}` } : { level: 'pass', text: 'tscircuit\'s design checks: no errors (traces, clearances, holes, board edge)' });
   const traces = json.filter((e) => e.type === 'pcb_trace'), unrouted = json.filter((e) => e.type === 'source_trace').length - traces.length;
@@ -360,8 +446,12 @@ export async function checks(json, v, matrix) {
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
   out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole').map((e) => e.hole_diameter ?? e.hole_width);
-  out.push(Math.min(...drills) < j.drill_min ? { level: 'fail', text: `a hole under JLCPCB's ${j.drill_min} mm` } : { level: 'pass', text: `${drills.length} holes, smallest ${Math.min(...drills)} mm (JLCPCB: ${j.drill_min} mm)` });
+  if (drills.length) out.push(Math.min(...drills) < j.drill_min ? { level: 'fail', text: `a hole under JLCPCB's ${j.drill_min} mm` } : { level: 'pass', text: `${drills.length} holes, smallest ${Math.min(...drills)} mm (JLCPCB: ${j.drill_min} mm)` });
   const b = json.find((e) => e.type === 'pcb_board'), size = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm`;
+  if (b.outline) { // a shaped board: every pad and hole inside it
+    const pads = json.filter((e) => ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole'].includes(e.type)), out_ = pads.filter((e) => (e.points || [e]).some((q) => !inside(b.outline, q.x, q.y)));
+    out.push(out_.length ? { level: 'fail', text: `${out_.length} pads or holes outside the board's outline (first at ${mm(out_[0].x)}, ${mm(out_[0].y)} mm)` } : { level: 'pass', text: `shaped board (${b.outline.length} points): all ${pads.length} pads and holes inside it` });
+  }
   out.push(Math.max(b.width, b.height) <= j.cheap_size ? { level: 'pass', text: `${size}: within JLCPCB's lowest price (${j.cheap_size} × ${j.cheap_size} mm)` } : { level: 'info', text: `${size}: over ${j.cheap_size} × ${j.cheap_size} mm, priced by quote` });
   if (matrix) {
     const cells = new Set(matrix.keys.map((k) => `${k.row},${k.col}`)), gpio = [...Object.values(matrix.rows), ...Object.values(matrix.cols)];

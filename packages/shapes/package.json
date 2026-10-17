@@ -1,7 +1,7 @@
 {
   "name": "@rulecad/shapes",
-  "version": "0.1.2",
-  "description": "Shape helpers for printed JSCAD designs: text that prints cleanly, anchors on a face, and clean local cuts.",
+  "version": "0.2.0",
+  "description": "Shape helpers for printed JSCAD designs: text that prints cleanly, anchors on a face, clean local cuts, and enclosure pieces (shells, lids, rails, print-safe holes).",
   "type": "module",
   "exports": {
     "types": "./shapes.d.mts",
@@ -10,6 +10,8 @@
   "files": [
     "shapes.mjs",
     "shapes.d.mts",
+    "enclosure.mjs",
+    "enclosure.d.mts",
     "README.md",
     "LICENSE"
   ],

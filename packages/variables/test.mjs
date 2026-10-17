@@ -55,3 +55,9 @@ test('choices can be numbers: the value matches one and comes back as a number',
   assert.equal(values.turn, 270);
   assert.throws(() => resolve({ variables: { turn: { value: 45, choice: [0, 90, 180, 270] } } }), /is one of 0, 90, 180, 270/);
 });
+
+test('a rule set named with a hyphen is read with an underscore (a - is a minus in expressions)', () => {
+  const sets = { 'station/pod-th': { name: 'pod-th', rules: { width: { value: 72 } } } };
+  const { values } = resolve({ uses: ['station/pod-th'], variables: { w: { value: 'pod_th.width / 2' } } }, { sets });
+  assert.equal(values.w, 36);
+});

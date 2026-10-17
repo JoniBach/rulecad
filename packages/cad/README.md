@@ -98,7 +98,8 @@ which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a rel
   `<namespace>.<rule>`; the object's own variables are bare names. Parsed, never evaluated as code.
 - **Other objects' numbers:** `"uses": ["node/carrier"]` reads another object as a rule set named after it:
   `carrier.board_w` in an expression, `v.carrier.board_w` in code. It gets the object's variables and, from a board, its
-  outline (`board_x`, `board_y`, `board_w`, `board_d`) and, in code, its mounting holes (`v.carrier.board_holes`, each
+  outline (`board_x`, `board_y`, `board_w`, `board_d`) and, in code, where each of its parts is (`v.carrier.board_parts`),
+  a shaped board's outline (`board_outline`) and its mounting holes (`v.carrier.board_holes`, each
   `{ x, y, d }`). So a case follows its board: change the board and the case rebuilds around it. `"node/carrier@^0.2.0"`
   also checks the version; `"node/carrier@0.2.0"` reads that release. `cad rules` shows each borrowed number with the
   object and version it came from; two objects can't read each other.
@@ -121,6 +122,10 @@ which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a rel
   text so punctuation stays small, each straight stroke thickened to whole print lines, dots drawn round, and ↑ ↓ ← →
   as arrows), `anchor(face, size, at)` (where something goes on a face, by anchor), and `cut(a, b)` (a subtract that
   only touches a's faces near b; JSCAD's own splits every face along b's planes, which can leave slivers far away).
+- A rule set can also carry `"footprints"` (pad data from @rulecad/pcb's `fromKicad`, with its source), which a
+  board's code reads as `v.parts.footprints.usb_c`.
+- An object or rule set named with a hyphen (`pod-th`) is read with an underscore in expressions (`pod_th.width`),
+  since a hyphen there is a minus.
 - Rules carry `kind`: spec (manufacturer), default (slicer), community (rule of thumb) or measured (your own test
   print, which beats the rest), plus `source` and `checked`.
 
@@ -191,6 +196,8 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   Objects with `"role": "reference"` (the MX switch) model things you don't print: drawn faint, never exported.
 - **plate** assemblies lay objects out on the bed: they're checked as one print and `export` writes one 3MF with an
   object per part. Supports are kept.
+- **Turning:** `"rotate": [0, 180, 0]` turns an item (degrees about x, y, z, in that order) about its own origin
+  before `at` moves it: a pod on a side mount, or a lid modelled face down as it prints.
 - **Components:** an item can be a whole assembly (`"assembly": "keycap-on-switch"`). Its parts, fits and `requires`
   come along, named per copy (`key-1-1.cap.cap`), and its overlaps are still checked inside each copy.
 - **Repeats:** `"repeat": { "x": { "count": "plate.cols", "step": "plate.pitch" }, "y": { … } }` places a grid of

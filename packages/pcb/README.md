@@ -36,10 +36,23 @@ export function main(v) {
 - **Parts:** `xiao`, `qwiic`, `jstph` and `header` take their sizes and pinouts from rule sets in @rulecad/rules (each
   value with its source); `part(name, footprint, x, y)` takes any footprinter name: `soic8`, `0603`, `sot23`,
   `jst4_sh`, `pinrow4` (SMD or through-hole). Options: `rotation` (0, 90, 180, 270), `layer`, `mpn`, `labels`.
+- **Parts from KiCad:** `fromKicad(text)` turns a KiCad footprint (`.kicad_mod`) into pad data (y up) and its
+  courtyard. Keep the result in a rule set's `"footprints"` with its source and pin names (`labels: { pin1: 'GND' }`),
+  then place it with `footprint(name, data, x, y, o)`: a design reads rule sets, never files or the network.
+- **Any board shape:** give `outline: [{ x, y }, ...]` in place of a centre and size. `shape.rounded(w, h, r)`,
+  `shape.bevelled(w, h, b)`, `shape.circle(d)` and `shape.rect(w, h)` make common ones. The router keeps tracks
+  inside the outline, and a check finds any pad outside it.
+- **Copper of any shape:** a pad `{ pin, smd: true, x, y, points: [[x, y], ...] }` (x, y: where tracks join it), such
+  as a contact ring from `shape.ring(r0, r1)`. The router sees it as strips that follow its shape.
 - **Nets:** each net's pins are joined by the shortest set of links between them, at `board.track` (or the net's own
   `{ pins, width }`); pins are named `part.pin` by label, name or number. The schematic labels them by net.
-- **What a board tells the parts around it:** `board_x`, `board_y`, `board_w`, `board_d` and its mounting holes, so
-  a case can read it (`"uses": ["node/carrier"]` in @rulecad/cad) and a holes fit can check the screws find their inserts.
+- **What a board tells the parts around it:** `board_x`, `board_y`, `board_w`, `board_d`, its mounting holes, where
+  each part is (`parts(json)`: `{ U1: { x, y, w, h, layer, rotation } }`) and a shaped board's outline, so a case can
+  read it (`"uses": ["node/carrier"]` in @rulecad/cad: bosses under its holes, openings over its socket, light and
+  button) and a holes fit can check the screws find their inserts.
+- **Routing:** connections no rule draws go to tscircuit's capacity autorouter. Its tracks come back as pieces of each
+  net, named here by the pads they end on; where a piece ends on a one-sided pad from the other layer, a via is added
+  clear of the pad; and the build fails if any pad is left without a track. Drawn tracks can name their `layer`.
 - **Keyboards** are one recipe built on the same parts: every matrix track drawn by rule, one diode per key.
 
 A keyboard:

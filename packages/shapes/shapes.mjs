@@ -1,4 +1,5 @@
-// Shape helpers for JSCAD designs that are printed: text that prints, and placing things on a face.
+// Shape helpers for JSCAD designs that are printed: text that prints, placing things on a face, and the pieces of
+// enclosures (enclosure.mjs: outlines, slabs, shells, lids, dovetail rails, print-safe holes, vents).
 //   text({ text, height, stroke, segments }) -> a 2D outline of the text, centred on 0: JSCAD's single-line
 //     font, scaled so a capital is height tall, each line thickened to stroke wide (whole print lines, so it prints).
 //     The arrows the font lacks (up, down, left, right) are drawn in the same stroke.
@@ -80,3 +81,4 @@ export function cut(a, b, margin = 0.05) {
 
 export const size = (g) => { const [lo, hi] = measureBoundingBox(g); return [hi[0] - lo[0], hi[1] - lo[1]]; };
 export { scale };
+export { outline, slab, shell, lid, dovetail, gabled, diamond, vents } from './enclosure.mjs';
