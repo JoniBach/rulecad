@@ -105,7 +105,7 @@ test('drawings for links are lighter and look the same: coordinates rounded, lab
   assert.equal(light(svg), '<svg width="800"><path class="t" d="M 21.31 570.64 L 1.5 2" data-pcb-layer="top"/><text x="10.12">0.30000000000000004 mm</text></svg>');
 });
 
-test('a shaped board: a round one routes inside its outline, mills to its shape, and tells a case where its parts are', async () => {
+test('a shaped board: a round one routes inside its outline, mills to its shape, and tells a case where its parts are', { skip: !node22 && 'the autorouter needs Node 22' }, async () => {
   const outline = shape.circle(30, { segments: 48 });
   const json = await render({ outline, thickness: 1.6, track: 0.3, autoroute: true,
     parts: [part('R1', '0603', -6, 0), part('R2', '0603', 6, 0)], nets: { A: ['R1.1', 'R2.1'], B: ['R1.2', 'R2.2'] } });
