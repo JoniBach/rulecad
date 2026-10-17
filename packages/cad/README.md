@@ -69,6 +69,9 @@ fragment, which never reaches the web host, so the public page can open private 
 which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a release). The page is to become `@rulecad/viewer`;
 `scripts/publish-view.sh "message"` publishes it (only that folder) to the public repo.
 
+- **Rules:** a link carries the model's values and the rules they use (value, source, kind, date checked) for the
+  page's Rules panel; estimates are marked there. A rule set with `"private": true` stays out of links, and
+  `--no-rules` leaves the list out altogether. Anyone with a link can read what it carries.
 - **Short links** (`--short`, and the default for `--md`, once `"shorten": "gist"` is in `cad.config.json`'s
   `targets`): the link's data goes in a secret GitHub Gist (unlisted, but anyone with the link can open it) and the
   link carries only its ID: `…/#s=<id>`. The page fetches it from GitHub's API. The same model reuses its Gist

@@ -75,7 +75,6 @@
   .views .seg[hidden] { display: none; }
   .views .seg button { flex: none; padding: 6px 12px; }
   /* an assembly of several boards has a pair of tabs for each: they wrap rather than run under the Parts button */
-  .views { right: 110px; }
   .views .seg { flex-wrap: wrap; }
   .views .seg button { border-bottom: 1px solid var(--ink-3); margin-bottom: -1px; }
   /* Many views, or a phone: one button names the view and opens the list of them, which closes once one is picked */
@@ -95,7 +94,29 @@
   #flat[hidden] { display: none; }
   #flat img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; user-select: none; -webkit-user-drag: none; pointer-events: none; }
   #stage.flat canvas { visibility: hidden; }
-  #toggle { position: absolute; top: 14px; right: 14px; z-index: 2; padding: 6px 12px; font-size: 13px; background: #000; }
+  .corner { position: absolute; top: 14px; right: 14px; z-index: 2; display: flex; gap: 8px; }
+  #toggle, #rulesbtn { padding: 6px 12px; font-size: 13px; background: #000; }
+  #toggle[hidden], #rulesbtn[hidden] { display: none; }
+  .views { right: 170px; }
+  /* The rules sheet: over the model, every value with where it comes from, grouped by object and by rule set */
+  #sheet { position: absolute; inset: 0; z-index: 4; background: #000; overflow-y: auto; padding: 14px 18px 40px; }
+  #sheet[hidden] { display: none; }
+  .sheet-head { position: sticky; top: -14px; background: #000; display: flex; gap: 10px; align-items: center; padding: 6px 0 10px; }
+  .sheet-head h2 { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); font-weight: 500; flex: none; }
+  #sheetfind { flex: 1; min-width: 0; font: inherit; font-size: 14px; color: var(--ink-1); background: none; border: 1px solid var(--ink-3); border-radius: 6px; padding: 6px 10px; }
+  #sheetclose { padding: 6px 12px; font-size: 13px; }
+  .sheet-sub { color: var(--ink-3); font-size: 13px; margin: 0 0 8px; }
+  #sheet h3 { font-size: 13px; color: var(--ink-2); font-weight: 500; margin: 18px 0 4px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  #sheet dl { margin: 0; }
+  #sheetbody [hidden] { display: none; }
+  .rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .rule dt { font-size: 15px; overflow-wrap: anywhere; }
+  .rule .val { font-size: 15px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rule dd { grid-column: 1 / -1; margin: 0; color: var(--ink-2); font-size: 13px; overflow-wrap: anywhere; }
+  .rule .from { color: var(--ink-3); }
+  .rule .from a { color: var(--ink-2); }
+  .kind { display: inline-block; font-size: 11px; border: 1px solid var(--ink-3); border-radius: 4px; padding: 0 5px; margin-right: 6px; color: var(--ink-2); }
+  .kind.estimate { border-color: var(--ink-1); color: var(--ink-1); }
   .panel-head { display: flex; align-items: center; justify-content: space-between; padding-right: 14px; }
   #close { padding: 4px 10px; font-size: 13px; margin-top: 10px; }
   /* Phones and touch tablets: the panel is a drawer over the model's right side, closed until opened; tap the model
@@ -111,7 +132,8 @@
 </style>
 </head>
 <body>
-<div id="stage"><button id="toggle" title="Show or hide the parts panel">Parts</button>
+<div id="stage"><div class="corner"><button id="rulesbtn" hidden title="Where every measurement comes from">Rules</button><button id="toggle" title="Show or hide the parts panel">Parts</button></div>
+  <section id="sheet" hidden aria-label="Rules"><div class="sheet-head"><h2>Rules</h2><input id="sheetfind" type="search" placeholder="Find" aria-label="Find a rule"><button id="sheetclose">Close</button></div><p class="sheet-sub">Every measurement, and where it comes from. Estimates are guesses nobody has checked yet.</p><div id="sheetbody"></div></section>
   <div class="views"><button id="pick" hidden aria-expanded="false" title="Choose a view"></button><div class="seg" id="tabs" hidden></div><div class="seg" id="subtabs" hidden></div><button id="jump" hidden title="Show this board flat, from above">Board view ›</button></div>
   <div id="flat" hidden><img alt="2D view"></div></div>
 <aside id="panel" hidden><!-- closed until the script opens it on a wide screen with a mouse -->
