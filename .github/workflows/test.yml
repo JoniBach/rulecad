@@ -25,6 +25,7 @@ jobs:
       - run: npm run types # the JSDoc must make valid declarations
   browser:
     # The model page in headless Chrome: drop an STL, check it's drawn, checked and linked. Screenshots are kept.
+    # Then the documentation site: every library page runs without a script error and its demonstration draws.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,12 +35,16 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: node packages/viewer/scripts/build.mjs
-      - run: npm run test:browser
+      - run: mkdir -p test/docs-shots && npm run test:browser
+        env:
+          DOCS_SHOTS: test/docs-shots
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: viewer-screenshots
-          path: test/viewer*.png
+          path: |
+            test/viewer*.png
+            test/docs-shots/*.png
           if-no-files-found: ignore
   fresh-install:
     # The packages as a stranger installs them: packed, no lockfile, every dependency resolved afresh.

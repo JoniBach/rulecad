@@ -1,10 +1,11 @@
-# The public model page (@rulecad/viewer's site) on GitHub Pages: https://jonibach.github.io/rulecad/
-# Deployed from main whenever the viewer or the packages it copies in change.
+# The public model page (@rulecad/viewer's site) on GitHub Pages, https://jonibach.github.io/rulecad/, and beside it
+# the libraries' documentation, https://jonibach.github.io/rulecad/docs/ (docs/build.mjs: a page per package, its
+# README as the reference, live demonstrations). Deployed from main whenever a package or the docs change.
 name: pages
 on:
   push:
     branches: [main]
-    paths: [packages/viewer/**, packages/model-link/**, packages/printcheck/**, .github/workflows/pages.yml]
+    paths: [packages/**, docs/**, .github/workflows/pages.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,8 +25,9 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: node packages/viewer/scripts/build.mjs
+      - run: node docs/build.mjs --out _site
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: packages/viewer/site
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
