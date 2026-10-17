@@ -33,6 +33,12 @@ test('damaged, future and foreign links are refused', async () => {
   await assert.rejects(decode(await encode({ ...model, t: [0, 1, 99] })), /broken/);
 });
 
+test('an assembly of five boards carries both drawings of each: ten flat views', async () => {
+  const views = (n) => Array.from({ length: n }, (_, i) => [`board ${i >> 1} ${i % 2 ? 'Schematic' : 'Board: both sides'}`, '<svg/>']);
+  assert.equal((await decode(await encode({ ...model, views: views(10) }))).views.length, 10);
+  await assert.rejects(decode(await encode({ ...model, views: views(33) })), /33 flat views/);
+});
+
 test('fromSTL reads what stl() writes, and text STL too', async () => {
   const back = await decode(await encode(model));
   const round = (t) => t.flat(2).map((c) => Math.round(c * 1000) / 1000);

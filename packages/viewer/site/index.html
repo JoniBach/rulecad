@@ -74,6 +74,10 @@
   .views .seg { background: #000; }
   .views .seg[hidden] { display: none; }
   .views .seg button { flex: none; padding: 6px 12px; }
+  /* an assembly of several boards has a pair of tabs for each: they wrap rather than run under the Parts button */
+  .views { right: 110px; }
+  .views .seg { flex-wrap: wrap; }
+  .views .seg button { border-bottom: 1px solid var(--ink-3); margin-bottom: -1px; }
   #jump { padding: 6px 12px; font-size: 13px; background: #000; }
   #jump[hidden] { display: none; }
   #flat { position: absolute; inset: 0; overflow: hidden; background: #000; touch-action: none; cursor: grab; z-index: 1; }

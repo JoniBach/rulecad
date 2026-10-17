@@ -18,7 +18,7 @@
 /** @typedef {{ title?: string, version?: string, src?: string, material?: string, orientation?: string, rules?: [string, any, string][], q?: number, p?: number[], t?: number[], parts?: any[], shapes?: any[], place?: any[], views?: [string, string][] }} Model */
 
 export const VERSION = 1;
-export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 8, viewSize: 4e6 }; // every keycap with its own legend is its own shape
+export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 32, viewSize: 4e6 }; // every keycap with its own legend is its own shape
 
 const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
@@ -101,7 +101,8 @@ export function check(m) {
   if (m.p.length / 3 > LIMITS.vertices || m.t.length / 3 > LIMITS.triangles) return ['model too big for a link'];
   const n = m.p.length / 3;
   if (m.p.some((x) => !Number.isInteger(x)) || m.t.some((i) => !Number.isInteger(i) || i < 0 || i >= n)) return ['broken model data'];
-  if (m.views != null && (!Array.isArray(m.views) || m.views.length > LIMITS.views || m.views.some((v) => !Array.isArray(v) || typeof v[0] !== 'string' || typeof v[1] !== 'string' || v[1].length > LIMITS.viewSize))) return ['broken views'];
+  if (Array.isArray(m.views) && m.views.length > LIMITS.views) return [`${m.views.length} flat views: more than a link can hold (${LIMITS.views})`];
+  if (m.views != null && (!Array.isArray(m.views) || m.views.some((v) => !Array.isArray(v) || typeof v[0] !== 'string' || typeof v[1] !== 'string' || v[1].length > LIMITS.viewSize))) return ['broken views'];
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];
 }

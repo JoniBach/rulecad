@@ -12,7 +12,7 @@ import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, 
 import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
 import { isAssembly, buildAssembly, checkAssembly, shapes } from '../lib/assembly.mjs';
-import { fromParts, fromShapes, encode } from '@rulecad/model-link';
+import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 
 // The project's filaments: { base: { slot: 1, … }, legend: { slot: 2, … } } in project.json
@@ -31,6 +31,12 @@ function filamentNotes(parts, fil) {
 const openInSlicer = (f) => (process.platform === 'darwin' ? execFileSync('open', ['-a', 'Bambu Studio', f])
   : execFileSync(process.platform === 'win32' ? 'explorer' : 'xdg-open', [f]));
 const VIEW = process.env.CAD_VIEW_URL || config.viewUrl;
+// A link to the model page; one the page would turn away is an error here, not when someone opens it
+async function linkTo(model) {
+  const errors = checkLink(model.shapes ? expand(model) : model);
+  if (errors.length) throw new Error(`no link: ${errors[0]}`);
+  return `${VIEW}#m=${await encode(model)}`;
+}
 
 const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
@@ -278,7 +284,7 @@ async function assembly(cmd, ref) {
         return placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: tri(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; });
       })() : []),
     };
-    const url = `${VIEW}#m=${await encode(model)}`;
+    const url = await linkTo(model);
     return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src: model.src, size: url.length, title, version: '' };
   };
   if (cmd === 'link') return await printLinks(await link());
@@ -309,7 +315,7 @@ async function links(d, b, set) {
     ...(b.circuit ? { views: await (await pcbEngine()).views(b.circuit) } : {}), // boards: the 2D board and schematic
     ...fromParts(b.parts.map((p) => ({ name: p.name, role: p.role, label: p.label, slot: slotOf(fil, p.filament), triangles: p.triangles.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]])) }))),
   };
-  const url = `${VIEW}#m=${await encode(model)}`;
+  const url = await linkTo(model);
   return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src, size: url.length, title: model.title, version };
 }
 
