@@ -15,19 +15,19 @@ them, unused; rulecad's tests fail if it's ever loaded.
 nets, and let the autorouter draw the tracks:
 
 ```js
-// projects/node/objects/carrier.js: a radio module, two Qwiic sensor sockets, a battery socket and its diode
+// projects/macropad/objects/pcb.js: four keys wired straight to a XIAO, and a Qwiic socket for a small display
 export function main(v) {
-  const { xiao, qwiic, jstph, part } = v.pcb;
+  const { xiao, mx, qwiic } = v.pcb, p = v.mx.pitch;
+  const keys = Array.from({ length: v.keys }, (_, i) => mx(`K${i + 1}`, (i - (v.keys - 1) / 2) * p, v.key_y, v.mx));
   return {
-    center: { x: 7.5, y: -2.2 }, width: 35.5, height: 25.4, thickness: v.thickness, track: v.track, autoroute: true,
+    center: { x: 0, y: 0 }, width: p * v.keys + v.margin * 2, height: v.height, thickness: v.thickness, track: v.track, autoroute: true,
     parts: [
-      xiao('U1', 0, 0, v.xiao),                                  // pins labelled D0..D10, 3V3, GND, 5V from the xiao rules
-      qwiic('J1', v.qwiic_x, v.qwiic_y, v.qwiic),                // plug in from the top edge
-      qwiic('J2', v.j2_x, 0, v.qwiic, { rotation: v.j2_turn }),  // turned to face the right edge
-      jstph('J3', v.qwiic_x, v.bat_y, v.jstph, { labels: { pin1: 'BAT', pin2: 'BATGND' } }),
-      part('D1', 'sod123', v.qwiic_x, v.diode_y, { mpn: 'B5819W' })
+      ...keys,                                                       // one MX switch per key, from the mx rules
+      xiao('U1', 0, v.mcu_y, v.xiao),                                // pins labelled D0..D10, 3V3, GND, 5V from the xiao rules
+      qwiic('J1', v.qwiic_x, v.mcu_y, v.qwiic, { rotation: v.qwiic_turn }) // turned to face the board's edge
     ],
-    nets: { GND: ['U1.GND', 'J1.GND', 'J2.GND', 'J3.BATGND'], SDA: ['U1.D4', 'J1.SDA', 'J2.SDA'], /* ... */ },
+    nets: { GND: ['U1.GND', 'J1.GND', ...keys.map((k) => `${k.name}.pin2`)], SDA: ['U1.D4', 'J1.SDA'], SCL: ['U1.D5', 'J1.SCL'],
+      ...Object.fromEntries(keys.map((k, i) => [`KEY${i + 1}`, [`${k.name}.pin1`, `U1.D${i}`]])) },
     traces: [], silk: [], holes: []
   };
 }
@@ -43,13 +43,13 @@ export function main(v) {
   `shape.bevelled(w, h, b)`, `shape.circle(d)` and `shape.rect(w, h)` make common ones. The router keeps tracks
   inside the outline, and a check finds any pad outside it.
 - **Copper of any shape:** a pad `{ pin, smd: true, x, y, points: [[x, y], ...] }` (x, y: where tracks join it), such
-  as a contact ring from `shape.ring(r0, r1)`. The router sees it as strips that follow its shape.
+  as a ring from `shape.ring(r0, r1)` (a rotary contact, a touch pad). The router sees it as strips that follow its shape.
 - **Nets:** each net's pins are joined by the shortest set of links between them, at `board.track` (or the net's own
   `{ pins, width }`); pins are named `part.pin` by label, name or number. The schematic labels them by net.
 - **What a board tells the parts around it:** `board_x`, `board_y`, `board_w`, `board_d`, its mounting holes, where
   each part is (`parts(json)`: `{ U1: { x, y, w, h, layer, rotation } }`) and a shaped board's outline, so a case can
-  read it (`"uses": ["node/carrier"]` in @rulecad/cad: bosses under its holes, openings over its socket, light and
-  button) and a holes fit can check the screws find their inserts.
+  read it (`"uses": ["macropad/pcb"]` in @rulecad/cad: bosses under its holes, openings over its USB socket and
+  buttons) and a holes fit can check the screws find their inserts.
 - **Routing:** connections no rule draws go to tscircuit's capacity autorouter. Its tracks come back as pieces of each
   net, named here by the pads they end on; where a piece ends on a one-sided pad from the other layer, a via is added
   clear of the pad; and the build fails if any pad is left without a track. Drawn tracks can name their `layer`.

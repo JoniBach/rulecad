@@ -48,25 +48,21 @@ write(path.join(ASSETS, 'data/rulesets.json'), JSON.stringify(sets))
 
 // ---- made here: boards from @rulecad/pcb, a project from create-rulecad, cad's own output ----
 const made = { boards: [], cad: {} }
-const node22 = Number(process.versions.node.split('.')[0]) >= 22
 try {
+  // A 3 × 3 macropad from pcb's keyboard recipe: MX switches, a diode each, a Raspberry Pi Pico beside them, every track
+  // drawn by rule from the published rule sets. Then the same board on a rounded outline.
   const pcb = await import('@rulecad/pcb'), { resolve } = await import('@rulecad/variables')
   const load = (n) => require(`@rulecad/rules/${n}.json`)
-  const v = resolve({ uses: ['xiao', 'qwiic', 'jstph', 'jlcpcb'], variables: {} }, { load }).values
-  const disc = await pcb.render({ outline: pcb.shape.circle(24, { segments: 64 }), thickness: 1.6, track: 0.25,
-    parts: [{ name: 'K1', ftype: 'simple_chip', mpn: 'contact rings', x: 0, y: 0, layer: 'top', sch: { x: 0, y: 0 },
-      pads: Array.from({ length: 5 }, (_, k) => k ? { pin: `pin${k + 1}`, smd: true, x: -k * 2.6, y: 0, points: pcb.shape.ring(k * 2.6 - 1, k * 2.6 + 1, { angle: Math.PI / 2 }) }
-        : { pin: 'pin1', smd: true, x: 0, y: 0, points: pcb.shape.circle(2, { segments: 32 }).map((q) => [q.x, q.y]) }) }] })
-  made.boards.push({ name: 'disc', title: 'A shaped board: a round disc of contact rings', note: 'outline: shape.circle(24); each ring a polygon pad from shape.ring(). Built here with no routing.', svg: (await pcb.views(disc))[0][1] })
-  if (node22) {
-    const parts = [pcb.xiao('U1', -12, 0, v.xiao), pcb.qwiic('J1', 6, 8, v.qwiic), pcb.qwiic('J2', 15, -2, v.qwiic, { rotation: 270 }),
-      pcb.jstph('J3', 4, -7, v.jstph, { labels: { pin1: 'BAT', pin2: 'BATGND' } }),
-      { name: 'D1', ftype: 'simple_diode', footprint: 'sod123', mpn: 'B5819W', x: 4, y: -2, layer: 'top', sch: { x: 2, y: -1 } }]
-    const nets = { GND: ['U1.GND', 'J1.GND', 'J2.GND', 'J3.BATGND'], '3V3': ['U1.3V3', 'J1.3V3', 'J2.3V3'], SDA: ['U1.D4', 'J1.SDA', 'J2.SDA'], SCL: ['U1.D5', 'J1.SCL', 'J2.SCL'], VBAT: ['J3.BAT', 'D1.anode'], VIN: ['D1.cathode', 'U1.5V'] }
-    const json = await pcb.render({ center: { x: -1, y: 0 }, width: 44, height: 28, thickness: 1.6, parts, nets, track: 0.3, autoroute: true, traces: [], silk: [] })
-    const [board, schematic] = await pcb.views(json), found = await pcb.checks(json, { jlcpcb: v.jlcpcb, track: 0.3, clear: 0.25 })
-    made.boards.unshift({ name: 'node', title: 'A sensor node: a XIAO, two Qwiic sockets, a battery socket and a diode, joined by nets and autorouted', svg: board[1], schematic: schematic[1], found })
-  }
+  const v = resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
+    track: { value: 'jlcpcb.track_min * 2.5' }, clear: { value: 'jlcpcb.gap_min * 2.5' }, thickness: { value: 'jlcpcb.thickness' },
+    margin: { value: 5 }, mcu_gap: { value: 2 }, mcu_side: { value: 'left', choice: ['left', 'right'] }, mcu_row: { value: 0 }, mount_holes: { value: 1 },
+    controller: { value: 'beside', choice: ['beside', 'under'] } } }, { load }).values
+  const { board, matrix } = pcb.keyboard(v, pcb.grid(3, 3, v.mx.pitch))
+  const json = await pcb.render(board), found = await pcb.checks(json, v, matrix)
+  const [drawing, schematic] = await pcb.views(json)
+  made.boards.push({ title: 'A 3 × 3 macropad: nine MX switches, a diode each, and a Pico beside them', note: 'keyboard(v, grid(3, 3, v.mx.pitch)): the switch, Pico and diode sizes come from the mx, pico and sod123 rule sets; every matrix track is drawn by rule.', svg: drawing[1], schematic: schematic[1], found })
+  const rounded = await pcb.render({ ...board, outline: pcb.shape.rounded(board.width, board.height, 6, { at: [board.center.x, board.center.y] }) })
+  made.boards.push({ title: 'The same macropad on a shaped board', note: 'outline: shape.rounded(width, height, 6): any outline works (rounded, bevelled, circle, or your own points), and the checks find any pad outside it.', svg: (await pcb.views(rounded))[0][1] })
 } catch (e) { console.warn(`boards not drawn: ${e.message}`) }
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-docs-'))
 try {
@@ -100,7 +96,7 @@ const name = (dir) => pkg(dir).name
 // ---- what each page demonstrates ----
 const stage3d = '<div class="stage"><span class="hint">Drag to turn, scroll to zoom</span></div>'
 const demo = {
-  shapes: () => `<div class="demo" id="demo"><div class="controls"><p class="muted">The enclosure kit's own code, running here: a <code>shell</code> with a gabled opening, its <code>lid</code> (printed face down; shown lifted and turned over), and a <code>dovetail</code> rail.</p><div class="row"><button id="open">Open in the model page</button></div></div>${stage3d}</div>`,
+  shapes: () => `<div class="demo" id="demo"><div class="controls"><p class="muted">The enclosure kit's own code, running here: a macropad's case as a <code>shell</code> with a gabled opening for the USB cable, its <code>lid</code> (printed face down; shown lifted and turned over), and a <code>dovetail</code> rail.</p><div class="row"><button id="open">Open in the model page</button></div></div>${stage3d}</div>`,
   variables: () => `<div class="demo stack" id="demo"><div><p class="muted">A design's variables, resolved against the published <code>x1c</code> printer rules as you type. Change a rule name, a sum or a value.</p><textarea id="object" spellcheck="false">${esc(JSON.stringify({ uses: ['x1c'], variables: {
     wall: { value: 'x1c.line * 4', unit: 'mm', rule: 'Four print lines' }, floor: { value: 'x1c.layer * 8', unit: 'mm', rule: 'Eight layers' },
     slot: { value: '4 + x1c.fit * 2', unit: 'mm', rule: 'A 4 mm tab slides in, with the printer\'s fit each side', interface: true },
@@ -115,7 +111,7 @@ const demo = {
     <details><summary class="muted">Bring in a keyboard-layout-editor.com layout</summary><textarea id="kle" spellcheck="false" style="min-height:90px">["Esc","Q","W","E","R"],\n[{w:1.5},"Tab","A","S",{n:true},"D"]</textarea><button id="kle-go">Convert with fromKLE()</button></details></div>`,
   versions: () => `<div class="demo" id="demo"><div><p class="muted">Before</p><textarea id="before" spellcheck="false">${esc(JSON.stringify({ variables: { slot: { value: 4.2, interface: true }, wall: { value: 1.68 }, lip: { value: 2, interface: true } } }, null, 1))}</textarea></div><div><p class="muted">After: edit it. An interface value changed is a major release (old prints may not fit); a value that isn't interface, a patch.</p><textarea id="after" spellcheck="false">${esc(JSON.stringify({ variables: { slot: { value: 4.25, interface: true }, wall: { value: 2.1 }, lip: { value: 2, interface: true } } }, null, 1))}</textarea><p id="verdict"></p><div class="row" style="flex-wrap:nowrap"><input type="text" id="v" value="0.3.1" aria-label="Version"><input type="text" id="range" value="^0.3.0" aria-label="Range"></div><p class="muted" id="ok"></p></div></div>`,
   rules: () => `<div class="demo stack" id="demo"><input type="text" id="q" placeholder="Filter: m2, overhang, jlcpcb, xiao…" aria-label="Filter the rules"><p class="muted" id="count"></p><div class="table"><table id="rules"><thead><tr><th>Rule</th><th>Value</th><th>Why</th><th>Kind</th><th>Source</th></tr></thead><tbody></tbody></table></div></div>`,
-  pcb: () => made.boards.length ? made.boards.map((b) => `<h3>${esc(b.title)}</h3>${b.note ? `<p class="muted">${esc(b.note)}</p>` : ''}<div class="figure">${b.svg}</div>${b.schematic ? `<details><summary class="muted">Its schematic, drawn from the same description</summary><div class="figure">${b.schematic}</div></details>` : ''}${b.found ? `<ul class="findings" style="margin-top:12px">${b.found.map((f) => `<li><span class="lv ${f.level}">${f.level}</span><span>${esc(f.text)}</span></li>`).join('')}</ul>` : ''}`).join('') : '<p class="muted">The boards are drawn when the site is built on Node 22 or newer.</p>',
+  pcb: () => made.boards.length ? made.boards.map((b) => `<h3>${esc(b.title)}</h3>${b.note ? `<p class="muted">${esc(b.note)}</p>` : ''}<div class="figure">${b.svg}</div>${b.schematic ? `<details><summary class="muted">Its schematic, drawn from the same description</summary><div class="figure">${b.schematic}</div></details>` : ''}${b.found ? `<ul class="findings" style="margin-top:12px">${b.found.map((f) => `<li><span class="lv ${f.level}">${f.level}</span><span>${esc(f.text)}</span></li>`).join('')}</ul>` : ''}`).join('') : '<p class="muted">The boards are drawn when the site is built.</p>',
   cad: () => made.cad.check ? `<p class="muted">A project made with create-rulecad, checked with the published packages as this site was built:</p><pre class="out">$ npx cad check home/soap-tray\n${esc(made.cad.check)}</pre><div class="demo"><div class="figure" style="background:#000;padding:0"><img src="soap-tray.png" alt="The soap tray: front, side, top, bottom and three-quarter views, as cad preview draws them"></div><div><pre class="out nowrap">$ npx cad rules home/soap-tray\n${esc(made.cad.rules)}\n…</pre>${made.cad.link ? `<p><a class="button" href="${esc(made.cad.link)}">Turn it round in the model page</a></p>` : ''}</div></div>` : '',
   'create-rulecad': () => made.cad.tree ? `<p class="muted">What <code>npm create rulecad@latest project</code> makes, as this site was built:</p><pre class="out">${esc(made.cad.tree)}</pre>` : '',
   viewer: () => `<div class="demo stack"><p class="muted">The model page itself, live on this site. Open the soap tray from create-rulecad's starter project, or drop an STL file on the page to check it for printing.</p><div class="row">${made.cad.link ? `<a class="button" href="${esc(made.cad.link)}">Open the soap tray</a>` : ''}<a class="button" href="../../">Open an empty model page (drop an STL)</a></div></div>`

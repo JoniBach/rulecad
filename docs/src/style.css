@@ -34,7 +34,7 @@ blockquote { margin: 0; padding-left: 14px; border-left: 2px solid var(--line); 
 .demo.stack { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 760px) { .demo { grid-template-columns: minmax(0, 1fr); } }
 .controls { display: grid; gap: 10px; align-content: start; }
-.controls label { display: grid; grid-template-columns: 9ch minmax(0, 1fr) 6ch; gap: 10px; align-items: center; font-size: 14px; color: var(--ink-2); }
+.controls label { display: grid; grid-template-columns: 9ch minmax(0, 1fr) 7.5ch; gap: 10px; align-items: center; font-size: 14px; color: var(--ink-2); }
 .controls output { color: var(--ink-1); font-variant-numeric: tabular-nums; text-align: right; }
 input[type=range] { width: 100%; accent-color: var(--ink-1); }
 textarea, select, input[type=text] { width: 100%; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-1); background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }

@@ -79,7 +79,7 @@ test('a net joins its pins by the shortest links, not in the order written, and 
   await assert.rejects(render(board(pins, { nets: { SIG: ['R1'] }, autoroute: true })), /part and a pin, like U1.GND/);
 });
 
-test('a sensor node from rule-set parts: XIAO, two Qwiic sockets (one turned), a battery socket and diode, joined by nets', { skip: !node22 && 'the autorouter needs Node 22' }, async () => {
+test('parts from rule sets: a XIAO, two Qwiic sockets (one turned), a JST PH socket and a diode, joined by nets', { skip: !node22 && 'the autorouter needs Node 22' }, async () => {
   const v = node(['xiao', 'qwiic', 'jstph', 'jlcpcb']);
   const parts = [
     xiao('U1', -12, 0, v.xiao),
