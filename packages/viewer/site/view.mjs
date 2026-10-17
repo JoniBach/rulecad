@@ -58,6 +58,7 @@ function show(model) {
   $('title').textContent = model.title || 'Model';
   $('meta').textContent = [model.version, model.material, model.set && `set ${model.set}`, model.src].filter(Boolean).join(' · ');
   $('note').textContent = model.orientation || '';
+  $('about').hidden = !$('meta').textContent && !$('note').textContent;
   $('rules').replaceChildren(...(model.rules || []).map(([label, value, unit]) => {
     const li = document.createElement('li'), b = document.createElement('b');
     b.textContent = `${value}${unit && unit !== 'segments' ? ` ${unit}` : ''}`; li.append(`${label} `, b); return li;
@@ -317,6 +318,7 @@ function flatViews(model) {
     current = { g, item };
     stage.classList.toggle('flat', !!g);
     tabs.replaceChildren(button('3D', !g, () => open(null)), ...groups.map((x) => button(x.name, x === g, () => open(x, x.items[0]))));
+    views.classList.remove('open'); pick.setAttribute('aria-expanded', 'false'); pick.textContent = `${g ? g.name : '3D'} ▾`;
     subs.replaceChildren(...(g && g.items.length > 1 ? g.items.map((i) => button(i.label, i === item, () => open(g, i))) : []));
     subs.hidden = !(g && g.items.length > 1);
     flat.hidden = !g;
@@ -348,6 +350,14 @@ function flatViews(model) {
     jump.onclick = () => open(board, board.items[0]);
     addEventListener('cad:select', (e) => { jump.hidden = !(e.detail && /pcb|copper/i.test(`${e.detail.name} ${e.detail.label}`)) || !!current?.g; });
   }
+  // A phone, or more views than sit in a row: the picker button stands for the tabs
+  const views = tabs.parentElement, pick = $('pick'), narrow = matchMedia(DRAWER);
+  pick.onclick = () => pick.setAttribute('aria-expanded', String(views.classList.toggle('open')));
+  const compact = () => { const on = narrow.matches || groups.length > 3; views.classList.toggle('compact', on); pick.hidden = !on; };
+  const shut = () => { views.classList.remove('open'); pick.setAttribute('aria-expanded', 'false'); };
+  addEventListener('pointerdown', (e) => { if (!views.contains(e.target)) shut(); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') shut(); });
+  narrow.addEventListener('change', compact); compact();
   tabs.hidden = false;
   open(null);
 }

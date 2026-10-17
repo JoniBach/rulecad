@@ -78,6 +78,17 @@
   .views { right: 110px; }
   .views .seg { flex-wrap: wrap; }
   .views .seg button { border-bottom: 1px solid var(--ink-3); margin-bottom: -1px; }
+  /* Many views, or a phone: one button names the view and opens the list of them, which closes once one is picked */
+  #pick { padding: 6px 12px; font-size: 13px; background: #000; }
+  #pick[hidden] { display: none; }
+  .views.compact #tabs { flex-direction: column; flex-wrap: nowrap; max-height: 60vh; overflow-y: auto; }
+  .views.compact #tabs button { text-align: left; border-left: 0; }
+  .views.compact:not(.open) #tabs { display: none; }
+  /* The version list and print notes: there when wanted, folded away otherwise */
+  #about { margin-top: 6px; }
+  #about[hidden] { display: none; }
+  #about summary { cursor: pointer; color: var(--ink-2); font-size: 14px; width: max-content; }
+  #about .meta { font-size: 15px; }
   #jump { padding: 6px 12px; font-size: 13px; background: #000; }
   #jump[hidden] { display: none; }
   #flat { position: absolute; inset: 0; overflow: hidden; background: #000; touch-action: none; cursor: grab; z-index: 1; }
@@ -93,7 +104,7 @@
     body { grid-template-columns: 1fr; }
     #panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(320px, 85vw); background: #000; z-index: 5; box-shadow: -12px 0 24px #000; }
     footer { padding: 16px; grid-template-columns: 1fr; gap: 12px; }
-    h1 { font-size: 26px; }
+    h1 { font-size: 22px; }
     .actions { justify-content: flex-start; }
     #status, #picked-foot { text-align: left; }
   }
@@ -101,7 +112,7 @@
 </head>
 <body>
 <div id="stage"><button id="toggle" title="Show or hide the parts panel">Parts</button>
-  <div class="views"><div class="seg" id="tabs" hidden></div><div class="seg" id="subtabs" hidden></div><button id="jump" hidden title="Show this board flat, from above">Board view ›</button></div>
+  <div class="views"><button id="pick" hidden aria-expanded="false" title="Choose a view"></button><div class="seg" id="tabs" hidden></div><div class="seg" id="subtabs" hidden></div><button id="jump" hidden title="Show this board flat, from above">Board view ›</button></div>
   <div id="flat" hidden><img alt="2D view"></div></div>
 <aside id="panel" hidden><!-- closed until the script opens it on a wide screen with a mouse -->
   <div class="panel-head"><h2>View</h2><button id="close" title="Hide the parts panel">Close</button></div>
@@ -118,7 +129,7 @@
   <ul class="tree" id="tree"></ul>
 </aside>
 <footer>
-  <div><h1 id="title"></h1><div class="meta" id="meta"></div><div class="note" id="note"></div><ul class="rules" id="rules"></ul></div>
+  <div><h1 id="title"></h1><details id="about" hidden><summary>Details</summary><div class="meta" id="meta"></div><div class="note" id="note"></div></details><ul class="rules" id="rules"></ul></div>
   <div><div class="actions"><button data-get="stl">Download STL</button><button data-get="3mf">Download 3MF</button><button id="copy">Copy link</button></div><div id="picked-foot"></div><div id="status"></div></div>
 </footer>
 <script>
