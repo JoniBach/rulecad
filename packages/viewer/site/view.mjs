@@ -5,7 +5,7 @@
 import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, stl, threemf, filename, thingOf } from './model-link.mjs';
 import { check } from './printcheck.mjs';
 import { WebGLRenderer, Scene, PerspectiveCamera, BufferGeometry, Float32BufferAttribute, Mesh, MeshLambertMaterial, LineSegments,
-  EdgesGeometry, LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3 } from './three.min.js';
+  LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3 } from './three.min.js';
 
 const $ = (id) => document.getElementById(id);
 const DRAWER = '(max-width: 760px), (pointer: coarse) and (max-width: 1100px)'; // the same query as the drawer's CSS
@@ -23,6 +23,31 @@ async function download(model, kind, pick = {}) {
 }
 
 // ---------- the project view ----------
+// The lines where a part's faces meet at more than deg degrees, and its open edges. Unlike three's EdgesGeometry, an
+// edge pairs up whichever way its triangles run, and a face folded flat back on itself is no crease: a link snaps its
+// corners to a grid, which can turn a long thin triangle over (as on a board's face between its holes), and three would
+// edge each one in white. A triangle with no area has no say.
+function creases(g, deg) {
+  const pos = g.getAttribute('position').array, key = (i) => `${Math.round(pos[i] * 1e4)},${Math.round(pos[i + 1] * 1e4)},${Math.round(pos[i + 2] * 1e4)}`;
+  const edges = new Map(), cos = Math.cos(deg * Math.PI / 180), a = new Vector3(), b = new Vector3(), c = new Vector3();
+  for (let i = 0; i < pos.length; i += 9) {
+    a.fromArray(pos, i); b.fromArray(pos, i + 3); c.fromArray(pos, i + 6);
+    const n = new Vector3().crossVectors(b.clone().sub(a), c.clone().sub(a)), len = n.length(), normal = len > 1e-12 ? n.divideScalar(len) : null;
+    for (let k = 0; k < 3; k++) {
+      const u = i + k * 3, v = i + ((k + 1) % 3) * 3, ku = key(u), kv = key(v);
+      if (ku === kv) continue;
+      const id = ku < kv ? `${ku}|${kv}` : `${kv}|${ku}`, e = edges.get(id) || { u, v, uses: 0, normals: [] };
+      e.uses++; if (normal) e.normals.push(normal); edges.set(id, e);
+    }
+  }
+  const out = [];
+  for (const e of edges.values()) {
+    const [n0, ...rest] = e.normals, sharp = rest.some((n) => { const d = n.dot(n0); return d < cos && d > -0.9998; });
+    if (e.uses === 1 || sharp) out.push(...pos.slice(e.u, e.u + 3), ...pos.slice(e.v, e.v + 3));
+  }
+  const lines = new BufferGeometry(); lines.setAttribute('position', new Float32BufferAttribute(out, 3)); return lines;
+}
+
 // Each part is drawn three ways (faces, crease lines, every triangle's edges); its style picks which show:
 //   solid (faces + creases), wire (every edge), xray (see-through faces + creases), faint (creases in ink-3), hidden.
 // A part's style is "auto" until set: supports and references are faint, real parts follow the view mode.
@@ -52,7 +77,7 @@ function show(model) {
     p.g.translate(-mid.x, -mid.y, -mid.z); p.g.computeBoundingBox();
     p.faces = new MeshLambertMaterial({ color: 0x3a3a3a, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, transparent: true });
     p.creaseInk = new LineBasicMaterial({ color: INK[1] }); p.wireInk = new LineBasicMaterial({ color: INK[2] });
-    p.mesh = new Mesh(p.g, p.faces); p.creases = new LineSegments(new EdgesGeometry(p.g, 25), p.creaseInk);
+    p.mesh = new Mesh(p.g, p.faces); p.creases = new LineSegments(creases(p.g, 25), p.creaseInk);
     p.wire = null; // made the first time it's needed
     p.node = new Group(); p.node.add(p.mesh, p.creases); p.mesh.userData.part = p;
     turn.add(p.node);
