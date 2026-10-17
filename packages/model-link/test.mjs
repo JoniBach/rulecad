@@ -33,6 +33,12 @@ test('damaged, future and foreign links are refused', async () => {
   await assert.rejects(decode(await encode({ ...model, t: [0, 1, 99] })), /broken/);
 });
 
+test('a rules sheet travels as text rows, and a malformed one is refused', async () => {
+  const sheet = [['plate', 'width', '40', 'mm', 'Fits the tray'], ['x1c', 'line', '0.42', 'mm', 'Line width', '', 'spec', 'https://example.org', '2026-10-11']];
+  assert.deepEqual((await decode(await encode({ ...model, sheet }))).sheet, sheet);
+  await assert.rejects(decode(await encode({ ...model, sheet: [['plate', 40]] })), /rules sheet/);
+});
+
 test('an assembly of five boards carries both drawings of each: ten flat views', async () => {
   const views = (n) => Array.from({ length: n }, (_, i) => [`board ${i >> 1} ${i % 2 ? 'Schematic' : 'Board: both sides'}`, '<svg/>']);
   assert.equal((await decode(await encode({ ...model, views: views(10) }))).views.length, 10);

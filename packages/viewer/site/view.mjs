@@ -59,6 +59,7 @@ function show(model) {
   $('meta').textContent = [model.version, model.material, model.set && `set ${model.set}`, model.src].filter(Boolean).join(' · ');
   $('note').textContent = model.orientation || '';
   $('about').hidden = !$('meta').textContent && !$('note').textContent;
+  rulesSheet(model.sheet);
   $('rules').replaceChildren(...(model.rules || []).map(([label, value, unit]) => {
     const li = document.createElement('li'), b = document.createElement('b');
     b.textContent = `${value}${unit && unit !== 'segments' ? ` ${unit}` : ''}`; li.append(`${label} `, b); return li;
@@ -281,6 +282,47 @@ function show(model) {
   });
   apply();
   return { picked };
+}
+
+// ---------- the rules sheet ----------
+// Rows [group, name, value, unit, rule, expr, kind, source, checked]: the model's own values, grouped by object, then
+// the rules they use, grouped by rule set. All of it is the link's data: written as text, and a source is a link only
+// when it's a web address.
+function rulesSheet(rows) {
+  const btn = $('rulesbtn'), sheet = $('sheet'), body = $('sheetbody'), find = $('sheetfind');
+  if (!Array.isArray(rows) || !rows.length) return;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const groups = new Map();
+  for (const r of rows) { if (!groups.has(r[0])) groups.set(r[0], []); groups.get(r[0]).push(r); }
+  const blocks = [...groups].map(([group, list]) => {
+    const dl = el('dl'), items = list.map(([, name, value, unit = '', rule = '', expr = '', kind = '', source = '', checked = '']) => {
+      const row = el('div', 'rule');
+      row.append(el('dt', null, name), el('div', 'val', `${value}${unit && unit !== 'segments' ? ` ${unit}` : ''}`));
+      if (rule) row.append(el('dd', null, rule));
+      const from = el('dd', 'from');
+      if (kind) from.append(el('span', `kind ${kind === 'estimate' ? 'estimate' : ''}`, kind));
+      if (expr) from.append(`= ${expr}`);
+      if (source) {
+        if (expr) from.append(' · ');
+        if (/^https?:\/\//.test(source)) { const a = el('a', null, source.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')); a.href = source; a.target = '_blank'; a.rel = 'noopener noreferrer'; from.append(a); }
+        else from.append(source);
+      }
+      if (checked) from.append(` · checked ${checked}`);
+      if (from.childNodes.length) row.append(from);
+      row.dataset.text = [group, name, value, unit, rule, expr, kind, source].join(' ').toLowerCase();
+      return row;
+    });
+    dl.append(...items);
+    const block = el('div'); block.append(el('h3', null, group), dl); return block;
+  });
+  body.replaceChildren(...blocks);
+  const open = (on) => { sheet.hidden = !on; }; // no focus on the find box: on a phone it would raise the keyboard
+  btn.hidden = false; btn.onclick = () => open(sheet.hidden); $('sheetclose').onclick = () => open(false);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) open(false); });
+  find.oninput = () => {
+    const q = find.value.trim().toLowerCase();
+    for (const b of blocks) { let any = false; for (const r of b.querySelectorAll('.rule')) { const hit = !q || r.dataset.text.includes(q); r.hidden = !hit; any ||= hit; } b.hidden = !any; }
+  };
 }
 
 // ---------- 2D views ----------

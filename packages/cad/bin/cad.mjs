@@ -51,6 +51,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad link <project>/<object>       links to open the model in a browser, and to download its STL or 3MF
                                     [--md: one labelled Markdown link, for chat (the page downloads any parts): short unless --long]
                                     [--short: the model's data in a secret GitHub Gist, so links are ~80 characters]
+                                    [--no-rules: leave out the Rules panel's list of values and their sources]
 
   cad status [project]              each object's version, and whether it has changes since its last release
   cad release <project>/<object> -m "what changed" [--bump major|minor|patch] [--dry-run] [--push]
@@ -270,6 +271,7 @@ async function assembly(cmd, ref) {
     const model = {
       title, version: versions, src: `${s.project}/${s.name}`, // object versions are in version: the file name stays short orientation: a.note || (a.kind === 'plate' ? 'A print plate: print everything together.' : 'A fit check: references are faint.'),
       rules: [],
+      ...sheet([...new Map(s.objects.filter((o) => o.built?.entries).map((o) => [o.objName, o.built.entries])).entries()]),
       // Its boards' 2D views (copper, schematic), so one link holds the whole build: tabs over the 3D model
       ...(await (async () => {
         const boards = [...new Map(s.objects.filter((o) => o.built?.circuit).map((o) => [o.objName, o])).values()];
@@ -303,6 +305,23 @@ async function assembly(cmd, ref) {
 }
 
 // ---------- links ----------
+// The rules sheet a link carries, for the page's Rules panel: a row for each of an object's own values, then each rule
+// they use, as [group, name, value, unit, rule, expr, kind, source, checked] (group: the object, or the rule's set).
+// A rule set marked "private" stays out, and --no-rules leaves the sheet out altogether.
+function sheet(objects) {
+  if (opt('no-rules')) return {};
+  const rows = [], seen = new Set(), trim = (r) => { while (r.length && (r[r.length - 1] === '' || r[r.length - 1] == null)) r.pop(); return r; };
+  for (const [obj, entries] of objects) for (const e of entries) {
+    if (!e.name.includes('.')) rows.push(trim([obj, e.label || e.name, fmt(e.value), e.unit || '', e.rule || '', e.expr || '']));
+  }
+  for (const [, entries] of objects) for (const e of entries) {
+    if (!e.name.includes('.') || !e.used || e.private || seen.has(e.name)) continue;
+    seen.add(e.name);
+    const [set, name] = e.name.split('.');
+    rows.push(trim([set, name, fmt(e.value), e.unit || '', e.rule || '', e.expr || '', e.kind || '', e.source || '', e.checked || '']));
+  }
+  return rows.length ? { sheet: rows } : {};
+}
 // The model as a link: full print precision (triangles), the rules card, and exactly which version it is.
 async function links(d, b, set) {
   const s = d.tag ? { kind: null } : await since(d), fil = filaments(d.project);
@@ -312,6 +331,7 @@ async function links(d, b, set) {
     title: `${b.object.title || b.object.name}${d.variant ? ` (${d.variant})` : ''}`, version, src, ...(Object.keys(set).length ? { set: suffix(set).slice(1).replace(/-(?=\w+=)/g, ',') } : {}),
     material: b.object.material, orientation: b.object.orientation,
     rules: b.entries.filter((e) => e.show).map((e) => [e.label || e.name, fmt(e.value), e.unit || '']),
+    ...sheet([[b.object.name, b.entries]]),
     ...(b.circuit ? { views: await (await pcbEngine()).views(b.circuit) } : {}), // boards: the 2D board and schematic
     ...fromParts(b.parts.map((p) => ({ name: p.name, role: p.role, label: p.label, slot: slotOf(fil, p.filament), triangles: p.triangles.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]])) }))),
   };
