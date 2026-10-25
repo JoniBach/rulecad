@@ -17,6 +17,15 @@ variable says which rule it comes from. Follow these steps; they're what makes a
    on `interface` (versions follow them). Give sensible `tweak` ranges to the ones they may want to change.
 5. `npx cad export` for printing; `npx cad link --md` for a link to share.
 
+## Fitting something from elsewhere
+- When a part must fit something whose model exists (a maker's CAD, a model site), measure that model:
+  `npx cad measure <file> --rules <name> --source <url> --licence "…"`. Look at the drawing in `.preview/measure/`,
+  then rename the draft rules for what they are and say in each `rule` what the feature does.
+- Model it from those rules, then `npx cad match <project>/<object> <file>`: report the worst places with their numbers,
+  and look at the sections picture. A deliberate clearance shows as an even offset; anything else is a finding.
+- Don't copy the shape of a model whose licence is non-commercial, no-derivatives or share-alike into a design under
+  another licence: take measurements only, and say so.
+
 ## Changing a design
 1. `npx cad history <project>/<object>` first: read the print log. A failed print is the reason for most changes:
    fix the rule or variable it points at (a measured fit beats a community rule).
