@@ -11,6 +11,7 @@ import { locate, build, pick, lint, readObject, printer, pcbEngine, objectSets }
 import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, prints, printsFile, engineId } from '../lib/versions.mjs';
 import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
+import { measure, match } from '../lib/meshcmd.mjs';
 import { isAssembly, buildAssembly, checkAssembly, shapes } from '../lib/assembly.mjs';
 import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { threemf, slotOf } from '../lib/threemf.mjs';
@@ -61,6 +62,16 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad diff <project>/<object> <from> [<to>]   what changed between two releases (or a release and now)
   cad printed <project>/<object> --result ok|failed [--note "…"] [--material PETG] [--version 0.1.0]
   cad release <project> --all -m "…"   release every object that changed (each with this message), then the project
+
+  cad measure <model.stl|3mf>       a model from elsewhere, measured: size, the stretches along its length with the same
+                                    cross-section, and each section's shape, with a drawing in .preview/measure/
+                                    [--along x|y|z] [--at 10,50: sections there too] [--line 0.6,2.5;4.6,2.5: where lines
+                                    along it are inside] [--rules <name> --source <url> --licence "…": draft rules]
+  cad match <project>/<object> <model.stl|3mf>   how closely the design matches a model: both ways, signed, with the
+                                    worst places and sections through them [--tol 0.2 (default: the printer's fit)]
+                                    [--place "rz90 t1,2,3": how to lay the model over the design, else it is fitted]
+                                    [--at 10,50: sections there too] [--samples 20000]
+  --no-pictures                     measure, match: the report only, no drawings (no Chrome needed)
 
   cad variants <project>/<object>   the object's variants: named sets of inputs, built as <project>/<object>:<variant>
   cad compare <project>/<object> <a> <b>   two variants (or releases, 1.2.0) side by side in one preview
@@ -127,6 +138,11 @@ async function main() {
     return;
   }
   if (cmd === 'status') return status(ref);
+  if (cmd === 'measure') {
+    if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>]');
+    const list = (k) => (opt(k) && opt(k) !== true ? String(opt(k)).split(k === 'line' ? ';' : ',').filter(Boolean) : []);
+    return measure(ref, { along: opt('along'), at: list('at'), line: list('line'), rules: opt('rules'), source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), pictures: !opt('no-pictures') });
+  }
   if (!ref) throw new Error(`usage: cad ${cmd} <project>/<object>`);
   if (cmd === 'release') return ref.includes('/') ? releaseObject(locate(ref)) : opt('all') ? releaseAll(ref) : releaseProject(ref);
   if (cmd === 'variants') return variants(locate(ref));
@@ -142,6 +158,15 @@ async function main() {
   const title = `${b.object.title || b.object.name}${d.variant ? ` (${d.variant})` : ''}`, version = b.object.version || '0.0.0';
 
   if (b.circuit && ['check', 'preview', 'export'].includes(cmd)) return board(cmd, d, b, { title, version, tag });
+
+  if (cmd === 'match') {
+    const file = args[2];
+    if (!file || file.startsWith('--')) throw new Error(`usage: cad match ${ref} <model.stl|model.3mf> [--tol 0.2] [--place "rz90 t1,2,3"]`);
+    const tol = opt('tol') ? Number(opt('tol')) : printer(b, d).fit ?? 0.2;
+    const ok = await match(b, d, file, { place: opt('place'), tol, samples: Number(opt('samples')) || 20000, at: opt('at') ? String(opt('at')).split(',') : [], title: `${title} ${version}`, tag, pictures: !opt('no-pictures') });
+    process.exitCode = ok ? 0 : 1;
+    return;
+  }
 
   if (cmd === 'rules') {
     for (const e of b.entries) console.log(`${e.name.padEnd(18)} ${`${fmt(e.value)} ${e.unit || ''}`.padEnd(14)} ${e.expr ? `= ${e.expr}  ` : ''}${e.rule || ''}${e.source ? `  [${e.kind ? `${e.kind}: ` : ''}${e.source}]` : ''}${e.set ? '  (set)' : ''}`);

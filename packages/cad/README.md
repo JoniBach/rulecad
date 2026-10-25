@@ -36,6 +36,8 @@ npx cad check bathroom/soap-tray --set width=60   # change variables that have a
 npx cad variants keyboard/keycap                 # named sets of inputs: keyboard/keycap:legend-f
 npx cad compare keyboard/keycap dsa legend-f     # two variants (or releases) side by side
 npx cad import-kle layout.json keyboard/mine     # a layout from keyboard-layout-editor.com, into layouts/
+npx cad measure cover.3mf --rules cover          # a model from elsewhere, measured into draft rules
+npx cad match legion-go/rail cover.3mf           # how closely a design matches that model, both ways
 ```
 
 The keyboard examples below come from the project rulecad grew out of: a keycap, a switch plate, a case and their
@@ -180,6 +182,31 @@ out. `--part cap` works on one part; `cad preview --explode` moves the parts apa
   printer, process and filament settings are left alone.
 - The print check treats parts that print together as one print: an underside resting on another part (a legend on its
   cap) isn't an overhang, and each part must be a closed solid on its own.
+
+## Models from elsewhere
+
+To fit something someone else made (a maker's connector, a part from a model site), measure their model rather than
+guessing, then check your design against it.
+
+`cad measure <model.stl|model.3mf>` finds the stretches along the model's longest axis (or `--along y`) where its
+cross-section stays the same, numbers the distinct sections (a section seen again gets the same letter), and describes
+each one: its extent and its height bands, the heights over which it has the same pieces across, split again at steps.
+It draws every distinct section in `.preview/measure/`. `--line 0.6,2.5` reports where a line along the axis is inside
+the model (where notches start and stop); `--at 10,50` adds sections there. `--rules <name>` writes the numbers as a
+draft rule set, every value `kind: derived` with the file, `--source` and `--licence` it came from: rename the
+placeholder names (`stretch3_from`, `sectionB_w`) for what they are before a design uses them. Sections are compared by
+shape, within 0.05 mm, so a curve faceted differently along its length is still one section.
+
+`cad match <project>/<object> <model>` lays the model over the design (trying every quarter turn whose size fits, then
+shifting it onto the design's surface; `--place "rz90 t1,2,3"` pins it) and samples both surfaces: how far the design is
+from the model, and the model from the design, signed (outside: extra material; inside: missing material, or a
+clearance you meant). It passes when everything is within `--tol` (the printer's sliding fit by default), warns when
+only the worst 5% is past it, and fails otherwise, listing the worst places. The pictures show the model over the
+design, and sections through the worst places with the model dashed. Deliberate differences (a clearance on sliding
+faces) show up as an even offset: set `--tol` above them.
+
+A model's licence limits what you make from it, not what you learn: measurements are facts, but a non-commercial or
+share-alike model's shape shouldn't be copied into a design under another licence. `measure` warns about those.
 
 ## Assemblies
 

@@ -7,7 +7,7 @@
 // No imports and no file access: it runs in a browser as well. Rule sets are handed in (sets) or fetched by name
 // through load(name), such as one that reads rules/<name>.json.
 
-/** @typedef {{ value: number | string, unit?: string, rule?: string, kind?: 'spec' | 'community' | 'default' | 'estimate' | 'measured', source?: string, checked?: string, label?: string, show?: boolean, interface?: boolean, tweak?: { min: number, max: number }, choice?: string[], type?: 'text' | 'anchor' | 'layout' }} Variable */
+/** @typedef {{ value: number | string, unit?: string, rule?: string, kind?: 'spec' | 'community' | 'default' | 'estimate' | 'measured' | 'derived', source?: string, licence?: string, checked?: string, label?: string, show?: boolean, interface?: boolean, tweak?: { min: number, max: number }, choice?: string[], type?: 'text' | 'anchor' | 'layout' }} Variable */
 /** @typedef {{ name?: string, rules: Record<string, Variable> }} RuleSet */
 /** @typedef {{ uses?: string[], variables?: Record<string, Variable>, [field: string]: any }} DesignObject */
 /** @typedef {{ name: string, value: number | string, used?: boolean, set?: boolean, [field: string]: any }} Entry */

@@ -24,8 +24,8 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `wiring` | Room for hand wiring | 1 |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such
-as KiCad's library or KeyV2), **default** (a setting that works), or **estimate** (nobody has published it: measure it
-and correct it). Use them with `@rulecad/variables` (`uses: ['x1c']`, then `x1c.line * 3` in any expression), or read
+as KiCad's library or KeyV2), **default** (a setting that works), **derived** (read off someone else's model with `cad measure`: check it
+against the real thing, and see its `licence`), or **estimate** (nobody has published it: measure it and correct it). Use them with `@rulecad/variables` (`uses: ['x1c']`, then `x1c.line * 3` in any expression), or read
 the JSON from anywhere.
 
 **Corrections are the most useful contribution.** If you measured something, use the "Correct a rule" issue form on

@@ -30,6 +30,16 @@ export async function preview(parts, { title = '', meta = '', out, explode = fal
     if (u.startsWith('/three/') && fs.existsSync(f)) return send('text/javascript', fs.readFileSync(f));
     res.writeHead(404); res.end();
   });
+  return shoot(server, out);
+}
+
+// Any page as an image: html served on this Mac for the few seconds Chrome takes (an SVG drawing, a report)
+export async function picture(html, out, { width = 1800, height = 1200 } = {}) {
+  const server = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(html); });
+  return shoot(server, out, { width, height });
+}
+
+async function shoot(server, out, { width = 1800, height = 1200 } = {}) {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cad-preview-'));
   fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -37,7 +47,7 @@ export async function preview(parts, { title = '', meta = '', out, explode = fal
     await new Promise((resolve, reject) => {
       if (!CHROME) return reject(new Error('no Chrome or Chromium found for previews: set CAD_CHROME to one'));
       const p = spawn(CHROME, ['--headless=new', `--user-data-dir=${profile}`, '--no-first-run', '--hide-scrollbars', '--force-device-scale-factor=1',
-        '--window-size=1800,1200', '--virtual-time-budget=8000', `--screenshot=${out}`, `http://127.0.0.1:${server.address().port}/`], { stdio: 'ignore' });
+        `--window-size=${width},${height}`, '--virtual-time-budget=8000', `--screenshot=${out}`, `http://127.0.0.1:${server.address().port}/`], { stdio: 'ignore' });
       const t = setTimeout(() => { p.kill(); reject(new Error('Chrome took too long to render the preview')); }, 60000);
       p.on('exit', () => { clearTimeout(t); fs.existsSync(out) ? resolve() : reject(new Error('Chrome made no screenshot')); });
     });

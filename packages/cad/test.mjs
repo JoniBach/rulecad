@@ -166,3 +166,60 @@ export function main (v) {
     assert.match(moved, /pcb\.board \/ blk\.body: closest gap 0 mm/, 'while the gap fit alone still passes');
   } finally { done(); }
 });
+
+// A rail-like test part: a plate with a key standing on part of it, and a notch in the key's top
+async function railPart() {
+  const { primitives: { cuboid }, booleans: { union, subtract }, transforms: { translate } } = (await import('@jscad/modeling')).default;
+  const box = (lo, size) => translate(lo.map((a, i) => a + size[i] / 2), cuboid({ size }));
+  const g = subtract(union(box([0, -5, 0], [40, 10, 2]), box([10, -2, 2], [20, 4, 3])), box([18, -3, 3.5], [4, 6, 2]));
+  const { polygons } = await import('./lib/design.mjs');
+  return polygons(g, { triangulate: true }).flatMap((p) => p.slice(1, -1).map((_, i) => [p[0], p[i + 1], p[i + 2]]));
+}
+
+test('mesh: the stretches with the same section, lines along a part, and STL and 3MF files read back', async () => {
+  const m = await import('./lib/mesh.mjs');
+  const tris = await railPart();
+  const runs = m.profiles(tris, 0).map((r) => [r.from, r.to, r.shape]);
+  assert.deepEqual(runs, [[0, 10, 0], [10, 18, 1], [18, 22, 2], [22, 30, 1], [30, 40, 0]], 'plate, key, notch, key, plate: the same sections numbered alike');
+  const key = m.profiles(tris, 0)[1];
+  assert.deepEqual(key.bands.map((b) => [b.from, b.to, b.pieces]), [[0, 2, 1], [2, 5, 1]], 'a step where the key stands on the plate splits the bands');
+  assert.deepEqual(m.spans(tris, 0, [0, 4]).map(([a, b]) => [Math.round(a * 100) / 100, Math.round(b * 100) / 100]), [[10, 18], [22, 30]]);
+  // binary STL, ASCII STL and our own 3MF, read back
+  const bin = Buffer.alloc(84 + tris.length * 50);
+  bin.writeUInt32LE(tris.length, 80);
+  tris.forEach((t, i) => t.forEach((v, j) => v.forEach((x, k) => bin.writeFloatLE(x, 84 + i * 50 + 12 + j * 12 + k * 4))));
+  const ascii = `solid t\n${tris.map((t) => `facet normal 0 0 0\nouter loop\n${t.map((v) => `vertex ${v.join(' ')}`).join('\n')}\nendloop\nendfacet`).join('\n')}\nendsolid t\n`;
+  const { threemf } = await import('./lib/threemf.mjs');
+  const zip = Buffer.from(await threemf([{ name: 'rail', parts: [{ name: 'body', triangles: tris, slot: 1 }] }]));
+  for (const read of [m.readStl(bin), m.readStl(Buffer.from(ascii)), m.read3mf(zip)]) {
+    assert.equal(read.length, tris.length);
+    assert.deepEqual(m.bounds(read).size.map((x) => Math.round(x * 100) / 100), [40, 10, 5]);
+  }
+  // laid back over itself after a quarter turn and a shift
+  const moved = m.turn(tris, m.parsePlacement('rz90').M, [5, -7, 3]);
+  assert.ok(m.align(moved, tris).score < 0.01, 'found the turn and shift back');
+});
+
+test('cad measure and cad match: a model measured into draft rules, and a design checked against it both ways', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'bathroom/soap-tray');
+    cad('export', 'bathroom/soap-tray');
+    const file = 'exports/bathroom/soap-tray@0.1.0.3mf';
+    const same = cad('match', 'bathroom/soap-tray', file, '--no-pictures', '--samples', '3000');
+    assert.match(same, /✓ the design's surface: 95% within 0 mm/);
+    assert.match(same, /✓ the reference's surface/);
+    const wider = cad('match', 'bathroom/soap-tray', file, '--no-pictures', '--samples', '3000', '--set', 'width=60');
+    assert.match(wider, /✗ the design's surface/);
+    assert.match(wider, /outside the reference \(extra material\)/);
+    const measured = cad('measure', file, '--no-pictures', '--rules', 'tray', '--licence', 'CC BY-NC-SA 4.0', '--line', '0,1');
+    assert.match(measured, /a closed solid/);
+    assert.match(measured, /40 × 30 × 10 mm/);
+    assert.match(measured, /licence "CC BY-NC-SA 4.0" limits reuse/);
+    const rules = JSON.parse(fs.readFileSync(path.join(ws, 'rules/tray.json'), 'utf8')).rules;
+    assert.equal(rules.size_x.value, 40);
+    assert.equal(rules.size_x.kind, 'derived');
+    assert.equal(rules.size_x.licence, 'CC BY-NC-SA 4.0');
+    assert.match(cad('measure', file, '--no-pictures', '--rules', 'tray'), /already exists/);
+  } finally { done(); }
+});
