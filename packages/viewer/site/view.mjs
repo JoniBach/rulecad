@@ -351,6 +351,8 @@ function moving(mo, parts, mid) {
       return hits % 2 === 1;
     } };
   };
+  // In by more than a touch: inside however the corner is nudged (a corner on the other part's face is touching it)
+  const E = 0.05, deep = (g, x, y, z) => g.inside(x, y, z) && g.inside(x + E, y, z) && g.inside(x - E, y, z) && g.inside(x, y + E, z) && g.inside(x, y - E, z) && g.inside(x, y, z + E) && g.inside(x, y, z - E);
   const look = () => {
     const live = parts.filter((p) => p.mesh.visible || p.creases.visible), at = new Map(), hit = new Set(), pairs = [];
     const d = (p) => moved[mo.part[p.k]] || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
@@ -360,7 +362,7 @@ function moving(mo, parts, mid) {
       if (mo.part[p.k] === mo.part[q.k] || same(d(p), d(q)) || allow.has(`${Math.min(p.k, q.k)},${Math.max(p.k, q.k)}`)) continue;
       const A = get(p), B = get(q), lo = [0, 1, 2].map((k) => Math.max(A.box.lo[k], B.box.lo[k])), hi = [0, 1, 2].map((k) => Math.min(A.box.hi[k], B.box.hi[k]));
       if ([0, 1, 2].some((k) => hi[k] - lo[k] < 0.05)) continue; // apart, or only touching
-      const into = (X, Y) => { Y.g ||= grid(Y.a, Y.box); for (let v = 0; v < X.a.length; v += 3) { const x = X.a[v], y = X.a[v + 1], z = X.a[v + 2]; if (x >= lo[0] - 1e-6 && x <= hi[0] + 1e-6 && y >= lo[1] - 1e-6 && y <= hi[1] + 1e-6 && z >= lo[2] - 1e-6 && z <= hi[2] + 1e-6 && Y.g.inside(x, y, z)) return true; } return false; };
+      const into = (X, Y) => { Y.g ||= grid(Y.a, Y.box); for (let v = 0; v < X.a.length; v += 3) { const x = X.a[v], y = X.a[v + 1], z = X.a[v + 2]; if (x >= lo[0] - 1e-6 && x <= hi[0] + 1e-6 && y >= lo[1] - 1e-6 && y <= hi[1] + 1e-6 && z >= lo[2] - 1e-6 && z <= hi[2] + 1e-6 && deep(Y.g, x, y, z)) return true; } return false; };
       if (into(A, B) || into(B, A)) { hit.add(p); hit.add(q); pairs.push(`${p.name.split('.')[0]} and ${q.name.split('.')[0]}`); }
     }
     for (const p of parts) p.faces.emissive?.setHex(hit.has(p) ? 0x7a2a18 : 0x000000);
