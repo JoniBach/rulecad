@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/pcb",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Circuit boards from rules: parts from rule sets or any standard footprint, quarter-turn rotation, nets and autorouting; keyboards with every matrix track drawn by rule. Gerbers, KiCad files and a JLCPCB BOM. Circuit JSON written directly: no React.",
   "type": "module",
   "exports": "./pcb.mjs",
@@ -33,7 +33,7 @@
     "@flatten-js/core": "1.6.14",
     "@jscad/modeling": "^2.12.0",
     "@resvg/resvg-js": "2.6.2",
-    "@rulecad/cad": "^0.2.0 || ^0.3.0",
+    "@rulecad/cad": "^0.2.0 || ^0.3.0 || ^0.4.0",
     "@tscircuit/capacity-autorouter": "0.0.982",
     "@tscircuit/checks": "0.0.264",
     "@tscircuit/circuit-json-util": "0.0.122",
