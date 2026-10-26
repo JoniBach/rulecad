@@ -10,7 +10,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import jscad from '@jscad/modeling';
-import { fromTriangles, stl, encode } from '@rulecad/model-link';
+import { fromTriangles, fromShapes, stl, encode, frame } from '@rulecad/model-link';
 import { tri } from './jscad.mjs';
 
 const SITE = fileURLToPath(new URL('../packages/viewer/site/', import.meta.url));
@@ -63,6 +63,23 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     assert.ok(await until(`document.getElementById('title')?.textContent === 'board'`), 'the board link opens');
     await run(`[...document.querySelectorAll('#tabs button')].find((b) => b.textContent === 'Board').click(); true`);
     assert.equal(await run(`[...document.querySelectorAll('#subtabs button')].map((b) => b.textContent).join(', ')`), 'both sides, front, back');
+    // A link with a joint: a slider and poses move the arm, and pushing it into the block shows as a collision
+    const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+    const block = tri(translate([0, 0, 5], cuboid({ size: [10, 10, 10] }))), arm = tri(translate([5, 0, 0], cuboid({ size: [10, 2, 2] })));
+    const hinged = await encode({ title: 'arm', ...fromShapes([{ shape: 'block', triangles: block, matrix: I, name: 'block.body' }, { shape: 'arm', triangles: arm, matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 12], name: 'arm.body' }]),
+      motion: { items: [['block', ...I], ['arm']], part: [0, 1], poses: { flat: { hinge: 0 }, down: { hinge: 90 } }, pose: 'flat',
+        joints: [{ id: 'hinge', label: 'Arm', type: 'revolute', parent: 0, child: 1, a: frame([5, 0, 12], [0, 1, 0]), b: frame([0, 0, 0], [0, 1, 0]), dofs: [[-90, 90, 0]] }] } });
+    await run(`location.hash = '#m=${hinged}'; location.reload(); true`).catch(() => {});
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'arm'`), 'the hinged link opens');
+    assert.equal(await run(`document.getElementById('motion').hidden`), false, 'the motion panel shows');
+    assert.equal(await run(`[...document.querySelectorAll('#poses button')].map((b) => b.textContent).join(', ')`), 'flat, down');
+    await run(`(() => { const i = document.querySelector('#joints input'); i.value = 90; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); return true; })()`);
+    assert.match(await run(`document.querySelector('#joints b').textContent + ' ' + document.getElementById('clash').textContent`), /^90° Collides: (block and arm|arm and block)/);
+    await run(`[...document.querySelectorAll('#poses button')].find((b) => b.textContent === 'flat').click(); true`);
+    assert.match(await run(`document.getElementById('clash').textContent`), /Nothing collides/);
+    await run(`document.querySelector('#joints input').value = 45; document.querySelector('#joints input').dispatchEvent(new Event('input')); true`);
+    await new Promise((r) => setTimeout(r, 500));
+    await shot('viewer-motion.png');
     ws.close();
   } finally {
     // Stop Chrome and wait for it (its profile folder is in use until then). It can ignore a polite stop, and while its

@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/viewer",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "A model page you can host anywhere: open model links, or drop an STL to see it, check it for printing and share it. Plain static files; nothing is uploaded.",
   "type": "module",
   "files": [
@@ -29,7 +29,7 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "@rulecad/model-link": "^0.1.5",
+    "@rulecad/model-link": "^0.2.0",
     "@rulecad/printcheck": "^0.1.0",
     "esbuild": "^0.25.12",
     "three": "^0.186.1"

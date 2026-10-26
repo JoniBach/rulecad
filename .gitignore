@@ -4,6 +4,7 @@ packages/viewer/site/model-link.mjs
 packages/viewer/site/printcheck.mjs
 test/viewer.png
 test/viewer-drop.png
+test/viewer-motion.png
 packages/*/*.d.mts
 /rules/
 docs/_site/

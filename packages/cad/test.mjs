@@ -223,3 +223,32 @@ test('cad measure and cad match: a model measured into draft rules, and a design
     assert.match(cad('measure', file, '--no-pictures', '--rules', 'tray'), /already exists/);
   } finally { done(); }
 });
+
+test('joints: a lid on a hinge, checked in each pose, swept for collisions, with a follower closing a loop', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { w: { value: 40, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, h: { value: 2, unit: 'mm', rule: 'Height' } };
+    object(ws, 'demo/base', { variables: vars, anchors: { hinge: { at: [0, 'd / 2', 'h'], axis: [1, 0, 0] } } }, BOX);
+    object(ws, 'demo/lid', { variables: vars, anchors: { hinge: { at: [0, 'd / 2', 0], axis: [1, 0, 0] } } }, BOX);
+    fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'));
+    const box = (extra = {}) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit',
+      items: [{ id: 'base', object: 'base' }, { id: 'lid', object: 'lid' }, { id: 'tab', object: 'lid' }],
+      joints: [{ id: 'hinge', type: 'revolute', parent: 'base.hinge', child: 'lid.hinge', min: -180, max: 30, label: 'Lid' },
+        { id: 'tab', type: 'revolute', parent: { item: 'base', at: ['base.w', 'base.d / 2', 'base.h'], axis: [1, 0, 0] }, child: 'tab.hinge', min: -180, max: 30, follow: 'hinge', ...extra }],
+      loops: [{ a: { item: 'lid', at: ['lid.w', '-lid.d / 2', 0], axis: [1, 0, 0] }, b: { item: 'tab', at: [0, '-tab.d / 2', 0], axis: [1, 0, 0] }, label: 'Lid and tab line up' }],
+      poses: { closed: { hinge: 0 }, open: { hinge: -90 } } }));
+    box();
+    const checked = cad('check', 'demo/box');
+    assert.match(checked, /no parts overlap/);
+    assert.match(checked, /2 poses checked: closed, open/);
+    assert.match(checked, /Lid and tab line up: closed/);
+    assert.doesNotMatch(checked, /✗|fail/i);
+    assert.match(cad('check', 'demo/box', '--sweep', '--steps', '7'), /sweep hinge, -180 to 30° in 7 steps: at 30°: base\.body hits lid\.body/);
+    assert.match(cad('check', 'demo/box', '--pose', 'open'), /Box \(open\)/);
+    assert.match(cad('check', 'demo/box', '--pose', 'wide'), /no pose "wide"/);
+    box({ ratio: 2 }); // the tab turns twice as far: the loop comes apart once open
+    assert.match(cad('check', 'demo/box'), /open: .*Lid and tab line up: apart/);
+    box({ type: 'ball' });
+    assert.match(cad('check', 'demo/box'), /joint tab \(ball\) takes 3 values, but follows hinge \(revolute\), which takes 1/);
+  } finally { done(); }
+});

@@ -12,10 +12,11 @@
 //   Or placed shapes, for things made of repeated parts (nine keys): each shape once, then where each copy goes:
 //     { …, shapes: [{ role, label, slot?, q, p, t }], place: [[shape, a, b, c, d, e, f, g, h, i, j, k, l, name?]] }
 //     (a 3 × 4 transform by rows, in mm). decode() expands them, so the rest of the page sees one model.
+//   motion (optional): joints a page can move, each part with its item (see "motion" below); without it, nothing moves.
 // "1." is the format version: newer pages must keep reading old links.
 
 /** @typedef {[[number, number, number], [number, number, number], [number, number, number]]} Triangle corners in mm, counter-clockwise seen from outside, Z up */
-/** @typedef {{ title?: string, version?: string, src?: string, material?: string, orientation?: string, rules?: [string, any, string][], q?: number, p?: number[], t?: number[], parts?: any[], shapes?: any[], place?: any[], views?: [string, string][] }} Model */
+/** @typedef {{ title?: string, version?: string, src?: string, material?: string, orientation?: string, rules?: [string, any, string][], q?: number, p?: number[], t?: number[], parts?: any[], shapes?: any[], place?: any[], views?: [string, string][], motion?: any }} Model */
 
 export const VERSION = 1;
 export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 32, viewSize: 4e6, sheet: 5000 }; // every keycap with its own legend is its own shape
@@ -104,8 +105,24 @@ export function check(m) {
   if (m.sheet != null && (!Array.isArray(m.sheet) || m.sheet.length > LIMITS.sheet || m.sheet.some((r) => !Array.isArray(r) || r.length > 9 || r.some((c) => typeof c !== 'string')))) return ['broken rules sheet'];
   if (Array.isArray(m.views) && m.views.length > LIMITS.views) return [`${m.views.length} flat views: more than a link can hold (${LIMITS.views})`];
   if (m.views != null && (!Array.isArray(m.views) || m.views.some((v) => !Array.isArray(v) || typeof v[0] !== 'string' || typeof v[1] !== 'string' || v[1].length > LIMITS.viewSize))) return ['broken views'];
+  if (m.motion != null && !motionOk(m.motion, m.parts?.length ?? 1)) return ['broken motion'];
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];
+}
+
+// A link's motion, as data: numbers where numbers go, items and joints that exist, nothing that could run
+const nums = (a, n) => Array.isArray(a) && (n == null || a.length === n) && a.every((x) => typeof x === 'number' && Number.isFinite(x));
+function motionOk(mo, places) {
+  if (!mo || typeof mo !== 'object' || !Array.isArray(mo.items) || !Array.isArray(mo.joints) || mo.items.length > LIMITS.places || mo.joints.length > LIMITS.places) return false;
+  const n = mo.items.length, item = (i) => Number.isInteger(i) && i >= -1 && i < n;
+  if (mo.items.some((x) => !Array.isArray(x) || typeof x[0] !== 'string' || !(x.length === 1 || nums(x.slice(1), 12)))) return false;
+  if (mo.joints.some((j) => !j || typeof j.id !== 'string' || !Object.hasOwn(DOFS, j.type) || (j.cone != null && !nums([j.cone])) || !item(j.parent) || !item(j.child) || j.child < 0 || !nums(j.a, 12) || !nums(j.b, 12)
+    || !Array.isArray(j.dofs) || j.dofs.length !== DOFS[j.type].length || !j.dofs.every((d) => nums(d, 3))
+    || (j.type === 'path' && !(Array.isArray(j.path) && j.path.length >= 2 && j.path.length <= LIMITS.places && j.path.every((p) => nums(p, 3))))
+    || (j.follow != null && !(Array.isArray(j.follow) && typeof j.follow[0] === 'string' && nums(j.follow.slice(1)))))) return false;
+  if (!Array.isArray(mo.part) || mo.part.length !== places || !mo.part.every(item)) return false;
+  if (mo.poses != null && (typeof mo.poses !== 'object' || Object.values(mo.poses).some((p) => !p || typeof p !== 'object' || Object.values(p).some((v) => !(typeof v === 'number' || nums(v)))))) return false;
+  return mo.allow == null || (Array.isArray(mo.allow) && mo.allow.every((x) => Array.isArray(x) && x.length === 2 && x.every((i) => Number.isInteger(i) && i >= 0 && i < places)));
 }
 
 // Placed shapes -> one model ({ q, p, t, parts }), each copy its own part.
@@ -143,6 +160,122 @@ export function triangles(m, part) {
 
 // The model's parts, always at least one: [[name, role, label, first, count]]
 export const partsOf = (m) => (m.parts?.length ? m.parts : [['body', 'part', m.title || 'model', 0, m.t.length / 3]]);
+
+// ---------- motion ----------
+// Joints between items, so a page (or a tool) can move them: an assembly's hinges, rails and ball joints.
+//   motion: { items: [[name, …12?]], joints: [joint], poses: { name: { joint: value } }, pose?, part: [item per place],
+//             allow?: [[place, place]] }
+//   An item with 12 numbers sits there (a 3 × 4 transform by rows, as in place); one without is placed by the joint
+//   whose child it is. part[n] is the item place n moves with (-1: it never moves); allow pairs may overlap (press fits).
+//   joint: { id, type, parent (item, -1 the world), child (item), a (the parent's anchor, 12 numbers, in its own
+//   frame), b (the child's anchor), dofs: [[min, max, value]], label?, follow?: [joint id, ratio, offset],
+//   path?: [[x, y, z], …], cone? }. At value 0 the child's anchor lies on the parent's: same place, same axes.
+//   Types and their dofs (angles in degrees, distances in mm, along and about the anchor's z axis):
+//     fixed []; revolute [angle]; prismatic [distance]; cylindrical [angle, distance]; ball [x, y, z] (turned about x,
+//     then y, then z; cone: how far z may tip, in degrees); path [distance along path, a polyline in the parent's anchor
+//     frame, the child's z along it]
+export const DOFS = { fixed: [], revolute: ['angle'], prismatic: ['distance'], cylindrical: ['angle', 'distance'], ball: ['angle', 'angle', 'angle'], path: ['distance'] };
+const I3 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+// 3 × 4 transforms by rows: m · n, the inverse of a rigid one, and the turns and moves they're made from
+/** m · n, two 3 × 4 transforms by rows @param {number[]} m @param {number[]} n @returns {number[]} */
+export function mul(m, n) {
+  const o = [];
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) o.push(m[r * 4] * n[c] + m[r * 4 + 1] * n[4 + c] + m[r * 4 + 2] * n[8 + c] + (c === 3 ? m[r * 4 + 3] : 0));
+  return o;
+}
+/** The inverse of a rigid 3 × 4 transform @param {number[]} m @returns {number[]} */
+export function inv(m) {
+  const t = [m[3], m[7], m[11]], o = [];
+  for (let r = 0; r < 3; r++) { const row = [m[r], m[4 + r], m[8 + r]]; o.push(...row, -(row[0] * t[0] + row[1] * t[1] + row[2] * t[2])); }
+  return o;
+}
+const D = Math.PI / 180;
+const rx = (a) => { const c = Math.cos(a * D), s = Math.sin(a * D); return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0]; };
+const ry = (a) => { const c = Math.cos(a * D), s = Math.sin(a * D); return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0]; };
+const rz = (a) => { const c = Math.cos(a * D), s = Math.sin(a * D); return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0]; };
+const tz = (d) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, d];
+// Turned about x, then y, then z (degrees), as an assembly's rotate
+/** @type {(degrees: number[]) => number[]} */
+export const turn = ([x, y, z]) => mul(rz(z), mul(ry(y), rx(x)));
+// A frame from where it is, its z axis and the way its x axis points (default: along x, or y if z is along x)
+/** @param {number[]} at @param {number[]} [axis] @param {number[]} [ref] @returns {number[]} */
+export function frame(at, axis = [0, 0, 1], ref) {
+  const unit = (v) => { const l = Math.hypot(...v); if (!(l > 1e-12)) throw new Error('an anchor axis has no length'); return v.map((x) => x / l); };
+  const z = unit(axis), dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2], cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  let r = ref || (Math.abs(z[0]) > 0.9 ? [0, 1, 0] : [1, 0, 0]);
+  const x = unit(r.map((v, k) => v - dot(r, z) * z[k])), y = cross(z, x);
+  return [x[0], y[0], z[0], at[0], x[1], y[1], z[1], at[1], x[2], y[2], z[2], at[2]];
+}
+// The turn that takes z to v, the shortest way
+function zTo(v) {
+  const l = Math.hypot(...v), [x, y, z] = v.map((c) => c / l), c = z;
+  if (c < -1 + 1e-9) return rx(180);
+  const k = 1 / (1 + c); // Rodrigues, about z × v = (-y, x, 0)
+  return [1 - x * x * k, -x * y * k, x, 0, -x * y * k, 1 - y * y * k, y, 0, -x, -y, c, 0];
+}
+// Along a polyline (distance s, kept within it): where, with z along the segment there
+function along(points, s) {
+  let left = Math.max(0, s);
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i], d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l = Math.hypot(...d);
+    if (left <= l || i === points.length - 1) { const f = l ? Math.min(left, l) / l : 0, m = zTo(l ? d : [0, 0, 1]); m[3] = a[0] + d[0] * f; m[7] = a[1] + d[1] * f; m[11] = a[2] + d[2] * f; return m; }
+    left -= l;
+  }
+  return [...I3];
+}
+/** @type {(points: number[][]) => number} */
+export const pathLength = (points) => points.slice(1).reduce((t, b, i) => t + Math.hypot(b[0] - points[i][0], b[1] - points[i][1], b[2] - points[i][2]), 0);
+// What a joint does at its values: the child's anchor, in the parent's anchor frame
+/** @param {{ id: string, type: string, path?: number[][] }} j @param {number[]} v @returns {number[]} */
+export function jointMatrix(j, v) {
+  switch (j.type) {
+    case 'fixed': return [...I3];
+    case 'revolute': return rz(v[0]);
+    case 'prismatic': return tz(v[0]);
+    case 'cylindrical': return mul(tz(v[1]), rz(v[0]));
+    case 'ball': return turn(v);
+    case 'path': return along(j.path, v[0]);
+    default: throw new Error(`joint ${j.id}: no joint type "${j.type}" (${Object.keys(DOFS).join(', ')})`);
+  }
+}
+// Every joint's values: each at its default, then the pose's, then the joints that follow another
+//   pose: a name in motion.poses, or { joint: value }; values: [number] per joint, by id
+/** @param {{ joints: any[], poses?: Record<string, Record<string, number | number[]>>, pose?: string }} motion @param {string | Record<string, number | number[]> | null} [pose] @returns {Record<string, number[]>} */
+export function jointValues(motion, pose) {
+  const set = typeof pose === 'string' ? motion.poses?.[pose] : pose || (motion.pose ? motion.poses?.[motion.pose] : {});
+  if (typeof pose === 'string' && !set) throw new Error(`no pose "${pose}" (poses: ${Object.keys(motion.poses || {}).join(', ') || 'none'})`);
+  const out = {};
+  for (const j of motion.joints) {
+    const given = set?.[j.id];
+    out[j.id] = given == null ? j.dofs.map((d) => d[2]) : [].concat(given).map(Number);
+    if (out[j.id].length !== j.dofs.length) throw new Error(`joint ${j.id} (${j.type}) takes ${j.dofs.length} value${j.dofs.length === 1 ? '' : 's'}`);
+  }
+  const done = new Set(), follow = (j, seen = []) => {
+    if (!j.follow || done.has(j.id)) return out[j.id];
+    if (seen.includes(j.id)) throw new Error(`joints follow each other round: ${[...seen, j.id].join(' → ')}`);
+    const [lead, ratio = 1, offset = 0] = j.follow, l = motion.joints.find((x) => x.id === lead);
+    if (!l) throw new Error(`joint ${j.id} follows "${lead}", which isn't a joint`);
+    out[j.id] = follow(l, [...seen, j.id]).map((x) => x * ratio + offset).slice(0, j.dofs.length);
+    done.add(j.id); return out[j.id];
+  };
+  for (const j of motion.joints) follow(j);
+  return out;
+}
+// Where every item is at these values (jointValues): [12 numbers] per item, a joint's child from its parent
+/** @param {{ items: any[][], joints: any[] }} motion @param {Record<string, number[]>} values @returns {number[][]} */
+export function placeItems(motion, values) {
+  const by = new Map(motion.joints.map((j) => [j.child, j])), out = [];
+  const at = (i, seen = []) => {
+    if (out[i]) return out[i];
+    if (i < 0) return I3;
+    if (seen.includes(i)) throw new Error(`joints go round in a loop: ${[...seen, i].map((k) => motion.items[k][0]).join(' → ')} (join the loop's last pair with a loops check instead)`);
+    const j = by.get(i), item = motion.items[i];
+    if (!j) { if (item.length < 13) throw new Error(`item ${item[0]} has no place and no joint`); return (out[i] = item.slice(1, 13)); }
+    return (out[i] = mul(mul(mul(at(j.parent, [...seen, i]), j.a), jointMatrix(j, values[j.id])), inv(j.b)));
+  };
+  motion.items.forEach((_, i) => at(i));
+  return out;
+}
 
 // ---------- files ----------
 // cap@0.6.0.stl; with what was picked, if not everything: staggered-cap-2-4.3mf
