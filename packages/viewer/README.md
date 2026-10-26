@@ -6,6 +6,9 @@ A model page you can host anywhere, as plain static files: no server code, no bu
 - **Open a model link** (`#m=…`, made by `cad link` or `@rulecad/model-link`): the model turns slowly, and you can
   drag to turn it yourself. A parts panel shows, hides and restyles each part and ticks the ones a download holds.
   Downloads are STL, or 3MF in Bambu Studio's layout with each part on its filament slot.
+- **Things that move:** a link with joints (a `cad` assembly with joints and poses) gets a Motion panel. It has a
+  slider for each joint, a button for each pose, and, when you let a slider go, a quick look for parts pushed into
+  each other.
 - **Or drop an STL file on it**: the page draws it, checks it for printing (bed, flat base, overhangs, bridges,
   closed solid; `@rulecad/printcheck`), and turns the address into a link that holds the model, ready to share.
 - **Nothing is uploaded.** The model lives in the link's `#fragment`, which browsers never send to the web host, so a

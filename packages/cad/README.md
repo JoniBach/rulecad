@@ -254,6 +254,62 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - `check`, `preview` (`--explode` lifts each kind of object above the last: plate, switches, keycaps), `show`, `link` and, for plates, `export` all take
   `<project>/<assembly>`.
 
+### Joints and poses
+
+Things that move (a lid, a hinged screen, a drawer, a ball head) are one assembly with joints, not one assembly per
+position. An object names its **anchors** in its .json, as expressions over its own variables: a point, with an axis.
+
+```json
+"anchors": { "pivot": { "at": ["width / 2", 0, "height"], "axis": [1, 0, 0] } }
+```
+
+A **joint** ties an anchor on its child item to one on its parent item. At value 0 the two anchors lie together, and
+the joint's value moves the child from there. A joint's child has no `at` or `rotate`: the joint places it.
+
+```json
+"joints": [
+  { "id": "lid", "type": "revolute", "parent": "case.pivot", "child": "lid.pivot", "min": -180, "max": 0, "label": "Lid" },
+  { "id": "lid_r", "type": "revolute", "parent": "case.pivot_r", "child": "stay.pivot", "follow": "lid" }
+],
+"poses": { "shut": { "lid": 0 }, "open": { "lid": -110 } }
+```
+
+| Type | Values | For |
+|---|---|---|
+| `fixed` | none | a part bolted on in a set place |
+| `revolute` | angle | hinges, pivots |
+| `prismatic` | distance | straight rails, drawers |
+| `cylindrical` | `[angle, distance]` | a pin that turns and slides in a slot |
+| `ball` | `[x, y, z]` angles | ball joints; `"cone": 30` limits how far the child's axis may tip |
+| `path` | distance | curved rails: `"path": [[x, y, z], …]`, a polyline in the parent anchor's frame, the child's axis along it |
+
+Angles are in degrees about the anchor's z axis (its `axis`); distances are in mm along it. A `ball` turns about x,
+then y, then z, as `rotate` does.
+
+- **Anchors:** `<item>.<anchor>`, or `<item>.<component item>.<anchor>` inside a component. An anchor can also be
+  written in place, in the assembly's names: `{ "item": "case", "at": ["case.width", 0, 0], "axis": [0, 1, 0] }`.
+  Without an `item` it is in the world. `ref` sets which way the anchor's x axis points (what angle 0 means), or
+  `rotate` turns the anchor as `rotate` turns an item.
+- **Limits:** `min`, `max` and `value` (the default) are numbers or expressions, one per value (`[…]` for two or
+  three). An angle with no limits goes from -180 to 180. A distance needs both limits, except on a path, which runs
+  from 0 to its length.
+- **Followers:** `"follow": "lid"` gives a joint another joint's values, times `ratio` (default 1), plus `offset`. Use
+  it for the second hinge of a pair, or for gears.
+- **Loops:** each item has one joint to its parent. Where parts join in a ring (two links between the same two
+  parts), let joints place every part, then name the meeting that closes the ring in `loops`. The check measures it
+  in every pose: `"loops": [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }]`. Its anchors
+  must meet within 0.01 mm (or `tolerance`), with their axes lined up.
+- **Poses:** `"poses"` names sets of values. `"pose"` names the one that previews, links and the display show (by
+  default, the first). `cad check` checks every pose. What is the same in every pose is reported once; the rest is
+  reported under the pose's name. `--pose open` checks, previews, shows or links one pose. A fit that only makes
+  sense in some poses names them: `"poses": ["folded"]`.
+- **Sweeps:** `cad check <project>/<assembly> --sweep` moves each joint that doesn't follow another through its
+  range (`--steps 24`, from the pose, the other joints held still). It names where parts collide or a loop comes
+  apart: "sweep lid, -180 to 0° in 24 steps: -180 to -165°: lid.body hits hinge.pin". `--sweep lid` sweeps one joint.
+- **Links:** an assembly's link carries its joints. The page shows a slider for each joint, a button for each pose,
+  and a quick look for parts pushed into each other when you let a slider go. The quick look can miss parts that cross
+  without a corner going in, so `--sweep` is the real check.
+
 ## Boards
 
 A circuit board is an object whose .json says `"engine": "pcb"`. Its `main(v)` returns a

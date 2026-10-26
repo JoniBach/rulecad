@@ -27,6 +27,7 @@ import { satisfies } from '@rulecad/versions';
 import { bounds } from '@rulecad/printcheck';
 import { closest, inside } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
+import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && fs.existsSync(assemblyPath(ref.split('@')[0]));
@@ -143,46 +144,61 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     placing.push([it, copies]);
   }
   // Then place them: every item is built by now, so a position can refer to any item, before or after it (a board
-  // placed under the case's top, the case built with the board's Pico position)
+  // placed under the case's top, the case built with the board's Pico position). Each copy is an item of the motion:
+  // placed by at and rotate, or by the joint whose child it is.
+  const placed = []; // [it, copy], each a motion item, in order
   for (const [it, copies] of placing) {
     if (it.place === false) { // built only for its values ("place": false): a board a print plate's case is sized from
       for (const c of copies) if (!c.src.sub) objects.push({ id: c.id, objName: c.src.objName, version: c.src.version, built: c.src.b, role: c.src.role, unplaced: true });
       continue;
     }
-    for (const c of copies) {
-      const src = c.src, id = c.id, key = src.key;
-      const base = (it.at || [0, 0, 0]).map(num), rot = (it.rotate || [0, 0, 0]).map((r) => num(r) * deg);
-      // A repeated item turns as a whole about its at: each copy's offset turns with it (keys on a tilted plate)
-      // Faces are moved as they are, not re-triangulated in place: triangulating again after a move rounds differently
-      const m = translate(base, rotate(rot, translate([c.offset[0], c.offset[1], 0], jscad.geometries.geom3.create()))).transforms;
-      const move = (polys) => polys.map((poly) => poly.map((v) => jscad.maths.vec3.transform([0, 0, 0], v, m)));
-      ids.push(id);
-      if (src.sub) {
-        const sub = src.sub;
-        for (const p of sub.parts) {
-          if (p.role === 'support' && a.kind !== 'plate') continue;
-          parts.push({ ...p, name: `${id}.${p.name}`, item: id, leaf: `${id}.${p.leaf}`, label: `${id} ${p.label}`,
-            geometry: transform(m, p.geometry), polygons: move(p.polygons), triangles: move(p.triangles), m: jscad.maths.mat4.multiply(jscad.maths.mat4.create(), m, p.m) });
-        }
-        for (const o of sub.objects) objects.push({ ...o, id: `${id}.${o.id}` });
-        for (const x of sub.fits) fits.push({ ...x, a: `${id}.${x.a}`, b: `${id}.${x.b}`, label: x.label && `${x.label} (${id})` });
-        requires.push(...sub.requires);
-        for (const n of sub.seen) seen.add(n);
-        items.push({ ...it, id, sub, role: 'part' });
-      } else {
-        const { b } = src;
-        for (const p of b.parts) {
-          if (p.role === 'support' && a.kind !== 'plate') continue; // supports are snipped off before parts go together
-          parts.push({ name: `${id}.${p.name}`, item: id, leaf: id, object: src.objName, role: src.role === 'reference' ? 'reference' : p.role, label: `${id}: ${p.label}`,
-            ...(p.filament ? { filament: p.filament } : {}), ...(p.mirror === false ? { mirror: false } : {}), part: p.name,
-            geometry: transform(m, p.geometry), polygons: move(p.polygons), triangles: move(p.triangles),
-            shape: `${key}:${p.name}`, hash: `${b.hash}:${p.name}`, local: p.polygons, localTriangles: p.triangles, m });
-        }
-        objects.push({ id, objName: src.objName, version: src.version, built: b, role: src.role });
-        items.push({ ...it, id, objName: src.objName, built: b, version: src.version, role: src.role });
-      }
+    for (const c of copies) { placed.push([it, c]); ids.push(c.id); }
+  }
+  const motion = motionOf(a, placed, num, ref);
+  for (const [it, c] of placed) {
+    const src = c.src, id = c.id;
+    if (src.sub) {
+      const sub = src.sub;
+      for (const o of sub.objects) objects.push({ ...o, id: `${id}.${o.id}` });
+      for (const x of sub.fits) fits.push({ ...x, a: `${id}.${x.a}`, b: `${id}.${x.b}`, label: x.label && `${x.label} (${id})` });
+      requires.push(...sub.requires);
+      for (const n of sub.seen) seen.add(n);
+      items.push({ ...it, id, sub, role: 'part' });
+    } else {
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role });
+      items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role });
     }
   }
+  // Every part, with its item where the joints put it at these values (jointValues)
+  const partsAt = (worlds) => {
+    const out = [];
+    placed.forEach(([, c], k) => {
+      const src = c.src, id = c.id, key = src.key, m = toMat4(worlds[k]);
+      items[k].m = m;
+      // Faces are moved as they are, not re-triangulated in place: triangulating again after a move rounds differently
+      const move = (polys) => polys.map((poly) => poly.map((v) => jscad.maths.vec3.transform([0, 0, 0], v, m)));
+      if (src.sub) {
+        for (const p of src.sub.parts) {
+          if (p.role === 'support' && a.kind !== 'plate') continue;
+          out.push({ ...p, name: `${id}.${p.name}`, item: id, leaf: `${id}.${p.leaf}`, label: `${id} ${p.label}`,
+            geometry: transform(m, p.geometry), polygons: move(p.polygons), triangles: move(p.triangles), m: jscad.maths.mat4.multiply(jscad.maths.mat4.create(), m, p.m) });
+        }
+      } else {
+        for (const p of src.b.parts) {
+          if (p.role === 'support' && a.kind !== 'plate') continue; // supports are snipped off before parts go together
+          out.push({ name: `${id}.${p.name}`, item: id, leaf: id, object: src.objName, role: src.role === 'reference' ? 'reference' : p.role, label: `${id}: ${p.label}`,
+            ...(p.filament ? { filament: p.filament } : {}), ...(p.mirror === false ? { mirror: false } : {}), part: p.name,
+            geometry: transform(m, p.geometry), polygons: move(p.polygons), triangles: move(p.triangles),
+            shape: `${key}:${p.name}`, hash: `${src.b.hash}:${p.name}`, local: p.polygons, localTriangles: p.triangles, m });
+        }
+      }
+    });
+    return out;
+  };
+  for (const x of a.fits || []) for (const p of x.poses || []) if (!motion.poses[p]) throw new Error(`fit ${x.note || x.label || `${x.a} / ${x.b}`}: no pose "${p}" (poses: ${Object.keys(motion.poses).join(', ') || 'none'})`);
+  const pose = opts.pose ?? motion.pose;
+  const jv = jointValues(motion, pose);
+  parts.push(...partsAt(placeItems(motion, jv)));
   // A fit with * applies to every copy: "key-*.switch.bottom" becomes one fit for key-0-0, key-0-1, …
   // With * on both sides, each copy is checked against all the others: { "a": "key-*.cap", "b": "key-*.cap" }
   for (let x of a.fits || []) {
@@ -199,8 +215,115 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     }
     for (const id of copies) { const swap = (n) => (n === star ? at(id, n) : n); fits.push({ ...x, a: swap(x.a), b: swap(x.b), num }); }
   }
-  return { a, project, name, items, parts, objects, fits, requires, values, num, seen,
+  // at(pose): the same assembly in another pose (a name, or { joint: values }), nothing built again
+  const at = (p) => {
+    const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
+    return { ...s, parts: moved, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
+  };
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
+  return s;
+}
+
+// ---------- joints ----------
+// "joints" move items against each other: a joint ties an anchor on its child item to one on its parent, and its
+// values (an angle, a distance) move the child from there. A joint's child has no at or rotate: the joint places it.
+//   "joints": [{ "id": "hinge", "type": "revolute", "parent": "case.pivot", "child": "lid.pivot", "min": 0, "max": 180,
+//                "value": 90, "label": "Lid" }]
+// Anchors are named in the object's .json ("anchors": { "pivot": { "at": ["width / 2", 0, "h"], "axis": [1, 0, 0] } },
+// expressions over its own variables) and found as <item>.<anchor>, or <item>.<component item>.<anchor> into a
+// component. Or written in place, in the assembly's names: { "item": "case", "at": […], "axis": […] } (no item: the
+// world). An anchor is a point with axes: z along axis, x towards ref (optional), or turned by rotate as items are.
+// At value 0 the two anchors lie together. Types, and what they take (angles in degrees, distances in mm, on z):
+//   fixed; revolute (angle); prismatic (distance: a straight rail); cylindrical ([angle, distance]: a pin in a slot);
+//   ball ([x, y, z] turns; "cone": how far z may tip); path (distance along "path": [[x, y, z], …], a polyline in the
+//   parent anchor's frame: a curved rail, the child's z along it).
+// min, max and value are numbers or expressions, one per value ([…] for two or three). "follow": "hinge" gives a joint
+// another's values (times "ratio", plus "offset"): the second hinge of a pair, gears. Items joined in a ring (two links
+// between the same two parts) can't all be joints: join the ring's last pair with "loops" instead, which the check
+// measures in every pose: [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }].
+// "poses": { "open": { "hinge": 90 } } names sets of values, "pose" the one shown (default: the first); check checks
+// every pose, and --sweep moves each joint through its range, looking for parts that collide.
+const rows = (m) => [m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14]]; // JSCAD's mat4 is column-major
+const toMat4 = (r) => [r[0], r[4], r[8], 0, r[1], r[5], r[9], 0, r[2], r[6], r[10], 0, r[3], r[7], r[11], 1];
+export const LIMITS = { angle: [-180, 180] };
+function motionOf(a, placed, num, ref) {
+  const { translate, rotate } = jscad.transforms, deg = Math.PI / 180;
+  const index = new Map(placed.map(([, c], k) => [c.id, k]));
+  const where = (n, what) => { if (!index.has(n)) throw new Error(`${what}: no item "${n}" (items: ${[...index.keys()].join(', ')})`); return index.get(n); };
+  const evalIn = (values, label) => (x) => evaluate(x, (n) => {
+    let v = values;
+    for (const k of n.split('.')) v = v?.[k];
+    if (typeof v !== 'number') throw new Error(`${label}: "${n}" isn't one of its numbers`);
+    return v;
+  });
+  const frameOf = (spec, ev) => {
+    const at = (spec.at || [0, 0, 0]).map(ev);
+    if (spec.rotate) { const m = turn(spec.rotate.map(ev)); m[3] = at[0]; m[7] = at[1]; m[11] = at[2]; return m; }
+    return frame(at, (spec.axis || [0, 0, 1]).map(ev), spec.ref && spec.ref.map(ev));
+  };
+  // An anchor: { item (index, -1 the world), frame (12 numbers, in the item's own frame) }
+  const anchor = (spec, what) => {
+    if (spec && typeof spec === 'object') return { item: spec.item ? where(spec.item, what) : -1, frame: frameOf(spec, num) };
+    const bits = String(spec).split('.'), name = bits.pop(), [id, ...inside] = bits;
+    if (!id || !name) throw new Error(`${what}: name an anchor as <item>.<anchor> (got "${spec}")`);
+    const k = where(id, what);
+    let src = placed[k][1].src, pre = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+    for (const n of inside) { // into a component: its item's place there
+      const sub = src.sub?.items.find((x) => x.id === n);
+      if (!sub) throw new Error(`${what}: ${id} has no item "${n}"`);
+      pre = mul(pre, rows(sub.m));
+      src = sub.sub ? { sub: sub.sub } : { b: sub.built, objName: sub.objName };
+    }
+    const anchors = src.b?.object.anchors || {};
+    if (!anchors[name]) throw new Error(`${what}: ${src.objName || id} has no anchor "${name}" (anchors: ${Object.keys(anchors).join(', ') || 'none'})`);
+    return { item: k, frame: mul(pre, frameOf(anchors[name], evalIn(src.b.values, `${src.objName} anchor ${name}`))) };
+  };
+  const joints = [], children = new Set();
+  for (const j of a.joints || []) {
+    const what = `joint ${j.id}`;
+    if (!/^[a-z][\w-]*$/.test(j.id || '')) throw new Error(`each joint needs an id (letters, digits, - or _): got ${JSON.stringify(j.id)}`);
+    if (!Object.hasOwn(DOFS, j.type)) throw new Error(`${what}: type is one of ${Object.keys(DOFS).join(', ')} (got ${JSON.stringify(j.type)})`);
+    const p = j.parent == null ? { item: -1, frame: frame([0, 0, 0]) } : anchor(j.parent, what), c = anchor(j.child, what);
+    if (c.item < 0) throw new Error(`${what}: its child must be an item`);
+    if (children.has(c.item)) throw new Error(`${what}: ${placed[c.item][1].id} is already placed by another joint (two joints to one item make a ring: use loops)`);
+    const [it] = placed[c.item];
+    if (it.at || it.rotate || it.repeat) throw new Error(`${what}: ${it.id} is placed by the joint, so it can't have at, rotate or repeat`);
+    children.add(c.item);
+    const path = j.type === 'path' ? (j.path || []).map((pt) => pt.map(num)) : undefined;
+    if (path && path.length < 2) throw new Error(`${what}: a path joint needs "path": two points or more`);
+    const kinds = DOFS[j.type], list = (x) => (x == null ? [] : [].concat(x));
+    const lo = list(j.min), hi = list(j.max), val = list(j.value);
+    const dofs = kinds.map((kind, i) => {
+      const range = j.type === 'path' ? [0, pathLength(path)] : kind === 'angle' ? LIMITS.angle : null;
+      const mn = lo[i] != null ? num(lo[i]) : range?.[0], mx = hi[i] != null ? num(hi[i]) : range?.[1];
+      if (mn == null || mx == null) throw new Error(`${what}: give its ${kind} a min and max`);
+      if (mn > mx) throw new Error(`${what}: min ${mn} is above max ${mx}`);
+      return [mn, mx, val[i] != null ? num(val[i]) : Math.min(mx, Math.max(mn, 0))];
+    });
+    joints.push({ id: j.id, type: j.type, parent: p.item, child: c.item, a: p.frame, b: c.frame, dofs,
+      ...(j.label ? { label: j.label } : {}), ...(path ? { path } : {}), ...(j.cone != null ? { cone: num(j.cone) } : {}),
+      ...(j.follow ? { follow: [j.follow, j.ratio != null ? num(j.ratio) : 1, j.offset != null ? num(j.offset) : 0] } : {}) });
+  }
+  for (const j of joints) if (j.follow) {
+    const l = joints.find((x) => x.id === j.follow[0]);
+    if (!l) throw new Error(`joint ${j.id}: follows "${j.follow[0]}", which isn't a joint (${joints.map((x) => x.id).join(', ')})`);
+    if (l.dofs.length !== j.dofs.length) throw new Error(`joint ${j.id} (${j.type}) takes ${j.dofs.length} values, but follows ${l.id} (${l.type}), which takes ${l.dofs.length}`);
+  }
+  const items = placed.map(([it, c], k) => {
+    if (children.has(k)) return [c.id];
+    const base = (it.at || [0, 0, 0]).map(num), rot = (it.rotate || [0, 0, 0]).map((r) => num(r) * deg);
+    // A repeated item turns as a whole about its at: each copy's offset turns with it (keys on a tilted plate)
+    return [c.id, ...rows(translate(base, rotate(rot, translate([c.offset[0], c.offset[1], 0], jscad.geometries.geom3.create()))).transforms)];
+  });
+  const poses = Object.fromEntries(Object.entries(a.poses || {}).map(([n, set]) => [n, Object.fromEntries(Object.entries(set).map(([id, v]) => {
+    if (!joints.some((j) => j.id === id)) throw new Error(`pose ${n}: no joint "${id}"`);
+    return [id, Array.isArray(v) ? v.map(num) : num(v)];
+  }))]));
+  if (a.pose && !poses[a.pose]) throw new Error(`pose "${a.pose}" isn't one of the poses (${Object.keys(poses).join(', ') || 'none'})`);
+  const loops = (a.loops || []).map((l, i) => ({ label: l.label || `${typeof l.a === 'string' ? l.a : 'anchor'} meets ${typeof l.b === 'string' ? l.b : 'anchor'}`,
+    a: anchor(l.a, `loop ${i + 1}`), b: anchor(l.b, `loop ${i + 1}`), tolerance: l.tolerance != null ? num(l.tolerance) : 0.01 }));
+  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref };
 }
 
 // keyCentres(layout): each key's centre, from lib/layout.mjs (kept under this name for older callers)
@@ -263,6 +386,7 @@ export function checkAssembly(s) {
   const pick = (n) => (Array.isArray(n) ? n.flatMap(pick) : s.parts.filter((p) => named(p, n)));
   const groups = new Map();
   for (const x of s.fits) {
+    if (x.poses && !x.poses.includes(s.pose)) continue; // a fit for some poses only: the folded screen over the keys
     if (x.holes) { holesFit(x); continue; }
     const A = pick(x.a), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
@@ -308,6 +432,17 @@ export function checkAssembly(s) {
     f(misses.length ? 'fail' : 'pass', misses.length ? `${label}: ${misses.join('; ')}` : `${label}: ${holes.length} of ${holes.length} holes clear for ${mm(depth)} mm, with material around each`,
       `${label}: ${misses.length ? `${misses.length} of ${holes.length} miss` : `${holes.length} of ${holes.length} line up`}`);
   }
+  // Joints: every value in its range (a ball's tip within its cone), and every loop closed
+  if (s.motion?.joints.length) {
+    const outside = [];
+    for (const j of s.motion.joints) {
+      const v = s.jointValues[j.id];
+      j.dofs.forEach(([lo, hi], i) => { if (v[i] < lo - 1e-9 || v[i] > hi + 1e-9) outside.push(`${j.id} ${mm(v[i])} (${mm(lo)} to ${mm(hi)})`); });
+      if (j.cone != null) { const tip = Math.acos(Math.min(1, jointMatrix(j, v)[10])) / (Math.PI / 180); if (tip > j.cone + 1e-9) outside.push(`${j.id} tips ${mm(tip)}° (cone ${mm(j.cone)}°)`); }
+    }
+    if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`);
+    for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`);
+  }
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers
@@ -318,6 +453,58 @@ export function checkAssembly(s) {
   for (const o of s.objects) for (const e of o.built.entries) if (e.kind === 'estimate' && (e.used || !e.name.includes('.'))) est.add(e.name);
   for (const n of s.seen) { const [u, k] = n.split('.'); if (loadRuleSet(u).rules[k]?.kind === 'estimate') est.add(n); }
   if (est.size) f('warn', `uses estimates, not measurements: ${[...est].join(', ')}. Measure them and record kind: measured`, `Estimate: ${[...est].join(', ')}`);
+  saveOverlaps();
+  return out;
+}
+
+// Each loop at the assembly's pose: how far apart its two anchors are (mm), and their axes (degrees, either way round)
+export function loopGaps(s) {
+  const worlds = placeItems(s.motion, s.jointValues), I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+  return s.motion.loops.map((l) => {
+    const A = mul(l.a.item < 0 ? I : worlds[l.a.item], l.a.frame), B = mul(l.b.item < 0 ? I : worlds[l.b.item], l.b.frame);
+    const gap = Math.hypot(A[3] - B[3], A[7] - B[7], A[11] - B[11]), dot = Math.abs(A[2] * B[2] + A[6] * B[6] + A[10] * B[10]);
+    const angle = Math.acos(Math.min(1, dot)) / (Math.PI / 180);
+    return { label: l.label, gap, angle, ok: gap <= l.tolerance && angle <= 0.05 };
+  });
+}
+
+// Pairs of parts that overlap, as checkAssembly finds them (fits with a negative min allowed): [[a, b, mm³]]
+function clashesOf(s, named) {
+  const allowed = (a, b) => s.fits.some((x) => x.min != null && x.num(x.min) < 0 && ((named(a, x.a) && named(b, x.b)) || (named(a, x.b) && named(b, x.a))));
+  const boxes = s.parts.map((p) => bounds(p.triangles)), out = [];
+  for (let i = 0; i < s.parts.length; i++) for (let j = i + 1; j < s.parts.length; j++) {
+    const pa = s.parts[i], pb = s.parts[j], A = boxes[i], B = boxes[j];
+    if (pa.leaf === pb.leaf || ![0, 1, 2].every((k) => A.lo[k] <= B.hi[k] + 1e-6 && B.lo[k] <= A.hi[k] + 1e-6) || allowed(pa, pb)) continue;
+    const v = pairOverlap(pa, pb);
+    if (v > 0.01) out.push([pa.name, pb.name, v]);
+  }
+  return out;
+}
+const isNamed = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`);
+
+// sweep(s, { joint, steps }) -> findings: each free joint (or the one named) moved through its range, the others held
+// at the assembly's pose, looking for parts that collide and loops that come apart on the way
+export function sweep(s, { joint, steps = 24 } = {}) {
+  const out = [], f = (level, text, card) => out.push({ level, text, ...(card && { card }) }), mm = (n) => `${Number(n.toFixed(2))}`;
+  const free = s.motion.joints.filter((j) => !j.follow && j.dofs.length && (!joint || j.id === joint));
+  if (joint && !free.length) throw new Error(`no joint "${joint}" to sweep (${s.motion.joints.filter((j) => !j.follow && j.dofs.length).map((j) => j.id).join(', ') || 'none'})`);
+  const base = s.jointValues;
+  for (const j of free) j.dofs.forEach(([lo, hi], d) => {
+    const unit = DOFS[j.type][d] === 'angle' ? '°' : ' mm', name = `${j.id}${j.dofs.length > 1 ? ` ${'xyz'[d] && j.type === 'ball' ? 'xyz'[d] : DOFS[j.type][d]}` : ''}`;
+    const bad = []; // [value, what]
+    for (let i = 0; i <= steps; i++) {
+      const v = lo + ((hi - lo) * i) / steps, set = { ...base, [j.id]: base[j.id].map((x, k) => (k === d ? v : x)) };
+      const t = s.at(Object.fromEntries(Object.entries(set).filter(([id]) => !s.motion.joints.find((x) => x.id === id).follow)));
+      const what = [...clashesOf(t, isNamed).map(([a, b]) => `${a} hits ${b}`), ...loopGaps(t).filter((l) => !l.ok).map((l) => `${l.label} apart by ${mm(l.gap)} mm`)];
+      if (what.length) bad.push([v, what]);
+    }
+    const ranges = []; // runs of steps in a row that collide
+    for (const [v, what] of bad) { const r = ranges[ranges.length - 1]; if (r && Math.abs(v - r.to - (hi - lo) / steps) < 1e-9) { r.to = v; r.what = [...new Set([...r.what, ...what])]; } else ranges.push({ from: v, to: v, what }); }
+    const span = `${mm(lo)} to ${mm(hi)}${unit}`;
+    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps: nothing collides`, `${name}: clear ${span}`);
+    else f('fail', `sweep ${name}, ${span} in ${steps} steps: ${ranges.map((r) => `${r.from === r.to ? `at ${mm(r.from)}` : `${mm(r.from)} to ${mm(r.to)}`}${unit.trim()}: ${r.what.slice(0, 3).join('; ')}${r.what.length > 3 ? `; and ${r.what.length - 3} more` : ''}`).join(' | ')}`,
+      `${name}: collides ${ranges.map((r) => (r.from === r.to ? mm(r.from) : `${mm(r.from)}-${mm(r.to)}`)).join(', ')}${unit.trim()}`);
+  });
   saveOverlaps();
   return out;
 }

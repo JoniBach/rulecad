@@ -2,7 +2,7 @@
 // with a parts panel to show, hide and restyle each part, tick the parts a download holds, and make print files (STL,
 // or a 3MF in Bambu Studio's layout) in the browser. Nothing is uploaded:
 // the model lives in the link (or, for a short link, in the Gist it names).
-import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, stl, threemf, filename, thingOf } from './model-link.mjs';
+import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, stl, threemf, filename, thingOf, jointValues, placeItems, mul, inv, DOFS } from './model-link.mjs';
 import { check } from './printcheck.mjs';
 import { WebGLRenderer, Scene, PerspectiveCamera, BufferGeometry, Float32BufferAttribute, Mesh, MeshLambertMaterial, LineSegments,
   LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3 } from './three.min.js';
@@ -82,12 +82,15 @@ function show(model) {
     p.mesh = new Mesh(p.g, p.faces); p.creases = new LineSegments(creases(p.g, 25), p.creaseInk);
     p.wire = null; // made the first time it's needed
     p.node = new Group(); p.node.add(p.mesh, p.creases); p.mesh.userData.part = p;
-    turn.add(p.node);
+    p.moved = new Group(); p.moved.matrixAutoUpdate = false; p.moved.add(p.node); // where its joints move it (motion)
+    turn.add(p.moved);
   }
   tilt.add(turn); tilt.rotation.x = 0.45;
   const scene = new Scene();
   scene.add(tilt, new AmbientLight(0xffffff, 0.6));
   const sun = new DirectionalLight(0xffffff, 2.2); sun.position.set(-1, 2, 1.5); scene.add(sun);
+
+  const motion = model.motion && moving(model.motion, parts, mid);
 
   // ---------- state ----------
   const view = { mode: 'solid', supports: true, references: true, explode: 0, spin: true, selected: new Set() };
@@ -233,7 +236,7 @@ function show(model) {
     parts.forEach((p) => { p.visible = true; p.style = 'auto'; });
     $('explode').value = 0; $('spin').checked = $('supports').checked = $('references').checked = true;
     $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.mode === 'solid'));
-    turn.rotation.y = 0; tilt.rotation.x = 0.45; status(''); apply();
+    turn.rotation.y = 0; tilt.rotation.x = 0.45; status(''); motion?.reset(); apply();
   };
   $('supports').closest('label').hidden = !parts.some((p) => p.role === 'support');
   $('references').closest('label').hidden = !parts.some((p) => p.role === 'reference');
@@ -282,6 +285,93 @@ function show(model) {
   });
   apply();
   return { picked };
+}
+
+// ---------- motion ----------
+// A link with joints (motion in model-link.mjs): a slider for each joint that doesn't follow another, and a button for
+// each named pose. The parts come in placed at the link's pose; each moves with its item, by where its item is now
+// against where it was. When a slider is let go, a quick look for parts pushed into each other: a corner of one inside
+// the other. The real check is cad check --sweep; this one misses parts that cross without a corner going in.
+function moving(mo, parts, mid) {
+  const start = jointValues(mo, mo.pose), was = placeItems(mo, start).map(inv);
+  // JSCAD's Z-up, centred, as the page draws it (three's Y-up): (x, y, z) -> (x, z, -y) - mid
+  const C = [1, 0, 0, -mid.x, 0, 0, 1, -mid.y, 0, -1, 0, -mid.z], Ci = inv(C);
+  let values = structuredClone(start), moved = [];
+  const free = mo.joints.filter((j) => !j.follow && j.dofs.length);
+  const place = () => {
+    const now = placeItems(mo, jointValues(mo, values));
+    moved = now.map((w, i) => mul(mul(C, mul(w, was[i])), Ci));
+    for (const p of parts) {
+      const i = mo.part[p.k], d = i >= 0 ? moved[i] : null;
+      if (d) p.moved.matrix.set(...d, 0, 0, 0, 1); else p.moved.matrix.identity();
+      p.moved.matrixWorldNeedsUpdate = true;
+    }
+  };
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const sliders = [];
+  for (const j of free) j.dofs.forEach(([lo, hi], d) => {
+    const angle = DOFS[j.type][d] === 'angle', unit = angle ? '°' : ' mm';
+    const name = `${j.label || j.id}${j.dofs.length > 1 ? ` ${j.type === 'ball' ? 'xyz'[d] : DOFS[j.type][d]}` : ''}`;
+    const row = el('label', 'joint'), out = el('b'), input = Object.assign(el('input'), { type: 'range', min: lo, max: hi, step: angle ? 1 : Math.max(0.01, (hi - lo) / 400) });
+    const show = () => { input.value = values[j.id][d]; out.textContent = `${Number(values[j.id][d].toFixed(angle ? 0 : 2))}${unit}`; };
+    input.oninput = () => { values[j.id][d] = Number(input.value); show(); place(); pick(null); $('clash').textContent = ''; };
+    input.onchange = () => look();
+    row.append(el('span', null, name), out, input); sliders.push(show); show();
+    $('joints').append(row);
+  });
+  // Poses: buttons that set every joint
+  const poses = Object.keys(mo.poses || {}), pick = (name) => $('poses').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.textContent === name));
+  const go = (name) => { values = jointValues(mo, name); for (const j of mo.joints) values[j.id] = [...values[j.id]]; sliders.forEach((f) => f()); place(); pick(name); look(); };
+  if (poses.length > 1) $('poses').replaceChildren(...poses.map((n) => { const b = el('button', null, n); b.onclick = () => go(n); return b; }));
+  pick(mo.pose);
+  // The quick look: pairs of parts whose items have moved against each other, boxes first, then corners inside
+  const allow = new Set((mo.allow || []).map(([a, b]) => `${a},${b}`));
+  const pos = (p, d) => { const a = p.g.getAttribute('position').array, o = new Float32Array(a.length); for (let i = 0; i < a.length; i += 3) { const x = a[i], y = a[i + 1], z = a[i + 2]; o[i] = d[0] * x + d[1] * y + d[2] * z + d[3]; o[i + 1] = d[4] * x + d[5] * y + d[6] * z + d[7]; o[i + 2] = d[8] * x + d[9] * y + d[10] * z + d[11]; } return o; };
+  const boxOf = (a) => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (let i = 0; i < a.length; i++) { const k = i % 3; if (a[i] < lo[k]) lo[k] = a[i]; if (a[i] > hi[k]) hi[k] = a[i]; } return { lo, hi }; };
+  const same = (a, b) => a.every((x, i) => Math.abs(x - b[i]) < 1e-6);
+  // Inside: a ray along x crosses the part's faces an odd number of times (faces kept in a grid over y and z)
+  const grid = (a, box) => {
+    const n = 24, cells = Array.from({ length: n * n }, () => []), sy = (box.hi[1] - box.lo[1]) / n || 1, sz = (box.hi[2] - box.lo[2]) / n || 1;
+    const cell = (y, z) => Math.min(n - 1, Math.max(0, Math.floor((y - box.lo[1]) / sy))) * n + Math.min(n - 1, Math.max(0, Math.floor((z - box.lo[2]) / sz)));
+    for (let t = 0; t < a.length; t += 9) {
+      const y0 = Math.min(a[t + 1], a[t + 4], a[t + 7]), y1 = Math.max(a[t + 1], a[t + 4], a[t + 7]), z0 = Math.min(a[t + 2], a[t + 5], a[t + 8]), z1 = Math.max(a[t + 2], a[t + 5], a[t + 8]);
+      const c0 = cell(y0, z0), c1 = cell(y1, z1);
+      for (let i = Math.floor(c0 / n); i <= Math.floor(c1 / n); i++) for (let k = c0 % n; k <= c1 % n; k++) cells[i * n + k].push(t);
+    }
+    return { a, box, inside: (x, y, z) => {
+      if (x < box.lo[0] || x > box.hi[0] || y < box.lo[1] || y > box.hi[1] || z < box.lo[2] || z > box.hi[2]) return false;
+      let hits = 0;
+      for (const t of cells[cell(y, z)]) { // y-z barycentric test for a ray along +x, nudged off edges
+        const py = y + 1.3e-5, pz = z + 1.7e-5, ay = a[t + 1], az = a[t + 2], by = a[t + 4], bz = a[t + 5], cy = a[t + 7], cz = a[t + 8];
+        const det = (by - ay) * (cz - az) - (bz - az) * (cy - ay); if (Math.abs(det) < 1e-12) continue;
+        const u = ((py - ay) * (cz - az) - (pz - az) * (cy - ay)) / det, v = ((by - ay) * (pz - az) - (bz - az) * (py - ay)) / det;
+        if (u < 0 || v < 0 || u + v > 1) continue;
+        if (a[t] + u * (a[t + 3] - a[t]) + v * (a[t + 6] - a[t]) > x) hits++;
+      }
+      return hits % 2 === 1;
+    } };
+  };
+  // In by more than a touch: inside however the corner is nudged (a corner on the other part's face is touching it)
+  const E = 0.05, deep = (g, x, y, z) => g.inside(x, y, z) && g.inside(x + E, y, z) && g.inside(x - E, y, z) && g.inside(x, y + E, z) && g.inside(x, y - E, z) && g.inside(x, y, z + E) && g.inside(x, y, z - E);
+  const look = () => {
+    const live = parts.filter((p) => p.mesh.visible || p.creases.visible), at = new Map(), hit = new Set(), pairs = [];
+    const d = (p) => moved[mo.part[p.k]] || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+    const get = (p) => { if (!at.has(p)) { const a = pos(p, d(p)); at.set(p, { a, box: boxOf(a) }); } return at.get(p); };
+    for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+      const p = live[i], q = live[j];
+      if (mo.part[p.k] === mo.part[q.k] || same(d(p), d(q)) || allow.has(`${Math.min(p.k, q.k)},${Math.max(p.k, q.k)}`)) continue;
+      const A = get(p), B = get(q), lo = [0, 1, 2].map((k) => Math.max(A.box.lo[k], B.box.lo[k])), hi = [0, 1, 2].map((k) => Math.min(A.box.hi[k], B.box.hi[k]));
+      if ([0, 1, 2].some((k) => hi[k] - lo[k] < 0.05)) continue; // apart, or only touching
+      const into = (X, Y) => { Y.g ||= grid(Y.a, Y.box); for (let v = 0; v < X.a.length; v += 3) { const x = X.a[v], y = X.a[v + 1], z = X.a[v + 2]; if (x >= lo[0] - 1e-6 && x <= hi[0] + 1e-6 && y >= lo[1] - 1e-6 && y <= hi[1] + 1e-6 && z >= lo[2] - 1e-6 && z <= hi[2] + 1e-6 && deep(Y.g, x, y, z)) return true; } return false; };
+      if (into(A, B) || into(B, A)) { hit.add(p); hit.add(q); pairs.push(`${p.name.split('.')[0]} and ${q.name.split('.')[0]}`); }
+    }
+    for (const p of parts) p.faces.emissive?.setHex(hit.has(p) ? 0x7a2a18 : 0x000000);
+    const c = $('clash'); c.classList.toggle('hit', pairs.length > 0);
+    c.textContent = pairs.length ? `Collides: ${[...new Set(pairs)].slice(0, 3).join('; ')}${pairs.length > 3 ? ` and ${pairs.length - 3} more` : ''}` : 'Nothing collides here (a quick look)';
+  };
+  $('motion').hidden = !free.length && poses.length < 2;
+  place();
+  return { reset: () => go(mo.pose || null) };
 }
 
 // ---------- the rules sheet ----------

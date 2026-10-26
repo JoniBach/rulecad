@@ -56,6 +56,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   with ranges from rules. An overlap or gap outside its range is a finding: report it with the numbers, and never
   widen a range to make it pass without saying why.
 - Build bigger things from checked assemblies used as items, rather than placing their objects again.
+- Things that move are one assembly with joints and poses, not a copy per position: give the objects anchors, join
+  them with joints, name the positions in `poses`, and run `cad check --sweep` to find where parts collide on the way.
+  See "Joints and poses" in the cad README.
 - A part is named in fits as `<item>.<part>`; an object that returns one unnamed shape has one part, `body`.
 - A gap fit can't tell whether holes line up. Where a board screws into a part, add a holes fit
   (`{ "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length" }`).

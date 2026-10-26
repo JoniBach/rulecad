@@ -25,6 +25,11 @@ const zip = await threemf(back);         // Uint8Array, a .3mf (one object, two 
 - **Precision:** corners are snapped to a grid about 1/5000 of the model's size, and shared corners are stored once.
 - **Many copies of one shape** (nine keycaps): `fromShapes()` stores each shape once and a transform per copy, and
   `decode()` expands them.
+- **Things that move:** a model can carry `motion`: its items, the joints between them (fixed, revolute, prismatic,
+  cylindrical, ball, path), named poses, and which item each part moves with. `jointValues(motion, pose)` gives every
+  joint's values, followers included, and `placeItems(motion, values)` gives where each item is. The page uses these
+  for its sliders, and `cad` uses the same functions to place an assembly, so both agree. The format is described at
+  the top of the motion section in `model-link.mjs`.
 - **Safety:** links are data, never code. `decode()` checks the format and sizes (`LIMITS`), refuses damaged links,
   and refuses links from a newer format version.
 - **Short links:** `parseHash(location.hash)` also reads `#s=<id>`, a GitHub Gist holding the data, and

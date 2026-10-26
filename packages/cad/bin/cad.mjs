@@ -12,7 +12,7 @@ import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, 
 import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
 import { measure, match } from '../lib/meshcmd.mjs';
-import { isAssembly, buildAssembly, checkAssembly, shapes } from '../lib/assembly.mjs';
+import { isAssembly, buildAssembly, checkAssembly, shapes, sweep } from '../lib/assembly.mjs';
 import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 
@@ -53,6 +53,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     [--md: one labelled Markdown link, for chat (the page downloads any parts): short unless --long]
                                     [--short: the model's data in a secret GitHub Gist, so links are ~80 characters]
                                     [--no-rules: leave out the Rules panel's list of values and their sources]
+  Assemblies with joints: check checks every pose; --pose <name> picks one (check, preview, show, link)
+                                    [--sweep [joint]: move each joint (or one) through its range, looking for collisions]
+                                    [--steps 24: how many steps a sweep takes]
 
   cad status [project]              each object's version, and whether it has changes since its last release
   cad release <project>/<object> -m "what changed" [--bump major|minor|patch] [--dry-run] [--push]
@@ -260,20 +263,28 @@ async function board(cmd, d, b, { title, version, tag }) {
 
 // ---------- assemblies ----------
 async function assembly(cmd, ref) {
-  const s = await buildAssembly(ref), a = s.a, title = a.title || s.name;
+  const pose = typeof opt('pose') === 'string' ? opt('pose') : undefined;
+  const s = await buildAssembly(ref, [], {}, { pose }), a = s.a, title = `${a.title || s.name}${pose ? ` (${pose})` : ''}`;
   const versions = [...new Map(s.objects.map((o) => [o.objName, `${o.objName} ${o.version}`])).values()].join(', ');
   const rules = (ns) => Object.fromEntries(Object.keys(loadRuleSet(ns).rules).map((k) => [k, s.num(`${ns}.${k}`)]));
   const printed = s.parts.filter((p) => p.role !== 'reference');
 
   if (cmd === 'check') {
     console.log(`${title} (${a.kind || 'fit'}: ${versions})`);
-    const findings = checkAssembly(s);
+    // Each pose (or the one asked for): what's the same in every pose is said once, the rest under the pose's name
+    const poses = pose ? [pose] : Object.keys(s.motion.poses);
+    let findings = checkAssembly(s);
+    if (poses.length > 1) {
+      const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
+      findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}` }, ...each[0][1].filter(same), ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}) })))];
+    }
+    if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24 }));
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
     process.exitCode = report(findings) ? 1 : 0;
     return;
   }
   if (cmd === 'preview') {
-    const out = paths.preview(s.project, `${s.name}${opt('explode') ? '-exploded' : ''}.png`);
+    const out = paths.preview(s.project, `${s.name}${pose ? `-${pose}` : ''}${opt('explode') ? '-exploded' : ''}.png`);
     const size = (await import('@rulecad/printcheck')).bounds(s.triangles).size.map((n) => fmt(n)).join(' × ');
     const faint = [...new Set(s.parts.filter((p) => p.role !== 'part').map((p) => `${p.object || p.item}${p.role === 'support' ? ' supports' : ''}`))]; // each kind once
     await preview(s.parts, { title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode') });
@@ -311,6 +322,7 @@ async function assembly(cmd, ref) {
         return placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: tri(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; });
       })() : []),
     };
+    Object.assign(model, motionLink(s));
     const url = await linkTo(model);
     return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src: model.src, size: url.length, title, version: '' };
   };
@@ -318,7 +330,7 @@ async function assembly(cmd, ref) {
   if (cmd === 'show') {
     // Each shape once, placed for every copy: nine keys cost one keycap in the mirror's link. Built with each object's
     // mirror settings (fewer segments), so the display gets a lighter mesh; checks and links use the real one
-    const m = await buildAssembly(ref, [], {}, { mirror: true });
+    const m = await buildAssembly(ref, [], {}, { mirror: true, pose });
     const placed = shapes(m.parts.filter((p) => p.role !== 'support' && p.mirror !== false));
     // The card: what the checks found, one short line each
     const items = checkAssembly(s).filter((x) => x.card).slice(0, 6).map((x) => x.card);
@@ -327,6 +339,26 @@ async function assembly(cmd, ref) {
     return await printLinks(await link());
   }
   throw new Error(`cad ${cmd} doesn't work on an assembly (check, preview, export, show, link do)`);
+}
+
+// An assembly's joints, for the page's sliders: each part moves with its item (motion in @rulecad/model-link)
+function motionLink(s) {
+  const mo = s.motion;
+  if (!mo.joints.length) return {};
+  const r = (x) => Number(x.toFixed(6)), names = mo.items.map((x) => x[0]);
+  const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`), allow = [];
+  const loose = s.fits.filter((x) => x.min != null && x.num(x.min) < 0);
+  s.parts.forEach((pa, i) => s.parts.forEach((pb, j) => {
+    if (j > i && pa.item !== pb.item && loose.some((x) => (named(pa, x.a) && named(pb, x.b)) || (named(pa, x.b) && named(pb, x.a)))) allow.push([i, j]);
+  }));
+  return { motion: {
+    items: mo.items.map(([n, ...m]) => [n, ...m.map(r)]),
+    joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
+      ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}) })),
+    poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
+    part: s.parts.map((p) => names.indexOf(p.item)),
+    ...(allow.length ? { allow } : {}),
+  } };
 }
 
 // ---------- links ----------
