@@ -80,6 +80,23 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     await run(`document.querySelector('#joints input').value = 45; document.querySelector('#joints input').dispatchEvent(new Event('input')); true`);
     await new Promise((r) => setTimeout(r, 500));
     await shot('viewer-motion.png');
+    // On a phone the model and an info pane share the screen: Parts swaps the pane, the grip moves the border, and
+    // the rules sheet opens in the pane, so nothing covers the model
+    await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId);
+    await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 800, deviceScaleFactor: 1, mobile: true }, sessionId);
+    await run(`location.reload(); true`).catch(() => {});
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'arm' && !!document.querySelector('#joints input')`), 'the link opens on a phone');
+    const box = (sel) => run(`(() => { const r = document.querySelector('${sel}').getBoundingClientRect(); return [r.top, r.height]; })()`);
+    assert.deepEqual(await box('#stage'), [0, 400], 'the model has the top half, the grip and pane the rest');
+    assert.equal(await run(`document.querySelector('footer').hidden + ' ' + document.getElementById('panel').hidden`), 'false true');
+    await run(`document.getElementById('toggle').click(); true`);
+    assert.equal(await run(`document.querySelector('footer').hidden + ' ' + document.getElementById('panel').hidden + ' ' + document.getElementById('toggle').textContent`), 'true false Info');
+    const [gy] = await box('#grip');
+    for (const [type, y] of [['touchStart', gy + 11], ['touchMove', 500], ['touchMove', 600], ['touchEnd', 600]]) await send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 200, y }] }, sessionId);
+    assert.equal((await box('#stage'))[1], 600, 'dragging the grip down gives the model more room');
+    await run(`document.getElementById('rulesbtn').hidden || document.getElementById('rulesbtn').click(); true`);
+    assert.equal(await run(`document.getElementById('sheet').parentElement === document.body`), true, 'the rules sheet lives in the pane');
+    await shot('viewer-phone.png');
     ws.close();
   } finally {
     // Stop Chrome and wait for it (its profile folder is in use until then). It can ignore a polite stop, and while its
