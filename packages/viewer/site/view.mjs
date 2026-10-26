@@ -241,11 +241,16 @@ function show(model) {
   $('supports').closest('label').hidden = !parts.some((p) => p.role === 'support');
   $('references').closest('label').hidden = !parts.some((p) => p.role === 'reference');
   // The panel: a side panel on wide screens; on phones a drawer, closed at first and closed by tapping the model
-  const narrow = matchMedia(DRAWER);
-  const panel = (open) => { $('panel').hidden = !open; $('toggle').hidden = open && narrow.matches; };
+  // The panel: a side panel on wide screens; on phones it takes the info pane's place under the model (split, below)
+  const narrow = matchMedia(DRAWER), foot = document.querySelector('footer');
+  const panel = (open) => {
+    $('panel').hidden = !open; foot.hidden = narrow.matches && open;
+    $('toggle').textContent = narrow.matches && open ? 'Info' : 'Parts';
+    $('toggle').title = narrow.matches && open ? 'Show the title and downloads' : 'Show or hide the parts panel';
+  };
   $('toggle').onclick = () => panel($('panel').hidden);
   $('close').onclick = () => panel(false);
-  $('stage').addEventListener('pointerdown', () => { if (narrow.matches && !$('panel').hidden) panel(false); }, true);
+  narrow.addEventListener('change', () => panel(!narrow.matches));
   panel(!narrow.matches);
 
   // ---------- drawing ----------
@@ -372,6 +377,33 @@ function moving(mo, parts, mid) {
   $('motion').hidden = !free.length && poses.length < 2;
   place();
   return { reset: () => go(mo.pose || null) };
+}
+
+// ---------- the split ----------
+// Phones: the model and the info pane share the screen (--split is the model's share). Drag the grip to change it, and
+// double tap it for half and half; the share is remembered. The rules sheet opens in the pane, not over the model.
+function split() {
+  const grip = $('grip'), narrow = matchMedia(DRAWER), wide = matchMedia('(orientation: landscape)'), KEY = 'rulecad.split';
+  const set = (pct) => { document.body.style.setProperty('--split', `${pct}%`); try { localStorage.setItem(KEY, String(pct)); } catch {} };
+  const saved = Number((() => { try { return localStorage.getItem(KEY); } catch { return null; } })());
+  if (saved >= 15 && saved <= 85) set(saved);
+  let drag = false;
+  grip.addEventListener('pointerdown', (e) => { drag = true; grip.classList.add('dragging'); grip.setPointerCapture(e.pointerId); e.preventDefault(); });
+  grip.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const pct = wide.matches ? (e.clientX / innerWidth) * 100 : (e.clientY / innerHeight) * 100;
+    set(Math.round(Math.min(85, Math.max(15, pct)) * 10) / 10);
+  });
+  for (const end of ['pointerup', 'pointercancel']) grip.addEventListener(end, () => { drag = false; grip.classList.remove('dragging'); });
+  let tap = 0, from = 0; // a double tap or click without a drag: half and half (touch screens rarely send dblclick)
+  grip.addEventListener('pointerdown', (e) => { from = wide.matches ? e.clientX : e.clientY; });
+  grip.addEventListener('pointerup', (e) => {
+    if (Math.abs((wide.matches ? e.clientX : e.clientY) - from) > 6) { tap = 0; return; }
+    if (performance.now() - tap < 350) { set(50); tap = 0; } else tap = performance.now();
+  });
+  const sheet = $('sheet'), home = sheet.parentElement;
+  const place = () => { if (narrow.matches) document.body.append(sheet); else home.append(sheet); };
+  narrow.addEventListener('change', place); place();
 }
 
 // ---------- the rules sheet ----------
@@ -514,6 +546,7 @@ function problem(message) {
 }
 
 function open(model, hash, findings) {
+  split();
   const project = show(model);
   flatViews(model);
   if (findings) $('rules').replaceChildren(...findings.map((f) => { // a dropped file: what the print check found

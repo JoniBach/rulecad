@@ -125,15 +125,34 @@
   .kind.estimate { border-color: var(--ink-1); color: var(--ink-1); }
   .panel-head { display: flex; align-items: center; justify-content: space-between; padding-right: 14px; }
   #close { padding: 4px 10px; font-size: 13px; margin-top: 10px; }
-  /* Phones and touch tablets: the panel is a drawer over the model's right side, closed until opened; tap the model
-     to close it. Keep this query the same as DRAWER in view.mjs. */
+  /* Phones and touch tablets: the model and an info pane share the screen, the model on top (in portrait) or on the
+     left (in landscape), so nothing ever covers it. The pane holds the title and downloads, or the parts panel when the
+     Parts button swaps it in, or the rules sheet. Drag the grip between them to share the screen differently; a
+     double tap puts it back half and half. Keep this query the same as DRAWER in view.mjs. */
+  #grip { display: none; }
   @media (max-width: 760px), (pointer: coarse) and (max-width: 1100px) {
-    body { grid-template-columns: 1fr; }
-    #panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(320px, 85vw); background: #000; z-index: 5; box-shadow: -12px 0 24px #000; }
-    footer { padding: 16px; grid-template-columns: 1fr; gap: 12px; }
+    body { --split: 50%; grid-template-columns: 1fr; grid-template-rows: var(--split) auto minmax(0, 1fr); }
+    #stage { grid-row: 1; grid-column: 1; }
+    #grip { display: grid; place-items: center; grid-row: 2; grid-column: 1; height: 22px; touch-action: none; cursor: row-resize; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    #grip::after { content: ""; width: 44px; height: 4px; border-radius: 2px; background: var(--ink-3); }
+    #grip:active::after, #grip.dragging::after { background: var(--ink-1); }
+    footer, #panel, body > #sheet { grid-row: 3; grid-column: 1; min-height: 0; overflow-y: auto; }
+    footer { padding: 16px; grid-template-columns: 1fr; gap: 12px; align-items: start; align-content: start; border-top: 0; }
+    footer[hidden] { display: none; }
+    #panel { width: auto; border-left: 0; }
+    body > #sheet { position: static; }
     h1 { font-size: 22px; }
     .actions { justify-content: flex-start; }
     #status, #picked-foot { text-align: left; }
+    .problem { grid-row: 1 / -1; }
+  }
+  @media (max-width: 760px) and (orientation: landscape), (pointer: coarse) and (max-width: 1100px) and (orientation: landscape) {
+    body { grid-template-rows: 1fr; grid-template-columns: var(--split) auto minmax(0, 1fr); }
+    #stage, #grip, footer, #panel, body > #sheet { grid-row: 1; }
+    #grip { grid-column: 2; width: 22px; height: auto; cursor: col-resize; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+    #grip::after { width: 4px; height: 44px; }
+    footer, #panel, body > #sheet { grid-column: 3; }
+    .problem { grid-column: 1 / -1; }
   }
 </style>
 </head>
@@ -142,6 +161,7 @@
   <section id="sheet" hidden aria-label="Rules"><div class="sheet-head"><h2>Rules</h2><input id="sheetfind" type="search" placeholder="Find" aria-label="Find a rule"><button id="sheetclose">Close</button></div><p class="sheet-sub">Every measurement, and where it comes from. Estimates are guesses nobody has checked yet.</p><div id="sheetbody"></div></section>
   <div class="views"><button id="pick" hidden aria-expanded="false" title="Choose a view"></button><div class="seg" id="tabs" hidden></div><div class="seg" id="subtabs" hidden></div><button id="jump" hidden title="Show this board flat, from above">Board view ›</button></div>
   <div id="flat" hidden><img alt="2D view"></div></div>
+<div id="grip" role="separator" aria-orientation="horizontal" title="Drag to share the screen between the model and the info; double tap for half and half"></div>
 <aside id="panel" hidden><!-- closed until the script opens it on a wide screen with a mouse -->
   <div class="panel-head"><h2>View</h2><button id="close" title="Hide the parts panel">Close</button></div>
   <div class="controls">
