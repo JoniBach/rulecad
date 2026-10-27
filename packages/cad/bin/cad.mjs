@@ -16,6 +16,7 @@ import { isAssembly, buildAssembly, checkAssembly, shapes, sweep } from '../lib/
 import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
+import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
 import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 
@@ -49,6 +50,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
+  cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
+  cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
@@ -163,6 +166,8 @@ async function main() {
   if (cmd === 'diff') return diff(locate(ref), args[2], args[3] && !args[3].startsWith('--') ? args[3] : null);
   if (cmd === 'printed') return printed(locate(ref));
   if (cmd === 'why') return explainValue(ref);
+  if (cmd === 'set') return editVariables(ref);
+  if (cmd === 'add') return editAssembly(args[1], args[2]);
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
   const d = at ? materialise(locate(base), at) : locate(ref), set = sets();
@@ -249,6 +254,39 @@ async function main() {
 // ---------- boards ----------
 // A circuit board (engine pcb): its checks are the board's (design rules, the fab's limits, the matrix), its preview is
 // drawn from above as well as in 3D, and its export is the fab's zip plus KiCad's files, not a print file.
+// cad set <project>/<object> name=value … [--unit mm] [--rule "…"] [--label "…"] [--new]: change (or add) variables,
+// keeping the file's layout; refused if the variables wouldn't resolve
+async function editVariables(ref) {
+  const pairs = positional().slice(2);
+  if (!ref || !pairs.length || pairs.some((p) => !p.includes('='))) throw new Error('usage: cad set <project>/<object> name=value [name=value …] [--unit mm] [--rule "why"] [--label "Label"] [--new]');
+  const extra = Object.fromEntries(['unit', 'rule', 'label'].filter((k) => typeof opt(k) === 'string').map((k) => [k, opt(k)]));
+  const changes = Object.fromEntries(pairs.map((p) => { const i = p.indexOf('='); return [p.slice(0, i).trim(), { value: parseValue(p.slice(i + 1).trim()), ...extra }]; }));
+  const r = await setVariables(ref, changes, { create: !!opt('new') });
+  if (opt('json')) return console.log(JSON.stringify(r));
+  console.log(`set ${r.changed.join(', ')} in ${path.relative(WS, r.file)}`);
+}
+
+// cad add fit|joint|item|loop|pose <project>/<assembly> --key value …: add to an assembly, keeping its layout
+async function editAssembly(what, ref) {
+  const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
+  const pick = (keys) => Object.fromEntries(keys.map((k) => [k, typeof opt(k) === 'string' ? parseValue(opt(k)) : undefined]).filter(([, v]) => v !== undefined));
+  const text = (keys) => Object.fromEntries(keys.filter((k) => typeof opt(k) === 'string').map((k) => [k, String(opt(k))]));
+  let entry;
+  if (what === 'fit') entry = { ...text(['a', 'b']), ...pick(['min', 'max']), ...(list('poses') ? { poses: list('poses').map(String) } : {}), ...text(['note', 'label']) };
+  else if (what === 'joint') entry = { ...text(['id', 'type', 'parent', 'child', 'label', 'follow']), ...pick(['min', 'max', 'value', 'ratio']) };
+  else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...(list('at') ? { at: list('at') } : {}), ...(list('rotate') ? { rotate: list('rotate') } : {}),
+    ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
+  else if (what === 'loop') entry = text(['a', 'b', 'label']);
+  else if (what === 'pose') {
+    const pairs = positional().slice(3);
+    if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
+    entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
+  } else throw new Error('usage: cad add fit|joint|item|loop|pose <project>/<assembly> --key value …');
+  const r = addToAssembly(ref, what, entry);
+  if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
+  console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);
+}
+
 // cad why <project>/<object>.<name>: the value, and what it reads, down to the rules (estimates marked)
 async function explainValue(ref) {
   const m = /^([^/]+\/[^.]+)\.(.+)$/.exec(ref || '');

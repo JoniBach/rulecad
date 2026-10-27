@@ -296,3 +296,31 @@ test('schemas: every format checked up front, a typo named with its path', async
     assert.match(cad('check', 'bathroom/soap-tray'), /orientaton: not allowed here \(did you mean "orientation"\?\)/);
   } finally { done(); }
 });
+
+test('cad set and cad add: edits that keep the file as it was, and refuse to break it', async () => {
+  const { setAt, appendAt } = await import('./lib/jsonedit.mjs');
+  const t = '{\n  "variables": {\n    "w": { "value": 10, "unit": "mm" },\n    "r": {\n      "value": 2,\n      "rule": "Two × one"\n    }\n  },\n  "fits": []\n}\n';
+  const u = setAt(t, ['variables', 'w', 'value'], 12);
+  assert.equal(u, t.replace('"value": 10', '"value": 12'), 'only the value changes');
+  assert.match(appendAt(setAt(t, ['variables', 'h'], { value: 3, unit: 'mm', rule: 'Height' }), ['fits'], { a: 'a', b: 'b', poses: ['x'] }),
+    /"h": \{\n      "value": 3,[\s\S]*"fits": \[\n    \{\n      "a": "a",\n      "b": "b",\n      "poses": \["x"\]\n    \}\n  \]/);
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'bathroom/soap-tray');
+    const f = path.join(ws, 'projects/bathroom/objects/soap-tray.json'), before = fs.readFileSync(f, 'utf8');
+    const name = JSON.parse(cad('values', 'bathroom/soap-tray', '--json')).values.find((v) => typeof v.value === 'number' && !v.expr).name;
+    assert.match(cad('set', 'bathroom/soap-tray', `${name}=7`), new RegExp(`set ${name}`));
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7);
+    assert.match(cad('set', 'bathroom/soap-tray', `${name}=x1c.nope`), /not changed: .*no rule "nope"/);
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7, 'a bad edit leaves the file as it was');
+    assert.match(cad('set', 'bathroom/soap-tray', 'extra=1'), /has no variable "extra" \(add it with --new/);
+    assert.match(cad('set', 'bathroom/soap-tray', 'extra=1', '--new', '--unit', 'mm', '--rule', 'A test'), /set extra/);
+    assert.equal(fs.readFileSync(f, 'utf8').split('\n').slice(0, 3).join('\n'), before.split('\n').slice(0, 3).join('\n'), 'the rest of the file is untouched');
+    fs.mkdirSync(path.join(ws, 'projects/bathroom/assemblies'));
+    fs.writeFileSync(path.join(ws, 'projects/bathroom/assemblies/two.json'), JSON.stringify({ title: 'Two', items: [{ id: 'a', object: 'soap-tray' }] }, null, 2));
+    assert.match(cad('add', 'item', 'bathroom/two', '--id', 'b', '--object', 'soap-tray', '--at', '100,0,0'), /added an item/);
+    assert.match(cad('add', 'fit', 'bathroom/two', '--a', 'a', '--b', 'b', '--min', '1', '--note', 'Apart'), /added a fit/);
+    assert.match(cad('add', 'fit', 'bathroom/two', '--a', 'a', '--min', '1'), /fits\[1\]: needs "b"/);
+    assert.match(cad('check', 'bathroom/two'), /Apart: not near each other/);
+  } finally { done(); }
+});
