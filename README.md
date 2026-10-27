@@ -25,8 +25,9 @@ Every new project gets an `AGENTS.md`: how an AI agent (Claude Code and others) 
 look at the preview, report fits with numbers. `npx cad agents` adds it to an existing project.
 
 Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM, no framework), and
-[`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico)
-as public-domain data, each value with its source.
+[`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico,
+materials for analysis) as public-domain data, each value with its source. [`examples/bench-lever`](examples/bench-lever)
+is a test block for the optimiser: four levers of equal mass to print and load-test.
 
 **The pieces**, each useful alone:
 
@@ -39,6 +40,8 @@ as public-domain data, each value with its source.
 | [`@rulecad/keyboard-layout`](packages/keyboard-layout) | A plain JSON keyboard layout: rows of keys with widths and any per-key properties. |
 | [`@rulecad/versions`](packages/versions) | Semver for physical parts: a change to what other parts fit against is major, so you know when an old print stops fitting. |
 | [`@rulecad/shapes`](packages/shapes) | For JSCAD designs: text that prints cleanly, anchors on a face, cuts that leave no hairline gaps. Needs JSCAD (peer). |
+| [`@rulecad/fea`](packages/fea) | How far a flat part bends under load: finite elements on a grid, in plain JavaScript, checked against beam theory. |
+| [`@rulecad/topopt`](packages/topopt) | Topology optimisation for flat parts: the stiffest layout of a fixed amount of material, as outlines ready to extrude. Matches the published 88-line code step for step. |
 
 ```sh
 npm install @rulecad/printcheck

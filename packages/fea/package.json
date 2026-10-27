@@ -1,0 +1,37 @@
+{
+  "name": "@rulecad/fea",
+  "version": "0.1.0",
+  "description": "How far a flat part bends under load: finite elements on a grid of square cells, in plain JavaScript.",
+  "type": "module",
+  "exports": {
+    "types": "./fea.d.mts",
+    "default": "./fea.mjs"
+  },
+  "files": [
+    "fea.mjs",
+    "fea.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "fea",
+    "finite-elements",
+    "stiffness",
+    "stress",
+    "plane-stress"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/fea"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "types": "./fea.d.mts"
+}

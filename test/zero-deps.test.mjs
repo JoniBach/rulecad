@@ -22,5 +22,5 @@ for (const p of packages) test(`@rulecad/${p} needs nothing but other @rulecad p
   for (const [, from] of src.matchAll(/^\s*import\b.*from\s+'([^']+)'/gm)) {
     assert.ok(Object.keys({ ...pj.dependencies, ...pj.peerDependencies }).includes(from), `${p} imports ${from} without depending on it`);
   }
-  assert.doesNotMatch(src, /\bimport\(|\brequire\(|process\.|node:/, `${p} reaches for Node`);
+  assert.doesNotMatch(src, /\bimport\(|\brequire\(|process\.|['"`]node:/, `${p} reaches for Node`); // node: as a module name, not a property
 });
