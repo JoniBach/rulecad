@@ -12,6 +12,9 @@
 /** @typedef {{ uses?: string[], variables?: Record<string, Variable>, [field: string]: any }} DesignObject */
 /** @typedef {{ name: string, value: number | string, used?: boolean, set?: boolean, [field: string]: any }} Entry */
 
+// An error with a code (var.unknown, set.range, …) and, where known, the JSON path to fix (variables.cap_h.value)
+const fail = (code, message, path) => Object.assign(new Error(message), { code, ...(path ? { path } : {}) });
+
 export const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 // A variable that holds a name or text, and the names it may hold (null: any text)
 export const isName = (d) => !!(d.choice || ['text', 'anchor', 'layout'].includes(d.type));
@@ -75,6 +78,58 @@ export function evaluate(src, lookup) {
 }
 
 
+// ---------- units ----------
+// A unit as powers of its parts: "mm" {mm: 1}, "mm²" {mm: 2}, "deg" {deg: 1}. Numbers and names with no unit are
+// unknown (null), which matches anything: only units that are both known and different are a problem.
+const SUP = { '²': 2, '³': 3 }, ALIAS = { '°': 'deg', degrees: 'deg', degree: 'deg' };
+// Physical units only: counts (keys, u, rows, %) are plain numbers, so 12 keys × 19.05 mm is a length
+const PHYSICAL = new Set(['mm', 'cm', 'm', 'in', 'deg', 'rad', 'g', 'kg', 'N', 'W', 'V', 'A', 's', 'ms', 'Hz', 'mAh', 'Wh']);
+function parseUnit(u) {
+  if (u == null || u === '') return null;
+  const base = /^([a-zA-Z°]+)/.exec(String(u).trim())?.[1];
+  if (!PHYSICAL.has(ALIAS[base] || base)) return null;
+  const m = /^([a-zA-Z°]+)([²³])?$/.exec(String(u).trim());
+  if (!m) return { [String(u)]: 1 };
+  return { [ALIAS[m[1]] || m[1]]: m[2] ? SUP[m[2]] : 1 };
+}
+const showUnit = (x) => (x == null ? 'a number' : Object.keys(x).length ? Object.entries(x).map(([k, n]) => (n === 1 ? k : n === 2 ? `${k}²` : n === 3 ? `${k}³` : `${k}^${n}`)).join('·') : 'a plain number');
+const sameUnit = (a, b) => a == null || b == null || (Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, n]) => b[k] === n));
+const combine = (a, b, sign) => { if (a == null) return sign > 0 ? b : null; if (b == null) return a; const o = { ...a }; for (const [k, n] of Object.entries(b)) { o[k] = (o[k] || 0) + sign * n; if (!o[k]) delete o[k]; } return o; };
+
+/**
+ * The unit an expression comes to, and any mixing of units on the way (mm added to degrees, a sine of millimetres).
+ * @param {string | number} src @param {(name: string) => string | undefined} unitOf a name's unit
+ * @returns {{ unit: string | null, problems: string[] }}
+ */
+export function unitsOf(src, unitOf) {
+  if (typeof src === 'number') return { unit: null, problems: [] };
+  const t = tokens(String(src)), problems = [];
+  let i = 0;
+  const take = (op) => (t[i]?.op === op ? (i++, true) : false);
+  const add = (a, b, op) => { if (!sameUnit(a, b)) problems.push(`${op === '+' ? 'adds' : 'takes'} ${showUnit(b)} ${op === '+' ? 'to' : 'from'} ${showUnit(a)}`); return a ?? b; };
+  const expr = () => { let v = term(); for (;;) { if (take('+')) v = add(v, term(), '+'); else if (take('-')) v = add(v, term(), '-'); else return v; } };
+  const term = () => { let v = unary(); for (;;) { if (take('*')) v = combine(v, unary(), 1); else if (take('/')) v = combine(v, unary(), -1); else return v; } };
+  const unary = () => (take('-') || take('+') ? unary() : atom());
+  const atom = () => {
+    const k = t[i++];
+    if (!k) return null;
+    if (k.n != null) return null;
+    if (k.op === '(') { const v = expr(); take(')'); return v; }
+    if (k.id && FNS[k.id] && take('(')) {
+      const args = [expr()];
+      while (take(',')) args.push(expr());
+      take(')');
+      if (['sind', 'cosd', 'tand'].includes(k.id)) { if (args[0] && !sameUnit(args[0], { deg: 1 })) problems.push(`takes ${k.id} of ${showUnit(args[0])}, not degrees`); return {}; }
+      if (k.id === 'round') return args[0];
+      return args.reduce((a, b) => add(a, b, '+'));
+    }
+    return k.id ? parseUnit(unitOf(k.id)) : null;
+  };
+  const v = expr();
+  return { unit: v == null ? null : showUnit(v), problems, value: v };
+}
+
+
 
 // resolve(object, { sets, set }) -> { values, entries }
 //   values:  { stem_arm: 1.27, x1c: { line: 0.42, … }, mx: { … } } for the design's main()
@@ -94,44 +149,53 @@ export function evaluate(src, lookup) {
  * Every variable's value, and an entry for each variable and rule for checks and rule cards.
  * @param {DesignObject} object
  * @param {{ sets?: Record<string, RuleSet>, set?: Record<string, number | string>, display?: Record<string, number | string>, load?: (name: string) => RuleSet }} [options]
- * @returns {{ values: Record<string, any>, entries: Entry[] }}
+ * @returns {{ values: Record<string, any>, entries: Entry[], deps: Record<string, string[]> }} deps: each name with the names its own expression reads
  */
 export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}) {
   const ruleSets = Object.fromEntries((object.uses || []).map((u) => {
     const s = sets[u] || (load ? load(u) : null);
-    if (!s) throw new Error(`no rule set "${u}" (hand it in as sets.${u}, or give a load function)`);
+    if (!s) throw fail('rules.missing', `no rule set "${u}" (hand it in as sets.${u}, or give a load function)`, 'uses');
     return [s.name || u, s];
   }));
   const vars = object.variables || {};
   for (const [k, v] of Object.entries(set)) {
     const d = vars[k];
-    if (!d) throw new Error(`no variable "${k}" to set (variables: ${Object.keys(vars).join(', ')})`);
+    if (!d) throw fail('set.unknown', `no variable "${k}" to set (variables: ${Object.keys(vars).join(', ')})`, `variables.${k}`);
     if (isName(d)) { checkName(k, d, v); continue; }
-    if (!d.tweak) throw new Error(`"${k}" is fixed by its rule; only variables with a tweak range can be set`);
+    if (!d.tweak) throw fail('set.fixed', `"${k}" is fixed by its rule; only variables with a tweak range can be set`, `variables.${k}.tweak`);
     const n = Number(v);
-    if (!Number.isFinite(n) || n < d.tweak.min || n > d.tweak.max) throw new Error(`${k} must be a number from ${d.tweak.min} to ${d.tweak.max}`);
+    if (!Number.isFinite(n) || n < d.tweak.min || n > d.tweak.max) throw fail('set.range', `${k} must be a number from ${d.tweak.min} to ${d.tweak.max}`, `variables.${k}.tweak`);
   }
 
-  const done = new Map(), busy = new Set();
+  // deps: each name's own references (what its expression reads), for explaining a value; stack: whose expression is being read
+  const done = new Map(), busy = new Set(), deps = new Map(), stack = [];
+  const pathOf = (name) => (name.includes('.') ? `rules.${name}.value` : `variables.${name}.value`);
   const lookup = (name) => {
+    if (stack.length) deps.get(stack[stack.length - 1]).add(name);
     if (done.has(name)) return done.get(name);
-    if (busy.has(name)) throw new Error(`"${name}" refers back to itself`);
+    if (busy.has(name)) throw fail('var.cycle', `"${name}" refers back to itself`, pathOf(name));
     busy.add(name);
     let src, where;
     if (name.includes('.')) {
       let [s, r] = name.split('.');
       if (!ruleSets[s] && ruleSets[s.replace(/_/g, '-')]) s = s.replace(/_/g, '-'); // mx_switch.housing_top reads the set named mx-switch (a - is a minus here)
-      if (!ruleSets[s]) throw new Error(`"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
-      if (!ruleSets[s].rules[r]) throw new Error(`"${name}": no rule "${r}" in ${s}`);
+      if (!ruleSets[s]) throw fail('var.unknown-set', `"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
+      if (!ruleSets[s].rules[r]) throw fail('var.unknown-rule', `"${name}": no rule "${r}" in ${s}`);
       src = ruleSets[s].rules[r].value; where = (n) => (n.includes('.') ? n : `${s}.${n}`); // a rule's names are its own set's
     } else {
-      if (!vars[name]) throw new Error(`no variable "${name}"`);
+      if (!vars[name]) throw fail('var.unknown', `no variable "${name}"`);
       if (isName(vars[name])) { busy.delete(name); const c = checkName(name, vars[name], name in display ? display[name] : name in set ? set[name] : vars[name].value); done.set(name, c); return c; }
       src = name in display ? display[name] : name in set ? Number(set[name]) : vars[name].value; where = (n) => n; // display: the screen's settings win
     }
     let v;
-    try { v = evaluate(src, (n) => lookup(where(n))); } catch (e) { busy.delete(name); throw e.message.startsWith('"') || e.message.startsWith('no ') ? e : new Error(`"${name}" = ${JSON.stringify(src)}: ${e.message}`); }
-    busy.delete(name); done.set(name, v);
+    deps.set(name, new Set()); stack.push(name);
+    try { v = evaluate(src, (n) => lookup(where(n))); } catch (e) {
+      busy.delete(name); stack.pop();
+      const out = e.message.startsWith('"') || e.message.startsWith('no ') ? e : fail(e.code || 'var.expression', `"${name}" = ${JSON.stringify(src)}: ${e.message}`);
+      if (!out.path) out.path = pathOf(name); // the first expression that reads the bad name: where to fix it
+      throw out;
+    }
+    stack.pop(); busy.delete(name); done.set(name, v);
     return v;
   };
 
@@ -139,6 +203,15 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
   for (const [name, d] of Object.entries(vars)) {
     values[name] = lookup(name);
     entries.push({ name, ...d, value: values[name], expr: typeof d.value === 'string' ? d.value : undefined, set: name in set });
+  }
+  // Units: each variable's expression, its names' units mixed only where they agree, and coming to the unit it says
+  const unitOf = (n) => (n.includes('.') ? ruleSets[n.split('.')[0].replace(/_/g, '-')]?.rules[n.split('.')[1]]?.unit ?? ruleSets[n.split('.')[0]]?.rules[n.split('.')[1]]?.unit : vars[n]?.unit);
+  const units = [];
+  for (const [name, d] of Object.entries(vars)) {
+    if (typeof d.value !== 'string' || isName(d)) continue;
+    const r = unitsOf(d.value, unitOf), said = parseUnit(d.unit);
+    for (const p of r.problems) units.push({ name, path: `variables.${name}.value`, message: `"${name}" = ${d.value}: ${p}` });
+    if (said && r.value && !sameUnit(said, r.value)) units.push({ name, path: `variables.${name}.unit`, message: `"${name}" comes to ${r.unit}, but its unit says ${showUnit(said)}` });
   }
   const used = new Set(done.keys()); // rules the variables actually refer to (directly or through other rules)
   for (const [s, rs] of Object.entries(ruleSets)) {
@@ -149,7 +222,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     }
     if (rs.footprints) values[s].footprints = rs.footprints; // pad data for boards (v.esp32c6.footprints.module), as the set gives it
   }
-  return { values, entries };
+  return { values, entries, deps: Object.fromEntries([...deps].map(([k, v]) => [k, [...v]])), units };
 }
 
 // Round for display: at most 2 decimals, no trailing zeros.

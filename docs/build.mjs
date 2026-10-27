@@ -31,8 +31,10 @@ fs.cpSync(path.join(ROOT, 'packages/viewer/site'), OUT, { recursive: true })
 for (const f of fs.readdirSync(path.join(HERE, 'src'))) if (f.endsWith('.css') || f.endsWith('.mjs')) copy(path.join(HERE, 'src', f), path.join(ASSETS, f))
 for (const f of fs.readdirSync(path.join(HERE, 'src/demos'))) copy(path.join(HERE, 'src/demos', f), path.join(ASSETS, 'demos', f))
 copy(require.resolve('@jscad/modeling/dist/jscad-modeling.min.js'), path.join(ASSETS, 'jscad-modeling.min.js'))
+// The file formats' schemas, at the address their $id names (jonibach.github.io/rulecad/schemas/…), for editors
+for (const f of fs.readdirSync(path.join(ROOT, 'packages/cad/schemas'))) copy(path.join(ROOT, 'packages/cad/schemas', f), path.join(OUT, 'schemas', f))
 copy(path.join(path.dirname(require.resolve('@jscad/modeling/package.json')), 'LICENSE'), path.join(ASSETS, 'jscad.LICENSE'))
-const browser = { variables: ['variables.mjs'], shapes: ['shapes.mjs', 'enclosure.mjs'], fit: ['fit.mjs'], printcheck: ['printcheck.mjs'],
+const browser = { variables: ['variables.mjs'], shapes: ['shapes.mjs', 'enclosure.mjs', 'features.mjs', 'ops.mjs'], fit: ['fit.mjs'], printcheck: ['printcheck.mjs'],
   'keyboard-layout': ['keyboard-layout.mjs'], 'model-link': ['model-link.mjs'], versions: ['versions.mjs'] }
 for (const [dir, files] of Object.entries(browser)) for (const f of files) copy(path.join(ROOT, 'packages', dir, f), path.join(ASSETS, 'lib', f))
 const importMap = { imports: { '@jscad/modeling': '../assets/jscad.mjs', ...Object.fromEntries(Object.entries(browser).map(([dir, [f]]) => [`@rulecad/${dir}`, `../assets/lib/${f}`])) } }

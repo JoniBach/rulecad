@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "title": "rulecad object",
+  "description": "A design's description: its variables (each a value with the rule behind it), the rule sets it uses, its parts and how it prints. The shape is in the .js beside it.",
+  "type": "object",
+  "required": ["variables"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "description": "The object's name, as its file name" },
+    "title": { "type": "string" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
+    "description": { "type": "string" },
+    "note": { "type": "string" },
+    "uses": { "type": "array", "items": { "type": "string" }, "description": "Rule sets (x1c, m3) and other objects (project/object, optionally @version)" },
+    "material": { "type": "string" },
+    "orientation": { "type": "string", "description": "How it sits on the bed, and anything the printer or the person assembling it should know" },
+    "role": { "enum": ["part", "reference", "board"], "description": "reference: drawn faint and never printed (a switch, a tablet); board: a circuit board" },
+    "engine": { "enum": ["jscad", "manifold", "pcb"], "description": "manifold: v.ops booleans by Manifold (npm install manifold-3d); pcb: a circuit board" },
+    "variables": { "type": "object", "additionalProperties": { "$ref": "#/$defs/variable" } },
+    "display": { "type": "object", "description": "Settings the mirror and model page use instead (lighter meshes, no legends)" },
+    "mirror": { "type": "object", "description": "The older name for display" },
+    "parts": { "type": "object", "additionalProperties": { "$ref": "#/$defs/part" } },
+    "variants": { "type": "object", "additionalProperties": { "type": "object" } },
+    "anchors": { "type": "object", "additionalProperties": { "$ref": "#/$defs/anchor" } },
+    "layouts": { "type": "object", "description": "Older designs kept layouts here; now in the project's layouts/" }
+  },
+  "$defs": {
+    "expr": { "type": ["number", "string"] },
+    "variable": {
+      "type": "object",
+      "required": ["value"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "description": "A number, an expression (x1c.line * 3), or for typed variables a name or text" },
+        "unit": { "type": "string" },
+        "rule": { "type": "string", "description": "Why the value is what it is" },
+        "label": { "type": "string" },
+        "show": { "type": "boolean" },
+        "interface": { "type": "boolean", "description": "Other objects depend on it: a change bumps the version accordingly" },
+        "tweak": { "type": "object", "required": ["min", "max"], "additionalProperties": false, "properties": { "min": { "$ref": "#/$defs/expr" }, "max": { "$ref": "#/$defs/expr" }, "step": { "type": "number" } } },
+        "type": { "enum": ["text", "anchor", "choice", "layout"] },
+        "choice": { "type": "array" },
+        "max": { "type": "number" },
+        "fields": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string" },
+        "kind": { "type": "string" },
+        "checked": { "type": "string" }
+      }
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "role": { "enum": ["part", "support", "reference"] },
+        "filament": { "type": "string" },
+        "display": { "type": "boolean" },
+        "mirror": { "type": "boolean" },
+        "optional": { "type": "boolean" }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "required": ["at"],
+      "additionalProperties": false,
+      "properties": {
+        "at": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/expr" } },
+        "axis": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/expr" } },
+        "ref": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/expr" } },
+        "rotate": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/expr" } }
+      }
+    }
+  }
+}

@@ -12,14 +12,14 @@ import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, 
 import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
 import { measure, match } from '../lib/meshcmd.mjs';
-import { isAssembly, buildAssembly, checkAssembly, shapes, sweep } from '../lib/assembly.mjs';
-import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
+import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData } from '../lib/assembly.mjs';
+import { valuesOf, why } from '../lib/explain.mjs';
+import { errorData } from '../lib/errors.mjs';
+import { schemaFindings } from '../lib/schema.mjs';
+import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
+import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
 
-// The project's filaments: { base: { slot: 1, … }, legend: { slot: 2, … } } in project.json
-const filaments = (project) => JSON.parse(fs.readFileSync(path.join(paths.project(project), 'project.json'), 'utf8')).filaments || {};
-// The filaments in AMS slot order, for the print file: [{ colour }, …], slot 1 first
-const slots = (fil) => { const out = []; for (const f of Object.values(fil)) out[(f.slot || 1) - 1] = f; return Array.from(out, (f) => f || {}); };
 // What the print file asks of the AMS: which filament each kind of part prints in
 function filamentNotes(parts, fil) {
   const used = [...new Set(parts.map((p) => p.filament || 'base'))];
@@ -31,13 +31,6 @@ function filamentNotes(parts, fil) {
 // --open: the 3MF in Bambu Studio (macOS), else whatever opens .3mf files
 const openInSlicer = (f) => (process.platform === 'darwin' ? execFileSync('open', ['-a', 'Bambu Studio', f])
   : execFileSync(process.platform === 'win32' ? 'explorer' : 'xdg-open', [f]));
-const VIEW = process.env.CAD_VIEW_URL || config.viewUrl;
-// A link to the model page; one the page would turn away is an error here, not when someone opens it
-async function linkTo(model) {
-  const errors = checkLink(model.shapes ? expand(model) : model);
-  if (errors.length) throw new Error(`no link: ${errors[0]}`);
-  return `${VIEW}#m=${await encode(model)}`;
-}
 
 const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
@@ -45,7 +38,11 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad import-kle <file> <project>/<name>   a keyboard layout from keyboard-layout-editor.com, into layouts/
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
-  cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure)
+  cad values <project>/<object> [names…]   the object's variables, resolved [--json]
+  cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
+  cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
+  cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
+  cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
   cad export <project>/<object>     a 3MF for Bambu Studio in exports/ [--open: open it in Bambu Studio]
   cad show <project>/<object>       the model on display through your show target, with its rules [--ttl 10m]
@@ -90,14 +87,23 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 const args = process.argv.slice(2);
 // --name value, or -m for one-letter names
 const opt = (k) => { const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`)); return i >= 0 ? (args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : true) : undefined; };
+// The arguments that aren't options or an option's value: cad values keyboard/case depth width --json
+const positional = () => args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--') && !['--json', '--long', '--short', '--md', '--all', '--explode'].includes(args[i - 1])));
 const sets = () => Object.fromEntries(String(opt('set') || '').split(',').filter(Boolean).map((p) => p.split('=').map((s) => s.trim())));
 const suffix = (set) => Object.entries(set).map(([k, v]) => `-${k}=${v}`).join('');
 
-function report(findings) {
-  const mark = { pass: '✓', warn: '!', fail: '✗', info: '·' };
-  for (const r of findings) console.log(`  ${mark[r.level]} ${r.text}`);
+// --progress: what a long build or sweep is doing, on one line of stderr
+const showProgress = (e) => {
+  if (!opt('progress')) return;
+  process.stderr.write(`\r\x1b[K${e.stage === 'sweep' ? `sweeping ${e.joint} ${e.step}/${e.steps}` : `building ${e.item} (${e.done})`}`);
+};
+// Findings: as text (a mark and the words), or with --json as data: { ...about, findings: [{ level, text, code, values, refs, at }] }
+function report(findings, about = {}) {
+  if (opt('json')) console.log(JSON.stringify({ ...about, findings }, null, 2));
+  else { const mark = { pass: '✓', warn: '!', fail: '✗', info: '·' }; for (const r of findings) console.log(`  ${mark[r.level]} ${r.text}`); }
   return findings.some((r) => r.level === 'fail');
 }
+const say = (...a) => { if (!opt('json')) console.log(...a); }; // text output that --json leaves out
 
 async function main() {
   const [cmd, ref] = args;
@@ -153,6 +159,9 @@ async function main() {
   if (cmd === 'history') return history(ref);
   if (cmd === 'diff') return diff(locate(ref), args[2], args[3] && !args[3].startsWith('--') ? args[3] : null);
   if (cmd === 'printed') return printed(locate(ref));
+  if (cmd === 'why') return explainValue(ref);
+  if (cmd === 'set') return editVariables(ref);
+  if (cmd === 'add') return editAssembly(args[1], args[2]);
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
   const d = at ? materialise(locate(base), at) : locate(ref), set = sets();
@@ -171,22 +180,35 @@ async function main() {
     return;
   }
 
+  if (cmd === 'values') {
+    const list = valuesOf(b, positional().slice(2));
+    if (opt('json')) return console.log(JSON.stringify({ object: `${d.project}/${d.name}`, values: list }, null, 2));
+    for (const v of list) console.log(`${v.name.padEnd(18)} ${`${fmt(v.value)} ${v.unit}`.padEnd(14)} ${v.expr ? `= ${v.expr}` : ''}`);
+    return;
+  }
+
   if (cmd === 'rules') {
     for (const e of b.entries) console.log(`${e.name.padEnd(18)} ${`${fmt(e.value)} ${e.unit || ''}`.padEnd(14)} ${e.expr ? `= ${e.expr}  ` : ''}${e.rule || ''}${e.source ? `  [${e.kind ? `${e.kind}: ` : ''}${e.source}]` : ''}${e.set ? '  (set)' : ''}`);
     return;
   }
 
   if (cmd === 'check') {
-    console.log(`${title} ${version}${Object.keys(set).length ? ` (${suffix(set).slice(1)})` : ''}`);
-    const raw = lint(fs.readFileSync(d.js, 'utf8'));
+    say(`${title} ${version}${Object.keys(set).length ? ` (${suffix(set).slice(1)})` : ''}`);
+    const raw = lint(fs.readFileSync(d.js, 'utf8')), file = path.relative(WS, d.js);
+    // The files first: the object's JSON, and the workspace's own rule sets it uses, against their schemas
+    const own = (f) => path.relative(WS, f), ruleFiles = (b.object.uses || []).filter((u) => !u.includes('/')).map((u) => path.join(WS, 'rules', `${u}.json`)).filter((f) => fs.existsSync(f));
+    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
     const failed = report([
-      raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}` } : { level: 'pass', text: 'every measurement is a variable' },
+      ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
+      ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
+      raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}`, code: 'lint.numbers', refs: { file, numbers: raw } }
+        : { level: 'pass', text: 'every measurement is a variable', code: 'lint.numbers', refs: { file } },
       ...(b.object.role === 'reference'
-        ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks` }]
+        ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
         : check(b.triangles, printer(b, d), { parts: b.parts })),
-    ]);
-    if (b.object.orientation) console.log(`  orientation: ${b.object.orientation}`);
-    if (b.parts.length > 1) console.log(`  parts: ${b.parts.map((p) => `${p.name}${p.role === 'support' ? ' (support)' : ''}`).join(', ')}`);
+    ], { object: `${d.project}/${d.name}`, title, version, ...(Object.keys(set).length ? { set } : {}), orientation: b.object.orientation, parts: b.parts.map((p) => ({ name: p.name, role: p.role || 'part' })) });
+    if (b.object.orientation) say(`  orientation: ${b.object.orientation}`);
+    if (b.parts.length > 1) say(`  parts: ${b.parts.map((p) => `${p.name}${p.role === 'support' ? ' (support)' : ''}`).join(', ')}`);
     process.exitCode = failed ? 1 : 0;
     return;
   }
@@ -227,12 +249,66 @@ async function main() {
 // ---------- boards ----------
 // A circuit board (engine pcb): its checks are the board's (design rules, the fab's limits, the matrix), its preview is
 // drawn from above as well as in 3D, and its export is the fab's zip plus KiCad's files, not a print file.
+// cad set <project>/<object> name=value … [--unit mm] [--rule "…"] [--label "…"] [--new]: change (or add) variables,
+// keeping the file's layout; refused if the variables wouldn't resolve
+async function editVariables(ref) {
+  const pairs = positional().slice(2);
+  if (!ref || !pairs.length || pairs.some((p) => !p.includes('='))) throw new Error('usage: cad set <project>/<object> name=value [name=value …] [--unit mm] [--rule "why"] [--label "Label"] [--new]');
+  const extra = Object.fromEntries(['unit', 'rule', 'label'].filter((k) => typeof opt(k) === 'string').map((k) => [k, opt(k)]));
+  const changes = Object.fromEntries(pairs.map((p) => { const i = p.indexOf('='); return [p.slice(0, i).trim(), { value: parseValue(p.slice(i + 1).trim()), ...extra }]; }));
+  const r = await setVariables(ref, changes, { create: !!opt('new') });
+  if (opt('json')) return console.log(JSON.stringify(r));
+  console.log(`set ${r.changed.join(', ')} in ${path.relative(WS, r.file)}`);
+}
+
+// cad add fit|joint|item|loop|pose <project>/<assembly> --key value …: add to an assembly, keeping its layout
+async function editAssembly(what, ref) {
+  const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
+  const pick = (keys) => Object.fromEntries(keys.map((k) => [k, typeof opt(k) === 'string' ? parseValue(opt(k)) : undefined]).filter(([, v]) => v !== undefined));
+  const text = (keys) => Object.fromEntries(keys.filter((k) => typeof opt(k) === 'string').map((k) => [k, String(opt(k))]));
+  let entry;
+  if (what === 'fit') entry = { ...text(['a', 'b']), ...pick(['min', 'max']), ...(list('poses') ? { poses: list('poses').map(String) } : {}), ...text(['note', 'label']) };
+  else if (what === 'joint') entry = { ...text(['id', 'type', 'parent', 'child', 'label', 'follow']), ...pick(['min', 'max', 'value', 'ratio']) };
+  else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...(list('at') ? { at: list('at') } : {}), ...(list('rotate') ? { rotate: list('rotate') } : {}),
+    ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
+  else if (what === 'loop') entry = text(['a', 'b', 'label']);
+  else if (what === 'pose') {
+    const pairs = positional().slice(3);
+    if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
+    entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
+  } else throw new Error('usage: cad add fit|joint|item|loop|pose <project>/<assembly> --key value …');
+  const r = addToAssembly(ref, what, entry);
+  if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
+  console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);
+}
+
+// cad why <project>/<object>.<name>: the value, and what it reads, down to the rules (estimates marked)
+async function explainValue(ref) {
+  const m = /^([^/]+\/[^.]+)\.(.+)$/.exec(ref || '');
+  if (!m) throw new Error('usage: cad why <project>/<object>.<variable> (or .<set>.<rule>), e.g. cad why keyboard/case.depth');
+  const tree = await why(m[1], m[2], { depth: Number(opt('depth')) || 12 });
+  if (opt('json')) return console.log(JSON.stringify(tree, null, 2));
+  const line = (n, pad) => {
+    const about = n.kind ? `  [${n.kind === 'estimate' ? 'ESTIMATE' : n.kind}${n.source ? `: ${n.source}` : ''}]` : '';
+    const where = n.via ? `  (${n.object})` : '';
+    console.log(`${pad}${n.name} = ${fmt(n.value)}${n.unit ? ` ${n.unit}` : ''}${n.expr ? `  = ${n.expr}` : ''}${where}${n.seen ? '  (above)' : ''}${about}`);
+    if (!n.seen && n.rule && !pad) console.log(`  ${n.rule}`);
+    for (const c of n.reads || []) line(c, `${pad}  `);
+  };
+  line(tree, '');
+}
+
 async function board(cmd, d, b, { title, version, tag }) {
   const pcb = await pcbEngine(), name = `${d.name}@${version}${tag}`;
   if (cmd === 'check') {
     console.log(`${title} ${version}`);
     const raw = lint(fs.readFileSync(d.js, 'utf8'));
+    // The files first: the object's JSON, and the workspace's own rule sets it uses, against their schemas
+    const own = (f) => path.relative(WS, f), ruleFiles = (b.object.uses || []).filter((u) => !u.includes('/')).map((u) => path.join(WS, 'rules', `${u}.json`)).filter((f) => fs.existsSync(f));
+    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
     const failed = report([
+      ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
+      ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}` } : { level: 'pass', text: 'every measurement is a variable' },
       ...(await pcb.checks(b.circuit, b.values, b.matrix)),
     ]);
@@ -264,23 +340,28 @@ async function board(cmd, d, b, { title, version, tag }) {
 // ---------- assemblies ----------
 async function assembly(cmd, ref) {
   const pose = typeof opt('pose') === 'string' ? opt('pose') : undefined;
-  const s = await buildAssembly(ref, [], {}, { pose }), a = s.a, title = `${a.title || s.name}${pose ? ` (${pose})` : ''}`;
+  const s = await buildAssembly(ref, [], {}, { pose, progress: showProgress }), a = s.a, title = `${a.title || s.name}${pose ? ` (${pose})` : ''}`;
   const versions = [...new Map(s.objects.map((o) => [o.objName, `${o.objName} ${o.version}`])).values()].join(', ');
   const rules = (ns) => Object.fromEntries(Object.keys(loadRuleSet(ns).rules).map((k) => [k, s.num(`${ns}.${k}`)]));
   const printed = s.parts.filter((p) => p.role !== 'reference');
 
   if (cmd === 'check') {
-    console.log(`${title} (${a.kind || 'fit'}: ${versions})`);
+    say(`${title} (${a.kind || 'fit'}: ${versions})`);
     // Each pose (or the one asked for): what's the same in every pose is said once, the rest under the pose's name
     const poses = pose ? [pose] : Object.keys(s.motion.poses);
+    const file = path.join(paths.project(s.project), 'assemblies', `${s.name}.json`), layouts = new Set((a.items || []).map((i) => i.repeat?.layout).filter((l) => l && !l.includes('/')));
+    const schemaProblems = [...(fs.existsSync(file) ? schemaFindings(JSON.parse(fs.readFileSync(file, 'utf8')), 'assembly', path.relative(WS, file)) : []),
+      ...[...layouts].map((l) => path.join(paths.project(s.project), 'layouts', `${l}.json`)).filter((f) => fs.existsSync(f)).flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'layout', path.relative(WS, f)))];
     let findings = checkAssembly(s);
     if (poses.length > 1) {
       const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
-      findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}` }, ...each[0][1].filter(same), ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}) })))];
+      findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}`, code: 'poses', refs: { poses } }, ...each[0][1].filter(same),
+        ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
     }
-    if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24 }));
+    findings.unshift(...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]));
+    if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24, progress: showProgress }));
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
-    process.exitCode = report(findings) ? 1 : 0;
+    process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;
     return;
   }
   if (cmd === 'preview') {
@@ -303,26 +384,7 @@ async function assembly(cmd, ref) {
     return console.log(out);
   }
   const link = async () => {
-    const fil = filaments(s.project);
-    const model = {
-      title, version: versions, src: `${s.project}/${s.name}`, // object versions are in version: the file name stays short orientation: a.note || (a.kind === 'plate' ? 'A print plate: print everything together.' : 'A fit check: references are faint.'),
-      rules: [],
-      ...sheet([...new Map(s.objects.filter((o) => o.built?.entries).map((o) => [o.objName, o.built.entries])).entries()]),
-      // Its boards' 2D views (copper, schematic), so one link holds the whole build: tabs over the 3D model
-      ...(await (async () => {
-        const boards = [...new Map(s.objects.filter((o) => o.built?.circuit).map((o) => [o.objName, o])).values()];
-        if (!boards.length) return {};
-        const pcb = await pcbEngine(), views = [];
-        for (const o of boards) for (const [n, svg] of await pcb.views(o.built.circuit)) views.push([boards.length > 1 ? `${o.objName} ${n}` : n, svg]);
-        return { views };
-      })()),
-      // Each shape once and placed: the macropad's nine keys cost one keycap
-      ...fromShapes(shapes(s.parts).shapes.length ? (() => {
-        const placed = shapes(s.parts), tri = (polys) => polys.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]]));
-        return placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: tri(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; });
-      })() : []),
-    };
-    Object.assign(model, motionLink(s));
+    const model = await assemblyModel(s, { title, versions, filaments: filaments(s.project), noRules: !!opt('no-rules') });
     const url = await linkTo(model);
     return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src: model.src, size: url.length, title, version: '' };
   };
@@ -341,57 +403,12 @@ async function assembly(cmd, ref) {
   throw new Error(`cad ${cmd} doesn't work on an assembly (check, preview, export, show, link do)`);
 }
 
-// An assembly's joints, for the page's sliders: each part moves with its item (motion in @rulecad/model-link)
-function motionLink(s) {
-  const mo = s.motion;
-  if (!mo.joints.length) return {};
-  const r = (x) => Number(x.toFixed(6)), names = mo.items.map((x) => x[0]);
-  const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`), allow = [];
-  const loose = s.fits.filter((x) => x.min != null && x.num(x.min) < 0);
-  s.parts.forEach((pa, i) => s.parts.forEach((pb, j) => {
-    if (j > i && pa.item !== pb.item && loose.some((x) => (named(pa, x.a) && named(pb, x.b)) || (named(pa, x.b) && named(pb, x.a)))) allow.push([i, j]);
-  }));
-  return { motion: {
-    items: mo.items.map(([n, ...m]) => [n, ...m.map(r)]),
-    joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
-      ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}) })),
-    poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
-    part: s.parts.map((p) => names.indexOf(p.item)),
-    ...(allow.length ? { allow } : {}),
-  } };
-}
-
-// ---------- links ----------
-// The rules sheet a link carries, for the page's Rules panel: a row for each of an object's own values, then each rule
-// they use, as [group, name, value, unit, rule, expr, kind, source, checked] (group: the object, or the rule's set).
-// A rule set marked "private" stays out, and --no-rules leaves the sheet out altogether.
-function sheet(objects) {
-  if (opt('no-rules')) return {};
-  const rows = [], seen = new Set(), trim = (r) => { while (r.length && (r[r.length - 1] === '' || r[r.length - 1] == null)) r.pop(); return r; };
-  for (const [obj, entries] of objects) for (const e of entries) {
-    if (!e.name.includes('.')) rows.push(trim([obj, e.label || e.name, fmt(e.value), e.unit || '', e.rule || '', e.expr || '']));
-  }
-  for (const [, entries] of objects) for (const e of entries) {
-    if (!e.name.includes('.') || !e.used || e.private || seen.has(e.name)) continue;
-    seen.add(e.name);
-    const [set, name] = e.name.split('.');
-    rows.push(trim([set, name, fmt(e.value), e.unit || '', e.rule || '', e.expr || '', e.kind || '', e.source || '', e.checked || '']));
-  }
-  return rows.length ? { sheet: rows } : {};
-}
 // The model as a link: full print precision (triangles), the rules card, and exactly which version it is.
 async function links(d, b, set) {
   const s = d.tag ? { kind: null } : await since(d), fil = filaments(d.project);
   const version = d.version || b.object.version || '0.0.0';
   const src = `${d.project}/${d.name}${d.variant ? `:${d.variant}` : ''}@${version}${s.kind && s.kind !== 'first' ? '+changes' : s.kind === 'first' ? '+unreleased' : ''}`;
-  const model = {
-    title: `${b.object.title || b.object.name}${d.variant ? ` (${d.variant})` : ''}`, version, src, ...(Object.keys(set).length ? { set: suffix(set).slice(1).replace(/-(?=\w+=)/g, ',') } : {}),
-    material: b.object.material, orientation: b.object.orientation,
-    rules: b.entries.filter((e) => e.show).map((e) => [e.label || e.name, fmt(e.value), e.unit || '']),
-    ...sheet([[b.object.name, b.entries]]),
-    ...(b.circuit ? { views: await (await pcbEngine()).views(b.circuit) } : {}), // boards: the 2D board and schematic
-    ...fromParts(b.parts.map((p) => ({ name: p.name, role: p.role, label: p.label, slot: slotOf(fil, p.filament), triangles: p.triangles.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]])) }))),
-  };
+  const model = await objectModel(b, { title: `${b.object.title || b.object.name}${d.variant ? ` (${d.variant})` : ''}`, version, src, set: Object.keys(set).length ? suffix(set).slice(1).replace(/-(?=\w+=)/g, ',') : null, filaments: fil, noRules: !!opt('no-rules') });
   const url = await linkTo(model);
   return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src, size: url.length, title: model.title, version };
 }
@@ -614,4 +631,8 @@ function printed(d) {
   console.log(`logged in ${path.relative(WS, printsFile(d))}: ${d.name}@${version} ${result}`);
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1); });
+main().catch((e) => {
+  if (opt('json')) console.log(JSON.stringify({ error: errorData({ ...e, message: e.message, code: e.code, file: e.file && path.relative(WS, e.file) }) }, null, 2));
+  else console.error(`${e.message}${e.file ? ` (${path.relative(WS, e.file)}${e.path ? `: ${e.path}` : ''})` : ''}`);
+  process.exit(1);
+});

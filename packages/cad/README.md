@@ -224,6 +224,25 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - **fit** assemblies check how parts go together: no overlaps (unless a fit allows a press fit with a negative
   `min`), and the closest gap for each `fit` within its range. Supports are left out: they're snipped off first.
   Objects with `"role": "reference"` (the MX switch) model things you don't print: drawn faint, never exported.
+- **Hosts:** the core (resolve, build, check) reads and writes through a host (`lib/host.mjs`): Node's file system
+  for the CLI, or `memoryHost(files)`, a workspace in memory (reading the tool's own packages from disk), for tests
+  and, later, a browser. `useHost(h)` switches. The model-link building (`lib/links.mjs`) and the joints' data for the
+  page (`motionData`) are in the library too, so other programs make the same links without the CLI.
+- **Engines:** designs get `v.ops` (union, subtract, intersect): JSCAD's booleans by default, Manifold's (faster,
+  watertight; `npm install manifold-3d`) with `"engine": "manifold"` in the object's JSON or `CAD_ENGINE=manifold`.
+- **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model: it can read the
+  workspace and the tool's packages, but can't write files, start programs or workers, or load addons, and it may
+  import only `@jscad/modeling`, `@rulecad/shapes` and files in its own project (no `node:` modules, so no network;
+  `fetch` is gone too). It gets its values as data and returns its parts. A workspace that trusts its designs sets
+  `"sandbox": false` in cad.config.json (or `CAD_TRUST=1`); on Node 18, without the permission model, designs run in
+  the tool's process. Board designs (engine pcb) run in the tool's process, with the board engine.
+- **Units:** `cad check` warns where an expression mixes units (millimetres added to degrees, a sine of a length) or
+  comes to another unit than its variable says (mm × mm with unit mm). Counts (keys, u, rows) are plain numbers.
+- **Progress:** `--progress` shows what a long check or sweep is building; a program passes `progress` to
+  `buildAssembly` and `sweep` and gets `{ stage, item | joint, … }` events.
+- **Near an anchor:** a fit can name an item's faces near one of its anchors, `"a": "case@pivot"` (with `"within": 6`,
+  mm; 10 by default): the pocket round a pivot rather than the whole case. A fit's finding says where its closest gap
+  is (`at` in `--json`) and which anchor that's nearest (`… 0.4 mm from link@mount`).
 - **plate** assemblies lay objects out on the bed: they're checked as one print and `export` writes one 3MF with an
   object per part. Supports are kept.
 - **Turning:** `"rotate": [0, 180, 0]` turns an item (degrees about x, y, z, in that order) about its own origin

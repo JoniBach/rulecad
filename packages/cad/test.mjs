@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -231,7 +232,7 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     object(ws, 'demo/base', { variables: vars, anchors: { hinge: { at: [0, 'd / 2', 'h'], axis: [1, 0, 0] } } }, BOX);
     object(ws, 'demo/lid', { variables: vars, anchors: { hinge: { at: [0, 'd / 2', 0], axis: [1, 0, 0] } } }, BOX);
     fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'));
-    const box = (extra = {}) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit',
+    const box = (extra = {}, fits = []) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', fits,
       items: [{ id: 'base', object: 'base' }, { id: 'lid', object: 'lid' }, { id: 'tab', object: 'lid' }, { id: 'spare', assembly: 'spare', at: [100, 0, 0] }],
       joints: [{ id: 'hinge', type: 'revolute', parent: 'base.hinge', child: 'lid.hinge', min: -180, max: 30, label: 'Lid' },
         { id: 'tab', type: 'revolute', parent: { item: 'base', at: ['base.w', 'base.d / 2', 'base.h'], axis: [1, 0, 0] }, child: 'tab.hinge', min: -180, max: 30, follow: 'hinge', ...extra }],
@@ -247,10 +248,158 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     assert.doesNotMatch(checked, /✗|fail/i);
     assert.match(cad('check', 'demo/box', '--sweep', '--steps', '7'), /sweep hinge, -180 to 30° in 7 steps: at 30°: base\.body hits lid\.body/);
     assert.match(cad('check', 'demo/box', '--pose', 'open'), /Box \(open\)/);
+    // A fit near an anchor (only the faces within 3 mm of base@hinge), and findings that say which anchor they're near
+    box({}, [{ a: 'base@hinge', b: 'lid', within: 3, min: 5, note: 'Lid clear of the hinge' }]);
+    const nearOut = cad('check', 'demo/box', '--pose', 'closed', '--json'), near = JSON.parse(nearOut).findings?.find((x) => x.text.startsWith('Lid clear of the hinge'));
+    assert.ok(near, nearOut);
+    assert.equal(near.level, 'warn'); assert.equal(near.refs.near.endsWith('@hinge'), true); assert.ok(near.at);
+    box();
     assert.match(cad('check', 'demo/box', '--pose', 'wide'), /no pose "wide"/);
+    // The library, as a program uses it: progress while it builds and sweeps, and the joints' data for the page
+    const lib = path.join(path.dirname(BIN), '../lib/assembly.mjs');
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { buildAssembly, sweep, motionData } from ${JSON.stringify(pathToFileURL(lib).href)};
+      const seen = [];
+      const s = await buildAssembly('demo/box', [], {}, { progress: (e) => seen.push(e.stage) });
+      sweep(s, { steps: 4, progress: (e) => seen.push(e.stage) });
+      const m = motionData(s);
+      console.log(JSON.stringify({ build: seen.filter((x) => x === 'build').length, sweep: seen.filter((x) => x === 'sweep').length, joints: m.motion.joints.length }));`], { cwd: ws, encoding: 'utf8' });
+    assert.deepEqual(JSON.parse(out), { build: 5, sweep: 5, joints: 2 }); // four items, and the spare component's own one
     box({ ratio: 2 }); // the tab turns twice as far: the loop comes apart once open
     assert.match(cad('check', 'demo/box'), /open: .*Lid and tab line up: apart/);
     box({ type: 'ball' });
     assert.match(cad('check', 'demo/box'), /joint tab \(ball\) takes 3 values, but follows hinge \(revolute\), which takes 1/);
   } finally { done(); }
+});
+
+test('findings as data (--json), values, and why a value is what it is', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'bathroom/soap-tray');
+    const j = JSON.parse(cad('check', 'bathroom/soap-tray', '--json'));
+    assert.equal(j.object, 'bathroom/soap-tray');
+    assert.ok(j.findings.some((f) => f.code === 'print.bed' && f.level === 'pass' && f.values.size.length === 3));
+    assert.ok(j.findings.every((f) => f.code), 'every finding has a code');
+    const v = JSON.parse(cad('values', 'bathroom/soap-tray', 'width', '--json'));
+    assert.equal(v.values.length, 1); assert.equal(v.values[0].name, 'width');
+    const all = JSON.parse(cad('values', 'bathroom/soap-tray', '--json')).values, w = all.find((x) => /x1c\./.test(x.expr || ''));
+    const tree = JSON.parse(cad('why', `bathroom/soap-tray.${w.name}`, '--json'));
+    assert.equal(tree.name, w.name);
+    const rules = (n) => [n, ...(n.reads || []).flatMap(rules)];
+    assert.ok(rules(tree).some((n) => n.name.startsWith('x1c.') && n.kind), 'down to the printer rules, with their kind');
+    assert.match(cad('why', `bathroom/soap-tray.${w.name}`), new RegExp(`^${w.name} = `));
+    const err = JSON.parse(cad('values', 'bathroom/soap-tray', 'nope', '--json'));
+    assert.equal(err.error.code, 'var.unknown');
+  } finally { done(); }
+});
+
+test('schemas: every format checked up front, a typo named with its path', async () => {
+  const { validate, schema } = await import('./lib/schema.mjs');
+  const ok = { variables: { w: { value: 10, unit: 'mm', rule: 'Width' } } };
+  assert.deepEqual(validate(ok, schema('object')), []);
+  const bad = validate({ variables: { w: { value: 10, unti: 'mm' } }, varibles: {} }, schema('object'));
+  assert.ok(bad.some((x) => x.path === 'variables.w.unti' && /did you mean "unit"/.test(x.message)));
+  assert.ok(bad.some((x) => x.path === 'varibles' && /did you mean "variables"/.test(x.message)));
+  assert.deepEqual(validate({ items: [{ id: 'a', object: 'a' }], joints: [{ id: 'j', type: 'revolute', parent: 'a.p', child: { item: 'b', at: [0, 0, 'h'] } }] }, schema('assembly')), []);
+  assert.ok(validate({ items: [], fits: [{ a: 'x' }] }, schema('assembly')).some((x) => x.path === 'fits[0]' && /needs "b"/.test(x.message)));
+  assert.deepEqual(validate({ rows: [['Esc', ['Tab', 1.5], { label: 'F', homing: true }, { gap: 0.25 }]] }, schema('layout')), []);
+  assert.deepEqual(validate({ name: 'p', rules: { line: { value: 0.42, unit: 'mm', rule: 'Line', kind: 'spec', source: 'x' } } }, schema('rules')), []);
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'bathroom/soap-tray');
+    assert.match(cad('check', 'bathroom/soap-tray'), /files match their schemas/);
+    const f = path.join(ws, 'projects/bathroom/objects/soap-tray.json'), j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    j.orientaton = 'typo'; fs.writeFileSync(f, JSON.stringify(j));
+    assert.match(cad('check', 'bathroom/soap-tray'), /orientaton: not allowed here \(did you mean "orientation"\?\)/);
+  } finally { done(); }
+});
+
+test('cad set and cad add: edits that keep the file as it was, and refuse to break it', async () => {
+  const { setAt, appendAt } = await import('./lib/jsonedit.mjs');
+  const t = '{\n  "variables": {\n    "w": { "value": 10, "unit": "mm" },\n    "r": {\n      "value": 2,\n      "rule": "Two × one"\n    }\n  },\n  "fits": []\n}\n';
+  const u = setAt(t, ['variables', 'w', 'value'], 12);
+  assert.equal(u, t.replace('"value": 10', '"value": 12'), 'only the value changes');
+  assert.match(appendAt(setAt(t, ['variables', 'h'], { value: 3, unit: 'mm', rule: 'Height' }), ['fits'], { a: 'a', b: 'b', poses: ['x'] }),
+    /"h": \{\n      "value": 3,[\s\S]*"fits": \[\n    \{\n      "a": "a",\n      "b": "b",\n      "poses": \["x"\]\n    \}\n  \]/);
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'bathroom/soap-tray');
+    const f = path.join(ws, 'projects/bathroom/objects/soap-tray.json'), before = fs.readFileSync(f, 'utf8');
+    const name = JSON.parse(cad('values', 'bathroom/soap-tray', '--json')).values.find((v) => typeof v.value === 'number' && !v.expr).name;
+    assert.match(cad('set', 'bathroom/soap-tray', `${name}=7`), new RegExp(`set ${name}`));
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7);
+    assert.match(cad('set', 'bathroom/soap-tray', `${name}=x1c.nope`), /not changed: .*no rule "nope"/);
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7, 'a bad edit leaves the file as it was');
+    assert.match(cad('set', 'bathroom/soap-tray', 'extra=1'), /has no variable "extra" \(add it with --new/);
+    assert.match(cad('set', 'bathroom/soap-tray', 'extra=1', '--new', '--unit', 'mm', '--rule', 'A test'), /set extra/);
+    assert.equal(fs.readFileSync(f, 'utf8').split('\n').slice(0, 3).join('\n'), before.split('\n').slice(0, 3).join('\n'), 'the rest of the file is untouched');
+    fs.mkdirSync(path.join(ws, 'projects/bathroom/assemblies'));
+    fs.writeFileSync(path.join(ws, 'projects/bathroom/assemblies/two.json'), JSON.stringify({ title: 'Two', items: [{ id: 'a', object: 'soap-tray' }] }, null, 2));
+    assert.match(cad('add', 'item', 'bathroom/two', '--id', 'b', '--object', 'soap-tray', '--at', '100,0,0'), /added an item/);
+    assert.match(cad('add', 'fit', 'bathroom/two', '--a', 'a', '--b', 'b', '--min', '1', '--note', 'Apart'), /added a fit/);
+    assert.match(cad('add', 'fit', 'bathroom/two', '--a', 'a', '--min', '1'), /fits\[1\]: needs "b"/);
+    assert.match(cad('check', 'bathroom/two'), /Apart: not near each other/);
+  } finally { done(); }
+});
+
+test('sandbox: a design can make shapes, but not read or write files, reach the network or start programs', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { w: { value: 10, unit: 'mm', rule: 'Width' } };
+    const tryIt = (name, body) => {
+      object(ws, `demo/${name}`, { variables: vars }, `import jscad from '@jscad/modeling'\n${body}\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n`);
+      return cad('check', `demo/${name}`);
+    };
+    assert.match(tryIt('fine', ''), /fits the bed/);
+    assert.match(tryIt('fs', "import fs from 'node:fs'"), /designs can't import "node:fs"/);
+    assert.match(tryIt('net', "await fetch('https://example.com')"), /fetch is not defined/);
+    assert.match(tryIt('dyn', "await import('node:child_process')"), /designs can't import "node:child_process"/);
+    assert.match(tryIt('outside', "await import('../../../../x.mjs')"), /can't import|outside|Cannot find/);
+    assert.match(tryIt('write', "process.binding('fs')"), /restricted|denied|not allowed|binding/i);
+    assert.ok(!fs.existsSync(path.join(ws, 'pwned')));
+    fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false }));
+    assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs');
+  } finally { done(); }
+});
+
+test('engines: a design using v.ops builds the same shape with JSCAD and with Manifold, watertight', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { w: { value: 20, unit: 'mm', rule: 'Width', tweak: { min: 5, max: 50 } }, r: { value: 'w * 0.6', unit: 'mm', rule: 'Radius' }, n: { value: 64, unit: '', rule: 'Segments' } };
+    object(ws, 'demo/cut', { variables: vars }, `import jscad from '@jscad/modeling'
+const { cuboid, sphere } = jscad.primitives
+export function main (v) {
+  return v.ops.subtract(cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }), sphere({ radius: v.r, center: [0, 0, v.w], segments: v.n }))
+}
+`);
+    const j = JSON.parse(cad('check', 'demo/cut', '--json')), m = JSON.parse(execFileSync(process.execPath, [BIN, 'check', 'demo/cut', '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_ENGINE: 'manifold' } }));
+    const size = (r) => r.findings.find((f) => f.code === 'print.bed').values.size, base = (r) => r.findings.find((f) => f.code === 'print.base').values.area;
+    assert.deepEqual(size(j).map((x) => x.toFixed(2)), size(m).map((x) => x.toFixed(2)));
+    assert.ok(Math.abs(base(j) - base(m)) < 0.5, 'the same footprint');
+    const closed = m.findings.find((f) => f.code === 'print.closed');
+    assert.equal(closed.level, 'pass'); assert.equal(closed.values.tjunctions, 0, 'Manifold leaves no T-junctions');
+  } finally { done(); }
+});
+
+test('host: the core builds and checks a design from a workspace in memory, writing nothing to disk', () => {
+  const lib = (f) => JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib', f)).href);
+  const root = path.resolve('/rulecad-memory-test');
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import fs from 'node:fs';
+    import { useHost, memoryHost } from ${lib('host.mjs')};
+    const h = memoryHost({
+      'cad.config.json': '{}',
+      'projects/demo/project.json': JSON.stringify({ name: 'demo', objects: ['box'] }),
+      'projects/demo/objects/box.json': JSON.stringify({ name: 'box', version: '0.1.0', uses: ['x1c'], variables: { w: { value: 'x1c.line * 40', unit: 'mm', rule: 'Width' } } }),
+      'projects/demo/objects/box.js': "import jscad from '@jscad/modeling'\\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\\n",
+    }, { root: ${JSON.stringify(root)} });
+    useHost(h);
+    const { build, locate, printer } = await import(${lib('design.mjs')});
+    const { check } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../../printcheck/printcheck.mjs')).href)});
+    const d = locate('demo/box'), b = await build(d);
+    const found = check(b.triangles, printer(b, d));
+    console.log(JSON.stringify({ size: found.find((f) => f.code === 'print.bed').values.size.map((x) => +x.toFixed(2)),
+      onDisk: fs.existsSync(${JSON.stringify(root)}), cached: [...h.files.keys()].some((k) => k.includes('.cache')), rules: [...h.files.keys()].some((k) => k.endsWith('x1c.json')) }));
+  `], { cwd: os.tmpdir(), encoding: 'utf8', env: { ...process.env, CAD_WORKSPACE: root } });
+  assert.deepEqual(JSON.parse(out), { size: [16.8, 16.8, 16.8], onDisk: false, cached: true, rules: true });
 });

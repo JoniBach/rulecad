@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "rulecad assembly",
+  "description": "Objects placed together: a fit check (fits between them, joints and poses) or a plate (everything printed at once).",
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "note": { "type": "string" },
+    "kind": { "enum": ["fit", "plate"] },
+    "uses": { "type": "array", "items": { "type": "string" } },
+    "requires": { "type": "object", "additionalProperties": { "type": "string" }, "description": "object → semver range" },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "fits": { "type": "array", "items": { "$ref": "#/$defs/fit" } },
+    "joints": { "type": "array", "items": { "$ref": "#/$defs/joint" } },
+    "loops": { "type": "array", "items": { "$ref": "#/$defs/loop" } },
+    "poses": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/values" } } },
+    "pose": { "type": "string" }
+  },
+  "$defs": {
+    "expr": { "type": ["number", "string"] },
+    "vec3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/expr" } },
+    "values": { "anyOf": [{ "$ref": "#/$defs/expr" }, { "type": "array", "items": { "$ref": "#/$defs/expr" } }] },
+    "names": { "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }] },
+    "item": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "object": { "type": "string" },
+        "assembly": { "type": "string" },
+        "variant": { "type": "string" },
+        "set": { "type": "object" },
+        "at": { "$ref": "#/$defs/vec3" },
+        "rotate": { "$ref": "#/$defs/vec3" },
+        "place": {},
+        "from": {},
+        "repeat": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": { "type": "object", "properties": { "count": { "$ref": "#/$defs/expr" }, "step": { "$ref": "#/$defs/expr" } } },
+            "y": { "type": "object", "properties": { "count": { "$ref": "#/$defs/expr" }, "step": { "$ref": "#/$defs/expr" } } },
+            "layout": { "type": "string" },
+            "step": { "$ref": "#/$defs/expr" },
+            "per": { "type": "object", "additionalProperties": { "type": "string" } },
+            "each": { "type": "object" },
+            "rows": {},
+            "width": { "type": "string" }
+          }
+        }
+      }
+    },
+    "fit": {
+      "type": "object",
+      "required": ["a", "b"],
+      "additionalProperties": false,
+      "properties": {
+        "a": { "$ref": "#/$defs/names" },
+        "b": { "$ref": "#/$defs/names" },
+        "min": { "$ref": "#/$defs/expr" },
+        "max": { "$ref": "#/$defs/expr" },
+        "note": { "type": "string" },
+        "label": { "type": "string" },
+        "poses": { "type": "array", "items": { "type": "string" } },
+        "holes": { "type": "boolean" },
+        "depth": { "$ref": "#/$defs/expr" },
+        "direction": { "enum": ["up", "down"] },
+        "ring": { "$ref": "#/$defs/expr" },
+        "into": { "type": "string" },
+        "within": { "$ref": "#/$defs/expr", "description": "With an anchor name (item@anchor): only faces this close to it (mm, default 10)" }
+      }
+    },
+    "anchorRef": {
+      "anyOf": [
+        { "type": "string", "description": "item.anchor" },
+        { "type": "object", "required": ["item"], "additionalProperties": false, "properties": { "item": { "type": "string" }, "at": { "$ref": "#/$defs/vec3" }, "axis": { "$ref": "#/$defs/vec3" }, "ref": { "$ref": "#/$defs/vec3" }, "rotate": { "$ref": "#/$defs/vec3" } } },
+        { "type": "object", "required": ["at"], "additionalProperties": false, "properties": { "at": { "$ref": "#/$defs/vec3" }, "axis": { "$ref": "#/$defs/vec3" }, "ref": { "$ref": "#/$defs/vec3" }, "rotate": { "$ref": "#/$defs/vec3" } } }
+      ]
+    },
+    "joint": {
+      "type": "object",
+      "required": ["id", "type", "parent", "child"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "type": { "enum": ["fixed", "revolute", "prismatic", "cylindrical", "ball", "path"] },
+        "parent": { "$ref": "#/$defs/anchorRef" },
+        "child": { "$ref": "#/$defs/anchorRef" },
+        "min": { "$ref": "#/$defs/values" },
+        "max": { "$ref": "#/$defs/values" },
+        "value": { "$ref": "#/$defs/values" },
+        "follow": { "type": "string" },
+        "ratio": { "$ref": "#/$defs/expr" },
+        "offset": { "$ref": "#/$defs/values" },
+        "path": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
+        "cone": { "$ref": "#/$defs/expr" }
+      }
+    },
+    "loop": {
+      "type": "object",
+      "required": ["a", "b"],
+      "additionalProperties": false,
+      "properties": { "a": { "$ref": "#/$defs/anchorRef" }, "b": { "$ref": "#/$defs/anchorRef" }, "label": { "type": "string" }, "note": { "type": "string" } }
+    }
+  }
+}

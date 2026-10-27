@@ -16,6 +16,7 @@
 //   { "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length", "label": "Screws find their inserts" }
 // The path must be clear for depth mm (it lands in a hole) and solid within "ring" mm of it (default: the hole's
 // diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
+import { host } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -25,12 +26,12 @@ import { locate, build, readObject, jscad } from './design.mjs';
 import { materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 import { bounds } from '@rulecad/printcheck';
-import { closest, inside } from '@rulecad/fit';
+import { closest, closestAt, inside, distanceToFace } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
-export const isAssembly = (ref) => String(ref).includes('/') && fs.existsSync(assemblyPath(ref.split('@')[0]));
+export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
 
 export { satisfies }; // from @rulecad/versions
 
@@ -57,7 +58,7 @@ export { satisfies }; // from @rulecad/versions
 export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) {
   const [project, name] = ref.split('/');
   if (stack.includes(ref)) throw new Error(`assembly ${ref} contains itself (${[...stack, ref].join(' → ')})`);
-  const a = JSON.parse(fs.readFileSync(assemblyPath(ref), 'utf8'));
+  const a = JSON.parse(host.readText(assemblyPath(ref)));
   const printer = printerOf(project);
   if (a.kind === 'plate' && !(a.uses || []).includes(printer)) a.uses = [...(a.uses || []), printer]; // a plate is checked as a print
   const values = Object.fromEntries((a.uses || []).map((u) => { const s = loadRuleSet(u); return [u, Object.fromEntries(Object.entries(s.rules).map(([k, r]) => [k, r.value]))]; }));
@@ -102,6 +103,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     return built.get(key);
   };
   const placing = [];
+  let builtCount = 0;
   for (const it of a.items || []) {
     if (!/^[a-z][\w-]*$/.test(it.id || '')) throw new Error(`each item needs an id (letters, digits, - or _): got ${JSON.stringify(it.id)}`);
     if (!it.object === !it.assembly) throw new Error(`item ${it.id}: give either "object" or "assembly"`);
@@ -140,7 +142,10 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     }
     const first = await source(it, copies[0].extra);
     values[it.id] = first.sub ? first.sub.values : first.b.values; // a repeated item's own name works too: cap.base, not only cap-0-0
-    for (const c of copies) { c.src = await source(it, c.extra); values[c.id] = c.src.sub ? c.src.sub.values : c.src.b.values; }
+    for (const c of copies) {
+      c.src = await source(it, c.extra); values[c.id] = c.src.sub ? c.src.sub.values : c.src.b.values;
+      opts.progress?.({ stage: 'build', assembly: ref, item: c.id, done: ++builtCount }); // progress: for a caller to show (cad --progress)
+    }
     placing.push([it, copies]);
   }
   // Then place them: every item is built by now, so a position can refer to any item, before or after it (a board
@@ -323,7 +328,17 @@ function motionOf(a, placed, num, ref) {
   if (a.pose && !poses[a.pose]) throw new Error(`pose "${a.pose}" isn't one of the poses (${Object.keys(poses).join(', ') || 'none'})`);
   const loops = (a.loops || []).map((l, i) => ({ label: l.label || `${typeof l.a === 'string' ? l.a : 'anchor'} meets ${typeof l.b === 'string' ? l.b : 'anchor'}`,
     a: anchor(l.a, `loop ${i + 1}`), b: anchor(l.b, `loop ${i + 1}`), tolerance: l.tolerance != null ? num(l.tolerance) : 0.01 }));
-  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref };
+  // Every object item's anchors, to say where things are: a finding near one names it (keyboard@pivot)
+  const marks = placed.flatMap(([, c], k) => Object.entries(c.src?.b?.object.anchors || {}).map(([name, spec]) => {
+    try { return { item: k, id: c.id, name, frame: frameOf(spec, evalIn(c.src.b.values, `${c.src.objName} anchor ${name}`)) }; } catch { return null; }
+  })).filter(Boolean);
+  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks };
+}
+
+// Where each item's anchors are in a pose: [{ id: 'keyboard@pivot', item, at: [x, y, z] }]
+export function anchorsAt(s, values = s.jointValues) {
+  const worlds = placeItems(s.motion, values);
+  return (s.motion.marks || []).map((m) => { const w = mul(worlds[m.item], m.frame); return { id: `${m.id}@${m.name}`, item: m.id, at: [w[3], w[7], w[11]] }; });
 }
 
 // keyCentres(layout): each key's centre, from lib/layout.mjs (kept under this name for older callers)
@@ -344,7 +359,7 @@ const OVERLAPS = paths.cache('overlaps.json');
 let remembered = null, fresh = 0;
 function pairOverlap(pa, pb) {
   if (!pa.hash || !pb.hash) return overlap(pa.geometry, pb.geometry);
-  remembered ||= (() => { try { return JSON.parse(fs.readFileSync(OVERLAPS, 'utf8')); } catch { return {}; } })();
+  remembered ||= (() => { try { return JSON.parse(host.readText(OVERLAPS)); } catch { return {}; } })();
   const at = (p) => `${p.hash}@${Array.from(p.m || []).map((x) => Math.round(x * 1e6) / 1e6).join(',')}`;
   const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`${x}|${y}`).digest('hex');
   if (!(k in remembered)) { remembered[k] = overlap(pa.geometry, pb.geometry); fresh++; }
@@ -352,21 +367,21 @@ function pairOverlap(pa, pb) {
 }
 function saveOverlaps() {
   if (!fresh) return;
-  try { fs.mkdirSync(path.dirname(OVERLAPS), { recursive: true }); fs.writeFileSync(OVERLAPS, JSON.stringify(remembered)); fresh = 0; } catch {} // only slower without it
+  try { host.writeText(OVERLAPS, JSON.stringify(remembered)); fresh = 0; } catch {} // only slower without it
 }
 
 // checkAssembly(built) -> findings, as @rulecad/printcheck: { level, text, card? } (card: a short line for the mirror)
 export function checkAssembly(s) {
-  const out = [], f = (level, text, card) => out.push({ level, text, ...(card && { card }) }), mm = (n) => `${Number(n.toFixed(3))}`;
+  const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(3))}`;
   // Versions: every pin, from this assembly and its components, against every copy of that object
   const pins = new Map();
   for (const r of s.requires) pins.set(`${r.object} ${r.range}`, r);
   for (const { object, range } of pins.values()) {
     const copies = s.objects.filter((o) => o.objName === object);
-    if (!copies.length) { f('fail', `requires ${object} ${range}, but nothing uses it`); continue; }
+    if (!copies.length) { f('fail', `requires ${object} ${range}, but nothing uses it`, null, { code: 'requires.unused', refs: { object, range } }); continue; }
     const bad = copies.filter((o) => !satisfies(o.version, range));
     f(bad.length ? 'fail' : 'pass', bad.length ? `${object} ${bad[0].version} doesn't meet ${range} (${bad.map((o) => o.id).join(', ')})`
-      : `${object} ${copies[0].version} meets ${range}${copies.length > 1 ? ` (${copies.length} copies)` : ''}`);
+      : `${object} ${copies[0].version} meets ${range}${copies.length > 1 ? ` (${copies.length} copies)` : ''}`, null, { code: 'requires.version', refs: { object, range, items: bad.map((o) => o.id) } });
   }
   // Overlaps between object instances, inside components too. Bounding boxes first: most pairs can't touch.
   const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`);
@@ -378,38 +393,60 @@ export function checkAssembly(s) {
     const pa = s.parts[i], pb = s.parts[j];
     if (pa.leaf === pb.leaf || !touch(pa, pb) || allowed(pa, pb)) continue;
     const v = pairOverlap(pa, pb);
-    if (v > 0.01) clashes.push(`${pa.name} and ${pb.name} overlap by ${mm(v)} mm³`);
+    if (v > 0.01) clashes.push({ text: `${pa.name} and ${pb.name} overlap by ${mm(v)} mm³`, a: pa.name, b: pb.name, volume: v });
   }
-  if (clashes.length) f('fail', clashes.slice(0, 5).join('; ') + (clashes.length > 5 ? `; and ${clashes.length - 5} more` : ''), `${clashes.length} overlaps`);
-  else f('pass', `no parts overlap (${new Set(s.parts.map((p) => p.leaf)).size} object instances)`, 'No parts overlap');
+  if (clashes.length) f('fail', clashes.slice(0, 5).map((c) => c.text).join('; ') + (clashes.length > 5 ? `; and ${clashes.length - 5} more` : ''), `${clashes.length} overlaps`,
+    { code: 'overlap', values: { count: clashes.length }, refs: { overlaps: clashes.map(({ a, b, volume }) => ({ a, b, volume })) } });
+  else f('pass', `no parts overlap (${new Set(s.parts.map((p) => p.leaf)).size} object instances)`, 'No parts overlap', { code: 'overlap', values: { count: 0 } });
   // Fits: the closest gap between two named things, against a range. Copies of one fit are reported together, worst first.
-  const pick = (n) => (Array.isArray(n) ? n.flatMap(pick) : s.parts.filter((p) => named(p, n)));
+  // A fit names parts (keyboard, key-0-0.cap), or the faces of an item near one of its anchors (keyboard@pivot, within
+  // "within" mm, 10 by default): the pocket round a pivot, not the whole case
+  const marks = anchorsAt(s), within = (x) => (x.within != null ? x.num(x.within) : 10);
+  const near = (p, mark, r) => ({ ...p, polygons: p.polygons.filter((f) => distanceToFace(mark.at, f) <= r) });
+  const pickIn = (n, x) => {
+    if (Array.isArray(n)) return n.flatMap((m) => pickIn(m, x));
+    if (!n.includes('@')) return s.parts.filter((p) => named(p, n));
+    const mark = marks.find((m) => m.id === n);
+    if (!mark) return [];
+    return s.parts.filter((p) => named(p, mark.item)).map((p) => near(p, mark, within(x))).filter((p) => p.polygons.length);
+  };
+  const pick = (n) => pickIn(n, {});
   const groups = new Map();
   for (const x of s.fits) {
     if (x.poses && !x.poses.includes(s.pose)) continue; // a fit for some poses only: the folded screen over the keys
     if (x.holes) { holesFit(x); continue; }
-    const A = pick(x.a), key = x.note || `${x.a} / ${x.b}`;
+    const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
     const reach = Math.max(2, ...[lo, hi].filter(Number.isFinite)) + 1; // look past the range, so a gap near it is measured
-    let B = pick(x.b);
+    let B = pickIn(x.b, x);
     if (Array.isArray(x.b) && A.length) { // against many others: only those within reach
       const lo3 = [0, 1, 2].map((k) => Math.min(...A.map((p) => bx(p).lo[k]))), hi3 = [0, 1, 2].map((k) => Math.max(...A.map((p) => bx(p).hi[k])));
       B = B.filter((p) => [0, 1, 2].every((k) => bx(p).lo[k] <= hi3[k] + reach && lo3[k] <= bx(p).hi[k] + reach));
     }
-    if (!A.length || (!B.length && !Array.isArray(x.b))) { f('fail', `fit ${x.a} / ${x.b}: no such ${A.length ? x.b : x.a}`); continue; }
+    if (!A.length || (!B.length && !Array.isArray(x.b))) { f('fail', `fit ${x.a} / ${x.b}: no such ${A.length ? x.b : x.a}`, null, { code: 'fit.missing', refs: { a: x.a, b: x.b, missing: A.length ? x.b : x.a } }); continue; }
     const vol = A.reduce((t, pa) => t + B.reduce((u, pb) => u + (touch(pa, pb) ? pairOverlap(pa, pb) : 0), 0), 0);
-    const gap = !B.length ? Infinity : vol > 0.01 ? -vol : closest(A.flatMap((p) => p.polygons), B.flatMap((p) => p.polygons), reach); // negative: overlap, mm³
+    const near = !B.length || vol > 0.01 ? null : closestAt(A.flatMap((p) => p.polygons), B.flatMap((p) => p.polygons), reach);
+    const gap = !B.length ? Infinity : vol > 0.01 ? -vol : near.gap; // negative: overlap, mm³
     const ok = vol > 0.01 ? lo < 0 : gap >= lo && gap <= hi;
     if (!groups.has(key)) groups.set(key, { x, lo, hi, results: [] });
-    groups.get(key).results.push({ ok, gap, id: x.a });
+    groups.get(key).results.push({ ok, gap, id: x.a, at: near?.at || null });
   }
+  // The anchor nearest a point, if one is within 20 mm: where to look
+  const nearest = (pt) => {
+    if (!pt || !marks.length) return {};
+    const m = marks.map((k) => ({ k, d: Math.hypot(k.at[0] - pt[0], k.at[1] - pt[1], k.at[2] - pt[2]) })).sort((a, b) => a.d - b.d)[0];
+    return m.d <= 20 ? { near: m.k.id, distance: Number(m.d.toFixed(2)) } : {};
+  };
   for (const [key, { x, lo, hi, results }] of groups) {
     const worst = results.reduce((w, r) => (!r.ok && w.ok ? r : r.ok === w.ok && r.gap < w.gap ? r : w), results[0]);
     const say = (g) => (g < 0 ? `press fit, ${mm(-g)} mm³ overlap` : g === Infinity ? 'not near each other' : `closest gap ${mm(g)} mm`);
     const n = results.length > 1 ? ` (${results.filter((r) => r.ok).length} of ${results.length} in range)` : '';
     const label = (x.label || x.a).replace(/ \(.*\)$/, '');
-    f(worst.ok ? 'pass' : 'warn', `${key}: ${say(worst.gap)}${n}${worst.ok ? '' : `, wanted ${lo === -Infinity ? '' : `${mm(lo)} `}to ${hi === Infinity ? 'any' : mm(hi)} mm (${results.filter((r) => !r.ok).map((r) => r.id).join(', ')})`}`,
-      `${label}: ${worst.gap < 0 ? `press fit ${mm(-worst.gap)} mm³` : worst.gap === Infinity ? 'apart' : `gap ${Number(worst.gap.toFixed(2))} mm`}${worst.ok ? '' : ' (out of range)'}`);
+    const where = nearest(worst.at);
+    f(worst.ok ? 'pass' : 'warn', `${key}: ${say(worst.gap)}${n}${worst.ok ? '' : `, wanted ${lo === -Infinity ? '' : `${mm(lo)} `}to ${hi === Infinity ? 'any' : mm(hi)} mm (${results.filter((r) => !r.ok).map((r) => r.id).join(', ')})${where.near ? `, ${where.distance} mm from ${where.near}` : ''}`}`,
+      `${label}: ${worst.gap < 0 ? `press fit ${mm(-worst.gap)} mm³` : worst.gap === Infinity ? 'apart' : `gap ${Number(worst.gap.toFixed(2))} mm`}${worst.ok ? '' : ' (out of range)'}`,
+      { code: 'fit', values: { ...(worst.gap < 0 ? { overlap: -worst.gap } : { gap: worst.gap }), min: lo, max: hi, inRange: results.filter((r) => r.ok).length, copies: results.length },
+        refs: { a: x.a, b: x.b, label: x.label, ...(s.pose ? { pose: s.pose } : {}), outOfRange: results.filter((r) => !r.ok).map((r) => r.id), ...where }, ...(worst.at ? { at: { lo: worst.at, hi: worst.at } } : {}) });
   }
   // Holes fits: each mounting hole's screw path, clear into a hole, with material round it
   function holesFit(x) {
@@ -430,7 +467,8 @@ export function checkAssembly(s) {
       if (round.length) misses.push(`${where}: no material ${mm(ring)} mm from the screw on ${round.length} of ${steps} sides`);
     }
     f(misses.length ? 'fail' : 'pass', misses.length ? `${label}: ${misses.join('; ')}` : `${label}: ${holes.length} of ${holes.length} holes clear for ${mm(depth)} mm, with material around each`,
-      `${label}: ${misses.length ? `${misses.length} of ${holes.length} miss` : `${holes.length} of ${holes.length} line up`}`);
+      `${label}: ${misses.length ? `${misses.length} of ${holes.length} miss` : `${holes.length} of ${holes.length} line up`}`,
+      { code: 'fit.holes', values: { holes: holes.length, missed: misses.length }, refs: { a: x.a, b: x.b, misses } });
   }
   // Joints: every value in its range (a ball's tip within its cone), and every loop closed
   if (s.motion?.joints.length) {
@@ -440,19 +478,19 @@ export function checkAssembly(s) {
       j.dofs.forEach(([lo, hi], i) => { if (v[i] < lo - 1e-9 || v[i] > hi + 1e-9) outside.push(`${j.id} ${mm(v[i])} (${mm(lo)} to ${mm(hi)})`); });
       if (j.cone != null) { const tip = Math.acos(Math.min(1, jointMatrix(j, v)[10])) / (Math.PI / 180); if (tip > j.cone + 1e-9) outside.push(`${j.id} tips ${mm(tip)}° (cone ${mm(j.cone)}°)`); }
     }
-    if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`);
-    for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`);
+    if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`, { code: 'joint.range', refs: { joints: outside } });
+    for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`, { code: 'loop', values: { gap: l.gap, angle: l.angle }, refs: { label: l.label } });
   }
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers
-    if (refs.length) f('fail', `a plate can't print references: ${refs.map((o) => o.id).join(', ')}`);
+    if (refs.length) f('fail', `a plate can't print references: ${refs.map((o) => o.id).join(', ')}`, null, { code: 'plate.reference', refs: { items: refs.map((o) => o.id) } });
   }
   // Rules that are only estimates, anywhere in the assembly or its components
   const est = new Set();
   for (const o of s.objects) for (const e of o.built.entries) if (e.kind === 'estimate' && (e.used || !e.name.includes('.'))) est.add(e.name);
   for (const n of s.seen) { const [u, k] = n.split('.'); if (loadRuleSet(u).rules[k]?.kind === 'estimate') est.add(n); }
-  if (est.size) f('warn', `uses estimates, not measurements: ${[...est].join(', ')}. Measure them and record kind: measured`, `Estimate: ${[...est].join(', ')}`);
+  if (est.size) f('warn', `uses estimates, not measurements: ${[...est].join(', ')}. Measure them and record kind: measured`, `Estimate: ${[...est].join(', ')}`, { code: 'rules.estimate', refs: { rules: [...est] } });
   saveOverlaps();
   return out;
 }
@@ -484,8 +522,8 @@ const isNamed = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name
 
 // sweep(s, { joint, steps }) -> findings: each free joint (or the one named) moved through its range, the others held
 // at the assembly's pose, looking for parts that collide and loops that come apart on the way
-export function sweep(s, { joint, steps = 24 } = {}) {
-  const out = [], f = (level, text, card) => out.push({ level, text, ...(card && { card }) }), mm = (n) => `${Number(n.toFixed(2))}`;
+export function sweep(s, { joint, steps = 24, progress } = {}) {
+  const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(2))}`;
   const free = s.motion.joints.filter((j) => !j.follow && j.dofs.length && (!joint || j.id === joint));
   if (joint && !free.length) throw new Error(`no joint "${joint}" to sweep (${s.motion.joints.filter((j) => !j.follow && j.dofs.length).map((j) => j.id).join(', ') || 'none'})`);
   const base = s.jointValues;
@@ -497,13 +535,15 @@ export function sweep(s, { joint, steps = 24 } = {}) {
       const t = s.at(Object.fromEntries(Object.entries(set).filter(([id]) => !s.motion.joints.find((x) => x.id === id).follow)));
       const what = [...clashesOf(t, isNamed).map(([a, b]) => `${a} hits ${b}`), ...loopGaps(t).filter((l) => !l.ok).map((l) => `${l.label} apart by ${mm(l.gap)} mm`)];
       if (what.length) bad.push([v, what]);
+      progress?.({ stage: 'sweep', joint: j.id, step: i, steps });
     }
     const ranges = []; // runs of steps in a row that collide
     for (const [v, what] of bad) { const r = ranges[ranges.length - 1]; if (r && Math.abs(v - r.to - (hi - lo) / steps) < 1e-9) { r.to = v; r.what = [...new Set([...r.what, ...what])]; } else ranges.push({ from: v, to: v, what }); }
     const span = `${mm(lo)} to ${mm(hi)}${unit}`;
-    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps: nothing collides`, `${name}: clear ${span}`);
+    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps: nothing collides`, `${name}: clear ${span}`, { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: [] } });
     else f('fail', `sweep ${name}, ${span} in ${steps} steps: ${ranges.map((r) => `${r.from === r.to ? `at ${mm(r.from)}` : `${mm(r.from)} to ${mm(r.to)}`}${unit.trim()}: ${r.what.slice(0, 3).join('; ')}${r.what.length > 3 ? `; and ${r.what.length - 3} more` : ''}`).join(' | ')}`,
-      `${name}: collides ${ranges.map((r) => (r.from === r.to ? mm(r.from) : `${mm(r.from)}-${mm(r.to)}`)).join(', ')}${unit.trim()}`);
+      `${name}: collides ${ranges.map((r) => (r.from === r.to ? mm(r.from) : `${mm(r.from)}-${mm(r.to)}`)).join(', ')}${unit.trim()}`,
+      { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: ranges.map((r) => ({ from: r.from, to: r.to, what: r.what })) } });
   });
   saveOverlaps();
   return out;
@@ -520,3 +560,28 @@ export function shapes(parts) {
   }
   return { shapes: list, place };
 }
+
+// An assembly's joints, for the page's sliders: each part moves with its item (motion in @rulecad/model-link)
+export function motionData(s) {
+  const mo = s.motion;
+  if (!mo.joints.length) return {};
+  const r = (x) => Number(x.toFixed(6)), names = mo.items.map((x) => x[0]);
+  const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`), allow = [];
+  const loose = s.fits.filter((x) => x.min != null && x.num(x.min) < 0);
+  s.parts.forEach((pa, i) => s.parts.forEach((pb, j) => {
+    if (j > i && pa.item !== pb.item && loose.some((x) => (named(pa, x.a) && named(pb, x.b)) || (named(pa, x.b) && named(pb, x.a)))) allow.push([i, j]);
+  }));
+  return { motion: {
+    items: mo.items.map(([n, ...m]) => [n, ...m.map(r)]),
+    joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
+      ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}) })),
+    poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
+    part: s.parts.map((p) => names.indexOf(p.item)),
+    ...(allow.length ? { allow } : {}),
+  } };
+}
+
+// ---------- links ----------
+// The rules sheet a link carries, for the page's Rules panel: a row for each of an object's own values, then each rule
+// they use, as [group, name, value, unit, rule, expr, kind, source, checked] (group: the object, or the rule's set).
+// A rule set marked "private" stays out, and --no-rules leaves the sheet out altogether.

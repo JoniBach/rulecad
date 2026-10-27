@@ -1,4 +1,5 @@
 {
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "NAME",
   "title": "NAME",
   "version": "0.1.0",
