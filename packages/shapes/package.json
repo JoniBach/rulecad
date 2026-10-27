@@ -13,7 +13,9 @@
     "enclosure.mjs",
     "enclosure.d.mts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "features.mjs",
+    "features.d.mts"
   ],
   "license": "MIT",
   "keywords": [

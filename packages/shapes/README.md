@@ -49,3 +49,24 @@ const window = gabled([-1, 1], [-1, 4], [10, 13]);                              
 - `gabled([x0, x1], [y0, y1], [z0, z1], axis)`: a box with a 45 degree gabled roof, for openings in upright walls.
 - `diamond(size, axis, length)`: a square hole turned 45 degrees, for small holes in upright walls.
 - `vents({ count, width, pitch, length, depth })`: slots side by side along x.
+
+## Print-aware features
+
+Holes, pockets and ribs drawn so they print without supports with the part lying as drawn (z up from the bed).
+Each starts at a point on a face (`at`) and goes into the material (`into`: `'+x'`, `'-x'`, `'+y'`, `'-y'`, `'+z'` up
+from the bed, `'-z'` down from a top). Sizes come from your rules; nothing is built in.
+
+```js
+import { countersink, teardropHole, nutPocket, crushRibs, wallOpening } from '@rulecad/shapes'
+
+countersink({ hole: v.hole, head: v.csk, length: 16, at: [x, y, 0], into: '+z' }) // flat head flush with the face
+teardropHole({ d: v.hole, length: 20, at: [-10, 0, 5], into: '+x' })              // across a part: a 45° pointed roof
+nutPocket({ flats: v.m3.nut_flats + v.x1c.hole_comp, height: v.m3.nut_height, hole: v.hole, at: [x, y, 0], into: '+z' })
+crushRibs({ at: [[-9.4, 5], [9.4, 5]], into: [[1, 0], [-1, 0]], z: [3, 5], radius: 0.84, protrude: 0.5 }) // to add
+wallOpening({ width: 12.75, height: 6.9, depth: v.wall, at: [x, 0, z], into: '-y', bridge: v.x1c.bridge })
+```
+
+- A countersink from the side (`into` ±x or ±y) is a teardrop: its round parts get a 45° ridge on top.
+- A nut pocket going up from the bed gets a 45° hexagonal roof to the hole; across a part, a flat top (a short bridge).
+- An opening wider than the printer's `bridge` rises at 45° each side to a flat that wide.
+- Cutters start a little outside the face they enter by, so no faces lie on each other.
