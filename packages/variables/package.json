@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/variables",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Design values you can trace: every number says where it comes from, and expressions are parsed, never run.",
   "type": "module",
   "exports": {

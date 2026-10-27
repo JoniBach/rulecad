@@ -29,7 +29,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 ## Changing a design
 1. `npx cad history <project>/<object>` first: read the print log. A failed print is the reason for most changes:
    fix the rule or variable it points at (a measured fit beats a community rule).
-2. Change, then check, preview and look, as for a new part.
+2. Change, then check, preview and look, as for a new part. Change values with `npx cad set <project>/<object>
+   name=value` and assemblies with `npx cad add fit|joint|item|pose …`: they keep the file's layout and refuse an edit
+   that breaks it. `npx cad values` lists an object's numbers; `npx cad why <project>/<object>.<name>` shows what a
+   value depends on, down to the rules (estimates marked). `--json` on check, values and why gives data to act on:
+   each finding has a code, its numbers and where it is.
 3. `npx cad release <project>/<object> -m "what changed, for the person" --dry-run` shows the bump and why. If it's
    major, tell the person which interface values changed: earlier prints may no longer fit.
 4. Release only when the person agrees. Don't use `--force` without asking.
@@ -40,6 +44,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - Holes and slots get the printer's hole compensation; parts that slide together get its fit clearance. Chamfer
   bottom edges.
 - An overhang warning means supports: say so in `orientation`, or change the shape or orientation.
+- Use the print-aware features in `v.shapes` before drawing your own: `countersink`, `teardropHole`, `nutPocket`,
+  `crushRibs`, `wallOpening` print without supports as drawn. Use `v.ops.union/subtract/intersect` for booleans: the
+  workspace can switch them to Manifold (faster, watertight) without touching the design.
+- Designs run sandboxed: they may import only `@jscad/modeling`, `@rulecad/shapes` and files in their project.
 - Something printed under the part and removed afterwards is a named `support` part (`return { cap, pillar }`, both
   described in the .json's `parts`), not part of the shape. Look at `cad preview --explode` too.
 
