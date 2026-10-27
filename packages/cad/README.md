@@ -224,6 +224,12 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - **fit** assemblies check how parts go together: no overlaps (unless a fit allows a press fit with a negative
   `min`), and the closest gap for each `fit` within its range. Supports are left out: they're snipped off first.
   Objects with `"role": "reference"` (the MX switch) model things you don't print: drawn faint, never exported.
+- **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model: it can read the
+  workspace and the tool's packages, but can't write files, start programs or workers, or load addons, and it may
+  import only `@jscad/modeling`, `@rulecad/shapes` and files in its own project (no `node:` modules, so no network;
+  `fetch` is gone too). It gets its values as data and returns its parts. A workspace that trusts its designs sets
+  `"sandbox": false` in cad.config.json (or `CAD_TRUST=1`); on Node 18, without the permission model, designs run in
+  the tool's process. Board designs (engine pcb) run in the tool's process, with the board engine.
 - **Units:** `cad check` warns where an expression mixes units (millimetres added to degrees, a sine of a length) or
   comes to another unit than its variable says (mm × mm with unit mm). Counts (keys, u, rows) are plain numbers.
 - **Progress:** `--progress` shows what a long check or sweep is building; a program passes `progress` to

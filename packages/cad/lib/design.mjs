@@ -15,6 +15,9 @@
 // (its copper is in the 2D views).
 // Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
 import { located } from './errors.mjs';
+import { named, faces, fromFaces, polygons } from './parts.mjs';
+import { runSandboxed, sandboxed } from './sandbox.mjs';
+export { polygons };
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -141,27 +144,34 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
   }
 
-  const mod = await import(`${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
-    // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
-    if (e.code === 'ERR_MODULE_NOT_FOUND' && /@jscad\/modeling/.test(e.message)) throw new Error(`designs need JSCAD in the workspace: npm install @jscad/modeling (in ${WS})`);
-    if (/import statement outside a module/.test(e.message)) throw new Error(`designs are ES modules: set "type": "module" in ${path.join(WS, 'package.json')}`);
-    throw e;
-  });
-  if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
-  // Rules the code reads directly (v.mx.housing_top) count as used too, so estimates it relies on get flagged
-  const read = new Set(), watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
-    ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
+  // A JSCAD design runs in a sandbox (sandbox.mjs: another process that can't write files, start programs or reach
+  // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
-  watched.shapes = shapes; if (pcb) watched.pcb = pcb;
-  let made, board = null;
-  try { made = await mod.main(watched); } catch (e) { throw located(e, d.js, 'design.run'); }
-  if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part
-    const { board: b, matrix } = made && made.board ? made : { board: made };
-    board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}) };
-    Object.assign(values, pcb.outputs(board.circuit, matrix)); // what it tells the parts around it: outline, Pico
-    made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth });
+  let parts, board = null, read;
+  if (!pcb && sandboxed()) ({ parts, read } = await runSandboxed(d, values, object.parts || {}));
+  else {
+    const mod = await import(`${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
+      // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
+      if (e.code === 'ERR_MODULE_NOT_FOUND' && /@jscad\/modeling/.test(e.message)) throw new Error(`designs need JSCAD in the workspace: npm install @jscad/modeling (in ${WS})`);
+      if (/import statement outside a module/.test(e.message)) throw new Error(`designs are ES modules: set "type": "module" in ${path.join(WS, 'package.json')}`);
+      throw e;
+    });
+    if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
+    // Rules the code reads directly (v.mx.housing_top) count as used too, so estimates it relies on get flagged
+    read = new Set();
+    const watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
+      ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
+    watched.shapes = shapes; if (pcb) watched.pcb = pcb;
+    let made;
+    try { made = await mod.main(watched); } catch (e) { throw located(e, d.js, 'design.run'); }
+    if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part
+      const { board: b, matrix } = made && made.board ? made : { board: made };
+      board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}) };
+      Object.assign(values, pcb.outputs(board.circuit, matrix)); // what it tells the parts around it: outline, Pico
+      made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth });
+    }
+    parts = named(made, object.parts || {});
   }
-  const parts = named(made, object.parts || {});
   for (const e of entries) if (read.has(e.name)) e.used = true;
   try {
     fs.mkdirSync(CACHE, { recursive: true });
@@ -179,29 +189,6 @@ function prune() {
   for (const { p } of files.slice(CACHE_KEEP)) fs.rmSync(p, { force: true });
 }
 
-// A design's result as parts: named ({ cap, pillar }) or one unnamed shape ("body").
-function named(result, meta) {
-  const isShape = (r) => Array.isArray(r) || jscad.geometries.geom3.isA(r) || jscad.geometries.geom2.isA(r);
-  const entries = isShape(result) ? [['body', result]] : Object.entries(result || {});
-  const empty = (g) => g == null || (Array.isArray(g) && !g.length);
-  for (const k of Object.keys(meta)) if (!meta[k].optional && !entries.some(([n, g]) => n === k && !empty(g))) throw new Error(`parts in the .json lists "${k}", but main() returns no such part`);
-  return entries.filter(([name, g]) => !(empty(g) && meta[name]?.optional)).map(([name, g]) => {
-    const m = meta[name] || {};
-    if (m.role && !['part', 'support'].includes(m.role)) throw new Error(`part ${name}: role is part or support`);
-    // The solid for booleans (fit checks) is JSCAD's own, exactly; a cached build restores the very same faces
-    const geometry = solid(g);
-    return { name, role: m.role || 'part', label: m.label || name, ...(m.filament ? { filament: m.filament } : {}), ...(m.mirror === false ? { mirror: false } : {}),
-      geometry, polygons: polygons(g), triangles: polygons(g, { triangulate: true }) };
-  });
-}
-
-// A part's result as one JSCAD solid with its transforms applied (several solids become one set of faces), and back from
-// the exact faces a cache keeps: the same numbers, so booleans on a cached build agree with a fresh one.
-const { geom3, poly3 } = jscad.geometries;
-const solid = (g) => geom3.create([g].flat(Infinity).filter((x) => geom3.isA(x)).flatMap((x) => geom3.toPolygons(x)));
-const faces = (g) => geom3.toPolygons(g).map((p) => p.vertices.map((v) => [v[0], v[1], v[2]]));
-const fromFaces = (list) => geom3.create(list.map((vs) => poly3.create(vs)));
-
 // The rules of the printer a build is checked against (the project's, else the workspace's), resolved
 export const printer = (b, d) => { const n = printerOf(d.project); return b.values[n] || resolve({ uses: [n] }).values[n]; };
 
@@ -215,20 +202,7 @@ export function pick(b, { part, noSupports = false, forMirror = false } = {}) {
   return { ...b, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
 }
 
-// Any JSCAD result -> polygons (corner lists), transforms applied. triangulate: also split faces at T-junctions (a
-// corner of one face in the middle of a neighbour's edge, left by booleans) so every edge pairs up, as slicers want.
-export function polygons(result, { triangulate = false } = {}) {
-  const { geom3, geom2 } = jscad.geometries;
-  const out = [];
-  for (const g of [result].flat(Infinity)) {
-    if (geom2.isA(g)) throw new Error("2D shapes can't be printed or shown: extrude them first");
-    if (!geom3.isA(g)) continue;
-    const fixed = jscad.modifiers.generalize({ snap: true, triangulate }, g);
-    for (const p of geom3.toPolygons(fixed)) out.push(p.vertices.map((v) => [v[0], v[1], v[2]]));
-  }
-  if (!out.length) throw new Error('the design has no 3D shapes');
-  return out;
-}
+
 
 export { lint } from '@rulecad/variables'; // number literals that should be variables
 

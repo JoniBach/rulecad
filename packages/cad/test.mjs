@@ -341,3 +341,23 @@ test('cad set and cad add: edits that keep the file as it was, and refuse to bre
     assert.match(cad('check', 'bathroom/two'), /Apart: not near each other/);
   } finally { done(); }
 });
+
+test('sandbox: a design can make shapes, but not read or write files, reach the network or start programs', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { w: { value: 10, unit: 'mm', rule: 'Width' } };
+    const tryIt = (name, body) => {
+      object(ws, `demo/${name}`, { variables: vars }, `import jscad from '@jscad/modeling'\n${body}\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n`);
+      return cad('check', `demo/${name}`);
+    };
+    assert.match(tryIt('fine', ''), /fits the bed/);
+    assert.match(tryIt('fs', "import fs from 'node:fs'"), /designs can't import "node:fs"/);
+    assert.match(tryIt('net', "await fetch('https://example.com')"), /fetch is not defined/);
+    assert.match(tryIt('dyn', "await import('node:child_process')"), /designs can't import "node:child_process"/);
+    assert.match(tryIt('outside', "await import('../../../../x.mjs')"), /can't import|outside|Cannot find/);
+    assert.match(tryIt('write', "process.binding('fs')"), /restricted|denied|not allowed|binding/i);
+    assert.ok(!fs.existsSync(path.join(ws, 'pwned')));
+    fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false }));
+    assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs');
+  } finally { done(); }
+});
