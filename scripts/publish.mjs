@@ -3,21 +3,37 @@
 // .github/workflows/publish.yml after the tests pass: npm trusts that workflow (trusted publishing, OIDC), so there
 // are no tokens, and each release gets provenance (a link to the commit and the run that built it). In GitHub
 // Actions each new version also gets a GitHub Release, tagged <name>@<version>, its notes the commits that changed
-// that package since its last release.
+// that package since its last release. Packages go out after the ones they depend on; a package new to npm stops the
+// release before anything is published (scripts/publish-plan.mjs).
 //   node scripts/publish.mjs [--dry-run]
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { plan } from './publish-plan.mjs';
 
 const dry = process.argv.includes('--dry-run');
 const onNpm = (name, version) => {
   try { execFileSync('npm', ['view', `${name}@${version}`, 'version'], { stdio: ['ignore', 'pipe', 'ignore'] }); return true; } catch { return false; }
 };
 execFileSync(process.execPath, ['scripts/types.mjs'], { stdio: 'inherit' }); // declarations for editors, from the JSDoc
+const exists = (name) => {
+  try { execFileSync('npm', ['view', name, 'name'], { stdio: ['ignore', 'pipe', 'ignore'] }); return true; } catch { return false; }
+};
+const packages = fs.readdirSync('packages').sort().map((dir) => ({ dir, ...JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8')) })).filter((p) => !p.private);
+const { publish, new: brandNew } = plan(packages, { onNpm, exists });
+for (const p of packages) if (!publish.includes(p)) console.log(`  ${p.name}@${p.version} is on npm`);
+// GitHub Actions can't publish a package npm has never seen (trusted publishing needs it to exist): stop before
+// anything goes out, so no package lands on npm without what it depends on
+if (brandNew.length && process.env.GITHUB_ACTIONS) {
+  console.error(`\nNothing published: ${brandNew.map((p) => p.name).join(', ')} ${brandNew.length > 1 ? 'are' : 'is'} new to npm, and this workflow can only publish packages that already exist there.
+Publish ${brandNew.length > 1 ? 'each' : 'it'} once by hand, one command at a time (each asks for two-factor in the browser), then trust this workflow for ${brandNew.length > 1 ? 'them' : 'it'} and run it again:
+  node scripts/types.mjs
+${brandNew.map((p) => `  npm publish --workspace packages/${p.dir} --access public`).join('\n')}
+${brandNew.map((p) => `  npm trust github ${p.name} --file publish.yml --repo JoniBach/rulecad --allow-publish --yes`).join('\n')}
+  gh workflow run publish.yml`);
+  process.exit(1);
+}
 let published = 0;
-for (const dir of fs.readdirSync('packages').sort()) {
-  const { name, version, private: hidden } = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8'));
-  if (hidden) continue;
-  if (onNpm(name, version)) { console.log(`  ${name}@${version} is on npm`); continue; }
+for (const { dir, name, version } of publish) {
   console.log(`+ ${name}@${version}${dry ? ' (dry run)' : ''}`);
   execFileSync('npm', ['publish', '--workspace', `packages/${dir}`, '--access', 'public', ...(dry ? ['--dry-run'] : [])], { stdio: 'inherit' });
   if (!dry && process.env.GITHUB_ACTIONS) release(dir, name, version);

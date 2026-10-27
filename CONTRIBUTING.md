@@ -39,6 +39,10 @@ Bump the `version` in a package's `package.json` (patch for fixes, minor for any
 major for anything that breaks an existing design or an earlier print's fit) and merge to `main`. GitHub Actions
 tests it on Linux, macOS and Windows, then publishes every package whose version isn't on npm yet, with provenance.
 
+A **new package** has to be published once by hand first: npm only lets the workflow publish packages that already
+exist. The workflow notices one before publishing anything and prints the commands (publish it, run `npm trust` for
+it, run the workflow again). Run them one at a time: each asks for two-factor in the browser.
+
 ## Conduct
 
 Be kind, and assume good intent. Help people who are new to this; most of the people who'll use rulecad are.
