@@ -12,7 +12,7 @@ import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, 
 import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
 import { measure, match } from '../lib/meshcmd.mjs';
-import { isAssembly, buildAssembly, checkAssembly, shapes, sweep } from '../lib/assembly.mjs';
+import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData } from '../lib/assembly.mjs';
 import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
@@ -103,6 +103,11 @@ const positional = () => args.filter((a, i) => !a.startsWith('--') && !(i > 0 &&
 const sets = () => Object.fromEntries(String(opt('set') || '').split(',').filter(Boolean).map((p) => p.split('=').map((s) => s.trim())));
 const suffix = (set) => Object.entries(set).map(([k, v]) => `-${k}=${v}`).join('');
 
+// --progress: what a long build or sweep is doing, on one line of stderr
+const showProgress = (e) => {
+  if (!opt('progress')) return;
+  process.stderr.write(`\r\x1b[K${e.stage === 'sweep' ? `sweeping ${e.joint} ${e.step}/${e.steps}` : `building ${e.item} (${e.done})`}`);
+};
 // Findings: as text (a mark and the words), or with --json as data: { ...about, findings: [{ level, text, code, values, refs, at }] }
 function report(findings, about = {}) {
   if (opt('json')) console.log(JSON.stringify({ ...about, findings }, null, 2));
@@ -206,6 +211,7 @@ async function main() {
     const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
     const failed = report([
       ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
+      ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}`, code: 'lint.numbers', refs: { file, numbers: raw } }
         : { level: 'pass', text: 'every measurement is a variable', code: 'lint.numbers', refs: { file } },
       ...(b.object.role === 'reference'
@@ -313,6 +319,7 @@ async function board(cmd, d, b, { title, version, tag }) {
     const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
     const failed = report([
       ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
+      ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}` } : { level: 'pass', text: 'every measurement is a variable' },
       ...(await pcb.checks(b.circuit, b.values, b.matrix)),
     ]);
@@ -344,7 +351,7 @@ async function board(cmd, d, b, { title, version, tag }) {
 // ---------- assemblies ----------
 async function assembly(cmd, ref) {
   const pose = typeof opt('pose') === 'string' ? opt('pose') : undefined;
-  const s = await buildAssembly(ref, [], {}, { pose }), a = s.a, title = `${a.title || s.name}${pose ? ` (${pose})` : ''}`;
+  const s = await buildAssembly(ref, [], {}, { pose, progress: showProgress }), a = s.a, title = `${a.title || s.name}${pose ? ` (${pose})` : ''}`;
   const versions = [...new Map(s.objects.map((o) => [o.objName, `${o.objName} ${o.version}`])).values()].join(', ');
   const rules = (ns) => Object.fromEntries(Object.keys(loadRuleSet(ns).rules).map((k) => [k, s.num(`${ns}.${k}`)]));
   const printed = s.parts.filter((p) => p.role !== 'reference');
@@ -363,7 +370,7 @@ async function assembly(cmd, ref) {
         ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
     }
     findings.unshift(...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]));
-    if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24 }));
+    if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24, progress: showProgress }));
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
     process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;
     return;
@@ -407,7 +414,7 @@ async function assembly(cmd, ref) {
         return placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: tri(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; });
       })() : []),
     };
-    Object.assign(model, motionLink(s));
+    Object.assign(model, motionData(s));
     const url = await linkTo(model);
     return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src: model.src, size: url.length, title, version: '' };
   };
@@ -426,30 +433,6 @@ async function assembly(cmd, ref) {
   throw new Error(`cad ${cmd} doesn't work on an assembly (check, preview, export, show, link do)`);
 }
 
-// An assembly's joints, for the page's sliders: each part moves with its item (motion in @rulecad/model-link)
-function motionLink(s) {
-  const mo = s.motion;
-  if (!mo.joints.length) return {};
-  const r = (x) => Number(x.toFixed(6)), names = mo.items.map((x) => x[0]);
-  const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`), allow = [];
-  const loose = s.fits.filter((x) => x.min != null && x.num(x.min) < 0);
-  s.parts.forEach((pa, i) => s.parts.forEach((pb, j) => {
-    if (j > i && pa.item !== pb.item && loose.some((x) => (named(pa, x.a) && named(pb, x.b)) || (named(pa, x.b) && named(pb, x.a)))) allow.push([i, j]);
-  }));
-  return { motion: {
-    items: mo.items.map(([n, ...m]) => [n, ...m.map(r)]),
-    joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
-      ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}) })),
-    poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
-    part: s.parts.map((p) => names.indexOf(p.item)),
-    ...(allow.length ? { allow } : {}),
-  } };
-}
-
-// ---------- links ----------
-// The rules sheet a link carries, for the page's Rules panel: a row for each of an object's own values, then each rule
-// they use, as [group, name, value, unit, rule, expr, kind, source, checked] (group: the object, or the rule's set).
-// A rule set marked "private" stays out, and --no-rules leaves the sheet out altogether.
 function sheet(objects) {
   if (opt('no-rules')) return {};
   const rows = [], seen = new Set(), trim = (r) => { while (r.length && (r[r.length - 1] === '' || r[r.length - 1] == null)) r.pop(); return r; };

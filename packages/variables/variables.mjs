@@ -78,6 +78,58 @@ export function evaluate(src, lookup) {
 }
 
 
+// ---------- units ----------
+// A unit as powers of its parts: "mm" {mm: 1}, "mm²" {mm: 2}, "deg" {deg: 1}. Numbers and names with no unit are
+// unknown (null), which matches anything: only units that are both known and different are a problem.
+const SUP = { '²': 2, '³': 3 }, ALIAS = { '°': 'deg', degrees: 'deg', degree: 'deg' };
+// Physical units only: counts (keys, u, rows, %) are plain numbers, so 12 keys × 19.05 mm is a length
+const PHYSICAL = new Set(['mm', 'cm', 'm', 'in', 'deg', 'rad', 'g', 'kg', 'N', 'W', 'V', 'A', 's', 'ms', 'Hz', 'mAh', 'Wh']);
+function parseUnit(u) {
+  if (u == null || u === '') return null;
+  const base = /^([a-zA-Z°]+)/.exec(String(u).trim())?.[1];
+  if (!PHYSICAL.has(ALIAS[base] || base)) return null;
+  const m = /^([a-zA-Z°]+)([²³])?$/.exec(String(u).trim());
+  if (!m) return { [String(u)]: 1 };
+  return { [ALIAS[m[1]] || m[1]]: m[2] ? SUP[m[2]] : 1 };
+}
+const showUnit = (x) => (x == null ? 'a number' : Object.keys(x).length ? Object.entries(x).map(([k, n]) => (n === 1 ? k : n === 2 ? `${k}²` : n === 3 ? `${k}³` : `${k}^${n}`)).join('·') : 'a plain number');
+const sameUnit = (a, b) => a == null || b == null || (Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, n]) => b[k] === n));
+const combine = (a, b, sign) => { if (a == null) return sign > 0 ? b : null; if (b == null) return a; const o = { ...a }; for (const [k, n] of Object.entries(b)) { o[k] = (o[k] || 0) + sign * n; if (!o[k]) delete o[k]; } return o; };
+
+/**
+ * The unit an expression comes to, and any mixing of units on the way (mm added to degrees, a sine of millimetres).
+ * @param {string | number} src @param {(name: string) => string | undefined} unitOf a name's unit
+ * @returns {{ unit: string | null, problems: string[] }}
+ */
+export function unitsOf(src, unitOf) {
+  if (typeof src === 'number') return { unit: null, problems: [] };
+  const t = tokens(String(src)), problems = [];
+  let i = 0;
+  const take = (op) => (t[i]?.op === op ? (i++, true) : false);
+  const add = (a, b, op) => { if (!sameUnit(a, b)) problems.push(`${op === '+' ? 'adds' : 'takes'} ${showUnit(b)} ${op === '+' ? 'to' : 'from'} ${showUnit(a)}`); return a ?? b; };
+  const expr = () => { let v = term(); for (;;) { if (take('+')) v = add(v, term(), '+'); else if (take('-')) v = add(v, term(), '-'); else return v; } };
+  const term = () => { let v = unary(); for (;;) { if (take('*')) v = combine(v, unary(), 1); else if (take('/')) v = combine(v, unary(), -1); else return v; } };
+  const unary = () => (take('-') || take('+') ? unary() : atom());
+  const atom = () => {
+    const k = t[i++];
+    if (!k) return null;
+    if (k.n != null) return null;
+    if (k.op === '(') { const v = expr(); take(')'); return v; }
+    if (k.id && FNS[k.id] && take('(')) {
+      const args = [expr()];
+      while (take(',')) args.push(expr());
+      take(')');
+      if (['sind', 'cosd', 'tand'].includes(k.id)) { if (args[0] && !sameUnit(args[0], { deg: 1 })) problems.push(`takes ${k.id} of ${showUnit(args[0])}, not degrees`); return {}; }
+      if (k.id === 'round') return args[0];
+      return args.reduce((a, b) => add(a, b, '+'));
+    }
+    return k.id ? parseUnit(unitOf(k.id)) : null;
+  };
+  const v = expr();
+  return { unit: v == null ? null : showUnit(v), problems, value: v };
+}
+
+
 
 // resolve(object, { sets, set }) -> { values, entries }
 //   values:  { stem_arm: 1.27, x1c: { line: 0.42, … }, mx: { … } } for the design's main()
@@ -152,6 +204,15 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     values[name] = lookup(name);
     entries.push({ name, ...d, value: values[name], expr: typeof d.value === 'string' ? d.value : undefined, set: name in set });
   }
+  // Units: each variable's expression, its names' units mixed only where they agree, and coming to the unit it says
+  const unitOf = (n) => (n.includes('.') ? ruleSets[n.split('.')[0].replace(/_/g, '-')]?.rules[n.split('.')[1]]?.unit ?? ruleSets[n.split('.')[0]]?.rules[n.split('.')[1]]?.unit : vars[n]?.unit);
+  const units = [];
+  for (const [name, d] of Object.entries(vars)) {
+    if (typeof d.value !== 'string' || isName(d)) continue;
+    const r = unitsOf(d.value, unitOf), said = parseUnit(d.unit);
+    for (const p of r.problems) units.push({ name, path: `variables.${name}.value`, message: `"${name}" = ${d.value}: ${p}` });
+    if (said && r.value && !sameUnit(said, r.value)) units.push({ name, path: `variables.${name}.unit`, message: `"${name}" comes to ${r.unit}, but its unit says ${showUnit(said)}` });
+  }
   const used = new Set(done.keys()); // rules the variables actually refer to (directly or through other rules)
   for (const [s, rs] of Object.entries(ruleSets)) {
     values[s] = {};
@@ -161,7 +222,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     }
     if (rs.footprints) values[s].footprints = rs.footprints; // pad data for boards (v.esp32c6.footprints.module), as the set gives it
   }
-  return { values, entries, deps: Object.fromEntries([...deps].map(([k, v]) => [k, [...v]])) };
+  return { values, entries, deps: Object.fromEntries([...deps].map(([k, v]) => [k, [...v]])), units };
 }
 
 // Round for display: at most 2 decimals, no trailing zeros.

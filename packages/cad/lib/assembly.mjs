@@ -102,6 +102,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     return built.get(key);
   };
   const placing = [];
+  let builtCount = 0;
   for (const it of a.items || []) {
     if (!/^[a-z][\w-]*$/.test(it.id || '')) throw new Error(`each item needs an id (letters, digits, - or _): got ${JSON.stringify(it.id)}`);
     if (!it.object === !it.assembly) throw new Error(`item ${it.id}: give either "object" or "assembly"`);
@@ -140,7 +141,10 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     }
     const first = await source(it, copies[0].extra);
     values[it.id] = first.sub ? first.sub.values : first.b.values; // a repeated item's own name works too: cap.base, not only cap-0-0
-    for (const c of copies) { c.src = await source(it, c.extra); values[c.id] = c.src.sub ? c.src.sub.values : c.src.b.values; }
+    for (const c of copies) {
+      c.src = await source(it, c.extra); values[c.id] = c.src.sub ? c.src.sub.values : c.src.b.values;
+      opts.progress?.({ stage: 'build', assembly: ref, item: c.id, done: ++builtCount }); // progress: for a caller to show (cad --progress)
+    }
     placing.push([it, copies]);
   }
   // Then place them: every item is built by now, so a position can refer to any item, before or after it (a board
@@ -517,7 +521,7 @@ const isNamed = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name
 
 // sweep(s, { joint, steps }) -> findings: each free joint (or the one named) moved through its range, the others held
 // at the assembly's pose, looking for parts that collide and loops that come apart on the way
-export function sweep(s, { joint, steps = 24 } = {}) {
+export function sweep(s, { joint, steps = 24, progress } = {}) {
   const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(2))}`;
   const free = s.motion.joints.filter((j) => !j.follow && j.dofs.length && (!joint || j.id === joint));
   if (joint && !free.length) throw new Error(`no joint "${joint}" to sweep (${s.motion.joints.filter((j) => !j.follow && j.dofs.length).map((j) => j.id).join(', ') || 'none'})`);
@@ -530,6 +534,7 @@ export function sweep(s, { joint, steps = 24 } = {}) {
       const t = s.at(Object.fromEntries(Object.entries(set).filter(([id]) => !s.motion.joints.find((x) => x.id === id).follow)));
       const what = [...clashesOf(t, isNamed).map(([a, b]) => `${a} hits ${b}`), ...loopGaps(t).filter((l) => !l.ok).map((l) => `${l.label} apart by ${mm(l.gap)} mm`)];
       if (what.length) bad.push([v, what]);
+      progress?.({ stage: 'sweep', joint: j.id, step: i, steps });
     }
     const ranges = []; // runs of steps in a row that collide
     for (const [v, what] of bad) { const r = ranges[ranges.length - 1]; if (r && Math.abs(v - r.to - (hi - lo) / steps) < 1e-9) { r.to = v; r.what = [...new Set([...r.what, ...what])]; } else ranges.push({ from: v, to: v, what }); }
@@ -554,3 +559,28 @@ export function shapes(parts) {
   }
   return { shapes: list, place };
 }
+
+// An assembly's joints, for the page's sliders: each part moves with its item (motion in @rulecad/model-link)
+export function motionData(s) {
+  const mo = s.motion;
+  if (!mo.joints.length) return {};
+  const r = (x) => Number(x.toFixed(6)), names = mo.items.map((x) => x[0]);
+  const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`), allow = [];
+  const loose = s.fits.filter((x) => x.min != null && x.num(x.min) < 0);
+  s.parts.forEach((pa, i) => s.parts.forEach((pb, j) => {
+    if (j > i && pa.item !== pb.item && loose.some((x) => (named(pa, x.a) && named(pb, x.b)) || (named(pa, x.b) && named(pb, x.a)))) allow.push([i, j]);
+  }));
+  return { motion: {
+    items: mo.items.map(([n, ...m]) => [n, ...m.map(r)]),
+    joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
+      ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}) })),
+    poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
+    part: s.parts.map((p) => names.indexOf(p.item)),
+    ...(allow.length ? { allow } : {}),
+  } };
+}
+
+// ---------- links ----------
+// The rules sheet a link carries, for the page's Rules panel: a row for each of an object's own values, then each rule
+// they use, as [group, name, value, unit, rule, expr, kind, source, checked] (group: the object, or the rule's set).
+// A rule set marked "private" stays out, and --no-rules leaves the sheet out altogether.

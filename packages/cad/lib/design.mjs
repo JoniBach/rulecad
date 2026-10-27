@@ -122,7 +122,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   const display = mirror ? object.mirror || {} : {};
   let resolved;
   try { resolved = resolve(object, { set, sets, display }); } catch (e) { throw located(e, d.json, 'var'); } // mirror: lighter for the display
-  const { values, entries, deps } = resolved;
+  const { values, entries, deps, units } = resolved;
   for (const [n, x] of Object.entries(refs.extra)) Object.assign(values[n], x);
   const files = layoutsOf(d, object);
   if (object.layouts) values.layouts = object.layouts; // older designs kept layouts in their .json
@@ -138,7 +138,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     for (const e of entries) if (c.used.includes(e.name)) e.used = true;
     const parts = c.parts.map(({ solid: f, ...p }) => ({ ...p, geometry: fromFaces(f) }));
     if (c.circuit) Object.assign(values, (await pcbEngine()).outputs(c.circuit, c.matrix));
-    return { object, values, entries, deps, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
+    return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
   }
 
   const mod = await import(`${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
@@ -168,7 +168,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     prune();
     fs.writeFileSync(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}) }));
   } catch {} // a cache that can't be written is only slower
-  return { object, values, entries, deps, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}) };
+  return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}) };
 }
 
 // The cache keeps its most recently used builds, about CACHE_KEEP of them (an old version's builds go first)

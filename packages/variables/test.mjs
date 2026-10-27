@@ -78,3 +78,14 @@ test('resolve: errors carry a code and the path to fix; deps say what each value
   e = err({ variables: { w: { value: '1 +' } } });
   assert.equal(e.code, 'var.expression'); assert.equal(e.path, 'variables.w.value');
 });
+
+test('units: mixing millimetres and degrees, or a value that comes to another unit than it says, is flagged', async () => {
+  const { unitsOf } = await import('@rulecad/variables');
+  const u = { w: 'mm', a: 'deg', n: 'keys', p: 'mm' };
+  assert.deepEqual(unitsOf('w * 2 + p', (k) => u[k]).problems, []);
+  assert.deepEqual(unitsOf('n * p + w', (k) => u[k]).problems, [], 'a count of keys times a pitch is a length');
+  assert.match(unitsOf('w + a', (k) => u[k]).problems[0], /adds deg to mm/);
+  assert.match(unitsOf('sind(w)', (k) => u[k]).problems[0], /sind of mm, not degrees/);
+  const r = resolve({ variables: { w: { value: 10, unit: 'mm' }, area: { value: 'w * w', unit: 'mm' }, ok: { value: 'w * w', unit: 'mm²' } } });
+  assert.deepEqual(r.units.map((x) => x.path), ['variables.area.unit']);
+});

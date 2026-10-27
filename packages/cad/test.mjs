@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -254,6 +255,16 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     assert.equal(near.level, 'warn'); assert.equal(near.refs.near.endsWith('@hinge'), true); assert.ok(near.at);
     box();
     assert.match(cad('check', 'demo/box', '--pose', 'wide'), /no pose "wide"/);
+    // The library, as a program uses it: progress while it builds and sweeps, and the joints' data for the page
+    const lib = path.join(path.dirname(BIN), '../lib/assembly.mjs');
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { buildAssembly, sweep, motionData } from ${JSON.stringify(pathToFileURL(lib).href)};
+      const seen = [];
+      const s = await buildAssembly('demo/box', [], {}, { progress: (e) => seen.push(e.stage) });
+      sweep(s, { steps: 4, progress: (e) => seen.push(e.stage) });
+      const m = motionData(s);
+      console.log(JSON.stringify({ build: seen.filter((x) => x === 'build').length, sweep: seen.filter((x) => x === 'sweep').length, joints: m.motion.joints.length }));`], { cwd: ws, encoding: 'utf8' });
+    assert.deepEqual(JSON.parse(out), { build: 5, sweep: 5, joints: 2 }); // four items, and the spare component's own one
     box({ ratio: 2 }); // the tab turns twice as far: the loop comes apart once open
     assert.match(cad('check', 'demo/box'), /open: .*Lid and tab line up: apart/);
     box({ type: 'ball' });
