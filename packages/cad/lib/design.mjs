@@ -108,6 +108,9 @@ export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
 
 // An object's on-screen settings are "display" ({ "smooth": 24 }), and a part left off screen is "display": false.
 // Their first name, "mirror", still works: read here, the rest of the tool sees it as mirror either way.
+// Which engine a design's v.ops booleans use: the object's "engine": "manifold", or CAD_ENGINE=manifold for every design
+export const booleans = (object) => (object.engine === 'manifold' ? 'manifold' : object.engine === 'pcb' ? 'jscad' : process.env.CAD_ENGINE || 'jscad');
+
 export const readObject = (d) => {
   const o = JSON.parse(fs.readFileSync(d.json, 'utf8'));
   if (o.display && !o.mirror) o.mirror = o.display;
@@ -133,7 +136,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
 
   // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether
   const ruleText = [...(object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u))), JSON.stringify(refs.extra)];
-  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : '', fs.readFileSync(d.js, 'utf8'), JSON.stringify(object), ruleText, files, set, display])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), fs.readFileSync(d.js, 'utf8'), JSON.stringify(object), ruleText, files, set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
   if (!process.env.CAD_NO_CACHE && fs.existsSync(hit)) {
     const c = JSON.parse(fs.readFileSync(hit, 'utf8'));
@@ -148,7 +151,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
   let parts, board = null, read;
-  if (!pcb && sandboxed()) ({ parts, read } = await runSandboxed(d, values, object.parts || {}));
+  if (!pcb && sandboxed()) ({ parts, read } = await runSandboxed(d, values, object.parts || {}, booleans(object)));
   else {
     const mod = await import(`${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
       // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
@@ -161,7 +164,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     read = new Set();
     const watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
       ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
-    watched.shapes = shapes; if (pcb) watched.pcb = pcb;
+    watched.shapes = shapes; watched.ops = await shapes.ops(booleans(object)); if (pcb) watched.pcb = pcb;
     let made;
     try { made = await mod.main(watched); } catch (e) { throw located(e, d.js, 'design.run'); }
     if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part

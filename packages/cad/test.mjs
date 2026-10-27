@@ -361,3 +361,22 @@ test('sandbox: a design can make shapes, but not read or write files, reach the 
     assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs');
   } finally { done(); }
 });
+
+test('engines: a design using v.ops builds the same shape with JSCAD and with Manifold, watertight', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { w: { value: 20, unit: 'mm', rule: 'Width', tweak: { min: 5, max: 50 } }, r: { value: 'w * 0.6', unit: 'mm', rule: 'Radius' }, n: { value: 64, unit: '', rule: 'Segments' } };
+    object(ws, 'demo/cut', { variables: vars }, `import jscad from '@jscad/modeling'
+const { cuboid, sphere } = jscad.primitives
+export function main (v) {
+  return v.ops.subtract(cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }), sphere({ radius: v.r, center: [0, 0, v.w], segments: v.n }))
+}
+`);
+    const j = JSON.parse(cad('check', 'demo/cut', '--json')), m = JSON.parse(execFileSync(process.execPath, [BIN, 'check', 'demo/cut', '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_ENGINE: 'manifold' } }));
+    const size = (r) => r.findings.find((f) => f.code === 'print.bed').values.size, base = (r) => r.findings.find((f) => f.code === 'print.base').values.area;
+    assert.deepEqual(size(j).map((x) => x.toFixed(2)), size(m).map((x) => x.toFixed(2)));
+    assert.ok(Math.abs(base(j) - base(m)) < 0.5, 'the same footprint');
+    const closed = m.findings.find((f) => f.code === 'print.closed');
+    assert.equal(closed.level, 'pass'); assert.equal(closed.values.tjunctions, 0, 'Manifold leaves no T-junctions');
+  } finally { done(); }
+});

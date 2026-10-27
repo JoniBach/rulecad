@@ -224,6 +224,8 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - **fit** assemblies check how parts go together: no overlaps (unless a fit allows a press fit with a negative
   `min`), and the closest gap for each `fit` within its range. Supports are left out: they're snipped off first.
   Objects with `"role": "reference"` (the MX switch) model things you don't print: drawn faint, never exported.
+- **Engines:** designs get `v.ops` (union, subtract, intersect): JSCAD's booleans by default, Manifold's (faster,
+  watertight; `npm install manifold-3d`) with `"engine": "manifold"` in the object's JSON or `CAD_ENGINE=manifold`.
 - **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model: it can read the
   workspace and the tool's packages, but can't write files, start programs or workers, or load addons, and it may
   import only `@jscad/modeling`, `@rulecad/shapes` and files in its own project (no `node:` modules, so no network;

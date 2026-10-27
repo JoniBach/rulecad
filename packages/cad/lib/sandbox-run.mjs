@@ -6,7 +6,7 @@ import { named, faces } from './parts.mjs';
 for (const k of ['fetch', 'WebSocket', 'EventSource', 'XMLHttpRequest', 'Request', 'Response']) delete globalThis[k];
 const chunks = [];
 for await (const c of process.stdin) chunks.push(c);
-const { js, values, meta } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+const { js, values, meta, engine } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
 const done = (o) => process.stdout.write(JSON.stringify(o), () => process.exit(0));
 try {
   const mod = await import(js);
@@ -14,7 +14,7 @@ try {
   // Rules the code reads directly (v.mx.housing_top) count as used too
   const read = new Set(), watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
     ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
-  watched.shapes = shapes;
+  watched.shapes = shapes; watched.ops = await shapes.ops(engine || 'jscad');
   const made = await mod.main(watched);
   const parts = named(made, meta).map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) }));
   done({ parts, read: [...read] });

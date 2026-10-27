@@ -68,3 +68,20 @@ test('features: holes, pockets and ribs that print without supports in a part ly
   const one = crushRibs({ at: [[-5, 0]], into: [[1, 0]], z: [0, 4], radius: 0.8, protrude: 0.3 });
   assert.ok(Math.abs(jscad.measurements.measureBoundingBox(one)[1][0] - (-5 + 0.3)) < 0.01, 'stands 0.3 into the pocket');
 });
+
+test('ops: the same booleans by JSCAD and by Manifold (faster, watertight)', async (t) => {
+  const { ops } = await import('@rulecad/shapes');
+  const { cuboid, sphere } = jscad.primitives;
+  const a = cuboid({ size: [20, 20, 20] }), b = sphere({ radius: 12, segments: 64 }), c = cuboid({ size: [4, 40, 4] });
+  const time = {}, vol = {};
+  for (const e of ['jscad', 'manifold']) {
+    const o = await ops(e), t0 = performance.now();
+    const r = o.union(o.subtract(a, b), c);
+    time[e] = performance.now() - t0; vol[e] = volume(r);
+    assert.equal(o.stats.fallbacks, 0);
+    assert.ok(o.intersect(a, c) && o.stats.ops === 3);
+  }
+  assert.ok(Math.abs(vol.jscad - vol.manifold) / vol.jscad < 1e-3, `volumes agree: ${vol.jscad} vs ${vol.manifold}`);
+  t.diagnostic(`JSCAD ${time.jscad.toFixed(0)} ms, Manifold ${time.manifold.toFixed(0)} ms`);
+  await assert.rejects(ops('nope'), /no boolean engine "nope"/);
+});

@@ -15,7 +15,9 @@
     "README.md",
     "LICENSE",
     "features.mjs",
-    "features.d.mts"
+    "features.d.mts",
+    "ops.mjs",
+    "ops.d.mts"
   ],
   "license": "MIT",
   "keywords": [
@@ -41,7 +43,13 @@
     "@rulecad/variables": "^0.1.0"
   },
   "peerDependencies": {
-    "@jscad/modeling": "^2.12.0"
+    "@jscad/modeling": "^2.12.0",
+    "manifold-3d": "^3.5.0"
   },
-  "types": "./shapes.d.mts"
+  "types": "./shapes.d.mts",
+  "peerDependenciesMeta": {
+    "manifold-3d": {
+      "optional": true
+    }
+  }
 }

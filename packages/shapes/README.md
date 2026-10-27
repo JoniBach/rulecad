@@ -70,3 +70,18 @@ wallOpening({ width: 12.75, height: 6.9, depth: v.wall, at: [x, 0, z], into: '-y
 - A nut pocket going up from the bed gets a 45° hexagonal roof to the hole; across a part, a flat top (a short bridge).
 - An opening wider than the printer's `bridge` rises at 45° each side to a flat that wide.
 - Cutters start a little outside the face they enter by, so no faces lie on each other.
+
+## Booleans: JSCAD or Manifold
+
+`ops(engine)` gives `union`, `subtract` and `intersect` behind one interface. Designs get it as `v.ops`, so they say
+what they mean and the workspace picks the engine: JSCAD's own (the default, exactly as before) or
+[Manifold](https://github.com/elalish/manifold) (much faster, always watertight), with `"engine": "manifold"` in an
+object's JSON or `CAD_ENGINE=manifold` for every design. Manifold needs `npm install manifold-3d` in the workspace.
+
+```js
+export function main (v) {
+  return v.ops.subtract(body, holes, pockets) // arrays are fine, as with JSCAD
+}
+```
+
+A shape Manifold can't read as a closed solid falls back to JSCAD for that operation (`stats.fallbacks` counts them).

@@ -84,3 +84,4 @@ export const size = (g) => { const [lo, hi] = measureBoundingBox(g); return [hi[
 export { scale };
 export { outline, slab, shell, lid, dovetail, gabled, diamond, vents } from './enclosure.mjs';
 export { countersink, teardropHole, nutPocket, crushRibs, wallOpening } from './features.mjs';
+export { ops } from './ops.mjs';

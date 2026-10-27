@@ -34,15 +34,15 @@ function readable() {
   // Every node_modules above the workspace and the tool (package lookups read their links), and where links lead
   const up = (dir) => { const out = []; for (let d = dir; ; d = path.dirname(d)) { out.push(path.join(d, 'node_modules')); if (path.dirname(d) === d) return out; } };
   const dirs = [WS, TOOL, ...[...up(WS), ...up(TOOL)].filter((d) => fs.existsSync(d)),
-    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/variables'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
+    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
   return [...new Set(dirs.filter(Boolean).flatMap((d) => [d, real(d)]).filter(Boolean))];
 }
 
 /**
  * Run a design's main(values) in the sandbox: { parts, read } as the build makes them.
- * @param {{ js: string }} d the design @param {object} values @param {object} meta the .json's parts
+ * @param {{ js: string }} d the design @param {object} values @param {object} meta the .json's parts @param {'jscad' | 'manifold'} [engine] v.ops's booleans
  */
-export function runSandboxed(d, values, meta) {
+export function runSandboxed(d, values, meta, engine = 'jscad') {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const args = [flag, ...readable().map((p) => `--allow-fs-read=${p}`), ...(inThread ? [] : ['--allow-worker']), '--import', pathToFileURL(path.join(here, 'sandbox-preload.mjs')).href, path.join(here, 'sandbox-run.mjs')];
   const project = pathToFileURL(path.dirname(path.dirname(d.js)) + path.sep).href;
@@ -60,6 +60,6 @@ export function runSandboxed(d, values, meta) {
       if (r.error) return reject(located(Object.assign(new Error(r.error.message), { code: r.error.code }), d.js, r.error.code || 'design.run'));
       resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read) });
     });
-    child.stdin.end(JSON.stringify({ js: `${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`, values, meta }));
+    child.stdin.end(JSON.stringify({ js: `${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`, values, meta, engine }));
   });
 }

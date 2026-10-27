@@ -17,7 +17,7 @@
     "material": { "type": "string" },
     "orientation": { "type": "string", "description": "How it sits on the bed, and anything the printer or the person assembling it should know" },
     "role": { "enum": ["part", "reference", "board"], "description": "reference: drawn faint and never printed (a switch, a tablet); board: a circuit board" },
-    "engine": { "enum": ["jscad", "pcb"] },
+    "engine": { "enum": ["jscad", "manifold", "pcb"], "description": "manifold: v.ops booleans by Manifold (npm install manifold-3d); pcb: a circuit board" },
     "variables": { "type": "object", "additionalProperties": { "$ref": "#/$defs/variable" } },
     "display": { "type": "object", "description": "Settings the mirror and model page use instead (lighter meshes, no legends)" },
     "mirror": { "type": "object", "description": "The older name for display" },
