@@ -1,0 +1,6 @@
+{
+  "name": "rulecad-bench-lever",
+  "private": true,
+  "type": "module",
+  "description": "The lever bench: a test block for rulecad's topology optimisation, printed and load-tested."
+}

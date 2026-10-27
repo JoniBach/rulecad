@@ -1,0 +1,42 @@
+{
+  "name": "optimised",
+  "title": "Lever bench: optimised lever",
+  "description": "Specimen C (and D, the variant both): the stiffest layout of the same mass that rulecad's optimiser finds for the bench's load (problems/lever.json), and for D, for an angled load too.",
+  "version": "0.1.0",
+  "uses": [
+    "bench",
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "orientation": "Flat on the bed. 100% infill (or walls enough to be solid), 0.2 mm layers, the same filament as the other specimens.",
+  "variables": {
+    "problem": {
+      "type": "problem",
+      "value": "lever",
+      "choice": [
+        "lever",
+        "lever:both"
+      ],
+      "rule": "The optimisation problem: the bench's load, or (lever:both) an angled one too"
+    },
+    "target": {
+      "value": "bench.fill * bench.length * bench.depth * bench.thickness",
+      "unit": "mm³",
+      "rule": "Every specimen's volume: the same share of the envelope",
+      "show": true,
+      "label": "Volume"
+    }
+  },
+  "variants": {
+    "both": {
+      "problem": "lever:both"
+    }
+  },
+  "analysis": [
+    {
+      "problem": "lever",
+      "volume": "target"
+    }
+  ]
+}

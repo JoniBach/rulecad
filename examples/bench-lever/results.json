@@ -1,0 +1,18 @@
+{
+  "_doc": "The lever bench's results: see README.md. Each reading is [load_kg, gauge_mm]; three repeats on each of three prints per specimen.",
+  "material": { "filament": "", "spool": "", "printer": "", "layer_mm": 0.2, "infill": "100%", "printed": "", "tested": "" },
+  "predicted": {
+    "_doc": "From cad check (rules/pla.json as published: modulus 2680 MPa); N/mm along the load",
+    "bar": { "down": 26.9, "angled": 52.7 },
+    "plate": { "down": 3.3, "angled": 6.6 },
+    "optimised": { "down": 99.9, "angled": 184.3 },
+    "optimised:both": { "down": 98.9, "angled": 190.5 }
+  },
+  "measured": {
+    "bar": [[], [], []],
+    "plate": [[], [], []],
+    "optimised": [[], [], []],
+    "optimised:both": [[], [], []]
+  },
+  "notes": ""
+}

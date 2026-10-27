@@ -1,0 +1,44 @@
+{
+  "name": "bar",
+  "title": "Lever bench: plain bar",
+  "description": "Specimen A: a solid bar as long as the envelope and as heavy as every other specimen. Beam theory predicts its stiffness exactly, so its result also measures the printed material's stiffness.",
+  "version": "0.1.0",
+  "uses": [
+    "bench",
+    "m5",
+    "m4",
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "orientation": "Flat on the bed. 100% infill (or walls enough to be solid), 0.2 mm layers, the same filament as the other specimens.",
+  "variables": {
+    "hole5": {
+      "value": "(m5.clearance + x1c.hole_comp) / 2",
+      "unit": "mm",
+      "rule": "A fixing bolt's hole: radius, printed"
+    },
+    "hole4": {
+      "value": "(m4.clearance + x1c.hole_comp) / 2",
+      "unit": "mm",
+      "rule": "The load bolt's hole: radius, printed"
+    },
+    "target": {
+      "value": "bench.fill * bench.length * bench.depth * bench.thickness",
+      "unit": "mm³",
+      "rule": "Every specimen's volume: the same share of the envelope",
+      "show": true,
+      "label": "Volume"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments in each hole's circle"
+    }
+  },
+  "analysis": [
+    {
+      "problem": "lever",
+      "volume": "target"
+    }
+  ]
+}
