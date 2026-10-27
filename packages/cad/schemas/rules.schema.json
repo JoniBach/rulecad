@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jonibach.github.io/rulecad/schemas/rules.schema.json",
+  "title": "rulecad rule set",
+  "description": "Shared facts (a printer, a screw size, a part's datasheet), each with where it comes from.",
+  "type": "object",
+  "required": ["rules"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "_doc": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "licence": { "type": "string" },
+    "private": { "type": "boolean" },
+    "footprints": { "type": "object" },
+    "rules": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["value"],
+        "additionalProperties": false,
+        "properties": {
+          "value": { "type": ["number", "string"] },
+          "unit": { "type": "string" },
+          "rule": { "type": "string" },
+          "kind": { "type": "string", "description": "spec, standard, measured, community, estimate, …" },
+          "source": { "type": "string" },
+          "checked": { "type": "string" },
+          "pins": {}
+        }
+      }
+    }
+  }
+}

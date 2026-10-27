@@ -15,6 +15,7 @@ import { measure, match } from '../lib/meshcmd.mjs';
 import { isAssembly, buildAssembly, checkAssembly, shapes, sweep } from '../lib/assembly.mjs';
 import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData } from '../lib/errors.mjs';
+import { schemaFindings } from '../lib/schema.mjs';
 import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 
@@ -195,7 +196,11 @@ async function main() {
   if (cmd === 'check') {
     say(`${title} ${version}${Object.keys(set).length ? ` (${suffix(set).slice(1)})` : ''}`);
     const raw = lint(fs.readFileSync(d.js, 'utf8')), file = path.relative(WS, d.js);
+    // The files first: the object's JSON, and the workspace's own rule sets it uses, against their schemas
+    const own = (f) => path.relative(WS, f), ruleFiles = (b.object.uses || []).filter((u) => !u.includes('/')).map((u) => path.join(WS, 'rules', `${u}.json`)).filter((f) => fs.existsSync(f));
+    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
     const failed = report([
+      ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}`, code: 'lint.numbers', refs: { file, numbers: raw } }
         : { level: 'pass', text: 'every measurement is a variable', code: 'lint.numbers', refs: { file } },
       ...(b.object.role === 'reference'
@@ -265,7 +270,11 @@ async function board(cmd, d, b, { title, version, tag }) {
   if (cmd === 'check') {
     console.log(`${title} ${version}`);
     const raw = lint(fs.readFileSync(d.js, 'utf8'));
+    // The files first: the object's JSON, and the workspace's own rule sets it uses, against their schemas
+    const own = (f) => path.relative(WS, f), ruleFiles = (b.object.uses || []).filter((u) => !u.includes('/')).map((u) => path.join(WS, 'rules', `${u}.json`)).filter((f) => fs.existsSync(f));
+    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
     const failed = report([
+      ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}` } : { level: 'pass', text: 'every measurement is a variable' },
       ...(await pcb.checks(b.circuit, b.values, b.matrix)),
     ]);
@@ -306,12 +315,16 @@ async function assembly(cmd, ref) {
     say(`${title} (${a.kind || 'fit'}: ${versions})`);
     // Each pose (or the one asked for): what's the same in every pose is said once, the rest under the pose's name
     const poses = pose ? [pose] : Object.keys(s.motion.poses);
+    const file = path.join(paths.project(s.project), 'assemblies', `${s.name}.json`), layouts = new Set((a.items || []).map((i) => i.repeat?.layout).filter((l) => l && !l.includes('/')));
+    const schemaProblems = [...(fs.existsSync(file) ? schemaFindings(JSON.parse(fs.readFileSync(file, 'utf8')), 'assembly', path.relative(WS, file)) : []),
+      ...[...layouts].map((l) => path.join(paths.project(s.project), 'layouts', `${l}.json`)).filter((f) => fs.existsSync(f)).flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'layout', path.relative(WS, f)))];
     let findings = checkAssembly(s);
     if (poses.length > 1) {
       const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
       findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}`, code: 'poses', refs: { poses } }, ...each[0][1].filter(same),
         ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
     }
+    findings.unshift(...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]));
     if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24 }));
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
     process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;

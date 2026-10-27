@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jonibach.github.io/rulecad/schemas/layout.schema.json",
+  "title": "rulecad keyboard layout",
+  "description": "Where the keys go, and each key's own properties (width u, row, legend, …).",
+  "type": "object",
+  "required": ["rows"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "title": { "type": "string" },
+    "note": { "type": "string" },
+    "defaults": { "type": "object" },
+    "rows": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          { "type": "array", "items": { "$ref": "#/$defs/key" } },
+          { "type": "object", "required": ["keys"], "properties": { "keys": { "type": "array", "items": { "$ref": "#/$defs/key" } } } }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "key": {
+      "anyOf": [
+        { "type": "string" },
+        { "type": "array", "prefixItems": [{ "type": "string" }, { "type": "number" }], "minItems": 1, "maxItems": 2 },
+        { "type": "object", "properties": { "label": { "type": "string" }, "u": { "type": "number" }, "gap": { "type": "number" } } }
+      ]
+    }
+  }
+}

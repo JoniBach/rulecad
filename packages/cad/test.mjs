@@ -275,3 +275,24 @@ test('findings as data (--json), values, and why a value is what it is', () => {
     assert.equal(err.error.code, 'var.unknown');
   } finally { done(); }
 });
+
+test('schemas: every format checked up front, a typo named with its path', async () => {
+  const { validate, schema } = await import('./lib/schema.mjs');
+  const ok = { variables: { w: { value: 10, unit: 'mm', rule: 'Width' } } };
+  assert.deepEqual(validate(ok, schema('object')), []);
+  const bad = validate({ variables: { w: { value: 10, unti: 'mm' } }, varibles: {} }, schema('object'));
+  assert.ok(bad.some((x) => x.path === 'variables.w.unti' && /did you mean "unit"/.test(x.message)));
+  assert.ok(bad.some((x) => x.path === 'varibles' && /did you mean "variables"/.test(x.message)));
+  assert.deepEqual(validate({ items: [{ id: 'a', object: 'a' }], joints: [{ id: 'j', type: 'revolute', parent: 'a.p', child: { item: 'b', at: [0, 0, 'h'] } }] }, schema('assembly')), []);
+  assert.ok(validate({ items: [], fits: [{ a: 'x' }] }, schema('assembly')).some((x) => x.path === 'fits[0]' && /needs "b"/.test(x.message)));
+  assert.deepEqual(validate({ rows: [['Esc', ['Tab', 1.5], { label: 'F', homing: true }, { gap: 0.25 }]] }, schema('layout')), []);
+  assert.deepEqual(validate({ name: 'p', rules: { line: { value: 0.42, unit: 'mm', rule: 'Line', kind: 'spec', source: 'x' } } }, schema('rules')), []);
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'bathroom/soap-tray');
+    assert.match(cad('check', 'bathroom/soap-tray'), /files match their schemas/);
+    const f = path.join(ws, 'projects/bathroom/objects/soap-tray.json'), j = JSON.parse(fs.readFileSync(f, 'utf8'));
+    j.orientaton = 'typo'; fs.writeFileSync(f, JSON.stringify(j));
+    assert.match(cad('check', 'bathroom/soap-tray'), /orientaton: not allowed here \(did you mean "orientation"\?\)/);
+  } finally { done(); }
+});
