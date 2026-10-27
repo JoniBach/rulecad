@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
 const cache = new Map();
-/** A schema by name: object, assembly, rules or layout. @param {'object' | 'assembly' | 'rules' | 'layout'} name */
+/** A schema by name: object, assembly, rules, layout or problem. @param {'object' | 'assembly' | 'rules' | 'layout' | 'problem'} name */
 export function schema(name) {
   if (!cache.has(name)) cache.set(name, JSON.parse(fs.readFileSync(path.join(DIR, `${name}.schema.json`), 'utf8')));
   return cache.get(name);
@@ -63,7 +63,7 @@ export function validate(value, s, root = s, at = '') {
   return out;
 }
 
-/** Problems with a file's JSON as findings (code schema), for cad check. @param {any} json @param {'object' | 'assembly' | 'rules' | 'layout'} kind @param {string} file */
+/** Problems with a file's JSON as findings (code schema), for cad check. @param {any} json @param {'object' | 'assembly' | 'rules' | 'layout' | 'problem'} kind @param {string} file */
 export function schemaFindings(json, kind, file) {
   return validate(json, schema(kind)).map((x) => ({ level: 'fail', text: `${file}: ${x.path}: ${x.message}`, code: 'schema', refs: { file, path: x.path } }));
 }

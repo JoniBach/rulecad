@@ -1,0 +1,11 @@
+{
+  "_doc": "Aluminium alloy 7075-T6, for analysis.",
+  "name": "al7075",
+  "rules": {
+    "modulus": {"value": 71700, "unit": "MPa", "rule": "Young's modulus", "kind": "spec", "source": "ASM Aerospace Specification Metals, Aluminum 7075-T6, https://asm.matweb.com/search/specificmaterial.asp?bassnum=ma7075t6", "checked": "2026-10-27"},
+    "poisson": {"value": 0.33, "rule": "Poisson's ratio", "kind": "spec", "source": "ASM, Aluminum 7075-T6", "checked": "2026-10-27"},
+    "strength": {"value": 503, "unit": "MPa", "rule": "Tensile yield strength", "kind": "spec", "source": "ASM, Aluminum 7075-T6", "checked": "2026-10-27"},
+    "fatigue": {"value": 159, "unit": "MPa", "rule": "Fatigue strength at 500,000,000 cycles (completely reversed, R. R. Moore test)", "kind": "spec", "source": "ASM, Aluminum 7075-T6", "checked": "2026-10-27"},
+    "density": {"value": 2.81, "unit": "g/cm³", "rule": "Density", "kind": "spec", "source": "ASM, Aluminum 7075-T6", "checked": "2026-10-27"}
+  }
+}

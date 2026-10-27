@@ -80,6 +80,15 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - Join pins with `nets` (`GND: ['U1.GND', 'J1.GND']`) and let the autorouter draw them; `cad check` runs the fab's
   design rules. Look at the copper preview: connectors should face the edge their plug comes from.
 
+## Optimised parts
+- For a flat part that carries load (a lever, a bracket, a pedal arm), describe it as a problem in `problems/`: the
+  space it may fill, the bosses to keep, the holes to avoid, the supports and loads (in newtons, each in a case), the
+  material's rule set. `npx cad optimise <project>/<problem>` and **look at the picture** in `.preview/`.
+- A design reads the result through a `problem` variable and builds it with `v.shapes.optimisedOutline(...)`. Add an
+  `analysis` to the object so `cad check` reports its stiffness; report those numbers with their load and material.
+- Say plainly that the analysis is coarse and the material values are data-sheet figures: anything that could hurt
+  someone if it broke needs testing, not just a check.
+
 ## Talking to the person
 - Give links as one labelled line (`npx cad link <project>/<object> --md`), never a raw URL. If it says
   "(not a release)", say so. If it says the link is too long for chat, don't paste it: tell the person, and offer
