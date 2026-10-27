@@ -91,7 +91,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const sub = it.assembly ? extra : {}; // a component's values go to its items: { cap: { units: 1.5 } }
     const key = JSON.stringify([it.object, it.variant, it.assembly, set, sub]);
     if (!built.has(key)) {
-      if (it.assembly) built.set(key, { key, sub: await buildAssembly(`${project}/${it.assembly}`, [...stack, ref], sub, opts) });
+      if (it.assembly) built.set(key, { key, sub: await buildAssembly(`${project}/${it.assembly}`, [...stack, ref], sub, { ...opts, pose: undefined }) }); // a pose names the outer assembly's joints
       else {
         const [ref, named] = String(it.object).split(':'), [objName, pin] = ref.split('@'), variant = named || it.variant;
         const d = locate(`${project}/${objName}`), at = { ...(pin ? materialise(d, pin) : d), ...(variant ? { variant } : {}) };
