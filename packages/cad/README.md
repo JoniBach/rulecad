@@ -224,6 +224,10 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - **fit** assemblies check how parts go together: no overlaps (unless a fit allows a press fit with a negative
   `min`), and the closest gap for each `fit` within its range. Supports are left out: they're snipped off first.
   Objects with `"role": "reference"` (the MX switch) model things you don't print: drawn faint, never exported.
+- **Hosts:** the core (resolve, build, check) reads and writes through a host (`lib/host.mjs`): Node's file system
+  for the CLI, or `memoryHost(files)`, a workspace in memory (reading the tool's own packages from disk), for tests
+  and, later, a browser. `useHost(h)` switches. The model-link building (`lib/links.mjs`) and the joints' data for the
+  page (`motionData`) are in the library too, so other programs make the same links without the CLI.
 - **Engines:** designs get `v.ops` (union, subtract, intersect): JSCAD's booleans by default, Manifold's (faster,
   watertight; `npm install manifold-3d`) with `"engine": "manifold"` in the object's JSON or `CAD_ENGINE=manifold`.
 - **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model: it can read the

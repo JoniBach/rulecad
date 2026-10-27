@@ -15,6 +15,7 @@
 // (its copper is in the 2D views).
 // Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
 import { located } from './errors.mjs';
+import { host } from './host.mjs';
 import { named, faces, fromFaces, polygons } from './parts.mjs';
 import { runSandboxed, sandboxed } from './sandbox.mjs';
 export { polygons };
@@ -39,12 +40,12 @@ export function locate(ref) {
   const [plain, variant] = String(ref).split(':');
   ref = plain;
   let base = ref.replace(/\.(js|json)$/, '');
-  if (!base.includes(path.sep) || !fs.existsSync(`${base}.json`)) {
+  if (!base.includes(path.sep) || !host.exists(`${base}.json`)) {
     const [project, name] = ref.split('/');
     if (!project || !name) throw new Error(`name a design as <project>/<object>, e.g. keyboard/keycap (got "${ref}")`);
     base = path.join(paths.project(project), 'objects', name);
   }
-  if (!fs.existsSync(`${base}.json`) || !fs.existsSync(`${base}.js`)) throw new Error(`no design at ${path.relative(WS, base)}.{js,json}`);
+  if (!host.exists(`${base}.json`) || !host.exists(`${base}.js`)) throw new Error(`no design at ${path.relative(WS, base)}.{js,json}`);
   const dir = path.dirname(path.dirname(base));
   return { project: path.basename(dir), name: path.basename(base), js: `${base}.js`, json: `${base}.json`, dir, ...(variant ? { variant } : {}) };
 }
@@ -112,7 +113,7 @@ export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
 export const booleans = (object) => (object.engine === 'manifold' ? 'manifold' : object.engine === 'pcb' ? 'jscad' : process.env.CAD_ENGINE || 'jscad');
 
 export const readObject = (d) => {
-  const o = JSON.parse(fs.readFileSync(d.json, 'utf8'));
+  const o = JSON.parse(host.readText(d.json));
   if (o.display && !o.mirror) o.mirror = o.display;
   for (const p of Object.values(o.parts || {})) if (p.display === false) p.mirror = false;
   return o;
@@ -136,11 +137,11 @@ export async function build(d, set = {}, { mirror = false } = {}) {
 
   // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether
   const ruleText = [...(object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u))), JSON.stringify(refs.extra)];
-  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), fs.readFileSync(d.js, 'utf8'), JSON.stringify(object), ruleText, files, set, display])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), JSON.stringify(object), ruleText, files, set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
-  if (!process.env.CAD_NO_CACHE && fs.existsSync(hit)) {
-    const c = JSON.parse(fs.readFileSync(hit, 'utf8'));
-    try { const now = new Date(); fs.utimesSync(hit, now, now); } catch {} // recently used: kept when the cache is pruned
+  if (!process.env.CAD_NO_CACHE && host.exists(hit)) {
+    const c = JSON.parse(host.readText(hit));
+    try { host.touch(hit); } catch {} // recently used: kept when the cache is pruned
     for (const e of entries) if (c.used.includes(e.name)) e.used = true;
     const parts = c.parts.map(({ solid: f, ...p }) => ({ ...p, geometry: fromFaces(f) }));
     if (c.circuit) Object.assign(values, (await pcbEngine()).outputs(c.circuit, c.matrix));
@@ -151,9 +152,9 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
   let parts, board = null, read;
-  if (!pcb && sandboxed()) ({ parts, read } = await runSandboxed(d, values, object.parts || {}, booleans(object)));
+  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read } = await runSandboxed(d, values, object.parts || {}, booleans(object)));
   else {
-    const mod = await import(`${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
+    const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
       // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
       if (e.code === 'ERR_MODULE_NOT_FOUND' && /@jscad\/modeling/.test(e.message)) throw new Error(`designs need JSCAD in the workspace: npm install @jscad/modeling (in ${WS})`);
       if (/import statement outside a module/.test(e.message)) throw new Error(`designs are ES modules: set "type": "module" in ${path.join(WS, 'package.json')}`);
@@ -177,9 +178,8 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   }
   for (const e of entries) if (read.has(e.name)) e.used = true;
   try {
-    fs.mkdirSync(CACHE, { recursive: true });
     prune();
-    fs.writeFileSync(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}) }));
+    host.writeText(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}) }));
   } catch {} // a cache that can't be written is only slower
   return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}) };
 }
@@ -188,8 +188,8 @@ export async function build(d, set = {}, { mirror = false } = {}) {
 const CACHE_KEEP = 800;
 function prune() {
   if (Math.random() > 0.05) return; // now and then is enough
-  const files = fs.readdirSync(CACHE).map((f) => { const p = path.join(CACHE, f); return { p, t: fs.statSync(p).mtimeMs }; }).sort((a, b) => b.t - a.t);
-  for (const { p } of files.slice(CACHE_KEEP)) fs.rmSync(p, { force: true });
+  const files = host.list(CACHE).map((f) => { const p = path.join(CACHE, f); return { p, t: host.mtime(p) }; }).sort((a, b) => b.t - a.t);
+  for (const { p } of files.slice(CACHE_KEEP)) host.remove(p);
 }
 
 // The rules of the printer a build is checked against (the project's, else the workspace's), resolved

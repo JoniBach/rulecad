@@ -16,6 +16,7 @@
 //   { "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length", "label": "Screws find their inserts" }
 // The path must be clear for depth mm (it lands in a hole) and solid within "ring" mm of it (default: the hole's
 // diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
+import { host } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -30,7 +31,7 @@ import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
-export const isAssembly = (ref) => String(ref).includes('/') && fs.existsSync(assemblyPath(ref.split('@')[0]));
+export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
 
 export { satisfies }; // from @rulecad/versions
 
@@ -57,7 +58,7 @@ export { satisfies }; // from @rulecad/versions
 export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) {
   const [project, name] = ref.split('/');
   if (stack.includes(ref)) throw new Error(`assembly ${ref} contains itself (${[...stack, ref].join(' → ')})`);
-  const a = JSON.parse(fs.readFileSync(assemblyPath(ref), 'utf8'));
+  const a = JSON.parse(host.readText(assemblyPath(ref)));
   const printer = printerOf(project);
   if (a.kind === 'plate' && !(a.uses || []).includes(printer)) a.uses = [...(a.uses || []), printer]; // a plate is checked as a print
   const values = Object.fromEntries((a.uses || []).map((u) => { const s = loadRuleSet(u); return [u, Object.fromEntries(Object.entries(s.rules).map(([k, r]) => [k, r.value]))]; }));
@@ -358,7 +359,7 @@ const OVERLAPS = paths.cache('overlaps.json');
 let remembered = null, fresh = 0;
 function pairOverlap(pa, pb) {
   if (!pa.hash || !pb.hash) return overlap(pa.geometry, pb.geometry);
-  remembered ||= (() => { try { return JSON.parse(fs.readFileSync(OVERLAPS, 'utf8')); } catch { return {}; } })();
+  remembered ||= (() => { try { return JSON.parse(host.readText(OVERLAPS)); } catch { return {}; } })();
   const at = (p) => `${p.hash}@${Array.from(p.m || []).map((x) => Math.round(x * 1e6) / 1e6).join(',')}`;
   const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`${x}|${y}`).digest('hex');
   if (!(k in remembered)) { remembered[k] = overlap(pa.geometry, pb.geometry); fresh++; }
@@ -366,7 +367,7 @@ function pairOverlap(pa, pb) {
 }
 function saveOverlaps() {
   if (!fresh) return;
-  try { fs.mkdirSync(path.dirname(OVERLAPS), { recursive: true }); fs.writeFileSync(OVERLAPS, JSON.stringify(remembered)); fresh = 0; } catch {} // only slower without it
+  try { host.writeText(OVERLAPS, JSON.stringify(remembered)); fresh = 0; } catch {} // only slower without it
 }
 
 // checkAssembly(built) -> findings, as @rulecad/printcheck: { level, text, card? } (card: a short line for the mirror)

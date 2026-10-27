@@ -380,3 +380,26 @@ export function main (v) {
     assert.equal(closed.level, 'pass'); assert.equal(closed.values.tjunctions, 0, 'Manifold leaves no T-junctions');
   } finally { done(); }
 });
+
+test('host: the core builds and checks a design from a workspace in memory, writing nothing to disk', () => {
+  const lib = (f) => JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib', f)).href);
+  const root = path.resolve('/rulecad-memory-test');
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', `
+    import fs from 'node:fs';
+    import { useHost, memoryHost } from ${lib('host.mjs')};
+    const h = memoryHost({
+      'cad.config.json': '{}',
+      'projects/demo/project.json': JSON.stringify({ name: 'demo', objects: ['box'] }),
+      'projects/demo/objects/box.json': JSON.stringify({ name: 'box', version: '0.1.0', uses: ['x1c'], variables: { w: { value: 'x1c.line * 40', unit: 'mm', rule: 'Width' } } }),
+      'projects/demo/objects/box.js': "import jscad from '@jscad/modeling'\\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\\n",
+    }, { root: ${JSON.stringify(root)} });
+    useHost(h);
+    const { build, locate, printer } = await import(${lib('design.mjs')});
+    const { check } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../../printcheck/printcheck.mjs')).href)});
+    const d = locate('demo/box'), b = await build(d);
+    const found = check(b.triangles, printer(b, d));
+    console.log(JSON.stringify({ size: found.find((f) => f.code === 'print.bed').values.size.map((x) => +x.toFixed(2)),
+      onDisk: fs.existsSync(${JSON.stringify(root)}), cached: [...h.files.keys()].some((k) => k.includes('.cache')), rules: [...h.files.keys()].some((k) => k.endsWith('x1c.json')) }));
+  `], { cwd: os.tmpdir(), encoding: 'utf8', env: { ...process.env, CAD_WORKSPACE: root } });
+  assert.deepEqual(JSON.parse(out), { size: [16.8, 16.8, 16.8], onDisk: false, cached: true, rules: true });
+});

@@ -17,13 +17,9 @@ import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
 import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
-import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { threemf, slotOf } from '../lib/threemf.mjs';
+import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
 
-// The project's filaments: { base: { slot: 1, … }, legend: { slot: 2, … } } in project.json
-const filaments = (project) => JSON.parse(fs.readFileSync(path.join(paths.project(project), 'project.json'), 'utf8')).filaments || {};
-// The filaments in AMS slot order, for the print file: [{ colour }, …], slot 1 first
-const slots = (fil) => { const out = []; for (const f of Object.values(fil)) out[(f.slot || 1) - 1] = f; return Array.from(out, (f) => f || {}); };
 // What the print file asks of the AMS: which filament each kind of part prints in
 function filamentNotes(parts, fil) {
   const used = [...new Set(parts.map((p) => p.filament || 'base'))];
@@ -35,13 +31,6 @@ function filamentNotes(parts, fil) {
 // --open: the 3MF in Bambu Studio (macOS), else whatever opens .3mf files
 const openInSlicer = (f) => (process.platform === 'darwin' ? execFileSync('open', ['-a', 'Bambu Studio', f])
   : execFileSync(process.platform === 'win32' ? 'explorer' : 'xdg-open', [f]));
-const VIEW = process.env.CAD_VIEW_URL || config.viewUrl;
-// A link to the model page; one the page would turn away is an error here, not when someone opens it
-async function linkTo(model) {
-  const errors = checkLink(model.shapes ? expand(model) : model);
-  if (errors.length) throw new Error(`no link: ${errors[0]}`);
-  return `${VIEW}#m=${await encode(model)}`;
-}
 
 const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
@@ -395,26 +384,7 @@ async function assembly(cmd, ref) {
     return console.log(out);
   }
   const link = async () => {
-    const fil = filaments(s.project);
-    const model = {
-      title, version: versions, src: `${s.project}/${s.name}`, // object versions are in version: the file name stays short orientation: a.note || (a.kind === 'plate' ? 'A print plate: print everything together.' : 'A fit check: references are faint.'),
-      rules: [],
-      ...sheet([...new Map(s.objects.filter((o) => o.built?.entries).map((o) => [o.objName, o.built.entries])).entries()]),
-      // Its boards' 2D views (copper, schematic), so one link holds the whole build: tabs over the 3D model
-      ...(await (async () => {
-        const boards = [...new Map(s.objects.filter((o) => o.built?.circuit).map((o) => [o.objName, o])).values()];
-        if (!boards.length) return {};
-        const pcb = await pcbEngine(), views = [];
-        for (const o of boards) for (const [n, svg] of await pcb.views(o.built.circuit)) views.push([boards.length > 1 ? `${o.objName} ${n}` : n, svg]);
-        return { views };
-      })()),
-      // Each shape once and placed: the macropad's nine keys cost one keycap
-      ...fromShapes(shapes(s.parts).shapes.length ? (() => {
-        const placed = shapes(s.parts), tri = (polys) => polys.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]]));
-        return placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: tri(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; });
-      })() : []),
-    };
-    Object.assign(model, motionData(s));
+    const model = await assemblyModel(s, { title, versions, filaments: filaments(s.project), noRules: !!opt('no-rules') });
     const url = await linkTo(model);
     return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src: model.src, size: url.length, title, version: '' };
   };
@@ -433,33 +403,12 @@ async function assembly(cmd, ref) {
   throw new Error(`cad ${cmd} doesn't work on an assembly (check, preview, export, show, link do)`);
 }
 
-function sheet(objects) {
-  if (opt('no-rules')) return {};
-  const rows = [], seen = new Set(), trim = (r) => { while (r.length && (r[r.length - 1] === '' || r[r.length - 1] == null)) r.pop(); return r; };
-  for (const [obj, entries] of objects) for (const e of entries) {
-    if (!e.name.includes('.')) rows.push(trim([obj, e.label || e.name, fmt(e.value), e.unit || '', e.rule || '', e.expr || '']));
-  }
-  for (const [, entries] of objects) for (const e of entries) {
-    if (!e.name.includes('.') || !e.used || e.private || seen.has(e.name)) continue;
-    seen.add(e.name);
-    const [set, name] = e.name.split('.');
-    rows.push(trim([set, name, fmt(e.value), e.unit || '', e.rule || '', e.expr || '', e.kind || '', e.source || '', e.checked || '']));
-  }
-  return rows.length ? { sheet: rows } : {};
-}
 // The model as a link: full print precision (triangles), the rules card, and exactly which version it is.
 async function links(d, b, set) {
   const s = d.tag ? { kind: null } : await since(d), fil = filaments(d.project);
   const version = d.version || b.object.version || '0.0.0';
   const src = `${d.project}/${d.name}${d.variant ? `:${d.variant}` : ''}@${version}${s.kind && s.kind !== 'first' ? '+changes' : s.kind === 'first' ? '+unreleased' : ''}`;
-  const model = {
-    title: `${b.object.title || b.object.name}${d.variant ? ` (${d.variant})` : ''}`, version, src, ...(Object.keys(set).length ? { set: suffix(set).slice(1).replace(/-(?=\w+=)/g, ',') } : {}),
-    material: b.object.material, orientation: b.object.orientation,
-    rules: b.entries.filter((e) => e.show).map((e) => [e.label || e.name, fmt(e.value), e.unit || '']),
-    ...sheet([[b.object.name, b.entries]]),
-    ...(b.circuit ? { views: await (await pcbEngine()).views(b.circuit) } : {}), // boards: the 2D board and schematic
-    ...fromParts(b.parts.map((p) => ({ name: p.name, role: p.role, label: p.label, slot: slotOf(fil, p.filament), triangles: p.triangles.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]])) }))),
-  };
+  const model = await objectModel(b, { title: `${b.object.title || b.object.name}${d.variant ? ` (${d.variant})` : ''}`, version, src, set: Object.keys(set).length ? suffix(set).slice(1).replace(/-(?=\w+=)/g, ',') : null, filaments: fil, noRules: !!opt('no-rules') });
   const url = await linkTo(model);
   return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src, size: url.length, title: model.title, version };
 }
