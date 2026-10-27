@@ -12,6 +12,9 @@
 /** @typedef {{ uses?: string[], variables?: Record<string, Variable>, [field: string]: any }} DesignObject */
 /** @typedef {{ name: string, value: number | string, used?: boolean, set?: boolean, [field: string]: any }} Entry */
 
+// An error with a code (var.unknown, set.range, …) and, where known, the JSON path to fix (variables.cap_h.value)
+const fail = (code, message, path) => Object.assign(new Error(message), { code, ...(path ? { path } : {}) });
+
 export const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 // A variable that holds a name or text, and the names it may hold (null: any text)
 export const isName = (d) => !!(d.choice || ['text', 'anchor', 'layout'].includes(d.type));
@@ -94,44 +97,53 @@ export function evaluate(src, lookup) {
  * Every variable's value, and an entry for each variable and rule for checks and rule cards.
  * @param {DesignObject} object
  * @param {{ sets?: Record<string, RuleSet>, set?: Record<string, number | string>, display?: Record<string, number | string>, load?: (name: string) => RuleSet }} [options]
- * @returns {{ values: Record<string, any>, entries: Entry[] }}
+ * @returns {{ values: Record<string, any>, entries: Entry[], deps: Record<string, string[]> }} deps: each name with the names its own expression reads
  */
 export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}) {
   const ruleSets = Object.fromEntries((object.uses || []).map((u) => {
     const s = sets[u] || (load ? load(u) : null);
-    if (!s) throw new Error(`no rule set "${u}" (hand it in as sets.${u}, or give a load function)`);
+    if (!s) throw fail('rules.missing', `no rule set "${u}" (hand it in as sets.${u}, or give a load function)`, 'uses');
     return [s.name || u, s];
   }));
   const vars = object.variables || {};
   for (const [k, v] of Object.entries(set)) {
     const d = vars[k];
-    if (!d) throw new Error(`no variable "${k}" to set (variables: ${Object.keys(vars).join(', ')})`);
+    if (!d) throw fail('set.unknown', `no variable "${k}" to set (variables: ${Object.keys(vars).join(', ')})`, `variables.${k}`);
     if (isName(d)) { checkName(k, d, v); continue; }
-    if (!d.tweak) throw new Error(`"${k}" is fixed by its rule; only variables with a tweak range can be set`);
+    if (!d.tweak) throw fail('set.fixed', `"${k}" is fixed by its rule; only variables with a tweak range can be set`, `variables.${k}.tweak`);
     const n = Number(v);
-    if (!Number.isFinite(n) || n < d.tweak.min || n > d.tweak.max) throw new Error(`${k} must be a number from ${d.tweak.min} to ${d.tweak.max}`);
+    if (!Number.isFinite(n) || n < d.tweak.min || n > d.tweak.max) throw fail('set.range', `${k} must be a number from ${d.tweak.min} to ${d.tweak.max}`, `variables.${k}.tweak`);
   }
 
-  const done = new Map(), busy = new Set();
+  // deps: each name's own references (what its expression reads), for explaining a value; stack: whose expression is being read
+  const done = new Map(), busy = new Set(), deps = new Map(), stack = [];
+  const pathOf = (name) => (name.includes('.') ? `rules.${name}.value` : `variables.${name}.value`);
   const lookup = (name) => {
+    if (stack.length) deps.get(stack[stack.length - 1]).add(name);
     if (done.has(name)) return done.get(name);
-    if (busy.has(name)) throw new Error(`"${name}" refers back to itself`);
+    if (busy.has(name)) throw fail('var.cycle', `"${name}" refers back to itself`, pathOf(name));
     busy.add(name);
     let src, where;
     if (name.includes('.')) {
       let [s, r] = name.split('.');
       if (!ruleSets[s] && ruleSets[s.replace(/_/g, '-')]) s = s.replace(/_/g, '-'); // mx_switch.housing_top reads the set named mx-switch (a - is a minus here)
-      if (!ruleSets[s]) throw new Error(`"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
-      if (!ruleSets[s].rules[r]) throw new Error(`"${name}": no rule "${r}" in ${s}`);
+      if (!ruleSets[s]) throw fail('var.unknown-set', `"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
+      if (!ruleSets[s].rules[r]) throw fail('var.unknown-rule', `"${name}": no rule "${r}" in ${s}`);
       src = ruleSets[s].rules[r].value; where = (n) => (n.includes('.') ? n : `${s}.${n}`); // a rule's names are its own set's
     } else {
-      if (!vars[name]) throw new Error(`no variable "${name}"`);
+      if (!vars[name]) throw fail('var.unknown', `no variable "${name}"`);
       if (isName(vars[name])) { busy.delete(name); const c = checkName(name, vars[name], name in display ? display[name] : name in set ? set[name] : vars[name].value); done.set(name, c); return c; }
       src = name in display ? display[name] : name in set ? Number(set[name]) : vars[name].value; where = (n) => n; // display: the screen's settings win
     }
     let v;
-    try { v = evaluate(src, (n) => lookup(where(n))); } catch (e) { busy.delete(name); throw e.message.startsWith('"') || e.message.startsWith('no ') ? e : new Error(`"${name}" = ${JSON.stringify(src)}: ${e.message}`); }
-    busy.delete(name); done.set(name, v);
+    deps.set(name, new Set()); stack.push(name);
+    try { v = evaluate(src, (n) => lookup(where(n))); } catch (e) {
+      busy.delete(name); stack.pop();
+      const out = e.message.startsWith('"') || e.message.startsWith('no ') ? e : fail(e.code || 'var.expression', `"${name}" = ${JSON.stringify(src)}: ${e.message}`);
+      if (!out.path) out.path = pathOf(name); // the first expression that reads the bad name: where to fix it
+      throw out;
+    }
+    stack.pop(); busy.delete(name); done.set(name, v);
     return v;
   };
 
@@ -149,7 +161,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     }
     if (rs.footprints) values[s].footprints = rs.footprints; // pad data for boards (v.esp32c6.footprints.module), as the set gives it
   }
-  return { values, entries };
+  return { values, entries, deps: Object.fromEntries([...deps].map(([k, v]) => [k, [...v]])) };
 }
 
 // Round for display: at most 2 decimals, no trailing zeros.

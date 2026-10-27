@@ -13,6 +13,8 @@ import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
 import { measure, match } from '../lib/meshcmd.mjs';
 import { isAssembly, buildAssembly, checkAssembly, shapes, sweep } from '../lib/assembly.mjs';
+import { valuesOf, why } from '../lib/explain.mjs';
+import { errorData } from '../lib/errors.mjs';
 import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 
@@ -45,7 +47,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad import-kle <file> <project>/<name>   a keyboard layout from keyboard-layout-editor.com, into layouts/
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
-  cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure)
+  cad values <project>/<object> [names…]   the object's variables, resolved [--json]
+  cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
+  cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
   cad export <project>/<object>     a 3MF for Bambu Studio in exports/ [--open: open it in Bambu Studio]
   cad show <project>/<object>       the model on display through your show target, with its rules [--ttl 10m]
@@ -90,14 +94,18 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 const args = process.argv.slice(2);
 // --name value, or -m for one-letter names
 const opt = (k) => { const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`)); return i >= 0 ? (args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : true) : undefined; };
+// The arguments that aren't options or an option's value: cad values keyboard/case depth width --json
+const positional = () => args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--') && !['--json', '--long', '--short', '--md', '--all', '--explode'].includes(args[i - 1])));
 const sets = () => Object.fromEntries(String(opt('set') || '').split(',').filter(Boolean).map((p) => p.split('=').map((s) => s.trim())));
 const suffix = (set) => Object.entries(set).map(([k, v]) => `-${k}=${v}`).join('');
 
-function report(findings) {
-  const mark = { pass: '✓', warn: '!', fail: '✗', info: '·' };
-  for (const r of findings) console.log(`  ${mark[r.level]} ${r.text}`);
+// Findings: as text (a mark and the words), or with --json as data: { ...about, findings: [{ level, text, code, values, refs, at }] }
+function report(findings, about = {}) {
+  if (opt('json')) console.log(JSON.stringify({ ...about, findings }, null, 2));
+  else { const mark = { pass: '✓', warn: '!', fail: '✗', info: '·' }; for (const r of findings) console.log(`  ${mark[r.level]} ${r.text}`); }
   return findings.some((r) => r.level === 'fail');
 }
+const say = (...a) => { if (!opt('json')) console.log(...a); }; // text output that --json leaves out
 
 async function main() {
   const [cmd, ref] = args;
@@ -153,6 +161,7 @@ async function main() {
   if (cmd === 'history') return history(ref);
   if (cmd === 'diff') return diff(locate(ref), args[2], args[3] && !args[3].startsWith('--') ? args[3] : null);
   if (cmd === 'printed') return printed(locate(ref));
+  if (cmd === 'why') return explainValue(ref);
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
   const d = at ? materialise(locate(base), at) : locate(ref), set = sets();
@@ -171,22 +180,30 @@ async function main() {
     return;
   }
 
+  if (cmd === 'values') {
+    const list = valuesOf(b, positional().slice(2));
+    if (opt('json')) return console.log(JSON.stringify({ object: `${d.project}/${d.name}`, values: list }, null, 2));
+    for (const v of list) console.log(`${v.name.padEnd(18)} ${`${fmt(v.value)} ${v.unit}`.padEnd(14)} ${v.expr ? `= ${v.expr}` : ''}`);
+    return;
+  }
+
   if (cmd === 'rules') {
     for (const e of b.entries) console.log(`${e.name.padEnd(18)} ${`${fmt(e.value)} ${e.unit || ''}`.padEnd(14)} ${e.expr ? `= ${e.expr}  ` : ''}${e.rule || ''}${e.source ? `  [${e.kind ? `${e.kind}: ` : ''}${e.source}]` : ''}${e.set ? '  (set)' : ''}`);
     return;
   }
 
   if (cmd === 'check') {
-    console.log(`${title} ${version}${Object.keys(set).length ? ` (${suffix(set).slice(1)})` : ''}`);
-    const raw = lint(fs.readFileSync(d.js, 'utf8'));
+    say(`${title} ${version}${Object.keys(set).length ? ` (${suffix(set).slice(1)})` : ''}`);
+    const raw = lint(fs.readFileSync(d.js, 'utf8')), file = path.relative(WS, d.js);
     const failed = report([
-      raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}` } : { level: 'pass', text: 'every measurement is a variable' },
+      raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}`, code: 'lint.numbers', refs: { file, numbers: raw } }
+        : { level: 'pass', text: 'every measurement is a variable', code: 'lint.numbers', refs: { file } },
       ...(b.object.role === 'reference'
-        ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks` }]
+        ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
         : check(b.triangles, printer(b, d), { parts: b.parts })),
-    ]);
-    if (b.object.orientation) console.log(`  orientation: ${b.object.orientation}`);
-    if (b.parts.length > 1) console.log(`  parts: ${b.parts.map((p) => `${p.name}${p.role === 'support' ? ' (support)' : ''}`).join(', ')}`);
+    ], { object: `${d.project}/${d.name}`, title, version, ...(Object.keys(set).length ? { set } : {}), orientation: b.object.orientation, parts: b.parts.map((p) => ({ name: p.name, role: p.role || 'part' })) });
+    if (b.object.orientation) say(`  orientation: ${b.object.orientation}`);
+    if (b.parts.length > 1) say(`  parts: ${b.parts.map((p) => `${p.name}${p.role === 'support' ? ' (support)' : ''}`).join(', ')}`);
     process.exitCode = failed ? 1 : 0;
     return;
   }
@@ -227,6 +244,22 @@ async function main() {
 // ---------- boards ----------
 // A circuit board (engine pcb): its checks are the board's (design rules, the fab's limits, the matrix), its preview is
 // drawn from above as well as in 3D, and its export is the fab's zip plus KiCad's files, not a print file.
+// cad why <project>/<object>.<name>: the value, and what it reads, down to the rules (estimates marked)
+async function explainValue(ref) {
+  const m = /^([^/]+\/[^.]+)\.(.+)$/.exec(ref || '');
+  if (!m) throw new Error('usage: cad why <project>/<object>.<variable> (or .<set>.<rule>), e.g. cad why keyboard/case.depth');
+  const tree = await why(m[1], m[2], { depth: Number(opt('depth')) || 12 });
+  if (opt('json')) return console.log(JSON.stringify(tree, null, 2));
+  const line = (n, pad) => {
+    const about = n.kind ? `  [${n.kind === 'estimate' ? 'ESTIMATE' : n.kind}${n.source ? `: ${n.source}` : ''}]` : '';
+    const where = n.via ? `  (${n.object})` : '';
+    console.log(`${pad}${n.name} = ${fmt(n.value)}${n.unit ? ` ${n.unit}` : ''}${n.expr ? `  = ${n.expr}` : ''}${where}${n.seen ? '  (above)' : ''}${about}`);
+    if (!n.seen && n.rule && !pad) console.log(`  ${n.rule}`);
+    for (const c of n.reads || []) line(c, `${pad}  `);
+  };
+  line(tree, '');
+}
+
 async function board(cmd, d, b, { title, version, tag }) {
   const pcb = await pcbEngine(), name = `${d.name}@${version}${tag}`;
   if (cmd === 'check') {
@@ -270,17 +303,18 @@ async function assembly(cmd, ref) {
   const printed = s.parts.filter((p) => p.role !== 'reference');
 
   if (cmd === 'check') {
-    console.log(`${title} (${a.kind || 'fit'}: ${versions})`);
+    say(`${title} (${a.kind || 'fit'}: ${versions})`);
     // Each pose (or the one asked for): what's the same in every pose is said once, the rest under the pose's name
     const poses = pose ? [pose] : Object.keys(s.motion.poses);
     let findings = checkAssembly(s);
     if (poses.length > 1) {
       const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
-      findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}` }, ...each[0][1].filter(same), ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}) })))];
+      findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}`, code: 'poses', refs: { poses } }, ...each[0][1].filter(same),
+        ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
     }
     if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24 }));
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
-    process.exitCode = report(findings) ? 1 : 0;
+    process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;
     return;
   }
   if (cmd === 'preview') {
@@ -614,4 +648,8 @@ function printed(d) {
   console.log(`logged in ${path.relative(WS, printsFile(d))}: ${d.name}@${version} ${result}`);
 }
 
-main().catch((e) => { console.error(e.message); process.exit(1); });
+main().catch((e) => {
+  if (opt('json')) console.log(JSON.stringify({ error: errorData({ ...e, message: e.message, code: e.code, file: e.file && path.relative(WS, e.file) }) }, null, 2));
+  else console.error(`${e.message}${e.file ? ` (${path.relative(WS, e.file)}${e.path ? `: ${e.path}` : ''})` : ''}`);
+  process.exit(1);
+});

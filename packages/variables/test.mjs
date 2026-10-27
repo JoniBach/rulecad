@@ -61,3 +61,20 @@ test('a rule set named with a hyphen is read with an underscore (a - is a minus 
   const { values } = resolve({ uses: ['keyboard/mx-switch'], variables: { lift: { value: 'mx_switch.housing_top / 2' } } }, { sets });
   assert.equal(values.lift, 5.8);
 });
+
+test('resolve: errors carry a code and the path to fix; deps say what each value reads', () => {
+  const r = resolve({ uses: ['p'], variables: { w: { value: 'p.wall + gap' }, gap: { value: 0.2 } } }, { sets });
+  assert.deepEqual(r.deps.w.sort(), ['gap', 'p.wall']);
+  assert.deepEqual(r.deps['p.wall'], ['p.line']);
+  const err = (o, opts) => { try { resolve(o, { sets, ...opts }); } catch (e) { return e; } assert.fail('no error'); };
+  let e = err({ uses: ['p'], variables: { w: { value: 'p.wal + 1' } } });
+  assert.equal(e.code, 'var.unknown-rule'); assert.equal(e.path, 'variables.w.value');
+  e = err({ variables: { w: { value: 'gapp * 2' } } });
+  assert.equal(e.code, 'var.unknown'); assert.equal(e.path, 'variables.w.value');
+  e = err({ variables: { w: { value: 'v' }, v: { value: 'w' } } });
+  assert.equal(e.code, 'var.cycle');
+  e = err({ variables: { w: { value: 1 } } }, { set: { w: 2 } });
+  assert.equal(e.code, 'set.fixed'); assert.equal(e.path, 'variables.w.tweak');
+  e = err({ variables: { w: { value: '1 +' } } });
+  assert.equal(e.code, 'var.expression'); assert.equal(e.path, 'variables.w.value');
+});

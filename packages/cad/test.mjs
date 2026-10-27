@@ -254,3 +254,24 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     assert.match(cad('check', 'demo/box'), /joint tab \(ball\) takes 3 values, but follows hinge \(revolute\), which takes 1/);
   } finally { done(); }
 });
+
+test('findings as data (--json), values, and why a value is what it is', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'bathroom/soap-tray');
+    const j = JSON.parse(cad('check', 'bathroom/soap-tray', '--json'));
+    assert.equal(j.object, 'bathroom/soap-tray');
+    assert.ok(j.findings.some((f) => f.code === 'print.bed' && f.level === 'pass' && f.values.size.length === 3));
+    assert.ok(j.findings.every((f) => f.code), 'every finding has a code');
+    const v = JSON.parse(cad('values', 'bathroom/soap-tray', 'width', '--json'));
+    assert.equal(v.values.length, 1); assert.equal(v.values[0].name, 'width');
+    const all = JSON.parse(cad('values', 'bathroom/soap-tray', '--json')).values, w = all.find((x) => /x1c\./.test(x.expr || ''));
+    const tree = JSON.parse(cad('why', `bathroom/soap-tray.${w.name}`, '--json'));
+    assert.equal(tree.name, w.name);
+    const rules = (n) => [n, ...(n.reads || []).flatMap(rules)];
+    assert.ok(rules(tree).some((n) => n.name.startsWith('x1c.') && n.kind), 'down to the printer rules, with their kind');
+    assert.match(cad('why', `bathroom/soap-tray.${w.name}`), new RegExp(`^${w.name} = `));
+    const err = JSON.parse(cad('values', 'bathroom/soap-tray', 'nope', '--json'));
+    assert.equal(err.error.code, 'var.unknown');
+  } finally { done(); }
+});

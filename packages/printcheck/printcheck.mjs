@@ -25,7 +25,11 @@ const OVERHANG_SLACK = 0.5; // degrees
 /** @typedef {[number, number, number]} Point a corner in mm, Z up */
 /** @typedef {Point[]} Face a polygon: three or more corners, counter-clockwise seen from outside */
 /** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number }} Printer mm and degrees */
-/** @typedef {{ level: 'pass' | 'warn' | 'fail', text: string }} Finding */
+/**
+ * A finding: its level and words, and for programs a code (print.bridge, fit.gap, …), the numbers behind it, and where
+ * it is when that's known (the box round the faces it's about, in mm).
+ * @typedef {{ level: 'pass' | 'warn' | 'fail' | 'info', text: string, code?: string, values?: Record<string, any>, at?: { lo: number[], hi: number[] }, refs?: Record<string, any> }} Finding
+ */
 
 export function bounds(polys) {
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; // a loop: spreading big models overflows the stack
@@ -44,7 +48,7 @@ export function bounds(polys) {
  * @returns {Finding[]}
  */
 export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
-  const out = [], f = (level, text) => out.push({ level, text });
+  const out = [], f = (level, text, code, values, at) => out.push({ level, text, code, ...(values && { values }), ...(at && { at }) });
   const solids = (parts || []).filter((p) => p.role !== 'support').map((p) => ({ tris: p.triangles, box: bounds(p.triangles) }));
   // Is the point inside one of the parts? A ray straight up crosses its surface an odd number of times
   const inPart = (pt) => solids.length > 1 && solids.some(({ tris, box }) => {
@@ -64,10 +68,14 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   const mm = (n) => `${Number(n.toFixed(1))}`;
 
   const over = size.filter((s) => s > printer.bed);
-  f(over.length ? 'fail' : 'pass', `${size.map(mm).join(' × ')} mm${over.length ? `: bigger than the ${printer.bed} mm bed` : ', fits the bed'}`);
+  f(over.length ? 'fail' : 'pass', `${size.map(mm).join(' × ')} mm${over.length ? `: bigger than the ${printer.bed} mm bed` : ', fits the bed'}`, 'print.bed', { size, bed: printer.bed });
 
   // Flat on the bed: the lowest point is z = 0, and faces there point straight down.
   let base = 0, down = 0, support = 0, zs = [];
+  // Where a finding is: the box round the faces it's about, { lo, hi } (for a reader to point at)
+  const overBox = { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] };
+  const grow = (box, p) => { for (const v of p) for (let k = 0; k < 3; k++) { box.lo[k] = Math.min(box.lo[k], v[k]); box.hi[k] = Math.max(box.hi[k], v[k]); } return box; };
+  const boxOf = (faces) => faces.reduce((box, p) => grow(box, p), { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] });
   const flatDown = [], flatUp = [];
   // A face overhanging past the limit (measured from vertical) points down by more than its sine; half a degree to
   // spare, since booleans tip a 45° chamfer by hundredths of a degree. (Cosine was used before: the same at 45° only.)
@@ -80,14 +88,15 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     if (nz < -eps && zmax - lo[2] > eps && rests(p)) continue; // on another part (a legend on its keycap)
     if (nz < -1 + eps && zmax - lo[2] < eps) base += area;
     else if (nz < -1 + eps) flatDown.push({ p, z: zmin, area }); // a flat underside above the bed
-    else if (nz < -limit) { support += area; zs.push(zmin); }
+    else if (nz < -limit) { support += area; zs.push(zmin); grow(overBox, p); }
     if (nz > 1 - eps) flatUp.push({ p, z: zmax });
     if (nz < 0) down += area;
   }
-  if (Math.abs(lo[2]) > eps) f('fail', `lowest point is at z = ${mm(lo[2])} mm, not on the bed (z = 0)`);
-  f(base > 0 ? 'pass' : 'fail', base > 0 ? `${mm(base)} mm² flat on the bed` : 'nothing sits flat on the bed');
-  if (support > 0.5) f('warn', `${mm(support)} mm² overhangs past ${printer.overhang}° (z ${mm(Math.min(...zs))} to ${mm(Math.max(...zs))} mm): needs supports or another orientation`);
-  else f('pass', `no overhangs past ${printer.overhang}°`);
+  if (Math.abs(lo[2]) > eps) f('fail', `lowest point is at z = ${mm(lo[2])} mm, not on the bed (z = 0)`, 'print.off-bed', { z: lo[2] });
+  f(base > 0 ? 'pass' : 'fail', base > 0 ? `${mm(base)} mm² flat on the bed` : 'nothing sits flat on the bed', 'print.base', { area: base });
+  const overAt = support > 0.5 ? overBox : null;
+  if (support > 0.5) f('warn', `${mm(support)} mm² overhangs past ${printer.overhang}° (z ${mm(Math.min(...zs))} to ${mm(Math.max(...zs))} mm): needs supports or another orientation`, 'print.overhang', { area: support, angle: printer.overhang, z: [Math.min(...zs), Math.max(...zs)] }, overAt);
+  else f('pass', `no overhangs past ${printer.overhang}°`, 'print.overhang', { area: support, angle: printer.overhang });
 
   // Flat undersides: on a breakaway support, or bridged
   const gap = printer.support_gap ?? 0.2, inside = (pt, poly) => { // point in the xy footprint of a convex face
@@ -100,7 +109,7 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   };
   const centroid = (p) => [0, 1].map((k) => p.reduce((s, v) => s + v[k], 0) / p.length);
   const held = flatDown.filter((d) => flatUp.some((u) => d.z - u.z > eps && d.z - u.z <= gap * 1.5 + eps && inside(centroid(d.p), u.p)));
-  if (held.length) f('pass', `${mm(held.reduce((s, d) => s + d.area, 0))} mm² rests on a breakaway support (${mm(gap)} mm gap): snip it off after printing`);
+  if (held.length) f('pass', `${mm(held.reduce((s, d) => s + d.area, 0))} mm² rests on a breakaway support (${mm(gap)} mm gap): snip it off after printing`, 'print.breakaway', { area: held.reduce((s, d) => s + d.area, 0), gap });
   const levels = new Map();
   for (const d of flatDown) if (!held.includes(d)) { const k = d.z.toFixed(2); levels.set(k, [...(levels.get(k) || []), d.p]); }
   // Which faces meet at each edge, so an underside's edges can be checked for material below them
@@ -111,10 +120,10 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     const mine = new Set(group);
     const held = (a, b) => (byEdge.get([vkey(a), vkey(b)].sort().join('|')) || []).some((p) => !mine.has(p) && Math.min(...p.map((v) => v[2])) < Number(z) - eps);
     const under = flatUp.filter((u) => Number(z) - u.z > eps && Number(z) - u.z <= gap * 1.5 + eps).map((u) => u.p); // breakaway supports' tops
-    const span = widest(group, held, under);
-    if (span == null) f('warn', `an underside at z ${mm(Number(z))} starts in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`);
-    else if (span > bridgeMax + eps) f('warn', `${mm(span)} mm bridge at z ${mm(Number(z))}: wider than the ${bridgeMax} mm the printer can span, needs supports`);
-    else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`);
+    const span = widest(group, held, under), at = boxOf(group);
+    if (span == null) f('warn', `an underside at z ${mm(Number(z))} starts in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`, 'print.mid-air', { z: Number(z) }, at);
+    else if (span > bridgeMax + eps) f('warn', `${mm(span)} mm bridge at z ${mm(Number(z))}: wider than the ${bridgeMax} mm the printer can span, needs supports`, 'print.bridge', { span, max: bridgeMax, z: Number(z) }, at);
+    else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`, 'print.bridge', { span, max: bridgeMax, z: Number(z) });
   }
 
   // Closed: every edge is matched by an edge running the other way. An edge that meets the middle of a longer edge
@@ -122,8 +131,8 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   const { gaps, tjunctions, hairlines } = parts && parts.length > 1
     ? parts.map((p) => seams(p.triangles, eps)).reduce((s, x) => ({ gaps: s.gaps + x.gaps, tjunctions: s.tjunctions + x.tjunctions, hairlines: s.hairlines + x.hairlines }), { gaps: 0, tjunctions: 0, hairlines: 0 })
     : seams(polys, eps);
-  if (gaps) f('warn', `${gaps} edges with nothing on the other side: holes in the surface (slicers may repair them)`);
-  else f('pass', `closed solid${tjunctions || hairlines ? ` (${[tjunctions && `${tjunctions} T-junction edges`, hairlines && `${hairlines} hairline seams under ${HAIRLINE} mm`].filter(Boolean).join(', ')}: watertight for printing)` : ''}`);
+  if (gaps) f('warn', `${gaps} edges with nothing on the other side: holes in the surface (slicers may repair them)`, 'print.closed', { gaps });
+  else f('pass', `closed solid${tjunctions || hairlines ? ` (${[tjunctions && `${tjunctions} T-junction edges`, hairlines && `${hairlines} hairline seams under ${HAIRLINE} mm`].filter(Boolean).join(', ')}: watertight for printing)` : ''}`, 'print.closed', { gaps, tjunctions, hairlines });
   return out;
 }
 

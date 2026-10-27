@@ -25,7 +25,7 @@ import { locate, build, readObject, jscad } from './design.mjs';
 import { materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 import { bounds } from '@rulecad/printcheck';
-import { closest, inside } from '@rulecad/fit';
+import { closest, closestAt, inside } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 
@@ -357,16 +357,16 @@ function saveOverlaps() {
 
 // checkAssembly(built) -> findings, as @rulecad/printcheck: { level, text, card? } (card: a short line for the mirror)
 export function checkAssembly(s) {
-  const out = [], f = (level, text, card) => out.push({ level, text, ...(card && { card }) }), mm = (n) => `${Number(n.toFixed(3))}`;
+  const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(3))}`;
   // Versions: every pin, from this assembly and its components, against every copy of that object
   const pins = new Map();
   for (const r of s.requires) pins.set(`${r.object} ${r.range}`, r);
   for (const { object, range } of pins.values()) {
     const copies = s.objects.filter((o) => o.objName === object);
-    if (!copies.length) { f('fail', `requires ${object} ${range}, but nothing uses it`); continue; }
+    if (!copies.length) { f('fail', `requires ${object} ${range}, but nothing uses it`, null, { code: 'requires.unused', refs: { object, range } }); continue; }
     const bad = copies.filter((o) => !satisfies(o.version, range));
     f(bad.length ? 'fail' : 'pass', bad.length ? `${object} ${bad[0].version} doesn't meet ${range} (${bad.map((o) => o.id).join(', ')})`
-      : `${object} ${copies[0].version} meets ${range}${copies.length > 1 ? ` (${copies.length} copies)` : ''}`);
+      : `${object} ${copies[0].version} meets ${range}${copies.length > 1 ? ` (${copies.length} copies)` : ''}`, null, { code: 'requires.version', refs: { object, range, items: bad.map((o) => o.id) } });
   }
   // Overlaps between object instances, inside components too. Bounding boxes first: most pairs can't touch.
   const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`);
@@ -378,10 +378,11 @@ export function checkAssembly(s) {
     const pa = s.parts[i], pb = s.parts[j];
     if (pa.leaf === pb.leaf || !touch(pa, pb) || allowed(pa, pb)) continue;
     const v = pairOverlap(pa, pb);
-    if (v > 0.01) clashes.push(`${pa.name} and ${pb.name} overlap by ${mm(v)} mm³`);
+    if (v > 0.01) clashes.push({ text: `${pa.name} and ${pb.name} overlap by ${mm(v)} mm³`, a: pa.name, b: pb.name, volume: v });
   }
-  if (clashes.length) f('fail', clashes.slice(0, 5).join('; ') + (clashes.length > 5 ? `; and ${clashes.length - 5} more` : ''), `${clashes.length} overlaps`);
-  else f('pass', `no parts overlap (${new Set(s.parts.map((p) => p.leaf)).size} object instances)`, 'No parts overlap');
+  if (clashes.length) f('fail', clashes.slice(0, 5).map((c) => c.text).join('; ') + (clashes.length > 5 ? `; and ${clashes.length - 5} more` : ''), `${clashes.length} overlaps`,
+    { code: 'overlap', values: { count: clashes.length }, refs: { overlaps: clashes.map(({ a, b, volume }) => ({ a, b, volume })) } });
+  else f('pass', `no parts overlap (${new Set(s.parts.map((p) => p.leaf)).size} object instances)`, 'No parts overlap', { code: 'overlap', values: { count: 0 } });
   // Fits: the closest gap between two named things, against a range. Copies of one fit are reported together, worst first.
   const pick = (n) => (Array.isArray(n) ? n.flatMap(pick) : s.parts.filter((p) => named(p, n)));
   const groups = new Map();
@@ -396,12 +397,13 @@ export function checkAssembly(s) {
       const lo3 = [0, 1, 2].map((k) => Math.min(...A.map((p) => bx(p).lo[k]))), hi3 = [0, 1, 2].map((k) => Math.max(...A.map((p) => bx(p).hi[k])));
       B = B.filter((p) => [0, 1, 2].every((k) => bx(p).lo[k] <= hi3[k] + reach && lo3[k] <= bx(p).hi[k] + reach));
     }
-    if (!A.length || (!B.length && !Array.isArray(x.b))) { f('fail', `fit ${x.a} / ${x.b}: no such ${A.length ? x.b : x.a}`); continue; }
+    if (!A.length || (!B.length && !Array.isArray(x.b))) { f('fail', `fit ${x.a} / ${x.b}: no such ${A.length ? x.b : x.a}`, null, { code: 'fit.missing', refs: { a: x.a, b: x.b, missing: A.length ? x.b : x.a } }); continue; }
     const vol = A.reduce((t, pa) => t + B.reduce((u, pb) => u + (touch(pa, pb) ? pairOverlap(pa, pb) : 0), 0), 0);
-    const gap = !B.length ? Infinity : vol > 0.01 ? -vol : closest(A.flatMap((p) => p.polygons), B.flatMap((p) => p.polygons), reach); // negative: overlap, mm³
+    const near = !B.length || vol > 0.01 ? null : closestAt(A.flatMap((p) => p.polygons), B.flatMap((p) => p.polygons), reach);
+    const gap = !B.length ? Infinity : vol > 0.01 ? -vol : near.gap; // negative: overlap, mm³
     const ok = vol > 0.01 ? lo < 0 : gap >= lo && gap <= hi;
     if (!groups.has(key)) groups.set(key, { x, lo, hi, results: [] });
-    groups.get(key).results.push({ ok, gap, id: x.a });
+    groups.get(key).results.push({ ok, gap, id: x.a, at: near?.at || null });
   }
   for (const [key, { x, lo, hi, results }] of groups) {
     const worst = results.reduce((w, r) => (!r.ok && w.ok ? r : r.ok === w.ok && r.gap < w.gap ? r : w), results[0]);
@@ -409,7 +411,9 @@ export function checkAssembly(s) {
     const n = results.length > 1 ? ` (${results.filter((r) => r.ok).length} of ${results.length} in range)` : '';
     const label = (x.label || x.a).replace(/ \(.*\)$/, '');
     f(worst.ok ? 'pass' : 'warn', `${key}: ${say(worst.gap)}${n}${worst.ok ? '' : `, wanted ${lo === -Infinity ? '' : `${mm(lo)} `}to ${hi === Infinity ? 'any' : mm(hi)} mm (${results.filter((r) => !r.ok).map((r) => r.id).join(', ')})`}`,
-      `${label}: ${worst.gap < 0 ? `press fit ${mm(-worst.gap)} mm³` : worst.gap === Infinity ? 'apart' : `gap ${Number(worst.gap.toFixed(2))} mm`}${worst.ok ? '' : ' (out of range)'}`);
+      `${label}: ${worst.gap < 0 ? `press fit ${mm(-worst.gap)} mm³` : worst.gap === Infinity ? 'apart' : `gap ${Number(worst.gap.toFixed(2))} mm`}${worst.ok ? '' : ' (out of range)'}`,
+      { code: 'fit', values: { ...(worst.gap < 0 ? { overlap: -worst.gap } : { gap: worst.gap }), min: lo, max: hi, inRange: results.filter((r) => r.ok).length, copies: results.length },
+        refs: { a: x.a, b: x.b, label: x.label, ...(s.pose ? { pose: s.pose } : {}), outOfRange: results.filter((r) => !r.ok).map((r) => r.id) }, ...(worst.at ? { at: { lo: worst.at, hi: worst.at } } : {}) });
   }
   // Holes fits: each mounting hole's screw path, clear into a hole, with material round it
   function holesFit(x) {
@@ -430,7 +434,8 @@ export function checkAssembly(s) {
       if (round.length) misses.push(`${where}: no material ${mm(ring)} mm from the screw on ${round.length} of ${steps} sides`);
     }
     f(misses.length ? 'fail' : 'pass', misses.length ? `${label}: ${misses.join('; ')}` : `${label}: ${holes.length} of ${holes.length} holes clear for ${mm(depth)} mm, with material around each`,
-      `${label}: ${misses.length ? `${misses.length} of ${holes.length} miss` : `${holes.length} of ${holes.length} line up`}`);
+      `${label}: ${misses.length ? `${misses.length} of ${holes.length} miss` : `${holes.length} of ${holes.length} line up`}`,
+      { code: 'fit.holes', values: { holes: holes.length, missed: misses.length }, refs: { a: x.a, b: x.b, misses } });
   }
   // Joints: every value in its range (a ball's tip within its cone), and every loop closed
   if (s.motion?.joints.length) {
@@ -440,19 +445,19 @@ export function checkAssembly(s) {
       j.dofs.forEach(([lo, hi], i) => { if (v[i] < lo - 1e-9 || v[i] > hi + 1e-9) outside.push(`${j.id} ${mm(v[i])} (${mm(lo)} to ${mm(hi)})`); });
       if (j.cone != null) { const tip = Math.acos(Math.min(1, jointMatrix(j, v)[10])) / (Math.PI / 180); if (tip > j.cone + 1e-9) outside.push(`${j.id} tips ${mm(tip)}° (cone ${mm(j.cone)}°)`); }
     }
-    if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`);
-    for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`);
+    if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`, { code: 'joint.range', refs: { joints: outside } });
+    for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`, { code: 'loop', values: { gap: l.gap, angle: l.angle }, refs: { label: l.label } });
   }
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers
-    if (refs.length) f('fail', `a plate can't print references: ${refs.map((o) => o.id).join(', ')}`);
+    if (refs.length) f('fail', `a plate can't print references: ${refs.map((o) => o.id).join(', ')}`, null, { code: 'plate.reference', refs: { items: refs.map((o) => o.id) } });
   }
   // Rules that are only estimates, anywhere in the assembly or its components
   const est = new Set();
   for (const o of s.objects) for (const e of o.built.entries) if (e.kind === 'estimate' && (e.used || !e.name.includes('.'))) est.add(e.name);
   for (const n of s.seen) { const [u, k] = n.split('.'); if (loadRuleSet(u).rules[k]?.kind === 'estimate') est.add(n); }
-  if (est.size) f('warn', `uses estimates, not measurements: ${[...est].join(', ')}. Measure them and record kind: measured`, `Estimate: ${[...est].join(', ')}`);
+  if (est.size) f('warn', `uses estimates, not measurements: ${[...est].join(', ')}. Measure them and record kind: measured`, `Estimate: ${[...est].join(', ')}`, { code: 'rules.estimate', refs: { rules: [...est] } });
   saveOverlaps();
   return out;
 }
@@ -485,7 +490,7 @@ const isNamed = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name
 // sweep(s, { joint, steps }) -> findings: each free joint (or the one named) moved through its range, the others held
 // at the assembly's pose, looking for parts that collide and loops that come apart on the way
 export function sweep(s, { joint, steps = 24 } = {}) {
-  const out = [], f = (level, text, card) => out.push({ level, text, ...(card && { card }) }), mm = (n) => `${Number(n.toFixed(2))}`;
+  const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(2))}`;
   const free = s.motion.joints.filter((j) => !j.follow && j.dofs.length && (!joint || j.id === joint));
   if (joint && !free.length) throw new Error(`no joint "${joint}" to sweep (${s.motion.joints.filter((j) => !j.follow && j.dofs.length).map((j) => j.id).join(', ') || 'none'})`);
   const base = s.jointValues;
@@ -501,9 +506,10 @@ export function sweep(s, { joint, steps = 24 } = {}) {
     const ranges = []; // runs of steps in a row that collide
     for (const [v, what] of bad) { const r = ranges[ranges.length - 1]; if (r && Math.abs(v - r.to - (hi - lo) / steps) < 1e-9) { r.to = v; r.what = [...new Set([...r.what, ...what])]; } else ranges.push({ from: v, to: v, what }); }
     const span = `${mm(lo)} to ${mm(hi)}${unit}`;
-    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps: nothing collides`, `${name}: clear ${span}`);
+    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps: nothing collides`, `${name}: clear ${span}`, { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: [] } });
     else f('fail', `sweep ${name}, ${span} in ${steps} steps: ${ranges.map((r) => `${r.from === r.to ? `at ${mm(r.from)}` : `${mm(r.from)} to ${mm(r.to)}`}${unit.trim()}: ${r.what.slice(0, 3).join('; ')}${r.what.length > 3 ? `; and ${r.what.length - 3} more` : ''}`).join(' | ')}`,
-      `${name}: collides ${ranges.map((r) => (r.from === r.to ? mm(r.from) : `${mm(r.from)}-${mm(r.to)}`)).join(', ')}${unit.trim()}`);
+      `${name}: collides ${ranges.map((r) => (r.from === r.to ? mm(r.from) : `${mm(r.from)}-${mm(r.to)}`)).join(', ')}${unit.trim()}`,
+      { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: ranges.map((r) => ({ from: r.from, to: r.to, what: r.what })) } });
   });
   saveOverlaps();
   return out;

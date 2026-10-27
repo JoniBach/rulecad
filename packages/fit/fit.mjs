@@ -69,19 +69,28 @@ function grid(T, cell) {
  * @returns {number}
  */
 export function closest(polysA, polysB, reach = 2) {
+  return closestAt(polysA, polysB, reach).gap;
+}
+/**
+ * The smallest gap between two meshes and where it is: the point (on one of them) nearest the other.
+ * @param {Face[]} polysA @param {Face[]} polysB
+ * @param {number} [reach] how far to look, in mm (2)
+ * @returns {{ gap: number, at: Point | null }} gap Infinity and at null if farther apart than reach
+ */
+export function closestAt(polysA, polysB, reach = 2) {
   const A = tris(polysA), B = tris(polysB);
   const near = (p, bx) => p.every((c, k) => c >= bx.lo[k] - reach && c <= bx.hi[k] + reach);
-  let best = Infinity;
+  let best = Infinity, at = null;
   const probe = (P, T) => {
     if (!T.length) return;
     const bx = bounds(T), pts = new Map();
     for (const t of P) t.forEach((v, i) => { const w = t[(i + 1) % 3]; for (const q of [v, [0, 1, 2].map((k) => (v[k] + w[k]) / 2)]) if (near(q, bx)) pts.set(q.join(), q); });
     if (!pts.size) return;
     const nearest = grid(T, Math.max(reach, 1));
-    for (const q of pts.values()) best = nearest(q[0], q[1], q[2], best);
+    for (const q of pts.values()) { const d = nearest(q[0], q[1], q[2], best); if (d < best) { best = d; at = q; } }
   };
   probe(A, B); probe(B, A);
-  return best;
+  return { gap: best, at };
 }
 
 /**

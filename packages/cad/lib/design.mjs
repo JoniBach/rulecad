@@ -14,6 +14,7 @@
 // @rulecad/pcb describes); the build then carries its Circuit JSON (circuit) and matrix, and one part: the bare board
 // (its copper is in the 2D views).
 // Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
+import { located } from './errors.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -119,7 +120,9 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   const refs = await objectSets(d, object); // other objects' numbers, when it reads them
   const sets = { ...(d.rulesDir ? Object.fromEntries((object.uses || []).filter((u) => !isObjectRef(u)).map((u) => [u, loadRuleSet(u, d.rulesDir)])) : {}), ...refs.sets }; // a release's own rules
   const display = mirror ? object.mirror || {} : {};
-  const { values, entries } = resolve(object, { set, sets, display }); // mirror: lighter for the display
+  let resolved;
+  try { resolved = resolve(object, { set, sets, display }); } catch (e) { throw located(e, d.json, 'var'); } // mirror: lighter for the display
+  const { values, entries, deps } = resolved;
   for (const [n, x] of Object.entries(refs.extra)) Object.assign(values[n], x);
   const files = layoutsOf(d, object);
   if (object.layouts) values.layouts = object.layouts; // older designs kept layouts in their .json
@@ -135,7 +138,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     for (const e of entries) if (c.used.includes(e.name)) e.used = true;
     const parts = c.parts.map(({ solid: f, ...p }) => ({ ...p, geometry: fromFaces(f) }));
     if (c.circuit) Object.assign(values, (await pcbEngine()).outputs(c.circuit, c.matrix));
-    return { object, values, entries, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
+    return { object, values, entries, deps, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
   }
 
   const mod = await import(`${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`).catch((e) => { // a fresh copy after each edit
@@ -150,7 +153,8 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
   watched.shapes = shapes; if (pcb) watched.pcb = pcb;
-  let made = await mod.main(watched), board = null;
+  let made, board = null;
+  try { made = await mod.main(watched); } catch (e) { throw located(e, d.js, 'design.run'); }
   if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part
     const { board: b, matrix } = made && made.board ? made : { board: made };
     board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}) };
@@ -164,7 +168,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     prune();
     fs.writeFileSync(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}) }));
   } catch {} // a cache that can't be written is only slower
-  return { object, values, entries, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}) };
+  return { object, values, entries, deps, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}) };
 }
 
 // The cache keeps its most recently used builds, about CACHE_KEEP of them (an old version's builds go first)
