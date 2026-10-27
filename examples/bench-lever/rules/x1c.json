@@ -1,0 +1,94 @@
+{
+  "_doc": "Bambu Lab X1 Carbon with the stock 0.4 mm nozzle and Bambu Studio defaults. kind: spec (manufacturer), default (slicer setting), community (widely used rule of thumb), measured (your own test print; beats the rest), estimate (a reasoned guess: measure it).",
+  "name": "x1c",
+  "rules": {
+    "bed": {
+      "value": 256,
+      "unit": "mm",
+      "rule": "Build volume is 256 \u00d7 256 \u00d7 256 mm",
+      "kind": "spec",
+      "source": "https://dyer.lafayette.edu/makerspace/bambu-lab-x1-carbon/",
+      "checked": "2026-10-11"
+    },
+    "nozzle": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Stock hardened steel nozzle",
+      "kind": "spec",
+      "source": "https://dyer.lafayette.edu/makerspace/bambu-lab-x1-carbon/",
+      "checked": "2026-10-11"
+    },
+    "line": {
+      "value": 0.42,
+      "unit": "mm",
+      "rule": "Bambu Studio's default line width for a 0.4 mm nozzle: walls are whole numbers of lines",
+      "kind": "default",
+      "source": "Bambu Studio 0.4 mm nozzle process profile",
+      "checked": "2026-10-11"
+    },
+    "layer": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Default layer height; heights that matter should be whole numbers of layers",
+      "kind": "default",
+      "source": "Bambu Studio 0.20 mm Standard profile",
+      "checked": "2026-10-11"
+    },
+    "wall_min": {
+      "value": "line * 2",
+      "unit": "mm",
+      "rule": "Thinnest wall worth printing: two lines",
+      "kind": "community",
+      "source": "Common FDM practice",
+      "checked": "2026-10-11"
+    },
+    "hole_comp": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Printed holes and slots come out small: widen them by this much",
+      "kind": "community",
+      "source": "Common FDM practice; tune with a test print",
+      "checked": "2026-10-11"
+    },
+    "fit": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Gap between parts that slide together",
+      "kind": "community",
+      "source": "Common FDM practice; tune with a test print",
+      "checked": "2026-10-11"
+    },
+    "overhang": {
+      "value": 45,
+      "unit": "\u00b0",
+      "rule": "Steepest overhang from vertical that prints without supports",
+      "kind": "community",
+      "source": "Common FDM practice",
+      "checked": "2026-10-11"
+    },
+    "bridge": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Widest gap a flat underside can span with no support (the widest circle that fits in it)",
+      "kind": "community",
+      "source": "https://grandavehousing.calpoly.edu/news/iibambu-lab-x1-carbon-support",
+      "checked": "2026-10-11"
+    },
+    "support_gap": {
+      "value": "layer",
+      "unit": "mm",
+      "rule": "Gap between a built-in breakaway support and the part: one layer, so it snaps off",
+      "kind": "community",
+      "source": "dmote-keycap printing advice (0.2 mm lift), https://cljdoc.org/d/dmote-keycap/dmote-keycap/0.8.0/doc/printing-advice",
+      "checked": "2026-10-11"
+    },
+    "chamfer": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Chamfer bottom edges instead of rounding them, against first-layer squish",
+      "kind": "community",
+      "source": "Common FDM practice",
+      "checked": "2026-10-11"
+    }
+  }
+}

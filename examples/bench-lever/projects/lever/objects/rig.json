@@ -1,0 +1,77 @@
+{
+  "name": "rig",
+  "title": "Lever bench: rig",
+  "description": "The upright the specimens bolt to, on edge, with a base to G-clamp to a bench so the specimen reaches out past its edge. Captive M5 nuts behind the specimen's two fixing bolts, and two more under the top for the gauge arm.",
+  "version": "0.1.0",
+  "uses": [
+    "bench",
+    "m5",
+    "m4",
+    "x1c"
+  ],
+  "material": "PLA",
+  "orientation": "Base flat on the bed, the wall standing. Solid infill or 6 walls: it must be far stiffer than the specimens. The specimen bolts on with M5 × 20 socket screws (nuts in the back pockets), the gauge arm with M5 × 35 (nuts slid into the side slots). Clamp the base so the wall's end is at the bench's edge and the specimen reaches out past it.",
+  "variables": {
+    "hole5": {
+      "value": "m5.clearance + x1c.hole_comp",
+      "unit": "mm",
+      "rule": "M5 bolt holes, printed"
+    },
+    "nut5": {
+      "value": "m5.nut_flats + x1c.hole_comp",
+      "unit": "mm",
+      "rule": "M5 nut pockets, across the flats"
+    },
+    "nut5_corner": {
+      "value": "nut5 / cosd(30)",
+      "unit": "mm",
+      "rule": "An M5 nut across its corners: the side slots' width"
+    },
+    "nut5_h": {
+      "value": "m5.nut_height + x1c.layer * 2",
+      "unit": "mm",
+      "rule": "M5 nut pockets: depth, two layers over the nut"
+    },
+    "height": {
+      "value": "bench.bolt_z + m4.head / 2 + bench.gauge_gap",
+      "unit": "mm",
+      "rule": "The wall's height: the gauge arm on top sits gauge_gap above the load bolt's head",
+      "show": true,
+      "label": "Height"
+    },
+    "left": {
+      "value": "bench.pitch / 2 - bench.wall_length / 2",
+      "unit": "mm",
+      "rule": "The wall's left end, centred on the two fixing bolts"
+    },
+    "top_z": {
+      "value": "height - bench.top_bolt",
+      "unit": "mm",
+      "rule": "Height of the gauge arm's nuts in their slots"
+    },
+    "gusset": {
+      "value": "bench.base_t * 2 * 2",
+      "unit": "mm",
+      "rule": "The gussets' height and reach behind the wall (45°, so they print)"
+    },
+    "gusset_t": {
+      "value": "x1c.line * 2 * 2 * 2",
+      "unit": "mm",
+      "rule": "The gussets' thickness: eight print lines"
+    },
+    "through": {
+      "value": "bench.wall * 2",
+      "unit": "mm",
+      "rule": "A hole's cutter length: further than the wall is thick"
+    },
+    "slot_depth": {
+      "value": "bench.wall / 2 + nut5 / 2 + x1c.fit",
+      "unit": "mm",
+      "rule": "The side slots reach past the bolt's axis by half a nut"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments in each round hole"
+    }
+  }
+}

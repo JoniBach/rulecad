@@ -403,3 +403,35 @@ test('host: the core builds and checks a design from a workspace in memory, writ
   `], { cwd: os.tmpdir(), encoding: 'utf8', env: { ...process.env, CAD_WORKSPACE: root } });
   assert.deepEqual(JSON.parse(out), { size: [16.8, 16.8, 16.8], onDisk: false, cached: true, rules: true });
 });
+
+test('optimising a problem: cad optimise draws it and caches it, a design builds from it, cad check analyses it', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'beam');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.mkdirSync(path.join(project, 'objects'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'beam', objects: ['arm'] }));
+    fs.writeFileSync(path.join(project, 'problems', 'arm.json'), JSON.stringify({
+      title: 'A short arm', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.5, filter: 1.5,
+      variables: { side: { value: 0, tweak: { min: 0, max: 1 } } }, variants: { both: { side: 1 } },
+      space: { at: [12, 0], size: [30, 12] }, keep: [{ at: [0, 0], r: 4 }, { at: [24, 0], r: 3 }], avoid: [{ at: [0, 0], r: 1.6 }, { at: [24, 0], r: 1.2 }],
+      supports: [{ at: [0, 0], r: 1.6 }], loads: [{ at: [24, 0], r: 1.2, force: [0, -10], case: 'down' }, { at: [24, 0], r: 1.2, force: [10, 0], case: 'side' }], cases: { side: 'side' },
+    }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.json'), JSON.stringify({ name: 'arm', version: '0.1.0', uses: ['x1c'],
+      variables: { problem: { type: 'problem', value: 'arm', choice: ['arm', 'arm:both'] }, t: { value: 4, unit: 'mm' } },
+      analysis: [{ problem: 'arm', max_deflection: 1, volume: 760, tolerance: 0.05 }] }));
+    fs.writeFileSync(path.join(project, 'objects', 'arm.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: v.t }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
+    const first = cad('optimise', 'beam/arm');
+    assert.match(first, /down: moves [\d.]+ mm along its load, [\d.]+ N\/mm/);
+    assert.match(first, /settled/);
+    assert.ok(fs.existsSync(path.join(ws, '.preview', 'beam', 'arm-optimised.svg')));
+    assert.match(cad('optimise', 'beam/arm'), /\(cached\)/);
+    assert.match(cad('optimise', 'beam/arm:nope'), /no variant "nope"/);
+    const checked = cad('check', 'beam/arm');
+    assert.match(checked, /✓ arm down: moves [\d.]+ mm under 10 N/);
+    assert.match(checked, /· arm side|✓ arm side/);
+    assert.match(checked, /✓ volume [\d.]+ mm³/);
+    assert.ok(fs.existsSync(path.join(ws, '.preview', 'beam', 'arm-analysis-arm.svg')));
+    assert.match(cad('check', 'beam/arm', '--set', 'problem=arm:both'), /optimising arm:both|arm down/);
+  } finally { done(); }
+});

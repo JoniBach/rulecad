@@ -1,0 +1,39 @@
+{
+  "title": "Lever bench: the stiffest lever",
+  "description": "A cantilever lever held by two bolts in line at one end and loaded through a bolt near the other, in its own plane. The space is the bench's envelope; the bosses round the bolts stay solid and the holes empty.",
+  "uses": ["bench", "m5", "m4", "x1c"],
+  "material": "pla",
+  "variables": {
+    "hole5": { "value": "(m5.clearance + x1c.hole_comp) / 2", "unit": "mm", "rule": "A fixing bolt's hole: radius, printed" },
+    "hole4": { "value": "(m4.clearance + x1c.hole_comp) / 2", "unit": "mm", "rule": "The load bolt's hole: radius, printed" },
+    "angled": { "value": 0, "tweak": { "min": 0, "max": 1 }, "rule": "The angled case's weight: 0 analyses it without optimising for it" }
+  },
+  "variants": {
+    "both": { "angled": 1 }
+  },
+  "thickness": "bench.thickness",
+  "cell": "bench.cell",
+  "volume": "bench.fill",
+  "filter": "bench.filter",
+  "space": { "at": ["bench.length / 2 - bench.behind", 0], "size": ["bench.length", "bench.depth"] },
+  "keep": [
+    { "at": [0, 0], "r": "bench.boss5", "label": "first fixing boss" },
+    { "at": ["bench.pitch", 0], "r": "bench.boss5", "label": "second fixing boss" },
+    { "at": ["bench.span", 0], "r": "bench.boss4", "label": "load boss" }
+  ],
+  "avoid": [
+    { "at": [0, 0], "r": "hole5" },
+    { "at": ["bench.pitch", 0], "r": "hole5" },
+    { "at": ["bench.span", 0], "r": "hole4" }
+  ],
+  "supports": [
+    { "at": [0, 0], "r": "hole5", "label": "first fixing bolt" },
+    { "at": ["bench.pitch", 0], "r": "hole5", "label": "second fixing bolt" }
+  ],
+  "loads": [
+    { "at": ["bench.span", 0], "r": "hole4", "force": [0, "0 - bench.load"], "case": "down" },
+    { "at": ["bench.span", 0], "r": "hole4", "force": ["bench.load * sind(bench.angle)", "0 - bench.load * cosd(bench.angle)"], "case": "angled" }
+  ],
+  "cases": { "down": 1, "angled": "angled" },
+  "outline": { "min_area": "bench.filter * bench.filter" }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "hanger",
+  "title": "Lever bench: hanger",
+  "description": "Hangs from the load bolt, between its head and the specimen, with an eye below for a strap or S-hook to carry the weights.",
+  "version": "0.1.0",
+  "uses": ["bench", "m4", "x1c"],
+  "material": "PLA",
+  "orientation": "Flat on the bed. The load bolt is an M4 × 16: head, hanger, specimen, nut.",
+  "variables": {
+    "hole4": { "value": "m4.clearance + x1c.hole_comp", "unit": "mm", "rule": "The load bolt's hole, printed" },
+    "smooth": { "value": 48, "rule": "Segments in each round edge and hole" }
+  }
+}

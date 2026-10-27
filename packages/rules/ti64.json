@@ -1,0 +1,11 @@
+{
+  "_doc": "Titanium Ti-6Al-4V (grade 5), annealed, for analysis.",
+  "name": "ti64",
+  "rules": {
+    "modulus": {"value": 113800, "unit": "MPa", "rule": "Young's modulus", "kind": "spec", "source": "ASM Aerospace Specification Metals, Titanium Ti-6Al-4V (Grade 5), Annealed, https://asm.matweb.com/search/specificmaterial.asp?bassnum=mtp641", "checked": "2026-10-27"},
+    "poisson": {"value": 0.342, "rule": "Poisson's ratio", "kind": "spec", "source": "ASM, Ti-6Al-4V annealed", "checked": "2026-10-27"},
+    "strength": {"value": 880, "unit": "MPa", "rule": "Tensile yield strength", "kind": "spec", "source": "ASM, Ti-6Al-4V annealed", "checked": "2026-10-27"},
+    "fatigue": {"value": 510, "unit": "MPa", "rule": "Fatigue strength at 10,000,000 cycles, unnotched", "kind": "spec", "source": "ASM, Ti-6Al-4V annealed", "checked": "2026-10-27"},
+    "density": {"value": 4.43, "unit": "g/cm³", "rule": "Density", "kind": "spec", "source": "ASM, Ti-6Al-4V annealed", "checked": "2026-10-27"}
+  }
+}

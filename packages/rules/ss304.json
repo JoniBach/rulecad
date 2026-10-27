@@ -1,0 +1,10 @@
+{
+  "_doc": "Stainless steel 304, annealed, for analysis.",
+  "name": "ss304",
+  "rules": {
+    "modulus": {"value": 193000, "unit": "MPa", "rule": "Young's modulus", "kind": "spec", "source": "ASM Aerospace Specification Metals, AISI Type 304 Stainless Steel, https://asm.matweb.com/search/specificmaterial.asp?bassnum=mq304a", "checked": "2026-10-27"},
+    "poisson": {"value": 0.29, "rule": "Poisson's ratio", "kind": "spec", "source": "ASM, AISI Type 304", "checked": "2026-10-27"},
+    "strength": {"value": 215, "unit": "MPa", "rule": "Tensile yield strength, annealed", "kind": "spec", "source": "ASM, AISI Type 304", "checked": "2026-10-27"},
+    "density": {"value": 8.0, "unit": "g/cm³", "rule": "Density", "kind": "spec", "source": "ASM, AISI Type 304", "checked": "2026-10-27"}
+  }
+}

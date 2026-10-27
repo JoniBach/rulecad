@@ -1,0 +1,39 @@
+{
+  "name": "@rulecad/topopt",
+  "version": "0.1.0",
+  "description": "Topology optimisation for flat parts: the stiffest layout of a fixed amount of material, as outlines ready to extrude.",
+  "type": "module",
+  "exports": {
+    "types": "./topopt.d.mts",
+    "default": "./topopt.mjs"
+  },
+  "files": [
+    "topopt.mjs",
+    "topopt.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "topology-optimization",
+    "generative-design",
+    "simp",
+    "3d-printing"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/topopt"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@rulecad/fea": "^0.1.0"
+  },
+  "types": "./topopt.d.mts"
+}

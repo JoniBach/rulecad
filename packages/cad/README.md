@@ -329,6 +329,70 @@ then y, then z, as `rotate` does.
   and a quick look for parts pushed into each other when you let a slider go. The quick look can miss parts that cross
   without a corner going in, so `--sweep` is the real check.
 
+## Optimised parts
+
+`cad optimise` finds the stiffest layout of a flat part: where to put a fixed amount of material so the part bends
+least under its loads (topology optimisation, by @rulecad/topopt). A problem is a file in the project's `problems/`,
+with numbers as expressions like an object's (schema: `schemas/problem.schema.json`):
+
+```json
+{
+  "title": "A lever",
+  "uses": ["m5", "x1c"],
+  "material": "pla",
+  "thickness": 6, "cell": 1, "volume": 0.5, "filter": 2.5,
+  "space": { "at": [60, 0], "size": [140, 40] },
+  "keep": [{ "at": [0, 0], "r": 6 }, { "at": [120, 0], "r": 5 }],
+  "avoid": [{ "at": [0, 0], "r": "m5.clearance / 2" }, { "at": [120, 0], "r": 2.3 }],
+  "supports": [{ "at": [0, 0], "r": "m5.clearance / 2" }],
+  "loads": [{ "at": [120, 0], "r": 2.3, "force": [0, -20], "case": "down" }]
+}
+```
+
+- **The space** is where material may go (a circle `r`, a rectangle `size`, or a polygon `points`, in mm). **Keep**
+  regions stay solid (bosses round bolts), **avoid** regions stay empty (the holes, clearances).
+- **Supports** hold the material within `r` of a point (a bolt's hole); **loads** push on it, in newtons, each in a load
+  case. Cases are optimised together, each by its weight in `cases` (0: analysed, not optimised for).
+- **The material** is a rule set with `modulus` (MPa) and `poisson`: `pla`, `petg`, `al6061`, `al7075`, `s275`,
+  `ss304`, `ti64` come with rulecad. Printed values vary: measure yours.
+- **Settings:** `volume`, the share of the space to fill; `cell`, the grid (smaller is finer and slower: a 140 × 40
+  grid takes about half a minute); `filter`, about the thinnest member, in mm.
+- **Variants**, picked as `name:variant`, set variables that have a tweak range, as an object's do.
+
+`cad optimise <project>/<problem>` runs it, reports how far each load case moves its load and the stiffness that
+gives, and draws the layout in `.preview/`. The result is kept, keyed by everything it's made from, so it's only
+worked out again when something it depends on changes.
+
+A design uses it through a variable of type `problem`, which picks a problem by name:
+
+```json
+"problem": { "type": "problem", "value": "lever", "choice": ["lever", "lever:both"] }
+```
+
+```js
+export function main (v) {
+  return extrudeLinear({ height: v.thickness }, v.shapes.optimisedOutline(v.problems[v.problem]))
+}
+```
+
+`optimisedOutline` gives the outline as a 2D shape, its keep regions added and avoid regions cut exactly, so bolt
+holes come out true.
+
+### Analysis
+
+Any flat part, optimised or not, can be checked under a problem's supports and loads. An object's `analysis` names
+the problem, and optionally a limit:
+
+```json
+"analysis": [{ "problem": "lever", "max_deflection": 0.5, "volume": "target", "tolerance": 0.01 }]
+```
+
+`cad check` then reports, for each load case, how far the part moves its load, its stiffness (N/mm) and its peak
+stress against the material's strength, and the part's volume and weight. With `max_deflection` a case that moves
+further fails; with `volume` a part whose volume is further than `tolerance` (a share) from it fails. A picture goes in
+`.preview/`. The analysis is coarse: it's a design aid, not engineering sign-off. A part that could hurt someone if
+it failed needs testing.
+
 ## Boards
 
 A circuit board is an object whose .json says `"engine": "pcb"`. Its `main(v)` returns a

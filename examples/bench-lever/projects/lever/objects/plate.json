@@ -1,0 +1,58 @@
+{
+  "name": "plate",
+  "title": "Lever bench: lightened plate",
+  "description": "Specimen B: the whole envelope with a row of windows between the fixing bolts and the load bolt, the usual way to lighten a plate by hand. The frame round the windows and the webs between them are one width, whatever makes the volume the target.",
+  "version": "0.1.0",
+  "uses": [
+    "bench",
+    "m5",
+    "m4",
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "orientation": "Flat on the bed. 100% infill (or walls enough to be solid), 0.2 mm layers, the same filament as the other specimens.",
+  "variables": {
+    "hole5": {
+      "value": "(m5.clearance + x1c.hole_comp) / 2",
+      "unit": "mm",
+      "rule": "A fixing bolt's hole: radius, printed"
+    },
+    "hole4": {
+      "value": "(m4.clearance + x1c.hole_comp) / 2",
+      "unit": "mm",
+      "rule": "The load bolt's hole: radius, printed"
+    },
+    "target": {
+      "value": "bench.fill * bench.length * bench.depth * bench.thickness",
+      "unit": "mm³",
+      "rule": "Every specimen's volume: the same share of the envelope",
+      "show": true,
+      "label": "Volume"
+    },
+    "corner": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "The windows' corner radius"
+    },
+    "thinnest": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "The frame and webs can't be thinner than four print lines"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments in each hole's circle"
+    },
+    "corner_smooth": {
+      "value": 32,
+      "rule": "Segments in each window's rounded rectangle"
+    }
+  },
+  "analysis": [
+    {
+      "problem": "lever",
+      "volume": "target"
+    }
+  ]
+}

@@ -24,7 +24,8 @@
     "parts": { "type": "object", "additionalProperties": { "$ref": "#/$defs/part" } },
     "variants": { "type": "object", "additionalProperties": { "type": "object" } },
     "anchors": { "type": "object", "additionalProperties": { "$ref": "#/$defs/anchor" } },
-    "layouts": { "type": "object", "description": "Older designs kept layouts here; now in the project's layouts/" }
+    "layouts": { "type": "object", "description": "Older designs kept layouts here; now in the project's layouts/" },
+    "analysis": { "type": "array", "items": { "$ref": "#/$defs/analysis" }, "description": "Checks of how the part bends under a problem's loads (cad check)" }
   },
   "$defs": {
     "expr": { "type": ["number", "string"] },
@@ -40,13 +41,25 @@
         "show": { "type": "boolean" },
         "interface": { "type": "boolean", "description": "Other objects depend on it: a change bumps the version accordingly" },
         "tweak": { "type": "object", "required": ["min", "max"], "additionalProperties": false, "properties": { "min": { "$ref": "#/$defs/expr" }, "max": { "$ref": "#/$defs/expr" }, "step": { "type": "number" } } },
-        "type": { "enum": ["text", "anchor", "choice", "layout"] },
+        "type": { "enum": ["text", "anchor", "choice", "layout", "problem"] },
         "choice": { "type": "array" },
         "max": { "type": "number" },
         "fields": { "type": "array", "items": { "type": "string" } },
         "source": { "type": "string" },
         "kind": { "type": "string" },
         "checked": { "type": "string" }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["problem"],
+      "additionalProperties": false,
+      "properties": {
+        "problem": { "type": "string", "description": "A problem in the project's problems/ (name, or name:variant): its supports, loads, material and thickness" },
+        "part": { "type": "string", "description": "The part analysed (default: the first that isn't a support)" },
+        "max_deflection": { "$ref": "#/$defs/expr", "description": "Fail if any load case moves its load further than this, in mm" },
+        "volume": { "$ref": "#/$defs/expr", "description": "Fail if the part's volume differs from this (mm³) by more than tolerance" },
+        "tolerance": { "type": "number", "description": "For volume: the share it may differ by (default 0.01)" }
       }
     },
     "part": {

@@ -27,6 +27,7 @@ import crypto from 'node:crypto';
 import { resolve, loadRuleSet } from './rules.mjs';
 import { WS, paths, printerOf } from './workspace.mjs';
 import { readLayout, hasLayout, keys, width, depth } from './layout.mjs';
+import { optimised, forDesign } from './optimise.mjs';
 import * as shapes from '@rulecad/shapes';
 import { engineId, packageVersion, materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
@@ -89,6 +90,19 @@ export function layoutsOf(d, object) {
   return out;
 }
 
+// The optimised layouts an object's problem variables pick, by name, for v.problems
+export function problemsOf(d, object, values) {
+  const out = {};
+  for (const [name, v] of Object.entries(object.variables || {})) if (v.type === 'problem') {
+    const ref = values[name];
+    if (!out[ref]) {
+      const r = optimised(d.project, ref, { onStep: (s) => s.step === 1 && console.error(`optimising ${ref} (once: the result is cached until the problem changes)…`) });
+      out[ref] = forDesign(r);
+    }
+  }
+  return out;
+}
+
 // A variant's inputs, under what's set explicitly
 export function variantSet(d, object, set = {}) {
   if (!d.variant) return set;
@@ -134,10 +148,14 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   const files = layoutsOf(d, object);
   if (object.layouts) values.layouts = object.layouts; // older designs kept layouts in their .json
   if (Object.keys(files).length) values.layouts = Object.fromEntries(Object.entries(files).map(([n, l]) => [n, { ...l, keys: keys(l), width: width(l), depth: depth(l) }]));
+  // Optimised layouts: a "type": "problem" variable picks a problem in the project's problems/; the design gets the
+  // one it picked as v.problems[name] (lib/optimise.mjs), optimised the first time and cached after
+  const problems = problemsOf(d, object, values);
+  if (Object.keys(problems).length) values.problems = problems;
 
   // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether
   const ruleText = [...(object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u))), JSON.stringify(refs.extra)];
-  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), JSON.stringify(object), ruleText, files, set, display])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), JSON.stringify(object), ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
   if (!process.env.CAD_NO_CACHE && host.exists(hit)) {
     const c = JSON.parse(host.readText(hit));

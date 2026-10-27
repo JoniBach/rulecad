@@ -10,3 +10,4 @@ packages/*/*.d.mts
 /rules/
 docs/_site/
 test/docs-shots/
+scratch/

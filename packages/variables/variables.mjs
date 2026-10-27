@@ -7,7 +7,7 @@
 // No imports and no file access: it runs in a browser as well. Rule sets are handed in (sets) or fetched by name
 // through load(name), such as one that reads rules/<name>.json.
 
-/** @typedef {{ value: number | string, unit?: string, rule?: string, kind?: 'spec' | 'community' | 'default' | 'estimate' | 'measured' | 'derived', source?: string, licence?: string, checked?: string, label?: string, show?: boolean, interface?: boolean, tweak?: { min: number, max: number }, choice?: string[], type?: 'text' | 'anchor' | 'layout' }} Variable */
+/** @typedef {{ value: number | string, unit?: string, rule?: string, kind?: 'spec' | 'community' | 'default' | 'estimate' | 'measured' | 'derived', source?: string, licence?: string, checked?: string, label?: string, show?: boolean, interface?: boolean, tweak?: { min: number, max: number }, choice?: string[], type?: 'text' | 'anchor' | 'layout' | 'problem' }} Variable */
 /** @typedef {{ name?: string, rules: Record<string, Variable> }} RuleSet */
 /** @typedef {{ uses?: string[], variables?: Record<string, Variable>, [field: string]: any }} DesignObject */
 /** @typedef {{ name: string, value: number | string, used?: boolean, set?: boolean, [field: string]: any }} Entry */
@@ -17,7 +17,7 @@ const fail = (code, message, path) => Object.assign(new Error(message), { code, 
 
 export const ANCHORS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
 // A variable that holds a name or text, and the names it may hold (null: any text)
-export const isName = (d) => !!(d.choice || ['text', 'anchor', 'layout'].includes(d.type));
+export const isName = (d) => !!(d.choice || ['text', 'anchor', 'layout', 'problem'].includes(d.type));
 export const options = (d) => (d.type === 'anchor' ? ANCHORS : d.type === 'text' ? null : d.choice);
 export function checkName(name, d, v) {
   const s = String(v), opts = options(d), match = opts?.find((o) => String(o) === s);
@@ -145,6 +145,7 @@ export function unitsOf(src, unitOf) {
 //   { "type": "text", "value": "", "max": 8 }                  free text, e.g. a keycap's legend
 //   { "type": "anchor", "value": "mc" }                        one of 9 places on a face: tl tc tr, ml mc mr, bl bc br
 //   { "type": "layout", "value": "grid", "choice": [...] }     a layout file in the project's layouts/ (or a built-in)
+//   { "type": "problem", "value": "lever" }                   an optimisation problem in the project's problems/
 /**
  * Every variable's value, and an entry for each variable and rule for checks and rule cards.
  * @param {DesignObject} object

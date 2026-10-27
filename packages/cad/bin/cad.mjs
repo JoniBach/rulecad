@@ -16,6 +16,8 @@ import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData } f
 import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
+import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
+import { evaluate } from '../lib/rules.mjs';
 import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
@@ -44,6 +46,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
+  cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
+                                    variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
   cad export <project>/<object>     a 3MF for Bambu Studio in exports/ [--open: open it in Bambu Studio]
   cad show <project>/<object>       the model on display through your show target, with its rules [--ttl 10m]
   cad link <project>/<object>       links to open the model in a browser, and to download its STL or 3MF
@@ -105,6 +109,57 @@ function report(findings, about = {}) {
 }
 const say = (...a) => { if (!opt('json')) console.log(...a); }; // text output that --json leaves out
 
+const sig = (n) => (Number.isFinite(n) ? String(Number(n.toPrecision(3))) : String(n)); // three significant figures
+// cad optimise: run a problem (with a progress line), then report it and draw it
+function optimiseProblem(ref) {
+  const [project, name] = String(ref).split('/');
+  if (!project || !name) throw new Error('usage: cad optimise <project>/<problem>[:variant]');
+  const file = problemFile(project, name.split(':')[0]);
+  if (fs.existsSync(file)) {
+    const bad = schemaFindings(JSON.parse(fs.readFileSync(file, 'utf8')), 'problem', path.relative(WS, file));
+    if (bad.length) { report(bad); process.exitCode = 1; return; }
+  }
+  const live = !opt('json') && process.stderr.isTTY;
+  const r = optimised(project, name, { fresh: !!opt('fresh'), onStep: (s) => live && process.stderr.write(`\r\x1b[Kstep ${s.step}/${s.steps}  compliance ${s.compliance.toPrecision(5)} N·mm  change ${s.change.toFixed(3)}  sharpness ${s.beta}`) });
+  if (live) process.stderr.write('\r\x1b[K');
+  const out = paths.preview(project, `${name.replace(':', '-')}-optimised.svg`), p = readProblem(project, name);
+  const lines = [`${p.material.name}, ${fmt(r.thickness)} mm thick: ${r.cases.map((c) => `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
+    `${fmt(r.volume * 100)}% of the space, ${r.grid.nx} × ${r.grid.ny} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}`];
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, picture(r, { title: r.title, lines }));
+  if (opt('json')) return console.log(JSON.stringify((({ density, history, ...x }) => x)(r), null, 2));
+  console.log(`${r.title}${r.cached ? ' (cached)' : ` (${fmt(r.seconds)} s)`}`);
+  for (const c of r.cases) console.log(`  ${c.name}: moves ${sig(c.deflection)} mm along its load, ${sig(c.stiffness)} N/mm`);
+  console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);
+  console.log(`  ${r.grid.nx} × ${r.grid.ny} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? ', settled' : ': stopped before it settled (raise steps)'}`);
+  console.log(out);
+}
+
+// An object's analyses for cad check: each problem's load cases on the part, and its volume against a target
+function analyses(b, d, tag) {
+  const lookup = (n) => { const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), b.values); if (typeof v !== 'number') throw new Error(`analysis: "${n}" isn't a number`); return v; };
+  return (b.object.analysis || []).flatMap((a) => {
+    const part = a.part ? b.parts.find((p) => p.name === a.part) : b.parts.find((p) => p.role !== 'support');
+    if (!part) return [{ level: 'fail', text: `analysis: no part "${a.part}"`, code: 'fea.part' }];
+    const r = analysePart(part.triangles, d.project, a.problem), m = r.material, limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
+    const out = paths.preview(d.project, `${d.name}${tag}-analysis-${a.problem.replace(':', '-')}.svg`);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, picture({ ...r, ...readProblem(d.project, a.problem).problem }, { title: `${b.object.title || d.name}: ${a.problem}`, lines: r.cases.map((c) => `${c.name}: ${sig(c.deflection)} mm, ${sig(c.stiffness)} N/mm, peak stress ${sig(c.stress)} MPa`) }));
+    const found = r.cases.map((c) => {
+      const safety = m.strength ? `, peak stress ${sig(c.stress)} MPa (${sig(m.strength / c.stress)}× under ${m.name}'s strength; coarse)` : '';
+      const text = `${a.problem} ${c.name}: moves ${sig(c.deflection)} mm under ${fmt(c.force)} N, ${sig(c.stiffness)} N/mm${safety}`;
+      const values = { deflection: c.deflection, force: c.force, stiffness: c.stiffness, stress: c.stress, ...(limit != null ? { limit } : {}) };
+      return { level: limit == null ? 'info' : c.deflection <= limit ? 'pass' : 'fail', text: limit == null ? text : `${text} (at most ${fmt(limit)})`, code: 'fea.deflection', values, refs: { problem: a.problem, part: part.name, picture: path.relative(WS, out) } };
+    });
+    const grams = m.density ? ` (${fmt((r.volume / 1000) * m.density)} g of ${m.name})` : '';
+    if (a.volume != null) {
+      const want = evaluate(a.volume, lookup), tol = a.tolerance ?? 0.01, off = (r.volume - want) / want;
+      found.push({ level: Math.abs(off) <= tol ? 'pass' : 'fail', text: `volume ${fmt(r.volume)} mm³${grams}: ${off >= 0 ? '+' : ''}${fmt(off * 100)}% from ${fmt(want)} (within ${fmt(tol * 100)}%)`, code: 'fea.volume', values: { volume: r.volume, target: want, off } });
+    } else found.push({ level: 'info', text: `volume ${fmt(r.volume)} mm³${grams}`, code: 'fea.volume', values: { volume: r.volume } });
+    return found;
+  });
+}
+
 async function main() {
   const [cmd, ref] = args;
   if (!cmd || cmd === 'help') return console.log(HELP);
@@ -162,6 +217,7 @@ async function main() {
   if (cmd === 'why') return explainValue(ref);
   if (cmd === 'set') return editVariables(ref);
   if (cmd === 'add') return editAssembly(args[1], args[2]);
+  if (cmd === 'optimise' || cmd === 'optimize') return optimiseProblem(ref);
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
   const d = at ? materialise(locate(base), at) : locate(ref), set = sets();
@@ -197,7 +253,9 @@ async function main() {
     const raw = lint(fs.readFileSync(d.js, 'utf8')), file = path.relative(WS, d.js);
     // The files first: the object's JSON, and the workspace's own rule sets it uses, against their schemas
     const own = (f) => path.relative(WS, f), ruleFiles = (b.object.uses || []).filter((u) => !u.includes('/')).map((u) => path.join(WS, 'rules', `${u}.json`)).filter((f) => fs.existsSync(f));
-    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
+    const problemFiles = [...new Set([...Object.values(b.object.variables || {}).filter((v) => v.type === 'problem').flatMap((v) => v.choice || [v.value]), ...(b.object.analysis || []).map((a) => a.problem)].map((n) => problemFile(d.project, String(n).split(':')[0])))].filter((f) => fs.existsSync(f));
+    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f))),
+      ...problemFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'problem', own(f)))];
     const failed = report([
       ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
       ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
@@ -206,6 +264,7 @@ async function main() {
       ...(b.object.role === 'reference'
         ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
         : check(b.triangles, printer(b, d), { parts: b.parts })),
+      ...analyses(b, d, tag),
     ], { object: `${d.project}/${d.name}`, title, version, ...(Object.keys(set).length ? { set } : {}), orientation: b.object.orientation, parts: b.parts.map((p) => ({ name: p.name, role: p.role || 'part' })) });
     if (b.object.orientation) say(`  orientation: ${b.object.orientation}`);
     if (b.parts.length > 1) say(`  parts: ${b.parts.map((p) => `${p.name}${p.role === 'support' ? ' (support)' : ''}`).join(', ')}`);
@@ -305,7 +364,9 @@ async function board(cmd, d, b, { title, version, tag }) {
     const raw = lint(fs.readFileSync(d.js, 'utf8'));
     // The files first: the object's JSON, and the workspace's own rule sets it uses, against their schemas
     const own = (f) => path.relative(WS, f), ruleFiles = (b.object.uses || []).filter((u) => !u.includes('/')).map((u) => path.join(WS, 'rules', `${u}.json`)).filter((f) => fs.existsSync(f));
-    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f)))];
+    const problemFiles = [...new Set([...Object.values(b.object.variables || {}).filter((v) => v.type === 'problem').flatMap((v) => v.choice || [v.value]), ...(b.object.analysis || []).map((a) => a.problem)].map((n) => problemFile(d.project, String(n).split(':')[0])))].filter((f) => fs.existsSync(f));
+    const schemaProblems = [...schemaFindings(JSON.parse(fs.readFileSync(d.json, 'utf8')), 'object', own(d.json)), ...ruleFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'rules', own(f))),
+      ...problemFiles.flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'problem', own(f)))];
     const failed = report([
       ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
       ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
