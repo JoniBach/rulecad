@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { createRequire, registerHooks } from 'node:module';
+import * as nodeModule from 'node:module';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { WS, TOOL, config } from './workspace.mjs';
 import { fromFaces } from './parts.mjs';
@@ -19,7 +19,7 @@ const flag = (() => {
   return f.has('--permission') ? '--permission' : f.has('--experimental-permission') ? '--experimental-permission' : null;
 })();
 
-const inThread = typeof registerHooks === 'function'; // import hooks in this thread; older Node needs a worker for them
+const inThread = typeof nodeModule.registerHooks === 'function'; // import hooks in this thread; older Node needs a worker for them
 
 /** Whether designs run sandboxed here. */
 export const sandboxed = () => !!flag && process.env.CAD_TRUST !== '1' && config.sandbox !== false;
@@ -28,7 +28,7 @@ export const sandboxed = () => !!flag && process.env.CAD_TRUST !== '1' && config
 function readable() {
   const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
   const pkgDir = (name, from) => { // the package's folder: from its entry up to its package.json (exports may hide that file)
-    try { let d = path.dirname(createRequire(from).resolve(name)); while (!fs.existsSync(path.join(d, 'package.json')) && path.dirname(d) !== d) d = path.dirname(d); return d; } catch { return null; }
+    try { let d = path.dirname(nodeModule.createRequire(from).resolve(name)); while (!fs.existsSync(path.join(d, 'package.json')) && path.dirname(d) !== d) d = path.dirname(d); return d; } catch { return null; }
   };
   const fromWs = path.join(WS, 'package.json'), fromTool = path.join(TOOL, 'package.json');
   // Every node_modules above the workspace and the tool (package lookups read their links), and where links lead
