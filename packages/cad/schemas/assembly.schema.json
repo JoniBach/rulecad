@@ -72,7 +72,8 @@
         "depth": { "$ref": "#/$defs/expr" },
         "direction": { "enum": ["up", "down"] },
         "ring": { "$ref": "#/$defs/expr" },
-        "into": { "type": "string" }
+        "into": { "type": "string" },
+        "within": { "$ref": "#/$defs/expr", "description": "With an anchor name (item@anchor): only faces this close to it (mm, default 10)" }
       }
     },
     "anchorRef": {

@@ -231,7 +231,7 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     object(ws, 'demo/base', { variables: vars, anchors: { hinge: { at: [0, 'd / 2', 'h'], axis: [1, 0, 0] } } }, BOX);
     object(ws, 'demo/lid', { variables: vars, anchors: { hinge: { at: [0, 'd / 2', 0], axis: [1, 0, 0] } } }, BOX);
     fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'));
-    const box = (extra = {}) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit',
+    const box = (extra = {}, fits = []) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', fits,
       items: [{ id: 'base', object: 'base' }, { id: 'lid', object: 'lid' }, { id: 'tab', object: 'lid' }, { id: 'spare', assembly: 'spare', at: [100, 0, 0] }],
       joints: [{ id: 'hinge', type: 'revolute', parent: 'base.hinge', child: 'lid.hinge', min: -180, max: 30, label: 'Lid' },
         { id: 'tab', type: 'revolute', parent: { item: 'base', at: ['base.w', 'base.d / 2', 'base.h'], axis: [1, 0, 0] }, child: 'tab.hinge', min: -180, max: 30, follow: 'hinge', ...extra }],
@@ -247,6 +247,12 @@ test('joints: a lid on a hinge, checked in each pose, swept for collisions, with
     assert.doesNotMatch(checked, /✗|fail/i);
     assert.match(cad('check', 'demo/box', '--sweep', '--steps', '7'), /sweep hinge, -180 to 30° in 7 steps: at 30°: base\.body hits lid\.body/);
     assert.match(cad('check', 'demo/box', '--pose', 'open'), /Box \(open\)/);
+    // A fit near an anchor (only the faces within 3 mm of base@hinge), and findings that say which anchor they're near
+    box({}, [{ a: 'base@hinge', b: 'lid', within: 3, min: 5, note: 'Lid clear of the hinge' }]);
+    const nearOut = cad('check', 'demo/box', '--pose', 'closed', '--json'), near = JSON.parse(nearOut).findings?.find((x) => x.text.startsWith('Lid clear of the hinge'));
+    assert.ok(near, nearOut);
+    assert.equal(near.level, 'warn'); assert.equal(near.refs.near.endsWith('@hinge'), true); assert.ok(near.at);
+    box();
     assert.match(cad('check', 'demo/box', '--pose', 'wide'), /no pose "wide"/);
     box({ ratio: 2 }); // the tab turns twice as far: the loop comes apart once open
     assert.match(cad('check', 'demo/box'), /open: .*Lid and tab line up: apart/);

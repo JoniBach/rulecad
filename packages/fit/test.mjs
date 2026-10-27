@@ -23,3 +23,12 @@ test('inside: points in a solid, outside it, and in the gap between two parts of
   assert.equal(inside([0, 0, 5], two), false, 'in the slot');
   assert.equal(inside([3, 0, 5], two), true);
 });
+
+test('closestAt says where the gap is; distanceToFace measures to a face, not its corners', async () => {
+  const { closestAt, distanceToFace } = await import('@rulecad/fit');
+  const square = (z) => [[[-10, -10, z], [10, -10, z], [10, 10, z], [-10, 10, z]]];
+  const r = closestAt(square(0), square(1));
+  assert.ok(Math.abs(r.gap - 1) < 1e-9 && r.at && (Math.abs(r.at[2]) < 1e-9 || Math.abs(r.at[2] - 1) < 1e-9));
+  assert.equal(closestAt(square(0), square(9)).at, null);
+  assert.ok(Math.abs(distanceToFace([0, 0, 3], square(0)[0]) - 3) < 1e-9, 'straight above the middle, far from the corners');
+});

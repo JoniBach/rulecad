@@ -25,7 +25,7 @@ import { locate, build, readObject, jscad } from './design.mjs';
 import { materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 import { bounds } from '@rulecad/printcheck';
-import { closest, closestAt, inside } from '@rulecad/fit';
+import { closest, closestAt, inside, distanceToFace } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 
@@ -323,7 +323,17 @@ function motionOf(a, placed, num, ref) {
   if (a.pose && !poses[a.pose]) throw new Error(`pose "${a.pose}" isn't one of the poses (${Object.keys(poses).join(', ') || 'none'})`);
   const loops = (a.loops || []).map((l, i) => ({ label: l.label || `${typeof l.a === 'string' ? l.a : 'anchor'} meets ${typeof l.b === 'string' ? l.b : 'anchor'}`,
     a: anchor(l.a, `loop ${i + 1}`), b: anchor(l.b, `loop ${i + 1}`), tolerance: l.tolerance != null ? num(l.tolerance) : 0.01 }));
-  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref };
+  // Every object item's anchors, to say where things are: a finding near one names it (keyboard@pivot)
+  const marks = placed.flatMap(([, c], k) => Object.entries(c.src?.b?.object.anchors || {}).map(([name, spec]) => {
+    try { return { item: k, id: c.id, name, frame: frameOf(spec, evalIn(c.src.b.values, `${c.src.objName} anchor ${name}`)) }; } catch { return null; }
+  })).filter(Boolean);
+  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks };
+}
+
+// Where each item's anchors are in a pose: [{ id: 'keyboard@pivot', item, at: [x, y, z] }]
+export function anchorsAt(s, values = s.jointValues) {
+  const worlds = placeItems(s.motion, values);
+  return (s.motion.marks || []).map((m) => { const w = mul(worlds[m.item], m.frame); return { id: `${m.id}@${m.name}`, item: m.id, at: [w[3], w[7], w[11]] }; });
 }
 
 // keyCentres(layout): each key's centre, from lib/layout.mjs (kept under this name for older callers)
@@ -384,15 +394,26 @@ export function checkAssembly(s) {
     { code: 'overlap', values: { count: clashes.length }, refs: { overlaps: clashes.map(({ a, b, volume }) => ({ a, b, volume })) } });
   else f('pass', `no parts overlap (${new Set(s.parts.map((p) => p.leaf)).size} object instances)`, 'No parts overlap', { code: 'overlap', values: { count: 0 } });
   // Fits: the closest gap between two named things, against a range. Copies of one fit are reported together, worst first.
-  const pick = (n) => (Array.isArray(n) ? n.flatMap(pick) : s.parts.filter((p) => named(p, n)));
+  // A fit names parts (keyboard, key-0-0.cap), or the faces of an item near one of its anchors (keyboard@pivot, within
+  // "within" mm, 10 by default): the pocket round a pivot, not the whole case
+  const marks = anchorsAt(s), within = (x) => (x.within != null ? x.num(x.within) : 10);
+  const near = (p, mark, r) => ({ ...p, polygons: p.polygons.filter((f) => distanceToFace(mark.at, f) <= r) });
+  const pickIn = (n, x) => {
+    if (Array.isArray(n)) return n.flatMap((m) => pickIn(m, x));
+    if (!n.includes('@')) return s.parts.filter((p) => named(p, n));
+    const mark = marks.find((m) => m.id === n);
+    if (!mark) return [];
+    return s.parts.filter((p) => named(p, mark.item)).map((p) => near(p, mark, within(x))).filter((p) => p.polygons.length);
+  };
+  const pick = (n) => pickIn(n, {});
   const groups = new Map();
   for (const x of s.fits) {
     if (x.poses && !x.poses.includes(s.pose)) continue; // a fit for some poses only: the folded screen over the keys
     if (x.holes) { holesFit(x); continue; }
-    const A = pick(x.a), key = x.note || `${x.a} / ${x.b}`;
+    const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
     const reach = Math.max(2, ...[lo, hi].filter(Number.isFinite)) + 1; // look past the range, so a gap near it is measured
-    let B = pick(x.b);
+    let B = pickIn(x.b, x);
     if (Array.isArray(x.b) && A.length) { // against many others: only those within reach
       const lo3 = [0, 1, 2].map((k) => Math.min(...A.map((p) => bx(p).lo[k]))), hi3 = [0, 1, 2].map((k) => Math.max(...A.map((p) => bx(p).hi[k])));
       B = B.filter((p) => [0, 1, 2].every((k) => bx(p).lo[k] <= hi3[k] + reach && lo3[k] <= bx(p).hi[k] + reach));
@@ -405,15 +426,22 @@ export function checkAssembly(s) {
     if (!groups.has(key)) groups.set(key, { x, lo, hi, results: [] });
     groups.get(key).results.push({ ok, gap, id: x.a, at: near?.at || null });
   }
+  // The anchor nearest a point, if one is within 20 mm: where to look
+  const nearest = (pt) => {
+    if (!pt || !marks.length) return {};
+    const m = marks.map((k) => ({ k, d: Math.hypot(k.at[0] - pt[0], k.at[1] - pt[1], k.at[2] - pt[2]) })).sort((a, b) => a.d - b.d)[0];
+    return m.d <= 20 ? { near: m.k.id, distance: Number(m.d.toFixed(2)) } : {};
+  };
   for (const [key, { x, lo, hi, results }] of groups) {
     const worst = results.reduce((w, r) => (!r.ok && w.ok ? r : r.ok === w.ok && r.gap < w.gap ? r : w), results[0]);
     const say = (g) => (g < 0 ? `press fit, ${mm(-g)} mm³ overlap` : g === Infinity ? 'not near each other' : `closest gap ${mm(g)} mm`);
     const n = results.length > 1 ? ` (${results.filter((r) => r.ok).length} of ${results.length} in range)` : '';
     const label = (x.label || x.a).replace(/ \(.*\)$/, '');
-    f(worst.ok ? 'pass' : 'warn', `${key}: ${say(worst.gap)}${n}${worst.ok ? '' : `, wanted ${lo === -Infinity ? '' : `${mm(lo)} `}to ${hi === Infinity ? 'any' : mm(hi)} mm (${results.filter((r) => !r.ok).map((r) => r.id).join(', ')})`}`,
+    const where = nearest(worst.at);
+    f(worst.ok ? 'pass' : 'warn', `${key}: ${say(worst.gap)}${n}${worst.ok ? '' : `, wanted ${lo === -Infinity ? '' : `${mm(lo)} `}to ${hi === Infinity ? 'any' : mm(hi)} mm (${results.filter((r) => !r.ok).map((r) => r.id).join(', ')})${where.near ? `, ${where.distance} mm from ${where.near}` : ''}`}`,
       `${label}: ${worst.gap < 0 ? `press fit ${mm(-worst.gap)} mm³` : worst.gap === Infinity ? 'apart' : `gap ${Number(worst.gap.toFixed(2))} mm`}${worst.ok ? '' : ' (out of range)'}`,
       { code: 'fit', values: { ...(worst.gap < 0 ? { overlap: -worst.gap } : { gap: worst.gap }), min: lo, max: hi, inRange: results.filter((r) => r.ok).length, copies: results.length },
-        refs: { a: x.a, b: x.b, label: x.label, ...(s.pose ? { pose: s.pose } : {}), outOfRange: results.filter((r) => !r.ok).map((r) => r.id) }, ...(worst.at ? { at: { lo: worst.at, hi: worst.at } } : {}) });
+        refs: { a: x.a, b: x.b, label: x.label, ...(s.pose ? { pose: s.pose } : {}), outOfRange: results.filter((r) => !r.ok).map((r) => r.id), ...where }, ...(worst.at ? { at: { lo: worst.at, hi: worst.at } } : {}) });
   }
   // Holes fits: each mounting hole's screw path, clear into a hole, with material round it
   function holesFit(x) {

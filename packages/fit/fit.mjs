@@ -29,6 +29,12 @@ function toTriangle(px, py, pz, t) {
 }
 
 const tris = (polys) => polys.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]]));
+/**
+ * How far a point is from a face (a polygon), in mm: to its nearest point, inside it or on its edge.
+ * @param {Point} p @param {Face} face
+ * @returns {number}
+ */
+export const distanceToFace = (p, face) => Math.min(...tris([face]).map((t) => toTriangle(p[0], p[1], p[2], t)));
 
 // Triangles in a grid of cubes (cell mm), each in every cube its bounding box touches; nearest(x, y, z, best) searches
 // ring by ring outward from the point's cube and stops once no unsearched cube can hold anything nearer than best.

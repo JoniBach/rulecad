@@ -224,6 +224,9 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - **fit** assemblies check how parts go together: no overlaps (unless a fit allows a press fit with a negative
   `min`), and the closest gap for each `fit` within its range. Supports are left out: they're snipped off first.
   Objects with `"role": "reference"` (the MX switch) model things you don't print: drawn faint, never exported.
+- **Near an anchor:** a fit can name an item's faces near one of its anchors, `"a": "case@pivot"` (with `"within": 6`,
+  mm; 10 by default): the pocket round a pivot rather than the whole case. A fit's finding says where its closest gap
+  is (`at` in `--json`) and which anchor that's nearest (`… 0.4 mm from link@mount`).
 - **plate** assemblies lay objects out on the bed: they're checked as one print and `export` writes one 3MF with an
   object per part. Supports are kept.
 - **Turning:** `"rotate": [0, 180, 0]` turns an item (degrees about x, y, z, in that order) about its own origin
