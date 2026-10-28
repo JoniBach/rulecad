@@ -67,7 +67,7 @@ export async function readProblem(project, ref) {
     supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),
     loads: await Promise.all(p.loads.map(async (l) => ({ ...(await region(l)), force: pt(l.force), case: l.case || 'load' }))),
     cases: Object.fromEntries(Object.entries(p.cases || {}).map(([k, w]) => [k, ev(w)])),
-    material: { E: m.modulus, nu: m.poisson }, ...(dim === 2 ? { thickness: ev(p.thickness) } : {}), cell: ev(p.cell), volume: ev(p.volume),
+    material: { E: m.modulus, nu: m.poisson }, ...(dim === 2 ? { thickness: ev(p.thickness) } : {}), cell: ev(p.cell), ...(p.volume != null ? { volume: ev(p.volume) } : {}), ...(p.stress != null ? { stress: ev(p.stress) } : {}),
     ...(p.filter != null ? { filter: ev(p.filter) } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
@@ -115,7 +115,7 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
     grid: spec.grid, origin: spec.origin, regions: { keep: named(spec.regions.keep), avoid: named(spec.regions.avoid) }, ...shape,
-    volume: o.volume, compliance: o.compliance, cases: o.cases, overhang: r.problem.overhang || null,
+    volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
     steps: o.steps, converged: o.converged, seconds: o.seconds, history: o.history, density: Array.from(o.density, (d) => round(d, 3)),
     supports: named(r.problem.supports), loads: named(r.problem.loads),
   };

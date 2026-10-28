@@ -93,6 +93,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - Before reporting numbers for a final shape, verify them: give the `analysis` a smaller `cell` (solids: about a
   third of the problem's) and check the stiffness has settled (`fea.settled`). Report the verified numbers, the safety
   factor, and where the peak stress is.
+- For a part that must not break (a lever, a pedal), give its problem a `"stress"` limit (the material's strength
+  over a safety factor) instead of a `"volume"`: the lightest layout under it. Then verify it on finer cells.
 - Mark a problem `"critical": true` if the part could hurt someone if it broke. Say plainly that the analysis is a
   design aid and the material values are data-sheet figures: such a part needs testing, recorded under
   `"verification"`, not just a check.

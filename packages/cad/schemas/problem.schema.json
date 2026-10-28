@@ -7,7 +7,6 @@
   "required": [
     "material",
     "cell",
-    "volume",
     "space",
     "supports",
     "loads"
@@ -55,7 +54,11 @@
     },
     "volume": {
       "$ref": "#/$defs/expr",
-      "description": "The share of the space to fill, 0 to 1 (keep regions count towards it)"
+      "description": "The share of the space to fill, 0 to 1 (keep regions count towards it): the stiffest layout that fills it. Give this or a stress limit"
+    },
+    "stress": {
+      "$ref": "#/$defs/expr",
+      "description": "A limit on von Mises stress (MPa), such as \"pla.strength / 3\": the lightest layout that keeps every cell under it (Senhora et al. 2020). Give this or a volume"
     },
     "filter": {
       "$ref": "#/$defs/expr",
@@ -339,5 +342,6 @@
         }
       }
     }
-  }
+  },
+  "anyOf": [{ "required": ["volume"] }, { "required": ["stress"] }]
 }

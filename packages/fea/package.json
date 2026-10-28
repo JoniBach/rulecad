@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/fea",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "How far a part bends under load: finite elements on a grid of squares (2D) or cubes (3D), with a multigrid solver, in plain JavaScript.",
   "type": "module",
   "exports": {

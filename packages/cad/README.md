@@ -357,6 +357,12 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
   `ss304`, `ti64` come with rulecad. Printed values vary: measure yours.
 - **Settings:** `volume`, the share of the space to fill; `cell`, the grid (smaller is finer and slower: a 140 × 40
   grid takes about half a minute); `filter`, about the thinnest member, in mm.
+- **Or a stress limit instead of a volume:** `"stress": "pla.strength / 3"` (MPa) finds the lightest layout that keeps
+  every cell's von Mises stress under it, which rounds off the sharp inside corners where cracks start. It takes about
+  a thousand steps, each with two solves, so it's slower: give it a coarse cell first. Give supports and loads some
+  area (a hole's edge, a pad), as stress where a load meets a point has no limit. `cad optimise` reports the peak
+  stress against the limit. Check the final part with an `analysis` on a finer `cell`: a sharp corner that's
+  within the limit on the optimiser's cells can still be over it on finer ones.
 - **Variants**, picked as `name:variant`, set variables that have a tweak range, as an object's do.
 
 `cad optimise <project>/<problem>` runs it, reports how far each load case moves its load and the stiffness that

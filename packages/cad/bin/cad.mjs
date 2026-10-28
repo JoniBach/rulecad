@@ -125,7 +125,7 @@ async function optimiseProblem(ref) {
   if (live) process.stderr.write('\r\x1b[K');
   const p = await readProblem(project, name), cells = r.dim === 3 ? `${r.grid.nx} × ${r.grid.ny} × ${r.grid.nz}` : `${r.grid.nx} × ${r.grid.ny}`;
   const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
-    `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}`];
+    `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}${r.stress ? `, peak stress ${sig(r.stress.peak)} MPa (limit ${sig(r.stress.limit)})` : ''}`];
   let out;
   if (r.dim === 3) {
     out = paths.preview(project, `${name.replace(':', '-')}-optimised.png`);
@@ -139,6 +139,7 @@ async function optimiseProblem(ref) {
   if (opt('json')) return console.log(JSON.stringify((({ density, history, mesh, ...x }) => x)(r), null, 2));
   console.log(`${r.title}${r.cached ? ' (cached)' : ` (${fmt(r.seconds)} s)`}`);
   for (const c of r.cases) console.log(`  ${c.name}: moves ${sig(c.deflection)} mm along its load, ${sig(c.stiffness)} N/mm`);
+  if (r.stress) console.log(`  peak stress ${sig(r.stress.peak)} MPa, the limit ${sig(r.stress.limit)} MPa${r.stress.peak > r.stress.limit * 1.02 ? ': over it (raise the volume, ease the limit, or use a smaller cell)' : ''}`);
   if (r.dim === 3) console.log(`  ${fmt(r.volume * 100)}% of the space filled: ${fmt(r.solid / 1000)} cm³ (${fmt(r.solid / 1000 * (p.material.density || 0))} g of ${p.material.name})${r.overhang ? `, printable built ${r.overhang}` : ''}`);
   else console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);
   console.log(`  ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? ', settled' : ': stopped before it settled (raise steps)'}`);

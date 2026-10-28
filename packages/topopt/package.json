@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/topopt",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Topology optimisation for flat and solid parts: the stiffest layout of a fixed amount of material, printable without supports if asked, as outlines or a surface ready to print.",
   "type": "module",
   "exports": {
@@ -33,7 +33,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@rulecad/fea": "^0.2.0"
+    "@rulecad/fea": "^0.2.1"
   },
   "types": "./topopt.d.mts"
 }
