@@ -29,6 +29,11 @@ r.deflection[0];   // { most, at }: the largest movement of solid material, and 
     coarse cell's matrix is built from its children's exactly (Galerkin), so it stays accurate when cells'
     stiffnesses differ a millionfold, as they do in topology optimisation. A cantilever of 16,000 cubes takes 9
     iterations, where plain `cg` takes 371.
+- **Solving again:** `solve(...)` returns `again(loads)`, which solves more right-hand sides on the same matrix,
+  reusing its factorisation or preconditioner: an adjoint, for a gradient.
+- **Stress at a point:** `centreStress(h, nu, dim)` is the matrix from a cell's movements to the stress at its centre
+  (for Young's modulus 1), and `vonMises(s, dim, grad)` gives von Mises stress and, optionally, its gradient. Stress
+  limits in @rulecad/topopt use both.
 - **Backends:** the few operations `cg` repeats (the stiffness product, its diagonal, dot products) sit behind a small
   interface. `jsBackend`, plain JavaScript in 64-bit floats, is the reference; a WebGPU or TensorFlow.js backend
   implements the same and passes `backend-suite.mjs` in this repository.

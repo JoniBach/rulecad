@@ -72,6 +72,46 @@ and drops holes and islands smaller than `minArea`.
 is split along the same diagonal, so neighbouring cubes cut their shared faces the same way and the surface has no
 gaps. Then it's smoothed.
 
+## Stress limits
+
+Stiffness alone puts material in sharp inside corners, where stress concentrates and cracks start. Give a stress limit
+(MPa) instead of a volume, and `optimise` finds the lightest layout that keeps every cell's von Mises stress under it:
+
+```js
+const spec = discretise({ ...problem, volume: undefined, stress: 13 }); // pla.strength / 3
+const result = optimise(spec);
+result.stress;     // { peak, limit }: the largest stress in the result's solid cells (MPa)
+```
+
+- **How:** each cell's stress at its centre, as if solid, gets its own limit, scaled by its density so an empty cell's
+  limit vanishes (Senhora, Giraldo-Londoño, Menezes, Paulino 2020). An augmented Lagrangian keeps them all: every 5
+  steps its multipliers are raised where a limit is broken, and its penalty grows. Each step is a step of the method
+  of moving asymptotes (`mma`, after Svanberg's 2007 code, also exported), and needs one more solve, for the adjoint.
+- **Cost:** about a thousand steps, each with two solves, against about two hundred with one for the stiffest layout.
+  Start on coarse cells.
+- **Supports and loads:** every cell is limited, those where the part is held and loaded too, so give them some area
+  (a hole's edge, a pad): a force on a point is an unlimited stress there.
+
+The L-bracket (`reference/lbracket.mjs`), the usual test: a 100 mm square less its top-right 60 mm, held along the
+top of its upright arm and pushed down with 100 N at the end of its lower one, PLA 2 mm thick, on 1 mm cells. Each
+result is re-analysed as it would be made: its smoothed outline, on 0.5 mm cells.
+
+| | Space used | Compliance | Peak stress, on its cells | Peak stress, as made |
+|---|---|---|---|---|
+| Stiffest at 40% | 40.0% | 373 N·mm | – | 67.2 MPa |
+| Lightest under 25 MPa | 39.4% | 426 N·mm | 26.2 MPa | 36.6 MPa |
+
+![The L-bracket, stiffest and stress-limited](reference/lbracket.svg)
+
+For the same material, the stress-limited bracket draws its members together with filleted joints, and its peak stress
+falls by 46%. Two things to know:
+
+- **A sharp corner in the space stays sharp.** The domain's inside corner is where both arms meet, and both results
+  keep material there; on finer cells its stress keeps rising. The limit holds to within 5% on the optimiser's own
+  cells, not on finer ones. Check the final part on finer cells (cad's `analysis` with a `cell`), and set the limit
+  with that margin in mind.
+- **It may not settle within its steps.** This one ran its 1,000 steps with the peak hovering 5% over the limit.
+
 ## Checked against the published code
 
 With projection off, it matches a line-by-line port of the 88-line MATLAB code (`reference/top88.py`) step for step:
@@ -89,6 +129,8 @@ Its gradients agree with finite differences through the filter and the projectio
 - **Compliance:** the load times how far it moves (N·mm); the inverse of stiffness.
 - **Volume:** the share of the space the result fills, 0 to 1.
 - **Filter radius:** about the thinnest member, in mm.
+- **Von Mises stress:** one number for how hard a point of material is worked, from all its stresses together; it's
+  compared with the material's strength.
 
 ## Sources
 
@@ -102,3 +144,7 @@ Its gradients agree with finite differences through the filter and the projectio
 - Langelaar (2017). An additive manufacturing filter for topology optimization of print-ready designs. *Structural and
   Multidisciplinary Optimization* 55, 871–883.
 - Taubin (1995). A signal processing approach to fair surface design. *SIGGRAPH '95*, 351–358.
+- Senhora, Giraldo-Londoño, Menezes, Paulino (2020). Topology optimization with local stress constraints: a stress
+  aggregation-free approach. *Structural and Multidisciplinary Optimization* 62, 1639–1668.
+- Svanberg (1987). The method of moving asymptotes: a new method for structural optimization. *International Journal
+  for Numerical Methods in Engineering* 24, 359–373.

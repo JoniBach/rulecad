@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds } from '@rulecad/topopt';
+import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma } from '@rulecad/topopt';
 import { grid } from '@rulecad/fea';
 
 // The reference values come from reference/top88.py, a line-by-line port of Andreassen et al. (2011)'s top88.m (the
@@ -201,4 +201,44 @@ test('surface: a printable slope keeps no faces past the overhang limit, in any 
     assert.equal(past(kept), 0, `${up}: ${past(kept)} mm² past 45°`);
     assert.ok(Math.abs(volume(kept.vertices, kept.faces) / volume(plain.vertices, plain.faces) - 1) < 0.01, `${up}: volume changed`);
   }
+});
+
+test('MMA: Svanberg\'s two-constraint example lands on its known optimum', () => {
+  // min x1² + x2² + x3², two balls of radius 3 about (5, 2, 1) and (3, 4, 3), 0 ≤ x ≤ 5 (Svanberg's mmasub test)
+  const x = Float64Array.from([4, 3, 2]), step = mma({ n: 3, m: 2, xmin: new Float64Array(3), xmax: new Float64Array(3).fill(5) });
+  const centres = [[5, 2, 1], [3, 4, 3]];
+  for (let k = 0; k < 30; k++) {
+    step(x, x.reduce((s, v) => s + v * v, 0), x.map((v) => 2 * v),
+      centres.map((c) => x.reduce((s, v, i) => s + (v - c[i]) ** 2, 0) - 9), centres.map((c) => x.map((v, i) => 2 * (v - c[i]))));
+  }
+  [2.0175, 1.78, 1.2375].forEach((want, i) => assert.ok(Math.abs(x[i] - want) < 1e-3, `x${i + 1} = ${x[i]}, not ${want}`));
+});
+
+// A short cantilever: held along its left edge, loaded at the middle of its right
+const stressed = (stress) => ({ space: { at: [30, 10], size: [60, 20] }, supports: [{ at: [0, 10], size: [0.1, 20] }], loads: [{ at: [60, 10], r: 2, force: [0, -50] }],
+  keep: [{ at: [58, 10], size: [4, 4] }], material: { E: 2680, nu: 0.36 }, thickness: 2, cell: 2, stress, filter: 4.5 });
+
+test('stress limits: the gradient matches finite differences, with multipliers and through the projection', () => {
+  const spec = discretise(stressed(10)), m = model(spec), x = new Float64Array(m.cells);
+  for (let e = 0; e < m.cells; e++) x[e] = spec.passive[e] ? (spec.passive[e] === 1 ? 1 : 0) : 0.3 + (0.4 * ((e * 7919) % 97)) / 97;
+  const multipliers = { lam: [Float64Array.from({ length: m.limits }, (_, e) => ((e * 31) % 7) / 7)], mu: 10 };
+  for (const beta of [1, 4]) {
+    const { d } = m.evaluate(x, beta, { multipliers }).stress, h = 1e-5;
+    for (const e of [40, 95, 150, 222]) {
+      if (spec.passive[e]) continue;
+      const xp = Float64Array.from(x), xm = Float64Array.from(x); xp[e] += h; xm[e] -= h;
+      const fd = (m.evaluate(xp, beta, { multipliers }).stress.J - m.evaluate(xm, beta, { multipliers }).stress.J) / (2 * h);
+      assert.ok(Math.abs(d[e] - fd) <= 1e-4 * Math.abs(fd) + 1e-9, `cell ${e} at sharpness ${beta}: ${d[e]} against ${fd}`);
+    }
+  }
+});
+
+test('stress limits: the lightest layout keeps to the limit, and a lower limit takes more material', () => {
+  const loose = optimise(discretise(stressed(40))), tight = optimise(discretise(stressed(20)));
+  for (const [o, limit] of [[loose, 40], [tight, 20]]) {
+    assert.ok(o.converged, `at ${limit} MPa it settles`);
+    assert.ok(o.stress.peak <= limit * 1.03, `at ${limit} MPa: peak ${o.stress.peak} MPa`);
+  }
+  assert.ok(tight.volume > loose.volume + 0.15, `20 MPa takes ${tight.volume}, 40 MPa ${loose.volume}`);
+  assert.throws(() => optimise(discretise({ ...stressed(20), volume: 0.4 })), /not both/);
 });

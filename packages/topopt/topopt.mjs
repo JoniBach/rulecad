@@ -6,13 +6,17 @@
 // optional overhang filter (only material a printer can build without supports), and Heaviside projection (it sharpens
 // the result). After Andreassen et al. (2011), "Efficient topology optimization in MATLAB using 88 lines of code",
 // Wang, Lazarov and Sigmund (2011), and Langelaar (2017), "An additive manufacturing filter for topology optimization
-// of print-ready designs". No dependencies but @rulecad/fea; runs in browsers and Node. Millimetres, newtons, MPa.
+// of print-ready designs". Or, given a stress limit instead of an amount of material, the lightest layout that keeps
+// every cell under it: an augmented Lagrangian on the cells' limits (Senhora, Giraldo-Londoño, Menezes, Paulino 2020),
+// stepped by the method of moving asymptotes (Svanberg 1987). No dependencies but @rulecad/fea; runs in browsers and
+// Node. Millimetres, newtons, MPa.
 //
 //   optimise(spec)       the method itself, on a grid: densities, supports and loads by dof
+//   mma(...)             the method of moving asymptotes, for other problems with limits
 //   discretise(problem)  a problem in shapes (a region, bosses to keep, holes to avoid, loads at points) to a spec
 //   outlines(result)     a 2D result's edges as closed loops in mm, solid on the left, smoothed: ready to extrude
 //   surface(result)      a 3D result's surface as a closed triangle mesh in mm, smoothed: ready to print
-import { grid as makeGrid, cellStiffness, solve, positions, jsBackend } from '@rulecad/fea';
+import { grid as makeGrid, cellStiffness, solve, positions, jsBackend, centreStress, vonMises } from '@rulecad/fea';
 
 export { jsBackend };
 
@@ -103,8 +107,8 @@ export function discretise(p) {
   return {
     grid: size, origin, passive, fixed, loads,
     material: p.material, thickness: p.thickness, volume: p.volume,
-    filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? 300,
-    ...(p.overhang ? { overhang: p.overhang } : {}),
+    filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (p.stress ? 1000 : 300),
+    ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.stress ? { stress: p.stress } : {}),
     regions: { keep, avoid },
   };
 }
@@ -227,11 +231,11 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   };
   let last = null;
   // Each step solves only the load cases it optimises for (weight above 0); every case is solved when all is set
-  const evaluate = (x, beta, { all = false } = {}) => {
+  const evaluate = (x, beta, { all = false, multipliers } = {}) => {
     physical(x, beta);
     for (let e = 0; e < cells; e++) scale[e] = size * (Emin + Math.pow(phys[e], penal) * (E - Emin));
     const active = spec.loads.map((l, c) => (all || l.weight > 0 ? c : -1)).filter((c) => c >= 0);
-    const solved = solve(g, { scale, ke, fixed: spec.fixed, loads: active.map((c) => spec.loads[c].force), method: solver, backend, start: last && active.map((c) => last[c]), ...(tol ? { tol } : {}) }).u;
+    const run = solve(g, { scale, ke, fixed: spec.fixed, loads: active.map((c) => spec.loads[c].force), method: solver, backend, start: last && active.map((c) => last[c]), ...(tol ? { tol } : {}) }), solved = run.u;
     const u = spec.loads.map((_, c) => (active.includes(c) ? solved[active.indexOf(c)] : last?.[c] || null));
     last = u;
     // Compliance, and its gradient with respect to each cell's physical density: −p ρ^(p−1) (E − Emin) size · uₑᵀ kₑ uₑ
@@ -252,17 +256,209 @@ export function model(spec, { method, backend = jsBackend } = {}) {
     // Back through the projection, the overhang filter and the density filter to the design densities; kept and
     // avoided cells don't change
     for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(made[e], beta); dc[e] *= s; dv[e] = s; }
-    if (print) { print.adjoint(dc, back); dc.set(back); print.adjoint(dv, back); dv.set(back); }
-    filter.adjoint(dc, back); dc.set(back);
-    filter.adjoint(dv, back); dv.set(back);
+    const toDesign = (d) => { if (print) { print.adjoint(d, back); d.set(back); } filter.adjoint(d, back); d.set(back); };
+    toDesign(dc); toDesign(dv);
+    const stress = Ss ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
     const cases = spec.loads.map((l, c) => {
       if (!u[c]) return { name: l.name, compliance: NaN, deflection: NaN, stiffness: NaN };
       const ci = jsBackend.dot(l.force, u[c]), deflection = l.size ? ci / l.size : 0;
       return { name: l.name, compliance: ci, deflection, stiffness: deflection ? l.size / deflection : Infinity };
     });
-    return { compliance, dc, dv, u, cases };
+    if (stress) { for (let e = 0; e < cells; e++) stress.d[e] *= passive[e] ? 0 : slope(made[e], beta); toDesign(stress.d); }
+    return { compliance, dc, dv, u, cases, ...(stress ? { stress } : {}) };
   };
-  return { physical, evaluate, cells, passive };
+  // Stress limits on every cell (Senhora, Giraldo-Londoño, Menezes, Paulino 2020): each cell's von Mises stress at its
+  // centre, as if solid, over the limit, less 1, times the cell's density, so an empty cell's limit vanishes. They're
+  // kept by an augmented Lagrangian: J = Σ (λ h + μ h² / 2) / N, h = max(g, −λ/μ), whose gradient takes one adjoint
+  // solve per load case. Every cell in the space is limited, those where supports and loads act too: a load on a
+  // point is a stress there, so give supports and loads some area (a hole's edge, a pad).
+  const rows = dim === 3 ? 6 : 3, Ss = spec.stress ? [centreStress(g.h, spec.material.nu, dim)] : null;
+  const limited = Uint8Array.from(passive, (p) => (p >= 0 ? 1 : 0));
+  const stressLimits = (u, active, again, { lam, mu }) => {
+    const P = Ss.length, N = Math.max(1, limited.reduce((a, b) => a + b, 0) * active.length * P), st = new Float64Array(rows), gr = new Float64Array(rows);
+    const d = new Float64Array(cells), h = active.map(() => new Float64Array(cells * P));
+    let J = 0, peak = 0;
+    const rhs = active.map((c, k) => {
+      const r = new Float64Array(g.dofs);
+      for (let e = 0; e < cells; e++) {
+        if (!limited[e]) continue;
+        const o = e * m;
+        Ss.forEach((S, pi) => {
+          for (let q = 0; q < rows; q++) { let t = 0; for (let a = 0; a < m; a++) t += S[q * m + a] * u[c][g.edof[o + a]]; st[q] = E * t; }
+          const vm = vonMises(st, dim, gr), over = vm / spec.stress, ge = phys[e] * (over - 1), j = e * P + pi, l = lam[k][j], he = Math.max(ge, -l / mu);
+          h[k][j] = he; J += (l * he + (mu / 2) * he * he) / N;
+          if (phys[e] >= 0.5) peak = Math.max(peak, vm);
+          if (ge <= -l / mu) return;
+          const w = (l + mu * he) / N, f = (w * phys[e] * E) / spec.stress;
+          d[e] += w * (over - 1);
+          for (let a = 0; a < m; a++) { let t = 0; for (let q = 0; q < rows; q++) t += S[q * m + a] * gr[q]; r[g.edof[o + a]] += f * t; }
+        });
+      }
+      return r;
+    });
+    const adjoint = again(rhs);
+    active.forEach((c, k) => {
+      const uc = u[c], lc = adjoint[k];
+      for (let e = 0; e < cells; e++) {
+        if (passive[e]) continue;
+        let t = 0;
+        const o = e * m;
+        for (let a = 0; a < m; a++) { let q = 0; for (let b = 0; b < m; b++) q += ke[a * m + b] * uc[g.edof[o + b]]; t += lc[g.edof[o + a]] * q; }
+        d[e] -= penal * Math.pow(phys[e], penal - 1) * (E - Emin) * size * t;
+      }
+    });
+    return { J, d, h, peak };
+  };
+  return { physical, evaluate, cells, passive, limits: Ss ? cells * Ss.length : 0 };
+}
+
+/**
+ * The method of moving asymptotes (Svanberg 1987, as his 2007 mmasub and subsolv): one step of minimising f0(x)
+ * subject to fi(x) ≤ 0, i = 1..m, xmin ≤ x ≤ xmax, from values and gradients at x. Each step solves a convex
+ * approximation, separable in x, by a primal-dual interior-point method. Keeps its asymptotes between steps.
+ * @param {{ n: number, m: number, xmin: Float64Array, xmax: Float64Array, move?: number }} o
+ */
+export function mma({ n, m, xmin, xmax, move = 0.5 }) {
+  const low = new Float64Array(n), upp = new Float64Array(n), xold1 = new Float64Array(n), xold2 = new Float64Array(n);
+  const a0 = 1, a = new Float64Array(m), c = new Float64Array(m).fill(1000), d = new Float64Array(m).fill(1);
+  let iter = 0;
+  /**
+   * @param {Float64Array} x the design (changed in place to the next)
+   * @param {number} f0 @param {Float64Array} df0 @param {number[]} f @param {Float64Array[]} df
+   * @param {number} [stepMove] this step's move limit, a share of xmax − xmin
+   */
+  return function step(x, f0, df0, f, df, stepMove = move) {
+    iter++;
+    const raa0 = 1e-5, albefa = 0.1, asyinit = 0.5, asyincr = 1.2, asydecr = 0.7;
+    const alfa = new Float64Array(n), beta = new Float64Array(n), p0 = new Float64Array(n), q0 = new Float64Array(n);
+    const P = df.map(() => new Float64Array(n)), Q = df.map(() => new Float64Array(n)), b = new Float64Array(m);
+    for (let j = 0; j < n; j++) {
+      const span = xmax[j] - xmin[j];
+      if (iter <= 2) { low[j] = x[j] - asyinit * span; upp[j] = x[j] + asyinit * span; }
+      else {
+        const zzz = (x[j] - xold1[j]) * (xold1[j] - xold2[j]), f = zzz > 0 ? asyincr : zzz < 0 ? asydecr : 1;
+        low[j] = Math.min(x[j] - 0.01 * span, Math.max(x[j] - 10 * span, x[j] - f * (xold1[j] - low[j])));
+        upp[j] = Math.max(x[j] + 0.01 * span, Math.min(x[j] + 10 * span, x[j] + f * (upp[j] - xold1[j])));
+      }
+      alfa[j] = Math.max(low[j] + albefa * (x[j] - low[j]), x[j] - stepMove * span, xmin[j]);
+      beta[j] = Math.min(upp[j] - albefa * (upp[j] - x[j]), x[j] + stepMove * span, xmax[j]);
+      const inv = 1 / Math.max(span, 1e-5), ux2 = (upp[j] - x[j]) ** 2, xl2 = (x[j] - low[j]) ** 2;
+      const pp = Math.max(df0[j], 0), qq = Math.max(-df0[j], 0), pq = 0.001 * (pp + qq) + raa0 * inv;
+      p0[j] = (pp + pq) * ux2; q0[j] = (qq + pq) * xl2;
+      for (let i = 0; i < m; i++) {
+        const pi = Math.max(df[i][j], 0), qi = Math.max(-df[i][j], 0), pqi = 0.001 * (pi + qi) + raa0 * inv;
+        P[i][j] = (pi + pqi) * ux2; Q[i][j] = (qi + pqi) * xl2;
+        b[i] += P[i][j] / (upp[j] - x[j]) + Q[i][j] / (x[j] - low[j]);
+      }
+    }
+    for (let i = 0; i < m; i++) b[i] -= f[i];
+    xold2.set(xold1); xold1.set(x);
+    x.set(subsolve({ n, m, low, upp, alfa, beta, p0, q0, P, Q, a0, a, b, c, d }));
+  };
+}
+
+// The MMA subproblem, by a primal-dual Newton method with the barrier ε shrinking tenfold each round (Svanberg's subsolv)
+function subsolve({ n, m, low, upp, alfa, beta, p0, q0, P, Q, a0, a, b, c, d }) {
+  let x = new Float64Array(n), xsi = new Float64Array(n), eta = new Float64Array(n);
+  let y = new Float64Array(m).fill(1), lam = new Float64Array(m).fill(1), mu = new Float64Array(m), s = new Float64Array(m).fill(1), z = 1, zet = 1;
+  for (let j = 0; j < n; j++) { x[j] = (alfa[j] + beta[j]) / 2; xsi[j] = Math.max(1, 1 / (x[j] - alfa[j])); eta[j] = Math.max(1, 1 / (beta[j] - x[j])); }
+  for (let i = 0; i < m; i++) mu[i] = Math.max(1, c[i] / 2);
+  const residual = (epsi, x, y, z, lam, xsi, eta, mu, zet, s) => {
+    let sum = 0, most = 0;
+    const add = (r) => { sum += r * r; most = Math.max(most, Math.abs(r)); };
+    const gvec = new Float64Array(m);
+    for (let j = 0; j < n; j++) {
+      const ux = upp[j] - x[j], xl = x[j] - low[j];
+      let plam = p0[j], qlam = q0[j];
+      for (let i = 0; i < m; i++) { plam += P[i][j] * lam[i]; qlam += Q[i][j] * lam[i]; gvec[i] += P[i][j] / ux + Q[i][j] / xl; }
+      add(plam / (ux * ux) - qlam / (xl * xl) - xsi[j] + eta[j]);
+      add(xsi[j] * (x[j] - alfa[j]) - epsi); add(eta[j] * (beta[j] - x[j]) - epsi);
+    }
+    let rez = a0 - zet;
+    for (let i = 0; i < m; i++) {
+      rez -= a[i] * lam[i];
+      add(c[i] + d[i] * y[i] - mu[i] - lam[i]); add(gvec[i] - a[i] * z - y[i] + s[i] - b[i]);
+      add(mu[i] * y[i] - epsi); add(s[i] * lam[i] - epsi);
+    }
+    add(rez); add(zet * z - epsi);
+    return [Math.sqrt(sum), most];
+  };
+  for (let epsi = 1; epsi > 1e-7; epsi *= 0.1) {
+    let [norm, most] = residual(epsi, x, y, z, lam, xsi, eta, mu, zet, s);
+    for (let it = 0; most > 0.9 * epsi && it < 200; it++) {
+      // The Newton step, reduced to m + 1 unknowns (dλ, dz)
+      const diagx = new Float64Array(n), delx = new Float64Array(n), gvec = new Float64Array(m), GG = Array.from({ length: m }, () => new Float64Array(n));
+      for (let j = 0; j < n; j++) {
+        const ux = upp[j] - x[j], xl = x[j] - low[j];
+        let plam = p0[j], qlam = q0[j];
+        for (let i = 0; i < m; i++) { plam += P[i][j] * lam[i]; qlam += Q[i][j] * lam[i]; gvec[i] += P[i][j] / ux + Q[i][j] / xl; GG[i][j] = P[i][j] / (ux * ux) - Q[i][j] / (xl * xl); }
+        delx[j] = plam / (ux * ux) - qlam / (xl * xl) - epsi / (x[j] - alfa[j]) + epsi / (beta[j] - x[j]);
+        diagx[j] = 2 * (plam / (ux * ux * ux) + qlam / (xl * xl * xl)) + xsi[j] / (x[j] - alfa[j]) + eta[j] / (beta[j] - x[j]);
+      }
+      const dely = new Float64Array(m), dellam = new Float64Array(m), diagy = new Float64Array(m), diaglamyi = new Float64Array(m);
+      let delz = a0 - epsi / z;
+      for (let i = 0; i < m; i++) {
+        dely[i] = c[i] + d[i] * y[i] - lam[i] - epsi / y[i];
+        delz -= a[i] * lam[i];
+        dellam[i] = gvec[i] - a[i] * z - y[i] - b[i] + epsi / lam[i];
+        diagy[i] = d[i] + mu[i] / y[i];
+        diaglamyi[i] = s[i] / lam[i] + 1 / diagy[i];
+      }
+      // [Alam a; aᵀ −ζ/z] [dλ; dz] = [bλ; δz]
+      const A = Array.from({ length: m + 1 }, () => new Float64Array(m + 2));
+      for (let i = 0; i < m; i++) {
+        let bl = dellam[i] + dely[i] / diagy[i];
+        for (let j = 0; j < n; j++) bl -= (GG[i][j] * delx[j]) / diagx[j];
+        for (let k = 0; k < m; k++) { let t = 0; for (let j = 0; j < n; j++) t += (GG[i][j] * GG[k][j]) / diagx[j]; A[i][k] = t + (i === k ? diaglamyi[i] : 0); }
+        A[i][m] = a[i]; A[m][i] = a[i]; A[i][m + 1] = bl;
+      }
+      A[m][m] = -zet / z; A[m][m + 1] = delz;
+      const sol = gauss(A), dlam = sol.slice(0, m), dz = sol[m];
+      const dx = new Float64Array(n), dy = new Float64Array(m), dxsi = new Float64Array(n), deta = new Float64Array(n), dmu = new Float64Array(m), ds = new Float64Array(m);
+      for (let j = 0; j < n; j++) {
+        let g = 0; for (let i = 0; i < m; i++) g += GG[i][j] * dlam[i];
+        dx[j] = -delx[j] / diagx[j] - g / diagx[j];
+        dxsi[j] = -xsi[j] + epsi / (x[j] - alfa[j]) - (xsi[j] * dx[j]) / (x[j] - alfa[j]);
+        deta[j] = -eta[j] + epsi / (beta[j] - x[j]) + (eta[j] * dx[j]) / (beta[j] - x[j]);
+      }
+      for (let i = 0; i < m; i++) {
+        dy[i] = -dely[i] / diagy[i] + dlam[i] / diagy[i];
+        dmu[i] = -mu[i] + epsi / y[i] - (mu[i] * dy[i]) / y[i];
+        ds[i] = -s[i] + epsi / lam[i] - (s[i] * dlam[i]) / lam[i];
+      }
+      const dzet = -zet + epsi / z - (zet * dz) / z;
+      // The longest step that keeps everything positive and x inside [α, β], then halved until the residual falls
+      let most2 = 1;
+      const ratio = (v, dv) => { for (let k = 0; k < v.length; k++) most2 = Math.max(most2, (-1.01 * dv[k]) / v[k]); };
+      ratio(y, dy); ratio([z], [dz]); ratio(lam, dlam); ratio(xsi, dxsi); ratio(eta, deta); ratio(mu, dmu); ratio([zet], [dzet]); ratio(s, ds);
+      for (let j = 0; j < n; j++) most2 = Math.max(most2, (-1.01 * dx[j]) / (x[j] - alfa[j]), (1.01 * dx[j]) / (beta[j] - x[j]));
+      let steg = 1 / most2, next, tries = 0, resinew = 2 * norm;
+      const at = (v, dv, t) => { const o = new Float64Array(v.length); for (let k = 0; k < v.length; k++) o[k] = v[k] + t * dv[k]; return o; };
+      while (resinew > norm && tries < 50) {
+        tries++;
+        next = [at(x, dx, steg), at(y, dy, steg), z + steg * dz, at(lam, dlam, steg), at(xsi, dxsi, steg), at(eta, deta, steg), at(mu, dmu, steg), zet + steg * dzet, at(s, ds, steg)];
+        [resinew, most] = residual(epsi, ...next);
+        steg /= 2;
+      }
+      [x, y, z, lam, xsi, eta, mu, zet, s] = next;
+      norm = resinew;
+    }
+  }
+  return x;
+}
+
+// A small dense system by Gaussian elimination with partial pivoting: A is the augmented matrix [M | rhs]
+function gauss(A) {
+  const k = A.length;
+  for (let c = 0; c < k; c++) {
+    let p = c;
+    for (let r = c + 1; r < k; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    [A[c], A[p]] = [A[p], A[c]];
+    for (let r = c + 1; r < k; r++) { const f = A[r][c] / A[c][c]; for (let q = c; q <= k; q++) A[r][q] -= f * A[c][q]; }
+  }
+  const x = new Array(k).fill(0);
+  for (let r = k - 1; r >= 0; r--) { let t = A[r][k]; for (let q = r + 1; q < k; q++) t -= A[r][q] * x[q]; x[r] = t / A[r][r]; }
+  return x;
 }
 
 /**
@@ -276,39 +472,70 @@ export function model(spec, { method, backend = jsBackend } = {}) {
 export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01, move = 0.2 } = {}) {
   const started = Date.now(), m = model(spec, { method, backend }), { cells, passive } = m;
   const inSpace = passive.reduce((s, p) => s + (p !== -2 ? 1 : 0), 0), kept = passive.reduce((s, p) => s + (p === 1 ? 1 : 0), 0);
-  const free = passive.reduce((s, p) => s + (p === 0 ? 1 : 0), 0), target = spec.volume * inSpace;
-  if (!(spec.volume > 0 && spec.volume <= 1)) throw new Error(`the volume is a share of the space, from 0 to 1 (got ${spec.volume})`);
-  if (kept > target) throw new Error(`the keep regions alone fill ${fmt((kept / inSpace) * 100)}% of the space, more than the volume (${fmt(spec.volume * 100)}%): raise the volume`);
+  const free = passive.reduce((s, p) => s + (p === 0 ? 1 : 0), 0);
+  // A stress limit asks for the lightest layout that keeps to it; a volume, for the stiffest that fills it
+  const lightest = spec.stress > 0;
+  if (lightest && spec.volume != null) throw new Error('give a volume (the stiffest layout that fills it) or a stress limit (the lightest that keeps to it), not both');
+  if (!lightest && !(spec.volume > 0 && spec.volume <= 1)) throw new Error(`the volume is a share of the space, from 0 to 1 (got ${spec.volume})`);
+  const target = lightest ? 0 : spec.volume * inSpace;
+  if (!lightest && kept > target) throw new Error(`the keep regions alone fill ${fmt((kept / inSpace) * 100)}% of the space, more than the volume (${fmt(spec.volume * 100)}%): raise the volume`);
   if (!free) throw new Error('no free cells: the keep and avoid regions cover the whole space');
 
-  const betaMax = spec.projection ? 16 : 1, fixedValue = (p) => (p === 1 ? 1 : 0);
+  const betaMax = spec.projection ? (lightest ? 8 : 16) : 1, fixedValue = (p) => (p === 1 ? 1 : 0);
   const x = new Float64Array(cells), xnew = new Float64Array(cells);
-  for (let e = 0; e < cells; e++) x[e] = passive[e] ? fixedValue(passive[e]) : (target - kept) / free;
+  for (let e = 0; e < cells; e++) x[e] = passive[e] ? fixedValue(passive[e]) : lightest ? 0.5 : (target - kept) / free;
   const history = [];
-  let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0;
+  // The lightest layout: the method of moving asymptotes on the material used plus the stress limits' augmented
+  // Lagrangian term, its multipliers raised every INNER steps (λ += μ h) and its penalty grown (μ × 1.1, at most 10⁴)
+  const INNER = 5, freeCells = Int32Array.from(Array.from(passive).flatMap((p, e) => (p ? [] : [e]))), n = freeCells.length;
+  const mmaStep = lightest ? mma({ n, m: 0, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : null;
+  const multipliers = lightest ? { lam: spec.loads.filter((l) => l.weight > 0).map(() => new Float64Array(m.limits)), mu: 10 } : undefined;
+  const xf = new Float64Array(n), pick = (d) => Float64Array.from(freeCells, (e) => d[e]);
+  let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null;
   while (step < spec.steps) {
     step++; sinceBeta++;
-    const { compliance, dc, dv } = m.evaluate(x, beta);
-    history.push(compliance);
-    // Optimality criteria: scale each cell by √(−dc/dv/λ), within the move limit, finding λ by bisection so the
-    // physical densities fill exactly the volume
+    const { compliance, dc, dv, stress } = m.evaluate(x, beta, { multipliers });
     // A sharper projection magnifies each change, so the move limit shrinks with it (else the design flickers)
     const limit = move * Math.min(1, 2 / beta);
-    let lo = 0, hi = 1e9;
-    while ((hi - lo) / (hi + lo) > 1e-3) { // as the 88-line code
-      const mid = (lo + hi) / 2;
-      for (let e = 0; e < cells; e++) {
-        if (passive[e]) { xnew[e] = fixedValue(passive[e]); continue; }
-        const b = Math.sqrt(Math.max(0, -dc[e]) / Math.max(1e-30, dv[e]) / mid);
-        xnew[e] = Math.max(0, Math.max(x[e] - limit, Math.min(1, Math.min(x[e] + limit, x[e] * b))));
+    if (lightest) {
+      const used = m.physical(x, beta).reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0) / inSpace, d = pick(stress.d), dvf = pick(dv);
+      history.push(used); peak = stress.peak;
+      // Done at full sharpness when the material used has stopped changing (within 0.2% over 100 steps) and the limit
+      // holds (within 2%): this design, as just analysed
+      if (beta >= betaMax && sinceBeta > 100 && Math.abs(history.at(-101) - used) <= 0.002 * used && peak <= spec.stress * 1.02) { converged = true; break; }
+      xf.set(pick(x));
+      mmaStep(xf, used + stress.J, dvf.map((v, k) => v / inSpace + d[k]), [], [], limit);
+      xnew.set(x);
+      freeCells.forEach((e, k) => { xnew[e] = xf[k]; });
+      if (step % INNER === 0) {
+        multipliers.lam.forEach((l, k) => { for (let j = 0; j < l.length; j++) l[j] += multipliers.mu * stress.h[k][j]; });
+        multipliers.mu = Math.min(1.1 * multipliers.mu, 1e4);
       }
-      const filled = m.physical(xnew, beta).reduce((s, v) => s + v, 0);
-      if (filled > target) lo = mid; else hi = mid;
+    } else {
+      history.push(compliance);
+      // Optimality criteria: scale each cell by √(−dc/dv/λ), within the move limit, finding λ by bisection so the
+      // physical densities fill exactly the volume
+      let lo = 0, hi = 1e9;
+      while ((hi - lo) / (hi + lo) > 1e-3) { // as the 88-line code
+        const mid = (lo + hi) / 2;
+        for (let e = 0; e < cells; e++) {
+          if (passive[e]) { xnew[e] = fixedValue(passive[e]); continue; }
+          const b = Math.sqrt(Math.max(0, -dc[e]) / Math.max(1e-30, dv[e]) / mid);
+          xnew[e] = Math.max(0, Math.max(x[e] - limit, Math.min(1, Math.min(x[e] + limit, x[e] * b))));
+        }
+        const filled = m.physical(xnew, beta).reduce((s, v) => s + v, 0);
+        if (filled > target) lo = mid; else hi = mid;
+      }
     }
     change = 0;
     for (let e = 0; e < cells; e++) change = Math.max(change, Math.abs(xnew[e] - x[e]));
     x.set(xnew);
-    onStep?.({ step, steps: spec.steps, compliance, change, beta, density: m.physical(x, beta) });
+    onStep?.({ step, steps: spec.steps, compliance, change, beta, density: m.physical(x, beta), ...(lightest ? { stress: peak, volume: history.at(-1) } : {}) });
+    if (lightest) {
+      // Sharper every 25 rounds of the multipliers
+      if (beta < betaMax && sinceBeta >= 25 * INNER) { beta *= 2; sinceBeta = 0; }
+      continue;
+    }
     // Sharpen: double the projection's steepness when the design settles (or every 50 steps), until it's at its sharpest
     if (beta < betaMax && (change < tol || sinceBeta >= 50)) { beta *= 2; sinceBeta = 0; continue; }
     // Done when nothing moves, or at full sharpness the compliance has stopped improving (within 0.1% over 10 steps)
@@ -318,7 +545,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   // The final design, analysed as it is
   const final = m.evaluate(x, beta, { all: true }), phys = Float64Array.from(m.physical(x, beta));
   return {
-    density: phys, compliance: final.compliance, cases: final.cases,
+    density: phys, compliance: final.compliance, cases: final.cases, ...(final.stress ? { stress: { peak: final.stress.peak, limit: spec.stress } } : {}),
     volume: phys.reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0) / inSpace, steps: step, converged, history, seconds: (Date.now() - started) / 1000,
   };
 }

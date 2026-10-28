@@ -205,19 +205,21 @@ function pattern(g) {
  * @param {Grid} g
  * @param {{ scale: Float64Array, ke: Float64Array, fixed: Uint8Array, loads: Float64Array[], method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, maxIter?: number, start?: Float64Array[] }} o
  *   start: a first guess for the iterative solvers (the last solution, when solving again after a small change)
- * @returns {{ u: Float64Array[], iterations: number }}
+ * @returns {{ u: Float64Array[], iterations: number, again: (loads: Float64Array[]) => Float64Array[] }} again: more
+ *   loads on the same matrix (an adjoint), reusing its factor or preconditioner
  */
 export function solve(g, { scale, ke, fixed, loads, method = 'direct', backend = jsBackend, tol = 1e-9, maxIter = 20000, start }) {
   if (scale.length !== g.cells) throw new Error(`scale has ${scale.length} values for ${g.cells} cells`);
   if (!fixed.some((f) => f)) throw new Error('nothing is held: fix at least one support, or the part just moves');
-  const f = loads.map((l) => { const c = Float64Array.from(l); for (let i = 0; i < c.length; i++) if (fixed[i]) c[i] = 0; return c; });
+  const held = (ls) => ls.map((l) => { const c = Float64Array.from(l); for (let i = 0; i < c.length; i++) if (fixed[i]) c[i] = 0; return c; });
   if (method === 'direct') {
-    const L = factor(g, { scale, ke }, fixed);
-    return { u: f.map((b) => L.solve(b)), iterations: 0 };
+    const L = factor(g, { scale, ke }, fixed), again = (ls) => held(ls).map((b) => L.solve(b));
+    return { u: again(loads), iterations: 0, again };
   }
   const op = backend.operator(g, ke); // one for the solver and its preconditioner: the matrix is assembled once
   const precondition = method === 'mg' ? multigrid(g, { scale, ke, fixed, backend, op }) : jacobi(g, { scale, fixed, op });
-  return conjugateGradients(g, { scale, fixed, loads: f, backend, tol, maxIter, start, precondition, op });
+  const again = (ls) => conjugateGradients(g, { scale, fixed, loads: held(ls), backend, tol, maxIter, precondition, op }).u;
+  return { ...conjugateGradients(g, { scale, fixed, loads: held(loads), backend, tol, maxIter, start, precondition, op }), again };
 }
 
 // The banded Cholesky factor of K (cells' matrices: ke × scale, or each its own), fixed dofs as identity rows
@@ -462,6 +464,37 @@ function transfer(fg, cg) {
       return rc;
     },
   };
+}
+
+/**
+ * Stress at a cell's centre from its corners' movements, for Young's modulus 1: a matrix (rows × cell dofs, row by row;
+ * rows: σx, σy, τxy in 2D; σx, σy, σz, τxy, τyz, τzx in 3D). Times a cell's movements and its modulus, it's the stress.
+ * @param {number} h cell size (mm) @param {number} nu @param {2 | 3} dim
+ * @returns {Float64Array}
+ */
+export function centreStress(h, nu, dim) {
+  const m = CORNERS[dim].length * dim, rows = dim === 3 ? 6 : 3, B = strains(new Array(dim).fill(0), h, dim), D = elasticity(nu, dim), S = new Float64Array(rows * m);
+  for (let p = 0; p < rows; p++) for (let a = 0; a < m; a++) { let t = 0; for (let q = 0; q < rows; q++) t += D[p * rows + q] * B[q * m + a]; S[p * m + a] = t; }
+  return S;
+}
+
+/**
+ * Von Mises stress from a stress (as centreStress's rows); with grad, also its gradient with respect to the stress.
+ * @param {ArrayLike<number>} s @param {2 | 3} dim @param {Float64Array} [grad]
+ * @returns {number}
+ */
+export function vonMises(s, dim, grad) {
+  const v = dim === 2 ? Math.sqrt(Math.max(0, s[0] * s[0] - s[0] * s[1] + s[1] * s[1] + 3 * s[2] * s[2]))
+    : Math.sqrt(Math.max(0, ((s[0] - s[1]) ** 2 + (s[1] - s[2]) ** 2 + (s[2] - s[0]) ** 2) / 2 + 3 * (s[3] ** 2 + s[4] ** 2 + s[5] ** 2)));
+  if (grad) {
+    const k = v > 0 ? 1 / (2 * v) : 0;
+    if (dim === 2) { grad[0] = k * (2 * s[0] - s[1]); grad[1] = k * (2 * s[1] - s[0]); grad[2] = k * 6 * s[2]; }
+    else {
+      grad[0] = k * (2 * s[0] - s[1] - s[2]); grad[1] = k * (2 * s[1] - s[0] - s[2]); grad[2] = k * (2 * s[2] - s[0] - s[1]);
+      grad[3] = k * 6 * s[3]; grad[4] = k * 6 * s[4]; grad[5] = k * 6 * s[5];
+    }
+  }
+  return v;
 }
 
 /**

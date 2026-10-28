@@ -433,6 +433,11 @@ test('optimising a problem: cad optimise draws it and caches it, a design builds
     assert.match(checked, /✓ volume [\d.]+ mm³/);
     assert.ok(fs.existsSync(path.join(ws, '.preview', 'beam', 'arm-analysis-arm.svg')));
     assert.match(cad('check', 'beam/arm', '--set', 'problem=arm:both'), /optimising arm:both|arm down/);
+    // A stress limit instead of a volume: the lightest arm that keeps to it
+    fs.writeFileSync(path.join(project, 'problems', 'light.json'), JSON.stringify({ ...JSON.parse(fs.readFileSync(path.join(project, 'problems', 'arm.json'), 'utf8')),
+      title: 'A light arm', volume: undefined, stress: 'pla.strength / 3', cases: {}, loads: [{ at: [24, 0], r: 1.2, force: [0, -10], case: 'down' }], variables: {}, variants: {} }));
+    const light = cad('optimise', 'beam/light');
+    assert.match(light, /peak stress [\d.]+ MPa, the limit 13 MPa\n/);
   } finally { done(); }
 });
 
