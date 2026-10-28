@@ -1,6 +1,16 @@
 {
-  "name": "lever",
-  "description": "The lever bench: four specimens of equal mass (a plain bar, a lightened plate, and two optimised levers) and the rig that holds and loads them.",
+  "name": "bench",
+  "description": "Test blocks for rulecad's topology optimisation, printed and load-tested on one rig: four levers of equal mass (2D) and three wall brackets of equal mass (3D).",
   "material": "PLA",
-  "objects": ["bar", "plate", "optimised", "rig", "gauge-arm", "hanger"]
+  "objects": [
+    "lever-bar",
+    "lever-plate",
+    "lever",
+    "bracket-web",
+    "bracket",
+    "rig",
+    "gauge-arm",
+    "reach-arm",
+    "hanger"
+  ]
 }

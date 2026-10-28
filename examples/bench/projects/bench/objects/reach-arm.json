@@ -1,0 +1,23 @@
+{
+  "name": "reach-arm",
+  "title": "Bracket bench: gauge arm",
+  "description": "Bolts on top of the rig's wall in place of the lever's gauge arm and reaches out from it over a bracket's tip, holding a dial indicator's 8 mm stem in a clamped bore so its plunger rests on the load bolt's head.",
+  "version": "0.1.0",
+  "uses": ["bench", "m5", "m4", "x1c", "dial-indicator"],
+  "material": "PLA",
+  "orientation": "Flat on the bed, as it sits on the wall. Two M5 × 35 into the wall's slotted nuts; an M4 × 25 across the clamp, its nut in the pocket. Tighten the clamp just enough to hold the stem.",
+  "variables": {
+    "hole5": { "value": "m5.clearance + x1c.hole_comp", "unit": "mm", "rule": "M5 bolt holes, printed" },
+    "hole4": { "value": "m4.clearance + x1c.hole_comp", "unit": "mm", "rule": "M4 bolt hole, printed" },
+    "nut4": { "value": "m4.nut_flats + x1c.hole_comp", "unit": "mm", "rule": "M4 nut pocket, across the flats" },
+    "nut4_h": { "value": "m4.nut_height + x1c.layer * 2", "unit": "mm", "rule": "M4 nut pocket: depth" },
+    "bore": { "value": "dial_indicator.stem + x1c.hole_comp", "unit": "mm", "rule": "The indicator's stem, a close fit before clamping" },
+    "left": { "value": "bench.pitch / 2 - bench.wall_length / 2", "unit": "mm", "rule": "The wall's left end" },
+    "beam": { "value": "bench.pitch", "unit": "mm", "rule": "The arm's width where it reaches out over the bracket" },
+    "gauge_x": { "value": "(bench.pitch - bench.boss_len - m4.head_height) / 2", "unit": "mm", "rule": "Over the middle of the load bolt's head, beside the bracket's boss" },
+    "end": { "value": "0 - bench.reach - bench.arm_reach", "unit": "mm", "rule": "The arm's far end, past the load bolt" },
+    "slit": { "value": "x1c.line * 2 * 2", "unit": "mm", "rule": "The clamp's slit, from the bore to the end" },
+    "pinch_y": { "value": "(end - bench.reach - bore / 2) / 2", "unit": "mm", "rule": "The clamp bolt, across the slit between the bore and the end" },
+    "smooth": { "value": 48, "rule": "Segments in each round hole" }
+  }
+}

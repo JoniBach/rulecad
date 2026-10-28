@@ -1,11 +1,16 @@
-# The lever bench
+# The benches
+
+Test blocks for rulecad's topology optimisation, printed and load-tested on one rig: four levers (2D, flat) and
+three wall brackets (3D). Every object here is in the `bench` project; the rules they share are in `rules/bench.json`.
+
+## The lever bench
 
 A test block for rulecad's topology optimisation (`cad optimise`, @rulecad/topopt), built to be measured. Four
 specimens weigh the same, fit the same envelope and are held and loaded the same way. The only difference between them
 is where the material is. Print them, hang weights on them and read a dial gauge. The results show whether the
 optimiser makes a stiffer part, and how close its predictions are for printed parts.
 
-## The specimens
+### The specimens
 
 Each is a cantilever lever, 6 mm thick and printed flat, inside a 140 × 40 mm envelope (`rules/bench.json`). It is
 held by two M5 bolts in line at one end and loaded through an M4 bolt 120 mm from the first, in its own plane (the
@@ -14,30 +19,30 @@ every specimen's volume to within 1% of that.
 
 | | Object | What it is | Predicted stiffness, straight down |
 |---|---|---|---|
-| A | `lever/bar` | A plain bar of the same length and mass. Beam theory predicts it exactly, so it also measures your printed material's stiffness. | 26.9 N/mm |
-| B | `lever/plate` | The whole envelope with a row of four windows: the usual hand-made lightening. | 3.3 N/mm |
-| C | `lever/optimised` | The stiffest layout the optimiser finds for the straight-down load (`problems/lever.json`). | 99.9 N/mm |
-| D | `lever/optimised:both` | Optimised for a second load too, 45° from straight down. | 98.9 N/mm (190 N/mm at 45°) |
+| A | `bench/lever-bar` | A plain bar of the same length and mass. Beam theory predicts it exactly, so it also measures your printed material's stiffness. | 26.9 N/mm |
+| B | `bench/lever-plate` | The whole envelope with a row of four windows: the usual hand-made lightening. | 3.3 N/mm |
+| C | `bench/lever` | The stiffest layout the optimiser finds for the straight-down load (`problems/lever.json`). | 99.9 N/mm |
+| D | `bench/lever:both` | Optimised for a second load too, 45° from straight down. | 98.9 N/mm (190 N/mm at 45°) |
 
 The predictions are from `cad check` (the analysis in @rulecad/fea, with Bambu Lab PLA Basic's data sheet modulus,
-2680 MPa). They change when the material rule changes. `cad optimise lever/lever` draws the optimised layout in
-`.preview/lever/`.
+2680 MPa). They change when the material rule changes. `cad optimise bench/lever` draws the optimised layout in
+`.preview/bench/`.
 
-## The rig
+### The rig
 
-- `lever/rig`: a wall on a base. G-clamp the base to a bench so the wall's end is at the bench's edge; the specimen
+- `bench/rig`: a wall on a base. G-clamp the base to a bench so the wall's end is at the bench's edge; the specimen
   bolts flat against the wall's front with two M5 × 20 socket screws, their nuts in the pockets behind, and reaches
   out past the edge.
-- `lever/gauge-arm`: bolts on top of the wall (two M5 × 35, their nuts slid into the wall's side slots) and holds a
+- `bench/gauge-arm`: bolts on top of the wall (two M5 × 35, their nuts slid into the wall's side slots) and holds a
   dial indicator's 8 mm stem over the load bolt, pinched by an M4 × 40. The gap from the arm to the bolt's head is
   `bench.gauge_gap` (20 mm): change it to suit your indicator. A digital calliper's depth rod, resting on the arm,
   works too, with less resolution.
-- `lever/hanger`: hangs on the load bolt (an M4 × 16: head, hanger, specimen, nut), with an eye for a strap or S-hook.
+- `bench/hanger`: hangs on the load bolt (an M4 × 16: head, hanger, specimen, nut), with an eye for a strap or S-hook.
   Weights can be gym plates, or bottles of water weighed on a kitchen scale.
 
-`lever/bench` is the whole rig assembled with a specimen, for checking that it all fits: `cad check lever/bench`.
+`bench/lever-bench` is the whole rig assembled with a specimen, for checking that it all fits: `cad check bench/lever-bench`.
 
-## Printing
+### Printing
 
 Print every specimen the same way, and write down how in `results.json`:
 
@@ -49,7 +54,7 @@ Print every specimen the same way, and write down how in `results.json`:
 
 Print the rig parts solid too: the rig must be far stiffer than any specimen.
 
-## Testing
+### Testing
 
 1. Bolt the specimen to the wall, hang the empty hanger, and set the dial indicator's plunger on the load bolt's head
    with a little preload. Zero it.
@@ -61,7 +66,7 @@ Print the rig parts solid too: the rig must be far stiffer than any specimen.
 
 A specimen's stiffness is the slope of load (N: kg × 9.81) against movement (mm), fitted through the readings.
 
-## Recording results
+### Recording results
 
 `results.json` holds the predictions, the print settings and every reading. Fill in each reading as
 `[load_kg, gauge_mm]`. Then:
@@ -74,3 +79,35 @@ A specimen's stiffness is the slope of load (N: kg × 9.81) against movement (mm
 
 The bench passes when the optimised specimens are clearly stiffer than both A and B (by more than the spread between
 repeats), and the calibrated predictions are within 30% of the measurements.
+
+## The bracket bench
+
+A 3D test block on the same rig: a wall bracket, bolted to the wall's face by the same two M5 bolts and reaching
+straight out from it 80 mm to a load bolt, where the hanger hangs. Three brackets of equal mass (27,520 mm³, about
+35 g of PLA) fill the same envelope (40 × 40 × 86 mm) and are held and loaded the same way:
+
+| | Object | What it is | Predicted stiffness, straight down |
+|---|---|---|---|
+| A | `bench/bracket-web` | A back plate and a plain upright web to the load boss: the usual hand-made bracket. | 72.8 N/mm |
+| B | `bench/bracket` | The stiffest bracket the optimiser finds (`problems/bracket.json`), ignoring how it prints. | 119 N/mm |
+| C | `bench/bracket:printable` | The same, keeping only what prints without supports standing on its back plate. | 119 N/mm |
+
+The difference between B and C is what printing without supports costs in stiffness. All three print standing on
+their back plate, as they're drawn; their bolt holes and the load boss are teardrops, pointed so they print.
+
+What the predictions say:
+
+- **Optimised against plain:** both optimised brackets are predicted 1.6 times stiffer than the plain web of the same
+  mass straight down (119 against 72.8 N/mm), and 3 to 4 times at 45° (51–60 against 15.7 N/mm).
+- **Printable against free:** standing on its back plate, the free optimum is already nearly self-supporting.
+  Keeping it printable costs nothing straight down and about 14% at 45° (51.3 against 59.8 N/mm). The visible
+  difference is the hole through its side: arched in B, rising to a 45° point in C.
+- **Overhangs:** B and C each have about 100 mm² of small faces a little past 45°, left by smoothing the cubes into a
+  surface. The print check lists them; most printers bridge them.
+
+`bench/reach-arm` takes the gauge arm's place on the wall's top and reaches out over the bracket's load bolt. The
+bracket reaches out from the wall's face, so clamp the rig with the wall's face at the bench's edge: the hanger then
+hangs clear of the bench.
+`bench/bracket-bench` is the rig assembled with a bracket.
+
+Test them as the levers: preload, zero, load in steps (stop before 1 mm), unload, three repeats on three prints.

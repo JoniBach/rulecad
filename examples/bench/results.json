@@ -1,18 +1,81 @@
 {
-  "_doc": "The lever bench's results: see README.md. Each reading is [load_kg, gauge_mm]; three repeats on each of three prints per specimen.",
-  "material": { "filament": "", "spool": "", "printer": "", "layer_mm": 0.2, "infill": "100%", "printed": "", "tested": "" },
+  "_doc": "The benches' results: see README.md. Each reading is [load_kg, gauge_mm]; three repeats on each of three prints per specimen.",
+  "material": {
+    "filament": "",
+    "spool": "",
+    "printer": "",
+    "layer_mm": 0.2,
+    "infill": "100%",
+    "printed": "",
+    "tested": ""
+  },
   "predicted": {
     "_doc": "From cad check (rules/pla.json as published: modulus 2680 MPa); N/mm along the load",
-    "bar": { "down": 26.9, "angled": 52.7 },
-    "plate": { "down": 3.3, "angled": 6.6 },
-    "optimised": { "down": 99.9, "angled": 184.3 },
-    "optimised:both": { "down": 98.9, "angled": 190.5 }
+    "lever-bar": {
+      "down": 26.9,
+      "angled": 52.7
+    },
+    "lever-plate": {
+      "down": 3.3,
+      "angled": 6.6
+    },
+    "lever": {
+      "down": 99.9,
+      "angled": 184.3
+    },
+    "lever:both": {
+      "down": 98.9,
+      "angled": 190.5
+    },
+    "bracket-web": {
+      "down": 72.8,
+      "angled": 15.7
+    },
+    "bracket": {
+      "down": 119,
+      "angled": 59.8
+    },
+    "bracket:printable": {
+      "down": 119,
+      "angled": 51.3
+    }
   },
   "measured": {
-    "bar": [[], [], []],
-    "plate": [[], [], []],
-    "optimised": [[], [], []],
-    "optimised:both": [[], [], []]
+    "lever-bar": [
+      [],
+      [],
+      []
+    ],
+    "lever-plate": [
+      [],
+      [],
+      []
+    ],
+    "lever": [
+      [],
+      [],
+      []
+    ],
+    "lever:both": [
+      [],
+      [],
+      []
+    ],
+    "bracket-web": [
+      [],
+      [],
+      []
+    ],
+    "bracket": [
+      [],
+      [],
+      []
+    ],
+    "bracket:printable": [
+      [],
+      [],
+      []
+    ]
   },
   "notes": ""
 }
