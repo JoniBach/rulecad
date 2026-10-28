@@ -17,9 +17,9 @@ import { grid as makeGrid, cellStiffness, solve, positions, jsBackend } from '@r
 export { jsBackend };
 
 /**
- * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: '-z' | '+z' } | { points: [number, number][] } | { triangles: number[][][] }} Region
+ * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: string } | { points: [number, number][] } | { triangles: number[][][] }} Region
  *   in mm: a circle (2D) or sphere (3D) at, r; a box at (its centre), size; a cylinder at (its centre), r, length,
- *   along axis (default z; teardrop '-z' or '+z': along x or y, with a 45° point that way, so it prints); a polygon (2D);
+ *   along axis (default z; teardrop '+z', '-y', …: a 45° point that way, across the axis, so it prints); a polygon (2D);
  *   or a closed triangle mesh (3D: a design's part)
  */
 /** @typedef {Region & { fix?: string }} Support holds the nodes in the region (on material): fix the directions, 'xy' or 'xyz' (default all) */
@@ -360,13 +360,13 @@ function insider(r) {
   if (r.size) return (pt) => r.size.every((s, a) => Math.abs(pt[a] - r.at[a]) <= s / 2);
   if (r.length != null) {
     const ax = 'xyz'.indexOf(r.axis || 'z'), others = [0, 1, 2].filter((a) => a !== ax);
-    // A teardrop: a cylinder across the build (along x or y) with a 45° point below it (a boss) or above it (a hole),
-    // so it prints unsupported
-    const point = r.teardrop && ax !== 2 ? (r.teardrop === '+z' ? 1 : -1) : 0, side = others.find((a) => a !== 2);
+    // A teardrop: a cylinder across the build with a 45° point below it (a boss) or above it (a hole), so it prints
+    // unsupported. Along the build, it's a plain cylinder.
+    const pa = r.teardrop ? 'xyz'.indexOf(r.teardrop[1]) : -1, point = pa >= 0 && pa !== ax ? (r.teardrop[0] === '-' ? -1 : 1) : 0, side = others.find((a) => a !== pa);
     return (pt) => {
       if (Math.abs(pt[ax] - r.at[ax]) > r.length / 2) return false;
       if (Math.hypot(pt[others[0]] - r.at[others[0]], pt[others[1]] - r.at[others[1]]) <= r.r) return true;
-      const out = point * (pt[2] - r.at[2]);
+      const out = point * (pt[pa] - r.at[pa]);
       return point !== 0 && out > 0 && Math.abs(pt[side] - r.at[side]) + out <= r.r * Math.SQRT2;
     };
   }
@@ -421,7 +421,8 @@ export function bounds(r) {
   const half = r.size ? r.size.map((s) => s / 2) : r.length != null ? [0, 1, 2].map((a) => (a === 'xyz'.indexOf(r.axis || 'z') ? r.length / 2 : r.r)) : new Array(dim).fill(r.r);
   const lo = r.at.map((c, a) => c - half[a]);
   const hi = r.at.map((c, a) => c + half[a]);
-  if (r.teardrop && r.length != null && (r.axis || 'z') !== 'z') { if (r.teardrop === '+z') hi[2] = r.at[2] + r.r * Math.SQRT2; else lo[2] = r.at[2] - r.r * Math.SQRT2; } // its point
+  const pa = r.teardrop && r.length != null ? 'xyz'.indexOf(r.teardrop[1]) : -1;
+  if (pa >= 0 && pa !== 'xyz'.indexOf(r.axis || 'z')) { if (r.teardrop[0] === '-') lo[pa] = r.at[pa] - r.r * Math.SQRT2; else hi[pa] = r.at[pa] + r.r * Math.SQRT2; } // its point
   return [...lo, ...hi];
 }
 
@@ -525,10 +526,12 @@ function simplify(loop, tolerance) {
  * @param {{ nx: number, ny: number, nz: number, h: number }} size @param {ArrayLike<number>} density @param {number[]} origin
  * Vertices on the grid's outer faces stay where they are as it's smoothed, so a part that fills its space to a face (a
  * base on the bed) keeps that face flat, and the walls rising from it don't lean out.
- * @param {{ smooth?: number, iso?: number }} [options] iso: the density the surface is drawn at (0.5)
+ * @param {{ smooth?: number, iso?: number, overhang?: { up: string, angle: number } }} [options] iso: the density the
+ * surface is drawn at (0.5). overhang: the build direction ('+z') and the printer's overhang limit (degrees from
+ * vertical): faces smoothing left past it are tipped back to it.
  * @returns {{ vertices: number[][], faces: number[][] }}
  */
-export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth = 4, iso = 0.5 } = {}) {
+export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth = 4, iso = 0.5, overhang } = {}) {
   const W = nx + 3, H = ny + 3, D = nz + 3, v = new Float64Array(W * H * D), id = (i, j, k) => (k * H + j) * W + i;
   // Each corner: the average of the cubes round it that are in the grid (on the grid's faces, only those inside it, so
   // material reaching a face reads as solid there, not half)
@@ -593,7 +596,39 @@ export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth
       return held[n] ? p : p.map((x, q) => Math.min(hi[q], Math.max(lo[q], x + f * (avg[q] - x))));
     });
   }
+  if (overhang) steepen(pts, faces, held, overhang, lo, hi);
   return { vertices: pts, faces };
+}
+
+// Faces past the overhang limit, tipped back to it. Optimised in cubes, a printable slope is a staircase of 45°, and
+// smoothing leaves small faces either side of 45°. Each face facing down more steeply than the limit is turned about
+// its centre, moving its corners along the build direction only, until it's a little inside the limit: about as much
+// material is added as taken away. A corner shared by several such faces moves by their average; it's repeated until
+// none are left. Flat faces (a bridge) and faces held on the grid's sides stay as they are.
+function steepen(pts, faces, held, { up, angle }, lo, hi, passes = 200) {
+  const q = 'xyz'.indexOf(up[1]), s = up[0] === '-' ? -1 : 1, [a, b] = [0, 1, 2].filter((x) => x !== q);
+  const limit = Math.sin((angle * Math.PI) / 180), slope = 1.03 / Math.tan((angle * Math.PI) / 180);
+  for (let pass = 0; pass < passes; pass++) {
+    const move = new Float64Array(pts.length), count = new Uint16Array(pts.length);
+    let left = 0;
+    for (const f of faces) {
+      if (held[f[0]] && held[f[1]] && held[f[2]]) continue;
+      const [p, r, t] = f.map((n) => pts[n]), u = [r[0] - p[0], r[1] - p[1], r[2] - p[2]], w = [t[0] - p[0], t[1] - p[1], t[2] - p[2]];
+      const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]], len = Math.hypot(...n);
+      if (!len || (s * n[q]) / len >= -limit) continue;
+      // The face's plane as a height along the build direction over the other two: x_q = c + ga x_a + gb x_b
+      const ga = -n[a] / n[q], gb = -n[b] / n[q], g = Math.hypot(ga, gb);
+      if (g < 0.05) continue; // flat: a bridge, which turning won't help
+      left++;
+      const c = [0, 1, 2].map((x) => (p[x] + r[x] + t[x]) / 3), k = slope / g;
+      for (const m of f) {
+        const v = pts[m];
+        move[m] += c[q] + k * (ga * (v[a] - c[a]) + gb * (v[b] - c[b])) - v[q]; count[m]++;
+      }
+    }
+    if (!left) break;
+    for (let m = 0; m < pts.length; m++) if (count[m] && !held[m]) pts[m][q] = Math.min(hi[q], Math.max(lo[q], pts[m][q] + move[m] / count[m]));
+  }
 }
 
 const fmt = (n) => String(Number(n.toFixed(2)));

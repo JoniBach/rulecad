@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { host } from './host.mjs';
-import { paths } from './workspace.mjs';
+import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
 import { discretise, optimise, outlines, surface, area } from '@rulecad/topopt';
@@ -47,19 +47,21 @@ export async function readProblem(project, ref) {
     }
     return parts.get(ref);
   };
+  // The build direction: a direction ('+z'), or a variable holding one
+  const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
+  // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
+  const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
     if (r.part) return { triangles: await part(r.part), part: r.part };
     if (r.points) return { points: r.points.map(pt) };
     if (r.size) return { at: pt(r.at), size: r.size.map(ev) };
-    if (r.length != null) return { at: pt(r.at), r: ev(r.r), length: ev(r.length), axis: r.axis || 'z', ...(r.teardrop ? { teardrop: r.teardrop } : {}) };
+    if (r.length != null) { const axis = r.axis || 'z', t = r.teardrop && point(r.teardrop); return { at: pt(r.at), r: ev(r.r), length: ev(r.length), axis, ...(t && t[1] !== axis ? { teardrop: t } : {}) }; } // along its axis, a teardrop has no point
     return { at: pt(r.at), ...(r.r != null ? { r: ev(r.r) } : {}) };
   };
   const regions = (list) => Promise.all([list || []].flat().map(region));
   const m = values[p.material];
   if (typeof m?.modulus !== 'number' || typeof m?.poisson !== 'number') throw new Error(`material ${p.material}: its rule set needs modulus (MPa) and poisson`);
   const space = await regions(p.space), dim = space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
-  // The build direction: a direction ('+z'), or a variable holding one
-  const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
   const problem = {
     space, keep: await regions(p.keep), avoid: await regions(p.avoid),
     supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),
@@ -72,6 +74,8 @@ export async function readProblem(project, ref) {
   };
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
+  // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
+  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45 }; }
   return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline };
 }
 
@@ -99,7 +103,7 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   })() : (() => {
     // The surface's level, found so the solid holds as much material as the optimised densities do (drawn at 0.5,
     // thin members come out thinner than they are)
-    const want = o.density.reduce((t, d) => t + d, 0) * spec.grid.h ** 3, at = (iso) => surface(spec.grid, o.density, spec.origin, { smooth: r.outline.smooth, iso });
+    const want = o.density.reduce((t, d) => t + d, 0) * spec.grid.h ** 3, at = (iso) => surface(spec.grid, o.density, spec.origin, { smooth: r.outline.smooth, iso, overhang: r.outline.overhang });
     let lo = 0.2, hi = 0.8, best = at(0.5), iso = 0.5;
     for (let k = 0; k < 10 && Math.abs(meshVolume(best.vertices, best.faces) / want - 1) > 0.003; k++) {
       if (meshVolume(best.vertices, best.faces) < want) hi = iso; else lo = iso; // a lower level encloses more

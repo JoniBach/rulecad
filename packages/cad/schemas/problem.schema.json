@@ -205,11 +205,8 @@
           "type": "string"
         },
         "teardrop": {
-          "enum": [
-            "-z",
-            "+z"
-          ],
-          "description": "3D: a cylinder along x or y with a 45° point that way, so it prints without support: '-z' for a boss (its underside), '+z' for a hole (its roof)"
+          "enum": ["up", "down", "+z", "-z", "+y", "-y", "+x", "-x"],
+          "description": "3D: a 45° point on the cylinder that way, so it prints without support: down for a boss (its underside), up for a hole (its roof). up and down follow the problem's overhang (+z when it's free); along the cylinder's axis it has none"
         }
       }
     },
@@ -268,11 +265,8 @@
           "description": "Which ways it's held: x, y, z (default all)"
         },
         "teardrop": {
-          "enum": [
-            "-z",
-            "+z"
-          ],
-          "description": "3D: a cylinder along x or y with a 45° point that way, so it prints without support: '-z' for a boss (its underside), '+z' for a hole (its roof)"
+          "enum": ["up", "down", "+z", "-z", "+y", "-y", "+x", "-x"],
+          "description": "3D: a 45° point on the cylinder that way, so it prints without support: down for a boss (its underside), up for a hole (its roof). up and down follow the problem's overhang (+z when it's free); along the cylinder's axis it has none"
         }
       }
     },
@@ -336,11 +330,8 @@
           "description": "Its load case (default load)"
         },
         "teardrop": {
-          "enum": [
-            "-z",
-            "+z"
-          ],
-          "description": "3D: a cylinder along x or y with a 45° point that way, so it prints without support: '-z' for a boss (its underside), '+z' for a hole (its roof)"
+          "enum": ["up", "down", "+z", "-z", "+y", "-y", "+x", "-x"],
+          "description": "3D: a 45° point on the cylinder that way, so it prints without support: down for a boss (its underside), up for a hole (its roof). up and down follow the problem's overhang (+z when it's free); along the cylinder's axis it has none"
         }
       }
     }

@@ -88,7 +88,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   `analysis` to the object so `cad check` reports its stiffness; report those numbers with their load and material.
 - Solid parts (brackets, joints) are 3D problems: regions with a z, a named part as the space if it helps. Set
   `"overhang"` to the way up it will print, so the result needs no supports, and give horizontal bosses and holes a
-  `teardrop`. Build with `v.shapes.optimisedSolid(...)` and `"engine": "manifold"`; look at the four views.
+  `teardrop` (`"down"`, `"up"`). Draw the part as it prints; if that isn't the problem's frame, give its `analysis` a
+  `rotate` and `move` back. Build with `v.shapes.optimisedSolid(...)` and `"engine": "manifold"`; look at the four views.
 - Say plainly that the analysis is coarse and the material values are data-sheet figures: anything that could hurt
   someone if it broke needs testing, not just a check.
 

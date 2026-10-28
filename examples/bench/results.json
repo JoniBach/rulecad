@@ -37,7 +37,11 @@
     },
     "bracket:printable": {
       "down": 119,
-      "angled": 51.3
+      "angled": 51.4
+    },
+    "bracket:side": {
+      "down": 116,
+      "angled": 41.5
     }
   },
   "measured": {
@@ -72,6 +76,11 @@
       []
     ],
     "bracket:printable": [
+      [],
+      [],
+      []
+    ],
+    "bracket:side": [
       [],
       [],
       []
