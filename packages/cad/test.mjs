@@ -520,9 +520,16 @@ test('the live view: serves its page, streams each step, and its stop button set
     assert.equal(m.frame.step, 3);
     // Three views, each pixel the densest cell along its line of sight
     assert.deepEqual(m.frame.views.map((v) => [v.name, ...Buffer.from(v.image, 'base64')]), [['along y', 0, 255, 128, 0], ['along x', 255, 0, 0, 128], ['along z', 0, 255, 128, 0]]);
+    assert.equal((await (await fetch(new URL('frame/0', view.url))).json()).step, 3); // every step kept, for the scrubber
     assert.equal(view.stopped(), false);
     await fetch(new URL('stop', view.url), { method: 'POST' });
     assert.equal(view.stopped(), true);
     reader.cancel();
-  } finally { await view.close(); }
+    // Finished, it keeps showing the end for a while
+    const closing = view.close('finished', { hold: 500 });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.match(await (await fetch(view.url)).text(), /a test run/);
+    await closing;
+    await assert.rejects(fetch(view.url));
+  } catch (e) { await view.close(); throw e; }
 });

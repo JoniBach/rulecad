@@ -370,7 +370,7 @@ gives, and draws the layout in `.preview/`. The result is kept, keyed by everyth
 worked out again when something it depends on changes.
 
 `cad optimise <project>/<problem> --watch [port]` runs it afresh and serves a live view at `http://127.0.0.1:8090/`:
-the densities as they change (a 3D part from three sides), a chart of its compliance, and a button that stops the run.
+the densities as they change (a 3D part from three sides), a chart of its compliance and how much it still changes, with a scrubber to look back at any earlier step, its run time and time left, the machine it runs on, and a button that stops the run. It shows the end for ten minutes after the run finishes.
 It listens on this computer only. To watch from elsewhere, reach it through a private network such as Tailscale.
 
 A design uses it through a variable of type `problem`, which picks a problem by name:
