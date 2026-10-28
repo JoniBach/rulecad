@@ -18,6 +18,7 @@ export function liveView({ port = 8090, host = '127.0.0.1', title }) {
     worker.once('error', reject);
     worker.once('message', (m) => {
       if (m.error) { worker.terminate(); reject(new Error(`the live view can't listen on ${host}:${port}: ${m.error}`)); return; }
+      worker.off('error', reject).on('error', (e) => console.error(`the live view stopped: ${e.message}`));
       resolve({
         url: `http://${host === '0.0.0.0' ? 'localhost' : host}:${m.listening}/`,
         // Densities as bytes, one per cell; a 3D grid seen from above (the densest cell in each column)
