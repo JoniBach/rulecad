@@ -18,13 +18,12 @@ export function liveView({ port = 8090, host = '127.0.0.1', title }) {
     worker.once('error', reject);
     worker.once('message', (m) => {
       if (m.error) { worker.terminate(); reject(new Error(`the live view can't listen on ${host}:${port}: ${m.error}`)); return; }
+      worker.off('error', reject).on('error', (e) => console.error(`the live view stopped: ${e.message}`));
       resolve({
         url: `http://${host === '0.0.0.0' ? 'localhost' : host}:${m.listening}/`,
-        // Densities as bytes, one per cell; a 3D grid seen from above (the densest cell in each column)
         step: (s) => {
-          const { nx, ny, nz = 1 } = s.grid, image = new Uint8Array(nx * ny);
-          for (let k = 0; k < nz; k++) for (let c = 0; c < nx * ny; c++) image[c] = Math.max(image[c], Math.round(s.density[k * nx * ny + c] * 255));
-          worker.postMessage({ step: s.step, steps: s.steps, compliance: s.compliance, change: s.change, beta: s.beta, volume: s.volume, stress: s.stress, nx, ny, flat: nz > 1, image }, [image.buffer]);
+          const list = views(s.density, s.grid);
+          worker.postMessage({ step: s.step, steps: s.steps, compliance: s.compliance, change: s.change, beta: s.beta, volume: s.volume, stress: s.stress, views: list }, list.map((v) => v.image.buffer));
         },
         stopped: () => Atomics.load(flag, 0) === 1,
         close: (summary) => new Promise((done) => { worker.once('exit', () => done()); worker.postMessage({ done: summary ?? 'finished' }); }),
@@ -33,22 +32,39 @@ export function liveView({ port = 8090, host = '127.0.0.1', title }) {
   });
 }
 
+// Densities as bytes, one per pixel: a 2D layout as it is, a 3D grid as three views, each pixel the densest cell
+// along its line of sight
+function views(d, { nx, ny, nz = 1 }) {
+  const view = (name, w, h) => ({ name, w, h, image: new Uint8Array(w * h) });
+  const z = view(nz > 1 ? 'along z' : '', nx, ny), y = view('along y', nx, nz), x = view('along x', ny, nz);
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const v = Math.round(d[(k * ny + j) * nx + i] * 255);
+    if (v > z.image[j * nx + i]) z.image[j * nx + i] = v;
+    if (v > y.image[k * nx + i]) y.image[k * nx + i] = v;
+    if (v > x.image[k * ny + j]) x.image[k * ny + j] = v;
+  }
+  return nz > 1 ? [y, x, z] : [z];
+}
+
 const page = (title) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
-<style>body{font:15px system-ui;background:#111;color:#eee;margin:16px;max-width:900px}canvas{width:100%;image-rendering:pixelated;background:#000;border-radius:6px}
+<style>body{font:15px system-ui;background:#111;color:#eee;margin:16px;max-width:900px}canvas{background:#000;border-radius:6px}#chart{width:100%}#views{display:flex;gap:8px;align-items:flex-end}figure{flex:1;min-width:0;margin:0;text-align:center}figure canvas{width:100%;height:40vh;object-fit:contain;background:none}figcaption{color:#aaa;font-size:13px;text-align:center}
 #chart{height:140px;image-rendering:auto}button{font:inherit;padding:8px 16px;border-radius:6px;border:0;background:#d33;color:#fff}button:disabled{background:#555}#state{margin:10px 0}</style>
-<h2>${title}</h2><div id="state">waiting for the first step…</div><canvas id="part"></canvas><canvas id="chart" width="900" height="140"></canvas>
+<h2>${title}</h2><div id="state">waiting for the first step…</div><div id="views"></div><canvas id="chart" width="900" height="140"></canvas>
 <p><button id="stop">Stop the run</button> <span id="note"></span></p>
 <script>
-const part = document.getElementById('part'), chart = document.getElementById('chart'), state = document.getElementById('state'), stop = document.getElementById('stop');
+const views = document.getElementById('views'), chart = document.getElementById('chart'), state = document.getElementById('state'), stop = document.getElementById('stop');
 let history = [];
 const fig = (n) => Number(n.toPrecision(3));
 function draw(f) {
-  if (part.width !== f.nx) { part.width = f.nx; part.height = f.ny; }
-  const ctx = part.getContext('2d'), img = ctx.createImageData(f.nx, f.ny), d = atob(f.image);
-  for (let j = 0; j < f.ny; j++) for (let i = 0; i < f.nx; i++) { const v = 255 - d.charCodeAt(j * f.nx + i), o = ((f.ny - 1 - j) * f.nx + i) * 4; img.data[o] = img.data[o + 1] = img.data[o + 2] = v; img.data[o + 3] = 255; }
-  ctx.putImageData(img, 0, 0);
-  state.textContent = 'step ' + f.step + ' of ' + f.steps + ' · compliance ' + fig(f.compliance) + ' N·mm' + (f.volume != null ? ' · ' + fig(f.volume * 100) + '% of the space' : '') + (f.stress != null ? ' · peak stress ' + fig(f.stress) + ' MPa' : '') + ' · sharpness ' + f.beta + (f.flat ? ' · seen from above' : '');
+  if (views.children.length !== f.views.length) views.innerHTML = f.views.map((v) => '<figure><canvas></canvas><figcaption>' + v.name + '</figcaption></figure>').join('');
+  f.views.forEach((v, n) => {
+    const c = views.children[n].firstChild; if (c.width !== v.w) { c.width = v.w; c.height = v.h; }
+    const ctx = c.getContext('2d'), img = ctx.createImageData(v.w, v.h), d = atob(v.image);
+    for (let j = 0; j < v.h; j++) for (let i = 0; i < v.w; i++) { const g = 255 - d.charCodeAt(j * v.w + i), o = ((v.h - 1 - j) * v.w + i) * 4; img.data[o] = img.data[o + 1] = img.data[o + 2] = g; img.data[o + 3] = 255; }
+    ctx.putImageData(img, 0, 0);
+  });
+  state.textContent = 'step ' + f.step + ' of ' + f.steps + ' · compliance ' + fig(f.compliance) + ' N·mm' + (f.volume != null ? ' · ' + fig(f.volume * 100) + '% of the space' : '') + (f.stress != null ? ' · peak stress ' + fig(f.stress) + ' MPa' : '') + ' · sharpness ' + f.beta;
 }
 function plot() {
   const c = chart.getContext('2d'), w = chart.width, h = chart.height; c.clearRect(0, 0, w, h);
@@ -67,7 +83,7 @@ if (!isMainThread && workerData?.flag) {
   const { port, host, title, flag } = workerData, clients = new Set(), history = [];
   let latest = null, sent = null, done = null;
   const send = (res, m) => res.write(`data: ${JSON.stringify(m)}\n\n`);
-  const frame = (f) => ({ ...f, image: Buffer.from(f.image).toString('base64') });
+  const frame = (f) => ({ ...f, views: f.views.map((v) => ({ ...v, image: Buffer.from(v.image).toString('base64') })) });
   const server = http.createServer((req, res) => {
     if (req.url === '/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
