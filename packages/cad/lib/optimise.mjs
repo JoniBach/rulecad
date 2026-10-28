@@ -93,7 +93,7 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
   const spec = discretise(r.problem), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
-  const o = !fresh && !process.env.CAD_NO_CACHE && host.exists(densities) ? (({ density, ...x }) => ({ ...x, density: Float64Array.from(density) }))(JSON.parse(host.readText(densities))) : optimise(spec, { onStep });
+  const o = !fresh && !process.env.CAD_NO_CACHE && host.exists(densities) ? (({ density, ...x }) => ({ ...x, density: Float64Array.from(density) }))(JSON.parse(host.readText(densities))) : optimise(spec, { onStep: onStep && ((st) => onStep({ ...st, grid: spec.grid })) });
   if (!host.exists(densities)) host.writeText(densities, JSON.stringify({ ...o, density: Array.from(o.density) }));
   // Regions as data: a part's triangles are named, not copied
   const named = (list) => list.map(({ triangles, ...x }) => x);

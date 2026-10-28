@@ -506,3 +506,22 @@ test('a solid part fills each cube by the share of it inside, so its volume is r
     assert.ok(d.every((x) => x >= 0 && x <= 1));
   }
 });
+
+test('the live view: serves its page, streams each step, and its stop button sets the flag the run reads', async () => {
+  const { liveView } = await import('./lib/live.mjs');
+  const view = await liveView({ port: 0, title: 'a test run' });
+  try {
+    assert.match(await (await fetch(view.url)).text(), /a test run/);
+    view.step({ step: 3, steps: 10, compliance: 12.5, change: 0.1, beta: 1, grid: { nx: 2, ny: 2, nz: 2 }, density: Float64Array.from([0, 1, 0, 0, 0, 0, 0.5, 0]) });
+    const events = await fetch(new URL('events', view.url)), reader = events.body.getReader();
+    let text = '';
+    while (!text.includes('"frame"')) text += new TextDecoder().decode((await reader.read()).value);
+    const m = JSON.parse(text.split('data: ').at(-1));
+    assert.equal(m.frame.step, 3);
+    assert.deepEqual([...Buffer.from(m.frame.image, 'base64')], [0, 255, 128, 0]); // seen from above: the densest in each column
+    assert.equal(view.stopped(), false);
+    await fetch(new URL('stop', view.url), { method: 'POST' });
+    assert.equal(view.stopped(), true);
+    reader.cancel();
+  } finally { await view.close(); }
+});
