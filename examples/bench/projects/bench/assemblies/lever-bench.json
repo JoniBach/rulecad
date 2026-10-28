@@ -1,0 +1,81 @@
+{
+  "title": "Lever bench, assembled",
+  "kind": "fit",
+  "uses": [
+    "bench"
+  ],
+  "note": "The rig with a specimen bolted on edge, the gauge arm on top and the hanger on the load bolt (bolts not drawn). Swap the specimen's object for lever-bar, lever-plate or lever:both.",
+  "items": [
+    {
+      "id": "rig",
+      "object": "rig"
+    },
+    {
+      "id": "arm",
+      "object": "gauge-arm",
+      "at": [
+        0,
+        0,
+        "rig.height"
+      ]
+    },
+    {
+      "id": "specimen",
+      "object": "lever",
+      "rotate": [
+        90,
+        0,
+        0
+      ],
+      "at": [
+        0,
+        0,
+        "bench.bolt_z"
+      ]
+    },
+    {
+      "id": "hanger",
+      "object": "hanger",
+      "rotate": [
+        90,
+        0,
+        0
+      ],
+      "at": [
+        "bench.span",
+        "0 - bench.thickness",
+        "bench.bolt_z"
+      ]
+    }
+  ],
+  "fits": [
+    {
+      "a": "specimen.body",
+      "b": "rig.body",
+      "min": 0,
+      "note": "The specimen lies flat on the wall's face",
+      "label": "Specimen on wall"
+    },
+    {
+      "a": "arm.body",
+      "b": "rig.body",
+      "min": 0,
+      "note": "The arm sits on the wall's top",
+      "label": "Arm on wall"
+    },
+    {
+      "a": "hanger.body",
+      "b": "specimen.body",
+      "min": 0,
+      "note": "The hanger lies against the specimen",
+      "label": "Hanger on specimen"
+    },
+    {
+      "a": "arm.body",
+      "b": "specimen.body",
+      "min": 1,
+      "note": "The arm clears the specimen as it bends",
+      "label": "Arm over specimen"
+    }
+  ]
+}

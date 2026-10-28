@@ -1,19 +1,20 @@
-// Optimisation problems and analysis: problems/<name>.json in a project describes a flat part to optimise (where
-// material may go, what stays solid or empty, supports, loads, material); @rulecad/topopt finds the stiffest layout,
-// and @rulecad/fea analyses any flat part under the same problem's loads (an object's "analysis", run by cad check).
-// The problem file is the source: a result is derived from it, cached by everything it's made from, and remade only
-// when one of those changes. A name may pick a variant: lever:both.
+// Optimisation problems and analysis: problems/<name>.json in a project describes a part to optimise, flat (2D) or
+// solid (3D): where material may go, what stays solid or empty, supports, loads, material. @rulecad/topopt finds the
+// stiffest layout, and @rulecad/fea analyses any part under the same problem's loads (an object's "analysis", run by
+// cad check). The problem file is the source: a result is derived from it, cached by everything it's made from, and
+// remade only when one of those changes. A name may pick a variant: lever:both. A 3D region can be a named part of
+// another design in the project ({ "part": "envelope.body" }), as it's built.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { host } from './host.mjs';
 import { paths } from './workspace.mjs';
-import { resolve, loadRuleSet, evaluate } from './rules.mjs';
+import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, area } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area } from '@rulecad/topopt';
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
-const VERSION = 1, source = (m) => fs.readFileSync(new URL(import.meta.resolve(m)), 'utf8'); // the solver's code: a change remakes results
+const VERSION = 2, source = (m) => fs.readFileSync(new URL(import.meta.resolve(m)), 'utf8'); // the solver's code: a change remakes results
 export const problemFile = (project, name) => path.join(paths.project(project), 'problems', `${name}.json`);
 export const hasProblem = (project, ref) => host.exists(problemFile(project, String(ref).split(':')[0]));
 
@@ -21,7 +22,7 @@ export const hasProblem = (project, ref) => host.exists(problemFile(project, Str
  * A problem with every expression worked out: what @rulecad/topopt takes, with its material and settings.
  * @param {string} project @param {string} ref name, or name:variant
  */
-export function readProblem(project, ref) {
+export async function readProblem(project, ref) {
   const [name, variant] = String(ref).split(':'), file = problemFile(project, name);
   if (!host.exists(file)) throw new Error(`no problem "${name}" (projects/${project}/problems/${name}.json)`);
   const p = JSON.parse(host.readText(file));
@@ -35,56 +36,108 @@ export function readProblem(project, ref) {
     return v;
   };
   const ev = (x) => evaluate(x, lookup), pt = (a) => a.map(ev);
-  const region = (r) => (r.points ? { points: r.points.map(pt) } : r.size ? { at: pt(r.at), size: r.size.map(ev) } : { at: pt(r.at), r: ev(r.r) });
+  // A named part of another design in the project, as triangles (built with its defaults)
+  const parts = new Map();
+  const part = async (ref) => {
+    if (!parts.has(ref)) {
+      const [object, partName] = ref.split('.'), { build, locate } = await import('./design.mjs');
+      const b = await build(locate(`${project}/${object}`)), found = partName ? b.parts.find((q) => q.name === partName) : b.parts.find((q) => q.role !== 'support');
+      if (!found) throw new Error(`${path.basename(file)}: ${object} has no part "${partName}" (parts: ${b.parts.map((q) => q.name).join(', ')})`);
+      parts.set(ref, found.triangles);
+    }
+    return parts.get(ref);
+  };
+  const region = async (r) => {
+    if (r.part) return { triangles: await part(r.part), part: r.part };
+    if (r.points) return { points: r.points.map(pt) };
+    if (r.size) return { at: pt(r.at), size: r.size.map(ev) };
+    if (r.length != null) return { at: pt(r.at), r: ev(r.r), length: ev(r.length), axis: r.axis || 'z', ...(r.teardrop ? { teardrop: r.teardrop } : {}) };
+    return { at: pt(r.at), ...(r.r != null ? { r: ev(r.r) } : {}) };
+  };
+  const regions = (list) => Promise.all([list || []].flat().map(region));
   const m = values[p.material];
   if (typeof m?.modulus !== 'number' || typeof m?.poisson !== 'number') throw new Error(`material ${p.material}: its rule set needs modulus (MPa) and poisson`);
+  const space = await regions(p.space), dim = space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
+  // The build direction: a direction ('+z'), or a variable holding one
+  const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
   const problem = {
-    space: [p.space].flat().map(region), keep: (p.keep || []).map(region), avoid: (p.avoid || []).map(region),
-    supports: p.supports.map((s) => ({ at: pt(s.at), ...(s.r != null ? { r: ev(s.r) } : {}), fix: s.fix || 'xy' })),
-    loads: p.loads.map((l) => ({ at: pt(l.at), ...(l.r != null ? { r: ev(l.r) } : {}), force: pt(l.force), case: l.case || 'load' })),
+    space, keep: await regions(p.keep), avoid: await regions(p.avoid),
+    supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),
+    loads: await Promise.all(p.loads.map(async (l) => ({ ...(await region(l)), force: pt(l.force), case: l.case || 'load' }))),
     cases: Object.fromEntries(Object.entries(p.cases || {}).map(([k, w]) => [k, ev(w)])),
-    material: { E: m.modulus, nu: m.poisson }, thickness: ev(p.thickness), cell: ev(p.cell), volume: ev(p.volume),
+    material: { E: m.modulus, nu: m.poisson }, ...(dim === 2 ? { thickness: ev(p.thickness) } : {}), cell: ev(p.cell), volume: ev(p.volume),
     ...(p.filter != null ? { filter: ev(p.filter) } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
+    ...(overhang && overhang !== 'none' ? { overhang } : {}),
   };
+  if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
-  return { ref, name, variant, file, title: p.title || name, material: { name: p.material, ...m }, problem, outline };
+  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline };
 }
 
 /**
- * The optimised layout for a problem, from the cache when nothing it depends on has changed.
+ * The optimised layout for a problem, from the cache when nothing it depends on has changed. A 2D result has outlines
+ * (closed loops in mm); a 3D one has a mesh ({ vertices, faces }, a closed surface in mm).
  * @param {string} project @param {string} ref
  * @param {{ onStep?: Function, fresh?: boolean }} [options] fresh: run it even if it's cached
  */
-export function optimised(project, ref, { onStep, fresh = false } = {}) {
-  const r = readProblem(project, ref);
-  const hash = crypto.createHash('sha256').update(JSON.stringify([VERSION, r.problem, r.outline, source('@rulecad/topopt'), source('@rulecad/fea')])).digest('hex');
-  const file = paths.cache('optimise', `${hash}.json`);
+export async function optimised(project, ref, { onStep, fresh = false } = {}) {
+  const r = await readProblem(project, ref), topopt = source('@rulecad/topopt'), [solver] = topopt.split('// ---------- shapes from results ----------');
+  const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
+  // Two keeps: the densities, by the problem and the code that decides them (the slow part), and the shape drawn from
+  // them, by everything: a change to how shapes are drawn redraws them without optimising again
+  const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
-  const spec = discretise(r.problem);
-  const o = optimise(spec, { onStep });
-  const loops = outlines(spec.grid, o.density, spec.origin, r.outline);
+  const spec = discretise(r.problem), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
+  const o = !fresh && !process.env.CAD_NO_CACHE && host.exists(densities) ? (({ density, ...x }) => ({ ...x, density: Float64Array.from(density) }))(JSON.parse(host.readText(densities))) : optimise(spec, { onStep });
+  if (!host.exists(densities)) host.writeText(densities, JSON.stringify({ ...o, density: Array.from(o.density) }));
+  // Regions as data: a part's triangles are named, not copied
+  const named = (list) => list.map(({ triangles, ...x }) => x);
+  const shape = r.dim === 2 ? (() => {
+    const loops = outlines(spec.grid, o.density, spec.origin, r.outline);
+    return { outlines: loops.map((l) => l.map(([x, y]) => [round(x), round(y)])), area: loops.reduce((s, l) => s + area(l), 0) };
+  })() : (() => {
+    // The surface's level, found so the solid holds as much material as the optimised densities do (drawn at 0.5,
+    // thin members come out thinner than they are)
+    const want = o.density.reduce((t, d) => t + d, 0) * spec.grid.h ** 3, at = (iso) => surface(spec.grid, o.density, spec.origin, { smooth: r.outline.smooth, iso });
+    let lo = 0.2, hi = 0.8, best = at(0.5), iso = 0.5;
+    for (let k = 0; k < 10 && Math.abs(meshVolume(best.vertices, best.faces) / want - 1) > 0.003; k++) {
+      if (meshVolume(best.vertices, best.faces) < want) hi = iso; else lo = iso; // a lower level encloses more
+      iso = (lo + hi) / 2; best = at(iso);
+    }
+    const { vertices, faces } = best;
+    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso };
+  })();
   const result = {
-    problem: ref, title: r.title, hash, material: r.material.name, thickness: r.problem.thickness,
-    grid: spec.grid, origin: spec.origin, regions: spec.regions, outlines: loops.map((l) => l.map(([x, y]) => [round(x), round(y)])),
-    area: loops.reduce((s, l) => s + area(l), 0), volume: o.volume, compliance: o.compliance, cases: o.cases,
+    problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
+    grid: spec.grid, origin: spec.origin, regions: { keep: named(spec.regions.keep), avoid: named(spec.regions.avoid) }, ...shape,
+    volume: o.volume, compliance: o.compliance, cases: o.cases, overhang: r.problem.overhang || null,
     steps: o.steps, converged: o.converged, seconds: o.seconds, history: o.history, density: Array.from(o.density, (d) => round(d, 3)),
-    supports: r.problem.supports, loads: r.problem.loads,
+    supports: named(r.problem.supports), loads: named(r.problem.loads),
   };
   host.writeText(file, JSON.stringify(result));
   return result;
+}
+
+// A closed mesh's volume (mm³), by the divergence theorem
+function meshVolume(vertices, faces) {
+  let v = 0;
+  for (const [i, j, k] of faces) { const a = vertices[i], b = vertices[j], c = vertices[k]; v += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6; }
+  return v;
 }
 
 // What a design gets as v.problems[name]: the outlines and regions to build from, and the numbers to report
 export const forDesign = ({ density, history, ...r }) => r;
 
 /**
- * Analyse a flat part (triangles, z up, the plate lying on the bed) under a problem's supports and loads, on its grid:
- * each cell is as solid as the share of the problem's thickness the part fills above it.
+ * Analyse a part under a problem's supports and loads, on its grid. A flat part (2D problem: triangles, z up, the
+ * plate lying on the bed): each cell is as solid as the share of the problem's thickness the part fills above it. A
+ * solid part (3D): each cube is solid if its centre is inside the part.
  * @param {number[][][]} triangles @param {string} project @param {string} ref
  */
-export function analysePart(triangles, project, ref) {
-  const r = readProblem(project, ref), { problem } = r, h = problem.cell;
+export async function analysePart(triangles, project, ref) {
+  const r = await readProblem(project, ref), { problem } = r, h = problem.cell;
+  if (r.dim === 3) return analyseSolid(triangles, r);
   // The grid covers the part and the problem's space
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const t of triangles) for (const [x, y] of t) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -117,6 +170,22 @@ export function analysePart(triangles, project, ref) {
     return { name, force: size, deflection, stiffness: deflection ? size / deflection : Infinity, stress: most };
   });
   return { problem: ref, material: r.material, cases, volume: volume(triangles), grid: { nx, ny, h }, origin: [x0, y0], density };
+}
+
+// A solid part on the problem's grid: the part itself is the space (keep and avoid regions don't apply), so the
+// supports and loads land on it as they would on an optimised layout
+function analyseSolid(triangles, r) {
+  const { problem } = r, spec = discretise({ ...problem, space: { triangles }, keep: [], avoid: [], volume: 1 });
+  const g = makeGrid(spec.grid), density = Float64Array.from(spec.passive, (p) => (p === 0 ? 1 : 0));
+  if (!density.some((d) => d)) throw new Error('the part is smaller than one cell of the problem: use a smaller cell');
+  const a = analyse({ grid: g, density, material: problem.material, fixed: spec.fixed, loads: spec.loads.map((l) => l.force) });
+  const cases = spec.loads.map((l, c) => {
+    const deflection = l.size ? a.compliance[c] / l.size : 0;
+    let most = 0;
+    for (let e = 0; e < density.length; e++) if (density[e]) most = Math.max(most, a.stress[c][e]);
+    return { name: l.name, force: l.size, deflection, stiffness: deflection ? l.size / deflection : Infinity, stress: most };
+  });
+  return { problem: r.ref, dim: 3, material: r.material, cases, volume: volume(triangles), grid: spec.grid, origin: spec.origin, density };
 }
 
 // How much of the thickness the part fills over each cell's centre: a ray straight up through the part enters it

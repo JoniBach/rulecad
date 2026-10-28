@@ -378,6 +378,26 @@ export function main (v) {
 `optimisedOutline` gives the outline as a 2D shape, its keep regions added and avoid regions cut exactly, so bolt
 holes come out true.
 
+### Solid parts (3D)
+
+A problem whose regions have a z is solid. It has no thickness, and takes more kinds of region:
+- **A box:** `size`.
+- **A cylinder:** `r`, `length` and `axis`. Along x or y it can be a teardrop: `"teardrop": "-z"` for a boss,
+  `"+z"` for a hole. It gets a 45° point, so it prints.
+- **A ball:** `r`.
+- **A named part of another design in the project:** `{ "part": "envelope.body" }`.
+
+Supports and loads can be any region; a force has x, y and z. `"overhang": "+z"` keeps only material that prints
+without supports standing that way up (a variable holding `"+z"` or `"none"` works too, so a variant can switch it).
+
+`cad optimise` draws the result's four views in `.preview/`. A design builds the result with
+`v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops })`, which adds the keep regions and cuts the avoid
+regions exactly. The surface is a big mesh, so set the object's `"engine": "manifold"`. An `analysis` of a solid part
+voxelises it on the problem's grid.
+
+Grids in 3D are solved by multigrid. A 16 × 16 × 40 grid (about 10,000 cubes) takes a second or two a step, so a whole
+optimisation takes a few minutes. The result is kept, so it's worked out once.
+
 ### Analysis
 
 Any flat part, optimised or not, can be checked under a problem's supports and loads. An object's `analysis` names

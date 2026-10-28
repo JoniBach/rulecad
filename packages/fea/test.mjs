@@ -44,3 +44,35 @@ test('a part held by nothing says so', () => {
   const g = grid({ nx: 4, ny: 2 });
   assert.throws(() => solve(g, { scale: new Float64Array(8).fill(1), ke: cellStiffness(0.3), fixed: new Uint8Array(g.dofs), loads: [new Float64Array(g.dofs)] }), /nothing is held/);
 });
+
+// A 3D cantilever L long, H deep and W wide, held at x = 0, loaded F down (−z) at the far end
+function cantilever3({ L = 40, H = 8, W = 4, F = 10, E = 2000 } = {}) {
+  const g = grid({ nx: L, ny: W, nz: H, h: 1 }), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs), n = (W + 1) * (H + 1);
+  for (let k = 0; k <= H; k++) for (let j = 0; j <= W; j++) { for (let d = 0; d < 3; d++) fixed[3 * g.node(0, j, k) + d] = 1; f[3 * g.node(L, j, k) + 2] = -F / n; }
+  return { g, fixed, f, beam: (F * L ** 3) / (3 * E * ((W * H ** 3) / 12)), E };
+}
+
+test('3D: a cantilever of cubes bends as beam theory says, within 2%', () => {
+  const { g, fixed, f, beam, E } = cantilever3();
+  const r = analyse({ grid: g, density: new Float64Array(g.cells).fill(1), material: { E, nu: 0.3 }, fixed, loads: [f] });
+  const tip = -r.u[0][3 * g.node(g.nx, g.ny / 2, g.nz / 2) + 2];
+  assert.ok(Math.abs(tip / beam - 1) < 0.02, `tip ${tip} against ${beam}`);
+});
+
+// Densities like a topology optimisation's: mostly solid or nearly empty (a millionfold apart), in a pattern
+const contrast = (cells, seed = 1) => Float64Array.from({ length: cells }, (_, e) => ((e * 7919 + seed * 104729) % 97 < 55 ? 1 : 1e-6));
+
+test('multigrid agrees with the direct solver, in 2D and 3D, with stiffnesses a millionfold apart', () => {
+  const g2 = grid({ nx: 64, ny: 32, h: 1 }), f2 = new Float64Array(g2.dofs), x2 = new Uint8Array(g2.dofs);
+  for (let j = 0; j <= 32; j++) { x2[2 * g2.node(0, j)] = 1; x2[2 * g2.node(0, j) + 1] = 1; }
+  f2[2 * g2.node(64, 16) + 1] = -1;
+  const { g: g3, fixed: x3, f: f3 } = cantilever3({ L: 32, H: 8, W: 8 });
+  for (const [g, fixed, f] of [[g2, x2, f2], [g3, x3, f3]]) {
+    const ke = cellStiffness(0.3, g.dim), scale = contrast(g.cells).map((d) => d * 1000);
+    for (let e = 0; e < g.cells; e += 5) scale[e] = 1000; // and a solid path, so the load is carried
+    const a = solve(g, { scale, ke, fixed, loads: [f] }), b = solve(g, { scale, ke, fixed, loads: [f], method: 'mg', tol: 1e-10 });
+    const ca = jsBackend.dot(f, a.u[0]), cb = jsBackend.dot(f, b.u[0]);
+    assert.ok(Math.abs(cb / ca - 1) < 1e-6, `${g.dim}D: compliance ${cb} against ${ca}`);
+    assert.ok(b.iterations < 200, `${g.dim}D: ${b.iterations} iterations`);
+  }
+});

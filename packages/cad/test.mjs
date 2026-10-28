@@ -435,3 +435,30 @@ test('optimising a problem: cad optimise draws it and caches it, a design builds
     assert.match(cad('check', 'beam/arm', '--set', 'problem=arm:both'), /optimising arm:both|arm down/);
   } finally { done(); }
 });
+
+test('3D: a problem whose space is another design\'s part, optimised, built as a solid and analysed', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'post');
+    for (const d of ['problems', 'objects']) fs.mkdirSync(path.join(project, d), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'post', objects: ['envelope', 'post'] }));
+    // The envelope: a block 12 × 12 × 24 mm standing on the bed
+    fs.writeFileSync(path.join(project, 'objects', 'envelope.json'), JSON.stringify({ name: 'envelope', version: '0.1.0', variables: { w: { value: 12, unit: 'mm' }, h: { value: 24, unit: 'mm' } } }));
+    fs.writeFileSync(path.join(project, 'objects', 'envelope.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ center: [0, 0, v.h / 2], size: [v.w, v.w, v.h] }) }\n");
+    fs.writeFileSync(path.join(project, 'problems', 'post.json'), JSON.stringify({
+      title: 'A post', material: 'pla', cell: 2, volume: 0.3, filter: 3, steps: 30, overhang: '+z',
+      space: { part: 'envelope.body' }, keep: [{ at: [0, 0, 22], r: 4, length: 4, axis: 'z' }],
+      supports: [{ at: [0, 0, 1], size: [12, 12, 2] }], loads: [{ at: [0, 0, 23], r: 3, length: 2, axis: 'z', force: [10, 0, 0], case: 'push' }],
+    }));
+    fs.writeFileSync(path.join(project, 'objects', 'post.json'), JSON.stringify({ name: 'post', version: '0.1.0', engine: 'manifold',
+      variables: { problem: { type: 'problem', value: 'post' } }, analysis: [{ problem: 'post' }] }));
+    fs.writeFileSync(path.join(project, 'objects', 'post.js'), 'export function main (v) { return v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops }) }\n');
+    const out = cad('optimise', 'post/post');
+    assert.match(out, /push: moves [\d.e-]+ mm along its load/);
+    assert.match(out, /printable built \+z/);
+    assert.ok(fs.existsSync(path.join(ws, '.preview', 'post', 'post-optimised.png')), 'a preview of the surface');
+    const checked = cad('check', 'post/post');
+    assert.match(checked, /closed solid/);
+    assert.match(checked, /post push: moves [\d.e-]+ mm under 10 N/);
+  } finally { done(); }
+});

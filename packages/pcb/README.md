@@ -78,5 +78,7 @@ npx cad export macropad/board     # <name>-fab.zip for JLCPCB, KiCad files, the 
   Everything else is drawn by rule.
 - The autorouter and footprint versions are pinned, so a board builds the same until rulecad moves them on; each move is
   checked against boards built before it (same tracks, same checks, same fab files). Nothing to add to your
-  package.json.
+  package.json. tscircuit itself is pinned too: the Gerber writer lists it as a peer, so npm would otherwise install
+  the newest, and since its 0.0.3032 that has pulled in an old circuit-json that the design checks can't load
+  (tscircuit/circuit-json-to-gerber#200).
 - Ordering is your click: `cad export` makes the fab zip and never places an order.

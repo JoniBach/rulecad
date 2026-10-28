@@ -21,7 +21,7 @@ import { runSandboxed, sandboxed } from './sandbox.mjs';
 export { polygons };
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import crypto from 'node:crypto';
 import { resolve, loadRuleSet } from './rules.mjs';
@@ -91,12 +91,12 @@ export function layoutsOf(d, object) {
 }
 
 // The optimised layouts an object's problem variables pick, by name, for v.problems
-export function problemsOf(d, object, values) {
+export async function problemsOf(d, object, values) {
   const out = {};
   for (const [name, v] of Object.entries(object.variables || {})) if (v.type === 'problem') {
     const ref = values[name];
     if (!out[ref]) {
-      const r = optimised(d.project, ref, { onStep: (s) => s.step === 1 && console.error(`optimising ${ref} (once: the result is cached until the problem changes)…`) });
+      const r = await optimised(d.project, ref, { onStep: (s) => s.step === 1 && console.error(`optimising ${ref} (once: the result is cached until the problem changes)…`) });
       out[ref] = forDesign(r);
     }
   }
@@ -115,7 +115,8 @@ const CACHE = paths.cache('builds'), CACHE_VERSION = 2;
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
-const own = source(import.meta.url) + source(import.meta.resolve('@rulecad/shapes')) + packageVersion('@jscad/modeling');
+const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes')));
+const own = source(import.meta.url) + fs.readdirSync(shapesDir).filter((f) => f.endsWith('.mjs')).sort().map((f) => source(pathToFileURL(path.join(shapesDir, f)).href)).join('') + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
 export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
   if (e.code === 'ERR_MODULE_NOT_FOUND' && /@rulecad\/pcb/.test(e.message)) throw new Error('boards need the board engine: npm install @rulecad/pcb');
   throw e;
@@ -150,7 +151,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   if (Object.keys(files).length) values.layouts = Object.fromEntries(Object.entries(files).map(([n, l]) => [n, { ...l, keys: keys(l), width: width(l), depth: depth(l) }]));
   // Optimised layouts: a "type": "problem" variable picks a problem in the project's problems/; the design gets the
   // one it picked as v.problems[name] (lib/optimise.mjs), optimised the first time and cached after
-  const problems = problemsOf(d, object, values);
+  const problems = await problemsOf(d, object, values);
   if (Object.keys(problems).length) values.problems = problems;
 
   // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether

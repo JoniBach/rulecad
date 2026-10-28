@@ -1,7 +1,7 @@
 # @rulecad/fea
 
-How far a flat part bends under load. Finite elements for a plate loaded in its own plane (plane stress) on a grid
-of square cells, each with its own stiffness. Plain JavaScript in typed arrays, no dependencies: it runs in browsers
+How far a part bends under load. Finite elements on a grid of cells, each with its own stiffness: flat parts loaded
+in their own plane (2D, plane stress, square cells) and solid parts (3D, cubes). Plain JavaScript in typed arrays, no dependencies: it runs in browsers
 and Node alike. Units are millimetres and newtons, so Young's modulus is in MPa and movement in mm.
 
 ```js
@@ -18,19 +18,28 @@ r.stress[0];       // each cell's von Mises stress (MPa)
 r.deflection[0];   // { most, at }: the largest movement of solid material, and where
 ```
 
-- **Cells:** 4-node squares (bilinear, integrated at 2 × 2 Gauss points). Each cell's density, 0 to 1, scales its
+- **3D:** give the grid `nz` too (`grid({ nx, ny, nz, h })`) and every node has x, y and z.
+- **Cells:** 4-node squares (bilinear, integrated at 2 × 2 Gauss points) or 8-node cubes (trilinear, 2 × 2 × 2). Each cell's density, 0 to 1, scales its
   stiffness (by `density ** penal`), so the same code analyses a part, a part filling only some of its thickness, and
   a topology optimisation's in-between designs.
-- **Solvers:** `direct`, a banded Cholesky factorisation (exact; quick for 2D grids up to about 100,000 cells), or
-  `cg`, conjugate gradients that never assemble the matrix (for bigger grids, and what faster backends speed up).
+- **Solvers:**
+  - `direct`: a banded Cholesky factorisation. Exact; quick for 2D grids up to about 100,000 cells and small 3D ones.
+  - `cg`: conjugate gradients with a diagonal preconditioner.
+  - `mg`: conjugate gradients with a multigrid preconditioner, the default in 3D. Coarser grids halve each side. Each
+    coarse cell's matrix is built from its children's exactly (Galerkin), so it stays accurate when cells'
+    stiffnesses differ a millionfold, as they do in topology optimisation. A cantilever of 16,000 cubes takes 9
+    iterations, where plain `cg` takes 371.
 - **Backends:** the few operations `cg` repeats (the stiffness product, its diagonal, dot products) sit behind a small
   interface. `jsBackend`, plain JavaScript in 64-bit floats, is the reference; a WebGPU or TensorFlow.js backend
   implements the same and passes `backend-suite.mjs` in this repository.
 
-Tested against beam theory: a cantilever's tip moves within 1% of `F L³ / 3 E I`.
+Tested against beam theory: a cantilever's tip moves within 1% of `F L³ / 3 E I` in 2D, and within 2% in 3D.
+Multigrid is tested against the direct solver with stiffnesses a millionfold apart.
 
 ## Sources
 
+- Amir, Aage, Lazarov (2014). On multigrid-CG for efficient topology optimization. *Structural and Multidisciplinary
+  Optimization* 49, 815–829.
 - Andreassen, Clausen, Schevenels, Lazarov, Sigmund (2011). Efficient topology optimization in MATLAB using 88 lines
   of code. *Structural and Multidisciplinary Optimization* 43, 1–16.
 - Cook, Malkus, Plesha, Witt (2002). *Concepts and Applications of Finite Element Analysis*, 4th ed. Wiley.

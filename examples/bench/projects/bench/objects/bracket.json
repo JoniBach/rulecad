@@ -1,0 +1,48 @@
+{
+  "name": "bracket",
+  "title": "Bracket bench: optimised bracket",
+  "description": "Bracket B (and C, the variant printable): the stiffest bracket of the same mass the optimiser finds for the bench's load (problems/bracket.json); for C, only what prints without supports standing on its back plate.",
+  "version": "0.1.0",
+  "uses": [
+    "bench",
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Standing on its back plate, as optimised. 100% infill, 0.2 mm layers, the same filament as the other brackets. Standing up, even B is almost self-supporting: both B and C have about 100 mm² of small faces a little past 45° (from smoothing the cubes into a surface). Most printers bridge them; if yours doesn't, let the slicer support them.",
+  "variables": {
+    "problem": {
+      "type": "problem",
+      "value": "bracket",
+      "choice": [
+        "bracket",
+        "bracket:printable"
+      ],
+      "rule": "The optimisation problem: free, or (bracket:printable) printable without supports"
+    },
+    "target": {
+      "value": "bench.bracket_fill * bench.bracket_w * bench.bracket_h * (bench.reach + bench.plate)",
+      "unit": "mm³",
+      "rule": "Every bracket's volume: the same share of the envelope",
+      "show": true,
+      "label": "Volume"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments in each round boss and hole"
+    }
+  },
+  "variants": {
+    "printable": {
+      "problem": "bracket:printable"
+    }
+  },
+  "analysis": [
+    {
+      "problem": "bracket",
+      "volume": "target",
+      "tolerance": 0.02
+    }
+  ]
+}

@@ -26,8 +26,8 @@ look at the preview, report fits with numbers. `npx cad agents` adds it to an ex
 
 Also [`@rulecad/pcb`](packages/pcb), keyboard circuit boards from rules (Gerbers and a JLCPCB BOM, no framework), and
 [`@rulecad/rules`](packages/rules), researched facts (a Bambu Lab X1C, Cherry MX, OEM keycaps, the Raspberry Pi Pico,
-materials for analysis) as public-domain data, each value with its source. [`examples/bench-lever`](examples/bench-lever)
-is a test block for the optimiser: four levers of equal mass to print and load-test.
+materials for analysis) as public-domain data, each value with its source. [`examples/bench`](examples/bench)
+has test blocks for the optimiser: levers (2D) and wall brackets (3D) of equal mass to print and load-test.
 
 **The pieces**, each useful alone:
 

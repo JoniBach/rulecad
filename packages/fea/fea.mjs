@@ -1,96 +1,155 @@
-// Finite elements for flat parts: how far a plate bends under load in its own plane (plane stress), on a grid of
-// square cells, each with its own stiffness. Plain numbers in typed arrays, no dependencies: it runs in browsers and
-// Node alike. Units are millimetres and newtons, so stiffness (Young's modulus) is in MPa (N/mm²) and displacement in mm.
+// Finite elements on a grid of cells, each with its own stiffness: flat parts loaded in their own plane (2D, plane
+// stress, square cells) and solid parts (3D, cubes). Plain numbers in typed arrays, no dependencies: it runs in
+// browsers and Node alike. Units are millimetres and newtons, so stiffness (Young's modulus) is in MPa (N/mm²) and
+// displacement in mm.
 //
-// The grid: nx × ny square cells of side h, cell (i, j) with i along x and j along y, its lower-left corner at
-// (i h, j h). Nodes are the cells' corners, two unknowns each (x and y displacement): dof 2n is node n's x, 2n + 1 its
-// y. Nodes are numbered along the grid's shorter side, which keeps the stiffness matrix's band narrow.
+// The grid: nx × ny (× nz) cells of side h, cell (i, j, k) with i along x, j along y and k along z, its lowest corner
+// at (i h, j h, k h). Nodes are the cells' corners, with an unknown for each direction they can move (2 in 2D, 3 in
+// 3D): node n's x is dof d n, its y d n + 1 (and z d n + 2), d the dimension. Nodes are numbered with the grid's
+// longest side changing slowest, which keeps the stiffness matrix's band narrow.
 //
-// Two ways to solve: "direct" (banded Cholesky factorisation: exact, and quick for 2D grids up to about 100,000
-// cells) and "cg" (conjugate gradients, never assembling the matrix: for big grids, and what faster backends speed up).
-// The work cg repeats sits behind a backend, so a GPU can do it; plain JavaScript in 64-bit floats is the reference.
+// Three ways to solve:
+//   "direct"  banded Cholesky factorisation: exact; quick for 2D grids up to about 100,000 cells and small 3D ones
+//   "cg"      conjugate gradients, never assembling the matrix, with a diagonal (Jacobi) preconditioner
+//   "mg"      conjugate gradients with a multigrid preconditioner: for big grids, and 3D. Each coarser grid's cells are
+//             built from the finer grid's exactly (Galerkin: R K P, cell by cell), so it stays accurate when cells'
+//             stiffnesses differ a millionfold, as they do in topology optimisation (Amir, Aage, Lazarov 2014)
+// The work the solvers repeat (a stiffness product, its diagonal, dot products) sits behind a backend, so a GPU can do
+// it; plain JavaScript in 64-bit floats is the reference.
 
-/** @typedef {{ nx: number, ny: number, h: number }} GridSize cells along x and y, and their side in mm */
-/** @typedef {GridSize & { nodes: number, dofs: number, edof: Int32Array, node: (i: number, j: number) => number }} Grid */
+/** @typedef {{ nx: number, ny: number, nz?: number, h: number }} GridSize cells along x, y (and z for 3D), and their side in mm */
+/** @typedef {GridSize & { dim: 2 | 3, cells: number, nodes: number, dofs: number, cellDofs: number, edof: Int32Array, node: (i: number, j: number, k?: number) => number }} Grid */
 /** @typedef {{ E: number, nu: number }} Material Young's modulus (MPa) and Poisson's ratio */
 
+// A cell's corners, in order: counter-clockwise from the lowest (then the same again a layer up, in 3D)
+const CORNERS = { 2: [[0, 0], [1, 0], [1, 1], [0, 1]], 3: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] };
+
 /**
- * A grid of square cells, with each cell's eight unknowns (its corners counter-clockwise from lower left, x then y).
+ * A grid of square (2D) or cube (3D) cells, with each cell's unknowns: its corners in order, x, y (and z) for each.
  * @param {GridSize} size
  * @returns {Grid}
  */
-export function grid({ nx, ny, h = 1 }) {
-  if (!(nx >= 1 && ny >= 1 && Number.isInteger(nx) && Number.isInteger(ny))) throw new Error(`a grid needs whole numbers of cells (got ${nx} × ${ny})`);
-  const alongY = ny <= nx; // number nodes along the shorter side
-  const node = alongY ? (i, j) => i * (ny + 1) + j : (i, j) => j * (nx + 1) + i;
-  const edof = new Int32Array(nx * ny * 8);
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const e = j * nx + i, corners = [node(i, j), node(i + 1, j), node(i + 1, j + 1), node(i, j + 1)];
-    for (let k = 0; k < 4; k++) { edof[e * 8 + 2 * k] = 2 * corners[k]; edof[e * 8 + 2 * k + 1] = 2 * corners[k] + 1; }
+export function grid({ nx, ny, nz, h = 1 }) {
+  const dim = nz ? 3 : 2, n = dim === 3 ? [nx, ny, nz] : [nx, ny];
+  if (!n.every((c) => c >= 1 && Number.isInteger(c))) throw new Error(`a grid needs whole numbers of cells (got ${n.join(' × ')})`);
+  // Strides: the longest side changes slowest (ties: x slowest, then y)
+  const axes = n.map((c, a) => a).sort((a, b) => n[a] - n[b] || b - a), stride = new Array(dim);
+  let s = 1;
+  for (const a of axes) { stride[a] = s; s *= n[a] + 1; }
+  const nodes = s;
+  const node = dim === 3 ? (i, j, k) => i * stride[0] + j * stride[1] + k * stride[2] : (i, j) => i * stride[0] + j * stride[1];
+  const corners = CORNERS[dim], cellDofs = corners.length * dim, cells = n.reduce((p, c) => p * c, 1);
+  const edof = new Int32Array(cells * cellDofs);
+  for (let e = 0; e < cells; e++) {
+    const i = e % nx, j = Math.floor(e / nx) % ny, k = dim === 3 ? Math.floor(e / (nx * ny)) : 0;
+    corners.forEach((c, q) => {
+      const m = node(i + c[0], j + c[1], k + (c[2] || 0));
+      for (let d = 0; d < dim; d++) edof[e * cellDofs + q * dim + d] = dim * m + d;
+    });
   }
-  const nodes = (nx + 1) * (ny + 1);
-  return { nx, ny, h, nodes, dofs: 2 * nodes, edof, node };
+  return { nx, ny, ...(dim === 3 ? { nz } : {}), h, dim, cells, nodes, dofs: dim * nodes, cellDofs, edof, node };
 }
 
-// The strain-displacement matrix of a square cell of side h at natural coordinates (s, t), 3 × 8, row by row
-function strains(s, t, h) {
-  const corner = [[-1, -1], [1, -1], [1, 1], [-1, 1]], B = new Float64Array(24);
-  for (let k = 0; k < 4; k++) {
-    const [a, b] = corner[k], dx = (a * (1 + b * t)) / 4 * (2 / h), dy = (b * (1 + a * s)) / 4 * (2 / h);
-    B[2 * k] = dx; B[8 + 2 * k + 1] = dy; B[16 + 2 * k] = dy; B[16 + 2 * k + 1] = dx;
-  }
+// The strain-displacement matrix of a cell of side h at natural coordinates p (each -1 to 1), row by row: 3 × 8 in 2D
+// (εx, εy, γxy), 6 × 24 in 3D (εx, εy, εz, γxy, γyz, γzx)
+function strains(p, h, dim) {
+  const corners = CORNERS[dim], m = corners.length * dim, rows = dim === 3 ? 6 : 3, B = new Float64Array(rows * m);
+  corners.forEach((c, q) => {
+    const sign = c.map((x) => 2 * x - 1);
+    // dN/dx along each axis: the corner's sign along it, times (1 + sign p) along the others, over 2^dim, times 2 / h
+    const g = sign.map((sa, a) => sa * sign.reduce((f, sb, b) => (b === a ? f : f * (1 + sb * p[b])), 1) / (1 << dim) * (2 / h));
+    const col = q * dim;
+    if (dim === 2) {
+      B[col] = g[0]; B[m + col + 1] = g[1]; B[2 * m + col] = g[1]; B[2 * m + col + 1] = g[0];
+    } else {
+      B[col] = g[0]; B[m + col + 1] = g[1]; B[2 * m + col + 2] = g[2];
+      B[3 * m + col] = g[1]; B[3 * m + col + 1] = g[0];
+      B[4 * m + col + 1] = g[2]; B[4 * m + col + 2] = g[1];
+      B[5 * m + col] = g[2]; B[5 * m + col + 2] = g[0];
+    }
+  });
   return B;
 }
-// Plane stress: stress from strain for Young's modulus 1
-const elasticity = (nu) => { const f = 1 / (1 - nu * nu); return [f, f * nu, 0, f * nu, f, 0, 0, 0, f * (1 - nu) / 2]; };
+// Stress from strain for Young's modulus 1: plane stress in 2D, isotropic in 3D
+function elasticity(nu, dim) {
+  if (dim === 2) { const f = 1 / (1 - nu * nu); return [f, f * nu, 0, f * nu, f, 0, 0, 0, f * (1 - nu) / 2]; }
+  const f = 1 / ((1 + nu) * (1 - 2 * nu)), a = f * (1 - nu), b = f * nu, c = f * (1 - 2 * nu) / 2, D = new Array(36).fill(0);
+  for (let r = 0; r < 3; r++) for (let q = 0; q < 3; q++) D[r * 6 + q] = r === q ? a : b;
+  for (let r = 3; r < 6; r++) D[r * 6 + r] = c;
+  return D;
+}
 
 /**
- * A square cell's stiffness matrix (8 × 8, row by row) for Young's modulus 1 and thickness 1: the same for any cell
- * size. Integrated with 2 × 2 Gauss points, as for any bilinear element.
+ * A cell's stiffness matrix (8 × 8 in 2D, 24 × 24 in 3D, row by row) for Young's modulus 1 and a cell of side 1 (in
+ * 2D, thickness 1). In 2D it's the same for any cell size; in 3D it scales with the side. Integrated at 2 × 2 (× 2)
+ * Gauss points, as for any bilinear (trilinear) element.
  * @param {number} nu Poisson's ratio
+ * @param {2 | 3} [dim]
  * @returns {Float64Array}
  */
-export function cellStiffness(nu) {
-  const D = elasticity(nu), K = new Float64Array(64), g = 1 / Math.sqrt(3), area = 1 / 4; // h = 1: the Jacobian is 1/4
-  for (const s of [-g, g]) for (const t of [-g, g]) {
-    const B = strains(s, t, 1);
-    for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) {
-      let sum = 0;
-      for (let p = 0; p < 3; p++) for (let q = 0; q < 3; q++) sum += B[p * 8 + a] * D[p * 3 + q] * B[q * 8 + b];
-      K[a * 8 + b] += sum * area;
-    }
+export function cellStiffness(nu, dim = 2) {
+  const D = elasticity(nu, dim), m = CORNERS[dim].length * dim, rows = dim === 3 ? 6 : 3, K = new Float64Array(m * m);
+  const g = 1 / Math.sqrt(3), weight = 1 / (1 << dim); // side 1: the Jacobian is (1/2)^dim
+  const points = dim === 3 ? [-g, g].flatMap((a) => [-g, g].flatMap((b) => [-g, g].map((c) => [a, b, c]))) : [-g, g].flatMap((a) => [-g, g].map((b) => [a, b]));
+  for (const p of points) {
+    const B = strains(p, 1, dim), DB = new Float64Array(rows * m);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < m; c++) { let s = 0; for (let t = 0; t < rows; t++) s += D[r * rows + t] * B[t * m + c]; DB[r * m + c] = s; }
+    for (let a = 0; a < m; a++) for (let b = 0; b < m; b++) { let s = 0; for (let r = 0; r < rows; r++) s += B[r * m + a] * DB[r * m + b]; K[a * m + b] += s * weight; }
   }
   return K;
 }
 
 /**
- * The plain JavaScript backend: the operations conjugate gradients repeats, on Float64Arrays. Another backend (WebGPU,
- * TensorFlow.js) provides the same and is tested against this one.
- * @type {{ name: string, precision: number, operator: (g: Grid, ke: Float64Array) => { multiply: (scale: Float64Array, x: Float64Array, y: Float64Array) => void, diagonal: (scale: Float64Array, d: Float64Array) => void }, dot: (a: Float64Array, b: Float64Array) => number, axpy: (a: number, x: Float64Array, y: Float64Array) => void }}
+ * The plain JavaScript backend: the operations the iterative solvers repeat, on Float64Arrays. Another backend
+ * (WebGPU, TensorFlow.js) provides the same and is tested against this one (backend-suite.mjs).
+ * operator(g, ke): every cell's stiffness is ke (a cell matrix, shared) times scale[cell]; or with cellMatrices, each
+ * cell has its own matrix (cells × m × m), as multigrid's coarser grids do.
+ * @type {{ name: string, precision: number, operator: (g: Grid, ke: Float64Array | null, cellMatrices?: Float64Array) => { multiply: (scale: Float64Array | null, x: Float64Array, y: Float64Array) => void, diagonal: (scale: Float64Array | null, d: Float64Array) => void }, dot: (a: Float64Array, b: Float64Array) => number, axpy: (a: number, x: Float64Array, y: Float64Array) => void }}
  */
 export const jsBackend = {
   name: 'js',
   precision: 64,
-  operator(g, ke) {
-    const { edof } = g, cells = g.nx * g.ny, u = new Float64Array(8);
+  operator(g, ke, cellMatrices) {
+    const { edof, cells, cellDofs: m } = g, u = new Float64Array(m), mm = m * m;
+    // With one cell matrix scaled per cell, and a grid that isn't huge, the product goes faster through the assembled
+    // matrix (compressed rows): assembled once for each scale array it is given (so one changed in place needs a new
+    // operator), then each product is a plain sweep
+    const sparse = !cellMatrices && cells * mm <= SPARSE_LIMIT ? pattern(g) : null;
+    let assembledFor = null, values = null;
     return {
-      // y = K x, K the stiffness of every cell scaled by scale[cell] (its modulus times thickness)
       multiply(scale, x, y) {
+        if (sparse && scale) {
+          if (assembledFor !== scale) {
+            values = values || new Float64Array(sparse.columns.length);
+            values.fill(0);
+            const { slot } = sparse;
+            for (let e = 0; e < cells; e++) { const s = scale[e], o = e * mm; if (s) for (let t = 0; t < mm; t++) values[slot[o + t]] += s * ke[t]; }
+            assembledFor = scale;
+          }
+          const { rows, columns } = sparse;
+          for (let i = 0; i < y.length; i++) { let f = 0; for (let t = rows[i]; t < rows[i + 1]; t++) f += values[t] * x[columns[t]]; y[i] = f; }
+          return;
+        }
         y.fill(0);
         for (let e = 0; e < cells; e++) {
-          const s = scale[e], o = e * 8;
+          const s = scale ? scale[e] : 1, o = e * m;
           if (s === 0) continue;
-          for (let a = 0; a < 8; a++) u[a] = x[edof[o + a]];
-          for (let a = 0; a < 8; a++) {
+          const K = cellMatrices || ke, base = cellMatrices ? e * mm : 0;
+          for (let a = 0; a < m; a++) u[a] = x[edof[o + a]];
+          for (let a = 0; a < m; a++) {
             let f = 0;
-            for (let b = 0; b < 8; b++) f += ke[a * 8 + b] * u[b];
+            const r = base + a * m;
+            for (let b = 0; b < m; b++) f += K[r + b] * u[b];
             y[edof[o + a]] += s * f;
           }
         }
       },
       diagonal(scale, d) {
         d.fill(0);
-        for (let e = 0; e < cells; e++) for (let a = 0; a < 8; a++) d[edof[e * 8 + a]] += scale[e] * ke[a * 9];
+        for (let e = 0; e < cells; e++) {
+          const s = scale ? scale[e] : 1, K = cellMatrices || ke, base = cellMatrices ? e * mm : 0;
+          for (let a = 0; a < m; a++) d[edof[e * m + a]] += s * K[base + a * (m + 1)];
+        }
       },
     };
   },
@@ -98,47 +157,92 @@ export const jsBackend = {
   axpy(a, x, y) { for (let i = 0; i < y.length; i++) y[i] += a * x[i]; },
 };
 
+// The assembled matrix's shape for a grid: each row's columns (the dofs its node shares a cell with), and where each
+// cell matrix entry goes. Worked out once per grid. Grids whose cells × entries pass SPARSE_LIMIT stay cell by cell.
+const SPARSE_LIMIT = 40e6, patterns = new WeakMap();
+function pattern(g) {
+  if (patterns.has(g)) return patterns.get(g);
+  // On a grid each node's neighbours (the nodes it shares a cell with) are the 3 × 3 (× 3) round it: list them, in node
+  // order, for each node, with where each offset lands, so a cell's entry finds its place without searching
+  const { edof, cells, cellDofs: m, dofs, dim } = g, mm = m * m, nk = dim === 3 ? g.nz : 0;
+  const coords = new Int32Array(g.nodes * 3), id = (i, j, k) => (dim === 3 ? g.node(i, j, k) : g.node(i, j));
+  for (let k = 0; k <= nk; k++) for (let j = 0; j <= g.ny; j++) for (let i = 0; i <= g.nx; i++) { const n = id(i, j, k); coords[3 * n] = i; coords[3 * n + 1] = j; coords[3 * n + 2] = k; }
+  const offsets = [];
+  for (let c = dim === 3 ? -1 : 0; c <= (dim === 3 ? 1 : 0); c++) for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) offsets.push([a, b, c]);
+  const slotOf = new Int32Array(g.nodes * offsets.length).fill(-1), rows = new Int32Array(dofs + 1), columns = [];
+  for (let n = 0; n < g.nodes; n++) {
+    const [i, j, k] = [coords[3 * n], coords[3 * n + 1], coords[3 * n + 2]];
+    const near = [];
+    offsets.forEach(([a, b, c], o) => {
+      const I = i + a, J = j + b, K = k + c;
+      if (I >= 0 && I <= g.nx && J >= 0 && J <= g.ny && K >= 0 && K <= nk) near.push([id(I, J, K), o]);
+    });
+    near.sort((p, q) => p[0] - q[0]);
+    near.forEach(([, o], t) => { slotOf[n * offsets.length + o] = t; });
+    for (let d = 0; d < dim; d++) {
+      for (const [nb] of near) for (let e = 0; e < dim; e++) columns.push(dim * nb + e);
+      rows[dim * n + d + 1] = columns.length;
+    }
+  }
+  const offsetIndex = (a, b, c) => ((dim === 3 ? (c + 1) * 9 : 0) + (b + 1) * 3 + (a + 1));
+  const corners = CORNERS[dim], slot = new Int32Array(cells * mm);
+  for (let e = 0; e < cells; e++) {
+    for (let p = 0; p < corners.length; p++) {
+      const na = edof[e * m + p * dim] / dim;
+      for (let q = 0; q < corners.length; q++) {
+        const cp = corners[p], cq = corners[q], t = slotOf[na * offsets.length + offsetIndex(cq[0] - cp[0], cq[1] - cp[1], (cq[2] || 0) - (cp[2] || 0))];
+        for (let d = 0; d < dim; d++) for (let f = 0; f < dim; f++) slot[e * mm + (p * dim + d) * m + q * dim + f] = rows[dim * na + d] + t * dim + f;
+      }
+    }
+  }
+  const out = { rows, columns: Int32Array.from(columns), slot };
+  patterns.set(g, out);
+  return out;
+}
+
 /**
  * Solve K u = f for each load. K is every cell's stiffness (cellStiffness) times scale[cell]; fixed dofs don't move.
  * @param {Grid} g
- * @param {{ scale: Float64Array, ke: Float64Array, fixed: Uint8Array, loads: Float64Array[], method?: 'direct' | 'cg', backend?: typeof jsBackend, tol?: number, maxIter?: number, start?: Float64Array[] }} o
- *   start: a first guess for cg (the last solution, when solving again after a small change)
+ * @param {{ scale: Float64Array, ke: Float64Array, fixed: Uint8Array, loads: Float64Array[], method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, maxIter?: number, start?: Float64Array[] }} o
+ *   start: a first guess for the iterative solvers (the last solution, when solving again after a small change)
  * @returns {{ u: Float64Array[], iterations: number }}
  */
 export function solve(g, { scale, ke, fixed, loads, method = 'direct', backend = jsBackend, tol = 1e-9, maxIter = 20000, start }) {
-  if (scale.length !== g.nx * g.ny) throw new Error(`scale has ${scale.length} values for ${g.nx * g.ny} cells`);
+  if (scale.length !== g.cells) throw new Error(`scale has ${scale.length} values for ${g.cells} cells`);
   if (!fixed.some((f) => f)) throw new Error('nothing is held: fix at least one support, or the part just moves');
   const f = loads.map((l) => { const c = Float64Array.from(l); for (let i = 0; i < c.length; i++) if (fixed[i]) c[i] = 0; return c; });
   if (method === 'direct') {
-    const L = factor(g, scale, ke, fixed);
+    const L = factor(g, { scale, ke }, fixed);
     return { u: f.map((b) => L.solve(b)), iterations: 0 };
   }
-  return conjugateGradients(g, { scale, ke, fixed, loads: f, backend, tol, maxIter, start });
+  const op = backend.operator(g, ke); // one for the solver and its preconditioner: the matrix is assembled once
+  const precondition = method === 'mg' ? multigrid(g, { scale, ke, fixed, backend, op }) : jacobi(g, { scale, fixed, op });
+  return conjugateGradients(g, { scale, fixed, loads: f, backend, tol, maxIter, start, precondition, op });
 }
 
-// The banded Cholesky factor of K: K's lower band (half-bandwidth b) assembled, then factored in place
-function factor(g, scale, ke, fixed) {
-  const { edof, dofs } = g, cells = g.nx * g.ny;
+// The banded Cholesky factor of K (cells' matrices: ke × scale, or each its own), fixed dofs as identity rows
+function factor(g, { scale, ke, cellMatrices }, fixed) {
+  const { edof, dofs, cells, cellDofs: m } = g, mm = m * m;
   let b = 0;
   for (let e = 0; e < cells; e++) {
     let lo = Infinity, hi = -Infinity;
-    for (let a = 0; a < 8; a++) { lo = Math.min(lo, edof[e * 8 + a]); hi = Math.max(hi, edof[e * 8 + a]); }
+    for (let a = 0; a < m; a++) { lo = Math.min(lo, edof[e * m + a]); hi = Math.max(hi, edof[e * m + a]); }
     b = Math.max(b, hi - lo);
   }
   const w = b + 1, L = new Float64Array(dofs * w); // L[i][j] (j ≤ i, i - j ≤ b) at i * w + b - i + j: a row's band in order
   for (let e = 0; e < cells; e++) {
-    const s = scale[e];
-    for (let p = 0; p < 8; p++) {
-      const i = edof[e * 8 + p];
+    const s = scale ? scale[e] : 1, K = cellMatrices || ke, base = cellMatrices ? e * mm : 0;
+    for (let p = 0; p < m; p++) {
+      const i = edof[e * m + p];
       if (fixed[i]) continue;
-      for (let q = 0; q < 8; q++) {
-        const j = edof[e * 8 + q];
+      for (let q = 0; q < m; q++) {
+        const j = edof[e * m + q];
         if (j > i || fixed[j]) continue;
-        L[i * w + b - i + j] += s * ke[p * 8 + q];
+        L[i * w + b - i + j] += s * K[base + p * m + q];
       }
     }
   }
-  for (let i = 0; i < dofs; i++) if (fixed[i]) L[i * w + b] = 1;
+  for (let i = 0; i < dofs; i++) if (fixed[i] || L[i * w + b] === 0) L[i * w + b] = 1; // fixed, or touching no cell
   for (let i = 0; i < dofs; i++) {
     const from = Math.max(0, i - b), ri = i * w + b - i; // L[i][k] is at ri + k
     for (let j = from; j <= i; j++) {
@@ -171,11 +275,17 @@ function factor(g, scale, ke, fixed) {
   };
 }
 
-// Jacobi-preconditioned conjugate gradients, matrix-free: fixed dofs stay at 0 (their rows act as the identity)
-function conjugateGradients(g, { scale, ke, fixed, loads, backend, tol, maxIter, start }) {
-  const op = backend.operator(g, ke), n = g.dofs, d = new Float64Array(n);
+// The diagonal preconditioner: each residual over its diagonal
+function jacobi(g, { scale, fixed, op }) {
+  const d = new Float64Array(g.dofs);
   op.diagonal(scale, d);
-  for (let i = 0; i < n; i++) d[i] = fixed[i] || !(d[i] > 0) ? 1 : 1 / d[i];
+  for (let i = 0; i < d.length; i++) d[i] = fixed[i] || !(d[i] > 0) ? 1 : 1 / d[i];
+  return (r, z) => { for (let i = 0; i < r.length; i++) z[i] = d[i] * r[i]; };
+}
+
+// Conjugate gradients, matrix-free: fixed dofs stay at 0 (their rows act as the identity)
+function conjugateGradients(g, { scale, fixed, loads, backend, tol, maxIter, start, precondition, op }) {
+  const n = g.dofs;
   const apply = (x, y) => { op.multiply(scale, x, y); for (let i = 0; i < n; i++) if (fixed[i]) y[i] = x[i]; };
   let total = 0;
   const u = loads.map((f, c) => {
@@ -185,13 +295,13 @@ function conjugateGradients(g, { scale, ke, fixed, loads, backend, tol, maxIter,
     apply(x, q);
     for (let i = 0; i < n; i++) r[i] = f[i] - q[i];
     const limit = tol * Math.sqrt(backend.dot(f, f));
-    for (let i = 0; i < n; i++) p[i] = z[i] = d[i] * r[i];
+    precondition(r, z); p.set(z);
     let rz = backend.dot(r, z), it = 0;
     while (Math.sqrt(backend.dot(r, r)) > limit && it < maxIter) {
       apply(p, q);
       const a = rz / backend.dot(p, q);
       backend.axpy(a, p, x); backend.axpy(-a, q, r);
-      for (let i = 0; i < n; i++) z[i] = d[i] * r[i];
+      precondition(r, z);
       const next = backend.dot(r, z);
       for (let i = 0; i < n; i++) p[i] = z[i] + (next / rz) * p[i];
       rz = next; it++;
@@ -203,47 +313,202 @@ function conjugateGradients(g, { scale, ke, fixed, loads, backend, tol, maxIter,
   return { u, iterations: total };
 }
 
+// ---------- multigrid ----------
+// Coarser grids halve each side while every side is even and the grid has more than about 3,000 unknowns. A coarse
+// cell's matrix is its 2^d children's, carried up by the trilinear (bilinear) interpolation from its corners to theirs
+// (Pᵀ K P), with fixed dofs left out, so the coarse problem is the fine one seen at half the resolution. The cycle is a
+// V: two damped Jacobi sweeps down, the coarsest grid solved exactly (banded Cholesky), two sweeps on the way up.
+// It's symmetric, so conjugate gradients can use it as a preconditioner.
+const SWEEPS = 2, DAMPING = 0.5, COARSEST = 3000;
+
+// The coarser grids under a grid, and the maps between each pair, worked out once per grid (they don't change as the
+// cells' stiffnesses do)
+const hierarchies = new WeakMap();
+function hierarchy(g) {
+  if (hierarchies.has(g)) return hierarchies.get(g);
+  const grids = [g];
+  for (;;) {
+    const fg = grids.at(-1), sides = fg.dim === 3 ? [fg.nx, fg.ny, fg.nz] : [fg.nx, fg.ny];
+    if (fg.dofs <= COARSEST || sides.some((s) => s % 2)) break;
+    grids.push(grid({ nx: fg.nx / 2, ny: fg.ny / 2, ...(fg.dim === 3 ? { nz: fg.nz / 2 } : {}), h: fg.h * 2 }));
+  }
+  const maps = grids.slice(1).map((cg, l) => transfer(grids[l], cg));
+  const out = { grids, maps };
+  hierarchies.set(g, out);
+  return out;
+}
+
+function multigrid(g, { scale, ke, fixed, backend, op }) {
+  const { grids, maps } = hierarchy(g);
+  const levels = [{ g, op, scale, fixed: Uint8Array.from(fixed), mats: null }];
+  for (let l = 1; l < grids.length; l++) {
+    const f = levels.at(-1), fg = f.g, cg = grids[l];
+    const mats = coarsen(fg, cg, f.mats || ke, f.mats ? null : f.scale, f.fixed);
+    const cfixed = new Uint8Array(cg.dofs), diag = new Float64Array(cg.dofs), m = cg.cellDofs;
+    for (let e = 0; e < cg.cells; e++) for (let a = 0; a < m; a++) diag[cg.edof[e * m + a]] += mats[e * m * m + a * (m + 1)];
+    for (let i = 0; i < cg.dofs; i++) if (!(diag[i] > 0)) cfixed[i] = 1; // nothing below moves it: held
+    levels.push({ g: cg, op: backend.operator(cg, null, mats), scale: null, fixed: cfixed, mats });
+  }
+  for (const l of levels) { // each level's diagonal, for its Jacobi sweeps
+    l.inv = new Float64Array(l.g.dofs);
+    l.op.diagonal(l.scale, l.inv);
+    for (let i = 0; i < l.inv.length; i++) l.inv[i] = l.fixed[i] || !(l.inv[i] > 0) ? 0 : DAMPING / l.inv[i];
+  }
+  const last = levels.at(-1), coarse = factor(last.g, { scale: last.scale, ke, cellMatrices: last.mats }, last.fixed);
+  const apply = (l, x, y) => { l.op.multiply(l.scale, x, y); for (let i = 0; i < y.length; i++) if (l.fixed[i]) y[i] = 0; };
+
+  const cycle = (k, r) => {
+    const l = levels[k];
+    if (k === levels.length - 1) { const x = coarse.solve(r); for (let i = 0; i < x.length; i++) if (l.fixed[i]) x[i] = 0; return x; }
+    const n = l.g.dofs, x = new Float64Array(n), Ax = new Float64Array(n), res = new Float64Array(n);
+    const sweep = () => { apply(l, x, Ax); for (let i = 0; i < n; i++) x[i] += l.inv[i] * (r[i] - Ax[i]); };
+    for (let s = 0; s < SWEEPS; s++) sweep();
+    apply(l, x, Ax);
+    for (let i = 0; i < n; i++) res[i] = l.fixed[i] ? 0 : r[i] - Ax[i];
+    const e = maps[k].prolong(cycle(k + 1, maps[k].restrict(res)));
+    for (let i = 0; i < n; i++) x[i] += l.fixed[i] ? 0 : e[i];
+    for (let s = 0; s < SWEEPS; s++) sweep();
+    return x;
+  };
+  return (r, z) => {
+    const x = cycle(0, r);
+    for (let i = 0; i < z.length; i++) z[i] = fixed[i] ? r[i] : x[i];
+  };
+}
+
+// The interpolation weights from a coarse cell's corners to one child's corners: for child offset o (each 0 or 1),
+// a (cellDofs × cellDofs) matrix P_o with child dof = Σ P_o[child][coarse] × coarse dof, kept as its nonzero entries
+function childInterpolation(dim) {
+  const corners = CORNERS[dim], m = corners.length * dim, out = [];
+  for (const o of corners) {
+    const P = new Float64Array(m * m);
+    corners.forEach((c, q) => { // the child's corner q, at (o + c) / 2 in the coarse cell
+      const at = c.map((x, a) => (o[a] + x) / 2);
+      corners.forEach((C, Q) => {
+        const wgt = at.reduce((p, x, a) => p * (C[a] ? x : 1 - x), 1);
+        if (wgt) for (let d = 0; d < dim; d++) P[(q * dim + d) * m + Q * dim + d] = wgt;
+      });
+    });
+    // As its nonzero entries: rows, columns, weights
+    const rows = [], cols = [], wts = [];
+    for (let r = 0; r < m; r++) for (let c = 0; c < m; c++) if (P[r * m + c]) { rows.push(r); cols.push(c); wts.push(P[r * m + c]); }
+    out.push([Int32Array.from(rows), Int32Array.from(cols), Float64Array.from(wts)]);
+  }
+  return out;
+}
+
+// Each coarse cell's matrix: Σ over its children of P_oᵀ (child's matrix, fixed rows and columns left out) P_o, using
+// only P_o's nonzero weights (about one in seven)
+const interpolations = { 2: null, 3: null };
+function coarsen(fg, cg, K, scale, fixed) {
+  const dim = fg.dim, m = fg.cellDofs, mm = m * m, corners = CORNERS[dim];
+  const P = interpolations[dim] || (interpolations[dim] = childInterpolation(dim));
+  const out = new Float64Array(cg.cells * mm), KP = new Float64Array(mm), held = new Uint8Array(m);
+  const shared = scale ? K : null; // fine level: one matrix scaled per cell; coarser: each cell its own
+  const offset = corners.map((o) => ((o[2] || 0) * fg.ny + o[1]) * fg.nx + o[0]); // a child's cell number from its first
+  for (let E = 0; E < cg.cells; E++) {
+    const I = E % cg.nx, J = Math.floor(E / cg.nx) % cg.ny, Kz = dim === 3 ? Math.floor(E / (cg.nx * cg.ny)) : 0;
+    const first = (2 * Kz * fg.ny + 2 * J) * fg.nx + 2 * I, o0 = E * mm;
+    for (let oi = 0; oi < corners.length; oi++) {
+      const e = first + offset[oi], s = scale ? scale[e] : 1, base = shared ? 0 : e * mm, src = shared || K;
+      for (let a = 0; a < m; a++) held[a] = fixed[fg.edof[e * m + a]];
+      const [rows, cols, wts] = P[oi];
+      KP.fill(0);
+      for (let t = 0; t < wts.length; t++) { // KP = child × P_o
+        const b = rows[t];
+        if (held[b]) continue;
+        const c = cols[t], w = s * wts[t];
+        for (let a = 0; a < m; a++) if (!held[a]) KP[a * m + c] += src[base + a * m + b] * w;
+      }
+      for (let t = 0; t < wts.length; t++) { // out += P_oᵀ × KP
+        const a = rows[t], r = cols[t], w = wts[t], ro = o0 + r * m, ka = a * m;
+        for (let c = 0; c < m; c++) out[ro + c] += w * KP[ka + c];
+      }
+    }
+  }
+  return out;
+}
+
+// Between a fine grid and the next coarser: prolong (coarse to fine: each fine node takes the interpolation of the
+// coarse nodes round it, 1, 2, 4 or 8 of them) and restrict, its transpose. Each fine node's coarse nodes and weights
+// are listed once, as flat arrays.
+function transfer(fg, cg) {
+  const dim = fg.dim, nk = dim === 3 ? fg.nz : 0, start = new Int32Array(fg.nodes + 1), from = [], weight = [];
+  const order = new Int32Array(fg.nodes);
+  let n = 0;
+  for (let k = 0; k <= nk; k++) for (let j = 0; j <= fg.ny; j++) for (let i = 0; i <= fg.nx; i++) {
+    const node = dim === 3 ? fg.node(i, j, k) : fg.node(i, j);
+    let picks = [[i >> 1, j >> 1, k >> 1]];
+    [i, j, k].slice(0, dim).forEach((c, a) => { if (c & 1) picks = picks.flatMap((p) => [p, p.map((v, b) => (b === a ? v + 1 : v))]); });
+    for (const c of picks) { from.push(dim === 3 ? cg.node(c[0], c[1], c[2]) : cg.node(c[0], c[1])); weight.push(1 / picks.length); }
+    order[n] = node; start[++n] = from.length;
+  }
+  const F = Int32Array.from(from), W = Float64Array.from(weight);
+  return {
+    prolong(xc) {
+      const xf = new Float64Array(fg.dofs);
+      for (let q = 0; q < fg.nodes; q++) {
+        const o = dim * order[q];
+        for (let t = start[q]; t < start[q + 1]; t++) { const c = dim * F[t], w = W[t]; for (let d = 0; d < dim; d++) xf[o + d] += w * xc[c + d]; }
+      }
+      return xf;
+    },
+    restrict(rf) {
+      const rc = new Float64Array(cg.dofs);
+      for (let q = 0; q < fg.nodes; q++) {
+        const o = dim * order[q];
+        for (let t = start[q]; t < start[q + 1]; t++) { const c = dim * F[t], w = W[t]; for (let d = 0; d < dim; d++) rc[c + d] += w * rf[o + d]; }
+      }
+      return rc;
+    },
+  };
+}
+
 /**
  * Each cell's von Mises stress (MPa) at its centre, from a solution u.
  * @param {Grid} g @param {Float64Array} u @param {Float64Array} modulus each cell's Young's modulus (MPa) @param {number} nu
  * @returns {Float64Array}
  */
 export function stress(g, u, modulus, nu) {
-  const B = strains(0, 0, g.h), D = elasticity(nu), out = new Float64Array(g.nx * g.ny);
-  for (let e = 0; e < out.length; e++) {
-    const strain = [0, 0, 0];
-    for (let p = 0; p < 3; p++) for (let a = 0; a < 8; a++) strain[p] += B[p * 8 + a] * u[g.edof[e * 8 + a]];
-    const [sx, sy, txy] = [0, 1, 2].map((p) => modulus[e] * (D[p * 3] * strain[0] + D[p * 3 + 1] * strain[1] + D[p * 3 + 2] * strain[2]));
-    out[e] = Math.sqrt(sx * sx - sx * sy + sy * sy + 3 * txy * txy);
+  const dim = g.dim, m = g.cellDofs, rows = dim === 3 ? 6 : 3, B = strains(new Array(dim).fill(0), g.h, dim), D = elasticity(nu, dim), out = new Float64Array(g.cells);
+  const strain = new Float64Array(rows);
+  for (let e = 0; e < g.cells; e++) {
+    strain.fill(0);
+    for (let p = 0; p < rows; p++) for (let a = 0; a < m; a++) strain[p] += B[p * m + a] * u[g.edof[e * m + a]];
+    const s = new Array(rows).fill(0).map((_, p) => { let t = 0; for (let q = 0; q < rows; q++) t += D[p * rows + q] * strain[q]; return modulus[e] * t; });
+    out[e] = dim === 2 ? Math.sqrt(s[0] * s[0] - s[0] * s[1] + s[1] * s[1] + 3 * s[2] * s[2])
+      : Math.sqrt(((s[0] - s[1]) ** 2 + (s[1] - s[2]) ** 2 + (s[2] - s[0]) ** 2) / 2 + 3 * (s[3] ** 2 + s[4] ** 2 + s[5] ** 2));
   }
   return out;
 }
 
 /**
- * Analyse a plate: each cell's density (0 empty to 1 solid; Young's modulus scales with density^penal, never below
- * E × 1e-9 so empty cells don't leave the matrix singular), its thickness, supports and loads.
- * @param {{ grid: Grid, density: Float64Array, material: Material, thickness: number, fixed: Uint8Array, loads: Float64Array[], penal?: number, method?: 'direct' | 'cg', backend?: typeof jsBackend }} o
- * @returns {{ u: Float64Array[], compliance: number[], stress: Float64Array[], deflection: { most: number, at: [number, number] }[] }}
+ * Analyse a part: each cell's density (0 empty to 1 solid; Young's modulus scales with density^penal, never below
+ * E × 1e-9 so empty cells don't leave the matrix singular), supports and loads. In 2D the part is a plate of the given
+ * thickness; in 3D thickness is not used.
+ * @param {{ grid: Grid, density: Float64Array, material: Material, thickness?: number, fixed: Uint8Array, loads: Float64Array[], penal?: number, method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend }} o
+ * @returns {{ u: Float64Array[], compliance: number[], stress: Float64Array[], deflection: { most: number, at: number[] }[] }}
  *   compliance: f · u per load (N·mm): the work the load does; lower is stiffer. deflection: the largest movement
  *   of any node in solid material, and where.
  */
-export function analyse({ grid: g, density, material, thickness, fixed, loads, penal = 1, method = 'direct', backend }) {
-  const { E, nu } = material, Emin = E * 1e-9, ke = cellStiffness(nu);
+export function analyse({ grid: g, density, material, thickness = 1, fixed, loads, penal = 1, method = g.dim === 3 ? 'mg' : 'direct', backend }) {
+  const { E, nu } = material, Emin = E * 1e-9, ke = cellStiffness(nu, g.dim);
   const modulus = Float64Array.from(density, (x) => Emin + Math.pow(x, penal) * (E - Emin));
-  const scale = modulus.map((m) => m * thickness);
+  const scale = modulus.map((mod) => mod * (g.dim === 3 ? g.h : thickness));
   const { u } = solve(g, { scale, ke, fixed, loads, method, backend });
-  const solidNode = new Uint8Array(g.nodes);
-  for (let e = 0; e < density.length; e++) if (density[e] >= 0.5) for (let k = 0; k < 4; k++) solidNode[g.edof[e * 8 + 2 * k] / 2] = 1;
+  const solidNode = new Uint8Array(g.nodes), corners = CORNERS[g.dim].length;
+  for (let e = 0; e < density.length; e++) if (density[e] >= 0.5) for (let k = 0; k < corners; k++) solidNode[g.edof[e * g.cellDofs + g.dim * k] / g.dim] = 1;
   const position = positions(g);
   return {
     u,
     compliance: u.map((x, c) => jsBackend.dot(loads[c], x)),
     stress: u.map((x) => stress(g, x, modulus, nu)),
     deflection: u.map((x) => {
-      let most = 0, at = [0, 0];
+      let most = 0, at = position[0];
       for (let n = 0; n < g.nodes; n++) if (solidNode[n]) {
-        const m = Math.hypot(x[2 * n], x[2 * n + 1]);
-        if (m > most) { most = m; at = position[n]; }
+        let s = 0;
+        for (let d = 0; d < g.dim; d++) s += x[g.dim * n + d] ** 2;
+        if (Math.sqrt(s) > most) { most = Math.sqrt(s); at = position[n]; }
       }
       return { most, at };
     }),
@@ -251,12 +516,14 @@ export function analyse({ grid: g, density, material, thickness, fixed, loads, p
 }
 
 /**
- * Each node's position in mm, [x, y], by node number.
+ * Each node's position in mm, [x, y] (or [x, y, z]), by node number.
  * @param {Grid} g
- * @returns {[number, number][]}
+ * @returns {number[][]}
  */
 export function positions(g) {
-  const out = new Array(g.nodes);
-  for (let j = 0; j <= g.ny; j++) for (let i = 0; i <= g.nx; i++) out[g.node(i, j)] = [i * g.h, j * g.h];
+  const out = new Array(g.nodes), nk = g.dim === 3 ? g.nz : 0;
+  for (let k = 0; k <= nk; k++) for (let j = 0; j <= g.ny; j++) for (let i = 0; i <= g.nx; i++) {
+    if (g.dim === 3) out[g.node(i, j, k)] = [i * g.h, j * g.h, k * g.h]; else out[g.node(i, j)] = [i * g.h, j * g.h];
+  }
   return out;
 }

@@ -1,0 +1,82 @@
+{
+  "title": "Bracket bench, assembled",
+  "kind": "fit",
+  "uses": [
+    "bench",
+    "m4"
+  ],
+  "note": "The rig with a bracket bolted to the wall's face, reaching out from it, the reaching gauge arm on top and the hanger on the load bolt (bolts not drawn). Brackets are drawn as they print, standing on their back plate: turned a quarter about x, their back plate goes against the wall. Swap the bracket for bracket-web or bracket:printable.",
+  "items": [
+    {
+      "id": "rig",
+      "object": "rig"
+    },
+    {
+      "id": "arm",
+      "object": "reach-arm",
+      "at": [
+        0,
+        0,
+        "rig.height"
+      ]
+    },
+    {
+      "id": "bracket",
+      "object": "bracket",
+      "rotate": [
+        90,
+        0,
+        0
+      ],
+      "at": [
+        0,
+        0,
+        "bench.bolt_z"
+      ]
+    },
+    {
+      "id": "hanger",
+      "object": "hanger",
+      "rotate": [
+        90,
+        0,
+        90
+      ],
+      "at": [
+        "(bench.pitch + bench.boss_len) / 2",
+        "0 - bench.reach",
+        "bench.bolt_z"
+      ]
+    }
+  ],
+  "fits": [
+    {
+      "a": "bracket.body",
+      "b": "rig.body",
+      "min": 0,
+      "note": "The bracket's back plate lies flat on the wall's face",
+      "label": "Bracket on wall"
+    },
+    {
+      "a": "arm.body",
+      "b": "rig.body",
+      "min": 0,
+      "note": "The arm sits on the wall's top",
+      "label": "Arm on wall"
+    },
+    {
+      "a": "hanger.body",
+      "b": "bracket.body",
+      "min": 0,
+      "note": "The hanger hangs beside the load boss",
+      "label": "Hanger by boss"
+    },
+    {
+      "a": "arm.body",
+      "b": "bracket.body",
+      "min": 1,
+      "note": "The arm clears the bracket as it bends",
+      "label": "Arm over bracket"
+    }
+  ]
+}

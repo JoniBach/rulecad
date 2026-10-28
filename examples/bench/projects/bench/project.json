@@ -1,0 +1,16 @@
+{
+  "name": "bench",
+  "description": "Test blocks for rulecad's topology optimisation, printed and load-tested on one rig: four levers of equal mass (2D) and three wall brackets of equal mass (3D).",
+  "material": "PLA",
+  "objects": [
+    "lever-bar",
+    "lever-plate",
+    "lever",
+    "bracket-web",
+    "bracket",
+    "rig",
+    "gauge-arm",
+    "reach-arm",
+    "hanger"
+  ]
+}

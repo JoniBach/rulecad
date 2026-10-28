@@ -1,0 +1,6 @@
+{
+  "name": "rulecad-bench",
+  "private": true,
+  "type": "module",
+  "description": "Test blocks for rulecad's topology optimisation, printed and load-tested: levers (2D) and brackets (3D)."
+}

@@ -1,6 +1,0 @@
-{
-  "name": "lever",
-  "description": "The lever bench: four specimens of equal mass (a plain bar, a lightened plate, and two optimised levers) and the rig that holds and loads them.",
-  "material": "PLA",
-  "objects": ["bar", "plate", "optimised", "rig", "gauge-arm", "hanger"]
-}
