@@ -20,6 +20,7 @@ import { optimised, readProblem, analysePart, picture, problemFile } from '../li
 import { evaluate } from '../lib/rules.mjs';
 import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
+import { liveView } from '../lib/live.mjs';
 import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
 
 // What the print file asks of the AMS: which filament each kind of part prints in
@@ -48,6 +49,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
+                                    [--watch [port]: a live view of it at http://127.0.0.1:8080/, with a stop button]
   cad export <project>/<object>     a 3MF for Bambu Studio in exports/ [--open: open it in Bambu Studio]
   cad show <project>/<object>       the model on display through your show target, with its rules [--ttl 10m]
   cad link <project>/<object>       links to open the model in a browser, and to download its STL or 3MF
@@ -121,8 +123,17 @@ async function optimiseProblem(ref) {
     if (bad.length) { report(bad); process.exitCode = 1; return; }
   }
   const live = !opt('json') && process.stderr.isTTY;
-  const r = await optimised(project, name, { fresh: !!opt('fresh'), onStep: (s) => live && process.stderr.write(`\r\x1b[Kstep ${s.step}/${s.steps}  compliance ${s.compliance.toPrecision(5)} N·mm  change ${s.change.toFixed(3)}  sharpness ${s.beta}`) });
-  if (live) process.stderr.write('\r\x1b[K');
+  // --watch [port]: the live view, served while it runs (a watched run is always run afresh, so there is something to watch)
+  const watch = opt('watch'), view = watch ? await liveView({ port: watch === true ? 8080 : Number(watch), title: `cad optimise ${ref}` }) : null;
+  if (view) say(`watching at ${view.url}`);
+  let r;
+  try {
+    r = await optimised(project, name, { fresh: !!opt('fresh') || !!view, onStep: (s) => {
+      if (live) process.stderr.write(`\r\x1b[Kstep ${s.step}/${s.steps}  compliance ${s.compliance.toPrecision(5)} N·mm  change ${s.change.toFixed(3)}  sharpness ${s.beta}`);
+      if (view) { view.step(s); if (view.stopped()) throw new Error(`stopped from the live view at step ${s.step}`); }
+    } });
+  } catch (e) { await view?.close(e.message); throw e; } finally { if (live) process.stderr.write('\r\x1b[K'); }
+  await view?.close(`finished: ${r.steps} steps${r.converged ? '' : ', not settled'}`);
   const p = await readProblem(project, name), cells = r.dim === 3 ? `${r.grid.nx} × ${r.grid.ny} × ${r.grid.nz}` : `${r.grid.nx} × ${r.grid.ny}`;
   const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
     `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}${r.stress ? `, peak stress ${sig(r.stress.peak)} MPa (limit ${sig(r.stress.limit)})` : ''}`];
