@@ -45,6 +45,7 @@
     "circuit-json-to-kicad": "0.0.231",
     "circuit-json-to-pnp-csv": "0.0.20",
     "circuit-to-svg": "0.0.450",
-    "schematic-symbols": "0.0.248"
+    "schematic-symbols": "0.0.248",
+    "tscircuit": "0.0.3031"
   }
 }
