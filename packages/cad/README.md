@@ -420,8 +420,36 @@ the problem, and optionally a limit:
 `cad check` then reports, for each load case, how far the part moves its load, its stiffness (N/mm) and its peak
 stress against the material's strength, and the part's volume and weight. With `max_deflection` a case that moves
 further fails; with `volume` a part whose volume is further than `tolerance` (a share) from it fails. A picture goes in
-`.preview/`. The analysis is coarse: it's a design aid, not engineering sign-off. A part that could hurt someone if
-it failed needs testing.
+`.preview/`.
+
+On the problem's own cells the analysis is quick and coarse. A solid part's cubes are filled by the share of each the
+part takes up, so a wall between cell centres still counts, but thin walls on big cubes still come out too stiff when
+they bend. To check a final shape, give the analysis a smaller `cell`:
+
+```json
+"analysis": [{ "problem": "bracket", "cell": 0.8, "min_safety": 3 }]
+```
+
+The part is then analysed on those cells and again on cells a quarter bigger. For each load case, `cad check`
+reports:
+- **Stiffness and its change:** under 5% from the bigger cells and it has settled; more, and the cells are too big.
+- **Peak stress, where it is, and the safety factor:** against the material's strength (its weaker one across a
+  print's layers, where the rule set has `strength_z`), and its fatigue strength where it has one. With
+  `min_safety`, a case below it fails. Peak stress at a sharp inside corner keeps rising as cells shrink, so read it
+  with its change.
+- **The largest movement anywhere, and where.**
+
+A report goes in `.preview/` (`<object>-report-<problem>.md`, and `.json`), with what the analysis doesn't cover. A
+solid's analysis is kept in `.cache/analysis/`, so it runs once.
+
+**Safety-critical parts.** A problem with `"critical": true` (a pedal, a lever, a bracket that holds people) marks
+every part analysed under it as unverified, until a test or an independent analysis is recorded in the object:
+
+```json
+"verification": [{ "kind": "test", "date": "2026-11-02", "by": "J. Smith", "summary": "20 N straight down, three prints: 0.21 mm, 95 N/mm", "source": "results.json" }]
+```
+
+The analysis is a design aid, not engineering sign-off: anything that could hurt someone if it failed needs testing.
 
 ## Boards
 

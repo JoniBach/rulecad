@@ -22,7 +22,7 @@
     },
     "target": {
       "value": "bench.fill * bench.length * bench.depth * bench.thickness",
-      "unit": "mm³",
+      "unit": "mm\u00b3",
       "rule": "Every specimen's volume: the same share of the envelope",
       "show": true,
       "label": "Volume"
@@ -36,7 +36,8 @@
   "analysis": [
     {
       "problem": "lever",
-      "volume": "target"
+      "volume": "target",
+      "cell": "bench.lever_verify_cell"
     }
   ]
 }

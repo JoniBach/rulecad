@@ -90,8 +90,12 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   `"overhang"` to the way up it will print, so the result needs no supports, and give horizontal bosses and holes a
   `teardrop` (`"down"`, `"up"`). Draw the part as it prints; if that isn't the problem's frame, give its `analysis` a
   `rotate` and `move` back. Build with `v.shapes.optimisedSolid(...)` and `"engine": "manifold"`; look at the four views.
-- Say plainly that the analysis is coarse and the material values are data-sheet figures: anything that could hurt
-  someone if it broke needs testing, not just a check.
+- Before reporting numbers for a final shape, verify them: give the `analysis` a smaller `cell` (solids: about a
+  third of the problem's) and check the stiffness has settled (`fea.settled`). Report the verified numbers, the safety
+  factor, and where the peak stress is.
+- Mark a problem `"critical": true` if the part could hurt someone if it broke. Say plainly that the analysis is a
+  design aid and the material values are data-sheet figures: such a part needs testing, recorded under
+  `"verification"`, not just a check.
 
 ## Talking to the person
 - Give links as one labelled line (`npx cad link <project>/<object> --md`), never a raw URL. If it says
