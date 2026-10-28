@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { optimise, model, discretise, outlines, area, densityFilter } from '@rulecad/topopt';
+import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside } from '@rulecad/topopt';
 import { grid } from '@rulecad/fea';
 
 // The reference values come from reference/top88.py, a line-by-line port of Andreassen et al. (2011)'s top88.m (the
@@ -87,4 +87,92 @@ test('the density filter is an average, and its adjoint is its transpose', () =>
   const Fa = f.apply(a, new Float64Array(63)), Ftb = f.adjoint(b, new Float64Array(63));
   const dot = (p, q) => p.reduce((s, v, i) => s + v * q[i], 0);
   assert.ok(Math.abs(dot(Fa, b) - dot(a, Ftb)) < 1e-12);
+});
+
+// 3D: python3 reference/top3d.py 24 8 8 0.3 1.5, a port of Liu and Tovar (2014)'s top3d.m
+test('3D: a cantilever of cubes matches top3d step for step', () => {
+  const [nx, ny, nz] = [24, 8, 8], g = grid({ nx, ny, nz, h: 1 }), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs);
+  for (let k = 0; k <= nz; k++) for (let j = 0; j <= ny; j++) for (let d = 0; d < 3; d++) fixed[3 * g.node(0, j, k) + d] = 1;
+  for (let k = 0; k <= nz; k++) f[3 * g.node(nx, 0, k) + 1] = -1;
+  const r = optimise({ grid: { nx, ny, nz, h: 1 }, passive: new Int8Array(g.cells), fixed, loads: [{ name: 'load', force: f, weight: 1, size: nz + 1 }], material: { E: 1, nu: 0.3 }, volume: 0.3, filter: 1.5, penal: 3, projection: false, steps: 200 });
+  assert.equal(r.steps, 145);
+  assert.ok(near(r.history[0], 44189.8256), `first ${r.history[0]}`);
+  assert.ok(near(r.history.at(-1), 4906.7282), `last ${r.history.at(-1)}`);
+});
+
+test('the overhang filter: nothing unsupported survives, and its gradient matches finite differences', () => {
+  const size = { nx: 6, ny: 5, nz: 4 }, f = overhangFilter(size, '+z'), n = 120;
+  // A floating block in the top layer, nothing under it: printed as nothing
+  const x = new Float64Array(n); for (let j = 1; j < 4; j++) for (let i = 1; i < 5; i++) x[(3 * 5 + j) * 6 + i] = 1;
+  const out = f.apply(x, new Float64Array(n));
+  assert.ok(Math.max(...out) < 0.05, `floating material printed as ${Math.max(...out)}`);
+  // A column from the bed: printed as it is
+  const col = new Float64Array(n); for (let k = 0; k < 4; k++) col[(k * 5 + 2) * 6 + 2] = 1;
+  assert.ok(f.apply(col, new Float64Array(n))[(3 * 5 + 2) * 6 + 2] > 0.95);
+  // Nearly empty everywhere (as an optimisation's empty space is): finite, with a finite gradient
+  const empty = new Float64Array(n).fill(1e-8);
+  assert.ok(f.apply(empty, new Float64Array(n)).every(Number.isFinite), 'printed densities are numbers');
+  assert.ok(f.adjoint(new Float64Array(n).fill(1), new Float64Array(n)).every(Number.isFinite), 'no NaN or infinity in the gradient from empty space');
+  // The gradient of a weighted sum of the printed densities, against finite differences
+  const y = Float64Array.from({ length: n }, (_, e) => 0.2 + 0.6 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.sin(e));
+  const value = (z) => f.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+  value(y); const grad = f.adjoint(w, new Float64Array(n));
+  for (const e of [3, 40, 77, 115]) {
+    const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-6; down[e] -= 1e-6;
+    const fd = (value(up) - value(down)) / 2e-6;
+    assert.ok(Math.abs(fd - grad[e]) < 1e-5 * Math.max(1, Math.abs(fd)), `cell ${e}: ${grad[e]} against ${fd}`);
+  }
+});
+
+test('surface: a ball of cubes becomes a closed mesh, facing out, about the ball\'s size', () => {
+  const n = 20, h = 1, d = Float64Array.from({ length: n ** 3 }, (_, e) => {
+    const i = e % n, j = Math.floor(e / n) % n, k = Math.floor(e / (n * n));
+    return Math.hypot(i + 0.5 - 10, j + 0.5 - 10, k + 0.5 - 10) < 7 ? 1 : 0;
+  });
+  const { vertices, faces } = surface({ nx: n, ny: n, nz: n, h }, d, [0, 0, 0]);
+  const edges = new Map();
+  for (const [a, b, c] of faces) for (const [p, q] of [[a, b], [b, c], [c, a]]) { const k = `${p},${q}`; edges.set(k, (edges.get(k) || 0) + 1); }
+  for (const [k, count] of edges) { const [p, q] = k.split(','); assert.equal(count, 1, `edge ${k} used ${count} times one way`); assert.ok(edges.has(`${q},${p}`), `edge ${k} has no partner: a hole`); }
+  let volume = 0; // positive if the faces face outwards
+  for (const [a, b, c] of faces) { const [p, q, r] = [vertices[a], vertices[b], vertices[c]]; volume += (p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0])) / 6; }
+  const ball = (4 / 3) * Math.PI * 7 ** 3;
+  assert.ok(Math.abs(volume / ball - 1) < 0.08, `volume ${volume} against ${ball}`);
+});
+
+test('3D regions: a box, a cylinder, and a closed mesh tell inside from out', () => {
+  assert.equal(inside({ at: [0, 0, 0], size: [2, 4, 6] }, [0.9, -1.9, 2.9]), true);
+  assert.equal(inside({ at: [0, 0, 0], size: [2, 4, 6] }, [1.1, 0, 0]), false);
+  assert.equal(inside({ at: [0, 0, 5], r: 2, length: 10, axis: 'z' }, [1.4, 1.4, 9]), true);
+  assert.equal(inside({ at: [0, 0, 5], r: 2, length: 10, axis: 'z' }, [1.5, 1.5, 5]), false);
+  // A cube as a mesh: twelve triangles
+  const c = [[0, 0, 0], [4, 0, 0], [4, 4, 0], [0, 4, 0], [0, 0, 4], [4, 0, 4], [4, 4, 4], [0, 4, 4]];
+  const quads = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 4, 7, 3]];
+  const triangles = quads.flatMap(([a, b, d, e]) => [[c[a], c[b], c[d]], [c[a], c[d], c[e]]]);
+  assert.equal(inside({ triangles }, [2, 2, 2]), true);
+  assert.equal(inside({ triangles }, [2, 2, 5]), false);
+  assert.equal(inside({ triangles }, [5, 2, 2]), false);
+});
+
+test('a 3D problem in shapes: the grid is rounded for multigrid, supports and loads land on material', () => {
+  const s = discretise({
+    space: { at: [20, 5, 5], size: [40, 10, 10] }, keep: [{ at: [40, 5, 5], r: 3, length: 10, axis: 'y' }],
+    supports: [{ at: [0, 5, 5], size: [1, 10, 10] }], loads: [{ at: [40, 5, 5], r: 2, force: [0, 0, -10] }],
+    material: { E: 1000, nu: 0.3 }, cell: 1, volume: 0.3,
+  });
+  assert.deepEqual([s.grid.nx, s.grid.ny, s.grid.nz].map((v) => v % 2), [0, 0, 0]);
+  assert.ok(s.fixed.reduce((a, b) => a + b, 0) > 3 * 100, 'the whole end face is held');
+  assert.ok(Math.abs(s.loads[0].force.reduce((a, b) => a + b, 0) + 10) < 1e-9, 'the load adds up to 10 N down');
+  assert.throws(() => discretise({ space: { at: [0, 0, 0], size: [4, 4, 4] }, supports: [{ at: [0, 0] }], loads: [{ at: [0, 0, 0], force: [0, 0, 1] }], material: { E: 1, nu: 0.3 }, cell: 1, volume: 0.5 }), /isn't on any material|3D/);
+});
+
+test('surface: material filling the grid to its faces gives exactly its box, closed and flat', () => {
+  const size = { nx: 6, ny: 4, nz: 5, h: 2 }, { vertices, faces } = surface(size, new Float64Array(120).fill(1), [1, 2, 3]);
+  const lo = [1, 2, 3], hi = [13, 10, 13];
+  for (const v of vertices) for (let q = 0; q < 3; q++) assert.ok(v[q] >= lo[q] - 1e-9 && v[q] <= hi[q] + 1e-9, `vertex ${v} outside the box`);
+  let volume = 0;
+  for (const [a, b, c] of faces) { const [p, q, r] = [vertices[a], vertices[b], vertices[c]]; volume += (p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0])) / 6; }
+  assert.ok(Math.abs(volume - 12 * 8 * 10) < 1e-6, `volume ${volume}`);
+  const edges = new Map();
+  for (const [a, b, c] of faces) for (const [p, q] of [[a, b], [b, c], [c, a]]) edges.set(`${p},${q}`, (edges.get(`${p},${q}`) || 0) + 1);
+  for (const [k, n] of edges) { const [p, q] = k.split(','); assert.ok(n === 1 && edges.has(`${q},${p}`), `edge ${k}: a hole or a fold`); }
 });

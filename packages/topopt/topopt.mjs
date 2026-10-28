@@ -1,21 +1,29 @@
-// Topology optimisation for flat parts: where to put a fixed amount of material in a region so the part is as stiff as
-// possible under its loads. The density method (SIMP: solid isotropic material with penalisation): every cell has a
-// density from 0 to 1, stiffness grows as density cubed (so part-solid cells are poor value and the result settles
-// into solid and empty), and each step moves material towards the cells that stiffen the part most. With a density
-// filter (it sets the thinnest member) and Heaviside projection (it sharpens the result). After Andreassen et al.
-// (2011), "Efficient topology optimization in MATLAB using 88 lines of code", and Wang, Lazarov and Sigmund (2011).
-// No dependencies but @rulecad/fea; runs in browsers and Node. Millimetres, newtons, MPa.
+// Topology optimisation: where to put a fixed amount of material in a region so the part is as stiff as possible
+// under its loads, for flat parts (2D, a plate loaded in its own plane) and solid ones (3D, on cubes). The density
+// method (SIMP: solid isotropic material with penalisation): every cell has a density from 0 to 1, stiffness grows as
+// density cubed (so part-solid cells are poor value and the result settles into solid and empty), and each step moves
+// material towards the cells that stiffen the part most. With a density filter (it sets the thinnest member), an
+// optional overhang filter (only material a printer can build without supports), and Heaviside projection (it sharpens
+// the result). After Andreassen et al. (2011), "Efficient topology optimization in MATLAB using 88 lines of code",
+// Wang, Lazarov and Sigmund (2011), and Langelaar (2017), "An additive manufacturing filter for topology optimization
+// of print-ready designs". No dependencies but @rulecad/fea; runs in browsers and Node. Millimetres, newtons, MPa.
 //
 //   optimise(spec)       the method itself, on a grid: densities, supports and loads by dof
 //   discretise(problem)  a problem in shapes (a region, bosses to keep, holes to avoid, loads at points) to a spec
-//   outlines(result)     the result's edges as closed loops in mm, solid on the left, smoothed: ready to extrude
+//   outlines(result)     a 2D result's edges as closed loops in mm, solid on the left, smoothed: ready to extrude
+//   surface(result)      a 3D result's surface as a closed triangle mesh in mm, smoothed: ready to print
 import { grid as makeGrid, cellStiffness, solve, positions, jsBackend } from '@rulecad/fea';
 
 export { jsBackend };
 
-/** @typedef {{ at: [number, number], r: number } | { at: [number, number], size: [number, number] } | { points: [number, number][] }} Region a circle, a rectangle (centred), or a polygon, in mm */
-/** @typedef {{ at: [number, number], r?: number, fix?: 'xy' | 'x' | 'y' }} Support holds the nodes within r of at (on solid material) */
-/** @typedef {{ at: [number, number], r?: number, force: [number, number], case?: string }} Load a force in N, shared by the nodes within r of at */
+/**
+ * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: '-z' | '+z' } | { points: [number, number][] } | { triangles: number[][][] }} Region
+ *   in mm: a circle (2D) or sphere (3D) at, r; a box at (its centre), size; a cylinder at (its centre), r, length,
+ *   along axis (default z; teardrop '-z' or '+z': along x or y, with a 45° point that way, so it prints); a polygon (2D);
+ *   or a closed triangle mesh (3D: a design's part)
+ */
+/** @typedef {Region & { fix?: string }} Support holds the nodes in the region (on material): fix the directions, 'xy' or 'xyz' (default all) */
+/** @typedef {Region & { force: number[], case?: string }} Load a force in N, shared by the nodes in the region */
 /**
  * @typedef {object} Problem
  * @property {Region | Region[]} space where material may go
@@ -25,63 +33,78 @@ export { jsBackend };
  * @property {Load[]} loads each in its load case (default "load"); cases are optimised together
  * @property {Record<string, number>} [cases] each case's weight (default 1)
  * @property {{ E: number, nu: number }} material
- * @property {number} thickness mm
+ * @property {number} [thickness] mm, for a 2D problem
  * @property {number} cell the grid's cell size, mm
  * @property {number} volume the share of the space to fill, 0 to 1 (keep regions count towards it)
  * @property {number} [filter] the filter radius in mm: about the thinnest member (default 1.5 cells)
  * @property {number} [penal] the penalty (default 3)
  * @property {boolean} [projection] sharpen with Heaviside projection (default true)
+ * @property {string} [overhang] printed this way up ('+z', '-y', …): only material supported from below at 45° or less
  * @property {number} [steps] at most this many steps (default 300)
  */
 
 /**
  * A problem described in shapes, on a grid: each cell inside the space (or a keep region) is free, kept or avoided;
- * supports and loads go on the nodes near them that touch material that may be solid.
+ * supports and loads go on the nodes in or near them that touch material that may be solid. A 3D grid's sides are
+ * rounded up to a multiple of 2, 4 or 8 cells (extra cells are outside the space), so multigrid can halve it.
  * @param {Problem} p
- * @returns {object} a spec for optimise(), with origin (the grid's lower-left corner, mm) and regions for outlines
+ * @returns {object} a spec for optimise(), with origin (the grid's lowest corner, mm) and regions
  */
 export function discretise(p) {
-  const space = [p.space].flat(), keep = p.keep || [], avoid = p.avoid || [];
+  const space = [p.space].flat(), keep = p.keep || [], avoid = p.avoid || [], dim = dimension(space[0]);
   if (!(p.cell > 0)) throw new Error('the cell size must be more than 0 mm');
-  const box = [...space, ...keep].map(bounds).reduce((a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])]);
-  const nx = Math.max(1, Math.round((box[2] - box[0]) / p.cell)), ny = Math.max(1, Math.round((box[3] - box[1]) / p.cell));
-  const g = makeGrid({ nx, ny, h: p.cell }), origin = [box[0], box[1]];
-  // Each cell by its centre: 1 kept, -1 avoided or outside (-2 outside, which doesn't count towards the volume), 0 free
-  const passive = new Int8Array(nx * ny);
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const c = [origin[0] + (i + 0.5) * p.cell, origin[1] + (j + 0.5) * p.cell];
-    const inKeep = keep.some((r) => inside(r, c));
-    passive[j * nx + i] = avoid.some((r) => inside(r, c)) ? (inKeep || space.some((r) => inside(r, c)) ? -1 : -2) : inKeep ? 1 : space.some((r) => inside(r, c)) ? 0 : -2;
+  for (const r of [...space, ...keep, ...avoid]) if (dimension(r) !== dim) throw new Error(`a ${dimension(r)}D region in a ${dim}D problem: give every region ${dim === 3 ? 'x, y and z' : 'x and y'}`);
+  const all = [...space, ...keep].map(bounds), lo = [], n = [];
+  for (let a = 0; a < dim; a++) {
+    lo.push(Math.min(...all.map((b) => b[a])));
+    n.push(Math.max(1, Math.round((Math.max(...all.map((b) => b[dim + a])) - lo[a]) / p.cell)));
   }
-  const at = positions(g).map(([x, y]) => [x + origin[0], y + origin[1]]);
+  if (dim === 3) { // whole numbers of 2, 4 or 8 cells along every side, for multigrid
+    const q = Math.min(...n) >= 16 ? 8 : Math.min(...n) >= 8 ? 4 : 2;
+    for (let a = 0; a < 3; a++) n[a] = Math.ceil(n[a] / q) * q;
+  }
+  const size = dim === 3 ? { nx: n[0], ny: n[1], nz: n[2], h: p.cell } : { nx: n[0], ny: n[1], h: p.cell };
+  const g = makeGrid(size), origin = lo, h = p.cell;
+  // Each cell by its centre: 1 kept, -1 avoided, -2 outside (which doesn't count towards the volume), 0 free
+  const passive = new Int8Array(g.cells), test = (rs) => { const f = rs.map(insider); return (c) => f.some((t) => t(c)); };
+  const inSpace = test(space), inKeep = test(keep), inAvoid = test(avoid);
+  for (let e = 0; e < g.cells; e++) {
+    const i = e % n[0], j = Math.floor(e / n[0]) % n[1], k = dim === 3 ? Math.floor(e / (n[0] * n[1])) : 0;
+    const c = [origin[0] + (i + 0.5) * h, origin[1] + (j + 0.5) * h, ...(dim === 3 ? [origin[2] + (k + 0.5) * h] : [])];
+    const kept = inKeep(c), within = kept || inSpace(c);
+    passive[e] = !within ? -2 : inAvoid(c) ? -1 : kept ? 1 : 0;
+  }
+  const at = positions(g).map((q) => q.map((v, a) => v + origin[a]));
   // A node is on material if a cell it's a corner of may be solid
-  const onMaterial = new Uint8Array(g.nodes);
-  for (let e = 0; e < nx * ny; e++) if (passive[e] >= 0) for (let k = 0; k < 4; k++) onMaterial[g.edof[e * 8 + 2 * k] / 2] = 1;
-  const near = (pt, r = 0, what) => {
-    const reach = r + p.cell * 0.75, found = [];
-    for (let n = 0; n < g.nodes; n++) if (onMaterial[n] && Math.hypot(at[n][0] - pt[0], at[n][1] - pt[1]) <= reach) found.push(n);
-    if (!found.length) throw new Error(`${what} at ${pt.map(fmt).join(', ')} isn't on any material: move it onto the space or a keep region, or give it a radius`);
+  const onMaterial = new Uint8Array(g.nodes), corners = 1 << dim;
+  for (let e = 0; e < g.cells; e++) if (passive[e] >= 0) for (let k = 0; k < corners; k++) onMaterial[g.edof[e * g.cellDofs + dim * k] / dim] = 1;
+  // The nodes a support or load acts on: within r (and three quarters of a cell) of a point, or in a region grown by as much
+  const select = (r, what) => {
+    const grown = grow(r, h * 0.75), within = r.size || r.points || r.triangles || r.length != null ? insider(grown) : (q) => dist(q, r.at) <= (r.r || 0) + h * 0.75;
+    const found = [];
+    for (let m = 0; m < g.nodes; m++) if (onMaterial[m] && within(at[m])) found.push(m);
+    if (!found.length) throw new Error(`${what}${r.at ? ` at ${r.at.map(fmt).join(', ')}` : ''} isn't on any material: move it onto the space or a keep region, or make it bigger`);
     return found;
   };
-  const fixed = new Uint8Array(g.dofs);
-  for (const s of p.supports || []) for (const n of near(s.at, s.r, 'a support')) {
-    if ((s.fix || 'xy').includes('x')) fixed[2 * n] = 1;
-    if ((s.fix || 'xy').includes('y')) fixed[2 * n + 1] = 1;
-  }
+  const axes = 'xyz'.slice(0, dim), fixed = new Uint8Array(g.dofs);
+  for (const s of p.supports || []) for (const m of select(s, 'a support')) for (let a = 0; a < dim; a++) if ((s.fix || axes).includes(axes[a])) fixed[dim * m + a] = 1;
   const names = [...new Set((p.loads || []).map((l) => l.case || 'load'))];
   if (!names.length) throw new Error('a problem needs at least one load');
   const loads = names.map((name) => {
-    const f = new Float64Array(g.dofs);
-    for (const l of p.loads.filter((x) => (x.case || 'load') === name)) {
-      const ns = near(l.at, l.r, `the load "${name}"`);
-      for (const n of ns) { f[2 * n] += l.force[0] / ns.length; f[2 * n + 1] += l.force[1] / ns.length; }
+    const f = new Float64Array(g.dofs), mine = p.loads.filter((x) => (x.case || 'load') === name), total = new Array(dim).fill(0);
+    for (const l of mine) {
+      if (l.force.length !== dim) throw new Error(`the load "${name}" needs a force with ${dim} parts (${axes.split('').join(', ')})`);
+      const ns = select(l, `the load "${name}"`);
+      for (const m of ns) for (let a = 0; a < dim; a++) f[dim * m + a] += l.force[a] / ns.length;
+      for (let a = 0; a < dim; a++) total[a] += l.force[a];
     }
-    return { name, force: f, weight: p.cases?.[name] ?? 1, size: Math.hypot(...p.loads.filter((x) => (x.case || 'load') === name).reduce((s, l) => [s[0] + l.force[0], s[1] + l.force[1]], [0, 0])) };
+    return { name, force: f, weight: p.cases?.[name] ?? 1, size: Math.hypot(...total) };
   });
   return {
-    grid: { nx, ny, h: p.cell }, origin, passive, fixed, loads,
+    grid: size, origin, passive, fixed, loads,
     material: p.material, thickness: p.thickness, volume: p.volume,
     filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? 300,
+    ...(p.overhang ? { overhang: p.overhang } : {}),
     regions: { keep, avoid },
   };
 }
@@ -89,17 +112,17 @@ export function discretise(p) {
 /**
  * The density filter: each cell's filtered density is the weighted average of the cells within radius (weights
  * falling linearly to 0 at the radius). apply filters densities; adjoint carries sensitivities back through it.
- * @param {{ nx: number, ny: number }} size @param {number} radius in cells
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {number} radius in cells
  */
-export function densityFilter({ nx, ny }, radius) {
-  const reach = Math.ceil(radius) - 1, cells = nx * ny;
+export function densityFilter({ nx, ny, nz = 1 }, radius) {
+  const reach = Math.ceil(radius) - 1, cells = nx * ny * nz, rz = nz > 1 ? reach : 0;
   // Each cell's neighbours and their weights, as flat arrays (row r's are at start[r] to start[r + 1])
   const start = new Int32Array(cells + 1), index = [], weight = [], total = new Float64Array(cells);
-  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-    const e = j * nx + i;
-    for (let b = Math.max(0, j - reach); b <= Math.min(ny - 1, j + reach); b++) for (let a = Math.max(0, i - reach); a <= Math.min(nx - 1, i + reach); a++) {
-      const w = radius - Math.hypot(a - i, b - j);
-      if (w > 0) { index.push(b * nx + a); weight.push(w); total[e] += w; } // total: fewer neighbours at the edges
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const e = (k * ny + j) * nx + i;
+    for (let c = Math.max(0, k - rz); c <= Math.min(nz - 1, k + rz); c++) for (let b = Math.max(0, j - reach); b <= Math.min(ny - 1, j + reach); b++) for (let a = Math.max(0, i - reach); a <= Math.min(nx - 1, i + reach); a++) {
+      const w = radius - Math.hypot(a - i, b - j, c - k);
+      if (w > 0) { index.push((c * ny + b) * nx + a); weight.push(w); total[e] += w; } // total: fewer neighbours at the edges
     }
     start[e + 1] = index.length;
   }
@@ -118,18 +141,79 @@ export function densityFilter({ nx, ny }, radius) {
 }
 
 /**
- * The problem as a function of the design densities x (one per cell, 0 to 1), at projection sharpness beta:
- * physical(x, beta) gives the densities the part is made of (filtered, projected, kept and avoided cells set);
- * evaluate(x, beta) analyses it and gives the compliance (summed over the load cases by weight, N·mm) and its
- * gradient with respect to x (dc), with the gradient of the material used (dv).
- * @param {ReturnType<typeof discretise>} spec
- * @param {{ method?: 'direct' | 'cg', backend?: typeof jsBackend }} [options]
+ * The overhang filter (Langelaar 2017): printed layer by layer from the bed, a cell can only be as solid as the
+ * material under it: the cell itself and its neighbours along each side, in the layer below (3 cells in 2D, 5 in 3D,
+ * so nothing overhangs by more than 45°). Smooth minimum and maximum keep it differentiable. apply gives the printable
+ * densities; adjoint carries sensitivities back through it.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {string} up the build direction: '+z', '-x', …
  */
-export function model(spec, { method = 'direct', backend = jsBackend } = {}) {
-  const { nx, ny } = spec.grid, cells = nx * ny, g = makeGrid(spec.grid), ke = cellStiffness(spec.material.nu);
-  const { passive, penal, thickness } = spec, E = spec.material.E, Emin = E * 1e-9, eta = 0.5;
-  const filter = densityFilter(spec.grid, spec.filter / spec.grid.h);
-  const tilde = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
+export function overhangFilter({ nx, ny, nz = 1 }, up) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(up.at(-1)), sign = up[0] === '-' ? -1 : 1;
+  if (ax < 0 || ax >= dim) throw new Error(`overhang: the build direction is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'} (got ${up})`);
+  const cells = n.reduce((p, c) => p * c, 1), stride = [1, nx, nx * ny];
+  const P = 40, eps = 1e-4, xi0 = 0.5;
+  // Layers in build order, and each cell's supports: the cell below it and that cell's neighbours along each other axis
+  const layer = (e) => { const c = Math.floor(e / stride[ax]) % n[ax]; return sign > 0 ? c : n[ax] - 1 - c; };
+  const order = Array.from({ length: cells }, (_, e) => e).sort((a, b) => layer(a) - layer(b));
+  const supports = new Array(cells);
+  for (let e = 0; e < cells; e++) {
+    if (layer(e) === 0) { supports[e] = null; continue; }
+    const below = e - sign * stride[ax], list = [below];
+    for (let a = 0; a < dim; a++) if (a !== ax) {
+      const c = Math.floor(below / stride[a]) % n[a];
+      if (c > 0) list.push(below - stride[a]);
+      if (c < n[a] - 1) list.push(below + stride[a]);
+    }
+    supports[e] = Int32Array.from(list);
+  }
+  const printed = new Float64Array(cells), dSum = new Float64Array(cells), dX = new Float64Array(cells), sums = new Float64Array(cells);
+  return {
+    apply(x, out) {
+      for (const e of order) {
+        const sup = supports[e];
+        if (!sup) { printed[e] = x[e]; dX[e] = 1; continue; }
+        let s = 0;
+        for (const q of sup) s += Math.pow(printed[q], P);
+        if (s < 1e-200) s = 0; // nothing worth the name below (and no denormals for the gradient to blow up on)
+        const Q = P + Math.log(sup.length) / Math.log(xi0), smax = s > 0 ? Math.pow(s, 1 / Q) : 0;
+        sums[e] = s;
+        const d = x[e] - smax, root = Math.sqrt(d * d + eps);
+        printed[e] = 0.5 * (x[e] + smax - root + Math.sqrt(eps));
+        dX[e] = 0.5 * (1 - d / root); dSum[e] = 0.5 * (1 + d / root); // d printed / d x, d printed / d smax
+      }
+      out.set(printed);
+      return out;
+    },
+    // Back from the last layer: each cell's sensitivity, plus what it passes on to the cells it supports
+    adjoint(g, out) {
+      const lambda = Float64Array.from(g);
+      for (let t = cells - 1; t >= 0; t--) {
+        const e = order[t], sup = supports[e];
+        if (!sup || !sums[e]) continue;
+        const Q = P + Math.log(sup.length) / Math.log(xi0), common = lambda[e] * dSum[e] * (1 / Q) * Math.pow(sums[e], 1 / Q - 1) * P;
+        for (const q of sup) lambda[q] += common * Math.pow(printed[q], P - 1);
+      }
+      for (let e = 0; e < cells; e++) out[e] = lambda[e] * dX[e];
+      return out;
+    },
+  };
+}
+
+/**
+ * The problem as a function of the design densities x (one per cell, 0 to 1), at projection sharpness beta:
+ * physical(x, beta) gives the densities the part is made of (filtered, printable, projected, kept and avoided cells
+ * set); evaluate(x, beta) analyses it and gives the compliance (summed over the load cases by weight, N·mm) and its
+ * gradient with respect to x (dc), with the gradient of the material used (dv). Cases weighted 0 are only solved with
+ * evaluate(x, beta, { all: true }).
+ * @param {ReturnType<typeof discretise>} spec
+ * @param {{ method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend }} [options]
+ */
+export function model(spec, { method, backend = jsBackend } = {}) {
+  const g = makeGrid(spec.grid), dim = g.dim, cells = g.cells, m = g.cellDofs, ke = cellStiffness(spec.material.nu, dim);
+  const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, eta = 0.5, size = dim === 3 ? g.h : spec.thickness;
+  const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
+  const filter = densityFilter(spec.grid, spec.filter / spec.grid.h), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang) : null;
+  const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
   // Heaviside projection about eta: steeper as beta grows, so densities are pushed to 0 or 1 (Wang, Lazarov, Sigmund 2011)
   const denominator = (beta) => Math.tanh(beta * eta) + Math.tanh(beta * (1 - eta));
@@ -137,33 +221,42 @@ export function model(spec, { method = 'direct', backend = jsBackend } = {}) {
   const slope = (t, beta) => (spec.projection ? (beta * (1 - Math.tanh(beta * (t - eta)) ** 2)) / denominator(beta) : 1);
   const physical = (x, beta) => {
     filter.apply(x, tilde);
-    for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(tilde[e], beta);
+    if (print) print.apply(tilde, made); else made.set(tilde);
+    for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(made[e], beta);
     return phys;
   };
   let last = null;
-  const evaluate = (x, beta) => {
+  // Each step solves only the load cases it optimises for (weight above 0); every case is solved when all is set
+  const evaluate = (x, beta, { all = false } = {}) => {
     physical(x, beta);
-    for (let e = 0; e < cells; e++) scale[e] = thickness * (Emin + Math.pow(phys[e], penal) * (E - Emin));
-    const { u } = solve(g, { scale, ke, fixed: spec.fixed, loads: spec.loads.map((l) => l.force), method, backend, start: last });
+    for (let e = 0; e < cells; e++) scale[e] = size * (Emin + Math.pow(phys[e], penal) * (E - Emin));
+    const active = spec.loads.map((l, c) => (all || l.weight > 0 ? c : -1)).filter((c) => c >= 0);
+    const solved = solve(g, { scale, ke, fixed: spec.fixed, loads: active.map((c) => spec.loads[c].force), method: solver, backend, start: last && active.map((c) => last[c]), ...(tol ? { tol } : {}) }).u;
+    const u = spec.loads.map((_, c) => (active.includes(c) ? solved[active.indexOf(c)] : last?.[c] || null));
     last = u;
-    // Compliance, and its gradient with respect to each cell's physical density: −p ρ^(p−1) (E − Emin) t · uₑᵀ kₑ uₑ
+    // Compliance, and its gradient with respect to each cell's physical density: −p ρ^(p−1) (E − Emin) size · uₑᵀ kₑ uₑ
     // (the load is fixed, so the adjoint is the displacement itself)
     let compliance = 0;
     const dc = new Float64Array(cells), dv = new Float64Array(cells);
     spec.loads.forEach((l, c) => {
       const w = l.weight, uc = u[c];
+      if (!w || !active.includes(c)) return;
       for (let e = 0; e < cells; e++) {
         let ce = 0;
-        for (let a = 0; a < 8; a++) { let s = 0; for (let b = 0; b < 8; b++) s += ke[a * 8 + b] * uc[g.edof[e * 8 + b]]; ce += uc[g.edof[e * 8 + a]] * s; }
+        const o = e * m;
+        for (let a = 0; a < m; a++) { let s = 0; for (let b = 0; b < m; b++) s += ke[a * m + b] * uc[g.edof[o + b]]; ce += uc[g.edof[o + a]] * s; }
         compliance += w * scale[e] * ce;
-        dc[e] -= w * penal * Math.pow(phys[e], penal - 1) * (E - Emin) * thickness * ce;
+        dc[e] -= w * penal * Math.pow(phys[e], penal - 1) * (E - Emin) * size * ce;
       }
     });
-    // Back through the projection and the filter to the design densities; kept and avoided cells don't change
-    for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(tilde[e], beta); dc[e] *= s; dv[e] = s; }
+    // Back through the projection, the overhang filter and the density filter to the design densities; kept and
+    // avoided cells don't change
+    for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(made[e], beta); dc[e] *= s; dv[e] = s; }
+    if (print) { print.adjoint(dc, back); dc.set(back); print.adjoint(dv, back); dv.set(back); }
     filter.adjoint(dc, back); dc.set(back);
     filter.adjoint(dv, back); dv.set(back);
     const cases = spec.loads.map((l, c) => {
+      if (!u[c]) return { name: l.name, compliance: NaN, deflection: NaN, stiffness: NaN };
       const ci = jsBackend.dot(l.force, u[c]), deflection = l.size ? ci / l.size : 0;
       return { name: l.name, compliance: ci, deflection, stiffness: deflection ? l.size / deflection : Infinity };
     });
@@ -176,11 +269,11 @@ export function model(spec, { method = 'direct', backend = jsBackend } = {}) {
  * The optimisation: from an even spread, step by step, until the densities stop changing (less than tol per step)
  * with projection at full sharpness, or steps run out.
  * @param {ReturnType<typeof discretise>} spec
- * @param {{ onStep?: (s: { step: number, steps: number, compliance: number, change: number, beta: number, density: Float64Array }) => void, method?: 'direct' | 'cg', backend?: typeof jsBackend, tol?: number, move?: number }} [options]
+ * @param {{ onStep?: (s: { step: number, steps: number, compliance: number, change: number, beta: number, density: Float64Array }) => void, method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, move?: number }} [options]
  * @returns {{ density: Float64Array, compliance: number, cases: { name: string, compliance: number, deflection: number, stiffness: number }[], volume: number, steps: number, converged: boolean, history: number[], seconds: number }}
  *   each case's deflection is along its load (mm, compliance over the load's size), stiffness the load over that (N/mm)
  */
-export function optimise(spec, { onStep, method = 'direct', backend = jsBackend, tol = 0.01, move = 0.2 } = {}) {
+export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01, move = 0.2 } = {}) {
   const started = Date.now(), m = model(spec, { method, backend }), { cells, passive } = m;
   const inSpace = passive.reduce((s, p) => s + (p !== -2 ? 1 : 0), 0), kept = passive.reduce((s, p) => s + (p === 1 ? 1 : 0), 0);
   const free = passive.reduce((s, p) => s + (p === 0 ? 1 : 0), 0), target = spec.volume * inSpace;
@@ -223,12 +316,117 @@ export function optimise(spec, { onStep, method = 'direct', backend = jsBackend,
     if (beta >= betaMax && (change < tol || settled)) { converged = true; break; }
   }
   // The final design, analysed as it is
-  const final = m.evaluate(x, beta), phys = Float64Array.from(m.physical(x, beta));
+  const final = m.evaluate(x, beta, { all: true }), phys = Float64Array.from(m.physical(x, beta));
   return {
     density: phys, compliance: final.compliance, cases: final.cases,
     volume: phys.reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0) / inSpace, steps: step, converged, history, seconds: (Date.now() - started) / 1000,
   };
 }
+
+/**
+ * How many dimensions a region has: 2 or 3.
+ * @param {Region} r
+ * @returns {2 | 3}
+ */
+export function dimension(r) {
+  if (r.triangles || r.length != null) return 3;
+  if (r.points) return 2;
+  return (r.size || r.at).length === 3 ? 3 : 2;
+}
+
+/**
+ * Whether point pt is inside a region.
+ * @param {Region} r @param {number[]} pt
+ * @returns {boolean}
+ */
+export const inside = (r, pt) => insider(r)(pt);
+
+// A test for points inside a region (a closed mesh's is built once: its triangles binned by x and y, then a ray
+// straight up from the point crosses the mesh an odd number of times if the point is inside)
+const meshTests = new WeakMap();
+function insider(r) {
+  if (r.triangles) {
+    if (!meshTests.has(r.triangles)) meshTests.set(r.triangles, meshInside(r.triangles));
+    return meshTests.get(r.triangles);
+  }
+  if (r.points) return (pt) => {
+    let c = false; // even-odd ray crossing
+    const P = r.points, [x, y] = pt;
+    for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+      if ((P[i][1] > y) !== (P[j][1] > y) && x < ((P[j][0] - P[i][0]) * (y - P[i][1])) / (P[j][1] - P[i][1]) + P[i][0]) c = !c;
+    }
+    return c;
+  };
+  if (r.size) return (pt) => r.size.every((s, a) => Math.abs(pt[a] - r.at[a]) <= s / 2);
+  if (r.length != null) {
+    const ax = 'xyz'.indexOf(r.axis || 'z'), others = [0, 1, 2].filter((a) => a !== ax);
+    // A teardrop: a cylinder across the build (along x or y) with a 45° point below it (a boss) or above it (a hole),
+    // so it prints unsupported
+    const point = r.teardrop && ax !== 2 ? (r.teardrop === '+z' ? 1 : -1) : 0, side = others.find((a) => a !== 2);
+    return (pt) => {
+      if (Math.abs(pt[ax] - r.at[ax]) > r.length / 2) return false;
+      if (Math.hypot(pt[others[0]] - r.at[others[0]], pt[others[1]] - r.at[others[1]]) <= r.r) return true;
+      const out = point * (pt[2] - r.at[2]);
+      return point !== 0 && out > 0 && Math.abs(pt[side] - r.at[side]) + out <= r.r * Math.SQRT2;
+    };
+  }
+  return (pt) => dist(pt, r.at) <= r.r;
+}
+function meshInside(triangles) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const t of triangles) for (const [x, y] of t) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const B = Math.max(1, Math.ceil(Math.sqrt(triangles.length / 4))), sx = (x1 - x0) / B || 1, sy = (y1 - y0) / B || 1;
+  const bins = Array.from({ length: B * B }, () => []), bin = (v, lo, s) => Math.min(B - 1, Math.max(0, Math.floor((v - lo) / s)));
+  triangles.forEach((t, n) => {
+    const xs = t.map((p) => p[0]), ys = t.map((p) => p[1]);
+    for (let j = bin(Math.min(...ys), y0, sy); j <= bin(Math.max(...ys), y0, sy); j++) for (let i = bin(Math.min(...xs), x0, sx); i <= bin(Math.max(...xs), x0, sx); i++) bins[j * B + i].push(n);
+  });
+  return ([px, py, pz]) => {
+    if (px < x0 || px > x1 || py < y0 || py > y1) return false;
+    const x = px + 1e-7 * Math.SQRT2, y = py + 1e-7 * Math.PI; // off-centre, so the ray meets no edge exactly
+    let crossings = 0;
+    for (const n of bins[bin(x, x0, sx) + B * bin(y, y0, sy)]) {
+      const [a, b, c] = triangles[n], d = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      if (!d) continue;
+      const w0 = ((b[0] - x) * (c[1] - y) - (b[1] - y) * (c[0] - x)) / d, w1 = ((c[0] - x) * (a[1] - y) - (c[1] - y) * (a[0] - x)) / d, w2 = 1 - w0 - w1;
+      if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+      if (w0 * a[2] + w1 * b[2] + w2 * c[2] > pz) crossings++;
+    }
+    return crossings % 2 === 1;
+  };
+}
+
+// A region grown by d all round (a polygon or mesh as it is)
+function grow(r, d) {
+  if (r.triangles || r.points) return r;
+  if (r.size) return { ...r, size: r.size.map((s) => s + 2 * d) };
+  if (r.length != null) return { ...r, r: r.r + d, length: r.length + 2 * d };
+  return { ...r, r: (r.r || 0) + d };
+}
+const dist = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+
+/**
+ * A region's bounding box: [min x, min y, (min z), max x, max y, (max z)] in mm.
+ * @param {Region} r
+ * @returns {number[]}
+ */
+export function bounds(r) {
+  const dim = dimension(r);
+  if (r.triangles) {
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const t of r.triangles) for (const p of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], p[a]); hi[a] = Math.max(hi[a], p[a]); }
+    return [...lo, ...hi];
+  }
+  if (r.points) { const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
+  const half = r.size ? r.size.map((s) => s / 2) : r.length != null ? [0, 1, 2].map((a) => (a === 'xyz'.indexOf(r.axis || 'z') ? r.length / 2 : r.r)) : new Array(dim).fill(r.r);
+  const lo = r.at.map((c, a) => c - half[a]);
+  const hi = r.at.map((c, a) => c + half[a]);
+  if (r.teardrop && r.length != null && (r.axis || 'z') !== 'z') { if (r.teardrop === '+z') hi[2] = r.at[2] + r.r * Math.SQRT2; else lo[2] = r.at[2] - r.r * Math.SQRT2; } // its point
+  return [...lo, ...hi];
+}
+
+// ---------- shapes from results ----------
+// (Everything above decides the densities; everything below only draws them, so results can be kept by the code above)
 
 /**
  * The edges of a result at density 0.5 as closed loops in mm (marching squares on the densities averaged to the
@@ -320,31 +518,82 @@ function simplify(loop, tolerance) {
 }
 
 /**
- * Whether point pt is inside a region.
- * @param {Region} r @param {[number, number]} pt
- * @returns {boolean}
+ * A 3D result's surface at density 0.5: a closed triangle mesh in mm, outward-facing, smoothed (Taubin, which keeps
+ * the size). The densities are averaged to the cells' corners, with a layer of empty corners round the outside so the
+ * surface closes, and each cube between corners is split into six tetrahedra, all along the same diagonal, so
+ * neighbouring cubes cut their shared faces the same way and the surface has no gaps (marching tetrahedra).
+ * @param {{ nx: number, ny: number, nz: number, h: number }} size @param {ArrayLike<number>} density @param {number[]} origin
+ * Vertices on the grid's outer faces stay where they are as it's smoothed, so a part that fills its space to a face (a
+ * base on the bed) keeps that face flat, and the walls rising from it don't lean out.
+ * @param {{ smooth?: number, iso?: number }} [options] iso: the density the surface is drawn at (0.5)
+ * @returns {{ vertices: number[][], faces: number[][] }}
  */
-export function inside(r, [x, y]) {
-  if ('r' in r) return Math.hypot(x - r.at[0], y - r.at[1]) <= r.r;
-  if ('size' in r) return Math.abs(x - r.at[0]) <= r.size[0] / 2 && Math.abs(y - r.at[1]) <= r.size[1] / 2;
-  let c = false; // even-odd ray crossing
-  const P = r.points;
-  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
-    if ((P[i][1] > y) !== (P[j][1] > y) && x < ((P[j][0] - P[i][0]) * (y - P[i][1])) / (P[j][1] - P[i][1]) + P[i][0]) c = !c;
+export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth = 4, iso = 0.5 } = {}) {
+  const W = nx + 3, H = ny + 3, D = nz + 3, v = new Float64Array(W * H * D), id = (i, j, k) => (k * H + j) * W + i;
+  // Each corner: the average of the cubes round it that are in the grid (on the grid's faces, only those inside it, so
+  // material reaching a face reads as solid there, not half)
+  for (let k = 0; k <= nz; k++) for (let j = 0; j <= ny; j++) for (let i = 0; i <= nx; i++) {
+    let s = 0, count = 0;
+    for (let c = k - 1; c <= k; c++) for (let b = j - 1; b <= j; b++) for (let a = i - 1; a <= i; a++) if (a >= 0 && a < nx && b >= 0 && b < ny && c >= 0 && c < nz) { s += density[(c * ny + b) * nx + a]; count++; }
+    v[id(i + 1, j + 1, k + 1)] = s / count;
   }
-  return c;
-}
-
-/**
- * A region's bounding box, [minX, minY, maxX, maxY] in mm.
- * @param {Region} r
- * @returns {[number, number, number, number]}
- */
-export function bounds(r) {
-  if ('r' in r) return [r.at[0] - r.r, r.at[1] - r.r, r.at[0] + r.r, r.at[1] + r.r];
-  if ('size' in r) return [r.at[0] - r.size[0] / 2, r.at[1] - r.size[1] / 2, r.at[0] + r.size[0] / 2, r.at[1] + r.size[1] / 2];
-  const xs = r.points.map((p) => p[0]), ys = r.points.map((p) => p[1]);
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const corner = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]];
+  const tets = [[0, 1, 2, 6], [0, 2, 3, 6], [0, 3, 7, 6], [0, 7, 4, 6], [0, 4, 5, 6], [0, 5, 1, 6]];
+  const pos = (n) => { const i = n % W, j = Math.floor(n / W) % H, k = Math.floor(n / (W * H)); return [origin[0] + (i - 1) * h, origin[1] + (j - 1) * h, origin[2] + (k - 1) * h]; };
+  const vertices = [], faces = [], onEdge = new Map();
+  const crossing = (a, b) => { // the point where the density crosses iso on the edge between corners a and b, shared
+    const key = a < b ? a * W * H * D + b : b * W * H * D + a;
+    let n = onEdge.get(key);
+    if (n === undefined) {
+      const t = Math.min(0.999, Math.max(0.001, (iso - v[a]) / (v[b] - v[a]))), pa = pos(a), pb = pos(b);
+      n = vertices.length; vertices.push([0, 1, 2].map((q) => pa[q] + t * (pb[q] - pa[q]))); onEdge.set(key, n);
+    }
+    return n;
+  };
+  // A triangle, turned to face away from the solid: its normal pointing from an inside corner towards an outside one
+  const emit = (a, b, c, from, to) => {
+    const [p, q, r] = [vertices[a], vertices[b], vertices[c]], pf = pos(from), pt = pos(to);
+    const n = [(q[1] - p[1]) * (r[2] - p[2]) - (q[2] - p[2]) * (r[1] - p[1]), (q[2] - p[2]) * (r[0] - p[0]) - (q[0] - p[0]) * (r[2] - p[2]), (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])];
+    faces.push(n[0] * (pt[0] - pf[0]) + n[1] * (pt[1] - pf[1]) + n[2] * (pt[2] - pf[2]) >= 0 ? [a, b, c] : [a, c, b]);
+  };
+  for (let k = 0; k < D - 1; k++) for (let j = 0; j < H - 1; j++) for (let i = 0; i < W - 1; i++) {
+    const cube = corner.map(([a, b, c]) => id(i + a, j + b, k + c));
+    if (cube.every((n) => v[n] < iso) || cube.every((n) => v[n] >= iso)) continue;
+    for (const t of tets) {
+      const p = t.map((q) => cube[q]), inn = p.filter((n) => v[n] >= iso), out = p.filter((n) => v[n] < iso);
+      if (inn.length === 1 || inn.length === 3) { // one corner apart from the other three: a triangle round it
+        const [lone, rest, from, to] = inn.length === 1 ? [inn[0], out, inn[0], out[0]] : [out[0], inn, inn[0], out[0]];
+        emit(crossing(lone, rest[0]), crossing(lone, rest[1]), crossing(lone, rest[2]), from, to);
+      } else if (inn.length === 2) { // two and two: a quad, as two triangles
+        const [a, b] = inn, [c, d] = out, q = [crossing(a, c), crossing(a, d), crossing(b, d), crossing(b, c)];
+        emit(q[0], q[1], q[2], a, c); emit(q[0], q[2], q[3], a, c);
+      }
+    }
+  }
+  // Where material reaches the grid's face, the surface closes in the empty layer outside it: those crossings come
+  // back onto the face, so it's flat there, and every vertex on a face stays where it is
+  const lo = origin, hi = [origin[0] + nx * h, origin[1] + ny * h, origin[2] + nz * h], near = h * 0.01;
+  const pinned = vertices.map((p) => p.map((x, q) => (x < lo[q] + near ? lo[q] : x > hi[q] - near ? hi[q] : null)));
+  for (let n = 0; n < vertices.length; n++) for (let q = 0; q < 3; q++) if (pinned[n][q] !== null) vertices[n][q] = pinned[n][q];
+  // ... and holds still: one on the bed that moved sideways would tip the wall above it out over the edge
+  const held = pinned.map((p) => p.some((x) => x !== null));
+  // Taubin smoothing: each vertex moves towards its neighbours' average, then back a little further, so the surface
+  // rounds off its steps without shrinking
+  const nb = vertices.map(() => new Set());
+  for (const [a, b, c] of faces) { nb[a].add(b).add(c); nb[b].add(a).add(c); nb[c].add(a).add(b); }
+  const ring = nb.map((s) => Int32Array.from(s));
+  let pts = vertices;
+  for (let pass = 0; pass < smooth * 2; pass++) {
+    const f = pass % 2 ? -0.53 : 0.5;
+    pts = pts.map((p, n) => {
+      const r = ring[n];
+      if (!r.length) return p;
+      const avg = [0, 0, 0];
+      for (const m of r) for (let q = 0; q < 3; q++) avg[q] += pts[m][q] / r.length;
+      return held[n] ? p : p.map((x, q) => Math.min(hi[q], Math.max(lo[q], x + f * (avg[q] - x))));
+    });
+  }
+  return { vertices: pts, faces };
 }
 
 const fmt = (n) => String(Number(n.toFixed(2)));
