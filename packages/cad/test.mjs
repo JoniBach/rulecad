@@ -518,7 +518,8 @@ test('the live view: serves its page, streams each step, and its stop button set
     while (!text.includes('"frame"')) text += new TextDecoder().decode((await reader.read()).value);
     const m = JSON.parse(text.split('data: ').at(-1));
     assert.equal(m.frame.step, 3);
-    assert.deepEqual([...Buffer.from(m.frame.image, 'base64')], [0, 255, 128, 0]); // seen from above: the densest in each column
+    // Three views, each pixel the densest cell along its line of sight
+    assert.deepEqual(m.frame.views.map((v) => [v.name, ...Buffer.from(v.image, 'base64')]), [['along y', 0, 255, 128, 0], ['along x', 255, 0, 0, 128], ['along z', 0, 255, 128, 0]]);
     assert.equal(view.stopped(), false);
     await fetch(new URL('stop', view.url), { method: 'POST' });
     assert.equal(view.stopped(), true);
