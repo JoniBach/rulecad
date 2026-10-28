@@ -524,5 +524,11 @@ test('the live view: serves its page, streams each step, and its stop button set
     await fetch(new URL('stop', view.url), { method: 'POST' });
     assert.equal(view.stopped(), true);
     reader.cancel();
-  } finally { await view.close(); }
+    // Finished, it keeps showing the end for a while
+    const closing = view.close('finished', { hold: 500 });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.match(await (await fetch(view.url)).text(), /a test run/);
+    await closing;
+    await assert.rejects(fetch(view.url));
+  } catch (e) { await view.close(); throw e; }
 });
