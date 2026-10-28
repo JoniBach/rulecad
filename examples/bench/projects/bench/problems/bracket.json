@@ -1,6 +1,6 @@
 {
   "title": "Bracket bench: the stiffest bracket",
-  "description": "A bracket bolted to a wall by two M5 bolts and loaded at its tip through an M4 bolt, in print coordinates: the back plate on the bed (z = 0, against the wall in use), the bracket reaching up (z, out from the wall), y up the wall. Kept: the pads round the fixing bolts and the load boss. Avoided: the bolts' holes, room for their heads and a hex key, the load bolt's head and the gauge's plunger over it, and the hanger beside the boss.",
+  "description": "A bracket bolted to a wall by two M5 bolts and loaded at its tip through an M4 bolt, in print coordinates: the back plate on the bed (z = 0, against the wall in use), the bracket reaching up (z, out from the wall), y up the wall. Holes and bosses across the build direction are pointed (teardrops) so they print: variant side prints lying on its side, y up. Kept: the pads round the fixing bolts and the load boss. Avoided: the bolts' holes, room for their heads and a hex key, the load bolt's head and the gauge's plunger over it, and the hanger beside the boss.",
   "uses": ["bench", "m5", "m4", "x1c"],
   "material": "pla",
   "variables": {
@@ -8,10 +8,11 @@
     "hole4": { "value": "(m4.clearance + x1c.hole_comp) / 2", "unit": "mm", "rule": "The load bolt's hole: radius, printed" },
     "top": { "value": "bench.reach + bench.plate", "unit": "mm", "rule": "The envelope's height off the bed" },
     "angled": { "value": 0, "tweak": { "min": 0, "max": 1 }, "rule": "The angled case's weight: 0 analyses it without optimising for it" },
-    "build": { "value": "none", "choice": ["none", "+z"], "rule": "none: optimised freely; +z: only what prints without supports, standing on its back plate" }
+    "build": { "value": "none", "choice": ["none", "+z", "+y"], "rule": "none: optimised freely; +z: only what prints without supports, standing on its back plate; +y: lying on its side, its bottom edge on the bed" }
   },
   "variants": {
-    "printable": { "build": "+z" }
+    "printable": { "build": "+z" },
+    "side": { "build": "+y" }
   },
   "overhang": "build",
   "cell": "bench.bracket_cell",
@@ -19,16 +20,16 @@
   "filter": "bench.bracket_filter",
   "space": { "at": ["bench.pitch / 2", 0, "top / 2"], "size": ["bench.bracket_w", "bench.bracket_h", "top"] },
   "keep": [
-    { "at": [0, 0, "bench.plate / 2"], "r": "bench.boss5", "length": "bench.plate", "axis": "z", "label": "first fixing pad" },
-    { "at": ["bench.pitch", 0, "bench.plate / 2"], "r": "bench.boss5", "length": "bench.plate", "axis": "z", "label": "second fixing pad" },
-    { "at": ["bench.pitch / 2", 0, "bench.reach"], "r": "bench.boss4", "length": "bench.boss_len", "axis": "x", "teardrop": "-z", "label": "load boss, pointed below so it prints" }
+    { "at": [0, 0, "bench.plate / 2"], "r": "bench.boss5", "length": "bench.plate", "axis": "z", "teardrop": "down", "label": "first fixing pad" },
+    { "at": ["bench.pitch", 0, "bench.plate / 2"], "r": "bench.boss5", "length": "bench.plate", "axis": "z", "teardrop": "down", "label": "second fixing pad" },
+    { "at": ["bench.pitch / 2", 0, "bench.reach"], "r": "bench.boss4", "length": "bench.boss_len", "axis": "x", "teardrop": "down", "label": "load boss, pointed below so it prints" }
   ],
   "avoid": [
-    { "at": [0, 0, "top / 2"], "r": "hole5", "length": "top * 2", "axis": "z", "label": "first fixing bolt" },
-    { "at": ["bench.pitch", 0, "top / 2"], "r": "hole5", "length": "top * 2", "axis": "z", "label": "second fixing bolt" },
-    { "at": [0, 0, "(bench.plate + top) / 2"], "r": "bench.wrench", "length": "bench.reach", "axis": "z", "label": "first bolt's head and key" },
-    { "at": ["bench.pitch", 0, "(bench.plate + top) / 2"], "r": "bench.wrench", "length": "bench.reach", "axis": "z", "label": "second bolt's head and key" },
-    { "at": ["bench.pitch / 2", 0, "bench.reach"], "r": "hole4", "length": "bench.bracket_w * 2", "axis": "x", "teardrop": "+z", "label": "load bolt, its hole pointed above so it prints" },
+    { "at": [0, 0, "top / 2"], "r": "hole5", "length": "top * 2", "axis": "z", "teardrop": "up", "label": "first fixing bolt" },
+    { "at": ["bench.pitch", 0, "top / 2"], "r": "hole5", "length": "top * 2", "axis": "z", "teardrop": "up", "label": "second fixing bolt" },
+    { "at": [0, 0, "(bench.plate + top) / 2"], "r": "bench.wrench", "length": "bench.reach", "axis": "z", "teardrop": "up", "label": "first bolt's head and key" },
+    { "at": ["bench.pitch", 0, "(bench.plate + top) / 2"], "r": "bench.wrench", "length": "bench.reach", "axis": "z", "teardrop": "up", "label": "second bolt's head and key" },
+    { "at": ["bench.pitch / 2", 0, "bench.reach"], "r": "hole4", "length": "bench.bracket_w * 2", "axis": "x", "teardrop": "up", "label": "load bolt, its hole pointed above so it prints" },
     { "at": ["(bench.pitch - bench.boss_len) / 2 - m4.head_height", "bench.bracket_h / 4", "bench.reach"], "size": ["m4.head_height * 2 * 2", "bench.bracket_h / 2", "m4.head * 2"], "label": "load bolt's head, and the gauge's plunger above it" },
     { "at": ["(bench.pitch + bench.boss_len) / 2 + bench.thickness", "0 - bench.bracket_h / 4", "bench.reach"], "size": ["bench.thickness * 2", "bench.bracket_h / 2", "bench.hanger_w"], "label": "the hanger, hanging beside the boss" }
   ],

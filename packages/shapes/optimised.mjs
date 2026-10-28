@@ -48,24 +48,26 @@ export function optimisedOutline(result, { segments = 48 } = {}) {
 /**
  * A 3D region (a box, a cylinder along x, y or z, a teardrop, or a ball) as a JSCAD solid; a part's mesh region gives
  * null.
- * @param {{ at?: number[], r?: number, size?: number[], length?: number, axis?: string, teardrop?: '-z' | '+z', part?: string }} r
+ * @param {{ at?: number[], r?: number, size?: number[], length?: number, axis?: string, teardrop?: string, part?: string }} r
  * @param {number} [segments]
  */
 export function solidRegion(r, segments = 48) {
   if (r.part || r.triangles) return null;
   if (r.size) return cuboid({ center: r.at, size: r.size });
   if (r.length != null) {
-    let c = cylinder({ radius: r.r, height: r.length, segments });
-    // A teardrop (along x or y): the cylinder hulled with a thin ridge r√2 from its axis, below it ('-z', a boss) or
-    // above it ('+z', a hole), so that side is 45° (turned below, +x becomes -z)
-    // The ridge: a thin slice of a square turned 45° at each end, its far corner a little past r√2: a round of
-    // segments is a little inside its circle, so the faces from it to a point at exactly r√2 would be a touch flatter
-    // than 45°
-    const edge = 0.05, slice = 1e-3, reach = (r.teardrop === '+z' ? -1 : 1) * (r.r * Math.SQRT2 / Math.cos(Math.PI / segments) - edge / Math.SQRT2);
-    const end = (z) => translate([reach, 0, z], rotateZ(Math.PI / 4, cuboid({ size: [edge, edge, slice] })));
-    if (r.teardrop && r.axis !== 'z') c = hull(c, end((slice - r.length) / 2), end((r.length - slice) / 2));
-    const turned = r.axis === 'x' ? rotateY(Math.PI / 2, c) : r.axis === 'y' ? rotateZ(Math.PI / 2, rotateY(Math.PI / 2, c)) : c;
-    return translate(r.at, turned);
+    const c = cylinder({ radius: r.r, height: r.length, segments }), axis = r.axis || 'z', ax = 'xyz'.indexOf(axis);
+    const turned = translate(r.at, axis === 'x' ? rotateY(Math.PI / 2, c) : axis === 'y' ? rotateZ(Math.PI / 2, rotateY(Math.PI / 2, c)) : c);
+    // A teardrop (across the axis): the cylinder hulled with a thin ridge r√2 from its axis, below it (a boss) or
+    // above it (a hole), so that side is 45°
+    // The ridge: a thin slice of a square turned 45° about the axis at each end, its far corner a little past r√2: a
+    // round of segments is a little inside its circle, so the faces from it to a point at exactly r√2 would be a touch
+    // flatter than 45°
+    const pa = r.teardrop ? 'xyz'.indexOf(r.teardrop[1]) : -1;
+    if (pa < 0 || pa === ax) return turned;
+    const edge = 0.05, slice = 1e-3, reach = (r.teardrop[0] === '-' ? -1 : 1) * (r.r * Math.SQRT2 / Math.cos(Math.PI / segments) - edge / Math.SQRT2);
+    const square = [0, 1, 2].map((a) => (a === ax ? slice : edge)), spin = [rotateX, rotateY, rotateZ][ax];
+    const end = (along) => translate(r.at.map((x, a) => x + (a === pa ? reach : 0) + (a === ax ? along : 0)), spin(Math.PI / 4, cuboid({ size: square })));
+    return hull(turned, end((slice - r.length) / 2), end((r.length - slice) / 2));
   }
   return sphere({ center: r.at, radius: r.r, segments });
 }

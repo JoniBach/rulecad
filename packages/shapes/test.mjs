@@ -85,3 +85,14 @@ test('ops: the same booleans by JSCAD and by Manifold (faster, watertight)', asy
   t.diagnostic(`JSCAD ${time.jscad.toFixed(0)} ms, Manifold ${time.manifold.toFixed(0)} ms`);
   await assert.rejects(ops('nope'), /no boolean engine "nope"/);
 });
+
+test('solidRegion: a teardrop points any way across its axis, 45° to a point r√2 out', async () => {
+  const { solidRegion } = await import('@rulecad/shapes');
+  const { measureBoundingBox } = jscad.measurements;
+  for (const [axis, teardrop] of [['x', '+z'], ['y', '-z'], ['z', '+y'], ['z', '-x'], ['x', '-y']]) {
+    const [lo, hi] = measureBoundingBox(solidRegion({ at: [1, 2, 3], r: 2, length: 6, axis, teardrop })), q = 'xyz'.indexOf(teardrop[1]), a = 'xyz'.indexOf(axis);
+    const reach = teardrop[0] === '-' ? [1, 2, 3][q] - lo[q] : hi[q] - [1, 2, 3][q];
+    assert.ok(reach > 2 * Math.SQRT2 - 0.01 && reach < 2 * Math.SQRT2 + 0.05, `${axis} ${teardrop}: reaches ${reach}`);
+    assert.ok(Math.abs(hi[a] - lo[a] - 6) < 1e-6, `${axis} ${teardrop}: its length`);
+  }
+});

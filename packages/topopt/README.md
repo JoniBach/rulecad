@@ -25,8 +25,8 @@ const loops = outlines(spec.grid, result.density, spec.origin);   // closed loop
 ### In 3D
 
 Regions take a z. A region can be a box (`size`), a cylinder (`r`, `length`, `axis`), a ball (`r`), or a closed
-triangle mesh (`triangles`). A cylinder along x or y can be a teardrop (`teardrop: '-z'` for a boss, `'+z'` for a
-hole): it gets a 45° point, so it prints without support. Supports and loads can be any region.
+triangle mesh (`triangles`). A cylinder can be a teardrop: `teardrop: '-z'` for a boss, `'+z'` for a hole, or any
+direction across its axis. It gets a 45° point that way, so it prints without support. Supports and loads can be any region.
 
 ```js
 const spec = discretise({
@@ -38,7 +38,7 @@ const spec = discretise({
   overhang: '+z',                                    // printable standing this way up: no supports
 });
 const result = optimise(spec);                       // multigrid solves each step
-const { vertices, faces } = surface(spec.grid, result.density, spec.origin);
+const { vertices, faces } = surface(spec.grid, result.density, spec.origin, { overhang: { up: '+z', angle: 45 } });
 ```
 
 ## How it works

@@ -47,19 +47,21 @@ export async function readProblem(project, ref) {
     }
     return parts.get(ref);
   };
+  // The build direction: a direction ('+z'), or a variable holding one
+  const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
+  // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
+  const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
     if (r.part) return { triangles: await part(r.part), part: r.part };
     if (r.points) return { points: r.points.map(pt) };
     if (r.size) return { at: pt(r.at), size: r.size.map(ev) };
-    if (r.length != null) return { at: pt(r.at), r: ev(r.r), length: ev(r.length), axis: r.axis || 'z', ...(r.teardrop ? { teardrop: r.teardrop } : {}) };
+    if (r.length != null) { const axis = r.axis || 'z', t = r.teardrop && point(r.teardrop); return { at: pt(r.at), r: ev(r.r), length: ev(r.length), axis, ...(t && t[1] !== axis ? { teardrop: t } : {}) }; } // along its axis, a teardrop has no point
     return { at: pt(r.at), ...(r.r != null ? { r: ev(r.r) } : {}) };
   };
   const regions = (list) => Promise.all([list || []].flat().map(region));
   const m = values[p.material];
   if (typeof m?.modulus !== 'number' || typeof m?.poisson !== 'number') throw new Error(`material ${p.material}: its rule set needs modulus (MPa) and poisson`);
   const space = await regions(p.space), dim = space[0].triangles || space[0].length != null || (space[0].size || space[0].at)?.length === 3 ? 3 : 2;
-  // The build direction: a direction ('+z'), or a variable holding one
-  const overhang = p.overhang ? (typeof values[p.overhang] === 'string' ? values[p.overhang] : p.overhang) : null;
   const problem = {
     space, keep: await regions(p.keep), avoid: await regions(p.avoid),
     supports: await Promise.all(p.supports.map(async (s) => ({ ...(await region(s)), fix: s.fix || 'xyz'.slice(0, dim) }))),

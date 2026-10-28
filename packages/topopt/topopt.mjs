@@ -17,9 +17,9 @@ import { grid as makeGrid, cellStiffness, solve, positions, jsBackend } from '@r
 export { jsBackend };
 
 /**
- * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: '-z' | '+z' } | { points: [number, number][] } | { triangles: number[][][] }} Region
+ * @typedef {{ at: number[], r: number } | { at: number[], size: number[] } | { at: number[], r: number, length: number, axis?: 'x' | 'y' | 'z', teardrop?: string } | { points: [number, number][] } | { triangles: number[][][] }} Region
  *   in mm: a circle (2D) or sphere (3D) at, r; a box at (its centre), size; a cylinder at (its centre), r, length,
- *   along axis (default z; teardrop '-z' or '+z': along x or y, with a 45° point that way, so it prints); a polygon (2D);
+ *   along axis (default z; teardrop '+z', '-y', …: a 45° point that way, across the axis, so it prints); a polygon (2D);
  *   or a closed triangle mesh (3D: a design's part)
  */
 /** @typedef {Region & { fix?: string }} Support holds the nodes in the region (on material): fix the directions, 'xy' or 'xyz' (default all) */
@@ -360,13 +360,13 @@ function insider(r) {
   if (r.size) return (pt) => r.size.every((s, a) => Math.abs(pt[a] - r.at[a]) <= s / 2);
   if (r.length != null) {
     const ax = 'xyz'.indexOf(r.axis || 'z'), others = [0, 1, 2].filter((a) => a !== ax);
-    // A teardrop: a cylinder across the build (along x or y) with a 45° point below it (a boss) or above it (a hole),
-    // so it prints unsupported
-    const point = r.teardrop && ax !== 2 ? (r.teardrop === '+z' ? 1 : -1) : 0, side = others.find((a) => a !== 2);
+    // A teardrop: a cylinder across the build with a 45° point below it (a boss) or above it (a hole), so it prints
+    // unsupported. Along the build, it's a plain cylinder.
+    const pa = r.teardrop ? 'xyz'.indexOf(r.teardrop[1]) : -1, point = pa >= 0 && pa !== ax ? (r.teardrop[0] === '-' ? -1 : 1) : 0, side = others.find((a) => a !== pa);
     return (pt) => {
       if (Math.abs(pt[ax] - r.at[ax]) > r.length / 2) return false;
       if (Math.hypot(pt[others[0]] - r.at[others[0]], pt[others[1]] - r.at[others[1]]) <= r.r) return true;
-      const out = point * (pt[2] - r.at[2]);
+      const out = point * (pt[pa] - r.at[pa]);
       return point !== 0 && out > 0 && Math.abs(pt[side] - r.at[side]) + out <= r.r * Math.SQRT2;
     };
   }
@@ -421,7 +421,8 @@ export function bounds(r) {
   const half = r.size ? r.size.map((s) => s / 2) : r.length != null ? [0, 1, 2].map((a) => (a === 'xyz'.indexOf(r.axis || 'z') ? r.length / 2 : r.r)) : new Array(dim).fill(r.r);
   const lo = r.at.map((c, a) => c - half[a]);
   const hi = r.at.map((c, a) => c + half[a]);
-  if (r.teardrop && r.length != null && (r.axis || 'z') !== 'z') { if (r.teardrop === '+z') hi[2] = r.at[2] + r.r * Math.SQRT2; else lo[2] = r.at[2] - r.r * Math.SQRT2; } // its point
+  const pa = r.teardrop && r.length != null ? 'xyz'.indexOf(r.teardrop[1]) : -1;
+  if (pa >= 0 && pa !== 'xyz'.indexOf(r.axis || 'z')) { if (r.teardrop[0] === '-') lo[pa] = r.at[pa] - r.r * Math.SQRT2; else hi[pa] = r.at[pa] + r.r * Math.SQRT2; } // its point
   return [...lo, ...hi];
 }
 

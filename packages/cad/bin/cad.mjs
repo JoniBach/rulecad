@@ -146,13 +146,27 @@ async function optimiseProblem(ref) {
 }
 
 // An object's analyses for cad check: each problem's load cases on the part, and its volume against a target
+function place(triangles, [rx, ry, rz], move) {
+  const [cx, sx, cy, sy, cz, sz] = [rx, ry, rz].flatMap((deg) => [Math.cos((deg * Math.PI) / 180), Math.sin((deg * Math.PI) / 180)]);
+  return triangles.map((t) => t.map((p) => {
+    let [x, y, z = 0] = p;
+    [y, z] = [y * cx - z * sx, y * sx + z * cx];
+    [x, z] = [x * cy + z * sy, -x * sy + z * cy];
+    [x, y] = [x * cz - y * sz, x * sz + y * cz];
+    return [x + move[0], y + move[1], z + (move[2] || 0)].slice(0, p.length);
+  }));
+}
+
 async function analyses(b, d, tag) {
   const lookup = (n) => { const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), b.values); if (typeof v !== 'number') throw new Error(`analysis: "${n}" isn't a number`); return v; };
   const all = [];
   for (const a of b.object.analysis || []) all.push(...await (async () => {
     const part = a.part ? b.parts.find((p) => p.name === a.part) : b.parts.find((p) => p.role !== 'support');
     if (!part) return [{ level: 'fail', text: `analysis: no part "${a.part}"`, code: 'fea.part' }];
-    const r = await analysePart(part.triangles, d.project, a.problem), m = r.material, limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
+    // A part drawn in its print orientation, turned back into the problem's frame: rotated (degrees about x, then y,
+    // then z, as JSCAD's rotate), then moved
+    const turned = a.rotate || a.move ? place(part.triangles, (a.rotate || [0, 0, 0]).map((x) => evaluate(x, lookup)), (a.move || [0, 0, 0]).map((x) => evaluate(x, lookup))) : part.triangles;
+    const r = await analysePart(turned, d.project, a.problem), m = r.material, limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
     let out = null;
     if (r.dim !== 3) { // a flat part's picture: its cells as analysed, with the supports and loads
       out = paths.preview(d.project, `${d.name}${tag}-analysis-${a.problem.replace(':', '-')}.svg`);

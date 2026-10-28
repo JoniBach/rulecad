@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside } from '@rulecad/topopt';
+import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds } from '@rulecad/topopt';
 import { grid } from '@rulecad/fea';
 
 // The reference values come from reference/top88.py, a line-by-line port of Andreassen et al. (2011)'s top88.m (the
@@ -151,6 +151,15 @@ test('3D regions: a box, a cylinder, and a closed mesh tell inside from out', ()
   assert.equal(inside({ triangles }, [2, 2, 2]), true);
   assert.equal(inside({ triangles }, [2, 2, 5]), false);
   assert.equal(inside({ triangles }, [5, 2, 2]), false);
+  // A teardrop points any way across its axis; along it, it's a plain cylinder
+  for (const [axis, teardrop, tip] of [['x', '+z', [0, 0, 2.7]], ['x', '-y', [0, -2.7, 0]], ['z', '+y', [0, 2.7, 0]], ['y', '-x', [-2.7, 0, 0]]]) {
+    const r = { at: [0, 0, 0], r: 2, length: 4, axis, teardrop };
+    assert.equal(inside(r, tip), true, `${axis} ${teardrop}: its point`);
+    assert.equal(inside(r, tip.map((x) => -x)), false, `${axis} ${teardrop}: round the other side`);
+    const b = bounds(r), q = 'xyz'.indexOf(teardrop[1]);
+    assert.ok(Math.abs((teardrop[0] === '-' ? -b[q] : b[q + 3]) - 2 * Math.SQRT2) < 1e-9, `${axis} ${teardrop}: its bounds reach the point`);
+  }
+  assert.equal(inside({ at: [0, 0, 0], r: 2, length: 4, axis: 'z', teardrop: '+z' }, [0, 0, 2.1]), false, 'along its axis, no point');
 });
 
 test('a 3D problem in shapes: the grid is rounded for multigrid, supports and loads land on material', () => {

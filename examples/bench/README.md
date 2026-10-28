@@ -1,7 +1,7 @@
 # The benches
 
 Test blocks for rulecad's topology optimisation, printed and load-tested on one rig: four levers (2D, flat) and
-three wall brackets (3D). Every object here is in the `bench` project; the rules they share are in `rules/bench.json`.
+four wall brackets (3D). Every object here is in the `bench` project; the rules they share are in `rules/bench.json`.
 
 ## The lever bench
 
@@ -83,7 +83,7 @@ repeats), and the calibrated predictions are within 30% of the measurements.
 ## The bracket bench
 
 A 3D test block on the same rig: a wall bracket, bolted to the wall's face by the same two M5 bolts and reaching
-straight out from it 80 mm to a load bolt, where the hanger hangs. Three brackets of equal mass (27,520 mm³, about
+straight out from it 80 mm to a load bolt, where the hanger hangs. Four brackets of equal mass (27,520 mm³, about
 35 g of PLA) fill the same envelope (40 × 40 × 86 mm) and are held and loaded the same way:
 
 | | Object | What it is | Predicted stiffness, straight down |
@@ -91,19 +91,26 @@ straight out from it 80 mm to a load bolt, where the hanger hangs. Three bracket
 | A | `bench/bracket-web` | A back plate and a plain upright web to the load boss: the usual hand-made bracket. | 72.8 N/mm |
 | B | `bench/bracket` | The stiffest bracket the optimiser finds (`problems/bracket.json`), ignoring how it prints. | 119 N/mm |
 | C | `bench/bracket:printable` | The same, keeping only what prints without supports standing on its back plate. | 119 N/mm |
+| D | `bench/bracket:side` | The same, keeping only what prints without supports lying on its side (the problem's y up). | 116 N/mm |
 
-The difference between B and C is what printing without supports costs in stiffness. All three print standing on
-their back plate, as they're drawn; their bolt holes and the load boss are teardrops, pointed so they print.
+The differences between B, C and D are what printing without supports costs in stiffness. A, B and C print standing
+on their back plate, as they're drawn; D is drawn lying on its side, and its analysis turns it back (`rotate` and
+`move`) so it's loaded as the others are. Their bolt holes and the load boss are teardrops, pointed up the way each
+prints. `bench/bracket:side-free` is B laid on its side: not for printing, but to show what it would need supporting.
 
 What the predictions say:
 
 - **Optimised against plain:** both optimised brackets are predicted 1.6 times stiffer than the plain web of the same
   mass straight down (119 against 72.8 N/mm), and 3 to 4 times at 45° (51–60 against 15.7 N/mm).
 - **Printable against free:** standing on its back plate, the free optimum is already nearly self-supporting.
-  Keeping it printable costs nothing straight down and about 14% at 45° (51.3 against 59.8 N/mm). The visible
+  Keeping it printable costs nothing straight down and about 14% at 45° (51.4 against 59.8 N/mm). The visible
   difference is the hole through its side: arched in B, rising to a 45° point in C.
-- **Overhangs:** B and C each have about 100 mm² of small faces a little past 45°, left by smoothing the cubes into a
-  surface. The print check lists them; most printers bridge them.
+- **On its side:** here the filter earns its keep. Laid on its side, B has 1,035 mm² of overhangs past 45° and needs
+  supports; D has none. D costs about 3% straight down and 31% at 45° (116 and 41.5 against 119 and 59.8 N/mm): with
+  y up, every hole's roof must rise at 45°, so D is closer to a solid web than an open truss.
+- **Overhangs:** C and D have none past 45°. Smoothing the cubes into a surface leaves small faces either side of 45°,
+  so a printable result's faces past it are tipped back to it: under 0.1% of its volume moves. B, unfiltered, has
+  about 100 mm² standing up; most printers bridge those.
 
 `bench/reach-arm` takes the gauge arm's place on the wall's top and reaches out over the bracket's load bolt. The
 bracket reaches out from the wall's face, so clamp the rig with the wall's face at the bench's edge: the hanger then

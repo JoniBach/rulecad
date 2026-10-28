@@ -382,8 +382,9 @@ holes come out true.
 
 A problem whose regions have a z is solid. It has no thickness, and takes more kinds of region:
 - **A box:** `size`.
-- **A cylinder:** `r`, `length` and `axis`. Along x or y it can be a teardrop: `"teardrop": "-z"` for a boss,
-  `"+z"` for a hole. It gets a 45° point, so it prints.
+- **A cylinder:** `r`, `length` and `axis`. It can be a teardrop: `"teardrop": "down"` for a boss, `"up"` for a
+  hole. It gets a 45° point that way, so it prints. Up is the problem's `overhang` (+z when it's free), so the same
+  problem prints either way up; `"+y"` and the like point it a fixed way. Along its axis, it has no point.
 - **A ball:** `r`.
 - **A named part of another design in the project:** `{ "part": "envelope.body" }`.
 
@@ -392,8 +393,17 @@ without supports standing that way up (a variable holding `"+z"` or `"none"` wor
 
 `cad optimise` draws the result's four views in `.preview/`. A design builds the result with
 `v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops })`, which adds the keep regions and cuts the avoid
-regions exactly. The surface is a big mesh, so set the object's `"engine": "manifold"`. An `analysis` of a solid part
-voxelises it on the problem's grid.
+regions exactly. The surface is a big mesh, so set the object's `"engine": "manifold"`. With `"overhang"` set, the
+surface is also kept within the printer's overhang limit: faces smoothing tipped past it are tipped back. An
+`analysis` of a solid part voxelises it on the problem's grid.
+
+A part prints in one orientation and is loaded in another. Draw it as it prints, and turn it back for its analysis:
+`"rotate"` (degrees about x, then y, then z, as JSCAD's `rotate`) then `"move"` (mm) put it in the problem's frame.
+Both take expressions, so a variant can lie the part down:
+
+```json
+"analysis": [{ "problem": "bracket", "rotate": ["0 - 90 * side", 0, 0], "move": [0, "0 - side * bench.bracket_h / 2", 0] }]
+```
 
 Grids in 3D are solved by multigrid. A 16 × 16 × 40 grid (about 10,000 cubes) takes a second or two a step, so a whole
 optimisation takes a few minutes. The result is kept, so it's worked out once.
