@@ -26,7 +26,8 @@ export function liveView({ port = 8090, host = '127.0.0.1', title }) {
           worker.postMessage({ step: s.step, steps: s.steps, compliance: s.compliance, change: s.change, beta: s.beta, volume: s.volume, stress: s.stress, views: list }, list.map((v) => v.image.buffer));
         },
         stopped: () => Atomics.load(flag, 0) === 1,
-        close: (summary) => new Promise((done) => { worker.once('exit', () => done()); worker.postMessage({ done: summary ?? 'finished' }); }),
+        // hold: keep showing the end for this long (ms), for whoever opens the page late
+        close: (summary, { hold = 0 } = {}) => new Promise((done) => { worker.once('exit', () => done()); worker.postMessage({ done: summary ?? 'finished', hold }); }),
       });
     });
   });
@@ -99,7 +100,9 @@ if (!isMainThread && workerData?.flag) {
     if (m.done) {
       done = m.done; clearInterval(tick);
       for (const c of clients) { send(c, { history, ...(latest ? { frame: frame(latest) } : {}), done }); c.end(); }
-      server.close(); server.closeAllConnections(); parentPort.close(); return;
+      const shut = () => { server.close(); server.closeAllConnections(); parentPort.close(); };
+      if (m.hold) setTimeout(shut, m.hold); else shut();
+      return;
     }
     latest = m; history.push(m.compliance);
   });
