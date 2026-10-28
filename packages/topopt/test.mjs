@@ -176,3 +176,20 @@ test('surface: material filling the grid to its faces gives exactly its box, clo
   for (const [a, b, c] of faces) for (const [p, q] of [[a, b], [b, c], [c, a]]) edges.set(`${p},${q}`, (edges.get(`${p},${q}`) || 0) + 1);
   for (const [k, n] of edges) { const [p, q] = k.split(','); assert.ok(n === 1 && edges.has(`${q},${p}`), `edge ${k}: a hole or a fold`); }
 });
+
+test('surface: a printable slope keeps no faces past the overhang limit, in any build direction, nor gains material', () => {
+  // A wall leaning out at 45°, one cube further out per layer: smoothing its staircase leaves faces either side of 45°
+  const n = [16, 4, 12], volume = (v, f) => f.reduce((s, [a, b, c]) => { const [p, q, r] = [v[a], v[b], v[c]]; return s + (p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0])) / 6; }, 0);
+  for (const [up, axes] of [['+z', [0, 1, 2]], ['+y', [0, 2, 1]]]) {
+    const size = { nx: n[axes[0]], ny: n[axes[1]], nz: n[axes[2]], h: 1 }, d = new Float64Array(n[0] * n[1] * n[2]), q = 'xyz'.indexOf(up[1]);
+    for (let k = 0; k < size.nz; k++) for (let j = 0; j < size.ny; j++) for (let i = 0; i < size.nx; i++) { const c = [i, j, k]; d[(k * size.ny + j) * size.nx + i] = c[0] <= 2 + c[q] ? 1 : 0.001; }
+    const past = ({ vertices: v, faces }) => faces.reduce((s, [a, b, c]) => {
+      const u = v[b].map((x, m) => x - v[a][m]), w = v[c].map((x, m) => x - v[a][m]), nv = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]], l = Math.hypot(...nv);
+      return s + (nv[q] / l < -Math.sin((45.5 * Math.PI) / 180) && nv[q] / l > -0.999 ? l / 2 : 0);
+    }, 0);
+    const plain = surface(size, d), kept = surface(size, d, [0, 0, 0], { overhang: { up, angle: 45 } });
+    assert.ok(past(plain) > 1, `${up}: the plain surface should have faces past 45° to fix (${past(plain)} mm²)`);
+    assert.equal(past(kept), 0, `${up}: ${past(kept)} mm² past 45°`);
+    assert.ok(Math.abs(volume(kept.vertices, kept.faces) / volume(plain.vertices, plain.faces) - 1) < 0.01, `${up}: volume changed`);
+  }
+});

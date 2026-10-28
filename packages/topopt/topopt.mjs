@@ -525,10 +525,12 @@ function simplify(loop, tolerance) {
  * @param {{ nx: number, ny: number, nz: number, h: number }} size @param {ArrayLike<number>} density @param {number[]} origin
  * Vertices on the grid's outer faces stay where they are as it's smoothed, so a part that fills its space to a face (a
  * base on the bed) keeps that face flat, and the walls rising from it don't lean out.
- * @param {{ smooth?: number, iso?: number }} [options] iso: the density the surface is drawn at (0.5)
+ * @param {{ smooth?: number, iso?: number, overhang?: { up: string, angle: number } }} [options] iso: the density the
+ * surface is drawn at (0.5). overhang: the build direction ('+z') and the printer's overhang limit (degrees from
+ * vertical): faces smoothing left past it are tipped back to it.
  * @returns {{ vertices: number[][], faces: number[][] }}
  */
-export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth = 4, iso = 0.5 } = {}) {
+export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth = 4, iso = 0.5, overhang } = {}) {
   const W = nx + 3, H = ny + 3, D = nz + 3, v = new Float64Array(W * H * D), id = (i, j, k) => (k * H + j) * W + i;
   // Each corner: the average of the cubes round it that are in the grid (on the grid's faces, only those inside it, so
   // material reaching a face reads as solid there, not half)
@@ -593,7 +595,39 @@ export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth
       return held[n] ? p : p.map((x, q) => Math.min(hi[q], Math.max(lo[q], x + f * (avg[q] - x))));
     });
   }
+  if (overhang) steepen(pts, faces, held, overhang, lo, hi);
   return { vertices: pts, faces };
+}
+
+// Faces past the overhang limit, tipped back to it. Optimised in cubes, a printable slope is a staircase of 45°, and
+// smoothing leaves small faces either side of 45°. Each face facing down more steeply than the limit is turned about
+// its centre, moving its corners along the build direction only, until it's a little inside the limit: about as much
+// material is added as taken away. A corner shared by several such faces moves by their average; it's repeated until
+// none are left. Flat faces (a bridge) and faces held on the grid's sides stay as they are.
+function steepen(pts, faces, held, { up, angle }, lo, hi, passes = 200) {
+  const q = 'xyz'.indexOf(up[1]), s = up[0] === '-' ? -1 : 1, [a, b] = [0, 1, 2].filter((x) => x !== q);
+  const limit = Math.sin((angle * Math.PI) / 180), slope = 1.03 / Math.tan((angle * Math.PI) / 180);
+  for (let pass = 0; pass < passes; pass++) {
+    const move = new Float64Array(pts.length), count = new Uint16Array(pts.length);
+    let left = 0;
+    for (const f of faces) {
+      if (held[f[0]] && held[f[1]] && held[f[2]]) continue;
+      const [p, r, t] = f.map((n) => pts[n]), u = [r[0] - p[0], r[1] - p[1], r[2] - p[2]], w = [t[0] - p[0], t[1] - p[1], t[2] - p[2]];
+      const n = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]], len = Math.hypot(...n);
+      if (!len || (s * n[q]) / len >= -limit) continue;
+      // The face's plane as a height along the build direction over the other two: x_q = c + ga x_a + gb x_b
+      const ga = -n[a] / n[q], gb = -n[b] / n[q], g = Math.hypot(ga, gb);
+      if (g < 0.05) continue; // flat: a bridge, which turning won't help
+      left++;
+      const c = [0, 1, 2].map((x) => (p[x] + r[x] + t[x]) / 3), k = slope / g;
+      for (const m of f) {
+        const v = pts[m];
+        move[m] += c[q] + k * (ga * (v[a] - c[a]) + gb * (v[b] - c[b])) - v[q]; count[m]++;
+      }
+    }
+    if (!left) break;
+    for (let m = 0; m < pts.length; m++) if (count[m] && !held[m]) pts[m][q] = Math.min(hi[q], Math.max(lo[q], pts[m][q] + move[m] / count[m]));
+  }
 }
 
 const fmt = (n) => String(Number(n.toFixed(2)));
