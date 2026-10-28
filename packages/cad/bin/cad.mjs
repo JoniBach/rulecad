@@ -110,8 +110,9 @@ function report(findings, about = {}) {
 const say = (...a) => { if (!opt('json')) console.log(...a); }; // text output that --json leaves out
 
 const sig = (n) => (Number.isFinite(n) ? String(Number(n.toPrecision(3))) : String(n)); // three significant figures
-// cad optimise: run a problem (with a progress line), then report it and draw it
-function optimiseProblem(ref) {
+// cad optimise: run a problem (with a progress line), then report it and draw it: a 2D layout as an SVG of its
+// densities, a 3D one as the preview's four views of its surface
+async function optimiseProblem(ref) {
   const [project, name] = String(ref).split('/');
   if (!project || !name) throw new Error('usage: cad optimise <project>/<problem>[:variant]');
   const file = problemFile(project, name.split(':')[0]);
@@ -120,36 +121,49 @@ function optimiseProblem(ref) {
     if (bad.length) { report(bad); process.exitCode = 1; return; }
   }
   const live = !opt('json') && process.stderr.isTTY;
-  const r = optimised(project, name, { fresh: !!opt('fresh'), onStep: (s) => live && process.stderr.write(`\r\x1b[Kstep ${s.step}/${s.steps}  compliance ${s.compliance.toPrecision(5)} N·mm  change ${s.change.toFixed(3)}  sharpness ${s.beta}`) });
+  const r = await optimised(project, name, { fresh: !!opt('fresh'), onStep: (s) => live && process.stderr.write(`\r\x1b[Kstep ${s.step}/${s.steps}  compliance ${s.compliance.toPrecision(5)} N·mm  change ${s.change.toFixed(3)}  sharpness ${s.beta}`) });
   if (live) process.stderr.write('\r\x1b[K');
-  const out = paths.preview(project, `${name.replace(':', '-')}-optimised.svg`), p = readProblem(project, name);
-  const lines = [`${p.material.name}, ${fmt(r.thickness)} mm thick: ${r.cases.map((c) => `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
-    `${fmt(r.volume * 100)}% of the space, ${r.grid.nx} × ${r.grid.ny} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}`];
-  fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, picture(r, { title: r.title, lines }));
-  if (opt('json')) return console.log(JSON.stringify((({ density, history, ...x }) => x)(r), null, 2));
+  const p = await readProblem(project, name), cells = r.dim === 3 ? `${r.grid.nx} × ${r.grid.ny} × ${r.grid.nz}` : `${r.grid.nx} × ${r.grid.ny}`;
+  const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
+    `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}`];
+  let out;
+  if (r.dim === 3) {
+    out = paths.preview(project, `${name.replace(':', '-')}-optimised.png`);
+    const triangles = r.mesh.faces.map((f) => f.map((i) => r.mesh.vertices[i]));
+    await preview([{ name: 'body', label: r.title, triangles }], { title: r.title, meta: lines.join(' · '), out });
+  } else {
+    out = paths.preview(project, `${name.replace(':', '-')}-optimised.svg`);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, picture(r, { title: r.title, lines }));
+  }
+  if (opt('json')) return console.log(JSON.stringify((({ density, history, mesh, ...x }) => x)(r), null, 2));
   console.log(`${r.title}${r.cached ? ' (cached)' : ` (${fmt(r.seconds)} s)`}`);
   for (const c of r.cases) console.log(`  ${c.name}: moves ${sig(c.deflection)} mm along its load, ${sig(c.stiffness)} N/mm`);
-  console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);
-  console.log(`  ${r.grid.nx} × ${r.grid.ny} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? ', settled' : ': stopped before it settled (raise steps)'}`);
+  if (r.dim === 3) console.log(`  ${fmt(r.volume * 100)}% of the space filled: ${fmt(r.solid / 1000)} cm³ (${fmt(r.solid / 1000 * (p.material.density || 0))} g of ${p.material.name})${r.overhang ? `, printable built ${r.overhang}` : ''}`);
+  else console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);
+  console.log(`  ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? ', settled' : ': stopped before it settled (raise steps)'}`);
   console.log(out);
 }
 
 // An object's analyses for cad check: each problem's load cases on the part, and its volume against a target
-function analyses(b, d, tag) {
+async function analyses(b, d, tag) {
   const lookup = (n) => { const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), b.values); if (typeof v !== 'number') throw new Error(`analysis: "${n}" isn't a number`); return v; };
-  return (b.object.analysis || []).flatMap((a) => {
+  const all = [];
+  for (const a of b.object.analysis || []) all.push(...await (async () => {
     const part = a.part ? b.parts.find((p) => p.name === a.part) : b.parts.find((p) => p.role !== 'support');
     if (!part) return [{ level: 'fail', text: `analysis: no part "${a.part}"`, code: 'fea.part' }];
-    const r = analysePart(part.triangles, d.project, a.problem), m = r.material, limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
-    const out = paths.preview(d.project, `${d.name}${tag}-analysis-${a.problem.replace(':', '-')}.svg`);
-    fs.mkdirSync(path.dirname(out), { recursive: true });
-    fs.writeFileSync(out, picture({ ...r, ...readProblem(d.project, a.problem).problem }, { title: `${b.object.title || d.name}: ${a.problem}`, lines: r.cases.map((c) => `${c.name}: ${sig(c.deflection)} mm, ${sig(c.stiffness)} N/mm, peak stress ${sig(c.stress)} MPa`) }));
+    const r = await analysePart(part.triangles, d.project, a.problem), m = r.material, limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
+    let out = null;
+    if (r.dim !== 3) { // a flat part's picture: its cells as analysed, with the supports and loads
+      out = paths.preview(d.project, `${d.name}${tag}-analysis-${a.problem.replace(':', '-')}.svg`);
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out, picture({ ...r, ...(await readProblem(d.project, a.problem)).problem }, { title: `${b.object.title || d.name}: ${a.problem}`, lines: r.cases.map((c) => `${c.name}: ${sig(c.deflection)} mm, ${sig(c.stiffness)} N/mm, peak stress ${sig(c.stress)} MPa`) }));
+    }
     const found = r.cases.map((c) => {
       const safety = m.strength ? `, peak stress ${sig(c.stress)} MPa (${sig(m.strength / c.stress)}× under ${m.name}'s strength; coarse)` : '';
       const text = `${a.problem} ${c.name}: moves ${sig(c.deflection)} mm under ${fmt(c.force)} N, ${sig(c.stiffness)} N/mm${safety}`;
       const values = { deflection: c.deflection, force: c.force, stiffness: c.stiffness, stress: c.stress, ...(limit != null ? { limit } : {}) };
-      return { level: limit == null ? 'info' : c.deflection <= limit ? 'pass' : 'fail', text: limit == null ? text : `${text} (at most ${fmt(limit)})`, code: 'fea.deflection', values, refs: { problem: a.problem, part: part.name, picture: path.relative(WS, out) } };
+      return { level: limit == null ? 'info' : c.deflection <= limit ? 'pass' : 'fail', text: limit == null ? text : `${text} (at most ${fmt(limit)})`, code: 'fea.deflection', values, refs: { problem: a.problem, part: part.name, ...(out ? { picture: path.relative(WS, out) } : {}) } };
     });
     const grams = m.density ? ` (${fmt((r.volume / 1000) * m.density)} g of ${m.name})` : '';
     if (a.volume != null) {
@@ -157,7 +171,8 @@ function analyses(b, d, tag) {
       found.push({ level: Math.abs(off) <= tol ? 'pass' : 'fail', text: `volume ${fmt(r.volume)} mm³${grams}: ${off >= 0 ? '+' : ''}${fmt(off * 100)}% from ${fmt(want)} (within ${fmt(tol * 100)}%)`, code: 'fea.volume', values: { volume: r.volume, target: want, off } });
     } else found.push({ level: 'info', text: `volume ${fmt(r.volume)} mm³${grams}`, code: 'fea.volume', values: { volume: r.volume } });
     return found;
-  });
+  })());
+  return all;
 }
 
 async function main() {
@@ -217,7 +232,7 @@ async function main() {
   if (cmd === 'why') return explainValue(ref);
   if (cmd === 'set') return editVariables(ref);
   if (cmd === 'add') return editAssembly(args[1], args[2]);
-  if (cmd === 'optimise' || cmd === 'optimize') return optimiseProblem(ref);
+  if (cmd === 'optimise' || cmd === 'optimize') return await optimiseProblem(ref);
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
   const d = at ? materialise(locate(base), at) : locate(ref), set = sets();
@@ -264,7 +279,7 @@ async function main() {
       ...(b.object.role === 'reference'
         ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
         : check(b.triangles, printer(b, d), { parts: b.parts })),
-      ...analyses(b, d, tag),
+      ...(await analyses(b, d, tag)),
     ], { object: `${d.project}/${d.name}`, title, version, ...(Object.keys(set).length ? { set } : {}), orientation: b.object.orientation, parts: b.parts.map((p) => ({ name: p.name, role: p.role || 'part' })) });
     if (b.object.orientation) say(`  orientation: ${b.object.orientation}`);
     if (b.parts.length > 1) say(`  parts: ${b.parts.map((p) => `${p.name}${p.role === 'support' ? ' (support)' : ''}`).join(', ')}`);

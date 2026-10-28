@@ -1,6 +1,6 @@
 {
   "name": "create-rulecad",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Start a rulecad project: npm create rulecad my-designs. A workspace with a soap tray to start from, ready to check, preview, export and share.",
   "type": "module",
   "bin": {

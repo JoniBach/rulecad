@@ -2,75 +2,346 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://jonibach.github.io/rulecad/schemas/problem.schema.json",
   "title": "rulecad optimisation problem",
-  "description": "A flat part to optimise (projects/<project>/problems/<name>.json): where material may go, what must stay solid or empty, where it's held and loaded, and what it's made of. Numbers are expressions, as in objects: of its variables and the rule sets it uses. cad optimise runs it; a design reads the result through a variable of type problem.",
+  "description": "A part to optimise, flat (2D) or solid (3D), in projects/<project>/problems/<name>.json: where material may go, what must stay solid or empty, where it's held and loaded, and what it's made of. Numbers are expressions, as in objects: of its variables and the rule sets it uses. cad optimise runs it; a design reads the result through a variable of type problem.",
   "type": "object",
-  "required": ["material", "thickness", "cell", "volume", "space", "supports", "loads"],
+  "required": [
+    "material",
+    "cell",
+    "volume",
+    "space",
+    "supports",
+    "loads"
+  ],
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "title": { "type": "string" },
-    "description": { "type": "string" },
-    "uses": { "type": "array", "items": { "type": "string" }, "description": "Rule sets: the material's, the printer's, the part's own" },
-    "variables": { "type": "object", "description": "As in objects" },
-    "variants": { "type": "object", "additionalProperties": { "type": "object" }, "description": "Named settings of variables with tweak ranges, picked as name:variant" },
-    "material": { "type": "string", "description": "A rule set with modulus (MPa), poisson and, for safety factors, strength (MPa)" },
-    "thickness": { "$ref": "#/$defs/expr", "description": "The plate's thickness, mm" },
-    "cell": { "$ref": "#/$defs/expr", "description": "The grid's cell size, mm: smaller is finer and slower" },
-    "volume": { "$ref": "#/$defs/expr", "description": "The share of the space to fill, 0 to 1 (keep regions count towards it)" },
-    "filter": { "$ref": "#/$defs/expr", "description": "Filter radius, mm: about the thinnest member (default 1.5 cells)" },
-    "penal": { "$ref": "#/$defs/expr", "description": "The penalty on part-solid cells (default 3)" },
-    "projection": { "type": "boolean", "description": "Sharpen the result to solid and empty (default true)" },
-    "steps": { "type": "integer", "description": "At most this many steps (default 300)" },
-    "space": { "oneOf": [{ "$ref": "#/$defs/region" }, { "type": "array", "items": { "$ref": "#/$defs/region" } }], "description": "Where material may go" },
-    "keep": { "type": "array", "items": { "$ref": "#/$defs/region" }, "description": "Must stay solid: bosses round bolt holes" },
-    "avoid": { "type": "array", "items": { "$ref": "#/$defs/region" }, "description": "Must stay empty: holes, clearances (avoid wins over keep)" },
-    "supports": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/support" } },
-    "loads": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/load" } },
-    "cases": { "type": "object", "additionalProperties": { "$ref": "#/$defs/expr" }, "description": "Each load case's weight in the optimisation (default 1); 0 analyses it without optimising for it" },
+    "$schema": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "uses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Rule sets: the material's, the printer's, the part's own"
+    },
+    "variables": {
+      "type": "object",
+      "description": "As in objects"
+    },
+    "variants": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      },
+      "description": "Named settings of variables with tweak ranges, picked as name:variant"
+    },
+    "material": {
+      "type": "string",
+      "description": "A rule set with modulus (MPa), poisson and, for safety factors, strength (MPa)"
+    },
+    "thickness": {
+      "$ref": "#/$defs/expr",
+      "description": "A flat (2D) problem's thickness, mm"
+    },
+    "cell": {
+      "$ref": "#/$defs/expr",
+      "description": "The grid's cell size, mm: smaller is finer and slower"
+    },
+    "volume": {
+      "$ref": "#/$defs/expr",
+      "description": "The share of the space to fill, 0 to 1 (keep regions count towards it)"
+    },
+    "filter": {
+      "$ref": "#/$defs/expr",
+      "description": "Filter radius, mm: about the thinnest member (default 1.5 cells)"
+    },
+    "penal": {
+      "$ref": "#/$defs/expr",
+      "description": "The penalty on part-solid cells (default 3)"
+    },
+    "projection": {
+      "type": "boolean",
+      "description": "Sharpen the result to solid and empty (default true)"
+    },
+    "steps": {
+      "type": "integer",
+      "description": "At most this many steps (default 300)"
+    },
+    "space": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/region"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/region"
+          }
+        }
+      ],
+      "description": "Where material may go"
+    },
+    "keep": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/region"
+      },
+      "description": "Must stay solid: bosses round bolt holes"
+    },
+    "avoid": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/region"
+      },
+      "description": "Must stay empty: holes, clearances (avoid wins over keep)"
+    },
+    "supports": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/support"
+      }
+    },
+    "loads": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/load"
+      }
+    },
+    "cases": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/expr"
+      },
+      "description": "Each load case's weight in the optimisation (default 1); 0 analyses it without optimising for it"
+    },
     "outline": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "smooth": { "type": "integer", "description": "Smoothing passes (default 4)" },
-        "min_area": { "$ref": "#/$defs/expr", "description": "Holes and islands smaller than this (mm²) are dropped" }
+        "smooth": {
+          "type": "integer",
+          "description": "Smoothing passes for the outline (2D) or surface (3D), default 4"
+        },
+        "min_area": {
+          "$ref": "#/$defs/expr",
+          "description": "Holes and islands smaller than this (mm²) are dropped"
+        }
       }
+    },
+    "overhang": {
+      "type": "string",
+      "description": "3D: printable this way up ('+z', '-y', …), or a variable holding it, or 'none': only material supported from below at 45° or less"
     }
   },
   "$defs": {
-    "expr": { "type": ["number", "string"] },
-    "point": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 2, "maxItems": 2 },
+    "expr": {
+      "type": [
+        "number",
+        "string"
+      ]
+    },
+    "point": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/expr"
+      },
+      "minItems": 2,
+      "maxItems": 3
+    },
     "region": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "at": { "$ref": "#/$defs/point", "description": "The centre, mm" },
-        "r": { "$ref": "#/$defs/expr", "description": "A circle's radius" },
-        "size": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 2, "maxItems": 2, "description": "A rectangle's width and depth" },
-        "points": { "type": "array", "items": { "$ref": "#/$defs/point" }, "minItems": 3, "description": "A polygon's corners" },
-        "label": { "type": "string" }
+        "at": {
+          "$ref": "#/$defs/point",
+          "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
+        },
+        "r": {
+          "$ref": "#/$defs/expr",
+          "description": "A circle's or ball's radius, or a cylinder's"
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expr"
+          },
+          "minItems": 2,
+          "maxItems": 3,
+          "description": "A rectangle's or box's sides"
+        },
+        "length": {
+          "$ref": "#/$defs/expr",
+          "description": "3D: a cylinder's length (with r)"
+        },
+        "axis": {
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ],
+          "description": "3D: the cylinder's axis (default z)"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          },
+          "minItems": 3,
+          "description": "2D: a polygon's corners"
+        },
+        "part": {
+          "type": "string",
+          "description": "3D: a named part of another design in the project, as it's built: object.part"
+        },
+        "label": {
+          "type": "string"
+        },
+        "teardrop": {
+          "enum": [
+            "-z",
+            "+z"
+          ],
+          "description": "3D: a cylinder along x or y with a 45° point that way, so it prints without support: '-z' for a boss (its underside), '+z' for a hole (its roof)"
+        }
       }
     },
     "support": {
       "type": "object",
-      "required": ["at"],
+      "required": [],
       "additionalProperties": false,
       "properties": {
-        "at": { "$ref": "#/$defs/point" },
-        "r": { "$ref": "#/$defs/expr", "description": "Holds the material within this radius (a bolt hole's)" },
-        "fix": { "enum": ["xy", "x", "y"], "description": "Which ways it's held (default both)" },
-        "label": { "type": "string" }
+        "at": {
+          "$ref": "#/$defs/point",
+          "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
+        },
+        "r": {
+          "$ref": "#/$defs/expr",
+          "description": "A circle's or ball's radius, or a cylinder's"
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expr"
+          },
+          "minItems": 2,
+          "maxItems": 3,
+          "description": "A rectangle's or box's sides"
+        },
+        "length": {
+          "$ref": "#/$defs/expr",
+          "description": "3D: a cylinder's length (with r)"
+        },
+        "axis": {
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ],
+          "description": "3D: the cylinder's axis (default z)"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          },
+          "minItems": 3,
+          "description": "2D: a polygon's corners"
+        },
+        "part": {
+          "type": "string",
+          "description": "3D: a named part of another design in the project, as it's built: object.part"
+        },
+        "label": {
+          "type": "string"
+        },
+        "fix": {
+          "type": "string",
+          "pattern": "^[xyz]+$",
+          "description": "Which ways it's held: x, y, z (default all)"
+        },
+        "teardrop": {
+          "enum": [
+            "-z",
+            "+z"
+          ],
+          "description": "3D: a cylinder along x or y with a 45° point that way, so it prints without support: '-z' for a boss (its underside), '+z' for a hole (its roof)"
+        }
       }
     },
     "load": {
       "type": "object",
-      "required": ["at", "force"],
+      "required": [
+        "force"
+      ],
       "additionalProperties": false,
       "properties": {
-        "at": { "$ref": "#/$defs/point" },
-        "r": { "$ref": "#/$defs/expr", "description": "Spread over the material within this radius" },
-        "force": { "$ref": "#/$defs/point", "description": "x and y, in N" },
-        "case": { "type": "string", "description": "Its load case (default load)" },
-        "label": { "type": "string" }
+        "at": {
+          "$ref": "#/$defs/point",
+          "description": "The centre, mm: [x, y] in 2D, [x, y, z] in 3D"
+        },
+        "r": {
+          "$ref": "#/$defs/expr",
+          "description": "A circle's or ball's radius, or a cylinder's"
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expr"
+          },
+          "minItems": 2,
+          "maxItems": 3,
+          "description": "A rectangle's or box's sides"
+        },
+        "length": {
+          "$ref": "#/$defs/expr",
+          "description": "3D: a cylinder's length (with r)"
+        },
+        "axis": {
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ],
+          "description": "3D: the cylinder's axis (default z)"
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          },
+          "minItems": 3,
+          "description": "2D: a polygon's corners"
+        },
+        "part": {
+          "type": "string",
+          "description": "3D: a named part of another design in the project, as it's built: object.part"
+        },
+        "label": {
+          "type": "string"
+        },
+        "force": {
+          "$ref": "#/$defs/point",
+          "description": "x, y (and z), in N"
+        },
+        "case": {
+          "type": "string",
+          "description": "Its load case (default load)"
+        },
+        "teardrop": {
+          "enum": [
+            "-z",
+            "+z"
+          ],
+          "description": "3D: a cylinder along x or y with a 45° point that way, so it prints without support: '-z' for a boss (its underside), '+z' for a hole (its roof)"
+        }
       }
     }
   }
