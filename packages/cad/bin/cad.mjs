@@ -157,6 +157,28 @@ function place(triangles, [rx, ry, rz], move) {
   }));
 }
 
+// A part's analysis report, in Markdown: what was analysed, how, each load case's numbers and where, and what it
+// doesn't cover
+function reportText({ turn, object, title, version, a, r, m, strength, weaker, grid, limit, minSafety, records, found }) {
+  const at = (p) => `(${p.map(fmt).join(', ')})`;
+  const pct = (x) => `${x >= 0 ? '+' : ''}${fmt(x * 100)}%`;
+  const rows = r.cases.map((c) => `| ${c.name} | ${fmt(c.force)} | ${sig(c.deflection)} | ${sig(c.stiffness)}${c.change ? ` (${pct(c.change.stiffness)})` : ''} | ${sig(c.stress)}${c.change ? ` (${pct(c.change.stress)})` : ''} at ${at(c.stressAt)} | ${strength ? `${sig(strength / c.stress)}×` : '–'}${m.fatigue ? ` (fatigue ${sig(m.fatigue / c.stress)}×)` : ''} | ${sig(c.movement)} at ${at(c.movementAt)} |`);
+  return [
+    `# ${title}: analysed under ${a.problem}`, '',
+    `${object} ${version || ''}. Analysed on ${grid}, ${m.name} (modulus ${fmt(m.modulus)} MPa${strength ? `, strength ${fmt(strength)} MPa${weaker ? ' across its layers' : ''}` : ''}${m.fatigue ? `, fatigue strength ${fmt(m.fatigue)} MPa` : ''}). Positions are in mm, in the problem's frame${turn ? ' (the part turned back from how it prints)' : ''}.${r.cases[0]?.change ? ` In brackets: the change from ${fmt(r.cases[0].change.cell)} mm cells. Stiffness that changes by 5% or less has settled; peak stress at a sharp inside corner keeps rising as cells shrink, so read it with its change.` : ' On the problem\'s own cells: a quick check. Give the analysis a smaller cell to verify it.'}`, '',
+    '| Load case | Force (N) | Moves its load (mm) | Stiffness (N/mm) | Peak stress (MPa) | Safety factor | Largest movement (mm) |',
+    '|---|---|---|---|---|---|---|', ...rows, '',
+    `Volume ${fmt(r.volume)} mm³.${limit != null ? ` Limit on movement: ${fmt(limit)} mm.` : ''}${minSafety != null ? ` Least safety factor: ${fmt(minSafety)}×.` : ''}`, '',
+    '## Findings', '', ...found.map((f) => `- ${f.level}: ${f.text}`), '',
+    '## Verification', '',
+    ...(records.length ? records.map((v) => `- ${v.kind}, ${v.date}${v.by ? `, by ${v.by}` : ''}: ${v.summary}${v.source ? ` (${v.source})` : ''}`) : [r.critical ? '**Unverified.** This part is safety-critical: do not rely on it until a test or an independent analysis is recorded.' : 'None recorded.']), '',
+    '## What this doesn\'t cover', '',
+    '- The analysis is linear and static, on cubes: a design aid, not engineering sign-off. Stress at sharp inside corners, and where supports and loads are applied, depends on the cell size; compare a finer cell before trusting a peak.',
+    '- Material values are data-sheet figures. Printed parts vary with the printer, settings and spool, and are weaker across their layers; measure your own.',
+    '- Buckling, impact, creep, heat and wear are not checked.', '',
+  ].join('\n');
+}
+
 async function analyses(b, d, tag) {
   const lookup = (n) => { const v = n.split('.').reduce((o, k) => (o == null ? o : o[k]), b.values); if (typeof v !== 'number') throw new Error(`analysis: "${n}" isn't a number`); return v; };
   const all = [];
@@ -165,25 +187,61 @@ async function analyses(b, d, tag) {
     if (!part) return [{ level: 'fail', text: `analysis: no part "${a.part}"`, code: 'fea.part' }];
     // A part drawn in its print orientation, turned back into the problem's frame: rotated (degrees about x, then y,
     // then z, as JSCAD's rotate), then moved
-    const turned = a.rotate || a.move ? place(part.triangles, (a.rotate || [0, 0, 0]).map((x) => evaluate(x, lookup)), (a.move || [0, 0, 0]).map((x) => evaluate(x, lookup))) : part.triangles;
-    const r = await analysePart(turned, d.project, a.problem), m = r.material, limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
+    const turn = (a.rotate || []).map((x) => evaluate(x, lookup)).some(Boolean) || (a.move || []).map((x) => evaluate(x, lookup)).some(Boolean);
+    const turned = turn ? place(part.triangles, (a.rotate || [0, 0, 0]).map((x) => evaluate(x, lookup)), (a.move || [0, 0, 0]).map((x) => evaluate(x, lookup))) : part.triangles;
+    const cell = a.cell != null ? evaluate(a.cell, lookup) : undefined;
+    const r = await analysePart(turned, d.project, a.problem, { cell }), m = r.material;
+    // A check of the check: with a cell given, the part is analysed again on cells a quarter bigger, and how much each
+    // number changes says whether the cells are small enough. Peak stress at a sharp inside corner never settles (in
+    // theory it's endless there), so it's reported, not judged.
+    if (cell) {
+      const coarser = await analysePart(turned, d.project, a.problem, { cell: cell * 1.25 });
+      r.cases.forEach((c, n) => { const o = coarser.cases[n]; c.change = { stiffness: c.stiffness / o.stiffness - 1, stress: c.stress / o.stress - 1, cell: coarser.grid.h }; });
+    }
+    const limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
+    const minSafety = a.min_safety != null ? evaluate(a.min_safety, lookup) : null;
     let out = null;
     if (r.dim !== 3) { // a flat part's picture: its cells as analysed, with the supports and loads
       out = paths.preview(d.project, `${d.name}${tag}-analysis-${a.problem.replace(':', '-')}.svg`);
       fs.mkdirSync(path.dirname(out), { recursive: true });
       fs.writeFileSync(out, picture({ ...r, ...(await readProblem(d.project, a.problem)).problem }, { title: `${b.object.title || d.name}: ${a.problem}`, lines: r.cases.map((c) => `${c.name}: ${sig(c.deflection)} mm, ${sig(c.stiffness)} N/mm, peak stress ${sig(c.stress)} MPa`) }));
     }
-    const found = r.cases.map((c) => {
-      const safety = m.strength ? `, peak stress ${sig(c.stress)} MPa (${sig(m.strength / c.stress)}× under ${m.name}'s strength; coarse)` : '';
-      const text = `${a.problem} ${c.name}: moves ${sig(c.deflection)} mm under ${fmt(c.force)} N, ${sig(c.stiffness)} N/mm${safety}`;
+    // Safety factors: against the material's strength (its weaker one across a print's layers, where it has one), and
+    // its fatigue strength where it has one
+    const strength = m.strength ? Math.min(m.strength, m.strength_z ?? Infinity) : null, weaker = m.strength_z != null && m.strength_z < m.strength;
+    const grid = `${[r.grid.nx, r.grid.ny, r.grid.nz].filter(Boolean).join(' × ')} cells of ${fmt(r.grid.h)} mm`;
+    const at = (p) => `(${p.map(fmt).join(', ')})`;
+    const found = r.cases.flatMap((c) => {
+      const safety = strength ? strength / c.stress : null, fatigue = m.fatigue ? m.fatigue / c.stress : null;
+      const text = `${a.problem} ${c.name}: moves ${sig(c.deflection)} mm under ${fmt(c.force)} N, ${sig(c.stiffness)} N/mm`;
       const values = { deflection: c.deflection, force: c.force, stiffness: c.stiffness, stress: c.stress, ...(limit != null ? { limit } : {}) };
-      return { level: limit == null ? 'info' : c.deflection <= limit ? 'pass' : 'fail', text: limit == null ? text : `${text} (at most ${fmt(limit)})`, code: 'fea.deflection', values, refs: { problem: a.problem, part: part.name, ...(out ? { picture: path.relative(WS, out) } : {}) } };
+      const refs = { problem: a.problem, part: part.name, ...(out ? { picture: path.relative(WS, out) } : {}) };
+      const strong = `peak stress ${sig(c.stress)} MPa at ${at(c.stressAt)}${safety != null ? `: ${sig(safety)}× under ${m.name}'s ${weaker ? 'strength across its layers' : 'strength'}${fatigue != null ? `, ${sig(fatigue)}× under its fatigue strength` : ''}` : ''}`;
+      const least = Math.min(safety ?? Infinity, fatigue ?? Infinity);
+      const settled = c.change ? [{ level: Math.abs(c.change.stiffness) <= 0.05 ? 'pass' : 'warn', code: 'fea.settled', values: c.change,
+        text: `${a.problem} ${c.name}: stiffness ${c.change.stiffness >= 0 ? '+' : ''}${fmt(c.change.stiffness * 100)}% from ${fmt(c.change.cell)} mm cells${Math.abs(c.change.stiffness) <= 0.05 ? ', settled (within 5%)' : ': not settled, use a smaller cell'}` }] : [];
+      return [
+        { level: limit == null ? 'info' : c.deflection <= limit ? 'pass' : 'fail', text: limit == null ? text : `${text} (at most ${fmt(limit)})`, code: 'fea.deflection', values, refs }, ...settled,
+        { level: minSafety == null ? 'info' : least >= minSafety ? 'pass' : 'fail', text: `${a.problem} ${c.name}: ${strong}${minSafety != null ? ` (at least ${fmt(minSafety)}×)` : ''}`, code: 'fea.strength',
+          values: { stress: c.stress, at: c.stressAt, ...(safety != null ? { safety } : {}), ...(fatigue != null ? { fatigue } : {}), ...(minSafety != null ? { min: minSafety } : {}) }, refs },
+      ];
     });
     const grams = m.density ? ` (${fmt((r.volume / 1000) * m.density)} g of ${m.name})` : '';
     if (a.volume != null) {
       const want = evaluate(a.volume, lookup), tol = a.tolerance ?? 0.01, off = (r.volume - want) / want;
       found.push({ level: Math.abs(off) <= tol ? 'pass' : 'fail', text: `volume ${fmt(r.volume)} mm³${grams}: ${off >= 0 ? '+' : ''}${fmt(off * 100)}% from ${fmt(want)} (within ${fmt(tol * 100)}%)`, code: 'fea.volume', values: { volume: r.volume, target: want, off } });
     } else found.push({ level: 'info', text: `volume ${fmt(r.volume)} mm³${grams}`, code: 'fea.volume', values: { volume: r.volume } });
+    // A safety-critical part stays unverified until a test or an independent analysis is recorded against it
+    const records = b.object.verification || [];
+    if (r.critical) found.push(records.length
+      ? { level: 'pass', text: `${a.problem} is safety-critical: verified by ${records.map((v) => `${v.kind} (${v.date})`).join(', ')}`, code: 'fea.verified', values: { records } }
+      : { level: 'warn', text: `${a.problem} is safety-critical and unverified: rulecad's analysis is a design aid. Test it, or have it analysed independently, and record that under "verification"`, code: 'fea.unverified' });
+    // The report: everything above, with where, written next to the previews
+    const report = paths.preview(d.project, `${d.name}${tag}-report-${a.problem.replace(':', '-')}.md`);
+    fs.mkdirSync(path.dirname(report), { recursive: true });
+    fs.writeFileSync(report, reportText({ turn, object: `${d.project}/${d.name}${tag}`, title: b.object.title || d.name, version: b.object.version, a, r, m, strength, weaker, grid, limit, minSafety, records, found }));
+    fs.writeFileSync(report.replace(/\.md$/, '.json'), JSON.stringify({ object: `${d.project}/${d.name}${tag}`, version: b.object.version, problem: a.problem, critical: r.critical, verification: records, material: { name: m.name, modulus: m.modulus, strength: m.strength, ...(m.strength_z != null ? { strength_z: m.strength_z } : {}), ...(m.fatigue != null ? { fatigue: m.fatigue } : {}) }, grid: r.grid, volume: r.volume, cases: r.cases, findings: found.map(({ level, code, text }) => ({ level, code, text })) }, null, 2) + '\n');
+    found.push({ level: 'info', text: `report (${grid}): ${path.relative(WS, report)}`, code: 'fea.report', refs: { report: path.relative(WS, report) } });
     return found;
   })());
   return all;

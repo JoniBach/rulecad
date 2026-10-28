@@ -136,6 +136,10 @@
         }
       }
     },
+    "critical": {
+      "type": "boolean",
+      "description": "Safety-critical (a pedal, a lever, a bracket that holds people): parts analysed under it are reported unverified until a test or an independent analysis is recorded against them"
+    },
     "overhang": {
       "type": "string",
       "description": "3D: printable this way up ('+z', '-y', …), or a variable holding it, or 'none': only material supported from below at 45° or less"

@@ -76,7 +76,7 @@ export async function readProblem(project, ref) {
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
   if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45 }; }
-  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline };
+  return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical };
 }
 
 /**
@@ -136,12 +136,20 @@ export const forDesign = ({ density, history, ...r }) => r;
 /**
  * Analyse a part under a problem's supports and loads, on its grid. A flat part (2D problem: triangles, z up, the
  * plate lying on the bed): each cell is as solid as the share of the problem's thickness the part fills above it. A
- * solid part (3D): each cube is solid if its centre is inside the part.
+ * solid part (3D): each cube is solid if its centre is inside the part. Each load case reports how far it moves its load
+ * (and the stiffness), the largest stress and where, and the largest movement anywhere and where.
  * @param {number[][][]} triangles @param {string} project @param {string} ref
+ * @param {{ cell?: number }} [options] cell: a finer cell size than the problem's, to check a final shape
  */
-export async function analysePart(triangles, project, ref) {
-  const r = await readProblem(project, ref), { problem } = r, h = problem.cell;
-  if (r.dim === 3) return analyseSolid(triangles, r);
+export async function analysePart(triangles, project, ref, { cell } = {}) {
+  const r = await readProblem(project, ref), { problem } = r, h = cell || problem.cell;
+  if (r.dim === 3) { // kept: a fine analysis of a solid takes minutes
+    const file = paths.cache('analysis', `${crypto.createHash('sha256').update(JSON.stringify([VERSION, triangles, problem, h, source('@rulecad/topopt'), source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')])).digest('hex')}.json`);
+    if (!process.env.CAD_NO_CACHE && host.exists(file)) { const { density, ...x } = JSON.parse(host.readText(file)); return { ...x, density: Float64Array.from(density) }; }
+    const out = analyseSolid(triangles, r, h);
+    host.writeText(file, JSON.stringify({ ...out, density: Array.from(out.density) }));
+    return out;
+  }
   // The grid covers the part and the problem's space
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const t of triangles) for (const [x, y] of t) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -168,28 +176,70 @@ export async function analysePart(triangles, project, ref) {
   const a = analyse({ grid: g, density, material: problem.material, thickness: problem.thickness, fixed, loads });
   const cases = names.map((name, c) => {
     const size = Math.hypot(...problem.loads.filter((l) => l.case === name).reduce((s, l) => [s[0] + l.force[0], s[1] + l.force[1]], [0, 0]));
-    const deflection = size ? a.compliance[c] / size : 0;
-    let most = 0;
-    for (let e = 0; e < density.length; e++) if (density[e] >= 0.5) most = Math.max(most, a.stress[c][e]);
-    return { name, force: size, deflection, stiffness: deflection ? size / deflection : Infinity, stress: most };
+    return measures(name, size, a, c, density, { nx, ny, nz: 1, h }, [x0, y0]);
   });
-  return { problem: ref, material: r.material, cases, volume: volume(triangles), grid: { nx, ny, h }, origin: [x0, y0], density };
+  return { problem: ref, dim: 2, material: r.material, critical: r.critical, cases, volume: volume(triangles), grid: { nx, ny, h }, origin: [x0, y0], density };
 }
 
 // A solid part on the problem's grid: the part itself is the space (keep and avoid regions don't apply), so the
 // supports and loads land on it as they would on an optimised layout
-function analyseSolid(triangles, r) {
-  const { problem } = r, spec = discretise({ ...problem, space: { triangles }, keep: [], avoid: [], volume: 1 });
-  const g = makeGrid(spec.grid), density = Float64Array.from(spec.passive, (p) => (p === 0 ? 1 : 0));
+function analyseSolid(triangles, r, cell) {
+  const { problem } = r, spec = discretise({ ...problem, cell, space: { triangles }, keep: [], avoid: [], volume: 1 });
+  const g = makeGrid(spec.grid), density = solidFill(triangles, spec.grid, spec.origin);
   if (!density.some((d) => d)) throw new Error('the part is smaller than one cell of the problem: use a smaller cell');
   const a = analyse({ grid: g, density, material: problem.material, fixed: spec.fixed, loads: spec.loads.map((l) => l.force) });
-  const cases = spec.loads.map((l, c) => {
-    const deflection = l.size ? a.compliance[c] / l.size : 0;
-    let most = 0;
-    for (let e = 0; e < density.length; e++) if (density[e]) most = Math.max(most, a.stress[c][e]);
-    return { name: l.name, force: l.size, deflection, stiffness: deflection ? l.size / deflection : Infinity, stress: most };
+  const cases = spec.loads.map((l, c) => measures(l.name, l.size, a, c, density, spec.grid, spec.origin));
+  return { problem: r.ref, dim: 3, material: r.material, critical: r.critical, cases, volume: volume(triangles), grid: spec.grid, origin: spec.origin, density };
+}
+
+// A load case's numbers: how far the load moves along itself (compliance over force) and the stiffness, the largest
+// stress in the part and the centre of the cell it's in, and the largest movement of any point of the part and where
+function measures(name, force, a, c, density, { nx, ny, h }, origin) {
+  const deflection = force ? a.compliance[c] / force : 0;
+  let most = 0, cellAt = 0;
+  for (let e = 0; e < density.length; e++) if (density[e] >= 0.5 && a.stress[c][e] > most) { most = a.stress[c][e]; cellAt = e; }
+  const index = [cellAt % nx, Math.floor(cellAt / nx) % ny, Math.floor(cellAt / (nx * ny))];
+  const stressAt = origin.map((o, q) => round(o + (index[q] + 0.5) * h, 2)), d = a.deflection[c];
+  return {
+    name, force, deflection, stiffness: deflection ? force / deflection : Infinity, stress: most, stressAt,
+    movement: d.most, movementAt: d.at.map((x, q) => round(x + origin[q], 2)),
+  };
+}
+
+// How much of each cube the part fills, from 0 to 1, so a wall between cell centres counts for what it is (a 6 mm
+// plate on 2.5 mm cubes, solid only where a cube's centre is inside, is 5 mm thick, and bends 40% more). Rays run up
+// through each column of cubes, n × n of them (exact up the column, to within half their spacing across it); each enters the part through a face facing down and leaves through
+// one facing up, and the lengths inside each cube are averaged.
+export function solidFill(triangles, { nx, ny, nz, h }, origin, n = 4) {
+  const R = nx * n, hits = Array.from({ length: R * ny * n }, () => []), jx = h * 1e-4 * Math.SQRT2, jy = h * 1e-4 * Math.PI;
+  for (const [a, b, c] of triangles) {
+    const d = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    if (Math.abs(d) < 1e-12) continue; // a wall: the ray runs alongside it
+    const i0 = Math.max(0, Math.floor(((Math.min(a[0], b[0], c[0]) - origin[0]) / h) * n - 1)), i1 = Math.min(R - 1, Math.ceil(((Math.max(a[0], b[0], c[0]) - origin[0]) / h) * n));
+    const j0 = Math.max(0, Math.floor(((Math.min(a[1], b[1], c[1]) - origin[1]) / h) * n - 1)), j1 = Math.min(ny * n - 1, Math.ceil(((Math.max(a[1], b[1], c[1]) - origin[1]) / h) * n));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const x = origin[0] + ((i + 0.5) / n) * h + jx, y = origin[1] + ((j + 0.5) / n) * h + jy;
+      const w0 = ((b[0] - x) * (c[1] - y) - (b[1] - y) * (c[0] - x)) / d, w1 = ((c[0] - x) * (a[1] - y) - (c[1] - y) * (a[0] - x)) / d, w2 = 1 - w0 - w1;
+      if (w0 < 0 || w1 < 0 || w2 < 0) continue;
+      hits[j * R + i].push([w0 * a[2] + w1 * b[2] + w2 * c[2], Math.sign(d)]);
+    }
+  }
+  const density = new Float64Array(nx * ny * nz), share = 1 / (n * n * h);
+  hits.forEach((list, ray) => {
+    if (!list.length) return;
+    list.sort((p, q) => p[0] - q[0]);
+    const ci = Math.floor((ray % R) / n), cj = Math.floor(Math.floor(ray / R) / n);
+    let depth = 0, from = 0;
+    for (const [z, sign] of list) {
+      const was = depth; depth -= sign; // a face facing down (its normal's z below 0, counter-clockwise from above: sign -1) is the way in
+      if (was <= 0 && depth > 0) from = z;
+      else if (was > 0 && depth <= 0) for (let k = Math.max(0, Math.floor((from - origin[2]) / h)); k < nz && origin[2] + k * h < z; k++) {
+        const lo = Math.max(from, origin[2] + k * h), hi = Math.min(z, origin[2] + (k + 1) * h);
+        if (hi > lo) density[(k * ny + cj) * nx + ci] += (hi - lo) * share;
+      }
+    }
   });
-  return { problem: r.ref, dim: 3, material: r.material, cases, volume: volume(triangles), grid: spec.grid, origin: spec.origin, density };
+  return density.map((x) => Math.min(1, x));
 }
 
 // How much of the thickness the part fills over each cell's centre: a ray straight up through the part enters it

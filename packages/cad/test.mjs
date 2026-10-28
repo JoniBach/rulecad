@@ -466,5 +466,38 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
     const lying = cad('check', 'post/post:lying');
     assert.match(lying, /24 × [\d.]+ × 12 mm, fits the bed/, 'drawn lying down');
     assert.ok(Math.abs(stiffness(lying) / stiffness(checked) - 1) < 0.02, `turned back, it analyses as it stands: ${stiffness(lying)} against ${stiffness(checked)} N/mm`);
+    // Verified: on finer cells, checked against cells a quarter bigger, with a report; safety-critical, it's
+    // unverified until a test is recorded
+    const problemFile = path.join(project, 'problems', 'post.json'), objectFile = path.join(project, 'objects', 'post.json');
+    fs.writeFileSync(problemFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(problemFile, 'utf8')), critical: true }));
+    const o = JSON.parse(fs.readFileSync(objectFile, 'utf8'));
+    o.analysis = [{ problem: 'post', cell: 1, min_safety: 2 }];
+    fs.writeFileSync(objectFile, JSON.stringify(o));
+    const verified = cad('check', 'post/post');
+    assert.match(verified, /post push: stiffness [+-][\d.]+% from 1.25 mm cells/);
+    assert.match(verified, /✓ post push: peak stress [\d.]+ MPa at \([\d., -]+\): [\d.]+× under pla's strength \(at least 2×\)/);
+    assert.match(verified, /post is safety-critical and unverified/);
+    const report = fs.readFileSync(path.join(ws, '.preview', 'post', 'post-report-post.md'), 'utf8');
+    assert.match(report, /12 × 12 × 24 cells of 1 mm/);
+    assert.match(report, /\*\*Unverified\.\*\*/);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(ws, '.preview', 'post', 'post-report-post.json'), 'utf8')).cases[0].name, 'push');
+    o.verification = [{ kind: 'test', date: '2026-10-28', summary: 'Pushed with 10 N three times: moved 0.03 mm' }];
+    fs.writeFileSync(objectFile, JSON.stringify(o));
+    assert.match(cad('check', 'post/post'), /post is safety-critical: verified by test \(2026-10-28\)/);
   } finally { done(); }
+});
+
+test('a solid part fills each cube by the share of it inside, so its volume is right on any cells', async () => {
+  const { solidFill } = await import('./lib/optimise.mjs');
+  // A box 5.3 × 3.7 × 6.1 mm, off the cells' corners
+  const lo = [0.4, 0.7, 0.2], hi = [5.7, 4.4, 6.3], c = [0, 1, 2, 3, 4, 5, 6, 7].map((n) => [n & 1 ? hi[0] : lo[0], n & 2 ? hi[1] : lo[1], n & 4 ? hi[2] : lo[2]]);
+  const quads = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [1, 3, 7, 5], [0, 4, 6, 2]];
+  const triangles = quads.flatMap(([a, b, d, e]) => [[c[a], c[b], c[d]], [c[a], c[d], c[e]]]);
+  for (const h of [1, 2]) {
+    const n = Math.ceil(7 / h), d = solidFill(triangles, { nx: n, ny: n, nz: n, h }, [0, 0, 0]);
+    // Exact up the column; across it, each side to within half the rays' spacing (h / 8)
+    const filled = d.reduce((s, x) => s + x, 0) * h ** 3, e = h / 8, most = (5.3 + 2 * e) * (3.7 + 2 * e) * 6.1, least = (5.3 - 2 * e) * (3.7 - 2 * e) * 6.1;
+    assert.ok(filled >= least - 1e-9 && filled <= most + 1e-9, `on ${h} mm cells: ${filled} mm³, not between ${least} and ${most}`);
+    assert.ok(d.every((x) => x >= 0 && x <= 1));
+  }
 });

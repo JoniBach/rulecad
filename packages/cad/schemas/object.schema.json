@@ -25,7 +25,21 @@
     "variants": { "type": "object", "additionalProperties": { "type": "object" } },
     "anchors": { "type": "object", "additionalProperties": { "$ref": "#/$defs/anchor" } },
     "layouts": { "type": "object", "description": "Older designs kept layouts here; now in the project's layouts/" },
-    "analysis": { "type": "array", "items": { "$ref": "#/$defs/analysis" }, "description": "Checks of how the part bends under a problem's loads (cad check)" }
+    "analysis": { "type": "array", "items": { "$ref": "#/$defs/analysis" }, "description": "Checks of how the part bends under a problem's loads (cad check)" },
+    "verification": {
+      "type": "array",
+      "description": "Tests or independent analyses of the part: a safety-critical part's analysis stays unverified without one",
+      "items": {
+        "type": "object", "required": ["kind", "date", "summary"], "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["test", "analysis"], "description": "test: the part was loaded and measured; analysis: someone else analysed it independently" },
+          "date": { "type": "string" },
+          "by": { "type": "string" },
+          "summary": { "type": "string", "description": "What was done and what it showed, with numbers" },
+          "source": { "type": "string", "description": "Where the record is: a results file, a report, a link" }
+        }
+      }
+    }
   },
   "$defs": {
     "expr": { "type": ["number", "string"] },
@@ -61,7 +75,9 @@
         "volume": { "$ref": "#/$defs/expr", "description": "Fail if the part's volume differs from this (mm³) by more than tolerance" },
         "tolerance": { "type": "number", "description": "For volume: the share it may differ by (default 0.01)" },
         "rotate": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 3, "maxItems": 3, "description": "Turns the part into the problem's frame first, for a part drawn as it prints: degrees about x, then y, then z (as JSCAD's rotate)" },
-        "move": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 2, "maxItems": 3, "description": "Then moves it, in mm" }
+        "move": { "type": "array", "items": { "$ref": "#/$defs/expr" }, "minItems": 2, "maxItems": 3, "description": "Then moves it, in mm" },
+        "cell": { "$ref": "#/$defs/expr", "description": "Analyse on cells this size (mm) rather than the problem's: finer, to check a final shape" },
+        "min_safety": { "$ref": "#/$defs/expr", "description": "Fail if any load case's safety factor (strength, or fatigue strength where the material has one, over the peak stress) is below this" }
       }
     },
     "part": {

@@ -10,38 +10,38 @@
     "tested": ""
   },
   "predicted": {
-    "_doc": "From cad check (rules/pla.json as published: modulus 2680 MPa); N/mm along the load",
+    "_doc": "From cad check, verified on fine cells (levers 0.5 mm, brackets 0.8 mm; rules/pla.json as published: modulus 2680 MPa); N/mm along the load",
     "lever-bar": {
-      "down": 26.9,
-      "angled": 52.7
+      "down": 28.2,
+      "angled": 55.8
     },
     "lever-plate": {
-      "down": 3.3,
-      "angled": 6.6
+      "down": 3.72,
+      "angled": 7.4
     },
     "lever": {
-      "down": 99.9,
-      "angled": 184.3
+      "down": 100,
+      "angled": 185
     },
     "lever:both": {
-      "down": 98.9,
-      "angled": 190.5
+      "down": 99.3,
+      "angled": 191
     },
     "bracket-web": {
-      "down": 72.8,
-      "angled": 15.7
+      "down": 95.2,
+      "angled": 24.4
     },
     "bracket": {
-      "down": 119,
-      "angled": 59.8
+      "down": 141,
+      "angled": 60.9
     },
     "bracket:printable": {
-      "down": 119,
-      "angled": 51.4
+      "down": 141,
+      "angled": 52.6
     },
     "bracket:side": {
-      "down": 116,
-      "angled": 41.5
+      "down": 127,
+      "angled": 41.0
     }
   },
   "measured": {

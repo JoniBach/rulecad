@@ -19,13 +19,19 @@ every specimen's volume to within 1% of that.
 
 | | Object | What it is | Predicted stiffness, straight down |
 |---|---|---|---|
-| A | `bench/lever-bar` | A plain bar of the same length and mass. Beam theory predicts it exactly, so it also measures your printed material's stiffness. | 26.9 N/mm |
-| B | `bench/lever-plate` | The whole envelope with a row of four windows: the usual hand-made lightening. | 3.3 N/mm |
-| C | `bench/lever` | The stiffest layout the optimiser finds for the straight-down load (`problems/lever.json`). | 99.9 N/mm |
-| D | `bench/lever:both` | Optimised for a second load too, 45° from straight down. | 98.9 N/mm (190 N/mm at 45°) |
+| A | `bench/lever-bar` | A plain bar of the same length and mass. Its prediction is the simplest and surest (it's close to beam theory), so it also measures your printed material's stiffness. | 28.2 N/mm |
+| B | `bench/lever-plate` | The whole envelope with a row of four windows: the usual hand-made lightening. | 3.72 N/mm |
+| C | `bench/lever` | The stiffest layout the optimiser finds for the straight-down load (`problems/lever.json`). | 100 N/mm |
+| D | `bench/lever:both` | Optimised for a second load too, 45° from straight down. | 99.3 N/mm (191 N/mm at 45°) |
 
 The predictions are from `cad check` (the analysis in @rulecad/fea, with Bambu Lab PLA Basic's data sheet modulus,
-2680 MPa). They change when the material rule changes. `cad optimise bench/lever` draws the optimised layout in
+2680 MPa), verified: each specimen is analysed on cells smaller than the optimiser's (0.5 mm for the levers, 0.8 mm
+for the brackets) and again on cells a quarter bigger, and its stiffness has settled to within 5% (one exception,
+below). Each specimen's report is in `.preview/bench/` after `cad check`: peak stress and where, safety factor, and
+the largest movement. They change when the material rule changes.
+
+The lightened plate (B) is the one to watch: under 20 N its peak stress is 25 MPa, 1.5 times under PLA's strength, at
+the corner of a window. Load it gently: at about 2 kg it may crack, which is a result in itself. `cad optimise bench/lever` draws the optimised layout in
 `.preview/bench/`.
 
 ### The rig
@@ -88,10 +94,10 @@ straight out from it 80 mm to a load bolt, where the hanger hangs. Four brackets
 
 | | Object | What it is | Predicted stiffness, straight down |
 |---|---|---|---|
-| A | `bench/bracket-web` | A back plate and a plain upright web to the load boss: the usual hand-made bracket. | 72.8 N/mm |
-| B | `bench/bracket` | The stiffest bracket the optimiser finds (`problems/bracket.json`), ignoring how it prints. | 119 N/mm |
-| C | `bench/bracket:printable` | The same, keeping only what prints without supports standing on its back plate. | 119 N/mm |
-| D | `bench/bracket:side` | The same, keeping only what prints without supports lying on its side (the problem's y up). | 116 N/mm |
+| A | `bench/bracket-web` | A back plate and a plain upright web to the load boss: the usual hand-made bracket. | 95.2 N/mm |
+| B | `bench/bracket` | The stiffest bracket the optimiser finds (`problems/bracket.json`), ignoring how it prints. | 141 N/mm |
+| C | `bench/bracket:printable` | The same, keeping only what prints without supports standing on its back plate. | 141 N/mm |
+| D | `bench/bracket:side` | The same, keeping only what prints without supports lying on its side (the problem's y up). | 127 N/mm |
 
 The differences between B, C and D are what printing without supports costs in stiffness. A, B and C print standing
 on their back plate, as they're drawn; D is drawn lying on its side, and its analysis turns it back (`rotate` and
@@ -100,17 +106,23 @@ prints. `bench/bracket:side-free` is B laid on its side: not for printing, but t
 
 What the predictions say:
 
-- **Optimised against plain:** both optimised brackets are predicted 1.6 times stiffer than the plain web of the same
-  mass straight down (119 against 72.8 N/mm), and 3 to 4 times at 45° (51–60 against 15.7 N/mm).
+- **Optimised against plain:** B and C are predicted 1.5 times stiffer than the plain web of the same mass straight
+  down (141 against 95.2 N/mm), and over twice as stiff at 45° (53–61 against 24.4 N/mm).
 - **Printable against free:** standing on its back plate, the free optimum is already nearly self-supporting.
-  Keeping it printable costs nothing straight down and about 14% at 45° (51.4 against 59.8 N/mm). The visible
+  Keeping it printable costs nothing straight down and about 14% at 45° (52.6 against 60.9 N/mm). The visible
   difference is the hole through its side: arched in B, rising to a 45° point in C.
 - **On its side:** here the filter earns its keep. Laid on its side, B has 1,035 mm² of overhangs past 45° and needs
-  supports; D has none. D costs about 3% straight down and 31% at 45° (116 and 41.5 against 119 and 59.8 N/mm): with
+  supports; D has none. D costs about 10% straight down and 33% at 45° (127 and 41 against 141 and 60.9 N/mm): with
   y up, every hole's roof must rise at 45°, so D is closer to a solid web than an open truss.
 - **Overhangs:** C and D have none past 45°. Smoothing the cubes into a surface leaves small faces either side of 45°,
   so a printable result's faces past it are tipped back to it: under 0.1% of its volume moves. B, unfiltered, has
   about 100 mm² standing up; most printers bridge those.
+- **How settled:** D at 45° changes 5.6% between 1 mm and 0.8 mm cells, so its check flags it not settled; read its
+  41 N/mm as within about 6%. The brackets' peak stresses (4–5 MPa, 7 to 9 times under PLA's strength) are at the
+  bolt holes, where the analysis holds the part rigidly: the real bolts and washers spread that load.
+- **Earlier predictions:** on the optimiser's 2.5 mm cubes, solid only where a cube's centre was inside, a 6 mm plate
+  came out 5 mm thick, and the brackets were predicted 15–35% too flexible (A 72.8, B 119 N/mm straight down). The
+  check on finer cells caught it; analyses now fill each cube by the share the part takes up.
 
 `bench/reach-arm` takes the gauge arm's place on the wall's top and reaches out over the bracket's load bolt. The
 bracket reaches out from the wall's face, so clamp the rig with the wall's face at the bench's edge: the hanger then

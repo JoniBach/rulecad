@@ -68,7 +68,8 @@
         0,
         "0 - side * bench.bracket_h / 2",
         0
-      ]
+      ],
+      "cell": "bench.verify_cell"
     }
   ]
 }
