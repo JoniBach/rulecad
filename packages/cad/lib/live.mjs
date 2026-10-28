@@ -11,7 +11,7 @@ import { Worker, isMainThread, parentPort, workerData } from 'node:worker_thread
  *   forwards to it; plain 0.0.0.0 would open it to the local network)
  * @returns {Promise<{ url: string, step: (s: object) => void, stopped: () => boolean, close: (summary?: string) => Promise<void> }>}
  */
-export function liveView({ port = 8080, host = '127.0.0.1', title }) {
+export function liveView({ port = 8090, host = '127.0.0.1', title }) {
   const flag = new Int32Array(new SharedArrayBuffer(4));
   const worker = new Worker(new URL(import.meta.url), { workerData: { port, host, title, flag } });
   return new Promise((resolve, reject) => {

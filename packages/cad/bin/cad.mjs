@@ -49,7 +49,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
-                                    [--watch [port]: a live view of it at http://127.0.0.1:8080/, with a stop button]
+                                    [--watch [port]: a live view of it at http://127.0.0.1:8090/, with a stop button]
   cad export <project>/<object>     a 3MF for Bambu Studio in exports/ [--open: open it in Bambu Studio]
   cad show <project>/<object>       the model on display through your show target, with its rules [--ttl 10m]
   cad link <project>/<object>       links to open the model in a browser, and to download its STL or 3MF
@@ -124,7 +124,7 @@ async function optimiseProblem(ref) {
   }
   const live = !opt('json') && process.stderr.isTTY;
   // --watch [port]: the live view, served while it runs (a watched run is always run afresh, so there is something to watch)
-  const watch = opt('watch'), view = watch ? await liveView({ port: watch === true ? 8080 : Number(watch), title: `cad optimise ${ref}` }) : null;
+  const watch = opt('watch'), view = watch ? await liveView({ port: watch === true ? 8090 : Number(watch), title: `cad optimise ${ref}` }) : null;
   if (view) say(`watching at ${view.url}`);
   let r;
   try {

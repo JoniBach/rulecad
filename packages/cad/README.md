@@ -369,7 +369,7 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
 gives, and draws the layout in `.preview/`. The result is kept, keyed by everything it's made from, so it's only
 worked out again when something it depends on changes.
 
-`cad optimise <project>/<problem> --watch [port]` runs it afresh and serves a live view at `http://127.0.0.1:8080/`:
+`cad optimise <project>/<problem> --watch [port]` runs it afresh and serves a live view at `http://127.0.0.1:8090/`:
 the densities as they change (a 3D part seen from above), a chart of its compliance, and a button that stops the run.
 It listens on this computer only. To watch from elsewhere, reach it through a private network such as Tailscale.
 
