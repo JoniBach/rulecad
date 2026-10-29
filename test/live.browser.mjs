@@ -19,7 +19,7 @@ test('the live view draws a 3D part in view, and dragging turns it', { skip: !CH
   const view = await liveView({ port: 0, title: 'a block' });
   view.step({ step: 1, steps: 10, compliance: 1, change: 0.1, beta: 1, grid: { nx: n, ny: n, nz: n, h: 2 }, density });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-live-chrome-'));
-  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=500,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=500,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
   try {
     const wsUrl = await new Promise((r, no) => { let buf = ''; chrome.stderr.on('data', (d) => { buf += d; const m = buf.match(/ws:\/\/\S+/); if (m) r(m[0]); }); setTimeout(() => no(new Error('Chrome did not start')), 120000); }); // the browser tests run at once, on CI's two cores
     note('Chrome started');
