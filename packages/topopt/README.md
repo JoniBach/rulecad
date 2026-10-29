@@ -62,7 +62,9 @@ Two more steps shape the result:
 - **Heaviside projection** sharpens the result, more on each pass, until cells are solid or empty.
 - **The overhang filter** (optional, after Langelaar 2017) applies the printer's limit. Layer by layer from the bed, a
   cell can only be as solid as the material under it: the cell below and its neighbours, so nothing overhangs more
-  than 45°. The result prints without supports in that direction. Kept regions must print too: a kept cell that
+  than 45°. With `bridge` (the widest gap the printer spans, mm), a cell is also held up by a bridge: a run of solid
+  cells along its own layer, up to half that long, ending on a held cell. The result prints without supports in that
+  direction. Kept regions must print too: a kept cell that
   nothing holds up costs the optimiser as much as the whole part's compliance (shared over the kept cells), so it grows
   what holds it up; `result.unsupported` says how much of the kept material is still left hanging, which means there
   wasn't material enough to stand it on.

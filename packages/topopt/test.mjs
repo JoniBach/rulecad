@@ -124,6 +124,35 @@ test('the overhang filter: nothing unsupported survives, and its gradient matche
   }
 });
 
+test('the overhang filter with bridges: a short bridge between two held cells survives, a long one does not, and the gradient matches finite differences', () => {
+  const size = { nx: 9, ny: 3, nz: 3 }, n = 81, at = (i, j, k) => (k * 3 + j) * 9 + i;
+  // Two columns up from the bed at i = 1 and i = 7, and a flat run across the top layer between them (5 cells over nothing)
+  const x = new Float64Array(n);
+  for (let k = 0; k < 3; k++) { x[at(1, 1, k)] = 1; x[at(7, 1, k)] = 1; }
+  for (let i = 2; i <= 6; i++) x[at(i, 1, 2)] = 1;
+  // (the run's end cells, at i = 2 and 6, sit diagonally above the columns, so the 45° rule holds them anyway)
+  const printedBy = (reach) => overhangFilter(size, '+z', reach).apply(x, new Float64Array(n));
+  const none = printedBy(0), one = printedBy(1), two = printedBy(2);
+  assert.ok(none[at(3, 1, 2)] < 0.05 && none[at(4, 1, 2)] < 0.05, 'with no bridging nothing over nothing survives');
+  assert.ok(one[at(3, 1, 2)] > 0.9 && one[at(5, 1, 2)] > 0.9, 'one cell from a held cell, the run survives');
+  assert.ok(one[at(4, 1, 2)] < 0.05, 'the middle of a run too long to bridge (2 from either end, reach 1) does not');
+  assert.ok(two[at(4, 1, 2)] > 0.9, 'with reach 2 the whole run survives');
+  // A run with a gap in it bridges nothing past the gap
+  const gap = Float64Array.from(x); gap[at(2, 1, 2)] = 0;
+  assert.ok(overhangFilter(size, '+z', 2).apply(gap, new Float64Array(n))[at(3, 1, 2)] < 0.05, 'past a gap in the run, a cell too far from the other column is not held');
+  // The gradient, against finite differences, with bridges in play
+  for (const reach of [1, 2]) {
+    const f = overhangFilter(size, '+z', reach), y = Float64Array.from({ length: n }, (_, e) => 0.2 + 0.6 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.cos(e));
+    const value = (z) => f.apply(z, new Float64Array(n)).reduce((s, v, e) => s + w[e] * v, 0);
+    value(y); const grad = f.adjoint(w, new Float64Array(n));
+    for (const e of [5, 30, 44, 58, 70]) {
+      const up = Float64Array.from(y), down = Float64Array.from(y); up[e] += 1e-6; down[e] -= 1e-6;
+      const fd = (value(up) - value(down)) / 2e-6;
+      assert.ok(Math.abs(fd - grad[e]) < 1e-5 * Math.max(1, Math.abs(fd)), `reach ${reach}, cell ${e}: ${grad[e]} against ${fd}`);
+    }
+  }
+});
+
 test('surface: a ball of cubes becomes a closed mesh, facing out, about the ball\'s size', () => {
   const n = 20, h = 1, d = Float64Array.from({ length: n ** 3 }, (_, e) => {
     const i = e % n, j = Math.floor(e / n) % n, k = Math.floor(e / (n * n));

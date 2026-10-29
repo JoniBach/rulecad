@@ -285,8 +285,10 @@ export function solve(g, { scale, ke, fixed, loads, method = 'direct', backend =
   return { ...conjugateGradients(g, { scale, fixed, loads: held(loads), backend, tol, maxIter, start, precondition, op }), again };
 }
 
-// The banded Cholesky factor of K (cells' matrices: ke × scale, or each its own), fixed dofs as identity rows
-function factor(g, { scale, ke, cellMatrices }, fixed) {
+// The banded Cholesky factor of K (cells' matrices: ke × scale, or each its own), fixed dofs as identity rows. Lenient
+// (a preconditioner's coarsest grid, where a coarse unknown over next to nothing can come out singular to rounding), a
+// pivot that isn't positive is dropped: an identity row with no couplings, so the unknown stays put.
+function factor(g, { scale, ke, cellMatrices }, fixed, { lenient = false } = {}) {
   const { edof, dofs, cells, cellDofs: m } = g, mm = m * m;
   let b = 0;
   for (let e = 0; e < cells; e++) {
@@ -308,16 +310,21 @@ function factor(g, { scale, ke, cellMatrices }, fixed) {
     }
   }
   for (let i = 0; i < dofs; i++) if (fixed[i] || L[i * w + b] === 0) L[i * w + b] = 1; // fixed, or touching no cell
+  const dropped = lenient ? new Uint8Array(dofs) : null;
   for (let i = 0; i < dofs; i++) {
     const from = Math.max(0, i - b), ri = i * w + b - i; // L[i][k] is at ri + k
     for (let j = from; j <= i; j++) {
+      if (dropped && dropped[j]) { L[ri + j] = 0; continue; }
       const rj = j * w + b - j;
       let s = L[ri + j], s1 = 0, s2 = 0, s3 = 0, k = from;
       for (; k + 3 < j; k += 4) { s -= L[ri + k] * L[rj + k]; s1 += L[ri + k + 1] * L[rj + k + 1]; s2 += L[ri + k + 2] * L[rj + k + 2]; s3 += L[ri + k + 3] * L[rj + k + 3]; } // four running sums: a little faster
       for (; k < j; k++) s -= L[ri + k] * L[rj + k];
       s -= s1 + s2 + s3;
       if (j === i) {
-        if (!(s > 0)) throw new Error('the part is not held still: add supports, or join loose pieces to it');
+        if (!(s > 0)) {
+          if (!dropped) throw new Error('the part is not held still: add supports, or join loose pieces to it');
+          dropped[i] = 1; s = 1; for (let k = from; k < i; k++) L[ri + k] = 0;
+        }
         L[i * w + b] = Math.sqrt(s);
       } else L[ri + j] = s / L[j * w + b];
     }
@@ -335,6 +342,7 @@ function factor(g, { scale, ke, cellMatrices }, fixed) {
         for (let k = i + 1; k <= Math.min(dofs - 1, i + b); k++) s -= L[k * w + b - k + i] * x[k];
         x[i] = s / L[i * w + b];
       }
+      if (dropped) for (let i = 0; i < dofs; i++) if (dropped[i]) x[i] = 0;
       return x;
     },
   };
@@ -419,7 +427,7 @@ function multigrid(g, { scale, ke, fixed, backend, op }) {
     l.op.diagonal(l.scale, l.inv);
     for (let i = 0; i < l.inv.length; i++) l.inv[i] = l.fixed[i] || !(l.inv[i] > 0) ? 0 : DAMPING / l.inv[i];
   }
-  const last = levels.at(-1), coarse = factor(last.g, { scale: last.scale, ke, cellMatrices: last.mats }, last.fixed);
+  const last = levels.at(-1), coarse = factor(last.g, { scale: last.scale, ke, cellMatrices: last.mats }, last.fixed, { lenient: levels.length > 1 });
   const apply = (l, x, y) => { l.op.multiply(l.scale, x, y); for (let i = 0; i < y.length; i++) if (l.fixed[i]) y[i] = 0; };
 
   const cycle = (k, r) => {

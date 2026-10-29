@@ -44,6 +44,8 @@ export { jsBackend };
  * @property {number} [penal] the penalty (default 3)
  * @property {boolean} [projection] sharpen with Heaviside projection (default true)
  * @property {string} [overhang] printed this way up ('+z', '-y', …): only material supported from below at 45° or less
+ * @property {number} [bridge] with overhang, the widest gap the printer bridges (mm): material may also be held up by a run
+ *   of solid cells along its own layer, half that long, ending on a held cell
  * @property {number} [steps] at most this many steps (default 300)
  */
 
@@ -135,7 +137,7 @@ export function discretise(p) {
     grid: size, origin, passive, fixed, loads,
     material: p.material, thickness: p.thickness, volume: p.volume,
     filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (p.stress ? 1000 : 300),
-    ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.stress ? { stress: p.stress } : {}),
+    ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(p.stress ? { stress: p.stress } : {}),
     regions: { keep, avoid },
   };
 }
@@ -176,19 +178,24 @@ export function densityFilter({ nx, ny, nz = 1 }, radius) {
  * material under it: the cell itself and its neighbours along each side, in the layer below (3 cells in 2D, 5 in 3D,
  * so nothing overhangs by more than 45°). Smooth minimum and maximum keep it differentiable. apply gives the printable
  * densities; adjoint carries sensitivities back through it.
+ * With reach, a cell is also held up by a bridge: a run of up to reach solid cells along its own layer, each way along
+ * each axis, ending on a cell that something below holds up (the run's cells and that cell's support, all through the
+ * smooth minimum). That's what a printer spans: give reach as half the printer's bridge, in cells.
  * @param {{ nx: number, ny: number, nz?: number }} size @param {string} up the build direction: '+z', '-x', …
+ * @param {number} [reach] how many cells a bridge may run from a held cell (0: none)
  */
-export function overhangFilter({ nx, ny, nz = 1 }, up) {
+export function overhangFilter({ nx, ny, nz = 1 }, up, reach = 0) {
   const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(up.at(-1)), sign = up[0] === '-' ? -1 : 1;
   if (ax < 0 || ax >= dim) throw new Error(`overhang: the build direction is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'} (got ${up})`);
   const cells = n.reduce((p, c) => p * c, 1), stride = [1, nx, nx * ny];
-  const P = 40, eps = 1e-4, xi0 = 0.5;
+  const P = 40, eps = 1e-4, xi0 = 0.5, halfRootEps = 0.5 * Math.sqrt(eps);
   // Layers in build order, and each cell's supports: the cell below it and that cell's neighbours along each other axis
-  const layer = (e) => { const c = Math.floor(e / stride[ax]) % n[ax]; return sign > 0 ? c : n[ax] - 1 - c; };
-  const order = Array.from({ length: cells }, (_, e) => e).sort((a, b) => layer(a) - layer(b));
-  const supports = new Array(cells);
+  const layerOf = (e) => { const c = Math.floor(e / stride[ax]) % n[ax]; return sign > 0 ? c : n[ax] - 1 - c; };
+  const layers = Array.from({ length: n[ax] }, () => []);
+  for (let e = 0; e < cells; e++) layers[layerOf(e)].push(e);
+  const supports = new Array(cells), chains = new Array(cells);
   for (let e = 0; e < cells; e++) {
-    if (layer(e) === 0) { supports[e] = null; continue; }
+    if (layerOf(e) === 0) { supports[e] = null; chains[e] = []; continue; }
     const below = e - sign * stride[ax], list = [below];
     for (let a = 0; a < dim; a++) if (a !== ax) {
       const c = Math.floor(below / stride[a]) % n[a];
@@ -196,38 +203,102 @@ export function overhangFilter({ nx, ny, nz = 1 }, up) {
       if (c < n[a] - 1) list.push(below + stride[a]);
     }
     supports[e] = Int32Array.from(list);
+    // Bridges: along each other axis, each way, the runs of 1 to reach cells (the nearest first)
+    const runs = [];
+    for (let a = 0; a < dim; a++) if (a !== ax) {
+      const c = Math.floor(e / stride[a]) % n[a];
+      for (const dir of [-1, 1]) for (let d = 1; d <= reach; d++) {
+        if (dir < 0 ? c - d < 0 : c + d >= n[a]) break;
+        runs.push(Int32Array.from({ length: d }, (_, k) => e + dir * (k + 1) * stride[a]));
+      }
+    }
+    chains[e] = runs;
   }
-  const printed = new Float64Array(cells), powP = new Float64Array(cells), dSum = new Float64Array(cells), dX = new Float64Array(cells), sums = new Float64Array(cells);
+  // What's kept from apply for adjoint: each cell's printed density and its P-th power, the sums under the smooth
+  // maxima (base: the cells below; support: those and the bridges), the smooth minima's slopes, and each bridge's
+  // running minima
+  const printed = new Float64Array(cells), powP = new Float64Array(cells), base = new Float64Array(cells), baseSum = new Float64Array(cells);
+  const support = new Float64Array(cells), sums = new Float64Array(cells), dSum = new Float64Array(cells), dX = new Float64Array(cells);
+  const steps = chains.map((runs) => runs.map((r) => new Float64Array(r.length + 1)));
+  let lastX = null;
+  const smax = (sum, count) => (sum > 0 ? Math.pow(sum, 1 / (P + Math.log(count) / Math.log(xi0))) : 0);
+  const Q = (count) => P + Math.log(count) / Math.log(xi0);
+  const smin = (a, b) => { const d = a - b; return 0.5 * (a + b - Math.sqrt(d * d + eps)) + halfRootEps; };
+  const dsmin = (a, b) => { const d = a - b, root = Math.sqrt(d * d + eps); return [0.5 * (1 - d / root), 0.5 * (1 + d / root)]; }; // d/da, d/db
   return {
     apply(x, out) {
-      for (const e of order) {
-        const sup = supports[e];
-        if (!sup) { printed[e] = x[e]; powP[e] = Math.pow(x[e], P); dX[e] = 1; continue; }
-        let s = 0;
-        for (const q of sup) s += powP[q]; // (each cell's printed^P, worked out once as it's printed)
-        if (s < 1e-200) s = 0; // nothing worth the name below (and no denormals for the gradient to blow up on)
-        const Q = P + Math.log(sup.length) / Math.log(xi0), smax = s > 0 ? Math.pow(s, 1 / Q) : 0;
-        sums[e] = s;
-        const d = x[e] - smax, root = Math.sqrt(d * d + eps);
-        printed[e] = 0.5 * (x[e] + smax - root + Math.sqrt(eps)); powP[e] = Math.pow(printed[e], P);
-        dX[e] = 0.5 * (1 - d / root); dSum[e] = 0.5 * (1 + d / root); // d printed / d x, d printed / d smax
+      lastX = x;
+      for (const layer of layers) {
+        // What the layer below holds up, cell by cell (a bridge rests on that, not on another bridge)
+        for (const e of layer) {
+          const sup = supports[e];
+          if (!sup) { printed[e] = x[e]; powP[e] = Math.pow(x[e], P); dX[e] = 1; base[e] = 1; continue; }
+          let s = 0;
+          for (const q of sup) s += powP[q];
+          if (s < 1e-200) s = 0; // nothing worth the name below (and no denormals for the gradient to blow up on)
+          baseSum[e] = s; base[e] = smax(s, sup.length);
+        }
+        for (const e of layer) {
+          const sup = supports[e];
+          if (!sup) continue;
+          // The cell's support: the cells below, and each bridge's running minimum (the run's cells, from the far end's
+          // base), all under one smooth maximum
+          let s = baseSum[e], count = sup.length;
+          chains[e].forEach((run, k) => {
+            const m = steps[e][k], far = run[run.length - 1];
+            let v = base[far];
+            m[0] = v;
+            for (let t = run.length - 1; t >= 0; t--) { v = smin(v, x[run[t]]); m[run.length - t] = v; }
+            s += Math.pow(v, P); count++;
+          });
+          sums[e] = s; support[e] = smax(s, count);
+          const d = x[e] - support[e], root = Math.sqrt(d * d + eps);
+          printed[e] = 0.5 * (x[e] + support[e] - root) + halfRootEps; powP[e] = Math.pow(printed[e], P);
+          dX[e] = 0.5 * (1 - d / root); dSum[e] = 0.5 * (1 + d / root); // d printed / d x, d printed / d support
+        }
       }
       out.set(printed);
       return out;
     },
-    // Back from the last layer: each cell's sensitivity, plus what it passes on to the cells it supports
+    // Back from the last layer: each cell's sensitivity, plus what it passes on to the cells holding it up
     adjoint(g, out) {
-      const lambda = Float64Array.from(g);
-      for (let t = cells - 1; t >= 0; t--) {
-        const e = order[t], sup = supports[e];
-        if (!sup || !sums[e]) continue;
-        const Q = P + Math.log(sup.length) / Math.log(xi0), common = lambda[e] * dSum[e] * (1 / Q) * Math.pow(sums[e], 1 / Q - 1) * P;
-        for (const q of sup) if (printed[q] > 0) lambda[q] += (common * powP[q]) / printed[q];
+      const lambda = Float64Array.from(g), dBase = new Float64Array(cells);
+      out.fill(0);
+      for (let L = layers.length - 1; L >= 0; L--) {
+        const layer = layers[L];
+        dBase.fill(0);
+        for (const e of layer) {
+          const sup = supports[e];
+          if (!sup) { out[e] += lambda[e] * dX[e]; continue; }
+          out[e] += lambda[e] * dX[e];
+          if (!sums[e]) continue;
+          const count = sup.length + chains[e].length, common = lambda[e] * dSum[e] * (1 / Q(count)) * Math.pow(sums[e], 1 / Q(count) - 1) * P;
+          for (const q of sup) if (printed[q] > 0) lambda[q] += (common * powP[q]) / printed[q];
+          chains[e].forEach((run, k) => {
+            const m = steps[e][k], v = m[run.length];
+            if (!(v > 0)) return;
+            let gv = common * Math.pow(v, P - 1);
+            // Back along the run: each step was smin(the running minimum so far, the run cell's density)
+            for (let t = 0; t < run.length; t++) {
+              const [da, db] = dsmin(m[run.length - t - 1], x_of(run[t]));
+              out[run[t]] += gv * db; gv *= da;
+            }
+            dBase[run[run.length - 1]] += gv;
+          });
+        }
+        // What the bridges asked of this layer's bases: on to the cells below
+        for (const e of layer) {
+          const sup = supports[e];
+          if (!sup || !dBase[e] || !baseSum[e]) continue;
+          const common = dBase[e] * (1 / Q(sup.length)) * Math.pow(baseSum[e], 1 / Q(sup.length) - 1) * P;
+          for (const q of sup) if (printed[q] > 0) lambda[q] += (common * powP[q]) / printed[q];
+        }
       }
-      for (let e = 0; e < cells; e++) out[e] = lambda[e] * dX[e];
       return out;
     },
   };
+  // (the densities apply was last given: kept for adjoint's bridges)
+  function x_of(e) { return lastX[e]; }
 }
 
 /**
@@ -245,7 +316,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const g = makeGrid(spec.grid), dim = g.dim, cells = g.cells, m = g.cellDofs, ke = cellStiffness(spec.material.nu, dim);
   const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, eta = 0.5, size = dim === 3 ? g.h : spec.thickness;
   const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
-  const filter = densityFilter(spec.grid, spec.filter / spec.grid.h), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang) : null;
+  const filter = densityFilter(spec.grid, spec.filter / spec.grid.h), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang, spec.bridge ? Math.floor(spec.bridge / 2 / spec.grid.h) : 0) : null;
   const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
   // Heaviside projection about eta: steeper as beta grows, so densities are pushed to 0 or 1 (Wang, Lazarov, Sigmund 2011)
