@@ -533,3 +533,19 @@ test('the live view: serves its page, streams each step, and its stop button set
     await assert.rejects(fetch(view.url));
   } catch (e) { await view.close(); throw e; }
 });
+
+test('an optimised part keeps only pieces touching a support, a load or a kept region', async () => {
+  const { anchored } = await import('./lib/optimise.mjs');
+  const cube = (x, s, base) => { // a closed cube as indexed triangles
+    const v = [0, 1].flatMap((k) => [0, 1].flatMap((j) => [0, 1].map((i) => [x + i * s, j * s, k * s])));
+    const q = [[0, 2, 3, 1], [4, 5, 7, 6], [0, 1, 5, 4], [2, 6, 7, 3], [0, 4, 6, 2], [1, 3, 7, 5]];
+    return { v, f: q.flatMap(([a, b, c, d]) => [[a, b, c], [a, c, d]]).map((t) => t.map((i) => i + base)) };
+  };
+  const main = cube(0, 10, 0), speck = cube(30, 2, 8);
+  const mesh = { vertices: [...main.v, ...speck.v], faces: [...main.f, ...speck.f] };
+  const out = anchored(mesh, [[0, 0, 0, 10, 10, 1]], 1); // a support on the main cube's floor
+  assert.equal(out.faces.length, 12);
+  assert.equal(out.vertices.length, 8);
+  assert.deepEqual(out.dropped.map(Math.abs), [8]);
+  assert.equal(anchored(mesh, [[0, 0, 0, 40, 10, 1]], 1).dropped.length, 0); // both touch it
+});

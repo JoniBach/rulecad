@@ -137,7 +137,7 @@ async function optimiseProblem(ref) {
   if (view) { view.close(`finished: ${r.steps} steps${r.converged ? '' : ', not settled'}`, { hold: 10 * 60e3 }); say(`the live view shows the result for ten more minutes (Ctrl-C to stop it)`); }
   const p = await readProblem(project, name), cells = r.dim === 3 ? `${r.grid.nx} × ${r.grid.ny} × ${r.grid.nz}` : `${r.grid.nx} × ${r.grid.ny}`;
   const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
-    `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}${r.stress ? `, peak stress ${sig(r.stress.peak)} MPa (limit ${sig(r.stress.limit)})` : ''}`];
+    `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}${r.stress ? `, peak stress ${sig(r.stress.peak)} MPa (limit ${sig(r.stress.limit)})` : ''}${r.dropped ? `; ${r.dropped.length} loose ${r.dropped.length === 1 ? 'piece' : 'pieces'} dropped (${sig(r.dropped.reduce((t, v) => t + v, 0))} mm³)` : ''}`];
   let out;
   if (r.dim === 3) {
     out = paths.preview(project, `${name.replace(':', '-')}-optimised.png`);

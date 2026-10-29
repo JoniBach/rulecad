@@ -26,10 +26,16 @@ What it checks:
   mid-air.
 - **Closed solid**: every edge is matched by a face on the other side. T-junctions count as closed, and so do hairline
   seams narrower than `HAIRLINE` (0.01 mm), which booleans leave and no printer can resolve. Wider gaps are holes.
+- **One piece**: a loose piece would print as a stray bit or fall over. A cavity inside a part (its surface faces in)
+  isn't a piece.
+- **Nothing starting in mid-air**: the lowest point of a tip hanging down (an icicle), with nothing below it to print
+  on. Its faces point down, and for a millimetre above it the surface stays narrow. The face-by-face overhang check
+  misses a tip like this, because each of its faces may slope at 45° or less. A shallow dip in a smoothed underside
+  spreads wide, so it doesn't count.
 
 Several parts printed together (a keycap with an inlaid legend in another colour): pass
 `{ parts: [{ triangles, role }] }`. Then one part resting on another isn't an overhang, and each part must be closed on
 its own. A part with `role: 'support'` is printed and then removed.
 
-Also exported: `bounds(triangles)` (`{ lo, hi, size }`), `seams(triangles)` (`{ gaps, tjunctions, hairlines }`) and
-`widest(polys, held, under)` (the bridge measurement).
+Also exported: `bounds(triangles)` (`{ lo, hi, size }`), `seams(triangles)` (`{ gaps, tjunctions, hairlines }`),
+`shape(triangles)` (`{ pieces, tips }`) and `widest(polys, held, under)` (the bridge measurement).
