@@ -1,0 +1,62 @@
+{
+  "name": "bin",
+  "title": "Bin: optimised lattice wall",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Standing up, as optimised: printable without supports. Use with a bin liner.",
+  "variables": {
+    "problem": {
+      "type": "problem",
+      "value": "bin",
+      "choice": [
+        "bin",
+        "bin:free"
+      ],
+      "rule": "The optimisation problem: printable standing up, or free (bin:free)"
+    },
+    "radius": {
+      "value": 115,
+      "unit": "mm",
+      "rule": "The bin's outer radius, as in the problem"
+    },
+    "height": {
+      "value": 250,
+      "unit": "mm",
+      "rule": "The bin's height, as in the problem"
+    },
+    "wall": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "The wall's thickness, as in the problem"
+    },
+    "inner": {
+      "value": "radius - wall",
+      "unit": "mm",
+      "rule": "The inside radius"
+    },
+    "rim": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The rim ring's height, as in the problem"
+    },
+    "floor": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The floor's thickness: finer than a cell, so added here"
+    },
+    "smooth": {
+      "value": 96,
+      "rule": "Segments round the floor and the ledge"
+    },
+    "cell": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The problem's cell: how far the wall is grown out and in before it's cut back to round faces"
+    }
+  }
+}

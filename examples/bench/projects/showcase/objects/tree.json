@@ -1,0 +1,13 @@
+{
+  "name": "tree",
+  "title": "Tree stand: optimised",
+  "version": "0.1.0",
+  "uses": ["x1c", "pla"],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Standing on its three feet, as optimised: printable without supports.",
+  "variables": {
+    "problem": { "type": "problem", "value": "tree", "choice": ["tree", "tree:free"], "rule": "The optimisation problem: printable standing up, or free (tree:free)" },
+    "smooth": { "value": 48, "rule": "Segments in the plate and feet" }
+  }
+}

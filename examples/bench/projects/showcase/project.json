@@ -1,0 +1,6 @@
+{
+  "name": "showcase",
+  "description": "Parts chosen to show what topology optimisation does with empty space: small, quick to optimise, and skeletal.",
+  "material": "PLA",
+  "objects": ["twist", "tree", "bin"]
+}

@@ -1,0 +1,37 @@
+{
+  "title": "Twisted tube: a shaft held at one end and twisted at the other",
+  "description": "A 40 mm cylinder 80 mm tall, standing on the bed as printed: a ring at the bottom held, a ring at the top twisted by four forces round its rim, a shaft hole through both. With 25% of the space (the rings take 7%) and struts at least 5 mm thick (a filter of 2.5 cells, so a strut at 45° stays whole on the grid), it should grow spiral struts at 45°, the textbook answer to twisting (Michell). Printable standing up, so the struts rise at 45° or steeper.",
+  "uses": ["x1c"],
+  "material": "pla",
+  "variables": {
+    "radius": { "value": 20, "unit": "mm", "rule": "The tube's outer radius" },
+    "height": { "value": 80, "unit": "mm", "rule": "The tube's height" },
+    "bore": { "value": 6, "unit": "mm", "rule": "The shaft hole's radius" },
+    "ring": { "value": 3, "unit": "mm", "rule": "Each end ring's thickness" },
+    "rim": { "value": "radius - 3", "unit": "mm", "rule": "Where the twisting forces act: their radius" },
+    "push": { "value": 25, "unit": "N", "rule": "Each of the four twisting forces: 4 × 25 N at 17 mm, 1.7 N·m" },
+    "build": { "value": "+z", "choice": ["none", "+z"], "rule": "+z: only what prints without supports, standing up; none: optimised freely" }
+  },
+  "variants": { "free": { "build": "none" } },
+  "overhang": "build",
+  "cell": 2,
+  "volume": 0.25,
+  "filter": 5,
+  "space": { "at": [0, 0, "height / 2"], "r": "radius", "length": "height", "axis": "z" },
+  "keep": [
+    { "at": [0, 0, "ring / 2"], "r": "radius", "length": "ring", "axis": "z", "label": "bottom ring" },
+    { "at": [0, 0, "height - ring / 2"], "r": "radius", "length": "ring", "axis": "z", "label": "top ring" }
+  ],
+  "avoid": [
+    { "at": [0, 0, "height / 2"], "r": "bore", "length": "height * 2", "axis": "z", "label": "shaft hole" }
+  ],
+  "supports": [
+    { "at": [0, 0, "ring / 2"], "r": "radius", "length": "ring", "axis": "z", "label": "bottom ring, held" }
+  ],
+  "loads": [
+    { "at": ["rim", 0, "height - ring / 2"], "r": 2.5, "length": "ring", "axis": "z", "force": [0, "push", 0], "case": "twist" },
+    { "at": [0, "rim", "height - ring / 2"], "r": 2.5, "length": "ring", "axis": "z", "force": ["0 - push", 0, 0], "case": "twist" },
+    { "at": ["0 - rim", 0, "height - ring / 2"], "r": 2.5, "length": "ring", "axis": "z", "force": [0, "0 - push", 0], "case": "twist" },
+    { "at": [0, "0 - rim", "height - ring / 2"], "r": 2.5, "length": "ring", "axis": "z", "force": ["push", 0, 0], "case": "twist" }
+  ]
+}

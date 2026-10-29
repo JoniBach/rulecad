@@ -242,3 +242,12 @@ test('stress limits: the lightest layout keeps to the limit, and a lower limit t
   assert.ok(tight.volume > loose.volume + 0.15, `20 MPa takes ${tight.volume}, 40 MPa ${loose.volume}`);
   assert.throws(() => optimise(discretise({ ...stressed(20), volume: 0.4 })), /not both/);
 });
+
+test('a 3D grid padded to whole multigrid blocks sits centred round its space, flush with the bed along the build direction', () => {
+  const p = { space: { at: [0, 0, 20], r: 23, length: 40, axis: 'z' }, supports: [{ at: [0, 0, 0.5], r: 23, length: 1, axis: 'z' }], loads: [{ at: [0, 0, 39.5], r: 5, length: 1, axis: 'z', force: [0, 0, -1] }], material: { E: 2000, nu: 0.35 }, cell: 2, volume: 0.3, filter: 3 };
+  for (const [overhang, z] of [[undefined, -4], ['+z', 0], ['-z', -8]]) {
+    const s = discretise({ ...p, ...(overhang ? { overhang } : {}) });
+    assert.deepEqual([s.grid.nx, s.grid.ny, s.grid.nz], [24, 24, 24]);
+    assert.deepEqual(s.origin, [-24, -24, z], `built ${overhang ?? 'any way'}`);
+  }
+});
