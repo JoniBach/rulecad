@@ -521,6 +521,11 @@ test('the live view: serves its page, streams each step, and its stop button set
     // Three views, each pixel the densest cell along its line of sight
     assert.deepEqual(m.frame.views.map((v) => [v.name, ...Buffer.from(v.image, 'base64')]), [['along y', 0, 255, 128, 0], ['along x', 255, 0, 0, 128], ['along z', 0, 255, 128, 0]]);
     assert.equal((await (await fetch(new URL('frame/0', view.url))).json()).step, 3); // every step kept, for the scrubber
+    // A 3D step's surface, drawn when asked for: vertex and face counts, then the vertices and faces
+    const mesh = new DataView(await (await fetch(new URL('mesh/0', view.url))).arrayBuffer());
+    assert.ok(mesh.getUint32(0, true) > 0 && mesh.getUint32(4, true) > 0);
+    assert.equal(mesh.byteLength, 8 + mesh.getUint32(0, true) * 12 + mesh.getUint32(4, true) * 12);
+    assert.match(await (await fetch(new URL('three/three.module.js', view.url))).text(), /WebGLRenderer/);
     assert.equal(view.stopped(), false);
     await fetch(new URL('stop', view.url), { method: 'POST' });
     assert.equal(view.stopped(), true);
