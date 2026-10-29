@@ -76,7 +76,7 @@ export async function readProblem(project, ref) {
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
-  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5 }; }
+  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5 }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
   return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical };
 }
 

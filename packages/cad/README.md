@@ -371,7 +371,8 @@ worked out again when something it depends on changes.
 
 A 3D result with a build direction is made printable before it's drawn: built up layer by layer from the bed, every
 cell that nothing holds up (an icicle, a loose bit, a sheet hanging under an edge: whatever the optimiser's smooth
-overhang filter let through) is emptied, with whatever rested on it; a bridge may run out half the printer's span.
+overhang filter let through) is emptied, with whatever rested on it; a bridge may run out half the printer's span,
+in the optimiser's filter and in the cleaning alike, so a flat underside can open into holes that wide.
 Kept regions always stay, and the optimiser is made to hold them up: a kept cell with nothing under it costs it as
 much as the whole part's compliance. If there wasn't material enough to stand a kept region on, `cad optimise` says
 how much of it is left hanging. Then the drawn surface is tipped back to the printer's overhang limit and any tip left
