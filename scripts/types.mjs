@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 
 const TYPED = ['variables', 'fea', 'topopt', 'keyboard-layout', 'printcheck', 'fit', 'model-link', 'versions', 'shapes'];
 for (const dir of TYPED) {
-  const { exports: main } = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8'));
+  const { exports } = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8')), main = exports['.'] || exports; // (the main entry: fea also has ./threads)
   const file = path.join('packages', dir, (main.default || main).replace(/^\.\//, ''));
   execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', file, '--allowJs', '--declaration', '--emitDeclarationOnly',
     '--skipLibCheck', '--types', 'node', '--target', 'es2022', '--module', 'nodenext', '--outDir', path.dirname(file)], { stdio: 'inherit' });
