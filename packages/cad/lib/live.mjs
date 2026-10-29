@@ -59,8 +59,8 @@ function views(d, { nx, ny, nz = 1 }) {
 const page = (title) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title>
 <style>body{font:15px system-ui;background:#111;color:#eee;margin:16px;max-width:900px}canvas{background:#000;border-radius:6px}.chart{width:100%}#hint{color:#888;font-size:12px;text-align:center;margin:-4px 0 8px}#model{height:50vh;margin-bottom:8px;border-radius:6px;overflow:hidden;background:#000;cursor:grab;touch-action:none}#views{display:flex;gap:8px;align-items:flex-end}figure{flex:1;min-width:0;margin:0;text-align:center}figure canvas{width:100%;height:40vh;object-fit:contain;background:none}figcaption{color:#aaa;font-size:13px;text-align:center}
-#chart{height:160px;touch-action:none}#scrub{display:flex;gap:8px;align-items:center}#scrub input{flex:1}#live{background:#357}table{border-collapse:collapse;margin:10px 0;width:100%}td{padding:3px 8px 3px 0;vertical-align:top}td:first-child{color:#999;white-space:nowrap;width:1%}button{font:inherit;padding:8px 16px;border-radius:6px;border:0;background:#d33;color:#fff}button:disabled{background:#555}#state{margin:10px 0}</style>
-<h2>${title}</h2><div id="state">waiting for the first step…</div><div id="model" hidden></div><div id="hint" hidden>drag to turn it · double-tap to stop or start it turning</div><div id="views"></div><canvas class="chart" id="chart" width="900" height="160"></canvas><div id="scrub"><input type="range" id="at" min="0" max="0" value="0"><button id="live" disabled>Live</button></div><table id="facts"></table>
+#chart{height:160px;touch-action:none}#scrub{display:flex;gap:8px;align-items:center;position:sticky;bottom:0;z-index:2;background:#111;padding:10px 0;border-top:1px solid #222}#scrub input{flex:1;height:32px}#at-step{color:#aaa;font-size:13px;min-width:5.5em}#live{background:#357}table{border-collapse:collapse;margin:10px 0;width:100%}td{padding:3px 8px 3px 0;vertical-align:top}td:first-child{color:#999;white-space:nowrap;width:1%}button{font:inherit;padding:8px 16px;border-radius:6px;border:0;background:#d33;color:#fff}button:disabled{background:#555}#state{margin:10px 0}</style>
+<h2>${title}</h2><div id="state">waiting for the first step…</div><div id="model" hidden></div><div id="hint" hidden>drag to turn it · double-tap to stop or start it turning</div><div id="views"></div><canvas class="chart" id="chart" width="900" height="160"></canvas><div id="scrub"><span id="at-step"></span><input type="range" id="at" min="0" max="0" value="0"><button id="live" disabled>Live</button></div><table id="facts"></table>
 <p><button id="stop">Stop the run</button> <span id="note"></span></p>
 <script>
 const views = document.getElementById('views'), facts = document.getElementById('facts'), state = document.getElementById('state'), stop = document.getElementById('stop');
@@ -78,6 +78,7 @@ function table() {
     ...(f.volume != null ? [['Material', fig(f.volume * 100) + '% of the space']] : []), ...(f.stress != null ? [['Peak stress', fig(f.stress) + ' MPa']] : []),
     ['Cells', [f.grid.nx, f.grid.ny, f.grid.nz].filter(Boolean).join(' × ') + (f.grid.h ? ' of ' + f.grid.h + ' mm' : '') + ' (' + (f.grid.nx * f.grid.ny * (f.grid.nz || 1)).toLocaleString('en-GB') + ')'],
   ] : [];
+  document.getElementById('at-step').textContent = f ? 'step ' + f.step : '';
   facts.innerHTML = [...(finished ? [['Result', finished]] : []), ...rows, ...about].map(([k, v]) => '<tr><td>' + esc(k) + '</td><td>' + esc(v) + '</td></tr>').join('');
 }
 function draw(f) {
