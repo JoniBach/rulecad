@@ -433,7 +433,9 @@ the problem, and optionally a limit:
 `cad check` then reports, for each load case, how far the part moves its load, its stiffness (N/mm) and its peak
 stress against the material's strength, and the part's volume and weight. With `max_deflection` a case that moves
 further fails; with `volume` a part whose volume is further than `tolerance` (a share) from it fails. A picture goes in
-`.preview/`.
+`.preview/`. A twist (forces that add to nothing, such as four round a rim) has no direction to move along, so it's
+reported as the angle the part turns through, in degrees, under its moment (N·m), and its torsional stiffness (N·m a
+degree).
 
 On the problem's own cells the analysis is quick and coarse. A solid part's cubes are filled by the share of each the
 part takes up, so a wall between cell centres still counts, but thin walls on big cubes still come out too stiff when

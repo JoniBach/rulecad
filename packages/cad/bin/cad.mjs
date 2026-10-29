@@ -112,6 +112,9 @@ function report(findings, about = {}) {
 const say = (...a) => { if (!opt('json')) console.log(...a); }; // text output that --json leaves out
 
 const sig = (n) => (Number.isFinite(n) ? String(Number(n.toPrecision(3))) : String(n)); // three significant figures
+// A case's stiffness, and in words: a twist turns (degrees under N·m, N·m a degree), anything else moves along its load
+const stiffOf = (c) => (c.moment ? c.torsion : c.stiffness);
+const howFar = (c) => (c.moment ? `turns ${sig(c.angle * 180 / Math.PI)}° under ${sig(c.moment / 1000)} N·m, ${sig(c.torsion / 1000 * Math.PI / 180)} N·m a degree` : `moves ${sig(c.deflection)} mm along its load, ${sig(c.stiffness)} N/mm`);
 // cad optimise: run a problem (with a progress line), then report it and draw it: a 2D layout as an SVG of its
 // densities, a 3D one as the preview's four views of its surface
 async function optimiseProblem(ref) {
@@ -136,7 +139,7 @@ async function optimiseProblem(ref) {
   // The page keeps showing the end for ten minutes (the process waits for it), so a finished run isn't a dead link
   if (view) { view.close(`finished: ${r.steps} steps${r.converged ? '' : ', not settled'}`, { hold: 10 * 60e3 }); say(`the live view shows the result for ten more minutes (Ctrl-C to stop it)`); }
   const p = await readProblem(project, name), cells = r.dim === 3 ? `${r.grid.nx} × ${r.grid.ny} × ${r.grid.nz}` : `${r.grid.nx} × ${r.grid.ny}`;
-  const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
+  const lines = [`${p.material.name}${r.dim === 2 ? `, ${fmt(r.thickness)} mm thick` : ''}: ${r.cases.map((c) => c.moment ? `${c.name} ${sig(c.angle * 180 / Math.PI)}° (${sig(c.torsion / 1000 * Math.PI / 180)} N·m/°)` : `${c.name} ${sig(c.deflection)} mm (${sig(c.stiffness)} N/mm)`).join(', ')}`,
     `${fmt(r.volume * 100)}% of the space, ${cells} cells of ${fmt(r.grid.h)} mm, ${r.steps} steps${r.converged ? '' : ' (stopped: not settled)'}${r.overhang ? `, printable built ${r.overhang}` : ''}${r.stress ? `, peak stress ${sig(r.stress.peak)} MPa (limit ${sig(r.stress.limit)})` : ''}${r.dropped ? `; ${r.dropped.length} loose ${r.dropped.length === 1 ? 'piece' : 'pieces'} dropped (${sig(r.dropped.reduce((t, v) => t + v, 0))} mm³)` : ''}`];
   let out;
   if (r.dim === 3) {
@@ -150,7 +153,7 @@ async function optimiseProblem(ref) {
   }
   if (opt('json')) return console.log(JSON.stringify((({ density, history, mesh, ...x }) => x)(r), null, 2));
   console.log(`${r.title}${r.cached ? ' (cached)' : ` (${fmt(r.seconds)} s)`}`);
-  for (const c of r.cases) console.log(`  ${c.name}: moves ${sig(c.deflection)} mm along its load, ${sig(c.stiffness)} N/mm`);
+  for (const c of r.cases) console.log(`  ${c.name}: ${howFar(c)}`);
   if (r.stress) console.log(`  peak stress ${sig(r.stress.peak)} MPa, the limit ${sig(r.stress.limit)} MPa${r.stress.peak > r.stress.limit * 1.02 ? ': over it (raise the volume, ease the limit, or use a smaller cell)' : ''}`);
   if (r.dim === 3) console.log(`  ${fmt(r.volume * 100)}% of the space filled: ${fmt(r.solid / 1000)} cm³ (${fmt(r.solid / 1000 * (p.material.density || 0))} g of ${p.material.name})${r.overhang ? `, printable built ${r.overhang}` : ''}`);
   else console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);
@@ -175,7 +178,7 @@ function place(triangles, [rx, ry, rz], move) {
 function reportText({ turn, object, title, version, a, r, m, strength, weaker, grid, limit, minSafety, records, found }) {
   const at = (p) => `(${p.map(fmt).join(', ')})`;
   const pct = (x) => `${x >= 0 ? '+' : ''}${fmt(x * 100)}%`;
-  const rows = r.cases.map((c) => `| ${c.name} | ${fmt(c.force)} | ${sig(c.deflection)} | ${sig(c.stiffness)}${c.change ? ` (${pct(c.change.stiffness)})` : ''} | ${sig(c.stress)}${c.change ? ` (${pct(c.change.stress)})` : ''} at ${at(c.stressAt)} | ${strength ? `${sig(strength / c.stress)}×` : '–'}${m.fatigue ? ` (fatigue ${sig(m.fatigue / c.stress)}×)` : ''} | ${sig(c.movement)} at ${at(c.movementAt)} |`);
+  const rows = r.cases.map((c) => `| ${c.name} | ${c.moment ? `${sig(c.moment / 1000)} N·m | ${sig(c.angle * 180 / Math.PI)}° | ${sig(c.torsion / 1000 * Math.PI / 180)} N·m/°` : `${fmt(c.force)} | ${sig(c.deflection)} | ${sig(c.stiffness)}`}${c.change ? ` (${pct(c.change.stiffness)})` : ''} | ${sig(c.stress)}${c.change ? ` (${pct(c.change.stress)})` : ''} at ${at(c.stressAt)} | ${strength ? `${sig(strength / c.stress)}×` : '–'}${m.fatigue ? ` (fatigue ${sig(m.fatigue / c.stress)}×)` : ''} | ${sig(c.movement)} at ${at(c.movementAt)} |`);
   return [
     `# ${title}: analysed under ${a.problem}`, '',
     `${object} ${version || ''}. Analysed on ${grid}, ${m.name} (modulus ${fmt(m.modulus)} MPa${strength ? `, strength ${fmt(strength)} MPa${weaker ? ' across its layers' : ''}` : ''}${m.fatigue ? `, fatigue strength ${fmt(m.fatigue)} MPa` : ''}). Positions are in mm, in the problem's frame${turn ? ' (the part turned back from how it prints)' : ''}.${r.cases[0]?.change ? ` In brackets: the change from ${fmt(r.cases[0].change.cell)} mm cells. Stiffness that changes by 5% or less has settled; peak stress at a sharp inside corner keeps rising as cells shrink, so read it with its change.` : ' On the problem\'s own cells: a quick check. Give the analysis a smaller cell to verify it.'}`, '',
@@ -209,7 +212,7 @@ async function analyses(b, d, tag) {
     // theory it's endless there), so it's reported, not judged.
     if (cell) {
       const coarser = await analysePart(turned, d.project, a.problem, { cell: cell * 1.25 });
-      r.cases.forEach((c, n) => { const o = coarser.cases[n]; c.change = { stiffness: c.stiffness / o.stiffness - 1, stress: c.stress / o.stress - 1, cell: coarser.grid.h }; });
+      r.cases.forEach((c, n) => { const o = coarser.cases[n]; c.change = { stiffness: stiffOf(c) / stiffOf(o) - 1, stress: c.stress / o.stress - 1, cell: coarser.grid.h }; });
     }
     const limit = a.max_deflection != null ? evaluate(a.max_deflection, lookup) : null;
     const minSafety = a.min_safety != null ? evaluate(a.min_safety, lookup) : null;
@@ -226,15 +229,15 @@ async function analyses(b, d, tag) {
     const at = (p) => `(${p.map(fmt).join(', ')})`;
     const found = r.cases.flatMap((c) => {
       const safety = strength ? strength / c.stress : null, fatigue = m.fatigue ? m.fatigue / c.stress : null;
-      const text = `${a.problem} ${c.name}: moves ${sig(c.deflection)} mm under ${fmt(c.force)} N, ${sig(c.stiffness)} N/mm`;
-      const values = { deflection: c.deflection, force: c.force, stiffness: c.stiffness, stress: c.stress, ...(limit != null ? { limit } : {}) };
+      const text = c.moment ? `${a.problem} ${c.name}: ${howFar(c)}` : `${a.problem} ${c.name}: moves ${sig(c.deflection)} mm under ${fmt(c.force)} N, ${sig(c.stiffness)} N/mm`;
+      const values = { ...(c.moment ? { angle: c.angle, moment: c.moment, torsion: c.torsion } : { deflection: c.deflection, force: c.force, stiffness: c.stiffness }), stress: c.stress, ...(limit != null ? { limit } : {}) };
       const refs = { problem: a.problem, part: part.name, ...(out ? { picture: path.relative(WS, out) } : {}) };
       const strong = `peak stress ${sig(c.stress)} MPa at ${at(c.stressAt)}${safety != null ? `: ${sig(safety)}× under ${m.name}'s ${weaker ? 'strength across its layers' : 'strength'}${fatigue != null ? `, ${sig(fatigue)}× under its fatigue strength` : ''}` : ''}`;
       const least = Math.min(safety ?? Infinity, fatigue ?? Infinity);
       const settled = c.change ? [{ level: Math.abs(c.change.stiffness) <= 0.05 ? 'pass' : 'warn', code: 'fea.settled', values: c.change,
         text: `${a.problem} ${c.name}: stiffness ${c.change.stiffness >= 0 ? '+' : ''}${fmt(c.change.stiffness * 100)}% from ${fmt(c.change.cell)} mm cells${Math.abs(c.change.stiffness) <= 0.05 ? ', settled (within 5%)' : ': not settled, use a smaller cell'}` }] : [];
       return [
-        { level: limit == null ? 'info' : c.deflection <= limit ? 'pass' : 'fail', text: limit == null ? text : `${text} (at most ${fmt(limit)})`, code: 'fea.deflection', values, refs }, ...settled,
+        { level: limit == null || c.moment ? 'info' : c.deflection <= limit ? 'pass' : 'fail', text: limit == null ? text : `${text} (at most ${fmt(limit)})`, code: 'fea.deflection', values, refs }, ...settled,
         { level: minSafety == null ? 'info' : least >= minSafety ? 'pass' : 'fail', text: `${a.problem} ${c.name}: ${strong}${minSafety != null ? ` (at least ${fmt(minSafety)}×)` : ''}`, code: 'fea.strength',
           values: { stress: c.stress, at: c.stressAt, ...(safety != null ? { safety } : {}), ...(fatigue != null ? { fatigue } : {}), ...(minSafety != null ? { min: minSafety } : {}) }, refs },
       ];
