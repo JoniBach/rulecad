@@ -58,14 +58,21 @@ export function discretise(p) {
   const space = [p.space].flat(), keep = p.keep || [], avoid = p.avoid || [], dim = dimension(space[0]);
   if (!(p.cell > 0)) throw new Error('the cell size must be more than 0 mm');
   for (const r of [...space, ...keep, ...avoid]) if (dimension(r) !== dim) throw new Error(`a ${dimension(r)}D region in a ${dim}D problem: give every region ${dim === 3 ? 'x, y and z' : 'x and y'}`);
-  const all = [...space, ...keep].map(bounds), lo = [], n = [];
+  const all = [...space, ...keep].map(bounds), lo = [], hi = [], n = [];
   for (let a = 0; a < dim; a++) {
-    lo.push(Math.min(...all.map((b) => b[a])));
-    n.push(Math.max(1, Math.round((Math.max(...all.map((b) => b[dim + a])) - lo[a]) / p.cell)));
+    lo.push(Math.min(...all.map((b) => b[a]))); hi.push(Math.max(...all.map((b) => b[dim + a])));
+    n.push(Math.max(1, Math.round((hi[a] - lo[a]) / p.cell)));
   }
   if (dim === 3) { // whole numbers of 2, 4 or 8 cells along every side, for multigrid
-    const q = Math.min(...n) >= 16 ? 8 : Math.min(...n) >= 8 ? 4 : 2;
-    for (let a = 0; a < 3; a++) n[a] = Math.ceil(n[a] / q) * q;
+    const q = Math.min(...n) >= 16 ? 8 : Math.min(...n) >= 8 ? 4 : 2, build = /^([+-])([xyz])$/.exec(p.overhang ?? '');
+    for (let a = 0; a < 3; a++) {
+      n[a] = Math.ceil(n[a] / q) * q;
+      // The padding split evenly round the space, so a round space sits in the middle of its grid (all on one side, a
+      // round wall ran along the grid's edge there and drew as flat blocks). Along the build direction the bed's side
+      // stays flush, so the first layer sits on the bed.
+      const pad = n[a] * p.cell - (hi[a] - lo[a]);
+      lo[a] -= build && 'xyz'.indexOf(build[2]) === a ? (build[1] === '-' ? pad : 0) : pad / 2;
+    }
   }
   const size = dim === 3 ? { nx: n[0], ny: n[1], nz: n[2], h: p.cell } : { nx: n[0], ny: n[1], h: p.cell };
   const g = makeGrid(size), origin = lo, h = p.cell;

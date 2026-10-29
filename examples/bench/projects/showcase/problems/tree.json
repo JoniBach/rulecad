@@ -1,0 +1,243 @@
+{
+  "title": "Tree stand: a plate held up on a trunk, loaded at three points",
+  "description": "A stand 60 × 60 × 70 mm, printed as it's used: three feet close together on the bed (a trunk), a 50 mm plate on top, loaded at three points round its edge, each between two feet, plus a push sideways. 10% of the space. Each load needs its own route down, so branches should leave the trunk and split towards them; printable without supports, the 45° rule makes them rise. Attempt 1 (load over the feet) came out as a stool; attempt 2 (six loads round the edge, a twist, 15%) as a goblet: a closed cone answers a ring load and a twist.",
+  "uses": [
+    "x1c"
+  ],
+  "material": "pla",
+  "variables": {
+    "width": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "The space's width and depth"
+    },
+    "height": {
+      "value": 70,
+      "unit": "mm",
+      "rule": "The stand's height"
+    },
+    "plate": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "The top plate's radius"
+    },
+    "deck": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The top plate's thickness"
+    },
+    "spread": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "How far each foot sits from the centre: close together, a trunk"
+    },
+    "foot": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Each foot's radius"
+    },
+    "weight": {
+      "value": 50,
+      "unit": "N",
+      "rule": "The load on the plate, about 5 kg, spread over seven points"
+    },
+    "point": {
+      "value": "weight / 3",
+      "unit": "N",
+      "rule": "Each point's share of the load"
+    },
+    "ring": {
+      "value": "plate - 4",
+      "unit": "mm",
+      "rule": "The radius of the three load points, round the plate's edge, each between two feet"
+    },
+    "sideways": {
+      "value": 1,
+      "tweak": {
+        "min": 0,
+        "max": 1
+      },
+      "rule": "The sideways case's weight against the load's"
+    },
+    "build": {
+      "value": "+z",
+      "choice": [
+        "none",
+        "+z"
+      ],
+      "rule": "+z: only what prints without supports, standing on its feet; none: optimised freely"
+    }
+  },
+  "variants": {
+    "free": {
+      "build": "none"
+    }
+  },
+  "overhang": "build",
+  "cell": 2,
+  "volume": 0.1,
+  "filter": 5,
+  "space": {
+    "at": [
+      0,
+      0,
+      "height / 2"
+    ],
+    "size": [
+      "width",
+      "width",
+      "height"
+    ]
+  },
+  "keep": [
+    {
+      "at": [
+        0,
+        0,
+        "height - deck / 2"
+      ],
+      "r": "plate",
+      "length": "deck",
+      "axis": "z",
+      "label": "top plate"
+    },
+    {
+      "at": [
+        0,
+        "spread",
+        1.5
+      ],
+      "r": "foot",
+      "length": 3,
+      "axis": "z",
+      "label": "back foot"
+    },
+    {
+      "at": [
+        "0 - spread * cosd(30)",
+        "0 - spread / 2",
+        1.5
+      ],
+      "r": "foot",
+      "length": 3,
+      "axis": "z",
+      "label": "left foot"
+    },
+    {
+      "at": [
+        "spread * cosd(30)",
+        "0 - spread / 2",
+        1.5
+      ],
+      "r": "foot",
+      "length": 3,
+      "axis": "z",
+      "label": "right foot"
+    }
+  ],
+  "supports": [
+    {
+      "at": [
+        0,
+        "spread",
+        1.5
+      ],
+      "r": "foot",
+      "length": 3,
+      "axis": "z",
+      "label": "back foot, on the table"
+    },
+    {
+      "at": [
+        "0 - spread * cosd(30)",
+        "0 - spread / 2",
+        1.5
+      ],
+      "r": "foot",
+      "length": 3,
+      "axis": "z",
+      "label": "left foot, on the table"
+    },
+    {
+      "at": [
+        "spread * cosd(30)",
+        "0 - spread / 2",
+        1.5
+      ],
+      "r": "foot",
+      "length": 3,
+      "axis": "z",
+      "label": "right foot, on the table"
+    }
+  ],
+  "loads": [
+    {
+      "at": [
+        "ring * cosd(30)",
+        "ring * sind(30)",
+        "height - deck / 2"
+      ],
+      "r": 3,
+      "length": "deck",
+      "axis": "z",
+      "force": [
+        0,
+        0,
+        "0 - point"
+      ],
+      "case": "down"
+    },
+    {
+      "at": [
+        "ring * cosd(150)",
+        "ring * sind(150)",
+        "height - deck / 2"
+      ],
+      "r": 3,
+      "length": "deck",
+      "axis": "z",
+      "force": [
+        0,
+        0,
+        "0 - point"
+      ],
+      "case": "down"
+    },
+    {
+      "at": [
+        "ring * cosd(270)",
+        "ring * sind(270)",
+        "height - deck / 2"
+      ],
+      "r": 3,
+      "length": "deck",
+      "axis": "z",
+      "force": [
+        0,
+        0,
+        "0 - point"
+      ],
+      "case": "down"
+    },
+    {
+      "at": [
+        0,
+        0,
+        "height - deck / 2"
+      ],
+      "r": "plate",
+      "length": "deck",
+      "axis": "z",
+      "force": [
+        "weight / 5",
+        0,
+        0
+      ],
+      "case": "side"
+    }
+  ],
+  "cases": {
+    "down": 1,
+    "side": "sideways"
+  }
+}

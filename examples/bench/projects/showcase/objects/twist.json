@@ -1,0 +1,13 @@
+{
+  "name": "twist",
+  "title": "Twisted tube: optimised",
+  "version": "0.1.0",
+  "uses": ["x1c", "pla"],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Standing on its bottom ring, as optimised: printable without supports.",
+  "variables": {
+    "problem": { "type": "problem", "value": "twist", "choice": ["twist", "twist:free"], "rule": "The optimisation problem: printable standing up, or free (twist:free)" },
+    "smooth": { "value": 48, "rule": "Segments in each ring and the shaft hole" }
+  }
+}
