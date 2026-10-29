@@ -9,7 +9,7 @@
   "license": "MIT",
   "scripts": {
     "test": "node --test packages/*/test.mjs test/*.test.mjs",
-    "test:browser": "node --test test/viewer.browser.mjs test/docs.browser.mjs",
+    "test:browser": "node --test test/viewer.browser.mjs test/docs.browser.mjs test/live.browser.mjs",
     "types": "node scripts/types.mjs",
     "docs": "node packages/viewer/scripts/build.mjs && node docs/build.mjs"
   },
