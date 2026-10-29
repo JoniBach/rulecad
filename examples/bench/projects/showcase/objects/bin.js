@@ -10,6 +10,6 @@ export function main (v) {
   const wall = raw
   const floor = cylinder({ radius: v.radius, height: v.floor, center: [0, 0, v.floor / 2], segments: v.smooth })
   const top = v.height - v.rim
-  const ledge = extrudeRotate({ segments: v.smooth }, polygon({ points: [[v.inner, top], [v.radius, top - v.wall * 1.02], [v.radius, top]] }))
+  const ledge = extrudeRotate({ segments: v.smooth }, polygon({ points: [[v.inner, top], [v.radius, top - v.wall * v.steeper], [v.radius, top]] }))
   return v.ops.union(wall, floor, ledge)
 }

@@ -52,6 +52,10 @@
     "smooth": {
       "value": 96,
       "rule": "Segments round the floor and the ledge"
+    },
+    "steeper": {
+      "value": 1.05,
+      "rule": "How much steeper than 45° the ledge under the rim slopes (booleans tip a 45° face by hundredths of a degree, and the smoothed wall meets it unevenly)"
     }
   }
 }
