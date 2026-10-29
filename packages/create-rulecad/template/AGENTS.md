@@ -90,6 +90,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   `"overhang"` to the way up it will print, so the result needs no supports, and give horizontal bosses and holes a
   `teardrop` (`"down"`, `"up"`). Draw the part as it prints; if that isn't the problem's frame, give its `analysis` a
   `rotate` and `move` back. Build with `v.shapes.optimisedSolid(...)` and `"engine": "manifold"`; look at the four views.
+  The result is made printable before it's drawn (hanging cells emptied, tips lifted, loose bits dropped), but a kept
+  region is never emptied: if `cad optimise` says part of one has nothing holding it up, give the part more material
+  to stand it on, or keep less. `cad check` tests the part for one piece and nothing starting in mid-air.
 - Before reporting numbers for a final shape, verify them: give the `analysis` a smaller `cell` (solids: about a
   third of the problem's) and check the stiffness has settled (`fea.settled`). Report the verified numbers, the safety
   factor, and where the peak stress is.

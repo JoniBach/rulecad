@@ -18,6 +18,7 @@ const spec = discretise({
   material: { E: 2680, nu: 0.36 }, thickness: 6, cell: 1, volume: 0.5, filter: 2.5,
 });
 const result = optimise(spec, { onStep: (s) => console.log(s.step, s.compliance) });
+result.unsupported; // with overhang: the share of the kept regions' material nothing holds up (0: all held up)
 result.cases;      // [{ name: 'down', deflection (mm along the load), stiffness (N/mm) }]; a twist (forces adding
                    // to nothing): { name, moment (N·mm), angle (radians), torsion (N·mm a radian) }
 const loops = outlines(spec.grid, result.density, spec.origin);   // closed loops, solid on the left
@@ -61,7 +62,10 @@ Two more steps shape the result:
 - **Heaviside projection** sharpens the result, more on each pass, until cells are solid or empty.
 - **The overhang filter** (optional, after Langelaar 2017) applies the printer's limit. Layer by layer from the bed, a
   cell can only be as solid as the material under it: the cell below and its neighbours, so nothing overhangs more
-  than 45°. The result prints without supports in that direction.
+  than 45°. The result prints without supports in that direction. Kept regions must print too: a kept cell that
+  nothing holds up costs the optimiser as much as the whole part's compliance (shared over the kept cells), so it grows
+  what holds it up; `result.unsupported` says how much of the kept material is still left hanging, which means there
+  wasn't material enough to stand it on.
 
 Several load cases are optimised together by weight. A case weighted 0 is solved only at the end, for its figures.
 `model(spec)` exposes the analysis and its gradient, for other update methods.
@@ -71,7 +75,15 @@ and drops holes and islands smaller than `minArea`.
 
 `surface` does the same for a 3D result: a closed triangle mesh at density 0.5, by marching tetrahedra. Every cube
 is split along the same diagonal, so neighbouring cubes cut their shared faces the same way and the surface has no
-gaps. Then it's smoothed.
+gaps. Then it's smoothed. With `overhang`, the smoothed surface is made printable: faces left steeper than the limit
+are tipped back to it, and tips left hanging in mid-air (the lowest point of a dip under an edge, which a printer has
+nothing to lay down on) are lifted level with their neighbours, in turn until neither finds any.
+
+`printable` makes a result printable before it's drawn, the hard way: built up layer by layer from the bed, a cell
+stays only if something holds it up (a cell in the layer below, straight under it or diagonally next to that; or,
+within `reach` cells along its own layer, one that is: a short bridge); kept regions always stay. Whatever's left
+hanging is emptied, and with it, layer by layer, whatever rested on it. It's what `cad optimise` does to every 3D
+result with a build direction.
 
 ## Stress limits
 

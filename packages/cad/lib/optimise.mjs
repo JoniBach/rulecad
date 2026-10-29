@@ -11,7 +11,7 @@ import { host } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds, resultant } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant, printable } from '@rulecad/topopt';
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
 const VERSION = 2, source = (m) => fs.readFileSync(new URL(import.meta.resolve(m)), 'utf8'); // the solver's code: a change remakes results
@@ -75,7 +75,7 @@ export async function readProblem(project, ref) {
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
-  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45 }; }
+  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5 }; }
   return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical };
 }
 
@@ -104,7 +104,16 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   })() : (() => {
     // The surface's level, found so the solid holds as much material as the optimised densities do (drawn at 0.5,
     // thin members come out thinner than they are)
-    const want = o.density.reduce((t, d) => t + d, 0) * spec.grid.h ** 3, at = (iso) => surface(spec.grid, o.density, spec.origin, { smooth: r.outline.smooth, iso, overhang: r.outline.overhang });
+    // Printed without supports: before it's drawn at a level, whatever wouldn't print at that level (hanging with nothing
+    // under it) is emptied (printable, in topopt); kept regions stay. A bridge may run out half the printer's span.
+    const ov = r.outline.overhang, keep = Uint8Array.from(spec.passive, (p) => (p === 1 ? 1 : 0)), emptied = new Map();
+    const clean = (iso) => {
+      if (!ov) return o.density;
+      const c = printable(spec.grid, o.density, { up: ov.up, iso, keep, reach: Math.floor(ov.bridge / 2 / spec.grid.h) });
+      emptied.set(iso, c.emptied);
+      return c.density;
+    };
+    const want = o.density.reduce((t, d) => t + d, 0) * spec.grid.h ** 3, at = (iso) => surface(spec.grid, clean(iso), spec.origin, { smooth: r.outline.smooth, iso, overhang: ov });
     let lo = 0.2, hi = 0.8, best = at(0.5), iso = 0.5;
     for (let k = 0; k < 10 && Math.abs(meshVolume(best.vertices, best.faces) / want - 1) > 0.003; k++) {
       if (meshVolume(best.vertices, best.faces) < want) hi = iso; else lo = iso; // a lower level encloses more
@@ -112,12 +121,12 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
     }
     const anchors = [...r.problem.supports, ...r.problem.loads, ...(r.problem.keep || [])].map(bounds);
     const { vertices, faces, dropped } = anchored(best, anchors, spec.grid.h);
-    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(dropped.length ? { dropped } : {}) };
+    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(dropped.length ? { dropped } : {}), ...(emptied.get(iso) ? { emptied: emptied.get(iso) } : {}) };
   })();
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
     grid: spec.grid, origin: spec.origin, regions: { keep: named(spec.regions.keep), avoid: named(spec.regions.avoid) }, ...shape,
-    volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
+    volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.unsupported ? { unsupported: o.unsupported } : {}), ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
     steps: o.steps, converged: o.converged, seconds: o.seconds, history: o.history, density: Array.from(o.density, (d) => round(d, 3)),
     supports: named(r.problem.supports), loads: named(r.problem.loads),
   };
