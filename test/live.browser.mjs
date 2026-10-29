@@ -11,7 +11,7 @@ import { liveView } from '../packages/cad/lib/live.mjs';
 
 const CHROME = process.env.CAD_CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/chromium', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium'].find((f) => fs.existsSync(f));
 
-test('the live view draws a 3D part in view, and dragging turns it', { skip: !CHROME && 'no Chrome', timeout: 180000 }, async () => {
+test('the live view draws a 3D part in view, and dragging turns it', { skip: !CHROME && 'no Chrome', timeout: 300000 }, async () => {
   // A block in the middle of a 12-cell cube, as an optimiser's step
   const n = 12, density = new Float64Array(n ** 3);
   for (let k = 3; k < 9; k++) for (let j = 4; j < 8; j++) for (let i = 2; i < 10; i++) density[(k * n + j) * n + i] = 1;
@@ -21,7 +21,8 @@ test('the live view draws a 3D part in view, and dragging turns it', { skip: !CH
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-live-chrome-'));
   const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=500,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
   try {
-    const wsUrl = await new Promise((r, no) => { let buf = ''; chrome.stderr.on('data', (d) => { buf += d; const m = buf.match(/ws:\/\/\S+/); if (m) r(m[0]); }); setTimeout(() => no(new Error('Chrome did not start')), 30000); });
+    const wsUrl = await new Promise((r, no) => { let buf = ''; chrome.stderr.on('data', (d) => { buf += d; const m = buf.match(/ws:\/\/\S+/); if (m) r(m[0]); }); setTimeout(() => no(new Error('Chrome did not start')), 120000); }); // the browser tests run at once, on CI's two cores
+    note('Chrome started');
     const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
     let id = 0; const waiting = new Map(), errors = [];
     ws.addEventListener('message', (e) => {
