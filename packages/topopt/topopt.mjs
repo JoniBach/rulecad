@@ -239,6 +239,8 @@ export function overhangFilter({ nx, ny, nz = 1 }, up) {
  * @param {ReturnType<typeof discretise>} spec
  * @param {{ method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend }} [options]
  */
+const SUPPORT = 10; // what a kept cell nothing holds up costs, in the part's compliances, over the kept cells
+
 export function model(spec, { method, backend = jsBackend } = {}) {
   const g = makeGrid(spec.grid), dim = g.dim, cells = g.cells, m = g.cellDofs, ke = cellStiffness(spec.material.nu, dim);
   const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, eta = 0.5, size = dim === 3 ? g.h : spec.thickness;
@@ -250,12 +252,22 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   const denominator = (beta) => Math.tanh(beta * eta) + Math.tanh(beta * (1 - eta));
   const project = (t, beta) => (spec.projection ? (Math.tanh(beta * eta) + Math.tanh(beta * (t - eta))) / denominator(beta) : t);
   const slope = (t, beta) => (spec.projection ? (beta * (1 - Math.tanh(beta * (t - eta)) ** 2)) / denominator(beta) : 1);
+  // Kept and avoided cells are set before the overhang filter as well as after it: a kept cell holds up what's above
+  // it, an avoided cell holds up nothing, and a kept cell is printed (made) only as far as what's below holds it up,
+  // which is what the kept regions' support cost (below) is measured on. The part is analysed with every kept cell solid.
   const physical = (x, beta) => {
     filter.apply(x, tilde);
+    for (let e = 0; e < cells; e++) if (passive[e]) tilde[e] = fixedValue(passive[e]);
     if (print) print.apply(tilde, made); else made.set(tilde);
     for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(made[e], beta);
     return phys;
   };
+  // Kept regions must print. With a build direction, how much of the kept material nothing holds up (0 to 1), and its
+  // cost: a kept cell nothing holds up costs SUPPORT times the part's compliance, shared over the kept cells, so the
+  // optimiser puts material in under it. The cost's gradient goes back through the overhang filter to the cells that
+  // would hold it up.
+  const keptCells = Int32Array.from(Array.from(passive).flatMap((p, e) => (p === 1 ? [e] : [])));
+  const unsupported = (beta) => (print && keptCells.length ? keptCells.reduce((t, e) => t + 1 - project(made[e], beta), 0) / keptCells.length : 0);
   let last = null;
   // Each step solves only the load cases it optimises for (weight above 0); every case is solved when all is set
   const evaluate = (x, beta, { all = false, multipliers } = {}) => {
@@ -282,8 +294,14 @@ export function model(spec, { method, backend = jsBackend } = {}) {
     });
     // Back through the projection, the overhang filter and the density filter to the design densities; kept and
     // avoided cells don't change
+    const lack = unsupported(beta);
     for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(made[e], beta); dc[e] *= s; dv[e] = s; }
-    const toDesign = (d) => { if (print) { print.adjoint(d, back); d.set(back); } filter.adjoint(d, back); d.set(back); };
+    if (print && keptCells.length) { const w = (SUPPORT * Math.max(compliance, 1e-12)) / keptCells.length; for (const e of keptCells) dc[e] = -w * slope(made[e], beta); }
+    const toDesign = (d) => {
+      if (print) { print.adjoint(d, back); d.set(back); }
+      for (let e = 0; e < cells; e++) if (passive[e]) d[e] = 0;
+      filter.adjoint(d, back); d.set(back);
+    };
     toDesign(dc); toDesign(dv);
     const stress = Ss ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
     const cases = spec.loads.map((l, c) => {
@@ -295,7 +313,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
       return { name: l.name, compliance: ci, deflection, stiffness: deflection ? l.size / deflection : Infinity };
     });
     if (stress) { for (let e = 0; e < cells; e++) stress.d[e] *= passive[e] ? 0 : slope(made[e], beta); toDesign(stress.d); }
-    return { compliance, dc, dv, u, cases, ...(stress ? { stress } : {}) };
+    return { compliance, dc, dv, u, cases, unsupported: lack, ...(stress ? { stress } : {}) };
   };
   // Stress limits on every cell (Senhora, Giraldo-Londoño, Menezes, Paulino 2020): each cell's von Mises stress at its
   // centre, as if solid, over the limit, less 1, times the cell's density, so an empty cell's limit vanishes. They're
@@ -497,6 +515,7 @@ function gauss(A) {
  * @param {ReturnType<typeof discretise>} spec
  * @param {{ onStep?: (s: { step: number, steps: number, compliance: number, change: number, beta: number, density: Float64Array }) => void, method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, move?: number }} [options]
  * @returns {{ density: Float64Array, compliance: number, cases: { name: string, compliance: number, deflection: number, stiffness: number }[], volume: number, steps: number, converged: boolean, history: number[], seconds: number }}
+ *   unsupported: with a build direction, the share of the kept regions' material nothing holds up (0: all held up);
  *   each case's deflection is along its load (mm, compliance over the load's size), stiffness the load over that (N/mm);
  *   a twist (forces adding to nothing) has instead its moment (N·mm), the angle it turns (radians) and torsion (N·mm a radian)
  */
@@ -575,8 +594,9 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   }
   // The final design, analysed as it is
   const final = m.evaluate(x, beta, { all: true }), phys = Float64Array.from(m.physical(x, beta));
+  // (the final physical call is after evaluate's, so unsupported comes from the evaluation of this design)
   return {
-    density: phys, compliance: final.compliance, cases: final.cases, ...(final.stress ? { stress: { peak: final.stress.peak, limit: spec.stress } } : {}),
+    density: phys, compliance: final.compliance, cases: final.cases, unsupported: final.unsupported, ...(final.stress ? { stress: { peak: final.stress.peak, limit: spec.stress } } : {}),
     volume: phys.reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0) / inSpace, steps: step, converged, history, seconds: (Date.now() - started) / 1000,
   };
 }
@@ -854,7 +874,9 @@ export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth
       return held[n] ? p : p.map((x, q) => Math.min(hi[q], Math.max(lo[q], x + f * (avg[q] - x))));
     });
   }
-  if (overhang) steepen(pts, faces, held, overhang, lo, hi);
+  // Printable: faces past the limit tipped back, and tips lifted, in turn until neither finds any (each can make work for
+  // the other: a lifted tip leaves a face sloping more, a tipped face can leave a corner lowest)
+  if (overhang) for (let round = 0; round < 20; round++) { const tipped = steepen(pts, faces, held, overhang, lo, hi), lifted = lift(pts, faces, held, overhang, lo); if (!tipped && !lifted) break; }
   return { vertices: pts, faces };
 }
 
@@ -884,9 +906,90 @@ function steepen(pts, faces, held, { up, angle }, lo, hi, passes = 200) {
         move[m] += c[q] + k * (ga * (v[a] - c[a]) + gb * (v[b] - c[b])) - v[q]; count[m]++;
       }
     }
-    if (!left) break;
+    if (!left) return pass > 0;
     for (let m = 0; m < pts.length; m++) if (count[m] && !held[m]) pts[m][q] = Math.min(hi[q], Math.max(lo[q], pts[m][q] + move[m] / count[m]));
   }
+  return true;
+}
+
+// Tips lifted: a corner lower than every corner round it (along the build direction), on faces facing down, starts in
+// mid-air, where a printer has nothing to lay it on. Smoothing leaves these under edges and bridges. Each is raised level
+// with its lowest neighbour, which leaves a small flat underside (bridged), until none are left. The bed's corners and
+// those held on the grid's sides stay.
+function lift(pts, faces, held, { up }, lo, passes = 50) {
+  const q = 'xyz'.indexOf(up[1]), s = up[0] === '-' ? -1 : 1, near = pts.map(() => new Set()), facing = new Float64Array(pts.length);
+  for (const f of faces) {
+    for (let i = 0; i < 3; i++) { near[f[i]].add(f[(i + 1) % 3]); near[f[i]].add(f[(i + 2) % 3]); }
+    const [p, r, t] = f.map((n) => pts[n]), u = [0, 1, 2].map((x) => r[x] - p[x]), w = [0, 1, 2].map((x) => t[x] - p[x]);
+    const nq = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]][q];
+    for (const m of f) facing[m] += s * nq;
+  }
+  const bed = s > 0 ? lo[q] : null, height = (v) => s * v[q];
+  for (let pass = 0; pass < passes; pass++) {
+    let moved = 0;
+    for (let m = 0; m < pts.length; m++) {
+      if (held[m] || !near[m].size || facing[m] >= 0 || (bed !== null && Math.abs(pts[m][q] - bed) < 1e-9)) continue;
+      let lowest = Infinity;
+      for (const n of near[m]) lowest = Math.min(lowest, height(pts[n]));
+      if (height(pts[m]) < lowest - 1e-6) { pts[m][q] = s * lowest; moved++; }
+    }
+    if (!moved) return pass > 0;
+  }
+  return true;
+}
+
+/**
+ * A result made printable before it's drawn. Built up layer by layer from the bed, a cell denser than iso stays only if
+ * something holds it up: a cell kept in the layer below, straight under it or diagonally next to that (so nothing
+ * overhangs by more than 45°), or, within reach cells along its own layer, one that is (a short bridge). Kept regions
+ * always stay, and hold up what's above them. Whatever's left hanging (an icicle, a loose bit, a sheet hanging under an
+ * edge) is emptied, and with it, layer by layer, whatever rested on it. The optimiser's overhang filter does the same
+ * smoothly, on the densities as they're optimised; this is the hard version, on the result as it'll be drawn.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {ArrayLike<number>} density
+ * @param {{ up: string, iso?: number, keep?: ArrayLike<number>, reach?: number }} options up: the build direction ('+z',
+ *   '-y', …); keep: cells that always stay (non-zero); reach: how many cells a bridge may run out from what holds it
+ * @returns {{ density: Float64Array, emptied: number }} the densities, and how many cells were emptied
+ */
+export function printable({ nx, ny, nz = 1 }, density, { up, iso = 0.5, keep, reach = 0 }) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(up.at(-1)), sign = up[0] === '-' ? -1 : 1;
+  if (ax < 0 || ax >= dim) throw new Error(`printable: the build direction is ${dim === 3 ? '+x, -x, +y, -y, +z or -z' : '+x, -x, +y or -y'} (got ${up})`);
+  const stride = [1, nx, nx * ny], other = [0, 1, 2].slice(0, dim).filter((a) => a !== ax), cells = n.reduce((p, c) => p * c, 1);
+  const ok = new Uint8Array(cells), out = Float64Array.from(density);
+  const solid = (e) => density[e] >= iso || (keep && keep[e]);
+  const coord = (e, a) => Math.floor(e / stride[a]) % n[a];
+  // The cells of each layer, in build order
+  const layers = Array.from({ length: n[ax] }, () => []);
+  for (let e = 0; e < cells; e++) { const c = coord(e, ax); layers[sign > 0 ? c : n[ax] - 1 - c].push(e); }
+  const near = (e) => { // a cell's neighbours in its own layer, along each other axis
+    const list = [];
+    for (const a of other) { const c = coord(e, a); if (c > 0) list.push(e - stride[a]); if (c < n[a] - 1) list.push(e + stride[a]); }
+    return list;
+  };
+  layers.forEach((layer, L) => {
+    const queue = [], dist = new Map();
+    for (const e of layer) {
+      if (!solid(e)) continue;
+      let held = L === 0 || (keep && keep[e]);
+      if (!held) {
+        const below = e - sign * stride[ax], under = [below];
+        // and its neighbours along each other axis, and diagonally (in 3D)
+        const offs = other.map((a) => [-stride[a], 0, stride[a]].filter((d, i) => { const c = coord(below, a); return (i === 0 && c > 0) || i === 1 || (i === 2 && c < n[a] - 1); }));
+        if (offs.length === 1) for (const d of offs[0]) under.push(below + d);
+        else for (const d0 of offs[0]) for (const d1 of offs[1]) under.push(below + d0 + d1);
+        held = under.some((q) => ok[q]);
+      }
+      if (held) { ok[e] = 1; dist.set(e, 0); queue.push(e); }
+    }
+    // Short bridges: solid cells within reach of a held one, along the layer
+    for (let i = 0; i < queue.length; i++) {
+      const e = queue[i], d = dist.get(e);
+      if (d >= reach) continue;
+      for (const f of near(e)) if (!ok[f] && solid(f)) { ok[f] = 1; dist.set(f, d + 1); queue.push(f); }
+    }
+  });
+  let emptied = 0;
+  for (let e = 0; e < cells; e++) if (!ok[e] && density[e] >= iso) { out[e] = 0; emptied++; }
+  return { density: out, emptied };
 }
 
 const fmt = (n) => String(Number(n.toFixed(2)));

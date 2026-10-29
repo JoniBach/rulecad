@@ -369,8 +369,15 @@ with numbers as expressions like an object's (schema: `schemas/problem.schema.js
 gives, and draws the layout in `.preview/`. The result is kept, keyed by everything it's made from, so it's only
 worked out again when something it depends on changes.
 
-A 3D result keeps only the pieces that touch a support, a load or a kept region. A few grey cells away from the rest
-can close into a piece of their own, which would print as a stray bit. `cad optimise` says how many it dropped.
+A 3D result with a build direction is made printable before it's drawn: built up layer by layer from the bed, every
+cell that nothing holds up (an icicle, a loose bit, a sheet hanging under an edge: whatever the optimiser's smooth
+overhang filter let through) is emptied, with whatever rested on it; a bridge may run out half the printer's span.
+Kept regions always stay, and the optimiser is made to hold them up: a kept cell with nothing under it costs it as
+much as the whole part's compliance. If there wasn't material enough to stand a kept region on, `cad optimise` says
+how much of it is left hanging. Then the drawn surface is tipped back to the printer's overhang limit and any tip left
+hanging in mid-air is lifted, and only the pieces that touch a support, a load or a kept region are kept (a few grey
+cells away from the rest can close into a stray bit). `cad optimise` says how many cells it emptied and pieces it
+dropped, and `cad check` tests the part for one piece and nothing starting in mid-air.
 
 `cad optimise <project>/<problem> --watch [port]` runs it afresh and serves a live view at `http://127.0.0.1:8090/`:
 the densities as they change (a 3D part as a surface you can turn, and from three sides), a chart of its compliance and how much it still changes, with a scrubber to look back at any earlier step, its run time and time left, the machine it runs on, and a button that stops the run. It shows the end for ten minutes after the run finishes.

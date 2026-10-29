@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma } from '@rulecad/topopt';
+import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma, printable } from '@rulecad/topopt';
 import { grid } from '@rulecad/fea';
 
 // The reference values come from reference/top88.py, a line-by-line port of Andreassen et al. (2011)'s top88.m (the
@@ -265,4 +265,61 @@ test('a twist: forces adding to nothing are reported as the moment they turn wit
     material: { E: 2000, nu: 0.35 }, cell: 1, volume: 0.5, filter: 1.5, steps: 3 });
   const [c] = optimise(spec).cases;
   assert.ok(c.moment > 19 && c.moment < 21 && c.angle > 0 && Math.abs(c.torsion * c.angle - c.moment) < 1e-9 * c.moment && c.deflection === undefined);
+});
+
+test('printable: hanging cells are emptied before a result is drawn; kept cells stay and hold things up; short bridges stay', () => {
+  const size = { nx: 5, ny: 1, nz: 4 }, at = (i, k) => k * 5 + i, d = new Float64Array(20);
+  // A column up from the bed at i = 0, a cell diagonally above it (45°, fine), an icicle at (3, 2) with nothing below, a kept cell at (4, 3) over nothing
+  [at(0, 0), at(0, 1), at(1, 2), at(3, 2), at(4, 3)].forEach((e) => (d[e] = 1));
+  const keep = new Uint8Array(20); keep[at(4, 3)] = 1;
+  const r = printable(size, d, { up: '+z', keep });
+  assert.equal(r.emptied, 1);
+  assert.equal(r.density[at(3, 2)], 0);
+  assert.equal(r.density[at(1, 2)], 1);
+  assert.equal(r.density[at(4, 3)], 1);
+  // A row along a layer: held at one end, it stays as far as reach allows, the rest goes (and nothing rests on what went)
+  const row = new Float64Array(20);
+  [at(0, 0), at(0, 1), at(1, 1), at(2, 1), at(3, 1), at(3, 2)].forEach((e) => (row[e] = 1));
+  // ((1, 1) rests on (0, 0) diagonally; (2, 1) and (3, 1) hang, and (3, 2) rests on them)
+  assert.equal(printable(size, row, { up: '+z', reach: 0 }).emptied, 3);
+  assert.equal(printable(size, row, { up: '+z', reach: 1 }).emptied, 1);
+  assert.equal(printable(size, row, { up: '+z', reach: 2 }).emptied, 0);
+  // Built the other way up, the bed is the top layer
+  const flipped = new Float64Array(20); [at(2, 3), at(2, 2), at(2, 0)].forEach((e) => (flipped[e] = 1));
+  assert.equal(printable(size, flipped, { up: '-z' }).emptied, 1);
+});
+
+test('a tip left hanging under a smoothed surface is lifted level with its neighbours, so nothing starts in mid-air', () => {
+  // A slab with a two-cell stalactite under it: smoothed, the stalactite ends in a point, the lowest corner round
+  // about on faces facing down. Built +z, no corner is lower than all round it on faces facing down (except on the bed).
+  const n = 8, d = new Float64Array(n ** 3);
+  for (let k = 5; k < 8; k++) for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) d[(k * n + j) * n + i] = 1;
+  d[(4 * n + 4) * n + 4] = 1; d[(3 * n + 4) * n + 4] = 1;
+  const tips = ({ vertices, faces }) => {
+    const near = vertices.map(() => new Set()), facing = new Float64Array(vertices.length);
+    for (const f of faces) {
+      for (let i = 0; i < 3; i++) { near[f[i]].add(f[(i + 1) % 3]); near[f[i]].add(f[(i + 2) % 3]); }
+      const [p, q, r] = f.map((v) => vertices[v]), nz = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+      for (const m of f) facing[m] += nz;
+    }
+    return vertices.filter((v, m) => v[2] > 1e-9 && facing[m] < 0 && [...near[m]].every((o) => vertices[o][2] > v[2] + 1e-6)).length;
+  };
+  const plain = surface({ nx: n, ny: n, nz: n, h: 1 }, d), built = surface({ nx: n, ny: n, nz: n, h: 1 }, d, [0, 0, 0], { overhang: { up: '+z', angle: 45 } });
+  assert.ok(tips(plain) > 0, 'the stalactite should end in a hanging tip when nothing is done about it');
+  assert.equal(tips(built), 0);
+});
+
+test('with a build direction, a kept region is held up: a kept cell nothing holds up costs the optimiser, and it grows the support', () => {
+  // A kept plate across the top of a column of space, held at the bottom and loaded on the plate
+  const problem = { space: { at: [0, 0, 8], size: [8, 2, 16] }, keep: [{ at: [0, 0, 15.5], size: [8, 2, 1] }], supports: [{ at: [0, 0, 0.5], size: [8, 2, 1] }],
+    loads: [{ at: [0, 0, 15.5], size: [8, 2, 1], force: [0, 0, -10] }], material: { E: 2000, nu: 0.35 }, cell: 1, volume: 0.3, filter: 1.5, steps: 2 };
+  const up = discretise({ ...problem, overhang: '+z' }), m = model(up), x = new Float64Array(m.cells).fill(0.05);
+  const plate = Int32Array.from(Array.from(up.passive).flatMap((p, e) => (p === 1 ? [e] : [])));
+  assert.ok(plate.length > 0);
+  assert.ok(plate.every((e) => m.physical(x, 1)[e] === 1), 'a kept cell is solid to the analysis however it is held');
+  assert.ok(m.evaluate(x, 1).unsupported > 0.5, 'over next to nothing, most of the plate has nothing holding it up');
+  assert.equal(model(discretise(problem)).evaluate(x, 1).unsupported, 0, 'with no build direction, nothing to hold up');
+  // (with material enough to stand the plate on: at 30% there isn't, and about a third of it is left unheld, reported)
+  const o = optimise(discretise({ ...problem, overhang: '+z', volume: 0.5, steps: 60 }));
+  assert.ok(o.unsupported < 0.1, `${(o.unsupported * 100).toFixed(0)}% of the kept plate has nothing under it`);
 });

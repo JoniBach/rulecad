@@ -52,11 +52,6 @@
     "smooth": {
       "value": 96,
       "rule": "Segments round the floor and the ledge"
-    },
-    "cell": {
-      "value": 6,
-      "unit": "mm",
-      "rule": "The problem's cell: how far the wall is grown out and in before it's cut back to round faces"
     }
   }
 }
