@@ -12,6 +12,7 @@ import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
 import { discretise, optimise, outlines, surface, area, bounds, resultant, printable } from '@rulecad/topopt';
+import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
 const VERSION = 2, source = (m) => fs.readFileSync(new URL(import.meta.resolve(m)), 'utf8'); // the solver's code: a change remakes results
@@ -94,7 +95,7 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
   const spec = discretise(r.problem), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
-  const o = !fresh && !process.env.CAD_NO_CACHE && host.exists(densities) ? (({ density, ...x }) => ({ ...x, density: Float64Array.from(density) }))(JSON.parse(host.readText(densities))) : optimise(spec, { onStep: onStep && ((st) => onStep({ ...st, grid: spec.grid })) });
+  const o = !fresh && !process.env.CAD_NO_CACHE && host.exists(densities) ? (({ density, ...x }) => ({ ...x, density: Float64Array.from(density) }))(JSON.parse(host.readText(densities))) : optimise(spec, { backend: threadsBackend, onStep: onStep && ((st) => onStep({ ...st, grid: spec.grid })) });
   if (!host.exists(densities)) host.writeText(densities, JSON.stringify({ ...o, density: Array.from(o.density) }));
   // Regions as data: a part's triangles are named, not copied
   const named = (list) => list.map(({ triangles, ...x }) => x);
@@ -198,7 +199,7 @@ function analyseSolid(triangles, r, cell) {
   const { problem } = r, spec = discretise({ ...problem, cell, space: { triangles }, keep: [], avoid: [], volume: 1 });
   const g = makeGrid(spec.grid), density = solidFill(triangles, spec.grid, spec.origin);
   if (!density.some((d) => d)) throw new Error('the part is smaller than one cell of the problem: use a smaller cell');
-  const a = analyse({ grid: g, density, material: problem.material, fixed: spec.fixed, loads: spec.loads.map((l) => l.force) });
+  const a = analyse({ grid: g, density, material: problem.material, fixed: spec.fixed, loads: spec.loads.map((l) => l.force), backend: threadsBackend });
   const cases = spec.loads.map((l, c) => measures(l.name, l.size, l.moment, a, c, density, spec.grid, spec.origin));
   return { problem: r.ref, dim: 3, material: r.material, critical: r.critical, cases, volume: volume(triangles), grid: spec.grid, origin: spec.origin, density };
 }

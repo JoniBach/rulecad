@@ -76,3 +76,15 @@ test('multigrid agrees with the direct solver, in 2D and 3D, with stiffnesses a 
     assert.ok(b.iterations < 200, `${g.dim}D: ${b.iterations} iterations`);
   }
 });
+
+test('the threads backend: the product shared over worker threads matches plain JavaScript, in 2D and 3D, with multigrid', async () => {
+  const { threadsBackend } = await import('./threads.mjs');
+  assert.deepEqual(checkBackend(threadsBackend), []);
+  const g = grid({ nx: 10, ny: 8, nz: 12, h: 1 }), ke = cellStiffness(0.3, 3), n = g.dofs;
+  const scale = Float64Array.from({ length: g.cells }, (_, e) => (e % 5 === 0 ? 1e-9 : 1 + (e % 3) / 2));
+  const fixed = new Uint8Array(n); for (let j = 0; j <= g.ny; j++) for (let i = 0; i <= g.nx; i++) for (let d = 0; d < 3; d++) fixed[3 * g.node(i, j, 0) + d] = 1;
+  const f = new Float64Array(n); f[3 * g.node(5, 4, g.nz) + 2] = -1;
+  const a = solve(g, { scale, ke, fixed, loads: [f], method: 'mg', tol: 1e-9 }).u[0], b = solve(g, { scale, ke, fixed, loads: [f], method: 'mg', backend: threadsBackend, tol: 1e-9 }).u[0];
+  const worst = Math.max(...a.map((v, i) => Math.abs(v - b[i]))) / Math.max(...a.map(Math.abs));
+  assert.ok(worst < 1e-7, `multigrid solves differ by ${worst.toExponential(2)}`);
+});

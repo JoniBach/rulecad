@@ -18,7 +18,8 @@ for (const p of packages) test(`@rulecad/${p} needs nothing but other @rulecad p
   const pj = JSON.parse(fs.readFileSync(path.join(root, 'packages', p, 'package.json'), 'utf8'));
   for (const d of Object.keys(pj.dependencies || {})) assert.match(d, /^@rulecad\//, `${p} depends on ${d}`);
   for (const d of Object.keys(pj.peerDependencies || {})) assert.ok(PEERS.includes(d), `${p} needs ${d}`);
-  const src = fs.readFileSync(path.join(root, 'packages', p, pj.exports.default || pj.exports), 'utf8');
+  // (the main entry: a package may offer a Node-only extra under another path, as fea does its threads)
+  const main = pj.exports['.'] || pj.exports, src = fs.readFileSync(path.join(root, 'packages', p, main.default || main), 'utf8');
   for (const [, from] of src.matchAll(/^\s*import\b.*from\s+'([^']+)'/gm)) {
     assert.ok(Object.keys({ ...pj.dependencies, ...pj.peerDependencies }).includes(from), `${p} imports ${from} without depending on it`);
   }

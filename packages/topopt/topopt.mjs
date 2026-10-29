@@ -197,19 +197,19 @@ export function overhangFilter({ nx, ny, nz = 1 }, up) {
     }
     supports[e] = Int32Array.from(list);
   }
-  const printed = new Float64Array(cells), dSum = new Float64Array(cells), dX = new Float64Array(cells), sums = new Float64Array(cells);
+  const printed = new Float64Array(cells), powP = new Float64Array(cells), dSum = new Float64Array(cells), dX = new Float64Array(cells), sums = new Float64Array(cells);
   return {
     apply(x, out) {
       for (const e of order) {
         const sup = supports[e];
-        if (!sup) { printed[e] = x[e]; dX[e] = 1; continue; }
+        if (!sup) { printed[e] = x[e]; powP[e] = Math.pow(x[e], P); dX[e] = 1; continue; }
         let s = 0;
-        for (const q of sup) s += Math.pow(printed[q], P);
+        for (const q of sup) s += powP[q]; // (each cell's printed^P, worked out once as it's printed)
         if (s < 1e-200) s = 0; // nothing worth the name below (and no denormals for the gradient to blow up on)
         const Q = P + Math.log(sup.length) / Math.log(xi0), smax = s > 0 ? Math.pow(s, 1 / Q) : 0;
         sums[e] = s;
         const d = x[e] - smax, root = Math.sqrt(d * d + eps);
-        printed[e] = 0.5 * (x[e] + smax - root + Math.sqrt(eps));
+        printed[e] = 0.5 * (x[e] + smax - root + Math.sqrt(eps)); powP[e] = Math.pow(printed[e], P);
         dX[e] = 0.5 * (1 - d / root); dSum[e] = 0.5 * (1 + d / root); // d printed / d x, d printed / d smax
       }
       out.set(printed);
@@ -222,7 +222,7 @@ export function overhangFilter({ nx, ny, nz = 1 }, up) {
         const e = order[t], sup = supports[e];
         if (!sup || !sums[e]) continue;
         const Q = P + Math.log(sup.length) / Math.log(xi0), common = lambda[e] * dSum[e] * (1 / Q) * Math.pow(sums[e], 1 / Q - 1) * P;
-        for (const q of sup) lambda[q] += common * Math.pow(printed[q], P - 1);
+        for (const q of sup) if (printed[q] > 0) lambda[q] += (common * powP[q]) / printed[q];
       }
       for (let e = 0; e < cells; e++) out[e] = lambda[e] * dX[e];
       return out;
@@ -542,6 +542,7 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const multipliers = lightest ? { lam: spec.loads.filter((l) => l.weight > 0).map(() => new Float64Array(m.limits)), mu: 10 } : undefined;
   const xf = new Float64Array(n), pick = (d) => Float64Array.from(freeCells, (e) => d[e]);
   let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null;
+  const tried = new Float64Array(cells); // the last design the bisection analysed, and how much it filled
   while (step < spec.steps) {
     step++; sinceBeta++;
     const { compliance, dc, dv, stress } = m.evaluate(x, beta, { multipliers });
@@ -565,16 +566,20 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
       history.push(compliance);
       // Optimality criteria: scale each cell by √(−dc/dv/λ), within the move limit, finding λ by bisection so the
       // physical densities fill exactly the volume
-      let lo = 0, hi = 1e9;
+      let lo = 0, hi = 1e9, triedFilled = NaN;
+      tried.fill(-1);
       while ((hi - lo) / (hi + lo) > 1e-3) { // as the 88-line code
         const mid = (lo + hi) / 2;
+        let same = true;
         for (let e = 0; e < cells; e++) {
           if (passive[e]) { xnew[e] = fixedValue(passive[e]); continue; }
           const b = Math.sqrt(Math.max(0, -dc[e]) / Math.max(1e-30, dv[e]) / mid);
           xnew[e] = Math.max(0, Math.max(x[e] - limit, Math.min(1, Math.min(x[e] + limit, x[e] * b))));
+          if (xnew[e] !== tried[e]) same = false;
         }
-        const filled = m.physical(xnew, beta).reduce((s, v) => s + v, 0);
-        if (filled > target) lo = mid; else hi = mid;
+        // (far from the answer every cell is at its move limit, the same design as the last try: not analysed again)
+        if (!same) { triedFilled = m.physical(xnew, beta).reduce((s, v) => s + v, 0); tried.set(xnew); }
+        if (triedFilled > target) lo = mid; else hi = mid;
       }
     }
     change = 0;
