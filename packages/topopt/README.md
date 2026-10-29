@@ -18,7 +18,8 @@ const spec = discretise({
   material: { E: 2680, nu: 0.36 }, thickness: 6, cell: 1, volume: 0.5, filter: 2.5,
 });
 const result = optimise(spec, { onStep: (s) => console.log(s.step, s.compliance) });
-result.cases;      // [{ name: 'down', deflection (mm along the load), stiffness (N/mm) }]
+result.cases;      // [{ name: 'down', deflection (mm along the load), stiffness (N/mm) }]; a twist (forces adding
+                   // to nothing): { name, moment (N·mm), angle (radians), torsion (N·mm a radian) }
 const loops = outlines(spec.grid, result.density, spec.origin);   // closed loops, solid on the left
 ```
 

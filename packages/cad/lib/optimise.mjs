@@ -11,7 +11,7 @@ import { host } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant } from '@rulecad/topopt';
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
 const VERSION = 2, source = (m) => fs.readFileSync(new URL(import.meta.resolve(m)), 'utf8'); // the solver's code: a change remakes results
@@ -177,8 +177,8 @@ export async function analysePart(triangles, project, ref, { cell } = {}) {
   });
   const a = analyse({ grid: g, density, material: problem.material, thickness: problem.thickness, fixed, loads });
   const cases = names.map((name, c) => {
-    const size = Math.hypot(...problem.loads.filter((l) => l.case === name).reduce((s, l) => [s[0] + l.force[0], s[1] + l.force[1]], [0, 0]));
-    return measures(name, size, a, c, density, { nx, ny, nz: 1, h }, [x0, y0]);
+    const { size, moment } = resultant(problem.loads.filter((l) => l.case === name));
+    return measures(name, size, moment, a, c, density, { nx, ny, nz: 1, h }, [x0, y0]);
   });
   return { problem: ref, dim: 2, material: r.material, critical: r.critical, cases, volume: volume(triangles), grid: { nx, ny, h }, origin: [x0, y0], density };
 }
@@ -190,20 +190,21 @@ function analyseSolid(triangles, r, cell) {
   const g = makeGrid(spec.grid), density = solidFill(triangles, spec.grid, spec.origin);
   if (!density.some((d) => d)) throw new Error('the part is smaller than one cell of the problem: use a smaller cell');
   const a = analyse({ grid: g, density, material: problem.material, fixed: spec.fixed, loads: spec.loads.map((l) => l.force) });
-  const cases = spec.loads.map((l, c) => measures(l.name, l.size, a, c, density, spec.grid, spec.origin));
+  const cases = spec.loads.map((l, c) => measures(l.name, l.size, l.moment, a, c, density, spec.grid, spec.origin));
   return { problem: r.ref, dim: 3, material: r.material, critical: r.critical, cases, volume: volume(triangles), grid: spec.grid, origin: spec.origin, density };
 }
 
-// A load case's numbers: how far the load moves along itself (compliance over force) and the stiffness, the largest
+// A load case's numbers: how far the load moves along itself (compliance over force) and the stiffness (a twist: the
+// angle it turns, compliance over its moment, and the torsion, N·mm a radian), the largest
 // stress in the part and the centre of the cell it's in, and the largest movement of any point of the part and where
-function measures(name, force, a, c, density, { nx, ny, h }, origin) {
-  const deflection = force ? a.compliance[c] / force : 0;
+function measures(name, force, moment, a, c, density, { nx, ny, h }, origin) {
+  const deflection = force ? a.compliance[c] / force : 0, angle = moment ? a.compliance[c] / moment : 0;
   let most = 0, cellAt = 0;
   for (let e = 0; e < density.length; e++) if (density[e] >= 0.5 && a.stress[c][e] > most) { most = a.stress[c][e]; cellAt = e; }
   const index = [cellAt % nx, Math.floor(cellAt / nx) % ny, Math.floor(cellAt / (nx * ny))];
   const stressAt = origin.map((o, q) => round(o + (index[q] + 0.5) * h, 2)), d = a.deflection[c];
   return {
-    name, force, deflection, stiffness: deflection ? force / deflection : Infinity, stress: most, stressAt,
+    name, ...(moment ? { moment, angle, torsion: moment / angle } : { force, deflection, stiffness: deflection ? force / deflection : Infinity }), stress: most, stressAt,
     movement: d.most, movementAt: d.at.map((x, q) => round(x + origin[q], 2)),
   };
 }

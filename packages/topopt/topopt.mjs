@@ -54,6 +54,25 @@ export { jsBackend };
  * @param {Problem} p
  * @returns {object} a spec for optimise(), with origin (the grid's lowest corner, mm) and regions
  */
+/**
+ * What a case's forces add up to: their total's size (N), and if that's nothing, the moment they turn the part with
+ * (N·mm, about where they act, weighted by size): a twist.
+ * @param {{ at: number[], force: number[] }[]} loads
+ * @returns {{ size: number, moment: number }}
+ */
+export function resultant(loads) {
+  const w = loads.map((l) => Math.hypot(...l.force)), all = w.reduce((t, x) => t + x, 0) || 1, dim = loads[0]?.force.length ?? 3;
+  const p3 = (v) => [v[0], v[1], dim === 3 ? v[2] : 0], c = [0, 1, 2].map((a) => loads.reduce((t, l, i) => t + (p3(l.at)[a]) * w[i], 0) / all);
+  const total = [0, 0, 0], turn = [0, 0, 0];
+  for (const l of loads) {
+    const F = p3(l.force), at = p3(l.at), r = [at[0] - c[0], at[1] - c[1], at[2] - c[2]];
+    for (let a = 0; a < 3; a++) total[a] += F[a];
+    turn[0] += r[1] * F[2] - r[2] * F[1]; turn[1] += r[2] * F[0] - r[0] * F[2]; turn[2] += r[0] * F[1] - r[1] * F[0];
+  }
+  const size = Math.hypot(...total);
+  return { size, moment: size < 1e-9 * all ? Math.hypot(...turn) : 0 };
+}
+
 export function discretise(p) {
   const space = [p.space].flat(), keep = p.keep || [], avoid = p.avoid || [], dim = dimension(space[0]);
   if (!(p.cell > 0)) throw new Error('the cell size must be more than 0 mm');
@@ -109,7 +128,8 @@ export function discretise(p) {
       for (const m of ns) for (let a = 0; a < dim; a++) f[dim * m + a] += l.force[a] / ns.length;
       for (let a = 0; a < dim; a++) total[a] += l.force[a];
     }
-    return { name, force: f, weight: p.cases?.[name] ?? 1, size: Math.hypot(...total) };
+    const { size, moment } = resultant(mine);
+    return { name, force: f, weight: p.cases?.[name] ?? 1, size, ...(moment ? { moment } : {}) };
   });
   return {
     grid: size, origin, passive, fixed, loads,
@@ -268,7 +288,10 @@ export function model(spec, { method, backend = jsBackend } = {}) {
     const stress = Ss ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
     const cases = spec.loads.map((l, c) => {
       if (!u[c]) return { name: l.name, compliance: NaN, deflection: NaN, stiffness: NaN };
-      const ci = jsBackend.dot(l.force, u[c]), deflection = l.size ? ci / l.size : 0;
+      const ci = jsBackend.dot(l.force, u[c]);
+      // A twist turns rather than moves: the work it does is its moment times the angle it turns through
+      if (l.moment) { const angle = ci / l.moment; return { name: l.name, compliance: ci, moment: l.moment, angle, torsion: l.moment / angle }; }
+      const deflection = l.size ? ci / l.size : 0;
       return { name: l.name, compliance: ci, deflection, stiffness: deflection ? l.size / deflection : Infinity };
     });
     if (stress) { for (let e = 0; e < cells; e++) stress.d[e] *= passive[e] ? 0 : slope(made[e], beta); toDesign(stress.d); }
@@ -474,7 +497,8 @@ function gauss(A) {
  * @param {ReturnType<typeof discretise>} spec
  * @param {{ onStep?: (s: { step: number, steps: number, compliance: number, change: number, beta: number, density: Float64Array }) => void, method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, move?: number }} [options]
  * @returns {{ density: Float64Array, compliance: number, cases: { name: string, compliance: number, deflection: number, stiffness: number }[], volume: number, steps: number, converged: boolean, history: number[], seconds: number }}
- *   each case's deflection is along its load (mm, compliance over the load's size), stiffness the load over that (N/mm)
+ *   each case's deflection is along its load (mm, compliance over the load's size), stiffness the load over that (N/mm);
+ *   a twist (forces adding to nothing) has instead its moment (N·mm), the angle it turns (radians) and torsion (N·mm a radian)
  */
 export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01, move = 0.2 } = {}) {
   const started = Date.now(), m = model(spec, { method, backend }), { cells, passive } = m;

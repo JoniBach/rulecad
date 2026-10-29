@@ -251,3 +251,18 @@ test('a 3D grid padded to whole multigrid blocks sits centred round its space, f
     assert.deepEqual(s.origin, [-24, -24, z], `built ${overhang ?? 'any way'}`);
   }
 });
+
+test('a twist: forces adding to nothing are reported as the moment they turn with, the angle and the torsion', async () => {
+  const { resultant } = await import('@rulecad/topopt');
+  const r = 10, F = 5, ring = [0, 90, 180, 270].map((a) => ({ at: [r * Math.cos(a * Math.PI / 180), r * Math.sin(a * Math.PI / 180), 40], force: [-F * Math.sin(a * Math.PI / 180), F * Math.cos(a * Math.PI / 180), 0] }));
+  const t = resultant(ring);
+  assert.ok(t.size < 1e-9);
+  assert.ok(Math.abs(t.moment - 4 * F * r) < 1e-9);
+  assert.deepEqual(resultant([{ at: [0, 0, 0], force: [0, 0, -3] }]), { size: 3, moment: 0 });
+  // A short tube held at the bottom and twisted at the top: an angle and a torsion, no deflection
+  const spec = discretise({ space: { at: [0, 0, 6], size: [12, 12, 12] }, supports: [{ at: [0, 0, 0.5], size: [12, 12, 1] }],
+    loads: [0, 90, 180, 270].map((a) => ({ at: [5 * Math.cos(a * Math.PI / 180), 5 * Math.sin(a * Math.PI / 180), 11.5], r: 1, length: 1, axis: 'z', force: [-Math.sin(a * Math.PI / 180), Math.cos(a * Math.PI / 180), 0], case: 'twist' })),
+    material: { E: 2000, nu: 0.35 }, cell: 1, volume: 0.5, filter: 1.5, steps: 3 });
+  const [c] = optimise(spec).cases;
+  assert.ok(c.moment > 19 && c.moment < 21 && c.angle > 0 && Math.abs(c.torsion * c.angle - c.moment) < 1e-9 * c.moment && c.deflection === undefined);
+});
