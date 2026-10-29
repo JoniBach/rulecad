@@ -11,7 +11,7 @@ import { host } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds } from '@rulecad/topopt';
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
 const VERSION = 2, source = (m) => fs.readFileSync(new URL(import.meta.resolve(m)), 'utf8'); // the solver's code: a change remakes results
@@ -90,7 +90,8 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
   // Two keeps: the densities, by the problem and the code that decides them (the slow part), and the shape drawn from
   // them, by everything: a change to how shapes are drawn redraws them without optimising again
-  const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea')]), file = paths.cache('optimise', `${hash}.json`);
+  // The shape's key holds this file too, so a change to how cad draws a result (anchored below) redraws it
+  const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
   const spec = discretise(r.problem), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
   const o = !fresh && !process.env.CAD_NO_CACHE && host.exists(densities) ? (({ density, ...x }) => ({ ...x, density: Float64Array.from(density) }))(JSON.parse(host.readText(densities))) : optimise(spec, { onStep: onStep && ((st) => onStep({ ...st, grid: spec.grid })) });
@@ -109,8 +110,9 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
       if (meshVolume(best.vertices, best.faces) < want) hi = iso; else lo = iso; // a lower level encloses more
       iso = (lo + hi) / 2; best = at(iso);
     }
-    const { vertices, faces } = best;
-    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso };
+    const anchors = [...r.problem.supports, ...r.problem.loads, ...(r.problem.keep || [])].map(bounds);
+    const { vertices, faces, dropped } = anchored(best, anchors, spec.grid.h);
+    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(dropped.length ? { dropped } : {}) };
   })();
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
@@ -302,4 +304,27 @@ export function picture(r, { title = '', lines = [] } = {}) {
 <g stroke="#c0392b" fill="#c0392b" stroke-width="2.5">${loads.join('')}</g>
 </svg>
 `;
+}
+
+// Loose pieces: drawn from cells, a few grey cells away from the rest can close into a piece of their own, which would
+// print as a stray bit. Only pieces touching a support, a load or a kept region (within a cell) stay; the volumes of
+// the rest, mm³, come back as dropped.
+export function anchored({ vertices, faces }, anchors, h) {
+  const up = vertices.map((_, i) => i), find = (i) => { while (up[i] !== i) i = up[i] = up[up[i]]; return i; };
+  for (const [a, b, c] of faces) { up[find(a)] = find(b); up[find(b)] = find(c); }
+  const pieces = new Map();
+  for (const f of faces) {
+    const r = find(f[0]), p = pieces.get(r) ?? { faces: [], lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] };
+    p.faces.push(f);
+    for (const v of f) for (let k = 0; k < 3; k++) { p.lo[k] = Math.min(p.lo[k], vertices[v][k]); p.hi[k] = Math.max(p.hi[k], vertices[v][k]); }
+    pieces.set(r, p);
+  }
+  if (pieces.size < 2) return { vertices, faces, dropped: [] };
+  const touches = (p) => anchors.some((b) => [0, 1, 2].every((k) => p.lo[k] <= b[3 + k] + h && p.hi[k] >= b[k] - h));
+  const kept = [], dropped = [];
+  for (const p of pieces.values()) (touches(p) ? kept : dropped).push(p);
+  if (!kept.length) return { vertices, faces, dropped: [] }; // nothing anchored: keep it all rather than nothing
+  const index = new Map(), out = [];
+  const keptFaces = kept.flatMap((p) => p.faces).map((f) => f.map((v) => { if (!index.has(v)) { index.set(v, out.length); out.push(vertices[v]); } return index.get(v); }));
+  return { vertices: out, faces: keptFaces, dropped: dropped.map((p) => round(meshVolume(vertices, p.faces), 3)) };
 }

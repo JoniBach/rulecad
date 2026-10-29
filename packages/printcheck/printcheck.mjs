@@ -1,5 +1,6 @@
 // Printability, from the faces and the printer's rules. Each finding is { level: 'fail' | 'warn' | 'pass', text }.
-//   fits the bed · sits flat on it · a closed solid (slicers need one) · overhangs past the printer's limit
+//   fits the bed · sits flat on it · a closed solid (slicers need one) · one piece · overhangs past the printer's limit
+//   · tips hanging down that start in mid-air
 //   flat undersides above the bed: on a built-in breakaway support (one support gap above a surface), or bridges no
 //   wider than the printer can span: the widest circle that fits in the underside, measured to the edges that are
 //   held up by material below. An underside with no such edge starts in mid-air: it needs support.
@@ -126,6 +127,17 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`, 'print.bridge', { span, max: bridgeMax, z: Number(z) });
   }
 
+  // One piece, and nothing starting in mid-air, part by part (an assembly's parts are apart on purpose)
+  for (const tris of parts && parts.length > 1 ? parts.filter((p) => p.role !== 'support').map((p) => p.triangles) : [polys]) {
+    const { pieces, tips } = shape(tris, eps, (printer.layer ?? 0.2) / 4);
+    const loose = pieces.slice(1);
+    if (loose.length) f('warn', `${pieces.length} pieces: ${loose.length} loose from the main one (${loose.length === 1 ? mm(loose[0].volume) : `${mm(Math.min(...loose.map((l) => l.volume)))} to ${mm(Math.max(...loose.map((l) => l.volume)))}`} mm³), which would print as stray bits or fall over`, 'print.pieces', { pieces: pieces.length, loose: loose.map((l) => l.volume) }, loose.reduce((b, l) => grow(grow(b, [l.box.lo]), [l.box.hi]), { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] }));
+    else if (pieces.length) f('pass', 'one piece', 'print.pieces', { pieces: 1 });
+    const hanging = tips.filter((t) => t[2] - lo[2] > eps && !rests([t, t, t]));
+    if (hanging.length) f('warn', `${hanging.length === 1 ? 'a point starts' : `${hanging.length} points start`} in mid-air (z ${mm(Math.min(...hanging.map((t) => t[2])))}${hanging.length > 1 ? ` to ${mm(Math.max(...hanging.map((t) => t[2])))}` : ''} mm): the lowest points of tips hanging down, with nothing below to print on`, 'print.island', { points: hanging }, hanging.reduce((b, t) => grow(b, [t]), { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] }));
+    else f('pass', 'nothing starts in mid-air', 'print.island', { points: [] });
+  }
+
   // Closed: every edge is matched by an edge running the other way. An edge that meets the middle of a longer edge
   // (a T-junction, left by booleans) is still closed if the edges along the other side cover it exactly.
   const { gaps, tjunctions, hairlines } = parts && parts.length > 1
@@ -226,4 +238,50 @@ export function seams(polys, eps = 1e-3) {
     else gaps++;
   }
   return { gaps, tjunctions, hairlines };
+}
+
+/**
+ * A model's pieces and the tips hanging down from it. Corners closer than eps are one point. A piece is a set of faces
+ * joined by their corners; one enclosing no volume, or a negative one (a cavity's surface, facing in), isn't a piece.
+ * Pieces come biggest first. A tip is a corner below every corner it shares a face with, by more than drop, on faces
+ * facing down (not a hole's floor), and narrow for hang mm above it (not a dip in an underside): the start of
+ * something hanging in the air (corners in a flat underside are level with their neighbours, so they're not tips;
+ * nor is the bed, which the caller leaves out). Tips closer than a millimetre are one.
+ * @param {Face[]} polys @param {number} [eps] @param {number} [drop] @param {number} [hang] how far a tip must hang, mm
+ * @returns {{ pieces: { volume: number, box: { lo: number[], hi: number[] } }[], tips: number[][] }}
+ */
+export function shape(polys, eps = 1e-3, drop = 0.05, hang = 1) {
+  const ids = new Map(), at = [], key = (v) => v.map((c) => Math.round(c / eps)).join(',');
+  const faces = polys.map((p) => p.map((v) => { const k = key(v); if (!ids.has(k)) { ids.set(k, at.length); at.push(v); } return ids.get(k); }));
+  const up = at.map((_, i) => i), find = (i) => { while (up[i] !== i) i = up[i] = up[up[i]]; return i; };
+  const near = at.map(() => new Set()), facing = at.map(() => 0);
+  faces.forEach((f, n) => { const z = areaNormal(polys[n])[2]; for (const v of f) facing[v] += z; });
+  for (const f of faces) for (let i = 0; i < f.length; i++) { const a = f[i], b = f[(i + 1) % f.length]; up[find(a)] = find(b); near[a].add(b); near[b].add(a); }
+  const by = new Map();
+  for (const f of faces) {
+    const r = find(f[0]), piece = by.get(r) ?? { volume: 0, box: { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] } };
+    for (let i = 1; i < f.length - 1; i++) { const [a, b, c] = [at[f[0]], at[f[i]], at[f[i + 1]]]; piece.volume += vdot(a, cross(b, c)) / 6; }
+    for (const v of f) for (let k = 0; k < 3; k++) { piece.box.lo[k] = Math.min(piece.box.lo[k], at[v][k]); piece.box.hi[k] = Math.max(piece.box.hi[k], at[v][k]); }
+    by.set(r, piece);
+  }
+  const pieces = [...by.values()].filter((p) => p.volume > eps).sort((a, b) => b.volume - a.volume);
+  const tips = [];
+  // A tip hangs: within hang of its point the surface stays narrow (a cone at 45° is as wide as it is tall). A dip in a
+  // smoothed underside is shallow: within hang of it, the surface spreads wide, as far as the underside does.
+  const narrow = (i) => {
+    const seen = new Set([i]), todo = [i], v = at[i];
+    while (todo.length) {
+      for (const j of near[todo.pop()]) {
+        if (seen.has(j) || at[j][2] > v[2] + hang) continue;
+        if (Math.hypot(at[j][0] - v[0], at[j][1] - v[1]) > 2 * hang) return false;
+        seen.add(j); todo.push(j);
+      }
+    }
+    return true;
+  };
+  at.forEach((v, i) => {
+    if (!near[i].size || facing[i] >= 0 || [...near[i]].some((j) => at[j][2] - v[2] <= drop) || !narrow(i)) return;
+    if (!tips.some((t) => Math.hypot(t[0] - v[0], t[1] - v[1], t[2] - v[2]) < 1)) tips.push(v);
+  });
+  return { pieces, tips };
 }
