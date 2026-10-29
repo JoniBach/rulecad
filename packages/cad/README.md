@@ -425,8 +425,11 @@ Both take expressions, so a variant can lie the part down:
 "analysis": [{ "problem": "bracket", "rotate": ["0 - 90 * side", 0, 0], "move": [0, "0 - side * bench.bracket_h / 2", 0] }]
 ```
 
-Grids in 3D are solved by multigrid. A 16 × 16 × 40 grid (about 10,000 cubes) takes a second or two a step, so a whole
-optimisation takes a few minutes. The result is kept, so it's worked out once.
+Grids in 3D are solved by multigrid, with the solver's products shared over the machine's cores. A 16 × 16 × 40 grid
+(about 10,000 cubes) takes a second or two a step, a 32 × 32 × 40 one (41,000 cubes) about five seconds on an eight-core
+laptop and a 40 × 40 × 48 one (77,000 cubes) about thirteen, so a whole optimisation of a few hundred steps takes from a
+few minutes to an hour. Finer cells cost more than their number: each step's solve takes longer to settle too. The
+result is kept, so it's worked out once.
 
 ### Analysis
 

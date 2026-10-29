@@ -36,7 +36,12 @@ r.deflection[0];   // { most, at }: the largest movement of solid material, and 
   limits in @rulecad/topopt use both.
 - **Backends:** the few operations `cg` repeats (the stiffness product, its diagonal, dot products) sit behind a small
   interface. `jsBackend`, plain JavaScript in 64-bit floats, is the reference; a WebGPU or TensorFlow.js backend
-  implements the same and passes `backend-suite.mjs` in this repository.
+  implements the same and passes `backend-suite.mjs` in this repository. The matrix is assembled in blocks (a node's
+  rows: a 3 × 3 block for each node it shares a cell with), so a product is a plain sweep, and multigrid's sweeps are
+  symmetric Gauss-Seidel through those blocks.
+- **Threads:** `import { threadsBackend } from '@rulecad/fea/threads'` (Node only) shares each product over the
+  machine's cores (`FEA_THREADS` to say how many), the rest as `jsBackend`. On a 134,000-unknown grid a product takes
+  6.8 ms on seven threads against 19 ms on one, and an optimisation step about a third of the time.
 
 Tested against beam theory: a cantilever's tip moves within 1% of `F L³ / 3 E I` in 2D, and within 2% in 3D.
 Multigrid is tested against the direct solver with stiffnesses a millionfold apart.
