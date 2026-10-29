@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/cad",
-  "version": "0.7.8",
+  "version": "0.7.9",
   "description": "The cad command: JSCAD designs from traceable rules, checked for printing and fit, versioned by what fits, shared as links and exported as Bambu 3MF.",
   "type": "module",
   "bin": {

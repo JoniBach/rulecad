@@ -107,7 +107,9 @@ function plot() {
   c.font = '12px system-ui'; c.fillStyle = '#6cf'; c.fillText('compliance, N·mm: ' + fig(history.compliance[0]) + ' to ' + fig(history.compliance.at(-1)), 8, 14);
   c.fillStyle = '#fc6'; c.textAlign = 'right'; c.fillText('change (log scale): ' + fig(history.change[0]) + ' to ' + fig(history.change.at(-1)), w - 8, 14); c.textAlign = 'left';
 }
-function show(f) { draw(f); plot(); table(); window.model3d?.(shown, f.grid); }
+// The 3D view's step: remembered, so the 3D script picks it up when it loads (it loads after the first steps arrive)
+const want3d = (n, grid) => { window.wanted3d = [n, grid]; window.model3d?.(n, grid); };
+function show(f) { draw(f); plot(); table(); want3d(shown, f.grid); }
 let lastModel = 0; // while following, a new surface at most every two seconds
 // Scrubbing: any earlier step, fetched when asked for; the newest only while following
 let asked = 0;
@@ -126,7 +128,7 @@ events.onmessage = (e) => { const m = JSON.parse(e.data); if (m.about) about = m
   if (m.done) { finished = m.done; stop.disabled = true; events.close(); }
   at.max = Math.max(0, history.compliance.length - 1);
   if (m.frame) newest = m.frame;
-  if (follow) { shown = Number(at.max); at.value = shown; if (newest) draw(newest); if (Date.now() - lastModel > 2000 || finished) { lastModel = Date.now(); window.model3d?.(shown, newest.grid); } }
+  if (follow) { shown = Number(at.max); at.value = shown; if (newest) draw(newest); if (Date.now() - lastModel > 2000 || finished) { lastModel = Date.now(); want3d(shown, newest.grid); } }
   if (finished) state.textContent = finished;
   plot(); table(); };
 stop.onclick = async () => { stop.disabled = true; await fetch('stop', { method: 'POST' }); document.getElementById('note').textContent = 'stopping after this step'; };
@@ -152,7 +154,9 @@ function setup() {
     const w = box.clientWidth, h = box.clientHeight;
     if (w && (c.width !== Math.round(w * devicePixelRatio) || c.height !== Math.round(h * devicePixelRatio))) { renderer.setPixelRatio(devicePixelRatio); renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); }
     if (spin) yaw += 0.004;
-    const d = size / Math.sin(camera.fov * Math.PI / 360) * 0.8; // the part seldom fills its grid's corners camera.position.set(d * Math.cos(tilt) * Math.cos(yaw), d * Math.cos(tilt) * Math.sin(yaw), d * Math.sin(tilt)); camera.lookAt(0, 0, 0);
+    // Far enough to fit the grid's half-diagonal in view, less a little: the part seldom fills its grid's corners
+    const d = size / Math.sin(camera.fov * Math.PI / 360) * 0.8;
+    camera.position.set(d * Math.cos(tilt) * Math.cos(yaw), d * Math.cos(tilt) * Math.sin(yaw), d * Math.sin(tilt)); camera.lookAt(0, 0, 0);
     renderer.render(scene, camera); requestAnimationFrame(tick);
   };
   tick();
@@ -181,6 +185,7 @@ async function load(n, grid) {
   }
 }
 window.model3d = (n, grid) => { if (!box.hidden && grid) load(n, grid); };
+if (window.wanted3d) window.model3d(...window.wanted3d);
 </script>`;
 
 const THREE = path.dirname(createRequire(import.meta.url).resolve('three')); // three's build files, for the 3D view
