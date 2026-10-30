@@ -1,6 +1,6 @@
 {
   "title": "Bin: a lattice wall branching up from the floor to the rim",
-  "description": "A bin 230 mm across and 250 mm tall, filling most of the X1C's 256 mm cube, printed as it stands. Material may go only in an 18 mm wall: a foot ring on the bed is held, a rim ring at the top is leant on (8 points, 200 N, about 20 kg) and kicked sideways (100 N, two directions). The wall should open into braces rising from the foot to the rim, like the twisted tube's diamonds but with no twist to close them into a shell. 6 mm cells (76,800), 5% of the cylinder (about 17% of the wall: the first attempt, at 15%, came out half solid), struts at least 15 mm thick (2.5 cells), printable without supports. The design adds a 2 mm floor and a sloped ledge under the rim, both finer than a cell. Use it with a bin liner.",
+  "description": "A bin 230 mm across and 250 mm tall, filling most of the X1C's 256 mm cube, printed as it stands. Material may go only in an 18 mm wall: a foot ring on the bed is held, a rim ring at the top is leant on (8 points, 200 N, about 20 kg) and kicked sideways (100 N, two directions). The wall should open into braces rising from the foot to the rim, like the twisted tube's diamonds but with no twist to close them into a shell. 6 mm cells (76,800), 8% of the cylinder (about 28% of the wall: 15% came out half solid, 5% a crown of arches that didn't reach the whole rim), 500 steps, struts at least 15 mm thick (2.5 cells), printable without supports. The design adds a 2 mm floor and a sloped ledge under the rim, both finer than a cell. Use it with a bin liner.",
   "uses": ["x1c"],
   "material": "pla",
   "variables": {
@@ -18,7 +18,7 @@
   "variants": { "free": { "build": "none" } },
   "overhang": "build",
   "cell": 6,
-  "volume": 0.05,
+  "volume": 0.08,
   "filter": 15,
   "space": { "at": [0, 0, "height / 2"], "r": "radius", "length": "height", "axis": "z" },
   "keep": [
@@ -43,5 +43,6 @@
     { "at": ["mid", 0, "height - rim / 2"], "r": 5, "length": "rim", "axis": "z", "force": ["kick", 0, 0], "case": "kick-x" },
     { "at": [0, "mid", "height - rim / 2"], "r": 5, "length": "rim", "axis": "z", "force": [0, "kick", 0], "case": "kick-y" }
   ],
-  "cases": { "lean": 1, "kick-x": 0.5, "kick-y": 0.5 }
+  "cases": { "lean": 1, "kick-x": 0.5, "kick-y": 0.5 },
+  "steps": 500
 }
