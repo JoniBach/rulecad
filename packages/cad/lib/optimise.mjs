@@ -72,6 +72,9 @@ export async function readProblem(project, ref) {
     ...(p.filter != null ? { filter: ev(p.filter) } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
+    // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
+    ...(p.output ? { output: { ...(await region(p.output)), direction: pt(p.output.direction), ...(p.output.spring != null ? { spring: ev(p.output.spring) } : {}) } } : {}),
+    ...(p.input_spring != null ? { input_spring: ev(p.input_spring) } : {}),
   };
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
@@ -84,9 +87,10 @@ export async function readProblem(project, ref) {
  * The optimised layout for a problem, from the cache when nothing it depends on has changed. A 2D result has outlines
  * (closed loops in mm); a 3D one has a mesh ({ vertices, faces }, a closed surface in mm).
  * @param {string} project @param {string} ref
- * @param {{ onStep?: Function, fresh?: boolean }} [options] fresh: run it even if it's cached
+ * @param {{ onStep?: Function, onRun?: (why: string) => void, fresh?: boolean }} [options] fresh: run it even if it's cached;
+ *   onRun: called once if it has to optimise, with why (no result yet, or the solver has changed since the last one)
  */
-export async function optimised(project, ref, { onStep, fresh = false } = {}) {
+export async function optimised(project, ref, { onStep, onRun, fresh = false } = {}) {
   const r = await readProblem(project, ref), topopt = source('@rulecad/topopt'), [solver] = topopt.split('// ---------- shapes from results ----------');
   const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
   // Two keeps: the densities, by the problem and the code that decides them (the slow part), and the shape drawn from
@@ -95,8 +99,13 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
   const spec = discretise(r.problem), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
+  // A mark that this problem has been optimised before (by any solver), so a run can say whether it's the solver that changed
+  const seen = paths.cache('densities', `${digest([VERSION, r.problem])}.seen`);
+  if (!fresh && !process.env.CAD_NO_CACHE && !host.exists(densities)) onRun?.(host.exists(seen) ? 'the solver has changed since its last result' : 'no result yet');
+  else if (fresh) onRun?.('asked to run afresh');
   const o = !fresh && !process.env.CAD_NO_CACHE && host.exists(densities) ? (({ density, ...x }) => ({ ...x, density: Float64Array.from(density) }))(JSON.parse(host.readText(densities))) : optimise(spec, { backend: threadsBackend, onStep: onStep && ((st) => onStep({ ...st, grid: spec.grid })) });
   if (!host.exists(densities)) host.writeText(densities, JSON.stringify({ ...o, density: Array.from(o.density) }));
+  if (!host.exists(seen)) host.writeText(seen, '');
   // Regions as data: a part's triangles are named, not copied
   const named = (list) => list.map(({ triangles, ...x }) => x);
   const shape = r.dim === 2 ? (() => {
@@ -127,7 +136,7 @@ export async function optimised(project, ref, { onStep, fresh = false } = {}) {
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
     grid: spec.grid, origin: spec.origin, regions: { keep: named(spec.regions.keep), avoid: named(spec.regions.avoid) }, ...shape,
-    volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.unsupported ? { unsupported: o.unsupported } : {}), ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
+    volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.unsupported ? { unsupported: o.unsupported } : {}), ...(o.mechanism ? { mechanism: o.mechanism } : {}), ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
     steps: o.steps, converged: o.converged, seconds: o.seconds, history: o.history, density: Array.from(o.density, (d) => round(d, 3)),
     supports: named(r.problem.supports), loads: named(r.problem.loads),
   };
