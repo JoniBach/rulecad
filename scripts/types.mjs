@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const TYPED = ['variables', 'fea', 'topopt', 'keyboard-layout', 'printcheck', 'fit', 'model-link', 'versions', 'shapes'];
+const TYPED = ['variables', 'fea', 'topopt', 'keyboard-layout', 'printcheck', 'fit', 'model-link', 'versions', 'shapes', 'flexures'];
 for (const dir of TYPED) {
   const { exports } = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8')), main = exports['.'] || exports; // (the main entry: fea also has ./threads)
   const file = path.join('packages', dir, (main.default || main).replace(/^\.\//, ''));

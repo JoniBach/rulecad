@@ -19,7 +19,7 @@ const drawn = {
   fit: "/closest gap/.test(document.getElementById('gap').textContent)", 'model-link': "/KB/.test(document.getElementById('info').textContent)",
   variables: "document.querySelectorAll('#values tr').length > 4", 'keyboard-layout': "document.querySelectorAll('#keys rect').length > 10",
   versions: "/major/.test(document.getElementById('verdict').textContent)", rules: "document.querySelectorAll('#rules tbody tr').length > 20",
-  pcb: "!!document.querySelector('.figure svg')", cad: "!!document.querySelector('img[src=\"soap-tray.png\"]')", index: "document.querySelectorAll('.card').length === 12"
+  pcb: "!!document.querySelector('.figure svg')", cad: "!!document.querySelector('img[src=\"soap-tray.png\"]')", index: "document.querySelectorAll('.card').length === 13"
 };
 
 test('every library page runs without a script error, and its demonstration draws', { skip: !CHROME && 'no Chrome here' }, async () => {
