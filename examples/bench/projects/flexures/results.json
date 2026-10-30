@@ -256,6 +256,60 @@
         "ramp_deg": 20.9,
         "strain_pc": 0.378
       }
+    },
+    "leaf-stopped": {
+      "what": "Leaf with travel stops (plate 4), 40 mm of two lines; push to the post, look for whitening",
+      "PLA": {
+        "stiffness_N_mm": 0.0496,
+        "stop_at_mm": 20.3,
+        "limit_mm": 25.4
+      },
+      "PETG": {
+        "stiffness_N_mm": 0.0335,
+        "stop_at_mm": 20.3,
+        "limit_mm": 25.4
+      }
+    },
+    "contact-leaf": {
+      "what": "Contact-aided leaf (plate 4), stop bar to 20 mm, 2 mm off; hang weights, note where the rate changes",
+      "PLA": {
+        "first_N_mm": 0.0496,
+        "second_N_mm": 0.397,
+        "contact_mm": 6.4,
+        "travel_mm_at_2pc": 12.7
+      },
+      "PETG": {
+        "first_N_mm": 0.0335,
+        "second_N_mm": 0.268,
+        "contact_mm": 6.4,
+        "travel_mm_at_2pc": 12.7
+      }
+    },
+    "parallelogram": {
+      "what": "Parallelogram (plate 4), 30 mm links on two-line notch hinges; push the coupler sideways, watch it stay level",
+      "PLA": {
+        "stiffness_N_mm": 2.52,
+        "travel_mm_at_2pc": 2.22,
+        "rise_mm_at_travel": 0.083
+      },
+      "PETG": {
+        "stiffness_N_mm": 1.7,
+        "travel_mm_at_2pc": 2.22,
+        "rise_mm_at_travel": 0.083
+      }
+    },
+    "tweezers": {
+      "what": "Tweezers (plate 4), 40 mm two-line spring, 50 mm arms, jaws 10 mm apart; squeeze shut with the gauge",
+      "PLA": {
+        "stiffness_N_mm": 0.199,
+        "close_mm": 10,
+        "strain_pc_closed": 1.57
+      },
+      "PETG": {
+        "stiffness_N_mm": 0.134,
+        "close_mm": 10,
+        "strain_pc_closed": 1.57
+      }
     }
   },
   "measured": {
@@ -404,6 +458,38 @@
       }
     },
     "ratchet": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "leaf-stopped": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "contact-leaf": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "parallelogram": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "tweezers": {
       "readings": [],
       "failure": {
         "travel_mm": null,

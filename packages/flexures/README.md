@@ -40,6 +40,12 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `foldedGuide` | A shuttle on two folds, each a beam out to a floating truss and back to an anchor: a compound guide in a shorter box | E w t³ / L³ | 3t(δ/2) / L²; no drift |
 | `pinJoint` | A pin, a ring with an arm and a cap, printed in place a support gap apart: the joint to compare the flexures against | not compliant: `pinJointCheck` reads the printer's fit and support gap, and gives the ring's play | — |
 | `snapPin`, `snapSocket` | A barbed, slotted peg that clicks into a hole, printed standing | `snapPinModel`: two snap hooks' worth of `force`, `insertion` and `removal` | 3ty / 2L² in each half |
+| `travelStop` | Two posts at a leaf's tip where the strain limit says its travel must end, less a margin: the rule as a shape | — | `at`: factor × travel(strainLimit) |
+| `contactLeaf` | A leaf with a stop bar beside it: free until the beam touches, stiffer after; two rates in one spring | `first` the leaf's, `second` a shorter leaf's, meeting at `contact` | 3tδ / 2L² before contact, the shorter leaf's after |
+| `parallelogram` | A four-bar with a notch hinge at each corner: the coupler moves sideways and stays parallel, rising a little | 4K / L² at the coupler | the hinges' at θ = asin(δ / L) |
+| `tweezers` | Two arms on a fixed-guided spring: squeeze to close the jaws; the simplest compliant gripper | E w t³ / L³ at the fingers | 3tδ / L² at a squeeze δ |
+| `curvedLeaf` | A leaf drawn as an arc, so its rest is the middle of its working range: a spring that works from a loaded rest | E w t³ / 4L³ | 3tδ / 2L² from the curved rest, either way; `preset` t / 2ρ already in the curve |
+| `angleStop` | Posts at a pivot's arm end where its strain limit says the turn must end, less a margin | — | `angle`: factor × angle(strainLimit) |
 
 L length, t thickness (across the bend), w width (up the print), R a notch's radius, h an arch's rise, l a strip's length, s a spoke's length, r a hub's radius, y a hook's undercut, I = wt³/12, J a bar's torsion constant, θ an angle in radians. Each
 `<name>Model(shape, material)` gives `stiffness`, `strain(travel)`, `travel(strain)` and `stress(travel)`; the notch
@@ -53,7 +59,9 @@ and that's the one that snaps.
 
 `printable(shape, printer, material, model)` says how it prints, as findings like `@rulecad/printcheck`'s: the
 thickness in whole extrusion lines (and at least two of them: `line` and `wall_min` from the printer's rules), the
-width in whole layers, and the strain at the travel against the material's `strainLimit`.
+width in whole layers, and the strain at the travel against the material's `strainLimit`. Give it `stop: false` and it
+warns that nothing bounds the flexure's travel before the limit; give it the stop's travel and it checks that against
+the limit. `travelStop` draws the stop where the limit says.
 
 ## Bent for real: the elastica
 
@@ -87,6 +95,32 @@ flexure, so it is pinned: `constantForce` draws the coupler (a slider block, the
 `constantForceCrank` the crank with a boss at each end, for pins of filament. `constantForceModel` gives
 `force(stroke)`, the `flat` stretch, the leaf's `strain(stroke)` and the stroke a strain allows. The force scales
 with the leaf's thickness cubed: 1.7 N at three lines (1.26 mm) on a 40 mm leaf 8 mm wide in PLA, 13 N at six.
+
+## Composing mechanisms
+
+A mechanism is several flexures placed against each other. Three helpers make that a matter of naming rather than
+arithmetic:
+
+- **`ports(kind, params)`** says where a flexure attaches: its `root` and its moving `end` as points and facing
+  directions in the shape's own frame, what `moves` there (`'x'`, `'y'` or `'turn'`), and the pivot or shuttle where
+  there is one. A design puts the sear's hook at `ports('constantForce', trigger).end.at`.
+- **`size.<kind>(job, printer)`** is the model the other way round: give the travel, the force (or the angle) and
+  the material, get the thinnest whole-line thickness and the length that do it with the strain under the limit times
+  a margin, or `null` when no thickness up to eight lines can (then widen it, or allow a longer part). For the leaf,
+  the fixed-guided beam, the compound and folded guides, the serpentine in a box, the notch and living hinges, and the
+  constant-force mechanism.
+- **`report(parts, printer, material)`** checks a mechanism's worth of flexures at once: each one's print findings,
+  its strain at the travel or angle its pose gives it, whether a stop bounds it, and the worst of them named.
+
+```js
+import { size, ports, report, constantForce } from '@rulecad/flexures';
+const trigger = size.constantForce({ force: 10, stroke: 8, width: 8, material: pla }, x1c);   // { leaf: 70, thickness: 3.36, crank: 35, … }
+const pin = ports('constantForce', trigger).pin.at;                                             // where the crank's pin goes
+report([{ name: 'trigger', kind: 'constantForce', params: trigger, travel: 8, stop: 10 }], x1c, pla).ok;
+```
+
+Requirements belong in the design's variables, each with its rule and source, as the printer's and the material's do;
+the sizing helpers read them from there.
 
 ## Joints that aren't flexures
 

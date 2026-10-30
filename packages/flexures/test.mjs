@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, ellipticalHinge, ellipticalHingeModel, cartwheel, cartwheelModel, snapHook, snapHookModel, ratchetWheel, ratchetPawl, ratchetModel, foldedGuide, foldedGuideModel, pinJoint, pinJointCheck, snapPin, snapSocket, snapPinModel, printable } from '@rulecad/flexures';
+import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, ellipticalHinge, ellipticalHingeModel, cartwheel, cartwheelModel, snapHook, snapHookModel, ratchetWheel, ratchetPawl, ratchetModel, foldedGuide, foldedGuideModel, pinJoint, pinJointCheck, snapPin, snapSocket, snapPinModel, travelStop, angleStop, contactLeaf, contactLeafModel, parallelogram, parallelogramModel, tweezers, tweezersModel, curvedLeaf, curvedLeafModel, ports, size, report, printable } from '@rulecad/flexures';
 import { grid, analyse } from '@rulecad/fea';
 import jscad from '@jscad/modeling';
 import { shape as pieces, check as printCheck } from '@rulecad/printcheck';
@@ -238,5 +238,95 @@ test('a snap pin and its socket: a barbed, slotted peg modelled as two hooks; th
   assert.ok(!found.some((r) => r.level === 'fail') && !found.some((r) => r.code === 'print.overhang' && r.level !== 'pass'), JSON.stringify(found.filter((r) => r.level !== 'pass')));
   const hole = measureBoundingBox(socket);
   assert.ok(Math.abs(hole[1][0] - 5.2) < 1e-6 && measureVolume(socket) < 10.4 * 10.4 * 6 - Math.PI * 2.2 * 2.2 * 6 + 1, 'a hole the peg plus clearance through a block');
+});
+
+test('a travel stop stands where the strain limit says, less a margin; printable warns of a flexure with no stop and checks one past the limit', () => {
+  const p = { length: 40, thickness: 0.84, width: 8 }, m = leafModel(p, pla), stop = travelStop(p, pla);
+  assert.ok(Math.abs(stop.limit - m.travel(0.02)) < 1e-9 && Math.abs(stop.at - 0.8 * stop.limit) < 1e-9);
+  const box = measureBoundingBox(stop.shape);
+  assert.ok(Math.abs(box[1][0] - 40) < 1e-9 && Math.abs(box[1][1] - (0.42 + stop.at + 3)) < 1e-9, 'posts at the tip, a stop\'s travel off the leaf');
+  const printer = { line: 0.42, layer: 0.2 };
+  assert.equal(printable({ ...p, stop: false }, printer, pla, m).find((r) => r.code === 'flexure.stop')?.level, 'warn');
+  assert.equal(printable({ ...p, stop: stop.at }, printer, pla, m).find((r) => r.code === 'flexure.stop')?.level, 'pass');
+  assert.equal(printable({ ...p, stop: 30 }, printer, pla, m).find((r) => r.code === 'flexure.stop')?.level, 'fail');
+  assert.ok(!printable(p, printer, pla, m).some((r) => r.code === 'flexure.stop'), 'nothing said when no stop is given');
+});
+
+test('a contact-aided leaf: the leaf\'s rate until the beam meets the stop, a shorter leaf\'s after; the contact travel from the cantilever\'s shape', () => {
+  const p = { length: 40, thickness: 0.84, width: 8, stop: 20, gap: 2 }, m = contactLeafModel(p, pla), one = leafModel(p, pla), rest = leafModel({ ...p, length: 20 }, pla);
+  assert.ok(m.first === one.stiffness && m.second === rest.stiffness && m.second > 7 * m.first);
+  assert.ok(Math.abs(m.contact - (2 * 2 * 40 ** 3) / (3 * 40 * 400 - 8000)) < 1e-9, 'the tip travel when the beam at the stop has dropped the gap');
+  assert.ok(Math.abs(m.force(m.contact) - one.stiffness * m.contact) < 1e-9 && Math.abs(m.force(m.contact + 1) - m.force(m.contact) - rest.stiffness) < 1e-9);
+  assert.ok(m.strain(m.contact) === one.strain(m.contact) && m.travel(0.02) > m.contact && Math.abs(m.strain(m.travel(0.02)) - 0.02) < 1e-9);
+  assert.ok(onePiece(contactLeaf(p)), 'the stop bar grows from the root');
+});
+
+test('a parallelogram four-bar: four notch hinges, the coupler\'s stiffness 4K / L², rising as it moves; one piece', () => {
+  const p = { link: 30, apart: 40, width: 8, radius: 3, neck: 0.84 }, m = parallelogramModel(p, pla), h = notchHingeModel({ radius: 3, neck: 0.84, width: 8 }, pla);
+  assert.ok(Math.abs(m.stiffness - (4 * h.stiffness) / 900) < 1e-9 && Math.abs(m.travel(0.02) - 30 * Math.sin(h.angle(0.02))) < 1e-9);
+  assert.ok(m.rise(3) > 0 && m.rise(3) < 0.2 && Math.abs(m.strain(m.travel(0.01)) - 0.01) < 1e-9);
+  const shape = parallelogram(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape) && Math.abs(box[1][1] - (30 + 2 * 3 + 6 + 3)) < 1e-9, 'the coupler bar above the links and hinges');
+});
+
+test('tweezers: a fixed-guided spring between two arms; the squeeze that closes them is the opening, and the strain is the spring\'s', () => {
+  const p = { spring: 40, thickness: 0.84, width: 8, arm: 50, open: 10 }, m = tweezersModel(p, pla), s = fixedGuidedModel({ length: 40, thickness: 0.84, width: 8 }, pla);
+  assert.ok(m.stiffness === s.stiffness && m.close === 10 && m.squeeze(4) === 4 && m.grip(12) > 0 && m.grip(8) === 0);
+  assert.ok(m.strain(10) < 0.02, `${m.strain(10)} at a full close`);
+  const shape = tweezers(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape) && box[1][0] > 50 && box[1][1] - box[0][1] > 40, 'arms past the spring, wider than the spring');
+});
+
+test('ports: every generator names its root, its moving end and what moves there, in the shape\'s own frame', () => {
+  const leaf = ports('leaf', { length: 40, thickness: 0.84, width: 8 });
+  assert.deepEqual(leaf.end.at, [40, 0, 4]); assert.equal(leaf.moves, 'y');
+  const guide = ports('compoundGuide', { length: 30, thickness: 1.26, width: 8, gap: 12 }), box = measureBoundingBox(compoundGuide({ length: 30, thickness: 1.26, width: 8, gap: 12 }));
+  assert.ok(Math.abs(guide.root.at[0] - box[0][0]) < 1e-9 && guide.shuttle.at[0] === -3, 'the root at the base\'s back, the shuttle a block from the leaves');
+  const hinge = ports('notchHinge', { radius: 3, neck: 0.84, width: 8 });
+  assert.ok(hinge.moves === 'turn' && hinge.pivot.at[0] === 15 && hinge.end.at[0] === 30);
+  for (const kind of ['fixedGuided', 'parallelGuide', 'foldedGuide', 'serpentine', 'ellipticalHinge', 'cartwheel', 'livingHinge', 'letJoint', 'bistable', 'constantForce', 'contactLeaf', 'parallelogram', 'tweezers', 'snapHook']) {
+    const p = { length: 30, thickness: 1.26, width: 8, gap: 10, turns: 4, radius: 3, neck: 0.84, along: 6, across: 3, spoke: 10, flex: 2, bar: 2, slot: 1.2, bridge: 2.5, rise: 3, leaf: 40, stop: 15, link: 30, apart: 40, spring: 40, arm: 50, open: 10, undercut: 1.5 };
+    const q = ports(kind, p); assert.ok(q.root && q.end && q.moves, kind);
+  }
+  assert.throws(() => ports('spring', {}), /no ports/);
+});
+
+test('sizing: the thinnest whole-line leaf for a force at a travel within the strain margin; null when nothing reaches; a serpentine in a box', () => {
+  const printer = { line: 0.42, layer: 0.2 }, s = size.leaf({ travel: 8, force: 2, width: 8, material: pla }, printer);
+  assert.ok(s && Math.abs(s.stiffness * 8 - 2) < 0.05 && s.strain <= 0.016 && Math.abs(s.thickness / 0.42 - Math.round(s.thickness / 0.42)) < 1e-9, JSON.stringify(s));
+  assert.equal(size.leaf({ travel: 40, force: 50, width: 8, material: pla, maxLength: 30 }, printer), null);
+  const z = size.serpentine({ travel: 10, force: 3, width: 8, material: pla, box: 25 }, printer);
+  assert.ok(z && z.length <= 25 && Math.abs(z.stiffness * 10 - 3) / 3 < 0.05 && z.strain <= 0.016);
+  assert.equal(size.notchHinge({ angle: (5 * Math.PI) / 180, width: 8, material: pla }, printer), null, 'no notch turns 5° in PLA');
+  assert.ok(size.livingHinge({ angle: (30 * Math.PI) / 180, width: 8, material: pla }, printer).strain <= 0.016);
+  const c = size.constantForce({ force: 10, stroke: 8, width: 8, material: pla }, printer);
+  assert.ok(c && c.flat.to >= 8 && c.force >= 10 && c.strain <= 0.016);
+});
+
+test('a mechanism report: each flexure\'s findings and strain at its pose, the worst named, a fail when one is over', () => {
+  const printer = { line: 0.42, layer: 0.2 }, parts = [
+    { name: 'trigger', kind: 'constantForce', params: { leaf: 40, thickness: 1.26, width: 8 }, travel: 8, stop: 10 },
+    { name: 'sear pivot', kind: 'notchHinge', params: { radius: 3, neck: 0.84, width: 8 }, angle: 0.05 },
+    { name: 'magazine', kind: 'serpentine', params: { length: 20, thickness: 1.26, width: 8, turns: 5 }, travel: 12, stop: false },
+  ];
+  const r = report(parts, printer, pla);
+  assert.ok(!r.ok && r.worst.part === 'magazine' && r.worst.strain > 0.02);
+  assert.ok(r.findings.some((f) => f.part === 'magazine' && f.code === 'flexure.stop' && f.level === 'warn') && r.findings.some((f) => f.part === 'sear pivot' && f.code === 'flexure.strain' && f.level === 'pass'));
+  assert.ok(report(parts.slice(0, 2), printer, pla).ok && report(parts.slice(0, 2), printer, pla).worst.part === 'sear pivot');
+});
+
+test('a pre-curved leaf: an arc of the leaf\'s length, the straight leaf\'s stiffness, a range each way about its rest, and the strain the curve already holds', () => {
+  const p = { length: 40, thickness: 0.84, width: 8, rise: 6 }, m = curvedLeafModel(p, pla), s = leafModel(p, pla);
+  assert.ok(m.stiffness === s.stiffness && m.range(0.02)[1] === s.travel(0.02) && m.range(0.02)[0] === -s.travel(0.02));
+  assert.ok(Math.abs(m.preset - 0.84 / (2 * ((1600 + 144) / 48))) < 1e-12, 't / 2ρ');
+  const shape = curvedLeaf(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape) && box[1][1] > 6 && box[1][1] < 6.5 && measureVolume(shape) > 40 * 0.84 * 8, 'the tip sits the rise off the chord; an arc is longer than its chord');
+});
+
+test('stops for any flexure: a travel stop placed by a guide\'s model at its shuttle, an angle stop at a pivot\'s arm', () => {
+  const g = { length: 30, thickness: 1.26, width: 8, gap: 12 }, gm = compoundGuideModel(g, pla), ts = travelStop(g, pla, { model: gm, end: [-3, 0] });
+  assert.ok(Math.abs(ts.at - 0.8 * gm.travel(0.02)) < 1e-9 && Math.abs(measureBoundingBox(ts.shape)[1][0] + 3) < 1e-9);
+  const hm = notchHingeModel({ radius: 3, neck: 0.84, width: 8 }, pla), as = angleStop({ width: 8 }, pla, { model: hm, pivot: [23, 0], arm: 23 });
+  assert.ok(Math.abs(as.angle - 0.8 * hm.angle(0.02)) < 1e-9 && Math.abs(as.travel - 23 * Math.sin(as.angle)) < 1e-9 && Math.abs(measureBoundingBox(as.shape)[1][0] - 46) < 1e-9);
 });
 

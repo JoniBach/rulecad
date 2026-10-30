@@ -595,15 +595,171 @@ export function snapPinModel({ diameter: d, lip = 0.4, slot, gap = 1, lead = 45,
 }
 
 /**
+ * A travel stop: a post each side of a flexure's moving end, placed where the material's strain limit says the travel
+ * must end, less a margin, so the flexure meets the stop before it meets the limit. The rule as a shape: the stop is
+ * at factor × travel(strainLimit). For a leaf by default; give any model whose travel is along y at the end (a
+ * fixed-guided beam, a guide's shuttle, a serpentine's last leaf) with where that end is.
+ * @param {Leaf} p @param {Material} m with strainLimit
+ * @param {{ factor?: number, post?: number, reach?: number, model?: Model, end?: number[] }} [o] factor: the share of
+ *   the limit the stop allows (default 0.8); post: the stops' size along x and y (default 3); reach: how far back from
+ *   the end the stop sits along x (default 0); model: the flexure's model (default the leaf's); end: the moving
+ *   end's [x, y] (default the leaf's tip)
+ * @returns {{ shape: object, at: number, limit: number }} shape: the two posts, as a JSCAD geom3, drawn on the
+ *   flexure's ground; at: the travel the stops allow; limit: the travel at the strain limit
+ */
+export function travelStop(p, m, { factor = 0.8, post = 3, reach = 0, model, end } = {}) {
+  const limit = (model ?? leafModel(p, m)).travel(m.strainLimit), at = factor * limit, [ex, ey] = end ?? [p.length, 0];
+  const y = p.thickness / 2 + at + post / 2, x = ex - reach - post / 2;
+  return { shape: union(block(x, ey + y, p.width / 2, [post, post, p.width]), block(x, ey - y, p.width / 2, [post, post, p.width])), at, limit };
+}
+/**
+ * An angle stop for a pivot: a post each side of the arm's end, where the hinge's strain limit says the turn must end,
+ * less a margin. The arm turns about the pivot; the posts stand at the arm's end, a travel of arm × sin(angle) off it.
+ * @param {{ width: number, thickness?: number }} p the pivot's width (and the arm's thickness along y, default 6)
+ * @param {Material} m with strainLimit
+ * @param {{ model: { angle: (strain: number) => number }, pivot: number[], arm: number, factor?: number, post?: number }} o
+ *   model: the hinge's (notchHinge, livingHinge, cartwheel, ellipticalHinge, letJoint); pivot: its [x, y]; arm: from
+ *   the pivot to the arm's end along x; factor as travelStop's
+ * @returns {{ shape: object, angle: number, limit: number, travel: number }} angle: the turn the stops allow (radians);
+ *   limit: at the strain limit; travel: at the arm's end
+ */
+export function angleStop({ width, thickness = 6 }, m, { model, pivot, arm, factor = 0.8, post = 3 }) {
+  const limit = model.angle(m.strainLimit), angle = factor * limit, travel = arm * Math.sin(angle), y = thickness / 2 + travel + post / 2, x = pivot[0] + arm - post / 2;
+  return { shape: union(block(x, pivot[1] + y, width / 2, [post, post, width]), block(x, pivot[1] - y, width / 2, [post, post, width])), angle, limit, travel };
+}
+
+/**
+ * A pre-curved leaf: a cantilever drawn as an arc, so its rest is in the middle of its working range. Pushed one way it
+ * straightens, the other it curls further; either way the strain is counted from the curved rest, so the range to a
+ * strain limit is twice a straight leaf's, centred where it sits. A magazine spring or a return spring that must
+ * work from a loaded rest. Modelled as the straight leaf (stiffness E w t³ / 4L³ along the chord's normal), with the
+ * curvature's own strain t / 2ρ noted: the material already sees it as printed, since the leaf is drawn bent.
+ * @param {Leaf & { rise: number }} p rise: how far the tip sits off the chord at rest (the arc's sagitta)
+ */
+export function curvedLeaf({ length: L, thickness: t, width, rise: s }) {
+  const rho = (L * L + 4 * s * s) / (8 * s), half = Math.asin(Math.min(1, L / (2 * rho))), n = 40, pts = []; // the arc's radius and half-angle, the chord along x
+  for (let i = 0; i <= n; i++) { const a = -half + (2 * half * i) / n; pts.push([rho * Math.sin(a) + L / 2, rho * (1 - Math.cos(a)) - s + s]); }
+  const off = (p, q, d) => { const dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy) || 1; return [-dy / l * d, dx / l * d]; };
+  const left = [], right = [];
+  for (let i = 0; i <= n; i++) { const [ox, oy] = off(pts[Math.max(0, i - 1)], pts[Math.min(n, i + 1)], t / 2); left.push([pts[i][0] + ox, pts[i][1] + oy]); right.push([pts[i][0] - ox, pts[i][1] - oy]); }
+  return jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: [...right, ...left.reverse()] }));
+}
+/**
+ * @param {Leaf & { rise: number }} p @param {Material} m
+ * @returns {Model & { range: (strain: number) => [number, number], preset: number }} travel and strain from the curved
+ *   rest, either way; range(strain): how far it may go each way, [toward straight, further curled]; preset: the strain
+ *   the curvature already puts in as printed (t / 2ρ), to add to the bending strain when the limit is tight
+ */
+export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, m) {
+  const straight = leafModel({ length: L, thickness: t, width: w }, m), rho = (L * L + 4 * s * s) / (8 * s);
+  return { ...straight, preset: t / (2 * rho), range: (e) => [-straight.travel(e), straight.travel(e)] };
+}
+
+export { ports, size, report, models } from './compose.mjs';
+
+/**
+ * A contact-aided leaf: a cantilever with a stop partway along it, a gap off the beam, so it bends freely until the
+ * beam touches the stop and then bends from the stop on, stiffer. Two rates in one spring: the first the leaf's,
+ * the second a shorter leaf's (from the stop to the tip, with the root part held), and the tip travel where they
+ * meet from the cantilever's shape: the beam at the stop drops g when the tip has moved g × 2L³ / (3La² − a³).
+ * @param {Leaf & { stop: number, gap: number, post?: number }} p stop: how far the stop reaches from the root along x
+ *   (a), as a bar beside the beam; gap: between the beam and the stop at rest (g); post: the bar's thickness (default 3)
+ */
+export function contactLeaf({ length, thickness: t, width, stop: a, gap: g, post = 3 }) {
+  const b = Math.max(3, 2 * t), y = t / 2 + g + post / 2; // the stop: a bar beside the beam from the root to a, a gap off it; the beam meets its far end first
+  return union(block(-b / 2, 0, width / 2, [b, 2 * y + post, width]), leaf({ length, thickness: t, width }), block(a / 2, y, width / 2, [a, post, width]));
+}
+/**
+ * @param {Leaf & { stop: number, gap: number }} p @param {Material} m
+ * @returns {Model & { first: number, second: number, contact: number, force: (travel: number) => number }}
+ *   first, second: the stiffness before and after contact (N/mm); contact: the tip travel where the beam meets the
+ *   stop; stiffness: the first; force(travel): along the curve; strain(travel): at the root before contact, at the
+ *   stop after
+ */
+export function contactLeafModel({ length: L, thickness: t, width: w, stop: a, gap: g }, m) {
+  const one = leafModel({ length: L, thickness: t, width: w }, m), rest = leafModel({ length: L - a, thickness: t, width: w }, m);
+  const contact = (g * 2 * L ** 3) / (3 * L * a * a - a ** 3), force = (d) => (d <= contact ? one.stiffness * d : one.stiffness * contact + rest.stiffness * (d - contact));
+  const strain = (d) => (d <= contact ? one.strain(d) : Math.max(one.strain(contact), rest.strain(d - contact)));
+  const travel = (e) => (one.strain(contact) >= e ? one.travel(e) : contact + rest.travel(e));
+  return { stiffness: one.stiffness, first: one.stiffness, second: rest.stiffness, contact, force, strain, travel, stress: (d) => m.E * strain(d) };
+}
+
+/**
+ * A parallelogram four-bar with flexure pivots: two equal links from a ground bar to a coupler bar, a notch hinge at
+ * each of the four corners, so the coupler moves sideways and stays parallel (a lever's worth of a parallel guide,
+ * with the links' length as the travel's radius). Printed flat: the links along y, the motion along x.
+ * Stiffness at the coupler 4K / L² for four hinges of rotational stiffness K and links L long; the coupler rises
+ * by L(1 − cos θ) as it moves Lsin θ, and the hinges' strain is the notch hinge's at θ.
+ * @param {{ link: number, apart: number, width: number, radius: number, neck: number, bar?: number }} p link: the links,
+ *   hinge neck to hinge neck (L); apart: the links' spacing along x; width: up z; radius, neck: the notch hinges';
+ *   bar: the ground's and coupler's thickness along y (default 6). The ground bar is centred on y = 0, the coupler
+ *   above it at y = L + 2R + bar
+ */
+export function parallelogram({ link: L, apart, width, radius: R, neck: t, bar = 6 }) {
+  const y1 = bar / 2 + R, y2 = y1 + L, top = y2 + R + bar / 2, across = apart + t + 2 * R + 2 * bar; // the hinges' necks at y1 and y2
+  const linkAt = (x) => {
+    const notch = (y, side) => translate([x + side * (t / 2 + R), y, width / 2], cylinder({ radius: R, height: width + 2, segments: 48 }));
+    return subtract(block(x, top / 2, width / 2, [t + 2 * R, top, width]), notch(y1, 1), notch(y1, -1), notch(y2, 1), notch(y2, -1));
+  };
+  return union(block(apart / 2, 0, width / 2, [across, bar, width]), block(apart / 2, top, width / 2, [across, bar, width]), linkAt(0), linkAt(apart));
+}
+/**
+ * @param {{ link: number, width: number, radius: number, neck: number }} p @param {Material & { concentration?: number }} m
+ * @returns {Model & { rise: (travel: number) => number, angle: (travel: number) => number }} stiffness at the coupler,
+ *   N/mm; strain and travel through the hinges' angle; rise: how far the coupler lifts along y at a travel
+ */
+export function parallelogramModel({ link: L, width: w, radius: R, neck: t }, m) {
+  const h = notchHingeModel({ radius: R, neck: t, width: w }, m), angle = (d) => Math.asin(Math.min(1, d / L));
+  return { stiffness: (4 * h.stiffness) / (L * L), strain: (d) => h.strain(angle(d)), travel: (e) => L * Math.sin(h.angle(e)), stress: (d) => m.E * h.strain(angle(d)), rise: (d) => L * (1 - Math.cos(angle(d))), angle };
+}
+
+/**
+ * Tweezers: two arms joined at a leaf spring, their jaws apart at rest; squeezing the arms bends the spring and
+ * closes the jaws. The simplest compliant gripper, one piece, printed flat. The spring is a leaf in the plane,
+ * fixed-guided between the two arms' roots (each arm turns about its own end of the spring), so the arms close
+ * through the spring's bend: a squeeze δ at the fingers moves each jaw δ × jaw / finger, and the spring's strain at a
+ * closing is that of a leaf whose tip moves the squeeze.
+ * @param {{ spring: number, thickness: number, width: number, arm: number, jaw?: number, open: number, bar?: number }} p
+ *   spring: the leaf's length along y, between the arms' roots; thickness: the leaf's; width: up z; arm: the arms'
+ *   length along x from the spring to the jaws; jaw: the flat tips' length past the arms (default 6); open: the jaws'
+ *   inner faces apart at rest; bar: the arms' thickness (default 4)
+ */
+export function tweezers({ spring: s, thickness: t, width, arm, jaw = 6, open, bar = 4 }) {
+  const parts = [block(0, 0, width / 2, [t, s + bar, width])]; // the spring, along y, standing between the arms' roots
+  for (const sg of [1, -1]) {
+    const y0 = sg * (s / 2 + bar / 2), y1 = sg * (open / 2 + bar / 2);
+    parts.push(block(bar / 2 - t / 2, y0, width / 2, [bar + t, bar, width])); // the root, on the spring's end
+    const dx = arm, dy = y1 - y0, len = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
+    parts.push(translate([bar / 2 + dx / 2, (y0 + y1) / 2, width / 2], jscad.transforms.rotateZ(ang, cuboid({ size: [len + bar, bar, width] })))); // the arm, angled in to the jaw
+    parts.push(block(bar / 2 + arm + bar / 2 + jaw / 2, y1, width / 2, [jaw + bar, bar, width])); // the jaw: a flat tip on the arm, its inner face at the opening
+  }
+  return union(...parts);
+}
+/**
+ * @param {{ spring: number, thickness: number, width: number, arm: number, open: number }} p @param {Material} m
+ * @returns {Model & { close: number, squeeze: (closing: number) => number, grip: (squeeze: number) => number }}
+ *   stiffness: at the fingers (the spring as a fixed-guided leaf, N/mm); close: the squeeze that brings the jaws
+ *   together (the opening); squeeze(closing): how far to squeeze for a closing at the jaws; grip(squeeze): the force
+ *   the jaws hold with for a squeeze, once closed (the arms as levers from the spring: here 1:1, so the spring's
+ *   force); strain and travel through the squeeze
+ */
+export function tweezersModel({ spring: s, thickness: t, width: w, open }, m) {
+  const leafM = fixedGuidedModel({ length: s, thickness: t, width: w }, m);
+  return { ...leafM, close: open, squeeze: (closing) => closing, grip: (squeeze) => leafM.stiffness * Math.max(0, squeeze - open) };
+}
+
+/**
  * How a flexure prints, as findings (pass, warn, fail, in plain words): the thickness in whole extrusion lines and at
- * least two of them, the width in whole layers, and the strain at its travel against the material's limit.
- * @param {{ thickness: number, width: number, travel?: number }} p
+ * least two of them, the width in whole layers, the strain at its travel against the material's limit, and whether a
+ * stop bounds its travel.
+ * @param {{ thickness: number, width: number, travel?: number, stop?: number | false }} p stop: the travel a stop allows,
+ *   or false for a flexure with none (a warning: its travel could exceed the material's limit)
  * @param {{ line: number, layer: number, wall_min?: number }} printer
  * @param {Material & { name?: string }} [material] with strainLimit, to check the travel
  * @param {Model} [model]
  * @returns {{ level: 'pass' | 'warn' | 'fail', text: string, code: string }[]}
  */
-export function printable({ thickness: t, width: w, travel }, printer, material, model) {
+export function printable({ thickness: t, width: w, travel, stop }, printer, material, model) {
   const out = [], f = (level, text, code) => out.push({ level, text, code });
   const lines = t / printer.line, whole = Math.abs(lines - Math.round(lines)) < 0.05, least = (printer.wall_min ?? 2 * printer.line) / printer.line;
   if (lines < least - 0.05) f('fail', `${t} mm thick is under ${least} lines of ${printer.line} mm: too thin to print as a wall`, 'flexure.thin');
@@ -611,6 +767,11 @@ export function printable({ thickness: t, width: w, travel }, printer, material,
   else f('pass', `${t} mm thick: ${Math.round(lines)} lines of ${printer.line} mm`, 'flexure.lines');
   const layers = w / printer.layer;
   if (Math.abs(layers - Math.round(layers)) > 0.05) f('warn', `${w} mm wide is ${layers.toFixed(2)} layers of ${printer.layer} mm: a whole number prints as drawn`, 'flexure.layers');
+  if (stop != null && model && material?.strainLimit != null) {
+    const limit = model.travel(material.strainLimit);
+    if (stop === false) f('warn', `nothing stops this flexure before its limit of ${limit.toFixed(2)} mm (${(material.strainLimit * 100).toFixed(1)}% strain): add a stop (travelStop) or a rule that bounds its travel`, 'flexure.stop');
+    else f(stop <= limit ? 'pass' : 'fail', `a stop at ${stop} mm${stop <= limit ? `, within the limit of ${limit.toFixed(2)} mm` : `: past the limit of ${limit.toFixed(2)} mm, the material fails before the stop`}`, 'flexure.stop');
+  }
   if (travel != null && model && material?.strainLimit != null) {
     const e = model.strain(travel), limit = material.strainLimit;
     f(e <= limit ? 'pass' : 'fail', `at ${travel} mm of travel the material sees ${(e * 100).toFixed(2)}% strain${e <= limit ? ', within' : ', over'} ${material.name ?? 'its'} limit of ${(limit * 100).toFixed(1)}%${e > limit ? `: at most ${model.travel(limit).toFixed(2)} mm` : ''}`, 'flexure.strain');

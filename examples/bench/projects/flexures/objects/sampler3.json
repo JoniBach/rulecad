@@ -180,14 +180,14 @@
       "rule": "How far the catch's lip overlaps the hook"
     },
     "catch_gap": {
-      "value": 0.5,
+      "value": "x1c.fit + 0.4",
       "unit": "mm",
-      "rule": "Between the hook's face and the catch post"
+      "rule": "Between the hook's face and the catch post: the fit and a margin"
     },
     "gap_above": {
-      "value": 0.3,
+      "value": "x1c.fit + 0.2",
       "unit": "mm",
-      "rule": "Between the hook's back and the lip, so they print apart"
+      "rule": "Between the hook's back and the lip: the printer's fit and a margin, since the first print's 0.3 mm fused"
     },
     "lip": {
       "value": 2,
