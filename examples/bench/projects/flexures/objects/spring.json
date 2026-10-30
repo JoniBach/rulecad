@@ -1,0 +1,53 @@
+{
+  "name": "spring",
+  "title": "A leaf spring on its block, at rest and pressed",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed: the leaf bends in the plane of the bed, within its layers.",
+  "variables": {
+    "length": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The leaf's length"
+    },
+    "thickness": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "Three lines"
+    },
+    "height": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The leaf's width, up from the bed"
+    },
+    "block": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The block the leaf grows from"
+    },
+    "travel": {
+      "value": 0,
+      "unit": "mm",
+      "tweak": {
+        "min": 0,
+        "max": 30
+      },
+      "rule": "How far the tip is pressed sideways: 0 at rest"
+    },
+    "overlap": {
+      "value": "thickness / 4",
+      "unit": "mm",
+      "rule": "How far the leaf's root sinks into the block, so they join"
+    }
+  },
+  "variants": {
+    "pressed": {
+      "travel": 15
+    }
+  }
+}

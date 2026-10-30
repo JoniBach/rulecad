@@ -45,10 +45,24 @@ and that's the one that snaps.
 thickness in whole extrusion lines (and at least two of them: `line` and `wall_min` from the printer's rules), the
 width in whole layers, and the strain at the travel against the material's `strainLimit`.
 
+## Bent for real: the elastica
+
+Beam theory holds while a leaf's travel is a few times its thickness. Past that the leaf curls, its tip comes nearer
+along x, and it stiffens. `elastica(leaf, material, { force })` or `{ travel }` integrates Euler and Bernoulli's beam
+with its exact curvature along the leaf (Bisshopp and Drucker 1945), and gives the tip's travel, how much it has
+shortened and turned, the strain at the root, and the secant stiffness. `leafFlexed(leaf, material, load)` draws the
+leaf bent, for a picture of the spring at work or a fit check at full travel. Checked against the published values:
+tip travel 0.3017 and 0.4935 of the length at load parameters PL²/EI of 1 and 2.
+
+```js
+elastica({ length: 40, thickness: 0.84, width: 8 }, { E: 2680 }, { travel: 20 });
+// { force: 1.2, travel: 20, shortening: 5.6, angle: 0.82, strain: 0.017, stiffness: 0.06, centreline: [...] }
+```
+
 ## What the models are good for
 
-Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness. Past that,
-a leaf shortens as it bends and the numbers drift; a nonlinear model is on the roadmap. The material's strain limit
+Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,
+the elastica above for a leaf (the other flexures' large-deflection models are on the roadmap). The material's strain limit
 is yours to set: PLA is brittle and creeps when held bent; PETG and nylon last far longer; living hinges want TPU or
 polypropylene. Measured limits, with their sources, belong in the material's rule set.
 
@@ -57,5 +71,6 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Howell, L. L., *Compliant Mechanisms*, Wiley, 2001: the pseudo-rigid-body model, the fixed-guided beam, the
   parallel guide's drop.
 - Smith, S. T., *Flexures: Elements of Elastic Mechanisms*, CRC Press, 2000: notch hinges and their stress.
+- Bisshopp, K. E., and Drucker, D. C., "Large deflection of cantilever beams", *Quarterly of Applied Mathematics* 3(3), 1945: the elastica of a cantilever under a tip load.
 - Paros, J. M., and Weisbord, L., "How to design flexure hinges", *Machine Design*, 1965: the notch hinge's stiffness.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.

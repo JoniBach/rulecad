@@ -171,6 +171,64 @@ export function livingHingeModel({ flex: l, thickness: t, width: w }, { E }) {
 }
 
 /**
+ * A leaf spring bent for real: the elastica, Euler and Bernoulli's beam with its exact curvature, for a cantilever
+ * pushed at the tip by a force that keeps its direction (Bisshopp and Drucker 1945). Beam theory holds while the
+ * travel is a few times the thickness; past that the leaf curls, shortens along x, and stiffens. This integrates the
+ * beam along its length (Runge-Kutta, shooting on the root's curvature) and gives the tip's travel and the strain at
+ * the root, which is where it breaks.
+ * @param {Leaf} p @param {Material} m
+ * @param {{ force?: number, travel?: number }} load one of: the tip force (N), or the travel to reach (mm)
+ * @returns {{ force: number, travel: number, shortening: number, angle: number, strain: number, stiffness: number, centreline: number[][] }}
+ *   shortening: how much nearer the tip is along x; angle: the tip's turn, radians; stiffness: force over travel (secant);
+ *   centreline: the bent leaf's middle line, [x, y] along it
+ */
+export function elastica({ length: L, thickness: t, width: w }, { E }, { force, travel } = {}) {
+  const I = (w * t ** 3) / 12, n = 200, h = L / n;
+  // The beam under a tip force P: θ' = κ, κ' = −(P / EI) cos θ (the moment falls as the tip's lever shortens),
+  // θ(0) = 0 and κ(L) = 0 at the free end, found by shooting on κ(0)
+  const bend = (P, k0) => {
+    let th = 0, k = k0, x = 0, y = 0;
+    const line = [[0, 0]], f = (th) => (-P / (E * I)) * Math.cos(th);
+    for (let i = 0; i < n; i++) {
+      const a1 = k, b1 = f(th), a2 = k + (h / 2) * b1, b2 = f(th + (h / 2) * a1), a3 = k + (h / 2) * b2, b3 = f(th + (h / 2) * a2), a4 = k + h * b3, b4 = f(th + h * a3);
+      const thNext = th + (h / 6) * (a1 + 2 * a2 + 2 * a3 + a4);
+      k += (h / 6) * (b1 + 2 * b2 + 2 * b3 + b4);
+      x += (h / 2) * (Math.cos(th) + Math.cos(thNext)); y += (h / 2) * (Math.sin(th) + Math.sin(thNext)); th = thNext;
+      line.push([x, y]);
+    }
+    return { k, th, x, y, line };
+  };
+  const solve = (P) => { // the root curvature that leaves the tip free of moment
+    let lo = 0, hi = 2 * (P * L) / (E * I) + 1e-9;
+    for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (bend(P, mid).k > 0) hi = mid; else lo = mid; }
+    const k0 = (lo + hi) / 2, r = bend(P, k0);
+    return { force: P, travel: r.y, shortening: L - r.x, angle: r.th, strain: (t / 2) * k0, stiffness: r.y > 0 ? P / r.y : (E * w * t ** 3) / (4 * L ** 3), centreline: r.line };
+  };
+  if (force != null) return solve(force);
+  // A travel: the force that reaches it, by bisection (the leaf can't travel its own length)
+  if (!(travel > 0) || travel >= L) throw new Error(`a leaf ${L} mm long can't travel ${travel} mm: give a travel under its length, or a force`);
+  let lo = 0, hi = (E * w * t ** 3) / (4 * L ** 3) * travel * 2;
+  while (solve(hi).travel < travel) hi *= 2;
+  for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (solve(mid).travel < travel) lo = mid; else hi = mid; }
+  return solve((lo + hi) / 2);
+}
+
+/**
+ * A leaf spring drawn bent, from the elastica: for a picture of the spring at work, or a fit check at full travel.
+ * @param {Leaf} p @param {Material} m @param {{ force?: number, travel?: number }} load
+ * @returns {object} the shape, a JSCAD geom3
+ */
+export function leafFlexed(p, m, load) {
+  const { centreline } = elastica(p, m, load), half = p.thickness / 2, left = [], right = [];
+  for (let i = 0; i < centreline.length; i++) {
+    const [x, y] = centreline[i], [px, py] = centreline[Math.max(0, i - 1)], [nx, ny] = centreline[Math.min(centreline.length - 1, i + 1)];
+    const dx = nx - px, dy = ny - py, len = Math.hypot(dx, dy) || 1, ox = (-dy / len) * half, oy = (dx / len) * half;
+    left.push([x + ox, y + oy]); right.push([x - ox, y - oy]);
+  }
+  return jscad.extrusions.extrudeLinear({ height: p.width }, jscad.primitives.polygon({ points: [...right, ...left.reverse()] }));
+}
+
+/**
  * How a flexure prints, as findings (pass, warn, fail, in plain words): the thickness in whole extrusion lines and at
  * least two of them, the width in whole layers, and the strain at its travel against the material's limit.
  * @param {{ thickness: number, width: number, travel?: number }} p
