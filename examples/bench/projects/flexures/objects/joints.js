@@ -8,7 +8,8 @@ export function main (v) {
   const f = v.flexures
   const joint = { pin: v.pin, width: v.height, clearance: v.clearance, lift: v.lift, lip: v.lip, ring: v.ring, arm: v.arm, base: v.base }
   const socket = translate([v.socket_at, 0, 0], f.snapSocket({ diameter: v.peg, depth: v.depth, clearance: v.clearance, wall: v.wall }))
-  const bridge = jscad.primitives.cuboid({ center: [v.socket_at / 2, 0, v.base / 2], size: [v.socket_at, 2 * v.wall, v.base] }) // joins the base to the socket
+  const near = v.socket_at - v.peg / 2 - v.clearance - v.wall + v.overlap // the socket's near face, a little in
+  const bridge = jscad.primitives.cuboid({ center: [near / 2, 0, v.base / 2], size: [near, 2 * v.wall, v.base] }) // joins the base to the socket, stopping at its wall so the hole stays open
   return {
     base: v.ops.union(f.pinJoint(joint, 'pin'), socket, bridge),
     lever: f.pinJoint(joint, 'ring'),

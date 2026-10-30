@@ -10,9 +10,15 @@
   "engine": "manifold",
   "orientation": "Flat as drawn, the peg standing up. After printing, twist the lever to break it free of the base and the cap; push the peg into the socket until it clicks, and pull it out again (its barb's back is at 45°, so it lets go).",
   "parts": {
-    "base": { "label": "The base: the pin with its cap, and the socket" },
-    "lever": { "label": "The lever, on a ring round the pin" },
-    "peg": { "label": "The snap pin" }
+    "base": {
+      "label": "The base: the pin with its cap, and the socket"
+    },
+    "lever": {
+      "label": "The lever, on a ring round the pin"
+    },
+    "peg": {
+      "label": "The snap pin"
+    }
   },
   "variables": {
     "pin": {
@@ -104,6 +110,11 @@
       "value": 48,
       "unit": "mm",
       "rule": "The peg's centre from the pin, along x: loose beside the socket"
+    },
+    "overlap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "How far the bridge runs into the socket's wall, so they join"
     }
   }
 }
