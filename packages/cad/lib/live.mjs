@@ -31,7 +31,7 @@ export function liveView({ port = 8090, host = '127.0.0.1', title }) {
           const { nx, ny, nz, h } = s.grid;
           // A 3D grid's densities too, a byte a cell, for its surface (drawn when the page asks for it)
           const cells = nz > 1 ? Uint8Array.from(s.density, (d) => Math.round(d * 255)) : null;
-          worker.postMessage({ grid: { nx, ny, nz, h }, step: s.step, steps: s.steps, compliance: s.compliance, change: s.change, beta: s.beta, volume: s.volume, stress: s.stress, views: list, cells },
+          worker.postMessage({ grid: { nx, ny, nz, h }, step: s.step, steps: s.steps, compliance: s.compliance, change: s.change, beta: s.beta, volume: s.volume, stress: s.stress, travel: s.travel, views: list, cells },
             [...list.map((v) => v.image.buffer), ...(cells ? [cells.buffer] : [])]);
         },
         stopped: () => Atomics.load(flag, 0) === 1,
@@ -75,7 +75,7 @@ function table() {
     ...(finished || !follow ? [] : [['Time left', 'at most ' + time(f.left) + ' (it may settle sooner)']]),
     ['Compliance', fig(f.compliance) + ' N·mm, from ' + fig(history.compliance[0]) + (history.compliance[0] > f.compliance ? ': ' + fig(history.compliance[0] / f.compliance) + ' times as stiff' : '')],
     ['Change', fig(f.change) + ' (the most any cell moved this step)'], ['Sharpness', f.beta],
-    ...(f.volume != null ? [['Material', fig(f.volume * 100) + '% of the space']] : []), ...(f.stress != null ? [['Peak stress', fig(f.stress) + ' MPa']] : []),
+    ...(f.volume != null ? [['Material', fig(f.volume * 100) + '% of the space']] : []), ...(f.stress != null ? [['Peak stress', fig(f.stress) + ' MPa']] : []), ...(f.travel != null ? [['Output travel', fig(f.travel) + ' mm its way']] : []),
     ['Cells', [f.grid.nx, f.grid.ny, f.grid.nz].filter(Boolean).join(' × ') + (f.grid.h ? ' of ' + f.grid.h + ' mm' : '') + ' (' + (f.grid.nx * f.grid.ny * (f.grid.nz || 1)).toLocaleString('en-GB') + ')'],
   ] : [];
   document.getElementById('at-step').textContent = f ? 'step ' + f.step : '';

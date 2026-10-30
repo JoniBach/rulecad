@@ -155,6 +155,7 @@ async function optimiseProblem(ref) {
   if (opt('json')) return console.log(JSON.stringify((({ density, history, mesh, ...x }) => x)(r), null, 2));
   console.log(`${r.title}${r.cached ? ' (cached)' : ` (${fmt(r.seconds)} s)`}`);
   for (const c of r.cases) console.log(`  ${c.name}: ${howFar(c)}`);
+  if (r.mechanism) console.log(`  the output moves ${sig(r.mechanism.travel)} mm its way for ${sig(r.mechanism.input)} mm of push: an advantage of ${sig(r.mechanism.advantage)}`);
   if (r.stress) console.log(`  peak stress ${sig(r.stress.peak)} MPa, the limit ${sig(r.stress.limit)} MPa${r.stress.peak > r.stress.limit * 1.02 ? ': over it (raise the volume, ease the limit, or use a smaller cell)' : ''}`);
   if (r.dim === 3) console.log(`  ${fmt(r.volume * 100)}% of the space filled: ${fmt(r.solid / 1000)} cm³ (${fmt(r.solid / 1000 * (p.material.density || 0))} g of ${p.material.name})${r.overhang ? `, printable built ${r.overhang}` : ''}`);
   else console.log(`  ${fmt(r.volume * 100)}% of the space filled, outline ${fmt(r.area)} mm² (${fmt(r.area * r.thickness / 1000)} cm³ before bosses and holes are made exact)`);

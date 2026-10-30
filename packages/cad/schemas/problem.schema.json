@@ -146,6 +146,62 @@
     "overhang": {
       "type": "string",
       "description": "3D: printable this way up ('+z', '-y', …), or a variable holding it, or 'none': only material supported from below at 45° or less"
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "direction"
+      ],
+      "description": "A mechanism's output: where it should move, along one axis, against a spring. The first load is then the input.",
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/point",
+          "description": "The centre, mm"
+        },
+        "r": {
+          "$ref": "#/$defs/expr"
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/expr"
+          },
+          "minItems": 2,
+          "maxItems": 3
+        },
+        "length": {
+          "$ref": "#/$defs/expr"
+        },
+        "axis": {
+          "enum": [
+            "x",
+            "y",
+            "z"
+          ]
+        },
+        "direction": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 3,
+          "description": "Which way it should move: along one axis, like [-1, 0]"
+        },
+        "spring": {
+          "$ref": "#/$defs/expr",
+          "description": "The spring it works against, N/mm"
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    },
+    "input_spring": {
+      "$ref": "#/$defs/expr",
+      "description": "With output: a spring the input pushes against, N/mm"
     }
   },
   "$defs": {
@@ -212,7 +268,16 @@
           "type": "string"
         },
         "teardrop": {
-          "enum": ["up", "down", "+z", "-z", "+y", "-y", "+x", "-x"],
+          "enum": [
+            "up",
+            "down",
+            "+z",
+            "-z",
+            "+y",
+            "-y",
+            "+x",
+            "-x"
+          ],
           "description": "3D: a 45° point on the cylinder that way, so it prints without support: down for a boss (its underside), up for a hole (its roof). up and down follow the problem's overhang (+z when it's free); along the cylinder's axis it has none"
         }
       }
@@ -272,7 +337,16 @@
           "description": "Which ways it's held: x, y, z (default all)"
         },
         "teardrop": {
-          "enum": ["up", "down", "+z", "-z", "+y", "-y", "+x", "-x"],
+          "enum": [
+            "up",
+            "down",
+            "+z",
+            "-z",
+            "+y",
+            "-y",
+            "+x",
+            "-x"
+          ],
           "description": "3D: a 45° point on the cylinder that way, so it prints without support: down for a boss (its underside), up for a hole (its roof). up and down follow the problem's overhang (+z when it's free); along the cylinder's axis it has none"
         }
       }
@@ -337,11 +411,31 @@
           "description": "Its load case (default load)"
         },
         "teardrop": {
-          "enum": ["up", "down", "+z", "-z", "+y", "-y", "+x", "-x"],
+          "enum": [
+            "up",
+            "down",
+            "+z",
+            "-z",
+            "+y",
+            "-y",
+            "+x",
+            "-x"
+          ],
           "description": "3D: a 45° point on the cylinder that way, so it prints without support: down for a boss (its underside), up for a hole (its roof). up and down follow the problem's overhang (+z when it's free); along the cylinder's axis it has none"
         }
       }
     }
   },
-  "anyOf": [{ "required": ["volume"] }, { "required": ["stress"] }]
+  "anyOf": [
+    {
+      "required": [
+        "volume"
+      ]
+    },
+    {
+      "required": [
+        "stress"
+      ]
+    }
+  ]
 }
