@@ -25,7 +25,7 @@ const OVERHANG_SLACK = 0.5; // degrees
  */
 /** @typedef {[number, number, number]} Point a corner in mm, Z up */
 /** @typedef {Point[]} Face a polygon: three or more corners, counter-clockwise seen from outside */
-/** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number }} Printer mm and degrees */
+/** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number, line?: number }} Printer mm and degrees */
 /**
  * A finding: its level and words, and for programs a code (print.bridge, fit.gap, …), the numbers behind it, and where
  * it is when that's known (the box round the faces it's about, in mm).
@@ -40,7 +40,7 @@ export function bounds(polys) {
 
 // parts ([{ triangles, role }]): when parts print together (a keycap and its inlaid legend), an underside resting on
 // another part isn't an overhang, and each part must be closed on its own (their shared faces are inside the print).
-// printer: the printer's rules, any printer: { bed, overhang (degrees), layer, support_gap?, bridge? } in mm.
+// printer: the printer's rules, any printer: { bed, overhang (degrees), layer, support_gap?, bridge?, line? } in mm.
 /**
  * Is it printable? Findings in plain words, each pass, warn or fail.
  * @param {Face[]} polys the model as faces (triangles are fine), Z up, the bed at z = 0
@@ -116,12 +116,13 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   // Which faces meet at each edge, so an underside's edges can be checked for material below them
   const vkey = (v) => v.map((c) => Math.round(c / eps)).join(','), byEdge = new Map();
   for (const p of polys) p.forEach((a, i) => { const k = [vkey(a), vkey(p[(i + 1) % p.length])].sort().join('|'); byEdge.set(k, [...(byEdge.get(k) || []), p]); });
-  const bridgeMax = printer.bridge ?? 5;
+  const bridgeMax = printer.bridge ?? 5, line = printer.line ?? 0.4;
   for (const [z, group] of levels) {
-    const mine = new Set(group);
+    const mine = new Set(group), at = boxOf(group);
+    if (Math.min(at.hi[0] - at.lo[0], at.hi[1] - at.lo[1]) < line - eps) continue; // a sliver narrower than a print line: the slicer lays nothing there
     const held = (a, b) => (byEdge.get([vkey(a), vkey(b)].sort().join('|')) || []).some((p) => !mine.has(p) && Math.min(...p.map((v) => v[2])) < Number(z) - eps);
     const under = flatUp.filter((u) => Number(z) - u.z > eps && Number(z) - u.z <= gap * 1.5 + eps).map((u) => u.p); // breakaway supports' tops
-    const span = widest(group, held, under), at = boxOf(group);
+    const span = widest(group, held, under);
     if (span == null) f('warn', `an underside at z ${mm(Number(z))} starts in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`, 'print.mid-air', { z: Number(z) }, at);
     else if (span > bridgeMax + eps) f('warn', `${mm(span)} mm bridge at z ${mm(Number(z))}: wider than the ${bridgeMax} mm the printer can span, needs supports`, 'print.bridge', { span, max: bridgeMax, z: Number(z) }, at);
     else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`, 'print.bridge', { span, max: bridgeMax, z: Number(z) });

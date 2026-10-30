@@ -29,6 +29,12 @@ test('breakaway supports pass; parts that start in mid-air are caught', () => {
   assert.equal(level(check([...pillar, ...box([-2, -2, 4], [2, 2, 8])], printer), /mid-air/), 'warn');
 });
 
+test('an underside narrower than a print line is a sliver, not a start in mid-air', () => {
+  const post = box([-2, -2, 0], [2, 2, 10]);
+  assert.equal(level(check([...post, ...box([2, -1, 6], [2.3, 1, 10])], printer), /underside.*mid-air/), undefined); // a 0.3 mm tab on the side
+  assert.equal(level(check([...post, ...box([2, -1, 6], [3, 1, 10])], printer), /underside.*mid-air/), 'warn'); // a 1 mm one hangs
+});
+
 test('seams: open edges are holes; a cube is closed', () => {
   assert.equal(seams(box([0, 0, 0], [1, 1, 1])).gaps, 0);
   assert.ok(seams(box([0, 0, 0], [1, 1, 1]).slice(2)).gaps > 0);
