@@ -150,6 +150,14 @@ way. The springs matter: the output's stands for what the mechanism works agains
 softer springs give more travel and a smaller advantage. The travel's gradient (an adjoint solve with the output's
 direction as the load) agrees with finite differences.
 
+Left to itself, mechanism synthesis makes point hinges: a joint one cell wide and half empty is the most compliant
+there is, and no printer makes it. So a mechanism is optimised robustly (Wang, Lazarov and Sigmund 2011): its travel
+on an eroded copy of the design (projected at a threshold of 0.7), its volume on a dilated one (0.3), the design as
+made between them. A hinge that survives erosion has real width, and the result is one piece, cell to cell. The
+price: the design as made is stiffer than the eroded copy it was optimised on, by a hinge width's worth of
+stiffness (which goes as the width cubed), so `result.mechanism` reports what the design as made does, and it moves
+less than the run's progress figures suggested.
+
 ## Checked against the published code
 
 With projection off, it matches a line-by-line port of the 88-line MATLAB code (`reference/top88.py`) step for step:
@@ -173,6 +181,7 @@ Its gradients agree with finite differences through the filter and the projectio
 ## Sources
 
 - Sigmund, O., "On the design of compliant mechanisms using topology optimization", *Mechanics of Structures and Machines* 25(4), 1997: the output-travel objective and its adjoint.
+- Wang, F., Lazarov, B. S., and Sigmund, O., "On projection methods, convergence and robust formulations in topology optimization", *Structural and Multidisciplinary Optimization* 43, 2011: the eroded, intermediate and dilated designs.
 
 - Bendsøe, Sigmund (2003). *Topology Optimization: Theory, Methods and Applications*. Springer.
 - Andreassen, Clausen, Schevenels, Lazarov, Sigmund (2011). Efficient topology optimization in MATLAB using 88 lines

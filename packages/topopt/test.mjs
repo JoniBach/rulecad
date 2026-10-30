@@ -377,14 +377,20 @@ test('a mechanism: the output travel and its gradient match finite differences, 
 });
 
 test('the force inverter: from a block that moves with the push, the optimiser makes a mechanism that moves against it', () => {
-  const s = inverter({ steps: 200 }), m = model(s);
+  const s = inverter({ steps: 400 }), m = model(s);
   const even = Float64Array.from(s.passive, (p) => (p ? (p === 1 ? 1 : 0) : 0.3));
   assert.ok(m.evaluate(even, 1).mechanism.travel < 0, 'an even block moves its right edge the way it is pushed');
   const r = optimise(s);
   assert.ok(r.mechanism.travel > 0, `the output moves against the push: ${r.mechanism.travel}`);
   // (the optimiser maximises the output's travel, not the ratio; with soft springs either side it comes out about a tenth)
   assert.ok(r.mechanism.advantage > 0.08, `the output travels a share of the input's: ${r.mechanism.advantage}`);
-  assert.ok(r.converged && r.steps < 200, `settles: ${r.steps} steps`);
+  assert.ok(r.converged && r.steps < 400, `settles: ${r.steps} steps`);
+  // Robust: one piece, cell to cell (no point hinges joined only at corners or by half-empty cells)
+  const { nx, ny } = s.grid, solid = (e) => r.density[e] >= 0.5, seen = new Uint8Array(r.density.length), stack = [r.density.findIndex((d) => d >= 0.5)];
+  seen[stack[0]] = 1;
+  while (stack.length) { const e = stack.pop(), i = e % nx, j = Math.floor(e / nx); for (const [a, b] of [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]]) { if (a < 0 || b < 0 || a >= nx || b >= ny) continue; const f = b * nx + a; if (solid(f) && !seen[f]) { seen[f] = 1; stack.push(f); } } }
+  const pieces = r.density.filter((d, e) => d >= 0.5 && !seen[e]).length;
+  assert.equal(pieces, 0, `${pieces} solid cells not joined, cell to cell, to the rest`);
   assert.ok(Math.abs(r.volume - 0.3) < 0.02, `the volume is held: ${r.volume}`);
   assert.ok(r.density.filter((d) => d > 0.1 && d < 0.9).length < r.density.length * 0.15, 'mostly solid or empty');
 });

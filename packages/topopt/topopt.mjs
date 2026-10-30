@@ -327,27 +327,37 @@ export function overhangFilter({ nx, ny, nz = 1 }, up, reach = 0) {
  * @param {{ method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend }} [options]
  */
 const SUPPORT = 10; // what a kept cell nothing holds up costs, in the part's compliances, over the kept cells
+const ERODE = 0.7, DILATE = 0.3, DILATE_EVERY = 10; // a mechanism's robust formulation: the eroded and dilated copies' thresholds, and how often the dilated volume target follows
 
 export function model(spec, { method, backend = jsBackend } = {}) {
   const g = makeGrid(spec.grid), dim = g.dim, cells = g.cells, m = g.cellDofs, ke = cellStiffness(spec.material.nu, dim);
-  const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, eta = 0.5, size = dim === 3 ? g.h : spec.thickness;
+  const { passive, penal } = spec, E = spec.material.E, Emin = E * 1e-9, ETA = 0.5, size = dim === 3 ? g.h : spec.thickness;
   const solver = method || (dim === 3 ? 'mg' : 'direct'), tol = solver === 'direct' ? undefined : 1e-6;
   const filter = densityFilter(spec.grid, spec.filter / spec.grid.h), print = spec.overhang ? overhangFilter(spec.grid, spec.overhang, spec.bridge ? Math.floor(spec.bridge / 2 / spec.grid.h) : 0) : null;
   const tilde = new Float64Array(cells), made = new Float64Array(cells), phys = new Float64Array(cells), scale = new Float64Array(cells), back = new Float64Array(cells);
   const fixedValue = (p) => (p === 1 ? 1 : 0);
   // Heaviside projection about eta: steeper as beta grows, so densities are pushed to 0 or 1 (Wang, Lazarov, Sigmund 2011)
-  const denominator = (beta) => Math.tanh(beta * eta) + Math.tanh(beta * (1 - eta));
-  const project = (t, beta) => (spec.projection ? (Math.tanh(beta * eta) + Math.tanh(beta * (t - eta))) / denominator(beta) : t);
-  const slope = (t, beta) => (spec.projection ? (beta * (1 - Math.tanh(beta * (t - eta)) ** 2)) / denominator(beta) : 1);
+  const denominator = (beta, eta = ETA) => Math.tanh(beta * eta) + Math.tanh(beta * (1 - eta));
+  // (eta: the threshold; 0.5 for the design as made, less for a dilated copy and more for an eroded one)
+  const project = (t, beta, eta = ETA) => (spec.projection ? (Math.tanh(beta * eta) + Math.tanh(beta * (t - eta))) / denominator(beta, eta) : t);
+  const slope = (t, beta, eta = ETA) => (spec.projection ? (beta * (1 - Math.tanh(beta * (t - eta)) ** 2)) / denominator(beta, eta) : 1);
   // Kept and avoided cells are set before the overhang filter as well as after it: a kept cell holds up what's above
   // it, an avoided cell holds up nothing, and a kept cell is printed (made) only as far as what's below holds it up,
   // which is what the kept regions' support cost (below) is measured on. The part is analysed with every kept cell solid.
-  const physical = (x, beta) => {
+  const physical = (x, beta, eta = ETA) => {
     filter.apply(x, tilde);
     for (let e = 0; e < cells; e++) if (passive[e]) tilde[e] = fixedValue(passive[e]);
     if (print) print.apply(tilde, made); else made.set(tilde);
-    for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(made[e], beta);
+    for (let e = 0; e < cells; e++) phys[e] = passive[e] ? fixedValue(passive[e]) : project(made[e], beta, eta);
     return phys;
+  };
+  // The material's gradient alone (no solve): what a copy of the design at a threshold is worth per design density
+  const volumeGradient = (x, beta, eta = ETA) => {
+    physical(x, beta, eta);
+    const dv = new Float64Array(cells);
+    for (let e = 0; e < cells; e++) dv[e] = passive[e] ? 0 : slope(made[e], beta, eta);
+    toDesign(dv);
+    return dv;
   };
   // Kept regions must print. With a build direction, how much of the kept material nothing holds up (0 to 1), and its
   // cost: a kept cell nothing holds up costs SUPPORT times the part's compliance, shared over the kept cells, so the
@@ -355,10 +365,17 @@ export function model(spec, { method, backend = jsBackend } = {}) {
   // would hold it up.
   const keptCells = Int32Array.from(Array.from(passive).flatMap((p, e) => (p === 1 ? [e] : [])));
   const unsupported = (beta) => (print && keptCells.length ? keptCells.reduce((t, e) => t + 1 - project(made[e], beta), 0) / keptCells.length : 0);
+  // Back through the overhang filter and the density filter to the design densities (kept and avoided cells don't
+  // change: their own densities are fixed). Right after the physical() it belongs to.
+  const toDesign = (d) => {
+    if (print) { print.adjoint(d, back); d.set(back); }
+    for (let e = 0; e < cells; e++) if (passive[e]) d[e] = 0;
+    filter.adjoint(d, back); d.set(back);
+  };
   let last = null;
   // Each step solves only the load cases it optimises for (weight above 0); every case is solved when all is set
-  const evaluate = (x, beta, { all = false, multipliers } = {}) => {
-    physical(x, beta);
+  const evaluate = (x, beta, { all = false, multipliers, eta = ETA } = {}) => {
+    physical(x, beta, eta);
     for (let e = 0; e < cells; e++) scale[e] = size * (Emin + Math.pow(phys[e], penal) * (E - Emin));
     const active = spec.loads.map((l, c) => (all || l.weight > 0 ? c : -1)).filter((c) => c >= 0);
     const run = solve(g, { scale, ke, fixed: spec.fixed, loads: active.map((c) => spec.loads[c].force), ...(spec.springs ? { springs: spec.springs } : {}), method: solver, backend, start: last && active.map((c) => last[c]), ...(tol ? { tol } : {}) }), solved = run.u;
@@ -382,13 +399,8 @@ export function model(spec, { method, backend = jsBackend } = {}) {
     // Back through the projection, the overhang filter and the density filter to the design densities; kept and
     // avoided cells don't change
     const lack = unsupported(beta);
-    for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(made[e], beta); dc[e] *= s; dv[e] = s; }
+    for (let e = 0; e < cells; e++) { const s = passive[e] ? 0 : slope(made[e], beta, eta); dc[e] *= s; dv[e] = s; }
     if (print && keptCells.length) { const w = (SUPPORT * Math.max(compliance, 1e-12)) / keptCells.length; for (const e of keptCells) dc[e] = -w * slope(made[e], beta); }
-    const toDesign = (d) => {
-      if (print) { print.adjoint(d, back); d.set(back); }
-      for (let e = 0; e < cells; e++) if (passive[e]) d[e] = 0;
-      filter.adjoint(d, back); d.set(back);
-    };
     toDesign(dc); toDesign(dv);
     const stress = Ss ? stressLimits(u, active, run.again, multipliers || { lam: active.map(() => new Float64Array(cells * Ss.length)), mu: 1 }) : null;
     // A mechanism: how far the output moves along its direction under the input (travel), and its gradient: with the
@@ -402,7 +414,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
         let t = 0;
         const o = e * m;
         for (let a = 0; a < m; a++) { let q = 0; for (let b = 0; b < m; b++) q += ke[a * m + b] * u0[g.edof[o + b]]; t += lam[g.edof[o + a]] * q; }
-        d[e] = passive[e] ? 0 : -penal * Math.pow(phys[e], penal - 1) * (E - Emin) * size * t * slope(made[e], beta);
+        d[e] = passive[e] ? 0 : -penal * Math.pow(phys[e], penal - 1) * (E - Emin) * size * t * slope(made[e], beta, eta);
       }
       toDesign(d);
       mechanism = { travel, input, d };
@@ -460,7 +472,7 @@ export function model(spec, { method, backend = jsBackend } = {}) {
     });
     return { J, d, h, peak };
   };
-  return { physical, evaluate, cells, passive, limits: Ss ? cells * Ss.length : 0 };
+  return { physical, evaluate, volumeGradient, cells, passive, limits: Ss ? cells * Ss.length : 0 };
 }
 
 /**
@@ -645,11 +657,15 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
   const mmaStep = lightest ? mma({ n, m: 0, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : mechanism ? mma({ n, m: 1, xmin: new Float64Array(n), xmax: new Float64Array(n).fill(1) }) : null;
   const multipliers = lightest ? { lam: spec.loads.filter((l) => l.weight > 0).map(() => new Float64Array(m.limits)), mu: 10 } : undefined;
   const xf = new Float64Array(n), pick = (d) => Float64Array.from(freeCells, (e) => d[e]);
-  let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null;
+  let step = 0, change = 1, converged = false, beta = 1, sinceBeta = 0, peak = null, targetD = target;
   const tried = new Float64Array(cells); // the last design the bisection analysed, and how much it filled
   while (step < spec.steps) {
     step++; sinceBeta++;
-    const { compliance, dc, dv, stress, mechanism: mech } = m.evaluate(x, beta, { multipliers });
+    // A mechanism is optimised robustly (after Wang, Lazarov and Sigmund 2011): its travel on an eroded copy of the
+    // design (threshold ERODE), its volume on a dilated one (DILATE), the design as made between them. A hinge that
+    // survives erosion has real width, so no hinge is a point. (The design as made is stiffer than the eroded copy
+    // it's optimised on, by a hinge width's worth; a worst-of-three objective would close that gap, and is to come.)
+    const { compliance, dc, dv, stress, mechanism: mech } = m.evaluate(x, beta, { multipliers, ...(mechanism ? { eta: ERODE } : {}) });
     // A sharper projection magnifies each change, so the move limit shrinks with it (else the design flickers)
     const limit = move * Math.min(1, 2 / beta);
     if (lightest) {
@@ -668,9 +684,12 @@ export function optimise(spec, { onStep, method, backend = jsBackend, tol = 0.01
       }
     } else if (mechanism) {
       history.push(mech.travel);
-      const used = m.physical(x, beta).reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0);
+      // The dilated copy's material, kept to a target that puts the design as made at the volume asked for (the
+      // target follows the ratio of the two, re-measured every DILATE_EVERY steps)
+      const usedD = m.physical(x, beta, DILATE).reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0), dvD = m.volumeGradient(x, beta, DILATE);
+      if (step % DILATE_EVERY === 1) { const usedI = m.physical(x, beta).reduce((s, v, e) => s + (passive[e] !== -2 ? v : 0), 0); targetD = (target * usedD) / Math.max(usedI, 1e-9); }
       xf.set(pick(x));
-      mmaStep(xf, -mech.travel, pick(mech.d).map((v) => -v), [used / target - 1], [pick(dv).map((v) => v / target)], limit); // (minimising −travel)
+      mmaStep(xf, -mech.travel, pick(mech.d).map((v) => -v), [usedD / targetD - 1], [pick(dvD).map((v) => v / targetD)], limit); // (minimising −travel)
       xnew.set(x);
       freeCells.forEach((e, k) => { xnew[e] = xf[k]; });
     } else {
