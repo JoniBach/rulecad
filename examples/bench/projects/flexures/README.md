@@ -59,8 +59,27 @@ stiffen as they curl and their tips to come nearer the rail (the elastica in `@r
   61 N·mm a radian in PLA, and 2% strain at 41°. This is the one flexure that bends across its layers, so expect PLA
   to whiten at the bridges first; the PETG plate is the one to trust.
 
+## The third plate: things that click, turn and hold
+
+`sampler3` (`npx cad export flexures/sampler3`):
+
+- **A folded-beam guide**, 25 mm beams of three lines: the MEMS suspension. Push the shuttle toward the rail: 2.74 N/mm
+  in PLA (1.85 PETG), 6.6 mm to 2% strain, and no drift along the rail.
+- **A cartwheel pivot**, 10 mm spokes of two lines: push the arm's end sideways. 2,200 N·mm/rad in PLA (1,490 PETG);
+  2% strain at 5.3°, 2.8 mm at the arm's end.
+- **An elliptical notch hinge**, notches 6 mm along by 3 deep on a two-line neck: half the circular notch's stiffness
+  (294 N·mm/rad in PLA against 566) and nearly twice the angle at 2% (8.2° against 4.3°). Compare the two on plate 1.
+- **Two snap hooks** under catch lips, one square-backed and one sloped at 60°. Push a hook's tip away from its post
+  until it clears the lip (0.8 mm: 2.5 N in PLA) and let go for the click. The square one holds whatever pulls it; the
+  sloped one lets go at about four times its insertion force.
+- **A ratchet.** Snap the wheel off its tab and pin it on the boss; its 24 teeth meet the tall pawl's upper half. Turn
+  it one way by the rim: a click each tooth at 0.73 N (PLA); the other way it holds.
+
 ## Results
 
-Record them in `results.json` beside this file (specimen, material, weights and travels, the strain or angle at
-failure, cycles), as the lever and bracket benches do, and they'll go into the archive's experiment page and, with a
+`results.json` beside this file holds the predictions for every specimen on both plates (made from the models, in PLA
+and PETG), a `measured` entry for each with its readings (`[load_g, travel_mm]`, three at increasing loads, per print)
+and its failure (the travel or angle at whitening or a set, and where), the print settings, and a `strain_limit` for
+each material once the failures say what it is. Filled in, it goes to the archive's
+[flexures experiment](https://jonibach.github.io/rulecad-archive/experiments/flexures/) and, with this file as the
 source, into the material rules as `strain_limit`.

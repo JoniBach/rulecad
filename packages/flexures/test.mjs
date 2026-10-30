@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, printable } from '@rulecad/flexures';
+import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, ellipticalHinge, ellipticalHingeModel, cartwheel, cartwheelModel, snapHook, snapHookModel, ratchetWheel, ratchetPawl, ratchetModel, foldedGuide, foldedGuideModel, printable } from '@rulecad/flexures';
 import { grid, analyse } from '@rulecad/fea';
 import jscad from '@jscad/modeling';
 import { shape as pieces } from '@rulecad/printcheck';
@@ -167,5 +167,51 @@ test('a constant-force mechanism: the force stays within 5% over a quarter of th
   assert.ok(onePiece(coupler) && onePiece(crank) && onePiece(letJoint({ width: 30, thickness: 1.2, bar: 2, slot: 1.2, bridge: 2.5 })));
   assert.ok(measureBoundingBox(coupler)[1][0] > 40 && Math.abs(measureBoundingBox(crank)[1][0] - 23) < 1e-6, 'a boss past the leaf\'s tip; the crank half the leaf, boss to boss');
   assert.ok(measureVolume(crank) < 20 * 6 * 8 + 2 * Math.PI * 9 * 8, 'holes through the bosses');
+});
+
+test('an elliptical hinge: with equal axes it is the circular notch within a few per cent of Paros and Weisbord; longer along the beam, softer and further at a strain', () => {
+  const circle = ellipticalHingeModel({ along: 3, across: 3, neck: 0.84, width: 8 }, pla), pw = notchHingeModel({ radius: 3, neck: 0.84, width: 8 }, pla);
+  assert.ok(Math.abs(circle.stiffness / pw.stiffness - 1) < 0.06, `${circle.stiffness} against ${pw.stiffness}`);
+  const long = ellipticalHingeModel({ along: 6, across: 3, neck: 0.84, width: 8 }, pla);
+  assert.ok(long.stiffness < circle.stiffness / 1.8 && long.angle(0.02) > 1.8 * circle.angle(0.02) && Math.abs(long.strain(long.angle(0.02)) - 0.02) < 1e-12);
+  const shape = ellipticalHinge({ along: 6, across: 3, neck: 0.84, width: 8 }), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape) && Math.abs(box[1][1] - box[0][1] - 6.84) < 1e-6 && Math.abs(box[1][0] - 60) < 1e-6, 'two arms of 24 and the notches between');
+});
+
+test('a cartwheel pivot: four spokes bent by the hub\'s turn, stiffer with a bigger hub; one piece with the arm out through the rim', () => {
+  const p = { spoke: 10, thickness: 0.84, width: 8 }, m = cartwheelModel(p, pla), I = (8 * 0.84 ** 3) / 12;
+  assert.ok(Math.abs(m.stiffness - (16 * 2680 * I * (1 + 1.5 * 2 / 10)) / 10) < 1e-9 && Math.abs(m.strain(m.angle(0.02)) - 0.02) < 1e-12);
+  assert.ok(cartwheelModel({ ...p, hub: 4 }, pla).stiffness > m.stiffness);
+  const shape = cartwheel(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape) && Math.abs(box[0][0] + 15) < 1e-6 && Math.abs(box[1][0] - 35) < 1e-6, 'a rim of radius 15 and an arm 20 past it');
+});
+
+test('a snap-fit hook: the leaf\'s force at the undercut, insertion along the lead, a square back holds and a sloped one lets go', () => {
+  const p = { length: 15, thickness: 1.26, width: 8, undercut: 1.5 }, m = snapHookModel(p, pla), leafM = leafModel(p, pla);
+  assert.ok(Math.abs(m.force - leafM.stiffness * 1.5) < 1e-9 && Math.abs(m.strain(1.5) - 0.0126) < 1e-4);
+  assert.ok(m.insertion > m.force && m.insertion < 1.2 * m.force && m.removal === Infinity && m.holds, 'at 30° with μ 0.3, a little over the deflection force; square holds');
+  const sloped = snapHookModel({ ...p, back: 60 }, pla);
+  assert.ok(sloped.removal > 3 * sloped.insertion && !sloped.holds, `${sloped.removal} to pull out against ${sloped.insertion} to push in`);
+  assert.ok(m.undercut(0.02) > 1.5 && m.undercut(0.01) < 1.5);
+  const shape = snapHook(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape) && Math.abs(box[1][1] - (0.63 + 1.5)) < 1e-6 && Math.abs(box[1][0] - 15) < 1e-6, 'the hook stands the undercut above the beam at its tip');
+});
+
+test('a ratchet: the pawl lifts a tooth height each click, the click force from the ramp\'s angle; the wheel a polygon of teeth round a pin hole', () => {
+  const wheel = { teeth: 24, radius: 12, height: 1.2, width: 8 }, pawl = { length: 20, thickness: 0.84, width: 8 }, m = ratchetModel(wheel, pawl, pla);
+  assert.ok(Math.abs(m.pitch - Math.PI) < 1e-9 && Math.abs(m.ramp - Math.atan2(1.2, Math.PI)) < 1e-12 && m.holds);
+  assert.ok(Math.abs(m.lift - leafModel(pawl, pla).stiffness * 1.2) < 1e-9 && m.click > 0 && Math.abs(m.click - (m.lift * (0.3 + Math.tan(m.ramp))) / (1 - 0.3 * Math.tan(m.ramp))) < 1e-9);
+  assert.ok(m.strain(1.2) < 0.01, 'a tooth is well within the pawl\'s strain');
+  const w = ratchetWheel(wheel), box = measureBoundingBox(w);
+  assert.ok(onePiece(w) && Math.abs(box[1][0] - 12) < 1e-6 && measureVolume(w) < Math.PI * 144 * 8 && measureVolume(w) > Math.PI * 10.8 * 10.8 * 8 - Math.PI * 1 * 8, 'teeth between the root and tip circles, a hole in the middle');
+  assert.ok(onePiece(ratchetPawl(pawl)));
+});
+
+test('a folded-beam guide: a compound guide\'s stiffness and travel in a shorter box, drawn as one piece with a floating truss each side', () => {
+  const p = { length: 25, thickness: 1.26, width: 8, gap: 10 }, m = foldedGuideModel(p, pla), two = compoundGuideModel(p, pla);
+  assert.ok(m.stiffness === two.stiffness && m.travel(0.02) === two.travel(0.02) && m.drop(3) === 0);
+  const shape = foldedGuide(p), box = measureBoundingBox(shape);
+  assert.ok(onePiece(shape) && Math.abs(box[1][0] - box[0][0] - 2 * (1.5 + 5 + 3 + 25 + 3)) < 1e-6, `${box[1][0] - box[0][0]} wide: shuttle, clearances, posts, beams and trusses`);
+  assert.ok(box[1][1] - box[0][1] < 2 * (10 + 2 * 1.26) + 5 + 3, 'and no taller than the gap, the beams, the clearance and the base');
 });
 

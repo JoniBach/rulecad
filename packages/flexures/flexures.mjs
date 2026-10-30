@@ -364,6 +364,156 @@ export function constantForceModel({ leaf: l, thickness: t, width: w, crank, res
 }
 
 /**
+ * An elliptical notch hinge: a notch hinge whose notches are half-ellipses, longer along the beam than deep (or the
+ * other way), so the bending spreads along a longer neck for less stress at the same angle (Smith 2000; Lobontiu
+ * 2003). With equal axes it is the circular notch hinge. Its stiffness is the bending compliance integrated along the
+ * notch, ∫ dx / EI(x) with the neck's height t + 2b(1 − √(1 − (x/a)²)), which for a circle agrees with Paros and
+ * Weisbord's formula within a few per cent.
+ * @param {{ along: number, across: number, neck: number, width: number, arms?: number }} p along: each notch's
+ *   semi-axis along x (a); across: its semi-axis along y (b, the notch's depth); neck: the thinnest part; width: up z;
+ *   arms: the blocks either side, along x (default 4 × along)
+ */
+export function ellipticalHinge({ along: a, across: b, neck: t, width, arms }) {
+  const arm = arms ?? 4 * a, total = 2 * arm + 2 * a, h = t + 2 * b;
+  const bar = block(total / 2, 0, width / 2, [total, h, width]);
+  const notch = (y) => translate([arm + a, y, width / 2], jscad.transforms.scale([a, b, 1], cylinder({ radius: 1, height: width + 2, segments: 64 })));
+  return subtract(bar, notch(t / 2 + b), notch(-t / 2 - b));
+}
+/**
+ * @param {{ along: number, across: number, neck: number, width: number }} p @param {Material & { concentration?: number }} m
+ *   concentration: the notch's stress concentration (default 1.2, a well-rounded notch; a flatter ellipse's is less)
+ * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, stress: (angle: number) => number }}
+ *   stiffness in N·mm a radian; angles in radians
+ */
+export function ellipticalHingeModel({ along: a, across: b, neck: t, width: w }, { E, concentration = 1.2 }) {
+  const n = 2000, dx = (2 * a) / n;
+  let compliance = 0;
+  for (let i = 0; i < n; i++) { const x = -a + (i + 0.5) * dx, h = t + 2 * b * (1 - Math.sqrt(Math.max(0, 1 - (x / a) ** 2))); compliance += dx / ((E * w * h ** 3) / 12); }
+  const stiffness = 1 / compliance, Imin = (w * t ** 3) / 12, strain = (th) => (concentration * stiffness * th * (t / 2)) / (E * Imin);
+  return { stiffness, strain, angle: (e) => e / strain(1), stress: (th) => E * strain(th) };
+}
+
+/**
+ * A cartwheel pivot: two leaves crossing at a hub inside a rim, joined where they cross, so the hub turns about the
+ * crossing with little drift: the flat-printable cousin of the cross-axis pivot (whose leaves pass each other in
+ * different planes). The rim is one body, the hub and its arm the other. Each half-leaf is a spoke from the hub to
+ * the rim, bent by the hub's turn: stiffness 16 EI / s × (1 + 1.5 r / s) for spokes s long from a hub of radius r
+ * (four beams fixed at the rim, their hub ends turned through θ and carried round by rθ), and the strain at the hub
+ * end 2tθ / s × (1 + 1.5 r / s).
+ * @param {{ spoke: number, thickness: number, width: number, hub?: number, rim?: number, arm?: number, opening?: number }} p
+ *   spoke: hub edge to rim (s); hub: the hub's radius (default 2 × thickness, at least 2); rim: the ring's radial
+ *   thickness (default 3); arm: how far the hub's arm reaches past the rim along +x (default 2 × spoke); opening: the
+ *   gap in the rim the arm passes through, degrees (default 60)
+ */
+export function cartwheel({ spoke: s, thickness: t, width, hub, rim = 3, arm, opening = 60 }) {
+  const r = hub ?? Math.max(2, 2 * t), Ri = r + s, Ro = Ri + rim, reach = arm ?? 2 * s, aw = Math.max(3, 2 * t);
+  const ring = subtract(cylinder({ radius: Ro, height: width, center: [0, 0, width / 2], segments: 96 }), cylinder({ radius: Ri, height: width + 2, center: [0, 0, width / 2], segments: 96 }));
+  const gap = block(Ro / 2 + 1, 0, width / 2, [Ro + 2, 2 * Ro * Math.sin((opening * Math.PI) / 360), width + 2]);
+  const leaf = (angle) => jscad.transforms.rotateZ(angle, block(0, 0, width / 2, [2 * Ri + 1, t, width]));
+  return union(subtract(ring, gap), cylinder({ radius: r, height: width, center: [0, 0, width / 2], segments: 48 }), leaf(Math.PI / 4), leaf(-Math.PI / 4), block((Ro + reach) / 2, 0, width / 2, [Ro + reach, aw, width]));
+}
+/**
+ * @param {{ spoke: number, thickness: number, width: number, hub?: number }} p @param {Material} m
+ * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, stress: (angle: number) => number }}
+ *   stiffness in N·mm a radian; angles in radians
+ */
+export function cartwheelModel({ spoke: s, thickness: t, width: w, hub }, { E }) {
+  const r = hub ?? Math.max(2, 2 * t), I = (w * t ** 3) / 12, carried = 1 + (1.5 * r) / s, stiffness = (16 * E * I * carried) / s, strain = (th) => (2 * t * th * carried) / s;
+  return { stiffness, strain, angle: (e) => e / strain(1), stress: (th) => E * strain(th) };
+}
+
+/**
+ * A snap-fit hook: a cantilever with a hook at its tip, the commonest compliant feature in a printed enclosure. Pushed
+ * into its catch the lead face deflects the beam by the undercut, and it springs back behind the catch; pulled, the
+ * back face either holds (square) or lets go at a higher force (sloped). The deflection force is the leaf's: P = k y
+ * with the strain 3ty / 2L² at the root; the insertion force W = P (μ + tan α) / (1 − μ tan α) and the removal force
+ * the same with the back angle (the BASF and Bayer snap-fit design guides).
+ * @param {{ length: number, thickness: number, width: number, undercut: number, lead?: number, back?: number, root?: number }} p
+ *   undercut: the hook's height off the beam (y); lead: the insertion face's angle from the beam, degrees (default
+ *   30); back: the retention face's (default 90, square: holds); root: the block the beam grows from, along x
+ *   (default 2 × thickness, at least 3)
+ */
+export function snapHook({ length: L, thickness: t, width, undercut: y, lead = 30, back = 90, root }) {
+  const b = root ?? Math.max(3, 2 * t), rise = y / Math.tan((lead * Math.PI) / 180), fall = back >= 90 ? 0 : y / Math.tan((back * Math.PI) / 180), flat = Math.max(t, 1);
+  const top = t / 2, pts = [[L, top], [L - rise, top + y], [L - rise - flat, top + y], [L - rise - flat - fall, top]]; // the hook: lead face, flat, back face
+  const hook = jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: [[L, top - t / 2], ...pts, [L - rise - flat - fall, top - t / 2]] }));
+  return union(block(-b / 2, 0, width / 2, [b, Math.max(2 * t, 3), width]), block(L / 2, 0, width / 2, [L, t, width]), hook);
+}
+/**
+ * @param {{ length: number, thickness: number, width: number, undercut: number, lead?: number, back?: number }} p
+ * @param {Material & { friction?: number }} m friction: μ between hook and catch (default 0.3; printed plastics 0.2 to 0.6)
+ * @returns {Model & { force: number, insertion: number, removal: number, holds: boolean, undercut: (strain: number) => number }}
+ *   force: to deflect the hook its undercut; insertion and removal: along the push, N (removal Infinity when the back
+ *   face is square); undercut: the most the hook may be deflected at a strain
+ */
+export function snapHookModel({ length: L, thickness: t, width: w, undercut: y, lead = 30, back = 90 }, { E, friction: mu = 0.3 }) {
+  const m = leafModel({ length: L, thickness: t, width: w }, { E }), P = m.stiffness * y;
+  const along = (deg) => { const tan = Math.tan((deg * Math.PI) / 180); return deg >= 90 || mu * tan >= 1 ? Infinity : (P * (mu + tan)) / (1 - mu * tan); };
+  return { ...m, force: P, insertion: along(lead), removal: along(back), holds: !Number.isFinite(along(back)), undercut: (e) => m.travel(e) };
+}
+
+/**
+ * A ratchet: a wheel of saw teeth on a pin and a leaf pawl whose tip rides them. Turned one way, each tooth's ramp
+ * lifts the pawl by the tooth height and drops it with a click; turned the other, the pawl's tip meets a tooth's
+ * square face and holds. A one-way click: a sear, a winder, a cable tie. The teeth are chords, so the ramp's angle
+ * from the rim is atan(height / pitch).
+ * @param {{ teeth: number, radius: number, height: number, width: number, pin?: number }} p teeth: how many; radius:
+ *   to the teeth's tips; height: a tooth's, tip to root; width: up z; pin: the pin's diameter (default 1.75, filament)
+ */
+export function ratchetWheel({ teeth: n, radius: R, height: ht, width, pin = 1.75 }) {
+  const pts = [];
+  for (let i = 0; i < n; i++) { const a0 = (2 * Math.PI * i) / n, a1 = (2 * Math.PI * (i + 1)) / n; pts.push([(R - ht) * Math.cos(a0), (R - ht) * Math.sin(a0)], [R * Math.cos(a1), R * Math.sin(a1)]); }
+  return subtract(jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: pts })), cylinder({ radius: pin / 2 + 0.1, height: width + 2, center: [0, 0, width / 2], segments: 32 }));
+}
+/**
+ * The pawl: a leaf from a root block, its tip squared to meet the teeth. Drawn along x; its tip at x = length rides a
+ * wheel whose teeth cross the tip's path.
+ * @param {{ length: number, thickness: number, width: number, root?: number }} p
+ */
+export function ratchetPawl({ length: L, thickness: t, width, root }) {
+  const b = root ?? Math.max(3, 2 * t);
+  return union(block(-b / 2, 0, width / 2, [b, Math.max(2 * t, 3), width]), block(L / 2, 0, width / 2, [L, t, width]));
+}
+/**
+ * @param {{ teeth: number, radius: number, height: number }} wheel @param {{ length: number, thickness: number, width: number }} pawl
+ * @param {Material & { friction?: number }} m
+ * @returns {Model & { ramp: number, pitch: number, lift: number, click: number, holds: true }} ramp: the teeth's
+ *   angle, radians; pitch: tooth to tooth at the rim, mm; lift: the force to lift the pawl a tooth; click: the force
+ *   along the rim to turn the wheel past a tooth; the pawl's strain is at the tooth height
+ */
+export function ratchetModel({ teeth: n, radius: R, height: ht }, pawl, { E, friction: mu = 0.3 }) {
+  const m = leafModel(pawl, { E }), pitch = (2 * Math.PI * R) / n, ramp = Math.atan2(ht, pitch), tan = Math.tan(ramp), lift = m.stiffness * ht;
+  return { ...m, ramp, pitch, lift, click: mu * tan < 1 ? (lift * (mu + tan)) / (1 - mu * tan) : Infinity, holds: true };
+}
+
+/**
+ * A folded-beam guide: the suspension of every MEMS stage, in a printed part. A shuttle hangs on two folds, one each
+ * side: a beam out along x to a floating truss, a beam back to an anchor beside the shuttle. The shuttle moves along
+ * y; each fold is two fixed-guided beams in series, and the two folds act in parallel, so the stiffness is E w t³ / L³
+ * with each beam taking half the travel (strain 3t(δ/2) / L²), the same as a compound guide in a shorter box. The
+ * folds' pulls on the shuttle cancel by symmetry, so it doesn't drift along x; past a few thicknesses of travel the
+ * beams stretch and the guide stiffens.
+ * Drawn: the shuttle is a T, its bar carrying the upper beams out to the trusses; the lower beams come back to posts
+ * standing on a base bar under the shuttle, a clearance from it.
+ * @param {Leaf & { gap: number, clearance?: number, shuttle?: number, end?: number }} p gap: between a fold's two
+ *   beams; clearance: shuttle to posts and base, the travel it can make (default gap / 2); shuttle: the shuttle's
+ *   width along x (default 2 × thickness, at least 3); end: the trusses', posts' and base's thickness (default the same)
+ */
+export function foldedGuide({ length: L, thickness: t, width, gap, clearance, shuttle, end }) {
+  const e = end ?? Math.max(3, 2 * t), s = shuttle ?? e, c = clearance ?? gap / 2;
+  const y1 = gap / 2 + t / 2, y2 = -y1, x0 = s / 2 + c + e, parts = [block(0, 0, width / 2, [s, gap + 2 * t, width]), block(0, y1, width / 2, [2 * x0, t, width])]; // the shuttle and its bar
+  for (const sg of [1, -1]) {
+    parts.push(block(sg * (x0 + L / 2), y1, width / 2, [L, t, width]), block(sg * (x0 + L / 2), y2, width / 2, [L, t, width])); // the fold's beams
+    parts.push(block(sg * (x0 + L + e / 2), 0, width / 2, [e, gap + 2 * t, width])); // the truss
+    parts.push(block(sg * (x0 - e / 2), y2 - (c + e) / 2, width / 2, [e, t + c + e, width])); // the post, from inside the base bar up to the lower beam
+  }
+  parts.push(block(0, y2 - t / 2 - c - e / 2, width / 2, [2 * (x0 + L + e), e, width])); // the base bar
+  return union(...parts);
+}
+/** @param {Leaf} p @param {Material} m @returns {Model & { drop: (travel: number) => number }} */
+export function foldedGuideModel(p, m) { return compoundGuideModel(p, m); }
+
+/**
  * How a flexure prints, as findings (pass, warn, fail, in plain words): the thickness in whole extrusion lines and at
  * least two of them, the width in whole layers, and the strain at its travel against the material's limit.
  * @param {{ thickness: number, width: number, travel?: number }} p
