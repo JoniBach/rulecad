@@ -1,6 +1,6 @@
 {
   "title": "Guitar hanger: a wall mount that cradles a Telecaster's neck",
-  "description": "A wall hanger for a six-string Telecaster, hung by its neck: the neck sits in a U just below the headstock, which rests on the U's two arms. Printed lying on its back (the wall side on the bed), so z is out from the wall, y up the wall. Only the two screw bosses on the wall and the two arm pads the headstock rests on are kept; the optimiser grows the arms from the bosses to the pads, braced against the guitar's weight (4 kg, with a margin), a tug away from the wall and a knock sideways. The gap between the arms clears the neck at the nut (42 mm) with room for a foam pad each side, and is narrower than the headstock. 12% of a 110 × 130 × 70 mm space on 2.5 mm cells, struts at least 6.5 mm, printable without supports in the +z direction.",
+  "description": "A wall hanger for a six-string Telecaster, hung by its neck: the neck sits in a U just below the headstock, which rests on the U's two arms. Printed lying on its back (the wall side on the bed), so z is out from the wall, y up the wall. Only the two screw bosses on the wall and the two arm pads the headstock rests on are kept, and the neck's channel between the arms, down the whole wall from a little behind the pads' underside outward, is kept empty, as is a column over each screw boss for the screw's head and the driver; the optimiser grows the arms from the bosses to the pads, braced against the guitar's weight (4 kg, with a margin), a tug away from the wall and a knock sideways. The gap between the arms clears the neck at the nut (42 mm) with room for a foam pad each side, and is narrower than the headstock. 12% of a 110 × 130 × 70 mm space on 2.5 mm cells, struts at least 6.5 mm, printable without supports in the +z direction.",
   "uses": [
     "x1c"
   ],
@@ -83,6 +83,21 @@
         "+z"
       ],
       "rule": "+z: only what prints without supports, lying on its back; none: optimised freely"
+    },
+    "neck_room": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Room behind the neck: the channel starts this far behind the pads' underside"
+    },
+    "channel": {
+      "value": "height - pad_height - neck_room",
+      "unit": "mm",
+      "rule": "Where the neck's channel starts, out from the wall: the neck lies between the arms, its back level with the pads' underside, and runs down the wall"
+    },
+    "driver": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Radius kept clear above each screw boss, for the screw head and the driver: a 4 mm screw's head is 8 mm across"
     }
   },
   "variants": {
@@ -289,6 +304,43 @@
         0
       ],
       "case": "knocked"
+    }
+  ],
+  "avoid": [
+    {
+      "at": [
+        0,
+        0,
+        "(channel + height) / 2"
+      ],
+      "size": [
+        "gap",
+        "depth",
+        "height - channel"
+      ],
+      "label": "the neck's channel: between the arms and down the wall, from behind the pads' underside outward"
+    },
+    {
+      "at": [
+        0,
+        "spread",
+        "(boss_depth + height) / 2"
+      ],
+      "r": "driver",
+      "length": "height - boss_depth",
+      "axis": "z",
+      "label": "screw head and driver room over the upper boss"
+    },
+    {
+      "at": [
+        0,
+        "0 - spread",
+        "(boss_depth + height) / 2"
+      ],
+      "r": "driver",
+      "length": "height - boss_depth",
+      "axis": "z",
+      "label": "screw head and driver room over the lower boss"
     }
   ]
 }
