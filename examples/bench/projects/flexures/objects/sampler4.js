@@ -1,5 +1,5 @@
 // The fourth flexure sampler: stops and two mechanisms made compliant, on one rail along x. A leaf with travel stops at
-// its tip, placed where PLA's 2% strain says; a contact-aided leaf whose stop bar stiffens it partway; a parallelogram
+// its tip, placed where PLA's 2% strain says; a pre-curved leaf; a contact-aided leaf whose stop bar stiffens it partway; a parallelogram
 // four-bar on notch hinges; and tweezers, their spring in the rail.
 import jscad from '@jscad/modeling'
 const { cuboid } = jscad.primitives
@@ -16,6 +16,9 @@ export function main (v) {
   at(up(f.leaf(leaf)), x, -v.overlap)
   for (const sg of [1, -1]) parts.push(cuboid({ center: [x - sg * (v.thin / 2 + stop.at + v.stop_post / 2), (v.length - v.overlap) / 2 - v.rail / 2, h / 2], size: [v.stop_post, v.length - v.overlap + v.rail, h] })) // the posts, from the rail to the tip
   x += v.stop_reach + v.stop_post / 2 + v.spacing
+  // A pre-curved leaf, its arc bowing to +x, its root in the rail
+  at(up(f.curvedLeaf({ length: v.length, thickness: v.thin, width: h, rise: v.rise })), x + v.rise, -v.overlap)
+  x += v.rise + v.spacing
   // The contact-aided leaf: its stop bar on the +x side, both growing from the rail
   x += v.gap + v.stop_post
   at(up(f.contactLeaf({ length: v.length, thickness: v.thin, width: h, stop: v.contact_at, gap: v.gap, post: v.stop_post })), x, -v.overlap)

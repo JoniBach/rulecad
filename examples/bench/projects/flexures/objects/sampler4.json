@@ -1,6 +1,6 @@
 {
   "name": "sampler4",
-  "title": "Flexure sampler 4: travel stops, a contact-aided leaf, a parallelogram and tweezers",
+  "title": "Flexure sampler 4: travel stops, a curved leaf, a contact-aided leaf, a parallelogram and tweezers",
   "version": "0.1.0",
   "uses": [
     "x1c",
@@ -112,6 +112,11 @@
       "value": 6,
       "unit": "mm",
       "rule": "The tweezers' spring off the rail, on a post at its middle: room for the spring to bend"
+    },
+    "rise": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The pre-curved leaf's tip off its chord at rest"
     }
   }
 }

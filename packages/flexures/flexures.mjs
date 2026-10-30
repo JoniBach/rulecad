@@ -595,21 +595,67 @@ export function snapPinModel({ diameter: d, lip = 0.4, slot, gap = 1, lead = 45,
 }
 
 /**
- * A travel stop for a leaf: a post each side of the tip, placed where the material's strain limit says the travel
- * must end, less a margin, so the leaf meets the stop before it meets the limit. The rule as a shape: the stop is at
- * factor × travel(strainLimit).
+ * A travel stop: a post each side of a flexure's moving end, placed where the material's strain limit says the travel
+ * must end, less a margin, so the flexure meets the stop before it meets the limit. The rule as a shape: the stop is
+ * at factor × travel(strainLimit). For a leaf by default; give any model whose travel is along y at the end (a
+ * fixed-guided beam, a guide's shuttle, a serpentine's last leaf) with where that end is.
  * @param {Leaf} p @param {Material} m with strainLimit
- * @param {{ factor?: number, post?: number, reach?: number }} [o] factor: the share of the limit the stop allows
- *   (default 0.8); post: the stops' size along x and y (default 3); reach: how far back from the tip the stop sits
- *   along x (default 0: at the tip)
+ * @param {{ factor?: number, post?: number, reach?: number, model?: Model, end?: number[] }} [o] factor: the share of
+ *   the limit the stop allows (default 0.8); post: the stops' size along x and y (default 3); reach: how far back from
+ *   the end the stop sits along x (default 0); model: the flexure's model (default the leaf's); end: the moving
+ *   end's [x, y] (default the leaf's tip)
  * @returns {{ shape: object, at: number, limit: number }} shape: the two posts, as a JSCAD geom3, drawn on the
- *   leaf's ground (x < 0 is the root's side; they stand at the tip's x); at: the travel the stops allow; limit: the
- *   travel at the strain limit
+ *   flexure's ground; at: the travel the stops allow; limit: the travel at the strain limit
  */
-export function travelStop(p, m, { factor = 0.8, post = 3, reach = 0 } = {}) {
-  const limit = leafModel(p, m).travel(m.strainLimit), at = factor * limit, y = p.thickness / 2 + at + post / 2, x = p.length - reach - post / 2;
-  return { shape: union(block(x, y, p.width / 2, [post, post, p.width]), block(x, -y, p.width / 2, [post, post, p.width])), at, limit };
+export function travelStop(p, m, { factor = 0.8, post = 3, reach = 0, model, end } = {}) {
+  const limit = (model ?? leafModel(p, m)).travel(m.strainLimit), at = factor * limit, [ex, ey] = end ?? [p.length, 0];
+  const y = p.thickness / 2 + at + post / 2, x = ex - reach - post / 2;
+  return { shape: union(block(x, ey + y, p.width / 2, [post, post, p.width]), block(x, ey - y, p.width / 2, [post, post, p.width])), at, limit };
 }
+/**
+ * An angle stop for a pivot: a post each side of the arm's end, where the hinge's strain limit says the turn must end,
+ * less a margin. The arm turns about the pivot; the posts stand at the arm's end, a travel of arm × sin(angle) off it.
+ * @param {{ width: number, thickness?: number }} p the pivot's width (and the arm's thickness along y, default 6)
+ * @param {Material} m with strainLimit
+ * @param {{ model: { angle: (strain: number) => number }, pivot: number[], arm: number, factor?: number, post?: number }} o
+ *   model: the hinge's (notchHinge, livingHinge, cartwheel, ellipticalHinge, letJoint); pivot: its [x, y]; arm: from
+ *   the pivot to the arm's end along x; factor as travelStop's
+ * @returns {{ shape: object, angle: number, limit: number, travel: number }} angle: the turn the stops allow (radians);
+ *   limit: at the strain limit; travel: at the arm's end
+ */
+export function angleStop({ width, thickness = 6 }, m, { model, pivot, arm, factor = 0.8, post = 3 }) {
+  const limit = model.angle(m.strainLimit), angle = factor * limit, travel = arm * Math.sin(angle), y = thickness / 2 + travel + post / 2, x = pivot[0] + arm - post / 2;
+  return { shape: union(block(x, pivot[1] + y, width / 2, [post, post, width]), block(x, pivot[1] - y, width / 2, [post, post, width])), angle, limit, travel };
+}
+
+/**
+ * A pre-curved leaf: a cantilever drawn as an arc, so its rest is in the middle of its working range. Pushed one way it
+ * straightens, the other it curls further; either way the strain is counted from the curved rest, so the range to a
+ * strain limit is twice a straight leaf's, centred where it sits. A magazine spring or a return spring that must
+ * work from a loaded rest. Modelled as the straight leaf (stiffness E w t³ / 4L³ along the chord's normal), with the
+ * curvature's own strain t / 2ρ noted: the material already sees it as printed, since the leaf is drawn bent.
+ * @param {Leaf & { rise: number }} p rise: how far the tip sits off the chord at rest (the arc's sagitta)
+ */
+export function curvedLeaf({ length: L, thickness: t, width, rise: s }) {
+  const rho = (L * L + 4 * s * s) / (8 * s), half = Math.asin(Math.min(1, L / (2 * rho))), n = 40, pts = []; // the arc's radius and half-angle, the chord along x
+  for (let i = 0; i <= n; i++) { const a = -half + (2 * half * i) / n; pts.push([rho * Math.sin(a) + L / 2, rho * (1 - Math.cos(a)) - s + s]); }
+  const off = (p, q, d) => { const dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy) || 1; return [-dy / l * d, dx / l * d]; };
+  const left = [], right = [];
+  for (let i = 0; i <= n; i++) { const [ox, oy] = off(pts[Math.max(0, i - 1)], pts[Math.min(n, i + 1)], t / 2); left.push([pts[i][0] + ox, pts[i][1] + oy]); right.push([pts[i][0] - ox, pts[i][1] - oy]); }
+  return jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: [...right, ...left.reverse()] }));
+}
+/**
+ * @param {Leaf & { rise: number }} p @param {Material} m
+ * @returns {Model & { range: (strain: number) => [number, number], preset: number }} travel and strain from the curved
+ *   rest, either way; range(strain): how far it may go each way, [toward straight, further curled]; preset: the strain
+ *   the curvature already puts in as printed (t / 2ρ), to add to the bending strain when the limit is tight
+ */
+export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, m) {
+  const straight = leafModel({ length: L, thickness: t, width: w }, m), rho = (L * L + 4 * s * s) / (8 * s);
+  return { ...straight, preset: t / (2 * rho), range: (e) => [-straight.travel(e), straight.travel(e)] };
+}
+
+export { ports, size, report, models } from './compose.mjs';
 
 /**
  * A contact-aided leaf: a cantilever with a stop partway along it, a gap off the beam, so it bends freely until the

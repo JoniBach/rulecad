@@ -10,6 +10,7 @@ const TYPED = ['variables', 'fea', 'topopt', 'keyboard-layout', 'printcheck', 'f
 for (const dir of TYPED) {
   const { exports } = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8')), main = exports['.'] || exports; // (the main entry: fea also has ./threads)
   const file = path.join('packages', dir, (main.default || main).replace(/^\.\//, ''));
+  for (const stale of fs.readdirSync(path.dirname(file))) if (stale.endsWith('.d.mts')) fs.rmSync(path.join(path.dirname(file), stale)); // a stale declaration beside a module it imports would be read as input
   execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', file, '--allowJs', '--declaration', '--emitDeclarationOnly',
     '--skipLibCheck', '--types', 'node', '--target', 'es2022', '--module', 'nodenext', '--outDir', path.dirname(file)], { stdio: 'inherit' });
   console.log(`  ${file.replace(/\.mjs$/, '.d.mts')}`);

@@ -82,6 +82,8 @@ stiffen as they curl and their tips to come nearer the rail (the elastica in `@r
 - **A leaf with travel stops**: posts at its tip 20 mm each side, where 2% strain says 25 mm and the stop allows
   80% of it. Push the leaf to the post: it should not whiten. This is the rule as a shape; the same rule in
   `printable()` warns of a flexure with no stop.
+- **A pre-curved leaf**, 40 mm of two lines bowed 6 mm: push it straight and push it further bent; the same 0.050 N/mm
+  either way, and 25 mm of travel each way about its rest instead of one.
 - **A contact-aided leaf**: a stop bar beside it reaching 20 mm from the root, 2 mm off. Free, it is the two-line
   leaf (0.050 N/mm); at 6.4 mm of tip travel the beam touches the bar and it becomes a 20 mm leaf (0.40 N/mm). Hang
   weights and watch the rate change.
