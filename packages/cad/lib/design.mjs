@@ -29,6 +29,7 @@ import { WS, paths, printerOf } from './workspace.mjs';
 import { readLayout, hasLayout, keys, width, depth } from './layout.mjs';
 import { optimised, forDesign } from './optimise.mjs';
 import * as shapes from '@rulecad/shapes';
+import * as flexures from '@rulecad/flexures';
 import { engineId, packageVersion, materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 
@@ -115,8 +116,9 @@ const CACHE = paths.cache('builds'), CACHE_VERSION = 2;
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
-const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes')));
-const own = source(import.meta.url) + fs.readdirSync(shapesDir).filter((f) => f.endsWith('.mjs')).sort().map((f) => source(pathToFileURL(path.join(shapesDir, f)).href)).join('') + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
+const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures')));
+const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs')).sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
+const own = source(import.meta.url) + helperSources(shapesDir) + helperSources(flexuresDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
 export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
   if (e.code === 'ERR_MODULE_NOT_FOUND' && /@rulecad\/pcb/.test(e.message)) throw new Error('boards need the board engine: npm install @rulecad/pcb');
   throw e;
@@ -184,7 +186,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     read = new Set();
     const watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
       ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
-    watched.shapes = shapes; watched.ops = await shapes.ops(booleans(object)); if (pcb) watched.pcb = pcb;
+    watched.shapes = shapes; watched.flexures = flexures; watched.ops = await shapes.ops(booleans(object)); if (pcb) watched.pcb = pcb;
     let made;
     try { made = await mod.main(watched); } catch (e) { throw located(e, d.js, 'design.run'); }
     if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part

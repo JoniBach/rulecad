@@ -44,6 +44,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - Holes and slots get the printer's hole compensation; parts that slide together get its fit clearance. Chamfer
   bottom edges.
 - An overhang warning means supports: say so in `orientation`, or change the shape or orientation.
+- A part that moves by bending (a spring, a snap, a hinge with no pin) is a flexure from `v.flexures`: drawn flat, so it
+  bends within its layers; give its thickness in whole lines (`x1c.line`), and check its strain at the travel against
+  the material's limit with `v.flexures.printable`. PLA creeps held bent and fatigues; PETG or nylon for springs.
 - Use the print-aware features in `v.shapes` before drawing your own: `countersink`, `teardropHole`, `nutPocket`,
   `crushRibs`, `wallOpening` print without supports as drawn. Use `v.ops.union/subtract/intersect` for booleans: the
   workspace can switch them to Manifold (faster, watertight) without touching the design.
