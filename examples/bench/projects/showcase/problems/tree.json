@@ -1,6 +1,6 @@
 {
   "title": "Tree stand: a plate held up on a trunk, loaded at three points",
-  "description": "A stand 60 × 60 × 70 mm, printed as it's used: three feet close together on the bed (a trunk), a 50 mm plate on top, loaded at three points round its edge, each between two feet, plus a push sideways from three directions, so every foot is needed (with one, the trunk grew from two feet and left the third loose). 10% of the space. Each load needs its own route down, so branches should leave the trunk and split towards them; printable without supports, the 45° rule makes them rise. Attempt 1 (load over the feet) came out as a stool; attempt 2 (six loads round the edge, a twist, 15%) as a goblet: a closed cone answers a ring load and a twist.",
+  "description": "A stand 60 × 60 × 70 mm, printed as it's used: three feet close together on the bed (a trunk), a 50 mm plate on top, loaded at three points round its edge, each between two feet, plus a push sideways from three directions, so every foot is needed (with one, the trunk grew from two feet and left the third loose). 10% of the space, on 1.5 mm cells with bridging (the printer spans 5 mm, so the canopy may open into holes), 500 steps. Each load needs its own route down, so branches should leave the trunk and split towards them; printable without supports, the 45° rule makes them rise. Attempt 1 (load over the feet) came out as a stool; attempt 2 (six loads round the edge, a twist, 15%) as a goblet: a closed cone answers a ring load and a twist.",
   "uses": [
     "x1c"
   ],
@@ -74,7 +74,7 @@
     }
   },
   "overhang": "build",
-  "cell": 2,
+  "cell": 1.5,
   "volume": 0.1,
   "filter": 5,
   "space": {
@@ -273,5 +273,6 @@
     "side-0": "sideways / 3",
     "side-1": "sideways / 3",
     "side-2": "sideways / 3"
-  }
+  },
+  "steps": 500
 }
