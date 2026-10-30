@@ -1,0 +1,6 @@
+{
+  "name": "flexures",
+  "description": "The flexure bench: a sampler plate of printed flexures, each with a predicted stiffness and travel, to measure against. The measurements turn into strain limits for the material rules.",
+  "material": "PLA",
+  "objects": ["sampler"]
+}

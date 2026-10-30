@@ -127,6 +127,10 @@ which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a rel
   text so punctuation stays small, each straight stroke thickened to whole print lines, dots drawn round, and ↑ ↓ ← →
   as arrows), `anchor(face, size, at)` (where something goes on a face, by anchor), and `cut(a, b)` (a subtract that
   only touches a's faces near b; JSCAD's own splits every face along b's planes, which can leave slivers far away).
+- `v.flexures`: compliant mechanisms (`@rulecad/flexures`): `leaf`, `fixedGuided`, `parallelGuide`, `serpentine`,
+  `notchHinge`, `bistable`, `livingHinge` as shapes, each with a `<name>Model(shape, { E })` giving its stiffness and the
+  strain at a travel, and `printable(shape, printer, material, model)` for how it prints. Drawn flat: bending along y,
+  width up z, so a flexure bends within its layers.
 - A rule set can also carry `"footprints"` (pad data from @rulecad/pcb's `fromKicad`, with its source), which a
   board's code reads as `v.parts.footprints.usb_c`.
 - An object or rule set named with a hyphen (`mx-switch`) is read with an underscore in expressions (`mx_switch.housing_top`),

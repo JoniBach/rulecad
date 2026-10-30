@@ -1,11 +1,11 @@
-// The sandbox's import hook: code in the design's project may import @jscad/modeling, @rulecad/shapes and files of
+// The sandbox's import hook: code in the design's project may import @jscad/modeling, @rulecad/shapes, @rulecad/flexures and files of
 // its own project, nothing else (no node: modules: no files, network or processes). The tool's own modules are free.
 import { builtinModules } from 'node:module';
 
 let project = '';
 export async function initialize(data) { project = data?.project || ''; }
 
-const ALLOWED = ['@jscad/modeling', '@rulecad/shapes'];
+const ALLOWED = ['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures'];
 const deny = (spec, why) => Object.assign(new Error(`designs can't import "${spec}": ${why}`), { code: 'design.sandbox' });
 
 // The same check, for in-thread hooks (synchronous) and worker hooks (async)

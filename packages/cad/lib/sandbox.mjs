@@ -1,6 +1,6 @@
 // Designs are code. A JSCAD design runs in a sandbox: another Node process with the permission model on, so it can
 // read the workspace and the tool's packages but can't write files, start programs or workers, or load addons; an
-// import hook (sandbox-hooks.mjs) lets a design import only @jscad/modeling, @rulecad/shapes and files in its own
+// import hook (sandbox-hooks.mjs) lets a design import only @jscad/modeling, @rulecad/shapes, @rulecad/flexures and files in its own
 // project (no node: modules, so no network), and the runner removes fetch and its kin. It gets its values as data
 // and sends back its parts' faces. A workspace that trusts its designs sets "sandbox": false in cad.config.json (or
 // CAD_TRUST=1); Node without the permission model (18) runs designs as before. Board designs (engine pcb) run in the
@@ -34,7 +34,7 @@ function readable() {
   // Every node_modules above the workspace and the tool (package lookups read their links), and where links lead
   const up = (dir) => { const out = []; for (let d = dir; ; d = path.dirname(d)) { out.push(path.join(d, 'node_modules')); if (path.dirname(d) === d) return out; } };
   const dirs = [WS, TOOL, ...[...up(WS), ...up(TOOL)].filter((d) => fs.existsSync(d)),
-    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
+    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
   return [...new Set(dirs.filter(Boolean).flatMap((d) => [d, real(d)]).filter(Boolean))];
 }
 

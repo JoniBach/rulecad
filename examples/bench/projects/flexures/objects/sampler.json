@@ -1,0 +1,132 @@
+{
+  "name": "sampler",
+  "title": "Flexure sampler: seven flexures at three thicknesses, on two rails",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn: every flexure bends in the plane of the bed, within its layers. 100% infill or walls enough to be solid (the thinnest flexures are two lines), 0.2 mm layers. Print one in PLA and one in PETG.",
+  "variables": {
+    "thin": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "The thinnest flexure: two lines"
+    },
+    "mid": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "Three lines"
+    },
+    "thick": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "Four lines"
+    },
+    "height": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Every flexure's width, up from the bed: 40 layers"
+    },
+    "length": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The leaf springs' length"
+    },
+    "rail": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The rail the flexures stand off, along y"
+    },
+    "spacing": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "From one flexure to the next along a rail"
+    },
+    "hook": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The eye at a leaf's tip, to hang a weight or push with the gauge: outer size"
+    },
+    "eye": {
+      "value": 1.6,
+      "unit": "mm",
+      "rule": "The eye's hole, for a loop of thread"
+    },
+    "gap": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The parallel guide's leaves apart"
+    },
+    "turns": {
+      "value": 5,
+      "rule": "The serpentine's leaves"
+    },
+    "notch": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The notch hinges' radius"
+    },
+    "rise": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The bistable beam's arch"
+    },
+    "flex": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The living hinge's strip length"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the eyes"
+    },
+    "row": {
+      "value": 70,
+      "unit": "mm",
+      "rule": "From the front rail to the back rail, along y"
+    },
+    "eye_in": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "How far the eye overlaps a leaf's tip, so they join"
+    },
+    "guide_length": {
+      "value": "length * 3 / 4",
+      "unit": "mm",
+      "rule": "The parallel guide's leaves: shorter than the leaf springs"
+    },
+    "serp_length": {
+      "value": "length / 2",
+      "unit": "mm",
+      "rule": "Each of the serpentine's leaves"
+    },
+    "pitch": {
+      "value": "mid * 3",
+      "unit": "mm",
+      "rule": "The serpentine's leaves apart"
+    },
+    "arms": {
+      "value": "length / 2",
+      "unit": "mm",
+      "rule": "A notch hinge's arms, either side of the neck"
+    },
+    "bistable_length": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "The bistable beam's span"
+    },
+    "post": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The posts that carry the bistable beam's ends off the rail"
+    },
+    "hinge_arms": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "A living hinge's blocks either side of the strip"
+    }
+  }
+}
