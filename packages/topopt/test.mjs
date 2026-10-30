@@ -142,7 +142,7 @@ test('the overhang filter with bridges: a short bridge between two held cells su
   assert.ok(overhangFilter(size, '+z', 2).apply(gap, new Float64Array(n))[at(3, 1, 2)] < 0.05, 'past a gap in the run, a cell too far from the other column is not held');
   // Nearly empty everywhere, with bridges in play: finite, with a finite gradient (a bridge's share of a cell's support
   // summed after the underflow guard was a denormal, whose power was infinite: NaN, which sank the tree stand at step 6)
-  const empty = new Float64Array(n).fill(3e-8), fb = overhangFilter(size, '+z', 1); // (3e-8: its bridges' share raised to P is a denormal)
+  const empty = new Float64Array(n).fill(2e-8), fb = overhangFilter(size, '+z', 1); // (2e-8: a bridge's share raised to P is a denormal, 1e-320, whose power 1/Q − 1 is infinite)
   assert.ok(fb.apply(empty, new Float64Array(n)).every(Number.isFinite));
   assert.ok(fb.adjoint(new Float64Array(n).fill(1e-21), new Float64Array(n)).every(Number.isFinite), 'no NaN or infinity in the gradient from empty space with bridges');
   // The gradient, against finite differences, with bridges in play
