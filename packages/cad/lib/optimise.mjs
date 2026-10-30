@@ -72,6 +72,9 @@ export async function readProblem(project, ref) {
     ...(p.filter != null ? { filter: ev(p.filter) } : {}), ...(p.penal != null ? { penal: ev(p.penal) } : {}),
     ...(p.projection != null ? { projection: p.projection } : {}), ...(p.steps != null ? { steps: p.steps } : {}),
     ...(overhang && overhang !== 'none' ? { overhang } : {}),
+    // A mechanism: where the output should move, along one axis, against a spring; a spring the input pushes against
+    ...(p.output ? { output: { ...(await region(p.output)), direction: pt(p.output.direction), ...(p.output.spring != null ? { spring: ev(p.output.spring) } : {}) } } : {}),
+    ...(p.input_spring != null ? { input_spring: ev(p.input_spring) } : {}),
   };
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
@@ -133,7 +136,7 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),
     grid: spec.grid, origin: spec.origin, regions: { keep: named(spec.regions.keep), avoid: named(spec.regions.avoid) }, ...shape,
-    volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.unsupported ? { unsupported: o.unsupported } : {}), ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
+    volume: o.volume, compliance: o.compliance, cases: o.cases, ...(o.unsupported ? { unsupported: o.unsupported } : {}), ...(o.mechanism ? { mechanism: o.mechanism } : {}), ...(o.stress ? { stress: o.stress } : {}), overhang: r.problem.overhang || null,
     steps: o.steps, converged: o.converged, seconds: o.seconds, history: o.history, density: Array.from(o.density, (d) => round(d, 3)),
     supports: named(r.problem.supports), loads: named(r.problem.loads),
   };

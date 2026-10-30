@@ -127,6 +127,37 @@ falls by 46%. Two things to know:
   with that margin in mind.
 - **It may not settle within its steps.** This one ran its 1,000 steps with the peak hovering 5% over the limit.
 
+## Mechanisms
+
+A compliant mechanism is a part that moves by bending: push here, and there moves, with no joints. Give the problem an
+`output` (where it should move, along one axis, against a spring) and the first load becomes the input (with
+`input_spring`, a spring it pushes against); the optimiser then makes the layout that moves the output furthest
+(Sigmund 1997), by the method of moving asymptotes under the volume.
+
+```js
+const spec = discretise({
+  space: { at: [20, 10], size: [40, 20] }, cell: 1, volume: 0.3, filter: 1.5, material: { E: 1, nu: 0.3 }, thickness: 1,
+  supports: [{ at: [0.5, 0.5], size: [1, 1] }, { at: [0.5, 19.5], size: [1, 1] }],
+  loads: [{ at: [0.5, 10], size: [1, 2], force: [1, 0] }], input_spring: 0.1,   // pushed to the right at the left edge
+  output: { at: [39.5, 10], size: [1, 2], direction: [-1, 0], spring: 0.1 },    // the right edge should move left
+});
+const result = optimise(spec);
+result.mechanism;  // { travel (mm, the output along its direction), input (mm, the input along the push), advantage (travel / input) }
+```
+
+That one is the force inverter, the classic test: a block pushed at its left edge whose right edge moves the other
+way. The springs matter: the output's stands for what the mechanism works against, the input's for what pushes it;
+softer springs give more travel and a smaller advantage. The travel's gradient (an adjoint solve with the output's
+direction as the load) agrees with finite differences.
+
+Left to itself, mechanism synthesis makes point hinges: a joint one cell wide and half empty is the most compliant
+there is, and no printer makes it. So a mechanism is optimised robustly (Wang, Lazarov and Sigmund 2011): its travel
+on an eroded copy of the design (projected at a threshold of 0.7), its volume on a dilated one (0.3), the design as
+made between them. A hinge that survives erosion has real width, and the result is one piece, cell to cell. The
+price: the design as made is stiffer than the eroded copy it was optimised on, by a hinge width's worth of
+stiffness (which goes as the width cubed), so `result.mechanism` reports what the design as made does, and it moves
+less than the run's progress figures suggested.
+
 ## Checked against the published code
 
 With projection off, it matches a line-by-line port of the 88-line MATLAB code (`reference/top88.py`) step for step:
@@ -148,6 +179,9 @@ Its gradients agree with finite differences through the filter and the projectio
   compared with the material's strength.
 
 ## Sources
+
+- Sigmund, O., "On the design of compliant mechanisms using topology optimization", *Mechanics of Structures and Machines* 25(4), 1997: the output-travel objective and its adjoint.
+- Wang, F., Lazarov, B. S., and Sigmund, O., "On projection methods, convergence and robust formulations in topology optimization", *Structural and Multidisciplinary Optimization* 43, 2011: the eroded, intermediate and dilated designs.
 
 - Bendsøe, Sigmund (2003). *Topology Optimization: Theory, Methods and Applications*. Springer.
 - Andreassen, Clausen, Schevenels, Lazarov, Sigmund (2011). Efficient topology optimization in MATLAB using 88 lines

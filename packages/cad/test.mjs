@@ -554,3 +554,23 @@ test('an optimised part keeps only pieces touching a support, a load or a kept r
   assert.deepEqual(out.dropped.map(Math.abs), [8]);
   assert.equal(anchored(mesh, [[0, 0, 0, 40, 10, 1]], 1).dropped.length, 0); // both touch it
 });
+
+test('a mechanism problem: cad optimise reports how far the output moves its way, and the live view gets the travel', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const project = path.join(ws, 'projects', 'mech');
+    fs.mkdirSync(path.join(project, 'problems'), { recursive: true });
+    fs.writeFileSync(path.join(project, 'project.json'), JSON.stringify({ name: 'mech', objects: [] }));
+    fs.writeFileSync(path.join(project, 'problems', 'inverter.json'), JSON.stringify({
+      title: 'A force inverter', uses: ['x1c'], material: 'pla', thickness: 4, cell: 1, volume: 0.3, filter: 1.5, steps: 40,
+      variables: { k: { value: 0.5, unit: 'N/mm', rule: 'the springs' } },
+      space: { at: [20, 10], size: [40, 20] }, supports: [{ at: [0.5, 0.5], size: [1, 1] }, { at: [0.5, 19.5], size: [1, 1] }],
+      loads: [{ at: [0.5, 10], size: [1, 2], force: [10, 0] }], input_spring: 'k',
+      output: { at: [39.5, 10], size: [1, 2], direction: [-1, 0], spring: 'k', label: 'the right end, moving left' },
+    }));
+    const out = cad('optimise', 'mech/inverter');
+    assert.match(out, /the output moves [\d.e-]+ mm its way for [\d.e-]+ mm of push: an advantage of [\d.e-]+/);
+    assert.match(out, /% of the space filled/);
+    assert.match(out, /40 × 20 cells of 1 mm/);
+  } finally { done(); }
+});

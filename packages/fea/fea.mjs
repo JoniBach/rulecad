@@ -266,20 +266,27 @@ export function assemble(g, pat, cellMatrices, ke, scale, into) {
 /**
  * Solve K u = f for each load. K is every cell's stiffness (cellStiffness) times scale[cell]; fixed dofs don't move.
  * @param {Grid} g
- * @param {{ scale: Float64Array, ke: Float64Array, fixed: Uint8Array, loads: Float64Array[], method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, maxIter?: number, start?: Float64Array[] }} o
+ * @param {{ scale: Float64Array, ke: Float64Array, fixed: Uint8Array, loads: Float64Array[], springs?: Float64Array, method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, maxIter?: number, start?: Float64Array[] }} o
+ *   springs: a stiffness added on each dof (N/mm), as a mechanism's input and output springs
  *   start: a first guess for the iterative solvers (the last solution, when solving again after a small change)
  * @returns {{ u: Float64Array[], iterations: number, again: (loads: Float64Array[]) => Float64Array[] }} again: more
  *   loads on the same matrix (an adjoint), reusing its factor or preconditioner
  */
-export function solve(g, { scale, ke, fixed, loads, method = 'direct', backend = jsBackend, tol = 1e-9, maxIter = 20000, start }) {
+export function solve(g, { scale, ke, fixed, loads, springs, method = 'direct', backend = jsBackend, tol = 1e-9, maxIter = 20000, start }) {
   if (scale.length !== g.cells) throw new Error(`scale has ${scale.length} values for ${g.cells} cells`);
   if (!fixed.some((f) => f)) throw new Error('nothing is held: fix at least one support, or the part just moves');
   const held = (ls) => ls.map((l) => { const c = Float64Array.from(l); for (let i = 0; i < c.length; i++) if (fixed[i]) c[i] = 0; return c; });
   if (method === 'direct') {
-    const L = factor(g, { scale, ke }, fixed), again = (ls) => held(ls).map((b) => L.solve(b));
+    const L = factor(g, { scale, ke, springs }, fixed), again = (ls) => held(ls).map((b) => L.solve(b));
     return { u: again(loads), iterations: 0, again };
   }
-  const op = backend.operator(g, ke); // one for the solver and its preconditioner: the matrix is assembled once
+  const cells = backend.operator(g, ke); // one for the solver and its preconditioner: the matrix is assembled once
+  // Springs on dofs (a mechanism's input and output): added to the product and the diagonal; the smoother, where the
+  // backend has one, doesn't know them, so Jacobi then (the preconditioner needn't be exact)
+  const op = springs ? {
+    multiply(s, x, y) { cells.multiply(s, x, y); for (let i = 0; i < y.length; i++) if (springs[i]) y[i] += springs[i] * x[i]; },
+    diagonal(s, d) { cells.diagonal(s, d); for (let i = 0; i < d.length; i++) d[i] += springs[i]; },
+  } : cells;
   const precondition = method === 'mg' ? multigrid(g, { scale, ke, fixed, backend, op }) : jacobi(g, { scale, fixed, op });
   const again = (ls) => conjugateGradients(g, { scale, fixed, loads: held(ls), backend, tol, maxIter, precondition, op }).u;
   return { ...conjugateGradients(g, { scale, fixed, loads: held(loads), backend, tol, maxIter, start, precondition, op }), again };
@@ -288,7 +295,7 @@ export function solve(g, { scale, ke, fixed, loads, method = 'direct', backend =
 // The banded Cholesky factor of K (cells' matrices: ke × scale, or each its own), fixed dofs as identity rows. Lenient
 // (a preconditioner's coarsest grid, where a coarse unknown over next to nothing can come out singular to rounding), a
 // pivot that isn't positive is dropped: an identity row with no couplings, so the unknown stays put.
-function factor(g, { scale, ke, cellMatrices }, fixed, { lenient = false } = {}) {
+function factor(g, { scale, ke, cellMatrices, springs }, fixed, { lenient = false } = {}) {
   const { edof, dofs, cells, cellDofs: m } = g, mm = m * m;
   let b = 0;
   for (let e = 0; e < cells; e++) {
@@ -309,6 +316,7 @@ function factor(g, { scale, ke, cellMatrices }, fixed, { lenient = false } = {})
       }
     }
   }
+  if (springs) for (let i = 0; i < dofs; i++) if (!fixed[i]) L[i * w + b] += springs[i];
   for (let i = 0; i < dofs; i++) if (fixed[i] || L[i * w + b] === 0) L[i * w + b] = 1; // fixed, or touching no cell
   const dropped = lenient ? new Uint8Array(dofs) : null;
   for (let i = 0; i < dofs; i++) {
