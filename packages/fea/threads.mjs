@@ -9,14 +9,19 @@ import { Worker, isMainThread, parentPort, workerData } from 'node:worker_thread
 import { jsBackend, pattern, assemble } from './fea.mjs';
 
 const THREADS = Math.max(1, Math.min(8, Number(process.env.FEA_THREADS) || os.cpus().length - 1));
+// How many operators each worker keeps: an optimisation step registers one per multigrid level (four or so), and
+// their arrays are large (the bin's: 160 MB), so the workers let go of all but the last few. Before this, a run
+// kept every step's and swapped itself to a crawl.
+const KEPT = 16;
 
 // The pool: made on first use, kept for the process (unref'd, so it doesn't keep the process alive). Each operator
 // registers its arrays with every worker under an id; a product then signals the id and waits for every worker's done.
 let pool = null;
 function workers() {
   if (pool) return pool;
-  // ctl: [0] the product generation, [1] the operator id, [2] workers done, [3] registrations acknowledged
-  const ctl = new Int32Array(new SharedArrayBuffer(16)), list = [];
+  // ctl: [0] the product generation, [1] the operator id, [2] workers done, [3] registrations acknowledged, [4] a
+  // product asked of an operator a worker no longer holds
+  const ctl = new Int32Array(new SharedArrayBuffer(20)), list = [];
   for (let w = 0; w < THREADS; w++) { const worker = new Worker(new URL(import.meta.url), { workerData: { ctl, index: w, count: THREADS } }); worker.unref(); list.push(worker); }
   let nextId = 1;
   pool = {
@@ -33,6 +38,7 @@ function workers() {
       Atomics.store(ctl, 2, 0); Atomics.store(ctl, 1, id);
       Atomics.add(ctl, 0, 1); Atomics.notify(ctl, 0);
       while (Atomics.load(ctl, 2) < THREADS) Atomics.wait(ctl, 2, Atomics.load(ctl, 2), 50);
+      if (Atomics.load(ctl, 4)) { Atomics.store(ctl, 4, 0); throw new Error(`the threads backend was asked for a product on an operator its workers had let go (${KEPT} are kept): a solve reused too long after others`); }
     },
   };
   return pool;
@@ -65,7 +71,7 @@ export const threadsBackend = {
 
 if (!isMainThread && workerData?.ctl) {
   const { ctl, index, count } = workerData, ops = new Map();
-  parentPort.on('message', (m) => { ops.set(m.id, m); Atomics.add(ctl, 3, 1); Atomics.notify(ctl, 3); });
+  parentPort.on('message', (m) => { ops.set(m.id, m); while (ops.size > KEPT) ops.delete(ops.keys().next().value); Atomics.add(ctl, 3, 1); Atomics.notify(ctl, 3); });
   // Products: wait for the generation to change, sweep this worker's share of the nodes, say so
   let seen = 0;
   const run = () => {
@@ -75,6 +81,7 @@ if (!isMainThread && workerData?.ctl) {
       seen = Atomics.load(ctl, 0);
       const id = Atomics.load(ctl, 1), op = ops.get(id);
       if (!id) { Atomics.add(ctl, 2, 1); Atomics.notify(ctl, 2); return setImmediate(run); } // woken to take a message
+      if (id && !op) Atomics.store(ctl, 4, 1);
       if (op) {
         const { dim, nodes, rows, cols, values: v, xs: x, ys: y } = op, from = Math.floor((nodes * index) / count), to = Math.floor((nodes * (index + 1)) / count);
         if (dim === 3) {
