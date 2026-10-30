@@ -1,0 +1,109 @@
+{
+  "name": "joints",
+  "title": "Joints that aren't flexures: a pin joint printed in place, and a snap pin with its socket",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat as drawn, the peg standing up. After printing, twist the lever to break it free of the base and the cap; push the peg into the socket until it clicks, and pull it out again (its barb's back is at 45°, so it lets go).",
+  "parts": {
+    "base": { "label": "The base: the pin with its cap, and the socket" },
+    "lever": { "label": "The lever, on a ring round the pin" },
+    "peg": { "label": "The snap pin" }
+  },
+  "variables": {
+    "pin": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The pin's diameter"
+    },
+    "height": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The ring's height: 30 layers"
+    },
+    "clearance": {
+      "value": "x1c.fit",
+      "unit": "mm",
+      "rule": "Ring to pin, and socket to peg: the printer's fit"
+    },
+    "lift": {
+      "value": "x1c.support_gap",
+      "unit": "mm",
+      "rule": "The ring off the base and the cap off the ring: a support gap, to break free"
+    },
+    "lip": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The cap past the pin"
+    },
+    "ring": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The ring's wall"
+    },
+    "arm": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The lever past the ring"
+    },
+    "base": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The base plate"
+    },
+    "peg": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The snap pin's diameter"
+    },
+    "depth": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The socket's depth, and the peg's shaft"
+    },
+    "barb": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "The barb past the peg"
+    },
+    "slot": {
+      "value": "peg * 3",
+      "unit": "mm",
+      "rule": "The split down the peg from its tip: each half a cantilever this long"
+    },
+    "slot_gap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The split's width"
+    },
+    "lead": {
+      "value": 45,
+      "unit": "degrees",
+      "rule": "The barb's tip cone"
+    },
+    "back": {
+      "value": 45,
+      "unit": "degrees",
+      "rule": "The barb's back: 45° prints standing and lets go; 90 would hold"
+    },
+    "wall": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The socket round its hole"
+    },
+    "socket_at": {
+      "value": 32,
+      "unit": "mm",
+      "rule": "The socket's centre from the pin, along x"
+    },
+    "peg_at": {
+      "value": 48,
+      "unit": "mm",
+      "rule": "The peg's centre from the pin, along x: loose beside the socket"
+    }
+  }
+}

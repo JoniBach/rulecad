@@ -38,6 +38,8 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `snapHook` | A cantilever with a hook: pushed in it deflects and springs back behind the catch | the leaf's; `force` at the undercut, `insertion` and `removal` with friction μ (BASF, Bayer) | 3ty / 2L² at the undercut y |
 | `ratchetWheel`, `ratchetPawl` | Saw teeth on a pin and a leaf pawl: a one-way click | `ratchetModel`: the pawl's `lift` a tooth high and the `click` along the rim | the pawl's, at the tooth height |
 | `foldedGuide` | A shuttle on two folds, each a beam out to a floating truss and back to an anchor: a compound guide in a shorter box | E w t³ / L³ | 3t(δ/2) / L²; no drift |
+| `pinJoint` | A pin, a ring with an arm and a cap, printed in place a support gap apart: the joint to compare the flexures against | not compliant: `pinJointCheck` reads the printer's fit and support gap, and gives the ring's play | — |
+| `snapPin`, `snapSocket` | A barbed, slotted peg that clicks into a hole, printed standing | `snapPinModel`: two snap hooks' worth of `force`, `insertion` and `removal` | 3ty / 2L² in each half |
 
 L length, t thickness (across the bend), w width (up the print), R a notch's radius, h an arch's rise, l a strip's length, s a spoke's length, r a hub's radius, y a hook's undercut, I = wt³/12, J a bar's torsion constant, θ an angle in radians. Each
 `<name>Model(shape, material)` gives `stiffness`, `strain(travel)`, `travel(strain)` and `stress(travel)`; the notch
@@ -85,6 +87,17 @@ flexure, so it is pinned: `constantForce` draws the coupler (a slider block, the
 `constantForceCrank` the crank with a boss at each end, for pins of filament. `constantForceModel` gives
 `force(stroke)`, the `flat` stretch, the leaf's `strain(stroke)` and the stroke a strain allows. The force scales
 with the leaf's thickness cubed: 1.7 N at three lines (1.26 mm) on a 40 mm leaf 8 mm wide in PLA, 13 N at six.
+
+## Joints that aren't flexures
+
+`pinJoint` prints a pin, a ring with an arm and a cap as one piece, the ring a clearance from the pin and a support
+gap off the base and under the cap, so it breaks free with a twist and turns with a little play. It is the joint to
+compare the flexures against, and the one to use where a part must turn further than any flexure lets it (the
+constant-force mechanism's crank). `pinJointCheck(joint, printer)` says whether the clearance meets the printer's fit
+and the gaps its support gap, and how far the ring can rock. `snapPin` and `snapSocket` join two printed parts with a
+click: a barbed peg split down the middle, each half a snap hook, pushed into a hole; `snapPinModel` gives the
+forces, and the barb's back angle decides whether it holds for good (90) or can be pulled apart (45, the default,
+which also prints standing with no overhang).
 
 ## What the models are good for
 

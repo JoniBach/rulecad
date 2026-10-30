@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, ellipticalHinge, ellipticalHingeModel, cartwheel, cartwheelModel, snapHook, snapHookModel, ratchetWheel, ratchetPawl, ratchetModel, foldedGuide, foldedGuideModel, printable } from '@rulecad/flexures';
+import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, ellipticalHinge, ellipticalHingeModel, cartwheel, cartwheelModel, snapHook, snapHookModel, ratchetWheel, ratchetPawl, ratchetModel, foldedGuide, foldedGuideModel, pinJoint, pinJointCheck, snapPin, snapSocket, snapPinModel, printable } from '@rulecad/flexures';
 import { grid, analyse } from '@rulecad/fea';
 import jscad from '@jscad/modeling';
-import { shape as pieces } from '@rulecad/printcheck';
+import { shape as pieces, check as printCheck } from '@rulecad/printcheck';
 
 const { measureVolume, measureBoundingBox } = jscad.measurements;
 const onePiece = (g) => pieces(jscad.geometries.geom3.toPolygons(g).map((p) => p.vertices)).pieces.length === 1;
@@ -213,5 +213,30 @@ test('a folded-beam guide: a compound guide\'s stiffness and travel in a shorter
   const shape = foldedGuide(p), box = measureBoundingBox(shape);
   assert.ok(onePiece(shape) && Math.abs(box[1][0] - box[0][0] - 2 * (1.5 + 5 + 3 + 25 + 3)) < 1e-6, `${box[1][0] - box[0][0]} wide: shuttle, clearances, posts, beams and trusses`);
   assert.ok(box[1][1] - box[0][1] < 2 * (10 + 2 * 1.26) + 5 + 3, 'and no taller than the gap, the beams, the clearance and the base');
+});
+
+test('a pin joint printed in place: two pieces a support gap apart, breaking free rather than hanging; the check reads the printer\'s fit', () => {
+  const p = { pin: 4, width: 6, arm: 20 }, shape = pinJoint(p), polys = jscad.geometries.geom3.toPolygons(shape).map((q) => q.vertices);
+  assert.equal(pieces(polys).pieces.length, 2, 'the pin with its base and cap, and the ring with its arm');
+  const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, fit: 0.2 }, found = printCheck(polys, printer);
+  assert.ok(found.some((r) => r.code === 'print.breakaway' && r.level === 'pass'), 'the ring rests on a breakaway support');
+  assert.ok(!found.some((r) => r.code === 'print.mid-air' || r.code === 'print.overhang' && r.level !== 'pass'), JSON.stringify(found.filter((r) => r.level !== 'pass')));
+  const box = measureBoundingBox(shape);
+  assert.ok(Math.abs(box[1][2] - (2 + 0.2 + 6 + 0.2 + 2)) < 1e-6 && Math.abs(box[1][0] - (2 + 0.2 + 20 + 3)) < 1e-6, 'the cap two lips above the ring; the arm past the ring');
+  const checks = pinJointCheck(p, printer);
+  assert.ok(checks.every((r) => r.level === 'pass') && pinJointCheck({ ...p, clearance: 0.1 }, printer)[0].level === 'warn' && pinJointCheck({ ...p, lift: 0.5 }, printer)[1].level === 'warn');
+});
+
+test('a snap pin and its socket: a barbed, slotted peg modelled as two hooks; the default barb prints standing without overhang', () => {
+  const p = { diameter: 4, length: 6 }, pin = snapPin(p), socket = snapSocket({ diameter: 4, depth: 6 }), m = snapPinModel(p, pla);
+  assert.ok(onePiece(pin) && onePiece(socket));
+  const box = measureBoundingBox(pin);
+  assert.ok(Math.abs(box[1][0] - 4) < 1e-6 && box[1][2] > 8 + 0.4, 'a flange the diameter again, the barb above the shaft');
+  assert.ok(m.strain(0.4) < 0.01 && m.insertion > m.force && m.insertion < 15 && !m.holds, `${m.insertion} N to push in, strain ${m.strain(0.4)}`);
+  assert.ok(snapPinModel({ ...p, back: 90 }, pla).holds);
+  const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 }, found = printCheck(jscad.geometries.geom3.toPolygons(pin).map((q) => q.vertices), printer);
+  assert.ok(!found.some((r) => r.level === 'fail') && !found.some((r) => r.code === 'print.overhang' && r.level !== 'pass'), JSON.stringify(found.filter((r) => r.level !== 'pass')));
+  const hole = measureBoundingBox(socket);
+  assert.ok(Math.abs(hole[1][0] - 5.2) < 1e-6 && measureVolume(socket) < 10.4 * 10.4 * 6 - Math.PI * 2.2 * 2.2 * 6 + 1, 'a hole the peg plus clearance through a block');
 });
 
