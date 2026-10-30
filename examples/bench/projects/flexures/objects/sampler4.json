@@ -1,0 +1,117 @@
+{
+  "name": "sampler4",
+  "title": "Flexure sampler 4: travel stops, a contact-aided leaf, a parallelogram and tweezers",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn: everything bends in the plane of the bed, within its layers. 100% infill, 0.2 mm layers.",
+  "variables": {
+    "thin": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "The thinnest flexures: two lines"
+    },
+    "mid": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "Three lines"
+    },
+    "height": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Every part's width, up from the bed: 40 layers"
+    },
+    "rail": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The rail the parts stand off, along y"
+    },
+    "spacing": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "From one part to the next along the rail"
+    },
+    "overlap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "How far a part sits into the rail, so they join"
+    },
+    "strain_limit": {
+      "value": 0.02,
+      "rule": "The strain the stops are placed for: 2%, the working guess for PLA until the first samplers are measured"
+    },
+    "length": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The leaves' length"
+    },
+    "stop_factor": {
+      "value": 0.8,
+      "rule": "The travel stops allow, as a share of the travel at the strain limit"
+    },
+    "stop_post": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The stop posts and bars across"
+    },
+    "stop_reach": {
+      "value": "thin / 2 + stop_factor * 2 * length * length * strain_limit / (3 * thin) + stop_post / 2",
+      "unit": "mm",
+      "rule": "From the stopped leaf's centreline to a post's centre: the leaf's half-thickness, the travel the stop allows, half a post"
+    },
+    "contact_at": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The contact-aided leaf's stop bar reaches this far from the root"
+    },
+    "gap": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Between the contact-aided leaf and its stop bar at rest"
+    },
+    "link": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The parallelogram's links, hinge to hinge"
+    },
+    "apart": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The parallelogram's links apart"
+    },
+    "notch": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The parallelogram's notch hinges' radius"
+    },
+    "bar": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The parallelogram's ground and coupler bars, and the tweezers' arms"
+    },
+    "spring": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The tweezers' spring, between the arms' roots"
+    },
+    "arm": {
+      "value": 50,
+      "unit": "mm",
+      "rule": "The tweezers' arms, spring to jaws"
+    },
+    "open": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The tweezers' jaws apart at rest"
+    },
+    "lift": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The tweezers' spring off the rail, on a post at its middle: room for the spring to bend"
+    }
+  }
+}

@@ -40,6 +40,10 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `foldedGuide` | A shuttle on two folds, each a beam out to a floating truss and back to an anchor: a compound guide in a shorter box | E w t³ / L³ | 3t(δ/2) / L²; no drift |
 | `pinJoint` | A pin, a ring with an arm and a cap, printed in place a support gap apart: the joint to compare the flexures against | not compliant: `pinJointCheck` reads the printer's fit and support gap, and gives the ring's play | — |
 | `snapPin`, `snapSocket` | A barbed, slotted peg that clicks into a hole, printed standing | `snapPinModel`: two snap hooks' worth of `force`, `insertion` and `removal` | 3ty / 2L² in each half |
+| `travelStop` | Two posts at a leaf's tip where the strain limit says its travel must end, less a margin: the rule as a shape | — | `at`: factor × travel(strainLimit) |
+| `contactLeaf` | A leaf with a stop bar beside it: free until the beam touches, stiffer after; two rates in one spring | `first` the leaf's, `second` a shorter leaf's, meeting at `contact` | 3tδ / 2L² before contact, the shorter leaf's after |
+| `parallelogram` | A four-bar with a notch hinge at each corner: the coupler moves sideways and stays parallel, rising a little | 4K / L² at the coupler | the hinges' at θ = asin(δ / L) |
+| `tweezers` | Two arms on a fixed-guided spring: squeeze to close the jaws; the simplest compliant gripper | E w t³ / L³ at the fingers | 3tδ / L² at a squeeze δ |
 
 L length, t thickness (across the bend), w width (up the print), R a notch's radius, h an arch's rise, l a strip's length, s a spoke's length, r a hub's radius, y a hook's undercut, I = wt³/12, J a bar's torsion constant, θ an angle in radians. Each
 `<name>Model(shape, material)` gives `stiffness`, `strain(travel)`, `travel(strain)` and `stress(travel)`; the notch
@@ -53,7 +57,9 @@ and that's the one that snaps.
 
 `printable(shape, printer, material, model)` says how it prints, as findings like `@rulecad/printcheck`'s: the
 thickness in whole extrusion lines (and at least two of them: `line` and `wall_min` from the printer's rules), the
-width in whole layers, and the strain at the travel against the material's `strainLimit`.
+width in whole layers, and the strain at the travel against the material's `strainLimit`. Give it `stop: false` and it
+warns that nothing bounds the flexure's travel before the limit; give it the stop's travel and it checks that against
+the limit. `travelStop` draws the stop where the limit says.
 
 ## Bent for real: the elastica
 

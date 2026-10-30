@@ -75,6 +75,21 @@ stiffen as they curl and their tips to come nearer the rail (the elastica in `@r
 - **A ratchet.** Snap the wheel off its tab and pin it on the boss; its 24 teeth meet the tall pawl's upper half. Turn
   it one way by the rim: a click each tooth at 0.73 N (PLA); the other way it holds.
 
+## The fourth plate: stops, and mechanisms made compliant
+
+`sampler4` (`npx cad export flexures/sampler4`):
+
+- **A leaf with travel stops**: posts at its tip 20 mm each side, where 2% strain says 25 mm and the stop allows
+  80% of it. Push the leaf to the post: it should not whiten. This is the rule as a shape; the same rule in
+  `printable()` warns of a flexure with no stop.
+- **A contact-aided leaf**: a stop bar beside it reaching 20 mm from the root, 2 mm off. Free, it is the two-line
+  leaf (0.050 N/mm); at 6.4 mm of tip travel the beam touches the bar and it becomes a 20 mm leaf (0.40 N/mm). Hang
+  weights and watch the rate change.
+- **A parallelogram** on four two-line notch hinges, links 30 mm: push the coupler sideways, 2.5 N/mm, and watch it
+  stay level; the hinges reach 2% at 2.2 mm.
+- **Tweezers**: a 40 mm two-line spring between two 50 mm arms, jaws 10 mm apart. Squeeze: 0.20 N/mm at the
+  fingers, the jaws meet at 10 mm with the spring at 1.6% strain.
+
 ## Joints that aren't flexures
 
 `joints` (`npx cad export flexures/joints`) is the comparison: a pin joint printed in place and a snap pin with its
