@@ -61,6 +61,9 @@ stiffen as they curl and their tips to come nearer the rail (the elastica in `@r
 
 ## Results
 
-Record them in `results.json` beside this file (specimen, material, weights and travels, the strain or angle at
-failure, cycles), as the lever and bracket benches do, and they'll go into the archive's experiment page and, with a
+`results.json` beside this file holds the predictions for every specimen on both plates (made from the models, in PLA
+and PETG), a `measured` entry for each with its readings (`[load_g, travel_mm]`, three at increasing loads, per print)
+and its failure (the travel or angle at whitening or a set, and where), the print settings, and a `strain_limit` for
+each material once the failures say what it is. Filled in, it goes to the archive's
+[flexures experiment](https://jonibach.github.io/rulecad-archive/experiments/flexures/) and, with this file as the
 source, into the material rules as `strain_limit`.

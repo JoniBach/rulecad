@@ -1,0 +1,285 @@
+{
+  "_doc": "The flexure samplers' results: see README.md. Each reading is [load_g, travel_mm] (coins: 1p 3.56 g, 2p 7.12 g, £1 8.75 g), three readings at increasing loads, on each print; hinges: the travel at the arm's end; failure: the travel or angle at whitening (PLA) or a set (PETG).",
+  "material": {
+    "filament": "",
+    "spool": "",
+    "printer": "",
+    "layer_mm": 0.2,
+    "infill": "100%",
+    "line_mm": 0.42,
+    "printed": "",
+    "tested": ""
+  },
+  "predicted": {
+    "_doc": "From @rulecad/flexures' models with the modulus along the layers (PLA 2,680 MPa, PETG 1,810) and 2% strain; beam theory, good to a few times the thickness of travel",
+    "leaf-two": {
+      "what": "Leaf spring, 40 mm, two lines (0.84 mm); hang weights at the eye",
+      "PLA": {
+        "stiffness_N_mm": 0.0496,
+        "travel_mm_at_2pc": 25.4
+      },
+      "PETG": {
+        "stiffness_N_mm": 0.0335,
+        "travel_mm_at_2pc": 25.4
+      }
+    },
+    "leaf-three": {
+      "what": "Leaf spring, 40 mm, three lines (1.26 mm); hang weights at the eye",
+      "PLA": {
+        "stiffness_N_mm": 0.168,
+        "travel_mm_at_2pc": 16.9
+      },
+      "PETG": {
+        "stiffness_N_mm": 0.113,
+        "travel_mm_at_2pc": 16.9
+      }
+    },
+    "leaf-four": {
+      "what": "Leaf spring, 40 mm, four lines (1.68 mm); hang weights at the eye",
+      "PLA": {
+        "stiffness_N_mm": 0.397,
+        "travel_mm_at_2pc": 12.7
+      },
+      "PETG": {
+        "stiffness_N_mm": 0.268,
+        "travel_mm_at_2pc": 12.7
+      }
+    },
+    "parallel-guide": {
+      "what": "Parallel guide, 30 mm leaves of three lines, 12 mm apart; push the shuttle",
+      "PLA": {
+        "stiffness_N_mm": 3.18,
+        "travel_mm_at_2pc": 4.76,
+        "drop_mm_at_travel": 0.454
+      },
+      "PETG": {
+        "stiffness_N_mm": 2.15,
+        "travel_mm_at_2pc": 4.76,
+        "drop_mm_at_travel": 0.454
+      }
+    },
+    "serpentine": {
+      "what": "Serpentine, five leaves of 20 mm, three lines; hang weights at the eye",
+      "PLA": {
+        "stiffness_N_mm": 1.07,
+        "travel_mm_at_2pc": 10.6
+      },
+      "PETG": {
+        "stiffness_N_mm": 0.724,
+        "travel_mm_at_2pc": 10.6
+      }
+    },
+    "notch-hinge-two": {
+      "what": "Notch hinge, 3 mm notches, two-line neck; push the arm's end (20 mm)",
+      "PLA": {
+        "stiffness_Nmm_rad": 566,
+        "angle_deg_at_2pc": 4.25,
+        "travel_mm_at_arm_end": 1.48
+      },
+      "PETG": {
+        "stiffness_Nmm_rad": 382,
+        "angle_deg_at_2pc": 4.25,
+        "travel_mm_at_arm_end": 1.48
+      }
+    },
+    "notch-hinge-three": {
+      "what": "Notch hinge, 3 mm notches, three-line neck; push the arm's end (20 mm)",
+      "PLA": {
+        "stiffness_Nmm_rad": 1560,
+        "angle_deg_at_2pc": 3.47,
+        "travel_mm_at_arm_end": 1.21
+      },
+      "PETG": {
+        "stiffness_Nmm_rad": 1050,
+        "angle_deg_at_2pc": 3.47,
+        "travel_mm_at_arm_end": 1.21
+      }
+    },
+    "bistable": {
+      "what": "Bistable beam, 60 mm, 3 mm rise, two lines; push the middle, note the snap force",
+      "PLA": {
+        "stiffness_N_mm_at_start": 1.88,
+        "snap_travel_mm": 6,
+        "strain_pc_on_the_way": 1.38
+      },
+      "PETG": {
+        "stiffness_N_mm_at_start": 1.27,
+        "snap_travel_mm": 6,
+        "strain_pc_on_the_way": 1.38
+      }
+    },
+    "living-hinge-2mm": {
+      "what": "Living hinge, 2 mm strip of two lines; push the arm's end (14 mm)",
+      "PLA": {
+        "stiffness_Nmm_rad": 529,
+        "angle_deg_at_2pc": 5.46
+      },
+      "PETG": {
+        "stiffness_Nmm_rad": 358,
+        "angle_deg_at_2pc": 5.46
+      }
+    },
+    "living-hinge-4mm": {
+      "what": "Living hinge, 4 mm strip of two lines; push the arm's end (14 mm)",
+      "PLA": {
+        "stiffness_Nmm_rad": 265,
+        "angle_deg_at_2pc": 10.9
+      },
+      "PETG": {
+        "stiffness_Nmm_rad": 179,
+        "angle_deg_at_2pc": 10.9
+      }
+    },
+    "compound-guide": {
+      "what": "Compound guide (plate 2), 30 mm leaves of three lines; push the shuttle, watch for drop",
+      "PLA": {
+        "stiffness_N_mm": 1.59,
+        "travel_mm_at_2pc": 9.52,
+        "drop_mm": 0
+      },
+      "PETG": {
+        "stiffness_N_mm": 1.07,
+        "travel_mm_at_2pc": 9.52,
+        "drop_mm": 0
+      }
+    },
+    "constant-force": {
+      "what": "Constant-force mechanism (plate 2), pinned; push the slider block along its line, read the force every 2 mm",
+      "PLA": {
+        "force_N": 1.72,
+        "flat_from_mm": 0.82,
+        "flat_to_mm": 9.72,
+        "travel_mm_at_2pc": 23.3
+      },
+      "PETG": {
+        "force_N": 1.16,
+        "flat_from_mm": 0.82,
+        "flat_to_mm": 9.72,
+        "travel_mm_at_2pc": 23.3
+      }
+    },
+    "let-joint": {
+      "what": "LET joint (plate 2), six layers; fold the outer panel up, note where it whitens",
+      "PLA": {
+        "stiffness_Nmm_rad": 65.9,
+        "angle_deg_at_2pc": 40.4
+      },
+      "PETG": {
+        "stiffness_Nmm_rad": 44.5,
+        "angle_deg_at_2pc": 40.4
+      }
+    }
+  },
+  "measured": {
+    "leaf-two": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "leaf-three": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "leaf-four": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "parallel-guide": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "serpentine": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "notch-hinge-two": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "notch-hinge-three": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "bistable": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "living-hinge-2mm": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "living-hinge-4mm": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "compound-guide": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "constant-force": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "let-joint": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    }
+  },
+  "strain_limit": {
+    "_doc": "What the failures say, through each model's strain(travel): the material's limit, to go into rules/<material>.json with this file as the source",
+    "PLA": null,
+    "PETG": null
+  },
+  "notes": ""
+}
