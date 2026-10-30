@@ -1,0 +1,227 @@
+{
+  "name": "sampler3",
+  "title": "Flexure sampler 3: a folded guide, a cartwheel pivot, an elliptical hinge, two snap hooks and a ratchet",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn: everything bends in the plane of the bed, within its layers. 100% infill, 0.2 mm layers. The ratchet wheel is held to the rail by a two-line tab: snap it off, set it on the boss with a 20 mm bit of filament through both, and its teeth meet the pawl's upper half.",
+  "variables": {
+    "thin": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "The thinnest flexures: two lines"
+    },
+    "mid": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "Three lines"
+    },
+    "height": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Every part's width, up from the bed: 40 layers"
+    },
+    "rail": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The rail the parts stand off, along y"
+    },
+    "spacing": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "From one part to the next along the rail"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the bosses"
+    },
+    "overlap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "How far a part sits into the rail, so they join"
+    },
+    "pin": {
+      "value": 1.75,
+      "unit": "mm",
+      "rule": "The pin: filament"
+    },
+    "pin_fit": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Room round the pin in the boss"
+    },
+    "boss": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The boss's radius round the pin"
+    },
+    "post": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The posts carrying the boss and the catch lips off the rail"
+    },
+    "loose": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The wheel's gap from the rail"
+    },
+    "tab": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "The tab holding the wheel to the rail: two lines, to snap off"
+    },
+    "fold_length": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "The folded guide's beams"
+    },
+    "gap": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Between a fold's two beams"
+    },
+    "clearance": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The folded guide's shuttle to its posts and base: the travel it can make"
+    },
+    "end": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The folded guide's trusses, posts and base bar"
+    },
+    "folded_width": {
+      "value": "2 * (end / 2 + clearance + end + fold_length + end)",
+      "unit": "mm",
+      "rule": "The folded guide across: shuttle, clearances, posts, beams and trusses"
+    },
+    "folded_lift": {
+      "value": "gap / 2 + mid + clearance + end - overlap",
+      "unit": "mm",
+      "rule": "Lifts the folded guide so its base bar sits in the rail"
+    },
+    "spoke": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The cartwheel's spokes, hub to rim"
+    },
+    "hub": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The cartwheel's hub radius"
+    },
+    "rim": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The cartwheel's rim, radially"
+    },
+    "arm": {
+      "value": 15,
+      "unit": "mm",
+      "rule": "The cartwheel's arm past the rim: push its end sideways to turn the hub"
+    },
+    "wheel_outer": {
+      "value": "hub + spoke + rim",
+      "unit": "mm",
+      "rule": "The cartwheel's outer radius"
+    },
+    "along": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The elliptical hinge's notches along the beam"
+    },
+    "across": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The elliptical hinge's notches deep"
+    },
+    "arms": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The elliptical hinge's arms either side of the neck"
+    },
+    "hook_length": {
+      "value": 15,
+      "unit": "mm",
+      "rule": "The snap hooks' beams"
+    },
+    "undercut": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "The hooks' height off the beam"
+    },
+    "lead": {
+      "value": 30,
+      "unit": "degrees",
+      "rule": "The hooks' lead face"
+    },
+    "square": {
+      "value": 90,
+      "unit": "degrees",
+      "rule": "The first hook's back: square, so it holds"
+    },
+    "sloped": {
+      "value": 60,
+      "unit": "degrees",
+      "rule": "The second hook's back: sloped, so it lets go at a higher force"
+    },
+    "flat": {
+      "value": "mid",
+      "unit": "mm",
+      "rule": "The hook's flat top, as the generator draws it: the thickness, at least 1 mm"
+    },
+    "engage": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "How far the catch's lip overlaps the hook"
+    },
+    "catch_gap": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Between the hook's face and the catch post"
+    },
+    "gap_above": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "Between the hook's back and the lip, so they print apart"
+    },
+    "lip": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The lip's thickness along y"
+    },
+    "hook_pitch": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "From one hook to the next"
+    },
+    "pawl_length": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The pawl leaf"
+    },
+    "teeth": {
+      "value": 24,
+      "rule": "The ratchet wheel's teeth"
+    },
+    "wheel_radius": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The ratchet wheel, to the teeth's tips"
+    },
+    "tooth": {
+      "value": 1.2,
+      "unit": "mm",
+      "rule": "A tooth's height: what the pawl lifts each click"
+    },
+    "degrees": {
+      "value": 57.2958,
+      "unit": "degrees",
+      "rule": "Degrees in a radian, for the hooks' angles"
+    }
+  }
+}

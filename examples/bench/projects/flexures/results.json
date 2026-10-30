@@ -168,6 +168,94 @@
         "stiffness_Nmm_rad": 44.5,
         "angle_deg_at_2pc": 40.4
       }
+    },
+    "folded-guide": {
+      "what": "Folded-beam guide (plate 3), 25 mm beams of three lines; push the shuttle toward the rail",
+      "PLA": {
+        "stiffness_N_mm": 2.74,
+        "travel_mm_at_2pc": 6.61,
+        "drift_mm": 0
+      },
+      "PETG": {
+        "stiffness_N_mm": 1.85,
+        "travel_mm_at_2pc": 6.61,
+        "drift_mm": 0
+      }
+    },
+    "cartwheel": {
+      "what": "Cartwheel pivot (plate 3), 10 mm spokes of two lines; push the arm's end sideways (30 mm from the hub)",
+      "PLA": {
+        "stiffness_Nmm_rad": 2200,
+        "angle_deg_at_2pc": 5.25,
+        "travel_mm_at_arm_end": 2.75
+      },
+      "PETG": {
+        "stiffness_Nmm_rad": 1490,
+        "angle_deg_at_2pc": 5.25,
+        "travel_mm_at_arm_end": 2.75
+      }
+    },
+    "elliptical-hinge": {
+      "what": "Elliptical hinge (plate 3), notches 6 along by 3 deep, two-line neck; push the arm's end (20 mm); compare the circular notch",
+      "PLA": {
+        "stiffness_Nmm_rad": 294,
+        "angle_deg_at_2pc": 8.2,
+        "travel_mm_at_arm_end": 2.86
+      },
+      "PETG": {
+        "stiffness_Nmm_rad": 198,
+        "angle_deg_at_2pc": 8.2,
+        "travel_mm_at_arm_end": 2.86
+      }
+    },
+    "snap-hook-square": {
+      "what": "Snap hook (plate 3), 15 mm beam of three lines, 1.5 mm undercut, square back; push the tip 0.8 mm from the lip to free it",
+      "PLA": {
+        "force_N_to_free": 2.54,
+        "deflection_force_N": 4.77,
+        "insertion_N": 5.06,
+        "removal_N": "holds",
+        "strain_pc_at_undercut": 1.26
+      },
+      "PETG": {
+        "force_N_to_free": 1.72,
+        "deflection_force_N": 3.22,
+        "insertion_N": 3.42,
+        "removal_N": "holds",
+        "strain_pc_at_undercut": 1.26
+      }
+    },
+    "snap-hook-sloped": {
+      "what": "Snap hook (plate 3), 15 mm beam of three lines, 1.5 mm undercut, sloped back; push the tip 0.8 mm from the lip to free it",
+      "PLA": {
+        "force_N_to_free": 2.54,
+        "deflection_force_N": 4.77,
+        "insertion_N": 5.06,
+        "removal_N": 20.2,
+        "strain_pc_at_undercut": 1.26
+      },
+      "PETG": {
+        "force_N_to_free": 1.72,
+        "deflection_force_N": 3.22,
+        "insertion_N": 3.42,
+        "removal_N": 13.6,
+        "strain_pc_at_undercut": 1.26
+      }
+    },
+    "ratchet": {
+      "what": "Ratchet (plate 3), 24 teeth of 1.2 mm on a 12 mm wheel, a 20 mm pawl of two lines; turn the wheel by its rim with the gauge",
+      "PLA": {
+        "lift_N": 0.953,
+        "click_N_at_rim": 0.734,
+        "ramp_deg": 20.9,
+        "strain_pc": 0.378
+      },
+      "PETG": {
+        "lift_N": 0.644,
+        "click_N_at_rim": 0.496,
+        "ramp_deg": 20.9,
+        "strain_pc": 0.378
+      }
     }
   },
   "measured": {
@@ -268,6 +356,54 @@
       }
     },
     "let-joint": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "folded-guide": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "cartwheel": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "elliptical-hinge": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "snap-hook-square": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "snap-hook-sloped": {
+      "readings": [],
+      "failure": {
+        "travel_mm": null,
+        "angle_deg": null,
+        "where": ""
+      }
+    },
+    "ratchet": {
       "readings": [],
       "failure": {
         "travel_mm": null,
