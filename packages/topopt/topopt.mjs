@@ -152,7 +152,9 @@ export function discretise(p) {
   return {
     grid: size, origin, passive, fixed, loads, ...(output ? { output, springs } : {}),
     material: p.material, thickness: p.thickness, volume: p.volume,
-    filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (p.stress ? 1000 : 300),
+    // (a solid's default is more: the projection reaches full sharpness about step 200, and every 3D showcase part was
+    // still improving at 300: the bin's compliance fell 388 → 265 → 195 over steps 100, 200 and 300)
+    filter: p.filter ?? p.cell * 1.5, penal: p.penal ?? 3, projection: p.projection ?? true, steps: p.steps ?? (p.stress ? 1000 : dim === 3 ? 500 : 300),
     ...(p.overhang ? { overhang: p.overhang } : {}), ...(p.bridge ? { bridge: p.bridge } : {}), ...(p.stress ? { stress: p.stress } : {}),
     regions: { keep, avoid },
   };
