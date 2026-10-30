@@ -26,8 +26,9 @@ or thickens walls, say so with the results.
 ## Predictions
 
 Beam theory, with the material's modulus along the layers (PLA 2,680 MPa, PETG 1,810 MPa) and travel to 2% strain.
-The models are good to a few times the thickness of travel; the leaves here go further than that, so expect the
-stiffness to drop as they bend (a leaf shortens as it curls).
+The models are good to a few times the thickness of travel; the leaves here go further than that, so expect them to
+stiffen as they curl and their tips to come nearer the rail (the elastica in `@rulecad/flexures` says how much:
+`elastica(leaf, { E }, { travel })`).
 
 | Flexure | Thickness | PLA stiffness | PETG stiffness | Travel to 2% |
 |---|---|---|---|---|
