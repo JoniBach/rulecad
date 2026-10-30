@@ -34,7 +34,7 @@ copy(require.resolve('@jscad/modeling/dist/jscad-modeling.min.js'), path.join(AS
 // The file formats' schemas, at the address their $id names (jonibach.github.io/rulecad/schemas/…), for editors
 for (const f of fs.readdirSync(path.join(ROOT, 'packages/cad/schemas'))) copy(path.join(ROOT, 'packages/cad/schemas', f), path.join(OUT, 'schemas', f))
 copy(path.join(path.dirname(require.resolve('@jscad/modeling/package.json')), 'LICENSE'), path.join(ASSETS, 'jscad.LICENSE'))
-const browser = { variables: ['variables.mjs'], shapes: ['shapes.mjs', 'enclosure.mjs', 'features.mjs', 'ops.mjs', 'optimised.mjs'], fit: ['fit.mjs'], printcheck: ['printcheck.mjs'],
+const browser = { variables: ['variables.mjs'], shapes: ['shapes.mjs', 'enclosure.mjs', 'features.mjs', 'ops.mjs', 'optimised.mjs'], flexures: ['flexures.mjs'], fit: ['fit.mjs'], printcheck: ['printcheck.mjs'],
   'keyboard-layout': ['keyboard-layout.mjs'], 'model-link': ['model-link.mjs'], versions: ['versions.mjs'] }
 for (const [dir, files] of Object.entries(browser)) for (const f of files) copy(path.join(ROOT, 'packages', dir, f), path.join(ASSETS, 'lib', f))
 const importMap = { imports: { '@jscad/modeling': '../assets/jscad.mjs', ...Object.fromEntries(Object.entries(browser).map(([dir, [f]]) => [`@rulecad/${dir}`, `../assets/lib/${f}`])) } }
@@ -86,7 +86,7 @@ try {
 
 // ---- the packages, grouped ----
 const groups = [
-  ['Design', 'Describe a part by its rules and check it.', ['cad', 'create-rulecad', 'variables', 'rules', 'shapes', 'versions']],
+  ['Design', 'Describe a part by its rules and check it.', ['cad', 'create-rulecad', 'variables', 'rules', 'shapes', 'flexures', 'versions']],
   ['Check', 'Will it print? Does it fit?', ['printcheck', 'fit']],
   ['Boards', 'Circuit boards from the same rules.', ['pcb']],
   ['Share', 'A model in a link, and the page that opens it.', ['model-link', 'viewer']],
@@ -124,6 +124,7 @@ const intro = {
   variables: 'Variables that say where each number comes from: expressions over rule sets, resolved, and a lint that keeps numbers out of code.',
   rules: 'Published facts: printers, screws, switches, fabs and parts, each value with its source and the date it was checked.',
   shapes: 'Shape helpers for printed parts: text that prints, anchors on a face, clean cuts, and an enclosure kit.',
+  flexures: 'Parts that move by bending: leaf springs, guides, serpentine springs and notch hinges, each with its stiffness, its strain, and how it prints.',
   versions: 'Semver for physical parts: a major release means an earlier print may no longer fit.',
   printcheck: 'Is this mesh printable? Bed size, overhangs, bridges, floating undersides and closed solids, in plain words.',
   fit: 'Do these parts fit? The smallest gap between two meshes, and whether a point is inside one.',

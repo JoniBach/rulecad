@@ -40,6 +40,7 @@ has test blocks for the optimiser: levers (2D) and wall brackets (3D) of equal m
 | [`@rulecad/keyboard-layout`](packages/keyboard-layout) | A plain JSON keyboard layout: rows of keys with widths and any per-key properties. |
 | [`@rulecad/versions`](packages/versions) | Semver for physical parts: a change to what other parts fit against is major, so you know when an old print stops fitting. |
 | [`@rulecad/shapes`](packages/shapes) | For JSCAD designs: text that prints cleanly, anchors on a face, cuts that leave no hairline gaps. Needs JSCAD (peer). |
+| [`@rulecad/flexures`](packages/flexures) | Parts that move by bending: leaf springs, guides, serpentine springs and notch hinges, each with its stiffness, its strain at a travel, and how it prints. Needs JSCAD (peer) |
 | [`@rulecad/fea`](packages/fea) | How far a flat part bends under load: finite elements on a grid, in plain JavaScript, checked against beam theory. |
 | [`@rulecad/topopt`](packages/topopt) | Topology optimisation for flat parts: the stiffest layout of a fixed amount of material, as outlines ready to extrude. Matches the published 88-line code step for step. |
 
