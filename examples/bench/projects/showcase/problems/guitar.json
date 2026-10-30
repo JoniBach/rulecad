@@ -1,0 +1,294 @@
+{
+  "title": "Guitar hanger: a wall mount that cradles a Telecaster's neck",
+  "description": "A wall hanger for a six-string Telecaster, hung by its neck: the neck sits in a U just below the headstock, which rests on the U's two arms. Printed lying on its back (the wall side on the bed), so z is out from the wall, y up the wall. Only the two screw bosses on the wall and the two arm pads the headstock rests on are kept; the optimiser grows the arms from the bosses to the pads, braced against the guitar's weight (4 kg, with a margin), a tug away from the wall and a knock sideways. The gap between the arms clears the neck at the nut (42 mm) with room for a foam pad each side, and is narrower than the headstock. 12% of a 110 × 130 × 70 mm space on 2.5 mm cells, struts at least 6.5 mm, printable without supports in the +z direction.",
+  "uses": [
+    "x1c"
+  ],
+  "material": "pla",
+  "variables": {
+    "width": {
+      "value": 110,
+      "unit": "mm",
+      "rule": "The space across the wall, along x"
+    },
+    "depth": {
+      "value": 130,
+      "unit": "mm",
+      "rule": "The space up the wall, along y"
+    },
+    "height": {
+      "value": 70,
+      "unit": "mm",
+      "rule": "The space out from the wall, along z: how far the arms stand off"
+    },
+    "gap": {
+      "value": 52,
+      "unit": "mm",
+      "rule": "Between the arms: a Telecaster neck is 42 mm at the nut, plus a foam pad each side"
+    },
+    "pad": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Each arm's pad across, where the headstock rests"
+    },
+    "pad_depth": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The pads up the wall"
+    },
+    "pad_height": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The pads out from the wall"
+    },
+    "pad_y": {
+      "value": 45,
+      "unit": "mm",
+      "rule": "The pads' centre up the wall from the middle of the space"
+    },
+    "boss": {
+      "value": 9,
+      "unit": "mm",
+      "rule": "Each screw boss's radius"
+    },
+    "boss_depth": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The bosses out from the wall"
+    },
+    "spread": {
+      "value": 45,
+      "unit": "mm",
+      "rule": "The screws' distance from the middle of the space, up and down the wall"
+    },
+    "weight": {
+      "value": 40,
+      "unit": "N",
+      "rule": "The guitar hanging: 4 kg, a Telecaster with a margin, down the wall, shared by the two pads"
+    },
+    "tug": {
+      "value": 20,
+      "unit": "N",
+      "rule": "A tug away from the wall, shared by the pads"
+    },
+    "knock": {
+      "value": 15,
+      "unit": "N",
+      "rule": "A knock sideways, shared by the pads"
+    },
+    "build": {
+      "value": "+z",
+      "choice": [
+        "none",
+        "+z"
+      ],
+      "rule": "+z: only what prints without supports, lying on its back; none: optimised freely"
+    }
+  },
+  "variants": {
+    "free": {
+      "build": "none"
+    }
+  },
+  "overhang": "build",
+  "cell": 2.5,
+  "volume": 0.12,
+  "filter": 6.5,
+  "steps": 500,
+  "space": {
+    "at": [
+      0,
+      0,
+      "height / 2"
+    ],
+    "size": [
+      "width",
+      "depth",
+      "height"
+    ]
+  },
+  "keep": [
+    {
+      "at": [
+        0,
+        "spread",
+        "boss_depth / 2"
+      ],
+      "r": "boss",
+      "length": "boss_depth",
+      "axis": "z",
+      "label": "upper screw boss"
+    },
+    {
+      "at": [
+        0,
+        "0 - spread",
+        "boss_depth / 2"
+      ],
+      "r": "boss",
+      "length": "boss_depth",
+      "axis": "z",
+      "label": "lower screw boss"
+    },
+    {
+      "at": [
+        "0 - (gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "label": "left arm pad"
+    },
+    {
+      "at": [
+        "(gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "label": "right arm pad"
+    }
+  ],
+  "supports": [
+    {
+      "at": [
+        0,
+        "spread",
+        "boss_depth / 2"
+      ],
+      "r": "boss",
+      "length": "boss_depth",
+      "axis": "z",
+      "label": "upper screw, into the wall"
+    },
+    {
+      "at": [
+        0,
+        "0 - spread",
+        "boss_depth / 2"
+      ],
+      "r": "boss",
+      "length": "boss_depth",
+      "axis": "z",
+      "label": "lower screw, into the wall"
+    }
+  ],
+  "loads": [
+    {
+      "at": [
+        "0 - (gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "force": [
+        0,
+        "0 - weight / 2",
+        0
+      ],
+      "case": "hanging"
+    },
+    {
+      "at": [
+        "(gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "force": [
+        0,
+        "0 - weight / 2",
+        0
+      ],
+      "case": "hanging"
+    },
+    {
+      "at": [
+        "0 - (gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "force": [
+        0,
+        "0 - weight / 2",
+        "tug / 2"
+      ],
+      "case": "tugged"
+    },
+    {
+      "at": [
+        "(gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "force": [
+        0,
+        "0 - weight / 2",
+        "tug / 2"
+      ],
+      "case": "tugged"
+    },
+    {
+      "at": [
+        "0 - (gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "force": [
+        "knock / 2",
+        "0 - weight / 2",
+        0
+      ],
+      "case": "knocked"
+    },
+    {
+      "at": [
+        "(gap + pad) / 2",
+        "pad_y",
+        "height - pad_height / 2"
+      ],
+      "size": [
+        "pad",
+        "pad_depth",
+        "pad_height"
+      ],
+      "force": [
+        "knock / 2",
+        "0 - weight / 2",
+        0
+      ],
+      "case": "knocked"
+    }
+  ]
+}

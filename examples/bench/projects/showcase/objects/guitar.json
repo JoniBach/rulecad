@@ -1,0 +1,14 @@
+{
+  "name": "guitar",
+  "title": "Guitar hanger: optimised",
+  "version": "0.1.0",
+  "uses": ["x1c", "pla"],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Lying on its back, the wall side on the bed, as optimised: printable without supports. Screws through the two bosses into the wall; a strip of foam on each arm where the headstock rests.",
+  "variables": {
+    "problem": { "type": "problem", "value": "guitar", "choice": ["guitar", "guitar:free"], "rule": "The optimisation problem: printable lying on its back, or free (guitar:free)" },
+    "smooth": { "value": 48, "rule": "Segments in the bosses and holes" },
+    "screw": { "value": 4.5, "unit": "mm", "rule": "The screw holes: clearance for a 4 mm wall screw" }
+  }
+}
