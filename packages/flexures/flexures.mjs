@@ -112,6 +112,65 @@ export function notchHingeModel({ radius: R, neck: t, width: w }, { E, concentra
 }
 
 /**
+ * A bistable beam: a shallow cosine arch clamped at both ends, which snaps to its mirror image when pushed at the
+ * middle, and stays there: a switch, a latch, a sear. Two such beams side by side (as drawn: Qiu, Lang and Slocum
+ * 2004), joined at the middle, so the middle can't twist on the way over, which is what makes it bistable at all.
+ * It is bistable when the rise is more than 2.31 times the thickness (Qiu et al.); the second stable shape is the
+ * first's mirror, about twice the rise away.
+ * @param {{ length: number, rise: number, thickness: number, width: number, gap?: number, ends?: number }} p rise: the
+ *   arch's height at the middle (h); gap: between the two beams (default 4 × thickness); ends: the clamped blocks
+ *   either end along x (default 3 × thickness)
+ */
+export function bistable({ length: L, rise: h, thickness: t, width, gap, ends }) {
+  const g = gap ?? 4 * t, e = ends ?? Math.max(3, 3 * t), n = 24, parts = [];
+  // Each beam as short straight pieces along the cosine, each hull-free: a block turned to the local slope
+  const y = (x) => (h / 2) * (1 - Math.cos((2 * Math.PI * x) / L));
+  for (const off of [-g / 2 - t / 2, g / 2 + t / 2]) {
+    for (let i = 0; i < n; i++) {
+      const x0 = (i * L) / n, x1 = ((i + 1) * L) / n, ym = (y(x0) + y(x1)) / 2, angle = Math.atan2(y(x1) - y(x0), x1 - x0), len = Math.hypot(x1 - x0, y(x1) - y(x0)) + t * 0.6;
+      parts.push(translate([(x0 + x1) / 2, ym + off, width / 2], jscad.transforms.rotateZ(angle, cuboid({ size: [len, t, width] }))));
+    }
+  }
+  const bar = g + 2 * t + 2 * h;
+  parts.push(block(-e / 2, 0, width / 2, [e, bar, width]), block(L + e / 2, 0, width / 2, [e, bar, width]));
+  parts.push(block(L / 2, h, width / 2, [Math.max(2 * t, 2), g + 2 * t, width])); // the middle, joined: a shuttle to push
+  return union(...parts);
+}
+/**
+ * @param {{ length: number, rise: number, thickness: number, width: number }} p @param {Material} m
+ * @returns {{ bistable: boolean, Q: number, stiffness: number, travel: number, strain: number, stress: number }}
+ *   Q: rise over thickness (bistable past 2.31); stiffness: at the start of a push, both beams, as straight
+ *   clamped beams (384EI/L³); travel: to the other stable shape (about 2 × rise); strain: the most the material sees
+ *   on the way over, from the curvature reversing: 2π² h t / L²
+ */
+export function bistableModel({ length: L, rise: h, thickness: t, width: w }, { E }) {
+  const I = (w * t ** 3) / 12, Q = h / t, strain = (2 * Math.PI * Math.PI * h * t) / (L * L);
+  return { bistable: Q > 2.31, Q, stiffness: (384 * E * I) / L ** 3, travel: 2 * h, strain, stress: E * strain };
+}
+
+/**
+ * A living hinge: a thin strip between two blocks that folds like a hinge. Printed flat, the strip's thickness lies
+ * in the layer plane, so folding bends the filament rather than the layer bonds. Its strain at an angle is t θ / 2l
+ * (a strip of length l bent through θ has curvature θ / l), so a longer strip folds further: 1 mm of 0.84 mm strip
+ * reaches 2% strain at 2.7°, 3 mm at 8°. PLA won't fold far or often; TPU and polypropylene will.
+ * @param {{ flex: number, thickness: number, width: number, arms?: number }} p flex: the strip's length along x (l);
+ *   thickness: across the fold (t); width: up z; arms: the blocks either side along x (default 10)
+ */
+export function livingHinge({ flex: l, thickness: t, width, arms }) {
+  const a = arms ?? 10, h = Math.max(4 * t, 3);
+  return union(block(-a / 2, 0, width / 2, [a, h, width]), block(l / 2, 0, width / 2, [l, t, width]), block(l + a / 2, 0, width / 2, [a, h, width]));
+}
+/**
+ * @param {{ flex: number, thickness: number, width: number }} p @param {Material} m
+ * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, stress: (angle: number) => number }}
+ *   stiffness in N·mm a radian (EI / l); angles in radians
+ */
+export function livingHingeModel({ flex: l, thickness: t, width: w }, { E }) {
+  const I = (w * t ** 3) / 12, strain = (th) => (t * th) / (2 * l);
+  return { stiffness: (E * I) / l, strain, angle: (e) => (2 * l * e) / t, stress: (th) => E * strain(th) };
+}
+
+/**
  * How a flexure prints, as findings (pass, warn, fail, in plain words): the thickness in whole extrusion lines and at
  * least two of them, the width in whole layers, and the strain at its travel against the material's limit.
  * @param {{ thickness: number, width: number, travel?: number }} p

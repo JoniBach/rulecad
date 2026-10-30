@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, printable } from '@rulecad/flexures';
+import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, printable } from '@rulecad/flexures';
 import { grid, analyse } from '@rulecad/fea';
 import jscad from '@jscad/modeling';
 
@@ -77,4 +77,25 @@ test('how a flexure prints: thickness in whole lines and at least two, width in 
   const far = printable({ ...p, travel: 40 }, x1c, pla, m);
   assert.equal(far.at(-1).level, 'fail');
   assert.match(far.at(-1).text, /at most [\d.]+ mm/);
+});
+
+test('a bistable beam: bistable past a rise of 2.31 thicknesses, snapping about twice the rise, drawn as two arched beams joined in the middle', () => {
+  const p = { length: 40, rise: 3, thickness: 0.84, width: 6 }, m = bistableModel(p, pla);
+  assert.ok(m.bistable && m.Q > 3.5);
+  assert.ok(!bistableModel({ ...p, rise: 1.5 }, pla).bistable, 'too shallow to stay over');
+  assert.ok(Math.abs(m.travel - 6) < 1e-9);
+  assert.ok(Math.abs(m.strain - (2 * Math.PI * Math.PI * 3 * 0.84) / 1600) < 1e-12);
+  assert.ok(Math.abs(m.stiffness - (384 * pla.E * (6 * 0.84 ** 3 / 12)) / 40 ** 3) < 1e-9);
+  const shape = bistable(p), box = measureBoundingBox(shape);
+  assert.ok(box[1][1] - box[0][1] > 2 * 3 && measureVolume(shape) > 2 * 40 * 0.84 * 6, 'two beams, arched, with their ends and middle');
+});
+
+test('a living hinge: strain t θ / 2l, so a longer strip folds further; stiffness EI / l', () => {
+  const p = { flex: 2, thickness: 0.84, width: 10 }, m = livingHingeModel(p, pla);
+  assert.ok(Math.abs(m.strain(m.angle(0.02)) - 0.02) < 1e-12);
+  assert.ok(Math.abs(m.angle(0.02) - (2 * 2 * 0.02) / 0.84) < 1e-12);
+  assert.ok(livingHingeModel({ ...p, flex: 4 }, pla).angle(0.02) > 1.9 * m.angle(0.02), 'twice the strip, nearly twice the fold');
+  assert.ok(Math.abs(m.stiffness - (pla.E * (10 * 0.84 ** 3 / 12)) / 2) < 1e-9);
+  const box = measureBoundingBox(livingHinge(p));
+  assert.ok(box[1][0] - box[0][0] > 20, 'two arms and the strip between');
 });
