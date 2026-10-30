@@ -267,6 +267,7 @@ export function overhangFilter({ nx, ny, nz = 1 }, up, reach = 0) {
             for (let t = run.length - 1; t >= 0; t--) { v = smin(v, x[run[t]]); m[run.length - t] = v; }
             s += Math.pow(v, P); count++;
           });
+          if (s < 1e-200) s = 0; // (again, with the bridges in: a denormal here raised to 1/Q − 1 is infinite, and 0 × that is NaN)
           sums[e] = s; support[e] = smax(s, count);
           const d = x[e] - support[e], root = Math.sqrt(d * d + eps);
           printed[e] = 0.5 * (x[e] + support[e] - root) + halfRootEps; powP[e] = Math.pow(printed[e], P);
