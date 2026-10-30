@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { check, seams, bounds, shape } from '@rulecad/printcheck';
+import { check, seams, bounds, shape, islands } from '@rulecad/printcheck';
 import { box } from '../../test/box.mjs';
 import { tri, union, translate, cuboid } from '../../test/jscad.mjs';
+import jscad from '@jscad/modeling';
 
 const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 };
 const level = (findings, re) => findings.find((f) => re.test(f.text))?.level;
@@ -64,3 +65,17 @@ test('pieces and tips: a loose block is a second piece, a cavity is not; a cone 
   assert.deepEqual(found.values.points, [tip]);
   assert.equal(check(box(0, 0, 0, 10), printer).find((f) => f.code === 'print.island').level, 'pass');
 });
+
+test('islands: a layer with nothing under it within the overhang reach is an island; a 45° wall and a cube are not', () => {
+  const printer = { layer: 0.2, overhang: 45, line: 0.42 };
+  assert.equal(islands(box([-5, -5, 0], [5, 5, 10]), printer).islands.length, 0);
+  // A block floating beside a post: an island at its first layer
+  const post = box([-2, -2, 0], [2, 2, 10]), blob = box([6, -1, 4], [8, 1, 6]), found = islands([...post, ...blob], printer);
+  assert.equal(found.islands.length, 1); assert.ok(Math.abs(found.islands[0].z - 4.1) < 0.11 && found.islands[0].area > 3 && found.islands[0].at[0] > 6);
+  // A 45° cone point-up on the bed steps out a layer at a time: held all the way
+  const cone = tri(jscad.primitives.cylinderElliptic({ height: 8, startRadius: [8, 8], endRadius: [0.5, 0.5], center: [0, 0, 4], segments: 32 }));
+  assert.equal(islands(cone, printer).islands.length, 0);
+  // The check reports it
+  assert.equal(level(check([...post, ...blob], { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42 }), /island/), 'warn');
+});
+

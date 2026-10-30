@@ -11,7 +11,8 @@ import { host } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
-import { discretise, optimise, outlines, surface, area, bounds, resultant, printable } from '@rulecad/topopt';
+import { discretise, optimise, outlines, surface, area, bounds, resultant, printable, refine, despike } from '@rulecad/topopt';
+import { islands } from '@rulecad/printcheck';
 import { threadsBackend } from '@rulecad/fea/threads'; // the solver's products shared over the machine's cores
 import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
 
@@ -77,9 +78,9 @@ export async function readProblem(project, ref) {
     ...(p.input_spring != null ? { input_spring: ev(p.input_spring) } : {}),
   };
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
-  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2 };
+  const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25 }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
-  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5 }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
+  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5, layer: pr?.layer ?? 0.2, line: pr?.line ?? 0.42 }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
   return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical };
 }
 
@@ -116,22 +117,62 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
     // thin members come out thinner than they are)
     // Printed without supports: before it's drawn at a level, whatever wouldn't print at that level (hanging with nothing
     // under it) is emptied (printable, in topopt); kept regions stay. A bridge may run out half the printer's span.
-    const ov = r.outline.overhang, keep = Uint8Array.from(spec.passive, (p) => (p === 1 ? 1 : 0)), emptied = new Map();
-    const clean = (iso) => {
-      if (!ov) return o.density;
-      const c = printable(spec.grid, o.density, { up: ov.up, iso, keep, reach: Math.floor(ov.bridge / 2 / spec.grid.h) });
-      emptied.set(iso, c.emptied);
-      return c.density;
+    const ov = r.outline.overhang, coarseKeep = Uint8Array.from(spec.passive, (p) => (p === 1 ? 1 : 0)), emptied = new Map();
+    const cleaned = (grid, density, keep, iso) => {
+      if (!ov) return density;
+      const reach = Math.floor(ov.bridge / 2 / grid.h);
+      // Spikes off the underside first (a hanging cell with few neighbours), then whatever is left hanging, in turn until neither finds any
+      let d = density, gone = 0;
+      for (let round = 0; round < 10; round++) {
+        const sp = despike(grid, d, { up: ov.up, iso, keep }), c = printable(grid, sp.density, { up: ov.up, iso, keep, reach });
+        d = c.density; gone += sp.emptied + c.emptied;
+        if (!sp.emptied && !c.emptied) break;
+      }
+      emptied.set(iso, gone);
+      return d;
     };
-    const want = o.density.reduce((t, d) => t + d, 0) * spec.grid.h ** 3, at = (iso) => surface(spec.grid, clean(iso), spec.origin, { smooth: r.outline.smooth, iso, overhang: ov });
-    let lo = 0.2, hi = 0.8, best = at(0.5), iso = 0.5;
+    // The surface's level, found so the solid holds as much material as the optimised densities do (drawn at 0.5,
+    // thin members come out thinner than they are): found on the grid it was optimised on, which is quick
+    const want = o.density.reduce((t, d) => t + d, 0) * spec.grid.h ** 3, draw = (grid, density, keep, iso) => surface(grid, cleaned(grid, density, keep, iso), spec.origin, { smooth: r.outline.smooth, iso, overhang: ov });
+    let lo = 0.2, hi = 0.8, best = draw(spec.grid, o.density, coarseKeep, 0.5), iso = 0.5;
     for (let k = 0; k < 10 && Math.abs(meshVolume(best.vertices, best.faces) / want - 1) > 0.003; k++) {
       if (meshVolume(best.vertices, best.faces) < want) hi = iso; else lo = iso; // a lower level encloses more
-      iso = (lo + hi) / 2; best = at(iso);
+      iso = (lo + hi) / 2; best = draw(spec.grid, o.density, coarseKeep, iso);
+    }
+    // Then drawn on a finer grid (cells no bigger than the outline's fine size, 1 mm), so the cleaning works at nearer
+    // the printer's resolution: between two coarse cells the surface can dip under the overhang line, which sliced is an
+    // island; on the fine grid those dips are cells of their own, and go. One correction of the level for the volume.
+    const factor = ov ? Math.max(1, Math.ceil(spec.grid.h / (r.outline.fine ?? 1) - 1e-9)) : 1;
+    const fine = factor > 1 ? refine(spec.grid, o.density, factor, { keep: coarseKeep, smooth: 1 }) : null;
+    let cleared = 0;
+    if (fine) {
+      best = draw(fine.grid, fine.density, fine.keep, iso);
+      const ratio = meshVolume(best.vertices, best.faces) / want;
+      if (Math.abs(ratio - 1) > 0.01) { iso = Math.min(0.8, Math.max(0.2, iso + (ratio - 1) * 0.3)); best = draw(fine.grid, fine.density, fine.keep, iso); } // a touch up or down the level
+      // Then as the printer will see it: sliced into layers, each against the one below. Wherever a layer's region has
+      // nothing under it (an island, which the printer lays on air), the fine cells it starts from are emptied, the
+      // cleaning takes whatever hung on them, and it's drawn again, until a slice finds none (each round a redraw)
+      const { nx, ny, nz, h } = fine.grid, [ox, oy, oz] = spec.origin;
+      if ('xyz'.indexOf(ov.up[1]) === 2) for (let round = 0; round < 4; round++) { // (the slicer's layers are along z: a part is drawn in its print orientation); a safety net: the drawing leaves none as a rule
+        const found = islands(best.faces.map((f) => f.map((n) => best.vertices[n])), { layer: ov.layer, overhang: ov.angle, line: ov.line }).islands;
+        if (!found.length) break;
+        let hit = 0;
+        const clear = (i, j, k) => { if (i < 0 || i >= nx || j < 0 || j >= ny || k < 0 || k >= nz) return 0; const e = (k * ny + j) * nx + i; if (fine.density[e] > 0 && !fine.keep[e]) { fine.density[e] = 0; return 1; } return 0; };
+        for (const isl of found) {
+          let own = 0;
+          for (const [x, y] of isl.cells) { const i = Math.floor((x - ox) / h), j = Math.floor((y - oy) / h), k0 = Math.floor((isl.z - oz) / h); own += clear(i, j, k0) + clear(i, j, k0 + 1); } // the cell the island starts in and the one above it
+          // Its own cells already empty: the island is drawn from the cells round them, so those go too
+          if (!own) for (const [x, y] of isl.cells) { const i0 = Math.floor((x - ox) / h), j0 = Math.floor((y - oy) / h), k0 = Math.floor((isl.z - oz) / h); for (let k = k0; k <= k0 + 1; k++) for (let j = j0 - 1; j <= j0 + 1; j++) for (let i = i0 - 1; i <= i0 + 1; i++) own += clear(i, j, k); }
+          hit += own;
+        }
+        cleared += hit;
+        if (!hit) break;
+        best = draw(fine.grid, fine.density, fine.keep, iso);
+      }
     }
     const anchors = [...r.problem.supports, ...r.problem.loads, ...(r.problem.keep || [])].map(bounds);
-    const { vertices, faces, dropped } = anchored(best, anchors, spec.grid.h);
-    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(dropped.length ? { dropped } : {}), ...(emptied.get(iso) ? { emptied: emptied.get(iso) } : {}) };
+    const { vertices, faces, dropped } = anchored(best, anchors, (fine ?? { grid: spec.grid }).grid.h);
+    return { mesh: { vertices: vertices.map((v) => v.map((c) => round(c, 3))), faces }, solid: meshVolume(vertices, faces), iso, ...(dropped.length ? { dropped } : {}), ...(emptied.get(iso) ? { emptied: emptied.get(iso) } : {}), ...(cleared ? { cleared } : {}) };
   })();
   const result = {
     problem: ref, title: r.title, hash, dim: r.dim, material: r.material.name, ...(r.dim === 2 ? { thickness: r.problem.thickness } : {}),

@@ -26,6 +26,10 @@ What it checks:
   mid-air.
   An underside narrower than a print line (`line`, 0.4 mm unless given) is a sliver the slicer lays nothing on, and
   is not counted.
+- **Islands, as the slicer sees them**: the mesh cut at every layer (`layer`), each layer's regions against the one
+  below within the overhang reach; a region with nothing under it is an island the printer would lay on air. Drawn
+  on a grid of the print line (`line`), so slivers narrower than a line don't count. Also exported as `islands()`,
+  with each island's pixels for whatever fixes it.
 - **Closed solid**: every edge is matched by a face on the other side. T-junctions count as closed, and so do hairline
   seams narrower than `HAIRLINE` (0.01 mm), which booleans leave and no printer can resolve. Wider gaps are holes.
 - **One piece**: a loose piece would print as a stray bit or fall over. A cavity inside a part (its surface faces in)
