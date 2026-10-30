@@ -6,7 +6,7 @@ words. No dependencies; browsers and Node 20+.
 ```js
 import { check } from '@rulecad/printcheck';
 
-const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 };
+const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42 };
 const findings = check(triangles, printer);
 // [{ level: 'pass', text: '20 × 4 × 12 mm, fits the bed' },
 //  { level: 'warn', text: 'an underside at z 10 starts in mid-air: needs support …' }, …]
@@ -24,6 +24,8 @@ What it checks:
   (one `support_gap` below a surface), or it **bridges** no wider than `bridge` mm. The bridge is the widest circle that
   fits in the underside, measured to the edges held up by material below. An underside held by nothing starts in
   mid-air.
+  An underside narrower than a print line (`line`, 0.4 mm unless given) is a sliver the slicer lays nothing on, and
+  is not counted.
 - **Closed solid**: every edge is matched by a face on the other side. T-junctions count as closed, and so do hairline
   seams narrower than `HAIRLINE` (0.01 mm), which booleans leave and no printer can resolve. Wider gaps are holes.
 - **One piece**: a loose piece would print as a stray bit or fall over. A cavity inside a part (its surface faces in)
