@@ -1,0 +1,168 @@
+{
+  "name": "sampler2",
+  "title": "Flexure sampler 2: a compound guide, a constant-force mechanism and a LET joint, on one rail",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn. The guide and the constant-force leaf bend in the plane of the bed; the LET joint folds its outer panel up out of the bed, which is the one place the layers are bent across (print it in PETG too). 100% infill, 0.2 mm layers. The crank is held to the rail by a two-line tab: snap it off and pin it to the coupler's boss and the ground boss with two 12 mm bits of filament.",
+  "variables": {
+    "mid": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "The guide's leaves: three lines"
+    },
+    "height": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The guide's and the mechanism's width, up from the bed: 40 layers"
+    },
+    "rail": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The rail the parts stand off, along y"
+    },
+    "spacing": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "From one part to the next along the rail"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the bosses"
+    },
+    "guide_length": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The compound guide's leaves"
+    },
+    "gap": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The compound guide's inner leaves apart"
+    },
+    "clearance": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Room between the guide's inner and outer leaves, and its shuttle and base: the travel it can make"
+    },
+    "guide_width": {
+      "value": "gap + 4 * mid + 2 * clearance + 2 * slider_block",
+      "unit": "mm",
+      "rule": "The compound guide across, along x: inner leaves, outer leaves, clearances and the base's arms"
+    },
+    "base_depth": {
+      "value": "slider_block + clearance",
+      "unit": "mm",
+      "rule": "The guide's shuttle face to its back bar's inner face: stood on the rail so the back bar sits in it"
+    },
+    "leaf": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The constant-force coupler leaf's length"
+    },
+    "cfm_thickness": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "The coupler leaf: three lines, 1.7 N"
+    },
+    "crank": {
+      "value": "leaf / 2",
+      "unit": "mm",
+      "rule": "The crank, pin to pin: half the leaf for the flattest force"
+    },
+    "pin": {
+      "value": 1.75,
+      "unit": "mm",
+      "rule": "The pins: filament"
+    },
+    "pin_fit": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Room round a pin in the ground boss"
+    },
+    "boss": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "A boss's radius round a pin"
+    },
+    "slider": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The coupler's slider block, along the leaf: sits in the rail"
+    },
+    "post": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The post carrying the ground boss off the rail"
+    },
+    "loose": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The loose crank's gap from the rail"
+    },
+    "let_width": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The LET joint's hinge, along its axis"
+    },
+    "let_thickness": {
+      "value": "x1c.layer * 6",
+      "unit": "mm",
+      "rule": "The LET joint's sheet: six layers"
+    },
+    "bar": {
+      "value": "x1c.line * 5",
+      "unit": "mm",
+      "rule": "A torsion bar's width: five lines"
+    },
+    "slot": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "The slots: three lines wide"
+    },
+    "bridge": {
+      "value": "x1c.line * 6",
+      "unit": "mm",
+      "rule": "The bridges: six lines"
+    },
+    "panel": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The LET joint's panels either side of the hinge"
+    },
+    "slider_block": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The guide's shuttle and base blocks, along the leaves"
+    },
+    "reach": {
+      "value": "crank * 0.9962",
+      "unit": "mm",
+      "rule": "The crank's reach along the slider's line at its 5° rest angle: cos 5°"
+    },
+    "offset": {
+      "value": "crank * 0.0872",
+      "unit": "mm",
+      "rule": "The ground pin beside the slider's line at rest: sin 5°, so the leaf prints straight"
+    },
+    "let_half": {
+      "value": "panel + slot * 1.5 + bar",
+      "unit": "mm",
+      "rule": "Half the LET joint across its hinge: a panel, a slot and a half, a bar"
+    },
+    "overlap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "How far a part sits into the rail, so they join"
+    },
+    "tab": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "The tab holding the loose crank to the rail: two lines, to snap off"
+    }
+  }
+}

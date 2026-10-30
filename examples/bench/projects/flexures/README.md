@@ -43,6 +43,22 @@ stiffen as they curl and their tips to come nearer the rail (the elastica in `@r
 | Living hinge, 2 mm strip | 0.84 mm | 530 N·mm/rad | 358 N·mm/rad | 5.5° |
 | Living hinge, 4 mm strip | 0.84 mm | 265 N·mm/rad | 179 N·mm/rad | 10.9° |
 
+## The second plate: mechanisms
+
+`sampler2` puts three mechanisms on one rail (`npx cad export flexures/sampler2`):
+
+- **A compound parallel guide**, 30 mm leaves of three lines, 12 mm apart, with 6 mm of room. Push the shuttle
+  sideways and watch its face against the rail: a parallel guide's shuttle drops 3δ² / 5L (0.45 mm at 4.8 mm); this
+  one's should not move along the leaves at all. Stiffness 1.59 N/mm in PLA (1.07 PETG), 9.5 mm to 2% strain.
+- **A constant-force mechanism.** The crank is held to the rail by a two-line tab: snap it off and pin it to the coupler's
+  boss and the ground boss with two 12 mm bits of filament. Then push the coupler's slider block along the rail's line and read the gauge: the force
+  should be there within the first millimetre and hold within ±5% to about 10 mm, at 1.7 N in PLA (1.1 N in PETG),
+  the leaf under 2% strain to 22 mm. The pins and bosses will add friction: note the difference between pushing in
+  and letting out.
+- **A LET joint**, six layers thick, five-line torsion bars and six-line bridges. Fold the outer panel up: predicted
+  61 N·mm a radian in PLA, and 2% strain at 41°. This is the one flexure that bends across its layers, so expect PLA
+  to whiten at the bridges first; the PETG plate is the one to trust.
+
 ## Results
 
 Record them in `results.json` beside this file (specimen, material, weights and travels, the strain or angle at

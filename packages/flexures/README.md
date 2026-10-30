@@ -30,8 +30,11 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `notchHinge` | A thin neck between two round notches: a pivot with no play | 2 E w t^(5/2) / 9π√R, N·mm a radian | 4θ√(t/R) / 3π, times about 1.2 for the notch |
 | `bistable` | Two shallow arches clamped at both ends, joined in the middle: pushed, they snap over and stay (a switch, a latch) | 384 EI / L³ at the start of a push | 2π²ht / L² on the way over; bistable when h > 2.31t (Qiu, Lang and Slocum 2004) |
 | `livingHinge` | A thin strip between two blocks that folds | EI / l, N·mm a radian | tθ / 2l |
+| `compoundGuide` | Two parallel guides in series, one folded back inside the other: a linear bearing with no drop | E w t³ / L³ | 3t(δ/2) / L²; no drop |
+| `letJoint` | A hinge cut into a flat sheet: torsion bars either side of a slot, turning about an axis in the sheet (Jacobsen et al. 2009) | 2 / (2/k_t + 1/k_b), N·mm a radian: half-bars GJ / L_t, end bridges EI / L_b | the bars' shear (as von Mises) or the bridges' bending, whichever is more |
+| `constantForce` | A slider-crank with a leaf coupler (Howell): the slider's force stays within ±5% over about a quarter of the leaf's length | `force(stroke)`, `flat` {from, to, force} | 0.85 × 2.65 t Θ / 2l, the leaf's pseudo-rigid-body angle Θ |
 
-L length, t thickness (across the bend), w width (up the print), R a notch's radius, h an arch's rise, l a strip's length, I = wt³/12, θ an angle in radians. Each
+L length, t thickness (across the bend), w width (up the print), R a notch's radius, h an arch's rise, l a strip's length, I = wt³/12, J a bar's torsion constant, θ an angle in radians. Each
 `<name>Model(shape, material)` gives `stiffness`, `strain(travel)`, `travel(strain)` and `stress(travel)`; the notch
 hinge's are in angles.
 
@@ -59,6 +62,25 @@ elastica({ length: 40, thickness: 0.84, width: 8 }, { E: 2680 }, { travel: 20 })
 // { force: 1.2, travel: 20, shortening: 5.6, angle: 0.82, strain: 0.017, stiffness: 0.06, centreline: [...] }
 ```
 
+## Out of the plane: the LET joint
+
+Every flexure above bends within its layers. The LET joint is the one that doesn't: it is the natural hinge for a
+flat sheet, a slot pattern whose torsion bars twist about an axis lying in the sheet, so a panel folds up out of the
+bed. Printed, its bars twist about an axis in the layer plane and its end bridges bend across the layers, so PLA
+cracks here sooner than anywhere else: PETG, nylon or TPU, and a sheet several layers thick. `letJointModel` gives the
+joint's stiffness, each half-bar's twist and each bridge's bend at an angle, and the angle a strain allows.
+
+## Pinned where it must be: the constant-force mechanism
+
+`constantForce` is a slider-crank whose coupler is a leaf fixed to the slider (Howell, Midha and Murphy 1994): pushed
+in, the slider's force is there almost at once and holds within ±5% from the first millimetre to about a quarter of
+the leaf's length, because the leaf bends further as the crank's lever shortens. The ground pin sits a little beside
+the slider's line (the model's `offset`), so the leaf prints straight and the crank starts at its rest angle. The crank turns too far for any
+flexure, so it is pinned: `constantForce` draws the coupler (a slider block, the leaf, a boss at its tip) and
+`constantForceCrank` the crank with a boss at each end, for pins of filament. `constantForceModel` gives
+`force(stroke)`, the `flat` stretch, the leaf's `strain(stroke)` and the stroke a strain allows. The force scales
+with the leaf's thickness cubed: 1.7 N at three lines (1.26 mm) on a 40 mm leaf 8 mm wide in PLA, 13 N at six.
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,
@@ -73,4 +95,7 @@ polypropylene. Measured limits, with their sources, belong in the material's rul
 - Smith, S. T., *Flexures: Elements of Elastic Mechanisms*, CRC Press, 2000: notch hinges and their stress.
 - Bisshopp, K. E., and Drucker, D. C., "Large deflection of cantilever beams", *Quarterly of Applied Mathematics* 3(3), 1945: the elastica of a cantilever under a tip load.
 - Paros, J. M., and Weisbord, L., "How to design flexure hinges", *Machine Design*, 1965: the notch hinge's stiffness.
+- Jacobsen, J. O., Chen, G., Howell, L. L., and Magleby, S. P., "Lamina Emergent Torsional (LET) joint", *Mechanism and Machine Theory* 44(11), 2009: the LET joint and its stiffness as torsion and bending segments in series and parallel.
+- Howell, L. L., Midha, A., and Murphy, M. D., "Dimensional synthesis of compliant constant-force slider mechanisms", *Machine Elements and Machine Dynamics*, ASME DE-71, 1994: the constant-force slider-crank.
+- Young, W. C., and Budynas, R. G., *Roark's Formulas for Stress and Strain*, 7th ed., 2002: a rectangular bar's torsion constant and peak shear.
 - Qiu, J., Lang, J. H., and Slocum, A. H., "A curved-beam bistable mechanism", *Journal of Microelectromechanical Systems* 13(2), 2004: the double curved beam and its bistability condition.

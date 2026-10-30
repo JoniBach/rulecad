@@ -229,6 +229,141 @@ export function leafFlexed(p, m, load) {
 }
 
 /**
+ * A compound parallel guide: two parallel guides in series, the second folded back inside the first, so the shuttle
+ * moves along y with no drop: each stage drops 3(δ/2)² / 5L, in opposite directions, and they cancel (Howell 2001;
+ * Smith 2000). Half as stiff as one guide, E w t³ / L³, and each stage takes half the travel: strain 3t(δ/2) / L², so
+ * twice a parallel guide's travel at a strain.
+ * Drawn: the base is a U round the back, its two arms carrying the outer leaves out along x to an intermediate block,
+ * which carries the inner leaves back along −x to the shuttle, between the base's arms with room to move. The shuttle
+ * moves δ against the arms, and the inner leaves δ/2 against the outer, so clearance must cover the travel.
+ * @param {Leaf & { gap: number, clearance?: number, shuttle?: number, base?: number }} p gap: between the inner
+ *   leaves; clearance: between an inner leaf and its outer one, and the shuttle and the base (default gap / 2);
+ *   shuttle, base: the blocks' thickness (default 2 × thickness, at least 3 mm)
+ */
+export function compoundGuide({ length, thickness: t, width, gap, clearance, shuttle, base }) {
+  const end = Math.max(3, 2 * t), s = shuttle ?? end, b = base ?? end, c = clearance ?? gap / 2;
+  const yi = gap / 2 + t / 2, yo = gap / 2 + t + c + t / 2, full = 2 * (gap / 2 + 2 * t + c + end);
+  const leafAt = (y) => block(length / 2, y, width / 2, [length, t, width]);
+  return union(
+    leafAt(yi), leafAt(-yi), leafAt(yo), leafAt(-yo),
+    block(-s / 2, 0, width / 2, [s, gap + 2 * t, width]), // the shuttle, on the inner leaves
+    block(-(s + c + b) / 2, gap / 2 + 1.5 * t + c + end / 2, width / 2, [s + c + b, t + end, width]), block(-(s + c + b) / 2, -(gap / 2 + 1.5 * t + c + end / 2), width / 2, [s + c + b, t + end, width]), // the base's arms, from its back to the outer leaves
+    block(-s - c - b / 2, 0, width / 2, [b, full, width]), // the base's back, behind the shuttle
+    block(length + end / 2, 0, width / 2, [end, full, width]), // the intermediate block, joining all four leaves
+  );
+}
+/** @param {Leaf} p @param {Material} m @returns {Model & { drop: (travel: number) => number }} */
+export function compoundGuideModel(p, m) {
+  const one = fixedGuidedModel(p, m);
+  return { stiffness: one.stiffness, strain: (d) => one.strain(d / 2), travel: (e) => 2 * one.travel(e), stress: (d) => m.E * one.strain(d / 2), drop: () => 0 };
+}
+
+/**
+ * A lamina-emergent torsion (LET) joint: a hinge cut into a flat sheet, turning about an axis that lies in the sheet
+ * (Jacobsen, Chen, Howell and Magleby 2009). Two panels along x meet at the axis, along y at x = 0. An H of slots
+ * leaves a torsion bar along y either side of a central slot, each joined to its panel by a bridge at the middle and
+ * to the other bar by a bridge at each end. Turning the joint twists the four half-bars and bends the two end bridges:
+ * two paths in parallel (top and bottom), each a half-bar, an end bridge and a half-bar in series, so the stiffness is
+ * 2 / (2/k_t + 1/k_b), with k_t = GJ / L_t for a half-bar and k_b = EI / L_b for a bridge across the central slot.
+ * Unlike the other flexures this one moves out of its plane: printed flat, the bars twist about an axis in the layer
+ * plane and the bridges bend across the layers, so PLA cracks sooner here than in a flexure bending within its layers.
+ * PETG, nylon or TPU; and a sheet several layers thick.
+ * @param {{ width: number, thickness: number, bar: number, slot: number, bridge: number, panel?: number }} p width:
+ *   the hinge's extent along y (W); thickness: the sheet, up z (h); bar: a torsion bar's width along x; slot: the
+ *   slots' width; bridge: the bridges' width along y; panel: each panel's length along x (default width)
+ */
+export function letJoint({ width: W, thickness: h, bar: wt, slot: sl, bridge: wb, panel }) {
+  const a = panel ?? W, c = sl / 2 + wt + sl, cut = (x, y, sx, sy) => block(x, y, h / 2, [sx, sy, h + 2]);
+  const sheet = block(0, 0, h / 2, [2 * (a + c), W, h]), centre = cut(0, 0, sl, W - 2 * wb), len = (W - wb) / 2;
+  const outer = [1, -1].flatMap((s) => [cut(s * (sl + wt), (W + wb) / 4, sl, len), cut(s * (sl + wt), -(W + wb) / 4, sl, len)]);
+  return subtract(sheet, centre, ...outer);
+}
+/**
+ * @param {{ width: number, thickness: number, bar: number, slot: number, bridge: number }} p
+ * @param {Material & { nu?: number }} m nu: Poisson's ratio (default 0.35), for the shear modulus
+ * @returns {{ stiffness: number, strain: (angle: number) => number, angle: (strain: number) => number, stress: (angle: number) => number, twist: (angle: number) => number, bend: (angle: number) => number }}
+ *   stiffness in N·mm a radian; strain: the most the material sees, the bars' shear as an equivalent (von Mises) strain
+ *   or the bridges' bending; twist: each half-bar's share of the angle; bend: each bridge's
+ */
+export function letJointModel({ width: W, thickness: h, bar: wt, slot: sl, bridge: wb }, { E, nu = 0.35 }) {
+  const G = E / (2 * (1 + nu)), a = Math.max(wt, h), b = Math.min(wt, h);
+  const J = a * b ** 3 * (1 / 3 - 0.21 * (b / a) * (1 - b ** 4 / (12 * a ** 4))); // a rectangle's torsion constant (Roark)
+  const Lt = (W - 3 * wb) / 2, kt = (G * J) / Lt; // a half-bar: from the middle bridge to an end bridge
+  const Ib = (wb * h ** 3) / 12, kb = (E * Ib) / sl; // an end bridge: across the central slot, bending about y
+  const path = 1 / (2 / kt + 1 / kb), stiffness = 2 * path;
+  const strain = (th) => { const T = path * th, tau = (T * (3 * a + 1.8 * b)) / (a * a * b * b); return Math.max((Math.sqrt(3) * tau) / E, (T * h) / (2 * E * Ib)); };
+  return { stiffness, strain, angle: (e) => e / strain(1), stress: (th) => E * strain(th), twist: (th) => (path * th) / kt, bend: (th) => (path * th) / kb };
+}
+
+/**
+ * A constant-force mechanism: a slider-crank whose coupler is a leaf (Howell, Midha and Murphy 1994; Howell 2001,
+ * class 1A). The leaf is fixed to the slider and pinned to the crank, the crank pinned to ground on the slider's line.
+ * Pushed in, the slider's force is there almost at once and then stays nearly flat, because the leaf bends further
+ * as the crank's lever shortens: with the crank half the leaf's length and the rest angle a few degrees, within ±5%
+ * from the first millimetre to about a quarter of the leaf's length. The feel of a trigger, or a gripper that holds the
+ * same whatever its size. Modelled as a pseudo-rigid body (Howell): the leaf as a rigid link turning at a pivot
+ * 0.85 of its length from the slider, with a torsional spring 0.85 × 2.65 EI / l.
+ * Pins, since the crank turns too far for a flexure: a pin of filament through the bosses. Drawn at rest: the
+ * coupler as a leaf along x from the slider block to a boss at its tip (the crank joint); the crank, from
+ * constantForceCrank, as a bar with a boss at each end, to pin to the coupler and to the ground. The ground pin
+ * sits a little beside the slider's line (the model's offset, r2 sin rest), so the leaf is straight at rest and the
+ * crank already turned by the rest angle.
+ * @param {{ leaf: number, thickness: number, width: number, crank?: number, rest?: number, pin?: number, boss?: number, slider?: number }} p
+ *   leaf: its length (l); crank: pivot to pivot (default l / 2); rest: the crank's angle at rest, degrees (default 5);
+ *   pin: the pin's diameter (default 1.75, filament); boss: a boss's radius (default 3); slider: the block's length
+ *   along x (default 2 × thickness, at least 3)
+ */
+export function constantForce({ leaf: l, thickness: t, width, pin = 1.75, boss = 3, slider }) {
+  const s = slider ?? Math.max(3, 2 * t), hole = cylinder({ radius: pin / 2 + 0.1, height: width + 2, center: [l, 0, width / 2], segments: 32 });
+  return subtract(union(block(-s / 2, 0, width / 2, [s, 2 * boss, width]), block(l / 2, 0, width / 2, [l, t, width]), cylinder({ radius: boss, height: width, center: [l, 0, width / 2], segments: 48 })), hole);
+}
+/** The crank for constantForce: a bar with a boss and a pin hole at each end. @param {{ leaf: number, thickness: number, width: number, crank?: number, pin?: number, boss?: number }} p */
+export function constantForceCrank({ leaf: l, thickness: t, width, crank, pin = 1.75, boss = 3 }) {
+  const r = crank ?? l / 2, at = (x, radius) => cylinder({ radius, height: width + (radius < boss ? 2 : 0), center: [x, 0, width / 2], segments: radius < boss ? 32 : 48 });
+  return subtract(union(block(r / 2, 0, width / 2, [r, Math.max(2 * t, boss), width]), at(0, boss), at(r, boss)), at(0, pin / 2 + 0.1), at(r, pin / 2 + 0.1));
+}
+/**
+ * @param {{ leaf: number, thickness: number, width: number, crank?: number, rest?: number }} p @param {Material} m
+ * @returns {{ force: (stroke: number) => number, strain: (stroke: number) => number, travel: (strain: number) => number, stroke: number, flat: { from: number, to: number, force: number }, stiffness: number, offset: number, reach: number }}
+ *   force: on the slider at a stroke (mm in from rest); strain: in the leaf, at its root; travel: the stroke a strain
+ *   allows; stroke: as far as the crank turns to square with the slider's line; flat: the longest stroke over which
+ *   the force stays within ±5% of a level; stiffness: the leaf's torsional spring in the model, N·mm a radian;
+ *   offset: how far the ground pin sits beside the slider's line (r2 sin rest), so the leaf is straight at rest;
+ *   reach: from the coupler's pin to the ground pin along the line at rest (r2 cos rest)
+ */
+export function constantForceModel({ leaf: l, thickness: t, width: w, crank, rest = 5 }, { E }) {
+  const g = 0.85, Kt = 2.65, r2 = crank ?? l / 2, I = (w * t ** 3) / 12, K = (g * Kt * E * I) / l, rest0 = (rest * Math.PI) / 180;
+  // The slider's line is y = 0; the ground pin O sits at (0, −d) beside it, so at rest the pin B is on the line and the
+  // leaf straight. The slider at xC: the leaf's pivot P at xP = xC − (1 − γ)l, its rigid part γl long reaching B, which
+  // is also r2 from O: where the two circles cross, on the side B rises to
+  const d = r2 * Math.sin(rest0), reach = r2 * Math.cos(rest0), gl = g * l;
+  const at = (xC) => {
+    const xP = xC - (1 - g) * l, D = Math.hypot(xP, d), a = (r2 * r2 - gl * gl + D * D) / (2 * D), hh = r2 * r2 - a * a;
+    if (!(hh >= 0) || D < 1e-9) return null;
+    const ux = xP / D, uy = (0 + d) / D, h = Math.sqrt(hh); // from O toward P
+    const B = [[a * ux - h * uy, -d + a * uy + h * ux], [a * ux + h * uy, -d + a * uy - h * ux]].sort((p, q) => q[1] - p[1])[0];
+    return { Th: Math.atan2(B[1], B[0] - xP), t2: Math.atan2(B[1] + d, B[0]) };
+  };
+  const xRest = reach + l, Th0 = Math.PI;
+  const U = (xC) => { const a = at(xC); return a ? 0.5 * K * (a.Th - Th0) ** 2 : NaN; };
+  const square = gl > Math.abs(r2 - d) ? Math.sqrt(gl * gl - (r2 - d) ** 2) + (1 - g) * l : null; // the crank square to the line: B at (0, r2 − d)
+  const stroke = square != null && square < xRest ? xRest - square : xRest - (1 - g) * l - r2 - 1e-6;
+  const force = (s) => (s <= 0 || s > stroke ? 0 : -(U(xRest - s + 1e-4) - U(xRest - s - 1e-4)) / 2e-4);
+  const strain = (s) => { const a = at(xRest - Math.min(Math.max(s, 0), stroke)); return a ? (g * Kt * t * Math.abs(a.Th - Th0)) / (2 * l) : NaN; };
+  const travel = (e) => { let lo = 0, hi = stroke; if (strain(hi) <= e) return hi; for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (strain(mid) < e) lo = mid; else hi = mid; } return (lo + hi) / 2; };
+  // The flat stretch: the longest run of the curve within ±5% of one of its own values
+  const n = 400, pts = Array.from({ length: n }, (_, i) => { const s = ((i + 1) * stroke) / n; return { s, F: force(s) }; });
+  let flat = { from: 0, to: 0, force: 0 };
+  for (let i = 0; i < n; i += 2) {
+    const lvl = pts[i].F; if (!(lvl > 0)) continue;
+    let j = i; while (j < n && Math.abs(pts[j].F - lvl) <= 0.05 * lvl) j++;
+    let i0 = i; while (i0 > 0 && Math.abs(pts[i0 - 1].F - lvl) <= 0.05 * lvl) i0--;
+    if (pts[j - 1].s - pts[i0].s > flat.to - flat.from) flat = { from: pts[i0].s, to: pts[j - 1].s, force: lvl };
+  }
+  return { force, strain, travel, stroke, flat, stiffness: K, offset: d, reach };
+}
+
+/**
  * How a flexure prints, as findings (pass, warn, fail, in plain words): the thickness in whole extrusion lines and at
  * least two of them, the width in whole layers, and the strain at its travel against the material's limit.
  * @param {{ thickness: number, width: number, travel?: number }} p

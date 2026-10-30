@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, printable } from '@rulecad/flexures';
+import { leaf, leafModel, fixedGuided, fixedGuidedModel, parallelGuide, parallelGuideModel, serpentine, serpentineModel, notchHinge, notchHingeModel, bistable, bistableModel, livingHinge, livingHingeModel, elastica, leafFlexed, compoundGuide, compoundGuideModel, letJoint, letJointModel, constantForce, constantForceCrank, constantForceModel, printable } from '@rulecad/flexures';
 import { grid, analyse } from '@rulecad/fea';
 import jscad from '@jscad/modeling';
+import { shape as pieces } from '@rulecad/printcheck';
 
 const { measureVolume, measureBoundingBox } = jscad.measurements;
+const onePiece = (g) => pieces(jscad.geometries.geom3.toPolygons(g).map((p) => p.vertices)).pieces.length === 1;
 const pla = { E: 2680, nu: 0.36, strainLimit: 0.02, name: 'PLA' };
 
 // A leaf as a 2D plane-stress beam in @rulecad/fea: cells of h, its width as the thickness, fixed along x = 0, a load
@@ -125,3 +127,45 @@ test('the elastica: beam theory at small loads, Bisshopp and Drucker at large on
   assert.ok(box[1][0] < 40 && box[1][0] > 30, 'and comes nearer along x');
   assert.ok(Math.abs(box[1][2] - 8) < 1e-9);
 });
+
+test('a compound guide is two parallel guides in series: half the stiffness, twice the travel, no drop, one piece with room to move', () => {
+  const p = { length: 30, thickness: 1.26, width: 8, gap: 12 }, one = parallelGuideModel(p, pla), two = compoundGuideModel(p, pla);
+  assert.ok(Math.abs(two.stiffness - one.stiffness / 2) < 1e-9 && Math.abs(two.travel(0.02) - 2 * one.travel(0.02)) < 1e-9);
+  assert.ok(Math.abs(two.strain(4) - one.strain(2)) < 1e-12 && two.drop(4) === 0);
+  const shape = compoundGuide(p), box = measureBoundingBox(shape);
+  assert.ok(box[0][0] < -6 && box[1][0] > 30 && Math.abs(box[1][1] + box[0][1]) < 1e-9, 'a base behind the shuttle, an intermediate block past the leaves, symmetric about x');
+  // Four leaves and five blocks, as one solid: more than the leaves alone, less than the box, and all joined
+  const vol = measureVolume(shape), leaves = 4 * 30 * 1.26 * 8;
+  assert.ok(vol > leaves && vol < (box[1][0] - box[0][0]) * (box[1][1] - box[0][1]) * 8 * 0.6, `${vol} mm³`);
+  assert.ok(onePiece(shape), 'the base reaches its arms');
+});
+
+test('a LET joint: two paths of a half-bar, an end bridge and a half-bar; stiff bridges leave the bars\' torsion; the angle a strain allows', () => {
+  const p = { width: 30, thickness: 1.2, bar: 2, slot: 1.2, bridge: 2.5 }, m = letJointModel(p, pla);
+  assert.ok(m.stiffness > 0 && Math.abs(2 * m.twist(0.1) + m.bend(0.1) - 0.1) < 1e-9, 'each path\'s angles add up to the joint\'s');
+  const stiffBridges = letJointModel({ ...p, bridge: 2.5, thickness: 1.2, slot: 0.01 }, pla); // a bridge too short to bend
+  assert.ok(stiffBridges.stiffness > m.stiffness && stiffBridges.bend(0.1) < 0.1 * m.bend(0.1));
+  const a = m.angle(0.02);
+  assert.ok(a > 0.3 && a < 1.2 && Math.abs(m.strain(a) - 0.02) < 1e-9, `${(a * 180) / Math.PI}° at 2%`);
+  const shape = letJoint(p), box = measureBoundingBox(shape);
+  assert.ok(Math.abs(box[1][2] - 1.2) < 1e-9 && Math.abs(box[1][1] - 15) < 1e-9 && box[1][0] > 30, 'a sheet of the given thickness, the panels either side');
+  const sheet = (box[1][0] - box[0][0]) * 30 * 1.2, slots = (1.2 * (30 - 5) + 4 * 1.2 * ((30 - 2.5) / 2)) * 1.2;
+  assert.ok(Math.abs(measureVolume(shape) - (sheet - slots)) < 1, 'the H of slots, cut through');
+});
+
+test('a constant-force mechanism: the force stays within 5% over a quarter of the leaf and the leaf stays under 2% strain; pins in the parts', () => {
+  const p = { leaf: 40, thickness: 1.26, width: 8 }, m = constantForceModel(p, pla);
+  assert.ok(m.flat.to - m.flat.from > 8 && m.flat.from < 2, `flat from ${m.flat.from} to ${m.flat.to} mm`); // about a quarter of the leaf
+  for (const s of [2, 5, 8]) assert.ok(Math.abs(m.force(s) / m.flat.force - 1) <= 0.05, `${m.force(s)} N at ${s} mm against ${m.flat.force}`);
+  assert.ok(m.strain(m.flat.to) < 0.02 && m.travel(0.02) > m.flat.to && Math.abs(m.strain(m.travel(0.015)) - 0.015) < 1e-6);
+  assert.ok(m.force(0) === 0 && m.force(0.5) > 0.8 * m.flat.force, 'the force is there from the first half-millimetre: the leaf starts straight');
+  // Thicker: the force scales with t³, the flat range stays
+  const thick = constantForceModel({ ...p, thickness: 2.52 }, pla);
+  assert.ok(Math.abs(thick.flat.force / m.flat.force - 8) < 0.5 && Math.abs(thick.flat.to - m.flat.to) < 1, `${thick.flat.force / m.flat.force}× at ${thick.flat.to}`);
+  assert.ok(Math.abs(m.offset - 20 * Math.sin(Math.PI / 36)) < 1e-9 && Math.abs(m.reach - 20 * Math.cos(Math.PI / 36)) < 1e-9, 'the ground pin beside the line');
+  const coupler = constantForce(p), crank = constantForceCrank(p);
+  assert.ok(onePiece(coupler) && onePiece(crank) && onePiece(letJoint({ width: 30, thickness: 1.2, bar: 2, slot: 1.2, bridge: 2.5 })));
+  assert.ok(measureBoundingBox(coupler)[1][0] > 40 && Math.abs(measureBoundingBox(crank)[1][0] - 23) < 1e-6, 'a boss past the leaf\'s tip; the crank half the leaf, boss to boss');
+  assert.ok(measureVolume(crank) < 20 * 6 * 8 + 2 * Math.PI * 9 * 8, 'holes through the bosses');
+});
+
