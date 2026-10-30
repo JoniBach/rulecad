@@ -12,7 +12,7 @@ const THREADS = Math.max(1, Math.min(8, Number(process.env.FEA_THREADS) || os.cp
 // How many operators each worker keeps: an optimisation step registers one per multigrid level (four or so), and
 // their arrays are large (the bin's: 160 MB), so the workers let go of all but the last few. Before this, a run
 // kept every step's and swapped itself to a crawl.
-const KEPT = 16;
+const KEPT = 8;
 
 // The pool: made on first use, kept for the process (unref'd, so it doesn't keep the process alive). Each operator
 // registers its arrays with every worker under an id; a product then signals the id and waits for every worker's done.

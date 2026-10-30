@@ -140,6 +140,11 @@ test('the overhang filter with bridges: a short bridge between two held cells su
   // A run with a gap in it bridges nothing past the gap
   const gap = Float64Array.from(x); gap[at(2, 1, 2)] = 0;
   assert.ok(overhangFilter(size, '+z', 2).apply(gap, new Float64Array(n))[at(3, 1, 2)] < 0.05, 'past a gap in the run, a cell too far from the other column is not held');
+  // Nearly empty everywhere, with bridges in play: finite, with a finite gradient (a bridge's share of a cell's support
+  // summed after the underflow guard was a denormal, whose power was infinite: NaN, which sank the tree stand at step 6)
+  const empty = new Float64Array(n).fill(2e-8), fb = overhangFilter(size, '+z', 1); // (2e-8: a bridge's share raised to P is a denormal, 1e-320, whose power 1/Q − 1 is infinite)
+  assert.ok(fb.apply(empty, new Float64Array(n)).every(Number.isFinite));
+  assert.ok(fb.adjoint(new Float64Array(n).fill(1e-21), new Float64Array(n)).every(Number.isFinite), 'no NaN or infinity in the gradient from empty space with bridges');
   // The gradient, against finite differences, with bridges in play
   for (const reach of [1, 2]) {
     const f = overhangFilter(size, '+z', reach), y = Float64Array.from({ length: n }, (_, e) => 0.2 + 0.6 * ((e * 37) % 11) / 11), w = Float64Array.from({ length: n }, (_, e) => Math.cos(e));
@@ -351,4 +356,46 @@ test('with a build direction, a kept region is held up: a kept cell nothing hold
   // (with material enough to stand the plate on: at 30% there isn't, and about a third of it is left unheld, reported)
   const o = optimise(discretise({ ...problem, overhang: '+z', volume: 0.5, steps: 60 }));
   assert.ok(o.unsupported < 0.1, `${(o.unsupported * 100).toFixed(0)}% of the kept plate has nothing under it`);
+});
+
+// Sigmund's force inverter: a 40 × 20 mm block held at its left corners, pushed to the right at the middle of its
+// left edge against a spring; the output, the middle of its right edge, should move to the left, against its spring
+const inverter = (extra = {}) => discretise({
+  space: { at: [20, 10], size: [40, 20] }, cell: 1, volume: 0.3, filter: 1.5, material: { E: 1, nu: 0.3 }, thickness: 1,
+  supports: [{ at: [0.5, 0.5], size: [1, 1] }, { at: [0.5, 19.5], size: [1, 1] }],
+  loads: [{ at: [0.5, 10], size: [1, 2], force: [1, 0] }], input_spring: 0.1,
+  output: { at: [39.5, 10], size: [1, 2], direction: [-1, 0], spring: 0.1 },
+  ...extra,
+});
+
+test('a mechanism: the output travel and its gradient match finite differences, with springs on the input and output', () => {
+  const s = inverter(), m = model(s), beta = 2, x = Float64Array.from(s.passive, (p, e) => (p ? (p === 1 ? 1 : 0) : 0.3 + 0.4 * ((e * 7) % 11) / 11));
+  const { mechanism } = m.evaluate(x, beta), travel = (y) => m.evaluate(y, beta).mechanism.travel;
+  assert.ok(Number.isFinite(mechanism.travel) && Number.isFinite(mechanism.input));
+  const free = [...s.passive.keys()].filter((e) => s.passive[e] === 0);
+  for (const e of [free[5], free[Math.floor(free.length / 3)], free.at(-7)]) {
+    const h = 1e-6, up = Float64Array.from(x), down = Float64Array.from(x);
+    up[e] += h; down[e] -= h;
+    const fd = (travel(up) - travel(down)) / (2 * h);
+    assert.ok(Math.abs(fd - mechanism.d[e]) <= 1e-4 * Math.abs(fd) + 1e-10, `cell ${e}: ${mechanism.d[e]} against ${fd}`);
+  }
+});
+
+test('the force inverter: from a block that moves with the push, the optimiser makes a mechanism that moves against it', () => {
+  const s = inverter({ steps: 400 }), m = model(s);
+  const even = Float64Array.from(s.passive, (p) => (p ? (p === 1 ? 1 : 0) : 0.3));
+  assert.ok(m.evaluate(even, 1).mechanism.travel < 0, 'an even block moves its right edge the way it is pushed');
+  const r = optimise(s);
+  assert.ok(r.mechanism.travel > 0, `the output moves against the push: ${r.mechanism.travel}`);
+  // (the optimiser maximises the output's travel, not the ratio; with soft springs either side it comes out about a tenth)
+  assert.ok(r.mechanism.advantage > 0.08, `the output travels a share of the input's: ${r.mechanism.advantage}`);
+  assert.ok(r.converged && r.steps < 400, `settles: ${r.steps} steps`);
+  // Robust: one piece, cell to cell (no point hinges joined only at corners or by half-empty cells)
+  const { nx, ny } = s.grid, solid = (e) => r.density[e] >= 0.5, seen = new Uint8Array(r.density.length), stack = [r.density.findIndex((d) => d >= 0.5)];
+  seen[stack[0]] = 1;
+  while (stack.length) { const e = stack.pop(), i = e % nx, j = Math.floor(e / nx); for (const [a, b] of [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]]) { if (a < 0 || b < 0 || a >= nx || b >= ny) continue; const f = b * nx + a; if (solid(f) && !seen[f]) { seen[f] = 1; stack.push(f); } } }
+  const pieces = r.density.filter((d, e) => d >= 0.5 && !seen[e]).length;
+  assert.equal(pieces, 0, `${pieces} solid cells not joined, cell to cell, to the rest`);
+  assert.ok(Math.abs(r.volume - 0.3) < 0.02, `the volume is held: ${r.volume}`);
+  assert.ok(r.density.filter((d) => d > 0.1 && d < 0.9).length < r.density.length * 0.15, 'mostly solid or empty');
 });
