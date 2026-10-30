@@ -514,6 +514,87 @@ export function foldedGuide({ length: L, thickness: t, width, gap, clearance, sh
 export function foldedGuideModel(p, m) { return compoundGuideModel(p, m); }
 
 /**
+ * A pin joint printed in place: a pin standing from a base, a ring round it with an arm, a cap on the pin that keeps
+ * the ring on. The ring is a clearance from the pin all round and a support gap off the base and under the cap, so
+ * the three print as one piece that breaks free with a twist; the cap's underside flares at 45°, so it prints without
+ * support. Not compliant: this is the joint to compare the flexures against, with play where they have none.
+ * @param {{ pin: number, width: number, clearance?: number, lift?: number, lip?: number, ring?: number, arm?: number, base?: number }} p
+ *   pin: the pin's diameter; width: the ring's height, up z; clearance: ring to pin, radially (default 0.2, the
+ *   printer's fit); lift: the ring off the base and the cap off the ring, a support gap (default 0.2); lip: how far
+ *   the cap overhangs the pin (default 1); ring: the ring's wall (default 3); arm: a bar from the ring along +x
+ *   (default 0); base: the plate under it all, its thickness (default 2), reaching a wall past the ring and under the arm
+ * @param {'both' | 'pin' | 'ring'} [which] which body to return: both as one shape (default), the pin with its base and
+ *   cap, or the ring with its arm (for a design's named parts, so a check knows they're apart on purpose)
+ */
+export function pinJoint({ pin: d, width: w, clearance = 0.2, lift = 0.2, lip = 1, ring = 3, arm = 0, base = 2 }, which = 'both') {
+  const r = d / 2, Ri = r + clearance, Ro = Ri + ring, top = base + lift + w + lift, seg = 64;
+  const col = (radius, z0, z1) => cylinder({ radius, height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: seg });
+  const cap = jscad.primitives.cylinderElliptic({ height: lip, startRadius: [r, r], endRadius: [r + lip, r + lip], center: [0, 0, top + lip / 2], segments: seg });
+  const fixed = [col(Ro + ring, 0, base), col(r, 0, top + lip), cap, col(r + lip, top + lip, top + 2 * lip)];
+  if (arm > 0) fixed.push(block((Ri + arm + ring) / 2, 0, base / 2, [Ri + arm + ring, 2 * Ro, base])); // the base under the arm too, so it breaks free rather than hangs
+  const band = subtract(col(Ro, base + lift, base + lift + w), col(Ri, base + lift - 1, base + lift + w + 1));
+  const moving = arm > 0 ? union(band, block(Ri + (arm + ring) / 2, 0, base + lift + w / 2, [arm + ring, Math.max(ring, 2 * clearance + 2), w])) : band;
+  return which === 'pin' ? union(...fixed) : which === 'ring' ? moving : union(...fixed, moving);
+}
+/**
+ * How a pin joint prints and moves, as findings: the clearance against the printer's fit, the gaps against its
+ * support gap (a gap one support gap high breaks free; a bigger one starts in mid-air), and the ring's play.
+ * @param {{ pin: number, width: number, clearance?: number, lift?: number }} p
+ * @param {{ fit?: number, support_gap?: number, layer?: number }} printer
+ * @returns {{ level: 'pass' | 'warn' | 'fail', text: string, code: string }[]}
+ */
+export function pinJointCheck({ pin: d, width: w, clearance = 0.2, lift = 0.2 }, printer) {
+  const out = [], f = (level, text, code) => out.push({ level, text, code }), fit = printer.fit ?? 0.2, gap = printer.support_gap ?? 0.2;
+  f(clearance >= fit - 1e-9 ? 'pass' : 'warn', `${clearance} mm round the pin${clearance >= fit - 1e-9 ? ': the printer\'s fit' : ` is under the printer's fit of ${fit} mm: the ring may print onto the pin`}`, 'joint.clearance');
+  f(lift <= gap * 1.5 + 1e-9 ? 'pass' : 'warn', `${lift} mm under the ring and the cap${lift <= gap * 1.5 + 1e-9 ? ': breaks free with a twist after printing' : `: more than a support gap (${gap} mm), so the ring starts in mid-air`}`, 'joint.gap');
+  const play = Math.atan2(2 * clearance, w);
+  f('pass', `the ring can rock ${((play * 180) / Math.PI).toFixed(1)}° on the pin (${clearance} mm each side over ${w} mm)`, 'joint.play');
+  return out;
+}
+
+/**
+ * A snap pin: a peg with a barbed, slotted head that pushes into a hole and clicks behind it, its two halves bending
+ * inward as cantilevers on the way through. Printed standing up: the barb's lead is a cone and its back a 45°
+ * chamfer by default, so nothing overhangs past the printer's limit; a square back (back 90) holds for good but
+ * overhangs by the lip. The halves are modelled as snap hooks of the slot's length, the peg's half-thickness and
+ * four fifths of its diameter wide (a half-round's worth), with the lip as the undercut.
+ * @param {{ diameter: number, length: number, lip?: number, slot?: number, gap?: number, lead?: number, back?: number, head?: number }} p
+ *   diameter: the peg's; length: the shaft below the barb; lip: the barb's overhang (default 0.4); slot: the split's
+ *   length down from the tip (default 3 × diameter); gap: the split's width (default 1); lead: the tip cone's angle
+ *   from the axis, degrees (default 45); back: the barb's back angle (default 45); head: a flange at the foot, its
+ *   radius past the peg (default diameter / 2)
+ */
+export function snapPin({ diameter: d, length: L, lip = 0.4, slot, gap = 1, lead = 45, back = 45, head }) {
+  const r = d / 2, s = slot ?? 3 * d, flange = head ?? r, seg = 48;
+  const fall = back >= 90 ? 0 : lip / Math.tan((back * Math.PI) / 180), rise = (r + lip) / Math.tan((lead * Math.PI) / 180);
+  const foot = cylinder({ radius: r + flange, height: 2, center: [0, 0, 1], segments: seg }), shaft = cylinder({ radius: r, height: L + fall + 0.01, center: [0, 0, 2 + (L + fall) / 2], segments: seg });
+  const z0 = 2 + L, barbBack = jscad.primitives.cylinderElliptic({ height: Math.max(fall, 0.01), startRadius: [r, r], endRadius: [r + lip, r + lip], center: [0, 0, z0 + Math.max(fall, 0.01) / 2], segments: seg });
+  const barbTip = jscad.primitives.cylinderElliptic({ height: rise, startRadius: [r + lip, r + lip], endRadius: [0.01, 0.01], center: [0, 0, z0 + fall + rise / 2], segments: seg });
+  const split = block(0, 0, z0 + fall + rise - s / 2 + 1, [2 * (r + lip) + 2, gap, s + 2]);
+  return subtract(union(foot, shaft, barbBack, barbTip), split);
+}
+/**
+ * The socket for a snap pin: a block with a hole the peg's diameter plus the clearance, through it, so the barb
+ * clicks out on the far side.
+ * @param {{ diameter: number, depth: number, clearance?: number, wall?: number }} p depth: the block's thickness along
+ *   the pin (the shaft's length, so the barb clears); clearance: round the peg (default 0.2); wall: round the hole
+ */
+export function snapSocket({ diameter: d, depth, clearance = 0.2, wall = 3 }) {
+  const Ro = d / 2 + clearance + wall;
+  return subtract(block(0, 0, depth / 2, [2 * Ro, 2 * Ro, depth]), cylinder({ radius: d / 2 + clearance, height: depth + 2, center: [0, 0, depth / 2], segments: 48 }));
+}
+/**
+ * @param {{ diameter: number, lip?: number, slot?: number, gap?: number, lead?: number, back?: number }} p
+ * @param {Material & { friction?: number }} m
+ * @returns {Model & { force: number, insertion: number, removal: number, holds: boolean, undercut: (strain: number) => number }}
+ *   as a snap hook's, for both halves together
+ */
+export function snapPinModel({ diameter: d, lip = 0.4, slot, gap = 1, lead = 45, back = 45 }, m) {
+  const half = snapHookModel({ length: slot ?? 3 * d, thickness: (d - gap) / 2, width: 0.8 * d, undercut: lip, lead, back }, m);
+  return { ...half, stiffness: 2 * half.stiffness, force: 2 * half.force, insertion: 2 * half.insertion, removal: 2 * half.removal };
+}
+
+/**
  * How a flexure prints, as findings (pass, warn, fail, in plain words): the thickness in whole extrusion lines and at
  * least two of them, the width in whole layers, and the strain at its travel against the material's limit.
  * @param {{ thickness: number, width: number, travel?: number }} p

@@ -75,6 +75,15 @@ stiffen as they curl and their tips to come nearer the rail (the elastica in `@r
 - **A ratchet.** Snap the wheel off its tab and pin it on the boss; its 24 teeth meet the tall pawl's upper half. Turn
   it one way by the rim: a click each tooth at 0.73 N (PLA); the other way it holds.
 
+## Joints that aren't flexures
+
+`joints` (`npx cad export flexures/joints`) is the comparison: a pin joint printed in place and a snap pin with its
+socket, three named parts. Twist the lever to break it free (it sits a 0.2 mm support gap off the base and under the
+cap, 0.2 mm clear of the pin all round) and feel the play: 3.8° of rock on a 6 mm ring. Push the peg into the socket
+until it clicks (predicted 6 N in PLA, the barb's halves at 0.6% strain) and pull it out again; a 90° back would hold
+it for good. Where a flexure's travel is enough, it has none of this play and nothing to break free; where it isn't,
+this is the joint.
+
 ## Results
 
 `results.json` beside this file holds the predictions for every specimen on both plates (made from the models, in PLA
