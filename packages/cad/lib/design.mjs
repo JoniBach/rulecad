@@ -97,7 +97,13 @@ export async function problemsOf(d, object, values) {
   for (const [name, v] of Object.entries(object.variables || {})) if (v.type === 'problem') {
     const ref = values[name];
     if (!out[ref]) {
-      const r = await optimised(d.project, ref, { onStep: (s) => s.step === 1 && console.error(`optimising ${ref} (once: the result is cached until the problem changes)…`) });
+      // Optimising here can take an hour on a big solid: say so, why, and (on a terminal) how far it's got
+      const live = process.stderr.isTTY;
+      const r = await optimised(d.project, ref, {
+        onRun: (why) => console.error(`optimising ${ref} (${why}; the result is kept until the problem or the solver changes)…`),
+        onStep: (s) => { if (live) process.stderr.write(`\r\x1b[Koptimising ${ref}: step ${s.step}/${s.steps}  compliance ${s.compliance.toPrecision(5)} N·mm`); if (s.step === s.steps && live) process.stderr.write('\r\x1b[K'); },
+      });
+      if (live) process.stderr.write('\r\x1b[K');
       out[ref] = forDesign(r);
     }
   }
