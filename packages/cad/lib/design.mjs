@@ -73,7 +73,7 @@ export async function objectSets(d, object) {
       const units = Object.fromEntries(Object.entries(b.object.variables || {}).map(([k, x]) => [k, x.unit]));
       const rules = {};
       for (const [k, v] of Object.entries(b.values)) if (typeof v === 'number' && Number.isFinite(v)) {
-        rules[k] = { value: v, unit: units[k] ?? 'mm', rule: `${ref}'s ${k}`, kind: 'design', source: `${ref}@${version}` };
+        rules[k] = { value: v, ...(units[k] ? { unit: units[k] } : {}), rule: `${ref}'s ${k}`, kind: 'design', source: `${ref}@${version}` }; // no unit: a count (turns, segments), not a length
       }
       sets[u] = { name: base.name, rules };
       if (b.circuit) { const e = await pcbEngine(), board = b.circuit.find((x) => x.type === 'pcb_board'); extra[base.name] = { board_holes: e.holes(b.circuit), board_parts: e.parts ? e.parts(b.circuit) : {}, ...(board.outline ? { board_outline: board.outline } : {}) }; }
