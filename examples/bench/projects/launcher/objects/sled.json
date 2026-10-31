@@ -81,7 +81,7 @@
       "rule": "How far the tab hangs below the floor's underside: room for the bow's tip to press it, with the tip's drop as it bends"
     },
     "rod": {
-      "value": 57,
+      "value": 58,
       "unit": "mm",
       "rule": "From the tab's rear face back to the cocking ring's centre: the ring sits against the grip's back wall at rest"
     },

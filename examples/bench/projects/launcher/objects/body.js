@@ -2,12 +2,12 @@
 // slot's floor and ceiling with the gap the sled's tab hangs through, the sear (a leaf under the floor whose tooth
 // rises into the slot to catch the sled's nose), the trigger (a lever on a living hinge whose arm presses the sear's
 // shelf down to let go), the magazine column with the notches its cap snaps into, the back wall the cocking ring
-// rests on, and sockets for the lid: all on a frame the optimiser lays out (the frame variable), or on a plain base
+// rests on, and sockets for the lid's snap pins (a hole the shaft's length over a cavity the barb clicks into): all on a frame the optimiser lays out (the frame variable), or on a plain base
 // for the test rig. The regions variant returns instead what the optimiser reads: the mounts to keep, the pockets to
 // leave empty, and the outline as the space. Drawn at rest; cocked bends the leaf to full draw, fired pulls the
 // trigger and bends the sear.
 import jscad from '@jscad/modeling'
-const { cuboid, cylinder, polygon } = jscad.primitives
+const { cuboid, cylinder, cylinderElliptic, polygon } = jscad.primitives
 const { extrudeLinear } = jscad.extrusions
 const { translate, rotateZ, mirrorY } = jscad.transforms
 
@@ -96,12 +96,14 @@ export function main (v) {
   const mouth = box(col0 + v.magazine.ledge, col1 - v.magazine.ledge, floorTop, ceiling + 1, z0, zTop + 1)
   cuts.push(mouth); voids.push(mouth)
   const notch = v.magazine.undercut + v.fit
-  for (const n of [box(col0 - notch, col0 + 1, v.notch_y, v.notch_y + v.notch_h, z0, z0 + v.magazine.width + v.fit), box(col1 - 1, col1 + notch, v.notch_y, v.notch_y + v.notch_h, z0, z0 + v.magazine.width + v.fit)]) { cuts.push(n); voids.push(n) }
+  for (const n of [box(col0 - notch, col0 + 1, v.notch_y, v.notch_y + v.notch_h, z0, zTop + 1), box(col1 - 1, col1 + notch, v.notch_y, v.notch_y + v.notch_h, z0, zTop + 1)]) { cuts.push(n); voids.push(n) } // open to the lid: a roof over them would be a bridge
 
   // The lid's sockets: a boss at each, drilled from the top
   for (const [x, y] of [[v.pin_a, v.pin_a_y], [v.pin_b, v.pin_b_y], [v.pin_c, v.pin_c_y], [v.pin_d, v.pin_d_y]]) {
     mounts.push(cylinder({ radius: v.boss, height: zTop - z0, center: [x, y, (z0 + zTop) / 2], segments: v.smooth }))
-    cuts.push(cylinder({ radius: v.pin / 2 + v.fit, height: v.pin_depth + 1, center: [x, y, zTop - v.pin_depth / 2 + v.overlap], segments: v.smooth }))
+    cuts.push(cylinder({ radius: v.pin / 2 + v.fit, height: v.pin_depth + 1, center: [x, y, zTop - v.pin_depth / 2 + v.overlap], segments: v.smooth })) // the hole, the shaft's length
+    const rc = v.pin / 2 + v.pin_lip + v.fit, cavity = zTop - v.pin_depth // the room under it, where the barb clicks out: its roof a 45° cone, which prints, and which the barb's 45° back seats on
+    cuts.push(cylinder({ radius: rc, height: v.pin_room, center: [x, y, cavity - v.pin_room / 2], segments: v.smooth }), cylinderElliptic({ height: rc, startRadius: [rc, rc], endRadius: [v.fit / 2, v.fit / 2], center: [x, y, cavity + rc / 2], segments: v.smooth }))
   }
 
   const mount = v.ops.union(...mounts)
@@ -112,7 +114,7 @@ export function main (v) {
       muzzle_end: box(v.muzzle - v.knock_len, v.muzzle, 0 - v.barrel_h, v.barrel_h, 0, zTop), column_top: box(col0 - v.wall_t, col1 + v.wall_t, v.top - v.post, v.top, z0, zTop) }
   }
   const frame = v.frame === 'optimised' ? v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops, segments: v.smooth }) : mounts[0]
-  return { body: v.ops.union(v.ops.subtract(v.ops.union(frame, mount), ...voids, ...cuts), ...flex) }
+  return { body: v.ops.union(v.ops.subtract(v.ops.union(frame, mount), ...voids, ...cuts), ...flex.map((s) => translate([0, 0, -v.overlap], s))) } // the flexures sunk a little into the bed wall, so no faces merely touch
 }
 
 // A cantilever's deflection at a fraction s of its length, as a share of its tip's: (3s² − s³) / 2

@@ -16,6 +16,7 @@ export function main (v) {
   if (model.stiffness * v.preload < v.launcher.feed) throw new Error(`the feed on the last disc is ${(model.stiffness * v.preload).toFixed(2)} N, under ${v.launcher.feed}: more preload or a stiffer spring`)
   if (model.strain(most) > material.strainLimit) throw new Error(`the spring sees ${(model.strain(most) * 100).toFixed(1)}% strain when full: longer leaves or more turns`)
   const hook = f.snapHookModel({ length: v.hook, thickness: v.hook_t, width: v.width, undercut: v.undercut, lead: v.lead, back: v.back }, material)
+  if (hook.strain(v.undercut) > material.strainLimit) throw new Error(`a hook sees ${(hook.strain(v.undercut) * 100).toFixed(1)}% strain pressed in: a longer or thinner leaf`)
   if (hook.removal * 2 < model.stiffness * most) throw new Error(`the spring's push when full (${(model.stiffness * most).toFixed(1)} N) would lift the cap: its two hooks let go at ${(hook.removal * 2).toFixed(1)} N`)
   const pitch = v.pitch - v.compression / (v.turns - 1), last = (v.turns - 1) * pitch
   const spring = f.serpentine({ length: v.spring, thickness: t, width: v.width, turns: v.turns, pitch })
@@ -26,7 +27,7 @@ export function main (v) {
   const hang = (side) => { // side 1: the +x end, barb pointing +x
     const h = f.snapHook({ length: v.hook, thickness: v.hook_t, width: v.width, undercut: v.undercut, lead: v.lead, back: v.back, root: v.hook_root })
     const down = rotateZ(-Math.PI / 2, h) // along -y, the barb to +x
-    return translate([x + side * (v.follower_w / 2 - v.hook_t / 2), capBottom + v.overlap + v.hook_root / 2, 0], side > 0 ? down : mirrorX(down))
+    return translate([x + side * (v.follower_w / 2 - v.hook_root / 2), capBottom + v.overlap + v.hook_root / 2, 0], side > 0 ? down : mirrorX(down)) // the root block flush with the cap's edge
   }
   return v.ops.union(follower, spring, cap, hang(1), hang(-1))
 }

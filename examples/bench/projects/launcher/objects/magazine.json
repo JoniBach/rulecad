@@ -104,9 +104,9 @@
       "rule": "How far the plates sink into the end leaves, so they join"
     },
     "hook": {
-      "value": 12,
+      "value": 20,
       "unit": "mm",
-      "rule": "Each snap hook's leaf, hanging from the cap's end down the column wall"
+      "rule": "Each snap hook's leaf, hanging from the cap's end down the column wall: long enough that the barb's deflection stays under the strain limit"
     },
     "hook_t": {
       "value": "x1c.line * 3",
@@ -119,9 +119,9 @@
       "rule": "The block each hook grows from, sunk into the cap"
     },
     "undercut": {
-      "value": 1.5,
+      "value": 2.4,
       "unit": "mm",
-      "rule": "How far each barb stands into its notch"
+      "rule": "How far each barb stands out past the cap's edge: the hooks' root blocks sit inside the edge, so the barb reaches the wall and into its notch"
     },
     "lead": {
       "value": 30,
@@ -129,9 +129,9 @@
       "rule": "The barbs' lead faces: pressing the cap in deflects them"
     },
     "back": {
-      "value": 45,
+      "value": 30,
       "unit": "degrees",
-      "rule": "The barbs' backs: sloped, so a firm pull lifts the cap out; 90 would hold for good"
+      "rule": "The barbs' backs: as sloped as their leads, so the cap pulls out with about the push that seated it (well over the spring's push); 90 would hold for good"
     }
   },
   "variants": {

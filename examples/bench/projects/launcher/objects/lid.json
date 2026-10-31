@@ -47,14 +47,14 @@
       "rule": "The pins' length: the sockets' depth"
     },
     "lip": {
-      "value": 0.4,
+      "value": "body.pin_lip",
       "unit": "mm",
-      "rule": "The barb past the pin"
+      "rule": "The barb past the pin: what the sockets' cavities allow for"
     },
     "slot": {
-      "value": "pin * 2",
+      "value": "length + 2",
       "unit": "mm",
-      "rule": "The split down each pin from its tip"
+      "rule": "The split down each pin from its tip: through the barb and most of the shaft, leaving the foot whole"
     },
     "slot_gap": {
       "value": 1,
@@ -69,6 +69,11 @@
     "smooth": {
       "value": 48,
       "rule": "Segments round the pins"
+    },
+    "foot": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The pins' feet, as the generator draws them: sunk into the plate, so the shafts start at its face"
     }
   }
 }

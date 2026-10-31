@@ -318,9 +318,9 @@
       "rule": "The back of the grip: its wall's outer face, which the cocking ring rests against"
     },
     "wall_t": {
-      "value": 3,
+      "value": 4,
       "unit": "mm",
-      "rule": "The back wall and the column walls"
+      "rule": "The back wall and the column walls: the cap's notches are cut into the column walls, leaving a wall behind them"
     },
     "grip_front": {
       "value": 12,
@@ -378,9 +378,9 @@
       "rule": "The bottom of the notches the cap's barbs snap into: a fit under the hooks' tips with the cap pressed home"
     },
     "notch_h": {
-      "value": 6,
+      "value": 11,
       "unit": "mm",
-      "rule": "The notches' height: the barbs' lead and flat, with room"
+      "rule": "The notches' height: the barbs' lead, flat and back, with room"
     },
     "lid_t": {
       "value": 3,
@@ -395,7 +395,7 @@
     "pin_depth": {
       "value": 6,
       "unit": "mm",
-      "rule": "The sockets' depth, and the pins' length"
+      "rule": "The sockets' holes' depth: the pins' shafts, so the barbs click out below"
     },
     "boss": {
       "value": 5,
@@ -456,6 +456,16 @@
       "value": 10,
       "unit": "mm",
       "rule": "The muzzle's end, where a knock lands"
+    },
+    "pin_lip": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "The lid's pins' barbs, past the pin"
+    },
+    "pin_room": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The cavity under each socket's hole, where the barb clicks out"
     }
   },
   "variants": {
