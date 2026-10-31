@@ -116,6 +116,7 @@ export function main (v) {
       outside: v.ops.subtract(box(v.back - v.grid, v.muzzle + v.grid, v.grip_bottom - v.grid, v.top + v.grid, 0 - 1, zTop + 1), translate([0, 0, 0 - v.grid], extrudeLinear({ height: zTop + 2 * v.grid }, offset({ delta: 2 * v.grid, corners: 'round', segments: v.smooth }, outline)))) }
   }
   const frame = v.frame === 'optimised' ? v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops, segments: v.smooth }) : mounts[0]
+  cuts.push(box(v.back - v.grid, v.muzzle + v.grid, v.grip_bottom - v.grid, v.top + v.grid, zTop, zTop + v.grid * 2)) // nothing above the lid's seat: the optimised surface swells past it a little
   return { body: v.ops.union(v.ops.subtract(v.ops.union(frame, mount), ...voids, ...cuts), ...flex.map((s) => translate([0, 0, -v.overlap], s))) } // the flexures sunk a little into the bed wall, so no faces merely touch
 }
 

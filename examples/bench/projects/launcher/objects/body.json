@@ -492,6 +492,9 @@
     "regions": {
       "frame": "none",
       "problem": "none"
+    },
+    "drawn": {
+      "travel": 25
     }
   },
   "parts": {

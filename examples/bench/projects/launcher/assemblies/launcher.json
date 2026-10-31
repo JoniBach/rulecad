@@ -1,5 +1,5 @@
 {
-  "title": "The disc launcher: body, sled, magazine insert, a disc at the mouth, and the lid",
+  "title": "The disc launcher: the body on its optimised frame with the bow at full draw, the sled, the magazine insert, a disc at the mouth, and the lid",
   "kind": "fit",
   "uses": [
     "launcher",
@@ -8,7 +8,7 @@
   "items": [
     {
       "id": "body",
-      "object": "body:cocked"
+      "object": "body:drawn"
     },
     {
       "id": "sled",
