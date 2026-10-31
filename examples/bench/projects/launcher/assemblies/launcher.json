@@ -24,7 +24,7 @@
     },
     {
       "id": "magazine",
-      "object": "magazine:full"
+      "object": "magazine"
     },
     {
       "id": "disc",
@@ -401,17 +401,20 @@
     "cocked": {
       "run": "x1c.fit - (launcher.travel + launcher.overrun)",
       "drop": 0,
-      "action.travel": "launcher.travel"
+      "action.travel": "launcher.travel",
+      "magazine.compression": "magazine.preload + magazine.stroke"
     },
     "fired": {
       "run": "x1c.fit - (launcher.travel + launcher.overrun)",
       "drop": 0,
       "action.travel": "launcher.travel",
-      "action.pull": "launcher.trigger_travel"
+      "action.pull": "launcher.trigger_travel",
+      "magazine.compression": "magazine.preload + magazine.stroke"
     },
     "rest": {
       "run": 0,
-      "drop": "sled.thickness / 2 + launcher.disc_t / 2"
+      "drop": "sled.thickness / 2 + launcher.disc_t / 2",
+      "magazine.compression": "magazine.preload + magazine.stroke"
     }
   },
   "fits": [
@@ -440,7 +443,7 @@
       "a": "sled",
       "b": "frame",
       "min": 0,
-      "max": "x1c.fit",
+      "max": "2 * x1c.fit",
       "note": "The disc's side of the sled, a fit off the back plate it rolls along"
     },
     {

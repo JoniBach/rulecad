@@ -86,12 +86,12 @@
       "rule": "The leaf's force at full draw"
     },
     "leaf_t": {
-      "value": "x1c.line * 6",
+      "value": "x1c.line * 4",
       "unit": "mm",
-      "rule": "The leaf's thickness, six lines: what the sizing picks for the draw at the travel (the build checks)"
+      "rule": "The leaf's thickness, four lines: what the sizing picks for the draw at the travel (the build checks)"
     },
     "leaf_len": {
-      "value": 77.3,
+      "value": 50.5,
       "unit": "mm",
       "rule": "The leaf's length: what the sizing gives for the draw at the travel (the build checks it, within half a millimetre), so the grip's bottom is a plain number"
     },
@@ -106,7 +106,7 @@
       "rule": "The tab's rear face at rest, ahead of the bead by the overrun"
     },
     "root_block": {
-      "value": 6,
+      "value": 5,
       "unit": "mm",
       "rule": "The block the leaf grows from"
     },
@@ -116,9 +116,9 @@
       "rule": "How far parts sink into each other, so they join"
     },
     "bite": {
-      "value": 6,
+      "value": 3.5,
       "unit": "mm",
-      "rule": "How far the leaf's tip reaches up the tab from its bottom: more than the tip drops as it bends, less than the bead's radius covers of the leaf's lean"
+      "rule": "How far the tab reaches below the leaf's tip: past the tip's drop as it bends, not so far it meets the leaf below the bead"
     },
     "tip_y": {
       "value": "bite - (slot / 2 + rail + sled.tab_drop)",
@@ -126,14 +126,14 @@
       "rule": "The leaf's tip: the tab's bottom plus the bite"
     },
     "sear_len": {
-      "value": 25,
+      "value": 18,
       "unit": "mm",
       "rule": "The sear's leaf: long enough that the trigger's lift stays under the strain limit"
     },
     "sear_t": {
-      "value": "x1c.line * 3",
+      "value": "x1c.line * 2",
       "unit": "mm",
-      "rule": "The sear's leaf, three lines"
+      "rule": "The sear's leaf, two lines: it holds the draw in tension, and bends easily for the trigger"
     },
     "sear_w": {
       "value": "wall + width / 2 - sled.tab_width / 2 - fit - wall",
@@ -141,7 +141,7 @@
       "rule": "The sear's width: from the bed wall to beside the tab's path"
     },
     "undercut": {
-      "value": 1.5,
+      "value": 1.2,
       "unit": "mm",
       "rule": "How far the sear's tooth stands into the slot, over the sled's front edge"
     },
@@ -151,7 +151,7 @@
       "rule": "The tooth's ramp: the sled rides over it when cocked"
     },
     "tooth": {
-      "value": 4,
+      "value": 3,
       "unit": "mm",
       "rule": "The tooth along the barrel"
     },
@@ -166,7 +166,7 @@
       "rule": "The foot under the sear's tip, and the shelf it carries back towards the trigger: the trigger's arm fits between the leaf and the shelf"
     },
     "shelf": {
-      "value": 8,
+      "value": 6,
       "unit": "mm",
       "rule": "The shelf's reach back from the foot"
     },
@@ -181,17 +181,17 @@
       "rule": "The trigger's arm thickness: it fits between the sear's leaf and its shelf"
     },
     "trigger_x": {
-      "value": 24,
+      "value": 18,
       "unit": "mm",
-      "rule": "The trigger's pivot ahead of the leaf's rest: its hinge post stands clear of the tab's run, and the leaf bends away from it"
+      "rule": "The trigger's pivot ahead of the leaf's rest: its hinge post stands clear of the sled's tab's run"
     },
     "finger_arm": {
-      "value": 50,
+      "value": 36,
       "unit": "mm",
       "rule": "From the pivot down to the finger: the finger's travel over this is the hinge's turn"
     },
     "arm_t": {
-      "value": 6,
+      "value": 5,
       "unit": "mm",
       "rule": "The finger arm's thickness along the barrel"
     },
@@ -253,9 +253,9 @@
       "rule": "The cartridge's back wall, outer face: behind the leaf at full draw"
     },
     "case_front": {
-      "value": "tooth_back + tooth + post + case_t",
+      "value": "trigger_x + hinge_arms + arm_t + post + finger_room + case_t + 3",
       "unit": "mm",
-      "rule": "The cartridge's front wall, outer face: past the sear's tooth"
+      "rule": "The cartridge's front wall, outer face: past the finger's window ahead of the trigger (the build checks it is past the sear's tooth too)"
     },
     "case_top": {
       "value": "0 - (slot / 2 + rail)",
@@ -273,7 +273,7 @@
       "rule": "The snap pins' diameter"
     },
     "finger_room": {
-      "value": 22,
+      "value": 18,
       "unit": "mm",
       "rule": "The finger's window ahead of the trigger's front stop, along the barrel"
     },

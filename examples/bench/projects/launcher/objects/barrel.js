@@ -25,7 +25,7 @@ export function main (v) {
   // The sled's tab run through the floor wall, the sear's tooth slit, and the rod's notch in the back wall
   const tabBack = a.bead - a.travel_max, tabFront = a.rest_x + s.tab
   cuts.push(box(tabBack - v.fit, tabFront + v.fit, floorBottom - 1, floorTop + 1, z0, zTop + 1))
-  cuts.push(box(v.tooth_back - v.fit, v.tooth_back + v.tooth + v.fit, floorBottom - 1, floorTop + 1, z0, z0 + v.sear_w + v.fit))
+  cuts.push(box(v.tooth_back - v.fit - v.tooth_room, v.tooth_back + v.tooth + v.fit + v.tooth_room, floorBottom - 1, floorTop + 1, z0, z0 + v.sear_w + v.fit)) // room round the tooth: it tips as the trigger drops it
   cuts.push(box(x0 - 1, x0 + t + 1, floorTop, -floorTop, s.rod_z - v.fit, zTop + 1))
   cuts.push(box(x1 - t - 1, x1 + 1, floorTop, -floorTop, z0, zTop + 1)) // the muzzle: the slot runs out through the front wall
   // The pins' holes: through the back wall and the muzzle's front wall, into the hollow

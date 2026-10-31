@@ -56,7 +56,7 @@ export function main (v) {
   // The tooth stands past the tray's edge: its underside there rises at 45° from the floor's top, so it prints on air
   const toothTop = v.undercut - v.slot / 2, ccw = (pts) => (pts.reduce((a, [x, y], i) => a + x * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * y, 0) > 0 ? pts : pts.reverse())
   const wedge = translate([toothBack - 1, 0, z0], rotateZ(Math.PI / 2, jscad.transforms.rotateX(Math.PI / 2, extrudeLinear({ height: v.tooth + 2 }, polygon({ points: ccw([[floorBottom, 0], [floorBottom, 0 - 1], [toothTop + 1, 0 - 1], [toothTop + 1, toothTop + 1 - floorBottom]]) })))))
-  parts.push(v.ops.subtract(translate([searRoot, searY, z0], v.ops.union(searBody, ...carried, box(-v.sear_block / 2, v.sear_block / 2, -v.sear_block / 2, v.sear_block / 2, 0, sw))), wedge))
+  parts.push(v.ops.subtract(translate([searRoot, searY, z0], v.ops.union(searBody, ...carried, box(-v.sear_block / 2, v.sear_block / 2, -v.sear_block / 2, st / 2 + v.sear_gap, 0, sw))), wedge))
   parts.push(box(searRoot - v.sear_block / 2, searRoot + v.sear_block / 2, searY, floorBottom, z0, z0 + sw)) // the root's post up to the top
 
   // The trigger: a lever hanging from a living hinge sized for the finger's full travel over the finger arm, its arm
@@ -76,11 +76,16 @@ export function main (v) {
   const fingerY = pivotY - v.finger_arm, stopY = fingerY + v.post, frontStop = leverStart + v.arm_t + v.fit + v.post
   parts.push(box(leverStart - v.pull_max - v.fit - v.post, leverStart - v.pull_max - v.fit, fingerY, stopY)) // behind: the pull's end
   parts.push(box(frontStop - v.post, frontStop, fingerY, stopY)) // in front: a knock can't swing it forward
+  if (frontStop + v.finger_room + t > x1 || toothBack + v.tooth + v.post + t > x1) throw new Error(`the receiver's front wall at ${x1.toFixed(1)} mm is inside the finger's window or the sear's room: move case_front past ${Math.max(frontStop + v.finger_room, toothBack + v.tooth + v.post).toFixed(1) + t} mm`)
   cuts.push(box(frontStop, frontStop + v.finger_room, yb - 1, shelfTop - v.foot - v.post, 0 - 1, z0 + 1)) // the finger's window through the floor, down to the bottom edge
   cuts.push(box(frontStop, frontStop + v.finger_room, yb - 1, yb + t + 1, 0 - 1, zTop + 1)) // and through the bottom wall: the finger comes up into it from the trigger guard
 
   // The pins' holes through the walls: up through the bottom wall, along x through the back and front walls
-  const r = v.pin / 2 + v.fit, hole = (x, y, along) => cuts.push(translate([x, y, v.pin_z], jscad.transforms[along === 'x' ? 'rotateY' : 'rotateX'](Math.PI / 2, cylinder({ radius: r, height: t + 2, segments: v.smooth }))))
+  // Teardrops, their points up the build direction (+z), so the holes' crowns print without support
+  const r = v.pin / 2 + v.fit, hole = (x, y, along) => {
+    const len = t + 2, tip = cuboid({ center: [0, 0, r * Math.SQRT2], size: along === 'x' ? [len, v.fit, v.fit] : [v.fit, len, v.fit] })
+    cuts.push(translate([x, y, v.pin_z], jscad.hulls.hull(jscad.transforms[along === 'x' ? 'rotateY' : 'rotateX'](Math.PI / 2, cylinder({ radius: r, height: len, segments: v.smooth })), tip)))
+  }
   hole(v.pin_a, y0 + t / 2, 'y'); hole(v.pin_b, y0 + t / 2, 'y'); hole(x0 + t / 2, v.pin_c, 'x'); hole(x1 - t / 2, v.pin_d, 'x')
   return v.ops.subtract(v.ops.union(...parts), ...cuts)
 }

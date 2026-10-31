@@ -3,9 +3,9 @@
   "name": "launcher",
   "rules": {
     "disc": {
-      "value": 30,
+      "value": 20,
       "unit": "mm",
-      "rule": "The disc's diameter: small enough to stack six in a hand-sized magazine, big enough to fly flat",
+      "rule": "The disc's diameter: it stands across the pistol's thickness, so it sets how thick the launcher is",
       "kind": "default",
       "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
       "checked": "2026-10-31"
@@ -19,9 +19,9 @@
       "checked": "2026-10-31"
     },
     "disc_mass": {
-      "value": 1.8,
+      "value": 0.79,
       "unit": "g",
-      "rule": "A disc's mass in PLA, solid: π × 15² × 2 mm³ × 1.26 g/cm³",
+      "rule": "A disc's mass in PLA, solid: π × 10² × 2 mm³ × 1.26 g/cm³",
       "kind": "estimate",
       "source": "Worked from disc, disc_t and pla.density; weigh a printed one",
       "checked": "2026-10-31"
@@ -35,9 +35,9 @@
       "checked": "2026-10-31"
     },
     "energy": {
-      "value": 0.2,
+      "value": 0.05,
       "unit": "J",
-      "rule": "The energy the bow stores at full draw: with the launch efficiency below, the disc leaves at about disc_energy",
+      "rule": "The energy the bow stores at full draw: with the launch efficiency below, the disc leaves at about 6 m/s, well under disc_energy",
       "kind": "default",
       "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
       "checked": "2026-10-31"
@@ -50,15 +50,15 @@
       "checked": "2026-10-31"
     },
     "travel": {
-      "value": 25,
+      "value": 15,
       "unit": "mm",
-      "rule": "The bow's draw: how far the leaf bends from rest to cocked, and the stroke the sled is pushed through. Shorter draws need shorter leaves and store nearly as much, at a higher pull",
+      "rule": "The bow's draw: how far the leaf bends from rest to cocked, and the stroke the sled is pushed through",
       "kind": "default",
       "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
       "checked": "2026-10-31"
     },
     "overrun": {
-      "value": 6,
+      "value": 4,
       "unit": "mm",
       "rule": "The sled's run past the leaves' rest, to its stop: the leaves let go before the sled stops",
       "kind": "default",
@@ -82,7 +82,7 @@
       "checked": "2026-10-31"
     },
     "trigger_travel": {
-      "value": 6,
+      "value": 5,
       "unit": "mm",
       "rule": "The finger's travel from rest to release",
       "kind": "default",
@@ -105,7 +105,7 @@
       "checked": "2026-10-31"
     },
     "spin_offset": {
-      "value": 8,
+      "value": 5,
       "unit": "mm",
       "rule": "How far off the disc's centre line the sled's nose pushes, towards the bed wall: the push turns the disc, which rolls along the lid and leaves spinning, so it flies flat",
       "kind": "default",
@@ -113,9 +113,9 @@
       "checked": "2026-10-31"
     },
     "flexure_width": {
-      "value": 28,
+      "value": 18,
       "unit": "mm",
-      "rule": "Every flexure's height off the bed (its width): 140 layers, under the disc's diameter, so they all fit between the bed wall and the lid",
+      "rule": "Every flexure's height off the bed (its width): 90 layers, under the disc's diameter, so they all fit in the action cartridge",
       "kind": "default",
       "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
       "checked": "2026-10-31"
@@ -152,9 +152,9 @@
       "checked": "2026-10-31"
     },
     "frame_wall": {
-      "value": 3,
+      "value": 4,
       "unit": "mm",
-      "rule": "The frame's cavity walls, which the cartridges pin through",
+      "rule": "The frame's skin round the cartridges, which the pins go through",
       "kind": "default",
       "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
       "checked": "2026-10-31"

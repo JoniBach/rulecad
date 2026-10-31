@@ -35,7 +35,11 @@ export function main (v) {
   // The muzzle: the slot's opening through the skin, open to the face (no roof), the disc's full width deep
   cuts.push(box(b.muzzle - 1, b.muzzle + v.skin + 1, 0 - b.slot / 2, b.slot / 2, 0 - 1, b.case_h + f))
   // The pins' holes through the skin, in line with the cartridges' walls' holes
-  const r = v.pin / 2 + f, hole = (x, y, z, along) => cuts.push(translate([x, y, z], (along === 'x' ? rotateY : rotateX)(Math.PI / 2, cylinder({ radius: r, height: v.skin + 2, segments: v.smooth }))))
+  // Teardrops, their points down here (-z), which is up when the frame is turned over to print
+  const r = v.pin / 2 + f, hole = (x, y, z, along) => {
+    const len = v.skin + 2, tip = cuboid({ center: [0, 0, 0 - r * Math.SQRT2], size: along === 'x' ? [len, v.fit, v.fit] : [v.fit, len, v.fit] })
+    cuts.push(translate([x, y, z], jscad.hulls.hull((along === 'x' ? rotateY : rotateX)(Math.PI / 2, cylinder({ radius: r, height: len, segments: v.smooth })), tip)))
+  }
   hole(a.pin_a, a.grip_bottom - v.skin / 2, a.pin_z, 'y'); hole(a.pin_b, a.grip_bottom - v.skin / 2, a.pin_z, 'y')
   hole(a.case_back - v.skin / 2, a.pin_c, a.pin_z, 'x'); hole(a.case_front + v.skin / 2, a.pin_d, a.pin_z, 'x')
   hole(b.back - v.skin / 2, b.pin_y, b.pin_z, 'x'); hole(b.muzzle + v.skin / 2, b.pin_y, b.pin_z, 'x')

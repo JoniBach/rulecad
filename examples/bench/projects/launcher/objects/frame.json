@@ -34,12 +34,12 @@
   },
   "variables": {
     "skin": {
-      "value": 6,
+      "value": "launcher.frame_wall",
       "unit": "mm",
-      "rule": "The frame round the cartridges: the grip's straps and the receiver's sides, rounded by as much"
+      "rule": "The frame round the cartridges: the grip's straps and the receiver's sides, rounded by as much; the pins go through it"
     },
     "plate": {
-      "value": 8,
+      "value": 3,
       "unit": "mm",
       "rule": "The back plate behind the cartridges: the disc rolls on its inside face"
     },
@@ -54,17 +54,17 @@
       "rule": "The frame's thickness: the deeper cartridge, a fit, and the plate"
     },
     "guard_h": {
-      "value": 26,
+      "value": 22,
       "unit": "mm",
       "rule": "The trigger guard below the receiver block: room for a finger"
     },
     "guard_post": {
-      "value": 6,
+      "value": 5,
       "unit": "mm",
       "rule": "The guard's posts, front and back"
     },
     "guard_bar": {
-      "value": 4,
+      "value": 3.5,
       "unit": "mm",
       "rule": "The guard's bottom bar"
     },
@@ -78,22 +78,22 @@
       "rule": "Segments round the corners and holes"
     },
     "swell": {
-      "value": 10,
+      "value": 8,
       "unit": "mm",
       "rule": "The palm swell: how far the back strap bulges behind the grip column at its fullest"
     },
     "swell_r": {
-      "value": 12,
+      "value": 10,
       "unit": "mm",
       "rule": "The swell's rounding, top and bottom"
     },
     "swell_lo": {
-      "value": "action.grip_bottom + 12",
+      "value": "action.grip_bottom + 10",
       "unit": "mm",
       "rule": "Where the swell starts above the grip's bottom"
     },
     "swell_hi": {
-      "value": "action.case_top - 30",
+      "value": "action.case_top - 22",
       "unit": "mm",
       "rule": "Where the swell ends, below the web of the thumb"
     }

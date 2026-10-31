@@ -103,19 +103,19 @@
       "rule": "The back wall's outer face: flush with the action cartridge's"
     },
     "muzzle": {
-      "value": 115,
+      "value": "col1 + case_t + 8",
       "unit": "mm",
-      "rule": "The barrel's end: the disc's centre is 8 mm short of it when the sled stops"
+      "rule": "The barrel's end: past the column, so the disc is guided until the sled stops"
     },
     "band": {
-      "value": 12,
+      "value": 9,
       "unit": "mm",
       "rule": "The top edge of the tube outside the column: a top wall over a hollow above the ceiling, for the pins' barbs"
     },
     "top": {
-      "value": 28,
+      "value": "cap_bottom + magazine.bar / 2",
       "unit": "mm",
-      "rule": "The column walls' top: the insert's cap stands above it"
+      "rule": "The column walls' top: half the insert's cap stands above it, to be gripped"
     },
     "tooth_back": {
       "value": "action.tooth_back",
@@ -153,7 +153,7 @@
       "rule": "The bottom of the notches the cap's barbs snap into"
     },
     "notch_h": {
-      "value": 11,
+      "value": 9,
       "unit": "mm",
       "rule": "The notches' height: the barbs' lead, flat and back, with room"
     },
@@ -180,6 +180,11 @@
       "value": "(rail + slot / 2 + band - case_t) / 2 + 1",
       "unit": "mm",
       "rule": "The pins' y: the middle of the hollow over the ceiling. One forward through the back wall, one back through the muzzle's front wall, from the frame's edges"
+    },
+    "tooth_room": {
+      "value": 0.7,
+      "unit": "mm",
+      "rule": "Room either side of the sear's tooth in its slit: the tooth tips a little as the trigger drops it; the slit stays a bridge the printer spans"
     }
   }
 }

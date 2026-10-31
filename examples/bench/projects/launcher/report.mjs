@@ -1,33 +1,32 @@
-// One report for the launcher's flexures: each sized from the rules the way the objects size them, with its strain at
-// the travel the design gives it. Run from examples/bench: node projects/launcher/report.mjs
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// One report for the launcher's flexures, from the built parts' own values (so it can't drift from the design): each
+// with its strain at the travel or angle the launcher gives it. Run from examples/bench: node projects/launcher/report.mjs
 import { size, report } from '@rulecad/flexures';
+import { build, locate } from '../../../../packages/cad/lib/design.mjs';
 
-const here = path.dirname(fileURLToPath(import.meta.url)), rules = (n) => JSON.parse(fs.readFileSync(path.join(here, '../../rules', `${n}.json`), 'utf8')).rules;
-const num = (set, k) => { const v = set[k].value; return typeof v === 'number' ? v : NaN; };
-const x1c = rules('x1c'), pla = rules('pla'), L = rules('launcher');
-const printer = { line: num(x1c, 'line'), layer: num(x1c, 'layer') }, material = { E: num(pla, 'modulus'), strainLimit: num(L, 'strain_limit'), name: 'PLA' };
-const travel = num(L, 'travel'), energy = num(L, 'energy'), draw = (2 * energy * 1000) / travel, width = num(L, 'flexure_width'), tabWidth = 5;
-const obj = (n) => JSON.parse(fs.readFileSync(path.join(here, 'objects', `${n}.json`), 'utf8')).variables;
-const body = obj('action'), magazine = obj('magazine');
+const values = async (name) => (await build(locate(`launcher/${name}`))).values;
+const a = await values('action'), m = await values('magazine');
+const printer = { line: a.x1c.line, layer: a.x1c.layer }, material = { E: a.pla.modulus, strainLimit: a.strain_limit, name: 'PLA' };
 
-const bow = size.leaf({ travel, force: draw, width, material, maxLength: body.max_leaf.value }, printer);
-const searW = width / 2 - tabWidth / 2 - num(x1c, 'fit'), sear = { length: body.sear_len.value, thickness: 3 * printer.line, width: searW, undercut: body.undercut.value, lead: body.lead.value, back: 90 };
-const trigger = size.livingHinge({ angle: num(L, 'trigger_travel') / body.finger_arm.value, width, material }, printer);
-const feeder = { length: magazine.spring.value, thickness: 2 * printer.line, width: width / 2, turns: magazine.turns.value };
-const cap = { length: magazine.hook.value, thickness: 3 * printer.line, width: width / 2, undercut: magazine.undercut.value, lead: magazine.lead.value, back: magazine.back.value };
-const stroke = magazine.preload.value + num(L, 'capacity') * num(L, 'disc_t') - (num(L, 'disc_t') + 2 * num(x1c, 'fit')) / 2 + num(x1c, 'fit') / 2 - num(L, 'rail');
+// The bow, as the action sizes it
+const bow = size.leaf({ travel: a.travel_max, force: a.draw, width: a.width, material, maxLength: a.max_leaf }, printer);
+// The sear: its tip's drop when the trigger is pulled all the way, as the action draws it
+const profile = (s) => (3 * s * s - s * s * s) / 2, armEnd = a.tooth_back + a.tooth - a.foot - 2 * a.overlap, searRoot = a.tooth_back - (a.sear_len - a.tooth);
+const lift = Math.max(0, (a.pull_max / a.finger_arm) * (armEnd - a.trigger_x) - a.fit) / profile((armEnd - searRoot) / a.sear_len);
+const sear = { length: a.sear_len, thickness: a.sear_t, width: a.sear_w, undercut: a.undercut, lead: a.lead, back: 90 };
+const hinge = size.livingHinge({ angle: a.pull_max / a.finger_arm, width: a.width, material }, printer);
+const feeder = { length: m.spring, thickness: m.thickness, width: m.width, turns: m.turns };
+const cap = { length: m.hook, thickness: m.hook_t, width: m.width, undercut: m.undercut, lead: m.lead, back: m.back };
 
-console.log(`Draw ${draw.toFixed(1)} N over ${travel} mm stores ${energy} J.`);
+console.log(`Draw ${a.draw.toFixed(1)} N over ${a.travel_max} mm stores ${((a.draw * a.travel_max) / 2000).toFixed(3)} J.`);
 console.log(`Bow: a leaf ${bow.length} × ${bow.thickness} × ${bow.width} mm, ${bow.stiffness.toFixed(3)} N/mm, ${(bow.strain * 100).toFixed(2)}% strain at full draw.`);
-console.log(`Trigger hinge: a ${trigger.flex} mm strip ${trigger.thickness} mm thick, ${trigger.stiffness.toFixed(0)} N·mm/rad.`);
+console.log(`Sear: its tip drops ${lift.toFixed(2)} mm at full pull, past its ${a.undercut} mm undercut${lift > a.undercut ? '' : ': NOT ENOUGH, it would not let go'}.`);
+console.log(`Trigger hinge: a ${hinge.flex} mm strip ${hinge.thickness} mm thick, ${hinge.stiffness.toFixed(0)} N·mm/rad.`);
 const r = report([
-  { name: 'bow', kind: 'leaf', params: bow, travel, stop: travel },
-  { name: 'sear', kind: 'snapHook', params: sear, travel: 4.3 },
-  { name: 'trigger hinge', kind: 'livingHinge', params: trigger, angle: num(L, 'trigger_travel') / body.finger_arm.value },
-  { name: 'feeder', kind: 'serpentine', params: feeder, travel: stroke },
-  { name: 'cap hooks', kind: 'snapHook', params: cap, travel: cap.undercut },
+  { name: 'bow', kind: 'leaf', params: bow, travel: a.travel_max, stop: a.travel_max },
+  { name: 'sear', kind: 'snapHook', params: sear, travel: +lift.toFixed(2) },
+  { name: 'trigger hinge', kind: 'livingHinge', params: hinge, angle: a.pull_max / a.finger_arm },
+  { name: 'feeder', kind: 'serpentine', params: feeder, travel: +(m.preload + m.stroke).toFixed(2) },
+  { name: 'cap hooks', kind: 'snapHook', params: cap, travel: m.undercut },
 ], printer, material);
-for (const f of r.findings) console.log(`${f.level === 'fail' ? '✗' : f.level === 'warn' ? '!' : '✓'} ${f.text}`);
+for (const f of r.findings) console.log(`${f.level === 'fail' ? '✗' : f.level === 'warn' ? '!' : '✓'} ${f.part ? `${f.part}: ` : ''}${f.text}`);
+process.exitCode = r.ok ? 0 : 1;

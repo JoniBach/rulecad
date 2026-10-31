@@ -36,12 +36,12 @@
       "rule": "The plate: the slot's height less a fit, so it slides"
     },
     "length": {
-      "value": 16,
+      "value": 12,
       "unit": "mm",
       "rule": "The plate along the barrel: it blocks the magazine's mouth at rest and is guided by the slot's walls"
     },
     "nose": {
-      "value": 4,
+      "value": 3,
       "unit": "mm",
       "rule": "The nose past the plate's front edge: the only part that touches the disc"
     },
@@ -66,37 +66,37 @@
       "rule": "The plate across the slot: the disc's diameter, a fit off the bed wall and the lid"
     },
     "tab": {
-      "value": 6,
+      "value": 5,
       "unit": "mm",
       "rule": "The tab along the barrel: its rear face is what the bow pushes, its front what the sear's tooth would catch if it reached"
     },
     "tab_width": {
-      "value": 5,
+      "value": 4,
       "unit": "mm",
       "rule": "The tab across, through its slit in the floor"
     },
     "tab_drop": {
-      "value": 18,
+      "value": 12,
       "unit": "mm",
       "rule": "How far the tab hangs below the floor's underside: room for the bow's tip to press it, with the tip's drop as it bends"
     },
     "rod": {
-      "value": 58,
+      "value": 42,
       "unit": "mm",
       "rule": "From the tab's rear face back to the cocking ring's centre: the ring sits against the grip's back wall at rest"
     },
     "rod_width": {
-      "value": 10,
+      "value": 7,
       "unit": "mm",
       "rule": "The rod across the slot: it rides the floor either side of the tab's gap, and carries the plate"
     },
     "ring": {
-      "value": 12,
+      "value": 9,
       "unit": "mm",
       "rule": "The cocking ring's outer radius: a finger goes through"
     },
     "ring_wall": {
-      "value": 4,
+      "value": 3,
       "unit": "mm",
       "rule": "The ring's wall"
     },
@@ -115,7 +115,7 @@
       "rule": "The ring's centre across the slot: its rim a fit under the lid"
     },
     "reach": {
-      "value": 60,
+      "value": 33,
       "unit": "mm",
       "rule": "The plate ahead of the tab: the tab hangs into the grip, where the bow is, and the plate runs under the magazine"
     },

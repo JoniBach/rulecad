@@ -93,8 +93,19 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     // from: inputs worked out from items built before this one ({ "usb_y": "board.pcb.pico_y" }): numbers, in this
     // assembly's names, so a part can take a value only another part knows once it's built
     const from = Object.fromEntries(Object.entries(it.from || {}).map(([k, x]) => [k, num(x)]));
-    // The pose's settings for this item: expressions in the assembly's names (launcher.travel), or a choice as it is
-    const posed = Object.fromEntries(Object.entries(ownSets[it.id] || {}).map(([k, x]) => { if (typeof x !== 'string') return [k, x]; try { return [k, num(x)]; } catch { return [k, x]; } }));
+    // The pose's settings for this item: expressions in the assembly's names (launcher.travel), which may name the item's
+    // own variables (magazine.preload: the item is built once as drawn to read them), or a choice as it is
+    const base = { ...(it.set || {}), ...from, ...(overrides[it.id] || {}), ...(it.assembly ? {} : extra) };
+    let own = null;
+    const ownValue = async (x) => {
+      if (typeof x !== 'string') return x;
+      try { return num(x); } catch {}
+      if (!it.object || !new RegExp(`\\b${it.id}\\.`).test(x)) return x;
+      if (!own) { const [r, named] = String(it.object).split(':'), [objName, pin] = r.split('@'), d = locate(`${project}/${objName}`); own = (await build({ ...(pin ? materialise(d, pin) : d), ...((named || it.variant) ? { variant: named || it.variant } : {}) }, base, opts)).values; }
+      return evaluate(x, (n) => { if (n.startsWith(`${it.id}.`)) { const v = own[n.slice(it.id.length + 1)]; if (typeof v === 'number') return v; } return lookup(n); });
+    };
+    const posed = {};
+    for (const [k, x] of Object.entries(ownSets[it.id] || {})) posed[k] = await ownValue(x);
     const set = { ...(it.set || {}), ...from, ...posed, ...(overrides[it.id] || {}), ...(it.assembly ? {} : extra) };
     // Built for the mirror, an object's mirror settings win (no legends), so copies that differ only there are one shape
     if (opts.mirror && it.object) for (const k of Object.keys(readObject(locate(`${project}/${String(it.object).split(/[:@]/)[0]}`)).mirror || {})) delete set[k];

@@ -56,12 +56,12 @@
       "rule": "The follower plate's thickness"
     },
     "bar": {
-      "value": 7,
+      "value": 5,
       "unit": "mm",
       "rule": "The cap bar: tall enough to stand above the body's top edge, to be gripped"
     },
     "spring": {
-      "value": 30,
+      "value": "launcher.disc",
       "unit": "mm",
       "rule": "Each leaf of the serpentine along the barrel: the disc's diameter"
     },
@@ -80,7 +80,7 @@
       "rule": "Leaf to leaf at rest"
     },
     "preload": {
-      "value": 8,
+      "value": 6,
       "unit": "mm",
       "rule": "How much the spring is squeezed with the magazine empty: the feed force on the last disc comes from this"
     },
@@ -96,7 +96,7 @@
         "min": 0,
         "max": 20
       },
-      "rule": "How much the spring is squeezed in the drawing: 0 as printed, preload when empty, preload + stroke when full (the leaves are drawn closer, not bowed)"
+      "rule": "How much the spring is squeezed in the drawing: 0 as printed; an assembly's pose sets it (preload when empty, preload + stroke over a full stack), so the leaves are drawn closer there and printed open"
     },
     "overlap": {
       "value": 0.3,
@@ -104,7 +104,7 @@
       "rule": "How far the plates sink into the end leaves, so they join"
     },
     "hook": {
-      "value": 20,
+      "value": 14,
       "unit": "mm",
       "rule": "Each snap hook's leaf, hanging from the cap's end down the column wall: long enough that the barb's deflection stays under the strain limit"
     },
@@ -119,7 +119,7 @@
       "rule": "The block each hook grows from, sunk into the cap"
     },
     "undercut": {
-      "value": 2.4,
+      "value": 1.8,
       "unit": "mm",
       "rule": "How far each barb stands out past the cap's edge: the hooks' root blocks sit inside the edge, so the barb reaches the wall and into its notch"
     },
@@ -132,14 +132,6 @@
       "value": 30,
       "unit": "degrees",
       "rule": "The barbs' backs: as sloped as their leads, so the cap pulls out with about the push that seated it (well over the spring's push); 90 would hold for good"
-    }
-  },
-  "variants": {
-    "empty": {
-      "compression": 8
-    },
-    "full": {
-      "compression": 16.9
     }
   }
 }
