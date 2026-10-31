@@ -1,0 +1,120 @@
+{
+  "title": "The two cartridges as they sit in the frame, with the sled, the magazine insert and a disc: cocked, and run forward to its rest",
+  "kind": "fit",
+  "uses": [
+    "launcher",
+    "x1c"
+  ],
+  "items": [
+    {
+      "id": "action",
+      "object": "action"
+    },
+    {
+      "id": "barrel",
+      "object": "barrel"
+    },
+    {
+      "id": "sled",
+      "object": "sled"
+    },
+    {
+      "id": "magazine",
+      "object": "magazine"
+    },
+    {
+      "id": "disc",
+      "object": "disc"
+    }
+  ],
+  "joints": [
+    {
+      "id": "run",
+      "type": "prismatic",
+      "parent": "barrel.rest",
+      "child": "sled.drive",
+      "min": "x1c.fit - (launcher.travel + launcher.overrun)",
+      "max": 0,
+      "label": "The sled along the slot"
+    },
+    {
+      "id": "cap",
+      "type": "fixed",
+      "parent": "barrel.column",
+      "child": "magazine.seat",
+      "label": "The insert pressed home in the column"
+    },
+    {
+      "id": "drop",
+      "type": "prismatic",
+      "parent": "barrel.mouth",
+      "child": {
+        "item": "disc",
+        "at": [
+          0,
+          0,
+          0
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "min": 0,
+      "max": "sled.thickness / 2 + launcher.disc_t / 2",
+      "label": "The bottom disc: in the slot when the sled is back, on the sled's plate when it's forward"
+    }
+  ],
+  "poses": {
+    "cocked": {
+      "run": "x1c.fit - (launcher.travel + launcher.overrun)",
+      "drop": 0,
+      "action.travel": "launcher.travel",
+      "magazine.compression": "magazine.preload + magazine.stroke"
+    },
+    "fired": {
+      "run": "x1c.fit - (launcher.travel + launcher.overrun)",
+      "drop": 0,
+      "action.travel": "launcher.travel",
+      "action.pull": "launcher.trigger_travel",
+      "magazine.compression": "magazine.preload + magazine.stroke"
+    },
+    "rest": {
+      "run": 0,
+      "drop": "sled.thickness / 2 + launcher.disc_t / 2",
+      "magazine.compression": "magazine.preload + magazine.stroke"
+    }
+  },
+  "fits": [
+    {
+      "a": "sled",
+      "b": "barrel",
+      "min": 0,
+      "max": "x1c.fit",
+      "note": "The sled slides in the slot"
+    },
+    {
+      "a": "sled",
+      "b": "action",
+      "min": 0,
+      "max": "launcher.overrun",
+      "note": "The sled's tab, over the bead at rest and on it when cocked"
+    },
+    {
+      "a": "barrel",
+      "b": "action",
+      "min": 0,
+      "max": "x1c.fit",
+      "note": "The barrel cartridge sits on the action's top"
+    },
+    {
+      "a": "magazine",
+      "b": "barrel",
+      "min": 0,
+      "max": "2 * x1c.fit",
+      "note": "The insert in its column"
+    }
+  ],
+  "pose": "rest"
+}

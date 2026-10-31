@@ -1,0 +1,101 @@
+{
+  "name": "frame",
+  "title": "The frame: grip with a palm swell, receiver and trigger guard round two cavities the cartridges pin into",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher",
+    "launcher/action",
+    "launcher/barrel",
+    "launcher/sled"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "On its back plate, the cavities opening upward, so nothing overhangs: as drawn. (It prints hilt-down as well, since no roof spans a cavity.) The cartridges go in open side first, the sled already in the barrel's slot with its rod out through the notch in the back strap; then the pins from the edges.",
+  "anchors": {
+    "seat": {
+      "at": [
+        0,
+        0,
+        "depth"
+      ],
+      "axis": [
+        0,
+        0,
+        "0 - 1"
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "skin": {
+      "value": "launcher.frame_wall",
+      "unit": "mm",
+      "rule": "The frame round the cartridges: the grip's straps and the receiver's sides, rounded by as much; the pins go through it"
+    },
+    "plate": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The back plate behind the cartridges: the disc rolls on its inside face"
+    },
+    "fit": {
+      "value": "x1c.fit",
+      "unit": "mm",
+      "rule": "Round each cartridge in its cavity"
+    },
+    "depth": {
+      "value": "barrel.case_h + fit + plate",
+      "unit": "mm",
+      "rule": "The frame's thickness: the deeper cartridge, a fit, and the plate"
+    },
+    "guard_h": {
+      "value": 22,
+      "unit": "mm",
+      "rule": "The trigger guard below the receiver block: room for a finger"
+    },
+    "guard_post": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The guard's posts, front and back"
+    },
+    "guard_bar": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "The guard's bottom bar"
+    },
+    "pin": {
+      "value": "action.pin",
+      "unit": "mm",
+      "rule": "The pins' diameter"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the corners and holes"
+    },
+    "swell": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The palm swell: how far the back strap bulges behind the grip column at its fullest"
+    },
+    "swell_r": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The swell's rounding, top and bottom"
+    },
+    "swell_lo": {
+      "value": "action.grip_bottom + 10",
+      "unit": "mm",
+      "rule": "Where the swell starts above the grip's bottom"
+    },
+    "swell_hi": {
+      "value": "action.case_top - 22",
+      "unit": "mm",
+      "rule": "Where the swell ends, below the web of the thumb"
+    }
+  }
+}

@@ -56,9 +56,16 @@ export { satisfies }; // from @rulecad/versions
 // overrides: { itemId: { variable: value } }, set on this assembly's items by the assembly that uses it.
 // opts: { mirror: true } builds each object with its mirror settings (cad show).
 export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) {
+  const outer = overrides;
   const [project, name] = ref.split('/');
   if (stack.includes(ref)) throw new Error(`assembly ${ref} contains itself (${[...stack, ref].join(' → ')})`);
   const a = JSON.parse(host.readText(assemblyPath(ref)));
+  // A pose may set items' variables as well as joints ("cocked": { "run": -30, "action.travel": 25 }): a flexure bent
+  // as the pose bends it, while the part itself is printed as drawn. The pose being built sets them on its items.
+  const itemSets = (name) => { const out = {}; for (const [k, v] of Object.entries(a.poses?.[name] || {})) if (k.includes('.')) { const [item, ...rest] = k.split('.'); (out[item] ||= {})[rest.join('.')] = v; } return out; };
+  const builtPose = opts.pose ?? a.pose ?? Object.keys(a.poses || {})[0];
+  const ownSets = typeof builtPose === 'string' ? itemSets(builtPose) : {};
+  overrides = { ...overrides };
   const printer = printerOf(project);
   if (a.kind === 'plate' && !(a.uses || []).includes(printer)) a.uses = [...(a.uses || []), printer]; // a plate is checked as a print
   const values = Object.fromEntries((a.uses || []).map((u) => { const s = loadRuleSet(u); return [u, Object.fromEntries(Object.entries(s.rules).map(([k, r]) => [k, r.value]))]; }));
@@ -86,7 +93,20 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     // from: inputs worked out from items built before this one ({ "usb_y": "board.pcb.pico_y" }): numbers, in this
     // assembly's names, so a part can take a value only another part knows once it's built
     const from = Object.fromEntries(Object.entries(it.from || {}).map(([k, x]) => [k, num(x)]));
-    const set = { ...(it.set || {}), ...from, ...(overrides[it.id] || {}), ...(it.assembly ? {} : extra) };
+    // The pose's settings for this item: expressions in the assembly's names (launcher.travel), which may name the item's
+    // own variables (magazine.preload: the item is built once as drawn to read them), or a choice as it is
+    const base = { ...(it.set || {}), ...from, ...(overrides[it.id] || {}), ...(it.assembly ? {} : extra) };
+    let own = null;
+    const ownValue = async (x) => {
+      if (typeof x !== 'string') return x;
+      try { return num(x); } catch {}
+      if (!it.object || !new RegExp(`\\b${it.id}\\.`).test(x)) return x;
+      if (!own) { const [r, named] = String(it.object).split(':'), [objName, pin] = r.split('@'), d = locate(`${project}/${objName}`); own = (await build({ ...(pin ? materialise(d, pin) : d), ...((named || it.variant) ? { variant: named || it.variant } : {}) }, base, opts)).values; }
+      return evaluate(x, (n) => { if (n.startsWith(`${it.id}.`)) { const v = own[n.slice(it.id.length + 1)]; if (typeof v === 'number') return v; } return lookup(n); });
+    };
+    const posed = {};
+    for (const [k, x] of Object.entries(ownSets[it.id] || {})) posed[k] = await ownValue(x);
+    const set = { ...(it.set || {}), ...from, ...posed, ...(overrides[it.id] || {}), ...(it.assembly ? {} : extra) };
     // Built for the mirror, an object's mirror settings win (no legends), so copies that differ only there are one shape
     if (opts.mirror && it.object) for (const k of Object.keys(readObject(locate(`${project}/${String(it.object).split(/[:@]/)[0]}`)).mirror || {})) delete set[k];
     const sub = it.assembly ? extra : {}; // a component's values go to its items: { cap: { units: 1.5 } }
@@ -221,7 +241,11 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     for (const id of copies) { const swap = (n) => (n === star ? at(id, n) : n); fits.push({ ...x, a: swap(x.a), b: swap(x.b), num }); }
   }
   // at(pose): the same assembly in another pose (a name, or { joint: values }), nothing built again
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  const others = {};
+  if (!opts.onePose) for (const n of Object.keys(a.poses || {})) if (n !== builtPose && !same(itemSets(n), ownSets)) others[n] = await buildAssembly(ref, stack, outer, { ...opts, pose: n, onePose: true });
   const at = (p) => {
+    if (typeof p === 'string' && others[p]) return others[p];
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
@@ -247,7 +271,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
 // another's values (times "ratio", plus "offset"): the second hinge of a pair, gears. Items joined in a ring (two links
 // between the same two parts) can't all be joints: join the ring's last pair with "loops" instead, which the check
 // measures in every pose: [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }].
-// "poses": { "open": { "hinge": 90 } } names sets of values, "pose" the one shown (default: the first); check checks
+// "poses": { "open": { "hinge": 90 } } names sets of values, "pose" the one shown (default: the first); a pose can set an
+// item's variables too ("cocked": { "run": -30, "action.travel": 25 }), so a flexure is drawn bent in that pose and
+// straight as printed (each such pose is built on its own; at(pose) returns it); check checks
 // every pose, and --sweep moves each joint through its range, looking for parts that collide.
 const rows = (m) => [m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14]]; // JSCAD's mat4 is column-major
 const toMat4 = (r) => [r[0], r[4], r[8], 0, r[1], r[5], r[9], 0, r[2], r[6], r[10], 0, r[3], r[7], r[11], 1];
@@ -321,7 +347,7 @@ function motionOf(a, placed, num, ref) {
     // A repeated item turns as a whole about its at: each copy's offset turns with it (keys on a tilted plate)
     return [c.id, ...rows(translate(base, rotate(rot, translate([c.offset[0], c.offset[1], 0], jscad.geometries.geom3.create()))).transforms)];
   });
-  const poses = Object.fromEntries(Object.entries(a.poses || {}).map(([n, set]) => [n, Object.fromEntries(Object.entries(set).map(([id, v]) => {
+  const poses = Object.fromEntries(Object.entries(a.poses || {}).map(([n, set]) => [n, Object.fromEntries(Object.entries(set).filter(([id]) => !id.includes('.')).map(([id, v]) => {
     if (!joints.some((j) => j.id === id)) throw new Error(`pose ${n}: no joint "${id}"`);
     return [id, Array.isArray(v) ? v.map(num) : num(v)];
   }))]));

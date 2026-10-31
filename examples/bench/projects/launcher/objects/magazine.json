@@ -1,0 +1,137 @@
+{
+  "name": "magazine",
+  "title": "The magazine insert: follower, serpentine spring and a snap-in cap in one piece",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed, the follower at the bottom of the picture, the cap at the top. Drop discs into the column from the top, then press the insert in after them until its hooks click into the walls' notches; a firm pull on the cap lifts it out to reload.",
+  "anchors": {
+    "seat": {
+      "at": [
+        "spring / 2",
+        "(turns - 1) * (pitch - compression / (turns - 1)) + thickness / 2 - overlap + bar",
+        "width / 2"
+      ],
+      "axis": [
+        0,
+        "0 - 1",
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "width": {
+      "value": "launcher.flexure_width / 2",
+      "unit": "mm",
+      "rule": "The spring's height off the bed: half the body's working width, pressing the follower's middle"
+    },
+    "across": {
+      "value": "launcher.flexure_width",
+      "unit": "mm",
+      "rule": "The follower and top bar across the column"
+    },
+    "follower_w": {
+      "value": "launcher.disc + 2 * ledge",
+      "unit": "mm",
+      "rule": "The follower along the barrel: wider than the disc, so it rests on the column's ledge when the magazine is empty"
+    },
+    "ledge": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The column's ledge each side of its mouth, which the follower sits on when empty"
+    },
+    "follower": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The follower plate's thickness"
+    },
+    "bar": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The cap bar: tall enough to stand above the body's top edge, to be gripped"
+    },
+    "spring": {
+      "value": "launcher.disc",
+      "unit": "mm",
+      "rule": "Each leaf of the serpentine along the barrel: the disc's diameter"
+    },
+    "thickness": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "The serpentine's leaves: two lines"
+    },
+    "turns": {
+      "value": 7,
+      "rule": "Leaves in the serpentine: enough gaps to close by the preload and the stroke"
+    },
+    "pitch": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Leaf to leaf at rest"
+    },
+    "preload": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "How much the spring is squeezed with the magazine empty: the feed force on the last disc comes from this"
+    },
+    "stroke": {
+      "value": "launcher.capacity * launcher.disc_t - (launcher.disc_t + 2 * x1c.fit) / 2 + x1c.fit / 2 - launcher.rail",
+      "unit": "mm",
+      "rule": "The follower's travel from the ledge (empty) to the top of a full stack resting on the sled: six discs less the slot's half-height, less the ledge's height above the slot's centre"
+    },
+    "compression": {
+      "value": 0,
+      "unit": "mm",
+      "tweak": {
+        "min": 0,
+        "max": 20
+      },
+      "rule": "How much the spring is squeezed in the drawing: 0 as printed; an assembly's pose sets it (preload when empty, preload + stroke over a full stack), so the leaves are drawn closer there and printed open"
+    },
+    "overlap": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "How far the plates sink into the end leaves, so they join"
+    },
+    "hook": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Each snap hook's leaf, hanging from the cap's end down the column wall: long enough that the barb's deflection stays under the strain limit"
+    },
+    "hook_t": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "The hooks' leaves: three lines"
+    },
+    "hook_root": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The block each hook grows from, sunk into the cap"
+    },
+    "undercut": {
+      "value": 1.8,
+      "unit": "mm",
+      "rule": "How far each barb stands out past the cap's edge: the hooks' root blocks sit inside the edge, so the barb reaches the wall and into its notch"
+    },
+    "lead": {
+      "value": 30,
+      "unit": "degrees",
+      "rule": "The barbs' lead faces: pressing the cap in deflects them"
+    },
+    "back": {
+      "value": 30,
+      "unit": "degrees",
+      "rule": "The barbs' backs: as sloped as their leads, so the cap pulls out with about the push that seated it (well over the spring's push); 90 would hold for good"
+    }
+  }
+}

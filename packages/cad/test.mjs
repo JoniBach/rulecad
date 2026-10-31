@@ -225,6 +225,38 @@ test('cad measure and cad match: a model measured into draft rules, and a design
   } finally { done(); }
 });
 
+test('a pose that sets an item\'s variables: the part drawn that way in that pose, as printed in the others', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { w: { value: 40, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, h: { value: 2, unit: 'mm', rule: 'Height' } };
+    object(ws, 'demo/base', { variables: vars }, BOX);
+    object(ws, 'demo/post', { variables: { ...vars, h: { value: 10, unit: 'mm', rule: 'Height', tweak: { min: 1, max: 30 } } } }, BOX);
+    fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'));
+    // The post stands on the base; a block 8 mm up only clears it while the post is pressed down to 5 mm
+    const write = (poses) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/press.json'), JSON.stringify({ title: 'Press', kind: 'fit',
+      items: [{ id: 'base', object: 'base' }, { id: 'post', object: 'post', at: [0, 0, 'base.h'] }, { id: 'stop', object: 'base' }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { at: [0, 0, 8], axis: [0, 0, 1] }, child: { item: 'stop', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 50 }], poses }));
+    write({ pressed: { slide: 0, 'post.h': 5 }, free: { slide: 0 } });
+    const out = cad('check', 'demo/press');
+    assert.match(out, /2 poses checked: pressed, free/);
+    assert.match(out, /free: post\.body and stop\.body overlap/, 'as printed, the post reaches the stop');
+    assert.doesNotMatch(out, /pressed: post\.body and stop\.body overlap/, 'pressed, it clears it');
+    assert.match(cad('check', 'demo/press', '--pose', 'pressed'), /no parts overlap/);
+    write({ pressed: { slide: 0, 'post.h': 'base.h * 2' } }); // an expression in the assembly's names
+    assert.match(cad('check', 'demo/press'), /no parts overlap/);
+    // Its link opens free, and carries the post's pressed shape for the page to swap in when the pose is picked
+    write({ free: { slide: 0 }, pressed: { slide: 0, 'post.h': 5 } });
+    const lib = path.join(path.dirname(BIN), '../lib/');
+    const out2 = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { buildAssembly } from ${JSON.stringify(pathToFileURL(lib + 'assembly.mjs').href)};
+      import { assemblyModel } from ${JSON.stringify(pathToFileURL(lib + 'links.mjs').href)};
+      import { encode, decode, partsOf, posesOf } from '@rulecad/model-link';
+      const m = await decode(await encode(await assemblyModel(await buildAssembly('demo/press'), { title: 'Press' })));
+      console.log(JSON.stringify({ parts: partsOf(m).map((p) => p[0]), poses: posesOf(m).map((x) => x.part[0]), swap: m.motion.swap, pose: m.motion.pose }));`], { cwd: ws, encoding: 'utf8' });
+    assert.deepEqual(JSON.parse(out2), { parts: ['base.body', 'post.body', 'stop.body'], poses: ['post.body@pressed'], swap: { pressed: [[1, 3]] }, pose: 'free' });
+  } finally { done(); }
+});
+
 test('joints: a lid on a hinge, checked in each pose, swept for collisions, with a follower closing a loop', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -456,10 +488,10 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
       supports: [{ at: [0, 0, 1], size: [12, 12, 2] }], loads: [{ at: [0, 0, 23], r: 3, length: 2, axis: 'z', force: [10, 0, 0], case: 'push' }],
     }));
     fs.writeFileSync(path.join(project, 'objects', 'post.json'), JSON.stringify({ name: 'post', version: '0.1.0', engine: 'manifold',
-      variables: { problem: { type: 'problem', value: 'post' }, side: { value: 0, choice: [0, 1] }, lift: { value: 6, unit: 'mm' } }, variants: { lying: { side: 1 } },
+      variables: { problem: { type: 'problem', value: 'post', choice: ['post', 'none'] }, side: { value: 0, choice: [0, 1] }, lift: { value: 6, unit: 'mm' } }, variants: { lying: { side: 1 }, plain: { problem: 'none' } },
       // Lying: drawn on its side, and turned back for the analysis
       analysis: [{ problem: 'post', rotate: [0, '0 - 90 * side', 0], move: ['lift * side', 0, 0] }] }));
-    fs.writeFileSync(path.join(project, 'objects', 'post.js'), "import jscad from '@jscad/modeling'\nconst { rotateY, translate } = jscad.transforms\nexport function main (v) { const s = v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops }); return v.side ? translate([0, 0, v.lift], rotateY(Math.PI / 2, s)) : s }\n");
+    fs.writeFileSync(path.join(project, 'objects', 'post.js'), "import jscad from '@jscad/modeling'\nconst { rotateY, translate } = jscad.transforms\nexport function main (v) { const s = v.problems ? v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops }) : jscad.primitives.cuboid({ size: [12, 12, 24], center: [0, 0, 12] }); return v.side ? translate([0, 0, v.lift], rotateY(Math.PI / 2, s)) : s }\n");
     const out = cad('optimise', 'post/post');
     assert.match(out, /push: moves [\d.e-]+ mm along its load/);
     assert.match(out, /printable built \+z/);
@@ -471,6 +503,10 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
     const lying = cad('check', 'post/post:lying');
     assert.match(lying, /24 × [\d.]+ × 12 mm, fits the bed/, 'drawn lying down');
     assert.ok(Math.abs(stiffness(lying) / stiffness(checked) - 1) < 0.02, `turned back, it analyses as it stands: ${stiffness(lying)} against ${stiffness(checked)} N/mm`);
+    // A variant with no problem builds without the optimiser: a rig, or the regions a problem reads
+    const plain = cad('check', 'post/post:plain');
+    assert.match(plain, /12 × 12 × 24 mm, fits the bed/, 'drawn without the result');
+    assert.doesNotMatch(plain, /optimising/);
     // Verified: on finer cells, checked against cells a quarter bigger, with a report; safety-critical, it's
     // unverified until a test is recorded
     const problemFile = path.join(project, 'problems', 'post.json'), objectFile = path.join(project, 'objects', 'post.json');

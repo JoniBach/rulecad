@@ -95,6 +95,20 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     await run(`document.querySelector('#joints input').value = 45; document.querySelector('#joints input').dispatchEvent(new Event('input')); true`);
     await new Promise((r) => setTimeout(r, 500));
     await shot('viewer-motion.png');
+    // A pose that changes a part's shape (a flexure bent): the "pose" part is swapped in for it there, and only there
+    const thick = tri(cuboid({ size: [10, 2, 6] })); // reaches back over the block and 3 mm down, 1 mm into its top
+    const posed = await encode({ title: 'posed', ...fromShapes([{ shape: 'block', triangles: block, matrix: I, name: 'block.body' }, { shape: 'arm', triangles: arm, matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 12], name: 'arm.body' },
+      { shape: 'thick', role: 'pose', triangles: thick, matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 12], name: 'arm.body@pressed' }]),
+      motion: { items: [['block', ...I], ['arm']], part: [0, 1, 1], poses: { flat: { hinge: 0 }, pressed: { hinge: 0 } }, pose: 'flat', swap: { pressed: [[1, 2]] },
+        joints: [{ id: 'hinge', label: 'Arm', type: 'revolute', parent: 0, child: 1, a: frame([5, 0, 12], [0, 1, 0]), b: frame([0, 0, 0], [0, 1, 0]), dofs: [[-90, 90, 0]] }] } });
+    await run(`location.hash = '#m=${posed}'; location.reload(); true`).catch(() => {});
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'posed'`), 'the posed link opens');
+    const press = async (n) => { await run(`[...document.querySelectorAll('#poses button')].find((b) => b.textContent === '${n}').click(); true`); return run(`document.getElementById('clash').textContent`); };
+    assert.match(await press('pressed'), /Collides/, 'pressed, the arm takes its pose shape, which reaches into the block');
+    assert.match(await press('flat'), /Nothing collides/, 'and goes back to its own shape');
+    assert.doesNotMatch(await run(`document.body.innerText`), /@pressed/, 'the pose shape is not listed as a part');
+    await run(`location.hash = '#m=${hinged}'; location.reload(); true`).catch(() => {}); // back to the hinged link for the phone's look
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'arm'`), 'the hinged link opens again');
     // On a phone the model and an info pane share the screen: Parts swaps the pane, the grip moves the border, and
     // the rules sheet opens in the pane, so nothing covers the model
     await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId);

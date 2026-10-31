@@ -1,0 +1,163 @@
+{
+  "_doc": "The disc launcher: what the toy must do, and the design choices every part shares (kind default), so the disc, the bow, the sear, the magazine and the frame all read the same numbers. The sizing from these is worked in examples/bench/projects/launcher/README.md.",
+  "name": "launcher",
+  "rules": {
+    "disc": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The disc's diameter: it stands across the pistol's thickness, so it sets how thick the launcher is",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "disc_t": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The disc's thickness: ten layers, stiff enough not to flutter",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "disc_mass": {
+      "value": 0.79,
+      "unit": "g",
+      "rule": "A disc's mass in PLA, solid: π × 10² × 2 mm³ × 1.26 g/cm³",
+      "kind": "estimate",
+      "source": "Worked from disc, disc_t and pla.density; weigh a printed one",
+      "checked": "2026-10-31"
+    },
+    "disc_energy": {
+      "value": 0.08,
+      "unit": "J",
+      "rule": "The most kinetic energy a disc may leave with: the toy standards' threshold, above which a projectile needs a resilient tip. A hard PLA disc has none, so it stays under",
+      "kind": "spec",
+      "source": "ASTM F963-17 §4.20 and EN 71-1 §4.17 (projectile toys): over 0.08 J the striking face must be resilient and its kinetic energy per contact area under 2500 J/m². Check the current editions",
+      "checked": "2026-10-31"
+    },
+    "energy": {
+      "value": 0.05,
+      "unit": "J",
+      "rule": "The energy the bow stores at full draw: with the launch efficiency below, the disc leaves at about 6 m/s, well under disc_energy",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "efficiency": {
+      "value": 0.3,
+      "rule": "The share of the stored energy the disc leaves with: the rest moves the sled and the leaf itself. A guess until a disc is timed",
+      "kind": "estimate",
+      "source": "The sled and the leaf's moving share weigh about three times the disc (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "travel": {
+      "value": 15,
+      "unit": "mm",
+      "rule": "The bow's draw: how far the leaf bends from rest to cocked, and the stroke the sled is pushed through",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "overrun": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The sled's run past the leaves' rest, to its stop: the leaves let go before the sled stops",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "draw": {
+      "value": "2 * energy * 1000 / travel",
+      "unit": "N",
+      "rule": "The pull at full draw: 2 × energy / travel for a leaf that is a linear spring. What the cocking ring and the sear carry",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "trigger_pull": {
+      "value": 8,
+      "unit": "N",
+      "rule": "The trigger's pull at release, at most: light for a child, firm enough not to go off when knocked",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "trigger_travel": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The finger's travel from rest to release",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "capacity": {
+      "value": 6,
+      "rule": "Discs in the magazine",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "feed": {
+      "value": 0.4,
+      "unit": "N",
+      "rule": "The least the feeder presses the last disc down with: ten times its weight, so it drops whichever way the launcher points",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "spin_offset": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "How far off the disc's centre line the sled's nose pushes, towards the bed wall: the push turns the disc, which rolls along the lid and leaves spinning, so it flies flat",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md); the Nerf Vortex launches its discs the same way",
+      "checked": "2026-10-31"
+    },
+    "flexure_width": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "Every flexure's height off the bed (its width): 90 layers, under the disc's diameter, so they all fit in the action cartridge",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "strain_limit": {
+      "value": 0.02,
+      "rule": "The strain PLA may see in a flexure: 2%, the working guess until the flexure bench's plates are measured (examples/bench/projects/flexures/results.json). Near PLA's yield: don't leave the launcher cocked",
+      "kind": "estimate",
+      "source": "The flexure bench (examples/bench/projects/flexures/README.md)",
+      "checked": "2026-10-31"
+    },
+    "grip": {
+      "value": 50,
+      "unit": "N",
+      "rule": "The hand's hold on the grip, and the hardest knock the muzzle or magazine takes while held: about 5 kg",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "wall": {
+      "value": "x1c.layer * 10",
+      "unit": "mm",
+      "rule": "The body's bed-side wall, which everything stands on: ten layers",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "rail": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The barrel slot's floor and ceiling walls, either side of the disc's path",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    },
+    "frame_wall": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The frame's skin round the cartridges, which the pins go through",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
+    }
+  }
+}

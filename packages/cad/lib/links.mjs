@@ -54,6 +54,19 @@ export async function objectModel(b, { title, version, src, set, filaments: fil 
 
 /** A built assembly as a model: each shape once and placed (nine keys cost one keycap), its boards' views, its joints. */
 export async function assemblyModel(s, { title, versions, filaments: fil = {}, noRules = false }) {
+  const placed = shapes(s.parts), list = placed.shapes.length ? placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: triangles(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; }) : [];
+  // A pose that sets items' variables draws some parts differently (a flexure bent): each such part's shape in that
+  // pose goes in the link as a "pose" part, placed as the part is, to be swapped in when the page shows the pose
+  const alts = [];
+  if (list.length) for (const pose of Object.keys(s.motion?.poses || {})) {
+    const t = s.at(pose);
+    t.parts.forEach((q, n) => {
+      const p = s.parts[n];
+      if (!p || !q || q.name !== p.name || q.hash === p.hash) return;
+      alts.push({ of: n, pose });
+      list.push({ shape: `${q.hash}@pose`, role: 'pose', label: list[n].label, triangles: triangles(q.localTriangles), matrix: list[n].matrix, name: `${p.name}@${pose}` });
+    });
+  }
   const model = {
     title, version: versions, src: `${s.project}/${s.name}`, // object versions are in version: the file name stays short
     rules: [],
@@ -66,10 +79,13 @@ export async function assemblyModel(s, { title, versions, filaments: fil = {}, n
       for (const o of boards) for (const [n, svg] of await pcb.views(o.built.circuit)) views.push([boards.length > 1 ? `${o.objName} ${n}` : n, svg]);
       return { views };
     })()),
-    ...fromShapes(shapes(s.parts).shapes.length ? (() => {
-      const placed = shapes(s.parts);
-      return placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: triangles(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; });
-    })() : []),
+    ...fromShapes(list),
   };
-  return Object.assign(model, motionData(s));
+  Object.assign(model, motionData(s));
+  if (alts.length) { // the shapes parts take in other poses, on the same items, and which pose shows which
+    model.motion.part.push(...alts.map((x) => model.motion.part[x.of]));
+    model.motion.swap = {};
+    alts.forEach((x, i) => (model.motion.swap[x.pose] ||= []).push([x.of, list.length - alts.length + i]));
+  }
+  return model;
 }
