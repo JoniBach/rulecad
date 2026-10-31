@@ -1,0 +1,46 @@
+{
+  "name": "pin",
+  "title": "The pinch pin: a snap pin whose foot clamps a cartridge's floor to the frame",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher",
+    "launcher/action"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Standing on its foot, as the generator draws it. Pushed from inside a cartridge through the hole in its floor into the frame's socket: the barb clicks out in the socket's cavity, the foot pinches the floor to the frame. Print one per hole.",
+  "variables": {
+    "diameter": {
+      "value": "action.pin",
+      "unit": "mm",
+      "rule": "The pin's diameter, the cartridges' and the frame's holes less a fit"
+    },
+    "length": {
+      "value": "action.wall + launcher.frame_wall + x1c.fit",
+      "unit": "mm",
+      "rule": "The shaft: through a cartridge's floor and the frame's cavity wall, so the barb clicks out beyond"
+    },
+    "lip": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "The barb past the pin"
+    },
+    "slot": {
+      "value": "length + 2",
+      "unit": "mm",
+      "rule": "The split down the pin from its tip: through the barb and most of the shaft"
+    },
+    "gap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The split's width"
+    },
+    "head": {
+      "value": "action.pin_foot",
+      "unit": "mm",
+      "rule": "The foot past the shaft all round"
+    }
+  }
+}

@@ -150,6 +150,14 @@
       "kind": "default",
       "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
       "checked": "2026-10-31"
+    },
+    "frame_wall": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The frame's cavity walls, which the cartridges pin through",
+      "kind": "default",
+      "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
+      "checked": "2026-10-31"
     }
   }
 }
