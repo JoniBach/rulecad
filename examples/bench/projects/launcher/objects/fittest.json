@@ -1,0 +1,209 @@
+{
+  "name": "fittest",
+  "title": "Launcher fit test: chamber, sled, free-standing leaves and pins at three clearances each",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed as drawn, no supports. Try each and note which number moves freely and which pin holds: (1) push the disc and the sled coupon, on edge, through each channel: it should slide under its own weight when tilted, and pass under the roof; (2) flick each leaf: it should swing freely, touching nothing but its root; (3) push each pin, A, B and C (one, two or three flats on its foot), through each hole in the wall until it clicks, then pull. The numbers are the gap per side, in mm.",
+  "parts": {
+    "plate": {
+      "label": "The plate: channels, leaves and the pin wall"
+    },
+    "disc": {
+      "label": "A disc"
+    },
+    "coupon": {
+      "label": "A sled coupon: a slice of the sled's plate"
+    },
+    "pin_a": {
+      "label": "Pin A: 0.4 mm barb, 45° back (as printed before)"
+    },
+    "pin_b": {
+      "label": "Pin B: 0.6 mm barb, 45° back"
+    },
+    "pin_c": {
+      "label": "Pin C: 0.6 mm barb, 75° back (holds)"
+    }
+  },
+  "variables": {
+    "gaps": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "The smallest gap tried, per side; then one and two steps more"
+    },
+    "step": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "The step between the gaps tried"
+    },
+    "floor": {
+      "value": "launcher.wall",
+      "unit": "mm",
+      "rule": "The base, as the cartridges' floors"
+    },
+    "wall": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The channels' walls"
+    },
+    "disc": {
+      "value": "launcher.disc",
+      "unit": "mm",
+      "rule": "The disc's diameter"
+    },
+    "disc_t": {
+      "value": "launcher.disc_t",
+      "unit": "mm",
+      "rule": "The disc's thickness, and the sled coupon's"
+    },
+    "channel_l": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "Each channel's length"
+    },
+    "roof_l": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The roof over each channel's middle: where the frame's back plate would be"
+    },
+    "roof_t": {
+      "value": 1.2,
+      "unit": "mm",
+      "rule": "The roof's thickness: six layers"
+    },
+    "coupon_l": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The sled coupon's length"
+    },
+    "leaf_l": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "Each test leaf's length"
+    },
+    "leaf_t": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "The test leaves' thickness: the bow's four lines"
+    },
+    "leaf_h": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The test leaves' height: fifty layers"
+    },
+    "root": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Each leaf's root block, on the floor"
+    },
+    "travel": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The window's room for the leaf to swing each way, past its gap"
+    },
+    "pin": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The pins' diameter, as the launcher's"
+    },
+    "pin_len": {
+      "value": "launcher.frame_wall + 3 + x1c.fit",
+      "unit": "mm",
+      "rule": "The pins' shaft: through the frame's skin and a cartridge's wall, as the launcher's"
+    },
+    "pin_wall": {
+      "value": "pin_len",
+      "unit": "mm",
+      "rule": "The test wall's thickness: what a pin goes through"
+    },
+    "pin_wall_h": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The test wall's height"
+    },
+    "hole_gaps": {
+      "value": 0.05,
+      "unit": "mm",
+      "rule": "The smallest radial clearance round a pin tried; then twice and four times it (the launcher had 0.2)"
+    },
+    "head": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The pins' foot past the shaft"
+    },
+    "slot": {
+      "value": "pin_len + 2",
+      "unit": "mm",
+      "rule": "The split down each pin, as the launcher's"
+    },
+    "label_h": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Labels' height"
+    },
+    "label_t": {
+      "value": "x1c.layer * 3",
+      "unit": "mm",
+      "rule": "Labels stand this proud of the floor"
+    },
+    "stroke": {
+      "value": "x1c.line * 1.5",
+      "unit": "mm",
+      "rule": "Labels' lines"
+    },
+    "spacing": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Room between tests"
+    },
+    "chamfer": {
+      "value": "x1c.chamfer",
+      "unit": "mm",
+      "rule": "The disc's bed edge"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the disc, pins and holes"
+    },
+    "lip_a": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Pin A's barb: as the launcher's pins, which fell out"
+    },
+    "back_a": {
+      "value": 45,
+      "unit": "degrees",
+      "rule": "Pin A's barb's back"
+    },
+    "lip_b": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Pin B's barb: half as much again (1.6% strain in the split halves)"
+    },
+    "back_b": {
+      "value": 45,
+      "unit": "degrees",
+      "rule": "Pin B's barb's back: lets go with a pull"
+    },
+    "lip_c": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Pin C's barb"
+    },
+    "back_c": {
+      "value": 75,
+      "unit": "degrees",
+      "rule": "Pin C's barb's back: steep, so it holds (squeeze the halves to take it out)"
+    },
+    "flat": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "How deep each flat on a pin's foot is: one, two or three of them say A, B or C"
+    }
+  }
+}
