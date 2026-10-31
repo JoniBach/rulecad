@@ -1,5 +1,5 @@
 // The action cartridge: a tray (floor and walls) with the bow, the sear and the trigger printed in place, which pins
-// into the frame's cavity open side first. The bow is one leaf standing from the floor's bottom wall with a bead on
+// into the frame's cavity open side first and is pinned through its walls from the frame's edges. The bow is one leaf standing from the floor's bottom wall with a bead on
 // its tip; the sled's tab reaches down to it through the gap in the cartridge's top. The sear is a leaf under that
 // gap whose tooth rises out of the cartridge into the barrel's slot; a foot under its tip carries a shelf back for
 // the trigger, a lever on a living hinge whose arm presses the shelf down; the finger reaches it through a window in the
@@ -76,10 +76,12 @@ export function main (v) {
   const fingerY = pivotY - v.finger_arm, stopY = fingerY + v.post, frontStop = leverStart + v.arm_t + v.fit + v.post
   parts.push(box(leverStart - v.pull_max - v.fit - v.post, leverStart - v.pull_max - v.fit, fingerY, stopY)) // behind: the pull's end
   parts.push(box(frontStop - v.post, frontStop, fingerY, stopY)) // in front: a knock can't swing it forward
-  cuts.push(box(frontStop, frontStop + v.finger_room, fingerY - v.post, shelfTop - v.foot - v.post, 0 - 1, z0 + 1)) // the finger's window through the floor, which the frame's guard hole lines up with
+  cuts.push(box(frontStop, frontStop + v.finger_room, yb - 1, shelfTop - v.foot - v.post, 0 - 1, z0 + 1)) // the finger's window through the floor, down to the bottom edge
+  cuts.push(box(frontStop, frontStop + v.finger_room, yb - 1, yb + t + 1, 0 - 1, zTop + 1)) // and through the bottom wall: the finger comes up into it from the trigger guard
 
-  // The pins' holes through the floor
-  for (const [x, y] of [[v.pin_a, v.pin_a_y], [v.pin_b, v.pin_b_y], [v.pin_c, v.pin_c_y], [v.pin_d, v.pin_d_y]]) cuts.push(cylinder({ radius: v.pin / 2 + v.fit, height: z0 + 2, center: [x, y, z0 / 2], segments: v.smooth }))
+  // The pins' holes through the walls: up through the bottom wall, along x through the back and front walls
+  const r = v.pin / 2 + v.fit, hole = (x, y, along) => cuts.push(translate([x, y, v.pin_z], jscad.transforms[along === 'x' ? 'rotateY' : 'rotateX'](Math.PI / 2, cylinder({ radius: r, height: t + 2, segments: v.smooth }))))
+  hole(v.pin_a, y0 + t / 2, 'y'); hole(v.pin_b, y0 + t / 2, 'y'); hole(x0 + t / 2, v.pin_c, 'x'); hole(x1 - t / 2, v.pin_d, 'x')
   return v.ops.subtract(v.ops.union(...parts), ...cuts)
 }
 

@@ -10,7 +10,7 @@
   ],
   "material": "PLA",
   "engine": "manifold",
-  "orientation": "Flat on the bed on its floor, open side up, as it prints: every flexure bends within its layers. It goes into the frame's cavity open side first and is pinned through its floor from inside. The sled's tab reaches down into it through the gap in its top, the sear's tooth up out of it.",
+  "orientation": "Flat on the bed on its floor, open side up, as it prints: every flexure bends within its layers. It goes into the frame's cavity open side first, and is pinned through its walls from the frame's edges. The sled's tab reaches down into it through the gap in its top, the sear's tooth up out of it.",
   "anchors": {
     "rest": {
       "at": [
@@ -253,9 +253,9 @@
       "rule": "The cartridge's back wall, outer face: behind the leaf at full draw"
     },
     "case_front": {
-      "value": "tooth_back + tooth + post + case_t + pin_room",
+      "value": "tooth_back + tooth + post + case_t",
       "unit": "mm",
-      "rule": "The cartridge's front wall, outer face: past the sear's tooth, with room for the front pin"
+      "rule": "The cartridge's front wall, outer face: past the sear's tooth"
     },
     "case_top": {
       "value": "0 - (slot / 2 + rail)",
@@ -272,56 +272,6 @@
       "unit": "mm",
       "rule": "The snap pins' diameter"
     },
-    "pin_room": {
-      "value": 12,
-      "unit": "mm",
-      "rule": "Room along the barrel for a pin's foot inside the front wall"
-    },
-    "pin_foot": {
-      "value": "pin",
-      "unit": "mm",
-      "rule": "The pins' feet: a flange the pin's diameter across past the shaft, inside the cartridge, which pinches the floor to the frame"
-    },
-    "pin_a": {
-      "value": "case_back + case_t + pin_foot",
-      "unit": "mm",
-      "rule": "The pins through the floor into the frame: bottom rear, bottom front, top rear, front. Their x, then their y"
-    },
-    "pin_a_y": {
-      "value": "grip_bottom + case_t + pin_foot",
-      "unit": "mm",
-      "rule": "Bottom rear pin, y"
-    },
-    "pin_b": {
-      "value": "grip_front - case_t - pin_foot",
-      "unit": "mm",
-      "rule": "Bottom front pin, x: in the grip column's front corner"
-    },
-    "pin_b_y": {
-      "value": "grip_bottom + case_t + pin_foot",
-      "unit": "mm",
-      "rule": "Bottom front pin, y"
-    },
-    "pin_c": {
-      "value": "case_back + case_t + pin_foot",
-      "unit": "mm",
-      "rule": "Top rear pin, x: behind the tab's run"
-    },
-    "pin_c_y": {
-      "value": "case_top - case_t - pin_foot - 1",
-      "unit": "mm",
-      "rule": "Top rear pin, y: under the top wall, above the leaf's tip at full draw"
-    },
-    "pin_d": {
-      "value": "case_front - case_t - pin_foot",
-      "unit": "mm",
-      "rule": "Front pin, x: ahead of the sear"
-    },
-    "pin_d_y": {
-      "value": "case_top - case_t - pin_foot - 1",
-      "unit": "mm",
-      "rule": "Front pin, y"
-    },
     "finger_room": {
       "value": 22,
       "unit": "mm",
@@ -336,6 +286,31 @@
       "value": "0 - (slot / 2 + rail + sear_gap + sear_t + foot + hinge_block + fit + finger_arm + post + case_t)",
       "unit": "mm",
       "rule": "The receiver block's bottom edge, outer: under the trigger's finger arm and its stops"
+    },
+    "pin_z": {
+      "value": "case_h / 2",
+      "unit": "mm",
+      "rule": "The pins' height off the bed: the middle of the walls"
+    },
+    "pin_a": {
+      "value": "case_back + case_t + 9",
+      "unit": "mm",
+      "rule": "The pins, through the walls from the frame's edges, their barbs inside the tray clear of the mechanism: two up through the grip column's bottom wall (x), one forward through its back wall (y), one back through the block's front wall (y)"
+    },
+    "pin_b": {
+      "value": "grip_front - 6",
+      "unit": "mm",
+      "rule": "Second bottom pin, x: beside the leaf's root block"
+    },
+    "pin_c": {
+      "value": "grip_bottom + 55",
+      "unit": "mm",
+      "rule": "Back wall pin, y: where the drawn leaf is well forward"
+    },
+    "pin_d": {
+      "value": "block_bottom + 15",
+      "unit": "mm",
+      "rule": "Front wall pin, y: under the sear, ahead of the trigger's window"
     }
   },
   "variants": {

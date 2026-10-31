@@ -11,7 +11,7 @@ const x1c = rules('x1c'), pla = rules('pla'), L = rules('launcher');
 const printer = { line: num(x1c, 'line'), layer: num(x1c, 'layer') }, material = { E: num(pla, 'modulus'), strainLimit: num(L, 'strain_limit'), name: 'PLA' };
 const travel = num(L, 'travel'), energy = num(L, 'energy'), draw = (2 * energy * 1000) / travel, width = num(L, 'flexure_width'), tabWidth = 5;
 const obj = (n) => JSON.parse(fs.readFileSync(path.join(here, 'objects', `${n}.json`), 'utf8')).variables;
-const body = obj('body'), magazine = obj('magazine');
+const body = obj('action'), magazine = obj('magazine');
 
 const bow = size.leaf({ travel, force: draw, width, material, maxLength: body.max_leaf.value }, printer);
 const searW = width / 2 - tabWidth / 2 - num(x1c, 'fit'), sear = { length: body.sear_len.value, thickness: 3 * printer.line, width: searW, undercut: body.undercut.value, lead: body.lead.value, back: 90 };

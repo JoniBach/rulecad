@@ -12,22 +12,58 @@
   ],
   "material": "PLA",
   "engine": "manifold",
-  "orientation": "Flat on the bed on its floor, open side up. The sled drops into the slot from the open side, the cartridge goes into the frame's cavity open side first over the action cartridge, and is pinned through its floor from inside its pockets. The disc rolls along the frame's cavity wall. Discs and the magazine insert go in through the column's top.",
+  "orientation": "Flat on the bed on its floor, open side up. The sled drops into the slot from the open side, the cartridge goes into the frame's cavity open side first over the action cartridge, and is pinned through its walls from the frame's edges. The disc rolls along the frame's cavity wall. Discs and the magazine insert go in through the column's top.",
   "anchors": {
     "rest": {
-      "at": ["action.rest_x", 0, "wall + action.width / 2"],
-      "axis": [1, 0, 0],
-      "ref": [0, "0 - 1", 0]
+      "at": [
+        "action.rest_x",
+        0,
+        "wall + action.width / 2"
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "ref": [
+        0,
+        "0 - 1",
+        0
+      ]
     },
     "column": {
-      "at": ["(col0 + col1) / 2", "cap_bottom + magazine.bar", "wall + magazine.width / 2"],
-      "axis": [0, "0 - 1", 0],
-      "ref": [1, 0, 0]
+      "at": [
+        "(col0 + col1) / 2",
+        "cap_bottom + magazine.bar",
+        "wall + magazine.width / 2"
+      ],
+      "axis": [
+        0,
+        "0 - 1",
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
     },
     "mouth": {
-      "at": ["(col0 + col1) / 2", "0 - launcher.disc_t / 2", "wall + fit + launcher.disc / 2"],
-      "axis": [0, 1, 0],
-      "ref": [1, 0, 0]
+      "at": [
+        "(col0 + col1) / 2",
+        "0 - launcher.disc_t / 2",
+        "wall + fit + launcher.disc / 2"
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
     }
   },
   "variables": {
@@ -74,7 +110,7 @@
     "band": {
       "value": 12,
       "unit": "mm",
-      "rule": "The top edge of the tube outside the column: room over the ceiling wall for the pins' pockets"
+      "rule": "The top edge of the tube outside the column: a top wall over a hollow above the ceiling, for the pins' barbs"
     },
     "top": {
       "value": 28,
@@ -126,31 +162,6 @@
       "unit": "mm",
       "rule": "The pins' diameter"
     },
-    "pocket": {
-      "value": "2 * (action.pin / 2 + action.pin_foot) + 2",
-      "unit": "mm",
-      "rule": "Each pin's pocket in the top band: its foot and a little room"
-    },
-    "pin_a": {
-      "value": "back + case_t + pocket / 2",
-      "unit": "mm",
-      "rule": "The pins, in pockets in the top band: rear, middle (behind the column), front (past it). Their x; all at the band's middle in y"
-    },
-    "pin_b": {
-      "value": "col0 - case_t - pocket / 2 - 1",
-      "unit": "mm",
-      "rule": "Middle pin, x"
-    },
-    "pin_c": {
-      "value": "muzzle - case_t - pocket / 2",
-      "unit": "mm",
-      "rule": "Front pin, x"
-    },
-    "pin_y": {
-      "value": "rail + slot / 2 + (band - rail - slot / 2) / 2",
-      "unit": "mm",
-      "rule": "The pins' y: the middle of the band over the ceiling wall"
-    },
     "overlap": {
       "value": 0.5,
       "unit": "mm",
@@ -159,6 +170,16 @@
     "smooth": {
       "value": 48,
       "rule": "Segments round the holes"
+    },
+    "pin_z": {
+      "value": "case_h / 2",
+      "unit": "mm",
+      "rule": "The pins' height off the bed: the middle of the walls"
+    },
+    "pin_y": {
+      "value": "(rail + slot / 2 + band - case_t) / 2 + 1",
+      "unit": "mm",
+      "rule": "The pins' y: the middle of the hollow over the ceiling. One forward through the back wall, one back through the muzzle's front wall, from the frame's edges"
     }
   }
 }

@@ -1,5 +1,5 @@
 // The barrel cartridge: a tray whose bottom wall is the slot's floor and whose top band holds the slot's ceiling and
-// the pins' pockets, with the magazine column standing over the mouth. The floor wall is left out over the sled's
+// a hollow the pins' barbs click into, with the magazine column standing over the mouth. The floor wall is left out over the sled's
 // tab run (its roof would be a bridge) and slit for the sear's tooth; the back wall has a notch, open to the open
 // side, for the sled's rod; the column walls have the notches the insert's cap snaps into.
 import jscad from '@jscad/modeling'
@@ -12,7 +12,7 @@ export function main (v) {
   const x0 = v.back, x1 = v.muzzle
   // The tube: floor plate, the slot's floor wall (the bottom edge), the top band with the slot's ceiling in it
   parts.push(box(x0, x1, floorBottom, v.band, 0, z0)) // the floor plate under the tube
-  parts.push(box(x0, x1, floorBottom, floorTop), box(x0, x1, -floorTop, v.band))
+  parts.push(box(x0, x1, floorBottom, floorTop), box(x0, x1, -floorTop, ceiling), box(x0, x1, v.band - t, v.band)) // floor wall, ceiling wall, top wall: a hollow between the last two
   parts.push(box(x0, x0 + t, floorBottom, v.band), box(x1 - t, x1, floorBottom, v.band)) // back and front walls
   // The column: its floor plate, walls either side up to the top, open above; the mouth cut through the ceiling
   const col0 = v.col0, col1 = v.col1
@@ -27,10 +27,8 @@ export function main (v) {
   cuts.push(box(tabBack - v.fit, tabFront + v.fit, floorBottom - 1, floorTop + 1, z0, zTop + 1))
   cuts.push(box(v.tooth_back - v.fit, v.tooth_back + v.tooth + v.fit, floorBottom - 1, floorTop + 1, z0, z0 + v.sear_w + v.fit))
   cuts.push(box(x0 - 1, x0 + t + 1, floorTop, -floorTop, s.rod_z - v.fit, zTop + 1))
-  // The pins' pockets in the top band, open to the floor, and their holes through it
-  for (const x of [v.pin_a, v.pin_b, v.pin_c]) {
-    cuts.push(box(x - v.pocket / 2, x + v.pocket / 2, ceiling + v.fit, v.band + 1, z0, zTop + 1))
-    cuts.push(cylinder({ radius: v.pin / 2 + v.fit, height: z0 + 2, center: [x, v.pin_y, z0 / 2], segments: v.smooth }))
-  }
+  // The pins' holes: through the back wall and the muzzle's front wall, into the hollow
+  const r = v.pin / 2 + v.fit, hole = (x, y, along) => cuts.push(jscad.transforms.translate([x, y, v.pin_z], jscad.transforms[along === 'x' ? 'rotateY' : 'rotateX'](Math.PI / 2, cylinder({ radius: r, height: t + 2, segments: v.smooth }))))
+  hole(x0 + t / 2, v.pin_y, 'x'); hole(x1 - t / 2, v.pin_y, 'x')
   return v.ops.subtract(v.ops.union(...parts), ...cuts)
 }

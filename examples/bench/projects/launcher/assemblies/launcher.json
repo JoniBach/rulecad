@@ -1,5 +1,5 @@
 {
-  "title": "The disc launcher: the body on its optimised frame with the bow at full draw, the sled, the magazine insert, a disc at the mouth, and the lid",
+  "title": "The disc launcher: the frame with its two cartridges pinned in, the sled, the magazine insert and a disc; cocked, and run forward to its rest",
   "kind": "fit",
   "uses": [
     "launcher",
@@ -7,8 +7,16 @@
   ],
   "items": [
     {
-      "id": "body",
-      "object": "body:drawn"
+      "id": "frame",
+      "object": "frame"
+    },
+    {
+      "id": "action",
+      "object": "action:cocked"
+    },
+    {
+      "id": "barrel",
+      "object": "barrel"
     },
     {
       "id": "sled",
@@ -23,15 +31,58 @@
       "object": "disc"
     },
     {
-      "id": "lid",
-      "object": "lid"
+      "id": "pin_a",
+      "object": "pin"
+    },
+    {
+      "id": "pin_b",
+      "object": "pin"
+    },
+    {
+      "id": "pin_c",
+      "object": "pin"
+    },
+    {
+      "id": "pin_d",
+      "object": "pin"
+    },
+    {
+      "id": "pin_e",
+      "object": "pin"
+    },
+    {
+      "id": "pin_f",
+      "object": "pin"
     }
   ],
   "joints": [
     {
+      "id": "seat",
+      "type": "fixed",
+      "parent": {
+        "at": [
+          0,
+          0,
+          0
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "child": "frame.seat",
+      "label": "The frame, turned back from its print orientation"
+    },
+    {
       "id": "run",
       "type": "prismatic",
-      "parent": "body.rest",
+      "parent": "barrel.rest",
       "child": "sled.drive",
       "min": "x1c.fit - (launcher.travel + launcher.overrun)",
       "max": 0,
@@ -40,14 +91,14 @@
     {
       "id": "cap",
       "type": "fixed",
-      "parent": "body.column",
+      "parent": "barrel.column",
       "child": "magazine.seat",
       "label": "The insert pressed home in the column"
     },
     {
       "id": "drop",
       "type": "prismatic",
-      "parent": "body.mouth",
+      "parent": "barrel.mouth",
       "child": {
         "item": "disc",
         "at": [
@@ -66,11 +117,244 @@
       "label": "The bottom disc: in the slot when the sled is back, on the sled's plate when it's forward"
     },
     {
-      "id": "cover",
+      "id": "a",
       "type": "fixed",
-      "parent": "body.lid",
-      "child": "lid.seat",
-      "label": "The lid on the body"
+      "parent": {
+        "at": [
+          "action.pin_a",
+          "action.grip_bottom - frame.skin",
+          "action.pin_z"
+        ],
+        "axis": [
+          0,
+          1,
+          0
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "child": {
+        "item": "pin_a",
+        "at": [
+          0,
+          0,
+          2
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "label": "Grip bottom, rear"
+    },
+    {
+      "id": "b",
+      "type": "fixed",
+      "parent": {
+        "at": [
+          "action.pin_b",
+          "action.grip_bottom - frame.skin",
+          "action.pin_z"
+        ],
+        "axis": [
+          0,
+          1,
+          0
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "child": {
+        "item": "pin_b",
+        "at": [
+          0,
+          0,
+          2
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "label": "Grip bottom, front"
+    },
+    {
+      "id": "c",
+      "type": "fixed",
+      "parent": {
+        "at": [
+          "action.case_back - frame.skin",
+          "action.pin_c",
+          "action.pin_z"
+        ],
+        "axis": [
+          1,
+          0,
+          0
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "child": {
+        "item": "pin_c",
+        "at": [
+          0,
+          0,
+          2
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "label": "Back strap, into the action"
+    },
+    {
+      "id": "d",
+      "type": "fixed",
+      "parent": {
+        "at": [
+          "action.case_front + frame.skin",
+          "action.pin_d",
+          "action.pin_z"
+        ],
+        "axis": [
+          "0 - 1",
+          0,
+          0
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "child": {
+        "item": "pin_d",
+        "at": [
+          0,
+          0,
+          2
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "label": "Receiver front, into the action"
+    },
+    {
+      "id": "e",
+      "type": "fixed",
+      "parent": {
+        "at": [
+          "barrel.back - frame.skin",
+          "barrel.pin_y",
+          "barrel.pin_z"
+        ],
+        "axis": [
+          1,
+          0,
+          0
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "child": {
+        "item": "pin_e",
+        "at": [
+          0,
+          0,
+          2
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "label": "Back strap, into the barrel"
+    },
+    {
+      "id": "f",
+      "type": "fixed",
+      "parent": {
+        "at": [
+          "barrel.muzzle + frame.skin",
+          "barrel.pin_y",
+          "barrel.pin_z"
+        ],
+        "axis": [
+          "0 - 1",
+          0,
+          0
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "child": {
+        "item": "pin_f",
+        "at": [
+          0,
+          0,
+          2
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          0,
+          1,
+          0
+        ]
+      },
+      "label": "Muzzle, into the barrel"
     }
   ],
   "poses": {
@@ -85,25 +369,116 @@
   },
   "fits": [
     {
+      "a": "action",
+      "b": "frame",
+      "min": 0,
+      "max": "2 * x1c.fit",
+      "note": "The action cartridge in its cavity"
+    },
+    {
+      "a": "barrel",
+      "b": "frame",
+      "min": 0,
+      "max": "2 * x1c.fit",
+      "note": "The barrel cartridge in its cavity"
+    },
+    {
       "a": "sled",
-      "b": "body",
+      "b": "barrel",
       "min": 0,
       "max": "x1c.fit",
       "note": "The sled slides in the slot"
     },
     {
-      "a": "magazine",
-      "b": "body",
+      "a": "sled",
+      "b": "frame",
       "min": 0,
-      "max": "2 * x1c.fit",
-      "note": "The insert in its column"
+      "max": "x1c.fit",
+      "note": "The disc's side of the sled, a fit off the back plate it rolls along"
     },
     {
-      "a": "lid",
-      "b": "body",
+      "a": "pin_a",
+      "b": "frame",
       "min": "0 - 1",
       "max": "x1c.fit",
-      "note": "The lid's pins snap into the sockets: their barbs overlap the holes"
+      "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
+    },
+    {
+      "a": "pin_a",
+      "b": "action",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "and through the cartridge's wall"
+    },
+    {
+      "a": "pin_b",
+      "b": "frame",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
+    },
+    {
+      "a": "pin_b",
+      "b": "action",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "and through the cartridge's wall"
+    },
+    {
+      "a": "pin_c",
+      "b": "frame",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
+    },
+    {
+      "a": "pin_c",
+      "b": "action",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "and through the cartridge's wall"
+    },
+    {
+      "a": "pin_d",
+      "b": "frame",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
+    },
+    {
+      "a": "pin_d",
+      "b": "action",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "and through the cartridge's wall"
+    },
+    {
+      "a": "pin_e",
+      "b": "frame",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
+    },
+    {
+      "a": "pin_e",
+      "b": "barrel",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "and through the cartridge's wall"
+    },
+    {
+      "a": "pin_f",
+      "b": "frame",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
+    },
+    {
+      "a": "pin_f",
+      "b": "barrel",
+      "min": "0 - 1",
+      "max": "x1c.fit",
+      "note": "and through the cartridge's wall"
     }
   ]
 }
