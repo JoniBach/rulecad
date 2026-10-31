@@ -1,0 +1,125 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "module",
+  "title": "Thin RP2040 module",
+  "version": "0.1.0",
+  "engine": "pcb",
+  "role": "board",
+  "uses": [
+    "sea_picro",
+    "jlcpcb"
+  ],
+  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: USB-C on the top long edge, castellated pins along the bottom edge and up both ends. Parts on the front, test points on the back.",
+  "parts": {
+    "board": {
+      "label": "PCB"
+    }
+  },
+  "variables": {
+    "edge_pins": {
+      "value": 19,
+      "unit": "pins",
+      "rule": "Pins along the bottom long edge, between the corners",
+      "label": "Long-edge pins",
+      "show": true,
+      "interface": true
+    },
+    "end_pins": {
+      "value": 6,
+      "unit": "pins",
+      "rule": "Pins up each short end, from the bottom edge (Sea-Picro has 31 edge pins: edge_pins + 2 × end_pins)",
+      "label": "End pins",
+      "show": true,
+      "interface": true
+    },
+    "end_from": {
+      "value": 2,
+      "unit": "pitches",
+      "rule": "The end pins start this many pitches above the bottom edge: at one, the corner pins' header pads would overlap"
+    },
+    "pitch": {
+      "value": 2.54,
+      "unit": "mm",
+      "rule": "Pin pitch: 0.1 in headers, as Sea-Picro's",
+      "interface": true
+    },
+    "length": {
+      "value": "(edge_pins + 1) * pitch",
+      "unit": "mm",
+      "rule": "Board length: the long-edge pins one pitch apart, a pitch from each corner",
+      "label": "Length",
+      "show": true,
+      "interface": true
+    },
+    "top_room": {
+      "value": 1.76,
+      "unit": "mm",
+      "rule": "From the top end pins to the top edge"
+    },
+    "height": {
+      "value": "(end_pins + end_from - 1) * pitch + top_room",
+      "unit": "mm",
+      "rule": "Board height, bottom edge to top edge",
+      "label": "Height",
+      "show": true,
+      "interface": true
+    },
+    "core_turn": {
+      "value": 270,
+      "unit": "°",
+      "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block, so its USB end faces the USB-C socket"
+    },
+    "core_x": {
+      "value": -8.23,
+      "unit": "mm",
+      "rule": "The core block moved along the board, to the left end clear of the end pins"
+    },
+    "core_y": {
+      "value": 1.0,
+      "unit": "mm",
+      "rule": "The core block moved up, clear of the bottom pins"
+    },
+    "usb_x": {
+      "value": 15.5,
+      "unit": "mm",
+      "rule": "USB-C socket along the top edge, from the middle: right of the core, its fuse and CC resistors under it",
+      "label": "USB-C position",
+      "show": true,
+      "interface": true
+    },
+    "usb_out": {
+      "value": 0.9,
+      "unit": "mm",
+      "rule": "The mid-mount socket's centre beyond the top edge, as on Sea-Picro"
+    },
+    "led_x": {
+      "value": 15.5,
+      "unit": "mm",
+      "rule": "Pad 32 (LED_5V, a 5 V supply for LEDs) under the USB parts"
+    },
+    "led_y": {
+      "value": -3.6,
+      "unit": "mm",
+      "rule": "Pad 32's height on the board"
+    },
+    "switch_in": {
+      "value": 4.4,
+      "unit": "mm",
+      "rule": "R4 (SWITCH's resistor) in from its pin's castellated hole: clear of the header pad, within its placement rule"
+    },
+    "thickness": {
+      "value": "sea_picro.thickness",
+      "unit": "mm",
+      "rule": "Board thickness, as Sea-Picro's"
+    },
+    "layers": {
+      "value": "sea_picro.layers",
+      "rule": "Copper layers, as Sea-Picro's: tracks outside, GND and 3.3 V planes inside"
+    },
+    "track": {
+      "value": 0.15,
+      "unit": "mm",
+      "rule": "Signal track width: over JLCPCB's minimum, as Sea-Picro's fine tracks"
+    }
+  }
+}
