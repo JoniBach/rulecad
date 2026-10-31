@@ -1,5 +1,5 @@
 {
-  "title": "The two cartridges as they sit in the frame, with the sled, the magazine insert and a disc: cocked, and run forward to its rest",
+  "title": "The two cartridges as they sit in the frame, with the sled, the magazine insert and a disc, at rest",
   "kind": "fit",
   "uses": [
     "launcher",
@@ -67,19 +67,6 @@
     }
   ],
   "poses": {
-    "cocked": {
-      "run": "x1c.fit - (launcher.travel + launcher.overrun)",
-      "drop": 0,
-      "action.travel": "launcher.travel",
-      "magazine.compression": "magazine.preload + magazine.stroke"
-    },
-    "fired": {
-      "run": "x1c.fit - (launcher.travel + launcher.overrun)",
-      "drop": 0,
-      "action.travel": "launcher.travel",
-      "action.pull": "launcher.trigger_travel",
-      "magazine.compression": "magazine.preload + magazine.stroke"
-    },
     "rest": {
       "run": 0,
       "drop": "sled.thickness / 2 + launcher.disc_t / 2",
@@ -93,13 +80,6 @@
       "min": 0,
       "max": "x1c.fit",
       "note": "The sled slides in the slot"
-    },
-    {
-      "a": "sled",
-      "b": "action",
-      "min": 0,
-      "max": "launcher.overrun",
-      "note": "The sled's tab, over the bead at rest and on it when cocked"
     },
     {
       "a": "barrel",

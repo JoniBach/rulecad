@@ -1,0 +1,44 @@
+{
+  "title": "The disc's way out: a disc half out of the muzzle, which must touch nothing",
+  "kind": "fit",
+  "uses": [
+    "launcher",
+    "x1c"
+  ],
+  "items": [
+    {
+      "id": "pistol",
+      "assembly": "launcher"
+    },
+    {
+      "id": "leaving",
+      "object": "disc",
+      "rotate": [
+        90,
+        0,
+        0
+      ],
+      "at": [
+        "pistol.barrel.muzzle",
+        "launcher.disc_t / 2",
+        "pistol.barrel.wall + x1c.fit + launcher.disc / 2"
+      ]
+    }
+  ],
+  "fits": [
+    {
+      "a": "leaving",
+      "b": "pistol.frame",
+      "min": 0,
+      "max": "2 * x1c.fit",
+      "note": "The leaving disc clears the frame's muzzle"
+    },
+    {
+      "a": "leaving",
+      "b": "pistol.barrel",
+      "min": 0,
+      "max": "2 * x1c.fit",
+      "note": "and the barrel's"
+    }
+  ]
+}
