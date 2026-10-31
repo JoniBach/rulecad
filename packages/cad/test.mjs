@@ -225,6 +225,28 @@ test('cad measure and cad match: a model measured into draft rules, and a design
   } finally { done(); }
 });
 
+test('a pose that sets an item\'s variables: the part drawn that way in that pose, as printed in the others', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { w: { value: 40, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, h: { value: 2, unit: 'mm', rule: 'Height' } };
+    object(ws, 'demo/base', { variables: vars }, BOX);
+    object(ws, 'demo/post', { variables: { ...vars, h: { value: 10, unit: 'mm', rule: 'Height', tweak: { min: 1, max: 30 } } } }, BOX);
+    fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'));
+    // The post stands on the base; a block 8 mm up only clears it while the post is pressed down to 5 mm
+    const write = (poses) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/press.json'), JSON.stringify({ title: 'Press', kind: 'fit',
+      items: [{ id: 'base', object: 'base' }, { id: 'post', object: 'post', at: [0, 0, 'base.h'] }, { id: 'stop', object: 'base' }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { at: [0, 0, 8], axis: [0, 0, 1] }, child: { item: 'stop', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 50 }], poses }));
+    write({ pressed: { slide: 0, 'post.h': 5 }, free: { slide: 0 } });
+    const out = cad('check', 'demo/press');
+    assert.match(out, /2 poses checked: pressed, free/);
+    assert.match(out, /free: post\.body and stop\.body overlap/, 'as printed, the post reaches the stop');
+    assert.doesNotMatch(out, /pressed: post\.body and stop\.body overlap/, 'pressed, it clears it');
+    assert.match(cad('check', 'demo/press', '--pose', 'pressed'), /no parts overlap/);
+    write({ pressed: { slide: 0, 'post.h': 'base.h * 2' } }); // an expression in the assembly's names
+    assert.match(cad('check', 'demo/press'), /no parts overlap/);
+  } finally { done(); }
+});
+
 test('joints: a lid on a hinge, checked in each pose, swept for collisions, with a follower closing a loop', () => {
   const { ws, cad, done } = workspace();
   try {

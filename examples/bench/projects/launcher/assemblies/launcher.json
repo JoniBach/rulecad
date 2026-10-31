@@ -12,7 +12,7 @@
     },
     {
       "id": "action",
-      "object": "action:cocked"
+      "object": "action"
     },
     {
       "id": "barrel",
@@ -400,7 +400,14 @@
   "poses": {
     "cocked": {
       "run": "x1c.fit - (launcher.travel + launcher.overrun)",
-      "drop": 0
+      "drop": 0,
+      "action.travel": "launcher.travel"
+    },
+    "fired": {
+      "run": "x1c.fit - (launcher.travel + launcher.overrun)",
+      "drop": 0,
+      "action.travel": "launcher.travel",
+      "action.pull": "launcher.trigger_travel"
     },
     "rest": {
       "run": 0,

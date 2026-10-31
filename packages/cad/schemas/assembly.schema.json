@@ -18,7 +18,7 @@
     "fits": { "type": "array", "items": { "$ref": "#/$defs/fit" } },
     "joints": { "type": "array", "items": { "$ref": "#/$defs/joint" } },
     "loops": { "type": "array", "items": { "$ref": "#/$defs/loop" } },
-    "poses": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/values" } } },
+    "poses": { "type": "object", "description": "Named sets of joint values ({ \"hinge\": 90 }), and of items' variables (\"action.travel\": 25: a flexure drawn bent in that pose, printed as drawn)", "additionalProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/values" } } },
     "pose": { "type": "string" }
   },
   "$defs": {

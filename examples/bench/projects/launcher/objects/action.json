@@ -68,7 +68,7 @@
         "min": 0,
         "max": 25
       },
-      "rule": "How far the bow is drawn: 0 at rest, launcher.travel when cocked"
+      "rule": "How far the bow is drawn: 0 as printed; an assembly's pose sets it (launcher.travel when cocked), so the leaf is drawn bent there and printed straight"
     },
     "travel_max": {
       "value": "launcher.travel",
@@ -207,7 +207,7 @@
         "min": 0,
         "max": 6
       },
-      "rule": "How far the trigger is pulled: 0 at rest, launcher.trigger_travel when fired"
+      "rule": "How far the trigger is pulled: 0 as printed; an assembly's pose sets it"
     },
     "pull_max": {
       "value": "launcher.trigger_travel",
@@ -311,15 +311,6 @@
       "value": "block_bottom + 15",
       "unit": "mm",
       "rule": "Front wall pin, y: under the sear, ahead of the trigger's window"
-    }
-  },
-  "variants": {
-    "cocked": {
-      "travel": 25
-    },
-    "fired": {
-      "travel": 25,
-      "pull": 6
     }
   }
 }
