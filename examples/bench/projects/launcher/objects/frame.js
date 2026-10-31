@@ -1,4 +1,4 @@
-// The frame: the two cartridges' outlines, grown by the skin with round corners, as a block the depth of the deeper
+// The frame: the two cartridges' outlines, grown by the skin with round corners, a palm swell behind the grip, as a block the depth of the deeper
 // cartridge plus the back plate, with each cartridge's cavity cut from the open face to its own depth, the guard
 // loop under the receiver block, the notch the sled's rod runs through, and the pins' holes through the skin where
 // the cartridges have theirs. No roof over the barrel: its top band and the magazine column stand proud, and the
@@ -19,7 +19,9 @@ export function main (v) {
   const trays = [rect(a.case_back, a.grip_front, a.grip_bottom, a.case_top), rect(a.grip_front - a.case_t, a.case_front, a.block_bottom, a.case_top), rect(b.back, b.muzzle, barrelBottom, b.band)]
   // The guard loop under the block, then the outline grown by the skin, rounded, and cut flat at the barrel's top
   const guard = rect(a.grip_front - v.skin, a.case_front + v.skin, a.block_bottom - v.guard_h, a.block_bottom)
-  const outline = jscad.booleans.union(offset({ delta: v.skin, corners: 'round', segments: v.smooth }, jscad.booleans.union(...trays)), guard)
+  // The palm swell: a rounded bulge behind the grip column, blended into the back strap
+  const swell = offset({ delta: v.swell_r, corners: 'round', segments: v.smooth }, rect(a.case_back - v.swell - v.skin + v.swell_r, a.case_back + v.swell_r, v.swell_lo + v.swell_r, v.swell_hi - v.swell_r))
+  const outline = jscad.booleans.union(offset({ delta: v.skin, corners: 'round', segments: v.smooth }, jscad.booleans.union(...trays)), guard, swell)
   let frame = jscad.booleans.subtract(extrudeLinear({ height: Z }, outline), box(a.case_back - v.skin - 1, b.muzzle + v.skin + 1, b.band, b.top + v.skin + 1, 0 - 1, Z + 1))
   // The back plate behind the column, closing its open side
   frame = v.ops.union(frame, box(b.col0 - b.case_t - v.skin, b.col1 + b.case_t + v.skin, b.band - v.skin, b.top, b.case_h + f, Z))

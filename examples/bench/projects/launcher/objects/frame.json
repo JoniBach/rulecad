@@ -1,6 +1,6 @@
 {
   "name": "frame",
-  "title": "The frame: grip, receiver and trigger guard round two cavities the cartridges pin into",
+  "title": "The frame: grip with a palm swell, receiver and trigger guard round two cavities the cartridges pin into",
   "version": "0.1.0",
   "uses": [
     "x1c",
@@ -76,6 +76,26 @@
     "smooth": {
       "value": 48,
       "rule": "Segments round the corners and holes"
+    },
+    "swell": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The palm swell: how far the back strap bulges behind the grip column at its fullest"
+    },
+    "swell_r": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The swell's rounding, top and bottom"
+    },
+    "swell_lo": {
+      "value": "action.grip_bottom + 12",
+      "unit": "mm",
+      "rule": "Where the swell starts above the grip's bottom"
+    },
+    "swell_hi": {
+      "value": "action.case_top - 30",
+      "unit": "mm",
+      "rule": "Where the swell ends, below the web of the thumb"
     }
   }
 }
