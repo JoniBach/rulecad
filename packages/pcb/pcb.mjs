@@ -354,6 +354,218 @@ export function footprint(name, data, x, y, o = {}) {
   return chip(name, x, y, { courtyard: data.courtyard, mpn: data.mpn, labels: data.labels, ...o }, { pads });
 }
 
+// ---------- whole boards from KiCad: clones ----------
+// A published board (a .kicad_pcb, KiCad 6 or later) read as a circuit: its parts with their pads, its nets, its planes and
+// its outline. Keep the result in a rule set's "circuit" (cad clone writes it, with the source and its licence), and
+// build boards from it with clone(): the circuit stays the source's, and the layout is redrawn by rules. sameCircuit()
+// checks that a board still joins exactly the pins the source joins.
+
+// KiCad's files are S-expressions: (name value (child ...) ...) as nested arrays, strings unquoted
+function sexpr(text) {
+  const stack = [[]];
+  for (const t of text.match(/"(?:[^"\\]|\\.)*"|\(|\)|[^\s()"]+/g) || []) {
+    if (t === '(') stack.push([]);
+    else if (t === ')') { const l = stack.pop(); if (!stack.length) throw new Error('not a KiCad file: a ")" closes nothing'); stack.at(-1).push(l); }
+    else stack.at(-1).push(t[0] === '"' ? t.slice(1, -1).replace(/\\(.)/g, '$1') : t);
+  }
+  if (stack.length !== 1) throw new Error('not a KiCad file: a "(" is never closed');
+  return stack[0][0];
+}
+const kidsOf = (l, name) => l.filter((c) => Array.isArray(c) && c[0] === name);
+const kidOf = (l, name) => kidsOf(l, name)[0];
+const r4 = (n) => Math.round(n * 1e4) / 1e4 || 0; // 0.1 mm to the micron, and never -0
+const turnOf = (deg) => ((Math.round(deg * 1e3) / 1e3 % 360) + 360) % 360;
+
+// Edge.Cuts pieces ({ a, b } lines, arcs already cut into lines) joined end to end into closed loops
+function loops(pieces, tol = 0.005) {
+  const same = (p, q) => Math.abs(p.x - q.x) < tol && Math.abs(p.y - q.y) < tol, out = [], left = [...pieces];
+  while (left.length) {
+    const loop = [left[0].a, left[0].b]; left.shift();
+    for (let found = true; found && !same(loop[0], loop.at(-1));) {
+      found = false;
+      for (let i = 0; i < left.length; i++) {
+        const s = left[i], end = loop.at(-1);
+        if (same(s.a, end) || same(s.b, end)) { loop.push(same(s.a, end) ? s.b : s.a); left.splice(i, 1); found = true; break; }
+      }
+    }
+    if (same(loop[0], loop.at(-1)) && loop.length > 3) out.push(loop.slice(0, -1));
+    else return null; // an open edge: the outline isn't one closed shape
+  }
+  return out;
+}
+const area = (pts) => pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + p.x * q.y - q.x * p.y; }, 0) / 2;
+
+/**
+ * A KiCad board (.kicad_pcb text, KiCad 6 or later) as a circuit, in mm, y up, centred on the outline's bounds:
+ * { layers, width, height, outline, parts, nets, planes, holes, source }. Each part keeps its place on the source
+ * board ({ ref, footprint, value, mpn, lcsc, x, y, rotation, layer }) and its pads in its own frame, as seen from
+ * the side it's on ({ pin, x, y, w, h, angle, smd, shape, net } and, for holes, hole, hole_offset, castellated).
+ * nets: { name: ['U1.3', 'C4.1'] }, part and pad, for nets joining two pads or more. planes: nets the source fills on
+ * whole layers ({ GND: ['In1.Cu', 'B.Cu'] }). source: what the file says beyond the circuit (track and via counts).
+ * @param {string} text @returns {object}
+ */
+export function fromKicadPcb(text) {
+  const root = sexpr(text);
+  if (root?.[0] !== 'kicad_pcb') throw new Error('not a KiCad board: a .kicad_pcb starts with (kicad_pcb');
+  if (!kidOf(root, 'footprint')) throw new Error('no footprints in this board: KiCad 6 or later is needed (older files call them "module": open and save it in KiCad 6+)');
+  const layers = kidOf(root, 'layers').slice(1).filter((l) => l[2] === 'signal').map((l) => l[1]);
+  const num = Number, pieces = [], holes = [], raw = [];
+  const edge = (l, place) => { // a line or an arc on Edge.Cuts, as straight pieces in the board's frame
+    if ((kidOf(l, 'layer')?.[1]) !== 'Edge.Cuts') return;
+    const pt = (k) => { const p = kidOf(l, k); return p && place(num(p[1]), num(p[2])); };
+    const a = pt('start'), b = pt('end'), m = pt('mid');
+    if (!a || !b) return;
+    if (!m) return pieces.push({ a, b });
+    const ax = b.x - a.x, ay = b.y - a.y, bx = m.x - a.x, by = m.y - a.y, d = 2 * (ax * by - ay * bx); // the circle through a, m, b
+    const cx = a.x + (by * (ax * ax + ay * ay) - ay * (bx * bx + by * by)) / d, cy = a.y + (ax * (bx * bx + by * by) - bx * (ax * ax + ay * ay)) / d;
+    const r = Math.hypot(a.x - cx, a.y - cy), at = (p) => Math.atan2(p.y - cy, p.x - cx), t0 = at(a);
+    let t1 = at(b), tm = at(m);
+    const norm = (t) => ((t - t0) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    t1 = norm(t1); tm = norm(tm); const sweep = tm < t1 ? t1 : t1 - 2 * Math.PI, n = Math.max(2, Math.ceil(Math.abs(sweep) / (Math.PI / 16)));
+    let prev = a;
+    for (let i = 1; i <= n; i++) { const t = t0 + (sweep * i) / n, q = i === n ? b : { x: cx + r * Math.cos(t), y: cy + r * Math.sin(t) }; pieces.push({ a: prev, b: q }); prev = q; }
+  };
+  for (const g of root) if (Array.isArray(g) && ['gr_line', 'gr_arc'].includes(g[0])) edge(g, (x, y) => ({ x, y }));
+  for (const g of kidsOf(root, 'gr_rect')) if (kidOf(g, 'layer')?.[1] === 'Edge.Cuts') {
+    const s = kidOf(g, 'start'), e = kidOf(g, 'end'), [x0, y0, x1, y1] = [s[1], s[2], e[1], e[2]].map(num);
+    pieces.push({ a: { x: x0, y: y0 }, b: { x: x1, y: y0 } }, { a: { x: x1, y: y0 }, b: { x: x1, y: y1 } }, { a: { x: x1, y: y1 }, b: { x: x0, y: y1 } }, { a: { x: x0, y: y1 }, b: { x: x0, y: y0 } });
+  }
+  for (const f of kidsOf(root, 'footprint')) {
+    const at = kidOf(f, 'at'), fx = num(at[1]), fy = num(at[2]), deg = num(at[3] || 0), t = (deg * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+    const bottom = (kidOf(f, 'layer')?.[1]) === 'B.Cu';
+    const place = (x, y) => ({ x: fx + x * c + y * s, y: fy - x * s + y * c }); // KiCad's frame: y down, angles counter-clockwise on screen
+    for (const l of [...kidsOf(f, 'fp_line'), ...kidsOf(f, 'fp_arc')]) edge(l, place);
+    const props = Object.fromEntries(kidsOf(f, 'property').map((p) => [String(p[1]).trim(), p[2]]));
+    const ref = props.Reference ?? kidsOf(f, 'fp_text').find((x) => x[1] === 'reference')?.[2];
+    const pads = [];
+    for (const p of kidsOf(f, 'pad')) {
+      const [, name, kind, shape] = p, pa = kidOf(p, 'at'), sz = kidOf(p, 'size'), drill = kidOf(p, 'drill');
+      if (kind === 'np_thru_hole') { const q = place(num(pa[1]), num(pa[2])); holes.push({ x: q.x, y: q.y, d: num(drill[1]) }); continue; }
+      if (!name) continue; // unnamed pads are mechanical: no net
+      // A pad's place in the part's frame, y up, seen from the side the part is on: (x, -y) on top; a part on the back
+      // is stored mirrored by KiCad, and turned the other way, so (-x, -y) with the turn negated (see rotation below)
+      const px = num(pa[1]), py = num(pa[2]), angle = turnOf((num(pa[3] || 0) - deg) * (bottom ? -1 : 1));
+      const pad = { pin: name, x: r4(bottom ? -px : px), y: r4(-py), w: num(sz[1]), h: num(sz[2]), angle, smd: kind === 'smd', shape, net: kidOf(p, 'net')?.[2] || null };
+      if (drill) {
+        const d = drill.slice(1), oval = d[0] === 'oval', ds = d.filter((x) => !Array.isArray(x) && x !== 'oval').map(num), off = kidOf(drill, 'offset');
+        pad.hole = Math.min(...ds);
+        if (oval && ds.length > 1 && ds[0] !== ds[1]) pad.hole_size = [ds[0], ds[1]];
+        if (off && (num(off[1]) || num(off[2]))) pad.hole_offset = [r4(num(off[1]) * (bottom ? -1 : 1)), r4(-num(off[2]))];
+      }
+      if (p.some((x) => Array.isArray(x) && x[0] === 'property' && x[1] === 'pad_prop_castellated')) pad.castellated = true;
+      pads.push(pad);
+    }
+    if (!pads.length) continue; // a logo, a picture: nothing to connect
+    raw.push({ ref, footprint: f[1], value: props.Value, mpn: props.MPN ?? props['Manufacturer Part Number'], lcsc: props.LCSC, x: fx, y: fy, rotation: turnOf(bottom ? -deg : deg), layer: bottom ? 'bottom' : 'top', pads });
+  }
+  // The outline: the loops on Edge.Cuts, the biggest outside (counter-clockwise, y up); without one closed loop, its bounds
+  const found = loops(pieces);
+  const all = pieces.flatMap((p) => [p.a, p.b]);
+  if (!all.length) throw new Error('no board outline: nothing is drawn on Edge.Cuts');
+  const xs = all.map((p) => p.x), ys = all.map((p) => p.y), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const to = (p) => ({ x: r4(p.x - cx), y: r4(cy - p.y) }); // into the circuit's frame: centred, y up
+  let outline = null, cutouts = [];
+  if (found) {
+    const shapes = found.map((l) => l.map(to)).map((l) => (area(l) < 0 ? l.reverse() : l)).sort((a, b) => area(b) - area(a));
+    [outline, ...cutouts] = shapes;
+  }
+  const parts = raw.map((p) => ({ ...p, ...to(p) }));
+  const nets = {};
+  for (const p of parts) for (const q of p.pads) if (q.net) (nets[q.net] ||= new Set()).add(`${p.ref}.${q.pin}`);
+  const planes = {};
+  for (const z of kidsOf(root, 'zone')) {
+    const net = kidOf(z, 'net_name')?.[1], on = [...(kidOf(z, 'layers')?.slice(1) || []), ...(kidOf(z, 'layer') ? [kidOf(z, 'layer')[1]] : [])];
+    if (net) planes[net] = [...new Set([...(planes[net] || []), ...on])];
+  }
+  return {
+    layers: layers.length, copper: layers, width: r4(Math.max(...xs) - Math.min(...xs)), height: r4(Math.max(...ys) - Math.min(...ys)),
+    thickness: num(kidOf(kidOf(root, 'general') || [], 'thickness')?.[1]) || null,
+    outline, cutouts, parts,
+    nets: Object.fromEntries(Object.entries(nets).filter(([, s]) => s.size > 1).map(([k, s]) => [k, [...s]])),
+    planes, holes: holes.map((h) => ({ ...to(h), d: h.d })),
+    source: { generator: kidOf(root, 'generator')?.[1], version: kidOf(root, 'version')?.[1], tracks: kidsOf(root, 'segment').length + kidsOf(root, 'arc').length, vias: kidsOf(root, 'via').length }
+  };
+}
+
+/**
+ * A circuit's parts and nets (fromKicadPcb's, kept in a rule set) for a board, each part where the source put it: put
+ * them in board.parts and board.nets. o.planes: nets left out of the routing, for planes to join (default: the nets
+ * the source fills on inner layers, when it has them). Returns { parts, nets, holes, outline, notes }: notes say what
+ * this board can't carry yet (castellated pads, oval holes), in plain words.
+ * @param {object} circuit @param {{ planes?: string[] }} [o]
+ */
+export function clone(circuit, o = {}) {
+  const inner = (l) => /^In\d+\.Cu$/.test(l);
+  const planes = o.planes ?? Object.entries(circuit.planes || {}).filter(([, ls]) => ls.some(inner)).map(([n]) => n);
+  const notes = [], castellated = new Set(), oval = new Set(), offset = new Set();
+  const parts = circuit.parts.map((p) => {
+    const quarterTurn = p.rotation % 90 === 0, t = (p.rotation * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+    const pads = p.pads.filter((q) => !(q.castellated && castellated.add(p.ref))).map((q) => {
+      const pin = `pin${q.pin}`;
+      if (!q.smd) {
+        if (q.hole_size || q.w !== q.h) oval.add(p.ref);
+        if (q.hole_offset) offset.add(p.ref);
+        const at = quarterTurn ? { x: q.x, y: q.y } : { x: q.x * c - q.y * s, y: q.x * s + q.y * c };
+        return { pin, hint: q.pin, ...at, hole: q.hole, outer: Math.min(q.w, q.h) };
+      }
+      const turn = q.angle + (quarterTurn ? 0 : p.rotation);
+      if (turn % 90 === 0) { // a rectangle, its sides swapped by a quarter turn of its own
+        const sw = turn % 180 !== 0, at = quarterTurn ? { x: q.x, y: q.y } : { x: q.x * c - q.y * s, y: q.x * s + q.y * c };
+        return { pin, smd: true, hint: q.pin, ...at, w: sw ? q.h : q.w, h: sw ? q.w : q.h };
+      }
+      const a = (turn * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), at = quarterTurn ? { x: q.x, y: q.y } : { x: q.x * c - q.y * s, y: q.x * s + q.y * c };
+      const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [r4(at.x + (u * q.w / 2) * ca - (v * q.h / 2) * sa), r4(at.y + (u * q.w / 2) * sa + (v * q.h / 2) * ca)]);
+      return { pin, smd: true, hint: q.pin, ...at, points: pts }; // corners relative to the part, as circuit.mjs takes them
+    });
+    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.lcsc ?? p.mpn, courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
+  }).filter((p) => p.pads.length);
+  const have = new Set(parts.flatMap((p) => p.pads.map((q) => `${p.name}.${q.pin}`))), dropped = new Set();
+  const nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => !planes.includes(n))
+    .map(([n, pins]) => [n, pins.map((x) => { const i = x.indexOf('.'); return `${x.slice(0, i)}.pin${x.slice(i + 1)}`; })
+      .filter((x) => have.has(x) || !dropped.add(x))]).filter(([, pins]) => pins.length > 1));
+  const plural = (set, one, many) => `${set.size} ${set.size === 1 ? one : many} (${[...set].join(', ')})`;
+  if (planes.length) notes.push(`left to planes, not routed: ${planes.map((n) => `${n} (${circuit.nets[n]?.length ?? 0} pads)`).join(', ')}. Boards here have 2 layers so far: these nets need a plane or a pour joined to every pad`);
+  if (castellated.size) notes.push(`castellated pads left out, on ${plural(castellated, 'part', 'parts')}: they sit half off the board's edge, which boards here can't carry yet`);
+  if (oval.size) notes.push(`oval pads drawn round, at their narrow width, on ${plural(oval, 'part', 'parts')}`);
+  if (dropped.size) notes.push(`${dropped.size} pins with no pad left on this board are out of their nets: ${[...dropped].slice(0, 5).join(', ')}`);
+  if (offset.size) notes.push(`holes set off-centre in their pads drawn centred, on ${plural(offset, 'part', 'parts')}`);
+  return { parts, nets, holes: circuit.holes, outline: circuit.outline, notes };
+}
+
+/**
+ * Does the board join exactly the pins the circuit joins? Each of the circuit's nets (but planes) must be one group of
+ * pins on the board, with no other net's pins in it. Findings as checks() gives them ({ level, text }).
+ * @param {object[]} json Circuit JSON (render's) @param {object} circuit @param {{ planes?: string[] }} [o]
+ */
+export function sameCircuit(json, circuit, o = {}) {
+  const { nets } = clone(circuit, o), up = new Map(), find = (a) => { while (up.get(a) !== a) a = up.get(a); return a; };
+  const join = (a, b) => { up.set(find(a), find(b)); };
+  const comp = new Map(json.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e]));
+  const name = new Map(json.filter((e) => e.type === 'source_port').map((e) => [e.source_port_id, `${comp.get(e.source_component_id)?.name}.${e.name}`]));
+  for (const id of name.keys()) up.set(id, id);
+  for (const c of comp.values()) for (const g of c.internally_connected_source_port_ids || []) g.forEach((id) => join(id, g[0]));
+  for (const t of json.filter((e) => e.type === 'source_trace')) t.connected_source_port_ids.forEach((id) => join(id, t.connected_source_port_ids[0]));
+  const group = new Map(); // pin name -> group
+  for (const [id, n] of name) group.set(n, find(id));
+  const out = [], missing = [], split = [], shorted = [];
+  const owner = new Map(); // group -> net
+  for (const [net, pins] of Object.entries(nets)) {
+    const gs = new Set(pins.map((p) => group.get(p)));
+    if (gs.has(undefined)) { missing.push(`${net}: ${pins.filter((p) => !group.has(p)).join(', ')}`); continue; }
+    if (gs.size > 1) split.push(net);
+    for (const g of gs) { if (owner.has(g) && owner.get(g) !== net) shorted.push(`${owner.get(g)} and ${net}`); owner.set(g, net); }
+  }
+  const extra = []; // board pins in a net's group that the source doesn't put in that net
+  for (const [pin, g] of group) { const net = owner.get(g); if (net && !nets[net].includes(pin)) extra.push(`${pin} in ${net}`); }
+  if (extra.length) out.push({ level: 'fail', text: `${extra.length} pins joined to nets the source leaves them out of: ${extra.slice(0, 5).join(', ')}` });
+  const n = Object.keys(nets).length;
+  if (missing.length) out.push({ level: 'fail', text: `${missing.length} nets name pins the board doesn't have: ${missing.slice(0, 3).join('; ')}` });
+  if (split.length) out.push({ level: 'fail', text: `${split.length} nets are split in two or more on the board: ${split.slice(0, 5).join(', ')}` });
+  if (shorted.length) out.push({ level: 'fail', text: `nets joined that the source keeps apart: ${[...new Set(shorted)].slice(0, 5).join('; ')}` });
+  if (!out.length) out.push({ level: 'pass', text: `same circuit as the source: all ${n} nets join the same pins, and no others${Object.keys(circuit.nets).length > n ? ` (${Object.keys(circuit.nets).length - n} left to planes)` : ''}` });
+  return out;
+}
+
 // ---------- board shapes ----------
 // Outlines for board.outline: closed polygons, counter-clockwise, centred on at (default the origin). Curves are cut
 // into segments (default 8 per quarter circle: fine for a router and a fab, which mills them as arcs anyway).

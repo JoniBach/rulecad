@@ -14,6 +14,7 @@
     "licence": { "type": "string" },
     "private": { "type": "boolean" },
     "footprints": { "type": "object" },
+    "circuit": { "type": "object", "description": "A published board's circuit (parts, pads, nets, planes, outline), read by cad clone, for @rulecad/pcb's clone()" },
     "rules": {
       "type": "object",
       "additionalProperties": {
@@ -27,6 +28,7 @@
           "kind": { "type": "string", "description": "spec, standard, measured, community, estimate, …" },
           "source": { "type": "string" },
           "checked": { "type": "string" },
+          "licence": { "type": "string", "description": "The source's licence, when the value was read off someone else's work (cad measure, cad clone)" },
           "pins": {}
         }
       }

@@ -36,6 +36,7 @@ npx cad check bathroom/soap-tray --set width=60   # change variables that have a
 npx cad variants keyboard/keycap                 # named sets of inputs: keyboard/keycap:legend-f
 npx cad compare keyboard/keycap dsa legend-f     # two variants (or releases) side by side
 npx cad import-kle layout.json keyboard/mine     # a layout from keyboard-layout-editor.com, into layouts/
+npx cad clone <github link to a .kicad_pcb> sea_picro   # a published board's circuit, into rules/, to redraw by rules
 npx cad measure cover.3mf --rules cover          # a model from elsewhere, measured into draft rules
 npx cad match legion-go/rail cover.3mf           # how closely a design matches that model, both ways
 ```
@@ -133,6 +134,11 @@ which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a rel
   width up z, so a flexure bends within its layers.
 - A rule set can also carry `"footprints"` (pad data from @rulecad/pcb's `fromKicad`, with its source), which a
   board's code reads as `v.parts.footprints.usb_c`.
+- `cad clone` writes a rule set with a `"circuit"`: a published board's parts, pads, nets, planes and outline, read
+  from its `.kicad_pcb` (a file, or a GitHub link: pinned to the commit, with the repository's licence). A board's code
+  reads it as `v.sea_picro.circuit` and builds from it with @rulecad/pcb's `clone`. Its rules (`width`, `height`,
+  `thickness`, `layers`) are `kind: derived`, with the source and its licence. A reciprocal licence (CERN-OHL-S,
+  share-alike) carries over to boards made from it: keep such a rule set apart from your others.
 - An object or rule set named with a hyphen (`mx-switch`) is read with an underscore in expressions (`mx_switch.housing_top`),
   since a hyphen there is a minus.
 - Rules carry `kind`: spec (manufacturer), default (slicer), community (rule of thumb) or measured (your own test

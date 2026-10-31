@@ -39,6 +39,13 @@ export function main(v) {
 - **Parts from KiCad:** `fromKicad(text)` turns a KiCad footprint (`.kicad_mod`) into pad data (y up) and its
   courtyard. Keep the result in a rule set's `"footprints"` with its source and pin names (`labels: { pin1: 'GND' }`),
   then place it with `footprint(name, data, x, y, o)`: a design reads rule sets, never files or the network.
+- **Whole boards from KiCad (clones):** `fromKicadPcb(text)` reads a published board (`.kicad_pcb`, KiCad 6 or later)
+  as a circuit: its parts (each with its pads, value and LCSC number, where the source put it), its nets, the nets it
+  fills as planes, its outline and holes. `cad clone` keeps it in a rule set's `"circuit"` with its source and licence.
+  `clone(v.<set>.circuit)` gives a board's `parts` and `nets` from it, and `notes` on what boards here can't carry
+  yet (castellated pads, oval pads, holes set off-centre in a pad, more than 2 layers: plane nets are left out of the
+  routing). `sameCircuit(json, circuit)` checks that a board joins exactly the pins the source joins, and names any
+  that differ: the layout can change, the circuit can't.
 - **Any board shape:** give `outline: [{ x, y }, ...]` in place of a centre and size. `shape.rounded(w, h, r)`,
   `shape.bevelled(w, h, b)`, `shape.circle(d)` and `shape.rect(w, h)` make common ones. The router keeps tracks
   inside the outline, and a check finds any pad outside it.
