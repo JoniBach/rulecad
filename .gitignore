@@ -5,6 +5,7 @@ packages/viewer/site/printcheck.mjs
 test/viewer.png
 test/viewer-drop.png
 test/viewer-motion.png
+test/viewer-slice.png
 test/viewer-phone.png
 packages/*/*.d.mts
 /rules/

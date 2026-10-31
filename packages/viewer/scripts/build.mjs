@@ -17,8 +17,8 @@ if (process.argv.includes('--three')) {
   const { build } = await import('esbuild');
   const names = ['WebGLRenderer', 'Scene', 'PerspectiveCamera', 'BufferGeometry', 'Float32BufferAttribute', 'Mesh', 'MeshLambertMaterial',
     'LineSegments', 'EdgesGeometry', 'LineBasicMaterial', 'AmbientLight', 'DirectionalLight', 'Group', 'WireframeGeometry', 'Raycaster',
-    'Vector2', 'Vector3', 'Box3'];
-  const three = path.dirname(require.resolve('three/package.json'));
+    'Vector2', 'Vector3', 'Box3', 'Plane', 'Points', 'PointsMaterial'];
+  const three = path.resolve(path.dirname(require.resolve('three')), '..'); // (three/package.json isn't exported: its entry is build/three.cjs)
   await build({ stdin: { contents: `export { ${names.join(', ')} } from 'three';`, resolveDir: three, loader: 'js' },
     bundle: true, minify: true, format: 'esm', legalComments: 'inline', outfile: path.join(SITE, 'three.min.js') });
   fs.copyFileSync(path.join(three, 'LICENSE'), path.join(SITE, 'three.LICENSE'));
