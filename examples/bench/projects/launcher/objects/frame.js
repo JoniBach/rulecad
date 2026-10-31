@@ -1,6 +1,6 @@
 // The frame: the two cartridges' outlines, grown by the skin with round corners, a palm swell behind the grip, as a block the depth of the deeper
 // cartridge plus the back plate, with each cartridge's cavity cut from the open face to its own depth, the guard
-// loop under the receiver block, the notch the sled's rod runs through, and the pins' holes through the skin where
+// loop under the receiver block, the muzzle's opening, the notch the sled's rod runs through, and the pins' holes through the skin where
 // the cartridges have theirs. No roof over the barrel: its top band and the magazine column stand proud, and the
 // back plate rises behind the column to close its open side. Drawn in the cartridges' frame (the open face at z = 0),
 // then turned over about x onto its back plate for the printer.
@@ -32,6 +32,8 @@ export function main (v) {
   cuts.push(box(a.grip_front - v.skin + v.guard_post, a.case_front + v.skin - v.guard_post, a.block_bottom - v.guard_h + v.guard_bar, a.block_bottom + 1, 0 - 1, Z + 1))
   // The sled's rod, out through the back strap: a notch open to the face, so the barrel cartridge slides in with the sled aboard
   cuts.push(box(a.case_back - v.skin - 1, a.case_back + 1, 0 - b.slot / 2 - f, b.slot / 2 + f, 0 - 1, s.rod_z + s.rod_width + f))
+  // The muzzle: the slot's opening through the skin, open to the face (no roof), the disc's full width deep
+  cuts.push(box(b.muzzle - 1, b.muzzle + v.skin + 1, 0 - b.slot / 2, b.slot / 2, 0 - 1, b.case_h + f))
   // The pins' holes through the skin, in line with the cartridges' walls' holes
   const r = v.pin / 2 + f, hole = (x, y, z, along) => cuts.push(translate([x, y, z], (along === 'x' ? rotateY : rotateX)(Math.PI / 2, cylinder({ radius: r, height: v.skin + 2, segments: v.smooth }))))
   hole(a.pin_a, a.grip_bottom - v.skin / 2, a.pin_z, 'y'); hole(a.pin_b, a.grip_bottom - v.skin / 2, a.pin_z, 'y')

@@ -303,9 +303,9 @@
       "rule": "Second bottom pin, x: beside the leaf's root block"
     },
     "pin_c": {
-      "value": "grip_bottom + 55",
+      "value": "case_top - case_t - 12",
       "unit": "mm",
-      "rule": "Back wall pin, y: where the drawn leaf is well forward"
+      "rule": "Back wall pin, y: above the frame's palm swell, so its head sits on the strap's surface"
     },
     "pin_d": {
       "value": "block_bottom + 15",

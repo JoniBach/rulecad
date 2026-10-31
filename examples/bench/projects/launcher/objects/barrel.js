@@ -1,6 +1,6 @@
 // The barrel cartridge: a tray whose bottom wall is the slot's floor and whose top band holds the slot's ceiling and
 // a hollow the pins' barbs click into, with the magazine column standing over the mouth. The floor wall is left out over the sled's
-// tab run (its roof would be a bridge) and slit for the sear's tooth; the back wall has a notch, open to the open
+// tab run (its roof would be a bridge) and slit for the sear's tooth; the slot runs out through the front wall; the back wall has a notch, open to the open
 // side, for the sled's rod; the column walls have the notches the insert's cap snaps into.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
@@ -27,6 +27,7 @@ export function main (v) {
   cuts.push(box(tabBack - v.fit, tabFront + v.fit, floorBottom - 1, floorTop + 1, z0, zTop + 1))
   cuts.push(box(v.tooth_back - v.fit, v.tooth_back + v.tooth + v.fit, floorBottom - 1, floorTop + 1, z0, z0 + v.sear_w + v.fit))
   cuts.push(box(x0 - 1, x0 + t + 1, floorTop, -floorTop, s.rod_z - v.fit, zTop + 1))
+  cuts.push(box(x1 - t - 1, x1 + 1, floorTop, -floorTop, z0, zTop + 1)) // the muzzle: the slot runs out through the front wall
   // The pins' holes: through the back wall and the muzzle's front wall, into the hollow
   const r = v.pin / 2 + v.fit, hole = (x, y, along) => cuts.push(jscad.transforms.translate([x, y, v.pin_z], jscad.transforms[along === 'x' ? 'rotateY' : 'rotateX'](Math.PI / 2, cylinder({ radius: r, height: t + 2, segments: v.smooth }))))
   hole(x0 + t / 2, v.pin_y, 'x'); hole(x1 - t / 2, v.pin_y, 'x')

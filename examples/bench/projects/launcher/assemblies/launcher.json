@@ -53,6 +53,10 @@
     {
       "id": "pin_f",
       "object": "pin"
+    },
+    {
+      "id": "leaving",
+      "object": "disc"
     }
   ],
   "joints": [
@@ -355,6 +359,42 @@
         ]
       },
       "label": "Muzzle, into the barrel"
+    },
+    {
+      "id": "out",
+      "type": "fixed",
+      "parent": {
+        "item": "barrel",
+        "at": [
+          "barrel.muzzle",
+          "0 - launcher.disc_t / 2",
+          "barrel.wall + x1c.fit + launcher.disc / 2"
+        ],
+        "axis": [
+          0,
+          1,
+          0
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "child": {
+        "item": "leaving",
+        "at": [
+          0,
+          0,
+          0
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "label": "A disc half out of the muzzle: its way out must be clear"
     }
   ],
   "poses": {
@@ -399,86 +439,100 @@
     {
       "a": "pin_a",
       "b": "frame",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
     },
     {
       "a": "pin_a",
       "b": "action",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "and through the cartridge's wall"
     },
     {
       "a": "pin_b",
       "b": "frame",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
     },
     {
       "a": "pin_b",
       "b": "action",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "and through the cartridge's wall"
     },
     {
       "a": "pin_c",
       "b": "frame",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
     },
     {
       "a": "pin_c",
       "b": "action",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "and through the cartridge's wall"
     },
     {
       "a": "pin_d",
       "b": "frame",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
     },
     {
       "a": "pin_d",
       "b": "action",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "and through the cartridge's wall"
     },
     {
       "a": "pin_e",
       "b": "frame",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
     },
     {
       "a": "pin_e",
       "b": "barrel",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "and through the cartridge's wall"
     },
     {
       "a": "pin_f",
       "b": "frame",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "A pin through the skin: its barb overlaps the hole's edge on the way in"
     },
     {
       "a": "pin_f",
       "b": "barrel",
-      "min": "0 - 1",
+      "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "and through the cartridge's wall"
+    },
+    {
+      "a": "leaving",
+      "b": "frame",
+      "min": 0,
+      "max": "2 * x1c.fit",
+      "note": "The leaving disc clears the frame's muzzle"
+    },
+    {
+      "a": "leaving",
+      "b": "barrel",
+      "min": 0,
+      "max": "2 * x1c.fit",
+      "note": "and the barrel's"
     }
   ]
 }
