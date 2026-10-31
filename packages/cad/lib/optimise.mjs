@@ -54,7 +54,11 @@ export async function readProblem(project, ref) {
   // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
   const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
-    if (r.part) return { triangles: await part(r.part), part: r.part };
+    if (r.part) { // with where it is (its box's centre), for a load's or support's resultant
+      const triangles = await part(r.part), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      for (const t of triangles) for (const q of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], q[a]); hi[a] = Math.max(hi[a], q[a]); }
+      return { triangles, part: r.part, at: lo.map((x, a) => (x + hi[a]) / 2) };
+    }
     if (r.points) return { points: r.points.map(pt) };
     if (r.size) return { at: pt(r.at), size: r.size.map(ev) };
     if (r.length != null) { const axis = r.axis || 'z', t = r.teardrop && point(r.teardrop); return { at: pt(r.at), r: ev(r.r), length: ev(r.length), axis, ...(t && t[1] !== axis ? { teardrop: t } : {}) }; } // along its axis, a teardrop has no point
