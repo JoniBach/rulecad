@@ -275,8 +275,10 @@ export function seams(polys, eps = 1e-3) {
  *   undersides included (the bridge check judges those separately)
  */
 export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42 } = {}) {
-  const { lo, hi } = bounds(polys), pitch = line / 4, nx = Math.ceil((hi[0] - lo[0]) / pitch) + 6, ny = Math.ceil((hi[1] - lo[1]) / pitch) + 6;
-  const reach = Math.ceil(layer / Math.tan((overhang * Math.PI) / 180) / pitch) + 4; // pixels a layer may step out past the one below, and a line beyond that: a line hanging out is held by the one beside it
+  // The pixel: a quarter of a line, or coarser on a big part so a layer stays under about a million pixels
+  const { lo, hi } = bounds(polys), pitch = Math.max(line / 4, Math.max(hi[0] - lo[0], hi[1] - lo[1]) / 1000), nx = Math.ceil((hi[0] - lo[0]) / pitch) + 6, ny = Math.ceil((hi[1] - lo[1]) / pitch) + 6;
+  const r2 = Math.max(1, Math.round(line / 2 / pitch)); // half a line, in pixels
+  const reach = Math.ceil(layer / Math.tan((overhang * Math.PI) / 180) / pitch) + 2 * r2; // pixels a layer may step out past the one below, and a line beyond that: a line hanging out is held by the one beside it
   const tris = [];
   for (const p of polys) for (let i = 1; i < p.length - 1; i++) tris.push([p[0], p[i], p[i + 1]]);
   const zmin = tris.map((t) => Math.min(t[0][2], t[1][2], t[2][2])), zmax = tris.map((t) => Math.max(t[0][2], t[1][2], t[2][2]));
@@ -285,7 +287,6 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42 } = {})
   const px = (x) => Math.floor((x - lo[0]) / pitch) + 3;
   // Only what the printer can lay counts: each layer is opened by half a line (eroded, then grown back), so anything
   // narrower than a line, which the slicer drops, is not a region at all
-  const r2 = 2; // half a line, in pixels
   const erode = (f) => { const e = new Uint8Array(nx * ny); for (let j = r2; j < ny - r2; j++) for (let i = r2; i < nx - r2; i++) { const n = j * nx + i; let all = 1; for (let b = -r2; b <= r2 && all; b++) for (let a = -r2; a <= r2; a++) if (Math.abs(a) + Math.abs(b) <= r2 && !f[n + b * nx + a]) { all = 0; break; } e[n] = all; } return e; };
   const dilate = (f, r) => { const g = new Uint8Array(nx * ny); for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const n = j * nx + i; if (!f[n]) continue; for (let b = -r; b <= r; b++) for (let a = -r; a <= r; a++) { const ii = i + a, jj = j + b; if (ii >= 0 && ii < nx && jj >= 0 && jj < ny) g[jj * nx + ii] = 1; } } return g; };
   const opened = (f) => dilate(erode(f), r2);

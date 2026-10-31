@@ -142,7 +142,7 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
     // Then drawn on a finer grid (cells no bigger than the outline's fine size, 1 mm), so the cleaning works at nearer
     // the printer's resolution: between two coarse cells the surface can dip under the overhang line, which sliced is an
     // island; on the fine grid those dips are cells of their own, and go. One correction of the level for the volume.
-    const factor = ov ? Math.max(1, Math.ceil(spec.grid.h / (r.outline.fine ?? 1) - 1e-9)) : 1;
+    const cells = spec.grid.nx * spec.grid.ny * spec.grid.nz, factor = ov ? Math.max(1, Math.min(Math.ceil(spec.grid.h / (r.outline.fine ?? 1) - 1e-9), Math.floor(Math.cbrt(2e6 / cells)))) : 1; // and no more than about two million fine cells
     const fine = factor > 1 ? refine(spec.grid, o.density, factor, { keep: coarseKeep, smooth: 1 }) : null;
     let cleared = 0;
     if (fine) {
