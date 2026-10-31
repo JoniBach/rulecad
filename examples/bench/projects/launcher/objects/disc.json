@@ -1,0 +1,44 @@
+{
+  "name": "disc",
+  "title": "The disc: what the launcher throws",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed, the chamfered face down. Print six at a time, 100% infill: a heavier disc flies further than a hollow one.",
+  "variables": {
+    "diameter": {
+      "value": "launcher.disc",
+      "unit": "mm",
+      "rule": "The disc's diameter, from the launcher's rules"
+    },
+    "thickness": {
+      "value": "launcher.disc_t",
+      "unit": "mm",
+      "rule": "The disc's thickness: ten layers"
+    },
+    "chamfer": {
+      "value": "x1c.chamfer",
+      "unit": "mm",
+      "rule": "The bed edge, chamfered against first-layer squish, so stacked discs lie flat"
+    },
+    "dimple": {
+      "value": "diameter / 4",
+      "unit": "mm",
+      "rule": "A shallow dimple's diameter in the top face: a thumb finds the top, and it shows which way up the stack goes"
+    },
+    "dimple_depth": {
+      "value": "x1c.layer * 2",
+      "unit": "mm",
+      "rule": "The dimple's depth: two layers"
+    },
+    "smooth": {
+      "value": 96,
+      "rule": "Segments round the disc: the rim rolls along the lid, so it should be round"
+    }
+  }
+}
