@@ -56,7 +56,8 @@ export function main(v) {
   source's proven layout of an area (a chip and all its small parts) while the board around it changes. With
   `{ keep: true }` the source's own tracks and vias come too, wherever they join only that block's pads, and only the
   connections leaving the block are routed: dense areas round a fine-pitch chip keep their proven routing, and the
-  router has far less to do.
+  router has far less to do. A track from one of the block's pins out to a part elsewhere keeps its stretch inside the
+  block (a chip's escape), and is routed on from where it leaves.
   `withFootprint(circuit, 'J2', pads)` puts a part on new pads with the same pins, so its nets can't change: new edge
   pins for a new board shape. A design returns `{ board, clone: { circuit, arranged } }`, and `cad check` then also
   checks the circuit is the source's and every small part is still by its pin.

@@ -191,14 +191,32 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
 
   // ---- traces: drawn by rule, or left to the autorouter ----
   const port = (part, name) => { const p = ports.get(`${part}.${name}`); if (!p) throw new Error(`no port ${part}.${name}`); return p; };
-  const joined = new Map(); // `${part}.${pin}` -> the kept island joining it
-  for (const k of board.copper?.islands || []) for (const p of k.pins) joined.set(p, k.id);
+  const joined = new Map(); // `${part}.${pin}` -> its group: kept islands sharing a pin (meeting at a pad) are one group
+  const up = new Map(), root = (g) => { while (up.get(g) !== g) g = up.get(g); return g; };
+  for (const k of board.copper?.islands || []) {
+    up.set(k.id, k.id);
+    for (const p of k.pins) { if (joined.has(p)) up.set(root(joined.get(p)), k.id); joined.set(p, k.id); }
+  }
+  for (const [p, g] of joined) joined.set(p, root(g));
+  const stubOf = new Map((board.copper?.stubs || []).map((b) => [b.pin, b]));
+  const layStub = (stub, id) => {
+    for (const g of board.copper.tracks.filter((x) => x.stub === stub.id))
+      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: id, subcircuit_id: SUB });
+    for (const v of board.copper.vias.filter((x) => x.stub === stub.id)) {
+      const tr = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: id, subcircuit_id: SUB });
+      add('pcb_via', { pcb_trace_id: tr.pcb_trace_id, x: v.x, y: v.y, hole_diameter: v.hole, outer_diameter: v.pad, layers: copper, from_layer: 'top', to_layer: 'bottom', subcircuit_id: SUB });
+    }
+  };
   const toRoute = [], traces = [...(board.traces || []), ...netTraces(board, port, joined), ...links];
   for (const t of traces) {
     const a = port(...t.from), b = port(...t.to);
     const st = add('source_trace', { connected_source_port_ids: [a.source.source_port_id, b.source.source_port_id], connected_source_net_ids: [], subcircuit_id: SUB,
       display_name: `.${t.from.join(' > .')} to .${t.to.join(' > .')}`, min_trace_thickness: t.width });
-    if (!t.path) { toRoute.push({ t, a, b, id: st.source_trace_id }); continue; }
+    if (!t.path) { // a kept escape (stub) from either pin: laid as part of this connection, which is routed from its end
+      const ends = [a, b].map((q, i) => { const stub = stubOf.get([t.from, t.to][i].join('.')); if (!stub) return q; stubOf.delete([t.from, t.to][i].join('.'));
+        layStub(stub, st.source_trace_id); return { ...q, x: stub.end.x, y: stub.end.y, layers: [stub.end.layer] }; });
+      toRoute.push({ t, a: ends[0], b: ends[1], id: st.source_trace_id }); continue;
+    }
     // A drawn track runs on the layer its first pad is on (a through-hole pad: the front)
     const layer = t.layer ?? (a.layers.length === 1 ? a.layers[0] : 'top'); // or the layer it names
     const pts = [{ x: a.x, y: a.y }, ...t.path, { x: b.x, y: b.y }];
@@ -242,7 +260,7 @@ export const holeSize = (e) => (e.outer_diameter != null ? { w: e.outer_diameter
 // source trace joining its pins (and its plane, if its via reaches one), so nothing routes them again
 function keptCopper(out, add, board, copper, planeNets) {
   const pins = padsByPin(out);
-  for (const k of board.copper.islands) {
+  for (const k of board.copper.islands) { // (stubs are laid with the connection they start: see the traces below)
     const ports = [...new Set(k.pins.flatMap((p) => (pins.get(p) || []).map((f) => f.sp.source_port_id)))];
     const plane = k.via && planeNets[k.net];
     if (!ports.length || (ports.length < 2 && !plane)) continue; // nothing left to join
@@ -620,24 +638,28 @@ async function defaultRouter(json, toRoute) {
       { route_type: 'via', x: v.x, y: v.y, from_layer: pad.layer, to_layer: p.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: p.layer }];
   };
   const holes = json.filter((e) => e.type === 'pcb_plated_hole');
+  // A connection's end that isn't on a pad (a kept escape's end) stands for its pin
+  const ends = srj.connections.flatMap((c) => c.pointsToConnect).filter((q) => !padAt(q));
+  const endAt = (p) => { const q = ends.find((e) => Math.hypot(e.x - p.x, e.y - p.y) < 0.02); return q && { port: q.pcb_port_id, layer: null, w: 0, h: 0, stub: true }; };
+  const viaStub = []; // pins reached at a kept escape's end: the track ends there, not on the pad, so it isn't marked as the pad's
   for (const t of solver.getOutputSimplifiedPcbTraces()) {
     if (!asked.has(t.connection_name)) continue;
     for (const piece of layerChanges(t.route.map((p) => ({ ...p })), holes)) traces.push(finish(piece, t.connection_name));
   }
   function finish(piece, name) {
     let route = piece;
-    const first = padAt(route[0]), last = padAt(route.at(-1));
+    const first = padAt(route[0]) ?? endAt(route[0]), last = padAt(route.at(-1)) ?? endAt(route.at(-1));
     const head = onto(first, route[0], route[1] || route[0]), tail = onto(last, route.at(-1), route.at(-2) || route.at(-1));
     if (head.length) route = [...head, ...route.slice(1)];
     if (tail.length) route = [...route.slice(0, -1), ...tail.reverse().map((q) => (q.route_type === 'via' ? { ...q, from_layer: q.to_layer, to_layer: q.from_layer } : q))];
-    if (first) route[0].start_pcb_port_id = first.port;
-    if (last) route.at(-1).end_pcb_port_id = last.port;
+    if (first) { if (first.stub) viaStub.push(first.port); else route[0].start_pcb_port_id = first.port; }
+    if (last) { if (last.stub) viaStub.push(last.port); else route.at(-1).end_pcb_port_id = last.port; }
     return { route, source_trace_id: name, vias: route.filter((p) => p.route_type === 'via').map((p) => ({ x: p.x, y: p.y,
       hole_diameter: srj.minViaHoleDiameter, outer_diameter: srj.minViaPadDiameter, layers: ['top', 'bottom'], from_layer: p.from_layer, to_layer: p.to_layer })) };
   }
   // Every pad asked for has a track (a pad counts as reached when another pad of the same pin, joined in its part, is)
   const pinOf = new Map(json.filter((e) => e.type === 'pcb_port').map((e) => { const sp = json.find((x) => x.type === 'source_port' && x.source_port_id === e.source_port_id); return [e.pcb_port_id, `${sp?.source_component_id}:${sp?.name}`]; }));
-  const reached = new Set(traces.flatMap((t) => [t.route[0].start_pcb_port_id, t.route.at(-1).end_pcb_port_id]).map((id) => pinOf.get(id)));
+  const reached = new Set([...traces.flatMap((t) => [t.route[0].start_pcb_port_id, t.route.at(-1).end_pcb_port_id]), ...viaStub].map((id) => pinOf.get(id)));
   const missing = srj.connections.flatMap((c) => c.pointsToConnect).filter((p) => !reached.has(pinOf.get(p.pcb_port_id)));
   if (missing.length) throw new Error(`the autorouter left ${missing.length} pads without a track (first: ${missing[0].port_selector})`);
   return { traces };

@@ -574,8 +574,9 @@ export function clone(circuit, o = {}) {
   const sizes = { ...(src.via ? { via_pad: src.via.pad, via_hole: src.via.hole } : {}), ...(src.clearance ? { plane_clearance: src.clearance } : {}) };
   // The source's own copper kept with a moved block, its pins named as the board names them
   const named = (x) => { const i = x.indexOf('.'); return `${x.slice(0, i)}.pin${x.slice(i + 1)}`; };
-  const copper = circuit.kept?.islands.length ? { ...circuit.kept, islands: circuit.kept.islands.map((k) => ({ ...k, pins: k.pins.map(named) })) } : null;
-  if (copper) notes.push(`the source's own routing kept: ${copper.tracks.length} tracks and ${copper.vias.length} vias in ${copper.islands.length} pieces`);
+  const copper = circuit.kept?.islands.length ? { ...circuit.kept, islands: circuit.kept.islands.map((k) => ({ ...k, pins: k.pins.map(named) })),
+    stubs: (circuit.kept.stubs || []).map((b) => ({ ...b, pin: named(b.pin) })) } : null;
+  if (copper) notes.push(`the source's own routing kept: ${copper.tracks.length} tracks and ${copper.vias.length} vias in ${copper.islands.length} pieces, and ${copper.stubs.length} escapes routed on from where they leave`);
   return { parts, nets, holes: circuit.holes, outline: circuit.outline, layers, ...(Object.keys(onPlanes).length ? { planes: onPlanes } : {}), ...(copper ? { copper } : {}), ...sizes, notes };
 }
 
@@ -644,7 +645,11 @@ export function arrange(circuit, moves, rules = circuit.placement || learnPlacem
   const parts = circuit.parts.map(moved).map(({ dr, ...p }) => p);
   const shifted = new Set(parts.filter((p, i) => p.x !== circuit.parts[i].x || p.y !== circuit.parts[i].y || p.rotation !== circuit.parts[i].rotation).map((p) => p.ref)); // a kept island to a part that moved apart is left to routing
   const kept = circuit.kept && { ...circuit.kept, islands: circuit.kept.islands.filter((k) => !k.pins.some((x) => shifted.has(x.split('.')[0]))) };
-  if (kept) { const ids = new Set(kept.islands.map((k) => k.id)); kept.tracks = kept.tracks.filter((g) => ids.has(g.island)); kept.vias = kept.vias.filter((v) => ids.has(v.island)); }
+  if (kept) {
+    kept.stubs = (kept.stubs || []).filter((b) => !shifted.has(b.pin.split('.')[0]));
+    const ids = new Set([...kept.islands.map((k) => k.id), ...kept.stubs.map((b) => b.id)]);
+    kept.tracks = kept.tracks.filter((g) => ids.has(g.island ?? g.stub)); kept.vias = kept.vias.filter((v) => ids.has(v.island ?? v.stub));
+  }
   return { ...circuit, ...(kept ? { kept } : {}), parts };
 }
 
@@ -667,7 +672,8 @@ export function moveGroup(circuit, refs, { turn = 0, dx = 0, dy = 0 } = {}, { ke
     if (!circuit.routing) throw new Error('moveGroup: keep needs the source\'s tracks (circuit.routing, from fromKicadPcb)');
     const k = islands(circuit, set);
     kept = { tracks: [...(kept?.tracks || []), ...k.tracks.map((g) => ({ ...g, a: at(g.a), b: at(g.b) }))],
-      vias: [...(kept?.vias || []), ...k.vias.map((v) => ({ ...v, ...at(v) }))], islands: [...(kept?.islands || []), ...k.islands] };
+      vias: [...(kept?.vias || []), ...k.vias.map((v) => ({ ...v, ...at(v) }))], islands: [...(kept?.islands || []), ...k.islands],
+      stubs: [...(kept?.stubs || []), ...k.stubs.map((b) => ({ ...b, end: { ...b.end, ...at(b.end) } }))] };
   }
   return { ...circuit, ...(kept ? { kept } : {}), parts: circuit.parts.map((p) => (!set.has(p.ref) ? p : {
     ...p, ...at(p), rotation: turnOf(p.rotation + (p.layer === 'bottom' ? -turn : turn))
@@ -684,28 +690,63 @@ function islands(circuit, refs) {
     return { ref: p.ref, pin: q.pin, net: q.net, x: q.bx, y: q.by, w: turned ? q.h : q.w, h: turned ? q.w : q.h, layer: q.smd ? p.layer : null };
   }));
   const onSeg = (pt, g) => { const dx = g.b.x - g.a.x, dy = g.b.y - g.a.y, l = dx * dx + dy * dy, u = l ? Math.max(0, Math.min(1, ((pt.x - g.a.x) * dx + (pt.y - g.a.y) * dy) / l)) : 0; return Math.hypot(pt.x - g.a.x - u * dx, pt.y - g.a.y - u * dy) <= near; };
-  const inPad = (pt, q, layer) => (!q.layer || !layer || q.layer === layer) && Math.abs(pt.x - q.x) <= q.w / 2 + near && Math.abs(pt.y - q.y) <= q.h / 2 + near;
+  // copper touching copper: a track's end within half its width of the pad (as KiCad joins them), a via within its radius
+  const inPad = (pt, q, layer, reach = 0) => (!q.layer || !layer || q.layer === layer) && Math.abs(pt.x - q.x) <= q.w / 2 + reach + near && Math.abs(pt.y - q.y) <= q.h / 2 + reach + near;
   const nodes = [...tracks.map((g, i) => ({ kind: 't', i, g, net: g.net })), ...vias.map((v, i) => ({ kind: 'v', i, v, net: v.net }))];
-  const up = nodes.map((_, i) => i), find = (i) => { while (up[i] !== i) i = up[i] = up[up[i]]; return i; }, join = (i, j) => { up[find(i)] = find(j); };
+  const adj = nodes.map(() => []), up = nodes.map((_, i) => i), find = (i) => { while (up[i] !== i) i = up[i] = up[up[i]]; return i; }, join = (i, j) => { up[find(i)] = find(j); };
   const byNet = new Map(); nodes.forEach((n, i) => byNet.set(n.net, [...(byNet.get(n.net) || []), i]));
   for (const list of byNet.values()) for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
     const A = nodes[list[x]], B = nodes[list[y]];
     const touch = A.kind === 't' && B.kind === 't' ? A.g.layer === B.g.layer && (onSeg(A.g.a, B.g) || onSeg(A.g.b, B.g) || onSeg(B.g.a, A.g) || onSeg(B.g.b, A.g))
       : A.kind === 'v' && B.kind === 'v' ? Math.hypot(A.v.x - B.v.x, A.v.y - B.v.y) <= (A.v.pad + B.v.pad) / 2
         : (() => { const [t, v] = A.kind === 't' ? [A.g, B.v] : [B.g, A.v]; return Math.hypot(t.a.x - v.x, t.a.y - v.y) <= v.pad / 2 + near || Math.hypot(t.b.x - v.x, t.b.y - v.y) <= v.pad / 2 + near; })();
-    if (touch) join(list[x], list[y]);
+    if (touch) { join(list[x], list[y]); adj[list[x]].push(list[y]); adj[list[y]].push(list[x]); }
   }
   const touched = new Map(); // island root -> pads it touches
   nodes.forEach((n, i) => {
-    const hit = pads.filter((q) => q.net === n.net && (n.kind === 't' ? inPad(n.g.a, q, n.g.layer) || inPad(n.g.b, q, n.g.layer) : inPad(n.v, q, null)));
+    const hit = pads.filter((q) => q.net === n.net && (n.kind === 't' ? inPad(n.g.a, q, n.g.layer, n.g.width / 2) || inPad(n.g.b, q, n.g.layer, n.g.width / 2) : inPad(n.v, q, null, n.v.pad / 2)));
     const r = find(i); touched.set(r, [...(touched.get(r) || []), ...hit]);
   });
   const keep = new Map(); // root -> island
   for (const [r, hit] of touched) if (hit.length && hit.every((q) => refs.has(q.ref)))
     keep.set(r, { id: `island${keep.size + 1}`, net: nodes[r].net, pins: [...new Set(hit.map((q) => `${q.ref}.${q.pin}`))], via: false });
-  const out = { tracks: [], vias: [], islands: [] };
+  const out = { tracks: [], vias: [], islands: [], stubs: [] };
   nodes.forEach((n, i) => { const k = keep.get(find(i)); if (!k) return; if (n.kind === 't') out.tracks.push({ ...n.g, island: k.id }); else { k.via = true; out.vias.push({ ...n.v, island: k.id }); } });
   out.islands = [...keep.values()];
+  // Breakouts: an island from one of the block's pins out to other parts keeps its stretch within the block's bounds,
+  // from the pin to where it leaves (a fine-pitch chip's escape, proven); the rest is routed from the stub's end
+  const own = pads.filter((q) => refs.has(q.ref));
+  if (!own.length) return out;
+  const box = { x0: Math.min(...own.map((q) => q.x - q.w / 2)) - 0.3, x1: Math.max(...own.map((q) => q.x + q.w / 2)) + 0.3, y0: Math.min(...own.map((q) => q.y - q.h / 2)) - 0.3, y1: Math.max(...own.map((q) => q.y + q.h / 2)) + 0.3 };
+  const inBox = (pt) => pt.x >= box.x0 && pt.x <= box.x1 && pt.y >= box.y0 && pt.y <= box.y1;
+  const inside = (n) => (n.kind === 't' ? inBox(n.g.a) && inBox(n.g.b) : inBox(n.v));
+  for (const [r, hit] of touched) {
+    const mine = [...new Set(hit.filter((q) => refs.has(q.ref)).map((q) => `${q.ref}.${q.pin}`))];
+    if (keep.has(r) || mine.length !== 1 || hit.every((q) => refs.has(q.ref))) continue;
+    const pin = own.find((q) => `${q.ref}.${q.pin}` === mine[0]);
+    const touches = (n) => (n.kind === 't' ? inPad(n.g.a, pin, n.g.layer, n.g.width / 2) || inPad(n.g.b, pin, n.g.layer, n.g.width / 2) : inPad(n.v, pin, null, n.v.pad / 2));
+    const start = nodes.map((n, i) => i).filter((i) => find(i) === r && touches(nodes[i]));
+    // From the pin outward: whole pieces within the bounds, and the one track that crosses them cut where it does
+    const seen = new Set(), cut = [], queue = [];
+    const visit = (j, from) => {
+      if (seen.has(j)) return;
+      const n = nodes[j];
+      if (inside(n)) { seen.add(j); queue.push(j); return; }
+      if (n.kind !== 't') return cut.push(null); // a via outside: give up on a stub
+      const [p, q] = inBox(n.g.a) ? [n.g.a, n.g.b] : inBox(n.g.b) ? [n.g.b, n.g.a] : [null, null];
+      if (!p) return cut.push(null);
+      let t = 1; // where p -> q leaves the box
+      for (const [d, lo, hi, o] of [[q.x - p.x, box.x0, box.x1, p.x], [q.y - p.y, box.y0, box.y1, p.y]]) if (d) t = Math.min(t, ((d > 0 ? hi : lo) - o) / d);
+      cut.push({ g: { ...n.g, a: p, b: { x: r4(p.x + (q.x - p.x) * t), y: r4(p.y + (q.y - p.y) * t) } } });
+    };
+    for (const i of start) visit(i);
+    while (queue.length) { const i = queue.shift(); for (const j of adj[i]) visit(j, i); }
+    if (cut.length !== 1 || !cut[0]) continue; // no way out, more than one, or not a plain track: routed whole
+    const id = `stub${out.stubs.length + 1}`, g = cut[0].g;
+    out.stubs.push({ id, net: g.net, pin: mine[0], end: { x: g.b.x, y: g.b.y, layer: g.layer } });
+    out.tracks.push({ ...g, stub: id });
+    for (const i of seen) { const n = nodes[i]; if (n.kind === 't') out.tracks.push({ ...n.g, stub: id }); else out.vias.push({ ...n.v, stub: id }); }
+  }
   return out;
 }
 
@@ -952,7 +993,10 @@ function planeChecks(json) {
     const st = json.filter((e) => e.type === 'source_trace' && e.connected_source_net_ids?.includes(n.source_net_id));
     const ids = new Set(st.map((t) => t.source_trace_id)), pts = [];
     for (const t of json.filter((e) => e.type === 'pcb_trace' && ids.has(e.source_trace_id))) for (const v of json.filter((e) => e.type === 'pcb_via' && e.pcb_trace_id === t.pcb_trace_id)) pts.push(v);
-    for (const t of st) { const h = json.find((e) => e.type === 'pcb_plated_hole' && e.pcb_port_id === port.get(t.connected_source_port_ids[0])); if (h) pts.push(h); }
+    for (const t of st) { // a pin's hole (a castellated pin's header pad, not its half hole on the edge)
+      const h = json.find((e) => e.type === 'pcb_plated_hole' && e.pcb_port_id === port.get(t.connected_source_port_ids[0]) && !e.port_hints?.includes('castellated'));
+      if (h) pts.push(h);
+    }
     const miss = pts.filter((p) => !covered(pours, p));
     out.push(!pours.length ? { level: 'fail', text: `plane ${n.name}: no copper drawn` }
       : miss.length ? { level: 'fail', text: `plane ${n.name}: ${miss.length} of its vias and holes are outside its copper (first at ${mm(miss[0].x)}, ${mm(miss[0].y)} mm)` }

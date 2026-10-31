@@ -65,19 +65,19 @@
       "interface": true
     },
     "core_turn": {
-      "value": 270,
+      "value": 90,
       "unit": "°",
-      "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block, so its USB end faces the USB-C socket"
+      "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block: its busiest side of escapes (RP2040 pins 2 to 12) faces the long row of pins"
     },
     "core_x": {
-      "value": -8.23,
+      "value": -10.93,
       "unit": "mm",
-      "rule": "The core block moved along the board, to the left end clear of the end pins"
+      "rule": "The core block moved along the board: a 2 mm channel from the end pins for tracks to pass"
     },
     "core_y": {
-      "value": 1.0,
+      "value": 0.46,
       "unit": "mm",
-      "rule": "The core block moved up, clear of the bottom pins"
+      "rule": "The core block moved up: clear of the bottom pins, with room above it for tracks"
     },
     "usb_x": {
       "value": 15.5,
@@ -103,7 +103,7 @@
       "rule": "Pad 32's height on the board"
     },
     "switch_in": {
-      "value": 4.4,
+      "value": 3.8,
       "unit": "mm",
       "rule": "R4 (SWITCH's resistor) in from its pin's castellated hole: clear of the header pad, within its placement rule"
     },

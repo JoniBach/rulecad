@@ -13,12 +13,14 @@ holes with 0.1 in header holes beside them.
    `rules/sea_picro.json`: its 52 parts, 58 nets, power planes, outline, and placement rules learnt from its layout
    (which small part sits by which pin).
 2. `projects/thin-picro/objects/module.js` redraws it:
-   - **The core keeps Sea-Picro's own layout:** the RP2040, flash, crystal, regulator and their small parts, turned
-     on their side as one block.
-   - **The edge pins are new:** 19 along the bottom and 6 up each end, with Sea-Picro's pin numbers, in its order
-     round the board, and its pad shapes.
+   - **The core keeps Sea-Picro's own layout and routing:** the RP2040, flash, crystal, regulator and their small
+     parts, turned on their side as one block, with Sea-Picro's own tracks and vias (548 tracks, 69 vias), and the
+     start of each track out of the core (the RP2040's escapes).
+   - **The edge pins are new:** 19 along the bottom and 6 up each end, with Sea-Picro's pin numbers and pad shapes.
+     Each pin sits where its track comes out of the core, so the tracks fan out without crossing. The pins keep
+     Sea-Picro's nets; only where they sit changes, so check the pinout before wiring a keyboard to it.
    - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors.
-3. The board is routed on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
+3. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
 
 The checks prove the result:
 
@@ -32,6 +34,12 @@ Where the board does what Sea-Picro does, such as USB-C pads close to the notch'
 failing it.
 
 Every size is a variable in `module.json`: the pin counts, where the USB-C socket sits, the board's height.
+
+## Status: not ready to order
+
+It routes (about 11 minutes), and these checks pass: the circuit is Sea-Picro's, the placement, both planes, the
+castellations, the outline. The fab's clearance checks still fail: some autorouted tracks run too close to, or
+over, other tracks. Don't order it until `cad check` passes.
 
 ## Build it
 

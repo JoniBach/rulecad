@@ -19,20 +19,34 @@ export function main (v) {
     ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [-1, 0], x: right + out, y: bottom + (i + v.end_from) * v.pitch }))]
   if (pins.length !== spots.length) throw new Error(`Sea-Picro has ${pins.length} edge pins: edge_pins + 2 × end_pins must come to ${pins.length}, not ${spots.length}`)
   const inn = header.x - half.x, offset = Math.hypot(...header.hole_offset) // the header pad in from the half hole, its hole set back out
-  const pads = pins.flatMap((pin, i) => {
+  const led = j2.pads.find((q) => q.pin === '32')
+
+  // The core first, turned as one block with Sea-Picro's own routing, while the rest is where Sea-Picro has it: its
+  // tracks out to the old pins become escapes, routed on from where they leave the core. Then USB-C and its parts
+  const usbParts = ['J1', ...src.placement.filter((r) => r.anchor === 'J1').map((r) => r.part)]
+  let c = moveGroup(src, src.parts.map((p) => p.ref).filter((r) => r !== 'J2' && !usbParts.includes(r)), { turn: v.core_turn, dx: v.core_x, dy: v.core_y }, { keep: true })
+  c = arrange(c, { J1: { x: v.usb_x, y: top + v.usb_out, rotation: 0 } })
+
+  // Which pin goes where: each pin's copper comes out of the core somewhere (an escape's end, or the part it joins), and
+  // the pins take the places round the U in that same order, so their tracks fan out without crossing. The pins keep
+  // Sea-Picro's numbers and nets; only their places change (firmware names the RP2040's pins, not these)
+  const placeOf = new Map(c.parts.map((p) => [p.ref, p]))
+  const toward = (pin) => {
+    const stub = c.kept.stubs.find((b) => src.nets[b.net]?.includes(`J2.${pin}`))
+    if (stub) return stub.end
+    const other = (Object.values(src.nets).find((n) => n.includes(`J2.${pin}`)) || []).find((x) => !x.startsWith('J2.'))
+    return other ? placeOf.get(other.split('.')[0]) : { x: 0, y: -1 }
+  }
+  const round = (q) => ((Math.atan2(q.y, q.x) * 180) / Math.PI - 90 + 720) % 360 // counter-clockwise from the top middle
+  const order = [...pins].sort((a, b) => round(toward(a)) - round(toward(b)))
+  const pads = order.flatMap((pin, i) => {
     const { side: [ix, iy], x, y } = spots[i], across = iy !== 0
     return [{ ...half, pin, x, y },
       { ...header, pin, x: x + ix * inn, y: y + iy * inn, w: across ? header.h : header.w, h: across ? header.w : header.h, hole_offset: [-ix * offset, -iy * offset] }]
   })
-  const led = j2.pads.find((q) => q.pin === '32')
   pads.push({ ...led, x: v.led_x, y: v.led_y })
-
-  // The circuit, rearranged: J2 on its new pads; the core turned as one block; USB-C on the top edge with its parts
-  const usbParts = ['J1', ...src.placement.filter((r) => r.anchor === 'J1').map((r) => r.part)]
-  const pin28 = spots[pins.indexOf('28')]
-  let c = arrange(withFootprint(src, 'J2', pads), { J2: { x: 0, y: 0, rotation: 0 } })
-  c = moveGroup(c, c.parts.map((p) => p.ref).filter((r) => r !== 'J2' && !usbParts.includes(r)), { turn: v.core_turn, dx: v.core_x, dy: v.core_y }, { keep: true })
-  c = arrange(c, { J1: { x: v.usb_x, y: top + v.usb_out, rotation: 0 },
+  const pin28 = spots[order.indexOf('28')]
+  c = arrange(withFootprint(c, 'J2', pads), { J2: { x: 0, y: 0, rotation: 0 },
     R4: { x: pin28.x + pin28.side[0] * v.switch_in, y: pin28.y + pin28.side[1] * v.switch_in, rotation: pin28.side[0] ? 0 : 90 } })
 
   // The outline: a rectangle with Sea-Picro's notch for the mid-mount socket, its size read off Sea-Picro's outline

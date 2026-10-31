@@ -349,7 +349,8 @@ test('keeping the source\'s routing: copper wholly within a moved block comes wi
   const viasBy = (n) => json.filter((e) => e.type === 'pcb_via').length;
   assert.equal(viasBy(), 2, 'R1.2 reaches GND by its kept via; R3.2 gets one');
   assert.deepEqual(sameCircuit(json, src).map((f) => f.level), ['pass']);
-  assert.match(k.notes.join(' | '), /the source's own routing kept: 2 tracks and 1 vias in 2 pieces/);
+  assert.match(k.notes.join(' | '), /the source's own routing kept: 3 tracks and 1 vias in 2 pieces, and 1 escapes routed on from where they leave/, 'B kept from R2 to the block\'s edge');
+  assert.deepEqual(k.copper.stubs.map((b) => b.pin), ['R2.pin2']);
   assert.equal(arrange(moved, { R2: { x: 0, y: 0 } }).kept.islands.length, 1, 'R2 moved apart: the A track is left to routing');
 });
 
@@ -364,4 +365,25 @@ test('round and rounded pads keep their shape: a test point is a circle, a round
   const pads = json.filter((e) => e.type === 'pcb_smtpad');
   assert.deepEqual([pads[0].shape, pads[0].radius], ['circle', 0.5]);
   assert.deepEqual([pads[1].shape, pads[1].corner_radius, pads[2].corner_radius], ['rect', 0.125, undefined]);
+});
+
+test('kept copper joins as KiCad joins it: a track ending short of a pad by less than its half-width, two pieces meeting at a pad', async () => {
+  // A: R1.1 to R2.1 by a track stopping 0.05 mm short of R2's pad; R2.1 on to R3.1 by a second piece from the pad's far side
+  const src = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal)) (net 0 "") (net 1 "A") (net 2 "B")
+    (footprint "R:R" (layer "F.Cu") (at 3 5) (property "Reference" "R1")
+      (pad "1" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "B")))
+    (footprint "R:R" (layer "F.Cu") (at 7 5) (property "Reference" "R2")
+      (pad "1" smd rect (at 0 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0 2) (size 0.6 0.5) (layers "F.Cu") (net 2 "B")))
+    (footprint "R:R" (layer "F.Cu") (at 11 5) (property "Reference" "R3")
+      (pad "1" smd rect (at 0 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0 2) (size 0.6 0.5) (layers "F.Cu") (net 2 "B")))
+    (segment (start 3.5 5) (end 6.65 5) (width 0.2) (layer "F.Cu") (net 1))
+    (segment (start 7.2 5) (end 11 5) (width 0.2) (layer "F.Cu") (net 1))
+    (gr_rect (start 0 0) (end 14 10) (layer "Edge.Cuts")))`);
+  const moved = moveGroup(src, ['R1', 'R2', 'R3'], {}, { keep: true });
+  assert.deepEqual(moved.kept.islands.map((k) => k.pins), [['R1.1', 'R2.1'], ['R2.1', 'R3.1']], 'the short track still reaches R2.1');
+  const k = clone(moved);
+  let asked;
+  await render({ outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, copper: k.copper, parts: k.parts, nets: k.nets },
+    { route: async (json, toRoute) => { asked = toRoute.map(({ a, b }) => [a.source.name, b.source.name]); return { traces: [] }; } });
+  assert.deepEqual(asked, [['pin2', 'pin2'], ['pin2', 'pin2']], 'only B (three pins, two joins) is routed: A is joined by its kept pieces');
 });
