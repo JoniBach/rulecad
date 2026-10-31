@@ -9,6 +9,7 @@
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder, cylinderElliptic, polygon } = jscad.primitives
 const { extrudeLinear } = jscad.extrusions
+const { offset } = jscad.expansions
 const { translate, rotateZ, mirrorY } = jscad.transforms
 
 export function main (v) {
@@ -111,7 +112,8 @@ export function main (v) {
     const straps = v.ops.union(box(v.back, v.back + v.strap, v.grip_bottom + v.post, v.receiver_bottom - v.post, 0, zTop), box(v.grip_front - v.strap, v.grip_front, v.grip_bottom + v.post, v.guard_bottom - v.post, 0, zTop))
     return { mounts: v.ops.subtract(mount, ...cuts), pockets: v.ops.subtract(v.ops.union(...voids), mount), space: extrudeLinear({ height: zTop }, outline), straps,
       bow_root: box(-v.root_block / 2, v.root_block / 2, root - v.root_block, root), sear_post: box(searRoot - v.sear_block / 2, searRoot + v.sear_block / 2, searY, floorBottom, z0, z0 + sw),
-      muzzle_end: box(v.muzzle - v.knock_len, v.muzzle, 0 - v.barrel_h, v.barrel_h, 0, zTop), column_top: box(col0 - v.wall_t, col1 + v.wall_t, v.top - v.post, v.top, z0, zTop) }
+      muzzle_end: box(v.muzzle - v.knock_len, v.muzzle, 0 - v.barrel_h, v.barrel_h, 0, zTop), column_top: box(col0 - v.wall_t, col1 + v.wall_t, v.top - v.post, v.top, z0, zTop),
+      outside: v.ops.subtract(box(v.back - v.grid, v.muzzle + v.grid, v.grip_bottom - v.grid, v.top + v.grid, 0 - 1, zTop + 1), translate([0, 0, 0 - v.grid], extrudeLinear({ height: zTop + 2 * v.grid }, offset({ delta: 2 * v.grid, corners: 'round', segments: v.smooth }, outline)))) }
   }
   const frame = v.frame === 'optimised' ? v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops, segments: v.smooth }) : mounts[0]
   return { body: v.ops.union(v.ops.subtract(v.ops.union(frame, mount), ...voids, ...cuts), ...flex.map((s) => translate([0, 0, -v.overlap], s))) } // the flexures sunk a little into the bed wall, so no faces merely touch

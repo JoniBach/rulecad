@@ -466,6 +466,11 @@
       "value": 5,
       "unit": "mm",
       "rule": "The cavity under each socket's hole, where the barb clicks out"
+    },
+    "grid": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The frame problem's cell (problems/frame.json says the same): the outside region stays two cells clear of the outline, so no node the part uses is fixed"
     }
   },
   "variants": {
@@ -524,6 +529,10 @@
     },
     "column_top": {
       "label": "The column walls' top: where a knock on the magazine lands (the regions variant)",
+      "optional": true
+    },
+    "outside": {
+      "label": "The grid's corners outside the outline, two cells clear of it: fixed for the solver, which otherwise crawls through near-empty space (the regions variant)",
       "optional": true
     }
   }

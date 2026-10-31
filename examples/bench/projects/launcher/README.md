@@ -57,8 +57,10 @@ trigger first: at 0.12 rad every notch is over 4% strain, hence the living hinge
 The frame: `problems/frame.json` takes the body's outline as its space, the bed wall and every mount (the leaf's
 root block, the slot's walls, the posts the sear and the hinge grow from, the stops, the column walls, the back
 wall, the lid's bosses) as kept, and the flexures' sweeps, the slot, the column and the trigger's room as empty
-(all three are parts of `body:regions`). It is held at the grip's straps and loaded by the bow at full draw, a
-knock on the muzzle sideways and downward, and a knock on the magazine, printable in +z.
+(all three are parts of `body:regions`, as are its supports and loads). It is held at the grip's straps and loaded
+by the bow at full draw and a knock on the muzzle sideways, printable in +z, on 3 mm cells for 120 steps. Every
+solve is slow on this grid (a one-cell-thick kept bed wall under big empty pockets conditions it badly), so the
+cases are the two that matter; a downward knock and one on the magazine were tried and dropped.
 
 ## Decisions worth knowing
 
