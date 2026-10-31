@@ -1,0 +1,79 @@
+{
+  "name": "lid",
+  "title": "The lid: the body's outline as a plate, with snap pins for its sockets",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher",
+    "launcher/body:regions"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed, pins up. Drawn mirrored, so that turned over onto the body its pins meet the sockets.",
+  "anchors": {
+    "seat": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "thickness": {
+      "value": "body.lid_t",
+      "unit": "mm",
+      "rule": "The plate"
+    },
+    "pin": {
+      "value": "body.pin",
+      "unit": "mm",
+      "rule": "The snap pins' diameter"
+    },
+    "length": {
+      "value": "body.pin_depth",
+      "unit": "mm",
+      "rule": "The pins' length: the sockets' depth"
+    },
+    "lip": {
+      "value": "body.pin_lip",
+      "unit": "mm",
+      "rule": "The barb past the pin: what the sockets' cavities allow for"
+    },
+    "slot": {
+      "value": "length + 2",
+      "unit": "mm",
+      "rule": "The split down each pin from its tip: through the barb and most of the shaft, leaving the foot whole"
+    },
+    "slot_gap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The split's width"
+    },
+    "window": {
+      "value": 24,
+      "unit": "mm",
+      "rule": "A thumb window over the grip pocket, to see the bow"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the pins"
+    },
+    "foot": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The pins' feet, as the generator draws them: sunk into the plate, so the shafts start at its face"
+    }
+  }
+}

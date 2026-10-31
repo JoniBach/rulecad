@@ -456,10 +456,10 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
       supports: [{ at: [0, 0, 1], size: [12, 12, 2] }], loads: [{ at: [0, 0, 23], r: 3, length: 2, axis: 'z', force: [10, 0, 0], case: 'push' }],
     }));
     fs.writeFileSync(path.join(project, 'objects', 'post.json'), JSON.stringify({ name: 'post', version: '0.1.0', engine: 'manifold',
-      variables: { problem: { type: 'problem', value: 'post' }, side: { value: 0, choice: [0, 1] }, lift: { value: 6, unit: 'mm' } }, variants: { lying: { side: 1 } },
+      variables: { problem: { type: 'problem', value: 'post', choice: ['post', 'none'] }, side: { value: 0, choice: [0, 1] }, lift: { value: 6, unit: 'mm' } }, variants: { lying: { side: 1 }, plain: { problem: 'none' } },
       // Lying: drawn on its side, and turned back for the analysis
       analysis: [{ problem: 'post', rotate: [0, '0 - 90 * side', 0], move: ['lift * side', 0, 0] }] }));
-    fs.writeFileSync(path.join(project, 'objects', 'post.js'), "import jscad from '@jscad/modeling'\nconst { rotateY, translate } = jscad.transforms\nexport function main (v) { const s = v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops }); return v.side ? translate([0, 0, v.lift], rotateY(Math.PI / 2, s)) : s }\n");
+    fs.writeFileSync(path.join(project, 'objects', 'post.js'), "import jscad from '@jscad/modeling'\nconst { rotateY, translate } = jscad.transforms\nexport function main (v) { const s = v.problems ? v.shapes.optimisedSolid(v.problems[v.problem], { ops: v.ops }) : jscad.primitives.cuboid({ size: [12, 12, 24], center: [0, 0, 12] }); return v.side ? translate([0, 0, v.lift], rotateY(Math.PI / 2, s)) : s }\n");
     const out = cad('optimise', 'post/post');
     assert.match(out, /push: moves [\d.e-]+ mm along its load/);
     assert.match(out, /printable built \+z/);
@@ -471,6 +471,10 @@ test('3D: a problem whose space is another design\'s part, optimised, built as a
     const lying = cad('check', 'post/post:lying');
     assert.match(lying, /24 × [\d.]+ × 12 mm, fits the bed/, 'drawn lying down');
     assert.ok(Math.abs(stiffness(lying) / stiffness(checked) - 1) < 0.02, `turned back, it analyses as it stands: ${stiffness(lying)} against ${stiffness(checked)} N/mm`);
+    // A variant with no problem builds without the optimiser: a rig, or the regions a problem reads
+    const plain = cad('check', 'post/post:plain');
+    assert.match(plain, /12 × 12 × 24 mm, fits the bed/, 'drawn without the result');
+    assert.doesNotMatch(plain, /optimising/);
     // Verified: on finer cells, checked against cells a quarter bigger, with a report; safety-critical, it's
     // unverified until a test is recorded
     const problemFile = path.join(project, 'problems', 'post.json'), objectFile = path.join(project, 'objects', 'post.json');

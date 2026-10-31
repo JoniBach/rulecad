@@ -1,0 +1,128 @@
+{
+  "name": "sled",
+  "title": "The sled: pushed by the bow, it pushes the disc",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed on its plate, the tab standing up. In the launcher it stands on edge in the barrel slot: the plate under the magazine, the rod back through the grip's top, the tab hanging down through the floor to the bow's tip, the ring out of the back.",
+  "anchors": {
+    "drive": {
+      "at": [
+        0,
+        "wall + width / 2",
+        "thickness / 2"
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "ref": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "thickness": {
+      "value": "launcher.disc_t + x1c.fit",
+      "unit": "mm",
+      "rule": "The plate: the slot's height less a fit, so it slides"
+    },
+    "length": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "The plate along the barrel: it blocks the magazine's mouth at rest and is guided by the slot's walls"
+    },
+    "nose": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The nose past the plate's front edge: the only part that touches the disc"
+    },
+    "nose_width": {
+      "value": "2 * (launcher.disc / 2 - launcher.spin_offset)",
+      "unit": "mm",
+      "rule": "The nose's reach across the slot from the bed wall: its middle is spin_offset off the disc's centre, so the push spins the disc"
+    },
+    "wall": {
+      "value": "launcher.wall",
+      "unit": "mm",
+      "rule": "The body's bed wall: the plate starts a fit above it"
+    },
+    "width": {
+      "value": "launcher.flexure_width",
+      "unit": "mm",
+      "rule": "The bow's width: the tab sits at its middle"
+    },
+    "across": {
+      "value": "launcher.disc",
+      "unit": "mm",
+      "rule": "The plate across the slot: the disc's diameter, a fit off the bed wall and the lid"
+    },
+    "tab": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The tab along the barrel: its rear face is what the bow pushes, its front what the sear's tooth would catch if it reached"
+    },
+    "tab_width": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The tab across, through its slit in the floor"
+    },
+    "tab_drop": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "How far the tab hangs below the floor's underside: room for the bow's tip to press it, with the tip's drop as it bends"
+    },
+    "rod": {
+      "value": 58,
+      "unit": "mm",
+      "rule": "From the tab's rear face back to the cocking ring's centre: the ring sits against the grip's back wall at rest"
+    },
+    "rod_width": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The rod across the slot: it rides the floor either side of the tab's gap, and carries the plate"
+    },
+    "ring": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The cocking ring's outer radius: a finger goes through"
+    },
+    "ring_wall": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The ring's wall"
+    },
+    "smooth": {
+      "value": 64,
+      "rule": "Segments round the ring"
+    },
+    "rod_z": {
+      "value": "wall + width / 2 + tab_width / 2 + x1c.fit",
+      "unit": "mm",
+      "rule": "The rod's near edge across the slot: beside the tab, clear of the sear's tooth, which rises on the bed side"
+    },
+    "ring_z": {
+      "value": "wall + x1c.fit + across - ring",
+      "unit": "mm",
+      "rule": "The ring's centre across the slot: its rim a fit under the lid"
+    },
+    "reach": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "The plate ahead of the tab: the tab hangs into the grip, where the bow is, and the plate runs under the magazine"
+    },
+    "overlap": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "How far the rod sinks into the plate, so they join"
+    }
+  }
+}

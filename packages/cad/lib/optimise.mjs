@@ -54,7 +54,11 @@ export async function readProblem(project, ref) {
   // A teardrop's point: a direction, or up or down the build direction (+z, as drawn, when it's free)
   const point = (t) => { const up = overhang && overhang !== 'none' ? overhang : '+z'; return t === 'up' ? up : t === 'down' ? (up[0] === '-' ? '+' : '-') + up[1] : t; };
   const region = async (r) => {
-    if (r.part) return { triangles: await part(r.part), part: r.part };
+    if (r.part) { // with where it is (its box's centre), for a load's or support's resultant
+      const triangles = await part(r.part), lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      for (const t of triangles) for (const q of t) for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a], q[a]); hi[a] = Math.max(hi[a], q[a]); }
+      return { triangles, part: r.part, at: lo.map((x, a) => (x + hi[a]) / 2) };
+    }
     if (r.points) return { points: r.points.map(pt) };
     if (r.size) return { at: pt(r.at), size: r.size.map(ev) };
     if (r.length != null) { const axis = r.axis || 'z', t = r.teardrop && point(r.teardrop); return { at: pt(r.at), r: ev(r.r), length: ev(r.length), axis, ...(t && t[1] !== axis ? { teardrop: t } : {}) }; } // along its axis, a teardrop has no point
@@ -91,6 +95,14 @@ export async function readProblem(project, ref) {
  * @param {{ onStep?: Function, onRun?: (why: string) => void, fresh?: boolean }} [options] fresh: run it even if it's cached;
  *   onRun: called once if it has to optimise, with why (no result yet, or the solver has changed since the last one)
  */
+// Nodes no cell that may be solid touches (the grid's corners outside a shaped space, the inside of avoided pockets)
+// are held: at the void's near-nothing stiffness they are what the solver crawls through, and they carry no material
+function holdEmpty(spec) {
+  const g = makeGrid(spec.grid), dim = spec.grid.nz ? 3 : 2, corners = 1 << dim, on = new Uint8Array(g.nodes);
+  for (let e = 0; e < g.cells; e++) if (spec.passive[e] >= 0) for (let k = 0; k < corners; k++) on[g.edof[e * g.cellDofs + dim * k] / dim] = 1;
+  for (let m = 0; m < g.nodes; m++) if (!on[m]) for (let a = 0; a < dim; a++) spec.fixed[dim * m + a] = 1;
+  return spec;
+}
 export async function optimised(project, ref, { onStep, onRun, fresh = false } = {}) {
   const r = await readProblem(project, ref), topopt = source('@rulecad/topopt'), [solver] = topopt.split('// ---------- shapes from results ----------');
   const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
@@ -99,7 +111,7 @@ export async function optimised(project, ref, { onStep, onRun, fresh = false } =
   // The shape's key holds this file too, so a change to how cad draws a result (anchored below) redraws it
   const hash = digest([VERSION, r.problem, r.outline, topopt, source('@rulecad/fea'), fs.readFileSync(new URL(import.meta.url), 'utf8')]), file = paths.cache('optimise', `${hash}.json`);
   if (!fresh && !process.env.CAD_NO_CACHE && host.exists(file)) return { ...JSON.parse(host.readText(file)), cached: true };
-  const spec = discretise(r.problem), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
+  const spec = holdEmpty(discretise(r.problem)), densities = paths.cache('densities', `${digest([VERSION, r.problem, solver, source('@rulecad/fea')])}.json`);
   // A mark that this problem has been optimised before (by any solver), so a run can say whether it's the solver that changed
   const seen = paths.cache('densities', `${digest([VERSION, r.problem])}.seen`);
   if (!fresh && !process.env.CAD_NO_CACHE && !host.exists(densities)) onRun?.(host.exists(seen) ? 'the solver has changed since its last result' : 'no result yet');
