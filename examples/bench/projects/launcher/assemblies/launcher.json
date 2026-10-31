@@ -1,5 +1,5 @@
 {
-  "title": "The disc launcher: the frame with its two cartridges pinned in, the sled, the magazine insert and a disc; cocked, and run forward to its rest",
+  "title": "The disc launcher: the frame with its two cartridges pinned in, the sled, the magazine insert and a disc, at rest",
   "kind": "fit",
   "uses": [
     "launcher",
@@ -53,10 +53,6 @@
     {
       "id": "pin_f",
       "object": "pin"
-    },
-    {
-      "id": "leaving",
-      "object": "disc"
     }
   ],
   "joints": [
@@ -359,58 +355,9 @@
         ]
       },
       "label": "Muzzle, into the barrel"
-    },
-    {
-      "id": "out",
-      "type": "fixed",
-      "parent": {
-        "item": "barrel",
-        "at": [
-          "barrel.muzzle",
-          "0 - launcher.disc_t / 2",
-          "barrel.wall + x1c.fit + launcher.disc / 2"
-        ],
-        "axis": [
-          0,
-          1,
-          0
-        ],
-        "ref": [
-          1,
-          0,
-          0
-        ]
-      },
-      "child": {
-        "item": "leaving",
-        "at": [
-          0,
-          0,
-          0
-        ],
-        "axis": [
-          0,
-          0,
-          1
-        ]
-      },
-      "label": "A disc half out of the muzzle: its way out must be clear"
     }
   ],
   "poses": {
-    "cocked": {
-      "run": "x1c.fit - (launcher.travel + launcher.overrun)",
-      "drop": 0,
-      "action.travel": "launcher.travel",
-      "magazine.compression": "magazine.preload + magazine.stroke"
-    },
-    "fired": {
-      "run": "x1c.fit - (launcher.travel + launcher.overrun)",
-      "drop": 0,
-      "action.travel": "launcher.travel",
-      "action.pull": "launcher.trigger_travel",
-      "magazine.compression": "magazine.preload + magazine.stroke"
-    },
     "rest": {
       "run": 0,
       "drop": "sled.thickness / 2 + launcher.disc_t / 2",
@@ -529,20 +476,6 @@
       "min": "0 - 0.3",
       "max": "x1c.fit",
       "note": "and through the cartridge's wall"
-    },
-    {
-      "a": "leaving",
-      "b": "frame",
-      "min": 0,
-      "max": "2 * x1c.fit",
-      "note": "The leaving disc clears the frame's muzzle"
-    },
-    {
-      "a": "leaving",
-      "b": "barrel",
-      "min": 0,
-      "max": "2 * x1c.fit",
-      "note": "and the barrel's"
     }
   ],
   "pose": "rest"

@@ -5,7 +5,7 @@ sear, the trigger's pivot, the magazine feeder and the magazine's cap are all pr
 rule set (`rules/launcher.json`) by the library's sizing functions. Like a real pistol it is a set of modules: two
 cartridges that pin into a frame.
 
-`npx cad check launcher/launcher` checks the whole thing in both poses (cocked, rest), with every pin's press fit;
+`npx cad check launcher/launcher` checks the whole thing at rest, as assembled, with every pin's press fit;
 `npx cad export` each object for the printer.
 
 ## The parts
@@ -48,9 +48,8 @@ about 115 × 110 × 26 mm.
 `node projects/launcher/report.mjs` prints the library's report from the built parts' own values. A notch hinge was
 tried for the trigger first: at the turn the finger's travel needs, every notch is over 4% strain.
 
-Bent and squeezed flexures belong to the assembly's poses, never to the parts: `"cocked": { "run": …,
-"action.travel": "launcher.travel" }` draws the bow bent there, while `action` itself is printed straight. The
-magazine's spring is squeezed the same way.
+Squeezed flexures belong to the assembly's pose, never to the parts: the rest pose sets `"magazine.compression"`, so
+the insert is drawn squeezed in its column while `magazine` itself is printed open.
 
 ## Decisions worth knowing
 
