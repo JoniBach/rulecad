@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit } from '@rulecad/pcb';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard } from '@rulecad/pcb';
 import { layerChanges } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
@@ -226,4 +226,25 @@ test('a route that changes layer inside a plated hole becomes two routes; throug
   assert.deepEqual(pieces.map((p) => [p[0].layer, p.at(-1).layer]), [['bottom', 'bottom'], ['top', 'top']]);
   assert.deepEqual([pieces[0].at(-1).x, pieces[1][0].x], [-0.5, -0.5], 'both end in the hole');
   assert.throws(() => layerChanges(route, [{ ...hole, x: 5 }]), /through a part at \(-0\.50, 0\.00\)/);
+});
+
+test('placement learnt from the source: small parts by the pins they serve, moved with them, checked', () => {
+  // U1 a 4-pad chip; C1 decouples its pin 1 (net V, with GND); C2 on pin 3's own net Q, and nearer pin 2 on GND
+  const pad = (pin, x, y, net) => ({ pin, x, y, w: 0.5, h: 0.5, angle: 0, smd: true, net });
+  const c = { nets: { V: ['U1.1', 'C1.1'], Q: ['U1.3', 'C2.1'], GND: ['U1.2', 'C1.2', 'C2.2', 'U1.4'] }, parts: [
+    { ref: 'U1', x: 0, y: 0, rotation: 0, layer: 'top', pads: [pad('1', -1, 1, 'V'), pad('2', -1, -1, 'GND'), pad('3', 1, -1, 'Q'), pad('4', 1, 1, 'GND')] },
+    { ref: 'C1', x: -1, y: 2.5, rotation: 0, layer: 'top', pads: [pad('1', 0, -0.5, 'V'), pad('2', 0, 0.5, 'GND')] },
+    { ref: 'C2', x: 0, y: -2.5, rotation: 90, layer: 'bottom', pads: [pad('1', 0, -0.5, 'Q'), pad('2', 0, 0.5, 'GND')] }] };
+  const rules = learnPlacement(c);
+  assert.deepEqual(rules.map((r) => [r.part, r.anchor, r.pin, r.net]), [['C1', 'U1', '1', 'V'], ['C2', 'U1', '3', 'Q']], 'by the most particular net, not GND');
+  assert.deepEqual([rules[0].source, rules[0].max], [1, 1.5], 'a quarter more, at least 0.5 mm');
+  const turned = arrange(c, { U1: { x: 10, y: 0, rotation: 90 } }, rules), [u, c1, c2] = turned.parts;
+  assert.deepEqual([u.x, u.y, u.rotation], [10, 0, 90]);
+  assert.deepEqual([c1.x, c1.y, c1.rotation], [7.5, -1, 90], 'C1 swung round U1 with it');
+  assert.deepEqual([c2.x, c2.y, c2.rotation], [12.5, 0, 0], 'on the back: turned the other way, seen from its side');
+  assert.deepEqual(padsOnBoard(c1).map((q) => [q.bx, q.by]), [[8, -1], [7, -1]]);
+  assert.deepEqual(placementChecks(turned, rules).map((f) => f.level), ['pass']);
+  const far = placementChecks(arrange(c, { C1: { x: -1, y: 6 } }, rules), rules);
+  assert.deepEqual(far.map((f) => f.text), ['placement: C1 is 4.5 mm from U1 pin 1 (V): at most 1.5 (1 on the source)']);
+  assert.throws(() => arrange(c, { U9: { x: 0 } }), /no part U9/);
 });

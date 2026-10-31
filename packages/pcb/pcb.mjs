@@ -532,6 +532,74 @@ export function clone(circuit, o = {}) {
   return { parts, nets, holes: circuit.holes, outline: circuit.outline, notes };
 }
 
+// A part's pads on the board (the circuit's frame), as render places them: turned, and mirrored in x on the back
+export function padsOnBoard(part) {
+  const m = part.layer === 'bottom' ? -1 : 1, t = (part.rotation * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+  return part.pads.map((q) => ({ ...q, bx: r4(part.x + m * (c * q.x - s * q.y)), by: r4(part.y + (s * q.x + c * q.y)) }));
+}
+
+/**
+ * Placement rules learnt from the source: each small part (fewer than 4 pads: resistors, capacitors, LEDs) stays near
+ * the pad of a bigger part (an anchor: a chip, a connector, a crystal) on its most particular net (the one joining the
+ * fewest pins), the nearest such pad on the source board: a decoupling capacitor by its power pin, a crystal's capacitors by the crystal. Each rule:
+ * { part, anchor, pin, net, source (mm, pad centre to pad centre on the source), max (mm) }. max allows a quarter more,
+ * and at least 0.5 mm: edit it in the rule set to be stricter or freer. o.anchor: the fewest pads an anchor has (4).
+ * @param {object} circuit @param {{ anchor?: number }} [o] @returns {object[]}
+ */
+export function learnPlacement(circuit, o = {}) {
+  const min = o.anchor ?? 4, anchors = circuit.parts.filter((p) => p.pads.length >= min), rules = [];
+  const anchorPads = anchors.flatMap((a) => padsOnBoard(a).filter((q) => q.net).map((q) => ({ ...q, ref: a.ref })));
+  for (const p of circuit.parts.filter((x) => x.pads.length < min)) {
+    let best = null; // on its most particular net (the fewest pins: a crystal's pin before GND), then the nearest pad
+    for (const q of padsOnBoard(p)) for (const a of anchorPads) {
+      if (!q.net || a.net !== q.net) continue;
+      const d = Math.hypot(a.bx - q.bx, a.by - q.by), n = circuit.nets[q.net]?.length ?? Infinity;
+      if (!best || n < best.n || (n === best.n && d < best.d)) best = { d, n, q, a };
+    }
+    if (best) rules.push({ part: p.ref, anchor: best.a.ref, pin: best.a.pin, net: best.q.net, source: r4(best.d), max: r4(Math.max(best.d * 1.25, best.d + 0.5)) });
+  }
+  return rules;
+}
+
+/**
+ * The circuit with some parts moved, each small part going with the anchor its placement rule names (turned with it,
+ * kept the same way round): moves { U3: { x, y, rotation } } (any of the three; rotation in quarter turns from above).
+ * Parts not moved, and not following a moved anchor, stay where the source put them. Returns a new circuit.
+ * @param {object} circuit @param {Record<string, { x?: number, y?: number, rotation?: number }>} moves @param {object[]} [rules]
+ */
+export function arrange(circuit, moves, rules = circuit.placement || learnPlacement(circuit)) {
+  const byRef = new Map(circuit.parts.map((p) => [p.ref, p])), follow = new Map(rules.map((r) => [r.part, r.anchor]));
+  for (const ref of Object.keys(moves)) if (!byRef.has(ref)) throw new Error(`arrange: no part ${ref} in the circuit`);
+  const moved = (p) => {
+    const to = moves[p.ref];
+    if (to) { const dr = ((to.rotation ?? p.rotation) - p.rotation + 360) % 360; return { ...p, x: to.x ?? p.x, y: to.y ?? p.y, rotation: (to.rotation ?? p.rotation) % 360, dr }; }
+    const a = follow.has(p.ref) && !moves[p.ref] ? byRef.get(follow.get(p.ref)) : null, at = a && moves[a.ref];
+    if (!at) return p;
+    const turn = ((at.rotation ?? a.rotation) - a.rotation + 360) % 360, t = (turn * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+    const dx = p.x - a.x, dy = p.y - a.y, own = p.layer === a.layer ? turn : -turn; // a part on the other side turns the other way, seen from its side
+    return { ...p, x: r4((at.x ?? a.x) + c * dx - s * dy), y: r4((at.y ?? a.y) + s * dx + c * dy), rotation: turnOf(p.rotation + own) };
+  };
+  return { ...circuit, parts: circuit.parts.map(moved).map(({ dr, ...p }) => p) };
+}
+
+/**
+ * Are the small parts still near their anchors? Findings ({ level, text }): one fail per broken rule, naming the part,
+ * the pin and the distances, or a pass.
+ * @param {object} circuit @param {object[]} [rules]
+ */
+export function placementChecks(circuit, rules = circuit.placement || learnPlacement(circuit)) {
+  const byRef = new Map(circuit.parts.map((p) => [p.ref, p])), out = [];
+  for (const r of rules) {
+    const p = byRef.get(r.part), a = byRef.get(r.anchor);
+    if (!p || !a) { out.push({ level: 'fail', text: `placement: ${!p ? r.part : r.anchor} isn't on the board` }); continue; }
+    const pin = padsOnBoard(a).filter((q) => q.pin === r.pin), mine = padsOnBoard(p).filter((q) => q.net === r.net);
+    const d = Math.min(...mine.flatMap((q) => pin.map((x) => Math.hypot(x.bx - q.bx, x.by - q.by))));
+    if (!(d <= r.max + 1e-6)) out.push({ level: 'fail', text: `placement: ${r.part} is ${mm(d)} mm from ${r.anchor} pin ${r.pin} (${r.net}): at most ${mm(r.max)} (${mm(r.source)} on the source)` });
+  }
+  if (!out.length) out.push({ level: 'pass', text: `placement: all ${rules.length} small parts within reach of their anchors, as the source has them` });
+  return out;
+}
+
 /**
  * Does the board join exactly the pins the circuit joins? Each of the circuit's nets (but planes) must be one group of
  * pins on the board, with no other net's pins in it. Findings as checks() gives them ({ level, text }).

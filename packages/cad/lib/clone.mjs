@@ -53,11 +53,12 @@ export async function cloneBoard(ref, name, o = {}) {
   if (!ref || !/^[a-z][a-z0-9_]*$/.test(name || '')) throw new Error('usage: cad clone <board.kicad_pcb | GitHub link> <name> [--source <link>] [--licence <licence>] [--force]  (name: lower case, digits and _)');
   const to = path.join(WS, 'rules', `${name}.json`);
   if (fs.existsSync(to) && !o.force) throw new Error(`rules/${name}.json already exists (--force to replace it)`);
-  const { fromKicadPcb, clone } = await pcbEngine();
-  if (!fromKicadPcb) throw new Error('cad clone needs @rulecad/pcb 0.3.7 or later: npm install @rulecad/pcb@latest');
+  const { fromKicadPcb, clone, learnPlacement } = await pcbEngine();
+  if (!learnPlacement) throw new Error('cad clone needs @rulecad/pcb 0.3.8 or later: npm install @rulecad/pcb@latest');
   const got = await fetchBoard(ref, o);
   const circuit = fromKicadPcb(got.text);
   circuit.source = { ...circuit.source, from: got.source, ...(got.commit ? { commit: got.commit } : {}), read: today() };
+  circuit.placement = learnPlacement(circuit); // which small parts stay by which pins: edit max to be stricter or freer
   const extra = { kind: 'derived', source: got.source, ...(got.licence ? { licence: got.licence } : {}), checked: today() };
   const rule = (value, unit, text) => ({ value, ...(unit ? { unit } : {}), rule: text, ...extra });
   const rules = {
@@ -73,6 +74,7 @@ export async function cloneBoard(ref, name, o = {}) {
   const nets = Object.keys(circuit.nets).length, planes = Object.keys(circuit.planes);
   console.log(`made ${path.relative(process.cwd(), to)}: ${circuit.parts.length} parts, ${nets} nets, ${circuit.width} × ${circuit.height} mm, ${circuit.layers} copper layers${planes.length ? `, planes ${planes.join(' ')}` : ''}`);
   console.log(`  from ${got.source}`);
+  console.log(`  placement: ${circuit.placement.length} small parts kept near the pins they serve (circuit.placement: edit max to change how near)`);
   if (!circuit.outline) console.log('  note: the outline isn\'t one closed shape: designs get its bounds');
   for (const n of clone(circuit).notes) console.log(`  note: ${n}`);
   if (!got.licence) console.log('  ! no licence given (--licence): find the source\'s licence before sharing anything made from it');

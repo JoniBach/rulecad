@@ -46,6 +46,12 @@ export function main(v) {
   yet (castellated pads, oval pads, holes set off-centre in a pad, more than 2 layers: plane nets are left out of the
   routing). `sameCircuit(json, circuit)` checks that a board joins exactly the pins the source joins, and names any
   that differ: the layout can change, the circuit can't.
+- **Placement learnt from the source:** `learnPlacement(circuit)` keeps each small part (a capacitor, a resistor, an
+  LED) near the pin it serves on a bigger part, as the source has it: a decoupling capacitor by its power pin, a
+  crystal's capacitor by the crystal. It goes by the part's most particular net (the one joining the fewest pins), so
+  GND doesn't decide. `cad clone` keeps these rules in `circuit.placement`, where `max` (mm) can be edited.
+  `arrange(circuit, { U3: { x, y, rotation } })` moves parts, and their small parts move and turn with them;
+  `placementChecks(circuit)` names any small part out of reach of its pin.
 - **Any board shape:** give `outline: [{ x, y }, ...]` in place of a centre and size. `shape.rounded(w, h, r)`,
   `shape.bevelled(w, h, b)`, `shape.circle(d)` and `shape.rect(w, h)` make common ones. The router keeps tracks
   inside the outline, and a check finds any pad outside it.
