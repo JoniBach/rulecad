@@ -391,7 +391,7 @@ It listens on this computer only. To watch from elsewhere, reach it through a pr
 A design uses it through a variable of type `problem`, which picks a problem by name:
 
 ```json
-"problem": { "type": "problem", "value": "lever", "choice": ["lever", "lever:both"] }
+"problem": { "type": "problem", "value": "lever", "choice": ["lever", "lever:both", "none"] }
 ```
 
 ```js
@@ -399,6 +399,10 @@ export function main (v) {
   return extrudeLinear({ height: v.thickness }, v.shapes.optimisedOutline(v.problems[v.problem]))
 }
 ```
+
+A variant that sets the problem to `none` builds without optimising (`v.problems` then lacks it): a test rig drawn on a
+plain base, or the parts a problem's regions name (`{ "part": "body:regions.mounts" }`), which must not need the problem
+they feed.
 
 `optimisedOutline` gives the outline as a 2D shape, its keep regions added and avoid regions cut exactly, so bolt
 holes come out true.

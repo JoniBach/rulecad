@@ -3,17 +3,17 @@
   "kind": "fit",
   "uses": ["launcher", "x1c"],
   "items": [
-    { "id": "action", "object": "action:cocked" },
+    { "id": "body", "object": "body:cocked" },
     { "id": "sled", "object": "sled" }
   ],
   "joints": [
-    { "id": "run", "type": "prismatic", "parent": "action.rest", "child": "sled.drive", "min": "x1c.fit - (launcher.travel + launcher.overrun)", "max": 0, "label": "The sled along the slot" }
+    { "id": "run", "type": "prismatic", "parent": "body.rest", "child": "sled.drive", "min": "x1c.fit - (launcher.travel + launcher.overrun)", "max": 0, "label": "The sled along the slot" }
   ],
   "poses": {
     "cocked": { "run": "x1c.fit - (launcher.travel + launcher.overrun)" },
     "rest": { "run": 0 }
   },
   "fits": [
-    { "a": "sled", "b": "action", "min": 0, "max": "x1c.fit", "note": "The sled slides in the slot" }
+    { "a": "sled", "b": "body", "min": 0, "max": "x1c.fit", "note": "The sled slides in the slot" }
   ]
 }

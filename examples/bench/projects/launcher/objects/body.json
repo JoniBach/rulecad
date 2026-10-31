@@ -1,0 +1,520 @@
+{
+  "name": "body",
+  "title": "The body: bow, sear and trigger printed in place, the magazine column and the barrel, on an optimised frame",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher",
+    "launcher/sled",
+    "launcher/magazine"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed on its bed wall, the lid side up, as the optimiser laid it out: every flexure bends within its layers. The sled drops into the slot from the lid side, its tab into the gap behind the trigger; the magazine insert goes in from the top; the lid snaps on.",
+  "anchors": {
+    "rest": {
+      "at": [
+        "rest_x",
+        0,
+        "wall + width / 2"
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "ref": [
+        0,
+        "0 - 1",
+        0
+      ]
+    },
+    "column": {
+      "at": [
+        "(col0 + col1) / 2",
+        "cap_bottom + magazine.bar",
+        "wall + magazine.width / 2"
+      ],
+      "axis": [
+        0,
+        "0 - 1",
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "mouth": {
+      "at": [
+        "(col0 + col1) / 2",
+        "0 - launcher.disc_t / 2",
+        "wall + fit + launcher.disc / 2"
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "lid": {
+      "at": [
+        0,
+        0,
+        "body_z + lid_t"
+      ],
+      "axis": [
+        0,
+        0,
+        "0 - 1"
+      ],
+      "ref": [
+        "0 - 1",
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "width": {
+      "value": "launcher.flexure_width",
+      "unit": "mm",
+      "rule": "Every flexure's height off the bed"
+    },
+    "wall": {
+      "value": "launcher.wall",
+      "unit": "mm",
+      "rule": "The base everything stands on: the body's bed wall"
+    },
+    "fit": {
+      "value": "x1c.fit",
+      "unit": "mm",
+      "rule": "Sliding parts' clearance"
+    },
+    "slot": {
+      "value": "launcher.disc_t + 2 * x1c.fit",
+      "unit": "mm",
+      "rule": "The barrel slot's height: the disc and a fit each side"
+    },
+    "rail": {
+      "value": "launcher.rail",
+      "unit": "mm",
+      "rule": "The slot's floor and ceiling"
+    },
+    "body_z": {
+      "value": "wall + launcher.disc + 2 * x1c.fit",
+      "unit": "mm",
+      "rule": "The slot's walls' height off the bed: the lid sits on them"
+    },
+    "travel": {
+      "value": 0,
+      "unit": "mm",
+      "tweak": {
+        "min": 0,
+        "max": 25
+      },
+      "rule": "How far the bow is drawn: 0 at rest, launcher.travel when cocked"
+    },
+    "travel_max": {
+      "value": "launcher.travel",
+      "unit": "mm",
+      "rule": "The full draw the leaf is sized for"
+    },
+    "overrun": {
+      "value": "launcher.overrun",
+      "unit": "mm",
+      "rule": "The sled's rest is this far ahead of the leaf's"
+    },
+    "draw": {
+      "value": "launcher.draw",
+      "unit": "N",
+      "rule": "The leaf's force at full draw"
+    },
+    "leaf_t": {
+      "value": "x1c.line * 6",
+      "unit": "mm",
+      "rule": "The leaf's thickness, six lines: what the sizing picks for the draw at the travel (the build checks)"
+    },
+    "max_leaf": {
+      "value": 100,
+      "unit": "mm",
+      "rule": "The longest leaf allowed: it runs down inside the grip"
+    },
+    "rest_x": {
+      "value": "bead + overrun",
+      "unit": "mm",
+      "rule": "The tab's rear face at rest, ahead of the bead by the overrun"
+    },
+    "root_block": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The block the leaf grows from"
+    },
+    "overlap": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "How far parts sink into each other, so they join"
+    },
+    "bite": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "How far the leaf's tip reaches up the tab from its bottom: more than the tip drops as it bends, less than the bead's radius covers of the leaf's lean"
+    },
+    "tip_y": {
+      "value": "bite - (slot / 2 + rail + sled.tab_drop)",
+      "unit": "mm",
+      "rule": "The leaf's tip: the tab's bottom plus the bite"
+    },
+    "sear_len": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "The sear's leaf: long enough that the trigger's lift stays under the strain limit"
+    },
+    "sear_t": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "The sear's leaf, three lines"
+    },
+    "sear_w": {
+      "value": "wall + width / 2 - sled.tab_width / 2 - fit - wall",
+      "unit": "mm",
+      "rule": "The sear's width: from the bed wall to beside the tab's path"
+    },
+    "undercut": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "How far the sear's tooth stands into the slot, over the sled's front edge"
+    },
+    "lead": {
+      "value": 30,
+      "unit": "degrees",
+      "rule": "The tooth's ramp: the sled rides over it when cocked"
+    },
+    "tooth": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The tooth along the barrel"
+    },
+    "sear_gap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The sear's leaf below the floor's underside"
+    },
+    "foot": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The foot under the sear's tip, and the shelf it carries back towards the trigger: the trigger's arm fits between the leaf and the shelf"
+    },
+    "sear_block": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The block the sear's leaf grows from"
+    },
+    "hinge_block": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The trigger's arm thickness: it fits between the sear's leaf and its shelf"
+    },
+    "shelf": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The shelf's reach back from the foot"
+    },
+    "trigger_x": {
+      "value": 24,
+      "unit": "mm",
+      "rule": "The trigger's pivot ahead of the leaf's rest: its hinge post stands clear of the tab's run, and the leaf bends away from it"
+    },
+    "finger_arm": {
+      "value": 50,
+      "unit": "mm",
+      "rule": "From the pivot down to the finger: the finger's travel over this is the hinge's turn"
+    },
+    "arm_t": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The finger arm's thickness along the barrel"
+    },
+    "hinge_arms": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The living hinge's blocks either side of its strip"
+    },
+    "pull": {
+      "value": 0,
+      "unit": "mm",
+      "tweak": {
+        "min": 0,
+        "max": 6
+      },
+      "rule": "How far the trigger is pulled: 0 at rest, launcher.trigger_travel when fired"
+    },
+    "pull_max": {
+      "value": "launcher.trigger_travel",
+      "unit": "mm",
+      "rule": "The finger's full travel, to the stop"
+    },
+    "post": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The stop posts' size"
+    },
+    "base_back": {
+      "value": 33,
+      "unit": "mm",
+      "rule": "The base reaches this far behind the leaf: the grip's back wall, which the cocking ring rests against"
+    },
+    "strain_limit": {
+      "value": "launcher.strain_limit",
+      "rule": "PLA's working strain"
+    },
+    "bead": {
+      "value": "leaf_t",
+      "unit": "mm",
+      "rule": "A round bead along the leaf's tip, the radius of its thickness: the tab is pushed at the tip whatever the leaf's lean, so the draw is the tip's travel"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the bead"
+    },
+    "frame": {
+      "value": "optimised",
+      "choice": [
+        "optimised",
+        "base",
+        "none"
+      ],
+      "rule": "What carries the mechanism: the optimised frame, a plain base plate for the test rig, or nothing (the regions a problem reads)"
+    },
+    "problem": {
+      "type": "problem",
+      "value": "frame",
+      "choice": [
+        "frame",
+        "none"
+      ],
+      "rule": "The frame's optimisation problem, or none for the rig and the regions"
+    },
+    "leaf_len": {
+      "value": 77.3,
+      "unit": "mm",
+      "rule": "The leaf's length: what the sizing gives for the draw at the travel (the build checks it, within half a millimetre), so the grip's bottom is a plain number"
+    },
+    "grip_bottom": {
+      "value": "tip_y - leaf_len - root_block - post",
+      "unit": "mm",
+      "rule": "The grip's bottom edge: under the leaf's root block"
+    },
+    "back": {
+      "value": "0 - base_back - wall_t",
+      "unit": "mm",
+      "rule": "The back of the grip: its wall's outer face, which the cocking ring rests against"
+    },
+    "wall_t": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The back wall and the column walls"
+    },
+    "grip_front": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The grip's front face: ahead of the leaf's rest with a strap's worth of wall, behind the trigger's swing"
+    },
+    "guard_bottom": {
+      "value": "0 - 70",
+      "unit": "mm",
+      "rule": "The trigger guard's bottom edge: under the finger's travel"
+    },
+    "guard_front": {
+      "value": 64,
+      "unit": "mm",
+      "rule": "The trigger guard's front: room for a finger ahead of the trigger"
+    },
+    "receiver_bottom": {
+      "value": "0 - 20",
+      "unit": "mm",
+      "rule": "The receiver's underside ahead of the guard: under the sear's pocket"
+    },
+    "muzzle": {
+      "value": 115,
+      "unit": "mm",
+      "rule": "The barrel's end: the disc's centre is 8 mm short of it when the sled stops"
+    },
+    "barrel_h": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The barrel's half-height past the column"
+    },
+    "top": {
+      "value": 28,
+      "unit": "mm",
+      "rule": "The receiver's top edge, the column walls' top: the insert's cap stands above it"
+    },
+    "tooth_back": {
+      "value": "bead - travel_max + sled.reach + sled.length + sled.nose + fit",
+      "unit": "mm",
+      "rule": "The sear tooth's holding face: a fit ahead of the sled's nose when cocked"
+    },
+    "col0": {
+      "value": "tooth_back + tooth + fit - magazine.ledge",
+      "unit": "mm",
+      "rule": "The column's rear wall, inner face: the mouth starts a fit ahead of the tooth, the ledge behind that"
+    },
+    "col1": {
+      "value": "col0 + magazine.follower_w + 2 * fit",
+      "unit": "mm",
+      "rule": "The column's front wall, inner face: the follower and a fit each side"
+    },
+    "notch_y": {
+      "value": "cap_bottom + magazine.overlap + magazine.hook_root / 2 - magazine.hook - fit",
+      "unit": "mm",
+      "rule": "The bottom of the notches the cap's barbs snap into: a fit under the hooks' tips with the cap pressed home"
+    },
+    "notch_h": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The notches' height: the barbs' lead and flat, with room"
+    },
+    "lid_t": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The lid plate"
+    },
+    "pin": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The lid's snap pins' diameter"
+    },
+    "pin_depth": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The sockets' depth, and the pins' length"
+    },
+    "boss": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Each socket boss's radius"
+    },
+    "pin_a": {
+      "value": "back + boss + wall_t",
+      "unit": "mm",
+      "rule": "The sockets: one at each corner of the grip's bottom, one at the top rear, one under the receiver's front. Their x, then their y"
+    },
+    "pin_a_y": {
+      "value": "grip_bottom + boss + 2",
+      "unit": "mm",
+      "rule": "Bottom rear socket, y"
+    },
+    "pin_b": {
+      "value": "grip_front - boss - 2",
+      "unit": "mm",
+      "rule": "Bottom front socket, x"
+    },
+    "pin_b_y": {
+      "value": "grip_bottom + boss + 2",
+      "unit": "mm",
+      "rule": "Bottom front socket, y"
+    },
+    "pin_c": {
+      "value": "back + boss + wall_t",
+      "unit": "mm",
+      "rule": "Top rear socket, x"
+    },
+    "pin_c_y": {
+      "value": "top - boss - 2",
+      "unit": "mm",
+      "rule": "Top rear socket, y"
+    },
+    "pin_d": {
+      "value": "guard_front + 16",
+      "unit": "mm",
+      "rule": "Front socket, x: under the receiver, ahead of the sear"
+    },
+    "pin_d_y": {
+      "value": "receiver_bottom + boss + 2",
+      "unit": "mm",
+      "rule": "Front socket, y"
+    },
+    "cap_bottom": {
+      "value": "sled.thickness / 2 + launcher.capacity * launcher.disc_t + magazine.follower + magazine.thickness + (magazine.turns - 1) * magazine.pitch - magazine.preload - magazine.stroke - magazine.overlap",
+      "unit": "mm",
+      "rule": "The insert's cap, its underside, pressed home over a full stack resting on the sled"
+    },
+    "strap": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The grip's front and back straps, where the hand holds: the optimiser's supports"
+    },
+    "knock_len": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The muzzle's end, where a knock lands"
+    }
+  },
+  "variants": {
+    "rig": {
+      "frame": "base",
+      "problem": "none"
+    },
+    "cocked": {
+      "frame": "base",
+      "problem": "none",
+      "travel": 25
+    },
+    "fired": {
+      "frame": "base",
+      "problem": "none",
+      "travel": 25,
+      "pull": 6
+    },
+    "regions": {
+      "frame": "none",
+      "problem": "none"
+    }
+  },
+  "parts": {
+    "body": {
+      "label": "The body, printed as one piece",
+      "optional": true
+    },
+    "mounts": {
+      "label": "What the optimiser must keep: the bed wall and everything the flexures are fixed to (the regions variant)",
+      "optional": true
+    },
+    "pockets": {
+      "label": "What the optimiser must leave empty: the flexures' sweeps, the slot, the column, the trigger's room (the regions variant)",
+      "optional": true
+    },
+    "space": {
+      "label": "Where the optimiser may put material: the body's outline (the regions variant)",
+      "optional": true
+    },
+    "straps": {
+      "label": "The grip's front and back straps, where the hand holds: the optimiser's supports (the regions variant)",
+      "optional": true
+    },
+    "bow_root": {
+      "label": "The leaf's root block: where the draw pulls back (the regions variant)",
+      "optional": true
+    },
+    "sear_post": {
+      "label": "The sear's root post: where the cocked sled pushes forward (the regions variant)",
+      "optional": true
+    },
+    "muzzle_end": {
+      "label": "The barrel's end: where a knock lands (the regions variant)",
+      "optional": true
+    },
+    "column_top": {
+      "label": "The column walls' top: where a knock on the magazine lands (the regions variant)",
+      "optional": true
+    }
+  }
+}

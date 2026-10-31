@@ -1,0 +1,95 @@
+{
+  "title": "The launcher's frame: the grip, receiver and barrel round the mechanism",
+  "description": "The body's outline is the space; its bed wall and everything the flexures and the sled are fixed to are kept (the body's mounts); the flexures' sweeps, the slot, the magazine column and the trigger's room stay empty (its pockets). Held by the hand at the grip's front and back straps; loaded by the bow at full draw (its root pulled back, the sear's post pushed forward), by a knock on the muzzle sideways and downward, and by a knock on the magazine. Printed lying on its bed wall, so z is the build direction.",
+  "uses": [
+    "x1c",
+    "launcher"
+  ],
+  "material": "pla",
+  "variables": {
+    "build": {
+      "value": "+z",
+      "choice": [
+        "none",
+        "+z"
+      ],
+      "rule": "+z: only what prints without supports, lying on its bed wall; none: optimised freely"
+    }
+  },
+  "variants": {
+    "free": {
+      "build": "none"
+    }
+  },
+  "overhang": "build",
+  "cell": 2.5,
+  "volume": 0.3,
+  "filter": 6.5,
+  "steps": 300,
+  "space": {
+    "part": "body:regions.space"
+  },
+  "keep": [
+    {
+      "part": "body:regions.mounts"
+    }
+  ],
+  "avoid": [
+    {
+      "part": "body:regions.pockets"
+    }
+  ],
+  "supports": [
+    {
+      "part": "body:regions.straps",
+      "label": "the grip's straps, in the hand"
+    }
+  ],
+  "loads": [
+    {
+      "part": "body:regions.bow_root",
+      "force": [
+        "0 - launcher.draw",
+        0,
+        0
+      ],
+      "case": "cocked"
+    },
+    {
+      "part": "body:regions.sear_post",
+      "force": [
+        "launcher.draw",
+        0,
+        0
+      ],
+      "case": "cocked"
+    },
+    {
+      "part": "body:regions.muzzle_end",
+      "force": [
+        0,
+        0,
+        "launcher.grip"
+      ],
+      "case": "knocked"
+    },
+    {
+      "part": "body:regions.muzzle_end",
+      "force": [
+        0,
+        "0 - launcher.grip",
+        0
+      ],
+      "case": "dropped"
+    },
+    {
+      "part": "body:regions.column_top",
+      "force": [
+        0,
+        0,
+        "launcher.grip"
+      ],
+      "case": "magazine"
+    }
+  ]
+}

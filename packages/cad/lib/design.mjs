@@ -96,6 +96,7 @@ export async function problemsOf(d, object, values) {
   const out = {};
   for (const [name, v] of Object.entries(object.variables || {})) if (v.type === 'problem') {
     const ref = values[name];
+    if (!ref || ref === 'none') continue; // a variant that draws without the optimiser (a test rig, or the regions a problem reads)
     if (!out[ref]) {
       // Optimising here can take an hour on a big solid: say so, why, and (on a terminal) how far it's got
       const live = process.stderr.isTTY;

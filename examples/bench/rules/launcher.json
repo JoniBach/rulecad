@@ -44,7 +44,6 @@
     },
     "efficiency": {
       "value": 0.3,
-      "unit": "",
       "rule": "The share of the stored energy the disc leaves with: the rest moves the sled and the leaf itself. A guess until a disc is timed",
       "kind": "estimate",
       "source": "The sled and the leaf's moving share weigh about three times the disc (examples/bench/projects/launcher/README.md)",
@@ -92,7 +91,6 @@
     },
     "capacity": {
       "value": 6,
-      "unit": "",
       "rule": "Discs in the magazine",
       "kind": "default",
       "source": "The disc launcher's design (examples/bench/projects/launcher/README.md)",
@@ -124,7 +122,6 @@
     },
     "strain_limit": {
       "value": 0.02,
-      "unit": "",
       "rule": "The strain PLA may see in a flexure: 2%, the working guess until the flexure bench's plates are measured (examples/bench/projects/flexures/results.json). Near PLA's yield: don't leave the launcher cocked",
       "kind": "estimate",
       "source": "The flexure bench (examples/bench/projects/flexures/README.md)",

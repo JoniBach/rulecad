@@ -2,5 +2,11 @@
   "name": "launcher",
   "description": "A disc launcher: a toy pistol whose spring, guide, sear, trigger and magazine feeder are all printed flexures from @rulecad/flexures, sized from one rule set (rules/launcher.json), and whose frame is left to the optimiser.",
   "material": "PLA",
-  "objects": ["disc"]
+  "objects": [
+    "disc",
+    "sled",
+    "magazine",
+    "body",
+    "lid"
+  ]
 }
