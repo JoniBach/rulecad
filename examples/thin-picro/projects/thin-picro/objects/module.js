@@ -1,6 +1,7 @@
 // A long, thin RP2040 module for keyboards: Sea-Picro's circuit (rules/sea_picro.json, read from its KiCad board by
 // cad clone; CERN-OHL-S, so this board is too), redrawn with castellated pins along the bottom edge and up both ends
-// and USB-C on the top edge. Its core keeps Sea-Picro's own proven layout, turned on its side; the pins are new, with
+// and USB-C on the top edge. Its core keeps Sea-Picro's own proven layout and routing (its tracks and vias), turned on
+// its side, so only the connections out of it are routed; the pins are new, with
 // Sea-Picro's numbers and pad shapes; the USB-C socket brings its fuse and CC resistors. The checks prove the circuit is
 // still Sea-Picro's and every small part still sits by the pin it serves.
 export function main (v) {
@@ -30,7 +31,7 @@ export function main (v) {
   const usbParts = ['J1', ...src.placement.filter((r) => r.anchor === 'J1').map((r) => r.part)]
   const pin28 = spots[pins.indexOf('28')]
   let c = arrange(withFootprint(src, 'J2', pads), { J2: { x: 0, y: 0, rotation: 0 } })
-  c = moveGroup(c, c.parts.map((p) => p.ref).filter((r) => r !== 'J2' && !usbParts.includes(r)), { turn: v.core_turn, dx: v.core_x, dy: v.core_y })
+  c = moveGroup(c, c.parts.map((p) => p.ref).filter((r) => r !== 'J2' && !usbParts.includes(r)), { turn: v.core_turn, dx: v.core_x, dy: v.core_y }, { keep: true })
   c = arrange(c, { J1: { x: v.usb_x, y: top + v.usb_out, rotation: 0 },
     R4: { x: pin28.x + pin28.side[0] * v.switch_in, y: pin28.y + pin28.side[1] * v.switch_in, rotation: pin28.side[0] ? 0 : 90 } })
 
@@ -44,7 +45,7 @@ export function main (v) {
   const k = clone(c, { layers: v.layers })
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
-      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, parts: k.parts, nets: k.nets, holes: k.holes },
+      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes },
     clone: { circuit: src, arranged: c }
   }
 }

@@ -321,3 +321,47 @@ test('a clone\'s edge findings that the source has too are said, not failed; new
   const fresh = await text(arrange(src, { R2: { x: 4.4, y: 4.1 } })); // R2 now against the top right corner: new
   assert.match(fresh, /fail: [^|]*R2\.pin\d violates copper-to-board-edge clearance/);
 });
+
+test('keeping the source\'s routing: copper wholly within a moved block comes with it; nothing routes it again', async () => {
+  const src = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal))
+    (net 0 "") (net 1 "A") (net 2 "GND") (net 3 "B")
+    (footprint "R:R" (layer "F.Cu") (at 3 5) (property "Reference" "R1")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "GND")))
+    (footprint "R:R" (layer "F.Cu") (at 3 8) (property "Reference" "R2")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 3 "B")))
+    (footprint "R:R" (layer "F.Cu") (at 15 8) (property "Reference" "R3")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 3 "B")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "GND")))
+    (segment (start 2.5 5) (end 2.5 8) (width 0.2) (layer "F.Cu") (net 1))
+    (segment (start 3.5 5) (end 4.5 5) (width 0.2) (layer "F.Cu") (net 2)) (via (at 4.5 5) (size 0.5) (drill 0.25) (layers "F.Cu" "B.Cu") (net 2))
+    (segment (start 3.5 8) (end 14.5 8) (width 0.2) (layer "F.Cu") (net 3))
+    (zone (net 2) (net_name "GND") (layer "In1.Cu"))
+    (gr_rect (start 0 0) (end 20 12) (layer "Edge.Cuts")))`);
+  assert.deepEqual([src.routing.tracks.length, src.routing.vias.length], [3, 1]);
+  assert.deepEqual(src.routing.tracks[0], { a: { x: -7.5, y: 1 }, b: { x: -7.5, y: -2 }, width: 0.2, layer: 'top', net: 'A' });
+  const moved = moveGroup(src, ['R1', 'R2'], { turn: 90, dx: 1 }, { keep: true });
+  assert.deepEqual(moved.kept.islands.map((k) => [k.net, k.pins, k.via]), [['A', ['R1.1', 'R2.1'], false], ['GND', ['R1.2'], true]], 'B runs to R3, which stays: left to routing');
+  assert.deepEqual(moved.kept.tracks.find((g) => g.net === 'A').a, { x: 0, y: -7.5 }, 'turned and moved with the block');
+  const k = clone(moved, { layers: 4 });
+  const json = await render({ outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, layers: 4, planes: k.planes, copper: k.copper, parts: k.parts, nets: k.nets }, stub);
+  const st = json.filter((e) => e.type === 'source_trace');
+  assert.ok(st.some((t) => /source's own copper/.test(t.display_name) && t.connected_source_port_ids.length === 2), 'A: joined by its kept track');
+  assert.equal(st.filter((t) => !t.connected_source_net_ids?.length && !/own copper/.test(t.display_name)).length, 1, 'only B is left to route');
+  const viasBy = (n) => json.filter((e) => e.type === 'pcb_via').length;
+  assert.equal(viasBy(), 2, 'R1.2 reaches GND by its kept via; R3.2 gets one');
+  assert.deepEqual(sameCircuit(json, src).map((f) => f.level), ['pass']);
+  assert.match(k.notes.join(' | '), /the source's own routing kept: 2 tracks and 1 vias in 2 pieces/);
+  assert.equal(arrange(moved, { R2: { x: 0, y: 0 } }).kept.islands.length, 1, 'R2 moved apart: the A track is left to routing');
+});
+
+test('round and rounded pads keep their shape: a test point is a circle, a rounded pad has its corners', async () => {
+  const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+    (footprint "T:TP" (layer "F.Cu") (at 3 5) (property "Reference" "TP1") (pad "1" smd circle (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "A")))
+    (footprint "R:R" (layer "F.Cu") (at 6 5) (property "Reference" "R1")
+      (pad "1" smd roundrect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (roundrect_rratio 0.25) (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "B")))
+    (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
+  assert.equal(c.parts[1].pads[0].corner, 0.125, 'a quarter of the shorter side');
+  const k = clone(c), json = await render({ outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, parts: k.parts, nets: k.nets }, stub);
+  const pads = json.filter((e) => e.type === 'pcb_smtpad');
+  assert.deepEqual([pads[0].shape, pads[0].radius], ['circle', 0.5]);
+  assert.deepEqual([pads[1].shape, pads[1].corner_radius, pads[2].corner_radius], ['rect', 0.125, undefined]);
+});

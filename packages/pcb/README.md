@@ -53,7 +53,10 @@ export function main(v) {
   `arrange(circuit, { U3: { x, y, rotation } })` moves parts, and their small parts move and turn with them;
   `placementChecks(circuit)` names any small part out of reach of its pin.
 - **Reshaping a clone:** `moveGroup(circuit, refs, { turn, dx, dy })` moves a block of parts as one, keeping the
-  source's proven layout of an area (a chip and all its small parts) while the board around it changes.
+  source's proven layout of an area (a chip and all its small parts) while the board around it changes. With
+  `{ keep: true }` the source's own tracks and vias come too, wherever they join only that block's pads, and only the
+  connections leaving the block are routed: dense areas round a fine-pitch chip keep their proven routing, and the
+  router has far less to do.
   `withFootprint(circuit, 'J2', pads)` puts a part on new pads with the same pins, so its nets can't change: new edge
   pins for a new board shape. A design returns `{ board, clone: { circuit, arranged } }`, and `cad check` then also
   checks the circuit is the source's and every small part is still by its pin.
@@ -67,6 +70,8 @@ export function main(v) {
   poured with tscircuit's copper pour solver, clear of other nets' holes and vias, with thermal spokes; the checks
   confirm every plane pad reaches its copper, and the inner layers get their own Gerbers (`.G1`, `.G2`). `clone()`
   gives a 4-layer source's plane nets their planes, with the source's via size and clearance.
+- **Pad shapes:** round SMD pads stay round, and rounded pads keep their corner radius, so clearances are measured to
+  the real copper.
 - **Castellated and oval pads:** a pad `{ castellated: true }` is a half hole on the board's edge (tracks join it at
   its inner edge), checked against JLCPCB's rules for castellated holes instead of the edge clearance. A pad
   `{ rect: { w, h, offset } }` is an oval (a rounded rectangle) round its hole, which can sit off-centre.
