@@ -22,7 +22,7 @@
 //   holes  [{ x, y, d }] in the board (mounting holes)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   planes { GND: { layer: 'inner1', pins: ['U1.GND', ...] } }: nets joined by copper filling an inner layer. Each SMD pad
-//            gets a via beside it (or in it, if big) before routing, or a track to one nearby; a pad with no room for
+//            gets a via beside it before routing, or a track to one nearby; a pad with no room for
 //            either is routed to the nearest pad of its net that reaches the plane. via_pad, via_hole, plane_clearance
 //            (mm, defaults 0.6, 0.3, 0.2) size them
 //   pads may be castellated ({ castellated: true }: a half hole on the edge, joined at its inner edge) or a rounded
@@ -249,9 +249,9 @@ function padsByPin(out) {
   return map;
 }
 
-// Plane vias. Each pad of a plane net gets to the plane: a plated hole goes through it already; an SMD pad gets a via
-// beside it and a short track (the nearest clear spot, outward from its part first), or, if it's big (a chip's
-// centre pad), vias in it; failing that, a track to a via of its net nearby; failing that, a link for the router to
+// Plane vias. Each pad of a plane net gets to the plane: a plated hole goes through it already (and so does an SMD pad
+// with one of its pin's plated holes in it: a chip's centre pad with its thermal vias); an SMD pad gets a via beside it
+// and a short track (the nearest clear spot, outward from its part first); failing that, a track to a via of its net nearby; failing that, a link for the router to
 // the nearest pad of its net that reaches the plane. Returns { nets: { net: { layer, id } }, links }.
 function planeVias(out, add, board, copper) {
   const b = out.find((e) => e.type === 'pcb_board'), clear = board.plane_clearance ?? 0.2, via = { hole: board.via_hole ?? 0.3, pad: board.via_pad ?? 0.6 };
@@ -292,13 +292,12 @@ function planeVias(out, add, board, copper) {
       for (const { e, sp } of found) {
         const st = add('source_trace', { connected_source_port_ids: [sp.source_port_id], connected_source_net_ids: [net.source_net_id], subcircuit_id: SUB, display_name: `${pin} to ${name}` });
         if (e.type === 'pcb_plated_hole') continue; // its barrel reaches every layer
+        const sb = smtBounds(e); // a pad with a plated hole of its own pin in it (a chip's centre pad with its thermal vias) has one too
+        if (found.some((f) => f.e.type === 'pcb_plated_hole' && Math.abs(f.e.x - sb.x) <= sb.w / 2 && Math.abs(f.e.y - sb.y) <= sb.h / 2)) continue;
         const pad = { x: e.x ?? smtBounds(e).x, y: e.y ?? smtBounds(e).y, ...smtBounds(e) }, start = { route_type: 'wire', x: pad.x, y: pad.y, width, layer: e.layer, start_pcb_port_id: e.pcb_port_id };
         const viaAt = (x, y) => ({ route_type: 'via', x, y, from_layer: e.layer, to_layer: e.layer === 'top' ? 'bottom' : 'top' });
         const places = [];
-        if (Math.min(pad.w, pad.h) >= 1.8) { // a big pad: vias in it, on a grid about 1.1 mm apart
-          const nx = Math.max(1, Math.floor((pad.w - 0.6) / 1.1) + 1), ny = Math.max(1, Math.floor((pad.h - 0.6) / 1.1) + 1);
-          for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) places.push({ x: pad.x + (i - (nx - 1) / 2) * 1.1, y: pad.y + (j - (ny - 1) / 2) * 1.1 });
-        } else {
+        {
           const c = comps.get(e.pcb_component_id) || pad, out0 = Math.atan2(pad.y - c.y, pad.x - c.x) || 0;
           const tries = [];
           for (const gap of [0.1, 0.25, 0.45, 0.7, 1, 1.4]) for (let k = 0; k < 16; k++) {

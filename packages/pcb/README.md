@@ -52,6 +52,24 @@ export function main(v) {
   GND doesn't decide. `cad clone` keeps these rules in `circuit.placement`, where `max` (mm) can be edited.
   `arrange(circuit, { U3: { x, y, rotation } })` moves parts, and their small parts move and turn with them;
   `placementChecks(circuit)` names any small part out of reach of its pin.
+- **Reshaping a clone:** `moveGroup(circuit, refs, { turn, dx, dy })` moves a block of parts as one, keeping the
+  source's proven layout of an area (a chip and all its small parts) while the board around it changes.
+  `withFootprint(circuit, 'J2', pads)` puts a part on new pads with the same pins, so its nets can't change: new edge
+  pins for a new board shape. A design returns `{ board, clone: { circuit, arranged } }`, and `cad check` then also
+  checks the circuit is the source's and every small part is still by its pin.
+- **As the source has it:** on a clone, a pad as close to the board's edge as the source has it (a mid-mount USB-C
+  socket in its notch), or a part that reaches past the outline there too, is said in the checks rather than failed.
+  The same thing new to your layout fails as usual.
+- **4 layers and planes:** `layers: 4` (or 6) puts tracks on the outer layers and `planes: { GND: { layer: 'inner1',
+  pins } }` fills inner layers with plane nets. Before routing, each SMD pad of a plane net gets a via beside it (or
+  a short track to one nearby; a pad with its pin's own plated hole in it, such as a chip's centre pad with thermal
+  vias, needs none; a pad with no room is routed to the nearest pad of its net that reaches the plane). The planes are
+  poured with tscircuit's copper pour solver, clear of other nets' holes and vias, with thermal spokes; the checks
+  confirm every plane pad reaches its copper, and the inner layers get their own Gerbers (`.G1`, `.G2`). `clone()`
+  gives a 4-layer source's plane nets their planes, with the source's via size and clearance.
+- **Castellated and oval pads:** a pad `{ castellated: true }` is a half hole on the board's edge (tracks join it at
+  its inner edge), checked against JLCPCB's rules for castellated holes instead of the edge clearance. A pad
+  `{ rect: { w, h, offset } }` is an oval (a rounded rectangle) round its hole, which can sit off-centre.
 - **Any board shape:** give `outline: [{ x, y }, ...]` in place of a centre and size. `shape.rounded(w, h, r)`,
   `shape.bevelled(w, h, b)`, `shape.circle(d)` and `shape.rect(w, h)` make common ones. The router keeps tracks
   inside the outline, and a check finds any pad outside it.

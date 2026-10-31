@@ -13,7 +13,7 @@
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
 import fs from 'node:fs';
 import path from 'node:path';
-import { circuitJson, bounds } from './circuit.mjs';
+import { circuitJson, bounds, smtBounds } from './circuit.mjs';
 export { bounds };
 import { loadRuleSet } from '@rulecad/cad/rules';
 import jscad from '@jscad/modeling';
@@ -408,7 +408,8 @@ function commonest(root) {
  * A KiCad board (.kicad_pcb text, KiCad 6 or later) as a circuit, in mm, y up, centred on the outline's bounds:
  * { layers, width, height, outline, parts, nets, planes, holes, source }. Each part keeps its place on the source
  * board ({ ref, footprint, value, mpn, lcsc, x, y, rotation, layer }) and its pads in its own frame, as seen from
- * the side it's on ({ pin, x, y, w, h, angle, smd, shape, net } and, for holes, hole, hole_offset, castellated).
+ * the side it's on ({ pin, x, y, w, h, angle, smd, shape, net } and, for holes, hole, hole_offset, castellated), and its
+ * unplated holes (holes: [{ x, y, d }], a socket's locating pegs). The board's own holes (a mounting hole) are in holes.
  * nets: { name: ['U1.3', 'C4.1'] }, part and pad, for nets joining two pads or more. planes: nets the source fills on
  * whole layers ({ GND: ['In1.Cu', 'B.Cu'] }). source: what the file says beyond the circuit (track and via counts).
  * @param {string} text @returns {object}
@@ -446,10 +447,10 @@ export function fromKicadPcb(text) {
     for (const l of [...kidsOf(f, 'fp_line'), ...kidsOf(f, 'fp_arc')]) edge(l, place);
     const props = Object.fromEntries(kidsOf(f, 'property').map((p) => [String(p[1]).trim(), p[2]]));
     const ref = props.Reference ?? kidsOf(f, 'fp_text').find((x) => x[1] === 'reference')?.[2];
-    const pads = [];
+    const pads = [], own = []; // own: the part's unplated holes (a socket's locating pegs), in its frame
     for (const p of kidsOf(f, 'pad')) {
       const [, name, kind, shape] = p, pa = kidOf(p, 'at'), sz = kidOf(p, 'size'), drill = kidOf(p, 'drill');
-      if (kind === 'np_thru_hole') { const q = place(num(pa[1]), num(pa[2])); holes.push({ x: q.x, y: q.y, d: num(drill[1]) }); continue; }
+      if (kind === 'np_thru_hole') { own.push({ x: r4(bottom ? -num(pa[1]) : num(pa[1])), y: r4(-num(pa[2])), d: num(drill[1]), at: place(num(pa[1]), num(pa[2])) }); continue; }
       if (!name) continue; // unnamed pads are mechanical: no net
       // A pad's place in the part's frame, y up, seen from the side the part is on: (x, -y) on top; a part on the back
       // is stored mirrored by KiCad, and turned the other way, so (-x, -y) with the turn negated (see rotation below)
@@ -464,8 +465,9 @@ export function fromKicadPcb(text) {
       if (p.some((x) => Array.isArray(x) && x[0] === 'property' && x[1] === 'pad_prop_castellated')) pad.castellated = true;
       pads.push(pad);
     }
-    if (!pads.length) continue; // a logo, a picture: nothing to connect
-    raw.push({ ref, footprint: f[1], value: props.Value, mpn: props.MPN ?? props['Manufacturer Part Number'], lcsc: props.LCSC, x: fx, y: fy, rotation: turnOf(bottom ? -deg : deg), layer: bottom ? 'bottom' : 'top', pads });
+    if (!pads.length) { holes.push(...own.map((h) => ({ ...h.at, d: h.d }))); continue; } // a mounting hole (a board's), a logo: nothing to connect
+    raw.push({ ref, footprint: f[1], value: props.Value, mpn: props.MPN ?? props['Manufacturer Part Number'], lcsc: props.LCSC, x: fx, y: fy, rotation: turnOf(bottom ? -deg : deg), layer: bottom ? 'bottom' : 'top', pads,
+      ...(own.length ? { holes: own.map(({ at, ...h }) => h) } : {}) });
   }
   // The outline: the loops on Edge.Cuts, the biggest outside (counter-clockwise, y up); without one closed loop, its bounds
   const found = loops(pieces);
@@ -531,7 +533,8 @@ export function clone(circuit, o = {}) {
       const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [r4(at.x + (u * q.w / 2) * ca - (v * q.h / 2) * sa), r4(at.y + (u * q.w / 2) * sa + (v * q.h / 2) * ca)]);
       return { pin, smd: true, hint: q.pin, ...at, points: pts }; // corners relative to the part, as circuit.mjs takes them
     });
-    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
+    const holes = (p.holes || []).map((h) => (quarterTurn ? h : { ...h, x: h.x * c - h.y * s, y: h.x * s + h.y * c }));
+    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, ...(holes.length ? { holes } : {}), courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
   }).filter((p) => p.pads.length);
   const have = new Set(parts.flatMap((p) => p.pads.map((q) => `${p.name}.${q.pin}`))), dropped = new Set();
   const nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => !planes.includes(n))
@@ -561,6 +564,21 @@ export function clone(circuit, o = {}) {
 export function padsOnBoard(part) {
   const m = part.layer === 'bottom' ? -1 : 1, t = (part.rotation * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
   return part.pads.map((q) => ({ ...q, bx: r4(part.x + m * (c * q.x - s * q.y)), by: r4(part.y + (s * q.x + c * q.y)) }));
+}
+
+/**
+ * The circuit with one part on a new footprint: the same pins, so the same nets, with pads where you put them (each
+ * { pin, x, y, w, h, angle, smd, hole, ... } as fromKicadPcb gives them, in the part's frame). Every pin the part had must
+ * have a pad, and no other: its circuit can't change, only its shape. Returns a new circuit.
+ * @param {object} circuit @param {string} ref @param {object[]} pads
+ */
+export function withFootprint(circuit, ref, pads) {
+  const part = circuit.parts.find((p) => p.ref === ref);
+  if (!part) throw new Error(`withFootprint: no part ${ref} in the circuit`);
+  const had = new Map(part.pads.map((q) => [q.pin, q.net])), given = new Set(pads.map((q) => q.pin));
+  const missing = [...had.keys()].filter((n) => !given.has(n)), extra = [...given].filter((n) => !had.has(n));
+  if (missing.length || extra.length) throw new Error(`withFootprint: ${ref}'s new pads must have the same pins as before${missing.length ? `; missing ${missing.join(', ')}` : ''}${extra.length ? `; not on ${ref}: ${extra.join(', ')}` : ''}`);
+  return { ...circuit, parts: circuit.parts.map((p) => (p.ref === ref ? { ...p, footprint: `${p.footprint} (reshaped)`, pads: pads.map((q) => ({ angle: 0, smd: false, shape: 'circle', ...q, net: had.get(q.pin) })) } : p)) };
 }
 
 /**
@@ -605,6 +623,22 @@ export function arrange(circuit, moves, rules = circuit.placement || learnPlacem
     return { ...p, x: r4((at.x ?? a.x) + c * dx - s * dy), y: r4((at.y ?? a.y) + s * dx + c * dy), rotation: turnOf(p.rotation + own) };
   };
   return { ...circuit, parts: circuit.parts.map(moved).map(({ dr, ...p }) => p) };
+}
+
+/**
+ * The circuit with a group of parts moved as one block, every part keeping its place relative to the others: turned
+ * about the origin by turn (quarter turns, counter-clockwise from above), then moved by dx, dy. For keeping a source's
+ * proven layout of a whole area (a chip with all its small parts) while the board around it changes. Returns a new circuit.
+ * @param {object} circuit @param {string[]} refs @param {{ turn?: number, dx?: number, dy?: number }} move
+ */
+export function moveGroup(circuit, refs, { turn = 0, dx = 0, dy = 0 } = {}) {
+  const set = new Set(refs), missing = refs.filter((r) => !circuit.parts.some((p) => p.ref === r));
+  if (missing.length) throw new Error(`moveGroup: no part ${missing.join(', ')} in the circuit`);
+  if (turn % 90) throw new Error(`moveGroup: turn in quarter turns (0, 90, 180, 270), not ${turn}`);
+  const t = (turn * Math.PI) / 180, c = Math.round(Math.cos(t)), s = Math.round(Math.sin(t));
+  return { ...circuit, parts: circuit.parts.map((p) => (!set.has(p.ref) ? p : {
+    ...p, x: r4(c * p.x - s * p.y + dx), y: r4(s * p.x + c * p.y + dy), rotation: turnOf(p.rotation + (p.layer === 'bottom' ? -turn : turn))
+  })) };
 }
 
 /**
@@ -740,19 +774,28 @@ export const holes = (json) => json.filter((e) => e.type === 'pcb_hole' && !e.pc
 
 // ---------- checks ----------
 const mm = (x) => String(Number(x.toFixed(3))); // 0.30000000000000004 reads as 0.3
-// checks(json, v) -> findings ({ level, text }): tscircuit's own design checks, the fab's limits, and the matrix
-export async function checks(json, v, matrix) {
+// checks(json, v, matrix, source) -> findings ({ level, text }): tscircuit's own design checks, the fab's limits, the
+// matrix, and for a clone (source: { circuit, arranged }) the source's circuit and placement
+export async function checks(json, v, matrix, source) { // source: a clone's { circuit, arranged } (its own checks join these)
   const { runAllChecks } = await import('@tscircuit/checks');
   const out = [], j = v.jlcpcb;
   const board = json.find((e) => e.type === 'pcb_board');
   // On a shaped board, a part's box can reach past a curved edge when its copper doesn't (a ring on a round disc): that
   // part is checked here pad by pad against the outline instead (below)
   // Castellated pads sit on the edge by design: half holes the fab cuts through. They're checked against its rules for them below
-  const castellated = json.filter((e) => e.type === 'pcb_plated_hole' && e.port_hints?.includes('castellated')), halves = new Set(castellated.map((e) => e.pcb_plated_hole_id));
+  // (with the other pads of their pins: a header pad beside a half hole runs into it, as on a Pico)
+  const castellated = json.filter((e) => e.type === 'pcb_plated_hole' && e.port_hints?.includes('castellated'));
+  const pinOf = (e) => `${e.pcb_component_id}:${e.port_hints?.[1]}`, edgePins = new Set(castellated.map(pinOf));
+  const halves = new Set(json.filter((e) => e.type === 'pcb_plated_hole' && edgePins.has(pinOf(e))).map((e) => e.pcb_plated_hole_id));
   const padsOf = (id) => json.filter((e) => e.pcb_component_id === id && ['pcb_smtpad', 'pcb_plated_hole'].includes(e.type) && !halves.has(e.pcb_plated_hole_id));
   const fits = (id) => board.outline && padsOf(id).every((e) => (e.points || [e]).every((q) => inside(board.outline, q.x, q.y)));
-  const onEdge = (e) => [...halves].some((id) => JSON.stringify(e).includes(`"${id}"`));
-  const drc = (await runAllChecks(json)).filter((e) => !(e.type === 'pcb_component_outside_board_error' && fits(e.pcb_component_id)) && !onEdge(e));
+  const onEdge = (e) => { const t = JSON.stringify(e); return [...halves].some((id) => new RegExp(`${id}(?!\\d)`).test(t)); };
+  // A clone's pads as close to the edge as the source has them, and parts that reach past it as they do there, are the
+  // source's design (a mid-mount socket in its notch): said, not failed. Anything else near the edge fails as usual
+  const inherited = [], same = source?.circuit ? asSource(json, source.circuit) : null, planeNames = new Set(json.filter((e) => e.type === 'source_net').map((e) => e.name));
+  const drc = (await runAllChecks(json)).filter((e) => !(e.type === 'pcb_component_outside_board_error' && fits(e.pcb_component_id)) && !onEdge(e))
+    .filter((e) => !(same?.(e) && inherited.push(e)))
+    .filter((e) => !(planeNames.has(e.message?.match(/is not connected to net \[(.+)\] by a PCB trace/)?.[1]))); // planes join these: checked below, pad by pad
   const problems = [...json, ...drc].filter((e) => /_error$/.test(e.type));
   const seen = new Set(), errors = problems.filter((e) => !seen.has(e.message) && seen.add(e.message));
   out.push(errors.length ? { level: 'fail', text: `${errors.length} design-rule errors: ${errors.slice(0, 3).map((e) => e.message).join('; ')}` } : { level: 'pass', text: 'tscircuit\'s design checks: no errors (traces, clearances, holes, board edge)' });
@@ -771,7 +814,8 @@ export async function checks(json, v, matrix) {
   if (drills.length) out.push(Math.min(...drills) < j.drill_min ? { level: 'fail', text: `a hole under JLCPCB's ${j.drill_min} mm` } : { level: 'pass', text: `${drills.length} holes, smallest ${Math.min(...drills)} mm (JLCPCB: ${j.drill_min} mm)` });
   const b = json.find((e) => e.type === 'pcb_board'), size = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm`;
   if (b.outline) { // a shaped board: every pad and hole inside it
-    const pads = json.filter((e) => ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole'].includes(e.type) && !halves.has(e.pcb_plated_hole_id)), out_ = pads.filter((e) => (e.points || [e]).some((q) => !inside(b.outline, q.x, q.y)));
+    const reaching = same ? same.reaching : new Set();
+    const pads = json.filter((e) => ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole'].includes(e.type) && !halves.has(e.pcb_plated_hole_id) && !reaching.has(e.pcb_component_id)), out_ = pads.filter((e) => (e.points || [e]).some((q) => !inside(b.outline, q.x, q.y)));
     out.push(out_.length ? { level: 'fail', text: `${out_.length} pads or holes outside the board's outline (first at ${mm(out_[0].x)}, ${mm(out_[0].y)} mm)` } : { level: 'pass', text: `shaped board (${b.outline.length} points): all ${pads.length} pads and holes inside it` });
   }
   if (castellated.length) { // JLCPCB's rules for half holes: big enough, far enough apart
@@ -789,9 +833,41 @@ export async function checks(json, v, matrix) {
       ? { level: 'pass', text: `matrix: ${matrix.keys.length} keys on ${Object.keys(matrix.rows).length} rows × ${Object.keys(matrix.cols).length} columns, ${gpio.length} GPIO (rows ${Object.values(matrix.rows).join(' ')}; columns ${Object.values(matrix.cols).join(' ')})` }
       : { level: 'fail', text: 'matrix: two keys share a row and column, or a GPIO is used twice' });
   }
+  if (inherited.length) out.push({ level: 'info', text: `as the source has them, so not failed: ${[...new Set(inherited.map((e) => e.message.replace(/ \(.*$/, '').replace(/\. Try moving.*$/, '')))].slice(0, 4).join('; ')}${inherited.length > 4 ? ` (${inherited.length} in all)` : ''}` });
+  if (source?.circuit) out.push(...sameCircuit(json, source.circuit), ...placementChecks(source.arranged || source.circuit, source.circuit.placement || learnPlacement(source.circuit)));
   const notes = new Set([...json, ...drc].filter((e) => /_warning$/.test(e.type)).map((e) => e.type.replace(/^(source|pcb)_|_warning$/g, '').replace(/_/g, ' ')));
   if (notes.size) out.push({ level: 'info', text: `tscircuit notes, none about the copper: ${[...notes].join(', ')}` });
   return out;
+}
+
+// A clone's edge findings that the source has too: a pad whose centre is as far from the edge as on the source (to
+// 0.02 mm), and a part that reaches past the outline there too. Returns a test for a design-rule error, with .reaching:
+// the board's components that reach past it as on the source.
+function asSource(json, circuit) {
+  const toEdge = (pts, x, y) => { let d = Infinity; for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length], dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l)) : 0; d = Math.min(d, Math.hypot(x - a.x - t * dx, y - a.y - t * dy)); } return d; };
+  const src = new Map(), past = new Set(), so = circuit.outline;
+  if (!so) return null;
+  for (const p of circuit.parts) {
+    for (const q of padsOnBoard(p)) { src.set(`${p.ref}.pin${q.pin}`, toEdge(so, q.bx, q.by)); if (!inside(so, q.bx, q.by)) past.add(p.ref); }
+    for (const h of padsOnBoard({ ...p, pads: p.holes || [] })) if (!inside(so, h.bx, h.by)) past.add(p.ref); // its unplated holes too
+  }
+  const b = json.find((e) => e.type === 'pcb_board'), bo = b.outline;
+  const comp = new Map(json.filter((e) => e.type === 'pcb_component').map((e) => [e.pcb_component_id, json.find((c) => c.source_component_id === e.source_component_id && c.type === 'source_component')?.name]));
+  const reaching = new Set([...comp].filter(([, n]) => past.has(n)).map(([id]) => id));
+  const sp = new Map(json.filter((e) => e.type === 'source_port').map((e) => [e.source_port_id, e]));
+  const at = new Map();
+  for (const e of json.filter((x) => (x.type === 'pcb_smtpad' || x.type === 'pcb_plated_hole') && x.pcb_port_id)) {
+    const port = json.find((x) => x.type === 'pcb_port' && x.pcb_port_id === e.pcb_port_id), name = `${comp.get(e.pcb_component_id)}.${sp.get(port?.source_port_id)?.name}`;
+    const c = e.type === 'pcb_smtpad' ? smtBounds(e) : e; if (!at.has(name)) at.set(name, c);
+  }
+  const test = (e) => {
+    const m = e.message?.match(/^(?:SMT pad|Plated hole) (\S+) violates copper-to-board-edge/);
+    if (m) { const c = at.get(m[1]), d = src.get(m[1]); return c != null && d != null && bo && Math.abs(toEdge(bo, c.x, c.y) - d) <= 0.02; }
+    const k = e.message?.match(/^Component (\S+) extends outside board/);
+    return !!(k && past.has(k[1]));
+  };
+  test.reaching = reaching;
+  return test;
 }
 
 // Each plane net's vias and holes inside its plane's copper (the pour leaves a clear ring round the others)
