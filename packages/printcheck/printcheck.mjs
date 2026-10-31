@@ -267,14 +267,14 @@ export function seams(polys, eps = 1e-3) {
  * grid of a quarter of the print line and opened by half a line, so anything narrower than a line (which the slicer
  * never extrudes) is not a region, and the rest is compared by pixels.
  * @param {Face[]} polys the closed mesh
- * @param {{ layer?: number, overhang?: number, line?: number }} printer layer height, overhang limit (degrees from
- *   vertical), the line width (the pixel)
+ * @param {{ layer?: number, overhang?: number, line?: number, onLayer?: (layer: number, layers: number) => void }} printer
+ *   layer height, overhang limit (degrees from vertical), the line width; onLayer: called as each layer is cut (progress)
  * @returns {{ islands: { z: number, area: number, at: number[], cells: number[][] }[], layers: number, overhang: number }}
  *   each island's layer (its z), its area (mm²), its centre, and its pixels' centres ([x, y], for whatever fixes it); how
  *   many layers were cut; and overhang: the area (mm²) of layers lying further out than the one below can hold, flat
  *   undersides included (the bridge check judges those separately)
  */
-export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42 } = {}) {
+export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLayer } = {}) {
   // The pixel: a quarter of a line, or coarser on a big part so a layer stays under about a million pixels
   const { lo, hi } = bounds(polys), pitch = Math.max(line / 4, Math.max(hi[0] - lo[0], hi[1] - lo[1]) / 1000), nx = Math.ceil((hi[0] - lo[0]) / pitch) + 6, ny = Math.ceil((hi[1] - lo[1]) / pitch) + 6;
   const r2 = Math.max(1, Math.round(line / 2 / pitch)); // half a line, in pixels
@@ -283,16 +283,34 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42 } = {})
   for (const p of polys) for (let i = 1; i < p.length - 1; i++) tris.push([p[0], p[i], p[i + 1]]);
   const zmin = tris.map((t) => Math.min(t[0][2], t[1][2], t[2][2])), zmax = tris.map((t) => Math.max(t[0][2], t[1][2], t[2][2]));
   const count = Math.max(1, Math.round((hi[2] - lo[2]) / layer)), out = [];
+  // Each triangle filed under the layers whose middle it spans, so a layer looks only at its own
+  const byLayer = Array.from({ length: count }, () => []);
+  for (let t = 0; t < tris.length; t++) for (let L = Math.max(0, Math.ceil((zmin[t] - lo[2]) / layer - 0.5)); L <= Math.min(count - 1, Math.floor((zmax[t] - lo[2]) / layer - 0.5)); L++) byLayer[L].push(t);
   let below = null, held = null, overhangArea = 0;
   const px = (x) => Math.floor((x - lo[0]) / pitch) + 3;
   // Only what the printer can lay counts: each layer is opened by half a line (eroded, then grown back), so anything
   // narrower than a line, which the slicer drops, is not a region at all
-  const erode = (f) => { const e = new Uint8Array(nx * ny); for (let j = r2; j < ny - r2; j++) for (let i = r2; i < nx - r2; i++) { const n = j * nx + i; let all = 1; for (let b = -r2; b <= r2 && all; b++) for (let a = -r2; a <= r2; a++) if (Math.abs(a) + Math.abs(b) <= r2 && !f[n + b * nx + a]) { all = 0; break; } e[n] = all; } return e; };
-  const dilate = (f, r) => { const g = new Uint8Array(nx * ny); for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const n = j * nx + i; if (!f[n]) continue; for (let b = -r; b <= r; b++) for (let a = -r; a <= r; a++) { const ii = i + a, jj = j + b; if (ii >= 0 && ii < nx && jj >= 0 && jj < ny) g[jj * nx + ii] = 1; } } return g; };
+  // Square windows, by running sums along each row and then each column: any (grow) or all (shrink) within r pixels
+  const sweep = (f, r, all) => {
+    const tmp = new Uint8Array(nx * ny), out = new Uint8Array(nx * ny), w = 2 * r + 1, sum = new Int32Array(Math.max(nx, ny) + 1);
+    for (let j = 0; j < ny; j++) { // along x
+      const row = j * nx; sum[0] = 0;
+      for (let i = 0; i < nx; i++) sum[i + 1] = sum[i] + f[row + i];
+      for (let i = 0; i < nx; i++) { const a = Math.max(0, i - r), b = Math.min(nx, i + r + 1), n = sum[b] - sum[a]; tmp[row + i] = all ? (b - a === w && n === w ? 1 : 0) : n > 0 ? 1 : 0; }
+    }
+    for (let i = 0; i < nx; i++) { // then along y
+      sum[0] = 0;
+      for (let j = 0; j < ny; j++) sum[j + 1] = sum[j] + tmp[j * nx + i];
+      for (let j = 0; j < ny; j++) { const a = Math.max(0, j - r), b = Math.min(ny, j + r + 1), n = sum[b] - sum[a]; out[j * nx + i] = all ? (b - a === w && n === w ? 1 : 0) : n > 0 ? 1 : 0; }
+    }
+    return out;
+  };
+  const erode = (f) => sweep(f, r2, true), dilate = (f, r) => sweep(f, r, false);
   const opened = (f) => dilate(erode(f), r2);
   for (let L = 0; L < count; L++) {
+    onLayer?.(L, count);
     const z = lo[2] + (L + 0.5) * layer, segs = [];
-    for (let t = 0; t < tris.length; t++) {
+    for (const t of byLayer[L]) {
       if (zmin[t] > z || zmax[t] < z) continue;
       const pts = [];
       for (let i = 0; i < 3; i++) {

@@ -1,11 +1,11 @@
 // The model page: decode the link, draw the model (dark faces, ink creases, turning slowly; drag to turn it yourself),
-// with a parts panel to show, hide and restyle each part, tick the parts a download holds, and make print files (STL,
-// or a 3MF in Bambu Studio's layout) in the browser. Nothing is uploaded:
+// with a parts panel to show, hide and restyle each part, tick the parts a download holds, make print files (STL,
+// or a 3MF in Bambu Studio's layout) in the browser, and slice it layer by layer with its islands in red. Nothing is uploaded:
 // the model lives in the link (or, for a short link, in the Gist it names).
 import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, stl, threemf, filename, thingOf, jointValues, placeItems, mul, inv, DOFS } from './model-link.mjs';
 import { check } from './printcheck.mjs';
 import { WebGLRenderer, Scene, PerspectiveCamera, BufferGeometry, Float32BufferAttribute, Mesh, MeshLambertMaterial, LineSegments,
-  LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3 } from './three.min.js';
+  LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3, Plane, Points, PointsMaterial } from './three.min.js';
 
 const $ = (id) => document.getElementById(id);
 const DRAWER = '(max-width: 760px), (pointer: coarse) and (max-width: 1100px)'; // the same query as the drawer's CSS
@@ -236,7 +236,7 @@ function show(model) {
     parts.forEach((p) => { p.visible = true; p.style = 'auto'; });
     $('explode').value = 0; $('spin').checked = $('supports').checked = $('references').checked = true;
     $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.mode === 'solid'));
-    turn.rotation.y = 0; tilt.rotation.x = 0.45; status(''); motion?.reset(); apply();
+    turn.rotation.y = 0; tilt.rotation.x = 0.45; status(''); motion?.reset(); if ($('slice').checked) { $('slice').checked = false; $('slice').onchange(); } apply();
   };
   $('supports').closest('label').hidden = !parts.some((p) => p.role === 'support');
   $('references').closest('label').hidden = !parts.some((p) => p.role === 'reference');
@@ -257,6 +257,7 @@ function show(model) {
   const stage = $('stage'), renderer = new WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setClearColor(0x000000);
   stage.append(renderer.domElement);
+  const slicer = slicing(model, parts, turn, mid, renderer, () => { view.explode = 0; $('explode').value = 0; apply(); });
   const camera = new PerspectiveCamera(30, 1, r / 100, r * 30);
   const size = () => {
     const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false);
@@ -286,10 +287,90 @@ function show(model) {
   renderer.setAnimationLoop((now) => {
     if (stage.classList.contains('flat')) { last = now; return; } // a 2D view is up: nothing to draw
     if (!drag && view.spin) turn.rotation.y += ((now - last) / 60000) * 2 * Math.PI;
-    last = now; renderer.render(scene, camera);
+    last = now; scene.updateMatrixWorld(); slicer.frame(); renderer.render(scene, camera);
   });
   apply();
   return { picked };
+}
+
+// ---------- slicing ----------
+// The model cut at a layer, as a printer builds it: the slider sets the layer, everything above it is clipped away, and
+// the layer's outline is drawn in white. A worker cuts every layer (slice.mjs, with printcheck's islands) and the
+// islands it finds, a layer's region with nothing under it that the printer would lay on air, are drawn in red: all of
+// them while the whole part shows, those at or under the cut while slicing, the cut layer's own brightest. A button
+// for each jumps to its layer. The printer's layer, overhang and line come from the link's rules when it has them.
+const RED = 0xe8806a;
+function slicing(model, parts, turn, mid, renderer, flatten) {
+  const rule = (name, fallback) => { const r = (model.sheet || []).find((x) => x[1] === name && Number.isFinite(Number(x[2]))); return r ? Number(r[2]) : fallback; };
+  const printer = { layer: rule('layer', 0.2), overhang: rule('overhang', 45), line: rule('line', 0.42) };
+  // JSCAD's Z up, centred, as the page draws it: (x, y, z) -> (x, z - mid.y, -y - mid.z) with x less mid.x
+  const toView = (x, y, z) => [x - mid.x, z - mid.y, -y - mid.z];
+  const printed = parts.filter((p) => p.role !== 'reference'), raw = printed.flatMap((p) => triangles(model, partsOf(model)[p.k]).flat(2));
+  const tris = Float32Array.from(raw);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 2; i < tris.length; i += 3) { lo = Math.min(lo, tris[i]); hi = Math.max(hi, tris[i]); }
+  const count = Number.isFinite(lo) ? Math.max(1, Math.round((hi - lo) / printer.layer)) : 0;
+  const input = $('layer'), out = $('layerat'), note = $('islands'), list = $('islandlist'), on = $('slice');
+  $('slicing').hidden = !count;
+  if (!count) return { frame() {} };
+  input.max = count; input.value = count;
+  const local = new Plane(new Vector3(0, -1, 0), 0), world = new Plane(), clips = [];
+  const materials = () => parts.flatMap((p) => [p.faces, p.creaseInk, p.wireInk]);
+  // The cut layer's outline: every triangle crossing the layer's middle, cut there (in the page's own coordinates)
+  const outline = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
+  outline.renderOrder = 2; outline.visible = false; turn.add(outline);
+  const cutAt = (L) => {
+    const z = lo + (L - 0.5) * printer.layer, segs = [];
+    for (let t = 0; t < tris.length; t += 9) {
+      const pts = [];
+      for (let k = 0; k < 3; k++) {
+        const a = t + k * 3, b = t + ((k + 1) % 3) * 3;
+        if ((tris[a + 2] < z) !== (tris[b + 2] < z)) { const u = (z - tris[a + 2]) / (tris[b + 2] - tris[a + 2]); pts.push(toView(tris[a] + u * (tris[b] - tris[a]), tris[a + 1] + u * (tris[b + 1] - tris[a + 1]), z)); }
+      }
+      if (pts.length === 2) segs.push(...pts[0], ...pts[1]);
+    }
+    outline.geometry.dispose(); outline.geometry = new BufferGeometry(); outline.geometry.setAttribute('position', new Float32BufferAttribute(segs, 3));
+  };
+  // Islands: red points over each one's area, seen through the model; the cut layer's own drawn larger and brighter
+  const dots = (size, opacity) => { const d = new Points(new BufferGeometry(), new PointsMaterial({ color: RED, size, sizeAttenuation: false, depthTest: false, transparent: true, opacity })); d.renderOrder = 3; turn.add(d); return d; };
+  const all = dots(3, 0.85), here = dots(6, 1);
+  let found = [];
+  const fill = (d, list) => { d.geometry.dispose(); d.geometry = new BufferGeometry(); d.geometry.setAttribute('position', new Float32BufferAttribute(list.flatMap((isl) => isl.cells.flatMap(([x, y]) => toView(x, y, isl.z))), 3)); };
+  const layerOf = (isl) => Math.round((isl.z - lo) / printer.layer + 0.5);
+  const show = () => {
+    const L = Number(input.value), slicing = on.checked;
+    out.textContent = `${L} of ${count} · ${(L * printer.layer).toFixed(1)} mm`; // the layer, and its top's height off the bed
+    local.constant = lo + L * printer.layer - mid.y + 1e-4; // keep what's at or under the top of layer L
+    for (const m of materials()) m.clippingPlanes = slicing ? clips : null;
+    clips.length = 0; if (slicing) clips.push(world);
+    outline.visible = slicing; if (slicing) cutAt(L);
+    fill(all, slicing ? found.filter((isl) => layerOf(isl) < L) : found);
+    fill(here, slicing ? found.filter((isl) => layerOf(isl) === L) : []);
+  };
+  renderer.localClippingEnabled = true;
+  on.onchange = () => { if (on.checked) flatten(); input.disabled = !on.checked; show(); };
+  input.oninput = () => { if (!on.checked) { on.checked = true; on.onchange(); } else show(); };
+  input.disabled = true;
+  // Cut every layer off the page's thread; the outline and the slider work meanwhile
+  note.textContent = 'Slicing…'; note.classList.remove('hit');
+  const worker = new Worker(new URL('./slice.mjs', import.meta.url), { type: 'module' });
+  worker.onmessage = ({ data }) => {
+    if (data.progress != null) { note.textContent = `Slicing… ${Math.round(data.progress * 100)}%`; return; }
+    worker.terminate();
+    found = data.islands;
+    note.classList.toggle('hit', found.length > 0);
+    note.textContent = found.length ? `${found.length === 1 ? 'An island' : `${found.length} islands`} when sliced: a layer's region with nothing under it, which the printer lays on air` : `No islands in ${data.layers} layers of ${printer.layer} mm`;
+    list.replaceChildren(...found.slice(0, 12).map((isl) => {
+      const b = document.createElement('button'); b.textContent = `z ${isl.z.toFixed(1)}`; b.title = `${isl.area.toFixed(1)} mm² at layer ${layerOf(isl)}: show it`;
+      b.onclick = () => { input.value = layerOf(isl); if (!on.checked) { on.checked = true; on.onchange(); } else show(); };
+      return b;
+    }));
+    show();
+  };
+  worker.onerror = (e) => { note.textContent = `Couldn't slice it here (${e.message || 'the worker failed'})`; };
+  const copy = tris.slice(); worker.postMessage({ tris: copy, printer }, [copy.buffer]); // the page keeps its own, for the outline
+  show();
+  return { frame() { if (on.checked) world.copy(local).applyMatrix4(turn.matrixWorld); } };
 }
 
 // ---------- motion ----------
@@ -560,7 +641,7 @@ function open(model, hash, findings) {
 }
 
 // No link: drop an STL (or choose one) to see it, check it for printing and make a link. Nothing leaves the browser.
-const PRINTER = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5 }; // a common FDM printer
+const PRINTER = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42 }; // a common FDM printer
 function welcome() {
   const box = document.createElement('label');
   box.className = 'problem drop';

@@ -1,6 +1,7 @@
 <!doctype html>
 <!-- rulecad model page: one model from the link (#m=… or a short link, #s=<gist>), with a parts panel to show, hide
-     and restyle each part and tick the ones a download holds, and print files made in the browser. &get=stl or &get=3mf
+     and restyle each part and tick the ones a download holds, a slider that slices it layer by layer with its islands in
+     red, and print files made in the browser. &get=stl or &get=3mf
      downloads every printed part as the page opens. -->
 <html lang="en">
 <head>
@@ -46,7 +47,12 @@
   .joint { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; margin: 4px 0 8px; font-size: 13px; }
   .joint b { font-weight: 500; font-variant-numeric: tabular-nums; }
   .joint input { grid-column: 1 / -1; width: 100%; }
-  #poses:empty, .clash:empty { display: none; }
+  #poses:empty, .clash:empty, #islandlist:empty { display: none; }
+  #slicing[hidden] { display: none; }
+  #islandlist { flex-wrap: wrap; border-color: #e8806a; }
+  #islandlist button { flex: none; padding: 4px 10px; color: #e8806a; }
+  #islandlist button + button { border-left-color: #e8806a; }
+  input[type=range]:disabled { opacity: 0.4; }
   .clash { font-size: 13px; color: var(--ink-2); }
   .clash.hit { color: #e8806a; }
   input[type=range] { width: 100%; accent-color: var(--ink-1); }
@@ -172,6 +178,10 @@
     <label class="row"><input type="checkbox" id="references" checked> Show references</label>
     <button id="reset">Reset view</button>
   </div>
+  <div id="slicing" hidden><h2>Slice</h2>
+    <div class="controls"><label class="row"><input type="checkbox" id="slice"> Slice it, as the printer builds it</label>
+      <label class="joint"><span>Layer</span><b id="layerat"></b><input type="range" id="layer" min="1" max="1" step="1" value="1" aria-label="The layer to cut at"></label>
+      <div class="clash" id="islands"></div><div class="seg" id="islandlist"></div></div></div>
   <div id="motion" hidden><h2>Motion</h2>
     <div class="controls"><div class="seg" id="poses"></div><div id="joints"></div><div class="clash" id="clash"></div></div></div>
   <h2>Parts</h2>

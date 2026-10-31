@@ -56,6 +56,21 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     assert.match(await run('location.hash'), /^#m=1\./, 'the address is now the model\'s link');
     await new Promise((r) => setTimeout(r, 1500)); // a frame or two of the model turning
     await shot('viewer.png');
+    // Sliced as the printer builds it: the tee has no islands; the slider cuts it, its readout gives the layer and height
+    assert.ok(await until(`/^No islands in \\d+ layers/.test(document.getElementById('islands').textContent)`), 'the tee slices clean');
+    await run(`(() => { const i = document.getElementById('layer'); i.value = 30; i.dispatchEvent(new Event('input')); return true; })()`);
+    assert.equal(await run(`document.getElementById('slice').checked + ' ' + document.getElementById('layerat').textContent`), 'true 30 of 60 · 6.0 mm');
+    // A block floating beside a post: one island, in red, and its button jumps the slider to its layer
+    const post = tri(translate([0, 0, 5], cuboid({ size: [4, 4, 10] }))), blob = tri(translate([8, 0, 5], cuboid({ size: [2, 2, 2] })));
+    const floating = await encode({ title: 'floating', ...fromTriangles([...post, ...blob]) });
+    await run(`location.hash = '#m=${floating}'; location.reload(); true`).catch(() => {});
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'floating'`), 'the floating link opens');
+    assert.ok(await until(`/^An island when sliced/.test(document.getElementById('islands').textContent)`), 'one island is found');
+    assert.equal(await run(`document.getElementById('islands').classList.contains('hit') + ' ' + document.querySelectorAll('#islandlist button').length`), 'true 1', 'shown as an error, with a button');
+    await run(`document.querySelector('#islandlist button').click(); true`);
+    assert.equal(await run(`document.getElementById('slice').checked + ' ' + document.getElementById('layer').value`), 'true 21', 'the slider jumps to the island\'s first layer (z 4 to 4.2)');
+    await new Promise((r) => setTimeout(r, 500));
+    await shot('viewer-slice.png');
     // A board link carrying only "both sides": the page makes front and back from its layer marks
     const board = '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60"><rect width="80" height="60" data-pcb-layer="global"/><path d="M0 0L80 60" stroke="red" data-pcb-layer="top"/><path d="M80 0L0 60" stroke="blue" data-pcb-layer="bottom"/></svg>';
     const link = await encode({ title: 'board', ...fromTriangles(tee), views: [['Board: both sides', board], ['Schematic', '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>']] });

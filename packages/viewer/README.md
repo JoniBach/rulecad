@@ -13,6 +13,11 @@ A model page you can host anywhere, as plain static files: no server code, no bu
 - **Things that move:** a link with joints (a `cad` assembly with joints and poses) gets a Motion panel. It has a
   slider for each joint, a button for each pose, and, when you let a slider go, a quick look for parts pushed into
   each other.
+- **Sliced as the printer builds it:** the Slice panel has a layer slider. Everything above the layer is cut away and
+  its outline drawn, so you can step up through the part from the bed. Off the page's thread, every layer is checked
+  against the one below (`islands()` in `@rulecad/printcheck`). An island, a region with nothing under it that the
+  printer would lay on air, shows in red over the model, with a button that jumps the slider to it. The layer height,
+  overhang limit and line width come from the link's rules when it has them, and otherwise 0.2 mm, 45° and 0.42 mm.
 - **Or drop an STL file on it**: the page draws it, checks it for printing (bed, flat base, overhangs, bridges,
   closed solid; `@rulecad/printcheck`), and turns the address into a link that holds the model, ready to share.
 - **Nothing is uploaded.** The model lives in the link's `#fragment`, which browsers never send to the web host, so a
