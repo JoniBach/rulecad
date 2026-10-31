@@ -6,7 +6,9 @@
 //     p: [x, y, z, …] whole multiples of q (mm); t: [a, b, c, …] triangles as vertex indices, counter-clockwise
 //     seen from outside; Z up, the bed at z = 0.
 //     parts (optional): [[name, role, label, first, count, slot?]], runs of triangles in t; role "support" is printed,
-//     then removed; slot is the part's AMS slot (1 without one). Without parts, the whole model is one part.
+//     then removed; slot is the part's AMS slot (1 without one). Without parts, the whole model is one part. Role
+//     "pose": another shape of a part, shown only in a pose (a flexure bent; see motion.swap), never printed or checked;
+//     these come after the parts they stand in for.
 //     views (optional): [[name, svg]], 2D drawings shown beside the 3D model (a board's copper, a schematic); "Group:
 //     view" names share a tab. The page shows them as images, so nothing in them runs.
 //   Or placed shapes, for things made of repeated parts (nine keys): each shape once, then where each copy goes:
@@ -122,7 +124,9 @@ function motionOk(mo, places) {
     || (j.follow != null && !(Array.isArray(j.follow) && typeof j.follow[0] === 'string' && nums(j.follow.slice(1)))))) return false;
   if (!Array.isArray(mo.part) || mo.part.length !== places || !mo.part.every(item)) return false;
   if (mo.poses != null && (typeof mo.poses !== 'object' || Object.values(mo.poses).some((p) => !p || typeof p !== 'object' || Object.values(p).some((v) => !(typeof v === 'number' || nums(v)))))) return false;
-  return mo.allow == null || (Array.isArray(mo.allow) && mo.allow.every((x) => Array.isArray(x) && x.length === 2 && x.every((i) => Number.isInteger(i) && i >= 0 && i < places)));
+  const pair = (x) => Array.isArray(x) && x.length === 2 && x.every((i) => Number.isInteger(i) && i >= 0 && i < places);
+  if (mo.swap != null && (typeof mo.swap !== 'object' || Object.entries(mo.swap).some(([n, list]) => !mo.poses?.[n] || !Array.isArray(list) || !list.every(pair)))) return false;
+  return mo.allow == null || (Array.isArray(mo.allow) && mo.allow.every(pair));
 }
 
 // Placed shapes -> one model ({ q, p, t, parts }), each copy its own part.
@@ -159,14 +163,18 @@ export function triangles(m, part) {
 }
 
 // The model's parts, always at least one: [[name, role, label, first, count]]
-export const partsOf = (m) => (m.parts?.length ? m.parts : [['body', 'part', m.title || 'model', 0, m.t.length / 3]]);
+export const partsOf = (m) => (m.parts?.length ? m.parts.filter((x) => x[1] !== 'pose') : [['body', 'part', m.title || 'model', 0, m.t.length / 3]]);
+// The shapes parts take only in poses (role "pose"), with their places: [{ k, part }]
+/** @param {Model} m @returns {{ k: number, part: any[] }[]} */
+export const posesOf = (m) => (m.parts || []).map((part, k) => ({ k, part })).filter((x) => x.part[1] === 'pose');
 
 // ---------- motion ----------
 // Joints between items, so a page (or a tool) can move them: an assembly's hinges, rails and ball joints.
 //   motion: { items: [[name, …12?]], joints: [joint], poses: { name: { joint: value } }, pose?, part: [item per place],
-//             allow?: [[place, place]] }
+//             allow?: [[place, place]], swap?: { pose: [[place, place]] } }
 //   An item with 12 numbers sits there (a 3 × 4 transform by rows, as in place); one without is placed by the joint
 //   whose child it is. part[n] is the item place n moves with (-1: it never moves); allow pairs may overlap (press fits).
+//   swap: in a pose, each part (its place) is drawn as another (a "pose" part's place): the shape it takes there.
 //   joint: { id, type, parent (item, -1 the world), child (item), a (the parent's anchor, 12 numbers, in its own
 //   frame), b (the child's anchor), dofs: [[min, max, value]], label?, follow?: [joint id, ratio, offset],
 //   path?: [[x, y, z], …], cone? }. At value 0 the child's anchor lies on the parent's: same place, same axes.

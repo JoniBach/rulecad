@@ -244,6 +244,16 @@ test('a pose that sets an item\'s variables: the part drawn that way in that pos
     assert.match(cad('check', 'demo/press', '--pose', 'pressed'), /no parts overlap/);
     write({ pressed: { slide: 0, 'post.h': 'base.h * 2' } }); // an expression in the assembly's names
     assert.match(cad('check', 'demo/press'), /no parts overlap/);
+    // Its link opens free, and carries the post's pressed shape for the page to swap in when the pose is picked
+    write({ free: { slide: 0 }, pressed: { slide: 0, 'post.h': 5 } });
+    const lib = path.join(path.dirname(BIN), '../lib/');
+    const out2 = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { buildAssembly } from ${JSON.stringify(pathToFileURL(lib + 'assembly.mjs').href)};
+      import { assemblyModel } from ${JSON.stringify(pathToFileURL(lib + 'links.mjs').href)};
+      import { encode, decode, partsOf, posesOf } from '@rulecad/model-link';
+      const m = await decode(await encode(await assemblyModel(await buildAssembly('demo/press'), { title: 'Press' })));
+      console.log(JSON.stringify({ parts: partsOf(m).map((p) => p[0]), poses: posesOf(m).map((x) => x.part[0]), swap: m.motion.swap, pose: m.motion.pose }));`], { cwd: ws, encoding: 'utf8' });
+    assert.deepEqual(JSON.parse(out2), { parts: ['base.body', 'post.body', 'stop.body'], poses: ['post.body@pressed'], swap: { pressed: [[1, 3]] }, pose: 'free' });
   } finally { done(); }
 });
 

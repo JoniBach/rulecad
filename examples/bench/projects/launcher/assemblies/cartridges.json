@@ -115,5 +115,6 @@
       "max": "2 * x1c.fit",
       "note": "The insert in its column"
     }
-  ]
+  ],
+  "pose": "rest"
 }

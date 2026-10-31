@@ -544,5 +544,6 @@
       "max": "2 * x1c.fit",
       "note": "and the barrel's"
     }
-  ]
+  ],
+  "pose": "rest"
 }

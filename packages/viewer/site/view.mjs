@@ -2,7 +2,7 @@
 // with a parts panel to show, hide and restyle each part, tick the parts a download holds, make print files (STL,
 // or a 3MF in Bambu Studio's layout) in the browser, and slice it layer by layer with its islands in red. Nothing is uploaded:
 // the model lives in the link (or, for a short link, in the Gist it names).
-import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, stl, threemf, filename, thingOf, jointValues, placeItems, mul, inv, DOFS } from './model-link.mjs';
+import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, posesOf, stl, threemf, filename, thingOf, jointValues, placeItems, mul, inv, DOFS } from './model-link.mjs';
 import { check } from './printcheck.mjs';
 import { WebGLRenderer, Scene, PerspectiveCamera, BufferGeometry, Float32BufferAttribute, Mesh, MeshLambertMaterial, LineSegments,
   LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3, Plane, Points, PointsMaterial } from './three.min.js';
@@ -90,7 +90,14 @@ function show(model) {
   scene.add(tilt, new AmbientLight(0xffffff, 0.6));
   const sun = new DirectionalLight(0xffffff, 2.2); sun.position.set(-1, 2, 1.5); scene.add(sun);
 
-  const motion = model.motion && moving(model.motion, parts, mid);
+  // The shapes parts take only in some poses (a flexure bent), ready to swap in: made as the parts are
+  const alts = new Map(posesOf(model).map(({ k, part }) => {
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(triangles(model, part).flat(2), 3));
+    g.rotateX(-Math.PI / 2); g.translate(-mid.x, -mid.y, -mid.z); g.computeVertexNormals(); g.computeBoundingBox();
+    return [k, g];
+  }));
+  const motion = model.motion && moving(model.motion, parts, mid, alts);
 
   // ---------- state ----------
   const view = { mode: 'solid', supports: true, references: true, explode: 0, spin: true, selected: new Set() };
@@ -378,8 +385,22 @@ function slicing(model, parts, turn, mid, renderer, flatten) {
 // each named pose. The parts come in placed at the link's pose; each moves with its item, by where its item is now
 // against where it was. When a slider is let go, a quick look for parts pushed into each other: a corner of one inside
 // the other. The real check is cad check --sweep; this one misses parts that cross without a corner going in.
-function moving(mo, parts, mid) {
+function moving(mo, parts, mid, alts = new Map()) {
   const start = jointValues(mo, mo.pose), was = placeItems(mo, start).map(inv);
+  // A pose's shapes (mo.swap): each listed part drawn as its pose shape, every other part as it came
+  for (const p of parts) p.own = p.g;
+  const edges = new Map(), shapeFor = (name) => new Map((mo.swap?.[name] || []).map(([k, alt]) => [k, alts.get(alt)]));
+  const reshape = (name) => {
+    const swap = shapeFor(name);
+    for (const p of parts) {
+      const g = swap.get(p.k) || p.own;
+      if (p.g === g) continue;
+      p.g = g; p.mesh.geometry = g;
+      if (!edges.has(g)) edges.set(g, creases(g, 25));
+      p.creases.geometry = edges.get(g);
+      if (p.wire) { p.node.remove(p.wire); p.wire = null; } // drawn again from the new shape when it's next wanted
+    }
+  };
   // JSCAD's Z-up, centred, as the page draws it (three's Y-up): (x, y, z) -> (x, z, -y) - mid
   const C = [1, 0, 0, -mid.x, 0, 0, 1, -mid.y, 0, -1, 0, -mid.z], Ci = inv(C);
   let values = structuredClone(start), moved = [];
@@ -407,10 +428,10 @@ function moving(mo, parts, mid) {
   });
   // Poses: buttons that set every joint
   const poses = Object.keys(mo.poses || {}), pick = (name) => $('poses').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.textContent === name));
-  const go = (name) => { values = jointValues(mo, name); for (const j of mo.joints) values[j.id] = [...values[j.id]]; sliders.forEach((f) => f()); place(); pick(name); look(); };
+  const go = (name) => { values = jointValues(mo, name); for (const j of mo.joints) values[j.id] = [...values[j.id]]; sliders.forEach((f) => f()); reshape(name); place(); pick(name); look(); };
   if (poses.length > 1) $('poses').replaceChildren(...poses.map((n) => { const b = el('button', null, n); b.onclick = () => go(n); return b; }));
   pick(mo.pose);
-  // The quick look: pairs of parts whose items have moved against each other, boxes first, then corners inside
+  // The quick look: pairs of parts whose items have moved against each other (or that are in a pose shape), boxes first, then corners inside
   const allow = new Set((mo.allow || []).map(([a, b]) => `${a},${b}`));
   const pos = (p, d) => { const a = p.g.getAttribute('position').array, o = new Float32Array(a.length); for (let i = 0; i < a.length; i += 3) { const x = a[i], y = a[i + 1], z = a[i + 2]; o[i] = d[0] * x + d[1] * y + d[2] * z + d[3]; o[i + 1] = d[4] * x + d[5] * y + d[6] * z + d[7]; o[i + 2] = d[8] * x + d[9] * y + d[10] * z + d[11]; } return o; };
   const boxOf = (a) => { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (let i = 0; i < a.length; i++) { const k = i % 3; if (a[i] < lo[k]) lo[k] = a[i]; if (a[i] > hi[k]) hi[k] = a[i]; } return { lo, hi }; };
@@ -445,7 +466,8 @@ function moving(mo, parts, mid) {
     const get = (p) => { if (!at.has(p)) { const a = pos(p, d(p)); at.set(p, { a, box: boxOf(a) }); } return at.get(p); };
     for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
       const p = live[i], q = live[j];
-      if (mo.part[p.k] === mo.part[q.k] || same(d(p), d(q)) || allow.has(`${Math.min(p.k, q.k)},${Math.max(p.k, q.k)}`)) continue;
+      const reshaped = p.g !== p.own || q.g !== q.own; // a part in its pose shape is looked at even where nothing moved
+      if (mo.part[p.k] === mo.part[q.k] || (same(d(p), d(q)) && !reshaped) || allow.has(`${Math.min(p.k, q.k)},${Math.max(p.k, q.k)}`)) continue;
       const A = get(p), B = get(q), lo = [0, 1, 2].map((k) => Math.max(A.box.lo[k], B.box.lo[k])), hi = [0, 1, 2].map((k) => Math.min(A.box.hi[k], B.box.hi[k]));
       if ([0, 1, 2].some((k) => hi[k] - lo[k] < 0.05)) continue; // apart, or only touching
       const into = (X, Y) => { Y.g ||= grid(Y.a, Y.box); for (let v = 0; v < X.a.length; v += 3) { const x = X.a[v], y = X.a[v + 1], z = X.a[v + 2]; if (x >= lo[0] - 1e-6 && x <= hi[0] + 1e-6 && y >= lo[1] - 1e-6 && y <= hi[1] + 1e-6 && z >= lo[2] - 1e-6 && z <= hi[2] + 1e-6 && deep(Y.g, x, y, z)) return true; } return false; };
