@@ -346,6 +346,28 @@ function fixedTraces(input) {
   return { ...input, traces: [], obstacles: [...input.obstacles, ...obstacles] };
 }
 
+/**
+ * A route from the autorouter, cut where it changes layer inside a plated hole: the router marks those as points
+ * "through an obstacle", which nothing downstream reads, but the hole's copper already joins the layers, so the route
+ * ends there on one layer and a second starts there on the other. A pass through anything else is an error.
+ * @param {object[]} route @param {object[]} holes pcb_plated_hole elements @returns {object[][]}
+ */
+export function layerChanges(route, holes) {
+  const pieces = [[]];
+  for (const p of route) {
+    if (p.route_type !== 'through_obstacle') { pieces.at(-1).push(p); continue; }
+    const at = p.start, inHole = holes.some((h) => {
+      const r = (h.outer_diameter ?? Math.max(h.outer_width ?? 0, h.outer_height ?? 0, h.rect_pad_width ?? 0, h.rect_pad_height ?? 0)) / 2;
+      return Math.hypot(at.x - h.x, at.y - h.y) <= r + 1e-6 && Math.hypot(p.end.x - h.x, p.end.y - h.y) <= r + 1e-6;
+    });
+    if (!inHole) throw new Error(`the autorouter ran a track through a part at (${at.x.toFixed(2)}, ${at.y.toFixed(2)}) mm: move the parts apart or give it more room`);
+    const width = p.width ?? pieces.at(-1).at(-1)?.width;
+    pieces.at(-1).push({ route_type: 'wire', x: at.x, y: at.y, width, layer: p.from_layer });
+    pieces.push([{ route_type: 'wire', x: p.end.x, y: p.end.y, width, layer: p.to_layer }]);
+  }
+  return pieces.filter((q) => q.length > 1);
+}
+
 async function defaultRouter(json, toRoute) {
   // The autorouter uses JavaScript features from Node 22 (iterator helpers): say so, rather than fail inside it
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
@@ -373,17 +395,21 @@ async function defaultRouter(json, toRoute) {
     return [{ route_type: 'wire', x: p.x, y: p.y, width: p.width, layer: pad.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: pad.layer },
       { route_type: 'via', x: v.x, y: v.y, from_layer: pad.layer, to_layer: p.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: p.layer }];
   };
+  const holes = json.filter((e) => e.type === 'pcb_plated_hole');
   for (const t of solver.getOutputSimplifiedPcbTraces()) {
     if (!asked.has(t.connection_name)) continue;
-    let route = t.route.map((p) => ({ ...p }));
+    for (const piece of layerChanges(t.route.map((p) => ({ ...p })), holes)) traces.push(finish(piece, t.connection_name));
+  }
+  function finish(piece, name) {
+    let route = piece;
     const first = padAt(route[0]), last = padAt(route.at(-1));
     const head = onto(first, route[0], route[1] || route[0]), tail = onto(last, route.at(-1), route.at(-2) || route.at(-1));
     if (head.length) route = [...head, ...route.slice(1)];
     if (tail.length) route = [...route.slice(0, -1), ...tail.reverse().map((q) => (q.route_type === 'via' ? { ...q, from_layer: q.to_layer, to_layer: q.from_layer } : q))];
     if (first) route[0].start_pcb_port_id = first.port;
     if (last) route.at(-1).end_pcb_port_id = last.port;
-    traces.push({ route, source_trace_id: t.connection_name, vias: route.filter((p) => p.route_type === 'via').map((p) => ({ x: p.x, y: p.y,
-      hole_diameter: srj.minViaHoleDiameter, outer_diameter: srj.minViaPadDiameter, layers: ['top', 'bottom'], from_layer: p.from_layer, to_layer: p.to_layer })) });
+    return { route, source_trace_id: name, vias: route.filter((p) => p.route_type === 'via').map((p) => ({ x: p.x, y: p.y,
+      hole_diameter: srj.minViaHoleDiameter, outer_diameter: srj.minViaPadDiameter, layers: ['top', 'bottom'], from_layer: p.from_layer, to_layer: p.to_layer })) };
   }
   // Every pad asked for has a track (a pad counts as reached when another pad of the same pin, joined in its part, is)
   const pinOf = new Map(json.filter((e) => e.type === 'pcb_port').map((e) => { const sp = json.find((x) => x.type === 'source_port' && x.source_port_id === e.source_port_id); return [e.pcb_port_id, `${sp?.source_component_id}:${sp?.name}`]; }));

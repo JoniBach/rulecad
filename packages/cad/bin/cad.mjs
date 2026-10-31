@@ -12,6 +12,7 @@ import { git, tags, bump, bigger, newer, compare, snapshot, materialise, files, 
 import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
 import { measure, match } from '../lib/meshcmd.mjs';
+import { cloneBoard } from '../lib/clone.mjs';
 import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData } from '../lib/assembly.mjs';
 import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData } from '../lib/errors.mjs';
@@ -39,6 +40,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
   cad new <project>/<object>        start a design from the template (makes the project if needed)
   cad import-kle <file> <project>/<name>   a keyboard layout from keyboard-layout-editor.com, into layouts/
+  cad clone <board.kicad_pcb | GitHub link> <name>   a published circuit board into rules/<name>.json, to redraw by rules [--source, --licence]
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
@@ -306,6 +308,7 @@ async function main() {
     for (const n of notes) console.log(`  note: ${n}`);
     return;
   }
+  if (cmd === 'clone') return cloneBoard(ref, args[2], { source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force') });
   if (cmd === 'status') return status(ref);
   if (cmd === 'measure') {
     if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>]');

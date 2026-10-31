@@ -222,6 +222,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
       entries.push({ name: `${s}.${r}`, ...d, value: values[s][r], expr: typeof d.value === 'string' ? d.value : undefined, used: used.has(`${s}.${r}`), ...(rs.private ? { private: true } : {}) });
     }
     if (rs.footprints) values[s].footprints = rs.footprints; // pad data for boards (v.esp32c6.footprints.module), as the set gives it
+    if (rs.circuit) values[s].circuit = rs.circuit; // a whole board's circuit, from cad clone (v.sea_picro.circuit), for @rulecad/pcb's clone()
   }
   return { values, entries, deps: Object.fromEntries([...deps].map(([k, v]) => [k, [...v]])), units };
 }
