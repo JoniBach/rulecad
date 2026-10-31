@@ -479,7 +479,7 @@ async function board(cmd, d, b, { title, version, tag }) {
       ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
       ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}` } : { level: 'pass', text: 'every measurement is a variable' },
-      ...(await pcb.checks(b.circuit, b.values, b.matrix)),
+      ...(await pcb.checks(b.circuit, b.values, b.matrix, b.source)),
     ]);
     if (b.object.orientation) console.log(`  ${b.object.orientation}`);
     process.exitCode = failed ? 1 : 0;
@@ -662,7 +662,7 @@ async function releaseObject(d, { batch = false } = {}) {
   const message = opt('m');
   if (!message || message === true) throw new Error('say what changed: -m "Wider slot for a looser fit"');
   const object = readObject(d), b = await build(d);
-  const raw = lint(fs.readFileSync(d.js, 'utf8')), fails = (b.circuit ? await (await pcbEngine()).checks(b.circuit, b.values, b.matrix) // boards: the board's checks
+  const raw = lint(fs.readFileSync(d.js, 'utf8')), fails = (b.circuit ? await (await pcbEngine()).checks(b.circuit, b.values, b.matrix, b.source) // boards: the board's checks
     : b.object.role === 'reference' ? [] : check(b.triangles, printer(b, d), { parts: b.parts })).filter((r) => r.level === 'fail'); // references aren't printed
   if (raw.length || fails.length) throw new Error(`fix the check first: ${[...raw.map((r) => `raw number ${r.text} on line ${r.line}`), ...fails.map((f) => f.text)].join('; ')}`);
   let { last, kind, reasons } = await since(d);

@@ -1,0 +1,50 @@
+// A long, thin RP2040 module for keyboards: Sea-Picro's circuit (rules/sea_picro.json, read from its KiCad board by
+// cad clone; CERN-OHL-S, so this board is too), redrawn with castellated pins along the bottom edge and up both ends
+// and USB-C on the top edge. Its core keeps Sea-Picro's own proven layout, turned on its side; the pins are new, with
+// Sea-Picro's numbers and pad shapes; the USB-C socket brings its fuse and CC resistors. The checks prove the circuit is
+// still Sea-Picro's and every small part still sits by the pin it serves.
+export function main (v) {
+  const { clone, arrange, moveGroup, withFootprint } = v.pcb, src = v.sea_picro.circuit
+  const left = -v.length / 2, right = v.length / 2, bottom = -v.height / 2, top = v.height / 2
+
+  // The edge pins, Sea-Picro's numbers in its order round the board: down the left end, along the bottom, up the right
+  const j2 = src.parts.find((p) => p.ref === 'J2'), srcLeft = Math.min(...src.outline.map((p) => p.x))
+  const half = j2.pads.find((q) => q.pin === '1' && q.castellated), header = j2.pads.find((q) => q.pin === '1' && !q.castellated)
+  const out = srcLeft - (j2.x + half.x) // the half hole's centre beyond the edge, as on Sea-Picro
+  const pins = [...new Set(j2.pads.filter((q) => q.castellated).map((q) => q.pin))].sort((a, b) => a - b)
+  const spots = [
+    ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [1, 0], x: left - out, y: bottom + (v.end_pins - 1 - i + v.end_from) * v.pitch })),
+    ...Array.from({ length: v.edge_pins }, (_, i) => ({ side: [0, 1], x: left + (i + 1) * v.pitch, y: bottom - out })),
+    ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [-1, 0], x: right + out, y: bottom + (i + v.end_from) * v.pitch }))]
+  if (pins.length !== spots.length) throw new Error(`Sea-Picro has ${pins.length} edge pins: edge_pins + 2 × end_pins must come to ${pins.length}, not ${spots.length}`)
+  const inn = header.x - half.x, offset = Math.hypot(...header.hole_offset) // the header pad in from the half hole, its hole set back out
+  const pads = pins.flatMap((pin, i) => {
+    const { side: [ix, iy], x, y } = spots[i], across = iy !== 0
+    return [{ ...half, pin, x, y },
+      { ...header, pin, x: x + ix * inn, y: y + iy * inn, w: across ? header.h : header.w, h: across ? header.w : header.h, hole_offset: [-ix * offset, -iy * offset] }]
+  })
+  const led = j2.pads.find((q) => q.pin === '32')
+  pads.push({ ...led, x: v.led_x, y: v.led_y })
+
+  // The circuit, rearranged: J2 on its new pads; the core turned as one block; USB-C on the top edge with its parts
+  const usbParts = ['J1', ...src.placement.filter((r) => r.anchor === 'J1').map((r) => r.part)]
+  const pin28 = spots[pins.indexOf('28')]
+  let c = arrange(withFootprint(src, 'J2', pads), { J2: { x: 0, y: 0, rotation: 0 } })
+  c = moveGroup(c, c.parts.map((p) => p.ref).filter((r) => r !== 'J2' && !usbParts.includes(r)), { turn: v.core_turn, dx: v.core_x, dy: v.core_y })
+  c = arrange(c, { J1: { x: v.usb_x, y: top + v.usb_out, rotation: 0 },
+    R4: { x: pin28.x + pin28.side[0] * v.switch_in, y: pin28.y + pin28.side[1] * v.switch_in, rotation: pin28.side[0] ? 0 : 90 } })
+
+  // The outline: a rectangle with Sea-Picro's notch for the mid-mount socket, its size read off Sea-Picro's outline
+  const j1 = src.parts.find((p) => p.ref === 'J1'), srcTop = Math.max(...src.outline.map((p) => p.y))
+  const inNotch = src.outline.filter((p) => p.y < srcTop - 0.5 && Math.abs(p.x - j1.x) < 6)
+  const wide = Math.max(...inNotch.map((p) => Math.abs(p.x - j1.x))), deep = srcTop - Math.min(...inNotch.map((p) => p.y))
+  const n0 = v.usb_x - wide, n1 = v.usb_x + wide, nd = top - deep
+  const outline = [[left, bottom], [right, bottom], [right, top], [n1, top], [n1, nd], [n0, nd], [n0, top], [left, top]].map(([x, y]) => ({ x, y }))
+
+  const k = clone(c, { layers: v.layers })
+  return {
+    board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
+      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, parts: k.parts, nets: k.nets, holes: k.holes },
+    clone: { circuit: src, arranged: c }
+  }
+}

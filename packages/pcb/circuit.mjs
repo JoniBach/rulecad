@@ -6,7 +6,7 @@
 // board: { center: { x, y }, width, height, thickness, parts, traces, nets, track, silk, holes, autoroute }, or
 //   { outline: [{ x, y }, ...], thickness, ... }: any shape, a closed polygon (counter-clockwise); its centre and size
 //   are its bounds. pcb.shape makes common ones (rounded, bevelled, circle).
-//   part   { name, ftype: 'simple_switch' | 'simple_chip' | 'simple_diode', mpn, x, y, layer: 'top' | 'bottom',
+//   part   { name, ftype: 'simple_switch' | 'simple_chip' | 'simple_diode', mpn, lcsc, value, x, y, layer: 'top' | 'bottom',
 //            rotation: 0 | 90 | 180 | 270 (counter-clockwise, seen from the side the part is on; default 0),
 //            pads: [{ pin, x, y, hole, outer }] (plated, relative to the part) or [{ pin, smd: true, hint, x, y, w, h }]
 //            or [{ pin, smd: true, x, y, points: [[x, y], ...] }] (copper of any shape; x, y: where tracks join it),
@@ -20,6 +20,13 @@
 //            width or board.track; pins are named part.pin, by the pin's label, its name or its number
 //   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer }
 //   holes  [{ x, y, d }] in the board (mounting holes)
+//   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
+//   planes { GND: { layer: 'inner1', pins: ['U1.GND', ...] } }: nets joined by copper filling an inner layer. Each SMD pad
+//            gets a via beside it before routing, or a track to one nearby; a pad with no room for
+//            either is routed to the nearest pad of its net that reaches the plane. via_pad, via_hole, plane_clearance
+//            (mm, defaults 0.6, 0.3, 0.2) size them
+//   pads may be castellated ({ castellated: true }: a half hole on the edge, joined at its inner edge) or a rounded
+//            rectangle round their hole ({ rect: { w, h, offset: [x, y] } }: an oval pad, a hole off-centre)
 // All positions are in mm, in the board's own frame. A part on the bottom is seen from above: mirrored in x.
 import { fp } from '@tscircuit/footprinter';
 import { symbols } from 'schematic-symbols';
@@ -90,10 +97,12 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   const sourceBoard = add('source_board', { source_group_id: 'source_group_0' });
 
   // ---- parts: source records, then their footprints on the board ----
+  const copper = copperLayers(board.layers ?? 2); // a hole or a via goes through all of them
   const ports = new Map(); // `${part}.${port name or hint}` -> { source, pcb, x, y, layers }
   const placed = [];
   for (const part of board.parts) {
     const comp = add('source_component', { ftype: part.ftype, name: part.name, manufacturer_part_number: part.mpn,
+      ...(part.lcsc ? { supplier_part_numbers: { jlcpcb: [part.lcsc] } } : {}), ...(part.value ? { display_value: part.value } : {}),
       are_pins_interchangeable: part.ftype === 'simple_switch', source_group_id: 'source_group_0', subcircuit_id: SUB });
     const fpEls = part.footprint ? fp.string(part.footprint).circuitJson() : [];
     const mirror = part.layer === 'bottom' ? -1 : 1;
@@ -122,7 +131,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     }
     placed.push({ part, comp, pads, sourcePorts, fpEls, at, mirror, size });
   }
-  add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: 2,
+  add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length,
     width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS });
 
   for (const { part, comp, pads, sourcePorts, fpEls, at, mirror, size } of placed) {
@@ -134,19 +143,27 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       layer: part.layer, rotation: part.rotation ?? 0, source_component_id: comp.source_component_id, subcircuit_id: SUB });
     const own = { pcb_component_id: pc.pcb_component_id, subcircuit_id: SUB };
     pads.forEach((p, i) => {
-      const layers = p.smd ? [part.layer] : ['top', 'bottom'];
+      const layers = p.smd ? [part.layer] : copper;
       const port = add('pcb_port', { pcb_component_id: pc.pcb_component_id, layers, subcircuit_id: SUB, x: p.x, y: p.y, source_port_id: sourcePorts[i].source_port_id });
       if (p.poly) { // copper of any shape: no paste (a contact, not a joint)
         add('pcb_smtpad', { ...own, pcb_port_id: port.pcb_port_id, layer: part.layer, shape: 'polygon', points: p.poly, port_hints: [p.hint ?? p.pin.replace(/^pin/, '')], is_covered_with_solder_mask: false });
       } else if (p.smd) {
         const pad = add('pcb_smtpad', { ...own, pcb_port_id: port.pcb_port_id, layer: part.layer, shape: 'rect', width: p.w, height: p.h, port_hints: [p.hint], is_covered_with_solder_mask: false, x: p.x, y: p.y });
         add('pcb_solder_paste', { layer: part.layer, shape: 'rect', width: p.w * PASTE, height: p.h * PASTE, x: p.x, y: p.y, pcb_component_id: pc.pcb_component_id, pcb_smtpad_id: pad.pcb_smtpad_id, subcircuit_id: SUB });
+      } else if (p.rect) { // an oval pad or a hole off-centre: a rounded rectangle, its hole offset turned with the part
+        const sz = size(p.rect.w, p.rect.h), o0 = at(0, 0), o1 = at(p.rect.offset[0], p.rect.offset[1]);
+        add('pcb_plated_hole', { ...own, pcb_port_id: port.pcb_port_id, shape: 'circular_hole_with_rect_pad', hole_shape: 'circle', pad_shape: 'rect', hole_diameter: p.hole,
+          rect_pad_width: sz.w, rect_pad_height: sz.h, rect_border_radius: Math.min(sz.w, sz.h) / 2, hole_offset_x: Math.round((o1.x - o0.x) * 1e6) / 1e6, hole_offset_y: Math.round((o1.y - o0.y) * 1e6) / 1e6,
+          port_hints: [`unnamed_platedhole${i + 1}`, p.pin], x: p.x, y: p.y, layers, is_covered_with_solder_mask: false });
       } else {
         add('pcb_plated_hole', { ...own, pcb_port_id: port.pcb_port_id, outer_diameter: p.outer, hole_diameter: p.hole, shape: 'circle',
-          port_hints: [`unnamed_platedhole${i + 1}`, p.pin], x: p.x, y: p.y, layers, is_covered_with_solder_mask: false });
+          port_hints: [`unnamed_platedhole${i + 1}`, p.pin, ...(p.castellated ? ['castellated'] : [])], x: p.x, y: p.y, layers, is_covered_with_solder_mask: false });
       }
       Object.assign(sourcePorts[i], { _pcb: port });
-      for (const key of [sourcePorts[i].name, ...sourcePorts[i].port_hints]) ports.set(`${part.name}.${key}`, { source: sourcePorts[i], pcb: port, x: p.x, y: p.y, layers });
+      // A castellated pad's centre is on the board's edge: tracks join it at its inner edge
+      const join = p.castellated ? inward(board, p.x, p.y, p.outer / 2) : { x: p.x, y: p.y };
+      if (p.castellated) Object.assign(port, join);
+      for (const key of [sourcePorts[i].name, ...sourcePorts[i].port_hints]) ports.set(`${part.name}.${key}`, { source: sourcePorts[i], pcb: port, x: join.x, y: join.y, layers });
     });
     for (const h of part.holes || []) { const q = at(h.x, h.y); add('pcb_hole', { ...own, hole_shape: 'circle', hole_diameter: h.d, x: q.x, y: q.y, is_covered_with_solder_mask: false }); }
     if (part.courtyard) { const c = size(part.courtyard.w, part.courtyard.h); add('pcb_courtyard_rect', { ...own, layer: part.layer, center: { x: part.x, y: part.y }, width: c.w, height: c.h }); }
@@ -159,9 +176,16 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     }
   }
 
+  // ---- planes: each plane net's pads reach its inner layer, through their own holes or a via each ----
+  if (board.planes && copper.length < 4) throw new Error('planes need a board of 4 layers or more (board.layers): the outer two carry the tracks');
+  const netOf = new Map(); // `${part}.${pin}` -> net, for the pours
+  for (const [net, spec] of Object.entries(board.nets || {})) for (const pin of Array.isArray(spec) ? spec : spec.pins) netOf.set(pin, net);
+  for (const [net, spec] of Object.entries(board.planes || {})) for (const pin of spec.pins) netOf.set(pin, net);
+  const { nets: planeNets = null, links = [] } = board.planes ? planeVias(out, add, board, copper) : {};
+
   // ---- traces: drawn by rule, or left to the autorouter ----
   const port = (part, name) => { const p = ports.get(`${part}.${name}`); if (!p) throw new Error(`no port ${part}.${name}`); return p; };
-  const toRoute = [], traces = [...(board.traces || []), ...netTraces(board, port)];
+  const toRoute = [], traces = [...(board.traces || []), ...netTraces(board, port), ...links];
   for (const t of traces) {
     const a = port(...t.from), b = port(...t.to);
     const st = add('source_trace', { connected_source_port_ids: [a.source.source_port_id, b.source.source_port_id], connected_source_net_ids: [], subcircuit_id: SUB,
@@ -187,12 +211,172 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     const routed = await route(out, toRoute, board);
     for (const r of routed.traces) {
       const t = add('pcb_trace', { route: r.route, source_trace_id: r.source_trace_id, subcircuit_id: SUB });
-      for (const v of r.vias) add('pcb_via', { pcb_trace_id: t.pcb_trace_id, ...v, subcircuit_id: SUB }); // whose via it is: the checks need it
+      for (const v of r.vias) add('pcb_via', { pcb_trace_id: t.pcb_trace_id, ...v, layers: copper, subcircuit_id: SUB }); // whose via it is: the checks need it
     }
   }
+  if (planeNets) await pours(out, add, board, planeNets, netOf);
 
   schematic(out, add, placed, { ...board, traces }, port);
   return out;
+}
+
+// A point on (or near) the board's edge moved in by d, straight in from the nearest side of its bounds
+function inward(board, x, y, d) {
+  const l = board.center.x - board.width / 2, r = board.center.x + board.width / 2, b = board.center.y - board.height / 2, t = board.center.y + board.height / 2;
+  const sides = [[x - l, 1, 0], [r - x, -1, 0], [y - b, 0, 1], [t - y, 0, -1]].sort((p, q) => p[0] - q[0]);
+  return { x: x + sides[0][1] * d, y: y + sides[0][2] * d };
+}
+
+// A plated hole's copper: its width and height (a round pad, or a rounded rectangle)
+export const holeSize = (e) => (e.outer_diameter != null ? { w: e.outer_diameter, h: e.outer_diameter } : { w: e.rect_pad_width ?? e.outer_width, h: e.rect_pad_height ?? e.outer_height });
+
+// Copper layers, top to bottom: 2, 4 or 6
+function copperLayers(n) {
+  if (![2, 4, 6].includes(n)) throw new Error(`a board has 2, 4 or 6 copper layers, not ${n}`);
+  return ['top', ...Array.from({ length: n - 2 }, (_, i) => `inner${i + 1}`), 'bottom'];
+}
+
+// Every pad of a pin: `${part}.${pin}` -> [pcb pad elements] (pads named alike each have a port)
+function padsByPin(out) {
+  const comp = new Map(out.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e.name]));
+  const src = new Map(out.filter((e) => e.type === 'source_port').map((e) => [e.source_port_id, e]));
+  const port = new Map(out.filter((e) => e.type === 'pcb_port').map((e) => [e.pcb_port_id, src.get(e.source_port_id)]));
+  const map = new Map();
+  for (const e of out.filter((x) => (x.type === 'pcb_smtpad' || x.type === 'pcb_plated_hole') && x.pcb_port_id)) {
+    const sp = port.get(e.pcb_port_id);
+    for (const key of new Set([sp.name, ...(sp.port_hints || [])])) { const k = `${comp.get(sp.source_component_id)}.${key}`; map.set(k, [...(map.get(k) || []), { e, sp }]); }
+  }
+  return map;
+}
+
+// Plane vias. Each pad of a plane net gets to the plane: a plated hole goes through it already (and so does an SMD pad
+// with one of its pin's plated holes in it: a chip's centre pad with its thermal vias); an SMD pad gets a via beside it
+// and a short track (the nearest clear spot, outward from its part first); failing that, a track to a via of its net nearby; failing that, a link for the router to
+// the nearest pad of its net that reaches the plane. Returns { nets: { net: { layer, id } }, links }.
+function planeVias(out, add, board, copper) {
+  const b = out.find((e) => e.type === 'pcb_board'), clear = board.plane_clearance ?? 0.2, via = { hole: board.via_hole ?? 0.3, pad: board.via_pad ?? 0.6 };
+  const width = board.plane_track ?? board.track ?? 0.25, pins = padsByPin(out), nets = {}, stuck = [];
+  const rects = out.filter((e) => e.type === 'pcb_smtpad').map((e) => ({ id: e.pcb_smtpad_id, layer: e.layer, ...smtBounds(e) }));
+  const circles = [...out.filter((e) => e.type === 'pcb_plated_hole').map((e) => ({ id: e.pcb_plated_hole_id, x: e.x, y: e.y, r: Math.max(holeSize(e).w, holeSize(e).h) / 2 })),
+    ...out.filter((e) => e.type === 'pcb_hole').map((e) => ({ id: e.pcb_hole_id, x: e.x, y: e.y, r: e.hole_diameter / 2 }))];
+  const segs = [], sameNet = Object.fromEntries(Object.keys(board.planes).map((n) => [n, []])); // plane tracks drawn so far; each net's vias
+  const toRect = (x, y, q) => Math.hypot(Math.max(Math.abs(x - q.x) - q.w / 2, 0), Math.max(Math.abs(y - q.y) - q.h / 2, 0));
+  const toSeg = (x, y, a, c) => { const dx = c.x - a.x, dy = c.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l)) : 0; return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };
+  const edge = (x, y) => { // how far inside the board
+    if (!b.outline) return Math.min(x - (b.center.x - b.width / 2), b.center.x + b.width / 2 - x, y - (b.center.y - b.height / 2), b.center.y + b.height / 2 - y);
+    let d = Infinity; for (let i = 0; i < b.outline.length; i++) d = Math.min(d, toSeg(x, y, b.outline[i], b.outline[(i + 1) % b.outline.length]));
+    return insidePolygon(b.outline, { x, y }) ? d : -d;
+  };
+  const viaFree = (x, y, own) => edge(x, y) >= via.pad / 2 + (b.min_board_edge_clearance ?? 0.2)
+    && rects.every((q) => toRect(x, y, q) >= via.pad / 2 + (q.id === own ? 0.1 : clear))
+    && circles.every((c) => Math.hypot(x - c.x, y - c.y) >= c.r + via.pad / 2 + clear)
+    && segs.every((g) => toSeg(x, y, g.a, g.b) >= via.pad / 2 + width / 2 + clear);
+  const trackFree = (a, c, layer, own) => {
+    const n = Math.max(2, Math.ceil(Math.hypot(c.x - a.x, c.y - a.y) / 0.05));
+    for (let i = 0; i <= n; i++) {
+      const x = a.x + ((c.x - a.x) * i) / n, y = a.y + ((c.y - a.y) * i) / n;
+      if (rects.some((q) => q.id !== own && q.layer === layer && toRect(x, y, q) < width / 2 + clear)) return false;
+      if (circles.some((q) => Math.hypot(x - q.x, y - q.y) < q.r + width / 2 + clear)) return false;
+      if (segs.some((g) => g.layer === layer && toSeg(x, y, g.a, g.b) < width + clear)) return false;
+    }
+    return true;
+  };
+  const comps = new Map(out.filter((e) => e.type === 'pcb_component').map((e) => [e.pcb_component_id, e.center]));
+  for (const [name, spec] of Object.entries(board.planes)) {
+    if (!copper.includes(spec.layer) || /^(top|bottom)$/.test(spec.layer)) throw new Error(`plane ${name}: "${spec.layer}" isn't an inner layer of this board (${copper.slice(1, -1).join(', ')})`);
+    const net = add('source_net', { name, member_source_group_ids: [], is_ground: /gnd|ground/i.test(name), is_power: /^\+|vcc|vdd|3v3|5v/i.test(name), subcircuit_id: SUB });
+    nets[name] = { layer: spec.layer, id: net.source_net_id };
+    for (const pin of spec.pins) {
+      const found = pins.get(pin);
+      if (!found) throw new Error(`plane ${name}: no pin ${pin}`);
+      for (const { e, sp } of found) {
+        const st = add('source_trace', { connected_source_port_ids: [sp.source_port_id], connected_source_net_ids: [net.source_net_id], subcircuit_id: SUB, display_name: `${pin} to ${name}` });
+        if (e.type === 'pcb_plated_hole') continue; // its barrel reaches every layer
+        const sb = smtBounds(e); // a pad with a plated hole of its own pin in it (a chip's centre pad with its thermal vias) has one too
+        if (found.some((f) => f.e.type === 'pcb_plated_hole' && Math.abs(f.e.x - sb.x) <= sb.w / 2 && Math.abs(f.e.y - sb.y) <= sb.h / 2)) continue;
+        const pad = { x: e.x ?? smtBounds(e).x, y: e.y ?? smtBounds(e).y, ...smtBounds(e) }, start = { route_type: 'wire', x: pad.x, y: pad.y, width, layer: e.layer, start_pcb_port_id: e.pcb_port_id };
+        const viaAt = (x, y) => ({ route_type: 'via', x, y, from_layer: e.layer, to_layer: e.layer === 'top' ? 'bottom' : 'top' });
+        const places = [];
+        {
+          const c = comps.get(e.pcb_component_id) || pad, out0 = Math.atan2(pad.y - c.y, pad.x - c.x) || 0;
+          const tries = [];
+          for (const gap of [0.1, 0.25, 0.45, 0.7, 1, 1.4]) for (let k = 0; k < 16; k++) {
+            const a = out0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 8), ca = Math.cos(a), sa = Math.sin(a);
+            const reach = Math.min(Math.abs(ca) > 1e-9 ? pad.w / 2 / Math.abs(ca) : Infinity, Math.abs(sa) > 1e-9 ? pad.h / 2 / Math.abs(sa) : Infinity) + gap + via.pad / 2;
+            tries.push({ x: pad.x + ca * reach, y: pad.y + sa * reach });
+          }
+          const ok = tries.find((t) => viaFree(t.x, t.y, e.pcb_smtpad_id) && trackFree(pad, t, e.layer, e.pcb_smtpad_id));
+          // no room for its own: a short track to a via of the same net already placed, if one is clear to reach
+          const shared = !ok && sameNet[name].map((v) => ({ ...v, d: Math.hypot(v.x - pad.x, v.y - pad.y) })).filter((v) => v.d <= 3).sort((a, c) => a.d - c.d)
+            .find((v) => trackFree(pad, v, e.layer, e.pcb_smtpad_id));
+          if (!ok && !shared) { stuck.push({ pin, name, x: pad.x, y: pad.y }); continue; }
+          segs.push({ a: { x: pad.x, y: pad.y }, b: ok || shared, layer: e.layer });
+          if (shared) { add('pcb_trace', { route: [start, { route_type: 'wire', x: shared.x, y: shared.y, width, layer: e.layer }], source_trace_id: st.source_trace_id, subcircuit_id: SUB }); continue; }
+          places.push(ok);
+        }
+        const route = [start, ...places.flatMap((v, i) => [{ route_type: 'wire', x: v.x, y: v.y, width, layer: e.layer }, viaAt(v.x, v.y),
+          ...(i < places.length - 1 ? [{ route_type: 'wire', x: v.x, y: v.y, width, layer: e.layer }] : [])])];
+        const t = add('pcb_trace', { route, source_trace_id: st.source_trace_id, subcircuit_id: SUB });
+        for (const v of places) {
+          sameNet[name].push(v);
+          add('pcb_via', { pcb_trace_id: t.pcb_trace_id, x: v.x, y: v.y, hole_diameter: via.hole, outer_diameter: via.pad, layers: copper, from_layer: e.layer, to_layer: viaAt().to_layer, subcircuit_id: SUB });
+          circles.push({ id: `via${circles.length}`, x: v.x, y: v.y, r: via.pad / 2 });
+        }
+      }
+    }
+  }
+  // Pads with no room for a via, nor one in reach: a routed track to the nearest pad of the same net that reaches the
+  // plane, as a board's power pins between close neighbours are wired. Its source trace to the net goes (the track joins it)
+  const reached = new Map(Object.keys(board.planes).map((n) => [n, []]));
+  for (const t of out.filter((x) => x.type === 'pcb_trace' && x.route[0].start_pcb_port_id)) {
+    const st = out.find((x) => x.source_trace_id === t.source_trace_id), n = out.find((x) => x.type === 'source_net' && x.source_net_id === st.connected_source_net_ids?.[0])?.name;
+    if (n) reached.get(n).push({ x: t.route[0].x, y: t.route[0].y, pin: [...pins].find(([, l]) => l.some((q) => q.e.pcb_port_id === t.route[0].start_pcb_port_id))?.[0] });
+  }
+  const links = [];
+  for (const s of stuck) {
+    const to = reached.get(s.name).filter((r) => r.pin && r.pin !== s.pin).sort((a, c) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(c.x - s.x, c.y - s.y))[0];
+    if (!to) throw new Error(`no way for ${s.pin} to reach the ${s.name} plane: no room for a via, and no other pad of ${s.name} reaches it`);
+    const i = out.findIndex((x) => x.type === 'source_trace' && x.display_name === `${s.pin} to ${s.name}`);
+    if (i >= 0) out.splice(i, 1);
+    const cut = (q) => { const k = q.indexOf('.'); return [q.slice(0, k), q.slice(k + 1)]; };
+    links.push({ from: cut(s.pin), to: cut(to.pin), width });
+  }
+  return { nets, links };
+}
+
+// The planes: each net's copper filling its inner layer, clear of every other net's holes and vias (tscircuit's copper
+// pour solver), joined to its own by thermal spokes
+async function pours(out, add, board, nets, netOf) {
+  const { CopperPourPipelineSolver, initializeManifoldGeometry } = await import('@tscircuit/copper-pour-solver');
+  await initializeManifoldGeometry();
+  const b = out.find((e) => e.type === 'pcb_board'), comp = new Map(out.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e.name]));
+  const src = new Map(out.filter((e) => e.type === 'source_port').map((e) => [e.source_port_id, e]));
+  const portNet = (id) => { const sp = src.get(out.find((e) => e.pcb_port_id === id && e.type === 'pcb_port')?.source_port_id); if (!sp) return null;
+    for (const k of [sp.name, ...(sp.port_hints || [])]) { const n = netOf.get(`${comp.get(sp.source_component_id)}.${k}`); if (n) return n; } return null; };
+  const traceNet = new Map();
+  for (const t of out.filter((e) => e.type === 'source_trace')) {
+    const n = t.connected_source_net_ids?.length ? out.find((e) => e.source_net_id === t.connected_source_net_ids[0] && e.type === 'source_net')?.name
+      : (() => { for (const id of t.connected_source_port_ids) { const pp = out.find((e) => e.type === 'pcb_port' && e.source_port_id === id); const n2 = pp && portNet(pp.pcb_port_id); if (n2) return n2; } return null; })();
+    traceNet.set(t.source_trace_id, n);
+  }
+  const pcbTraceNet = new Map(out.filter((e) => e.type === 'pcb_trace').map((e) => [e.pcb_trace_id, traceNet.get(e.source_trace_id)]));
+  const outline = b.outline || [{ x: b.center.x - b.width / 2, y: b.center.y - b.height / 2 }, { x: b.center.x + b.width / 2, y: b.center.y - b.height / 2 },
+    { x: b.center.x + b.width / 2, y: b.center.y + b.height / 2 }, { x: b.center.x - b.width / 2, y: b.center.y + b.height / 2 }];
+  const bounds = { minX: Math.min(...outline.map((p) => p.x)), maxX: Math.max(...outline.map((p) => p.x)), minY: Math.min(...outline.map((p) => p.y)), maxY: Math.max(...outline.map((p) => p.y)) };
+  for (const [name, { layer, id }] of Object.entries(nets)) {
+    const pads = [
+      ...out.filter((e) => e.type === 'pcb_plated_hole').map((e) => { const { w, h } = holeSize(e), key = portNet(e.pcb_port_id) ?? `none:${e.pcb_plated_hole_id}`;
+        return e.shape === 'circle' ? { padId: e.pcb_plated_hole_id, connectivityKey: key, layer, shape: 'circle', x: e.x, y: e.y, radius: w / 2, isPlatedHole: true }
+          : { padId: e.pcb_plated_hole_id, connectivityKey: key, layer, shape: 'pill', x: e.x, y: e.y, width: w, height: h, radius: Math.min(w, h) / 2, ccwRotation: 0, isPlatedHole: true }; }),
+      ...out.filter((e) => e.type === 'pcb_via').map((e) => ({ padId: e.pcb_via_id, connectivityKey: pcbTraceNet.get(e.pcb_trace_id) ?? `none:${e.pcb_via_id}`, layer, shape: 'circle', x: e.x, y: e.y, radius: e.outer_diameter / 2 })),
+      ...out.filter((e) => e.type === 'pcb_hole').map((e) => ({ padId: e.pcb_hole_id, connectivityKey: `hole:${e.pcb_hole_id}`, layer, shape: 'circle', x: e.x, y: e.y, radius: e.hole_diameter / 2 }))];
+    const solver = new CopperPourPipelineSolver({ pads, regionsForPour: [{ shape: 'rect', layer, bounds, outline, connectivityKey: name,
+      padMargin: board.plane_clearance ?? 0.2, traceMargin: board.plane_clearance ?? 0.2, board_edge_margin: board.plane_edge ?? 0.3,
+      use_thermal_reliefs: true, thermal_relief_spoke_width: 0.3, thermal_relief_spoke_count: 4 }] });
+    solver.solve();
+    if (solver.failed) throw new Error(`the ${name} plane couldn't be drawn: ${solver.error || 'no reason given'}`);
+    for (const shape of solver.getOutput().brep_shapes) add('pcb_copper_pour', { layer, shape: 'brep', brep_shape: shape, source_net_id: id, covered_with_solder_mask: true, subcircuit_id: SUB });
+  }
 }
 
 // A part's port names, in pad order: a switch's pin1 and pin2, a diode's anode and cathode, a chip's pins by label
@@ -298,13 +482,16 @@ export async function routeInput(json, toRoute) {
     if (e.type === 'pcb_smtpad') { const b = smtBounds(e); obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
       center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) }); }
     if (e.type === 'pcb_plated_hole') obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_plated_hole_id'), componentId: e.pcb_component_id, type: 'oval', layers: ['top', 'bottom'],
-      center: { x: e.x, y: e.y }, width: e.outer_diameter, height: e.outer_diameter, connectedTo: linked(e.pcb_plated_hole_id), ...joined(e) });
+      center: { x: e.x, y: e.y }, width: holeSize(e).w, height: holeSize(e).h, connectedTo: linked(e.pcb_plated_hole_id), ...joined(e) });
     if (e.type === 'pcb_hole') obstacles.push({ componentId: e.pcb_component_id, obstacleId: e.pcb_hole_id, isNonPlatedHole: true, type: 'rect', shape: 'circle',
       layers: ['top', 'bottom'], center: { x: e.x, y: e.y }, width: e.hole_diameter, height: e.hole_diameter, connectedTo: [] });
   }
-  const traces = json.filter((e) => e.type === 'pcb_trace').map((e) => ({ type: 'pcb_trace', pcb_trace_id: e.pcb_trace_id, source_trace_id: e.source_trace_id,
-    connection_name: e.source_trace_id, connectsTo: [e.route[0].start_pcb_port_id, e.route.at(-1).end_pcb_port_id],
-    route: e.route.map((p) => ({ route_type: p.route_type, x: p.x, y: p.y, width: p.width, layer: p.layer })) }));
+  // Tracks already on the board, but a plane's vias inside a big pad: the pad is in the router's way already
+  const padOf = new Map(json.filter((e) => e.type === 'pcb_smtpad').map((e) => [e.pcb_port_id, smtBounds(e)]));
+  const inPad = (e) => { const d = padOf.get(e.route[0].start_pcb_port_id); return d && e.route.every((p) => Math.abs(p.x - d.x) <= d.w / 2 && Math.abs(p.y - d.y) <= d.h / 2); };
+  const traces = json.filter((e) => e.type === 'pcb_trace' && !inPad(e)).map((e) => ({ type: 'pcb_trace', pcb_trace_id: e.pcb_trace_id, source_trace_id: e.source_trace_id,
+    connection_name: e.source_trace_id, connectsTo: [e.route[0].start_pcb_port_id, e.route.at(-1).end_pcb_port_id].filter(Boolean), // a plane's track ends at its via
+    route: e.route.map((p) => ({ route_type: p.route_type, x: p.x, y: p.y, width: p.width, layer: p.layer, ...(p.route_type === 'via' ? { from_layer: p.from_layer, to_layer: p.to_layer } : {}) })) }));
   const connections = toRoute.map(({ t, a, b: z, id }) => ({ name: id, source_trace_id: id, nominalTraceWidth: t.width, width: t.width,
     pointsToConnect: [a, z].map((q) => ({ x: q.x, y: q.y, layer: q.layers.length === 1 ? q.layers[0] : 'top', ...(q.layers.length === 1 ? { onlyLayer: q.layers[0] } : {}), pointId: q.pcb.pcb_port_id, pcb_port_id: q.pcb.pcb_port_id,
       port_selector: `${comp[q.source.source_component_id]}.${q.source.name}` })) }));
@@ -357,7 +544,7 @@ export function layerChanges(route, holes) {
   for (const p of route) {
     if (p.route_type !== 'through_obstacle') { pieces.at(-1).push(p); continue; }
     const at = p.start, inHole = holes.some((h) => {
-      const r = (h.outer_diameter ?? Math.max(h.outer_width ?? 0, h.outer_height ?? 0, h.rect_pad_width ?? 0, h.rect_pad_height ?? 0)) / 2;
+      const r = Math.max(holeSize(h).w, holeSize(h).h) / 2;
       return Math.hypot(at.x - h.x, at.y - h.y) <= r + 1e-6 && Math.hypot(p.end.x - h.x, p.end.y - h.y) <= r + 1e-6;
     });
     if (!inHole) throw new Error(`the autorouter ran a track through a part at (${at.x.toFixed(2)}, ${at.y.toFixed(2)}) mm: move the parts apart or give it more room`);
@@ -384,7 +571,7 @@ async function defaultRouter(json, toRoute) {
   // by the pads they finish on; a piece that reaches a one-sided pad on the other layer gets a via there (the router
   // sometimes leaves it out), set back along the piece just clear of the pad, and a short track on the pad's layer.
   const pads = json.filter((e) => e.type === 'pcb_smtpad' || e.type === 'pcb_plated_hole').map((e) => e.type === 'pcb_smtpad'
-    ? { port: e.pcb_port_id, ...smtBounds(e), layer: e.layer, points: e.points } : { port: e.pcb_port_id, x: e.x, y: e.y, w: e.outer_diameter, h: e.outer_diameter, layer: null });
+    ? { port: e.pcb_port_id, ...smtBounds(e), layer: e.layer, points: e.points } : { port: e.pcb_port_id, x: e.x, y: e.y, ...holeSize(e), layer: null });
   const within = (d, p) => Math.abs(p.x - d.x) <= d.w / 2 + 1e-6 && Math.abs(p.y - d.y) <= d.h / 2 + 1e-6 && (!d.points || insidePolygon(d.points, p));
   const padAt = (p) => pads.filter((d) => within(d, p)).sort((a, b) => a.w * a.h - b.w * b.h)[0]; // the smallest pad there
   const edge = json.find((e) => e.type === 'pcb_board')?.min_trace_to_pad_edge_clearance ?? 0.1;

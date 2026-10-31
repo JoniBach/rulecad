@@ -1,0 +1,7 @@
+{
+  "name": "rulecad-thin-picro",
+  "private": true,
+  "type": "module",
+  "description": "A long, thin RP2040 module for keyboards: Sea-Picro's circuit, redrawn by rules with its pins on three sides and USB-C on the fourth.",
+  "license": "CERN-OHL-S-2.0"
+}

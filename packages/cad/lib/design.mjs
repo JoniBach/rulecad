@@ -10,7 +10,7 @@
 // keyboard/keycap:oem-r3. Versions are the design over time; variants are alternatives that exist side by side.
 // Layouts: a "type": "layout" variable picks a file in the project's layouts/; the design gets every layout it can pick
 // as v.layouts[name] = { …the file, keys (each key's centre and properties), width, depth } (lib/layout.mjs).
-// Boards: "engine": "pcb" in the .json makes main(v) return a tscircuit board ({ board, matrix }, built with v.pcb, as
+// Boards: "engine": "pcb" in the .json makes main(v) return a tscircuit board ({ board, matrix, clone }, built with v.pcb, as
 // @rulecad/pcb describes); the build then carries its Circuit JSON (circuit) and matrix, and one part: the bare board
 // (its copper is in the 2D views).
 // Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
@@ -173,7 +173,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     for (const e of entries) if (c.used.includes(e.name)) e.used = true;
     const parts = c.parts.map(({ solid: f, ...p }) => ({ ...p, geometry: fromFaces(f) }));
     if (c.circuit) Object.assign(values, (await pcbEngine()).outputs(c.circuit, c.matrix));
-    return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix } : {}) };
+    return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix, ...(c.source ? { source: c.source } : {}) } : {}) };
   }
 
   // A JSCAD design runs in a sandbox (sandbox.mjs: another process that can't write files, start programs or reach
@@ -197,8 +197,8 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     let made;
     try { made = await mod.main(watched); } catch (e) { throw located(e, d.js, 'design.run'); }
     if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part
-      const { board: b, matrix } = made && made.board ? made : { board: made };
-      board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}) };
+      const { board: b, matrix, clone } = made && made.board ? made : { board: made }; // clone: a cloned board's { circuit, arranged }, for its checks
+      board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}), ...(clone ? { source: clone } : {}) };
       Object.assign(values, pcb.outputs(board.circuit, matrix)); // what it tells the parts around it: outline, Pico
       made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth });
     }

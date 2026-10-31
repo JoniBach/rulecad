@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/rules",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Researched rule sets as open data: a Bambu Lab X1C, Cherry MX switches, OEM keycaps, M2 inserts, the Raspberry Pi Pico, materials for analysis (printed PLA and PETG, aluminium, steel, titanium) and more, each value with its source.",
   "type": "module",
   "exports": {

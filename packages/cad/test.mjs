@@ -96,8 +96,9 @@ test('cad clone: a published KiCad board into a rule set, its source and licence
     fs.writeFileSync(path.join(ws, 'tiny.kicad_pcb'), board);
     const out = cad('clone', 'tiny.kicad_pcb', 'tiny', '--source', 'https://example.org/tiny', '--licence', 'CERN-OHL-S-2.0');
     assert.match(out, /made rules[\\/]tiny\.json: 2 parts, 2 nets, 10 × 10 mm, 4 copper layers, planes GND/);
-    assert.match(out, /note: left to planes, not routed: GND \(2 pads\)/);
-    assert.match(out, /note: castellated pads left out, on 1 part \(J1\)/);
+    assert.match(out, /note: planes on inner layers: GND on inner1 \(2 pads\)/);
+    assert.match(out, /note: castellated pads on 1 part \(J1\)/);
+    assert.match(out, /placement: 0 small parts kept near the pins they serve/);
     assert.match(out, /is reciprocal: boards made from this must be shared under it too/);
     const set = JSON.parse(fs.readFileSync(path.join(ws, 'rules/tiny.json'), 'utf8'));
     assert.equal(set.licence, 'CERN-OHL-S-2.0');
