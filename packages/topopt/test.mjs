@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma, printable } from '@rulecad/topopt';
+import { optimise, model, discretise, outlines, area, densityFilter, overhangFilter, surface, inside, bounds, mma, printable, refine, despike } from '@rulecad/topopt';
 import { grid } from '@rulecad/fea';
 
 // The reference values come from reference/top88.py, a line-by-line port of Andreassen et al. (2011)'s top88.m (the
@@ -220,7 +220,7 @@ test('surface: material filling the grid to its faces gives exactly its box, clo
   for (const [k, n] of edges) { const [p, q] = k.split(','); assert.ok(n === 1 && edges.has(`${q},${p}`), `edge ${k}: a hole or a fold`); }
 });
 
-test('surface: a printable slope keeps no faces past the overhang limit, in any build direction, nor gains material', () => {
+test('surface: with tip, a printable slope keeps no faces past the overhang limit, in any build direction, nor gains material', () => {
   // A wall leaning out at 45°, one cube further out per layer: smoothing its staircase leaves faces either side of 45°
   const n = [16, 4, 12], volume = (v, f) => f.reduce((s, [a, b, c]) => { const [p, q, r] = [v[a], v[b], v[c]]; return s + (p[0] * (q[1] * r[2] - q[2] * r[1]) - p[1] * (q[0] * r[2] - q[2] * r[0]) + p[2] * (q[0] * r[1] - q[1] * r[0])) / 6; }, 0);
   for (const [up, axes] of [['+z', [0, 1, 2]], ['+y', [0, 2, 1]]]) {
@@ -230,7 +230,7 @@ test('surface: a printable slope keeps no faces past the overhang limit, in any 
       const u = v[b].map((x, m) => x - v[a][m]), w = v[c].map((x, m) => x - v[a][m]), nv = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]], l = Math.hypot(...nv);
       return s + (nv[q] / l < -Math.sin((45.5 * Math.PI) / 180) && nv[q] / l > -0.999 ? l / 2 : 0);
     }, 0);
-    const plain = surface(size, d), kept = surface(size, d, [0, 0, 0], { overhang: { up, angle: 45 } });
+    const plain = surface(size, d), kept = surface(size, d, [0, 0, 0], { overhang: { up, angle: 45, tip: true } });
     assert.ok(past(plain) > 1, `${up}: the plain surface should have faces past 45° to fix (${past(plain)} mm²)`);
     assert.equal(past(kept), 0, `${up}: ${past(kept)} mm² past 45°`);
     assert.ok(Math.abs(volume(kept.vertices, kept.faces) / volume(plain.vertices, plain.faces) - 1) < 0.01, `${up}: volume changed`);
@@ -399,3 +399,25 @@ test('the force inverter: from a block that moves with the push, the optimiser m
   assert.ok(Math.abs(r.volume - 0.3) < 0.02, `the volume is held: ${r.volume}`);
   assert.ok(r.density.filter((d) => d > 0.1 && d < 0.9).length < r.density.length * 0.15, 'mostly solid or empty');
 });
+
+test('refine: densities interpolated onto a finer grid keep their total and their kept blocks; despike empties a hanging point and nothing else', () => {
+  const size = { nx: 4, ny: 4, nz: 4, h: 2 }, d = new Float64Array(64), keep = new Uint8Array(64);
+  for (let k = 0; k < 4; k++) for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) d[(k * 4 + j) * 4 + i] = k < 2 ? 1 : 0; // the bottom half solid
+  keep[(0 * 4 + 0) * 4 + 0] = 1;
+  const f = refine(size, d, 2, { keep });
+  assert.deepEqual([f.grid.nx, f.grid.ny, f.grid.nz, f.grid.h], [8, 8, 8, 1]);
+  assert.ok(Math.abs(f.density.reduce((a, b) => a + b, 0) / 8 - d.reduce((a, b) => a + b, 0)) < 1e-9, 'the same material');
+  assert.equal(f.keep.reduce((a, b) => a + b, 0), 8, 'a kept cell is a kept block');
+  assert.ok(f.density[(0 * 8 + 0) * 8 + 0] === 1 && f.density[(7 * 8 + 0) * 8 + 0] === 0 && f.density[(3 * 8 + 0) * 8 + 0] > 0.5 && f.density[(4 * 8 + 0) * 8 + 0] < 0.5, 'solid below, empty above, the edge between');
+  // A spike: one solid cell hanging under the slab with nothing under it and nothing beside it
+  const g = Float64Array.from(d); g[(1 * 4 + 1) * 4 + 1] = 1; // (already solid; make a hanging one above the slab instead)
+  const h = new Float64Array(64); for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) h[(0 * 4 + j) * 4 + i] = 1; // a slab on the bed
+  h[(2 * 4 + 1) * 4 + 1] = 1; // one cell above it with nothing under it and nothing beside it: a hanging point
+  const sp = despike(size, h, { up: '+z' });
+  assert.equal(sp.emptied, 1); assert.equal(sp.density[(2 * 4 + 1) * 4 + 1], 0);
+  h[(1 * 4 + 1) * 4 + 1] = 1; // now something under it: it stays
+  assert.equal(despike(size, h, { up: '+z' }).emptied, 0);
+  const wall = new Float64Array(64); for (let k = 0; k < 4; k++) for (let j = 0; j < 4; j++) wall[(k * 4 + j) * 4 + 1] = 1; // a wall, every cell on another
+  assert.equal(despike(size, wall, { up: '+z' }).emptied, 0, 'a wall is not spikes');
+});
+

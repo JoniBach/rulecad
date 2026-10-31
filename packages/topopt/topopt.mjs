@@ -944,9 +944,11 @@ function simplify(loop, tolerance) {
  * @param {{ nx: number, ny: number, nz: number, h: number }} size @param {ArrayLike<number>} density @param {number[]} origin
  * Vertices on the grid's outer faces stay where they are as it's smoothed, so a part that fills its space to a face (a
  * base on the bed) keeps that face flat, and the walls rising from it don't lean out.
- * @param {{ smooth?: number, iso?: number, overhang?: { up: string, angle: number } }} [options] iso: the density the
- * surface is drawn at (0.5). overhang: the build direction ('+z') and the printer's overhang limit (degrees from
- * vertical): faces smoothing left past it are tipped back to it.
+ * @param {{ smooth?: number, iso?: number, overhang?: { up: string, angle: number, tip?: boolean } }} [options] iso: the
+ * density the surface is drawn at (0.5). overhang: the build direction ('+z') and the printer's overhang limit (degrees
+ * from vertical): downward bumps left by smoothing are filled, so nothing starts in mid-air when sliced; with tip, faces
+ * past the limit are also tipped back to it (off by default: tipping corners leaves dips that slice as islands, and the
+ * layers step out no further for it).
  * @returns {{ vertices: number[][], faces: number[][] }}
  */
 export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth = 4, iso = 0.5, overhang } = {}) {
@@ -1016,14 +1018,30 @@ export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth
   }
   // Printable: faces past the limit tipped back, and tips lifted, in turn until neither finds any (each can make work for
   // the other: a lifted tip leaves a face sloping more, a tipped face can leave a corner lowest)
-  if (overhang) for (let round = 0; round < 20; round++) { const tipped = steepen(pts, faces, held, overhang, lo, hi), lifted = lift(pts, faces, held, overhang, lo); if (!tipped && !lifted) break; }
+  if (overhang) settle({ vertices: pts, faces }, { overhang, lo, hi, held });
   return { vertices: pts, faces };
+}
+
+/**
+ * A surface made printable in place: faces past the overhang limit tipped back to it, and downward bumps filled to
+ * where they join the surface round them, in turn until neither finds any. surface() does this as it draws; call it
+ * again after moving a mesh's corners (raising an island off the slicer's view, say).
+ * @param {{ vertices: number[][], faces: number[][] }} mesh edited in place
+ * @param {{ overhang: { up: string, angle: number }, lo: number[], hi: number[], held?: boolean[] }} o lo, hi: the
+ *   grid's corners (corners on its faces are pinned); held: corners that must not move (default: those on the faces)
+ * @returns {number} how many rounds it took
+ */
+export function settle({ vertices: pts, faces }, { overhang, lo, hi, held }) {
+  const near = 1e-6, pinned = held ?? pts.map((p) => p.some((x, q) => x < lo[q] + near || x > hi[q] - near));
+  let round = 0;
+  for (; round < 20; round++) { const tipped = overhang.tip ? steepen(pts, faces, pinned, overhang, lo, hi) : false, lifted = fill(pts, faces, pinned, overhang, lo); if (!tipped && !lifted) break; }
+  return round;
 }
 
 // Faces past the overhang limit, tipped back to it. Optimised in cubes, a printable slope is a staircase of 45°, and
 // smoothing leaves small faces either side of 45°. Each face facing down more steeply than the limit is turned about
 // its centre, moving its corners along the build direction only, until it's a little inside the limit: about as much
-// material is added as taken away. A corner shared by several such faces moves by their average; it's repeated until
+// material is added as taken away. (Off by default: a corner moved down is a dip, an island when sliced.) A corner shared by several such faces moves by their average; it's repeated until
 // none are left. Flat faces (a bridge) and faces held on the grid's sides stay as they are.
 function steepen(pts, faces, held, { up, angle }, lo, hi, passes = 200) {
   const q = 'xyz'.indexOf(up[1]), s = up[0] === '-' ? -1 : 1, [a, b] = [0, 1, 2].filter((x) => x !== q);
@@ -1052,6 +1070,36 @@ function steepen(pts, faces, held, { up, angle }, lo, hi, passes = 200) {
   return true;
 }
 
+// Downward bumps filled: on the underside, a dip whose every way out leads up (along the build direction) is a bump the
+// printer meets from below: its lowest layer has nothing under it, an island. Each such basin is raised to the height
+// where it joins the surface round it (a flood from the bed, in order of height, as the depressions of a map are filled
+// to their spill points), which leaves a small flat underside there, bridged. The bed's corners, those held on the
+// grid's sides, and corners facing up are the sources and stay.
+function fill(pts, faces, held, { up }, lo) {
+  const q = 'xyz'.indexOf(up[1]), s = up[0] === '-' ? -1 : 1, near = pts.map(() => new Set()), facing = new Float64Array(pts.length);
+  for (const f of faces) {
+    for (let i = 0; i < 3; i++) { near[f[i]].add(f[(i + 1) % 3]); near[f[i]].add(f[(i + 2) % 3]); }
+    const [p, r, t] = f.map((n) => pts[n]), u = [0, 1, 2].map((x) => r[x] - p[x]), w = [0, 1, 2].map((x) => t[x] - p[x]);
+    const nq = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]][q];
+    for (const m of f) facing[m] += s * nq;
+  }
+  const height = (v) => s * v[q], level = new Float64Array(pts.length).fill(Infinity), done = new Uint8Array(pts.length);
+  // A heap of corners by their level, lowest first
+  const heap = [], push = (n, l) => { level[n] = l; heap.push([l, n]); let i = heap.length - 1; while (i > 0) { const pa = (i - 1) >> 1; if (heap[pa][0] <= heap[i][0]) break; [heap[pa], heap[i]] = [heap[i], heap[pa]]; i = pa; } };
+  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const a = 2 * i + 1, b = a + 1; let m = i; if (a < heap.length && heap[a][0] < heap[m][0]) m = a; if (b < heap.length && heap[b][0] < heap[m][0]) m = b; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+  const bed = s > 0 ? lo[q] : null;
+  for (let m = 0; m < pts.length; m++) if (held[m] || facing[m] >= 0 || (bed !== null && Math.abs(pts[m][q] - bed) < 1e-9) || !near[m].size) push(m, height(pts[m]));
+  let moved = 0;
+  while (heap.length) {
+    const [l, n] = pop();
+    if (done[n]) continue;
+    done[n] = 1;
+    if (height(pts[n]) < l - 1e-9) { pts[n][q] = s * l; moved++; } // in a basin: raised to its spill level
+    for (const m of near[n]) if (!done[m]) { const lm = Math.max(height(pts[m]), l); if (lm < level[m]) push(m, lm); }
+  }
+  return moved > 0;
+}
+
 // Tips lifted: a corner lower than every corner round it (along the build direction), on faces facing down, starts in
 // mid-air, where a printer has nothing to lay it on. Smoothing leaves these under edges and bridges. Each is raised level
 // with its lowest neighbour, which leaves a small flat underside (bridged), until none are left. The bed's corners and
@@ -1076,6 +1124,79 @@ function lift(pts, faces, held, { up }, lo, passes = 50) {
     if (!moved) return pass > 0;
   }
   return true;
+}
+
+/**
+ * A result's densities on a finer grid, so it can be cleaned and drawn at nearer the printer's resolution: each fine
+ * cell takes the density interpolated (trilinear, or bilinear in 2D) between the coarse cells' centres round it, so
+ * the surface drawn through it lies where the coarse one would, with the steps between coarse cells resolved. Kept
+ * cells become kept blocks.
+ * @param {{ nx: number, ny: number, nz?: number, h: number }} size @param {ArrayLike<number>} density
+ * @param {number} factor fine cells per coarse cell along each axis (a whole number, 1 for no change)
+ * @param {{ keep?: ArrayLike<number>, method?: 'linear' | 'nearest' }} [options] keep: cells that always stay, carried to
+ *   the fine grid; method: interpolated between coarse centres (linear, default), or each fine cell its coarse cell's
+*   value (nearest: the stairs kept exactly, for the smoother to round); smooth: box-blur passes over the fine cells (0)
+ * @returns {{ grid: { nx: number, ny: number, nz?: number, h: number }, density: Float64Array, keep?: Uint8Array }}
+ */
+export function refine({ nx, ny, nz = 1, h }, density, factor, { keep, method = 'linear', smooth = 0 } = {}) {
+  const f = Math.max(1, Math.round(factor)), dim = nz > 1 ? 3 : 2, n = [nx, ny, nz], m = n.map((c, a) => (a < dim ? c * f : c)), cells = m[0] * m[1] * m[2];
+  const out = new Float64Array(cells), fine = keep ? new Uint8Array(cells) : undefined, at = (i, j, k) => density[(Math.min(nz - 1, Math.max(0, k)) * ny + Math.min(ny - 1, Math.max(0, j))) * nx + Math.min(nx - 1, Math.max(0, i))];
+  for (let k = 0; k < m[2]; k++) for (let j = 0; j < m[1]; j++) for (let i = 0; i < m[0]; i++) {
+    // The fine cell's centre in coarse-cell units, measured from the coarse centres
+    const x = (i + 0.5) / f - 0.5, y = (j + 0.5) / f - 0.5, z = dim === 3 ? (k + 0.5) / f - 0.5 : 0;
+    const i0 = Math.floor(x), j0 = Math.floor(y), k0 = Math.floor(z), tx = x - i0, ty = y - j0, tz = z - k0;
+    let v = 0;
+    if (method === 'nearest') v = at(Math.floor(i / f), Math.floor(j / f), dim === 3 ? Math.floor(k / f) : 0); // each fine cell its coarse cell's value: the stairs kept
+    else for (let c = 0; c <= (dim === 3 ? 1 : 0); c++) for (let b = 0; b <= 1; b++) for (let a = 0; a <= 1; a++) v += at(i0 + a, j0 + b, k0 + c) * (a ? tx : 1 - tx) * (b ? ty : 1 - ty) * (dim === 3 ? (c ? tz : 1 - tz) : 1);
+    const e = (k * m[1] + j) * m[0] + i;
+    out[e] = v;
+    if (fine) fine[e] = keep[(Math.floor(k / (dim === 3 ? f : 1)) * ny + Math.floor(j / f)) * nx + Math.floor(i / f)] ? 1 : 0;
+  }
+  // Smoothed a little (a box over the neighbouring fine cells, smooth passes): the interpolated stairs between coarse
+  // cells bulge under the overhang line at each step, and the blur takes the bulges down
+  let v = out;
+  for (let pass = 0; pass < smooth; pass++) {
+    const next = new Float64Array(cells);
+    for (let k = 0; k < m[2]; k++) for (let j = 0; j < m[1]; j++) for (let i = 0; i < m[0]; i++) {
+      let sum = 0, count = 0;
+      for (let c = dim === 3 ? -1 : 0; c <= (dim === 3 ? 1 : 0); c++) for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) { const ii = i + a, jj = j + b, kk = k + c; if (ii >= 0 && ii < m[0] && jj >= 0 && jj < m[1] && kk >= 0 && kk < m[2]) { sum += v[(kk * m[1] + jj) * m[0] + ii]; count++; } }
+      next[(k * m[1] + j) * m[0] + i] = sum / count;
+    }
+    v = next;
+  }
+  return { grid: dim === 3 ? { nx: m[0], ny: m[1], nz: m[2], h: h / f } : { nx: m[0], ny: m[1], h: h / f }, density: v, ...(fine ? { keep: fine } : {}) };
+}
+
+/**
+ * Spikes taken off a result's underside before it's drawn: a solid cell with nothing under it (along the build
+ * direction) and too few solid neighbours in its own layer is a hanging point, the start of a jagged edge or an
+ * island when sliced; it is emptied, and the layer above is looked at again, until none are left. On a fine grid
+ * (refine) this is the printer's own view of the surface. Kept cells stay.
+ * @param {{ nx: number, ny: number, nz?: number }} size @param {ArrayLike<number>} density
+ * @param {{ up: string, iso?: number, keep?: ArrayLike<number>, thin?: number }} options thin: a hanging cell with
+ *   fewer solid neighbours than this in its layer is a spike (default 3 of 8 in 3D, 1 of 2 in 2D)
+ * @returns {{ density: Float64Array, emptied: number }}
+ */
+export function despike({ nx, ny, nz = 1 }, density, { up, iso = 0.5, keep, thin }) {
+  const n = nz > 1 ? [nx, ny, nz] : [nx, ny], dim = n.length, ax = 'xyz'.indexOf(up.at(-1)), sign = up[0] === '-' ? -1 : 1, least = thin ?? (dim === 3 ? 3 : 1);
+  const stride = [1, nx, nx * ny], other = [0, 1, 2].slice(0, dim).filter((a) => a !== ax), out = Float64Array.from(density), coord = (e, a) => Math.floor(e / stride[a]) % n[a];
+  const solid = (e) => out[e] >= iso || (keep && keep[e]);
+  let emptied = 0, changed = true;
+  for (let pass = 0; pass < 50 && changed; pass++) {
+    changed = false;
+    for (let e = 0; e < out.length; e++) {
+      if (!(out[e] >= iso) || (keep && keep[e])) continue;
+      const c = coord(e, ax);
+      if ((sign > 0 && c === 0) || (sign < 0 && c === n[ax] - 1)) continue; // on the bed
+      if (solid(e - sign * stride[ax])) continue; // something straight under it
+      let around = 0, slots = 0;
+      const offs = other.map((a) => [-stride[a], 0, stride[a]].filter((d, i) => { const q = coord(e, a); return (i === 0 && q > 0) || i === 1 || (i === 2 && q < n[a] - 1); }));
+      if (offs.length === 1) for (const d of offs[0]) { if (d) { slots++; if (solid(e + d)) around++; } }
+      else for (const d0 of offs[0]) for (const d1 of offs[1]) { if (d0 || d1) { slots++; if (solid(e + d0 + d1)) around++; } }
+      if (around < Math.min(least, slots)) { out[e] = 0; emptied++; changed = true; }
+    }
+  }
+  return { density: out, emptied };
 }
 
 /**
