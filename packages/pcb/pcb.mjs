@@ -395,6 +395,15 @@ function loops(pieces, tol = 0.005) {
 }
 const area = (pts) => pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + p.x * q.y - q.x * p.y; }, 0) / 2;
 
+// The sizes the source uses most: its vias ({ via: { pad, hole } }), its narrowest track, its zones' clearance
+function commonest(root) {
+  const most = (list) => { const n = new Map(); for (const k of list) n.set(k, (n.get(k) || 0) + 1); return [...n].sort((a, b) => b[1] - a[1])[0]?.[0]; };
+  const via = most(kidsOf(root, 'via').map((v) => `${kidOf(v, 'size')?.[1]} ${kidOf(v, 'drill')?.[1]}`));
+  const widths = kidsOf(root, 'segment').map((g) => Number(kidOf(g, 'width')?.[1])).filter((w) => w > 0);
+  const clear = most(kidsOf(root, 'zone').map((z) => kidOf(kidOf(z, 'connect_pads') || [], 'clearance')?.[1]).filter(Boolean));
+  return { ...(via ? { via: { pad: Number(via.split(' ')[0]), hole: Number(via.split(' ')[1]) } } : {}), ...(widths.length ? { track: Math.min(...widths) } : {}), ...(clear ? { clearance: Number(clear) } : {}) };
+}
+
 /**
  * A KiCad board (.kicad_pcb text, KiCad 6 or later) as a circuit, in mm, y up, centred on the outline's bounds:
  * { layers, width, height, outline, parts, nets, planes, holes, source }. Each part keeps its place on the source
@@ -483,30 +492,35 @@ export function fromKicadPcb(text) {
     outline, cutouts, parts,
     nets: Object.fromEntries(Object.entries(nets).filter(([, s]) => s.size > 1).map(([k, s]) => [k, [...s]])),
     planes, holes: holes.map((h) => ({ ...to(h), d: h.d })),
-    source: { generator: kidOf(root, 'generator')?.[1], version: kidOf(root, 'version')?.[1], tracks: kidsOf(root, 'segment').length + kidsOf(root, 'arc').length, vias: kidsOf(root, 'via').length }
+    source: { generator: kidOf(root, 'generator')?.[1], version: kidOf(root, 'version')?.[1], tracks: kidsOf(root, 'segment').length + kidsOf(root, 'arc').length, vias: kidsOf(root, 'via').length,
+      ...commonest(root) }
   };
 }
 
 /**
  * A circuit's parts and nets (fromKicadPcb's, kept in a rule set) for a board, each part where the source put it: put
  * them in board.parts and board.nets. o.planes: nets left out of the routing, for planes to join (default: the nets
- * the source fills on inner layers, when it has them). Returns { parts, nets, holes, outline, notes }: notes say what
- * this board can't carry yet (castellated pads, oval holes), in plain words.
- * @param {object} circuit @param {{ planes?: string[] }} [o]
+ * the source fills on inner layers, when it has them). o.layers: the board's copper layers (default the source's): on 4
+ * or more, those nets get planes on inner layers (board.planes). Returns { parts, nets, planes, holes, outline, layers,
+ * via_pad, via_hole, plane_clearance (the source's), notes }: notes say what this board does with them, and what it can't carry yet (slots are drilled round).
+ * @param {object} circuit @param {{ planes?: string[], layers?: number }} [o]
  */
 export function clone(circuit, o = {}) {
-  const inner = (l) => /^In\d+\.Cu$/.test(l);
+  const inner = (l) => /^In\d+\.Cu$/.test(l), layers = o.layers ?? circuit.layers ?? 2;
   const planes = o.planes ?? Object.entries(circuit.planes || {}).filter(([, ls]) => ls.some(inner)).map(([n]) => n);
-  const notes = [], castellated = new Set(), oval = new Set(), offset = new Set();
+  const notes = [], castellated = new Set(), oval = new Set();
   const parts = circuit.parts.map((p) => {
     const quarterTurn = p.rotation % 90 === 0, t = (p.rotation * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
-    const pads = p.pads.filter((q) => !(q.castellated && castellated.add(p.ref))).map((q) => {
+    const pads = p.pads.map((q) => {
       const pin = `pin${q.pin}`;
       if (!q.smd) {
-        if (q.hole_size || q.w !== q.h) oval.add(p.ref);
-        if (q.hole_offset) offset.add(p.ref);
         const at = quarterTurn ? { x: q.x, y: q.y } : { x: q.x * c - q.y * s, y: q.x * s + q.y * c };
-        return { pin, hint: q.pin, ...at, hole: q.hole, outer: Math.min(q.w, q.h) };
+        if (q.castellated) { castellated.add(p.ref); return { pin, hint: q.pin, ...at, hole: q.hole, outer: Math.min(q.w, q.h), castellated: true }; }
+        if (q.hole_size) oval.add(p.ref); // a slot: drilled round, at its narrow width
+        if (q.w === q.h && !q.hole_offset) return { pin, hint: q.pin, ...at, hole: q.hole, outer: q.w };
+        // an oval pad, or a hole off its centre: a rounded rectangle round the hole, turned with the part (quarter turns)
+        const sw = (q.angle + (quarterTurn ? 0 : p.rotation)) % 180 === 90, w = sw ? q.h : q.w, h = sw ? q.w : q.h;
+        return { pin, hint: q.pin, ...at, hole: q.hole, outer: Math.min(w, h), rect: { w, h, offset: q.hole_offset || [0, 0] } };
       }
       const turn = q.angle + (quarterTurn ? 0 : p.rotation);
       if (turn % 90 === 0) { // a rectangle, its sides swapped by a quarter turn of its own
@@ -517,19 +531,30 @@ export function clone(circuit, o = {}) {
       const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [r4(at.x + (u * q.w / 2) * ca - (v * q.h / 2) * sa), r4(at.y + (u * q.w / 2) * sa + (v * q.h / 2) * ca)]);
       return { pin, smd: true, hint: q.pin, ...at, points: pts }; // corners relative to the part, as circuit.mjs takes them
     });
-    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.lcsc ?? p.mpn, courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
+    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
   }).filter((p) => p.pads.length);
   const have = new Set(parts.flatMap((p) => p.pads.map((q) => `${p.name}.${q.pin}`))), dropped = new Set();
   const nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => !planes.includes(n))
     .map(([n, pins]) => [n, pins.map((x) => { const i = x.indexOf('.'); return `${x.slice(0, i)}.pin${x.slice(i + 1)}`; })
       .filter((x) => have.has(x) || !dropped.add(x))]).filter(([, pins]) => pins.length > 1));
   const plural = (set, one, many) => `${set.size} ${set.size === 1 ? one : many} (${[...set].join(', ')})`;
-  if (planes.length) notes.push(`left to planes, not routed: ${planes.map((n) => `${n} (${circuit.nets[n]?.length ?? 0} pads)`).join(', ')}. Boards here have 2 layers so far: these nets need a plane or a pour joined to every pad`);
-  if (castellated.size) notes.push(`castellated pads left out, on ${plural(castellated, 'part', 'parts')}: they sit half off the board's edge, which boards here can't carry yet`);
-  if (oval.size) notes.push(`oval pads drawn round, at their narrow width, on ${plural(oval, 'part', 'parts')}`);
+  // On 4 layers or more, each plane net fills the inner layer the source gives it (the first, if several), or the next free one
+  const onPlanes = {}, free = Array.from({ length: Math.max(0, layers - 2) }, (_, i) => `inner${i + 1}`);
+  if (layers >= 4) for (const n of planes) {
+    const own = (circuit.planes?.[n] || []).find(inner), want = own ? `inner${own.match(/\d+/)[0]}` : null;
+    const layer = want && free.includes(want) ? want : free[0];
+    if (!layer) { notes.push(`${n}: no inner layer left for its plane`); continue; }
+    free.splice(free.indexOf(layer), 1);
+    onPlanes[n] = { layer, pins: (circuit.nets[n] || []).map((x) => { const i = x.indexOf('.'); return `${x.slice(0, i)}.pin${x.slice(i + 1)}`; }).filter((x) => have.has(x)) };
+  }
+  if (layers >= 4 && Object.keys(onPlanes).length) notes.push(`planes on inner layers: ${Object.entries(onPlanes).map(([n, q]) => `${n} on ${q.layer} (${q.pins.length} pads)`).join(', ')}`);
+  else if (planes.length) notes.push(`left to planes, not routed: ${planes.map((n) => `${n} (${circuit.nets[n]?.length ?? 0} pads)`).join(', ')}. On 2 layers these nets need a pour joined to every pad: build the board with 4 layers ({ layers: 4 }) to give them planes`);
+  if (castellated.size) notes.push(`castellated pads on ${plural(castellated, 'part', 'parts')}: half holes on the board's edge, which the fab cuts through (an option when ordering)`);
+  if (oval.size) notes.push(`slots drilled round, at their narrow width, on ${plural(oval, 'part', 'parts')}`);
   if (dropped.size) notes.push(`${dropped.size} pins with no pad left on this board are out of their nets: ${[...dropped].slice(0, 5).join(', ')}`);
-  if (offset.size) notes.push(`holes set off-centre in their pads drawn centred, on ${plural(offset, 'part', 'parts')}`);
-  return { parts, nets, holes: circuit.holes, outline: circuit.outline, notes };
+  const src = circuit.source || {}; // the source's via and clearance, which its layout was made to
+  const sizes = { ...(src.via ? { via_pad: src.via.pad, via_hole: src.via.hole } : {}), ...(src.clearance ? { plane_clearance: src.clearance } : {}) };
+  return { parts, nets, holes: circuit.holes, outline: circuit.outline, layers, ...(Object.keys(onPlanes).length ? { planes: onPlanes } : {}), ...sizes, notes };
 }
 
 // A part's pads on the board (the circuit's frame), as render places them: turned, and mirrored in x on the back
@@ -606,15 +631,22 @@ export function placementChecks(circuit, rules = circuit.placement || learnPlace
  * @param {object[]} json Circuit JSON (render's) @param {object} circuit @param {{ planes?: string[] }} [o]
  */
 export function sameCircuit(json, circuit, o = {}) {
-  const { nets } = clone(circuit, o), up = new Map(), find = (a) => { while (up.get(a) !== a) a = up.get(a); return a; };
+  const onBoard = new Set(json.filter((e) => e.type === 'source_net').map((e) => e.name)); // nets the board has planes for
+  const left = clone(circuit, o).nets, nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => left[n] || onBoard.has(n))
+    .map(([n, pins]) => [n, pins.map((x) => { const i = x.indexOf('.'); return `${x.slice(0, i)}.pin${x.slice(i + 1)}`; })]));
+  const up = new Map(), find = (a) => { while (up.get(a) !== a) a = up.get(a); return a; };
   const join = (a, b) => { up.set(find(a), find(b)); };
   const comp = new Map(json.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e]));
   const name = new Map(json.filter((e) => e.type === 'source_port').map((e) => [e.source_port_id, `${comp.get(e.source_component_id)?.name}.${e.name}`]));
   for (const id of name.keys()) up.set(id, id);
   for (const c of comp.values()) for (const g of c.internally_connected_source_port_ids || []) g.forEach((id) => join(id, g[0]));
-  for (const t of json.filter((e) => e.type === 'source_trace')) t.connected_source_port_ids.forEach((id) => join(id, t.connected_source_port_ids[0]));
+  for (const t of json.filter((e) => e.type === 'source_trace')) {
+    t.connected_source_port_ids.forEach((id) => join(id, t.connected_source_port_ids[0]));
+    for (const n of t.connected_source_net_ids || []) { if (!up.has(n)) up.set(n, n); join(t.connected_source_port_ids[0], n); } // a pad joined to a plane
+  }
   const group = new Map(); // pin name -> group
   for (const [id, n] of name) group.set(n, find(id));
+  for (const [n, pins] of Object.entries(nets)) if (!left[n]) nets[n] = pins.filter((p) => group.has(p)); // a pin with no pad here (castellated): out of its plane too
   const out = [], missing = [], split = [], shorted = [];
   const owner = new Map(); // group -> net
   for (const [net, pins] of Object.entries(nets)) {
@@ -715,22 +747,40 @@ export async function checks(json, v, matrix) {
   const board = json.find((e) => e.type === 'pcb_board');
   // On a shaped board, a part's box can reach past a curved edge when its copper doesn't (a ring on a round disc): that
   // part is checked here pad by pad against the outline instead (below)
-  const padsOf = (id) => json.filter((e) => e.pcb_component_id === id && ['pcb_smtpad', 'pcb_plated_hole'].includes(e.type));
+  // Castellated pads sit on the edge by design: half holes the fab cuts through. They're checked against its rules for them below
+  const castellated = json.filter((e) => e.type === 'pcb_plated_hole' && e.port_hints?.includes('castellated')), halves = new Set(castellated.map((e) => e.pcb_plated_hole_id));
+  const padsOf = (id) => json.filter((e) => e.pcb_component_id === id && ['pcb_smtpad', 'pcb_plated_hole'].includes(e.type) && !halves.has(e.pcb_plated_hole_id));
   const fits = (id) => board.outline && padsOf(id).every((e) => (e.points || [e]).every((q) => inside(board.outline, q.x, q.y)));
-  const drc = (await runAllChecks(json)).filter((e) => !(e.type === 'pcb_component_outside_board_error' && fits(e.pcb_component_id)));
+  const onEdge = (e) => [...halves].some((id) => JSON.stringify(e).includes(`"${id}"`));
+  const drc = (await runAllChecks(json)).filter((e) => !(e.type === 'pcb_component_outside_board_error' && fits(e.pcb_component_id)) && !onEdge(e));
   const problems = [...json, ...drc].filter((e) => /_error$/.test(e.type));
   const seen = new Set(), errors = problems.filter((e) => !seen.has(e.message) && seen.add(e.message));
   out.push(errors.length ? { level: 'fail', text: `${errors.length} design-rule errors: ${errors.slice(0, 3).map((e) => e.message).join('; ')}` } : { level: 'pass', text: 'tscircuit\'s design checks: no errors (traces, clearances, holes, board edge)' });
-  const traces = json.filter((e) => e.type === 'pcb_trace'), unrouted = json.filter((e) => e.type === 'source_trace').length - traces.length;
+  // Connections between pads: as many tracks as connections (the router names a net's pieces after its connections). To
+  // a plane: a track to a via, or the pad's own hole
+  const traces = json.filter((e) => e.type === 'pcb_trace'), toPlane = json.filter((e) => e.type === 'source_trace' && e.connected_source_net_ids?.length);
+  const planeIds = new Set(toPlane.map((t) => t.source_trace_id)), tracked = new Set(traces.map((t) => t.source_trace_id));
+  const holePorts = new Set(json.filter((e) => e.type === 'pcb_plated_hole').map((e) => json.find((p) => p.type === 'pcb_port' && p.pcb_port_id === e.pcb_port_id)?.source_port_id));
+  const unrouted = json.filter((e) => e.type === 'source_trace').length - planeIds.size - traces.filter((t) => !planeIds.has(t.source_trace_id)).length
+    + toPlane.filter((t) => !tracked.has(t.source_trace_id) && !holePorts.has(t.connected_source_port_ids[0])).length;
   out.push(unrouted > 0 ? { level: 'fail', text: `${unrouted} connections have no track` } : { level: 'pass', text: `every connection is routed (${traces.length} tracks, ${json.filter((e) => e.type === 'pcb_via').length} vias)` });
+  out.push(...planeChecks(json));
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
   out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole').map((e) => e.hole_diameter ?? e.hole_width);
   if (drills.length) out.push(Math.min(...drills) < j.drill_min ? { level: 'fail', text: `a hole under JLCPCB's ${j.drill_min} mm` } : { level: 'pass', text: `${drills.length} holes, smallest ${Math.min(...drills)} mm (JLCPCB: ${j.drill_min} mm)` });
   const b = json.find((e) => e.type === 'pcb_board'), size = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm`;
   if (b.outline) { // a shaped board: every pad and hole inside it
-    const pads = json.filter((e) => ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole'].includes(e.type)), out_ = pads.filter((e) => (e.points || [e]).some((q) => !inside(b.outline, q.x, q.y)));
+    const pads = json.filter((e) => ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole'].includes(e.type) && !halves.has(e.pcb_plated_hole_id)), out_ = pads.filter((e) => (e.points || [e]).some((q) => !inside(b.outline, q.x, q.y)));
     out.push(out_.length ? { level: 'fail', text: `${out_.length} pads or holes outside the board's outline (first at ${mm(out_[0].x)}, ${mm(out_[0].y)} mm)` } : { level: 'pass', text: `shaped board (${b.outline.length} points): all ${pads.length} pads and holes inside it` });
+  }
+  if (castellated.length) { // JLCPCB's rules for half holes: big enough, far enough apart
+    const small = castellated.filter((e) => e.hole_diameter < (j.castellated_drill_min ?? 0.6));
+    let gap = Infinity;
+    for (const a of castellated) for (const c of castellated) if (a !== c) gap = Math.min(gap, Math.hypot(a.x - c.x, a.y - c.y) - (a.hole_diameter + c.hole_diameter) / 2);
+    out.push(small.length || gap < (j.castellated_gap_min ?? 0.6)
+      ? { level: 'fail', text: `castellated holes: ${small.length ? `${small.length} under JLCPCB's ${j.castellated_drill_min ?? 0.6} mm` : `${mm(gap)} mm apart, under JLCPCB's ${j.castellated_gap_min ?? 0.6} mm`}` }
+      : { level: 'pass', text: `${castellated.length} castellated holes on the edge, ${mm(Math.min(...castellated.map((e) => e.hole_diameter)))} mm or more, ${mm(gap)} mm apart (JLCPCB: ${j.castellated_drill_min ?? 0.6} / ${j.castellated_gap_min ?? 0.6} mm). Order with castellated holes` });
   }
   out.push(Math.max(b.width, b.height) <= j.cheap_size ? { level: 'pass', text: `${size}: within JLCPCB's lowest price (${j.cheap_size} × ${j.cheap_size} mm)` } : { level: 'info', text: `${size}: over ${j.cheap_size} × ${j.cheap_size} mm, priced by quote` });
   if (matrix) {
@@ -744,6 +794,27 @@ export async function checks(json, v, matrix) {
   return out;
 }
 
+// Each plane net's vias and holes inside its plane's copper (the pour leaves a clear ring round the others)
+function planeChecks(json) {
+  const nets = json.filter((e) => e.type === 'source_net'), out = [];
+  if (!nets.length) return out;
+  const inRing = (ring, p) => inside(ring.vertices, p.x, p.y);
+  const covered = (pours, p) => pours.some((q) => inRing(q.brep_shape.outer_ring, p) && !q.brep_shape.inner_rings.some((r) => inRing(r, p)));
+  const port = new Map(json.filter((e) => e.type === 'pcb_port').map((e) => [e.source_port_id, e.pcb_port_id]));
+  for (const n of nets) {
+    const pours = json.filter((e) => e.type === 'pcb_copper_pour' && e.source_net_id === n.source_net_id);
+    const st = json.filter((e) => e.type === 'source_trace' && e.connected_source_net_ids?.includes(n.source_net_id));
+    const ids = new Set(st.map((t) => t.source_trace_id)), pts = [];
+    for (const t of json.filter((e) => e.type === 'pcb_trace' && ids.has(e.source_trace_id))) for (const v of json.filter((e) => e.type === 'pcb_via' && e.pcb_trace_id === t.pcb_trace_id)) pts.push(v);
+    for (const t of st) { const h = json.find((e) => e.type === 'pcb_plated_hole' && e.pcb_port_id === port.get(t.connected_source_port_ids[0])); if (h) pts.push(h); }
+    const miss = pts.filter((p) => !covered(pours, p));
+    out.push(!pours.length ? { level: 'fail', text: `plane ${n.name}: no copper drawn` }
+      : miss.length ? { level: 'fail', text: `plane ${n.name}: ${miss.length} of its vias and holes are outside its copper (first at ${mm(miss[0].x)}, ${mm(miss[0].y)} mm)` }
+        : { level: 'pass', text: `plane ${n.name} on ${pours[0].layer}: all ${st.length} pads reach it (${pts.length} vias and holes inside its copper)` });
+  }
+  return out;
+}
+
 // ---------- files ----------
 // The fab files: Gerbers (KiCad's Protel names, which JLCPCB reads), drill files, BOM and placement -> { name: text }
 const PROTEL = { F_Cu: 'GTL', B_Cu: 'GBL', F_Mask: 'GTS', B_Mask: 'GBS', F_SilkScreen: 'GTO', B_SilkScreen: 'GBO', F_Paste: 'GTP', B_Paste: 'GBP', Edge_Cuts: 'GKO' };
@@ -751,7 +822,7 @@ export async function fabFiles(json, name) {
   const { convertSoupToGerberCommands, stringifyGerberCommandLayers, convertSoupToExcellonDrillCommands, stringifyExcellonDrill } = await import('circuit-json-to-gerber');
   const { convertCircuitJsonToPickAndPlaceCsv } = await import('circuit-json-to-pnp-csv');
   const out = {};
-  for (const [layer, text] of Object.entries(stringifyGerberCommandLayers(convertSoupToGerberCommands(json)))) if (PROTEL[layer]) out[`${name}.${PROTEL[layer]}`] = text; // fab notes (B_Fab) stay out
+  for (const [layer, text] of Object.entries(stringifyGerberCommandLayers(convertSoupToGerberCommands(json)))) { const ext = PROTEL[layer] ?? (layer.match(/^In(\d+)_Cu$/) ? `G${layer.match(/\d+/)[0]}` : null); if (ext) out[`${name}.${ext}`] = text; } // fab notes (B_Fab) stay out
   out[`${name}-PTH.DRL`] = stringifyExcellonDrill(convertSoupToExcellonDrillCommands({ circuitJson: json, is_plated: true }));
   out[`${name}-NPTH.DRL`] = stringifyExcellonDrill(convertSoupToExcellonDrillCommands({ circuitJson: json, is_plated: false }));
   out[`${name}-bom.csv`] = bom(json);
@@ -759,17 +830,19 @@ export async function fabFiles(json, name) {
   return out;
 }
 
-// The BOM in JLCPCB's columns (Comment, Designator, Footprint, LCSC Part #), one line per kind of part. The LCSC
-// numbers are blank until parts are chosen for assembly; a hand-soldered board doesn't need them.
+// The BOM in JLCPCB's columns (Comment, Designator, Footprint, LCSC Part #), one line per kind of part. A part's LCSC
+// number comes with it when it has one (a clone's parts keep the source's); otherwise it's blank until parts are chosen
+// for assembly, and a hand-soldered board doesn't need them.
 const FOOTPRINT = { K: 'Cherry MX, PCB mount', U: 'Raspberry Pi Pico, 0.1 in header pins', D: 'SOD-123' };
 function bom(json) {
   const lines = new Map(), q = (x) => `"${String(x).replace(/"/g, '""')}"`;
   for (const c of json.filter((e) => e.type === 'source_component')) {
-    const comment = c.manufacturer_part_number || c.name, footprint = FOOTPRINT[c.name[0]] || '', key = `${comment}|${footprint}`;
-    if (!lines.has(key)) lines.set(key, { comment, footprint, refs: [] });
+    const comment = c.display_value || c.manufacturer_part_number || c.name, footprint = FOOTPRINT[c.name[0]] || '', lcsc = c.supplier_part_numbers?.jlcpcb?.[0] ?? '';
+    const key = `${comment}|${footprint}|${lcsc}`;
+    if (!lines.has(key)) lines.set(key, { comment, footprint, lcsc, refs: [] });
     lines.get(key).refs.push(c.name);
   }
-  return ['Comment,Designator,Footprint,LCSC Part #', ...[...lines.values()].map((l) => [l.comment, l.refs.join(','), l.footprint, ''].map(q).join(','))].join('\n') + '\n';
+  return ['Comment,Designator,Footprint,LCSC Part #', ...[...lines.values()].map((l) => [l.comment, l.refs.join(','), l.footprint, l.lcsc].map(q).join(','))].join('\n') + '\n';
 }
 
 // KiCad's own files, to check with kicad-cli or finish by hand: { 'name.kicad_pcb': text, 'name.kicad_sch': text }

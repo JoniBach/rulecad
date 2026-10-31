@@ -201,7 +201,7 @@ test('a clone puts every pad where the source has it: turned, on the back, at 45
   is('R4.pin1', -Math.SQRT1_2 / 2, -Math.SQRT1_2 / 2); // at (10, 5), 45°: pad 1 at (9.646, 5.354)
   assert.equal(pad('R2.pin1').layer, 'bottom');
   assert.deepEqual(sameCircuit(json, c).map((f) => f.level), ['pass']);
-  assert.deepEqual(k.notes.map((n) => n.split(' ').slice(0, 3).join(' ')), ['castellated pads left', 'oval pads drawn', 'holes set off-centre'], 'B is filled on an outer layer only: still routed');
+  assert.deepEqual(k.notes.map((n) => n.split(' ').slice(0, 3).join(' ')), ['castellated pads on'], 'B is filled on an outer layer only: still routed');
   assert.deepEqual(Object.keys(clone(c, { planes: ['B'] }).nets), ['A', 'C']);
 });
 
@@ -247,4 +247,40 @@ test('placement learnt from the source: small parts by the pins they serve, move
   const far = placementChecks(arrange(c, { C1: { x: -1, y: 6 } }, rules), rules);
   assert.deepEqual(far.map((f) => f.text), ['placement: C1 is 4.5 mm from U1 pin 1 (V): at most 1.5 (1 on the source)']);
   assert.throws(() => arrange(c, { U9: { x: 0 } }), /no part U9/);
+});
+
+test('4 layers: a plane net reaches its inner layer through a via per pad, its copper poured round the others, all checked', async () => {
+  const c = fromKicadPcb(KICAD), k = clone(c, { layers: 4, planes: ['B'] });
+  assert.deepEqual(k.planes, { B: { layer: 'inner1', pins: ['R1.pin2', 'R2.pin1', 'R3.pin1', 'R4.pin1'] } });
+  assert.match(k.notes.join(' | '), /planes on inner layers: B on inner1 \(4 pads\)/);
+  const json = await render({ outline: k.outline, thickness: 1.2, track: 0.2, autoroute: true, layers: 4, planes: k.planes, parts: k.parts, nets: k.nets, holes: k.holes }, stub);
+  const count = (t) => json.filter((e) => e.type === t).length;
+  assert.equal(json.find((e) => e.type === 'pcb_board').num_layers, 4);
+  assert.equal(count('pcb_via'), 4, 'a via for each SMD pad of B');
+  assert.ok(json.filter((e) => e.type === 'pcb_via').every((v) => v.layers.length === 4), 'through every layer');
+  const pour = json.filter((e) => e.type === 'pcb_copper_pour');
+  assert.ok(pour.length >= 1 && pour.every((p) => p.layer === 'inner1' && p.shape === 'brep'));
+  assert.deepEqual(sameCircuit(json, c).map((f) => f.level), ['pass']);
+  const found = await checks(json, { jlcpcb: loadRuleSet('jlcpcb').rules ? Object.fromEntries(Object.entries(loadRuleSet('jlcpcb').rules).map(([n, r]) => [n, r.value])) : {}, track: 0.2 });
+  assert.match(found.map((f) => `${f.level}: ${f.text}`).join(' | '), /pass: plane B on inner1: all 4 pads reach it \(4 vias and holes inside its copper\)/);
+  const fab = await fabFiles(json, 'clone');
+  assert.ok(fab['clone.G1']?.length > 50, 'the inner layer has its own Gerber');
+  assert.throws(() => clone(c, { layers: 2, planes: ['B'] }).planes.B, /Cannot read/, 'on 2 layers, no planes');
+  await assert.rejects(render({ outline: k.outline, thickness: 1.2, track: 0.2, autoroute: true, planes: k.planes, parts: k.parts, nets: k.nets }, stub), /planes need a board of 4 layers/);
+});
+
+test('castellated and oval pads: a half hole on the edge, checked by the fab\'s rules; an oval pad round an off-centre hole', async () => {
+  const c = fromKicadPcb(KICAD), k = clone(c);
+  const json = await render({ outline: k.outline, thickness: 1.2, track: 0.2, autoroute: true, parts: k.parts, nets: k.nets, holes: k.holes }, stub);
+  const holes = json.filter((e) => e.type === 'pcb_plated_hole');
+  const half = holes.find((e) => e.port_hints.includes('castellated')), oval = holes.find((e) => e.shape === 'circular_hole_with_rect_pad');
+  assert.deepEqual([half.x, half.y, half.hole_diameter], [-7, -5, 1], 'its centre on the bottom edge');
+  assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.15, 'tracks join it at its inner edge');
+  assert.deepEqual([oval.rect_pad_width, oval.rect_pad_height, oval.rect_border_radius, oval.hole_offset_x, oval.hole_offset_y], [1.7, 3, 0.85, 0, -0.7]);
+  const jlc = Object.fromEntries(Object.entries(loadRuleSet('jlcpcb').rules).map(([n, r]) => [n, r.value]));
+  const text = (await checks(json, { jlcpcb: jlc, track: 0.2 })).map((f) => `${f.level}: ${f.text}`).join(' | ');
+  assert.match(text, /pass: 1 castellated holes on the edge, 1 mm or more/);
+  assert.doesNotMatch(text, /outside the board's outline/, 'a half hole is meant to be on the edge');
+  const small = json.map((e) => (e === half ? { ...e, hole_diameter: 0.5 } : e));
+  assert.match((await checks(small, { jlcpcb: jlc, track: 0.2 })).map((f) => f.text).join(' | '), /castellated holes: 1 under JLCPCB's 0.6 mm/);
 });

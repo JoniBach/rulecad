@@ -26,6 +26,22 @@
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
       "checked": "2026-10-14"
     },
+    "castellated_drill_min": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Smallest castellated (half) hole on a rigid board",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/blog/142-castellated-pcbs-introduction-and-design-requirements",
+      "checked": "2026-10-31"
+    },
+    "castellated_gap_min": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Castellated holes: edge to edge, at least (JLCPCB also gives 0.5 mm elsewhere: this is the stricter)",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/blog/142-castellated-pcbs-introduction-and-design-requirements",
+      "checked": "2026-10-31"
+    },
     "via_hole": {
       "value": 0.15,
       "unit": "mm",
