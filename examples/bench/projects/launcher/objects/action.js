@@ -16,9 +16,11 @@ export function main (v) {
   const floorBottom = v.case_top, parts = [], cuts = []
 
   // The tray: floor, and walls round it; the top wall only behind the tab's run and ahead of the sear
-  const x0 = v.case_back, x1 = v.case_front, y0 = v.grip_bottom, t = v.case_t
-  parts.push(box(x0, x1, y0, floorBottom, 0, z0)) // the floor
-  parts.push(box(x0, x0 + t, y0, floorBottom, 0, zTop), box(x1 - t, x1, y0, floorBottom, 0, zTop), box(x0, x1, y0, y0 + t, 0, zTop)) // back, front, bottom
+  // An L: the grip column round the leaf, and the receiver block ahead of it round the sear and trigger
+  const x0 = v.case_back, x1 = v.case_front, y0 = v.grip_bottom, t = v.case_t, xg = v.grip_front, yb = v.block_bottom
+  parts.push(box(x0, xg, y0, floorBottom, 0, z0), box(xg - t, x1, yb, floorBottom, 0, z0)) // the floor
+  parts.push(box(x0, x0 + t, y0, floorBottom, 0, zTop), box(x0, xg, y0, y0 + t, 0, zTop), box(xg - t, xg, y0, yb + t, 0, zTop)) // the column's back, bottom and front
+  parts.push(box(xg - t, x1, yb, yb + t, 0, zTop), box(x1 - t, x1, yb, floorBottom, 0, zTop)) // the block's bottom and front
   const tabBack = v.bead - v.travel_max, tabFront = v.rest_x + v.sled.tab
   parts.push(box(x0, tabBack - v.fit, floorBottom - t, floorBottom, 0, zTop)) // the top wall behind the tab's run
   parts.push(box(v.tooth_back + v.tooth + v.fit, x1, floorBottom - t, floorBottom, 0, zTop)) // and ahead of the sear's tooth

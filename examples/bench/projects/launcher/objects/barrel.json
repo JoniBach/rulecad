@@ -1,0 +1,164 @@
+{
+  "name": "barrel",
+  "title": "The barrel cartridge: the slot the sled and the disc run in, with the magazine column over its mouth",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "pla",
+    "launcher",
+    "launcher/sled",
+    "launcher/magazine",
+    "launcher/action"
+  ],
+  "material": "PLA",
+  "engine": "manifold",
+  "orientation": "Flat on the bed on its floor, open side up. The sled drops into the slot from the open side, the cartridge goes into the frame's cavity open side first over the action cartridge, and is pinned through its floor from inside its pockets. The disc rolls along the frame's cavity wall. Discs and the magazine insert go in through the column's top.",
+  "anchors": {
+    "rest": {
+      "at": ["action.rest_x", 0, "wall + action.width / 2"],
+      "axis": [1, 0, 0],
+      "ref": [0, "0 - 1", 0]
+    },
+    "column": {
+      "at": ["(col0 + col1) / 2", "cap_bottom + magazine.bar", "wall + magazine.width / 2"],
+      "axis": [0, "0 - 1", 0],
+      "ref": [1, 0, 0]
+    },
+    "mouth": {
+      "at": ["(col0 + col1) / 2", "0 - launcher.disc_t / 2", "wall + fit + launcher.disc / 2"],
+      "axis": [0, 1, 0],
+      "ref": [1, 0, 0]
+    }
+  },
+  "variables": {
+    "wall": {
+      "value": "launcher.wall",
+      "unit": "mm",
+      "rule": "The floor"
+    },
+    "fit": {
+      "value": "x1c.fit",
+      "unit": "mm",
+      "rule": "Sliding parts' clearance"
+    },
+    "slot": {
+      "value": "launcher.disc_t + 2 * x1c.fit",
+      "unit": "mm",
+      "rule": "The slot's height: the disc and a fit each side"
+    },
+    "rail": {
+      "value": "launcher.rail",
+      "unit": "mm",
+      "rule": "The slot's floor and ceiling walls: the floor wall is the cartridge's bottom edge"
+    },
+    "case_h": {
+      "value": "wall + launcher.disc + 2 * fit",
+      "unit": "mm",
+      "rule": "The cartridge's depth off the bed: the disc and a fit each side, to the frame's cavity wall it rolls along"
+    },
+    "case_t": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The cartridge's walls"
+    },
+    "back": {
+      "value": "action.case_back",
+      "unit": "mm",
+      "rule": "The back wall's outer face: flush with the action cartridge's"
+    },
+    "muzzle": {
+      "value": 115,
+      "unit": "mm",
+      "rule": "The barrel's end: the disc's centre is 8 mm short of it when the sled stops"
+    },
+    "band": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The top edge of the tube outside the column: room over the ceiling wall for the pins' pockets"
+    },
+    "top": {
+      "value": 28,
+      "unit": "mm",
+      "rule": "The column walls' top: the insert's cap stands above it"
+    },
+    "tooth_back": {
+      "value": "action.tooth_back",
+      "unit": "mm",
+      "rule": "The sear tooth's holding face, from the action cartridge"
+    },
+    "tooth": {
+      "value": "action.tooth",
+      "unit": "mm",
+      "rule": "The tooth along the barrel"
+    },
+    "sear_w": {
+      "value": "action.sear_w",
+      "unit": "mm",
+      "rule": "The tooth's width: its slit through the floor wall"
+    },
+    "col0": {
+      "value": "tooth_back + tooth + fit - magazine.ledge",
+      "unit": "mm",
+      "rule": "The column's rear wall, inner face: the mouth starts a fit ahead of the tooth, the ledge behind that"
+    },
+    "col1": {
+      "value": "col0 + magazine.follower_w + 2 * fit",
+      "unit": "mm",
+      "rule": "The column's front wall, inner face: the follower and a fit each side"
+    },
+    "cap_bottom": {
+      "value": "sled.thickness / 2 + launcher.capacity * launcher.disc_t + magazine.follower + magazine.thickness + (magazine.turns - 1) * magazine.pitch - magazine.preload - magazine.stroke - magazine.overlap",
+      "unit": "mm",
+      "rule": "The insert's cap, its underside, pressed home over a full stack resting on the sled"
+    },
+    "notch_y": {
+      "value": "cap_bottom + magazine.overlap + magazine.hook_root / 2 - magazine.hook - fit",
+      "unit": "mm",
+      "rule": "The bottom of the notches the cap's barbs snap into"
+    },
+    "notch_h": {
+      "value": 11,
+      "unit": "mm",
+      "rule": "The notches' height: the barbs' lead, flat and back, with room"
+    },
+    "pin": {
+      "value": "action.pin",
+      "unit": "mm",
+      "rule": "The pins' diameter"
+    },
+    "pocket": {
+      "value": "2 * (action.pin / 2 + action.pin_foot) + 2",
+      "unit": "mm",
+      "rule": "Each pin's pocket in the top band: its foot and a little room"
+    },
+    "pin_a": {
+      "value": "back + case_t + pocket / 2",
+      "unit": "mm",
+      "rule": "The pins, in pockets in the top band: rear, middle (behind the column), front (past it). Their x; all at the band's middle in y"
+    },
+    "pin_b": {
+      "value": "col0 - case_t - pocket / 2 - 1",
+      "unit": "mm",
+      "rule": "Middle pin, x"
+    },
+    "pin_c": {
+      "value": "muzzle - case_t - pocket / 2",
+      "unit": "mm",
+      "rule": "Front pin, x"
+    },
+    "pin_y": {
+      "value": "rail + slot / 2 + (band - rail - slot / 2) / 2",
+      "unit": "mm",
+      "rule": "The pins' y: the middle of the band over the ceiling wall"
+    },
+    "overlap": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "How far parts sink into each other, so they join"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round the holes"
+    }
+  }
+}

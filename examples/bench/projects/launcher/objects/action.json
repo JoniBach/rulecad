@@ -293,9 +293,9 @@
       "rule": "Bottom rear pin, y"
     },
     "pin_b": {
-      "value": "bead + post + pin_foot",
+      "value": "grip_front - case_t - pin_foot",
       "unit": "mm",
-      "rule": "Bottom front pin, x: ahead of the leaf's root"
+      "rule": "Bottom front pin, x: in the grip column's front corner"
     },
     "pin_b_y": {
       "value": "grip_bottom + case_t + pin_foot",
@@ -326,6 +326,16 @@
       "value": 22,
       "unit": "mm",
       "rule": "The finger's window ahead of the trigger's front stop, along the barrel"
+    },
+    "grip_front": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The grip column's front face, outer: ahead of the leaf's rest with a wall's worth of room, behind the trigger's swing"
+    },
+    "block_bottom": {
+      "value": "0 - (slot / 2 + rail + sear_gap + sear_t + foot + hinge_block + fit + finger_arm + post + case_t)",
+      "unit": "mm",
+      "rule": "The receiver block's bottom edge, outer: under the trigger's finger arm and its stops"
     }
   },
   "variants": {
