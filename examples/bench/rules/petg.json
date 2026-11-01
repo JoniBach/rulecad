@@ -1,0 +1,12 @@
+{
+  "_doc": "Bambu Lab PETG HF, printed, for analysis: stiffness and strength along the layers (x-y) and across them (z). Printed values vary with the printer, settings and spool: measure your own (the lever bench does) and record it as kind measured.",
+  "name": "petg",
+  "rules": {
+    "modulus": {"value": 1810, "unit": "MPa", "rule": "Young's modulus along the layers (x-y), ± 190", "kind": "spec", "source": "Bambu Lab PETG HF technical data sheet V1.0 (ISO 527), https://store.bblcdn.com/3a230e260a3a47c2b0db0156e07eef91.pdf", "checked": "2026-10-27"},
+    "modulus_z": {"value": 1540, "unit": "MPa", "rule": "Young's modulus across the layers (z), ± 130", "kind": "spec", "source": "Bambu Lab PETG HF technical data sheet V1.0 (ISO 527)", "checked": "2026-10-27"},
+    "strength": {"value": 34, "unit": "MPa", "rule": "Tensile strength along the layers (x-y), ± 4", "kind": "spec", "source": "Bambu Lab PETG HF technical data sheet V1.0 (ISO 527)", "checked": "2026-10-27"},
+    "strength_z": {"value": 23, "unit": "MPa", "rule": "Tensile strength across the layers (z), ± 4", "kind": "spec", "source": "Bambu Lab PETG HF technical data sheet V1.0 (ISO 527)", "checked": "2026-10-27"},
+    "poisson": {"value": 0.38, "rule": "Poisson's ratio (Bambu publish none)", "kind": "estimate", "source": "Typical for PETG; printed parts vary", "checked": "2026-10-27"},
+    "density": {"value": 1.27, "unit": "g/cm³", "rule": "Density of PETG", "kind": "estimate", "source": "Typical for PETG (1.23 to 1.29 g/cm³ across makers' data sheets)", "checked": "2026-10-27"}
+  }
+}

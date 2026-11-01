@@ -2,6 +2,14 @@
 // (sandbox-run.mjs) uses them as the build does.
 import jscad from '@jscad/modeling';
 
+// A design's result split into its shapes and, for a lamina mechanism (@rulecad/flexures lamina()), what its checks
+// found and how it moves: plain data, so it crosses the sandbox and the cache with the parts.
+export function unpack(made) {
+  const isLamina = made && typeof made === 'object' && !Array.isArray(made) && made.mechanism && made.parts && Array.isArray(made.findings);
+  if (!isLamina) return { shapes: made, mechanism: null };
+  return { shapes: made.parts, mechanism: { ...made.mechanism, findings: made.findings, energy: made.energy, ...(made.frames ? { frames: made.frames } : {}) } };
+}
+
 // A design's result as parts: named ({ cap, pillar }) or one unnamed shape ("body").
 export function named(result, meta) {
   const isShape = (r) => Array.isArray(r) || jscad.geometries.geom3.isA(r) || jscad.geometries.geom2.isA(r);

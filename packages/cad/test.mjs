@@ -431,6 +431,38 @@ test('sandbox: a design can make shapes, but not read or write files, reach the 
   } finally { done(); }
 });
 
+test('a lamina mechanism: its own checks in cad check (through the sandbox and the cache), its sequence as an animated SVG', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const n = (value, rule) => ({ value, unit: 'mm', rule });
+    const variables = { len: n(30, 'The leaf'), t: n(0.84, 'Its thickness'), h: n(6, 'The print\'s height'), gap: n(0.3, 'The gap that prints apart'),
+      post: { ...n(0.42, 'How far the stop post stands from the tip block'), tweak: { min: 0.05, max: 2 } }, bend: n(0.3, 'How far the state bends it'), block: n(4, 'The tip block and the root') };
+    object(ws, 'demo/flick', { uses: ['pla'], variables, variants: { fused: { post: 0.1 } } }, `import jscad from '@jscad/modeling'
+const rect = (x0, y0, x1, y1) => jscad.primitives.polygon({ points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] })
+export function main (v) {
+  const f = v.flexures, b = v.block, tipTop = b / 2
+  return f.lamina({
+    height: v.h, gap: v.gap, material: f.flexureMaterial({ modulus: v.pla.modulus, strength: v.pla.strength }),
+    ground: [rect(0 - b, 0 - b, 0, b), rect(v.len, tipTop + v.post, v.len + b, tipTop + v.post + b)],
+    bodies: { tip: rect(v.len - b / 2, 0 - b / 2, v.len + b, tipTop) },
+    joints: { leaf: { kind: 'leaf', params: { length: v.len, thickness: v.t }, at: [0 - 1, 0], from: 'ground', to: 'tip' } },
+    states: { bent: { leaf: v.bend } }, sequence: ['rest', 'bent', 'rest'],
+  })
+}
+`);
+    const ok = cad('check', 'demo/flick');
+    assert.match(ok, /✓ everything clears what it isn't joined to by 0\.3 mm/);
+    assert.match(ok, /✓ leaf: stopped by the ground at [\d.]+ mm, before its limit/);
+    assert.match(ok, /✓ rest to bent: clear all the way/);
+    assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/, 'the same from the cache');
+    assert.match(cad('check', 'demo/flick:fused'), /✗ the ground and tip are 0\.1 mm apart at rest: under the 0\.3 mm gap, they print as one/);
+    const out = cad('animate', 'demo/flick').trim();
+    assert.ok(out.endsWith('flick-sequence.svg') && /<svg[\s\S]*<animate attributeName="display"[\s\S]*rest to bent/.test(fs.readFileSync(out, 'utf8')));
+    object(ws, 'demo/cube', { variables: { w: n(10, 'Width') } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n");
+    assert.match(cad('animate', 'demo/cube'), /isn't a lamina mechanism/);
+  } finally { done(); }
+});
+
 test('engines: a design using v.ops builds the same shape with JSCAD and with Manifold, watertight', () => {
   const { ws, cad, done } = workspace();
   try {

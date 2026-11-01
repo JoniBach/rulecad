@@ -2,7 +2,7 @@
 // faces (and the rules it read) as JSON on stdout. Started by sandbox.mjs, under Node's permission model.
 import * as shapes from '@rulecad/shapes';
 import * as flexures from '@rulecad/flexures';
-import { named, faces } from './parts.mjs';
+import { named, faces, unpack } from './parts.mjs';
 
 for (const k of ['fetch', 'WebSocket', 'EventSource', 'XMLHttpRequest', 'Request', 'Response']) delete globalThis[k];
 const chunks = [];
@@ -16,9 +16,9 @@ try {
   const read = new Set(), watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
     ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
   watched.shapes = shapes; watched.flexures = flexures; watched.ops = await shapes.ops(engine || 'jscad');
-  const made = await mod.main(watched);
+  const { shapes: made, mechanism } = unpack(await mod.main(watched));
   const parts = named(made, meta).map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) }));
-  done({ parts, read: [...read] });
+  done({ parts, read: [...read], ...(mechanism ? { mechanism } : {}) });
 } catch (e) {
   done({ error: { message: e?.message || String(e), code: e?.code && typeof e.code === 'string' && !/^ERR_/.test(e.code) ? e.code : e?.code === 'ERR_ACCESS_DENIED' ? 'design.sandbox' : 'design.run' } });
 }

@@ -24,11 +24,15 @@ const block = (x, y, z, size) => cuboid({ center: [x, y, z], size });
  * @param {Leaf} p
  * @returns {object} the shape, a JSCAD geom3
  */
-export function leaf({ length, thickness, width }) {
+export function leaf(p) {
+  if (shaped(p)) return beam(p, 'leaf');
+  const { length, thickness, width } = p;
   return block(length / 2, 0, width / 2, [length, thickness, width]);
 }
 /** @param {Leaf} p @param {Material} m @returns {Model} */
-export function leafModel({ length: L, thickness: t, width: w }, { E }) {
+export function leafModel(p, m) {
+  if (shaped(p)) return beamModel(p, m, 'leaf');
+  const { length: L, thickness: t, width: w } = p, { E } = m;
   const stiffness = (E * w * t ** 3) / (4 * L ** 3), strain = (d) => (3 * t * d) / (2 * L * L);
   return { stiffness, strain, travel: (e) => (2 * L * L * e) / (3 * t), stress: (d) => E * strain(d) };
 }
@@ -38,13 +42,67 @@ export function leafModel({ length: L, thickness: t, width: w }, { E }) {
  * it parallel). Four times as stiff as a leaf: E w t³ / L³ (12EI/L³); strain at either end 3tδ / L².
  * @param {Leaf} p
  */
-export function fixedGuided({ length, thickness, width }) {
+export function fixedGuided(p) {
+  if (shaped(p)) return beam(p, 'guided');
+  const { length, thickness, width } = p;
   return block(length / 2, 0, width / 2, [length, thickness, width]);
 }
 /** @param {Leaf} p @param {Material} m @returns {Model} */
-export function fixedGuidedModel({ length: L, thickness: t, width: w }, { E }) {
+export function fixedGuidedModel(p, m) {
+  if (shaped(p)) return beamModel(p, m, 'guided');
+  const { length: L, thickness: t, width: w } = p, { E } = m;
   const stiffness = (E * w * t ** 3) / L ** 3, strain = (d) => (3 * t * d) / (L * L);
   return { stiffness, strain, travel: (e) => (L * L * e) / (3 * t), stress: (d) => E * strain(d) };
+}
+
+// ---------- shaped beams ----------
+// A beam needn't be a bar. Its thickness can follow the bending moment, so the strain is the same all along it (a
+// uniform-strength beam: thick where it bends most, thin where it bends least), and it can meet its block in a round,
+// not a square corner. A square inside corner concentrates the strain two or three times over (and on a printed part
+// that's where it yields and stays bent); a round of a radius about the beam's thickness brings that down to a
+// little over one. A uniform-strength beam stores up to three times the energy a bar of the same peak strain does.
+//   taper: 0 (a bar) to 1 (the uniform-strength profile), the thickness the moment asks for, never under `least`
+//   fillet: the radius of the round where the beam meets its block, at each end that's held (both, for a guided
+//   beam; the root, and the tip if `tip` is set, for a leaf)
+// `thickness` is the most it is, at the root. The models integrate the beam's own profile, rounds included; the
+// rounds' concentration is what a finite-element check (lamina's) measures.
+
+/** @typedef {Leaf & { taper?: number, fillet?: number, least?: number, tip?: boolean, into?: number }} ShapedLeaf into: how far the shape runs on into the blocks at its held ends, so they join */
+const shaped = (p) => !!(p.taper || p.fillet);
+/**
+ * A shaped beam's half-thickness along it, rounds included.
+ * @param {ShapedLeaf} p @param {'leaf' | 'guided'} ends
+ * @returns {(s: number) => number} at s mm from the root
+ */
+export function beamProfile({ length: L, thickness: t, taper = 0, fillet = 0, least, tip = false }, ends = 'leaf') {
+  const lo = least ?? t / 2, r = fillet;
+  const ideal = (s) => (ends === 'leaf' ? Math.sqrt(Math.max(0, 1 - s / L)) : Math.sqrt(Math.abs(1 - (2 * s) / L))); // moment's share, square-rooted
+  const core = (s) => Math.max(lo, t * ((1 - taper) + taper * ideal(s))) / 2;
+  const round = (s, from) => { const d = Math.abs(s - from); return d >= r ? 0 : core(from) + r - Math.sqrt(r * r - (r - d) ** 2); };
+  return (s) => Math.max(core(s), r ? round(s, 0) : 0, r && (ends === 'guided' || tip) ? round(s, L) : 0);
+}
+function beam(p, ends) {
+  const { length: L, width } = p, half = beamProfile(p, ends), n = Math.max(60, Math.ceil(L / 0.25)), r = p.fillet || 0, into = p.into ?? 0;
+  const xs = [...new Set([...Array.from({ length: n + 1 }, (_, i) => (L * i) / n), ...Array.from({ length: 25 }, (_, i) => (r * i) / 24), ...Array.from({ length: 25 }, (_, i) => L - (r * i) / 24)])].filter((x) => x >= 0 && x <= L).sort((a, b) => a - b);
+  const tipHeld = ends === 'guided' || p.tip, ends2 = [...(into ? [[-into, half(0)]] : []), ...xs.map((x) => [x, half(x)]), ...(into && tipHeld ? [[L + into, half(L)]] : [])]; // run on into the blocks, as wide as the round's foot
+  const lower = ends2.map(([x, y]) => [x, -y]), upper = ends2.slice().reverse(); // anticlockwise: along the underside, back along the top
+  return jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: [...lower, ...upper] }));
+}
+/**
+ * A shaped beam's model, from its own profile: a leaf (a force at the tip) or a guided beam (the far end held from
+ * turning), integrated along it.
+ * @param {ShapedLeaf} p @param {Material} m @param {'leaf' | 'guided'} ends
+ * @returns {Model & { least: number, energy: (travel: number) => number }}
+ */
+export function beamModel(p, { E }, ends = 'leaf') {
+  const { length: L, width: w } = p, half = beamProfile(p, ends), n = 600, ds = L / n;
+  const s = Array.from({ length: n }, (_, i) => (i + 0.5) * ds), t = s.map((x) => 2 * half(x)), EI = t.map((x) => (E * w * x ** 3) / 12);
+  const m0 = ends === 'guided' ? s.reduce((a, x, i) => a + (L - x) / EI[i], 0) / EI.reduce((a, x) => a + 1 / x, 0) : 0; // the moment that holds the end square, per unit force
+  const M = s.map((x) => L - x - m0); // per unit force at the tip
+  const flex = M.reduce((a, x, i) => a + (x * (L - s[i])) / EI[i], 0) * ds, stiffness = 1 / flex;
+  const perForce = Math.max(...M.map((x, i) => (Math.abs(x) * t[i] / 2) / EI[i])); // the most strain per unit force: M c / (E I)
+  const strain = (d) => stiffness * d * perForce;
+  return { stiffness, strain, travel: (e) => e / (stiffness * perForce), stress: (d) => E * strain(d), least: Math.min(...t), energy: (d) => (stiffness * d * d) / 2 };
 }
 
 /**
@@ -54,12 +112,15 @@ export function fixedGuidedModel({ length: L, thickness: t, width: w }, { E }) {
  * @param {Leaf & { gap: number, shuttle?: number, base?: number }} p gap: between the leaves; shuttle, base: the
  *   blocks' thickness along x (default 2 × thickness, at least 3 mm)
  */
-export function parallelGuide({ length, thickness, width, gap, shuttle, base }) {
+export function parallelGuide(p) {
+  const { length, thickness, width, gap, shuttle, base } = p;
   const end = Math.max(3, 2 * thickness), s = shuttle ?? end, b = base ?? end, y = (gap + thickness) / 2;
+  const one = (sign) => (shaped(p) ? translate([0, sign * y, 0], beam(p, 'guided')) : block(length / 2, sign * y, width / 2, [length, thickness, width]));
+  const across = gap + 2 * thickness + 2 * (p.fillet || 0); // the blocks reach past the beams' rounds, so each round meets a face
   return union(
-    block(-b / 2, 0, width / 2, [b, gap + 2 * thickness, width]),
-    block(length / 2, y, width / 2, [length, thickness, width]), block(length / 2, -y, width / 2, [length, thickness, width]),
-    block(length + s / 2, 0, width / 2, [s, gap + 2 * thickness, width]),
+    block(-b / 2, 0, width / 2, [b, across, width]),
+    one(1), one(-1),
+    block(length + s / 2, 0, width / 2, [s, across, width]),
   );
 }
 /** @param {Leaf} p @param {Material} m @returns {Model & { drop: (travel: number) => number }} */
@@ -656,6 +717,7 @@ export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, 
 }
 
 export { ports, size, report, models } from './compose.mjs';
+export { lamina, flexureMaterial } from './lamina.mjs';
 
 /**
  * A contact-aided leaf: a cantilever with a stop partway along it, a gap off the beam, so it bends freely until the
