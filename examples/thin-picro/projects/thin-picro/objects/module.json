@@ -52,9 +52,9 @@
       "interface": true
     },
     "top_room": {
-      "value": 1.76,
+      "value": 3.26,
       "unit": "mm",
-      "rule": "From the top end pins to the top edge"
+      "rule": "From the top end pins to the top edge: room above the core for the tracks that pass it"
     },
     "height": {
       "value": "(end_pins + end_from - 1) * pitch + top_room",
@@ -65,19 +65,19 @@
       "interface": true
     },
     "core_turn": {
-      "value": 270,
+      "value": 90,
       "unit": "°",
-      "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block, so its USB end faces the USB-C socket"
+      "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block: its busiest side of escapes (RP2040 pins 2 to 12) faces the long row of pins"
     },
     "core_x": {
-      "value": -8.23,
+      "value": -10.93,
       "unit": "mm",
-      "rule": "The core block moved along the board, to the left end clear of the end pins"
+      "rule": "The core block moved along the board: a 2 mm channel from the end pins for tracks to pass"
     },
     "core_y": {
-      "value": 1.0,
+      "value": 0.46,
       "unit": "mm",
-      "rule": "The core block moved up, clear of the bottom pins"
+      "rule": "The core block moved up: clear of the bottom pins, with room above it for tracks"
     },
     "usb_x": {
       "value": 15.5,
@@ -92,6 +92,16 @@
       "unit": "mm",
       "rule": "The mid-mount socket's centre beyond the top edge, as on Sea-Picro"
     },
+    "notch_below": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Reading Sea-Picro's notch: outline points this far below its top edge are the notch's"
+    },
+    "notch_reach": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Reading Sea-Picro's notch: outline points this near the socket, across the board"
+    },
     "led_x": {
       "value": 15.5,
       "unit": "mm",
@@ -103,9 +113,14 @@
       "rule": "Pad 32's height on the board"
     },
     "switch_in": {
-      "value": 4.4,
+      "value": 3.8,
       "unit": "mm",
       "rule": "R4 (SWITCH's resistor) in from its pin's castellated hole: clear of the header pad, within its placement rule"
+    },
+    "switch_turn": {
+      "value": 90,
+      "unit": "°",
+      "rule": "R4 turned to lie across the board when its pin is on the long edge"
     },
     "thickness": {
       "value": "sea_picro.thickness",
@@ -120,6 +135,11 @@
       "value": 0.15,
       "unit": "mm",
       "rule": "Signal track width: over JLCPCB's minimum, as Sea-Picro's fine tracks"
+    },
+    "clearance": {
+      "value": 0.15,
+      "unit": "mm",
+      "rule": "Copper to copper, kept by the router: Sea-Picro's own clearance (at JLCPCB's 0.1 mm the router packs tracks tighter and breaks more)"
     }
   }
 }

@@ -1,0 +1,102 @@
+{
+  "_doc": "JLCPCB's limits for standard two-layer FR-4 boards (1 oz copper). Fab limits, not targets: designs keep a margin over them (a board's own variables). kind as in x1c.json.",
+  "name": "jlcpcb",
+  "rules": {
+    "track_min": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Narrowest track",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "gap_min": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Smallest gap between tracks",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "drill_min": {
+      "value": 0.15,
+      "unit": "mm",
+      "rule": "Smallest drilled hole on a two-layer board",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "castellated_drill_min": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Smallest castellated (half) hole on a rigid board",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/blog/142-castellated-pcbs-introduction-and-design-requirements",
+      "checked": "2026-10-31"
+    },
+    "castellated_gap_min": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Castellated holes: edge to edge, at least (JLCPCB also gives 0.5 mm elsewhere: this is the stricter)",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/blog/142-castellated-pcbs-introduction-and-design-requirements",
+      "checked": "2026-10-31"
+    },
+    "via_hole": {
+      "value": 0.15,
+      "unit": "mm",
+      "rule": "Smallest via hole",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "via_pad": {
+      "value": 0.25,
+      "unit": "mm",
+      "rule": "Smallest via pad diameter",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "annular": {
+      "value": 0.25,
+      "unit": "mm",
+      "rule": "Annular ring, recommended (0.18 mm absolute minimum)",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "silk_line": {
+      "value": 0.15,
+      "unit": "mm",
+      "rule": "Thinnest silkscreen line",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "silk_text": {
+      "value": 1.0,
+      "unit": "mm",
+      "rule": "Smallest silkscreen text height",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "thickness": {
+      "value": 1.6,
+      "unit": "mm",
+      "rule": "Board thickness: the usual choice of 0.4 to 2.0 mm, and what MX switches are made for",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-10-14"
+    },
+    "cheap_size": {
+      "value": 100,
+      "unit": "mm",
+      "rule": "Two-layer boards up to 100 × 100 mm get JLCPCB's lowest price; past that it rises steeply",
+      "kind": "community",
+      "source": "https://hwdocs.hackclub.dev/user-contrib-guides/jlc-cost-optimizing/",
+      "checked": "2026-10-14"
+    }
+  }
+}
