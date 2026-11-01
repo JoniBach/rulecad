@@ -244,8 +244,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     }
   }
   if (planeNets) await pours(out, add, board, planeNets, netOf);
+  if (board.silk?.length) clearSilkAfter(out);
 
-  schematic(out, add, placed, { ...board, traces }, port);
+  schematic(out, add, placed, { ...board, traces }, port, netOf);
   return out;
 }
 
@@ -275,6 +276,39 @@ function keptCopper(out, add, board, copper, planeNets) {
       add('pcb_via', { pcb_trace_id: t.pcb_trace_id, x: v.x, y: v.y, hole_diameter: v.hole, outer_diameter: v.pad, layers: copper, from_layer: 'top', to_layer: 'bottom', subcircuit_id: SUB });
     }
   }
+}
+
+/**
+ * Labels slid clear of copper boxes ({ x, y, w, h }) and of each other: each across its reading direction, a step at a
+ * time up to reach, to the nearest clear place; one with nowhere clear stays, marked clash: true.
+ * @param {object[]} silk { text, x, y, size, rotation } @param {object[]} copper @param {object} o
+ */
+export function slideClear(silk, copper, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 } = {}) {
+  const turned = (s) => (((s.rotation ?? 0) % 180) + 180) % 180 === 90;
+  const box = (s, dx = 0, dy = 0) => { const long = s.text.length * s.size * char; return { x: s.x + dx, y: s.y + dy, w: turned(s) ? s.size : long, h: turned(s) ? long : s.size }; };
+  const hits = (a, b, g) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + g && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + g;
+  const placed = [], n = Math.round(reach / step);
+  return silk.map((s) => {
+    if (!s.text) return s;
+    for (let i = 0; i <= 2 * n; i++) {
+      const d = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * step, b = box(s, turned(s) ? d : 0, turned(s) ? 0 : d);
+      if (copper.some((c) => hits(b, c, gap)) || placed.some((o) => hits(b, o, gap))) continue;
+      placed.push(b);
+      return { ...s, x: Math.round(b.x * 1e4) / 1e4, y: Math.round(b.y * 1e4) / 1e4 };
+    }
+    placed.push(box(s));
+    return { ...s, clash: true };
+  });
+}
+
+// After routing: silkscreen text the router's vias (or any copper) landed on slides clear, as clearLabels does before
+function clearSilkAfter(out) {
+  const copper = [...out.filter((e) => e.type === 'pcb_via').map((e) => ({ x: e.x, y: e.y, w: e.outer_diameter, h: e.outer_diameter })),
+    ...out.filter((e) => e.type === 'pcb_smtpad').map((e) => smtBounds(e)),
+    ...out.filter((e) => e.type === 'pcb_plated_hole').map((e) => ({ x: e.x, y: e.y, ...holeSize(e) }))];
+  const texts = out.filter((e) => e.type === 'pcb_silkscreen_text' && !e.pcb_component_id);
+  const moved = slideClear(texts.map((e) => ({ text: e.text, x: e.anchor_position.x, y: e.anchor_position.y, size: e.font_size, rotation: e.ccw_rotation })), copper);
+  texts.forEach((e, i) => { e.anchor_position = { x: moved[i].x, y: moved[i].y }; });
 }
 
 // Copper layers, top to bottom: 2, 4 or 6
@@ -467,22 +501,38 @@ function netTraces(board, port, joined = new Map()) {
 }
 
 // ---- the schematic: each part at the place the board gives it, wires between neighbours, labels to the chip ----
-function schematic(out, add, placed, board, port) {
+function schematic(out, add, placed, board, port, netOf = new Map()) {
   const sch = new Map();
-  for (const { part, comp, sourcePorts } of placed) {
-    const s = part.sch || { x: 0, y: 0 };
+  // Parts with no place of their own on the schematic (a clone's: their board places would pile them up) go in rows,
+  // biggest first, with room between for the net labels on their pins
+  const auto = placed.filter((p) => !p.part.sch), row = { x: 0, y: 0, h: 0 }, width = Math.max(12, Math.sqrt(auto.length) * 3.5);
+  for (const p of [...auto].sort((a, b) => b.sourcePorts.length - a.sourcePorts.length)) {
+    const pins = new Set(p.sourcePorts.map((sp) => sp.name)).size;
+    const w = 1.9 + 2 * 2.2, h = (Math.ceil(pins / 2) + 1) * 0.2 + 0.8; // the box, its pins' labels either side, its title
+    if (row.x > 0 && row.x + w > width) { row.x = 0; row.y -= row.h; row.h = 0; }
+    p.at = { x: row.x + w / 2, y: row.y - h / 2 }; row.x += w; row.h = Math.max(row.h, h);
+  }
+  for (const { part, comp, sourcePorts, at } of placed) {
+    const s = part.sch || at || { x: 0, y: 0 };
     if (part.ftype === 'simple_chip') { // a box: pins 1 to 20 down the left, 21 to 40 up the right, 0.2 apart
-      const half = Math.ceil(sourcePorts.length / 2), size = { width: 1.9, height: (half + 1) * 0.2 };
+      // laid out here, a pin with several pads (a chip's centre pad and its thermal holes) is drawn once
+      const shown = at ? sourcePorts.filter((sp, i) => sourcePorts.findIndex((o) => o.name === sp.name) === i) : sourcePorts;
+      const half = Math.ceil(shown.length / 2), size = { width: 1.9, height: (half + 1) * 0.2 };
       const c = add('schematic_component', { center: { x: s.x, y: s.y }, rotation: 0, size, pin_spacing: 0.2, port_labels: part.sch?.pinLabels || {},
         source_component_id: comp.source_component_id, is_box_with_pins: true, schematic_group_id: 'schematic_group_0' });
-      add('schematic_text', { text: part.mpn ?? part.name, schematic_component_id: c.schematic_component_id, anchor: 'left', rotation: 0,
+      add('schematic_text', { text: at ? `${part.name}${part.value ? ` ${part.value}` : ''}` : part.mpn ?? part.name, schematic_component_id: c.schematic_component_id, anchor: 'left', rotation: 0,
         position: { x: s.x - size.width / 2, y: s.y - size.height / 2 - 0.23 }, color: '#006464', font_size: 0.18 });
-      sourcePorts.forEach((sp, i) => {
-        const left = i < half, k = left ? i : sourcePorts.length - 1 - i, side = left ? 'left' : 'right';
+      shown.forEach((sp, i) => {
+        const left = i < half, k = left ? i : shown.length - 1 - i, side = left ? 'left' : 'right';
         const center = { x: s.x + (left ? -1 : 1) * (size.width / 2 + 0.4), y: s.y + size.height / 2 - 0.2 * (k + 1) };
-        sch.set(sp.source_port_id, add('schematic_port', { schematic_component_id: c.schematic_component_id, center, source_port_id: sp.source_port_id,
-          facing_direction: side, distance_from_component_edge: 0.4, side_of_component: side, pin_number: sp.pin_number, true_ccw_index: i, display_pin_label: sp.name }));
+        const sp2 = add('schematic_port', { schematic_component_id: c.schematic_component_id, center, source_port_id: sp.source_port_id,
+          facing_direction: side, distance_from_component_edge: 0.4, side_of_component: side, pin_number: sp.pin_number, true_ccw_index: i, display_pin_label: sp.name.replace(/^pin/, '') });
+        sch.set(sp.source_port_id, sp2);
+        // laid out here: each pin labelled with its net, in place of wires across the sheet
+        const net = at && [sp.name, ...(sp.port_hints || [])].map((k) => netOf.get(`${part.name}.${k}`)).find(Boolean);
+        if (net) add('schematic_net_label', { text: net.replace(/^\//, ''), anchor_position: center, center, anchor_side: left ? 'right' : 'left', source_port_id: sp.source_port_id });
       });
+      for (const sp of sourcePorts) if (!sch.has(sp.source_port_id)) sch.set(sp.source_port_id, sch.get(shown.find((o) => o.name === sp.name).source_port_id)); // its other pads: drawn as one
       continue;
     }
     const symbol = symbols[part.ftype === 'simple_diode' ? 'diode_down' : 'spst_switch_right'];
@@ -495,7 +545,9 @@ function schematic(out, add, placed, board, port) {
     });
   }
   // A wire between two parts' pins (L-shaped), or for a connection to the chip, a label at each end naming the pin
+  const labelled = new Set(placed.filter((p) => p.at).map((p) => p.part.name));
   for (const t of board.traces) {
+    if (labelled.has(t.from[0]) && labelled.has(t.to[0])) continue; // their pins carry their nets' names already
     const a = port(...t.from), b = port(...t.to), pa = sch.get(a.source.source_port_id), pb = sch.get(b.source.source_port_id);
     const chip = [a, b].find((q) => placed.find((p) => p.sourcePorts.includes(q.source)).part.ftype === 'simple_chip');
     if (chip || t.net) { // a net's ends are labelled with the net's name

@@ -13,7 +13,7 @@
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
 import fs from 'node:fs';
 import path from 'node:path';
-import { circuitJson, bounds, smtBounds } from './circuit.mjs';
+import { circuitJson, bounds, smtBounds, slideClear } from './circuit.mjs';
 export { bounds };
 import { loadRuleSet } from '@rulecad/cad/rules';
 import jscad from '@jscad/modeling';
@@ -551,7 +551,7 @@ export function clone(circuit, o = {}) {
       return { pin, smd: true, hint: q.pin, ...at, points: pts }; // corners relative to the part, as circuit.mjs takes them
     });
     const holes = (p.holes || []).map((h) => (quarterTurn ? h : { ...h, x: h.x * c - h.y * s, y: h.x * s + h.y * c }));
-    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, ...(p.bom === false ? { bom: false } : {}), ...(p.place === false ? { place: false } : {}), ...(holes.length ? { holes } : {}), courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
+    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, ...(p.bom === false ? { bom: false } : {}), ...(p.place === false ? { place: false } : {}), ...(holes.length ? { holes } : {}), courtyard: null, pads }; // no sch: laid out on the schematic in rows, each pin labelled with its net
   }).filter((p) => p.pads.length);
   const have = new Set(parts.flatMap((p) => p.pads.map((q) => `${p.name}.${q.pin}`))), dropped = new Set();
   const nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => !planes.includes(n))
@@ -611,24 +611,9 @@ export function withFootprint(circuit, ref, pads) {
  * @param {object[]} silk { text, x, y, size, rotation } @param {object} circuit @param {object} [o]
  */
 export function clearLabels(silk, circuit, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 } = {}) {
-  const box = (s, dx = 0, dy = 0) => { const long = s.text.length * s.size * char, up = turnOf(s.rotation ?? 0) % 180 === 90;
-    return { x: s.x + dx, y: s.y + dy, w: up ? s.size : long, h: up ? long : s.size }; };
   const copper = circuit.parts.flatMap((p) => [...padsOnBoard(p).map((q) => { const t = turnOf(p.rotation + q.angle) % 180 === 90; return { x: q.bx, y: q.by, w: t ? q.h : q.w, h: t ? q.w : q.h }; }),
     ...padsOnBoard({ ...p, pads: (p.holes || []).map((h) => ({ ...h, w: h.d, h: h.d, angle: 0 })) }).map((h) => ({ x: h.bx, y: h.by, w: h.w, h: h.h }))]);
-  const hits = (a, b, g) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + g && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + g;
-  const placed = [];
-  return silk.map((s) => {
-    if (!s.text) return s;
-    const up = turnOf(s.rotation ?? 0) % 180 === 90, n = Math.round(reach / step);
-    for (let i = 0; i <= 2 * n; i++) {
-      const d = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * step, b = box(s, up ? d : 0, up ? 0 : d);
-      if (copper.some((c) => hits(b, c, gap)) || placed.some((o) => hits(b, o, gap))) continue;
-      placed.push(b);
-      return { ...s, x: r4(b.x), y: r4(b.y) };
-    }
-    placed.push(box(s));
-    return { ...s, clash: true };
-  });
+  return slideClear(silk, copper, { reach, step, gap, char });
 }
 
 /**

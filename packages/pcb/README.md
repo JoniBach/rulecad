@@ -79,6 +79,9 @@ export function main(v) {
 - **Labels clear of copper:** `clearLabels(silk, circuit)` slides each silkscreen label across its reading direction to
   the nearest place clear of every pad and of the labels before it (the fab trims silkscreen off copper, so a label
   on a pad loses letters). Silkscreen text takes a `rotation`.
+- **Schematics without a layout:** parts with no place on the schematic (a clone's) are laid out in rows, biggest
+  first, each pin drawn once and labelled with its net, in place of wires across the sheet. After routing, silkscreen
+  labels the router's vias landed on slide clear too.
 - **Off the BOM and placement files:** a part with `bom: false` (edge pads, test points) isn't in the BOM, and one with
   `place: false` isn't in the placement file. `fromKicadPcb` reads both from KiCad's footprint attributes.
 - **Pad shapes:** round SMD pads stay round, and rounded pads keep their corner radius, so clearances are measured to
