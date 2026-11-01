@@ -10,7 +10,7 @@
    "kind": "derived",
    "source": "https://github.com/joshajohnson/sea-picro/blob/936b138b4f733868b26ae333b639fb3876c8c8d1/hardware/1.0-ext-castellated/sea-picro.kicad_pcb",
    "licence": "CERN-OHL-S-2.0",
-   "checked": "2026-10-31"
+   "checked": "2026-11-01"
   },
   "height": {
    "value": 33,
@@ -19,7 +19,7 @@
    "kind": "derived",
    "source": "https://github.com/joshajohnson/sea-picro/blob/936b138b4f733868b26ae333b639fb3876c8c8d1/hardware/1.0-ext-castellated/sea-picro.kicad_pcb",
    "licence": "CERN-OHL-S-2.0",
-   "checked": "2026-10-31"
+   "checked": "2026-11-01"
   },
   "layers": {
    "value": 4,
@@ -27,7 +27,7 @@
    "kind": "derived",
    "source": "https://github.com/joshajohnson/sea-picro/blob/936b138b4f733868b26ae333b639fb3876c8c8d1/hardware/1.0-ext-castellated/sea-picro.kicad_pcb",
    "licence": "CERN-OHL-S-2.0",
-   "checked": "2026-10-31"
+   "checked": "2026-11-01"
   },
   "thickness": {
    "value": 1.6,
@@ -36,7 +36,7 @@
    "kind": "derived",
    "source": "https://github.com/joshajohnson/sea-picro/blob/936b138b4f733868b26ae333b639fb3876c8c8d1/hardware/1.0-ext-castellated/sea-picro.kicad_pcb",
    "licence": "CERN-OHL-S-2.0",
-   "checked": "2026-10-31"
+   "checked": "2026-11-01"
   }
  },
  "circuit": {
@@ -1215,7 +1215,9 @@
       "net": "/LED_5V",
       "hole": 1
      }
-    ]
+    ],
+    "bom": false,
+    "place": false
    },
    {
     "ref": "C19",
@@ -4100,7 +4102,9 @@
       "net": "/SWDIO",
       "hole": 0.5
      }
-    ]
+    ],
+    "bom": false,
+    "place": false
    },
    {
     "ref": "TP1",
@@ -4122,7 +4126,9 @@
       "net": "/SWDCLK",
       "hole": 0.5
      }
-    ]
+    ],
+    "bom": false,
+    "place": false
    },
    {
     "ref": "TP3",
@@ -4143,7 +4149,9 @@
       "shape": "circle",
       "net": "/nRST"
      }
-    ]
+    ],
+    "bom": false,
+    "place": false
    },
    {
     "ref": "TP4",
@@ -4164,7 +4172,9 @@
       "shape": "circle",
       "net": "/BOOT"
      }
-    ]
+    ],
+    "bom": false,
+    "place": false
    }
   ],
   "nets": {
@@ -14087,7 +14097,7 @@
    "clearance": 0.2,
    "from": "https://github.com/joshajohnson/sea-picro/blob/936b138b4f733868b26ae333b639fb3876c8c8d1/hardware/1.0-ext-castellated/sea-picro.kicad_pcb",
    "commit": "936b138b4f733868b26ae333b639fb3876c8c8d1",
-   "read": "2026-10-31"
+   "read": "2026-11-01"
   },
   "placement": [
    {

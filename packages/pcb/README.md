@@ -76,6 +76,11 @@ export function main(v) {
   track fixed in place, a minute per try. Then, with `neck` (mm, the fab's smallest track), a track still a little too
   close to another is straightened where the router doubled back, or narrowed where they pass. Existing vias reach the
   router at their real size.
+- **Labels clear of copper:** `clearLabels(silk, circuit)` slides each silkscreen label across its reading direction to
+  the nearest place clear of every pad and of the labels before it (the fab trims silkscreen off copper, so a label
+  on a pad loses letters). Silkscreen text takes a `rotation`.
+- **Off the BOM and placement files:** a part with `bom: false` (edge pads, test points) isn't in the BOM, and one with
+  `place: false` isn't in the placement file. `fromKicadPcb` reads both from KiCad's footprint attributes.
 - **Pad shapes:** round SMD pads stay round, and rounded pads keep their corner radius, so clearances are measured to
   the real copper.
 - **Castellated and oval pads:** a pad `{ castellated: true }` is a half hole on the board's edge (tracks join it at

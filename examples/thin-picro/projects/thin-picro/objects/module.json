@@ -7,7 +7,8 @@
   "role": "board",
   "uses": [
     "sea_picro",
-    "jlcpcb"
+    "jlcpcb",
+    "rp2040"
   ],
   "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: USB-C on the top long edge, castellated pins along the bottom edge and up both ends. Parts on the front, test points on the back.",
   "parts": {
@@ -140,6 +141,20 @@
       "value": 0.15,
       "unit": "mm",
       "rule": "Copper to copper, kept by the router: Sea-Picro's own clearance (at JLCPCB's 0.1 mm the router packs tracks tighter and breaks more)"
+    },
+    "label_gap": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "Pin labels: from the end of the header pad to the label"
+    },
+    "label_char": {
+      "value": 0.75,
+      "rule": "Pin labels: a character's width, as a share of its height (tscircuit's font)"
+    },
+    "label_turn": {
+      "value": 90,
+      "unit": "°",
+      "rule": "Pin labels along the long edge turned to run up from their pins"
     }
   }
 }

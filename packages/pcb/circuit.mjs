@@ -7,6 +7,7 @@
 //   { outline: [{ x, y }, ...], thickness, ... }: any shape, a closed polygon (counter-clockwise); its centre and size
 //   are its bounds. pcb.shape makes common ones (rounded, bevelled, circle).
 //   part   { name, ftype: 'simple_switch' | 'simple_chip' | 'simple_diode', mpn, lcsc, value, x, y, layer: 'top' | 'bottom',
+//            bom: false (not bought: edge pads, test points), place: false (not placed by the assembler),
 //            rotation: 0 | 90 | 180 | 270 (counter-clockwise, seen from the side the part is on; default 0),
 //            pads: [{ pin, x, y, hole, outer }] (plated, relative to the part) or [{ pin, smd: true, hint, x, y, w, h }]
 //            (circle: true for a round one, corner: its corners' radius)
@@ -19,7 +20,7 @@
 //   nets   { GND: ['U1.GND', 'J1.1', 'J2.1'] } or { GND: { pins: [...], width } }: each net's pins are joined by the
 //            shortest set of connections between them (a minimum spanning tree), left to the autorouter, at the net's
 //            width or board.track; pins are named part.pin, by the pin's label, its name or its number
-//   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer }
+//   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer, rotation } (rotation: degrees, counter-clockwise)
 //   holes  [{ x, y, d }] in the board (mounting holes)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
@@ -108,7 +109,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   const placed = [];
   for (const part of board.parts) {
     const comp = add('source_component', { ftype: part.ftype, name: part.name, manufacturer_part_number: part.mpn,
-      ...(part.lcsc ? { supplier_part_numbers: { jlcpcb: [part.lcsc] } } : {}), ...(part.value ? { display_value: part.value } : {}),
+      ...(part.lcsc ? { supplier_part_numbers: { jlcpcb: [part.lcsc] } } : {}), ...(part.value ? { display_value: part.value } : {}), ...(part.bom === false ? { exclude_from_bom: true } : {}),
       are_pins_interchangeable: part.ftype === 'simple_switch', source_group_id: 'source_group_0', subcircuit_id: SUB });
     const fpEls = part.footprint ? fp.string(part.footprint).circuitJson() : [];
     const mirror = part.layer === 'bottom' ? -1 : 1;
@@ -146,7 +147,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       ...(part.holes || []).map((h) => { const q = at(h.x, h.y); return [q.x - h.d / 2, q.y - h.d / 2, q.x + h.d / 2, q.y + h.d / 2]; })];
     const box = [Math.min(...extent.map((e) => e[0])), Math.min(...extent.map((e) => e[1])), Math.max(...extent.map((e) => e[2])), Math.max(...extent.map((e) => e[3]))];
     const pc = add('pcb_component', { center: { x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2 }, width: box[2] - box[0], height: box[3] - box[1],
-      layer: part.layer, rotation: part.rotation ?? 0, source_component_id: comp.source_component_id, subcircuit_id: SUB });
+      layer: part.layer, rotation: part.rotation ?? 0, source_component_id: comp.source_component_id, subcircuit_id: SUB, ...(part.place === false ? { do_not_place: true } : {}) });
     const own = { pcb_component_id: pc.pcb_component_id, subcircuit_id: SUB };
     pads.forEach((p, i) => {
       const layers = p.smd ? [part.layer] : copper;
@@ -229,7 +230,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   // ---- silkscreen and mounting holes ----
   for (const s of board.silk) {
     if (s.rect) add('pcb_silkscreen_rect', { pcb_component_id: null, layer: s.layer, center: { x: s.rect.x, y: s.rect.y }, width: s.rect.w, height: s.rect.h, subcircuit_id: SUB, stroke_width: 0.1, is_filled: false });
-    else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: 0, pcb_component_id: null, subcircuit_id: SUB });
+    else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: s.rotation ?? 0, pcb_component_id: null, subcircuit_id: SUB });
   }
   for (const h of board.holes || []) add('pcb_hole', { hole_shape: 'circle', hole_diameter: h.d, x: h.x, y: h.y, is_covered_with_solder_mask: false, subcircuit_id: SUB });
 

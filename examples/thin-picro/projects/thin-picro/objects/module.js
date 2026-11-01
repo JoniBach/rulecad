@@ -56,10 +56,29 @@ export function main (v) {
   const n0 = v.usb_x - wide, n1 = v.usb_x + wide, nd = top - deep
   const outline = [[left, bottom], [right, bottom], [right, top], [n1, top], [n1, nd], [n0, nd], [n0, top], [left, top]].map(([x, y]) => ({ x, y }))
 
+  // Pin labels on the top silkscreen, just inside each header pad: the RP2040's GPIO number (12 for GP12), or the power
+  // or signal name. The pins aren't in Sea-Picro's order, so the board says which is which
+  const chip = src.parts.find((p) => /RP2040/i.test(`${p.footprint} ${p.value}`))
+  const names = { GND: 'GND', '+3V3': '3V3', '+5V': '5V', '/USB+': 'D+', '/USB-': 'D-', '/SWITCH': 'SW' }
+  const label = (pin) => {
+    const [net, pins] = Object.entries(src.nets).find(([, n]) => n.includes(`J2.${pin}`)) || []
+    const gpio = pins?.find((x) => x.startsWith(`${chip.ref}.`))
+    const name = gpio && v.rp2040.pinMaps.gpio[gpio.split('.')[1]]
+    return name ? name.replace('GPIO', '') : names[net] ?? String(net).replace(/^[/+]/, '')
+  }
+  const silk = order.map((pin, i) => {
+    const { side: [ix, iy], x, y } = spots[i], text = label(pin), long = text.length * v.jlcpcb.silk_text * v.label_char
+    const from = inn + Math.max(header.w, header.h) / 2 + v.label_gap + (iy ? long : v.jlcpcb.silk_text) / 2
+    return { text, x: x + ix * (from + (ix ? long / 2 - v.jlcpcb.silk_text / 2 : 0)), y: y + iy * from, size: v.jlcpcb.silk_text, layer: 'top', rotation: iy ? v.label_turn : 0 }
+  })
+
+  silk.push({ text: 'LED5V', x: v.led_x, y: v.led_y - Math.max(led.w, led.h) / 2 - v.label_gap - v.jlcpcb.silk_text / 2, size: v.jlcpcb.silk_text, layer: 'top' }) // pad 32: WS2812 data at 5 V (GPIO25, level-shifted)
+  // the long edge's labels first: the ends' labels have room to slide up and down out of their way
+  const labels = v.pcb.clearLabels([...silk.filter((l) => l.rotation), ...silk.filter((l) => !l.rotation)], c, { char: v.label_char })
   const k = clone(c, { layers: v.layers })
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
-      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes },
+      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes, silk: labels },
     clone: { circuit: src, arranged: c }
   }
 }

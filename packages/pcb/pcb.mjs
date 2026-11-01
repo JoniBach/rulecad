@@ -480,7 +480,9 @@ export function fromKicadPcb(text) {
       pads.push(pad);
     }
     if (!pads.length) { holes.push(...own.map((h) => ({ ...h.at, d: h.d }))); continue; } // a mounting hole (a board's), a logo: nothing to connect
+    const attr = kidOf(f, 'attr') || []; // parts the source keeps off its BOM and placement files (edge pads, test points)
     raw.push({ ref, footprint: f[1], value: props.Value, mpn: props.MPN ?? props['Manufacturer Part Number'], lcsc: props.LCSC, x: fx, y: fy, rotation: turnOf(bottom ? -deg : deg), layer: bottom ? 'bottom' : 'top', pads,
+      ...(attr.includes('exclude_from_bom') ? { bom: false } : {}), ...(attr.includes('exclude_from_pos_files') ? { place: false } : {}),
       ...(own.length ? { holes: own.map(({ at, ...h }) => h) } : {}) });
   }
   // The outline: the loops on Edge.Cuts, the biggest outside (counter-clockwise, y up); without one closed loop, its bounds
@@ -549,7 +551,7 @@ export function clone(circuit, o = {}) {
       return { pin, smd: true, hint: q.pin, ...at, points: pts }; // corners relative to the part, as circuit.mjs takes them
     });
     const holes = (p.holes || []).map((h) => (quarterTurn ? h : { ...h, x: h.x * c - h.y * s, y: h.x * s + h.y * c }));
-    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, ...(holes.length ? { holes } : {}), courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
+    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, ...(p.bom === false ? { bom: false } : {}), ...(p.place === false ? { place: false } : {}), ...(holes.length ? { holes } : {}), courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
   }).filter((p) => p.pads.length);
   const have = new Set(parts.flatMap((p) => p.pads.map((q) => `${p.name}.${q.pin}`))), dropped = new Set();
   const nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => !planes.includes(n))
@@ -599,6 +601,34 @@ export function withFootprint(circuit, ref, pads) {
   const missing = [...had.keys()].filter((n) => !given.has(n)), extra = [...given].filter((n) => !had.has(n));
   if (missing.length || extra.length) throw new Error(`withFootprint: ${ref}'s new pads must have the same pins as before${missing.length ? `; missing ${missing.join(', ')}` : ''}${extra.length ? `; not on ${ref}: ${extra.join(', ')}` : ''}`);
   return { ...circuit, parts: circuit.parts.map((p) => (p.ref === ref ? { ...p, footprint: `${p.footprint} (reshaped)`, pads: pads.map((q) => ({ angle: 0, smd: false, shape: 'circle', ...q, net: had.get(q.pin) })) } : p)) };
+}
+
+/**
+ * Silkscreen labels moved clear of copper and of each other: each slides across its reading direction (a level label up
+ * or down, a turned one left or right), a step at a time up to reach, to the nearest place clear of every pad by gap. A
+ * label with nowhere clear stays put, marked clash: true. The fab trims silkscreen off copper, so a label on a pad loses
+ * letters. o: { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 (a character's width over its height) }.
+ * @param {object[]} silk { text, x, y, size, rotation } @param {object} circuit @param {object} [o]
+ */
+export function clearLabels(silk, circuit, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 } = {}) {
+  const box = (s, dx = 0, dy = 0) => { const long = s.text.length * s.size * char, up = turnOf(s.rotation ?? 0) % 180 === 90;
+    return { x: s.x + dx, y: s.y + dy, w: up ? s.size : long, h: up ? long : s.size }; };
+  const copper = circuit.parts.flatMap((p) => [...padsOnBoard(p).map((q) => { const t = turnOf(p.rotation + q.angle) % 180 === 90; return { x: q.bx, y: q.by, w: t ? q.h : q.w, h: t ? q.w : q.h }; }),
+    ...padsOnBoard({ ...p, pads: (p.holes || []).map((h) => ({ ...h, w: h.d, h: h.d, angle: 0 })) }).map((h) => ({ x: h.bx, y: h.by, w: h.w, h: h.h }))]);
+  const hits = (a, b, g) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + g && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + g;
+  const placed = [];
+  return silk.map((s) => {
+    if (!s.text) return s;
+    const up = turnOf(s.rotation ?? 0) % 180 === 90, n = Math.round(reach / step);
+    for (let i = 0; i <= 2 * n; i++) {
+      const d = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * step, b = box(s, up ? d : 0, up ? 0 : d);
+      if (copper.some((c) => hits(b, c, gap)) || placed.some((o) => hits(b, o, gap))) continue;
+      placed.push(b);
+      return { ...s, x: r4(b.x), y: r4(b.y) };
+    }
+    placed.push(box(s));
+    return { ...s, clash: true };
+  });
 }
 
 /**
@@ -1041,7 +1071,7 @@ export async function fabFiles(json, name) {
 const FOOTPRINT = { K: 'Cherry MX, PCB mount', U: 'Raspberry Pi Pico, 0.1 in header pins', D: 'SOD-123' };
 function bom(json) {
   const lines = new Map(), q = (x) => `"${String(x).replace(/"/g, '""')}"`;
-  for (const c of json.filter((e) => e.type === 'source_component')) {
+  for (const c of json.filter((e) => e.type === 'source_component' && !e.exclude_from_bom)) {
     const lcsc = c.supplier_part_numbers?.jlcpcb?.[0] ?? '', comment = c.display_value || c.manufacturer_part_number || c.name;
     const footprint = lcsc ? '' : FOOTPRINT[c.name[0]] || ''; // a keyboard's parts by their letter; a part with an LCSC number is known by that
     const key = `${comment}|${footprint}|${lcsc}`;

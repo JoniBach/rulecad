@@ -48,7 +48,52 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 It hasn't been made yet. Before ordering:
 - **Open `exports/thin-picro/module@0.1.0.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
-- **Check the pinout.** The pins aren't in Sea-Picro's order: each sits where its track leaves the core.
+- **Check the pinout** below against your keyboard's wiring: the pins aren't in Sea-Picro's order.
+
+## Pinout
+
+Seen from above, USB-C at the top. Places run up each end from the bottom corner, and along the bottom from the left.
+Each pin is labelled on the board: its RP2040 GPIO number, or its power or signal name. In firmware, use the GPIO
+(`GP12`). "Pin" is Sea-Picro's own pin number, which these places don't follow: each pin sits where its track leaves
+the core. Pad 32, labelled LED5V, inside the board under the USB-C parts, is data for a string of WS2812 LEDs at 5 V:
+GPIO25 through a level shifter, as Sea-Picro's documentation describes it.
+
+| Place | Pin | RP2040 | Sea-Picro net |
+|---|---|---|---|
+| left end 6 | 21 | GPIO20 | 20_MISO |
+| left end 5 | 20 | GPIO23 | 23_MOSI |
+| left end 4 | 22 | GPIO22 | 22_SCK |
+| left end 3 | 23 | GPIO26 | A0 |
+| left end 2 | 28 | - | SWITCH |
+| left end 1 | 24 | GPIO27 | A1 |
+| bottom 1 | 25 | GPIO28 | A2 |
+| bottom 2 | 26 | GPIO29 | A3 |
+| bottom 3 | 30 | - | +5V |
+| bottom 4 | 1 | - | USB+ |
+| bottom 5 | 27 | - | +3V3 |
+| bottom 6 | 2 | GPIO0 | 0_TX0 |
+| bottom 7 | 3 | GPIO1 | 1_RX0 |
+| bottom 8 | 6 | GPIO2 | 2_SDA1 |
+| bottom 9 | 7 | GPIO3 | 3_SCL1 |
+| bottom 10 | 8 | GPIO4 | 4 |
+| bottom 11 | 9 | GPIO5 | 5 |
+| bottom 12 | 10 | GPIO6 | 6 |
+| bottom 13 | 11 | GPIO7 | 7 |
+| bottom 14 | 12 | GPIO8 | 8 |
+| bottom 15 | 13 | GPIO9 | 9 |
+| bottom 16 | 14 | GPIO12 | 12 |
+| bottom 17 | 15 | GPIO13 | 13 |
+| bottom 18 | 4 | - | GND |
+| bottom 19 | 5 | - | GND |
+| right end 1 | 29 | - | GND |
+| right end 2 | 16 | GPIO14 | 14 |
+| right end 3 | 17 | GPIO15 | 15 |
+| right end 4 | 31 | - | USB- |
+| right end 5 | 18 | GPIO16 | 16 |
+| right end 6 | 19 | GPIO21 | 21_nCS |
+
+USB+ and USB- are the USB data lines, for a socket elsewhere. SWITCH is Sea-Picro's SWITCH pin (through R4 to Q1);
+its documentation doesn't describe it, so check Sea-Picro's schematic before using it.
 
 ## Build it
 

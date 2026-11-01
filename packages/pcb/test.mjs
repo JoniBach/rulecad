@@ -409,3 +409,18 @@ test('necking: two routed tracks a little too close are narrowed where they pass
   const necked = await neckDown(json, [line('source_trace_0', 0), line('source_trace_1', 0.214)], 0.1);
   assert.deepEqual(necked.map((t) => t.route.map((p) => p.width)), [[0.1, 0.1], [0.1, 0.1]], 'both narrowed: a 0.114 mm gap');
 });
+
+test('parts the source keeps off its BOM and placement files (edge pads, test points) stay off them', async () => {
+  const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+    (footprint "R:R" (layer "F.Cu") (at 3 5) (property "Reference" "R1") (property "LCSC" "C25744") (attr smd)
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "B")))
+    (footprint "T:TP" (layer "F.Cu") (at 7 5) (property "Reference" "TP1") (attr exclude_from_pos_files exclude_from_bom)
+      (pad "1" smd circle (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "A")))
+    (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
+  assert.deepEqual(c.parts.map((p) => [p.ref, p.bom, p.place]), [['R1', undefined, undefined], ['TP1', false, false]]);
+  const k = clone(c), json = await render({ outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, parts: k.parts, nets: k.nets }, stub);
+  const fab = await fabFiles(json, 'x');
+  assert.match(fab['x-bom.csv'], /R1/);
+  assert.doesNotMatch(fab['x-bom.csv'], /TP1/);
+  assert.doesNotMatch(fab['x-cpl.csv'], /TP1/);
+});
