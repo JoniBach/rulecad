@@ -71,6 +71,11 @@ export function main(v) {
   poured with tscircuit's copper pour solver, clear of other nets' holes and vias, with thermal spokes; the checks
   confirm every plane pad reaches its copper, and the inner layers get their own Gerbers (`.G1`, `.G2`). `clone()`
   gives a 4-layer source's plane nets their planes, with the source's via size and clearance.
+- **Routing to a clearance:** `clearance` (mm) is the gap the autorouter keeps from everything in its way (a clone:
+  the source's own). After routing, any connection in a design-rule error is pulled up and routed again with every good
+  track fixed in place, a minute per try. Then, with `neck` (mm, the fab's smallest track), a track still a little too
+  close to another is straightened where the router doubled back, or narrowed where they pass. Existing vias reach the
+  router at their real size.
 - **Pad shapes:** round SMD pads stay round, and rounded pads keep their corner radius, so clearances are measured to
   the real copper.
 - **Castellated and oval pads:** a pad `{ castellated: true }` is a half hole on the board's edge (tracks join it at

@@ -4,7 +4,7 @@ import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
 import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup } from '@rulecad/pcb';
-import { layerChanges, routeInput } from './circuit.mjs';
+import { layerChanges, routeInput, neckDown } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -395,4 +395,17 @@ test('the router sees existing vias at their real size, and keeps a board\'s own
     { route: async (json, toRoute, board) => { srj = await routeInput(json, toRoute, board); return { traces: [] }; } });
   assert.equal(srj.defaultObstacleMargin, 0.15);
   assert.ok(srj.obstacles.some((o) => o.width === 0.5 && o.height === 0.5), 'a plane via, 0.5 mm, not the board\'s smallest');
+});
+
+test('necking: two routed tracks a little too close are narrowed where they pass, to the fab\'s smallest track', async () => {
+  // Two straight connections 0.214 mm apart, centre to centre, at 0.15 mm wide: a 0.064 mm gap
+  const pad = (pin) => ({ pin, smd: true, hint: pin, x: 0, y: 0, w: 0.4, h: 0.4 });
+  const part = (name, x, y) => ({ name, ftype: 'simple_chip', x, y, layer: 'top', rotation: 0, pads: [pad('pin1')] });
+  let json;
+  await render({ center: { x: 0, y: 0 }, width: 20, height: 10, thickness: 1.6, track: 0.15, autoroute: true,
+    parts: [part('A1', -4, 0), part('A2', 4, 0), part('B1', -4, 0.214), part('B2', 4, 0.214)], nets: { A: ['A1.pin1', 'A2.pin1'], B: ['B1.pin1', 'B2.pin1'] } },
+  { route: async (j) => { json = j; return { traces: [] }; } });
+  const line = (id, y) => ({ source_trace_id: id, route: [{ route_type: 'wire', x: -4, y, width: 0.15, layer: 'top' }, { route_type: 'wire', x: 4, y, width: 0.15, layer: 'top' }], vias: [] });
+  const necked = await neckDown(json, [line('source_trace_0', 0), line('source_trace_1', 0.214)], 0.1);
+  assert.deepEqual(necked.map((t) => t.route.map((p) => p.width)), [[0.1, 0.1], [0.1, 0.1]], 'both narrowed: a 0.114 mm gap');
 });

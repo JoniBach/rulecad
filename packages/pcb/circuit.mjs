@@ -23,6 +23,7 @@
 //   holes  [{ x, y, d }] in the board (mounting holes)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
+//   neck (mm) a routed track still too close to another after repair is narrowed to this where they pass (the fab's smallest)
 //   planes { GND: { layer: 'inner1', pins: ['U1.GND', ...] } }: nets joined by copper filling an inner layer. Each SMD pad
 //            gets a via beside it before routing, or a track to one nearby; a pad with no room for
 //            either is routed to the nearest pad of its net that reaches the plane. via_pad, via_hole, plane_clearance
@@ -630,18 +631,66 @@ async function defaultRouter(json, toRoute, board) {
     bad.delete(undefined);
     if (!bad.size) break;
     const keep = traces.filter((t) => !bad.has(t.source_trace_id)), again = toRoute.filter((c) => bad.has(c.id));
-    try { traces = [...keep, ...(await routeOnce([...json, ...lay(keep)], again, board)).traces]; } catch { break; } // too tight to better: the last result stands
+    const minute = () => Date.now() + 60000; // each repair attempt gets a minute
+    try { traces = [...keep, ...(await routeOnce([...json, ...lay(keep)], again, board, minute())).traces]; continue; } catch {} // too tight together:
+    if (again.length > 4) break; // a few can go one at a time, each around everything else; more would take too long
+    let changed = false;
+    for (const c of again) {
+      const rest = traces.filter((t) => t.source_trace_id !== c.id);
+      try { traces = [...rest, ...(await routeOnce([...json, ...lay(rest)], [c], board, minute())).traces]; changed = true; } catch {}
+    }
+    if (!changed) break; // too tight to better: the last result stands
   }
+  if (board?.neck) traces = await neckDown(json, traces, board.neck);
   return { traces };
 }
 
-async function routeOnce(json, toRoute, board) {
+/**
+ * Routed tracks still a little too close to another: straightened where the router doubled back, then necked down where they pass, the segment of each nearest the spot
+ * narrowed to neck (the fab's smallest track), which opens the gap. traces as the router gives them; returns them.
+ * @param {object[]} json @param {object[]} traces @param {number} neck
+ */
+export async function neckDown(json, traces, neck) {
+  const { runAllChecks } = await import('@tscircuit/checks');
+  const toSeg = (p, a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0; return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy); };
+  const out = traces.map((t) => ({ ...t, route: t.route.map((p) => ({ ...p })) }));
+  const lay = () => out.map((t, i) => ({ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB }));
+  const close = async () => (await runAllChecks([...json, ...lay()])).filter((e) => e.type === 'pcb_trace_error' && /too close|overlap/.test(e.message) && e.center);
+  // First, straighten: a routed track's kink by the spot (a bend point between two runs on one layer) is dropped when that
+  // leaves fewer problems; the router sometimes doubles back as it leaves its start
+  for (const e of await close()) for (const m of new Set(JSON.stringify(e).match(/pcb_trace_rt\d+/g) || [])) {
+    const r = out[Number(m.slice(12))].route, before = (await close()).length;
+    const k = r.map((_, i) => i).filter((i) => i > 0 && i < r.length - 1 && [r[i - 1], r[i], r[i + 1]].every((p) => p.route_type === 'wire' && p.layer === r[i].layer))
+      .sort((i, j) => Math.hypot(r[i].x - e.center.x, r[i].y - e.center.y) - Math.hypot(r[j].x - e.center.x, r[j].y - e.center.y))[0];
+    if (k === undefined || Math.hypot(r[k].x - e.center.x, r[k].y - e.center.y) > 1) continue;
+    const [gone] = r.splice(k, 1);
+    if ((await close()).length >= before) r.splice(k, 0, gone); // no better: put it back
+  }
+  for (let pass = 0; pass < 4; pass++) { // two tracks close along a stretch: the next segment along, until they clear
+  const laid = out.map((t, i) => ({ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB }));
+  const errors = (await runAllChecks([...json, ...laid])).filter((e) => e.type === 'pcb_trace_error' && /too close/.test(e.message) && e.center);
+  let narrowed = false;
+  for (const e of errors) for (const m of JSON.stringify(e).matchAll(/pcb_trace_rt(\d+)/g)) {
+    const r = out[Number(m[1])]?.route; if (!r) continue;
+    // the nearest segment still at full width (one already necked: the next along)
+    const order = r.map((_, i) => i).filter((i) => i < r.length - 1 && r[i].route_type === 'wire' && r[i + 1].route_type === 'wire')
+      .sort((i, k) => toSeg(e.center, r[i], r[i + 1]) - toSeg(e.center, r[k], r[k + 1]));
+    const i = order.find((k) => toSeg(e.center, r[k], r[k + 1]) < 1 && (r[k].width > neck || r[k + 1].width > neck));
+    if (i !== undefined) { r[i].width = Math.min(r[i].width, neck); r[i + 1].width = Math.min(r[i + 1].width, neck); narrowed = true; }
+  }
+  if (!narrowed) break;
+  }
+  return out;
+}
+
+async function routeOnce(json, toRoute, board, limit = 0) {
   // The autorouter uses JavaScript features from Node 22 (iterator helpers): say so, rather than fail inside it
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
   const { AutoroutingPipelineSolver } = await import('@tscircuit/capacity-autorouter');
   const srj = await routeInput(json, toRoute, board);
   const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null });
-  solver.solve();
+  // stepped by hand, so a repair can be given a time limit (a first route has none)
+  while (!solver.solved && !solver.failed) { solver.step(); if (limit && Date.now() > limit) throw new Error('a repair took too long'); }
   if (solver.failed) throw new Error(`the autorouter couldn't route every connection: ${solver.error || 'no reason given'}`);
   // The routes for the connections asked for (the solver also hands back the fixed ones), each from its first pad to
   // its second, as tscircuit records them

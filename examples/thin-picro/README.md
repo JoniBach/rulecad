@@ -35,11 +35,20 @@ failing it.
 
 Every size is a variable in `module.json`: the pin counts, where the USB-C socket sits, the board's height.
 
-## Status: not ready to order
+## Status
 
-It routes (about 11 minutes), and these checks pass: the circuit is Sea-Picro's, the placement, both planes, the
-castellations, the outline. The fab's clearance checks still fail: some autorouted tracks run too close to, or
-over, other tracks. Don't order it until `cad check` passes.
+50.8 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
+- the circuit is Sea-Picro's
+- the placement
+- both planes
+- JLCPCB's clearances and track widths
+- the castellations and the outline
+
+`cad export` makes the files JLCPCB needs.
+
+It hasn't been made yet. Before ordering:
+- **Open `exports/thin-picro/module@0.1.0.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
+- **Check the pinout.** The pins aren't in Sea-Picro's order: each sits where its track leaves the core.
 
 ## Build it
 
@@ -54,4 +63,5 @@ When ordering, choose 4 layers and castellated holes. The BOM carries Sea-Picro'
 
 Sea-Picro is under the [CERN Open Hardware Licence v2, Strongly Reciprocal](LICENSE), so this board is too.
 Share it, and anything you make from it, under the same licence, with its design files. That covers this folder,
-including `rules/sea_picro.json`. rulecad's own code is MIT, and its other rule sets are CC0.
+including `rules/sea_picro.json`. rulecad's own code is MIT, and its other rule sets (here `rules/jlcpcb.json`, a copy
+`cad` keeps) are CC0.

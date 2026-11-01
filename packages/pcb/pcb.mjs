@@ -721,8 +721,12 @@ function islands(circuit, refs) {
       if (free) { dead.add(i); again = true; }
     });
   }
+  // A track's end that stops just short of its pad (its copper overlapping it, as KiCad joins them) is moved onto the pad
+  const onto = (pt, net, layer, reach) => { const q = pads.find((d) => d.net === net && inPad(pt, d, layer, reach) && !inPad(pt, d, layer));
+    return q ? { x: r4(Math.min(Math.max(pt.x, q.x - q.w / 2 + 0.01), q.x + q.w / 2 - 0.01)), y: r4(Math.min(Math.max(pt.y, q.y - q.h / 2 + 0.01), q.y + q.h / 2 - 0.01)) } : pt; };
+  const snapped = (g) => ({ ...g, a: onto(g.a, g.net, g.layer, g.width / 2), b: onto(g.b, g.net, g.layer, g.width / 2) });
   const out = { tracks: [], vias: [], islands: [], stubs: [] };
-  nodes.forEach((n, i) => { const k = keep.get(find(i)); if (!k || dead.has(i)) return; if (n.kind === 't') out.tracks.push({ ...n.g, island: k.id }); else { k.via = true; out.vias.push({ ...n.v, island: k.id }); } });
+  nodes.forEach((n, i) => { const k = keep.get(find(i)); if (!k || dead.has(i)) return; if (n.kind === 't') out.tracks.push({ ...snapped(n.g), island: k.id }); else { k.via = true; out.vias.push({ ...n.v, island: k.id }); } });
   out.islands = [...keep.values()];
   // Breakouts: an island from one of the block's pins out to other parts keeps its stretch within the block's bounds,
   // from the pin to where it leaves (a fine-pitch chip's escape, proven); the rest is routed from the stub's end
@@ -755,8 +759,8 @@ function islands(circuit, refs) {
     if (cut.length !== 1 || !cut[0]) continue; // no way out, more than one, or not a plain track: routed whole
     const id = `stub${out.stubs.length + 1}`, g = cut[0].g;
     out.stubs.push({ id, net: g.net, pin: mine[0], end: { x: g.b.x, y: g.b.y, layer: g.layer } });
-    out.tracks.push({ ...g, stub: id });
-    for (const i of seen) { const n = nodes[i]; if (n.kind === 't') out.tracks.push({ ...n.g, stub: id }); else out.vias.push({ ...n.v, stub: id }); }
+    out.tracks.push({ ...snapped(g), stub: id });
+    for (const i of seen) { const n = nodes[i]; if (n.kind === 't') out.tracks.push({ ...snapped(n.g), stub: id }); else out.vias.push({ ...n.v, stub: id }); }
   }
   return out;
 }
@@ -1038,7 +1042,8 @@ const FOOTPRINT = { K: 'Cherry MX, PCB mount', U: 'Raspberry Pi Pico, 0.1 in hea
 function bom(json) {
   const lines = new Map(), q = (x) => `"${String(x).replace(/"/g, '""')}"`;
   for (const c of json.filter((e) => e.type === 'source_component')) {
-    const comment = c.display_value || c.manufacturer_part_number || c.name, footprint = FOOTPRINT[c.name[0]] || '', lcsc = c.supplier_part_numbers?.jlcpcb?.[0] ?? '';
+    const lcsc = c.supplier_part_numbers?.jlcpcb?.[0] ?? '', comment = c.display_value || c.manufacturer_part_number || c.name;
+    const footprint = lcsc ? '' : FOOTPRINT[c.name[0]] || ''; // a keyboard's parts by their letter; a part with an LCSC number is known by that
     const key = `${comment}|${footprint}|${lcsc}`;
     if (!lines.has(key)) lines.set(key, { comment, footprint, lcsc, refs: [] });
     lines.get(key).refs.push(c.name);

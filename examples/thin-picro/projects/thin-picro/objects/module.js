@@ -37,7 +37,7 @@ export function main (v) {
     const other = (Object.values(src.nets).find((n) => n.includes(`J2.${pin}`)) || []).find((x) => !x.startsWith('J2.'))
     return other ? placeOf.get(other.split('.')[0]) : { x: 0, y: -1 }
   }
-  const round = (q) => ((Math.atan2(q.y, q.x) * 180) / Math.PI - 90 + 720) % 360 // counter-clockwise from the top middle
+  const round = (q) => (Math.atan2(q.y, q.x) - Math.PI / 2 + 2 * 2 * Math.PI) % (2 * Math.PI) // counter-clockwise from the top middle
   const order = [...pins].sort((a, b) => round(toward(a)) - round(toward(b)))
   const pads = order.flatMap((pin, i) => {
     const { side: [ix, iy], x, y } = spots[i], across = iy !== 0
@@ -47,11 +47,11 @@ export function main (v) {
   pads.push({ ...led, x: v.led_x, y: v.led_y })
   const pin28 = spots[order.indexOf('28')]
   c = arrange(withFootprint(c, 'J2', pads), { J2: { x: 0, y: 0, rotation: 0 },
-    R4: { x: pin28.x + pin28.side[0] * v.switch_in, y: pin28.y + pin28.side[1] * v.switch_in, rotation: pin28.side[0] ? 0 : 90 } })
+    R4: { x: pin28.x + pin28.side[0] * v.switch_in, y: pin28.y + pin28.side[1] * v.switch_in, rotation: pin28.side[0] ? 0 : v.switch_turn } })
 
   // The outline: a rectangle with Sea-Picro's notch for the mid-mount socket, its size read off Sea-Picro's outline
   const j1 = src.parts.find((p) => p.ref === 'J1'), srcTop = Math.max(...src.outline.map((p) => p.y))
-  const inNotch = src.outline.filter((p) => p.y < srcTop - 0.5 && Math.abs(p.x - j1.x) < 6)
+  const inNotch = src.outline.filter((p) => p.y < srcTop - v.notch_below && Math.abs(p.x - j1.x) < v.notch_reach)
   const wide = Math.max(...inNotch.map((p) => Math.abs(p.x - j1.x))), deep = srcTop - Math.min(...inNotch.map((p) => p.y))
   const n0 = v.usb_x - wide, n1 = v.usb_x + wide, nd = top - deep
   const outline = [[left, bottom], [right, bottom], [right, top], [n1, top], [n1, nd], [n0, nd], [n0, top], [left, top]].map(([x, y]) => ({ x, y }))
@@ -59,7 +59,7 @@ export function main (v) {
   const k = clone(c, { layers: v.layers })
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
-      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: k.plane_clearance, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes },
+      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes },
     clone: { circuit: src, arranged: c }
   }
 }
