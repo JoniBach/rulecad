@@ -62,6 +62,42 @@ const lines = (printer, from = 2, to = 8) => Array.from({ length: to - from + 1 
  * @param {{ line: number }} printer the extrusion line, so thicknesses are whole lines
  */
 export const size = {
+  /**
+   * Displacement first (Howell; the BYU blaster, PLOS ONE 2026): the travel and the strain limit set the length for a
+   * thickness, and the force is set last, by the width (stress doesn't depend on it). Give `width` when the print fixes
+   * it (a lamina's height): then the thickness sets the force, the thinnest whole-line one that reaches it, lengthened
+   * until it gives exactly that. Leave `width` out and it's the thinnest thickness that prints, at the shortest length,
+   * as wide (in whole layers) as the force needs, up to `maxWidth`.
+   * @param {'leaf' | 'fixedGuided' | 'parallelGuide' | 'compoundGuide' | 'foldedGuide' | 'serpentine'} kind
+   * @param {{ travel: number, force?: number, energy?: number, width?: number, maxWidth?: number, maxLength?: number, turns?: number,
+   *   material: { E: number, strainLimit: number }, margin?: number }} job energy in N·mm (mJ); force at full travel, N
+   * @param {{ line: number, layer: number }} printer
+   * @returns {{ kind: string, length: number, thickness: number, width: number, turns?: number, stiffness: number, force: number,
+   *   energy: number, strain: number, ratio: number } | null} ratio: travel over length, the paper's measure of how hard
+   *   it works (it scales: the same ratio at any size is the same strain)
+   */
+  forTravel(kind, { travel, force, energy, width, maxWidth = Infinity, maxLength = Infinity, turns, material, margin = 0.8 }, printer) {
+    const model = models[kind];
+    if (!model || !['leaf', 'fixedGuided', 'parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine'].includes(kind)) throw new Error(`size.forTravel: no beam model for ${kind}`);
+    const want = force ?? (energy != null ? (2 * energy) / travel : null), target = margin * material.strainLimit;
+    if (!(want > 0)) throw new Error('size.forTravel: give the force at full travel, or the energy to store');
+    const mk = (L, t, w) => model({ length: L, thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}) }, material);
+    const shortest = (t) => { const e0 = mk(10, t, 1).strain(travel); return 10 * Math.sqrt(e0 / target); }; // strain goes as 1 / L²
+    const out = (L, t, w) => { const m = mk(L, t, w); return { kind, length: +L.toFixed(2), thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}), stiffness: m.stiffness, force: m.stiffness * travel, energy: (m.stiffness * travel * travel) / 2, strain: m.strain(travel), ratio: travel / L }; };
+    for (const t of lines(printer, 2, 12)) {
+      const L = Math.ceil(shortest(t) * 100) / 100;
+      if (L > maxLength) return null; // thicker only needs longer
+      if (width != null) { // the width is fixed: the thickness sets the force; lengthen it to give just that
+        const most = mk(L, t, width).stiffness * travel;
+        if (most < want) continue;
+        const longer = L * Math.cbrt(most / want); // stiffness goes as 1 / L³
+        return out(Math.min(longer, maxLength), t, width);
+      }
+      const k1 = mk(L, t, 1).stiffness, w = Math.ceil(want / (k1 * travel) / printer.layer - 1e-9) * printer.layer; // the force from the width, whole layers
+      if (w <= maxWidth) return out(L, t, +w.toFixed(4));
+    }
+    return null;
+  },
   /** A leaf for a force at a travel: tip force F at travel δ. @returns {{ length: number, thickness: number, width: number, stiffness: number, strain: number } | null} */
   leaf({ travel, force, width, material, margin = 0.8, maxLength = Infinity }, printer) {
     for (const t of lines(printer)) {

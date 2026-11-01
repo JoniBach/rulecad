@@ -10,6 +10,7 @@
   "files": [
     "flexures.mjs",
     "compose.mjs",
+    "lamina.mjs",
     "flexures.d.mts",
     "compose.d.mts",
     "README.md",
@@ -37,7 +38,13 @@
     "test": "node --test"
   },
   "peerDependencies": {
-    "@jscad/modeling": "^2.12.0"
+    "@jscad/modeling": "^2.12.0",
+    "manifold-3d": "^3.5.0"
   },
-  "types": "./flexures.d.mts"
+  "types": "./flexures.d.mts",
+  "peerDependenciesMeta": {
+    "manifold-3d": {
+      "optional": true
+    }
+  }
 }

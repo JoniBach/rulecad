@@ -16,7 +16,7 @@
 // Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
 import { located } from './errors.mjs';
 import { host } from './host.mjs';
-import { named, faces, fromFaces, polygons } from './parts.mjs';
+import { named, faces, fromFaces, polygons, unpack } from './parts.mjs';
 import { runSandboxed, sandboxed } from './sandbox.mjs';
 export { polygons };
 import fs from 'node:fs';
@@ -119,7 +119,7 @@ export function variantSet(d, object, set = {}) {
   return { ...v, ...set };
 }
 
-const CACHE = paths.cache('builds'), CACHE_VERSION = 2;
+const CACHE = paths.cache('builds'), CACHE_VERSION = 3;
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
@@ -173,14 +173,14 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     for (const e of entries) if (c.used.includes(e.name)) e.used = true;
     const parts = c.parts.map(({ solid: f, ...p }) => ({ ...p, geometry: fromFaces(f) }));
     if (c.circuit) Object.assign(values, (await pcbEngine()).outputs(c.circuit, c.matrix));
-    return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix, ...(c.source ? { source: c.source } : {}) } : {}) };
+    return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.mechanism ? { mechanism: c.mechanism } : {}), ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix, ...(c.source ? { source: c.source } : {}) } : {}) };
   }
 
   // A JSCAD design runs in a sandbox (sandbox.mjs: another process that can't write files, start programs or reach
   // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
-  let parts, board = null, read;
-  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read } = await runSandboxed(d, values, object.parts || {}, booleans(object)));
+  let parts, board = null, read, mechanism = null;
+  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object)));
   else {
     const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
       // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
@@ -195,7 +195,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
     watched.shapes = shapes; watched.flexures = flexures; watched.ops = await shapes.ops(booleans(object)); if (pcb) watched.pcb = pcb;
     let made;
-    try { made = await mod.main(watched); } catch (e) { throw located(e, d.js, 'design.run'); }
+    try { ({ shapes: made, mechanism } = unpack(await mod.main(watched))); } catch (e) { throw located(e, d.js, 'design.run'); }
     if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part
       const { board: b, matrix, clone } = made && made.board ? made : { board: made }; // clone: a cloned board's { circuit, arranged }, for its checks
       board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}), ...(clone ? { source: clone } : {}) };
@@ -207,9 +207,9 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   for (const e of entries) if (read.has(e.name)) e.used = true;
   try {
     prune();
-    host.writeText(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}) }));
+    host.writeText(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}), ...(mechanism ? { mechanism } : {}) }));
   } catch {} // a cache that can't be written is only slower
-  return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}) };
+  return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}), ...(mechanism ? { mechanism } : {}) };
 }
 
 // The cache keeps its most recently used builds, about CACHE_KEEP of them (an old version's builds go first)

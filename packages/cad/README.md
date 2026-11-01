@@ -551,6 +551,16 @@ builds an item only for its values: the PCB build's print plates (`staggered-pcb
 the board's numbers without the board being on the bed. In assemblies a board counts as a reference: checked, drawn
 faint, never in a print file.
 
+## Mechanisms printed flat
+
+A design whose `main` returns `v.flexures.lamina({ … })` (see @rulecad/flexures, Lamina mechanisms) is a mechanism
+drawn in one plane and printed on its side. `cad check` adds its own findings to the print checks: that it prints
+free (nothing within the printer's gap of what it isn't joined to), that every step of its sequence is clear, that
+nothing jams, that its catches hold, and that every flexure has a hard stop before its strain limit. `cad animate
+<project>/<object>` writes the sequence, start to finish, as an animated SVG in .preview/: the frame drawn once, the
+moving bodies in blue and the flexures in orange, drawn bent, holding a moment at each state. The printer's
+`print_gap` is the gap the checks hold it to.
+
 ## Checks
 
 - **Closed solids:** every edge must be matched by faces on the other side. T-junctions (an edge covered by several

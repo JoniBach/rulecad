@@ -10,7 +10,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 
 | Set | What | Values |
 |---|---|---|
-| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits and hole compensation | 11 |
+| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need, and hole compensation | 12 |
 | `mx` | Cherry MX switches: plate cut-out, stem, housing, travel, key pitch | 29 |
 | `oem` | OEM keycap profile: heights and top tilt per row (from KeyV2) | 12 |
 | `m2` | M2 heat-set inserts and screws | 5 |

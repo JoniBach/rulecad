@@ -8,6 +8,37 @@ cartridges that pin into a frame.
 `npx cad check launcher/launcher` checks the whole thing at rest, as assembled, with every pin's press fit;
 `npx cad export` each object for the printer.
 
+## The flat action: the direction from here
+
+The pinned-cartridge pistol below printed as a total failure. Its moving parts fused to the trays they stood on, the
+sled and the disc bound in their channels, and the pins fell out. It is also unlike every printed blaster that works.
+The BYU and Mark Rober one-piece blaster, the Unity disc shooter, the spring guns and the Q-tip shooters are flat
+drawings printed on their side, with every spring, latch and trigger in the plane. The cartridges were a metal
+pistol's layout rebuilt from a flexure catalogue.
+
+`flat` is the action redrawn that way, as one print:
+
+- **The spring:** two leaves standing up the grip, joined at the top by the pusher's shuttle. That is a parallel
+  guide, so the pusher moves straight back and stores the energy in both leaves. It is sized by its travel
+  (`size.forTravel`). The stroke and PETG's strain limit set the leaves' length and thickness, and the print's
+  height sets their force.
+- **The pusher:** a bar along the top with a tab out of the back to cock it and a tooth underneath.
+- **The trigger is its own sear:** a lever hanging on a leaf hinge, its arm reaching forward to a hook under the bar.
+  Cocking drags the tooth over the hook's ramp, pushing the trigger aside; drawn a little past, the hook springs up
+  and the pusher settles back onto its catch. The catch leans back 15° (a sear with bite), so the spring's push
+  presses the hook in: it holds however slippery the plastic, and pulling the trigger presses the pusher back a
+  little as the hook comes down.
+- **Stops:** the back wall stops the pusher before the spring's strain limit, and the grip's front wall stops the
+  trigger before its hinge's.
+
+`npx cad check launcher/flat` checks it as it prints and moves: nothing within the printer's gap of what it isn't
+joined to, every step from rest to cocked, pulled, fired and back clear, no jam, the catch holding, and every
+flexure stopped before it breaks. `npx cad animate launcher/flat` plays the sequence with the springs drawn bent.
+
+The checks are only as good as the printer's `print_gap`: 0.3 mm is an estimate until the fit test plate
+(`fittest`) is printed and measured. Still to do: the disc's channel and the magazine as laminae of their own, a grip
+shell shaped for the hand, and a print.
+
 ## The parts
 
 | Part | What it is | Printed |

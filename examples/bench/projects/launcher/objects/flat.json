@@ -1,0 +1,184 @@
+{
+  "name": "flat",
+  "title": "Launcher action, flat: a pusher on a two-leaf spring, a trigger that is its own sear, printed in one piece on its side",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "petg",
+    "launcher"
+  ],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "On its side, as drawn: one piece, no supports. Everything that moves stands on the bed and bends within its layers. Pull the tab at the back to cock it; the trigger's hook catches the pusher's tooth; pull the trigger to let it go.",
+  "parts": {
+    "body": {
+      "label": "The action: frame, spring, pusher and trigger in one print"
+    }
+  },
+  "variables": {
+    "height": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "How tall it prints, on its side: the flexures' width, so it sets their force (seventy layers)"
+    },
+    "stroke": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "How far the tab pulls the pusher back to cock it"
+    },
+    "over": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "How far past the stroke the pusher can go before the back wall stops it: the hard stop"
+    },
+    "energy": {
+      "value": "launcher.energy * 1000",
+      "unit": "mJ",
+      "rule": "What the spring stores cocked: the launcher's stored energy"
+    },
+    "safety": {
+      "value": 1.5,
+      "rule": "The flexures' strain limit is PETG's strength over its modulus (its yield strain) over this"
+    },
+    "gap": {
+      "value": "x1c.print_gap",
+      "unit": "mm",
+      "rule": "The least gap between parts printed in place that still prints apart"
+    },
+    "beam_gap": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "Between the spring's two leaves: the grip's core"
+    },
+    "block": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The spring's base and shuttle blocks, along its leaves"
+    },
+    "wall": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The frame's walls"
+    },
+    "bar": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The pusher bar's height: the shuttle, a gap over the back wall, and the tab"
+    },
+    "tab": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "How far the cocking tab reaches behind the frame"
+    },
+    "nose": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "How far the pusher reaches past the hook: what pushes the disc"
+    },
+    "tooth": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The pusher's tooth, along the bar"
+    },
+    "engage": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "How deep the hook catches the tooth"
+    },
+    "flat": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "The hook's flat top, between its catch and its ramp"
+    },
+    "lead": {
+      "value": 30,
+      "unit": "degrees",
+      "rule": "The hook's ramp from the bar: the tooth rides down it when cocking"
+    },
+    "hinge": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The trigger's hinge: a leaf hanging from the frame, the trigger on its tip; it turns about a point 0.15 of the way down"
+    },
+    "hinge_t": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "The hinge leaf's thickness: two lines"
+    },
+    "reach": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "From the trigger's pivot forward to the hook's catch: a longer reach lowers the hook more for a turn"
+    },
+    "hanger": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The arm the hinge hangs from: its thickness, and how far it reaches past the hinge"
+    },
+    "blade": {
+      "value": 26,
+      "unit": "mm",
+      "rule": "The trigger's blade below the hinge: where the finger pulls"
+    },
+    "blade_w": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "The trigger blade's width"
+    },
+    "arm": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The trigger's arm and riser up to the hook"
+    },
+    "overlap": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "How far a flexure runs into the body on its tip, so they join solidly"
+    },
+    "release": {
+      "value": 1.9,
+      "rule": "The trigger's stop lets it turn this many times as far as the hook's depth over its reach says it must to free the tooth (the turn also swings the hook forward, so the check's measure is more)"
+    },
+    "pull": {
+      "value": 0.9,
+      "rule": "A full pull: this much of the way to the trigger's stop"
+    },
+    "up": {
+      "value": 90,
+      "unit": "degrees",
+      "rule": "The spring's leaves stand up the grip"
+    },
+    "down": {
+      "value": -90,
+      "unit": "degrees",
+      "rule": "The trigger's hinge hangs down"
+    },
+    "gamma": {
+      "value": 0.85,
+      "rule": "A leaf's tip turns about a point this much of its length from the tip (the pseudo-rigid-body model)"
+    },
+    "guard": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Room under the trigger blade, to the guard"
+    },
+    "slope": {
+      "value": "tand(lead)",
+      "rule": "The ramp's rise over its run"
+    },
+    "bite": {
+      "value": 15,
+      "unit": "degrees",
+      "rule": "The hook's catch leans back this far from square, so the spring's push presses it in (a sear with bite): it holds even when slippery, and the trigger presses the pusher back a little to let it go"
+    },
+    "lean": {
+      "value": "tand(bite)",
+      "rule": "The catch's lean, run over rise"
+    },
+    "draw": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "How far past the stroke the tab is drawn, so the hook springs fully up before the pusher settles back on it (less than over)"
+    }
+  }
+}

@@ -656,6 +656,7 @@ export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, 
 }
 
 export { ports, size, report, models } from './compose.mjs';
+export { lamina, flexureMaterial } from './lamina.mjs';
 
 /**
  * A contact-aided leaf: a cantilever with a stop partway along it, a gap off the beam, so it bends freely until the
