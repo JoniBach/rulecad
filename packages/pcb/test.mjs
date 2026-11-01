@@ -4,7 +4,7 @@ import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
 import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup } from '@rulecad/pcb';
-import { layerChanges } from './circuit.mjs';
+import { layerChanges, routeInput } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -386,4 +386,13 @@ test('kept copper joins as KiCad joins it: a track ending short of a pad by less
   await render({ outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, copper: k.copper, parts: k.parts, nets: k.nets },
     { route: async (json, toRoute) => { asked = toRoute.map(({ a, b }) => [a.source.name, b.source.name]); return { traces: [] }; } });
   assert.deepEqual(asked, [['pin2', 'pin2'], ['pin2', 'pin2']], 'only B (three pins, two joins) is routed: A is joined by its kept pieces');
+});
+
+test('the router sees existing vias at their real size, and keeps a board\'s own clearance', async () => {
+  const c = fromKicadPcb(KICAD), k = clone(moveGroup(c, ['R1', 'R2', 'R3', 'R4', 'J1'], {}, { keep: true }), { layers: 4, planes: ['B'] });
+  let srj;
+  await render({ outline: k.outline, thickness: 1.2, track: 0.2, autoroute: true, layers: 4, planes: k.planes, parts: k.parts, nets: k.nets, via_pad: 0.5, via_hole: 0.25, clearance: 0.15 },
+    { route: async (json, toRoute, board) => { srj = await routeInput(json, toRoute, board); return { traces: [] }; } });
+  assert.equal(srj.defaultObstacleMargin, 0.15);
+  assert.ok(srj.obstacles.some((o) => o.width === 0.5 && o.height === 0.5), 'a plane via, 0.5 mm, not the board\'s smallest');
 });

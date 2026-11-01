@@ -22,6 +22,7 @@
 //   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer }
 //   holes  [{ x, y, d }] in the board (mounting holes)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
+//   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
 //   planes { GND: { layer: 'inner1', pins: ['U1.GND', ...] } }: nets joined by copper filling an inner layer. Each SMD pad
 //            gets a via beside it before routing, or a track to one nearby; a pad with no room for
 //            either is routed to the nearest pad of its net that reaches the plane. via_pad, via_hole, plane_clearance
@@ -513,7 +514,7 @@ function schematic(out, add, placed, board, port) {
 // board. The board is described to it as tscircuit's own core describes it (pads, holes, the drawn tracks, and which
 // of them are connected), and the same solver runs with the same settings, so a board routes as it did there.
 // -> { traces: [{ route, source_trace_id, vias }] }
-export async function routeInput(json, toRoute) {
+export async function routeInput(json, toRoute, board = {}) {
   const { getFullConnectivityMapFromCircuitJson } = await import('circuit-json-to-connectivity-map');
   const conn = getFullConnectivityMapFromCircuitJson(json);
   const linked = (id) => { const net = conn.getNetConnectedToId(id); return net ? [...new Set([id, net, ...conn.getIdsConnectedToNet(net)])] : [id]; };
@@ -543,10 +544,13 @@ export async function routeInput(json, toRoute) {
   // Tracks already on the board, but a plane's vias inside a big pad: the pad is in the router's way already
   const padOf = new Map(json.filter((e) => e.type === 'pcb_smtpad').map((e) => [e.pcb_port_id, smtBounds(e)]));
   const inPad = (e) => { const d = padOf.get(e.route[0].start_pcb_port_id); return d && e.route.every((p) => Math.abs(p.x - d.x) <= d.w / 2 && Math.abs(p.y - d.y) <= d.h / 2); };
+  const vias = json.filter((e) => e.type === 'pcb_via');
+  const viaSize = (id, p) => vias.find((v) => v.pcb_trace_id === id && Math.abs(v.x - p.x) < 1e-6 && Math.abs(v.y - p.y) < 1e-6)?.outer_diameter;
   const outer = (e) => e.route.every((p) => p.route_type !== 'wire' || p.layer === 'top' || p.layer === 'bottom'); // the router works on the outer two
   const traces = json.filter((e) => e.type === 'pcb_trace' && !inPad(e) && outer(e)).map((e) => ({ type: 'pcb_trace', pcb_trace_id: e.pcb_trace_id, source_trace_id: e.source_trace_id,
     connection_name: e.source_trace_id, connectsTo: [e.route[0].start_pcb_port_id, e.route.at(-1).end_pcb_port_id].filter(Boolean), // a plane's track ends at its via
-    route: e.route.map((p) => ({ route_type: p.route_type, x: p.x, y: p.y, width: p.width, layer: p.layer, ...(p.route_type === 'via' ? { from_layer: p.from_layer, to_layer: p.to_layer } : {}) })) }));
+    route: e.route.map((p) => ({ route_type: p.route_type, x: p.x, y: p.y, width: p.width, layer: p.layer,
+      ...(p.route_type === 'via' ? { from_layer: p.from_layer, to_layer: p.to_layer, via_diameter: viaSize(e.pcb_trace_id, p) } : {}) })) })); // each via at its real size
   const connections = toRoute.map(({ t, a, b: z, id }) => ({ name: id, source_trace_id: id, nominalTraceWidth: t.width, width: t.width,
     pointsToConnect: [a, z].map((q) => ({ x: q.x, y: q.y, layer: q.layers.length === 1 ? q.layers[0] : 'top', ...(q.layers.length === 1 ? { onlyLayer: q.layers[0] } : {}), pointId: q.pcb.pcb_port_id, pcb_port_id: q.pcb.pcb_port_id,
       port_selector: `${comp[q.source.source_component_id]}.${q.source.name}` })) }));
@@ -558,7 +562,8 @@ export async function routeInput(json, toRoute) {
     min_via_hole_diameter: b.min_via_hole_diameter, min_via_pad_diameter: b.min_via_pad_diameter,
     minTraceToPadEdgeClearance: b.min_trace_to_pad_edge_clearance, minTraceToHoleEdgeClearance: b.min_trace_to_hole_edge_clearance,
     minViaHoleEdgeToViaHoleEdgeClearance: b.min_via_hole_edge_to_via_hole_edge_clearance, minPlatedHoleDrillEdgeToDrillEdgeClearance: b.min_plated_hole_drill_edge_to_drill_edge_clearance,
-    minPadEdgeToPadEdgeClearance: b.min_pad_edge_to_pad_edge_clearance, minBoardEdgeClearance: b.min_board_edge_clearance });
+    minPadEdgeToPadEdgeClearance: b.min_pad_edge_to_pad_edge_clearance, minBoardEdgeClearance: b.min_board_edge_clearance,
+    ...(board.clearance ? { defaultObstacleMargin: board.clearance } : {}) }); // a board's own clearance, kept from everything in the way
 }
 
 // The drawn tracks become fixed obstacles for the router: each segment a box a track wide (a diagonal one, a run of
@@ -610,11 +615,31 @@ export function layerChanges(route, holes) {
   return pieces.filter((q) => q.length > 1);
 }
 
-async function defaultRouter(json, toRoute) {
+// The autorouter, then repair: its tracks sometimes run too close to, or over, others. Those connections are pulled up and
+// routed again together with every good track fixed in place, up to three rounds (a round that can't route keeps the last
+// result: on a board too tight for it, the checks then say where)
+async function defaultRouter(json, toRoute, board) {
+  let traces = (await routeOnce(json, toRoute, board)).traces;
+  const { runAllChecks } = await import('@tscircuit/checks');
+  const lay = (list) => list.flatMap((t, i) => [{ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB },
+    ...t.vias.map((v, k) => ({ type: 'pcb_via', pcb_via_id: `pcb_via_rv${i}x${k}`, pcb_trace_id: `pcb_trace_rt${i}`, ...v, layers: v.layers, subcircuit_id: SUB }))]);
+  for (let round = 0; round < 3; round++) {
+    const errors = (await runAllChecks([...json, ...lay(traces)])).filter((e) => /_error$/.test(e.type));
+    const bad = new Set();
+    for (const e of errors) for (const m of JSON.stringify(e).matchAll(/pcb_(?:trace_rt|via_rv)(\d+)/g)) bad.add(traces[Number(m[1])]?.source_trace_id);
+    bad.delete(undefined);
+    if (!bad.size) break;
+    const keep = traces.filter((t) => !bad.has(t.source_trace_id)), again = toRoute.filter((c) => bad.has(c.id));
+    try { traces = [...keep, ...(await routeOnce([...json, ...lay(keep)], again, board)).traces]; } catch { break; } // too tight to better: the last result stands
+  }
+  return { traces };
+}
+
+async function routeOnce(json, toRoute, board) {
   // The autorouter uses JavaScript features from Node 22 (iterator helpers): say so, rather than fail inside it
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
   const { AutoroutingPipelineSolver } = await import('@tscircuit/capacity-autorouter');
-  const srj = await routeInput(json, toRoute);
+  const srj = await routeInput(json, toRoute, board);
   const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null });
   solver.solve();
   if (solver.failed) throw new Error(`the autorouter couldn't route every connection: ${solver.error || 'no reason given'}`);

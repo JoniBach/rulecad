@@ -59,7 +59,7 @@ export function main (v) {
   const k = clone(c, { layers: v.layers })
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
-      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes },
+      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: k.plane_clearance, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes },
     clone: { circuit: src, arranged: c }
   }
 }

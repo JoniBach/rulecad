@@ -710,8 +710,19 @@ function islands(circuit, refs) {
   const keep = new Map(); // root -> island
   for (const [r, hit] of touched) if (hit.length && hit.every((q) => refs.has(q.ref)))
     keep.set(r, { id: `island${keep.size + 1}`, net: nodes[r].net, pins: [...new Set(hit.map((q) => `${q.ref}.${q.pin}`))], via: false });
+  // A kept piece's dead ends (a branch that led somewhere left behind): trimmed, track by track
+  const dead = new Set(), ends = (i) => { const g = nodes[i].g; return [g.a, g.b]; };
+  for (let again = true; again;) {
+    again = false;
+    nodes.forEach((n, i) => {
+      if (n.kind !== 't' || dead.has(i) || !keep.has(find(i))) return;
+      const free = ends(i).some((pt) => !pads.some((q) => q.net === n.net && inPad(pt, q, n.g.layer, n.g.width / 2))
+        && !adj[i].some((j) => !dead.has(j) && (nodes[j].kind === 'v' ? Math.hypot(pt.x - nodes[j].v.x, pt.y - nodes[j].v.y) <= nodes[j].v.pad / 2 + near : onSeg(pt, nodes[j].g) || [nodes[j].g.a, nodes[j].g.b].some((e) => Math.hypot(e.x - pt.x, e.y - pt.y) <= near))));
+      if (free) { dead.add(i); again = true; }
+    });
+  }
   const out = { tracks: [], vias: [], islands: [], stubs: [] };
-  nodes.forEach((n, i) => { const k = keep.get(find(i)); if (!k) return; if (n.kind === 't') out.tracks.push({ ...n.g, island: k.id }); else { k.via = true; out.vias.push({ ...n.v, island: k.id }); } });
+  nodes.forEach((n, i) => { const k = keep.get(find(i)); if (!k || dead.has(i)) return; if (n.kind === 't') out.tracks.push({ ...n.g, island: k.id }); else { k.via = true; out.vias.push({ ...n.v, island: k.id }); } });
   out.islands = [...keep.values()];
   // Breakouts: an island from one of the block's pins out to other parts keeps its stretch within the block's bounds,
   // from the pin to where it leaves (a fine-pitch chip's escape, proven); the rest is routed from the stub's end
