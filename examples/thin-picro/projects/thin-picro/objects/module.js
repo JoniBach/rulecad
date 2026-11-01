@@ -39,10 +39,20 @@ export function main (v) {
   }
   const round = (q) => (Math.atan2(q.y, q.x) - Math.PI / 2 + 2 * 2 * Math.PI) % (2 * Math.PI) // counter-clockwise from the top middle
   const order = [...pins].sort((a, b) => round(toward(a)) - round(toward(b)))
+  // An end's lowest pin sits beside the long edge's first pin, on the same grid: where its header pad would reach that
+  // pin's pad, it stops a clearance short, its outer end and hole where they were
+  const cornerReach = v.pitch - header.h / 2 - v.clearance // from the end's edge, the farthest in the corner pad may reach
+  const bottomReach = inn - out + header.w / 2 // how far the long edge's header pads reach up from the bottom edge
   const pads = order.flatMap((pin, i) => {
     const { side: [ix, iy], x, y } = spots[i], across = iy !== 0
+    let len = header.w, along = inn, hole = offset
+    if (!across && y - header.h / 2 - v.clearance < bottom + bottomReach) {
+      const outer = inn - out - header.w / 2 // the pad's outer end, in from the edge
+      len = cornerReach - outer; along = out + outer + len / 2; hole = offset - (inn - along)
+    }
+    if (!v.headers) return [{ ...half, pin, x, y }]
     return [{ ...half, pin, x, y },
-      { ...header, pin, x: x + ix * inn, y: y + iy * inn, w: across ? header.h : header.w, h: across ? header.w : header.h, hole_offset: [-ix * offset, -iy * offset] }]
+      { ...header, pin, x: x + ix * along, y: y + iy * along, w: across ? header.h : len, h: across ? len : header.h, hole_offset: [-ix * hole, -iy * hole] }]
   })
   pads.push({ ...led, x: v.led_x, y: v.led_y })
   const pin28 = spots[order.indexOf('28')]
@@ -68,7 +78,7 @@ export function main (v) {
   }
   const silk = order.map((pin, i) => {
     const { side: [ix, iy], x, y } = spots[i], text = label(pin), long = text.length * v.jlcpcb.silk_text * v.label_char
-    const from = inn + Math.max(header.w, header.h) / 2 + v.label_gap + (iy ? long : v.jlcpcb.silk_text) / 2
+    const from = (v.headers ? inn + Math.max(header.w, header.h) / 2 : half.w / 2 - out) + v.label_gap + (iy ? long : v.jlcpcb.silk_text) / 2
     return { text, x: x + ix * (from + (ix ? long / 2 - v.jlcpcb.silk_text / 2 : 0)), y: y + iy * from, size: v.jlcpcb.silk_text, layer: 'top', rotation: iy ? v.label_turn : 0 }
   })
 

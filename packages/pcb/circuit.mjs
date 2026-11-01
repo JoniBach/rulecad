@@ -171,8 +171,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
           port_hints: [`unnamed_platedhole${i + 1}`, p.pin, ...(p.castellated ? ['castellated'] : [])], x: p.x, y: p.y, layers, is_covered_with_solder_mask: false });
       }
       Object.assign(sourcePorts[i], { _pcb: port });
-      // A castellated pad's centre is on the board's edge: tracks join it at its inner edge
-      const join = p.castellated ? inward(board, p.x, p.y, p.outer / 2) : { x: p.x, y: p.y };
+      // A castellated pad's centre is on the board's edge: tracks join it at its inner side, mid-way across its copper
+      // ring (on the ring's very edge, the router may not count the join as in the pad)
+      const join = p.castellated ? inward(board, p.x, p.y, (p.outer + (p.hole ?? p.outer)) / 4) : { x: p.x, y: p.y };
       if (p.castellated) Object.assign(port, join);
       for (const key of [sourcePorts[i].name, ...sourcePorts[i].port_hints]) ports.set(`${part.name}.${key}`, { source: sourcePorts[i], pcb: port, x: join.x, y: join.y, layers });
     });
@@ -574,7 +575,14 @@ function schematic(out, add, placed, board, port, netOf = new Map()) {
 export async function routeInput(json, toRoute, board = {}) {
   const { getFullConnectivityMapFromCircuitJson } = await import('circuit-json-to-connectivity-map');
   const conn = getFullConnectivityMapFromCircuitJson(json);
-  const linked = (id) => { const net = conn.getNetConnectedToId(id); return net ? [...new Set([id, net, ...conn.getIdsConnectedToNet(net)])] : [id]; };
+  // A plane net's pads (GND, 3V3) are joined by the plane, not by tracks: each is joined only to the links routed from it,
+  // so a short link between two close pads isn't tied to every pad of the net across the board (the router's topology
+  // merging then fails on far-off ones, such as a chip's thermal vias)
+  const planeNet = new Set(json.filter((e) => e.type === 'source_net' && board.planes?.[e.name]).map((e) => conn.getNetConnectedToId(e.source_net_id)).filter(Boolean));
+  const linksAt = new Map();
+  for (const { a, b: z, id } of toRoute) for (const q of [a, z]) linksAt.set(q.pcb.pcb_port_id, [...(linksAt.get(q.pcb.pcb_port_id) || []), id]);
+  const linked = (id, port) => { const net = conn.getNetConnectedToId(id); if (!net) return [id];
+    return planeNet.has(net) ? [id, ...(port ? [port, ...(linksAt.get(port) || [])] : [])] : [...new Set([id, net, ...conn.getIdsConnectedToNet(net)])]; };
   const comp = Object.fromEntries(json.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e.name]));
   const src = Object.fromEntries(json.filter((e) => e.type === 'source_port').map((e) => [e.source_port_id, e]));
   const pcbPort = Object.fromEntries(json.filter((e) => e.type === 'pcb_port').map((e) => [e.pcb_port_id, e]));
@@ -588,13 +596,13 @@ export async function routeInput(json, toRoute, board = {}) {
   for (const kind of ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole']) for (const e of json.filter((x) => x.type === kind)) { // by kind, as core lists them
     if (e.type === 'pcb_smtpad' && e.shape === 'polygon') { // copper of any shape, as strips the router can see round
       for (const b of strips(e.points, 0.25)) obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
-        center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) });
+        center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id, e.pcb_port_id), ...joined(e) });
       continue;
     }
     if (e.type === 'pcb_smtpad') { const b = smtBounds(e); obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
-      center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) }); }
+      center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id, e.pcb_port_id), ...joined(e) }); }
     if (e.type === 'pcb_plated_hole') obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_plated_hole_id'), componentId: e.pcb_component_id, type: 'oval', layers: ['top', 'bottom'],
-      center: { x: e.x, y: e.y }, width: holeSize(e).w, height: holeSize(e).h, connectedTo: linked(e.pcb_plated_hole_id), ...joined(e) });
+      center: { x: e.x, y: e.y }, width: holeSize(e).w, height: holeSize(e).h, connectedTo: linked(e.pcb_plated_hole_id, e.pcb_port_id), ...joined(e) });
     if (e.type === 'pcb_hole') obstacles.push({ componentId: e.pcb_component_id, obstacleId: e.pcb_hole_id, isNonPlatedHole: true, type: 'rect', shape: 'circle',
       layers: ['top', 'bottom'], center: { x: e.x, y: e.y }, width: e.hole_diameter, height: e.hole_diameter, connectedTo: [] });
   }
@@ -651,10 +659,10 @@ function fixedTraces(input) {
 }
 
 /**
- * A route from the autorouter, cut where it changes layer inside a plated hole: the router marks those as points
+ * A route from the autorouter, cut where it changes layer inside a plated hole or a via: the router marks those as points
  * "through an obstacle", which nothing downstream reads, but the hole's copper already joins the layers, so the route
  * ends there on one layer and a second starts there on the other. A pass through anything else is an error.
- * @param {object[]} route @param {object[]} holes pcb_plated_hole elements @returns {object[][]}
+ * @param {object[]} route @param {object[]} holes pcb_plated_hole and pcb_via elements @returns {object[][]}
  */
 export function layerChanges(route, holes) {
   const pieces = [[]];
@@ -767,7 +775,7 @@ async function routeOnce(json, toRoute, board, limit = 0) {
     return [{ route_type: 'wire', x: p.x, y: p.y, width: p.width, layer: pad.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: pad.layer },
       { route_type: 'via', x: v.x, y: v.y, from_layer: pad.layer, to_layer: p.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: p.layer }];
   };
-  const holes = json.filter((e) => e.type === 'pcb_plated_hole');
+  const holes = json.filter((e) => e.type === 'pcb_plated_hole' || e.type === 'pcb_via'); // copper joining the layers: a track may change layer in it
   // A connection's end that isn't on a pad (a kept escape's end) stands for its pin
   const ends = srj.connections.flatMap((c) => c.pointsToConnect).filter((q) => !padAt(q));
   const endAt = (p) => { const q = ends.find((e) => Math.hypot(e.x - p.x, e.y - p.y) < 0.02); return q && { port: q.pcb_port_id, layer: null, w: 0, h: 0, stub: true }; };

@@ -17,6 +17,9 @@ holes with 0.1 in header holes beside them.
      parts, turned on their side as one block, with Sea-Picro's own tracks and vias (548 tracks, 69 vias), and the
      start of each track out of the core (the RP2040's escapes).
    - **The edge pins are new:** 19 along the bottom and 6 up each end, with Sea-Picro's pin numbers and pad shapes.
+     They're on one 2.54 mm grid: each end's lowest pin sits at the corner, beside the bottom row's first. They're half
+     holes only, to solder the module flat on a keyboard's board, so they reach less far in and the board is narrower;
+     `headers: 1` in `module.json` adds Sea-Picro's 0.1 in header holes beside them, for pin headers, at 21.0 mm across.
      Each pin sits where its track comes out of the core, so the tracks fan out without crossing. The pins keep
      Sea-Picro's nets; only where they sit changes, so check the pinout before wiring a keyboard to it.
    - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors.
@@ -39,7 +42,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 ## Status
 
-50.8 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
+50.8 × 19.0 mm (21.0 mm with header holes). It routes in about 5 minutes, and `cad check` passes everything:
 - the circuit is Sea-Picro's
 - the placement
 - both planes
@@ -54,7 +57,8 @@ It hasn't been made yet. Before ordering:
 
 ## Pinout
 
-Seen from above, USB-C at the top. Places run up each end from the bottom corner, and along the bottom from the left.
+Seen from above, USB-C at the top. Places run up each end from the bottom corner, and along the bottom from the left;
+all are on one 2.54 mm grid, so the lowest end pins sit diagonally beside bottom 1 and bottom 19.
 Each pin is labelled on the board: its RP2040 GPIO number, or its power or signal name. In firmware, use the GPIO
 (`GP12`). "Pin" is Sea-Picro's own pin number, which these places don't follow: each pin sits where its track leaves
 the core. Pad 32, labelled LED5V, inside the board under the USB-C parts, is data for a string of WS2812 LEDs at 5 V:
@@ -72,8 +76,8 @@ GPIO25 through a level shifter, as Sea-Picro's documentation describes it.
 | bottom 2 | 26 | GPIO29 | A3 |
 | bottom 3 | 30 | - | +5V |
 | bottom 4 | 1 | - | USB+ |
-| bottom 5 | 27 | - | +3V3 |
-| bottom 6 | 2 | GPIO0 | 0_TX0 |
+| bottom 5 | 2 | GPIO0 | 0_TX0 |
+| bottom 6 | 27 | - | +3V3 |
 | bottom 7 | 3 | GPIO1 | 1_RX0 |
 | bottom 8 | 6 | GPIO2 | 2_SDA1 |
 | bottom 9 | 7 | GPIO3 | 3_SCL1 |
@@ -84,10 +88,10 @@ GPIO25 through a level shifter, as Sea-Picro's documentation describes it.
 | bottom 14 | 12 | GPIO8 | 8 |
 | bottom 15 | 13 | GPIO9 | 9 |
 | bottom 16 | 14 | GPIO12 | 12 |
-| bottom 17 | 15 | GPIO13 | 13 |
-| bottom 18 | 4 | - | GND |
-| bottom 19 | 5 | - | GND |
-| right end 1 | 29 | - | GND |
+| bottom 17 | 4 | - | GND |
+| bottom 18 | 5 | - | GND |
+| bottom 19 | 29 | - | GND |
+| right end 1 | 15 | GPIO13 | 13 |
 | right end 2 | 16 | GPIO14 | 14 |
 | right end 3 | 17 | GPIO15 | 15 |
 | right end 4 | 31 | - | USB- |

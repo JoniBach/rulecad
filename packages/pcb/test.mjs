@@ -226,6 +226,7 @@ test('a route that changes layer inside a plated hole becomes two routes; throug
   assert.deepEqual(pieces.map((p) => [p[0].layer, p.at(-1).layer]), [['bottom', 'bottom'], ['top', 'top']]);
   assert.deepEqual([pieces[0].at(-1).x, pieces[1][0].x], [-0.5, -0.5], 'both end in the hole');
   assert.throws(() => layerChanges(route, [{ ...hole, x: 5 }]), /through a part at \(-0\.50, 0\.00\)/);
+  assert.equal(layerChanges(route, [{ type: 'pcb_via', x: -0.5, y: 0, outer_diameter: 0.6 }]).length, 2, 'a via joins the layers too');
 });
 
 test('placement learnt from the source: small parts by the pins they serve, moved with them, checked', () => {
@@ -275,7 +276,7 @@ test('castellated and oval pads: a half hole on the edge, checked by the fab\'s 
   const holes = json.filter((e) => e.type === 'pcb_plated_hole');
   const half = holes.find((e) => e.port_hints.includes('castellated')), oval = holes.find((e) => e.shape === 'circular_hole_with_rect_pad');
   assert.deepEqual([half.x, half.y, half.hole_diameter], [-7, -5, 1], 'its centre on the bottom edge');
-  assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.15, 'tracks join it at its inner edge');
+  assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.325, 'tracks join it on its inner side, mid-way across its copper ring');
   assert.deepEqual([oval.rect_pad_width, oval.rect_pad_height, oval.rect_border_radius, oval.hole_offset_x, oval.hole_offset_y], [1.7, 3, 0.85, 0, -0.7]);
   const jlc = Object.fromEntries(Object.entries(loadRuleSet('jlcpcb').rules).map(([n, r]) => [n, r.value]));
   const text = (await checks(json, { jlcpcb: jlc, track: 0.2 })).map((f) => `${f.level}: ${f.text}`).join(' | ');
@@ -395,6 +396,12 @@ test('the router sees existing vias at their real size, and keeps a board\'s own
     { route: async (json, toRoute, board) => { srj = await routeInput(json, toRoute, board); return { traces: [] }; } });
   assert.equal(srj.defaultObstacleMargin, 0.15);
   assert.ok(srj.obstacles.some((o) => o.width === 0.5 && o.height === 0.5), 'a plane via, 0.5 mm, not the board\'s smallest');
+  // A plane net's pads are joined by the plane: each is tied only to itself and its own links, not to the whole net
+  const pin = (o) => `${o.circuitJsonMetadata?.source_component_name}.${o.circuitJsonMetadata?.source_port_name}`;
+  const planePads = srj.obstacles.filter((o) => k.planes.B.pins.some((q) => pin(o) === q || pin(o) === q.replace('.', '.pin')));
+  assert.ok(planePads.length > 0);
+  assert.ok(planePads.every((o) => !o.connectedTo.some((x) => x.startsWith('connectivity_net'))), 'no plane pad is tied to the net as a whole');
+  assert.ok(srj.obstacles.filter((o) => !planePads.includes(o) && o.circuitJsonMetadata).some((o) => o.connectedTo.some((x) => x.startsWith('connectivity_net'))), 'other nets\' pads still are');
 });
 
 test('necking: two routed tracks a little too close are narrowed where they pass, to the fab\'s smallest track', async () => {

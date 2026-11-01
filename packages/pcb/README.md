@@ -67,7 +67,8 @@ export function main(v) {
 - **4 layers and planes:** `layers: 4` (or 6) puts tracks on the outer layers and `planes: { GND: { layer: 'inner1',
   pins } }` fills inner layers with plane nets. Before routing, each SMD pad of a plane net gets a via beside it (or
   a short track to one nearby; a pad with its pin's own plated hole in it, such as a chip's centre pad with thermal
-  vias, needs none; a pad with no room is routed to the nearest pad of its net that reaches the plane). The planes are
+  vias, needs none; a pad with no room is routed to the nearest pad of its net that reaches the plane). A plane net's pads
+  are tied only to their own links when routing, not to every pad of the net (they're joined by the plane). The planes are
   poured with tscircuit's copper pour solver, clear of other nets' holes and vias, with thermal spokes; the checks
   confirm every plane pad reaches its copper, and the inner layers get their own Gerbers (`.G1`, `.G2`). `clone()`
   gives a 4-layer source's plane nets their planes, with the source's via size and clearance.
@@ -91,8 +92,8 @@ export function main(v) {
   see the real parts. `--no-models` skips them.
 - **Pad shapes:** round SMD pads stay round, and rounded pads keep their corner radius, so clearances are measured to
   the real copper.
-- **Castellated and oval pads:** a pad `{ castellated: true }` is a half hole on the board's edge (tracks join it at
-  its inner edge), checked against JLCPCB's rules for castellated holes instead of the edge clearance. A pad
+- **Castellated and oval pads:** a pad `{ castellated: true }` is a half hole on the board's edge (tracks join it on
+  its inner side, mid-way across its copper ring), checked against JLCPCB's rules for castellated holes instead of the edge clearance. A pad
   `{ rect: { w, h, offset } }` is an oval (a rounded rectangle) round its hole, which can sit off-centre.
 - **Any board shape:** give `outline: [{ x, y }, ...]` in place of a centre and size. `shape.rounded(w, h, r)`,
   `shape.bevelled(w, h, b)`, `shape.circle(d)` and `shape.rect(w, h)` make common ones. The router keeps tracks
@@ -107,7 +108,7 @@ export function main(v) {
   buttons) and a holes fit can check the screws find their inserts.
 - **Routing:** connections no rule draws go to tscircuit's capacity autorouter. Its tracks come back as pieces of each
   net, named here by the pads they end on; where a piece ends on a one-sided pad from the other layer, a via is added
-  clear of the pad; and the build fails if any pad is left without a track. Drawn tracks can name their `layer`.
+  clear of the pad; a track may change layer inside a plated hole or a via, whose copper already joins the layers; and the build fails if any pad is left without a track. Drawn tracks can name their `layer`.
 - **Keyboards** are one recipe built on the same parts: every matrix track drawn by rule, one diode per key.
 
 A keyboard:

@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -34,15 +34,23 @@
       "interface": true
     },
     "end_from": {
-      "value": 2,
+      "value": 1,
       "unit": "pitches",
-      "rule": "The end pins start this many pitches above the bottom edge: at one, the corner pins' header pads would overlap"
+      "rule": "The end pins start this many pitches above the bottom edge: at one, each end's lowest pin sits beside the long edge's first, on the same 2.54 mm grid (with header holes, its header pad cut short to clear)"
     },
     "pitch": {
       "value": 2.54,
       "unit": "mm",
       "rule": "Pin pitch: 0.1 in headers, as Sea-Picro's",
       "interface": true
+    },
+    "headers": {
+      "value": 0,
+      "rule": "0: the pins are half holes only, to solder the module flat on a keyboard's board: they reach less far in, so the board is narrower (19.0 mm). 1: each also has Sea-Picro's 0.1 in header hole beside it, for pin headers, and the board needs its tracks' room back (21.0 mm)",
+      "label": "Header holes",
+      "show": true,
+      "interface": true,
+      "unit": "0 or 1"
     },
     "length": {
       "value": "(edge_pins + 1) * pitch",
@@ -53,9 +61,9 @@
       "interface": true
     },
     "top_room": {
-      "value": 3.26,
+      "value": "2 * headers + 3.8",
       "unit": "mm",
-      "rule": "From the top end pins to the top edge: room above the core for the tracks that pass it"
+      "rule": "From the top end pins to the top edge: room above the core for the tracks that pass it (2 mm more with header holes, whose pads take room at the bottom)"
     },
     "height": {
       "value": "(end_pins + end_from - 1) * pitch + top_room",
@@ -76,9 +84,9 @@
       "rule": "The core block moved along the board: a 2 mm channel from the end pins for tracks to pass"
     },
     "core_y": {
-      "value": 0.46,
+      "value": "1.31 * headers - 0.85",
       "unit": "mm",
-      "rule": "The core block moved up: clear of the bottom pins, with room above it for tracks"
+      "rule": "The core block moved across the board: clear of the bottom pins (higher with header holes, which reach farther in), with room above it for tracks"
     },
     "usb_x": {
       "value": 15.5,
@@ -114,9 +122,9 @@
       "rule": "Pad 32's height on the board"
     },
     "switch_in": {
-      "value": 3.8,
+      "value": "1.4 * headers + 2.4",
       "unit": "mm",
-      "rule": "R4 (SWITCH's resistor) in from its pin's castellated hole: clear of the header pad, within its placement rule"
+      "rule": "R4 (SWITCH's resistor) in from its pin's castellated hole: clear of the header pad if there is one, within its placement rule"
     },
     "switch_turn": {
       "value": 90,
