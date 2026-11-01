@@ -234,7 +234,8 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   // ---- silkscreen and mounting holes ----
   for (const s of board.silk) {
     if (s.rect) add('pcb_silkscreen_rect', { pcb_component_id: null, layer: s.layer, center: { x: s.rect.x, y: s.rect.y }, width: s.rect.w, height: s.rect.h, subcircuit_id: SUB, stroke_width: 0.1, is_filled: false });
-    else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: s.rotation ?? 0, pcb_component_id: null, subcircuit_id: SUB });
+    else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: s.rotation ?? 0, pcb_component_id: null, subcircuit_id: SUB,
+      ...(s.to ? { rulecad_to: s.to } : {}) }); // an arrow to what it names, drawn once the label's place is final
   }
   for (const h of board.holes || []) add('pcb_hole', { hole_shape: 'circle', hole_diameter: h.d, x: h.x, y: h.y, is_covered_with_solder_mask: false, subcircuit_id: SUB });
 
@@ -248,7 +249,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     }
   }
   if (planeNets) await pours(out, add, board, planeNets, netOf);
-  if (board.silk?.length) clearSilkAfter(out);
+  if (board.silk?.length) clearSilkAfter(out, add, board);
 
   schematic(out, add, placed, { ...board, traces }, port, netOf);
   return out;
@@ -287,32 +288,81 @@ function keptCopper(out, add, board, copper, planeNets) {
  * time up to reach, to the nearest clear place; one with nowhere clear stays, marked clash: true.
  * @param {object[]} silk { text, x, y, size, rotation } @param {object[]} copper @param {object} o
  */
-export function slideClear(silk, copper, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 } = {}) {
+export function slideClear(silk, copper, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75, bodies = [], area = null, near = 6 } = {}) {
   const turned = (s) => (((s.rotation ?? 0) % 180) + 180) % 180 === 90;
   const box = (s, dx = 0, dy = 0) => { const long = s.text.length * s.size * char; return { x: s.x + dx, y: s.y + dy, w: turned(s) ? s.size : long, h: turned(s) ? long : s.size }; };
   const hits = (a, b, g) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + g && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + g;
-  const placed = [], n = Math.round(reach / step);
-  return silk.map((s) => {
-    if (!s.text) return s;
+  const within = (b) => !area || (b.x - b.w / 2 >= area.minX && b.x + b.w / 2 <= area.maxX && b.y - b.h / 2 >= area.minY && b.y + b.h / 2 <= area.maxY);
+  const placed = [], n = Math.round(reach / step), out = [...silk];
+  silk.forEach((s, k) => { // labels at their pins: slid across their reading direction to the nearest clear place
+    if (!s.text || s.to) return;
     for (let i = 0; i <= 2 * n; i++) {
       const d = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * step, b = box(s, turned(s) ? d : 0, turned(s) ? 0 : d);
       if (copper.some((c) => hits(b, c, gap)) || placed.some((o) => hits(b, o, gap))) continue;
       placed.push(b);
-      return { ...s, x: Math.round(b.x * 1e4) / 1e4, y: Math.round(b.y * 1e4) / 1e4 };
+      out[k] = { ...s, x: Math.round(b.x * 1e4) / 1e4, y: Math.round(b.y * 1e4) / 1e4 };
+      return;
     }
     placed.push(box(s));
-    return { ...s, clash: true };
+    out[k] = { ...s, clash: true };
   });
+  // Labels that point at what they name ({ to: { x, y } }, or a list of spots to choose from): the nearest clear place to
+  // where they're asked for, within `near` mm, clear of pads, parts' bodies and other labels, with a small triangle beside
+  // them, pointing at it, clear too. One with nowhere clear stays put, without its pointer
+  silk.forEach((s, k) => {
+    if (!s.text || !s.to) return;
+    const m = Math.round(near / step), spots = [], other = { ...s, rotation: turned(s) ? 0 : 90 }; // level or turned, whichever fits nearer
+    for (let i = -m; i <= m; i += 2) for (let j = -m; j <= m; j += 2) for (const t of [s, other]) spots.push({ t, dx: i * step, dy: j * step });
+    spots.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
+    for (const { t, dx, dy } of spots) {
+      const b = box(t, dx, dy);
+      if (!within(b) || copper.some((c) => hits(b, c, gap)) || bodies.some((c) => hits(b, c, gap)) || placed.some((o) => hits(b, o, gap))) continue;
+      for (const to of [s.to].flat()) { // a spot, or several to choose from (past the end of a pad, or beside it)
+        const a = arrowPath(b, to);
+        if (a.length < 0.8 || copper.some((c) => hits(a.at, c, 0.1)) || placed.some((o) => hits(a.at, o, 0.1))) continue;
+        placed.push(b, a.at);
+        out[k] = { ...t, to, x: Math.round(b.x * 1e4) / 1e4, y: Math.round(b.y * 1e4) / 1e4 };
+        return;
+      }
+    }
+    placed.push(box(s));
+    const { to, ...rest } = s;
+    out[k] = { ...rest, clash: true };
+  });
+  return out;
 }
 
-// After routing: silkscreen text the router's vias (or any copper) landed on slides clear, as clearLabels does before
-function clearSilkAfter(out) {
+/**
+ * A pointer from a label's box toward a spot: a small triangle just off the middle of the box's side nearest the spot,
+ * pointing at it. @param {{ x, y, w, h }} box @param {{ x, y }} to
+ * @returns {{ head: object[], at: { x, y, w, h }, length: number }} the triangle (closed), its box, the distance to `to`
+ */
+export function arrowPath(box, to, { gap = 0.2, size = 0.6 } = {}) {
+  const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([ix, iy]) => ({ x: box.x + ix * (box.w / 2 + gap), y: box.y + iy * (box.h / 2 + gap) }));
+  const from = sides.sort((a, b) => Math.hypot(a.x - to.x, a.y - to.y) - Math.hypot(b.x - to.x, b.y - to.y))[0];
+  const len = Math.hypot(to.x - from.x, to.y - from.y) || 1, ux = (to.x - from.x) / len, uy = (to.y - from.y) / len;
+  const tip = { x: from.x + ux * size, y: from.y + uy * size }, b1 = { x: from.x - uy * size / 2, y: from.y + ux * size / 2 }, b2 = { x: from.x + uy * size / 2, y: from.y - ux * size / 2 };
+  return { head: [b1, tip, b2, b1], at: { x: from.x + ux * size / 2, y: from.y + uy * size / 2, w: size, h: size }, length: len };
+}
+
+// After routing: silkscreen text the router's vias (or any copper) landed on slides clear, as clearLabels does before;
+// then each label that points at its pin gets its triangle, beside where the label ended up
+function clearSilkAfter(out, add, board) {
   const copper = [...out.filter((e) => e.type === 'pcb_via').map((e) => ({ x: e.x, y: e.y, w: e.outer_diameter, h: e.outer_diameter })),
     ...out.filter((e) => e.type === 'pcb_smtpad').map((e) => smtBounds(e)),
     ...out.filter((e) => e.type === 'pcb_plated_hole').map((e) => ({ x: e.x, y: e.y, ...holeSize(e) }))];
   const texts = out.filter((e) => e.type === 'pcb_silkscreen_text' && !e.pcb_component_id);
-  const moved = slideClear(texts.map((e) => ({ text: e.text, x: e.anchor_position.x, y: e.anchor_position.y, size: e.font_size, rotation: e.ccw_rotation })), copper);
-  texts.forEach((e, i) => { e.anchor_position = { x: moved[i].x, y: moved[i].y }; });
+  const b = out.find((e) => e.type === 'pcb_board'), pts = b.outline || [{ x: b.center.x - b.width / 2, y: b.center.y - b.height / 2 }, { x: b.center.x + b.width / 2, y: b.center.y + b.height / 2 }];
+  const area = { minX: Math.min(...pts.map((q) => q.x)), maxX: Math.max(...pts.map((q) => q.x)), minY: Math.min(...pts.map((q) => q.y)), maxY: Math.max(...pts.map((q) => q.y)) };
+  const moved = slideClear(texts.map((e) => ({ text: e.text, x: e.anchor_position.x, y: e.anchor_position.y, size: e.font_size, rotation: e.ccw_rotation, to: e.rulecad_to })), copper, { area });
+  texts.forEach((e, i) => {
+    e.anchor_position = { x: moved[i].x, y: moved[i].y };
+    if (!moved[i].to) { delete e.rulecad_to; return; }
+    const turned = (((e.ccw_rotation ?? 0) % 180) + 180) % 180 === 90, long = e.text.length * e.font_size * 0.75;
+    const a = arrowPath({ x: e.anchor_position.x, y: e.anchor_position.y, w: turned ? e.font_size : long, h: turned ? long : e.font_size }, e.rulecad_to);
+    add('pcb_silkscreen_path', { pcb_component_id: null, layer: e.layer, route: a.head, stroke_width: board.silk_line ?? 0.15, subcircuit_id: SUB });
+    delete e.rulecad_to;
+  });
 }
 
 // Copper layers, top to bottom: 2, 4 or 6

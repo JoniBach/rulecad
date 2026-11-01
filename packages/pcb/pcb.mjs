@@ -610,13 +610,23 @@ export function withFootprint(circuit, ref, pads) {
  * Silkscreen labels moved clear of copper and of each other: each slides across its reading direction (a level label up
  * or down, a turned one left or right), a step at a time up to reach, to the nearest place clear of every pad by gap. A
  * label with nowhere clear stays put, marked clash: true. The fab trims silkscreen off copper, so a label on a pad loses
- * letters. o: { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 (a character's width over its height) }.
- * @param {object[]} silk { text, x, y, size, rotation } @param {object} circuit @param {object} [o]
+ * letters. A label with `to: { x, y }` (or a list of such, to choose from) points at it: it goes to the nearest place
+ * to where it's asked for (within `near` mm) that is clear of pads, of surface-mount parts' bodies and of other labels,
+ * inside `area` ({ minX, maxX, minY, maxY }), with a small triangle beside it pointing at the spot: for a pin with no
+ * room for its label beside it.
+ * o: { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 (a character's width over its height), area, near = 6 }.
+ * @param {object[]} silk { text, x, y, size, rotation, to } @param {object} circuit @param {object} [o]
  */
-export function clearLabels(silk, circuit, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 } = {}) {
-  const copper = circuit.parts.flatMap((p) => [...padsOnBoard(p).map((q) => { const t = turnOf(p.rotation + q.angle) % 180 === 90; return { x: q.bx, y: q.by, w: t ? q.h : q.w, h: t ? q.w : q.h }; }),
+export function clearLabels(silk, circuit, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75, area = null, near = 6 } = {}) {
+  const padBoxes = (p) => padsOnBoard(p).map((q) => { const t = turnOf(p.rotation + q.angle) % 180 === 90; return { x: q.bx, y: q.by, w: t ? q.h : q.w, h: t ? q.w : q.h }; });
+  const copper = circuit.parts.flatMap((p) => [...padBoxes(p),
     ...padsOnBoard({ ...p, pads: (p.holes || []).map((h) => ({ ...h, w: h.d, h: h.d, angle: 0 })) }).map((h) => ({ x: h.bx, y: h.by, w: h.w, h: h.h }))]);
-  return slideClear(silk, copper, { reach, step, gap, char });
+  // A surface-mount part's body spans its pads: a label with an arrow keeps off it (the part would hide it)
+  const bodies = circuit.parts.filter((p) => p.pads.length > 1 && p.pads.every((q) => q.smd)).map((p) => {
+    const b = padBoxes(p), x0 = Math.min(...b.map((q) => q.x - q.w / 2)), x1 = Math.max(...b.map((q) => q.x + q.w / 2)), y0 = Math.min(...b.map((q) => q.y - q.h / 2)), y1 = Math.max(...b.map((q) => q.y + q.h / 2));
+    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+  });
+  return slideClear(silk, copper, { reach, step, gap, char, bodies, area, near });
 }
 
 /**

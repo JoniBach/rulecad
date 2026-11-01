@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -18,7 +18,7 @@
   },
   "variables": {
     "edge_pins": {
-      "value": 19,
+      "value": 17,
       "unit": "pins",
       "rule": "Pins along the bottom long edge, between the corners",
       "label": "Long-edge pins",
@@ -26,17 +26,22 @@
       "interface": true
     },
     "end_pins": {
-      "value": 6,
+      "value": 7,
       "unit": "pins",
       "rule": "Pins up each short end, from the bottom edge (Sea-Picro has 31 edge pins: edge_pins + 2 × end_pins)",
       "label": "End pins",
       "show": true,
       "interface": true
     },
-    "end_from": {
-      "value": 1,
-      "unit": "pitches",
-      "rule": "The end pins start this many pitches above the bottom edge: at one, each end's lowest pin sits beside the long edge's first, on the same 2.54 mm grid (with header holes, its header pad cut short to clear)"
+    "end_rise": {
+      "value": 1.59,
+      "unit": "mm",
+      "rule": "Each end's lowest pin this far above the bottom edge: down at the corner, beside the long edge's first pin, as on Waveshare's RP2040-Zero (1.59 mm there)"
+    },
+    "row_in": {
+      "value": 3.92,
+      "unit": "mm",
+      "rule": "The long edge's first and last pins this far in from the ends, clear of the corner pins and their header pads, as on Waveshare's RP2040-Zero (3.92 mm there)"
     },
     "pitch": {
       "value": 2.54,
@@ -45,30 +50,25 @@
       "interface": true
     },
     "headers": {
-      "value": 0,
-      "rule": "0: the pins are half holes only, to solder the module flat on a keyboard's board: they reach less far in, so the board is narrower (19.0 mm). 1: each also has Sea-Picro's 0.1 in header hole beside it, for pin headers, and the board needs its tracks' room back (21.0 mm)",
+      "value": 1,
+      "rule": "1: each pin also has Sea-Picro's 0.1 in header hole and long pad beside its half hole, for pin headers or a sturdier joint. 0: half holes only, to solder flat: they reach less far into the board, which then needs less room across",
       "label": "Header holes",
       "show": true,
       "interface": true,
       "unit": "0 or 1"
     },
     "length": {
-      "value": "(edge_pins + 1) * pitch",
+      "value": "(edge_pins - 1) * pitch + 2 * row_in",
       "unit": "mm",
-      "rule": "Board length: the long-edge pins one pitch apart, a pitch from each corner",
+      "rule": "Board length: the long-edge pins one pitch apart, row_in from each end",
       "label": "Length",
       "show": true,
       "interface": true
     },
-    "top_room": {
-      "value": "2 * headers + 3.8",
-      "unit": "mm",
-      "rule": "From the top end pins to the top edge: room above the core for the tracks that pass it (2 mm more with header holes, whose pads take room at the bottom)"
-    },
     "height": {
-      "value": "(end_pins + end_from - 1) * pitch + top_room",
+      "value": "19.04 + 2 * headers",
       "unit": "mm",
-      "rule": "Board height, bottom edge to top edge",
+      "rule": "Board height, bottom edge to top edge: the room the core and the tracks round it need (2 mm more with header holes, whose pads reach farther in)",
       "label": "Height",
       "show": true,
       "interface": true
@@ -79,9 +79,9 @@
       "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block: its busiest side of escapes (RP2040 pins 2 to 12) faces the long row of pins"
     },
     "core_x": {
-      "value": -10.93,
+      "value": -9.77,
       "unit": "mm",
-      "rule": "The core block moved along the board: a 2 mm channel from the end pins for tracks to pass"
+      "rule": "The core block moved along the board: a channel from the end pins for tracks to pass"
     },
     "core_y": {
       "value": "1.31 * headers - 0.85",
@@ -89,7 +89,7 @@
       "rule": "The core block moved across the board: clear of the bottom pins (higher with header holes, which reach farther in), with room above it for tracks"
     },
     "usb_x": {
-      "value": 15.5,
+      "value": 14.3,
       "unit": "mm",
       "rule": "USB-C socket along the top edge, from the middle: right of the core, its fuse and CC resistors under it",
       "label": "USB-C position",
@@ -112,7 +112,7 @@
       "rule": "Reading Sea-Picro's notch: outline points this near the socket, across the board"
     },
     "led_x": {
-      "value": 15.5,
+      "value": 14.3,
       "unit": "mm",
       "rule": "Pad 32 (LED_5V, a 5 V supply for LEDs) under the USB parts"
     },

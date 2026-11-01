@@ -79,7 +79,8 @@ export function main(v) {
   router at their real size.
 - **Labels clear of copper:** `clearLabels(silk, circuit)` slides each silkscreen label across its reading direction to
   the nearest place clear of every pad and of the labels before it (the fab trims silkscreen off copper, so a label
-  on a pad loses letters). Silkscreen text takes a `rotation`.
+  on a pad loses letters). A label for a pin hemmed in by its neighbours (`to`: where the pin is) goes to the nearest
+  clear place instead, with a small triangle beside it pointing at the pin. Silkscreen text takes a `rotation`.
 - **Schematics without a layout:** parts with no place on the schematic (a clone's) are laid out in rows, biggest
   first, each pin drawn once and labelled with its net, in place of wires across the sheet. After routing, silkscreen
   labels the router's vias landed on slide clear too.

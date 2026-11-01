@@ -14,9 +14,9 @@ export function main (v) {
   const out = srcLeft - (j2.x + half.x) // the half hole's centre beyond the edge, as on Sea-Picro
   const pins = [...new Set(j2.pads.filter((q) => q.castellated).map((q) => q.pin))].sort((a, b) => a - b)
   const spots = [
-    ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [1, 0], x: left - out, y: bottom + (v.end_pins - 1 - i + v.end_from) * v.pitch })),
-    ...Array.from({ length: v.edge_pins }, (_, i) => ({ side: [0, 1], x: left + (i + 1) * v.pitch, y: bottom - out })),
-    ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [-1, 0], x: right + out, y: bottom + (i + v.end_from) * v.pitch }))]
+    ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [1, 0], x: left - out, y: bottom + v.end_rise + (v.end_pins - 1 - i) * v.pitch })),
+    ...Array.from({ length: v.edge_pins }, (_, i) => ({ side: [0, 1], x: left + v.row_in + i * v.pitch, y: bottom - out })),
+    ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [-1, 0], x: right + out, y: bottom + v.end_rise + i * v.pitch }))]
   if (pins.length !== spots.length) throw new Error(`Sea-Picro has ${pins.length} edge pins: edge_pins + 2 × end_pins must come to ${pins.length}, not ${spots.length}`)
   const inn = header.x - half.x, offset = Math.hypot(...header.hole_offset) // the header pad in from the half hole, its hole set back out
   const led = j2.pads.find((q) => q.pin === '32')
@@ -39,14 +39,14 @@ export function main (v) {
   }
   const round = (q) => (Math.atan2(q.y, q.x) - Math.PI / 2 + 2 * 2 * Math.PI) % (2 * Math.PI) // counter-clockwise from the top middle
   const order = [...pins].sort((a, b) => round(toward(a)) - round(toward(b)))
-  // An end's lowest pin sits beside the long edge's first pin, on the same grid: where its header pad would reach that
-  // pin's pad, it stops a clearance short, its outer end and hole where they were
-  const cornerReach = v.pitch - header.h / 2 - v.clearance // from the end's edge, the farthest in the corner pad may reach
-  const bottomReach = inn - out + header.w / 2 // how far the long edge's header pads reach up from the bottom edge
+  // Each end's lowest pin sits at the corner, beside the long edge's first pin, as on Waveshare's RP2040-Zero: if its
+  // header pad would reach that pin's pad, it stops a clearance short, its outer end and hole where they were
+  const cornerReach = v.row_in - header.h / 2 - v.clearance // from the end's edge, the farthest in the corner pad may reach
+  const bottomReach = inn - out + header.w / 2 // how far the header pads reach in from their edge
   const pads = order.flatMap((pin, i) => {
     const { side: [ix, iy], x, y } = spots[i], across = iy !== 0
     let len = header.w, along = inn, hole = offset
-    if (!across && y - header.h / 2 - v.clearance < bottom + bottomReach) {
+    if (!across && y - header.h / 2 - v.clearance < bottom + bottomReach && cornerReach < bottomReach) {
       const outer = inn - out - header.w / 2 // the pad's outer end, in from the edge
       len = cornerReach - outer; along = out + outer + len / 2; hole = offset - (inn - along)
     }
@@ -78,13 +78,21 @@ export function main (v) {
   }
   const silk = order.map((pin, i) => {
     const { side: [ix, iy], x, y } = spots[i], text = label(pin), long = text.length * v.jlcpcb.silk_text * v.label_char
-    const from = (v.headers ? inn + Math.max(header.w, header.h) / 2 : half.w / 2 - out) + v.label_gap + (iy ? long : v.jlcpcb.silk_text) / 2
-    return { text, x: x + ix * (from + (ix ? long / 2 - v.jlcpcb.silk_text / 2 : 0)), y: y + iy * from, size: v.jlcpcb.silk_text, layer: 'top', rotation: iy ? v.label_turn : 0 }
+    const reach = v.headers ? inn + Math.max(header.w, header.h) / 2 : half.w / 2 - out // how far the pin's copper reaches in
+    const from = reach + v.label_gap + (iy ? long : v.jlcpcb.silk_text) / 2
+    return { text, x: x + ix * (from + (ix ? long / 2 - v.jlcpcb.silk_text / 2 : 0)), y: y + iy * from, size: v.jlcpcb.silk_text, layer: 'top', rotation: iy ? v.label_turn : 0,
+      // where an arrow to the pin could end, just off its pad: past its end, or beside it, either side
+      tip: [{ x: x + ix * (reach + v.label_gap / 2), y: y + iy * (reach + v.label_gap / 2) },
+        ...[1, -1].map((k) => ({ x: x + ix * reach / 2 + k * iy * (header.h / 2 + v.label_gap / 2), y: y + iy * reach / 2 + k * ix * (header.h / 2 + v.label_gap / 2) }))] }
   })
 
   silk.push({ text: 'LED5V', x: v.led_x, y: v.led_y - Math.max(led.w, led.h) / 2 - v.label_gap - v.jlcpcb.silk_text / 2, size: v.jlcpcb.silk_text, layer: 'top' }) // pad 32: WS2812 data at 5 V (GPIO25, level-shifted)
   // the long edge's labels first: the ends' labels have room to slide up and down out of their way
-  const labels = v.pcb.clearLabels([...silk.filter((l) => l.rotation), ...silk.filter((l) => !l.rotation)], c, { char: v.label_char })
+  const first = v.pcb.clearLabels([...silk.filter((l) => l.rotation), ...silk.filter((l) => !l.rotation)], c, { char: v.label_char })
+  // A label with no room beside its pin (a corner pin's, hemmed in by the long edge's first pad) goes to the nearest
+  // clear place on the board instead, with a small triangle pointing at the pin
+  const area = { minX: left + v.label_gap, maxX: right - v.label_gap, minY: bottom + v.label_gap, maxY: top - v.label_gap }
+  const labels = v.pcb.clearLabels(first.map(({ clash, tip, ...l }) => (clash ? { ...l, to: tip } : l)), c, { char: v.label_char, area })
   const k = clone(c, { layers: v.layers })
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,

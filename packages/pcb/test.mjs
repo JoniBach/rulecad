@@ -4,7 +4,7 @@ import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
 import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup, wrlMesh, stepBounds, partModels } from '@rulecad/pcb';
-import { layerChanges, routeInput, neckDown } from './circuit.mjs';
+import { layerChanges, routeInput, neckDown, slideClear, arrowPath } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -445,4 +445,20 @@ test('3D models: KiCad\'s VRML read in mm, a STEP file measured, each model plac
   const bounds = (t) => { const p = t.flat(); return [0, 1, 2].map((i) => [Math.min(...p.map((v) => v[i])), Math.max(...p.map((v) => v[i]))]); };
   assert.deepEqual(bounds(partModels([model(10, 'top', 90)], { thickness: 1.6 })), [[8, 10], [0, 1], [1.6, 2.6]], 'turned a quarter, on the board\'s top');
   assert.deepEqual(bounds(partModels([model(-10, 'bottom', 0)], { thickness: 1.6 })), [[-10, -9], [-2, 0], [-1, 0]], 'on the back: turned over top to bottom (as KiCad flips a footprint), hanging below');
+});
+
+test('labels: one hemmed in by pads goes to the nearest clear place, with a small triangle pointing at its pin', () => {
+  // A pin at (0, 0) with pads all round its label's place; open board above
+  const pads = [[-1.1, 0], [1.1, 0], [0, -1.1], [0, 1.1], [0, 2.2], [0, -2.2]].map(([x, y]) => ({ x, y, w: 1.2, h: 1 }));
+  const [slid, pointed] = slideClear([{ text: 'A', x: 0, y: 0, size: 1 }, { text: 'B', x: 0, y: 0, size: 1, to: { x: 0, y: 0.6 } }], pads);
+  assert.equal(slid.clash, true, 'a label with nowhere to slide stays put, marked');
+  assert.ok(!pointed.clash && pointed.to, 'a pointing label finds a place');
+  const b = { x: pointed.x, y: pointed.y, w: 0.75, h: 1 };
+  assert.ok(pads.every((q) => Math.abs(q.x - b.x) >= (q.w + b.w) / 2 || Math.abs(q.y - b.y) >= (q.h + b.h) / 2), 'clear of every pad');
+  const a = arrowPath(b, pointed.to);
+  assert.equal(a.head.length, 4, 'a closed triangle');
+  const tip = a.head[1], base = { x: (a.head[0].x + a.head[2].x) / 2, y: (a.head[0].y + a.head[2].y) / 2 };
+  assert.ok(Math.hypot(tip.x - pointed.to.x, tip.y - pointed.to.y) < Math.hypot(base.x - pointed.to.x, base.y - pointed.to.y), 'its tip points at the pin');
+  const lone = slideClear([{ text: 'C', x: 0, y: 0, size: 1, to: { x: 0, y: 0 } }], [{ x: 0, y: 0, w: 30, h: 30 }]);
+  assert.ok(lone[0].clash && !lone[0].to, 'nowhere clear: it stays put, without its pointer');
 });
