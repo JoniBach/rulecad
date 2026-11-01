@@ -84,6 +84,11 @@ export function main(v) {
   labels the router's vias landed on slide clear too.
 - **Off the BOM and placement files:** a part with `bom: false` (edge pads, test points) isn't in the BOM, and one with
   `place: false` isn't in the placement file. `fromKicadPcb` reads both from KiCad's footprint attributes.
+- **Parts in 3D:** `fromKicadPcb` keeps each part's 3D model (its path, offset, scale, turn), and `cad clone` fetches
+  them into the workspace's `models/`: KiCad's library models as meshes (`wrlMesh` reads its VRML), and a model
+  whose shape can't be shared (no licence), or comes only as STEP, as a box its size (`stepBounds`). The board's
+  build then has a `components` part beside `board`, each model where its part is (`partModels`), so fit checks
+  see the real parts. `--no-models` skips them.
 - **Pad shapes:** round SMD pads stay round, and rounded pads keep their corner radius, so clearances are measured to
   the real copper.
 - **Castellated and oval pads:** a pad `{ castellated: true }` is a half hole on the board's edge (tracks join it at

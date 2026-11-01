@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup } from '@rulecad/pcb';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup, wrlMesh, stepBounds, partModels } from '@rulecad/pcb';
 import { layerChanges, routeInput, neckDown } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
@@ -423,4 +423,19 @@ test('parts the source keeps off its BOM and placement files (edge pads, test po
   assert.match(fab['x-bom.csv'], /R1/);
   assert.doesNotMatch(fab['x-bom.csv'], /TP1/);
   assert.doesNotMatch(fab['x-cpl.csv'], /TP1/);
+});
+
+test('3D models: KiCad\'s VRML read in mm, a STEP file measured, each model placed on its part (turned, or under the board on the back)', async () => {
+  // A square face 0.2 x 0.2 tenths of an inch (0.508 mm), 0.1 up: two triangles
+  const tris = wrlMesh('Shape { geometry IndexedFaceSet { coordIndex [0,1,2,3,-1] coord Coordinate { point [0 0 0.1,0.2 0 0.1,0.2 0.2 0.1,0 0.2 0.1] } } }');
+  assert.equal(tris.length, 2);
+  assert.deepEqual(tris[0][1].map((n) => Math.round(n * 1000) / 1000), [0.508, 0, 0.254]);
+  const step = "ISO-10303-21; DATA; #1=SI_UNIT(.MILLI.,.METRE.); #2=CARTESIAN_POINT('',(-1.,0.,0.)); #3=CARTESIAN_POINT('',(2.,3.,1.5)); ENDSEC;";
+  assert.deepEqual(stepBounds(step), { min: [-1, 0, 0], max: [2, 3, 1.5] });
+  assert.deepEqual(stepBounds(step.replace('SI_UNIT(.MILLI.,.METRE.)', "CONVERSION_BASED_UNIT('INCH')")).max, [50.8, 76.2, 38.1], 'inches');
+  // A 1 x 2 x 1 box model on a part turned 90 at (10, 0) on top, and the same on the back at (-10, 0)
+  const model = (x, layer, rotation) => ({ type: 'cad_component', rulecad_model: { box: { min: [0, 0, 0], max: [1, 2, 1] }, scale: [1, 1, 1], rotate: [0, 0, 0], offset: [0, 0, 0], turn: 0, x, y: 0, rotation, layer } });
+  const bounds = (t) => { const p = t.flat(); return [0, 1, 2].map((i) => [Math.min(...p.map((v) => v[i])), Math.max(...p.map((v) => v[i]))]); };
+  assert.deepEqual(bounds(partModels([model(10, 'top', 90)], { thickness: 1.6 })), [[8, 10], [0, 1], [1.6, 2.6]], 'turned a quarter, on the board\'s top');
+  assert.deepEqual(bounds(partModels([model(-10, 'bottom', 0)], { thickness: 1.6 })), [[-10, -9], [-2, 0], [-1, 0]], 'on the back: turned over top to bottom (as KiCad flips a footprint), hanging below');
 });

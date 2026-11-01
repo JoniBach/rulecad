@@ -20,7 +20,9 @@ holes with 0.1 in header holes beside them.
      Each pin sits where its track comes out of the core, so the tracks fan out without crossing. The pins keep
      Sea-Picro's nets; only where they sit changes, so check the pinout before wiring a keyboard to it.
    - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors.
-3. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
+3. Each part shows in 3D: KiCad's own models for most parts (in `models/`), and boxes the size of the USB-C socket,
+   the RP2040 and the fuse, whose own models have no licence. The tallest part is the USB-C socket, 3.18 mm overall.
+4. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
 
 The checks prove the result:
 

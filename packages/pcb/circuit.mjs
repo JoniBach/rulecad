@@ -137,6 +137,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       for (const g of groups) add('source_component_internal_connection', { source_component_id: comp.source_component_id, subcircuit_id: SUB, source_port_ids: g.map((s) => s.source_port_id) });
     }
     placed.push({ part, comp, pads, sourcePorts, fpEls, at, mirror, size });
+    if (part.model) { const { path, ...m } = part.model; // its 3D model: drawn by partModels, where the part is
+      add('cad_component', { source_component_id: comp.source_component_id, position: { x: part.x, y: part.y, z: 0 }, rotation: { x: 0, y: 0, z: part.rotation ?? 0 }, layer: part.layer,
+        subcircuit_id: SUB, rulecad_model: { ...m, source: path, x: part.x, y: part.y, rotation: part.rotation ?? 0, layer: part.layer } }); }
   }
   add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length,
     width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS });

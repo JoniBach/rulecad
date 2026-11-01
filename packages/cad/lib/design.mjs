@@ -200,7 +200,13 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       const { board: b, matrix, clone } = made && made.board ? made : { board: made }; // clone: a cloned board's { circuit, arranged }, for its checks
       board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}), ...(clone ? { source: clone } : {}) };
       Object.assign(values, pcb.outputs(board.circuit, matrix)); // what it tells the parts around it: outline, Pico
-      made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth });
+      // the parts' 3D models: meshes cad clone fetched into the workspace's models/ (a design never reads files; cad does)
+      const meshes = {};
+      for (const c of board.circuit.filter((e) => e.type === 'cad_component' && e.rulecad_model?.mesh)) {
+        const f = c.rulecad_model.mesh;
+        if (!(f in meshes)) meshes[f] = host.exists(path.join(WS, f)) ? JSON.parse(host.readText(path.join(WS, f))).triangles : null;
+      }
+      made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth, models: meshes });
     }
     parts = named(made, object.parts || {});
   }
