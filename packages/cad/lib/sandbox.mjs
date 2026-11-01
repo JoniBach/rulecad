@@ -34,7 +34,7 @@ function readable() {
   // Every node_modules above the workspace and the tool (package lookups read their links), and where links lead
   const up = (dir) => { const out = []; for (let d = dir; ; d = path.dirname(d)) { out.push(path.join(d, 'node_modules')); if (path.dirname(d) === d) return out; } };
   const dirs = [WS, TOOL, ...[...up(WS), ...up(TOOL)].filter((d) => fs.existsSync(d)),
-    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
+    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/fea', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
   return [...new Set(dirs.filter(Boolean).flatMap((d) => [d, real(d)]).filter(Boolean))];
 }
 

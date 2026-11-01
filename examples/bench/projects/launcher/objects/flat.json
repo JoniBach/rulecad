@@ -1,6 +1,6 @@
 {
   "name": "flat",
-  "title": "Launcher action, flat: a pusher on a two-leaf spring, a trigger that is its own sear, printed in one piece on its side",
+  "title": "Launcher action, flat: a pusher on a tapered two-leaf spring, a trigger that is its own sear, printed in one piece on its side",
   "version": "0.1.0",
   "uses": [
     "x1c",
@@ -96,7 +96,7 @@
       "rule": "The hook's ramp from the bar: the tooth rides down it when cocking"
     },
     "hinge": {
-      "value": 20,
+      "value": 26,
       "unit": "mm",
       "rule": "The trigger's hinge: a leaf hanging from the frame, the trigger on its tip; it turns about a point 0.15 of the way down"
     },
@@ -179,6 +179,39 @@
       "value": 0.6,
       "unit": "mm",
       "rule": "How far past the stroke the tab is drawn, so the hook springs fully up before the pusher settles back on it (less than over)"
+    },
+    "taper": {
+      "value": 0.8,
+      "rule": "How far the spring's leaves follow the bending moment (0 a bar, 1 uniform strength): thick at their ends, thin in their middles, so the strain is spread along them instead of piling up at the ends"
+    },
+    "spring_round": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The round where each spring leaf meets its base and the shuttle: about its thickness, so no square corner concentrates the strain"
+    },
+    "hinge_round": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The round where the trigger's hinge leaf meets the frame's arm and the blade"
+    },
+    "least": {
+      "value": "x1c.wall_min",
+      "unit": "mm",
+      "rule": "The thinnest a tapered leaf gets: the thinnest wall that prints"
+    },
+    "into": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "How far a leaf's rounded end runs on into the block it grows from, so they join solidly"
+    },
+    "round": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Every inside corner of the frame, the pusher and the trigger rounded to this, so no thin arm meets its body at a square corner"
+    },
+    "margin": {
+      "value": 0.65,
+      "rule": "The spring is sized to this share of the strain limit by beam theory; the finite-element check then reads its real peak, rounds and taper included"
     }
   }
 }

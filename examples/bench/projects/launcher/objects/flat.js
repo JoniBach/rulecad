@@ -16,12 +16,13 @@ export function main (v) {
   const printer = { line: v.x1c.line, layer: v.x1c.layer, wall_min: v.x1c.wall_min }
 
   // The spring: two leaves up the grip, sized for the stroke and the energy at the print's height
-  const spring = f.size.forTravel('parallelGuide', { travel: v.stroke, energy: v.energy, width: v.height, material }, printer)
+  const shape = { taper: v.taper, fillet: v.spring_round, least: v.least, into: v.into } // tapered leaves with rounded ends
+  const spring = f.size.forTravel('parallelGuide', { travel: v.stroke, energy: v.energy, width: v.height, material, shape, margin: v.margin }, printer)
   if (!spring) throw new Error('no two-leaf spring stores the energy within the strain limit: print it taller, or store less')
   const L = spring.length, t = spring.thickness
-  const guide = { length: L, thickness: t, gap: v.beam_gap, shuttle: v.block, base: v.block }
+  const guide = { length: L, thickness: t, gap: v.beam_gap, shuttle: v.block, base: v.block, ...shape }
   const drop = (q) => f.parallelGuideModel({ ...guide, width: v.height }, material).drop(q) // the shuttle sinks a little as it moves
-  const half = v.beam_gap / 2 + t // the leaves' outer faces, either side of x = 0
+  const half = v.beam_gap / 2 + t + v.spring_round // the leaves' outer faces and their rounds, either side of x = 0
   const under = L - g - drop(v.stroke + v.over) // everything fixed under the pusher bar stays below this, however far it sinks
 
   // The frame's walls: behind the back leaf, room for the stroke and the stop; in front, a gap
@@ -36,7 +37,7 @@ export function main (v) {
   const xh = frontOut + v.blade_w / 2 + bladeDepth * Math.sin(stopTurn) // the blade's back meets the front wall at the stop
   const xc = xh + v.reach // the hook's catch face
   const trigger = [
-    rect(xh - v.blade_w / 2, tip - v.blade, xh + v.blade_w / 2, tip + v.overlap), // the blade, over the hinge's tip
+    rect(xh - v.blade_w / 2, tip - v.blade, xh + v.blade_w / 2, tip), // the blade, the hinge's tip rounded into its top
     rect(xh, tip - v.arm, xc + hookLen, tip), // the arm forward
     rect(xc, tip - v.arm, xc + hookLen, yh - hook), // the riser
     polygon({ points: [[xc, yh - hook], [xc + hookLen, yh - hook], [xc + v.flat, yh], [xc - hook * v.lean, yh]] }), // the hook: a catch leaning back behind, a ramp in front
@@ -65,11 +66,11 @@ export function main (v) {
 
   const pulled = 0 - Math.sin(v.pull * stopTurn) * v.gamma * v.hinge // the hinge's tip, a full pull back
   const m = f.lamina({
-    height: v.height, gap: g, material, printer, ground,
+    height: v.height, gap: g, material, printer, ground, round: v.round,
     bodies: { pusher, trigger },
     joints: {
       spring: { kind: 'parallelGuide', params: guide, at: [0, 0], angle: v.up, from: 'ground', to: 'pusher' },
-      hinge: { kind: 'leaf', params: { length: v.hinge + v.overlap, thickness: v.hinge_t }, at: [xh, root + v.overlap], angle: v.down, from: 'ground', to: 'trigger' }, // its root runs into the arm
+      hinge: { kind: 'leaf', params: { length: v.hinge, thickness: v.hinge_t, fillet: v.hinge_round, tip: true, into: v.into }, at: [xh, root], angle: v.down, from: 'ground', to: 'trigger' }, // rounded into the arm and the blade
     },
     follows: { hinge: { by: ['pusher'], give: -1 }, spring: { by: ['trigger'], give: 1 } }, // the tooth rides the hook down; the pulled hook presses the pusher back
     states: {

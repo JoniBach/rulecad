@@ -70,27 +70,30 @@ export const size = {
    * as wide (in whole layers) as the force needs, up to `maxWidth`.
    * @param {'leaf' | 'fixedGuided' | 'parallelGuide' | 'compoundGuide' | 'foldedGuide' | 'serpentine'} kind
    * @param {{ travel: number, force?: number, energy?: number, width?: number, maxWidth?: number, maxLength?: number, turns?: number,
-   *   material: { E: number, strainLimit: number }, margin?: number }} job energy in N·mm (mJ); force at full travel, N
+   *   material: { E: number, strainLimit: number }, margin?: number, shape?: { taper?: number, fillet?: number, least?: number } }} job
+   *   energy in N·mm (mJ); force at full travel, N; shape: a shaped beam's taper and rounds (leaf, fixed-guided, parallel guide),
+   *   its thickness then the most it is
    * @param {{ line: number, layer: number }} printer
    * @returns {{ kind: string, length: number, thickness: number, width: number, turns?: number, stiffness: number, force: number,
    *   energy: number, strain: number, ratio: number } | null} ratio: travel over length, the paper's measure of how hard
    *   it works (it scales: the same ratio at any size is the same strain)
    */
-  forTravel(kind, { travel, force, energy, width, maxWidth = Infinity, maxLength = Infinity, turns, material, margin = 0.8 }, printer) {
+  forTravel(kind, { travel, force, energy, width, maxWidth = Infinity, maxLength = Infinity, turns, material, margin = 0.8, shape = {} }, printer) {
     const model = models[kind];
     if (!model || !['leaf', 'fixedGuided', 'parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine'].includes(kind)) throw new Error(`size.forTravel: no beam model for ${kind}`);
     const want = force ?? (energy != null ? (2 * energy) / travel : null), target = margin * material.strainLimit;
     if (!(want > 0)) throw new Error('size.forTravel: give the force at full travel, or the energy to store');
-    const mk = (L, t, w) => model({ length: L, thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}) }, material);
-    const shortest = (t) => { const e0 = mk(10, t, 1).strain(travel); return 10 * Math.sqrt(e0 / target); }; // strain goes as 1 / L²
-    const out = (L, t, w) => { const m = mk(L, t, w); return { kind, length: +L.toFixed(2), thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}), stiffness: m.stiffness, force: m.stiffness * travel, energy: (m.stiffness * travel * travel) / 2, strain: m.strain(travel), ratio: travel / L }; };
+    const mk = (L, t, w) => model({ length: L, thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}), ...shape }, material);
+    const solveL = (lo, hi, f) => { for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (f(mid)) hi = mid; else lo = mid; } return hi; }; // the least L for which f holds (f holds above it)
+    const shortest = (t) => solveL(t, 10000, (L) => mk(L, t, 1).strain(travel) <= target); // strain falls as it lengthens
+    const out = (L, t, w) => { const m = mk(L, t, w); return { kind, length: +L.toFixed(2), thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}), ...shape, stiffness: m.stiffness, force: m.stiffness * travel, energy: (m.stiffness * travel * travel) / 2, strain: m.strain(travel), ratio: travel / L }; };
     for (const t of lines(printer, 2, 12)) {
       const L = Math.ceil(shortest(t) * 100) / 100;
       if (L > maxLength) return null; // thicker only needs longer
       if (width != null) { // the width is fixed: the thickness sets the force; lengthen it to give just that
         const most = mk(L, t, width).stiffness * travel;
         if (most < want) continue;
-        const longer = L * Math.cbrt(most / want); // stiffness goes as 1 / L³
+        const longer = solveL(L, Math.max(L * 10, maxLength === Infinity ? L * 10 : maxLength), (x) => mk(x, t, width).stiffness * travel <= want); // stiffness falls as it lengthens
         return out(Math.min(longer, maxLength), t, width);
       }
       const k1 = mk(L, t, 1).stiffness, w = Math.ceil(want / (k1 * travel) / printer.layer - 1e-9) * printer.layer; // the force from the width, whole layers

@@ -21,7 +21,8 @@ pistol's layout rebuilt from a flexure catalogue.
 - **The spring:** two leaves standing up the grip, joined at the top by the pusher's shuttle. That is a parallel
   guide, so the pusher moves straight back and stores the energy in both leaves. It is sized by its travel
   (`size.forTravel`). The stroke and PETG's strain limit set the leaves' length and thickness, and the print's
-  height sets their force.
+  height sets their force. The leaves taper toward their middles, where they bend least, and flare into their
+  blocks in 2.5 mm rounds, so the strain is spread along them, not piled at square corners.
 - **The pusher:** a bar along the top with a tab out of the back to cock it and a tooth underneath.
 - **The trigger is its own sear:** a lever hanging on a leaf hinge, its arm reaching forward to a hook under the bar.
   Cocking drags the tooth over the hook's ramp, pushing the trigger aside; drawn a little past, the hook springs up
@@ -30,6 +31,12 @@ pistol's layout rebuilt from a flexure catalogue.
   little as the hook comes down.
 - **Stops:** the back wall stops the pusher before the spring's strain limit, and the grip's front wall stops the
   trigger before its hinge's.
+- **Rounds:** the trigger's hinge leaf is rounded into the frame and the blade, and every inside corner of the frame,
+  the pusher and the trigger is rounded.
+
+The first version had square corners everywhere a leaf met a block. Beam theory said its spring saw 0.98% strain; the
+finite-element check found 2.37% at the corner, nearly twice PETG's limit, and the hinge 1.77%. Tapered and rounded,
+the spring's peak is 1.06% and the hinge's 0.86%, against a limit of 1.25%.
 
 `npx cad check launcher/flat` checks it as it prints and moves: nothing within the printer's gap of what it isn't
 joined to, every step from rest to cocked, pulled, fired and back clear, no jam, the catch holding, and every

@@ -16,6 +16,7 @@
 import jscad from '@jscad/modeling';
 import * as gens from './flexures.mjs';
 import { ports, models } from './compose.mjs';
+import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness } from '@rulecad/fea';
 
 const AREA = 1e-4; // mm²: less than this of an overlap is a rounding error, not a touch
 const TOUCH = 0.01; // mm: as near as a flexure's root is to its body, or a point to an edge
@@ -27,6 +28,9 @@ const FRAMES = 12; // frames from one state to the next, for an animation
 const GAMMA = 0.85; // the pseudo-rigid-body leaf's characteristic radius (Howell): its tip turns about 0.15 L from the root
 const LEAFLIKE = new Set(['leaf', 'snapHook', 'contactLeaf']);
 const ROUND = 16; // segments to a full circle where an outline is grown
+const FE_CELLS = 8; // finite-element cells across a flexure's thickness
+const FE_MOST = 40000; // and no more cells than this in all (coarser, then)
+const SHARP_TURN = 45; // degrees: an inside corner turning this much or more at once is sharp (a round turns a little at each of many corners)
 const rad = (d) => (d * Math.PI) / 180, deg = (r) => (r * 180) / Math.PI;
 
 // 2D affine transforms [a, b, c, d, e, f]: x' = a x + b y + c, y' = d x + e y + f
@@ -59,7 +63,7 @@ const union = (list) => { const l = list.filter((a) => !empty(a)); return !l.len
 const intersect = (a, b) => (empty(a) || empty(b) ? [] : run((cs, keep) => loopsOf(keep(cs(a).intersect(cs(b))))));
 const subtract = (a, b) => (empty(a) ? [] : empty(b) ? a : run((cs, keep) => loopsOf(keep(cs(a).subtract(cs(b))))));
 const grow = (a, d) => (empty(a) || !(d > 0) ? a : run((cs, keep) => loopsOf(keep(cs(a).offset(d, 'Round', 2, ROUND)))));
-const shrink = (a, d) => (empty(a) || !(d > 0) ? a : run((cs, keep) => loopsOf(keep(cs(a).offset(-d, 'Miter', 2, ROUND)))));
+const shrink = (a, d, join = 'Miter') => (empty(a) || !(d > 0) ? a : run((cs, keep) => loopsOf(keep(cs(a).offset(-d, join, 2, ROUND)))));
 const area = (a) => (empty(a) ? 0 : run((cs) => cs(a).area()));
 const pieces = (a) => (empty(a) ? 0 : run((cs, keep) => cs(a).decompose().map(keep).filter((p) => p.area() > AREA).length));
 const box = (a) => {
@@ -173,6 +177,62 @@ const fromOutlines = (outlines) => union([outlines]); // a bent outline that cro
 // Shared by the interpolation: a weight that leaves both ends square, as a guided beam bends
 const smooth = (s) => s * s * (3 - 2 * s);
 
+// ---------- a flexure's peak strain by finite elements ----------
+// Beam theory says what a bar's strain is; it doesn't see the corner where the bar meets its block, which is where a
+// printed flexure yields. Here the flexure and a band of each body it grows from are laid on a grid of squares (each
+// filled by how much of it is inside), the body it grows from held, the body on its tip made stiff and pushed along the
+// way it moves, and the plane-stress solution scaled to the travel. The peak is the most any solid cell sees (von
+// Mises, as a strain); done again on cells 0.6 the size, a peak that keeps rising is a sharp corner.
+function coverage(shape, g, x0, y0, sub = 3) {
+  const { nx, ny, h } = g, out = new Float64Array(nx * ny), edges = shape.flatMap((l) => l.map((p, k) => [p, l[(k + 1) % l.length]]));
+  for (let j = 0; j < ny; j++) for (let b = 0; b < sub; b++) {
+    const y = y0 + (j + (b + 0.5) / sub) * h, xs = [];
+    for (const [[ax, ay], [bx, by]] of edges) if ((ay > y) !== (by > y)) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
+    xs.sort((p, q) => p - q);
+    for (let k = 0; k + 1 < xs.length; k += 2) for (let i = 0; i < nx; i++) for (let a = 0; a < sub; a++) {
+      const x = x0 + (i + (a + 0.5) / sub) * h;
+      if (x >= xs[k] && x < xs[k + 1]) out[j * nx + i] += 1 / (sub * sub);
+    }
+  }
+  return out;
+}
+function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, band }) {
+  // The bodies as material too, in a band round the flexure (so the corner where it meets them is a real corner); held
+  // and pushed only beyond the band
+  const near = grow(flexure, band), region = union([flexure, intersect(held, grow(flexure, band * 2)), intersect(moved, grow(flexure, band * 2))]), { lo, hi } = box(region);
+  let h = cell;
+  while (((hi[0] - lo[0]) / h + 2) * ((hi[1] - lo[1]) / h + 2) > FE_MOST) h *= 1.25;
+  const nx = Math.ceil((hi[0] - lo[0]) / h) + 2, ny = Math.ceil((hi[1] - lo[1]) / h) + 2, x0 = lo[0] - h, y0 = lo[1] - h;
+  const g = feaGrid({ nx, ny, h }), fill = coverage(region, g, x0, y0), isNear = coverage(near, g, x0, y0, 1);
+  const isHeld = coverage(held, g, x0, y0, 1), isMoved = coverage(moved, g, x0, y0, 1);
+  const modulus = new Float64Array(g.cells), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs), loaded = new Set();
+  for (let e = 0; e < g.cells; e++) {
+    const i = e % nx, j = (e - i) / nx, far = isNear[e] < 0.5, nodes = [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)];
+    modulus[e] = E * Math.max(1e-6, fill[e] > 0 && far && isMoved[e] > 0.5 ? 50 : fill[e]);
+    if (fill[e] < 0.5 || !far) continue;
+    if (isHeld[e] > 0.5) for (const n of nodes) { fixed[2 * n] = 1; fixed[2 * n + 1] = 1; }
+    else if (isMoved[e] > 0.5) for (const n of nodes) loaded.add(n);
+  }
+  if (!fixed.some(Boolean) || !loaded.size) return null;
+  for (const n of loaded) { f[2 * n] += direction[0] / loaded.size; f[2 * n + 1] += direction[1] / loaded.size; }
+  const { u: [u] } = feaSolve(g, { scale: modulus, ke: cellStiffness(nu, 2), fixed, loads: [f] });
+  let moves = 0;
+  for (const n of loaded) moves += (u[2 * n] * direction[0] + u[2 * n + 1] * direction[1]) / loaded.size;
+  const scale = travel / moves, k = 1 / (1 - nu * nu);
+  // Strain at each solid cell's corners (on the surface, where a bar's strain is most), as von Mises in plane stress over E
+  const equiv = (ex, ey, gxy) => { const sx = k * (ex + nu * ey), sy = k * (ey + nu * ex), txy = (gxy / 2) / (1 + nu); return Math.sqrt(Math.max(0, sx * sx - sx * sy + sy * sy + 3 * txy * txy)); };
+  let peak = 0, at = null;
+  for (let e = 0; e < g.cells; e++) {
+    const i = e % nx, j = (e - i) / nx;
+    if (fill[e] < 0.5 || isNear[e] < 0.5 && (isHeld[e] > 0.5 || isMoved[e] > 0.5)) continue;
+    const [a, b, c, d] = [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)].map((n) => [u[2 * n] * scale, u[2 * n + 1] * scale]);
+    const bx = (b[0] - a[0]) / h, tx = (c[0] - d[0]) / h, ly = (d[1] - a[1]) / h, ry = (c[1] - b[1]) / h; // εx along the bottom and top, εy up the left and right
+    const corners = [[bx, ly, (d[0] - a[0]) / h + (b[1] - a[1]) / h, 0, 0], [bx, ry, (c[0] - b[0]) / h + (b[1] - a[1]) / h, 1, 0], [tx, ry, (c[0] - b[0]) / h + (c[1] - d[1]) / h, 1, 1], [tx, ly, (d[0] - a[0]) / h + (c[1] - d[1]) / h, 0, 1]];
+    for (const [ex, ey, gxy, ci, cj] of corners) { const v = equiv(ex, ey, gxy); if (v > peak) { peak = v; at = [x0 + (i + ci) * h, y0 + (j + cj) * h]; } }
+  }
+  return { peak, at, cell: h };
+}
+
 // ---------- the mechanism ----------
 /**
  * A mechanism in one plane, printed flat.
@@ -222,8 +282,11 @@ export async function lamina(spec) {
   if (!(height > 0) || !(gap > 0) || !material?.E || !material?.strainLimit) throw new Error('a lamina needs height, gap and material ({ E, strainLimit })');
 
   // The parts: the ground, the bodies and the flexures, each a 2D shape at rest
-  const parts = { ground: { kind: 'ground', shape: all(spec.ground) } };
-  for (const [n, s] of Object.entries(spec.bodies || {})) { if (parts[n]) throw new Error(`"${n}" is used twice`); parts[n] = { kind: 'body', shape: all(s) }; }
+  // round: the inside corners of the frame and the bodies rounded to this radius (grown by it, then shrunk), so no thin
+  // arm meets its body at a square corner
+  const rounded = (a) => (spec.round > 0 ? shrink(grow(a, spec.round), spec.round, 'Round') : a);
+  const parts = { ground: { kind: 'ground', shape: rounded(all(spec.ground)) } };
+  for (const [n, s] of Object.entries(spec.bodies || {})) { if (parts[n]) throw new Error(`"${n}" is used twice`); parts[n] = { kind: 'body', shape: rounded(all(s)) }; }
   const joints = {};
   for (const [n, j] of Object.entries(spec.joints || {})) {
     if (parts[n]) throw new Error(`joint "${n}" has a body's name`);
@@ -235,6 +298,9 @@ export async function lamina(spec) {
       if (!gens[kind] || !models[kind]) throw new Error(`joint ${n}: no flexure "${kind}"`);
       params = { ...j.params, width: j.params?.width ?? height };
       shape = moved(place, flat(gens[kind](params)));
+      // A flexure given rounds has every inside corner rounded to that radius, wherever its parts meet (a round meeting
+      // a tapered beam, a beam meeting a block): grown by it, then shrunk
+      if (params.fillet > 0) shape = shrink(grow(shape, params.fillet), params.fillet, 'Round');
       model = models[kind](params, material);
       const p = ports(kind, params);
       leafy = LEAFLIKE.has(kind);
@@ -431,7 +497,8 @@ export async function lamina(spec) {
     const contact = intersect(F, grow(Bd, TOUCH));
     if (area(contact) <= AREA) { free = false; f('fail', `the ${fx} flexure doesn't reach ${what(body)}: it would print loose`, 'lamina.attached', { parts: [fx, body] }); continue; }
     if (area(intersect(F, Bd)) <= AREA) { free = false; f('fail', `the ${fx} flexure only meets ${what(body)} along an edge: run it into it (by a line or two), or it prints as two pieces`, 'lamina.attached', { parts: [fx, body], at: box(contact) }); continue; }
-    if (pieces(contact) > 1) { free = false; f('fail', `the ${fx} flexure touches ${what(body)} in more than one place: it's fused to it away from its root`, 'lamina.free', { parts: [fx, body], at: box(contact) }); continue; }
+    // Overlapping it in two places is fused (touching along a line, flush, is one material)
+    if (pieces(intersect(F, Bd)) > 1) { free = false; f('fail', `the ${fx} flexure touches ${what(body)} in more than one place: it's fused to it away from its root`, 'lamina.free', { parts: [fx, body], at: box(contact) }); continue; }
     const rest = subtract(F, grow(contact, gap * 2 + cell)); // the flexure away from where it grows out of the body
     if (area(rest) > AREA && within(rest, Bd, gap * 0.98)) { free = false; const g = gapBetween(rest, Bd, gap); f('fail', `the ${fx} flexure runs ${g ? `${g} mm` : 'touching'} from ${what(body)} away from its root: under the ${gap} mm gap, it fuses there`, 'lamina.free', { parts: [fx, body], gap: g, at: box(intersect(grow(rest, gap / 2), grow(Bd, gap / 2))) }); }
   }
@@ -491,6 +558,28 @@ export async function lamina(spec) {
     f(held && !tight ? 'pass' : 'fail', `${s}: ${held ? `${by} holds ${joints[jn].to} against the ${jn} flexure ${grip > 0 ? `at any friction over ${+grip.toFixed(2)} (checked at ${mu.hold})` : 'whatever the friction'}${lets != null ? `, and lets go once ${fn} moves ${+lets.toFixed(2)}${unit}${tight ? `: less than the ${gap} mm gap, too shallow to trust` : ''}` : fn ? `, and ${fn} can't move far enough to let go` : ''}` : `nothing holds ${joints[jn].to}: pushed ${+Math.abs(back).toFixed(2)} back towards rest it passes ${by}${grip ? `, pushing it aside: it would take a friction over ${+grip.toFixed(2)} to hold (checked at ${mu.hold}); tilt the catch so the load presses it in` : ''}`}`, 'lamina.holds', { state: s, joint: jn, catch: by, ...(lets != null ? { release: lets } : {}) });
   }
 
+  // ---- the peak strain by finite elements: the corners beam theory doesn't see ----
+  const centroid = (a) => { const { lo, hi } = box(a); return [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2]; };
+  // Corners where the outline turns into the material, the turn measured over `span` either side (so a round of a
+  // radius well over the span turns a little, a square corner a right angle, and a booleans' wiggle not at all)
+  const reentrant = (a, span) => a.flatMap((l) => l.map((p, k) => {
+    const reach = (dir) => { for (let i = 1; i < l.length; i++) { const q = l[(k + dir * i + l.length * i) % l.length]; if (Math.hypot(q[0] - p[0], q[1] - p[1]) >= span) return q; } return l[(k + dir + l.length) % l.length]; };
+    const o = reach(-1), q = reach(1), u1 = [p[0] - o[0], p[1] - o[1]], u2 = [q[0] - p[0], q[1] - p[1]];
+    return { p, turn: Math.atan2(u1[0] * u2[1] - u1[1] * u2[0], u1[0] * u2[0] + u1[1] * u2[1]) };
+  }).filter((c) => c.turn < -rad(SHARP_TURN)).map((c) => c.p));
+  function feCheck(n, j, most, beam) {
+    const t = j.params?.thickness ?? j.params?.neck ?? gap * 4, to = parts[j.to].shape, from = parts[j.from].shape, c = centroid(to);
+    const m = j.motion, dir = m.axis ? m.axis : (() => { const r = [c[0] - m.pivot[0], c[1] - m.pivot[1]], l = Math.hypot(...r); return [-r[1] / l, r[0] / l]; })();
+    const travel = m.axis ? most : j.leafy ? (most * Math.hypot(c[0] - m.pivot[0], c[1] - m.pivot[1])) / m.leaf : rad(most) * Math.hypot(c[0] - m.pivot[0], c[1] - m.pivot[1]);
+    const r = fePeak({ flexure: parts[n].shape, held: from, moved: to, direction: dir, travel, E: material.E, cell: t / FE_CELLS, band: Math.max(2 * t, gap * 4) });
+    if (!r) { f('info', `${n}: its peak strain couldn't be worked out by finite elements (nothing held, or nothing to push)`, 'lamina.peak', { joint: n }); return null; }
+    const sharp = reentrant(union([parts[n].shape, intersect(from, grow(parts[n].shape, t * 2)), intersect(to, grow(parts[n].shape, t * 2))]), r.cell).some((p) => Math.hypot(p[0] - r.at[0], p[1] - r.at[1]) <= r.cell * 2.01);
+    const where = `at (${r.at.map((x) => x.toFixed(1)).join(', ')})`, ratio = beam > 0 ? r.peak / beam : null, limit = material.strainLimit;
+    if (sharp) f('fail', `${n}: its strain peaks at a square corner ${where}, ${(r.peak * 100).toFixed(2)}% on ${r.cell.toFixed(2)} mm cells and more on finer ones: a sharp inside corner has no bound, and it's where a print yields. Round it (a radius about the flexure's thickness), or taper into it`, 'lamina.peak', { joint: n, strain: r.peak, at: r.at, sharp: true });
+    if (!sharp) f(r.peak <= limit ? 'pass' : 'fail', `${n}: finite elements give a peak of ${(r.peak * 100).toFixed(2)}% ${where}${ratio ? ` (${ratio.toFixed(2)} × beam theory)` : ''}, ${r.peak <= limit ? 'within' : 'over'} the limit of ${(limit * 100).toFixed(2)}%`, 'lamina.peak', { joint: n, strain: r.peak, at: r.at, ratio });
+    return { ...r, sharp, ratio: sharp ? Infinity : ratio };
+  }
+
   // ---- strain and stops: displacement-driven, each flexure's travel against its limit, and a hard stop before it ----
   for (const [n, j] of Object.entries(joints)) {
     const u = used[n], m = j.model;
@@ -499,19 +588,24 @@ export async function lamina(spec) {
     if (printer) for (const x of gens.printable({ thickness: j.params.thickness ?? j.params.neck, width: j.params.width }, printer, material, m)) f(x.level, `${n}: ${x.text}`, x.code, { joint: n });
     const e = m.strain(toModel(most));
     f(e <= material.strainLimit ? 'pass' : 'fail', `${n}: ${u?.most ? `at its most (${+most.toFixed(2)}${unit}) it sees ${(e * 100).toFixed(2)}% strain, ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}% (${+limit.toFixed(2)}${unit})` : 'nothing moves it'}`, 'lamina.strain', { joint: n, strain: e, limit });
+    if (j.model.least != null && printer && j.model.least < (printer.wall_min ?? 2 * printer.line) - 1e-6) f('fail', `${n}: tapered to ${j.model.least.toFixed(2)} mm, under the thinnest wall that prints (${printer.wall_min ?? 2 * printer.line} mm)`, 'flexure.thin', { joint: n });
+    const fe = u?.most && spec.check?.fe !== false ? feCheck(n, j, most, e) : null;
+    // Where the real peak is over beam theory's, the travel it may go is that much less
+    const reach = fe && !fe.sharp && fe.ratio > 1 ? limit / fe.ratio : limit; // (a sharp corner fails on its own)
     // A stop: swept from rest to the limit (less a margin), its body, or what it carries, runs into something
     const signs = follows[n] ? [follows[n].give ?? 1] : u?.signs.size ? [...u.signs] : [1, -1]; // a follower only ever gives one way
     for (const sgn of signs) {
       let hits = [], at = 0;
       for (let k = 1; k <= STOP_STEPS && !hits.length; k++) {
-        at = (sgn * limit * 0.95 * k) / STOP_STEPS;
+        at = (sgn * reach * 0.95 * k) / STOP_STEPS;
         const { v: sv, over } = solve({ [n]: at }, new Set([n])), sh = shapesAt(sv);
         hits = pairs.filter(([a, b]) => !joined(a, b) && !driven(a, b) && carries[n].has(a) !== carries[n].has(b) && collide(sh[a], sh[b], slack)).map(([a, b]) => ({ a, b }));
         if (!hits.length && over.length) hits = [{ a: joints[n].to, b: joints[over[0]].to }]; // what it drives has reached its own limit
       }
       const side = signs.length > 1 ? (sgn > 0 ? ' one way' : ' the other way') : '';
-      if (hits.length) f('pass', `${n}: stopped by ${what(carries[n].has(hits[0].a) ? hits[0].b : hits[0].a)} at ${+Math.abs(at).toFixed(2)}${unit}${side}, before its limit of ${+limit.toFixed(2)}${unit}`, 'lamina.stop', { joint: n, at });
-      else f('fail', `${n}: nothing stops it${side} before ${+limit.toFixed(2)}${unit}, where it breaks: add a hard stop (a post or a wall it meets)`, 'lamina.stop', { joint: n, limit });
+      const lim = `${+reach.toFixed(2)}${unit}${reach < limit ? ' (by its finite-element peak)' : ''}`;
+      if (hits.length) f('pass', `${n}: stopped by ${what(carries[n].has(hits[0].a) ? hits[0].b : hits[0].a)} at ${+Math.abs(at).toFixed(2)}${unit}${side}, before its limit of ${lim}`, 'lamina.stop', { joint: n, at });
+      else f('fail', `${n}: nothing stops it${side} before ${lim}, where it breaks: add a hard stop (a post or a wall it meets)`, 'lamina.stop', { joint: n, limit: reach });
     }
   }
 

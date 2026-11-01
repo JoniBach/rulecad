@@ -140,6 +140,24 @@ size.forTravel('parallelGuide', { travel: 12, energy: 50, width: 14, material: p
 // { length: 87.8, thickness: 2.1, width: 14, force: 8.33, energy: 50, strain: 0.0098, ratio: 0.137 }
 ```
 
+### Shaped beams: tapers and rounds
+
+A leaf, a fixed-guided beam and a parallel guide's leaves take three more parameters. `taper` (0 to 1) shapes the
+beam's thickness to its bending moment: at 1 it is a uniform-strength beam, thick where it bends most and thin where it
+bends least, so the strain is the same all along it. `least` is the thinnest it may get (the thinnest wall that
+prints). `fillet` rounds the beam where it meets its block, at each end that's held, and `into` runs it on into the
+block so they join. `thickness` is then the most it is.
+
+A square inside corner, where a bar meets its block, concentrates the strain. On a printed part that corner is where
+it yields and stays bent. A round of about the beam's thickness brings it back to beam theory's. A fully tapered beam
+bends 1.7 times as far as a bar before it reaches the same strain, and stores 1.7 times the energy. `beamModel`
+integrates the beam's own profile, rounds included, and `size.forTravel` takes a `shape` to size one.
+
+```js
+size.forTravel('parallelGuide', { travel: 12, energy: 50, width: 14, material: petg, shape: { taper: 1, fillet: 2, least: 0.84 } }, x1c);
+// 71 mm leaves, against 88 for bars
+```
+
 `flexureMaterial(rules)` makes the material from its rule set's `modulus` and `strength`: the strain it may see is its
 strength over its modulus (where it starts to yield) over a safety factor (1.5). That ratio is the figure of merit for
 flexures: PLA's is about 1.5%, PETG's 1.9%, nylon's higher. A flexure sized at a strain past it bends for good.
@@ -161,6 +179,9 @@ mechanism drawn that way and checks it as it will print and move:
   and springs back when that has passed. The joint being moved drives, and one standing still gives. Where a follower
   would have to give more than the push could make it (a face steeper than friction lets a push turn aside), the
   driver jams.
+- **Rounds:** `round` rounds every inside corner of the ground and the bodies to that radius, so no thin arm meets its
+  body at a square corner. A flexure given a `fillet` has every inside corner of its own rounded to it, wherever its
+  parts meet.
 - **Friction, the cautious way:** what must move is checked sticky (a ramp must still push a latch aside at 0.5),
   and what must hold is checked slippery (a catch must still hold at 0.1).
 
@@ -173,8 +194,9 @@ The findings, each pass or fail with its code:
 | `lamina.sequence`, `lamina.collide` | Nothing runs into anything in any state or on the way; a step into a state a catch holds may settle on the catch |
 | `lamina.jam`, `lamina.follow` | No driver jams on a follower, and no follower has to give past its limit |
 | `lamina.holds` | A catch holds: the joint pushing back towards rest jams on it. It says the least friction it holds at, and how far the catch must move to let go |
-| `lamina.strain` | Each flexure's strain at the most it is moved, against the limit |
-| `lamina.stop` | Something hard stops each flexure before its strain limit (swept from rest, so a stop that is jumped over doesn't count) |
+| `lamina.strain` | Each flexure's strain at the most it is moved, against the limit, by beam theory |
+| `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields |
+| `lamina.stop` | Something hard stops each flexure before its strain limit, scaled by its finite-element peak (swept from rest, so a stop that is jumped over doesn't count) |
 | `lamina.energy` | What each state stores, and the forces |
 
 It returns the printed `parts` (`body`, the drawing extruded, after an optional `finish` for 3D work such as holes

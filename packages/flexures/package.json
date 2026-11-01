@@ -46,5 +46,8 @@
     "manifold-3d": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "@rulecad/fea": "^0.2.5"
   }
 }

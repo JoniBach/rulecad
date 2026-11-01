@@ -339,8 +339,8 @@ const rect = (x0, y0, x1, y1) => jscad.primitives.polygon({ points: [[x0, y0], [
 // hook on a leaf latch: the pusher's tooth rides down the hook's ramp and the hook springs up behind it. A state lowers
 // the latch to let it go. Options break it one way at a time.
 function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop = 0.5, fuse = 0, bite = 15 } = {}) {
-  const g = 0.3, stroke = 6, L = 40, t = 0.84, half = 4 + t, drop = (q) => (3 * q * q) / (5 * L), under = L - g - drop(7);
-  const yL = 34, px = 10, len = 18, xc = px + 15, hook = engage + g, run = hook / Math.tan((lead * Math.PI) / 180), lean = Math.tan((bite * Math.PI) / 180);
+  const g = 0.3, stroke = 6, L = 46, t = 0.84, round = 1.5, half = 4 + t + round, drop = (q) => (3 * q * q) / (5 * L), under = L - g - drop(7);
+  const yL = L - 6, px = 10, len = 22, xc = px + len - 3, hook = engage + g, run = hook / Math.tan((lead * Math.PI) / 180), lean = Math.tan((bite * Math.PI) / 180);
   // The tooth's front face matches the catch's (leaning back by the bite) where the cocked pusher meets it
   const top = L + 0.5, bottom = L - (engage + g + drop(7)), face = (y) => xc + stroke - (y - drop(stroke) - (under - hook)) * lean;
   return lamina({
@@ -348,17 +348,17 @@ function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop =
     ground: [
       rect(-20, -6, 40, -3 + floorTop), // the floor, run into the spring's base block
       rect(-half - wall - 3, -6, -half - wall, L + 3), // the back wall: the spring's stop
-      rect(px - 3, -6, px + 0.5, yL + 2), // the latch's post
-      rect(xc - 2, -6, xc + 6, yL - t / 2 - 2.9), // the latch's stop, under the hook
-      ...(fuse ? [rect(half + fuse, 5, half + fuse + 2, 20)] : []), // a block beside the front leaf
+      rect(px - 3, -6, px, yL + 2), // the latch's post
+      rect(xc - 2, -6, xc + 6, yL - t / 2 - 3), // the latch's stop, under the hook
+      ...(fuse ? [rect(4 + t + fuse, 5, 4 + t + fuse + 2, 20)] : []), // a block beside the front leaf
     ],
     bodies: {
       pusher: [rect(-half, L, xc + 10, L + 6), jscad.primitives.polygon({ points: [[face(top) - 1.2, top], [face(bottom) - 1.2, bottom], [face(bottom), bottom], [face(top), top]] })],
       hook: jscad.primitives.polygon({ points: [[xc, yL - t / 2], [xc + 1 + run, yL - t / 2], [xc + 1 + run, under - hook], [xc + 1, under], [xc - hook * lean, under], [xc, under - hook]] }),
     },
     joints: {
-      spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 8, shuttle: 3, base: 3 }, at: [0, 0], angle: 90, from: 'ground', to: 'pusher' },
-      latch: { kind: 'leaf', params: { length: len, thickness: t }, at: [px, yL], angle: 0, from: 'ground', to: 'hook' },
+      spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 8, shuttle: 3, base: 3, fillet: round, into: t }, at: [0, 0], angle: 90, from: 'ground', to: 'pusher' },
+      latch: { kind: 'leaf', params: { length: len, thickness: t, fillet: 1, into: t }, at: [px, yL], angle: 0, from: 'ground', to: 'hook' },
     },
     follows: { latch: { by: ['pusher'], give: -1 }, spring: { by: ['hook'], give: 1 } }, // the hook rides down the tooth; lowered, it presses the pusher back a little
     states: { drawn: { spring: stroke + 0.6 }, cocked: { spring: stroke }, released: { spring: stroke, latch: -release }, fired: { latch: -release } },
@@ -372,9 +372,9 @@ test('a lamina mechanism: prints free, every step clear, the latch rides its ram
   const m = await catapult();
   assert.deepEqual(fails(m), [], fails(m).map((f) => f.text).join('; '));
   const holds = m.findings.find((f) => f.code === 'lamina.holds');
-  assert.ok(holds.level === 'pass' && holds.release > 1.5 && holds.release < 2.6, `the hook lets go once lowered past its catch: ${holds.text}`);
+  assert.ok(holds.level === 'pass' && holds.release > 1.5 && holds.release < 3, `the hook lets go once lowered past its catch: ${holds.text}`);
   assert.ok(m.findings.filter((f) => f.code === 'lamina.stop').every((f) => f.level === 'pass') && m.findings.filter((f) => f.code === 'lamina.stop').length === 2);
-  assert.ok(m.energy.cocked > 0.003 && m.energy.rest === 0, 'the spring stores energy cocked, none at rest');
+  assert.ok(m.energy.cocked > 0.002 && m.energy.rest === 0, 'the spring stores energy cocked, none at rest');
   assert.ok(m.frames.length > 40 && m.frames[0].parts.pusher.length && m.frames.some((fr) => fr.from === 'rest' && fr.to === 'drawn' && fr.t > 0));
   const box = measureBoundingBox(m.parts.body);
   assert.ok(Math.abs(box[0][2]) < 1e-9 && Math.abs(box[1][2] - 6) < 1e-9, 'one height, standing on the bed');
@@ -398,4 +398,34 @@ test('displacement-first sizing: the travel and strain limit set the length, the
   assert.equal(size.forTravel('leaf', { travel: 10, energy: 20, material: petg, maxLength: 10 }, fdm), null, 'too short to bend that far');
   const pla = flexureMaterial({ modulus: 2680, strength: 39 });
   assert.ok(Math.abs(pla.yieldStrain - 39 / 2680) < 1e-12 && Math.abs(pla.strainLimit - pla.yieldStrain / 1.5) < 1e-12 && petg.yieldStrain > pla.yieldStrain, 'PETG bends further than PLA before it yields');
+});
+
+test('shaped beams: their models are the bar\'s formulas when plain, and a taper bends further and stores more at the same strain', () => {
+  const p = { length: 40, thickness: 1.26, width: 8 }, plain = leafModel(p, petg), nearly = leafModel({ ...p, taper: 1e-6 }, petg);
+  assert.ok(Math.abs(nearly.stiffness / plain.stiffness - 1) < 0.01 && Math.abs(nearly.strain(5) / plain.strain(5) - 1) < 0.01, 'the numeric model agrees with E w t³ / 4L³ and 3tδ / 2L²');
+  const g = fixedGuidedModel(p, petg), gn = fixedGuidedModel({ ...p, taper: 1e-6 }, petg);
+  assert.ok(Math.abs(gn.stiffness / g.stiffness - 1) < 0.01 && Math.abs(gn.strain(5) / g.strain(5) - 1) < 0.01, 'and a guided beam\'s with E w t³ / L³ and 3tδ / L²');
+  for (const model of [leafModel, fixedGuidedModel]) {
+    const bar = model(p, petg), shaped = model({ ...p, taper: 1, least: 0.84 }, petg), lim = petg.strainLimit;
+    assert.ok(shaped.travel(lim) > 1.5 * bar.travel(lim) && shaped.energy(shaped.travel(lim)) > 1.5 * bar.stiffness * bar.travel(lim) ** 2 / 2, 'uniform strength: further, and more energy, before the limit');
+  }
+  const solid = parallelGuide({ length: 40, thickness: 1.26, width: 6, gap: 8, taper: 0.8, fillet: 2, least: 0.84, into: 0.84 });
+  assert.ok(onePiece(solid) && measureBoundingBox(solid)[0][0] < -2.9, 'beams and blocks in one piece, the blocks wide enough to take the rounds');
+});
+
+// A leaf growing from a block into a tip, bent by a state; with a square root or a rounded one
+async function flick({ fillet = 0 } = {}) {
+  return lamina({
+    height: 6, gap: 0.3, material: petg, printer: fdm,
+    ground: [rect(-8, -8, 0, 8), rect(31.5, 2.42, 37, 6)],
+    bodies: { tip: rect(30, -2, 37, 2) },
+    joints: { leaf: { kind: 'leaf', params: { length: 30, thickness: 0.84, ...(fillet ? { fillet, tip: true, into: 0.84 } : {}) }, at: fillet ? [0, 0] : [-1, 0], from: 'ground', to: 'tip' } },
+    states: { bent: { leaf: 2 } }, sequence: ['rest', 'bent', 'rest'],
+  });
+}
+
+test('the peak strain by finite elements: a square root is a sharp corner and fails, a rounded one agrees with beam theory', async () => {
+  const square = (await flick()).findings.find((f) => f.code === 'lamina.peak'), round = (await flick({ fillet: 1 })).findings.find((f) => f.code === 'lamina.peak');
+  assert.ok(square.level === 'fail' && square.sharp && Math.abs(square.at[0]) < 0.5, `the square corner where the leaf meets the block: ${square.text}`);
+  assert.ok(round.level === 'pass' && round.ratio > 0.8 && round.ratio < 1.3, `a round brings it to about beam theory's: ${round.text}`);
 });
