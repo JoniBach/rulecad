@@ -18,8 +18,9 @@ holes with 0.1 in header holes beside them.
      start of each track out of the core (the RP2040's escapes).
    - **The edge pins are new:** 17 along the bottom and 7 up each end, with Sea-Picro's pin numbers and pad shapes:
      a half hole on the edge and a 0.1 in header hole in a long pad beside it, for soldering flat or for pin headers.
-     The corners are laid out like Waveshare's RP2040-Zero: each end's column runs down to the corner, its lowest pin
-     1.59 mm above the bottom edge, beside the bottom row's first pin, which is 3.92 mm in from the end.
+     The corners are laid out like Waveshare's RP2040-Zero: each end's column runs down to the corner, beside the
+     bottom row's first pin. The column's lowest pad has its top level with the tips of the bottom row's pads, and the
+     bottom row's first pad is a pin's usual gap (0.84 mm) past the end of it.
      `headers: 0` in `module.json` drops the header holes (half holes only, which reach less far in) and makes the
      board 2 mm narrower. That passed its checks with 19 pins along the bottom and 6 up each end; with this layout it's
      untested.
@@ -45,7 +46,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 ## Status
 
-48.5 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
+49.5 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
 - the circuit is Sea-Picro's
 - the placement
 - both planes
@@ -55,7 +56,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 `cad export` makes the files JLCPCB needs.
 
 It hasn't been made yet. Before ordering:
-- **Open `exports/thin-picro/module@0.3.0.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
+- **Open `exports/thin-picro/module@0.3.1.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
 - **Check the pinout** below against your keyboard's wiring: the pins aren't in Sea-Picro's order.
 
 ## Pinout

@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -34,14 +34,14 @@
       "interface": true
     },
     "end_rise": {
-      "value": 1.59,
+      "value": 1.91,
       "unit": "mm",
-      "rule": "Each end's lowest pin this far above the bottom edge: down at the corner, beside the long edge's first pin, as on Waveshare's RP2040-Zero (1.59 mm there)"
+      "rule": "Each end's lowest pin this far above the bottom edge: down at the corner, as on Waveshare's RP2040-Zero, its pad's top level with the tips of the long edge's pads (the design checks it against Sea-Picro's pads)"
     },
     "row_in": {
-      "value": 3.92,
+      "value": 4.45,
       "unit": "mm",
-      "rule": "The long edge's first and last pins this far in from the ends, clear of the corner pins and their header pads, as on Waveshare's RP2040-Zero (3.92 mm there)"
+      "rule": "The long edge's first and last pins this far in from the ends: their pads a pin's usual gap (a pitch less a pad's width, 0.84 mm) past the end of the corner pins' pads (the design checks it against Sea-Picro's pads)"
     },
     "pitch": {
       "value": 2.54,
@@ -79,7 +79,7 @@
       "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block: its busiest side of escapes (RP2040 pins 2 to 12) faces the long row of pins"
     },
     "core_x": {
-      "value": -9.77,
+      "value": -10.03,
       "unit": "mm",
       "rule": "The core block moved along the board: a channel from the end pins for tracks to pass"
     },

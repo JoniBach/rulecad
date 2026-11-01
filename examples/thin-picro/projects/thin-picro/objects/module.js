@@ -20,6 +20,12 @@ export function main (v) {
   if (pins.length !== spots.length) throw new Error(`Sea-Picro has ${pins.length} edge pins: edge_pins + 2 × end_pins must come to ${pins.length}, not ${spots.length}`)
   const inn = header.x - half.x, offset = Math.hypot(...header.hole_offset) // the header pad in from the half hole, its hole set back out
   const led = j2.pads.find((q) => q.pin === '32')
+  // The corners: each end's lowest pad has its top level with the tips of the long edge's pads, and the long edge's first
+  // pad is a pin's usual gap (a pitch less a pad's width) past the end of it. end_rise and row_in must say so
+  if (v.headers) {
+    const tip = inn - out + header.w / 2, rise = tip - header.h / 2, rowIn = tip + (v.pitch - header.h) + header.h / 2
+    if (rise.toFixed(2) !== v.end_rise.toFixed(2) || rowIn.toFixed(2) !== v.row_in.toFixed(2)) throw new Error(`with Sea-Picro's pads, end_rise is ${rise.toFixed(2)} and row_in ${rowIn.toFixed(2)} mm, not ${v.end_rise} and ${v.row_in}`)
+  }
 
   // The core first, turned as one block with Sea-Picro's own routing, while the rest is where Sea-Picro has it: its
   // tracks out to the old pins become escapes, routed on from where they leave the core. Then USB-C and its parts
