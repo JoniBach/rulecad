@@ -552,9 +552,9 @@ function rulesSheet(rows) {
 
 // ---------- 2D views ----------
 // A board's copper and its schematic come in the link as SVG drawings ([[name, svg]]). They're shown as images (an
-// <img> never runs anything inside an SVG), in tabs over the 3D view: "Board: front" and "Board: back" are choices
-// inside the Board tab. A link may carry only "Board: both sides" with each element's copper layer marked
-// (data-pcb-layer): front and back are then made here, by a style inside the drawing hiding the other side.
+// <img> never runs anything inside an SVG), in tabs over the 3D view, with choices inside the Board tab. A link carries
+// "Board: both sides" with each element's copper layer marked (data-pcb-layer): a view of each layer is made here (front,
+// inner 1, inner 2 ..., back, as many as the board has), by a style inside the drawing hiding the others.
 // Drag to pan, wheel or pinch to zoom, double-click to fit.
 function flatViews(model) {
   const list = (model.views || []).filter((v) => Array.isArray(v) && typeof v[0] === 'string' && typeof v[1] === 'string');
@@ -567,11 +567,18 @@ function flatViews(model) {
     if (!x) groups.push(x = { name: g, items: [] });
     x.items.push({ label: sub || g, svg, url: null });
   }
+  // One view per copper layer the drawing has: front, the inner layers (a 4-layer board's planes) in order, back. Holes,
+  // the outline and anything not on one layer show in every view
   for (const g of groups) {
     const svg = g.items[0].svg;
-    if (g.items.length !== 1 || !/data-pcb-layer="top"/.test(svg) || !/data-pcb-layer="bottom"/.test(svg)) continue;
-    const only = (hide) => svg.replace(/<svg\b[^>]*>/, (open) => `${open}<style>[data-pcb-layer="${hide}"]{display:none}</style>`);
-    g.items.push({ label: 'front', svg: only('bottom'), url: null }, { label: 'back', svg: only('top'), url: null });
+    if (g.items.length !== 1) continue;
+    const found = new Set([...svg.matchAll(/data-pcb-layer="(top|bottom|inner\d+)"/g)].map((m) => m[1]));
+    if (!found.has('top') || !found.has('bottom')) continue;
+    const inner = [...found].filter((l) => l.startsWith('inner')).sort((a, b) => Number(a.slice(5)) - Number(b.slice(5)));
+    const copper = ['top', ...inner, 'bottom'];
+    const only = (keep) => svg.replace(/<svg\b[^>]*>/, (open) => `${open}<style>${copper.filter((l) => l !== keep).map((l) => `[data-pcb-layer="${l}"]`).join(',')}{display:none}</style>`);
+    g.items[0].label = copper.length > 2 ? `all ${copper.length} layers` : 'both sides';
+    g.items.push(...copper.map((l) => ({ label: l === 'top' ? 'front' : l === 'bottom' ? 'back' : `inner ${l.slice(5)}`, svg: only(l), url: null })));
   }
   const at = { s: 1, x: 0, y: 0 }, place = () => { img.style.transform = `translate(${at.x}px, ${at.y}px) scale(${at.s})`; };
   const fit = () => {

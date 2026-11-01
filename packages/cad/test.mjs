@@ -118,6 +118,27 @@ test('cad clone: a published KiCad board into a rule set, its source and licence
   } finally { done(); }
 });
 
+test('cad clone keeps each part\'s 3D model: a mesh beside a board read from a file, a box for a STEP-only one', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'lib'));
+    fs.writeFileSync(path.join(ws, 'lib/r.wrl'), 'Shape { geometry IndexedFaceSet { coordIndex [0,1,2,-1] coord Coordinate { point [0 0 0,0.2 0 0,0 0.2 0.1] } } }');
+    fs.writeFileSync(path.join(ws, 'lib/sock.step'), "DATA; #1=SI_UNIT(.MILLI.,.METRE.); #2=CARTESIAN_POINT('',(-4.,0.,-1.)); #3=CARTESIAN_POINT('',(4.,7.,1.)); ENDSEC;");
+    const pad = (n, x) => `(pad "${n}" smd rect (at ${x} 0) (size 0.6 0.5) (layers "F.Cu") (net ${n} "N${n}"))`;
+    fs.writeFileSync(path.join(ws, 'b.kicad_pcb'), `(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+      (footprint "R" (layer "F.Cu") (at 3 5) (property "Reference" "R1") ${pad(1, -0.5)} ${pad(2, 0.5)} (model "\${KIPRJMOD}/lib/r.wrl" (offset (xyz 0 0 0)) (scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))
+      (footprint "J" (layer "F.Cu") (at 7 5) (property "Reference" "J1") ${pad(1, -1)} ${pad(2, 1)} (model "\${KIPRJMOD}/lib/sock.step" (offset (xyz 0 0 0)) (scale (xyz 1 1 1)) (rotate (xyz 0 0 0))))
+      (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
+    const out = cad('clone', 'b.kicad_pcb', 'b', '--licence', 'MIT');
+    assert.match(out, /3D models: 1 as meshes \(in models\/\), 1 as boxes the size of the part/);
+    const set = JSON.parse(fs.readFileSync(path.join(ws, 'rules/b.json'), 'utf8')), models = set.circuit.models;
+    assert.equal(models['${KIPRJMOD}/lib/r.wrl'].mesh, 'models/source/r.json');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(ws, 'models/source/r.json'), 'utf8')).triangles.length, 1);
+    assert.deepEqual(models['${KIPRJMOD}/lib/sock.step'].box, { min: [-4, 0, -1], max: [4, 7, 1] });
+    assert.doesNotMatch(cad('clone', 'b.kicad_pcb', 'b2', '--licence', 'MIT', '--no-models'), /3D models/);
+  } finally { done(); }
+});
+
 test('cad agents: AGENTS.md for AI agents, included from CLAUDE.md without losing what was there', () => {
   const { ws, cad, done } = workspace();
   try {

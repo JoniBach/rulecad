@@ -16,11 +16,20 @@ holes with 0.1 in header holes beside them.
    - **The core keeps Sea-Picro's own layout and routing:** the RP2040, flash, crystal, regulator and their small
      parts, turned on their side as one block, with Sea-Picro's own tracks and vias (548 tracks, 69 vias), and the
      start of each track out of the core (the RP2040's escapes).
-   - **The edge pins are new:** 19 along the bottom and 6 up each end, with Sea-Picro's pin numbers and pad shapes.
+   - **The edge pins are new:** 17 along the bottom and 7 up each end, with Sea-Picro's pin numbers and pad shapes:
+     a half hole on the edge and a 0.1 in header hole in a long pad beside it, for soldering flat or for pin headers.
+     The corners are laid out like Waveshare's RP2040-Zero: each end's column runs down to the corner, beside the
+     bottom row's first pin. The column's lowest pad has its top level with the tips of the bottom row's pads, and the
+     bottom row's first pad is a pin's usual gap (0.84 mm) past the end of it.
+     `headers: 0` in `module.json` drops the header holes (half holes only, which reach less far in) and makes the
+     board 2 mm narrower. That passed its checks with 19 pins along the bottom and 6 up each end; with this layout it's
+     untested.
      Each pin sits where its track comes out of the core, so the tracks fan out without crossing. The pins keep
      Sea-Picro's nets; only where they sit changes, so check the pinout before wiring a keyboard to it.
    - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors.
-3. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
+3. Each part shows in 3D: KiCad's own models for most parts (in `models/`), and boxes the size of the USB-C socket,
+   the RP2040 and the fuse, whose own models have no licence. The tallest part is the USB-C socket, 3.18 mm overall.
+4. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
 
 The checks prove the result:
 
@@ -37,7 +46,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 ## Status
 
-50.8 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
+49.5 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
 - the circuit is Sea-Picro's
 - the placement
 - both planes
@@ -47,8 +56,55 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 `cad export` makes the files JLCPCB needs.
 
 It hasn't been made yet. Before ordering:
-- **Open `exports/thin-picro/module@0.1.0.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
-- **Check the pinout.** The pins aren't in Sea-Picro's order: each sits where its track leaves the core.
+- **Open `exports/thin-picro/module@0.3.1.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
+- **Check the pinout** below against your keyboard's wiring: the pins aren't in Sea-Picro's order.
+
+## Pinout
+
+Seen from above, USB-C at the top. Places run up each end from the bottom corner, and along the bottom from the left.
+Each pin is labelled on the board: its RP2040 GPIO number, or its power or signal name. Where a pin has no room for its
+label beside it (each corner pin, hemmed in by the bottom row's end pad), the label sits nearby with a small triangle
+pointing at the pin. In firmware, use the GPIO
+(`GP12`). "Pin" is Sea-Picro's own pin number, which these places don't follow: each pin sits where its track leaves
+the core. Pad 32, labelled LED5V, inside the board under the USB-C parts, is data for a string of WS2812 LEDs at 5 V:
+GPIO25 through a level shifter, as Sea-Picro's documentation describes it.
+
+| Place | Pin | RP2040 | Sea-Picro net |
+|---|---|---|---|
+| left end 7 | 21 | GPIO20 | 20_MISO |
+| left end 6 | 20 | GPIO23 | 23_MOSI |
+| left end 5 | 22 | GPIO22 | 22_SCK |
+| left end 4 | 23 | GPIO26 | A0 |
+| left end 3 | 28 | - | SWITCH |
+| left end 2 | 24 | GPIO27 | A1 |
+| left end 1 | 25 | GPIO28 | A2 |
+| bottom 1 | 26 | GPIO29 | A3 |
+| bottom 2 | 30 | - | +5V |
+| bottom 3 | 1 | - | USB+ |
+| bottom 4 | 2 | GPIO0 | 0_TX0 |
+| bottom 5 | 27 | - | +3V3 |
+| bottom 6 | 3 | GPIO1 | 1_RX0 |
+| bottom 7 | 6 | GPIO2 | 2_SDA1 |
+| bottom 8 | 7 | GPIO3 | 3_SCL1 |
+| bottom 9 | 8 | GPIO4 | 4 |
+| bottom 10 | 9 | GPIO5 | 5 |
+| bottom 11 | 10 | GPIO6 | 6 |
+| bottom 12 | 11 | GPIO7 | 7 |
+| bottom 13 | 12 | GPIO8 | 8 |
+| bottom 14 | 13 | GPIO9 | 9 |
+| bottom 15 | 14 | GPIO12 | 12 |
+| bottom 16 | 15 | GPIO13 | 13 |
+| bottom 17 | 4 | - | GND |
+| right end 1 | 5 | - | GND |
+| right end 2 | 29 | - | GND |
+| right end 3 | 16 | GPIO14 | 14 |
+| right end 4 | 17 | GPIO15 | 15 |
+| right end 5 | 31 | - | USB- |
+| right end 6 | 18 | GPIO16 | 16 |
+| right end 7 | 19 | GPIO21 | 21_nCS |
+
+USB+ and USB- are the USB data lines, for a socket elsewhere. SWITCH is Sea-Picro's SWITCH pin (through R4 to Q1);
+its documentation doesn't describe it, so check Sea-Picro's schematic before using it.
 
 ## Build it
 

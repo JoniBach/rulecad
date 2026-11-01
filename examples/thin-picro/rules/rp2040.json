@@ -1,0 +1,54 @@
+{
+  "_doc": "The Raspberry Pi RP2040 microcontroller: which of its package pins carry which GPIO. kind as in x1c.json.",
+  "name": "rp2040",
+  "rules": {
+    "package_pins": {
+      "value": 56,
+      "unit": "pins",
+      "rule": "QFN-56, 7 x 7 mm, 0.4 mm pitch",
+      "kind": "spec",
+      "source": "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf",
+      "checked": "2026-11-01"
+    },
+    "gpio": {
+      "value": 30,
+      "unit": "pins",
+      "rule": "Package pins that carry GPIO, listed in pins (package pin: GPIO). GPIO26 to 29 are also ADC0 to 3",
+      "kind": "community",
+      "source": "RP2040 datasheet, 1.4.3 Pin Descriptions (https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf); written from it, and checked against Sea-Picro's net names for the 23 GPIO it brings out",
+      "checked": "2026-11-01",
+      "pins": {
+        "2": "GPIO0",
+        "3": "GPIO1",
+        "4": "GPIO2",
+        "5": "GPIO3",
+        "6": "GPIO4",
+        "7": "GPIO5",
+        "8": "GPIO6",
+        "9": "GPIO7",
+        "11": "GPIO8",
+        "12": "GPIO9",
+        "13": "GPIO10",
+        "14": "GPIO11",
+        "15": "GPIO12",
+        "16": "GPIO13",
+        "17": "GPIO14",
+        "18": "GPIO15",
+        "27": "GPIO16",
+        "28": "GPIO17",
+        "29": "GPIO18",
+        "30": "GPIO19",
+        "31": "GPIO20",
+        "32": "GPIO21",
+        "34": "GPIO22",
+        "35": "GPIO23",
+        "36": "GPIO24",
+        "37": "GPIO25",
+        "38": "GPIO26",
+        "39": "GPIO27",
+        "40": "GPIO28",
+        "41": "GPIO29"
+      }
+    }
+  }
+}

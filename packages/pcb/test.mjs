@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup } from '@rulecad/pcb';
-import { layerChanges, routeInput, neckDown } from './circuit.mjs';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup, wrlMesh, stepBounds, partModels } from '@rulecad/pcb';
+import { layerChanges, routeInput, neckDown, slideClear, arrowPath } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -226,6 +226,7 @@ test('a route that changes layer inside a plated hole becomes two routes; throug
   assert.deepEqual(pieces.map((p) => [p[0].layer, p.at(-1).layer]), [['bottom', 'bottom'], ['top', 'top']]);
   assert.deepEqual([pieces[0].at(-1).x, pieces[1][0].x], [-0.5, -0.5], 'both end in the hole');
   assert.throws(() => layerChanges(route, [{ ...hole, x: 5 }]), /through a part at \(-0\.50, 0\.00\)/);
+  assert.equal(layerChanges(route, [{ type: 'pcb_via', x: -0.5, y: 0, outer_diameter: 0.6 }]).length, 2, 'a via joins the layers too');
 });
 
 test('placement learnt from the source: small parts by the pins they serve, moved with them, checked', () => {
@@ -275,7 +276,7 @@ test('castellated and oval pads: a half hole on the edge, checked by the fab\'s 
   const holes = json.filter((e) => e.type === 'pcb_plated_hole');
   const half = holes.find((e) => e.port_hints.includes('castellated')), oval = holes.find((e) => e.shape === 'circular_hole_with_rect_pad');
   assert.deepEqual([half.x, half.y, half.hole_diameter], [-7, -5, 1], 'its centre on the bottom edge');
-  assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.15, 'tracks join it at its inner edge');
+  assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.325, 'tracks join it on its inner side, mid-way across its copper ring');
   assert.deepEqual([oval.rect_pad_width, oval.rect_pad_height, oval.rect_border_radius, oval.hole_offset_x, oval.hole_offset_y], [1.7, 3, 0.85, 0, -0.7]);
   const jlc = Object.fromEntries(Object.entries(loadRuleSet('jlcpcb').rules).map(([n, r]) => [n, r.value]));
   const text = (await checks(json, { jlcpcb: jlc, track: 0.2 })).map((f) => `${f.level}: ${f.text}`).join(' | ');
@@ -395,6 +396,12 @@ test('the router sees existing vias at their real size, and keeps a board\'s own
     { route: async (json, toRoute, board) => { srj = await routeInput(json, toRoute, board); return { traces: [] }; } });
   assert.equal(srj.defaultObstacleMargin, 0.15);
   assert.ok(srj.obstacles.some((o) => o.width === 0.5 && o.height === 0.5), 'a plane via, 0.5 mm, not the board\'s smallest');
+  // A plane net's pads are joined by the plane: each is tied only to itself and its own links, not to the whole net
+  const pin = (o) => `${o.circuitJsonMetadata?.source_component_name}.${o.circuitJsonMetadata?.source_port_name}`;
+  const planePads = srj.obstacles.filter((o) => k.planes.B.pins.some((q) => pin(o) === q || pin(o) === q.replace('.', '.pin')));
+  assert.ok(planePads.length > 0);
+  assert.ok(planePads.every((o) => !o.connectedTo.some((x) => x.startsWith('connectivity_net'))), 'no plane pad is tied to the net as a whole');
+  assert.ok(srj.obstacles.filter((o) => !planePads.includes(o) && o.circuitJsonMetadata).some((o) => o.connectedTo.some((x) => x.startsWith('connectivity_net'))), 'other nets\' pads still are');
 });
 
 test('necking: two routed tracks a little too close are narrowed where they pass, to the fab\'s smallest track', async () => {
@@ -408,4 +415,50 @@ test('necking: two routed tracks a little too close are narrowed where they pass
   const line = (id, y) => ({ source_trace_id: id, route: [{ route_type: 'wire', x: -4, y, width: 0.15, layer: 'top' }, { route_type: 'wire', x: 4, y, width: 0.15, layer: 'top' }], vias: [] });
   const necked = await neckDown(json, [line('source_trace_0', 0), line('source_trace_1', 0.214)], 0.1);
   assert.deepEqual(necked.map((t) => t.route.map((p) => p.width)), [[0.1, 0.1], [0.1, 0.1]], 'both narrowed: a 0.114 mm gap');
+});
+
+test('parts the source keeps off its BOM and placement files (edge pads, test points) stay off them', async () => {
+  const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+    (footprint "R:R" (layer "F.Cu") (at 3 5) (property "Reference" "R1") (property "LCSC" "C25744") (attr smd)
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "B")))
+    (footprint "T:TP" (layer "F.Cu") (at 7 5) (property "Reference" "TP1") (attr exclude_from_pos_files exclude_from_bom)
+      (pad "1" smd circle (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "A")))
+    (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
+  assert.deepEqual(c.parts.map((p) => [p.ref, p.bom, p.place]), [['R1', undefined, undefined], ['TP1', false, false]]);
+  const k = clone(c), json = await render({ outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, parts: k.parts, nets: k.nets }, stub);
+  const fab = await fabFiles(json, 'x');
+  assert.match(fab['x-bom.csv'], /R1/);
+  assert.doesNotMatch(fab['x-bom.csv'], /TP1/);
+  assert.doesNotMatch(fab['x-cpl.csv'], /TP1/);
+});
+
+test('3D models: KiCad\'s VRML read in mm, a STEP file measured, each model placed on its part (turned, or under the board on the back)', async () => {
+  // A square face 0.2 x 0.2 tenths of an inch (0.508 mm), 0.1 up: two triangles
+  const tris = wrlMesh('Shape { geometry IndexedFaceSet { coordIndex [0,1,2,3,-1] coord Coordinate { point [0 0 0.1,0.2 0 0.1,0.2 0.2 0.1,0 0.2 0.1] } } }');
+  assert.equal(tris.length, 2);
+  assert.deepEqual(tris[0][1].map((n) => Math.round(n * 1000) / 1000), [0.508, 0, 0.254]);
+  const step = "ISO-10303-21; DATA; #1=SI_UNIT(.MILLI.,.METRE.); #2=CARTESIAN_POINT('',(-1.,0.,0.)); #3=CARTESIAN_POINT('',(2.,3.,1.5)); ENDSEC;";
+  assert.deepEqual(stepBounds(step), { min: [-1, 0, 0], max: [2, 3, 1.5] });
+  assert.deepEqual(stepBounds(step.replace('SI_UNIT(.MILLI.,.METRE.)', "CONVERSION_BASED_UNIT('INCH')")).max, [50.8, 76.2, 38.1], 'inches');
+  // A 1 x 2 x 1 box model on a part turned 90 at (10, 0) on top, and the same on the back at (-10, 0)
+  const model = (x, layer, rotation) => ({ type: 'cad_component', rulecad_model: { box: { min: [0, 0, 0], max: [1, 2, 1] }, scale: [1, 1, 1], rotate: [0, 0, 0], offset: [0, 0, 0], turn: 0, x, y: 0, rotation, layer } });
+  const bounds = (t) => { const p = t.flat(); return [0, 1, 2].map((i) => [Math.min(...p.map((v) => v[i])), Math.max(...p.map((v) => v[i]))]); };
+  assert.deepEqual(bounds(partModels([model(10, 'top', 90)], { thickness: 1.6 })), [[8, 10], [0, 1], [1.6, 2.6]], 'turned a quarter, on the board\'s top');
+  assert.deepEqual(bounds(partModels([model(-10, 'bottom', 0)], { thickness: 1.6 })), [[-10, -9], [-2, 0], [-1, 0]], 'on the back: turned over top to bottom (as KiCad flips a footprint), hanging below');
+});
+
+test('labels: one hemmed in by pads goes to the nearest clear place, with a small triangle pointing at its pin', () => {
+  // A pin at (0, 0) with pads all round its label's place; open board above
+  const pads = [[-1.1, 0], [1.1, 0], [0, -1.1], [0, 1.1], [0, 2.2], [0, -2.2]].map(([x, y]) => ({ x, y, w: 1.2, h: 1 }));
+  const [slid, pointed] = slideClear([{ text: 'A', x: 0, y: 0, size: 1 }, { text: 'B', x: 0, y: 0, size: 1, to: { x: 0, y: 0.6 } }], pads);
+  assert.equal(slid.clash, true, 'a label with nowhere to slide stays put, marked');
+  assert.ok(!pointed.clash && pointed.to, 'a pointing label finds a place');
+  const b = { x: pointed.x, y: pointed.y, w: 0.75, h: 1 };
+  assert.ok(pads.every((q) => Math.abs(q.x - b.x) >= (q.w + b.w) / 2 || Math.abs(q.y - b.y) >= (q.h + b.h) / 2), 'clear of every pad');
+  const a = arrowPath(b, pointed.to);
+  assert.equal(a.head.length, 4, 'a closed triangle');
+  const tip = a.head[1], base = { x: (a.head[0].x + a.head[2].x) / 2, y: (a.head[0].y + a.head[2].y) / 2 };
+  assert.ok(Math.hypot(tip.x - pointed.to.x, tip.y - pointed.to.y) < Math.hypot(base.x - pointed.to.x, base.y - pointed.to.y), 'its tip points at the pin');
+  const lone = slideClear([{ text: 'C', x: 0, y: 0, size: 1, to: { x: 0, y: 0 } }], [{ x: 0, y: 0, w: 30, h: 30 }]);
+  assert.ok(lone[0].clash && !lone[0].to, 'nowhere clear: it stays put, without its pointer');
 });
