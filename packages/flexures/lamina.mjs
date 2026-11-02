@@ -691,6 +691,11 @@ export async function lamina(spec) {
         const by = ev.hand.map((h) => `${h.joint} moved ${+Math.abs(h.travel).toFixed(2)} mm under ${Math.abs(h.force).toFixed(2)} N`).join(', ');
         f('info', `${tr.from} to ${tr.to}: ${ev.body} is let go ${Math.round(ev.t * 100)}% of the way${by ? `, with ${by}` : ''}, and jumps ${ev.jump.toFixed(1)} mm`, 'lamina.release', { from: tr.from, to: tr.to, body: ev.body, t: ev.t, hand: ev.hand });
       }
+      // Back to rest at the end of the sequence: does everything come home?
+      if (tr.to === 'rest' && seq.at(-1) === 'rest' && tr === sim.transitions.at(-1)) {
+        const away = Object.keys(sim.sys.body).filter((b) => !sim.sys.body[b].fixed).map((b) => { const d = sim.sys.body[b].dof; return [b, Math.hypot(tr.end[d], tr.end[d + 1])]; }).filter(([, x]) => x > gap);
+        f(away.length ? 'fail' : 'pass', away.length ? `back at rest, ${away.map(([b, x]) => `${b} is ${x.toFixed(2)} mm from where it started`).join(', ')}: it doesn't come home` : 'back at rest, everything is where it started', 'lamina.home', { away });
+      }
       // Into a state a catch holds: let go of, does it stay?
       for (const [jn, by] of spec.holds?.[tr.to] || []) {
         const b = joints[jn].to, d = sim.sys.body[b].dof, now = Math.hypot(tr.end[d], tr.end[d + 1]), T = places(state(tr.to))[b], c = sim.centre[b];

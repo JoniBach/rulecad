@@ -62,6 +62,37 @@ function nearest(loops, p) {
   }
   return { inside, dist: best, foot };
 }
+// A shape's signed distance on a grid (negative inside), worked out once: a contact query is then one interpolation,
+// and the walls it sees are smooth, which Newton's method likes
+function sdfOf(loops, h, margin) {
+  const { lo, hi } = boxOf(loops), x0 = lo[0] - margin, y0 = lo[1] - margin, nx = Math.ceil((hi[0] - lo[0] + 2 * margin) / h) + 1, ny = Math.ceil((hi[1] - lo[1] + 2 * margin) / h) + 1;
+  const d = new Float32Array(nx * ny), edges = loops.flatMap((l) => l.map((a, k) => [a, l[(k + 1) % l.length]]));
+  for (let j = 0; j < ny; j++) {
+    const y = y0 + j * h, xs = [];
+    for (const [a, b] of edges) if ((a[1] > y) !== (b[1] > y)) xs.push(a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]));
+    xs.sort((p, q) => p - q);
+    for (let i = 0; i < nx; i++) {
+      const x = x0 + i * h;
+      let best = Infinity;
+      for (const [a, b] of edges) {
+        const ex = b[0] - a[0], ey = b[1] - a[1], len2 = ex * ex + ey * ey, u = len2 ? Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / len2)) : 0;
+        const dx = x - a[0] - u * ex, dy = y - a[1] - u * ey, dd = dx * dx + dy * dy;
+        if (dd < best) best = dd;
+      }
+      let inside = false;
+      for (const c of xs) { if (c > x) break; inside = !inside; }
+      d[j * nx + i] = inside ? -Math.sqrt(best) : Math.sqrt(best);
+    }
+  }
+  return { x0, y0, nx, ny, h, d };
+}
+// The signed distance and its gradient at a point (bilinear); null outside the grid (far from the shape)
+function sdfAt(g, x, y) {
+  const fx = (x - g.x0) / g.h, fy = (y - g.y0) / g.h, i = Math.floor(fx), j = Math.floor(fy);
+  if (i < 0 || j < 0 || i >= g.nx - 1 || j >= g.ny - 1) return null;
+  const u = fx - i, v = fy - j, k = j * g.nx + i, a = g.d[k], b = g.d[k + 1], c = g.d[k + g.nx], e = g.d[k + g.nx + 1];
+  return { s: a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + e * u * v, gx: ((b - a) * (1 - v) + (e - c) * v) / g.h, gy: ((c - a) * (1 - u) + (e - b) * u) / g.h };
+}
 const boxOf = (loops) => { const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity]; for (const l of loops) for (const [x, y] of l) { lo[0] = Math.min(lo[0], x); lo[1] = Math.min(lo[1], y); hi[0] = Math.max(hi[0], x); hi[1] = Math.max(hi[1], y); } return { lo, hi }; };
 // Points along a shape's outline, `ds` apart
 const sample = (loops, ds) => loops.flatMap((l) => l.flatMap((a, k) => { const b = l[(k + 1) % l.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / ds)); return Array.from({ length: n }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / n, a[1] + ((b[1] - a[1]) * i) / n]); }));
@@ -98,6 +129,7 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
   // its own two; a penalty spring on how far each goes in
   const gap = m.gap, k = contact ?? 50 * material.E * height * 1e-3, ds = Math.max(0.2, gap);
   const names = Object.keys(bodies), pts = Object.fromEntries(names.map((n) => [n, sample(outline[n], ds)])), boxes = Object.fromEntries(names.map((n) => [n, boxOf(outline[n])]));
+  const reach = 2 + Math.max(...beams.map((b) => Math.max(...b.thickness))), sdfs = Object.fromEntries(names.map((n) => [n, sdfOf(outline[n], Math.min(0.1, gap / 3), reach)]));
   const poseOf = (n, q) => (bodies[n].fixed ? [0, 0, 0] : [q[sys.body[n].dof], q[sys.body[n].dof + 1], q[sys.body[n].dof + 2]]);
   const toWorld = (n, q, p) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), rx = p[0] - c[0], ry = p[1] - c[1]; return [c[0] + tx + cs * rx - sn * ry, c[1] + ty + sn * rx + cs * ry, cs * rx - sn * ry, sn * rx + cs * ry]; };
   const toLocal = (n, q, w) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), dx = w[0] - c[0] - tx, dy = w[1] - c[1] - ty; return [c[0] + cs * dx + sn * dy, c[1] - sn * dx + cs * dy, dx, dy, cs, sn]; };
@@ -109,10 +141,11 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
     const touch = (w, dw, r, B) => {
       const L = toLocal(B, q, w), bb = boxes[B];
       if (L[0] < bb.lo[0] - r || L[0] > bb.hi[0] + r || L[1] < bb.lo[1] - r || L[1] > bb.hi[1] + r) return;
-      const near = nearest(outline[B], [L[0], L[1]]), s = near.inside ? -near.dist : near.dist, pen = r - s;
+      const at = sdfAt(sdfs[B], L[0], L[1]);
+      if (!at) return;
+      const pen = r - at.s;
       if (pen <= 0) return;
-      // ∂pen/∂local: away from the foot when inside, towards it outside
-      const nx = (near.foot[0] - L[0]) / (near.dist || 1), ny = (near.foot[1] - L[1]) / (near.dist || 1), sg = near.inside ? -1 : 1, dlx = sg * nx, dly = sg * ny;
+      const gl = Math.hypot(at.gx, at.gy) || 1, dlx = -at.gx / gl, dly = -at.gy / gl; // ∂pen/∂local: down the distance's slope, into the shape
       const cs = L[4], sn = L[5], dwx = cs * dlx - sn * dly, dwy = sn * dlx + cs * dly; // ∂pen/∂w = R(φ_B) ∂pen/∂local
       const J = new Map(), add = (d, v) => J.set(d, (J.get(d) || 0) + v);
       for (const [d, ax, ay] of dw) add(d, dwx * ax + dwy * ay);
