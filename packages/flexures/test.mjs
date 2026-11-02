@@ -541,6 +541,11 @@ test('a flooded frame: solid everywhere but the room the moving parts sweep, so 
   assert.ok(!m.findings.some((x) => x.code === 'lamina.free' && x.level === 'fail'), m.findings.filter((x) => x.code === 'lamina.free').map((x) => x.text).join('; '));
   const g = m.outlines('rest').ground, area = (l) => Math.abs(l.reduce((s, p, i) => { const q = l[(i + 1) % l.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
   assert.ok(g.reduce((s, l) => s + area(l), 0) > 53 * 24 * 0.5, 'most of the outline is solid');
+  // As a web: solid only round what moves and the edge, the rest windows; lighter, and still free
+  const web = await lamina({ ...base, ground: rect(-8, -8, 0, 8), flood: { outline: rect(-60, -30, 45, 30), band: 3 } }), slab = await lamina({ ...base, ground: rect(-8, -8, 0, 8), flood: { outline: rect(-60, -30, 45, 30) } });
+  const { measureVolume } = jscad.measurements;
+  assert.ok(measureVolume(web.parts.body) < measureVolume(slab.parts.body) * 0.8, 'the web is lighter');
+  assert.ok(!web.findings.some((x) => x.code === 'lamina.free' && x.level === 'fail'));
   // A rail 1.5 mm thick standing off the frame at one end only bends: it's found
   const rail = await lamina({ ...base, ground: [rect(-8, -8, 0, 8), rect(0, 6, 25, 7.5)] });
   assert.ok(rail.findings.some((x) => x.code === 'lamina.rigid'), 'a free-ended rail is found');

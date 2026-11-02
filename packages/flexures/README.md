@@ -237,11 +237,15 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   parts' stops and guides. Leave out the outline and it's everything the moving parts reach, a `wall` round it. Leave
   out `ground` too: each flexure's root gets a block behind the face it grows from, found from its root port. List
   as states everything the parts reach (a shot's overshoot too), and keep open what the mechanism doesn't sweep (a
-  disc's way out, room for a finger).
+  disc's way out, room for a finger). With `band`, the frame is a web: solid only that far round the moving parts'
+  room, the kept spaces and the outline's edge, the rest rounded windows (none narrower than the band).
 - `bridges: [{ shape, depth, gap }]` prints the frame over a moving part on the top layers: a barrel's roof over a
   stem, so it can't lift out of its channel. Every body that passes under one is cut down by `depth` (six layers) and
   `gap` (three layers), along all of it that ever passes under. Each bridge must stand on the frame both sides, span no
   more than the printer's `bridge`, and not cross a flexure. With `side: 'bottom'` it's a floor on the bottom layers
+  (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
+  moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
+  no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them. With `side: 'bottom'` it's a floor on the bottom layers
   (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
   moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
   no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them.

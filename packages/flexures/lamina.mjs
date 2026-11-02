@@ -934,7 +934,8 @@ export async function lamina(spec) {
  * you draw: the blocks the flexures grow from), then the frame is what's left, slivers thinner than `least` and islands
  * that would print loose taken out, and your ground added back.
  * @param {object} spec a lamina spec, with flood: { outline?, keep?, clear?: number | Record<string, number>, least?, wall?,
- *   pad?, corner? }: outline, the frame's (default: everything the moving parts reach and `keep`, `wall` round it,
+ *   pad?, corner?, band? }: band, solid only this far round the moving parts' room, the kept spaces and the outline's
+ *   edge, the rest windows (a web: lighter, as stiff where it matters); outline, the frame's (default: everything the moving parts reach and `keep`, `wall` round it,
  *   corners rounded to `corner`); clear, the gap round the moving parts (the print gap; or by part, a sliding fit for
  *   what slides in a channel); pad, how far the solid round each flexure's root reaches (its roots are found: the part
  *   of it that never moves). spec.ground may then be left out
@@ -967,6 +968,15 @@ async function flooded(spec) {
     return subtract(union([block, mirror]), others);
   });
   let space = subtract(outline, union([swept, all(keep)]));
+  // A web, not a slab: with `band`, solid only that far round the moving parts' room, the kept spaces and the
+  // outline's edge; the rest opens up as windows, rounded (every rib a closed loop, so nothing hangs free)
+  if (spec.flood.band > 0) {
+    const band = spec.flood.band, rim = subtract(outline, shrink(outline, band, 'Round'));
+    const web = intersect(space, union([grow(union([swept, all(keep)]), band), rim]));
+    // (only windows worth having: one no wider than the band, a sliver between ribs, is left solid; the rest rounded)
+    const windows = apart(subtract(space, web)).filter((w) => !empty(shrink(w, band / 2, 'Round'))).map((w) => grow(shrink(w, band / 2, 'Round'), band / 2));
+    space = subtract(space, union(windows));
+  }
   space = grow(shrink(space, least / 2, 'Round'), least / 2); // no sliver thinner than `least`
   // Only what's joined to the main frame, a root or your ground: an island (inside an arm's loop, a ring's hole) prints loose
   const anchors = union([mine, ...roots]), bits = apart(space), biggest = Math.max(0, ...bits.map(area));
