@@ -18,7 +18,7 @@ export function main (v) {
     ...Array.from({ length: v.edge_pins }, (_, i) => ({ side: [0, 1], x: left + v.row_in + i * v.pitch, y: bottom - out })),
     ...Array.from({ length: v.end_pins }, (_, i) => ({ side: [-1, 0], x: right + out, y: bottom + v.end_rise + i * v.pitch }))]
   if (pins.length !== spots.length) throw new Error(`Sea-Picro has ${pins.length} edge pins: edge_pins + 2 × end_pins must come to ${pins.length}, not ${spots.length}`)
-  const inn = header.x - half.x, offset = Math.hypot(...header.hole_offset) // the header pad in from the half hole, its hole set back out
+  const inn = header.x - half.x, offset = header.hole_offset[0] // the header pad's copper in from the half hole; its hole further in (pin 1 is on the left)
   const led = j2.pads.find((q) => q.pin === '32')
   // The corners: each end's lowest pad has its top level with the tips of the long edge's pads, and the long edge's first
   // pad is a pin's usual gap (a pitch less a pad's width) past the end of it. end_rise and row_in must say so
@@ -54,11 +54,11 @@ export function main (v) {
     let len = header.w, along = inn, hole = offset
     if (!across && y - header.h / 2 - v.clearance < bottom + bottomReach && cornerReach < bottomReach) {
       const outer = inn - out - header.w / 2 // the pad's outer end, in from the edge
-      len = cornerReach - outer; along = out + outer + len / 2; hole = offset - (inn - along)
+      len = cornerReach - outer; along = out + outer + len / 2; hole = inn + offset - along
     }
     if (!v.headers) return [{ ...half, pin, x, y }]
     return [{ ...half, pin, x, y },
-      { ...header, pin, x: x + ix * along, y: y + iy * along, w: across ? header.h : len, h: across ? len : header.h, hole_offset: [-ix * hole, -iy * hole] }]
+      { ...header, pin, x: x + ix * along, y: y + iy * along, w: across ? header.h : len, h: across ? len : header.h, hole_offset: [ix * hole, iy * hole] }]
   })
   pads.push({ ...led, x: v.led_x, y: v.led_y })
   const pin28 = spots[order.indexOf('28')]

@@ -474,7 +474,11 @@ export function fromKicadPcb(text) {
         const d = drill.slice(1), oval = d[0] === 'oval', ds = d.filter((x) => !Array.isArray(x) && x !== 'oval').map(num), off = kidOf(drill, 'offset');
         pad.hole = Math.min(...ds);
         if (oval && ds.length > 1 && ds[0] !== ds[1]) pad.hole_size = [ds[0], ds[1]];
-        if (off && (num(off[1]) || num(off[2]))) pad.hole_offset = [r4(num(off[1]) * (bottom ? -1 : 1)), r4(-num(off[2]))];
+        if (off && (num(off[1]) || num(off[2]))) { // KiCad drills at the pad's position and moves its copper by the offset (turned with the pad)
+          const t = ((num(pa[3] || 0) - deg) * Math.PI) / 180, ox = num(off[1]), oy = -num(off[2]); // y up
+          const o = [(ox * Math.cos(t) - oy * Math.sin(t)) * (bottom ? -1 : 1), ox * Math.sin(t) + oy * Math.cos(t)];
+          pad.x = r4(pad.x + o[0]); pad.y = r4(pad.y + o[1]); pad.hole_offset = [r4(-o[0]), r4(-o[1])]; // the copper's centre, and the hole from it
+        }
       }
       if (p.some((x) => Array.isArray(x) && x[0] === 'property' && x[1] === 'pad_prop_castellated')) pad.castellated = true;
       pads.push(pad);

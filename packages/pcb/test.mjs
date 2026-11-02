@@ -4,6 +4,7 @@ import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
 import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
@@ -178,7 +179,9 @@ test('a KiCad board read as a circuit: parts where the source put them, nets, pl
   assert.deepEqual([r1.x, r1.y, r1.rotation, r1.layer, r1.value, r1.lcsc], [-5, 0, 90, 'top', '10k', 'C25744']);
   assert.deepEqual([c.parts[2].rotation, c.parts[2].layer], [270, 'bottom'], 'a part on the back turns the other way, seen from its side');
   assert.equal(j1.pads[0].castellated, true);
-  assert.deepEqual(j1.pads[1].hole_offset, [0, -0.7]);
+  // KiCad drills at the pad's place, (0, -0.55) down the page, and moves its copper 0.7 further down: the hole is 0.7 up from the copper's centre
+  assert.deepEqual([j1.pads[1].x, j1.pads[1].y, j1.pads[1].hole_offset], [0, -0.15, [0, 0.7]]);
+  assert.equal(r4(j1.pads[1].y + j1.pads[1].hole_offset[1]), 0.55, 'the hole where KiCad puts the pad');
   assert.deepEqual([c.source.tracks, c.source.vias], [1, 0]);
   assert.throws(() => fromKicadPcb('(kicad_pcb (version 4) (module "x"))'), /KiCad 6 or later/);
   assert.throws(() => fromKicadPcb('(kicad_pcb (footprint "x"'), /never closed/);
@@ -277,7 +280,7 @@ test('castellated and oval pads: a half hole on the edge, checked by the fab\'s 
   const half = holes.find((e) => e.port_hints.includes('castellated')), oval = holes.find((e) => e.shape === 'circular_hole_with_rect_pad');
   assert.deepEqual([half.x, half.y, half.hole_diameter], [-7, -5, 1], 'its centre on the bottom edge');
   assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.325, 'tracks join it on its inner side, mid-way across its copper ring');
-  assert.deepEqual([oval.rect_pad_width, oval.rect_pad_height, oval.rect_border_radius, oval.hole_offset_x, oval.hole_offset_y], [1.7, 3, 0.85, 0, -0.7]);
+  assert.deepEqual([oval.rect_pad_width, oval.rect_pad_height, oval.rect_border_radius, oval.hole_offset_x, oval.hole_offset_y], [1.7, 3, 0.85, 0, 0.7]);
   const jlc = Object.fromEntries(Object.entries(loadRuleSet('jlcpcb').rules).map(([n, r]) => [n, r.value]));
   const text = (await checks(json, { jlcpcb: jlc, track: 0.2 })).map((f) => `${f.level}: ${f.text}`).join(' | ');
   assert.match(text, /pass: 1 castellated holes on the edge, 1 mm or more/);

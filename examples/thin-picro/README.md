@@ -53,7 +53,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 ## Status
 
-49.5 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
+48.1 × 21.0 mm. It routes in about 6 minutes, and `cad check` passes everything:
 - the circuit is Sea-Picro's
 - the placement
 - both planes
@@ -63,7 +63,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 `cad export` makes the files JLCPCB needs.
 
 It hasn't been made yet. Before ordering:
-- **Open `exports/thin-picro/module@0.4.0.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
+- **Open `exports/thin-picro/module@0.4.1.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
 - **Check the pinout** below against your keyboard's wiring: the pins aren't in Sea-Picro's order.
 
 ## Pinout
