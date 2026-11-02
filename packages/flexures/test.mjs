@@ -482,3 +482,17 @@ test('firing: let go, a pusher on a spring throws a loose disc, never with more 
   const pusherMass = 1.27e-6 * 6 * 10 * (2 * half), most = Math.sqrt((2 * f.stored) / pusherMass); // all the energy in the pusher alone
   assert.ok(f.speeds.pusher > 0.5 * most && f.speeds.pusher <= most * 1.05, `the pusher's ${f.speeds.pusher.toFixed(2)} m/s against at most ${most.toFixed(2)}`);
 });
+
+test('a wave spring: round bends, and pressed past solid its legs meet (self-contact), so its force climbs steeply', async () => {
+  const p = { span: 14, pitch: 2.4, turns: 5, thickness: 0.84, smooth: 8 }, top = (p.turns - 1) * p.pitch, R = p.pitch / 2;
+  const make = async (press) => lamina({
+    height: 6, gap: 0.3, material: petg, printer: fdm, kinematic: false, check: { fe: false },
+    ground: [rect(-4, -R - 3, p.span + 4, -R - 0.6), rect(0, -R - 3, p.span - 2 * R, 0.42), rect(-4, -R - 3, -R - 1.5, top + 6), rect(p.span + R + 1.5, -R - 3, p.span + 4, top + 6)],
+    bodies: { cap: [rect(2 * R, top - 0.42, p.span, top + R + 1), rect(-R - 1.2, top + R + 1, p.span + R + 1.2, top + 4)] },
+    joints: { spring: { kind: 'waveSpring', params: p, at: [0, 0], from: 'ground', to: 'cap' } },
+    states: { pressed: { spring: -press } }, sequence: ['rest', 'pressed'],
+  });
+  const force = (m) => m.findings.find((f) => f.code === 'lamina.force').peak;
+  const soft = force(await make(3)), solid = force(await make(8.5)); // the legs' gaps close at about 4 × (2.4 − 0.84) = 6.2 mm
+  assert.ok(solid > (soft * 8.5) / 3 * 2, `past solid it should be far stiffer than its linear rise: ${soft.toFixed(2)} N at 3 mm, ${solid.toFixed(2)} N at 8.5 mm`);
+});

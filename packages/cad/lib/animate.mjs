@@ -54,7 +54,7 @@ export function sequenceSvg(mechanism, { title = '' } = {}) {
   }).join('\n');
   const markerOf = (fr) => scaled.filter((c) => c.from === fr.from && c.to === fr.to).map((c) => { const p = c.at(c.points[Math.min(c.points.length - 1, Math.round(fr.t * (c.points.length - 1)))]); return `<circle cx="${fmt(p[0])}" cy="${fmt(p[1])}" r="${fmt(size * 0.25)}" fill="#e07a1f"/>`; }).join('');
   const body = frames.map((fr, i) => {
-    const label = fr.t === 0 && fr.from === fr.to ? fr.from : fr.t === 0 ? fr.from : `${fr.from} to ${fr.to}`;
+    const label = fr.label || (fr.t === 0 && fr.from === fr.to ? fr.from : fr.t === 0 ? fr.from : `${fr.from} to ${fr.to}`);
     const shapes = Object.entries(fr.parts).filter(([n]) => n !== 'ground').map(([n, o]) => `<path d="${pathOf(o)}" fill="${COLOURS[kind(n)]}" fill-rule="evenodd"/>`).join('');
     return `<g display="${i ? 'none' : 'inline'}">${show(i)}${shapes}${markerOf(fr)}<text x="${fmt(vb[0] + pad)}" y="${textY}" font-size="${size}" font-family="system-ui, sans-serif" fill="#333">${escape(label)}</text></g>`;
   }).join('\n');

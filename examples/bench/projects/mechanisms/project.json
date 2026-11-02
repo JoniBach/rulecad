@@ -4,6 +4,7 @@
   "material": "PETG",
   "objects": [
     "key",
+    "wave",
     "latch"
   ]
 }

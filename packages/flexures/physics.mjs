@@ -12,7 +12,7 @@
 //   everything else moves only as the springs and the contacts make it
 // Letting go is gradual: the hand's spring softens to nothing over the step, so the mechanism finds where it rests.
 import { beamSystem, equilibrium, shapeOf, energyOf } from './beams.mjs';
-import { beamProfile } from './flexures.mjs';
+import { beamProfile, waveSpringPath } from './flexures.mjs';
 
 const HAND = 1000; // N/mm: a hand's grip on a part it holds or drives (stiff beside any spring here)
 const SPANS = 24; // spans a shaped beam's profile is sampled in
@@ -36,6 +36,7 @@ export function centrelines(kind, p) {
       const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r), one = line('guided');
       return { path: one.path.map(([x]) => { const d = p.near + L - x; return [c * d, s * d]; }), thickness: one.thickness };
     });
+    case 'waveSpring': return [waveSpringPath(p)];
     case 'serpentine': {
       const step = p.pitch ?? 3 * t, joint = Math.max(1.5 * t, 1), path = [[0, 0]], th = [];
       for (let i = 0; i < p.turns; i++) {
@@ -147,6 +148,16 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
   const toWorld = (n, q, p) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), rx = p[0] - c[0], ry = p[1] - c[1]; return [c[0] + tx + cs * rx - sn * ry, c[1] + ty + sn * rx + cs * ry, cs * rx - sn * ry, sn * rx + cs * ry]; };
   const toLocal = (n, q, w) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), dx = w[0] - c[0] - tx, dy = w[1] - c[1] - ty; return [c[0] + cs * dx + sn * dy, c[1] - sn * dx + cs * dy, dx, dy, cs, sn]; };
   const nodeBeam = sys.nodes.map((nd) => ({ nd, joint: beamOf[nd.beam], r: (beams.find((b) => b.name === nd.beam).thickness[0] ?? 1) / 2 }));
+  // Self-contact: each flexure's free nodes against its own elements further along it than a few thicknesses (a wave
+  // spring's legs meeting as it stacks solid, a serpentine's folds)
+  const selfs = Object.keys(joints).map((jn) => {
+    const els = sys.elements.filter((e) => beamOf[e.beam] === jn && e.a.dof != null && e.b.dof != null);
+    let run = 0;
+    const arc = new Map();
+    for (const e of sys.elements.filter((e) => beamOf[e.beam] === jn)) { if (e.a.dof != null && !arc.has(e.a)) arc.set(e.a, run); run += e.L0; if (e.b.dof != null) arc.set(e.b, run); }
+    const tmax = Math.max(0, ...els.map((e) => e.t));
+    return { els: els.map((e) => ({ e, s: (arc.get(e.a) + arc.get(e.b)) / 2 })), nodes: [...arc.keys()].map((nd) => ({ nd, s: arc.get(nd), t: els.find((e) => e.a === nd || e.b === nd)?.t ?? tmax })), skip: 3 * tmax + 1 };
+  });
   let withLoose = false; // loose parts (a disc) only touch anything when firing
   const extra = (q, g, H) => {
     let U = 0;
@@ -181,6 +192,20 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
           const dw = bodies[A].fixed ? [] : (() => { const a = sys.body[A].dof; return [[a, 1, 0], [a + 1, 0, 1], [a + 2, -w[3], w[2]]]; })();
           touch(w, dw, 0, B);
         }
+      }
+    }
+    for (const { els, nodes, skip } of selfs) for (const { nd, s: si, t: ti } of nodes) {
+      const px = nd.at[0] + q[nd.dof], py = nd.at[1] + q[nd.dof + 1];
+      for (const { e, s: se } of els) {
+        if (Math.abs(se - si) < skip + e.L0 / 2) continue;
+        const ax = e.a.at[0] + q[e.a.dof], ay = e.a.at[1] + q[e.a.dof + 1], bx = e.b.at[0] + q[e.b.dof], by = e.b.at[1] + q[e.b.dof + 1];
+        const ex = bx - ax, ey = by - ay, l2 = ex * ex + ey * ey, u = l2 ? Math.max(0, Math.min(1, ((px - ax) * ex + (py - ay) * ey) / l2)) : 0;
+        const fx = ax + u * ex, fy = ay + u * ey, d = Math.hypot(px - fx, py - fy), pen = (ti + e.t) / 2 - d;
+        if (pen <= 0 || d < 1e-9) continue;
+        const nx = (px - fx) / d, ny = (py - fy) / d, J = [[nd.dof, -nx], [nd.dof + 1, -ny], [e.a.dof, nx * (1 - u)], [e.a.dof + 1, ny * (1 - u)], [e.b.dof, nx * u], [e.b.dof + 1, ny * u]];
+        U += 0.5 * k * pen * pen;
+        for (const [di, v] of J) g[di] += k * pen * v;
+        if (H) for (const [a, va] of J) for (const [b, vb] of J) H[a * n + b] += k * va * vb;
       }
     }
     for (const { nd, joint, r } of nodeBeam) {

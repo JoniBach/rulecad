@@ -1,0 +1,97 @@
+{
+  "name": "wave",
+  "title": "A wave spring: a plunger on legs joined by round bends, squashed in a channel until it stacks solid",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "petg"
+  ],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "On its side, as drawn: one piece, no supports. Press the plunger: the legs close up evenly, and when they meet the spring stacks solid, its own stop.",
+  "parts": {
+    "body": {
+      "label": "The wave spring, its plunger and the channel in one print"
+    }
+  },
+  "variables": {
+    "height": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "How tall it prints: the spring's width"
+    },
+    "gap": {
+      "value": "x1c.print_gap",
+      "unit": "mm",
+      "rule": "The least gap that prints apart"
+    },
+    "span": {
+      "value": 24,
+      "unit": "mm",
+      "rule": "Each leg's length: long, so each bends gently"
+    },
+    "pitch": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Leg to leg"
+    },
+    "turns": {
+      "value": 7,
+      "rule": "How many legs"
+    },
+    "leg_t": {
+      "value": "x1c.wall_min",
+      "unit": "mm",
+      "rule": "The legs' thickness"
+    },
+    "bend_t": {
+      "value": "leg_t",
+      "unit": "mm",
+      "rule": "The bends' thickness: the legs' (thicker bends close the gaps between legs, and it stacks solid sooner)"
+    },
+    "smooth": {
+      "value": 12,
+      "rule": "Segments in each bend"
+    },
+    "wall": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The channel's walls and the base"
+    },
+    "cap": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The plunger's cap over the last leg"
+    },
+    "button": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "How far the plunger stands up out of the channel"
+    },
+    "press": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "How far a press drives it: nearly to solid"
+    },
+    "room": {
+      "value": 1.2,
+      "unit": "mm",
+      "rule": "Room between the bends and the channel's walls, for them to spread as it squashes"
+    },
+    "stop": {
+      "value": 8.5,
+      "unit": "mm",
+      "rule": "How far the plunger can go before its wings meet the ledges: past a press, short of the spring's limit"
+    },
+    "ledge": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "How far the ledges stand in from the walls: under the wings, clear of the bends"
+    },
+    "round": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "Rounds where the spring's end legs meet the base and the plunger"
+    }
+  }
+}

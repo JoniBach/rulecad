@@ -182,6 +182,48 @@ export function serpentineModel({ length: L, thickness: t, width: w, turns: n },
 }
 
 /**
+ * A wave spring: legs across, stacked a pitch apart, each joined to the next by a round U-bend (no square corners),
+ * thicker at the bends where it bends most. Squashed along its stack (y) it shortens; squashed far enough its legs meet
+ * and it stacks solid, which is its own hard stop. The spring printed blasters use along their barrels. Drawn with its
+ * first leg from the origin along x, the stack up y.
+ * @param {{ span: number, pitch: number, turns: number, thickness: number, width: number, bend?: number, smooth?: number }} p
+ *   span: each leg's length; pitch: leg to leg; turns: how many legs; bend: the thickness at the bends (default 1.4 ×)
+ */
+export function waveSpringPath({ span, pitch, turns, thickness: t, bend, smooth = 12 }) {
+  const R = pitch / 2, tb = bend ?? 1.4 * t, path = [[0, 0]], thick = [], ramp = Math.min(span / 3, pitch * 1.5), cuts = 8;
+  for (let i = 0; i < turns; i++) {
+    const y = i * pitch, right = i % 2 === 0, x0 = right ? 0 : span, x1 = right ? span : 0;
+    // The leg, its thickness grading smoothly from the bend's at its ends to its own in its middle (a step would be a notch)
+    for (let k = 1; k <= cuts; k++) {
+      const a = (k - 0.5) / cuts, along = a * span, fromEnd = Math.min(i ? along : Infinity, i < turns - 1 ? span - along : Infinity), w = Math.max(0, 1 - fromEnd / ramp);
+      path.push([x0 + ((x1 - x0) * k) / cuts, y]); thick.push(t + (tb - t) * w * w * (3 - 2 * w));
+    }
+    if (i === turns - 1) break;
+    for (let k = 1; k <= smooth; k++) { // the U-bend: half a circle round the leg's end
+      const a = -Math.PI / 2 + (Math.PI * k) / smooth;
+      path.push([right ? span + R * Math.cos(a) : -R * Math.cos(a), y + R + R * Math.sin(a)]);
+      thick.push(tb);
+    }
+  }
+  return { path, thickness: thick };
+}
+export function waveSpring(p) {
+  const { path, thickness } = waveSpringPath(p), side = (k) => { // offset the path k = ±1 by half its thickness there
+    return path.map((pt, i) => {
+      const a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+      const h = (thickness[Math.min(i, thickness.length - 1)] + thickness[Math.max(0, i - 1)]) / 4;
+      return [pt[0] - (k * dy * h) / l, pt[1] + (k * dx * h) / l];
+    });
+  };
+  return jscad.extrusions.extrudeLinear({ height: p.width }, jscad.primitives.polygon({ points: [...side(-1), ...side(1).reverse()] }));
+}
+/** Each leg a beam guided at its bends, the legs in series: a first guess, the bends' own give left out (the beam solver has it). */
+export function waveSpringModel({ span: L, thickness: t, width: w, turns: n }, { E }) {
+  const stiffness = (E * w * t ** 3) / (n * L ** 3), strain = (d) => (3 * t * (d / n)) / (L * L);
+  return { stiffness, strain, travel: (e) => (n * L * L * e) / (3 * t), stress: (d) => E * strain(d) };
+}
+
+/**
  * A notch hinge: a pivot that's a thin neck between two round notches. It turns about the neck, a little, with no
  * play. Rotational stiffness 2 E w t^(5/2) / 9π√R (Paros and Weisbord 1965, for a neck much thinner than the notch
  * radius); the nominal bending stress at an angle θ is 4 E θ √(t/R) / 3π, and the notch concentrates it by a factor
