@@ -1,0 +1,180 @@
+{
+  "name": "inline",
+  "title": "Launcher action, in line: a pusher drawn back between two curved arms, shaped by the beam solver, printed in one piece on its side",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "petg",
+    "launcher"
+  ],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "On its side, as drawn: one piece, no supports. Pull the tab at the back: the pusher slides straight back between the arms, which bend like a bow's limbs; let go and it throws the disc.",
+  "parts": {
+    "body": {
+      "label": "The action: frame, arms and pusher in one print"
+    }
+  },
+  "variables": {
+    "height_min": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The least it may print, on its side: tall enough that the frame and the pusher don't bend out of their plane"
+    },
+    "height_max": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The most it may print: the shaping prints it as tall as it must be, between these, to store the energy (an arm's force goes as its height; its strain doesn't)"
+    },
+    "gap": {
+      "value": "x1c.print_gap",
+      "unit": "mm",
+      "rule": "The least gap between parts printed in place that still prints apart"
+    },
+    "slide": {
+      "value": "x1c.slide_gap",
+      "unit": "mm",
+      "rule": "The disc's gap each side in its barrel: what slid best on the fit test plate"
+    },
+    "stroke": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "How far the tab pulls the pusher back to draw it"
+    },
+    "over": {
+      "value": 0.25,
+      "unit": "mm",
+      "rule": "How far past the stroke the pusher can go before the stops meet it: little, since the arms' finite-element limit is only 13 mm"
+    },
+    "energy": {
+      "value": "launcher.energy * 1000",
+      "unit": "mJ",
+      "rule": "What the spring stores drawn: the launcher's stored energy"
+    },
+    "safety": {
+      "value": 1.5,
+      "rule": "The arms' strain limit is PETG's strength over its modulus (its yield strain) over this"
+    },
+    "margin": {
+      "value": 0.8,
+      "rule": "The arms are shaped to this share of the strain limit, so the finite-element peak (rounds and all) has room"
+    },
+    "least": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "The thinnest an arm may get: three lines (two-line flexures flexed and twisted in the flat action's print)"
+    },
+    "most": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The thickest an arm may get"
+    },
+    "arm_gap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "How far apart an arm's own loops keep: more than the print gap, so they print apart and don't slap together when it fires"
+    },
+    "arm_bend": {
+      "value": 2,
+      "rule": "The tightest an arm may curve, in its thicknesses: tighter, its inside takes much more strain than beam theory says"
+    },
+    "legs": {
+      "value": 5,
+      "rule": "The arms start from a meander of this many legs folded into their room (odd), and the shaping moves every point and thickness from there"
+    },
+    "bend_lo": {
+      "value": 7.5,
+      "unit": "mm",
+      "rule": "Where the starting meander's low bends turn, above the axis"
+    },
+    "bend_hi": {
+      "value": 33,
+      "unit": "mm",
+      "rule": "Where its high bends turn"
+    },
+    "evaluations": {
+      "value": 6000,
+      "rule": "How many shapes the shaping may try"
+    },
+    "bar": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The pusher bar's height: solid, so it doesn't bend (the flat action's windowed bar did)"
+    },
+    "bar_back": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The bar behind where the arms meet it"
+    },
+    "bar_front": {
+      "value": 26,
+      "unit": "mm",
+      "rule": "The bar ahead of where the arms meet it, to its nose"
+    },
+    "nose": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The pusher's nose: as thick as the disc, forward from the bar between the rails to the disc"
+    },
+    "rise": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The arms' room, from the bar's top to the frame's inside"
+    },
+    "reach": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "How far behind where they meet the bar the arms may reach"
+    },
+    "root_x": {
+      "value": 44,
+      "unit": "mm",
+      "rule": "Where each arm grows from the frame's wall, along the barrel"
+    },
+    "stop_len": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The stops off the back wall, along the barrel"
+    },
+    "stop_h": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "How far the stops stand past the bar's top and bottom"
+    },
+    "wall": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The frame's walls: thick, so the frame doesn't bend"
+    },
+    "tab": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "How far the cocking tab reaches behind the frame"
+    },
+    "tab_h": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The tab's height, through its slot in the back wall"
+    },
+    "rail": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The rails either side of the disc, which also stop the bar at rest"
+    },
+    "into": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "How far an arm runs on into the wall and the bar, so they join solidly"
+    },
+    "spring_round": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "The round where each arm meets the wall and the bar"
+    },
+    "round": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Every inside corner of the frame and the pusher rounded to this"
+    }
+  }
+}
