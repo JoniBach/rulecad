@@ -47,8 +47,15 @@ export function main (v) {
   // Its front face leans as the catch does, and lies on it when the pusher has moved the stroke back (and sunk with it)
   const toothTop = L + v.overlap, toothBottom = L - (v.engage + g + drop(v.stroke + v.over))
   const face = (y) => xc + v.stroke - (y - drop(v.stroke) - (yh - hook)) * v.lean
+  // The bar lightened: rounded windows along it, webs between, clear of the shuttle, the tooth and the nose (a light
+  // pusher hands more of the spring's energy to the disc)
+  const barEnd = xc + hookLen + v.nose, windows = [], xt = Math.min(face(toothTop), face(toothBottom)) - v.tooth // the tooth's back
+  for (let x = half + v.web; x + v.window <= barEnd - v.web * 2; x += v.window + v.web) {
+    if (x + v.window > xt - v.web && x < xt + v.tooth + v.web) continue // not over the tooth
+    windows.push(jscad.primitives.roundedRectangle({ size: [v.window, v.bar - v.web * 2], center: [x + v.window / 2, L + v.bar / 2], roundRadius: v.web / 2, segments: v.smooth }))
+  }
   const pusher = [
-    rect(0 - half, L, xc + hookLen + v.nose, L + v.bar),
+    windows.length ? jscad.booleans.subtract(rect(0 - half, L, barEnd, L + v.bar), ...windows) : rect(0 - half, L, barEnd, L + v.bar),
     polygon({ points: [[face(toothTop) - v.tooth, toothTop], [face(toothBottom) - v.tooth, toothBottom], [face(toothBottom), toothBottom], [face(toothTop), toothTop]] }),
     rect(rearOut - v.tab, L + v.block + g + drop(v.stroke + v.over), 0 - half, L + v.bar),
   ]
@@ -69,7 +76,10 @@ export function main (v) {
   // where it rests; the disc in it (seen edge on: it isn't printed with this, it's for the firing)
   const nose = xc + hookLen + v.nose, mid = L + v.bar / 2, discT = v.launcher.disc_t
   const disc = rect(nose + g, mid - discT / 2, nose + g + v.launcher.disc, mid + discT / 2)
-  ground.push(rect(nose + g, mid - discT / 2 - g - v.rail, nose + g + v.launcher.disc + v.rail, mid - discT / 2 - g), rect(nose + g, mid + discT / 2 + g, nose + g + v.launcher.disc + v.rail, mid + discT / 2 + g + v.rail))
+  const railEnd = nose + g + v.launcher.disc + v.rail, lowRail = mid - discT / 2 - g
+  ground.push(rect(nose + g, lowRail - v.rail, railEnd, lowRail)) // the lower rail, printed: the pusher's forward stop
+  ground.push(rect(railEnd - v.rail, guardTop - v.wall, railEnd, lowRail), rect(guardFront - v.wall, guardTop - v.wall, railEnd, guardTop)) // a post down to the guard, and the guard run on under it
+  const roof = rect(nose + g, mid + discT / 2 + g, railEnd, mid + discT / 2 + g + v.rail) // the barrel's roof: another layer's, so here only in the physics
 
   const m = f.lamina({
     height: v.height, gap: g, material, printer, ground, round: v.round,
@@ -88,6 +98,7 @@ export function main (v) {
     sequence: ['rest', 'drawn', 'cocked', 'pulled', 'fired', 'rest'],
     holds: { cocked: [['spring', 'trigger']] },
     free: { disc: { shape: disc, mass: v.launcher.disc_mass } },
+    fixtures: [roof],
     fire: { from: 'drawn', disc: 'disc', hold: { hinge: pulled }, most: v.launcher.disc_energy }, // drawn back, the trigger pulled, let go
   })
   return m

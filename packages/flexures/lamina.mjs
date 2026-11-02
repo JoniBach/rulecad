@@ -274,6 +274,7 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  * @param {{ step: string, joint?: string, peak?: number[], click?: number, end?: number[] }[]} [spec.requires] what a
  *   driven step's force curve must do: its peak and end force (N), and the share it drops after its peak (a click)
  * @param {number} [spec.round] every inside corner of the ground and the bodies rounded to this radius
+ * @param {object | object[]} [spec.fixtures] fixed shapes the physics sees but the print leaves out (another layer's walls)
  * @param {Record<string, { shape: object, mass: number }>} [spec.free] parts not joined to anything and not printed
  *   with it (a disc): in the physics only, held still while a hand works the mechanism, mass in grams
  * @param {{ from: string, disc: string, hold?: Record<string, number>, duration?: number, most?: number }} [spec.fire] let go
@@ -680,7 +681,8 @@ export async function lamina(spec) {
   if (spec.physics !== false && seq.length) {
     const o = typeof spec.physics === 'object' ? spec.physics : {};
     const loose = Object.fromEntries(Object.entries(spec.free || {}).map(([n, l]) => [n, { shape: all(l.shape), mass: l.mass }]));
-    sim = simulate({ parts, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places, loose, ...(spec.fire ? { fire: spec.fire } : {}) }, o);
+    const seen = spec.fixtures ? { ...parts, ground: { ...parts.ground, shape: union([parts.ground.shape, all(spec.fixtures)]) } } : parts; // fixtures: fixed, in the physics, not in the print
+    sim = simulate({ parts: seen, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places, loose, ...(spec.fire ? { fire: spec.fire } : {}) }, o);
     if (sim.skipped) { f('info', `${sim.skipped.join(', ')}: no centreline to solve as beams (a notch, a cartwheel, a shape of your own), so how it behaves comes from the kinematic model only`, 'lamina.physics'); sim = null; }
   }
   if (sim) {
