@@ -74,20 +74,24 @@ also picks the print height, between 10 and 20 mm, that stores the energy. Arms 
 flat action's two-line leaves flexed and twisted. The result is written to `objects/inline-spring.mjs`. The design
 refuses to build if the layout or the rules have changed since, until the shaping is run again.
 
-What it found: two arms of loose, uneven loops, 1.26 to 1.3 mm thick and about 24 cm long each, folded into their
-room and kept 1 mm clear of themselves. No bend is tighter than twice their thickness. Printed 10 mm tall (the least
-allowed) they store 52.8 mJ at the 12 mm stroke, with 0.76% peak strain by the beam solver and 0.97% by finite
-elements, against PETG's 1.25%. A full draw takes 9 N.
+What it found: two arms of loose, uneven loops, 1.26 to 2.5 mm thick, folded into their room and kept 1 mm clear of
+themselves. No bend is tighter than 2.5 times their thickness: at twice, the finite elements found the loops' insides
+taking 1.7 times what the beams said. Printed 12.2 mm tall they store 47.8 mJ at the 11.75 mm draw, with 0.78% peak
+strain by the beam solver and 1.03% by finite elements, against PETG's 1.25%. A full draw takes about 8 N.
 
-This is the spring pack alone: the pusher, its arms, the frame with the stops behind the bar and the rails either side
-of the disc, which also stop the bar at rest. The disc's channel uses the fit test plate's measured `slide_gap`.
-`npx cad check launcher/inline` passes everything. Two things to know:
+**The frame is flooded** (2 November, from the BYU blaster). Everything inside the outline is solid except the room
+the arms and the pusher sweep (and the disc's way out), so nothing holding the mechanism can bend. The pusher's stem
+runs back through the solid handle to a **pull ring**: the channel it slides in is its barrel, a sliding gap (0.4 mm)
+all round, and the frame stops it both ways on broad faces, at rest and a sliding gap past the draw. The ring is drawn
+0.25 mm short of the stroke the arms were shaped for, so that stop lands inside their limit.
 
-- **The stops are tight.** The arms reach their finite-element limit at 12.9 mm, so the stops meet the bar 0.25 mm
-  past the 12 mm draw.
-- **The shot is weak: 3.2 m/s and 4.1 mJ, 8% of what's stored.** The solid pusher weighs 14 g against a 0.8 g disc,
-  so most of the energy stays in the pusher and arms. A lighter pusher that is still stiff is the next job, and the
-  catch and trigger, on the shot's line too.
+`npx cad check launcher/inline` passes everything. Still to know:
+
+- **The shot is weak: 2.7 m/s and 2.9 mJ, 6% of what's stored.** The solid pusher is heavy against a 0.8 g disc. A
+  lighter pusher that is still stiff is the next job.
+- **The pusher's nose is a free end**, 2 mm thick to fit the disc's channel: the rigidity check warns about it.
+- **The barrel is open on the faces.** Nothing yet keeps the stem from lifting out of its channel: a bridge over it
+  needs parts at different heights, which is next.
 
 The checks are only as good as the printer's `print_gap`: 0.3 mm is an estimate until the fit test plate's floor
 windows are measured. Still to do: a catch and trigger in line, the magazine as a lamina of its own, a grip shell

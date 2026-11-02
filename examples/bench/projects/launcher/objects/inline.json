@@ -1,7 +1,7 @@
 {
   "name": "inline",
-  "title": "Launcher action, in line: a pusher drawn back between two curved arms, shaped by the beam solver, printed in one piece on its side",
-  "version": "0.1.1",
+  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, in a flooded frame with a pull ring, printed in one piece on its side",
+  "version": "0.2.0",
   "uses": [
     "x1c",
     "petg",
@@ -9,7 +9,7 @@
   ],
   "material": "PETG",
   "engine": "manifold",
-  "orientation": "On its side, as drawn: one piece, no supports. Pinch the tab inside the yoke and pull: the pusher slides straight back between the arms, which bend like a bow's limbs; let go and it throws the disc.",
+  "orientation": "On its side, as drawn: one piece, no supports. Put a finger through the ring and pull it back: the pusher slides straight back in its barrel between the arms, which bend like a bow's limbs; let go and it throws the disc.",
   "parts": {
     "body": {
       "label": "The action: frame, arms and pusher in one print"
@@ -41,10 +41,10 @@
       "unit": "mm",
       "rule": "How far the tab pulls the pusher back to draw it"
     },
-    "over": {
+    "short": {
       "value": 0.25,
       "unit": "mm",
-      "rule": "How far past the stroke the pusher can go before the stops meet it: little, since the arms' finite-element limit is only 13 mm"
+      "rule": "The ring is drawn this much short of the stroke the arms were shaped for: the frame stops the pusher a sliding gap past the draw, within the arms' finite-element limit"
     },
     "energy": {
       "value": "launcher.energy * 1000",
@@ -65,7 +65,7 @@
       "rule": "The thinnest an arm may get: three lines (two-line flexures flexed and twisted in the flat action's print)"
     },
     "most": {
-      "value": 4,
+      "value": 2.5,
       "unit": "mm",
       "rule": "The thickest an arm may get"
     },
@@ -75,7 +75,7 @@
       "rule": "How far apart an arm's own loops keep: more than the print gap, so they print apart and don't slap together when it fires"
     },
     "arm_bend": {
-      "value": 2,
+      "value": 2.5,
       "rule": "The tightest an arm may curve, in its thicknesses: tighter, its inside takes much more strain than beam theory says"
     },
     "legs": {
@@ -131,40 +131,49 @@
       "unit": "mm",
       "rule": "Where each arm grows from the frame's wall, along the barrel"
     },
-    "stop_len": {
-      "value": 4,
-      "unit": "mm",
-      "rule": "The stops off the back wall, along the barrel"
-    },
-    "stop_h": {
-      "value": 2,
-      "unit": "mm",
-      "rule": "How far the stops stand past the bar's top and bottom"
-    },
     "wall": {
       "value": 4,
       "unit": "mm",
-      "rule": "The frame's walls: thick, so the frame doesn't bend"
+      "rule": "The frame round the arms' room, and the blocks they grow from"
     },
-    "tab": {
-      "value": 16,
-      "unit": "mm",
-      "rule": "How far the cocking tab reaches behind the frame"
-    },
-    "grip": {
-      "value": 20,
-      "unit": "mm",
-      "rule": "Room behind the tab at full draw, inside the yoke, for the fingers that pull it"
-    },
-    "tab_h": {
+    "corner": {
       "value": 6,
       "unit": "mm",
-      "rule": "The tab's height, through its slot in the back wall"
+      "rule": "The outline's corners"
     },
-    "rail": {
-      "value": 3,
+    "least_frame": {
+      "value": 2,
       "unit": "mm",
-      "rule": "The rails either side of the disc, which also stop the bar at rest"
+      "rule": "The thinnest the flooded frame may be anywhere: thinner bits are left out"
+    },
+    "stem": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The stem from the bar back through the handle to the pull ring: the barrel it slides in is this long"
+    },
+    "stem_h": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The stem's height"
+    },
+    "ring_in": {
+      "value": 9,
+      "unit": "mm",
+      "rule": "The pull ring's hole: a finger through it"
+    },
+    "ring_wall": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "The pull ring's wall"
+    },
+    "handle": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Solid behind the ring at full draw: the handle"
+    },
+    "smooth": {
+      "value": 48,
+      "rule": "Segments round a circle"
     },
     "into": {
       "value": "x1c.line * 2",
