@@ -90,8 +90,12 @@ all round, and the frame stops it both ways on broad faces, at rest and a slidin
 - **The shot is weak: 2.7 m/s and 2.9 mJ, 6% of what's stored.** The solid pusher is heavy against a 0.8 g disc. A
   lighter pusher that is still stiff is the next job.
 - **The pusher's nose is a free end**, 2 mm thick to fit the disc's channel: the rigidity check warns about it.
-- **The barrel is open on the faces.** Nothing yet keeps the stem from lifting out of its channel: a bridge over it
-  needs parts at different heights, which is next.
+- **The barrel is bridged** (version 0.3.0). Two bridges, six layers thick, cross the stem's channel through the
+  handle on the top layers, standing on the frame either side. The stem is cut down 1.8 mm wherever it passes under
+  them (the bridge and three layers of gap), so it can't lift out. It's 3.8 mm tall in the plane, so its channel
+  (0.5 mm each side) spans 4.9 mm, within the X1C's 5 mm bridge.
+- **More room against drag:** 0.5 mm round the arms wherever they go, and 0.5 mm each side of the pusher in its
+  pocket and barrel.
 
 The checks are only as good as the printer's `print_gap`: 0.3 mm is an estimate until the fit test plate's floor
 windows are measured. Still to do: a catch and trigger in line, the magazine as a lamina of its own, a grip shell

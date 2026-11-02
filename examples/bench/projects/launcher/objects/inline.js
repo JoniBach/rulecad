@@ -32,15 +32,21 @@ export function main (v) {
     subtract(circle({ radius: v.ring_in + v.ring_wall, center: [ringAt, 0], segments: v.smooth }), circle({ radius: v.ring_in, center: [ringAt, 0], segments: v.smooth })),
   ]
   // The frame: the outline, flooded but for what the pusher and the arms sweep (and the disc's way out); the blocks the
-  // arms grow from drawn, so they join it however the flood falls
+  // arms grow from are found by the flood
   const out = L.top + v.wall, back = ringAt - v.ring_in - v.ring_wall - draw - v.handle, front = L.front + v.wall
   const outline = roundedRectangle({ size: [front - back, out * 2], center: [(front + back) / 2, 0], roundRadius: v.corner, segments: v.smooth })
-  const root = shaped.params.points[0][0], roots = [rect(root - v.wall, L.top, root + v.wall, out), rect(root - v.wall, 0 - out, root + v.wall, 0 - L.top)]
   const channel = rect(L.discAt - draw - g, 0 - (v.launcher.disc_t / 2 + v.slide), front + 1, v.launcher.disc_t / 2 + v.slide) // the disc's way: loaded ahead of the drawn nose, out through the front
   const disc = rect(L.discAt - draw, 0 - v.launcher.disc_t / 2, L.discAt - draw + v.launcher.disc, v.launcher.disc_t / 2) // seen edge on: for the firing, not printed with it
+  // Bridges over the stem's barrel through the handle, on the top layers: the stem, cut down under them, can't lift out.
+  // Between the ring's pocket (the ring never comes further forward than at rest) and the bar's (drawn, at its furthest
+  // back), so only the stem ever passes under
+  const ringFront = ringAt + v.ring_in + v.ring_wall + v.fit, barBack = L.back - draw - v.fit
+  const across = v.stem_h / 2 + v.fit + v.bridge_foot
+  const bridges = [1, 2].map((k) => { const x = ringFront + ((barBack - ringFront) * k) / 3; return { shape: rect(x - v.bridge_len / 2, 0 - across, x + v.bridge_len / 2, across) } })
   return f.lamina({
-    height, gap: g, material, printer, ground: roots, round: v.round,
-    flood: { outline, keep: [channel], clear: { default: g, pusher: v.slide }, least: v.least_frame },
+    height, gap: g, material, printer: { ...printer, bridge: v.x1c.bridge }, round: v.round,
+    flood: { outline, keep: [channel], clear: { default: v.room, pusher: v.fit }, least: v.least_frame },
+    bridges,
     bodies: { pusher },
     joints: { spring: { kind: 'curve', params: spring, from: 'ground', to: 'pusher' } },
     states: { drawn: { spring: 0 - draw } },

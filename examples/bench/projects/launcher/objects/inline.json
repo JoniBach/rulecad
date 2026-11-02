@@ -1,7 +1,7 @@
 {
   "name": "inline",
-  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, in a flooded frame with a pull ring, printed in one piece on its side",
-  "version": "0.2.0",
+  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, in a flooded frame with a pull ring and a bridged barrel, printed in one piece on its side",
+  "version": "0.3.0",
   "uses": [
     "x1c",
     "petg",
@@ -35,6 +35,16 @@
       "value": "x1c.slide_gap",
       "unit": "mm",
       "rule": "The disc's gap each side in its barrel: what slid best on the fit test plate"
+    },
+    "fit": {
+      "value": "slide + 0.1",
+      "unit": "mm",
+      "rule": "The pusher's room in its pocket and barrel, each side: the fit test's sliding gap and a little more, so it doesn't drag"
+    },
+    "room": {
+      "value": "gap + 0.2",
+      "unit": "mm",
+      "rule": "The arms' room each side, round wherever they go: more than the print gap, so they don't drag on the frame"
     },
     "stroke": {
       "value": 12,
@@ -152,9 +162,19 @@
       "rule": "The stem from the bar back through the handle to the pull ring: the barrel it slides in is this long"
     },
     "stem_h": {
-      "value": 6,
+      "value": 3.8,
       "unit": "mm",
-      "rule": "The stem's height"
+      "rule": "The stem's height: narrow enough that its barrel, a sliding fit each side, is within what the printer bridges"
+    },
+    "bridge_len": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Each bridge over the stem, along it"
+    },
+    "bridge_foot": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "How far each bridge stands on the frame either side of the barrel"
     },
     "ring_in": {
       "value": 9,
