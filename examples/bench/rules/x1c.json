@@ -66,6 +66,22 @@
       "source": "A reasoned guess for a 0.42 mm line; measure it with the fit test plate (examples/bench/projects/launcher/objects/fittest)",
       "checked": "2026-11-01"
     },
+    "slide_gap": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Gap each side between a loose part and the channel it slides in (the disc in its barrel): the widest the fit test plate tried, and the one that slid best",
+      "kind": "measured",
+      "source": "Fit test plate (launcher/fittest, PR #99): channels 0.2, 0.3 and 0.4 mm a side; 0.4 best (user, 2026-11-02)",
+      "checked": "2026-11-02"
+    },
+    "pin_gap": {
+      "value": 0.05,
+      "unit": "mm",
+      "rule": "Radial clearance round a printed pin in its hole that holds best: the tightest the fit test plate tried",
+      "kind": "measured",
+      "source": "Fit test plate (launcher/fittest, PR #99): holes 0.05, 0.1 and 0.2 mm radial; 0.05 best (user, 2026-11-02)",
+      "checked": "2026-11-02"
+    },
     "overhang": {
       "value": 45,
       "unit": "\u00b0",
