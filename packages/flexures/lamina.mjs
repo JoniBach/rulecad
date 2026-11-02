@@ -274,6 +274,11 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  * @param {{ step: string, joint?: string, peak?: number[], click?: number, end?: number[] }[]} [spec.requires] what a
  *   driven step's force curve must do: its peak and end force (N), and the share it drops after its peak (a click)
  * @param {number} [spec.round] every inside corner of the ground and the bodies rounded to this radius
+ * @param {Record<string, { shape: object, mass: number }>} [spec.free] parts not joined to anything and not printed
+ *   with it (a disc): in the physics only, held still while a hand works the mechanism, mass in grams
+ * @param {{ from: string, disc: string, hold?: Record<string, number>, duration?: number, most?: number }} [spec.fire] let go
+ *   from a state and step through time, a hand keeping the joints in `hold` at those travels (a finger on the trigger):
+ *   the bodies' speeds and the disc's exit speed and energy (J), against `most`
  * @param {{ slack?: number, steps?: number, cell?: number, friction?: number | { pass?: number, hold?: number }, step?: number }} [spec.check]
  *   how deep a touch may be (default a tenth of the gap); the fewest steps between states (8), and the most any body
  *   moves in one (`step`, a quarter of a mm); the grid flexures are bent on (a quarter of the thinnest); friction at
@@ -674,7 +679,8 @@ export async function lamina(spec) {
   const handMost = (typeof spec.physics === 'object' && spec.physics.force) || 50; // N: the most a hand pulls or pushes
   if (spec.physics !== false && seq.length) {
     const o = typeof spec.physics === 'object' ? spec.physics : {};
-    sim = simulate({ parts, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places }, o);
+    const loose = Object.fromEntries(Object.entries(spec.free || {}).map(([n, l]) => [n, { shape: all(l.shape), mass: l.mass }]));
+    sim = simulate({ parts, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places, loose, ...(spec.fire ? { fire: spec.fire } : {}) }, o);
     if (sim.skipped) { f('info', `${sim.skipped.join(', ')}: no centreline to solve as beams (a notch, a cartwheel, a shape of your own), so how it behaves comes from the kinematic model only`, 'lamina.physics'); sim = null; }
   }
   if (sim) {
@@ -730,6 +736,18 @@ export async function lamina(spec) {
       }
       strainAndStops();
     }
+    // Firing: let go from a state, step through time
+    if (spec.fire) {
+      const fr = sim.fire;
+      if (!fr) f('fail', `fire: the sequence never reaches ${spec.fire.from}`, 'lamina.fire');
+      else {
+        const quick = Object.entries(fr.speeds).filter(([b]) => b !== spec.fire.disc).sort((a, b) => b[1] - a[1])[0];
+        const ex = fr.exit, share = ex && fr.stored > 0 ? ex.energy / fr.stored : 0;
+        f(ex ? (spec.fire.most != null && ex.energy > spec.fire.most ? 'fail' : 'info') : 'fail', ex
+          ? `fired from ${spec.fire.from}: ${quick ? `${quick[0]} reaches ${quick[1].toFixed(1)} m/s; ` : ''}${spec.fire.disc} leaves at ${ex.speed.toFixed(1)} m/s after ${(ex.t * 1000).toFixed(1)} ms, with ${(ex.energy * 1000).toFixed(1)} mJ: ${Math.round(share * 100)}% of the ${(fr.stored * 1000).toFixed(1)} mJ stored${spec.fire.most != null ? (ex.energy > spec.fire.most ? `, over the ${spec.fire.most * 1000} mJ allowed` : `, within the ${spec.fire.most * 1000} mJ allowed`) : ''}`
+          : `fired from ${spec.fire.from}: ${spec.fire.disc} never leaves`, 'lamina.fire', { speeds: fr.speeds, exit: ex, stored: fr.stored });
+      }
+    }
     for (const [jn, e] of Object.entries(sim.strain)) f(e <= material.strainLimit ? 'pass' : 'fail', `${jn}: bending as far as it bends through the sequence, it sees up to ${(e * 100).toFixed(2)}% strain (large-deflection beams), ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}%`, 'lamina.beams', { joint: jn, strain: e });
   }
 
@@ -754,6 +772,14 @@ export async function lamina(spec) {
       const j = joints[n], lines = Object.keys(sim.beamOf).filter((b) => sim.beamOf[b] === n).map((b) => ({ rest: still.lines[b], now: fr.shape.lines[b], turn: fr.shape.turns[b], from: poseT(j.from, fr.q), to: poseT(j.to, fr.q) }));
       return [n, round3(bend(p.shape, lines))];
     })) }));
+    if (sim.fire) for (const fr of sim.fire.frames) physical.push({ from: `${spec.fire.from}, fired`, to: `${spec.fire.from}, fired`, t: fr.t, label: `fired, ${(fr.t * 1000).toFixed(1)} ms`, parts: {
+      ...Object.fromEntries(Object.entries(parts).map(([n, p]) => {
+        if (p.kind !== 'flexure') return [n, round3(moved(poseT(n, fr.q), p.shape))];
+        const j = joints[n], sh = shapeOf(sim.sys, Float64Array.from(fr.q)), lines = Object.keys(sim.beamOf).filter((b) => sim.beamOf[b] === n).map((b) => ({ rest: still.lines[b], now: sh.lines[b], turn: sh.turns[b], from: poseT(j.from, fr.q), to: poseT(j.to, fr.q) }));
+        return [n, round3(bend(p.shape, lines))];
+      })),
+      ...Object.fromEntries(Object.keys(spec.free || {}).map((n) => { const d = sim.sys.body[n].dof, c = sim.centre[n], q = fr.q, cs = Math.cos(q[d + 2]), sn = Math.sin(q[d + 2]); return [n, round3(moved([cs, -sn, c[0] + q[d] - cs * c[0] + sn * c[1], sn, cs, c[1] + q[d + 1] - sn * c[0] - cs * c[1]], all(spec.free[n].shape)))]; })),
+    } });
     frames.length = 0;
     frames.push(...physical);
   }
@@ -775,8 +801,8 @@ export async function lamina(spec) {
  * PETG's 1.9%, nylon's higher still.
  * @param {{ modulus: number, strength: number, name?: string }} rules @param {{ safety?: number }} [o] (default 1.5)
  */
-export function flexureMaterial({ modulus, strength, name }, { safety = 1.5 } = {}) {
+export function flexureMaterial({ modulus, strength, name, density }, { safety = 1.5 } = {}) {
   if (!(modulus > 0) || !(strength > 0)) throw new Error('a flexure material needs its modulus and strength (MPa)');
   const yieldStrain = strength / modulus;
-  return { E: modulus, strength, yieldStrain, strainLimit: yieldStrain / safety, safety, ...(name ? { name } : {}) };
+  return { E: modulus, strength, yieldStrain, strainLimit: yieldStrain / safety, safety, ...(name ? { name } : {}), ...(density ? { density } : {}) }; // density g/cm³, for firing
 }

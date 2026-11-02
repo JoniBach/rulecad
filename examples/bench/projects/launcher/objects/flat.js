@@ -12,7 +12,7 @@ const rect = (x0, y0, x1, y1) => polygon({ points: [[x0, y0], [x1, y0], [x1, y1]
 
 export function main (v) {
   const f = v.flexures, g = v.gap
-  const material = f.flexureMaterial({ modulus: v.petg.modulus, strength: v.petg.strength, name: 'PETG' }, { safety: v.safety })
+  const material = f.flexureMaterial({ modulus: v.petg.modulus, strength: v.petg.strength, density: v.petg.density, name: 'PETG' }, { safety: v.safety })
   const printer = { line: v.x1c.line, layer: v.x1c.layer, wall_min: v.x1c.wall_min }
 
   // The spring: two leaves up the grip, sized for the stroke and the energy at the print's height
@@ -65,6 +65,12 @@ export function main (v) {
   ]
 
   const pulled = 0 - Math.sin(v.pull * stopTurn) * v.gamma * v.hinge // the hinge's tip, a full pull back
+  // The barrel, ahead of the pusher's nose: two rails a disc's thickness and two gaps apart, which also stop the pusher
+  // where it rests; the disc in it (seen edge on: it isn't printed with this, it's for the firing)
+  const nose = xc + hookLen + v.nose, mid = L + v.bar / 2, discT = v.launcher.disc_t
+  const disc = rect(nose + g, mid - discT / 2, nose + g + v.launcher.disc, mid + discT / 2)
+  ground.push(rect(nose + g, mid - discT / 2 - g - v.rail, nose + g + v.launcher.disc + v.rail, mid - discT / 2 - g), rect(nose + g, mid + discT / 2 + g, nose + g + v.launcher.disc + v.rail, mid + discT / 2 + g + v.rail))
+
   const m = f.lamina({
     height: v.height, gap: g, material, printer, ground, round: v.round,
     bodies: { pusher, trigger },
@@ -81,6 +87,8 @@ export function main (v) {
     },
     sequence: ['rest', 'drawn', 'cocked', 'pulled', 'fired', 'rest'],
     holds: { cocked: [['spring', 'trigger']] },
+    free: { disc: { shape: disc, mass: v.launcher.disc_mass } },
+    fire: { from: 'drawn', disc: 'disc', hold: { hinge: pulled }, most: v.launcher.disc_energy }, // drawn back, the trigger pulled, let go
   })
   return m
 }

@@ -212,6 +212,11 @@
     "margin": {
       "value": 0.65,
       "rule": "The spring is sized to this share of the strain limit by beam theory; the finite-element check then reads its real peak, rounds and taper included"
+    },
+    "rail": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The barrel's rails, either side of the disc"
     }
   }
 }

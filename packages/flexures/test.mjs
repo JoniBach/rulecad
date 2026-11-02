@@ -465,3 +465,20 @@ test('a pivot pair turns about the point its leaves\' lines meet, and its model 
   const model = m.findings.find((f) => f.code === 'lamina.strain' && f.joint === 'pair').strain, beams = m.findings.find((f) => f.code === 'lamina.beams' && f.joint === 'pair').strain;
   assert.ok(Math.abs(beams / model - 1) < 0.1, `model ${(model * 100).toFixed(3)}%, beams ${(beams * 100).toFixed(3)}%`);
 });
+
+test('firing: let go, a pusher on a spring throws a loose disc, never with more energy than was stored', async () => {
+  const L = 30, t = 0.84, half = 4 + t + 1, stroke = 5, g = 0.3;
+  const m = await lamina({
+    height: 6, gap: g, material: { ...petg, density: 1.27 }, printer: fdm, check: { fe: false },
+    ground: [rect(-8, -6, -3 + 0.5, 6), rect(L + 10 + g, 1.4 + g, L + 30, 4), rect(L + 10 + g, -4, L + 30, -1.4 - g), rect(-half - stroke - 4, -6, -half - stroke - 1, 6)],
+    bodies: { pusher: rect(L, -half, L + 10, half) },
+    joints: { spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 8, shuttle: 3, base: 3, fillet: 1, into: t }, at: [L, 0], angle: 180, from: 'ground', to: 'pusher' } },
+    free: { disc: { shape: rect(L + 10 + g, -1.4, L + 30, 1.4), mass: 0.5 } },
+    states: { drawn: { spring: stroke } }, sequence: ['rest', 'drawn'],
+    fire: { from: 'drawn', disc: 'disc', duration: 0.01 },
+  });
+  const f = m.findings.find((x) => x.code === 'lamina.fire');
+  assert.ok(f && f.exit && f.exit.energy > 0 && f.exit.energy <= f.stored * 1.02, f?.text);
+  const pusherMass = 1.27e-6 * 6 * 10 * (2 * half), most = Math.sqrt((2 * f.stored) / pusherMass); // all the energy in the pusher alone
+  assert.ok(f.speeds.pusher > 0.5 * most && f.speeds.pusher <= most * 1.05, `the pusher's ${f.speeds.pusher.toFixed(2)} m/s against at most ${most.toFixed(2)}`);
+});

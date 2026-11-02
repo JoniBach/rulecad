@@ -11,7 +11,7 @@
 //   a joint the next state doesn't set is let go of, if the hand had it
 //   everything else moves only as the springs and the contacts make it
 // Letting go is gradual: the hand's spring softens to nothing over the step, so the mechanism finds where it rests.
-import { beamSystem, equilibrium, shapeOf } from './beams.mjs';
+import { beamSystem, equilibrium, shapeOf, energyOf } from './beams.mjs';
 import { beamProfile } from './flexures.mjs';
 
 const HAND = 1000; // N/mm: a hand's grip on a part it holds or drives (stiff beside any spring here)
@@ -67,14 +67,22 @@ function nearest(loops, p) {
 function sdfOf(loops, h, margin) {
   const { lo, hi } = boxOf(loops), x0 = lo[0] - margin, y0 = lo[1] - margin, nx = Math.ceil((hi[0] - lo[0] + 2 * margin) / h) + 1, ny = Math.ceil((hi[1] - lo[1] + 2 * margin) / h) + 1;
   const d = new Float32Array(nx * ny), edges = loops.flatMap((l) => l.map((a, k) => [a, l[(k + 1) % l.length]]));
+  // Edges in buckets a margin square: a cell only measures to the edges within its margin (further, it reads as the
+  // margin: nothing reaches that far)
+  const B = margin, bucket = new Map(), key = (i, j) => `${i},${j}`;
+  for (const e of edges) {
+    const [a, b] = e;
+    for (let i = Math.floor(Math.min(a[0], b[0]) / B); i <= Math.floor(Math.max(a[0], b[0]) / B); i++) for (let j = Math.floor(Math.min(a[1], b[1]) / B); j <= Math.floor(Math.max(a[1], b[1]) / B); j++) { const k = key(i, j); if (!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e); }
+  }
   for (let j = 0; j < ny; j++) {
     const y = y0 + j * h, xs = [];
     for (const [a, b] of edges) if ((a[1] > y) !== (b[1] > y)) xs.push(a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]));
     xs.sort((p, q) => p - q);
     for (let i = 0; i < nx; i++) {
-      const x = x0 + i * h;
-      let best = Infinity;
-      for (const [a, b] of edges) {
+      const x = x0 + i * h, bi = Math.floor(x / B), bj = Math.floor(y / B), list = [];
+      for (let a = bi - 1; a <= bi + 1; a++) for (let b = bj - 1; b <= bj + 1; b++) { const l = bucket.get(key(a, b)); if (l) list.push(...l); }
+      let best = margin * margin;
+      for (const [a, b] of list) {
         const ex = b[0] - a[0], ey = b[1] - a[1], len2 = ex * ex + ey * ey, u = len2 ? Math.max(0, Math.min(1, ((x - a[0]) * ex + (y - a[1]) * ey) / len2)) : 0;
         const dx = x - a[0] - u * ex, dy = y - a[1] - u * ey, dd = dx * dx + dy * dy;
         if (dd < best) best = dd;
@@ -109,10 +117,11 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
   if (missing.length) return { skipped: missing };
   // Bodies: the ground and each rigid body, about its box's centre
   const bodies = {}, outline = {}, centre = {};
-  for (const [n, p] of Object.entries(parts)) if (p.kind !== 'flexure') {
+  const loose = m.loose || {}; // parts that aren't joined to anything (a disc): they move only when pushed, and fire
+  for (const [n, p] of [...Object.entries(parts).filter(([, p]) => p.kind !== 'flexure'), ...Object.entries(loose)]) {
     const { lo, hi } = boxOf(p.shape);
     centre[n] = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2];
-    bodies[n] = { at: centre[n], fixed: p.kind === 'ground' };
+    bodies[n] = { at: centre[n], fixed: p.kind === 'ground', loose: !!loose[n] };
     outline[n] = p.shape;
   }
   // Beams: each joint's centrelines, placed
@@ -129,11 +138,16 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
   // its own two; a penalty spring on how far each goes in
   const gap = m.gap, k = contact ?? 50 * material.E * height * 1e-3, ds = Math.max(0.2, gap);
   const names = Object.keys(bodies), pts = Object.fromEntries(names.map((n) => [n, sample(outline[n], ds)])), boxes = Object.fromEntries(names.map((n) => [n, boxOf(outline[n])]));
-  const reach = 2 + Math.max(...beams.map((b) => Math.max(...b.thickness))), sdfs = Object.fromEntries(names.map((n) => [n, sdfOf(outline[n], Math.min(0.1, gap / 3), reach)]));
+  // A fixed body's outline points, in buckets 5 mm square, so only those near a moving body are tested
+  const BUCKET = 5, buckets = Object.fromEntries(names.filter((n) => bodies[n].fixed).map((n) => { const map = new Map(); for (const p of pts[n]) { const k = `${Math.floor(p[0] / BUCKET)},${Math.floor(p[1] / BUCKET)}`; if (!map.has(k)) map.set(k, []); map.get(k).push(p); } return [n, map]; }));
+  const near = (A, lo, hi) => { if (!buckets[A]) return pts[A]; const out = []; for (let i = Math.floor(lo[0] / BUCKET); i <= Math.floor(hi[0] / BUCKET); i++) for (let j = Math.floor(lo[1] / BUCKET); j <= Math.floor(hi[1] / BUCKET); j++) { const b = buckets[A].get(`${i},${j}`); if (b) out.push(...b); } return out; };
+  const t0 = Date.now(), reach = 2 + Math.max(...beams.map((b) => Math.max(...b.thickness))), sdfs = Object.fromEntries(names.map((n) => [n, sdfOf(outline[n], Math.min(0.12, gap / 2.5), reach)]));
+  if (process.env.PHYS_DEBUG) console.error('sdfs', Date.now() - t0, 'ms', Object.fromEntries(names.map((n) => [n, sdfs[n].nx * sdfs[n].ny])), 'dofs', sys.dofs);
   const poseOf = (n, q) => (bodies[n].fixed ? [0, 0, 0] : [q[sys.body[n].dof], q[sys.body[n].dof + 1], q[sys.body[n].dof + 2]]);
   const toWorld = (n, q, p) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), rx = p[0] - c[0], ry = p[1] - c[1]; return [c[0] + tx + cs * rx - sn * ry, c[1] + ty + sn * rx + cs * ry, cs * rx - sn * ry, sn * rx + cs * ry]; };
   const toLocal = (n, q, w) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), dx = w[0] - c[0] - tx, dy = w[1] - c[1] - ty; return [c[0] + cs * dx + sn * dy, c[1] - sn * dx + cs * dy, dx, dy, cs, sn]; };
   const nodeBeam = sys.nodes.map((nd) => ({ nd, joint: beamOf[nd.beam], r: (beams.find((b) => b.name === nd.beam).thickness[0] ?? 1) / 2 }));
+  let withLoose = false; // loose parts (a disc) only touch anything when firing
   const extra = (q, g, H) => {
     let U = 0;
     const n = sys.dofs;
@@ -156,11 +170,12 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
     };
     for (const A of names) {
       if (bodies[A].fixed && names.every((B) => B === A || bodies[B].fixed)) continue;
+      if (bodies[A].loose && !withLoose) continue;
       for (const B of names) {
-        if (A === B || (bodies[A].fixed && bodies[B].fixed)) continue;
+        if (A === B || (bodies[A].fixed && bodies[B].fixed) || (bodies[B].loose && !withLoose)) continue;
         // A's points near B (B's box, as it is now, grown a little)
         const [tx, ty] = poseOf(B, q), bb = boxes[B], m0 = 2 + Math.hypot(bb.hi[0] - bb.lo[0], bb.hi[1] - bb.lo[1]) * Math.abs(poseOf(B, q)[2]);
-        for (const p of pts[A]) {
+        for (const p of near(A, [bb.lo[0] + tx - m0, bb.lo[1] + ty - m0], [bb.hi[0] + tx + m0, bb.hi[1] + ty + m0])) {
           const w = toWorld(A, q, p);
           if (w[0] < bb.lo[0] + tx - m0 || w[0] > bb.hi[0] + tx + m0 || w[1] < bb.lo[1] + ty - m0 || w[1] > bb.hi[1] + ty + m0) continue;
           const dw = bodies[A].fixed ? [] : (() => { const a = sys.body[A].dof; return [[a, 1, 0], [a + 1, 0, 1], [a + 2, -w[3], w[2]]]; })();
@@ -170,7 +185,7 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
     }
     for (const { nd, joint, r } of nodeBeam) {
       const w = [nd.at[0] + q[nd.dof], nd.at[1] + q[nd.dof + 1]], j = joints[joint];
-      for (const B of names) if (B !== j.from && B !== j.to) touch(w, [[nd.dof, 1, 0], [nd.dof + 1, 0, 1]], r, B);
+      for (const B of names) if (B !== j.from && B !== j.to && (withLoose || !bodies[B].loose)) touch(w, [[nd.dof, 1, 0], [nd.dof + 1, 0, 1]], r, B);
     }
     return U;
   };
@@ -193,7 +208,8 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
 
   const seq = m.sequence, out = { transitions: [], frames: [], findings: [], strain: {} };
   if (!seq.length) return out;
-  let q = equilibrium(sys, { extra }).q, hand = new Set();
+  const still = new Map(Object.keys(loose).flatMap((n) => [0, 1, 2].map((k) => [sys.body[n].dof + k, 0]))); // loose parts stay put while a hand works it
+  let q = equilibrium(sys, { extra, held: still }).q, hand = new Set();
   const stateOf = (s) => m.states[s] || {};
   const mark = (sh, label) => { for (const [b, s] of Object.entries(sh.strain)) out.strain[beamOf[b]] = Math.max(out.strain[beamOf[b]] || 0, s); };
   for (let i = 0; i + 1 < seq.length; i++) {
@@ -222,7 +238,8 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
     let last = q;
     for (let s = 0; s <= steps; s++) {
       const t = s / steps, now = grips.map((gr) => ({ ...gr, target: gr.from + (gr.to - gr.from) * t, stiff: gr.what === 'let go' ? HAND * (1 - t) ** 3 : HAND }));
-      const r = equilibrium(sys, { start: last, extra: both(extra, handTerm(now)), iterations: 80 });
+      const t0 = Date.now(), r = equilibrium(sys, { start: last, extra: both(extra, handTerm(now)), iterations: 80, held: still });
+      if (process.env.PHYS_DEBUG) console.error('step', seq[i], '>', seq[i + 1], s, 'iterations', r.iterations, 'converged', r.converged, Date.now() - t0, 'ms');
       // The hand's force on each driven joint, along its way
       for (const c of curve) {
         const gr = now.find((x) => x.jn === c.joint), d = dofOf(c.joint), at = r.q[d] * gr.u[0] + r.q[d + 1] * gr.u[1];
@@ -240,9 +257,30 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
     }
     q = last;
     for (const gr of grips) if (gr.what === 'drive' || gr.what === 'hold') hand.add(gr.jn); else hand.delete(gr.jn);
-    out.transitions.push({ from: seq[i], to: seq[i + 1], plan, curve, events, end: Array.from(q) });
+    out.transitions.push({ from: seq[i], to: seq[i + 1], plan, curve, events, end: Array.from(q), hand: [...hand] }); // hand: what it holds at the end of the step
   }
   out.sys = sys; out.centre = centre; out.beamOf = beamOf;
+  // Firing: from where a state left it, let go of everything at once and step through time
+  withLoose = true;
+  if (m.fire) {
+    // The finger stays: each joint in hold is kept where the state, with hold's values, puts its body's centre
+    const from = stateOf(m.fire.from), grips = Object.entries(m.fire.hold || {}).flatMap(([jn, val]) => {
+      const c = centreAt(jn, { ...from, [jn]: val });
+      return [[1, 0], [0, 1]].map((u, k) => ({ body: joints[jn].to, u, target: c[k], stiff: HAND }));
+    });
+    // First, still held where the state left it (each body the hand had, kept where it is), the finger pulls; then
+    // the hand lets go and the finger stays
+    const into = out.transitions.find((tr) => tr.to === m.fire.from);
+    let start = into?.end;
+    if (start && grips.length) {
+      const q0 = Float64Array.from(start), keep = into.hand.filter((jn) => !(jn in (m.fire.hold || {}))).flatMap((jn) => { const d = sys.body[joints[jn].to].dof; return [[1, 0], [0, 1]].map((u, k) => ({ body: joints[jn].to, u, target: q0[d + k], stiff: HAND })); });
+      for (let k = 1; k <= 8; k++) { // the finger pulls in steps, so contact follows it
+        const part = grips.map((g) => { const d = sys.body[g.body].dof; return { ...g, target: q0[d + (g.u[0] ? 0 : 1)] + (g.target - q0[d + (g.u[0] ? 0 : 1)]) * (k / 8) }; });
+        start = equilibrium(sys, { start, extra: both(extra, handTerm([...keep, ...part])), iterations: 80, held: still }).q;
+      }
+    }
+    out.fire = fire({ sys, extra: grips.length ? both(extra, handTerm(grips)) : extra, centre, outline, bodies, loose, material, height, beams, start, ...m.fire });
+  }
   return out;
 }
 
@@ -274,4 +312,79 @@ export function bend(shape, lines) {
     const th = ln.turn[i] + (ln.turn[i + 1] - ln.turn[i]) * u, c = Math.cos(th), s = Math.sin(th), off = normal;
     return [at[0] + c * off[0] - s * off[1], at[1] + s * off[0] + c * off[1]];
   }));
+}
+
+// ---------- firing ----------
+// Polygon area and its second moment about the centroid, for a body's mass and turning inertia
+function massOf(loops, h, rho) {
+  let A = 0, cx = 0, cy = 0, Ixx = 0, Iyy = 0;
+  for (const l of loops) for (let k = 0; k < l.length; k++) {
+    const [x0, y0] = l[k], [x1, y1] = l[(k + 1) % l.length], c = x0 * y1 - x1 * y0;
+    A += c / 2; cx += ((x0 + x1) * c) / 6; cy += ((y0 + y1) * c) / 6; Ixx += ((y0 * y0 + y0 * y1 + y1 * y1) * c) / 12; Iyy += ((x0 * x0 + x0 * x1 + x1 * x1) * c) / 12;
+  }
+  cx /= A; cy /= A;
+  const J = Ixx + Iyy - A * (cx * cx + cy * cy); // polar, about the centroid
+  return { mass: rho * h * Math.abs(A), inertia: rho * h * Math.abs(J) };
+}
+/**
+ * Let go and step through time (explicit, a semi-implicit Euler step a few microseconds long): every body and beam
+ * node with its mass (the material's density; a loose part's own mass), the springs' and contacts' forces, a little
+ * damping. Units: mm, N, kg, s (so an acceleration is 1000 F / m in mm/s²).
+ * @returns {{ frames: { t: number, q: number[] }[], speeds: Record<string, number>, exit: { body: string, speed: number, energy: number } | null, stored: number }}
+ */
+function fire({ sys, extra, outline, bodies, loose, material, height, beams, start, duration = 0.02, dt = Number(process.env.FIRE_DT || 3e-6), damping = 10, disc, every = 100 }) {
+  if (!start) return null;
+  const rho = (material.density ?? 1.25) * 1e-6, n = sys.dofs, mass = new Float64Array(n);
+  for (const [name, b] of Object.entries(sys.body)) {
+    if (b.fixed) continue;
+    const mi = loose[name]?.mass != null ? { mass: loose[name].mass / 1000, inertia: (loose[name].mass / 1000) * 10 } : massOf(outline[name], height, rho);
+    mass[b.dof] += mi.mass; mass[b.dof + 1] += mi.mass; mass[b.dof + 2] += Math.max(mi.inertia, mi.mass * 1e-2);
+  }
+  for (const e of sys.elements) { // half an element's mass to each end, and a share of its turning inertia
+    const me = rho * e.w * e.t * e.L0, Ie = (me * e.L0 * e.L0) / 12;
+    for (const end of [e.a, e.b]) {
+      if (end.dof != null) { mass[end.dof] += me / 2; mass[end.dof + 1] += me / 2; mass[end.dof + 2] += Ie / 2; }
+      else if (!end.body.fixed) { mass[end.body.dof] += me / 2; mass[end.body.dof + 1] += me / 2; mass[end.body.dof + 2] += Ie / 2 + (me / 2) * (end.o[0] ** 2 + end.o[1] ** 2); }
+    }
+  }
+  // Mass scaling, by Gershgorin: no mode is faster than a row of the stiffness (contacts included) over its mass allows,
+  // so each unknown gets at least the mass that keeps ω dt under 1.6 with dt, twice over for contacts that start
+  // mid-shot. It lands on the lightest flexure nodes; the bodies that matter are far heavier already
+  let added = 0;
+  const real = Object.values(sys.body).filter((b) => !b.fixed).reduce((a, b) => a + mass[b.dof], 0) + sys.nodes.reduce((a, nd) => a + mass[nd.dof], 0);
+  const H = energyOf(sys, Float64Array.from(start), { hessian: true, extra }).hessian, need = 2 * 1000 * (dt / 1.6) ** 2;
+  for (let i = 0; i < n; i++) {
+    let row = 0;
+    for (let k = 0; k < n; k++) row += Math.abs(H[i * n + k]);
+    const m0 = row * need;
+    if (mass[i] < m0) { if (i % 3 !== 2) added += (m0 - mass[i]) / 2; mass[i] = m0; }
+  }
+  const q = Float64Array.from(start), v = new Float64Array(n), frames = [{ t: 0, q: Array.from(q) }], speeds = {};
+  const stored = energyOf(sys, q, { hessian: false }).energy / 1000; // J
+  let exit = null, touched = false;
+  const steps = Math.round(duration / dt);
+  const tStart = Date.now();
+  if (process.env.PHYS_DEBUG) console.error('fire: steps', steps, 'dt', dt, 'stored', stored, 'mass total', mass.reduce((a, x) => a + x, 0));
+  for (let k = 1; k <= steps; k++) {
+    if (process.env.PHYS_DEBUG && k % 10 === 0) {
+      let at = 0; for (let i = 0; i < n; i++) if (Math.abs(v[i]) > Math.abs(v[at])) at = i; // (the fastest unknown, for debugging)
+      const who = Object.values(sys.body).find((b) => b.dof >= 0 && at >= b.dof && at < b.dof + 3)?.name || `node of ${sys.nodes.find((nd) => at >= nd.dof && at < nd.dof + 3)?.beam}`;
+      console.error('fire step', k, Date.now() - tStart, 'ms', 'max v', Math.abs(v[at]).toExponential(2), 'at', who, 'dof', at % 3, 'mass', mass[at].toExponential(2));
+    }
+    const r = energyOf(sys, q, { hessian: false, extra });
+    for (let i = 0; i < n; i++) { if (!mass[i]) continue; v[i] += (dt * 1000 * -r.grad[i]) / mass[i] - dt * damping * v[i]; }
+    for (let i = 0; i < n; i++) q[i] += dt * v[i];
+    for (const [name, b] of Object.entries(sys.body)) if (!b.fixed) speeds[name] = Math.max(speeds[name] || 0, Math.hypot(v[b.dof], v[b.dof + 1]) / 1000); // m/s
+    if (disc) { // the disc leaves once it's moving and nothing touches it: its speed then is the exit speed
+      const d = sys.body[disc].dof, sp = Math.hypot(v[d], v[d + 1]) / 1000;
+      if (sp > 0.05) touched = true;
+      if (touched && !exit && k % 50 === 0) {
+        const g = new Float64Array(n); extra(q, g, null);
+        if (Math.hypot(g[d], g[d + 1]) < 1e-6) exit = { body: disc, speed: sp, energy: 0.5 * mass[d] * sp * sp, t: k * dt };
+      }
+    }
+    if (k % every === 0) frames.push({ t: k * dt, q: Array.from(q) });
+    if (exit && k * dt > exit.t + 0.002) break;
+  }
+  return { frames, speeds, exit, stored, scaled: real > 0 ? added / real : 0 };
 }
