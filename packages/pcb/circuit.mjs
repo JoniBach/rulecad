@@ -21,7 +21,7 @@
 //            shortest set of connections between them (a minimum spanning tree), left to the autorouter, at the net's
 //            width or board.track; pins are named part.pin, by the pin's label, its name or its number
 //   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer, rotation } (rotation: degrees, counter-clockwise)
-//   holes  [{ x, y, d }] in the board (mounting holes)
+//   holes  [{ x, y, d, keepout }] in the board (mounting holes; keepout: a radius the router keeps tracks out of, for a screw head)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
 //   neck (mm) a routed track still too close to another after repair is narrowed to this where they pass (the fab's smallest)
@@ -237,7 +237,8 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: s.rotation ?? 0, pcb_component_id: null, subcircuit_id: SUB,
       ...(s.to ? { rulecad_to: s.to } : {}) }); // an arrow to what it names, drawn once the label's place is final
   }
-  for (const h of board.holes || []) add('pcb_hole', { hole_shape: 'circle', hole_diameter: h.d, x: h.x, y: h.y, is_covered_with_solder_mask: false, subcircuit_id: SUB });
+  for (const h of board.holes || []) add('pcb_hole', { hole_shape: 'circle', hole_diameter: h.d, x: h.x, y: h.y, is_covered_with_solder_mask: false, subcircuit_id: SUB,
+    ...(h.keepout ? { rulecad_keepout: h.keepout } : {}) }); // a screw head's room: no track within keepout (mm, from its centre)
 
   // ---- the autorouter: what the rules don't draw ----
   if (toRoute.length) {
@@ -654,7 +655,7 @@ export async function routeInput(json, toRoute, board = {}) {
     if (e.type === 'pcb_plated_hole') obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_plated_hole_id'), componentId: e.pcb_component_id, type: 'oval', layers: ['top', 'bottom'],
       center: { x: e.x, y: e.y }, width: holeSize(e).w, height: holeSize(e).h, connectedTo: linked(e.pcb_plated_hole_id, e.pcb_port_id), ...joined(e) });
     if (e.type === 'pcb_hole') obstacles.push({ componentId: e.pcb_component_id, obstacleId: e.pcb_hole_id, isNonPlatedHole: true, type: 'rect', shape: 'circle',
-      layers: ['top', 'bottom'], center: { x: e.x, y: e.y }, width: e.hole_diameter, height: e.hole_diameter, connectedTo: [] });
+      layers: ['top', 'bottom'], center: { x: e.x, y: e.y }, width: 2 * (e.rulecad_keepout ?? e.hole_diameter / 2), height: 2 * (e.rulecad_keepout ?? e.hole_diameter / 2), connectedTo: [] }); // with a screw head's room round it
   }
   // Tracks already on the board, but a plane's vias inside a big pad: the pad is in the router's way already
   const padOf = new Map(json.filter((e) => e.type === 'pcb_smtpad').map((e) => [e.pcb_port_id, smtBounds(e)]));

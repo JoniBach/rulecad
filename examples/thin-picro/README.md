@@ -27,8 +27,15 @@ holes with 0.1 in header holes beside them.
      Each pin sits where its track comes out of the core, so the tracks fan out without crossing. The pins keep
      Sea-Picro's nets; only where they sit changes, so check the pinout before wiring a keyboard to it.
    - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors.
+   - **Two mounting holes** for M2 screws (2.1 mm, as on a Raspberry Pi Pico), in the clear space between the core and
+     the USB-C parts. No track comes within 1.5 mm of either hole's centre. An M2 screw head is 3.8 mm across, so its
+     rim sits on solder mask over tracks: use a nylon screw or washer. Wider clear circles crowded the tracks to the
+     right-hand pins, and the board stopped routing cleanly.
 3. Each part shows in 3D: KiCad's own models for most parts (in `models/`), and boxes the size of the USB-C socket,
    the RP2040 and the fuse, whose own models have no licence. The tallest part is the USB-C socket, 3.18 mm overall.
+   The `with-headers` version (`thin-picro/module:with-headers`, or `show_headers: 1`) also shows a pin header in each
+   header hole: a square pin and its plastic spacer under the board, as a standard 2.54 mm male header. The board
+   itself is the same.
 4. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
 
 The checks prove the result:
@@ -56,7 +63,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 `cad export` makes the files JLCPCB needs.
 
 It hasn't been made yet. Before ordering:
-- **Open `exports/thin-picro/module@0.3.1.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
+- **Open `exports/thin-picro/module@0.4.0.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
 - **Check the pinout** below against your keyboard's wiring: the pins aren't in Sea-Picro's order.
 
 ## Pinout
@@ -110,6 +117,7 @@ its documentation doesn't describe it, so check Sea-Picro's schematic before usi
 
 ```sh
 npx cad check thin-picro/module      # build, route and check (routing takes a few minutes)
+npx cad preview thin-picro/module:with-headers   # the same board in 3D with pin headers fitted
 npx cad export thin-picro/module     # Gerbers, drill files, BOM and placement for JLCPCB
 ```
 

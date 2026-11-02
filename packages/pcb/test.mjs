@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup, wrlMesh, stepBounds, partModels } from '@rulecad/pcb';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
@@ -461,4 +461,19 @@ test('labels: one hemmed in by pads goes to the nearest clear place, with a smal
   assert.ok(Math.hypot(tip.x - pointed.to.x, tip.y - pointed.to.y) < Math.hypot(base.x - pointed.to.x, base.y - pointed.to.y), 'its tip points at the pin');
   const lone = slideClear([{ text: 'C', x: 0, y: 0, size: 1, to: { x: 0, y: 0 } }], [{ x: 0, y: 0, w: 30, h: 30 }]);
   assert.ok(lone[0].clash && !lone[0].to, 'nowhere clear: it stays put, without its pointer');
+});
+
+test('pin headers in a 3D model: a pin and spacer at each hole, under the board; a hole keeps tracks out of a screw head\'s room', async () => {
+  const m = pinHeaders([{ x: 0, y: 0 }, { x: 2.54, y: 0 }], { thickness: 1.6 });
+  assert.equal(m.boxes.length, 4, 'a spacer and a pin for each hole');
+  const tris = partModels([{ type: 'cad_component', rulecad_model: { ...m, x: 10, y: 5, rotation: 0, layer: 'top' } }], { thickness: 1.6 });
+  const zs = tris.flat().map((v) => v[2]), xs = tris.flat().map((v) => v[0]);
+  assert.deepEqual([Math.min(...zs), Math.max(...zs)], [-8.5, 3], 'pins from 6 mm below the spacer to 3 mm above it; the spacer under the board');
+  assert.deepEqual([Math.min(...xs), Math.max(...xs)], [8.73, 13.81], 'where the part is');
+  let srj;
+  await render({ center: { x: 0, y: 0 }, width: 20, height: 10, thickness: 1.6, track: 0.2, autoroute: true, holes: [{ x: 5, y: 0, d: 2.1, keepout: 1.9 }],
+    parts: [part('R1', '0603', -5, 0), part('R2', '0603', 0, 3)], nets: { A: ['R1.pin1', 'R2.pin1'] } },
+  { route: async (json, toRoute, board) => { srj = await routeInput(json, toRoute, board); return { traces: [] }; } });
+  const hole = srj.obstacles.find((o) => o.isNonPlatedHole);
+  assert.equal(hole.width, 3.8, 'the router keeps out of the screw head\'s room, not just the hole');
 });

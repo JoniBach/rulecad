@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -56,6 +56,17 @@
       "show": true,
       "interface": true,
       "unit": "0 or 1"
+    },
+    "show_headers": {
+      "value": 0,
+      "choice": [
+        0,
+        1
+      ],
+      "unit": "0 or 1",
+      "rule": "1: the 3D model shows a pin header in each header hole (a square pin and its plastic spacer under the board), as when the module is fitted with headers. The board itself is the same",
+      "label": "Show pin headers",
+      "show": true
     },
     "length": {
       "value": "(edge_pins - 1) * pitch + 2 * row_in",
@@ -121,6 +132,36 @@
       "unit": "mm",
       "rule": "Pad 32's height on the board"
     },
+    "hole_d": {
+      "value": 2.1,
+      "unit": "mm",
+      "rule": "Mounting holes: for M2 screws, as the Raspberry Pi Pico's (2.1 mm)"
+    },
+    "hole_keepout": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Mounting holes: no track within this of a hole's centre (a 3.0 mm clear circle; an M2 screw head, 3.8 mm across, overlaps solder mask past it: use a nylon screw or washer). Wider keepouts crowd the tracks to the right-hand pins"
+    },
+    "hole_a_x": {
+      "value": 8.2,
+      "unit": "mm",
+      "rule": "First mounting hole, along the board from the middle: in the clear space between the core and the USB-C parts"
+    },
+    "hole_a_y": {
+      "value": -0.9,
+      "unit": "mm",
+      "rule": "First mounting hole, across the board from the middle"
+    },
+    "hole_b_x": {
+      "value": 17.5,
+      "unit": "mm",
+      "rule": "Second mounting hole, along the board: right of the LED5V pad, clear of the end pins' labels"
+    },
+    "hole_b_y": {
+      "value": -1.8,
+      "unit": "mm",
+      "rule": "Second mounting hole, across the board"
+    },
     "switch_in": {
       "value": "1.4 * headers + 2.4",
       "unit": "mm",
@@ -163,6 +204,11 @@
       "value": 90,
       "unit": "°",
       "rule": "Pin labels along the long edge turned to run up from their pins"
+    }
+  },
+  "variants": {
+    "with-headers": {
+      "show_headers": 1
     }
   }
 }

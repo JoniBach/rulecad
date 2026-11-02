@@ -885,6 +885,19 @@ export function stepBounds(text) {
 }
 
 // A box as triangles
+/**
+ * Pin headers under a board, for its 3D model: at each hole, a square pin through the board and a plastic spacer under
+ * it, sized as a standard 2.54 mm male header (pin 0.64 mm square; spacer 2.54 mm square, 2.5 mm tall; 6 mm of pin
+ * below it, 3 mm above). Give the result as a part's `model`: { boxes } in the part's frame, z from the board's top.
+ * @param {{ x, y }[]} holes in the part's frame @param {object} [o] { thickness = 1.6, pitch = 2.54, pin = 0.64, spacer = 2.5, below = 6, above = 3 }
+ */
+export function pinHeaders(holes, { thickness = 1.6, pitch = 2.54, pin = 0.64, spacer = 2.5, below = 6, above = 3 } = {}) {
+  const bottom = -thickness - spacer; // the spacer's underside, from the board's top
+  return { boxes: holes.flatMap(({ x, y }) => [
+    { min: [x - pitch / 2, y - pitch / 2, bottom], max: [x + pitch / 2, y + pitch / 2, -thickness] },
+    { min: [x - pin / 2, y - pin / 2, bottom - below], max: [x + pin / 2, y + pin / 2, -thickness + above] }]) };
+}
+
 function boxMesh({ min: [x0, y0, z0], max: [x1, y1, z1] }) {
   const v = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
   return [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]].map((f) => f.map((i) => v[i]));
@@ -893,15 +906,16 @@ function boxMesh({ min: [x0, y0, z0], max: [x1, y1, z1] }) {
 /**
  * Each part's 3D model on the board, as triangles in the board's frame (board bottom at z = 0, top at thickness): the
  * model's own scale, turn and offset as KiCad applies them, then the part's place; a part on the back hangs below,
- * turned over. meshes: { file: triangles } for models with a mesh; a model with only a box is drawn as that box.
+ * turned over. meshes: { file: triangles } for models with a mesh; a model with only a box is drawn as that box, and
+ * one with boxes (pinHeaders) as those.
  * @param {object[]} json render's @param {{ thickness: number, meshes?: object }} o @returns {number[][][]}
  */
 export function partModels(json, { thickness, meshes = {} }) {
   const rad = Math.PI / 180, out = [];
   for (const c of json.filter((e) => e.type === 'cad_component' && e.rulecad_model)) {
-    const m = c.rulecad_model, tris = m.mesh ? meshes[m.mesh] : m.box ? boxMesh(m.box) : null;
+    const m = c.rulecad_model, tris = m.mesh ? meshes[m.mesh] : m.box ? boxMesh(m.box) : m.boxes ? m.boxes.flatMap(boxMesh) : null;
     if (!tris) continue;
-    const [sx, sy, sz] = m.scale, [rx, ry, rz] = m.rotate.map((a) => -a * rad), [ox, oy, oz] = m.offset;
+    const [sx, sy, sz] = m.scale ?? [1, 1, 1], [rx, ry, rz] = (m.rotate ?? [0, 0, 0]).map((a) => -a * rad), [ox, oy, oz] = m.offset ?? [0, 0, 0];
     const turn = (v) => { // KiCad's model turn: about x, then y, then z
       let [x, y, z] = v;
       [y, z] = [y * Math.cos(rx) - z * Math.sin(rx), y * Math.sin(rx) + z * Math.cos(rx)];

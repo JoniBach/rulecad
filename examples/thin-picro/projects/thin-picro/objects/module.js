@@ -100,9 +100,14 @@ export function main (v) {
   const area = { minX: left + v.label_gap, maxX: right - v.label_gap, minY: bottom + v.label_gap, maxY: top - v.label_gap }
   const labels = v.pcb.clearLabels(first.map(({ clash, tip, ...l }) => (clash ? { ...l, to: tip } : l)), c, { char: v.label_char, area })
   const k = clone(c, { layers: v.layers })
+  // Shown with pin headers (show_headers: 1): a header pin and its plastic spacer in each header hole, in the 3D model only
+  const holesOf = pads.filter((q) => q.hole_offset).map((q) => ({ x: q.x + q.hole_offset[0], y: q.y + q.hole_offset[1] }))
+  const parts = v.show_headers && v.headers ? k.parts.map((p) => (p.name === 'J2' ? { ...p, model: v.pcb.pinHeaders(holesOf, { thickness: v.thickness, pitch: v.pitch }) } : p)) : k.parts
+  // Mounting holes, for M2 screws as on a Raspberry Pi Pico, where the board has room: between the core and the USB-C parts
+  const mounting = [[v.hole_a_x, v.hole_a_y], [v.hole_b_x, v.hole_b_y]].map(([x, y]) => ({ x, y, d: v.hole_d, keepout: v.hole_keepout }))
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
-      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, copper: k.copper, parts: k.parts, nets: k.nets, holes: k.holes, silk: labels },
+      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, copper: k.copper, parts, nets: k.nets, holes: [...k.holes, ...mounting], silk: labels },
     clone: { circuit: src, arranged: c }
   }
 }
