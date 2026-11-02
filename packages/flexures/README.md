@@ -241,7 +241,10 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
 - `bridges: [{ shape, depth, gap }]` prints the frame over a moving part on the top layers: a barrel's roof over a
   stem, so it can't lift out of its channel. Every body that passes under one is cut down by `depth` (six layers) and
   `gap` (three layers), along all of it that ever passes under. Each bridge must stand on the frame both sides, span no
-  more than the printer's `bridge`, and not cross a flexure.
+  more than the printer's `bridge`, and not cross a flexure. With `side: 'bottom'` it's a floor on the bottom layers
+  (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
+  moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
+  no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them.
 - Every rigid part is checked for free ends: an arm narrower than `check.rigid` (3 mm) tied on at one end only bends
   under load, so it's a warning.
 - `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and

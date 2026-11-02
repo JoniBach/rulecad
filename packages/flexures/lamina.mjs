@@ -118,12 +118,22 @@ function solidOf(a, height) {
 }
 
 // The print in 3D: the shapes extruded, `cuts` taken out of them between heights and `adds` put on (bridges)
-function solidWith(a, height, cuts, adds) {
+function solidWith(a, height, cuts, adds, arches = []) {
   const { geom3, poly3 } = jscad.geometries;
   return run((cs, keep) => {
     const slab = (c) => keep(keep(cs(c.shape).extrude(c.to - c.from)).translate([0, 0, c.from]));
     let m = keep(cs(a).extrude(height));
     for (const c of cuts) m = keep(m.subtract(slab(c)));
+    // An arch: its profile (a triangle, 45° flanks, along u from lo to hi) stood up and swept across, cut out of the
+    // part's footprint there
+    for (const r of arches) {
+      const mid = (r.lo + r.hi) / 2, half = (r.hi - r.lo) / 2, big = 1e3;
+      const tri = keep(new W.CrossSection([[[r.lo, 0], [r.hi, 0], [mid, half]]], 'NonZero')); // (s, z), apex at r.apex since half = apex
+      const across = keep(keep(tri.extrude(2 * big)).translate([0, 0, -big])); // swept along the third axis
+      const stood = keep(across.rotate([90, 0, 0])); // (s, z, w) to (s, w, z): the profile now stands in x–z, swept along y
+      const placed = keep(stood.rotate([0, 0, (Math.atan2(r.u[1], r.u[0]) * 180) / Math.PI])); // s along u
+      m = keep(m.subtract(keep(placed.intersect(keep(cs(r.shape).extrude(height))))));
+    }
     for (const c of adds) m = keep(m.add(slab(c)));
     const { vertProperties: v, triVerts: t, numProp: n } = m.getMesh(), polys = [];
     for (let i = 0; i < t.length; i += 3) polys.push(poly3.create([t[i], t[i + 1], t[i + 2]].map((k) => [v[k * n], v[k * n + 1], v[k * n + 2]])));
@@ -824,7 +834,8 @@ export async function lamina(spec) {
   // out of its channel). Every body that passes under one is cut down by the bridge and a gap, along all of it that
   // ever passes under; the bridge spans no wider than the printer bridges, and stands on the frame both sides ----
   const layer = printer?.layer ?? 0.2, bridgeMost = printer?.bridge ?? 5;
-  const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3 }));
+  const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3, bottom: b.side === 'bottom' }));
+  const arches = []; // a floor strip's: the parts passing over it arched up at 45°, which prints without support
   const cuts = [];
   if (bridges.length) {
     const poses = [places({})];
@@ -833,10 +844,12 @@ export async function lamina(spec) {
       for (let k = 0; k <= FRAMES * 2; k++) { const t = k / (FRAMES * 2); poses.push(places(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t]))).v)); }
     }
     bridges.forEach((br, i) => {
-      const name = `bridge ${i + 1}`, under = subtract(br.shape, parts.ground.shape), left = height - br.depth - br.gap;
-      if (empty(under)) { f('warn', `${name} has nothing under it to bridge: it's all on the frame`, 'lamina.bridge'); return; }
-      const wide = !empty(shrink(under, bridgeMost / 2 + 0.01, 'Round'));
-      f(wide ? 'fail' : 'pass', `${name} spans ${wide ? 'more than' : 'no more than'} the ${bridgeMost} mm the printer bridges`, 'lamina.bridge', { bridge: i });
+      const name = br.bottom ? `floor ${i + 1}` : `bridge ${i + 1}`, under = subtract(br.shape, parts.ground.shape), left = height - br.depth - br.gap;
+      if (empty(under)) { f('warn', `${name} has nothing to cross: it's all on the frame`, 'lamina.bridge'); return; }
+      if (!br.bottom) { // (a floor stands on the bed: it spans nothing)
+        const wide = !empty(shrink(under, bridgeMost / 2 + 0.01, 'Round'));
+        f(wide ? 'fail' : 'pass', `${name} spans ${wide ? 'more than' : 'no more than'} the ${bridgeMost} mm the printer bridges`, 'lamina.bridge', { bridge: i });
+      }
       const feet = pieces(intersect(br.shape, parts.ground.shape));
       f(feet >= 2 ? 'pass' : 'fail', `${name} stands on the frame ${feet >= 2 ? 'on both sides' : feet ? 'on one side only: it would droop' : 'nowhere: it would print in mid-air'}`, 'lamina.bridge', { bridge: i });
       for (const [n, p] of Object.entries(parts)) {
@@ -844,15 +857,28 @@ export async function lamina(spec) {
         if (p.kind !== 'body') continue;
         const cut = intersect(p.shape, union(poses.map((P) => moved(inverse(P[n]), br.shape)))); // all of it that ever passes under, where it is at rest
         if (empty(cut)) continue;
-        cuts.push({ shape: cut, from: left, to: height });
-        f(left >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes under it, cut down to ${left.toFixed(2)} mm there (the bridge ${br.depth.toFixed(2)} mm, a gap of ${br.gap.toFixed(2)} mm over it)`, 'lamina.bridge', { bridge: i, body: n, left });
+        if (!br.bottom) {
+          cuts.push({ shape: cut, from: left, to: height });
+          f(left >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes under it, cut down to ${left.toFixed(2)} mm there (the bridge ${br.depth.toFixed(2)} mm, a gap of ${br.gap.toFixed(2)} mm over it)`, 'lamina.bridge', { bridge: i, body: n, left });
+          continue;
+        }
+        // Over a floor: the part's underside arched up over all of it that ever passes over, the arch's flanks at 45°
+        // along the way it moves (so each layer overhangs the one below by no more than it rises), high enough over
+        // the whole stretch
+        const T = poses.reduce((a, P) => { const d = Math.hypot(P[n][2], P[n][5]); return d > a.d ? { d, u: [P[n][2] / d, P[n][5] / d] } : a; }, { d: 0, u: [1, 0] });
+        const turned = poses.some((P) => Math.abs(Math.atan2(P[n][3], P[n][0])) > rad(1));
+        if (turned) { f('fail', `${name}: ${n} turns as it passes over it: a floor's arch is for what slides`, 'lamina.bridge', { bridge: i, body: n }); continue; }
+        const u = T.u, along = cut.flat().map(([x, y]) => x * u[0] + y * u[1]), lo = Math.min(...along), hi = Math.max(...along), clear = br.depth + br.gap;
+        const apex = clear + (hi - lo) / 2;
+        arches.push({ body: n, shape: intersect(p.shape, grow(cut, clear + 0.5)), u, lo: lo - clear, hi: hi + clear, apex });
+        f(height - apex >= 2 ? 'pass' : 'fail', `${name}: ${n} passes over it, its underside arched up to ${apex.toFixed(2)} mm at 45° (${clear.toFixed(2)} mm clear over the floor all along), leaving ${(height - apex).toFixed(2)} mm above`, 'lamina.bridge', { bridge: i, body: n, apex });
       }
     });
   }
 
   // ---- the print, everything at rest, and frames along the sequence for an animation ----
   const extrude = (shapes) => solidOf(union(Object.values(shapes)), height);
-  let solid = bridges.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => ({ shape: b.shape, from: height - b.depth, to: height }))) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
+  let solid = bridges.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => (b.bottom ? { shape: b.shape, from: 0, to: b.depth } : { shape: b.shape, from: height - b.depth, to: height })), arches) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
   if (spec.finish) solid = spec.finish(solid);
   const outline = (v) => Object.fromEntries(Object.entries(shapesAt(v)).map(([n, g]) => [n, g.map((o) => o.map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]))]));
   for (let i = 0; i + 1 < seq.length; i++) {

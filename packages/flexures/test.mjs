@@ -559,4 +559,24 @@ test('a bridge: printed over a moving part on the top layers, the part cut down 
   // Too wide a span, and one standing on nothing, are found
   const wide = await lamina({ ...base, bridges: [{ shape: rect(28, -11, 39, -1) }] });
   assert.ok(wide.findings.some((x) => x.code === 'lamina.bridge' && x.level === 'fail'), 'a bridge too wide, or on one side, fails');
+  // A floor under it instead: the tip on its leaf turns as it passes, and a floor's arch is for what slides
+  const floor = await lamina({ ...base, bridges: [{ shape: rect(32, -6, 35, 6), side: 'bottom' }] });
+  assert.ok(floor.findings.some((x) => x.code === 'lamina.bridge' && x.level === 'fail' && /turns/.test(x.text)), 'a floor under something that turns fails');
+});
+
+test('a floor: what slides over it is arched up at 45°, clear of it all along, and the print has no overhang past 45°', async () => {
+  const L = 30, t = 0.84;
+  const m = await lamina({
+    height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 5 }, check: { fe: false }, physics: false,
+    bodies: { slider: [rect(L, -4, L + 6, 4), rect(L + 6, -1.5, L + 40, 1.5)] },
+    joints: { spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 5, shuttle: 3, base: 3, fillet: 1, into: t }, at: [0, 0], angle: -90, from: 'ground', to: 'slider' } },
+    states: { drawn: { spring: 4 } }, sequence: ['rest', 'drawn', 'rest'],
+    flood: { outline: rect(-20, -40, L + 50, 12), keep: [] }, bridges: [{ shape: rect(L + 22, -4, L + 26, 4), side: 'bottom' }],
+  });
+  const b = m.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(b.length && b.every((x) => x.level === 'pass') && b.some((x) => /arched up/.test(x.text)), b.map((x) => x.text).join('; '));
+  const { check } = await import('@rulecad/printcheck');
+  const found = check(jscad.geometries.geom3.toPolygons(m.parts.body).map((p) => p.vertices), { bed: 256, overhang: 45, layer: 0.2, line: 0.42, bridge: 5 });
+  const said = found.find((x) => /overhang/i.test(x.text));
+  assert.ok(said && said.level === 'pass', said?.text ?? found.map((x) => x.text).join('; '));
 });
