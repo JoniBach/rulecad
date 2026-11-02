@@ -1,7 +1,7 @@
 {
   "name": "inline",
   "title": "Launcher action, in line: a pusher drawn back between two curved arms, shaped by the beam solver, printed in one piece on its side",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "uses": [
     "x1c",
     "petg",
@@ -9,7 +9,7 @@
   ],
   "material": "PETG",
   "engine": "manifold",
-  "orientation": "On its side, as drawn: one piece, no supports. Pull the tab at the back: the pusher slides straight back between the arms, which bend like a bow's limbs; let go and it throws the disc.",
+  "orientation": "On its side, as drawn: one piece, no supports. Pinch the tab inside the yoke and pull: the pusher slides straight back between the arms, which bend like a bow's limbs; let go and it throws the disc.",
   "parts": {
     "body": {
       "label": "The action: frame, arms and pusher in one print"
@@ -150,6 +150,11 @@
       "value": 16,
       "unit": "mm",
       "rule": "How far the cocking tab reaches behind the frame"
+    },
+    "grip": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Room behind the tab at full draw, inside the yoke, for the fingers that pull it"
     },
     "tab_h": {
       "value": 6,

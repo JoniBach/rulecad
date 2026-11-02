@@ -28,7 +28,12 @@ export function main (v) {
   const pusher = [rect(L.back, 0 - L.half, L.nose, L.half), rect(L.rear - v.wall - v.tab, 0 - v.tab_h / 2, L.back, v.tab_h / 2), rect(L.nose - v.round * 2, 0 - noseH, L.discAt - g, noseH)]
   // The frame: back wall (a slot for the tab), top and bottom, front wall (an opening for the disc); stops off the back
   // wall either side of the tab; rails either side of the disc, which are also the bar's forward stop
+  // The yoke: the top and bottom walls run on behind the tab and join there, so the frame is one rigid ring (the tab's
+  // slot and the disc's way out would otherwise cut it in two along the axis, held together only by the arms)
+  const tabEnd = L.rear - v.wall - v.tab, yokeIn = tabEnd - v.stroke - v.over - v.grip
   const out = L.top + v.wall, rail = v.launcher.disc_t / 2 + v.slide, ground = [
+    rect(yokeIn - v.wall, 0 - out, yokeIn, out),
+    ...both(rect(yokeIn - v.wall, L.top, L.rear - v.wall, out)),
     ...both(rect(L.rear - v.wall, v.tab_h / 2 + g, L.rear, out)),
     ...both(rect(L.rear - v.wall, L.top, L.front + v.wall, out)),
     ...both(rect(L.front, rail, L.front + v.wall, out)),
