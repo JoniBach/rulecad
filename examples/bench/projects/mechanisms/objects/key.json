@@ -1,0 +1,163 @@
+{
+  "name": "key",
+  "title": "A printed key with a tactile click: a stem on a two-leaf guide, a bump riding past a bump on a leaf",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "petg",
+    "mx"
+  ],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "On its side, as drawn: one piece, no supports. Press the pad: the stem goes down on its guide, its bump pushes the click leaf aside and drops past it (the click), and it bottoms out on the frame.",
+  "parts": {
+    "body": {
+      "label": "The key: frame, guide, stem and click leaf in one print"
+    }
+  },
+  "variables": {
+    "height": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "How tall it prints: the flexures' width, so it sets their force (a thinner print, a lighter key)"
+    },
+    "gap": {
+      "value": "x1c.print_gap",
+      "unit": "mm",
+      "rule": "The least gap that prints apart"
+    },
+    "travel": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "How far the stem goes down before it bottoms out: shorter than an MX switch's 4 mm, so the guide stays within its strain"
+    },
+    "press": {
+      "value": "travel - gap",
+      "unit": "mm",
+      "rule": "How far a press drives it: to just short of bottoming out"
+    },
+    "guide_len": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "The guide's leaves: long, so the key is light"
+    },
+    "guide_t": {
+      "value": "x1c.wall_min",
+      "unit": "mm",
+      "rule": "The guide leaves' thickness at their ends: the thinnest wall"
+    },
+    "guide_gap": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Between the guide's two leaves"
+    },
+    "taper": {
+      "value": 0.6,
+      "rule": "How far the guide leaves taper towards their middles (0 a bar, 1 uniform strength)"
+    },
+    "least": {
+      "value": "x1c.wall_min",
+      "unit": "mm",
+      "rule": "The thinnest a tapered leaf gets"
+    },
+    "round": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Rounds where flexures meet blocks, and on every inside corner"
+    },
+    "block": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The guide's base and shuttle blocks"
+    },
+    "wall": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The frame's walls"
+    },
+    "stem_w": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The stem's width"
+    },
+    "stem_up": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "How far the stem reaches up from the guide, to the pad"
+    },
+    "stem_down": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "How far the stem reaches down from the guide"
+    },
+    "pad": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The pad pressed on top"
+    },
+    "pad_t": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The pad's thickness"
+    },
+    "bump": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "Each bump's height: the stem's and the click leaf's"
+    },
+    "engage": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "How far the bumps overlap: how far the click leaf is pushed aside"
+    },
+    "click_at": {
+      "value": 2.4,
+      "unit": "mm",
+      "rule": "How far down the stem the bumps meet, apex to apex: where it clicks"
+    },
+    "leaf_len": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The click leaf"
+    },
+    "leaf_t": {
+      "value": "x1c.wall_min",
+      "unit": "mm",
+      "rule": "The click leaf's thickness"
+    },
+    "into": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "How far a leaf runs into the block it grows from"
+    },
+    "up": {
+      "value": 90,
+      "unit": "degrees",
+      "rule": "The click leaf stands up"
+    },
+    "room": {
+      "value": "round + engage + x1c.print_gap * 2",
+      "unit": "mm",
+      "rule": "Room beside the click leaf to bend away into, the far wall its stop: its round, how far it's pushed, and a little"
+    },
+    "peak_least": {
+      "value": 0.3,
+      "unit": "N",
+      "rule": "The least a press should peak at"
+    },
+    "peak_most": {
+      "value": 2,
+      "unit": "N",
+      "rule": "The most: a stiff key"
+    },
+    "click": {
+      "value": 0.2,
+      "rule": "How much the force should drop after the peak: the click you feel"
+    },
+    "spacer": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "How far the click bump stands off its leaf, so the leaf's rounds keep clear of the stem"
+    }
+  }
+}

@@ -11,6 +11,8 @@
     "flexures.mjs",
     "compose.mjs",
     "lamina.mjs",
+    "physics.mjs",
+    "modules.mjs",
     "beams.mjs",
     "flexures.d.mts",
     "compose.d.mts",

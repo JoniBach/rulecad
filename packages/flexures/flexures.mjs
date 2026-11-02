@@ -84,7 +84,8 @@ export function beamProfile({ length: L, thickness: t, taper = 0, fillet = 0, le
 function beam(p, ends) {
   const { length: L, width } = p, half = beamProfile(p, ends), n = Math.max(60, Math.ceil(L / 0.25)), r = p.fillet || 0, into = p.into ?? 0;
   const xs = [...new Set([...Array.from({ length: n + 1 }, (_, i) => (L * i) / n), ...Array.from({ length: 25 }, (_, i) => (r * i) / 24), ...Array.from({ length: 25 }, (_, i) => L - (r * i) / 24)])].filter((x) => x >= 0 && x <= L).sort((a, b) => a - b);
-  const tipHeld = ends === 'guided' || p.tip, ends2 = [...(into ? [[-into, half(0)]] : []), ...xs.map((x) => [x, half(x)]), ...(into && tipHeld ? [[L + into, half(L)]] : [])]; // run on into the blocks, as wide as the round's foot
+  const tipHeld = ends === 'guided' || p.tip, core = p.thickness / 2; // the run-on into a block is the beam's own thickness, so where the beam is flush with the block's edge nothing pokes out
+  const ends2 = [...(into ? [[-into, core], [0, core]] : []), ...xs.map((x) => [x, half(x)]), ...(into && tipHeld ? [[L, core], [L + into, core]] : [])];
   const lower = ends2.map(([x, y]) => [x, -y]), upper = ends2.slice().reverse(); // anticlockwise: along the underside, back along the top
   return jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: [...lower, ...upper] }));
 }
@@ -751,6 +752,7 @@ export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, 
 export { ports, size, report, models } from './compose.mjs';
 export { lamina, flexureMaterial } from './lamina.mjs';
 export { beamSystem, equilibrium, energyOf, shapeOf } from './beams.mjs';
+export { place, combine } from './modules.mjs';
 
 /**
  * A contact-aided leaf: a cantilever with a stop partway along it, a gap off the beam, so it bends freely until the

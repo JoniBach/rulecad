@@ -1,0 +1,9 @@
+{
+  "name": "mechanisms",
+  "description": "Mechanisms printed flat in one piece, each checked through its whole cycle as it would behave: its flexures as beams that bend as far as they bend, its parts touching, a hand driving it. Test cases for @rulecad/flexures lamina, on the way to the disc launcher.",
+  "material": "PETG",
+  "objects": [
+    "key",
+    "latch"
+  ]
+}
