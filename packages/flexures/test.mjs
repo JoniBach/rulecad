@@ -429,3 +429,25 @@ test('the peak strain by finite elements: a square root is a sharp corner and fa
   assert.ok(square.level === 'fail' && square.sharp && Math.abs(square.at[0]) < 0.5, `the square corner where the leaf meets the block: ${square.text}`);
   assert.ok(round.level === 'pass' && round.ratio > 0.8 && round.ratio < 1.3, `a round brings it to about beam theory's: ${round.text}`);
 });
+
+// ---------- beams that bend as far as they bend ----------
+import { beamSystem, equilibrium } from '@rulecad/flexures';
+
+test('the beam solver: a cantilever as beam theory says at small loads and as the elastica at large ones, a guided beam, a parallel guide and its drop, and a column that buckles at the Euler load', () => {
+  const E = 1810, L = 40, t = 1.26, w = 8, I = (w * t ** 3) / 12, ground = { at: [0, 0], fixed: true };
+  const leafSys = beamSystem({ bodies: { ground }, beams: [{ name: 'leaf', path: [[0, 0], [L, 0]], thickness: t, width: w, E, from: 'ground' }] }), tip = leafSys.nodes.at(-1).dof;
+  const small = equilibrium(leafSys, { loads: new Map([[tip + 1, 0.01]]) });
+  assert.ok(Math.abs(small.q[tip + 1] / ((0.01 * L ** 3) / (3 * E * I)) - 1) < 0.002, 'FL³/3EI');
+  for (const k of [1, 2]) { // PL²/EI of 1 and 2: the tip at 0.3017 and 0.4935 of the length (Bisshopp and Drucker)
+    const r = equilibrium(leafSys, { loads: new Map([[tip + 1, (k * E * I) / L ** 2]]) });
+    assert.ok(r.converged && Math.abs(r.q[tip + 1] / L - [0, 0.3017, 0.4935][k]) < 0.002, `PL²/EI = ${k}: ${(r.q[tip + 1] / L).toFixed(4)}`);
+  }
+  const guided = beamSystem({ bodies: { ground, tip: { at: [L, 0] } }, beams: [{ name: 'b', path: [[0, 0], [L, 0]], thickness: t, width: w, E, from: 'ground', to: 'tip' }] }), d = guided.body.tip.dof;
+  assert.ok(Math.abs(equilibrium(guided, { held: new Map([[d + 1, 1], [d + 2, 0]]) }).reaction.get(d + 1) / ((12 * E * I) / L ** 3) - 1) < 0.005, '12EI/L³');
+  const pair = beamSystem({ bodies: { ground, shuttle: { at: [L, 0] } }, beams: [-5, 5].map((y, i) => ({ name: `b${i}`, path: [[0, y], [L, y]], thickness: t, width: w, E, from: 'ground', to: 'shuttle' })) }), s = pair.body.shuttle.dof;
+  const r = equilibrium(pair, { held: new Map([[s + 1, 6]]) }), m = parallelGuideModel({ length: L, thickness: t, width: w }, { E });
+  assert.ok(Math.abs(r.reaction.get(s + 1) / (m.stiffness * 6) - 1) < 0.02 && Math.abs(-r.q[s] / m.drop(6) - 1) < 0.02, 'the guide\'s stiffness and its drop, 3δ²/5L');
+  const col = beamSystem({ bodies: { ground }, beams: [{ name: 'c', path: [[0, 0], [0, L]], thickness: t, width: w, E, from: 'ground' }] }), top = col.nodes.at(-1).dof, Pcr = (Math.PI ** 2 * E * I) / (4 * L * L);
+  const below = equilibrium(col, { loads: new Map([[top + 1, -0.95 * Pcr], [top, 1e-4 * Pcr]]) }), above = equilibrium(col, { loads: new Map([[top + 1, -1.05 * Pcr], [top, 1e-4 * Pcr]]), start: below.q });
+  assert.ok(Math.abs(below.q[top]) < 0.1 && Math.abs(above.q[top]) > 5, 'stands under the Euler load, bows over it');
+});
