@@ -575,8 +575,8 @@ export async function lamina(spec) {
       const u = used[n], m = j.model;
       if (!m) { f('info', `${n}: your own flexure, with no model: its strain and stop aren't checked`, 'lamina.model', { joint: n }); continue; }
       const toModel = (q) => (j.turning ? rad(q) : q), unit = j.turning ? '°' : ' mm', limit = limitOf(n), most = Math.abs(u?.most || 0);
-      if (printer) for (const x of gens.printable({ thickness: j.params.thickness ?? j.params.neck, width: j.params.width }, printer, material, m)) f(x.level, `${n}: ${x.text}`, x.code, { joint: n });
-      const e = m.strain(toModel(most));
+      if (printer) for (const x of gens.printable({ thickness: Math.min(...[j.params.thickness ?? j.params.neck].flat()), width: j.params.width }, printer, material, m)) f(x.level, `${n}: ${x.text}`, x.code, { joint: n });
+      const e = Math.abs(m.strain(toModel(m.signed ? u?.most || 0 : most))); // (a curve isn't the same both ways: its strain the way it's moved)
       f(e <= material.strainLimit ? 'pass' : 'fail', `${n}: ${u?.most ? `at its most (${+most.toFixed(2)}${unit}) it sees ${(e * 100).toFixed(2)}% strain, ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}% (${+limit.toFixed(2)}${unit})` : 'nothing moves it'}`, 'lamina.strain', { joint: n, strain: e, limit });
       if (j.model.least != null && printer && j.model.least < (printer.wall_min ?? 2 * printer.line) - 1e-6) f('fail', `${n}: tapered to ${j.model.least.toFixed(2)} mm, under the thinnest wall that prints (${printer.wall_min ?? 2 * printer.line} mm)`, 'flexure.thin', { joint: n });
       const fe = u?.most && spec.check?.fe !== false ? feCheck(n, j, most, e) : null;

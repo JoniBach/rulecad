@@ -254,6 +254,34 @@ push-push latch is built from a plunger module and a track module placed at the 
 - **`waveSpring`:** legs across joined by round U-bends, the thickness grading smoothly to the bends'. Squashed along
   its stack it stacks solid when its legs meet: its own stop, which the physics sees.
 
+### Shaped by the solver: curves
+
+A `curve` flexure is a spline through a few points, its thickness easing from point to point. It has no straight runs
+and no corners. `start` and `end` set the directions it leaves its root and meets its tip, held for a short lead so it
+meets each block square. `mirror` adds its mirror image across a line, so two arms either side of an axis pull
+together and their sideways pulls cancel. A curve has no formula, so its model is the beam solver's: its stiffness,
+its strain and energy at a travel, and the travel a strain allows, large deflections and all.
+
+`shapeCurve(job)` finds the curve for a job. Its ends stay fixed: where it grows from and what it moves. It gets a box
+of room, a travel, an energy to store there, and a range of thicknesses. CMA-ES then moves every point and thickness
+until the beam solver says it stores the energy with the least peak strain, inside its room. No bend may be tighter
+than the arm's thickness. No part of it may come within a print gap of another, at rest or fully moved. Give `width`
+as a range and it is solved at the widest, then printed as tall as the energy needs: force goes with height, strain
+doesn't.
+
+Free-form points wander into tangles, so start it from a shape of the right kind. `meander({ root, tip, legs, lo, hi })`
+folds an arm into its room as legs joined by round bends. Each arm must be long enough to spread the travel's strain
+(for a 12 mm stroke at 1%, about 14 cm of a three-line arm), and a meander is how that length fits. From there the
+shaping moves everything. The launcher's in-line action (`launcher/inline`) is shaped this way, from five legs.
+
+```js
+const job = { root: [44, 35], tip: [0, 5], start: 270, end: -90, region: { lo: [-18, 5.6], hi: [46, 35] }, gap: 0.3,
+  thickness: [1.26, 4], moves: 'x', travel: -12, energy: 50, mirror: 0, width: [10, 20], margin: 0.8,
+  guess: meander({ root: [44, 35], tip: [0, 5], legs: 5, lo: 7.5, hi: 33 }) };
+const r = shapeCurve({ ...job, material: petg });
+// r.params: the curve, ready for a lamina joint ({ kind: 'curve', params: r.params }); r.width, r.energy, r.strain
+```
+
 ## Joints that aren't flexures
 
 `pinJoint` prints a pin, a ring with an arm and a cap as one piece, the ring a clearance from the pin and a support

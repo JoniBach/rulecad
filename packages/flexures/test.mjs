@@ -496,3 +496,37 @@ test('a wave spring: round bends, and pressed past solid its legs meet (self-con
   const soft = force(await make(3)), solid = force(await make(8.5)); // the legs' gaps close at about 4 × (2.4 − 0.84) = 6.2 mm
   assert.ok(solid > (soft * 8.5) / 3 * 2, `past solid it should be far stiffer than its linear rise: ${soft.toFixed(2)} N at 3 mm, ${solid.toFixed(2)} N at 8.5 mm`);
 });
+
+test('a curve flexure: drawn straight it is a guided beam (the solver agrees with beam theory), and mirrored it is two arms whose energy is twice one', async () => {
+  const { curve, curveModel, curvePath, fixedGuidedModel } = await import('@rulecad/flexures');
+  const m = { E: 1810, strainLimit: 0.0125 }, p = { points: [[0, 0], [20, 0], [40, 0]], thickness: 1, width: 10, moves: 'y', across: 'free' };
+  const c = curveModel(p, m), g = fixedGuidedModel({ length: 40, thickness: 1, width: 10 }, m);
+  assert.ok(Math.abs(c.stiffness / g.stiffness - 1) < 0.01, `solver ${c.stiffness.toFixed(4)} N/mm, beam theory ${g.stiffness.toFixed(4)}`);
+  assert.ok(Math.abs(c.strain(1) / g.strain(1) - 1) < 0.01);
+  // A bowed arm and its mirror, pulled along the mirror line: twice the energy of the arm alone held across
+  const bow = { points: [[0, 30], [12, 18], [0, 5]], thickness: [1.2, 1.6, 1.2], width: 10, start: 270, end: -90, moves: 'x' };
+  const one = curveModel({ ...bow, across: 'held' }, m), two = curveModel({ ...bow, mirror: 0 }, m);
+  assert.ok(Math.abs(two.energy(-3) / one.energy(-3) - 2) < 1e-6);
+  // Its path passes through its points and leaves the root the way it's told
+  const path = curvePath({ ...bow, smooth: 10 }).path, lead = path[10]; // the lead's far end: ten samples a span
+  assert.deepEqual(path[0], [0, 30]); assert.deepEqual(path.at(-1), [0, 5]);
+  assert.ok(Math.abs(Math.atan2(lead[1] - path[0][1], lead[0] - path[0][0]) * 180 / Math.PI + 90) < 1, 'it leaves the root going down');
+  // Drawn, one piece each arm, extruded the right way out
+  const shape = curve({ ...bow, mirror: 0 }), box = measureBoundingBox(shape);
+  assert.ok(measureVolume(shape) > 0 && box[0][1] < -29 && box[1][1] > 29);
+});
+
+test('shaping a curve: from a meander, to a job, it stores the energy with its strain within the margin, keeps to its room, and picks the height that stores it', async () => {
+  const { shapeCurve, meander, curveModel } = await import('@rulecad/flexures');
+  assert.throws(() => meander({ root: [20, 30], tip: [0, 5], legs: 4, lo: 8, hi: 28 }), /odd/);
+  const material = { E: 1810, strainLimit: 0.0125 }, root = [24, 30], tip = [0, 5];
+  const job = { root, tip, start: 270, end: -90, region: { lo: [-6, 5.6], hi: [30, 30] }, gap: 0.3, thickness: [1, 2.5], moves: 'x', travel: -4, energy: 6, mirror: 0, width: [4, 20], margin: 0.8, guess: meander({ root, tip, legs: 3, lo: 9, hi: 27 }) };
+  const r = shapeCurve({ ...job, material, evaluations: 300, starts: 4, runs: 1, smooth: 3 });
+  assert.ok(r.ok, r.why.join('; '));
+  assert.ok(r.strain <= material.strainLimit * 0.8 * 1.001, `${(r.strain * 100).toFixed(2)}%`);
+  assert.ok(r.width >= 4 && r.width <= 20);
+  // The shape it gives, solved again at its height, stores what it said
+  const again = curveModel(r.params, material);
+  assert.ok(Math.abs(again.energy(-4) / r.energy - 1) < 0.02, `${again.energy(-4).toFixed(2)} mJ against ${r.energy.toFixed(2)}`);
+  assert.ok(r.energy >= job.energy * 0.98 || r.width === 20);
+});

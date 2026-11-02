@@ -13,6 +13,7 @@
 // Letting go is gradual: the hand's spring softens to nothing over the step, so the mechanism finds where it rests.
 import { beamSystem, equilibrium, shapeOf, energyOf } from './beams.mjs';
 import { beamProfile, waveSpringPath } from './flexures.mjs';
+import { curveLines } from './curves.mjs';
 
 const HAND = 1000; // N/mm: a hand's grip on a part it holds or drives (stiff beside any spring here)
 const SPANS = 24; // spans a shaped beam's profile is sampled in
@@ -37,6 +38,7 @@ export function centrelines(kind, p) {
       return { path: one.path.map(([x]) => { const d = p.near + L - x; return [c * d, s * d]; }), thickness: one.thickness };
     });
     case 'waveSpring': return [waveSpringPath(p)];
+    case 'curve': return curveLines(p);
     case 'serpentine': {
       const step = p.pitch ?? 3 * t, joint = Math.max(1.5 * t, 1), path = [[0, 0]], th = [];
       for (let i = 0; i < p.turns; i++) {

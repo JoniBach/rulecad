@@ -14,6 +14,8 @@
     "physics.mjs",
     "modules.mjs",
     "beams.mjs",
+    "curves.mjs",
+    "synth.mjs",
     "flexures.d.mts",
     "compose.d.mts",
     "README.md",
