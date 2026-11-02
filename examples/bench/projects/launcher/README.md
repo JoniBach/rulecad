@@ -81,7 +81,7 @@ strain by the beam solver and 1.03% by finite elements, against PETG's 1.25%. A 
 
 **The frame is flooded** (2 November, from the BYU blaster). Everything inside the outline is solid except the room
 the arms and the pusher sweep (and the disc's way out), so nothing holding the mechanism can bend. The pusher's stem
-runs back through the solid handle to a **pull ring**: the channel it slides in is its barrel, a sliding gap (0.4 mm)
+runs back through the solid handle to a **pull ring**: the channel it slides in is its barrel, a sliding gap (0.5 mm)
 all round, and the frame stops it both ways on broad faces, at rest and a sliding gap past the draw. The ring is drawn
 0.25 mm short of the stroke the arms were shaped for, so that stop lands inside their limit.
 
@@ -94,7 +94,10 @@ all round, and the frame stops it both ways on broad faces, at rest and a slidin
   on the top layers, and the stem is cut down 1.8 mm wherever it passes under it. Further along, a floor crosses it on
   the bottom layers, and the stem arches over it at 45° (up to 9.7 mm at its peak, leaving 2.5 mm above), so it prints
   with no support. The stem is 50 mm long to give each its own stretch, and 3.8 mm tall in the plane so its channel
-  (0.5 mm each side) spans 4.9 mm, within the X1C's 5 mm bridge.
+  (0.5 mm each side) spans 4.9 mm, within the X1C's 5 mm bridge. A [cut down the
+  stem](https://jonibach.github.io/rulecad-archive/experiments/launcher-inline-section/) shows the gaps.
+- **The frame is a web** (0.5.0): solid 5 mm round everything that moves and round the edge, the rest windows, 39%
+  less frame than the solid flood.
 - **More room against drag:** 0.5 mm round the arms wherever they go, and 0.5 mm each side of the pusher in its
   pocket and barrel.
 
