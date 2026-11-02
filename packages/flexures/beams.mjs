@@ -179,15 +179,15 @@ export function equilibrium(sys, { held = new Map(), loads = new Map(), start, t
 }
 
 /**
- * Where everything is for unknowns q: each body's place (x, y, φ) and each beam's centreline.
+ * Where everything is for unknowns q: each body's place (x, y, φ), each beam's centreline and each of its nodes' turns.
  * @param {ReturnType<typeof beamSystem>} sys @param {Float64Array} q
  */
 export function shapeOf(sys, q) {
   const bodies = Object.fromEntries(Object.values(sys.body).map((b) => [b.name, b.fixed ? [0, 0, 0] : [q[b.dof], q[b.dof + 1], q[b.dof + 2]]]));
-  const lines = {};
+  const lines = {}, turns = {};
   for (const e of sys.elements) {
-    const A = endOf(e.a, q), B = endOf(e.b, q), l = (lines[e.beam] ??= [[A.x, A.y]]);
-    l.push([B.x, B.y]);
+    const A = endOf(e.a, q), B = endOf(e.b, q), l = (lines[e.beam] ??= [[A.x, A.y]]), t = (turns[e.beam] ??= [A.t]);
+    l.push([B.x, B.y]); t.push(B.t);
   }
-  return { bodies, lines };
+  return { bodies, lines, turns };
 }

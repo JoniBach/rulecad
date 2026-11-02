@@ -16,6 +16,8 @@
 import jscad from '@jscad/modeling';
 import * as gens from './flexures.mjs';
 import { ports, models } from './compose.mjs';
+import { simulate, bend } from './physics.mjs';
+import { shapeOf } from './beams.mjs';
 import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness } from '@rulecad/fea';
 
 const AREA = 1e-4; // mm²: less than this of an overlap is a rounding error, not a touch
@@ -313,7 +315,7 @@ export async function lamina(spec) {
       const len = j.axis ? Math.hypot(...j.axis) : 1;
       motion = j.axis ? { axis: j.axis.map((c) => c / len) } : { pivot: j.pivot };
     }
-    joints[n] = { ...j, kind, params, model, motion, leafy, turning: !leafy && !!motion.pivot, stiffness: j.stiffness ?? model?.stiffness };
+    joints[n] = { ...j, kind, params, model, motion, place, leafy, turning: !leafy && !!motion.pivot, stiffness: j.stiffness ?? model?.stiffness };
     parts[n] = { kind: 'flexure', shape, joint: n };
   }
   // Each body hangs from one joint: the tree from the ground
@@ -626,6 +628,40 @@ export async function lamina(spec) {
   const most = Object.entries(energy).sort((x, y) => y[1] - x[1])[0], joules = (e) => (e < 0.01 ? `${(e * 1000).toFixed(1)} mJ` : `${e.toFixed(3)} J`);
   if (most && most[1] > 0) f('info', `the most stored is ${joules(most[1])}, in ${most[0]}; at their most: ${forces.join(', ')}`, 'lamina.energy', { energy });
 
+  // ---- the mechanism as it would behave: its flexures as beams bending as far as they bend, its bodies touching, a
+  // hand driving, holding and letting go (physics.mjs). The force each step takes, where a latch lets go, whether a
+  // catch holds when let go of, the strain all the way, and the shapes as they bend ----
+  let sim = null;
+  const handMost = (typeof spec.physics === 'object' && spec.physics.force) || 50; // N: the most a hand pulls or pushes
+  if (spec.physics !== false && seq.length) {
+    const o = typeof spec.physics === 'object' ? spec.physics : {};
+    sim = simulate({ parts, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places }, o);
+    if (sim.skipped) { f('info', `${sim.skipped.join(', ')}: no centreline to solve as beams (a notch, a cartwheel, a shape of your own), so how it behaves comes from the kinematic model only`, 'lamina.physics'); sim = null; }
+  }
+  if (sim) {
+    const unitOf = (jn) => (joints[jn].turning ? '°' : ' mm');
+    for (const tr of sim.transitions) {
+      for (const c of tr.curve) {
+        const peak = Math.max(...c.points.map(([, F]) => Math.abs(F))), travel = Math.abs(c.points.at(-1)[0]);
+        f(peak <= handMost ? 'info' : 'fail', `${tr.from} to ${tr.to}: driving ${c.joint} ${+travel.toFixed(2)} mm takes up to ${peak.toFixed(2)} N${peak <= handMost ? '' : `, more than a hand's ${handMost} N: it jams`}`, 'lamina.force', { from: tr.from, to: tr.to, joint: c.joint, peak, curve: c.points });
+      }
+      const seen = new Set();
+      for (const ev of tr.events) {
+        if (seen.has(ev.body)) continue;
+        seen.add(ev.body);
+        const by = ev.hand.map((h) => `${h.joint} moved ${+Math.abs(h.travel).toFixed(2)} mm under ${Math.abs(h.force).toFixed(2)} N`).join(', ');
+        f('info', `${tr.from} to ${tr.to}: ${ev.body} is let go ${Math.round(ev.t * 100)}% of the way${by ? `, with ${by}` : ''}, and jumps ${ev.jump.toFixed(1)} mm`, 'lamina.release', { from: tr.from, to: tr.to, body: ev.body, t: ev.t, hand: ev.hand });
+      }
+      // Into a state a catch holds: let go of, does it stay?
+      for (const [jn, by] of spec.holds?.[tr.to] || []) {
+        const b = joints[jn].to, d = sim.sys.body[b].dof, now = Math.hypot(tr.end[d], tr.end[d + 1]), T = places(state(tr.to))[b], c = sim.centre[b];
+        const meant = Math.hypot(T[0] * c[0] + T[1] * c[1] + T[2] - c[0], T[3] * c[0] + T[4] * c[1] + T[5] - c[1]), kept = meant > 0 ? now / meant : 1;
+        f(kept > 0.75 ? 'pass' : 'fail', `${tr.to}: let go of, ${b} ${kept > 0.75 ? `stays on ${by}, ${now.toFixed(2)} mm from rest (beams and contact, no friction)` : `doesn't stay: it runs back to ${now.toFixed(2)} mm from rest, past ${by}`}`, 'lamina.held', { state: tr.to, joint: jn, kept });
+      }
+    }
+    for (const [jn, e] of Object.entries(sim.strain)) f(e <= material.strainLimit ? 'pass' : 'fail', `${jn}: bending as far as it bends through the sequence, it sees up to ${(e * 100).toFixed(2)}% strain (large-deflection beams), ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}%`, 'lamina.beams', { joint: jn, strain: e });
+  }
+
   // ---- the print, everything at rest, and frames along the sequence for an animation ----
   const extrude = (shapes) => solidOf(union(Object.values(shapes)), height);
   let solid = extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
@@ -638,6 +674,18 @@ export async function lamina(spec) {
     for (let k = 0; k < FRAMES; k++) { const t = k / FRAMES; frames.push({ from: seq[i], to: seq[i + 1], t, parts: outline(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t])), active).v) }); }
   }
   if (seq.length) frames.push({ from: seq[seq.length - 1], to: seq[seq.length - 1], t: 0, parts: outline(solved[seq[seq.length - 1]]) });
+  if (sim) { // the frames as the beams solved them: each body where it went, each flexure bent along its centreline
+    const still = shapeOf(sim.sys, new Float64Array(sim.sys.dofs));
+    const poseT = (n, q) => { if (parts[n].kind === 'ground') return I; const d = sim.sys.body[n].dof, c = sim.centre[n], cs = Math.cos(q[d + 2]), sn = Math.sin(q[d + 2]); return [cs, -sn, c[0] + q[d] - cs * c[0] + sn * c[1], sn, cs, c[1] + q[d + 1] - sn * c[0] - cs * c[1]]; };
+    const round3 = (a) => a.map((o) => o.map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]));
+    const physical = sim.frames.filter((fr, i, all) => fr.t === 0 || i % 2 === 0 || i === all.length - 1).map((fr) => ({ from: fr.from, to: fr.to, t: fr.t, parts: Object.fromEntries(Object.entries(parts).map(([n, p]) => {
+      if (p.kind !== 'flexure') return [n, round3(moved(poseT(n, fr.q), p.shape))];
+      const j = joints[n], lines = Object.keys(sim.beamOf).filter((b) => sim.beamOf[b] === n).map((b) => ({ rest: still.lines[b], now: fr.shape.lines[b], turn: fr.shape.turns[b], from: poseT(j.from, fr.q), to: poseT(j.to, fr.q) }));
+      return [n, round3(bend(p.shape, lines))];
+    })) }));
+    frames.length = 0;
+    frames.push(...physical);
+  }
   return {
     parts: { body: solid, ...(spec.loose || {}) },
     findings,
@@ -645,7 +693,7 @@ export async function lamina(spec) {
     frames,
     at: (s) => extrude(shapesAt(solve(state(s)).v)),
     outlines: (s) => outline(solve(state(s)).v),
-    mechanism: { height, sequence: seq, states: Object.keys(states), joints: Object.fromEntries(Object.entries(joints).map(([n, j]) => [n, { from: j.from, to: j.to, kind: j.kind || 'own', ...(follows[n] ? { follows: follows[n].by } : {}) }])) },
+    mechanism: { height, sequence: seq, states: Object.keys(states), ...(sim ? { curves: sim.transitions.map((tr) => ({ from: tr.from, to: tr.to, curve: tr.curve })), physical: true } : {}), joints: Object.fromEntries(Object.entries(joints).map(([n, j]) => [n, { from: j.from, to: j.to, kind: j.kind || 'own', ...(follows[n] ? { follows: follows[n].by } : {}) }])) },
   };
 }
 
