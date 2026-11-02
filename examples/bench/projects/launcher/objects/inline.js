@@ -43,14 +43,14 @@ export function main (v) {
   // floor where none of the stretch the bridge passes over is, since the stem can't be cut from above and arched from
   // below in one place
   const ringFront = ringAt + v.ring_in + v.ring_wall + v.fit, barBack = L.back - draw - v.fit
-  const across = v.stem_h / 2 + v.fit + v.bridge_foot, rise = v.x1c.layer * 9 // a bridge's six layers and three of gap
+  const depth = v.x1c.layer * v.bridge_layers, over = v.x1c.layer * v.bridge_gap, across = v.stem_h / 2 + v.fit + v.bridge_foot, rise = depth + over
   const top = ringFront + v.bridge_len / 2 + v.fit, floor = top + v.bridge_len + draw + rise * 2 + v.fit
   if (floor + v.bridge_len / 2 > barBack) throw new Error('the stem is too short for its bridge and its floor: make stem longer')
   const strip = (x) => rect(x - v.bridge_len / 2, 0 - across, x + v.bridge_len / 2, across)
-  const bridges = [{ shape: strip(top) }, { shape: strip(floor), side: 'bottom' }]
+  const bridges = [{ shape: strip(top), depth, gap: over }, { shape: strip(floor), side: 'bottom', depth, gap: over }]
   return f.lamina({
     height, gap: g, material, printer: { ...printer, bridge: v.x1c.bridge }, round: v.round,
-    flood: { outline, keep: [channel], clear: { default: v.room, pusher: v.fit }, least: v.least_frame },
+    flood: { outline, keep: [channel], clear: { default: v.room, pusher: v.fit }, least: v.least_frame, band: v.band },
     bridges,
     bodies: { pusher },
     joints: { spring: { kind: 'curve', params: spring, from: 'ground', to: 'pusher' } },
