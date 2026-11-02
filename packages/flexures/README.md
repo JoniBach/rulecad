@@ -232,9 +232,16 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
 - `fixtures` are fixed shapes the physics sees but the print leaves out (another layer's walls).
 - `flood: { outline, keep, clear, least }` floods the frame: everything inside `outline` is solid except the room
   the moving parts sweep through the sequence (grown by `clear`, the print gap, or a sliding fit by part's name), and
-  the spaces `keep` holds open. Slivers thinner than `least` and islands that would print loose are left out, and the
-  `ground` you draw (the blocks the flexures grow from) is added back. A thin frame bends and spoils the mechanism; a
-  flooded one is as stiff as its outline, and its pockets are the moving parts' stops and guides.
+  the spaces `keep` holds open. Slivers thinner than `least` and islands that would print loose are left out. A thin
+  frame bends and spoils the mechanism; a flooded one is as stiff as its outline, and its pockets are the moving
+  parts' stops and guides. Leave out the outline and it's everything the moving parts reach, a `wall` round it. Leave
+  out `ground` too: each flexure's root gets a block behind the face it grows from, found from its root port. List
+  as states everything the parts reach (a shot's overshoot too), and keep open what the mechanism doesn't sweep (a
+  disc's way out, room for a finger).
+- `bridges: [{ shape, depth, gap }]` prints the frame over a moving part on the top layers: a barrel's roof over a
+  stem, so it can't lift out of its channel. Every body that passes under one is cut down by `depth` (six layers) and
+  `gap` (three layers), along all of it that ever passes under. Each bridge must stand on the frame both sides, span no
+  more than the printer's `bridge`, and not cross a flexure.
 - Every rigid part is checked for free ends: an arm narrower than `check.rigid` (3 mm) tied on at one end only bends
   under load, so it's a warning.
 - `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and

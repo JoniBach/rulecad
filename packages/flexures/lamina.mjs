@@ -117,6 +117,20 @@ function solidOf(a, height) {
   });
 }
 
+// The print in 3D: the shapes extruded, `cuts` taken out of them between heights and `adds` put on (bridges)
+function solidWith(a, height, cuts, adds) {
+  const { geom3, poly3 } = jscad.geometries;
+  return run((cs, keep) => {
+    const slab = (c) => keep(keep(cs(c.shape).extrude(c.to - c.from)).translate([0, 0, c.from]));
+    let m = keep(cs(a).extrude(height));
+    for (const c of cuts) m = keep(m.subtract(slab(c)));
+    for (const c of adds) m = keep(m.add(slab(c)));
+    const { vertProperties: v, triVerts: t, numProp: n } = m.getMesh(), polys = [];
+    for (let i = 0; i < t.length; i += 3) polys.push(poly3.create([t[i], t[i + 1], t[i + 2]].map((k) => [v[k * n], v[k * n + 1], v[k * n + 2]])));
+    return geom3.create(polys);
+  });
+}
+
 // Within d of each other? Their outlines grown by half of it each overlap
 const within = (a, b, d) => area(intersect(grow(a, d / 2), grow(b, d / 2))) > AREA;
 // The gap between two shapes, to a hundredth, when it's under `most`
@@ -806,9 +820,39 @@ export async function lamina(spec) {
     for (const [jn, e] of Object.entries(sim.strain)) f(e <= material.strainLimit ? 'pass' : 'fail', `${jn}: bending as far as it bends through the sequence, it sees up to ${(e * 100).toFixed(2)}% strain (large-deflection beams), ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}%`, 'lamina.beams', { joint: jn, strain: e });
   }
 
+  // ---- bridges: the frame printed over a moving part on the top layers (a barrel's roof over a stem, so it can't lift
+  // out of its channel). Every body that passes under one is cut down by the bridge and a gap, along all of it that
+  // ever passes under; the bridge spans no wider than the printer bridges, and stands on the frame both sides ----
+  const layer = printer?.layer ?? 0.2, bridgeMost = printer?.bridge ?? 5;
+  const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3 }));
+  const cuts = [];
+  if (bridges.length) {
+    const poses = [places({})];
+    for (let i = 0; i + 1 < seq.length; i++) {
+      const a = reached[seq[i]] ?? state(seq[i]), b = state(seq[i + 1]), keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+      for (let k = 0; k <= FRAMES * 2; k++) { const t = k / (FRAMES * 2); poses.push(places(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t]))).v)); }
+    }
+    bridges.forEach((br, i) => {
+      const name = `bridge ${i + 1}`, under = subtract(br.shape, parts.ground.shape), left = height - br.depth - br.gap;
+      if (empty(under)) { f('warn', `${name} has nothing under it to bridge: it's all on the frame`, 'lamina.bridge'); return; }
+      const wide = !empty(shrink(under, bridgeMost / 2 + 0.01, 'Round'));
+      f(wide ? 'fail' : 'pass', `${name} spans ${wide ? 'more than' : 'no more than'} the ${bridgeMost} mm the printer bridges`, 'lamina.bridge', { bridge: i });
+      const feet = pieces(intersect(br.shape, parts.ground.shape));
+      f(feet >= 2 ? 'pass' : 'fail', `${name} stands on the frame ${feet >= 2 ? 'on both sides' : feet ? 'on one side only: it would droop' : 'nowhere: it would print in mid-air'}`, 'lamina.bridge', { bridge: i });
+      for (const [n, p] of Object.entries(parts)) {
+        if (p.kind === 'flexure' && area(intersect(br.shape, p.shape)) > AREA) f('fail', `${name} is over the ${n} flexure: a bridge goes over what slides, not what bends`, 'lamina.bridge', { bridge: i, joint: n });
+        if (p.kind !== 'body') continue;
+        const cut = intersect(p.shape, union(poses.map((P) => moved(inverse(P[n]), br.shape)))); // all of it that ever passes under, where it is at rest
+        if (empty(cut)) continue;
+        cuts.push({ shape: cut, from: left, to: height });
+        f(left >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes under it, cut down to ${left.toFixed(2)} mm there (the bridge ${br.depth.toFixed(2)} mm, a gap of ${br.gap.toFixed(2)} mm over it)`, 'lamina.bridge', { bridge: i, body: n, left });
+      }
+    });
+  }
+
   // ---- the print, everything at rest, and frames along the sequence for an animation ----
   const extrude = (shapes) => solidOf(union(Object.values(shapes)), height);
-  let solid = extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
+  let solid = bridges.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => ({ shape: b.shape, from: height - b.depth, to: height }))) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
   if (spec.finish) solid = spec.finish(solid);
   const outline = (v) => Object.fromEntries(Object.entries(shapesAt(v)).map(([n, g]) => [n, g.map((o) => o.map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]))]));
   for (let i = 0; i + 1 < seq.length; i++) {
@@ -863,22 +907,45 @@ export async function lamina(spec) {
  * allows, so the mechanism is all that moves. The moving parts are solved through the sequence first (with the ground
  * you draw: the blocks the flexures grow from), then the frame is what's left, slivers thinner than `least` and islands
  * that would print loose taken out, and your ground added back.
- * @param {object} spec a lamina spec, with flood: { outline, keep?, clear?: number | Record<string, number>, least? }:
- *   clear, the gap round the moving parts (the print gap; or by part, a sliding fit for what slides in a channel)
+ * @param {object} spec a lamina spec, with flood: { outline?, keep?, clear?: number | Record<string, number>, least?, wall?,
+ *   pad?, corner? }: outline, the frame's (default: everything the moving parts reach and `keep`, `wall` round it,
+ *   corners rounded to `corner`); clear, the gap round the moving parts (the print gap; or by part, a sliding fit for
+ *   what slides in a channel); pad, how far the solid round each flexure's root reaches (its roots are found: the part
+ *   of it that never moves). spec.ground may then be left out
  */
 async function flooded(spec) {
-  const { outline, keep = [], least = 2 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
-  const probe = await lamina({ ...spec, flood: undefined, fire: undefined, check: { ...(spec.check || {}), fe: false } });
+  const { keep = [], least = 2, wall = 4, pad = 3, corner = 6 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
+  // The mechanism solved through its sequence, on the ground you drew (or none: a speck far off, for the solver)
+  const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
+  const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false } });
   const free = new Set(Object.keys(spec.free || {})), by = {};
   for (const fr of probe.frames) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
   const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)
-  const mine = all(spec.ground);
-  let space = subtract(all(outline), union([swept, all(keep)]));
+  // The outline: yours, or everything the moving parts reach and the spaces kept, a wall round it, its corners rounded
+  let outline = spec.flood.outline ? all(spec.flood.outline) : null;
+  if (!outline) {
+    const { lo, hi } = box(union([swept, all(keep)])), r = Math.min(corner, (hi[0] - lo[0]) / 2, (hi[1] - lo[1]) / 2);
+    const square = [[[lo[0] - wall, lo[1] - wall], [hi[0] + wall, lo[1] - wall], [hi[0] + wall, hi[1] + wall], [lo[0] - wall, hi[1] + wall]]];
+    outline = grow(shrink(square, r, 'Miter'), r);
+  }
+  // Each flexure's root: a block behind the face it grows from (its root port, facing back into the frame), `pad` deep
+  // and as wide again either side, clear of every other moving part, so it grows from solid however the flood falls
+  const roots = Object.entries(spec.joints || {}).filter(([, j]) => j.from === 'ground' && j.kind).map(([n, j]) => {
+    const params = { ...j.params, width: j.params?.width ?? spec.height }, root = ports(j.kind, params).root, a = rad(j.angle || 0);
+    const c = apply(mul(shift(j.at || [0, 0]), turn(a)), root.at), l = Math.hypot(root.dir[0], root.dir[1]) || 1;
+    const u = [(Math.cos(a) * root.dir[0] - Math.sin(a) * root.dir[1]) / l, (Math.sin(a) * root.dir[0] + Math.cos(a) * root.dir[1]) / l], v = [-u[1], u[0]];
+    const t = Math.max(...[params.thickness ?? params.neck ?? 1].flat()), w = pad + t + (params.fillet ?? 0) * 1.5;
+    const block = [[[c[0] + v[0] * w, c[1] + v[1] * w], [c[0] + v[0] * w + u[0] * pad, c[1] + v[1] * w + u[1] * pad], [c[0] - v[0] * w + u[0] * pad, c[1] - v[1] * w + u[1] * pad], [c[0] - v[0] * w, c[1] - v[1] * w]]];
+    const others = union(Object.entries(by).filter(([m]) => m !== n).map(([m, os]) => grow(union(os), clearOf(m) * 1.05 + 0.02)));
+    const mirror = params.mirror != null ? [block[0].map(([x, y]) => [x, 2 * params.mirror - y]).reverse()] : []; // (a mirrored curve's other arm roots in its mirror image)
+    return subtract(union([block, mirror]), others);
+  });
+  let space = subtract(outline, union([swept, all(keep)]));
   space = grow(shrink(space, least / 2, 'Round'), least / 2); // no sliver thinner than `least`
-  // Only what's joined to the main frame or to your ground: an island (inside an arm's loop, a ring's hole) prints loose
-  const bits = apart(space), biggest = Math.max(0, ...bits.map(area));
-  const kept = bits.filter((b) => area(b) >= biggest - 1e-9 || area(intersect(b, grow(mine, TOUCH))) > AREA);
-  const ground = union([mine, ...kept]);
+  // Only what's joined to the main frame, a root or your ground: an island (inside an arm's loop, a ring's hole) prints loose
+  const anchors = union([mine, ...roots]), bits = apart(space), biggest = Math.max(0, ...bits.map(area));
+  const kept = bits.filter((b) => area(b) >= biggest - 1e-9 || area(intersect(b, grow(anchors, TOUCH))) > AREA);
+  const ground = union([anchors, ...kept]);
   const out = await lamina({ ...spec, flood: undefined, ground, groundRounded: true });
   out.findings.unshift({ level: 'info', text: `the frame is flooded: ${area(ground).toFixed(0)} mm² solid, all but the room the moving parts sweep (${bits.length - kept.length} loose bits left out)`, code: 'lamina.flood' });
   return out;

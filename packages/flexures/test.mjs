@@ -545,3 +545,18 @@ test('a flooded frame: solid everywhere but the room the moving parts sweep, so 
   const rail = await lamina({ ...base, ground: [rect(-8, -8, 0, 8), rect(0, 6, 25, 7.5)] });
   assert.ok(rail.findings.some((x) => x.code === 'lamina.rigid'), 'a free-ended rail is found');
 });
+
+test('a bridge: printed over a moving part on the top layers, the part cut down under it wherever it passes, standing on the frame both sides and no wider than the printer bridges', async () => {
+  const base = { height: 6, gap: 0.3, material: petg, printer: { ...fdm, bridge: 5 }, check: { fe: false }, physics: false,
+    bodies: { tip: rect(30, -2, 37, 2) }, joints: { leaf: { kind: 'leaf', params: { length: 30, thickness: 0.84, fillet: 1, tip: true, into: 0.84 }, at: [0, 0], from: 'ground', to: 'tip' } },
+    states: { bent: { leaf: 1 } }, sequence: ['rest', 'bent', 'rest'], flood: { outline: rect(-8, -12, 45, 12) } };
+  const m = await lamina({ ...base, bridges: [{ shape: rect(32, -6, 35, 6) }] });
+  const b = m.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(b.length && b.every((x) => x.level === 'pass'), b.map((x) => x.text).join('; '));
+  assert.ok(b.some((x) => /tip passes under it/.test(x.text)), 'the tip is cut down under it');
+  const { measureVolume } = jscad.measurements, flat = await lamina(base);
+  assert.ok(Math.abs(measureVolume(m.parts.body) - measureVolume(flat.parts.body)) > 1, 'the bridge and the cut change the print');
+  // Too wide a span, and one standing on nothing, are found
+  const wide = await lamina({ ...base, bridges: [{ shape: rect(28, -11, 39, -1) }] });
+  assert.ok(wide.findings.some((x) => x.code === 'lamina.bridge' && x.level === 'fail'), 'a bridge too wide, or on one side, fails');
+});
