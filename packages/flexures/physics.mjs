@@ -359,9 +359,17 @@ function massOf(loops, h, rho) {
  * damping. Units: mm, N, kg, s (so an acceleration is 1000 F / m in mm/s²).
  * @returns {{ frames: { t: number, q: number[] }[], speeds: Record<string, number>, exit: { body: string, speed: number, energy: number } | null, stored: number }}
  */
-function fire({ sys, extra, outline, bodies, loose, material, height, beams, start, duration = 0.02, dt = Number(process.env.FIRE_DT || 3e-6), damping = 10, disc, every = 100 }) {
+function fire({ sys, extra, outline, bodies, loose, material, height, beams, start, duration = 0.02, dt, damping = 10, disc, every }) {
   if (!start) return null;
   const rho = (material.density ?? 1.25) * 1e-6, n = sys.dofs, mass = new Float64Array(n);
+  // The time step: short enough that a sound wave doesn't cross the shortest element in one (a long flexure cut into
+  // short elements is stiff along itself, and a longer step would need so much mass added to keep it stable that the
+  // arms would weigh more than what they throw), no longer than 3 µs, no shorter than 0.1 µs
+  if (dt == null) {
+    const shortest = Math.min(Infinity, ...sys.elements.map((e) => e.L0)), wave = Math.sqrt((material.E * 1e6) / (rho * 1e9)) * 1000; // mm/s
+    dt = Number(process.env.FIRE_DT) || Math.max(1e-7, Math.min(3e-6, (0.5 * shortest) / wave));
+  }
+  every ??= Math.max(1, Math.round(3e-4 / dt)); // a frame every 0.3 ms
   for (const [name, b] of Object.entries(sys.body)) {
     if (b.fixed) continue;
     const mi = loose[name]?.mass != null ? { mass: loose[name].mass / 1000, inertia: (loose[name].mass / 1000) * 10 } : massOf(outline[name], height, rho);
@@ -388,7 +396,12 @@ function fire({ sys, extra, outline, bodies, loose, material, height, beams, sta
   }
   const q = Float64Array.from(start), v = new Float64Array(n), frames = [{ t: 0, q: Array.from(q) }], speeds = {};
   const stored = energyOf(sys, q, { hessian: false }).energy / 1000; // J
+  // Anything pressed into anything at the start (a disc where the drawn pusher already is) would be let go too, and
+  // throw it with energy the spring never stored
+  const pressed = extra ? extra(Float64Array.from(q), new Float64Array(n), null) / 1000 : 0; // J
   let exit = null, touched = false;
+  const free = new Uint8Array(n);
+  for (const name of Object.keys(loose || {})) { const b = sys.body[name]; if (b && !b.fixed) free[b.dof] = free[b.dof + 1] = free[b.dof + 2] = 1; }
   const steps = Math.round(duration / dt);
   const tStart = Date.now();
   if (process.env.PHYS_DEBUG) console.error('fire: steps', steps, 'dt', dt, 'stored', stored, 'mass total', mass.reduce((a, x) => a + x, 0));
@@ -399,19 +412,22 @@ function fire({ sys, extra, outline, bodies, loose, material, height, beams, sta
       console.error('fire step', k, Date.now() - tStart, 'ms', 'max v', Math.abs(v[at]).toExponential(2), 'at', who, 'dof', at % 3, 'mass', mass[at].toExponential(2));
     }
     const r = energyOf(sys, q, { hessian: false, extra });
-    for (let i = 0; i < n; i++) { if (!mass[i]) continue; v[i] += (dt * 1000 * -r.grad[i]) / mass[i] - dt * damping * v[i]; }
+    for (let i = 0; i < n; i++) { if (!mass[i]) continue; v[i] += (dt * 1000 * -r.grad[i]) / mass[i] - (free[i] ? 0 : dt * damping * v[i]); } // (a loose part flies undamped)
     for (let i = 0; i < n; i++) q[i] += dt * v[i];
     for (const [name, b] of Object.entries(sys.body)) if (!b.fixed) speeds[name] = Math.max(speeds[name] || 0, Math.hypot(v[b.dof], v[b.dof + 1]) / 1000); // m/s
     if (disc) { // the disc leaves once it's moving and nothing touches it: its speed then is the exit speed
       const d = sys.body[disc].dof, sp = Math.hypot(v[d], v[d + 1]) / 1000;
       if (sp > 0.05) touched = true;
-      if (touched && !exit && k % 50 === 0) {
+      // (the last time it parts from everything: caught again, it hasn't left yet)
+      if (touched && k % 10 === 0) {
         const g = new Float64Array(n); extra(q, g, null);
-        if (Math.hypot(g[d], g[d + 1]) < 1e-6) exit = { body: disc, speed: sp, energy: 0.5 * mass[d] * sp * sp, t: k * dt };
+        const contact = Math.hypot(g[d], g[d + 1]) >= 1e-6;
+        if (contact) exit = null;
+        else if (!exit) exit = { body: disc, speed: sp, energy: 0.5 * mass[d] * sp * sp, t: k * dt };
       }
     }
     if (k % every === 0) frames.push({ t: k * dt, q: Array.from(q) });
-    if (exit && k * dt > exit.t + 0.002) break;
+    if (exit && k * dt > exit.t + 0.004) break; // (4 ms clear of everything: gone)
   }
-  return { frames, speeds, exit, stored, scaled: real > 0 ? added / real : 0 };
+  return { frames, speeds, exit, stored, pressed, scaled: real > 0 ? added / real : 0 };
 }

@@ -795,7 +795,7 @@ export { ports, size, report, models } from './compose.mjs';
 export { lamina, flexureMaterial } from './lamina.mjs';
 export { beamSystem, equilibrium, energyOf, shapeOf } from './beams.mjs';
 export { place, combine } from './modules.mjs';
-export { curve, curvePath, curveLines, curveModel, curveSolver } from './curves.mjs';
+export { curve, curvePath, curveLines, curveModel, curveSolver, curveClearance } from './curves.mjs';
 export { shapeCurve, meander } from './synth.mjs';
 
 /**

@@ -470,15 +470,17 @@ test('firing: let go, a pusher on a spring throws a loose disc, never with more 
   const L = 30, t = 0.84, half = 4 + t + 1, stroke = 5, g = 0.3;
   const m = await lamina({
     height: 6, gap: g, material: { ...petg, density: 1.27 }, printer: fdm, check: { fe: false },
-    ground: [rect(-8, -6, -3 + 0.5, 6), rect(L + 10 + g, 1.4 + g, L + 30, 4), rect(L + 10 + g, -4, L + 30, -1.4 - g), rect(-half - stroke - 4, -6, -half - stroke - 1, 6)],
+    // The guide moves the pusher along y: the disc sits on it, edge on, between rails that stop the pusher at rest
+    ground: [rect(-8, -6, -3 + 0.5, 6), rect(L + 1, half + g, L + 3.3 - g, half + 20), rect(L + 6.7 + g, half + g, L + 9, half + 20)],
     bodies: { pusher: rect(L, -half, L + 10, half) },
     joints: { spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 8, shuttle: 3, base: 3, fillet: 1, into: t }, at: [L, 0], angle: 180, from: 'ground', to: 'pusher' } },
-    free: { disc: { shape: rect(L + 10 + g, -1.4, L + 30, 1.4), mass: 0.5 } },
+    free: { disc: { shape: rect(L + 3.6, half + g, L + 6.4, half + g + 20), mass: 0.5 } },
     states: { drawn: { spring: stroke } }, sequence: ['rest', 'drawn'],
     fire: { from: 'drawn', disc: 'disc', duration: 0.01 },
   });
   const f = m.findings.find((x) => x.code === 'lamina.fire');
-  assert.ok(f && f.exit && f.exit.energy > 0 && f.exit.energy <= f.stored * 1.02, f?.text);
+  assert.ok(f && f.level !== 'fail' && f.exit && f.exit.energy > 0 && f.exit.energy <= f.stored * 1.02, f?.text);
+  assert.ok(!m.findings.some((x) => x.code === 'lamina.fire' && /pressed/.test(x.text)), 'nothing starts pressed into anything');
   const pusherMass = 1.27e-6 * 6 * 10 * (2 * half), most = Math.sqrt((2 * f.stored) / pusherMass); // all the energy in the pusher alone
   assert.ok(f.speeds.pusher > 0.5 * most && f.speeds.pusher <= most * 1.05, `the pusher's ${f.speeds.pusher.toFixed(2)} m/s against at most ${most.toFixed(2)}`);
 });

@@ -231,8 +231,11 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
 - `free: { disc: { shape, mass } }` adds parts that aren't printed or joined (a disc): the physics only.
 - `fixtures` are fixed shapes the physics sees but the print leaves out (another layer's walls).
 - `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and
-  steps through time (masses from the material's `density`; explicit steps, kept stable by scaling up the mass of the
-  lightest flexure nodes by Gershgorin's bound): the speeds, and the disc's exit speed and energy.
+  steps through time (masses from the material's `density`; explicit steps short enough that a sound wave doesn't
+  cross the shortest beam element in one, with whatever mass Gershgorin's bound still asks for added to the lightest
+  flexure nodes): the speeds, and the disc's exit speed and energy, taken when it last parts from everything. A shot
+  that starts with the disc pressed into the drawn pusher fails: it would be thrown with energy the spring never
+  stored.
 - `physics: false` turns it off.
 
 The beam solver stands on its own too: `beamSystem({ bodies, beams })`, `equilibrium(sys, { held, loads })`
@@ -265,13 +268,16 @@ its strain and energy at a travel, and the travel a strain allows, large deflect
 `shapeCurve(job)` finds the curve for a job. Its ends stay fixed: where it grows from and what it moves. It gets a box
 of room, a travel, an energy to store there, and a range of thicknesses. CMA-ES then moves every point and thickness
 until the beam solver says it stores the energy with the least peak strain, inside its room. No bend may be tighter
-than the arm's thickness. No part of it may come within a print gap of another, at rest or fully moved. Give `width`
+than `bend` thicknesses (default 2), where a curved beam's inside fibre takes much more than beam theory says. No two
+parts of it may come within `apart` of each other (default 1 mm), at rest or fully moved: nearer, they may print fused
+and slap together when it fires. Each end leaves its block square for `lead`, and flares into it in a true round
+(`fillet`). The lamina checks that a curve keeps the print gap from itself. Give `width`
 as a range and it is solved at the widest, then printed as tall as the energy needs: force goes with height, strain
 doesn't.
 
 Free-form points wander into tangles, so start it from a shape of the right kind. `meander({ root, tip, legs, lo, hi })`
 folds an arm into its room as legs joined by round bends. Each arm must be long enough to spread the travel's strain
-(for a 12 mm stroke at 1%, about 14 cm of a three-line arm), and a meander is how that length fits. From there the
+(for a 12 mm stroke at 1%, 14 cm or more of a three-line arm), and a meander is how that length fits. From there the
 shaping moves everything. The launcher's in-line action (`launcher/inline`) is shaped this way, from five legs.
 
 ```js

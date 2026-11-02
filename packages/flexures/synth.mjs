@@ -89,18 +89,20 @@ function crowding(path, at, gap) {
  * @param {{ root: number[], tip: number[], start?: number | number[], end?: number | number[], controls?: number,
  *   guess?: number[][], region: { lo: number[], hi: number[] }, thickness: number[], moves?: 'x' | 'y', travel: number,
  *   energy: number, width: number, material: { E: number, strainLimit: number }, mirror?: number, across?: 'free' | 'held',
- *   margin?: number, gap?: number, evaluations?: number, starts?: number, runs?: number, sigma?: number, seed?: number, smooth?: number }} job
+ *   margin?: number, gap?: number, apart?: number, bend?: number, evaluations?: number, starts?: number, runs?: number, sigma?: number, seed?: number, smooth?: number }} job
  *   root, tip: where its ends are fixed; start, end: the angle it leaves the root at and meets the tip at, in degrees,
  *   fixed or a range [lo, hi] to choose in; controls: how many points between them (default 3), starting at `guess` or
  *   bowed off the straight line; region: the box it stays in, thickness and all (and `gap` clear of its edges);
- *   thickness: [least, most]; width: the print's height, or a range [least, most] to choose in, the energy setting it;
+ *   bend: the tightest it may curve, in thicknesses (default 2: tighter, a curved beam's inside fibre takes much more
+ *   than beam theory says, which the finite-element check finds); apart: how far apart its own parts keep (default 1 mm, or the gap if more: a loop that comes nearer may print fused,
+ *   and slaps its neighbour when it fires); thickness: [least, most]; width: the print's height, or a range [least, most] to choose in, the energy setting it;
  *   travel: how far the tip moves along `moves`, signed; energy: what it must store there (mJ,
  *   both arms when mirrored); margin: the share of the strain limit it's shaped to (default 0.8)
  * @returns {{ params: object, energy: number, strain: number, force: number[][], ok: boolean, why: string[], evaluations: number }}
  *   params: the curve's, ready for a lamina joint (kind 'curve'); force: [travel, force] along the way
  */
 export function shapeCurve(job) {
-  const { root, tip, region, thickness: [least, most], travel, energy: want, width, material, margin = 0.8, gap = 0, smooth = 8 } = job, controls = job.guess?.length ?? job.controls ?? 3;
+  const { root, tip, region, thickness: [least, most], travel, energy: want, width, material, margin = 0.8, gap = 0, smooth = 8 } = job, controls = job.guess?.length ?? job.controls ?? 3, apart = job.apart ?? Math.max(gap, 1), bend = job.bend ?? 2;
   const limit = material.strainLimit * margin, ranged = (a) => Array.isArray(a), span = (a, u) => a[0] + (a[1] - a[0]) * u;
   const lo = [region.lo[0] + gap, region.lo[1] + gap], hi = [region.hi[0] - gap, region.hi[1] - gap];
   // The unknowns, each 0 to 1: the points between the ends (x, y across the region), the thickness at every point, the end angles that are ranges
@@ -110,7 +112,7 @@ export function shapeCurve(job) {
     const mid = Array.from({ length: controls }, () => [span([lo[0], hi[0]], u[k++]), span([lo[1], hi[1]], u[k++])]);
     const thickness = Array.from({ length: npts }, () => span([least, most], u[k++]));
     const start = ranged(job.start) ? span(job.start, u[k++]) : job.start, end = ranged(job.end) ? span(job.end, u[k++]) : job.end;
-    return { points: [root, ...mid, tip], thickness, ...(start != null ? { start } : {}), ...(end != null ? { end } : {}), smooth, width, moves: job.moves ?? 'y', ...(job.mirror != null ? { mirror: job.mirror } : {}), ...(job.across ? { across: job.across } : {}) };
+    return { points: [root, ...mid, tip], thickness, ...(job.lead != null ? { lead: job.lead } : {}), ...(start != null ? { start } : {}), ...(end != null ? { end } : {}), smooth, width, moves: job.moves ?? 'y', ...(job.mirror != null ? { mirror: job.mirror } : {}), ...(job.across ? { across: job.across } : {}) };
   };
   const guess = job.guess ?? Array.from({ length: controls }, (_, i) => { // bowed off the straight line between the ends, towards the region's middle
     const a = (i + 1) / (controls + 1), x = root[0] + (tip[0] - root[0]) * a, y = root[1] + (tip[1] - root[1]) * a, c = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2], b = Math.sin(Math.PI * a) * 0.5;
@@ -122,41 +124,46 @@ export function shapeCurve(job) {
   // solved at the most width it may have (its energy goes as its width; its strain doesn't)
   const wide = ranged(width) ? width[1] : width;
   const judge = (params, full = false) => {
-    const c = curvePath(params), why = [], faults = { room: 0, bend: 0, crowd: 0, drawn: 0 };
+    const c = curvePath({ ...params, smooth: Math.max(smooth, 8) }), why = [], faults = { room: 0, bend: 0, crowd: 0, drawn: 0 }; // (its geometry checked finely, whatever it's solved on)
     c.path.forEach(([x, y], i) => {
       const h = c.at[i] / 2, near = Math.min(Math.hypot(x - root[0], y - root[1]), Math.hypot(x - tip[0], y - tip[1])) < 2 * c.at[i]; // the ends sit on their blocks, at the room's edge
       if (!near) for (const d of [0, 1]) faults.room += ((Math.max(0, lo[d] - ([x, y][d] - h)) + Math.max(0, [x, y][d] + h - hi[d])) / c.at[i]) ** 2;
-      if (i > 0 && i < c.path.length - 1) { // the bend's radius from three samples: tighter than the thickness, its inside would crease
+      if (i > 0 && i < c.path.length - 1) { // the bend's radius from three samples: tighter than `bend` thicknesses, its inside fibre takes much more than beam theory says
         const a = c.path[i - 1], b = c.path[i + 1], A = Math.hypot(x - a[0], y - a[1]), B = Math.hypot(b[0] - x, b[1] - y), C = Math.hypot(b[0] - a[0], b[1] - a[1]);
         const cross = Math.abs((x - a[0]) * (b[1] - a[1]) - (y - a[1]) * (b[0] - a[0])), R = cross > 1e-12 ? (A * B * C) / (2 * cross) : Infinity;
-        faults.bend += Math.max(0, (c.at[i] - R) / c.at[i]) ** 2;
+        faults.bend += Math.max(0, (bend * c.at[i] - R) / c.at[i]) ** 2;
       }
     });
-    faults.crowd = crowding(c.path, c.at, gap);
+    faults.crowd = crowding(c.path, c.at, apart);
     const geometry = () => faults.room + faults.bend + faults.crowd + faults.drawn;
     if (faults.room) why.push('it leaves its room');
-    if (faults.bend) why.push('it bends tighter than its thickness');
+    if (faults.bend) why.push(`it bends tighter than ${bend} times its thickness`);
     if (faults.crowd) why.push('it comes too close to itself');
-    if (geometry() > 1 && !full) return { f: 10 + geometry(), why, faults };
-    const s = curveSolver({ ...params, width: wide }, material), steps = 5, force = [[0, 0]];
+    if (geometry() > 1 && !full) return { f: 1e4 + geometry(), why, faults }; // worse than any shape that solves, however strained
+    // In two steps (the force halfway shows a snap-through), each one Newton solve to a working tolerance; the shape
+    // found is solved again finely at the end
+    const s = curveSolver({ ...params, width: wide }, material), steps = full ? 8 : 2, force = [[0, 0]];
     let r = null, back = 0;
     for (let k = 1; k <= steps; k++) {
-      r = s.solve((travel * k) / steps);
+      r = s.solve((travel * k) / steps, Math.abs(travel) / steps, full ? 1e-7 : 1e-6);
       if (!r.converged) break;
       force.push([(travel * k) / steps, r.force]);
       if (r.force * Math.sign(travel) <= 0) back++;
     }
-    if (!r?.converged) return { f: 20 + geometry(), why: [...why, 'the solver lost it: it snaps or folds'], faults };
+    if (!r?.converged) return { f: 5e3 + geometry(), why: [...why, 'the solver lost it: it snaps or folds'], faults };
     // Drawn, it mustn't run into itself either
-    faults.drawn = crowding(Object.values(shapeOf(s.sys, r.q).lines)[0], c.at, gap / 2);
+    const coarse = curvePath({ ...params, smooth }).at; // (the solved shape is on the solver's samples)
+    faults.drawn = crowding(Object.values(shapeOf(s.sys, r.q).lines)[0], coarse, gap / 2);
     if (faults.drawn) why.push('drawn, it runs into itself');
     const e = r.strain / limit, short = Math.max(0, 1 - r.energy / want);
     if (short > 0.02) why.push(`it stores ${r.energy.toFixed(1)} mJ${ranged(width) ? ` at its widest, ${wide} mm` : ''}, short of ${want.toFixed(1)}`);
     if (e > 1) why.push(`its peak strain ${(r.strain * 100).toFixed(2)}% is over ${(limit * 100).toFixed(2)}%`);
     if (back) why.push('it snaps through: its force turns back on the way');
-    // On a log scale, so a shape far off (a stretched arm, a hundred times the strain) still has a way down
-    return { f: Math.log1p(e) + 10 * Math.log1p(short / 0.05) ** 2 + 10 * Math.log1p(Math.max(0, e - 1) / 0.05) ** 2 + 2 * back + 50 * geometry(), why, faults, energy: r.energy, strain: r.strain, force };
+    // On a log scale, so a shape far off (a stretched arm, a hundred times the strain) still has a way down; any fault
+    // in its geometry costs more than any strain it could save
+    return { f: Math.log1p(e) + 10 * Math.log1p(short / 0.05) ** 2 + 10 * Math.log1p(Math.max(0, e - 1) / 0.05) ** 2 + 2 * back + 50 * geometry() + (geometry() > 0 ? 1 : 0), why, faults, energy: r.energy, strain: r.strain, force };
   };
+  if (job.check) return judge({ ...job.check, width: wide }, true); // a shape of your own, judged for the job
   let best = null, used = 0;
   const f = (u) => judge(decode(u)).f;
   // Starts: the guess, and shapes scattered about the room (the same each run), the best taken on

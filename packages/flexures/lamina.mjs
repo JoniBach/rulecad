@@ -15,6 +15,7 @@
 // that its distance along the flexure (from root to tip, inside the shape) gives it. Units: mm, N, degrees.
 import jscad from '@jscad/modeling';
 import * as gens from './flexures.mjs';
+import { curveClearance } from './curves.mjs';
 import { ports, models } from './compose.mjs';
 import { simulate, bend, centrelines } from './physics.mjs';
 import { shapeOf } from './beams.mjs';
@@ -202,12 +203,33 @@ function coverage(shape, g, x0, y0, sub = 3) {
 function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, band }) {
   // The bodies as material too, in a band round the flexure (so the corner where it meets them is a real corner); held
   // and pushed only beyond the band
-  const near = grow(flexure, band), region = union([flexure, intersect(held, grow(flexure, band * 2)), intersect(moved, grow(flexure, band * 2))]), { lo, hi } = box(region);
+  // (only near where the flexure joins them, within a fine cell of it: a body it merely runs past a print gap off
+  // would be welded to it by a grid coarser than the gap)
+  // (a body the flexure doesn't quite reach: all of it within twice the band, as before)
+  const nearJoin = (body) => { const join = intersect(flexure, grow(body, cell)); return intersect(body, area(join) > AREA ? grow(join, band * 2) : grow(flexure, band * 2)); };
+  held = nearJoin(held); moved = nearJoin(moved);
+  const near = grow(flexure, band), region = union([flexure, held, moved]), { lo, hi } = box(region);
   let h = cell;
   while (((hi[0] - lo[0]) / h + 2) * ((hi[1] - lo[1]) / h + 2) > FE_MOST) h *= 1.25;
   const nx = Math.ceil((hi[0] - lo[0]) / h) + 2, ny = Math.ceil((hi[1] - lo[1]) / h) + 2, x0 = lo[0] - h, y0 = lo[1] - h;
   const g = feaGrid({ nx, ny, h }), fill = coverage(region, g, x0, y0), isNear = coverage(near, g, x0, y0, 1);
   const isHeld = coverage(held, g, x0, y0, 1), isMoved = coverage(moved, g, x0, y0, 1);
+  // A cell with some of the frame and some of what moves in it straddles the gap between them (a stop a print gap off,
+  // narrower than a cell): empty, or the grid would weld them together
+  const heldPart = coverage(held, g, x0, y0), movedPart = coverage(moved, g, x0, y0);
+  // (and a cell of either beside a cell of the other: neighbours share nodes, which would weld them just the same)
+  const isH = (e) => heldPart[e] > 0.01, isM = (e) => movedPart[e] > 0.01, cut = [];
+  for (let e = 0; e < g.cells; e++) {
+    if (!isH(e) && !isM(e)) continue;
+    const i = e % nx, j = (e - i) / nx;
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+      const a = i + di, b = j + dj;
+      if (a < 0 || b < 0 || a >= nx || b >= ny) continue;
+      const o = b * nx + a;
+      if ((isH(e) && isM(o)) || (isM(e) && isH(o))) cut.push(e);
+    }
+  }
+  for (const e of cut) fill[e] = 0;
   const modulus = new Float64Array(g.cells), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs), loaded = new Set();
   for (let e = 0; e < g.cells; e++) {
     const i = e % nx, j = (e - i) / nx, far = isNear[e] < 0.5, nodes = [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)];
@@ -318,7 +340,7 @@ export async function lamina(spec) {
       shape = moved(place, flat(gens[kind](params)));
       // A flexure given rounds has every inside corner rounded to that radius, wherever its parts meet (a round meeting
       // a tapered beam, a beam meeting a block): grown by it, then shrunk
-      if (params.fillet > 0) shape = shrink(grow(shape, params.fillet), params.fillet, 'Round');
+      if (params.fillet > 0 && kind !== 'curve') shape = shrink(grow(shape, params.fillet), params.fillet, 'Round'); // (a curve has no corners of its own, and rounding it whole would close the gaps between its loops)
       model = models[kind](params, material);
       const p = ports(kind, params);
       leafy = LEAFLIKE.has(kind);
@@ -341,7 +363,7 @@ export async function lamina(spec) {
   const OWN_BLOCKS = new Set(['parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine', 'snapHook', 'notchHinge', 'ellipticalHinge', 'livingHinge', 'cartwheel', 'letJoint', 'bistable']);
   for (const [n, j] of Object.entries(joints)) {
     const r = j.params?.fillet;
-    if (!(r > 0) || OWN_BLOCKS.has(j.kind)) continue;
+    if (!(r > 0) || OWN_BLOCKS.has(j.kind) || j.kind === 'curve') continue; // (a curve draws its own rounds, as true quarter circles)
     let F = parts[n].shape;
     for (const b of [j.from, j.to]) {
       const B = parts[b].shape, touch = intersect(F, grow(B, TOUCH)), near = intersect(B, grow(F, r * 3));
@@ -381,7 +403,7 @@ export async function lamina(spec) {
   };
 
   // Bending: each flexure's points with their share of the motion, worked out once
-  const thinnest = Math.min(gap * 4, ...Object.values(joints).map((j) => j.params?.thickness ?? j.params?.neck ?? gap * 4));
+  const thinnest = Math.min(gap * 4, ...Object.values(joints).flatMap((j) => [j.params?.thickness ?? j.params?.neck ?? gap * 4].flat())); // (a curve's thickness is a list)
   const cell = spec.check?.cell ?? Math.max(0.02, thinnest / 4);
   const bendable = {};
   const bending = (n) => {
@@ -524,6 +546,12 @@ export async function lamina(spec) {
 
   // ---- free: at rest, the gap between everything that isn't joined; each flexure on its two bodies only ----
   let free = true;
+  // A curve folded into its room mustn't come nearer itself than the gap either, or its loops print fused
+  for (const [n, j] of Object.entries(joints)) {
+    if (j.kind !== 'curve') continue;
+    const c = curveClearance(j.params);
+    if (c && c.clear < gap * 0.98) { free = false; f('fail', `the ${n} flexure comes ${Math.max(0, c.clear).toFixed(2)} mm from itself, near (${c.at[0].map((x) => x.toFixed(1)).join(', ')}): under the ${gap} mm gap, its loops fuse there`, 'lamina.free', { joint: n, gap: c.clear, at: c.at }); }
+  }
   for (const [a, b] of pairs) {
     const A = parts[a].shape, B = parts[b].shape;
     if (!joined(a, b)) {
@@ -537,7 +565,9 @@ export async function lamina(spec) {
     // Overlapping it in two places is fused (touching along a line, flush, is one material)
     const legs = OWN_BLOCKS.has(joints[fx].kind) ? 1 : (centrelines(joints[fx].kind, joints[fx].params)?.length ?? 1); // a flexure of several leaves meets each body once a leaf
     if (pieces(intersect(F, Bd)) > legs) { free = false; f('fail', `the ${fx} flexure touches ${what(body)} in more than one place: it's fused to it away from its root`, 'lamina.free', { parts: [fx, body], at: box(contact) }); continue; }
-    const rest = subtract(F, grow(contact, gap * 2 + cell)); // the flexure away from where it grows out of the body
+    // The flexure away from where it grows out of the body, and its round if it has one (a round lies on the body out to
+    // its radius past the flexure's side, and the rounding reaches no further than 1.2 radii)
+    const rest = subtract(F, grow(contact, gap * 2 + cell + 1.25 * (joints[fx].params?.fillet ?? 0)));
     if (area(rest) > AREA && within(rest, Bd, gap * 0.98)) { free = false; const g = gapBetween(rest, Bd, gap); f('fail', `the ${fx} flexure runs ${g ? `${g} mm` : 'touching'} from ${what(body)} away from its root: under the ${gap} mm gap, it fuses there`, 'lamina.free', { parts: [fx, body], gap: g, at: box(intersect(grow(rest, gap / 2), grow(Bd, gap / 2))) }); }
   }
   if (free) f('pass', `everything clears what it isn't joined to by ${gap} mm, and each flexure touches only its two bodies: it prints free`, 'lamina.free');
@@ -558,7 +588,7 @@ export async function lamina(spec) {
       return { p, turn: Math.atan2(u1[0] * u2[1] - u1[1] * u2[0], u1[0] * u2[0] + u1[1] * u2[1]) };
     }).filter((c) => c.turn < -rad(SHARP_TURN)).map((c) => c.p));
     function feCheck(n, j, most, beam) {
-      const t = j.params?.thickness ?? j.params?.neck ?? gap * 4, to = parts[j.to].shape, from = parts[j.from].shape, c = centroid(to);
+      const t = Math.min(...[j.params?.thickness ?? j.params?.neck ?? gap * 4].flat()), to = parts[j.to].shape, from = parts[j.from].shape, c = centroid(to);
       const m = j.motion, dir = m.axis ? m.axis : (() => { const r = [c[0] - m.pivot[0], c[1] - m.pivot[1]], l = Math.hypot(...r); return [-r[1] / l, r[0] / l]; })();
       const travel = m.axis ? most : j.leafy ? (most * Math.hypot(c[0] - m.pivot[0], c[1] - m.pivot[1])) / m.leaf : rad(most) * Math.hypot(c[0] - m.pivot[0], c[1] - m.pivot[1]);
       const r = fePeak({ flexure: parts[n].shape, held: from, moved: to, direction: dir, travel, E: material.E, cell: t / FE_CELLS, band: Math.max(2 * t, gap * 4) });
@@ -742,6 +772,7 @@ export async function lamina(spec) {
     if (spec.fire) {
       const fr = sim.fire;
       if (!fr) f('fail', `fire: the sequence never reaches ${spec.fire.from}`, 'lamina.fire');
+      else if (fr.pressed > 0.01 * fr.stored) f('fail', `fire: at ${spec.fire.from}, something is already pressed into something (${(fr.pressed * 1000).toFixed(1)} mJ of it, against ${(fr.stored * 1000).toFixed(1)} mJ in the springs): put ${spec.fire.disc} clear of where the pusher is drawn to`, 'lamina.fire', { pressed: fr.pressed });
       else {
         const quick = Object.entries(fr.speeds).filter(([b]) => b !== spec.fire.disc).sort((a, b) => b[1] - a[1])[0];
         const ex = fr.exit, share = ex && fr.stored > 0 ? ex.energy / fr.stored : 0;

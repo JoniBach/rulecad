@@ -84,17 +84,22 @@ export function energyOf(sys, q, { hessian = true, extra } = {}) {
     ends.forEach((E, k) => { for (const [d, dx, dy, dt] of E.rows) g[d] += r.grad[3 * k] * dx + r.grad[3 * k + 1] * dy + r.grad[3 * k + 2] * dt; });
     if (!H) continue;
     // The element's own Hessian, by differences of its gradient (exact enough: the gradient is exact)
-    const v = [A.x, A.y, A.t, B.x, B.y, B.t], h = 1e-7 * Math.max(1, e.L0), K = [];
+    const v = [A.x, A.y, A.t, B.x, B.y, B.t], h = 1e-7 * Math.max(1, e.L0), K = new Float64Array(36);
     for (let i = 0; i < 6; i++) {
-      const up = v.slice(), dn = v.slice(); up[i] += h; dn[i] -= h;
-      const gu = element(e, ...up).grad, gd = element(e, ...dn).grad;
-      K.push(gu.map((x, j) => (x - gd[j]) / (2 * h)));
+      const at = v[i];
+      v[i] = at + h; const gu = element(e, v[0], v[1], v[2], v[3], v[4], v[5]).grad;
+      v[i] = at - h; const gd = element(e, v[0], v[1], v[2], v[3], v[4], v[5]).grad;
+      v[i] = at;
+      for (let j = 0; j < 6; j++) K[i * 6 + j] = (gu[j] - gd[j]) / (2 * h);
     }
-    const rows = ends.flatMap((E, k) => E.rows.map(([d, dx, dy, dt]) => [d, [k * 3, dx], [k * 3 + 1, dy], [k * 3 + 2, dt]]));
-    for (const [di, ...pi] of rows) for (const [dj, ...pj] of rows) {
-      let s = 0;
-      for (const [a, ca] of pi) if (ca) for (const [b, cb] of pj) if (cb) s += ca * K[a][b] * cb;
-      H[di * n + dj] += s;
+    // Into the system's: each end's rows (a dof and how the end's x, y and turn move with it), Cᵢᵀ K Cⱼ for each pair
+    const dofs = [], C = [];
+    for (let k = 0; k < 2; k++) for (const [d, dx, dy, dt] of ends[k].rows) { const c = new Float64Array(6); c[3 * k] = dx; c[3 * k + 1] = dy; c[3 * k + 2] = dt; dofs.push(d); C.push(c); }
+    const KC = C.map((c) => { const out = new Float64Array(6); for (let a = 0; a < 6; a++) { let t = 0; for (let b = 0; b < 6; b++) t += K[a * 6 + b] * c[b]; out[a] = t; } return out; });
+    for (let i = 0; i < dofs.length; i++) for (let j = 0; j < dofs.length; j++) {
+      let t = 0;
+      for (let a = 0; a < 6; a++) t += C[i][a] * KC[j][a];
+      H[dofs[i] * n + dofs[j]] += t;
     }
     // A body's turn bends its arm: the place's second derivative in φ is minus the arm
     ends.forEach((E, k) => { if (E.phi != null) H[E.phi * n + E.phi] += -r.grad[3 * k] * E.rx - r.grad[3 * k + 1] * E.ry; });
@@ -104,24 +109,29 @@ export function energyOf(sys, q, { hessian = true, extra } = {}) {
 }
 
 // Solve A x = b, A dense n × n (overwritten), by LU with partial pivoting
+// Gaussian elimination with partial pivoting, kept to the matrix's band: a chain of beam elements couples each node
+// only to its neighbours, so its stiffness is banded and the work is n·bw² rather than n³. Pivoting keeps the band
+// below the diagonal and at most doubles it above, so this is exact for any matrix (a dense one has a band of n).
 function luSolve(A, b, n) {
-  const x = Float64Array.from(b), p = new Int32Array(n);
+  let bw = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (A[i * n + j] !== 0 && Math.abs(i - j) > bw) bw = Math.abs(i - j);
+  const x = Float64Array.from(b);
   for (let k = 0; k < n; k++) {
+    const below = Math.min(n, k + bw + 1), right = Math.min(n, k + 2 * bw + 1);
     let m = k, best = Math.abs(A[k * n + k]);
-    for (let i = k + 1; i < n; i++) { const v = Math.abs(A[i * n + k]); if (v > best) { best = v; m = i; } }
+    for (let i = k + 1; i < below; i++) { const v = Math.abs(A[i * n + k]); if (v > best) { best = v; m = i; } }
     if (best < 1e-300) return null;
-    p[k] = m;
-    if (m !== k) { for (let j = 0; j < n; j++) { const t = A[k * n + j]; A[k * n + j] = A[m * n + j]; A[m * n + j] = t; } const t = x[k]; x[k] = x[m]; x[m] = t; }
+    if (m !== k) { for (let j = k; j < right; j++) { const t = A[k * n + j]; A[k * n + j] = A[m * n + j]; A[m * n + j] = t; } const t = x[k]; x[k] = x[m]; x[m] = t; }
     const d = A[k * n + k];
-    for (let i = k + 1; i < n; i++) {
+    for (let i = k + 1; i < below; i++) {
       const f = A[i * n + k] / d;
       if (!f) continue;
       A[i * n + k] = f;
-      for (let j = k + 1; j < n; j++) A[i * n + j] -= f * A[k * n + j];
+      for (let j = k + 1; j < right; j++) A[i * n + j] -= f * A[k * n + j];
       x[i] -= f * x[k];
     }
   }
-  for (let i = n - 1; i >= 0; i--) { let s = x[i]; for (let j = i + 1; j < n; j++) s -= A[i * n + j] * x[j]; x[i] = s / A[i * n + i]; }
+  for (let i = n - 1; i >= 0; i--) { let s = x[i]; const right = Math.min(n, i + 2 * bw + 1); for (let j = i + 1; j < right; j++) s -= A[i * n + j] * x[j]; x[i] = s / A[i * n + i]; }
   return x;
 }
 
