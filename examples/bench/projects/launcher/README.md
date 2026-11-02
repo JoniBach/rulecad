@@ -71,7 +71,9 @@ Nobody drew the arms. `shape-inline.mjs` gives the beam solver their job: grow f
 bar at (0, 5), stay in their room, store the launcher's 50 mJ at the 12 mm stroke, and keep the peak strain under
 80% of PETG's limit. The shaping starts from a five-leg meander and moves every point and thickness from there. It
 also picks the print height, between 10 and 20 mm, that stores the energy. Arms are at least three lines thick: the
-flat action's two-line leaves flexed and twisted. The result is written to `objects/inline-spring.mjs`. The design
+flat action's two-line leaves flexed and twisted. The result is written to `objects/inline-spring.mjs`. With `--watch`, a live view at port 8090 shows every round of
+the search (the shapes tried, the best so far at its thickness and drawn back, its strain and energy) and can stop
+it; `--dry` shapes without writing. The design
 refuses to build if the layout or the rules have changed since, until the shaping is run again.
 
 What it found: two arms of loose, uneven loops, 1.26 to 2.5 mm thick, folded into their room and kept 1 mm clear of

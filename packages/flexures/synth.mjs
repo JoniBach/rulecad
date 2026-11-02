@@ -28,7 +28,7 @@ function eigen(C, n) {
 
 // CMA-ES (Hansen, The CMA Evolution Strategy: A Tutorial, 2016) on [0, 1]^n: each trial clamped into the box, and
 // charged for how far outside it was, so the search learns the box's walls
-function cmaes(f, x0, { sigma = 0.2, evaluations = 2000, random }) {
+function cmaes(f, x0, { sigma = 0.2, evaluations = 2000, random, onGen }) {
   const n = x0.length, lambda = 4 + Math.floor(3 * Math.log(n)), mu = Math.floor(lambda / 2);
   const w0 = Array.from({ length: mu }, (_, i) => Math.log(mu + 0.5) - Math.log(i + 1)), sw = w0.reduce((a, b) => a + b, 0), w = w0.map((x) => x / sw), mueff = 1 / w.reduce((a, x) => a + x * x, 0);
   const cc = (4 + mueff / n) / (n + 4 + (2 * mueff) / n), cs = (mueff + 2) / (n + mueff + 5), c1 = 2 / ((n + 1.3) ** 2 + mueff);
@@ -46,6 +46,7 @@ function cmaes(f, x0, { sigma = 0.2, evaluations = 2000, random }) {
     used += lambda;
     pop.sort((a, b) => a.v - b.v);
     if (pop[0].v < best.f - 1e-6 * (1 + Math.abs(best.f))) { best = { x: pop[0].c, f: pop[0].v }; stall = 0; } else stall++;
+    if (onGen?.({ used, sigma })) break; // (asked to stop: a watcher's stop button)
     const old = m, yw = Array(n).fill(0);
     for (let k = 0; k < mu; k++) for (let i = 0; i < n; i++) yw[i] += w[k] * pop[k].y[i];
     m = old.map((x, i) => x + sigma * yw[i]);
@@ -89,7 +90,7 @@ function crowding(path, at, gap) {
  * @param {{ root: number[], tip: number[], start?: number | number[], end?: number | number[], controls?: number,
  *   guess?: number[][], region: { lo: number[], hi: number[] }, thickness: number[], moves?: 'x' | 'y', travel: number,
  *   energy: number, width: number, material: { E: number, strainLimit: number }, mirror?: number, across?: 'free' | 'held',
- *   margin?: number, gap?: number, apart?: number, bend?: number, evaluations?: number, starts?: number, runs?: number, sigma?: number, seed?: number, smooth?: number }} job
+ *   margin?: number, gap?: number, apart?: number, bend?: number, evaluations?: number, starts?: number, runs?: number, sigma?: number, seed?: number, smooth?: number, onRound?: Function }} job
  *   root, tip: where its ends are fixed; start, end: the angle it leaves the root at and meets the tip at, in degrees,
  *   fixed or a range [lo, hi] to choose in; controls: how many points between them (default 3), starting at `guess` or
  *   bowed off the straight line; region: the box it stays in, thickness and all (and `gap` clear of its edges);
@@ -139,7 +140,7 @@ export function shapeCurve(job) {
     if (faults.room) why.push('it leaves its room');
     if (faults.bend) why.push(`it bends tighter than ${bend} times its thickness`);
     if (faults.crowd) why.push('it comes too close to itself');
-    if (geometry() > 1 && !full) return { f: 1e4 + geometry(), why, faults }; // worse than any shape that solves, however strained
+    if (geometry() > 1 && !full) return { f: 1e4 + geometry(), why, faults, path: c.path, at: c.at }; // worse than any shape that solves, however strained
     // In two steps (the force halfway shows a snap-through), each one Newton solve to a working tolerance; the shape
     // found is solved again finely at the end
     const s = curveSolver({ ...params, width: wide }, material), steps = full ? 8 : 2, force = [[0, 0]];
@@ -150,10 +151,10 @@ export function shapeCurve(job) {
       force.push([(travel * k) / steps, r.force]);
       if (r.force * Math.sign(travel) <= 0) back++;
     }
-    if (!r?.converged) return { f: 5e3 + geometry(), why: [...why, 'the solver lost it: it snaps or folds'], faults };
+    if (!r?.converged) return { f: 5e3 + geometry(), why: [...why, 'the solver lost it: it snaps or folds'], faults, path: c.path, at: c.at };
     // Drawn, it mustn't run into itself either
-    const coarse = curvePath({ ...params, smooth }).at; // (the solved shape is on the solver's samples)
-    faults.drawn = crowding(Object.values(shapeOf(s.sys, r.q).lines)[0], coarse, gap / 2);
+    const coarse = curvePath({ ...params, smooth }).at, drawn = Object.values(shapeOf(s.sys, r.q).lines)[0]; // (the solved shape is on the solver's samples)
+    faults.drawn = crowding(drawn, coarse, gap / 2);
     if (faults.drawn) why.push('drawn, it runs into itself');
     const e = r.strain / limit, short = Math.max(0, 1 - r.energy / want);
     if (short > 0.02) why.push(`it stores ${r.energy.toFixed(1)} mJ${ranged(width) ? ` at its widest, ${wide} mm` : ''}, short of ${want.toFixed(1)}`);
@@ -161,11 +162,27 @@ export function shapeCurve(job) {
     if (back) why.push('it snaps through: its force turns back on the way');
     // On a log scale, so a shape far off (a stretched arm, a hundred times the strain) still has a way down; any fault
     // in its geometry costs more than any strain it could save
-    return { f: Math.log1p(e) + 10 * Math.log1p(short / 0.05) ** 2 + 10 * Math.log1p(Math.max(0, e - 1) / 0.05) ** 2 + 2 * back + 50 * geometry() + (geometry() > 0 ? 1 : 0), why, faults, energy: r.energy, strain: r.strain, force };
+    return { f: Math.log1p(e) + 10 * Math.log1p(short / 0.05) ** 2 + 10 * Math.log1p(Math.max(0, e - 1) / 0.05) ** 2 + 2 * back + 50 * geometry() + (geometry() > 0 ? 1 : 0), why, faults, energy: r.energy, strain: r.strain, force, path: c.path, at: c.at, drawn };
   };
   if (job.check) return judge({ ...job.check, width: wide }, true); // a shape of your own, judged for the job
-  let best = null, used = 0;
-  const f = (u) => judge(decode(u)).f;
+  // Watching: every shape tried this round, and the best so far, told to job.onRound after each round (return true to
+  // stop): { phase: 'starts' | 'search', round, evaluations, tried: paths, best: { path, at, drawn, energy, strain,
+  // score, why } }
+  let best = null, used = 0, round = 0, tried = [], top = null;
+  const f = (u) => {
+    const r = judge(decode(u));
+    if (job.onRound) { tried.push(r.path); if (!top || r.f < top.f) top = r; }
+    return r.f;
+  };
+  const report = (phase) => {
+    if (!job.onRound) return false;
+    const stop = job.onRound({ phase, round: round++, evaluations: used, tried, mirror: job.mirror, limit, want,
+      best: top && { path: top.path, at: top.at, drawn: top.drawn, strain: top.strain, score: top.f, why: top.why,
+        // its energy at the height it would print (as tall as it must be to store what's asked, within the range)
+        ...(top.energy != null ? (() => { const w = ranged(width) ? Math.min(width[1], Math.max(width[0], (want / top.energy) * wide)) : width; return { energy: (top.energy * w) / wide, width: w }; })() : {}) } });
+    tried = [];
+    return !!stop;
+  };
   // Starts: the guess, and shapes scattered about the room (the same each run), the best taken on
   let seed = job.seed ?? 1;
   const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -176,14 +193,18 @@ export function shapeCurve(job) {
   // each with its share of the evaluations left; the best kept
   const ranked = starts.map((u) => ({ x: u, f: f(u) })).sort((a, b) => a.f - b.f), runs = Math.min(job.runs ?? 3, ranked.length);
   used += starts.length;
-  for (let k = 0; k < runs; k++) {
-    const r = cmaes(f, ranked[k].x, { sigma: job.sigma ?? (job.guess ? 0.05 : 0.15), evaluations: Math.floor(((job.evaluations ?? 6000) - used) / (runs - k)), random });
-    used += r.used;
+  let stopped = report('starts');
+  for (let k = 0; k < runs && !stopped; k++) {
+    const before = used;
+    const r = cmaes(f, ranked[k].x, { sigma: job.sigma ?? (job.guess ? 0.05 : 0.15), evaluations: Math.floor(((job.evaluations ?? 6000) - used) / (runs - k)), random,
+      onGen: ({ used: n }) => { used = before + n; return (stopped = report(`search ${k + 1} of ${runs}`)); } });
+    used = before + r.used;
     if (!best || r.f < best.f) best = r;
   }
+  if (!best) best = { x: ranked[0].x, f: ranked[0].f }; // (stopped before the search began)
   // The width that stores what's asked (no less than the least it may have), and the energy and force at it
   const params = decode(best.x), out = judge(params, true), w = ranged(width) ? Math.min(width[1], Math.max(width[0], (want / (out.energy || 1)) * wide)) : width, k = w / wide;
-  return { params: { ...params, width: w }, width: w, energy: out.energy * k, strain: out.strain, force: out.force?.map(([d, F]) => [d, F * k]), ok: !out.why?.length, why: out.why ?? [], faults: out.faults, evaluations: used, score: out.f };
+  return { params: { ...params, width: w }, width: w, energy: out.energy * k, strain: out.strain, force: out.force?.map(([d, F]) => [d, F * k]), ok: !out.why?.length, why: out.why ?? [], faults: out.faults, evaluations: used, score: out.f, stopped };
 }
 
 /**

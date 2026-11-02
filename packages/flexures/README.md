@@ -296,6 +296,10 @@ and slap together when it fires. Each end leaves its block square for `lead`, an
 as a range and it is solved at the widest, then printed as tall as the energy needs: force goes with height, strain
 doesn't.
 
+Give it `onRound` to watch it work: after each round it's told every shape tried, and the best so far (its path,
+thickness, drawn-back shape, strain and energy), and returning true stops the search. `@rulecad/cad`'s `liveShape`
+serves a page that draws them as they come, with a stop button.
+
 Free-form points wander into tangles, so start it from a shape of the right kind. `meander({ root, tip, legs, lo, hi })`
 folds an arm into its room as legs joined by round bends. Each arm must be long enough to spread the travel's strain
 (for a 12 mm stroke at 1%, 14 cm or more of a three-line arm), and a meander is how that length fits. From there the
