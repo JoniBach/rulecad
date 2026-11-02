@@ -982,7 +982,7 @@ export function solids(json, { thickness, smooth = 16, models }) { // models: { 
   const { rectangle, circle, polygon } = jscad.primitives, { subtract } = jscad.booleans, { extrudeLinear } = jscad.extrusions;
   const b = json.find((e) => e.type === 'pcb_board');
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole' || e.type === 'pcb_via')
-    .map((e) => circle({ center: [e.x, e.y], radius: (e.hole_diameter ?? e.hole_width) / 2, segments: smooth }));
+    .map((e) => circle({ center: [e.x + (e.hole_offset_x ?? 0), e.y + (e.hole_offset_y ?? 0)], radius: (e.hole_diameter ?? e.hole_width) / 2, segments: smooth })); // a hole off-centre in its pad, where the fab drills it
   const outline = b.outline ? polygon({ points: b.outline.map((p) => [p.x, p.y]) }) : rectangle({ center: [b.center.x, b.center.y], size: [b.width, b.height] });
   const board = extrudeLinear({ height: thickness }, drills.length ? subtract(outline, ...drills) : outline);
   const parts = models ? partModels(json, { thickness, meshes: models }) : [];

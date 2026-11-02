@@ -477,3 +477,12 @@ test('pin headers in a 3D model: a pin and spacer at each hole, under the board;
   const hole = srj.obstacles.find((o) => o.isNonPlatedHole);
   assert.equal(hole.width, 3.8, 'the router keeps out of the screw head\'s room, not just the hole');
 });
+
+test('the board in 3D: a hole set off-centre in its pad is drilled where the fab drills it', () => {
+  const json = [{ type: 'pcb_board', center: { x: 0, y: 0 }, width: 10, height: 10, thickness: 1.6 },
+    { type: 'pcb_plated_hole', x: 0, y: 0, hole_diameter: 1, hole_offset_x: -2, hole_offset_y: 0, outer_width: 3, outer_height: 1.7, shape: 'circular_hole_with_rect_pad' }];
+  const { board } = solids(json, { thickness: 1.6 });
+  const near = (x) => board.polygons.some((p) => p.vertices.some((v) => Math.abs(v[0] - x) < 0.01 && Math.abs(v[1]) < 0.01));
+  assert.ok(near(-2.5) && near(-1.5), 'the hole is at the offset');
+  assert.ok(!near(0.5), 'not at the pad\'s centre');
+});
