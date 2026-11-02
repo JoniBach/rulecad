@@ -70,6 +70,7 @@ const grow = (a, d) => (empty(a) || !(d > 0) ? a : run((cs, keep) => loopsOf(kee
 const shrink = (a, d, join = 'Miter') => (empty(a) || !(d > 0) ? a : run((cs, keep) => loopsOf(keep(cs(a).offset(-d, join, 2, ROUND)))));
 const area = (a) => (empty(a) ? 0 : run((cs) => cs(a).area()));
 const pieces = (a) => (empty(a) ? 0 : run((cs, keep) => cs(a).decompose().map(keep).filter((p) => p.area() > AREA).length));
+const apart = (a) => (empty(a) ? [] : run((cs, keep) => cs(a).decompose().map(keep).filter((p) => p.area() > AREA).map(loopsOf)));
 const box = (a) => {
   const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
   for (const l of a) for (const [x, y] of l) { lo[0] = Math.min(lo[0], x); lo[1] = Math.min(lo[1], y); hi[0] = Math.max(hi[0], x); hi[1] = Math.max(hi[1], y); }
@@ -101,7 +102,9 @@ function flat(g) {
   }
   throw new Error('a lamina takes 2D shapes, prisms standing on the bed, or loops of [x, y]');
 }
-const all = (gs) => union([gs].flat(Infinity).filter(Boolean).map(flat));
+const isLoops = (g) => Array.isArray(g) && g.length > 0 && Array.isArray(g[0]) && Array.isArray(g[0][0]) && typeof g[0][0][0] === 'number';
+const shapesIn = (g) => (isLoops(g) ? [g] : Array.isArray(g) ? g.flatMap(shapesIn) : g ? [g] : []); // (loops of points kept whole)
+const all = (gs) => union(shapesIn(gs).map(flat));
 // A shape as a JSCAD solid, extruded `height` up from the bed
 function solidOf(a, height) {
   const { geom3, poly3 } = jscad.geometries;
@@ -312,6 +315,7 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  */
 export async function lamina(spec) {
   await ready();
+  if (spec.flood) return flooded(spec);
   const { height, gap, material, printer } = spec, slack = spec.check?.slack ?? gap / 10, steps = spec.check?.steps ?? 8, stepMost = spec.check?.step ?? 0.25;
   // Friction, taken the cautious way for each question: what must move is checked sticky (a ramp must still push its
   // follower aside at `pass`), what must hold is checked slippery (a catch must still jam at `hold`). Give over push past
@@ -325,7 +329,7 @@ export async function lamina(spec) {
   // round: the inside corners of the frame and the bodies rounded to this radius (grown by it, then shrunk), so no thin
   // arm meets its body at a square corner
   const rounded = (a) => (spec.round > 0 ? shrink(grow(a, spec.round), spec.round, 'Round') : a);
-  const parts = { ground: { kind: 'ground', shape: rounded(all(spec.ground)) } };
+  const parts = { ground: { kind: 'ground', shape: spec.groundRounded ? all(spec.ground) : rounded(all(spec.ground)) } }; // (a flooded frame isn't rounded again: its pockets are the moving parts' room, rounded already by the clearance)
   for (const [n, s] of Object.entries(spec.bodies || {})) { if (parts[n]) throw new Error(`"${n}" is used twice`); parts[n] = { kind: 'body', shape: rounded(all(s)) }; }
   const joints = {};
   for (const [n, j] of Object.entries(spec.joints || {})) {
@@ -544,6 +548,19 @@ export async function lamina(spec) {
     return null;
   };
 
+  // ---- rigid: no thin arm of the frame or a body tied on at one end only (it bends under load, and spoils what it
+  // holds: a rail a stop hits, a hanger a hinge hangs from). Thinner than `check.rigid` (3 mm) and joined to the rest at
+  // one place, it's a free end ----
+  const rigidW = spec.check?.rigid ?? 3;
+  for (const [n, p] of Object.entries(parts)) {
+    if (p.kind === 'flexure') continue;
+    const core = grow(shrink(p.shape, rigidW / 2, 'Round'), rigidW / 2), thin = subtract(p.shape, grow(core, cell));
+    for (const piece of apart(thin)) {
+      if (area(piece) < rigidW * rigidW) continue; // a nib, not an arm
+      if (pieces(intersect(grow(piece, cell * 2), core)) <= 1) { const b = box(piece); f('warn', `${what(n)} has an arm narrower than ${rigidW} mm tied on at one end only, near (${((b.lo[0] + b.hi[0]) / 2).toFixed(1)}, ${((b.lo[1] + b.hi[1]) / 2).toFixed(1)}): it bends under load. Fill it in, or tie its other end back`, 'lamina.rigid', { part: n, at: b }); }
+    }
+  }
+
   // ---- free: at rest, the gap between everything that isn't joined; each flexure on its two bodies only ----
   let free = true;
   // A curve folded into its room mustn't come nearer itself than the gap either, or its loops print fused
@@ -594,7 +611,12 @@ export async function lamina(spec) {
       const r = fePeak({ flexure: parts[n].shape, held: from, moved: to, direction: dir, travel, E: material.E, cell: t / FE_CELLS, band: Math.max(2 * t, gap * 4) });
       if (!r) { f('info', `${n}: its peak strain couldn't be worked out by finite elements (nothing held, or nothing to push)`, 'lamina.peak', { joint: n }); return null; }
       const sharp = reentrant(union([parts[n].shape, intersect(from, grow(parts[n].shape, t * 2)), intersect(to, grow(parts[n].shape, t * 2))]), r.cell).some((p) => Math.hypot(p[0] - r.at[0], p[1] - r.at[1]) <= r.cell * 2.01);
-      const where = `at (${r.at.map((x) => x.toFixed(1)).join(', ')})`, ratio = beam > 0 ? r.peak / beam : null, limit = material.strainLimit;
+      // The finite elements are linear: what they say at the full travel is a concentration over what a linear beam says
+      // there. A model solved for large deflections (a curve) is asked for its own linear strain (at a twentieth of the
+      // travel, scaled up), the concentration taken over that, and applied to what it says at the full travel
+      const lin = j.model.signed ? (Math.abs(j.model.strain((Math.sign(used[n]?.most || 1) * most) / 20)) * 20) : beam;
+      const ratio = lin > 0 ? r.peak / lin : null; r.peak = ratio && j.model.signed ? ratio * beam : r.peak;
+      const where = `at (${r.at.map((x) => x.toFixed(1)).join(', ')})`, limit = material.strainLimit;
       if (sharp) f('fail', `${n}: its strain peaks at a square corner ${where}, ${(r.peak * 100).toFixed(2)}% on ${r.cell.toFixed(2)} mm cells and more on finer ones: a sharp inside corner has no bound, and it's where a print yields. Round it (a radius about the flexure's thickness), or taper into it`, 'lamina.peak', { joint: n, strain: r.peak, at: r.at, sharp: true });
       if (!sharp) f(r.peak <= limit ? 'pass' : 'fail', `${n}: finite elements give a peak of ${(r.peak * 100).toFixed(2)}% ${where}${ratio ? ` (${ratio.toFixed(2)} × beam theory)` : ''}, ${r.peak <= limit ? 'within' : 'over'} the limit of ${(limit * 100).toFixed(2)}%`, 'lamina.peak', { joint: n, strain: r.peak, at: r.at, ratio });
       return { ...r, sharp, ratio: sharp ? Infinity : ratio };
@@ -611,7 +633,7 @@ export async function lamina(spec) {
       if (j.model.least != null && printer && j.model.least < (printer.wall_min ?? 2 * printer.line) - 1e-6) f('fail', `${n}: tapered to ${j.model.least.toFixed(2)} mm, under the thinnest wall that prints (${printer.wall_min ?? 2 * printer.line} mm)`, 'flexure.thin', { joint: n });
       const fe = u?.most && spec.check?.fe !== false ? feCheck(n, j, most, e) : null;
       // Where the real peak is over beam theory's, the travel it may go is that much less
-      const reach = fe && !fe.sharp && fe.ratio > 1 ? limit / fe.ratio : limit; // (a sharp corner fails on its own)
+      const reach = fe && !fe.sharp && fe.ratio > 1 ? (j.turning ? deg(m.travel(material.strainLimit / fe.ratio)) : m.travel(material.strainLimit / fe.ratio)) : limit; // (a sharp corner fails on its own; the model asked, not scaled, since a large deflection isn't linear)
       // A stop: swept from rest to the limit (less a margin), its body, or what it carries, runs into something
       const signs = follows[n] ? [follows[n].give ?? 1] : u?.signs.size ? [...u.signs] : [1, -1]; // a follower only ever gives one way
       for (const sgn of signs) {
@@ -834,6 +856,34 @@ export async function lamina(spec) {
  * PETG's 1.9%, nylon's higher still.
  * @param {{ modulus: number, strength: number, name?: string }} rules @param {{ safety?: number }} [o] (default 1.5)
  */
+/**
+ * A lamina whose frame is flooded: everything inside `flood.outline` is solid but the room the moving parts need (where
+ * each body and flexure goes, through the whole sequence, grown by a clearance) and the spaces `flood.keep` holds open
+ * (a disc's way out). A thin frame bends and spoils everything it holds; a flooded one is as stiff as the outline
+ * allows, so the mechanism is all that moves. The moving parts are solved through the sequence first (with the ground
+ * you draw: the blocks the flexures grow from), then the frame is what's left, slivers thinner than `least` and islands
+ * that would print loose taken out, and your ground added back.
+ * @param {object} spec a lamina spec, with flood: { outline, keep?, clear?: number | Record<string, number>, least? }:
+ *   clear, the gap round the moving parts (the print gap; or by part, a sliding fit for what slides in a channel)
+ */
+async function flooded(spec) {
+  const { outline, keep = [], least = 2 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
+  const probe = await lamina({ ...spec, flood: undefined, fire: undefined, check: { ...(spec.check || {}), fe: false } });
+  const free = new Set(Object.keys(spec.free || {})), by = {};
+  for (const fr of probe.frames) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
+  const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)
+  const mine = all(spec.ground);
+  let space = subtract(all(outline), union([swept, all(keep)]));
+  space = grow(shrink(space, least / 2, 'Round'), least / 2); // no sliver thinner than `least`
+  // Only what's joined to the main frame or to your ground: an island (inside an arm's loop, a ring's hole) prints loose
+  const bits = apart(space), biggest = Math.max(0, ...bits.map(area));
+  const kept = bits.filter((b) => area(b) >= biggest - 1e-9 || area(intersect(b, grow(mine, TOUCH))) > AREA);
+  const ground = union([mine, ...kept]);
+  const out = await lamina({ ...spec, flood: undefined, ground, groundRounded: true });
+  out.findings.unshift({ level: 'info', text: `the frame is flooded: ${area(ground).toFixed(0)} mm² solid, all but the room the moving parts sweep (${bits.length - kept.length} loose bits left out)`, code: 'lamina.flood' });
+  return out;
+}
+
 export function flexureMaterial({ modulus, strength, name, density }, { safety = 1.5 } = {}) {
   if (!(modulus > 0) || !(strength > 0)) throw new Error('a flexure material needs its modulus and strength (MPa)');
   const yieldStrain = strength / modulus;

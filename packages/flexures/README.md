@@ -230,6 +230,13 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
 - `requires: [{ step: 'rest>pressed', joint, peak: [least, most], click, end }]` checks a force curve: a key's feel.
 - `free: { disc: { shape, mass } }` adds parts that aren't printed or joined (a disc): the physics only.
 - `fixtures` are fixed shapes the physics sees but the print leaves out (another layer's walls).
+- `flood: { outline, keep, clear, least }` floods the frame: everything inside `outline` is solid except the room
+  the moving parts sweep through the sequence (grown by `clear`, the print gap, or a sliding fit by part's name), and
+  the spaces `keep` holds open. Slivers thinner than `least` and islands that would print loose are left out, and the
+  `ground` you draw (the blocks the flexures grow from) is added back. A thin frame bends and spoils the mechanism; a
+  flooded one is as stiff as its outline, and its pockets are the moving parts' stops and guides.
+- Every rigid part is checked for free ends: an arm narrower than `check.rigid` (3 mm) tied on at one end only bends
+  under load, so it's a warning.
 - `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and
   steps through time (masses from the material's `density`; explicit steps short enough that a sound wave doesn't
   cross the shortest beam element in one, with whatever mass Gershgorin's bound still asks for added to the lightest

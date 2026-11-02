@@ -532,3 +532,16 @@ test('shaping a curve: from a meander, to a job, it stores the energy with its s
   assert.ok(Math.abs(again.energy(-4) / r.energy - 1) < 0.02, `${again.energy(-4).toFixed(2)} mJ against ${r.energy.toFixed(2)}`);
   assert.ok(r.energy >= job.energy * 0.98 || r.width === 20);
 });
+
+test('a flooded frame: solid everywhere but the room the moving parts sweep, so it prints free and stops what it holds; a thin arm tied on at one end is found', async () => {
+  const leafJob = { length: 30, thickness: 0.84, fillet: 1, tip: true, into: 0.84 };
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false }, physics: false, bodies: { tip: rect(30, -2, 37, 2) }, joints: { leaf: { kind: 'leaf', params: leafJob, at: [0, 0], from: 'ground', to: 'tip' } }, states: { bent: { leaf: 3 } }, sequence: ['rest', 'bent', 'rest'] };
+  const m = await lamina({ ...base, ground: rect(-8, -8, 0, 8), flood: { outline: rect(-8, -12, 45, 12) } });
+  assert.ok(m.findings.some((x) => x.code === 'lamina.flood'), 'it says the frame is flooded');
+  assert.ok(!m.findings.some((x) => x.code === 'lamina.free' && x.level === 'fail'), m.findings.filter((x) => x.code === 'lamina.free').map((x) => x.text).join('; '));
+  const g = m.outlines('rest').ground, area = (l) => Math.abs(l.reduce((s, p, i) => { const q = l[(i + 1) % l.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
+  assert.ok(g.reduce((s, l) => s + area(l), 0) > 53 * 24 * 0.5, 'most of the outline is solid');
+  // A rail 1.5 mm thick standing off the frame at one end only bends: it's found
+  const rail = await lamina({ ...base, ground: [rect(-8, -8, 0, 8), rect(0, 6, 25, 7.5)] });
+  assert.ok(rail.findings.some((x) => x.code === 'lamina.rigid'), 'a free-ended rail is found');
+});
