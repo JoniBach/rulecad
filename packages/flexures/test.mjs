@@ -451,3 +451,17 @@ test('the beam solver: a cantilever as beam theory says at small loads and as th
   const below = equilibrium(col, { loads: new Map([[top + 1, -0.95 * Pcr], [top, 1e-4 * Pcr]]) }), above = equilibrium(col, { loads: new Map([[top + 1, -1.05 * Pcr], [top, 1e-4 * Pcr]]), start: below.q });
   assert.ok(Math.abs(below.q[top]) < 0.1 && Math.abs(above.q[top]) > 5, 'stands under the Euler load, bows over it');
 });
+
+test('a pivot pair turns about the point its leaves\' lines meet, and its model agrees with the beam solver', async () => {
+  const L = 16, near = 8, a = 2.5, into = 0.84, angles = [235, 270], dirs = angles.map((d) => [Math.cos((d * Math.PI) / 180), Math.sin((d * Math.PI) / 180)]);
+  const disc = (c, r) => jscad.primitives.circle({ center: c, radius: r, segments: 32 }), along = (r) => dirs.map(([c, s]) => [c * r, s * r]);
+  const m = await lamina({
+    height: 14, gap: 0.3, material: petg, printer: fdm, check: { fe: false },
+    ground: [jscad.hulls.hull(...along(near + L + a - into).map((p) => disc(p, a)))],
+    bodies: { arm: [jscad.hulls.hull(...along(near - a + into).map((p) => disc(p, a)), disc([10, -4], 2))] },
+    joints: { pair: { kind: 'pivotPair', params: { length: L, thickness: 0.84, angles, near }, at: [0, 0], from: 'ground', to: 'arm' } },
+    states: { turned: { pair: -4 } }, sequence: ['rest', 'turned', 'rest'],
+  });
+  const model = m.findings.find((f) => f.code === 'lamina.strain' && f.joint === 'pair').strain, beams = m.findings.find((f) => f.code === 'lamina.beams' && f.joint === 'pair').strain;
+  assert.ok(Math.abs(beams / model - 1) < 0.1, `model ${(model * 100).toFixed(3)}%, beams ${(beams * 100).toFixed(3)}%`);
+});

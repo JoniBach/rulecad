@@ -16,7 +16,7 @@
 import jscad from '@jscad/modeling';
 import * as gens from './flexures.mjs';
 import { ports, models } from './compose.mjs';
-import { simulate, bend } from './physics.mjs';
+import { simulate, bend, centrelines } from './physics.mjs';
 import { shapeOf } from './beams.mjs';
 import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness } from '@rulecad/fea';
 
@@ -24,6 +24,7 @@ const AREA = 1e-4; // mm²: less than this of an overlap is a rounding error, no
 const TOUCH = 0.01; // mm: as near as a flexure's root is to its body, or a point to an edge
 const STOP_STEPS = 40; // how finely a joint's travel is swept for its stop
 const NONE = new Set();
+const MARCH = 40; // steps a follower's give is searched in, from where it is
 const FINE = 0.005; // mm: a give this small is the solver's precision, not a push
 const REFINE = 10; // a step that pushes a follower, looked at again in this many parts
 const FRAMES = 12; // frames from one state to the next, for an animation
@@ -318,6 +319,22 @@ export async function lamina(spec) {
     joints[n] = { ...j, kind, params, model, motion, place, leafy, turning: !leafy && !!motion.pivot, stiffness: j.stiffness ?? model?.stiffness };
     parts[n] = { kind: 'flexure', shape, joint: n };
   }
+  // A flexure given rounds meets its bodies in rounds too, whatever their shape: the round filling the corner between the
+  // flexure and a band of each body, outside the body, is added to the flexure
+  // (only round where it meets them: within two radii of where they touch, so a gap beside the flexure stays open;
+  // flexures with blocks of their own, guides and serpentines, round into those already)
+  const OWN_BLOCKS = new Set(['parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine', 'snapHook', 'notchHinge', 'ellipticalHinge', 'livingHinge', 'cartwheel', 'letJoint', 'bistable']);
+  for (const [n, j] of Object.entries(joints)) {
+    const r = j.params?.fillet;
+    if (!(r > 0) || OWN_BLOCKS.has(j.kind)) continue;
+    let F = parts[n].shape;
+    for (const b of [j.from, j.to]) {
+      const B = parts[b].shape, touch = intersect(F, grow(B, TOUCH)), near = intersect(B, grow(F, r * 3));
+      if (area(touch) <= AREA) continue;
+      F = union([F, intersect(subtract(shrink(grow(union([F, near]), r), r, 'Round'), B), grow(touch, r * 1.2))]);
+    }
+    parts[n].shape = F;
+  }
   // Each body hangs from one joint: the tree from the ground
   const parent = {};
   for (const [n, j] of Object.entries(joints)) { if (parent[j.to]) throw new Error(`${j.to} hangs from two joints (${parent[j.to]} and ${n}): give it one, a guide is one joint`); parent[j.to] = n; }
@@ -409,8 +426,11 @@ export async function lamina(spec) {
       v[n] = g * from;
       if (!blocked(v, n)) continue;
       const most = Math.min(limitOf(n), fo.most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
-      if (blocked({ ...v, [n]: g * reach }, n)) { v[n] = g * reach; pushed[n] = reach - from; over.push(n); continue; }
-      let lo = from, hi = reach;
+      // March out from where it is to the first place it clears (giving further can run it into something else), then
+      // close in on it
+      let lo = from, hi = null;
+      for (let k = 1; k <= MARCH && hi == null; k++) { const at = from + ((reach - from) * k) / MARCH; if (blocked({ ...v, [n]: g * at }, n)) lo = at; else hi = at; }
+      if (hi == null) { v[n] = g * reach; pushed[n] = reach - from; over.push(n); continue; }
       for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (blocked({ ...v, [n]: g * mid }, n)) lo = mid; else hi = mid; }
       v[n] = g * hi; pushed[n] = hi - from;
     }
@@ -500,7 +520,8 @@ export async function lamina(spec) {
     if (area(contact) <= AREA) { free = false; f('fail', `the ${fx} flexure doesn't reach ${what(body)}: it would print loose`, 'lamina.attached', { parts: [fx, body] }); continue; }
     if (area(intersect(F, Bd)) <= AREA) { free = false; f('fail', `the ${fx} flexure only meets ${what(body)} along an edge: run it into it (by a line or two), or it prints as two pieces`, 'lamina.attached', { parts: [fx, body], at: box(contact) }); continue; }
     // Overlapping it in two places is fused (touching along a line, flush, is one material)
-    if (pieces(intersect(F, Bd)) > 1) { free = false; f('fail', `the ${fx} flexure touches ${what(body)} in more than one place: it's fused to it away from its root`, 'lamina.free', { parts: [fx, body], at: box(contact) }); continue; }
+    const legs = OWN_BLOCKS.has(joints[fx].kind) ? 1 : (centrelines(joints[fx].kind, joints[fx].params)?.length ?? 1); // a flexure of several leaves meets each body once a leaf
+    if (pieces(intersect(F, Bd)) > legs) { free = false; f('fail', `the ${fx} flexure touches ${what(body)} in more than one place: it's fused to it away from its root`, 'lamina.free', { parts: [fx, body], at: box(contact) }); continue; }
     const rest = subtract(F, grow(contact, gap * 2 + cell)); // the flexure away from where it grows out of the body
     if (area(rest) > AREA && within(rest, Bd, gap * 0.98)) { free = false; const g = gapBetween(rest, Bd, gap); f('fail', `the ${fx} flexure runs ${g ? `${g} mm` : 'touching'} from ${what(body)} away from its root: under the ${gap} mm gap, it fuses there`, 'lamina.free', { parts: [fx, body], gap: g, at: box(intersect(grow(rest, gap / 2), grow(Bd, gap / 2))) }); }
   }

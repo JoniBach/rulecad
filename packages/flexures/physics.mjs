@@ -32,6 +32,10 @@ export function centrelines(kind, p) {
     case 'leaf': case 'contactLeaf': case 'snapHook': return [line('leaf')];
     case 'fixedGuided': return [line('guided')];
     case 'parallelGuide': { const y = (p.gap + t) / 2; return [line('guided', y), line('guided', -y)]; }
+    case 'pivotPair': return p.angles.map((a) => { // each leaf from its root, out along its line, in towards the point
+      const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r), one = line('guided');
+      return { path: one.path.map(([x]) => { const d = p.near + L - x; return [c * d, s * d]; }), thickness: one.thickness };
+    });
     case 'serpentine': {
       const step = p.pitch ?? 3 * t, joint = Math.max(1.5 * t, 1), path = [[0, 0]], th = [];
       for (let i = 0; i < p.turns; i++) {

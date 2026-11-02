@@ -106,6 +106,38 @@ export function beamModel(p, { E }, ends = 'leaf') {
 }
 
 /**
+ * A pivot pair: two leaves on lines that meet at a point, so what they hold turns about that point (a virtual pivot,
+ * or remote centre) though nothing is there. Pushed towards or away from the point along either leaf, it's as stiff as
+ * the leaves are long; turned, as soft as they are in bending. The point can lie in empty space beside the part, where
+ * no hinge could go: a sear's pivot over its catch, so the load runs through the leaves and not across them.
+ * Drawn with the point at the origin: each leaf on its own direction (`angles`, degrees, the way from the point
+ * along the leaf), from `near` mm out (its tip, on the part that turns) to `near + length` (its root, on the frame).
+ * @param {ShapedLeaf & { angles: number[], near: number }} p
+ */
+export function pivotPair(p) {
+  const { angles, near } = p;
+  return union(...angles.map((a) => {
+    const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r), d = near + p.length; // the root, out along the line
+    const leaf = p.taper ? beam({ ...p, fillet: 0, into: 0, tip: true }, 'guided') : block(p.length / 2, 0, p.width / 2, [p.length, p.thickness, p.width]); // plain ends: a lamina rounds them into whatever they meet
+    return jscad.transforms.translate([c * d, s * d, 0], jscad.transforms.rotateZ(r + Math.PI, leaf)); // root out at d, running in towards the point
+  }));
+}
+/**
+ * Each leaf's tip held to the part turning about the point: displaced near × θ across the leaf and turned θ, its root
+ * fixed. Stiffness in N·mm a radian; strain at the tip, the worse end. Checked against the beam solver.
+ * @param {ShapedLeaf & { angles: number[], near: number }} p @param {Material} m
+ */
+export function pivotPairModel(p, { E }) {
+  const { length: L, thickness: t, width: w, near: d } = p, I = (w * t ** 3) / 12, n = p.angles.length;
+  // Per leaf, its tip moved v = −dθ across it and turned φ = θ: energy ½ EI/L³ (12 v² − 12 L v φ + 4 L² φ²), moments
+  // EI (6d + 4L) θ / L² at the tip and EI (6d + 2L) θ / L² at the root. The point beyond the tips bends each leaf into
+  // an S: the nearer the tips come to it (d small) and the longer the leaves, the less strain a turn costs
+  const stiffness = (n * E * I * (12 * d * d + 12 * L * d + 4 * L * L)) / L ** 3;
+  const per = ((t / 2) * (6 * d + 4 * L)) / (L * L); // strain a radian, at the tip
+  return { stiffness, strain: (th) => per * Math.abs(th), angle: (e) => e / per, travel: (e) => e / per, stress: (th) => E * per * Math.abs(th) };
+}
+
+/**
  * A parallel guide: two fixed-guided leaves a gap apart, joined by a shuttle, so the shuttle moves along y and stays
  * parallel: a linear bearing with no parts. Stiffness 2 E w t³ / L³. The shuttle also drops a little toward the base
  * as it moves (the leaves' ends swing on arcs): about 3δ² / 5L (Howell), given as drop.

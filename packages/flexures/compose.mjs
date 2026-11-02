@@ -1,6 +1,6 @@
 // Composing flexures into mechanisms: where each one attaches (ports), how big one must be for a job (sizing), and one
 // report for a mechanism's worth of them (report). Units: mm, N, MPa, radians.
-import { leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable } from './flexures.mjs';
+import { pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable } from './flexures.mjs';
 
 /** @typedef {{ at: number[], dir: number[] }} Port a point on a flexure and the direction a mating part faces from it */
 
@@ -37,6 +37,7 @@ export function ports(kind, p) {
       const e = p.end ?? Math.max(3, 2 * p.thickness), c = p.clearance ?? p.gap / 2, y2 = -(p.gap / 2 + p.thickness / 2);
       return { root: { at: [0, y2 - p.thickness / 2 - c - e, z], dir: mY }, end: { at: [0, p.gap / 2 + p.thickness, z], dir: Y }, moves: 'y' };
     }
+    case 'pivotPair': return { root: { at: [0, 0, z], dir: mX }, end: { at: [0, 0, z], dir: X }, moves: 'turn', pivot: { at: [0, 0, z], dir: [0, 0, 1] } }; // the leaves meet at the origin: the pivot
     case 'notchHinge': { const a = p.arms ?? 4 * p.radius; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + 2 * p.radius, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + p.radius, 0, z], dir: [0, 0, 1] } }; }
     case 'ellipticalHinge': { const a = p.arms ?? 4 * p.along; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + 2 * p.along, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + p.along, 0, z], dir: [0, 0, 1] } }; }
     case 'livingHinge': { const a = p.arms ?? 10; return { root: { at: [-a, 0, z], dir: mX }, end: { at: [p.flex + a, 0, z], dir: X }, moves: 'turn', pivot: { at: [p.flex / 2, 0, z], dir: [0, 0, 1] } }; }
@@ -51,7 +52,7 @@ export function ports(kind, p) {
 }
 
 /** The model for a kind, by name */
-export const models = { leaf: leafModel, fixedGuided: fixedGuidedModel, parallelGuide: parallelGuideModel, compoundGuide: compoundGuideModel, foldedGuide: foldedGuideModel, serpentine: serpentineModel, notchHinge: notchHingeModel, ellipticalHinge: ellipticalHingeModel, cartwheel: cartwheelModel, livingHinge: livingHingeModel, letJoint: letJointModel, bistable: bistableModel, constantForce: constantForceModel, contactLeaf: contactLeafModel, parallelogram: parallelogramModel, tweezers: tweezersModel, snapHook: snapHookModel };
+export const models = { pivotPair: pivotPairModel, leaf: leafModel, fixedGuided: fixedGuidedModel, parallelGuide: parallelGuideModel, compoundGuide: compoundGuideModel, foldedGuide: foldedGuideModel, serpentine: serpentineModel, notchHinge: notchHingeModel, ellipticalHinge: ellipticalHingeModel, cartwheel: cartwheelModel, livingHinge: livingHingeModel, letJoint: letJointModel, bistable: bistableModel, constantForce: constantForceModel, contactLeaf: contactLeafModel, parallelogram: parallelogramModel, tweezers: tweezersModel, snapHook: snapHookModel };
 
 const lines = (printer, from = 2, to = 8) => Array.from({ length: to - from + 1 }, (_, i) => +((from + i) * printer.line).toFixed(4));
 /**
