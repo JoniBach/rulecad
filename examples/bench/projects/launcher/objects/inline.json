@@ -1,7 +1,7 @@
 {
   "name": "inline",
-  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, in a flooded frame with a pull ring and a bridged barrel, printed in one piece on its side",
-  "version": "0.3.0",
+  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, in a flooded frame with a pull ring and a barrel closed both faces, printed in one piece on its side",
+  "version": "0.4.0",
   "uses": [
     "x1c",
     "petg",
@@ -157,9 +157,9 @@
       "rule": "The thinnest the flooded frame may be anywhere: thinner bits are left out"
     },
     "stem": {
-      "value": 30,
+      "value": 50,
       "unit": "mm",
-      "rule": "The stem from the bar back through the handle to the pull ring: the barrel it slides in is this long"
+      "rule": "The stem from the bar back through the handle to the pull ring: long enough for a bridge over it and a floor under it, each over its own stretch"
     },
     "stem_h": {
       "value": 3.8,

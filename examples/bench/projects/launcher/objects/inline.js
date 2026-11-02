@@ -37,12 +37,17 @@ export function main (v) {
   const outline = roundedRectangle({ size: [front - back, out * 2], center: [(front + back) / 2, 0], roundRadius: v.corner, segments: v.smooth })
   const channel = rect(L.discAt - draw - g, 0 - (v.launcher.disc_t / 2 + v.slide), front + 1, v.launcher.disc_t / 2 + v.slide) // the disc's way: loaded ahead of the drawn nose, out through the front
   const disc = rect(L.discAt - draw, 0 - v.launcher.disc_t / 2, L.discAt - draw + v.launcher.disc, v.launcher.disc_t / 2) // seen edge on: for the firing, not printed with it
-  // Bridges over the stem's barrel through the handle, on the top layers: the stem, cut down under them, can't lift out.
-  // Between the ring's pocket (the ring never comes further forward than at rest) and the bar's (drawn, at its furthest
-  // back), so only the stem ever passes under
+  // The barrel closed both faces: a bridge over the stem on the top layers, and a floor under it on the bottom ones,
+  // which the stem arches over at 45° (so it prints with nothing under it). Between the ring's pocket (the ring never
+  // comes further forward than at rest) and the bar's (drawn, at its furthest back), so only the stem passes them; the
+  // floor where none of the stretch the bridge passes over is, since the stem can't be cut from above and arched from
+  // below in one place
   const ringFront = ringAt + v.ring_in + v.ring_wall + v.fit, barBack = L.back - draw - v.fit
-  const across = v.stem_h / 2 + v.fit + v.bridge_foot
-  const bridges = [1, 2].map((k) => { const x = ringFront + ((barBack - ringFront) * k) / 3; return { shape: rect(x - v.bridge_len / 2, 0 - across, x + v.bridge_len / 2, across) } })
+  const across = v.stem_h / 2 + v.fit + v.bridge_foot, rise = v.x1c.layer * 9 // a bridge's six layers and three of gap
+  const top = ringFront + v.bridge_len / 2 + v.fit, floor = top + v.bridge_len + draw + rise * 2 + v.fit
+  if (floor + v.bridge_len / 2 > barBack) throw new Error('the stem is too short for its bridge and its floor: make stem longer')
+  const strip = (x) => rect(x - v.bridge_len / 2, 0 - across, x + v.bridge_len / 2, across)
+  const bridges = [{ shape: strip(top) }, { shape: strip(floor), side: 'bottom' }]
   return f.lamina({
     height, gap: g, material, printer: { ...printer, bridge: v.x1c.bridge }, round: v.round,
     flood: { outline, keep: [channel], clear: { default: v.room, pusher: v.fit }, least: v.least_frame },
