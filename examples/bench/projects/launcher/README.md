@@ -42,6 +42,20 @@ the spring's peak is 1.06% and the hinge's 0.86%, against a limit of 1.25%.
 joined to, every step from rest to cocked, pulled, fired and back clear, no jam, the catch holding, and every
 flexure stopped before it breaks. `npx cad animate launcher/flat` plays the sequence with the springs drawn bent.
 
+**What the physics says (2 November).** Solved as it would behave, with large-deflection beams and contact:
+
+- **The trigger can't hold the cock.** Its hanging leaf hinge is stiff to turn but soft sideways, and the pusher's
+  push on the catch, about 8 N, swings the whole trigger forward until the hook slips off the tooth. The kinematic
+  check missed it, because it treats the hinge as a fixed pivot. Expect a print to fire as soon as you let go of the
+  tab. The fix is a pivot that's stiff sideways: a pivot pair (two leaves on lines that meet over the catch) is the
+  idea, but a pivot beyond the leaves' tips bends them into an S and costs strain, so it needs a redesign.
+- **The shot.** Drawn back with the trigger pulled and let go, the pusher reaches 2.3 m/s and the disc leaves at
+  3.5 m/s with 4.8 mJ: 9% of the 54.5 mJ stored, far under the 0.08 J a hard projectile may carry. Most of the energy
+  stays swinging in the pusher and the springs. Lightening the pusher bar barely helped: a 0.8 g disc can only take
+  what it collides with, so a stronger shot needs a different hand-over (the disc riding the pusher, or a lever).
+- **The barrel.** A lower rail, joined to the guard, stops the pusher where it rests; the roof belongs to another
+  layer, so the physics sees it but this print leaves it out.
+
 The checks are only as good as the printer's `print_gap`: 0.3 mm is an estimate until the fit test plate
 (`fittest`) is printed and measured. Still to do: the disc's channel and the magazine as laminae of their own, a grip
 shell shaped for the hand, and a print.

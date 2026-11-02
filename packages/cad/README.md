@@ -558,7 +558,7 @@ drawn in one plane and printed on its side. `cad check` adds its own findings to
 free (nothing within the printer's gap of what it isn't joined to), that every step of its sequence is clear, that
 nothing jams, that its catches hold, and that every flexure has a hard stop before its strain limit. `cad animate
 <project>/<object>` writes the sequence, start to finish, as an animated SVG in .preview/: the frame drawn once, the
-moving bodies in blue and the flexures in orange, drawn bent, holding a moment at each state. The printer's
+moving bodies in blue and the flexures in orange, drawn bent, holding a moment at each state. Under it, each driven step's force against its travel, with a marker that follows the frames; a mechanism that fires adds the shot in slow motion. The printer's
 `print_gap` is the gap the checks hold it to.
 
 ## Checks

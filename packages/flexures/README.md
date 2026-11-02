@@ -198,6 +198,13 @@ The findings, each pass or fail with its code:
 | `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields |
 | `lamina.stop` | Something hard stops each flexure before its strain limit, scaled by its finite-element peak (swept from rest, so a stop that is jumped over doesn't count) |
 | `lamina.energy` | What each state stores, and the forces |
+| `lamina.force` | The force a hand needs along each driven step, from the physics: a force curve. Over a hand's 50 N, it jams |
+| `lamina.release` | Where a body is let go of on the way (a latch letting go), and how far the hand had moved, with what force |
+| `lamina.held` | Let go of in a state a catch holds, the body stays (the physics, frictionless, so cautious) |
+| `lamina.home` | At the end of the sequence, everything is back where it started |
+| `lamina.beams` | Each flexure's strain all the way through, bending as far as it bends |
+| `lamina.requires` | A driven step's force curve does what you asked: its peak, its click (the fall after the peak), its end |
+| `lamina.fire` | Let go and stepped through time: each body's top speed, and the disc's exit speed and energy against a limit |
 
 It returns the printed `parts` (`body`, the drawing extruded, after an optional `finish` for 3D work such as holes
 through it, and any `loose` parts), the `findings`, the `energy` in each state, and `frames` along the sequence with
@@ -207,7 +214,45 @@ clearance checks a tenth of a millimetre fine.
 
 The launcher's flat action is a worked example (examples/bench/projects/launcher/objects/flat.js): a pusher on a
 two-leaf spring, a tab to cock it, and a trigger that is its own sear, with a catch that leans back so it holds
-however slippery the plastic.
+however slippery the plastic. examples/bench/projects/mechanisms has a key with a tactile click and a wave spring.
+
+### As it would behave: the physics
+
+The kinematic checks above move each joint the way its model says and look for collisions. `lamina` then solves the
+mechanism as it would behave (`physics.mjs`): each flexure with a centreline (leaf, fixed-guided, guides, serpentine,
+wave spring, pivot pair, shaped or not) becomes a chain of large-deflection beams (`beams.mjs`), each body a rigid
+body, and everything touches everything it meets, flexures themselves included. A hand works it through the sequence:
+a joint the next state sets to a new value is driven there; one it keeps is held; one it drops, or one a catch holds
+in the next state, is let go of, gradually, so the mechanism finds where it rests. The hand's force along each driven
+step is the force curve; the frames are the solved shapes, each flexure's outline bent along its centreline.
+
+- `kinematic: false` leaves how it moves to the physics alone, for contact that pushes a part either way (a cam).
+- `requires: [{ step: 'rest>pressed', joint, peak: [least, most], click, end }]` checks a force curve: a key's feel.
+- `free: { disc: { shape, mass } }` adds parts that aren't printed or joined (a disc): the physics only.
+- `fixtures` are fixed shapes the physics sees but the print leaves out (another layer's walls).
+- `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and
+  steps through time (masses from the material's `density`; explicit steps, kept stable by scaling up the mass of the
+  lightest flexure nodes by Gershgorin's bound): the speeds, and the disc's exit speed and energy.
+- `physics: false` turns it off.
+
+The beam solver stands on its own too: `beamSystem({ bodies, beams })`, `equilibrium(sys, { held, loads })`
+(Newton's method on the energy; a held unknown reports the force to hold it). It agrees with beam theory at small
+deflections, with the elastica to 0.1% at large ones, with a parallel guide's stiffness and drop, and buckles a
+column at the Euler load.
+
+### Modules
+
+`place(module, { name, at, angle })` turns and moves a sub-mechanism (its ground, bodies, joints, followers, states
+and named `ports`) and prefixes its names; `combine(placed, extra)` joins placed modules into one lamina spec. The
+push-push latch is built from a plunger module and a track module placed at the plunger's pin port.
+
+### More flexures
+
+- **`pivotPair`:** two leaves on lines that meet at a point, so what they hold turns about that point though nothing
+  is there: stiff along the leaves, soft turning. A point beyond the tips bends each leaf into an S, (t/2)(6d + 4L) / L²
+  strain a radian, d the tips' distance from the point: long leaves, tips near the point.
+- **`waveSpring`:** legs across joined by round U-bends, the thickness grading smoothly to the bends'. Squashed along
+  its stack it stacks solid when its legs meet: its own stop, which the physics sees.
 
 ## Joints that aren't flexures
 
