@@ -265,6 +265,11 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  *   rest must jam on the catch, or run into it
  * @param {Record<string, object>} [spec.loose] parts printed beside it, not joined (a disc), as 3D shapes
  * @param {(solid: object) => object} [spec.finish] 3D work on the printed solid (holes through it, chamfers)
+ * @param {false | { steps?: number, force?: number, contact?: number }} [spec.physics] the mechanism solved as it would
+ *   behave (physics.mjs): off with false
+ * @param {{ step: string, joint?: string, peak?: number[], click?: number, end?: number[] }[]} [spec.requires] what a
+ *   driven step's force curve must do: its peak and end force (N), and the share it drops after its peak (a click)
+ * @param {number} [spec.round] every inside corner of the ground and the bodies rounded to this radius
  * @param {{ slack?: number, steps?: number, cell?: number, friction?: number | { pass?: number, hold?: number }, step?: number }} [spec.check]
  *   how deep a touch may be (default a tenth of the gap); the fewest steps between states (8), and the most any body
  *   moves in one (`step`, a quarter of a mm); the grid flexures are bent on (a quarter of the thinnest); friction at
@@ -679,6 +684,18 @@ export async function lamina(spec) {
         const meant = Math.hypot(T[0] * c[0] + T[1] * c[1] + T[2] - c[0], T[3] * c[0] + T[4] * c[1] + T[5] - c[1]), kept = meant > 0 ? now / meant : 1;
         f(kept > 0.75 ? 'pass' : 'fail', `${tr.to}: let go of, ${b} ${kept > 0.75 ? `stays on ${by}, ${now.toFixed(2)} mm from rest (beams and contact, no friction)` : `doesn't stay: it runs back to ${now.toFixed(2)} mm from rest, past ${by}`}`, 'lamina.held', { state: tr.to, joint: jn, kept });
       }
+    }
+    // Requirements on the force curves: [{ step: 'from>to', joint, peak: [least, most], click: least share it drops after
+    // the peak, end: [least, most] }], in N: what a key's feel or a latch's push must be
+    for (const req of spec.requires || []) {
+      const [from, to] = req.step.split('>'), tr = sim.transitions.find((x) => x.from === from && x.to === to), c = tr?.curve.find((x) => !req.joint || x.joint === req.joint);
+      if (!c) { f('fail', `${req.step}: no driven ${req.joint || 'joint'} to measure`, 'lamina.requires', { step: req.step }); continue; }
+      const F = c.points.map(([, x]) => Math.abs(x)), top = Math.max(...F), at = F.indexOf(top), after = Math.min(...F.slice(at)), drop = top > 0 ? (top - after) / top : 0, end = F.at(-1);
+      const within = (x, [lo, hi]) => x >= lo - 1e-9 && x <= hi + 1e-9, said = [];
+      if (req.peak) said.push([within(top, req.peak), `peaks at ${top.toFixed(2)} N (wanted ${req.peak[0]} to ${req.peak[1]})`]);
+      if (req.click != null) said.push([drop >= req.click, `drops ${Math.round(drop * 100)}% after it (a click wants ${Math.round(req.click * 100)}% or more)`]);
+      if (req.end) said.push([within(end, req.end), `ends at ${end.toFixed(2)} N (wanted ${req.end[0]} to ${req.end[1]})`]);
+      f(said.every(([ok]) => ok) ? 'pass' : 'fail', `${req.step}: ${c.joint} ${said.map(([, t]) => t).join(', ')}`, 'lamina.requires', { step: req.step, joint: c.joint, peak: top, drop, end });
     }
     for (const [jn, e] of Object.entries(sim.strain)) f(e <= material.strainLimit ? 'pass' : 'fail', `${jn}: bending as far as it bends through the sequence, it sees up to ${(e * 100).toFixed(2)}% strain (large-deflection beams), ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}%`, 'lamina.beams', { joint: jn, strain: e });
   }

@@ -232,8 +232,13 @@ export function bend(shape, lines) {
     const { ln, i, u, raw, normal } = best;
     // Past an end, onto that end's body: move with it
     if ((best.first && raw < 0 && ln.from) || (best.last && raw > 1 && ln.to)) { const T = raw < 0 ? ln.from : ln.to; return [T[0] * p[0] + T[1] * p[1] + T[2], T[3] * p[0] + T[4] * p[1] + T[5]]; }
-    // On the beam: the point of the centreline now, and the offset turned as the beam has turned there
-    const a = ln.now[i], b = ln.now[i + 1], th = ln.turn[i] + (ln.turn[i + 1] - ln.turn[i]) * u, c = Math.cos(th), s = Math.sin(th), off = normal;
-    return [a[0] + (b[0] - a[0]) * u + c * off[0] - s * off[1], a[1] + (b[1] - a[1]) * u + s * off[0] + c * off[1]];
+    // On the beam: the point of the centreline now, along the cubic through its two nodes with their turns (so it bends
+    // smoothly between them), and the offset turned as the beam has turned there
+    const a = ln.now[i], b = ln.now[i + 1], r0 = ln.rest[i], r1 = ln.rest[i + 1], l = Math.hypot(b[0] - a[0], b[1] - a[1]), dir = Math.atan2(r1[1] - r0[1], r1[0] - r0[0]);
+    const ta = [Math.cos(dir + ln.turn[i]), Math.sin(dir + ln.turn[i])], tb = [Math.cos(dir + ln.turn[i + 1]), Math.sin(dir + ln.turn[i + 1])];
+    const h00 = 2 * u ** 3 - 3 * u * u + 1, h10 = u ** 3 - 2 * u * u + u, h01 = -2 * u ** 3 + 3 * u * u, h11 = u ** 3 - u * u;
+    const at = [h00 * a[0] + h10 * l * ta[0] + h01 * b[0] + h11 * l * tb[0], h00 * a[1] + h10 * l * ta[1] + h01 * b[1] + h11 * l * tb[1]];
+    const th = ln.turn[i] + (ln.turn[i + 1] - ln.turn[i]) * u, c = Math.cos(th), s = Math.sin(th), off = normal;
+    return [at[0] + c * off[0] - s * off[1], at[1] + s * off[0] + c * off[1]];
   }));
 }
