@@ -93,12 +93,13 @@ export function curve(p) {
 
 /**
  * A curve held at its root and moved at its tip, solved: the tip moved `d` along its motion (x or y), not turning, and
- * across it free (one arm) or held (a mirrored pair, whose sideways pulls cancel). Energy in mJ, force in N.
+ * across it free (one arm) or held (a mirrored pair, whose sideways pulls cancel); or, moving 'turn', the tip turned `d`
+ * radians about the point `about`, as a lever on a hinge there would. Energy in mJ, force in N (a moment in N·mm, turning).
  * @param {object} p the curve's params (moves: 'x' or 'y', default 'y'; across: 'free' or 'held', default held when mirrored)
  * @param {{ E: number }} m
  */
 export function curveSolver(p, { E }) {
-  const lines = curveLines(p), tip = lines[0].path.at(-1), axis = p.moves === 'x' ? 0 : 1;
+  const lines = curveLines(p), tip = lines[0].path.at(-1), axis = p.moves === 'x' ? 0 : 1, turning = p.moves === 'turn';
   const held = p.across ?? (p.mirror != null ? 'held' : 'free');
   // A mirrored pair moved along its mirror line, held across, bends as two mirror images: one arm solved, counted twice
   const twin = p.mirror != null && held === 'held' && axis === 0, arms = twin ? lines.slice(0, 1) : lines, times = twin ? 2 : 1;
@@ -110,15 +111,22 @@ export function curveSolver(p, { E }) {
     let r = null;
     const n = Math.max(1, Math.ceil(Math.abs(d - at) / step));
     for (let k = 1; k <= n; k++) {
-      const dk = at + ((d - at) * k) / n, h = new Map([[axis, dk], [2, 0]]);
-      if (held === 'held') h.set(1 - axis, 0);
+      const dk = at + ((d - at) * k) / n, h = turning ? turnAbout(dk) : new Map([[axis, dk], [2, 0]]);
+      if (held === 'held' && !turning) h.set(1 - axis, 0);
       r = equilibrium(sys, { held: h, start: q ?? undefined, iterations: 80, tol });
       q = r.q;
     }
     at = d;
-    if (!r) r = equilibrium(sys, { held: new Map([[axis, 0], [2, 0], ...(held === 'held' ? [[1 - axis, 0]] : [])]) });
-    return { energy: r.energy * times, force: r.reaction.get(axis) * times, strain: Math.max(0, ...Object.values(r.strain)), converged: r.converged, q: r.q };
+    if (!r) r = equilibrium(sys, { held: turning ? turnAbout(0) : new Map([[axis, 0], [2, 0], ...(held === 'held' ? [[1 - axis, 0]] : [])]) });
+    // Turning, its force is the moment about the pivot (N·mm): the tip's own, and its force's about the pivot
+    const force = turning ? (() => { const [px, py] = p.about, x = tip[0] + r.q[0] - px, y = tip[1] + r.q[1] - py; return r.reaction.get(2) + x * r.reaction.get(1) - y * r.reaction.get(0); })() : r.reaction.get(axis);
+    return { energy: r.energy * times, force: force * times, strain: Math.max(0, ...Object.values(r.strain)), converged: r.converged, q: r.q };
   };
+  // Turned θ (radians) about the pivot `about`: where the tip goes and how it turns
+  function turnAbout(th) {
+    const [px, py] = p.about, c = Math.cos(th), s = Math.sin(th), x = tip[0] - px, y = tip[1] - py;
+    return new Map([[0, px + c * x - s * y - tip[0]], [1, py + s * x + c * y - tip[1]], [2, th]]);
+  }
   return { sys, solve, lines };
 }
 
@@ -133,7 +141,7 @@ export function curveModel(p, m) {
   const strain = (d) => (Math.abs(d) < 1e-9 ? 0 : at(d).strain);
   const travel = (e) => {
     // Out either way in steps until the strain passes e, then halve the step down on to it
-    const reach = Math.max(...s.lines.flatMap((c) => c.path.map(([x, y]) => Math.hypot(x - c.path[0][0], y - c.path[0][1])))) * 2;
+    const reach = p.moves === 'turn' ? Math.PI / 2 : Math.max(...s.lines.flatMap((c) => c.path.map(([x, y]) => Math.hypot(x - c.path[0][0], y - c.path[0][1])))) * 2; // (turning: radians)
     const side = (sign) => {
       let lo = 0, hi = null;
       for (let d = reach / 16; d <= reach; d += reach / 16) { if (strain(sign * d) >= e) { hi = d; break; } lo = d; }

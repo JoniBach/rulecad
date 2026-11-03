@@ -200,7 +200,9 @@ The findings, each pass or fail with its code:
 | `lamina.energy` | What each state stores, and the forces |
 | `lamina.force` | The force a hand needs along each driven step, from the physics: a force curve. Over a hand's 50 N, it jams |
 | `lamina.release` | Where a body is let go of on the way (a latch letting go), and how far the hand had moved, with what force |
-| `lamina.held` | Let go of in a state a catch holds, the body stays (the physics, frictionless, so cautious) |
+| `lamina.held` | Let go of in a state a catch holds, the body stays, and the force the catch takes (the physics, with `physics.friction` or frictionless, so cautious) |
+| `lamina.trip` | Pulling the trigger lets the catch go: how far and how hard the finger pulled, against the force the catch held |
+| `lamina.holes` | Each fastener hole through a flooded frame is all frame: inside the outline, clear of the moving parts' room |
 | `lamina.home` | At the end of the sequence, everything is back where it started |
 | `lamina.beams` | Each flexure's strain all the way through, bending as far as it bends |
 | `lamina.requires` | A driven step's force curve does what you asked: its peak, its click (the fall after the peak), its end |
@@ -238,14 +240,13 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   out `ground` too: each flexure's root gets a block behind the face it grows from, found from its root port. List
   as states everything the parts reach (a shot's overshoot too), and keep open what the mechanism doesn't sweep (a
   disc's way out, room for a finger). With `band`, the frame is a web: solid only that far round the moving parts'
-  room, the kept spaces and the outline's edge, the rest rounded windows (none narrower than the band).
+  room, the kept spaces and the outline's edge, the rest rounded windows (none narrower than the band). `holes:
+  [{ at, diameter, wall }]` go through the frame for fasteners, each in a solid boss `wall` thick that no window opens
+  into: snap pins holding a plate either side, should a frame ever need one. Each is checked to be all frame.
 - `bridges: [{ shape, depth, gap }]` prints the frame over a moving part on the top layers: a barrel's roof over a
   stem, so it can't lift out of its channel. Every body that passes under one is cut down by `depth` (six layers) and
   `gap` (three layers), along all of it that ever passes under. Each bridge must stand on the frame both sides, span no
   more than the printer's `bridge`, and not cross a flexure. With `side: 'bottom'` it's a floor on the bottom layers
-  (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
-  moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
-  no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them. With `side: 'bottom'` it's a floor on the bottom layers
   (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
   moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
   no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them.
@@ -264,6 +265,17 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   prints without support. The out-of-plane check counts a guided stretch as held both ways.
 - Every rigid part is checked for free ends: an arm narrower than `check.rigid` (3 mm) tied on at one end only bends
   under load, so it's a warning.
+- `physics: { friction }` adds friction to every contact (Coulomb, μ, smoothed over a hundredth of a mm): each point
+  touching a body at the start of a step is anchored there, and sliding from it costs μ times the push it touched with.
+  A trigger then pulls against what its sear's face drags, and a catch holds on friction as well as its shape. The
+  shot is solved without it.
+- `grips: { joint: [x, y] }` says where a hand takes a joint's body to drive it (a trigger's blade, where the finger
+  pulls), so its force curve is the finger's. Default: the body's centre.
+- A catch that holds tells the force it takes (`lamina.held`: the flexures' pull on what it holds). A step that lets a
+  body go (`lamina.release`) and leads into the state a shot fires `from`, with no `hold`, trips the shot: it fires
+  from the step before, the finger going on where it was going, so the pull, the let-go and the shot are one sequence
+  (`lamina.trip`: how far and how hard the finger pulled, against what the catch held; the disc's time to leave is
+  then the lock time).
 - `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and
   steps through time (masses from the material's `density`; explicit steps short enough that a sound wave doesn't
   cross the shortest beam element in one, with whatever mass Gershgorin's bound still asks for added to the lightest
@@ -308,6 +320,14 @@ and slap together when it fires. Each end leaves its block square for `lead`, an
 (`fillet`). The lamina checks that a curve keeps the print gap from itself. Give `width`
 as a range and it is solved at the widest, then printed as tall as the energy needs: force goes with height, strain
 doesn't.
+
+With `moves: 'turn'` and `about: [x, y]`, its tip turns `travel` degrees about that point, as a lever on a hinge there
+would, and its force is the moment: a spring that is a hinge, shaped to put the hinge where you want it.
+
+A plain `leaf` joint takes `gamma`, where along it its tip turns about (from the tip, as a share of its length): 0.85,
+Howell's, for a leaf pushed at its tip; ½ for one turned by a moment, which bends round evenly about its middle. The
+launcher's sear hangs on such a leaf, on the line its catch is pushed along: the spring's pull is the leaf's tension,
+and a trigger blade turns it.
 
 Give it `onRound` to watch it work: after each round it's told every shape tried, and the best so far (its path,
 thickness, drawn-back shape, strain and energy), and returning true stops the search. `@rulecad/cad`'s `liveShape`

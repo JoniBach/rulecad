@@ -619,3 +619,30 @@ test('a guide: a ridge on what slides runs in a groove in the frame, flanks at 4
   const said = check(jscad.geometries.geom3.toPolygons(held.parts.body).map((p) => p.vertices), { bed: 256, overhang: 45, layer: 0.2, line: 0.42, bridge: 5 }).find((x) => /overhang/i.test(x.text));
   assert.ok(said && said.level === 'pass', said?.text);
 });
+
+test('a curve turned about a point: a straight one turned about its middle bends round evenly, as a moment bends it (EIθ/L, strain tθ/2L)', async () => {
+  const { curveSolver, curveModel } = await import('./curves.mjs');
+  const m = { E: 1810, strainLimit: 0.0125 }, L = 20, t = 1.2, w = 10, EI = (1810 * w * t ** 3) / 12;
+  const p = { points: [[0, 0], [L / 2, 0], [L, 0]], thickness: t, width: w, moves: 'turn', about: [L / 2, 0] };
+  const r = curveSolver(p, m).solve(0.01);
+  assert.ok(Math.abs(r.force / ((EI * 0.01) / L) - 1) < 0.02, `moment ${r.force.toFixed(3)} N·mm, theory ${((EI * 0.01) / L).toFixed(3)}`);
+  assert.ok(Math.abs(r.strain / ((t * 0.01) / (2 * L)) - 1) < 0.03, `strain ${r.strain}`);
+  // Further round, turning about a fixed point stretches it too (its tip's arc isn't the bent leaf's): the limit comes
+  // sooner than bending alone says
+  const most = curveModel(p, m).travel(0.0125);
+  assert.ok(most > 0.15 && most < (0.0125 * 2 * L) / t, `the turn the limit allows: ${most.toFixed(3)} rad`);
+});
+
+test('a flooded frame with holes: each in a solid boss no window opens into, and one in the moving parts\' room fails', async () => {
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false }, physics: false, bodies: { tip: rect(30, -2, 37, 2) }, joints: { leaf: { kind: 'leaf', params: { length: 30, thickness: 0.84, fillet: 1, tip: true, into: 0.84 }, at: [0, 0], from: 'ground', to: 'tip' } }, states: { bent: { leaf: 3 } }, sequence: ['rest', 'bent', 'rest'], ground: rect(-8, -8, 0, 8) };
+  const holes = [{ at: [-50, 22], diameter: 4.1, wall: 3 }, { at: [38, -22], diameter: 4.1, wall: 3 }];
+  const m = await lamina({ ...base, flood: { outline: rect(-60, -30, 45, 30), band: 3, holes } });
+  const h = m.findings.filter((x) => x.code === 'lamina.holes');
+  assert.equal(h.length, 2); assert.ok(h.every((x) => x.level === 'pass'), h.map((x) => x.text).join('; '));
+  const g = m.outlines('rest').ground, inside = (l, [x, y]) => l.reduce((c, a, i) => { const b = l[(i + 1) % l.length]; return (a[1] > y) !== (b[1] > y) && x < a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]) ? !c : c; }, false);
+  const solidAt = (p) => g.reduce((c, l) => (inside(l, p) ? !c : c), false);
+  assert.ok(!solidAt([-50, 22]) && solidAt([-50, 22 + 3.5]) && solidAt([-50 + 3.5, 22]), 'a hole, with solid round it');
+  const bad = await lamina({ ...base, flood: { outline: rect(-60, -30, 45, 30), holes: [{ at: [20, 0], diameter: 4.1 }] } });
+  assert.ok(bad.findings.some((x) => x.code === 'lamina.holes' && x.level === 'fail'), 'one where the leaf swings is found');
+});
+

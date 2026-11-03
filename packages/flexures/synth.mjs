@@ -88,7 +88,7 @@ function crowding(path, at, gap) {
 /**
  * Shape a curve flexure for a job.
  * @param {{ root: number[], tip: number[], start?: number | number[], end?: number | number[], controls?: number,
- *   guess?: number[][], region: { lo: number[], hi: number[] }, thickness: number[], moves?: 'x' | 'y', travel: number,
+ *   guess?: number[][], region: { lo: number[], hi: number[] }, thickness: number[], moves?: 'x' | 'y' | 'turn', about?: number[], travel: number,
  *   energy: number, width: number, material: { E: number, strainLimit: number }, mirror?: number, across?: 'free' | 'held',
  *   margin?: number, gap?: number, apart?: number, bend?: number, evaluations?: number, starts?: number, runs?: number, sigma?: number, seed?: number, smooth?: number, onRound?: Function }} job
  *   root, tip: where its ends are fixed; start, end: the angle it leaves the root at and meets the tip at, in degrees,
@@ -97,13 +97,15 @@ function crowding(path, at, gap) {
  *   bend: the tightest it may curve, in thicknesses (default 2: tighter, a curved beam's inside fibre takes much more
  *   than beam theory says, which the finite-element check finds); apart: how far apart its own parts keep (default 1 mm, or the gap if more: a loop that comes nearer may print fused,
  *   and slaps its neighbour when it fires); thickness: [least, most]; width: the print's height, or a range [least, most] to choose in, the energy setting it;
- *   travel: how far the tip moves along `moves`, signed; energy: what it must store there (mJ,
+ *   travel: how far the tip moves along `moves`, signed (moves 'turn': degrees about the point `about`, a hinged
+ *   lever's spring: its force is then the moment, N·mm); energy: what it must store there (mJ,
  *   both arms when mirrored); margin: the share of the strain limit it's shaped to (default 0.8)
  * @returns {{ params: object, energy: number, strain: number, force: number[][], ok: boolean, why: string[], evaluations: number }}
  *   params: the curve's, ready for a lamina joint (kind 'curve'); force: [travel, force] along the way
  */
 export function shapeCurve(job) {
-  const { root, tip, region, thickness: [least, most], travel, energy: want, width, material, margin = 0.8, gap = 0, smooth = 8 } = job, controls = job.guess?.length ?? job.controls ?? 3, apart = job.apart ?? Math.max(gap, 1), bend = job.bend ?? 2;
+  const { root, tip, region, thickness: [least, most], energy: want, width, material, margin = 0.8, gap = 0, smooth = 8 } = job, controls = job.guess?.length ?? job.controls ?? 3, apart = job.apart ?? Math.max(gap, 1), bend = job.bend ?? 2;
+  const travel = job.moves === 'turn' ? (job.travel * Math.PI) / 180 : job.travel; // (turning: degrees, solved in radians)
   const limit = material.strainLimit * margin, ranged = (a) => Array.isArray(a), span = (a, u) => a[0] + (a[1] - a[0]) * u;
   const lo = [region.lo[0] + gap, region.lo[1] + gap], hi = [region.hi[0] - gap, region.hi[1] - gap];
   // The unknowns, each 0 to 1: the points between the ends (x, y across the region), the thickness at every point, the end angles that are ranges
@@ -113,7 +115,7 @@ export function shapeCurve(job) {
     const mid = Array.from({ length: controls }, () => [span([lo[0], hi[0]], u[k++]), span([lo[1], hi[1]], u[k++])]);
     const thickness = Array.from({ length: npts }, () => span([least, most], u[k++]));
     const start = ranged(job.start) ? span(job.start, u[k++]) : job.start, end = ranged(job.end) ? span(job.end, u[k++]) : job.end;
-    return { points: [root, ...mid, tip], thickness, ...(job.lead != null ? { lead: job.lead } : {}), ...(start != null ? { start } : {}), ...(end != null ? { end } : {}), smooth, width, moves: job.moves ?? 'y', ...(job.mirror != null ? { mirror: job.mirror } : {}), ...(job.across ? { across: job.across } : {}) };
+    return { points: [root, ...mid, tip], thickness, ...(job.lead != null ? { lead: job.lead } : {}), ...(start != null ? { start } : {}), ...(end != null ? { end } : {}), smooth, width, moves: job.moves ?? 'y', ...(job.about ? { about: job.about } : {}), ...(job.mirror != null ? { mirror: job.mirror } : {}), ...(job.across ? { across: job.across } : {}) };
   };
   const guess = job.guess ?? Array.from({ length: controls }, (_, i) => { // bowed off the straight line between the ends, towards the region's middle
     const a = (i + 1) / (controls + 1), x = root[0] + (tip[0] - root[0]) * a, y = root[1] + (tip[1] - root[1]) * a, c = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2], b = Math.sin(Math.PI * a) * 0.5;

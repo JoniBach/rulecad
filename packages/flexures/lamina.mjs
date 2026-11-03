@@ -32,6 +32,7 @@ const REFINE = 10; // a step that pushes a follower, looked at again in this man
 const FRAMES = 12; // frames from one state to the next, for an animation
 const GAMMA = 0.85; // the pseudo-rigid-body leaf's characteristic radius (Howell): its tip turns about 0.15 L from the root
 const LEAFLIKE = new Set(['leaf', 'snapHook', 'contactLeaf']);
+const OWN_ROUNDS = new Set(['parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine', 'snapHook', 'notchHinge', 'ellipticalHinge', 'livingHinge', 'cartwheel', 'letJoint', 'bistable']); // flexures with blocks of their own, rounded into them already
 const ROUND = 16; // segments to a full circle where an outline is grown
 const FE_CELLS = 8; // finite-element cells across a flexure's thickness
 const FE_MOST = 40000; // and no more cells than this in all (coarser, then)
@@ -330,6 +331,8 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  * @param {object | object[]} [spec.fixtures] fixed shapes the physics sees but the print leaves out (another layer's walls)
  * @param {Record<string, { shape: object, mass: number }>} [spec.free] parts not joined to anything and not printed
  *   with it (a disc): in the physics only, held still while a hand works the mechanism, mass in grams
+ * @param {Record<string, number[]>} [spec.grips] where a hand takes a joint's body to drive it, at rest (a trigger's
+ *   blade, where the finger pulls): its force curve is then the finger's. Default: the body's centre
  * @param {{ from: string, disc: string, hold?: Record<string, number>, duration?: number, most?: number }} [spec.fire] let go
  *   from a state and step through time, a hand keeping the joints in `hold` at those travels (a finger on the trigger):
  *   the bodies' speeds and the disc's exit speed and energy (J), against `most`
@@ -376,7 +379,8 @@ export async function lamina(spec) {
       model = models[kind](params, material);
       const p = ports(kind, params);
       leafy = LEAFLIKE.has(kind);
-      motion = leafy ? { pivot: apply(place, [(1 - GAMMA) * params.length, 0]), leaf: GAMMA * params.length }
+      const gam = params.gamma ?? GAMMA; // (a leaf turned by a moment at its tip, not pushed, bends round evenly: about its middle, γ ½)
+      motion = leafy ? { pivot: apply(place, [(1 - gam) * params.length, 0]), leaf: gam * params.length }
         : p.moves === 'turn' ? { pivot: apply(place, p.pivot.at) }
           : { axis: dir(p.moves === 'x' ? [1, 0] : [0, 1]), ...(model.drop ? { drop: model.drop, along: dir([-1, 0]) } : {}) }; // a guide's shuttle drops towards its base
     } else {
@@ -398,6 +402,7 @@ export async function lamina(spec) {
     if (!(r > 0) || OWN_BLOCKS.has(j.kind) || j.kind === 'curve') continue; // (a curve draws its own rounds, as true quarter circles)
     let F = parts[n].shape;
     for (const b of [j.from, j.to]) {
+      if (b === 'ground' && spec.groundRounded) continue; // (a flooded frame draws its own rounds at each root: rounding into it here would close the room beside the flexure)
       const B = parts[b].shape, touch = intersect(F, grow(B, TOUCH)), near = intersect(B, grow(F, r * 3));
       if (area(touch) <= AREA) continue;
       F = union([F, intersect(subtract(shrink(grow(union([F, near]), r), r, 'Round'), B), grow(touch, r * 1.2))]);
@@ -620,6 +625,7 @@ export async function lamina(spec) {
   const kinematic = spec.kinematic !== false; // false: the physics alone says how it moves (contact pushing a follower both ways, a cam)
   const states = { rest: {}, ...(spec.states || {}) }, state = (s) => { const v = typeof s === 'string' ? states[s] : s; if (!v) throw new Error(`no state "${s}"`); return v; };
   const seq = spec.sequence || [], frames = [], reached = {}, solved = {};
+  let planned = null;
   // The strain, finite-element peak and hard stop of each flexure, from the travels the sequence reached (the
   // kinematic walk's, or the physics')
   function strainAndStops() {
@@ -762,7 +768,7 @@ export async function lamina(spec) {
     const o = typeof spec.physics === 'object' ? spec.physics : {};
     const loose = Object.fromEntries(Object.entries(spec.free || {}).map(([n, l]) => [n, { shape: all(l.shape), mass: l.mass }]));
     const seen = spec.fixtures ? { ...parts, ground: { ...parts.ground, shape: union([parts.ground.shape, all(spec.fixtures)]) } } : parts; // fixtures: fixed, in the physics, not in the print
-    sim = simulate({ parts: seen, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places, loose, ...(spec.fire ? { fire: spec.fire } : {}) }, o);
+    sim = simulate({ parts: seen, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places, loose, grips: spec.grips, ...(spec.fire ? { fire: spec.fire } : {}) }, o);
     if (sim.skipped) { f('info', `${sim.skipped.join(', ')}: no centreline to solve as beams (a notch, a cartwheel, a shape of your own), so how it behaves comes from the kinematic model only`, 'lamina.physics'); sim = null; }
   }
   if (sim) {
@@ -788,7 +794,7 @@ export async function lamina(spec) {
       for (const [jn, by] of spec.holds?.[tr.to] || []) {
         const b = joints[jn].to, d = sim.sys.body[b].dof, now = Math.hypot(tr.end[d], tr.end[d + 1]), T = places(state(tr.to))[b], c = sim.centre[b];
         const meant = Math.hypot(T[0] * c[0] + T[1] * c[1] + T[2] - c[0], T[3] * c[0] + T[4] * c[1] + T[5] - c[1]), kept = meant > 0 ? now / meant : 1;
-        f(kept > 0.75 ? 'pass' : 'fail', `${tr.to}: let go of, ${b} ${kept > 0.75 ? `stays on ${by}, ${now.toFixed(2)} mm from rest (beams and contact, no friction)` : `doesn't stay: it runs back to ${now.toFixed(2)} mm from rest, past ${by}`}`, 'lamina.held', { state: tr.to, joint: jn, kept });
+        f(kept > 0.75 ? 'pass' : 'fail', `${tr.to}: let go of, ${b} ${kept > 0.75 ? `stays on ${by}, ${now.toFixed(2)} mm from rest${tr.holding?.[jn] != null ? `, which takes ${tr.holding[jn].toFixed(1)} N` : ''} (beams and contact, ${sim.friction ? `friction ${sim.friction}` : 'no friction'})` : `doesn't stay: it runs back to ${now.toFixed(2)} mm from rest, past ${by}`}`, 'lamina.held', { state: tr.to, joint: jn, kept });
       }
     }
     // Requirements on the force curves: [{ step: 'from>to', joint, peak: [least, most], click: least share it drops after
@@ -818,6 +824,11 @@ export async function lamina(spec) {
       }
       strainAndStops();
     }
+    // Tripped: pulling the trigger let the catch go. How far and how hard the finger pulled, against what the catch held
+    if (sim.trip) {
+      const t = sim.trip, h = t.hand[0], held = sim.transitions.find((x) => x.to === t.from)?.holding, most = held ? Math.max(...Object.values(held)) : null;
+      if (h) f('info', `${t.from} to ${t.to}: pulling ${h.joint} ${+Math.abs(h.travel).toFixed(2)} mm, at up to ${h.force.toFixed(2)} N, lets ${t.body} go${most ? `: the catch held ${most.toFixed(1)} N, ${(h.force / most).toFixed(2)} of it on the finger` : ''}${sim.friction ? ` (friction ${sim.friction})` : ' (no friction)'}`, 'lamina.trip', { ...t, held: most });
+    }
     // Firing: let go from a state, step through time
     if (spec.fire) {
       const fr = sim.fire;
@@ -827,7 +838,7 @@ export async function lamina(spec) {
         const quick = Object.entries(fr.speeds).filter(([b]) => b !== spec.fire.disc).sort((a, b) => b[1] - a[1])[0];
         const ex = fr.exit, share = ex && fr.stored > 0 ? ex.energy / fr.stored : 0;
         f(ex ? (spec.fire.most != null && ex.energy > spec.fire.most ? 'fail' : 'info') : 'fail', ex
-          ? `fired from ${spec.fire.from}: ${quick ? `${quick[0]} reaches ${quick[1].toFixed(1)} m/s; ` : ''}${spec.fire.disc} leaves at ${ex.speed.toFixed(1)} m/s after ${(ex.t * 1000).toFixed(1)} ms, with ${(ex.energy * 1000).toFixed(1)} mJ: ${Math.round(share * 100)}% of the ${(fr.stored * 1000).toFixed(1)} mJ stored${spec.fire.most != null ? (ex.energy > spec.fire.most ? `, over the ${spec.fire.most * 1000} mJ allowed` : `, within the ${spec.fire.most * 1000} mJ allowed`) : ''}`
+          ? `fired from ${spec.fire.from}${sim.trip ? ' (from the moment the trigger lets go)' : ''}: ${quick ? `${quick[0]} reaches ${quick[1].toFixed(1)} m/s; ` : ''}${spec.fire.disc} leaves at ${ex.speed.toFixed(1)} m/s after ${(ex.t * 1000).toFixed(1)} ms, with ${(ex.energy * 1000).toFixed(1)} mJ: ${Math.round(share * 100)}% of the ${(fr.stored * 1000).toFixed(1)} mJ stored${spec.fire.most != null ? (ex.energy > spec.fire.most ? `, over the ${spec.fire.most * 1000} mJ allowed` : `, within the ${spec.fire.most * 1000} mJ allowed`) : ''}`
           : `fired from ${spec.fire.from}: ${spec.fire.disc} never leaves`, 'lamina.fire', { speeds: fr.speeds, exit: ex, stored: fr.stored });
       }
     }
@@ -943,6 +954,7 @@ export async function lamina(spec) {
       })),
       ...Object.fromEntries(Object.keys(spec.free || {}).map((n) => { const d = sim.sys.body[n].dof, c = sim.centre[n], q = fr.q, cs = Math.cos(q[d + 2]), sn = Math.sin(q[d + 2]); return [n, round3(moved([cs, -sn, c[0] + q[d] - cs * c[0] + sn * c[1], sn, cs, c[1] + q[d + 1] - sn * c[0] - cs * c[1]], all(spec.free[n].shape)))]; })),
     } });
+    planned = [...frames]; // (the kinematic frames: where the bodies are meant to go)
     frames.length = 0;
     frames.push(...physical);
 
@@ -1026,6 +1038,7 @@ export async function lamina(spec) {
     findings,
     energy,
     frames,
+    planned: planned ?? frames,
     at: (s) => extrude(shapesAt(solve(state(s)).v)),
     outlines: (s) => outline(solve(state(s)).v),
     mechanism: { height, sequence: seq, states: Object.keys(states), ...(sim ? { curves: sim.transitions.map((tr) => ({ from: tr.from, to: tr.to, curve: tr.curve })), physical: true } : {}), joints: Object.fromEntries(Object.entries(joints).map(([n, j]) => [n, { from: j.from, to: j.to, kind: j.kind || 'own', ...(follows[n] ? { follows: follows[n].by } : {}) }])) },
@@ -1047,7 +1060,8 @@ export async function lamina(spec) {
  * you draw: the blocks the flexures grow from), then the frame is what's left, slivers thinner than `least` and islands
  * that would print loose taken out, and your ground added back.
  * @param {object} spec a lamina spec, with flood: { outline?, keep?, clear?: number | Record<string, number>, least?, wall?,
- *   pad?, corner?, band? }: band, solid only this far round the moving parts' room, the kept spaces and the outline's
+ *   pad?, corner?, band?, holes? }: holes, [{ at, diameter, wall? }] through the frame for fasteners (pins holding plates
+ *   either side), each in a solid boss `wall` thick (default half `wall`), checked to be all frame; band, solid only this far round the moving parts' room, the kept spaces and the outline's
  *   edge, the rest windows (a web: lighter, as stiff where it matters); outline, the frame's (default: everything the moving parts reach and `keep`, `wall` round it,
  *   corners rounded to `corner`); clear, the gap round the moving parts (the print gap; or by part, a sliding fit for
  *   what slides in a channel); pad, how far the solid round each flexure's root reaches (its roots are found: the part
@@ -1059,7 +1073,11 @@ async function flooded(spec) {
   const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
   const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false, frame: false } });
   const free = new Set(Object.keys(spec.free || {})), by = {};
-  for (const fr of probe.frames) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
+  // The room: each rigid body where it's meant to go (the kinematic frames: solved without a frame, the physics lets a
+  // body tip anywhere its play allows, and the room cut round that would let it), each flexure as it bends both ways
+  const isBody = (n) => !!spec.bodies?.[n];
+  for (const fr of probe.planned) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
+  if (probe.planned !== probe.frames) for (const fr of probe.frames) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n) && !isBody(n)) (by[n] ??= []).push(o);
   const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)
   // The outline: yours, or everything the moving parts reach and the spaces kept, a wall round it, its corners rounded
   let outline = spec.flood.outline ? all(spec.flood.outline) : null;
@@ -1070,6 +1088,7 @@ async function flooded(spec) {
   }
   // Each flexure's root: a block behind the face it grows from (its root port, facing back into the frame), `pad` deep
   // and as wide again either side, clear of every other moving part, so it grows from solid however the flood falls
+  const kind = (j) => j.kind === 'curve' || OWN_ROUNDS.has(j.kind); // (these draw their own rounds)
   const roots = Object.entries(spec.joints || {}).filter(([, j]) => j.from === 'ground' && j.kind).map(([n, j]) => {
     const params = { ...j.params, width: j.params?.width ?? spec.height }, root = ports(j.kind, params).root, a = rad(j.angle || 0);
     const c = apply(mul(shift(j.at || [0, 0]), turn(a)), root.at), l = Math.hypot(root.dir[0], root.dir[1]) || 1;
@@ -1078,14 +1097,27 @@ async function flooded(spec) {
     const block = [[[c[0] + v[0] * w, c[1] + v[1] * w], [c[0] + v[0] * w + u[0] * pad, c[1] + v[1] * w + u[1] * pad], [c[0] - v[0] * w + u[0] * pad, c[1] - v[1] * w + u[1] * pad], [c[0] - v[0] * w, c[1] - v[1] * w]]];
     const others = union(Object.entries(by).filter(([m]) => m !== n).map(([m, os]) => grow(union(os), clearOf(m) * 1.05 + 0.02)));
     const mirror = params.mirror != null ? [block[0].map(([x, y]) => [x, 2 * params.mirror - y]).reverse()] : []; // (a mirrored curve's other arm roots in its mirror image)
-    return subtract(union([block, mirror]), others);
+    // and its rounds: a quarter circle either side of it where it leaves the block's face, standing in its room
+    const r = kind(j) ? 0 : params.fillet ?? 0, fillets = r > 0 ? [1, -1].map((sd) => {
+      const at = (a, b) => [c[0] + v[0] * sd * a - u[0] * b, c[1] + v[1] * sd * a - u[1] * b], h = t / 2;
+      const arc = Array.from({ length: 9 }, (_, i) => { const th = (Math.PI / 2) * (i / 8); return at(h + r - r * Math.cos(th), r - r * Math.sin(th)); }); // round from the leaf's side to the block's face
+      const loop = [at(h, -pad / 4), at(h + r, -pad / 4), ...arc.slice().reverse()];
+      const signed = loop.reduce((a, p, i) => { const q = loop[(i + 1) % loop.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0);
+      return [signed < 0 ? loop.reverse() : loop]; // (anticlockwise)
+    }) : [];
+    return subtract(union([block, mirror, ...fillets]), others);
   });
+  // Holes through the frame for fasteners (pins holding plates either side, should it ever need them): each in a solid
+  // boss, a wall round it, that no window opens into
+  const ring = ([x, y], r) => [Array.from({ length: 48 }, (_, i) => [x + r * Math.cos((2 * Math.PI * i) / 48), y + r * Math.sin((2 * Math.PI * i) / 48)])];
+  const holes = (spec.flood.holes || []).map((h) => ({ ...h, hole: ring(h.at, h.diameter / 2), boss: ring(h.at, h.diameter / 2 + (h.wall ?? wall / 2)) }));
+  const bosses = holes.length ? union(holes.map((h) => h.boss)) : [];
   let space = subtract(outline, union([swept, all(keep)]));
   // A web, not a slab: with `band`, solid only that far round the moving parts' room, the kept spaces and the
   // outline's edge; the rest opens up as windows, rounded (every rib a closed loop, so nothing hangs free)
   if (spec.flood.band > 0) {
     const band = spec.flood.band, rim = subtract(outline, shrink(outline, band, 'Round'));
-    const web = intersect(space, union([grow(union([swept, all(keep)]), band), rim]));
+    const web = intersect(space, union([grow(union([swept, all(keep)]), band), rim, bosses]));
     // (only windows worth having: one no wider than the band, a sliver between ribs, is left solid; the rest rounded)
     const windows = apart(subtract(space, web)).filter((w) => !empty(shrink(w, band / 2, 'Round'))).map((w) => grow(shrink(w, band / 2, 'Round'), band / 2));
     space = subtract(space, union(windows));
@@ -1094,9 +1126,15 @@ async function flooded(spec) {
   // Only what's joined to the main frame, a root or your ground: an island (inside an arm's loop, a ring's hole) prints loose
   const anchors = union([mine, ...roots]), bits = apart(space), biggest = Math.max(0, ...bits.map(area));
   const kept = bits.filter((b) => area(b) >= biggest - 1e-9 || area(intersect(b, grow(anchors, TOUCH))) > AREA);
-  const ground = union([anchors, ...kept]);
+  let ground = union([anchors, ...kept]);
+  // Each hole's boss must be all frame: inside the outline, clear of the moving parts' room and anything kept open
+  const holed = holes.map((h, i) => {
+    const out = !empty(subtract(h.boss, outline)), open = !empty(intersect(h.boss, union([swept, all(keep)])));
+    return { level: out || open ? 'fail' : 'pass', text: `hole ${i + 1} (⌀${h.diameter} at ${h.at.map((c) => +c.toFixed(1)).join(', ')}) ${out ? 'sticks out of the outline' : open ? 'breaks into the room the moving parts sweep' : `is in solid frame, ${+(h.wall ?? wall / 2).toFixed(2)} mm of wall round it`}`, code: 'lamina.holes', hole: i };
+  });
+  if (holes.length) ground = subtract(ground, union(holes.map((h) => h.hole)));
   const out = await lamina({ ...spec, flood: undefined, ground, groundRounded: true });
-  out.findings.unshift({ level: 'info', text: `the frame is flooded: ${area(ground).toFixed(0)} mm² solid, all but the room the moving parts sweep (${bits.length - kept.length} loose bits left out)`, code: 'lamina.flood' });
+  out.findings.unshift({ level: 'info', text: `the frame is flooded: ${area(ground).toFixed(0)} mm² solid, all but the room the moving parts sweep (${bits.length - kept.length} loose bits left out)`, code: 'lamina.flood' }, ...holed);
   return out;
 }
 
