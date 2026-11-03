@@ -898,14 +898,14 @@ export async function lamina(spec) {
       if (!body || parts[n].kind !== 'body') { f('fail', `guide ${i + 1}: no body "${n}" to guide`, 'lamina.guide'); return; }
       const mine = intersect(body, union(poses.map((P) => moved(inverse(P[n]), gd.shape)))); // all of the body that ever passes through the strip, at rest
       if (empty(mine)) { f('fail', `guide ${i + 1}: ${n} never passes through it`, 'lamina.guide'); return; }
-      const sweptAll = (a) => union(poses.map((P) => moved(P[n], a))), wall = intersect(parts.ground.shape, grow(gd.shape, 0));
+      const sweptAll = (a) => union(poses.map((P) => moved(P[n], a)));
       const away = (a) => subtract(a, body); // (what's drawn out from the body's faces, not the body)
-      const steps = Math.max(2, Math.round((2 * gd.depth) / layer));
-      for (let k = 0; k < steps; k++) {
-        const z0 = height / 2 - gd.depth + (2 * gd.depth * k) / steps, z1 = z0 + (2 * gd.depth) / steps, v = Math.max(0, gd.depth - Math.abs((z0 + z1) / 2 - height / 2));
+      // A slab a layer: on the printer's layers, so each layer steps out (or in) by no more than a layer, 45°
+      for (let k = Math.floor((height / 2 - gd.depth) / layer); k * layer < height / 2 + gd.depth; k++) {
+        const z0 = k * layer, z1 = z0 + layer, v = Math.max(0, gd.depth - Math.abs((z0 + z1) / 2 - height / 2));
         if (v < 0.01) continue;
         const ridge = intersect(away(grow(body, v)), grow(mine, v)); // the body's sides there, drawn out by v
-        const groove = intersect(wall, grow(sweptAll(union([body, ridge])), gap * 1.05 + 0.02)); // the frame's wall cut back to clear the ridge wherever it goes
+        const groove = intersect(parts.ground.shape, grow(sweptAll(ridge), gap * 1.05 + 0.02)); // the frame cut back to clear the ridge wherever it goes (not only in the strip: the ridge runs on past it)
         layers.push({ from: z0, to: z1, add: ridge }, { from: z0, to: z1, cut: groove });
       }
       const span = box(mine);
