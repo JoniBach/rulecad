@@ -107,6 +107,22 @@ The checks are only as good as the printer's `print_gap`: 0.3 mm is an estimate 
 windows are measured. Still to do: a catch and trigger in line, the magazine as a lamina of its own, a grip shell
 shaped for the hand, and a print.
 
+## 0.6.0: trapped and tied (3 November)
+
+The 0.5.0 print was the first nearly passable one: the spring behaved as simulated and barely set. But the front
+pinched the disc like tweezers, the stem bent out of the plane at its bridge and arch, and the whole pusher flexed
+out of the plane. Rulecad now checks all three before printing: the frame bent by the arms' own pull (it found the
+front closing 0.40 mm onto the disc), every moving part pushed across the plane (the pusher, its bridges taken off,
+moved 25 mm under 1 N), and the guides that trap it. 0.6.0:
+
+- **The disc lies flat** in a slot ahead of the arms, under a roof bridged over it (21 mm, wider than the X1C rule's 5
+  mm, to be proved on the print). The roof ties the front together: the frame bends 0.03 mm under the arms' pull.
+- **The arms grow from the back** of their room, so they pull on the closed back of the frame, not on its front.
+  Reshaped: 43 mJ at the 11.2 mm draw, 1.18% peak strain by finite elements, printed 10.6 mm tall.
+- **The stem is trapped**: 8 mm, full height, no bridge or arch; a ridge on its sides with 45° flanks runs in a groove
+  in the handle, so a 1 N push across the plane moves the pusher 0.00 mm.
+- Still weak: 1.9 m/s and 1.5 mJ at the disc. Power and size come next.
+
 ## The parts
 
 | Part | What it is | Printed |

@@ -23,35 +23,33 @@ export function main (v) {
   const spring = { ...shaped.params, into: v.into, fillet: v.spring_round }, height = shaped.params.width // printed as tall as the shaping found it must be
   const draw = v.stroke - v.short // drawn a little short of the stroke the arms were shaped for: the frame stops it a sliding gap further
 
-  // The pusher: the bar the arms meet, a nose forward to the disc (as thick as the disc), a stem back to the pull ring
-  const noseH = v.launcher.disc_t / 2, ringAt = L.back - v.stem - v.ring_in - v.ring_wall
+  // The pusher: the bar the arms meet, a nose forward to the disc's edge, a stem back to the pull ring
+  const ringAt = L.back - v.stem - v.ring_in - v.ring_wall
   const pusher = [
     rect(L.back, 0 - L.half, L.nose, L.half),
-    rect(L.nose - v.round * 2, 0 - noseH, L.discAt - g, noseH),
+    rect(L.nose - v.round * 2, 0 - v.nose_w / 2, L.discAt - g, v.nose_w / 2),
     rect(ringAt + v.ring_in + v.ring_wall / 2, 0 - v.stem_h / 2, L.back, v.stem_h / 2), // (from the ring's wall: the hole is the finger's)
     subtract(circle({ radius: v.ring_in + v.ring_wall, center: [ringAt, 0], segments: v.smooth }), circle({ radius: v.ring_in, center: [ringAt, 0], segments: v.smooth })),
   ]
-  // The frame: the outline, flooded but for what the pusher and the arms sweep (and the disc's way out); the blocks the
-  // arms grow from are found by the flood
+  // The frame: the outline, flooded but for what the pusher and the arms sweep and the disc's slot
   const out = L.top + v.wall, back = ringAt - v.ring_in - v.ring_wall - draw - v.handle, front = L.front + v.wall
   const outline = roundedRectangle({ size: [front - back, out * 2], center: [(front + back) / 2, 0], roundRadius: v.corner, segments: v.smooth })
-  const channel = rect(L.discAt - draw - g, 0 - (v.launcher.disc_t / 2 + v.slide), front + 1, v.launcher.disc_t / 2 + v.slide) // the disc's way: loaded ahead of the drawn nose, out through the front
-  const disc = rect(L.discAt - draw, 0 - v.launcher.disc_t / 2, L.discAt - draw + v.launcher.disc, v.launcher.disc_t / 2) // seen edge on: for the firing, not printed with it
-  // The barrel closed both faces: a bridge over the stem on the top layers, and a floor under it on the bottom ones,
-  // which the stem arches over at 45° (so it prints with nothing under it). Between the ring's pocket (the ring never
-  // comes further forward than at rest) and the bar's (drawn, at its furthest back), so only the stem passes them; the
-  // floor where none of the stretch the bridge passes over is, since the stem can't be cut from above and arched from
-  // below in one place
-  const ringFront = ringAt + v.ring_in + v.ring_wall + v.fit, barBack = L.back - draw - v.fit
-  const depth = v.x1c.layer * v.bridge_layers, over = v.x1c.layer * v.bridge_gap, across = v.stem_h / 2 + v.fit + v.bridge_foot, rise = depth + over
-  const top = ringFront + v.bridge_len / 2 + v.fit, floor = top + v.bridge_len + draw + rise * 2 + v.fit
-  if (floor + v.bridge_len / 2 > barBack) throw new Error('the stem is too short for its bridge and its floor: make stem longer')
-  const strip = (x) => rect(x - v.bridge_len / 2, 0 - across, x + v.bridge_len / 2, across)
-  const bridges = [{ shape: strip(top), depth, gap: over }, { shape: strip(floor), side: 'bottom', depth, gap: over }]
+  // The disc lies flat in a slot ahead of the drawn nose, out through the front; a roof over the slot from where the nose
+  // stops to the front, standing on the frame both sides, ties the front together (it was two prongs, which the arms'
+  // pull closed onto the disc like tweezers). The disc slides on the bed's face, under the roof
+  const r = v.launcher.disc / 2, slot = r + v.slide, loaded = L.discAt - draw + r
+  const channel = rect(L.discAt - draw - g, 0 - slot, front + 1, slot)
+  const disc = circle({ radius: r, center: [loaded, 0], segments: v.smooth })
+  const over = v.x1c.layer * v.bridge_gap, roofFrom = v.launcher.disc_t + over // the roof stands this far over the bed: the disc and a gap under it
+  const bridges = [{ shape: rect(L.discAt, 0 - slot - v.bridge_foot, front + 1, slot + v.bridge_foot), depth: height - roofFrom, gap: over }]
+  // The stem trapped through the handle: a ridge on its sides in a groove in the frame, from the ring's pocket to the
+  // arms' room (where there's frame either side of it)
+  const ringFront = ringAt + v.ring_in + v.ring_wall + v.fit, roomBack = 0 - v.reach - v.room
+  const guides = [{ body: 'pusher', shape: rect(ringFront + v.fit, 0 - v.stem_h / 2 - v.fit - v.bridge_foot, roomBack - v.fit, v.stem_h / 2 + v.fit + v.bridge_foot), depth: v.guide_depth }]
   return f.lamina({
-    height, gap: g, material, printer: { ...printer, bridge: v.x1c.bridge }, round: v.round,
+    height, gap: g, material, printer: { ...printer, bridge: Math.max(v.x1c.bridge, v.roof_span) }, round: v.round,
     flood: { outline, keep: [channel], clear: { default: v.room, pusher: v.fit }, least: v.least_frame, band: v.band },
-    bridges,
+    bridges, guides,
     bodies: { pusher },
     joints: { spring: { kind: 'curve', params: spring, from: 'ground', to: 'pusher' } },
     states: { drawn: { spring: 0 - draw } },

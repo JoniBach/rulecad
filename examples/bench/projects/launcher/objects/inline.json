@@ -1,7 +1,7 @@
 {
   "name": "inline",
-  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, in a flooded frame with a pull ring and a barrel closed both faces, printed in one piece on its side",
-  "version": "0.5.0",
+  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the stem trapped in a guide, printed in one piece on its side",
+  "version": "0.6.0",
   "uses": [
     "x1c",
     "petg",
@@ -52,7 +52,7 @@
       "rule": "How far the tab pulls the pusher back to draw it"
     },
     "short": {
-      "value": 0.25,
+      "value": 0.8,
       "unit": "mm",
       "rule": "The ring is drawn this much short of the stroke the arms were shaped for: the frame stops the pusher a sliding gap past the draw, within the arms' finite-element limit"
     },
@@ -121,6 +121,11 @@
       "unit": "mm",
       "rule": "The bar ahead of where the arms meet it, to its nose"
     },
+    "nose_w": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The nose's height in the plane: it pushes the flat disc's edge"
+    },
     "nose": {
       "value": 6,
       "unit": "mm",
@@ -132,14 +137,19 @@
       "rule": "The arms' room, from the bar's top to the frame's inside"
     },
     "reach": {
-      "value": 18,
+      "value": 40,
       "unit": "mm",
-      "rule": "How far behind where they meet the bar the arms may reach"
+      "rule": "How far behind where they meet the bar the arms' room reaches"
+    },
+    "room_front": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The arms' room ends here, along the barrel: the disc's slot is ahead of it"
     },
     "root_x": {
-      "value": 44,
+      "value": -36,
       "unit": "mm",
-      "rule": "Where each arm grows from the frame's wall, along the barrel"
+      "rule": "Where each arm grows from the frame, behind where it meets the bar: so the arms pull on the closed back of the frame, not its front"
     },
     "wall": {
       "value": 4,
@@ -162,32 +172,33 @@
       "rule": "The frame is solid this far round everything that moves and the outline's edge; the rest is windows, so it's a web, light but as stiff where it guides and stops"
     },
     "stem": {
-      "value": 50,
+      "value": 60,
       "unit": "mm",
-      "rule": "The stem from the bar back through the handle to the pull ring: long enough for a bridge over it and a floor under it, each over its own stretch"
+      "rule": "The stem from the bar back under the arms' room and through the handle to the pull ring"
     },
     "stem_h": {
-      "value": 3.8,
+      "value": 8,
       "unit": "mm",
-      "rule": "The stem's height: narrow enough that its barrel, a sliding fit each side, is within what the printer bridges"
+      "rule": "The stem's height in the plane: stout, full height, no bridge over it"
     },
-    "bridge_len": {
-      "value": 4,
+    "guide_depth": {
+      "value": 1.5,
       "unit": "mm",
-      "rule": "Each bridge over the stem, along it"
+      "rule": "The ridge on the stem's sides that runs in a groove in the handle, at the middle of the print's height, flanks at 45°"
     },
     "bridge_foot": {
       "value": 3,
       "unit": "mm",
-      "rule": "How far each bridge stands on the frame either side of the barrel"
-    },
-    "bridge_layers": {
-      "value": 6,
-      "rule": "The bridge's and the floor's thickness, in layers"
+      "rule": "How far the roof (and a guide's strip) stands on the frame either side of what it spans"
     },
     "bridge_gap": {
       "value": 3,
-      "rule": "The gap between the stem and the bridge over it (or the floor under it), in layers"
+      "rule": "The gap between the disc and the roof over its slot, in layers"
+    },
+    "roof_span": {
+      "value": 22,
+      "unit": "mm",
+      "rule": "The widest the roof over the disc's slot may bridge: the X1C bridges this far, by the user's judgement (the rule's 5 mm is cautious), to be proved on the print"
     },
     "ring_in": {
       "value": 9,
