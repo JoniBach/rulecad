@@ -941,7 +941,14 @@ export async function lamina(spec) {
     const still = shapeOf(sim.sys, new Float64Array(sim.sys.dofs));
     const poseT = (n, q) => { if (parts[n].kind === 'ground') return I; const d = sim.sys.body[n].dof, c = sim.centre[n], cs = Math.cos(q[d + 2]), sn = Math.sin(q[d + 2]); return [cs, -sn, c[0] + q[d] - cs * c[0] + sn * c[1], sn, cs, c[1] + q[d + 1] - sn * c[0] - cs * c[1]]; };
     const round3 = (a) => a.map((o) => o.map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]));
-    const physical = sim.frames.filter((fr, i, all) => fr.t === 0 || i % 2 === 0 || i === all.length - 1).map((fr) => ({ from: fr.from, to: fr.to, t: fr.t, parts: Object.fromEntries(Object.entries(parts).map(([n, p]) => {
+    // How far a frame's bodies are from where they're meant to be (the kinematic model): a flood's first pass, solved
+    // without a frame, lets a body tip in its play, and its flexures fling about with it
+    const offPlan = (fr) => {
+      const a = reached[fr.from] ?? state(fr.from), b = state(fr.to), keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+      const at = places(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * fr.t]))).v);
+      return Math.max(0, ...Object.keys(parts).filter((n) => parts[n].kind === 'body').map((n) => Math.max(...corners(n).map((c) => Math.hypot(...apply(poseT(n, fr.q), c).map((x, k) => x - apply(at[n], c)[k]))))));
+    };
+    const physical = sim.frames.filter((fr, i, all) => fr.t === 0 || i % 2 === 0 || i === all.length - 1).map((fr) => ({ from: fr.from, to: fr.to, t: fr.t, off: offPlan(fr), parts: Object.fromEntries(Object.entries(parts).map(([n, p]) => {
       if (p.kind !== 'flexure') return [n, round3(moved(poseT(n, fr.q), p.shape))];
       const j = joints[n], lines = Object.keys(sim.beamOf).filter((b) => sim.beamOf[b] === n).map((b) => ({ rest: still.lines[b], now: fr.shape.lines[b], turn: fr.shape.turns[b], from: poseT(j.from, fr.q), to: poseT(j.to, fr.q) }));
       return [n, round3(bend(p.shape, lines))];
@@ -1074,8 +1081,10 @@ async function flooded(spec) {
   const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false, frame: false } });
   const free = new Set(Object.keys(spec.free || {})), by = {};
   // The room: everything where it's meant to go, the kinematic frames (solved without a frame, the physics lets a body
-  // tip anywhere its play allows, and its flexures fling about with it: room cut round that would let them)
+  // tip anywhere its play allows: room cut round that would let it)
   for (const fr of probe.planned) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
+  // and each flexure as it really bends, wherever its bodies are where they're meant to be (within the gap and a bit)
+  if (probe.planned !== probe.frames) for (const fr of probe.frames) if (fr.off != null && fr.off <= gap * 3) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n) && !spec.bodies?.[n]) (by[n] ??= []).push(o);
   const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)
   // The outline: yours, or everything the moving parts reach and the spaces kept, a wall round it, its corners rounded
   let outline = spec.flood.outline ? all(spec.flood.outline) : null;
