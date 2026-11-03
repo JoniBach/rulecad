@@ -1,7 +1,7 @@
 {
   "name": "inline",
-  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the stem trapped in a guide, printed in one piece on its side",
-  "version": "0.6.0",
+  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the stem trapped in a guide, a hooked sear on one flexure and a trigger blade, printed in one piece on its side",
+  "version": "0.7.0",
   "uses": [
     "x1c",
     "petg",
@@ -9,7 +9,7 @@
   ],
   "material": "PETG",
   "engine": "manifold",
-  "orientation": "On its side, as drawn: one piece, no supports. Put a finger through the ring and pull it back: the pusher slides straight back in its barrel between the arms, which bend like a bow's limbs; let go and it throws the disc.",
+  "orientation": "On its side, as drawn: one piece, no supports. Put a finger through the ring and pull it back until it clicks: the pusher slides straight back between the arms, which bend like a bow's limbs, and the sear catches the tooth under the ring. Let go of the ring, then pull the trigger blade under the frame back: the sear turns off the tooth and the pusher throws the disc.",
   "parts": {
     "body": {
       "label": "The action: frame, arms and pusher in one print"
@@ -228,6 +228,104 @@
       "value": 1.5,
       "unit": "mm",
       "rule": "The round where each arm meets the wall and the bar"
+    },
+    "tooth": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The catch's tooth: how far it hangs below the ring"
+    },
+    "tooth_w": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The tooth's length along the barrel: stout, it carries the spring's whole pull"
+    },
+    "engage": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "How deep the sear's head reaches up the tooth's face: more than the print gap, so it holds for sure, and little, so the trigger slides it off easily"
+    },
+    "settle": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Let go of, the pusher comes forward this much from the draw on to the sear"
+    },
+    "sear_reach": {
+      "value": 15,
+      "unit": "mm",
+      "rule": "The hinge's middle is this far behind the tooth's face: the further, the less the sear turns to let go, the less its hinge bends"
+    },
+    "sear_drop": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "and this far below the middle of where the tooth bears: the faces are square to the line from one to the other, hooked back this much, so the spring's pull runs straight through the hinge"
+    },
+    "hinge": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The sear's hinge: one straight flexure on that line, the pull in tension along it; the trigger turns it about its middle, where it bends round evenly"
+    },
+    "hinge_round": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "The round where the hinge meets the frame and the sear"
+    },
+    "hinge_smooth": {
+      "value": 12,
+      "rule": "Samples between the hinge's points: it's short and straight"
+    },
+    "sear_body": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The sear's body below the hinge's middle, from the hinge's tip forward under the tooth"
+    },
+    "head": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The sear's head along the barrel: the hooked face behind, a 45° ramp in front that the tooth rides over as it's drawn"
+    },
+    "blade": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The trigger blade, from the hinge's middle down to its end, out of the frame: the longer, the lighter the pull"
+    },
+    "blade_w": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The blade's width"
+    },
+    "blade_back": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The blade's back edge, ahead of the hinge's middle"
+    },
+    "pull": {
+      "value": 8,
+      "unit": "°",
+      "rule": "How far the sear turns when the trigger's pulled right back, where the frame stops the blade (it lets go well before)"
+    },
+    "friction": {
+      "value": 0.3,
+      "rule": "Friction between printed PETG faces in the simulation: the trigger pulls against it"
+    },
+    "plate_pin": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The snap pins' diameter (objects/pin) that would hold a plate either side: the frame needn't have them"
+    },
+    "plate_hole": {
+      "value": "plate_pin + x1c.pin_gap * 2",
+      "unit": "mm",
+      "rule": "The holes for them through the frame's corners: the pin and the fit test's pin gap round it"
+    },
+    "plate_in": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "How far each hole's centre is in from the frame's edges"
+    },
+    "plate_wall": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Solid frame round each hole, however the web falls"
     },
     "round": {
       "value": 1,
