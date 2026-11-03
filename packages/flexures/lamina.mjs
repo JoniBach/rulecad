@@ -409,6 +409,30 @@ export async function lamina(spec) {
     }
     parts[n].shape = F;
   }
+  // A curve's end is drawn for a block square to it: it runs on into it, and flares into its face in a quarter circle.
+  // Each body it ends on is given that block, its seat: as wide as the flare and a margin either side, from the end on
+  // into the body for its run on and as much again, its outside corners rounded and blended into the body in rounds
+  // behind its face. Where the body already lies there the seat is lost in it; where it doesn't, the seat stands out of
+  // it, a shoulder (lamina.seat). (A flooded frame builds its own block at each root: those are only checked)
+  const seats = [], ends = [];
+  for (const [n, j] of Object.entries(joints)) {
+    if (j.kind !== 'curve') continue;
+    const p = ports('curve', j.params), r = j.params.fillet ?? 0, T = [j.params.thickness].flat(), into = j.params.into ?? Math.max(...T);
+    for (const [end, b, t] of [['end', j.to, T.at(-1)], ['root', j.from, T[0]]]) {
+      const c = apply(j.place, p[end].at), d = apply([j.place[0], j.place[1], 0, j.place[3], j.place[4], 0], p[end].dir), l = Math.hypot(...d) || 1, u = [d[0] / l, d[1] / l], v = [-u[1], u[0]];
+      const w = t / 2 + r + Math.max(gap, r / 2), deep = into + Math.max(t, r), at = (s, k) => [c[0] + u[0] * s + v[0] * k, c[1] + u[1] * s + v[1] * k];
+      const k = Math.min(r || spec.round || gap, w / 2, deep / 2), block = [[at(0 - k, -w), at(deep, -w), at(deep, w), at(0 - k, w)]], behind = [[at(0, -w * 4), at(deep * 4, -w * 4), at(deep * 4, w * 4), at(0, w * 4)]]; // (behind its face: the half of the plane the body lies in)
+      const plug = intersect(parts[n].shape, intersect(behind, [[at(0, -w), at(deep, -w), at(deep, w), at(0, w)]])); // (its flare's foot and run on)
+      ends.push({ joint: n, end, body: b, at: c, plug });
+      if (b === 'ground' && spec.groundRounded) continue; // (only checked: a flooded frame builds its own block at each root)
+      const B = parts[b].shape, seat = intersect(grow(shrink(block, k), k), behind); // its back corners rounded (its face square)
+      const out = subtract(seat, B), blend = r || spec.round || 0;
+      if (area(out) <= AREA) continue; // (seated already)
+      const S = union([B, seat]), fill = blend > 0 ? apart(intersect(subtract(shrink(grow(S, blend), blend, 'Round'), S), intersect(grow(seat, blend * 2), behind))).filter((a) => area(intersect(a, grow(seat, 0.05))) > AREA) : []; // (only the rounds against the seat: not what rounding the whole body would fill elsewhere)
+      parts[b].shape = shrink(grow(union([S, ...fill]), 0.01), 0.01); // (closed by a hair: where the seat and its rounds meet edge on, no crack between them)
+      seats.push({ joint: n, end, body: b, at: c, added: area(out) });
+    }
+  }
   // Each body hangs from one joint: the tree from the ground
   const parent = {};
   for (const [n, j] of Object.entries(joints)) { if (parent[j.to]) throw new Error(`${j.to} hangs from two joints (${parent[j.to]} and ${n}): give it one, a guide is one joint`); parent[j.to] = n; }
@@ -595,6 +619,19 @@ export async function lamina(spec) {
       if (pieces(intersect(grow(piece, cell * 2), core)) <= 1) { const b = box(piece); f('warn', `${what(n)} has an arm narrower than ${rigidW} mm tied on at one end only, near (${((b.lo[0] + b.hi[0]) / 2).toFixed(1)}, ${((b.lo[1] + b.hi[1]) / 2).toFixed(1)}): it bends under load. Fill it in, or tie its other end back`, 'lamina.rigid', { part: n, at: b }); }
     }
   }
+
+  // ---- seat: each curve's end in a block square to it, all of its flare and run on inside its body; where a seat had to
+  // stand out of the body, said so. (Whether it then hits anything is the free and collide checks', which see it as part
+  // of the body) ----
+  for (const s of seats) {
+    f('info', `the ${s.joint} flexure's ${s.end === 'end' ? 'end' : 'root'} at (${s.at.map((x) => x.toFixed(1)).join(', ')}) is seated on ${what(s.body)} by a block standing ${s.added.toFixed(1)} mm² out of it, rounded into it`, 'lamina.seat', { joint: s.joint, end: s.end, part: s.body, at: s.at, added: s.added });
+  }
+  let loose = 0;
+  for (const e of ends) {
+    const out = area(subtract(e.plug, grow(parts[e.body].shape, 0.02)));
+    if (out > Math.max(AREA, gap * gap)) { loose++; f('fail', `the ${e.joint} flexure's ${e.end === 'end' ? 'end' : 'root'} at (${e.at.map((x) => x.toFixed(1)).join(', ')}) sticks ${out.toFixed(1)} mm² out of ${what(e.body)}: its flare and run on aren't held. Fill ${what(e.body)} out there, or move the end in`, 'lamina.seat', { joint: e.joint, end: e.end, part: e.body, at: e.at, out }); }
+  }
+  if (!loose && ends.length) f('pass', `every curve's ends are in their bodies${seats.length ? ` (${seats.length} on a seat)` : ''}`, 'lamina.seat');
 
   // ---- free: at rest, the gap between everything that isn't joined; each flexure on its two bodies only ----
   let free = true;
@@ -1080,7 +1117,7 @@ async function flooded(spec) {
   const { keep = [], least = 2, wall = 4, pad = 3, corner = 6 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
   // The mechanism solved through its sequence, on the ground you drew (or none: a speck far off, for the solver)
   const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
-  const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false, frame: false } });
+  const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, groundRounded: true, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false, frame: false } });
   const free = new Set(Object.keys(spec.free || {})), by = {};
   // The room: everything where it's meant to go, the kinematic frames (solved without a frame, the physics lets a body
   // tip anywhere its play allows: room cut round that would let it)

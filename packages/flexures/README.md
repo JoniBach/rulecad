@@ -191,6 +191,7 @@ The findings, each pass or fail with its code:
 |---|---|
 | `lamina.free` | At rest, everything clears what it isn't joined to by the printer's gap, and each flexure touches only its two bodies, in one place each: else it prints fused |
 | `lamina.attached` | Each flexure runs into its bodies, not just along an edge (an edge join prints as two pieces) |
+| `lamina.seat` | Each curve's end flare and run on lie inside its body (a seat added where they wouldn't); one hanging out of a frame drawn as it is fails |
 | `lamina.sequence`, `lamina.collide` | Nothing runs into anything in any state or on the way; a step into a state a catch holds may settle on the catch |
 | `lamina.jam`, `lamina.follow` | No driver jams on a follower, and no follower has to give past its limit |
 | `lamina.holds` | A catch holds: the joint pushing back towards rest jams on it. It says the least friction it holds at, and how far the catch must move to let go |
@@ -317,7 +318,11 @@ until the beam solver says it stores the energy with the least peak strain, insi
 than `bend` thicknesses (default 2), where a curved beam's inside fibre takes much more than beam theory says. No two
 parts of it may come within `apart` of each other (default 1 mm), at rest or fully moved: nearer, they may print fused
 and slap together when it fires. Each end leaves its block square for `lead`, and flares into it in a true round
-(`fillet`). The lamina checks that a curve keeps the print gap from itself. Give `width`
+(`fillet`). That round is drawn for a face square to the end, so in a lamina each body a curve ends on gets that face: a
+seat, a block square to the end as wide as the flare and a margin, running in past the run on, rounded into the body.
+Where the body is already there it disappears into it. Where the end is oblique to the body's edge, or near it, the seat
+stands out of it as a shoulder, and `lamina.seat` says so. A flooded frame builds its own block at each root; those
+ends are only checked. The lamina also checks that a curve keeps the print gap from itself. Give `width`
 as a range and it is solved at the widest, then printed as tall as the energy needs: force goes with height, strain
 doesn't.
 

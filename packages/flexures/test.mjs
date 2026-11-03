@@ -646,3 +646,25 @@ test('a flooded frame with holes: each in a solid boss no window opens into, and
   assert.ok(bad.findings.some((x) => x.code === 'lamina.holes' && x.level === 'fail'), 'one where the leaf swings is found');
 });
 
+
+test('a curve\'s end is seated: where it ends oblique to its body\'s edge, a block square to it stands out to hold its flare and run on (and says so); a square end in solid is left alone', async () => {
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false }, physics: false, ground: rect(-8, -10, 0.5, 10), states: { bent: { hinge: 0.3 } }, sequence: ['rest', 'bent', 'rest'] };
+  const curve = (end) => ({ points: [[0, 0], [10, end / 2], [20, end]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: Math.atan2(end, 20) * (180 / Math.PI), moves: 'turn', about: [10, end / 2] });
+  // Square: straight along x into a block that covers its end: nothing to add
+  const square = await lamina({ ...base, bodies: { arm: rect(20, -5, 30, 5) }, joints: { hinge: { kind: 'curve', params: curve(0), from: 'ground', to: 'arm' } } });
+  const s = square.findings.filter((x) => x.code === 'lamina.seat');
+  assert.ok(s.length === 1 && s[0].level === 'pass', s.map((x) => x.text).join('; '));
+  // Oblique, ending just under the body's top edge: the flare would stick out of it, so a seat stands out there
+  const oblique = await lamina({ ...base, bodies: { arm: rect(20, -5, 30, 6.5) }, joints: { hinge: { kind: 'curve', params: curve(6), from: 'ground', to: 'arm' } } });
+  const o = oblique.findings.filter((x) => x.code === 'lamina.seat');
+  assert.ok(o.some((x) => x.level === 'info' && x.part === 'arm' && x.end === 'end'), o.map((x) => x.text).join('; '));
+  const g = oblique.outlines('rest'), inside = (l, [x, y]) => l.reduce((c, a, i) => { const b = l[(i + 1) % l.length]; return (a[1] > y) !== (b[1] > y) && x < a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]) ? !c : c; }, false);
+  const solid = (p) => g.arm.reduce((c, l) => (inside(l, p) ? !c : c), false), u = [Math.cos(Math.atan2(6, 20)), Math.sin(Math.atan2(6, 20))];
+  const plug = g.hinge.flat().filter(([x, y]) => (x - 20) * u[0] + (y - 6) * u[1] > 0.05);
+  assert.ok(plug.length > 0 && plug.every(solid), 'all of its run on inside the arm and its seat');
+  assert.ok(solid([20 + u[0] * 1 - u[1] * 1.8, 6 + u[1] * 1 + u[0] * 1.8]), 'the seat stands above the arm\'s top edge, beside the flare');
+  assert.ok(!oblique.findings.some((x) => x.level === 'fail' && x.code === 'lamina.free'), 'and nothing else is touched');
+  // A frame drawn as it is (a flooded one) isn't given seats, only checked: a root whose flare hangs out of it fails
+  const bare = await lamina({ ...base, ground: rect(-8, -10, 0.5, 0.4), groundRounded: true, bodies: { arm: rect(20, -5, 30, 5) }, joints: { hinge: { kind: 'curve', params: curve(0), from: 'ground', to: 'arm' } } });
+  assert.ok(bare.findings.some((x) => x.code === 'lamina.seat' && x.level === 'fail' && x.end === 'root'), bare.findings.filter((x) => x.code === 'lamina.seat').map((x) => x.text).join('; '));
+});
