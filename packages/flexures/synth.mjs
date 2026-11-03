@@ -97,6 +97,8 @@ function crowding(path, at, gap) {
  *   bend: the tightest it may curve, in thicknesses (default 2: tighter, a curved beam's inside fibre takes much more
  *   than beam theory says, which the finite-element check finds); apart: how far apart its own parts keep (default 1 mm, or the gap if more: a loop that comes nearer may print fused,
  *   and slaps its neighbour when it fires); thickness: [least, most]; width: the print's height, or a range [least, most] to choose in, the energy setting it;
+ *   hold: { force, at, most }: a load it carries (N, through a point), under which its tip may give no more than `most`
+ *   mm along it, a hinge holding what pulls on it;
  *   travel: how far the tip moves along `moves`, signed (moves 'turn': degrees about the point `about`, a hinged
  *   lever's spring: its force is then the moment, N·mm); energy: what it must store there (mJ,
  *   both arms when mirrored); margin: the share of the strain limit it's shaped to (default 0.8)
@@ -158,13 +160,16 @@ export function shapeCurve(job) {
     const coarse = curvePath({ ...params, smooth }).at, drawn = Object.values(shapeOf(s.sys, r.q).lines)[0]; // (the solved shape is on the solver's samples)
     faults.drawn = crowding(drawn, coarse, gap / 2);
     if (faults.drawn) why.push('drawn, it runs into itself');
+    // Holding a load (a sear's hinge carrying the spring's pull): it mustn't give more than `most` under it
+    let give = 0;
+    if (job.hold) { const h = s.loaded(job.hold.force, job.hold.at); give = h.converged ? Math.max(0, Math.abs(h.along) / job.hold.most - 1) : 10; if (give > 0.02) why.push(`under ${Math.hypot(...job.hold.force).toFixed(0)} N it gives ${h.converged ? Math.abs(h.along).toFixed(3) : 'way'} mm, over ${job.hold.most}`); }
     const e = r.strain / limit, short = Math.max(0, 1 - r.energy / want);
     if (short > 0.02) why.push(`it stores ${r.energy.toFixed(1)} mJ${ranged(width) ? ` at its widest, ${wide} mm` : ''}, short of ${want.toFixed(1)}`);
     if (e > 1) why.push(`its peak strain ${(r.strain * 100).toFixed(2)}% is over ${(limit * 100).toFixed(2)}%`);
     if (back) why.push('it snaps through: its force turns back on the way');
     // On a log scale, so a shape far off (a stretched arm, a hundred times the strain) still has a way down; any fault
     // in its geometry costs more than any strain it could save
-    return { f: Math.log1p(e) + 10 * Math.log1p(short / 0.05) ** 2 + 10 * Math.log1p(Math.max(0, e - 1) / 0.05) ** 2 + 2 * back + 50 * geometry() + (geometry() > 0 ? 1 : 0), why, faults, energy: r.energy, strain: r.strain, force, path: c.path, at: c.at, drawn };
+    return { f: Math.log1p(e) + 10 * Math.log1p(short / 0.05) ** 2 + 10 * Math.log1p(Math.max(0, e - 1) / 0.05) ** 2 + 10 * Math.log1p(give / 0.05) ** 2 + 2 * back + 50 * geometry() + (geometry() > 0 ? 1 : 0), why, faults, energy: r.energy, strain: r.strain, force, path: c.path, at: c.at, drawn };
   };
   if (job.check) return judge({ ...job.check, width: wide }, true); // a shape of your own, judged for the job
   // Watching: every shape tried this round, and the best so far, told to job.onRound after each round (return true to

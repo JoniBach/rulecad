@@ -122,12 +122,19 @@ export function curveSolver(p, { E }) {
     const force = turning ? (() => { const [px, py] = p.about, x = tip[0] + r.q[0] - px, y = tip[1] + r.q[1] - py; return r.reaction.get(2) + x * r.reaction.get(1) - y * r.reaction.get(0); })() : r.reaction.get(axis);
     return { energy: r.energy * times, force: force * times, strain: Math.max(0, ...Object.values(r.strain)), converged: r.converged, q: r.q };
   };
+  /** How far a load moves the tip, at rest, nothing holding it but the curve: a force (N) through a point; the point's
+   * move along the force and in all (mm). How stiff a hinge is against what it carries */
+  const loaded = (force, at = tip) => {
+    const o = [at[0] - tip[0], at[1] - tip[1]], r = equilibrium(sys, { loads: new Map([[0, force[0]], [1, force[1]], [2, o[0] * force[1] - o[1] * force[0]]]), iterations: 40, tol: 1e-6 });
+    const d = [r.q[0] - r.q[2] * o[1], r.q[1] + r.q[2] * o[0]], F = Math.hypot(...force) || 1;
+    return { along: (d[0] * force[0] + d[1] * force[1]) / F, move: Math.hypot(...d), converged: r.converged };
+  };
   // Turned θ (radians) about the pivot `about`: where the tip goes and how it turns
   function turnAbout(th) {
     const [px, py] = p.about, c = Math.cos(th), s = Math.sin(th), x = tip[0] - px, y = tip[1] - py;
     return new Map([[0, px + c * x - s * y - tip[0]], [1, py + s * x + c * y - tip[1]], [2, th]]);
   }
-  return { sys, solve, lines };
+  return { sys, solve, loaded, lines };
 }
 
 /**

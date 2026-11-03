@@ -1073,11 +1073,9 @@ async function flooded(spec) {
   const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
   const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false, frame: false } });
   const free = new Set(Object.keys(spec.free || {})), by = {};
-  // The room: each rigid body where it's meant to go (the kinematic frames: solved without a frame, the physics lets a
-  // body tip anywhere its play allows, and the room cut round that would let it), each flexure as it bends both ways
-  const isBody = (n) => !!spec.bodies?.[n];
+  // The room: everything where it's meant to go, the kinematic frames (solved without a frame, the physics lets a body
+  // tip anywhere its play allows, and its flexures fling about with it: room cut round that would let them)
   for (const fr of probe.planned) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
-  if (probe.planned !== probe.frames) for (const fr of probe.frames) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n) && !isBody(n)) (by[n] ??= []).push(o);
   const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)
   // The outline: yours, or everything the moving parts reach and the spaces kept, a wall round it, its corners rounded
   let outline = spec.flood.outline ? all(spec.flood.outline) : null;
