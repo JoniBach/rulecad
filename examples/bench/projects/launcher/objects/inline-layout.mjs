@@ -23,23 +23,26 @@ export function layout (v, f) {
   }
 }
 
-// The catch, over the stem ahead of the pull ring, in the frame's room above the ring: a tooth stands on the stem's top
-// edge, a hooked sear above and behind it catches it, and the line from where the tooth bears to the sear's hinge is
-// what the spring's pull runs along. The hinge is a curve shaped for its job (../shape-hinge.mjs) in the room above the
-// ring: turned about its middle by the trigger, it must stay stiff along that line.
-// height: the print's (the arms' shaping sets it)
+// The catch and trigger, in the room under the stem just behind the arms (the pull ring stands on top of the stem,
+// out of the way). One part: the trigger is its own sear. A tooth under the stem is caught by the hook on the trigger's
+// top; the trigger hangs on a hinge that lies on the line the tooth pulls along, so the spring's pull is the hinge's
+// tension, not a bend, and holds however strong the spring. The trigger's body curves down and back from the hook, and
+// the finger, in the crook in front of it, pulls it back: it turns about the hinge's middle, and the hook slides down
+// off the tooth (a little friction is all it costs), the lever's length making that light.
+// v: the design's values; height: the print's (the arms' shaping sets it)
 export function catchOf (v, height) {
-  const draw = v.stroke - v.short, cock = draw - v.settle, g = v.gap
-  const toothTop = v.stem_h / 2 + v.tooth, xs = v.tooth_x - cock, yc = toothTop - v.engage / 2 // the cocked tooth's front, and the middle of where it bears
-  const P = [xs - v.sear_reach, yc + v.sear_drop], len = Math.hypot(v.sear_reach, v.sear_drop), u = [v.sear_reach / len, 0 - v.sear_drop / len] // the hinge's middle, and the line it pulls along (down to the tooth)
-  const at = (k) => [P[0] + u[0] * k, P[1] + u[1] * k], root = at(0 - v.hinge / 2), tip = at(v.hinge / 2), along = (Math.atan2(u[1], u[0]) * 180) / Math.PI
-  const over = toothTop + g + v.room // the sear's body keeps above the tooth's way
+  const draw = v.stroke - v.short, cock = draw - v.settle, g = v.gap, deg = Math.PI / 180
+  const stemLow = 0 - v.stem_h / 2, toothLow = stemLow - v.tooth
+  const xs = v.tooth_x - cock, yc = toothLow + v.engage / 2 // the cocked tooth's front, and the middle of where it bears
+  const P = [xs - v.sear_reach, yc - v.sear_drop], len = Math.hypot(v.sear_reach, v.sear_drop), u = [v.sear_reach / len, v.sear_drop / len] // the hinge's middle, and the line it pulls along
+  const along = Math.atan2(u[1], u[0]) / deg, at = (k) => [P[0] + u[0] * k, P[1] + u[1] * k], root = at(0 - v.hinge / 2), tip = at(v.hinge / 2)
+  const under = toothLow - g - v.room // the trigger keeps below the tooth's way
   return {
-    draw, cock, toothTop, xs, yc, P, u, root, tip, along, over,
-    job: {
+    draw, cock, stemLow, toothLow, xs, yc, P, u, along, root, tip, under,
+    hingeJob: {
       root, tip, start: [along - v.hinge_swing, along + v.hinge_swing], end: [along - v.hinge_swing, along + v.hinge_swing], lead: v.hinge_round + v.least,
-      region: { lo: [root[0] - v.hinge_back, over], hi: [tip[0] + v.room, P[1] + v.hinge_room] }, gap: g, apart: v.arm_gap, bend: v.arm_bend,
-      thickness: [v.hinge_least, v.most], moves: 'turn', about: P, travel: v.pull, energy: v.hinge_energy, width: height, margin: v.margin,
+      region: { lo: [root[0] - v.room, P[1] - v.hinge_room], hi: [tip[0] + v.room, under] }, gap: g, apart: v.arm_gap, bend: v.arm_bend,
+      thickness: [v.hinge_least, v.most], moves: 'turn', about: P, travel: 0 - v.pull, energy: v.hinge_energy, width: height, margin: v.margin,
       hold: { force: [u[0] * v.hold_design, u[1] * v.hold_design], at: P, most: v.hold_give }, // the spring's pull, for a spring far stronger than this one
       guess: [at(0 - v.hinge / 4), P, at(v.hinge / 4)],
     },

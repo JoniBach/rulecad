@@ -1,6 +1,6 @@
 {
   "name": "inline",
-  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the stem trapped in a guide, a hooked sear on one flexure and a trigger blade, printed in one piece on its side",
+  "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the pull ring on top, a solid trigger that is its own sear on a hinge carrying the pull, printed in one piece on its side",
   "version": "0.8.0",
   "uses": [
     "x1c",
@@ -9,7 +9,7 @@
   ],
   "material": "PETG",
   "engine": "manifold",
-  "orientation": "On its side, as drawn: one piece, no supports. Put a finger through the ring and pull it back until it clicks: the pusher slides straight back between the arms, which bend like a bow's limbs, and the sear catches the tooth under the ring. Let go of the ring, then pull the trigger blade under the frame back: the sear turns off the tooth and the pusher throws the disc.",
+  "orientation": "On its side, as drawn: one piece, no supports. Put a finger through the ring and pull it back until it clicks: the pusher slides straight back between the arms, and the tooth under the stem rides over the trigger's hook and catches. Let go of the ring, then pull the trigger back with a finger in the crook in front of it: the hook slides off the tooth and the pusher throws the disc.",
   "parts": {
     "body": {
       "label": "The action: frame, arms and pusher in one print"
@@ -45,6 +45,11 @@
       "value": "gap + 0.2",
       "unit": "mm",
       "rule": "The arms' room each side, round wherever they go: more than the print gap, so they don't drag on the frame"
+    },
+    "spring_clear": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "The arms' room each side: more than the print gap, so the frame is clear of them however they really bend"
     },
     "stroke": {
       "value": 12,
@@ -171,15 +176,15 @@
       "unit": "mm",
       "rule": "The frame is solid this far round everything that moves and the outline's edge; the rest is windows, so it's a web, light but as stiff where it guides and stops"
     },
-    "stem": {
-      "value": 60,
-      "unit": "mm",
-      "rule": "The stem from the bar back under the arms' room and through the handle to the pull ring"
-    },
     "stem_h": {
       "value": 8,
       "unit": "mm",
       "rule": "The stem's height in the plane: stout, full height, no bridge over it"
+    },
+    "ring_x": {
+      "value": -55,
+      "unit": "mm",
+      "rule": "The pull ring's centre: it stands on the stem, at the front of the room above it, just behind the arms"
     },
     "guide_depth": {
       "value": 1.5,
@@ -211,9 +216,9 @@
       "rule": "The pull ring's wall"
     },
     "handle": {
-      "value": 10,
+      "value": 12,
       "unit": "mm",
-      "rule": "Solid behind the ring at full draw: the handle"
+      "rule": "Solid behind the drawn ring and stem: the handle"
     },
     "smooth": {
       "value": 48,
@@ -230,19 +235,19 @@
       "rule": "The round where each arm meets the wall and the bar"
     },
     "tooth": {
-      "value": 4,
+      "value": 3,
       "unit": "mm",
       "rule": "The catch's tooth: how far it hangs below the stem"
     },
     "tooth_x": {
-      "value": -45.4,
+      "value": -42.5,
       "unit": "mm",
-      "rule": "The tooth's front at rest: on the stem just ahead of the ring, so it's drawn back under the sear in the room above the ring"
+      "rule": "The tooth's front at rest: under the stem, just behind the arms' room"
     },
     "tooth_w": {
       "value": 4,
       "unit": "mm",
-      "rule": "The tooth's length along the barrel: stout, it carries the spring's whole pull"
+      "rule": "The tooth's length along the barrel: it carries the pull over this and the print's height; short, so the hook has room to be solid"
     },
     "engage": {
       "value": 1.5,
@@ -250,7 +255,7 @@
       "rule": "How deep the sear's head reaches up the tooth's face: more than the print gap, so it holds for sure, and little, so the trigger slides it off easily"
     },
     "settle": {
-      "value": 0.6,
+      "value": 1.0,
       "unit": "mm",
       "rule": "Let go of, the pusher comes forward this much from the draw on to the sear"
     },
@@ -260,12 +265,12 @@
       "rule": "The hinge's middle is this far behind the tooth's face: the further, the less the sear turns to let go, the less its hinge bends"
     },
     "sear_drop": {
-      "value": 6,
+      "value": 5,
       "unit": "mm",
-      "rule": "and this far below the middle of where the tooth bears: the faces are square to the line from one to the other, hooked back this much, so the spring's pull runs straight through the hinge"
+      "rule": "and this far below the middle of where the tooth bears: the hook's faces are square to the line from one to the other, so the spring's pull runs straight through the hinge"
     },
     "hinge": {
-      "value": 14,
+      "value": 18,
       "unit": "mm",
       "rule": "The sear's hinge: one straight flexure on that line, the pull in tension along it; the trigger turns it about its middle, where it bends round evenly"
     },
@@ -275,24 +280,19 @@
       "rule": "The round where the hinge meets the frame and the sear"
     },
     "hinge_least": {
-      "value": "x1c.line * 4",
+      "value": "x1c.line * 3",
       "unit": "mm",
-      "rule": "The thinnest the hinge may be: four lines, stouter than the arms, since it's what everything hangs on"
+      "rule": "The thinnest the hinge may be: three lines; it carries the pull in tension, which a strip carries easily, and thinner it's lighter to turn"
     },
     "hinge_swing": {
       "value": 25,
       "unit": "°",
       "rule": "How far from the pull's line the shaping may turn the hinge's ends"
     },
-    "hinge_back": {
-      "value": 12,
-      "unit": "mm",
-      "rule": "How far behind the hinge's root the shaping may take it, into the room above the ring"
-    },
     "hinge_room": {
-      "value": 6,
+      "value": 5,
       "unit": "mm",
-      "rule": "How far above the hinge's middle the shaping may take it: under the trigger"
+      "rule": "How far below the hinge's middle the shaping may take it"
     },
     "hinge_energy": {
       "value": 1.5,
@@ -314,69 +314,87 @@
       "rule": "How many shapes the hinge's shaping may try"
     },
     "head": {
-      "value": 6,
+      "value": 2.5,
       "unit": "mm",
-      "rule": "The sear's head along the barrel: the hooked face behind, a 45° ramp in front that the tooth rides over as it's drawn"
+      "rule": "The hook's flat top, ahead of its hooked face; its ramp runs on from there down to the trigger's front"
     },
-    "ramp": {
-      "value": 25,
-      "unit": "°",
-      "rule": "The head's front ramp, from the barrel's line: shallow, since the sear lifts up and forward as the tooth pushes it back"
+    "chamfer": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "The hook's and the tooth's meeting corners taken off this much, so they slide past each other as it's drawn"
     },
     "trigger_front": {
-      "value": -57,
+      "value": -46,
       "unit": "mm",
-      "rule": "The trigger block's front: it fills the room from the hinge to here, a solid block, with room ahead for a finger"
+      "rule": "The trigger's top reaches forward to here, just behind the arms' room"
     },
-    "trigger_back": {
-      "value": -75,
+    "trigger_neck": {
+      "value": 8,
       "unit": "mm",
-      "rule": "The trigger reaches back over the hinge to here, short of the frame the hinge grows from"
+      "rule": "Its front runs straight down this far from its top, then curves back to its toe"
+    },
+    "trigger_toe": {
+      "value": -62,
+      "unit": "mm",
+      "rule": "Its toe, on the frame's bottom: the crook in front of the curve is the finger's"
+    },
+    "trigger_heel": {
+      "value": -74,
+      "unit": "mm",
+      "rule": "Its heel, behind: the trigger is solid from the toe to here"
+    },
+    "heel_h": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The heel's height, up from the bottom"
+    },
+    "trigger_waist": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Its back runs up from the heel to this far behind the hinge's tip, under the hinge"
     },
     "hinge_clear": {
       "value": 3,
       "unit": "mm",
-      "rule": "The trigger's underside, this far above the hinge's line: its thickness, its round and room"
+      "rule": "The trigger's back keeps this far below the hinge's line: its thickness, its round and room"
     },
-    "sear_foot": {
-      "value": 6,
-      "unit": "mm",
-      "rule": "The sear's foot: solid all along its bottom, so the hook stands on plenty"
-    },
-    "trigger_clear": {
+    "trigger_round": {
       "value": 3,
       "unit": "mm",
-      "rule": "The trigger block's top, below the arms' room's top: the frame over it guides it"
+      "rule": "Every outside corner of the trigger rounded to this: nothing for a finger to catch on"
     },
-    "finger_down": {
-      "value": 8,
+    "crook": {
+      "value": 3,
       "unit": "mm",
-      "rule": "The finger's hollow, this far down from the block's top"
+      "rule": "How deep the hollow the finger sits in is, bowed back from a straight line"
     },
-    "finger_floor": {
-      "value": 6,
+    "crook_steps": {
+      "value": 12,
+      "rule": "Steps the hollow is drawn in"
+    },
+    "trigger_room": {
+      "value": 0.75,
       "unit": "mm",
-      "rule": "The finger's room starts this far above the sear's underside: over its foot"
+      "rule": "The trigger's room in the frame, all round: a hinge doesn't turn quite about one point, so a little more than the print gap; the frame behind it is its stop"
     },
     "finger_wall": {
       "value": 4,
       "unit": "mm",
       "rule": "The frame left between the finger's room and the arms' room"
     },
-    "finger_r": {
-      "value": 6,
+    "finger_round": {
+      "value": 4,
       "unit": "mm",
-      "rule": "The hollow in the shoe's front that the finger sits in"
+      "rule": "The finger's room's corners rounded to this"
     },
-    "scoop": {
-      "value": 3,
-      "unit": "mm",
-      "rule": "How deep the hollow is"
+    "finger_at": {
+      "value": 0.3,
+      "rule": "Where on the crook's face, up from the toe, the finger pulls"
     },
     "pull": {
-      "value": 7,
+      "value": 6,
       "unit": "°",
-      "rule": "How far the sear turns when the trigger's pulled right back, where the frame stops the blade (it lets go well before)"
+      "rule": "How far the trigger turns pulled right back, where the frame behind it stops it (it lets go before)"
     },
     "friction": {
       "value": 0.3,

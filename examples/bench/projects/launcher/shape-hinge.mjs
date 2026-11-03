@@ -20,14 +20,14 @@ const material = f.flexureMaterial({ modulus: v.petg.modulus, strength: v.petg.s
 const arg = (name) => { const i = process.argv.indexOf(`--${name}`); return i < 0 ? null : process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : true }
 const C = catchOf(v, shaped.params.width), t0 = Date.now(), watch = arg('watch'), dry = !!arg('dry'), evaluations = Number(arg('evaluations')) || v.hinge_evaluations
 const { liveShape } = watch ? await import('../../../../packages/cad/lib/live-shape.mjs') : {}
-const view = watch ? await liveShape({ port: watch === true ? 8090 : Number(watch), title: 'Shaping the sear\'s hinge', job: C.job }) : null
+const view = watch ? await liveShape({ port: watch === true ? 8090 : Number(watch), title: 'Shaping the sear\'s hinge', job: C.hingeJob }) : null
 if (view) console.log(`watching at ${view.url}`)
-const r = f.shapeCurve({ ...C.job, material, evaluations, starts: 30, smooth: 6, runs: 3, onRound: view && ((x) => { view.round(x); return view.stopped() }) })
-const held = f.curveSolver({ ...r.params, width: shaped.params.width }, material).loaded(C.job.hold.force, C.job.hold.at)
+const r = f.shapeCurve({ ...C.hingeJob, material, evaluations, starts: 30, smooth: 6, runs: 3, onRound: view && ((x) => { view.round(x); return view.stopped() }) })
+const held = f.curveSolver({ ...r.params, width: shaped.params.width }, material).loaded(C.hingeJob.hold.force, C.hingeJob.hold.at)
 const summary = `${((Date.now() - t0) / 1000).toFixed(0)} s, ${r.evaluations} tries${r.stopped ? ' (stopped)' : ''}: ${(r.strain * 100).toFixed(2)}% strain at ${v.pull}°, ${r.energy.toFixed(2)} mJ, gives ${held.along.toFixed(3)} mm under ${v.hold_design} N${r.ok ? '' : `; ${r.why.join('; ')}`}`
 console.log(summary)
 if (view) view.close(summary, { hold: 10 * 60e3 })
-const job = JSON.stringify({ ...C.job, E: material.E, limit: material.strainLimit })
+const job = JSON.stringify({ ...C.hingeJob, E: material.E, limit: material.strainLimit })
 const round = (x) => +x.toFixed(3), p = r.params
 if (!dry && !r.stopped) fs.writeFileSync(path.join(here, 'objects/inline-hinge.mjs'), `// Written by ../shape-hinge.mjs: the sear hinge's shape for the job below (don't edit; shape it again)
 // ${summary}

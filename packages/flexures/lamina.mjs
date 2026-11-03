@@ -528,11 +528,12 @@ export async function lamina(spec) {
     return null;
   };
   const inverse = (m) => { const d = m[0] * m[4] - m[1] * m[3]; return [m[4] / d, -m[1] / d, (m[1] * m[5] - m[4] * m[2]) / d, -m[3] / d, m[0] / d, (m[3] * m[2] - m[0] * m[5]) / d]; };
-  const pointMove = (n, a, b, pt) => {
-    if (n === 'ground') return 0;
+  const pointStep = (n, a, b, pt) => {
+    if (n === 'ground') return [0, 0];
     const body = parts[n].kind === 'flexure' ? joints[n].to : n, step = mul(places(b)[body], inverse(places(a)[body])), q = apply(step, pt);
-    return Math.hypot(q[0] - pt[0], q[1] - pt[1]);
+    return [q[0] - pt[0], q[1] - pt[1]];
   };
+  const pointMove = (n, a, b, pt) => Math.hypot(...pointStep(n, a, b, pt));
 
   // A path from one set of travels to another, in steps no body moves more than a quarter of a mm in: what jams, what
   // runs into what, how far the followers give
@@ -553,7 +554,8 @@ export async function lamina(spec) {
         const c = contactOf(p.v, fn);
         if (!c) continue;
         const g = fo.give ?? 1, asSet = { ...q.v, [fn]: q.v[fn] - g * (q.pushed[fn] - p.pushed[fn]) }; // where it would be with only the last push
-        const give = pointMove(joints[fn].to, asSet, q.v, c.at), push = pointMove(c.by, p.v, q.v, c.at);
+        // the push: how far what drives it moves against what it hangs from (a pawl carried past a still sear is pushed as hard as one a sear moves into)
+        const give = pointMove(joints[fn].to, asSet, q.v, c.at), by = pointStep(c.by, p.v, q.v, c.at), from = pointStep(joints[fn].from, p.v, q.v, c.at), push = Math.hypot(by[0] - from[0], by[1] - from[1]);
         if (give > FINE) walkRatio = Math.max(walkRatio, (give - FINE) / Math.max(push, 1e-9));
         if (give > FINE && give > steep * push + FINE) return { joint: fn, by: c.by, grip: push / give }; // grip: the least friction that jams it here
       }
@@ -698,7 +700,7 @@ export async function lamina(spec) {
     const catches = (spec.holds?.[seq[i + 1]] || []).filter(([jn]) => Math.abs((a[jn] || 0) - (b[jn] || 0)) > 1e-9);
     const caught = r && catches.find(([jn, by]) => {
       const mine = (x) => carries[jn].has(x), theirs = (x) => x === by || Object.keys(follows).some((fn) => carries[fn].has(by) && carries[fn].has(x));
-      return (r.kind === 'jam' && (mine(r.by) || r.by === joints[jn].to) && carries[r.joint].has(by)) || (r.kind === 'hit' && ((mine(r.a) && theirs(r.b)) || (mine(r.b) && theirs(r.a))));
+      return (r.kind === 'jam' && (mine(r.by) || r.by === joints[jn].to) && carries[r.joint].has(by)) || (r.kind === 'jam' && carries[jn].has(r.joint) && theirs(r.by)) || (r.kind === 'hit' && ((mine(r.a) && theirs(r.b)) || (mine(r.b) && theirs(r.a))));
     });
     if (caught) {
       const [jn, by] = caught, at = r.last[jn] || 0;
@@ -1084,7 +1086,7 @@ async function flooded(spec) {
   // tip anywhere its play allows: room cut round that would let it)
   for (const fr of probe.planned) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
   // and each flexure as it really bends, wherever its bodies are where they're meant to be (within the gap and a bit)
-  if (probe.planned !== probe.frames) for (const fr of probe.frames) if (fr.off != null && fr.off <= gap * 3) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n) && !spec.bodies?.[n]) (by[n] ??= []).push(o);
+  if (probe.planned !== probe.frames) for (const fr of probe.frames) if (fr.off != null && fr.off <= Math.max(gap * 3, 2)) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n) && !spec.bodies?.[n]) (by[n] ??= []).push(o);
   const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)
   // The outline: yours, or everything the moving parts reach and the spaces kept, a wall round it, its corners rounded
   let outline = spec.flood.outline ? all(spec.flood.outline) : null;
