@@ -61,6 +61,8 @@ export function main(v) {
   `withFootprint(circuit, 'J2', pads)` puts a part on new pads with the same pins, so its nets can't change: new edge
   pins for a new board shape. A design returns `{ board, clone: { circuit, arranged } }`, and `cad check` then also
   checks the circuit is the source's and every small part is still by its pin.
+  `addPins(circuit, 'J2', pads)` adds pins the source doesn't have, each on one of its nets (a second 3V3) or, with
+  `joins`, a new net to a pin it leaves free (a spare GPIO); the circuit check expects them and names each one.
 - **As the source has it:** on a clone, a pad as close to the board's edge as the source has it (a mid-mount USB-C
   socket in its notch), or a part that reaches past the outline there too, is said in the checks rather than failed.
   The same thing new to your layout fails as usual.
@@ -74,9 +76,10 @@ export function main(v) {
   gives a 4-layer source's plane nets their planes, with the source's via size and clearance.
 - **Routing to a clearance:** `clearance` (mm) is the gap the autorouter keeps from everything in its way (a clone:
   the source's own). After routing, any connection in a design-rule error is pulled up and routed again with every good
-  track fixed in place, a minute per try. Then, with `neck` (mm, the fab's smallest track), a track still a little too
-  close to another is straightened where the router doubled back, or narrowed where they pass. Existing vias reach the
-  router at their real size.
+  track fixed in place, a minute per try, each round asking for a little more room and the best round kept. Then, with
+  `neck` (mm, the fab's smallest track), a track still a little too close to another is straightened where the router
+  doubled back, moved in where it hugs the board's edge, or narrowed where they pass. Existing vias reach the router at
+  their real size. `effort` asks the router to search harder, at more time.
 - **Labels clear of copper:** `clearLabels(silk, circuit)` slides each silkscreen label across its reading direction to
   the nearest place clear of every pad and of the labels before it (the fab trims silkscreen off copper, so a label
   on a pad loses letters). A label for a pin hemmed in by its neighbours (`to`: where the pin is) goes to the nearest

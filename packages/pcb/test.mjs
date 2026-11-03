@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath } from './circuit.mjs';
 
@@ -488,4 +488,37 @@ test('the board in 3D: a hole set off-centre in its pad is drilled where the fab
   const near = (x) => board.polygons.some((p) => p.vertices.some((v) => Math.abs(v[0] - x) < 0.01 && Math.abs(v[1]) < 0.01));
   assert.ok(near(-2.5) && near(-1.5), 'the hole is at the offset');
   assert.ok(!near(0.5), 'not at the pad\'s centre');
+});
+
+test('pins added to a clone: on a source net, or a new net to a pin the source leaves free; the circuit check names them', async () => {
+  const c = fromKicadPcb(KICAD), k0 = clone(c, { layers: 4, planes: ['B'] });
+  const free = c.parts.find((p) => p.ref === 'R4'), freePin = free.pads.find((q) => !q.net)?.pin;
+  assert.throws(() => addPins(c, 'J1', [{ pin: '9', net: 'NOPE' }]), /no net NOPE/);
+  const anyNet = Object.keys(c.nets).find((n) => !k0.planes[n]);
+  const a = addPins(c, 'J1', [{ pin: '9', net: anyNet, x: 3, y: 3, w: 1, h: 1, hole: 0.5 }]);
+  assert.ok(a.nets[anyNet].includes('J1.9'));
+  assert.deepEqual(a.added, [{ pin: 'J1.9', net: anyNet }]);
+  if (freePin) assert.ok(addPins(c, 'J1', [{ pin: '9', net: 'NEW', joins: [`R4.${freePin}`] }]).nets.NEW.includes(`R4.${freePin}`));
+  const k = clone(a, { layers: 4, planes: ['B'] });
+  const json = await render({ outline: k.outline, thickness: 1.2, track: 0.2, autoroute: true, layers: 4, planes: k.planes, parts: k.parts, nets: k.nets, holes: k.holes },
+    { route: async () => ({ traces: [] }) });
+  {
+    const plain = sameCircuit(json, c, { layers: 4, planes: ['B'] }).map((x) => x.text).join(' | ');
+    assert.match(plain, /pins joined to nets the source leaves them out of: J1\.pin9/, 'undeclared, the new pin fails');
+    const told = sameCircuit(json, c, { layers: 4, planes: ['B'] }, a.added).map((x) => x.text).join(' | ');
+    assert.doesNotMatch(told, /J1\.pin9 in/, 'declared, it is expected');
+  }
+});
+
+test('a routed track hugging the board edge is moved in by what it lacks', async () => {
+  const pad = (pin) => ({ pin, smd: true, hint: pin, x: 0, y: 0, w: 0.4, h: 0.4 });
+  const part = (name, x, y) => ({ name, ftype: 'simple_chip', x, y, layer: 'top', rotation: 0, pads: [pad('pin1')] });
+  let json;
+  await render({ center: { x: 0, y: 0 }, width: 20, height: 10, thickness: 1.6, track: 0.15, autoroute: true,
+    parts: [part('A1', -6, 0), part('A2', 6, 0)], nets: { A: ['A1.pin1', 'A2.pin1'] } }, { route: async (j) => { json = j; return { traces: [] }; } });
+  const w = (x, y) => ({ route_type: 'wire', x, y, width: 0.15, layer: 'top' });
+  const hug = { source_trace_id: 'source_trace_0', route: [w(-6, 0), w(-4, 4.8), w(4, 4.8), w(6, 0)], vias: [] }; // 0.2 mm from the top edge
+  const [t] = await neckDown(json, [hug], 0.1);
+  assert.ok(t.route[1].y < 4.75 && t.route[2].y < 4.75, `moved in: ${t.route[1].y}`);
+  assert.deepEqual([t.route[0].y, t.route[3].y], [0, 0], 'its ends stay on their pads');
 });

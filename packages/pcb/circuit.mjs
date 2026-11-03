@@ -21,6 +21,7 @@
 //            shortest set of connections between them (a minimum spanning tree), left to the autorouter, at the net's
 //            width or board.track; pins are named part.pin, by the pin's label, its name or its number
 //   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer, rotation } (rotation: degrees, counter-clockwise)
+//   effort how hard the autorouter searches (default its own, 1): more for a crowded board, at more time
 //   holes  [{ x, y, d, keepout }] in the board (mounting holes; keepout: a radius the router keeps tracks out of, for a screw head)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
@@ -732,36 +733,48 @@ export function layerChanges(route, holes) {
 }
 
 // The autorouter, then repair: its tracks sometimes run too close to, or over, others. Those connections are pulled up and
-// routed again together with every good track fixed in place, up to three rounds (a round that can't route keeps the last
-// result: on a board too tight for it, the checks then say where)
+// routed again together with every good track fixed in place, up to three rounds, keeping the best (on a board too tight
+// for it, the checks then say where)
+// Routed tracks laid as board elements, for routing round them or checking them
+const lay = (list) => list.flatMap((t, i) => [{ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB },
+  ...t.vias.map((v, k) => ({ type: 'pcb_via', pcb_via_id: `pcb_via_rv${i}x${k}`, pcb_trace_id: `pcb_trace_rt${i}`, ...v, layers: v.layers, subcircuit_id: SUB }))]);
+
 async function defaultRouter(json, toRoute, board) {
   let traces = (await routeOnce(json, toRoute, board)).traces;
   const { runAllChecks } = await import('@tscircuit/checks');
-  const lay = (list) => list.flatMap((t, i) => [{ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB },
-    ...t.vias.map((v, k) => ({ type: 'pcb_via', pcb_via_id: `pcb_via_rv${i}x${k}`, pcb_trace_id: `pcb_trace_rt${i}`, ...v, layers: v.layers, subcircuit_id: SUB }))]);
-  for (let round = 0; round < 3; round++) {
-    const errors = (await runAllChecks([...json, ...lay(traces)])).filter((e) => /_error$/.test(e.type));
+  const problems = async (list) => (await runAllChecks([...json, ...lay(list)])).filter((e) => /_error$/.test(e.type));
+  let errors = await problems(traces), best = { traces, n: errors.length };
+  // Repair: the connections in errors pulled up and routed again round every good track, each round asking for a little
+  // more room than the last (so they don't land in the same squeeze), the best result kept
+  for (let round = 0; round < 3 && errors.length; round++) {
     const bad = new Set();
     for (const e of errors) for (const m of JSON.stringify(e).matchAll(/pcb_(?:trace_rt|via_rv)(\d+)/g)) bad.add(traces[Number(m[1])]?.source_trace_id);
     bad.delete(undefined);
     if (!bad.size) break;
     const keep = traces.filter((t) => !bad.has(t.source_trace_id)), again = toRoute.filter((c) => bad.has(c.id));
+    const roomier = { ...board, clearance: (board.clearance ?? 0.1) + 0.05 * (round + 1) };
     const minute = () => Date.now() + 60000; // each repair attempt gets a minute
-    try { traces = [...keep, ...(await routeOnce([...json, ...lay(keep)], again, board, minute())).traces]; continue; } catch {} // too tight together:
-    if (again.length > 4) break; // a few can go one at a time, each around everything else; more would take too long
-    let changed = false;
-    for (const c of again) {
-      const rest = traces.filter((t) => t.source_trace_id !== c.id);
-      try { traces = [...rest, ...(await routeOnce([...json, ...lay(rest)], [c], board, minute())).traces]; changed = true; } catch {}
+    let next = null;
+    try { next = [...keep, ...(await routeOnce([...json, ...lay(keep)], again, roomier, minute())).traces]; } catch {} // too tight together:
+    if (!next && again.length <= 4) { // a few go one at a time, each round everything else, the router searching harder if it must
+      next = traces;
+      for (const c of again) for (const effort of [1, 2]) {
+        const rest = next.filter((t) => t.source_trace_id !== c.id);
+        try { next = [...rest, ...(await routeOnce([...json, ...lay(rest)], [c], { ...roomier, effort }, minute())).traces]; break; } catch {}
+      }
     }
-    if (!changed) break; // too tight to better: the last result stands
+    if (!next) break; // too tight to better: the best result stands
+    traces = next; errors = await problems(traces);
+    if (errors.length < best.n) best = { traces, n: errors.length };
   }
+  traces = best.traces;
   if (board?.neck) traces = await neckDown(json, traces, board.neck);
   return { traces };
 }
 
 /**
- * Routed tracks still a little too close to another: straightened where the router doubled back, then necked down where they pass, the segment of each nearest the spot
+ * Routed tracks still a little too close to another, or to the board's edge: straightened where the router doubled back,
+ * moved in from the edge, then necked down where they pass, the segment of each nearest the spot
  * narrowed to neck (the fab's smallest track), which opens the gap. traces as the router gives them; returns them.
  * @param {object[]} json @param {object[]} traces @param {number} neck
  */
@@ -780,6 +793,23 @@ export async function neckDown(json, traces, neck) {
     if (k === undefined || Math.hypot(r[k].x - e.center.x, r[k].y - e.center.y) > 1) continue;
     const [gone] = r.splice(k, 1);
     if ((await close()).length >= before) r.splice(k, 0, gone); // no better: put it back
+  }
+  // Then a stretch too close to the board's edge (the router sometimes hugs it): moved in by what it lacks, both its
+  // ends (not a pad's end), where that leaves no more problems than before
+  const b = json.find((e) => e.type === 'pcb_board'), edge = b?.outline || (b && [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({ x: b.center.x + sx * b.width / 2, y: b.center.y + sy * b.height / 2 })));
+  const inside = (q) => { let n = false; for (let a = 0, z = edge.length - 1; a < edge.length; z = a++) if ((edge[a].y > q.y) !== (edge[z].y > q.y) && q.x < ((edge[z].x - edge[a].x) * (q.y - edge[a].y)) / (edge[z].y - edge[a].y) + edge[a].x) n = !n; return n; };
+  for (const e of edge ? await close() : []) {
+    const short = e.message.match(/board edge \(([\d.]+)mm < ([\d.]+)mm/); const m = JSON.stringify(e).match(/pcb_trace_rt(\d+)/); if (!short || !m) continue;
+    const r = out[Number(m[1])].route, by = Number(short[2]) - Number(short[1]) + 0.02;
+    const i = r.map((_, k) => k).filter((k) => k > 0 && k < r.length - 2 && r[k].route_type === 'wire' && r[k + 1].route_type === 'wire').sort((k, j) => toSeg(e.center, r[k], r[k + 1]) - toSeg(e.center, r[j], r[j + 1]))[0];
+    if (i === undefined || toSeg(e.center, r[i], r[i + 1]) > 0.5) continue;
+    const near = edge.map((q, k) => [q, edge[(k + 1) % edge.length]]).sort((u, w) => toSeg(e.center, ...u) - toSeg(e.center, ...w))[0];
+    const len = Math.hypot(near[1].x - near[0].x, near[1].y - near[0].y) || 1;
+    let n = { x: -(near[1].y - near[0].y) / len, y: (near[1].x - near[0].x) / len };
+    if (!inside({ x: e.center.x + n.x * 0.3, y: e.center.y + n.y * 0.3 })) n = { x: -n.x, y: -n.y }; // the way into the board
+    const before = (await close()).length, was = [r[i], r[i + 1]].map((q) => ({ x: q.x, y: q.y }));
+    for (const q of [r[i], r[i + 1]]) { q.x += n.x * by; q.y += n.y * by; }
+    if ((await close()).length >= before) [r[i], r[i + 1]].forEach((q, k) => Object.assign(q, was[k])); // no better: put it back
   }
   for (let pass = 0; pass < 4; pass++) { // two tracks close along a stretch: the next segment along, until they clear
   const laid = out.map((t, i) => ({ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB }));
@@ -803,7 +833,7 @@ async function routeOnce(json, toRoute, board, limit = 0) {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
   const { AutoroutingPipelineSolver } = await import('@tscircuit/capacity-autorouter');
   const srj = await routeInput(json, toRoute, board);
-  const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null });
+  const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null, ...(board.effort ? { effort: board.effort } : {}) }); // effort: how hard it searches (1, the router's own)
   // stepped by hand, so a repair can be given a time limit (a first route has none)
   while (!solver.solved && !solver.failed) { solver.step(); if (limit && Date.now() > limit) throw new Error('a repair took too long'); }
   if (solver.failed) throw new Error(`the autorouter couldn't route every connection: ${solver.error || 'no reason given'}`);

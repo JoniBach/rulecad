@@ -611,6 +611,27 @@ export function withFootprint(circuit, ref, pads) {
 }
 
 /**
+ * New pins on a clone's part, declared: each pad { pin, net, ...pad } joins an existing net of the source (a reset line
+ * from a test point to the edge), or with `joins: ['U3.13']` a new net to pins the source leaves unconnected (a spare
+ * GPIO brought out). The circuit is then the source's plus these; `added` lists them, and sameCircuit (given them)
+ * checks the rest is unchanged and names each one. @param {object} circuit @param {string} ref @param {object[]} pads
+ */
+export function addPins(circuit, ref, pads) {
+  const part = circuit.parts.find((p) => p.ref === ref);
+  if (!part) throw new Error(`addPins: no part ${ref} in the circuit`);
+  const have = new Set(part.pads.map((q) => q.pin)), nets = { ...circuit.nets }, added = [...(circuit.added || [])];
+  for (const q of pads) {
+    if (have.has(q.pin)) throw new Error(`addPins: ${ref} already has a pin ${q.pin}`);
+    if (!q.joins && !nets[q.net]) throw new Error(`addPins: no net ${q.net} in the source (give joins: [...] for a new net)`);
+    if (q.joins) for (const x of q.joins) { const owner = Object.entries(nets).find(([, n]) => n.includes(x)); if (owner) throw new Error(`addPins: ${x} is already on ${owner[0]}`); }
+    nets[q.net] = [...(nets[q.net] || q.joins), `${ref}.${q.pin}`];
+    added.push({ pin: `${ref}.${q.pin}`, net: q.net, ...(q.joins ? { joins: q.joins } : {}) });
+  }
+  const extra = pads.map(({ joins, ...q }) => ({ angle: 0, smd: false, shape: 'circle', ...q }));
+  return { ...circuit, nets, added, parts: circuit.parts.map((p) => (p.ref === ref ? { ...p, pads: [...p.pads, ...extra] } : p)) };
+}
+
+/**
  * Silkscreen labels moved clear of copper and of each other: each slides across its reading direction (a level label up
  * or down, a turned one left or right), a step at a time up to reach, to the nearest place clear of every pad by gap. A
  * label with nowhere clear stays put, marked clash: true. The fab trims silkscreen off copper, so a label on a pad loses
@@ -820,9 +841,11 @@ export function placementChecks(circuit, rules = circuit.placement || learnPlace
  * pins on the board, with no other net's pins in it. Findings as checks() gives them ({ level, text }).
  * @param {object[]} json Circuit JSON (render's) @param {object} circuit @param {{ planes?: string[] }} [o]
  */
-export function sameCircuit(json, circuit, o = {}) {
+export function sameCircuit(json, circuit, o = {}, added = []) {
   const onBoard = new Set(json.filter((e) => e.type === 'source_net').map((e) => e.name)); // nets the board has planes for
-  const left = clone(circuit, o).nets, nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => left[n] || onBoard.has(n))
+  const left = { ...clone(circuit, o).nets }, all = { ...circuit.nets };
+  for (const a of added) { if (!all[a.net]) left[a.net] = true; all[a.net] = [...(all[a.net] || a.joins), a.pin]; } // declared new pins: expected too
+  const nets = Object.fromEntries(Object.entries(all).filter(([n]) => left[n] || onBoard.has(n))
     .map(([n, pins]) => [n, pins.map((x) => { const i = x.indexOf('.'); return `${x.slice(0, i)}.pin${x.slice(i + 1)}`; })]));
   const up = new Map(), find = (a) => { while (up.get(a) !== a) a = up.get(a); return a; };
   const join = (a, b) => { up.set(find(a), find(b)); };
@@ -852,7 +875,7 @@ export function sameCircuit(json, circuit, o = {}) {
   if (missing.length) out.push({ level: 'fail', text: `${missing.length} nets name pins the board doesn't have: ${missing.slice(0, 3).join('; ')}` });
   if (split.length) out.push({ level: 'fail', text: `${split.length} nets are split in two or more on the board: ${split.slice(0, 5).join(', ')}` });
   if (shorted.length) out.push({ level: 'fail', text: `nets joined that the source keeps apart: ${[...new Set(shorted)].slice(0, 5).join('; ')}` });
-  if (!out.length) out.push({ level: 'pass', text: `same circuit as the source: all ${n} nets join the same pins, and no others${Object.keys(circuit.nets).length > n ? ` (${Object.keys(circuit.nets).length - n} left to planes)` : ''}` });
+  if (!out.length) out.push({ level: 'pass', text: `same circuit as the source: all ${n} nets join the same pins, and no others${Object.keys(all).length > n ? ` (${Object.keys(all).length - n} left to planes)` : ''}${added.length ? `, plus ${added.length} pins added: ${added.map((a) => `${a.pin} (${a.net.replace(/^\//, '')})`).join(', ')}` : ''}` });
   return out;
 }
 
@@ -1077,7 +1100,7 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
       : { level: 'fail', text: 'matrix: two keys share a row and column, or a GPIO is used twice' });
   }
   if (inherited.length) out.push({ level: 'info', text: `as the source has them, so not failed: ${[...new Set(inherited.map((e) => e.message.replace(/ \(.*$/, '').replace(/\. Try moving.*$/, '')))].slice(0, 4).join('; ')}${inherited.length > 4 ? ` (${inherited.length} in all)` : ''}` });
-  if (source?.circuit) out.push(...sameCircuit(json, source.circuit), ...placementChecks(source.arranged || source.circuit, source.circuit.placement || learnPlacement(source.circuit)));
+  if (source?.circuit) out.push(...sameCircuit(json, source.circuit, {}, source.arranged?.added || []), ...placementChecks(source.arranged || source.circuit, source.circuit.placement || learnPlacement(source.circuit)));
   const notes = new Set([...json, ...drc].filter((e) => /_warning$/.test(e.type)).map((e) => e.type.replace(/^(source|pcb)_|_warning$/g, '').replace(/_/g, ' ')));
   if (notes.size) out.push({ level: 'info', text: `tscircuit notes, none about the copper: ${[...notes].join(', ')}` });
   return out;

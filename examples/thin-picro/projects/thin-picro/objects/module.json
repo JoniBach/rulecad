@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -10,7 +10,7 @@
     "jlcpcb",
     "rp2040"
   ],
-  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: USB-C on the top long edge, castellated pins along the bottom edge and up both ends. Parts on the front, test points on the back.",
+  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: USB-C on the top long edge, castellated pins along the bottom edge and up both ends, the right end in an SPI display's order. Parts on the front, test points on the back.",
   "parts": {
     "board": {
       "label": "PCB"
@@ -18,17 +18,17 @@
   },
   "variables": {
     "edge_pins": {
-      "value": 17,
+      "value": "18 + 3 * open_pins",
       "unit": "pins",
-      "rule": "Pins along the bottom long edge, between the corners",
+      "rule": "Pins along the bottom long edge, centred: SWITCH, GPIO20 to 23, 26 to 29 and 0 to 8 (with open_pins, 24, 10 and 11 too)",
       "label": "Long-edge pins",
       "show": true,
       "interface": true
     },
     "end_pins": {
-      "value": 7,
+      "value": 8,
       "unit": "pins",
-      "rule": "Pins up each short end, from the bottom edge (Sea-Picro has 31 edge pins: edge_pins + 2 × end_pins)",
+      "rule": "Pins up each short end, from the corner",
       "label": "End pins",
       "show": true,
       "interface": true
@@ -68,10 +68,28 @@
       "label": "Show pin headers",
       "show": true
     },
-    "length": {
-      "value": "(edge_pins - 1) * pitch + 2 * row_in",
+    "key_pitch": {
+      "value": 19.05,
       "unit": "mm",
-      "rule": "Board length: the long-edge pins one pitch apart, row_in from each end",
+      "rule": "Keys' spacing on the keyboard the module mounts under: MX and most others, 0.75 in"
+    },
+    "span": {
+      "value": 3,
+      "unit": "keys",
+      "rule": "The end columns slot between keys: their header holes this many key widths apart (3: across a 2u Backspace and the 1u key beside it, or any three 1u keys)",
+      "label": "Columns span",
+      "show": true,
+      "interface": true
+    },
+    "hole_in": {
+      "value": 1.26,
+      "unit": "mm",
+      "rule": "A header hole's centre in from its edge, with Sea-Picro's pads (the design checks it)"
+    },
+    "length": {
+      "value": "span * key_pitch + 2 * hole_in",
+      "unit": "mm",
+      "rule": "Board length: the end columns' header holes span key widths, so their pins slot between switches",
       "label": "Length",
       "show": true,
       "interface": true
@@ -90,12 +108,12 @@
       "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block: its busiest side of escapes (RP2040 pins 2 to 12) faces the long row of pins"
     },
     "core_x": {
-      "value": -10.03,
+      "value": -10.6,
       "unit": "mm",
       "rule": "The core block moved along the board: a channel from the end pins for tracks to pass"
     },
     "core_y": {
-      "value": "1.31 * headers - 0.85",
+      "value": 0.2,
       "unit": "mm",
       "rule": "The core block moved across the board: clear of the bottom pins (higher with header holes, which reach farther in), with room above it for tracks"
     },
@@ -171,6 +189,52 @@
       "value": 90,
       "unit": "°",
       "rule": "R4 turned to lie across the board when its pin is on the long edge"
+    },
+    "display_gnd_front": {
+      "value": 1,
+      "choice": [
+        0,
+        1
+      ],
+      "rule": "The right end matches an SPI display's header (GND, VCC, SCL, SDA, RES, DC, CS, BLK). 1: GND at the front (the corner by the bottom row), BLK at the back; 0: the other way round, for a display mounted facing the other way"
+    },
+    "display_scl": {
+      "value": 14,
+      "unit": "GPIO",
+      "rule": "Display column: SCL (SPI clock): GPIO14, the RP2040's SPI1 clock"
+    },
+    "display_sda": {
+      "value": 15,
+      "unit": "GPIO",
+      "rule": "Display column: SDA (SPI data out): GPIO15, SPI1's data out"
+    },
+    "display_res": {
+      "value": 16,
+      "unit": "GPIO",
+      "rule": "Display column: RES (the display's reset): GPIO16"
+    },
+    "display_dc": {
+      "value": 12,
+      "unit": "GPIO",
+      "rule": "Display column: DC (data or command): GPIO12"
+    },
+    "display_cs": {
+      "value": 13,
+      "unit": "GPIO",
+      "rule": "Display column: CS (chip select): GPIO13, SPI1's own chip select"
+    },
+    "display_blk": {
+      "value": 9,
+      "unit": "GPIO",
+      "rule": "Display column, 8th pin: BLK (an LCD's backlight): GPIO9; any RP2040 pin can dim it by PWM. A 7-pin OLED leaves it free"
+    },
+    "open_pins": {
+      "value": 0,
+      "choice": [
+        0,
+        1
+      ],
+      "rule": "1: five more pins, for reset, boot and GPIO10, 11 and 24, left unjoined: their signals start inside Sea-Picro's kept routing round the RP2040, where the autorouter finds no way out, so their tracks are for drawing by hand (in KiCad, moving some of Sea-Picro's aside). 0: left off; the left end's top two places stay empty"
     },
     "thickness": {
       "value": "sea_picro.thickness",
