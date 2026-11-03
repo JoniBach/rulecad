@@ -73,11 +73,12 @@ function endOf(end, q) {
  * @param {ReturnType<typeof beamSystem>} sys @param {Float64Array} q @param {{ hessian?: boolean, extra?: (q: Float64Array, g: Float64Array, H: Float64Array | null) => number }} [o]
  */
 export function energyOf(sys, q, { hessian = true, extra } = {}) {
-  const n = sys.dofs, g = new Float64Array(n), H = hessian ? new Float64Array(n * n) : null, strain = {};
+  const n = sys.dofs, g = new Float64Array(n), H = hessian ? new Float64Array(n * n) : null, strain = {}, energies = {};
   let U = 0;
   for (const e of sys.elements) {
     const A = endOf(e.a, q), B = endOf(e.b, q), r = element(e, A.x, A.y, A.t, B.x, B.y, B.t);
     U += r.energy;
+    energies[e.beam] = (energies[e.beam] || 0) + r.energy;
     strain[e.beam] = Math.max(strain[e.beam] || 0, r.strain);
     const ends = [A, B];
     // The gradient through each end's rows
@@ -105,7 +106,7 @@ export function energyOf(sys, q, { hessian = true, extra } = {}) {
     ends.forEach((E, k) => { if (E.phi != null) H[E.phi * n + E.phi] += -r.grad[3 * k] * E.rx - r.grad[3 * k + 1] * E.ry; });
   }
   if (extra) U += extra(q, g, H);
-  return { energy: U, grad: g, hessian: H, strain };
+  return { energy: U, grad: g, hessian: H, strain, energies }; // energies: each beam's own (N·mm, mJ)
 }
 
 // Solve A x = b, A dense n × n (overwritten), by LU with partial pivoting
@@ -213,7 +214,7 @@ export function fixedLoads(sys, q) {
   const out = [];
   for (const e of sys.elements) {
     const A = endOf(e.a, q), B = endOf(e.b, q), r = element(e, A.x, A.y, A.t, B.x, B.y, B.t);
-    [[e.a, A, 0], [e.b, B, 1]].forEach(([end, P, k]) => { if (end.body?.fixed) out.push({ body: end.body.name, at: [P.x, P.y], force: [-r.grad[3 * k], -r.grad[3 * k + 1]], moment: -r.grad[3 * k + 2] }); });
+    [[e.a, A, 0], [e.b, B, 1]].forEach(([end, P, k]) => { if (end.body?.fixed) out.push({ beam: e.beam, body: end.body.name, at: [P.x, P.y], force: [-r.grad[3 * k], -r.grad[3 * k + 1]], moment: -r.grad[3 * k + 2] }); });
   }
   return out;
 }

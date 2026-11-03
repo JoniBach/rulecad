@@ -456,8 +456,14 @@ export function main (v) {
     assert.match(ok, /✓ rest to bent: clear all the way/);
     assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/, 'the same from the cache');
     assert.match(cad('check', 'demo/flick:fused'), /✗ the ground and tip are 0\.1 mm apart at rest: under the 0\.3 mm gap, they print as one/);
-    const out = cad('animate', 'demo/flick').trim();
+    const outs = cad('animate', 'demo/flick').trim().split('\n'), out = outs.find((l) => l.endsWith('.svg'));
     assert.ok(out.endsWith('flick-sequence.svg') && /<svg[\s\S]*<animate attributeName="display"[\s\S]*rest to bent/.test(fs.readFileSync(out, 'utf8')));
+    // and as data, every frame's shapes and what acts on them, with a page that plays it
+    const data = JSON.parse(fs.readFileSync(outs.find((l) => l.endsWith('-sequence.json')), 'utf8'));
+    assert.ok(data.frames.length > 2 && data.ground.length && data.kinds.ground === 'ground', 'the frames and the frame');
+    assert.ok(data.frames.some((fr) => fr.forces?.some((f) => f.kind === 'hand') && fr.energy && fr.strain), 'what acts each frame: the hand, the energy and strain in each flexure');
+    const page = fs.readFileSync(outs.find((l) => l.endsWith('-player.html')), 'utf8');
+    assert.ok(/<canvas id="view">/.test(page) && page.includes('"frames":'), 'a page that plays it, its data inside');
     object(ws, 'demo/cube', { variables: { w: n(10, 'Width') } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n");
     assert.match(cad('animate', 'demo/cube'), /isn't a lamina mechanism/);
   } finally { done(); }

@@ -948,12 +948,12 @@ export async function lamina(spec) {
       const at = places(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * fr.t]))).v);
       return Math.max(0, ...Object.keys(parts).filter((n) => parts[n].kind === 'body').map((n) => Math.max(...corners(n).map((c) => Math.hypot(...apply(poseT(n, fr.q), c).map((x, k) => x - apply(at[n], c)[k]))))));
     };
-    const physical = sim.frames.filter((fr, i, all) => fr.t === 0 || i % 2 === 0 || i === all.length - 1).map((fr) => ({ from: fr.from, to: fr.to, t: fr.t, off: offPlan(fr), parts: Object.fromEntries(Object.entries(parts).map(([n, p]) => {
+    const physical = sim.frames.filter((fr, i, all) => fr.t === 0 || i % 2 === 0 || i === all.length - 1).map((fr) => ({ from: fr.from, to: fr.to, t: fr.t, off: offPlan(fr), forces: fr.forces, energy: fr.energy, strain: fr.strain, parts: Object.fromEntries(Object.entries(parts).map(([n, p]) => {
       if (p.kind !== 'flexure') return [n, round3(moved(poseT(n, fr.q), p.shape))];
       const j = joints[n], lines = Object.keys(sim.beamOf).filter((b) => sim.beamOf[b] === n).map((b) => ({ rest: still.lines[b], now: fr.shape.lines[b], turn: fr.shape.turns[b], from: poseT(j.from, fr.q), to: poseT(j.to, fr.q) }));
       return [n, round3(bend(p.shape, lines))];
     })) }));
-    if (sim.fire) for (const fr of sim.fire.frames) physical.push({ from: `${spec.fire.from}, fired`, to: `${spec.fire.from}, fired`, t: fr.t, label: `fired, ${(fr.t * 1000).toFixed(1)} ms`, parts: {
+    if (sim.fire) for (const fr of sim.fire.frames) physical.push({ from: `${spec.fire.from}, fired`, to: `${spec.fire.from}, fired`, t: fr.t, label: `fired, ${(fr.t * 1000).toFixed(1)} ms`, forces: fr.forces, energy: fr.energy, strain: fr.strain, speeds: sim.fire.speeds, parts: {
       ...Object.fromEntries(Object.entries(parts).map(([n, p]) => {
         if (p.kind !== 'flexure') return [n, round3(moved(poseT(n, fr.q), p.shape))];
         const j = joints[n], sh = shapeOf(sim.sys, Float64Array.from(fr.q)), lines = Object.keys(sim.beamOf).filter((b) => sim.beamOf[b] === n).map((b) => ({ rest: still.lines[b], now: sh.lines[b], turn: sh.turns[b], from: poseT(j.from, fr.q), to: poseT(j.to, fr.q) }));
@@ -1048,7 +1048,7 @@ export async function lamina(spec) {
     planned: planned ?? frames,
     at: (s) => extrude(shapesAt(solve(state(s)).v)),
     outlines: (s) => outline(solve(state(s)).v),
-    mechanism: { height, sequence: seq, states: Object.keys(states), ...(sim ? { curves: sim.transitions.map((tr) => ({ from: tr.from, to: tr.to, curve: tr.curve })), physical: true } : {}), joints: Object.fromEntries(Object.entries(joints).map(([n, j]) => [n, { from: j.from, to: j.to, kind: j.kind || 'own', ...(follows[n] ? { follows: follows[n].by } : {}) }])) },
+    mechanism: { height, sequence: seq, states: Object.keys(states), limit: material.strainLimit, ...(sim ? { curves: sim.transitions.map((tr) => ({ from: tr.from, to: tr.to, curve: tr.curve, events: tr.events.map((e) => ({ body: e.body, t: e.t, jump: e.jump })), ...(tr.holding ? { holding: tr.holding } : {}) })), physical: true, friction: sim.friction, ...(sim.trip ? { trip: sim.trip } : {}), ...(sim.fire ? { shot: { from: spec.fire.from, disc: spec.fire.disc, exit: sim.fire.exit, stored: sim.fire.stored, speeds: sim.fire.speeds } } : {}) } : {}), joints: Object.fromEntries(Object.entries(joints).map(([n, j]) => [n, { from: j.from, to: j.to, kind: j.kind || 'own', ...(follows[n] ? { follows: follows[n].by } : {}) }])) },
   };
 }
 

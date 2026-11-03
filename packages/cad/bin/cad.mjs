@@ -49,7 +49,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
-  cad animate <project>/<object>    a lamina mechanism's sequence, start to finish, as an animated SVG in .preview/
+  cad animate <project>/<object>    a lamina mechanism's sequence, start to finish, in .preview/: an animated SVG, the
+                                    data (shapes, forces, energies, strains each frame, JSON) and a page that plays it
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
                                     [--watch [port]: a live view of it at http://127.0.0.1:8090/, with a stop button]
@@ -387,7 +388,11 @@ async function main() {
     const out = paths.preview(d.project, `${d.name}${tag}-sequence.svg`);
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, (await import('../lib/animate.mjs')).sequenceSvg(b.mechanism, { title: `${title} ${version}: ${(b.mechanism.sequence || []).join(', ')}` }));
-    return console.log(out);
+    // and the sequence as data (shapes, forces, energies, strains each frame), with a page that plays it
+    const { playerData, playerHtml } = await import('../lib/player.mjs'), data = playerData(b.mechanism, { title, version, object: `${d.project}/${d.name}` });
+    const json = paths.preview(d.project, `${d.name}${tag}-sequence.json`), html = paths.preview(d.project, `${d.name}${tag}-player.html`);
+    fs.writeFileSync(json, JSON.stringify(data)); fs.writeFileSync(html, playerHtml(data));
+    console.log(out); console.log(json); return console.log(html);
   }
 
   if (cmd === 'preview') {

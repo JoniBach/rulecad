@@ -11,7 +11,7 @@
 //   a joint the next state doesn't set is let go of, if the hand had it
 //   everything else moves only as the springs and the contacts make it
 // Letting go is gradual: the hand's spring softens to nothing over the step, so the mechanism finds where it rests.
-import { beamSystem, equilibrium, shapeOf, energyOf } from './beams.mjs';
+import { beamSystem, equilibrium, shapeOf, energyOf, fixedLoads } from './beams.mjs';
 import { beamProfile, waveSpringPath } from './flexures.mjs';
 import { curveLines } from './curves.mjs';
 
@@ -170,11 +170,17 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
   // per mm (a little less within `slip` of the anchor, so the solve stays smooth). Over a step, that's a potential, so
   // the solve is as before; step by step, it's sliding friction. The firing is solved without it
   const fric = { mu: friction, anchors: null, record: null, slip: 0.01 };
+  // The forces where things touch, for a picture of them: each pair's total on the first (the part whose point it is,
+  // pushed out of the other), where it acts (weighted by the push), and how much of it is friction
+  const meter = { pairs: null, add(A, B, w, nx, ny, tx, ty) {
+    const key = `${A}|${B}`, p = (this.pairs[key] ??= { a: A, b: B, n: [0, 0], f: [0, 0], at: [0, 0], w: 0 }), m = Math.hypot(nx + tx, ny + ty);
+    p.n[0] += nx; p.n[1] += ny; p.f[0] += tx; p.f[1] += ty; p.at[0] += w[0] * m; p.at[1] += w[1] * m; p.w += m;
+  } };
   const extra = (q, g, H) => {
     let U = 0;
     const n = sys.dofs;
     // One point (with its dofs and how it moves with them) against body B; key: the point's own, for its anchor
-    const touch = (w, dw, r, B, key) => {
+    const touch = (w, dw, r, B, key, A) => {
       const L = toLocal(B, q, w), bb = boxes[B];
       if (L[0] < bb.lo[0] - r || L[0] > bb.hi[0] + r || L[1] < bb.lo[1] - r || L[1] > bb.hi[1] + r) return;
       const at = sdfAt(sdfs[B], L[0], L[1]);
@@ -192,6 +198,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
       };
       const J = jac(dlx, dly);
       U += 0.5 * k * pen * pen;
+      if (meter.pairs) { const fx = -(cs * dlx - sn * dly) * k * pen, fy = -(sn * dlx + cs * dly) * k * pen; meter.add(A, B, w, fx, fy, 0, 0); } // (on A's point, pushed out of B)
       for (const [d, v] of J) g[d] += k * pen * v;
       if (H) for (const [a, va] of J) for (const [b, vb] of J) H[a * n + b] += k * va * vb;
       if (!fric.mu || key == null) return;
@@ -202,6 +209,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
       U += Ft * (root - s0);
       const Jt = jac(a.tx, a.ty), c1 = (Ft * s) / root, c2 = (Ft * s0 * s0) / root ** 3;
       for (const [d, v] of Jt) g[d] += c1 * v;
+      if (meter.pairs) meter.add(A, B, w, 0, 0, -(cs * a.tx - sn * a.ty) * c1, -(sn * a.tx + cs * a.ty) * c1); // friction, along the face
       if (H) for (const [a2, va] of Jt) for (const [b, vb] of Jt) H[a2 * n + b] += c2 * va * vb;
     };
     for (const A of names) {
@@ -215,7 +223,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
           const w = toWorld(A, q, p);
           if (w[0] < bb.lo[0] + tx - m0 || w[0] > bb.hi[0] + tx + m0 || w[1] < bb.lo[1] + ty - m0 || w[1] > bb.hi[1] + ty + m0) continue;
           const dw = bodies[A].fixed ? [] : (() => { const a = sys.body[A].dof; return [[a, 1, 0], [a + 1, 0, 1], [a + 2, -w[3], w[2]]]; })();
-          touch(w, dw, 0, B, p);
+          touch(w, dw, 0, B, p, A);
         }
       }
     }
@@ -235,7 +243,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
     }
     for (const { nd, joint, r } of nodeBeam) {
       const w = [nd.at[0] + q[nd.dof], nd.at[1] + q[nd.dof + 1]], j = joints[joint];
-      for (const B of names) if (B !== j.from && B !== j.to && (withLoose || !bodies[B].loose)) touch(w, [[nd.dof, 1, 0], [nd.dof + 1, 0, 1]], r, B, nd);
+      for (const B of names) if (B !== j.from && B !== j.to && (withLoose || !bodies[B].loose)) touch(w, [[nd.dof, 1, 0], [nd.dof + 1, 0, 1]], r, B, nd, joint);
     }
     return U;
   };
@@ -260,6 +268,29 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
 
   // Friction's anchors: where everything touching touches, at q
   const anchor = (q) => { if (!fric.mu) return; fric.record = new Map(); extra(q, new Float64Array(sys.dofs), null); fric.anchors = fric.record; fric.record = null; };
+  // What acts where, at q: each contact pair's force (and its friction), the hand's on what it holds, what each flexure
+  // pulls on the frame with, and each flexure's energy (mJ) and strain. N, mm; a force on the first part named
+  const measure = (q, grips = []) => {
+    meter.pairs = {}; extra(q, new Float64Array(sys.dofs), null); const pairs = meter.pairs; meter.pairs = null;
+    const r3 = (x) => +x.toFixed(3), forces = [];
+    for (const p of Object.values(pairs)) if (p.w > 1e-6) forces.push({ kind: 'contact', on: p.a, by: p.b, at: [r3(p.at[0] / p.w), r3(p.at[1] / p.w)], force: [r3(p.n[0] + p.f[0]), r3(p.n[1] + p.f[1])], friction: [r3(p.f[0]), r3(p.f[1])] });
+    const hands = {};
+    for (const gr of grips) {
+      if (!gr.stiff) continue;
+      const d = sys.body[gr.body].dof, mv = moveOf(d, q, gr.o || [0, 0]), off = mv[0] * gr.u[0] + mv[1] * gr.u[1] - gr.target, c = centre[gr.body], o = gr.o || [0, 0], f = q[d + 2];
+      const at = [c[0] + q[d] + Math.cos(f) * o[0] - Math.sin(f) * o[1], c[1] + q[d + 1] + Math.sin(f) * o[0] + Math.cos(f) * o[1]], key = `${gr.body}|${o.join(',')}`;
+      const h = (hands[key] ??= { kind: 'hand', on: gr.body, joint: gr.jn, at: at.map(r3), force: [0, 0] });
+      h.force[0] = r3(h.force[0] - gr.stiff * off * gr.u[0]); h.force[1] = r3(h.force[1] - gr.stiff * off * gr.u[1]);
+    }
+    forces.push(...Object.values(hands).filter((h) => Math.hypot(...h.force) > 1e-3));
+    const roots = {};
+    for (const L of fixedLoads(sys, q)) { const jn = beamOf[L.beam], R = (roots[jn] ??= { kind: 'spring', on: 'ground', by: jn, at: [0, 0], force: [0, 0], w: 0 }), mag = Math.hypot(...L.force); R.force[0] += L.force[0]; R.force[1] += L.force[1]; R.at[0] += L.at[0] * mag; R.at[1] += L.at[1] * mag; R.w += mag; }
+    for (const R of Object.values(roots)) if (R.w > 1e-6) { forces.push({ kind: 'spring', on: 'ground', by: R.by, at: [r3(R.at[0] / R.w), r3(R.at[1] / R.w)], force: R.force.map(r3) }); }
+    const e = energyOf(sys, q, { hessian: false }), energy = {}, strain = {};
+    for (const [b, x] of Object.entries(e.energies)) energy[beamOf[b]] = r3((energy[beamOf[b]] || 0) + x);
+    for (const [b, x] of Object.entries(e.strain)) strain[beamOf[b]] = Math.max(strain[beamOf[b]] || 0, +x.toFixed(5));
+    return { forces, energy, strain };
+  };
   const seq = m.sequence, out = { transitions: [], frames: [], findings: [], strain: {}, friction };
   if (!seq.length) return out;
   const still = new Map(Object.keys(loose).flatMap((n) => [0, 1, 2].map((k) => [sys.body[n].dof + k, 0]))); // loose parts stay put while a hand works it
@@ -312,7 +343,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
         }
       }
       mark(r);
-      out.frames.push({ from: seq[i], to: seq[i + 1], t, q: Array.from(r.q), shape: shapeOf(sys, r.q) });
+      out.frames.push({ from: seq[i], to: seq[i + 1], t, q: Array.from(r.q), shape: shapeOf(sys, r.q), ...measure(r.q, now) });
       last = r.q;
     }
     q = last;
@@ -332,7 +363,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
   if (tripped) {
     const tr = out.transitions.find((x) => x.to === m.fire.from), ev = tr.events[0];
     out.trip = { from: tr.from, to: tr.to, body: ev.body, hand: ev.hand };
-    out.fire = fire({ sys, extra: both(extra, handTerm(tripped.grips)), touching: extra, centre, outline, bodies, loose, material, height, beams, start: tripped.q, ...m.fire });
+    out.fire = fire({ sys, extra: both(extra, handTerm(tripped.grips)), touching: extra, measure: (q) => measure(q, tripped.grips), centre, outline, bodies, loose, material, height, beams, start: tripped.q, ...m.fire });
   } else if (m.fire) {
     // The finger stays: each joint in hold is kept where the state, with hold's values, puts its body's centre
     const from = stateOf(m.fire.from), grips = Object.entries(m.fire.hold || {}).flatMap(([jn, val]) => {
@@ -350,7 +381,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
         start = equilibrium(sys, { start, extra: both(extra, handTerm([...keep, ...part])), iterations: 80, held: still }).q;
       }
     }
-    out.fire = fire({ sys, extra: grips.length ? both(extra, handTerm(grips)) : extra, centre, outline, bodies, loose, material, height, beams, start, ...m.fire });
+    out.fire = fire({ sys, extra: grips.length ? both(extra, handTerm(grips)) : extra, measure: (q) => measure(q, grips), centre, outline, bodies, loose, material, height, beams, start, ...m.fire });
   }
   return out;
 }
@@ -403,7 +434,7 @@ function massOf(loops, h, rho) {
  * damping. Units: mm, N, kg, s (so an acceleration is 1000 F / m in mm/s²).
  * @returns {{ frames: { t: number, q: number[] }[], speeds: Record<string, number>, exit: { body: string, speed: number, energy: number } | null, stored: number }}
  */
-function fire({ sys, extra, touching, outline, bodies, loose, material, height, beams, start, duration = 0.02, dt, damping = 10, disc, every }) {
+function fire({ sys, extra, touching, measure, outline, bodies, loose, material, height, beams, start, duration = 0.02, dt, damping = 10, disc, every }) {
   if (!start) return null;
   const rho = (material.density ?? 1.25) * 1e-6, n = sys.dofs, mass = new Float64Array(n);
   // The time step: short enough that a sound wave doesn't cross the shortest element in one (a long flexure cut into
@@ -438,7 +469,7 @@ function fire({ sys, extra, touching, outline, bodies, loose, material, height, 
     const m0 = row * need;
     if (mass[i] < m0) { if (i % 3 !== 2) added += (m0 - mass[i]) / 2; mass[i] = m0; }
   }
-  const q = Float64Array.from(start), v = new Float64Array(n), frames = [{ t: 0, q: Array.from(q) }], speeds = {};
+  const q = Float64Array.from(start), v = new Float64Array(n), frames = [{ t: 0, q: Array.from(q), ...(measure ? measure(q) : {}) }], speeds = {};
   const stored = energyOf(sys, q, { hessian: false }).energy / 1000; // J
   // Anything pressed into anything at the start (a disc where the drawn pusher already is) would be let go too, and
   // throw it with energy the spring never stored
@@ -470,7 +501,7 @@ function fire({ sys, extra, touching, outline, bodies, loose, material, height, 
         else if (!exit) exit = { body: disc, speed: sp, energy: 0.5 * mass[d] * sp * sp, t: k * dt };
       }
     }
-    if (k % every === 0) frames.push({ t: k * dt, q: Array.from(q) });
+    if (k % every === 0) frames.push({ t: k * dt, q: Array.from(q), ...(measure ? measure(q) : {}) });
     if (exit && k * dt > exit.t + 0.004) break; // (4 ms clear of everything: gone)
   }
   return { frames, speeds, exit, stored, pressed, scaled: real > 0 ? added / real : 0 };
