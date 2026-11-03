@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -18,9 +18,9 @@
   },
   "variables": {
     "edge_pins": {
-      "value": "18 + 3 * open_pins",
+      "value": "18 + 3 * open_pins + 2 * row_gnd",
       "unit": "pins",
-      "rule": "Pins along the bottom long edge, centred: SWITCH, GPIO20 to 23, 26 to 29 and 0 to 8 (with open_pins, 24, 10 and 11 too)",
+      "rule": "Pins along the bottom long edge, centred: SWITCH, GPIO20 to 23, 26 to 29 and 0 to 8, with a GND at each end (with open_pins, 24, 10 and 11 too)",
       "label": "Long-edge pins",
       "show": true,
       "interface": true
@@ -113,7 +113,7 @@
       "rule": "The core block moved along the board: a channel from the end pins for tracks to pass"
     },
     "core_y": {
-      "value": 0.2,
+      "value": 0.15,
       "unit": "mm",
       "rule": "The core block moved across the board: clear of the bottom pins (higher with header holes, which reach farther in), with room above it for tracks"
     },
@@ -161,7 +161,7 @@
       "rule": "Mounting holes: no track within this of a hole's centre (a 3.0 mm clear circle; an M2 screw head, 3.8 mm across, overlaps solder mask past it: use a nylon screw or washer). Wider keepouts crowd the tracks to the right-hand pins"
     },
     "hole_a_x": {
-      "value": 8.2,
+      "value": 8.4,
       "unit": "mm",
       "rule": "First mounting hole, along the board from the middle: in the clear space between the core and the USB-C parts"
     },
@@ -235,6 +235,14 @@
         1
       ],
       "rule": "1: five more pins, for reset, boot and GPIO10, 11 and 24, left unjoined: their signals start inside Sea-Picro's kept routing round the RP2040, where the autorouter finds no way out, so their tracks are for drawing by hand (in KiCad, moving some of Sea-Picro's aside). 0: left off; the left end's top two places stay empty"
+    },
+    "row_gnd": {
+      "value": 1,
+      "choice": [
+        0,
+        1
+      ],
+      "rule": "1: a GND pin at each end of the bottom row, in the space by the corners (two more pins than Sea-Picro's, joined to its GND plane). 0: left off. With open_pins there's no room for them: set 0"
     },
     "thickness": {
       "value": "sea_picro.thickness",

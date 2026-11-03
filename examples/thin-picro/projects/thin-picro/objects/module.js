@@ -14,11 +14,12 @@ export function main (v) {
   const out = srcLeft - (j2.x + half.x) // the half hole's centre beyond the edge, as on Sea-Picro
   const chip = src.parts.find((p) => /RP2040/i.test(`${p.footprint} ${p.value}`)), padOf = (gpio) => Object.entries(v.rp2040.pinMaps.gpio).find(([, g]) => g === `GPIO${gpio}`)[0]
   const gp = (t) => Number(t.slice(2)), run = (a, b) => Array.from({ length: gp(b) - gp(a) + 1 }, (_, i) => `GP${gp(a) + i}`) // 'GP12'; 'GP0' to 'GP10'
-  // One pin more than Sea-Picro's, a second 3V3. With open_pins, five more: reset and boot (on test points on the
-  // module's underside, out of reach under a keyboard's board) and GPIO10, 11 and 24 (unconnected on Sea-Picro). They
+  // One pin more than Sea-Picro's, a second 3V3; with row_gnd, a GND at each end of the bottom row too (into the GND
+  // plane, so nothing to route). With open_pins, five more: reset and boot (on test points on the module's underside,
+  // out of reach under a keyboard's board) and GPIO10, 11 and 24 (unconnected on Sea-Picro). They
   // start inside Sea-Picro's kept routing round the RP2040, where the autorouter finds no way out for them, so their
   // pins are left unjoined, for tracks drawn by hand. The checks name every added pin
-  const extras = [{ pin: '35', net: '+3V3' }, ...(v.open_pins ? [['33', '/nRST'], ['34', '/BOOT'], ['36', 'GP10'], ['37', 'GP11'], ['38', 'GP24']]
+  const extras = [{ pin: '35', net: '+3V3' }, ...(v.row_gnd ? [{ pin: '39', net: 'GND' }, { pin: '40', net: 'GND' }] : []), ...(v.open_pins ? [['33', '/nRST'], ['34', '/BOOT'], ['36', 'GP10'], ['37', 'GP11'], ['38', 'GP24']]
     .map(([pin, n]) => ({ pin, net: `${n.startsWith('GP') ? `GPIO${gp(n)}` : n.slice(1)}_unconnected`, joins: [] })) : [])]
   const pins = [...[...new Set(j2.pads.filter((q) => q.castellated).map((q) => q.pin))].sort((a, b) => a - b), ...extras.map((e) => e.pin)]
   const rowStart = -((v.edge_pins - 1) * v.pitch) / 2 // the long edge's pins centred, at least row_in from the ends
@@ -49,7 +50,8 @@ export function main (v) {
   // (seen from above, USB-C at the top):
   //  - up the left end: power and control: 5V, 3V3 and GND together; reset and boot either side of a GND (a button
   //    across each pair); the USB data pair, for a socket elsewhere
-  //  - along the bottom: SWITCH, then the GPIO in two runs: 20 to 29 (26 to 29 can read analog), then 0 to 10
+  //  - along the bottom: SWITCH, then the GPIO in two runs: 20 to 29 (26 to 29 can read analog), then 0 to 10, with a
+  //    GND at each end
   //  - up the right end: an SPI display's header (GND, VCC, SCL, SDA, RES, DC, CS, then BLK, an LCD's backlight: a 7-pin
   //    SSD1322 OLED or an 8-pin ST7789 LCD fits without cutting the header), on the RP2040's SPI1 pins
   // 'GP12' is GPIO12; other names are Sea-Picro's nets. The pins keep Sea-Picro's numbers and nets; only their places change
@@ -63,7 +65,8 @@ export function main (v) {
   }
   const display = ['GND', '+3V3', ...[v.display_scl, v.display_sda, v.display_res, v.display_dc, v.display_cs, v.display_blk].map((g) => `GP${g}`)].map(take) // front to back
   const leftEnd = (v.open_pins ? ['+5V', '+3V3', 'GND', '/nRST', 'GND', '/BOOT', '/USB-', '/USB+'] : ['+5V', '+3V3', 'GND', 'GND', '/USB-', '/USB+', null, null]).map(take) // front to back; the top places left empty
-  const row = ['/SWITCH', ...run('GP20', 'GP23'), ...(v.open_pins ? ['GP24'] : []), ...run('GP26', 'GP29'), ...run('GP0', 'GP8'), ...(v.open_pins ? ['GP10', 'GP11'] : [])].map(take) // left to right (GPIO9: the display's backlight)
+  const ends = v.row_gnd ? ['GND'] : []
+  const row = [...ends, '/SWITCH', ...run('GP20', 'GP23'), ...(v.open_pins ? ['GP24'] : []), ...run('GP26', 'GP29'), ...run('GP0', 'GP8'), ...(v.open_pins ? ['GP10', 'GP11'] : []), ...ends].map(take) // left to right (GPIO9: the display's backlight)
   const order = [...[...leftEnd].reverse(), ...row, ...(v.display_gnd_front ? display : [...display].reverse())] // the left end's places run top to bottom, the right end's bottom to top
   if (order.length !== spots.length || used.size !== pins.length) throw new Error(`the layout places ${order.length} of the module's ${pins.length} edge pins`)
   // Each end's lowest pin sits at the corner, beside the long edge's first pin, as on Waveshare's RP2040-Zero: if its

@@ -17,7 +17,7 @@ holes with 0.1 in header holes beside them.
    - **The core keeps Sea-Picro's own layout and routing:** the RP2040, flash, crystal, regulator and their small
      parts, turned on their side as one block, with Sea-Picro's own tracks and vias (548 tracks, 69 vias), and the
      start of each track out of the core (the RP2040's escapes).
-   - **The edge pins are new:** 18 along the bottom and 8 up each end, with Sea-Picro's pad shapes: a half hole on
+   - **The edge pins are new:** 20 along the bottom and 8 up each end, with Sea-Picro's pad shapes: a half hole on
      the edge and a 0.1 in header hole in a long pad beside it, for soldering flat or for pin headers.
      - **The end columns slot between keys:** their header holes are 3 key widths apart (57.15 mm, `span` and
        `key_pitch`), across a 2u Backspace and the key beside it, or any three 1u keys, so a module mounted under the
@@ -25,14 +25,18 @@ holes with 0.1 in header holes beside them.
      - **The corners are laid out like Waveshare's RP2040-Zero:** each end's column runs down to the corner, beside the
        bottom row's first pin. The column's lowest pad has its top level with the tips of the bottom row's pads, and
        the bottom row's first pad is at least a pin's usual gap (0.84 mm) past the end of it.
+     - **A GND at each end of the bottom row** (`row_gnd: 1`), in the space by the corners: a ground beside the GPIO
+       for buttons, an encoder or the link between a split keyboard's halves. They join the GND plane, so they need no
+       tracks.
      - **The pins are grouped by job,** each group on the side its signals leave the core (see Pinout): power and USB
        up the left end, the GPIO in number order along the bottom, and an SPI display's header up the right end.
-     - **One pin more than Sea-Picro's,** a second 3V3, so each end has 3V3 by a GND. The checks name it as an
-       addition to Sea-Picro's circuit.
+     - **Three pins more than Sea-Picro's:** a second 3V3, so each end has 3V3 by a GND, and the two GND at the ends of
+       the bottom row. The checks name them as additions to Sea-Picro's circuit.
      - **Reset, boot and three more GPIO** (10, 11 and 24) can have pins too (`open_pins: 1`), left unjoined: their
        signals start inside Sea-Picro's kept routing round the RP2040, where the autorouter finds no way out for them,
-       so their tracks are for drawing by hand in KiCad, moving some of Sea-Picro's aside. Tried and failed: routing
-       them last, round everything else; and letting go of Sea-Picro's tracks near them.
+       so their tracks are for drawing by hand in KiCad, moving some of Sea-Picro's aside. They take the bottom row's
+       end places, so set `row_gnd: 0` with them. Tried and failed: routing them last, round everything else; and
+       letting go of Sea-Picro's tracks near them.
      - `headers: 0` drops the header holes (half holes only, which reach less far in) and makes the board 2 mm
        narrower. That passed its checks in an earlier layout; with this one it's untested.
    - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors.
@@ -63,18 +67,19 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 ## Status
 
 59.7 × 21.0 mm. It routes in about 40 minutes, and `cad check` passes everything:
-- the circuit is Sea-Picro's, plus the added 3V3 pin
+- the circuit is Sea-Picro's, plus the added 3V3 and two GND pins
 - the placement
 - both planes
 - JLCPCB's clearances and track widths
 - the castellations and the outline
 
 The autorouter is sensitive here: a shift of a tenth of a millimetre can take a layout from passing to dozens of
-clearance errors. This one was found by trying small moves of the core and the mounting holes in turn (the second hole
-at `hole_b_x` 17.3 mm); if you change the layout, expect to try a few nearby values.
+clearance errors. This one was found by trying small moves of the core and the mounting holes in turn (the first hole
+at `hole_a_x` 8.4 mm, the core at `core_y` 0.15 mm, the 20th layout tried); if you change the layout, expect to try a
+few nearby values.
 
 `cad export` makes the files JLCPCB needs. It hasn't been made yet. Before ordering:
-- **Open `exports/thin-picro/module@0.5.1.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
+- **Open `exports/thin-picro/module@0.6.0.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
 - **Check the pinout** below against your keyboard's wiring.
 
 ## Pinout
@@ -82,12 +87,12 @@ at `hole_b_x` 17.3 mm); if you change the layout, expect to try a few nearby val
 Seen from above, USB-C at the top. Places run up each end from the bottom corner, and along the bottom from the left.
 Each pin is labelled on the board: its RP2040 GPIO number, or its power or signal name. Where a pin has no room for its
 label beside it, the label sits nearby with a small triangle pointing at the pin. In firmware, use the GPIO (`GP12`).
-"Pin" is Sea-Picro's own pin number (35 is the added 3V3).
+"Pin" is Sea-Picro's own pin number (35 is the added 3V3, 39 and 40 the added GNDs).
 
 - **Left end (power and USB):** 5V, 3V3 and two GND at the front, the USB data pair behind (for a socket elsewhere).
   The top two places are empty.
-- **Bottom (GPIO in number order):** SWITCH, then GPIO20 to 23 (Sea-Picro's SPI0), 26 to 29 (these four can read
-  analog), and 0 to 8 (0 and 1: UART0, the usual pair between a split keyboard's halves).
+- **Bottom (GPIO in number order):** GND, SWITCH, then GPIO20 to 23 (Sea-Picro's SPI0), 26 to 29 (these four can read
+  analog), and 0 to 8 (0 and 1: UART0, the usual pair between a split keyboard's halves), then GND.
 - **Right end (an SPI display's header):** GND, VCC (3V3), SCL, SDA, RES, DC, CS, BLK, front to back, on the RP2040's
   SPI1 (GPIO14 clock, 15 data, 13 chip select). A 7-pin SSD1322 OLED or an 8-pin ST7789 LCD (BLK: its backlight, on
   GPIO9, dimmable by PWM) plugs straight in. `display_gnd_front: 0` turns the order round for a display facing the
@@ -105,24 +110,26 @@ through a level shifter, as Sea-Picro's documentation describes it.
 | left end 3 | 5 | - | GND |  |
 | left end 2 | 35 | - | +3V3 (added) |  |
 | left end 1 | 30 | - | +5V |  |
-| bottom 1 | 28 | - | SWITCH |  |
-| bottom 2 | 21 | GPIO20 | 20_MISO |  |
-| bottom 3 | 19 | GPIO21 | 21_nCS |  |
-| bottom 4 | 22 | GPIO22 | 22_SCK |  |
-| bottom 5 | 20 | GPIO23 | 23_MOSI |  |
-| bottom 6 | 23 | GPIO26 | A0 |  |
-| bottom 7 | 24 | GPIO27 | A1 |  |
-| bottom 8 | 25 | GPIO28 | A2 |  |
-| bottom 9 | 26 | GPIO29 | A3 |  |
-| bottom 10 | 2 | GPIO0 | 0_TX0 |  |
-| bottom 11 | 3 | GPIO1 | 1_RX0 |  |
-| bottom 12 | 6 | GPIO2 | 2_SDA1 |  |
-| bottom 13 | 7 | GPIO3 | 3_SCL1 |  |
-| bottom 14 | 8 | GPIO4 | 4 |  |
-| bottom 15 | 9 | GPIO5 | 5 |  |
-| bottom 16 | 10 | GPIO6 | 6 |  |
-| bottom 17 | 11 | GPIO7 | 7 |  |
-| bottom 18 | 12 | GPIO8 | 8 |  |
+| bottom 1 | 39 | - | GND (added) |  |
+| bottom 2 | 28 | - | SWITCH |  |
+| bottom 3 | 21 | GPIO20 | 20_MISO |  |
+| bottom 4 | 19 | GPIO21 | 21_nCS |  |
+| bottom 5 | 22 | GPIO22 | 22_SCK |  |
+| bottom 6 | 20 | GPIO23 | 23_MOSI |  |
+| bottom 7 | 23 | GPIO26 | A0 |  |
+| bottom 8 | 24 | GPIO27 | A1 |  |
+| bottom 9 | 25 | GPIO28 | A2 |  |
+| bottom 10 | 26 | GPIO29 | A3 |  |
+| bottom 11 | 2 | GPIO0 | 0_TX0 |  |
+| bottom 12 | 3 | GPIO1 | 1_RX0 |  |
+| bottom 13 | 6 | GPIO2 | 2_SDA1 |  |
+| bottom 14 | 7 | GPIO3 | 3_SCL1 |  |
+| bottom 15 | 8 | GPIO4 | 4 |  |
+| bottom 16 | 9 | GPIO5 | 5 |  |
+| bottom 17 | 10 | GPIO6 | 6 |  |
+| bottom 18 | 11 | GPIO7 | 7 |  |
+| bottom 19 | 12 | GPIO8 | 8 |  |
+| bottom 20 | 40 | - | GND (added) |  |
 | right end 1 | 4 | - | GND | display GND |
 | right end 2 | 27 | - | +3V3 | display VCC |
 | right end 3 | 16 | GPIO14 | 14 | display SCL |
