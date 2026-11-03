@@ -62,21 +62,20 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 ## Status
 
-59.7 × 21.0 mm. It routes in about 15 minutes, and `cad check` passes everything but one spot:
+59.7 × 21.0 mm. It routes in about 40 minutes, and `cad check` passes everything:
 - the circuit is Sea-Picro's, plus the added 3V3 pin
 - the placement
 - both planes
+- JLCPCB's clearances and track widths
 - the castellations and the outline
-- JLCPCB's clearances and track widths, **except one overlap**: the routed tracks to GPIO27 (pin 24) and GPIO22
-  (pin 22) touch next to the RP2040's corner. Both are new tracks (none of Sea-Picro's), so it's a short nudge in
-  KiCad's router; the autorouter's own repair didn't clear it, and nudging the layout gave worse results.
 
-Before ordering:
-- **Fix that overlap in KiCad,** then run KiCad's design-rule check: open `exports/thin-picro/module@0.5.0.kicad_pcb`.
-  Don't order from `cad export`'s Gerbers until then: they have the overlap too.
+The autorouter is sensitive here: a shift of a tenth of a millimetre can take a layout from passing to dozens of
+clearance errors. This one was found by trying small moves of the core and the mounting holes in turn (the second hole
+at `hole_b_x` 17.3 mm); if you change the layout, expect to try a few nearby values.
+
+`cad export` makes the files JLCPCB needs. It hasn't been made yet. Before ordering:
+- **Open `exports/thin-picro/module@0.5.1.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
 - **Check the pinout** below against your keyboard's wiring.
-
-It hasn't been made yet.
 
 ## Pinout
 
@@ -139,7 +138,7 @@ its documentation doesn't describe it, so check Sea-Picro's schematic before usi
 ## Build it
 
 ```sh
-npx cad check thin-picro/module      # build, route and check (routing takes about 15 minutes)
+npx cad check thin-picro/module      # build, route and check (routing takes about 40 minutes)
 npx cad preview thin-picro/module:with-headers   # the same board in 3D with pin headers fitted
 npx cad export thin-picro/module     # Gerbers, drill files, BOM and placement for JLCPCB
 ```
