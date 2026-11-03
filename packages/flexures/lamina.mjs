@@ -18,8 +18,8 @@ import * as gens from './flexures.mjs';
 import { curveClearance } from './curves.mjs';
 import { ports, models } from './compose.mjs';
 import { simulate, bend, centrelines } from './physics.mjs';
-import { shapeOf } from './beams.mjs';
-import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness } from '@rulecad/fea';
+import { shapeOf, fixedLoads } from './beams.mjs';
+import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness, analyse as feaAnalyse } from '@rulecad/fea';
 
 const AREA = 1e-4; // mm²: less than this of an overlap is a rounding error, not a touch
 const TOUCH = 0.01; // mm: as near as a flexure's root is to its body, or a point to an edge
@@ -455,7 +455,7 @@ export async function lamina(spec) {
   // What may touch what: a flexure its two bodies; nothing else
   const names = Object.keys(parts), joined = (a, b) => [a, b].some((x) => parts[x].kind === 'flexure' && [joints[x].from, joints[x].to].includes(x === a ? b : a));
   const pairs = names.flatMap((a, i) => names.slice(i + 1).map((b) => [a, b]));
-  const what = (n) => (parts[n].kind === 'flexure' ? `the ${n} flexure` : n === 'ground' ? 'the ground' : n);
+  const what = (n) => (parts[n]?.kind === 'flexure' ? `the ${n} flexure` : n === 'ground' ? 'the ground' : n);
   // Which parts a joint carries: its body, the bodies below it, and their flexures
   const carried = (jn) => {
     const out = new Set([joints[jn].to, jn]);
@@ -907,6 +907,55 @@ export async function lamina(spec) {
     } });
     frames.length = 0;
     frames.push(...physical);
+
+    // ---- the frame under the mechanism's own forces: at the end of each step, what the flexures pull on the frame
+    // with (from the beams), the frame an elastic plate as tall as the print, held where a hand holds it (`grip`, or
+    // its back quarter); every clearance to what moves then checked on the frame as it bends. A frame that closes
+    // onto what moves (prongs either side of a channel pulled together) fails ----
+    if (spec.check?.frame !== false && !empty(parts.ground.shape)) {
+      const G = parts.ground.shape, { lo, hi } = box(G), side = Math.max(0.25, Math.sqrt(((hi[0] - lo[0]) * (hi[1] - lo[1])) / FE_MOST));
+      const nx = Math.ceil((hi[0] - lo[0]) / side) + 2, ny = Math.ceil((hi[1] - lo[1]) / side) + 2, x0 = lo[0] - side, y0 = lo[1] - side;
+      const g = feaGrid({ nx, ny, h: side }), fill = coverage(G, g, x0, y0);
+      const grip = spec.grip ? all(spec.grip) : [[[lo[0] - 1, lo[1] - 1], [lo[0] + (hi[0] - lo[0]) / 4, lo[1] - 1], [lo[0] + (hi[0] - lo[0]) / 4, hi[1] + 1], [lo[0] - 1, hi[1] + 1]]];
+      const held = coverage(grip, g, x0, y0), fixed = new Uint8Array(g.dofs);
+      for (let e = 0; e < g.cells; e++) if (fill[e] >= 0.5 && held[e] > 0.5) { const i = e % nx, j = (e - i) / nx; for (const n of [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)]) fixed[2 * n] = fixed[2 * n + 1] = 1; }
+      const cellAt = ([x, y]) => { const i = Math.max(0, Math.min(nx - 1, Math.floor((x - x0) / side))), j = Math.max(0, Math.min(ny - 1, Math.floor((y - y0) / side))); return { i, j, s: (x - x0) / side - i, t: (y - y0) / side - j }; };
+      // A load where the flexure meets the frame's face lands in a cell that's mostly empty: put it on the nearest solid one
+      const solidAt = (p) => { const c = cellAt(p); let best = null; for (let r = 0; r < 12 && !best; r++) for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) { const i = c.i + di, j = c.j + dj; if (i < 0 || j < 0 || i >= nx || j >= ny || fill[j * nx + i] < 0.5) continue; const d = Math.hypot(di, dj); if (!best || d < best.d) best = { d, p: [x0 + (i + 0.5) * side, y0 + (j + 0.5) * side] }; } return best ? best.p : p; };
+      const cornersOf = ({ i, j, s, t }) => [[g.node(i, j), (1 - s) * (1 - t), [i, j]], [g.node(i + 1, j), s * (1 - t), [i + 1, j]], [g.node(i + 1, j + 1), s * t, [i + 1, j + 1]], [g.node(i, j + 1), (1 - s) * t, [i, j + 1]]];
+      let worst = null, most = 0, shown = null; // shown: the frame where it bends most, its outline and how far each point moves
+      for (const tr of sim.transitions) {
+        const q = Float64Array.from(tr.end), f = new Float64Array(g.dofs);
+        // Each load to the corners of its cell: the force shared as the point's place in the cell, the moment as a couple
+        for (const L of fixedLoads(sim.sys, q)) {
+          const P = solidAt(L.at), c = cellAt(P), cs = cornersOf(c), r = cs.map(([, , [i, j]]) => [x0 + i * side - P[0], y0 + j * side - P[1]]), rr = r.reduce((a, [rx, ry]) => a + rx * rx + ry * ry, 0) || 1;
+          cs.forEach(([n, w], k) => { f[2 * n] += L.force[0] * w - (L.moment * r[k][1]) / rr; f[2 * n + 1] += L.force[1] * w + (L.moment * r[k][0]) / rr; });
+        }
+        if (!f.some((x) => Math.abs(x) > 1e-12)) continue;
+        const { u: [u] } = feaAnalyse({ grid: g, density: Float64Array.from(fill, (x) => Math.min(1, x)), material: { E: material.E, nu: 0.38 }, thickness: height, fixed, loads: [f] });
+        const at = (p) => { let dx = 0, dy = 0; for (const [n, w] of cornersOf(cellAt(p))) { dx += w * u[2 * n]; dy += w * u[2 * n + 1]; } return [dx, dy]; };
+        // The frame's outline, finely, moved as it bends
+        let here = 0;
+        const fine = split(G, side), moves = fine.map((o) => o.map((p) => { const d = at(p); here = Math.max(here, Math.hypot(...d)); return d; }));
+        const bent = union([fine.map((o, k) => o.map((p, i) => [p[0] + moves[k][i][0], p[1] + moves[k][i][1]]))]);
+        if (here > most) { most = here; shown = { state: tr.to, outline: fine, moves }; }
+        const fr = frames.filter((x) => x.from === tr.from && x.to === tr.to).sort((a, b) => b.t - a.t)[0];
+        // What moves where it is then, and what's loose (a disc, waiting in its channel) where it was put
+        const there = { ...Object.fromEntries(Object.entries(fr?.parts || {}).filter(([n]) => n !== 'ground' && !spec.free?.[n])), ...Object.fromEntries(Object.entries(spec.free || {}).map(([n, x]) => [n, all(x.shape)])) };
+        for (const [n, shape] of Object.entries(there)) {
+          const before = gapBetween(G, shape, gap * 2) ?? gap * 2, after = area(intersect(bent, shape)) > AREA ? 0 : (gapBetween(bent, shape, gap * 2) ?? gap * 2);
+          const closed = before - after;
+          if (closed > 0.01 && (!worst || after < worst.after)) worst = { part: n, state: tr.to, before, after, closed, at: box(intersect(grow(bent, gap), shape)) };
+        }
+      }
+      if (most > 0) {
+        const w = worst, where = w && !empty(w.at) && Number.isFinite(w.at.lo[0]) ? ` near (${((w.at.lo[0] + w.at.hi[0]) / 2).toFixed(1)}, ${((w.at.lo[1] + w.at.hi[1]) / 2).toFixed(1)})` : '';
+        const level = !w ? 'pass' : w.after <= 0.02 ? 'fail' : w.after < gap / 2 ? 'warn' : 'pass';
+        f(level, w
+          ? `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull; at ${w.state} it closes ${w.closed.toFixed(2)} mm towards ${what(w.part)}${where}, leaving ${w.after.toFixed(2)} mm${level === 'fail' ? ': it pinches it. Stiffen the frame there, or tie it across' : ''}`
+          : `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull, closing no gap to what moves`, 'lamina.frame', { most, ...(w || {}), shown });
+      }
+    }
   }
   return {
     parts: { body: solid, ...(spec.loose || {}) },
@@ -944,7 +993,7 @@ async function flooded(spec) {
   const { keep = [], least = 2, wall = 4, pad = 3, corner = 6 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
   // The mechanism solved through its sequence, on the ground you drew (or none: a speck far off, for the solver)
   const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
-  const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false } });
+  const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false, frame: false } });
   const free = new Set(Object.keys(spec.free || {})), by = {};
   for (const fr of probe.frames) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
   const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)

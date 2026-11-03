@@ -149,7 +149,11 @@ export function simulate(m, { steps = 24, force = 50, contact } = {}) {
   const poseOf = (n, q) => (bodies[n].fixed ? [0, 0, 0] : [q[sys.body[n].dof], q[sys.body[n].dof + 1], q[sys.body[n].dof + 2]]);
   const toWorld = (n, q, p) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), rx = p[0] - c[0], ry = p[1] - c[1]; return [c[0] + tx + cs * rx - sn * ry, c[1] + ty + sn * rx + cs * ry, cs * rx - sn * ry, sn * rx + cs * ry]; };
   const toLocal = (n, q, w) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), dx = w[0] - c[0] - tx, dy = w[1] - c[1] - ty; return [c[0] + cs * dx + sn * dy, c[1] - sn * dx + cs * dy, dx, dy, cs, sn]; };
-  const nodeBeam = sys.nodes.map((nd) => ({ nd, joint: beamOf[nd.beam], r: (beams.find((b) => b.name === nd.beam).thickness[0] ?? 1) / 2 }));
+  // Each node as thick as the beam is where it is (the thicker of its two elements): a beam thicker at its root than in
+  // its middle mustn't touch what it passes with its root's thickness
+  const tAt = new Map();
+  for (const e of sys.elements) for (const end of [e.a, e.b]) if (end.dof != null) tAt.set(end, Math.max(tAt.get(end) || 0, e.t));
+  const nodeBeam = sys.nodes.map((nd) => ({ nd, joint: beamOf[nd.beam], r: (tAt.get(nd) ?? beams.find((b) => b.name === nd.beam).thickness[0] ?? 1) / 2 }));
   // Self-contact: each flexure's free nodes against its own elements further along it than a few thicknesses (a wave
   // spring's legs meeting as it stacks solid, a serpentine's folds)
   const selfs = Object.keys(joints).map((jn) => {

@@ -249,6 +249,11 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
   moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
   no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them.
+- The frame is checked under the mechanism's own forces: at the end of each step, what the flexures pull on it with
+  (from the beams) loads it as an elastic plate as tall as the print, held where a hand holds it (`grip`, or its back
+  quarter), and every gap to what moves (loose parts too, a disc in its channel) is rechecked on the frame as it bends.
+  A frame that closes onto what moves, prongs either side of a channel pulled together, fails. `check.frame: false`
+  turns it off.
 - Every rigid part is checked for free ends: an arm narrower than `check.rigid` (3 mm) tied on at one end only bends
   under load, so it's a warning.
 - `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and

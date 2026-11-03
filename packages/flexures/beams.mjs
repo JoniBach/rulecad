@@ -201,3 +201,19 @@ export function shapeOf(sys, q) {
   }
   return { bodies, lines, turns };
 }
+
+/**
+ * What the flexures put on the fixed bodies (the frame) at unknowns q: each element end on a fixed body, where it is,
+ * the force on the body there (N) and the moment (N·mm, anticlockwise). Their opposite is what the frame must give,
+ * so a frame modelled as elastic can be loaded with them.
+ * @param {ReturnType<typeof beamSystem>} sys @param {Float64Array} q
+ * @returns {{ body: string, at: number[], force: number[], moment: number }[]}
+ */
+export function fixedLoads(sys, q) {
+  const out = [];
+  for (const e of sys.elements) {
+    const A = endOf(e.a, q), B = endOf(e.b, q), r = element(e, A.x, A.y, A.t, B.x, B.y, B.t);
+    [[e.a, A, 0], [e.b, B, 1]].forEach(([end, P, k]) => { if (end.body?.fixed) out.push({ body: end.body.name, at: [P.x, P.y], force: [-r.grad[3 * k], -r.grad[3 * k + 1]], moment: -r.grad[3 * k + 2] }); });
+  }
+  return out;
+}
