@@ -1,7 +1,7 @@
 {
   "name": "inline",
   "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the pull ring on top, a solid trigger that is its own sear on a hinge carrying the pull, printed in one piece on its side",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "uses": [
     "x1c",
     "petg",
