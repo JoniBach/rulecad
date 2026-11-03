@@ -254,6 +254,14 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   quarter), and every gap to what moves (loose parts too, a disc in its channel) is rechecked on the frame as it bends.
   A frame that closes onto what moves, prongs either side of a channel pulled together, fails. `check.frame: false`
   turns it off.
+- Every moving body is pushed across the plane, at its farthest point from what holds it, by a tenth of the hand's
+  pull. A lamina's flexures are stiff bending across the plane but soft twisting, so a body on long thin arms tips
+  out of it; over the print gap it warns, over 1 mm it fails. Bridges hold a body from lifting, floors from dropping.
+  `check.across: false` turns it off.
+- `guides: [{ body, shape, depth }]` trap a sliding body across the plane: where it passes through `shape`, a ridge
+  on its sides with 45° flanks (`depth`, centred on the print's height) runs in a matching groove in the frame's wall.
+  Both are drawn out from the same faces by the same amount at each height, so the gap stays the gap, and each flank
+  prints without support. The out-of-plane check counts a guided stretch as held both ways.
 - Every rigid part is checked for free ends: an arm narrower than `check.rigid` (3 mm) tied on at one end only bends
   under load, so it's a warning.
 - `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and

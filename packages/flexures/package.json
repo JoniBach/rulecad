@@ -15,6 +15,7 @@
     "modules.mjs",
     "beams.mjs",
     "curves.mjs",
+    "outofplane.mjs",
     "synth.mjs",
     "flexures.d.mts",
     "compose.d.mts",

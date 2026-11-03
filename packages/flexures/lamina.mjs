@@ -19,6 +19,7 @@ import { curveClearance } from './curves.mjs';
 import { ports, models } from './compose.mjs';
 import { simulate, bend, centrelines } from './physics.mjs';
 import { shapeOf, fixedLoads } from './beams.mjs';
+import { outOfPlane } from './outofplane.mjs';
 import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness, analyse as feaAnalyse } from '@rulecad/fea';
 
 const AREA = 1e-4; // mm²: less than this of an overlap is a rounding error, not a touch
@@ -118,7 +119,7 @@ function solidOf(a, height) {
 }
 
 // The print in 3D: the shapes extruded, `cuts` taken out of them between heights and `adds` put on (bridges)
-function solidWith(a, height, cuts, adds, arches = []) {
+function solidWith(a, height, cuts, adds, arches = [], layers = []) {
   const { geom3, poly3 } = jscad.geometries;
   return run((cs, keep) => {
     const slab = (c) => keep(keep(cs(c.shape).extrude(c.to - c.from)).translate([0, 0, c.from]));
@@ -135,6 +136,9 @@ function solidWith(a, height, cuts, adds, arches = []) {
       m = keep(m.subtract(keep(placed.intersect(keep(cs(r.shape).extrude(height))))));
     }
     for (const c of adds) m = keep(m.add(slab(c)));
+    // Slabs a layer or so thick: a guide's ridge added, its groove cut (cuts first, so a ridge is never cut away)
+    for (const c of layers) if (c.cut && !empty(c.cut)) m = keep(m.subtract(slab({ shape: c.cut, from: c.from, to: c.to })));
+    for (const c of layers) if (c.add && !empty(c.add)) m = keep(m.add(slab({ shape: c.add, from: c.from, to: c.to })));
     const { vertProperties: v, triVerts: t, numProp: n } = m.getMesh(), polys = [];
     for (let i = 0; i < t.length; i += 3) polys.push(poly3.create([t[i], t[i + 1], t[i + 2]].map((k) => [v[k * n], v[k * n + 1], v[k * n + 2]])));
     return geom3.create(polys);
@@ -836,6 +840,7 @@ export async function lamina(spec) {
   const layer = printer?.layer ?? 0.2, bridgeMost = printer?.bridge ?? 5;
   const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3, bottom: b.side === 'bottom' }));
   const arches = []; // a floor strip's: the parts passing over it arched up at 45°, which prints without support
+  const guidesHeld = []; // what guides hold across the plane
   const cuts = [];
   if (bridges.length) {
     const poses = [places({})];
@@ -858,7 +863,7 @@ export async function lamina(spec) {
         const cut = intersect(p.shape, union(poses.map((P) => moved(inverse(P[n]), br.shape)))); // all of it that ever passes under, where it is at rest
         if (empty(cut)) continue;
         if (!br.bottom) {
-          cuts.push({ shape: cut, from: left, to: height });
+          cuts.push({ shape: cut, from: left, to: height, body: n });
           f(left >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes under it, cut down to ${left.toFixed(2)} mm there (the bridge ${br.depth.toFixed(2)} mm, a gap of ${br.gap.toFixed(2)} mm over it)`, 'lamina.bridge', { bridge: i, body: n, left });
           continue;
         }
@@ -876,9 +881,42 @@ export async function lamina(spec) {
     });
   }
 
+  // ---- guides: where a body slides through a strip of the frame, a ridge on its sides with 45° flanks, centred on
+  // the print's height, runs in a matching groove in the frame's wall (a tortoise's shell in its socket), so it can't
+  // lift or tip out of the plane. Both are drawn out from the same faces by the same amount at each height, so the gap
+  // between them is the gap in the plane; each flank overhangs at 45° and prints without support ----
+  const guides = [spec.guides || []].flat().map((x) => ({ body: x.body, shape: all(x.shape), depth: x.depth ?? Math.min(1.5, height / 4) }));
+  const layers = []; // slabs added to and cut from the print: { from, to, add?, cut? }
+  if (guides.length) {
+    const poses = [places({})];
+    for (let i = 0; i + 1 < seq.length; i++) {
+      const a = reached[seq[i]] ?? state(seq[i]), b = state(seq[i + 1]), keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+      for (let k = 0; k <= FRAMES * 2; k++) { const t = k / (FRAMES * 2); poses.push(places(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t]))).v)); }
+    }
+    guides.forEach((gd, i) => {
+      const n = gd.body, body = parts[n]?.shape;
+      if (!body || parts[n].kind !== 'body') { f('fail', `guide ${i + 1}: no body "${n}" to guide`, 'lamina.guide'); return; }
+      const mine = intersect(body, union(poses.map((P) => moved(inverse(P[n]), gd.shape)))); // all of the body that ever passes through the strip, at rest
+      if (empty(mine)) { f('fail', `guide ${i + 1}: ${n} never passes through it`, 'lamina.guide'); return; }
+      const sweptAll = (a) => union(poses.map((P) => moved(P[n], a))), wall = intersect(parts.ground.shape, grow(gd.shape, 0));
+      const away = (a) => subtract(a, body); // (what's drawn out from the body's faces, not the body)
+      const steps = Math.max(2, Math.round((2 * gd.depth) / layer));
+      for (let k = 0; k < steps; k++) {
+        const z0 = height / 2 - gd.depth + (2 * gd.depth * k) / steps, z1 = z0 + (2 * gd.depth) / steps, v = Math.max(0, gd.depth - Math.abs((z0 + z1) / 2 - height / 2));
+        if (v < 0.01) continue;
+        const ridge = intersect(away(grow(body, v)), grow(mine, v)); // the body's sides there, drawn out by v
+        const groove = intersect(wall, grow(sweptAll(union([body, ridge])), gap * 1.05 + 0.02)); // the frame's wall cut back to clear the ridge wherever it goes
+        layers.push({ from: z0, to: z1, add: ridge }, { from: z0, to: z1, cut: groove });
+      }
+      const span = box(mine);
+      f('pass', `guide ${i + 1}: ${n} runs in it for ${(span.hi[0] - span.lo[0]).toFixed(1)} mm with a ${gd.depth.toFixed(2)} mm ridge in a groove, flanks at 45°: held across the plane`, 'lamina.guide', { guide: i, body: n });
+      guidesHeld.push({ body: n, shape: mine });
+    });
+  }
+
   // ---- the print, everything at rest, and frames along the sequence for an animation ----
   const extrude = (shapes) => solidOf(union(Object.values(shapes)), height);
-  let solid = bridges.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => (b.bottom ? { shape: b.shape, from: 0, to: b.depth } : { shape: b.shape, from: height - b.depth, to: height })), arches) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
+  let solid = bridges.length || layers.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => (b.bottom ? { shape: b.shape, from: 0, to: b.depth } : { shape: b.shape, from: height - b.depth, to: height })), arches, layers) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
   if (spec.finish) solid = spec.finish(solid);
   const outline = (v) => Object.fromEntries(Object.entries(shapesAt(v)).map(([n, g]) => [n, g.map((o) => o.map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]))]));
   for (let i = 0; i + 1 < seq.length; i++) {
@@ -916,6 +954,8 @@ export async function lamina(spec) {
       const G = parts.ground.shape, { lo, hi } = box(G), side = Math.max(0.25, Math.sqrt(((hi[0] - lo[0]) * (hi[1] - lo[1])) / FE_MOST));
       const nx = Math.ceil((hi[0] - lo[0]) / side) + 2, ny = Math.ceil((hi[1] - lo[1]) / side) + 2, x0 = lo[0] - side, y0 = lo[1] - side;
       const g = feaGrid({ nx, ny, h: side }), fill = coverage(G, g, x0, y0);
+      // Bridges and floors are frame too, as thick as they are: a roof over a channel ties its two sides
+      for (const br of bridges) { const c = coverage(br.shape, g, x0, y0); for (let e = 0; e < g.cells; e++) fill[e] = Math.min(1, fill[e] + c[e] * (1 - Math.min(1, fill[e])) * (br.depth / height)); }
       const grip = spec.grip ? all(spec.grip) : [[[lo[0] - 1, lo[1] - 1], [lo[0] + (hi[0] - lo[0]) / 4, lo[1] - 1], [lo[0] + (hi[0] - lo[0]) / 4, hi[1] + 1], [lo[0] - 1, hi[1] + 1]]];
       const held = coverage(grip, g, x0, y0), fixed = new Uint8Array(g.dofs);
       for (let e = 0; e < g.cells; e++) if (fill[e] >= 0.5 && held[e] > 0.5) { const i = e % nx, j = (e - i) / nx; for (const n of [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)]) fixed[2 * n] = fixed[2 * n + 1] = 1; }
@@ -954,6 +994,30 @@ export async function lamina(spec) {
         f(level, w
           ? `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull; at ${w.state} it closes ${w.closed.toFixed(2)} mm towards ${what(w.part)}${where}, leaving ${w.after.toFixed(2)} mm${level === 'fail' ? ': it pinches it. Stiffen the frame there, or tie it across' : ''}`
           : `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull, closing no gap to what moves`, 'lamina.frame', { most, ...(w || {}), shown });
+      }
+    }
+
+    // ---- across the plane: each moving body pushed across the print at its farthest point from what holds it, by a
+    // tenth of the hand's pull (a finger a little off the plane); a lamina's flexures are stiff bending across it but
+    // soft twisting, so a body on long thin arms tips out of the plane. Bridges over it hold it from lifting, floors
+    // under it from dropping ----
+    if (spec.check?.across !== false) {
+      const peak = Math.max(0, ...sim.transitions.flatMap((tr) => tr.curve.flatMap((c) => c.points.map(([, F]) => Math.abs(F)))));
+      const push = spec.check?.side ?? Math.max(1, peak / 10);
+      for (const b of new Set(Object.values(joints).map((j) => j.to))) {
+        if (!sim.sys.body[b] || sim.sys.body[b].fixed) continue;
+        const ends = sim.sys.elements.flatMap((e) => [e.a, e.b]).filter((x) => x.body?.name === b).map((x) => [x.body.at[0] + x.o[0], x.body.at[1] + x.o[1]]);
+        const c = ends.length ? [ends.reduce((a, p) => a + p[0], 0) / ends.length, ends.reduce((a, p) => a + p[1], 0) / ends.length] : centroid(parts[b].shape);
+        const pts = parts[b].shape.flat(), P = pts.reduce((a, p) => (Math.hypot(p[0] - c[0], p[1] - c[1]) > Math.hypot(a[0] - c[0], a[1] - c[1]) ? p : a), pts[0]);
+        const holds = (top) => [...cuts.filter((x) => x.body === b && top).flatMap((x) => x.shape.flat()), ...arches.filter((x) => x.body === b && !top).flatMap((x) => x.shape.flat()), ...guidesHeld.filter((x) => x.body === b).flatMap((x) => x.shape.flat())].map((at) => ({ body: b, at, k: 1e3 }));
+        let worst = { most: 0, dir: '' };
+        for (const [dir, sign] of [['up', 1], ['down', -1]]) {
+          const r = outOfPlane(sim.sys, { loads: [{ body: b, at: P, force: sign * push }], springs: holds(sign > 0) });
+          const most = Math.max(...pts.map((p) => Math.abs(r.lift(b, p))));
+          if (most > worst.most) worst = { most, dir };
+        }
+        const level = worst.most > 1 ? 'fail' : worst.most > gap ? 'warn' : 'pass';
+        f(level, `${b}: pushed ${push.toFixed(1)} N across the plane at (${P.map((x) => x.toFixed(1)).join(', ')}) (a tenth of the hand's pull), it moves ${worst.most.toFixed(2)} mm out of the plane${level === 'pass' ? '' : `: it flexes out of the plane, ${level === 'fail' ? 'far' : 'more than the print gap'}. Trap it across the plane (a guide or a bridge), or stiffen what holds it`}`, 'lamina.across', { body: b, most: worst.most, push, at: P });
       }
     }
   }

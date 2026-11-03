@@ -344,7 +344,7 @@ function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop =
   // The tooth's front face matches the catch's (leaning back by the bite) where the cocked pusher meets it
   const top = L + 0.5, bottom = L - (engage + g + drop(7)), face = (y) => xc + stroke - (y - drop(stroke) - (under - hook)) * lean;
   return lamina({
-    height: 6, gap: g, material: petg, printer: fdm,
+    height: 6, gap: g, material: petg, printer: fdm, check: { across: false }, // (its leaves twist out of the plane: the guide test covers that)
     ground: [
       rect(-20, -6, 40, -3 + floorTop), // the floor, run into the spring's base block
       rect(-half - wall - 3, -6, -half - wall, L + 3), // the back wall: the spring's stop
@@ -584,4 +584,38 @@ test('a floor: what slides over it is arched up at 45°, clear of it all along, 
   const found = check(jscad.geometries.geom3.toPolygons(m.parts.body).map((p) => p.vertices), { bed: 256, overhang: 45, layer: 0.2, line: 0.42, bridge: 5 });
   const said = found.find((x) => /overhang/i.test(x.text));
   assert.ok(said && said.level === 'pass', said?.text ?? found.map((x) => x.text).join('; '));
+});
+
+test('across the plane: a strip as tall as the print is stiff bending across it, as beam theory says, and soft twisting', async () => {
+  const { beamSystem } = await import('@rulecad/flexures'), { outOfPlane } = await import('./outofplane.mjs');
+  const E = 1810, L = 40, t = 1.26, h = 10;
+  const sys = beamSystem({ bodies: { ground: { at: [0, 0], fixed: true }, tip: { at: [L, 0] } }, beams: [{ name: 'b', path: [[0, 0], [L, 0]], thickness: t, width: h, E, from: 'ground', to: 'tip' }], segments: 20 });
+  const lift = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 0], force: 1 }] }).lift('tip', [L, 0]);
+  assert.ok(Math.abs(lift / (L ** 3 / (3 * E * t * h ** 3 / 12)) - 1) < 1e-3);
+  const G = E / (2 * 1.38), J = (h * t ** 3) / 3 * (1 - 0.63 * t / h), twist = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 10], force: 1 }] }).bodies.tip[1];
+  assert.ok(Math.abs(twist / ((10 * L) / (G * J)) - 1) < 1e-3, 'it twists as G J says');
+  // Held across the plane at its tip (a guide), it hardly moves
+  const held = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 10], force: 1 }], springs: [{ body: 'tip', at: [L, 5], k: 1e3 }, { body: 'tip', at: [L, -5], k: 1e3 }] });
+  assert.ok(Math.abs(held.lift('tip', [L, 10])) < 0.01);
+});
+
+test('a guide: a ridge on what slides runs in a groove in the frame, flanks at 45°, so it stays in the plane and prints without support', async () => {
+  const L = 30, t = 0.84, rod = rect(L + 6, -1.5, L + 40, 1.5);
+  const spec = {
+    height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 5 }, check: { fe: false },
+    bodies: { slider: [rect(L, -4, L + 6, 4), rod] },
+    joints: { spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 5, shuttle: 3, base: 3, fillet: 1, into: t }, at: [0, 0], angle: -90, from: 'ground', to: 'slider' } },
+    states: { drawn: { spring: 4 } }, sequence: ['rest', 'drawn', 'rest'],
+    flood: { outline: rect(-20, -40, L + 50, 12) },
+  };
+  const free = await lamina(spec), held = await lamina({ ...spec, guides: [{ body: 'slider', shape: rect(L + 26, -8, L + 32, 8) }] });
+  const g = held.findings.find((x) => x.code === 'lamina.guide');
+  assert.ok(g && g.level === 'pass', g?.text);
+  const across = (m) => m.findings.find((x) => x.code === 'lamina.across' && x.body === 'slider').most;
+  assert.ok(across(held) < across(free) / 10, `held ${across(held).toFixed(3)} mm against ${across(free).toFixed(3)} free`);
+  const { measureVolume } = jscad.measurements;
+  assert.ok(Math.abs(measureVolume(held.parts.body) - measureVolume(free.parts.body)) > 0.5, 'the ridge and the groove change the print');
+  const { check } = await import('@rulecad/printcheck');
+  const said = check(jscad.geometries.geom3.toPolygons(held.parts.body).map((p) => p.vertices), { bed: 256, overhang: 45, layer: 0.2, line: 0.42, bridge: 5 }).find((x) => /overhang/i.test(x.text));
+  assert.ok(said && said.level === 'pass', said?.text);
 });
