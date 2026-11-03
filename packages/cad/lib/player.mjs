@@ -106,9 +106,11 @@ let cam = { x: (lo[0] + hi[0]) / 2, y: (lo[1] + hi[1]) / 2, s: 1 }, W = 0, H = 0
 const fit = () => { cam = { x: (lo[0] + hi[0]) / 2, y: (lo[1] + hi[1]) / 2, s: Math.min(W / (hi[0] - lo[0]), H / (hi[1] - lo[1])) * 0.92 }; };
 const sx = (x) => (x - cam.x) * cam.s + W / 2, sy = (y) => H / 2 - (y - cam.y) * cam.s, wx = (px) => (px - W / 2) / cam.s + cam.x, wy = (py) => cam.y - (py - H / 2) / cam.s;
 const resize = () => { dpr = devicePixelRatio || 1; const r = view.getBoundingClientRect(), first = !W; W = r.width; H = r.height; view.width = W * dpr; view.height = H * dpr; if (first) fit(); draw(); };
-// Arrows: their length goes as the force, the biggest of the whole sequence a fifth of the view (the slider scales it)
-const big = Math.max(1e-6, ...F.flatMap((fr) => (fr.forces || []).map((f) => Math.hypot(...f.force))));
-const mmPerN = () => ((hi[0] - lo[0]) * 0.2 / big) * Math.pow(10, +$('scale').value);
+// Arrows: their length goes as the force, a big one of the steps a hand works (the shot's knocks aside) a fifth of the
+// view (the slider scales it)
+const mags = F.filter((fr) => !/fired/.test(fr.label)).flatMap((fr) => (fr.forces || []).map((f) => Math.hypot(...f.force))).filter((x) => x > 0.01).sort((a, b) => a - b);
+const big = mags.length ? mags[Math.floor(mags.length * 0.9)] : 1;
+const mmPerN = () => ((hi[0] - lo[0]) * 0.12 / big) * Math.pow(10, +$('scale').value);
 // Strain colours: green at rest, amber at half the limit, red at it
 const strainCol = (e) => { const u = D.limit ? Math.min(1, e / D.limit) : 0; const a = u < 0.5 ? [58, 157, 58] : [224, 160, 0], b = u < 0.5 ? [224, 160, 0] : [200, 30, 30], k = u < 0.5 ? u * 2 : (u - 0.5) * 2; return 'rgb(' + a.map((x, i) => Math.round(x + (b[i] - x) * k)).join(',') + ')'; };
 let i = 0, playing = false, picked = null;
