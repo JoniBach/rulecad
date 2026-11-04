@@ -267,13 +267,13 @@ async function smoothRouted(out, board) {
   const { runAllChecks } = await import('@tscircuit/checks');
   const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type)).map((e) => JSON.stringify(e)); // (on a copy: the checks write into the routes they read)
   const before = new Set(await errors());
-  const { routes } = await smoothCircuit(out, { movable: (e) => e.rulecad_routed === true, ...(board.clearance ? { clearance: board.clearance } : {}) });
+  const { routes } = smoothCircuit(out, { movable: (e) => e.rulecad_routed === true, ...(board.clearance ? { clearance: board.clearance } : {}) });
   const was = new Map();
-  for (const e of out) if (routes.has(e.pcb_trace_id)) { was.set(e.pcb_trace_id, e.route); e.route = routes.get(e.pcb_trace_id); }
+  for (const e of out) if (e.type === 'pcb_trace' && routes.has(e.pcb_trace_id)) { was.set(e.pcb_trace_id, e.route); e.route = routes.get(e.pcb_trace_id); }
   for (let round = 0; round < 5 && was.size; round++) { // (a track put back can be in the way of one pulled tight round its new path: again)
     let back = 0;
     for (const e of (await errors()).filter((x) => !before.has(x))) for (const [id, route] of was) if (e.includes(`"${id}"`)) {
-      out.find((x) => x.pcb_trace_id === id).route = route; was.delete(id); back++;
+      out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id).route = route; was.delete(id); back++;
     }
     if (!back) break;
   }

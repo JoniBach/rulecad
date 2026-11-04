@@ -375,8 +375,11 @@ test('smoothing: the router\'s tracks pulled tight; the source\'s kept routing s
   const moved = moveGroup(src, ['R1', 'R2'], { turn: 90, dx: 1 }, { keep: true }), k = clone(moved, { layers: 4 });
   // A router that wiggles: each connection zigzags between its ends
   const wiggly = { route: async (json, toRoute) => ({ traces: toRoute.map((c) => {
-    const p = (t, dy) => ({ route_type: 'wire', x: c.a.x + (c.b.x - c.a.x) * t, y: c.a.y + (c.b.y - c.a.y) * t + dy, width: 0.2, layer: 'top' });
-    return { source_trace_id: c.id, vias: [], route: [{ ...p(0, 0), start_pcb_port_id: c.a.pcb.pcb_port_id }, p(0.3, 0.4), p(0.5, -0.4), p(0.7, 0.4), { ...p(1, 0), end_pcb_port_id: c.b.pcb.pcb_port_id }] };
+    const p = (t, dy, layer = 'top') => ({ route_type: 'wire', x: c.a.x + (c.b.x - c.a.x) * t, y: c.a.y + (c.b.y - c.a.y) * t + dy, width: 0.2, layer });
+    const via = (t, from, to) => ({ route_type: 'via', x: p(t, 0).x, y: p(t, 0).y, from_layer: from, to_layer: to }); // over to the back and back again
+    const route = [{ ...p(0, 0), start_pcb_port_id: c.a.pcb.pcb_port_id }, p(0.15, 0.4), p(0.3, 0), via(0.3, 'top', 'bottom'), p(0.3, 0, 'bottom'), p(0.45, -0.4, 'bottom'),
+      p(0.6, 0, 'bottom'), via(0.6, 'bottom', 'top'), p(0.6, 0), p(0.8, 0.4), { ...p(1, 0), end_pcb_port_id: c.b.pcb.pcb_port_id }];
+    return { source_trace_id: c.id, route, vias: route.filter((q) => q.route_type === 'via').map((q) => ({ x: q.x, y: q.y, hole_diameter: 0.3, outer_diameter: 0.6, from_layer: q.from_layer, to_layer: q.to_layer })) };
   }) }) };
   const board = { outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, layers: 4, planes: k.planes, copper: k.copper, parts: k.parts, nets: k.nets };
   const plain = await render(board, wiggly), smoothed = await render({ ...board, smooth: true }, wiggly);
@@ -386,6 +389,7 @@ test('smoothing: the router\'s tracks pulled tight; the source\'s kept routing s
   assert.ok(routed(smoothed).every((t, i) => t.route.length < routed(plain)[i].route.length), 'every wiggle pulled out');
   assert.ok(routed(smoothed).every((t, i) => ['x', 'y'].every((c) => t.route[0][c] === routed(plain)[i].route[0][c] && t.route.at(-1)[c] === routed(plain)[i].route.at(-1)[c])), 'ends where they were');
   assert.equal(kept(smoothed), kept(plain), 'the kept routing untouched');
+  assert.deepEqual(smoothed.filter((e) => e.type === 'pcb_via').map((e) => [e.x, e.y, e.route]), plain.filter((e) => e.type === 'pcb_via').map((e) => [e.x, e.y, undefined]), 'vias where they were, and still vias');
   assert.ok(kept(plain).length > 2);
   const found = await checks(smoothed, values({}), null, { circuit: src, arranged: moved });
   assert.match(found.map((f) => f.text).join(' | '), /the source's own routing as it was: \d+ tracks and 1 vias exactly where the source has them/);
