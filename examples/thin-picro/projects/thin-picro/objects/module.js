@@ -132,7 +132,7 @@ export function main (v) {
   const mounting = [[v.hole_a_x, v.hole_a_y], [v.hole_b_x, v.hole_b_y]].map(([x, y]) => ({ x, y, d: v.hole_d, keepout: v.hole_keepout }))
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
-      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, copper: k.copper, parts, nets: k.nets, holes: [...k.holes, ...mounting], silk: labels },
+      via_pad: k.via_pad, via_hole: k.via_hole, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, smooth: true, copper: k.copper, parts, nets: k.nets, holes: [...k.holes, ...mounting], silk: labels },
     clone: { circuit: src, arranged: c }
   }
 }
