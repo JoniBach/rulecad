@@ -529,7 +529,7 @@ export async function lamina(spec) {
   const solve = (values, active = NONE) => { // v: every travel; pushed: how far each follower was pushed past where its state put it
     const v = { ...values }, over = [], pushed = {};
     for (const [n, fo] of Object.entries(follows)) {
-      const g = fo.give ?? 1, from = Math.max(0, g * (v[n] || 0)); // where the state put it, if that's along its give
+      const g = fo.give ?? 1, from = g * (v[n] || 0); // where the state put it, either side: it gives on from there
       pushed[n] = 0;
       if (active.has(n)) continue; // being moved: it drives, it doesn't give
       v[n] = g * from;
@@ -586,9 +586,9 @@ export async function lamina(spec) {
     const jam = (p, q) => {
       for (const [fn, fo] of Object.entries(follows)) {
         if (q.pushed[fn] <= p.pushed[fn] + 1e-9) continue; // not pushed further (moved by its state, or springing back: fine)
-        const c = contactOf(p.v, fn);
-        if (!c) continue;
         const g = fo.give ?? 1, asSet = { ...q.v, [fn]: q.v[fn] - g * (q.pushed[fn] - p.pushed[fn]) }; // where it would be with only the last push
+        const c = contactOf(asSet, fn) ?? contactOf(p.v, fn); // (where what drives it has moved on and it hasn't given yet: a step from a hair clear meets it there)
+        if (!c) continue;
         // the push: how far what drives it moves against what it hangs from (a pawl carried past a still sear is pushed as hard as one a sear moves into)
         const give = pointMove(joints[fn].to, asSet, q.v, c.at), by = pointStep(c.by, p.v, q.v, c.at), from = pointStep(joints[fn].from, p.v, q.v, c.at), push = Math.hypot(by[0] - from[0], by[1] - from[1]);
         if (give > FINE) walkRatio = Math.max(walkRatio, (give - FINE) / Math.max(push, 1e-9));
@@ -779,7 +779,14 @@ export async function lamina(spec) {
     // The follower that is the catch (or carries it): how far it must move to let go is found by moving it along its give
     const fn = Object.keys(follows).find((x) => carries[x].has(by) || joints[x].to === by), unit = fn && joints[fn].turning ? '°' : ' mm';
     const grips = [];
-    const holding = (vals) => { const r = walk(vals, { ...vals, [jn]: q - back }, { record: false, friction: mu.hold }); grips.push(r?.kind === 'jam' ? r.grip : walkRatio > 0 ? 1 / walkRatio : null); return !!r && (r.kind === 'jam' || r.kind === 'over' || (r.kind === 'hit' && [r.a, r.b].some((x) => carries[jn].has(x)) && [r.a, r.b].some((x) => x === by || (fn && carries[fn].has(x))))); }; // held: it jams, or what it moves runs into the catch
+    // A catch that bites presses into what it holds as it's moved to let go (its face leaning back): what it holds is
+    // cammed back first, out of it, then pushed towards rest from there
+    const cammed = (vals) => {
+      const out = { ...vals }, mine = carries[jn], sgn = Math.sign(q) || -1, touching = (x) => { const sh = shapesAt(x); return [...mine].some((a) => collide(sh[a], sh[by], slack)); };
+      for (let k = 0; k < 80 && touching(out); k++) out[jn] += sgn * gap / 4;
+      return out;
+    };
+    const holding = (vals0) => { const vals = fn && vals0[fn] ? cammed(vals0) : vals0, r = walk(vals, { ...vals, [jn]: (vals[jn] ?? q) - back }, { record: false, friction: mu.hold }); grips.push(r?.kind === 'jam' ? r.grip : walkRatio > 0 ? 1 / walkRatio : null); return !!r && (r.kind === 'jam' || r.kind === 'over' || (r.kind === 'hit' && [r.a, r.b].some((x) => carries[jn].has(x)) && [r.a, r.b].some((x) => x === by || (fn && carries[fn].has(x))))); }; // held: it jams, or what it moves runs into the catch
     const held = holding(v), grip = grips[0]; // the least friction it holds at: 0 when it holds whatever the friction
     let lets = null;
     if (held && fn) {
@@ -1129,9 +1136,13 @@ export async function lamina(spec) {
         if (here > most) { most = here; shown = { state: tr.to, outline: fine, moves }; }
         const fr = frames.filter((x) => x.from === tr.from && x.to === tr.to).sort((a, b) => b.t - a.t)[0];
         // What moves where it is then, and what's loose (a disc, waiting in its channel) where it was put
+        // (a loose part lies in the frame and goes where the frame round it goes: moved as the frame at its edge moves on
+        // average, so what's checked is its slot closing on it, not the frame bending past where it was put)
+        const carried = (shape) => { const pts = shape.flat(), d = pts.reduce((a, p) => { const m = at(p); return [a[0] + m[0] / pts.length, a[1] + m[1] / pts.length]; }, [0, 0]); return shape.map((l) => l.map(([x, y]) => [x + d[0], y + d[1]])); };
         const there = { ...Object.fromEntries(Object.entries(fr?.parts || {}).filter(([n]) => n !== 'ground' && !spec.free?.[n])), ...Object.fromEntries(Object.entries(spec.free || {}).map(([n, x]) => [n, all(x.shape)])) };
+        const thereBent = Object.fromEntries(Object.entries(there).map(([n, sh]) => [n, spec.free?.[n] ? carried(sh) : sh]));
         for (const [n, shape] of Object.entries(there)) {
-          const before = gapBetween(G, shape, gap * 2) ?? gap * 2, after = area(intersect(bent, shape)) > AREA ? 0 : (gapBetween(bent, shape, gap * 2) ?? gap * 2);
+          const moved = thereBent[n], before = gapBetween(G, shape, gap * 2) ?? gap * 2, after = area(intersect(bent, moved)) > AREA ? 0 : (gapBetween(bent, moved, gap * 2) ?? gap * 2);
           const closed = before - after;
           if (closed > 0.01 && (!worst || after < worst.after)) worst = { part: n, state: tr.to, before, after, closed, at: box(intersect(grow(bent, gap), shape)) };
         }

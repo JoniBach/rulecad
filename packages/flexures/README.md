@@ -178,7 +178,8 @@ mechanism drawn that way and checks it as it will print and move:
 - **Followers:** a joint moved by contact (a latch, a sear) gives just as far as it must to clear what drives it,
   and springs back when that has passed. The joint being moved drives, and one standing still gives. Where a follower
   would have to give more than the push could make it (a face steeper than friction lets a push turn aside), the
-  driver jams.
+  driver jams. A follower gives on from wherever its state puts it, on either side of rest (a pusher that runs on
+  past rest, and can also be cammed back).
 - **Rounds:** `round` rounds every inside corner of the ground and the bodies to that radius, so no thin arm meets its
   body at a square corner. A flexure given a `fillet` has every inside corner of its own rounded to it, wherever its
   parts meet.
@@ -194,7 +195,7 @@ The findings, each pass or fail with its code:
 | `lamina.seat` | Each curve's end flare and run on lie inside its body (a seat added where they wouldn't); one hanging out of a frame drawn as it is fails |
 | `lamina.sequence`, `lamina.collide` | Nothing runs into anything in any state or on the way; a step into a state a catch holds may settle on the catch |
 | `lamina.jam`, `lamina.follow` | No driver jams on a follower, and no follower has to give past its limit |
-| `lamina.holds` | A catch holds: the joint pushing back towards rest jams on it. It says the least friction it holds at, and how far the catch must move to let go |
+| `lamina.holds` | A catch holds: the joint pushing back towards rest jams on it. It says the least friction it holds at, and how far the catch must move to let go. A catch that bites presses into what it holds as it's moved: what it holds is cammed back out of it first |
 | `lamina.strain` | Each flexure's strain at the most it is moved, against the limit, by beam theory |
 | `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields |
 | `lamina.stop` | Something hard stops each flexure before its strain limit, scaled by its finite-element peak (swept from rest, so a stop that is jumped over doesn't count) |
@@ -259,7 +260,8 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them.
 - The frame is checked under the mechanism's own forces: at the end of each step, what the flexures pull on it with
   (from the beams) loads it as an elastic plate as tall as the print, held where a hand holds it (`grip`, or its back
-  quarter), and every gap to what moves (loose parts too, a disc in its channel) is rechecked on the frame as it bends.
+  quarter), and every gap to what moves (loose parts too, a disc in its channel, carried along as the frame round it
+  moves, so what counts is its channel closing on it) is rechecked on the frame as it bends.
   A frame that closes onto what moves, prongs either side of a channel pulled together, fails. `check.frame: false`
   turns it off.
 - Every moving body is pushed across the plane, at its farthest point from what holds it, by the hand's pull 15° off
@@ -293,7 +295,9 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   cross the shortest beam element in one, with whatever mass Gershgorin's bound still asks for added to the lightest
   flexure nodes): the speeds, and the disc's exit speed and energy, taken when it last parts from everything. A shot
   that starts with the disc pressed into the drawn pusher fails: it would be thrown with energy the spring never
-  stored.
+  stored. `seat: [dx, dy]` lays a loose part where it would rest before the shot, moved that way until it just touches
+  what pushes it (a disc dropped in its slot slides back on to the nose): left a gap, it is struck and bounces off
+  early, which no real loading does.
 - `physics: false` turns it off.
 
 The beam solver stands on its own too: `beamSystem({ bodies, beams })`, `equilibrium(sys, { held, loads })`
