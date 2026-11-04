@@ -18,7 +18,7 @@ import * as gens from './flexures.mjs';
 import { curveClearance } from './curves.mjs';
 import { ports, models } from './compose.mjs';
 import { simulate, bend, centrelines } from './physics.mjs';
-import { shapeOf, fixedLoads } from './beams.mjs';
+import { shapeOf, fixedLoads, equilibrium } from './beams.mjs';
 import { outOfPlane } from './outofplane.mjs';
 import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness, analyse as feaAnalyse } from '@rulecad/fea';
 
@@ -876,7 +876,11 @@ export async function lamina(spec) {
       else {
         const quick = Object.entries(fr.speeds).filter(([b]) => b !== spec.fire.disc).sort((a, b) => b[1] - a[1])[0];
         const ex = fr.exit, share = ex && fr.stored > 0 ? ex.energy / fr.stored : 0;
-        f(ex ? (spec.fire.most != null && ex.energy > spec.fire.most ? 'fail' : 'info') : 'fail', ex
+        const least = spec.fire.least ?? 0.25, weak = ex && share < least; // (the disc must get a fair share of what the spring stored: the rest is a thud)
+        const rest = ex && weak ? Object.entries(ex.kinetic || {}).filter(([, e]) => e > 0.01 * fr.stored).sort((a, b) => b[1] - a[1]).map(([b, e]) => `${b} still moving with ${(e * 1000).toFixed(1)} mJ`) : [];
+        f(ex ? (spec.fire.most != null && ex.energy > spec.fire.most ? 'fail' : weak ? 'fail' : 'info') : 'fail', ex && weak
+          ? `fired from ${spec.fire.from}: ${spec.fire.disc} leaves at ${ex.speed.toFixed(1)} m/s with ${(ex.energy * 1000).toFixed(1)} mJ, ${Math.round(share * 100)}% of the ${(fr.stored * 1000).toFixed(1)} mJ stored, under the ${Math.round(least * 100)}% it should get. As it leaves, ${[...rest, ex.spring > 0.01 * fr.stored ? `${(ex.spring * 1000).toFixed(1)} mJ still in the springs` : null].filter(Boolean).join(', ') || 'the rest has gone into what the pusher hit'}: lighten what moves with the disc, let the springs bring it to rest rather than a stop, keep the disc on the nose to the end of the stroke`
+          : ex
           ? `fired from ${spec.fire.from}${sim.trip ? ' (from the moment the trigger lets go)' : ''}: ${quick ? `${quick[0]} reaches ${quick[1].toFixed(1)} m/s; ` : ''}${spec.fire.disc} leaves at ${ex.speed.toFixed(1)} m/s after ${(ex.t * 1000).toFixed(1)} ms, with ${(ex.energy * 1000).toFixed(1)} mJ: ${Math.round(share * 100)}% of the ${(fr.stored * 1000).toFixed(1)} mJ stored${spec.fire.most != null ? (ex.energy > spec.fire.most ? `, over the ${spec.fire.most * 1000} mJ allowed` : `, within the ${spec.fire.most * 1000} mJ allowed`) : ''}`
           : `fired from ${spec.fire.from}: ${spec.fire.disc} never leaves`, 'lamina.fire', { speeds: fr.speeds, exit: ex, stored: fr.stored });
       }
@@ -973,9 +977,9 @@ export async function lamina(spec) {
     const a = reached[seq[i]] ?? state(seq[i]), said = state(seq[i]), b = { ...state(seq[i + 1]) };
     for (const k of Object.keys(b)) if (said[k] === b[k] && a[k] != null) b[k] = a[k];
     const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])], active = new Set(keys.filter((x) => Math.abs((a[x] || 0) - (b[x] || 0)) > 1e-9)); // followers solved per frame
-    for (let k = 0; k < FRAMES; k++) { const t = k / FRAMES; frames.push({ from: seq[i], to: seq[i + 1], t, parts: outline(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t])), active).v) }); }
+    for (let k = 0; k < FRAMES; k++) { const t = k / FRAMES, v = solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t])), active).v; frames.push({ from: seq[i], to: seq[i + 1], t, v, parts: outline(v) }); }
   }
-  if (seq.length) frames.push({ from: seq[seq.length - 1], to: seq[seq.length - 1], t: 0, parts: outline(solved[seq[seq.length - 1]]) });
+  if (seq.length) frames.push({ from: seq[seq.length - 1], to: seq[seq.length - 1], t: 0, v: solved[seq[seq.length - 1]], parts: outline(solved[seq[seq.length - 1]]) });
   if (sim) { // the frames as the beams solved them: each body where it went, each flexure bent along its centreline
     const still = shapeOf(sim.sys, new Float64Array(sim.sys.dofs));
     const poseT = (n, q) => { if (parts[n].kind === 'ground') return I; const d = sim.sys.body[n].dof, c = sim.centre[n], cs = Math.cos(q[d + 2]), sn = Math.sin(q[d + 2]); return [cs, -sn, c[0] + q[d] - cs * c[0] + sn * c[1], sn, cs, c[1] + q[d + 1] - sn * c[0] - cs * c[1]]; };
@@ -1000,9 +1004,43 @@ export async function lamina(spec) {
       })),
       ...Object.fromEntries(Object.keys(spec.free || {}).map((n) => { const d = sim.sys.body[n].dof, c = sim.centre[n], q = fr.q, cs = Math.cos(q[d + 2]), sn = Math.sin(q[d + 2]); return [n, round3(moved([cs, -sn, c[0] + q[d] - cs * c[0] + sn * c[1], sn, cs, c[1] + q[d + 1] - sn * c[0] - cs * c[1]], all(spec.free[n].shape)))]; })),
     } });
-    planned = [...frames]; // (the kinematic frames: where the bodies are meant to go)
+    // The kinematic frames' flexures as they really bend: every body held where it's meant to be, the beams solved
+    // between them (the kinematic model only smears each flexure from its root to its tip: a folded spring isn't bent
+    // like that, and its room cut from that shape is the wrong room). Each solve starts from the last, in smaller steps
+    // where it doesn't settle
+    let last = new Float64Array(sim.sys.dofs), lastHeld = null;
+    const heldAt = (v) => { const at = places(v), held = new Map(); for (const [n, b] of Object.entries(sim.sys.body)) { if (b.fixed) continue; const M = at[n] ?? I, c = sim.centre[n], P = apply(M, c); held.set(b.dof, P[0] - c[0]); held.set(b.dof + 1, P[1] - c[1]); held.set(b.dof + 2, Math.atan2(M[3], M[0])); } return held; };
+    const bentAt = (v) => {
+      const target = heldAt(v), from = lastHeld ?? new Map([...target.keys()].map((d) => [d, 0]));
+      let r = equilibrium(sim.sys, { held: target, start: last, iterations: 80 });
+      for (let k = 2; !r.converged && k <= 16; k *= 2) { let q = last; for (let i = 1; i <= k; i++) q = equilibrium(sim.sys, { held: new Map([...target].map(([d, x]) => [d, from.get(d) + (x - from.get(d)) * (i / k)])), start: q, iterations: 80 }).q; r = equilibrium(sim.sys, { held: target, start: q, iterations: 80 }); }
+      last = r.q; lastHeld = target;
+      const sh = shapeOf(sim.sys, r.q);
+      return { converged: r.converged, parts: Object.fromEntries(Object.entries(parts).filter(([, p]) => p.kind === 'flexure').map(([n, p]) => { const j = joints[n], lines = Object.keys(sim.beamOf).filter((b) => sim.beamOf[b] === n).map((b) => ({ rest: still.lines[b], now: sh.lines[b], turn: sh.turns[b], from: poseT(j.from, r.q), to: poseT(j.to, r.q) })); return [n, round3(bend(p.shape, lines))]; })) };
+    };
+    let unsettled = 0;
+    for (const fr of frames) { if (!fr.v) continue; const b = bentAt(fr.v); if (!b.converged) unsettled++; Object.assign(fr.parts, b.parts); }
+    if (unsettled) f('warn', `${unsettled} of the ${frames.length} planned frames' flexures didn't settle in the beam solver: their room may be wrong there`, 'lamina.room');
+    planned = [...frames]; // (the kinematic frames: where the bodies are meant to go, the flexures bent between them)
     frames.length = 0;
     frames.push(...physical);
+
+    // ---- room: in every frame, planned or as the physics moved it (the shot too), nothing that moves runs into the
+    // frame deeper than half the gap (a flexure where it's anchored aside): a frame that fills a spring's room stops it ----
+    if (!empty(parts.ground.shape)) {
+      const G = parts.ground.shape, deep = gap / 2, worst = {};
+      const own = Object.fromEntries(Object.entries(parts).filter(([n, p]) => p.kind === 'flexure' && joints[n].from === 'ground').map(([n, p]) => [n, grow(intersect(p.shape, G), Math.max(gap * 2, 0.5))])); // (where a flexure grows from the frame, and a little round it)
+      for (const fr of [...planned, ...physical]) for (const [n, o] of Object.entries(fr.parts)) {
+        if (n === 'ground' || (!parts[n] && !spec.free?.[n]) || empty(o)) continue;
+        let hit = intersect(o, G);
+        if (own[n]) hit = subtract(hit, own[n]);
+        if (empty(shrink(hit, deep))) continue;
+        const a = area(hit);
+        if (!worst[n] || a > worst[n].a) worst[n] = { a, fr, at: box(hit) };
+      }
+      for (const [n, w] of Object.entries(worst)) f('fail', `${what(n)} runs into the frame${w.fr.label ? ` (${w.fr.label})` : ` going from ${w.fr.from} to ${w.fr.to}`}, ${w.a.toFixed(1)} mm² of it at worst, near (${((w.at.lo[0] + w.at.hi[0]) / 2).toFixed(1)}, ${((w.at.lo[1] + w.at.hi[1]) / 2).toFixed(1)}): the frame is in its room, so it can't move there`, 'lamina.room', { part: n, from: w.fr.from, to: w.fr.to, t: w.fr.t, area: w.a, at: w.at });
+      if (!Object.keys(worst).length) f('pass', `in all ${planned.length + physical.length} frames, planned and as the physics moved them, nothing runs into the frame`, 'lamina.room');
+    }
 
     // ---- the frame under the mechanism's own forces: at the end of each step, what the flexures pull on the frame
     // with (from the beams), the frame an elastic plate as tall as the print, held where a hand holds it (`grip`, or

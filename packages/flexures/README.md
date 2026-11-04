@@ -207,7 +207,8 @@ The findings, each pass or fail with its code:
 | `lamina.home` | At the end of the sequence, everything is back where it started |
 | `lamina.beams` | Each flexure's strain all the way through, bending as far as it bends |
 | `lamina.requires` | A driven step's force curve does what you asked: its peak, its click (the fall after the peak), its end |
-| `lamina.fire` | Let go and stepped through time: each body's top speed, and the disc's exit speed and energy against a limit |
+| `lamina.fire` | Let go and stepped through time: each body's top speed, and the disc's exit speed and energy against a limit. A disc given less than `fire.least` (default a quarter) of what the springs stored fails, saying where the rest is as it leaves |
+| `lamina.room` | In every frame, planned and as the physics moved it, the shot included, nothing that moves runs into the frame deeper than half the gap (a flexure where it's anchored aside) |
 
 It returns the printed `parts` (`body`, the drawing extruded, after an optional `finish` for 3D work such as holes
 through it, and any `loose` parts), the `findings`, the `energy` in each state, and `frames` along the sequence with
@@ -235,7 +236,10 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
 - `fixtures` are fixed shapes the physics sees but the print leaves out (another layer's walls).
 - `flood: { outline, keep, clear, least }` floods the frame: everything inside `outline` is solid except the room
   the moving parts sweep through the sequence (grown by `clear`, the print gap, or a sliding fit by part's name), and
-  the spaces `keep` holds open. Slivers thinner than `least` and islands that would print loose are left out. A thin
+  the spaces `keep` holds open. The bodies sweep where the kinematic model puts them; each flexure sweeps its real
+  bends, the beam solver's, with every body held where it is meant to be at each frame (a folded spring doesn't bend
+  as a smear from root to tip, and room cut for that shape leaves frame in its way). `lamina.room` then checks every
+  frame, planned and as the physics moved it, the shot included. Slivers thinner than `least` and islands that would print loose are left out. A thin
   frame bends and spoils the mechanism; a flooded one is as stiff as its outline, and its pockets are the moving
   parts' stops and guides. Leave out the outline and it's everything the moving parts reach, a `wall` round it. Leave
   out `ground` too: each flexure's root gets a block behind the face it grows from, found from its root port. List
@@ -277,7 +281,7 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   from the step before, the finger going on where it was going, so the pull, the let-go and the shot are one sequence
   (`lamina.trip`: how far and how hard the finger pulled, against what the catch held; the disc's time to leave is
   then the lock time).
-- `fire: { from, disc, hold, most }` lets go from a state, with a finger keeping `hold`'s joints where it says, and
+- `fire: { from, disc, hold, most, least }` lets go from a state, with a finger keeping `hold`'s joints where it says, and
   steps through time (masses from the material's `density`; explicit steps short enough that a sound wave doesn't
   cross the shortest beam element in one, with whatever mass Gershgorin's bound still asks for added to the lightest
   flexure nodes): the speeds, and the disc's exit speed and energy, taken when it last parts from everything. A shot

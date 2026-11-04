@@ -668,3 +668,15 @@ test('a curve\'s end is seated: where it ends oblique to its body\'s edge, a blo
   const bare = await lamina({ ...base, ground: rect(-8, -10, 0.5, 0.4), groundRounded: true, bodies: { arm: rect(20, -5, 30, 5) }, joints: { hinge: { kind: 'curve', params: curve(0), from: 'ground', to: 'arm' } } });
   assert.ok(bare.findings.some((x) => x.code === 'lamina.seat' && x.level === 'fail' && x.end === 'root'), bare.findings.filter((x) => x.code === 'lamina.seat').map((x) => x.text).join('; '));
 });
+
+test('room: a frame that fills where a spring bends to fails, though it clears the spring at rest; cleared, it passes', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'y' };
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false, frame: false }, bodies: { tip: rect(20, -3, 26, 3) }, joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'tip' } }, states: { up: { s: 3 } }, sequence: ['rest', 'up', 'rest'] };
+  const wall = rect(-8, -10, 0.5, 10);
+  const blocked = await lamina({ ...base, ground: [wall, rect(8, 1.1, 12, 4)] }); // (clear of the spring at rest by 0.6 mm; in its way bent up)
+  const r = blocked.findings.filter((x) => x.code === 'lamina.room');
+  assert.ok(r.some((x) => x.level === 'fail' && x.part === 's'), r.map((x) => x.text).join('; ') || 'no room finding');
+  const clear = await lamina({ ...base, ground: wall });
+  const c = clear.findings.filter((x) => x.code === 'lamina.room');
+  assert.ok(c.length === 1 && c[0].level === 'pass', c.map((x) => x.text).join('; '));
+});

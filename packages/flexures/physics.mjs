@@ -498,7 +498,10 @@ function fire({ sys, extra, touching, measure, outline, bodies, loose, material,
         const g = new Float64Array(n); extra(q, g, null);
         const contact = Math.hypot(g[d], g[d + 1]) >= 1e-6;
         if (contact) exit = null;
-        else if (!exit) exit = { body: disc, speed: sp, energy: 0.5 * mass[d] * sp * sp, t: k * dt };
+        else if (!exit) { // (and where the rest of what was stored is when it goes: still in the springs, or moving other bodies)
+          const kinetic = Object.fromEntries(Object.entries(sys.body).filter(([nm, b]) => !b.fixed && nm !== disc).map(([nm, b]) => [nm, 0.5 * (mass[b.dof] * v[b.dof] ** 2 + mass[b.dof + 1] * v[b.dof + 1] ** 2 + mass[b.dof + 2] * v[b.dof + 2] ** 2) / 1e6]));
+          exit = { body: disc, speed: sp, energy: 0.5 * mass[d] * sp * sp, t: k * dt, kinetic, spring: energyOf(sys, q, { hessian: false }).energy / 1000 };
+        }
       }
     }
     if (k % every === 0) frames.push({ t: k * dt, q: Array.from(q), ...(measure ? measure(q) : {}) });
