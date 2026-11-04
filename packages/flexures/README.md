@@ -377,6 +377,17 @@ click: a barbed peg split down the middle, each half a snap hook, pushed into a 
 forces, and the barb's back angle decides whether it holds for good (90) or can be pulled apart (45, the default,
 which also prints standing with no overhang).
 
+In a lamina, a curve joint given a `pin` turns on a pin printed in place instead of bending about its own middle:
+`{ kind: 'curve', params, from: 'slide', to: 'pawl', pin: { d: 3, at: [x, y], under } }`. The post stands on the
+`from` body and the `to` body has a hole round it, the printer's fit (`printer.fit`, or `clearance`) wider. In 3D the
+post stands on a floor (`under`, a 2D shape from the post to its body, `base` thick, six layers by default) and is
+capped by a cone flaring out at 45° by `lip` (1 mm). The carried body is cut back a support gap (`lift`) over the
+floor wherever it ever passes over it and under the cap. The pin carries the load: in the physics it is a stiff tie
+between the two bodies at the pin's centre, free to turn. The curve only springs the turn (a pawl's bias), so its
+strain comes from the physics rather than its own model. `lamina.pin` fails a post with no floor joining it to its
+body, and reports how tall the carried body turns on it. Across the plane, the cap and the floor hold the carried
+body to the post's body after their lift.
+
 ## What the models are good for
 
 Beam theory and the pseudo-rigid-body model, good while a flexure's travel is a few times its thickness; past that,

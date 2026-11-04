@@ -698,3 +698,25 @@ test('room: a frame that fills where a spring bends to fails, though it clears t
   const c = clear.findings.filter((x) => x.code === 'lamina.room');
   assert.ok(c.length === 1 && c[0].level === 'pass', c.map((x) => x.text).join('; '));
 });
+
+test('a pin printed in place: a pawl turns on it, sprung by a curve, the pin carrying the load; a floor joins the post to its body and a cap holds the pawl down', async () => {
+  const spring = { points: [[0, 0], [10, 2], [20, 0]], thickness: 0.9, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'y' };
+  const base = { height: 8, gap: 0.3, material: petg, printer: { ...fdm, fit: 0.3 }, check: { fe: false, frame: false }, ground: [rect(-8, -10, 0.5, 10), rect(-8, -22, 60, -9)], bodies: { pawl: rect(20, -4, 46, 4) }, grips: { b: [46, 0] }, states: { up: { b: 4 } }, sequence: ['rest', 'up', 'rest'] };
+  const pin = { d: 3, at: [32, 0], under: rect(30, -9.5, 34, 0) };
+  const r = await lamina({ ...base, joints: { b: { kind: 'curve', params: spring, from: 'ground', to: 'pawl', pin } } });
+  const pins = r.findings.filter((x) => x.code === 'lamina.pin');
+  assert.ok(pins.length === 2 && pins.every((x) => x.level === 'pass'), pins.map((x) => x.text).join('; '));
+  // Turned 4° about the pin: the spring's end, 12 mm from it, rises 0.84 mm; the hand at 14 mm needs a few newtons, not
+  // what dragging the pin across the frame would take
+  const force = r.findings.find((x) => x.code === 'lamina.force');
+  assert.ok(force && /takes up to ([\d.]+) N/.test(force.text) && +force.text.match(/takes up to ([\d.]+) N/)[1] < 10, force?.text);
+  assert.ok(r.findings.some((x) => x.code === 'lamina.beams' && x.level === 'pass'), r.findings.filter((x) => x.code === 'lamina.beams').map((x) => x.text).join('; '));
+  // Across the plane the cap and the floor hold it within their lift and the pin's play
+  const across = r.findings.find((x) => x.code === 'lamina.across' && x.body === 'pawl');
+  assert.ok(across.most < 0.5, across.text);
+  // In 3D: the post stands the full height, capped; without a floor it isn't joined to anything
+  const bb = measureBoundingBox(r.parts.body);
+  assert.ok(Math.abs(bb[1][2] - 8) < 1e-6, `top ${bb[1][2]}`);
+  const loose = await lamina({ ...base, joints: { b: { kind: 'curve', params: spring, from: 'ground', to: 'pawl', pin: { d: 3, at: [32, 0] } } } });
+  assert.ok(loose.findings.some((x) => x.code === 'lamina.pin' && x.level === 'fail'));
+});

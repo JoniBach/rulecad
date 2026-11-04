@@ -20,9 +20,9 @@ const luDense = (A, b, n) => { // Gaussian elimination with partial pivoting (sm
 /**
  * How a beam system's bodies move out of the plane under loads across it.
  * @param {ReturnType<import('./beams.mjs').beamSystem>} sys at rest
- * @param {{ nu?: number, loads: { body: string, at: number[], force: number }[], springs?: { body: string, at: number[], k: number, gap?: number }[] }} o
+ * @param {{ nu?: number, loads: { body: string, at: number[], force: number }[], springs?: { body: string, at: number[], k: number, gap?: number, to?: string }[] }} o
  *   loads: a force across the plane (N, +z) at a point of a body; springs: a body held across the plane at a point
- *   (N/mm), a guide or a bridge, which with a `gap` only holds once the body has moved that far either way (its play)
+ *   (N/mm), a guide or a bridge, which with a `gap` only holds once the body has moved that far either way (its play); with `to`, held to that body, not the frame
  * @returns {{ lift: (body: string, p: number[]) => number, bodies: Record<string, number[]> }} lift: how far a point of
  *   a body moves across the plane (mm); bodies: each body's [lift, tip about x, tip about y] at its reference point
  */
@@ -57,7 +57,8 @@ export function outOfPlane(sys, { nu = 0.38, loads = [], springs = [] }) {
   // What holds a body across the plane (a guide, a bridge) has play: it only pushes back once the body has moved across
   // its `gap`, and only the way it was pushed (a spring with a gap, one-sided: a contact). Solved for which are touching,
   // again until that settles
-  const rows = springs.map((s) => bodyRows(s.body, s.at)), side = springs.map(() => 0);
+  // (a spring may hold a body to another, not the frame: a pin's cap and floor hold what turns on it to what it's on)
+  const rows = springs.map((s) => { const a = bodyRows(s.body, s.at), b = s.to ? bodyRows(s.to, s.at) : null; return a && b ? [...a, ...b.map(([i, c]) => [i, -c])] : a || (b && b.map(([i, c]) => [i, -c])); }), side = springs.map(() => 0);
   const lift = (x, r) => (r ? r.reduce((a, [i, c]) => a + c * x[i], 0) : 0);
   let x = null;
   for (let round = 0; round < 30; round++) {

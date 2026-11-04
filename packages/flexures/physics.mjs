@@ -135,7 +135,8 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
     beamOf[name] = n;
     beams.push({ name, path: c.path.map((p) => place(j, p)), thickness: c.thickness, width: height, E: material.E, from: j.from, to: j.to });
   });
-  const sys = beamSystem({ bodies, beams, segments: 20 });
+  const pins = Object.entries(joints).filter(([, j]) => j.pin).map(([n, j]) => ({ name: n, from: j.from, to: j.to, at: j.pin.at, E: material.E, width: height }));
+  const sys = beamSystem({ bodies, beams, pins, segments: 20 });
 
   // Contact: each moving body's outline points against every other body, and each beam's nodes against every body but
   // its own two; a penalty spring on how far each goes in

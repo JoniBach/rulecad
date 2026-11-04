@@ -30,7 +30,7 @@ function element(e, xa, ya, ta, xb, yb, tb) {
  *   span between points), width and modulus; `from` and `to` the bodies its ends are fixed to (none: that end free).
  *   Each span is cut into elements no longer than its thickness times `segments` allows (default: 16 a beam)
  */
-export function beamSystem({ bodies, beams, segments = 16 }) {
+export function beamSystem({ bodies, beams, pins = [], segments = 16 }) {
   const body = {}, nodes = [], elements = [];
   let dofs = 0;
   for (const [name, b] of Object.entries(bodies)) body[name] = { name, at: b.at, fixed: !!b.fixed, dof: b.fixed ? -1 : (dofs += 3) - 3, mass: b.mass ?? 0, inertia: b.inertia ?? 0 };
@@ -55,7 +55,12 @@ export function beamSystem({ bodies, beams, segments = 16 }) {
       elements.push({ beam: bm.name, a, b, L0, a0: Math.atan2(b.at[1] - a.at[1], b.at[0] - a.at[0]), EA: bm.E * bm.width * t, EI: bm.E * I, t, w: bm.width, rho: bm.density ?? 0 });
     }
   }
-  return { body, nodes, elements, dofs };
+  // Pins: a point on one body kept on the same point of another, stiff as the pin bears (E × its height), free to turn
+  const ties = pins.map((p) => {
+    const at = (name) => { const b = body[name]; if (!b) throw new Error(`pin ${p.name}: no body "${name}"`); return { body: b, o: [p.at[0] - b.at[0], p.at[1] - b.at[1]] }; };
+    return { name: p.name, a: at(p.from), b: at(p.to), k: p.k ?? p.E * p.width };
+  });
+  return { body, nodes, elements, ties, dofs };
 }
 
 // An end's place, turn, and how they change with the unknowns: [dof index, ∂x, ∂y, ∂θ] rows, and the curvature term
@@ -104,6 +109,17 @@ export function energyOf(sys, q, { hessian = true, extra } = {}) {
     }
     // A body's turn bends its arm: the place's second derivative in φ is minus the arm
     ends.forEach((E, k) => { if (E.phi != null) H[E.phi * n + E.phi] += -r.grad[3 * k] * E.rx - r.grad[3 * k + 1] * E.ry; });
+  }
+  // Each pin: ½ k |a − b|², its stiffness J^T k J, and the turn's own term (a point's second derivative in φ is minus its arm)
+  for (const t of sys.ties || []) {
+    const A = endOf(t.a, q), B = endOf(t.b, q), dx = A.x - B.x, dy = A.y - B.y;
+    U += 0.5 * t.k * (dx * dx + dy * dy);
+    const rows = [...A.rows.map((r) => [r[0], r[1], r[2]]), ...B.rows.map((r) => [r[0], -r[1], -r[2]])];
+    for (const [d, ax, ay] of rows) g[d] += t.k * (dx * ax + dy * ay);
+    if (!H) continue;
+    for (const [d1, ax1, ay1] of rows) for (const [d2, ax2, ay2] of rows) H[d1 * n + d2] += t.k * (ax1 * ax2 + ay1 * ay2);
+    if (A.phi != null) H[A.phi * n + A.phi] += t.k * (dx * -A.rx + dy * -A.ry);
+    if (B.phi != null) H[B.phi * n + B.phi] -= t.k * (dx * -B.rx + dy * -B.ry);
   }
   if (extra) U += extra(q, g, H);
   return { energy: U, grad: g, hessian: H, strain, energies }; // energies: each beam's own (N·mm, mJ)

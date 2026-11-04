@@ -120,7 +120,7 @@ function solidOf(a, height) {
 }
 
 // The print in 3D: the shapes extruded, `cuts` taken out of them between heights and `adds` put on (bridges)
-function solidWith(a, height, cuts, adds, arches = [], layers = []) {
+function solidWith(a, height, cuts, adds, arches = [], layers = [], pins = []) {
   const { geom3, poly3 } = jscad.geometries;
   // Each step's solid replaces the last, which is let go at once: a print with guides is a hundred thin slabs, and
   // keeping every one till the end runs manifold out of memory
@@ -149,6 +149,16 @@ function solidWith(a, height, cuts, adds, arches = [], layers = []) {
     // Slabs a layer or so thick: a guide's ridge added, its groove cut (cuts first, so a ridge is never cut away)
     for (const c of layers) if (real(c.cut, c.from, c.to)) next(m.subtract(slab(c.cut, c.from, c.to)));
     for (const c of layers) if (real(c.add, c.from, c.to)) next(m.add(slab(c.add, c.from, c.to)));
+    // Pins: the carried body cut back over the floor and under the cap, then the floor, the post and its cap put back
+    const cone = (r0, r1, z0, z1, at) => tmp(tmp(W.Manifold.cylinder(z1 - z0, r0, r1, 64)).translate([at[0], at[1], z0]));
+    for (const p of pins) {
+      if (real(p.floorCut, 0, p.base + p.lift)) next(m.subtract(slab(p.floorCut, 0, p.base + p.lift)));
+      const top = height - p.lip, R = p.r + p.c; // the cap: from the post's radius at `top` out by the lip at the top, 45°
+      next(m.subtract(cone(R, R + p.lip + p.lift, top - p.lift, height + 1e-3, p.at)));
+      if (real(p.under, 0, p.base)) next(m.add(slab(p.under, 0, p.base)));
+      next(m.add(cone(p.r, p.r, 0, top, p.at)));
+      next(m.add(cone(p.r, p.r + p.lip, top, height, p.at)));
+    }
     const { vertProperties: v, triVerts: t, numProp: n } = m.getMesh(), polys = [];
     for (let i = 0; i < t.length; i += 3) polys.push(poly3.create([t[i], t[i + 1], t[i + 2]].map((k) => [v[k * n], v[k * n + 1], v[k * n + 2]])));
     return geom3.create(polys);
@@ -317,7 +327,8 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  *   axis?: number[], pivot?: number[], stiffness?: number }>} spec.joints a flexure from one body (or 'ground') to another:
  *   a generator's kind and params placed at `at`, turned `angle` degrees (its root at `at`, its length along the turned x),
  *   or your own `shape` with how its `to` end moves (`axis`, a unit direction, or `pivot`, a point) and its `stiffness`
- *   (N/mm, or N·mm a degree for a pivot)
+ *   (N/mm, or N·mm a degree for a pivot). A curve given `pin: { d, at, under, clearance?, lip?, lift?, base? }` turns
+ *   on a pin printed in place at `at`, standing on `from` on a floor (`under`) and capped; the curve only springs it
  * @param {Record<string, Record<string, number>>} [spec.states] how far the joints you move are moved in each state:
  *   mm along an axis, degrees about a pivot; a leaf's (leaf, snapHook, contactLeaf) is its tip's travel in mm. rest is
  *   all zeros. A follower set by a state (a trigger pulled) starts there, and gives further if it must.
@@ -394,6 +405,9 @@ export async function lamina(spec) {
       motion = leafy ? { pivot: apply(place, [(1 - gam) * params.length, 0]), leaf: gam * params.length }
         : p.moves === 'turn' ? { pivot: apply(place, p.pivot.at) }
           : { axis: dir(p.moves === 'x' ? [1, 0] : [0, 1]), ...(model.drop ? { drop: model.drop, along: dir([-1, 0]) } : {}) }; // a guide's shuttle drops towards its base
+      // Pinned: a pin printed in place carries the load and the body turns about it; the flexure only springs it (a
+      // pawl's), bent as the physics bends it, so the model of it alone (its travel, its stiffness) no longer holds
+      if (j.pin) { if (!(j.pin.d > 0) || !j.pin.at) throw new Error(`joint ${n}: a pin needs its diameter (d) and where it is (at)`); motion = { pivot: j.pin.at }; model = null; leafy = false; }
     } else {
       if (!j.shape || (!j.axis && !j.pivot)) throw new Error(`joint ${n}: give a flexure kind, or a shape and an axis or pivot`);
       shape = all(j.shape);
@@ -403,6 +417,16 @@ export async function lamina(spec) {
     joints[n] = { ...j, kind, params, model, motion, place, leafy, turning: !leafy && !!motion.pivot, stiffness: j.stiffness ?? model?.stiffness };
     parts[n] = { kind: 'flexure', shape, joint: n };
   }
+  // A pin printed in place: a round post on the body it's from, through a hole in the body it carries a clearance
+  // round (the printer's fit), joined to its body under the other by a floor (`under`) and held down by a cap. In
+  // the plane it's a post in a hole; the floor and the cap are put on in 3D
+  const ring = (c, r) => [Array.from({ length: 48 }, (_, i) => [c[0] + r * Math.cos((i * Math.PI) / 24), c[1] + r * Math.sin((i * Math.PI) / 24)])];
+  const pinsOf = Object.entries(joints).filter(([, j]) => j.pin).map(([n, j]) => {
+    const fit = printer?.fit ?? gap, P = { joint: n, from: j.from, to: j.to, at: j.pin.at, r: j.pin.d / 2, c: j.pin.clearance ?? fit, lip: j.pin.lip ?? 1, lift: j.pin.lift ?? printer?.support_gap ?? 0.2, base: j.pin.base ?? (printer?.layer ?? 0.2) * 6, under: j.pin.under ? all(j.pin.under) : null };
+    parts[j.from].shape = union([parts[j.from].shape, ring(P.at, P.r)]);
+    parts[j.to].shape = subtract(parts[j.to].shape, ring(P.at, P.r + P.c));
+    return P;
+  });
   // A flexure given rounds meets its bodies in rounds too, whatever their shape: the round filling the corner between the
   // flexure and a band of each body, outside the body, is added to the flexure
   // (only round where it meets them: within two radii of where they touch, so a gap beside the flexure stays open;
@@ -709,6 +733,7 @@ export async function lamina(spec) {
     // ---- strain and stops: displacement-driven, each flexure's travel against its limit, and a hard stop before it ----
     for (const [n, j] of Object.entries(joints)) {
       const u = used[n], m = j.model;
+      if (!m && j.pin) { f('info', `${n}: turns on a pin, its flexure only springs it: its strain comes from the physics`, 'lamina.model', { joint: n }); continue; }
       if (!m) { f('info', `${n}: your own flexure, with no model: its strain and stop aren't checked`, 'lamina.model', { joint: n }); continue; }
       const toModel = (q) => (j.turning ? rad(q) : q), unit = j.turning ? '°' : ' mm', limit = limitOf(n), most = Math.abs(u?.most || 0);
       if (printer) for (const x of gens.printable({ thickness: Math.min(...[j.params.thickness ?? j.params.neck].flat()), width: j.params.width }, printer, material, m)) f(x.level, `${n}: ${x.text}`, x.code, { joint: n });
@@ -1007,9 +1032,32 @@ export async function lamina(spec) {
     });
   }
 
+  // ---- pins: each post stands on a floor of its own body (`under`, from the bed up `base`) that runs under the body
+  // it carries, and is capped at the top by a cone flaring out at 45° over the hole's rim (prints without support).
+  // The carried body is cut back from the floor, a lift over it, wherever it ever passes over, and from the cap a lift
+  // under it: it breaks free with a twist, and can't lift off the post ----
+  const pinWork = [];
+  if (pinsOf.length) {
+    const poses = [places({})];
+    for (let i = 0; i + 1 < seq.length; i++) {
+      const a = reached[seq[i]] ?? state(seq[i]), b = state(seq[i + 1]), keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+      for (let k = 0; k <= FRAMES * 2; k++) { const t = k / (FRAMES * 2); poses.push(places(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t]))).v)); }
+    }
+    for (const P of pinsOf) {
+      const post = ring(P.at, P.r), mine = subtract(parts[P.from].shape, grow(post, 0.01));
+      const joined = P.under && area(intersect(P.under, grow(post, 0.05))) > AREA && area(intersect(P.under, mine)) > AREA;
+      f(joined ? 'pass' : 'fail', `${P.joint}: its pin (${(2 * P.r).toFixed(1)} mm, ${P.c.toFixed(2)} mm round it) ${joined ? `stands on a floor ${P.base.toFixed(2)} mm thick that joins it to ${P.from} under ${P.to}` : `isn't joined to ${P.from}: give it a floor (pin.under) from the post to ${P.from}, under ${P.to}`}`, 'lamina.pin', { joint: P.joint });
+      if (P.c < (printer?.fit ?? gap) - 1e-9) f('warn', `${P.joint}: ${P.c} mm round the pin is under the printer's fit: it may print onto the post`, 'lamina.pin', { joint: P.joint });
+      const left = height - P.base - 2 * P.lift - P.lip;
+      f(left >= height / 2 ? 'pass' : 'fail', `${P.joint}: ${P.to} turns on it ${left.toFixed(2)} mm tall (the floor and the cap take the rest)`, 'lamina.pin', { joint: P.joint, left });
+      const floorCut = P.under ? intersect(parts[P.to].shape, union(poses.map((T) => moved(mul(inverse(T[P.to]), T[P.from]), P.under)))) : [];
+      pinWork.push({ at: P.at, r: P.r, c: P.c, lip: P.lip, lift: P.lift, base: P.base, under: P.under ? subtract(P.under, parts.ground.shape) : [], floorCut });
+    }
+  }
+
   // ---- the print, everything at rest, and frames along the sequence for an animation ----
   const extrude = (shapes) => solidOf(union(Object.values(shapes)), height);
-  let solid = bridges.length || layers.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => (b.bottom ? { shape: b.shape, from: 0, to: b.depth } : { shape: b.shape, from: height - b.depth, to: height })), arches, layers) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
+  let solid = bridges.length || layers.length || pinWork.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => (b.bottom ? { shape: b.shape, from: 0, to: b.depth } : { shape: b.shape, from: height - b.depth, to: height })), arches, layers, pinWork) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
   if (spec.finish) solid = spec.finish(solid);
   const outline = (v) => Object.fromEntries(Object.entries(shapesAt(v)).map(([n, g]) => [n, g.map((o) => o.map(([x, y]) => [+x.toFixed(3), +y.toFixed(3)]))]));
   for (let i = 0; i + 1 < seq.length; i++) {
@@ -1163,6 +1211,9 @@ export async function lamina(spec) {
     if (spec.check?.across !== false) {
       const peak = Math.max(0, ...sim.transitions.flatMap((tr) => tr.curve.flatMap((c) => c.points.map(([, F]) => Math.abs(F)))));
       const push = spec.check?.side ?? Math.max(1, peak * Math.sin(rad(15))); // (a finger pulling 15° off the plane)
+      // A pin holds what turns on it to what it's on, both ways (the cap over it, the floor under it), at the ring
+      // where they overlap, after the lift between them
+      const pinHolds = pinsOf.flatMap((P) => Array.from({ length: 6 }, (_, i) => { const a = (i * Math.PI) / 3, R = P.r + P.c + P.lip / 2; return { body: P.to, ...(P.from === 'ground' ? {} : { to: P.from }), at: [P.at[0] + R * Math.cos(a), P.at[1] + R * Math.sin(a)], k: material.E * height, gap: P.lift }; }));
       for (const b of new Set(Object.values(joints).map((j) => j.to))) {
         if (!sim.sys.body[b] || sim.sys.body[b].fixed) continue;
         const ends = sim.sys.elements.flatMap((e) => [e.a, e.b]).filter((x) => x.body?.name === b).map((x) => [x.body.at[0] + x.o[0], x.body.at[1] + x.o[1]]);
@@ -1174,7 +1225,7 @@ export async function lamina(spec) {
         const arms = new Set(Object.entries(joints).filter(([, j]) => j.to === b).map(([n]) => n)), beams = Object.keys(sim.beamOf).filter((x) => arms.has(sim.beamOf[x]));
         let worst = { most: 0, dir: '' };
         for (const [dir, sign] of [['up', 1], ['down', -1]]) {
-          const r = outOfPlane(sim.sys, { loads: [{ body: b, at: P, force: sign * push }], springs: holds(sign > 0) });
+          const r = outOfPlane(sim.sys, { loads: [{ body: b, at: P, force: sign * push }], springs: [...holds(sign > 0), ...pinHolds] });
           const body = Math.max(...pts.map((p) => Math.abs(r.lift(b, p)))), arm = Math.max(0, ...beams.map((x) => r.most(x))), most = Math.max(body, arm);
           if (most > worst.most) worst = { most, dir, arm: arm > body };
         }
