@@ -146,8 +146,9 @@ export function curveModel(p, m) {
   const s = curveSolver(p, m), cache = new Map(), at = (d) => { const k = +d.toFixed(4); if (!cache.has(k)) cache.set(k, s.solve(d)); return cache.get(k); };
   const small = 0.01, stiffness = Math.abs(at(small).force) / small;
   const strain = (d) => (Math.abs(d) < 1e-9 ? 0 : at(d).strain);
-  const travel = (e) => {
-    // Out either way in steps until the strain passes e, then halve the step down on to it
+  const travel = (e, sign) => {
+    // Out either way in steps until the strain passes e, then halve the step down on to it: the nearer way, or only the
+    // way asked (a curve isn't the same both ways, and a joint that only turns one way can go as far as that way allows)
     const reach = p.moves === 'turn' ? Math.PI / 2 : Math.max(...s.lines.flatMap((c) => c.path.map(([x, y]) => Math.hypot(x - c.path[0][0], y - c.path[0][1])))) * 2; // (turning: radians)
     const side = (sign) => {
       let lo = 0, hi = null;
@@ -156,7 +157,7 @@ export function curveModel(p, m) {
       for (let i = 0; i < 20; i++) { const mid = (lo + hi) / 2; if (strain(sign * mid) >= e) hi = mid; else lo = mid; }
       return lo;
     };
-    return Math.min(side(1), side(-1));
+    return sign ? side(Math.sign(sign)) : Math.min(side(1), side(-1));
   };
   return { signed: true, stiffness, strain, travel, stress: (d) => m.E * strain(d), energy: (d) => at(d).energy, force: (d) => at(d).force, least: Math.min(...[p.thickness].flat()) };
 }

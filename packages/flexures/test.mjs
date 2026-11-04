@@ -645,6 +645,10 @@ test('a curve turned about a point: a straight one turned about its middle bends
   // sooner than bending alone says
   const most = curveModel(p, m).travel(0.0125);
   assert.ok(most > 0.15 && most < (0.0125 * 2 * L) / t, `the turn the limit allows: ${most.toFixed(3)} rad`);
+  // A bent one isn't the same both ways: asked the way it turns, it may go as far as that way allows, never less than
+  // the nearer way, which is what it's held to unasked
+  const bent = curveModel({ ...p, points: [[0, 0], [L / 2, 3], [L, 0]] }, m), up = bent.travel(0.0125, 1), down = bent.travel(0.0125, -1);
+  assert.ok(Math.abs(Math.min(up, down) - bent.travel(0.0125)) < 1e-6 && Math.abs(up - down) > 0.01, `one way ${up.toFixed(3)}, the other ${down.toFixed(3)}`);
 });
 
 test('a flooded frame with holes: each in a solid boss no window opens into, and one in the moving parts\' room fails', async () => {

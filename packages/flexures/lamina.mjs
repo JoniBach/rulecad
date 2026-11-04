@@ -122,28 +122,37 @@ function solidOf(a, height) {
 // The print in 3D: the shapes extruded, `cuts` taken out of them between heights and `adds` put on (bridges)
 function solidWith(a, height, cuts, adds, arches = [], layers = []) {
   const { geom3, poly3 } = jscad.geometries;
-  return run((cs, keep) => {
-    const slab = (c) => keep(keep(cs(c.shape).extrude(c.to - c.from)).translate([0, 0, c.from]));
-    let m = keep(cs(a).extrude(height));
-    for (const c of cuts) m = keep(m.subtract(slab(c)));
+  // Each step's solid replaces the last, which is let go at once: a print with guides is a hundred thin slabs, and
+  // keeping every one till the end runs manifold out of memory
+  let m = null;
+  const scratch = [], tmp = (x) => (scratch.push(x), x), flush = () => { for (const x of scratch.splice(0)) x.delete(); };
+  const next = (x) => { if (m) m.delete(); m = x; flush(); };
+  const slab = (shape, from, to) => { const c = tmp(new W.CrossSection(shape, 'NonZero')), e = tmp(c.extrude(to - from)); return tmp(e.translate([0, 0, from])); };
+  const real = (shape, from, to) => !empty(shape) && to - from > 1e-6; // (manifold falls over on a slab with no thickness)
+  try {
+    const base = tmp(new W.CrossSection(a, 'NonZero'));
+    next(base.extrude(height));
+    for (const c of cuts) if (real(c.shape, c.from, c.to)) next(m.subtract(slab(c.shape, c.from, c.to)));
     // An arch: its profile (a triangle, 45° flanks, along u from lo to hi) stood up and swept across, cut out of the
     // part's footprint there
     for (const r of arches) {
+      if (!(r.hi - r.lo > 1e-3) || empty(r.shape)) continue; // (nothing to arch over)
       const mid = (r.lo + r.hi) / 2, half = (r.hi - r.lo) / 2, big = 1e3;
-      const tri = keep(new W.CrossSection([[[r.lo, 0], [r.hi, 0], [mid, half]]], 'NonZero')); // (s, z), apex at r.apex since half = apex
-      const across = keep(keep(tri.extrude(2 * big)).translate([0, 0, -big])); // swept along the third axis
-      const stood = keep(across.rotate([90, 0, 0])); // (s, z, w) to (s, w, z): the profile now stands in x–z, swept along y
-      const placed = keep(stood.rotate([0, 0, (Math.atan2(r.u[1], r.u[0]) * 180) / Math.PI])); // s along u
-      m = keep(m.subtract(keep(placed.intersect(keep(cs(r.shape).extrude(height))))));
+      const tri = tmp(new W.CrossSection([[[r.lo, 0], [r.hi, 0], [mid, half]]], 'NonZero')); // (s, z), apex at r.apex since half = apex
+      const across = tmp(tmp(tri.extrude(2 * big)).translate([0, 0, -big])); // swept along the third axis
+      const stood = tmp(across.rotate([90, 0, 0])); // (s, z, w) to (s, w, z): the profile now stands in x–z, swept along y
+      const placed = tmp(stood.rotate([0, 0, (Math.atan2(r.u[1], r.u[0]) * 180) / Math.PI])); // s along u
+      const foot = tmp(tmp(new W.CrossSection(r.shape, 'NonZero')).extrude(height));
+      next(m.subtract(tmp(placed.intersect(foot))));
     }
-    for (const c of adds) m = keep(m.add(slab(c)));
+    for (const c of adds) if (real(c.shape, c.from, c.to)) next(m.add(slab(c.shape, c.from, c.to)));
     // Slabs a layer or so thick: a guide's ridge added, its groove cut (cuts first, so a ridge is never cut away)
-    for (const c of layers) if (c.cut && !empty(c.cut)) m = keep(m.subtract(slab({ shape: c.cut, from: c.from, to: c.to })));
-    for (const c of layers) if (c.add && !empty(c.add)) m = keep(m.add(slab({ shape: c.add, from: c.from, to: c.to })));
+    for (const c of layers) if (real(c.cut, c.from, c.to)) next(m.subtract(slab(c.cut, c.from, c.to)));
+    for (const c of layers) if (real(c.add, c.from, c.to)) next(m.add(slab(c.add, c.from, c.to)));
     const { vertProperties: v, triVerts: t, numProp: n } = m.getMesh(), polys = [];
     for (let i = 0; i < t.length; i += 3) polys.push(poly3.create([t[i], t[i + 1], t[i + 2]].map((k) => [v[k * n], v[k * n + 1], v[k * n + 2]])));
     return geom3.create(polys);
-  });
+  } finally { flush(); if (m) m.delete(); }
 }
 
 // Within d of each other? Their outlines grown by half of it each overlap
@@ -333,7 +342,7 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  *   with it (a disc): in the physics only, held still while a hand works the mechanism, mass in grams
  * @param {Record<string, number[]>} [spec.grips] where a hand takes a joint's body to drive it, at rest (a trigger's
  *   blade, where the finger pulls): its force curve is then the finger's. Default: the body's centre
- * @param {{ from: string, disc: string, hold?: Record<string, number>, duration?: number, most?: number }} [spec.fire] let go
+ * @param {{ from: string, disc: string, hold?: Record<string, number>, duration?: number, most?: number, least?: number, seat?: number[] }} [spec.fire] let go
  *   from a state and step through time, a hand keeping the joints in `hold` at those travels (a finger on the trigger):
  *   the bodies' speeds and the disc's exit speed and energy (J), against `most`
  * @param {{ slack?: number, steps?: number, cell?: number, friction?: number | { pass?: number, hold?: number }, step?: number, bite?: number, side?: number }} [spec.check]
@@ -510,7 +519,7 @@ export async function lamina(spec) {
     }
     return out;
   };
-  const limitOf = (n) => { const j = joints[n]; return j.model ? (j.turning ? deg(j.model.travel(material.strainLimit)) : j.model.travel(material.strainLimit)) : Infinity; };
+  const limitOf = (n, sign) => { const j = joints[n]; return j.model ? (j.turning ? deg(j.model.travel(material.strainLimit, sign)) : j.model.travel(material.strainLimit, sign)) : Infinity; }; // (sign: the way it moves, for a flexure that isn't the same both ways)
 
   // ---- followers: each gives as far as it must to clear what drives it ----
   const blocked = (values, n) => {
@@ -525,7 +534,7 @@ export async function lamina(spec) {
       if (active.has(n)) continue; // being moved: it drives, it doesn't give
       v[n] = g * from;
       if (!blocked(v, n)) continue;
-      const most = Math.min(limitOf(n), fo.most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
+      const most = Math.min(limitOf(n, g), fo.most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
       // March out from where it is to the first place it clears (giving further can run it into something else), then
       // close in on it
       let lo = from, hi = null;
@@ -708,10 +717,11 @@ export async function lamina(spec) {
       if (j.model.least != null && printer && j.model.least < (printer.wall_min ?? 2 * printer.line) - 1e-6) f('fail', `${n}: tapered to ${j.model.least.toFixed(2)} mm, under the thinnest wall that prints (${printer.wall_min ?? 2 * printer.line} mm)`, 'flexure.thin', { joint: n });
       const fe = u?.most && spec.check?.fe !== false ? feCheck(n, j, most, e) : null;
       // Where the real peak is over beam theory's, the travel it may go is that much less
-      const reach = fe && !fe.sharp && fe.ratio > 1 ? (j.turning ? deg(m.travel(material.strainLimit / fe.ratio)) : m.travel(material.strainLimit / fe.ratio)) : limit; // (a sharp corner fails on its own; the model asked, not scaled, since a large deflection isn't linear)
+      const reachOf = (sg) => (fe && !fe.sharp && fe.ratio > 1 ? (j.turning ? deg(m.travel(material.strainLimit / fe.ratio, sg)) : m.travel(material.strainLimit / fe.ratio, sg)) : limitOf(n, sg)); // (a sharp corner fails on its own; the model asked, not scaled, since a large deflection isn't linear)
       // A stop: swept from rest to the limit (less a margin), its body, or what it carries, runs into something
       const signs = follows[n] ? [follows[n].give ?? 1] : u?.signs.size ? [...u.signs] : [1, -1]; // a follower only ever gives one way
       for (const sgn of signs) {
+        const reach = reachOf(sgn), limit = limitOf(n, sgn); // (the limit the way it moves)
         let hits = [], at = 0;
         for (let k = 1; k <= STOP_STEPS && !hits.length; k++) {
           at = (sgn * reach * 0.95 * k) / STOP_STEPS;
@@ -773,7 +783,7 @@ export async function lamina(spec) {
     const held = holding(v), grip = grips[0]; // the least friction it holds at: 0 when it holds whatever the friction
     let lets = null;
     if (held && fn) {
-      const g = follows[fn].give ?? 1, most = Math.min(limitOf(fn), follows[fn].most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
+      const g = follows[fn].give ?? 1, most = Math.min(limitOf(fn, g), follows[fn].most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
       if (!holding({ ...v, [fn]: g * reach })) { let lo = 0, hi = reach; for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (holding({ ...v, [fn]: g * mid })) lo = mid; else hi = mid; } lets = hi; }
     }
     const tight = lets != null && lets < gap; // a catch that lets go within a print gap holds by luck
@@ -931,7 +941,8 @@ export async function lamina(spec) {
         f(wide ? 'fail' : 'pass', `${name} spans ${wide ? 'more than' : 'no more than'} the ${bridgeMost} mm the printer bridges`, 'lamina.bridge', { bridge: i });
       }
       const feet = pieces(intersect(br.shape, parts.ground.shape));
-      f(feet >= 2 ? 'pass' : 'fail', `${name} stands on the frame ${feet >= 2 ? 'on both sides' : feet ? 'on one side only: it would droop' : 'nowhere: it would print in mid-air'}`, 'lamina.bridge', { bridge: i });
+      const need = br.bottom ? 1 : 2; // (a floor is printed on the bed: a ledge off the frame on one side is held; a bridge must stand on both)
+      f(feet >= need ? 'pass' : 'fail', `${name} stands on the frame ${feet >= 2 ? 'on both sides' : feet ? (br.bottom ? 'on one side, a ledge on the bed' : 'on one side only: it would droop') : br.bottom ? 'nowhere: it would come loose' : 'nowhere: it would print in mid-air'}`, 'lamina.bridge', { bridge: i });
       for (const [n, p] of Object.entries(parts)) {
         if (p.kind === 'flexure' && area(intersect(br.shape, p.shape)) > AREA) f('fail', `${name} is over the ${n} flexure: a bridge goes over what slides, not what bends`, 'lamina.bridge', { bridge: i, joint: n });
         if (p.kind !== 'body') continue;

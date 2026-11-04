@@ -434,7 +434,7 @@ function massOf(loops, h, rho) {
  * damping. Units: mm, N, kg, s (so an acceleration is 1000 F / m in mm/s²).
  * @returns {{ frames: { t: number, q: number[] }[], speeds: Record<string, number>, exit: { body: string, speed: number, energy: number } | null, stored: number }}
  */
-function fire({ sys, extra, touching, measure, outline, bodies, loose, material, height, beams, start, duration = 0.02, dt, damping = 10, disc, every }) {
+function fire({ sys, extra, touching, measure, outline, bodies, loose, material, height, beams, start, duration = 0.02, dt, damping = 10, disc, every, seat }) {
   if (!start) return null;
   const rho = (material.density ?? 1.25) * 1e-6, n = sys.dofs, mass = new Float64Array(n);
   // The time step: short enough that a sound wave doesn't cross the shortest element in one (a long flexure cut into
@@ -473,7 +473,18 @@ function fire({ sys, extra, touching, measure, outline, bodies, loose, material,
   const stored = energyOf(sys, q, { hessian: false }).energy / 1000; // J
   // Anything pressed into anything at the start (a disc where the drawn pusher already is) would be let go too, and
   // throw it with energy the spring never stored
-  const pressed = (touching ?? extra) ? (touching ?? extra)(Float64Array.from(q), new Float64Array(n), null) / 1000 : 0; // J (the contacts only: not a finger's grip)
+  // Seated: a loose part laid where it would rest, against what pushes it (a disc dropped into its slot slides back on
+  // to the nose): moved along `seat` until it just touches, or out of what it's pressed into, before anything moves
+  const contactOf = (x) => ((touching ?? extra) ? (touching ?? extra)(Float64Array.from(x), new Float64Array(n), null) : 0);
+  if (seat) for (const name of Object.keys(loose || {})) {
+    const b = sys.body[name]; if (!b || b.fixed) continue;
+    const l = Math.hypot(...seat) || 1, u = [seat[0] / l, seat[1] / l], step = 0.01, move = (k) => { q[b.dof] += u[0] * step * k; q[b.dof + 1] += u[1] * step * k; };
+    const base = contactOf(q);
+    if (base > 1e-9) { for (let i = 0; i < 400 && contactOf(q) > 1e-9; i++) move(-1); } // pressed in: back out
+    else { let i = 0; for (; i < 2000 && contactOf(q) <= 1e-9; i++) move(1); if (i < 2000) move(-1); else move(-i); } // clear: on to it, a hair short (nothing in reach: where it was)
+  }
+  if (seat) frames[0] = { t: 0, q: Array.from(q), ...(measure ? measure(q) : {}) }; // (the first frame where it's seated)
+  const pressed = (touching ?? extra) ? contactOf(q) / 1000 : 0; // J (the contacts only: not a finger's grip)
   let exit = null, touched = false;
   const free = new Uint8Array(n);
   for (const name of Object.keys(loose || {})) { const b = sys.body[name]; if (b && !b.fixed) free[b.dof] = free[b.dof + 1] = free[b.dof + 2] = 1; }
