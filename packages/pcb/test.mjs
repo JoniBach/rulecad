@@ -358,6 +358,39 @@ test('keeping the source\'s routing: copper wholly within a moved block comes wi
   assert.equal(arrange(moved, { R2: { x: 0, y: 0 } }).kept.islands.length, 1, 'R2 moved apart: the A track is left to routing');
 });
 
+test('smoothing: the router\'s tracks pulled tight; the source\'s kept routing stays exactly where it was, and the checks say so', async () => {
+  const src = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal))
+    (net 0 "") (net 1 "A") (net 2 "GND") (net 3 "B")
+    (footprint "R:R" (layer "F.Cu") (at 3 5) (property "Reference" "R1")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "GND")))
+    (footprint "R:R" (layer "F.Cu") (at 3 8) (property "Reference" "R2")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 3 "B")))
+    (footprint "R:R" (layer "F.Cu") (at 15 8) (property "Reference" "R3")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 3 "B")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "GND")))
+    (segment (start 2.5 5) (end 2.5 8) (width 0.2) (layer "F.Cu") (net 1))
+    (segment (start 3.5 5) (end 4.5 5) (width 0.2) (layer "F.Cu") (net 2)) (via (at 4.5 5) (size 0.5) (drill 0.25) (layers "F.Cu" "B.Cu") (net 2))
+    (segment (start 3.5 8) (end 14.5 8) (width 0.2) (layer "F.Cu") (net 3))
+    (zone (net 2) (net_name "GND") (layer "In1.Cu"))
+    (gr_rect (start 0 0) (end 20 12) (layer "Edge.Cuts")))`);
+  const moved = moveGroup(src, ['R1', 'R2'], { turn: 90, dx: 1 }, { keep: true }), k = clone(moved, { layers: 4 });
+  // A router that wiggles: each connection zigzags between its ends
+  const wiggly = { route: async (json, toRoute) => ({ traces: toRoute.map((c) => {
+    const p = (t, dy) => ({ route_type: 'wire', x: c.a.x + (c.b.x - c.a.x) * t, y: c.a.y + (c.b.y - c.a.y) * t + dy, width: 0.2, layer: 'top' });
+    return { source_trace_id: c.id, vias: [], route: [{ ...p(0, 0), start_pcb_port_id: c.a.pcb.pcb_port_id }, p(0.3, 0.4), p(0.5, -0.4), p(0.7, 0.4), { ...p(1, 0), end_pcb_port_id: c.b.pcb.pcb_port_id }] };
+  }) }) };
+  const board = { outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, layers: 4, planes: k.planes, copper: k.copper, parts: k.parts, nets: k.nets };
+  const plain = await render(board, wiggly), smoothed = await render({ ...board, smooth: true }, wiggly);
+  const routed = (j) => j.filter((e) => e.type === 'pcb_trace' && e.rulecad_routed);
+  const kept = (j) => JSON.stringify(j.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept).map((e) => e.route));
+  assert.ok(routed(plain).length >= 1);
+  assert.ok(routed(smoothed).every((t, i) => t.route.length < routed(plain)[i].route.length), 'every wiggle pulled out');
+  assert.ok(routed(smoothed).every((t, i) => ['x', 'y'].every((c) => t.route[0][c] === routed(plain)[i].route[0][c] && t.route.at(-1)[c] === routed(plain)[i].route.at(-1)[c])), 'ends where they were');
+  assert.equal(kept(smoothed), kept(plain), 'the kept routing untouched');
+  assert.ok(kept(plain).length > 2);
+  const found = await checks(smoothed, values({}), null, { circuit: src, arranged: moved });
+  assert.match(found.map((f) => f.text).join(' | '), /the source's own routing as it was: \d+ tracks and 1 vias exactly where the source has them/);
+});
+
 test('round and rounded pads keep their shape: a test point is a circle, a rounded pad has its corners', async () => {
   const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
     (footprint "T:TP" (layer "F.Cu") (at 3 5) (property "Reference" "TP1") (pad "1" smd circle (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "A")))

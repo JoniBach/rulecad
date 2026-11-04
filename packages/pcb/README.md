@@ -80,6 +80,11 @@ export function main(v) {
   `neck` (mm, the fab's smallest track), a track still a little too close to another is straightened where the router
   doubled back, moved in where it hugs the board's edge, or narrowed where they pass. Existing vias reach the router at
   their real size. `effort` asks the router to search harder, at more time.
+- **Smoothing:** with `smooth: true`, the router's tracks are pulled tight once routed
+  ([@rulecad/smooth](../smooth)): wiggles, detours and doubling-backs straightened wherever the straight run keeps
+  `clearance`. Only the router's tracks move; drawn tracks and a clone's kept routing never do. A track the design
+  checks then find in a new error goes back as it was. For a clone that keeps its source's routing, the checks confirm
+  every kept track and via is still exactly where the source has it.
 - **Labels clear of copper:** `clearLabels(silk, circuit)` slides each silkscreen label across its reading direction to
   the nearest place clear of every pad and of the labels before it (the fab trims silkscreen off copper, so a label
   on a pad loses letters). A label for a pin hemmed in by its neighbours (`to`: where the pin is) goes to the nearest

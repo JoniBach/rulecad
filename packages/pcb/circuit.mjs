@@ -25,6 +25,7 @@
 //   holes  [{ x, y, d, keepout }] in the board (mounting holes; keepout: a radius the router keeps tracks out of, for a screw head)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
+//   smooth true: routed tracks pulled tight once routed (@rulecad/smooth), where the straight run keeps clearance
 //   neck (mm) a routed track still too close to another after repair is narrowed to this where they pass (the fab's smallest)
 //   planes { GND: { layer: 'inner1', pins: ['U1.GND', ...] } }: nets joined by copper filling an inner layer. Each SMD pad
 //            gets a via beside it before routing, or a track to one nearby; a pad with no room for
@@ -209,9 +210,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   const stubOf = new Map((board.copper?.stubs || []).map((b) => [b.pin, b]));
   const layStub = (stub, id) => {
     for (const g of board.copper.tracks.filter((x) => x.stub === stub.id))
-      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: id, subcircuit_id: SUB });
+      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: id, subcircuit_id: SUB, rulecad_kept: true });
     for (const v of board.copper.vias.filter((x) => x.stub === stub.id)) {
-      const tr = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: id, subcircuit_id: SUB });
+      const tr = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: id, subcircuit_id: SUB, rulecad_kept: true });
       add('pcb_via', { pcb_trace_id: tr.pcb_trace_id, x: v.x, y: v.y, hole_diameter: v.hole, outer_diameter: v.pad, layers: copper, from_layer: 'top', to_layer: 'bottom', subcircuit_id: SUB });
     }
   };
@@ -246,15 +247,36 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     if (!board.autoroute) throw new Error(`${toRoute.length} connections have no track and the board isn't autorouted`);
     const routed = await route(out, toRoute, board);
     for (const r of routed.traces) {
-      const t = add('pcb_trace', { route: r.route, source_trace_id: r.source_trace_id, subcircuit_id: SUB });
+      const t = add('pcb_trace', { route: r.route, source_trace_id: r.source_trace_id, subcircuit_id: SUB, rulecad_routed: true });
       for (const v of r.vias) add('pcb_via', { pcb_trace_id: t.pcb_trace_id, ...v, layers: copper, subcircuit_id: SUB }); // whose via it is: the checks need it
     }
+    if (board.smooth) await smoothRouted(out, board);
   }
   if (planeNets) await pours(out, add, board, planeNets, netOf);
   if (board.silk?.length) clearSilkAfter(out, add, board);
 
   schematic(out, add, placed, { ...board, traces }, port, netOf);
   return out;
+}
+
+// The routed tracks pulled tight (@rulecad/smooth): bend points dropped where a straight run keeps the board's clearance.
+// Only the router's tracks move, never drawn or kept ones; a track the design checks then find in a new error goes back
+// as it was
+async function smoothRouted(out, board) {
+  const { smoothCircuit } = await import('@rulecad/smooth');
+  const { runAllChecks } = await import('@tscircuit/checks');
+  const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type)).map((e) => JSON.stringify(e)); // (on a copy: the checks write into the routes they read)
+  const before = new Set(await errors());
+  const { routes } = await smoothCircuit(out, { movable: (e) => e.rulecad_routed === true, ...(board.clearance ? { clearance: board.clearance } : {}) });
+  const was = new Map();
+  for (const e of out) if (routes.has(e.pcb_trace_id)) { was.set(e.pcb_trace_id, e.route); e.route = routes.get(e.pcb_trace_id); }
+  for (let round = 0; round < 5 && was.size; round++) { // (a track put back can be in the way of one pulled tight round its new path: again)
+    let back = 0;
+    for (const e of (await errors()).filter((x) => !before.has(x))) for (const [id, route] of was) if (e.includes(`"${id}"`)) {
+      out.find((x) => x.pcb_trace_id === id).route = route; was.delete(id); back++;
+    }
+    if (!back) break;
+  }
 }
 
 // A point on (or near) the board's edge moved in by d, straight in from the nearest side of its bounds
@@ -277,9 +299,9 @@ function keptCopper(out, add, board, copper, planeNets) {
     if (!ports.length || (ports.length < 2 && !plane)) continue; // nothing left to join
     const st = add('source_trace', { connected_source_port_ids: ports, connected_source_net_ids: plane ? [plane.id] : [], subcircuit_id: SUB, display_name: `${k.pins.join(', ')}: the source's own copper` });
     for (const g of board.copper.tracks.filter((t) => t.island === k.id))
-      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: st.source_trace_id, subcircuit_id: SUB });
+      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: st.source_trace_id, subcircuit_id: SUB, rulecad_kept: true });
     for (const v of board.copper.vias.filter((x) => x.island === k.id)) {
-      const t = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: st.source_trace_id, subcircuit_id: SUB });
+      const t = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: st.source_trace_id, subcircuit_id: SUB, rulecad_kept: true });
       add('pcb_via', { pcb_trace_id: t.pcb_trace_id, x: v.x, y: v.y, hole_diameter: v.hole, outer_diameter: v.pad, layers: copper, from_layer: 'top', to_layer: 'bottom', subcircuit_id: SUB });
     }
   }

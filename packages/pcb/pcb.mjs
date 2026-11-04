@@ -1074,6 +1074,17 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     + toPlane.filter((t) => !tracked.has(t.source_trace_id) && !holePorts.has(t.connected_source_port_ids[0])).length;
   out.push(unrouted > 0 ? { level: 'fail', text: `${unrouted} connections have no track` } : { level: 'pass', text: `every connection is routed (${traces.length} tracks, ${json.filter((e) => e.type === 'pcb_via').length} vias)` });
   out.push(...planeChecks(json));
+  // A clone's own routing, kept: every track and via of it on the board exactly as the source has it (smoothing and
+  // repair move only the router's tracks)
+  const keptCu = source?.arranged?.kept;
+  if (keptCu?.tracks?.length) {
+    const key = (x, y) => `${x.toFixed(4)},${y.toFixed(4)}`, tracksAt = new Set(keptCu.tracks.map((g) => `${g.layer} ${g.width} ${key(g.a.x, g.a.y)} ${key(g.b.x, g.b.y)}`)), viasAt = new Set(keptCu.vias.map((q) => key(q.x, q.y)));
+    const laid = traces.filter((t) => t.rulecad_kept), moved = laid.filter((t) => t.route[1]?.route_type === 'via' ? !viasAt.has(key(t.route[0].x, t.route[0].y))
+      : t.route.length !== 2 || !tracksAt.has(`${t.route[0].layer} ${t.route[0].width} ${key(t.route[0].x, t.route[0].y)} ${key(t.route[1].x, t.route[1].y)}`));
+    const vias = laid.filter((t) => t.route[1]?.route_type === 'via').length;
+    out.push(moved.length ? { level: 'fail', text: `${moved.length} of the source's own tracks and vias aren't where the source has them` }
+      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias} tracks and ${vias} vias exactly where the source has them (only the router's tracks are tidied)` });
+  }
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
   out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole').map((e) => e.hole_diameter ?? e.hole_width);
