@@ -344,7 +344,7 @@ function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop =
   // The tooth's front face matches the catch's (leaning back by the bite) where the cocked pusher meets it
   const top = L + 0.5, bottom = L - (engage + g + drop(7)), face = (y) => xc + stroke - (y - drop(stroke) - (under - hook)) * lean;
   return lamina({
-    height: 6, gap: g, material: petg, printer: fdm, check: { across: false }, // (its leaves twist out of the plane: the guide test covers that)
+    height: 6, gap: g, material: petg, printer: fdm, check: { across: false, bite: 0 }, // (its leaves twist out of the plane: the guide test covers that; its hook swings the way the spring pulls, so square is the best it can bite)
     ground: [
       rect(-20, -6, 40, -3 + floorTop), // the floor, run into the spring's base block
       rect(-half - wall - 3, -6, -half - wall, L + 3), // the back wall: the spring's stop
@@ -384,6 +384,8 @@ test('a lamina mechanism, broken: a steep ramp jams, a short release jams, a nea
   assert.ok(fails(await catapult({ lead: 80 }), 'lamina.jam').some((f) => f.from === 'rest' && f.to === 'drawn'), 'cocking jams on a steep face');
   assert.ok(fails(await catapult({ release: 0.8 })).some((f) => f.from === 'released' && f.to === 'fired'), 'a latch lowered less than its catch holds on');
   assert.ok(fails(await catapult({ bite: -10 }), 'lamina.holds').length, 'a catch leaning the wrong way slips under load');
+  const out = fails(await catapult({ bite: 0 }), 'lamina.bite');
+  assert.ok(out.length && out[0].bite < -10, 'a catch the load pushes towards letting go holds only by friction, which a print can\'t be trusted for');
   assert.ok(fails(await catapult({ fuse: 0.1 }), 'lamina.free').length, 'a block 0.1 mm from a leaf prints fused to it');
   assert.ok(fails(await catapult({ floorTop: 0 }), 'lamina.attached').length, 'a spring that only touches the floor along an edge');
   assert.ok(fails(await catapult({ wall: 20 }), 'lamina.stop').some((f) => f.joint === 'spring'), 'nothing stops the spring before its strain limit');
@@ -468,7 +470,7 @@ test('a pivot pair turns about the point its leaves\' lines meet, and its model 
 
 test('firing: let go, a pusher on a spring throws a loose disc, never with more energy than was stored', async () => {
   const L = 30, t = 0.84, half = 4 + t + 1, stroke = 5, g = 0.3;
-  const m = await lamina({
+  const spec = {
     height: 6, gap: g, material: { ...petg, density: 1.27 }, printer: fdm, check: { fe: false },
     // The guide moves the pusher along y: the disc sits on it, edge on, between rails that stop the pusher at rest
     ground: [rect(-8, -6, -3 + 0.5, 6), rect(L + 1, half + g, L + 3.3 - g, half + 20), rect(L + 6.7 + g, half + g, L + 9, half + 20)],
@@ -477,12 +479,17 @@ test('firing: let go, a pusher on a spring throws a loose disc, never with more 
     free: { disc: { shape: rect(L + 3.6, half + g, L + 6.4, half + g + 20), mass: 0.5 } },
     states: { drawn: { spring: stroke } }, sequence: ['rest', 'drawn'],
     fire: { from: 'drawn', disc: 'disc', duration: 0.01 },
-  });
+  }, m = await lamina(spec);
   const f = m.findings.find((x) => x.code === 'lamina.fire');
   assert.ok(f && f.level !== 'fail' && f.exit && f.exit.energy > 0 && f.exit.energy <= f.stored * 1.02, f?.text);
   assert.ok(!m.findings.some((x) => x.code === 'lamina.fire' && /pressed/.test(x.text)), 'nothing starts pressed into anything');
   const pusherMass = 1.27e-6 * 6 * 10 * (2 * half), most = Math.sqrt((2 * f.stored) / pusherMass); // all the energy in the pusher alone
   assert.ok(f.speeds.pusher > 0.5 * most && f.speeds.pusher <= most * 1.05, `the pusher's ${f.speeds.pusher.toFixed(2)} m/s against at most ${most.toFixed(2)}`);
+  // Lying in the plane with nothing over or under it, the disc falls out of it; a roof and a floor along its way hold it
+  assert.ok(m.findings.some((x) => x.code === 'lamina.carried' && x.level === 'fail' && x.side === 'under') && m.findings.some((x) => x.code === 'lamina.carried' && x.level === 'fail' && x.side === 'over'), 'nothing holds the disc in the plane');
+  const way = rect(L + 1, half + 2, L + 9, half + 20), held = await lamina({ ...spec, bridges: [{ shape: way }, { shape: way, side: 'bottom' }] });
+  const c = held.findings.filter((x) => x.code === 'lamina.carried');
+  assert.ok(c.length === 1 && c[0].level === 'pass', c.map((x) => x.text).join('; '));
 });
 
 test('a wave spring: round bends, and pressed past solid its legs meet (self-contact), so its force climbs steeply', async () => {
@@ -597,6 +604,13 @@ test('across the plane: a strip as tall as the print is stiff bending across it,
   // Held across the plane at its tip (a guide), it hardly moves
   const held = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 10], force: 1 }], springs: [{ body: 'tip', at: [L, 5], k: 1e3 }, { body: 'tip', at: [L, -5], k: 1e3 }] });
   assert.ok(Math.abs(held.lift('tip', [L, 10])) < 0.01);
+  // A guide with play holds nothing until the part has moved across its gap, then holds it there, and only that way
+  const free = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 0], force: 0.01 }] }).lift('tip', [L, 0]);
+  const loose = (force) => outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 0], force }], springs: [{ body: 'tip', at: [L, 0], k: 1e3, gap: 0.3 }] }).lift('tip', [L, 0]);
+  assert.ok(Math.abs(loose(0.01) - free) < 1e-9, 'within its play, as if it weren\'t there');
+  const far = loose(0.01 * (0.6 / free)); // pushed twice as far as the play, unheld
+  assert.ok(far > 0.3 && far < 0.31, `stopped just past its play: ${far.toFixed(3)} mm`);
+  assert.ok(loose(-0.01 * (0.6 / free)) < -0.3 && loose(-0.01 * (0.6 / free)) > -0.31, 'either way');
 });
 
 test('a guide: a ridge on what slides runs in a groove in the frame, flanks at 45°, so it stays in the plane and prints without support', async () => {

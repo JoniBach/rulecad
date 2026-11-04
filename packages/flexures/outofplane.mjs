@@ -20,9 +20,9 @@ const luDense = (A, b, n) => { // Gaussian elimination with partial pivoting (sm
 /**
  * How a beam system's bodies move out of the plane under loads across it.
  * @param {ReturnType<import('./beams.mjs').beamSystem>} sys at rest
- * @param {{ nu?: number, loads: { body: string, at: number[], force: number }[], springs?: { body: string, at: number[], k: number }[] }} o
+ * @param {{ nu?: number, loads: { body: string, at: number[], force: number }[], springs?: { body: string, at: number[], k: number, gap?: number }[] }} o
  *   loads: a force across the plane (N, +z) at a point of a body; springs: a body held across the plane at a point
- *   (N/mm), a guide or a bridge
+ *   (N/mm), a guide or a bridge, which with a `gap` only holds once the body has moved that far either way (its play)
  * @returns {{ lift: (body: string, p: number[]) => number, bodies: Record<string, number[]> }} lift: how far a point of
  *   a body moves across the plane (mm); bodies: each body's [lift, tip about x, tip about y] at its reference point
  */
@@ -50,12 +50,31 @@ export function outOfPlane(sys, { nu = 0.38, loads = [], springs = [] }) {
     add(bend, kb); add(twist, kt);
   }
   const bodyRows = (name, [x, y]) => { const b = sys.body[name]; if (!b || b.fixed) return null; const i = index.get(b), ox = x - b.at[0], oy = y - b.at[1]; return [[i, 1], [i + 1, oy], [i + 2, -ox]]; };
-  for (const s of springs) { const r = bodyRows(s.body, s.at); if (r) for (const [i, ci] of r) for (const [j, cj] of r) K[i * n + j] += s.k * ci * cj; }
   for (const L of loads) { const r = bodyRows(L.body, L.at); if (r) for (const [i, c] of r) f[i] += L.force * c; }
   // A body joined to nothing that holds it across the plane would float: a whisper of stiffness keeps the solve well posed
   const diag = Math.max(1e-12, ...Array.from({ length: n }, (_, i) => Math.abs(K[i * n + i])));
   for (let i = 0; i < n; i++) K[i * n + i] += diag * 1e-12;
-  const x = luDense(K, f, n) || new Float64Array(n);
+  // What holds a body across the plane (a guide, a bridge) has play: it only pushes back once the body has moved across
+  // its `gap`, and only the way it was pushed (a spring with a gap, one-sided: a contact). Solved for which are touching,
+  // again until that settles
+  const rows = springs.map((s) => bodyRows(s.body, s.at)), side = springs.map(() => 0);
+  const lift = (x, r) => (r ? r.reduce((a, [i, c]) => a + c * x[i], 0) : 0);
+  let x = null;
+  for (let round = 0; round < 30; round++) {
+    const A = Float64Array.from(K), b = Float64Array.from(f);
+    springs.forEach((s, k) => { const r = rows[k]; if (!r || (s.gap > 0 && !side[k])) return; const sg = s.gap > 0 ? side[k] : 0; for (const [i, ci] of r) { for (const [j, cj] of r) A[i * n + j] += s.k * ci * cj; b[i] += s.k * sg * (s.gap || 0) * ci; } });
+    x = luDense(A, b, n) || new Float64Array(n);
+    let changed = false;
+    springs.forEach((s, k) => {
+      if (!(s.gap > 0) || !rows[k]) return;
+      const w = lift(x, rows[k]);
+      if (side[k] && (w - side[k] * s.gap) * side[k] < 0) { side[k] = 0; changed = true; } // pulled off it: not touching
+      else if (!side[k] && Math.abs(w) > s.gap) { side[k] = Math.sign(w); changed = true; } // across its play: touching
+    });
+    if (!changed) break;
+  }
   const bodies = Object.fromEntries(Object.values(sys.body).filter((b) => !b.fixed).map((b) => { const i = index.get(b); return [b.name, [x[i], x[i + 1], x[i + 2]]]; }));
-  return { bodies, lift: (name, p) => { const r = bodyRows(name, p); return r ? r.reduce((a, [i, c]) => a + c * x[i], 0) : 0; } };
+  const nodes = Object.fromEntries(sys.nodes.map((nd) => [nd.dof, x[index.get(nd)]]));
+  const most = (beam) => Math.max(0, ...sys.nodes.filter((nd) => !beam || nd.beam === beam).map((nd) => Math.abs(x[index.get(nd)])));
+  return { bodies, nodes, most, lift: (name, p) => { const r = bodyRows(name, p); return r ? r.reduce((a, [i, c]) => a + c * x[i], 0) : 0; } };
 }

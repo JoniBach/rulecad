@@ -336,10 +336,12 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
  * @param {{ from: string, disc: string, hold?: Record<string, number>, duration?: number, most?: number }} [spec.fire] let go
  *   from a state and step through time, a hand keeping the joints in `hold` at those travels (a finger on the trigger):
  *   the bodies' speeds and the disc's exit speed and energy (J), against `most`
- * @param {{ slack?: number, steps?: number, cell?: number, friction?: number | { pass?: number, hold?: number }, step?: number }} [spec.check]
+ * @param {{ slack?: number, steps?: number, cell?: number, friction?: number | { pass?: number, hold?: number }, step?: number, bite?: number, side?: number }} [spec.check]
  *   how deep a touch may be (default a tenth of the gap); the fewest steps between states (8), and the most any body
  *   moves in one (`step`, a quarter of a mm); the grid flexures are bent on (a quarter of the thinnest); friction at
- *   contacts, the cautious way for each check: `pass` for what must move (0.5), `hold` for what must hold (0.1)
+ *   contacts, the cautious way for each check: `pass` for what must move (0.5), `hold` for what must hold (0.1); `bite`:
+ *   the least a catch's load must press it in, in degrees (5); `side`: the push across the plane (N, default the hand's
+ *   pull 15° off the plane)
  * @returns {Promise<{ parts: Record<string, object>, findings: object[], energy: Record<string, number>, at: (state: string | object) => object,
  *   outlines: (state: string | object) => Record<string, number[][][]>, frames: object[], mechanism: object }>} (async: the plane's
  *   geometry is manifold-3d's WASM, loaded the first time)
@@ -834,6 +836,25 @@ export async function lamina(spec) {
         const b = joints[jn].to, d = sim.sys.body[b].dof, now = Math.hypot(tr.end[d], tr.end[d + 1]), T = places(state(tr.to))[b], c = sim.centre[b];
         const meant = Math.hypot(T[0] * c[0] + T[1] * c[1] + T[2] - c[0], T[3] * c[0] + T[4] * c[1] + T[5] - c[1]), kept = meant > 0 ? now / meant : 1;
         f(kept > 0.75 ? 'pass' : 'fail', `${tr.to}: let go of, ${b} ${kept > 0.75 ? `stays on ${by}, ${now.toFixed(2)} mm from rest${tr.holding?.[jn] != null ? `, which takes ${tr.holding[jn].toFixed(1)} N` : ''} (beams and contact, ${sim.friction ? `friction ${sim.friction}` : 'no friction'})` : `doesn't stay: it runs back to ${now.toFixed(2)} mm from rest, past ${by}`}`, 'lamina.held', { state: tr.to, joint: jn, kept });
+        // The bite: which way the load on the catch pushes it, against the way it moves to let go. Leaning into the catch
+        // (pressed in), it holds by its shape; square, or leaning out, only friction holds it, and a printed face is
+        // slicker than any figure and a little twist walks it off. The normal force alone, so friction can't flatter it
+        const fn = Object.keys(follows).find((x) => carries[x].has(by) || joints[x].to === by), last = sim.frames.filter((fr) => fr.from === tr.from && fr.to === tr.to).at(-1);
+        const touches = fn ? (last?.forces || []).filter((x) => x.kind === 'contact' && ((carries[fn].has(x.on) && x.by === b) || (x.on === b && carries[fn].has(x.by)))) : [];
+        if (touches.length && kept > 0.75) {
+          // every contact's normal force on the catch, against how that point moves as the catch lets go: the work they
+          // do on it letting go, over the most they could (sin of the lean, summed over the contacts)
+          const v = solved[tr.to] ?? solve(state(tr.to)).v, g = follows[fn].give ?? 1, small = joints[fn].turning ? 0.5 : 0.05;
+          let work = 0, most = 0, total = 0;
+          for (const t of touches) {
+            const sgn = carries[fn].has(t.on) ? 1 : -1, F = [sgn * (t.force[0] - t.friction[0]), sgn * (t.force[1] - t.friction[1])], r = pointStep(joints[fn].to, v, { ...v, [fn]: (v[fn] || 0) + g * small }, t.at);
+            work += F[0] * r[0] + F[1] * r[1]; most += Math.hypot(...F) * Math.hypot(...r); total += Math.hypot(...F);
+          }
+          if (most > 1e-12) {
+            const bite = deg(Math.asin(Math.max(-1, Math.min(1, -work / most)))), least = spec.check?.bite ?? 5, at = touches.sort((x, y) => Math.hypot(...y.force) - Math.hypot(...x.force))[0].at;
+            f(bite >= least ? 'pass' : 'fail', `${tr.to}: the load on ${by} (${total.toFixed(1)} N, near (${at.map((x) => x.toFixed(1)).join(', ')})) ${bite >= 0 ? `presses it ${bite.toFixed(1)}° into the catch` : `pushes it ${(-bite).toFixed(1)}° towards letting go`}${bite >= least ? '' : `: under the ${least}° a printed catch needs, it holds by friction (or its own spring) alone, and slips. Lean the hooked face back so the pull draws ${by} into it, and let the finger lift it out`}`, 'lamina.bite', { state: tr.to, joint: jn, catch: by, bite, at });
+          }
+        }
       }
     }
     // Requirements on the force curves: [{ step: 'from>to', joint, peak: [least, most], click: least share it drops after
@@ -917,7 +938,7 @@ export async function lamina(spec) {
         const cut = intersect(p.shape, union(poses.map((P) => moved(inverse(P[n]), br.shape)))); // all of it that ever passes under, where it is at rest
         if (empty(cut)) continue;
         if (!br.bottom) {
-          cuts.push({ shape: cut, from: left, to: height, body: n });
+          cuts.push({ shape: cut, from: left, to: height, body: n, gap: br.gap });
           f(left >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes under it, cut down to ${left.toFixed(2)} mm there (the bridge ${br.depth.toFixed(2)} mm, a gap of ${br.gap.toFixed(2)} mm over it)`, 'lamina.bridge', { bridge: i, body: n, left });
           continue;
         }
@@ -929,7 +950,7 @@ export async function lamina(spec) {
         if (turned) { f('fail', `${name}: ${n} turns as it passes over it: a floor's arch is for what slides`, 'lamina.bridge', { bridge: i, body: n }); continue; }
         const u = T.u, along = cut.flat().map(([x, y]) => x * u[0] + y * u[1]), lo = Math.min(...along), hi = Math.max(...along), clear = br.depth + br.gap;
         const apex = clear + (hi - lo) / 2;
-        arches.push({ body: n, shape: intersect(p.shape, grow(cut, clear + 0.5)), u, lo: lo - clear, hi: hi + clear, apex });
+        arches.push({ body: n, shape: intersect(p.shape, grow(cut, clear + 0.5)), u, lo: lo - clear, hi: hi + clear, apex, gap: br.gap });
         f(height - apex >= 2 ? 'pass' : 'fail', `${name}: ${n} passes over it, its underside arched up to ${apex.toFixed(2)} mm at 45° (${clear.toFixed(2)} mm clear over the floor all along), leaving ${(height - apex).toFixed(2)} mm above`, 'lamina.bridge', { bridge: i, body: n, apex });
       }
     });
@@ -1042,6 +1063,26 @@ export async function lamina(spec) {
       if (!Object.keys(worst).length) f('pass', `in all ${planned.length + physical.length} frames, planned and as the physics moved them, nothing runs into the frame`, 'lamina.room');
     }
 
+    // ---- carried: a loose part lying in the plane (a disc) falls out of it unless something holds it across the plane
+    // on both faces, a roof (a bridge) over it and a floor under it, all the way it goes while it's in the frame: its
+    // middle over what holds it each side (else it tips off the edge), loaded and through the shot ----
+    if (spec.free && !empty(parts.ground.shape)) {
+      const hullOf = (pts) => { const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], hi = []; for (const q of p) { while (lo.length >= 2 && cross(lo.at(-2), lo.at(-1), q) <= 0) lo.pop(); lo.push(q); } for (const q of p.reverse()) { while (hi.length >= 2 && cross(hi.at(-2), hi.at(-1), q) <= 0) hi.pop(); hi.push(q); } return [...lo.slice(0, -1), ...hi.slice(0, -1)]; };
+      const within = (h, [x, y]) => h.length >= 3 && h.every((a, i) => { const b = h[(i + 1) % h.length]; return (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]) >= -1e-9; });
+      const faces = { over: union(bridges.filter((b) => !b.bottom).map((b) => b.shape)), under: union(bridges.filter((b) => b.bottom).map((b) => b.shape)) }, G = box(parts.ground.shape);
+      for (const n of Object.keys(spec.free)) {
+        const along = [{ label: 'loaded', shape: all(spec.free[n].shape) }, ...physical.filter((fr) => fr.parts[n] && fr.label).map((fr) => ({ label: fr.label, shape: fr.parts[n] }))];
+        const lost = {};
+        for (const fr of along) {
+          const { lo, hi } = box(fr.shape), mid = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2];
+          if (mid[0] < G.lo[0] || mid[0] > G.hi[0] || mid[1] < G.lo[1] || mid[1] > G.hi[1]) break; // (out of the frame: gone)
+          for (const [side, F] of Object.entries(faces)) { if (lost[side]) continue; const o = intersect(fr.shape, F); if (empty(o) || !within(hullOf(o.flat()), mid)) lost[side] = { label: fr.label, mid }; }
+        }
+        for (const [side, w] of Object.entries(lost)) f('fail', `${n} isn't held ${side === 'over' ? 'from above' : 'from below'} ${w.label === 'loaded' ? 'where it is loaded' : `(${w.label})`}, at (${w.mid.map((x) => x.toFixed(1)).join(', ')}): ${side === 'over' ? 'nothing over' : 'nothing under'} its middle, so it falls out of the plane. ${side === 'over' ? 'Bridge over' : 'Floor under'} its way, from where it's loaded to where it leaves`, 'lamina.carried', { part: n, side, at: w.mid, frame: w.label });
+        if (!Object.keys(lost).length) f('pass', `${n} is held over and under all the way it goes in the frame`, 'lamina.carried', { part: n });
+      }
+    }
+
     // ---- the frame under the mechanism's own forces: at the end of each step, what the flexures pull on the frame
     // with (from the beams), the frame an elastic plate as tall as the print, held where a hand holds it (`grip`, or
     // its back quarter); every clearance to what moves then checked on the frame as it bends. A frame that closes
@@ -1099,21 +1140,24 @@ export async function lamina(spec) {
     // under it from dropping ----
     if (spec.check?.across !== false) {
       const peak = Math.max(0, ...sim.transitions.flatMap((tr) => tr.curve.flatMap((c) => c.points.map(([, F]) => Math.abs(F)))));
-      const push = spec.check?.side ?? Math.max(1, peak / 10);
+      const push = spec.check?.side ?? Math.max(1, peak * Math.sin(rad(15))); // (a finger pulling 15° off the plane)
       for (const b of new Set(Object.values(joints).map((j) => j.to))) {
         if (!sim.sys.body[b] || sim.sys.body[b].fixed) continue;
         const ends = sim.sys.elements.flatMap((e) => [e.a, e.b]).filter((x) => x.body?.name === b).map((x) => [x.body.at[0] + x.o[0], x.body.at[1] + x.o[1]]);
         const c = ends.length ? [ends.reduce((a, p) => a + p[0], 0) / ends.length, ends.reduce((a, p) => a + p[1], 0) / ends.length] : centroid(parts[b].shape);
         const pts = parts[b].shape.flat(), P = pts.reduce((a, p) => (Math.hypot(p[0] - c[0], p[1] - c[1]) > Math.hypot(a[0] - c[0], a[1] - c[1]) ? p : a), pts[0]);
-        const holds = (top) => [...cuts.filter((x) => x.body === b && top).flatMap((x) => x.shape.flat()), ...arches.filter((x) => x.body === b && !top).flatMap((x) => x.shape.flat()), ...guidesHeld.filter((x) => x.body === b).flatMap((x) => x.shape.flat())].map((at) => ({ body: b, at, k: 1e3 }));
+        // (each with its play: a guide's ridge moves the print gap in its groove before it bears, a bridge or a floor its
+        // own gap; held rigidly, a printed part looked held where it wobbles)
+        const holds = (top) => [...cuts.filter((x) => x.body === b && top).flatMap((x) => x.shape.flat().map((at) => ({ at, gap: x.gap ?? gap }))), ...arches.filter((x) => x.body === b && !top).flatMap((x) => x.shape.flat().map((at) => ({ at, gap: x.gap ?? gap }))), ...guidesHeld.filter((x) => x.body === b).flatMap((x) => x.shape.flat().map((at) => ({ at, gap })))].map((h) => ({ body: b, k: 1e3, ...h }));
+        const arms = new Set(Object.entries(joints).filter(([, j]) => j.to === b).map(([n]) => n)), beams = Object.keys(sim.beamOf).filter((x) => arms.has(sim.beamOf[x]));
         let worst = { most: 0, dir: '' };
         for (const [dir, sign] of [['up', 1], ['down', -1]]) {
           const r = outOfPlane(sim.sys, { loads: [{ body: b, at: P, force: sign * push }], springs: holds(sign > 0) });
-          const most = Math.max(...pts.map((p) => Math.abs(r.lift(b, p))));
-          if (most > worst.most) worst = { most, dir };
+          const body = Math.max(...pts.map((p) => Math.abs(r.lift(b, p)))), arm = Math.max(0, ...beams.map((x) => r.most(x))), most = Math.max(body, arm);
+          if (most > worst.most) worst = { most, dir, arm: arm > body };
         }
         const level = worst.most > 1 ? 'fail' : worst.most > gap ? 'warn' : 'pass';
-        f(level, `${b}: pushed ${push.toFixed(1)} N across the plane at (${P.map((x) => x.toFixed(1)).join(', ')}) (a tenth of the hand's pull), it moves ${worst.most.toFixed(2)} mm out of the plane${level === 'pass' ? '' : `: it flexes out of the plane, ${level === 'fail' ? 'far' : 'more than the print gap'}. Trap it across the plane (a guide or a bridge), or stiffen what holds it`}`, 'lamina.across', { body: b, most: worst.most, push, at: P });
+        f(level, `${b}: pushed ${push.toFixed(1)} N across the plane at (${P.map((x) => x.toFixed(1)).join(', ')}) (the hand's pull 15° off the plane), ${worst.arm ? 'the flexures holding it move' : 'it moves'} ${worst.most.toFixed(2)} mm out of the plane, its guides' play included${level === 'pass' ? '' : `: it flexes out of the plane, ${level === 'fail' ? 'far' : 'more than the print gap'}. Trap it across the plane (a guide or a bridge), or stiffen what holds it`}`, 'lamina.across', { body: b, most: worst.most, push, at: P });
       }
     }
   }

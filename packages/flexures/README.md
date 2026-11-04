@@ -202,6 +202,8 @@ The findings, each pass or fail with its code:
 | `lamina.force` | The force a hand needs along each driven step, from the physics: a force curve. Over a hand's 50 N, it jams |
 | `lamina.release` | Where a body is let go of on the way (a latch letting go), and how far the hand had moved, with what force |
 | `lamina.held` | Let go of in a state a catch holds, the body stays, and the force the catch takes (the physics, with `physics.friction` or frictionless, so cautious) |
+| `lamina.bite` | Which way the held load pushes the catch: from the physics' contact forces, normal only, against how each contact point moves as the catch lets go. Under `check.bite` (5°) into the catch, it holds by friction or its own spring alone, and a printed catch slips |
+| `lamina.carried` | A loose part (a disc) is held over and under, its middle over a bridge and a floor, loaded and all through the shot while it's in the frame |
 | `lamina.trip` | Pulling the trigger lets the catch go: how far and how hard the finger pulled, against the force the catch held |
 | `lamina.holes` | Each fastener hole through a flooded frame is all frame: inside the outline, clear of the moving parts' room |
 | `lamina.home` | At the end of the sequence, everything is back where it started |
@@ -260,10 +262,15 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   quarter), and every gap to what moves (loose parts too, a disc in its channel) is rechecked on the frame as it bends.
   A frame that closes onto what moves, prongs either side of a channel pulled together, fails. `check.frame: false`
   turns it off.
-- Every moving body is pushed across the plane, at its farthest point from what holds it, by a tenth of the hand's
-  pull. A lamina's flexures are stiff bending across the plane but soft twisting, so a body on long thin arms tips
-  out of it; over the print gap it warns, over 1 mm it fails. Bridges hold a body from lifting, floors from dropping.
-  `check.across: false` turns it off.
+- Every moving body is pushed across the plane, at its farthest point from what holds it, by the hand's pull 15° off
+  the plane (`check.side` to set it). A lamina's flexures are stiff bending across the plane but soft twisting, so a
+  body on long thin arms tips out of it. The body or the flexures holding it, whichever moves further: over the print
+  gap it warns, over 1 mm it fails. Bridges hold a body from lifting, floors from dropping, guides both ways, each only
+  once the body has moved across its play (the print gap, or the bridge's own): held rigidly, a printed part looked
+  held where it wobbles. `check.across: false` turns it off.
+- A loose part lying in the plane (a disc) needs holding on both faces wherever it goes in the frame: `lamina.carried`
+  fails it where its middle isn't over a bridge (`bridges`) and over a floor (a bridge with `side: 'bottom'`), loaded
+  or during the shot, until it leaves the frame.
 - `guides: [{ body, shape, depth }]` trap a sliding body across the plane: where it passes through `shape`, a ridge
   on its sides with 45° flanks (`depth`, centred on the print's height) runs in a matching groove in the frame's wall.
   Both are drawn out from the same faces by the same amount at each height, so the gap stays the gap, and each flank
