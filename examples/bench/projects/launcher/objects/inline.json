@@ -1,7 +1,7 @@
 {
   "name": "inline",
   "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the pull ring on top, a solid trigger that is its own sear on a hinge carrying the pull, printed in one piece on its side",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "uses": [
     "x1c",
     "petg",
@@ -47,14 +47,14 @@
       "rule": "The arms' room each side, round wherever they go: more than the print gap, so they don't drag on the frame"
     },
     "spring_clear": {
-      "value": 0.8,
+      "value": 1.2,
       "unit": "mm",
-      "rule": "The arms' room each side: more than the print gap, so the frame is clear of them however they really bend"
+      "rule": "The springs' room each side: more than the print gap, so the frame is clear of them however they ring as the shot goes"
     },
     "stroke": {
-      "value": 12,
+      "value": 15,
       "unit": "mm",
-      "rule": "How far the tab pulls the pusher back to draw it"
+      "rule": "How far the ring pulls the shuttle back to draw it: the launcher's travel, longer than 0.8's 12 now the arms' room runs further back"
     },
     "short": {
       "value": 0.8,
@@ -117,24 +117,14 @@
       "rule": "The pusher bar's height: solid, so it doesn't bend (the flat action's windowed bar did)"
     },
     "bar_back": {
-      "value": 6,
+      "value": 3,
       "unit": "mm",
-      "rule": "The bar behind where the arms meet it"
-    },
-    "bar_front": {
-      "value": 26,
-      "unit": "mm",
-      "rule": "The bar ahead of where the arms meet it, to its nose"
+      "rule": "The shuttle's block, where the arms meet it, runs this far either side of their tips: no further, since every gram it carries is a gram the disc doesn't get"
     },
     "nose_w": {
       "value": 8,
       "unit": "mm",
-      "rule": "The nose's height in the plane: it pushes the flat disc's edge"
-    },
-    "nose": {
-      "value": 6,
-      "unit": "mm",
-      "rule": "The pusher's nose: as thick as the disc, forward from the bar between the rails to the disc"
+      "rule": "The nose's width in the plane: the hollow the disc's edge sits in"
     },
     "rise": {
       "value": 30,
@@ -142,19 +132,19 @@
       "rule": "The arms' room, from the bar's top to the frame's inside"
     },
     "reach": {
-      "value": 40,
+      "value": 56,
       "unit": "mm",
-      "rule": "How far behind where they meet the bar the arms' room reaches"
+      "rule": "How far behind where they meet the shuttle's block the arms' room reaches: back to just ahead of the ring's room, which the trigger no longer shares"
     },
     "room_front": {
-      "value": 20,
+      "value": 4,
       "unit": "mm",
-      "rule": "The arms' room ends here, along the barrel: the disc's slot is ahead of it"
+      "rule": "The arms' room ends here, a little ahead of where they meet the block: ahead of it, under the shuttle, is the catch's"
     },
     "root_x": {
-      "value": -36,
+      "value": -46,
       "unit": "mm",
-      "rule": "Where each arm grows from the frame, behind where it meets the bar: so the arms pull on the closed back of the frame, not its front"
+      "rule": "Where each arm grows from the frame, behind where it meets the block: so the arms pull on the closed back of the frame, not on its front"
     },
     "wall": {
       "value": 4,
@@ -172,19 +162,19 @@
       "rule": "The thinnest the flooded frame may be anywhere: thinner bits are left out"
     },
     "band": {
-      "value": 5,
+      "value": 200,
       "unit": "mm",
-      "rule": "The frame is solid this far round everything that moves and the outline's edge; the rest is windows, so it's a web, light but as stiff where it guides and stops"
+      "rule": "The frame is solid this far round everything that moves and the outline's edge: everywhere, no windows, so it doesn't bend on to the disc or the shuttle under the springs' pull"
     },
     "stem_h": {
-      "value": 8,
+      "value": 9,
       "unit": "mm",
-      "rule": "The stem's height in the plane: stout, full height, no bridge over it"
+      "rule": "The slide's stem's height in the plane: stout, with room for the pocket the shuttle's tail head runs in and a wall either side"
     },
     "ring_x": {
-      "value": -55,
+      "value": -75,
       "unit": "mm",
-      "rule": "The pull ring's centre: it stands on the stem, at the front of the room above it, just behind the arms"
+      "rule": "The pull ring's centre: on top of the slide's stem, behind the arms' room"
     },
     "guide_depth": {
       "value": 1.5,
@@ -235,44 +225,39 @@
       "rule": "The round where each arm meets the wall and the bar"
     },
     "tooth": {
-      "value": 3,
+      "value": 6,
       "unit": "mm",
-      "rule": "The catch's tooth: how far it hangs below the stem"
-    },
-    "tooth_x": {
-      "value": -42.5,
-      "unit": "mm",
-      "rule": "The tooth's front at rest: under the stem, just behind the arms' room"
+      "rule": "The catch's tooth: how far it hangs below the spine"
     },
     "tooth_w": {
-      "value": 4,
-      "unit": "mm",
-      "rule": "The tooth's length along the barrel: it carries the pull over this and the print's height; short, so the hook has room to be solid"
-    },
-    "engage": {
-      "value": 1.5,
-      "unit": "mm",
-      "rule": "How deep the sear's head reaches up the tooth's face: more than the print gap, so it holds for sure, and little, so the trigger slides it off easily"
-    },
-    "settle": {
-      "value": 1.0,
-      "unit": "mm",
-      "rule": "Let go of, the pusher comes forward this much from the draw on to the sear"
-    },
-    "sear_reach": {
-      "value": 15,
-      "unit": "mm",
-      "rule": "The hinge's middle is this far behind the tooth's face: the further, the less the sear turns to let go, the less its hinge bends"
-    },
-    "sear_drop": {
       "value": 5,
       "unit": "mm",
-      "rule": "and this far below the middle of where the tooth bears: the hook's faces are square to the line from one to the other, so the spring's pull runs straight through the hinge"
+      "rule": "The tooth's length along the barrel: stout, no narrower than three millimetres where its face leans"
     },
-    "hinge": {
+    "engage": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "How deep the hook's face reaches up the tooth's: well over the print gap, so the tooth bears on the face, not on its corner"
+    },
+    "settle": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Let go of, the shuttle comes forward this much from the draw on to the hook: more than the hooked face leans back over its depth, so the hook is up before the tooth meets it"
+    },
+    "sear_reach": {
       "value": 18,
       "unit": "mm",
-      "rule": "The sear's hinge: one straight flexure on that line, the pull in tension along it; the trigger turns it about its middle, where it bends round evenly"
+      "rule": "The hinge's middle is this far behind where the tooth bears: far enough that the tooth, drawn back, stays clear of the hinge's seat on the trigger"
+    },
+    "sear_drop": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "and this far below it, so the hinge's tip and the trigger's shoulder sit low enough for a lip of frame under the shuttle's spine, right behind the tooth, to take the catch's push down"
+    },
+    "hinge": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "The trigger's hinge: a flexure on the line from its middle to the tooth, carrying the pull in tension; the trigger turns it about its middle"
     },
     "hinge_round": {
       "value": 1.5,
@@ -305,9 +290,9 @@
       "rule": "The pull the hinge is shaped to carry: five times this spring's, for the stronger springs to come"
     },
     "hold_give": {
-      "value": 0.03,
+      "value": 0.05,
       "unit": "mm",
-      "rule": "The most the hinge may give along the pull's line under it: a fraction of the catch's engagement"
+      "rule": "The most the hinge may give along the pull's line under the design pull: a small fraction of the catch's engagement (under this spring's own pull, about a sixth of it)"
     },
     "hinge_evaluations": {
       "value": 3000,
@@ -323,25 +308,20 @@
       "unit": "mm",
       "rule": "The hook's and the tooth's meeting corners taken off this much, so they slide past each other as it's drawn"
     },
-    "trigger_front": {
-      "value": -46,
-      "unit": "mm",
-      "rule": "The trigger's top reaches forward to here, just behind the arms' room"
-    },
     "trigger_neck": {
       "value": 8,
       "unit": "mm",
       "rule": "Its front runs straight down this far from its top, then curves back to its toe"
     },
     "trigger_toe": {
-      "value": -62,
+      "value": 26,
       "unit": "mm",
-      "rule": "Its toe, on the frame's bottom: the crook in front of the curve is the finger's"
+      "rule": "Its toe, on the frame's bottom: the trigger's front curves down and back to it from under the hook, and the finger sits in that crook"
     },
     "trigger_heel": {
-      "value": -74,
+      "value": 14,
       "unit": "mm",
-      "rule": "Its heel, behind: the trigger is solid from the toe to here"
+      "rule": "Its heel, behind: the trigger is solid from the toe to here, leaving the frame between it and the arms wide enough to hold the hinge's root still"
     },
     "heel_h": {
       "value": 8,
@@ -378,9 +358,9 @@
       "rule": "The trigger's room in the frame, all round: a hinge doesn't turn quite about one point, so a little more than the print gap; the frame behind it is its stop"
     },
     "finger_wall": {
-      "value": 4,
+      "value": 9,
       "unit": "mm",
-      "rule": "The frame left between the finger's room and the arms' room"
+      "rule": "The frame left in front of the finger's room: room for the front corner's plate hole"
     },
     "finger_round": {
       "value": 4,
@@ -392,9 +372,9 @@
       "rule": "Where on the crook's face, up from the toe, the finger pulls"
     },
     "pull": {
-      "value": 6,
+      "value": 9.5,
       "unit": "°",
-      "rule": "How far the trigger turns pulled right back, where the frame behind it stops it (it lets go before)"
+      "rule": "How far the trigger turns pulled right back, where the frame behind it stops it: far enough that the hook, camming the shuttle back as its leaning face drops, falls clear of the tooth"
     },
     "friction": {
       "value": 0.3,
@@ -424,6 +404,218 @@
       "value": 1,
       "unit": "mm",
       "rule": "Every inside corner of the frame and the pusher rounded to this"
+    },
+    "spine": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The shuttle's spine, from the block forward to the nose, in the plane: thin, since it only carries the tooth's pull and the disc's push"
+    },
+    "catch_x": {
+      "value": 34,
+      "unit": "mm",
+      "rule": "The cocked tooth's front, where it bears on the hook: far enough ahead of the arms that the trigger's hinge roots on frame between them"
+    },
+    "bite": {
+      "value": 12,
+      "unit": "°",
+      "rule": "The hooked face leans back past square to the hinge's line by this: the pull turns the trigger up into the tooth, so the catch holds by its shape (the check wants 5°; the rest is for the print)"
+    },
+    "overshoot": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "How far the shuttle may run on past rest after the shot, its arms bringing it back: the room left ahead of the tooth and the head, so nothing stops it but the arms"
+    },
+    "neck_h": {
+      "value": 1.8,
+      "unit": "mm",
+      "rule": "The neck's height in the plane"
+    },
+    "floor_depth": {
+      "value": "x1c.layer * 6",
+      "unit": "mm",
+      "rule": "The floor under the disc's way and the shuttle's nose: six layers, so a loose disc can't fall through"
+    },
+    "floor_gap": {
+      "value": "x1c.layer * 3",
+      "unit": "mm",
+      "rule": "The gap over the floor, under what slides on it"
+    },
+    "ramp": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The ramp in front of the hook's flat top, down to the trigger's front, which the tooth rides as it's drawn back"
+    },
+    "tail_head": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The head at the end of the shuttle's tail, this long, which the slide's pocket catches"
+    },
+    "nose_l": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The shuttle's nose, along the barrel: a block as wide as nose_w, its front a hollow the disc's edge sits in"
+    },
+    "shot_least": {
+      "value": 0.12,
+      "rule": "The least share of what the arms store the disc must leave with: the arms' own moving mass (about 1.7 g, a third of their 7 g) and the shuttle's cap it near a sixth for a 0.79 g disc, so 0.12 is what this layout can be held to; 0.8.1's heavy pusher gave it 4%"
+    },
+    "slide_anchor_x": {
+      "value": -65,
+      "unit": "mm",
+      "rule": "Where the slide's spring meets the stem's underside, at the front of its room: the root far behind it, so the arm is long"
+    },
+    "slide_root_x": {
+      "value": -118,
+      "unit": "mm",
+      "rule": "Where the slide's spring grows from the frame's floor, at the back of the handle"
+    },
+    "slide_lo": {
+      "value": -123,
+      "unit": "mm",
+      "rule": "The slide's spring's room runs from here, back under the handle behind the stem's drawn end"
+    },
+    "slide_hi": {
+      "value": -61,
+      "unit": "mm",
+      "rule": "to here, leaving a column of frame under the stem ahead of it, behind the arms' room, that the stem rests on"
+    },
+    "slide_energy": {
+      "value": 8,
+      "unit": "mJ",
+      "rule": "What the slide's spring should store drawn: as little as brings the slide home (the thinnest arm the rules allow stores more)"
+    },
+    "slide_legs": {
+      "value": 5,
+      "rule": "The slide's spring starts from a meander of this many legs"
+    },
+    "slide_bend": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "How far in from its room's ends the slide's spring's starting bends turn"
+    },
+    "slide_evaluations": {
+      "value": 20000,
+      "rule": "How many shapes the slide's spring's shaping may try: a long arm in a short room, a hard job"
+    },
+    "lip": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "The pocket's lips, along the barrel, either side of the neck: they pull the head back"
+    },
+    "plate_low": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The fourth plate hole, behind the stem's drawn end: this high, clear of the slide's spring below"
+    },
+    "plate_low_in": {
+      "value": 5.2,
+      "unit": "mm",
+      "rule": "The fourth plate hole's centre in from the frame's back: clear of the slide drawn right back"
+    },
+    "hinge_travel": {
+      "value": 11.5,
+      "unit": "°",
+      "rule": "How far the hinge is shaped to turn within the strain limit: past the pull, and past where the frame stops it, since turning about one point stretches it too and the limit comes sooner"
+    },
+    "cam": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Room behind the cocked shuttle for the hook's lean to cam it back as the trigger lets it go: more than the engagement over the bite's tangent"
+    },
+    "face_r": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The tooth's face is a little round where it bears, this radius: tipped a little under the load, it rolls on the hook's flat face, so the face's lean still sets the bite"
+    },
+    "tie_from": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "A bridge over the shuttle's spine ties the frame under it, where the trigger's hinge roots, to the frame over it, from here"
+    },
+    "tie_to": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "to here (the spine passes under it, cut down a little)"
+    },
+    "spine_guide_from": {
+      "value": 13,
+      "unit": "mm",
+      "rule": "The spine's top runs in a groove in the frame over it from here"
+    },
+    "spine_guide_to": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "to here: the shuttle held across the plane both ways, its nose being between the floor's ledges"
+    },
+    "stem_guide_from": {
+      "value": -62,
+      "unit": "mm",
+      "rule": "The slide's stem's top runs in a groove in the frame over it, between the ring and the arms, from here"
+    },
+    "stem_guide_to": {
+      "value": -57.5,
+      "unit": "mm",
+      "rule": "to here"
+    },
+    "shuttle_clear": {
+      "value": "gap",
+      "unit": "mm",
+      "rule": "The shuttle's room round it: the print gap, no more, so the catch's pull can't tip it down on to the trigger"
+    },
+    "load_gap": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "A loaded disc lies this far ahead of the cocked nose (it rests where it drops in the slot): clear of the nose's creep as the trigger lets go"
+    },
+    "dip": {
+      "value": 1.2,
+      "unit": "mm",
+      "rule": "Room under the cocked tooth over the trigger's top, beyond the gap: the catch's pull, under the springs' line, tips the shuttle's front down a little, and the tooth must not land on the trigger"
+    },
+    "tie_foot": {
+      "value": 1.2,
+      "unit": "mm",
+      "rule": "The tie over the spine stands this far on the frame under it: no further, clear of the hinge below"
+    },
+    "home_clear": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "The slide's spring's room each side: the slide sits a little low under the hand's pull on the ring"
+    },
+    "lower_ledge": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The floor's lower ledge starts this far ahead of the slot's back, clear of the trigger's swing"
+    },
+    "stem_tail": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The slide's stem runs on behind the ring this far, into the handle, where it runs in a groove: the slide held across the plane at both ends, so it can't pitch on its guides' play"
+    },
+    "trigger_floor": {
+      "value": 7.5,
+      "unit": "mm",
+      "rule": "The trigger's bottom stands this far up from the frame's edge: the frame's wall under it, whole, with the groove its heel's ridge runs in"
+    },
+    "slide_slack": {
+      "value": 4.5,
+      "unit": "mm",
+      "rule": "The pocket's lips sit this far ahead of the tail's head: room for the shot's run on past rest, and for the slide stopping a little short of home, before the head reaches them"
+    },
+    "slide_floor": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The slide's spring's room stands this far up off the frame's floor: it bulges a little past its room drawn, and the frame's wall under it stays whole"
+    },
+    "tail_top": {
+      "value": 1.0,
+      "unit": "mm",
+      "rule": "The tail's head is a step up off the neck to this height: it sits in a recess open under the stem's front, its lip in front of it, so the slide pitching a little can't wedge it"
+    },
+    "tail_low": {
+      "value": -3.2,
+      "unit": "mm",
+      "rule": "The tail runs low, its underside here: the stem's front over it then has room for a recess the head sits in and a stout bar over that"
     }
   }
 }

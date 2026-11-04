@@ -24,7 +24,7 @@ const view = watch ? await liveShape({ port: watch === true ? 8090 : Number(watc
 if (view) console.log(`watching at ${view.url}`)
 const r = f.shapeCurve({ ...C.hingeJob, material, evaluations, starts: 30, smooth: 6, runs: 3, onRound: view && ((x) => { view.round(x); return view.stopped() }) })
 const held = f.curveSolver({ ...r.params, width: shaped.params.width }, material).loaded(C.hingeJob.hold.force, C.hingeJob.hold.at)
-const summary = `${((Date.now() - t0) / 1000).toFixed(0)} s, ${r.evaluations} tries${r.stopped ? ' (stopped)' : ''}: ${(r.strain * 100).toFixed(2)}% strain at ${v.pull}°, ${r.energy.toFixed(2)} mJ, gives ${held.along.toFixed(3)} mm under ${v.hold_design} N${r.ok ? '' : `; ${r.why.join('; ')}`}`
+const summary = `${((Date.now() - t0) / 1000).toFixed(0)} s, ${r.evaluations} tries${r.stopped ? ' (stopped)' : ''}: ${(r.strain * 100).toFixed(2)}% strain at ${v.hinge_travel}°, ${r.energy.toFixed(2)} mJ, gives ${held.along.toFixed(3)} mm under ${v.hold_design} N${r.ok ? '' : `; ${r.why.join('; ')}`}`
 console.log(summary)
 if (view) view.close(summary, { hold: 10 * 60e3 })
 const job = JSON.stringify({ ...C.hingeJob, E: material.E, limit: material.strainLimit })
