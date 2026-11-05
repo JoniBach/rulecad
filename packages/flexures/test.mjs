@@ -338,7 +338,7 @@ const rect = (x0, y0, x1, y1) => jscad.primitives.polygon({ points: [[x0, y0], [
 // A pusher on a two-leaf spring standing up (it moves back, -x, as the spring's travel grows), caught when cocked by a
 // hook on a leaf latch: the pusher's tooth rides down the hook's ramp and the hook springs up behind it. A state lowers
 // the latch to let it go. Options break it one way at a time.
-function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop = 0.5, fuse = 0, bite = 15 } = {}) {
+function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop = 0.5, fuse = 0, bite = 15, set = false } = {}) {
   const g = 0.3, stroke = 6, L = 46, t = 0.84, round = 1.5, half = 4 + t + round, drop = (q) => (3 * q * q) / (5 * L), under = L - g - drop(7);
   const yL = L - 6, px = 10, len = 22, xc = px + len - 3, hook = engage + g, run = hook / Math.tan((lead * Math.PI) / 180), lean = Math.tan((bite * Math.PI) / 180);
   // The tooth's front face matches the catch's (leaning back by the bite) where the cocked pusher meets it
@@ -361,8 +361,8 @@ function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop =
       latch: { kind: 'leaf', params: { length: len, thickness: t, fillet: 1, into: t }, at: [px, yL], angle: 0, from: 'ground', to: 'hook' },
     },
     follows: { latch: { by: ['pusher'], give: -1 }, spring: { by: ['hook'], give: 1 } }, // the hook rides down the tooth; lowered, it presses the pusher back a little
-    states: { drawn: { spring: stroke + 0.6 }, cocked: { spring: stroke }, released: { spring: stroke, latch: -release }, fired: { latch: -release } },
-    sequence: ['rest', 'drawn', 'cocked', 'released', 'fired', 'rest'],
+    states: { drawn: { spring: stroke + 0.6 }, ...(set ? { set: { spring: stroke } } : {}), cocked: { spring: stroke }, released: { spring: stroke, latch: -release }, fired: { latch: -release } },
+    sequence: ['rest', 'drawn', ...(set ? ['set'] : []), 'cocked', 'released', 'fired', 'rest'], // (set: the hand brings it on to the hook first, and holds it there)
     holds: { cocked: [['spring', 'hook']] },
   });
 }
@@ -719,4 +719,14 @@ test('a pin printed in place: a pawl turns on it, sprung by a curve, the pin car
   assert.ok(Math.abs(bb[1][2] - 8) < 1e-6, `top ${bb[1][2]}`);
   const loose = await lamina({ ...base, joints: { b: { kind: 'curve', params: spring, from: 'ground', to: 'pawl', pin: { d: 3, at: [32, 0] } } } });
   assert.ok(loose.findings.some((x) => x.code === 'lamina.pin' && x.level === 'fail'));
+});
+
+test('a hand holding a part where a catch takes it lets go: the catch carries the spring\'s load, not the hand, though the part doesn\'t move', async () => {
+  const m = await catapult({ set: true });
+  const last = m.frames.filter((fr) => fr.forces && fr.from === 'set' && fr.to === 'cocked').at(-1);
+  assert.ok(last, 'physics frames from set to cocked');
+  const F = (kind, on, by) => last.forces.filter((x) => x.kind === kind && x.on === on && x.by === by).reduce((a, x) => a + Math.hypot(...x.force), 0);
+  const hook = F('contact', 'pusher', 'hook'), spring = F('spring', 'ground', 'spring');
+  assert.ok(spring > 0.5 && Math.abs(hook / spring - 1) < 0.1, `the hook takes ${hook.toFixed(2)} N, the spring pulls ${spring.toFixed(2)} N: nothing else holds it`);
+  assert.deepEqual(fails(m, 'lamina.force'), []);
 });

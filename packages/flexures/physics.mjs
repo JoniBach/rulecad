@@ -7,7 +7,8 @@
 // The hand, step by step (from one state to the next):
 //   a joint the next state sets to a new value is driven there (a stiff spring pulls its body's centre along the way
 //   the kinematic model moves it), unless the next state is one a catch holds it in: then it's let go of
-//   a joint the next state sets to the same value stays held, if the hand had it
+//   a joint the next state sets to the same value stays held, if the hand had it, unless a catch holds it there: then
+//   it's let go of too, so the catch takes the load and not the hand
 //   a joint the next state doesn't set is let go of, if the hand had it
 //   everything else moves only as the springs and the contacts make it
 // Letting go is gradual: the hand's spring softens to nothing over the step, so the mechanism finds where it rests.
@@ -302,7 +303,8 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
     const A = stateOf(seq[i]), B = stateOf(seq[i + 1]), caught = new Set((m.holds?.[seq[i + 1]] || []).map(([jn]) => jn));
     const plan = {};
     for (const jn of Object.keys(joints)) {
-      if (jn in B && B[jn] !== (A[jn] ?? 0)) plan[jn] = caught.has(jn) ? (hand.has(jn) ? 'let go' : 'free') : 'drive';
+      if (jn in B && caught.has(jn)) plan[jn] = hand.has(jn) ? 'let go' : 'free'; // (moved or not: a catch has it now)
+      else if (jn in B && B[jn] !== (A[jn] ?? 0)) plan[jn] = 'drive';
       else if (jn in B) plan[jn] = hand.has(jn) ? 'hold' : 'free';
       else plan[jn] = hand.has(jn) ? 'let go' : 'free';
     }
@@ -314,7 +316,9 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
       if (what === 'drive') {
         const end = centreAt(jn, { ...A, ...B }), from = centreAt(jn, A), dir = [end[0] - from[0], end[1] - from[1]], len = Math.hypot(...dir);
         const u = len > 1e-9 ? [dir[0] / len, dir[1] / len] : [1, 0];
-        grips.push({ jn, what, body: joints[jn].to, u, o, from: here[0] * u[0] + here[1] * u[1], to: here[0] * u[0] + here[1] * u[1] + len });
+        // (to where the next state puts it, not on by the planned distance from where it is: a part that has flown off
+        // the plan, a shuttle a trigger let go, is taken on to where it's wanted rather than rammed on past it)
+        grips.push({ jn, what, body: joints[jn].to, u, o, from: here[0] * u[0] + here[1] * u[1], to: end[0] * u[0] + end[1] * u[1] });
       } else for (const u of [[1, 0], [0, 1]]) { // the hand holds it where it is, both ways
         const at = here[0] * u[0] + here[1] * u[1];
         grips.push({ jn, what, body: joints[jn].to, u, o, from: at, to: at });
