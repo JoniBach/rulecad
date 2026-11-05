@@ -415,7 +415,7 @@
       "rule": "Where on the crook's face, up from the toe, the finger pulls"
     },
     "pull": {
-      "value": 9.5,
+      "value": 13,
       "unit": "°",
       "rule": "How far the trigger turns pulled right back, where the frame behind it stops it: far enough that the hook, camming the shuttle back as its leaning face drops, falls clear of the tooth"
     },
@@ -541,7 +541,7 @@
       "rule": "The fourth plate hole's centre in from the frame's back: clear of the slide drawn right back"
     },
     "hinge_travel": {
-      "value": 11.5,
+      "value": 15,
       "unit": "°",
       "rule": "How far the hinge is shaped to turn within the strain limit: past the pull, and past where the frame stops it, since turning about one point stretches it too and the limit comes sooner"
     },
