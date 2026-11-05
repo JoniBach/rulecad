@@ -1,22 +1,26 @@
 // Routed tracks, tidied: where an autorouter's track wiggles, doubles back or detours, the bends between two of its points
 // are dropped and the two joined straight, wherever that straight run keeps its clearance from all other copper, holes
-// and the board's edge. Only bend points are dropped: a track's ends, its vias and every point it keeps stay exactly
-// where they were, so it still starts and finishes on the same pads, and changes layer in the same places. Tracks not
-// passed in are never moved; they are only kept clear of.
+// and the board's edge. A bend sharper than a right angle is cut across. A track's ends and vias stay exactly where they
+// were, so it still starts and finishes on the same pads, and changes layer in the same places. Tracks not passed in are
+// never moved; they are only kept clear of.
 //
 // smoothCircuit(json, { movable, clearance }) works on Circuit JSON (tscircuit's board format) as a whole; smooth()
 // is the geometry underneath, for any board description.
 
 /**
  * Tracks pulled tight, round everything in their way.
- * tracks: [{ route: [{ route_type: 'wire', x, y, width, layer } | { route_type: 'via', x, y, ... }], net }]: the tracks that
- *   may change, each route as Circuit JSON has it. net: anything comparable; copper of the same net isn't in the way
+ * tracks: [{ route: [{ route_type: 'wire', x, y, width, layer } | { route_type: 'via', x, y, ... }], net, leads }]: the
+ *   tracks that may change, each route as Circuit JSON has it. net: anything comparable; copper of the same net isn't in
+ *   the way. leads: { start, end }, copper a track carries on from at that end (such as a kept stub), as points from its
+ *   root to the track's end: cut back where the track turns back on it (see trimLead); each track's trimmed
+ *   { start, end } then says what's left of them
  * obstacles: [{ layer, net, shape }] where layer is 'top', 'bottom', ... or '*' (every layer), and shape is
  *   { circle: { x, y, r } }, { capsule: { a, b, r } } (a track or a pill), or { polygon: [{ x, y }, ...] }; each with
  *   clear (mm, its own clearance, overriding the default)
  * outline: the board's edge, a polygon [{ x, y }, ...], with edge (mm): how far copper keeps from it
  * clearance: copper to copper (mm)
- * Returns the routes, in order: each a copy of its track's route with only bend points removed.
+ * Returns the routes, in order: each a copy of its track's route with bend points removed, and sharp bends (under 90°)
+ * cut across where there's room.
  * @param {{ route: object[], net?: any }[]} tracks @param {object[]} obstacles
  * @param {{ clearance?: number, outline?: { x: number, y: number }[] | null, edge?: number }} [o]
  * @returns {object[][]}
@@ -28,42 +32,121 @@ export function smooth(tracks, obstacles, { clearance = 0.1, outline = null, edg
   // Each track's own segments, in the way of every other track, and updated as it is smoothed
   const own = tracks.map((t) => segmentsOf(t.route).map((s) => add({ layer: s.layer, net: t.net, track: t, shape: { capsule: { a: s.a, b: s.b, r: s.w / 2 } } })));
   return tracks.map((t, k) => {
-    const route = pull(t, (a, b, layer, w) => clear(a, b, layer, w, t));
+    const ok = (a, b, layer, w, was) => clear(a, b, layer, w, t, was);
+    // Pulled tight, then any sharp bend left (under 90°: a hook, or a spike out and back) cut across, again until
+    // nothing changes: jumping to the farthest point it can reach, a pass can land on a hook's tip, which the next undoes
+    let route = t.route;
+    // A lead-in it may cut back first (a kept stub its start or end joins), while the track turns back on it
+    t.trimmed = {};
+    for (const side of ['start', 'end']) {
+      const lead = t.leads?.[side];
+      if (!lead || lead.length < 3) continue;
+      const cut = trimLead(lead.map((p) => ({ ...p })), side === 'start' ? route : [...route].reverse(), ok);
+      if (!cut) continue;
+      route = side === 'start' ? cut.route : cut.route.reverse();
+      t.trimmed[side] = cut.lead;
+    }
+    for (let pass = 0; pass < 6; pass++) {
+      const was = route;
+      route = cutSharp(pull(route, ok), ok);
+      if (route.length === was.length && route.every((p, i) => p === was[i])) break;
+    }
     for (const o of own[k]) grid.remove(o); // its new segments take the old ones' place
     own[k] = segmentsOf(route).map((s) => add({ layer: s.layer, net: t.net, track: t, shape: { capsule: { a: s.a, b: s.b, r: s.w / 2 } } }));
     return route;
   });
 
-  // A straight run from a to b, w wide, on layer, clear of everything not the track's own and not of its net
-  function clear(a, b, layer, w, track) {
+  // A straight run from a to b, w wide, on layer, clear of everything not the track's own and not of its net. was: the
+  // segments it replaces: it may also come as close to something as they already did, never closer, so a track the
+  // router packed in tighter than clearance can still be straightened, and is never left worse
+  function clear(a, b, layer, w, track, was = null) {
     const r = w / 2, reach = r + Math.max(clearance, edge) + 1;
     const near = grid.query({ x0: Math.min(a.x, b.x) - reach, y0: Math.min(a.y, b.y) - reach, x1: Math.max(a.x, b.x) + reach, y1: Math.max(a.y, b.y) + reach });
+    const before = (shape) => Math.min(...was.map(([p, q]) => distance(p, q, shape)));
     for (const o of near) {
       if (o.track === track || (o.layer !== '*' && o.layer !== layer)) continue;
       if (track.net != null && o.net != null && o.net === track.net) continue;
-      if (distance(a, b, o.shape) < r + (o.clear ?? clearance) - 1e-9) return false;
+      const d = distance(a, b, o.shape);
+      if (d < r + (o.clear ?? clearance) - 1e-9 && !(was && d >= before(o.shape) - 1e-9)) return false;
     }
     if (outline) {
       if (!inside(outline, a) || !inside(outline, b)) return false;
-      for (let i = 0; i < outline.length; i++) if (segSeg(a, b, outline[i], outline[(i + 1) % outline.length]) < r + edge - 1e-9) return false;
+      for (let i = 0; i < outline.length; i++) {
+        const e = [outline[i], outline[(i + 1) % outline.length]], d = segSeg(a, b, ...e);
+        if (d < r + edge - 1e-9 && !(was && d >= Math.min(...was.map(([p, q]) => segSeg(p, q, ...e))) - 1e-9)) return false;
+      }
     }
     return true;
   }
 }
 
 // One track pulled tight: along each run of points on one layer and at one width, from each kept point straight to the
-// farthest point after it that it can reach clear; the points skipped are dropped. Vias and layer changes end a run.
-function pull(track, isClear) {
-  const r = track.route, out = [];
+// farthest point after it that it can reach clear (or no closer to anything than the stretch it replaces already came);
+// the points skipped are dropped. Vias and layer changes end a run.
+function pull(r, isClear) {
+  const out = [];
   for (let i = 0; i < r.length;) {
     out.push(r[i]);
     let end = i; // the last point of the run from here
     if (r[i].route_type === 'wire') while (end + 1 < r.length && r[end + 1].route_type === 'wire' && r[end + 1].layer === r[i].layer && r[end + 1].width === r[i].width) end++;
     let next = i + 1;
-    for (let k = end; k > i + 1; k--) if (isClear(r[i], r[k], r[i].layer, r[i].width)) { next = k; break; }
+    for (let k = end; k > i + 1; k--) if (isClear(r[i], r[k], r[i].layer, r[i].width, r.slice(i, k).map((p, m) => [p, r[i + m + 1]]))) { next = k; break; }
     i = next;
   }
   return out;
+}
+
+// A bend sharper than a right angle, with a point before and after it on its run, cut across: the cut joins a point on
+// each leg, the same distance back from the bend, as far back as the cut keeps its clearance (all the way back to the
+// nearer of the two points, which removes a spike out and back). Each of the two new bends is then wider than 90°
+function cutSharp(r, isClear) {
+  const out = [...r], same = (p, q) => p.route_type === 'wire' && q.route_type === 'wire' && p.layer === q.layer && p.width === q.width;
+  for (let i = 1; i + 1 < out.length; i++) {
+    const a = out[i - 1], b = out[i], c = out[i + 1];
+    if (!same(a, b) || !same(b, c)) continue;
+    const la = Math.hypot(a.x - b.x, a.y - b.y), lc = Math.hypot(c.x - b.x, c.y - b.y);
+    if (la < 1e-6 || lc < 1e-6 || ((a.x - b.x) * (c.x - b.x) + (a.y - b.y) * (c.y - b.y)) / (la * lc) <= 1e-9) continue; // 90° or wider
+    const at = (d) => [{ ...b, x: b.x + ((a.x - b.x) * d) / la, y: b.y + ((a.y - b.y) * d) / la }, { ...b, x: b.x + ((c.x - b.x) * d) / lc, y: b.y + ((c.y - b.y) * d) / lc }];
+    const fits = (d) => { const [p, q] = at(d); return isClear(p, q, b.layer, b.width, [[p, b], [b, q]]); }; // no closer to anything than the corner it cuts
+    const most = Math.min(la, lc);
+    let d = fits(most) ? most : 0;
+    if (!d) { let lo = 0, hi = most; for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; } d = lo; }
+    if (d < 0.01) continue; // no room to cut: the bend stays
+    const [p, q] = at(d), ends = [Math.abs(d - la) < 1e-9 ? null : p, Math.abs(d - lc) < 1e-9 ? null : q].filter(Boolean); // a cut reaching a point joins it there
+    const pts = ends.map((e) => { const { start_pcb_port_id, end_pcb_port_id, ...rest } = e; return rest; }); // (a new point is no pad's)
+    out.splice(i, 1, ...pts);
+    if (Math.abs(d - la) < 1e-9 && Math.abs(d - lc) < 1e-9) i--; // the bend's two points now meet: look at the corner they make
+  }
+  return out;
+}
+
+// A lead-in cut back: lead runs from its root to the track's first point (copper the track carries on from, such as a
+// kept stub). While the track leaves that point turning back on the lead (sharper than a right angle), the joint moves
+// back along the lead, a point at a time, or part of the way along its last segment, as far as the new first segment
+// keeps its clearance (or comes no closer to anything than before). The lead's first segment always stays.
+// -> { route, lead } (the lead as now, root first), or null if nothing moved
+function trimLead(lead, r, isClear) {
+  r = [...r];
+  let moved = false;
+  while (lead.length > 2) {
+    const J = r[0], A = lead[lead.length - 2], N = r[1];
+    if (!N || J.route_type !== 'wire' || N.route_type !== 'wire' || N.layer !== J.layer || (A.layer && A.layer !== J.layer)) break;
+    if ((A.x - J.x) * (N.x - J.x) + (A.y - J.y) * (N.y - J.y) <= 1e-9) break; // 90° or wider: it doesn't turn back
+    const at = (t) => ({ x: A.x + (J.x - A.x) * t, y: A.y + (J.y - A.y) * t }); // 0: at A, 1: at the joint
+    const fits = (q) => isClear({ ...J, ...q }, N, J.layer, J.width, [[{ ...J, ...q }, J], [J, N]]);
+    let q = null, whole = false;
+    if (fits(A)) { q = A; whole = true; } else {
+      let lo = 0, hi = 1;
+      for (let k = 0; k < 14; k++) { const mid = (lo + hi) / 2; if (fits(at(mid))) hi = mid; else lo = mid; }
+      if ((1 - hi) * Math.hypot(J.x - A.x, J.y - A.y) > 0.01) q = at(hi);
+    }
+    if (!q) break;
+    const { start_pcb_port_id, end_pcb_port_id, ...joint } = { ...J, x: q.x, y: q.y }; // (a stub's end is no pad's)
+    r[0] = joint; moved = true;
+    if (whole) lead.pop();
+    else { lead[lead.length - 1] = { ...lead[lead.length - 1], x: q.x, y: q.y }; break; }
+  }
+  return moved ? { route: r, lead } : null;
 }
 
 // The wire segments of a route: { a, b, w, layer }
@@ -131,11 +214,14 @@ class Grid {
  * clearance: copper to copper (default: the board's min_trace_to_pad_edge_clearance, else 0.1);
  * holes keep min_trace_to_hole_edge_clearance (0.2) from their edge, and rulecad_keepout (a screw head's room) from
  * their centre; the board's edge keeps min_board_edge_clearance (0.2).
+ * leads(trace): the copper a track carries on from at each end ({ start, end }: points from its root to the track's end),
+ * which may be cut back where the track turns back on it; trimmed maps a track's pcb_trace_id to what's left of its
+ * leads ({ start, end }, the same way round). The caller shortens that copper to match.
  * Returns { json: a copy with the tracks replaced, routes: a Map from each changed track's pcb_trace_id to its new route,
- * changed: how many tracks changed, dropped: bend points dropped }.
- * @param {object[]} json @param {{ movable?: (trace: object) => boolean, clearance?: number }} [o]
+ * trimmed, changed: how many tracks changed, dropped: bend points dropped }.
+ * @param {object[]} json @param {{ movable?: (trace: object) => boolean, clearance?: number, leads?: (trace: object) => any }} [o]
  */
-export function smoothCircuit(json, { movable = () => true, clearance } = {}) {
+export function smoothCircuit(json, { movable = () => true, clearance, leads = () => null } = {}) {
   const net = netsOf(json);
   const board = json.find((e) => e.type === 'pcb_board') || {};
   const gap = clearance ?? board.min_trace_to_pad_edge_clearance ?? 0.1, holeGap = board.min_trace_to_hole_edge_clearance ?? 0.2;
@@ -158,16 +244,17 @@ export function smoothCircuit(json, { movable = () => true, clearance } = {}) {
       for (const s of segmentsOf(e.route)) obstacles.push({ layer: s.layer, net: net(e), shape: { capsule: { a: s.a, b: s.b, r: s.w / 2 } } });
     }
   }
-  const tracks = moving.map((e) => ({ route: e.route, net: net(e) }));
+  const tracks = moving.map((e) => ({ route: e.route, net: net(e), leads: leads(e) }));
   const routes = smooth(tracks, obstacles, { clearance: gap, outline, edge: board.min_board_edge_clearance ?? 0.2 });
   const by = new Map(moving.map((e, k) => [e, routes[k]]));
   const changes = new Map(), out = json.map((e) => {
     const r = by.get(e);
-    if (!r || r.length === e.route.length) return e;
+    if (!r || (r.length === e.route.length && r.every((p, i) => p === e.route[i]))) return e;
     changes.set(e.pcb_trace_id, r);
     return { ...e, route: r };
   });
-  return { json: out, routes: changes, changed: changes.size, dropped: [...by].reduce((n, [e, r]) => n + e.route.length - r.length, 0) };
+  const trimmed = new Map(moving.map((e, k) => [e.pcb_trace_id, tracks[k].trimmed]).filter(([, t]) => t && (t.start || t.end)));
+  return { json: out, routes: changes, trimmed, changed: changes.size, dropped: [...by].reduce((n, [e, r]) => n + e.route.length - r.length, 0) };
 }
 
 // Each pad's, track's and via's net: the ports its source traces join (and their source nets), followed through

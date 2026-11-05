@@ -1075,15 +1075,32 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   out.push(unrouted > 0 ? { level: 'fail', text: `${unrouted} connections have no track` } : { level: 'pass', text: `every connection is routed (${traces.length} tracks, ${json.filter((e) => e.type === 'pcb_via').length} vias)` });
   out.push(...planeChecks(json));
   // A clone's own routing, kept: every track and via of it on the board exactly as the source has it (smoothing and
-  // repair move only the router's tracks)
+  // repair move only the router's tracks), but for escapes cut back where a routed track turned straight back on them:
+  // each of those a piece of the source's own track, named with how much went
   const keptCu = source?.arranged?.kept;
   if (keptCu?.tracks?.length) {
-    const key = (x, y) => `${x.toFixed(4)},${y.toFixed(4)}`, tracksAt = new Set(keptCu.tracks.map((g) => `${g.layer} ${g.width} ${key(g.a.x, g.a.y)} ${key(g.b.x, g.b.y)}`)), viasAt = new Set(keptCu.vias.map((q) => key(q.x, q.y)));
-    const laid = traces.filter((t) => t.rulecad_kept), moved = laid.filter((t) => t.route[1]?.route_type === 'via' ? !viasAt.has(key(t.route[0].x, t.route[0].y))
-      : t.route.length !== 2 || !tracksAt.has(`${t.route[0].layer} ${t.route[0].width} ${key(t.route[0].x, t.route[0].y)} ${key(t.route[1].x, t.route[1].y)}`));
-    const vias = laid.filter((t) => t.route[1]?.route_type === 'via').length;
-    out.push(moved.length ? { level: 'fail', text: `${moved.length} of the source's own tracks and vias aren't where the source has them` }
-      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias} tracks and ${vias} vias exactly where the source has them (only the router's tracks are tidied)` });
+    const key = (x, y) => `${x.toFixed(4)},${y.toFixed(4)}`, seg = (layer, width, a, b) => `${layer} ${width} ${key(a.x, a.y)} ${key(b.x, b.y)}`;
+    const tracksAt = new Set(keptCu.tracks.flatMap((g) => [seg(g.layer, g.width, g.a, g.b), seg(g.layer, g.width, g.b, g.a)])), viasAt = new Set(keptCu.vias.map((q) => key(q.x, q.y)));
+    const theirs = (layer, width, a, b) => tracksAt.has(seg(layer, width, a, b));
+    const laid = traces.filter((t) => t.rulecad_kept), isVia = (t) => t.route[1]?.route_type === 'via';
+    const along = (o, p) => { const dx = o.b.x - o.a.x, dy = o.b.y - o.a.y, l = Math.hypot(dx, dy); return Math.abs((p.x - o.a.x) * dy - (p.y - o.a.y) * dx) / l < 1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l > -1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l < l + 1e-4; };
+    const cutBy = [], moved = laid.filter((t) => {
+      if (isVia(t)) return !viasAt.has(key(t.route[0].x, t.route[0].y));
+      const [p, q] = t.route, w = p.width, layer = p.layer;
+      if (t.route.length === 2 && theirs(layer, w, p, q)) return false;
+      const o = t.rulecad_shortened; // a piece of the source's segment, from one of its ends
+      if (o && t.route.length === 2 && theirs(layer, w, o.a, o.b) && along(o, p) && along(o, q) && [p, q].some((r) => [o.a, o.b].some((e) => key(e.x, e.y) === key(r.x, r.y)))) {
+        cutBy.push(Math.hypot(o.b.x - o.a.x, o.b.y - o.a.y) - Math.hypot(q.x - p.x, q.y - p.y)); return false;
+      }
+      return true;
+    });
+    const gone = traces.flatMap((t) => (t.rulecad_trimmed || []).map((g) => ({ ...g, track: t })));
+    const strays = gone.filter((g) => !theirs(g.a.layer, g.a.width, g.a, g.b));
+    cutBy.push(...gone.map((g) => Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y)));
+    const escapes = traces.reduce((n, t) => n + (t.rulecad_cut || 0), 0);
+    const vias = laid.filter(isVia).length, short = laid.filter((t) => t.rulecad_shortened).length, total = cutBy.reduce((n, d) => n + d, 0);
+    out.push(moved.length || strays.length ? { level: 'fail', text: `${moved.length + strays.length} of the source's own tracks and vias aren't where the source has them` }
+      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias - short} tracks and ${vias} vias exactly where the source has them${cutBy.length ? `, but for ${escapes} escapes cut back where a routed track turned straight back on them (${gone.length} segments gone, ${short} shortened: ${mm(total)} mm of track in all)` : ''} (only the router's tracks are tidied)` });
   }
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
   out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });

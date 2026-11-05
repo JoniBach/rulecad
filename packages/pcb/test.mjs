@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
 import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
-import { layerChanges, routeInput, neckDown, slideClear, arrowPath } from './circuit.mjs';
+import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -386,13 +386,25 @@ test('smoothing: the router\'s tracks pulled tight; the source\'s kept routing s
   const routed = (j) => j.filter((e) => e.type === 'pcb_trace' && e.rulecad_routed);
   const kept = (j) => JSON.stringify(j.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept).map((e) => e.route));
   assert.ok(routed(plain).length >= 1);
-  assert.ok(routed(smoothed).every((t, i) => t.route.length < routed(plain)[i].route.length), 'every wiggle pulled out');
+  assert.ok(routed(smoothed).every((t, i) => t.route.length < routed(plain)[i].route.length), JSON.stringify(routed(smoothed).map((t, i) => [t.route.length, routed(plain)[i].route.length])));
   assert.ok(routed(smoothed).every((t, i) => ['x', 'y'].every((c) => t.route[0][c] === routed(plain)[i].route[0][c] && t.route.at(-1)[c] === routed(plain)[i].route.at(-1)[c])), 'ends where they were');
   assert.equal(kept(smoothed), kept(plain), 'the kept routing untouched');
   assert.deepEqual(smoothed.filter((e) => e.type === 'pcb_via').map((e) => [e.x, e.y, e.route]), plain.filter((e) => e.type === 'pcb_via').map((e) => [e.x, e.y, undefined]), 'vias where they were, and still vias');
   assert.ok(kept(plain).length > 2);
   const found = await checks(smoothed, values({}), null, { circuit: src, arranged: moved });
   assert.match(found.map((f) => f.text).join(' | '), /the source's own routing as it was: \d+ tracks and 1 vias exactly where the source has them/);
+});
+
+test('a routed track\'s kept escape: followed back from the joint along its own net, to a via or a branch', () => {
+  const w = (x, y) => ({ route_type: 'wire', x, y, width: 0.15, layer: 'top' });
+  const kept = (a, b, id = 's1') => ({ type: 'pcb_trace', pcb_trace_id: `k${a.join()}${b.join()}`, source_trace_id: id, rulecad_kept: true, route: [w(...a), w(...b)] });
+  const out = [kept([0, 0], [0, -2]), kept([0, -2], [-3, -2]), kept([0, -2], [5, 5], 's2'), // another net's track meets it: not followed
+    { type: 'pcb_trace', pcb_trace_id: 'r', source_trace_id: 's1', rulecad_routed: true, route: [w(-3, -2), w(2, -3), { ...w(4, -3), end_pcb_port_id: 'p' }] }];
+  const c = stubChains(out).get('r');
+  assert.deepEqual(c.start.lead.map((p) => [p.x, p.y]), [[0, 0], [0, -2], [-3, -2]]);
+  assert.equal(c.end, undefined, 'its other end is on a pad');
+  out.push(kept([0, -2], [1, -1])); // a branch at the corner: followed only to there
+  assert.equal(stubChains(out).get('r'), undefined, 'one segment: nothing to cut back');
 });
 
 test('round and rounded pads keep their shape: a test point is a circle, a rounded pad has its corners', async () => {

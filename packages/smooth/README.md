@@ -1,19 +1,28 @@
 # @rulecad/smooth
 
-Autorouted circuit-board tracks, pulled tight. An autorouter searching a grid leaves wiggles, small detours and
-places where a track doubles back on itself. `smooth()` straightens them: along each track, it joins each point it
-keeps straight to the farthest point after it that it can reach while keeping its clearance from all other copper,
-holes and the board's edge, and drops the bend points in between.
+Autorouted circuit-board tracks, pulled tight. An autorouter searching a grid leaves wiggles, small detours, hooks and
+places where a track doubles back on itself. `smooth()` straightens them:
+- **Pulling tight:** along each track, it joins each point it keeps straight to the farthest point after it that it can
+  reach with clearance, and drops the bend points in between. It repeats until nothing changes.
+- **Sharp bends:** a bend sharper than a right angle (a hook, or a spike out and back) is cut across, as far back as the
+  cut keeps its clearance.
+- **Never worse:** a new straight run must keep its clearance from all other copper, holes and the board's edge, or at
+  least come no closer to anything than the stretch it replaces already did. So a track the router packed in tight can
+  still be tidied, and nothing ends up closer than before.
 
-It only ever drops bend points. A track's ends, its vias and every point it keeps stay exactly where they were, so it
-still starts and finishes on the same pads and changes layer in the same places. Tracks you don't pass in are never
-moved, only kept clear of. No dependencies.
+A track's ends and vias stay exactly where they were, so it still starts and finishes on the same pads and changes
+layer in the same places. Tracks you don't pass in are never moved, only kept clear of. No dependencies.
+
+**Lead-ins:** a track may carry on from copper you keep, such as a stub of an earlier board's routing. Pass it as the
+track's `leads` (`{ start, end }`, points from the stub's root to the track's end). Where the track turns straight back
+on it, it is cut back to where the track can leave cleanly, never into its first segment. `trimmed` then says what's
+left of it, so you can shorten that copper to match.
 
 ```js
 import { smoothCircuit } from '@rulecad/smooth';
 
 // Circuit JSON (tscircuit's board format): pick the tracks that may change
-const { json, changed, dropped } = smoothCircuit(circuitJson, { movable: (trace) => trace.autorouted, clearance: 0.15 });
+const { json, changed, dropped, trimmed } = smoothCircuit(circuitJson, { movable: (trace) => trace.autorouted, clearance: 0.15, leads });
 ```
 
 - **Clearance:** copper to copper is `clearance` (default: the board's `min_trace_to_pad_edge_clearance`, else 0.1 mm).

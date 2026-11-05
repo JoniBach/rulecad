@@ -51,9 +51,11 @@ holes with 0.1 in header holes beside them.
    itself is the same.
 4. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
    Then the router's tracks are smoothed (`smooth: true`, [@rulecad/smooth](../../packages/smooth)): their wiggles,
-   detours and doubling-backs are pulled straight wherever the straight run keeps its clearance. That drops about a
-   third of their bend points. Only the router's tracks move. A check confirms Sea-Picro's own tracks and vias are
-   exactly where Sea-Picro has them.
+   detours and doubling-backs are pulled straight wherever the straight run keeps its clearance, and sharp bends are
+   cut across. Where a routed track carried on from one of Sea-Picro's escapes and turned straight back (the escape
+   led towards Sea-Picro's own pin, somewhere else on this board), the escape is cut back to where the track can
+   leave cleanly, never into the fan-out from the RP2040's pins. A check confirms the rest of Sea-Picro's tracks and
+   vias are exactly where Sea-Picro has them, and names each escape cut back.
 
 The checks prove the result:
 
@@ -84,7 +86,7 @@ at `hole_a_x` 8.4 mm, the core at `core_y` 0.15 mm, the 20th layout tried); if y
 few nearby values.
 
 `cad export` makes the files JLCPCB needs. It hasn't been made yet. Before ordering:
-- **Open `exports/thin-picro/module@0.6.1.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
+- **Open `exports/thin-picro/module@0.6.2.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
 - **Check the pinout** below against your keyboard's wiring.
 
 ## Pinout

@@ -260,23 +260,82 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
 }
 
 // The routed tracks pulled tight (@rulecad/smooth): bend points dropped where a straight run keeps the board's clearance.
-// Only the router's tracks move, never drawn or kept ones; a track the design checks then find in a new error goes back
-// as it was
-async function smoothRouted(out, board) {
+// Only the router's tracks move, never drawn or kept ones, with one exception: a kept escape (a source's stub) that a
+// routed track turns straight back on is cut back to where the track can leave it cleanly (never its first segment,
+// from the pin). Each cut is recorded (rulecad_trimmed on the track, rulecad_shortened on a shortened stub segment) and
+// the checks name it. A track the design checks then find in a new error goes back as it was; if a cut is in one, the
+// board is smoothed again without cuts
+export async function smoothRouted(out, board) {
   const { smoothCircuit } = await import('@rulecad/smooth');
   const { runAllChecks } = await import('@tscircuit/checks');
-  const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type)).map((e) => JSON.stringify(e)); // (on a copy: the checks write into the routes they read)
-  const before = new Set(await errors());
-  const { routes } = smoothCircuit(out, { movable: (e) => e.rulecad_routed === true, ...(board.clearance ? { clearance: board.clearance } : {}) });
-  const was = new Map();
-  for (const e of out) if (e.type === 'pcb_trace' && routes.has(e.pcb_trace_id)) { was.set(e.pcb_trace_id, e.route); e.route = routes.get(e.pcb_trace_id); }
+  // each error by its kind and the elements in it (its measurements change as tracks move), on a copy: the checks write
+  // into the routes they read
+  const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type))
+    .map((e) => JSON.stringify([e.type, ...[...new Set(JSON.stringify(e).match(/pcb_[a-z_]+?_\d+/g) || [])].sort()]));
+  const before = new Set(await errors()), snapshot = structuredClone(out);
+  const run = (withLeads) => {
+    const chains = withLeads ? stubChains(out) : new Map();
+    const { routes, trimmed } = smoothCircuit(out, { movable: (e) => e.rulecad_routed === true, ...(board.clearance ? { clearance: board.clearance } : {}),
+      leads: (e) => { const c = chains.get(e.pcb_trace_id); return c && { start: c.start?.lead, end: c.end?.lead }; } });
+    const was = new Map(), cut = new Set();
+    for (const e of out) if (e.type === 'pcb_trace' && routes.has(e.pcb_trace_id)) { was.set(e.pcb_trace_id, e.route); e.route = routes.get(e.pcb_trace_id); }
+    for (const [id, sides] of trimmed) for (const side of ['start', 'end']) if (sides[side]) {
+      const chain = chains.get(id)[side], lead = sides[side], k = lead.length, track = out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id);
+      // the chain's segments, root first: those wholly past the new joint go, the one it lands on is shortened
+      const segs = [...chain.segs].reverse(), gone = segs.slice(k - 1), last = segs[k - 2], at = lead[k - 1];
+      const end = chain.lead[k - 1], moved = Math.hypot(end.x - at.x, end.y - at.y) > 1e-9;
+      track.rulecad_trimmed = [...(track.rulecad_trimmed || []), ...gone.map((g) => ({ a: { ...g.trace.route[0] }, b: { ...g.trace.route[1] } }))];
+      for (const g of gone) { out.splice(out.indexOf(g.trace), 1); cut.add(g.trace.pcb_trace_id); }
+      if (moved) {
+        last.trace.rulecad_shortened = { a: { x: last.trace.route[0].x, y: last.trace.route[0].y }, b: { x: last.trace.route[1].x, y: last.trace.route[1].y } };
+        const p = last.trace.route.find((q) => Math.hypot(q.x - end.x, q.y - end.y) < 1e-6); p.x = at.x; p.y = at.y;
+        cut.add(last.trace.pcb_trace_id);
+      }
+      if (gone.length || moved) track.rulecad_cut = (track.rulecad_cut || 0) + 1; // escapes cut back from this track
+      cut.add(id);
+    }
+    return { was, cut };
+  };
+  let { was, cut } = run(true);
+  const fresh = async () => (await errors()).filter((x) => !before.has(x));
+  if (cut.size && (await fresh()).some((e) => [...cut].some((id) => e.includes(`"${id}"`)))) { // a cut in a new error: none, then
+    out.splice(0, out.length, ...snapshot);
+    ({ was } = run(false));
+  }
   for (let round = 0; round < 5 && was.size; round++) { // (a track put back can be in the way of one pulled tight round its new path: again)
     let back = 0;
-    for (const e of (await errors()).filter((x) => !before.has(x))) for (const [id, route] of was) if (e.includes(`"${id}"`)) {
+    for (const e of await fresh()) for (const [id, route] of was) if (e.includes(`"${id}"`)) {
       out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id).route = route; was.delete(id); back++;
     }
     if (!back) break;
   }
+}
+
+// Each routed track's kept escape at either end: the stub of the source's track it carries on from (its end not on a
+// pad), followed back from the joint segment by segment while it's a single line on one layer, stopping at a via or a
+// branch. -> Map(pcb_trace_id -> { start, end }), each { lead: points from the stub's root to the joint, segs: the stub's
+// segments, from the joint back }
+export function stubChains(out) {
+  const near = (p, q) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-6;
+  const routed = out.filter((e) => e.type === 'pcb_trace' && e.rulecad_routed);
+  const kept = out.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept);
+  const chains = new Map();
+  for (const t of routed) for (const side of ['start', 'end']) {
+    const J = side === 'start' ? t.route[0] : t.route.at(-1);
+    if (J.route_type !== 'wire' || J.start_pcb_port_id || J.end_pcb_port_id) continue; // on a pad: no stub
+    if (routed.filter((u) => [u.route[0], u.route.at(-1)].some((p) => near(p, J))).length !== 1) continue; // other tracks meet there
+    const mine = kept.filter((k) => k.source_trace_id === t.source_trace_id);
+    const lead = [{ x: J.x, y: J.y, layer: J.layer }], segs = [], used = new Set();
+    for (let cur = J; ;) {
+      if (mine.some((k) => k.route[1]?.route_type === 'via' && near(k.route[0], cur))) break; // a via: the stub changes layer here
+      const next = mine.filter((k) => !used.has(k) && k.route.length === 2 && k.route.every((p) => p.route_type === 'wire' && p.layer === J.layer) && k.route.some((p) => near(p, cur)));
+      if (next.length !== 1) break;
+      const k = next[0], far = near(k.route[0], cur) ? k.route[1] : k.route[0];
+      used.add(k); segs.push({ trace: k }); lead.push({ x: far.x, y: far.y, layer: J.layer }); cur = far;
+    }
+    if (segs.length >= 2) chains.set(t.pcb_trace_id, { ...chains.get(t.pcb_trace_id), [side]: { lead: lead.reverse(), segs } });
+  }
+  return chains;
 }
 
 // A point on (or near) the board's edge moved in by d, straight in from the nearest side of its bounds
