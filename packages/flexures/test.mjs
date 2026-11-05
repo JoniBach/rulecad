@@ -739,9 +739,14 @@ test('a strap from a moving body: over and under another, to a post of its own i
     ground: [rect(-8, -20, 0.5, 20)],
     bodies: { tab: [rect(20, -3, 26, 3), disc([34, 0], 1.5)], bar: jscad.booleans.subtract(rect(30, -3, 40, 3.5 + 30), rect(32.5, -2, 35.5, 5)) },
     joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'tab' } , t: { kind: 'curve', params: { ...spring, points: [[0, 12], [10, 12], [20, 12]] }, from: 'ground', to: 'bar' } },
-    bridges: [{ body: 'tab', shape: rect(22, -1.5, 35, 1.5) }, { body: 'tab', shape: rect(22, -1.5, 35, 1.5), side: 'bottom' }],
+    bridges: [{ body: 'tab', shape: rect(22, -1, 35, 1) }, { body: 'tab', shape: rect(22, -1, 35, 1), side: 'bottom' }],
     states: { up: { s: 2 } }, sequence: ['rest', 'up', 'rest'] });
   const br = r.findings.filter((x) => x.code === 'lamina.bridge');
   assert.ok(br.length >= 4 && br.every((x) => x.level === 'pass'), br.map((x) => `${x.level} ${x.text}`).join('; '));
   assert.ok(br.some((x) => /tab's upper strap stands on tab on both sides/.test(x.text)) && br.some((x) => /bar passes over it/.test(x.text)), br.map((x) => x.text).join('; '));
+  // In 3D, through the upper strap's layers: the strap and the bar either side of it are apart, by the gap round it
+  const polys = jscad.geometries.geom3.toPolygons(r.parts.body), z = 8 - 0.4, near = [];
+  for (const q of polys) { const zs = q.vertices.map((v) => v[2]); if (Math.min(...zs) < z && Math.max(...zs) > z && Math.max(...zs) - Math.min(...zs) > 0.5) for (const v of q.vertices) if (v[0] > 21 && v[0] < 36 && Math.abs(v[1]) < 3.5) near.push(Math.abs(v[1])); }
+  const edges = [...new Set(near.map((y) => +y.toFixed(2)))].sort((a, b) => a - b);
+  assert.ok(edges.some((y) => Math.abs(y - 1) < 0.03) && edges.some((y) => Math.abs(y - 1.6) < 0.03), `walls at |y| ${edges.join(', ')}: the strap's side at 1, the bar's cut back a gap from it, at 1.6`);
 });
