@@ -8,8 +8,8 @@
 // sloping up into the spine. The trigger, under the shuttle ahead of the arms, is its own sear: its hook's face leans
 // back past square to the line of its hinge, so the spring's pull turns it into the tooth, and the finger, in the crook
 // in front of its body, turns it down and lets the shuttle go. The frame is flooded: solid everywhere inside the outline
-// but the room the moving parts sweep; the disc and the shuttle's nose run in a tunnel, a floor under them and a roof
-// over, so the disc can't fall out of the plane. Holes in the corners take snap pins, should a plate either side ever
+// but the room the moving parts sweep; the disc and the shuttle's nose run in a channel open over the top (no roof
+// at the barrel's front to stop the shot), ledges of floor under the disc. Holes in the corners take snap pins, should a plate either side ever
 // be wanted. The variant `catch` prints the front half alone (the arms, the shuttle, the catch, the trigger and the
 // tunnel), drawn by a knob on the shuttle's tail: the catch tried in print before the whole.
 import jscad from '@jscad/modeling'
@@ -40,10 +40,10 @@ export function main (v) {
   same(slideShaped, S.job, 'shape-slide.mjs')
   const hinge = { ...hingeShaped.params, into: v.into, fillet: v.hinge_round }, home = { ...slideShaped.params, into: v.into, fillet: v.spring_round }
 
-  // Along the barrel: the trigger's front, then the tunnel the disc runs in (its floor from just ahead of the trigger,
-  // its roof from just ahead of where the tooth's follow-through reaches), the loaded disc's middle over both
+  // Along the barrel: the trigger's front, then the channel the disc runs in (its floor from just ahead of the trigger),
+  // the loaded disc's middle ahead of where the tooth's follow-through reaches
   const r = v.launcher.disc / 2, slot = r + v.slide, out = L.top + v.wall
-  const triggerFront = C.xs + v.head + v.ramp, floorFrom = triggerFront + v.room + 1, roofFrom = C.reachFront + v.room // (the floor's ledges let the tooth by; the roof must be ahead of it)
+  const triggerFront = C.xs + v.head + v.ramp, floorFrom = triggerFront + v.room + 1, roofFrom = C.reachFront + v.room // (the floor's ledges let the tooth by)
   const loadedBack = Math.max(floorFrom, roofFrom) + 2 - r, noseFront = loadedBack - g + C.cock, front = loadedBack + 2 * slot + v.wall
 
   // The shuttle: the block the arms meet, the spine, the nose, the tooth, the tail
@@ -113,19 +113,17 @@ export function main (v) {
   const fingerRoom = rounded(fingerBox, v.finger_round, v.smooth)
   // (three in the corners; the fourth behind the stem's drawn end, since the slide's spring has the back corner below)
   const holes = [[back + v.plate_in, out - v.plate_in], [front - v.plate_in, out - v.plate_in], [front - v.plate_in, 0 - out + v.plate_in], piece ? [back + v.plate_in, 0 - out + v.plate_in] : [back + v.plate_low_in, v.plate_low]].map((at) => ({ at, diameter: v.plate_hole, wall: v.plate_wall }))
-  // The disc lies flat in the tunnel ahead of the cocked nose, and leaves through the front. The floor under it and
-  // the roof over it each stand on the frame either side; the disc slides on the floor, under the roof
+  // The disc lies flat in the channel ahead of the cocked nose, and leaves through the front. The floor under it stands
+  // on the frame either side and the disc slides on it; nothing over it
   const channel = rect(loadedBack - g, 0 - slot, front + 1, slot)
   // (over the spine, a little more room than round the rest of the shuttle: the frame there bends towards it under the
   // springs' pull, and under it the room stays the gap, so the catch's pull can't tip it down)
   const spineTop = rect(v.bar_back, v.spine / 2, noseFront - v.nose_l + v.overshoot, v.spine / 2 + g + v.spine_top_clear)
   const disc = circle({ radius: r, center: [loadedBack + v.load_gap + r, 0], segments: v.smooth })
-  const roofGap = v.x1c.layer * v.bridge_gap, roofZ = v.floor_depth + v.floor_gap + v.launcher.disc_t + roofGap // the roof's underside: the floor, its gap, the disc and a gap over it
   const bridges = [
     // the floor: two ledges off the slot's walls, either side of where the nose and the tooth pass (they run between, not over)
-    { shape: rect(loadedBack - g, v.nose_w / 2 + v.room, front + 1, slot + v.bridge_foot), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' },
-    { shape: rect(Math.max(loadedBack - g, floorFrom) + v.lower_ledge, 0 - slot - v.bridge_foot, front + 1, C.toothLow - v.room), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // (the lower one ahead of the trigger's swing)
-    { shape: rect(roofFrom, 0 - slot - v.bridge_foot, front + 1, slot + v.bridge_foot), depth: height - roofZ, gap: roofGap },
+    { shape: rect(loadedBack - g, v.nose_w / 2 + v.room, front, slot + v.bridge_foot), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' },
+    { shape: rect(Math.max(loadedBack - g, floorFrom) + v.lower_ledge, 0 - slot - v.bridge_foot, front, C.toothLow - v.room), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // (the lower one ahead of the trigger's swing)
     { shape: rect(v.tie_from, C.spineLow - v.shuttle_clear - v.tie_foot, v.tie_to, 0 - C.spineLow + v.fit + v.bridge_foot) }, // the tie over the spine, so the frame the hinge roots in doesn't bend away under the pull
   ]
   // Trapped in the plane: the ring's top and the stem's in grooves in the frame over them, the spine's top likewise, and the
