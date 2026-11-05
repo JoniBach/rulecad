@@ -234,6 +234,11 @@
       "unit": "mm",
       "rule": "The tooth's length along the barrel at its foot, half of it flat and half its back's slope"
     },
+    "lip_round": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The round where the slide's lip meets its bar, inside the recess: no notch for it to snap at"
+    },
     "tail_slot": {
       "value": 4.4,
       "unit": "mm",
@@ -481,7 +486,7 @@
       "rule": "How far the shuttle may run on past rest after the shot, its arms bringing it back: the room left ahead of the tooth and the head, so nothing stops it but the arms"
     },
     "neck_h": {
-      "value": 1.8,
+      "value": 3.2,
       "unit": "mm",
       "rule": "The neck's height in the plane"
     },
@@ -501,7 +506,7 @@
       "rule": "The ramp in front of the hook's flat top, down to the trigger's front, which the tooth rides as it's drawn back"
     },
     "tail_head": {
-      "value": 3,
+      "value": 5,
       "unit": "mm",
       "rule": "The head at the end of the shuttle's tail, this long, which the slide's pocket catches"
     },
@@ -553,9 +558,9 @@
       "rule": "How many shapes the slide's spring's shaping may try: a long arm in a short room, a hard job"
     },
     "lip": {
-      "value": 1.5,
+      "value": 3,
       "unit": "mm",
-      "rule": "The pocket's lips, along the barrel, either side of the neck: they pull the head back"
+      "rule": "The slide's lip, along the barrel, ahead of the tail's head: it pulls the head back, so it is as stout as the head"
     },
     "plate_low": {
       "value": 2,
@@ -668,7 +673,7 @@
       "rule": "The tail's head is a step up off the neck to this height: it sits in a recess open under the stem's front, its lip in front of it, so the slide pitching a little can't wedge it"
     },
     "tail_low": {
-      "value": -3.2,
+      "value": -4.6,
       "unit": "mm",
       "rule": "The tail runs low, its underside here: the stem's front over it then has room for a recess the head sits in and a stout bar over that"
     }

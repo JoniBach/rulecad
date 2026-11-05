@@ -82,7 +82,7 @@ export function main (v) {
   const tailSlot = rounded(rect(S.end - 5, v.tail_slot_y, S.end + v.tail_slot_len, v.tail_slot_y + v.tail_slot), v.tail_slot / 2 - 0.01, v.smooth)
   const tailTop = rect(S.end, v.stem_h / 2 - v.round, S.ringBack + v.round, v.tail_tall)
   const stem = (x) => subtract(x, tailSlot)
-  const stem0 = union(rect(S.end, 0 - v.stem_h / 2, S.pocket[0] + v.round, v.stem_h / 2), subtract(rect(S.pocket[0], over, S.front, v.stem_h / 2), polygon({ points: [[S.pocket[0], over - 1], [S.lips[0] + lean(over - 1), over - 1], [S.lips[0] + lean(v.tail_top + v.fit), v.tail_top + v.fit], [S.pocket[0], v.tail_top + v.fit]] })))
+  const stem0 = union(rect(S.end, 0 - v.stem_h / 2, S.pocket[0] + v.round, v.stem_h / 2), subtract(rect(S.pocket[0], over, S.front, v.stem_h / 2), rounded(polygon({ points: [[S.pocket[0], over - 1], [S.lips[0] + lean(over - 1), over - 1], [S.lips[0] + lean(v.tail_top + v.fit), v.tail_top + v.fit], [S.pocket[0], v.tail_top + v.fit]] }), v.lip_round, v.smooth))) // (the recess's top corners rounded: the lip meets the bar in a round, not a notch)
   const ring = subtract(union(circle({ radius: S.R, center: S.ringAt, segments: v.smooth }), rect(S.ringBack, 0, S.ringAt[0], S.ringAt[1])), circle({ radius: v.ring_in, center: S.ringAt, segments: v.smooth })) // its back filled out solid down to the stem
   const slide = [stem(stem0), stem(ring), stem(tailTop)]
 
