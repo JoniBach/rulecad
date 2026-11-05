@@ -73,7 +73,7 @@ export function main (v) {
   ]
 
   // The slide: the ring on its stem, the stem's front square behind the shuttle's tail, and the link's pin ahead of it in
-  // the tail's slot, hung between two straps from the stem's front, over and under the tail
+  // the tail's slot, standing on the bed and hung from a strap from the stem's front over the tail
   const linkPin = circle({ radius: S.rp, center: [S.pin, 0], segments: v.smooth })
   const strap = union(rect(S.front - v.strap_into, 0 - v.strap_w / 2, S.pin, v.strap_w / 2), circle({ radius: v.strap_w / 2, center: [S.pin, 0], segments: v.smooth }))
   // A slot up the stem's tail, open at its end: the frame left in it (a tongue from the handle, where the slot never
@@ -127,8 +127,9 @@ export function main (v) {
     // the floor: two ledges off the slot's walls, either side of where the nose and the tooth pass (they run between, not over)
     { shape: rect(loadedBack - g, v.nose_w / 2 + v.room, front, slot + v.bridge_foot), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' },
     { shape: rect(Math.max(loadedBack - g, floorFrom) + v.lower_ledge, 0 - slot - v.bridge_foot, front, C.toothLow - v.room), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // (the lower one ahead of the trigger's swing)
+    { shape: rect(Math.max(noseFront + v.overshoot, C.reachFront) + v.room + v.strip_clear, 0 - slot - v.bridge_foot, front, slot + v.bridge_foot), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // and a strip across between them at the front, ahead of all the nose and the tooth ever reach
     { shape: rect(v.tie_from, C.spineLow - v.shuttle_clear - v.tie_foot, v.tie_to, 0 - C.spineLow + v.fit + v.bridge_foot) }, // the tie over the spine, so the frame the hinge roots in doesn't bend away under the pull
-    ...(piece ? [] : [{ body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap }, { body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap, side: 'bottom' }]), // the link's straps, the slide's own
+    ...(piece ? [] : [{ body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap }]), // the link's strap, the slide's own, over the tail (none under it: the pin stands on the bed, and nothing prints over a strap there)
   ]
   const drawn = 0 - L.draw, slideDrawn = 0 - L.draw - S.slack + g, cocked = 0 - C.cock // (the lips a gap short of the head: they bear on it in the physics)
   const whole = {

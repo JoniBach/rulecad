@@ -459,9 +459,9 @@
       "rule": "The cocked tooth's front, where it bears on the hook: far enough ahead of the arms that the trigger's hinge roots on frame between them"
     },
     "bite": {
-      "value": 12,
+      "value": 6,
       "unit": "°",
-      "rule": "The hooked face leans back past square to the hinge's line by this: the pull turns the trigger up into the tooth, so the catch holds by its shape (the check wants 5°; the rest is for the print)"
+      "rule": "The hooked face leans back past square to the hinge's line by this: the pull turns the trigger up into the tooth, so the catch holds by its shape (the check wants 5°; the rest is for the print) Printed at 12° it held too hard: pulled, it dragged the tooth and the spine down rather than letting go, so 6° (over the 5° the check wants)"
     },
     "overshoot": {
       "value": 3,
@@ -653,12 +653,12 @@
     "strap_w": {
       "value": 6,
       "unit": "mm",
-      "rule": "The straps from the slide's front to the pin, over and under the tail: wider than the slot, so they rest on its walls a gap off rather than bridging air"
+      "rule": "The strap from the slide's front to the pin, over the tail: wider than the slot, so it rests on its walls a gap off rather than bridging air"
     },
     "strap_depth": {
-      "value": 1.6,
+      "value": 2.4,
       "unit": "mm",
-      "rule": "Each strap's thickness up the print: eight layers"
+      "rule": "The strap's thickness up the print: twelve layers, since it alone holds the pin"
     },
     "strap_gap": {
       "value": 0.4,
@@ -669,6 +669,11 @@
       "value": 6,
       "unit": "mm",
       "rule": "How far each strap runs back into the slide's stem, its root"
+    },
+    "strip_clear": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The floor strip across the barrel's front starts this far beyond where the nose and the tooth ever reach"
     }
   },
   "variants": {
