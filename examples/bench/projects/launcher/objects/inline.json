@@ -232,7 +232,57 @@
     "tooth_w": {
       "value": 5,
       "unit": "mm",
-      "rule": "The tooth's length along the barrel: stout, no narrower than three millimetres where its face leans"
+      "rule": "The tooth's length along the barrel at its foot, half of it flat and half its back's slope"
+    },
+    "tail_slot": {
+      "value": 4.4,
+      "unit": "mm",
+      "rule": "A slot up the middle of the stem's tail, open at its end: the frame's tongue in it guides the stem far behind the front posts, so it can't pitch and wedge"
+    },
+    "catch_piece": {
+      "value": 0,
+      "tweak": { "min": 0, "max": 1 },
+      "rule": "1 prints the catch test piece: the front half alone (the arms, the shuttle, the catch, the trigger and the tunnel), drawn by a knob on the shuttle's tail; no slide, ring or their spring"
+    },
+    "piece_back": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The test piece's frame runs this far behind the arms' reach and the wall"
+    },
+    "knob": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The test piece's knob on the shuttle's tail: this much longer and taller than the head, for a fingernail to draw it back"
+    },
+    "spine_top_clear": {
+      "value": 0.45,
+      "unit": "mm",
+      "rule": "More room over the spine than the gap: the frame above it bends towards it under the springs' pull"
+    },
+    "tail_slot_y": {
+      "value": 0,
+      "unit": "mm",
+      "rule": "The slot's underside: the stem's middle, so the half under it is the stem's whole lower half"
+    },
+    "tail_tall": {
+      "value": 9,
+      "unit": "mm",
+      "rule": "Behind the ring the stem's tail stands this high, so the half over the slot is stout there too"
+    },
+    "tail_slot_len": {
+      "value": 22,
+      "unit": "mm",
+      "rule": "How far the slot runs up the stem: the slide's whole travel and a good length of tongue in it at rest, ending under the ring's solid back, where the pull goes through"
+    },
+    "hook_lean": {
+      "value": 12,
+      "unit": "deg",
+      "rule": "The tail's head leans forward up its front, and the slide's lip with it: drawing, the lip is pulled down on to the head, not lifted off it"
+    },
+    "tooth_gusset": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "How much further back the tooth's back slope meets the spine: a filled triangle, wide where it joins the spine, with no neck to bend at"
     },
     "engage": {
       "value": 2,
@@ -617,5 +667,8 @@
       "unit": "mm",
       "rule": "The tail runs low, its underside here: the stem's front over it then has room for a recess the head sits in and a stout bar over that"
     }
+  },
+  "variants": {
+    "catch": { "catch_piece": 1 }
   }
 }
