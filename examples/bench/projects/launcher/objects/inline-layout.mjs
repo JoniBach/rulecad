@@ -60,16 +60,17 @@ export function catchOf (v, height) {
 // neck is as long as the shuttle is cocked
 export function slideOf (v, f, height) {
   const { cock } = layout(v, { meander: () => null })
-  const back = 0 - v.bar_back, front = back - cock - v.cam - v.fit // the shuttle's back; the stem's front, behind it cocked and cammed back
-  // The lips sit a little ahead of the head: drawn, the slide goes back that much further than the shuttle; home, the
-  // shot's run on past rest, or the slide stopping a little short, doesn't bring the head up to them
-  const slack = v.slide_slack
-  const lips = [front - v.lip, front], head = [lips[0] - slack - v.tail_head, lips[0] - slack], neck = [head[1], back] // (x ranges)
-  const pocket = [head[0] - cock - v.cam - v.fit, lips[0]] // the pocket the head runs back in as the slide goes home with the shuttle cocked (and cammed back)
+  // The link: a slot up the shuttle's tail and a pin on the slide in it, the pin hung between two straps from the
+  // slide's front, over and under the tail. Drawn, the pin bears on the slot's back end; cocked with the slide home, it
+  // sits at the front end; the shot runs the slot forward past it, the slack to spare. (x along the barrel)
+  const back = 0 - v.bar_back, slack = v.slide_slack, rp = v.link_pin / 2
+  const slotFront = back - v.link_wall, pin = slotFront - rp - cock - v.fit // (cocked, slide home: the pin a fit short of the front end)
+  const slotBack = pin - rp - (slack - v.gap), tailEnd = slotBack - v.link_wall // (drawn: the slide a slack further back, the pin bearing)
+  const front = tailEnd - cock - v.fit // the stem's front: behind the tail's end, cocked, with the slide home
   const R = v.ring_in + v.ring_wall, ringAt = [v.ring_x, v.stem_h / 2 + v.ring_in + v.ring_wall / 2]
   const anchor = [v.slide_anchor_x, 0 - v.stem_h / 2], root = [v.slide_root_x, 0 - (v.bar / 2 + v.rise) + v.slide_floor] // where the slide's spring meets the stem's underside, and grows from the frame's floor
   return {
-    neck, head, lips, pocket, slack, R, ringAt, end: ringAt[0] - R - v.stem_tail, ringBack: ringAt[0] - R, anchor, front,
+    slack, R, ringAt, pin, rp, slot: [slotBack, slotFront], tailEnd, back, end: ringAt[0] - R - v.stem_tail, ringBack: ringAt[0] - R, anchor, front,
     job: {
       root, tip: anchor, start: 90, end: 90, lead: v.spring_round + v.least,
       region: { lo: [v.slide_lo, root[1]], hi: [v.slide_hi, anchor[1] - v.gap * 2] }, gap: v.gap, apart: v.arm_gap, bend: v.arm_bend,

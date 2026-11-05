@@ -57,9 +57,6 @@ export function main (v) {
   // Filled: its back slopes up from the foot into the spine, a gusset, so it has no neck to bend at, it stiffens the
   // spine where the catch pulls on it, and it rides the hook's ramp on a long slope as it's drawn
   const toothRoot = toothBack - v.tooth_gusset
-  // The head's front leans forward up it, and the lip's back with it: the draw's pull on the lip presses it down on
-  // to the head, a hook, rather than lifting it off
-  const lean = (y) => (y - v.tail_low) * Math.tan((v.hook_lean * Math.PI) / 180)
   const tooth = polygon({ points: [[toothRoot, C.spineLow + v.round], [toothBack + v.tooth_w / 2, C.toothLow], [toothFace(C.toothLow) - v.chamfer, C.toothLow], ...roundFace] })
   const R = r + g, hollow = Array.from({ length: 13 }, (_, i) => { const y = v.nose_w / 2 - (v.nose_w * i) / 12; return [noseFront + g + r - Math.sqrt(R * R - y * y), y]; }) // the nose's hollow, round the disc's edge
   const shuttle = [
@@ -67,14 +64,15 @@ export function main (v) {
     rect(v.bar_back - v.round, 0 - v.spine / 2, noseFront - v.nose_l + v.round, v.spine / 2),
     polygon({ points: [[noseFront - v.nose_l, 0 - v.nose_w / 2], ...hollow.slice().reverse(), [noseFront - v.nose_l, v.nose_w / 2]] }),
     tooth,
-    rect(S.neck[0] - v.round, v.tail_low, S.neck[1] + v.round, v.tail_low + v.neck_h), // the tail's neck, low
-    piece ? subtract(rect(S.head[0] - v.knob, v.tail_low, S.head[1], v.tail_top), circle({ radius: v.knob_hole / 2, center: [S.head[0] - v.knob / 2, (v.tail_low + v.tail_top) / 2], segments: v.smooth })) // (the test piece: the head drawn out behind into a knob with a hole for a pin, to draw it by; the frame over it props the tail as the slide's bar does)
-      : polygon({ points: [[S.head[0], v.tail_low], [S.head[1], v.tail_low], [S.head[1] + lean(v.tail_top), v.tail_top], [S.head[0], v.tail_top]] }), // and its head, a step up off the neck, its front overhanging
+    // the tail: a bar back from the block with a slot up it, the slide's pin in the slot (in the test piece, draw it by
+    // the slot with a finger or a pin)
+    subtract(rect(S.tailEnd, 0 - v.link_tail / 2, S.back + v.round, v.link_tail / 2), rounded(rect(S.slot[0], 0 - S.rp - g, S.slot[1], S.rp + g), S.rp + g - 0.01, v.smooth)),
   ]
 
-  // The slide: the ring on its stem, the stem's front a pocket round the tail's head, its mouth round the neck
-  // (its front runs over the tail only, with a recess open underneath that the head sits in, the lip ahead of it)
-  const over = v.tail_low + v.neck_h + v.fit // the stem's front clears the neck by a gap
+  // The slide: the ring on its stem, the stem's front square behind the shuttle's tail, and the link's pin ahead of it in
+  // the tail's slot, hung between two straps from the stem's front, over and under the tail
+  const linkPin = circle({ radius: S.rp, center: [S.pin, 0], segments: v.smooth })
+  const strap = union(rect(S.front - v.strap_into, 0 - v.strap_w / 2, S.pin, v.strap_w / 2), circle({ radius: v.strap_w / 2, center: [S.pin, 0], segments: v.smooth }))
   // A slot up the stem's tail, open at its end: the frame left in it (a tongue from the handle, where the slot never
   // sweeps) bears on its sides far behind the posts at the front, so the stem can't pitch across its channel and wedge
   // (above the middle, so the half under it, over the slide's spring, is the stem's full half; the half over it is the
@@ -82,9 +80,9 @@ export function main (v) {
   const tailSlot = rounded(rect(S.end - 5, v.tail_slot_y, S.end + v.tail_slot_len, v.tail_slot_y + v.tail_slot), v.tail_slot / 2 - 0.01, v.smooth)
   const tailTop = rect(S.end, v.stem_h / 2 - v.round, S.ringBack + v.round, v.tail_tall)
   const stem = (x) => subtract(x, tailSlot)
-  const stem0 = union(rect(S.end, 0 - v.stem_h / 2, S.pocket[0] + v.round, v.stem_h / 2), subtract(rect(S.pocket[0], over, S.front, v.stem_h / 2), rounded(polygon({ points: [[S.pocket[0], over - 1], [S.lips[0] + lean(over - 1), over - 1], [S.lips[0] + lean(v.tail_top + v.fit), v.tail_top + v.fit], [S.pocket[0], v.tail_top + v.fit]] }), v.lip_round, v.smooth))) // (the recess's top corners rounded: the lip meets the bar in a round, not a notch)
+  const stem0 = rect(S.end, 0 - v.stem_h / 2, S.front, v.stem_h / 2)
   const ring = subtract(union(circle({ radius: S.R, center: S.ringAt, segments: v.smooth }), rect(S.ringBack, 0, S.ringAt[0], S.ringAt[1])), circle({ radius: v.ring_in, center: S.ringAt, segments: v.smooth })) // its back filled out solid down to the stem
-  const slide = [stem(stem0), stem(ring), stem(tailTop)]
+  const slide = [stem(stem0), stem(ring), stem(tailTop), linkPin]
 
   // The trigger: one solid part, its own sear. Its top carries the hook, ahead of the cocked tooth (the hooked face
   // behind, a flat top, a ramp in front for the tooth to ride as it's drawn back); its front comes down and curves back
@@ -125,6 +123,7 @@ export function main (v) {
     { shape: rect(loadedBack - g, v.nose_w / 2 + v.room, front, slot + v.bridge_foot), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' },
     { shape: rect(Math.max(loadedBack - g, floorFrom) + v.lower_ledge, 0 - slot - v.bridge_foot, front, C.toothLow - v.room), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // (the lower one ahead of the trigger's swing)
     { shape: rect(v.tie_from, C.spineLow - v.shuttle_clear - v.tie_foot, v.tie_to, 0 - C.spineLow + v.fit + v.bridge_foot) }, // the tie over the spine, so the frame the hinge roots in doesn't bend away under the pull
+    ...(piece ? [] : [{ body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap }, { body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap, side: 'bottom' }]), // the link's straps, the slide's own
   ]
   const drawn = 0 - L.draw, slideDrawn = 0 - L.draw - S.slack + g, cocked = 0 - C.cock // (the lips a gap short of the head: they bear on it in the physics)
   const whole = {

@@ -955,7 +955,10 @@ export async function lamina(spec) {
   // out of its channel). Every body that passes under one is cut down by the bridge and a gap, along all of it that
   // ever passes under; the bridge spans no wider than the printer bridges, and stands on the frame both sides ----
   const layer = printer?.layer ?? 0.2, bridgeMost = printer?.bridge ?? 5;
-  const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3, bottom: b.side === 'bottom' }));
+  // (a bridge may belong to a moving body rather than the frame, `body`: a strap from it over or under another, to a post
+  // of its own on the far side, a clevis; it moves with that body, and what passes it is cut back where it ever passes)
+  const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3, bottom: b.side === 'bottom', owner: b.body ?? 'ground' }));
+  for (const br of bridges) if (!parts[br.owner] || parts[br.owner].kind === 'flexure') throw new Error(`a bridge's body "${br.owner}" is not the ground or a body`);
   const arches = []; // a floor strip's: the parts passing over it arched up at 45°, which prints without support
   const guidesHeld = []; // what guides hold across the plane
   const cuts = [];
@@ -966,22 +969,30 @@ export async function lamina(spec) {
       for (let k = 0; k <= FRAMES * 2; k++) { const t = k / (FRAMES * 2); poses.push(places(solve(Object.fromEntries(keys.map((x) => [x, (a[x] || 0) + ((b[x] || 0) - (a[x] || 0)) * t]))).v)); }
     }
     bridges.forEach((br, i) => {
-      const name = br.bottom ? `floor ${i + 1}` : `bridge ${i + 1}`, under = subtract(br.shape, parts.ground.shape), left = height - br.depth - br.gap;
-      if (empty(under)) { f('warn', `${name} has nothing to cross: it's all on the frame`, 'lamina.bridge'); return; }
+      const own = br.owner, onBody = own !== 'ground', mine = parts[own].shape, whose = onBody ? own : 'the frame';
+      const name = onBody ? `${own}'s ${br.bottom ? 'lower' : 'upper'} strap` : br.bottom ? `floor ${i + 1}` : `bridge ${i + 1}`, left = height - br.depth - br.gap;
+      // (what it crosses: off its own; a body's strap rests on what it passes over, a support gap up, so only open air is spanned)
+      const under = subtract(br.shape, onBody ? union(Object.values(parts).map((x) => x.shape)) : mine);
+      if (empty(subtract(br.shape, mine))) { f('warn', `${name} has nothing to cross: it's all on ${whose}`, 'lamina.bridge'); return; }
       if (!br.bottom) { // (a floor stands on the bed: it spans nothing)
-        const wide = !empty(shrink(under, bridgeMost / 2 + 0.01, 'Round'));
+        const wide = !empty(under) && !empty(shrink(under, bridgeMost / 2 + 0.01, 'Round'));
         f(wide ? 'fail' : 'pass', `${name} spans ${wide ? 'more than' : 'no more than'} the ${bridgeMost} mm the printer bridges`, 'lamina.bridge', { bridge: i });
       }
-      const feet = pieces(intersect(br.shape, parts.ground.shape));
-      const need = br.bottom ? 1 : 2; // (a floor is printed on the bed: a ledge off the frame on one side is held; a bridge must stand on both)
-      f(feet >= need ? 'pass' : 'fail', `${name} stands on the frame ${feet >= 2 ? 'on both sides' : feet ? (br.bottom ? 'on one side, a ledge on the bed' : 'on one side only: it would droop') : br.bottom ? 'nowhere: it would come loose' : 'nowhere: it would print in mid-air'}`, 'lamina.bridge', { bridge: i });
+      const feet = pieces(intersect(br.shape, mine));
+      const need = br.bottom && !onBody ? 1 : 2; // (a floor is printed on the bed: a ledge off the frame on one side is held; a bridge must stand on both, and a body's strap joins it to its post)
+      f(feet >= need ? 'pass' : 'fail', `${name} stands on ${whose} ${feet >= 2 ? 'on both sides' : feet ? (br.bottom ? 'on one side, a ledge on the bed' : 'on one side only: it would droop') : br.bottom ? 'nowhere: it would come loose' : 'nowhere: it would print in mid-air'}`, 'lamina.bridge', { bridge: i });
       for (const [n, p] of Object.entries(parts)) {
         if (p.kind === 'flexure' && area(intersect(br.shape, p.shape)) > AREA) f('fail', `${name} is over the ${n} flexure: a bridge goes over what slides, not what bends`, 'lamina.bridge', { bridge: i, joint: n });
-        if (p.kind !== 'body') continue;
-        const cut = intersect(p.shape, union(poses.map((P) => moved(inverse(P[n]), br.shape)))); // all of it that ever passes under, where it is at rest
+        if (n === own || (p.kind !== 'body' && !(onBody && n === 'ground'))) continue;
+        const cut = intersect(p.shape, union(poses.map((P) => moved(mul(inverse(P[n]), P[own]), br.shape)))); // all of it that ever passes under, where it is at rest
         if (empty(cut)) continue;
+        if (onBody && br.bottom) { // (a body's lower strap: what passes over it is cut back flat, a gap over it, and prints on it a support gap up, as a pin's ring does on its floor)
+          cuts.push({ shape: cut, from: 0, to: br.depth + br.gap, body: n, gap: br.gap, bottom: true, ...(onBody ? { owner: own } : {}) });
+          f(height - br.depth - br.gap >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes over it, cut up to ${(br.depth + br.gap).toFixed(2)} mm there`, 'lamina.bridge', { bridge: i, body: n, left });
+          continue;
+        }
         if (!br.bottom) {
-          cuts.push({ shape: cut, from: left, to: height, body: n, gap: br.gap });
+          cuts.push({ shape: cut, from: left, to: height, body: n, gap: br.gap, ...(onBody ? { owner: own } : {}) });
           f(left >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes under it, cut down to ${left.toFixed(2)} mm there (the bridge ${br.depth.toFixed(2)} mm, a gap of ${br.gap.toFixed(2)} mm over it)`, 'lamina.bridge', { bridge: i, body: n, left });
           continue;
         }
@@ -1135,7 +1146,7 @@ export async function lamina(spec) {
     if (spec.free && !empty(parts.ground.shape)) {
       const hullOf = (pts) => { const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]), cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], hi = []; for (const q of p) { while (lo.length >= 2 && cross(lo.at(-2), lo.at(-1), q) <= 0) lo.pop(); lo.push(q); } for (const q of p.reverse()) { while (hi.length >= 2 && cross(hi.at(-2), hi.at(-1), q) <= 0) hi.pop(); hi.push(q); } return [...lo.slice(0, -1), ...hi.slice(0, -1)]; };
       const within = (h, [x, y]) => h.length >= 3 && h.every((a, i) => { const b = h[(i + 1) % h.length]; return (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]) >= -1e-9; });
-      const faces = { over: union(bridges.filter((b) => !b.bottom).map((b) => b.shape)), under: union(bridges.filter((b) => b.bottom).map((b) => b.shape)) }, G = box(parts.ground.shape);
+      const faces = { over: union(bridges.filter((b) => !b.bottom && b.owner === 'ground').map((b) => b.shape)), under: union(bridges.filter((b) => b.bottom && b.owner === 'ground').map((b) => b.shape)) }, G = box(parts.ground.shape);
       for (const n of Object.keys(spec.free)) {
         const along = [{ label: 'loaded', shape: all(spec.free[n].shape) }, ...physical.filter((fr) => fr.parts[n] && fr.label).map((fr) => ({ label: fr.label, shape: fr.parts[n] }))];
         const lost = {};
@@ -1158,7 +1169,7 @@ export async function lamina(spec) {
       const nx = Math.ceil((hi[0] - lo[0]) / side) + 2, ny = Math.ceil((hi[1] - lo[1]) / side) + 2, x0 = lo[0] - side, y0 = lo[1] - side;
       const g = feaGrid({ nx, ny, h: side }), fill = coverage(G, g, x0, y0);
       // Bridges and floors are frame too, as thick as they are: a roof over a channel ties its two sides
-      for (const br of bridges) { const c = coverage(br.shape, g, x0, y0); for (let e = 0; e < g.cells; e++) fill[e] = Math.min(1, fill[e] + c[e] * (1 - Math.min(1, fill[e])) * (br.depth / height)); }
+      for (const br of bridges.filter((x) => x.owner === 'ground')) { const c = coverage(br.shape, g, x0, y0); for (let e = 0; e < g.cells; e++) fill[e] = Math.min(1, fill[e] + c[e] * (1 - Math.min(1, fill[e])) * (br.depth / height)); }
       const grip = spec.grip ? all(spec.grip) : [[[lo[0] - 1, lo[1] - 1], [lo[0] + (hi[0] - lo[0]) / 4, lo[1] - 1], [lo[0] + (hi[0] - lo[0]) / 4, hi[1] + 1], [lo[0] - 1, hi[1] + 1]]];
       const held = coverage(grip, g, x0, y0), fixed = new Uint8Array(g.dofs);
       for (let e = 0; e < g.cells; e++) if (fill[e] >= 0.5 && held[e] > 0.5) { const i = e % nx, j = (e - i) / nx; for (const n of [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)]) fixed[2 * n] = fixed[2 * n + 1] = 1; }
@@ -1221,7 +1232,7 @@ export async function lamina(spec) {
         const pts = parts[b].shape.flat(), P = pts.reduce((a, p) => (Math.hypot(p[0] - c[0], p[1] - c[1]) > Math.hypot(a[0] - c[0], a[1] - c[1]) ? p : a), pts[0]);
         // (each with its play: a guide's ridge moves the print gap in its groove before it bears, a bridge or a floor its
         // own gap; held rigidly, a printed part looked held where it wobbles)
-        const holds = (top) => [...cuts.filter((x) => x.body === b && top).flatMap((x) => x.shape.flat().map((at) => ({ at, gap: x.gap ?? gap }))), ...arches.filter((x) => x.body === b && !top).flatMap((x) => x.shape.flat().map((at) => ({ at, gap: x.gap ?? gap }))), ...guidesHeld.filter((x) => x.body === b).flatMap((x) => x.shape.flat().map((at) => ({ at, gap })))].map((h) => ({ body: b, k: 1e3, ...h }));
+        const holds = (top) => [...cuts.filter((x) => x.body === b && top === !x.bottom).flatMap((x) => x.shape.flat().map((at) => ({ at, gap: x.gap ?? gap, ...(x.owner ? { to: x.owner } : {}) }))), ...arches.filter((x) => x.body === b && !top).flatMap((x) => x.shape.flat().map((at) => ({ at, gap: x.gap ?? gap }))), ...guidesHeld.filter((x) => x.body === b).flatMap((x) => x.shape.flat().map((at) => ({ at, gap })))].map((h) => ({ body: b, k: 1e3, ...h }));
         const arms = new Set(Object.entries(joints).filter(([, j]) => j.to === b).map(([n]) => n)), beams = Object.keys(sim.beamOf).filter((x) => arms.has(sim.beamOf[x]));
         let worst = { most: 0, dir: '' };
         for (const [dir, sign] of [['up', 1], ['down', -1]]) {

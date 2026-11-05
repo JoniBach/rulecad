@@ -730,3 +730,18 @@ test('a hand holding a part where a catch takes it lets go: the catch carries th
   assert.ok(spring > 0.5 && Math.abs(hook / spring - 1) < 0.1, `the hook takes ${hook.toFixed(2)} N, the spring pulls ${spring.toFixed(2)} N: nothing else holds it`);
   assert.deepEqual(fails(m, 'lamina.force'), []);
 });
+
+test('a strap from a moving body: over and under another, to a post of its own in a slot there, a clevis; what passes it is cut back, and it joins its body to its post', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'y' };
+  // A tab on a spring, rising 3 mm; a slotted bar beside it on its own spring; the tab's post rides in the bar's slot
+  const disc = (c, r) => jscad.primitives.circle({ radius: r, center: c, segments: 32 });
+  const r = await lamina({ height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 10 }, check: { fe: false, frame: false },
+    ground: [rect(-8, -20, 0.5, 20)],
+    bodies: { tab: [rect(20, -3, 26, 3), disc([34, 0], 1.5)], bar: jscad.booleans.subtract(rect(30, -3, 40, 3.5 + 30), rect(32.5, -2, 35.5, 5)) },
+    joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'tab' } , t: { kind: 'curve', params: { ...spring, points: [[0, 12], [10, 12], [20, 12]] }, from: 'ground', to: 'bar' } },
+    bridges: [{ body: 'tab', shape: rect(22, -1.5, 35, 1.5) }, { body: 'tab', shape: rect(22, -1.5, 35, 1.5), side: 'bottom' }],
+    states: { up: { s: 2 } }, sequence: ['rest', 'up', 'rest'] });
+  const br = r.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(br.length >= 4 && br.every((x) => x.level === 'pass'), br.map((x) => `${x.level} ${x.text}`).join('; '));
+  assert.ok(br.some((x) => /tab's upper strap stands on tab on both sides/.test(x.text)) && br.some((x) => /bar passes over it/.test(x.text)), br.map((x) => x.text).join('; '));
+});
