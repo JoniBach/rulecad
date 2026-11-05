@@ -646,12 +646,12 @@
       "rule": "The shuttle's tail round the slot's ends: what the pin pulls on, and what holds the tail to the block"
     },
     "link_tail": {
-      "value": 9,
+      "value": 10,
       "unit": "mm",
       "rule": "The shuttle's tail, across the plane: the slot and a wall either side of it"
     },
     "strap_w": {
-      "value": 7,
+      "value": 6,
       "unit": "mm",
       "rule": "The straps from the slide's front to the pin, over and under the tail: wider than the slot, so they rest on its walls a gap off rather than bridging air"
     },
