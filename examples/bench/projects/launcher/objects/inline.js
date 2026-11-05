@@ -126,15 +126,6 @@ export function main (v) {
     { shape: rect(Math.max(loadedBack - g, floorFrom) + v.lower_ledge, 0 - slot - v.bridge_foot, front, C.toothLow - v.room), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // (the lower one ahead of the trigger's swing)
     { shape: rect(v.tie_from, C.spineLow - v.shuttle_clear - v.tie_foot, v.tie_to, 0 - C.spineLow + v.fit + v.bridge_foot) }, // the tie over the spine, so the frame the hinge roots in doesn't bend away under the pull
   ]
-  // Trapped in the plane: the ring's top and the stem's in grooves in the frame over them, the spine's top likewise, and the
-  // trigger's heel in the frame under it
-  const guides = [
-    { body: 'slide', shape: rect(S.ringBack - S.slack - L.draw - v.fit, S.ringAt[1] + S.R - v.bridge_foot, S.ringAt[0] + S.R, S.ringAt[1] + S.R + v.fit + v.bridge_foot), depth: v.guide_depth },
-    { body: 'slide', shape: rect(S.end - S.slack - L.draw - v.fit, v.tail_tall - v.bridge_foot, S.ringBack - v.fit, v.tail_tall + v.fit + v.bridge_foot), depth: v.guide_depth }, // the stem's tail, behind the ring, in the handle
-    { body: 'sear', shape: rect(v.trigger_heel - v.bridge_foot, bottom - v.room - v.bridge_foot, v.trigger_toe, bottom + v.bridge_foot), depth: v.guide_depth },
-    { body: 'shuttle', shape: rect(v.spine_guide_from, v.spine / 2 - v.bridge_foot, v.spine_guide_to, v.spine / 2 + v.fit + v.bridge_foot), depth: v.guide_depth }, // the spine's top
-    { body: 'slide', shape: rect(v.stem_guide_from, v.stem_h / 2 - v.bridge_foot, v.stem_guide_to, v.stem_h / 2 + v.fit + v.bridge_foot), depth: v.guide_depth }, // the stem's top, ahead of the ring
-  ]
   const drawn = 0 - L.draw, slideDrawn = 0 - L.draw - S.slack + g, cocked = 0 - C.cock // (the lips a gap short of the head: they bear on it in the physics)
   const whole = {
     bodies: { shuttle, slide, sear },
@@ -166,7 +157,7 @@ export function main (v) {
   return f.lamina({
     height, gap: g, material, printer: { ...printer, bridge: Math.max(v.x1c.bridge, v.roof_span) }, round: v.round,
     flood: { outline, keep: [channel, fingerRoom, spineTop], clear: { default: v.room, shuttle: v.shuttle_clear, sear: v.trigger_room, spring: v.spring_clear, ...(piece ? {} : { slide: v.fit, home: v.home_clear }) }, least: v.least_frame, band: v.band, holes },
-    bridges, guides: piece ? guides.filter((x) => x.body !== 'slide') : guides,
+    bridges, // (no guides for now: their ridges and grooves cut into the springs and through the ring)
     ...which,
     follows: { hinge: { by: ['shuttle'], give: -1 }, spring: { by: ['sear'], give: -1 } }, // the tooth rides the hook down as it's drawn; pulled, the hook's lean cams the shuttle back a little
     physics: { friction: v.friction },
