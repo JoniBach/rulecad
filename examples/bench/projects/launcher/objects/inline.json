@@ -558,7 +558,7 @@
       "rule": "How many shapes the slide's spring's shaping may try: a long arm in a short room, a hard job"
     },
     "lip": {
-      "value": 3,
+      "value": 5,
       "unit": "mm",
       "rule": "The slide's lip, along the barrel, ahead of the tail's head: it pulls the head back, so it is as stout as the head"
     },
