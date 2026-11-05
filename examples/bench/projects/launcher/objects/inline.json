@@ -250,9 +250,14 @@
       "rule": "The test piece's frame runs this far behind the arms' reach and the wall"
     },
     "knob": {
-      "value": 3,
+      "value": 7,
       "unit": "mm",
-      "rule": "The test piece's knob on the shuttle's tail: this much longer and taller than the head, for a fingernail to draw it back"
+      "rule": "The test piece's knob: the tail's head drawn out this much further back, as tall as the head, so the frame over it props the tail as the slide's bar does in the whole"
+    },
+    "knob_hole": {
+      "value": 2.2,
+      "unit": "mm",
+      "rule": "A hole down through the knob for a pin or a straightened paperclip, to draw the shuttle back by"
     },
     "spine_top_clear": {
       "value": 0.45,

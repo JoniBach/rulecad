@@ -68,7 +68,7 @@ export function main (v) {
     polygon({ points: [[noseFront - v.nose_l, 0 - v.nose_w / 2], ...hollow.slice().reverse(), [noseFront - v.nose_l, v.nose_w / 2]] }),
     tooth,
     rect(S.neck[0] - v.round, v.tail_low, S.neck[1] + v.round, v.tail_low + v.neck_h), // the tail's neck, low
-    piece ? rect(S.head[0] - v.knob, v.tail_low, S.head[1], v.tail_top + v.knob) // (the test piece: a knob to draw it by)
+    piece ? subtract(rect(S.head[0] - v.knob, v.tail_low, S.head[1], v.tail_top), circle({ radius: v.knob_hole / 2, center: [S.head[0] - v.knob / 2, (v.tail_low + v.tail_top) / 2], segments: v.smooth })) // (the test piece: the head drawn out behind into a knob with a hole for a pin, to draw it by; the frame over it props the tail as the slide's bar does)
       : polygon({ points: [[S.head[0], v.tail_low], [S.head[1], v.tail_low], [S.head[1] + lean(v.tail_top), v.tail_top], [S.head[0], v.tail_top]] }), // and its head, a step up off the neck, its front overhanging
   ]
 
