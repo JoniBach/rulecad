@@ -23,7 +23,10 @@ const { offset } = jscad.expansions
 const { translate } = jscad.transforms
 
 const rect = (x0, y0, x1, y1) => polygon({ points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] })
-const rounded = (shape, r, segments) => offset({ delta: r, corners: 'round', segments }, offset({ delta: 0 - r, corners: 'round', segments }, shape)) // every outside corner rounded
+// every outside corner rounded: shrunk with sharp corners, then grown back round. (JSCAD's inward offset with round
+// corners loops outwards at a sharp turn, which the outward one grew into a ball outside the shape, as it did at the
+// trigger's front)
+const rounded = (shape, r, segments) => offset({ delta: r, corners: 'round', segments }, offset({ delta: 0 - r, corners: 'edge' }, shape))
 
 export function main (v) {
   const f = v.flexures, g = v.gap
@@ -107,8 +110,10 @@ export function main (v) {
   // a knob on the shuttle's tail through the open room over it; no slide, ring or their spring
   const back = piece ? 0 - v.reach - v.wall - v.piece_back : S.end - S.slack - L.draw - v.handle // (behind the drawn slide, the handle)
   const outline = roundedRectangle({ size: [front - back, out * 2], center: [(front + back) / 2, 0], roundRadius: v.corner, segments: v.smooth })
-  const fingerBox = polygon({ points: [[neck[0] - v.finger_round, neck[1]], [front - v.wall - v.finger_wall, neck[1]], [front - v.wall - v.finger_wall, bottom], [toe[0] + v.finger_round, bottom]] }) // in front of the crook, under the tunnel's floor
-  const fingerRoom = rounded(fingerBox, v.finger_round, v.smooth)
+  // in front of the crook, under the tunnel's floor: the hollow the finger sits in, its back the crook's own face (so no
+  // lip of frame is left in it), and the room ahead of it, its far corners rounded
+  const crookHollow = polygon({ points: [...crook, [neck[0], bottom]] })
+  const fingerRoom = union(crookHollow, rounded(rect(neck[0] - v.finger_round, bottom, front - v.wall - v.finger_wall, neck[1]), v.finger_round, v.smooth))
   // (three in the corners; the fourth behind the stem's drawn end, since the slide's spring has the back corner below)
   const holes = [[back + v.plate_in, out - v.plate_in], [front - v.plate_in, out - v.plate_in], [front - v.plate_in, 0 - out + v.plate_in], piece ? [back + v.plate_in, 0 - out + v.plate_in] : [back + v.plate_low_in, v.plate_low]].map((at) => ({ at, diameter: v.plate_hole, wall: v.plate_wall }))
   // The disc lies flat in the channel ahead of the cocked nose, and leaves through the front. The floor under it stands
