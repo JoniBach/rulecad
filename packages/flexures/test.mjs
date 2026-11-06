@@ -564,7 +564,7 @@ test('a bridge: printed over a moving part on the top layers, the part cut down 
     states: { bent: { leaf: 1 } }, sequence: ['rest', 'bent', 'rest'], flood: { outline: rect(-8, -12, 45, 12) } };
   const m = await lamina({ ...base, bridges: [{ shape: rect(32, -6, 35, 6) }] });
   const b = m.findings.filter((x) => x.code === 'lamina.bridge');
-  assert.ok(b.length && b.every((x) => x.level === 'pass'), b.map((x) => x.text).join('; '));
+  assert.ok(b.length && b.every((x) => x.level === 'pass'), b.map((x) => x.level + " " + x.text).join('; '));
   assert.ok(b.some((x) => /tip passes under it/.test(x.text)), 'the tip is cut down under it');
   const { measureVolume } = jscad.measurements, flat = await lamina(base);
   assert.ok(Math.abs(measureVolume(m.parts.body) - measureVolume(flat.parts.body)) > 1, 'the bridge and the cut change the print');
@@ -586,7 +586,7 @@ test('a floor: what slides over it is arched up at 45°, clear of it all along, 
     flood: { outline: rect(-20, -40, L + 50, 12), keep: [] }, bridges: [{ shape: rect(L + 22, -4, L + 26, 4), side: 'bottom' }],
   });
   const b = m.findings.filter((x) => x.code === 'lamina.bridge');
-  assert.ok(b.length && b.every((x) => x.level === 'pass') && b.some((x) => /arched up/.test(x.text)), b.map((x) => x.text).join('; '));
+  assert.ok(b.length && b.every((x) => x.level === 'pass') && b.some((x) => /arched up/.test(x.text)), b.map((x) => x.level + " " + x.text).join('; '));
   const { check } = await import('@rulecad/printcheck');
   const found = check(jscad.geometries.geom3.toPolygons(m.parts.body).map((p) => p.vertices), { bed: 256, overhang: 45, layer: 0.2, line: 0.42, bridge: 5 });
   const said = found.find((x) => /overhang/i.test(x.text));

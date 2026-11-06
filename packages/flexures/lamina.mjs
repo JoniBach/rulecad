@@ -984,9 +984,11 @@ export async function lamina(spec) {
       for (const [n, p] of Object.entries(parts)) {
         if (p.kind === 'flexure' && area(intersect(br.shape, p.shape)) > AREA) f('fail', `${name} is over the ${n} flexure: a bridge goes over what slides, not what bends`, 'lamina.bridge', { bridge: i, joint: n });
         if (n === own || (p.kind !== 'body' && !(onBody && n === 'ground'))) continue;
-        // all of it that ever passes under, where it is at rest, and a gap round it in the plane too: a strap narrower
-        // than what it passes over would otherwise print touching the walls left either side of it
-        const cut = intersect(p.shape, grow(union(poses.map((P) => moved(mul(inverse(P[n]), P[own]), br.shape))), br.gap));
+        // all of it that ever passes under, where it is at rest, and for a body's strap a gap round it in the plane too: a
+        // strap narrower than what it passes would otherwise print touching the walls left either side of it (a frame's
+        // floor or bridge needs none: what passes is arched or cut clear of it, and a wider arch would stand taller)
+        const swept = union(poses.map((P) => moved(mul(inverse(P[n]), P[own]), br.shape)));
+        const cut = intersect(p.shape, onBody ? grow(swept, br.gap) : swept);
         if (empty(cut)) continue;
         if (onBody && br.bottom) { // (a body's lower strap: what passes over it is cut back flat, a gap over it, and prints on it a support gap up, as a pin's ring does on its floor)
           cuts.push({ shape: cut, from: 0, to: br.depth + br.gap, body: n, gap: br.gap, bottom: true, ...(onBody ? { owner: own } : {}) });
