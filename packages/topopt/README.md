@@ -58,7 +58,9 @@ Stiffness grows as density cubed, so part-solid cells are poor value and the res
 Two more steps shape the result:
 
 - **A density filter** averages each cell with its neighbours. It sets the thinnest member and prevents chequerboard
-  patterns.
+  patterns. A member thinner than four cells is analysed too stiff (two cells: about 11%; one: about
+  32%; see @rulecad/fea, How fine a grid), so pick a cell small enough that the thinnest member the filter allows is
+  four cells across, or a result full of thin members looks better than it is.
 - **Heaviside projection** sharpens the result, more on each pass, until cells are solid or empty.
 - **The overhang filter** (optional, after Langelaar 2017) applies the printer's limit. Layer by layer from the bed, a
   cell can only be as solid as the material under it: the cell below and its neighbours, so nothing overhangs more

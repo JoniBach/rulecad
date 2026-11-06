@@ -46,6 +46,20 @@ r.deflection[0];   // { most, at }: the largest movement of solid material, and 
 Tested against beam theory: a cantilever's tip moves within 1% of `F L³ / 3 E I` in 2D, and within 2% in 3D.
 Multigrid is tested against the direct solver with stiffnesses a millionfold apart.
 
+**How fine a grid.** The cells are exact for a part that only stretches, and converge on beam theory with shear
+(Timoshenko's) as they shrink. What matters is how many cells cross the depth of whatever bends:
+
+| Cells through the depth | Too stiff by |
+|---|---|
+| 1 | about 32% |
+| 2 | about 11% |
+| 4 | about 3% |
+| 10 | under 1% |
+
+So give every member that bends at least four cells, and check a final shape on cells half the size: if the
+stiffness moves by more than a few percent, the grid was too coarse. (Measured on cantilevers and a simply supported
+beam, in 2D and 3D.)
+
 ## Sources
 
 - Amir, Aage, Lazarov (2014). On multigrid-CG for efficient topology optimization. *Structural and Multidisciplinary

@@ -646,12 +646,17 @@ export function analyse({ grid: g, density, material, thickness = 1, fixed, load
   const modulus = Float64Array.from(density, (x) => Emin + Math.pow(x, penal) * (E - Emin));
   const scale = modulus.map((mod) => mod * (g.dim === 3 ? g.h : thickness));
   const { u } = solve(g, { scale, ke, fixed, loads, method, backend });
-  // A part that can still slide or turn is solved all the same, by a hair's stiffness of rounding: it then "moves"
-  // many times its own size. No real part does, so that is said, not handed back as a deflection.
-  const span = Math.max(g.nx, g.ny, g.nz || 1) * g.h;
-  for (const x of u) for (let i = 0; i < x.length; i++) if (!(Math.abs(x[i]) < 1e4 * span)) throw new Error('the part is not held still (it can slide or turn under this load): fix more of it, in each direction it could move');
   const solidNode = new Uint8Array(g.nodes), corners = CORNERS[g.dim].length;
   for (let e = 0; e < density.length; e++) if (density[e] >= 0.5) for (let k = 0; k < corners; k++) solidNode[g.edof[e * g.cellDofs + g.dim * k] / g.dim] = 1;
+  // A part that can still slide or turn is solved all the same, by a hair's stiffness of rounding: it then "moves"
+  // many times its own size. No real part does, so that is said, not handed back as a deflection. (Most of the
+  // part, that is: a loose piece beside a held part, such as a disc lying in a mechanism, is the caller's business.)
+  const span = Math.max(g.nx, g.ny, g.nz || 1) * g.h;
+  for (const x of u) {
+    let solid = 0, adrift = 0;
+    for (let n = 0; n < g.nodes; n++) if (solidNode[n]) { solid++; for (let d = 0; d < g.dim; d++) if (!(Math.abs(x[g.dim * n + d]) < 1e4 * span)) { adrift++; break; } }
+    if (adrift > solid / 2) throw Object.assign(new Error('the part is not held still (it can slide or turn under this load): fix more of it, in each direction it could move'), { code: 'fea.unheld' });
+  }
   const position = positions(g);
   return {
     u,

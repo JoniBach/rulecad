@@ -1187,7 +1187,7 @@ export async function lamina(spec) {
       // A load where the flexure meets the frame's face lands in a cell that's mostly empty: put it on the nearest solid one
       const solidAt = (p) => { const c = cellAt(p); let best = null; for (let r = 0; r < 12 && !best; r++) for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) { const i = c.i + di, j = c.j + dj; if (i < 0 || j < 0 || i >= nx || j >= ny || fill[j * nx + i] < 0.5) continue; const d = Math.hypot(di, dj); if (!best || d < best.d) best = { d, p: [x0 + (i + 0.5) * side, y0 + (j + 0.5) * side] }; } return best ? best.p : p; };
       const cornersOf = ({ i, j, s, t }) => [[g.node(i, j), (1 - s) * (1 - t), [i, j]], [g.node(i + 1, j), s * (1 - t), [i + 1, j]], [g.node(i + 1, j + 1), s * t, [i + 1, j + 1]], [g.node(i, j + 1), (1 - s) * t, [i, j + 1]]];
-      let worst = null, most = 0, shown = null; // shown: the frame where it bends most, its outline and how far each point moves
+      let worst = null, most = 0, shown = null, unheld = null; // shown: the frame where it bends most, its outline and how far each point moves
       for (const tr of sim.transitions) {
         const q = Float64Array.from(tr.end), f = new Float64Array(g.dofs);
         // Each load to the corners of its cell: the force shared as the point's place in the cell, the moment as a couple
@@ -1196,7 +1196,13 @@ export async function lamina(spec) {
           cs.forEach(([n, w], k) => { f[2 * n] += L.force[0] * w - (L.moment * r[k][1]) / rr; f[2 * n + 1] += L.force[1] * w + (L.moment * r[k][0]) / rr; });
         }
         if (!f.some((x) => Math.abs(x) > 1e-12)) continue;
-        const { u: [u] } = feaAnalyse({ grid: g, density: Float64Array.from(fill, (x) => Math.min(1, x)), material: { E: material.E, nu: 0.38 }, thickness: height, fixed, loads: [f] });
+        let u;
+        try { ({ u: [u] } = feaAnalyse({ grid: g, density: Float64Array.from(fill, (x) => Math.min(1, x)), material: { E: material.E, nu: 0.38 }, thickness: height, fixed, loads: [f] })); } catch (e) {
+          if (e.code !== 'fea.unheld') throw e;
+          // The frame, as it's held here, can slide or turn under its springs' loads: nothing to measure its bending against
+          unheld ||= tr; // (said once, after the last transition)
+          continue;
+        }
         const at = (p) => { let dx = 0, dy = 0; for (const [n, w] of cornersOf(cellAt(p))) { dx += w * u[2 * n]; dy += w * u[2 * n + 1]; } return [dx, dy]; };
         // The frame's outline, finely, moved as it bends
         let here = 0;
@@ -1216,6 +1222,7 @@ export async function lamina(spec) {
           if (closed > 0.01 && (!worst || after < worst.after)) worst = { part: n, state: tr.to, before, after, closed, at: box(intersect(grow(bent, gap), shape)) };
         }
       }
+      if (unheld) f('warn', `the frame isn't held where its springs load it (${unheld.from} to ${unheld.to}), so how it bends can't be worked out: say where it is held with grip (by default, its back quarter)`, 'lamina.frame', { from: unheld.from, to: unheld.to });
       if (most > 0) {
         const w = worst, where = w && !empty(w.at) && Number.isFinite(w.at.lo[0]) ? ` near (${((w.at.lo[0] + w.at.hi[0]) / 2).toFixed(1)}, ${((w.at.lo[1] + w.at.hi[1]) / 2).toFixed(1)})` : '';
         const level = !w ? 'pass' : w.after <= 0.02 ? 'fail' : w.after < gap / 2 ? 'warn' : 'pass';
