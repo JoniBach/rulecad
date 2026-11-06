@@ -125,7 +125,8 @@ const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
 const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures')));
-const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs')).sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
+// (every module of a helper package but its tests: they change nothing a design builds)
+const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
 const own = source(import.meta.url) + helperSources(shapesDir) + helperSources(flexuresDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
 export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
   if (e.code === 'ERR_MODULE_NOT_FOUND' && /@rulecad\/pcb/.test(e.message)) throw new Error('boards need the board engine: npm install @rulecad/pcb');
