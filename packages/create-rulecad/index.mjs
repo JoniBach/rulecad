@@ -19,8 +19,11 @@ fs.cpSync(TEMPLATE, dir, { recursive: true });
 fs.renameSync(path.join(dir, 'gitignore'), path.join(dir, '.gitignore')); // npm drops files named .gitignore from packages
 const readme = path.join(dir, 'README.md');
 fs.writeFileSync(readme, fs.readFileSync(readme, 'utf8').replaceAll('NAME', name));
+// The cad command a new workspace gets. Before 1.0 a caret covers one minor version only, so this follows
+// @rulecad/cad's minor (the test fails when it falls behind, and a new workspace would get an old cad).
+const CAD = '^0.7.0';
 // $RULECAD_LOCAL: a rulecad checkout to use instead of npm (to try unpublished changes)
-const from = (pkg) => (process.env.RULECAD_LOCAL ? `file:${path.join(path.resolve(process.env.RULECAD_LOCAL), 'packages', pkg)}` : '^0.4.0');
+const from = (pkg) => (process.env.RULECAD_LOCAL ? `file:${path.join(path.resolve(process.env.RULECAD_LOCAL), 'packages', pkg)}` : CAD);
 fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
   name, private: true, type: 'module',
   scripts: { check: 'cad check home/soap-tray' },

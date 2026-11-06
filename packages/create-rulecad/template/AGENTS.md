@@ -50,7 +50,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - Use the print-aware features in `v.shapes` before drawing your own: `countersink`, `teardropHole`, `nutPocket`,
   `crushRibs`, `wallOpening` print without supports as drawn. Use `v.ops.union/subtract/intersect` for booleans: the
   workspace can switch them to Manifold (faster, watertight) without touching the design.
-- Designs run sandboxed: they may import only `@jscad/modeling`, `@rulecad/shapes` and files in their project.
+- Designs run sandboxed: they may import only `@jscad/modeling`, `@rulecad/shapes`, `@rulecad/flexures` and files in
+  their project, and can't write files or start programs. To see a value while designing, `console.log` it: it comes
+  out with the command's output. A misspelt `v.name` stops the build and says which name was meant.
 - Something printed under the part and removed afterwards is a named `support` part (`return { cap, pillar }`, both
   described in the .json's `parts`), not part of the shape. Look at `cad preview --explode` too.
 

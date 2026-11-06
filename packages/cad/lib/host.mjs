@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
+import { CadError } from './errors.mjs';
 
 /** Node's file system. */
 export const nodeHost = {
@@ -27,6 +28,12 @@ let current = nodeHost;
 export const host = new Proxy({}, { get: (_, k) => current[k] });
 /** Use another host (until the returned function is called). @param {Partial<typeof nodeHost>} h @returns {() => void} */
 export function useHost(h) { const before = current; current = { ...nodeHost, ...h }; return () => { current = before; }; }
+
+/** A JSON file, read through the host. One that doesn't parse is named, with where it stops. @param {string} f */
+export function readJson(f) {
+  const text = host.readText(f);
+  try { return JSON.parse(text); } catch (e) { throw new CadError('json', `not valid JSON: ${e.message}`, { file: f, cause: e }); }
+}
 
 /**
  * A workspace in memory: { [path]: text } under root. Reads outside root come from disk (the tool, its rule sets);

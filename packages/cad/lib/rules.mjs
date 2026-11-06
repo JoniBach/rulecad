@@ -1,7 +1,7 @@
 // Rules from files: the variables and expressions of @rulecad/variables, with rule sets read from the workspace's rules/
 // (then the tool's) by name. Everything but loading is in @rulecad/variables, which needs no files and runs anywhere.
 import path from 'node:path';
-import { host } from './host.mjs';
+import { host, readJson } from './host.mjs';
 import { RULE_DIRS, WS } from './workspace.mjs';
 import { resolve as resolveWith } from '@rulecad/variables';
 
@@ -18,7 +18,7 @@ export function loadRuleSet(name, dir) {
     host.writeText(own, host.readText(file));
     console.error(`copied the ${name} rule set into rules/${name}.json: yours to keep and edit`);
   }
-  return JSON.parse(host.readText(own));
+  return readJson(own);
 }
 // resolve() as @rulecad/variables describes it, loading the rule sets it isn't handed
 export const resolve = (object, opts = {}) => resolveWith(object, { load: loadRuleSet, ...opts });

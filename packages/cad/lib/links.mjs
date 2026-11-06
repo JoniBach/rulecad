@@ -4,13 +4,13 @@ import path from 'node:path';
 import { fromParts, fromShapes, encode, check as checkLink, expand } from '@rulecad/model-link';
 import { fmt } from './rules.mjs';
 import { paths, config } from './workspace.mjs';
-import { host } from './host.mjs';
+import { host, readJson } from './host.mjs';
 import { pcbEngine } from './design.mjs';
 import { shapes, motionData } from './assembly.mjs';
 import { slotOf } from './threemf.mjs';
 
 /** The project's filaments: { base: { slot: 1, … }, legend: { slot: 2, … } } in project.json. @param {string} project */
-export const filaments = (project) => JSON.parse(host.readText(path.join(paths.project(project), 'project.json'))).filaments || {};
+export const filaments = (project) => readJson(path.join(paths.project(project), 'project.json')).filaments || {};
 /** The filaments in AMS slot order, for the print file: [{ colour }, …], slot 1 first. */
 export const slots = (fil) => { const out = []; for (const f of Object.values(fil)) out[(f.slot || 1) - 1] = f; return Array.from(out, (f) => f || {}); };
 

@@ -32,3 +32,16 @@ test('the template\'s AGENTS.md is the cad package\'s (copy packages/cad/AGENTS.
   const read = (p) => fs.readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8');
   assert.equal(read('./template/AGENTS.md'), read('../cad/AGENTS.md'));
 });
+
+test('a new workspace asks for the cad command as it is now, not an old minor version', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-'));
+  try {
+    execFileSync(process.execPath, [CREATE, path.join(root, 'w'), '--no-install'], { encoding: 'utf8', env: { ...process.env, RULECAD_LOCAL: '' } });
+    const range = JSON.parse(fs.readFileSync(path.join(root, 'w', 'package.json'), 'utf8')).dependencies['@rulecad/cad'];
+    const { version } = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../cad/package.json', import.meta.url)), 'utf8'));
+    const [, major, minor, patch] = range.match(/^\^(\d+)\.(\d+)\.(\d+)$/) || [], [M, m, p] = version.split('.').map(Number);
+    assert.ok(major !== undefined, `a caret range, got ${range}`);
+    // what ^ allows: the same major, and before 1.0 the same minor too
+    assert.ok(+major === M && (M > 0 ? m > +minor || (m === +minor && p >= +patch) : +minor === m && p >= +patch), `${range} leaves out @rulecad/cad ${version}: set CAD in index.mjs to ^${M}.${m}.0`);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

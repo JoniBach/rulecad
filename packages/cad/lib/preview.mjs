@@ -43,13 +43,15 @@ async function shoot(server, out, { width = 1800, height = 1200 } = {}) {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'cad-preview-'));
   fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.rmSync(out, { force: true }); // an earlier picture mustn't pass for this one if Chrome fails
   try {
     await new Promise((resolve, reject) => {
       if (!CHROME) return reject(new Error('no Chrome or Chromium found for previews: set CAD_CHROME to one'));
       const p = spawn(CHROME, ['--headless=new', `--user-data-dir=${profile}`, '--no-first-run', '--hide-scrollbars', '--force-device-scale-factor=1',
         `--window-size=${width},${height}`, '--virtual-time-budget=8000', `--screenshot=${out}`, `http://127.0.0.1:${server.address().port}/`], { stdio: 'ignore' });
       const t = setTimeout(() => { p.kill(); reject(new Error('Chrome took too long to render the preview')); }, 60000);
-      p.on('exit', () => { clearTimeout(t); fs.existsSync(out) ? resolve() : reject(new Error('Chrome made no screenshot')); });
+      p.on('error', (e) => { clearTimeout(t); reject(new Error(`couldn't start Chrome for the preview (${CHROME}): ${e.message}. Set CAD_CHROME to a Chrome or Chromium`)); });
+      p.on('exit', () => { clearTimeout(t); fs.existsSync(out) ? resolve() : reject(new Error(`Chrome made no screenshot (${CHROME}): set CAD_CHROME to a Chrome or Chromium that runs headless`)); });
     });
   } finally {
     server.close();

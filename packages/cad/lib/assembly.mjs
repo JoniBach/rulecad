@@ -16,7 +16,7 @@
 //   { "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length", "label": "Screws find their inserts" }
 // The path must be clear for depth mm (it lands in a hole) and solid within "ring" mm of it (default: the hole's
 // diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
-import { host } from './host.mjs';
+import { host, readJson } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -59,7 +59,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const outer = overrides;
   const [project, name] = ref.split('/');
   if (stack.includes(ref)) throw new Error(`assembly ${ref} contains itself (${[...stack, ref].join(' → ')})`);
-  const a = JSON.parse(host.readText(assemblyPath(ref)));
+  const a = readJson(assemblyPath(ref));
   // A pose may set items' variables as well as joints ("cocked": { "run": -30, "action.travel": 25 }): a flexure bent
   // as the pose bends it, while the part itself is printed as drawn. The pose being built sets them on its items.
   const itemSets = (name) => { const out = {}; for (const [k, v] of Object.entries(a.poses?.[name] || {})) if (k.includes('.')) { const [item, ...rest] = k.split('.'); (out[item] ||= {})[rest.join('.')] = v; } return out; };

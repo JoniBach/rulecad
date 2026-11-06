@@ -6,6 +6,7 @@ check them for printing and for fit, version them by what fits, share them as li
 and every variable says which rule it comes from: the printer, a standard (Cherry MX), or something you measured.
 
 ```sh
+npm create rulecad my-designs        # a workspace with a soap tray to start from; or by hand:
 mkdir my-designs && cd my-designs
 npm init -y && npm pkg set type=module
 npm install @rulecad/cad @jscad/modeling
@@ -240,12 +241,17 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   page (`motionData`) are in the library too, so other programs make the same links without the CLI.
 - **Engines:** designs get `v.ops` (union, subtract, intersect): JSCAD's booleans by default, Manifold's (faster,
   watertight; `npm install manifold-3d`) with `"engine": "manifold"` in the object's JSON or `CAD_ENGINE=manifold`.
-- **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model: it can read the
-  workspace and the tool's packages, but can't write files, start programs or workers, or load addons, and it may
-  import only `@jscad/modeling`, `@rulecad/shapes` and files in its own project (no `node:` modules, so no network;
-  `fetch` is gone too). It gets its values as data and returns its parts. A workspace that trusts its designs sets
-  `"sandbox": false` in cad.config.json (or `CAD_TRUST=1`); on Node 18, without the permission model, designs run in
-  the tool's process. Board designs (engine pcb) run in the tool's process, with the board engine.
+- **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model. Whatever it does, it
+  can't write or delete files, start programs or workers, or load addons, and it reads only the workspace and the
+  packages designs use. To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
+  `@rulecad/flexures` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
+  started with none of your environment (no tokens). Those shut the ordinary roads to the network, not every one:
+  before Node 25 the permission model doesn't cover the network, so a design written to get round them might still
+  reach it. Run only designs you trust. It gets its values as data and returns its parts; what it prints
+  (`console.log`) comes out on stderr. A workspace that trusts its designs sets `"sandbox": false` in cad.config.json
+  (or `CAD_TRUST=1`). Board designs (engine pcb) run in the tool's process, with the board engine.
+- **Mistakes are named:** a design that reads a variable that isn't there (`v.widht`) stops with the name it
+  probably meant, not a shape drawn from `undefined`; errors in a design carry its file and line.
 - **Units:** `cad check` warns where an expression mixes units (millimetres added to degrees, a sine of a length) or
   comes to another unit than its variable says (mm × mm with unit mm). Counts (keys, u, rows) are plain numbers.
 - **Progress:** `--progress` shows what a long check or sweep is building; a program passes `progress` to

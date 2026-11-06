@@ -16,6 +16,9 @@ import { beamSystem, equilibrium, shapeOf, energyOf, fixedLoads } from './beams.
 import { beamProfile, waveSpringPath } from './flexures.mjs';
 import { curveLines } from './curves.mjs';
 
+// PHYS_DEBUG=1 (in Node): the solver's steps on stderr. Asked of globalThis, so a browser, which has no process, runs the same
+const DEBUG = !!globalThis.process?.env?.PHYS_DEBUG;
+
 const HAND = 1000; // N/mm: a hand's grip on a part it holds or drives (stiff beside any spring here)
 const SPANS = 24; // spans a shaped beam's profile is sampled in
 const LEAP = 1; // mm: a free body jumping further than this in one step has been let go of (a latch released)
@@ -147,7 +150,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
   const BUCKET = 5, buckets = Object.fromEntries(names.filter((n) => bodies[n].fixed).map((n) => { const map = new Map(); for (const p of pts[n]) { const k = `${Math.floor(p[0] / BUCKET)},${Math.floor(p[1] / BUCKET)}`; if (!map.has(k)) map.set(k, []); map.get(k).push(p); } return [n, map]; }));
   const near = (A, lo, hi) => { if (!buckets[A]) return pts[A]; const out = []; for (let i = Math.floor(lo[0] / BUCKET); i <= Math.floor(hi[0] / BUCKET); i++) for (let j = Math.floor(lo[1] / BUCKET); j <= Math.floor(hi[1] / BUCKET); j++) { const b = buckets[A].get(`${i},${j}`); if (b) out.push(...b); } return out; };
   const t0 = Date.now(), reach = 2 + Math.max(...beams.map((b) => Math.max(...b.thickness))), sdfs = Object.fromEntries(names.map((n) => [n, sdfOf(outline[n], Math.min(0.12, gap / 2.5), reach)]));
-  if (process.env.PHYS_DEBUG) console.error('sdfs', Date.now() - t0, 'ms', Object.fromEntries(names.map((n) => [n, sdfs[n].nx * sdfs[n].ny])), 'dofs', sys.dofs);
+  if (DEBUG) console.error('sdfs', Date.now() - t0, 'ms', Object.fromEntries(names.map((n) => [n, sdfs[n].nx * sdfs[n].ny])), 'dofs', sys.dofs);
   const poseOf = (n, q) => (bodies[n].fixed ? [0, 0, 0] : [q[sys.body[n].dof], q[sys.body[n].dof + 1], q[sys.body[n].dof + 2]]);
   const toWorld = (n, q, p) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), rx = p[0] - c[0], ry = p[1] - c[1]; return [c[0] + tx + cs * rx - sn * ry, c[1] + ty + sn * rx + cs * ry, cs * rx - sn * ry, sn * rx + cs * ry]; };
   const toLocal = (n, q, w) => { const [tx, ty, f] = poseOf(n, q), c = centre[n], cs = Math.cos(f), sn = Math.sin(f), dx = w[0] - c[0] - tx, dy = w[1] - c[1] - ty; return [c[0] + cs * dx + sn * dy, c[1] - sn * dx + cs * dy, dx, dy, cs, sn]; };
@@ -331,7 +334,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
       const t = s / steps, now = grips.map((gr) => ({ ...gr, target: gr.from + (gr.to - gr.from) * t, stiff: gr.what === 'let go' ? HAND * (1 - t) ** 3 : HAND }));
       anchor(last);
       const t0 = Date.now(), r = equilibrium(sys, { start: last, extra: both(extra, handTerm(now)), iterations: 80, held: still });
-      if (process.env.PHYS_DEBUG) console.error('step', seq[i], '>', seq[i + 1], s, 'iterations', r.iterations, 'converged', r.converged, Date.now() - t0, 'ms');
+      if (DEBUG) console.error('step', seq[i], '>', seq[i + 1], s, 'iterations', r.iterations, 'converged', r.converged, Date.now() - t0, 'ms');
       // The hand's force on each driven joint, along its way
       for (const c of curve) {
         const gr = now.find((x) => x.jn === c.joint), w = moveOf(dofOf(c.joint), r.q, gr.o), at = w[0] * gr.u[0] + w[1] * gr.u[1];
@@ -353,7 +356,7 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
     }
     q = last;
     for (const gr of grips) if (gr.what === 'drive' || gr.what === 'hold') hand.add(gr.jn); else hand.delete(gr.jn);
-    if (process.env.PHYS_DEBUG) console.error('end', seq[i], '>', seq[i + 1], Object.fromEntries(Object.keys(sys.body).filter((b) => !bodies[b].fixed).map((b) => { const d = sys.body[b].dof; return [b, [q[d], q[d + 1], q[d + 2] * 180 / Math.PI].map((x) => +x.toFixed(3))]; })));
+    if (DEBUG) console.error('end', seq[i], '>', seq[i + 1], Object.fromEntries(Object.keys(sys.body).filter((b) => !bodies[b].fixed).map((b) => { const d = sys.body[b].dof; return [b, [q[d], q[d + 1], q[d + 2] * 180 / Math.PI].map((x) => +x.toFixed(3))]; })));
     // Into a state a catch holds: the force the catch takes, the flexures' pull on what it holds (contact aside)
     const holding = caught.size ? (() => { const r = energyOf(sys, q, { hessian: false }); return Object.fromEntries([...caught].map((jn) => { const d = dofOf(jn); return [jn, Math.hypot(r.grad[d], r.grad[d + 1])]; })); })() : null;
     out.transitions.push({ from: seq[i], to: seq[i + 1], plan, curve, events, end: Array.from(q), hand: [...hand], eve, holding }); // hand: what it holds at the end of the step
@@ -447,7 +450,7 @@ function fire({ sys, extra, touching, measure, outline, bodies, loose, material,
   // arms would weigh more than what they throw), no longer than 3 µs, no shorter than 0.1 µs
   if (dt == null) {
     const shortest = Math.min(Infinity, ...sys.elements.map((e) => e.L0)), wave = Math.sqrt((material.E * 1e6) / (rho * 1e9)) * 1000; // mm/s
-    dt = Number(process.env.FIRE_DT) || Math.max(1e-7, Math.min(3e-6, (0.5 * shortest) / wave));
+    dt = Math.max(1e-7, Math.min(3e-6, (0.5 * shortest) / wave));
   }
   every ??= Math.max(1, Math.round(3e-4 / dt)); // a frame every 0.3 ms
   for (const [name, b] of Object.entries(sys.body)) {
@@ -495,9 +498,9 @@ function fire({ sys, extra, touching, measure, outline, bodies, loose, material,
   for (const name of Object.keys(loose || {})) { const b = sys.body[name]; if (b && !b.fixed) free[b.dof] = free[b.dof + 1] = free[b.dof + 2] = 1; }
   const steps = Math.round(duration / dt);
   const tStart = Date.now();
-  if (process.env.PHYS_DEBUG) console.error('fire: steps', steps, 'dt', dt, 'stored', stored, 'mass total', mass.reduce((a, x) => a + x, 0));
+  if (DEBUG) console.error('fire: steps', steps, 'dt', dt, 'stored', stored, 'mass total', mass.reduce((a, x) => a + x, 0));
   for (let k = 1; k <= steps; k++) {
-    if (process.env.PHYS_DEBUG && k % 10 === 0) {
+    if (DEBUG && k % 10 === 0) {
       let at = 0; for (let i = 0; i < n; i++) if (Math.abs(v[i]) > Math.abs(v[at])) at = i; // (the fastest unknown, for debugging)
       const who = Object.values(sys.body).find((b) => b.dof >= 0 && at >= b.dof && at < b.dof + 3)?.name || `node of ${sys.nodes.find((nd) => at >= nd.dof && at < nd.dof + 3)?.beam}`;
       console.error('fire step', k, Date.now() - tStart, 'ms', 'max v', Math.abs(v[at]).toExponential(2), 'at', who, 'dof', at % 3, 'mass', mass[at].toExponential(2));

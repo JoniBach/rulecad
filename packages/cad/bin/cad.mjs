@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fmt, loadRuleSet } from '../lib/rules.mjs';
-import { WS, TOOL, paths, config, printerOf } from '../lib/workspace.mjs';
+import { WS, TOOL, paths, config, configError, printerOf } from '../lib/workspace.mjs';
 import { fromKLE } from '@rulecad/keyboard-layout';
 import { target, hasTarget } from '../lib/targets.mjs';
 import { locate, build, pick, lint, readObject, printer, pcbEngine, objectSets } from '../lib/design.mjs';
@@ -15,7 +15,7 @@ import { measure, match } from '../lib/meshcmd.mjs';
 import { cloneBoard } from '../lib/clone.mjs';
 import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData } from '../lib/assembly.mjs';
 import { valuesOf, why } from '../lib/explain.mjs';
-import { errorData } from '../lib/errors.mjs';
+import { errorData, near } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
@@ -48,7 +48,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
-  cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
+  cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path)
   cad animate <project>/<object>    a lamina mechanism's sequence, start to finish, in .preview/: an animated SVG, the
                                     data (shapes, forces, energies, strains each frame, JSON) and a page that plays it
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
@@ -92,15 +92,40 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   --set name=value,name=value       change variables that have a tweak range (any command)
   --part <name>                     only that part (check, preview, export, link): e.g. --part cap
   --explode                         preview: parts moved apart, so each can be seen
-  --trailer "Co-Authored-By: …"     added to release commits (for agents)`;
+  --trailer "Co-Authored-By: …"     added to release commits (for agents)
+  cad --version                     this tool's version`;
+
+// Every command and option there is: a misspelt one is refused by name, not passed over
+const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'match', 'variants', 'compare', 'help'];
+const OPTIONS = ['all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
+  'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
+  'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
+  'unit', 'rule', 'label', // cad set
+  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate']; // cad add
+// What a command takes, where that isn't <project>/<object>
+const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
+  optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
+  diff: '<project>/<object> <from> [<to>]', compare: '<project>/<object> <a> <b>', match: '<project>/<object> <model.stl|model.3mf>', clone: '<board.kicad_pcb | GitHub link> <name>' };
 
 const args = process.argv.slice(2);
-// --name value, or -m for one-letter names
-const opt = (k) => { const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`)); return i >= 0 ? (args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : true) : undefined; };
+// Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
+// (--sweep and --watch take one or not).
+const FLAGS = ['all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
+const opt = (k) => {
+  const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
+  if (i < 0) return undefined;
+  if (FLAGS.includes(k)) return true;
+  if (args[i + 1] && !args[i + 1].startsWith('--')) return args[i + 1];
+  if (['sweep', 'watch'].includes(k)) return true;
+  throw new Error(`${args[i]} needs a value after it`);
+};
 // The arguments that aren't options or an option's value: cad values keyboard/case depth width --json
-const positional = () => args.filter((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--') && !['--json', '--long', '--short', '--md', '--all', '--explode'].includes(args[i - 1])));
-const sets = () => Object.fromEntries(String(opt('set') || '').split(',').filter(Boolean).map((p) => p.split('=').map((s) => s.trim())));
-const suffix = (set) => Object.entries(set).map(([k, v]) => `-${k}=${v}`).join('');
+const takesValue = (a) => a === '-m' || (a.startsWith('--') && !FLAGS.includes(a.slice(2)));
+const positional = () => args.filter((a, i) => !a.startsWith('--') && a !== '-m' && !(i > 0 && takesValue(args[i - 1])));
+// --set name=value,name=value (a value may hold an = of its own)
+const sets = () => Object.fromEntries(String(opt('set') || '').split(',').filter(Boolean).map((p) => { const i = p.indexOf('='); return i < 0 ? [p.trim(), undefined] : [p.slice(0, i).trim(), p.slice(i + 1).trim()]; }));
+const suffix = (set) => Object.entries(set).map(([k, v]) => `-${k}=${v}`).join('').replace(/[^\w.=+-]/g, '_'); // in file names: nothing that could name another folder
 
 // --progress: what a long build or sweep is doing, on one line of stderr
 const showProgress = (e) => {
@@ -120,7 +145,7 @@ const sig = (n) => (Number.isFinite(n) ? String(Number(n.toPrecision(3))) : Stri
 const stiffOf = (c) => (c.moment ? c.torsion : c.stiffness);
 const howFar = (c) => (c.moment ? `turns ${sig(c.angle * 180 / Math.PI)}° under ${sig(c.moment / 1000)} N·m, ${sig(c.torsion / 1000 * Math.PI / 180)} N·m a degree` : `moves ${sig(c.deflection)} mm along its load, ${sig(c.stiffness)} N/mm`);
 // cad optimise: run a problem (with a progress line), then report it and draw it: a 2D layout as an SVG of its
-// densities, a 3D one as the preview's four views of its surface
+// densities, a 3D one as the preview's views of its surface
 async function optimiseProblem(ref) {
   const [project, name] = String(ref).split('/');
   if (!project || !name) throw new Error('usage: cad optimise <project>/<problem>[:variant]');
@@ -131,7 +156,9 @@ async function optimiseProblem(ref) {
   }
   const live = !opt('json') && process.stderr.isTTY;
   // --watch [port]: the live view, served while it runs (a watched run is always run afresh, so there is something to watch)
-  const watch = opt('watch'), view = watch ? await liveView({ port: watch === true ? 8090 : Number(watch), title: `cad optimise ${ref}` }) : null;
+  const watch = opt('watch');
+  if (watch && watch !== true && !(Number(watch) > 0 && Number(watch) < 65536)) throw new Error(`--watch takes a port number (got "${watch}")`);
+  const view = watch ? await liveView({ port: watch === true ? 8090 : Number(watch), title: `cad optimise ${ref}` }) : null;
   if (view) say(`watching at ${view.url}`);
   let r;
   try {
@@ -270,8 +297,13 @@ async function analyses(b, d, tag) {
 }
 
 async function main() {
-  const [cmd, ref] = args;
-  if (!cmd || cmd === 'help') return console.log(HELP);
+  const first = args[0], pos = positional(), [cmd = first, ref] = pos; // names first or options first: cad check --json keyboard/case
+  if (!first || ['help', '--help', '-h'].includes(first)) return console.log(HELP);
+  if (['--version', '-v', 'version'].includes(first)) return console.log(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+  if (!COMMANDS.includes(cmd)) { const guess = near(cmd, COMMANDS); throw new Error(`no command "${cmd}"${guess ? ` (did you mean "${guess}"?)` : ''}: cad help lists them`); }
+  const odd = args.find((a) => a.startsWith('--') && !OPTIONS.includes(a.slice(2)));
+  if (odd) { const guess = near(odd.slice(2), OPTIONS); throw new Error(`no option ${odd}${guess ? ` (did you mean --${guess}?)` : ''}: cad help lists them`); }
+  if (configError) throw configError;
 
   if (cmd === 'new') {
     const [project, name] = String(ref || '').split('/');
@@ -299,7 +331,7 @@ async function main() {
     return console.log(`wrote ${path.relative(process.cwd(), to) || 'AGENTS.md'}: how an AI agent should design here (CLAUDE.md includes it)`);
   }
   if (cmd === 'import-kle') { // a layout from keyboard-layout-editor.com into a project's layouts/
-    const [project, name] = String(args[2] || '').split('/');
+    const [project, name] = String(pos[2] || '').split('/');
     if (!ref || !fs.existsSync(ref) || !project || !/^[a-z][a-z0-9-]*$/.test(name || '')) throw new Error('usage: cad import-kle <layout.json> <project>/<name> (the JSON download, or a file with its Raw data)');
     const { layout, notes } = fromKLE(fs.readFileSync(ref, 'utf8'));
     const to = path.join(paths.project(project), 'layouts', `${name}.json`);
@@ -310,23 +342,23 @@ async function main() {
     for (const n of notes) console.log(`  note: ${n}`);
     return;
   }
-  if (cmd === 'clone') return cloneBoard(ref, args[2], { source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), noModels: !!opt('no-models') });
+  if (cmd === 'clone') return cloneBoard(ref, pos[2], { source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), noModels: !!opt('no-models') });
   if (cmd === 'status') return status(ref);
   if (cmd === 'measure') {
     if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>]');
     const list = (k) => (opt(k) && opt(k) !== true ? String(opt(k)).split(k === 'line' ? ';' : ',').filter(Boolean) : []);
     return measure(ref, { along: opt('along'), at: list('at'), line: list('line'), rules: opt('rules'), source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), pictures: !opt('no-pictures') });
   }
-  if (!ref) throw new Error(`usage: cad ${cmd} <project>/<object>`);
+  if (!ref || (cmd === 'add' && !pos[2])) throw new Error(`usage: cad ${cmd} ${USAGE[cmd] || '<project>/<object>'}`);
   if (cmd === 'release') return ref.includes('/') ? releaseObject(locate(ref)) : opt('all') ? releaseAll(ref) : releaseProject(ref);
   if (cmd === 'variants') return variants(locate(ref));
-  if (cmd === 'compare') return compareVariants(locate(ref), args[2], args[3]);
+  if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'history') return history(ref);
-  if (cmd === 'diff') return diff(locate(ref), args[2], args[3] && !args[3].startsWith('--') ? args[3] : null);
+  if (cmd === 'diff') return diff(locate(ref), pos[2], pos[3] || null);
   if (cmd === 'printed') return printed(locate(ref));
   if (cmd === 'why') return explainValue(ref);
   if (cmd === 'set') return editVariables(ref);
-  if (cmd === 'add') return editAssembly(args[1], args[2]);
+  if (cmd === 'add') return editAssembly(pos[1], pos[2]);
   if (cmd === 'optimise' || cmd === 'optimize') return await optimiseProblem(ref);
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
@@ -338,7 +370,7 @@ async function main() {
   if (b.circuit && ['check', 'preview', 'export'].includes(cmd)) return board(cmd, d, b, { title, version, tag });
 
   if (cmd === 'match') {
-    const file = args[2];
+    const file = pos[2];
     if (!file || file.startsWith('--')) throw new Error(`usage: cad match ${ref} <model.stl|model.3mf> [--tol 0.2] [--place "rz90 t1,2,3"]`);
     const tol = opt('tol') ? Number(opt('tol')) : printer(b, d).fit ?? 0.2;
     const ok = await match(b, d, file, { place: opt('place'), tol, samples: Number(opt('samples')) || 20000, at: opt('at') ? String(opt('at')).split(',') : [], title: `${title} ${version}`, tag, pictures: !opt('no-pictures') });
@@ -437,6 +469,7 @@ async function editVariables(ref) {
   const pairs = positional().slice(2);
   if (!ref || !pairs.length || pairs.some((p) => !p.includes('='))) throw new Error('usage: cad set <project>/<object> name=value [name=value …] [--unit mm] [--rule "why"] [--label "Label"] [--new]');
   const extra = Object.fromEntries(['unit', 'rule', 'label'].filter((k) => typeof opt(k) === 'string').map((k) => [k, opt(k)]));
+  if (pairs.length > 1 && (extra.rule || extra.label)) throw new Error(`--${extra.rule ? 'rule' : 'label'} describes one variable: set ${pairs.map((p) => p.split('=')[0]).join(' and ')} one at a time`);
   const changes = Object.fromEntries(pairs.map((p) => { const i = p.indexOf('='); return [p.slice(0, i).trim(), { value: parseValue(p.slice(i + 1).trim()), ...extra }]; }));
   const r = await setVariables(ref, changes, { create: !!opt('new') });
   if (opt('json')) return console.log(JSON.stringify(r));
@@ -701,11 +734,19 @@ async function releaseObject(d, { batch = false } = {}) {
   console.log(`tagged ${tag}${opt('push') ? ' and pushed' : ' (not pushed: --push, or git push --follow-tags)'}`);
 }
 
+// A project's project.json, or a plain word that there's no such project (and which there are)
+function projectFile(project) {
+  const pj = path.join(paths.project(project), 'project.json');
+  if (!fs.existsSync(pj)) { const have = projects(); throw new Error(`no project "${project}"${have.length ? ` (projects: ${have.join(', ')})` : ': cad new <project>/<object> starts one'}`); }
+  return pj;
+}
+// The workspace's projects: the folders under projects/ that hold a project.json (not a stray file, such as .DS_Store)
+const projects = () => (fs.existsSync(paths.projects) ? fs.readdirSync(paths.projects).filter((p) => fs.existsSync(path.join(paths.project(p), 'project.json'))).sort() : []);
+
 async function releaseProject(project) {
   const message = opt('m');
   if (!message || message === true) throw new Error('say what this release is: -m "First full set"');
-  const dir = paths.project(project), pj = path.join(dir, 'project.json');
-  if (!fs.existsSync(pj)) throw new Error(`no project "${project}"`);
+  const dir = paths.project(project), pj = projectFile(project);
   const p = JSON.parse(fs.readFileSync(pj, 'utf8')), manifest = {};
   for (const name of p.objects) {
     const d = locate(`${project}/${name}`), s = await since(d);
@@ -741,7 +782,7 @@ async function releaseProject(project) {
 
 // Release every object in a project that changed, then the project: the tree may hold changes only to their files.
 async function releaseAll(project) {
-  const pj = JSON.parse(fs.readFileSync(path.join(paths.project(project), 'project.json'), 'utf8'));
+  const pj = JSON.parse(fs.readFileSync(projectFile(project), 'utf8'));
   const changed = [];
   for (const n of pj.objects) { const d = locate(`${project}/${n}`); if ((await since(d)).kind) changed.push(d); }
   const allowed = new Set([`projects/${project}/project.json`, `projects/${project}/CHANGELOG.md`, `projects/${project}/prints.jsonl`,
@@ -773,8 +814,9 @@ async function compareVariants(d, a, b) {
 }
 
 async function status(project) {
-  for (const p of project ? [project] : fs.readdirSync(paths.projects)) {
-    const pj = JSON.parse(fs.readFileSync(path.join(paths.project(p), 'project.json'), 'utf8'));
+  if (!project && !projects().length) return console.log(`no projects in ${WS} yet: cad new <project>/<object> starts one`);
+  for (const p of project ? [project] : projects()) {
+    const pj = JSON.parse(fs.readFileSync(projectFile(p), 'utf8'));
     console.log(`${p}${pj.version ? `@${pj.version}` : ''}`);
     for (const name of pj.objects) {
       const s = await since(locate(`${p}/${name}`));
@@ -817,6 +859,6 @@ function printed(d) {
 
 main().catch((e) => {
   if (opt('json')) console.log(JSON.stringify({ error: errorData({ ...e, message: e.message, code: e.code, file: e.file && path.relative(WS, e.file) }) }, null, 2));
-  else console.error(`${e.message}${e.file ? ` (${path.relative(WS, e.file)}${e.path ? `: ${e.path}` : ''})` : ''}`);
+  else console.error(`${e.message}${e.file ? ` (${path.relative(WS, e.file)}${e.line ? `:${e.line}` : ''}${e.path ? `: ${e.path}` : ''})` : ''}`);
   process.exit(1);
 });

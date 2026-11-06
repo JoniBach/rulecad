@@ -18,10 +18,21 @@ for (const p of packages) test(`@rulecad/${p} needs nothing but other @rulecad p
   const pj = JSON.parse(fs.readFileSync(path.join(root, 'packages', p, 'package.json'), 'utf8'));
   for (const d of Object.keys(pj.dependencies || {})) assert.match(d, /^@rulecad\//, `${p} depends on ${d}`);
   for (const d of Object.keys(pj.peerDependencies || {})) assert.ok(PEERS.includes(d), `${p} needs ${d}`);
-  // (the main entry: a package may offer a Node-only extra under another path, as fea does its threads)
-  const main = pj.exports['.'] || pj.exports, src = fs.readFileSync(path.join(root, 'packages', p, main.default || main), 'utf8');
-  for (const [, from] of src.matchAll(/^\s*import\b.*from\s+'([^']+)'/gm)) {
-    assert.ok(Object.keys({ ...pj.dependencies, ...pj.peerDependencies }).includes(from), `${p} imports ${from} without depending on it`);
+  // Every module the package ships, not only its main entry. The exception is a Node-only extra offered under its
+  // own path (fea's ./threads): the main entry must not import it.
+  const extras = typeof pj.exports === 'object' && pj.exports['.'] ? Object.entries(pj.exports).filter(([k]) => k !== '.').map(([, v]) => path.normalize(v.default || v)) : [];
+  const modules = pj.files.filter((f) => f.endsWith('.mjs') && !extras.includes(path.normalize(f)));
+  assert.ok(modules.length, `${p} ships no module`);
+  for (const f of modules) {
+    const src = fs.readFileSync(path.join(root, 'packages', p, f), 'utf8');
+    for (const [, from] of src.matchAll(/^\s*(?:import|export)\b[^'\n]*\bfrom\s+'([^']+)'/gm)) {
+      if (from.startsWith('./')) assert.ok(modules.includes(from.slice(2)), `${p}/${f} imports ${from}, which the package doesn't ship (or is its Node-only extra)`);
+      else assert.ok(Object.keys({ ...pj.dependencies, ...pj.peerDependencies }).includes(from), `${p}/${f} imports ${from} without depending on it`);
+    }
+    // (a peer may be loaded when it's asked for, as Manifold is: any other import() could reach for anything; a type's
+    // import('./x.mjs') in a comment loads nothing)
+    for (const [, from] of src.replace(/^\s*(\*|\/\/).*$/gm, '').matchAll(/\bimport\(\s*([^)]*)\)/g)) assert.ok(PEERS.some((peer) => from === `'${peer}'`) && pj.peerDependencies?.[from.slice(1, -1)], `${p}/${f} loads ${from} as it runs`);
+    // node: as a module name, not a property; asking whether there is a process at all (globalThis.process?.) is safe anywhere
+    assert.ok(!/\brequire\(|\bprocess\.|['"`]node:/.test(src.replaceAll('globalThis.process?.', '')), `${p}/${f} reaches for Node`);
   }
-  assert.doesNotMatch(src, /\bimport\(|\brequire\(|process\.|['"`]node:/, `${p} reaches for Node`); // node: as a module name, not a property
 });
