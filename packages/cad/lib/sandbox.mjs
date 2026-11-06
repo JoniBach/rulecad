@@ -34,7 +34,7 @@ function readable() {
   // Every node_modules above the workspace and the tool (package lookups read their links), and where links lead
   const up = (dir) => { const out = []; for (let d = dir; ; d = path.dirname(d)) { out.push(path.join(d, 'node_modules')); if (path.dirname(d) === d) return out; } };
   const dirs = [WS, TOOL, ...[...up(WS), ...up(TOOL)].filter((d) => fs.existsSync(d)),
-    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
+    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/fea', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
   return [...new Set(dirs.filter(Boolean).flatMap((d) => [d, real(d)]).filter(Boolean))];
 }
 
@@ -58,7 +58,7 @@ export function runSandboxed(d, values, meta, engine = 'jscad') {
         return reject(located(new Error(`the design's sandbox stopped: ${Buffer.concat(err).toString('utf8').trim().split('\n').slice(-3).join(' ') || 'no output'}`), d.js, 'design.sandbox'));
       }
       if (r.error) return reject(located(Object.assign(new Error(r.error.message), { code: r.error.code }), d.js, r.error.code || 'design.run'));
-      resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read) });
+      resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read), mechanism: r.mechanism || null });
     });
     child.stdin.end(JSON.stringify({ js: `${pathToFileURL(d.js).href}?t=${fs.statSync(d.js).mtimeMs}`, values, meta, engine }));
   });

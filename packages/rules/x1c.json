@@ -58,6 +58,14 @@
       "source": "Common FDM practice; tune with a test print",
       "checked": "2026-10-11"
     },
+    "print_gap": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "Narrowest gap between parts printed in place, side by side, that still prints apart (a flexure and the frame round it, a shuttle in its slot): the gap each side, not the total",
+      "kind": "estimate",
+      "source": "A reasoned guess for a 0.42 mm line; measure it with the fit test plate (examples/bench/projects/launcher/objects/fittest)",
+      "checked": "2026-11-01"
+    },
     "overhang": {
       "value": 45,
       "unit": "\u00b0",

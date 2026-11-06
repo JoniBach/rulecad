@@ -1,0 +1,146 @@
+{
+  "name": "latch",
+  "title": "A push-push latch: press, it stays down; press again, it comes back up. A pin on a leaf round a heart-shaped track",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "petg"
+  ],
+  "material": "PETG",
+  "engine": "manifold",
+  "orientation": "On its side, as drawn: one piece, no supports. Press the button: the pin on its leaf runs down the track's right side and, let go, rises into the heart's cleft and holds the button down. Press again: the pin leaves the cleft to the left and, let go, runs up the left side home.",
+  "parts": {
+    "body": {
+      "label": "The latch: frame and track, guide, plunger, leaf and pin in one print"
+    }
+  },
+  "variables": {
+    "height": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "How tall it prints: the flexures' width"
+    },
+    "gap": {
+      "value": "x1c.print_gap",
+      "unit": "mm",
+      "rule": "The least gap that prints apart"
+    },
+    "round": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Rounds where flexures meet blocks, and on every inside corner"
+    },
+    "into": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "How far a leaf runs into the block it grows from"
+    },
+    "guide_len": {
+      "value": 48,
+      "unit": "mm",
+      "rule": "The plunger's guide leaves: long, for its stroke within the strain limit"
+    },
+    "guide_t": {
+      "value": "x1c.wall_min",
+      "unit": "mm",
+      "rule": "The guide leaves' thickness at their ends"
+    },
+    "guide_gap": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Between the guide's leaves"
+    },
+    "taper": {
+      "value": 0.6,
+      "rule": "How far the guide leaves taper towards their middles"
+    },
+    "block": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The guide's blocks"
+    },
+    "wall": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The frame's walls"
+    },
+    "plunger_w": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The plunger's width"
+    },
+    "button": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "How far the plunger stands up out of the frame: the button"
+    },
+    "leaf_len": {
+      "value": 24,
+      "unit": "mm",
+      "rule": "The leaf the pin hangs on: long and soft, so the pin swings across the track easily, and it pulls the pin back to the middle"
+    },
+    "leaf_t": {
+      "value": "x1c.wall_min",
+      "unit": "mm",
+      "rule": "The leaf's thickness"
+    },
+    "pin": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "The pin's radius"
+    },
+    "side": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "How far either side of the middle the track's channels run"
+    },
+    "roof": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "How far down the pin goes before the roof sends it right"
+    },
+    "drop": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "How far the roof falls across, from its apex to the right channel"
+    },
+    "cleft": {
+      "value": 7.5,
+      "unit": "mm",
+      "rule": "How far down the pin is held, in the heart's cleft"
+    },
+    "stroke": {
+      "value": 11,
+      "unit": "mm",
+      "rule": "How far a press drives the pin down"
+    },
+    "lean": {
+      "value": 1.8,
+      "unit": "mm",
+      "rule": "How far the cleft's way in and way out sit either side of the middle, so a press from the cleft goes left"
+    },
+    "band": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Room either side of the pin's path, for the leaf's give"
+    },
+    "press_most": {
+      "value": 10,
+      "unit": "N",
+      "rule": "The most a press may take"
+    },
+    "smooth": {
+      "value": 32,
+      "rule": "Segments round a circle"
+    },
+    "up": {
+      "value": 90,
+      "unit": "degrees",
+      "rule": "The leaf hangs straight down from the plunger"
+    },
+    "one_third": {
+      "value": 0.3333333333,
+      "rule": "A third"
+    }
+  }
+}

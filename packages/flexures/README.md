@@ -122,6 +122,250 @@ report([{ name: 'trigger', kind: 'constantForce', params: trigger, travel: 8, st
 Requirements belong in the design's variables, each with its rule and source, as the printer's and the material's do;
 the sizing helpers read them from there.
 
+### Displacement first
+
+The strain in a beam depends on how far it bends against its length and thickness, not on how hard it's pushed, so a
+compliant mechanism is sized by its travel (Howell; the BYU one-piece blaster, Lewis et al., PLOS ONE 2026): the
+travel and the strain limit set the length for a thickness, and the force comes last, from the width, which doesn't
+change the strain at all. `size.forTravel(kind, job, printer)` works that way round for the leaf, the fixed-guided
+beam, the parallel, compound and folded guides and the serpentine. Give `force` (at full travel) or `energy` (N·mm)
+to store. Leave `width` out and it takes the thinnest whole-line thickness at the shortest length that keeps the strain
+under the limit times a margin, and makes it as wide (whole layers) as the force needs. Give `width` when the print
+fixes it (a mechanism printed on its side is as wide as the print is tall), and the thickness sets the force instead:
+the thinnest that reaches it, lengthened to give just that. The result says its `ratio`, travel over length: the same
+ratio is the same strain at any size, so a design scales.
+
+```js
+size.forTravel('parallelGuide', { travel: 12, energy: 50, width: 14, material: petg }, x1c);
+// { length: 87.8, thickness: 2.1, width: 14, force: 8.33, energy: 50, strain: 0.0098, ratio: 0.137 }
+```
+
+### Shaped beams: tapers and rounds
+
+A leaf, a fixed-guided beam and a parallel guide's leaves take three more parameters. `taper` (0 to 1) shapes the
+beam's thickness to its bending moment: at 1 it is a uniform-strength beam, thick where it bends most and thin where it
+bends least, so the strain is the same all along it. `least` is the thinnest it may get (the thinnest wall that
+prints). `fillet` rounds the beam where it meets its block, at each end that's held, and `into` runs it on into the
+block so they join. `thickness` is then the most it is.
+
+A square inside corner, where a bar meets its block, concentrates the strain. On a printed part that corner is where
+it yields and stays bent. A round of about the beam's thickness brings it back to beam theory's. A fully tapered beam
+bends 1.7 times as far as a bar before it reaches the same strain, and stores 1.7 times the energy. `beamModel`
+integrates the beam's own profile, rounds included, and `size.forTravel` takes a `shape` to size one.
+
+```js
+size.forTravel('parallelGuide', { travel: 12, energy: 50, width: 14, material: petg, shape: { taper: 1, fillet: 2, least: 0.84 } }, x1c);
+// 71 mm leaves, against 88 for bars
+```
+
+`flexureMaterial(rules)` makes the material from its rule set's `modulus` and `strength`: the strain it may see is its
+strength over its modulus (where it starts to yield) over a safety factor (1.5). That ratio is the figure of merit for
+flexures: PLA's is about 1.5%, PETG's 1.9%, nylon's higher. A flexure sized at a strain past it bends for good.
+
+## Lamina mechanisms
+
+Working printed blasters and toys are one flat drawing printed on its side: every flexure bends within its layers,
+everything that moves stands on the bed, and every clearance is a slot in the drawing. `lamina(spec)` (async) takes a
+mechanism drawn that way and checks it as it will print and move:
+
+- **The parts:** a `ground`, rigid `bodies`, and `joints`, each a flexure from one body (or the ground) to another, a
+  generator's `kind` and `params` placed `at` a point and turned an `angle`, or your own `shape` with its `axis` or
+  `pivot`. A leaf moves its body as the pseudo-rigid-body model says (a turn about a point 0.15 of its length from its
+  root); a guide's shuttle moves along it, and drops as its model says. Every part is the print's `height`, which is
+  also the flexures' width.
+- **States and a sequence:** each state says how far the joints are moved; the `sequence` is the order they happen.
+  Every step between two states is walked in steps of a quarter of a millimetre at most.
+- **Followers:** a joint moved by contact (a latch, a sear) gives just as far as it must to clear what drives it,
+  and springs back when that has passed. The joint being moved drives, and one standing still gives. Where a follower
+  would have to give more than the push could make it (a face steeper than friction lets a push turn aside), the
+  driver jams. A follower gives on from wherever its state puts it, on either side of rest (a pusher that runs on
+  past rest, and can also be cammed back).
+- **Rounds:** `round` rounds every inside corner of the ground and the bodies to that radius, so no thin arm meets its
+  body at a square corner. A flexure given a `fillet` has every inside corner of its own rounded to it, wherever its
+  parts meet.
+- **Friction, the cautious way:** what must move is checked sticky (a ramp must still push a latch aside at 0.5),
+  and what must hold is checked slippery (a catch must still hold at 0.1).
+
+The findings, each pass or fail with its code:
+
+| Code | What |
+|---|---|
+| `lamina.free` | At rest, everything clears what it isn't joined to by the printer's gap, and each flexure touches only its two bodies, in one place each: else it prints fused |
+| `lamina.attached` | Each flexure runs into its bodies, not just along an edge (an edge join prints as two pieces) |
+| `lamina.seat` | Each curve's end flare and run on lie inside its body (a seat added where they wouldn't); one hanging out of a frame drawn as it is fails |
+| `lamina.sequence`, `lamina.collide` | Nothing runs into anything in any state or on the way; a step into a state a catch holds may settle on the catch |
+| `lamina.jam`, `lamina.follow` | No driver jams on a follower, and no follower has to give past its limit |
+| `lamina.holds` | A catch holds: the joint pushing back towards rest jams on it. It says the least friction it holds at, and how far the catch must move to let go. A catch that bites presses into what it holds as it's moved: what it holds is cammed back out of it first |
+| `lamina.strain` | Each flexure's strain at the most it is moved, against the limit, by beam theory |
+| `lamina.peak` | Each flexure's real peak strain, by finite elements: the flexure and a band of each body it meets, laid on a grid of squares, held beyond the band at its root and pushed at its tip to the travel it reaches. A peak at a square inside corner fails: the strain there has no bound, and it's where a print yields |
+| `lamina.stop` | Something hard stops each flexure before its strain limit, scaled by its finite-element peak (swept from rest, so a stop that is jumped over doesn't count) |
+| `lamina.energy` | What each state stores, and the forces |
+| `lamina.force` | The force a hand needs along each driven step, from the physics: a force curve. Over a hand's 50 N, it jams |
+| `lamina.release` | Where a body is let go of on the way (a latch letting go), and how far the hand had moved, with what force |
+| `lamina.held` | Let go of in a state a catch holds, the body stays, and the force the catch takes (the physics, with `physics.friction` or frictionless, so cautious) |
+| `lamina.bite` | Which way the held load pushes the catch: from the physics' contact forces, normal only, against how each contact point moves as the catch lets go. Under `check.bite` (5°) into the catch, it holds by friction or its own spring alone, and a printed catch slips |
+| `lamina.carried` | A loose part (a disc) is held over and under, its middle over a bridge and a floor, loaded and all through the shot while it's in the frame |
+| `lamina.trip` | Pulling the trigger lets the catch go: how far and how hard the finger pulled, against the force the catch held |
+| `lamina.holes` | Each fastener hole through a flooded frame is all frame: inside the outline, clear of the moving parts' room |
+| `lamina.home` | At the end of the sequence, everything is back where it started |
+| `lamina.beams` | Each flexure's strain all the way through, bending as far as it bends |
+| `lamina.requires` | A driven step's force curve does what you asked: its peak, its click (the fall after the peak), its end |
+| `lamina.fire` | Let go and stepped through time: each body's top speed, and the disc's exit speed and energy against a limit. A disc given less than `fire.least` (default a quarter) of what the springs stored fails, saying where the rest is as it leaves |
+| `lamina.room` | In every frame, planned and as the physics moved it, the shot included, nothing that moves runs into the frame deeper than half the gap (a flexure where it's anchored aside) |
+
+It returns the printed `parts` (`body`, the drawing extruded, after an optional `finish` for 3D work such as holes
+through it, and any `loose` parts), the `findings`, the `energy` in each state, and `frames` along the sequence with
+the flexures drawn bent, for an animation. A design that returns it is checked by `cad check`, and `cad animate`
+plays its sequence. The plane's geometry is manifold-3d's (Clipper2): JSCAD's 2D booleans are not robust enough for
+clearance checks a tenth of a millimetre fine.
+
+The launcher's flat action is a worked example (examples/bench/projects/launcher/objects/flat.js): a pusher on a
+two-leaf spring, a tab to cock it, and a trigger that is its own sear, with a catch that leans back so it holds
+however slippery the plastic. examples/bench/projects/mechanisms has a key with a tactile click and a wave spring.
+
+### As it would behave: the physics
+
+The kinematic checks above move each joint the way its model says and look for collisions. `lamina` then solves the
+mechanism as it would behave (`physics.mjs`): each flexure with a centreline (leaf, fixed-guided, guides, serpentine,
+wave spring, pivot pair, shaped or not) becomes a chain of large-deflection beams (`beams.mjs`), each body a rigid
+body, and everything touches everything it meets, flexures themselves included. A hand works it through the sequence:
+a joint the next state sets to a new value is driven there; one it keeps is held; one it drops, or one a catch holds
+in the next state, is let go of, gradually, so the mechanism finds where it rests. The hand's force along each driven
+step is the force curve; the frames are the solved shapes, each flexure's outline bent along its centreline.
+
+- `kinematic: false` leaves how it moves to the physics alone, for contact that pushes a part either way (a cam).
+- `requires: [{ step: 'rest>pressed', joint, peak: [least, most], click, end }]` checks a force curve: a key's feel.
+- `free: { disc: { shape, mass } }` adds parts that aren't printed or joined (a disc): the physics only.
+- `fixtures` are fixed shapes the physics sees but the print leaves out (another layer's walls).
+- `flood: { outline, keep, clear, least }` floods the frame: everything inside `outline` is solid except the room
+  the moving parts sweep through the sequence (grown by `clear`, the print gap, or a sliding fit by part's name), and
+  the spaces `keep` holds open. The bodies sweep where the kinematic model puts them; each flexure sweeps its real
+  bends, the beam solver's, with every body held where it is meant to be at each frame (a folded spring doesn't bend
+  as a smear from root to tip, and room cut for that shape leaves frame in its way). `lamina.room` then checks every
+  frame, planned and as the physics moved it, the shot included. Slivers thinner than `least` and islands that would print loose are left out. A thin
+  frame bends and spoils the mechanism; a flooded one is as stiff as its outline, and its pockets are the moving
+  parts' stops and guides. Leave out the outline and it's everything the moving parts reach, a `wall` round it. Leave
+  out `ground` too: each flexure's root gets a block behind the face it grows from, found from its root port. List
+  as states everything the parts reach (a shot's overshoot too), and keep open what the mechanism doesn't sweep (a
+  disc's way out, room for a finger). With `band`, the frame is a web: solid only that far round the moving parts'
+  room, the kept spaces and the outline's edge, the rest rounded windows (none narrower than the band). `holes:
+  [{ at, diameter, wall }]` go through the frame for fasteners, each in a solid boss `wall` thick that no window opens
+  into: snap pins holding a plate either side, should a frame ever need one. Each is checked to be all frame.
+- `bridges: [{ shape, depth, gap }]` prints the frame over a moving part on the top layers: a barrel's roof over a
+  stem, so it can't lift out of its channel. Every body that passes under one is cut down by `depth` (six layers) and
+  `gap` (three layers), along all of it that ever passes under. Each bridge must stand on the frame both sides, span no
+  more than the printer's `bridge`, and not cross a flexure. With `side: 'bottom'` it's a floor on the bottom layers
+  (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
+  moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
+  no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them.
+- The frame is checked under the mechanism's own forces: at the end of each step, what the flexures pull on it with
+  (from the beams) loads it as an elastic plate as tall as the print, held where a hand holds it (`grip`, or its back
+  quarter), and every gap to what moves (loose parts too, a disc in its channel, carried along as the frame round it
+  moves, so what counts is its channel closing on it) is rechecked on the frame as it bends.
+  A frame that closes onto what moves, prongs either side of a channel pulled together, fails. `check.frame: false`
+  turns it off.
+- Every moving body is pushed across the plane, at its farthest point from what holds it, by the hand's pull 15° off
+  the plane (`check.side` to set it). A lamina's flexures are stiff bending across the plane but soft twisting, so a
+  body on long thin arms tips out of it. The body or the flexures holding it, whichever moves further: over the print
+  gap it warns, over 1 mm it fails. Bridges hold a body from lifting, floors from dropping, guides both ways, each only
+  once the body has moved across its play (the print gap, or the bridge's own): held rigidly, a printed part looked
+  held where it wobbles. `check.across: false` turns it off.
+- A loose part lying in the plane (a disc) needs holding on both faces wherever it goes in the frame: `lamina.carried`
+  fails it where its middle isn't over a bridge (`bridges`) and over a floor (a bridge with `side: 'bottom'`), loaded
+  or during the shot, until it leaves the frame.
+- `guides: [{ body, shape, depth }]` trap a sliding body across the plane: where it passes through `shape`, a ridge
+  on its sides with 45° flanks (`depth`, centred on the print's height) runs in a matching groove in the frame's wall.
+  Both are drawn out from the same faces by the same amount at each height, so the gap stays the gap, and each flank
+  prints without support. The out-of-plane check counts a guided stretch as held both ways.
+- Every rigid part is checked for free ends: an arm narrower than `check.rigid` (3 mm) tied on at one end only bends
+  under load, so it's a warning.
+- `physics: { friction }` adds friction to every contact (Coulomb, μ, smoothed over a hundredth of a mm): each point
+  touching a body at the start of a step is anchored there, and sliding from it costs μ times the push it touched with.
+  A trigger then pulls against what its sear's face drags, and a catch holds on friction as well as its shape. The
+  shot is solved without it.
+- `grips: { joint: [x, y] }` says where a hand takes a joint's body to drive it (a trigger's blade, where the finger
+  pulls), so its force curve is the finger's. Default: the body's centre.
+- A catch that holds tells the force it takes (`lamina.held`: the flexures' pull on what it holds). A step that lets a
+  body go (`lamina.release`) and leads into the state a shot fires `from`, with no `hold`, trips the shot: it fires
+  from the step before, the finger going on where it was going, so the pull, the let-go and the shot are one sequence
+  (`lamina.trip`: how far and how hard the finger pulled, against what the catch held; the disc's time to leave is
+  then the lock time).
+- `fire: { from, disc, hold, most, least }` lets go from a state, with a finger keeping `hold`'s joints where it says, and
+  steps through time (masses from the material's `density`; explicit steps short enough that a sound wave doesn't
+  cross the shortest beam element in one, with whatever mass Gershgorin's bound still asks for added to the lightest
+  flexure nodes): the speeds, and the disc's exit speed and energy, taken when it last parts from everything. A shot
+  that starts with the disc pressed into the drawn pusher fails: it would be thrown with energy the spring never
+  stored. `seat: [dx, dy]` lays a loose part where it would rest before the shot, moved that way until it just touches
+  what pushes it (a disc dropped in its slot slides back on to the nose): left a gap, it is struck and bounces off
+  early, which no real loading does.
+- `physics: false` turns it off.
+
+The beam solver stands on its own too: `beamSystem({ bodies, beams })`, `equilibrium(sys, { held, loads })`
+(Newton's method on the energy; a held unknown reports the force to hold it). It agrees with beam theory at small
+deflections, with the elastica to 0.1% at large ones, with a parallel guide's stiffness and drop, and buckles a
+column at the Euler load.
+
+### Modules
+
+`place(module, { name, at, angle })` turns and moves a sub-mechanism (its ground, bodies, joints, followers, states
+and named `ports`) and prefixes its names; `combine(placed, extra)` joins placed modules into one lamina spec. The
+push-push latch is built from a plunger module and a track module placed at the plunger's pin port.
+
+### More flexures
+
+- **`pivotPair`:** two leaves on lines that meet at a point, so what they hold turns about that point though nothing
+  is there: stiff along the leaves, soft turning. A point beyond the tips bends each leaf into an S, (t/2)(6d + 4L) / L²
+  strain a radian, d the tips' distance from the point: long leaves, tips near the point.
+- **`waveSpring`:** legs across joined by round U-bends, the thickness grading smoothly to the bends'. Squashed along
+  its stack it stacks solid when its legs meet: its own stop, which the physics sees.
+
+### Shaped by the solver: curves
+
+A `curve` flexure is a spline through a few points, its thickness easing from point to point. It has no straight runs
+and no corners. `start` and `end` set the directions it leaves its root and meets its tip, held for a short lead so it
+meets each block square. `mirror` adds its mirror image across a line, so two arms either side of an axis pull
+together and their sideways pulls cancel. A curve has no formula, so its model is the beam solver's: its stiffness,
+its strain and energy at a travel, and the travel a strain allows, large deflections and all.
+
+`shapeCurve(job)` finds the curve for a job. Its ends stay fixed: where it grows from and what it moves. It gets a box
+of room, a travel, an energy to store there, and a range of thicknesses. CMA-ES then moves every point and thickness
+until the beam solver says it stores the energy with the least peak strain, inside its room. No bend may be tighter
+than `bend` thicknesses (default 2), where a curved beam's inside fibre takes much more than beam theory says. No two
+parts of it may come within `apart` of each other (default 1 mm), at rest or fully moved: nearer, they may print fused
+and slap together when it fires. Each end leaves its block square for `lead`, and flares into it in a true round
+(`fillet`). That round is drawn for a face square to the end, so in a lamina each body a curve ends on gets that face: a
+seat, a block square to the end as wide as the flare and a margin, running in past the run on, rounded into the body.
+Where the body is already there it disappears into it. Where the end is oblique to the body's edge, or near it, the seat
+stands out of it as a shoulder, and `lamina.seat` says so. A flooded frame builds its own block at each root; those
+ends are only checked. The lamina also checks that a curve keeps the print gap from itself. Give `width`
+as a range and it is solved at the widest, then printed as tall as the energy needs: force goes with height, strain
+doesn't.
+
+With `moves: 'turn'` and `about: [x, y]`, its tip turns `travel` degrees about that point, as a lever on a hinge there
+would, and its force is the moment: a spring that is a hinge, shaped to put the hinge where you want it.
+
+A plain `leaf` joint takes `gamma`, where along it its tip turns about (from the tip, as a share of its length): 0.85,
+Howell's, for a leaf pushed at its tip; ½ for one turned by a moment, which bends round evenly about its middle. The
+launcher's sear hangs on such a leaf, on the line its catch is pushed along: the spring's pull is the leaf's tension,
+and a trigger blade turns it.
+
+Give it `onRound` to watch it work: after each round it's told every shape tried, and the best so far (its path,
+thickness, drawn-back shape, strain and energy), and returning true stops the search. `@rulecad/cad`'s `liveShape`
+serves a page that draws them as they come, with a stop button.
+
+Free-form points wander into tangles, so start it from a shape of the right kind. `meander({ root, tip, legs, lo, hi })`
+folds an arm into its room as legs joined by round bends. Each arm must be long enough to spread the travel's strain
+(for a 12 mm stroke at 1%, 14 cm or more of a three-line arm), and a meander is how that length fits. From there the
+shaping moves everything. The launcher's in-line action (`launcher/inline`) is shaped this way, from five legs.
+
+```js
+const job = { root: [44, 35], tip: [0, 5], start: 270, end: -90, region: { lo: [-18, 5.6], hi: [46, 35] }, gap: 0.3,
+  thickness: [1.26, 4], moves: 'x', travel: -12, energy: 50, mirror: 0, width: [10, 20], margin: 0.8,
+  guess: meander({ root: [44, 35], tip: [0, 5], legs: 5, lo: 7.5, hi: 33 }) };
+const r = shapeCurve({ ...job, material: petg });
+// r.params: the curve, ready for a lamina joint ({ kind: 'curve', params: r.params }); r.width, r.energy, r.strain
+```
+
 ## Joints that aren't flexures
 
 `pinJoint` prints a pin, a ring with an arm and a cap as one piece, the ring a clearance from the pin and a support
@@ -132,6 +376,17 @@ and the gaps its support gap, and how far the ring can rock. `snapPin` and `snap
 click: a barbed peg split down the middle, each half a snap hook, pushed into a hole; `snapPinModel` gives the
 forces, and the barb's back angle decides whether it holds for good (90) or can be pulled apart (45, the default,
 which also prints standing with no overhang).
+
+In a lamina, a curve joint given a `pin` turns on a pin printed in place instead of bending about its own middle:
+`{ kind: 'curve', params, from: 'slide', to: 'pawl', pin: { d: 3, at: [x, y], under } }`. The post stands on the
+`from` body and the `to` body has a hole round it, the printer's fit (`printer.fit`, or `clearance`) wider. In 3D the
+post stands on a floor (`under`, a 2D shape from the post to its body, `base` thick, six layers by default) and is
+capped by a cone flaring out at 45° by `lip` (1 mm). The carried body is cut back a support gap (`lift`) over the
+floor wherever it ever passes over it and under the cap. The pin carries the load: in the physics it is a stiff tie
+between the two bodies at the pin's centre, free to turn. The curve only springs the turn (a pawl's bias), so its
+strain comes from the physics rather than its own model. `lamina.pin` fails a post with no floor joining it to its
+body, and reports how tall the carried body turns on it. Across the plane, the cap and the floor hold the carried
+body to the post's body after their lift.
 
 ## What the models are good for
 

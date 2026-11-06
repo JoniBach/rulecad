@@ -49,6 +49,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    four views as a PNG in .preview/ (prints the path)
+  cad animate <project>/<object>    a lamina mechanism's sequence, start to finish, in .preview/: an animated SVG, the
+                                    data (shapes, forces, energies, strains each frame, JSON) and a page that plays it
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
                                     [--watch [port]: a live view of it at http://127.0.0.1:8090/, with a stop button]
@@ -372,12 +374,25 @@ async function main() {
       ...(b.object.role === 'reference'
         ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
         : check(b.triangles, printer(b, d), { parts: b.parts })),
+      ...(b.mechanism?.findings || []), // a lamina mechanism's own: it prints free, stops, holds, clears in every state
       ...(await analyses(b, d, tag)),
     ], { object: `${d.project}/${d.name}`, title, version, ...(Object.keys(set).length ? { set } : {}), orientation: b.object.orientation, parts: b.parts.map((p) => ({ name: p.name, role: p.role || 'part' })) });
     if (b.object.orientation) say(`  orientation: ${b.object.orientation}`);
     if (b.parts.length > 1) say(`  parts: ${b.parts.map((p) => `${p.name}${p.role === 'support' ? ' (support)' : ''}`).join(', ')}`);
     process.exitCode = failed ? 1 : 0;
     return;
+  }
+
+  if (cmd === 'animate') {
+    if (!b.mechanism) throw new Error(`${d.project}/${d.name} isn't a lamina mechanism: cad animate plays the sequence of one made with flexures.lamina()`);
+    const out = paths.preview(d.project, `${d.name}${tag}-sequence.svg`);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, (await import('../lib/animate.mjs')).sequenceSvg(b.mechanism, { title: `${title} ${version}: ${(b.mechanism.sequence || []).join(', ')}` }));
+    // and the sequence as data (shapes, forces, energies, strains each frame), with a page that plays it
+    const { playerData, playerHtml } = await import('../lib/player.mjs'), data = playerData(b.mechanism, { title, version, object: `${d.project}/${d.name}` });
+    const json = paths.preview(d.project, `${d.name}${tag}-sequence.json`), html = paths.preview(d.project, `${d.name}${tag}-player.html`);
+    fs.writeFileSync(json, JSON.stringify(data)); fs.writeFileSync(html, playerHtml(data));
+    console.log(out); console.log(json); return console.log(html);
   }
 
   if (cmd === 'preview') {
@@ -663,7 +678,7 @@ async function releaseObject(d, { batch = false } = {}) {
   if (!message || message === true) throw new Error('say what changed: -m "Wider slot for a looser fit"');
   const object = readObject(d), b = await build(d);
   const raw = lint(fs.readFileSync(d.js, 'utf8')), fails = (b.circuit ? await (await pcbEngine()).checks(b.circuit, b.values, b.matrix, b.source) // boards: the board's checks
-    : b.object.role === 'reference' ? [] : check(b.triangles, printer(b, d), { parts: b.parts })).filter((r) => r.level === 'fail'); // references aren't printed
+    : b.object.role === 'reference' ? [] : [...check(b.triangles, printer(b, d), { parts: b.parts }), ...(b.mechanism?.findings || [])]).filter((r) => r.level === 'fail'); // references aren't printed; a mechanism's own checks count
   if (raw.length || fails.length) throw new Error(`fix the check first: ${[...raw.map((r) => `raw number ${r.text} on line ${r.line}`), ...fails.map((f) => f.text)].join('; ')}`);
   let { last, kind, reasons } = await since(d);
   if (!kind) throw new Error(`nothing has changed since ${last.version}`);

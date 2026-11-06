@@ -8,6 +8,121 @@ cartridges that pin into a frame.
 `npx cad check launcher/launcher` checks the whole thing at rest, as assembled, with every pin's press fit;
 `npx cad export` each object for the printer.
 
+## The flat action: the direction from here
+
+The pinned-cartridge pistol below printed as a total failure. Its moving parts fused to the trays they stood on, the
+sled and the disc bound in their channels, and the pins fell out. It is also unlike every printed blaster that works.
+The BYU and Mark Rober one-piece blaster, the Unity disc shooter, the spring guns and the Q-tip shooters are flat
+drawings printed on their side, with every spring, latch and trigger in the plane. The cartridges were a metal
+pistol's layout rebuilt from a flexure catalogue.
+
+`flat` is the action redrawn that way, as one print:
+
+- **The spring:** two leaves standing up the grip, joined at the top by the pusher's shuttle. That is a parallel
+  guide, so the pusher moves straight back and stores the energy in both leaves. It is sized by its travel
+  (`size.forTravel`). The stroke and PETG's strain limit set the leaves' length and thickness, and the print's
+  height sets their force. The leaves taper toward their middles, where they bend least, and flare into their
+  blocks in 2.5 mm rounds, so the strain is spread along them, not piled at square corners.
+- **The pusher:** a bar along the top with a tab out of the back to cock it and a tooth underneath.
+- **The trigger is its own sear:** a lever hanging on a leaf hinge, its arm reaching forward to a hook under the bar.
+  Cocking drags the tooth over the hook's ramp, pushing the trigger aside; drawn a little past, the hook springs up
+  and the pusher settles back onto its catch. The catch leans back 15° (a sear with bite), so the spring's push
+  presses the hook in: it holds however slippery the plastic, and pulling the trigger presses the pusher back a
+  little as the hook comes down.
+- **Stops:** the back wall stops the pusher before the spring's strain limit, and the grip's front wall stops the
+  trigger before its hinge's.
+- **Rounds:** the trigger's hinge leaf is rounded into the frame and the blade, and every inside corner of the frame,
+  the pusher and the trigger is rounded.
+
+The first version had square corners everywhere a leaf met a block. Beam theory said its spring saw 0.98% strain; the
+finite-element check found 2.37% at the corner, nearly twice PETG's limit, and the hinge 1.77%. Tapered and rounded,
+the spring's peak is 1.06% and the hinge's 0.86%, against a limit of 1.25%.
+
+`npx cad check launcher/flat` checks it as it prints and moves: nothing within the printer's gap of what it isn't
+joined to, every step from rest to cocked, pulled, fired and back clear, no jam, the catch holding, and every
+flexure stopped before it breaks. `npx cad animate launcher/flat` plays the sequence with the springs drawn bent.
+
+**What the physics says (2 November).** Solved as it would behave, with large-deflection beams and contact:
+
+- **The trigger can't hold the cock.** Its hanging leaf hinge is stiff to turn but soft sideways, and the pusher's
+  push on the catch, about 8 N, swings the whole trigger forward until the hook slips off the tooth. The kinematic
+  check missed it, because it treats the hinge as a fixed pivot. Expect a print to fire as soon as you let go of the
+  tab. The fix is a pivot that's stiff sideways: a pivot pair (two leaves on lines that meet over the catch) is the
+  idea, but a pivot beyond the leaves' tips bends them into an S and costs strain, so it needs a redesign.
+- **The shot.** Drawn back with the trigger pulled and let go, the pusher reaches 2.3 m/s and the disc leaves at
+  3.5 m/s with 4.8 mJ: 9% of the 54.5 mJ stored, far under the 0.08 J a hard projectile may carry. Most of the energy
+  stays swinging in the pusher and the springs. Lightening the pusher bar barely helped: a 0.8 g disc can only take
+  what it collides with, so a stronger shot needs a different hand-over (the disc riding the pusher, or a lever).
+- **The barrel.** A lower rail, joined to the guard, stops the pusher where it rests; the roof belongs to another
+  layer, so the physics sees it but this print leaves it out.
+
+**The print (2 November): poor.** Everything flexed. The tapered spring leaves bent at their thin middles instead
+of along their length, the trigger couldn't hold the pusher, and the parts at right angles to each other (spring up
+the grip, pusher along the barrel, trigger hanging down) turned every load through a corner in a thin part. The
+physics had already warned about the trigger. The flat action is kept as a record; the in-line action replaces it.
+
+## The in-line action: shaped, not drawn
+
+`inline` keeps every force on the shot's line. The pusher is a solid bar on the barrel's axis. Two curved arms, one
+above and its mirror image below, grow from the frame's walls and meet the bar square. Pulled back, the arms bend
+like a bow's limbs either side of its string, and their sideways pulls cancel, so the bar slides straight back.
+
+Nobody drew the arms. `shape-inline.mjs` gives the beam solver their job: grow from the wall at (44, 35), meet the
+bar at (0, 5), stay in their room, store the launcher's 50 mJ at the 12 mm stroke, and keep the peak strain under
+80% of PETG's limit. The shaping starts from a five-leg meander and moves every point and thickness from there. It
+also picks the print height, between 10 and 20 mm, that stores the energy. Arms are at least three lines thick: the
+flat action's two-line leaves flexed and twisted. The result is written to `objects/inline-spring.mjs`. With `--watch`, a live view at port 8090 shows every round of
+the search (the shapes tried, the best so far at its thickness and drawn back, its strain and energy) and can stop
+it; `--dry` shapes without writing. The design
+refuses to build if the layout or the rules have changed since, until the shaping is run again.
+
+What it found: two arms of loose, uneven loops, 1.26 to 2.5 mm thick, folded into their room and kept 1 mm clear of
+themselves. No bend is tighter than 2.5 times their thickness: at twice, the finite elements found the loops' insides
+taking 1.7 times what the beams said. Printed 12.2 mm tall they store 47.8 mJ at the 11.75 mm draw, with 0.78% peak
+strain by the beam solver and 1.03% by finite elements, against PETG's 1.25%. A full draw takes about 8 N.
+
+**The frame is flooded** (2 November, from the BYU blaster). Everything inside the outline is solid except the room
+the arms and the pusher sweep (and the disc's way out), so nothing holding the mechanism can bend. The pusher's stem
+runs back through the solid handle to a **pull ring**: the channel it slides in is its barrel, a sliding gap (0.5 mm)
+all round, and the frame stops it both ways on broad faces, at rest and a sliding gap past the draw. The ring is drawn
+0.25 mm short of the stroke the arms were shaped for, so that stop lands inside their limit.
+
+`npx cad check launcher/inline` passes everything. Still to know:
+
+- **The shot is weak: 2.7 m/s and 2.9 mJ, 6% of what's stored.** The solid pusher is heavy against a 0.8 g disc. A
+  lighter pusher that is still stiff is the next job.
+- **The pusher's nose is a free end**, 2 mm thick to fit the disc's channel: the rigidity check warns about it.
+- **The barrel is closed on both faces** (version 0.4.0). A bridge, six layers thick, crosses the stem's channel
+  on the top layers, and the stem is cut down 1.8 mm wherever it passes under it. Further along, a floor crosses it on
+  the bottom layers, and the stem arches over it at 45° (up to 9.7 mm at its peak, leaving 2.5 mm above), so it prints
+  with no support. The stem is 50 mm long to give each its own stretch, and 3.8 mm tall in the plane so its channel
+  (0.5 mm each side) spans 4.9 mm, within the X1C's 5 mm bridge. A [cut down the
+  stem](https://jonibach.github.io/rulecad-archive/experiments/launcher-inline-section/) shows the gaps.
+- **The frame is a web** (0.5.0): solid 5 mm round everything that moves and round the edge, the rest windows, 39%
+  less frame than the solid flood.
+- **More room against drag:** 0.5 mm round the arms wherever they go, and 0.5 mm each side of the pusher in its
+  pocket and barrel.
+
+The checks are only as good as the printer's `print_gap`: 0.3 mm is an estimate until the fit test plate's floor
+windows are measured. Still to do: a catch and trigger in line, the magazine as a lamina of its own, a grip shell
+shaped for the hand, and a print.
+
+## 0.6.0: trapped and tied (3 November)
+
+The 0.5.0 print was the first nearly passable one: the spring behaved as simulated and barely set. But the front
+pinched the disc like tweezers, the stem bent out of the plane at its bridge and arch, and the whole pusher flexed
+out of the plane. Rulecad now checks all three before printing: the frame bent by the arms' own pull (it found the
+front closing 0.40 mm onto the disc), every moving part pushed across the plane (the pusher, its bridges taken off,
+moved 25 mm under 1 N), and the guides that trap it. 0.6.0:
+
+- **The disc lies flat** in a slot ahead of the arms, under a roof bridged over it (21 mm, wider than the X1C rule's 5
+  mm, to be proved on the print). The roof ties the front together: the frame bends 0.03 mm under the arms' pull.
+- **The arms grow from the back** of their room, so they pull on the closed back of the frame, not on its front.
+  Reshaped: 43 mJ at the 11.2 mm draw, 1.18% peak strain by finite elements, printed 10.6 mm tall.
+- **The stem is trapped**: 8 mm, full height, no bridge or arch; a ridge on its sides with 45° flanks runs in a groove
+  in the handle, so a 1 N push across the plane moves the pusher 0.00 mm.
+- Still weak: 1.9 m/s and 1.5 mJ at the disc. Power and size come next.
+
 ## The parts
 
 | Part | What it is | Printed |

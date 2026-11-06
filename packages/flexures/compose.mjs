@@ -1,6 +1,7 @@
 // Composing flexures into mechanisms: where each one attaches (ports), how big one must be for a job (sizing), and one
 // report for a mechanism's worth of them (report). Units: mm, N, MPa, radians.
-import { leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable } from './flexures.mjs';
+import { curvePath, curveModel } from './curves.mjs';
+import { waveSpringModel, waveSpringPath, pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable } from './flexures.mjs';
 
 /** @typedef {{ at: number[], dir: number[] }} Port a point on a flexure and the direction a mating part faces from it */
 
@@ -37,6 +38,9 @@ export function ports(kind, p) {
       const e = p.end ?? Math.max(3, 2 * p.thickness), c = p.clearance ?? p.gap / 2, y2 = -(p.gap / 2 + p.thickness / 2);
       return { root: { at: [0, y2 - p.thickness / 2 - c - e, z], dir: mY }, end: { at: [0, p.gap / 2 + p.thickness, z], dir: Y }, moves: 'y' };
     }
+    case 'waveSpring': { const w = waveSpringPath(p), end = w.path.at(-1); return { root: { at: [0, 0, z], dir: mX }, end: { at: [end[0], end[1], z], dir: p.turns % 2 ? X : mX }, moves: 'y' }; } // squashed along its stack
+    case 'curve': { const c = curvePath(p), a = c.path[0], b = c.path.at(-1), d = (i, j) => { const u = [c.path[j][0] - c.path[i][0], c.path[j][1] - c.path[i][1]], l = Math.hypot(...u) || 1; return [u[0] / l, u[1] / l, 0]; }; return { root: { at: [a[0], a[1], z], dir: d(1, 0) }, end: { at: [b[0], b[1], z], dir: d(c.path.length - 2, c.path.length - 1) }, moves: p.moves ?? 'y', ...(p.moves === 'turn' ? { pivot: { at: [p.about[0], p.about[1], z], dir: [0, 0, 1] } } : {}) }; } // drawn where it is: its ends where its points start and stop
+    case 'pivotPair': return { root: { at: [0, 0, z], dir: mX }, end: { at: [0, 0, z], dir: X }, moves: 'turn', pivot: { at: [0, 0, z], dir: [0, 0, 1] } }; // the leaves meet at the origin: the pivot
     case 'notchHinge': { const a = p.arms ?? 4 * p.radius; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + 2 * p.radius, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + p.radius, 0, z], dir: [0, 0, 1] } }; }
     case 'ellipticalHinge': { const a = p.arms ?? 4 * p.along; return { root: { at: [0, 0, z], dir: mX }, end: { at: [2 * a + 2 * p.along, 0, z], dir: X }, moves: 'turn', pivot: { at: [a + p.along, 0, z], dir: [0, 0, 1] } }; }
     case 'livingHinge': { const a = p.arms ?? 10; return { root: { at: [-a, 0, z], dir: mX }, end: { at: [p.flex + a, 0, z], dir: X }, moves: 'turn', pivot: { at: [p.flex / 2, 0, z], dir: [0, 0, 1] } }; }
@@ -51,7 +55,7 @@ export function ports(kind, p) {
 }
 
 /** The model for a kind, by name */
-export const models = { leaf: leafModel, fixedGuided: fixedGuidedModel, parallelGuide: parallelGuideModel, compoundGuide: compoundGuideModel, foldedGuide: foldedGuideModel, serpentine: serpentineModel, notchHinge: notchHingeModel, ellipticalHinge: ellipticalHingeModel, cartwheel: cartwheelModel, livingHinge: livingHingeModel, letJoint: letJointModel, bistable: bistableModel, constantForce: constantForceModel, contactLeaf: contactLeafModel, parallelogram: parallelogramModel, tweezers: tweezersModel, snapHook: snapHookModel };
+export const models = { curve: curveModel, waveSpring: waveSpringModel, pivotPair: pivotPairModel, leaf: leafModel, fixedGuided: fixedGuidedModel, parallelGuide: parallelGuideModel, compoundGuide: compoundGuideModel, foldedGuide: foldedGuideModel, serpentine: serpentineModel, notchHinge: notchHingeModel, ellipticalHinge: ellipticalHingeModel, cartwheel: cartwheelModel, livingHinge: livingHingeModel, letJoint: letJointModel, bistable: bistableModel, constantForce: constantForceModel, contactLeaf: contactLeafModel, parallelogram: parallelogramModel, tweezers: tweezersModel, snapHook: snapHookModel };
 
 const lines = (printer, from = 2, to = 8) => Array.from({ length: to - from + 1 }, (_, i) => +((from + i) * printer.line).toFixed(4));
 /**
@@ -62,6 +66,45 @@ const lines = (printer, from = 2, to = 8) => Array.from({ length: to - from + 1 
  * @param {{ line: number }} printer the extrusion line, so thicknesses are whole lines
  */
 export const size = {
+  /**
+   * Displacement first (Howell; the BYU blaster, PLOS ONE 2026): the travel and the strain limit set the length for a
+   * thickness, and the force is set last, by the width (stress doesn't depend on it). Give `width` when the print fixes
+   * it (a lamina's height): then the thickness sets the force, the thinnest whole-line one that reaches it, lengthened
+   * until it gives exactly that. Leave `width` out and it's the thinnest thickness that prints, at the shortest length,
+   * as wide (in whole layers) as the force needs, up to `maxWidth`.
+   * @param {'leaf' | 'fixedGuided' | 'parallelGuide' | 'compoundGuide' | 'foldedGuide' | 'serpentine'} kind
+   * @param {{ travel: number, force?: number, energy?: number, width?: number, maxWidth?: number, maxLength?: number, turns?: number,
+   *   material: { E: number, strainLimit: number }, margin?: number, shape?: { taper?: number, fillet?: number, least?: number } }} job
+   *   energy in N·mm (mJ); force at full travel, N; shape: a shaped beam's taper and rounds (leaf, fixed-guided, parallel guide),
+   *   its thickness then the most it is
+   * @param {{ line: number, layer: number }} printer
+   * @returns {{ kind: string, length: number, thickness: number, width: number, turns?: number, stiffness: number, force: number,
+   *   energy: number, strain: number, ratio: number } | null} ratio: travel over length, the paper's measure of how hard
+   *   it works (it scales: the same ratio at any size is the same strain)
+   */
+  forTravel(kind, { travel, force, energy, width, maxWidth = Infinity, maxLength = Infinity, turns, material, margin = 0.8, shape = {} }, printer) {
+    const model = models[kind];
+    if (!model || !['leaf', 'fixedGuided', 'parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine'].includes(kind)) throw new Error(`size.forTravel: no beam model for ${kind}`);
+    const want = force ?? (energy != null ? (2 * energy) / travel : null), target = margin * material.strainLimit;
+    if (!(want > 0)) throw new Error('size.forTravel: give the force at full travel, or the energy to store');
+    const mk = (L, t, w) => model({ length: L, thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}), ...shape }, material);
+    const solveL = (lo, hi, f) => { for (let i = 0; i < 50; i++) { const mid = (lo + hi) / 2; if (f(mid)) hi = mid; else lo = mid; } return hi; }; // the least L for which f holds (f holds above it)
+    const shortest = (t) => solveL(t, 10000, (L) => mk(L, t, 1).strain(travel) <= target); // strain falls as it lengthens
+    const out = (L, t, w) => { const m = mk(L, t, w); return { kind, length: +L.toFixed(2), thickness: t, width: w, ...(kind === 'serpentine' ? { turns: turns ?? 2 } : {}), ...shape, stiffness: m.stiffness, force: m.stiffness * travel, energy: (m.stiffness * travel * travel) / 2, strain: m.strain(travel), ratio: travel / L }; };
+    for (const t of lines(printer, 2, 12)) {
+      const L = Math.ceil(shortest(t) * 100) / 100;
+      if (L > maxLength) return null; // thicker only needs longer
+      if (width != null) { // the width is fixed: the thickness sets the force; lengthen it to give just that
+        const most = mk(L, t, width).stiffness * travel;
+        if (most < want) continue;
+        const longer = solveL(L, Math.max(L * 10, maxLength === Infinity ? L * 10 : maxLength), (x) => mk(x, t, width).stiffness * travel <= want); // stiffness falls as it lengthens
+        return out(Math.min(longer, maxLength), t, width);
+      }
+      const k1 = mk(L, t, 1).stiffness, w = Math.ceil(want / (k1 * travel) / printer.layer - 1e-9) * printer.layer; // the force from the width, whole layers
+      if (w <= maxWidth) return out(L, t, +w.toFixed(4));
+    }
+    return null;
+  },
   /** A leaf for a force at a travel: tip force F at travel δ. @returns {{ length: number, thickness: number, width: number, stiffness: number, strain: number } | null} */
   leaf({ travel, force, width, material, margin = 0.8, maxLength = Infinity }, printer) {
     for (const t of lines(printer)) {

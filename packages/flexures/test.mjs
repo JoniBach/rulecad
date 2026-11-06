@@ -330,3 +330,423 @@ test('stops for any flexure: a travel stop placed by a guide\'s model at its shu
   assert.ok(Math.abs(as.angle - 0.8 * hm.angle(0.02)) < 1e-9 && Math.abs(as.travel - 23 * Math.sin(as.angle)) < 1e-9 && Math.abs(measureBoundingBox(as.shape)[1][0] - 46) < 1e-9);
 });
 
+
+// ---------- lamina mechanisms ----------
+import { lamina, flexureMaterial } from '@rulecad/flexures';
+const petg = flexureMaterial({ modulus: 1810, strength: 34, name: 'PETG' }), fdm = { line: 0.42, layer: 0.2 };
+const rect = (x0, y0, x1, y1) => jscad.primitives.polygon({ points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+// A pusher on a two-leaf spring standing up (it moves back, -x, as the spring's travel grows), caught when cocked by a
+// hook on a leaf latch: the pusher's tooth rides down the hook's ramp and the hook springs up behind it. A state lowers
+// the latch to let it go. Options break it one way at a time.
+function catapult({ lead = 30, engage = 1.5, release = 2.6, wall = 7, floorTop = 0.5, fuse = 0, bite = 15, set = false } = {}) {
+  const g = 0.3, stroke = 6, L = 46, t = 0.84, round = 1.5, half = 4 + t + round, drop = (q) => (3 * q * q) / (5 * L), under = L - g - drop(7);
+  const yL = L - 6, px = 10, len = 22, xc = px + len - 3, hook = engage + g, run = hook / Math.tan((lead * Math.PI) / 180), lean = Math.tan((bite * Math.PI) / 180);
+  // The tooth's front face matches the catch's (leaning back by the bite) where the cocked pusher meets it
+  const top = L + 0.5, bottom = L - (engage + g + drop(7)), face = (y) => xc + stroke - (y - drop(stroke) - (under - hook)) * lean;
+  return lamina({
+    height: 6, gap: g, material: petg, printer: fdm, check: { across: false, bite: 0 }, // (its leaves twist out of the plane: the guide test covers that; its hook swings the way the spring pulls, so square is the best it can bite)
+    ground: [
+      rect(-20, -6, 40, -3 + floorTop), // the floor, run into the spring's base block
+      rect(-half - wall - 3, -6, -half - wall, L + 3), // the back wall: the spring's stop
+      rect(px - 3, -6, px, yL + 2), // the latch's post
+      rect(xc - 2, -6, xc + 6, yL - t / 2 - 3), // the latch's stop, under the hook
+      ...(fuse ? [rect(4 + t + fuse, 5, 4 + t + fuse + 2, 20)] : []), // a block beside the front leaf
+    ],
+    bodies: {
+      pusher: [rect(-half, L, xc + 10, L + 6), jscad.primitives.polygon({ points: [[face(top) - 1.2, top], [face(bottom) - 1.2, bottom], [face(bottom), bottom], [face(top), top]] })],
+      hook: jscad.primitives.polygon({ points: [[xc, yL - t / 2], [xc + 1 + run, yL - t / 2], [xc + 1 + run, under - hook], [xc + 1, under], [xc - hook * lean, under], [xc, under - hook]] }),
+    },
+    joints: {
+      spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 8, shuttle: 3, base: 3, fillet: round, into: t }, at: [0, 0], angle: 90, from: 'ground', to: 'pusher' },
+      latch: { kind: 'leaf', params: { length: len, thickness: t, fillet: 1, into: t }, at: [px, yL], angle: 0, from: 'ground', to: 'hook' },
+    },
+    follows: { latch: { by: ['pusher'], give: -1 }, spring: { by: ['hook'], give: 1 } }, // the hook rides down the tooth; lowered, it presses the pusher back a little
+    states: { drawn: { spring: stroke + 0.6 }, ...(set ? { set: { spring: stroke } } : {}), cocked: { spring: stroke }, released: { spring: stroke, latch: -release }, fired: { latch: -release } },
+    sequence: ['rest', 'drawn', ...(set ? ['set'] : []), 'cocked', 'released', 'fired', 'rest'], // (set: the hand brings it on to the hook first, and holds it there)
+    holds: { cocked: [['spring', 'hook']] },
+  });
+}
+const fails = (m, code) => m.findings.filter((f) => f.level === 'fail' && (!code || f.code === code));
+
+test('a lamina mechanism: prints free, every step clear, the latch rides its ramp and holds, the springs stopped before they break', async () => {
+  const m = await catapult();
+  assert.deepEqual(fails(m), [], fails(m).map((f) => f.text).join('; '));
+  const holds = m.findings.find((f) => f.code === 'lamina.holds');
+  assert.ok(holds.level === 'pass' && holds.release > 1.5 && holds.release < 3, `the hook lets go once lowered past its catch: ${holds.text}`);
+  assert.ok(m.findings.filter((f) => f.code === 'lamina.stop').every((f) => f.level === 'pass') && m.findings.filter((f) => f.code === 'lamina.stop').length === 2);
+  assert.ok(m.energy.cocked > 0.002 && m.energy.rest === 0, 'the spring stores energy cocked, none at rest');
+  assert.ok(m.frames.length > 40 && m.frames[0].parts.pusher.length && m.frames.some((fr) => fr.from === 'rest' && fr.to === 'drawn' && fr.t > 0));
+  const box = measureBoundingBox(m.parts.body);
+  assert.ok(Math.abs(box[0][2]) < 1e-9 && Math.abs(box[1][2] - 6) < 1e-9, 'one height, standing on the bed');
+});
+
+test('a lamina mechanism, broken: a steep ramp jams, a short release jams, a near neighbour fuses, an edge join comes apart, a spring with no stop breaks', async () => {
+  assert.ok(fails(await catapult({ lead: 80 }), 'lamina.jam').some((f) => f.from === 'rest' && f.to === 'drawn'), 'cocking jams on a steep face');
+  assert.ok(fails(await catapult({ release: 0.8 })).some((f) => f.from === 'released' && f.to === 'fired'), 'a latch lowered less than its catch holds on');
+  assert.ok(fails(await catapult({ bite: -10 }), 'lamina.holds').length, 'a catch leaning the wrong way slips under load');
+  const out = fails(await catapult({ bite: 0 }), 'lamina.bite');
+  assert.ok(out.length && out[0].bite < -10, 'a catch the load pushes towards letting go holds only by friction, which a print can\'t be trusted for');
+  assert.ok(fails(await catapult({ fuse: 0.1 }), 'lamina.free').length, 'a block 0.1 mm from a leaf prints fused to it');
+  assert.ok(fails(await catapult({ floorTop: 0 }), 'lamina.attached').length, 'a spring that only touches the floor along an edge');
+  assert.ok(fails(await catapult({ wall: 20 }), 'lamina.stop').some((f) => f.joint === 'spring'), 'nothing stops the spring before its strain limit');
+});
+
+test('displacement-first sizing: the travel and strain limit set the length, the force is set by the width (or, at a fixed width, the thickness)', () => {
+  const free = size.forTravel('leaf', { travel: 10, energy: 20, material: petg }, fdm);
+  assert.ok(Math.abs(free.strain - 0.8 * petg.strainLimit) < 1e-3 * petg.strainLimit && Math.abs(free.energy - 20) / 20 < 0.05, `at the limit, storing the energy: ${JSON.stringify(free)}`);
+  assert.ok(Math.abs(free.width / fdm.layer - Math.round(free.width / fdm.layer)) < 1e-6, 'whole layers wide');
+  const fixed = size.forTravel('parallelGuide', { travel: 12, force: 8, width: 14, material: petg }, fdm);
+  assert.ok(Math.abs(fixed.force - 8) < 1e-6 && fixed.strain <= 0.8 * petg.strainLimit + 1e-9 && fixed.width === 14);
+  assert.equal(size.forTravel('leaf', { travel: 10, energy: 20, material: petg, maxLength: 10 }, fdm), null, 'too short to bend that far');
+  const pla = flexureMaterial({ modulus: 2680, strength: 39 });
+  assert.ok(Math.abs(pla.yieldStrain - 39 / 2680) < 1e-12 && Math.abs(pla.strainLimit - pla.yieldStrain / 1.5) < 1e-12 && petg.yieldStrain > pla.yieldStrain, 'PETG bends further than PLA before it yields');
+});
+
+test('shaped beams: their models are the bar\'s formulas when plain, and a taper bends further and stores more at the same strain', () => {
+  const p = { length: 40, thickness: 1.26, width: 8 }, plain = leafModel(p, petg), nearly = leafModel({ ...p, taper: 1e-6 }, petg);
+  assert.ok(Math.abs(nearly.stiffness / plain.stiffness - 1) < 0.01 && Math.abs(nearly.strain(5) / plain.strain(5) - 1) < 0.01, 'the numeric model agrees with E w t³ / 4L³ and 3tδ / 2L²');
+  const g = fixedGuidedModel(p, petg), gn = fixedGuidedModel({ ...p, taper: 1e-6 }, petg);
+  assert.ok(Math.abs(gn.stiffness / g.stiffness - 1) < 0.01 && Math.abs(gn.strain(5) / g.strain(5) - 1) < 0.01, 'and a guided beam\'s with E w t³ / L³ and 3tδ / L²');
+  for (const model of [leafModel, fixedGuidedModel]) {
+    const bar = model(p, petg), shaped = model({ ...p, taper: 1, least: 0.84 }, petg), lim = petg.strainLimit;
+    assert.ok(shaped.travel(lim) > 1.5 * bar.travel(lim) && shaped.energy(shaped.travel(lim)) > 1.5 * bar.stiffness * bar.travel(lim) ** 2 / 2, 'uniform strength: further, and more energy, before the limit');
+  }
+  const solid = parallelGuide({ length: 40, thickness: 1.26, width: 6, gap: 8, taper: 0.8, fillet: 2, least: 0.84, into: 0.84 });
+  assert.ok(onePiece(solid) && measureBoundingBox(solid)[0][0] < -2.9, 'beams and blocks in one piece, the blocks wide enough to take the rounds');
+});
+
+// A leaf growing from a block into a tip, bent by a state; with a square root or a rounded one
+async function flick({ fillet = 0 } = {}) {
+  return lamina({
+    height: 6, gap: 0.3, material: petg, printer: fdm,
+    ground: [rect(-8, -8, 0, 8), rect(31.5, 2.42, 37, 6)],
+    bodies: { tip: rect(30, -2, 37, 2) },
+    joints: { leaf: { kind: 'leaf', params: { length: 30, thickness: 0.84, ...(fillet ? { fillet, tip: true, into: 0.84 } : {}) }, at: fillet ? [0, 0] : [-1, 0], from: 'ground', to: 'tip' } },
+    states: { bent: { leaf: 2 } }, sequence: ['rest', 'bent', 'rest'],
+  });
+}
+
+test('the peak strain by finite elements: a square root is a sharp corner and fails, a rounded one agrees with beam theory', async () => {
+  const square = (await flick()).findings.find((f) => f.code === 'lamina.peak'), round = (await flick({ fillet: 1 })).findings.find((f) => f.code === 'lamina.peak');
+  assert.ok(square.level === 'fail' && square.sharp && Math.abs(square.at[0]) < 0.5, `the square corner where the leaf meets the block: ${square.text}`);
+  assert.ok(round.level === 'pass' && round.ratio > 0.8 && round.ratio < 1.3, `a round brings it to about beam theory's: ${round.text}`);
+});
+
+// ---------- beams that bend as far as they bend ----------
+import { beamSystem, equilibrium } from '@rulecad/flexures';
+
+test('the beam solver: a cantilever as beam theory says at small loads and as the elastica at large ones, a guided beam, a parallel guide and its drop, and a column that buckles at the Euler load', () => {
+  const E = 1810, L = 40, t = 1.26, w = 8, I = (w * t ** 3) / 12, ground = { at: [0, 0], fixed: true };
+  const leafSys = beamSystem({ bodies: { ground }, beams: [{ name: 'leaf', path: [[0, 0], [L, 0]], thickness: t, width: w, E, from: 'ground' }] }), tip = leafSys.nodes.at(-1).dof;
+  const small = equilibrium(leafSys, { loads: new Map([[tip + 1, 0.01]]) });
+  assert.ok(Math.abs(small.q[tip + 1] / ((0.01 * L ** 3) / (3 * E * I)) - 1) < 0.002, 'FL³/3EI');
+  for (const k of [1, 2]) { // PL²/EI of 1 and 2: the tip at 0.3017 and 0.4935 of the length (Bisshopp and Drucker)
+    const r = equilibrium(leafSys, { loads: new Map([[tip + 1, (k * E * I) / L ** 2]]) });
+    assert.ok(r.converged && Math.abs(r.q[tip + 1] / L - [0, 0.3017, 0.4935][k]) < 0.002, `PL²/EI = ${k}: ${(r.q[tip + 1] / L).toFixed(4)}`);
+  }
+  const guided = beamSystem({ bodies: { ground, tip: { at: [L, 0] } }, beams: [{ name: 'b', path: [[0, 0], [L, 0]], thickness: t, width: w, E, from: 'ground', to: 'tip' }] }), d = guided.body.tip.dof;
+  assert.ok(Math.abs(equilibrium(guided, { held: new Map([[d + 1, 1], [d + 2, 0]]) }).reaction.get(d + 1) / ((12 * E * I) / L ** 3) - 1) < 0.005, '12EI/L³');
+  const pair = beamSystem({ bodies: { ground, shuttle: { at: [L, 0] } }, beams: [-5, 5].map((y, i) => ({ name: `b${i}`, path: [[0, y], [L, y]], thickness: t, width: w, E, from: 'ground', to: 'shuttle' })) }), s = pair.body.shuttle.dof;
+  const r = equilibrium(pair, { held: new Map([[s + 1, 6]]) }), m = parallelGuideModel({ length: L, thickness: t, width: w }, { E });
+  assert.ok(Math.abs(r.reaction.get(s + 1) / (m.stiffness * 6) - 1) < 0.02 && Math.abs(-r.q[s] / m.drop(6) - 1) < 0.02, 'the guide\'s stiffness and its drop, 3δ²/5L');
+  const col = beamSystem({ bodies: { ground }, beams: [{ name: 'c', path: [[0, 0], [0, L]], thickness: t, width: w, E, from: 'ground' }] }), top = col.nodes.at(-1).dof, Pcr = (Math.PI ** 2 * E * I) / (4 * L * L);
+  const below = equilibrium(col, { loads: new Map([[top + 1, -0.95 * Pcr], [top, 1e-4 * Pcr]]) }), above = equilibrium(col, { loads: new Map([[top + 1, -1.05 * Pcr], [top, 1e-4 * Pcr]]), start: below.q });
+  assert.ok(Math.abs(below.q[top]) < 0.1 && Math.abs(above.q[top]) > 5, 'stands under the Euler load, bows over it');
+});
+
+test('a pivot pair turns about the point its leaves\' lines meet, and its model agrees with the beam solver', async () => {
+  const L = 16, near = 8, a = 2.5, into = 0.84, angles = [235, 270], dirs = angles.map((d) => [Math.cos((d * Math.PI) / 180), Math.sin((d * Math.PI) / 180)]);
+  const disc = (c, r) => jscad.primitives.circle({ center: c, radius: r, segments: 32 }), along = (r) => dirs.map(([c, s]) => [c * r, s * r]);
+  const m = await lamina({
+    height: 14, gap: 0.3, material: petg, printer: fdm, check: { fe: false },
+    ground: [jscad.hulls.hull(...along(near + L + a - into).map((p) => disc(p, a)))],
+    bodies: { arm: [jscad.hulls.hull(...along(near - a + into).map((p) => disc(p, a)), disc([10, -4], 2))] },
+    joints: { pair: { kind: 'pivotPair', params: { length: L, thickness: 0.84, angles, near }, at: [0, 0], from: 'ground', to: 'arm' } },
+    states: { turned: { pair: -4 } }, sequence: ['rest', 'turned', 'rest'],
+  });
+  const model = m.findings.find((f) => f.code === 'lamina.strain' && f.joint === 'pair').strain, beams = m.findings.find((f) => f.code === 'lamina.beams' && f.joint === 'pair').strain;
+  assert.ok(Math.abs(beams / model - 1) < 0.1, `model ${(model * 100).toFixed(3)}%, beams ${(beams * 100).toFixed(3)}%`);
+});
+
+test('firing: let go, a pusher on a spring throws a loose disc, never with more energy than was stored', async () => {
+  const L = 30, t = 0.84, half = 4 + t + 1, stroke = 5, g = 0.3;
+  const spec = {
+    height: 6, gap: g, material: { ...petg, density: 1.27 }, printer: fdm, check: { fe: false },
+    // The guide moves the pusher along y: the disc sits on it, edge on, between rails that stop the pusher at rest
+    ground: [rect(-8, -6, -3 + 0.5, 6), rect(L + 1, half + g, L + 3.3 - g, half + 20), rect(L + 6.7 + g, half + g, L + 9, half + 20)],
+    bodies: { pusher: rect(L, -half, L + 10, half) },
+    joints: { spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 8, shuttle: 3, base: 3, fillet: 1, into: t }, at: [L, 0], angle: 180, from: 'ground', to: 'pusher' } },
+    free: { disc: { shape: rect(L + 3.6, half + g, L + 6.4, half + g + 20), mass: 0.5 } },
+    states: { drawn: { spring: stroke } }, sequence: ['rest', 'drawn'],
+    fire: { from: 'drawn', disc: 'disc', duration: 0.01 },
+  }, m = await lamina(spec);
+  const f = m.findings.find((x) => x.code === 'lamina.fire');
+  assert.ok(f && f.level !== 'fail' && f.exit && f.exit.energy > 0 && f.exit.energy <= f.stored * 1.02, f?.text);
+  assert.ok(!m.findings.some((x) => x.code === 'lamina.fire' && /pressed/.test(x.text)), 'nothing starts pressed into anything');
+  const pusherMass = 1.27e-6 * 6 * 10 * (2 * half), most = Math.sqrt((2 * f.stored) / pusherMass); // all the energy in the pusher alone
+  assert.ok(f.speeds.pusher > 0.5 * most && f.speeds.pusher <= most * 1.05, `the pusher's ${f.speeds.pusher.toFixed(2)} m/s against at most ${most.toFixed(2)}`);
+  // Lying in the plane with nothing over or under it, the disc falls out of it; a roof and a floor along its way hold it
+  assert.ok(m.findings.some((x) => x.code === 'lamina.carried' && x.level === 'fail' && x.side === 'under') && m.findings.some((x) => x.code === 'lamina.carried' && x.level === 'fail' && x.side === 'over'), 'nothing holds the disc in the plane');
+  const way = rect(L + 1, half + 2, L + 9, half + 20), held = await lamina({ ...spec, bridges: [{ shape: way }, { shape: way, side: 'bottom' }] });
+  const c = held.findings.filter((x) => x.code === 'lamina.carried');
+  assert.ok(c.length === 1 && c[0].level === 'pass', c.map((x) => x.text).join('; '));
+});
+
+test('a wave spring: round bends, and pressed past solid its legs meet (self-contact), so its force climbs steeply', async () => {
+  const p = { span: 14, pitch: 2.4, turns: 5, thickness: 0.84, smooth: 8 }, top = (p.turns - 1) * p.pitch, R = p.pitch / 2;
+  const make = async (press) => lamina({
+    height: 6, gap: 0.3, material: petg, printer: fdm, kinematic: false, check: { fe: false },
+    ground: [rect(-4, -R - 3, p.span + 4, -R - 0.6), rect(0, -R - 3, p.span - 2 * R, 0.42), rect(-4, -R - 3, -R - 1.5, top + 6), rect(p.span + R + 1.5, -R - 3, p.span + 4, top + 6)],
+    bodies: { cap: [rect(2 * R, top - 0.42, p.span, top + R + 1), rect(-R - 1.2, top + R + 1, p.span + R + 1.2, top + 4)] },
+    joints: { spring: { kind: 'waveSpring', params: p, at: [0, 0], from: 'ground', to: 'cap' } },
+    states: { pressed: { spring: -press } }, sequence: ['rest', 'pressed'],
+  });
+  const force = (m) => m.findings.find((f) => f.code === 'lamina.force').peak;
+  const soft = force(await make(3)), solid = force(await make(8.5)); // the legs' gaps close at about 4 × (2.4 − 0.84) = 6.2 mm
+  assert.ok(solid > (soft * 8.5) / 3 * 2, `past solid it should be far stiffer than its linear rise: ${soft.toFixed(2)} N at 3 mm, ${solid.toFixed(2)} N at 8.5 mm`);
+});
+
+test('a curve flexure: drawn straight it is a guided beam (the solver agrees with beam theory), and mirrored it is two arms whose energy is twice one', async () => {
+  const { curve, curveModel, curvePath, fixedGuidedModel } = await import('@rulecad/flexures');
+  const m = { E: 1810, strainLimit: 0.0125 }, p = { points: [[0, 0], [20, 0], [40, 0]], thickness: 1, width: 10, moves: 'y', across: 'free' };
+  const c = curveModel(p, m), g = fixedGuidedModel({ length: 40, thickness: 1, width: 10 }, m);
+  assert.ok(Math.abs(c.stiffness / g.stiffness - 1) < 0.01, `solver ${c.stiffness.toFixed(4)} N/mm, beam theory ${g.stiffness.toFixed(4)}`);
+  assert.ok(Math.abs(c.strain(1) / g.strain(1) - 1) < 0.01);
+  // A bowed arm and its mirror, pulled along the mirror line: twice the energy of the arm alone held across
+  const bow = { points: [[0, 30], [12, 18], [0, 5]], thickness: [1.2, 1.6, 1.2], width: 10, start: 270, end: -90, moves: 'x' };
+  const one = curveModel({ ...bow, across: 'held' }, m), two = curveModel({ ...bow, mirror: 0 }, m);
+  assert.ok(Math.abs(two.energy(-3) / one.energy(-3) - 2) < 1e-6);
+  // Its path passes through its points and leaves the root the way it's told
+  const path = curvePath({ ...bow, smooth: 10 }).path, lead = path[10]; // the lead's far end: ten samples a span
+  assert.deepEqual(path[0], [0, 30]); assert.deepEqual(path.at(-1), [0, 5]);
+  assert.ok(Math.abs(Math.atan2(lead[1] - path[0][1], lead[0] - path[0][0]) * 180 / Math.PI + 90) < 1, 'it leaves the root going down');
+  // Drawn, one piece each arm, extruded the right way out
+  const shape = curve({ ...bow, mirror: 0 }), box = measureBoundingBox(shape);
+  assert.ok(measureVolume(shape) > 0 && box[0][1] < -29 && box[1][1] > 29);
+});
+
+test('shaping a curve: from a meander, to a job, it stores the energy with its strain within the margin, keeps to its room, and picks the height that stores it', async () => {
+  const { shapeCurve, meander, curveModel } = await import('@rulecad/flexures');
+  assert.throws(() => meander({ root: [20, 30], tip: [0, 5], legs: 4, lo: 8, hi: 28 }), /odd/);
+  const material = { E: 1810, strainLimit: 0.0125 }, root = [24, 30], tip = [0, 5];
+  const job = { root, tip, start: 270, end: -90, region: { lo: [-6, 5.6], hi: [30, 30] }, gap: 0.3, thickness: [1, 2.5], moves: 'x', travel: -4, energy: 6, mirror: 0, width: [4, 20], margin: 0.8, guess: meander({ root, tip, legs: 3, lo: 9, hi: 27 }) };
+  const r = shapeCurve({ ...job, material, evaluations: 300, starts: 4, runs: 1, smooth: 3 });
+  assert.ok(r.ok, r.why.join('; '));
+  assert.ok(r.strain <= material.strainLimit * 0.8 * 1.001, `${(r.strain * 100).toFixed(2)}%`);
+  assert.ok(r.width >= 4 && r.width <= 20);
+  // The shape it gives, solved again at its height, stores what it said
+  const again = curveModel(r.params, material);
+  assert.ok(Math.abs(again.energy(-4) / r.energy - 1) < 0.02, `${again.energy(-4).toFixed(2)} mJ against ${r.energy.toFixed(2)}`);
+  assert.ok(r.energy >= job.energy * 0.98 || r.width === 20);
+});
+
+test('a flooded frame: solid everywhere but the room the moving parts sweep, so it prints free and stops what it holds; a thin arm tied on at one end is found', async () => {
+  const leafJob = { length: 30, thickness: 0.84, fillet: 1, tip: true, into: 0.84 };
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false }, physics: false, bodies: { tip: rect(30, -2, 37, 2) }, joints: { leaf: { kind: 'leaf', params: leafJob, at: [0, 0], from: 'ground', to: 'tip' } }, states: { bent: { leaf: 3 } }, sequence: ['rest', 'bent', 'rest'] };
+  const m = await lamina({ ...base, ground: rect(-8, -8, 0, 8), flood: { outline: rect(-8, -12, 45, 12) } });
+  assert.ok(m.findings.some((x) => x.code === 'lamina.flood'), 'it says the frame is flooded');
+  assert.ok(!m.findings.some((x) => x.code === 'lamina.free' && x.level === 'fail'), m.findings.filter((x) => x.code === 'lamina.free').map((x) => x.text).join('; '));
+  const g = m.outlines('rest').ground, area = (l) => Math.abs(l.reduce((s, p, i) => { const q = l[(i + 1) % l.length]; return s + p[0] * q[1] - q[0] * p[1]; }, 0) / 2);
+  assert.ok(g.reduce((s, l) => s + area(l), 0) > 53 * 24 * 0.5, 'most of the outline is solid');
+  // As a web: solid only round what moves and the edge, the rest windows; lighter, and still free
+  const web = await lamina({ ...base, ground: rect(-8, -8, 0, 8), flood: { outline: rect(-60, -30, 45, 30), band: 3 } }), slab = await lamina({ ...base, ground: rect(-8, -8, 0, 8), flood: { outline: rect(-60, -30, 45, 30) } });
+  const { measureVolume } = jscad.measurements;
+  assert.ok(measureVolume(web.parts.body) < measureVolume(slab.parts.body) * 0.8, 'the web is lighter');
+  assert.ok(!web.findings.some((x) => x.code === 'lamina.free' && x.level === 'fail'));
+  // A rail 1.5 mm thick standing off the frame at one end only bends: it's found
+  const rail = await lamina({ ...base, ground: [rect(-8, -8, 0, 8), rect(0, 6, 25, 7.5)] });
+  assert.ok(rail.findings.some((x) => x.code === 'lamina.rigid'), 'a free-ended rail is found');
+});
+
+test('a bridge: printed over a moving part on the top layers, the part cut down under it wherever it passes, standing on the frame both sides and no wider than the printer bridges', async () => {
+  const base = { height: 6, gap: 0.3, material: petg, printer: { ...fdm, bridge: 5 }, check: { fe: false }, physics: false,
+    bodies: { tip: rect(30, -2, 37, 2) }, joints: { leaf: { kind: 'leaf', params: { length: 30, thickness: 0.84, fillet: 1, tip: true, into: 0.84 }, at: [0, 0], from: 'ground', to: 'tip' } },
+    states: { bent: { leaf: 1 } }, sequence: ['rest', 'bent', 'rest'], flood: { outline: rect(-8, -12, 45, 12) } };
+  const m = await lamina({ ...base, bridges: [{ shape: rect(32, -6, 35, 6) }] });
+  const b = m.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(b.length && b.every((x) => x.level === 'pass'), b.map((x) => x.level + " " + x.text).join('; '));
+  assert.ok(b.some((x) => /tip passes under it/.test(x.text)), 'the tip is cut down under it');
+  const { measureVolume } = jscad.measurements, flat = await lamina(base);
+  assert.ok(Math.abs(measureVolume(m.parts.body) - measureVolume(flat.parts.body)) > 1, 'the bridge and the cut change the print');
+  // Too wide a span, and one standing on nothing, are found
+  const wide = await lamina({ ...base, bridges: [{ shape: rect(28, -11, 39, -1) }] });
+  assert.ok(wide.findings.some((x) => x.code === 'lamina.bridge' && x.level === 'fail'), 'a bridge too wide, or on one side, fails');
+  // A floor under it instead: the tip on its leaf turns as it passes, and a floor's arch is for what slides
+  const floor = await lamina({ ...base, bridges: [{ shape: rect(32, -6, 35, 6), side: 'bottom' }] });
+  assert.ok(floor.findings.some((x) => x.code === 'lamina.bridge' && x.level === 'fail' && /turns/.test(x.text)), 'a floor under something that turns fails');
+});
+
+test('a floor: what slides over it is arched up at 45°, clear of it all along, and the print has no overhang past 45°', async () => {
+  const L = 30, t = 0.84;
+  const m = await lamina({
+    height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 5 }, check: { fe: false }, physics: false,
+    bodies: { slider: [rect(L, -4, L + 6, 4), rect(L + 6, -1.5, L + 40, 1.5)] },
+    joints: { spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 5, shuttle: 3, base: 3, fillet: 1, into: t }, at: [0, 0], angle: -90, from: 'ground', to: 'slider' } },
+    states: { drawn: { spring: 4 } }, sequence: ['rest', 'drawn', 'rest'],
+    flood: { outline: rect(-20, -40, L + 50, 12), keep: [] }, bridges: [{ shape: rect(L + 22, -4, L + 26, 4), side: 'bottom' }],
+  });
+  const b = m.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(b.length && b.every((x) => x.level === 'pass') && b.some((x) => /arched up/.test(x.text)), b.map((x) => x.level + " " + x.text).join('; '));
+  const { check } = await import('@rulecad/printcheck');
+  const found = check(jscad.geometries.geom3.toPolygons(m.parts.body).map((p) => p.vertices), { bed: 256, overhang: 45, layer: 0.2, line: 0.42, bridge: 5 });
+  const said = found.find((x) => /overhang/i.test(x.text));
+  assert.ok(said && said.level === 'pass', said?.text ?? found.map((x) => x.text).join('; '));
+});
+
+test('across the plane: a strip as tall as the print is stiff bending across it, as beam theory says, and soft twisting', async () => {
+  const { beamSystem } = await import('@rulecad/flexures'), { outOfPlane } = await import('./outofplane.mjs');
+  const E = 1810, L = 40, t = 1.26, h = 10;
+  const sys = beamSystem({ bodies: { ground: { at: [0, 0], fixed: true }, tip: { at: [L, 0] } }, beams: [{ name: 'b', path: [[0, 0], [L, 0]], thickness: t, width: h, E, from: 'ground', to: 'tip' }], segments: 20 });
+  const lift = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 0], force: 1 }] }).lift('tip', [L, 0]);
+  assert.ok(Math.abs(lift / (L ** 3 / (3 * E * t * h ** 3 / 12)) - 1) < 1e-3);
+  const G = E / (2 * 1.38), J = (h * t ** 3) / 3 * (1 - 0.63 * t / h), twist = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 10], force: 1 }] }).bodies.tip[1];
+  assert.ok(Math.abs(twist / ((10 * L) / (G * J)) - 1) < 1e-3, 'it twists as G J says');
+  // Held across the plane at its tip (a guide), it hardly moves
+  const held = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 10], force: 1 }], springs: [{ body: 'tip', at: [L, 5], k: 1e3 }, { body: 'tip', at: [L, -5], k: 1e3 }] });
+  assert.ok(Math.abs(held.lift('tip', [L, 10])) < 0.01);
+  // A guide with play holds nothing until the part has moved across its gap, then holds it there, and only that way
+  const free = outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 0], force: 0.01 }] }).lift('tip', [L, 0]);
+  const loose = (force) => outOfPlane(sys, { loads: [{ body: 'tip', at: [L, 0], force }], springs: [{ body: 'tip', at: [L, 0], k: 1e3, gap: 0.3 }] }).lift('tip', [L, 0]);
+  assert.ok(Math.abs(loose(0.01) - free) < 1e-9, 'within its play, as if it weren\'t there');
+  const far = loose(0.01 * (0.6 / free)); // pushed twice as far as the play, unheld
+  assert.ok(far > 0.3 && far < 0.31, `stopped just past its play: ${far.toFixed(3)} mm`);
+  assert.ok(loose(-0.01 * (0.6 / free)) < -0.3 && loose(-0.01 * (0.6 / free)) > -0.31, 'either way');
+});
+
+test('a guide: a ridge on what slides runs in a groove in the frame, flanks at 45°, so it stays in the plane and prints without support', async () => {
+  const L = 30, t = 0.84, rod = rect(L + 6, -1.5, L + 40, 1.5);
+  const spec = {
+    height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 5 }, check: { fe: false },
+    bodies: { slider: [rect(L, -4, L + 6, 4), rod] },
+    joints: { spring: { kind: 'parallelGuide', params: { length: L, thickness: t, gap: 5, shuttle: 3, base: 3, fillet: 1, into: t }, at: [0, 0], angle: -90, from: 'ground', to: 'slider' } },
+    states: { drawn: { spring: 4 } }, sequence: ['rest', 'drawn', 'rest'],
+    flood: { outline: rect(-20, -40, L + 50, 12) },
+  };
+  const free = await lamina(spec), held = await lamina({ ...spec, guides: [{ body: 'slider', shape: rect(L + 26, -8, L + 32, 8) }] });
+  const g = held.findings.find((x) => x.code === 'lamina.guide');
+  assert.ok(g && g.level === 'pass', g?.text);
+  const across = (m) => m.findings.find((x) => x.code === 'lamina.across' && x.body === 'slider').most;
+  assert.ok(across(held) < across(free) / 10, `held ${across(held).toFixed(3)} mm against ${across(free).toFixed(3)} free`);
+  const { measureVolume } = jscad.measurements;
+  assert.ok(Math.abs(measureVolume(held.parts.body) - measureVolume(free.parts.body)) > 0.5, 'the ridge and the groove change the print');
+  const { check } = await import('@rulecad/printcheck');
+  const said = check(jscad.geometries.geom3.toPolygons(held.parts.body).map((p) => p.vertices), { bed: 256, overhang: 45, layer: 0.2, line: 0.42, bridge: 5 }).find((x) => /overhang/i.test(x.text));
+  assert.ok(said && said.level === 'pass', said?.text);
+});
+
+test('a curve turned about a point: a straight one turned about its middle bends round evenly, as a moment bends it (EIθ/L, strain tθ/2L)', async () => {
+  const { curveSolver, curveModel } = await import('./curves.mjs');
+  const m = { E: 1810, strainLimit: 0.0125 }, L = 20, t = 1.2, w = 10, EI = (1810 * w * t ** 3) / 12;
+  const p = { points: [[0, 0], [L / 2, 0], [L, 0]], thickness: t, width: w, moves: 'turn', about: [L / 2, 0] };
+  const r = curveSolver(p, m).solve(0.01);
+  assert.ok(Math.abs(r.force / ((EI * 0.01) / L) - 1) < 0.02, `moment ${r.force.toFixed(3)} N·mm, theory ${((EI * 0.01) / L).toFixed(3)}`);
+  assert.ok(Math.abs(r.strain / ((t * 0.01) / (2 * L)) - 1) < 0.03, `strain ${r.strain}`);
+  // Further round, turning about a fixed point stretches it too (its tip's arc isn't the bent leaf's): the limit comes
+  // sooner than bending alone says
+  const most = curveModel(p, m).travel(0.0125);
+  assert.ok(most > 0.15 && most < (0.0125 * 2 * L) / t, `the turn the limit allows: ${most.toFixed(3)} rad`);
+  // A bent one isn't the same both ways: asked the way it turns, it may go as far as that way allows, never less than
+  // the nearer way, which is what it's held to unasked
+  const bent = curveModel({ ...p, points: [[0, 0], [L / 2, 3], [L, 0]] }, m), up = bent.travel(0.0125, 1), down = bent.travel(0.0125, -1);
+  assert.ok(Math.abs(Math.min(up, down) - bent.travel(0.0125)) < 1e-6 && Math.abs(up - down) > 0.01, `one way ${up.toFixed(3)}, the other ${down.toFixed(3)}`);
+});
+
+test('a flooded frame with holes: each in a solid boss no window opens into, and one in the moving parts\' room fails', async () => {
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false }, physics: false, bodies: { tip: rect(30, -2, 37, 2) }, joints: { leaf: { kind: 'leaf', params: { length: 30, thickness: 0.84, fillet: 1, tip: true, into: 0.84 }, at: [0, 0], from: 'ground', to: 'tip' } }, states: { bent: { leaf: 3 } }, sequence: ['rest', 'bent', 'rest'], ground: rect(-8, -8, 0, 8) };
+  const holes = [{ at: [-50, 22], diameter: 4.1, wall: 3 }, { at: [38, -22], diameter: 4.1, wall: 3 }];
+  const m = await lamina({ ...base, flood: { outline: rect(-60, -30, 45, 30), band: 3, holes } });
+  const h = m.findings.filter((x) => x.code === 'lamina.holes');
+  assert.equal(h.length, 2); assert.ok(h.every((x) => x.level === 'pass'), h.map((x) => x.text).join('; '));
+  const g = m.outlines('rest').ground, inside = (l, [x, y]) => l.reduce((c, a, i) => { const b = l[(i + 1) % l.length]; return (a[1] > y) !== (b[1] > y) && x < a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]) ? !c : c; }, false);
+  const solidAt = (p) => g.reduce((c, l) => (inside(l, p) ? !c : c), false);
+  assert.ok(!solidAt([-50, 22]) && solidAt([-50, 22 + 3.5]) && solidAt([-50 + 3.5, 22]), 'a hole, with solid round it');
+  const bad = await lamina({ ...base, flood: { outline: rect(-60, -30, 45, 30), holes: [{ at: [20, 0], diameter: 4.1 }] } });
+  assert.ok(bad.findings.some((x) => x.code === 'lamina.holes' && x.level === 'fail'), 'one where the leaf swings is found');
+});
+
+
+test('a curve\'s end is seated: where it ends oblique to its body\'s edge, a block square to it stands out to hold its flare and run on (and says so); a square end in solid is left alone', async () => {
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false }, physics: false, ground: rect(-8, -10, 0.5, 10), states: { bent: { hinge: 0.3 } }, sequence: ['rest', 'bent', 'rest'] };
+  const curve = (end) => ({ points: [[0, 0], [10, end / 2], [20, end]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: Math.atan2(end, 20) * (180 / Math.PI), moves: 'turn', about: [10, end / 2] });
+  // Square: straight along x into a block that covers its end: nothing to add
+  const square = await lamina({ ...base, bodies: { arm: rect(20, -5, 30, 5) }, joints: { hinge: { kind: 'curve', params: curve(0), from: 'ground', to: 'arm' } } });
+  const s = square.findings.filter((x) => x.code === 'lamina.seat');
+  assert.ok(s.length === 1 && s[0].level === 'pass', s.map((x) => x.text).join('; '));
+  // Oblique, ending just under the body's top edge: the flare would stick out of it, so a seat stands out there
+  const oblique = await lamina({ ...base, bodies: { arm: rect(20, -5, 30, 6.5) }, joints: { hinge: { kind: 'curve', params: curve(6), from: 'ground', to: 'arm' } } });
+  const o = oblique.findings.filter((x) => x.code === 'lamina.seat');
+  assert.ok(o.some((x) => x.level === 'info' && x.part === 'arm' && x.end === 'end'), o.map((x) => x.text).join('; '));
+  const g = oblique.outlines('rest'), inside = (l, [x, y]) => l.reduce((c, a, i) => { const b = l[(i + 1) % l.length]; return (a[1] > y) !== (b[1] > y) && x < a[0] + ((y - a[1]) * (b[0] - a[0])) / (b[1] - a[1]) ? !c : c; }, false);
+  const solid = (p) => g.arm.reduce((c, l) => (inside(l, p) ? !c : c), false), u = [Math.cos(Math.atan2(6, 20)), Math.sin(Math.atan2(6, 20))];
+  const plug = g.hinge.flat().filter(([x, y]) => (x - 20) * u[0] + (y - 6) * u[1] > 0.05);
+  assert.ok(plug.length > 0 && plug.every(solid), 'all of its run on inside the arm and its seat');
+  assert.ok(solid([20 + u[0] * 1 - u[1] * 1.8, 6 + u[1] * 1 + u[0] * 1.8]), 'the seat stands above the arm\'s top edge, beside the flare');
+  assert.ok(!oblique.findings.some((x) => x.level === 'fail' && x.code === 'lamina.free'), 'and nothing else is touched');
+  // A frame drawn as it is (a flooded one) isn't given seats, only checked: a root whose flare hangs out of it fails
+  const bare = await lamina({ ...base, ground: rect(-8, -10, 0.5, 0.4), groundRounded: true, bodies: { arm: rect(20, -5, 30, 5) }, joints: { hinge: { kind: 'curve', params: curve(0), from: 'ground', to: 'arm' } } });
+  assert.ok(bare.findings.some((x) => x.code === 'lamina.seat' && x.level === 'fail' && x.end === 'root'), bare.findings.filter((x) => x.code === 'lamina.seat').map((x) => x.text).join('; '));
+});
+
+test('room: a frame that fills where a spring bends to fails, though it clears the spring at rest; cleared, it passes', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'y' };
+  const base = { height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false, frame: false }, bodies: { tip: rect(20, -3, 26, 3) }, joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'tip' } }, states: { up: { s: 3 } }, sequence: ['rest', 'up', 'rest'] };
+  const wall = rect(-8, -10, 0.5, 10);
+  const blocked = await lamina({ ...base, ground: [wall, rect(8, 1.1, 12, 4)] }); // (clear of the spring at rest by 0.6 mm; in its way bent up)
+  const r = blocked.findings.filter((x) => x.code === 'lamina.room');
+  assert.ok(r.some((x) => x.level === 'fail' && x.part === 's'), r.map((x) => x.text).join('; ') || 'no room finding');
+  const clear = await lamina({ ...base, ground: wall });
+  const c = clear.findings.filter((x) => x.code === 'lamina.room');
+  assert.ok(c.length === 1 && c[0].level === 'pass', c.map((x) => x.text).join('; '));
+});
+
+test('a pin printed in place: a pawl turns on it, sprung by a curve, the pin carrying the load; a floor joins the post to its body and a cap holds the pawl down', async () => {
+  const spring = { points: [[0, 0], [10, 2], [20, 0]], thickness: 0.9, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'y' };
+  const base = { height: 8, gap: 0.3, material: petg, printer: { ...fdm, fit: 0.3 }, check: { fe: false, frame: false }, ground: [rect(-8, -10, 0.5, 10), rect(-8, -22, 60, -9)], bodies: { pawl: rect(20, -4, 46, 4) }, grips: { b: [46, 0] }, states: { up: { b: 4 } }, sequence: ['rest', 'up', 'rest'] };
+  const pin = { d: 3, at: [32, 0], under: rect(30, -9.5, 34, 0) };
+  const r = await lamina({ ...base, joints: { b: { kind: 'curve', params: spring, from: 'ground', to: 'pawl', pin } } });
+  const pins = r.findings.filter((x) => x.code === 'lamina.pin');
+  assert.ok(pins.length === 2 && pins.every((x) => x.level === 'pass'), pins.map((x) => x.text).join('; '));
+  // Turned 4° about the pin: the spring's end, 12 mm from it, rises 0.84 mm; the hand at 14 mm needs a few newtons, not
+  // what dragging the pin across the frame would take
+  const force = r.findings.find((x) => x.code === 'lamina.force');
+  assert.ok(force && /takes up to ([\d.]+) N/.test(force.text) && +force.text.match(/takes up to ([\d.]+) N/)[1] < 10, force?.text);
+  assert.ok(r.findings.some((x) => x.code === 'lamina.beams' && x.level === 'pass'), r.findings.filter((x) => x.code === 'lamina.beams').map((x) => x.text).join('; '));
+  // Across the plane the cap and the floor hold it within their lift and the pin's play
+  const across = r.findings.find((x) => x.code === 'lamina.across' && x.body === 'pawl');
+  assert.ok(across.most < 0.5, across.text);
+  // In 3D: the post stands the full height, capped; without a floor it isn't joined to anything
+  const bb = measureBoundingBox(r.parts.body);
+  assert.ok(Math.abs(bb[1][2] - 8) < 1e-6, `top ${bb[1][2]}`);
+  const loose = await lamina({ ...base, joints: { b: { kind: 'curve', params: spring, from: 'ground', to: 'pawl', pin: { d: 3, at: [32, 0] } } } });
+  assert.ok(loose.findings.some((x) => x.code === 'lamina.pin' && x.level === 'fail'));
+});
+
+test('a hand holding a part where a catch takes it lets go: the catch carries the spring\'s load, not the hand, though the part doesn\'t move', async () => {
+  const m = await catapult({ set: true });
+  const last = m.frames.filter((fr) => fr.forces && fr.from === 'set' && fr.to === 'cocked').at(-1);
+  assert.ok(last, 'physics frames from set to cocked');
+  const F = (kind, on, by) => last.forces.filter((x) => x.kind === kind && x.on === on && x.by === by).reduce((a, x) => a + Math.hypot(...x.force), 0);
+  const hook = F('contact', 'pusher', 'hook'), spring = F('spring', 'ground', 'spring');
+  assert.ok(spring > 0.5 && Math.abs(hook / spring - 1) < 0.1, `the hook takes ${hook.toFixed(2)} N, the spring pulls ${spring.toFixed(2)} N: nothing else holds it`);
+  assert.deepEqual(fails(m, 'lamina.force'), []);
+});
+
+test('a strap from a moving body: over and under another, to a post of its own in a slot there, a clevis; what passes it is cut back, and it joins its body to its post', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'y' };
+  // A tab on a spring, rising 3 mm; a slotted bar beside it on its own spring; the tab's post rides in the bar's slot
+  const disc = (c, r) => jscad.primitives.circle({ radius: r, center: c, segments: 32 });
+  const r = await lamina({ height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 10 }, check: { fe: false, frame: false },
+    ground: [rect(-8, -20, 0.5, 20)],
+    bodies: { tab: [rect(20, -3, 26, 3), disc([34, 0], 1.5)], bar: jscad.booleans.subtract(rect(30, -3, 40, 3.5 + 30), rect(32.5, -2, 35.5, 5)) },
+    joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'tab' } , t: { kind: 'curve', params: { ...spring, points: [[0, 12], [10, 12], [20, 12]] }, from: 'ground', to: 'bar' } },
+    bridges: [{ body: 'tab', shape: rect(22, -1, 35, 1) }, { body: 'tab', shape: rect(22, -1, 35, 1), side: 'bottom' }],
+    states: { up: { s: 2 } }, sequence: ['rest', 'up', 'rest'] });
+  const br = r.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(br.length >= 4 && br.every((x) => x.level === 'pass'), br.map((x) => `${x.level} ${x.text}`).join('; '));
+  assert.ok(br.some((x) => /tab's upper strap stands on tab on both sides/.test(x.text)) && br.some((x) => /bar passes over it/.test(x.text)), br.map((x) => x.text).join('; '));
+  // In 3D, through the upper strap's layers: the strap and the bar either side of it are apart, by the gap round it
+  const polys = jscad.geometries.geom3.toPolygons(r.parts.body), z = 8 - 0.4, near = [];
+  for (const q of polys) { const zs = q.vertices.map((v) => v[2]); if (Math.min(...zs) < z && Math.max(...zs) > z && Math.max(...zs) - Math.min(...zs) > 0.5) for (const v of q.vertices) if (v[0] > 21 && v[0] < 36 && Math.abs(v[1]) < 3.5) near.push(Math.abs(v[1])); }
+  const edges = [...new Set(near.map((y) => +y.toFixed(2)))].sort((a, b) => a - b);
+  assert.ok(edges.some((y) => Math.abs(y - 1) < 0.03) && edges.some((y) => Math.abs(y - 1.6) < 0.03), `walls at |y| ${edges.join(', ')}: the strap's side at 1, the bar's cut back a gap from it, at 1.6`);
+});

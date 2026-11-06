@@ -24,11 +24,15 @@ const block = (x, y, z, size) => cuboid({ center: [x, y, z], size });
  * @param {Leaf} p
  * @returns {object} the shape, a JSCAD geom3
  */
-export function leaf({ length, thickness, width }) {
+export function leaf(p) {
+  if (shaped(p)) return beam(p, 'leaf');
+  const { length, thickness, width } = p;
   return block(length / 2, 0, width / 2, [length, thickness, width]);
 }
 /** @param {Leaf} p @param {Material} m @returns {Model} */
-export function leafModel({ length: L, thickness: t, width: w }, { E }) {
+export function leafModel(p, m) {
+  if (shaped(p)) return beamModel(p, m, 'leaf');
+  const { length: L, thickness: t, width: w } = p, { E } = m;
   const stiffness = (E * w * t ** 3) / (4 * L ** 3), strain = (d) => (3 * t * d) / (2 * L * L);
   return { stiffness, strain, travel: (e) => (2 * L * L * e) / (3 * t), stress: (d) => E * strain(d) };
 }
@@ -38,13 +42,100 @@ export function leafModel({ length: L, thickness: t, width: w }, { E }) {
  * it parallel). Four times as stiff as a leaf: E w t³ / L³ (12EI/L³); strain at either end 3tδ / L².
  * @param {Leaf} p
  */
-export function fixedGuided({ length, thickness, width }) {
+export function fixedGuided(p) {
+  if (shaped(p)) return beam(p, 'guided');
+  const { length, thickness, width } = p;
   return block(length / 2, 0, width / 2, [length, thickness, width]);
 }
 /** @param {Leaf} p @param {Material} m @returns {Model} */
-export function fixedGuidedModel({ length: L, thickness: t, width: w }, { E }) {
+export function fixedGuidedModel(p, m) {
+  if (shaped(p)) return beamModel(p, m, 'guided');
+  const { length: L, thickness: t, width: w } = p, { E } = m;
   const stiffness = (E * w * t ** 3) / L ** 3, strain = (d) => (3 * t * d) / (L * L);
   return { stiffness, strain, travel: (e) => (L * L * e) / (3 * t), stress: (d) => E * strain(d) };
+}
+
+// ---------- shaped beams ----------
+// A beam needn't be a bar. Its thickness can follow the bending moment, so the strain is the same all along it (a
+// uniform-strength beam: thick where it bends most, thin where it bends least), and it can meet its block in a round,
+// not a square corner. A square inside corner concentrates the strain two or three times over (and on a printed part
+// that's where it yields and stays bent); a round of a radius about the beam's thickness brings that down to a
+// little over one. A uniform-strength beam stores up to three times the energy a bar of the same peak strain does.
+//   taper: 0 (a bar) to 1 (the uniform-strength profile), the thickness the moment asks for, never under `least`
+//   fillet: the radius of the round where the beam meets its block, at each end that's held (both, for a guided
+//   beam; the root, and the tip if `tip` is set, for a leaf)
+// `thickness` is the most it is, at the root. The models integrate the beam's own profile, rounds included; the
+// rounds' concentration is what a finite-element check (lamina's) measures.
+
+/** @typedef {Leaf & { taper?: number, fillet?: number, least?: number, tip?: boolean, into?: number }} ShapedLeaf into: how far the shape runs on into the blocks at its held ends, so they join */
+const shaped = (p) => !!(p.taper || p.fillet);
+/**
+ * A shaped beam's half-thickness along it, rounds included.
+ * @param {ShapedLeaf} p @param {'leaf' | 'guided'} ends
+ * @returns {(s: number) => number} at s mm from the root
+ */
+export function beamProfile({ length: L, thickness: t, taper = 0, fillet = 0, least, tip = false }, ends = 'leaf') {
+  const lo = least ?? t / 2, r = fillet;
+  const ideal = (s) => (ends === 'leaf' ? Math.sqrt(Math.max(0, 1 - s / L)) : Math.sqrt(Math.abs(1 - (2 * s) / L))); // moment's share, square-rooted
+  const core = (s) => Math.max(lo, t * ((1 - taper) + taper * ideal(s))) / 2;
+  const round = (s, from) => { const d = Math.abs(s - from); return d >= r ? 0 : core(from) + r - Math.sqrt(r * r - (r - d) ** 2); };
+  return (s) => Math.max(core(s), r ? round(s, 0) : 0, r && (ends === 'guided' || tip) ? round(s, L) : 0);
+}
+function beam(p, ends) {
+  const { length: L, width } = p, half = beamProfile(p, ends), n = Math.max(60, Math.ceil(L / 0.25)), r = p.fillet || 0, into = p.into ?? 0;
+  const xs = [...new Set([...Array.from({ length: n + 1 }, (_, i) => (L * i) / n), ...Array.from({ length: 25 }, (_, i) => (r * i) / 24), ...Array.from({ length: 25 }, (_, i) => L - (r * i) / 24)])].filter((x) => x >= 0 && x <= L).sort((a, b) => a - b);
+  const tipHeld = ends === 'guided' || p.tip, core = p.thickness / 2; // the run-on into a block is the beam's own thickness, so where the beam is flush with the block's edge nothing pokes out
+  const ends2 = [...(into ? [[-into, core], [0, core]] : []), ...xs.map((x) => [x, half(x)]), ...(into && tipHeld ? [[L, core], [L + into, core]] : [])];
+  const lower = ends2.map(([x, y]) => [x, -y]), upper = ends2.slice().reverse(); // anticlockwise: along the underside, back along the top
+  return jscad.extrusions.extrudeLinear({ height: width }, jscad.primitives.polygon({ points: [...lower, ...upper] }));
+}
+/**
+ * A shaped beam's model, from its own profile: a leaf (a force at the tip) or a guided beam (the far end held from
+ * turning), integrated along it.
+ * @param {ShapedLeaf} p @param {Material} m @param {'leaf' | 'guided'} ends
+ * @returns {Model & { least: number, energy: (travel: number) => number }}
+ */
+export function beamModel(p, { E }, ends = 'leaf') {
+  const { length: L, width: w } = p, half = beamProfile(p, ends), n = 600, ds = L / n;
+  const s = Array.from({ length: n }, (_, i) => (i + 0.5) * ds), t = s.map((x) => 2 * half(x)), EI = t.map((x) => (E * w * x ** 3) / 12);
+  const m0 = ends === 'guided' ? s.reduce((a, x, i) => a + (L - x) / EI[i], 0) / EI.reduce((a, x) => a + 1 / x, 0) : 0; // the moment that holds the end square, per unit force
+  const M = s.map((x) => L - x - m0); // per unit force at the tip
+  const flex = M.reduce((a, x, i) => a + (x * (L - s[i])) / EI[i], 0) * ds, stiffness = 1 / flex;
+  const perForce = Math.max(...M.map((x, i) => (Math.abs(x) * t[i] / 2) / EI[i])); // the most strain per unit force: M c / (E I)
+  const strain = (d) => stiffness * d * perForce;
+  return { stiffness, strain, travel: (e) => e / (stiffness * perForce), stress: (d) => E * strain(d), least: Math.min(...t), energy: (d) => (stiffness * d * d) / 2 };
+}
+
+/**
+ * A pivot pair: two leaves on lines that meet at a point, so what they hold turns about that point (a virtual pivot,
+ * or remote centre) though nothing is there. Pushed towards or away from the point along either leaf, it's as stiff as
+ * the leaves are long; turned, as soft as they are in bending. The point can lie in empty space beside the part, where
+ * no hinge could go: a sear's pivot over its catch, so the load runs through the leaves and not across them.
+ * Drawn with the point at the origin: each leaf on its own direction (`angles`, degrees, the way from the point
+ * along the leaf), from `near` mm out (its tip, on the part that turns) to `near + length` (its root, on the frame).
+ * @param {ShapedLeaf & { angles: number[], near: number }} p
+ */
+export function pivotPair(p) {
+  const { angles, near } = p;
+  return union(...angles.map((a) => {
+    const r = (a * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r), d = near + p.length; // the root, out along the line
+    const leaf = p.taper ? beam({ ...p, fillet: 0, into: 0, tip: true }, 'guided') : block(p.length / 2, 0, p.width / 2, [p.length, p.thickness, p.width]); // plain ends: a lamina rounds them into whatever they meet
+    return jscad.transforms.translate([c * d, s * d, 0], jscad.transforms.rotateZ(r + Math.PI, leaf)); // root out at d, running in towards the point
+  }));
+}
+/**
+ * Each leaf's tip held to the part turning about the point: displaced near × θ across the leaf and turned θ, its root
+ * fixed. Stiffness in N·mm a radian; strain at the tip, the worse end. Checked against the beam solver.
+ * @param {ShapedLeaf & { angles: number[], near: number }} p @param {Material} m
+ */
+export function pivotPairModel(p, { E }) {
+  const { length: L, thickness: t, width: w, near: d } = p, I = (w * t ** 3) / 12, n = p.angles.length;
+  // Per leaf, its tip moved v = −dθ across it and turned φ = θ: energy ½ EI/L³ (12 v² − 12 L v φ + 4 L² φ²), moments
+  // EI (6d + 4L) θ / L² at the tip and EI (6d + 2L) θ / L² at the root. The point beyond the tips bends each leaf into
+  // an S: the nearer the tips come to it (d small) and the longer the leaves, the less strain a turn costs
+  const stiffness = (n * E * I * (12 * d * d + 12 * L * d + 4 * L * L)) / L ** 3;
+  const per = ((t / 2) * (6 * d + 4 * L)) / (L * L); // strain a radian, at the tip
+  return { stiffness, strain: (th) => per * Math.abs(th), angle: (e) => e / per, travel: (e) => e / per, stress: (th) => E * per * Math.abs(th) };
 }
 
 /**
@@ -54,12 +145,15 @@ export function fixedGuidedModel({ length: L, thickness: t, width: w }, { E }) {
  * @param {Leaf & { gap: number, shuttle?: number, base?: number }} p gap: between the leaves; shuttle, base: the
  *   blocks' thickness along x (default 2 × thickness, at least 3 mm)
  */
-export function parallelGuide({ length, thickness, width, gap, shuttle, base }) {
+export function parallelGuide(p) {
+  const { length, thickness, width, gap, shuttle, base } = p;
   const end = Math.max(3, 2 * thickness), s = shuttle ?? end, b = base ?? end, y = (gap + thickness) / 2;
+  const one = (sign) => (shaped(p) ? translate([0, sign * y, 0], beam(p, 'guided')) : block(length / 2, sign * y, width / 2, [length, thickness, width]));
+  const across = gap + 2 * thickness + 2 * (p.fillet || 0); // the blocks reach past the beams' rounds, so each round meets a face
   return union(
-    block(-b / 2, 0, width / 2, [b, gap + 2 * thickness, width]),
-    block(length / 2, y, width / 2, [length, thickness, width]), block(length / 2, -y, width / 2, [length, thickness, width]),
-    block(length + s / 2, 0, width / 2, [s, gap + 2 * thickness, width]),
+    block(-b / 2, 0, width / 2, [b, across, width]),
+    one(1), one(-1),
+    block(length + s / 2, 0, width / 2, [s, across, width]),
   );
 }
 /** @param {Leaf} p @param {Material} m @returns {Model & { drop: (travel: number) => number }} */
@@ -83,6 +177,48 @@ export function serpentine({ length, thickness, width, turns, pitch }) {
 }
 /** @param {Leaf & { turns: number }} p @param {Material} m @returns {Model} */
 export function serpentineModel({ length: L, thickness: t, width: w, turns: n }, { E }) {
+  const stiffness = (E * w * t ** 3) / (n * L ** 3), strain = (d) => (3 * t * (d / n)) / (L * L);
+  return { stiffness, strain, travel: (e) => (n * L * L * e) / (3 * t), stress: (d) => E * strain(d) };
+}
+
+/**
+ * A wave spring: legs across, stacked a pitch apart, each joined to the next by a round U-bend (no square corners),
+ * thicker at the bends where it bends most. Squashed along its stack (y) it shortens; squashed far enough its legs meet
+ * and it stacks solid, which is its own hard stop. The spring printed blasters use along their barrels. Drawn with its
+ * first leg from the origin along x, the stack up y.
+ * @param {{ span: number, pitch: number, turns: number, thickness: number, width: number, bend?: number, smooth?: number }} p
+ *   span: each leg's length; pitch: leg to leg; turns: how many legs; bend: the thickness at the bends (default 1.4 ×)
+ */
+export function waveSpringPath({ span, pitch, turns, thickness: t, bend, smooth = 12 }) {
+  const R = pitch / 2, tb = bend ?? 1.4 * t, path = [[0, 0]], thick = [], ramp = Math.min(span / 3, pitch * 1.5), cuts = 8;
+  for (let i = 0; i < turns; i++) {
+    const y = i * pitch, right = i % 2 === 0, x0 = right ? 0 : span, x1 = right ? span : 0;
+    // The leg, its thickness grading smoothly from the bend's at its ends to its own in its middle (a step would be a notch)
+    for (let k = 1; k <= cuts; k++) {
+      const a = (k - 0.5) / cuts, along = a * span, fromEnd = Math.min(i ? along : Infinity, i < turns - 1 ? span - along : Infinity), w = Math.max(0, 1 - fromEnd / ramp);
+      path.push([x0 + ((x1 - x0) * k) / cuts, y]); thick.push(t + (tb - t) * w * w * (3 - 2 * w));
+    }
+    if (i === turns - 1) break;
+    for (let k = 1; k <= smooth; k++) { // the U-bend: half a circle round the leg's end
+      const a = -Math.PI / 2 + (Math.PI * k) / smooth;
+      path.push([right ? span + R * Math.cos(a) : -R * Math.cos(a), y + R + R * Math.sin(a)]);
+      thick.push(tb);
+    }
+  }
+  return { path, thickness: thick };
+}
+export function waveSpring(p) {
+  const { path, thickness } = waveSpringPath(p), side = (k) => { // offset the path k = ±1 by half its thickness there
+    return path.map((pt, i) => {
+      const a = path[Math.max(0, i - 1)], b = path[Math.min(path.length - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+      const h = (thickness[Math.min(i, thickness.length - 1)] + thickness[Math.max(0, i - 1)]) / 4;
+      return [pt[0] - (k * dy * h) / l, pt[1] + (k * dx * h) / l];
+    });
+  };
+  return jscad.extrusions.extrudeLinear({ height: p.width }, jscad.primitives.polygon({ points: [...side(-1), ...side(1).reverse()] }));
+}
+/** Each leg a beam guided at its bends, the legs in series: a first guess, the bends' own give left out (the beam solver has it). */
+export function waveSpringModel({ span: L, thickness: t, width: w, turns: n }, { E }) {
   const stiffness = (E * w * t ** 3) / (n * L ** 3), strain = (d) => (3 * t * (d / n)) / (L * L);
   return { stiffness, strain, travel: (e) => (n * L * L * e) / (3 * t), stress: (d) => E * strain(d) };
 }
@@ -656,6 +792,11 @@ export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, 
 }
 
 export { ports, size, report, models } from './compose.mjs';
+export { lamina, flexureMaterial } from './lamina.mjs';
+export { beamSystem, equilibrium, energyOf, shapeOf, fixedLoads } from './beams.mjs';
+export { place, combine } from './modules.mjs';
+export { curve, curvePath, curveLines, curveModel, curveSolver, curveClearance } from './curves.mjs';
+export { shapeCurve, meander } from './synth.mjs';
 
 /**
  * A contact-aided leaf: a cantilever with a stop partway along it, a gap off the beam, so it bends freely until the
