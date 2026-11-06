@@ -56,7 +56,7 @@ export function runSandboxed(d, values, meta, engine = 'jscad', optional = []) {
   // The child gets none of this process's environment but what Node needs to start: tokens and keys stay out of it
   const env = Object.fromEntries(['PATH', 'SystemRoot', 'windir', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'PHYS_DEBUG'].filter((k) => process.env[k] != null).map((k) => [k, process.env[k]]));
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...env, CAD_SANDBOX_PROJECT: project } });
+    const child = spawn(process.execPath, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...env, CAD_SANDBOX_PROJECT: project, NODE_NO_WARNINGS: '1' } }); // (its stderr is passed on: what the design prints, not Node's notes on its own flags)
     const out = [], err = [];
     child.stdout.on('data', (b) => out.push(b));
     child.stderr.on('data', (b) => err.push(b));

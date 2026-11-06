@@ -720,6 +720,7 @@ test('a mistake in a design is named, with its file and line: a misspelt variabl
       const tryIt = (name, js) => { object(ws, `demo/${name}`, { variables: vars }, js); return run(ws, ['check', `demo/${name}`], { ...trust, CAD_NO_CACHE: '1' }); }; // (each run afresh: a kept build doesn't run the design)
       const typo = tryIt('typo', shape('return jscad.primitives.cuboid({ size: [v.widht, v.width, v.width] })'));
       assert.match(typo.out, /v\.widht: the design has no variable "widht" \(did you mean "width"\?\).*typo\.js:3\)/, 'not undefined, and another shape drawn');
+      assert.doesNotMatch(typo.out, /Warning/, 'Node\'s notes on the sandbox\'s own flags stay out of it');
       assert.equal(typo.code, 1);
       assert.match(tryIt('nothing', shape('jscad.primitives.cuboid({ size: [v.width, v.width, v.width] })')).out, /main\(\) returned no shape.*nothing\.js/);
       assert.match(tryIt('syntax', shape('retrun jscad.primitives.cuboid({ size: [v.width, v.width, v.width] })')).out, /Unexpected identifier.*retrun.*syntax\.js:3\)/);
@@ -807,7 +808,7 @@ test('edits to JSON keep its line endings and indentation, and say when it isn\'
 });
 
 test('the tutorial: every file and command in TUTORIAL.md works as written, in a workspace npm create rulecad makes', () => {
-  const text = fs.readFileSync(new URL('./TUTORIAL.md', import.meta.url), 'utf8');
+  const text = fs.readFileSync(new URL('./TUTORIAL.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'); // (a Windows checkout has its own line endings)
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tutorial-')), ws = path.join(root, 'my-designs');
   try {
     execFileSync(process.execPath, [fileURLToPath(new URL('../create-rulecad/index.mjs', import.meta.url)), ws, '--no-install'], { encoding: 'utf8' });
