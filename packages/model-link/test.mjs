@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fromTriangles, encode, decode, triangles, stl, threemf, bambu3mf, filename, fromSTL, frame, jointValues, placeItems, fromShapes } from '@rulecad/model-link';
+import { fromParts, fromTriangles, encode, decode, triangles, stl, threemf, bambu3mf, filename, fromSTL, frame, jointValues, placeItems, fromShapes } from '@rulecad/model-link';
 
 const tris = [[[0, 0, 0], [10, 0, 0], [0, 10, 0]], [[0, 0, 0], [0, 10, 0], [0, 0, 10]]];
 const model = { title: 'Wedge', version: '1.0.0', src: 'test/wedge@1.0.0', ...fromTriangles(tris) };
@@ -85,4 +85,41 @@ test('motion: each joint type moves its child as it says, followers follow, and 
   assert.deepEqual((await decode(await encode(m))).motion.joints[1].follow, ['j', 2, 1]);
   await assert.rejects(decode(await encode({ ...m, motion: { ...m.motion, part: [1, 9] } })), /broken motion/);
   await assert.rejects(decode(await encode({ ...m, motion: { ...m.motion, joints: [{ ...mo.joints[0], type: 'constructor' }] } })), /broken motion/);
+});
+
+test('a link is held to its limits before it is unpacked or copied out: far corners, a long title, many copies of a big shape', async () => {
+  const far = { q: 1, p: [1e300, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 1, 2] };
+  await assert.rejects(decode(await encode(far)), /from the origin/, 'its corners could send the file writers walking for ever');
+  await assert.rejects(decode(await encode({ ...model, title: 'x'.repeat(5000) })), /broken title/);
+  await assert.rejects(decode(await encode({ ...model, set: 5 })), /broken set/);
+  await assert.rejects(decode(await encode({ ...model, q: '1' })), /bad grid size/);
+  await assert.rejects(decode(await encode({ ...model, parts: [['a', 'part', 'a', 0, -3]] })), /broken parts list/);
+  // 400 copies of a 2,000-triangle shape: refused by counting, not by building 800,000 triangles first
+  const p = [], t = [];
+  for (let i = 0; i < 2000; i++) { p.push(i, 0, 0, i, 1, 0, i, 0, 1); t.push(3 * i, 3 * i + 1, 3 * i + 2); }
+  const many = { title: 'many', shapes: [{ q: 1, p, t, label: 'big', role: 'part' }], place: Array.from({ length: 400 }, (_, n) => [0, 1, 0, 0, n, 0, 1, 0, 0, 0, 0, 1, 0]) };
+  const t0 = Date.now();
+  await assert.rejects(decode(await encode(many)), /model too big for a link/);
+  assert.ok(Date.now() - t0 < 2000, `refused in ${Date.now() - t0} ms`);
+});
+
+test('a 3MF carries the model\'s own title, and text in it is escaped; parts are kept by place or by a test', async () => {
+  const two = fromParts([{ name: 'a', triangles: tris }, { name: 'b', triangles: tris.map((tri) => tri.map(([x, y, z]) => [x + 20, y, z])) }]);
+  const file = await bambu3mf([{ name: 'Tray & lid', parts: [{ name: 'tray', triangles: tris }] }], { title: 'Tray <1>', generator: 'gen</metadata><evil/>' });
+  // the zip's entries, unpacked: each local header gives its name and its packed size
+  const { inflateRawSync } = await import('node:zlib'), dv = new DataView(file.buffer, file.byteOffset), entries = {};
+  for (let at = 0; dv.getUint32(at, true) === 0x04034b50;) {
+    const method = dv.getUint16(at + 8, true), packed = dv.getUint32(at + 18, true), nameLen = dv.getUint16(at + 26, true), start = at + 30 + nameLen + dv.getUint16(at + 28, true);
+    const body = file.subarray(start, start + packed);
+    entries[new TextDecoder().decode(file.subarray(at + 30, at + 30 + nameLen))] = new TextDecoder().decode(method ? inflateRawSync(body) : body);
+    at = start + packed;
+  }
+  const text = entries['3D/3dmodel.model'];
+  assert.match(entries['Metadata/model_settings.config'], /value="Tray &amp; lid"/);
+  assert.match(text, /<metadata name="Title">Tray &lt;1&gt;<\/metadata>/);
+  assert.doesNotMatch(text, /mirror-cad|<evil\/>/);
+  const count = (bytes) => new DataView(bytes.buffer, bytes.byteOffset).getUint32(80, true);
+  assert.equal(count(stl(two)), 4);
+  assert.equal(count(stl(two, new Set([1]))), 2);
+  assert.equal(count(stl(two, (part) => part[0] === 'a')), 2);
 });

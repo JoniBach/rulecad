@@ -15,7 +15,8 @@ your printer or your parts. If you measured something:
   `"rule"` and where in `"source"`. Set `"checked"` to the date.
 
 Kinds, from most to least trusted: `measured` (you checked it), `spec` (a datasheet or the manufacturer),
-`community` (a widely used figure, such as KiCad's library), `default` (a setting that works), `estimate`.
+`community` (a widely used figure, such as KiCad's library), `default` (a setting that works), `derived` (read off
+someone else's model: check it against the real thing), `estimate`. A test holds every published value to these.
 
 ## Code
 

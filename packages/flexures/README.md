@@ -10,7 +10,7 @@ import { leaf, leafModel, parallelGuide, parallelGuideModel, serpentine, notchHi
 const spring = { length: 40, thickness: 1.26, width: 8 };          // mm: along x, bending along y, width up z
 const pla = { E: 2680, strainLimit: 0.02, name: 'PLA' };           // MPa, and the strain it may see
 const m = leafModel(spring, pla);
-m.stiffness;        // 0.084 N/mm
+m.stiffness;        // 0.17 N/mm
 m.travel(0.02);     // 16.9 mm: how far before 2% strain
 m.strain(5);        // 0.0059 at 5 mm
 leaf(spring);       // the shape
@@ -34,7 +34,7 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `letJoint` | A hinge cut into a flat sheet: torsion bars either side of a slot, turning about an axis in the sheet (Jacobsen et al. 2009) | 2 / (2/k_t + 1/k_b), N·mm a radian: half-bars GJ / L_t, end bridges EI / L_b | the bars' shear (as von Mises) or the bridges' bending, whichever is more |
 | `constantForce` | A slider-crank with a leaf coupler (Howell): the slider's force stays within ±5% over about a quarter of the leaf's length | `force(stroke)`, `flat` {from, to, force} | 0.85 × 2.65 t Θ / 2l, the leaf's pseudo-rigid-body angle Θ |
 | `ellipticalHinge` | A notch hinge with half-ellipse notches, longer along the beam for less stress at an angle (Smith 2000) | ∫ dx / EI(x) along the notch, N·mm a radian; the circle within a few % of `notchHinge` | 1.2 × t K θ / 2 E I at the neck |
-| `cartwheel` | Two leaves crossing at a hub inside a rim, joined where they cross: a pivot that prints flat | 16 EI / s × (1 + 1.5 r / s), N·mm a radian, spokes s from a hub r | 2tθ / s × (1 + 1.5 r / s) |
+| `cartwheel` | Two leaves crossing at a hub inside a rim, joined where they cross: a pivot that prints flat | 16 EI / s × (1 + 3 r / s + 3 r² / s²), N·mm a radian, spokes s from a hub r | 2tθ / s × (1 + 1.5 r / s) |
 | `snapHook` | A cantilever with a hook: pushed in it deflects and springs back behind the catch | the leaf's; `force` at the undercut, `insertion` and `removal` with friction μ (BASF, Bayer) | 3ty / 2L² at the undercut y |
 | `ratchetWheel`, `ratchetPawl` | Saw teeth on a pin and a leaf pawl: a one-way click | `ratchetModel`: the pawl's `lift` a tooth high and the `click` along the rim | the pawl's, at the tooth height |
 | `foldedGuide` | A shuttle on two folds, each a beam out to a floating truss and back to an anchor: a compound guide in a shorter box | E w t³ / L³ | 3t(δ/2) / L²; no drift |
@@ -74,7 +74,7 @@ tip travel 0.3017 and 0.4935 of the length at load parameters PL²/EI of 1 and 2
 
 ```js
 elastica({ length: 40, thickness: 0.84, width: 8 }, { E: 2680 }, { travel: 20 });
-// { force: 1.2, travel: 20, shortening: 5.6, angle: 0.82, strain: 0.017, stiffness: 0.06, centreline: [...] }
+// { force: 1.35, travel: 20, shortening: 6.6, angle: 0.79, strain: 0.018, stiffness: 0.068, centreline: [...] }
 ```
 
 ## Out of the plane: the LET joint

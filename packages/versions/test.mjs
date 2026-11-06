@@ -36,3 +36,16 @@ test('display settings (once called mirror) are a patch, and renaming the field 
   assert.equal(compare(a, snap({ w: { value: 1 } }, 'x', { display: { smooth: 8 } })).kind, null);
   assert.equal(compare(a, snap({ w: { value: 1 } }, 'x', { display: { smooth: 16 } })).kind, 'patch');
 });
+
+test('changes of role, unit and range are reported: a variable made interface, one no longer settable, the same settings reordered', () => {
+  const kinds = (a, b) => { const r = compare(a, b); return [r.kind, r.reasons.map((x) => x.text).join('; ')]; };
+  assert.deepEqual(kinds(snap({ slot: { value: 4.2 } }), snap({ slot: { value: 4.2, interface: true } }))[0], 'minor', 'a new promise to other parts');
+  assert.match(kinds(snap({ slot: { value: 4.2, unit: 'mm', interface: true } }), snap({ slot: { value: 4.2, unit: 'in', interface: true } }))[1], /interface slot is now in in \(was mm\)/);
+  assert.equal(kinds(snap({ slot: { value: 4.2, unit: 'mm', interface: true } }), snap({ slot: { value: 4.2, unit: 'in', interface: true } }))[0], 'major');
+  assert.match(kinds(snap({ w: { value: 10, tweak: { min: 5, max: 20 } } }), snap({ w: { value: 10 } }))[1], /w can no longer be set \(it was 5 to 20\)/);
+  assert.match(kinds(snap({ slot: { value: 4.2, interface: true } }), snap({ slot: { value: 4.204, interface: true } }))[1], /4\.2 → 4\.204/, 'not 4.2 → 4.2');
+  const variants = (v) => snap({ w: { value: 10, tweak: { min: 5, max: 20 } }, d: { value: 3, tweak: { min: 1, max: 9 } } }, 'x', { variants: { big: v } });
+  assert.equal(kinds(variants({ w: 15, d: 5 }), variants({ d: 5, w: 15 }))[0], null, 'the same settings in another order');
+  assert.throws(() => bump('1.2.3', 'Major'), /major, minor or patch/);
+  assert.throws(() => bump('1.2.3'), /major, minor or patch/);
+});

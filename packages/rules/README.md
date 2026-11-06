@@ -20,8 +20,13 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `xiao` | Seeed Studio XIAO modules: outline, headers, the pin on each pad | 8 |
 | `qwiic` | Qwiic / STEMMA QT sockets (JST SH, 4 pins): land pattern and pinout | 10 |
 | `jstph` | JST PH (2.0 mm) battery connector | 3 |
-| `jlcpcb` | JLCPCB's limits for two-layer boards | 10 |
+| `jlcpcb` | JLCPCB's limits for two-layer boards | 12 |
 | `wiring` | Room for hand wiring | 1 |
+| `m4`, `m5` | M4 and M5 socket head screws and hex nuts | 5 each |
+| `rp2040` | The RP2040 microcontroller: which package pins carry which GPIO | 2 |
+| `dial-indicator` | A dial indicator with a plunger, for measuring small movements | 2 |
+| `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them | 5, 6 |
+| `al6061`, `al7075`, `s275`, `ss304`, `ti64` | Aluminium 6061-T6 and 7075-T6, structural steel S275, stainless 304, titanium Ti-6Al-4V, for analysis | 4 or 5 each |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such
 as KiCad's library or KeyV2), **default** (a setting that works), **derived** (read off someone else's model with `cad measure`: check it

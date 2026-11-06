@@ -161,6 +161,7 @@ function luSolve(A, b, n) {
  * @returns {{ q: Float64Array, energy: number, reaction: Map<number, number>, strain: Record<string, number>, converged: boolean, iterations: number }}
  *   reaction: the force (or moment) it takes to hold each held dof where it is
  */
+const BALANCE = 1e-4; // the share of the forces at work that may be left unbalanced
 export function equilibrium(sys, { held = new Map(), loads = new Map(), start, tol = 1e-7, iterations = 60, extra } = {}) {
   const n = sys.dofs, q = start ? Float64Array.from(start) : new Float64Array(n);
   for (const [d, v] of held) q[d] = v;
@@ -175,7 +176,13 @@ export function equilibrium(sys, { held = new Map(), loads = new Map(), start, t
   const scale = Math.max(1e-9, ...sys.elements.map((e) => e.EI / e.L0 ** 2)) ; // a force a typical element makes
   for (; it < iterations; it++) {
     const gf = free.map((d) => r.grad[d]), norm = Math.sqrt(gf.reduce((a, x) => a + x * x, 0));
-    if (norm < tol * scale * Math.sqrt(m + 1)) { converged = true; break; }
+    // Settled: what's left unbalanced is small beside a typical element's force, and beside the forces at work here
+    // (the loads, and what it takes to hold the held). The second matters on a fine mesh, whose short elements make
+    // the first so large that a small load would pass as balanced before anything had moved.
+    let atWork = 0;
+    for (const f of loads.values()) atWork += f * f;
+    for (const d of held.keys()) atWork += r.grad[d] * r.grad[d];
+    if (norm < Math.min(tol * scale * Math.sqrt(m + 1), Math.max(BALANCE * Math.sqrt(atWork), 1e-9 * scale))) { converged = true; break; }
     let step = null;
     for (let tries = 0; tries < 8 && !step; tries++) {
       const A = new Float64Array(m * m);

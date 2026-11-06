@@ -50,6 +50,11 @@ export function bounds(polys) {
  */
 export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   const out = [], f = (level, text, code, values, at) => out.push({ level, text, code, ...(values && { values }), ...(at && { at }) });
+  // What can't be checked is said at the door, not found out deep inside
+  for (const k of ['bed', 'overhang']) if (!(Number(printer?.[k]) > 0)) throw new Error(`check(model, printer): the printer's "${k}" is needed, a number above 0 (got ${JSON.stringify(printer?.[k])}): { bed: 256, overhang: 45, layer: 0.2 }`);
+  for (const k of ['layer', 'line', 'bridge', 'support_gap']) if (printer[k] != null && !(Number(printer[k]) > 0)) throw new Error(`check(model, printer): the printer's "${k}" must be a number above 0 (got ${JSON.stringify(printer[k])})`);
+  polys = (Array.isArray(polys) ? polys : []).filter((p) => Array.isArray(p) && p.length >= 3 && p.every((v) => Array.isArray(v) && v.length >= 3 && v.every(Number.isFinite)));
+  if (!polys.length) return [{ level: 'fail', text: 'nothing to check: the model has no faces (each face is three or more corners, each [x, y, z] in mm)', code: 'print.empty' }];
   const solids = (parts || []).filter((p) => p.role !== 'support').map((p) => ({ tris: p.triangles, box: bounds(p.triangles) }));
   // Is the point inside one of the parts? A ray straight up crosses its surface an odd number of times
   const inPart = (pt) => solids.length > 1 && solids.some(({ tris, box }) => {
@@ -94,7 +99,8 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     if (nz < 0) down += area;
   }
   if (Math.abs(lo[2]) > eps) f('fail', `lowest point is at z = ${mm(lo[2])} mm, not on the bed (z = 0)`, 'print.off-bed', { z: lo[2] });
-  f(base > 0 ? 'pass' : 'fail', base > 0 ? `${mm(base)} mm² flat on the bed` : 'nothing sits flat on the bed', 'print.base', { area: base });
+  if (base <= 0) f('fail', 'nothing sits flat on the bed', 'print.base', { area: base });
+  else if (Math.abs(lo[2]) <= eps) f('pass', `${mm(base)} mm² flat on the bed`, 'print.base', { area: base }); // (off the bed, its flat underside isn't on it: the finding above says so)
   const overAt = support > 0.5 ? overBox : null, slicing = printer.layer != null; // sliced below, the layers are what count; the facets are then a note
   if (support > 0.5) f(slicing ? 'pass' : 'warn', slicing ? `${mm(support)} mm² of facets lean past ${printer.overhang}° (z ${mm(Math.min(...zs))} to ${mm(Math.max(...zs))} mm); sliced, the layers decide` : `${mm(support)} mm² overhangs past ${printer.overhang}° (z ${mm(Math.min(...zs))} to ${mm(Math.max(...zs))} mm): needs supports or another orientation`, 'print.overhang', { area: support, angle: printer.overhang, z: [Math.min(...zs), Math.max(...zs)] }, overAt);
   else f('pass', `no overhangs past ${printer.overhang}°`, 'print.overhang', { area: support, angle: printer.overhang });
@@ -153,7 +159,7 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   const { gaps, tjunctions, hairlines } = parts && parts.length > 1
     ? parts.map((p) => seams(p.triangles, eps)).reduce((s, x) => ({ gaps: s.gaps + x.gaps, tjunctions: s.tjunctions + x.tjunctions, hairlines: s.hairlines + x.hairlines }), { gaps: 0, tjunctions: 0, hairlines: 0 })
     : seams(polys, eps);
-  if (gaps) f('warn', `${gaps} edges with nothing on the other side: holes in the surface (slicers may repair them)`, 'print.closed', { gaps });
+  if (gaps) f('warn', `${gaps === 1 ? '1 edge' : `${gaps} edges`} with nothing on the other side: ${gaps === 1 ? 'a hole' : 'holes'} in the surface (slicers may repair ${gaps === 1 ? 'it' : 'them'})`, 'print.closed', { gaps });
   else f('pass', `closed solid${tjunctions || hairlines ? ` (${[tjunctions && `${tjunctions} T-junction edges`, hairlines && `${hairlines} hairline seams under ${HAIRLINE} mm`].filter(Boolean).join(', ')}: watertight for printing)` : ''}`, 'print.closed', { gaps, tjunctions, hairlines });
   return out;
 }
@@ -274,11 +280,22 @@ export function seams(polys, eps = 1e-3) {
  *   many layers were cut; and overhang: the area (mm²) of layers lying further out than the one below can hold, flat
  *   undersides included (the bridge check judges those separately)
  */
+const SPANS = [5, 20]; // layers: the spans a lean is held over (see islands)
 export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLayer } = {}) {
+  if (!(layer > 0) || !(line > 0) || !(overhang > 0 && overhang < 90)) throw new Error(`islands: layer and line are lengths above 0 and overhang an angle between 0 and 90 (got layer ${layer}, line ${line}, overhang ${overhang})`);
+  if (!polys.length) return { islands: [], layers: 0, overhang: 0 };
   // The pixel: a quarter of a line, or coarser on a big part so a layer stays under about a million pixels
   const { lo, hi } = bounds(polys), pitch = Math.max(line / 4, Math.max(hi[0] - lo[0], hi[1] - lo[1]) / 1000), nx = Math.ceil((hi[0] - lo[0]) / pitch) + 6, ny = Math.ceil((hi[1] - lo[1]) / pitch) + 6;
   const r2 = Math.max(1, Math.round(line / 2 / pitch)); // half a line, in pixels
-  const reach = Math.ceil(layer / Math.tan((overhang * Math.PI) / 180) / pitch) + 2 * r2; // pixels a layer may step out past the one below, and a line beyond that: a line hanging out is held by the one beside it
+  // Pixels a layer may step out past the one below: its height times the tangent of the limit (measured from upright,
+  // so a wall leaning 45° steps out one layer's height each layer), and a line beyond that: a line hanging out is held
+  // by the one beside it
+  const step = layer * Math.tan((overhang * Math.PI) / 180), reach = Math.ceil(step / pitch) + 2 * r2;
+  // That line's grace is for a ledge, once. A wall that leans on, layer after layer, would take it every layer (at
+  // 0.2 mm layers and a 0.42 mm line, a 72° lean would pass), so each layer is also held against the ones SPANS
+  // layers down, with the same single line's grace over the whole span: the longer a lean goes on, the nearer to the
+  // limit it is held.
+  const reachOver = SPANS.map((n) => Math.ceil((n * step) / pitch) + 2 * r2), history = [];
   const tris = [];
   for (const p of polys) for (let i = 1; i < p.length - 1; i++) tris.push([p[0], p[i], p[i + 1]]);
   const zmin = tris.map((t) => Math.min(t[0][2], t[1][2], t[2][2])), zmax = tris.map((t) => Math.max(t[0][2], t[1][2], t[2][2]));
@@ -286,7 +303,7 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLaye
   // Each triangle filed under the layers whose middle it spans, so a layer looks only at its own
   const byLayer = Array.from({ length: count }, () => []);
   for (let t = 0; t < tris.length; t++) for (let L = Math.max(0, Math.ceil((zmin[t] - lo[2]) / layer - 0.5)); L <= Math.min(count - 1, Math.floor((zmax[t] - lo[2]) / layer - 0.5)); L++) byLayer[L].push(t);
-  let below = null, held = null, overhangArea = 0;
+  let below = null, held = null, prev = null, counted = null, overhangArea = 0;
   const px = (x) => Math.floor((x - lo[0]) / pitch) + 3;
   // Only what the printer can lay counts: each layer is opened by half a line (eroded, then grown back), so anything
   // narrower than a line, which the slicer drops, is not a region at all
@@ -327,26 +344,52 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLaye
       xs.sort((p, q) => p - q);
       for (let k = 0; k + 1 < xs.length; k += 2) for (let i = Math.max(0, px(xs[k])); i <= Math.min(nx - 1, px(xs[k + 1]) - 1); i++) raw[j * nx + i] = 1;
     }
+    // A layer drawn the same as the one below (an upright wall, most of most parts) lies wholly on it: nothing to measure
+    let same = !!prev;
+    for (let n = 0; same && n < nx * ny; n++) if (raw[n] !== prev[n]) same = false;
+    prev = raw;
+    history.push(same ? below : null); // (filled in below, once this layer is drawn)
+    if (history.length > SPANS.at(-1) + 1) history[history.length - SPANS.at(-1) - 2] = null; // older layers are let go
+    if (same) continue;
     const filled = opened(raw);
+    history[L] = filled;
     if (below) {
       held = dilate(below, reach); // where this layer may lie: on the one below, or a step out from it
-      for (let n = 0; n < nx * ny; n++) if (filled[n] && !held[n]) overhangArea += pitch * pitch;
-      // Regions of this layer: flood fill; each is held if any of its pixels is within reach of a filled pixel below
-      const seen = new Uint8Array(nx * ny);
-      for (let start = 0; start < nx * ny; start++) {
-        if (!filled[start] || seen[start]) continue;
-        const stack = [start], cells = [];
-        seen[start] = 1;
-        while (stack.length) {
-          const e = stack.pop(); cells.push(e);
-          const i = e % nx, j = Math.floor(e / nx);
-          for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const a = i + di, b = j + dj; if (a >= 0 && a < nx && b >= 0 && b < ny) { const f = b * nx + a; if (filled[f] && !seen[f]) { seen[f] = 1; stack.push(f); } } }
-        }
-        let onSomething = false;
-        for (const e of cells) if (held[e]) { onSomething = true; break; }
-        if (!onSomething) {
-          const cx = cells.reduce((s, e) => s + (e % nx), 0) / cells.length, cy = cells.reduce((s, e) => s + Math.floor(e / nx), 0) / cells.length;
-          out.push({ z: +z.toFixed(3), area: cells.length * pitch * pitch, at: [lo[0] + (cx - 2.5) * pitch, lo[1] + (cy - 2.5) * pitch, z], cells: cells.map((e) => [lo[0] + ((e % nx) - 2.5) * pitch, lo[1] + (Math.floor(e / nx) - 2.5) * pitch]) });
+      let unheld = 0;
+      for (let n = 0; n < nx * ny; n++) if (filled[n] && !held[n]) unheld++;
+      // A lean kept up over a span: what isn't straight above the layer below, and lies out past what the layer a
+      // span down allows. (What is straight above the layer below rests on it: the layers over a bridge, say.)
+      let leant = 0;
+      for (let k = 0; k < SPANS.length; k++) {
+        const far = L >= SPANS[k] ? history[L - SPANS[k]] : null;
+        if (!far || far === below) continue;
+        const heldOver = dilate(far, reachOver[k]);
+        for (let n = 0; n < nx * ny; n++) if (filled[n] && held[n] && !below[n] && !heldOver[n] && !(counted && counted[n])) { leant++; (counted ||= new Uint8Array(nx * ny))[n] = 1; }
+      }
+      counted = null;
+      overhangArea += (unheld + leant) * pitch * pitch;
+      // Regions of this layer that lie on nothing: an island is a region with no pixel within reach of the layer
+      // below, so only a region holding an unheld pixel can be one. Most layers have none, and are done here.
+      if (unheld) {
+        const seen = new Uint8Array(nx * ny), stack = new Int32Array(nx * ny);
+        for (let start = 0; start < nx * ny; start++) {
+          if (!filled[start] || held[start] || seen[start]) continue;
+          let top = 0, onSomething = false;
+          const cells = [];
+          stack[top++] = start; seen[start] = 1;
+          while (top) {
+            const e = stack[--top], i = e % nx;
+            cells.push(e);
+            if (held[e]) onSomething = true;
+            if (i + 1 < nx && filled[e + 1] && !seen[e + 1]) { seen[e + 1] = 1; stack[top++] = e + 1; }
+            if (i > 0 && filled[e - 1] && !seen[e - 1]) { seen[e - 1] = 1; stack[top++] = e - 1; }
+            if (e + nx < nx * ny && filled[e + nx] && !seen[e + nx]) { seen[e + nx] = 1; stack[top++] = e + nx; }
+            if (e >= nx && filled[e - nx] && !seen[e - nx]) { seen[e - nx] = 1; stack[top++] = e - nx; }
+          }
+          if (!onSomething) {
+            const cx = cells.reduce((s, e) => s + (e % nx), 0) / cells.length, cy = cells.reduce((s, e) => s + Math.floor(e / nx), 0) / cells.length;
+            out.push({ z: +z.toFixed(3), area: cells.length * pitch * pitch, at: [lo[0] + (cx - 2.5) * pitch, lo[1] + (cy - 2.5) * pitch, z], cells: cells.map((e) => [lo[0] + ((e % nx) - 2.5) * pitch, lo[1] + (Math.floor(e / nx) - 2.5) * pitch]) });
+          }
         }
       }
     }

@@ -22,6 +22,10 @@ const smoothstep = (a) => a * a * (3 - 2 * a);
 export function curvePath(p) {
   const { points, thickness, start, end, smooth = 10 } = p;
   if (!(points?.length >= 2)) throw new Error('a curve needs at least two points');
+  points.forEach((q, i) => {
+    if (!(Array.isArray(q) && q.length >= 2 && Number.isFinite(q[0]) && Number.isFinite(q[1]))) throw new Error(`a curve's point ${i + 1} isn't a place: [x, y] in mm (got ${JSON.stringify(q)})`);
+    if (i && q[0] === points[i - 1][0] && q[1] === points[i - 1][1]) throw new Error(`a curve's points ${i} and ${i + 1} are the same place (${JSON.stringify(q)}): give each bend its own point`);
+  });
   // An end given a direction leads off along it for a little (one and a half thicknesses, or `lead` if that's more,
   // but no more than two fifths of the way to the next point) before it curves, so it meets its block square to the way it's told
   const P = points.map((p) => [...p]), T = points.map((_, i) => (Array.isArray(thickness) ? thickness[i] : thickness));

@@ -175,12 +175,12 @@ export function report(parts, printer, material) {
   const findings = [];
   let worst = null;
   for (const part of parts) {
-    const model = models[part.kind]?.(part.params, material), turning = ports(part.kind, part.params).moves === 'turn';
-    if (!model) { findings.push({ level: 'fail', text: `${part.name}: no model for ${part.kind}`, code: 'flexure.kind', part: part.name }); continue; }
+    if (!models[part.kind]) { findings.push({ level: 'fail', text: `${part.name}: no model for ${part.kind} (kinds: ${Object.keys(models).join(', ')})`, code: 'flexure.kind', part: part.name }); continue; }
+    const model = models[part.kind](part.params, material), turning = ports(part.kind, part.params).moves === 'turn';
     const travel = turning ? part.angle : part.travel, dims = { thickness: part.params.thickness ?? part.params.neck ?? part.params.bar, width: part.params.width };
     for (const f of printable({ ...dims, travel: turning ? undefined : travel, stop: part.stop }, printer, material, model)) findings.push({ ...f, part: part.name });
-    if (travel != null && model.strain) {
-      const e = model.strain(travel), limit = material.strainLimit;
+    if (travel != null && model.strain != null) {
+      const e = typeof model.strain === 'function' ? model.strain(travel) : model.strain, limit = material.strainLimit; // (a bistable beam's strain is one number: it has one travel)
       if (turning && limit != null) findings.push({ level: e <= limit ? 'pass' : 'fail', text: `${part.name}: at ${((travel * 180) / Math.PI).toFixed(1)}° the material sees ${(e * 100).toFixed(2)}% strain${e <= limit ? ', within' : ', over'} the limit of ${(limit * 100).toFixed(1)}%`, code: 'flexure.strain', part: part.name });
       if (!worst || e > worst.strain) worst = { part: part.name, strain: e };
     }
