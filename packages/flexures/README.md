@@ -258,6 +258,11 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   (on the bed, so it spans nothing), and what slides over it has its underside arched up at 45° along the way it
   moves, clear of the floor all along: each layer overhangs the one below by no more than it rises, so it prints with
   no support. A floor and a bridge close a barrel on both faces; they need their own stretches of what passes them.
+  With `body: 'slide'` it is that body's strap: from it, over or under another, to a post of its own standing in a slot
+  there (a clevis), moving with it. With `strap: true` it is the frame's strap: from the frame to a post of the frame's
+  (drawn as `ground`, or in a flooded frame as `flood.posts`) standing in a slot in what slides, so a pin in a slot guides it and the two straps, over and
+  under, keep it in the plane. What passes a strap is cut back flat, a gap all round it, and prints on a lower one a
+  gap up: over a long travel an arch would stand taller than the print.
 - The frame is checked under the mechanism's own forces: at the end of each step, what the flexures pull on it with
   (from the beams) loads it as an elastic plate as tall as the print, held where a hand holds it (`grip`, or its back
   quarter), and every gap to what moves (loose parts too, a disc in its channel, carried along as the frame round it

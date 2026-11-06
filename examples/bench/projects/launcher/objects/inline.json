@@ -1,7 +1,7 @@
 {
   "name": "inline",
   "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the pull ring on top, a solid trigger that is its own sear on a hinge carrying the pull, printed in one piece on its side",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "uses": [
     "x1c",
     "petg",
@@ -234,10 +234,30 @@
       "unit": "mm",
       "rule": "The tooth's length along the barrel at its foot, half of it flat and half its back's slope"
     },
-    "tail_slot": {
-      "value": 4.4,
+    "guide_pin": {
+      "value": 4,
       "unit": "mm",
-      "rule": "A slot up the middle of the stem's tail, open at its end: the frame's tongue in it guides the stem far behind the front posts, so it can't pitch and wedge"
+      "rule": "The guide behind the ring: a pin of the frame's this thick, standing in a slot up the stem's tail, as the link's pin stands in the shuttle's. (Before, a tongue of the frame in a slot open at the stem's end: it guided the stem, but nothing held the tail in the plane)"
+    },
+    "guide_y": {
+      "value": 2.2,
+      "unit": "mm",
+      "rule": "The guide's pin and slot are this far above the stem's middle: the half under them, over the slide's spring, is the stem's whole lower half, and the half over them the tail's taller back"
+    },
+    "guide_front": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "The guide's slot ends this far behind the ring's middle, under the ring's solid back, where the pull goes through"
+    },
+    "guide_gap": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Between each of the guide's straps and the tail it passes: three layers, one more than the link's, since its upper strap bridges the stem's whole travel in the air behind the tail and sags a little"
+    },
+    "hair": {
+      "value": 0.01,
+      "unit": "mm",
+      "rule": "A slot's end is rounded to its half width less this, so the round has a flat to end on"
     },
     "catch_piece": {
       "value": 0,
@@ -257,20 +277,10 @@
       "unit": "mm",
       "rule": "More room over the spine than the gap: the frame above it bends towards it under the springs' pull"
     },
-    "tail_slot_y": {
-      "value": 0,
-      "unit": "mm",
-      "rule": "The slot's underside: the stem's middle, so the half under it is the stem's whole lower half"
-    },
     "tail_tall": {
       "value": 9,
       "unit": "mm",
       "rule": "Behind the ring the stem's tail stands this high, so the half over the slot is stout there too"
-    },
-    "tail_slot_len": {
-      "value": 22,
-      "unit": "mm",
-      "rule": "How far the slot runs up the stem: the slide's whole travel and a good length of tongue in it at rest, ending under the ring's solid back, where the pull goes through"
     },
     "tooth_gusset": {
       "value": 5,
@@ -536,9 +546,9 @@
       "rule": "How many shapes the slide's spring's shaping may try: a long arm in a short room, a hard job"
     },
     "plate_low": {
-      "value": 2,
+      "value": 12,
       "unit": "mm",
-      "rule": "The fourth plate hole, behind the stem's drawn end: this high, clear of the slide's spring below"
+      "rule": "The fourth plate hole, behind the stem's drawn end: this high, clear of the slide's spring below and of the guide's straps, which root in the handle on the stem's line"
     },
     "plate_low_in": {
       "value": 5.2,
@@ -619,11 +629,6 @@
       "value": 3,
       "unit": "mm",
       "rule": "The floor's lower ledge starts this far ahead of the slot's back, clear of the trigger's swing"
-    },
-    "stem_tail": {
-      "value": 10,
-      "unit": "mm",
-      "rule": "The slide's stem runs on behind the ring this far, into the handle, where it runs in a groove: the slide held across the plane at both ends, so it can't pitch on its guides' play"
     },
     "trigger_floor": {
       "value": 7.5,

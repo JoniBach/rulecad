@@ -962,8 +962,11 @@ export async function lamina(spec) {
   // ever passes under; the bridge spans no wider than the printer bridges, and stands on the frame both sides ----
   const layer = printer?.layer ?? 0.2, bridgeMost = printer?.bridge ?? 5;
   // (a bridge may belong to a moving body rather than the frame, `body`: a strap from it over or under another, to a post
-  // of its own on the far side, a clevis; it moves with that body, and what passes it is cut back where it ever passes)
-  const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3, bottom: b.side === 'bottom', owner: b.body ?? 'ground' }));
+  // of its own on the far side, a clevis; it moves with that body, and what passes it is cut back where it ever passes.
+  // The frame may have straps too, `strap`: from the frame to a post of its own standing in a slot in what slides, over
+  // it and under it, cut back the same way: flat, a gap all round, not arched as over a floor, which a long travel
+  // would stand taller than the print)
+  const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3, bottom: b.side === 'bottom', owner: b.body ?? 'ground', strap: !!b.body || !!b.strap }));
   for (const br of bridges) if (!parts[br.owner] || parts[br.owner].kind === 'flexure') throw new Error(`a bridge's body "${br.owner}" is not the ground or a body`);
   const arches = []; // a floor strip's: the parts passing over it arched up at 45°, which prints without support
   const guidesHeld = []; // what guides hold across the plane
@@ -976,7 +979,7 @@ export async function lamina(spec) {
     }
     bridges.forEach((br, i) => {
       const own = br.owner, onBody = own !== 'ground', mine = parts[own].shape, whose = onBody ? own : 'the frame';
-      const name = onBody ? `${own}'s ${br.bottom ? 'lower' : 'upper'} strap` : br.bottom ? `floor ${i + 1}` : `bridge ${i + 1}`, left = height - br.depth - br.gap;
+      const name = br.strap ? `${onBody ? `${own}'s` : "the frame's"} ${br.bottom ? 'lower' : 'upper'} strap` : br.bottom ? `floor ${i + 1}` : `bridge ${i + 1}`, left = height - br.depth - br.gap;
       // (what it crosses: off its own; a body's strap rests on what it passes over, a support gap up, so only open air is spanned)
       const under = subtract(br.shape, onBody ? union(Object.values(parts).map((x) => x.shape)) : mine);
       if (empty(subtract(br.shape, mine))) { f('warn', `${name} has nothing to cross: it's all on ${whose}`, 'lamina.bridge'); return; }
@@ -985,18 +988,18 @@ export async function lamina(spec) {
         f(wide ? 'fail' : 'pass', `${name} spans ${wide ? 'more than' : 'no more than'} the ${bridgeMost} mm the printer bridges`, 'lamina.bridge', { bridge: i });
       }
       const feet = pieces(intersect(br.shape, mine));
-      const need = br.bottom && !onBody ? 1 : 2; // (a floor is printed on the bed: a ledge off the frame on one side is held; a bridge must stand on both, and a body's strap joins it to its post)
+      const need = br.bottom && !br.strap ? 1 : 2; // (a floor is printed on the bed: a ledge off the frame on one side is held; a bridge must stand on both, and a strap joins its body, or the frame, to its post)
       f(feet >= need ? 'pass' : 'fail', `${name} stands on ${whose} ${feet >= 2 ? 'on both sides' : feet ? (br.bottom ? 'on one side, a ledge on the bed' : 'on one side only: it would droop') : br.bottom ? 'nowhere: it would come loose' : 'nowhere: it would print in mid-air'}`, 'lamina.bridge', { bridge: i });
       for (const [n, p] of Object.entries(parts)) {
         if (p.kind === 'flexure' && area(intersect(br.shape, p.shape)) > AREA) f('fail', `${name} is over the ${n} flexure: a bridge goes over what slides, not what bends`, 'lamina.bridge', { bridge: i, joint: n });
         if (n === own || (p.kind !== 'body' && !(onBody && n === 'ground'))) continue;
-        // all of it that ever passes under, where it is at rest, and for a body's strap a gap round it in the plane too: a
+        // all of it that ever passes under, where it is at rest, and for a strap a gap round it in the plane too: a
         // strap narrower than what it passes would otherwise print touching the walls left either side of it (a frame's
         // floor or bridge needs none: what passes is arched or cut clear of it, and a wider arch would stand taller)
         const swept = union(poses.map((P) => moved(mul(inverse(P[n]), P[own]), br.shape)));
-        const cut = intersect(p.shape, onBody ? grow(swept, br.gap) : swept);
+        const cut = intersect(p.shape, br.strap ? grow(swept, br.gap) : swept);
         if (empty(cut)) continue;
-        if (onBody && br.bottom) { // (a body's lower strap: what passes over it is cut back flat, a gap over it, and prints on it a support gap up, as a pin's ring does on its floor)
+        if (br.strap && br.bottom) { // (a lower strap: what passes over it is cut back flat, a gap over it, and prints on it a support gap up, as a pin's ring does on its floor)
           cuts.push({ shape: cut, from: 0, to: br.depth + br.gap, body: n, gap: br.gap, bottom: true, ...(onBody ? { owner: own } : {}) });
           f(height - br.depth - br.gap >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes over it, cut up to ${(br.depth + br.gap).toFixed(2)} mm there`, 'lamina.bridge', { bridge: i, body: n, left });
           continue;
@@ -1289,7 +1292,8 @@ export async function lamina(spec) {
  * you draw: the blocks the flexures grow from), then the frame is what's left, slivers thinner than `least` and islands
  * that would print loose taken out, and your ground added back.
  * @param {object} spec a lamina spec, with flood: { outline?, keep?, clear?: number | Record<string, number>, least?, wall?,
- *   pad?, corner?, band?, holes? }: holes, [{ at, diameter, wall? }] through the frame for fasteners (pins holding plates
+ *   pad?, corner?, band?, holes?, posts? }: posts, shapes of the frame standing apart from it in the plane (a pin in a
+ *   slot in what slides), kept though they are islands, for the frame's straps to join (bridges with strap: true); holes, [{ at, diameter, wall? }] through the frame for fasteners (pins holding plates
  *   either side), each in a solid boss `wall` thick (default half `wall`), checked to be all frame; band, solid only this far round the moving parts' room, the kept spaces and the outline's
  *   edge, the rest windows (a web: lighter, as stiff where it matters); outline, the frame's (default: everything the moving parts reach and `keep`, `wall` round it,
  *   corners rounded to `corner`); clear, the gap round the moving parts (the print gap; or by part, a sliding fit for
@@ -1353,7 +1357,11 @@ async function flooded(spec) {
   }
   space = grow(shrink(space, least / 2, 'Round'), least / 2); // no sliver thinner than `least`
   // Only what's joined to the main frame, a root or your ground: an island (inside an arm's loop, a ring's hole) prints loose
-  const anchors = union([mine, ...roots]), bits = apart(space), biggest = Math.max(0, ...bits.map(area));
+  // (and its posts: pins of the frame's standing apart from it in the plane, each in a slot in what slides, joined to
+  // it by the frame's straps over and under. They aren't the solver's ground, as yours is: the mechanism is solved, and
+  // its room found, as if they weren't there, so adding one moves nothing else)
+  const posts = all(spec.flood.posts || []);
+  const anchors = union([mine, posts, ...roots]), bits = apart(space), biggest = Math.max(0, ...bits.map(area));
   const kept = bits.filter((b) => area(b) >= biggest - 1e-9 || area(intersect(b, grow(anchors, TOUCH))) > AREA);
   let ground = union([anchors, ...kept]);
   // Each hole's boss must be all frame: inside the outline, clear of the moving parts' room and anything kept open

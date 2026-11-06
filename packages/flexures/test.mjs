@@ -806,3 +806,44 @@ test('a placed module takes its curve and its pin with it; the README\'s first n
   const e = elastica({ length: 40, thickness: 0.84, width: 8 }, { E: 2680 }, { travel: 20 });
   assert.ok(readme.includes(`force: ${e.force.toFixed(2)}, travel: 20, shortening: ${e.shortening.toFixed(1)}, angle: ${e.angle.toFixed(2)}, strain: ${e.strain.toFixed(3)}, stiffness: ${e.stiffness.toFixed(3)}`), 'the README\'s elastica example');
 });
+
+test('the frame\'s straps: from the frame to a post of its own in a slot in what slides, over it and under it; the slider is cut back flat, a gap round each, and held in the plane', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'x' };
+  const disc = (c, r) => jscad.primitives.circle({ radius: r, center: c, segments: 32 });
+  // A bar on a spring slides 6 mm along x; a post of the frame stands in a slot up the bar, hung between two straps
+  // from a block of frame beyond the bar's end
+  const bar = jscad.booleans.subtract(rect(20, -4, 50, 4), rect(34, -2, 46, 2));
+  const strap = rect(44, -1.5, 58, 1.5); // (the bar moves away from the block: the post is at the slot's front end at rest, at its back end moved out)
+  const r = await lamina({ height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 10 }, check: { fe: false, frame: false }, physics: false,
+    ground: [rect(-8, -20, 0.5, 20), disc([44, 0], 1.5), rect(57, -6, 62, 6)],
+    bodies: { bar }, joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'bar' } },
+    bridges: [{ strap: true, shape: strap }, { strap: true, shape: strap, side: 'bottom' }],
+    states: { out: { s: 6 } }, sequence: ['rest', 'out', 'rest'] });
+  const br = r.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(br.length >= 5 && br.every((x) => x.level === 'pass'), br.map((x) => `${x.level} ${x.text}`).join('; '));
+  for (const said of [/the frame's upper strap stands on the frame on both sides/, /the frame's lower strap stands on the frame on both sides/, /the frame's upper strap: bar passes under it, cut down to/, /the frame's lower strap: bar passes over it, cut up to 1\.80 mm/]) assert.ok(br.some((x) => said.test(x.text)), `${said}: ${br.map((x) => x.text).join('; ')}`);
+  // In 3D, up through the bar where the straps cross it: strap, a gap, the bar, a gap, strap (not an arch over a floor)
+  const tris = jscad.geometries.geom3.toPolygons(r.parts.body).flatMap((q) => q.vertices.slice(2).map((v, i) => [q.vertices[0], q.vertices[i + 1], v]));
+  const inside = ([x, y, z]) => { let n = 0; for (const [a, b, c] of tris) { const d = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]); if (Math.abs(d) < 1e-12) continue; const u = ((x - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (y - a[1])) / d, w = ((b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1])) / d; if (u < 0 || w < 0 || u + w > 1) continue; if (a[2] + u * (b[2] - a[2]) + w * (c[2] - a[2]) > z) n++; } return n % 2 === 1; };
+  const up = (x, y) => Array.from({ length: 16 }, (_, k) => (inside([x + 0.013, y + 0.017, 0.25 + k * 0.5]) ? '#' : '.')).join('');
+  assert.equal(up(48, 0), '##..########..##', 'beyond the slot, on the straps\' line: strap 1.2, gap 0.6, bar, gap 0.6, strap 1.2');
+  assert.equal(up(48, 3), '################', 'beside the straps, the bar stands on the bed, whole');
+  assert.equal(up(44, 0), '################', 'the post, from the bed to the top');
+  assert.ok(!r.findings.some((x) => x.level === 'fail' && /runs into/.test(x.text)), r.findings.filter((x) => /runs into/.test(x.text)).map((x) => x.text).join('; '));
+});
+
+test('a flooded frame keeps a post: a pin of the frame\'s in a slot in what slides is an island in the plane, kept for its straps to join, and the rest is flooded as if it weren\'t there', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'x' };
+  const disc = (c, r) => jscad.primitives.circle({ radius: r, center: c, segments: 32 });
+  const bar = jscad.booleans.subtract(rect(20, -4, 50, 4), rect(34, -2, 43.6, 2)), strap = rect(41.8, -1.5, 62, 1.5); // the slot: the 6 mm travel, the 3 mm pin and a gap at each end
+  const base = { height: 8, gap: 0.3, material: petg, printer: { ...fdm, bridge: 10 }, check: { fe: false, frame: false }, physics: false,
+    ground: [rect(-8, -6, 0.5, 6)], bodies: { bar }, joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'bar' } }, states: { out: { s: 6 } }, sequence: ['rest', 'out', 'rest'] };
+  const area = (loops) => loops.reduce((s, l) => s + l.reduce((a, p, i) => { const q = l[(i + 1) % l.length]; return a + (p[0] * q[1] - q[0] * p[1]) / 2; }, 0), 0);
+  const plain = await lamina({ ...base, flood: { outline: rect(-8, -12, 68, 12) } });
+  const posted = await lamina({ ...base, flood: { outline: rect(-8, -12, 68, 12), posts: [disc([41.8, 0], 1.5)] }, bridges: [{ strap: true, shape: strap }, { strap: true, shape: strap, side: 'bottom' }] });
+  const more = area(posted.outlines('rest').ground) - area(plain.outlines('rest').ground);
+  assert.ok(more > 5 && more < 9, `the post adds its own ${(Math.PI * 1.5 ** 2).toFixed(1)} mm² or so to the frame and takes nothing from it (${more.toFixed(1)} mm² more)`);
+  const br = posted.findings.filter((x) => x.code === 'lamina.bridge');
+  assert.ok(br.length >= 5 && br.every((x) => x.level === 'pass'), br.map((x) => `${x.level} ${x.text}`).join('; '));
+  assert.ok(!posted.findings.some((x) => x.level === 'fail' && /lamina\.(free|collide|sequence)/.test(x.code)), posted.findings.filter((x) => x.level === 'fail').map((x) => x.text).join('; '));
+});
