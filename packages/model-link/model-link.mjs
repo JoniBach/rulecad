@@ -21,11 +21,29 @@
 /** @typedef {{ title?: string, version?: string, src?: string, material?: string, orientation?: string, rules?: [string, any, string][], q?: number, p?: number[], t?: number[], parts?: any[], shapes?: any[], place?: any[], views?: [string, string][], motion?: any }} Model */
 
 export const VERSION = 1;
-export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 32, viewSize: 4e6, sheet: 5000 }; // every keycap with its own legend is its own shape
+export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 32, viewSize: 4e6, sheet: 5000, // every keycap with its own legend is its own shape
+  size: 1e5, // mm: no corner further than this from the origin (a link is a part or an assembly, not a map)
+  text: 2000, // characters in a title, a name or a label
+  bytes: 160e6 }; // of a link once unpacked: its views at their largest, and the biggest model, with room to spare
 
 const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-async function pipe(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
+// most: stop reading once this many bytes have come out (a small link can unpack to a great deal)
+async function pipe(bytes, stream, most = Infinity) {
+  const reader = new Blob([bytes]).stream().pipeThrough(stream).getReader(), chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > most) { await reader.cancel(); throw Object.assign(new Error('model too big for a link'), { tooBig: true }); }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) { out.set(c, at); at += c.length; }
+  return out;
+}
 
 // fromTriangles([[[x,y,z] ×3], …]) -> { q, p, t }: shared corners merged on a grid ~1/5000 of the model's size.
 /** @param {Triangle[]} tris @returns {{ q: number, p: number[], t: number[] }} */
@@ -89,8 +107,8 @@ export async function decode(token) {
   if (!m) throw new Error("this isn't a model link");
   if (Number(m[1]) > VERSION) throw new Error(`this link needs a newer page (format ${m[1]})`);
   let model;
-  try { model = JSON.parse(new TextDecoder().decode(await pipe(unb64(m[2]), new DecompressionStream('deflate-raw')))); }
-  catch { throw new Error('This link is damaged: it may have been cut short when it was shared. Copy the whole link again.'); }
+  try { model = JSON.parse(new TextDecoder().decode(await pipe(unb64(m[2]), new DecompressionStream('deflate-raw'), LIMITS.bytes))); }
+  catch (e) { if (e?.tooBig) throw e; throw new Error('This link is damaged: it may have been cut short when it was shared. Copy the whole link again.'); }
   if (model && Array.isArray(model.shapes)) model = expand(model);
   const errors = check(model);
   if (errors.length) throw new Error(errors[0]);
@@ -99,16 +117,19 @@ export async function decode(token) {
 
 export function check(m) {
   if (!m || typeof m !== 'object' || !Array.isArray(m.p) || !Array.isArray(m.t)) return ['no model in the link'];
-  if (!(m.q > 0)) return ['bad grid size'];
+  if (typeof m.q !== 'number' || !Number.isFinite(m.q) || !(m.q > 0)) return ['bad grid size'];
   if (m.p.length % 3 || m.t.length % 3) return ['broken model data'];
   if (m.p.length / 3 > LIMITS.vertices || m.t.length / 3 > LIMITS.triangles) return ['model too big for a link'];
-  const n = m.p.length / 3;
+  const n = m.p.length / 3, far = LIMITS.size / m.q;
   if (m.p.some((x) => !Number.isInteger(x)) || m.t.some((i) => !Number.isInteger(i) || i < 0 || i >= n)) return ['broken model data'];
+  if (m.p.some((x) => Math.abs(x) > far)) return [`a corner is more than ${LIMITS.size / 1000} m from the origin: too far for a link`];
+  // what the page and the file writers read as text is text, and short
+  for (const k of ['title', 'version', 'src', 'set', 'material', 'orientation']) if (m[k] != null && (typeof m[k] !== 'string' || m[k].length > LIMITS.text)) return [`broken ${k}`];
   if (m.sheet != null && (!Array.isArray(m.sheet) || m.sheet.length > LIMITS.sheet || m.sheet.some((r) => !Array.isArray(r) || r.length > 9 || r.some((c) => typeof c !== 'string')))) return ['broken rules sheet'];
   if (Array.isArray(m.views) && m.views.length > LIMITS.views) return [`${m.views.length} flat views: more than a link can hold (${LIMITS.views})`];
   if (m.views != null && (!Array.isArray(m.views) || m.views.some((v) => !Array.isArray(v) || typeof v[0] !== 'string' || typeof v[1] !== 'string' || v[1].length > LIMITS.viewSize))) return ['broken views'];
   if (m.motion != null && !motionOk(m.motion, m.parts?.length ?? 1)) return ['broken motion'];
-  if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
+  if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || x.slice(0, 3).some((name, k) => (k === 2 && name == null ? false : typeof name !== 'string' || name.length > LIMITS.text)) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[4] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];
 }
 
@@ -134,6 +155,9 @@ export function expand(m) {
   const { shapes, place, ...meta } = m;
   if (!Array.isArray(place) || shapes.length > LIMITS.shapes || place.length > LIMITS.places) throw new Error('model too big for a link');
   for (const sh of shapes) { const e = check(sh); if (e.length) throw new Error(e[0]); }
+  // (counted before any copy is made: a few placements of a big shape would otherwise be built in full, then refused)
+  let count = 0;
+  for (const [i] of place) { count += (shapes[i]?.t.length || 0) / 3; if (count > LIMITS.triangles) throw new Error('model too big for a link'); }
   const list = place.map(([i, ...rest], n) => {
     const sh = shapes[i], t = rest.slice(0, 12);
     if (!sh || t.length !== 12 || t.some((x) => !Number.isFinite(x))) throw new Error('broken placement');
@@ -290,7 +314,8 @@ export function placeItems(motion, values) {
 export const filename = (m, ext, picked = '') => `${[String(m.src || m.title || 'model').split('/').pop(), m.set && m.set.replace(/,/g, '-'), picked].filter(Boolean).join('-').replace(/[^\w@.=-]+/g, '-')}.${ext}`;
 
 // Which parts a file holds: all the printed ones (references are only there to check a fit), or the indices picked
-const chosen = (m, keep) => partsOf(m).filter((x, i) => (keep ? keep.has(i) : x[1] !== 'reference'));
+// keep: which parts, as a Set of their places in partsOf(m), or a function of each part and its place
+const chosen = (m, keep) => partsOf(m).filter((x, i) => (keep ? (typeof keep === 'function' ? keep(x, i) : keep.has(i)) : x[1] !== 'reference'));
 
 // Binary STL (mm): the parts picked, as one mesh, each part mended (mesh) as for 3MF.
 // fromSTL(bytes) -> triangles [[[x, y, z] ×3], …] from an STL file, binary or text (ASCII). Units are as the file has
@@ -315,7 +340,7 @@ export function fromSTL(bytes) {
 }
 
 // generator: the name the file says made it (rulecad by default)
-/** A binary STL of the printed parts (or those kept). @param {Model} m @param {(part: any[]) => boolean} [keep] @param {{ generator?: string }} [options] @returns {Uint8Array} */
+/** A binary STL of the printed parts (or those kept). @param {Model} m @param {Set<number> | ((part: any[], index: number) => boolean)} [keep] the parts to write: their places in partsOf(m), or a test of each @param {{ generator?: string }} [options] @returns {Uint8Array} */
 export function stl(m, keep, { generator = 'rulecad' } = {}) {
   const tris = chosen(m, keep).flatMap((x) => { const { verts, tris: t } = mesh(triangles(m, x)); return t.map((ids) => ids.map((i) => verts[i])); }), buf = new ArrayBuffer(84 + 50 * tris.length), dv = new DataView(buf);
   const head = `${generator} ${m.src || m.title || ''}`.slice(0, 80);
@@ -336,7 +361,7 @@ export const thingOf = (name) => { const bits = String(name).split('.'); return 
 
 // 3MF of the parts picked, in Bambu Studio's layout (bambu3mf): one object per printed thing, its parts on their AMS
 // slots (parts' sixth field; slot 1 without one).
-/** A 3MF in Bambu Studio's layout, each part on its filament slot. @param {Model} m @param {(part: any[]) => boolean} [keep] @param {{ generator?: string }} [options] @returns {Promise<Uint8Array>} */
+/** A 3MF in Bambu Studio's layout, each part on its filament slot. @param {Model} m @param {Set<number> | ((part: any[], index: number) => boolean)} [keep] the parts to write: their places in partsOf(m), or a test of each @param {{ generator?: string }} [options] @returns {Promise<Uint8Array>} */
 export async function threemf(m, keep, { generator = 'rulecad' } = {}) {
   const things = new Map();
   for (const x of chosen(m, keep)) {
@@ -454,7 +479,7 @@ const IDENTITY = '1 0 0 0 1 0 0 0 1 0 0 0', IDENTITY4 = '1 0 0 0 0 1 0 0 0 0 1 0
 const NS = 'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"';
 
 /** @param {{ name: string, parts: { name: string, triangles: Triangle[], slot?: number }[] }[]} objects @param {{ centre?: [number, number], generator?: string, date?: string, title?: string }} [options] @returns {Promise<Uint8Array>} a .3mf (a zip) */
-export async function bambu3mf(objects, { centre = [128, 128], generator = 'rulecad', date } = {}) {
+export async function bambu3mf(objects, { centre = [128, 128], generator = 'rulecad', date, title } = {}) {
   const files = {}, rels = [], resources = [], build = [], settings = [], instances = [];
   let id = 0;
   objects.forEach((o, n) => {
@@ -475,7 +500,7 @@ export async function bambu3mf(objects, { centre = [128, 128], generator = 'rule
     ['[Content_Types].xml', `${xml}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n</Types>\n`],
     ['_rels/.rels', `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>\n`],
     ['3D/_rels/3dmodel.model.rels', `${xml}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n ${rels.join('\n ')}\n</Relationships>\n`],
-    ['3D/3dmodel.model', `${xml}<model unit="millimeter" xml:lang="en-US" ${NS}>\n <metadata name="Application">${generator}</metadata>\n <metadata name="BambuStudio:3mfVersion">1</metadata>\n <metadata name="Title">mirror-cad</metadata>\n <metadata name="CreationDate">${today}</metadata>\n <resources>\n${resources.join('')} </resources>\n <build p:UUID="${uuid(0, 4)}">\n${build.join('')} </build>\n</model>\n`],
+    ['3D/3dmodel.model', `${xml}<model unit="millimeter" xml:lang="en-US" ${NS}>\n <metadata name="Application">${esc(generator)}</metadata>\n <metadata name="BambuStudio:3mfVersion">1</metadata>\n <metadata name="Title">${esc(title || objects[0]?.name || 'model')}</metadata>\n <metadata name="CreationDate">${today}</metadata>\n <resources>\n${resources.join('')} </resources>\n <build p:UUID="${uuid(0, 4)}">\n${build.join('')} </build>\n</model>\n`],
     ['Metadata/model_settings.config', `${xml}<config>\n${settings.join('')}  <plate>\n    <metadata key="plater_id" value="1"/>\n    <metadata key="plater_name" value=""/>\n    <metadata key="locked" value="false"/>\n${instances.join('')}  </plate>\n</config>\n`],
     ...Object.entries(files),
   ]);

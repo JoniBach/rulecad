@@ -14,6 +14,8 @@ const { translate } = jscad.transforms;
 
 /** @typedef {{ length: number, thickness: number, width: number }} Leaf a beam: along x, bending along y, width up z */
 /** @typedef {{ E: number, strainLimit?: number }} Material Young's modulus (MPa), and the strain it may see (say 0.02 for 2%) */
+// What every flexure's model answers: how stiff it is, the strain at a travel, and the travel a strain allows. A
+// flexure that turns (a hinge) counts its travel in radians, and gives the same answer as angle() too.
 /** @typedef {{ stiffness: number, strain: (travel: number) => number, travel: (strain: number) => number, stress: (travel: number) => number }} Model */
 
 const block = (x, y, z, size) => cuboid({ center: [x, y, z], size });
@@ -244,7 +246,8 @@ export function notchHinge({ radius: R, neck: t, width, arms }) {
  */
 export function notchHingeModel({ radius: R, neck: t, width: w }, { E, concentration = 1.2 }) {
   const stiffness = (2 * E * w * t ** 2.5) / (9 * Math.PI * Math.sqrt(R)), strain = (th) => (concentration * 4 * th * Math.sqrt(t / R)) / (3 * Math.PI);
-  return { stiffness, strain, angle: (e) => (3 * Math.PI * e) / (concentration * 4 * Math.sqrt(t / R)), stress: (th) => E * strain(th) };
+  const angle = (e) => (3 * Math.PI * e) / (concentration * 4 * Math.sqrt(t / R));
+  return { stiffness, strain, angle, travel: angle, stress: (th) => E * strain(th) };
 }
 
 /**
@@ -303,7 +306,8 @@ export function livingHinge({ flex: l, thickness: t, width, arms }) {
  */
 export function livingHingeModel({ flex: l, thickness: t, width: w }, { E }) {
   const I = (w * t ** 3) / 12, strain = (th) => (t * th) / (2 * l);
-  return { stiffness: (E * I) / l, strain, angle: (e) => (2 * l * e) / t, stress: (th) => E * strain(th) };
+  const angle = (e) => (2 * l * e) / t;
+  return { stiffness: (E * I) / l, strain, angle, travel: angle, stress: (th) => E * strain(th) };
 }
 
 /**
@@ -428,7 +432,8 @@ export function letJointModel({ width: W, thickness: h, bar: wt, slot: sl, bridg
   const Ib = (wb * h ** 3) / 12, kb = (E * Ib) / sl; // an end bridge: across the central slot, bending about y
   const path = 1 / (2 / kt + 1 / kb), stiffness = 2 * path;
   const strain = (th) => { const T = path * th, tau = (T * (3 * a + 1.8 * b)) / (a * a * b * b); return Math.max((Math.sqrt(3) * tau) / E, (T * h) / (2 * E * Ib)); };
-  return { stiffness, strain, angle: (e) => e / strain(1), stress: (th) => E * strain(th), twist: (th) => (path * th) / kt, bend: (th) => (path * th) / kb };
+  const angle = (e) => e / strain(1);
+  return { stiffness, strain, angle, travel: angle, stress: (th) => E * strain(th), twist: (th) => (path * th) / kt, bend: (th) => (path * th) / kb };
 }
 
 /**
@@ -526,16 +531,17 @@ export function ellipticalHingeModel({ along: a, across: b, neck: t, width: w },
   let compliance = 0;
   for (let i = 0; i < n; i++) { const x = -a + (i + 0.5) * dx, h = t + 2 * b * (1 - Math.sqrt(Math.max(0, 1 - (x / a) ** 2))); compliance += dx / ((E * w * h ** 3) / 12); }
   const stiffness = 1 / compliance, Imin = (w * t ** 3) / 12, strain = (th) => (concentration * stiffness * th * (t / 2)) / (E * Imin);
-  return { stiffness, strain, angle: (e) => e / strain(1), stress: (th) => E * strain(th) };
+  const angle = (e) => e / strain(1);
+  return { stiffness, strain, angle, travel: angle, stress: (th) => E * strain(th) };
 }
 
 /**
  * A cartwheel pivot: two leaves crossing at a hub inside a rim, joined where they cross, so the hub turns about the
  * crossing with little drift: the flat-printable cousin of the cross-axis pivot (whose leaves pass each other in
  * different planes). The rim is one body, the hub and its arm the other. Each half-leaf is a spoke from the hub to
- * the rim, bent by the hub's turn: stiffness 16 EI / s × (1 + 1.5 r / s) for spokes s long from a hub of radius r
- * (four beams fixed at the rim, their hub ends turned through θ and carried round by rθ), and the strain at the hub
- * end 2tθ / s × (1 + 1.5 r / s).
+ * the rim, bent by the hub's turn: stiffness 16 EI / s × (1 + 3 r / s + 3 r² / s²) for spokes s long from a hub of
+ * radius r (four beams fixed at the rim, their hub ends turned through θ and carried round by rθ: each one's moment
+ * at the hub, and its shear acting at the hub's radius), and the strain at the hub end 2tθ / s × (1 + 1.5 r / s).
  * @param {{ spoke: number, thickness: number, width: number, hub?: number, rim?: number, arm?: number, opening?: number }} p
  *   spoke: hub edge to rim (s); hub: the hub's radius (default 2 × thickness, at least 2); rim: the ring's radial
  *   thickness (default 3); arm: how far the hub's arm reaches past the rim along +x (default 2 × spoke); opening: the
@@ -554,8 +560,12 @@ export function cartwheel({ spoke: s, thickness: t, width, hub, rim = 3, arm, op
  *   stiffness in N·mm a radian; angles in radians
  */
 export function cartwheelModel({ spoke: s, thickness: t, width: w, hub }, { E }) {
-  const r = hub ?? Math.max(2, 2 * t), I = (w * t ** 3) / 12, carried = 1 + (1.5 * r) / s, stiffness = (16 * E * I * carried) / s, strain = (th) => (2 * t * th * carried) / s;
-  return { stiffness, strain, angle: (e) => e / strain(1), stress: (th) => E * strain(th) };
+  // Each spoke is a beam fixed at the rim, its hub end turned through θ and carried round by rθ. Its moment at the
+  // hub is 4EI/s × (1 + 1.5 r/s) θ, which sets the strain; the hub also feels its shear, 6EI/s² × (1 + 2 r/s) θ, at
+  // the hub's radius, so the torque a spoke gives is 4EI/s × (1 + 3 r/s + 3 r²/s²) θ.
+  const r = hub ?? Math.max(2, 2 * t), I = (w * t ** 3) / 12, carried = 1 + (1.5 * r) / s, stiffness = ((16 * E * I) / s) * (1 + (3 * r) / s + (3 * r * r) / (s * s)), strain = (th) => (2 * t * th * carried) / s;
+  const angle = (e) => e / strain(1);
+  return { stiffness, strain, angle, travel: angle, stress: (th) => E * strain(th) };
 }
 
 /**
@@ -908,12 +918,12 @@ export function printable({ thickness: t, width: w, travel, stop }, printer, mat
   else f('pass', `${t} mm thick: ${Math.round(lines)} lines of ${printer.line} mm`, 'flexure.lines');
   const layers = w / printer.layer;
   if (Math.abs(layers - Math.round(layers)) > 0.05) f('warn', `${w} mm wide is ${layers.toFixed(2)} layers of ${printer.layer} mm: a whole number prints as drawn`, 'flexure.layers');
-  if (stop != null && model && material?.strainLimit != null) {
+  if (stop != null && typeof model?.travel === 'function' && material?.strainLimit != null) { // (a bistable beam's model is numbers: it has one travel, not a limit)
     const limit = model.travel(material.strainLimit);
     if (stop === false) f('warn', `nothing stops this flexure before its limit of ${limit.toFixed(2)} mm (${(material.strainLimit * 100).toFixed(1)}% strain): add a stop (travelStop) or a rule that bounds its travel`, 'flexure.stop');
     else f(stop <= limit ? 'pass' : 'fail', `a stop at ${stop} mm${stop <= limit ? `, within the limit of ${limit.toFixed(2)} mm` : `: past the limit of ${limit.toFixed(2)} mm, the material fails before the stop`}`, 'flexure.stop');
   }
-  if (travel != null && model && material?.strainLimit != null) {
+  if (travel != null && typeof model?.strain === 'function' && material?.strainLimit != null) {
     const e = model.strain(travel), limit = material.strainLimit;
     f(e <= limit ? 'pass' : 'fail', `at ${travel} mm of travel the material sees ${(e * 100).toFixed(2)}% strain${e <= limit ? ', within' : ', over'} ${material.name ?? 'its'} limit of ${(limit * 100).toFixed(1)}%${e > limit ? `: at most ${model.travel(limit).toFixed(2)} mm` : ''}`, 'flexure.strain');
   }

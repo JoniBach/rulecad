@@ -15,7 +15,8 @@ your printer or your parts. If you measured something:
   `"rule"` and where in `"source"`. Set `"checked"` to the date.
 
 Kinds, from most to least trusted: `measured` (you checked it), `spec` (a datasheet or the manufacturer),
-`community` (a widely used figure, such as KiCad's library), `default` (a setting that works), `estimate`.
+`community` (a widely used figure, such as KiCad's library), `default` (a setting that works), `derived` (read off
+someone else's model: check it against the real thing), `estimate`. A test holds every published value to these.
 
 ## Code
 
@@ -27,8 +28,10 @@ npm run test:browser   # the model page in headless Chrome (needs Chrome or Chro
 test/fresh-install.sh  # the packages installed as a stranger gets them: no lockfile
 ```
 
-- One package, one `.mjs` file, documented at the top and with JSDoc on what it exports (types are made from that).
-- The small packages depend on nothing but each other, and run in browsers as well as Node: `npm test` checks that.
+- A small package is one `.mjs` file, or a few, each documented at the top and with JSDoc on what it exports (types
+  are made from that: `npm run types` fails on a module whose declarations wouldn't be published).
+- The small packages depend on nothing but each other, and run in browsers as well as Node: `npm test` checks that
+  in every module they ship.
 - New behaviour comes with a test. Fix a bug with a test that failed before the fix.
 - Plain words in messages and docs: say what happened and what to do, for people who aren't programmers too.
 - Designs are code: rulecad never runs code from a link, a rule file or a layout, and nothing may change that.

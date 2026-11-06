@@ -180,7 +180,16 @@ test('an elliptical hinge: with equal axes it is the circular notch within a few
 
 test('a cartwheel pivot: four spokes bent by the hub\'s turn, stiffer with a bigger hub; one piece with the arm out through the rim', () => {
   const p = { spoke: 10, thickness: 0.84, width: 8 }, m = cartwheelModel(p, pla), I = (8 * 0.84 ** 3) / 12;
-  assert.ok(Math.abs(m.stiffness - (16 * 2680 * I * (1 + 1.5 * 2 / 10)) / 10) < 1e-9 && Math.abs(m.strain(m.angle(0.02)) - 0.02) < 1e-12);
+  assert.ok(Math.abs(m.strain(m.angle(0.02)) - 0.02) < 1e-12);
+  // against the beam solver, not the formula's own words: four spokes fixed at the rim, the hub turned a milliradian
+  for (const [hub, spoke] of [[2, 10], [4, 10], [2, 30]]) {
+    const dirs = [45, 135, 225, 315].map((a) => [Math.cos((a * Math.PI) / 180), Math.sin((a * Math.PI) / 180)]);
+    const sys = beamSystem({ bodies: { rim: { at: [0, 0], fixed: true }, hub: { at: [0, 0] } }, segments: 16,
+      beams: dirs.map(([c, sn], k) => ({ name: `s${k}`, path: [[(hub + spoke) * c, (hub + spoke) * sn], [hub * c, hub * sn]], thickness: 0.84, width: 8, E: 2680, from: 'rim', to: 'hub' })) });
+    const th = 1e-3, dof = sys.body.hub.dof, r = equilibrium(sys, { held: new Map([[dof, 0], [dof + 1, 0], [dof + 2, th]]) });
+    const solved = r.reaction.get(dof + 2) / th, said = cartwheelModel({ spoke, thickness: 0.84, width: 8, hub }, pla).stiffness;
+    assert.ok(Math.abs(said / solved - 1) < 0.01, `hub ${hub}, spokes ${spoke}: the model says ${said.toFixed(0)} N·mm a radian, the solver ${solved.toFixed(0)}`);
+  }
   assert.ok(cartwheelModel({ ...p, hub: 4 }, pla).stiffness > m.stiffness);
   const shape = cartwheel(p), box = measureBoundingBox(shape);
   assert.ok(onePiece(shape) && Math.abs(box[0][0] + 15) < 1e-6 && Math.abs(box[1][0] - 35) < 1e-6, 'a rim of radius 15 and an arm 20 past it');
@@ -749,4 +758,51 @@ test('a strap from a moving body: over and under another, to a post of its own i
   for (const q of polys) { const zs = q.vertices.map((v) => v[2]); if (Math.min(...zs) < z && Math.max(...zs) > z && Math.max(...zs) - Math.min(...zs) > 0.5) for (const v of q.vertices) if (v[0] > 21 && v[0] < 36 && Math.abs(v[1]) < 3.5) near.push(Math.abs(v[1])); }
   const edges = [...new Set(near.map((y) => +y.toFixed(2)))].sort((a, b) => a - b);
   assert.ok(edges.some((y) => Math.abs(y - 1) < 0.03) && edges.some((y) => Math.abs(y - 1.6) < 0.03), `walls at |y| ${edges.join(', ')}: the strap's side at 1, the bar's cut back a gap from it, at 1.6`);
+});
+
+// ---------- from the library review ----------
+import { curvePath } from '@rulecad/flexures';
+
+test('the beam solver balances a small load on a fine mesh (its tolerance follows the forces at work, not only the mesh)', () => {
+  const E = 2680, w = 8, t = 1, L = 40, I = (w * t ** 3) / 12, P = 0.1;
+  for (const segments of [16, 64, 200]) {
+    const sys = beamSystem({ bodies: { g: { at: [0, 0], fixed: true }, tip: { at: [L, 0] } }, segments, beams: [{ name: 'b', path: [[0, 0], [L, 0]], thickness: t, width: w, E, from: 'g', to: 'tip' }] });
+    const dof = sys.body.tip.dof, r = equilibrium(sys, { loads: new Map([[dof + 1, P]]) });
+    assert.ok(r.converged && r.iterations > 0, `${segments} segments: ${r.iterations} iterations`);
+    assert.ok(Math.abs(r.q[dof + 1] / ((P * L ** 3) / (3 * E * I)) - 1) < 0.01, `${segments} segments: the tip moves ${r.q[dof + 1].toFixed(4)} mm, theory ${((P * L ** 3) / (3 * E * I)).toFixed(4)}`);
+  }
+});
+
+test('every hinge answers travel(strain) as well as angle(strain), so a hinge in a lamina or a report is checked, not a crash', async () => {
+  for (const [model, p] of [[notchHingeModel, { radius: 3, neck: 0.84, width: 8 }], [livingHingeModel, { flex: 2, thickness: 0.84, width: 8 }], [cartwheelModel, { spoke: 10, thickness: 0.84, width: 8 }]]) {
+    const m = model(p, pla);
+    assert.equal(m.travel(0.01), m.angle(0.01));
+  }
+  const r = report([{ name: 'hinge', kind: 'notchHinge', params: { radius: 3, neck: 0.84, width: 8 }, angle: 0.05, stop: 0.1 }], { line: 0.42, layer: 0.2 }, pla);
+  assert.ok(r.findings.some((x) => x.code === 'flexure.stop'), JSON.stringify(r.findings));
+  assert.equal(report([{ name: 'odd', kind: 'no-such-kind', params: {} }], { line: 0.42, layer: 0.2 }, pla).findings[0].code, 'flexure.kind');
+  const rect = (x0, y0, x1, y1) => jscad.primitives.polygon({ points: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] });
+  const made = await lamina({ height: 6, gap: 0.3, material: { E: 2680, strainLimit: 0.012 }, physics: false, ground: rect(-20, -5, -9.5, 5), bodies: { arm: rect(11.5, -3, 30, 3) },
+    joints: { h: { kind: 'livingHinge', params: { flex: 2, thickness: 0.84 }, at: [0, 0], from: 'ground', to: 'arm' } }, states: { bent: { h: 10 } }, sequence: ['rest', 'bent'] });
+  assert.ok(made.findings.some((x) => x.code === 'lamina.strain'), made.findings.map((x) => x.code).join(', '));
+});
+
+test('a curve whose points repeat, or aren\'t numbers, is refused by name (it drew NaN)', () => {
+  assert.throws(() => curvePath({ points: [[0, 0], [10, 0], [10, 0], [20, 0]], thickness: 1 }), /points 2 and 3 are the same place/);
+  assert.throws(() => curvePath({ points: [[0, 0], [10, NaN]], thickness: 1 }), /point 2 isn't a place/);
+  assert.ok(curvePath({ points: [[0, 0], [10, 2], [20, 0]], thickness: 1 }).path.every((q) => q.every(Number.isFinite)));
+});
+
+test('a placed module takes its curve and its pin with it; the README\'s first numbers are the code\'s', async () => {
+  const { place } = await import('@rulecad/flexures');
+  const placed = place({ joints: { a: { kind: 'curve', params: { points: [[0, 0], [10, 2], [20, 0]], thickness: 0.84 }, pin: { d: 3, at: [5, 5] }, from: 'ground', to: 'arm' } } }, { name: 'm', at: [100, 0], angle: 90 });
+  const j = placed.joints['m.a'];
+  assert.deepEqual(j.at.map((x) => Math.round(x * 1e6) / 1e6), [100, 0], 'moved, though it gave no place of its own');
+  assert.equal(j.angle, 90);
+  assert.deepEqual(j.pin.at.map((x) => Math.round(x * 1e6) / 1e6), [95, 5], 'its pin turned and moved with it');
+  const readme = (await import('node:fs')).readFileSync(new URL('./README.md', import.meta.url), 'utf8');
+  const m = leafModel({ length: 40, thickness: 1.26, width: 8 }, { E: 2680, strainLimit: 0.02 });
+  assert.ok(readme.includes(`m.stiffness;        // ${m.stiffness.toFixed(2)} N/mm`), `the README's leaf stiffness should read ${m.stiffness.toFixed(2)}`);
+  const e = elastica({ length: 40, thickness: 0.84, width: 8 }, { E: 2680 }, { travel: 20 });
+  assert.ok(readme.includes(`force: ${e.force.toFixed(2)}, travel: 20, shortening: ${e.shortening.toFixed(1)}, angle: ${e.angle.toFixed(2)}, strain: ${e.strain.toFixed(3)}, stiffness: ${e.stiffness.toFixed(3)}`), 'the README\'s elastica example');
 });

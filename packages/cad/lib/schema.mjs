@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { near } from './errors.mjs';
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
 const cache = new Map();
@@ -15,13 +16,6 @@ export function schema(name) {
 
 const typeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
 const fits = (v, t) => t === typeOf(v) || (t === 'number' && typeof v === 'number') || (t === 'integer' && Number.isInteger(v));
-// The closest allowed name to a typo: one or two letters out
-function near(word, names) {
-  const d = (a, b) => { const m = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]); for (let j = 1; j <= b.length; j++) m[0][j] = j;
-    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) m[i][j] = Math.min(m[i - 1][j] + 1, m[i][j - 1] + 1, m[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return m[a.length][b.length]; };
-  const best = names.map((n) => [n, d(word, n)]).sort((x, y) => x[1] - y[1])[0];
-  return best && best[1] <= 2 ? best[0] : null;
-}
 
 /**
  * Problems with a value against a schema: [{ path, message }], empty when it's valid.

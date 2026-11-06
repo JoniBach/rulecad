@@ -14,9 +14,10 @@
 // @rulecad/pcb describes); the build then carries its Circuit JSON (circuit) and matrix, and one part: the bare board
 // (its copper is in the 2D views).
 // Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
-import { located } from './errors.mjs';
-import { host } from './host.mjs';
-import { named, faces, fromFaces, polygons, unpack } from './parts.mjs';
+import { spawnSync } from 'node:child_process';
+import { located, lineOf } from './errors.mjs';
+import { host, readJson } from './host.mjs';
+import { named, faces, fromFaces, polygons, unpack, watch } from './parts.mjs';
 import { runSandboxed, sandboxed } from './sandbox.mjs';
 export { polygons };
 import fs from 'node:fs';
@@ -137,11 +138,21 @@ export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
 export const booleans = (object) => (object.engine === 'manifold' ? 'manifold' : object.engine === 'pcb' ? 'jscad' : process.env.CAD_ENGINE || 'jscad');
 
 export const readObject = (d) => {
-  const o = JSON.parse(host.readText(d.json));
+  const o = readJson(d.json);
   if (o.display && !o.mirror) o.mirror = o.display;
   for (const p of Object.values(o.parts || {})) if (p.display === false) p.mirror = false;
   return o;
 };
+
+// A design that doesn't parse: JavaScript's own error says what it met but not where, so ask Node to check the file
+// and add the line it stopped at
+function syntaxAt(e, d) {
+  if (e?.name !== 'SyntaxError' || e.line || host.name !== 'node') return e;
+  const r = spawnSync(process.execPath, ['--check', d.js], { encoding: 'utf8' });
+  const m = r.status ? String(r.stderr).match(/^(?:file:\/\/)?.*?:(\d+)\r?\n(.*)\r?\n/) : null;
+  if (m) { e.line = Number(m[1]); e.message = `${e.message}: ${m[2].trim()}`; }
+  return e;
+}
 
 // build(design, set, { mirror }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export) }
 //   parts: [{ name, role, label, geometry, polygons, triangles }]; polygons and triangles: every part together
@@ -180,22 +191,20 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
   let parts, board = null, read, mechanism = null;
-  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object)));
+  const optional = Object.keys(object.mirror || {}); // inputs only the on-screen copy has: main may ask for them when they aren't there
+  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional).catch((e) => { throw syntaxAt(e, d); }));
   else {
     const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
       // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
       if (e.code === 'ERR_MODULE_NOT_FOUND' && /@jscad\/modeling/.test(e.message)) throw new Error(`designs need JSCAD in the workspace: npm install @jscad/modeling (in ${WS})`);
       if (/import statement outside a module/.test(e.message)) throw new Error(`designs are ES modules: set "type": "module" in ${path.join(WS, 'package.json')}`);
-      throw e;
+      throw syntaxAt(located(e, d.js, 'design.run'), d);
     });
     if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
-    // Rules the code reads directly (v.mx.housing_top) count as used too, so estimates it relies on get flagged
-    read = new Set();
-    const watched = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v && typeof v === 'object'
-      ? new Proxy(v, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : v]));
-    watched.shapes = shapes; watched.flexures = flexures; watched.ops = await shapes.ops(booleans(object)); if (pcb) watched.pcb = pcb;
+    const w = watch(values, { shapes, flexures, ops: await shapes.ops(booleans(object)), ...(pcb ? { pcb } : {}) }, optional);
+    read = w.read;
     let made;
-    try { ({ shapes: made, mechanism } = unpack(await mod.main(watched))); } catch (e) { throw located(e, d.js, 'design.run'); }
+    try { ({ shapes: made, mechanism } = unpack(await mod.main(w.v))); } catch (e) { throw Object.assign(located(e, d.js, 'design.run'), { line: lineOf(e, pathToFileURL(d.js).href) || undefined }); }
     if (object.engine === 'pcb') { // a circuit board: tscircuit builds it, and the bare board is its one part
       const { board: b, matrix, clone } = made && made.board ? made : { board: made }; // clone: a cloned board's { circuit, arranged }, for its checks
       board = { circuit: await pcb.render(b), ...(matrix ? { matrix } : {}), ...(clone ? { source: clone } : {}) };
@@ -208,7 +217,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       }
       made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth, models: meshes });
     }
-    parts = named(made, object.parts || {});
+    try { parts = named(made, object.parts || {}); } catch (e) { throw located(e, d.js, 'design.run'); }
   }
   for (const e of entries) if (read.has(e.name)) e.used = true;
   try {

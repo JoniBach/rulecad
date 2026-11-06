@@ -21,6 +21,9 @@ npx cad export home/soap-tray      # a 3MF for your slicer
 it** to see it, check it for printing and get a link to share. Nothing is uploaded. Try it now, with nothing to
 install: [jonibach.github.io/rulecad](https://jonibach.github.io/rulecad/).
 
+**New to it?** [The tutorial](packages/cad/TUTORIAL.md) goes from an empty folder to a part of your own, checked
+against the thing it fits, in about twenty minutes.
+
 Every new project gets an `AGENTS.md`: how an AI agent (Claude Code and others) should design there. Rules first,
 look at the preview, report fits with numbers. `npx cad agents` adds it to an existing project.
 
@@ -42,6 +45,7 @@ has test blocks for the optimiser: levers (2D) and wall brackets (3D) of equal m
 | [`@rulecad/shapes`](packages/shapes) | For JSCAD designs: text that prints cleanly, anchors on a face, cuts that leave no hairline gaps. Needs JSCAD (peer). |
 | [`@rulecad/flexures`](packages/flexures) | Parts that move by bending: leaf springs, guides, serpentine springs and notch hinges, each with its stiffness, its strain at a travel, and how it prints. Needs JSCAD (peer) |
 | [`@rulecad/fea`](packages/fea) | How far a flat part bends under load: finite elements on a grid, in plain JavaScript, checked against beam theory. |
+| [`@rulecad/smooth`](packages/smooth) | Autorouted circuit-board tracks pulled tight: wiggles, detours and doubling-backs straightened wherever the straight run keeps its clearance. |
 | [`@rulecad/topopt`](packages/topopt) | Topology optimisation for flat parts: the stiffest layout of a fixed amount of material, as outlines ready to extrude. Matches the published 88-line code step for step. |
 
 ```sh
@@ -83,7 +87,7 @@ npm install   # links the packages to each other; JSCAD comes in only to make te
 npm test      # node:test, no other tools
 ```
 
-Each package is one `.mjs` file with its documentation at the top. Rules for changes: no dependencies but each other and a CAD kernel as a peer (a test checks),
+Each small package is one `.mjs` file, or a few, with its documentation at the top of each. Rules for changes: no dependencies but each other and a CAD kernel as a peer (a test checks),
 nothing that only runs in Node, and new behaviour comes with a test.
 
 The kit grew out of a rule-driven design project for 3D printing: a keyboard, its keycaps, case and circuit boards.

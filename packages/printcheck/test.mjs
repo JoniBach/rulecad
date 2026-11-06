@@ -79,3 +79,39 @@ test('islands: a layer with nothing under it within the overhang reach is an isl
   assert.equal(level(check([...post, ...blob], { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42 }), /island/), 'warn');
 });
 
+
+// A slab leaning `deg` from upright over `h` mm: 10 wide at the bed, 20 long
+const leaning = (deg, h = 10) => { const d = h * Math.tan((deg * Math.PI) / 180), v = [[0, 0, 0], [10, 0, 0], [10, 20, 0], [0, 20, 0], [d, 0, h], [10 + d, 0, h], [10 + d, 20, h], [d, 20, h]]; return [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]].map((face) => face.map((i) => v[i])); };
+
+test('overhangs by angle: a wall at the limit passes, one that leans on past it warns, a short ledge is let be', () => {
+  const sliced = (model, printer = { bed: 256, overhang: 45, layer: 0.2 }) => check(model, printer).find((x) => x.code === 'print.overhang.sliced').level;
+  for (const deg of [30, 45, 47]) assert.equal(sliced(leaning(deg)), 'pass', `${deg}°`);
+  // (each layer has a line's grace over the one below, for a ledge; taken every layer it let a 70° lean through)
+  for (const deg of [50, 60, 70]) assert.equal(sliced(leaning(deg)), 'warn', `${deg}°`);
+  assert.equal(sliced(leaning(60, 0.8)), 'pass', 'four layers of ledge');
+  // the limit is the printer's, measured from upright
+  assert.equal(sliced(leaning(60), { bed: 256, overhang: 60, layer: 0.2 }), 'pass');
+  assert.equal(sliced(leaning(70), { bed: 256, overhang: 60, layer: 0.2 }), 'warn');
+  assert.equal(check(leaning(60), { bed: 256, overhang: 45 }).find((x) => x.code === 'print.overhang').level, 'warn', 'and by its faces, when it isn\'t sliced');
+});
+
+test('what can\'t be checked is said plainly: no faces, no printer, a limit that isn\'t a number', () => {
+  const cube = leaning(0);
+  assert.deepEqual(check([], { bed: 256, overhang: 45 }).map((x) => x.code), ['print.empty']);
+  assert.throws(() => check(cube), /the printer's "bed" is needed/);
+  assert.throws(() => check(cube, {}), /the printer's "bed" is needed/);
+  assert.throws(() => check(cube, { bed: 256 }), /the printer's "overhang" is needed/);
+  assert.throws(() => check(cube, { bed: 256, overhang: 45, layer: 0 }), /"layer" must be a number above 0/);
+  // off the bed: one finding says so, and none says it sits flat on it
+  const raised = cube.map((face) => face.map(([x, y, z]) => [x, y, z + 5])), found = check(raised, { bed: 256, overhang: 45, layer: 0.2 });
+  assert.ok(found.some((x) => x.code === 'print.off-bed' && x.level === 'fail'));
+  assert.ok(!found.some((x) => x.code === 'print.base' && x.level === 'pass'));
+});
+
+test('slicing is quick on a part of upright walls: layers the same as the one below are passed over', () => {
+  const s = 80, v = [[0, 0, 0], [s, 0, 0], [s, s, 0], [0, s, 0], [0, 0, s], [s, 0, s], [s, s, s], [0, s, s]];
+  const cube = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]].map((face) => face.map((i) => v[i]));
+  const t0 = Date.now(), found = check(cube, { bed: 256, overhang: 45, layer: 0.2 });
+  assert.ok(found.every((x) => x.level === 'pass'), JSON.stringify(found.filter((x) => x.level !== 'pass')));
+  assert.ok(Date.now() - t0 < 20000, `an 80 mm cube took ${Date.now() - t0} ms (it took a minute before)`);
+});

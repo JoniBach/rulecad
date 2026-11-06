@@ -26,7 +26,10 @@ export function place(m, { name, at = [0, 0], angle = 0 }) {
   const id = (n) => (n === 'ground' ? 'ground' : n.startsWith('^') ? n.slice(1) : `${name}.${n}`);
   const joints = Object.fromEntries(Object.entries(m.joints || {}).map(([n, j]) => [id(n), {
     ...j, from: id(j.from), to: id(j.to),
-    ...(j.at ? { at: pt(j.at) } : {}), ...(j.kind ? { angle: (j.angle || 0) + angle } : {}),
+    // A generated flexure is drawn in its own frame, turned by its angle and then moved to its `at` (the origin, if it
+    // gives none, as a curve needn't): so it is turned further, and where it is put moves with the module
+    ...(j.at || j.kind ? { at: pt(j.at || [0, 0]) } : {}), ...(j.kind ? { angle: (j.angle || 0) + angle } : {}),
+    ...(j.pin?.at ? { pin: { ...j.pin, at: pt(j.pin.at) } } : {}), // a pin is where the print has it
     ...(j.shape ? { shape: moveShape(j.shape, angle, at) } : {}), ...(j.axis ? { axis: r.p(j.axis) } : {}), ...(j.pivot ? { pivot: pt(j.pivot) } : {}),
   }]));
   return {

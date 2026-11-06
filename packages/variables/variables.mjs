@@ -49,8 +49,8 @@ function tokens(src) {
  * @param {(name: string) => number} lookup the value of a name
  * @returns {number}
  */
-export function evaluate(src, lookup) {
-  if (typeof src === 'number') return src;
+export function evaluate(src, lookup = (name) => { throw new Error(`no value for "${name}"`); }) {
+  if (typeof src === 'number') { if (!Number.isFinite(src)) throw new Error('is not a finite number'); return src; }
   const t = tokens(String(src));
   let i = 0;
   const peek = () => t[i], take = (op) => (t[i]?.op === op ? (i++, true) : false);
@@ -62,7 +62,7 @@ export function evaluate(src, lookup) {
     if (!k) throw new Error('ends too soon');
     if (k.n != null) return k.n;
     if (k.op === '(') { const v = expr(); if (!take(')')) throw new Error('missing )'); return v; }
-    if (k.id && FNS[k.id] && take('(')) {
+    if (k.id && Object.hasOwn(FNS, k.id) && take('(')) {
       const args = [expr()];
       while (take(',')) args.push(expr());
       if (!take(')')) throw new Error('missing )');
@@ -115,7 +115,7 @@ export function unitsOf(src, unitOf) {
     if (!k) return null;
     if (k.n != null) return null;
     if (k.op === '(') { const v = expr(); take(')'); return v; }
-    if (k.id && FNS[k.id] && take('(')) {
+    if (k.id && Object.hasOwn(FNS, k.id) && take('(')) {
       const args = [expr()];
       while (take(',')) args.push(expr());
       take(')');
@@ -153,14 +153,20 @@ export function unitsOf(src, unitOf) {
  * @returns {{ values: Record<string, any>, entries: Entry[], deps: Record<string, string[]> }} deps: each name with the names its own expression reads
  */
 export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}) {
+  // Names are looked up as an object's own, never inherited: a variable called constructor is a variable, and a
+  // name nobody defined (toString) is unknown, not whatever every object happens to carry
+  const own = (o, k) => (o != null && Object.hasOwn(o, k) ? o[k] : undefined);
   const ruleSets = Object.fromEntries((object.uses || []).map((u) => {
-    const s = sets[u] || (load ? load(u) : null);
+    const s = own(sets, u) || (load ? load(u) : null);
     if (!s) throw fail('rules.missing', `no rule set "${u}" (hand it in as sets.${u}, or give a load function)`, 'uses');
+    if (typeof s.then === 'function') throw fail('rules.async', `the load function gave a promise for "${u}": load must return the rule set itself (fetch it first, and hand it in as sets.${u})`, 'uses');
+    if (!s.rules || typeof s.rules !== 'object') throw fail('rules.shape', `rule set "${u}" has no "rules"`, 'uses');
     return [s.name || u, s];
   }));
   const vars = object.variables || {};
+  for (const name of Object.keys(ruleSets)) if (own(vars, name) || own(vars, name.replace(/-/g, '_'))) throw fail('var.clash', `"${name}" is a rule set in uses and a variable too: rename the variable, so each name means one thing`, `variables.${own(vars, name) ? name : name.replace(/-/g, '_')}`);
   for (const [k, v] of Object.entries(set)) {
-    const d = vars[k];
+    const d = own(vars, k);
     if (!d) throw fail('set.unknown', `no variable "${k}" to set (variables: ${Object.keys(vars).join(', ')})`, `variables.${k}`);
     if (isName(d)) { checkName(k, d, v); continue; }
     if (!d.tweak) throw fail('set.fixed', `"${k}" is fixed by its rule; only variables with a tweak range can be set`, `variables.${k}.tweak`);
@@ -178,15 +184,19 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     busy.add(name);
     let src, where;
     if (name.includes('.')) {
-      let [s, r] = name.split('.');
-      if (!ruleSets[s] && ruleSets[s.replace(/_/g, '-')]) s = s.replace(/_/g, '-'); // mx_switch.housing_top reads the set named mx-switch (a - is a minus here)
-      if (!ruleSets[s]) throw fail('var.unknown-set', `"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
-      if (!ruleSets[s].rules[r]) throw fail('var.unknown-rule', `"${name}": no rule "${r}" in ${s}`);
+      let [s, r, more] = name.split('.');
+      if (more !== undefined) throw fail('var.unknown-rule', `"${name}": a rule is named <set>.<rule>, with one dot`);
+      if (!own(ruleSets, s) && own(ruleSets, s.replace(/_/g, '-'))) s = s.replace(/_/g, '-'); // mx_switch.housing_top reads the set named mx-switch (a - is a minus here)
+      if (!own(ruleSets, s)) throw fail('var.unknown-set', `"${name}": rule set "${s}" isn't in uses (${Object.keys(ruleSets).join(', ') || 'none'})`);
+      if (!own(ruleSets[s].rules, r)) throw fail('var.unknown-rule', `"${name}": no rule "${r}" in ${s}`);
       src = ruleSets[s].rules[r].value; where = (n) => (n.includes('.') ? n : `${s}.${n}`); // a rule's names are its own set's
     } else {
-      if (!vars[name]) throw fail('var.unknown', `no variable "${name}"`);
-      if (isName(vars[name])) { busy.delete(name); const c = checkName(name, vars[name], name in display ? display[name] : name in set ? set[name] : vars[name].value); done.set(name, c); return c; }
-      src = name in display ? display[name] : name in set ? Number(set[name]) : vars[name].value; where = (n) => n; // display: the screen's settings win
+      const d = own(vars, name);
+      if (!d) throw fail('var.unknown', `no variable "${name}"`);
+      const shown = Object.hasOwn(display, name), given = Object.hasOwn(set, name);
+      if (isName(d)) { busy.delete(name); const c = checkName(name, d, shown ? display[name] : given ? set[name] : d.value); done.set(name, c); return c; }
+      src = shown ? display[name] : given ? Number(set[name]) : d.value; where = (n) => n; // display: the screen's settings win
+      if (src === undefined) throw fail('var.value', `"${name}" has no value`, `variables.${name}`);
     }
     let v;
     deps.set(name, new Set()); stack.push(name);
@@ -203,7 +213,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
   const values = {}, entries = [];
   for (const [name, d] of Object.entries(vars)) {
     values[name] = lookup(name);
-    entries.push({ name, ...d, value: values[name], expr: typeof d.value === 'string' ? d.value : undefined, set: name in set });
+    entries.push({ name, ...d, value: values[name], expr: typeof d.value === 'string' ? d.value : undefined, set: Object.hasOwn(set, name) });
   }
   // Units: each variable's expression, its names' units mixed only where they agree, and coming to the unit it says
   const unitOf = (n) => (n.includes('.') ? ruleSets[n.split('.')[0].replace(/_/g, '-')]?.rules[n.split('.')[1]]?.unit ?? ruleSets[n.split('.')[0]]?.rules[n.split('.')[1]]?.unit : vars[n]?.unit);

@@ -4,6 +4,8 @@
 
 // Where every value is: [{ path: ['variables', 'w', 'value'], start, end }], in the order they appear
 function spans(text) {
+  // (the scanner below takes the text to be JSON: one that isn't would send it past the end, so that's settled first)
+  try { JSON.parse(text); } catch (e) { throw Object.assign(new Error(`not valid JSON, so it can't be edited: ${e.message}`), { code: 'json' }); }
   const out = [];
   let i = 0;
   const ws = () => { while (i < text.length && /\s/.test(text[i])) i++; };
@@ -30,13 +32,16 @@ const same = (a, b) => a.length === b.length && a.every((x, k) => x === b[k]);
 const find = (text, path) => spans(text).find((s) => same(s.path, path));
 // The indentation of the line a position is on
 const indentAt = (text, at) => { const line = text.lastIndexOf('\n', at - 1) + 1; return /^[ \t]*/.exec(text.slice(line))[0]; };
-// A value as JSON, laid out like the file (two spaces a level, from the given indentation); short arrays of numbers
-// and expressions stay on one line, as people write them
-function render(v, indent) {
+// How the file is laid out: its line ending, and what one level of indentation is (two spaces, unless its first
+// indented line says otherwise: a tab, four spaces)
+const styleOf = (text) => ({ eol: text.includes('\r\n') ? '\r\n' : '\n', unit: (/\n([ \t]+)\S/.exec(text) || [null, '  '])[1] });
+// A value as JSON, laid out like the file (from the given indentation); short arrays of numbers and expressions stay
+// on one line, as people write them
+function render(v, indent, style) {
   if (Array.isArray(v) && v.every((x) => typeof x !== 'object' || x === null) && JSON.stringify(v).length <= 80) return `[${v.map((x) => JSON.stringify(x)).join(', ')}]`;
-  const inner = `${indent}  `;
-  if (Array.isArray(v)) return v.length ? `[\n${v.map((x) => `${inner}${render(x, inner)}`).join(',\n')}\n${indent}]` : '[]';
-  if (v && typeof v === 'object') { const e = Object.entries(v); return e.length ? `{\n${e.map(([k, x]) => `${inner}${JSON.stringify(k)}: ${render(x, inner)}`).join(',\n')}\n${indent}}` : '{}'; }
+  const inner = `${indent}${style.unit}`, { eol } = style;
+  if (Array.isArray(v)) return v.length ? `[${eol}${v.map((x) => `${inner}${render(x, inner, style)}`).join(`,${eol}`)}${eol}${indent}]` : '[]';
+  if (v && typeof v === 'object') { const e = Object.entries(v); return e.length ? `{${eol}${e.map(([k, x]) => `${inner}${JSON.stringify(k)}: ${render(x, inner, style)}`).join(`,${eol}`)}${eol}${indent}}` : '{}'; }
   return JSON.stringify(v);
 }
 
@@ -52,7 +57,7 @@ export function getAt(text, path) {
  */
 export function setAt(text, path, value) {
   const s = find(text, path);
-  if (s) return text.slice(0, s.start) + render(value, indentAt(text, s.start)) + text.slice(s.end);
+  if (s) return text.slice(0, s.start) + render(value, indentAt(text, s.start), styleOf(text)) + text.slice(s.end);
   const parent = find(text, path.slice(0, -1));
   if (!parent) throw Object.assign(new Error(`no ${path.slice(0, -1).join('.') || 'top level'} to add ${path.at(-1)} to`), { code: 'edit.path' });
   const body = text.slice(parent.start, parent.end);
@@ -76,9 +81,10 @@ function insert(text, s, key, value) {
   const members = spans(text).filter((x) => x.path.length === s.path.length + 1 && same(x.path.slice(0, -1), s.path)).sort((a, b) => a.start - b.start);
   const last = members.at(-1), multi = empty || inner.includes('\n');
   const first = members.length ? text.lastIndexOf('\n', members[0].start) : -1;
-  const indent = empty ? `${outer}  ` : multi ? /^[ \t]*/.exec(text.slice(first + 1))[0] : outer;
-  const piece = `${key}${render(value, indent)}`;
-  if (empty) return `${text.slice(0, s.start + 1)}\n${indent}${piece}\n${outer}${text.slice(close)}`;
+  const style = styleOf(text), { eol } = style;
+  const indent = empty ? `${outer}${style.unit}` : multi ? /^[ \t]*/.exec(text.slice(first + 1))[0] : outer;
+  const piece = `${key}${render(value, indent, style)}`;
+  if (empty) return `${text.slice(0, s.start + 1)}${eol}${indent}${piece}${eol}${outer}${text.slice(close)}`;
   const after = last.end;
-  return multi ? `${text.slice(0, after)},\n${indent}${piece}${text.slice(after)}` : `${text.slice(0, after)}, ${piece}${text.slice(after)}`;
+  return multi ? `${text.slice(0, after)},${eol}${indent}${piece}${text.slice(after)}` : `${text.slice(0, after)}, ${piece}${text.slice(after)}`;
 }

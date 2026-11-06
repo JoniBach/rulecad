@@ -1,6 +1,7 @@
 // A design's result as parts, and its shapes as faces: no file or process access, so the sandboxed runner
 // (sandbox-run.mjs) uses them as the build does.
 import jscad from '@jscad/modeling';
+import { CadError, near } from './errors.mjs';
 
 // A design's result split into its shapes and, for a lamina mechanism (@rulecad/flexures lamina()), what its checks
 // found and how it moves: plain data, so it crosses the sandbox and the cache with the parts.
@@ -10,11 +11,28 @@ export function unpack(made) {
   return { shapes: made.parts, mechanism: { ...made.mechanism, findings: made.findings, energy: made.energy, ...(made.frames ? { frames: made.frames } : {}) } };
 }
 
+// What main(v) is given: the values and the tool's helpers (extras). Rules the code reads directly
+// (v.mx.housing_top) are noted in `read`, so estimates a design relies on get flagged. A name that isn't there is
+// refused: a misspelt v.widht would otherwise come through as undefined, and quietly draw another shape. `optional`
+// names may be absent: the display's own inputs, and what only some designs get (layouts, problems, the board engine).
+export function watch(values, extras = {}, optional = []) {
+  const read = new Set(), may = new Set([...optional, 'layouts', 'problems', 'pcb', 'then', 'toJSON']);
+  const given = { ...Object.fromEntries(Object.entries(values).map(([k, x]) => [k, x && typeof x === 'object'
+    ? new Proxy(x, { get: (t, r) => { if (typeof r === 'string' && r in t) read.add(`${k}.${r}`); return t[r]; } }) : x])), ...extras };
+  const v = new Proxy(given, { get: (t, r) => {
+    if (typeof r !== 'string' || r in t || may.has(r)) return t[r];
+    const guess = near(r, Object.keys(t));
+    throw new CadError('design.unknown', `v.${r}: the design has no variable "${r}"${guess ? ` (did you mean "${guess}"?)` : ''}. Add it to the .json's variables, or its rule set to "uses"`);
+  } });
+  return { v, read };
+}
+
 // A design's result as parts: named ({ cap, pillar }) or one unnamed shape ("body").
 export function named(result, meta) {
   const isShape = (r) => Array.isArray(r) || jscad.geometries.geom3.isA(r) || jscad.geometries.geom2.isA(r);
   const entries = isShape(result) ? [['body', result]] : Object.entries(result || {});
   const empty = (g) => g == null || (Array.isArray(g) && !g.length);
+  if (!entries.some(([, g]) => !empty(g))) throw new CadError('design.empty', 'main() returned no shape: return a JSCAD solid, or named parts ({ cap, pillar })');
   for (const k of Object.keys(meta)) if (!meta[k].optional && !entries.some(([n, g]) => n === k && !empty(g))) throw new Error(`parts in the .json lists "${k}", but main() returns no such part`);
   return entries.filter(([name, g]) => !(empty(g) && meta[name]?.optional)).map(([name, g]) => {
     const m = meta[name] || {};

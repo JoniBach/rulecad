@@ -706,3 +706,136 @@ test('a mechanism problem: cad optimise reports how far the output moves its way
     assert.match(out, /40 × 20 cells of 1 mm/);
   } finally { done(); }
 });
+
+// ---------- what a newcomer meets ----------
+// A run of the command with its exit status kept (cad() above gives the output only)
+const run = (ws, a, env = {}) => { const r = spawnSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', env: { ...process.env, ...env } }); return { out: `${r.stdout}${r.stderr}`, stdout: r.stdout, code: r.status }; };
+
+test('a mistake in a design is named, with its file and line: a misspelt variable, no shape returned, a syntax error, broken JSON', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { width: { value: 10, unit: 'mm', rule: 'Width' } };
+    const shape = (expr) => `import jscad from '@jscad/modeling'\nexport function main (v) {\n  ${expr}\n}\n`;
+    for (const trust of [{}, { CAD_TRUST: '1' }]) { // in the sandbox, and in the tool's own process
+      const tryIt = (name, js) => { object(ws, `demo/${name}`, { variables: vars }, js); return run(ws, ['check', `demo/${name}`], { ...trust, CAD_NO_CACHE: '1' }); }; // (each run afresh: a kept build doesn't run the design)
+      const typo = tryIt('typo', shape('return jscad.primitives.cuboid({ size: [v.widht, v.width, v.width] })'));
+      assert.match(typo.out, /v\.widht: the design has no variable "widht" \(did you mean "width"\?\).*typo\.js:3\)/, 'not undefined, and another shape drawn');
+      assert.doesNotMatch(typo.out, /Warning/, 'Node\'s notes on the sandbox\'s own flags stay out of it');
+      assert.equal(typo.code, 1);
+      assert.match(tryIt('nothing', shape('jscad.primitives.cuboid({ size: [v.width, v.width, v.width] })')).out, /main\(\) returned no shape.*nothing\.js/);
+      assert.match(tryIt('syntax', shape('retrun jscad.primitives.cuboid({ size: [v.width, v.width, v.width] })')).out, /Unexpected identifier.*retrun.*syntax\.js:3\)/);
+      assert.match(tryIt('runtime', shape('return v.width.nope.deeper')).out, /reading 'deeper'.*runtime\.js:3\)/);
+      const said = tryIt('says', shape("console.log('width is', v.width)\n  return jscad.primitives.cuboid({ size: [v.width, v.width, v.width], center: [0, 0, v.width / 2] })"));
+      assert.match(said.out, /width is 10/, 'a design may print what it wants to see');
+      assert.match(said.out, /fits the bed/);
+    }
+    // a name only the on-screen copy sets may be asked for when it isn't there
+    object(ws, 'demo/shown', { variables: vars, display: { smooth: 8 } }, shape('return jscad.primitives.cylinder({ radius: v.width, height: v.width, center: [0, 0, v.width / 2], ...(v.smooth ? { segments: v.smooth } : {}) })'));
+    assert.match(cad('check', 'demo/shown'), /fits the bed/);
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/typo.json'), '{ "name": "typo", ');
+    assert.match(run(ws, ['check', 'demo/typo']).out, /not valid JSON: .*\(projects[\\/]demo[\\/]objects[\\/]typo\.json\)/);
+    assert.match(run(ws, ['set', 'demo/typo', 'width=5']).out, /not valid JSON/, 'and an edit says so too, at once');
+    fs.writeFileSync(path.join(ws, 'cad.config.json'), '{ "printer": ');
+    const cfg = run(ws, ['check', 'demo/shown']);
+    assert.match(cfg.out, /^not valid JSON: .*\(cad\.config\.json\)\s*$/, 'in one line, not a stack trace');
+  } finally { done(); }
+});
+
+test('the command line: its version, a misspelt command or option named, options before or after names, flags that take no value', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'demo/block');
+    assert.match(run(ws, ['--version']).out, /^\d+\.\d+\.\d+\s*$/);
+    for (const h of ['--help', '-h', 'help']) assert.match(run(ws, [h]).out, /^cad: JSCAD designs/);
+    const wrong = run(ws, ['chekc', 'demo/block']);
+    assert.match(wrong.out, /^no command "chekc" \(did you mean "check"\?\)/); assert.equal(wrong.code, 1);
+    const odd = run(ws, ['check', 'demo/block', '--jsno']);
+    assert.match(odd.out, /^no option --jsno \(did you mean --json\?\)/); assert.equal(odd.code, 1);
+    assert.equal(JSON.parse(run(ws, ['check', '--json', 'demo/block']).stdout).object, 'demo/block', 'options first');
+    assert.match(run(ws, ['check', 'demo/block', '--set']).out, /--set needs a value/);
+    assert.match(run(ws, ['add']).out, /usage: cad add fit\|joint\|item\|loop\|pose/);
+    assert.match(run(ws, ['add', 'fit']).out, /usage: cad add fit\|joint\|item\|loop\|pose/);
+    // --new takes no value: what follows it is the next variable, not lost
+    assert.match(run(ws, ['set', 'demo/block', '--new', 'lip=3', '--unit', 'mm', '--rule', 'A lip']).out, /set lip/);
+    const vars = () => JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/objects/block.json'), 'utf8')).variables;
+    assert.equal(vars().lip.value, 3);
+    const rule = vars().width.rule;
+    assert.match(run(ws, ['set', 'demo/block', 'width=50', '--new', 'rim=2', '--rule', 'A rim']).out, /--rule describes one variable/);
+    assert.equal(vars().width.rule, rule, 'no rule written over');
+    // a value in a file name can't name another folder
+    assert.match(run(ws, ['export', 'demo/block', '--set', 'width=50']).out, /block@0\.1\.0-width=50\.3mf/);
+    // projects: a stray file among them is passed over, a missing one named
+    fs.writeFileSync(path.join(ws, 'projects/.DS_Store'), '');
+    assert.match(run(ws, ['status']).out, /^demo\n\s+block\s+unreleased/);
+    assert.match(run(ws, ['status', 'nope']).out, /^no project "nope" \(projects: demo\)/);
+    // a preview whose Chrome can't run says so, and leaves no earlier picture to pass for it
+    const png = path.join(ws, '.preview/demo/block.png');
+    fs.mkdirSync(path.dirname(png), { recursive: true }); fs.writeFileSync(png, 'an earlier picture');
+    const shot = run(ws, ['preview', 'demo/block'], { CAD_CHROME: path.join(ws, 'no-chrome-here') });
+    assert.match(shot.out, /^couldn't start Chrome for the preview/); assert.equal(shot.code, 1);
+    assert.ok(!fs.existsSync(png));
+  } finally { done(); }
+});
+
+test('sandbox: the roads round the import hook are shut too, and the design sees none of the environment', () => {
+  const { ws, done } = workspace();
+  try {
+    const vars = { w: { value: 10, unit: 'mm', rule: 'Width' } };
+    const tryIt = (name, top, body) => {
+      object(ws, `demo/${name}`, { variables: vars }, `import jscad from '@jscad/modeling'\n${top}\nexport function main (v) {\n  ${body}\n  return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] })\n}\n`);
+      return run(ws, ['check', `demo/${name}`], { SECRET_TOKEN: 'tok123' }).out;
+    };
+    assert.match(tryIt('builtin', '', "process.getBuiltinModule('node:fs')"), /getBuiltinModule is not a function/);
+    assert.match(tryIt('env', '', "if (process.env.SECRET_TOKEN || process.env.HOME) throw new Error('the environment leaked')"), /fits the bed/);
+    assert.match(tryIt('kill', '', "if (process.kill || process.binding) throw new Error('process can still reach out')"), /fits the bed/);
+    // a node_modules folder inside the project is the design's own code, held to the same imports
+    fs.mkdirSync(path.join(ws, 'projects/demo/node_modules'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/demo/node_modules/helper.mjs'), "export * as http from 'node:http'\n");
+    assert.match(tryIt('own-modules', "import * as h from '../node_modules/helper.mjs'", ''), /designs can't import "node:http"/);
+    // and a path out of the project is refused wherever it leads, the workspace's packages included
+    assert.match(tryIt('leaves', "import * as ts from '../../../node_modules/typescript/lib/typescript.js'", ''), /it is outside the project/);
+    fs.writeFileSync(path.join(ws, 'projects/demo/objects/half.js'), 'export const half = (x) => x / (1 + 1)\n');
+    assert.match(tryIt('own-file', "import { half } from './half.js'", 'half(v.w)'), /fits the bed/, 'its own files are still its own');
+  } finally { done(); }
+});
+
+test('edits to JSON keep its line endings and indentation, and say when it isn\'t JSON', async () => {
+  const { setAt } = await import('./lib/jsonedit.mjs');
+  const crlf = '{\r\n\t"name": "x",\r\n\t"variables": {\r\n\t\t"w": { "value": 1 }\r\n\t}\r\n}\r\n';
+  const out = setAt(crlf, ['variables', 'd'], { value: 3, deep: { a: 1 } });
+  assert.equal(out, '{\r\n\t"name": "x",\r\n\t"variables": {\r\n\t\t"w": { "value": 1 },\r\n\t\t"d": {\r\n\t\t\t"value": 3,\r\n\t\t\t"deep": {\r\n\t\t\t\t"a": 1\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n}\r\n');
+  assert.throws(() => setAt('{ "name": "hook", ', ['a'], 1), /not valid JSON/, 'not a scan that never ends');
+});
+
+test('the tutorial: every file and command in TUTORIAL.md works as written, in a workspace npm create rulecad makes', () => {
+  const text = fs.readFileSync(new URL('./TUTORIAL.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'); // (a Windows checkout has its own line endings)
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tutorial-')), ws = path.join(root, 'my-designs');
+  try {
+    execFileSync(process.execPath, [fileURLToPath(new URL('../create-rulecad/index.mjs', import.meta.url)), ws, '--no-install'], { encoding: 'utf8' });
+    fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction'); // stands in for npm install
+    let files = 0, commands = 0;
+    // each fenced block in turn: one named for a file is written there; a sh block's cad commands are run
+    for (const [, info, body] of text.matchAll(/^```(\S*(?: \S+)?)\n([\s\S]*?)^```$/gm)) {
+      const [lang, file] = info.split(' ');
+      if (file) { fs.mkdirSync(path.dirname(path.join(ws, file)), { recursive: true }); fs.writeFileSync(path.join(ws, file), body); files++; continue; }
+      if (lang !== 'sh') continue;
+      for (const line of body.split('\n').map((l) => l.replace(/\s+#.*$/, '').trim()).filter((l) => l.startsWith('npx cad ') && !l.startsWith('npx cad preview'))) { // (a preview needs Chrome)
+        const a = [...line.slice('npx cad '.length).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]);
+        const r = run(ws, a);
+        assert.equal(r.code, 0, `${line}\n${r.out}`);
+        assert.doesNotMatch(r.out, /^\s+[✗!] /m, `${line}\n${r.out}`);
+        commands++;
+      }
+    }
+    assert.ok(files >= 5 && commands >= 10, `${files} files, ${commands} commands`);
+    assert.match(run(ws, ['check', 'home/hook-on-screw']).out, /The screw in its hole: closest gap 0\.\d+ mm/);
+    // and the mistakes it lists are reported in the words it gives
+    const js = path.join(ws, 'projects/home/objects/hook.js'), good = fs.readFileSync(js, 'utf8');
+    for (const [from, to, said] of [['v.plate / 2 / 2', 'v.plate / 4', 'numbers in hook.js that should be variables: line 10: 4'], ['v.thick / 2', 'v.thik / 2', 'v.thik: the design has no variable "thik" (did you mean "thick"?)'], ['return v.ops', 'v.ops', 'main() returned no shape: return a JSCAD solid, or named parts']]) {
+      fs.writeFileSync(js, good.replace(from, to));
+      const out = run(ws, ['check', 'home/hook']).out;
+      assert.ok(out.includes(said), `${to}: ${out}`);
+      assert.ok(text.includes(said), `the tutorial's table says: ${said}`);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

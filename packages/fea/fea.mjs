@@ -273,7 +273,16 @@ export function assemble(g, pat, cellMatrices, ke, scale, into) {
  *   loads on the same matrix (an adjoint), reusing its factor or preconditioner
  */
 export function solve(g, { scale, ke, fixed, loads, springs, method = 'direct', backend = jsBackend, tol = 1e-9, maxIter = 20000, start }) {
+  // What's wrong with what was handed in is said here, by name: further in, it comes out as a part "not held still",
+  // or as an answer that looks like one
+  if (!['direct', 'cg', 'mg'].includes(method)) throw new Error(`no solver "${method}": direct, cg or mg`);
   if (scale.length !== g.cells) throw new Error(`scale has ${scale.length} values for ${g.cells} cells`);
+  if (fixed.length !== g.dofs) throw new Error(`fixed has ${fixed.length} values for ${g.dofs} unknowns (${g.dim} a node)`);
+  loads.forEach((l, c) => { if (l.length !== g.dofs) throw new Error(`load ${c + 1} has ${l.length} values for ${g.dofs} unknowns (${g.dim} a node)`); });
+  if (springs && springs.length !== g.dofs) throw new Error(`springs has ${springs.length} values for ${g.dofs} unknowns`);
+  for (let e = 0; e < scale.length; e++) if (!(scale[e] > 0) || !Number.isFinite(scale[e])) throw new Error(`cell ${e}'s stiffness is ${scale[e]}: every cell needs a stiffness above 0 (a density, modulus or thickness is 0, negative or not a number)`);
+  for (let i = 0; i < ke.length; i++) if (!Number.isFinite(ke[i])) throw new Error("the cell's stiffness matrix isn't numbers: Poisson's ratio must be between -1 and 0.5");
+  loads.forEach((l, c) => { for (let i = 0; i < l.length; i++) if (!Number.isFinite(l[i])) throw new Error(`load ${c + 1} has a force that isn't a number`); });
   if (!fixed.some((f) => f)) throw new Error('nothing is held: fix at least one support, or the part just moves');
   const held = (ls) => ls.map((l) => { const c = Float64Array.from(l); for (let i = 0; i < c.length; i++) if (fixed[i]) c[i] = 0; return c; });
   if (method === 'direct') {
@@ -380,7 +389,8 @@ function conjugateGradients(g, { scale, fixed, loads, backend, tol, maxIter, sta
     let rz = backend.dot(r, z), it = 0;
     while (Math.sqrt(backend.dot(r, r)) > limit && it < maxIter) {
       apply(p, q);
-      const a = rz / backend.dot(p, q);
+      const pq = backend.dot(p, q), a = rz / pq;
+      if (!(pq > 0) || !Number.isFinite(a)) throw new Error('the part is not held still (it can slide or turn under this load): add supports, or join loose pieces to it'); // (a direction with no stiffness: the search would go on for ever, or stop on nonsense)
       backend.axpy(a, p, x); backend.axpy(-a, q, r);
       precondition(r, z);
       const next = backend.dot(r, z);
@@ -627,12 +637,26 @@ export function stress(g, u, modulus, nu) {
  *   of any node in solid material, and where.
  */
 export function analyse({ grid: g, density, material, thickness = 1, fixed, loads, penal = 1, method = g.dim === 3 ? 'mg' : 'direct', backend }) {
+  if (!(material?.E > 0)) throw new Error(`the material needs a modulus E above 0, in MPa (got ${material?.E})`);
+  if (!(material.nu > -1 && material.nu < 0.5)) throw new Error(`the material needs a Poisson's ratio nu between -1 and 0.5 (got ${material.nu}): about 0.35 for printed plastics`);
+  if (g.dim === 2 && !(thickness > 0)) throw new Error(`a flat part needs a thickness above 0 mm (got ${thickness})`);
+  if (density.length !== g.cells) throw new Error(`density has ${density.length} values for ${g.cells} cells`);
+  for (let e = 0; e < density.length; e++) if (!(density[e] >= 0 && density[e] <= 1)) throw new Error(`cell ${e}'s density is ${density[e]}: each is a share from 0 (empty) to 1 (solid)`);
   const { E, nu } = material, Emin = E * 1e-9, ke = cellStiffness(nu, g.dim);
   const modulus = Float64Array.from(density, (x) => Emin + Math.pow(x, penal) * (E - Emin));
   const scale = modulus.map((mod) => mod * (g.dim === 3 ? g.h : thickness));
   const { u } = solve(g, { scale, ke, fixed, loads, method, backend });
   const solidNode = new Uint8Array(g.nodes), corners = CORNERS[g.dim].length;
   for (let e = 0; e < density.length; e++) if (density[e] >= 0.5) for (let k = 0; k < corners; k++) solidNode[g.edof[e * g.cellDofs + g.dim * k] / g.dim] = 1;
+  // A part that can still slide or turn is solved all the same, by a hair's stiffness of rounding: it then "moves"
+  // many times its own size. No real part does, so that is said, not handed back as a deflection. (Most of the
+  // part, that is: a loose piece beside a held part, such as a disc lying in a mechanism, is the caller's business.)
+  const span = Math.max(g.nx, g.ny, g.nz || 1) * g.h;
+  for (const x of u) {
+    let solid = 0, adrift = 0;
+    for (let n = 0; n < g.nodes; n++) if (solidNode[n]) { solid++; for (let d = 0; d < g.dim; d++) if (!(Math.abs(x[g.dim * n + d]) < 1e4 * span)) { adrift++; break; } }
+    if (adrift > solid / 2) throw Object.assign(new Error('the part is not held still (it can slide or turn under this load): fix more of it, in each direction it could move'), { code: 'fea.unheld' });
+  }
   const position = positions(g);
   return {
     u,

@@ -25,7 +25,7 @@
           "value": { "type": ["number", "string"] },
           "unit": { "type": "string" },
           "rule": { "type": "string" },
-          "kind": { "type": "string", "description": "spec, standard, measured, community, estimate, …" },
+          "kind": { "type": "string", "description": "How far to trust it, most to least: measured, spec, community, default, derived, estimate" },
           "source": { "type": "string" },
           "checked": { "type": "string" },
           "licence": { "type": "string", "description": "The source's licence, when the value was read off someone else's work (cad measure, cad clone)" },

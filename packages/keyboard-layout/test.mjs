@@ -46,3 +46,9 @@ test('fromKLE: rows, widths, gaps and shifted legends from keyboard-layout-edito
   assert.deepEqual(fromKLE([{ name: 'Mine' }, ['A']]).layout, { title: 'Mine', rows: [['A']] });
   assert.throws(() => fromKLE('hello'), /isn't keyboard-layout-editor data/);
 });
+
+test('fromKLE: one row of raw data is a layout of one row (a three-key macropad), not an empty one', () => {
+  assert.deepEqual(fromKLE('["Esc","Q","W"]').layout.rows.map((r) => r.length), [3]);
+  assert.deepEqual(fromKLE('{w:1.5},"Tab","Q"').layout.rows.map((r) => r.length), [2]);
+  assert.deepEqual(fromKLE('["Esc","Q"],["A","S"]').layout.rows.map((r) => r.length), [2, 2]);
+});

@@ -96,3 +96,18 @@ test('a rule\'s pin map reaches a design as v.<set>.pinMaps, beside a rule named
   assert.deepEqual(v.chip.pinMaps, { gpio: { 2: 'GPIO0', 3: 'GPIO1' } });
   assert.equal(v.chip.pins, 14, 'a rule named pins keeps its value');
 });
+
+test('names are an object\'s own: nothing inherited is a function, a variable or a rule set', () => {
+  // only the listed functions can be called: every object carries constructor and hasOwnProperty, and they aren't among them
+  for (const src of ['constructor(5) * 2', 'hasOwnProperty(1) + 1', '__proto__(1)', 'toString(2)']) assert.throws(() => evaluate(src), /unexpected "\("|no value for/, src);
+  assert.equal(resolve({ variables: { constructor: { value: 5 }, twice: { value: 'constructor * 2' } } }).values.twice, 10, 'a variable may have any name');
+  assert.throws(() => resolve({ variables: { a: { value: 'toString + 1' } } }), /no variable "toString"/);
+  assert.throws(() => resolve({ uses: ['constructor'], variables: {} }), /no rule set "constructor"/);
+  const sets = { p: { name: 'p', rules: { wall: { value: 3 } } } };
+  assert.throws(() => resolve({ uses: ['p'], variables: { a: { value: 'p.constructor' } } }, { sets }), /no rule "constructor" in p/);
+  assert.throws(() => resolve({ uses: ['p'], variables: { a: { value: 'p.wall.more' } } }, { sets }), /one dot/);
+  assert.throws(() => resolve({ uses: ['p'], variables: { p: { value: 3 } } }, { sets }), /rule set in uses and a variable too/);
+  assert.throws(() => resolve({ variables: { a: { value: NaN } } }), /not a finite number/);
+  assert.throws(() => resolve({ variables: { a: { unit: 'mm' } } }), /"a" has no value/);
+  assert.throws(() => resolve({ uses: ['p'], variables: {} }, { load: async () => sets.p }), /load must return the rule set itself/);
+});

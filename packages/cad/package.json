@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/cad",
-  "version": "0.7.22",
+  "version": "0.7.23",
   "description": "The cad command: JSCAD designs from traceable rules, checked for printing and fit, versioned by what fits, shared as links and exported as Bambu 3MF.",
   "type": "module",
   "bin": {
@@ -15,7 +15,14 @@
     "./versions": "./lib/versions.mjs",
     "./preview": "./lib/preview.mjs",
     "./targets": "./lib/targets.mjs",
-    "./threemf": "./lib/threemf.mjs"
+    "./threemf": "./lib/threemf.mjs",
+    "./host": "./lib/host.mjs",
+    "./links": "./lib/links.mjs",
+    "./edit": "./lib/edit.mjs",
+    "./explain": "./lib/explain.mjs",
+    "./schema": "./lib/schema.mjs",
+    "./errors": "./lib/errors.mjs",
+    "./optimise": "./lib/optimise.mjs"
   },
   "files": [
     "bin",
@@ -23,6 +30,7 @@
     "schemas",
     "templates",
     "README.md",
+    "TUTORIAL.md",
     "LICENSE",
     "AGENTS.md"
   ],

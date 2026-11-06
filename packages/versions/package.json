@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/versions",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Semver for physical parts: a change to what other parts fit against is major, so you know when an old print stops fitting.",
   "type": "module",
   "exports": {

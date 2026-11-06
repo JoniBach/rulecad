@@ -88,3 +88,25 @@ test('the threads backend: the product shared over worker threads matches plain 
   const worst = Math.max(...a.map((v, i) => Math.abs(v - b[i]))) / Math.max(...a.map(Math.abs));
   assert.ok(worst < 1e-7, `multigrid solves differ by ${worst.toExponential(2)}`);
 });
+
+test('what is wrong with the input is said by name; a part that can still turn is not held still, whichever solver', () => {
+  const g = grid({ nx: 20, ny: 4, h: 1 }), material = { E: 2680, nu: 0.35 };
+  const problem = () => {
+    const fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs);
+    for (let j = 0; j <= 4; j++) { fixed[2 * g.node(0, j)] = 1; fixed[2 * g.node(0, j) + 1] = 1; }
+    f[2 * g.node(20, 2) + 1] = -1;
+    return { grid: g, density: new Float64Array(g.cells).fill(1), material, thickness: 2, fixed, loads: [f] };
+  };
+  assert.ok(analyse(problem()).deflection[0].most > 0);
+  for (const method of ['direct', 'cg', 'mg']) { // one corner pinned: it can spin about it
+    const p = problem(); p.fixed.fill(0); p.fixed[2 * g.node(0, 0)] = 1; p.fixed[2 * g.node(0, 0) + 1] = 1;
+    assert.throws(() => analyse({ ...p, method }), /not held still/, method);
+  }
+  const bad = (change, said) => { const p = problem(); change(p); assert.throws(() => analyse(p), said); };
+  bad((p) => { p.density[3] = NaN; p.method = 'cg'; }, /cell 3's density is NaN/); // (conjugate gradients took NaN for settled, and returned zeros)
+  bad((p) => { p.loads = [new Float64Array(10)]; }, /load 1 has 10 values for 210 unknowns/);
+  bad((p) => { p.method = 'cholesky'; }, /no solver "cholesky"/);
+  bad((p) => { p.material = { E: 2680 }; }, /Poisson's ratio/);
+  bad((p) => { p.material = { E: 0, nu: 0.35 }; }, /modulus E above 0/);
+  bad((p) => { p.thickness = 0; }, /thickness above 0/);
+});

@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { host } from './host.mjs';
+import { host, readJson } from './host.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { resolve, evaluate } from './rules.mjs';
 import { located } from './errors.mjs';
@@ -27,7 +27,7 @@ export const hasProblem = (project, ref) => host.exists(problemFile(project, Str
 export async function readProblem(project, ref) {
   const [name, variant] = String(ref).split(':'), file = problemFile(project, name);
   if (!host.exists(file)) throw new Error(`no problem "${name}" (projects/${project}/problems/${name}.json)`);
-  const p = JSON.parse(host.readText(file));
+  const p = readJson(file);
   if (variant && !p.variants?.[variant]) throw new Error(`problem ${name} has no variant "${variant}" (variants: ${Object.keys(p.variants || {}).join(', ') || 'none'})`);
   const uses = [...new Set([...(p.uses || []), p.material])];
   let values;

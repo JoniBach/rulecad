@@ -12,13 +12,17 @@ import { project } from '@rulecad/keyboard-layout';
 /** @typedef {{ object: object, entries: { name: string, value: any }[], js: string, layouts?: Record<string, object>, engine?: string }} Snapshot a design: its .json, resolve()'s entries and its code */
 
 const KINDS = ['patch', 'minor', 'major'];
+/** A version's three numbers. @param {string} v '1.2.3' @returns {number[]} */
 export const parse = (v) => { const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)$/); if (!m) throw new Error(`"${v}" isn't a version like 1.2.0`); return m.slice(1).map(Number); };
 /** The next version. @param {string} v '1.2.3' @param {'major' | 'minor' | 'patch'} kind @returns {string} */
 export function bump(v, kind) {
   const [a, b, c] = parse(v);
+  if (!KINDS.includes(kind)) throw new Error(`a bump is major, minor or patch (got ${JSON.stringify(kind)})`);
   return kind === 'major' ? `${a + 1}.0.0` : kind === 'minor' ? `${a}.${b + 1}.0` : `${a}.${b}.${c + 1}`;
 }
+/** Whether version x is after version y. @param {string} x @param {string} y @returns {boolean} */
 export const newer = (x, y) => { const [p, q] = [parse(x), parse(y)]; for (let i = 0; i < 3; i++) if (p[i] !== q[i]) return p[i] > q[i]; return false; };
+/** The bigger of two bumps. @param {'major' | 'minor' | 'patch'} k1 @param {'major' | 'minor' | 'patch'} k2 */
 export const bigger = (k1, k2) => (KINDS.indexOf(k1) >= KINDS.indexOf(k2) ? k1 : k2);
 
 
@@ -45,6 +49,9 @@ export function compare(before, after) {
   const reasons = [], add = (kind, text) => reasons.push({ kind, text });
   const val = (r, name) => r.entries.find((e) => e.name === name);
   const v = (r, name) => fmt(val(r, name).value); // for reading: 4.2, not 4.199999999999999
+  // a change, for reading; where rounding would show the same number twice (4.2 → 4.2), the numbers as they are
+  const change = (name) => (v(before, name) === v(after, name) ? `${val(before, name).value} → ${val(after, name).value}` : `${v(before, name)} → ${v(after, name)}`);
+  const sorted = (x) => (Array.isArray(x) ? x.map(sorted) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sorted(x[k])])) : x); // (the same settings in another order are the same)
   const vars = (r) => r.object.variables || {};
   const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : a === b); // numbers, or choices
 
@@ -53,14 +60,15 @@ export function compare(before, after) {
     if (d.interface) {
       if (!now) add('major', `interface ${name} removed`);
       else if (!now.interface) add('major', `${name} is no longer interface`);
-      else if (!same(val(before, name).value, val(after, name).value)) add('major', `interface ${name} ${v(before, name)} → ${v(after, name)}`);
+      else if (!same(val(before, name).value, val(after, name).value)) add('major', `interface ${name} ${change(name)}`);
+      else if ((d.unit || '') !== (now.unit || '')) add('major', `interface ${name} is now in ${now.unit || 'no unit'} (was ${d.unit || 'no unit'})`);
     } else if (!now) add('patch', `${name} removed`);
-    else if (!same(val(before, name).value, val(after, name).value)) add('patch', `${name} ${v(before, name)} → ${v(after, name)}`);
+    else if (!same(val(before, name).value, val(after, name).value)) add('patch', `${name} ${change(name)}`);
   }
   for (const [name, d] of Object.entries(vars(after))) {
     const was = vars(before)[name];
-    if (d.interface && !was?.interface && was) continue; // reported above as a change of role
-    if (d.interface && !was) add('minor', `interface ${name} added (${v(after, name)})`);
+    if (d.interface && was && !was.interface) add('minor', `${name} is now interface (${v(after, name)}): other parts may depend on it from here`);
+    else if (d.interface && !was) add('minor', `interface ${name} added (${v(after, name)})`);
     else if (!was) add('patch', `${name} added`);
     if ((d.type === 'text' || d.type === 'anchor') && !was?.type) add('minor', `${name} can now be set (${d.type})`); // a new input
     if (d.choice) { // a choice: options added are new ways to build it; options taken away break what used them
@@ -69,6 +77,7 @@ export function compare(before, after) {
     }
     if (d.tweak && !was?.tweak) add('minor', `${name} can now be set (${d.tweak.min} to ${d.tweak.max})`);
     else if (d.tweak && was?.tweak && (d.tweak.min !== was.tweak.min || d.tweak.max !== was.tweak.max)) add('patch', `${name} range now ${d.tweak.min} to ${d.tweak.max}`);
+    else if (!d.tweak && was?.tweak) add(d.interface ? 'major' : 'patch', `${name} can no longer be set (it was ${was.tweak.min} to ${was.tweak.max})`);
   }
   // Values the design builds from that changed without any variable changing: a rule's value
   for (const e of after.entries) if (e.name.includes('.')) { const b = val(before, e.name); if (b && !same(b.value, e.value)) add('patch', `rule ${e.name} ${fmt(b.value)} → ${fmt(e.value)}`); }
@@ -90,7 +99,7 @@ export function compare(before, after) {
   const vb = before.object.variants || {}, va = after.object.variants || {};
   for (const [k, v] of Object.entries(vb)) {
     if (!va[k]) add('major', `variant ${k} removed`);
-    else if (JSON.stringify(v) !== JSON.stringify(va[k])) add('major', `variant ${k} changed`);
+    else if (JSON.stringify(sorted(v)) !== JSON.stringify(sorted(va[k]))) add('major', `variant ${k} changed`);
   }
   for (const k of Object.keys(va)) if (!vb[k]) add('minor', `variant ${k} added`);
   // Layout files: compared only on what this object reads of each key (its layout variable's fields), plus positions

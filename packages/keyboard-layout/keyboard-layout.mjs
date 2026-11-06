@@ -90,9 +90,11 @@ export function fromKLE(kle) {
 
 // "Raw data" from keyboard-layout-editor.com is JSON with its object keys unquoted and the outer brackets left off
 function parseRaw(text) {
-  try { return JSON.parse(text); } catch {}
+  // (one row on its own is a list with no lists in it: a three-key macropad's raw data. It is a layout of one row)
+  const rows = (data) => (Array.isArray(data) && data.length && !data.some(Array.isArray) ? [data] : data);
+  try { return rows(JSON.parse(text)); } catch {}
   const quoted = `[${text}]`.replace(/([{,]\s*)([A-Za-z_][\w]*)\s*:/g, '$1"$2":');
-  try { return JSON.parse(quoted); } catch { throw new Error("this isn't keyboard-layout-editor data: paste its Raw data, or use its JSON download"); }
+  try { return rows(JSON.parse(quoted)); } catch { throw new Error("this isn't keyboard-layout-editor data: paste its Raw data, or use its JSON download"); }
 }
 
 // A key's legends: "Q", or "!\n1" (top-left shifted, bottom-left main), up to twelve positions
