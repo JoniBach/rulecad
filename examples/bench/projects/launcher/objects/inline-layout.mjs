@@ -41,8 +41,10 @@ export function catchOf (v, height) {
   const normal = (along + v.bite) * deg, n = [Math.cos(normal), Math.sin(normal)] // the hooked face's normal, into the hook: the line's turned up by the bite
   const under = toothLow - g - v.room - v.dip // the trigger keeps below the tooth's way, and its sag
   const toothFront = xs + cock, reachFront = toothFront + v.overshoot // the tooth at rest, and the furthest its follow-through takes it
+  // a point of the trigger's finger part, turned forward about the hinge's middle by rest_up (see inline.js)
+  const up = (v.rest_up || 0) * deg, turned = ([x, y]) => [P[0] + (x - P[0]) * Math.cos(up) - (y - P[1]) * Math.sin(up), P[1] + (x - P[0]) * Math.sin(up) + (y - P[1]) * Math.cos(up)]
   return {
-    draw, cock, spineLow, toothLow, xs, yc, P, u, n, along, root, tip, under, toothFront, reachFront,
+    draw, cock, spineLow, toothLow, xs, yc, P, u, n, along, root, tip, under, toothFront, reachFront, turned,
     hingeJob: {
       root, tip, start: [along - v.hinge_swing, along + v.hinge_swing], end: [along - v.hinge_swing, along + v.hinge_swing], lead: v.hinge_round + v.least,
       region: { lo: [root[0] - v.room, P[1] - v.hinge_room], hi: [tip[0] + v.room, spineLow - g - v.room] }, gap: g, apart: v.arm_gap, bend: v.arm_bend,

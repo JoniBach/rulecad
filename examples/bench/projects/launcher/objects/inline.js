@@ -73,7 +73,7 @@ export function main (v) {
   ]
 
   // The slide: the ring on its stem, the stem's front square behind the shuttle's tail, and the link's pin ahead of it in
-  // the tail's slot, standing on the bed and hung from a strap from the stem's front over the tail
+  // the tail's slot, between two straps from the stem's front, over the tail and under it (a clevis)
   const linkPin = circle({ radius: S.rp, center: [S.pin, 0], segments: v.smooth })
   const strap = union(rect(S.front - v.strap_into, 0 - v.strap_w / 2, S.pin, v.strap_w / 2), circle({ radius: v.strap_w / 2, center: [S.pin, 0], segments: v.smooth }))
   // A slot up the stem's tail, open at its end: the frame left in it (a tongue from the handle, where the slot never
@@ -92,9 +92,12 @@ export function main (v) {
   // to its toe on the frame's bottom, the finger's crook; its back runs up under the hinge to the hinge's tip
   const bottom = 0 - out + v.trigger_floor, hookFace = face(0), headTop = C.toothLow + v.engage
   const rear = C.tip[0] - v.into, along = (x) => C.tip[1] + (x - C.tip[0]) * (C.u[1] / C.u[0]) // the hinge's line
-  const neck = [triggerFront, C.under - v.trigger_neck], toe = [v.trigger_toe, bottom], heel = [v.trigger_heel, bottom]
+  // (its finger part, the crook, toe and heel, drawn turned forward about the hinge's middle by rest_up: with the pull
+  // that much longer, pulled right back it comes to where it did before, and the frame behind it stands as it was)
+  const turned = C.turned
+  const neck = turned([triggerFront, C.under - v.trigger_neck]), toe = turned([v.trigger_toe, bottom]), heel = turned([v.trigger_heel, bottom])
   const crook = Array.from({ length: v.crook_steps + 1 }, (_, i) => { const t = i / v.crook_steps, ex = toe[0] - neck[0], ey = toe[1] - neck[1], l = Math.hypot(ex, ey), b = v.crook * Math.sin(Math.PI * t); return [neck[0] + ex * t + (ey / l) * b, neck[1] + ey * t - (ex / l) * b]; }) // bowed in from the straight line, a hollow for the finger
-  const body = polygon({ points: [[rear, C.under], [triggerFront, C.under], ...crook, heel, [v.trigger_heel, bottom + v.heel_h], [rear - v.trigger_waist, along(rear - v.trigger_waist) - v.hinge_clear], [rear, along(rear) - v.hinge_clear]] })
+  const body = polygon({ points: [[rear, C.under], [triggerFront, C.under], ...crook, heel, turned([v.trigger_heel, bottom + v.heel_h]), [rear - v.trigger_waist, along(rear - v.trigger_waist) - v.hinge_clear], [rear, along(rear) - v.hinge_clear]] })
   // and a shoulder behind the hook, up round the hinge's tip, just behind where the tooth is drawn to
   const shoulderTop = Math.min(C.tip[1] + v.hinge_clear, C.spineLow - g - v.room), shoulderFront = C.xs + C.cock - L.draw - v.tooth_w - v.room
   // (its front corner cut back along the tooth's slope where the drawn tooth comes over it)
@@ -129,7 +132,9 @@ export function main (v) {
     { shape: rect(Math.max(loadedBack - g, floorFrom) + v.lower_ledge, 0 - slot - v.bridge_foot, front, C.toothLow - v.room), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // (the lower one ahead of the trigger's swing)
     { shape: rect(Math.max(noseFront + v.overshoot, C.reachFront) + v.room + v.strip_clear, 0 - slot - v.bridge_foot, front, slot + v.bridge_foot), depth: v.floor_depth, gap: v.floor_gap, side: 'bottom' }, // and a strip across between them at the front, ahead of all the nose and the tooth ever reach
     { shape: rect(v.tie_from, C.spineLow - v.shuttle_clear - v.tie_foot, v.tie_to, 0 - C.spineLow + v.fit + v.bridge_foot) }, // the tie over the spine, so the frame the hinge roots in doesn't bend away under the pull
-    ...(piece ? [] : [{ body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap }]), // the link's strap, the slide's own, over the tail (none under it: the pin stands on the bed, and nothing prints over a strap there)
+    // the link's straps, the slide's own, over the tail and under it: the pin held at both ends, so the tail can't come
+    // off it either way (printed with the upper alone, the tail dropped off the pin's free end)
+    ...(piece ? [] : [{ body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap }, { body: 'slide', shape: strap, depth: v.strap_depth, gap: v.strap_gap, side: 'bottom' }]),
   ]
   const drawn = 0 - L.draw, slideDrawn = 0 - L.draw - S.slack + g, cocked = 0 - C.cock // (the lips a gap short of the head: they bear on it in the physics)
   const whole = {
