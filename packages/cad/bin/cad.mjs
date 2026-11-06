@@ -308,7 +308,7 @@ async function main() {
     for (const n of notes) console.log(`  note: ${n}`);
     return;
   }
-  if (cmd === 'clone') return cloneBoard(ref, args[2], { source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force') });
+  if (cmd === 'clone') return cloneBoard(ref, args[2], { source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), noModels: !!opt('no-models') });
   if (cmd === 'status') return status(ref);
   if (cmd === 'measure') {
     if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>]');

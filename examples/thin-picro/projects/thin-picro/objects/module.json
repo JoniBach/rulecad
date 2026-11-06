@@ -2,14 +2,15 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.1.0",
+  "version": "0.6.2",
   "engine": "pcb",
   "role": "board",
   "uses": [
     "sea_picro",
-    "jlcpcb"
+    "jlcpcb",
+    "rp2040"
   ],
-  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: USB-C on the top long edge, castellated pins along the bottom edge and up both ends. Parts on the front, test points on the back.",
+  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: USB-C on the top long edge, castellated pins along the bottom edge and up both ends, the right end in an SPI display's order. Parts on the front, test points on the back.",
   "parts": {
     "board": {
       "label": "PCB"
@@ -17,25 +18,30 @@
   },
   "variables": {
     "edge_pins": {
-      "value": 19,
+      "value": "18 + 3 * open_pins + 2 * row_gnd",
       "unit": "pins",
-      "rule": "Pins along the bottom long edge, between the corners",
+      "rule": "Pins along the bottom long edge, centred: SWITCH, GPIO20 to 23, 26 to 29 and 0 to 8, with a GND at each end (with open_pins, 24, 10 and 11 too)",
       "label": "Long-edge pins",
       "show": true,
       "interface": true
     },
     "end_pins": {
-      "value": 6,
+      "value": 8,
       "unit": "pins",
-      "rule": "Pins up each short end, from the bottom edge (Sea-Picro has 31 edge pins: edge_pins + 2 × end_pins)",
+      "rule": "Pins up each short end, from the corner",
       "label": "End pins",
       "show": true,
       "interface": true
     },
-    "end_from": {
-      "value": 2,
-      "unit": "pitches",
-      "rule": "The end pins start this many pitches above the bottom edge: at one, the corner pins' header pads would overlap"
+    "end_rise": {
+      "value": 1.21,
+      "unit": "mm",
+      "rule": "Each end's lowest pin this far above the bottom edge: down at the corner, as on Waveshare's RP2040-Zero, its pad's top level with the tips of the long edge's pads (the design checks it against Sea-Picro's pads)"
+    },
+    "row_in": {
+      "value": 3.75,
+      "unit": "mm",
+      "rule": "The long edge's first and last pins this far in from the ends: their pads a pin's usual gap (a pitch less a pad's width, 0.84 mm) past the end of the corner pins' pads (the design checks it against Sea-Picro's pads)"
     },
     "pitch": {
       "value": 2.54,
@@ -43,23 +49,55 @@
       "rule": "Pin pitch: 0.1 in headers, as Sea-Picro's",
       "interface": true
     },
-    "length": {
-      "value": "(edge_pins + 1) * pitch",
+    "headers": {
+      "value": 1,
+      "rule": "1: each pin also has Sea-Picro's 0.1 in header hole and long pad beside its half hole, for pin headers or a sturdier joint. 0: half holes only, to solder flat: they reach less far into the board, which then needs less room across",
+      "label": "Header holes",
+      "show": true,
+      "interface": true,
+      "unit": "0 or 1"
+    },
+    "show_headers": {
+      "value": 0,
+      "choice": [
+        0,
+        1
+      ],
+      "unit": "0 or 1",
+      "rule": "1: the 3D model shows a pin header in each header hole (a square pin and its plastic spacer under the board), as when the module is fitted with headers. The board itself is the same",
+      "label": "Show pin headers",
+      "show": true
+    },
+    "key_pitch": {
+      "value": 19.05,
       "unit": "mm",
-      "rule": "Board length: the long-edge pins one pitch apart, a pitch from each corner",
+      "rule": "Keys' spacing on the keyboard the module mounts under: MX and most others, 0.75 in"
+    },
+    "span": {
+      "value": 3,
+      "unit": "keys",
+      "rule": "The end columns slot between keys: their header holes this many key widths apart (3: across a 2u Backspace and the 1u key beside it, or any three 1u keys)",
+      "label": "Columns span",
+      "show": true,
+      "interface": true
+    },
+    "hole_in": {
+      "value": 1.26,
+      "unit": "mm",
+      "rule": "A header hole's centre in from its edge, with Sea-Picro's pads (the design checks it)"
+    },
+    "length": {
+      "value": "span * key_pitch + 2 * hole_in",
+      "unit": "mm",
+      "rule": "Board length: the end columns' header holes span key widths, so their pins slot between switches",
       "label": "Length",
       "show": true,
       "interface": true
     },
-    "top_room": {
-      "value": 3.26,
-      "unit": "mm",
-      "rule": "From the top end pins to the top edge: room above the core for the tracks that pass it"
-    },
     "height": {
-      "value": "(end_pins + end_from - 1) * pitch + top_room",
+      "value": "19.04 + 2 * headers",
       "unit": "mm",
-      "rule": "Board height, bottom edge to top edge",
+      "rule": "Board height, bottom edge to top edge: the room the core and the tracks round it need (2 mm more with header holes, whose pads reach farther in)",
       "label": "Height",
       "show": true,
       "interface": true
@@ -70,17 +108,17 @@
       "rule": "Sea-Picro's core (the RP2040, flash, crystal, regulator and their small parts) turned as one block: its busiest side of escapes (RP2040 pins 2 to 12) faces the long row of pins"
     },
     "core_x": {
-      "value": -10.93,
+      "value": -10.6,
       "unit": "mm",
-      "rule": "The core block moved along the board: a 2 mm channel from the end pins for tracks to pass"
+      "rule": "The core block moved along the board: a channel from the end pins for tracks to pass"
     },
     "core_y": {
-      "value": 0.46,
+      "value": 0.15,
       "unit": "mm",
-      "rule": "The core block moved up: clear of the bottom pins, with room above it for tracks"
+      "rule": "The core block moved across the board: clear of the bottom pins (higher with header holes, which reach farther in), with room above it for tracks"
     },
     "usb_x": {
-      "value": 15.5,
+      "value": 14.3,
       "unit": "mm",
       "rule": "USB-C socket along the top edge, from the middle: right of the core, its fuse and CC resistors under it",
       "label": "USB-C position",
@@ -103,7 +141,7 @@
       "rule": "Reading Sea-Picro's notch: outline points this near the socket, across the board"
     },
     "led_x": {
-      "value": 15.5,
+      "value": 14.3,
       "unit": "mm",
       "rule": "Pad 32 (LED_5V, a 5 V supply for LEDs) under the USB parts"
     },
@@ -112,15 +150,99 @@
       "unit": "mm",
       "rule": "Pad 32's height on the board"
     },
-    "switch_in": {
-      "value": 3.8,
+    "hole_d": {
+      "value": 2.1,
       "unit": "mm",
-      "rule": "R4 (SWITCH's resistor) in from its pin's castellated hole: clear of the header pad, within its placement rule"
+      "rule": "Mounting holes: for M2 screws, as the Raspberry Pi Pico's (2.1 mm)"
+    },
+    "hole_keepout": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Mounting holes: no track within this of a hole's centre (a 3.0 mm clear circle; an M2 screw head, 3.8 mm across, overlaps solder mask past it: use a nylon screw or washer). Wider keepouts crowd the tracks to the right-hand pins"
+    },
+    "hole_a_x": {
+      "value": 8.4,
+      "unit": "mm",
+      "rule": "First mounting hole, along the board from the middle: in the clear space between the core and the USB-C parts"
+    },
+    "hole_a_y": {
+      "value": -0.9,
+      "unit": "mm",
+      "rule": "First mounting hole, across the board from the middle"
+    },
+    "hole_b_x": {
+      "value": 17.3,
+      "unit": "mm",
+      "rule": "Second mounting hole, along the board: right of the LED5V pad, clear of the end pins' labels"
+    },
+    "hole_b_y": {
+      "value": -1.8,
+      "unit": "mm",
+      "rule": "Second mounting hole, across the board"
+    },
+    "switch_in": {
+      "value": "1.4 * headers + 2.4",
+      "unit": "mm",
+      "rule": "R4 (SWITCH's resistor) in from its pin's castellated hole: clear of the header pad if there is one, within its placement rule"
     },
     "switch_turn": {
       "value": 90,
       "unit": "°",
       "rule": "R4 turned to lie across the board when its pin is on the long edge"
+    },
+    "display_gnd_front": {
+      "value": 1,
+      "choice": [
+        0,
+        1
+      ],
+      "rule": "The right end matches an SPI display's header (GND, VCC, SCL, SDA, RES, DC, CS, BLK). 1: GND at the front (the corner by the bottom row), BLK at the back; 0: the other way round, for a display mounted facing the other way"
+    },
+    "display_scl": {
+      "value": 14,
+      "unit": "GPIO",
+      "rule": "Display column: SCL (SPI clock): GPIO14, the RP2040's SPI1 clock"
+    },
+    "display_sda": {
+      "value": 15,
+      "unit": "GPIO",
+      "rule": "Display column: SDA (SPI data out): GPIO15, SPI1's data out"
+    },
+    "display_res": {
+      "value": 16,
+      "unit": "GPIO",
+      "rule": "Display column: RES (the display's reset): GPIO16"
+    },
+    "display_dc": {
+      "value": 12,
+      "unit": "GPIO",
+      "rule": "Display column: DC (data or command): GPIO12"
+    },
+    "display_cs": {
+      "value": 13,
+      "unit": "GPIO",
+      "rule": "Display column: CS (chip select): GPIO13, SPI1's own chip select"
+    },
+    "display_blk": {
+      "value": 9,
+      "unit": "GPIO",
+      "rule": "Display column, 8th pin: BLK (an LCD's backlight): GPIO9; any RP2040 pin can dim it by PWM. A 7-pin OLED leaves it free"
+    },
+    "open_pins": {
+      "value": 0,
+      "choice": [
+        0,
+        1
+      ],
+      "rule": "1: five more pins, for reset, boot and GPIO10, 11 and 24, left unjoined: their signals start inside Sea-Picro's kept routing round the RP2040, where the autorouter finds no way out, so their tracks are for drawing by hand (in KiCad, moving some of Sea-Picro's aside). 0: left off; the left end's top two places stay empty"
+    },
+    "row_gnd": {
+      "value": 1,
+      "choice": [
+        0,
+        1
+      ],
+      "rule": "1: a GND pin at each end of the bottom row, in the space by the corners (two more pins than Sea-Picro's, joined to its GND plane). 0: left off. With open_pins there's no room for them: set 0"
     },
     "thickness": {
       "value": "sea_picro.thickness",
@@ -140,6 +262,25 @@
       "value": 0.15,
       "unit": "mm",
       "rule": "Copper to copper, kept by the router: Sea-Picro's own clearance (at JLCPCB's 0.1 mm the router packs tracks tighter and breaks more)"
+    },
+    "label_gap": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "Pin labels: from the end of the header pad to the label"
+    },
+    "label_char": {
+      "value": 0.75,
+      "rule": "Pin labels: a character's width, as a share of its height (tscircuit's font)"
+    },
+    "label_turn": {
+      "value": 90,
+      "unit": "°",
+      "rule": "Pin labels along the long edge turned to run up from their pins"
+    }
+  },
+  "variants": {
+    "with-headers": {
+      "show_headers": 1
     }
   }
 }
