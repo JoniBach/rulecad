@@ -14,7 +14,7 @@
     "docs": "node packages/viewer/scripts/build.mjs && node docs/build.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "devDependencies": {
     "@jscad/modeling": "^2.13.0",

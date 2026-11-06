@@ -85,7 +85,7 @@
       "additionalProperties": false,
       "properties": {
         "label": { "type": "string" },
-        "role": { "enum": ["part", "support", "reference"] },
+        "role": { "enum": ["part", "support"], "description": "support: printed, then removed (a breakaway pillar). A thing that isn't printed at all is an object with \"role\": \"reference\"" },
         "filament": { "type": "string" },
         "display": { "type": "boolean" },
         "mirror": { "type": "boolean" },

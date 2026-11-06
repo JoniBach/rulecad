@@ -2,7 +2,7 @@
 
 The `cad` command: design physical things in [JSCAD](https://github.com/jscad/OpenJSCAD.org) from rules you can trace,
 check them for printing and for fit, version them by what fits, share them as links, and export them for the printer
-(STL, or 3MF in Bambu Studio's layout with each part on its own filament). Every measurement in a design is a variable,
+(a 3MF in Bambu Studio's layout with each part on its own filament; an STL from the model's link). Every measurement in a design is a variable,
 and every variable says which rule it comes from: the printer, a standard (Cherry MX), or something you measured.
 
 ```sh
@@ -16,6 +16,9 @@ npx cad preview bathroom/soap-tray   # six views as a PNG in .preview/ (needs Ch
 npx cad export bathroom/soap-tray    # a 3MF for your slicer, in exports/
 npx cad link bathroom/soap-tray      # a link that opens the model in a browser (nothing is uploaded)
 ```
+
+**New here?** [The tutorial](TUTORIAL.md) walks from an empty folder to a part of your own, checked against the thing
+it fits, in about twenty minutes. This page is the reference.
 
 ```
 rules/                     shared facts, one file per set: x1c.json (printer), mx.json (Cherry MX). A set from
@@ -45,6 +48,22 @@ npx cad match legion-go/rail cover.3mf           # how closely a design matches 
 The keyboard examples below come from the project rulecad grew out of: a keycap, a switch plate, a case and their
 circuit boards.
 
+## Looking into a design, and changing it
+
+```sh
+npx cad values bathroom/soap-tray                # its variables, resolved (names after it pick some; --json)
+npx cad why bathroom/soap-tray.wall              # what a value reads, down to the rules and their sources
+npx cad set bathroom/soap-tray length=120        # change a variable, keeping the file's layout
+npx cad set bathroom/soap-tray --new lip=3 --unit mm --rule "A lip to hold the soap"
+npx cad add fit bathroom/tray-on-shelf --a tray.body --b shelf.body --min 0.2 --max 1 --note "Tray on its shelf"
+npx cad check bathroom/soap-tray --json          # findings as data: each with a level, a code, its numbers
+```
+
+`set` and `add` (`fit`, `joint`, `item`, `loop`, `pose`) refuse an edit that leaves the file broken: its JSON, its
+schema, or variables that no longer resolve. Options go before or after the names; a misspelt command or option is
+refused by name. `cad --version` says which cad this is. Two switches for the tool itself: `CAD_NO_CACHE=1` builds
+afresh, and `CAD_TRUST=1` runs designs in the tool's own process (see Sandbox).
+
 ## The workspace
 
 The workspace is `$CAD_WORKSPACE`, else the nearest folder at or above the current one with a `cad.config.json`,
@@ -70,8 +89,8 @@ else the current folder:
 `cad link <project>/<object>` (and `cad show`) prints three links to the model page (`viewUrl`; a public one by default):
 view the model in a browser, or download its STL or 3MF as soon as the link opens. The model travels in the link's
 fragment, which never reaches the web host, so the public page can open private designs. A link records exactly
-which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a release). The page is to become `@rulecad/viewer`;
-`scripts/publish-view.sh "message"` publishes it (only that folder) to the public repo.
+which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a release). The page is `@rulecad/viewer`: host your
+own copy anywhere and name it in `viewUrl`.
 
 - **Rules:** a link carries the model's values and the rules they use (value, source, kind, date checked) for the
   page's Rules panel; estimates are marked there. A rule set with `"private": true` stays out of links, and
@@ -238,7 +257,9 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - **Hosts:** the core (resolve, build, check) reads and writes through a host (`lib/host.mjs`): Node's file system
   for the CLI, or `memoryHost(files)`, a workspace in memory (reading the tool's own packages from disk), for tests
   and, later, a browser. `useHost(h)` switches. The model-link building (`lib/links.mjs`) and the joints' data for the
-  page (`motionData`) are in the library too, so other programs make the same links without the CLI.
+  page (`motionData`) are in the library too, so other programs make the same links without the CLI:
+  `import { memoryHost, useHost } from '@rulecad/cad/host'`, and likewise `/design`, `/assembly`, `/links`, `/edit`,
+  `/explain`, `/schema`, `/errors`, `/optimise`, `/rules`, `/workspace`, `/versions`, `/layout`, `/preview`, `/targets`, `/threemf`.
 - **Engines:** designs get `v.ops` (union, subtract, intersect): JSCAD's booleans by default, Manifold's (faster,
   watertight; `npm install manifold-3d`) with `"engine": "manifold"` in the object's JSON or `CAD_ENGINE=manifold`.
 - **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model. Whatever it does, it
@@ -501,7 +522,7 @@ The analysis is a design aid, not engineering sign-off: anything that could hurt
 
 A circuit board is an object whose .json says `"engine": "pcb"`. Its `main(v)` returns a
 [tscircuit](https://github.com/tscircuit/tscircuit) board (circuits as code, from npm) built with `v.pcb`
-(`lib/pcb.mjs`); the build runs it into Circuit JSON, and the bare board, drilled, becomes a part, so
+(`@rulecad/pcb`: `npm install @rulecad/pcb` in the workspace); the build runs it into Circuit JSON, and the bare board, drilled, becomes a part, so
 previews, links, `cad show` and fit assemblies work as for printed parts. The copper (tracks, pads, vias) is drawn in the
 2D views, not in 3D.
 
@@ -538,8 +559,7 @@ npx cad export keyboard/macropad-pcb    # <name>-fab.zip for JLCPCB, KiCad files
   (with its Pico, `pcb-with-pico`) under a plate thinned by `top_clearance` for the header joints, in a case built
   from the board's numbers, every fit checked (switches on the board, plate over it, board and Pico in the case).
 - **The matrix:** `<name>-matrix.json` gives each key's row and column and each line's GPIO, for firmware.
-- **Versions:** the npm packages are pinned to exact versions (tscircuit moves fast); `@tscircuit/math-utils` is
-  overridden in package.json so every part of it agrees.
+- **Versions:** `@rulecad/pcb` pins tscircuit's packages to exact versions (tscircuit moves fast).
 
 ### Speed
 Fit checks find closest gaps through a grid of triangles (nearest cubes first), and remember overlap volumes between

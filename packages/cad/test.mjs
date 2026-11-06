@@ -805,3 +805,36 @@ test('edits to JSON keep its line endings and indentation, and say when it isn\'
   assert.equal(out, '{\r\n\t"name": "x",\r\n\t"variables": {\r\n\t\t"w": { "value": 1 },\r\n\t\t"d": {\r\n\t\t\t"value": 3,\r\n\t\t\t"deep": {\r\n\t\t\t\t"a": 1\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n}\r\n');
   assert.throws(() => setAt('{ "name": "hook", ', ['a'], 1), /not valid JSON/, 'not a scan that never ends');
 });
+
+test('the tutorial: every file and command in TUTORIAL.md works as written, in a workspace npm create rulecad makes', () => {
+  const text = fs.readFileSync(new URL('./TUTORIAL.md', import.meta.url), 'utf8');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tutorial-')), ws = path.join(root, 'my-designs');
+  try {
+    execFileSync(process.execPath, [fileURLToPath(new URL('../create-rulecad/index.mjs', import.meta.url)), ws, '--no-install'], { encoding: 'utf8' });
+    fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction'); // stands in for npm install
+    let files = 0, commands = 0;
+    // each fenced block in turn: one named for a file is written there; a sh block's cad commands are run
+    for (const [, info, body] of text.matchAll(/^```(\S*(?: \S+)?)\n([\s\S]*?)^```$/gm)) {
+      const [lang, file] = info.split(' ');
+      if (file) { fs.mkdirSync(path.dirname(path.join(ws, file)), { recursive: true }); fs.writeFileSync(path.join(ws, file), body); files++; continue; }
+      if (lang !== 'sh') continue;
+      for (const line of body.split('\n').map((l) => l.replace(/\s+#.*$/, '').trim()).filter((l) => l.startsWith('npx cad ') && !l.startsWith('npx cad preview'))) { // (a preview needs Chrome)
+        const a = [...line.slice('npx cad '.length).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]);
+        const r = run(ws, a);
+        assert.equal(r.code, 0, `${line}\n${r.out}`);
+        assert.doesNotMatch(r.out, /^\s+[✗!] /m, `${line}\n${r.out}`);
+        commands++;
+      }
+    }
+    assert.ok(files >= 5 && commands >= 10, `${files} files, ${commands} commands`);
+    assert.match(run(ws, ['check', 'home/hook-on-screw']).out, /The screw in its hole: closest gap 0\.\d+ mm/);
+    // and the mistakes it lists are reported in the words it gives
+    const js = path.join(ws, 'projects/home/objects/hook.js'), good = fs.readFileSync(js, 'utf8');
+    for (const [from, to, said] of [['v.plate / 2 / 2', 'v.plate / 4', 'numbers in hook.js that should be variables: line 10: 4'], ['v.thick / 2', 'v.thik / 2', 'v.thik: the design has no variable "thik" (did you mean "thick"?)'], ['return v.ops', 'v.ops', 'main() returned no shape: return a JSCAD solid, or named parts']]) {
+      fs.writeFileSync(js, good.replace(from, to));
+      const out = run(ws, ['check', 'home/hook']).out;
+      assert.ok(out.includes(said), `${to}: ${out}`);
+      assert.ok(text.includes(said), `the tutorial's table says: ${said}`);
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

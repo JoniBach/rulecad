@@ -45,3 +45,13 @@ test('a new workspace asks for the cad command as it is now, not an old minor ve
     assert.ok(+major === M && (M > 0 ? m > +minor || (m === +minor && p >= +patch) : +minor === m && p >= +patch), `${range} leaves out @rulecad/cad ${version}: set CAD in index.mjs to ^${M}.${m}.0`);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('the folder is named apart from --share\'s value, and any folder name makes a package name npm takes', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-'));
+  try {
+    execFileSync(process.execPath, [CREATE, '--share', 'long', 'My Designs', '--no-install'], { cwd: root, encoding: 'utf8' });
+    assert.ok(!fs.existsSync(path.join(root, 'long')), '--share\'s value isn\'t the folder');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'My Designs', 'package.json'), 'utf8')).name, 'my-designs');
+    assert.throws(() => execFileSync(process.execPath, [CREATE, path.join(root, 'x'), '--no-install', '--share'], { stdio: 'pipe' }), /--share is gist or long/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

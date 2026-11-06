@@ -20,6 +20,7 @@ import { schemaFindings } from '../lib/schema.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
 import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
+import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
 import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
@@ -728,7 +729,7 @@ async function releaseObject(d, { batch = false } = {}) {
   if (opt('dry-run')) return;
   const allowed = [...files(d, object), `projects/${d.project}/CHANGELOG.md`, path.relative(WS, printsFile(d))];
   if (!batch) onlyChanged(allowed); // releaseAll checked the whole tree first
-  fs.writeFileSync(d.json, fs.readFileSync(d.json, 'utf8').replace(/"version":\s*"[^"]*"/, `"version": "${version}"`));
+  fs.writeFileSync(d.json, setAt(fs.readFileSync(d.json, 'utf8'), ['version'], version)); // the object's own version (added, if it had none), nothing else
   const log = changelog(d.dir, `${d.name} ${version} (${kind}), ${today()}`, message, reasons);
   commitAndTag([...files(d, object), log].filter((f) => fs.existsSync(path.join(WS, f))), `${tag}: ${message}`, tag, `${kind}: ${message}${b.circuit ? `\n\nengine: ${engineId()}` : ''}`);
   console.log(`tagged ${tag}${opt('push') ? ' and pushed' : ' (not pushed: --push, or git push --follow-tags)'}`);
@@ -851,7 +852,8 @@ async function diff(d, from, to) {
 function printed(d) {
   const result = opt('result');
   if (!['ok', 'failed'].includes(result)) throw new Error('--result ok or --result failed (and --note "what happened")');
-  const object = readObject(d), version = opt('version') || tags(d.project, d.name).at(-1)?.version || object.version;
+  const object = readObject(d), released = tags(d.project, d.name).map((t) => t.version), version = opt('version') || released.at(-1) || object.version;
+  if (opt('version') && version !== object.version && !released.includes(version)) throw new Error(`${d.name} has no version ${version} (${released.length ? `releases: ${released.join(', ')}` : `unreleased, at ${object.version}`})`);
   const entry = { date: today(), object: d.name, version, ...(opt('set') ? { set: opt('set') } : {}), material: opt('material') || object.material, result, ...(opt('note') ? { note: opt('note') } : {}) };
   fs.appendFileSync(printsFile(d), JSON.stringify(entry) + '\n');
   console.log(`logged in ${path.relative(WS, printsFile(d))}: ${d.name}@${version} ${result}`);

@@ -11,7 +11,8 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2), install = !args.includes('--no-install');
-const dir = path.resolve(args.find((a) => !a.startsWith('--')) || 'my-designs'), name = path.basename(dir);
+// The folder is the argument that isn't an option, or --share's value
+const dir = path.resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--share') || 'my-designs'), name = path.basename(dir);
 if (fs.existsSync(dir) && fs.readdirSync(dir).length) { console.error(`${dir} isn't empty: name a new folder (npm create rulecad my-designs)`); process.exit(1); }
 
 const TEMPLATE = fileURLToPath(new URL('./template/', import.meta.url));
@@ -25,7 +26,8 @@ const CAD = '^0.7.0';
 // $RULECAD_LOCAL: a rulecad checkout to use instead of npm (to try unpublished changes)
 const from = (pkg) => (process.env.RULECAD_LOCAL ? `file:${path.join(path.resolve(process.env.RULECAD_LOCAL), 'packages', pkg)}` : CAD);
 fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
-  name, private: true, type: 'module',
+  name: name.toLowerCase().replace(/[^a-z0-9._~-]+/g, '-').replace(/^[._-]+|-+$/g, '') || 'my-designs', // a name npm takes, whatever the folder is called
+  private: true, type: 'module',
   scripts: { check: 'cad check home/soap-tray' },
   dependencies: { '@rulecad/cad': from('cad'), '@jscad/modeling': '^2.12.0' },
 }, null, 2)}\n`);
@@ -33,8 +35,8 @@ fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
 console.log(`made ${path.relative(process.cwd(), dir) || '.'}: a soap tray to start from, in projects/home`);
 
 // How models are shared: short links need somewhere to keep the model (a secret Gist); long links carry it
-let share = args.includes('--share') ? args[args.indexOf('--share') + 1] : null;
-if (share && !['gist', 'long'].includes(share)) { console.error(`--share is gist or long (got "${share}")`); process.exit(1); }
+let share = args.includes('--share') ? args[args.indexOf('--share') + 1] || '' : null;
+if (share !== null && !['gist', 'long'].includes(share)) { console.error(`--share is gist or long (got "${share}")`); process.exit(1); }
 if (!share && process.stdin.isTTY && process.stdout.isTTY) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const a = await rl.question('\nModel links: short ones are easy to paste into chat, but each model you share is stored in a secret\nGitHub Gist (needs the gh command, signed in). Long ones carry the model and upload nothing. Short links? [y/N] ');
