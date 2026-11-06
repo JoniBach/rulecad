@@ -7,6 +7,7 @@
 //   { outline: [{ x, y }, ...], thickness, ... }: any shape, a closed polygon (counter-clockwise); its centre and size
 //   are its bounds. pcb.shape makes common ones (rounded, bevelled, circle).
 //   part   { name, ftype: 'simple_switch' | 'simple_chip' | 'simple_diode', mpn, lcsc, value, x, y, layer: 'top' | 'bottom',
+//            bom: false (not bought: edge pads, test points), place: false (not placed by the assembler),
 //            rotation: 0 | 90 | 180 | 270 (counter-clockwise, seen from the side the part is on; default 0),
 //            pads: [{ pin, x, y, hole, outer }] (plated, relative to the part) or [{ pin, smd: true, hint, x, y, w, h }]
 //            (circle: true for a round one, corner: its corners' radius)
@@ -19,10 +20,12 @@
 //   nets   { GND: ['U1.GND', 'J1.1', 'J2.1'] } or { GND: { pins: [...], width } }: each net's pins are joined by the
 //            shortest set of connections between them (a minimum spanning tree), left to the autorouter, at the net's
 //            width or board.track; pins are named part.pin, by the pin's label, its name or its number
-//   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer }
-//   holes  [{ x, y, d }] in the board (mounting holes)
+//   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer, rotation } (rotation: degrees, counter-clockwise)
+//   effort how hard the autorouter searches (default its own, 1): more for a crowded board, at more time
+//   holes  [{ x, y, d, keepout }] in the board (mounting holes; keepout: a radius the router keeps tracks out of, for a screw head)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
+//   smooth true: routed tracks pulled tight once routed (@rulecad/smooth), where the straight run keeps clearance
 //   neck (mm) a routed track still too close to another after repair is narrowed to this where they pass (the fab's smallest)
 //   planes { GND: { layer: 'inner1', pins: ['U1.GND', ...] } }: nets joined by copper filling an inner layer. Each SMD pad
 //            gets a via beside it before routing, or a track to one nearby; a pad with no room for
@@ -108,7 +111,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   const placed = [];
   for (const part of board.parts) {
     const comp = add('source_component', { ftype: part.ftype, name: part.name, manufacturer_part_number: part.mpn,
-      ...(part.lcsc ? { supplier_part_numbers: { jlcpcb: [part.lcsc] } } : {}), ...(part.value ? { display_value: part.value } : {}),
+      ...(part.lcsc ? { supplier_part_numbers: { jlcpcb: [part.lcsc] } } : {}), ...(part.value ? { display_value: part.value } : {}), ...(part.bom === false ? { exclude_from_bom: true } : {}),
       are_pins_interchangeable: part.ftype === 'simple_switch', source_group_id: 'source_group_0', subcircuit_id: SUB });
     const fpEls = part.footprint ? fp.string(part.footprint).circuitJson() : [];
     const mirror = part.layer === 'bottom' ? -1 : 1;
@@ -136,6 +139,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       for (const g of groups) add('source_component_internal_connection', { source_component_id: comp.source_component_id, subcircuit_id: SUB, source_port_ids: g.map((s) => s.source_port_id) });
     }
     placed.push({ part, comp, pads, sourcePorts, fpEls, at, mirror, size });
+    if (part.model) { const { path, ...m } = part.model; // its 3D model: drawn by partModels, where the part is
+      add('cad_component', { source_component_id: comp.source_component_id, position: { x: part.x, y: part.y, z: 0 }, rotation: { x: 0, y: 0, z: part.rotation ?? 0 }, layer: part.layer,
+        subcircuit_id: SUB, rulecad_model: { ...m, source: path, x: part.x, y: part.y, rotation: part.rotation ?? 0, layer: part.layer } }); }
   }
   add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length,
     width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS });
@@ -146,7 +152,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       ...(part.holes || []).map((h) => { const q = at(h.x, h.y); return [q.x - h.d / 2, q.y - h.d / 2, q.x + h.d / 2, q.y + h.d / 2]; })];
     const box = [Math.min(...extent.map((e) => e[0])), Math.min(...extent.map((e) => e[1])), Math.max(...extent.map((e) => e[2])), Math.max(...extent.map((e) => e[3]))];
     const pc = add('pcb_component', { center: { x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2 }, width: box[2] - box[0], height: box[3] - box[1],
-      layer: part.layer, rotation: part.rotation ?? 0, source_component_id: comp.source_component_id, subcircuit_id: SUB });
+      layer: part.layer, rotation: part.rotation ?? 0, source_component_id: comp.source_component_id, subcircuit_id: SUB, ...(part.place === false ? { do_not_place: true } : {}) });
     const own = { pcb_component_id: pc.pcb_component_id, subcircuit_id: SUB };
     pads.forEach((p, i) => {
       const layers = p.smd ? [part.layer] : copper;
@@ -167,8 +173,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
           port_hints: [`unnamed_platedhole${i + 1}`, p.pin, ...(p.castellated ? ['castellated'] : [])], x: p.x, y: p.y, layers, is_covered_with_solder_mask: false });
       }
       Object.assign(sourcePorts[i], { _pcb: port });
-      // A castellated pad's centre is on the board's edge: tracks join it at its inner edge
-      const join = p.castellated ? inward(board, p.x, p.y, p.outer / 2) : { x: p.x, y: p.y };
+      // A castellated pad's centre is on the board's edge: tracks join it at its inner side, mid-way across its copper
+      // ring (on the ring's very edge, the router may not count the join as in the pad)
+      const join = p.castellated ? inward(board, p.x, p.y, (p.outer + (p.hole ?? p.outer)) / 4) : { x: p.x, y: p.y };
       if (p.castellated) Object.assign(port, join);
       for (const key of [sourcePorts[i].name, ...sourcePorts[i].port_hints]) ports.set(`${part.name}.${key}`, { source: sourcePorts[i], pcb: port, x: join.x, y: join.y, layers });
     });
@@ -203,9 +210,9 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   const stubOf = new Map((board.copper?.stubs || []).map((b) => [b.pin, b]));
   const layStub = (stub, id) => {
     for (const g of board.copper.tracks.filter((x) => x.stub === stub.id))
-      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: id, subcircuit_id: SUB });
+      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: id, subcircuit_id: SUB, rulecad_kept: true });
     for (const v of board.copper.vias.filter((x) => x.stub === stub.id)) {
-      const tr = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: id, subcircuit_id: SUB });
+      const tr = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: id, subcircuit_id: SUB, rulecad_kept: true });
       add('pcb_via', { pcb_trace_id: tr.pcb_trace_id, x: v.x, y: v.y, hole_diameter: v.hole, outer_diameter: v.pad, layers: copper, from_layer: 'top', to_layer: 'bottom', subcircuit_id: SUB });
     }
   };
@@ -229,23 +236,106 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   // ---- silkscreen and mounting holes ----
   for (const s of board.silk) {
     if (s.rect) add('pcb_silkscreen_rect', { pcb_component_id: null, layer: s.layer, center: { x: s.rect.x, y: s.rect.y }, width: s.rect.w, height: s.rect.h, subcircuit_id: SUB, stroke_width: 0.1, is_filled: false });
-    else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: 0, pcb_component_id: null, subcircuit_id: SUB });
+    else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: s.rotation ?? 0, pcb_component_id: null, subcircuit_id: SUB,
+      ...(s.to ? { rulecad_to: s.to } : {}) }); // an arrow to what it names, drawn once the label's place is final
   }
-  for (const h of board.holes || []) add('pcb_hole', { hole_shape: 'circle', hole_diameter: h.d, x: h.x, y: h.y, is_covered_with_solder_mask: false, subcircuit_id: SUB });
+  for (const h of board.holes || []) add('pcb_hole', { hole_shape: 'circle', hole_diameter: h.d, x: h.x, y: h.y, is_covered_with_solder_mask: false, subcircuit_id: SUB,
+    ...(h.keepout ? { rulecad_keepout: h.keepout } : {}) }); // a screw head's room: no track within keepout (mm, from its centre)
 
   // ---- the autorouter: what the rules don't draw ----
   if (toRoute.length) {
     if (!board.autoroute) throw new Error(`${toRoute.length} connections have no track and the board isn't autorouted`);
     const routed = await route(out, toRoute, board);
     for (const r of routed.traces) {
-      const t = add('pcb_trace', { route: r.route, source_trace_id: r.source_trace_id, subcircuit_id: SUB });
+      const t = add('pcb_trace', { route: r.route, source_trace_id: r.source_trace_id, subcircuit_id: SUB, rulecad_routed: true });
       for (const v of r.vias) add('pcb_via', { pcb_trace_id: t.pcb_trace_id, ...v, layers: copper, subcircuit_id: SUB }); // whose via it is: the checks need it
     }
+    if (board.smooth) await smoothRouted(out, board);
   }
   if (planeNets) await pours(out, add, board, planeNets, netOf);
+  if (board.silk?.length) clearSilkAfter(out, add, board);
 
-  schematic(out, add, placed, { ...board, traces }, port);
+  schematic(out, add, placed, { ...board, traces }, port, netOf);
   return out;
+}
+
+// The routed tracks pulled tight (@rulecad/smooth): bend points dropped where a straight run keeps the board's clearance.
+// Only the router's tracks move, never drawn or kept ones, with one exception: a kept escape (a source's stub) that a
+// routed track turns straight back on is cut back to where the track can leave it cleanly (never its first segment,
+// from the pin). Each cut is recorded (rulecad_trimmed on the track, rulecad_shortened on a shortened stub segment) and
+// the checks name it. A track the design checks then find in a new error goes back as it was; if a cut is in one, the
+// board is smoothed again without cuts
+export async function smoothRouted(out, board) {
+  const { smoothCircuit } = await import('@rulecad/smooth');
+  const { runAllChecks } = await import('@tscircuit/checks');
+  // each error by its kind and the elements in it (its measurements change as tracks move), on a copy: the checks write
+  // into the routes they read
+  const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type))
+    .map((e) => JSON.stringify([e.type, ...[...new Set(JSON.stringify(e).match(/pcb_[a-z_]+?_\d+/g) || [])].sort()]));
+  const before = new Set(await errors()), snapshot = structuredClone(out);
+  const run = (withLeads) => {
+    const chains = withLeads ? stubChains(out) : new Map();
+    const { routes, trimmed } = smoothCircuit(out, { movable: (e) => e.rulecad_routed === true, ...(board.clearance ? { clearance: board.clearance } : {}),
+      leads: (e) => { const c = chains.get(e.pcb_trace_id); return c && { start: c.start?.lead, end: c.end?.lead }; } });
+    const was = new Map(), cut = new Set();
+    for (const e of out) if (e.type === 'pcb_trace' && routes.has(e.pcb_trace_id)) { was.set(e.pcb_trace_id, e.route); e.route = routes.get(e.pcb_trace_id); }
+    for (const [id, sides] of trimmed) for (const side of ['start', 'end']) if (sides[side]) {
+      const chain = chains.get(id)[side], lead = sides[side], k = lead.length, track = out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id);
+      // the chain's segments, root first: those wholly past the new joint go, the one it lands on is shortened
+      const segs = [...chain.segs].reverse(), gone = segs.slice(k - 1), last = segs[k - 2], at = lead[k - 1];
+      const end = chain.lead[k - 1], moved = Math.hypot(end.x - at.x, end.y - at.y) > 1e-9;
+      track.rulecad_trimmed = [...(track.rulecad_trimmed || []), ...gone.map((g) => ({ a: { ...g.trace.route[0] }, b: { ...g.trace.route[1] } }))];
+      for (const g of gone) { out.splice(out.indexOf(g.trace), 1); cut.add(g.trace.pcb_trace_id); }
+      if (moved) {
+        last.trace.rulecad_shortened = { a: { x: last.trace.route[0].x, y: last.trace.route[0].y }, b: { x: last.trace.route[1].x, y: last.trace.route[1].y } };
+        const p = last.trace.route.find((q) => Math.hypot(q.x - end.x, q.y - end.y) < 1e-6); p.x = at.x; p.y = at.y;
+        cut.add(last.trace.pcb_trace_id);
+      }
+      if (gone.length || moved) track.rulecad_cut = (track.rulecad_cut || 0) + 1; // escapes cut back from this track
+      cut.add(id);
+    }
+    return { was, cut };
+  };
+  let { was, cut } = run(true);
+  const fresh = async () => (await errors()).filter((x) => !before.has(x));
+  if (cut.size && (await fresh()).some((e) => [...cut].some((id) => e.includes(`"${id}"`)))) { // a cut in a new error: none, then
+    out.splice(0, out.length, ...snapshot);
+    ({ was } = run(false));
+  }
+  for (let round = 0; round < 5 && was.size; round++) { // (a track put back can be in the way of one pulled tight round its new path: again)
+    let back = 0;
+    for (const e of await fresh()) for (const [id, route] of was) if (e.includes(`"${id}"`)) {
+      out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id).route = route; was.delete(id); back++;
+    }
+    if (!back) break;
+  }
+}
+
+// Each routed track's kept escape at either end: the stub of the source's track it carries on from (its end not on a
+// pad), followed back from the joint segment by segment while it's a single line on one layer, stopping at a via or a
+// branch. -> Map(pcb_trace_id -> { start, end }), each { lead: points from the stub's root to the joint, segs: the stub's
+// segments, from the joint back }
+export function stubChains(out) {
+  const near = (p, q) => Math.hypot(p.x - q.x, p.y - q.y) < 1e-6;
+  const routed = out.filter((e) => e.type === 'pcb_trace' && e.rulecad_routed);
+  const kept = out.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept);
+  const chains = new Map();
+  for (const t of routed) for (const side of ['start', 'end']) {
+    const J = side === 'start' ? t.route[0] : t.route.at(-1);
+    if (J.route_type !== 'wire' || J.start_pcb_port_id || J.end_pcb_port_id) continue; // on a pad: no stub
+    if (routed.filter((u) => [u.route[0], u.route.at(-1)].some((p) => near(p, J))).length !== 1) continue; // other tracks meet there
+    const mine = kept.filter((k) => k.source_trace_id === t.source_trace_id);
+    const lead = [{ x: J.x, y: J.y, layer: J.layer }], segs = [], used = new Set();
+    for (let cur = J; ;) {
+      if (mine.some((k) => k.route[1]?.route_type === 'via' && near(k.route[0], cur))) break; // a via: the stub changes layer here
+      const next = mine.filter((k) => !used.has(k) && k.route.length === 2 && k.route.every((p) => p.route_type === 'wire' && p.layer === J.layer) && k.route.some((p) => near(p, cur)));
+      if (next.length !== 1) break;
+      const k = next[0], far = near(k.route[0], cur) ? k.route[1] : k.route[0];
+      used.add(k); segs.push({ trace: k }); lead.push({ x: far.x, y: far.y, layer: J.layer }); cur = far;
+    }
+    if (segs.length >= 2) chains.set(t.pcb_trace_id, { ...chains.get(t.pcb_trace_id), [side]: { lead: lead.reverse(), segs } });
+  }
+  return chains;
 }
 
 // A point on (or near) the board's edge moved in by d, straight in from the nearest side of its bounds
@@ -268,12 +358,94 @@ function keptCopper(out, add, board, copper, planeNets) {
     if (!ports.length || (ports.length < 2 && !plane)) continue; // nothing left to join
     const st = add('source_trace', { connected_source_port_ids: ports, connected_source_net_ids: plane ? [plane.id] : [], subcircuit_id: SUB, display_name: `${k.pins.join(', ')}: the source's own copper` });
     for (const g of board.copper.tracks.filter((t) => t.island === k.id))
-      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: st.source_trace_id, subcircuit_id: SUB });
+      add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: st.source_trace_id, subcircuit_id: SUB, rulecad_kept: true });
     for (const v of board.copper.vias.filter((x) => x.island === k.id)) {
-      const t = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: st.source_trace_id, subcircuit_id: SUB });
+      const t = add('pcb_trace', { route: [{ route_type: 'wire', x: v.x, y: v.y, width: Math.min(v.pad, 0.2), layer: 'top' }, { route_type: 'via', x: v.x, y: v.y, from_layer: 'top', to_layer: 'bottom' }], source_trace_id: st.source_trace_id, subcircuit_id: SUB, rulecad_kept: true });
       add('pcb_via', { pcb_trace_id: t.pcb_trace_id, x: v.x, y: v.y, hole_diameter: v.hole, outer_diameter: v.pad, layers: copper, from_layer: 'top', to_layer: 'bottom', subcircuit_id: SUB });
     }
   }
+}
+
+/**
+ * Labels slid clear of copper boxes ({ x, y, w, h }) and of each other: each across its reading direction, a step at a
+ * time up to reach, to the nearest clear place; one with nowhere clear stays, marked clash: true.
+ * @param {object[]} silk { text, x, y, size, rotation } @param {object[]} copper @param {object} o
+ */
+export function slideClear(silk, copper, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75, bodies = [], area = null, near = 6 } = {}) {
+  const turned = (s) => (((s.rotation ?? 0) % 180) + 180) % 180 === 90;
+  const box = (s, dx = 0, dy = 0) => { const long = s.text.length * s.size * char; return { x: s.x + dx, y: s.y + dy, w: turned(s) ? s.size : long, h: turned(s) ? long : s.size }; };
+  const hits = (a, b, g) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + g && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + g;
+  const within = (b) => !area || (b.x - b.w / 2 >= area.minX && b.x + b.w / 2 <= area.maxX && b.y - b.h / 2 >= area.minY && b.y + b.h / 2 <= area.maxY);
+  const placed = [], n = Math.round(reach / step), out = [...silk];
+  silk.forEach((s, k) => { // labels at their pins: slid across their reading direction to the nearest clear place
+    if (!s.text || s.to) return;
+    for (let i = 0; i <= 2 * n; i++) {
+      const d = (i % 2 ? 1 : -1) * Math.ceil(i / 2) * step, b = box(s, turned(s) ? d : 0, turned(s) ? 0 : d);
+      if (copper.some((c) => hits(b, c, gap)) || placed.some((o) => hits(b, o, gap))) continue;
+      placed.push(b);
+      out[k] = { ...s, x: Math.round(b.x * 1e4) / 1e4, y: Math.round(b.y * 1e4) / 1e4 };
+      return;
+    }
+    placed.push(box(s));
+    out[k] = { ...s, clash: true };
+  });
+  // Labels that point at what they name ({ to: { x, y } }, or a list of spots to choose from): the nearest clear place to
+  // where they're asked for, within `near` mm, clear of pads, parts' bodies and other labels, with a small triangle beside
+  // them, pointing at it, clear too. One with nowhere clear stays put, without its pointer
+  silk.forEach((s, k) => {
+    if (!s.text || !s.to) return;
+    const m = Math.round(near / step), spots = [], other = { ...s, rotation: turned(s) ? 0 : 90 }; // level or turned, whichever fits nearer
+    for (let i = -m; i <= m; i += 2) for (let j = -m; j <= m; j += 2) for (const t of [s, other]) spots.push({ t, dx: i * step, dy: j * step });
+    spots.sort((a, b) => Math.hypot(a.dx, a.dy) - Math.hypot(b.dx, b.dy));
+    for (const { t, dx, dy } of spots) {
+      const b = box(t, dx, dy);
+      if (!within(b) || copper.some((c) => hits(b, c, gap)) || bodies.some((c) => hits(b, c, gap)) || placed.some((o) => hits(b, o, gap))) continue;
+      for (const to of [s.to].flat()) { // a spot, or several to choose from (past the end of a pad, or beside it)
+        const a = arrowPath(b, to);
+        if (a.length < 0.8 || copper.some((c) => hits(a.at, c, 0.1)) || placed.some((o) => hits(a.at, o, 0.1))) continue;
+        placed.push(b, a.at);
+        out[k] = { ...t, to, x: Math.round(b.x * 1e4) / 1e4, y: Math.round(b.y * 1e4) / 1e4 };
+        return;
+      }
+    }
+    placed.push(box(s));
+    const { to, ...rest } = s;
+    out[k] = { ...rest, clash: true };
+  });
+  return out;
+}
+
+/**
+ * A pointer from a label's box toward a spot: a small triangle just off the middle of the box's side nearest the spot,
+ * pointing at it. @param {{ x, y, w, h }} box @param {{ x, y }} to
+ * @returns {{ head: object[], at: { x, y, w, h }, length: number }} the triangle (closed), its box, the distance to `to`
+ */
+export function arrowPath(box, to, { gap = 0.2, size = 0.6 } = {}) {
+  const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([ix, iy]) => ({ x: box.x + ix * (box.w / 2 + gap), y: box.y + iy * (box.h / 2 + gap) }));
+  const from = sides.sort((a, b) => Math.hypot(a.x - to.x, a.y - to.y) - Math.hypot(b.x - to.x, b.y - to.y))[0];
+  const len = Math.hypot(to.x - from.x, to.y - from.y) || 1, ux = (to.x - from.x) / len, uy = (to.y - from.y) / len;
+  const tip = { x: from.x + ux * size, y: from.y + uy * size }, b1 = { x: from.x - uy * size / 2, y: from.y + ux * size / 2 }, b2 = { x: from.x + uy * size / 2, y: from.y - ux * size / 2 };
+  return { head: [b1, tip, b2, b1], at: { x: from.x + ux * size / 2, y: from.y + uy * size / 2, w: size, h: size }, length: len };
+}
+
+// After routing: silkscreen text the router's vias (or any copper) landed on slides clear, as clearLabels does before;
+// then each label that points at its pin gets its triangle, beside where the label ended up
+function clearSilkAfter(out, add, board) {
+  const copper = [...out.filter((e) => e.type === 'pcb_via').map((e) => ({ x: e.x, y: e.y, w: e.outer_diameter, h: e.outer_diameter })),
+    ...out.filter((e) => e.type === 'pcb_smtpad').map((e) => smtBounds(e)),
+    ...out.filter((e) => e.type === 'pcb_plated_hole').map((e) => ({ x: e.x, y: e.y, ...holeSize(e) }))];
+  const texts = out.filter((e) => e.type === 'pcb_silkscreen_text' && !e.pcb_component_id);
+  const b = out.find((e) => e.type === 'pcb_board'), pts = b.outline || [{ x: b.center.x - b.width / 2, y: b.center.y - b.height / 2 }, { x: b.center.x + b.width / 2, y: b.center.y + b.height / 2 }];
+  const area = { minX: Math.min(...pts.map((q) => q.x)), maxX: Math.max(...pts.map((q) => q.x)), minY: Math.min(...pts.map((q) => q.y)), maxY: Math.max(...pts.map((q) => q.y)) };
+  const moved = slideClear(texts.map((e) => ({ text: e.text, x: e.anchor_position.x, y: e.anchor_position.y, size: e.font_size, rotation: e.ccw_rotation, to: e.rulecad_to })), copper, { area });
+  texts.forEach((e, i) => {
+    e.anchor_position = { x: moved[i].x, y: moved[i].y };
+    if (!moved[i].to) { delete e.rulecad_to; return; }
+    const turned = (((e.ccw_rotation ?? 0) % 180) + 180) % 180 === 90, long = e.text.length * e.font_size * 0.75;
+    const a = arrowPath({ x: e.anchor_position.x, y: e.anchor_position.y, w: turned ? e.font_size : long, h: turned ? long : e.font_size }, e.rulecad_to);
+    add('pcb_silkscreen_path', { pcb_component_id: null, layer: e.layer, route: a.head, stroke_width: board.silk_line ?? 0.15, subcircuit_id: SUB });
+    delete e.rulecad_to;
+  });
 }
 
 // Copper layers, top to bottom: 2, 4 or 6
@@ -466,22 +638,38 @@ function netTraces(board, port, joined = new Map()) {
 }
 
 // ---- the schematic: each part at the place the board gives it, wires between neighbours, labels to the chip ----
-function schematic(out, add, placed, board, port) {
+function schematic(out, add, placed, board, port, netOf = new Map()) {
   const sch = new Map();
-  for (const { part, comp, sourcePorts } of placed) {
-    const s = part.sch || { x: 0, y: 0 };
+  // Parts with no place of their own on the schematic (a clone's: their board places would pile them up) go in rows,
+  // biggest first, with room between for the net labels on their pins
+  const auto = placed.filter((p) => !p.part.sch), row = { x: 0, y: 0, h: 0 }, width = Math.max(12, Math.sqrt(auto.length) * 3.5);
+  for (const p of [...auto].sort((a, b) => b.sourcePorts.length - a.sourcePorts.length)) {
+    const pins = new Set(p.sourcePorts.map((sp) => sp.name)).size;
+    const w = 1.9 + 2 * 2.2, h = (Math.ceil(pins / 2) + 1) * 0.2 + 0.8; // the box, its pins' labels either side, its title
+    if (row.x > 0 && row.x + w > width) { row.x = 0; row.y -= row.h; row.h = 0; }
+    p.at = { x: row.x + w / 2, y: row.y - h / 2 }; row.x += w; row.h = Math.max(row.h, h);
+  }
+  for (const { part, comp, sourcePorts, at } of placed) {
+    const s = part.sch || at || { x: 0, y: 0 };
     if (part.ftype === 'simple_chip') { // a box: pins 1 to 20 down the left, 21 to 40 up the right, 0.2 apart
-      const half = Math.ceil(sourcePorts.length / 2), size = { width: 1.9, height: (half + 1) * 0.2 };
+      // laid out here, a pin with several pads (a chip's centre pad and its thermal holes) is drawn once
+      const shown = at ? sourcePorts.filter((sp, i) => sourcePorts.findIndex((o) => o.name === sp.name) === i) : sourcePorts;
+      const half = Math.ceil(shown.length / 2), size = { width: 1.9, height: (half + 1) * 0.2 };
       const c = add('schematic_component', { center: { x: s.x, y: s.y }, rotation: 0, size, pin_spacing: 0.2, port_labels: part.sch?.pinLabels || {},
         source_component_id: comp.source_component_id, is_box_with_pins: true, schematic_group_id: 'schematic_group_0' });
-      add('schematic_text', { text: part.mpn ?? part.name, schematic_component_id: c.schematic_component_id, anchor: 'left', rotation: 0,
+      add('schematic_text', { text: at ? `${part.name}${part.value ? ` ${part.value}` : ''}` : part.mpn ?? part.name, schematic_component_id: c.schematic_component_id, anchor: 'left', rotation: 0,
         position: { x: s.x - size.width / 2, y: s.y - size.height / 2 - 0.23 }, color: '#006464', font_size: 0.18 });
-      sourcePorts.forEach((sp, i) => {
-        const left = i < half, k = left ? i : sourcePorts.length - 1 - i, side = left ? 'left' : 'right';
+      shown.forEach((sp, i) => {
+        const left = i < half, k = left ? i : shown.length - 1 - i, side = left ? 'left' : 'right';
         const center = { x: s.x + (left ? -1 : 1) * (size.width / 2 + 0.4), y: s.y + size.height / 2 - 0.2 * (k + 1) };
-        sch.set(sp.source_port_id, add('schematic_port', { schematic_component_id: c.schematic_component_id, center, source_port_id: sp.source_port_id,
-          facing_direction: side, distance_from_component_edge: 0.4, side_of_component: side, pin_number: sp.pin_number, true_ccw_index: i, display_pin_label: sp.name }));
+        const sp2 = add('schematic_port', { schematic_component_id: c.schematic_component_id, center, source_port_id: sp.source_port_id,
+          facing_direction: side, distance_from_component_edge: 0.4, side_of_component: side, pin_number: sp.pin_number, true_ccw_index: i, display_pin_label: sp.name.replace(/^pin/, '') });
+        sch.set(sp.source_port_id, sp2);
+        // laid out here: each pin labelled with its net, in place of wires across the sheet
+        const net = at && [sp.name, ...(sp.port_hints || [])].map((k) => netOf.get(`${part.name}.${k}`)).find(Boolean);
+        if (net) add('schematic_net_label', { text: net.replace(/^\//, ''), anchor_position: center, center, anchor_side: left ? 'right' : 'left', source_port_id: sp.source_port_id });
       });
+      for (const sp of sourcePorts) if (!sch.has(sp.source_port_id)) sch.set(sp.source_port_id, sch.get(shown.find((o) => o.name === sp.name).source_port_id)); // its other pads: drawn as one
       continue;
     }
     const symbol = symbols[part.ftype === 'simple_diode' ? 'diode_down' : 'spst_switch_right'];
@@ -494,7 +682,9 @@ function schematic(out, add, placed, board, port) {
     });
   }
   // A wire between two parts' pins (L-shaped), or for a connection to the chip, a label at each end naming the pin
+  const labelled = new Set(placed.filter((p) => p.at).map((p) => p.part.name));
   for (const t of board.traces) {
+    if (labelled.has(t.from[0]) && labelled.has(t.to[0])) continue; // their pins carry their nets' names already
     const a = port(...t.from), b = port(...t.to), pa = sch.get(a.source.source_port_id), pb = sch.get(b.source.source_port_id);
     const chip = [a, b].find((q) => placed.find((p) => p.sourcePorts.includes(q.source)).part.ftype === 'simple_chip');
     if (chip || t.net) { // a net's ends are labelled with the net's name
@@ -518,7 +708,14 @@ function schematic(out, add, placed, board, port) {
 export async function routeInput(json, toRoute, board = {}) {
   const { getFullConnectivityMapFromCircuitJson } = await import('circuit-json-to-connectivity-map');
   const conn = getFullConnectivityMapFromCircuitJson(json);
-  const linked = (id) => { const net = conn.getNetConnectedToId(id); return net ? [...new Set([id, net, ...conn.getIdsConnectedToNet(net)])] : [id]; };
+  // A plane net's pads (GND, 3V3) are joined by the plane, not by tracks: each is joined only to the links routed from it,
+  // so a short link between two close pads isn't tied to every pad of the net across the board (the router's topology
+  // merging then fails on far-off ones, such as a chip's thermal vias)
+  const planeNet = new Set(json.filter((e) => e.type === 'source_net' && board.planes?.[e.name]).map((e) => conn.getNetConnectedToId(e.source_net_id)).filter(Boolean));
+  const linksAt = new Map();
+  for (const { a, b: z, id } of toRoute) for (const q of [a, z]) linksAt.set(q.pcb.pcb_port_id, [...(linksAt.get(q.pcb.pcb_port_id) || []), id]);
+  const linked = (id, port) => { const net = conn.getNetConnectedToId(id); if (!net) return [id];
+    return planeNet.has(net) ? [id, ...(port ? [port, ...(linksAt.get(port) || [])] : [])] : [...new Set([id, net, ...conn.getIdsConnectedToNet(net)])]; };
   const comp = Object.fromEntries(json.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e.name]));
   const src = Object.fromEntries(json.filter((e) => e.type === 'source_port').map((e) => [e.source_port_id, e]));
   const pcbPort = Object.fromEntries(json.filter((e) => e.type === 'pcb_port').map((e) => [e.pcb_port_id, e]));
@@ -532,15 +729,15 @@ export async function routeInput(json, toRoute, board = {}) {
   for (const kind of ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole']) for (const e of json.filter((x) => x.type === kind)) { // by kind, as core lists them
     if (e.type === 'pcb_smtpad' && e.shape === 'polygon') { // copper of any shape, as strips the router can see round
       for (const b of strips(e.points, 0.25)) obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
-        center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) });
+        center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id, e.pcb_port_id), ...joined(e) });
       continue;
     }
     if (e.type === 'pcb_smtpad') { const b = smtBounds(e); obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_smtpad_id'), componentId: e.pcb_component_id, type: 'rect', layers: [e.layer],
-      center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id), ...joined(e) }); }
+      center: { x: b.x, y: b.y }, width: b.w, height: b.h, connectedTo: linked(e.pcb_smtpad_id, e.pcb_port_id), ...joined(e) }); }
     if (e.type === 'pcb_plated_hole') obstacles.push({ circuitJsonMetadata: meta(e, 'pcb_plated_hole_id'), componentId: e.pcb_component_id, type: 'oval', layers: ['top', 'bottom'],
-      center: { x: e.x, y: e.y }, width: holeSize(e).w, height: holeSize(e).h, connectedTo: linked(e.pcb_plated_hole_id), ...joined(e) });
+      center: { x: e.x, y: e.y }, width: holeSize(e).w, height: holeSize(e).h, connectedTo: linked(e.pcb_plated_hole_id, e.pcb_port_id), ...joined(e) });
     if (e.type === 'pcb_hole') obstacles.push({ componentId: e.pcb_component_id, obstacleId: e.pcb_hole_id, isNonPlatedHole: true, type: 'rect', shape: 'circle',
-      layers: ['top', 'bottom'], center: { x: e.x, y: e.y }, width: e.hole_diameter, height: e.hole_diameter, connectedTo: [] });
+      layers: ['top', 'bottom'], center: { x: e.x, y: e.y }, width: 2 * (e.rulecad_keepout ?? e.hole_diameter / 2), height: 2 * (e.rulecad_keepout ?? e.hole_diameter / 2), connectedTo: [] }); // with a screw head's room round it
   }
   // Tracks already on the board, but a plane's vias inside a big pad: the pad is in the router's way already
   const padOf = new Map(json.filter((e) => e.type === 'pcb_smtpad').map((e) => [e.pcb_port_id, smtBounds(e)]));
@@ -595,10 +792,10 @@ function fixedTraces(input) {
 }
 
 /**
- * A route from the autorouter, cut where it changes layer inside a plated hole: the router marks those as points
+ * A route from the autorouter, cut where it changes layer inside a plated hole or a via: the router marks those as points
  * "through an obstacle", which nothing downstream reads, but the hole's copper already joins the layers, so the route
  * ends there on one layer and a second starts there on the other. A pass through anything else is an error.
- * @param {object[]} route @param {object[]} holes pcb_plated_hole elements @returns {object[][]}
+ * @param {object[]} route @param {object[]} holes pcb_plated_hole and pcb_via elements @returns {object[][]}
  */
 export function layerChanges(route, holes) {
   const pieces = [[]];
@@ -617,36 +814,48 @@ export function layerChanges(route, holes) {
 }
 
 // The autorouter, then repair: its tracks sometimes run too close to, or over, others. Those connections are pulled up and
-// routed again together with every good track fixed in place, up to three rounds (a round that can't route keeps the last
-// result: on a board too tight for it, the checks then say where)
+// routed again together with every good track fixed in place, up to three rounds, keeping the best (on a board too tight
+// for it, the checks then say where)
+// Routed tracks laid as board elements, for routing round them or checking them
+const lay = (list) => list.flatMap((t, i) => [{ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB },
+  ...t.vias.map((v, k) => ({ type: 'pcb_via', pcb_via_id: `pcb_via_rv${i}x${k}`, pcb_trace_id: `pcb_trace_rt${i}`, ...v, layers: v.layers, subcircuit_id: SUB }))]);
+
 async function defaultRouter(json, toRoute, board) {
   let traces = (await routeOnce(json, toRoute, board)).traces;
   const { runAllChecks } = await import('@tscircuit/checks');
-  const lay = (list) => list.flatMap((t, i) => [{ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB },
-    ...t.vias.map((v, k) => ({ type: 'pcb_via', pcb_via_id: `pcb_via_rv${i}x${k}`, pcb_trace_id: `pcb_trace_rt${i}`, ...v, layers: v.layers, subcircuit_id: SUB }))]);
-  for (let round = 0; round < 3; round++) {
-    const errors = (await runAllChecks([...json, ...lay(traces)])).filter((e) => /_error$/.test(e.type));
+  const problems = async (list) => (await runAllChecks([...json, ...lay(list)])).filter((e) => /_error$/.test(e.type));
+  let errors = await problems(traces), best = { traces, n: errors.length };
+  // Repair: the connections in errors pulled up and routed again round every good track, each round asking for a little
+  // more room than the last (so they don't land in the same squeeze), the best result kept
+  for (let round = 0; round < 3 && errors.length; round++) {
     const bad = new Set();
     for (const e of errors) for (const m of JSON.stringify(e).matchAll(/pcb_(?:trace_rt|via_rv)(\d+)/g)) bad.add(traces[Number(m[1])]?.source_trace_id);
     bad.delete(undefined);
     if (!bad.size) break;
     const keep = traces.filter((t) => !bad.has(t.source_trace_id)), again = toRoute.filter((c) => bad.has(c.id));
+    const roomier = { ...board, clearance: (board.clearance ?? 0.1) + 0.05 * (round + 1) };
     const minute = () => Date.now() + 60000; // each repair attempt gets a minute
-    try { traces = [...keep, ...(await routeOnce([...json, ...lay(keep)], again, board, minute())).traces]; continue; } catch {} // too tight together:
-    if (again.length > 4) break; // a few can go one at a time, each around everything else; more would take too long
-    let changed = false;
-    for (const c of again) {
-      const rest = traces.filter((t) => t.source_trace_id !== c.id);
-      try { traces = [...rest, ...(await routeOnce([...json, ...lay(rest)], [c], board, minute())).traces]; changed = true; } catch {}
+    let next = null;
+    try { next = [...keep, ...(await routeOnce([...json, ...lay(keep)], again, roomier, minute())).traces]; } catch {} // too tight together:
+    if (!next && again.length <= 4) { // a few go one at a time, each round everything else, the router searching harder if it must
+      next = traces;
+      for (const c of again) for (const effort of [1, 2]) {
+        const rest = next.filter((t) => t.source_trace_id !== c.id);
+        try { next = [...rest, ...(await routeOnce([...json, ...lay(rest)], [c], { ...roomier, effort }, minute())).traces]; break; } catch {}
+      }
     }
-    if (!changed) break; // too tight to better: the last result stands
+    if (!next) break; // too tight to better: the best result stands
+    traces = next; errors = await problems(traces);
+    if (errors.length < best.n) best = { traces, n: errors.length };
   }
+  traces = best.traces;
   if (board?.neck) traces = await neckDown(json, traces, board.neck);
   return { traces };
 }
 
 /**
- * Routed tracks still a little too close to another: straightened where the router doubled back, then necked down where they pass, the segment of each nearest the spot
+ * Routed tracks still a little too close to another, or to the board's edge: straightened where the router doubled back,
+ * moved in from the edge, then necked down where they pass, the segment of each nearest the spot
  * narrowed to neck (the fab's smallest track), which opens the gap. traces as the router gives them; returns them.
  * @param {object[]} json @param {object[]} traces @param {number} neck
  */
@@ -665,6 +874,23 @@ export async function neckDown(json, traces, neck) {
     if (k === undefined || Math.hypot(r[k].x - e.center.x, r[k].y - e.center.y) > 1) continue;
     const [gone] = r.splice(k, 1);
     if ((await close()).length >= before) r.splice(k, 0, gone); // no better: put it back
+  }
+  // Then a stretch too close to the board's edge (the router sometimes hugs it): moved in by what it lacks, both its
+  // ends (not a pad's end), where that leaves no more problems than before
+  const b = json.find((e) => e.type === 'pcb_board'), edge = b?.outline || (b && [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => ({ x: b.center.x + sx * b.width / 2, y: b.center.y + sy * b.height / 2 })));
+  const inside = (q) => { let n = false; for (let a = 0, z = edge.length - 1; a < edge.length; z = a++) if ((edge[a].y > q.y) !== (edge[z].y > q.y) && q.x < ((edge[z].x - edge[a].x) * (q.y - edge[a].y)) / (edge[z].y - edge[a].y) + edge[a].x) n = !n; return n; };
+  for (const e of edge ? await close() : []) {
+    const short = e.message.match(/board edge \(([\d.]+)mm < ([\d.]+)mm/); const m = JSON.stringify(e).match(/pcb_trace_rt(\d+)/); if (!short || !m) continue;
+    const r = out[Number(m[1])].route, by = Number(short[2]) - Number(short[1]) + 0.02;
+    const i = r.map((_, k) => k).filter((k) => k > 0 && k < r.length - 2 && r[k].route_type === 'wire' && r[k + 1].route_type === 'wire').sort((k, j) => toSeg(e.center, r[k], r[k + 1]) - toSeg(e.center, r[j], r[j + 1]))[0];
+    if (i === undefined || toSeg(e.center, r[i], r[i + 1]) > 0.5) continue;
+    const near = edge.map((q, k) => [q, edge[(k + 1) % edge.length]]).sort((u, w) => toSeg(e.center, ...u) - toSeg(e.center, ...w))[0];
+    const len = Math.hypot(near[1].x - near[0].x, near[1].y - near[0].y) || 1;
+    let n = { x: -(near[1].y - near[0].y) / len, y: (near[1].x - near[0].x) / len };
+    if (!inside({ x: e.center.x + n.x * 0.3, y: e.center.y + n.y * 0.3 })) n = { x: -n.x, y: -n.y }; // the way into the board
+    const before = (await close()).length, was = [r[i], r[i + 1]].map((q) => ({ x: q.x, y: q.y }));
+    for (const q of [r[i], r[i + 1]]) { q.x += n.x * by; q.y += n.y * by; }
+    if ((await close()).length >= before) [r[i], r[i + 1]].forEach((q, k) => Object.assign(q, was[k])); // no better: put it back
   }
   for (let pass = 0; pass < 4; pass++) { // two tracks close along a stretch: the next segment along, until they clear
   const laid = out.map((t, i) => ({ type: 'pcb_trace', pcb_trace_id: `pcb_trace_rt${i}`, route: t.route, source_trace_id: t.source_trace_id, subcircuit_id: SUB }));
@@ -688,7 +914,7 @@ async function routeOnce(json, toRoute, board, limit = 0) {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
   const { AutoroutingPipelineSolver } = await import('@tscircuit/capacity-autorouter');
   const srj = await routeInput(json, toRoute, board);
-  const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null });
+  const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null, ...(board.effort ? { effort: board.effort } : {}) }); // effort: how hard it searches (1, the router's own)
   // stepped by hand, so a repair can be given a time limit (a first route has none)
   while (!solver.solved && !solver.failed) { solver.step(); if (limit && Date.now() > limit) throw new Error('a repair took too long'); }
   if (solver.failed) throw new Error(`the autorouter couldn't route every connection: ${solver.error || 'no reason given'}`);
@@ -711,7 +937,7 @@ async function routeOnce(json, toRoute, board, limit = 0) {
     return [{ route_type: 'wire', x: p.x, y: p.y, width: p.width, layer: pad.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: pad.layer },
       { route_type: 'via', x: v.x, y: v.y, from_layer: pad.layer, to_layer: p.layer }, { route_type: 'wire', x: v.x, y: v.y, width: p.width, layer: p.layer }];
   };
-  const holes = json.filter((e) => e.type === 'pcb_plated_hole');
+  const holes = json.filter((e) => e.type === 'pcb_plated_hole' || e.type === 'pcb_via'); // copper joining the layers: a track may change layer in it
   // A connection's end that isn't on a pad (a kept escape's end) stands for its pin
   const ends = srj.connections.flatMap((c) => c.pointsToConnect).filter((q) => !padAt(q));
   const endAt = (p) => { const q = ends.find((e) => Math.hypot(e.x - p.x, e.y - p.y) < 0.02); return q && { port: q.pcb_port_id, layer: null, w: 0, h: 0, stub: true }; };

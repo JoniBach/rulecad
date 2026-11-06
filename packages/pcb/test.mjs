@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, moveGroup } from '@rulecad/pcb';
-import { layerChanges, routeInput, neckDown } from './circuit.mjs';
+import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+const r4 = (n) => Math.round(n * 1e4) / 1e4;
+import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -178,7 +179,9 @@ test('a KiCad board read as a circuit: parts where the source put them, nets, pl
   assert.deepEqual([r1.x, r1.y, r1.rotation, r1.layer, r1.value, r1.lcsc], [-5, 0, 90, 'top', '10k', 'C25744']);
   assert.deepEqual([c.parts[2].rotation, c.parts[2].layer], [270, 'bottom'], 'a part on the back turns the other way, seen from its side');
   assert.equal(j1.pads[0].castellated, true);
-  assert.deepEqual(j1.pads[1].hole_offset, [0, -0.7]);
+  // KiCad drills at the pad's place, (0, -0.55) down the page, and moves its copper 0.7 further down: the hole is 0.7 up from the copper's centre
+  assert.deepEqual([j1.pads[1].x, j1.pads[1].y, j1.pads[1].hole_offset], [0, -0.15, [0, 0.7]]);
+  assert.equal(r4(j1.pads[1].y + j1.pads[1].hole_offset[1]), 0.55, 'the hole where KiCad puts the pad');
   assert.deepEqual([c.source.tracks, c.source.vias], [1, 0]);
   assert.throws(() => fromKicadPcb('(kicad_pcb (version 4) (module "x"))'), /KiCad 6 or later/);
   assert.throws(() => fromKicadPcb('(kicad_pcb (footprint "x"'), /never closed/);
@@ -226,6 +229,7 @@ test('a route that changes layer inside a plated hole becomes two routes; throug
   assert.deepEqual(pieces.map((p) => [p[0].layer, p.at(-1).layer]), [['bottom', 'bottom'], ['top', 'top']]);
   assert.deepEqual([pieces[0].at(-1).x, pieces[1][0].x], [-0.5, -0.5], 'both end in the hole');
   assert.throws(() => layerChanges(route, [{ ...hole, x: 5 }]), /through a part at \(-0\.50, 0\.00\)/);
+  assert.equal(layerChanges(route, [{ type: 'pcb_via', x: -0.5, y: 0, outer_diameter: 0.6 }]).length, 2, 'a via joins the layers too');
 });
 
 test('placement learnt from the source: small parts by the pins they serve, moved with them, checked', () => {
@@ -275,8 +279,8 @@ test('castellated and oval pads: a half hole on the edge, checked by the fab\'s 
   const holes = json.filter((e) => e.type === 'pcb_plated_hole');
   const half = holes.find((e) => e.port_hints.includes('castellated')), oval = holes.find((e) => e.shape === 'circular_hole_with_rect_pad');
   assert.deepEqual([half.x, half.y, half.hole_diameter], [-7, -5, 1], 'its centre on the bottom edge');
-  assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.15, 'tracks join it at its inner edge');
-  assert.deepEqual([oval.rect_pad_width, oval.rect_pad_height, oval.rect_border_radius, oval.hole_offset_x, oval.hole_offset_y], [1.7, 3, 0.85, 0, -0.7]);
+  assert.equal(json.find((e) => e.type === 'pcb_port' && e.pcb_port_id === half.pcb_port_id).y, -4.325, 'tracks join it on its inner side, mid-way across its copper ring');
+  assert.deepEqual([oval.rect_pad_width, oval.rect_pad_height, oval.rect_border_radius, oval.hole_offset_x, oval.hole_offset_y], [1.7, 3, 0.85, 0, 0.7]);
   const jlc = Object.fromEntries(Object.entries(loadRuleSet('jlcpcb').rules).map(([n, r]) => [n, r.value]));
   const text = (await checks(json, { jlcpcb: jlc, track: 0.2 })).map((f) => `${f.level}: ${f.text}`).join(' | ');
   assert.match(text, /pass: 1 castellated holes on the edge, 1 mm or more/);
@@ -354,6 +358,55 @@ test('keeping the source\'s routing: copper wholly within a moved block comes wi
   assert.equal(arrange(moved, { R2: { x: 0, y: 0 } }).kept.islands.length, 1, 'R2 moved apart: the A track is left to routing');
 });
 
+test('smoothing: the router\'s tracks pulled tight; the source\'s kept routing stays exactly where it was, and the checks say so', async () => {
+  const src = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (1 "In1.Cu" signal) (2 "In2.Cu" signal) (31 "B.Cu" signal))
+    (net 0 "") (net 1 "A") (net 2 "GND") (net 3 "B")
+    (footprint "R:R" (layer "F.Cu") (at 3 5) (property "Reference" "R1")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "GND")))
+    (footprint "R:R" (layer "F.Cu") (at 3 8) (property "Reference" "R2")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 3 "B")))
+    (footprint "R:R" (layer "F.Cu") (at 15 8) (property "Reference" "R3")
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 3 "B")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "GND")))
+    (segment (start 2.5 5) (end 2.5 8) (width 0.2) (layer "F.Cu") (net 1))
+    (segment (start 3.5 5) (end 4.5 5) (width 0.2) (layer "F.Cu") (net 2)) (via (at 4.5 5) (size 0.5) (drill 0.25) (layers "F.Cu" "B.Cu") (net 2))
+    (segment (start 3.5 8) (end 14.5 8) (width 0.2) (layer "F.Cu") (net 3))
+    (zone (net 2) (net_name "GND") (layer "In1.Cu"))
+    (gr_rect (start 0 0) (end 20 12) (layer "Edge.Cuts")))`);
+  const moved = moveGroup(src, ['R1', 'R2'], { turn: 90, dx: 1 }, { keep: true }), k = clone(moved, { layers: 4 });
+  // A router that wiggles: each connection zigzags between its ends
+  const wiggly = { route: async (json, toRoute) => ({ traces: toRoute.map((c) => {
+    const p = (t, dy, layer = 'top') => ({ route_type: 'wire', x: c.a.x + (c.b.x - c.a.x) * t, y: c.a.y + (c.b.y - c.a.y) * t + dy, width: 0.2, layer });
+    const via = (t, from, to) => ({ route_type: 'via', x: p(t, 0).x, y: p(t, 0).y, from_layer: from, to_layer: to }); // over to the back and back again
+    const route = [{ ...p(0, 0), start_pcb_port_id: c.a.pcb.pcb_port_id }, p(0.15, 0.4), p(0.3, 0), via(0.3, 'top', 'bottom'), p(0.3, 0, 'bottom'), p(0.45, -0.4, 'bottom'),
+      p(0.6, 0, 'bottom'), via(0.6, 'bottom', 'top'), p(0.6, 0), p(0.8, 0.4), { ...p(1, 0), end_pcb_port_id: c.b.pcb.pcb_port_id }];
+    return { source_trace_id: c.id, route, vias: route.filter((q) => q.route_type === 'via').map((q) => ({ x: q.x, y: q.y, hole_diameter: 0.3, outer_diameter: 0.6, from_layer: q.from_layer, to_layer: q.to_layer })) };
+  }) }) };
+  const board = { outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, layers: 4, planes: k.planes, copper: k.copper, parts: k.parts, nets: k.nets };
+  const plain = await render(board, wiggly), smoothed = await render({ ...board, smooth: true }, wiggly);
+  const routed = (j) => j.filter((e) => e.type === 'pcb_trace' && e.rulecad_routed);
+  const kept = (j) => JSON.stringify(j.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept).map((e) => e.route));
+  assert.ok(routed(plain).length >= 1);
+  assert.ok(routed(smoothed).every((t, i) => t.route.length < routed(plain)[i].route.length), JSON.stringify(routed(smoothed).map((t, i) => [t.route.length, routed(plain)[i].route.length])));
+  assert.ok(routed(smoothed).every((t, i) => ['x', 'y'].every((c) => t.route[0][c] === routed(plain)[i].route[0][c] && t.route.at(-1)[c] === routed(plain)[i].route.at(-1)[c])), 'ends where they were');
+  assert.equal(kept(smoothed), kept(plain), 'the kept routing untouched');
+  assert.deepEqual(smoothed.filter((e) => e.type === 'pcb_via').map((e) => [e.x, e.y, e.route]), plain.filter((e) => e.type === 'pcb_via').map((e) => [e.x, e.y, undefined]), 'vias where they were, and still vias');
+  assert.ok(kept(plain).length > 2);
+  const found = await checks(smoothed, values({}), null, { circuit: src, arranged: moved });
+  assert.match(found.map((f) => f.text).join(' | '), /the source's own routing as it was: \d+ tracks and 1 vias exactly where the source has them/);
+});
+
+test('a routed track\'s kept escape: followed back from the joint along its own net, to a via or a branch', () => {
+  const w = (x, y) => ({ route_type: 'wire', x, y, width: 0.15, layer: 'top' });
+  const kept = (a, b, id = 's1') => ({ type: 'pcb_trace', pcb_trace_id: `k${a.join()}${b.join()}`, source_trace_id: id, rulecad_kept: true, route: [w(...a), w(...b)] });
+  const out = [kept([0, 0], [0, -2]), kept([0, -2], [-3, -2]), kept([0, -2], [5, 5], 's2'), // another net's track meets it: not followed
+    { type: 'pcb_trace', pcb_trace_id: 'r', source_trace_id: 's1', rulecad_routed: true, route: [w(-3, -2), w(2, -3), { ...w(4, -3), end_pcb_port_id: 'p' }] }];
+  const c = stubChains(out).get('r');
+  assert.deepEqual(c.start.lead.map((p) => [p.x, p.y]), [[0, 0], [0, -2], [-3, -2]]);
+  assert.equal(c.end, undefined, 'its other end is on a pad');
+  out.push(kept([0, -2], [1, -1])); // a branch at the corner: followed only to there
+  assert.equal(stubChains(out).get('r'), undefined, 'one segment: nothing to cut back');
+});
+
 test('round and rounded pads keep their shape: a test point is a circle, a rounded pad has its corners', async () => {
   const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
     (footprint "T:TP" (layer "F.Cu") (at 3 5) (property "Reference" "TP1") (pad "1" smd circle (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "A")))
@@ -395,6 +448,12 @@ test('the router sees existing vias at their real size, and keeps a board\'s own
     { route: async (json, toRoute, board) => { srj = await routeInput(json, toRoute, board); return { traces: [] }; } });
   assert.equal(srj.defaultObstacleMargin, 0.15);
   assert.ok(srj.obstacles.some((o) => o.width === 0.5 && o.height === 0.5), 'a plane via, 0.5 mm, not the board\'s smallest');
+  // A plane net's pads are joined by the plane: each is tied only to itself and its own links, not to the whole net
+  const pin = (o) => `${o.circuitJsonMetadata?.source_component_name}.${o.circuitJsonMetadata?.source_port_name}`;
+  const planePads = srj.obstacles.filter((o) => k.planes.B.pins.some((q) => pin(o) === q || pin(o) === q.replace('.', '.pin')));
+  assert.ok(planePads.length > 0);
+  assert.ok(planePads.every((o) => !o.connectedTo.some((x) => x.startsWith('connectivity_net'))), 'no plane pad is tied to the net as a whole');
+  assert.ok(srj.obstacles.filter((o) => !planePads.includes(o) && o.circuitJsonMetadata).some((o) => o.connectedTo.some((x) => x.startsWith('connectivity_net'))), 'other nets\' pads still are');
 });
 
 test('necking: two routed tracks a little too close are narrowed where they pass, to the fab\'s smallest track', async () => {
@@ -408,4 +467,107 @@ test('necking: two routed tracks a little too close are narrowed where they pass
   const line = (id, y) => ({ source_trace_id: id, route: [{ route_type: 'wire', x: -4, y, width: 0.15, layer: 'top' }, { route_type: 'wire', x: 4, y, width: 0.15, layer: 'top' }], vias: [] });
   const necked = await neckDown(json, [line('source_trace_0', 0), line('source_trace_1', 0.214)], 0.1);
   assert.deepEqual(necked.map((t) => t.route.map((p) => p.width)), [[0.1, 0.1], [0.1, 0.1]], 'both narrowed: a 0.114 mm gap');
+});
+
+test('parts the source keeps off its BOM and placement files (edge pads, test points) stay off them', async () => {
+  const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+    (footprint "R:R" (layer "F.Cu") (at 3 5) (property "Reference" "R1") (property "LCSC" "C25744") (attr smd)
+      (pad "1" smd rect (at -0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 1 "A")) (pad "2" smd rect (at 0.5 0) (size 0.6 0.5) (layers "F.Cu") (net 2 "B")))
+    (footprint "T:TP" (layer "F.Cu") (at 7 5) (property "Reference" "TP1") (attr exclude_from_pos_files exclude_from_bom)
+      (pad "1" smd circle (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "A")))
+    (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
+  assert.deepEqual(c.parts.map((p) => [p.ref, p.bom, p.place]), [['R1', undefined, undefined], ['TP1', false, false]]);
+  const k = clone(c), json = await render({ outline: k.outline, thickness: 1.6, track: 0.2, autoroute: true, parts: k.parts, nets: k.nets }, stub);
+  const fab = await fabFiles(json, 'x');
+  assert.match(fab['x-bom.csv'], /R1/);
+  assert.doesNotMatch(fab['x-bom.csv'], /TP1/);
+  assert.doesNotMatch(fab['x-cpl.csv'], /TP1/);
+});
+
+test('3D models: KiCad\'s VRML read in mm, a STEP file measured, each model placed on its part (turned, or under the board on the back)', async () => {
+  // A square face 0.2 x 0.2 tenths of an inch (0.508 mm), 0.1 up: two triangles
+  const tris = wrlMesh('Shape { geometry IndexedFaceSet { coordIndex [0,1,2,3,-1] coord Coordinate { point [0 0 0.1,0.2 0 0.1,0.2 0.2 0.1,0 0.2 0.1] } } }');
+  assert.equal(tris.length, 2);
+  assert.deepEqual(tris[0][1].map((n) => Math.round(n * 1000) / 1000), [0.508, 0, 0.254]);
+  const step = "ISO-10303-21; DATA; #1=SI_UNIT(.MILLI.,.METRE.); #2=CARTESIAN_POINT('',(-1.,0.,0.)); #3=CARTESIAN_POINT('',(2.,3.,1.5)); ENDSEC;";
+  assert.deepEqual(stepBounds(step), { min: [-1, 0, 0], max: [2, 3, 1.5] });
+  assert.deepEqual(stepBounds(step.replace('SI_UNIT(.MILLI.,.METRE.)', "CONVERSION_BASED_UNIT('INCH')")).max, [50.8, 76.2, 38.1], 'inches');
+  // A 1 x 2 x 1 box model on a part turned 90 at (10, 0) on top, and the same on the back at (-10, 0)
+  const model = (x, layer, rotation) => ({ type: 'cad_component', rulecad_model: { box: { min: [0, 0, 0], max: [1, 2, 1] }, scale: [1, 1, 1], rotate: [0, 0, 0], offset: [0, 0, 0], turn: 0, x, y: 0, rotation, layer } });
+  const bounds = (t) => { const p = t.flat(); return [0, 1, 2].map((i) => [Math.min(...p.map((v) => v[i])), Math.max(...p.map((v) => v[i]))]); };
+  assert.deepEqual(bounds(partModels([model(10, 'top', 90)], { thickness: 1.6 })), [[8, 10], [0, 1], [1.6, 2.6]], 'turned a quarter, on the board\'s top');
+  assert.deepEqual(bounds(partModels([model(-10, 'bottom', 0)], { thickness: 1.6 })), [[-10, -9], [-2, 0], [-1, 0]], 'on the back: turned over top to bottom (as KiCad flips a footprint), hanging below');
+});
+
+test('labels: one hemmed in by pads goes to the nearest clear place, with a small triangle pointing at its pin', () => {
+  // A pin at (0, 0) with pads all round its label's place; open board above
+  const pads = [[-1.1, 0], [1.1, 0], [0, -1.1], [0, 1.1], [0, 2.2], [0, -2.2]].map(([x, y]) => ({ x, y, w: 1.2, h: 1 }));
+  const [slid, pointed] = slideClear([{ text: 'A', x: 0, y: 0, size: 1 }, { text: 'B', x: 0, y: 0, size: 1, to: { x: 0, y: 0.6 } }], pads);
+  assert.equal(slid.clash, true, 'a label with nowhere to slide stays put, marked');
+  assert.ok(!pointed.clash && pointed.to, 'a pointing label finds a place');
+  const b = { x: pointed.x, y: pointed.y, w: 0.75, h: 1 };
+  assert.ok(pads.every((q) => Math.abs(q.x - b.x) >= (q.w + b.w) / 2 || Math.abs(q.y - b.y) >= (q.h + b.h) / 2), 'clear of every pad');
+  const a = arrowPath(b, pointed.to);
+  assert.equal(a.head.length, 4, 'a closed triangle');
+  const tip = a.head[1], base = { x: (a.head[0].x + a.head[2].x) / 2, y: (a.head[0].y + a.head[2].y) / 2 };
+  assert.ok(Math.hypot(tip.x - pointed.to.x, tip.y - pointed.to.y) < Math.hypot(base.x - pointed.to.x, base.y - pointed.to.y), 'its tip points at the pin');
+  const lone = slideClear([{ text: 'C', x: 0, y: 0, size: 1, to: { x: 0, y: 0 } }], [{ x: 0, y: 0, w: 30, h: 30 }]);
+  assert.ok(lone[0].clash && !lone[0].to, 'nowhere clear: it stays put, without its pointer');
+});
+
+test('pin headers in a 3D model: a pin and spacer at each hole, under the board; a hole keeps tracks out of a screw head\'s room', async () => {
+  const m = pinHeaders([{ x: 0, y: 0 }, { x: 2.54, y: 0 }], { thickness: 1.6 });
+  assert.equal(m.boxes.length, 4, 'a spacer and a pin for each hole');
+  const tris = partModels([{ type: 'cad_component', rulecad_model: { ...m, x: 10, y: 5, rotation: 0, layer: 'top' } }], { thickness: 1.6 });
+  const zs = tris.flat().map((v) => v[2]), xs = tris.flat().map((v) => v[0]);
+  assert.deepEqual([Math.min(...zs), Math.max(...zs)], [-8.5, 3], 'pins from 6 mm below the spacer to 3 mm above it; the spacer under the board');
+  assert.deepEqual([Math.min(...xs), Math.max(...xs)], [8.73, 13.81], 'where the part is');
+  let srj;
+  await render({ center: { x: 0, y: 0 }, width: 20, height: 10, thickness: 1.6, track: 0.2, autoroute: true, holes: [{ x: 5, y: 0, d: 2.1, keepout: 1.9 }],
+    parts: [part('R1', '0603', -5, 0), part('R2', '0603', 0, 3)], nets: { A: ['R1.pin1', 'R2.pin1'] } },
+  { route: async (json, toRoute, board) => { srj = await routeInput(json, toRoute, board); return { traces: [] }; } });
+  const hole = srj.obstacles.find((o) => o.isNonPlatedHole);
+  assert.equal(hole.width, 3.8, 'the router keeps out of the screw head\'s room, not just the hole');
+});
+
+test('the board in 3D: a hole set off-centre in its pad is drilled where the fab drills it', () => {
+  const json = [{ type: 'pcb_board', center: { x: 0, y: 0 }, width: 10, height: 10, thickness: 1.6 },
+    { type: 'pcb_plated_hole', x: 0, y: 0, hole_diameter: 1, hole_offset_x: -2, hole_offset_y: 0, outer_width: 3, outer_height: 1.7, shape: 'circular_hole_with_rect_pad' }];
+  const { board } = solids(json, { thickness: 1.6 });
+  const near = (x) => board.polygons.some((p) => p.vertices.some((v) => Math.abs(v[0] - x) < 0.01 && Math.abs(v[1]) < 0.01));
+  assert.ok(near(-2.5) && near(-1.5), 'the hole is at the offset');
+  assert.ok(!near(0.5), 'not at the pad\'s centre');
+});
+
+test('pins added to a clone: on a source net, or a new net to a pin the source leaves free; the circuit check names them', async () => {
+  const c = fromKicadPcb(KICAD), k0 = clone(c, { layers: 4, planes: ['B'] });
+  const free = c.parts.find((p) => p.ref === 'R4'), freePin = free.pads.find((q) => !q.net)?.pin;
+  assert.throws(() => addPins(c, 'J1', [{ pin: '9', net: 'NOPE' }]), /no net NOPE/);
+  const anyNet = Object.keys(c.nets).find((n) => !k0.planes[n]);
+  const a = addPins(c, 'J1', [{ pin: '9', net: anyNet, x: 3, y: 3, w: 1, h: 1, hole: 0.5 }]);
+  assert.ok(a.nets[anyNet].includes('J1.9'));
+  assert.deepEqual(a.added, [{ pin: 'J1.9', net: anyNet }]);
+  if (freePin) assert.ok(addPins(c, 'J1', [{ pin: '9', net: 'NEW', joins: [`R4.${freePin}`] }]).nets.NEW.includes(`R4.${freePin}`));
+  const k = clone(a, { layers: 4, planes: ['B'] });
+  const json = await render({ outline: k.outline, thickness: 1.2, track: 0.2, autoroute: true, layers: 4, planes: k.planes, parts: k.parts, nets: k.nets, holes: k.holes },
+    { route: async () => ({ traces: [] }) });
+  {
+    const plain = sameCircuit(json, c, { layers: 4, planes: ['B'] }).map((x) => x.text).join(' | ');
+    assert.match(plain, /pins joined to nets the source leaves them out of: J1\.pin9/, 'undeclared, the new pin fails');
+    const told = sameCircuit(json, c, { layers: 4, planes: ['B'] }, a.added).map((x) => x.text).join(' | ');
+    assert.doesNotMatch(told, /J1\.pin9 in/, 'declared, it is expected');
+  }
+});
+
+test('a routed track hugging the board edge is moved in by what it lacks', async () => {
+  const pad = (pin) => ({ pin, smd: true, hint: pin, x: 0, y: 0, w: 0.4, h: 0.4 });
+  const part = (name, x, y) => ({ name, ftype: 'simple_chip', x, y, layer: 'top', rotation: 0, pads: [pad('pin1')] });
+  let json;
+  await render({ center: { x: 0, y: 0 }, width: 20, height: 10, thickness: 1.6, track: 0.15, autoroute: true,
+    parts: [part('A1', -6, 0), part('A2', 6, 0)], nets: { A: ['A1.pin1', 'A2.pin1'] } }, { route: async (j) => { json = j; return { traces: [] }; } });
+  const w = (x, y) => ({ route_type: 'wire', x, y, width: 0.15, layer: 'top' });
+  const hug = { source_trace_id: 'source_trace_0', route: [w(-6, 0), w(-4, 4.8), w(4, 4.8), w(6, 0)], vias: [] }; // 0.2 mm from the top edge
+  const [t] = await neckDown(json, [hug], 0.1);
+  assert.ok(t.route[1].y < 4.75 && t.route[2].y < 4.75, `moved in: ${t.route[1].y}`);
+  assert.deepEqual([t.route[0].y, t.route[3].y], [0, 0], 'its ends stay on their pads');
 });

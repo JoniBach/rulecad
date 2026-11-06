@@ -13,7 +13,7 @@
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
 import fs from 'node:fs';
 import path from 'node:path';
-import { circuitJson, bounds, smtBounds } from './circuit.mjs';
+import { circuitJson, bounds, smtBounds, slideClear } from './circuit.mjs';
 export { bounds };
 import { loadRuleSet } from '@rulecad/cad/rules';
 import jscad from '@jscad/modeling';
@@ -474,13 +474,21 @@ export function fromKicadPcb(text) {
         const d = drill.slice(1), oval = d[0] === 'oval', ds = d.filter((x) => !Array.isArray(x) && x !== 'oval').map(num), off = kidOf(drill, 'offset');
         pad.hole = Math.min(...ds);
         if (oval && ds.length > 1 && ds[0] !== ds[1]) pad.hole_size = [ds[0], ds[1]];
-        if (off && (num(off[1]) || num(off[2]))) pad.hole_offset = [r4(num(off[1]) * (bottom ? -1 : 1)), r4(-num(off[2]))];
+        if (off && (num(off[1]) || num(off[2]))) { // KiCad drills at the pad's position and moves its copper by the offset (turned with the pad)
+          const t = ((num(pa[3] || 0) - deg) * Math.PI) / 180, ox = num(off[1]), oy = -num(off[2]); // y up
+          const o = [(ox * Math.cos(t) - oy * Math.sin(t)) * (bottom ? -1 : 1), ox * Math.sin(t) + oy * Math.cos(t)];
+          pad.x = r4(pad.x + o[0]); pad.y = r4(pad.y + o[1]); pad.hole_offset = [r4(-o[0]), r4(-o[1])]; // the copper's centre, and the hole from it
+        }
       }
       if (p.some((x) => Array.isArray(x) && x[0] === 'property' && x[1] === 'pad_prop_castellated')) pad.castellated = true;
       pads.push(pad);
     }
     if (!pads.length) { holes.push(...own.map((h) => ({ ...h.at, d: h.d }))); continue; } // a mounting hole (a board's), a logo: nothing to connect
+    const attr = kidOf(f, 'attr') || []; // parts the source keeps off its BOM and placement files (edge pads, test points)
+    const m3 = kidOf(f, 'model'), xyz = (k) => { const v = kidOf(kidOf(m3, k) || [], 'xyz'); return v ? v.slice(1).map(Number) : null; };
+    const model = m3 && { path: m3[1], offset: xyz('offset') || [0, 0, 0], scale: xyz('scale') || [1, 1, 1], rotate: xyz('rotate') || [0, 0, 0] }; // its 3D model, as KiCad finds it
     raw.push({ ref, footprint: f[1], value: props.Value, mpn: props.MPN ?? props['Manufacturer Part Number'], lcsc: props.LCSC, x: fx, y: fy, rotation: turnOf(bottom ? -deg : deg), layer: bottom ? 'bottom' : 'top', pads,
+      ...(model ? { model } : {}), ...(attr.includes('exclude_from_bom') ? { bom: false } : {}), ...(attr.includes('exclude_from_pos_files') ? { place: false } : {}),
       ...(own.length ? { holes: own.map(({ at, ...h }) => h) } : {}) });
   }
   // The outline: the loops on Edge.Cuts, the biggest outside (counter-clockwise, y up); without one closed loop, its bounds
@@ -549,7 +557,8 @@ export function clone(circuit, o = {}) {
       return { pin, smd: true, hint: q.pin, ...at, points: pts }; // corners relative to the part, as circuit.mjs takes them
     });
     const holes = (p.holes || []).map((h) => (quarterTurn ? h : { ...h, x: h.x * c - h.y * s, y: h.x * s + h.y * c }));
-    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, ...(holes.length ? { holes } : {}), courtyard: null, sch: { x: p.x / 2, y: p.y / 2, pinLabels: {} }, pads };
+    return { name: p.ref, ftype: 'simple_chip', x: p.x, y: p.y, layer: p.layer, rotation: quarterTurn ? p.rotation : 0, mpn: p.mpn, lcsc: p.lcsc, value: p.value, ...(p.bom === false ? { bom: false } : {}), ...(p.place === false ? { place: false } : {}), ...(holes.length ? { holes } : {}),
+      ...(p.model && circuit.models?.[p.model.path] ? { model: { ...p.model, ...circuit.models[p.model.path], turn: quarterTurn ? 0 : p.rotation } } : {}), courtyard: null, pads }; // no sch: laid out on the schematic in rows, each pin labelled with its net
   }).filter((p) => p.pads.length);
   const have = new Set(parts.flatMap((p) => p.pads.map((q) => `${p.name}.${q.pin}`))), dropped = new Set();
   const nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => !planes.includes(n))
@@ -599,6 +608,50 @@ export function withFootprint(circuit, ref, pads) {
   const missing = [...had.keys()].filter((n) => !given.has(n)), extra = [...given].filter((n) => !had.has(n));
   if (missing.length || extra.length) throw new Error(`withFootprint: ${ref}'s new pads must have the same pins as before${missing.length ? `; missing ${missing.join(', ')}` : ''}${extra.length ? `; not on ${ref}: ${extra.join(', ')}` : ''}`);
   return { ...circuit, parts: circuit.parts.map((p) => (p.ref === ref ? { ...p, footprint: `${p.footprint} (reshaped)`, pads: pads.map((q) => ({ angle: 0, smd: false, shape: 'circle', ...q, net: had.get(q.pin) })) } : p)) };
+}
+
+/**
+ * New pins on a clone's part, declared: each pad { pin, net, ...pad } joins an existing net of the source (a reset line
+ * from a test point to the edge), or with `joins: ['U3.13']` a new net to pins the source leaves unconnected (a spare
+ * GPIO brought out). The circuit is then the source's plus these; `added` lists them, and sameCircuit (given them)
+ * checks the rest is unchanged and names each one. @param {object} circuit @param {string} ref @param {object[]} pads
+ */
+export function addPins(circuit, ref, pads) {
+  const part = circuit.parts.find((p) => p.ref === ref);
+  if (!part) throw new Error(`addPins: no part ${ref} in the circuit`);
+  const have = new Set(part.pads.map((q) => q.pin)), nets = { ...circuit.nets }, added = [...(circuit.added || [])];
+  for (const q of pads) {
+    if (have.has(q.pin)) throw new Error(`addPins: ${ref} already has a pin ${q.pin}`);
+    if (!q.joins && !nets[q.net]) throw new Error(`addPins: no net ${q.net} in the source (give joins: [...] for a new net)`);
+    if (q.joins) for (const x of q.joins) { const owner = Object.entries(nets).find(([, n]) => n.includes(x)); if (owner) throw new Error(`addPins: ${x} is already on ${owner[0]}`); }
+    nets[q.net] = [...(nets[q.net] || q.joins), `${ref}.${q.pin}`];
+    added.push({ pin: `${ref}.${q.pin}`, net: q.net, ...(q.joins ? { joins: q.joins } : {}) });
+  }
+  const extra = pads.map(({ joins, ...q }) => ({ angle: 0, smd: false, shape: 'circle', ...q }));
+  return { ...circuit, nets, added, parts: circuit.parts.map((p) => (p.ref === ref ? { ...p, pads: [...p.pads, ...extra] } : p)) };
+}
+
+/**
+ * Silkscreen labels moved clear of copper and of each other: each slides across its reading direction (a level label up
+ * or down, a turned one left or right), a step at a time up to reach, to the nearest place clear of every pad by gap. A
+ * label with nowhere clear stays put, marked clash: true. The fab trims silkscreen off copper, so a label on a pad loses
+ * letters. A label with `to: { x, y }` (or a list of such, to choose from) points at it: it goes to the nearest place
+ * to where it's asked for (within `near` mm) that is clear of pads, of surface-mount parts' bodies and of other labels,
+ * inside `area` ({ minX, maxX, minY, maxY }), with a small triangle beside it pointing at the spot: for a pin with no
+ * room for its label beside it.
+ * o: { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75 (a character's width over its height), area, near = 6 }.
+ * @param {object[]} silk { text, x, y, size, rotation, to } @param {object} circuit @param {object} [o]
+ */
+export function clearLabels(silk, circuit, { reach = 1.5, step = 0.1, gap = 0.15, char = 0.75, area = null, near = 6 } = {}) {
+  const padBoxes = (p) => padsOnBoard(p).map((q) => { const t = turnOf(p.rotation + q.angle) % 180 === 90; return { x: q.bx, y: q.by, w: t ? q.h : q.w, h: t ? q.w : q.h }; });
+  const copper = circuit.parts.flatMap((p) => [...padBoxes(p),
+    ...padsOnBoard({ ...p, pads: (p.holes || []).map((h) => ({ ...h, w: h.d, h: h.d, angle: 0 })) }).map((h) => ({ x: h.bx, y: h.by, w: h.w, h: h.h }))]);
+  // A surface-mount part's body spans its pads: a label with an arrow keeps off it (the part would hide it)
+  const bodies = circuit.parts.filter((p) => p.pads.length > 1 && p.pads.every((q) => q.smd)).map((p) => {
+    const b = padBoxes(p), x0 = Math.min(...b.map((q) => q.x - q.w / 2)), x1 = Math.max(...b.map((q) => q.x + q.w / 2)), y0 = Math.min(...b.map((q) => q.y - q.h / 2)), y1 = Math.max(...b.map((q) => q.y + q.h / 2));
+    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+  });
+  return slideClear(silk, copper, { reach, step, gap, char, bodies, area, near });
 }
 
 /**
@@ -788,9 +841,11 @@ export function placementChecks(circuit, rules = circuit.placement || learnPlace
  * pins on the board, with no other net's pins in it. Findings as checks() gives them ({ level, text }).
  * @param {object[]} json Circuit JSON (render's) @param {object} circuit @param {{ planes?: string[] }} [o]
  */
-export function sameCircuit(json, circuit, o = {}) {
+export function sameCircuit(json, circuit, o = {}, added = []) {
   const onBoard = new Set(json.filter((e) => e.type === 'source_net').map((e) => e.name)); // nets the board has planes for
-  const left = clone(circuit, o).nets, nets = Object.fromEntries(Object.entries(circuit.nets).filter(([n]) => left[n] || onBoard.has(n))
+  const left = { ...clone(circuit, o).nets }, all = { ...circuit.nets };
+  for (const a of added) { if (!all[a.net]) left[a.net] = true; all[a.net] = [...(all[a.net] || a.joins), a.pin]; } // declared new pins: expected too
+  const nets = Object.fromEntries(Object.entries(all).filter(([n]) => left[n] || onBoard.has(n))
     .map(([n, pins]) => [n, pins.map((x) => { const i = x.indexOf('.'); return `${x.slice(0, i)}.pin${x.slice(i + 1)}`; })]));
   const up = new Map(), find = (a) => { while (up.get(a) !== a) a = up.get(a); return a; };
   const join = (a, b) => { up.set(find(a), find(b)); };
@@ -820,7 +875,92 @@ export function sameCircuit(json, circuit, o = {}) {
   if (missing.length) out.push({ level: 'fail', text: `${missing.length} nets name pins the board doesn't have: ${missing.slice(0, 3).join('; ')}` });
   if (split.length) out.push({ level: 'fail', text: `${split.length} nets are split in two or more on the board: ${split.slice(0, 5).join(', ')}` });
   if (shorted.length) out.push({ level: 'fail', text: `nets joined that the source keeps apart: ${[...new Set(shorted)].slice(0, 5).join('; ')}` });
-  if (!out.length) out.push({ level: 'pass', text: `same circuit as the source: all ${n} nets join the same pins, and no others${Object.keys(circuit.nets).length > n ? ` (${Object.keys(circuit.nets).length - n} left to planes)` : ''}` });
+  if (!out.length) out.push({ level: 'pass', text: `same circuit as the source: all ${n} nets join the same pins, and no others${Object.keys(all).length > n ? ` (${Object.keys(all).length - n} left to planes)` : ''}${added.length ? `, plus ${added.length} pins added: ${added.map((a) => `${a.pin} (${a.net.replace(/^\//, '')})`).join(', ')}` : ''}` });
+  return out;
+}
+
+// ---------- 3D models of parts ----------
+/**
+ * A VRML model (KiCad's .wrl) as triangles, in mm: [[x, y, z] x3, ...]. KiCad's models are in tenths of an inch, z up
+ * out of the board, x and y as the footprint's (y towards its top). Faces with more than three corners are fanned.
+ * @param {string} text @param {number} [unit] mm per model unit (KiCad's: 2.54) @returns {number[][][]}
+ */
+export function wrlMesh(text, unit = 2.54) {
+  const out = [];
+  for (const m of text.matchAll(/coordIndex\s*\[([^\]]*)\][\s\S]*?point\s*\[([^\]]*)\]/g)) {
+    const pts = m[2].split(',').map((p) => p.trim().split(/\s+/).map((n) => Number(n) * unit)).filter((p) => p.length === 3 && p.every(Number.isFinite));
+    let face = [];
+    for (const n of m[1].split(',').map((x) => Number(x.trim()))) {
+      if (n === -1) { for (let i = 1; i + 1 < face.length; i++) out.push([pts[face[0]], pts[face[i]], pts[face[i + 1]]]); face = []; }
+      else if (Number.isInteger(n) && pts[n]) face.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * A STEP model's size: the box round every point it lists ({ min: [x, y, z], max }, mm), with no geometry kernel. For a
+ * model whose shape can't be shared (no licence) only its size is used, which is a fact about the part.
+ * @param {string} text @returns {{ min: number[], max: number[] } | null}
+ */
+export function stepBounds(text) {
+  const k = /SI_UNIT\s*\(\s*\.MILLI\.\s*,\s*\.METRE\.\s*\)/i.test(text) ? 1 : /INCH/i.test(text) ? 25.4 : /SI_UNIT\s*\(\s*\$\s*,\s*\.METRE\./i.test(text) ? 1000 : 1;
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (const m of text.matchAll(/CARTESIAN_POINT\s*\(\s*'[^']*'\s*,\s*\(\s*([-\d.Ee+]+)\s*,\s*([-\d.Ee+]+)\s*,\s*([-\d.Ee+]+)\s*\)/g))
+    for (let i = 0; i < 3; i++) { const v = Number(m[i + 1]) * k; min[i] = Math.min(min[i], v); max[i] = Math.max(max[i], v); }
+  return Number.isFinite(min[0]) ? { min: min.map(r4), max: max.map(r4) } : null;
+}
+
+// A box as triangles
+/**
+ * Pin headers under a board, for its 3D model: at each hole, a square pin through the board and a plastic spacer under
+ * it, sized as a standard 2.54 mm male header (pin 0.64 mm square; spacer 2.54 mm square, 2.5 mm tall; 6 mm of pin
+ * below it, 3 mm above). Give the result as a part's `model`: { boxes } in the part's frame, z from the board's top.
+ * @param {{ x, y }[]} holes in the part's frame @param {object} [o] { thickness = 1.6, pitch = 2.54, pin = 0.64, spacer = 2.5, below = 6, above = 3 }
+ */
+export function pinHeaders(holes, { thickness = 1.6, pitch = 2.54, pin = 0.64, spacer = 2.5, below = 6, above = 3 } = {}) {
+  const bottom = -thickness - spacer; // the spacer's underside, from the board's top
+  return { boxes: holes.flatMap(({ x, y }) => [
+    { min: [x - pitch / 2, y - pitch / 2, bottom], max: [x + pitch / 2, y + pitch / 2, -thickness] },
+    { min: [x - pin / 2, y - pin / 2, bottom - below], max: [x + pin / 2, y + pin / 2, -thickness + above] }]) };
+}
+
+function boxMesh({ min: [x0, y0, z0], max: [x1, y1, z1] }) {
+  const v = [[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0], [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]];
+  return [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]].map((f) => f.map((i) => v[i]));
+}
+
+/**
+ * Each part's 3D model on the board, as triangles in the board's frame (board bottom at z = 0, top at thickness): the
+ * model's own scale, turn and offset as KiCad applies them, then the part's place; a part on the back hangs below,
+ * turned over. meshes: { file: triangles } for models with a mesh; a model with only a box is drawn as that box, and
+ * one with boxes (pinHeaders) as those.
+ * @param {object[]} json render's @param {{ thickness: number, meshes?: object }} o @returns {number[][][]}
+ */
+export function partModels(json, { thickness, meshes = {} }) {
+  const rad = Math.PI / 180, out = [];
+  for (const c of json.filter((e) => e.type === 'cad_component' && e.rulecad_model)) {
+    const m = c.rulecad_model, tris = m.mesh ? meshes[m.mesh] : m.box ? boxMesh(m.box) : m.boxes ? m.boxes.flatMap(boxMesh) : null;
+    if (!tris) continue;
+    const [sx, sy, sz] = m.scale ?? [1, 1, 1], [rx, ry, rz] = (m.rotate ?? [0, 0, 0]).map((a) => -a * rad), [ox, oy, oz] = m.offset ?? [0, 0, 0];
+    const turn = (v) => { // KiCad's model turn: about x, then y, then z
+      let [x, y, z] = v;
+      [y, z] = [y * Math.cos(rx) - z * Math.sin(rx), y * Math.sin(rx) + z * Math.cos(rx)];
+      [x, z] = [x * Math.cos(ry) + z * Math.sin(ry), -x * Math.sin(ry) + z * Math.cos(ry)];
+      [x, y] = [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+      return [x, y, z];
+    };
+    const back = m.layer === 'bottom', t = (m.rotation * Math.PI) / 180, ct = Math.cos(t), st = Math.sin(t), tt = (m.turn * Math.PI) / 180;
+    const place = (v) => {
+      let [x, y, z] = turn([v[0] * sx, v[1] * sy, v[2] * sz]);
+      x += ox; y += oy; z += oz;
+      if (m.turn) [x, y] = [x * Math.cos(tt) - y * Math.sin(tt), x * Math.sin(tt) + y * Math.cos(tt)]; // a part at an angle that isn't a quarter turn
+      if (back) { x = -x; y = -y; } // the part's own frame on the back is the footprint's turned half round (as its pads are)
+      const m1 = back ? -1 : 1;
+      return [r4(m.x + m1 * (ct * x - st * y)), r4(m.y + (st * x + ct * y)), r4(back ? -z : thickness + z)];
+    };
+    for (const tri of tris) out.push(tri.map(place));
+  }
   return out;
 }
 
@@ -865,13 +1005,15 @@ export const render = (board, options) => circuitJson(board, options); // option
 // The board as a solid (previews, fits, the on-screen copy, the model page): the bare board, drilled, bottom at z = 0. Its
 // copper is drawn in the 2D views (views), not in 3D. The board is a 2D outline with its holes, extruded: its faces
 // triangulate cleanly (cylinders subtracted from a block leave long slivers).
-export function solids(json, { thickness, smooth = 16 }) { // smooth: segments per hole (a board without the variable gets 16)
+export function solids(json, { thickness, smooth = 16, models }) { // models: { file: triangles }, the parts' meshes (cad loads them) // smooth: segments per hole (a board without the variable gets 16)
   const { rectangle, circle, polygon } = jscad.primitives, { subtract } = jscad.booleans, { extrudeLinear } = jscad.extrusions;
   const b = json.find((e) => e.type === 'pcb_board');
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole' || e.type === 'pcb_via')
-    .map((e) => circle({ center: [e.x, e.y], radius: (e.hole_diameter ?? e.hole_width) / 2, segments: smooth }));
+    .map((e) => circle({ center: [e.x + (e.hole_offset_x ?? 0), e.y + (e.hole_offset_y ?? 0)], radius: (e.hole_diameter ?? e.hole_width) / 2, segments: smooth })); // a hole off-centre in its pad, where the fab drills it
   const outline = b.outline ? polygon({ points: b.outline.map((p) => [p.x, p.y]) }) : rectangle({ center: [b.center.x, b.center.y], size: [b.width, b.height] });
-  return { board: extrudeLinear({ height: thickness }, drills.length ? subtract(outline, ...drills) : outline) };
+  const board = extrudeLinear({ height: thickness }, drills.length ? subtract(outline, ...drills) : outline);
+  const parts = models ? partModels(json, { thickness, meshes: models }) : [];
+  return { board, ...(parts.length ? { components: jscad.geometries.geom3.fromPoints(parts) } : {}) }; // the parts' 3D models, where there are any
 }
 
 // What a built board tells the parts around it, as numbers an assembly can use (board.pico_y): its outline (centre and
@@ -932,6 +1074,34 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     + toPlane.filter((t) => !tracked.has(t.source_trace_id) && !holePorts.has(t.connected_source_port_ids[0])).length;
   out.push(unrouted > 0 ? { level: 'fail', text: `${unrouted} connections have no track` } : { level: 'pass', text: `every connection is routed (${traces.length} tracks, ${json.filter((e) => e.type === 'pcb_via').length} vias)` });
   out.push(...planeChecks(json));
+  // A clone's own routing, kept: every track and via of it on the board exactly as the source has it (smoothing and
+  // repair move only the router's tracks), but for escapes cut back where a routed track turned straight back on them:
+  // each of those a piece of the source's own track, named with how much went
+  const keptCu = source?.arranged?.kept;
+  if (keptCu?.tracks?.length) {
+    const key = (x, y) => `${x.toFixed(4)},${y.toFixed(4)}`, seg = (layer, width, a, b) => `${layer} ${width} ${key(a.x, a.y)} ${key(b.x, b.y)}`;
+    const tracksAt = new Set(keptCu.tracks.flatMap((g) => [seg(g.layer, g.width, g.a, g.b), seg(g.layer, g.width, g.b, g.a)])), viasAt = new Set(keptCu.vias.map((q) => key(q.x, q.y)));
+    const theirs = (layer, width, a, b) => tracksAt.has(seg(layer, width, a, b));
+    const laid = traces.filter((t) => t.rulecad_kept), isVia = (t) => t.route[1]?.route_type === 'via';
+    const along = (o, p) => { const dx = o.b.x - o.a.x, dy = o.b.y - o.a.y, l = Math.hypot(dx, dy); return Math.abs((p.x - o.a.x) * dy - (p.y - o.a.y) * dx) / l < 1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l > -1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l < l + 1e-4; };
+    const cutBy = [], moved = laid.filter((t) => {
+      if (isVia(t)) return !viasAt.has(key(t.route[0].x, t.route[0].y));
+      const [p, q] = t.route, w = p.width, layer = p.layer;
+      if (t.route.length === 2 && theirs(layer, w, p, q)) return false;
+      const o = t.rulecad_shortened; // a piece of the source's segment, from one of its ends
+      if (o && t.route.length === 2 && theirs(layer, w, o.a, o.b) && along(o, p) && along(o, q) && [p, q].some((r) => [o.a, o.b].some((e) => key(e.x, e.y) === key(r.x, r.y)))) {
+        cutBy.push(Math.hypot(o.b.x - o.a.x, o.b.y - o.a.y) - Math.hypot(q.x - p.x, q.y - p.y)); return false;
+      }
+      return true;
+    });
+    const gone = traces.flatMap((t) => (t.rulecad_trimmed || []).map((g) => ({ ...g, track: t })));
+    const strays = gone.filter((g) => !theirs(g.a.layer, g.a.width, g.a, g.b));
+    cutBy.push(...gone.map((g) => Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y)));
+    const escapes = traces.reduce((n, t) => n + (t.rulecad_cut || 0), 0);
+    const vias = laid.filter(isVia).length, short = laid.filter((t) => t.rulecad_shortened).length, total = cutBy.reduce((n, d) => n + d, 0);
+    out.push(moved.length || strays.length ? { level: 'fail', text: `${moved.length + strays.length} of the source's own tracks and vias aren't where the source has them` }
+      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias - short} tracks and ${vias} vias exactly where the source has them${cutBy.length ? `, but for ${escapes} escapes cut back where a routed track turned straight back on them (${gone.length} segments gone, ${short} shortened: ${mm(total)} mm of track in all)` : ''} (only the router's tracks are tidied)` });
+  }
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
   out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole').map((e) => e.hole_diameter ?? e.hole_width);
@@ -958,7 +1128,7 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
       : { level: 'fail', text: 'matrix: two keys share a row and column, or a GPIO is used twice' });
   }
   if (inherited.length) out.push({ level: 'info', text: `as the source has them, so not failed: ${[...new Set(inherited.map((e) => e.message.replace(/ \(.*$/, '').replace(/\. Try moving.*$/, '')))].slice(0, 4).join('; ')}${inherited.length > 4 ? ` (${inherited.length} in all)` : ''}` });
-  if (source?.circuit) out.push(...sameCircuit(json, source.circuit), ...placementChecks(source.arranged || source.circuit, source.circuit.placement || learnPlacement(source.circuit)));
+  if (source?.circuit) out.push(...sameCircuit(json, source.circuit, {}, source.arranged?.added || []), ...placementChecks(source.arranged || source.circuit, source.circuit.placement || learnPlacement(source.circuit)));
   const notes = new Set([...json, ...drc].filter((e) => /_warning$/.test(e.type)).map((e) => e.type.replace(/^(source|pcb)_|_warning$/g, '').replace(/_/g, ' ')));
   if (notes.size) out.push({ level: 'info', text: `tscircuit notes, none about the copper: ${[...notes].join(', ')}` });
   return out;
@@ -1041,7 +1211,7 @@ export async function fabFiles(json, name) {
 const FOOTPRINT = { K: 'Cherry MX, PCB mount', U: 'Raspberry Pi Pico, 0.1 in header pins', D: 'SOD-123' };
 function bom(json) {
   const lines = new Map(), q = (x) => `"${String(x).replace(/"/g, '""')}"`;
-  for (const c of json.filter((e) => e.type === 'source_component')) {
+  for (const c of json.filter((e) => e.type === 'source_component' && !e.exclude_from_bom)) {
     const lcsc = c.supplier_part_numbers?.jlcpcb?.[0] ?? '', comment = c.display_value || c.manufacturer_part_number || c.name;
     const footprint = lcsc ? '' : FOOTPRINT[c.name[0]] || ''; // a keyboard's parts by their letter; a part with an LCSC number is known by that
     const key = `${comment}|${footprint}|${lcsc}`;

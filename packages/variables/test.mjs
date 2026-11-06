@@ -89,3 +89,10 @@ test('units: mixing millimetres and degrees, or a value that comes to another un
   const r = resolve({ variables: { w: { value: 10, unit: 'mm' }, area: { value: 'w * w', unit: 'mm' }, ok: { value: 'w * w', unit: 'mm²' } } });
   assert.deepEqual(r.units.map((x) => x.path), ['variables.area.unit']);
 });
+
+test('a rule\'s pin map reaches a design as v.<set>.pinMaps, beside a rule named pins', () => {
+  const set = { rules: { pins: { value: 14 }, gpio: { value: 2, pins: { 2: 'GPIO0', 3: 'GPIO1' } } } };
+  const v = resolve({ uses: ['chip'], variables: {} }, { load: () => set }).values;
+  assert.deepEqual(v.chip.pinMaps, { gpio: { 2: 'GPIO0', 3: 'GPIO1' } });
+  assert.equal(v.chip.pins, 14, 'a rule named pins keeps its value');
+});

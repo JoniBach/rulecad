@@ -1,0 +1,37 @@
+{
+  "name": "@rulecad/smooth",
+  "version": "0.1.0",
+  "description": "Autorouted circuit-board tracks pulled tight: wiggles, detours and doubling-backs straightened wherever the straight run keeps its clearance. Only bend points are dropped, so ends, vias and every other track stay put. Works on Circuit JSON (tscircuit) or plain geometry.",
+  "type": "module",
+  "exports": {
+    "types": "./smooth.d.mts",
+    "default": "./smooth.mjs"
+  },
+  "files": [
+    "smooth.mjs",
+    "smooth.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "pcb",
+    "autorouter",
+    "tscircuit",
+    "circuit-json",
+    "traces",
+    "smoothing"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/smooth"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}
