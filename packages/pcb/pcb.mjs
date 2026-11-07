@@ -1272,11 +1272,14 @@ function bom(json) {
 }
 
 // KiCad's own files, to check with kicad-cli or finish by hand: { 'name.kicad_pcb': text, 'name.kicad_sch': text }
-export async function kicadFiles(json, name) {
+export async function kicadFiles(json, name, { clearance, track, edgeExempt } = {}) {
   const { CircuitJsonToKicadPcbConverter, CircuitJsonToKicadSchConverter } = await import('circuit-json-to-kicad');
-  const pcb = new CircuitJsonToKicadPcbConverter(json); pcb.runUntilFinished();
+  const { kicadNets, patchKicadPcb, kicadProject } = await import('./kicad.mjs');
+  const netted = kicadNets(json); // (see kicad.mjs: what the converter leaves out, made up)
+  const pcb = new CircuitJsonToKicadPcbConverter(netted); pcb.runUntilFinished();
   const sch = new CircuitJsonToKicadSchConverter(json); sch.runUntilFinished();
-  return { [`${name}.kicad_pcb`]: pcb.getOutputString(), [`${name}.kicad_sch`]: sch.getOutputString() };
+  const { pro, dru } = kicadProject(netted, { clearance, track, edgeExempt });
+  return { [`${name}.kicad_pcb`]: patchKicadPcb(pcb.getOutputString(), netted), [`${name}.kicad_sch`]: sch.getOutputString(), [`${name}.kicad_pro`]: pro, [`${name}.kicad_dru`]: dru };
 }
 
 // The 2D views for the model page, as SVG drawings: [[name, svg]]. "Group: view" names group into one tab with a

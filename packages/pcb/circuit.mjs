@@ -222,7 +222,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   for (const t of traces) {
     const a = port(...t.from), b = port(...t.to);
     const st = add('source_trace', { connected_source_port_ids: [a.source.source_port_id, b.source.source_port_id], connected_source_net_ids: [], subcircuit_id: SUB,
-      display_name: `.${t.from.join(' > .')} to .${t.to.join(' > .')}`, min_trace_thickness: t.width });
+      display_name: `.${t.from.join(' > .')} to .${t.to.join(' > .')}`, min_trace_thickness: t.width, ...(t.net ? { rulecad_net: t.net } : {}) }); // (the net's name: KiCad's files carry it)
     if (!t.path) { // a kept escape (stub) from either pin: laid as part of this connection, which is routed from its end
       const ends = [a, b].map((q, i) => { const stub = stubOf.get([t.from, t.to][i].join('.')); if (!stub) return q; stubOf.delete([t.from, t.to][i].join('.'));
         layStub(stub, st.source_trace_id); return { ...q, x: stub.end.x, y: stub.end.y, layers: [stub.end.layer] }; });
@@ -358,7 +358,7 @@ function keptCopper(out, add, board, copper, planeNets) {
     const ports = [...new Set(k.pins.flatMap((p) => (pins.get(p) || []).map((f) => f.sp.source_port_id)))];
     const plane = k.via && planeNets[k.net];
     if (!ports.length || (ports.length < 2 && !plane)) continue; // nothing left to join
-    const st = add('source_trace', { connected_source_port_ids: ports, connected_source_net_ids: plane ? [plane.id] : [], subcircuit_id: SUB, display_name: `${k.pins.join(', ')}: the source's own copper` });
+    const st = add('source_trace', { connected_source_port_ids: ports, connected_source_net_ids: plane ? [plane.id] : [], subcircuit_id: SUB, display_name: `${k.pins.join(', ')}: the source's own copper`, ...(k.net ? { rulecad_net: k.net } : {}) });
     for (const g of board.copper.tracks.filter((t) => t.island === k.id))
       add('pcb_trace', { route: [{ route_type: 'wire', x: g.a.x, y: g.a.y, width: g.width, layer: g.layer }, { route_type: 'wire', x: g.b.x, y: g.b.y, width: g.width, layer: g.layer }], source_trace_id: st.source_trace_id, subcircuit_id: SUB, rulecad_kept: true });
     for (const v of board.copper.vias.filter((x) => x.island === k.id)) {

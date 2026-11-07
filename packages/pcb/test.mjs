@@ -6,6 +6,7 @@ const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${n
 import { grid, keyboard, laneOrder, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
+import { kicadNets, patchKicadPcb, kicadProject } from './kicad.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -598,4 +599,29 @@ test('a routed track hugging the board edge is moved in by what it lacks', async
   const [t] = await neckDown(json, [hug], 0.1);
   assert.ok(t.route[1].y < 4.75 && t.route[2].y < 4.75, `moved in: ${t.route[1].y}`);
   assert.deepEqual([t.route[0].y, t.route[3].y], [0, 0], 'its ends stay on their pads');
+});
+
+test('KiCad\'s files: every pad, track and via on its named net; an off-centre hole where KiCad drills it; the board\'s rules', () => {
+  const json = [
+    { type: 'pcb_board', min_trace_width: 0.1, min_board_edge_clearance: 0.2 },
+    { type: 'source_component', source_component_id: 'c1', name: 'J2' },
+    { type: 'source_port', source_port_id: 'a', source_component_id: 'c1', name: 'pin1', pin_number: 1 },
+    { type: 'source_port', source_port_id: 'b', source_component_id: 'c1', name: 'pin1', pin_number: 1 }, // the same pin's second pad
+    { type: 'source_port', source_port_id: 'c', source_component_id: 'c1', name: 'pin2', pin_number: 2 },
+    { type: 'source_port', source_port_id: 'd', source_component_id: 'c1', name: 'pin3', pin_number: 3 }, // joined to nothing
+    { type: 'source_trace', source_trace_id: 't', connected_source_port_ids: ['a', 'c'], connected_source_net_ids: [], rulecad_net: '/USB+' },
+    { type: 'pcb_trace', pcb_trace_id: 'p', source_trace_id: 't', route: [] }, { type: 'pcb_via', pcb_via_id: 'v', pcb_trace_id: 'p', outer_diameter: 0.3, hole_diameter: 0.2 }];
+  const n = kicadNets(json), key = (id) => n.find((e) => e.source_port_id === id || e.pcb_trace_id === id || e.pcb_via_id === id)?.subcircuit_connectivity_map_key;
+  assert.ok(key('a') && ['b', 'c', 'p', 'v'].every((id) => key(id) === key('a')), 'one net: both pads of pin 1, pin 2, the track and its via');
+  assert.equal(key('d'), undefined, 'a pin on its own: no net');
+  assert.equal(n.find((e) => e.type === 'source_net' && e.subcircuit_connectivity_map_key === key('a')).name, '/USB+');
+  assert.equal(json.length, 9, 'the input unchanged');
+  // the converter writes a pad at its copper; KiCad drills at the pad's place and moves the copper by the offset
+  const pad = '(pad "1" thru_hole rect\n      (at -29.275 -4.485 0)\n      (size 3 1.7)\n      (drill 1\n        (offset -0.7 0)\n      )\n    )\n    (pad "31" thru_hole circle\n      (at -29.975 -1.945 0)\n      (drill 1.3)\n    )';
+  const fixed = patchKicadPcb(pad, []);
+  assert.match(fixed, /\(at -28\.575 -4\.485 0\)/);
+  assert.match(fixed, /\(at -29\.975 -1\.945 0\)/, 'a pad with no offset stays');
+  const { pro, dru } = kicadProject(n, { clearance: 0.1 });
+  assert.deepEqual([JSON.parse(pro).board.design_settings.rules.min_via_diameter, JSON.parse(pro).board.design_settings.rules.min_copper_edge_clearance], [0.3, 0.2]);
+  assert.match(dru, /^\(version 1\)/);
 });
