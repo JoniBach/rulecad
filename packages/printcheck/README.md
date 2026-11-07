@@ -23,8 +23,11 @@ What it checks:
 - **Flat undersides above the bed**: each must start on something. Either it rests on a built-in **breakaway support**
   (one `support_gap` below a surface), or it **bridges** no wider than `bridge` mm. The bridge is the widest circle that
   fits in the underside, measured to the edges held up by material below. An underside held by nothing starts in
-  mid-air. One held on one side only, further out than a print line, is a **ledge**: nothing bridges it, each line
-  is laid past the last in the air, and it droops (slant its underside in at 45° to the wall instead).
+  mid-air. One held on one side only (its supports all within a half turn of it, and a little), further out than a
+  print line, is a **ledge**: nothing bridges it, each line is laid past the last in the air, and it droops (slant its
+  underside in at 45° to the wall instead). What lies within a breakaway gap or two layers of the bed, or of a
+  surface below it, rests on it. Undersides within a layer of each other are one height; what starts in mid-air
+  and what hangs as a ledge is said once per height, with how many and the worst, and where.
   Each underside is taken on its own (the faces at a height joined where they touch), and an edge is held wherever
   it lies along the top edge of a wall below (booleans leave T-junctions; they don't matter). An underside no wider
   than a print line (`line`, 0.4 mm unless given) anywhere is a step of a slope printed in layers, or a sliver the

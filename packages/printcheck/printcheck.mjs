@@ -20,6 +20,7 @@ function areaNormal(poly) {
 }
 
 const OVERHANG_SLACK = 0.5; // degrees
+const LEDGE_SLACK = (15 * Math.PI) / 180; // a point's supports all within a half turn and this: a ledge
 
 /**
  * The box around faces.
@@ -118,10 +119,18 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     return true;
   };
   const centroid = (p) => [0, 1].map((k) => p.reduce((s, v) => s + v[k], 0) / p.length);
-  const held = flatDown.filter((d) => flatUp.some((u) => d.z - u.z > eps && d.z - u.z <= gap * 1.5 + eps && inside(centroid(d.p), u.p)));
+  // (a breakaway gap, or two layers: a part printed in place rests on what is two layers under it as it does on the bed)
+  const nearBed = Math.max(gap * 1.5, 2 * (printer.layer ?? 0.2));
+  const held = flatDown.filter((d) => flatUp.some((u) => d.z - u.z > eps && d.z - u.z <= nearBed + eps && inside(centroid(d.p), u.p)));
   if (held.length) f('pass', `${mm(held.reduce((s, d) => s + d.area, 0))} mm² rests on a breakaway support (${mm(gap)} mm gap): snip it off after printing`, 'print.breakaway', { area: held.reduce((s, d) => s + d.area, 0), gap });
+  // And the bed is a support too: an underside within a breakaway gap of it (a smoothed base's facets a hair up) is
+  // squashed on to it with the first layer, not printed in the air
+  const onBed = flatDown.filter((d) => !held.includes(d) && d.z - lo[2] <= nearBed + eps);
+  if (onBed.length) f('pass', `${mm(onBed.reduce((s, d) => s + d.area, 0))} mm² lies within ${mm(nearBed)} mm of the bed: laid down with the first layers`, 'print.bed-near', { area: onBed.reduce((s, d) => s + d.area, 0) });
   const levels = new Map();
-  for (const d of flatDown) if (!held.includes(d)) { const k = d.z.toFixed(2); levels.set(k, [...(levels.get(k) || []), d.p]); }
+  // (undersides within a layer of each other are one height: a smoothed surface's facets sit a hair apart)
+  const layerH = printer.layer ?? 0.2;
+  for (const d of flatDown) if (!held.includes(d) && !onBed.includes(d)) { const k = (Math.round(d.z / layerH) * layerH).toFixed(2); levels.set(k, [...(levels.get(k) || []), d.p]); }
   // A point on a segment (in the plane), within eps; and a segment lying along another, overlapping it
   const onSeg = (pt, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; if (l < eps * eps) return Math.hypot(pt[0] - a[0], pt[1] - a[1]) <= eps; const t = ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / l; return t >= -eps && t <= 1 + eps && Math.hypot(pt[0] - a[0] - t * dx, pt[1] - a[1] - t * dy) <= eps; };
   const along = (a, b, c, d) => { // c–d lies on the line of a–b and overlaps it (an edge matched exactly, or by a part of it: a T-junction)
@@ -150,20 +159,30 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     return [...out.values()];
   };
   // The top edges of walls that reach a level from below: an underside's edge lying along one is held up there
-  const wallsAt = (z) => polys.filter((p) => Math.min(...p.map((v) => v[2])) < z - eps).flatMap((p) => p.flatMap((a, i) => { const b = p[(i + 1) % p.length]; return Math.abs(a[2] - z) <= eps && Math.abs(b[2] - z) <= eps ? [[a, b]] : []; }));
+  const wallsAt = (z, tol = eps) => polys.filter((p) => Math.min(...p.map((v) => v[2])) < z - tol).flatMap((p) => p.flatMap((a, i) => { const b = p[(i + 1) % p.length]; return Math.abs(a[2] - z) <= tol && Math.abs(b[2] - z) <= tol ? [[a, b]] : []; }));
+  // (a smoothed surface has many small undersides at a height: what starts in mid-air and what hangs as a ledge are
+  // said once per height, with how many and the worst; each bridge on its own)
   for (const [z, level] of levels) {
-    const walls = wallsAt(Number(z));
+    const walls = wallsAt(Number(z), layerH / 2 + eps), midAir = [], ledges = []; // (the level's faces lie within half a layer of it)
     for (const group of regions(level)) {
       const at = boxOf(group);
       if (Math.min(at.hi[0] - at.lo[0], at.hi[1] - at.lo[1]) < line - eps) continue; // a sliver narrower than a print line: the slicer lays nothing there
       if (widest(group) < line - eps) continue; // no wider than a line anywhere (a step of a slope cut in layers, a chamfer's tread): one layer's overhang, which the perimeter takes in its stride
       const held = (a, b) => walls.some(([c, d]) => along(a, b, c, d));
-      const under = flatUp.filter((u) => Number(z) - u.z > eps && Number(z) - u.z <= gap * 1.5 + eps).map((u) => u.p); // breakaway supports' tops
-      const measured = spans(group, held, under), span = measured?.span ?? null;
-      if (span == null) f('warn', `an underside at z ${mm(Number(z))} starts in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`, 'print.mid-air', { z: Number(z) }, at);
-      else if (measured.reach > line + eps) f('warn', `a ledge at z ${mm(Number(z))} reaches ${mm(measured.reach)} mm out past what holds it, held on one side only: it droops. Slant its underside in at 45° to the wall, or support it`, 'print.ledge', { reach: measured.reach, z: Number(z) }, at);
+      const under = flatUp.filter((u) => Number(z) - u.z > eps && Number(z) - u.z <= nearBed + eps).map((u) => u.p); // breakaway supports' tops, and what a part printed in place rests on
+      const measured = spans(group, held, under), span = measured?.span ?? null, groupArea = group.reduce((s, p) => s + Math.hypot(...areaNormal(p)) / 2, 0);
+      if (span == null) midAir.push({ at, area: groupArea });
+      else if (measured.reach > line + eps) ledges.push({ at, reach: measured.reach, where: measured.where });
       else if (span > bridgeMax + eps) f('warn', `${mm(span)} mm bridge at z ${mm(Number(z))}: wider than the ${bridgeMax} mm the printer can span, needs supports`, 'print.bridge', { span, max: bridgeMax, z: Number(z) }, at);
       else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`, 'print.bridge', { span, max: bridgeMax, z: Number(z) });
+    }
+    if (midAir.length) {
+      const biggest = midAir.reduce((m, x) => (x.area > m.area ? x : m)), total = midAir.reduce((s, x) => s + x.area, 0);
+      f('warn', `${midAir.length === 1 ? 'an underside' : `${midAir.length} undersides (${mm(total)} mm²)`} at z ${mm(Number(z))} start${midAir.length === 1 ? 's' : ''} in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`, 'print.mid-air', { z: Number(z), count: midAir.length, area: total }, biggest.at);
+    }
+    if (ledges.length) {
+      const worst = ledges.reduce((m, x) => (x.reach > m.reach ? x : m));
+      f('warn', `${ledges.length === 1 ? 'a ledge' : `${ledges.length} ledges`} at z ${mm(Number(z))} reach${ledges.length === 1 ? 'es' : ''} ${ledges.length === 1 ? '' : 'up to '}${mm(worst.reach)} mm out past what holds ${ledges.length === 1 ? 'it' : 'them'}, held on one side only: ${ledges.length === 1 ? 'it droops' : 'they droop'}. Slant the underside in at 45° to the wall, or support it`, 'print.ledge', { reach: worst.reach, z: Number(z), count: ledges.length, where: worst.where }, worst.at);
     }
   }
 
@@ -234,7 +253,7 @@ function spans(polys, held, under) {
     return { c, d: Math.hypot(pt[0] - c[0], pt[1] - c[1]) };
   };
   const supports = [...outline, ...tops];
-  let best = 0, reach = 0;
+  let best = 0, reach = 0, where = null;
   const N = 6;
   for (const p of polys) for (let i = 1; i < p.length - 1; i++) {
     const [a, b, c] = [p[0], p[i], p[i + 1]];
@@ -250,11 +269,14 @@ function spans(polys, held, under) {
         const angles = near.filter((x) => x.d > 1e-9).map((x) => Math.atan2(x.c[1] - pt[1], x.c[0] - pt[0])).sort((a, b) => a - b);
         let gap = angles.length ? angles[0] + 2 * Math.PI - angles.at(-1) : 2 * Math.PI;
         for (let k = 1; k < angles.length; k++) gap = Math.max(gap, angles[k] - angles[k - 1]);
-        if (gap > Math.PI + 1e-6) reach = Math.max(reach, first.d);
+        // (a bridge between two supports nearly opposite each other, a strap from a wall to a post, leaves a gap a few
+        // degrees over a half turn where the post's nearest point is off its line: some slack, LEDGE_SLACK, before it
+        // counts as a ledge)
+        if (gap > Math.PI + LEDGE_SLACK && first.d > reach) { reach = first.d; where = pt; }
       }
     }
   }
-  return { span: 2 * best, reach };
+  return { span: 2 * best, reach, where };
 }
 
 // seams(polys) -> { gaps, tjunctions, hairlines }: edges not matched by a reverse edge, split into T-junctions (covered

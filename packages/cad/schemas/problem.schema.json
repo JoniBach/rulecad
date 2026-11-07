@@ -136,6 +136,14 @@
         "min_area": {
           "$ref": "#/$defs/expr",
           "description": "Holes and islands smaller than this (mm²) are dropped"
+        },
+        "fine": {
+          "$ref": "#/$defs/expr",
+          "description": "3D: the surface drawn on cells this many times finer than the problem's (default 1.25)"
+        },
+        "tip": {
+          "type": "boolean",
+          "description": "3D with an overhang direction: faces the smoothing left steeper than the printer's limit are tipped back to it as well (off by default: tipped corners can leave dips that slice as islands, and the sliced overhang is no smaller for it; the bracket example's 160 mm² of lean is the same either way)"
         }
       }
     },
