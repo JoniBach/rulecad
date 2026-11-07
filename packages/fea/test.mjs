@@ -137,3 +137,10 @@ test('thinShare: the share of a part in members too thin for the grid, from an o
   for (let k = 0; k < 10; k++) for (let j = 0; j < 10; j++) for (let i = 0; i < 10; i++) d3[(k * 10 + j) * 10 + i] = k < 2 ? 1 : 0; // a 2-cell plate
   assert.ok(thinShare(g3, d3).share > 0.99, 'in 3D too: a plate two cells thick is all thin');
 });
+
+test('the threads backend is plain JavaScript on Node 20 and older, and says so', async () => {
+  const { threadsBackend } = await import('./threads.mjs');
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major < 22) assert.match(threadsBackend.name, /^js \(threads need Node 22/);
+  else assert.match(threadsBackend.name, /^threads \(\d+\)$/);
+});
