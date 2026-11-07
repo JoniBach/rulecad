@@ -890,6 +890,20 @@ test('a flooded frame keeps a post: a pin of the frame\'s in a slot in what slid
   assert.ok(!posted.findings.some((x) => x.level === 'fail' && /lamina\.(free|collide|sequence)/.test(x.code)), posted.findings.filter((x) => x.level === 'fail').map((x) => x.text).join('; '));
 });
 
+test('lamina findings say where as everywhere in the kit: at a point, box a box, between the two places something comes near itself', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'x' };
+  // a bar pushed into a block of the frame: a collision, said with where
+  const r = await lamina({ height: 6, gap: 0.3, material: petg, printer: fdm, check: { fe: false, frame: false }, physics: false,
+    ground: [rect(-8, -6, 0.5, 6), rect(52, -6, 56, 6)], bodies: { bar: rect(20, -4, 50, 4) }, joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'bar' } },
+    states: { out: { s: 6 } }, sequence: ['rest', 'out', 'rest'] });
+  const placed = r.findings.filter((x) => x.at !== undefined);
+  assert.ok(placed.length, r.findings.map((x) => x.text).join('; '));
+  for (const x of placed) {
+    assert.ok(Array.isArray(x.at) && x.at.every((v) => typeof v === 'number'), `${x.text}: at ${JSON.stringify(x.at)}`);
+    if (x.box) assert.ok(x.box.lo && x.box.hi, x.text);
+  }
+});
+
 test('curveClearance: a mirrored pair is tested arm against arm, so an arm crossing its own mirror line is caught', async () => {
   const { curveClearance } = await import('@rulecad/flexures');
   const arm = (dip) => ({ points: [[0, 5], [10, dip], [20, 5]], thickness: 1, mirror: 0, start: 0, end: 0 });

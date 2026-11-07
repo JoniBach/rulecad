@@ -95,7 +95,15 @@ export async function lamina(spec) {
   // 1 / μ and a contact jams: the push is within the friction angle of the face's normal.
   const mu = { pass: 0.5, hold: 0.1, ...(typeof spec.check?.friction === 'number' ? { pass: spec.check.friction, hold: spec.check.friction } : spec.check?.friction) };
   const steepFor = (m) => 1 / m;
-  const findings = [], f = (level, text, code, extra = {}) => findings.push({ level, text, code, ...extra });
+  // (a finding's at is a point, as everywhere in the kit: a box given as at becomes box, with at its middle; a pair of
+  // points, the two places something comes near itself, becomes between, with at halfway)
+  const where = (x) => {
+    const at = x.at;
+    if (at && typeof at === 'object' && !Array.isArray(at) && at.lo && at.hi) return { ...x, at: at.lo.map((v, k) => (v + at.hi[k]) / 2), box: at };
+    if (Array.isArray(at) && at.length === 2 && Array.isArray(at[0]) && Array.isArray(at[1])) return { ...x, at: at[0].map((v, k) => (v + at[1][k]) / 2), between: at };
+    return x;
+  };
+  const findings = [], f = (level, text, code, extra = {}) => findings.push({ level, text, code, ...where(extra) });
   if (!(height > 0) || !(gap > 0) || !material?.E || !material?.strainLimit) throw new Error('a lamina needs height, gap and material ({ E, strainLimit })');
 
   // The parts: the ground, the bodies and the flexures, each a 2D shape at rest
