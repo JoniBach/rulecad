@@ -11,7 +11,7 @@ const release = [pkg('cad', '0.6.0', { '@rulecad/fea': '^0.1.0', '@rulecad/topop
 const npm = { onNpm: (name) => name === '@rulecad/fit', exists: (name) => !['@rulecad/fea', '@rulecad/topopt'].includes(name) };
 
 test('packages go out after the ones they depend on, and those already on npm are left alone', () => {
-  const order = plan(release, npm).publish.map((p) => p.dir);
+  const order = plan(release, { ...npm, exists: () => true }).publish.map((p) => p.dir);
   assert.ok(!order.includes('fit'));
   for (const [before, after] of [['fea', 'topopt'], ['topopt', 'cad'], ['variables', 'shapes'], ['shapes', 'cad'], ['rules', 'cad']]) {
     assert.ok(order.indexOf(before) < order.indexOf(after), `${before} before ${after}: ${order.join(', ')}`);
@@ -25,4 +25,11 @@ test('packages new to npm are found before anything is published', () => {
 
 test('a dependency loop is reported, not followed forever', () => {
   assert.throws(() => plan([pkg('a', '1.0.0', { '@rulecad/b': '1' }), pkg('b', '1.0.0', { '@rulecad/a': '1' })], { onNpm: () => false, exists: () => true }), /loop/);
+});
+
+test('a package new to npm holds back only itself and what depends on it: the rest go out', () => {
+  const r = plan(release, npm);
+  assert.deepEqual(r.new.map((p) => p.dir), ['fea', 'topopt']);
+  assert.deepEqual(r.held.map((p) => p.dir), ['cad'], 'cad needs topopt and fea');
+  assert.deepEqual(r.publish.map((p) => p.dir).sort(), ['create-rulecad', 'rules', 'shapes', 'variables'], 'everything that needs nothing new');
 });
