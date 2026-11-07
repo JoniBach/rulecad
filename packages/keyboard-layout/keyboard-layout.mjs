@@ -51,7 +51,7 @@ export const depth = (layout) => (layout.rows || []).length;
 // project(layout, fields): only the fields something reads, key by key, so a change to anything else (a legend, when
 // only positions matter) isn't a change to it. Positions always count.
 /** Only the fields something reads, key by key (positions always). @param {Layout} layout @param {string[]} [fields] @returns {object[]} */
-export const project = (layout, fields = []) => keys(layout).map((k) => Object.fromEntries(['index', 'col', 'u', ...fields].map((f) => [f, k[f] ?? null])));
+export const project = (layout, fields = []) => keys(layout).map((k) => Object.fromEntries(['row', 'index', 'col', 'u', 'x', 'y', ...fields].map((f) => [f, k[f] ?? null]))); // (x and y too: a gap moves the keys after it)
 
 /**
  * A layout from keyboard-layout-editor.com: its JSON download, or the "Raw data" text. Rows, widths and the gaps
