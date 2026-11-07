@@ -48,7 +48,7 @@
       "required": ["value"],
       "additionalProperties": false,
       "properties": {
-        "value": { "description": "A number, an expression (x1c.line * 3), or for typed variables a name or text" },
+        "value": { "description": "A number, an expression (x1c.line * 3), or for typed variables a name or text", "type": ["number", "string", "boolean", "array", "object"] },
         "unit": { "type": "string" },
         "rule": { "type": "string", "description": "Why the value is what it is" },
         "label": { "type": "string" },

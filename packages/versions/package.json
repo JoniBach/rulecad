@@ -30,6 +30,10 @@
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/versions"
   },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/versions#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
   "scripts": {
     "test": "node --test"
   },
