@@ -29,6 +29,10 @@
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/pcb"
   },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/pcb#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
   "dependencies": {
     "@flatten-js/core": "1.6.14",
     "@jscad/modeling": "^2.12.0",

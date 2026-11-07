@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/shapes",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Shape helpers for printed JSCAD designs: text that prints cleanly, anchors on a face, clean local cuts, and enclosure pieces (shells, lids, rails, print-safe holes).",
   "type": "module",
   "exports": {
@@ -38,11 +38,15 @@
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/shapes"
   },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/shapes#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
   "scripts": {
     "test": "node --test"
   },
   "dependencies": {
-    "@rulecad/variables": "^0.2.0"
+    "@rulecad/variables": "^0.3.0"
   },
   "peerDependencies": {
     "@jscad/modeling": "^2.12.0",
