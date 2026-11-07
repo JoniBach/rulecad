@@ -5,7 +5,8 @@
 // '+y', '-y', '+z' (up from the bed) or '-z' (down from a top face).
 //   countersink({ hole, head, length, at, into, teardrop })   a flat-head screw's hole and its 90° cone, the head flush
 //     with the face at `at`
-//   teardropHole({ d, length, at, into })   a round hole across a part (into ±x or ±y) with a 45° pointed roof
+//   teardropHole({ d, length, at, into, through })   a round hole across a part (into ±x or ±y) with a 45° pointed
+//     roof; through: it runs on out of the far face too (a hole exactly as long as the wall is thick)
 //   nutPocket({ flats, height, hole, at, into })   a hex pocket for a captive nut, open at the face: going up (+z) it
 //     gets a 45° hexagonal roof to the hole; across (±x, ±y) a flat top (a bridge across the flats)
 //   crushRibs({ at, into, z, radius, protrude })   half-round ribs standing protrude into a pocket from its wall, each at
@@ -41,20 +42,29 @@ function tear(r0, r1, z0, z1, up) {
   return up ? hull(round, ridge(r0, z0), ridge(r1, z1)) : round;
 }
 
+
+// Sizes are lengths above 0: a feature given 0 or less (or nothing) says so by name, rather than drawing garbage
+function sizes(what, o) { for (const [k, v] of Object.entries(o)) if (!(typeof v === 'number' && v > 0)) throw new Error(`${what}: ${k} is a size above 0 mm (got ${v})`); }
+
 /** A flat-head screw's hole and 90° countersink, the head flush with the face at `at`. */
 export function countersink({ hole, head, length, at = [0, 0, 0], into = '-z', teardrop = across(into) }) {
+  sizes('countersink', { hole, head, length });
   const up = teardrop ? UP[into] : null, cone = (head - hole) / 2;
   return along(union(tear(head / 2, head / 2, OUT, 0, up), tear(head / 2, hole / 2, 0, -cone, up), tear(hole / 2, hole / 2, -cone / 2, -length, up)), into, at); // overlapping, not touching: clean seams
 }
 
 /** A round hole across a part, with a 45° roof so it prints without support. */
-export function teardropHole({ d, length, at = [0, 0, 0], into = '+x' }) {
+export function teardropHole({ d, length, at = [0, 0, 0], into = '+x', through = false }) {
+  sizes('teardropHole', { d, length });
   if (!across(into)) throw new Error('teardropHole goes across a part: into ±x or ±y (a hole up or down is a plain cylinder)');
-  return along(tear(d / 2, d / 2, OUT, -length, UP[into]), into, at);
+  // through: out past the far face as it starts out past the near one, so a hole exactly as long as its wall leaves no
+  // skin of faces lying on each other
+  return along(tear(d / 2, d / 2, OUT, -length - (through ? OUT : 0), UP[into]), into, at);
 }
 
 /** A hex pocket for a captive nut, open at the face at `at`, with its roof drawn to print. */
 export function nutPocket({ flats, height, hole, at = [0, 0, 0], into = '-z' }) {
+  sizes('nutPocket', { flats, height, hole });
   const corner = flats / 2 / Math.cos(Math.PI / 6);
   // Across, a flat on top (a short bridge); going up, a corner along x either way
   const hex = (g) => (across(into) && UP[into][0] !== 0 ? rotateZ(Math.PI / 6, g) : g);
@@ -68,6 +78,7 @@ export function nutPocket({ flats, height, hole, at = [0, 0, 0], into = '-z' }) 
 
 /** Half-round crush ribs on a pocket's wall, for a press fit that takes a range of sizes. To add to the part. */
 export function crushRibs({ at, into, z, radius, protrude }) {
+  sizes('crushRibs', { radius, protrude });
   return union(...at.map(([x, y], i) => {
     const [nx, ny] = into[i] || into[0], back = radius - protrude;
     return translate([x - nx * back, y - ny * back, (z[0] + z[1]) / 2], cylinder({ radius, height: z[1] - z[0], segments: 24 }));
@@ -76,6 +87,7 @@ export function crushRibs({ at, into, z, radius, protrude }) {
 
 /** A square-cornered opening through an upright wall, centred on at (a cable's plug, a switch). */
 export function wallOpening({ width, height, depth, at = [0, 0, 0], into = '-y', bridge }) {
+  sizes('wallOpening', { width, height, depth });
   if (!across(into)) throw new Error('wallOpening goes through an upright wall: into ±x or ±y');
   const long = depth + OUT, w = into.endsWith('x') ? [long, width, height] : [width, long, height], dir = into[0] === '+' ? 1 : -1;
   const off = into.endsWith('x') ? [dir * (depth - OUT) / 2, 0, 0] : [0, dir * (depth - OUT) / 2, 0];

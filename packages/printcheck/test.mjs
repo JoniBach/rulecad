@@ -162,3 +162,11 @@ test('slice: false leaves the slow layer checks out, and says so', () => {
   assert.ok(f.some((x) => x.code === 'print.unsliced') && !f.some((x) => x.code === 'print.islands'));
   assert.ok(check(box([0, 0, 0], [10, 10, 10]), printer).some((x) => x.code === 'print.islands'), 'sliced by default');
 });
+
+test('a mesh turned inside out is named as that, not as the bridges and bed it seems to have', () => {
+  const cube = box([0, 0, 0], [10, 10, 10]), inverted = cube.map((p) => [...p].reverse());
+  const f = check(inverted, printer);
+  assert.equal(f.find((x) => x.code === 'print.inside-out')?.level, 'fail');
+  assert.ok(!f.some((x) => /bridge|flat on the bed/.test(x.text)), f.map((x) => x.text).join('; '));
+  assert.ok(!check(cube, printer).some((x) => x.code === 'print.inside-out'), 'the right way out: not said');
+});

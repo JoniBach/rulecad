@@ -20,7 +20,7 @@ const THIN = 1e-3; // the height of a slice that hulls join into slopes
 
 /** A rectangle with rounded or cut corners, centred on 0. @returns {object} geom2 */
 export function outline(w, h, { round = 0, bevel = 0, segments = 32 } = {}) {
-  if (w <= 0 || h <= 0) throw new Error(`outline: ${w} × ${h} mm is not a shape`);
+  if (!(w > 0) || !(h > 0)) throw new Error(`outline: ${w} × ${h} mm is not a shape`); // (NaN and missing too)
   if (round > 0) return roundedRectangle({ size: [w, h], roundRadius: Math.min(round, w / 2 - THIN, h / 2 - THIN), segments });
   if (bevel > 0) { const b = Math.min(bevel, w / 2, h / 2); return polygon({ points: [[-w / 2 + b, -h / 2], [w / 2 - b, -h / 2], [w / 2, -h / 2 + b], [w / 2, h / 2 - b], [w / 2 - b, h / 2], [-w / 2 + b, h / 2], [-w / 2, h / 2 - b], [-w / 2, -h / 2 + b]] }); }
   return rectangle({ size: [w, h] });
@@ -32,6 +32,7 @@ const slice = (o, d, z0, z1 = z0 + THIN) => translate([0, 0, z0], extrudeLinear(
 
 /** A block on an outline, its lower and upper edges sloped in at 45 degrees by bottom and top. @returns {object} geom3 */
 export function slab({ width, height, depth, round = 0, bevel = 0, bottom = 0, top = 0, segments = 32 }) {
+  for (const [k, v] of Object.entries({ width, height, depth })) if (!(typeof v === 'number' && v > 0)) throw new Error(`slab: ${k} is a size above 0 mm (got ${v})`);
   const o = { width, height, round, bevel, segments };
   if (bottom + top >= depth) throw new Error(`slab: slopes of ${bottom} and ${top} mm need more than ${depth} mm of depth`);
   if (!bottom && !top) return slice(o, 0, 0, depth);
