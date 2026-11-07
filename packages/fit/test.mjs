@@ -45,3 +45,11 @@ test('solids that run into each other have no gap: a peg through a plate, a cube
   assert.equal(closestAt(box([0, 0, 0], [1, 1, 1]), box([1, 0, 0], [2, 1, 1])).overlap, undefined);
   assert.ok(Math.abs(closest(box([0, 0, 0], [10, 10, 10]), box([10.3, 0, 0], [20.3, 10, 10])) - 0.3) < 1e-9, 'a gap is still a gap');
 });
+
+test('fit refuses what isn\'t faces or a point, by name', async () => {
+  const { closestAt } = await import('@rulecad/fit');
+  assert.throws(() => closest(null, box([0, 0, 0], [1, 1, 1])), /closestAt: a is a list of faces .* not null/);
+  assert.throws(() => closest([[[0, 0, 0], [1, 0, 0]]], box([0, 0, 0], [1, 1, 1])), /a has a face that isn't three or more/);
+  assert.throws(() => closestAt(box([0, 0, 0], [1, 1, 1]), box([0, 0, 0], [1, 1, 1]), -1), /reach is a distance above 0/);
+  assert.throws(() => inside([0, 0], box([0, 0, 0], [1, 1, 1])), /the point is \[x, y, z\]/);
+});

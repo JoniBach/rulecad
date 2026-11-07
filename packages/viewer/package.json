@@ -29,8 +29,8 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "@rulecad/model-link": "^0.2.0",
-    "@rulecad/printcheck": "^0.2.0",
+    "@rulecad/model-link": "^0.3.0",
+    "@rulecad/printcheck": "^0.3.0",
     "esbuild": "^0.25.12",
     "three": "^0.186.1"
   }

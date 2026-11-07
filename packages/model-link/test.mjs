@@ -123,3 +123,9 @@ test('a 3MF carries the model\'s own title, and text in it is escaped; parts are
   assert.equal(count(stl(two, new Set([1]))), 2);
   assert.equal(count(stl(two, (part) => part[0] === 'a')), 2);
 });
+
+test('check gives findings, the kit\'s one result shape', async () => {
+  const { check } = await import('@rulecad/model-link');
+  assert.deepEqual(check(null), [{ level: 'fail', text: 'no model in the link', code: 'link.data' }]);
+  assert.deepEqual(check({ q: 1, p: [0, 0, 0, 1, 0, 0, 0, 1, 0], t: [0, 1, 2] }), []);
+});
