@@ -11,6 +11,11 @@
 //  - a via laid twice at one place (a kept via and the track that names it) written once
 //  - the rules: kicadProject() writes the project file KiCad reads them from, with the board's own minimums (pcb_board's
 //    min_* values, which our checks use), and a custom rule file for exceptions the source has (pads by its edge)
+//  - kicadDrc(): KiCad's own design-rule check on all of that, when KiCad is installed
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 /**
  * Circuit JSON with every source port, source trace, pcb trace and via keyed to its net, and a named source net for
@@ -27,16 +32,20 @@ export function kicadNets(json) {
     for (const id of ids) join(e.source_trace_id, id);
   }
   for (const e of out) if (e.type === 'source_net' || e.type === 'source_port') join(e.source_net_id || e.source_port_id, e.source_net_id || e.source_port_id);
-  // a pin with more than one pad (a half hole and a header hole) has a port for each: one net
+  // a pin with more than one pad (a half hole and a header hole) has a port for each: one net. (Pins sharing only a name,
+  // as a module's GND pins do, are joined only where the board joins them)
   const pin = new Map();
-  for (const e of out) if (e.type === 'source_port') { const k = `${e.source_component_id}:${e.name}`; if (pin.has(k)) join(pin.get(k), e.source_port_id); else pin.set(k, e.source_port_id); }
+  for (const e of out) if (e.type === 'source_port') { const k = `${e.source_component_id}:${e.name}:${e.pin_number}`; if (pin.has(k)) join(pin.get(k), e.source_port_id); else pin.set(k, e.source_port_id); }
   const key = (id) => `net_${find(id)}`;
   // each net's name: its source net's, the board's name for one of its traces, else after its first pad
   const names = new Map();
   for (const e of out) if (e.type === 'source_net') names.set(key(e.source_net_id), e.name);
   for (const e of out) if (e.type === 'source_trace' && e.rulecad_net && !names.has(key(e.source_trace_id))) names.set(key(e.source_trace_id), e.rulecad_net);
   const part = new Map(out.filter((e) => e.type === 'source_component').map((e) => [e.source_component_id, e.name]));
-  for (const e of out) if (e.type === 'source_port' && !names.has(key(e.source_port_id))) names.set(key(e.source_port_id), `Net-(${part.get(e.source_component_id) ?? '?'}-Pad${e.pin_number ?? e.name})`);
+  for (const e of out) if (e.type === 'source_port' && !names.has(key(e.source_port_id))) names.set(key(e.source_port_id), `Net-(${part.get(e.source_component_id) ?? '?'}-Pad${String(e.name ?? e.pin_number).replace(/^pin/, '')})`);
+  // one name, one net: KiCad joins nets that share a name (a USB-C socket's A5 and B5 are both its pin 5)
+  const taken = new Map();
+  for (const [k, n] of names) { const c = (taken.get(n) || 0) + 1; taken.set(n, c); if (c > 1) names.set(k, `${n}_${c}`); }
   // a net no trace joins is a pin on its own: no KiCad net (net 0), as KiCad leaves an unconnected pad
   const joined = new Set(out.filter((e) => e.type === 'source_trace').map((e) => key(e.source_trace_id)));
   for (const k of pin.values()) if ([...pin.values()].filter((x) => key(x) === key(k)).length > 1 || out.some((e) => e.type === 'source_port' && e.source_port_id !== k && key(e.source_port_id) === key(k))) joined.add(key(k)); // (two pads of one pin: a net of their own)
@@ -117,4 +126,34 @@ export function kicadProject(json, { clearance, track, edgeExempt = [] } = {}) {
       microvia_diameter: 0.2, microvia_drill: 0.1, diff_pair_gap: 0.2, diff_pair_width: 0.2, diff_pair_via_gap: 0.25, wire_width: 6, bus_width: 12, line_style: 0, pcb_color: 'rgba(0, 0, 0, 0.000)', schematic_color: 'rgba(0, 0, 0, 0.000)', priority: 2147483647 }], meta: { version: 3 } } };
   const dru = ['(version 1)', ...edgeExempt.map((x) => `(rule "${x.ref}: its pads by the edge, as the source has them"\n  (condition "A.Parent == '${x.ref}' && A.Type == 'Pad'")\n  (constraint edge_clearance (min ${x.edge}mm)))`)].join('\n') + '\n';
   return { pro: JSON.stringify(pro, null, 2) + '\n', dru };
+}
+
+// kicad-cli, where KiCad installs it (KICAD_CLI names another), or null when KiCad isn't installed
+export function kicadCli(env = process.env) {
+  const candidates = [env.KICAD_CLI, '/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli', '/usr/bin/kicad-cli', '/usr/local/bin/kicad-cli', 'C:\\Program Files\\KiCad\\bin\\kicad-cli.exe'].filter(Boolean);
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
+}
+
+/**
+ * KiCad's own design-rule check on the board, as a second opinion: its files written as kicadFiles() writes them
+ * (KiCad pours the planes itself, by its rules), checked by kicad-cli. -> { version, errors: [{ type, description,
+ * items }], warnings } or null when KiCad isn't installed.
+ * @param {object[]} json @param {{ clearance?: number, track?: number, edgeExempt?: { ref: string, edge: number }[] }} [o]
+ */
+export async function kicadDrc(json, o = {}) {
+  const cli = kicadCli();
+  if (!cli) return null;
+  const { CircuitJsonToKicadPcbConverter } = await import('circuit-json-to-kicad');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-kicad-'));
+  try {
+    const netted = kicadNets(json), pcb = new CircuitJsonToKicadPcbConverter(netted); pcb.runUntilFinished();
+    const { pro, dru } = kicadProject(netted, o);
+    fs.writeFileSync(path.join(dir, 'board.kicad_pcb'), patchKicadPcb(pcb.getOutputString(), netted));
+    fs.writeFileSync(path.join(dir, 'board.kicad_pro'), pro); fs.writeFileSync(path.join(dir, 'board.kicad_dru'), dru);
+    const version = execFileSync(cli, ['version'], { encoding: 'utf8' }).trim();
+    execFileSync(cli, ['pcb', 'drc', '--refill-zones', '--format', 'json', '--severity-all', '-o', path.join(dir, 'drc.json'), path.join(dir, 'board.kicad_pcb')], { stdio: 'pipe' });
+    const d = JSON.parse(fs.readFileSync(path.join(dir, 'drc.json'), 'utf8'));
+    const all = [...d.violations, ...d.unconnected_items].filter((x) => x.type !== 'lib_footprint_issues'); // (KiCad's library has no "tscircuit" footprints: nothing about the board)
+    return { version, errors: all.filter((x) => x.severity === 'error'), warnings: all.filter((x) => x.severity !== 'error') };
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

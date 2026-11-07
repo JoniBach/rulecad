@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, laneOrder, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+import { grid, keyboard, laneOrder, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 import { kicadNets, patchKicadPcb, kicadProject } from './kicad.mjs';
@@ -49,10 +49,11 @@ test('the fab\'s sizes are measured from the board: a via\'s hole, pad and ring,
   const { json, matrix } = await build(v, 2, 2);
   const texts = (found) => found.map((f) => `${f.level} ${f.text}`);
   const clean = texts(await checks(json, v, matrix));
-  assert.ok(clean.some((t) => /^pass .*plated holes, rings/.test(t)) && clean.some((t) => /^pass silkscreen: lines/.test(t)), clean.join('\n'));
+  assert.ok(clean.some((t) => /^pass .*plated holes \(/.test(t)) && clean.some((t) => /^pass silkscreen: lines/.test(t)), clean.join('\n'));
   const via = (hole, pad) => ({ type: 'pcb_via', pcb_via_id: 'via_test', x: 0, y: 0, hole_diameter: hole, outer_diameter: pad, layers: ['top', 'bottom'], from_layer: 'top', to_layer: 'bottom' });
-  assert.ok(texts(await checks([...json, via(0.2, 0.3)], v, matrix)).some((t) => /^fail 1 vias with a 0\.05 mm ring, under JLCPCB's least of 0\.18/.test(t)), 'tscircuit\'s own via: a 0.05 mm ring');
-  assert.ok(texts(await checks([...json, via(0.3, 0.7)], v, matrix)).some((t) => /^warn 1 vias with a 0\.2 mm ring: above JLCPCB's least of 0\.18 mm, under the 0\.25 mm it recommends/.test(t)), 'a common 0.3 in 0.7 via: fine, with a word');
+  assert.ok(texts(await checks([...json, via(0.2, 0.25)], v, matrix)).some((t) => /^fail 1 vias with a 0\.025 mm ring, under JLCPCB's least \(0\.05 mm for vias\)/.test(t)), 'a via\'s pad under 0.1 mm wider than its hole');
+  assert.ok(texts(await checks([...json, via(0.2, 0.3)], v, matrix)).some((t) => /^warn 1 vias with a 0\.05 mm ring: above JLCPCB's least, under what it recommends \(0\.075 mm for vias\)/.test(t)), 'tscircuit\'s own via, 0.2 in 0.3: fine, with a word');
+  assert.ok(!texts(await checks([...json, via(0.3, 0.7)], v, matrix)).some((t) => /^(fail|warn) .*ring/.test(t)), 'a common 0.3 in 0.7 via');
   assert.ok(texts(await checks([...json, via(0.1, 0.8)], v, matrix)).some((t) => /^fail 1 vias under JLCPCB's 0\.15 mm hole/.test(t)), 'a hole too small to drill');
   const text = { type: 'pcb_silkscreen_text', pcb_silkscreen_text_id: 'silk_test', anchor_alignment: 'center', anchor_position: { x: 0, y: 0 }, font: 'tscircuit2024', font_size: 0.5, layer: 'top', text: 'tiny', ccw_rotation: 0 };
   assert.ok(texts(await checks([...json, text], v, matrix)).some((t) => /^fail silkscreen the fab can't print: 1 texts under 1 mm high \(0\.5\)/.test(t)), 'text the fab can\'t print');
@@ -624,4 +625,32 @@ test('KiCad\'s files: every pad, track and via on its named net; an off-centre h
   const { pro, dru } = kicadProject(n, { clearance: 0.1 });
   assert.deepEqual([JSON.parse(pro).board.design_settings.rules.min_via_diameter, JSON.parse(pro).board.design_settings.rules.min_copper_edge_clearance], [0.3, 0.2]);
   assert.match(dru, /^\(version 1\)/);
+});
+
+test('a via\'s hole against tracks of other nets, edge to edge: a thin ring leaves less room than the copper clearance says', () => {
+  const w = (x, y) => ({ route_type: 'wire', x, y, width: 0.2, layer: 'top' });
+  const json = [
+    { type: 'source_trace', source_trace_id: 'A', connected_source_port_ids: ['a'] }, { type: 'source_trace', source_trace_id: 'B', connected_source_port_ids: ['b'] },
+    { type: 'pcb_trace', pcb_trace_id: 'ta', source_trace_id: 'A', route: [w(-1, 0), w(0, 0)] },
+    { type: 'pcb_via', pcb_via_id: 'v', pcb_trace_id: 'ta', x: 0, y: 0, outer_diameter: 0.3, hole_diameter: 0.2 },
+    { type: 'pcb_trace', pcb_trace_id: 'tb', source_trace_id: 'B', route: [w(-1, 0.4), w(1, 0.4)] }]; // 0.15 mm from the via's copper
+  const [g] = viaHoleGaps(json);
+  assert.ok(Math.abs(g.gap - 0.2) < 1e-9, `${g.gap}: 0.4 less the hole's radius and the track's half width`);
+  json[4].route = [w(-1, 0.35), w(1, 0.35)];
+  assert.ok(viaHoleGaps(json)[0].gap < 0.2);
+  json[4].source_trace_id = 'A'; // its own net: not measured
+  assert.equal(viaHoleGaps(json).length, 0);
+});
+
+test('a pin with two pads apart (a USB-C socket\'s two VBUS pads) gets a track between them; pads that touch, or a plane net\'s, don\'t', async () => {
+  const smd = (pin, x) => ({ pin, smd: true, x, y: 0, w: 0.5, h: 0.8 });
+  let asked = [];
+  const router = { route: async (json, toRoute) => { asked = toRoute.map((c) => [c.t.from.join('.'), c.t.to.join('.')]); return { traces: [] }; } };
+  const board = (nets, j1) => ({ center: { x: 0, y: 0 }, width: 20, height: 10, thickness: 1.6, track: 0.2, autoroute: true, nets,
+    parts: [{ name: 'J1', ftype: 'simple_chip', x: 0, y: 0, pads: j1 }, { name: 'R1', ftype: 'simple_chip', x: 0, y: 3, pads: [smd('1', -1), smd('2', 1)] }] });
+  await render(board({ VBUS: ['J1.4', 'R1.1'] }, [smd('4', -3), smd('4', 3), smd('5', 0)]), router);
+  assert.equal(asked.length, 2, JSON.stringify(asked));
+  assert.ok(asked.some(([a, b]) => /^J1\.(pin)?4#4#0$/.test(a) && /^J1\.(pin)?4#4#1$/.test(b)), JSON.stringify(asked));
+  await render(board({ VBUS: ['J1.4', 'R1.1'] }, [smd('4', -0.2), smd('4', 0.2), smd('5', 3)]), router);
+  assert.equal(asked.length, 1, 'pads that touch are one copper');
 });

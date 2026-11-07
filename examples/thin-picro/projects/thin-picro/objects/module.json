@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "engine": "pcb",
   "role": "board",
   "uses": [
@@ -262,6 +262,16 @@
       "value": 0.15,
       "unit": "mm",
       "rule": "Copper to copper, kept by the router: Sea-Picro's own clearance (at JLCPCB's 0.1 mm the router packs tracks tighter and breaks more)"
+    },
+    "via_pad": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "The vias the router adds, across: a 0.1 mm ring round via_hole, so a track the fab's least gap (0.1 mm) from one is JLCPCB's 0.2 mm from its hole (jlcpcb.via_hole_track). Sea-Picro's own vias, kept, are 0.5 mm"
+    },
+    "via_hole": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "The vias the router adds: their hole"
     },
     "label_gap": {
       "value": 0.3,

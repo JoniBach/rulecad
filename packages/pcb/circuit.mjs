@@ -108,6 +108,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   // ---- parts: source records, then their footprints on the board ----
   const copper = copperLayers(board.layers ?? 2); // a hole or a via goes through all of them
   const ports = new Map(); // `${part}.${port name or hint}` -> { source, pcb, x, y, layers }
+  const pinPads = new Map(); // `${part}.${pin name}` -> each of its pads: { key (in ports), x, y, reach (its copper's half size) }
   const placed = [];
   for (const part of board.parts) {
     const comp = add('source_component', { ftype: part.ftype, name: part.name, manufacturer_part_number: part.mpn,
@@ -180,6 +181,11 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       const join = p.castellated ? inward(board, p.x, p.y, (p.outer + (p.hole ?? p.outer)) / 4) : { x: p.x, y: p.y };
       if (p.castellated) Object.assign(port, join);
       for (const key of [sourcePorts[i].name, ...sourcePorts[i].port_hints]) ports.set(`${part.name}.${key}`, { source: sourcePorts[i], pcb: port, x: join.x, y: join.y, layers });
+      // one pin: one name and one number (a module's GND pins share a name, each its own number, and join inside it)
+      const pin = `${part.name}.${sourcePorts[i].name}#${sourcePorts[i].pin_number}`, list = pinPads.get(pin) || [];
+      ports.set(`${pin}#${list.length}`, { source: sourcePorts[i], pcb: port, x: join.x, y: join.y, layers }); // each pad of a pin by itself
+      list.push({ key: `${sourcePorts[i].name}#${sourcePorts[i].pin_number}#${list.length}`, names: [sourcePorts[i].name, ...sourcePorts[i].port_hints].map((n) => `${part.name}.${n}`),
+        x: p.x, y: p.y, reach: Math.max(p.w ?? 0, p.h ?? 0, p.outer ?? 0, p.rect?.w ?? 0, p.rect?.h ?? 0) / 2 }); pinPads.set(pin, list);
     });
     for (const h of part.holes || []) { const q = at(h.x, h.y); add('pcb_hole', { ...own, hole_shape: 'circle', hole_diameter: h.d, x: q.x, y: q.y, is_covered_with_solder_mask: false }); }
     if (part.courtyard) { const c = size(part.courtyard.w, part.courtyard.h); add('pcb_courtyard_rect', { ...own, layer: part.layer, center: { x: part.x, y: part.y }, width: c.w, height: c.h }); }
@@ -218,7 +224,17 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       add('pcb_via', { pcb_trace_id: tr.pcb_trace_id, x: v.x, y: v.y, hole_diameter: v.hole, outer_diameter: v.pad, layers: copper, from_layer: 'top', to_layer: 'bottom', subcircuit_id: SUB });
     }
   };
-  const toRoute = [], traces = [...(board.traces || []), ...netTraces(board, port, joined), ...links];
+  // A pin with pads apart from each other (a USB-C socket's two VBUS pads, both its A4): joined by a track, as its net
+  // joins the pin's first pad. Pads that touch (a half hole in its header pad) are one copper already, and a plane net's
+  // pads each reach the plane
+  const netNamed = (names) => Object.entries(board.nets || {}).find(([, spec]) => (Array.isArray(spec) ? spec : spec.pins).some((p) => names.includes(p)))?.[0];
+  const samePin = [...pinPads].flatMap(([pin, pads]) => {
+    const net = pads.length > 1 && netNamed(pads[0].names), part = pin.slice(0, pin.indexOf('.'));
+    if (pads.length < 2 || !net || board.planes?.[net]) return [];
+    return pads.slice(1).filter((q, i) => Math.hypot(q.x - pads[i].x, q.y - pads[i].y) > q.reach + pads[i].reach)
+      .map((q) => ({ from: [part, pads[0].key], to: [part, q.key], width: board.track, net }));
+  });
+  const toRoute = [], traces = [...(board.traces || []), ...netTraces(board, port, joined), ...links, ...samePin];
   for (const t of traces) {
     const a = port(...t.from), b = port(...t.to);
     const st = add('source_trace', { connected_source_port_ids: [a.source.source_port_id, b.source.source_port_id], connected_source_net_ids: [], subcircuit_id: SUB,

@@ -1,0 +1,17 @@
+{
+  "_doc": "Qwiic / STEMMA QT: a 4-pin JST SH (1.0 mm) I2C connector used by SparkFun, Adafruit and others, so sensors from any of them plug in with one cable. Land pattern for the side-entry SM04B-SRSS-TB, from the socket's centre, the plug going in from +y. kind as in x1c.json.",
+  "name": "qwiic",
+  "rules": {
+    "pitch": { "value": 1.0, "unit": "mm", "rule": "Contact pitch", "kind": "spec", "source": "JST SH series datasheet (SM04B-SRSS-TB)", "checked": "2026-10-16" },
+    "pad_w": { "value": 0.6, "unit": "mm", "rule": "Signal pad width", "kind": "spec", "source": "JST SH series datasheet, recommended PCB layout", "checked": "2026-10-16" },
+    "pad_h": { "value": 1.55, "unit": "mm", "rule": "Signal pad length", "kind": "spec", "source": "JST SH series datasheet, recommended PCB layout", "checked": "2026-10-16" },
+    "pad_y": { "value": -1.325, "unit": "mm", "rule": "Signal pads from the centre, away from the plug", "kind": "spec", "source": "JST SH series datasheet, recommended PCB layout", "checked": "2026-10-16" },
+    "tab_w": { "value": 1.2, "unit": "mm", "rule": "Mounting tab pad width", "kind": "spec", "source": "JST SH series datasheet, recommended PCB layout", "checked": "2026-10-16" },
+    "tab_h": { "value": 1.8, "unit": "mm", "rule": "Mounting tab pad length", "kind": "spec", "source": "JST SH series datasheet, recommended PCB layout", "checked": "2026-10-16" },
+    "tab_x": { "value": 2.8, "unit": "mm", "rule": "Mounting tabs either side of the centre", "kind": "spec", "source": "JST SH series datasheet, recommended PCB layout", "checked": "2026-10-16" },
+    "tab_y": { "value": 1.22, "unit": "mm", "rule": "Mounting tabs from the centre, toward the plug", "kind": "spec", "source": "JST SH series datasheet, recommended PCB layout", "checked": "2026-10-16" },
+    "body_w": { "value": 6, "unit": "mm", "rule": "Socket body width", "kind": "spec", "source": "JST SH series datasheet (4 circuits)", "checked": "2026-10-16" },
+    "pins": { "value": 4, "unit": "pins", "rule": "Pin 1 GND, 2 3V3, 3 SDA, 4 SCL", "kind": "spec", "source": "https://www.sparkfun.com/qwiic", "checked": "2026-10-16",
+      "pins": { "1": "GND", "2": "3V3", "3": "SDA", "4": "SCL" } }
+  }
+}

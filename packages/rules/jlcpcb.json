@@ -61,7 +61,7 @@
     "annular": {
       "value": 0.25,
       "unit": "mm",
-      "rule": "Annular ring, recommended (0.18 mm absolute minimum)",
+      "rule": "Annular ring of a plated hole (a part's pin), recommended (0.18 mm absolute minimum). Vias have their own: via_annular",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
       "checked": "2026-10-14"
@@ -69,7 +69,31 @@
     "annular_min": {
       "value": 0.18,
       "unit": "mm",
-      "rule": "Annular ring, absolute minimum: a via or plated hole with less fails; between this and annular is a warning",
+      "rule": "Annular ring of a plated hole (a part's pin), absolute minimum: less fails; between this and annular is a warning. Vias have their own: via_annular_min",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-11-07"
+    },
+    "via_annular_min": {
+      "value": 0.05,
+      "unit": "mm",
+      "rule": "A via's ring, least: its pad at least 0.1 mm wider than its hole; less fails",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-11-07"
+    },
+    "via_annular": {
+      "value": 0.075,
+      "unit": "mm",
+      "rule": "A via's ring, preferred: its pad 0.15 mm wider than its hole; between via_annular_min and this is a warning",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-11-07"
+    },
+    "via_hole_track": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "A via's hole to a track of another net, edge to edge, at least",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
       "checked": "2026-11-07"
@@ -101,7 +125,7 @@
     "cheap_size": {
       "value": 100,
       "unit": "mm",
-      "rule": "Two-layer boards up to 100 \u00d7 100 mm get JLCPCB's lowest price; past that it rises steeply",
+      "rule": "Two-layer boards up to 100 × 100 mm get JLCPCB's lowest price; past that it rises steeply",
       "kind": "community",
       "source": "https://hwdocs.hackclub.dev/user-contrib-guides/jlc-cost-optimizing/",
       "checked": "2026-10-14"

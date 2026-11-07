@@ -1,0 +1,196 @@
+{
+  "_doc": "Raspberry Pi Pico (the base model: RP2040, micro-USB), and the cable that plugs into it. kind as in x1c.json.",
+  "name": "pico",
+  "rules": {
+    "length": {
+      "value": 51,
+      "unit": "mm",
+      "rule": "Board length",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet, 2. Mechanical specification, https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+      "checked": "2026-10-13"
+    },
+    "width": {
+      "value": 21,
+      "unit": "mm",
+      "rule": "Board width",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet, 2. Mechanical specification",
+      "checked": "2026-10-13"
+    },
+    "pcb": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Board thickness",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet: a 1 mm thick PCB",
+      "checked": "2026-10-13"
+    },
+    "usb_overhang": {
+      "value": 1.3,
+      "unit": "mm",
+      "rule": "The micro-USB socket overhangs the board's top edge (the datasheet says it does, in a drawing)",
+      "kind": "estimate",
+      "source": "Estimate from the datasheet's Figure 3: measure your Pico",
+      "checked": "2026-10-13"
+    },
+    "usb_width": {
+      "value": 7.5,
+      "unit": "mm",
+      "rule": "Micro-USB B socket shell width",
+      "kind": "community",
+      "source": "Common micro-USB B receptacles (about 7.5 mm wide)",
+      "checked": "2026-10-13"
+    },
+    "usb_height": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Micro-USB socket height above the board, rounded up",
+      "kind": "estimate",
+      "source": "Estimate: common micro-USB B receptacles are 2.5 to 3 mm tall; measure your Pico",
+      "checked": "2026-10-13"
+    },
+    "usb_depth": {
+      "value": 5.5,
+      "unit": "mm",
+      "rule": "Micro-USB socket length, front to back",
+      "kind": "community",
+      "source": "Common micro-USB B receptacles",
+      "checked": "2026-10-13"
+    },
+    "plug_width": {
+      "value": 11,
+      "unit": "mm",
+      "rule": "A micro-USB cable's plug housing is about this wide: the case opening must let it in",
+      "kind": "estimate",
+      "source": "Estimate: micro-USB plug housings are typically 10 to 11 mm wide; measure your cable",
+      "checked": "2026-10-13"
+    },
+    "plug_height": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "A micro-USB cable's plug housing is about this tall",
+      "kind": "estimate",
+      "source": "Estimate: typical housings are 6 to 8 mm tall; measure your cable",
+      "checked": "2026-10-13"
+    },
+    "pin_pitch": {
+      "value": 2.54,
+      "unit": "mm",
+      "rule": "The 40 main pins are on a 0.1 in grid",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet (RP-008307-DS, release 21, 2026-07-03), 2. Mechanical specification, https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+      "checked": "2026-10-14"
+    },
+    "pin_rows": {
+      "value": 17.78,
+      "unit": "mm",
+      "rule": "Between the two rows of pins: one 0.1 in pitch wider than a standard 40-pin DIP (0.6 in), so 0.7 in",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet (RP-008307-DS, release 21, 2026-07-03), 2. Mechanical specification, https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+      "checked": "2026-10-14"
+    },
+    "pin_hole": {
+      "value": 1.0,
+      "unit": "mm",
+      "rule": "The Pico's pin holes are 1 mm; a host board's holes for its header pins match",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet (RP-008307-DS, release 21, 2026-07-03), 2. Mechanical specification, https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+      "checked": "2026-10-14"
+    },
+    "pin_pad": {
+      "value": 1.7,
+      "unit": "mm",
+      "rule": "Copper pad around each header pin hole on the host board: the 1 mm hole plus a 0.35 mm ring",
+      "kind": "community",
+      "source": "KiCad's 0.1 in pin headers use a 1.0 mm drill and a 1.7 mm pad (Connector_PinHeader_2.54mm)",
+      "checked": "2026-10-14"
+    },
+    "mount_hole": {
+      "value": 2.1,
+      "unit": "mm",
+      "rule": "The Pico's four mounting holes",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet (RP-008307-DS, release 21, 2026-07-03), 2. Mechanical specification, https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+      "checked": "2026-10-14"
+    },
+    "gpio_left": {
+      "value": 16,
+      "rule": "Pins 1 to 20 run down the left edge (USB at the top, seen from above); value: how many carry GPIO, listed in pins, the rest (3, 8, 13, 18) are ground",
+      "kind": "community",
+      "source": "The Pico pinout (datasheet Figure 2, an image); ground pins and pins 30 to 40 confirmed in the datasheet's text. Check against your Pico's silkscreen",
+      "checked": "2026-10-14",
+      "unit": "pins",
+      "pins": {
+        "1": "GP0",
+        "2": "GP1",
+        "4": "GP2",
+        "5": "GP3",
+        "6": "GP4",
+        "7": "GP5",
+        "9": "GP6",
+        "10": "GP7",
+        "11": "GP8",
+        "12": "GP9",
+        "14": "GP10",
+        "15": "GP11",
+        "16": "GP12",
+        "17": "GP13",
+        "19": "GP14",
+        "20": "GP15"
+      }
+    },
+    "gpio_right": {
+      "value": 10,
+      "rule": "Pins 21 to 40 run up the right edge; value: how many carry GPIO, listed in pins (23, 28, 38 ground; 30 RUN, 33 AGND, 35 ADC_VREF, 36 3V3, 37 3V3_EN, 39 VSYS, 40 VBUS)",
+      "kind": "community",
+      "source": "As gpio_left; pins 30, 33 and 35 to 40 are named in the datasheet's text",
+      "checked": "2026-10-14",
+      "unit": "pins",
+      "pins": {
+        "21": "GP16",
+        "22": "GP17",
+        "24": "GP18",
+        "25": "GP19",
+        "26": "GP20",
+        "27": "GP21",
+        "29": "GP22",
+        "31": "GP26",
+        "32": "GP27",
+        "34": "GP28"
+      }
+    },
+    "other_pins": {
+      "value": 14,
+      "unit": "pins",
+      "rule": "The pins that aren't GPIO, listed in pins: ground, power, run and the ADC reference",
+      "kind": "spec",
+      "source": "Raspberry Pi Pico datasheet (RP-008307-DS, release 21), 2.1. Raspberry Pi Pico pinout: PIN40 VBUS, PIN39 VSYS, PIN37 3V3_EN, PIN36 3V3, PIN35 ADC_VREF, PIN33 AGND, PIN30 RUN; ground pins as gpio_left and gpio_right",
+      "checked": "2026-10-14",
+      "pins": {
+        "3": "GND",
+        "8": "GND",
+        "13": "GND",
+        "18": "GND",
+        "23": "GND",
+        "28": "GND",
+        "38": "GND",
+        "30": "RUN",
+        "33": "AGND",
+        "35": "ADC_VREF",
+        "36": "3V3",
+        "37": "3V3_EN",
+        "39": "VSYS",
+        "40": "VBUS"
+      }
+    },
+    "header_spacer": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The plastic body of a 0.1 in pin header: a Pico on headers stands this far off the board it's soldered to",
+      "kind": "community",
+      "source": "Standard 2.54 mm pitch male headers have a 2.5 mm tall plastic body (e.g. KiCad's Connector_PinHeader_2.54mm models)",
+      "checked": "2026-10-14"
+    }
+  }
+}
