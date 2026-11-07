@@ -53,3 +53,23 @@ test('fit refuses what isn\'t faces or a point, by name', async () => {
   assert.throws(() => closestAt(box([0, 0, 0], [1, 1, 1]), box([0, 0, 0], [1, 1, 1]), -1), /reach is a distance above 0/);
   assert.throws(() => inside([0, 0], box([0, 0, 0], [1, 1, 1])), /the point is \[x, y, z\]/);
 });
+
+test('two edges passing each other mid-span: the gap between the edges, not between their corners; and a long reach costs nothing where there is nothing', async () => {
+  const { closestAt } = await import('@rulecad/fit');
+  const jscad = (await import('@jscad/modeling')).default;
+  const faces = (g) => jscad.geometries.geom3.toPolygons(g).map((p) => p.vertices.map((v) => [...v]));
+  // Two square bars crossed, one along x and one along y, each turned on its edge, their edges 0.1 mm apart at their
+  // middles, where neither has a corner
+  const lifted = faces(jscad.transforms.translate([0, 0, 2 * Math.SQRT2 + 0.1], jscad.transforms.rotateY(Math.PI / 4, jscad.primitives.cuboid({ size: [2, 40, 2] }))));
+  const lower = faces(jscad.transforms.rotateX(Math.PI / 4, jscad.primitives.cuboid({ size: [40, 2, 2] })));
+  const r = closestAt(lower, lifted);
+  assert.ok(Math.abs(r.gap - 0.1) < 1e-6, `crossed bars, edge over edge: ${r.gap}`);
+  assert.ok(Math.abs(r.at[0]) < 1e-6 && Math.abs(r.at[1]) < 1e-6, `at the middle: ${r.at}`);
+  // Two balls of many triangles side by side, 5 mm apart: a reach of 50 takes about as long as the default
+  const ball = (x) => faces(jscad.primitives.sphere({ radius: 10, center: [x, 0, 0], segments: 96 }));
+  const inner = ball(0), outer = ball(25);
+  const t0 = performance.now(); const near = closestAt(inner, outer, 2); const t1 = performance.now(); const far = closestAt(inner, outer, 50); const t2 = performance.now();
+  assert.equal(near.gap, Infinity, 'out of a 2 mm reach');
+  assert.ok(far.gap > 4.9 && far.gap < 5.01, `5 mm apart: ${far.gap}`);
+  assert.ok(t2 - t1 < 20 * Math.max(t1 - t0, 50), `reach 50 took ${(t2 - t1).toFixed(0)} ms against ${(t1 - t0).toFixed(0)} ms`);
+});

@@ -163,3 +163,11 @@ test('a finding\'s at is a point and its box a box, the one shape across the kit
   assert.ok(Array.isArray(f.at) && f.at.length === 3 && f.box?.lo && f.box?.hi, JSON.stringify(f));
   assert.ok(f.at.every((v, k) => v >= f.box.lo[k] - 1e-9 && v <= f.box.hi[k] + 1e-9), 'at is inside its box');
 });
+
+test('a mesh turned inside out is named as that, not as the bridges and bed it seems to have', () => {
+  const cube = box([0, 0, 0], [10, 10, 10]), inverted = cube.map((p) => [...p].reverse());
+  const f = check(inverted, printer);
+  assert.equal(f.find((x) => x.code === 'print.inside-out')?.level, 'fail');
+  assert.ok(!f.some((x) => /bridge|flat on the bed/.test(x.text)), f.map((x) => x.text).join('; '));
+  assert.ok(!check(cube, printer).some((x) => x.code === 'print.inside-out'), 'the right way out: not said');
+});

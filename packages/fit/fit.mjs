@@ -80,8 +80,8 @@ function grid(T, cell) {
   return Object.assign(nearest, { within });
 }
 
-// The closest gap between two sets of faces (mm), from each one's corners and edge midpoints to the other's faces.
-// Only points near the other's bounding box are measured. Infinity if they're far apart (more than reach mm).
+// The closest gap between two sets of faces (mm): each one's corners to the other's faces, and their edges to each
+// other's edges, which together find the nearest two triangles can be. Infinity if they're farther apart than reach.
 /**
  * The smallest gap between two meshes, in mm: 0 if they touch, Infinity if farther apart than reach.
  * @param {Face[]} polysA @param {Face[]} polysB
@@ -103,20 +103,64 @@ export function closestAt(polysA, polysB, reach = 2) {
   const A = tris(polysA), B = tris(polysB);
   const near = (p, bx) => p.every((c, k) => c >= bx.lo[k] - reach && c <= bx.hi[k] + reach);
   let best = Infinity, at = null;
-  const probe = (P, T) => {
+  // The nearest two triangles can be is from a corner of one to a face of the other, or from an edge of one to an edge
+  // of the other (two edges passing mid-span): both are measured. The grid's cubes are sized to the triangles, not to
+  // `reach`, and a search stops at `reach`, so a long reach costs only where there is something to find
+  const probe = (P, T, edges) => {
     if (!T.length) return;
-    const bx = bounds(T), pts = new Map();
-    for (const t of P) t.forEach((v, i) => { const w = t[(i + 1) % 3]; for (const q of [v, [0, 1, 2].map((k) => (v[k] + w[k]) / 2)]) if (near(q, bx)) pts.set(q.join(), q); });
-    if (!pts.size) return;
-    const nearest = grid(T, Math.max(reach, 1));
-    for (const q of pts.values()) { const d = nearest(q[0], q[1], q[2], best); if (d < best) { best = d; at = q; } }
+    const bx = bounds(T), pts = new Map(), g = grid(T, cellFor(T));
+    for (const t of P) for (const v of t) if (near(v, bx)) pts.set(v.join(), v);
+    // (nearest the other's box first, so the best is found early, and a point further from the box than it is skipped)
+    const toBox = (q) => Math.hypot(...[0, 1, 2].map((c) => Math.max(0, bx.lo[c] - q[c], q[c] - bx.hi[c])));
+    for (const [q, out] of [...pts.values()].map((q) => [q, toBox(q)]).sort((x, y) => x[1] - y[1])) {
+      const lim = Math.min(best, reach + 1e-9);
+      if (out >= lim) break;
+      const d = g(q[0], q[1], q[2], lim); if (d < lim) { best = d; at = q; }
+    }
+    if (!edges) return;
+    const seenEdge = new Set();
+    for (const t of P) for (let i = 0; i < 3; i++) {
+      const a = t[i], b = t[(i + 1) % 3], k = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (seenEdge.has(k)) continue; seenEdge.add(k);
+      const lim = Math.min(best, reach + 1e-9), lo = [0, 1, 2].map((c) => Math.min(a[c], b[c]) - lim), hi = [0, 1, 2].map((c) => Math.max(a[c], b[c]) + lim);
+      if (!lo.every((x, c) => x <= bx.hi[c]) || !hi.every((x, c) => x >= bx.lo[c])) continue;
+      for (const n of g.within(lo, hi)) for (let j = 0; j < 3; j++) {
+        const { d, p } = segments(a, b, T[n][j], T[n][(j + 1) % 3]);
+        if (d < Math.min(best, reach + 1e-9)) { best = d; at = p; }
+      }
+    }
   };
-  probe(A, B); probe(B, A);
+  probe(A, B, true); probe(B, A, false); // (edges both ways are the same pairs)
   // Two solids that run into each other have no gap, however far their corners are from each other's faces (a peg
   // through a plate, a cube wholly inside another): their surfaces cross, or one is inside the other
   const o = A.length && B.length && boxesMeet(bounds(A), bounds(B)) ? overlap(A, B) : null;
   if (o) return { gap: 0, at: o, overlap: true };
   return { gap: best, at };
+}
+
+// A grid cube about the size of the triangles (their median longest side), so a cube holds a few of them whatever
+// the reach; never so small the grid has more than a few million cubes
+function cellFor(T) {
+  const sides = T.map((t) => Math.max(...[0, 1, 2].map((i) => Math.hypot(...[0, 1, 2].map((c) => t[i][c] - t[(i + 1) % 3][c]))))).sort((x, y) => x - y);
+  const { lo, hi } = bounds(T), volume = Math.max(1e-9, (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]));
+  return Math.max(sides[Math.floor(sides.length / 2)] || 1, Math.cbrt(volume / 4e6), 1e-3);
+}
+
+// The nearest points of segments a–b and c–d (Ericson, Real-Time Collision Detection 5.1.9): { d, p } with p on a–b
+function segments(a, b, c, d) {
+  const d1 = sub(b, a), d2 = sub(d, c), r = sub(a, c), A = dot(d1, d1), E = dot(d2, d2), F = dot(d2, r);
+  let s, t;
+  if (A < 1e-18 && E < 1e-18) { s = 0; t = 0; } else if (A < 1e-18) { s = 0; t = Math.min(1, Math.max(0, F / E)); } else {
+    const C = dot(d1, r);
+    if (E < 1e-18) { t = 0; s = Math.min(1, Math.max(0, -C / A)); } else {
+      const B = dot(d1, d2), den = A * E - B * B;
+      s = den > 1e-18 ? Math.min(1, Math.max(0, (B * F - C * E) / den)) : 0;
+      t = (B * s + F) / E;
+      if (t < 0) { t = 0; s = Math.min(1, Math.max(0, -C / A)); } else if (t > 1) { t = 1; s = Math.min(1, Math.max(0, (B - C) / A)); }
+    }
+  }
+  const p = [0, 1, 2].map((k) => a[k] + d1[k] * s), q = [0, 1, 2].map((k) => c[k] + d2[k] * t);
+  return { d: Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]), p };
 }
 
 /**
