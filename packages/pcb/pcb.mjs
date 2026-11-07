@@ -13,7 +13,7 @@
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
 import fs from 'node:fs';
 import path from 'node:path';
-import { circuitJson, bounds, smtBounds, slideClear } from './circuit.mjs';
+import { circuitJson, bounds, smtBounds, slideClear, viaHoleGaps } from './circuit.mjs';
 export { bounds };
 import { loadRuleSet } from '@rulecad/cad/rules';
 import jscad from '@jscad/modeling';
@@ -501,6 +501,7 @@ export function fromKicadPcb(text) {
       const pad = { pin: name, x: r4(bottom ? -px : px), y: r4(-py), w: num(sz[1]), h: num(sz[2]), angle, smd: kind === 'smd', shape, net: kidOf(p, 'net')?.[2] || null };
       const ratio = kidOf(p, 'roundrect_rratio'); // rounded corners, as a share of the shorter side
       if (shape === 'roundrect' && ratio) pad.corner = r4(num(ratio[1]) * Math.min(pad.w, pad.h));
+      if (shape === 'oval' && pad.w !== pad.h) pad.corner = r4(Math.min(pad.w, pad.h) / 2); // an oval: round ends, a rectangle's corners rounded all the way
       if (drill) {
         const d = drill.slice(1), oval = d[0] === 'oval', ds = d.filter((x) => !Array.isArray(x) && x !== 'oval').map(num), off = kidOf(drill, 'offset');
         pad.hole = Math.min(...ds);
@@ -1073,30 +1074,7 @@ export const holes = (json) => json.filter((e) => e.type === 'pcb_hole' && !e.pc
 const mm = (x) => String(Number(x.toFixed(3))); // 0.30000000000000004 reads as 0.3
 // checks(json, v, matrix, source) -> findings ({ level, text }): tscircuit's own design checks, the fab's limits, the
 // matrix, and for a clone (source: { circuit, arranged }) the source's circuit and placement
-// Each via's hole against the tracks of other nets near it: { via, gap (hole edge to track edge, mm), at, kept (the
-// via and the track both a source's own copper) }, the nearest track for each via
-export function viaHoleGaps(json) {
-  const up = new Map(), find = (a) => { while (up.get(a) !== a) { up.set(a, up.get(up.get(a))); a = up.get(a); } return a; };
-  const join = (a, b) => { for (const x of [a, b]) if (!up.has(x)) up.set(x, x); up.set(find(a), find(b)); };
-  for (const e of json) if (e.type === 'source_trace') { join(e.source_trace_id, e.source_trace_id); for (const id of [...(e.connected_source_port_ids || []), ...(e.connected_source_net_ids || [])]) join(e.source_trace_id, id); }
-  const traceOf = new Map(json.filter((e) => e.type === 'pcb_trace').map((t) => [t.pcb_trace_id, t]));
-  const netOf = (t) => (t?.source_trace_id && up.has(t.source_trace_id) ? find(t.source_trace_id) : null);
-  const segs = json.filter((e) => e.type === 'pcb_trace').flatMap((t) => t.route.slice(1).map((q, i) => [t.route[i], q, t]).filter(([p, q]) => p.route_type === 'wire' && q.route_type === 'wire' && p.layer === q.layer));
-  const toSeg = (c, a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy) / l)) : 0; return { d: Math.hypot(c.x - a.x - t * dx, c.y - a.y - t * dy), p: { x: a.x + t * dx, y: a.y + t * dy } }; };
-  const out = [];
-  for (const v of json.filter((e) => e.type === 'pcb_via')) {
-    const vt = traceOf.get(v.pcb_trace_id), net = netOf(vt);
-    let best = null;
-    for (const [a, b, t] of segs) {
-      if (t === vt || (net != null && netOf(t) === net)) continue;
-      if (Math.min(a.x, b.x) - 2 > v.x || Math.max(a.x, b.x) + 2 < v.x || Math.min(a.y, b.y) - 2 > v.y || Math.max(a.y, b.y) + 2 < v.y) continue;
-      const { d, p } = toSeg(v, a, b), gap = d - v.hole_diameter / 2 - Math.max(a.width ?? 0, b.width ?? 0) / 2;
-      if (!best || gap < best.gap) best = { via: v, gap, at: p, kept: !!(vt?.rulecad_kept && t.rulecad_kept) };
-    }
-    if (best) out.push(best);
-  }
-  return out;
-}
+export { viaHoleGaps }; // (in circuit.mjs, which repairs by it)
 
 export async function checks(json, v, matrix, source) { // source: a clone's { circuit, arranged } (its own checks join these)
   const { runAllChecks } = await import('@tscircuit/checks');

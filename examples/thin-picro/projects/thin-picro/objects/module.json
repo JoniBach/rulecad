@@ -264,14 +264,14 @@
       "rule": "Copper to copper, kept by the router: Sea-Picro's own clearance (at JLCPCB's 0.1 mm the router packs tracks tighter and breaks more)"
     },
     "via_pad": {
-      "value": 0.4,
+      "value": 0.3,
       "unit": "mm",
-      "rule": "The vias the router adds, across: a 0.1 mm ring round via_hole, so a track the fab's least gap (0.1 mm) from one is JLCPCB's 0.2 mm from its hole (jlcpcb.via_hole_track). Sea-Picro's own vias, kept, are 0.5 mm"
+      "rule": "The vias the router adds, across: JLCPCB's preferred 0.15 mm wider than via_hole (a 0.075 mm ring). Small, so the board still routes; a track that then comes within JLCPCB's 0.2 mm of a via's hole (jlcpcb.via_hole_track) is necked or bowed round it after routing. Sea-Picro's own vias, kept, are 0.5 mm"
     },
     "via_hole": {
-      "value": 0.2,
+      "value": 0.15,
       "unit": "mm",
-      "rule": "The vias the router adds: their hole"
+      "rule": "The vias the router adds: their hole, JLCPCB's smallest (0.15 mm)"
     },
     "label_gap": {
       "value": 0.3,

@@ -25,6 +25,7 @@
 //   holes  [{ x, y, d, keepout }] in the board (mounting holes; keepout: a radius the router keeps tracks out of, for a screw head)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
+//   via_hole_gap (mm) a routed track closer to a via's hole than this is bowed out round it (JLCPCB: 0.2)
 //   smooth true: routed tracks pulled tight once routed (@rulecad/smooth), where the straight run keeps clearance
 //   neck (mm) a routed track still too close to another after repair is narrowed to this where they pass (the fab's smallest)
 //   planes { GND: { layer: 'inner1', pins: ['U1.GND', ...] } }: nets joined by copper filling an inner layer. Each SMD pad
@@ -269,6 +270,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       for (const v of r.vias) add('pcb_via', { pcb_trace_id: t.pcb_trace_id, ...v, layers: copper, subcircuit_id: SUB }); // whose via it is: the checks need it
     }
     if (board.smooth) await smoothRouted(out, board);
+    if (board.via_hole_gap) await viaHoleRepair(out, board.via_hole_gap, board.neck);
   }
   if (planeNets) await pours(out, add, board, planeNets, netOf);
   if (board.silk?.length) clearSilkAfter(out, add, board);
@@ -326,6 +328,76 @@ export async function smoothRouted(out, board) {
       out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id).route = route; was.delete(id); back++;
     }
     if (!back) break;
+  }
+}
+
+// Each via's hole against the tracks of other nets near it: { via, gap (hole edge to track edge, mm), at, kept (the
+// via and the track both a source's own copper), trace, seg (the segment's index) }: the nearest track for each via,
+// or (all) every track segment closer than under
+export function viaHoleGaps(json, { all = false, under = Infinity } = {}) {
+  const up = new Map(), find = (a) => { while (up.get(a) !== a) { up.set(a, up.get(up.get(a))); a = up.get(a); } return a; };
+  const join = (a, b) => { for (const x of [a, b]) if (!up.has(x)) up.set(x, x); up.set(find(a), find(b)); };
+  for (const e of json) if (e.type === 'source_trace') { join(e.source_trace_id, e.source_trace_id); for (const id of [...(e.connected_source_port_ids || []), ...(e.connected_source_net_ids || [])]) join(e.source_trace_id, id); }
+  const traceOf = new Map(json.filter((e) => e.type === 'pcb_trace').map((t) => [t.pcb_trace_id, t]));
+  const netOf = (t) => (t?.source_trace_id && up.has(t.source_trace_id) ? find(t.source_trace_id) : null);
+  const segs = json.filter((e) => e.type === 'pcb_trace').flatMap((t) => t.route.slice(1).map((q, i) => [t.route[i], q, t, i]).filter(([p, q]) => p.route_type === 'wire' && q.route_type === 'wire' && p.layer === q.layer));
+  const toSeg = (c, a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy) / l)) : 0; return { d: Math.hypot(c.x - a.x - t * dx, c.y - a.y - t * dy), p: { x: a.x + t * dx, y: a.y + t * dy } }; };
+  const out = [];
+  for (const v of json.filter((e) => e.type === 'pcb_via')) {
+    const vt = traceOf.get(v.pcb_trace_id), net = netOf(vt);
+    let best = null;
+    for (const [a, b, t, i] of segs) {
+      if (t === vt || (net != null && netOf(t) === net)) continue;
+      if (Math.min(a.x, b.x) - 2 > v.x || Math.max(a.x, b.x) + 2 < v.x || Math.min(a.y, b.y) - 2 > v.y || Math.max(a.y, b.y) + 2 < v.y) continue;
+      const { d, p } = toSeg(v, a, b), gap = d - v.hole_diameter / 2 - Math.max(a.width ?? 0, b.width ?? 0) / 2;
+      const found = { via: v, gap, at: p, kept: !!(vt?.rulecad_kept && t.rulecad_kept), trace: t, seg: i };
+      if (all) { if (gap < under) out.push(found); } else if (!best || gap < best.gap) best = found;
+    }
+    if (best) out.push(best);
+  }
+  return out;
+}
+
+// A routed track closer to a via's hole than the fab allows (JLCPCB measures from the hole, so a small via's thin ring
+// leaves less room than the copper clearance): necked down where it passes (to neck, the fab's smallest track) if
+// that's room enough, else bowed out round the via by what it lacks, the segment's middle stretch moved off, its ends
+// where they were. A change the design checks then find in a new error goes back
+export async function viaHoleRepair(out, gapMin, neck = 0) {
+  const { runAllChecks } = await import('@tscircuit/checks');
+  const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type))
+    .map((e) => JSON.stringify([e.type, ...[...new Set(JSON.stringify(e).match(/pcb_[a-z_]+?_\d+/g) || [])].sort()]));
+  const before = new Set(await errors()), tried = new Set();
+  const short = () => viaHoleGaps(out, { all: true, under: gapMin - 1e-6 }).filter((g) => g.trace.rulecad_routed);
+  const width = (g) => Math.max(g.trace.route[g.seg].width ?? 0, g.trace.route[g.seg + 1].width ?? 0);
+  const necked = (r, i) => r.map((q, k) => (k === i || k === i + 1 ? { ...q, width: Math.min(q.width ?? neck, neck) } : q));
+  // First, necked down where they pass (nothing moves, so nothing new comes close): every segment that's then far enough
+  if (neck) for (const g of short()) if (width(g) > neck && g.gap + (width(g) - neck) / 2 >= gapMin) g.trace.route = necked(g.trace.route, g.seg);
+  // Then the rest bowed out round the via (and necked, so the bow is smaller), one per track a round, each checked
+  for (let round = 0; round < 6; round++) {
+    const was = new Map(), done = new Set();
+    for (const g of short().sort((x, y) => x.gap - y.gap)) {
+      const t = g.trace, key = `${t.pcb_trace_id}:${g.via.pcb_via_id}`;
+      if (done.has(t.pcb_trace_id) || tried.has(key)) continue; // (one bow a track a round: its segments' places change)
+      let r = t.route;
+      const w = width(g), thin = neck && w > neck ? neck : w, a = r[g.seg], b = r[g.seg + 1], len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 1e-6) continue;
+      if (thin < w) r = necked(r, g.seg);
+      const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len }, off = { x: g.at.x - g.via.x, y: g.at.y - g.via.y }, d = Math.hypot(off.x, off.y);
+      const n = d > 1e-9 ? { x: off.x / d, y: off.y / d } : { x: -u.y, y: u.x }, need = gapMin - g.gap - (w - thin) / 2 + 0.01;
+      const along = (g.at.x - a.x) * u.x + (g.at.y - a.y) * u.y, half = g.via.outer_diameter / 2 + need + 0.15; // the stretch beside the via
+      const s0 = Math.max(0, along - half), s1 = Math.min(len, along + half), ramp = Math.min(need * 2, s0, len - s1);
+      const pt = (s, k) => { const { start_pcb_port_id, end_pcb_port_id, ...q } = { ...r[g.seg], width: thin, x: a.x + u.x * s + n.x * k, y: a.y + u.y * s + n.y * k }; return q; };
+      const bow = [ramp > 0 ? pt(s0 - ramp, 0) : null, pt(s0, need), pt(s1, need), ramp > 0 ? pt(s1 + ramp, 0) : null].filter(Boolean)
+        .filter((q) => Math.hypot(q.x - a.x, q.y - a.y) > 1e-6 && Math.hypot(q.x - b.x, q.y - b.y) > 1e-6);
+      was.set(t.pcb_trace_id, { route: t.route, key });
+      t.route = [...r.slice(0, g.seg + 1), ...bow, ...r.slice(g.seg + 1)];
+      done.add(t.pcb_trace_id);
+    }
+    if (!was.size) break;
+    // a bow in a new error: the track as it was before it, and that bow not tried again
+    for (const e of (await errors()).filter((x) => !before.has(x))) for (const [id, w] of was) if (e.includes(`"${id}"`)) {
+      out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id).route = w.route; tried.add(w.key); was.delete(id);
+    }
   }
 }
 

@@ -659,3 +659,10 @@ test('a pin with two pads apart (a USB-C socket\'s two VBUS pads) gets a track b
   await render(board({ VBUS: ['J1.4', 'R1.1'] }, [smd('4', -0.2), smd('4', 0.2), smd('5', 3)]), router);
   assert.equal(asked.length, 1, 'pads that touch are one copper');
 });
+
+test('an oval surface pad is read with its round ends, as a rectangle with its corners rounded all the way', () => {
+  const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal)) (net 0 "")
+    (footprint "Q:SOT-563" (layer "F.Cu") (at 5 5) (property "Reference" "Q2") (pad "5" smd oval (at 0.75 0) (size 0.7 0.34) (layers "F.Cu")))
+    (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
+  assert.equal(c.parts[0].pads[0].corner, 0.17);
+});
