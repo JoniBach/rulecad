@@ -848,12 +848,18 @@ test('a lamina\'s slow stages are kept in the store it is given, keyed by their 
     laminaCache(store('a'));
     const first = strip(await lamina(spec(8)));
     assert.deepEqual(log.filter((x) => x.startsWith('hit')), [], 'a cold store: every stage computed');
-    assert.ok(log.includes('miss flood probe') && log.includes('miss physics'), log.join('; '));
+    assert.ok(log.includes('miss flood probe') && log.includes('miss physics') && log.includes('miss kinematics'), log.join('; '));
     assert.ok([...files.values()].every((t) => typeof t === 'string' && JSON.parse(t)), 'what is kept is JSON');
     log.length = 0;
     const again = strip(await lamina(spec(8)));
     assert.deepEqual(again, first, 'the same from the store as computed');
-    assert.ok(log.includes('hit flood probe') && log.includes('hit physics') && !log.some((x) => x.startsWith('miss')), `all hits: ${log.join('; ')}`);
+    assert.ok(log.includes('hit flood probe') && log.includes('hit physics') && log.includes('hit kinematics') && !log.some((x) => x.startsWith('miss')), `all hits: ${log.join('; ')}`);
+    // The frame's finite elements too, when they're on (the sequence's findings are the same read back as made)
+    log.length = 0;
+    const withFrame = { ...spec(8), check: { fe: false, frame: true } }, made = strip(await lamina(withFrame));
+    assert.ok(log.includes('miss frame'), log.join('; ')); log.length = 0;
+    assert.deepEqual(strip(await lamina(withFrame)), made);
+    assert.ok(log.includes('hit frame') && log.includes('hit kinematics'), log.join('; '));
     log.length = 0;
     await lamina(spec(9)); // taller: the physics and the probe are made from the height
     assert.ok(!log.some((x) => x.startsWith('hit')), `another height misses: ${log.join('; ')}`);

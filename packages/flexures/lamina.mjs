@@ -13,7 +13,9 @@
 //   energy     what each state stores, and the forces
 // Flexures are drawn bent between states by their own shape: each point moves by the part of its joint's motion
 // that its distance along the flexure (from root to tip, inside the shape) gives it. Units: mm, N, degrees.
-import jscad from '@jscad/modeling';
+// The plane's geometry and the print in 3D are plane.mjs; a flexure drawn bent and its finite-element peak are
+// bent.mjs; a flooded frame is flooded.mjs; the slow stages are kept between builds by cache.mjs.
+
 import * as gens from './flexures.mjs';
 import { curveClearance } from './curves.mjs';
 import { ports, models } from './compose.mjs';
@@ -21,302 +23,14 @@ import { simulate, systemOf, bend, centrelines } from './physics.mjs';
 import { stage } from './cache.mjs';
 import { shapeOf, fixedLoads, equilibrium } from './beams.mjs';
 import { outOfPlane } from './outofplane.mjs';
-import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness, analyse as feaAnalyse } from '@rulecad/fea';
-
-const AREA = 1e-4; // mm²: less than this of an overlap is a rounding error, not a touch
-const TOUCH = 0.01; // mm: as near as a flexure's root is to its body, or a point to an edge
-const STOP_STEPS = 40; // how finely a joint's travel is swept for its stop
-const NONE = new Set();
-const MARCH = 40; // steps a follower's give is searched in, from where it is
-const FINE = 0.005; // mm: a give this small is the solver's precision, not a push
-const REFINE = 10; // a step that pushes a follower, looked at again in this many parts
-const FRAMES = 12; // frames from one state to the next, for an animation
-const GAMMA = 0.85; // the pseudo-rigid-body leaf's characteristic radius (Howell): its tip turns about 0.15 L from the root
-const LEAFLIKE = new Set(['leaf', 'snapHook', 'contactLeaf']);
-const OWN_ROUNDS = new Set(['parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine', 'snapHook', 'notchHinge', 'ellipticalHinge', 'livingHinge', 'cartwheel', 'letJoint', 'bistable']); // flexures with blocks of their own, rounded into them already
-const ROUND = 16; // segments to a full circle where an outline is grown
-const FE_CELLS = 8; // finite-element cells across a flexure's thickness
-const FE_MOST = 40000; // and no more cells than this in all (coarser, then)
-const SHARP_TURN = 45; // degrees: an inside corner turning this much or more at once is sharp (a round turns a little at each of many corners)
-const rad = (d) => (d * Math.PI) / 180, deg = (r) => (r * 180) / Math.PI;
-
-// 2D affine transforms [a, b, c, d, e, f]: x' = a x + b y + c, y' = d x + e y + f
-const I = [1, 0, 0, 0, 1, 0];
-const mul = (m, n) => [m[0] * n[0] + m[1] * n[3], m[0] * n[1] + m[1] * n[4], m[0] * n[2] + m[1] * n[5] + m[2], m[3] * n[0] + m[4] * n[3], m[3] * n[1] + m[4] * n[4], m[3] * n[2] + m[4] * n[5] + m[5]];
-const apply = (m, [x, y]) => [m[0] * x + m[1] * y + m[2], m[3] * x + m[4] * y + m[5]];
-const shift = ([x, y]) => [1, 0, x, 0, 1, y];
-const turn = (a, [cx, cy] = [0, 0]) => { const c = Math.cos(a), s = Math.sin(a); return [c, -s, cx - c * cx + s * cy, s, c, cy - s * cx - c * cy]; };
-
-// ---------- the plane's geometry ----------
-// Shapes are plain data: lists of closed loops ([[x, y], …]). Booleans, offsets and areas are Clipper2's, through
-// manifold-3d's CrossSection: robust where JSCAD's 2D booleans aren't (a near miss, a sliver, a corner a hair off),
-// which is what clearance checks live on. Each operation makes its WASM objects and frees them before it returns.
-let W = null;
-async function ready() {
-  if (W) return W;
-  let mod;
-  try { mod = await import('manifold-3d'); } catch (e) { throw Object.assign(new Error('lamina mechanisms need manifold-3d (npm install manifold-3d): its 2D geometry is what the checks trust'), { cause: e }); }
-  W = await mod.default();
-  W.setup();
-  return W;
-}
-const empty = (a) => !a || !a.length;
-function run(fn) {
-  const made = [], keep = (c) => (made.push(c), c), cs = (loops) => keep(new W.CrossSection(loops, 'NonZero'));
-  try { return fn(cs, keep); } finally { for (const c of made) c.delete(); }
-}
-const loopsOf = (c) => c.toPolygons().map((l) => l.map((p) => [p[0], p[1]]));
-const union = (list) => { const l = list.filter((a) => !empty(a)); return !l.length ? [] : run((cs, keep) => loopsOf(keep(W.CrossSection.union(l.map(cs))))); };
-const intersect = (a, b) => (empty(a) || empty(b) ? [] : run((cs, keep) => loopsOf(keep(cs(a).intersect(cs(b))))));
-const subtract = (a, b) => (empty(a) ? [] : empty(b) ? a : run((cs, keep) => loopsOf(keep(cs(a).subtract(cs(b))))));
-const grow = (a, d) => (empty(a) || !(d > 0) ? a : run((cs, keep) => loopsOf(keep(cs(a).offset(d, 'Round', 2, ROUND)))));
-const shrink = (a, d, join = 'Miter') => (empty(a) || !(d > 0) ? a : run((cs, keep) => loopsOf(keep(cs(a).offset(-d, join, 2, ROUND)))));
-const area = (a) => (empty(a) ? 0 : run((cs) => cs(a).area()));
-const pieces = (a) => (empty(a) ? 0 : run((cs, keep) => cs(a).decompose().map(keep).filter((p) => p.area() > AREA).length));
-const apart = (a) => (empty(a) ? [] : run((cs, keep) => cs(a).decompose().map(keep).filter((p) => p.area() > AREA).map(loopsOf)));
-const box = (a) => {
-  const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
-  for (const l of a) for (const [x, y] of l) { lo[0] = Math.min(lo[0], x); lo[1] = Math.min(lo[1], y); hi[0] = Math.max(hi[0], x); hi[1] = Math.max(hi[1], y); }
-  return { lo, hi };
-};
-const moved = (m, a) => (m === I ? a : a.map((l) => l.map((p) => apply(m, p))));
-
-// A design's shapes, as loops: a JSCAD 2D shape's sides chained into loops; a prism (a flexure generator's) as its
-// top faces; loops as they are. Then one union, so overlaps and odd windings come out clean.
-function loopsFromSides(sides) {
-  const key = (p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`, next = new Map(), out = [];
-  for (const [a, b] of sides) next.set(key(a), [a, b]);
-  const seen = new Set();
-  for (const [a] of sides) {
-    if (seen.has(key(a))) continue;
-    const loop = []; let k = key(a);
-    while (next.has(k) && !seen.has(k)) { seen.add(k); const [p, q] = next.get(k); loop.push(p); k = key(q); }
-    if (loop.length >= 3) out.push(loop);
-  }
-  return out;
-}
-function flat(g) {
-  const { geom2, geom3 } = jscad.geometries;
-  if (Array.isArray(g) && (g.length === 0 || Array.isArray(g[0]?.[0]))) return union([g]);
-  if (geom2.isA(g)) return union([loopsFromSides(geom2.toSides(g))]);
-  if (geom3.isA(g)) {
-    const tops = geom3.toPolygons(g).filter((p) => { const [a, b, c] = p.vertices, n = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]); return n > 1e-12; }).map((p) => p.vertices.map((v) => [v[0], v[1]]));
-    return union([tops]);
-  }
-  throw new Error('a lamina takes 2D shapes, prisms standing on the bed, or loops of [x, y]');
-}
-const isLoops = (g) => Array.isArray(g) && g.length > 0 && Array.isArray(g[0]) && Array.isArray(g[0][0]) && typeof g[0][0][0] === 'number';
-const shapesIn = (g) => (isLoops(g) ? [g] : Array.isArray(g) ? g.flatMap(shapesIn) : g ? [g] : []); // (loops of points kept whole)
-const all = (gs) => union(shapesIn(gs).map(flat));
-// A shape as a JSCAD solid, extruded `height` up from the bed
-function solidOf(a, height) {
-  const { geom3, poly3 } = jscad.geometries;
-  if (empty(a)) return geom3.create();
-  return run((cs, keep) => {
-    const m = cs(a).extrude(height), { vertProperties: v, triVerts: t, numProp: n } = m.getMesh(), polys = [];
-    m.delete();
-    for (let i = 0; i < t.length; i += 3) polys.push(poly3.create([t[i], t[i + 1], t[i + 2]].map((k) => [v[k * n], v[k * n + 1], v[k * n + 2]])));
-    return geom3.create(polys);
-  });
-}
-
-// The print in 3D: the shapes extruded, `cuts` taken out of them between heights and `adds` put on (bridges)
-function solidWith(a, height, cuts, adds, arches = [], layers = [], pins = []) {
-  const { geom3, poly3 } = jscad.geometries;
-  // Each step's solid replaces the last, which is let go at once: a print with guides is a hundred thin slabs, and
-  // keeping every one till the end runs manifold out of memory
-  let m = null;
-  const scratch = [], tmp = (x) => (scratch.push(x), x), flush = () => { for (const x of scratch.splice(0)) x.delete(); };
-  const next = (x) => { if (m) m.delete(); m = x; flush(); };
-  const slab = (shape, from, to) => { const c = tmp(new W.CrossSection(shape, 'NonZero')), e = tmp(c.extrude(to - from)); return tmp(e.translate([0, 0, from])); };
-  const real = (shape, from, to) => !empty(shape) && to - from > 1e-6; // (manifold falls over on a slab with no thickness)
-  try {
-    const base = tmp(new W.CrossSection(a, 'NonZero'));
-    next(base.extrude(height));
-    for (const c of cuts) if (real(c.shape, c.from, c.to)) next(m.subtract(slab(c.shape, c.from, c.to)));
-    // An arch: its profile (a triangle, 45° flanks, along u from lo to hi) stood up and swept across, cut out of the
-    // part's footprint there
-    for (const r of arches) {
-      if (!(r.hi - r.lo > 1e-3) || empty(r.shape)) continue; // (nothing to arch over)
-      const mid = (r.lo + r.hi) / 2, half = (r.hi - r.lo) / 2, big = 1e3;
-      const tri = tmp(new W.CrossSection([[[r.lo, 0], [r.hi, 0], [mid, half]]], 'NonZero')); // (s, z), apex at r.apex since half = apex
-      const across = tmp(tmp(tri.extrude(2 * big)).translate([0, 0, -big])); // swept along the third axis
-      const stood = tmp(across.rotate([90, 0, 0])); // (s, z, w) to (s, w, z): the profile now stands in x–z, swept along y
-      const placed = tmp(stood.rotate([0, 0, (Math.atan2(r.u[1], r.u[0]) * 180) / Math.PI])); // s along u
-      const foot = tmp(tmp(new W.CrossSection(r.shape, 'NonZero')).extrude(height));
-      next(m.subtract(tmp(placed.intersect(foot))));
-    }
-    for (const c of adds) if (real(c.shape, c.from, c.to)) next(m.add(slab(c.shape, c.from, c.to)));
-    // Slabs a layer or so thick: a guide's ridge added, its groove cut (cuts first, so a ridge is never cut away)
-    for (const c of layers) if (real(c.cut, c.from, c.to)) next(m.subtract(slab(c.cut, c.from, c.to)));
-    for (const c of layers) if (real(c.add, c.from, c.to)) next(m.add(slab(c.add, c.from, c.to)));
-    // Pins: the carried body cut back over the floor and under the cap, then the floor, the post and its cap put back
-    const cone = (r0, r1, z0, z1, at) => tmp(tmp(W.Manifold.cylinder(z1 - z0, r0, r1, 64)).translate([at[0], at[1], z0]));
-    for (const p of pins) {
-      if (real(p.floorCut, 0, p.base + p.lift)) next(m.subtract(slab(p.floorCut, 0, p.base + p.lift)));
-      const top = height - p.lip, R = p.r + p.c; // the cap: from the post's radius at `top` out by the lip at the top, 45°
-      next(m.subtract(cone(R, R + p.lip + p.lift, top - p.lift, height + 1e-3, p.at)));
-      if (real(p.under, 0, p.base)) next(m.add(slab(p.under, 0, p.base)));
-      next(m.add(cone(p.r, p.r, 0, top, p.at)));
-      next(m.add(cone(p.r, p.r + p.lip, top, height, p.at)));
-    }
-    const { vertProperties: v, triVerts: t, numProp: n } = m.getMesh(), polys = [];
-    for (let i = 0; i < t.length; i += 3) polys.push(poly3.create([t[i], t[i + 1], t[i + 2]].map((k) => [v[k * n], v[k * n + 1], v[k * n + 2]])));
-    return geom3.create(polys);
-  } finally { flush(); if (m) m.delete(); }
-}
-
-// Within d of each other? Their outlines grown by half of it each overlap
-const within = (a, b, d) => area(intersect(grow(a, d / 2), grow(b, d / 2))) > AREA;
-// The gap between two shapes, to a hundredth, when it's under `most`
-function gapBetween(a, b, most) {
-  if (area(intersect(a, b)) > AREA) return 0;
-  let lo = 0, hi = most;
-  for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (within(a, b, mid)) hi = mid; else lo = mid; }
-  return +((lo + hi) / 2).toFixed(2);
-}
-// Run into each other, deeper than `slack`? A touch is fine (a latch resting on its catch); an overlap isn't
-function collide(a, b, slack) {
-  const o = intersect(a, b);
-  if (area(o) <= AREA) return null;
-  return area(slack > 0 ? shrink(o, slack / 2) : o) > AREA ? box(o) : null;
-}
-
-// ---------- drawing a flexure bent ----------
-// Each point's share of the joint's motion: its distance along the flexure from the root over that plus its distance
-// from the tip, measured inside the shape (on a grid), so a serpentine or a folded guide bends fold by fold
-function shares(shape, root, tip, cell) {
-  const { lo, hi } = box(shape), nx = Math.ceil((hi[0] - lo[0]) / cell) + 3, ny = Math.ceil((hi[1] - lo[1]) / cell) + 3;
-  const x0 = lo[0] - cell, y0 = lo[1] - cell, at = (i, j) => [x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell];
-  const fill = (g) => { // which cells' centres are inside: crossings along each row, even-odd
-    const inside = new Uint8Array(nx * ny), edges = g.flatMap((l) => l.map((p, k) => [p, l[(k + 1) % l.length]]));
-    for (let j = 0; j < ny; j++) {
-      const y = y0 + (j + 0.5) * cell, xs = [];
-      for (const [[ax, ay], [bx, by]] of edges) if ((ay > y) !== (by > y)) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
-      xs.sort((p, q) => p - q);
-      for (let k = 0; k + 1 < xs.length; k += 2) for (let i = Math.max(0, Math.ceil((xs[k] - x0) / cell - 0.5)); i < nx && x0 + (i + 0.5) * cell < xs[k + 1]; i++) inside[j * nx + i] = 1;
-    }
-    return inside;
-  };
-  const inside = fill(shape), from = (seeds) => { // distances inside the shape from the seed cells, a step a cell
-    const dist = new Float64Array(nx * ny).fill(Infinity), queue = [];
-    for (let k = 0; k < seeds.length; k++) if (seeds[k] && inside[k]) { dist[k] = 0; queue.push(k); }
-    for (let h = 0; h < queue.length; h++) {
-      const k = queue[h], i = k % nx, j = (k - i) / nx;
-      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const a = i + di, b = j + dj, n = b * nx + a;
-        if (a >= 0 && b >= 0 && a < nx && b < ny && inside[n] && dist[n] === Infinity) { dist[n] = dist[k] + 1; queue.push(n); }
-      }
-    }
-    return dist;
-  };
-  const dr = from(fill(root)), dt = from(fill(tip));
-  return ([x, y]) => { // the nearest cell inside with both distances
-    const ci = Math.floor((x - x0) / cell), cj = Math.floor((y - y0) / cell);
-    let best = null, bd = Infinity;
-    for (let r = 0; r <= 3 && best == null; r++) for (let a = ci - r; a <= ci + r; a++) for (let b = cj - r; b <= cj + r; b++) {
-      if (a < 0 || b < 0 || a >= nx || b >= ny) continue;
-      const n = b * nx + a;
-      if (!inside[n] || dr[n] === Infinity || dt[n] === Infinity) continue;
-      const [cx, cy] = at(a, b), d = (cx - x) ** 2 + (cy - y) ** 2;
-      if (d < bd) { bd = d; best = dr[n] / (dr[n] + dt[n] || 1); }
-    }
-    return best ?? 0;
-  };
-}
-// The flexure's outline with its long edges split, so it bends smoothly
-const split = (a, most) => a.map((o) => o.flatMap((p, k) => {
-  const q = o[(k + 1) % o.length], n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / most));
-  return Array.from({ length: n }, (_, i) => [p[0] + ((q[0] - p[0]) * i) / n, p[1] + ((q[1] - p[1]) * i) / n]);
-}));
-const fromOutlines = (outlines) => union([outlines]); // a bent outline that crosses itself comes out as the area it covers
-// Shared by the interpolation: a weight that leaves both ends square, as a guided beam bends
-const smooth = (s) => s * s * (3 - 2 * s);
-
-// ---------- a flexure's peak strain by finite elements ----------
-// Beam theory says what a bar's strain is; it doesn't see the corner where the bar meets its block, which is where a
-// printed flexure yields. Here the flexure and a band of each body it grows from are laid on a grid of squares (each
-// filled by how much of it is inside), the body it grows from held, the body on its tip made stiff and pushed along the
-// way it moves, and the plane-stress solution scaled to the travel. The peak is the most any solid cell sees (von
-// Mises, as a strain); done again on cells 0.6 the size, a peak that keeps rising is a sharp corner.
-function coverage(shape, g, x0, y0, sub = 3) {
-  const { nx, ny, h } = g, out = new Float64Array(nx * ny), edges = shape.flatMap((l) => l.map((p, k) => [p, l[(k + 1) % l.length]]));
-  for (let j = 0; j < ny; j++) for (let b = 0; b < sub; b++) {
-    const y = y0 + (j + (b + 0.5) / sub) * h, xs = [];
-    for (const [[ax, ay], [bx, by]] of edges) if ((ay > y) !== (by > y)) xs.push(ax + ((y - ay) * (bx - ax)) / (by - ay));
-    xs.sort((p, q) => p - q);
-    for (let k = 0; k + 1 < xs.length; k += 2) for (let i = 0; i < nx; i++) for (let a = 0; a < sub; a++) {
-      const x = x0 + (i + (a + 0.5) / sub) * h;
-      if (x >= xs[k] && x < xs[k + 1]) out[j * nx + i] += 1 / (sub * sub);
-    }
-  }
-  return out;
-}
-function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, band }) {
-  // The bodies as material too, in a band round the flexure (so the corner where it meets them is a real corner); held
-  // and pushed only beyond the band
-  // (only near where the flexure joins them, within a fine cell of it: a body it merely runs past a print gap off
-  // would be welded to it by a grid coarser than the gap)
-  // (a body the flexure doesn't quite reach: all of it within twice the band, as before)
-  const nearJoin = (body) => { const join = intersect(flexure, grow(body, cell)); return intersect(body, area(join) > AREA ? grow(join, band * 2) : grow(flexure, band * 2)); };
-  held = nearJoin(held); moved = nearJoin(moved);
-  const near = grow(flexure, band), region = union([flexure, held, moved]), { lo, hi } = box(region);
-  let h = cell;
-  while (((hi[0] - lo[0]) / h + 2) * ((hi[1] - lo[1]) / h + 2) > FE_MOST) h *= 1.25;
-  const nx = Math.ceil((hi[0] - lo[0]) / h) + 2, ny = Math.ceil((hi[1] - lo[1]) / h) + 2, x0 = lo[0] - h, y0 = lo[1] - h;
-  const g = feaGrid({ nx, ny, h }), fill = coverage(region, g, x0, y0), isNear = coverage(near, g, x0, y0, 1);
-  const isHeld = coverage(held, g, x0, y0, 1), isMoved = coverage(moved, g, x0, y0, 1);
-  // A cell with some of the frame and some of what moves in it straddles the gap between them (a stop a print gap off,
-  // narrower than a cell): empty, or the grid would weld them together
-  const heldPart = coverage(held, g, x0, y0), movedPart = coverage(moved, g, x0, y0);
-  // (and a cell of either beside a cell of the other: neighbours share nodes, which would weld them just the same)
-  const isH = (e) => heldPart[e] > 0.01, isM = (e) => movedPart[e] > 0.01, cut = [];
-  for (let e = 0; e < g.cells; e++) {
-    if (!isH(e) && !isM(e)) continue;
-    const i = e % nx, j = (e - i) / nx;
-    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
-      const a = i + di, b = j + dj;
-      if (a < 0 || b < 0 || a >= nx || b >= ny) continue;
-      const o = b * nx + a;
-      if ((isH(e) && isM(o)) || (isM(e) && isH(o))) cut.push(e);
-    }
-  }
-  for (const e of cut) fill[e] = 0;
-  const modulus = new Float64Array(g.cells), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs), loaded = new Set();
-  for (let e = 0; e < g.cells; e++) {
-    const i = e % nx, j = (e - i) / nx, far = isNear[e] < 0.5, nodes = [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)];
-    modulus[e] = E * Math.max(1e-6, fill[e] > 0 && far && isMoved[e] > 0.5 ? 50 : fill[e]);
-    if (fill[e] < 0.5 || !far) continue;
-    if (isHeld[e] > 0.5) for (const n of nodes) { fixed[2 * n] = 1; fixed[2 * n + 1] = 1; }
-    else if (isMoved[e] > 0.5) for (const n of nodes) loaded.add(n);
-  }
-  if (!loaded.size) for (let e = 0; e < g.cells; e++) { // a tip body all within the band: push all of it
-    const i = e % nx, j = (e - i) / nx;
-    if (fill[e] >= 0.5 && isMoved[e] > 0.5) for (const n of [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)]) loaded.add(n);
-  }
-  if (!fixed.some(Boolean) || !loaded.size) return null;
-  for (const n of loaded) { f[2 * n] += direction[0] / loaded.size; f[2 * n + 1] += direction[1] / loaded.size; }
-  const { u: [u] } = feaSolve(g, { scale: modulus, ke: cellStiffness(nu, 2), fixed, loads: [f] });
-  let moves = 0;
-  for (const n of loaded) moves += (u[2 * n] * direction[0] + u[2 * n + 1] * direction[1]) / loaded.size;
-  const scale = travel / moves, k = 1 / (1 - nu * nu);
-  // Strain at each solid cell's corners (on the surface, where a bar's strain is most), as von Mises in plane stress over E
-  const equiv = (ex, ey, gxy) => { const sx = k * (ex + nu * ey), sy = k * (ey + nu * ex), txy = (gxy / 2) / (1 + nu); return Math.sqrt(Math.max(0, sx * sx - sx * sy + sy * sy + 3 * txy * txy)); };
-  let peak = 0, at = null;
-  for (let e = 0; e < g.cells; e++) {
-    const i = e % nx, j = (e - i) / nx;
-    if (fill[e] < 0.5 || isNear[e] < 0.5 && (isHeld[e] > 0.5 || isMoved[e] > 0.5)) continue;
-    const [a, b, c, d] = [g.node(i, j), g.node(i + 1, j), g.node(i + 1, j + 1), g.node(i, j + 1)].map((n) => [u[2 * n] * scale, u[2 * n + 1] * scale]);
-    const bx = (b[0] - a[0]) / h, tx = (c[0] - d[0]) / h, ly = (d[1] - a[1]) / h, ry = (c[1] - b[1]) / h; // εx along the bottom and top, εy up the left and right
-    const corners = [[bx, ly, (d[0] - a[0]) / h + (b[1] - a[1]) / h, 0, 0], [bx, ry, (c[0] - b[0]) / h + (b[1] - a[1]) / h, 1, 0], [tx, ry, (c[0] - b[0]) / h + (c[1] - d[1]) / h, 1, 1], [tx, ly, (d[0] - a[0]) / h + (c[1] - d[1]) / h, 0, 1]];
-    for (const [ex, ey, gxy, ci, cj] of corners) { const v = equiv(ex, ey, gxy); if (v > peak) { peak = v; at = [x0 + (i + ci) * h, y0 + (j + cj) * h]; } }
-  }
-  return { peak, at, cell: h };
-}
+import { grid as feaGrid, analyse as feaAnalyse } from '@rulecad/fea';
+import { AREA, TOUCH, STOP_STEPS, NONE, MARCH, FINE, REFINE, FRAMES, GAMMA, LEAFLIKE, FE_CELLS, FE_MOST, SHARP_TURN, rad, deg, I, mul, apply, shift, turn, ready, empty, union, intersect, subtract, grow, shrink, area, pieces, apart, box, moved, flat, all, solidOf, solidWith, within, gapBetween, collide } from './plane.mjs';
+import { shares, split, fromOutlines, smooth, coverage, fePeak } from './bent.mjs';
+import { flooded } from './flooded.mjs';
 
 // ---------- the mechanism ----------
 // LAMINA_TIMES=1 prints each stage's time to stderr (where a long build's minutes go)
-const timer = (name) => { if (!globalThis.process?.env?.LAMINA_TIMES) return () => {}; const t0 = performance.now(); let last = t0; return (what) => { const now = performance.now(); console.error(`${name} ${what}: ${((now - last) / 1000).toFixed(1)} s (${((now - t0) / 1000).toFixed(1)} s in)`); last = now; }; };
+export const timer = (name) => { if (!globalThis.process?.env?.LAMINA_TIMES) return () => {}; const t0 = performance.now(); let last = t0; return (what) => { const now = performance.now(); console.error(`${name} ${what}: ${((now - last) / 1000).toFixed(1)} s (${((now - t0) / 1000).toFixed(1)} s in)`); last = now; }; };
 /**
  * A mechanism in one plane, printed flat.
  * @param {object} spec
@@ -776,68 +490,84 @@ export async function lamina(spec) {
 
   }
 
+  // The mechanism in the plane: what the kinematic and the frame stages are made from. Nothing of the 3D (straps,
+  // guides, the finish) or the physics is part of them
+  const kinematicSpec = { ...spec, bridges: undefined, guides: undefined, finish: undefined, fire: undefined, physics: undefined, flood: undefined, grips: undefined, fixtures: undefined };
   if (kinematic) {
-  mark('free');
-  // ---- the sequence, then each state as the sequence reaches it: nothing runs into anything, nothing jams ----
-  for (let i = 0; i + 1 < seq.length; i++) {
-    // From where the last step settled; a joint both states set alike stays where it settled, so it isn't moved
-    const a = reached[seq[i]] ?? state(seq[i]), said = state(seq[i]), b = { ...state(seq[i + 1]) };
-    for (const k of Object.keys(b)) if (said[k] === b[k] && a[k] != null) b[k] = a[k];
-    const r = walk(a, b), pct = r ? `${Math.round(r.t * 100)}% of the way` : '';
-    // A step into a state that a catch holds may end on the catch: it settles there, short of the state's own travel
-    const catches = (spec.holds?.[seq[i + 1]] || []).filter(([jn]) => Math.abs((a[jn] || 0) - (b[jn] || 0)) > 1e-9);
-    const caught = r && catches.find(([jn, by]) => {
-      const mine = (x) => carries[jn].has(x), theirs = (x) => x === by || Object.keys(follows).some((fn) => carries[fn].has(by) && carries[fn].has(x));
-      return (r.kind === 'jam' && (mine(r.by) || r.by === joints[jn].to) && carries[r.joint].has(by)) || (r.kind === 'jam' && carries[jn].has(r.joint) && theirs(r.by)) || (r.kind === 'hit' && ((mine(r.a) && theirs(r.b)) || (mine(r.b) && theirs(r.a))));
-    });
-    if (caught) {
-      const [jn, by] = caught, at = r.last[jn] || 0;
-      reached[seq[i + 1]] ??= r.last;
-      f('pass', `${seq[i]} to ${seq[i + 1]}: settles on ${by} at ${+Math.abs(at).toFixed(2)}${joints[jn].turning ? '°' : ' mm'} (${jn})`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], settles: at });
-    } else if (!r) { reached[seq[i + 1]] ??= reachedLast; f('pass', `${seq[i]} to ${seq[i + 1]}: clear all the way`, 'lamina.sequence', { from: seq[i], to: seq[i + 1] }); }
-    else if (r.kind === 'jam') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.by} jams on ${joints[r.joint].to} ${pct}: it meets a face too steep to push aside (at a friction of ${mu.pass})`, 'lamina.jam', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
-    else if (r.kind === 'over') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.joint} would have to give past its limit ${pct}`, 'lamina.follow', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
-    else if (r.pushing) f('fail', `${seq[i]} to ${seq[i + 1]}: ${follows[r.pushing].by.join(' and ')} pushes ${joints[r.pushing].to} aside until ${what(r.a)} and ${what(r.b)} meet, ${pct}: it can't get out of the way (give it more room, or a shallower face)`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], joint: r.pushing, at: r.at, t: r.t });
-    else f('fail', `${seq[i]} to ${seq[i + 1]}: ${what(r.a)} runs into ${what(r.b)} ${pct}`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], at: r.at, t: r.t });
-  }
-  for (const s of Object.keys(states)) {
-    const r = reached[s] ? { v: reached[s], over: [], pushed: Object.fromEntries(Object.keys(follows).map((n) => [n, Math.abs((reached[s][n] || 0) - (state(s)[n] || 0))])) } : solve(state(s)), { v, over, pushed } = r;
-    solved[s] = v; note(v);
-    if (s === 'rest') continue;
-    const hits = clashes(shapesAt(v));
-    for (const n of over) f('fail', `${s}: ${n} would have to give past its limit to clear ${follows[n].by.join(' and ')}`, 'lamina.follow', { state: s, joint: n });
-    for (const h of hits) f('fail', `${s}: ${what(h.a)} runs into ${what(h.b)}`, 'lamina.collide', { state: s, parts: [h.a, h.b], at: h.at });
-    if (!hits.length && !over.length) f('pass', `${s}: nothing runs into anything${Object.keys(follows).some((n) => pushed[n] > slack) ? ` (${Object.keys(follows).filter((n) => pushed[n] > slack).map((n) => `${n} pushed ${+pushed[n].toFixed(2)}${joints[n].turning ? '°' : ' mm'} by what it meets`).join(', ')})` : ''}`, 'lamina.collide', { state: s });
-  }
-
-  mark('sequence');
-  // ---- holds: a latch. Pushing back towards rest jams on the catch, or runs into it ----
-  for (const [s, list] of Object.entries(spec.holds || {})) for (const [jn, by] of list) {
-    if (!joints[jn] || !parts[by]) throw new Error(`holds in ${s}: no joint "${jn}" or part "${by}"`);
-    if (seq.includes(s) && !reached[s]) { f('info', `${s}: the sequence doesn't reach it, so whether ${by} holds isn't checked`, 'lamina.holds', { state: s, joint: jn, catch: by }); continue; }
-    const v = solved[s] ?? solve(state(s)).v, q = v[jn] || 0, back = Math.sign(q) * Math.max(gap * 2, Math.abs(q) * 0.1);
-    // The follower that is the catch (or carries it): how far it must move to let go is found by moving it along its give
-    const fn = Object.keys(follows).find((x) => carries[x].has(by) || joints[x].to === by), unit = fn && joints[fn].turning ? '°' : ' mm';
-    const grips = [];
-    // A catch that bites presses into what it holds as it's moved to let go (its face leaning back): what it holds is
-    // cammed back first, out of it, then pushed towards rest from there
-    const cammed = (vals) => {
-      const out = { ...vals }, mine = carries[jn], sgn = Math.sign(q) || -1, touching = (x) => { const sh = shapesAt(x); return [...mine].some((a) => collide(sh[a], sh[by], slack)); };
-      for (let k = 0; k < 80 && touching(out); k++) out[jn] += sgn * gap / 4;
-      return out;
-    };
-    const holding = (vals0) => { const vals = fn && vals0[fn] ? cammed(vals0) : vals0, r = walk(vals, { ...vals, [jn]: (vals[jn] ?? q) - back }, { record: false, friction: mu.hold }); grips.push(r?.kind === 'jam' ? r.grip : walkRatio > 0 ? 1 / walkRatio : null); return !!r && (r.kind === 'jam' || r.kind === 'over' || (r.kind === 'hit' && [r.a, r.b].some((x) => carries[jn].has(x)) && [r.a, r.b].some((x) => x === by || (fn && carries[fn].has(x))))); }; // held: it jams, or what it moves runs into the catch
-    const held = holding(v), grip = grips[0]; // the least friction it holds at: 0 when it holds whatever the friction
-    let lets = null;
-    if (held && fn) {
-      const g = follows[fn].give ?? 1, most = Math.min(limitOf(fn, g), follows[fn].most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
-      if (!holding({ ...v, [fn]: g * reach })) { let lo = 0, hi = reach; for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (holding({ ...v, [fn]: g * mid })) lo = mid; else hi = mid; } lets = hi; }
+    // The kinematics (the sequence walked, each state, the latches, the strain and stops) are a stage kept between builds
+    // (cache.mjs), by the mechanism in the plane: nothing of the 3D (straps, guides, the finish) or the physics is part
+    // of them. What it found, and what the later stages read of it (where the sequence reached, each state solved, how far
+    // each joint was used), is kept with it; a build gets the kept copy whether it ran or not
+    const start = findings.length;
+    const kept = await stage('kinematics', kinematicSpec, async () => {
+    mark('free');
+    // ---- the sequence, then each state as the sequence reaches it: nothing runs into anything, nothing jams ----
+    for (let i = 0; i + 1 < seq.length; i++) {
+      // From where the last step settled; a joint both states set alike stays where it settled, so it isn't moved
+      const a = reached[seq[i]] ?? state(seq[i]), said = state(seq[i]), b = { ...state(seq[i + 1]) };
+      for (const k of Object.keys(b)) if (said[k] === b[k] && a[k] != null) b[k] = a[k];
+      const r = walk(a, b), pct = r ? `${Math.round(r.t * 100)}% of the way` : '';
+      // A step into a state that a catch holds may end on the catch: it settles there, short of the state's own travel
+      const catches = (spec.holds?.[seq[i + 1]] || []).filter(([jn]) => Math.abs((a[jn] || 0) - (b[jn] || 0)) > 1e-9);
+      const caught = r && catches.find(([jn, by]) => {
+        const mine = (x) => carries[jn].has(x), theirs = (x) => x === by || Object.keys(follows).some((fn) => carries[fn].has(by) && carries[fn].has(x));
+        return (r.kind === 'jam' && (mine(r.by) || r.by === joints[jn].to) && carries[r.joint].has(by)) || (r.kind === 'jam' && carries[jn].has(r.joint) && theirs(r.by)) || (r.kind === 'hit' && ((mine(r.a) && theirs(r.b)) || (mine(r.b) && theirs(r.a))));
+      });
+      if (caught) {
+        const [jn, by] = caught, at = r.last[jn] || 0;
+        reached[seq[i + 1]] ??= r.last;
+        f('pass', `${seq[i]} to ${seq[i + 1]}: settles on ${by} at ${+Math.abs(at).toFixed(2)}${joints[jn].turning ? '°' : ' mm'} (${jn})`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], settles: at });
+      } else if (!r) { reached[seq[i + 1]] ??= reachedLast; f('pass', `${seq[i]} to ${seq[i + 1]}: clear all the way`, 'lamina.sequence', { from: seq[i], to: seq[i + 1] }); }
+      else if (r.kind === 'jam') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.by} jams on ${joints[r.joint].to} ${pct}: it meets a face too steep to push aside (at a friction of ${mu.pass})`, 'lamina.jam', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
+      else if (r.kind === 'over') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.joint} would have to give past its limit ${pct}`, 'lamina.follow', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
+      else if (r.pushing) f('fail', `${seq[i]} to ${seq[i + 1]}: ${follows[r.pushing].by.join(' and ')} pushes ${joints[r.pushing].to} aside until ${what(r.a)} and ${what(r.b)} meet, ${pct}: it can't get out of the way (give it more room, or a shallower face)`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], joint: r.pushing, at: r.at, t: r.t });
+      else f('fail', `${seq[i]} to ${seq[i + 1]}: ${what(r.a)} runs into ${what(r.b)} ${pct}`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], at: r.at, t: r.t });
     }
-    const tight = lets != null && lets < gap; // a catch that lets go within a print gap holds by luck
-    f(held && !tight ? 'pass' : 'fail', `${s}: ${held ? `${by} holds ${joints[jn].to} against the ${jn} flexure ${grip > 0 ? `at any friction over ${+grip.toFixed(2)} (checked at ${mu.hold})` : 'whatever the friction'}${lets != null ? `, and lets go once ${fn} moves ${+lets.toFixed(2)}${unit}${tight ? `: less than the ${gap} mm gap, too shallow to trust` : ''}` : fn ? `, and ${fn} can't move far enough to let go` : ''}` : `nothing holds ${joints[jn].to}: pushed ${+Math.abs(back).toFixed(2)} back towards rest it passes ${by}${grip ? `, pushing it aside: it would take a friction over ${+grip.toFixed(2)} to hold (checked at ${mu.hold}); tilt the catch so the load presses it in` : ''}`}`, 'lamina.holds', { state: s, joint: jn, catch: by, ...(lets != null ? { release: lets } : {}) });
-  }
-
-  strainAndStops();
+    for (const s of Object.keys(states)) {
+      const r = reached[s] ? { v: reached[s], over: [], pushed: Object.fromEntries(Object.keys(follows).map((n) => [n, Math.abs((reached[s][n] || 0) - (state(s)[n] || 0))])) } : solve(state(s)), { v, over, pushed } = r;
+      solved[s] = v; note(v);
+      if (s === 'rest') continue;
+      const hits = clashes(shapesAt(v));
+      for (const n of over) f('fail', `${s}: ${n} would have to give past its limit to clear ${follows[n].by.join(' and ')}`, 'lamina.follow', { state: s, joint: n });
+      for (const h of hits) f('fail', `${s}: ${what(h.a)} runs into ${what(h.b)}`, 'lamina.collide', { state: s, parts: [h.a, h.b], at: h.at });
+      if (!hits.length && !over.length) f('pass', `${s}: nothing runs into anything${Object.keys(follows).some((n) => pushed[n] > slack) ? ` (${Object.keys(follows).filter((n) => pushed[n] > slack).map((n) => `${n} pushed ${+pushed[n].toFixed(2)}${joints[n].turning ? '°' : ' mm'} by what it meets`).join(', ')})` : ''}`, 'lamina.collide', { state: s });
+    }
+  
+    mark('sequence');
+    // ---- holds: a latch. Pushing back towards rest jams on the catch, or runs into it ----
+    for (const [s, list] of Object.entries(spec.holds || {})) for (const [jn, by] of list) {
+      if (!joints[jn] || !parts[by]) throw new Error(`holds in ${s}: no joint "${jn}" or part "${by}"`);
+      if (seq.includes(s) && !reached[s]) { f('info', `${s}: the sequence doesn't reach it, so whether ${by} holds isn't checked`, 'lamina.holds', { state: s, joint: jn, catch: by }); continue; }
+      const v = solved[s] ?? solve(state(s)).v, q = v[jn] || 0, back = Math.sign(q) * Math.max(gap * 2, Math.abs(q) * 0.1);
+      // The follower that is the catch (or carries it): how far it must move to let go is found by moving it along its give
+      const fn = Object.keys(follows).find((x) => carries[x].has(by) || joints[x].to === by), unit = fn && joints[fn].turning ? '°' : ' mm';
+      const grips = [];
+      // A catch that bites presses into what it holds as it's moved to let go (its face leaning back): what it holds is
+      // cammed back first, out of it, then pushed towards rest from there
+      const cammed = (vals) => {
+        const out = { ...vals }, mine = carries[jn], sgn = Math.sign(q) || -1, touching = (x) => { const sh = shapesAt(x); return [...mine].some((a) => collide(sh[a], sh[by], slack)); };
+        for (let k = 0; k < 80 && touching(out); k++) out[jn] += sgn * gap / 4;
+        return out;
+      };
+      const holding = (vals0) => { const vals = fn && vals0[fn] ? cammed(vals0) : vals0, r = walk(vals, { ...vals, [jn]: (vals[jn] ?? q) - back }, { record: false, friction: mu.hold }); grips.push(r?.kind === 'jam' ? r.grip : walkRatio > 0 ? 1 / walkRatio : null); return !!r && (r.kind === 'jam' || r.kind === 'over' || (r.kind === 'hit' && [r.a, r.b].some((x) => carries[jn].has(x)) && [r.a, r.b].some((x) => x === by || (fn && carries[fn].has(x))))); }; // held: it jams, or what it moves runs into the catch
+      const held = holding(v), grip = grips[0]; // the least friction it holds at: 0 when it holds whatever the friction
+      let lets = null;
+      if (held && fn) {
+        const g = follows[fn].give ?? 1, most = Math.min(limitOf(fn, g), follows[fn].most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
+        if (!holding({ ...v, [fn]: g * reach })) { let lo = 0, hi = reach; for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (holding({ ...v, [fn]: g * mid })) lo = mid; else hi = mid; } lets = hi; }
+      }
+      const tight = lets != null && lets < gap; // a catch that lets go within a print gap holds by luck
+      f(held && !tight ? 'pass' : 'fail', `${s}: ${held ? `${by} holds ${joints[jn].to} against the ${jn} flexure ${grip > 0 ? `at any friction over ${+grip.toFixed(2)} (checked at ${mu.hold})` : 'whatever the friction'}${lets != null ? `, and lets go once ${fn} moves ${+lets.toFixed(2)}${unit}${tight ? `: less than the ${gap} mm gap, too shallow to trust` : ''}` : fn ? `, and ${fn} can't move far enough to let go` : ''}` : `nothing holds ${joints[jn].to}: pushed ${+Math.abs(back).toFixed(2)} back towards rest it passes ${by}${grip ? `, pushing it aside: it would take a friction over ${+grip.toFixed(2)} to hold (checked at ${mu.hold}); tilt the catch so the load presses it in` : ''}`}`, 'lamina.holds', { state: s, joint: jn, catch: by, ...(lets != null ? { release: lets } : {}) });
+    }
+  
+    strainAndStops();
+      return { findings: findings.slice(start), reached, solved, used: Object.fromEntries(Object.entries(used).map(([k, u]) => [k, { most: u.most, signs: [...u.signs] }])), reachedLast };
+    });
+    findings.splice(start); findings.push(...kept.findings);
+    for (const k of Object.keys(reached)) delete reached[k]; Object.assign(reached, kept.reached);
+    for (const k of Object.keys(solved)) delete solved[k]; Object.assign(solved, kept.solved);
+    for (const k of Object.keys(used)) delete used[k]; for (const [k, u] of Object.entries(kept.used)) used[k] = { most: u.most, signs: new Set(u.signs) };
+    reachedLast = kept.reachedLast;
   } else for (const s of Object.keys(states)) solved[s] = state(s);
 
   mark('holds');
@@ -862,7 +592,7 @@ export async function lamina(spec) {
   // ---- the mechanism as it would behave: its flexures as beams bending as far as they bend, its bodies touching, a
   // hand driving, holding and letting go (physics.mjs). The force each step takes, where a latch lets go, whether a
   // catch holds when let go of, the strain all the way, and the shapes as they bend ----
-  let sim = null;
+  let sim = null, physicsInputs = null;
   const handMost = (typeof spec.physics === 'object' && spec.physics.force) || 50; // N: the most a hand pulls or pushes
   if (spec.physics !== false && seq.length) {
     const o = typeof spec.physics === 'object' ? spec.physics : {};
@@ -870,7 +600,8 @@ export async function lamina(spec) {
     const seen = spec.fixtures ? { ...parts, ground: { ...parts.ground, shape: union([parts.ground.shape, all(spec.fixtures)]) } } : parts; // fixtures: fixed, in the physics, not in the print
     const m = { parts: seen, joints, material, height, gap, states, sequence: seq, holds: spec.holds, loose, grips: spec.grips, ...(spec.fire ? { fire: spec.fire } : {}) };
     // (the solve is the slow stage, kept between builds by what it's made from; the system it ran on is made afresh)
-    const S = systemOf(m), run = await stage('physics', { m, o }, () => { const { sys, centre, beamOf, ...rest } = simulate({ ...m, kinematic: places }, { ...o, system: S }); return rest; });
+    physicsInputs = { m, o };
+    const S = systemOf(m), run = await stage('physics', physicsInputs, () => { const { sys, centre, beamOf, ...rest } = simulate({ ...m, kinematic: places }, { ...o, system: S }); return rest; });
     sim = run.skipped ? run : { ...run, sys: S.sys, centre: S.centre, beamOf: S.beamOf };
     if (sim.skipped) { f('info', `${sim.skipped.join(', ')}: no centreline to solve as beams (a notch, a cartwheel, a shape of your own), so how it behaves comes from the kinematic model only`, 'lamina.physics'); sim = null; }
   }
@@ -1210,7 +941,9 @@ export async function lamina(spec) {
     // with (from the beams), the frame an elastic plate as tall as the print, held where a hand holds it (`grip`, or
     // its back quarter); every clearance to what moves then checked on the frame as it bends. A frame that closes
     // onto what moves (prongs either side of a channel pulled together) fails ----
-    if (spec.check?.frame !== false && !empty(parts.ground.shape)) {
+    // (a stage kept between builds, by the mechanism in the plane, the physics it ran, the frame's own bridges and where
+    // it's held: a strap or a check after it doesn't start it again)
+    const frameStart = findings.length, frameKept = spec.check?.frame !== false && !empty(parts.ground.shape) ? await stage('frame', { spec: kinematicSpec, physics: physicsInputs, bridges: bridges.filter((x) => x.owner === 'ground').map((x) => x.shape), grip: spec.grip }, async () => {
       const G = parts.ground.shape, { lo, hi } = box(G), side = Math.max(0.25, Math.sqrt(((hi[0] - lo[0]) * (hi[1] - lo[1])) / FE_MOST));
       const nx = Math.ceil((hi[0] - lo[0]) / side) + 2, ny = Math.ceil((hi[1] - lo[1]) / side) + 2, x0 = lo[0] - side, y0 = lo[1] - side;
       const g = feaGrid({ nx, ny, h: side }), fill = coverage(G, g, x0, y0);
@@ -1266,7 +999,9 @@ export async function lamina(spec) {
           ? `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull; at ${w.state} it closes ${w.closed.toFixed(2)} mm towards ${what(w.part)}${where}, leaving ${w.after.toFixed(2)} mm${level === 'fail' ? ': it pinches it. Stiffen the frame there, or tie it across' : ''}`
           : `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull, closing no gap to what moves`, 'lamina.frame', { most, ...(w || {}), shown });
       }
-    }
+      return { findings: findings.slice(frameStart) };
+    }) : null;
+    if (frameKept) { findings.splice(frameStart); findings.push(...frameKept.findings); }
 
     mark('frame');
     // ---- across the plane: each moving body pushed across the print at its farthest point from what holds it, by a
@@ -1312,6 +1047,7 @@ export async function lamina(spec) {
   };
 }
 
+
 /**
  * A material for flexures from its rule set ({ modulus, strength }): the strain it may see is its strength over its
  * modulus, the strain where it starts to yield, over a safety factor. The ratio is the figure of merit for compliant
@@ -1319,105 +1055,6 @@ export async function lamina(spec) {
  * PETG's 1.9%, nylon's higher still.
  * @param {{ modulus: number, strength: number, name?: string }} rules @param {{ safety?: number }} [o] (default 1.5)
  */
-/**
- * A lamina whose frame is flooded: everything inside `flood.outline` is solid but the room the moving parts need (where
- * each body and flexure goes, through the whole sequence, grown by a clearance) and the spaces `flood.keep` holds open
- * (a disc's way out). A thin frame bends and spoils everything it holds; a flooded one is as stiff as the outline
- * allows, so the mechanism is all that moves. The moving parts are solved through the sequence first (with the ground
- * you draw: the blocks the flexures grow from), then the frame is what's left, slivers thinner than `least` and islands
- * that would print loose taken out, and your ground added back.
- * @param {object} spec a lamina spec, with flood: { outline?, keep?, clear?: number | Record<string, number>, least?, wall?,
- *   pad?, corner?, band?, holes?, posts? }: posts, shapes of the frame standing apart from it in the plane (a pin in a
- *   slot in what slides), kept though they are islands, for the frame's straps to join (bridges with strap: true); holes, [{ at, diameter, wall? }] through the frame for fasteners (pins holding plates
- *   either side), each in a solid boss `wall` thick (default half `wall`), checked to be all frame; band, solid only this far round the moving parts' room, the kept spaces and the outline's
- *   edge, the rest windows (a web: lighter, as stiff where it matters); outline, the frame's (default: everything the moving parts reach and `keep`, `wall` round it,
- *   corners rounded to `corner`); clear, the gap round the moving parts (the print gap; or by part, a sliding fit for
- *   what slides in a channel); pad, how far the solid round each flexure's root reaches (its roots are found: the part
- *   of it that never moves). spec.ground may then be left out
- */
-async function flooded(spec) {
-  const { keep = [], least = 2, wall = 4, pad = 3, corner = 6 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
-  // The mechanism solved through its sequence, on the ground you drew (or none: a speck far off, for the solver)
-  const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
-  const markF = timer('flood');
-  // (only the frames are read of it: kept between builds by what the probe is made from, which no strap, guide or finish
-  // is part of)
-  const probeSpec = { ...spec, ground: empty(mine) ? far : mine, groundRounded: true, flood: undefined, fire: undefined, bridges: undefined, guides: undefined, finish: undefined, check: { ...(spec.check || {}), fe: false, frame: false } };
-  const probe = await stage('flood probe', probeSpec, async () => { const r = await lamina(probeSpec); const frame = (fr) => ({ ...(fr.off != null ? { off: fr.off } : {}), parts: fr.parts }); return { planned: r.planned.map(frame), frames: r.planned === r.frames ? null : r.frames.map(frame) }; });
-  if (probe.frames === null) probe.frames = probe.planned;
-  markF('probe');
-  const free = new Set(Object.keys(spec.free || {})), by = {};
-  // The room: everything where it's meant to go, the kinematic frames (solved without a frame, the physics lets a body
-  // tip anywhere its play allows: room cut round that would let it)
-  for (const fr of probe.planned) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n)) (by[n] ??= []).push(o);
-  // and each flexure as it really bends, wherever its bodies are where they're meant to be (within the gap and a bit)
-  if (probe.planned !== probe.frames) for (const fr of probe.frames) if (fr.off != null && fr.off <= Math.max(gap * 3, 2)) for (const [n, o] of Object.entries(fr.parts)) if (n !== 'ground' && !free.has(n) && !spec.bodies?.[n]) (by[n] ??= []).push(o);
-  const swept = union(Object.entries(by).map(([n, os]) => grow(union(os), clearOf(n) * 1.05 + 0.02))); // (a little over: a round offset's segments cut its corners)
-  // The outline: yours, or everything the moving parts reach and the spaces kept, a wall round it, its corners rounded
-  let outline = spec.flood.outline ? all(spec.flood.outline) : null;
-  if (!outline) {
-    const { lo, hi } = box(union([swept, all(keep)])), r = Math.min(corner, (hi[0] - lo[0]) / 2, (hi[1] - lo[1]) / 2);
-    const square = [[[lo[0] - wall, lo[1] - wall], [hi[0] + wall, lo[1] - wall], [hi[0] + wall, hi[1] + wall], [lo[0] - wall, hi[1] + wall]]];
-    outline = grow(shrink(square, r, 'Miter'), r);
-  }
-  // Each flexure's root: a block behind the face it grows from (its root port, facing back into the frame), `pad` deep
-  // and as wide again either side, clear of every other moving part, so it grows from solid however the flood falls
-  const kind = (j) => j.kind === 'curve' || OWN_ROUNDS.has(j.kind); // (these draw their own rounds)
-  const roots = Object.entries(spec.joints || {}).filter(([, j]) => j.from === 'ground' && j.kind).map(([n, j]) => {
-    const params = { ...j.params, width: j.params?.width ?? spec.height }, root = ports(j.kind, params).root, a = rad(j.angle || 0);
-    const c = apply(mul(shift(j.at || [0, 0]), turn(a)), root.at), l = Math.hypot(root.dir[0], root.dir[1]) || 1;
-    const u = [(Math.cos(a) * root.dir[0] - Math.sin(a) * root.dir[1]) / l, (Math.sin(a) * root.dir[0] + Math.cos(a) * root.dir[1]) / l], v = [-u[1], u[0]];
-    const t = Math.max(...[params.thickness ?? params.neck ?? 1].flat()), w = pad + t + (params.fillet ?? 0) * 1.5;
-    const block = [[[c[0] + v[0] * w, c[1] + v[1] * w], [c[0] + v[0] * w + u[0] * pad, c[1] + v[1] * w + u[1] * pad], [c[0] - v[0] * w + u[0] * pad, c[1] - v[1] * w + u[1] * pad], [c[0] - v[0] * w, c[1] - v[1] * w]]];
-    const others = union(Object.entries(by).filter(([m]) => m !== n).map(([m, os]) => grow(union(os), clearOf(m) * 1.05 + 0.02)));
-    const mirror = params.mirror != null ? [block[0].map(([x, y]) => [x, 2 * params.mirror - y]).reverse()] : []; // (a mirrored curve's other arm roots in its mirror image)
-    // and its rounds: a quarter circle either side of it where it leaves the block's face, standing in its room
-    const r = kind(j) ? 0 : params.fillet ?? 0, fillets = r > 0 ? [1, -1].map((sd) => {
-      const at = (a, b) => [c[0] + v[0] * sd * a - u[0] * b, c[1] + v[1] * sd * a - u[1] * b], h = t / 2;
-      const arc = Array.from({ length: 9 }, (_, i) => { const th = (Math.PI / 2) * (i / 8); return at(h + r - r * Math.cos(th), r - r * Math.sin(th)); }); // round from the leaf's side to the block's face
-      const loop = [at(h, -pad / 4), at(h + r, -pad / 4), ...arc.slice().reverse()];
-      const signed = loop.reduce((a, p, i) => { const q = loop[(i + 1) % loop.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0);
-      return [signed < 0 ? loop.reverse() : loop]; // (anticlockwise)
-    }) : [];
-    return subtract(union([block, mirror, ...fillets]), others);
-  });
-  // Holes through the frame for fasteners (pins holding plates either side, should it ever need them): each in a solid
-  // boss, a wall round it, that no window opens into
-  const ring = ([x, y], r) => [Array.from({ length: 48 }, (_, i) => [x + r * Math.cos((2 * Math.PI * i) / 48), y + r * Math.sin((2 * Math.PI * i) / 48)])];
-  const holes = (spec.flood.holes || []).map((h) => ({ ...h, hole: ring(h.at, h.diameter / 2), boss: ring(h.at, h.diameter / 2 + (h.wall ?? wall / 2)) }));
-  const bosses = holes.length ? union(holes.map((h) => h.boss)) : [];
-  let space = subtract(outline, union([swept, all(keep)]));
-  // A web, not a slab: with `band`, solid only that far round the moving parts' room, the kept spaces and the
-  // outline's edge; the rest opens up as windows, rounded (every rib a closed loop, so nothing hangs free)
-  if (spec.flood.band > 0) {
-    const band = spec.flood.band, rim = subtract(outline, shrink(outline, band, 'Round'));
-    const web = intersect(space, union([grow(union([swept, all(keep)]), band), rim, bosses]));
-    // (only windows worth having: one no wider than the band, a sliver between ribs, is left solid; the rest rounded)
-    const windows = apart(subtract(space, web)).filter((w) => !empty(shrink(w, band / 2, 'Round'))).map((w) => grow(shrink(w, band / 2, 'Round'), band / 2));
-    space = subtract(space, union(windows));
-  }
-  space = grow(shrink(space, least / 2, 'Round'), least / 2); // no sliver thinner than `least`
-  // Only what's joined to the main frame, a root or your ground: an island (inside an arm's loop, a ring's hole) prints loose
-  // (and its posts: pins of the frame's standing apart from it in the plane, each in a slot in what slides, joined to
-  // it by the frame's straps over and under. They aren't the solver's ground, as yours is: the mechanism is solved, and
-  // its room found, as if they weren't there, so adding one moves nothing else)
-  const posts = all(spec.flood.posts || []);
-  const anchors = union([mine, posts, ...roots]), bits = apart(space), biggest = Math.max(0, ...bits.map(area));
-  const kept = bits.filter((b) => area(b) >= biggest - 1e-9 || area(intersect(b, grow(anchors, TOUCH))) > AREA);
-  let ground = union([anchors, ...kept]);
-  // Each hole's boss must be all frame: inside the outline, clear of the moving parts' room and anything kept open
-  const holed = holes.map((h, i) => {
-    const out = !empty(subtract(h.boss, outline)), open = !empty(intersect(h.boss, union([swept, all(keep)])));
-    return { level: out || open ? 'fail' : 'pass', text: `hole ${i + 1} (⌀${h.diameter} at ${h.at.map((c) => +c.toFixed(1)).join(', ')}) ${out ? 'sticks out of the outline' : open ? 'breaks into the room the moving parts sweep' : `is in solid frame, ${+(h.wall ?? wall / 2).toFixed(2)} mm of wall round it`}`, code: 'lamina.holes', hole: i };
-  });
-  if (holes.length) ground = subtract(ground, union(holes.map((h) => h.hole)));
-  markF('fill');
-  const out = await lamina({ ...spec, flood: undefined, ground, groundRounded: true });
-  markF('final');
-  out.findings.unshift({ level: 'info', text: `the frame is flooded: ${area(ground).toFixed(0)} mm² solid, all but the room the moving parts sweep (${bits.length - kept.length} loose bits left out)`, code: 'lamina.flood' }, ...holed);
-  return out;
-}
-
 export function flexureMaterial({ modulus, strength, name, density }, { safety = 1.5 } = {}) {
   if (!(modulus > 0) || !(strength > 0)) throw new Error('a flexure material needs its modulus and strength (MPa)');
   const yieldStrain = strength / modulus;
