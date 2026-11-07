@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/variables",
-  "version": "0.2.4",
+  "version": "0.3.1",
   "description": "Design values you can trace: every number says where it comes from, and expressions are parsed, never run.",
   "type": "module",
   "exports": {
@@ -29,6 +29,10 @@
     "type": "git",
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/variables"
+  },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/variables#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
   },
   "scripts": {
     "test": "node --test"
