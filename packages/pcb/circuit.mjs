@@ -370,7 +370,8 @@ export function viaHoleGaps(json, { all = false, under = Infinity } = {}) {
 // A routed track closer to a via's hole than the fab allows (JLCPCB measures from the hole, so a small via's thin ring
 // leaves less room than the copper clearance): necked down where it passes (to neck, the fab's smallest track) if
 // that's room enough, else bowed out round the via by what it lacks, the segment's middle stretch moved off, its ends
-// where they were. A change the design checks then find in a new error goes back
+// where they were; last, a via still a little close moved away by what it lacks. A change the design checks then find in
+// a new error goes back
 export async function viaHoleRepair(out, gapMin, neck = 0) {
   const { runAllChecks } = await import('@tscircuit/checks');
   const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type))
@@ -407,6 +408,27 @@ export async function viaHoleRepair(out, gapMin, neck = 0) {
     for (const e of (await errors()).filter((x) => !before.has(x))) for (const [id, w] of was) if (e.includes(`"${id}"`)) {
       out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id).route = w.route; tried.add(w.key); was.delete(id);
     }
+  }
+  // Last, a router's via still a little close (its track can't bow: no room): the via nudged (with its own track's ends
+  // there) a few hundredths of a millimetre, the first way round that clears every track near it, each move checked
+  const vias = new Map(out.filter((e) => e.type === 'pcb_via').map((v) => [v.pcb_via_id, v]));
+  for (const g of short()) {
+    const v = vias.get(g.via.pcb_via_id), own = out.find((e) => e.type === 'pcb_trace' && e.pcb_trace_id === v.pcb_trace_id);
+    if (!own?.rulecad_routed || tried.has(`via:${v.pcb_via_id}`)) continue;
+    tried.add(`via:${v.pcb_via_id}`);
+    const was_ = { x: v.x, y: v.y, route: own.route }, at = (q) => Math.hypot(q.x - was_.x, q.y - was_.y) < 1e-6;
+    const place = (x, y) => { v.x = x; v.y = y; own.route = was_.route.map((q) => (at(q) ? { ...q, x, y } : q)); };
+    const worst = () => Math.min(gapMin, ...viaHoleGaps(out, { all: true, under: gapMin }).filter((h) => h.via === v).map((h) => h.gap));
+    let fixed = false;
+    for (const step of [0.01, 0.02, 0.03, 0.05]) {
+      for (let k = 0; k < 16 && !fixed; k++) {
+        const t = (k / 16) * 2 * Math.PI;
+        place(was_.x + Math.cos(t) * step, was_.y + Math.sin(t) * step);
+        if (worst() >= gapMin - 1e-6 && !(await errors()).some((x) => !before.has(x))) fixed = true;
+      }
+      if (fixed) break;
+    }
+    if (!fixed) place(was_.x, was_.y);
   }
 }
 
