@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, laneOrder, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+import { grid, keyboard, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 
@@ -57,6 +57,58 @@ test('the fab\'s sizes are measured from the board: a via\'s hole, pad and ring,
   assert.ok(texts(await checks([...json, text], v, matrix)).some((t) => /^fail silkscreen the fab can't print: 1 texts under 1 mm high \(0\.5\)/.test(t)), 'text the fab can\'t print');
   const bars = json.filter((e) => e.type === 'pcb_silkscreen_rect');
   assert.ok(bars.length && bars.every((e) => e.stroke_width >= v.jlcpcb.silk_line && e.is_filled), 'the keyboard\'s own bars are solid, stroked as wide as they are');
+});
+
+test('tracks and gaps measured from the board as drawn; a board that can\'t be made is refused or failed', async () => {
+  const v = values({ controller: { value: 'beside', choice: ['beside', 'under'] } });
+  const { board: kb, matrix } = keyboard(v, grid(2, 2, v.mx.pitch));
+  const texts = async (b, vv = v) => (await checks(await render(b), vv, matrix)).map((f) => `${f.level} ${f.text}`);
+  const found = await texts(kb);
+  assert.ok(found.some((t) => /^pass tracks 0\.25 mm or wider, [\d.]+ mm or more apart, measured on the board/.test(t)), found.join('\n'));
+  // Tracks drawn thinner than the fab makes, whatever the design's variables say
+  const thin = { ...kb, traces: kb.traces.map((t, i) => (i === 0 ? { ...t, width: 0.05 } : t)) };
+  assert.ok((await texts(thin, { ...v, track: 0.5 })).some((t) => /^fail a track 0\.05 mm wide, under JLCPCB's 0\.1 mm/.test(t)));
+  // Two parts of one name, a hole through the edge
+  const odd = { ...kb, holes: [...kb.holes, { x: kb.center.x + kb.width / 2, y: kb.center.y, d: 2 }] };
+  assert.ok((await texts(odd)).some((t) => /^fail the board can't be made as drawn: 1 holes break through the board's edge/.test(t)));
+  // A pin in two nets: refused as the board is built
+  const pins = [{ name: 'R1', ftype: 'simple_resistor', footprint: '0603', x: 0, y: 0, layer: 'top' }, { name: 'R2', ftype: 'simple_resistor', footprint: '0603', x: 4, y: 0, layer: 'top' }];
+  await assert.rejects(render({ center: { x: 2, y: 0 }, width: 12, height: 8, thickness: 1.6, parts: pins, nets: { A: ['R1.pin1', 'R2.pin1'], B: ['R1.pin1', 'R2.pin2'] }, traces: [], silk: [] }), /R1\.pin1 is in two nets, A and B/);
+});
+
+test('fromKicad: unplated holes kept, an oval pad oval, a slot drilled at its narrow width, and text that isn\'t a footprint refused', () => {
+  const mod = `(footprint "Test" (layer "F.Cu")
+  (pad "" np_thru_hole circle (at 0 0) (size 1.7 1.7) (drill 1.7) (layers "*.Cu" "*.Mask"))
+  (pad "1" thru_hole oval (at 2.5 0) (size 1.2 2.4) (drill oval 0.8 1.8) (layers "*.Cu" "*.Mask"))
+  (pad "2" thru_hole circle (at -2.5 0) (size 1.6 1.6) (drill 0.9) (layers "*.Cu" "*.Mask"))
+  (pad "3" smd rect (at 0 3 90) (size 1 2) (layers "F.Cu"))
+  (fp_line (start -4 -4) (end 4 4) (layer "F.CrtYd"))
+)`;
+  const f = fromKicad(mod);
+  assert.deepEqual(f.holes, [{ x: 0, y: 0, d: 1.7 }]);
+  assert.deepEqual(f.pads.find((p) => p.pin === '1'), { pin: '1', x: 2.5, y: 0, hole: 0.8, outer: 2.4, rect: { w: 1.2, h: 2.4 }, slot: [0.8, 1.8] });
+  assert.deepEqual(f.pads.find((p) => p.pin === '3'), { pin: '3', smd: true, x: 0, y: -3, w: 2, h: 1 });
+  assert.deepEqual(f.courtyard, { w: 8, h: 8 });
+  assert.throws(() => fromKicad('hello'), /not a KiCad footprint/);
+  assert.throws(() => fromKicad('(footprint "Empty" (layer "F.Cu"))'), /has no pads/);
+});
+
+test('the fab files read back: every pad and hole flashed or drilled where the board has it', async () => {
+  const v = values({ controller: { value: 'beside', choice: ['beside', 'under'] } });
+  const { board } = keyboard(v, grid(2, 2, v.mx.pitch)), json = await render(board), fab = await fabFiles(json, 'pad');
+  // Excellon: the tools, then X…Y… lines under each; the plated file has every plated hole, the unplated every other
+  const holesIn = (text) => { const unit = /METRIC|M71/.test(text) ? 1 : 25.4, tools = {}; let tool = null; const out = [];
+    for (const line of text.split(/\r?\n/)) { let m;
+      if ((m = line.match(/^T(\d+)C([\d.]+)/))) tools[m[1]] = Number(m[2]) * unit;
+      else if ((m = line.match(/^T(\d+)$/))) tool = m[1];
+      else if ((m = line.match(/^X([-\d.]+)Y([-\d.]+)/))) out.push({ x: Number(m[1]) * unit, y: Number(m[2]) * unit, d: tools[tool] }); }
+    return out; };
+  const plated = holesIn(fab['pad-PTH.DRL']), want = json.filter((e) => e.type === 'pcb_plated_hole' || e.type === 'pcb_via');
+  assert.equal(plated.length, want.length, 'every plated hole drilled');
+  for (const h of want) assert.ok(plated.some((p) => Math.abs(p.x - h.x) < 0.01 && Math.abs(Math.abs(p.y) - Math.abs(h.y)) < 0.01 && Math.abs(p.d - h.hole_diameter) < 0.01), `a hole at ${h.x}, ${h.y}`);
+  // Gerber: a flash (D03) for every pad on the front copper
+  const flashes = (fab['pad.GTL'].match(/D03\*/g) || []).length, front = json.filter((e) => e.type === 'pcb_plated_hole' || (e.type === 'pcb_smtpad' && e.layer === 'top')).length;
+  assert.ok(flashes >= front, `${flashes} flashes for ${front} pads`);
 });
 
 const node22 = Number(process.versions.node.split('.')[0]) >= 22;
@@ -127,7 +179,8 @@ test('parts from rule sets: a XIAO, two Qwiic sockets (one turned), a JST PH soc
   assert.equal(count('pcb_trace'), count('source_trace'), 'every link routed');
   const bom = (await fabFiles(json, 'node'))['node-bom.csv'];
   assert.match(bom, /JST SM04B-SRSS-TB/);
-  assert.match(bom, /Seeed Studio XIAO/);
+  assert.match(bom, /"Seeed Studio XIAO","U1","Seeed Studio XIAO, 0.1 in header pins"/, 'its own package, not a Pico guessed from the letter U');
+  assert.match(bom, /"B5819W","D1","sod123"/);
 });
 
 test('drawings for links are lighter and look the same: coordinates rounded, labels and elements kept', () => {

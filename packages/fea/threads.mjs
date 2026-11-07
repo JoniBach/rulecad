@@ -8,7 +8,10 @@ import os from 'node:os';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { jsBackend, pattern, assemble } from './fea.mjs';
 
-const THREADS = Math.max(1, Math.min(8, Number(process.env.FEA_THREADS) || os.cpus().length - 1));
+// FEA_THREADS: a whole number of worker threads, 1 to 8; anything else is refused by name (2.5 was taken as 2.5)
+const asked = process.env.FEA_THREADS;
+if (asked != null && asked !== '' && !/^[1-8]$/.test(asked.trim())) throw new Error(`FEA_THREADS is "${asked}": give a whole number of threads from 1 to 8, or leave it unset`);
+const THREADS = asked ? Number(asked) : Math.max(1, Math.min(8, os.cpus().length - 1));
 // How many operators each worker keeps: an optimisation step registers one per multigrid level (four or so), and
 // their arrays are large (the bin's: 160 MB), so the workers let go of all but the last few. Before this, a run
 // kept every step's and swapped itself to a crawl.
@@ -30,7 +33,7 @@ function workers() {
       Atomics.store(ctl, 3, 0);
       for (const w of list) w.postMessage({ id, ...arrays });
       // Wake the workers to take the message (a product with no operator), then wait for every one to hold the arrays
-      pool.multiply(0);
+      pool.multiply(0); Atomics.store(ctl, 4, 0);
       while (Atomics.load(ctl, 3) < THREADS) Atomics.wait(ctl, 3, Atomics.load(ctl, 3), 50);
       return id;
     },
@@ -38,7 +41,8 @@ function workers() {
       Atomics.store(ctl, 2, 0); Atomics.store(ctl, 1, id);
       Atomics.add(ctl, 0, 1); Atomics.notify(ctl, 0);
       while (Atomics.load(ctl, 2) < THREADS) Atomics.wait(ctl, 2, Atomics.load(ctl, 2), 50);
-      if (Atomics.load(ctl, 4)) { Atomics.store(ctl, 4, 0); throw new Error(`the threads backend was asked for a product on an operator its workers had let go (${KEPT} are kept): a solve reused too long after others`); }
+      if (Atomics.load(ctl, 4)) { Atomics.store(ctl, 4, 0); return false; } // (an operator the workers had let go: the caller registers it again)
+      return true;
     },
   };
   return pool;
@@ -62,7 +66,9 @@ export const threadsBackend = !SHARED_OK ? { ...jsBackend, name: `js (threads ne
       if (id === null) id = workers().register({ dim, nodes: n, rows: pat.rows, cols: pat.cols, values, xs, ys });
     };
     return {
-      multiply(scale, x, y) { ready(scale); xs.set(x); workers().multiply(id); y.set(ys); },
+      // (a solve's again() kept past several others finds its operator let go by the workers, who keep the last few:
+      // registered again, from the arrays this side still holds, and the product taken)
+      multiply(scale, x, y) { ready(scale); xs.set(x); if (!workers().multiply(id)) { id = workers().register({ dim, nodes: n, rows: pat.rows, cols: pat.cols, values, xs, ys }); workers().multiply(id); } y.set(ys); },
       diagonal(scale, d) {
         ready(scale);
         const { rows, self } = pat;

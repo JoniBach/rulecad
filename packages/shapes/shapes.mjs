@@ -4,7 +4,7 @@
 // (optimised.mjs: what cad optimise finds, as a 2D shape to extrude or a 3D solid).
 //   text({ text, height, stroke, segments }) -> a 2D outline of the text, centred on 0: JSCAD's single-line
 //     font, scaled so a capital is height tall, each line thickened to stroke wide (whole print lines, so it prints).
-//     The arrows the font lacks (up, down, left, right) are drawn in the same stroke.
+//     The arrows the font lacks (up, down, left, right) are drawn in the same stroke, alone or among letters.
 //   anchor({ width, depth }, size, at) -> [x, y]: where something size wide and deep goes on a face width ×
 //     depth (centred on 0, y to the back) at one of 9 anchors: tl tc tr / ml mc mr / bl bc br
 import jscad from '@jscad/modeling';
@@ -28,13 +28,31 @@ function arrow(char, height) {
  */
 export function text({ text: input, height, stroke, segments = 8 }) {
   if (!input) throw new Error('text: nothing to write');
+  if (!(height > 0) || !(stroke > 0)) throw new Error(`text: height and stroke are sizes above 0 mm (got ${height} and ${stroke})`);
   if (input in ARROWS) return union(...arrow(input, height).map((l) => expand({ delta: stroke / 2, corners: 'round', segments }, path2.fromPoints({}, l))));
-  const lines = vectorText({ height, input }).filter((l) => l.length > 1);
-  if (!lines.length) throw new Error(`text: the font has none of "${input}"`);
   // One scale for every legend: a capital H is height tall, so a dash or a full stop stays small. Then centre the text
   // on its own outline, and thicken the lines (after scaling, so the stroke is exactly as wide as asked)
   const capital = measureBoundingBox(path2.fromPoints({}, vectorText({ height, input: 'H' }).flat()));
   const k = height / (capital[1][1] - capital[0][1] || 1);
+  // The text in runs between arrows, each run as the font draws it, set one after another; each arrow drawn in a
+  // capital's box between them (the font has none)
+  const lines = [], gap = (capital[1][0] - capital[0][0]) * 0.3, mid = (capital[0][1] + capital[1][1]) / 2;
+  let x = 0;
+  for (const run of input.split(/([↑→↓←])/).filter(Boolean)) {
+    if (run in ARROWS) {
+      const w = (capital[1][1] - capital[0][1]) * 0.7;
+      lines.push(...arrow(run, height).map((l) => l.map(([ax, ay]) => [x + w / 2 + ax / k, mid + ay / k])));
+      x += w + gap;
+      continue;
+    }
+    const drawn = vectorText({ height, input: run }).filter((l) => l.length > 1);
+    if (!drawn.length) { x += gap * 2; continue; } // (spaces)
+    const [lo, hi] = measureBoundingBox(path2.fromPoints({}, drawn.flat())), lead = run.match(/^ */)[0].length;
+    const at = x + lead * gap * 2 - lo[0];
+    lines.push(...drawn.map((l) => l.map(([lx, ly]) => [lx + at, ly])));
+    x = at + hi[0] + gap + (run.match(/ *$/)[0].length) * gap * 2;
+  }
+  if (!lines.length) throw new Error(`text: the font has none of "${input}"`);
   const [lo, hi] = measureBoundingBox(path2.fromPoints({}, lines.flat()));
   const cx = (lo[0] + hi[0]) / 2, cy = (lo[1] + hi[1]) / 2;
   // Each line, scaled; points closer than half a stroke are dropped (thickening them would fold the outline over itself),
@@ -77,7 +95,10 @@ export function cut(a, b, margin = 0.05) {
     const vs = p.vertices, clear = [0, 1, 2].some((k) => Math.max(...vs.map((v) => v[k])) < lo[k] - margin || Math.min(...vs.map((v) => v[k])) > hi[k] + margin);
     (clear ? far : near).push(p);
   }
-  if (!near.length) return a;
+  if (!near.length) { // nothing of a's surface near b: b is clear of a, or wholly inside it (a cavity), which only a whole subtract makes
+    const [alo, ahi] = measureBoundingBox(a);
+    return [0, 1, 2].every((k) => lo[k] > alo[k] && hi[k] < ahi[k]) ? subtract(a, b) : a;
+  }
   return geom3.create([...far, ...geom3.toPolygons(subtract(geom3.create(near), b))]);
 }
 

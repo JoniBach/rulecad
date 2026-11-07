@@ -144,3 +144,20 @@ test('the threads backend is plain JavaScript on Node 20 and older, and says so'
   if (major < 22) assert.match(threadsBackend.name, /^js \(threads need Node 22/);
   else assert.match(threadsBackend.name, /^threads \(\d+\)$/);
 });
+
+test('multigrid says when it can\'t halve a grid far; a kept again() still works after many other solves; FEA_THREADS is a whole number', async () => {
+  const { threadsBackend } = await import('@rulecad/fea/threads');
+  const run = (nx, ny, nz) => { const g = grid({ nx, ny, nz, h: 1 }), f = new Float64Array(g.dofs), fixed = new Uint8Array(g.dofs);
+    for (let k = 0; k <= nz; k++) for (let j = 0; j <= ny; j++) for (let d = 0; d < 3; d++) fixed[3 * g.node(0, j, k) + d] = 1;
+    f[3 * g.node(nx, ny >> 1, nz >> 1) + 2] = -1; return { g, f, fixed, r: solve(g, { scale: new Float64Array(g.cells).fill(1000), ke: cellStiffness(0.3, 3), fixed, loads: [f], method: 'mg', backend: threadsBackend, tol: 1e-6 }) }; };
+  assert.equal(run(16, 8, 8).r.warning, undefined, 'halves down to its coarsest: nothing said');
+  assert.match(run(33, 17, 17).r.warning, /multigrid stopped at 33 × 17 × 17 cells .* multiple of 8/);
+  // a solve's again(), kept while ten more solves come and go (the workers keep the last few operators)
+  const first = run(16, 8, 8), u0 = first.r.u[0];
+  for (let i = 0; i < 10; i++) run(16, 8, 8);
+  const u1 = first.r.again([first.f])[0];
+  assert.ok(Math.abs(u1[3 * first.g.node(16, 4, 4) + 2] / u0[3 * first.g.node(16, 4, 4) + 2] - 1) < 1e-4, 'the same answer again');
+  const { execFileSync } = await import('node:child_process');
+  const out = (() => { try { return execFileSync(process.execPath, ['--input-type=module', '-e', "await import('@rulecad/fea/threads')"], { env: { ...process.env, FEA_THREADS: '2.5' }, encoding: 'utf8', stdio: 'pipe', cwd: new URL('.', import.meta.url) }); } catch (e) { return e.stderr; } })();
+  assert.match(out, /FEA_THREADS is "2\.5": give a whole number of threads from 1 to 8/);
+});
