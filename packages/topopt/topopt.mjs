@@ -85,7 +85,9 @@ export function discretise(p) {
   const all = [...space, ...keep].map(bounds), lo = [], hi = [], n = [];
   for (let a = 0; a < dim; a++) {
     lo.push(Math.min(...all.map((b) => b[a]))); hi.push(Math.max(...all.map((b) => b[dim + a])));
-    n.push(Math.max(1, Math.ceil((hi[a] - lo[a]) / p.cell - 1e-9))); // (up: rounded down, a 40 mm space on 3 mm cells was 39 mm)
+    // (up: rounded down, a 40 mm space on 3 mm cells was 39 mm; but not for a sliver of a cell, a surface poking a few
+    // nanometres past the space it was drawn in, which grew a 12 mm part's grid to 16 cells across)
+    n.push(Math.max(1, Math.ceil((hi[a] - lo[a]) / p.cell - 1e-3)));
   }
   if (dim === 2) for (let a = 0; a < 2; a++) lo[a] -= (n[a] * p.cell - (hi[a] - lo[a])) / 2; // the padding split evenly round the space
   if (dim === 3) { // whole numbers of 2, 4 or 8 cells along every side, for multigrid

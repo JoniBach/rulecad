@@ -441,3 +441,11 @@ test('surface: no faces of zero area where corners meet at a grid face, and stil
   const open = [...edges.keys()].filter((k) => { const [a, b] = k.split('>'); return !edges.has(`${b}>${a}`); }).length;
   assert.equal(open, 0, 'every edge matched by one running the other way');
 });
+
+test('discretise: a space a sliver of a cell over a whole number of cells keeps that number, in 3D its multigrid size too', () => {
+  const box = (w, h) => ({ space: { at: [0, 0, h / 2], size: [w, w, h] }, supports: [{ at: [0, 0, 0.5], size: [12, 12, 1] }], loads: [{ at: [0, 0, h - 1], r: 2, force: [1, 0, 0] }], material: { E: 1, nu: 0.3 }, cell: 1, volume: 0.3 });
+  const exact = discretise(box(12, 24)).grid, over = discretise(box(12.0001, 24.0001)).grid;
+  assert.deepEqual([over.nx, over.ny, over.nz], [exact.nx, exact.ny, exact.nz], 'a surface 0.05 µm out of its space: the same grid');
+  const wider = discretise(box(12.1, 24)).grid;
+  assert.ok(wider.nx > exact.nx, 'a tenth of a cell over is a cell more');
+});
