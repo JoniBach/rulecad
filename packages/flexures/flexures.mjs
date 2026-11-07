@@ -20,6 +20,19 @@ const { translate } = jscad.transforms;
 
 const block = (x, y, z, size) => cuboid({ center: [x, y, z], size });
 
+// Sizes are sizes: a model or a sizer given a length, thickness or width of 0, below 0 or not a number says so by name,
+// where it would give an infinite or negative stiffness, or a length of infinity
+const SIZES = ['length', 'thickness', 'width', 'radius', 'neck', 'flex', 'link', 'span', 'leaf', 'pitch', 'crank', 'stop', 'apart', 'bar', 'rise', 'travel', 'force', 'stroke', 'energy'];
+export function need(what, p = {}, m) {
+  for (const k of SIZES) {
+    if (!(k in p) || p[k] === undefined) continue;
+    const v = p[k], ok = (x) => typeof x === 'number' && Number.isFinite(x) && x > 0;
+    if (Array.isArray(v) ? !v.every(ok) : !ok(v)) throw new Error(`${what}: ${k} is a size above 0 (got ${JSON.stringify(v)})`);
+  }
+  if (m !== undefined && !(m && m.E > 0)) throw new Error(`${what}: the material needs a modulus E above 0 MPa (got ${m?.E})`);
+}
+
+
 /**
  * A leaf spring: a cantilever, fixed at x = 0, pushed along y at its tip. The commonest flexure, and the softest.
  * Stiffness E w t³ / 4L³ (3EI/L³); the strain at the root for a tip travel δ is 3tδ / 2L².
@@ -33,6 +46,7 @@ export function leaf(p) {
 }
 /** @param {Leaf} p @param {Material} m @returns {Model} */
 export function leafModel(p, m) {
+  need('leafModel', arguments[0], arguments[1]);
   if (shaped(p)) return beamModel(p, m, 'leaf');
   const { length: L, thickness: t, width: w } = p, { E } = m;
   const stiffness = (E * w * t ** 3) / (4 * L ** 3), strain = (d) => (3 * t * d) / (2 * L * L);
@@ -51,6 +65,7 @@ export function fixedGuided(p) {
 }
 /** @param {Leaf} p @param {Material} m @returns {Model} */
 export function fixedGuidedModel(p, m) {
+  need('fixedGuidedModel', arguments[0], arguments[1]);
   if (shaped(p)) return beamModel(p, m, 'guided');
   const { length: L, thickness: t, width: w } = p, { E } = m;
   const stiffness = (E * w * t ** 3) / L ** 3, strain = (d) => (3 * t * d) / (L * L);
@@ -98,6 +113,7 @@ function beam(p, ends) {
  * @returns {Model & { least: number, energy: (travel: number) => number }}
  */
 export function beamModel(p, { E }, ends = 'leaf') {
+  need('beamModel', arguments[0], arguments[1]);
   const { length: L, width: w } = p, half = beamProfile(p, ends), n = 600, ds = L / n;
   const s = Array.from({ length: n }, (_, i) => (i + 0.5) * ds), t = s.map((x) => 2 * half(x)), EI = t.map((x) => (E * w * x ** 3) / 12);
   const m0 = ends === 'guided' ? s.reduce((a, x, i) => a + (L - x) / EI[i], 0) / EI.reduce((a, x) => a + 1 / x, 0) : 0; // the moment that holds the end square, per unit force
@@ -131,6 +147,7 @@ export function pivotPair(p) {
  * @param {ShapedLeaf & { angles: number[], near: number }} p @param {Material} m
  */
 export function pivotPairModel(p, { E }) {
+  need('pivotPairModel', arguments[0], arguments[1]);
   const { length: L, thickness: t, width: w, near: d } = p, I = (w * t ** 3) / 12, n = p.angles.length;
   // Per leaf, its tip moved v = −dθ across it and turned φ = θ: energy ½ EI/L³ (12 v² − 12 L v φ + 4 L² φ²), moments
   // EI (6d + 4L) θ / L² at the tip and EI (6d + 2L) θ / L² at the root. The point beyond the tips bends each leaf into
@@ -160,6 +177,7 @@ export function parallelGuide(p) {
 }
 /** @param {Leaf} p @param {Material} m @returns {Model & { drop: (travel: number) => number }} */
 export function parallelGuideModel(p, m) {
+  need('parallelGuideModel', arguments[0], arguments[1]);
   const one = fixedGuidedModel(p, m);
   return { ...one, stiffness: 2 * one.stiffness, drop: (d) => (3 * d * d) / (5 * p.length) };
 }
@@ -179,6 +197,7 @@ export function serpentine({ length, thickness, width, turns, pitch }) {
 }
 /** @param {Leaf & { turns: number }} p @param {Material} m @returns {Model} */
 export function serpentineModel({ length: L, thickness: t, width: w, turns: n }, { E }) {
+  need('serpentineModel', arguments[0], arguments[1]);
   const stiffness = (E * w * t ** 3) / (n * L ** 3), strain = (d) => (3 * t * (d / n)) / (L * L);
   return { stiffness, strain, travel: (e) => (n * L * L * e) / (3 * t), stress: (d) => E * strain(d) };
 }
@@ -221,6 +240,7 @@ export function waveSpring(p) {
 }
 /** Each leg a beam guided at its bends, the legs in series: a first guess, the bends' own give left out (the beam solver has it). */
 export function waveSpringModel({ span: L, thickness: t, width: w, turns: n }, { E }) {
+  need('waveSpringModel', arguments[0], arguments[1]);
   const stiffness = (E * w * t ** 3) / (n * L ** 3), strain = (d) => (3 * t * (d / n)) / (L * L);
   return { stiffness, strain, travel: (e) => (n * L * L * e) / (3 * t), stress: (d) => E * strain(d) };
 }
@@ -245,6 +265,7 @@ export function notchHinge({ radius: R, neck: t, width, arms }) {
  *   stiffness in N·mm a radian; angles in radians
  */
 export function notchHingeModel({ radius: R, neck: t, width: w }, { E, concentration = 1.2 }) {
+  need('notchHingeModel', arguments[0], arguments[1]);
   const stiffness = (2 * E * w * t ** 2.5) / (9 * Math.PI * Math.sqrt(R)), strain = (th) => (concentration * 4 * th * Math.sqrt(t / R)) / (3 * Math.PI);
   const angle = (e) => (3 * Math.PI * e) / (concentration * 4 * Math.sqrt(t / R));
   return { stiffness, strain, angle, travel: angle, stress: (th) => E * strain(th) };
@@ -283,6 +304,7 @@ export function bistable({ length: L, rise: h, thickness: t, width, gap, ends })
  *   on the way over, from the curvature reversing: 2π² h t / L²
  */
 export function bistableModel({ length: L, rise: h, thickness: t, width: w }, { E }) {
+  need('bistableModel', arguments[0], arguments[1]);
   const I = (w * t ** 3) / 12, Q = h / t, strain = (2 * Math.PI * Math.PI * h * t) / (L * L);
   return { bistable: Q > 2.31, Q, stiffness: (384 * E * I) / L ** 3, travel: 2 * h, strain, stress: E * strain };
 }
@@ -305,6 +327,7 @@ export function livingHinge({ flex: l, thickness: t, width, arms }) {
  *   stiffness in N·mm a radian (EI / l); angles in radians
  */
 export function livingHingeModel({ flex: l, thickness: t, width: w }, { E }) {
+  need('livingHingeModel', arguments[0], arguments[1]);
   const I = (w * t ** 3) / 12, strain = (th) => (t * th) / (2 * l);
   const angle = (e) => (2 * l * e) / t;
   return { stiffness: (E * I) / l, strain, angle, travel: angle, stress: (th) => E * strain(th) };
@@ -394,6 +417,7 @@ export function compoundGuide({ length, thickness: t, width, gap, clearance, shu
 }
 /** @param {Leaf} p @param {Material} m @returns {Model & { drop: (travel: number) => number }} */
 export function compoundGuideModel(p, m) {
+  need('compoundGuideModel', arguments[0], arguments[1]);
   const one = fixedGuidedModel(p, m);
   return { stiffness: one.stiffness, strain: (d) => one.strain(d / 2), travel: (e) => 2 * one.travel(e), stress: (d) => m.E * one.strain(d / 2), drop: () => 0 };
 }
@@ -426,6 +450,7 @@ export function letJoint({ width: W, thickness: h, bar: wt, slot: sl, bridge: wb
  *   or the bridges' bending; twist: each half-bar's share of the angle; bend: each bridge's
  */
 export function letJointModel({ width: W, thickness: h, bar: wt, slot: sl, bridge: wb }, { E, nu = 0.35 }) {
+  need('letJointModel', arguments[0], arguments[1]);
   const G = E / (2 * (1 + nu)), a = Math.max(wt, h), b = Math.min(wt, h);
   const J = a * b ** 3 * (1 / 3 - 0.21 * (b / a) * (1 - b ** 4 / (12 * a ** 4))); // a rectangle's torsion constant (Roark)
   const Lt = (W - 3 * wb) / 2, kt = (G * J) / Lt; // a half-bar: from the middle bridge to an end bridge
@@ -473,6 +498,7 @@ export function constantForceCrank({ leaf: l, thickness: t, width, crank, pin = 
  *   reach: from the coupler's pin to the ground pin along the line at rest (r2 cos rest)
  */
 export function constantForceModel({ leaf: l, thickness: t, width: w, crank, rest = 5 }, { E }) {
+  need('constantForceModel', arguments[0], arguments[1]);
   const g = 0.85, Kt = 2.65, r2 = crank ?? l / 2, I = (w * t ** 3) / 12, K = (g * Kt * E * I) / l, rest0 = (rest * Math.PI) / 180;
   // The slider's line is y = 0; the ground pin O sits at (0, −d) beside it, so at rest the pin B is on the line and the
   // leaf straight. The slider at xC: the leaf's pivot P at xP = xC − (1 − γ)l, its rigid part γl long reaching B, which
@@ -501,7 +527,10 @@ export function constantForceModel({ leaf: l, thickness: t, width: w, crank, res
     let i0 = i; while (i0 > 0 && Math.abs(pts[i0 - 1].F - lvl) <= 0.05 * lvl) i0--;
     if (pts[j - 1].s - pts[i0].s > flat.to - flat.from) flat = { from: pts[i0].s, to: pts[j - 1].s, force: lvl };
   }
-  return { force, strain, travel, stroke, flat, stiffness: K, offset: d, reach };
+  // (stiffness is the leaf's, torsional, N·mm a radian: along x the force is the linkage's, force(s), and the energy
+  // stored at s is energy(s), N·mm; a lamina reads those)
+  const energy = (s) => (s <= 0 ? 0 : U(xRest - Math.min(s, stroke)) - U(xRest));
+  return { force, energy, strain, travel, stroke, flat, stiffness: K, torsional: true, offset: d, reach };
 }
 
 /**
@@ -527,6 +556,7 @@ export function ellipticalHinge({ along: a, across: b, neck: t, width, arms }) {
  *   stiffness in N·mm a radian; angles in radians
  */
 export function ellipticalHingeModel({ along: a, across: b, neck: t, width: w }, { E, concentration = 1.2 }) {
+  need('ellipticalHingeModel', arguments[0], arguments[1]);
   const n = 2000, dx = (2 * a) / n;
   let compliance = 0;
   for (let i = 0; i < n; i++) { const x = -a + (i + 0.5) * dx, h = t + 2 * b * (1 - Math.sqrt(Math.max(0, 1 - (x / a) ** 2))); compliance += dx / ((E * w * h ** 3) / 12); }
@@ -560,6 +590,7 @@ export function cartwheel({ spoke: s, thickness: t, width, hub, rim = 3, arm, op
  *   stiffness in N·mm a radian; angles in radians
  */
 export function cartwheelModel({ spoke: s, thickness: t, width: w, hub }, { E }) {
+  need('cartwheelModel', arguments[0], arguments[1]);
   // Each spoke is a beam fixed at the rim, its hub end turned through θ and carried round by rθ. Its moment at the
   // hub is 4EI/s × (1 + 1.5 r/s) θ, which sets the strain; the hub also feels its shear, 6EI/s² × (1 + 2 r/s) θ, at
   // the hub's radius, so the torque a spoke gives is 4EI/s × (1 + 3 r/s + 3 r²/s²) θ.
@@ -593,6 +624,7 @@ export function snapHook({ length: L, thickness: t, width, undercut: y, lead = 3
  *   face is square); undercut: the most the hook may be deflected at a strain
  */
 export function snapHookModel({ length: L, thickness: t, width: w, undercut: y, lead = 30, back = 90 }, { E, friction: mu = 0.3 }) {
+  need('snapHookModel', arguments[0], arguments[1]);
   const m = leafModel({ length: L, thickness: t, width: w }, { E }), P = m.stiffness * y;
   const along = (deg) => { const tan = Math.tan((deg * Math.PI) / 180); return deg >= 90 || mu * tan >= 1 ? Infinity : (P * (mu + tan)) / (1 - mu * tan); };
   return { ...m, force: P, insertion: along(lead), removal: along(back), holds: !Number.isFinite(along(back)), undercut: (e) => m.travel(e) };
@@ -628,6 +660,7 @@ export function ratchetPawl({ length: L, thickness: t, width, root }) {
  *   along the rim to turn the wheel past a tooth; the pawl's strain is at the tooth height
  */
 export function ratchetModel({ teeth: n, radius: R, height: ht }, pawl, { E, friction: mu = 0.3 }) {
+  need('ratchetModel', arguments[0], arguments[2]); need('ratchetModel: the pawl', pawl);
   const m = leafModel(pawl, { E }), pitch = (2 * Math.PI * R) / n, ramp = Math.atan2(ht, pitch), tan = Math.tan(ramp), lift = m.stiffness * ht;
   return { ...m, ramp, pitch, lift, click: mu * tan < 1 ? (lift * (mu + tan)) / (1 - mu * tan) : Infinity, holds: true };
 }
@@ -657,7 +690,8 @@ export function foldedGuide({ length: L, thickness: t, width, gap, clearance, sh
   return union(...parts);
 }
 /** @param {Leaf} p @param {Material} m @returns {Model & { drop: (travel: number) => number }} */
-export function foldedGuideModel(p, m) { return compoundGuideModel(p, m); }
+export function foldedGuideModel(p, m) {
+  need('foldedGuideModel', arguments[0], arguments[1]); return compoundGuideModel(p, m); }
 
 /**
  * A pin joint printed in place: a pin standing from a base, a ring round it with an arm, a cap on the pin that keeps
@@ -736,6 +770,7 @@ export function snapSocket({ diameter: d, depth, clearance = 0.2, wall = 3 }) {
  *   as a snap hook's, for both halves together
  */
 export function snapPinModel({ diameter: d, lip = 0.4, slot, gap = 1, lead = 45, back = 45 }, m) {
+  need('snapPinModel', arguments[0], arguments[1]);
   const half = snapHookModel({ length: slot ?? 3 * d, thickness: (d - gap) / 2, width: 0.8 * d, undercut: lip, lead, back }, m);
   return { ...half, stiffness: 2 * half.stiffness, force: 2 * half.force, insertion: 2 * half.insertion, removal: 2 * half.removal };
 }
@@ -784,7 +819,9 @@ export function angleStop({ width, thickness = 6 }, m, { model, pivot, arm, fact
  */
 export function curvedLeaf({ length: L, thickness: t, width, rise: s }) {
   const rho = (L * L + 4 * s * s) / (8 * s), half = Math.asin(Math.min(1, L / (2 * rho))), n = 40, pts = []; // the arc's radius and half-angle, the chord along x
-  for (let i = 0; i <= n; i++) { const a = -half + (2 * half * i) / n; pts.push([rho * Math.sin(a) + L / 2, rho * (1 - Math.cos(a)) - s + s]); }
+  // (in the frame every flexure is drawn in: the root at the origin, along x, the chord y = 0 from root to tip, so the
+  // arc bows to -y by the rise at its middle)
+  for (let i = 0; i <= n; i++) { const a = -half + (2 * half * i) / n; pts.push([rho * Math.sin(a) + L / 2, rho * (1 - Math.cos(a)) - s]); }
   const off = (p, q, d) => { const dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy) || 1; return [-dy / l * d, dx / l * d]; };
   const left = [], right = [];
   for (let i = 0; i <= n; i++) { const [ox, oy] = off(pts[Math.max(0, i - 1)], pts[Math.min(n, i + 1)], t / 2); left.push([pts[i][0] + ox, pts[i][1] + oy]); right.push([pts[i][0] - ox, pts[i][1] - oy]); }
@@ -797,6 +834,7 @@ export function curvedLeaf({ length: L, thickness: t, width, rise: s }) {
  *   the curvature already puts in as printed (t / 2ρ), to add to the bending strain when the limit is tight
  */
 export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, m) {
+  need('curvedLeafModel', arguments[0], arguments[1]);
   const straight = leafModel({ length: L, thickness: t, width: w }, m), rho = (L * L + 4 * s * s) / (8 * s);
   return { ...straight, preset: t / (2 * rho), range: (e) => [-straight.travel(e), straight.travel(e)] };
 }
@@ -829,11 +867,24 @@ export function contactLeaf({ length, thickness: t, width, stop: a, gap: g, post
  *   stop after
  */
 export function contactLeafModel({ length: L, thickness: t, width: w, stop: a, gap: g }, m) {
-  const one = leafModel({ length: L, thickness: t, width: w }, m), rest = leafModel({ length: L - a, thickness: t, width: w }, m);
-  const contact = (g * 2 * L ** 3) / (3 * L * a * a - a ** 3), force = (d) => (d <= contact ? one.stiffness * d : one.stiffness * contact + rest.stiffness * (d - contact));
-  const strain = (d) => (d <= contact ? one.strain(d) : Math.max(one.strain(contact), rest.strain(d - contact)));
-  const travel = (e) => (one.strain(contact) >= e ? one.travel(e) : contact + rest.travel(e));
-  return { stiffness: one.stiffness, first: one.stiffness, second: rest.stiffness, contact, force, strain, travel, stress: (d) => m.E * strain(d) };
+  need('contactLeafModel', arguments[0], arguments[1]);
+  const one = leafModel({ length: L, thickness: t, width: w }, m), EI = (one.stiffness * L ** 3) / 3, b = L - a;
+  const contact = (g * 2 * L ** 3) / (3 * L * a * a - a ** 3);
+  // After contact the stop props the leaf at a (it pushes, it doesn't clamp): what more the tip takes is a cantilever
+  // propped at a with an overhang b, whose tip moves P b² (3a + 4b) / 12EI. (Clamped at the stop, as it was, overstates
+  // the rate by 1 + 3a/4b)
+  const second = (12 * EI) / (b * b * (3 * a + 4 * b));
+  const force = (d) => (d <= contact ? one.stiffness * d : one.stiffness * contact + second * (d - contact));
+  // The bending moment, largest at the root or at the stop: the first load's, and the second's propped beam (its root
+  // takes back half the stop's moment)
+  const strain = (d) => {
+    if (d <= contact) return one.strain(d);
+    const P1 = one.stiffness * contact, P2 = second * (d - contact), M = Math.max(Math.abs(P1 * L - (P2 * b) / 2), (P1 + P2) * b);
+    return (M * t) / (2 * EI);
+  };
+  const travel = (e) => { if (one.strain(contact) >= e) return one.travel(e); let lo = contact, hi = contact + L; while (strain(hi) < e) hi *= 2; for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (strain(mid) < e) lo = mid; else hi = mid; } return lo; };
+  const energy = (d) => (d <= contact ? (one.stiffness * d * d) / 2 : (one.stiffness * contact * contact) / 2 + one.stiffness * contact * (d - contact) + (second * (d - contact) ** 2) / 2);
+  return { stiffness: one.stiffness, first: one.stiffness, second, contact, force, energy, strain, travel, stress: (d) => m.E * strain(d) };
 }
 
 /**
@@ -861,6 +912,7 @@ export function parallelogram({ link: L, apart, width, radius: R, neck: t, bar =
  *   N/mm; strain and travel through the hinges' angle; rise: how far the coupler lifts along y at a travel
  */
 export function parallelogramModel({ link: L, width: w, radius: R, neck: t }, m) {
+  need('parallelogramModel', arguments[0], arguments[1]);
   const h = notchHingeModel({ radius: R, neck: t, width: w }, m), angle = (d) => Math.asin(Math.min(1, d / L));
   return { stiffness: (4 * h.stiffness) / (L * L), strain: (d) => h.strain(angle(d)), travel: (e) => L * Math.sin(h.angle(e)), stress: (d) => m.E * h.strain(angle(d)), rise: (d) => L * (1 - Math.cos(angle(d))), angle };
 }
@@ -896,6 +948,7 @@ export function tweezers({ spring: s, thickness: t, width, arm, jaw = 6, open, b
  *   force); strain and travel through the squeeze
  */
 export function tweezersModel({ spring: s, thickness: t, width: w, open }, m) {
+  need('tweezersModel', arguments[0], arguments[1]);
   const leafM = fixedGuidedModel({ length: s, thickness: t, width: w }, m);
   return { ...leafM, close: open, squeeze: (closing) => closing, grip: (squeeze) => leafM.stiffness * Math.max(0, squeeze - open) };
 }

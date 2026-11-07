@@ -173,7 +173,8 @@ export function curveModel(p, m) {
  */
 export function curveClearance(p) {
   let best = null;
-  for (const c of curveLines({ ...p, smooth: Math.max(p.smooth ?? 10, 16) })) {
+  const lines = curveLines({ ...p, smooth: Math.max(p.smooth ?? 10, 16) });
+  for (const c of lines) {
     const P = c.path, along = [0];
     for (let i = 1; i < P.length; i++) along.push(along[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
     for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
@@ -181,6 +182,18 @@ export function curveClearance(p) {
       if (along[j] - along[i] < 3 * reach + Math.PI * reach) continue;
       const clear = Math.hypot(P[j][0] - P[i][0], P[j][1] - P[i][1]) - reach;
       if (!best || clear < best.clear) best = { clear, at: [P[i], P[j]] };
+    }
+  }
+  // A mirrored pair: each arm against the other, away from where they join (their ends on the mirror line, which they
+  // share by design): an arm crossing its own mirror line runs into its twin
+  if (lines.length === 2) {
+    // (where they join: an end of each, on the line, within a couple of thicknesses of it; a crossing mid-arm isn't one)
+    const [A, B] = lines, m = p.mirror, n = A.path.length, end = Math.max(2, Math.round(n / 10));
+    const join = (q, k) => (k < end || k >= n - end) && Math.abs(q[1] - m) <= A.at[k] * 2;
+    for (let i = 0; i < n; i++) for (let j = 0; j < B.path.length; j++) {
+      if (join(A.path[i], i) && join(B.path[j], j)) continue;
+      const clear = Math.hypot(B.path[j][0] - A.path[i][0], B.path[j][1] - A.path[i][1]) - (A.at[i] + B.at[j]) / 2;
+      if (!best || clear < best.clear) best = { clear, at: [A.path[i], B.path[j]], mirror: true };
     }
   }
   return best;
