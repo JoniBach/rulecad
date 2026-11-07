@@ -3,7 +3,9 @@
 //   · tips hanging down that start in mid-air
 //   flat undersides above the bed: on a built-in breakaway support (one support gap above a surface), or bridges no
 //   wider than the printer can span: the widest circle that fits in the underside, measured to the edges that are
-//   held up by material below. An underside with no such edge starts in mid-air: it needs support.
+//   held up by material below. An underside with no such edge starts in mid-air: it needs support. Each underside
+//   is taken on its own (the faces at a height joined edge to edge), and one no wider than a print line anywhere is
+//   a step of a slope printed in layers, not a bridge.
 // Z is up and the bed is z = 0: a design is checked as it will print, so print orientation is part of the design.
 
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -119,19 +121,48 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   if (held.length) f('pass', `${mm(held.reduce((s, d) => s + d.area, 0))} mm² rests on a breakaway support (${mm(gap)} mm gap): snip it off after printing`, 'print.breakaway', { area: held.reduce((s, d) => s + d.area, 0), gap });
   const levels = new Map();
   for (const d of flatDown) if (!held.includes(d)) { const k = d.z.toFixed(2); levels.set(k, [...(levels.get(k) || []), d.p]); }
-  // Which faces meet at each edge, so an underside's edges can be checked for material below them
-  const vkey = (v) => v.map((c) => Math.round(c / eps)).join(','), byEdge = new Map();
-  for (const p of polys) p.forEach((a, i) => { const k = [vkey(a), vkey(p[(i + 1) % p.length])].sort().join('|'); byEdge.set(k, [...(byEdge.get(k) || []), p]); });
+  // A point on a segment (in the plane), within eps; and a segment lying along another, overlapping it
+  const onSeg = (pt, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy; if (l < eps * eps) return Math.hypot(pt[0] - a[0], pt[1] - a[1]) <= eps; const t = ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / l; return t >= -eps && t <= 1 + eps && Math.hypot(pt[0] - a[0] - t * dx, pt[1] - a[1] - t * dy) <= eps; };
+  const along = (a, b, c, d) => { // c–d lies on the line of a–b and overlaps it (an edge matched exactly, or by a part of it: a T-junction)
+    const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy); if (l < eps) return false;
+    if (Math.abs((c[0] - a[0]) * dy - (c[1] - a[1]) * dx) / l > eps || Math.abs((d[0] - a[0]) * dy - (d[1] - a[1]) * dx) / l > eps) return false;
+    const t0 = ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / (l * l), t1 = ((d[0] - a[0]) * dx + (d[1] - a[1]) * dy) / (l * l);
+    return Math.min(t0, t1) < 1 - eps && Math.max(t0, t1) > eps;
+  };
   const bridgeMax = printer.bridge ?? 5, line = printer.line ?? 0.4;
-  for (const [z, group] of levels) {
-    const mine = new Set(group), at = boxOf(group);
-    if (Math.min(at.hi[0] - at.lo[0], at.hi[1] - at.lo[1]) < line - eps) continue; // a sliver narrower than a print line: the slicer lays nothing there
-    const held = (a, b) => (byEdge.get([vkey(a), vkey(b)].sort().join('|')) || []).some((p) => !mine.has(p) && Math.min(...p.map((v) => v[2])) < Number(z) - eps);
-    const under = flatUp.filter((u) => Number(z) - u.z > eps && Number(z) - u.z <= gap * 1.5 + eps).map((u) => u.p); // breakaway supports' tops
-    const span = widest(group, held, under);
-    if (span == null) f('warn', `an underside at z ${mm(Number(z))} starts in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`, 'print.mid-air', { z: Number(z) }, at);
-    else if (span > bridgeMax + eps) f('warn', `${mm(span)} mm bridge at z ${mm(Number(z))}: wider than the ${bridgeMax} mm the printer can span, needs supports`, 'print.bridge', { span, max: bridgeMax, z: Number(z) }, at);
-    else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`, 'print.bridge', { span, max: bridgeMax, z: Number(z) });
+  // Each underside on its own: the faces at a level joined where they touch, edge to edge or a corner on another's
+  // edge (a T-junction, which a boolean leaves plenty of). Two pockets' ceilings at one height are two bridges, each
+  // measured to its own held edges, not to the other's across the part
+  const regions = (group) => {
+    const parent = group.map((_, i) => i), root = (i) => (parent[i] === i ? i : (parent[i] = root(parent[i]))), join = (i, j) => { parent[root(i)] = root(j); };
+    const cell = 1, cellOf = (v) => `${Math.floor(v[0] / cell)},${Math.floor(v[1] / cell)}`, byCell = new Map();
+    group.forEach((p, i) => { for (const v of p) { const k = cellOf(v); byCell.set(k, [...(byCell.get(k) || []), [v, i]]); } });
+    group.forEach((p, i) => p.forEach((a, k) => { // every corner of another face on this edge joins the two
+      const b = p[(k + 1) % p.length], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / cell) * 2 + 1, seen = new Set();
+      for (let t = 0; t <= n; t++) {
+        const q = [a[0] + ((b[0] - a[0]) * t) / n, a[1] + ((b[1] - a[1]) * t) / n], ci = Math.floor(q[0] / cell), cj = Math.floor(q[1] / cell);
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { const key = `${ci + di},${cj + dj}`; if (seen.has(key)) continue; seen.add(key); for (const [v, j] of byCell.get(key) || []) if (j !== i && onSeg(v, a, b)) join(i, j); }
+      }
+    }));
+    const out = new Map();
+    group.forEach((p, i) => { const r = root(i); out.set(r, [...(out.get(r) || []), p]); });
+    return [...out.values()];
+  };
+  // The top edges of walls that reach a level from below: an underside's edge lying along one is held up there
+  const wallsAt = (z) => polys.filter((p) => Math.min(...p.map((v) => v[2])) < z - eps).flatMap((p) => p.flatMap((a, i) => { const b = p[(i + 1) % p.length]; return Math.abs(a[2] - z) <= eps && Math.abs(b[2] - z) <= eps ? [[a, b]] : []; }));
+  for (const [z, level] of levels) {
+    const walls = wallsAt(Number(z));
+    for (const group of regions(level)) {
+      const at = boxOf(group);
+      if (Math.min(at.hi[0] - at.lo[0], at.hi[1] - at.lo[1]) < line - eps) continue; // a sliver narrower than a print line: the slicer lays nothing there
+      if (widest(group) < line - eps) continue; // no wider than a line anywhere (a step of a slope cut in layers, a chamfer's tread): one layer's overhang, which the perimeter takes in its stride
+      const held = (a, b) => walls.some(([c, d]) => along(a, b, c, d));
+      const under = flatUp.filter((u) => Number(z) - u.z > eps && Number(z) - u.z <= gap * 1.5 + eps).map((u) => u.p); // breakaway supports' tops
+      const span = widest(group, held, under);
+      if (span == null) f('warn', `an underside at z ${mm(Number(z))} starts in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`, 'print.mid-air', { z: Number(z) }, at);
+      else if (span > bridgeMax + eps) f('warn', `${mm(span)} mm bridge at z ${mm(Number(z))}: wider than the ${bridgeMax} mm the printer can span, needs supports`, 'print.bridge', { span, max: bridgeMax, z: Number(z) }, at);
+      else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`, 'print.bridge', { span, max: bridgeMax, z: Number(z) });
+    }
   }
 
   // One piece, and nothing starting in mid-air, part by part (an assembly's parts are apart on purpose)

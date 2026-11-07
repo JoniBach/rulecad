@@ -261,8 +261,10 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   With `body: 'slide'` it is that body's strap: from it, over or under another, to a post of its own standing in a slot
   there (a clevis), moving with it. With `strap: true` it is the frame's strap: from the frame to a post of the frame's
   (drawn as `ground`, or in a flooded frame as `flood.posts`) standing in a slot in what slides, so a pin in a slot guides it and the two straps, over and
-  under, keep it in the plane. What passes a strap is cut back flat, a gap all round it, and prints on a lower one a
-  gap up: over a long travel an arch would stand taller than the print.
+  under, keep it in the plane. What passes a strap is cut back a gap all round it: flat under an upper strap (the
+  pocket's floor is built up from the bed), and over a lower one with a ceiling that slants in from the pocket's walls
+  at 45°, a layer in for each layer up, so no ledge hangs flat in the air beside the slot. Across the pocket that roof
+  is no taller than the pocket is wide; an arch along a long travel would stand taller than the print.
 - The frame is checked under the mechanism's own forces: at the end of each step, what the flexures pull on it with
   (from the beams) loads it as an elastic plate as tall as the print, held where a hand holds it (`grip`, or its back
   quarter), and every gap to what moves (loose parts too, a disc in its channel, carried along as the frame round it

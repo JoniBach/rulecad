@@ -964,8 +964,9 @@ export async function lamina(spec) {
   // (a bridge may belong to a moving body rather than the frame, `body`: a strap from it over or under another, to a post
   // of its own on the far side, a clevis; it moves with that body, and what passes it is cut back where it ever passes.
   // The frame may have straps too, `strap`: from the frame to a post of its own standing in a slot in what slides, over
-  // it and under it, cut back the same way: flat, a gap all round, not arched as over a floor, which a long travel
-  // would stand taller than the print)
+  // it and under it, cut back the same way: a gap all round, flat under the upper, and over the lower a ceiling
+  // slanting in from the walls at 45° (not arched along the travel as over a floor, which a long travel would stand
+  // taller than the print)
   const bridges = [spec.bridges || []].flat().map((b) => ({ shape: all(b.shape), depth: b.depth ?? layer * 6, gap: b.gap ?? layer * 3, bottom: b.side === 'bottom', owner: b.body ?? 'ground', strap: !!b.body || !!b.strap }));
   for (const br of bridges) if (!parts[br.owner] || parts[br.owner].kind === 'flexure') throw new Error(`a bridge's body "${br.owner}" is not the ground or a body`);
   const arches = []; // a floor strip's: the parts passing over it arched up at 45°, which prints without support
@@ -997,11 +998,22 @@ export async function lamina(spec) {
         // strap narrower than what it passes would otherwise print touching the walls left either side of it (a frame's
         // floor or bridge needs none: what passes is arched or cut clear of it, and a wider arch would stand taller)
         const swept = union(poses.map((P) => moved(mul(inverse(P[n]), P[own]), br.shape)));
-        const cut = intersect(p.shape, br.strap ? grow(swept, br.gap) : swept);
+        const pocket = br.strap ? grow(swept, br.gap) : swept, cut = intersect(p.shape, pocket);
         if (empty(cut)) continue;
-        if (br.strap && br.bottom) { // (a lower strap: what passes over it is cut back flat, a gap over it, and prints on it a support gap up, as a pin's ring does on its floor)
-          cuts.push({ shape: cut, from: 0, to: br.depth + br.gap, body: n, gap: br.gap, bottom: true, ...(onBody ? { owner: own } : {}) });
-          f(height - br.depth - br.gap >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes over it, cut up to ${(br.depth + br.gap).toFixed(2)} mm there`, 'lamina.bridge', { bridge: i, body: n, left });
+        if (br.strap && br.bottom) { // (a lower strap: what passes over it is cut back, a gap over it, and prints on it a support gap up, as a pin's ring does on its floor)
+          const top = br.depth + br.gap;
+          cuts.push({ shape: cut, from: 0, to: top, body: n, gap: br.gap, bottom: true, ...(onBody ? { owner: own } : {}) });
+          // Its ceiling isn't flat: either side of the slot that would be a ledge hanging in the air over the strap,
+          // each layer a string drooping onto it. From the pocket's walls it slants in at 45°, a layer in for each
+          // layer up (a hip roof, no taller than the pocket is wide), so every layer stands on the one below
+          let rise = 0;
+          for (let k = 0; ; k++) {
+            const s = intersect(p.shape, shrink(pocket, (k + 1) * layer));
+            if (empty(s)) break;
+            cuts.push({ shape: s, from: top + k * layer, to: top + (k + 1) * layer });
+            rise = (k + 1) * layer;
+          }
+          f(height - top >= 2 * layer * 5 ? 'pass' : 'fail', `${name}: ${n} passes over it, cut up to ${top.toFixed(2)} mm there, its ceiling slanting in at 45° from the walls to ${(top + rise).toFixed(2)} mm`, 'lamina.bridge', { bridge: i, body: n, left, rise });
           continue;
         }
         if (!br.bottom) {
