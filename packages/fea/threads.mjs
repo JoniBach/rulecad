@@ -48,7 +48,12 @@ function workers() {
   return pool;
 }
 
-export const threadsBackend = {
+// On Node 20 and older the products came out wrong now and then (a few solves in sixty, more with more threads):
+// letting go of an operator's shared memory there corrupts work still running on it, and Node 20 is past its end of
+// life. There, this backend is plain JavaScript under another name: right, only slower. (Node 22 and later: threads)
+const NODE = Number(process.versions.node.split('.')[0]), SHARED_OK = NODE >= 22;
+
+export const threadsBackend = !SHARED_OK ? { ...jsBackend, name: `js (threads need Node 22; this is Node ${NODE})` } : {
   name: `threads (${THREADS})`,
   precision: 64,
   operator(g, ke, cellMatrices) {

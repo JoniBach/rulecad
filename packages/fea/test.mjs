@@ -138,6 +138,13 @@ test('thinShare: the share of a part in members too thin for the grid, from an o
   assert.ok(thinShare(g3, d3).share > 0.99, 'in 3D too: a plate two cells thick is all thin');
 });
 
+test('the threads backend is plain JavaScript on Node 20 and older, and says so', async () => {
+  const { threadsBackend } = await import('./threads.mjs');
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major < 22) assert.match(threadsBackend.name, /^js \(threads need Node 22/);
+  else assert.match(threadsBackend.name, /^threads \(\d+\)$/);
+});
+
 test('multigrid says when it can\'t halve a grid far; a kept again() still works after many other solves; FEA_THREADS is a whole number', async () => {
   const { threadsBackend } = await import('@rulecad/fea/threads');
   const run = (nx, ny, nz) => { const g = grid({ nx, ny, nz, h: 1 }), f = new Float64Array(g.dofs), fixed = new Uint8Array(g.dofs);
