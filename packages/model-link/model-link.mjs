@@ -113,12 +113,12 @@ export async function decode(token) {
   try { model = JSON.parse(new TextDecoder().decode(await pipe(unb64(m[2]), new DecompressionStream('deflate-raw'), LIMITS.bytes))); }
   catch (e) { if (e?.tooBig) throw e; throw new Error('This link is damaged: it may have been cut short when it was shared. Copy the whole link again.'); }
   if (model && Array.isArray(model.shapes)) model = expand(model);
-  const errors = check(model);
+  const errors = problems(model);
   if (errors.length) throw new Error(errors[0]);
   return model;
 }
 
-export function check(m) {
+function problems(m) {
   if (!m || typeof m !== 'object' || !Array.isArray(m.p) || !Array.isArray(m.t)) return ['no model in the link'];
   if (typeof m.q !== 'number' || !Number.isFinite(m.q) || !(m.q > 0)) return ['bad grid size'];
   if (m.p.length % 3 || m.t.length % 3) return ['broken model data'];
@@ -135,6 +135,13 @@ export function check(m) {
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || x.slice(0, 3).some((name, k) => (k === 2 && name == null ? false : typeof name !== 'string' || name.length > LIMITS.text)) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[4] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];
 }
+
+/**
+ * What's wrong with a model's data, as findings (the kit's one result shape): [{ level: 'fail', text, code: 'link.data' }],
+ * empty when it's sound.
+ * @param {any} m @returns {{ level: 'fail', text: string, code: string }[]}
+ */
+export function check(m) { return problems(m).map((text) => ({ level: 'fail', text, code: 'link.data' })); }
 
 // A link's motion, as data: numbers where numbers go, items and joints that exist, nothing that could run
 const nums = (a, n) => Array.isArray(a) && (n == null || a.length === n) && a.every((x) => typeof x === 'number' && Number.isFinite(x));
@@ -157,7 +164,7 @@ function motionOk(mo, places) {
 export function expand(m) {
   const { shapes, place, ...meta } = m;
   if (!Array.isArray(place) || shapes.length > LIMITS.shapes || place.length > LIMITS.places) throw new Error('model too big for a link');
-  for (const sh of shapes) { const e = check(sh); if (e.length) throw new Error(e[0]); }
+  for (const sh of shapes) { const e = problems(sh); if (e.length) throw new Error(e[0]); }
   // (counted before any copy is made: a few placements of a big shape would otherwise be built in full, then refused)
   let count = 0;
   for (const [i] of place) { count += (shapes[i]?.t.length || 0) / 3; if (count > LIMITS.triangles) throw new Error('model too big for a link'); }

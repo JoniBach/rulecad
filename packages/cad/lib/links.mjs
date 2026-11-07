@@ -18,7 +18,7 @@ export const VIEW = process.env.CAD_VIEW_URL || config.viewUrl;
 /** A link to the model page; one the page would turn away is an error here, not when someone opens it. */
 export async function linkTo(model) {
   const errors = checkLink(model.shapes ? expand(model) : model);
-  if (errors.length) throw new Error(`no link: ${errors[0]}`);
+  if (errors.length) throw new Error(`no link: ${errors[0].text}`);
   return `${VIEW}#m=${await encode(model)}`;
 }
 
