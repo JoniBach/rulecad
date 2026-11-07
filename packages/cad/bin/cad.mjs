@@ -17,6 +17,7 @@ import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData } f
 import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData, near } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
+import { readJson } from '../lib/host.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
 import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
@@ -135,6 +136,15 @@ const showProgress = (e) => {
   process.stderr.write(`\r\x1b[K${e.stage === 'sweep' ? `sweeping ${e.joint} ${e.step}/${e.steps}` : `building ${e.item} (${e.done})`}`);
 };
 // Findings: as text (a mark and the words), or with --json as data: { ...about, findings: [{ level, text, code, values, refs, at }] }
+// Every measurement says why it is what it is, and every object its name: a variable with a value and no rule (or an
+// object with no name) is a warning, not a failure, so an older design still builds
+function unruled(object, file) {
+  const out = [], none = Object.entries(object.variables || {}).filter(([, v]) => v && v.value !== undefined && !v.type && !v.rule).map(([n]) => n);
+  if (none.length) out.push({ level: 'warn', text: `${none.length === 1 ? 'a variable has' : `${none.length} variables have`} no rule saying why ${none.length === 1 ? 'it is' : 'they are'} what ${none.length === 1 ? 'it is' : 'they are'}: ${none.slice(0, 6).join(', ')}${none.length > 6 ? ', …' : ''}`, code: 'var.no-rule', refs: { file, variables: none } });
+  if (!object.name) out.push({ level: 'warn', text: 'the object has no "name": give it the file\'s name, so links and releases say what it is', code: 'object.no-name', refs: { file } });
+  return out;
+}
+
 function report(findings, about = {}) {
   if (opt('json')) console.log(JSON.stringify({ ...about, findings }, null, 2));
   else { const mark = { pass: '✓', warn: '!', fail: '✗', info: '·' }; for (const r of findings) console.log(`  ${mark[r.level]} ${r.text}`); }
@@ -335,8 +345,13 @@ async function main() {
   }
 
   if (cmd === 'agents') { // the notes for AI agents, into this workspace (AGENTS.md, and CLAUDE.md pointing at it)
-    const to = path.join(WS, 'AGENTS.md');
-    fs.copyFileSync(path.join(TOOL, 'AGENTS.md'), to);
+    const to = path.join(WS, 'AGENTS.md'), ours = fs.readFileSync(path.join(TOOL, 'AGENTS.md'), 'utf8'), record = paths.cache('agents.md');
+    // An AGENTS.md as cad agents last wrote it (or, with no record of that, one that is an earlier copy of ours) is
+    // brought up to date; one edited here is kept, unless --force
+    const mine = fs.existsSync(to) ? fs.readFileSync(to, 'utf8') : null, last = fs.existsSync(record) ? fs.readFileSync(record, 'utf8') : null;
+    const ourCopy = mine === null || mine === ours || (last !== null ? mine === last : mine.startsWith(ours.split('\n')[0]));
+    if (!ourCopy && !opt('force')) throw new Error('AGENTS.md here has been edited (or isn\'t rulecad\'s): it is kept as it is (cad agents --force replaces it)');
+    fs.writeFileSync(to, ours); fs.mkdirSync(path.dirname(record), { recursive: true }); fs.writeFileSync(record, ours);
     const claude = path.join(WS, 'CLAUDE.md');
     if (!fs.existsSync(claude)) fs.writeFileSync(claude, '@AGENTS.md\n');
     else if (!fs.readFileSync(claude, 'utf8').includes('@AGENTS.md')) fs.appendFileSync(claude, '\n@AGENTS.md\n');
@@ -375,6 +390,11 @@ async function main() {
   if (isAssembly(ref)) return assembly(cmd, ref);
   const [base, at] = ref.split('@');
   const d = at ? materialise(locate(base), at) : locate(ref), set = sets();
+  // A check reads the files against their schemas first: a broken .json is said as that, before a build fails on it
+  if (cmd === 'check' && !at && fs.existsSync(d.json)) {
+    const bad = schemaFindings(readJson(d.json), 'object', path.relative(WS, d.json)).filter((f) => f.level === 'fail'); // (readJson: broken JSON is named with its file)
+    if (bad.length) { say(`${d.project}/${d.name}`); report(bad, { object: `${d.project}/${d.name}` }); process.exitCode = 1; return; }
+  }
   const b = opt('part') ? pick(await build(d, set), { part: opt('part') }) : await build(d, set);
   const tag = `${d.variant ? `-${d.variant}` : ''}${suffix(set)}${opt('part') ? `-${opt('part')}` : ''}`; // in file names
   const title = `${b.object.title || b.object.name}${d.variant ? ` (${d.variant})` : ''}`, version = b.object.version || '0.0.0';
@@ -398,6 +418,7 @@ async function main() {
   }
 
   if (cmd === 'rules') {
+    if (opt('json')) return console.log(JSON.stringify({ object: `${d.project}/${d.name}`, variables: b.entries.map((e) => ({ name: e.name, value: e.value, unit: e.unit || null, expr: e.expr || null, rule: e.rule || null, ...(e.source ? { source: e.source, kind: e.kind || null } : {}) })) }, null, 2));
     for (const e of b.entries) console.log(`${e.name.padEnd(18)} ${`${fmt(e.value)} ${e.unit || ''}`.padEnd(14)} ${e.expr ? `= ${e.expr}  ` : ''}${e.rule || ''}${e.source ? `  [${e.kind ? `${e.kind}: ` : ''}${e.source}]` : ''}${e.set ? '  (set)' : ''}`);
     return;
   }
@@ -413,6 +434,7 @@ async function main() {
     const failed = report([
       ...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]),
       ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
+      ...unruled(b.object, own(d.json)),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}`, code: 'lint.numbers', refs: { file, numbers: raw } }
         : { level: 'pass', text: 'every measurement is a variable', code: 'lint.numbers', refs: { file } },
       ...(b.object.role === 'reference'
@@ -452,8 +474,10 @@ async function main() {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     const fil = filaments(d.project); // one object, a part per part, each in its filament
     fs.writeFileSync(out, await threemf([{ name: `${d.name}${d.variant ? ` ${d.variant}` : ''}`, parts: b.parts.map((p) => ({ name: p.label, triangles: p.triangles, slot: slotOf(fil, p.filament) })) }], { filaments: slots(fil) }));
-    report(filamentNotes(b.parts, fil));
+    const notes = filamentNotes(b.parts, fil);
     if (opt('open')) openInSlicer(out);
+    if (opt('json')) return console.log(JSON.stringify({ object: `${d.project}/${d.name}`, version, file: path.relative(WS, out), findings: notes }, null, 2)); // (one object: the file is in it, not a line after)
+    report(notes);
     return console.log(out);
   }
 
@@ -528,7 +552,7 @@ async function explainValue(ref) {
 async function board(cmd, d, b, { title, version, tag }) {
   const pcb = await pcbEngine(), name = `${d.name}@${version}${tag}`;
   if (cmd === 'check') {
-    console.log(`${title} ${version}`);
+    say(`${title} ${version}`);
     const raw = lint(fs.readFileSync(d.js, 'utf8'));
     // The files first: the object's JSON, and the workspace's own rule sets it uses, against their schemas
     const own = (f) => path.relative(WS, f), ruleFiles = (b.object.uses || []).filter((u) => !u.includes('/')).map((u) => path.join(WS, 'rules', `${u}.json`)).filter((f) => fs.existsSync(f));
@@ -540,8 +564,8 @@ async function board(cmd, d, b, { title, version, tag }) {
       ...(b.units || []).map((u) => ({ level: 'warn', text: `units: ${u.message}`, code: 'units', refs: { file: own(d.json), path: u.path, variable: u.name } })),
       raw.length ? { level: 'fail', text: `numbers in ${path.basename(d.js)} that should be variables: ${raw.map((r) => `line ${r.line}: ${r.text}`).join(', ')}` } : { level: 'pass', text: 'every measurement is a variable' },
       ...(await pcb.checks(b.circuit, b.values, b.matrix, b.source)),
-    ]);
-    if (b.object.orientation) console.log(`  ${b.object.orientation}`);
+    ], { object: `${d.project}/${d.name}`, title, version });
+    if (b.object.orientation) say(`  ${b.object.orientation}`);
     process.exitCode = failed ? 1 : 0;
     return;
   }
@@ -562,7 +586,9 @@ async function board(cmd, d, b, { title, version, tag }) {
   const written = [zip];
   for (const [f, t] of Object.entries(await pcb.kicadFiles(b.circuit, name))) { fs.writeFileSync(path.join(dir, f), t); written.push(path.join(dir, f)); }
   if (b.matrix) { const f = path.join(dir, `${name}-matrix.json`); fs.writeFileSync(f, JSON.stringify(b.matrix, null, 2) + '\n'); written.push(f); }
-  report([{ level: 'pass', text: `fab zip: ${Object.keys(fab).length} files (${Object.keys(fab).filter((f) => !/\.(csv|DRL)$/.test(f)).length} Gerber layers, 2 drill files, BOM, placement)` }]);
+  const done = [{ level: 'pass', text: `fab zip: ${Object.keys(fab).length} files (${Object.keys(fab).filter((f) => !/\.(csv|DRL)$/.test(f)).length} Gerber layers, 2 drill files, BOM, placement)` }];
+  if (opt('json')) return console.log(JSON.stringify({ object: `${d.project}/${d.name}`, version, files: written.map((f) => path.relative(WS, f)), findings: done }, null, 2));
+  report(done);
   for (const f of written) console.log(f);
 }
 
@@ -807,6 +833,7 @@ async function releaseAll(project) {
 // The object's variants, one a line: name, then its inputs
 function variants(d) {
   const v = readObject(d).variants || {};
+  if (opt('json')) return console.log(JSON.stringify({ object: `${d.project}/${d.name}`, variants: v }, null, 2));
   if (!Object.keys(v).length) return console.log(`${d.name} has no variants: add "variants": { "name": { …inputs } } to its .json`);
   for (const [n, set] of Object.entries(v)) console.log(`${`${d.project}/${d.name}:${n}`.padEnd(32)} ${Object.entries(set).map(([k, x]) => `${k}=${x}`).join(', ')}`);
 }
@@ -840,11 +867,13 @@ async function status(project) {
 async function history(ref) {
   const [project, name] = ref.split('/');
   if (!name) {
+    if (opt('json')) return console.log(JSON.stringify({ project, releases: tags(project).reverse() }, null, 2));
     for (const t of tags(project).reverse()) console.log(`${t.tag}  ${t.date}  ${t.kind}  ${t.message}`);
     return status(project);
   }
   const d = locate(ref), done = prints(d);
   const s = await since(d);
+  if (opt('json')) return console.log(JSON.stringify({ object: ref, unreleased: s.kind && s.last ? { kind: s.kind, reasons: s.reasons.map((r) => r.text) } : null, releases: tags(d.project, d.name).reverse().map((t) => ({ ...t, prints: done.filter((x) => x.version === t.version) })) }, null, 2));
   if (s.kind && s.last) { console.log(`unreleased (needs ${s.kind}):`); for (const r of s.reasons) console.log(`  ${r.text}`); }
   for (const t of tags(d.project, d.name).reverse()) {
     console.log(`${t.version.padEnd(8)} ${t.date}  ${t.kind.padEnd(5)}  ${t.message}`);

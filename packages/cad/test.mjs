@@ -149,6 +149,31 @@ test('cad agents: AGENTS.md for AI agents, included from CLAUDE.md without losin
     assert.equal(fs.readFileSync(path.join(ws, 'CLAUDE.md'), 'utf8'), 'Our own notes.\n\n@AGENTS.md\n');
     cad('agents');
     assert.equal(fs.readFileSync(path.join(ws, 'CLAUDE.md'), 'utf8'), 'Our own notes.\n\n@AGENTS.md\n', 'only once');
+    // An AGENTS.md edited here is kept, unless --force
+    fs.appendFileSync(path.join(ws, 'AGENTS.md'), '\n## Our house rules\n');
+    assert.match(cad('agents'), /AGENTS\.md here has been edited .*: it is kept as it is \(cad agents --force replaces it\)/);
+    assert.match(fs.readFileSync(path.join(ws, 'AGENTS.md'), 'utf8'), /Our house rules/);
+    cad('agents', '--force');
+    assert.doesNotMatch(fs.readFileSync(path.join(ws, 'AGENTS.md'), 'utf8'), /Our house rules/);
+  } finally { done(); }
+});
+
+test('cad set refuses a value outside its range, cad add fit a part that isn\'t there; --json is JSON for rules, variants, history and export', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'home/tray');
+    assert.match(cad('set', 'home/tray', 'width=-5'), /not changed: width = -5 is outside its range/);
+    assert.match(cad('set', 'home/tray', 'width=50'), /set width/);
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'));
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/pair.json'), JSON.stringify({ title: 'Pair', kind: 'fit', items: [{ id: 'a', object: 'tray' }, { id: 'b', object: 'tray', at: [100, 0, 0] }] }));
+    assert.match(cad('add', 'fit', 'home/pair', '--a', 'a.lid', '--b', 'b.body', '--min', '0', '--max', '1'), /fit a: tray has no part "lid" \(parts: body\)/);
+    assert.match(cad('add', 'fit', 'home/pair', '--a', 'c.body', '--b', 'b.body', '--min', '0', '--max', '1'), /fit a: no item "c" in home\/pair/);
+    assert.match(cad('add', 'fit', 'home/pair', '--a', 'a.body', '--b', 'b.body', '--min', '0', '--max', '1'), /added a fit/);
+    for (const args of [['rules', 'home/tray'], ['variants', 'home/tray'], ['history', 'home/tray'], ['export', 'home/tray']]) {
+      const out = cad(...args, '--json');
+      assert.doesNotThrow(() => JSON.parse(out), `${args.join(' ')} --json: ${out}`);
+    }
+    assert.ok(JSON.parse(cad('export', 'home/tray', '--json')).file.endsWith('.3mf'));
   } finally { done(); }
 });
 
@@ -417,10 +442,11 @@ test('cad set and cad add: edits that keep the file as it was, and refuse to bre
     cad('new', 'bathroom/soap-tray');
     const f = path.join(ws, 'projects/bathroom/objects/soap-tray.json'), before = fs.readFileSync(f, 'utf8');
     const name = JSON.parse(cad('values', 'bathroom/soap-tray', '--json')).values.find((v) => typeof v.value === 'number' && !v.expr).name;
-    assert.match(cad('set', 'bathroom/soap-tray', `${name}=7`), new RegExp(`set ${name}`));
-    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7);
+    const tw = JSON.parse(before).variables[name].tweak, to = tw ? Math.min(tw.max, Math.max(tw.min, 7)) : 7; // (within its range: a value outside it is refused)
+    assert.match(cad('set', 'bathroom/soap-tray', `${name}=${to}`), new RegExp(`set ${name}`));
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, to);
     assert.match(cad('set', 'bathroom/soap-tray', `${name}=x1c.nope`), /not changed: .*no rule "nope"/);
-    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7, 'a bad edit leaves the file as it was');
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, to, 'a bad edit leaves the file as it was');
     assert.match(cad('set', 'bathroom/soap-tray', 'extra=1'), /has no variable "extra" \(add it with --new/);
     assert.match(cad('set', 'bathroom/soap-tray', 'extra=1', '--new', '--unit', 'mm', '--rule', 'A test'), /set extra/);
     assert.equal(fs.readFileSync(f, 'utf8').split('\n').slice(0, 3).join('\n'), before.split('\n').slice(0, 3).join('\n'), 'the rest of the file is untouched');
@@ -677,6 +703,9 @@ test('the live view: serves its page, streams each step, and its stop button set
     assert.equal(mesh.byteLength, 8 + mesh.getUint32(0, true) * 12 + mesh.getUint32(4, true) * 12);
     assert.match(await (await fetch(new URL('three/three.module.js', view.url))).text(), /WebGLRenderer/);
     assert.equal(view.stopped(), false);
+    const foreign = await fetch(new URL('stop', view.url), { method: 'POST', headers: { Origin: 'http://elsewhere.example' } });
+    assert.equal(foreign.status, 403, 'another site\'s page can\'t stop the run');
+    assert.equal(view.stopped(), false);
     await fetch(new URL('stop', view.url), { method: 'POST' });
     assert.equal(view.stopped(), true);
     reader.cancel();
@@ -880,4 +909,16 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(run(ws, ['check', 'home/pad']).out, /matrix: 4 keys on 2 rows × 2 columns/);
     assert.ok(fs.readdirSync(path.join(ws, '.preview/home')).some((f) => f.endsWith('flick-sequence.svg')), 'the mechanism animated');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a check reads the object against its schema first; a measurement with no rule, and an object with no name, are warnings', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/plain', { variables: { w: { value: 10, unit: 'mm' } } }, BOX.replace(/v\.(d|h)\b/g, 'v.w'));
+    const out = cad('check', 'demo/plain');
+    assert.match(out, /! a variable has no rule saying why it is what it is: w/);
+    const file = path.join(ws, 'projects/demo/objects/plain.json'), j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    j.variables.w.value = null; fs.writeFileSync(file, JSON.stringify(j));
+    assert.match(cad('check', 'demo/plain'), /variables\.w\.value: should be number or string or boolean or array or object, not null/);
+  } finally { done(); }
 });

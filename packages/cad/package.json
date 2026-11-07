@@ -52,8 +52,12 @@
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/cad"
   },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/cad#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
   "dependencies": {
-    "@rulecad/variables": "^0.2.2",
+    "@rulecad/variables": "^0.3.0",
     "@rulecad/keyboard-layout": "^0.1.2",
     "@rulecad/printcheck": "^0.2.0",
     "@rulecad/fit": "^0.3.0",
