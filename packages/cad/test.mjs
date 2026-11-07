@@ -16,7 +16,8 @@ function workspace(config) {
   fs.writeFileSync(path.join(ws, 'package.json'), JSON.stringify({ type: 'module' }));
   if (config) fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify(config));
   fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction');
-  const cad = (...a) => { try { return execFileSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', stdio: 'pipe' }); } catch (e) { return `${e.stdout}${e.stderr}`; } };
+  const env = { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') }; // (the user's own trust list, kept out of their home)
+  const cad = (...a) => { try { return execFileSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', stdio: 'pipe', env }); } catch (e) { return `${e.stdout}${e.stderr}`; } };
   return { ws, cad, done: () => fs.rmSync(ws, { recursive: true, force: true }) };
 }
 
@@ -448,7 +449,11 @@ test('sandbox: a design can make shapes, but not read or write files, reach the 
     assert.match(tryIt('write', "process.binding('fs')"), /restricted|denied|not allowed|binding/i);
     assert.ok(!fs.existsSync(path.join(ws, 'pwned')));
     fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false }));
-    assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs');
+    assert.match(tryIt('untrusted', "import fs from 'node:fs'"), /designs can't import "node:fs"/, 'a workspace that turns the sandbox off isn\'t believed until its user trusts it');
+    assert.match(cad('trust'), /trusted .* for designs run outside the sandbox/);
+    assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs, once its user says so');
+    fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false, targets: { show: 'mine/show.mjs' } }));
+    assert.match(cad('show', 'demo/trusted'), /asks for designs run outside the sandbox and the show target mine\/show\.mjs .* run cad trust once/, 'asking for more is asked again');
   } finally { done(); }
 });
 

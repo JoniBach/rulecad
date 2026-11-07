@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fmt, loadRuleSet } from '../lib/rules.mjs';
-import { WS, TOOL, paths, config, configError, printerOf } from '../lib/workspace.mjs';
+import { WS, TOOL, paths, config, configError, printerOf, asks, trust, trusted } from '../lib/workspace.mjs';
 import { fromKLE } from '@rulecad/keyboard-layout';
 import { target, hasTarget } from '../lib/targets.mjs';
 import { locate, build, pick, lint, readObject, printer, pcbEngine, objectSets } from '../lib/design.mjs';
@@ -43,6 +43,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad import-kle <file> <project>/<name>   a keyboard layout from keyboard-layout-editor.com, into layouts/
   cad clone <board.kicad_pcb | GitHub link> <name>   a published circuit board into rules/<name>.json, to redraw by rules [--source, --licence]
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
+  cad trust                         allow what this workspace's cad.config.json asks (no sandbox, its own targets)
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
@@ -97,7 +98,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad --version                     this tool's version`;
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
-const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
+const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
   'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
@@ -324,6 +325,13 @@ async function main() {
     if (!p.objects.includes(name)) p.objects.push(name);
     fs.writeFileSync(pj, JSON.stringify(p, null, 2) + '\n');
     return console.log(`made projects/${project}/objects/${name}.{js,json}`);
+  }
+
+  if (cmd === 'trust') { // this workspace may do what its cad.config.json asks (designs outside the sandbox, its own targets)
+    const what = asks();
+    if (!what.length) return console.log('this workspace asks for nothing outside the sandbox: nothing to trust');
+    trust();
+    return console.log(`trusted ${WS} for ${what.join(' and ')} (kept in your own list; a workspace that asks for more is asked again)`);
   }
 
   if (cmd === 'agents') { // the notes for AI agents, into this workspace (AGENTS.md, and CLAUDE.md pointing at it)
