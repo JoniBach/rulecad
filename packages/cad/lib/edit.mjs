@@ -39,7 +39,14 @@ export async function setVariables(ref, changes, { create = false } = {}) {
   }
   const json = write(d.json, text, 'object');
   try { // the variables must still resolve: an unknown name or a loop puts the file back as it was
-    resolve(json, { sets: (await objectSets(d, readObject(d))).sets });
+    const { values } = resolve(json, { sets: (await objectSets(d, readObject(d))).sets });
+    // and each changed value must lie within the variable's own range, where it has one (a tweak's min and max)
+    for (const name of Object.keys(changes)) {
+      const t = json.variables?.[name]?.tweak, v = values[name];
+      if (!t || typeof v !== 'number') continue;
+      const lo = typeof t.min === 'number' ? t.min : -Infinity, hi = typeof t.max === 'number' ? t.max : Infinity;
+      if (v < lo || v > hi) throw new CadError('edit.range', `${name} = ${v} is outside its range, ${t.min ?? '…'} to ${t.max ?? '…'} (change the range first if it should go there)`, { file: d.json, path: `variables.${name}` });
+    }
   } catch (e) { fs.writeFileSync(d.json, before); throw Object.assign(e, { file: d.json, message: `not changed: ${e.message}` }); }
   return { file: d.json, changed: Object.keys(changes) };
 }
@@ -66,6 +73,17 @@ export function addToAssembly(ref, what, entry) {
     if (getAt(text, [list]) === undefined) text = setAt(text, [list], []);
     const ids = (getAt(text, [list]) || []).map((x) => x.id).filter(Boolean);
     if (entry.id && ids.includes(entry.id)) throw new CadError('edit.duplicate', `${ref} already has a ${what} "${entry.id}"`, { file });
+    // a fit names parts as item.part: the item must be in the assembly, and the part one its object declares (or body)
+    if (what === 'fit') for (const side of ['a', 'b']) {
+      const named = entry[side]; if (typeof named !== 'string') continue;
+      const [item, part = 'body'] = named.split('@')[0].split('.'), it = (getAt(text, ['items']) || []).find((x) => x.id === item);
+      if (!it) throw new CadError('edit.part', `fit ${side}: no item "${item}" in ${ref} (items: ${(getAt(text, ['items']) || []).map((x) => x.id).join(', ') || 'none'})`, { file });
+      if (it.object) {
+        const [project] = ref.split('/'), obj = path.join(paths.project(project), 'objects', `${String(it.object).split(/[@:]/)[0]}.json`);
+        const parts = fs.existsSync(obj) ? Object.keys(JSON.parse(fs.readFileSync(obj, 'utf8')).parts || { body: {} }) : null;
+        if (parts && !parts.includes(part)) throw new CadError('edit.part', `fit ${side}: ${it.object} has no part "${part}" (parts: ${parts.join(', ')})`, { file });
+      }
+    }
     text = appendAt(text, [list], entry);
   }
   write(file, text, 'assembly');

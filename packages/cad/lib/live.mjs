@@ -221,7 +221,13 @@ if (!isMainThread && workerData?.flag) {
     } else if (req.url.startsWith('/three/') && fs.existsSync(path.join(THREE, path.basename(req.url)))) {
       res.writeHead(200, { 'content-type': 'text/javascript' }); res.end(fs.readFileSync(path.join(THREE, path.basename(req.url))));
     } else if (req.url.startsWith('/frame/') && frames[Number(req.url.slice(7))]) { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(frames[Number(req.url.slice(7))]));
-    } else if (req.url === '/stop' && req.method === 'POST') { Atomics.store(flag, 0, 1); res.end('stopping'); }
+    } else if (req.url === '/stop' && req.method === 'POST') {
+      // Only this page may stop the run: a request from another page (any site open in the browser can post here) comes
+      // with that page's Origin, and is refused
+      const origin = req.headers.origin, host = req.headers.host;
+      if (origin && origin !== `http://${host}`) { res.writeHead(403); return res.end('not from the live view'); }
+      Atomics.store(flag, 0, 1); res.end('stopping');
+    }
     else if (req.url === '/') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(page(title)); }
     else { res.writeHead(404); res.end(); }
   });
