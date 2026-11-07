@@ -156,3 +156,9 @@ test('slicing is quick on a part of upright walls: layers the same as the one be
   assert.ok(found.every((x) => x.level === 'pass'), JSON.stringify(found.filter((x) => x.level !== 'pass')));
   assert.ok(Date.now() - t0 < 20000, `an 80 mm cube took ${Date.now() - t0} ms (it took a minute before)`);
 });
+
+test('slice: false leaves the slow layer checks out, and says so', () => {
+  const f = check(box([0, 0, 0], [10, 10, 10]), printer, { slice: false });
+  assert.ok(f.some((x) => x.code === 'print.unsliced') && !f.some((x) => x.code === 'print.islands'));
+  assert.ok(check(box([0, 0, 0], [10, 10, 10]), printer).some((x) => x.code === 'print.islands'), 'sliced by default');
+});

@@ -655,14 +655,19 @@ function problem(message) {
   document.querySelector('.problem').textContent = message;
 }
 
+// A dropped file's print check, in the rules panel
+function showFindings(findings) {
+  $('rules').replaceChildren(...findings.map((f) => {
+    const li = document.createElement('li'), b = document.createElement('b');
+    b.textContent = { pass: '✓', warn: '!', fail: '✗', info: '·' }[f.level]; li.append(b, ` ${f.text}`); return li;
+  }));
+}
+
 function open(model, hash, findings) {
   split();
   const project = show(model);
   flatViews(model);
-  if (findings) $('rules').replaceChildren(...findings.map((f) => { // a dropped file: what the print check found
-    const li = document.createElement('li'), b = document.createElement('b');
-    b.textContent = { pass: '✓', warn: '!', fail: '✗' }[f.level]; li.append(b, ` ${f.text}`); return li;
-  }));
+  if (findings) showFindings(findings);
   for (const b of document.querySelectorAll('[data-get]')) b.addEventListener('click', () => download(model, b.dataset.get, project.picked()));
   $('copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(`${location.origin}${location.pathname}${hash}`); status('Link copied'); // short stays short
@@ -685,7 +690,13 @@ function welcome() {
       const hash = `#m=${await encode(model)}`;
       history.replaceState(null, '', hash); // the link, without reloading
       document.body.replaceChildren(...page.cloneNode(true).childNodes);
-      open(model, hash, [...check(tris, PRINTER), { level: 'pass', text: `checked for a ${PRINTER.bed} mm bed, ${PRINTER.overhang}° overhangs, ${PRINTER.bridge} mm bridges, Z up` }]);
+      // The quick checks at once (no slicing), the page up and turning; then the whole check, sliced, off the page's
+      // thread, its findings in place of these when it's done
+      const said = { level: 'pass', text: `checked for a ${PRINTER.bed} mm bed, ${PRINTER.overhang}° overhangs, ${PRINTER.bridge} mm bridges, Z up` };
+      open(model, hash, [...check(tris, PRINTER, { slice: false }).filter((f) => f.code !== 'print.unsliced'), { level: 'info', text: 'slicing it, layer by layer…' }, said]);
+      const worker = new Worker(new URL('./check.mjs', import.meta.url), { type: 'module' }), flat = Float32Array.from(tris.flat(2));
+      worker.onmessage = ({ data }) => { worker.terminate(); showFindings(data.findings ? [...data.findings, said] : [{ level: 'warn', text: `the sliced check stopped: ${data.error}` }, said]); };
+      worker.postMessage({ tris: flat, printer: PRINTER }, [flat.buffer]);
     } catch (e) { problem(e.message); }
   };
   box.querySelector('input').addEventListener('change', (e) => take(e.target.files[0]));
