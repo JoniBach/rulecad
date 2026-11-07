@@ -27,5 +27,9 @@
     "type": "git",
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/create-rulecad"
+  },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/create-rulecad#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
   }
 }

@@ -32,7 +32,7 @@ const hole = (x, y, d) => ({ x, y, d });
 
 // An MX switch, PCB mount: two pins, the centre post and the two fixing pegs
 export function mx(name, x, y, m, sch = {}) {
-  return { name, ftype: 'simple_switch', mpn: 'Cherry MX (PCB mount)', x, y, layer: 'top', sch,
+  return { name, ftype: 'simple_switch', mpn: 'Cherry MX (PCB mount)', package: 'Cherry MX, PCB mount', x, y, layer: 'top', sch,
     pads: [pad('pin1', m.pcb_pin1_x, m.pcb_pin1_y, m.pcb_pin_drill, m.pcb_pin_pad), pad('pin2', m.pcb_pin2_x, m.pcb_pin2_y, m.pcb_pin_drill, m.pcb_pin_pad)],
     holes: [hole(0, 0, m.pcb_centre_hole), hole(-m.pcb_peg_x, 0, m.pcb_peg_hole), hole(m.pcb_peg_x, 0, m.pcb_peg_hole)],
     courtyard: { w: m.pcb_body, h: m.pcb_body } }; // the housing's footprint on the board
@@ -45,7 +45,7 @@ export function pico(name, x, y, p, sch = {}) {
     const left = n <= 20, i = left ? n - 1 : 40 - n;
     pins.push(pad(`pin${n}`, (left ? -1 : 1) * p.pin_rows / 2, (19 / 2 - i) * p.pin_pitch, p.pin_hole, p.pin_pad));
   }
-  return { name, ftype: 'simple_chip', mpn: 'Raspberry Pi Pico', x, y, layer: 'top', sch, pads: pins, courtyard: { w: p.width, h: p.length } };
+  return { name, ftype: 'simple_chip', mpn: 'Raspberry Pi Pico', package: 'Raspberry Pi Pico, 0.1 in header pins', x, y, layer: 'top', sch, pads: pins, courtyard: { w: p.width, h: p.length } };
 }
 // Where a Pico pin is, from its centre
 export const picoPin = (n, p) => { const left = n <= 20, i = left ? n - 1 : 40 - n; return { x: (left ? -1 : 1) * p.pin_rows / 2, y: (19 / 2 - i) * p.pin_pitch }; };
@@ -56,7 +56,7 @@ export const picoGpio = (side) => Object.entries(loadRuleSet('pico').rules[`gpio
 // Parts for any board, not only keyboards. Each returns a part as circuit.mjs describes it: put them in board.parts, join
 // their pins with board.nets, and set board.autoroute. o (all optional): { rotation: 0 | 90 | 180 | 270, layer,
 // mpn, labels: { pin1: 'GND', ... }, sch: { x, y } }. Pin labels name the pins in nets ('U1.GND') and on the schematic.
-const chip = (name, x, y, o, more) => ({ name, ftype: 'simple_chip', x, y, layer: o.layer ?? 'top', rotation: o.rotation ?? 0, mpn: o.mpn,
+const chip = (name, x, y, o, more) => ({ name, ftype: 'simple_chip', x, y, layer: o.layer ?? 'top', rotation: o.rotation ?? 0, mpn: o.mpn, ...(o.package ? { package: o.package } : {}),
   courtyard: o.courtyard ?? null, sch: { x: o.sch?.x ?? x / 2, y: o.sch?.y ?? y / 2, pinLabels: o.labels ?? {} }, ...more });
 const pinNo = (p) => Number(p.pin.replace(/\D/g, ''));
 // A rule set's pin map ({ "1": "GND", ... }) as pin labels ({ pin1: 'GND', ... })
@@ -80,25 +80,25 @@ export function header(name, x, y, r, o = {}) {
     pads.push(pad(`pin${i + 1}`, two ? -r.row_spacing / 2 : 0, py, r.drill, r.pad));
     if (two) pads.push(pad(`pin${2 * n - i}`, r.row_spacing / 2, py, r.drill, r.pad));
   }
-  return chip(name, x, y, o, { pads: pads.sort((a, b) => pinNo(a) - pinNo(b)) });
+  return chip(name, x, y, { package: `${two ? '2 × ' : ''}${n}-pin header, ${r.pitch} mm`, ...o }, { pads: pads.sort((a, b) => pinNo(a) - pinNo(b)) });
 }
 
 /** A Seeed Studio XIAO module (any of the family) on header pins, USB at +y, from the xiao rules; pins labelled D0..D10, 5V, GND, 3V3. */
 export const xiao = (name, x, y, r, o = {}) =>
-  header(name, x, y, r, { pins: r.pins / 2, rows: 2, mpn: 'Seeed Studio XIAO', courtyard: { w: r.width, h: r.length }, labels: labelsFrom('xiao', 'pins'), ...o });
+  header(name, x, y, r, { pins: r.pins / 2, rows: 2, mpn: 'Seeed Studio XIAO', package: 'Seeed Studio XIAO, 0.1 in header pins', courtyard: { w: r.width, h: r.length }, labels: labelsFrom('xiao', 'pins'), ...o });
 
 /** A Qwiic / STEMMA QT socket (JST SH, 4 pins, side entry), from the qwiic rules: the plug goes in from +y, the tabs' side. */
 export function qwiic(name, x, y, r, o = {}) {
   const n = r.pins, smd = (k, x, y, w, h) => ({ pin: `pin${k}`, smd: true, hint: String(k), x, y, w, h });
   const pads = Array.from({ length: n }, (_, i) => smd(i + 1, (i - (n - 1) / 2) * r.pitch, r.pad_y, r.pad_w, r.pad_h))
     .concat([-1, 1].map((side, i) => smd(n + i + 1, side * r.tab_x, r.tab_y, r.tab_w, r.tab_h)));
-  return chip(name, x, y, { mpn: 'JST SM04B-SRSS-TB', labels: { ...labelsFrom('qwiic', 'pins'), pin5: 'TAB1', pin6: 'TAB2' }, ...o }, { pads });
+  return chip(name, x, y, { mpn: 'JST SM04B-SRSS-TB', package: 'JST SH, 4 pins, side entry', labels: { ...labelsFrom('qwiic', 'pins'), pin5: 'TAB1', pin6: 'TAB2' }, ...o }, { pads });
 }
 
 /** A JST PH socket (2.0 mm, through-hole), from the jstph rules: o.pins pins in a row along x (default 2). */
 export function jstph(name, x, y, r, o = {}) {
   const n = o.pins ?? 2;
-  return chip(name, x, y, { mpn: `JST B${n}B-PH-K-S`, ...o }, { pads: Array.from({ length: n }, (_, i) => pad(`pin${i + 1}`, (i - (n - 1) / 2) * r.pitch, 0, r.drill, r.pad)) });
+  return chip(name, x, y, { mpn: `JST B${n}B-PH-K-S`, package: `JST PH, ${n} pins`, ...o }, { pads: Array.from({ length: n }, (_, i) => pad(`pin${i + 1}`, (i - (n - 1) / 2) * r.pitch, 0, r.drill, r.pad)) });
 }
 
 // ---------- the keyboard ----------
@@ -203,7 +203,7 @@ export function keyboard(v, keys) {
     pico0 = { x: cx, y: cy };
     right = cx + p.width / 2 + v.margin;
   }
-  const picoPart = { name: 'U1', ftype: 'simple_chip', mpn: 'Raspberry Pi Pico', x: pico0.x, y: pico0.y, layer: 'top', sch,
+  const picoPart = { name: 'U1', ftype: 'simple_chip', mpn: 'Raspberry Pi Pico', package: 'Raspberry Pi Pico, 0.1 in header pins', x: pico0.x, y: pico0.y, layer: 'top', sch,
     pads: Array.from({ length: 40 }, (_, i) => { const q = pinAt(i + 1); return pad(`pin${i + 1}`, q.x - pico0.x, q.y - pico0.y, p.pin_hole, p.pin_pad); }),
     courtyard: under ? null : { w: p.width, h: p.length } };
 
@@ -211,7 +211,7 @@ export function keyboard(v, keys) {
   const pts = (list) => list.map(([x, y]) => ({ x, y })); // a track's corners between its two pads, on the board
   for (const k of keys) {
     parts.push(mx(`K${k.n}`, k.x, k.y, m, { x: k.c * SX, y: -k.r * SY }),
-      { name: `D${k.n}`, ftype: 'simple_diode', footprint: 'sod123', mpn: '1N4148W', x: k.x + diode.x, y: k.y + diode.y, layer: 'bottom', sch: { x: k.c * SX + 1, y: -k.r * SY - 0.8 } });
+      { name: `D${k.n}`, ftype: 'simple_diode', footprint: 'sod123', package: 'SOD-123', mpn: '1N4148W', x: k.x + diode.x, y: k.y + diode.y, layer: 'bottom', sch: { x: k.c * SX + 1, y: -k.r * SY - 0.8 } });
     traces.push({ from: [`D${k.n}`, 'anode'], to: [`K${k.n}`, 'pin1'], width: v.track, path: pts([[k.x + anodeX, k.y + m.pcb_pin1_y]]) });
   }
 
@@ -339,7 +339,7 @@ export function keyboard(v, keys) {
     ...keys.map((k) => rect(k.x + cathodeX + d.pad_w / 2 + silk * 2, k.y + diode.y, silk, d.pad_h, 'bottom')),
     ...(v.margin >= text * 2 ? [{ text: 'rulecad: diodes point to the rows', x: (keyBox.left + keyBox.right) / 2, y: bottom + v.margin / 2, size: text, layer: 'bottom' }] : [])];
   const board = { center: { x: cx, y: cy }, width: right - left, height: top - bottom, thickness: v.thickness, autoroute: under,
-    silk_line: v.jlcpcb.silk_line, silk_text: v.jlcpcb.silk_text, via_hole: 0.3, via_pad: 0.3 + 2 * v.jlcpcb.annular, // (vias with the ring the fab recommends)
+    silk_line: v.jlcpcb.silk_line, silk_text: v.jlcpcb.silk_text, via_hole: 0.3, via_pad: 0.3 + 2 * v.jlcpcb.annular, fab: v.jlcpcb, // (vias with the ring the fab recommends; the fab's minimums for the router)
     parts, traces, silk: marks, holes: corners.map(([x, y]) => hole(x, y, v.m2.clearance)) };
   const matrix = {
     keys: keys.map((k) => ({ key: `K${k.n}`, ...(k.label ? { label: k.label } : {}), row: k.r, col: k.c })),
@@ -354,25 +354,37 @@ export function keyboard(v, keys) {
  * A KiCad footprint (.kicad_mod text) as pad data: { pads, courtyard: { w, h } }, in mm, y up (KiCad's y is down).
  * Keep the result in a rule set's "footprints" (with its source), and place it with footprint(): a design never
  * reads files. SMD pads: { pin, smd: true, x, y, w, h } (a turned pad's w and h swapped); plated holes: { pin, x, y,
- * hole, outer }. Pads named alike (several GND pads) keep their name; unnamed pads (mechanical) are left out.
- * @param {string} text @returns {{ pads: object[], courtyard: { w: number, h: number } | null }}
+ * hole, outer }, an oval one with rect: { w, h } (its copper) and slot: [w, h] (drilled round at the narrow width);
+ * unplated holes in holes: [{ x, y, d }]. Pads named alike (several GND pads) keep their name; unnamed plated pads
+ * (mechanical) are left out. Text that isn't a footprint, or one with nothing on it, is refused.
+ * @param {string} text @returns {{ pads: object[], holes?: object[], courtyard: { w: number, h: number } | null }}
  */
 export function fromKicad(text) {
-  const num = (s) => Number(s), pads = [];
+  if (!/^\s*\((?:footprint|module)\s/.test(text)) throw new Error('fromKicad: not a KiCad footprint (a .kicad_mod starts with "(footprint")');
+  const num = (s) => Number(s), pads = [], holes = [];
   for (const m of text.matchAll(/\(pad\s+"([^"]*)"\s+(smd|thru_hole|np_thru_hole)\s+(\w+)([\s\S]*?)\(layers/g)) {
-    const [, name, kind, , rest] = m;
-    if (!name) continue;
+    const [, name, kind, shape, rest] = m;
     const at = rest.match(/\(at\s+([-\d.]+)\s+([-\d.]+)(?:\s+([-\d.]+))?\)/), sz = rest.match(/\(size\s+([-\d.]+)\s+([-\d.]+)\)/);
     if (!at || !sz) continue;
     const turn = ((num(at[3] || 0) % 180) + 180) % 180 === 90, w = num(turn ? sz[2] : sz[1]), h = num(turn ? sz[1] : sz[2]);
     const x = +num(at[1]).toFixed(4), y = +(-num(at[2])).toFixed(4);
+    const drill = rest.match(/\(drill\s+(oval\s+)?([-\d.]+)(?:\s+([-\d.]+))?/);
+    if (kind === 'np_thru_hole') { if (drill) holes.push({ x, y, d: num(drill[2]) }); continue; } // a locating peg's hole: unplated, nothing to connect
+    if (!name) continue; // (an unnamed plated pad: mechanical)
     if (kind === 'smd') pads.push({ pin: name, smd: true, x, y, w, h });
-    else if (kind === 'thru_hole') { const d = rest.match(/\(drill\s+(?:oval\s+)?([-\d.]+)/); pads.push({ pin: name, x, y, hole: num(d[1]), outer: Math.max(w, h) }); }
+    else if (kind === 'thru_hole') {
+      // An oval pad keeps its oval copper; a slot is drilled round at its narrow width (boards here can't carry slots),
+      // and says so
+      const d = num(drill[2]), slot = drill[1] && drill[3] && num(drill[3]) !== d ? (turn ? [num(drill[3]), d] : [d, num(drill[3])]) : null;
+      const oval = shape === 'oval' || (shape === 'rect' || shape === 'roundrect') ? w !== h : false;
+      pads.push({ pin: name, x, y, hole: slot ? Math.min(...slot) : d, outer: Math.max(w, h), ...(oval ? { rect: { w, h } } : {}), ...(slot ? { slot } : {}) });
+    }
   }
+  if (!pads.length && !holes.length) throw new Error('fromKicad: the footprint has no pads');
   const pts = text.split(/\n\s*(?=\(fp_|\(pad|\(model|\(zone)/).filter((el) => /^\(fp_(?:line|rect|poly)/.test(el) && /\(layer\s+"F\.CrtYd"\)/.test(el)) // the courtyard's corners
     .flatMap((el) => [...el.matchAll(/\((?:start|end|xy)\s+([-\d.]+)\s+([-\d.]+)\)/g)].map((m) => [num(m[1]), num(m[2])]));
   const span = (k) => Math.max(...pts.map((p) => p[k])) - Math.min(...pts.map((p) => p[k]));
-  return { pads, courtyard: pts.length ? { w: +span(0).toFixed(3), h: +span(1).toFixed(3) } : null };
+  return { pads, ...(holes.length ? { holes } : {}), courtyard: pts.length ? { w: +span(0).toFixed(3), h: +span(1).toFixed(3) } : null };
 }
 
 /**
@@ -381,8 +393,8 @@ export function fromKicad(text) {
  * layer, mpn, labels, sch).
  */
 export function footprint(name, data, x, y, o = {}) {
-  const pads = data.pads.map((p, i) => p.smd ? { pin: `pin${p.pin}`, smd: true, hint: String(p.pin), x: p.x, y: p.y, w: p.w, h: p.h } : pad(`pin${p.pin}`, p.x, p.y, p.hole, p.outer));
-  return chip(name, x, y, { courtyard: data.courtyard, mpn: data.mpn, labels: data.labels, ...o }, { pads });
+  const pads = data.pads.map((p, i) => p.smd ? { pin: `pin${p.pin}`, smd: true, hint: String(p.pin), x: p.x, y: p.y, w: p.w, h: p.h } : { ...pad(`pin${p.pin}`, p.x, p.y, p.hole, p.outer), ...(p.rect ? { rect: p.rect } : {}) });
+  return chip(name, x, y, { courtyard: data.courtyard, mpn: data.mpn, labels: data.labels, ...o }, { pads, ...(data.holes?.length ? { holes: data.holes.map((h) => hole(h.x, h.y, h.d)) } : {}) });
 }
 
 // ---------- whole boards from KiCad: clones ----------
@@ -1081,7 +1093,7 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   // part is checked here pad by pad against the outline instead (below)
   // Castellated pads sit on the edge by design: half holes the fab cuts through. They're checked against its rules for them below
   // (with the other pads of their pins: a header pad beside a half hole runs into it, as on a Pico)
-  const castellated = json.filter((e) => e.type === 'pcb_plated_hole' && e.port_hints?.includes('castellated'));
+  const b = board, castellated = json.filter((e) => e.type === 'pcb_plated_hole' && e.port_hints?.includes('castellated'));
   const pinOf = (e) => `${e.pcb_component_id}:${e.port_hints?.[1]}`, edgePins = new Set(castellated.map(pinOf));
   const halves = new Set(json.filter((e) => e.type === 'pcb_plated_hole' && edgePins.has(pinOf(e))).map((e) => e.pcb_plated_hole_id));
   const padsOf = (id) => json.filter((e) => e.pcb_component_id === id && ['pcb_smtpad', 'pcb_plated_hole'].includes(e.type) && !halves.has(e.pcb_plated_hole_id));
@@ -1133,8 +1145,39 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     out.push(moved.length || strays.length ? { level: 'fail', text: `${moved.length + strays.length} of the source's own tracks and vias aren't where the source has them` }
       : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias - short} tracks and ${vias} vias exactly where the source has them${cutBy.length ? `, but for ${escapes} escapes cut back where a routed track turned straight back on them (${gone.length} segments gone, ${short} shortened: ${mm(total)} mm of track in all)` : ''} (only the router's tracks are tidied)` });
   }
-  const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
-  out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
+  // Tracks and the gaps between them, measured from the board as drawn (not the design's variables): the narrowest
+  // track, and the nearest two tracks of different connections come on one layer, edge to edge
+  const segs = traces.flatMap((t) => t.route.slice(1).map((q, i) => ({ a: t.route[i], b: q, id: t.source_trace_id ?? t.pcb_trace_id, w: Math.max(t.route[i].width ?? 0, q.width ?? 0), layer: q.layer ?? t.route[i].layer })))
+    .filter((g) => g.a.route_type !== 'via' && g.b.route_type !== 'via' && g.a.layer === g.b.layer);
+  const widths = segs.map((g) => g.w).filter((w) => w > 0), narrow = widths.length ? Math.min(...widths) : null;
+  let tight = null;
+  const segGap = (g, h) => { const pts = [[g.a, h], [g.b, h], [h.a, g], [h.b, g]].map(([p, o]) => { const dx = o.b.x - o.a.x, dy = o.b.y - o.a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l)) : 0; return Math.hypot(p.x - o.a.x - t * dx, p.y - o.a.y - t * dy); }); return Math.min(...pts) - (g.w + h.w) / 2; };
+  const crosses = (g, h) => { const o = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)); return o(g.a, g.b, h.a) * o(g.a, g.b, h.b) < 0 && o(h.a, h.b, g.a) * o(h.a, h.b, g.b) < 0; };
+  // (tracks of one net may run close or meet: connections are grouped into nets by the ports and nets they share)
+  const parent = new Map(), root = (x) => { while (parent.get(x) !== x) x = parent.get(x); return x; }, join = (x, y) => { parent.set(root(x), root(y)); };
+  for (const t of json.filter((e) => e.type === 'source_trace')) {
+    const ends = [t.source_trace_id, ...(t.connected_source_port_ids || []), ...(t.connected_source_net_ids || [])];
+    for (const e of ends) if (!parent.has(e)) parent.set(e, e);
+    for (const e of ends.slice(1)) join(ends[0], e);
+  }
+  const netOf = (id) => (parent.has(id) ? root(id) : id);
+  const byLayer = new Map(); for (const g of segs) byLayer.set(g.layer, [...(byLayer.get(g.layer) || []), g]);
+  for (const list of byLayer.values()) for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
+    const g = list[x], h = list[y];
+    if (g.id === h.id || netOf(g.id) === netOf(h.id)) continue;
+    const d = crosses(g, h) ? -1 : segGap(g, h);
+    if (d <= 1e-6) continue; // touching: two pieces of one net meeting at a pad (the design checks catch real shorts)
+    if (!tight || d < tight.d) tight = { d, at: [(g.a.x + g.b.x) / 2, (g.a.y + g.b.y) / 2] };
+  }
+  const thinTrack = narrow != null && narrow < j.track_min - 1e-9, closeGap = tight && tight.d < j.gap_min - 1e-9;
+  if (narrow != null) out.push(thinTrack || closeGap
+    ? { level: 'fail', text: [thinTrack && `a track ${mm(narrow)} mm wide, under JLCPCB's ${j.track_min} mm`, closeGap && `two tracks ${mm(tight.d)} mm apart near (${mm(tight.at[0])}, ${mm(tight.at[1])}), under JLCPCB's ${j.gap_min} mm`].filter(Boolean).join('; ') }
+    : { level: 'pass', text: `tracks ${mm(narrow)} mm or wider${tight ? `, ${mm(tight.d)} mm or more apart` : ''}, measured on the board: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
+  // A board that can't be made: no size, a hole through its edge, two parts of one name, a pin in two nets
+  const named = json.filter((e) => e.type === 'source_component').map((e) => e.name), twice = named.filter((n, i) => named.indexOf(n) !== i);
+  const edgeHoles = b.outline ? [] : json.filter((e) => (e.type === 'pcb_hole' || e.type === 'pcb_plated_hole') && !halves.has(e.pcb_plated_hole_id)).filter((e) => { const r = (e.outer_diameter ?? e.hole_diameter ?? e.hole_width ?? 0) / 2; return Math.abs(e.x - b.center.x) + r > b.width / 2 + 1e-6 || Math.abs(e.y - b.center.y) + r > b.height / 2 + 1e-6; });
+  const broken = [!(b.width > 0 && b.height > 0) && `the board is ${mm(b.width)} × ${mm(b.height)} mm`, edgeHoles.length && `${edgeHoles.length} holes break through the board's edge`, twice.length && `two parts named ${[...new Set(twice)].join(', ')}`].filter(Boolean); // (a pin in two nets is refused as the board is built)
+  if (broken.length) out.push({ level: 'fail', text: `the board can't be made as drawn: ${broken.join('; ')}` });
   // Vias and plated holes against the fab's sizes, each measured from the board: the hole, the pad, and the ring
   // between them (under the recommended ring a warning, under the least a failure). A clone's vias as its source
   // has them are the source's design: said, not failed
@@ -1154,9 +1197,11 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   if (json.some((e) => /^pcb_silkscreen_/.test(e.type))) out.push(silkLines.length || silkTexts.length
     ? { level: 'fail', text: `silkscreen the fab can't print: ${[silkLines.length && `${silkLines.length} lines under ${j.silk_line} mm (${mm(Math.min(...silkLines.map((e) => e.stroke_width)))})`, silkTexts.length && `${silkTexts.length} texts under ${j.silk_text} mm high (${mm(Math.min(...silkTexts.map((e) => e.font_size)))})`].filter(Boolean).join(', ')}` }
     : { level: 'pass', text: `silkscreen: lines ${j.silk_line} mm or wider, text ${j.silk_text} mm or taller (JLCPCB's least)` });
+  const unplated = json.filter((e) => e.type === 'pcb_hole').map((e) => e.hole_diameter ?? e.hole_width), npth = j.npth_min ?? 0.5;
+  if (unplated.length && Math.min(...unplated) < npth - 1e-9) out.push({ level: 'fail', text: `an unplated hole of ${mm(Math.min(...unplated))} mm, under JLCPCB's ${npth} mm for unplated holes` });
   const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole' || e.type === 'pcb_via').map((e) => e.hole_diameter ?? e.hole_width);
   if (drills.length) out.push(Math.min(...drills) < j.drill_min ? { level: 'fail', text: `a hole under JLCPCB's ${j.drill_min} mm` } : { level: 'pass', text: `${drills.length} holes, smallest ${Math.min(...drills)} mm (JLCPCB: ${j.drill_min} mm)` });
-  const b = json.find((e) => e.type === 'pcb_board'), size = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm`;
+  const size = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm`;
   if (b.outline) { // a shaped board: every pad and hole inside it
     const reaching = same ? same.reaching : new Set();
     const pads = json.filter((e) => ['pcb_smtpad', 'pcb_plated_hole', 'pcb_hole'].includes(e.type) && !halves.has(e.pcb_plated_hole_id) && !reaching.has(e.pcb_component_id)), out_ = pads.filter((e) => (e.points || [e]).some((q) => !inside(b.outline, q.x, q.y)));
@@ -1258,12 +1303,11 @@ export async function fabFiles(json, name) {
 // The BOM in JLCPCB's columns (Comment, Designator, Footprint, LCSC Part #), one line per kind of part. A part's LCSC
 // number comes with it when it has one (a clone's parts keep the source's); otherwise it's blank until parts are chosen
 // for assembly, and a hand-soldered board doesn't need them.
-const FOOTPRINT = { K: 'Cherry MX, PCB mount', U: 'Raspberry Pi Pico, 0.1 in header pins', D: 'SOD-123' };
 function bom(json) {
   const lines = new Map(), q = (x) => `"${String(x).replace(/"/g, '""')}"`;
   for (const c of json.filter((e) => e.type === 'source_component' && !e.exclude_from_bom)) {
     const lcsc = c.supplier_part_numbers?.jlcpcb?.[0] ?? '', comment = c.display_value || c.manufacturer_part_number || c.name;
-    const footprint = lcsc ? '' : FOOTPRINT[c.name[0]] || ''; // a keyboard's parts by their letter; a part with an LCSC number is known by that
+    const footprint = lcsc ? '' : c.rulecad_package || ''; // the part's own package (a part with an LCSC number is known by that)
     const key = `${comment}|${footprint}|${lcsc}`;
     if (!lines.has(key)) lines.set(key, { comment, footprint, lcsc, refs: [] });
     lines.get(key).refs.push(c.name);
