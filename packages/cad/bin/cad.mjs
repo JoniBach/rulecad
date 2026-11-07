@@ -707,7 +707,7 @@ function changelog(dir, heading, message, reasons) {
   const old = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').replace(/^# .*\n+/, '') : '';
   const entry = `## ${heading}\n\n${message}\n${reasons.length ? `\n${reasons.map((r) => `- ${r.text} (${r.kind})`).join('\n')}\n` : ''}`;
   fs.writeFileSync(f, `# ${path.basename(dir)} changelog\n\n${entry}\n${old}`);
-  return path.relative(WS, f);
+  return path.relative(WS, f).split(path.sep).join('/'); // (git's terms: forward slashes)
 }
 
 async function releaseObject(d, { batch = false } = {}) {
@@ -730,7 +730,7 @@ async function releaseObject(d, { batch = false } = {}) {
   console.log(`${tag} (${kind}${last ? `, from ${last.version}` : ''})`);
   for (const r of reasons) console.log(`  ${r.kind.padEnd(5)} ${r.text}`);
   if (opt('dry-run')) return;
-  const allowed = [...files(d, object), `projects/${d.project}/CHANGELOG.md`, path.relative(WS, printsFile(d))];
+  const allowed = [...files(d, object), `projects/${d.project}/CHANGELOG.md`, path.relative(WS, printsFile(d)).split(path.sep).join('/')];
   if (!batch) onlyChanged(allowed); // releaseAll checked the whole tree first
   fs.writeFileSync(d.json, setAt(fs.readFileSync(d.json, 'utf8'), ['version'], version)); // the object's own version (added, if it had none), nothing else
   const log = changelog(d.dir, `${d.name} ${version} (${kind}), ${today()}`, message, reasons);
