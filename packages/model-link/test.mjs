@@ -129,3 +129,14 @@ test('check gives findings, the kit\'s one result shape', async () => {
   assert.deepEqual(check(null), [{ level: 'fail', text: 'no model in the link', code: 'link.data' }]);
   assert.deepEqual(check({ q: 1, p: [0, 0, 0, 1, 0, 0, 0, 1, 0], t: [0, 1, 2] }), []);
 });
+
+test('STL edge cases: a binary file of NaNs is damaged, an upper-case text STL is read, a quad is split into triangles', async () => {
+  const { fromSTL, fromTriangles } = await import('@rulecad/model-link');
+  const bin = new Uint8Array(84 + 50); new DataView(bin.buffer).setUint32(80, 1, true); for (let k = 0; k < 9; k++) new DataView(bin.buffer).setFloat32(84 + 12 + k * 4, NaN, true);
+  assert.throws(() => fromSTL(bin), /damaged/);
+  const upper = 'SOLID T\nFACET NORMAL 0 0 1\nOUTER LOOP\nVERTEX 0 0 0\nVERTEX 1 0 0\nVERTEX 0 1 0\nENDLOOP\nENDFACET\nENDSOLID T\n';
+  assert.deepEqual(fromSTL(new TextEncoder().encode(upper)), [[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]);
+  const m = fromTriangles([[[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]]]);
+  assert.equal(m.t.length, 6, 'a quad is two triangles');
+  assert.throws(() => fromTriangles([[[0, 0, 0], [1, 0, 0]]]), /three corners or more/);
+});

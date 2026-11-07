@@ -31,6 +31,10 @@
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/model-link"
   },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/model-link#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
   "scripts": {
     "test": "node --test"
   },

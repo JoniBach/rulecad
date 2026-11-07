@@ -48,6 +48,9 @@ async function pipe(bytes, stream, most = Infinity) {
 // fromTriangles([[[x,y,z] ×3], …]) -> { q, p, t }: shared corners merged on a grid ~1/5000 of the model's size.
 /** @param {Triangle[]} tris @returns {{ q: number, p: number[], t: number[] }} */
 export function fromTriangles(tris) {
+  // (triangles: three corners each; a quad or a polygon is split into a fan, not passed through as a broken model)
+  if (tris.some((t) => !Array.isArray(t) || t.length < 3)) throw new Error('fromTriangles: each face needs three corners or more');
+  if (tris.some((t) => t.length > 3)) tris = tris.flatMap((t) => (t.length === 3 ? [t] : t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]])));
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; // a loop: spreading big models overflows the stack
   for (const tri of tris) for (const v of tri) for (let k = 0; k < 3; k++) { if (v[k] < lo[k]) lo[k] = v[k]; if (v[k] > hi[k]) hi[k] = v[k]; }
   const extent = tris.length ? Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) : 0;
@@ -336,11 +339,12 @@ export function fromSTL(bytes) {
     if (count > LIMITS.triangles) throw new Error(`${count} triangles: more than a link can hold (${LIMITS.triangles})`);
     const tris = [];
     for (let i = 0, o = 84; i < count; i++, o += 50) tris.push([0, 1, 2].map((v) => [0, 1, 2].map((k) => view.getFloat32(o + 12 + v * 12 + k * 4, true))));
+    if (tris.some((t) => t.some((p) => p.some((c) => !Number.isFinite(c))))) throw new Error('this STL file is damaged: some of its corners are not numbers');
     return tris;
   }
   const text = new TextDecoder().decode(u8);
-  if (!/^\s*solid\b/.test(text) || !/\bvertex\b/.test(text)) throw new Error("this isn't an STL file");
-  const v = [...text.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]);
+  if (!/^\s*solid\b/i.test(text) || !/\bvertex\b/i.test(text)) throw new Error("this isn't an STL file"); // (keywords in any case: some exporters write SOLID, VERTEX)
+  const v = [...text.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/gi)].map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]);
   if (v.length % 3 || v.some((p) => p.some((c) => !Number.isFinite(c)))) throw new Error('this STL file is damaged');
   if (v.length / 3 > LIMITS.triangles) throw new Error(`${v.length / 3} triangles: more than a link can hold (${LIMITS.triangles})`);
   return Array.from({ length: v.length / 3 }, (_, i) => v.slice(i * 3, i * 3 + 3));
