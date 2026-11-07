@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { WS, config } from './workspace.mjs';
+import { WS, config, needTrust } from './workspace.mjs';
 
 export const hasTarget = (kind) => !!config.targets?.[kind];
 
@@ -15,6 +15,7 @@ export async function target(kind) {
   const name = config.targets?.[kind];
   if (!name) throw new Error(`no "${kind}" target: name one in cad.config.json ("targets": { "${kind}": … })`);
   const own = new URL(`./targets/${name}.mjs`, import.meta.url);
+  if (!fs.existsSync(own)) needTrust(); // (the workspace's own code, run in the tool's process: only once it is trusted)
   const mod = await import(fs.existsSync(own) ? own : pathToFileURL(path.resolve(WS, name)).href);
   if (typeof mod[kind] !== 'function') throw new Error(`target ${name} has no ${kind}()`);
   return mod[kind];

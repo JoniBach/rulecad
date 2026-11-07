@@ -36,10 +36,13 @@ export function tags(project, name) {
 const layoutNames = (d, object) => Object.values(object.variables || {}).filter((v) => v.type === 'layout')
   .flatMap((v) => v.choice || [v.value]).filter((n) => hasLayout(d.project, n, d.layoutsDir));
 
+// A file's path in git's terms: relative to the workspace, forward slashes on every system (git show tag:path needs them)
+const rel = (f) => path.relative(WS, f).split(path.sep).join('/');
+
 // The files a design depends on, relative to the workspace (its git repo): its .js and .json, the rule sets and the layouts it uses.
 // (A board's engine is the tool's code, not the workspace's: its release records engineId() instead.)
 export function files(d, object) {
-  return [path.relative(WS, d.js), path.relative(WS, d.json), ...(object.uses || []).filter((u) => !u.includes('/')).map((u) => `rules/${u}.json`),
+  return [rel(d.js), rel(d.json), ...(object.uses || []).filter((u) => !u.includes('/')).map((u) => `rules/${u}.json`),
     ...layoutNames(d, object).map((n) => `projects/${d.project}/layouts/${n}.json`)];
 }
 
@@ -49,10 +52,10 @@ export function materialise(d, version) {
   try { git('rev-parse', '--verify', `refs/tags/${tag}`); } catch { throw new Error(`no release ${tag} (releases: ${tags(d.project, d.name).map((t) => t.version).join(', ') || 'none'})`); }
   const base = paths.versions(d.project, `${d.name}@${version}`);
   const show = (rel) => git('show', `${tag}:${rel}`);
-  const object = JSON.parse(show(path.relative(WS, d.json)));
+  const object = JSON.parse(show(rel(d.json)));
   fs.mkdirSync(path.join(base, 'rules'), { recursive: true });
   const js = path.join(base, `${d.name}.js`), json = path.join(base, `${d.name}.json`);
-  fs.writeFileSync(js, show(path.relative(WS, d.js)));
+  fs.writeFileSync(js, show(rel(d.js)));
   fs.writeFileSync(json, JSON.stringify(object, null, 2));
   for (const u of (object.uses || []).filter((x) => !x.includes('/'))) fs.writeFileSync(path.join(base, 'rules', `${u}.json`), show(`rules/${u}.json`)); // objects it reads are released on their own
   // The layouts it could pick, as they were then (only files that existed in that release)
