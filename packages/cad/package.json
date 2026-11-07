@@ -68,7 +68,7 @@
     "@rulecad/flexures": "^0.3.0"
   },
   "peerDependencies": {
-    "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0"
+    "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0 || ^0.5.0"
   },
   "peerDependenciesMeta": {
     "@rulecad/pcb": {
