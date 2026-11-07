@@ -156,3 +156,10 @@ test('slicing is quick on a part of upright walls: layers the same as the one be
   assert.ok(found.every((x) => x.level === 'pass'), JSON.stringify(found.filter((x) => x.level !== 'pass')));
   assert.ok(Date.now() - t0 < 20000, `an 80 mm cube took ${Date.now() - t0} ms (it took a minute before)`);
 });
+
+test('a finding\'s at is a point and its box a box, the one shape across the kit', () => {
+  const tee = tri(union(translate([0, 0, 5], cuboid({ size: [4, 4, 10] })), translate([0, 0, 11], cuboid({ size: [20, 4, 2] }))));
+  const f = check(tee, printer).find((x) => x.code === 'print.ledge');
+  assert.ok(Array.isArray(f.at) && f.at.length === 3 && f.box?.lo && f.box?.hi, JSON.stringify(f));
+  assert.ok(f.at.every((v, k) => v >= f.box.lo[k] - 1e-9 && v <= f.box.hi[k] + 1e-9), 'at is inside its box');
+});

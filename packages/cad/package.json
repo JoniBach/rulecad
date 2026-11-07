@@ -55,9 +55,9 @@
   "dependencies": {
     "@rulecad/variables": "^0.2.2",
     "@rulecad/keyboard-layout": "^0.1.2",
-    "@rulecad/printcheck": "^0.2.0",
-    "@rulecad/fit": "^0.3.0",
-    "@rulecad/model-link": "^0.2.0",
+    "@rulecad/printcheck": "^0.3.0",
+    "@rulecad/fit": "^0.4.0",
+    "@rulecad/model-link": "^0.3.0",
     "@rulecad/versions": "^0.1.0",
     "@rulecad/shapes": "^0.4.1",
     "@rulecad/rules": "^0.3.0",
@@ -65,7 +65,7 @@
     "three": "^0.186.1",
     "@rulecad/fea": "^0.2.1",
     "@rulecad/topopt": "^0.2.2",
-    "@rulecad/flexures": "^0.3.0"
+    "@rulecad/flexures": "^0.5.0"
   },
   "peerDependencies": {
     "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0"
