@@ -42,6 +42,41 @@ function tokens(src) {
   return out;
 }
 
+// One grammar: an expression parsed once to a tree, which evaluate() and unitsOf() each walk. Nodes: { n } a number,
+// { id } a name, { op: '+' | '-' | '*' | '/', a, b }, { neg: a } (or { pos: a }), { fn, args }.
+//   expr = term (('+' | '-') term)* · term = unary (('*' | '/') unary)* · unary = ('-' | '+') unary | atom
+//   atom = number | name | name '(' expr (',' expr)* ')' (a function of FNS) | '(' expr ')'
+const trees = new Map(); // (a design reads the same expressions over and over: each is parsed once)
+function parse(src) {
+  const key = String(src);
+  if (trees.has(key)) return trees.get(key);
+  const t = tokens(key);
+  let i = 0;
+  const peek = () => t[i], take = (op) => (t[i]?.op === op ? (i++, true) : false);
+  const expr = () => { let v = term(); for (;;) { if (take('+')) v = { op: '+', a: v, b: term() }; else if (take('-')) v = { op: '-', a: v, b: term() }; else return v; } };
+  const term = () => { let v = unary(); for (;;) { if (take('*')) v = { op: '*', a: v, b: unary() }; else if (take('/')) v = { op: '/', a: v, b: unary() }; else return v; } };
+  const unary = () => (take('-') ? { neg: unary() } : take('+') ? { pos: unary() } : atom());
+  const atom = () => {
+    const k = t[i++];
+    if (!k) throw new Error('ends too soon');
+    if (k.n != null) return { n: k.n };
+    if (k.op === '(') { const v = expr(); if (!take(')')) throw new Error('missing )'); return v; }
+    if (k.id && Object.hasOwn(FNS, k.id) && take('(')) {
+      const args = [expr()];
+      while (take(',')) args.push(expr());
+      if (!take(')')) throw new Error('missing )');
+      return { fn: k.id, args };
+    }
+    if (k.id) return { id: k.id };
+    throw new Error(`unexpected "${k.op}"`);
+  };
+  const tree = expr();
+  if (peek()) throw new Error(`unexpected "${peek().op ?? peek().id ?? peek().n}"`);
+  if (trees.size > 5000) trees.clear();
+  trees.set(key, tree);
+  return tree;
+}
+
 // evaluate("line * 3", lookup) -> number. lookup(name) gives a name's value.
 /**
  * One expression: + - * / and brackets, min, max, round, sind, cosd, tand, over numbers and names. Never runs code.
@@ -51,28 +86,16 @@ function tokens(src) {
  */
 export function evaluate(src, lookup = (name) => { throw new Error(`no value for "${name}"`); }) {
   if (typeof src === 'number') { if (!Number.isFinite(src)) throw new Error('is not a finite number'); return src; }
-  const t = tokens(String(src));
-  let i = 0;
-  const peek = () => t[i], take = (op) => (t[i]?.op === op ? (i++, true) : false);
-  const expr = () => { let v = term(); for (;;) { if (take('+')) v += term(); else if (take('-')) v -= term(); else return v; } };
-  const term = () => { let v = unary(); for (;;) { if (take('*')) v *= unary(); else if (take('/')) v /= unary(); else return v; } };
-  const unary = () => (take('-') ? -unary() : take('+') ? unary() : atom());
-  const atom = () => {
-    const k = t[i++];
-    if (!k) throw new Error('ends too soon');
-    if (k.n != null) return k.n;
-    if (k.op === '(') { const v = expr(); if (!take(')')) throw new Error('missing )'); return v; }
-    if (k.id && Object.hasOwn(FNS, k.id) && take('(')) {
-      const args = [expr()];
-      while (take(',')) args.push(expr());
-      if (!take(')')) throw new Error('missing )');
-      return FNS[k.id](...args);
-    }
-    if (k.id) return lookup(k.id);
-    throw new Error(`unexpected "${k.op}"`);
+  const walk = (x) => {
+    if (x.n != null) return x.n;
+    if (x.id != null) return lookup(x.id);
+    if (x.neg) return -walk(x.neg);
+    if (x.pos) return walk(x.pos);
+    if (x.fn) return FNS[x.fn](...x.args.map(walk));
+    const a = walk(x.a), b = walk(x.b);
+    return x.op === '+' ? a + b : x.op === '-' ? a - b : x.op === '*' ? a * b : a / b;
   };
-  const v = expr();
-  if (peek()) throw new Error(`unexpected "${peek().op ?? peek().id ?? peek().n}"`);
+  const v = walk(parse(src));
   if (!Number.isFinite(v)) throw new Error('is not a finite number');
   return v;
 }
@@ -103,29 +126,25 @@ const combine = (a, b, sign) => { if (a == null) return sign > 0 ? b : null; if 
  */
 export function unitsOf(src, unitOf) {
   if (typeof src === 'number') return { unit: null, problems: [] };
-  const t = tokens(String(src)), problems = [];
-  let i = 0;
-  const take = (op) => (t[i]?.op === op ? (i++, true) : false);
+  let tree;
+  try { tree = parse(src); } catch { return { unit: null, problems: [] }; } // (an expression that doesn't parse: evaluate says so)
+  const problems = [];
   const add = (a, b, op) => { if (!sameUnit(a, b)) problems.push(`${op === '+' ? 'adds' : 'takes'} ${showUnit(b)} ${op === '+' ? 'to' : 'from'} ${showUnit(a)}`); return a ?? b; };
-  const expr = () => { let v = term(); for (;;) { if (take('+')) v = add(v, term(), '+'); else if (take('-')) v = add(v, term(), '-'); else return v; } };
-  const term = () => { let v = unary(); for (;;) { if (take('*')) v = combine(v, unary(), 1); else if (take('/')) v = combine(v, unary(), -1); else return v; } };
-  const unary = () => (take('-') || take('+') ? unary() : atom());
-  const atom = () => {
-    const k = t[i++];
-    if (!k) return null;
-    if (k.n != null) return null;
-    if (k.op === '(') { const v = expr(); take(')'); return v; }
-    if (k.id && Object.hasOwn(FNS, k.id) && take('(')) {
-      const args = [expr()];
-      while (take(',')) args.push(expr());
-      take(')');
-      if (['sind', 'cosd', 'tand'].includes(k.id)) { if (args[0] && !sameUnit(args[0], { deg: 1 })) problems.push(`takes ${k.id} of ${showUnit(args[0])}, not degrees`); return {}; }
-      if (k.id === 'round') return args[0];
+  const walk = (x) => {
+    if (x.n != null) return null;
+    if (x.id != null) return parseUnit(unitOf(x.id));
+    if (x.neg) return walk(x.neg);
+    if (x.pos) return walk(x.pos);
+    if (x.fn) {
+      const args = x.args.map(walk);
+      if (['sind', 'cosd', 'tand'].includes(x.fn)) { if (args[0] && !sameUnit(args[0], { deg: 1 })) problems.push(`takes ${x.fn} of ${showUnit(args[0])}, not degrees`); return {}; }
+      if (x.fn === 'round') return args[0];
       return args.reduce((a, b) => add(a, b, '+'));
     }
-    return k.id ? parseUnit(unitOf(k.id)) : null;
+    const a = walk(x.a), b = walk(x.b);
+    return x.op === '+' || x.op === '-' ? add(a, b, x.op) : combine(a, b, x.op === '*' ? 1 : -1);
   };
-  const v = expr();
+  const v = walk(tree);
   return { unit: v == null ? null : showUnit(v), problems, value: v };
 }
 
