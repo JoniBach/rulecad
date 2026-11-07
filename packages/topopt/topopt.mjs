@@ -85,8 +85,9 @@ export function discretise(p) {
   const all = [...space, ...keep].map(bounds), lo = [], hi = [], n = [];
   for (let a = 0; a < dim; a++) {
     lo.push(Math.min(...all.map((b) => b[a]))); hi.push(Math.max(...all.map((b) => b[dim + a])));
-    n.push(Math.max(1, Math.round((hi[a] - lo[a]) / p.cell)));
+    n.push(Math.max(1, Math.ceil((hi[a] - lo[a]) / p.cell - 1e-9))); // (up: rounded down, a 40 mm space on 3 mm cells was 39 mm)
   }
+  if (dim === 2) for (let a = 0; a < 2; a++) lo[a] -= (n[a] * p.cell - (hi[a] - lo[a])) / 2; // the padding split evenly round the space
   if (dim === 3) { // whole numbers of 2, 4 or 8 cells along every side, for multigrid
     const q = Math.min(...n) >= 16 ? 8 : Math.min(...n) >= 8 ? 4 : 2, build = /^([+-])([xyz])$/.exec(p.overhang ?? '');
     for (let a = 0; a < 3; a++) {
@@ -1019,7 +1020,20 @@ export function surface({ nx, ny, nz, h }, density, origin = [0, 0, 0], { smooth
   // Printable: faces past the limit tipped back, and tips lifted, in turn until neither finds any (each can make work for
   // the other: a lifted tip leaves a face sloping more, a tipped face can leave a corner lowest)
   if (overhang) settle({ vertices: pts, faces }, { overhang, lo, hi, held });
-  return { vertices: pts, faces };
+  return weld(pts, faces, h * 1e-7);
+}
+
+// Corners that ended up in one place (crossings at a grid face, clamped to its corners, then smoothed) merged where a
+// face joins them (a zero-length edge collapsed), and the triangles that leaves with no area dropped. Only joined
+// corners are merged: two that merely touch are kept apart, so the mesh stays closed and folds nowhere
+function weld(pts, faces, tol) {
+  const parent = Int32Array.from(pts.keys()), root = (i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+  const same = (a, b) => Math.abs(pts[a][0] - pts[b][0]) <= tol && Math.abs(pts[a][1] - pts[b][1]) <= tol && Math.abs(pts[a][2] - pts[b][2]) <= tol;
+  for (const f of faces) for (let i = 0; i < 3; i++) { const a = f[i], b = f[(i + 1) % 3]; if (same(a, b)) parent[root(a)] = root(b); }
+  const index = new Map(), out = [];
+  const map = (i) => { const r = root(i); if (!index.has(r)) { index.set(r, out.length); out.push(pts[r]); } return index.get(r); };
+  const kept = faces.map((f) => f.map(map)).filter((f) => f[0] !== f[1] && f[1] !== f[2] && f[0] !== f[2]);
+  return { vertices: out, faces: kept };
 }
 
 /**
