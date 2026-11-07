@@ -143,8 +143,10 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       add('cad_component', { source_component_id: comp.source_component_id, position: { x: part.x, y: part.y, z: 0 }, rotation: { x: 0, y: 0, z: part.rotation ?? 0 }, layer: part.layer,
         subcircuit_id: SUB, rulecad_model: { ...m, source: path, x: part.x, y: part.y, rotation: part.rotation ?? 0, layer: part.layer } }); }
   }
+  // (the vias the router may make: the board's sizes, else ones with the ring a fab recommends, 0.3 in 0.8)
   add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length,
-    width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS });
+    width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS,
+    min_via_hole_diameter: board.via_hole ?? 0.3, min_via_pad_diameter: board.via_pad ?? 0.8 });
 
   for (const { part, comp, pads, sourcePorts, fpEls, at, mirror, size } of placed) {
     // The component sits at the middle of its pads and holes (as tscircuit places it: pick-and-place reads this)
@@ -185,7 +187,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     for (const e of fpEls) {
       if (e.type === 'pcb_fabrication_note_path') add(e.type, { ...own, layer: part.layer, route: e.route.map((q) => at(q.x, q.y)), stroke_width: e.stroke_width });
       if (e.type === 'pcb_fabrication_note_text' || e.type === 'pcb_silkscreen_text') add(e.type, { anchor_alignment: 'center', anchor_position: at(e.anchor_position.x, e.anchor_position.y),
-        font: e.font, font_size: e.type === 'pcb_silkscreen_text' ? 0.5 : e.font_size, layer: part.layer, ...(e.type === 'pcb_silkscreen_text' ? { text: e.text.replace('{REF}', part.name), ccw_rotation: 0 } : { ccw_rotation: mirror < 0 ? 180 : 0, text: e.text }), ...own });
+        font: e.font, font_size: e.type === 'pcb_silkscreen_text' ? board.silk_text ?? 1 : e.font_size, layer: part.layer, ...(e.type === 'pcb_silkscreen_text' ? { text: e.text.replace('{REF}', part.name), ccw_rotation: 0 } : { ccw_rotation: mirror < 0 ? 180 : 0, text: e.text }), ...own });
       if (e.type === 'pcb_courtyard_rect') { const c = size(e.width, e.height); add(e.type, { ...own, layer: part.layer, center: at(e.center.x, e.center.y), width: c.w, height: c.h }); }
     }
   }
@@ -235,7 +237,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
 
   // ---- silkscreen and mounting holes ----
   for (const s of board.silk) {
-    if (s.rect) add('pcb_silkscreen_rect', { pcb_component_id: null, layer: s.layer, center: { x: s.rect.x, y: s.rect.y }, width: s.rect.w, height: s.rect.h, subcircuit_id: SUB, stroke_width: 0.1, is_filled: false });
+    if (s.rect) add('pcb_silkscreen_rect', { pcb_component_id: null, layer: s.layer, center: { x: s.rect.x, y: s.rect.y }, width: s.rect.w, height: s.rect.h, subcircuit_id: SUB, stroke_width: Math.max(board.silk_line ?? 0.15, Math.min(s.rect.w, s.rect.h)), is_filled: true }); // (a bar: stroked as thick as it is, it's solid)
     else add('pcb_silkscreen_text', { anchor_alignment: 'center', anchor_position: { x: s.x, y: s.y }, font: 'tscircuit2024', font_size: s.size, layer: s.layer, text: s.text, ccw_rotation: s.rotation ?? 0, pcb_component_id: null, subcircuit_id: SUB,
       ...(s.to ? { rulecad_to: s.to } : {}) }); // an arrow to what it names, drawn once the label's place is final
   }
@@ -472,7 +474,7 @@ function padsByPin(out) {
 // and a short track (the nearest clear spot, outward from its part first); failing that, a track to a via of its net nearby; failing that, a link for the router to
 // the nearest pad of its net that reaches the plane. Returns { nets: { net: { layer, id } }, links }.
 function planeVias(out, add, board, copper) {
-  const b = out.find((e) => e.type === 'pcb_board'), clear = board.plane_clearance ?? 0.2, via = { hole: board.via_hole ?? 0.3, pad: board.via_pad ?? 0.6 };
+  const b = out.find((e) => e.type === 'pcb_board'), clear = board.plane_clearance ?? 0.2, via = { hole: board.via_hole ?? 0.3, pad: board.via_pad ?? 0.8 };
   const width = board.plane_track ?? board.track ?? 0.25, pins = padsByPin(out), nets = {}, stuck = [];
   const rects = out.filter((e) => e.type === 'pcb_smtpad').map((e) => ({ id: e.pcb_smtpad_id, layer: e.layer, ...smtBounds(e) }));
   const circles = [...out.filter((e) => e.type === 'pcb_plated_hole').map((e) => ({ id: e.pcb_plated_hole_id, x: e.x, y: e.y, r: Math.max(holeSize(e).w, holeSize(e).h) / 2 })),

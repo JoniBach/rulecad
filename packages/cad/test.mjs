@@ -476,6 +476,18 @@ export function main (v) {
     assert.match(ok, /✓ leaf: stopped by the ground at [\d.]+ mm, before its limit/);
     assert.match(ok, /✓ rest to bent: clear all the way/);
     assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/, 'the same from the cache');
+    // The physics, the slow stage, is kept apart (.cache/stages): the sandbox handed it back and the tool wrote it
+    const stages = path.join(ws, '.cache', 'stages'), kept = fs.readdirSync(stages);
+    assert.ok(kept.some((f) => f.startsWith('physics-')) && JSON.parse(fs.readFileSync(path.join(stages, kept.find((f) => f.startsWith('physics-'))), 'utf8')).transitions, `the physics kept as JSON: ${kept.join(', ')}`);
+    // A rule's words aren't what a build is made from: the build is found in the cache, and so is the physics
+    const file = path.join(ws, 'projects', 'demo', 'objects', 'flick.json'), json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    json.variables.len.rule = 'The leaf, reworded'; fs.writeFileSync(file, JSON.stringify(json, null, 2));
+    const before = kept.length;
+    assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/);
+    assert.equal(fs.readdirSync(stages).length, before, 'reworded: nothing computed again');
+    json.variables.bend.value = 0.2; fs.writeFileSync(file, JSON.stringify(json, null, 2));
+    assert.match(cad('check', 'demo/flick'), /✓ rest to bent: clear all the way/);
+    assert.ok(fs.readdirSync(stages).length > before, 'a value changed: the physics made again');
     assert.match(cad('check', 'demo/flick:fused'), /✗ the ground and tip are 0\.1 mm apart at rest: under the 0\.3 mm gap, they print as one/);
     const outs = cad('animate', 'demo/flick').trim().split('\n'), out = outs.find((l) => l.endsWith('.svg'));
     assert.ok(out.endsWith('flick-sequence.svg') && /<svg[\s\S]*<animate attributeName="display"[\s\S]*rest to bent/.test(fs.readFileSync(out, 'utf8')));
@@ -557,6 +569,7 @@ test('optimising a problem: cad optimise draws it and caches it, a design builds
     assert.match(cad('optimise', 'beam/arm:nope'), /no variant "nope"/);
     const checked = cad('check', 'beam/arm');
     assert.match(checked, /✓ arm down: moves [\d.]+ mm under 10 N/);
+    assert.ok(!/under 4 cells/.test(checked) || /! arm: [\d.]+% of the part is in members under 4 cells \([\d.]+ mm\) thick/.test(checked), 'thin members, if any, are a warning with the cell to use');
     assert.match(checked, /· arm side|✓ arm side/);
     assert.match(checked, /✓ volume [\d.]+ mm³/);
     assert.ok(fs.existsSync(path.join(ws, '.preview', 'beam', 'arm-analysis-arm.svg')));

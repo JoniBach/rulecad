@@ -16,6 +16,7 @@ r.u[0];            // each node's movement: x at 2n, y at 2n + 1
 r.compliance[0];   // the load times how far it moved (N·mm): lower is stiffer
 r.stress[0];       // each cell's von Mises stress (MPa)
 r.deflection[0];   // { most, at }: the largest movement of solid material, and where
+r.thin;            // { share, cells }: how much of the part is in members under 4 cells thick (thinShare), where a cell's stiffness is rough
 ```
 
 - **3D:** give the grid `nz` too (`grid({ nx, ny, nz, h })`) and every node has x, y and z.

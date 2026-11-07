@@ -50,7 +50,14 @@ function grid(T, cell) {
   });
   const seen = new Uint32Array(T.length);
   let stamp = 0;
-  return (x, y, z, best) => {
+  // The triangles in every cube a box touches (each once)
+  const within = (blo, bhi) => {
+    stamp++;
+    const out = [], a = [0, 1, 2].map((k) => f(blo[k])), b = [0, 1, 2].map((k) => f(bhi[k]));
+    for (let i = a[0]; i <= b[0]; i++) for (let j = a[1]; j <= b[1]; j++) for (let k = a[2]; k <= b[2]; k++) for (const n of cells.get(key(i, j, k)) || []) { if (seen[n] !== stamp) { seen[n] = stamp; out.push(n); } }
+    return out;
+  };
+  const nearest = (x, y, z, best) => {
     stamp++;
     const ci = f(x), cj = f(y), ck = f(z);
     const most = Math.max(...[0, 1, 2].map((k) => Math.max(Math.abs([ci, cj, ck][k] - lo[k]), Math.abs(hi[k] - [ci, cj, ck][k]))));
@@ -64,6 +71,7 @@ function grid(T, cell) {
     }
     return best;
   };
+  return Object.assign(nearest, { within });
 }
 
 // The closest gap between two sets of faces (mm), from each one's corners and edge midpoints to the other's faces.
@@ -96,7 +104,42 @@ export function closestAt(polysA, polysB, reach = 2) {
     for (const q of pts.values()) { const d = nearest(q[0], q[1], q[2], best); if (d < best) { best = d; at = q; } }
   };
   probe(A, B); probe(B, A);
+  // Two solids that run into each other have no gap, however far their corners are from each other's faces (a peg
+  // through a plate, a cube wholly inside another): their surfaces cross, or one is inside the other
+  const o = A.length && B.length && boxesMeet(bounds(A), bounds(B)) ? overlap(A, B) : null;
+  if (o) return { gap: 0, at: o, overlap: true };
   return { gap: best, at };
+}
+
+/**
+ * Do two closed solids run into each other? Their surfaces cross (an edge of one passes through a face of the
+ * other), or a corner of one lies inside the other. Where, or null.
+ * @param {Face[]} polysA @param {Face[]} polysB
+ * @returns {Point | null}
+ */
+export function overlapAt(polysA, polysB) { return overlap(tris(polysA), tris(polysB)); }
+const boxesMeet = (p, q) => [0, 1, 2].every((k) => p.lo[k] <= q.hi[k] && q.lo[k] <= p.hi[k]);
+function overlap(A, B) {
+  if (!A.length || !B.length) return null;
+  const crossing = (P, T) => { // an edge of P through a face of T
+    const g = grid(T, 2);
+    for (const t of P) {
+      const lo = [0, 1, 2].map((k) => Math.min(t[0][k], t[1][k], t[2][k])), hi = [0, 1, 2].map((k) => Math.max(t[0][k], t[1][k], t[2][k]));
+      const near = g.within(lo, hi);
+      if (!near.length) continue;
+      for (let i = 0; i < 3; i++) {
+        const a = t[i], b = t[(i + 1) % 3], d = sub(b, a);
+        for (const n of near) { const u = through(a, d, T[n][0], T[n][1], T[n][2]); if (u != null) return [a[0] + d[0] * u, a[1] + d[1] * u, a[2] + d[2] * u]; }
+      }
+    }
+    return null;
+  };
+  const within = (P, T) => { // a corner of P inside T (one is enough: every corner, for a solid wholly inside)
+    const bx = bounds(T);
+    for (const t of P) for (const v of t) if (v.every((c, k) => c > bx.lo[k] && c < bx.hi[k]) && inside(v, T)) return v;
+    return null;
+  };
+  return crossing(A, B) || crossing(B, A) || within(A, B) || within(B, A);
 }
 
 /**
@@ -114,6 +157,18 @@ export function inside(p, faces) {
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+// Where the segment o + u·d (0 < u < 1) passes through the inside of triangle a b c: u, or null. Clear of the
+// segment's ends and the triangle's edges, so faces that merely meet (touching solids, a shared edge) don't count
+function through(o, d, a, b, c) {
+  const e1 = sub(b, a), e2 = sub(c, a), h = cross(d, e2), det = dot(e1, h);
+  if (Math.abs(det) < 1e-12) return null;
+  const s = sub(o, a), u = dot(s, h) / det;
+  if (u < 1e-6 || u > 1 - 1e-6) return null;
+  const q = cross(s, e1), v = dot(d, q) / det;
+  if (v < 1e-6 || u + v > 1 - 1e-6) return null;
+  const t = dot(e2, q) / det;
+  return t > 1e-6 && t < 1 - 1e-6 ? t : null;
+}
 // Does the ray o + t·d (t > 0) pass through triangle a b c? (Möller and Trumbore's test)
 function crosses(o, d, a, b, c) {
   const e1 = sub(b, a), e2 = sub(c, a), h = cross(d, e2), det = dot(e1, h);

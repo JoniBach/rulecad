@@ -97,6 +97,14 @@
       "kind": "community",
       "source": "Common FDM practice",
       "checked": "2026-10-11"
+    },
+    "foot": {
+      "value": 0.15,
+      "unit": "mm",
+      "rule": "How far the first layer spreads each side as it is squashed on to the bed (elephant's foot): two parts printed in place must stand print_gap plus twice this apart there, or they print as one",
+      "kind": "community",
+      "source": "Bambu Studio's default elephant foot compensation, 0.15 mm, the amount it shrinks the first layer by to undo the spread",
+      "checked": "2026-11-07"
     }
   }
 }

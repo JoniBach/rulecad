@@ -15,7 +15,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import * as nodeModule from 'node:module';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { WS, TOOL, config } from './workspace.mjs';
+import { WS, TOOL, config, paths } from './workspace.mjs';
 import { fromFaces } from './parts.mjs';
 import { located } from './errors.mjs';
 
@@ -47,14 +47,15 @@ function readable() {
  * Run a design's main(values) in the sandbox: { parts, read } as the build makes them.
  * @param {{ js: string }} d the design @param {object} values @param {object} meta the .json's parts @param {'jscad' | 'manifold'} [engine] v.ops's booleans
  * @param {string[]} [optional] names main may read that aren't among the values (the display's own inputs)
+ * @param {{ salt: string, get: (k: string) => string | undefined, put: (k: string, text: string) => void } | null} [stages] where a lamina's slow stages are kept: the child reads them from the cache (it may read the workspace) and hands back what it made, which is written here
  */
-export function runSandboxed(d, values, meta, engine = 'jscad', optional = []) {
+export function runSandboxed(d, values, meta, engine = 'jscad', optional = [], stages = null) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const args = [flag, ...readable().map((p) => `--allow-fs-read=${p}`), ...(inThread ? [] : ['--allow-worker']), '--import', pathToFileURL(path.join(here, 'sandbox-preload.mjs')).href, path.join(here, 'sandbox-run.mjs')];
   // (real paths: Node names an imported file by where it really is, so a workspace reached through a link still matches)
-  const js = fs.realpathSync(d.js), project = pathToFileURL(path.dirname(path.dirname(js)) + path.sep).href;
+  const js = fs.realpathSync(d.js), project = pathToFileURL(path.dirname(path.dirname(js)) + path.sep).href, stagesDir = paths.cache('stages');
   // The child gets none of this process's environment but what Node needs to start: tokens and keys stay out of it
-  const env = Object.fromEntries(['PATH', 'SystemRoot', 'windir', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'PHYS_DEBUG'].filter((k) => process.env[k] != null).map((k) => [k, process.env[k]]));
+  const env = Object.fromEntries(['PATH', 'SystemRoot', 'windir', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'PHYS_DEBUG', 'LAMINA_TIMES'].filter((k) => process.env[k] != null).map((k) => [k, process.env[k]]));
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...env, CAD_SANDBOX_PROJECT: project, NODE_NO_WARNINGS: '1' } }); // (its stderr is passed on: what the design prints, not Node's notes on its own flags)
     const out = [], err = [];
@@ -68,8 +69,9 @@ export function runSandboxed(d, values, meta, engine = 'jscad', optional = []) {
       }
       if (err.length) process.stderr.write(Buffer.concat(err)); // what the design printed
       if (r.error) return reject(located(Object.assign(new Error(r.error.message), { code: r.error.code, ...(r.error.line ? { line: r.error.line } : {}), ...(r.error.syntax ? { name: 'SyntaxError' } : {}) }), d.js, r.error.code || 'design.run'));
+      if (stages) for (const [k, text] of Object.entries(r.stages || {})) stages.put(k, text);
       resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read), mechanism: r.mechanism || null });
     });
-    child.stdin.end(JSON.stringify({ js: `${pathToFileURL(js).href}?t=${fs.statSync(js).mtimeMs}`, values, meta, engine, optional }));
+    child.stdin.end(JSON.stringify({ js: `${pathToFileURL(js).href}?t=${fs.statSync(js).mtimeMs}`, values, meta, engine, optional, ...(stages ? { stages: { dir: stagesDir, salt: stages.salt } } : {}) }));
   });
 }

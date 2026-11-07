@@ -138,6 +138,18 @@ export function fromLayout(list, pitch) {
 //                     drawn by rule and the connections to the Pico autorouted
 //   mcu_gap, mcu_side, mcu_row, mount_holes (1: an M2 hole in each corner), thickness
 // matrix: each key's row and column and the GPIO each row and column uses, for checks and firmware.
+// Lanes beside the Pico, nearest first: each runs from `from` to `to` (its pin's height) and then in to its pin,
+// across every lane nearer than it, so a lane may be given a nearer place only if its run covers none of the other
+// lanes' pins. { id: place }, 0 the nearest. (When no lane qualifies, the shortest run takes the place: the checks say)
+export function laneOrder(lanes) {
+  const out = {}, left = [...lanes], covers = (l, y) => y > Math.min(l.from, l.to) - 1e-9 && y < Math.max(l.from, l.to) + 1e-9;
+  for (let place = 0; left.length; place++) {
+    const next = left.find((l) => left.every((o) => o === l || !covers(l, o.to))) ?? [...left].sort((a, b) => Math.abs(a.to - a.from) - Math.abs(b.to - b.from))[0];
+    out[next.id] = place; left.splice(left.indexOf(next), 1);
+  }
+  return out;
+}
+
 export function keyboard(v, keys) {
   const m = v.mx, p = v.pico, d = v.sod123, lane = v.track + v.clear, half = m.pitch / 2, under = v.controller === 'under';
   const rows = [...new Set(keys.map((k) => k.r))].sort((a, b) => a - b), cols = [...new Set(keys.map((k) => k.c))].sort((a, b) => a - b);
@@ -183,7 +195,10 @@ export function keyboard(v, keys) {
       pinRows.push({ gap, y: ys, xs, keep });
     }
   } else {
-    const cx = keyBox.right + v.mcu_gap + p.width / 2, cy = (keyBox.top + keyBox.bottom) / 2;
+    // Beside the keys, mcu_gap off them, or further out when the lanes to its pins (one a column on the front, one a
+    // row on the back, a lane apart) wouldn't fit between the keys and its pins
+    const lanesWide = Math.max(cols.length, rows.length) * lane, pinsIn = p.width / 2 + picoPin(1, p).x - p.pin_pad / 2 - v.clear - v.track / 2; // the left pins' near edge and clearance, in from the Pico's edge
+    const cx = keyBox.right + Math.max(v.mcu_gap, lanesWide + v.clear - pinsIn) + p.width / 2, cy = (keyBox.top + keyBox.bottom) / 2;
     pinAt = (n) => { const q = picoPin(n, p); return { x: cx + q.x, y: cy + q.y }; };
     pico0 = { x: cx, y: cy };
     right = cx + p.width / 2 + v.margin;
@@ -267,25 +282,40 @@ export function keyboard(v, keys) {
       traces.push({ from: near.sel, to: ['U1', `pin${best.g.pin}`], width: v.track }); // no path: the autorouter's
     }
   } else {
-    // Beside: rows take the free left-edge pins nearest their row line, columns the lowest of the rest; every track
-    // drawn: rows right then up or down a lane beside the Pico (back), columns below the keys and up a lane (front),
-    // the leftmost column lowest and nearest the Pico, so no two cross
+    // Beside: rows take the free left-edge pins nearest their row lines, top row first and each below the last's
+    // (so none cross), columns the pins nearest the lanes' depth below the keys. Every track drawn: a row right along
+    // its line then up or down a lane beside the Pico (back copper) to its pin's height and in; a column down below
+    // the keys, right, and up or down a lane (front) to its pin's height and in. Each lane runs in to its pin across
+    // the lanes nearer the Pico, so those must end before it: lanes are given out nearest first to whichever would
+    // cross none of the rest (laneOrder), and the depths below the keys the same way
     const nearPins = pinAt(1).x - p.pin_pad / 2 - v.clear - v.track / 2, free = picoGpio('left'), take = (pin) => free.splice(free.findIndex((g) => g.pin === pin), 1)[0];
-    for (const r of rows) {
-      const y = rowY(r) + lineY, best = [...free].sort((a, b) => Math.abs(pinAt(a.pin).y - y) - Math.abs(pinAt(b.pin).y - y))[0];
+    let above = Infinity; // the last row's pin: the next row's is below it, leaving enough below for the rest
+    rows.forEach((r, i) => {
+      const y = rowY(r) + lineY, rest = rows.length - 1 - i;
+      const best = free.filter((g) => pinAt(g.pin).y < above && free.filter((o) => pinAt(o.pin).y < pinAt(g.pin).y).length >= rest).sort((a, b) => Math.abs(pinAt(a.pin).y - y) - Math.abs(pinAt(b.pin).y - y))[0];
       if (!best) throw new Error(`the Pico's left edge has no GPIO left for row ${r}`);
-      rowPin[r] = take(best.pin);
-    }
-    const lowest = [...free].sort((a, b) => pinAt(a.pin).y - pinAt(b.pin).y);
-    if (lowest.length < cols.length) throw new Error(`${cols.length} columns need ${cols.length} more GPIO on the Pico's left edge; ${lowest.length} are left`);
-    cols.forEach((c, i) => { colPin[c] = lowest[i]; });
+      rowPin[r] = take(best.pin); above = pinAt(best.pin).y;
+    });
+    // The columns' pins: the nearest to the runs below the keys, all above them or all below (lanes up or lanes
+    // down, not both: their runs would cross each other's lanes), above when there are enough
+    const depthLine = keyBox.bottom - (cols.length + 1) / 2 * lane;
+    const byDepth = (list) => [...list].sort((a, b) => Math.abs(pinAt(a.pin).y - depthLine) - Math.abs(pinAt(b.pin).y - depthLine));
+    const over = free.filter((g) => pinAt(g.pin).y > depthLine), belowLine = free.filter((g) => pinAt(g.pin).y <= depthLine);
+    const nearDepth = byDepth(over.length >= cols.length ? over : belowLine.length >= cols.length ? belowLine : free);
+    if (nearDepth.length < cols.length) throw new Error(`${cols.length} columns need ${cols.length} more GPIO on the Pico's left edge; ${nearDepth.length} are left`);
+    cols.forEach((c, i) => { colPin[c] = nearDepth[i]; });
+    const rowLane = laneOrder(rows.map((r) => ({ id: r, from: rowY(r) + lineY, to: pinAt(rowPin[r].pin).y })));
     for (const r of rows) {
-      const last = keys.filter((k) => k.r === r).sort((a, b) => a.x - b.x).at(-1), pinY = pinAt(rowPin[r].pin).y;
+      const last = keys.filter((k) => k.r === r).sort((a, b) => a.x - b.x).at(-1), pinY = pinAt(rowPin[r].pin).y, laneX = nearPins - rowLane[r] * lane;
       traces.push({ from: [`D${last.n}`, 'cathode'], to: ['U1', `pin${rowPin[r].pin}`], width: v.track,
-        path: pts([[last.x + cathodeX, last.y + lineY], [nearPins - lane, last.y + lineY], [nearPins - lane, pinY]]) });
+        path: pts([[last.x + cathodeX, last.y + lineY], [laneX, last.y + lineY], [laneX, pinY]]) });
     }
-    cols.forEach((c, i) => {
-      const last = keys.filter((k) => k.c === c).sort((a, b) => b.r - a.r)[0], depth = keyBox.bottom - (cols.length - i) * lane, laneX = nearPins - i * lane;
+    // The depths: a lane's run below the keys crosses the lanes further out on its way in, so where their pins are
+    // above the runs the nearer lane runs deeper (and ends lower), where below, shallower
+    const pinsAbove = cols.filter((c) => pinAt(colPin[c].pin).y > depthLine).length >= cols.length / 2;
+    const colLane = laneOrder(cols.map((c) => ({ id: c, from: depthLine, to: pinAt(colPin[c].pin).y })));
+    cols.forEach((c) => {
+      const last = keys.filter((k) => k.c === c).sort((a, b) => b.r - a.r)[0], i = colLane[c], depth = keyBox.bottom - (pinsAbove ? cols.length - i : i + 1) * lane, laneX = nearPins - i * lane;
       traces.push({ from: [`K${last.n}`, 'pin2'], to: ['U1', `pin${colPin[c].pin}`], width: v.track,
         path: pts([[last.x + jogX, last.y + m.pcb_pin2_y - slant], [last.x + jogX, depth], [laneX, depth], [laneX, pinAt(colPin[c].pin).y]]) });
     });
@@ -309,6 +339,7 @@ export function keyboard(v, keys) {
     ...keys.map((k) => rect(k.x + cathodeX + d.pad_w / 2 + silk * 2, k.y + diode.y, silk, d.pad_h, 'bottom')),
     ...(v.margin >= text * 2 ? [{ text: 'rulecad: diodes point to the rows', x: (keyBox.left + keyBox.right) / 2, y: bottom + v.margin / 2, size: text, layer: 'bottom' }] : [])];
   const board = { center: { x: cx, y: cy }, width: right - left, height: top - bottom, thickness: v.thickness, autoroute: under,
+    silk_line: v.jlcpcb.silk_line, silk_text: v.jlcpcb.silk_text, via_hole: 0.3, via_pad: 0.3 + 2 * v.jlcpcb.annular, // (vias with the ring the fab recommends)
     parts, traces, silk: marks, holes: corners.map(([x, y]) => hole(x, y, v.m2.clearance)) };
   const matrix = {
     keys: keys.map((k) => ({ key: `K${k.n}`, ...(k.label ? { label: k.label } : {}), row: k.r, col: k.c })),
@@ -1104,7 +1135,26 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   }
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
   out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
-  const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole').map((e) => e.hole_diameter ?? e.hole_width);
+  // Vias and plated holes against the fab's sizes, each measured from the board: the hole, the pad, and the ring
+  // between them (under the recommended ring a warning, under the least a failure). A clone's vias as its source
+  // has them are the source's design: said, not failed
+  const srcVia = source?.circuit?.via, asSrc = (e) => srcVia && Math.abs(e.hole_diameter - srcVia.hole) < 1e-6 && Math.abs(e.outer_diameter - srcVia.pad) < 1e-6;
+  const rings = json.filter((e) => e.type === 'pcb_via' || (e.type === 'pcb_plated_hole' && e.outer_diameter != null && e.hole_diameter != null)).map((e) => ({ e, ring: (e.outer_diameter - e.hole_diameter) / 2, via: e.type === 'pcb_via' }));
+  const least = j.annular_min ?? 0.18, badVias = rings.filter((r) => r.via && !asSrc(r.e) && (r.e.hole_diameter < j.via_hole || r.e.outer_diameter < j.via_pad)), thinRings = rings.filter((r) => !asSrc(r.e) && r.ring < least), smallRings = rings.filter((r) => !asSrc(r.e) && r.ring >= least && r.ring < j.annular);
+  const inherited_ = rings.filter((r) => asSrc(r.e) && r.ring < j.annular).length;
+  if (rings.length) {
+    out.push(badVias.length ? { level: 'fail', text: `${badVias.length} vias under JLCPCB's ${j.via_hole} mm hole in a ${j.via_pad} mm pad (${mm(badVias[0].e.hole_diameter)} in ${mm(badVias[0].e.outer_diameter)})` }
+      : thinRings.length ? { level: 'fail', text: `${thinRings.length} ${thinRings[0].via ? 'vias' : 'plated holes'} with a ${mm(Math.min(...thinRings.map((r) => r.ring)))} mm ring, under JLCPCB's least of ${least} mm` }
+      : smallRings.length ? { level: 'warn', text: `${smallRings.length} ${smallRings.every((r) => r.via) ? 'vias' : 'plated holes'} with a ${mm(Math.min(...smallRings.map((r) => r.ring)))} mm ring: above JLCPCB's least of ${least} mm, under the ${j.annular} mm it recommends` }
+      : { level: 'pass', text: `${rings.filter((r) => r.via).length} vias and ${rings.filter((r) => !r.via).length} plated holes, rings ${mm(Math.min(...rings.map((r) => r.ring)))} mm or more (JLCPCB recommends ${j.annular})${inherited_ ? `; ${inherited_} as the source has them` : ''}` });
+  }
+  // Silkscreen the fab can print: lines no thinner than silk_line, text no smaller than silk_text
+  const silkLines = json.filter((e) => (e.type === 'pcb_silkscreen_path' || e.type === 'pcb_silkscreen_rect' || e.type === 'pcb_silkscreen_line' || e.type === 'pcb_silkscreen_circle') && e.stroke_width != null && e.stroke_width < j.silk_line);
+  const silkTexts = json.filter((e) => e.type === 'pcb_silkscreen_text' && e.font_size != null && e.font_size < j.silk_text);
+  if (json.some((e) => /^pcb_silkscreen_/.test(e.type))) out.push(silkLines.length || silkTexts.length
+    ? { level: 'fail', text: `silkscreen the fab can't print: ${[silkLines.length && `${silkLines.length} lines under ${j.silk_line} mm (${mm(Math.min(...silkLines.map((e) => e.stroke_width)))})`, silkTexts.length && `${silkTexts.length} texts under ${j.silk_text} mm high (${mm(Math.min(...silkTexts.map((e) => e.font_size)))})`].filter(Boolean).join(', ')}` }
+    : { level: 'pass', text: `silkscreen: lines ${j.silk_line} mm or wider, text ${j.silk_text} mm or taller (JLCPCB's least)` });
+  const drills = json.filter((e) => e.type === 'pcb_hole' || e.type === 'pcb_plated_hole' || e.type === 'pcb_via').map((e) => e.hole_diameter ?? e.hole_width);
   if (drills.length) out.push(Math.min(...drills) < j.drill_min ? { level: 'fail', text: `a hole under JLCPCB's ${j.drill_min} mm` } : { level: 'pass', text: `${drills.length} holes, smallest ${Math.min(...drills)} mm (JLCPCB: ${j.drill_min} mm)` });
   const b = json.find((e) => e.type === 'pcb_board'), size = `${b.width.toFixed(1)} × ${b.height.toFixed(1)} mm`;
   if (b.outline) { // a shaped board: every pad and hole inside it

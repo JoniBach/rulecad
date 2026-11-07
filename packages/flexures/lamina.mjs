@@ -17,7 +17,8 @@ import jscad from '@jscad/modeling';
 import * as gens from './flexures.mjs';
 import { curveClearance } from './curves.mjs';
 import { ports, models } from './compose.mjs';
-import { simulate, bend, centrelines } from './physics.mjs';
+import { simulate, systemOf, bend, centrelines } from './physics.mjs';
+import { stage } from './cache.mjs';
 import { shapeOf, fixedLoads, equilibrium } from './beams.mjs';
 import { outOfPlane } from './outofplane.mjs';
 import { grid as feaGrid, solve as feaSolve, stress as feaStress, cellStiffness, analyse as feaAnalyse } from '@rulecad/fea';
@@ -314,6 +315,8 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
 }
 
 // ---------- the mechanism ----------
+// LAMINA_TIMES=1 prints each stage's time to stderr (where a long build's minutes go)
+const timer = (name) => { if (!globalThis.process?.env?.LAMINA_TIMES) return () => {}; const t0 = performance.now(); let last = t0; return (what) => { const now = performance.now(); console.error(`${name} ${what}: ${((now - last) / 1000).toFixed(1)} s (${((now - t0) / 1000).toFixed(1)} s in)`); last = now; }; };
 /**
  * A mechanism in one plane, printed flat.
  * @param {object} spec
@@ -369,6 +372,7 @@ function fePeak({ flexure, held, moved, direction, travel, E, nu = 0.35, cell, b
 export async function lamina(spec) {
   await ready();
   if (spec.flood) return flooded(spec);
+  const mark = timer(spec.groundRounded ? (spec.bridges === undefined && spec.fire === undefined ? 'lamina (flood probe)' : 'lamina (flooded)') : 'lamina');
   const { height, gap, material, printer } = spec, slack = spec.check?.slack ?? gap / 10, steps = spec.check?.steps ?? 8, stepMost = spec.check?.step ?? 0.25;
   // Friction, taken the cautious way for each question: what must move is checked sticky (a ramp must still push its
   // follower aside at `pass`), what must hold is checked slippery (a catch must still jam at `hold`). Give over push past
@@ -547,6 +551,7 @@ export async function lamina(spec) {
   const travelAt = (j, strain, sign) => { const t = typeof j.model?.travel === 'function' ? j.model.travel(strain, sign) : Infinity; return j.turning ? deg(t) : t; };
   const limitOf = (n, sign) => travelAt(joints[n], material.strainLimit, sign); // (sign: the way it moves, for a flexure that isn't the same both ways)
 
+  mark('set up');
   // ---- followers: each gives as far as it must to clear what drives it ----
   const blocked = (values, n) => {
     const fo = follows[n], sh = shapesAt(values, new Set([...carries[n], ...fo.by]));
@@ -644,6 +649,7 @@ export async function lamina(spec) {
     return null;
   };
 
+  mark('followers');
   // ---- rigid: no thin arm of the frame or a body tied on at one end only (it bends under load, and spoils what it
   // holds: a rail a stop hits, a hanger a hinge hangs from). Thinner than `check.rigid` (3 mm) and joined to the rest at
   // one place, it's a free end ----
@@ -670,6 +676,7 @@ export async function lamina(spec) {
   }
   if (!loose && ends.length) f('pass', `every curve's ends are in their bodies${seats.length ? ` (${seats.length} on a seat)` : ''}`, 'lamina.seat');
 
+  mark('rigid and seats');
   // ---- free: at rest, the gap between everything that isn't joined; each flexure on its two bodies only ----
   let free = true;
   // A curve folded into its room mustn't come nearer itself than the gap either, or its loops print fused
@@ -770,6 +777,7 @@ export async function lamina(spec) {
   }
 
   if (kinematic) {
+  mark('free');
   // ---- the sequence, then each state as the sequence reaches it: nothing runs into anything, nothing jams ----
   for (let i = 0; i + 1 < seq.length; i++) {
     // From where the last step settled; a joint both states set alike stays where it settled, so it isn't moved
@@ -802,6 +810,7 @@ export async function lamina(spec) {
     if (!hits.length && !over.length) f('pass', `${s}: nothing runs into anything${Object.keys(follows).some((n) => pushed[n] > slack) ? ` (${Object.keys(follows).filter((n) => pushed[n] > slack).map((n) => `${n} pushed ${+pushed[n].toFixed(2)}${joints[n].turning ? '°' : ' mm'} by what it meets`).join(', ')})` : ''}`, 'lamina.collide', { state: s });
   }
 
+  mark('sequence');
   // ---- holds: a latch. Pushing back towards rest jams on the catch, or runs into it ----
   for (const [s, list] of Object.entries(spec.holds || {})) for (const [jn, by] of list) {
     if (!joints[jn] || !parts[by]) throw new Error(`holds in ${s}: no joint "${jn}" or part "${by}"`);
@@ -831,6 +840,7 @@ export async function lamina(spec) {
   strainAndStops();
   } else for (const s of Object.keys(states)) solved[s] = state(s);
 
+  mark('holds');
   // ---- energy and forces ----
   const energy = {};
   for (const [s, v] of Object.entries(solved)) {
@@ -848,6 +858,7 @@ export async function lamina(spec) {
   const most = Object.entries(energy).sort((x, y) => y[1] - x[1])[0], joules = (e) => (e < 0.01 ? `${(e * 1000).toFixed(1)} mJ` : `${e.toFixed(3)} J`);
   if (most && most[1] > 0) f('info', `the most stored is ${joules(most[1])}, in ${most[0]}${forces.length ? `; at their most: ${forces.join(', ')}` : ''}`, 'lamina.energy', { energy });
 
+  mark('energy');
   // ---- the mechanism as it would behave: its flexures as beams bending as far as they bend, its bodies touching, a
   // hand driving, holding and letting go (physics.mjs). The force each step takes, where a latch lets go, whether a
   // catch holds when let go of, the strain all the way, and the shapes as they bend ----
@@ -857,7 +868,10 @@ export async function lamina(spec) {
     const o = typeof spec.physics === 'object' ? spec.physics : {};
     const loose = Object.fromEntries(Object.entries(spec.free || {}).map(([n, l]) => [n, { shape: all(l.shape), mass: l.mass }]));
     const seen = spec.fixtures ? { ...parts, ground: { ...parts.ground, shape: union([parts.ground.shape, all(spec.fixtures)]) } } : parts; // fixtures: fixed, in the physics, not in the print
-    sim = simulate({ parts: seen, joints, material, height, gap, states, sequence: seq, holds: spec.holds, kinematic: places, loose, grips: spec.grips, ...(spec.fire ? { fire: spec.fire } : {}) }, o);
+    const m = { parts: seen, joints, material, height, gap, states, sequence: seq, holds: spec.holds, loose, grips: spec.grips, ...(spec.fire ? { fire: spec.fire } : {}) };
+    // (the solve is the slow stage, kept between builds by what it's made from; the system it ran on is made afresh)
+    const S = systemOf(m), run = await stage('physics', { m, o }, () => { const { sys, centre, beamOf, ...rest } = simulate({ ...m, kinematic: places }, { ...o, system: S }); return rest; });
+    sim = run.skipped ? run : { ...run, sys: S.sys, centre: S.centre, beamOf: S.beamOf };
     if (sim.skipped) { f('info', `${sim.skipped.join(', ')}: no centreline to solve as beams (a notch, a cartwheel, a shape of your own), so how it behaves comes from the kinematic model only`, 'lamina.physics'); sim = null; }
   }
   if (sim) {
@@ -957,6 +971,7 @@ export async function lamina(spec) {
     for (const [jn, e] of Object.entries(sim.strain)) f(e <= material.strainLimit ? 'pass' : 'fail', `${jn}: bending as far as it bends through the sequence, it sees up to ${(e * 100).toFixed(2)}% strain (large-deflection beams), ${e <= material.strainLimit ? 'within' : 'over'} the limit of ${(material.strainLimit * 100).toFixed(2)}%`, 'lamina.beams', { joint: jn, strain: e });
   }
 
+  mark('physics');
   // ---- bridges: the frame printed over a moving part on the top layers (a barrel's roof over a stem, so it can't lift
   // out of its channel). Every body that passes under one is cut down by the bridge and a gap, along all of it that
   // ever passes under; the bridge spans no wider than the printer bridges, and stands on the frame both sides ----
@@ -1035,6 +1050,7 @@ export async function lamina(spec) {
     });
   }
 
+  mark('bridges');
   // ---- guides: where a body slides through a strip of the frame, a ridge on its sides with 45° flanks, centred on
   // the print's height, runs in a matching groove in the frame's wall (a tortoise's shell in its socket), so it can't
   // lift or tip out of the plane. Both are drawn out from the same faces by the same amount at each height, so the gap
@@ -1068,6 +1084,7 @@ export async function lamina(spec) {
     });
   }
 
+  mark('guides');
   // ---- pins: each post stands on a floor of its own body (`under`, from the bed up `base`) that runs under the body
   // it carries, and is capped at the top by a cone flaring out at 45° over the hole's rim (prints without support).
   // The carried body is cut back from the floor, a lift over it, wherever it ever passes over, and from the cap a lift
@@ -1091,6 +1108,7 @@ export async function lamina(spec) {
     }
   }
 
+  mark('pins');
   // ---- the print, everything at rest, and frames along the sequence for an animation ----
   const extrude = (shapes) => solidOf(union(Object.values(shapes)), height);
   let solid = bridges.length || layers.length || pinWork.length ? solidWith(union(Object.values(parts).map((p) => p.shape)), height, cuts, bridges.map((b) => (b.bottom ? { shape: b.shape, from: 0, to: b.depth } : { shape: b.shape, from: height - b.depth, to: height })), arches, layers, pinWork) : extrude(Object.fromEntries(Object.entries(parts).map(([n, p]) => [n, p.shape])));
@@ -1148,6 +1166,7 @@ export async function lamina(spec) {
     frames.length = 0;
     frames.push(...physical);
 
+    mark('print and frames');
     // ---- room: in every frame, planned or as the physics moved it (the shot too), nothing that moves runs into the
     // frame deeper than half the gap (a flexure where it's anchored aside): a frame that fills a spring's room stops it ----
     if (!empty(parts.ground.shape)) {
@@ -1165,6 +1184,7 @@ export async function lamina(spec) {
       if (!Object.keys(worst).length) f('pass', `in all ${planned.length + physical.length} frames, planned and as the physics moved them, nothing runs into the frame`, 'lamina.room');
     }
 
+    mark('room');
     // ---- carried: a loose part lying in the plane (a disc) falls out of it unless something holds it across the plane
     // on both faces, a roof (a bridge) over it and a floor under it, all the way it goes while it's in the frame: its
     // middle over what holds it each side (else it tips off the edge), loaded and through the shot ----
@@ -1185,6 +1205,7 @@ export async function lamina(spec) {
       }
     }
 
+    mark('carried');
     // ---- the frame under the mechanism's own forces: at the end of each step, what the flexures pull on the frame
     // with (from the beams), the frame an elastic plate as tall as the print, held where a hand holds it (`grip`, or
     // its back quarter); every clearance to what moves then checked on the frame as it bends. A frame that closes
@@ -1247,6 +1268,7 @@ export async function lamina(spec) {
       }
     }
 
+    mark('frame');
     // ---- across the plane: each moving body pushed across the print at its farthest point from what holds it, by a
     // tenth of the hand's pull (a finger a little off the plane); a lamina's flexures are stiff bending across it but
     // soft twisting, so a body on long thin arms tips out of the plane. Bridges over it hold it from lifting, floors
@@ -1277,6 +1299,7 @@ export async function lamina(spec) {
       }
     }
   }
+  mark('across');
   return {
     parts: { body: solid, ...(spec.loose || {}) },
     findings,
@@ -1316,7 +1339,13 @@ async function flooded(spec) {
   const { keep = [], least = 2, wall = 4, pad = 3, corner = 6 } = spec.flood, gap = spec.gap, clearOf = (n) => (typeof spec.flood.clear === 'object' ? spec.flood.clear[n] ?? spec.flood.clear.default ?? gap : spec.flood.clear ?? gap);
   // The mechanism solved through its sequence, on the ground you drew (or none: a speck far off, for the solver)
   const mine = all(spec.ground || []), far = [[[-1e4, -1e4], [-1e4 + 1, -1e4], [-1e4 + 1, -1e4 + 1], [-1e4, -1e4 + 1]]];
-  const probe = await lamina({ ...spec, ground: empty(mine) ? far : mine, groundRounded: true, flood: undefined, fire: undefined, bridges: undefined, check: { ...(spec.check || {}), fe: false, frame: false } });
+  const markF = timer('flood');
+  // (only the frames are read of it: kept between builds by what the probe is made from, which no strap, guide or finish
+  // is part of)
+  const probeSpec = { ...spec, ground: empty(mine) ? far : mine, groundRounded: true, flood: undefined, fire: undefined, bridges: undefined, guides: undefined, finish: undefined, check: { ...(spec.check || {}), fe: false, frame: false } };
+  const probe = await stage('flood probe', probeSpec, async () => { const r = await lamina(probeSpec); const frame = (fr) => ({ ...(fr.off != null ? { off: fr.off } : {}), parts: fr.parts }); return { planned: r.planned.map(frame), frames: r.planned === r.frames ? null : r.frames.map(frame) }; });
+  if (probe.frames === null) probe.frames = probe.planned;
+  markF('probe');
   const free = new Set(Object.keys(spec.free || {})), by = {};
   // The room: everything where it's meant to go, the kinematic frames (solved without a frame, the physics lets a body
   // tip anywhere its play allows: room cut round that would let it)
@@ -1382,7 +1411,9 @@ async function flooded(spec) {
     return { level: out || open ? 'fail' : 'pass', text: `hole ${i + 1} (⌀${h.diameter} at ${h.at.map((c) => +c.toFixed(1)).join(', ')}) ${out ? 'sticks out of the outline' : open ? 'breaks into the room the moving parts sweep' : `is in solid frame, ${+(h.wall ?? wall / 2).toFixed(2)} mm of wall round it`}`, code: 'lamina.holes', hole: i };
   });
   if (holes.length) ground = subtract(ground, union(holes.map((h) => h.hole)));
+  markF('fill');
   const out = await lamina({ ...spec, flood: undefined, ground, groundRounded: true });
+  markF('final');
   out.findings.unshift({ level: 'info', text: `the frame is flooded: ${area(ground).toFixed(0)} mm² solid, all but the room the moving parts sweep (${bits.length - kept.length} loose bits left out)`, code: 'lamina.flood' }, ...holed);
   return out;
 }

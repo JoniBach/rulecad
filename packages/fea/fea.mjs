@@ -129,7 +129,12 @@ export const jsBackend = {
         for (let q = 0; q < dim; q++) if (fixed[dim * i + q]) { for (let f = 0; f < dim; f++) { D[q * dim + f] = 0; D[f * dim + q] = 0; } }
         if (dim === 2) {
           const det = D[0] * D[3] - D[1] * D[2];
-          if (!(Math.abs(det) > 0)) continue;
+          if (!(Math.abs(det) > 0)) {
+            // One dof fixed (a roller, a symmetry edge): the block is singular, so invert the free dof on its own,
+            // as the 3D branch does. (Skipped, the node was never smoothed, and multigrid never converged)
+            for (let q = 0; q < dim; q++) if (!fixed[dim * i + q] && D[q * dim + q] > 0) inv[b + q * dim + q] = 1 / D[q * dim + q];
+            continue;
+          }
           inv[b] = D[3] / det; inv[b + 1] = -D[1] / det; inv[b + 2] = -D[2] / det; inv[b + 3] = D[0] / det;
         } else {
           const c0 = D[4] * D[8] - D[5] * D[7], c1 = D[5] * D[6] - D[3] * D[8], c2 = D[3] * D[7] - D[4] * D[6], det = D[0] * c0 + D[1] * c1 + D[2] * c2;
@@ -660,6 +665,7 @@ export function analyse({ grid: g, density, material, thickness = 1, fixed, load
   const position = positions(g);
   return {
     u,
+    thin: thinShare(g, density),
     compliance: u.map((x, c) => jsBackend.dot(loads[c], x)),
     stress: u.map((x) => stress(g, x, modulus, nu)),
     deflection: u.map((x) => {
@@ -672,6 +678,36 @@ export function analyse({ grid: g, density, material, thickness = 1, fixed, load
       return { most, at };
     }),
   };
+}
+
+/**
+ * How much of the part lies in members too thin for the grid to carry truthfully: the share of its solid cells (density
+ * 0.5 or more) that an opening of `k` cells takes away (eroded k times, then grown back: a member under 2k cells thick
+ * vanishes, a corner loses a little). A cell's stiffness across a member two or three cells thick is a rough
+ * figure (the READMEs' tables); four cells and up it settles. { share, cells: 2k }.
+ * @param {Grid} g @param {ArrayLike<number>} density @param {number} [k] erosions, 2 (members under 4 cells)
+ * @returns {{ share: number, cells: number }}
+ */
+export function thinShare(g, density, k = 2) {
+  const nx = g.nx, ny = g.ny, nz = g.dim === 3 ? g.nz : 1, N = nx * ny * nz, at = (i, j, l) => (l * ny + j) * nx + i;
+  let mask = new Uint8Array(N);
+  for (let e = 0; e < N; e++) mask[e] = density[e] >= 0.5 ? 1 : 0;
+  const solid = mask.reduce((a, b) => a + b, 0);
+  if (!solid) return { share: 0, cells: 2 * k };
+  const pass = (m, keep) => { // keep: every face-neighbour solid (erode) or any (dilate); outside the grid counts as the cell itself
+    const out = new Uint8Array(N);
+    for (let l = 0; l < nz; l++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const e = at(i, j, l), n = [i > 0 ? m[at(i - 1, j, l)] : m[e], i + 1 < nx ? m[at(i + 1, j, l)] : m[e], j > 0 ? m[at(i, j - 1, l)] : m[e], j + 1 < ny ? m[at(i, j + 1, l)] : m[e], ...(nz > 1 ? [l > 0 ? m[at(i, j, l - 1)] : m[e], l + 1 < nz ? m[at(i, j, l + 1)] : m[e]] : [])];
+      out[e] = keep === 'all' ? (m[e] && n.every((x) => x) ? 1 : 0) : (m[e] || n.some((x) => x) ? 1 : 0);
+    }
+    return out;
+  };
+  let m = mask;
+  for (let i = 0; i < k; i++) m = pass(m, 'all');
+  for (let i = 0; i < k; i++) m = pass(m, 'any');
+  let lost = 0;
+  for (let e = 0; e < N; e++) if (mask[e] && !m[e]) lost++;
+  return { share: lost / solid, cells: 2 * k };
 }
 
 /**

@@ -837,6 +837,32 @@ test('the frame\'s straps: from the frame to a post of its own in a slot in what
   assert.ok(!r.findings.some((x) => x.level === 'fail' && /runs into/.test(x.text)), r.findings.filter((x) => /runs into/.test(x.text)).map((x) => x.text).join('; '));
 });
 
+import { laminaCache } from '@rulecad/flexures';
+test('a lamina\'s slow stages are kept in the store it is given, keyed by their inputs and the salt: the second build reads them back and finds the same, a new salt or a change in what they are made from misses', async () => {
+  const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'x' };
+  const bar = rect(20, -4, 50, 4);
+  const spec = (height) => ({ height, gap: 0.3, material: petg, printer: fdm, check: { fe: false, frame: false }, ground: [rect(-8, -6, 0.5, 6)], bodies: { bar }, joints: { s: { kind: 'curve', params: spring, from: 'ground', to: 'bar' } }, states: { out: { s: 6 } }, sequence: ['rest', 'out', 'rest'], flood: { outline: rect(-8, -12, 68, 12) } });
+  const files = new Map(), log = [], store = (salt) => ({ salt, get: (k) => { log.push(files.has(k) ? `hit ${k.split('-')[0]}` : `miss ${k.split('-')[0]}`); return files.get(k); }, put: (k, text) => { files.set(k, text); } });
+  const strip = (r) => ({ findings: r.findings.map((x) => [x.level, x.text]), energy: r.energy, frames: r.frames.length, ground: r.outlines('rest').ground });
+  try {
+    laminaCache(store('a'));
+    const first = strip(await lamina(spec(8)));
+    assert.deepEqual(log.filter((x) => x.startsWith('hit')), [], 'a cold store: every stage computed');
+    assert.ok(log.includes('miss flood probe') && log.includes('miss physics'), log.join('; '));
+    assert.ok([...files.values()].every((t) => typeof t === 'string' && JSON.parse(t)), 'what is kept is JSON');
+    log.length = 0;
+    const again = strip(await lamina(spec(8)));
+    assert.deepEqual(again, first, 'the same from the store as computed');
+    assert.ok(log.includes('hit flood probe') && log.includes('hit physics') && !log.some((x) => x.startsWith('miss')), `all hits: ${log.join('; ')}`);
+    log.length = 0;
+    await lamina(spec(9)); // taller: the physics and the probe are made from the height
+    assert.ok(!log.some((x) => x.startsWith('hit')), `another height misses: ${log.join('; ')}`);
+    laminaCache(store('b')); log.length = 0;
+    await lamina(spec(8));
+    assert.ok(!log.some((x) => x.startsWith('hit')), `another salt (the library changed) misses: ${log.join('; ')}`);
+  } finally { laminaCache(null); }
+});
+
 test('a flooded frame keeps a post: a pin of the frame\'s in a slot in what slides is an island in the plane, kept for its straps to join, and the rest is flooded as if it weren\'t there', async () => {
   const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'x' };
   const disc = (c, r) => jscad.primitives.circle({ radius: r, center: c, segments: 32 });

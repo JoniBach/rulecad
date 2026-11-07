@@ -126,7 +126,8 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     assert.deepEqual(await box('#stage'), [0, 400], 'the model has the top half, the grip and pane the rest');
     assert.equal(await run(`document.querySelector('footer').hidden + ' ' + document.getElementById('panel').hidden`), 'false true');
     await run(`document.getElementById('toggle').click(); true`);
-    assert.equal(await run(`document.querySelector('footer').hidden + ' ' + document.getElementById('panel').hidden + ' ' + document.getElementById('toggle').textContent`), 'true false Info');
+    // (waited for: once on CI the page hadn't yet wired the button when the click landed)
+    assert.ok(await until(`document.querySelector('footer').hidden && !document.getElementById('panel').hidden && document.getElementById('toggle').textContent === 'Info'`), 'Parts swaps the pane for the parts list, and the button reads Info');
     const [gy] = await box('#grip');
     for (const [type, y] of [['touchStart', gy + 11], ['touchMove', 500], ['touchMove', 600], ['touchEnd', 600]]) await send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 200, y }] }, sessionId);
     assert.equal((await box('#stage'))[1], 600, 'dragging the grip down gives the model more room');
