@@ -36,6 +36,20 @@ test('an underside narrower than a print line is a sliver, not a start in mid-ai
   assert.equal(level(check([...post, ...box([2, -1, 6], [3, 1, 10])], printer), /underside.*mid-air/), 'warn'); // a 1 mm one hangs
 });
 
+test('a slope cut in layers is steps no wider than a line: an overhang, not bridges; and two undersides at one height are measured apart', () => {
+  // A block on two feet, its underside between them stepping in at 45° from each foot, a layer in for each layer up
+  // (how a lamina roofs a pocket): a stair of 0.2 mm treads, none a bridge
+  const block = translate([0, 0, 4.5], cuboid({ size: [16, 10, 9] })), gap = [translate([0, 0, 2], cuboid({ size: [8, 10, 4] }))];
+  for (let k = 0; k < 20; k++) gap.push(translate([0, 0, 4.1 + k * 0.2], cuboid({ size: [8 - 0.4 * (k + 1), 10, 0.2] }))); // the gap closes 0.2 mm a side each layer up
+  const f = check(tri(jscad.booleans.subtract(block, union(...gap))), printer);
+  assert.equal(f.filter((x) => /bridge|mid-air/.test(x.text) && x.level !== 'pass').map((x) => x.text).join('; '), '', 'no bridge past the limit, nothing in mid-air');
+  // At one height, a 4 mm bridge between its posts and, 40 mm off, a slab held by nothing: the slab starts in mid-air,
+  // not a 40 mm bridge to the other's posts
+  const span = union(translate([-23, 0, 5], cuboid({ size: [2, 4, 10] })), translate([-17, 0, 5], cuboid({ size: [2, 4, 10] })), translate([-20, 0, 9], cuboid({ size: [8, 4, 2] })));
+  const two = check(tri(union(span, translate([20, 0, 9], cuboid({ size: [8, 4, 2] })))), printer).filter((x) => x.code === 'print.bridge' || x.code === 'print.mid-air');
+  assert.deepEqual(two.map((x) => [x.level, x.values.span == null ? null : +x.values.span.toFixed(2)]), [['pass', 4], ['warn', null]], two.map((x) => x.text).join('; '));
+});
+
 test('seams: open edges are holes; a cube is closed', () => {
   assert.equal(seams(box([0, 0, 0], [1, 1, 1])).gaps, 0);
   assert.ok(seams(box([0, 0, 0], [1, 1, 1]).slice(2)).gaps > 0);

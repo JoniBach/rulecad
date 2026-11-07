@@ -807,7 +807,7 @@ test('a placed module takes its curve and its pin with it; the README\'s first n
   assert.ok(readme.includes(`force: ${e.force.toFixed(2)}, travel: 20, shortening: ${e.shortening.toFixed(1)}, angle: ${e.angle.toFixed(2)}, strain: ${e.strain.toFixed(3)}, stiffness: ${e.stiffness.toFixed(3)}`), 'the README\'s elastica example');
 });
 
-test('the frame\'s straps: from the frame to a post of its own in a slot in what slides, over it and under it; the slider is cut back flat, a gap round each, and held in the plane', async () => {
+test('the frame\'s straps: from the frame to a post of its own in a slot in what slides, over it and under it; the slider is cut back a gap round each, its ceiling over the lower slanted, and held in the plane', async () => {
   const spring = { points: [[0, 0], [10, 0], [20, 0]], thickness: 1, fillet: 1, into: 0.84, lead: 2, start: 0, end: 0, moves: 'x' };
   const disc = (c, r) => jscad.primitives.circle({ radius: r, center: c, segments: 32 });
   // A bar on a spring slides 6 mm along x; a post of the frame stands in a slot up the bar, hung between two straps
@@ -821,12 +821,17 @@ test('the frame\'s straps: from the frame to a post of its own in a slot in what
     states: { out: { s: 6 } }, sequence: ['rest', 'out', 'rest'] });
   const br = r.findings.filter((x) => x.code === 'lamina.bridge');
   assert.ok(br.length >= 5 && br.every((x) => x.level === 'pass'), br.map((x) => `${x.level} ${x.text}`).join('; '));
-  for (const said of [/the frame's upper strap stands on the frame on both sides/, /the frame's lower strap stands on the frame on both sides/, /the frame's upper strap: bar passes under it, cut down to/, /the frame's lower strap: bar passes over it, cut up to 1\.80 mm/]) assert.ok(br.some((x) => said.test(x.text)), `${said}: ${br.map((x) => x.text).join('; ')}`);
-  // In 3D, up through the bar where the straps cross it: strap, a gap, the bar, a gap, strap (not an arch over a floor)
+  for (const said of [/the frame's upper strap stands on the frame on both sides/, /the frame's lower strap stands on the frame on both sides/, /the frame's upper strap: bar passes under it, cut down to/, /the frame's lower strap: bar passes over it, cut up to 1\.80 mm there, its ceiling slanting in at 45° from the walls to 3\.80 mm/]) assert.ok(br.some((x) => said.test(x.text)), `${said}: ${br.map((x) => x.text).join('; ')}`);
+  // In 3D, up through the bar where the straps cross it: strap, a gap, the bar, a gap, strap (not an arch over a
+  // floor along the travel). Over the lower strap the bar's ceiling slants in from the pocket's walls at 45° (the
+  // pocket is 4.2 mm wide: a roof 2 mm tall on its middle line), so it prints without a flat ledge in the air
   const tris = jscad.geometries.geom3.toPolygons(r.parts.body).flatMap((q) => q.vertices.slice(2).map((v, i) => [q.vertices[0], q.vertices[i + 1], v]));
   const inside = ([x, y, z]) => { let n = 0; for (const [a, b, c] of tris) { const d = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]); if (Math.abs(d) < 1e-12) continue; const u = ((x - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (y - a[1])) / d, w = ((b[0] - a[0]) * (y - a[1]) - (x - a[0]) * (b[1] - a[1])) / d; if (u < 0 || w < 0 || u + w > 1) continue; if (a[2] + u * (b[2] - a[2]) + w * (c[2] - a[2]) > z) n++; } return n % 2 === 1; };
   const up = (x, y) => Array.from({ length: 16 }, (_, k) => (inside([x + 0.013, y + 0.017, 0.25 + k * 0.5]) ? '#' : '.')).join('');
-  assert.equal(up(48, 0), '##..########..##', 'beyond the slot, on the straps\' line: strap 1.2, gap 0.6, bar, gap 0.6, strap 1.2');
+  assert.equal(up(48, 0), '##......####..##', 'beyond the slot, on the straps\' line: strap 1.2, gap 0.6, the roof\'s ridge at 3.8, the bar, gap 0.6, strap 1.2');
+  assert.equal(up(48, 2), '....########....', 'at the pocket\'s wall the bar begins at 2.0, the gap and the roof\'s first layer, and ends under the upper pocket');
+  const roofAt = (y) => { for (let z = 1.8; z < 4; z += 0.1) if (inside([48.013, y + 0.017, z + 0.05])) return +z.toFixed(1); };
+  assert.ok(roofAt(1.5) >= 2.2 && roofAt(1.5) <= 2.6 && roofAt(1) >= 2.8 && roofAt(1) <= 3.2, `the roof rises at 45° from the wall: ${roofAt(1.5)} mm at 0.6 in, ${roofAt(1)} mm at 1.1 in`);
   assert.equal(up(48, 3), '################', 'beside the straps, the bar stands on the bed, whole');
   assert.equal(up(44, 0), '################', 'the post, from the bed to the top');
   assert.ok(!r.findings.some((x) => x.level === 'fail' && /runs into/.test(x.text)), r.findings.filter((x) => /runs into/.test(x.text)).map((x) => x.text).join('; '));

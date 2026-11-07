@@ -1,7 +1,7 @@
 {
   "name": "inline",
   "title": "Launcher action, in line: a pusher between two curved arms shaped by the beam solver, a flooded frame, the disc flat in a roofed slot, the pull ring on top, a solid trigger that is its own sear on a hinge carrying the pull, printed in one piece on its side",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "uses": [
     "x1c",
     "petg",
@@ -663,7 +663,7 @@
     "strap_w": {
       "value": 6,
       "unit": "mm",
-      "rule": "The straps from the slide's front to the pin, over and under the tail: wider than the slot, so the upper rests on the slot's walls a gap off rather than bridging air, and the tail's rails stand on the bed either side of the lower"
+      "rule": "The straps from the slide's front to the pin, over and under the tail: wider than the slot, so the upper rests on the slot's walls a gap off rather than bridging air, and the tail's rails stand on the bed either side of the lower, their ceiling over it slanting in at 45° (a flat ledge there printed as strings drooping onto the strap)"
     },
     "strap_depth": {
       "value": 2.4,
