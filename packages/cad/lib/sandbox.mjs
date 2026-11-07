@@ -15,7 +15,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import * as nodeModule from 'node:module';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { WS, TOOL, config, paths } from './workspace.mjs';
+import { WS, TOOL, config, paths, trusted } from './workspace.mjs';
 import { fromFaces } from './parts.mjs';
 import { located } from './errors.mjs';
 
@@ -27,7 +27,8 @@ const flag = (() => {
 const inThread = typeof nodeModule.registerHooks === 'function'; // import hooks in this thread; older Node needs a worker for them
 
 /** Whether designs run sandboxed here. */
-export const sandboxed = () => !!flag && process.env.CAD_TRUST !== '1' && config.sandbox !== false;
+// (a workspace's "sandbox": false counts only once the user has trusted it: cad trust)
+export const sandboxed = () => !!flag && process.env.CAD_TRUST !== '1' && !(config.sandbox === false && trusted());
 
 // What the sandbox may read: the workspace, and the packages designs and the runner load (wherever npm put them)
 function readable() {
