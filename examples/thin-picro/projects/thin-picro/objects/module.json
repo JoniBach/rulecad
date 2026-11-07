@@ -266,7 +266,7 @@
     "via_pad": {
       "value": 0.3,
       "unit": "mm",
-      "rule": "The vias the router adds, across: JLCPCB's preferred 0.15 mm wider than via_hole (a 0.075 mm ring). Small, so the board still routes; a track that then comes within JLCPCB's 0.2 mm of a via's hole (jlcpcb.via_hole_track) is necked or bowed round it after routing. Sea-Picro's own vias, kept, are 0.5 mm"
+      "rule": "The vias the router adds, across: JLCPCB's preferred 0.15 mm wider than via_hole (a 0.075 mm ring). Small, so the board still routes; a track that then comes within JLCPCB's 0.2 mm of a via's hole (jlcpcb.via_hole_track) is necked or bowed round it after routing. The planes' vias, and Sea-Picro's own, kept, are Sea-Picro's 0.5 mm"
     },
     "via_hole": {
       "value": 0.15,

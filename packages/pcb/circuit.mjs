@@ -25,6 +25,8 @@
 //   holes  [{ x, y, d, keepout }] in the board (mounting holes; keepout: a radius the router keeps tracks out of, for a screw head)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
+//   route_via { pad, hole } (mm): the vias the router makes, when not via_pad and via_hole (the planes' vias)
+//   join_pads false: a pin's pads apart aren't joined by a track (see samePin)
 //   via_hole_gap (mm) a routed track closer to a via's hole than this is bowed out round it (JLCPCB: 0.2)
 //   smooth true: routed tracks pulled tight once routed (@rulecad/smooth), where the straight run keeps clearance
 //   neck (mm) a routed track still too close to another after repair is narrowed to this where they pass (the fab's smallest)
@@ -148,7 +150,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   // (the vias the router may make: the board's sizes, else ones with the ring a fab recommends, 0.3 in 0.8)
   add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length,
     width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS,
-    min_via_hole_diameter: board.via_hole ?? 0.3, min_via_pad_diameter: board.via_pad ?? 0.8 });
+    min_via_hole_diameter: board.route_via?.hole ?? board.via_hole ?? 0.3, min_via_pad_diameter: board.route_via?.pad ?? board.via_pad ?? 0.8 });
 
   for (const { part, comp, pads, sourcePorts, fpEls, at, mirror, size } of placed) {
     // The component sits at the middle of its pads and holes (as tscircuit places it: pick-and-place reads this)
@@ -231,7 +233,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   const netNamed = (names) => Object.entries(board.nets || {}).find(([, spec]) => (Array.isArray(spec) ? spec : spec.pins).some((p) => names.includes(p)))?.[0];
   const samePin = [...pinPads].flatMap(([pin, pads]) => {
     const net = pads.length > 1 && netNamed(pads[0].names), part = pin.slice(0, pin.indexOf('.'));
-    if (pads.length < 2 || !net || board.planes?.[net]) return [];
+    if (pads.length < 2 || !net || board.planes?.[net] || board.join_pads === false) return [];
     return pads.slice(1).filter((q, i) => Math.hypot(q.x - pads[i].x, q.y - pads[i].y) > q.reach + pads[i].reach)
       .map((q) => ({ from: [part, pads[0].key], to: [part, q.key], width: board.track, net }));
   });
