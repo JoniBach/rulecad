@@ -820,26 +820,33 @@ test('edits to JSON keep its line endings and indentation, and say when it isn\'
   assert.throws(() => setAt('{ "name": "hook", ', ['a'], 1), /not valid JSON/, 'not a scan that never ends');
 });
 
+// A document replayed: its fenced blocks in turn, in a workspace npm create rulecad makes. A block named for a file
+// is written there; a sh block's cad commands are run (previews need Chrome, so they're passed over), each to pass
+// with no failing or warning finding. Returns { ws, files, commands } with the workspace for more checks; rm it after
+function replay(doc, ws) {
+  const text = fs.readFileSync(doc, 'utf8').replace(/\r\n/g, '\n'); // (a Windows checkout has its own line endings)
+  execFileSync(process.execPath, [fileURLToPath(new URL('../create-rulecad/index.mjs', import.meta.url)), ws, '--no-install'], { encoding: 'utf8' });
+  fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction'); // stands in for npm install
+  let files = 0, commands = 0;
+  for (const [, info, body] of text.matchAll(/^```(\S*(?: \S+)?)\n([\s\S]*?)^```$/gm)) {
+    const [lang, file] = info.split(' ');
+    if (file) { fs.mkdirSync(path.dirname(path.join(ws, file)), { recursive: true }); fs.writeFileSync(path.join(ws, file), body); files++; continue; }
+    if (lang !== 'sh') continue;
+    for (const line of body.split('\n').map((l) => l.replace(/\s+#.*$/, '').trim()).filter((l) => l.startsWith('npx cad ') && !l.startsWith('npx cad preview'))) {
+      const a = [...line.slice('npx cad '.length).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]);
+      const r = run(ws, a);
+      assert.equal(r.code, 0, `${line}\n${r.out}`);
+      assert.doesNotMatch(r.out, /^\s+[✗!] /m, `${line}\n${r.out}`);
+      commands++;
+    }
+  }
+  return { text, files, commands };
+}
+
 test('the tutorial: every file and command in TUTORIAL.md works as written, in a workspace npm create rulecad makes', () => {
-  const text = fs.readFileSync(new URL('./TUTORIAL.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'); // (a Windows checkout has its own line endings)
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tutorial-')), ws = path.join(root, 'my-designs');
   try {
-    execFileSync(process.execPath, [fileURLToPath(new URL('../create-rulecad/index.mjs', import.meta.url)), ws, '--no-install'], { encoding: 'utf8' });
-    fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction'); // stands in for npm install
-    let files = 0, commands = 0;
-    // each fenced block in turn: one named for a file is written there; a sh block's cad commands are run
-    for (const [, info, body] of text.matchAll(/^```(\S*(?: \S+)?)\n([\s\S]*?)^```$/gm)) {
-      const [lang, file] = info.split(' ');
-      if (file) { fs.mkdirSync(path.dirname(path.join(ws, file)), { recursive: true }); fs.writeFileSync(path.join(ws, file), body); files++; continue; }
-      if (lang !== 'sh') continue;
-      for (const line of body.split('\n').map((l) => l.replace(/\s+#.*$/, '').trim()).filter((l) => l.startsWith('npx cad ') && !l.startsWith('npx cad preview'))) { // (a preview needs Chrome)
-        const a = [...line.slice('npx cad '.length).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]);
-        const r = run(ws, a);
-        assert.equal(r.code, 0, `${line}\n${r.out}`);
-        assert.doesNotMatch(r.out, /^\s+[✗!] /m, `${line}\n${r.out}`);
-        commands++;
-      }
-    }
+    const { text, files, commands } = replay(fileURLToPath(new URL('./TUTORIAL.md', import.meta.url)), ws);
     assert.ok(files >= 5 && commands >= 10, `${files} files, ${commands} commands`);
     assert.match(run(ws, ['check', 'home/hook-on-screw']).out, /The screw in its hole: closest gap 0\.\d+ mm/);
     // and the mistakes it lists are reported in the words it gives
@@ -850,5 +857,22 @@ test('the tutorial: every file and command in TUTORIAL.md works as written, in a
       assert.ok(out.includes(said), `${to}: ${out}`);
       assert.ok(text.includes(said), `the tutorial's table says: ${said}`);
     }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('the worked examples: every file and command in EXAMPLES.md works as written, parts to a mechanism', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'examples-')), ws = path.join(root, 'my-designs');
+  try {
+    const { files, commands } = replay(fileURLToPath(new URL('./EXAMPLES.md', import.meta.url)), ws);
+    assert.ok(files >= 14 && commands >= 16, `${files} files, ${commands} commands`);
+    // What each example promises
+    assert.ok(fs.existsSync(path.join(ws, 'exports/home/tag@0.1.0.3mf')), 'the tag exported with its parts');
+    assert.match(run(ws, ['check', 'home/tag:long']).out, /88 × 28 × [\d.]+ mm/, 'the long variant: 80 mm with its brim');
+    assert.match(run(ws, ['check', 'home/box']).out, /2 poses checked: shut, open/);
+    const rules = JSON.parse(fs.readFileSync(path.join(ws, 'rules/basemodel.json'), 'utf8')).rules;
+    assert.equal(rules.size_x?.kind, 'derived', 'the measured model became draft rules');
+    assert.match(run(ws, ['check', 'home/arm']).out, /arm down: moves [\d.]+ mm under 10 N/);
+    assert.match(run(ws, ['check', 'home/pad']).out, /matrix: 4 keys on 2 rows × 2 columns/);
+    assert.ok(fs.readdirSync(path.join(ws, '.preview/home')).some((f) => f.endsWith('flick-sequence.svg')), 'the mechanism animated');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

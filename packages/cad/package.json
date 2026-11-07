@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/cad",
-  "version": "0.7.25",
+  "version": "0.7.26",
   "description": "The cad command: JSCAD designs from traceable rules, checked for printing and fit, versioned by what fits, shared as links and exported as Bambu 3MF.",
   "type": "module",
   "bin": {
@@ -31,6 +31,7 @@
     "templates",
     "README.md",
     "TUTORIAL.md",
+    "EXAMPLES.md",
     "LICENSE",
     "AGENTS.md"
   ],
@@ -63,11 +64,11 @@
     "@jscad/modeling": "^2.12.0",
     "three": "^0.186.1",
     "@rulecad/fea": "^0.2.1",
-    "@rulecad/topopt": "^0.2.2",
-    "@rulecad/flexures": "^0.3.0"
+    "@rulecad/topopt": "^0.3.0",
+    "@rulecad/flexures": "^0.4.0"
   },
   "peerDependencies": {
-    "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0"
+    "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0 || ^0.5.0"
   },
   "peerDependenciesMeta": {
     "@rulecad/pcb": {

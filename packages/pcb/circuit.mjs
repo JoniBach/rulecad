@@ -43,14 +43,16 @@ import { fp } from '@tscircuit/footprinter';
 import { symbols } from 'schematic-symbols';
 
 const SUB = 'subcircuit_source_group_0';
-const PASTE = 0.7;
+// Solder paste: each side of an SMD pad's opening this share of the pad's (an aperture about 10% smaller than its pad, as
+// stencil guides give for ordinary pads: 81% of the area; 0.7, tscircuit's, left 49%)
+const PASTE = 0.9;
 // Quarter turns, counter-clockwise, as exact cosines and sines (no rounding error in pad positions)
 const QUARTER = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
 function quarter(r = 0) {
   const t = QUARTER[((r % 360) + 360) % 360];
   if (!t) throw new Error(`a part's rotation is ${r}°: boards take 0, 90, 180 or 270`);
   return t;
-} // solder paste, as a share of an SMD pad (what tscircuit uses)
+}
 // The board's manufacturing minimums (mm): tscircuit's defaults, within what common fabs make. The router keeps to them.
 const FAB_MINIMUMS = { min_trace_width: 0.1, min_via_hole_diameter: 0.2, min_via_pad_diameter: 0.3, min_via_hole_edge_to_via_hole_edge_clearance: 0.1,
   min_trace_to_hole_edge_clearance: 0.2, min_trace_to_pad_edge_clearance: 0.1, min_pad_edge_to_pad_edge_clearance: 0.1,
@@ -116,7 +118,8 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   for (const part of board.parts) {
     const comp = add('source_component', { ftype: part.ftype, name: part.name, manufacturer_part_number: part.mpn,
       ...(part.lcsc ? { supplier_part_numbers: { jlcpcb: [part.lcsc] } } : {}), ...(part.value ? { display_value: part.value } : {}), ...(part.bom === false ? { exclude_from_bom: true } : {}),
-      are_pins_interchangeable: part.ftype === 'simple_switch', source_group_id: 'source_group_0', subcircuit_id: SUB });
+      are_pins_interchangeable: part.ftype === 'simple_switch', source_group_id: 'source_group_0', subcircuit_id: SUB,
+      ...(part.package || typeof part.footprint === 'string' ? { rulecad_package: part.package ?? part.footprint } : {}) }); // (for the BOM's footprint column)
     const fpEls = part.footprint ? fp.string(part.footprint).circuitJson() : [];
     const mirror = part.layer === 'bottom' ? -1 : 1;
     const [cos, sin] = quarter(part.rotation), swap = sin !== 0;
@@ -150,6 +153,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   // (the vias the router may make: the board's sizes, else ones with the ring a fab recommends, 0.3 in 0.8)
   add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length,
     width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS,
+    ...(board.fab ? { min_trace_width: board.fab.track_min, min_trace_to_pad_edge_clearance: board.fab.gap_min, min_pad_edge_to_pad_edge_clearance: board.fab.gap_min, min_via_hole_edge_to_via_hole_edge_clearance: board.fab.gap_min } : {}), // (the fab's own, when the board names its rules)
     min_via_hole_diameter: board.route_via?.hole ?? board.via_hole ?? 0.3, min_via_pad_diameter: board.route_via?.pad ?? board.via_pad ?? 0.8 });
 
   for (const { part, comp, pads, sourcePorts, fpEls, at, mirror, size } of placed) {
@@ -204,7 +208,10 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   // ---- planes: each plane net's pads reach its inner layer, through their own holes or a via each ----
   if (board.planes && copper.length < 4) throw new Error('planes need a board of 4 layers or more (board.layers): the outer two carry the tracks');
   const netOf = new Map(); // `${part}.${pin}` -> net, for the pours
-  for (const [net, spec] of Object.entries(board.nets || {})) for (const pin of Array.isArray(spec) ? spec : spec.pins) netOf.set(pin, net);
+  for (const [net, spec] of Object.entries(board.nets || {})) for (const pin of Array.isArray(spec) ? spec : spec.pins) {
+    if (netOf.has(pin) && netOf.get(pin) !== net) throw new Error(`${pin} is in two nets, ${netOf.get(pin)} and ${net}: a pin is on one net (join the nets, or take it out of one)`);
+    netOf.set(pin, net);
+  }
   for (const [net, spec] of Object.entries(board.planes || {})) for (const pin of spec.pins) netOf.set(pin, net);
   const { nets: planeNets = null, links = [] } = board.planes ? planeVias(out, add, board, copper) : {};
   if (board.copper) keptCopper(out, add, board, copper, planeNets || {});

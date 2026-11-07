@@ -213,7 +213,8 @@ itself: nothing is uploaded.
 
 ## Where next
 
-Each of these is a section of [the README](README.md):
+[The worked examples](EXAMPLES.md) carry on from here, one for each of these, with the files to write and the
+commands to run, tested the same way as this page. Each is also a section of [the README](README.md):
 
 - **Parts**: a design that returns several named parts, supports that break away, a second colour.
 - **Variants**: named sets of inputs, side by side (`home/hook:long`).

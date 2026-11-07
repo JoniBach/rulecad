@@ -84,7 +84,9 @@ export async function readProblem(project, ref) {
   if (dim === 2 && !(problem.thickness > 0)) throw new Error(`${path.basename(file)}: a flat (2D) problem needs a thickness`);
   const outline = { smooth: p.outline?.smooth ?? 4, minArea: p.outline?.min_area != null ? ev(p.outline.min_area) : problem.cell ** 2 * 2, fine: p.outline?.fine != null ? ev(p.outline.fine) : 1.25 }; // fine: the cells a printable solid is cleaned and drawn on, mm (its own cells if smaller)
   // A printable solid's surface is kept within the printer's overhang limit too (smoothing can tip faces past it)
-  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5, layer: pr?.layer ?? 0.2, line: pr?.line ?? 0.42 }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
+  // (outline.tip: faces the smoothing left steeper than the limit are tipped back to it too; off unless asked, since
+  // tipped corners leave dips that slice as islands, and the layers step out no further for it)
+  if (dim === 3 && problem.overhang) { const n = printerOf(project), pr = resolve({ uses: [n] }).values[n]; outline.overhang = { up: problem.overhang, angle: pr?.overhang ?? 45, bridge: pr?.bridge ?? 5, layer: pr?.layer ?? 0.2, line: pr?.line ?? 0.42, ...(p.outline?.tip ? { tip: true } : {}) }; problem.bridge = outline.overhang.bridge; } // (the optimiser bridges half that)
   return { ref, name, variant, file, dim, title: p.title || name, material: { name: p.material, ...m }, problem, outline, critical: !!p.critical };
 }
 

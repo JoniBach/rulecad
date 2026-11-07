@@ -66,6 +66,17 @@ test('the first layer: two parts printed in place nearer than the gap plus the s
   assert.equal(check(pair(0.4), printer).find((x) => x.code === 'print.first-layer'), undefined, 'a printer with no spread given: not checked');
 });
 
+test('the bed is a support: an underside within a breakaway gap of it is laid down with the first layer; and many undersides at one height are said once', () => {
+  // A block with a base of 0.25 mm pads of its own at 0.3 mm (a smoothed base's facets a hair up)
+  const block = translate([0, 0, 5.15], cuboid({ size: [10, 10, 9.7] })), feet = [translate([-3, -3, 0.15], cuboid({ size: [2, 2, 0.3] })), translate([3, 3, 0.15], cuboid({ size: [2, 2, 0.3] }))];
+  const f = check(tri(union(block, ...feet)), printer);
+  assert.equal(f.find((x) => x.code === 'print.bed-near')?.level, 'pass', f.map((x) => x.text).join('; '));
+  assert.ok(!f.some((x) => x.code === 'print.mid-air' && x.level === 'warn'), 'nothing in mid-air: the base is within a gap of the bed');
+  // Three slabs floating at one height: one finding, counting them
+  const three = check(tri(union(translate([20, 0, 1], cuboid({ size: [4, 4, 2] })), ...[-10, 0, 10].map((x) => translate([x, 0, 5], cuboid({ size: [4, 4, 2] }))))), printer).filter((x) => x.code === 'print.mid-air');
+  assert.equal(three.length, 1); assert.match(three[0].text, /^3 undersides \([\d.]+ mm²\) at z 4 start in mid-air/);
+});
+
 test('seams: open edges are holes; a cube is closed', () => {
   assert.equal(seams(box([0, 0, 0], [1, 1, 1])).gaps, 0);
   assert.ok(seams(box([0, 0, 0], [1, 1, 1]).slice(2)).gaps > 0);
@@ -144,4 +155,12 @@ test('slicing is quick on a part of upright walls: layers the same as the one be
   const t0 = Date.now(), found = check(cube, { bed: 256, overhang: 45, layer: 0.2 });
   assert.ok(found.every((x) => x.level === 'pass'), JSON.stringify(found.filter((x) => x.level !== 'pass')));
   assert.ok(Date.now() - t0 < 20000, `an 80 mm cube took ${Date.now() - t0} ms (it took a minute before)`);
+});
+
+test('a mesh turned inside out is named as that, not as the bridges and bed it seems to have', () => {
+  const cube = box([0, 0, 0], [10, 10, 10]), inverted = cube.map((p) => [...p].reverse());
+  const f = check(inverted, printer);
+  assert.equal(f.find((x) => x.code === 'print.inside-out')?.level, 'fail');
+  assert.ok(!f.some((x) => /bridge|flat on the bed/.test(x.text)), f.map((x) => x.text).join('; '));
+  assert.ok(!check(cube, printer).some((x) => x.code === 'print.inside-out'), 'the right way out: not said');
 });

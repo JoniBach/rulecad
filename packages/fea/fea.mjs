@@ -274,7 +274,7 @@ export function assemble(g, pat, cellMatrices, ke, scale, into) {
  * @param {{ scale: Float64Array, ke: Float64Array, fixed: Uint8Array, loads: Float64Array[], springs?: Float64Array, method?: 'direct' | 'cg' | 'mg', backend?: typeof jsBackend, tol?: number, maxIter?: number, start?: Float64Array[] }} o
  *   springs: a stiffness added on each dof (N/mm), as a mechanism's input and output springs
  *   start: a first guess for the iterative solvers (the last solution, when solving again after a small change)
- * @returns {{ u: Float64Array[], iterations: number, again: (loads: Float64Array[]) => Float64Array[] }} again: more
+ * @returns {{ u: Float64Array[], iterations: number, again: (loads: Float64Array[]) => Float64Array[], warning?: string }} warning: multigrid on a grid it couldn't halve far (slow); again: more
  *   loads on the same matrix (an adjoint), reusing its factor or preconditioner
  */
 export function solve(g, { scale, ke, fixed, loads, springs, method = 'direct', backend = jsBackend, tol = 1e-9, maxIter = 20000, start }) {
@@ -302,8 +302,12 @@ export function solve(g, { scale, ke, fixed, loads, springs, method = 'direct', 
     diagonal(s, d) { cells.diagonal(s, d); for (let i = 0; i < d.length; i++) d[i] += springs[i]; },
   } : cells;
   const precondition = method === 'mg' ? multigrid(g, { scale, ke, fixed, backend, op }) : jacobi(g, { scale, fixed, op });
+  // Multigrid halves each side while it can: a grid with an odd side stops early, and its coarsest grid, solved
+  // directly, can be most of the work (33 × 17 × 17 cells took 80 times 32 × 16 × 16). Said, with the sides to give
+  const coarse = method === 'mg' ? hierarchy(g).grids.at(-1) : null, slow = coarse && coarse.dofs > 20 * COARSEST;
+  const warning = slow ? `multigrid stopped at ${[coarse.nx, coarse.ny, coarse.nz].filter(Boolean).join(' × ')} cells (${coarse.dofs} unknowns, solved directly): a side that can't be halved again; give each side a multiple of 8 cells for a fast solve` : null;
   const again = (ls) => conjugateGradients(g, { scale, fixed, loads: held(ls), backend, tol, maxIter, precondition, op }).u;
-  return { ...conjugateGradients(g, { scale, fixed, loads: held(loads), backend, tol, maxIter, start, precondition, op }), again };
+  return { ...conjugateGradients(g, { scale, fixed, loads: held(loads), backend, tol, maxIter, start, precondition, op }), again, ...(warning ? { warning } : {}) };
 }
 
 // The banded Cholesky factor of K (cells' matrices: ke × scale, or each its own), fixed dofs as identity rows. Lenient
