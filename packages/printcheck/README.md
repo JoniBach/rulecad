@@ -48,6 +48,10 @@ What it checks:
   misses a tip like this, because each of its faces may slope at 45° or less. A shallow dip in a smoothed underside
   spreads wide, so it doesn't count.
 
+The layer checks (islands, the first layer, overhang as sliced) are the slow part, seconds on a curved part:
+`check(triangles, printer, { slice: false })` leaves them out and says so (`print.unsliced`), for a page that shows
+a part at once and slices it off its own thread (the viewer does).
+
 Several parts printed together (a keycap with an inlaid legend in another colour): pass
 `{ parts: [{ triangles, role }] }`. Then one part resting on another isn't an overhang, and each part must be closed on
 its own. A part with `role: 'support'` is printed and then removed.
