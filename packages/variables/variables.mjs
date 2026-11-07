@@ -94,7 +94,7 @@ function parseUnit(u) {
 }
 const showUnit = (x) => (x == null ? 'a number' : Object.keys(x).length ? Object.entries(x).map(([k, n]) => (n === 1 ? k : n === 2 ? `${k}²` : n === 3 ? `${k}³` : `${k}^${n}`)).join('·') : 'a plain number');
 const sameUnit = (a, b) => a == null || b == null || (Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([k, n]) => b[k] === n));
-const combine = (a, b, sign) => { if (a == null) return sign > 0 ? b : null; if (b == null) return a; const o = { ...a }; for (const [k, n] of Object.entries(b)) { o[k] = (o[k] || 0) + sign * n; if (!o[k]) delete o[k]; } return o; };
+const combine = (a, b, sign) => { if (a == null) return sign > 0 ? b : b == null ? null : Object.fromEntries(Object.entries(b).map(([k, n]) => [k, -n])); /* (a plain number over a unit: 2 / w is per mm) */ if (b == null) return a; const o = { ...a }; for (const [k, n] of Object.entries(b)) { o[k] = (o[k] || 0) + sign * n; if (!o[k]) delete o[k]; } return o; };
 
 /**
  * The unit an expression comes to, and any mixing of units on the way (mm added to degrees, a sine of millimetres).
@@ -251,11 +251,42 @@ export const fmt = (n) => (typeof n === 'number' ? String(Number(n.toFixed(2))) 
  * @returns {{ line: number, text: string }[]}
  */
 export function lint(source) {
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/.*$/gm, '')
-    .replace(/(['"`])(?:\\.|(?!\1).)*\1/g, (m) => m.replace(/./g, ' '));
-  const found = [];
-  code.split('\n').forEach((l, i) => {
-    for (const m of l.matchAll(/(?<![\w.])(\d+\.\d+|\.\d+|\d+)(?![\w.])/g)) if (!['0', '1', '2'].includes(m[1])) found.push({ line: i + 1, text: m[1] });
-  });
+  // A small tokeniser, so a // inside a string doesn't hide the rest of the line, code inside a template's ${…} is read
+  // as code, and every way of writing a number is seen (1e3, 0x1F, 1_000, .5)
+  const found = [], n = source.length, NUM = /^(?:0[xX][\da-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d[\d_]*)?)n?/;
+  let line = 1, i = 0;
+  const depth = []; // open template literals: the brace depth their ${ started at
+  let braces = 0;
+  const skipString = (q) => { i++; while (i < n && source[i] !== q) { if (source[i] === '\\') i++; else if (source[i] === '\n') line++; i++; } i++; };
+  const template = () => { // from just after a backtick (or a closing } of ${…}) to the next ${ or the closing backtick
+    while (i < n) {
+      const c = source[i];
+      if (c === '\\') { i += 2; continue; }
+      if (c === '\n') line++;
+      if (c === '`') { i++; return; }
+      if (c === '$' && source[i + 1] === '{') { i += 2; depth.push(braces); braces++; return; }
+      i++;
+    }
+  };
+  while (i < n) {
+    const c = source[i];
+    if (c === '\n') { line++; i++; continue; }
+    if (c === '/' && source[i + 1] === '/') { while (i < n && source[i] !== '\n') i++; continue; }
+    if (c === '/' && source[i + 1] === '*') { const end = source.indexOf('*/', i + 2), stop = end < 0 ? n : end + 2; for (let k = i; k < stop; k++) if (source[k] === '\n') line++; i = stop; continue; }
+    if (c === '"' || c === "'") { skipString(c); continue; }
+    if (c === '`') { i++; template(); continue; }
+    if (c === '{') { braces++; i++; continue; }
+    if (c === '}') { braces--; i++; if (depth.length && braces === depth.at(-1)) { depth.pop(); template(); } continue; }
+    if (/[\w$]/.test(c) && !/\d/.test(c)) { while (i < n && /[\w$]/.test(source[i])) i++; continue; } // a name (x1, v2: not numbers)
+    if (/\d/.test(c) || (c === '.' && /\d/.test(source[i + 1] || '') && !/[\w$)\]]/.test(source[i - 1] || ''))) {
+      if (c === '.' && /[\w$)\].]/.test(source[i - 1] || '')) { i++; continue; } // (a property after a dot)
+      const m = source.slice(i).match(NUM), text = m[0];
+      const value = Number(text.replace(/_/g, '').replace(/n$/, ''));
+      if (!(value === 0 || value === 1 || value === 2)) found.push({ line, text });
+      i += text.length;
+      continue;
+    }
+    i++;
+  }
   return found;
 }

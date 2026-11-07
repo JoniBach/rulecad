@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/model-link",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Share a printable model as a link (the model lives in the URL), and write STL or multi-colour Bambu Studio 3MF files, in the browser or Node.",
   "type": "module",
   "exports": {
@@ -30,6 +30,10 @@
     "type": "git",
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/model-link"
+  },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/model-link#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
   },
   "scripts": {
     "test": "node --test"
