@@ -8,7 +8,7 @@
       "rule": "Narrowest track",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
     },
     "gap_min": {
       "value": 0.1,
@@ -16,7 +16,7 @@
       "rule": "Smallest gap between tracks",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
     },
     "drill_min": {
       "value": 0.15,
@@ -24,7 +24,15 @@
       "rule": "Smallest drilled hole on a two-layer board",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
+    },
+    "npth_min": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Smallest unplated (non-plated through) hole on a 1 to 2 layer board",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-11-07"
     },
     "castellated_drill_min": {
       "value": 0.6,
@@ -48,7 +56,7 @@
       "rule": "Smallest via hole",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
     },
     "via_pad": {
       "value": 0.25,
@@ -56,7 +64,7 @@
       "rule": "Smallest via pad diameter",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
     },
     "annular": {
       "value": 0.25,
@@ -64,7 +72,7 @@
       "rule": "Annular ring, recommended (0.18 mm absolute minimum)",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
     },
     "annular_min": {
       "value": 0.18,
@@ -80,7 +88,7 @@
       "rule": "Thinnest silkscreen line",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
     },
     "silk_text": {
       "value": 1.0,
@@ -88,7 +96,7 @@
       "rule": "Smallest silkscreen text height",
       "kind": "spec",
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
-      "checked": "2026-10-14"
+      "checked": "2026-11-07"
     },
     "thickness": {
       "value": 1.6,

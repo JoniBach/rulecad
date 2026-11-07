@@ -20,7 +20,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `xiao` | Seeed Studio XIAO modules: outline, headers, the pin on each pad | 8 |
 | `qwiic` | Qwiic / STEMMA QT sockets (JST SH, 4 pins): land pattern and pinout | 10 |
 | `jstph` | JST PH (2.0 mm) battery connector | 3 |
-| `jlcpcb` | JLCPCB's limits for two-layer boards | 13 |
+| `jlcpcb` | JLCPCB's limits for two-layer boards | 14 |
 | `wiring` | Room for hand wiring | 1 |
 | `m4`, `m5` | M4 and M5 socket head screws and hex nuts | 5 each |
 | `rp2040` | The RP2040 microcontroller: which package pins carry which GPIO | 2 |

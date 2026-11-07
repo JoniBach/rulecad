@@ -156,3 +156,11 @@ test('slicing is quick on a part of upright walls: layers the same as the one be
   assert.ok(found.every((x) => x.level === 'pass'), JSON.stringify(found.filter((x) => x.level !== 'pass')));
   assert.ok(Date.now() - t0 < 20000, `an 80 mm cube took ${Date.now() - t0} ms (it took a minute before)`);
 });
+
+test('a mesh turned inside out is named as that, not as the bridges and bed it seems to have', () => {
+  const cube = box([0, 0, 0], [10, 10, 10]), inverted = cube.map((p) => [...p].reverse());
+  const f = check(inverted, printer);
+  assert.equal(f.find((x) => x.code === 'print.inside-out')?.level, 'fail');
+  assert.ok(!f.some((x) => /bridge|flat on the bed/.test(x.text)), f.map((x) => x.text).join('; '));
+  assert.ok(!check(cube, printer).some((x) => x.code === 'print.inside-out'), 'the right way out: not said');
+});

@@ -261,11 +261,16 @@ test('a travel stop stands where the strain limit says, less a margin; printable
   assert.ok(!printable(p, printer, pla, m).some((r) => r.code === 'flexure.stop'), 'nothing said when no stop is given');
 });
 
-test('a contact-aided leaf: the leaf\'s rate until the beam meets the stop, a shorter leaf\'s after; the contact travel from the cantilever\'s shape', () => {
-  const p = { length: 40, thickness: 0.84, width: 8, stop: 20, gap: 2 }, m = contactLeafModel(p, pla), one = leafModel(p, pla), rest = leafModel({ ...p, length: 20 }, pla);
-  assert.ok(m.first === one.stiffness && m.second === rest.stiffness && m.second > 7 * m.first);
+test('a contact-aided leaf: the leaf\'s rate until the beam meets the stop, then a cantilever propped at the stop; the contact travel from the cantilever\'s shape', () => {
+  const p = { length: 40, thickness: 0.84, width: 8, stop: 20, gap: 2 }, m = contactLeafModel(p, pla), one = leafModel(p, pla), clamped = leafModel({ ...p, length: 20 }, pla);
+  const EI = (one.stiffness * 40 ** 3) / 3, a = 20, b = 20;
+  assert.ok(m.first === one.stiffness && Math.abs(m.second - (12 * EI) / (b * b * (3 * a + 4 * b))) < 1e-12, 'propped: P b² (3a + 4b) / 12EI at the tip');
+  assert.ok(Math.abs(clamped.stiffness / m.second - (1 + (3 * a) / (4 * b))) < 1e-9, 'clamped at the stop overstated it by 1 + 3a/4b');
+  // the propped form's ends: a stop at the root is a shorter cantilever clamped there; a stop at the tip holds it
+  const at = (stop) => contactLeafModel({ ...p, stop }, pla).second, short = (l) => leafModel({ ...p, length: l }, pla).stiffness;
+  assert.ok(Math.abs(at(1e-6) / short(40) - 1) < 1e-4 && at(39.999) > 1e6 * m.first);
   assert.ok(Math.abs(m.contact - (2 * 2 * 40 ** 3) / (3 * 40 * 400 - 8000)) < 1e-9, 'the tip travel when the beam at the stop has dropped the gap');
-  assert.ok(Math.abs(m.force(m.contact) - one.stiffness * m.contact) < 1e-9 && Math.abs(m.force(m.contact + 1) - m.force(m.contact) - rest.stiffness) < 1e-9);
+  assert.ok(Math.abs(m.force(m.contact) - one.stiffness * m.contact) < 1e-9 && Math.abs(m.force(m.contact + 1) - m.force(m.contact) - m.second) < 1e-9);
   assert.ok(m.strain(m.contact) === one.strain(m.contact) && m.travel(0.02) > m.contact && Math.abs(m.strain(m.travel(0.02)) - 0.02) < 1e-9);
   assert.ok(onePiece(contactLeaf(p)), 'the stop bar grows from the root');
 });
@@ -329,7 +334,7 @@ test('a pre-curved leaf: an arc of the leaf\'s length, the straight leaf\'s stif
   assert.ok(m.stiffness === s.stiffness && m.range(0.02)[1] === s.travel(0.02) && m.range(0.02)[0] === -s.travel(0.02));
   assert.ok(Math.abs(m.preset - 0.84 / (2 * ((1600 + 144) / 48))) < 1e-12, 't / 2ρ');
   const shape = curvedLeaf(p), box = measureBoundingBox(shape);
-  assert.ok(onePiece(shape) && box[1][1] > 6 && box[1][1] < 6.5 && measureVolume(shape) > 40 * 0.84 * 8, 'the tip sits the rise off the chord; an arc is longer than its chord');
+  assert.ok(onePiece(shape) && box[0][1] < -6 && box[0][1] > -6.5 && measureVolume(shape) > 40 * 0.84 * 8, 'the arc bows the rise off its chord; an arc is longer than its chord');
 });
 
 test('stops for any flexure: a travel stop placed by a guide\'s model at its shuttle, an angle stop at a pivot\'s arm', () => {
@@ -883,4 +888,37 @@ test('a flooded frame keeps a post: a pin of the frame\'s in a slot in what slid
   const br = posted.findings.filter((x) => x.code === 'lamina.bridge');
   assert.ok(br.length >= 5 && br.every((x) => x.level === 'pass'), br.map((x) => `${x.level} ${x.text}`).join('; '));
   assert.ok(!posted.findings.some((x) => x.level === 'fail' && /lamina\.(free|collide|sequence)/.test(x.code)), posted.findings.filter((x) => x.level === 'fail').map((x) => x.text).join('; '));
+});
+
+test('curveClearance: a mirrored pair is tested arm against arm, so an arm crossing its own mirror line is caught', async () => {
+  const { curveClearance } = await import('@rulecad/flexures');
+  const arm = (dip) => ({ points: [[0, 5], [10, dip], [20, 5]], thickness: 1, mirror: 0, start: 0, end: 0 });
+  const clear = curveClearance(arm(4)), crossed = curveClearance(arm(-2));
+  assert.ok(!clear || clear.clear > 1, `arms 8 mm apart at their nearest: ${JSON.stringify(clear)}`);
+  assert.ok(crossed && crossed.mirror && crossed.clear < 0, `an arm dipping past y = 0 meets its twin: ${JSON.stringify(crossed)}`);
+});
+
+test('models, sizers and lamina states refuse what isn\'t a size or a number, by name', async () => {
+  const { size, lamina } = await import('@rulecad/flexures');
+  assert.throws(() => leafModel({ length: 0, thickness: 1, width: 5 }, pla), /leafModel: length is a size above 0 \(got 0\)/);
+  assert.throws(() => leafModel({ length: -10, thickness: 1, width: 5 }, pla), /length is a size above 0/);
+  assert.throws(() => leafModel({ length: 10, thickness: 1, width: 5 }, { E: 0 }), /modulus E above 0/);
+  assert.throws(() => size.leaf({ travel: 5, force: 0, width: 5, material: pla }, fdm), /size\.leaf: force is a size above 0/);
+  assert.throws(() => notchHingeModel({ radius: 2, neck: NaN, width: 5 }, pla), /neck is a size above 0 \(got null\)/);
+  await assert.rejects(lamina({ height: 6, gap: 0.3, material: pla, ground: [rect(-5, -5, 0, 5)], bodies: { tip: rect(20, -2, 24, 2) }, joints: { leaf: { kind: 'leaf', params: { length: 20, thickness: 0.84 }, from: 'ground', to: 'tip' } }, states: { bent: { leaf: NaN } }, sequence: ['rest', 'bent'] }), /state bent: leaf is null, not a number/);
+});
+
+test('a constant-force slider in a lamina: its force along x from the linkage, not its leaf\'s torsional stiffness times millimetres', async () => {
+  const p = { leaf: 30, thickness: 0.84, width: 6 }, m = constantForceModel(p, pla);
+  assert.ok(m.torsional && typeof m.energy === 'function');
+  const s = m.stroke / 2, numeric = (m.energy(s + 1e-3) - m.energy(s - 1e-3)) / 2e-3;
+  assert.ok(Math.abs(numeric - m.force(s)) < 1e-3 * Math.max(1, m.force(s)), `energy's slope is the force: ${numeric} against ${m.force(s)}`);
+  assert.ok(Math.abs(m.stiffness * s - m.force(s)) > 10 * m.force(s), 'K × travel would be wrong by an order or more');
+});
+
+test('curvedLeaf is drawn in the frame the others are: its root at the origin, its chord along x, as tall as it is wide', () => {
+  const g = curvedLeaf({ length: 30, thickness: 0.84, width: 6, rise: 2 }), [lo, hi] = jscad.measurements.measureBoundingBox(g);
+  assert.ok(Math.abs(lo[0]) < 0.5 && Math.abs(hi[0] - 30) < 0.5, `along x from 0 to 30: ${lo[0]} to ${hi[0]}`);
+  assert.ok(Math.abs(hi[1] - 0.42) < 0.05 && Math.abs(lo[1] - (-2 - 0.42)) < 0.05, `the chord on y = 0, bowing 2 mm to -y: ${lo[1]} to ${hi[1]}`);
+  assert.ok(Math.abs(lo[2]) < 1e-9 && Math.abs(hi[2] - 6) < 1e-9, 'z from 0 to its width');
 });

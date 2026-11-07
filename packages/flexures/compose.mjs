@@ -1,7 +1,7 @@
 // Composing flexures into mechanisms: where each one attaches (ports), how big one must be for a job (sizing), and one
 // report for a mechanism's worth of them (report). Units: mm, N, MPa, radians.
 import { curvePath, curveModel } from './curves.mjs';
-import { waveSpringModel, waveSpringPath, pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable } from './flexures.mjs';
+import { waveSpringModel, waveSpringPath, pivotPairModel, leafModel, fixedGuidedModel, parallelGuideModel, compoundGuideModel, foldedGuideModel, serpentineModel, notchHingeModel, ellipticalHingeModel, cartwheelModel, livingHingeModel, letJointModel, bistableModel, constantForceModel, contactLeafModel, parallelogramModel, tweezersModel, snapHookModel, printable, need } from './flexures.mjs';
 
 /** @typedef {{ at: number[], dir: number[] }} Port a point on a flexure and the direction a mating part faces from it */
 
@@ -83,6 +83,7 @@ export const size = {
    *   it works (it scales: the same ratio at any size is the same strain)
    */
   forTravel(kind, { travel, force, energy, width, maxWidth = Infinity, maxLength = Infinity, turns, material, margin = 0.8, shape = {} }, printer) {
+    need(`size.forTravel`, { travel, force, energy, width }, material);
     const model = models[kind];
     if (!model || !['leaf', 'fixedGuided', 'parallelGuide', 'compoundGuide', 'foldedGuide', 'serpentine'].includes(kind)) throw new Error(`size.forTravel: no beam model for ${kind}`);
     const want = force ?? (energy != null ? (2 * energy) / travel : null), target = margin * material.strainLimit;
@@ -107,6 +108,7 @@ export const size = {
   },
   /** A leaf for a force at a travel: tip force F at travel δ. @returns {{ length: number, thickness: number, width: number, stiffness: number, strain: number } | null} */
   leaf({ travel, force, width, material, margin = 0.8, maxLength = Infinity }, printer) {
+    need('size.leaf', { travel, force, width }, material);
     for (const t of lines(printer)) {
       const L = Math.cbrt((material.E * width * t ** 3 * travel) / (4 * force)), m = leafModel({ length: L, thickness: t, width }, material);
       if (L <= maxLength && m.strain(travel) <= margin * material.strainLimit) return { length: +L.toFixed(2), thickness: t, width, stiffness: m.stiffness, strain: m.strain(travel) };
@@ -115,6 +117,7 @@ export const size = {
   },
   /** A fixed-guided beam, or one leaf of a guide. */
   fixedGuided({ travel, force, width, material, margin = 0.8, maxLength = Infinity }, printer) {
+    need('size.fixedGuided', { travel, force, width }, material);
     for (const t of lines(printer)) {
       const L = Math.cbrt((material.E * width * t ** 3 * travel) / force), m = fixedGuidedModel({ length: L, thickness: t, width }, material);
       if (L <= maxLength && m.strain(travel) <= margin * material.strainLimit) return { length: +L.toFixed(2), thickness: t, width, stiffness: m.stiffness, strain: m.strain(travel) };
@@ -123,6 +126,7 @@ export const size = {
   },
   /** A compound guide (or folded guide) for a force at a travel: each beam takes half the travel. */
   compoundGuide({ travel, force, width, material, margin = 0.8, maxLength = Infinity }, printer) {
+    need('size.compoundGuide', { travel, force, width }, material);
     for (const t of lines(printer)) {
       const L = Math.cbrt((material.E * width * t ** 3 * travel) / force), m = compoundGuideModel({ length: L, thickness: t, width }, material);
       if (L <= maxLength && m.strain(travel) <= margin * material.strainLimit) return { length: +L.toFixed(2), thickness: t, width, stiffness: m.stiffness, strain: m.strain(travel) };
@@ -131,6 +135,7 @@ export const size = {
   },
   /** A serpentine for a force at a travel in a box: the fewest turns of the longest leaf that fits `box` along x. */
   serpentine({ travel, force, width, material, box, margin = 0.8 }, printer) {
+    need('size.serpentine', { travel, force, width }, material);
     for (const t of lines(printer)) for (let n = 2; n <= 12; n++) {
       const L = Math.min(box, Math.cbrt((material.E * width * t ** 3 * travel) / (n * force))), m = serpentineModel({ length: L, thickness: t, width, turns: n }, material);
       if (Math.abs(m.stiffness * travel - force) / force < 0.05 && m.strain(travel) <= margin * material.strainLimit) return { length: +L.toFixed(2), thickness: t, width, turns: n, stiffness: m.stiffness, strain: m.strain(travel) };
@@ -155,6 +160,7 @@ export const size = {
   },
   /** A constant-force mechanism for a force over a stroke: the thinnest leaf (whole lines) and the length whose flat stretch covers the stroke at about the force. */
   constantForce({ force, stroke, width, material, margin = 0.8 }, printer) {
+    need('size.constantForce', { force, stroke, width }, material);
     for (const t of lines(printer)) for (let l = 20; l <= 120; l += 5) {
       const m = constantForceModel({ leaf: l, thickness: t, width }, material);
       if (m.flat.to >= stroke && m.flat.force >= force && m.strain(stroke) <= margin * material.strainLimit) return { leaf: l, thickness: t, width, crank: l / 2, force: m.flat.force, flat: m.flat, strain: m.strain(stroke) };
