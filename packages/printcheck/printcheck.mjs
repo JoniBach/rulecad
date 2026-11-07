@@ -53,7 +53,7 @@ export function bounds(polys) {
  * @param {{ eps?: number, parts?: { triangles: Face[], role?: 'part' | 'support' }[] }} [options]
  * @returns {Finding[]}
  */
-export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
+export function check(polys, printer, { eps = 1e-3, parts = null, slice = true } = {}) {
   // (a finding's at is a point, the middle of where it is; box is the box round it: one shape across the kit)
   const out = [], f = (level, text, code, values, box) => out.push({ level, text, code, ...(values && { values }), ...(box && Number.isFinite(box.lo?.[0]) ? { at: box.lo.map((x, k) => (x + box.hi[k]) / 2), box } : {}) });
   // What can't be checked is said at the door, not found out deep inside
@@ -204,7 +204,9 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     const hanging = tips.filter((t) => t[2] - lo[2] > eps && !rests([t, t, t]));
     if (hanging.length) f('warn', `${hanging.length === 1 ? 'a point starts' : `${hanging.length} points start`} in mid-air (z ${mm(Math.min(...hanging.map((t) => t[2])))}${hanging.length > 1 ? ` to ${mm(Math.max(...hanging.map((t) => t[2])))}` : ''} mm): the lowest points of tips hanging down, with nothing below to print on`, 'print.island', { points: hanging }, hanging.reduce((b, t) => grow(b, [t]), { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] }));
     else f('pass', 'nothing starts in mid-air', 'print.island', { points: [] });
-    // And as the slicer sees it: every layer against the one below
+    // And as the slicer sees it: every layer against the one below (slice: false leaves this out, the slow part: a page
+    // can check a part at once, then slice it off its own thread)
+    if (!slice) { f('info', 'not sliced: the layers are checked on their own (islands, the first layer, layer overhang)', 'print.unsliced'); continue; }
     // (the first layer spreads `foot` each side as it is squashed on to the bed: two parts printed in place must stand
     // further apart there than the gap that prints apart higher up, or they print as one)
     const firstGap = printer.foot > 0 && printer.print_gap > 0 ? printer.print_gap + 2 * printer.foot : 0;

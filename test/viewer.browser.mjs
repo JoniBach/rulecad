@@ -54,6 +54,10 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     const rules = await run(`[...document.querySelectorAll('#rules li')].map((l) => l.textContent).join(' | ')`);
     assert.match(rules, /bridge/, rules);
     assert.match(rules, /fits the bed/);
+    // the quick checks at once, then the sliced ones from the worker in their place, the page answering meanwhile
+    assert.ok(await until(`/islands? (in|when sliced)/.test([...document.querySelectorAll('#rules li')].map((l) => l.textContent).join(' '))`), 'the sliced check arrives from its worker');
+    const after = await run(`[...document.querySelectorAll('#rules li')].map((l) => l.textContent).join(' | ')`);
+    assert.ok(!/slicing it, layer by layer/.test(after), `and replaces the waiting line: ${after}`);
     assert.match(await run('location.hash'), /^#m=1\./, 'the address is now the model\'s link');
     await new Promise((r) => setTimeout(r, 1500)); // a frame or two of the model turning
     await shot('viewer.png');

@@ -157,6 +157,12 @@ test('slicing is quick on a part of upright walls: layers the same as the one be
   assert.ok(Date.now() - t0 < 20000, `an 80 mm cube took ${Date.now() - t0} ms (it took a minute before)`);
 });
 
+test('slice: false leaves the slow layer checks out, and says so', () => {
+  const f = check(box([0, 0, 0], [10, 10, 10]), printer, { slice: false });
+  assert.ok(f.some((x) => x.code === 'print.unsliced') && !f.some((x) => x.code === 'print.islands'));
+  assert.ok(check(box([0, 0, 0], [10, 10, 10]), printer).some((x) => x.code === 'print.islands'), 'sliced by default');
+});
+
 test('a finding\'s at is a point and its box a box, the one shape across the kit', () => {
   const tee = tri(union(translate([0, 0, 5], cuboid({ size: [4, 4, 10] })), translate([0, 0, 11], cuboid({ size: [20, 4, 2] }))));
   const f = check(tee, printer).find((x) => x.code === 'print.ledge');
