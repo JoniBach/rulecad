@@ -1165,7 +1165,11 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   // have their own figures (JLCPCB asks a via's pad only 0.1 mm wider than its hole). A clone's vias as its source
   // has them are the source's design: said, not failed
   const srcVia = source?.circuit?.via, asSrc = (e) => srcVia && Math.abs(e.hole_diameter - srcVia.hole) < 1e-6 && Math.abs(e.outer_diameter - srcVia.pad) < 1e-6;
-  const rings = json.filter((e) => e.type === 'pcb_via' || (e.type === 'pcb_plated_hole' && e.outer_diameter != null && e.hole_diameter != null)).map((e) => ({ e, ring: (e.outer_diameter - e.hole_diameter) / 2, via: e.type === 'pcb_via' }));
+  // (a plated hole sharing its pin with a surface pad of its part is a via in that pad, such as a chip's thermal vias
+  // under its exposed pad: a via's figures)
+  const padPins = new Set(json.filter((e) => e.type === 'pcb_smtpad').map((e) => `${e.pcb_component_id}:${e.port_hints?.[0]}`));
+  const inPad = (e) => e.type === 'pcb_plated_hole' && e.port_hints?.slice(1).some((h) => padPins.has(`${e.pcb_component_id}:${String(h).replace(/^pin/, '')}`));
+  const rings = json.filter((e) => e.type === 'pcb_via' || (e.type === 'pcb_plated_hole' && e.outer_diameter != null && e.hole_diameter != null)).map((e) => ({ e, ring: (e.outer_diameter - e.hole_diameter) / 2, via: e.type === 'pcb_via' || inPad(e) }));
   const leastOf = (r) => (r.via ? j.via_annular_min ?? j.annular_min ?? 0.18 : j.annular_min ?? 0.18), wantOf = (r) => (r.via ? j.via_annular ?? j.annular : j.annular);
   const badVias = rings.filter((r) => r.via && !asSrc(r.e) && (r.e.hole_diameter < j.via_hole || r.e.outer_diameter < j.via_pad)), thinRings = rings.filter((r) => !asSrc(r.e) && r.ring < leastOf(r) - 1e-9), smallRings = rings.filter((r) => !asSrc(r.e) && r.ring >= leastOf(r) - 1e-9 && r.ring < wantOf(r) - 1e-9);
   const inherited_ = rings.filter((r) => asSrc(r.e) && r.ring < wantOf(r)).length, kind = (list) => (list.every((r) => r.via) ? 'vias' : list.every((r) => !r.via) ? 'plated holes' : 'vias and plated holes');

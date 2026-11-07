@@ -54,6 +54,11 @@ test('the fab\'s sizes are measured from the board: a via\'s hole, pad and ring,
   assert.ok(texts(await checks([...json, via(0.2, 0.25)], v, matrix)).some((t) => /^fail 1 vias with a 0\.025 mm ring, under JLCPCB's least \(0\.05 mm for vias\)/.test(t)), 'a via\'s pad under 0.1 mm wider than its hole');
   assert.ok(texts(await checks([...json, via(0.2, 0.3)], v, matrix)).some((t) => /^warn 1 vias with a 0\.05 mm ring: above JLCPCB's least, under what it recommends \(0\.075 mm for vias\)/.test(t)), 'tscircuit\'s own via, 0.2 in 0.3: fine, with a word');
   assert.ok(!texts(await checks([...json, via(0.3, 0.7)], v, matrix)).some((t) => /^(fail|warn) .*ring/.test(t)), 'a common 0.3 in 0.7 via');
+  // a chip's thermal via, a plated hole in its exposed pad (the same pin): a via's figures, not a plated hole's
+  const pad = { type: 'pcb_smtpad', pcb_smtpad_id: 'ep', pcb_component_id: 'chip', port_hints: ['57'], shape: 'rect', x: 50, y: 50, width: 3, height: 3, layer: 'top' };
+  const thermal = { type: 'pcb_plated_hole', pcb_plated_hole_id: 'tv', pcb_component_id: 'chip', port_hints: ['unnamed_platedhole1', 'pin57'], shape: 'circle', x: 50, y: 50, outer_diameter: 0.6, hole_diameter: 0.35, layers: ['top', 'bottom'] };
+  assert.ok(!texts(await checks([...json, pad, thermal], v, matrix)).some((t) => /^fail .*ring/.test(t)), 'a 0.125 mm ring in a pad: fine for a via');
+  assert.ok(texts(await checks([...json, { ...thermal, port_hints: ['unnamed_platedhole1', 'pin9'] }], v, matrix)).some((t) => /^fail .*plated holes with a 0\.125 mm ring/.test(t)), 'the same hole for a pin of its own: a plated hole\'s figures');
   assert.ok(texts(await checks([...json, via(0.1, 0.8)], v, matrix)).some((t) => /^fail 1 vias under JLCPCB's 0\.15 mm hole/.test(t)), 'a hole too small to drill');
   const text = { type: 'pcb_silkscreen_text', pcb_silkscreen_text_id: 'silk_test', anchor_alignment: 'center', anchor_position: { x: 0, y: 0 }, font: 'tscircuit2024', font_size: 0.5, layer: 'top', text: 'tiny', ccw_rotation: 0 };
   assert.ok(texts(await checks([...json, text], v, matrix)).some((t) => /^fail silkscreen the fab can't print: 1 texts under 1 mm high \(0\.5\)/.test(t)), 'text the fab can\'t print');
