@@ -13,7 +13,7 @@
 // Diodes point from the switch to the row (COL2ROW in QMK's terms).
 import fs from 'node:fs';
 import path from 'node:path';
-import { circuitJson, bounds, smtBounds, slideClear } from './circuit.mjs';
+import { circuitJson, bounds, smtBounds, slideClear, viaHoleGaps } from './circuit.mjs';
 export { bounds };
 import { loadRuleSet } from '@rulecad/cad/rules';
 import jscad from '@jscad/modeling';
@@ -501,6 +501,7 @@ export function fromKicadPcb(text) {
       const pad = { pin: name, x: r4(bottom ? -px : px), y: r4(-py), w: num(sz[1]), h: num(sz[2]), angle, smd: kind === 'smd', shape, net: kidOf(p, 'net')?.[2] || null };
       const ratio = kidOf(p, 'roundrect_rratio'); // rounded corners, as a share of the shorter side
       if (shape === 'roundrect' && ratio) pad.corner = r4(num(ratio[1]) * Math.min(pad.w, pad.h));
+      if (shape === 'oval' && pad.w !== pad.h) pad.corner = r4(Math.min(pad.w, pad.h) / 2); // an oval: round ends, a rectangle's corners rounded all the way
       if (drill) {
         const d = drill.slice(1), oval = d[0] === 'oval', ds = d.filter((x) => !Array.isArray(x) && x !== 'oval').map(num), off = kidOf(drill, 'offset');
         pad.hole = Math.min(...ds);
@@ -1073,6 +1074,8 @@ export const holes = (json) => json.filter((e) => e.type === 'pcb_hole' && !e.pc
 const mm = (x) => String(Number(x.toFixed(3))); // 0.30000000000000004 reads as 0.3
 // checks(json, v, matrix, source) -> findings ({ level, text }): tscircuit's own design checks, the fab's limits, the
 // matrix, and for a clone (source: { circuit, arranged }) the source's circuit and placement
+export { viaHoleGaps }; // (in circuit.mjs, which repairs by it)
+
 export async function checks(json, v, matrix, source) { // source: a clone's { circuit, arranged } (its own checks join these)
   const { runAllChecks } = await import('@tscircuit/checks');
   const out = [], j = v.jlcpcb;
@@ -1136,17 +1139,32 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   const thin = traces.flatMap((t) => t.route).filter((p) => p.width != null && p.width < j.track_min);
   out.push(thin.length ? { level: 'fail', text: `tracks under JLCPCB's ${j.track_min} mm` } : { level: 'pass', text: `tracks ${mm(v.track ?? Math.min(...traces.flatMap((t) => t.route).map((p) => p.width).filter((w) => w != null)))} mm${v.clear != null ? `, gaps ${mm(v.clear)} mm` : ''}: over JLCPCB's ${j.track_min} / ${j.gap_min} mm` });
   // Vias and plated holes against the fab's sizes, each measured from the board: the hole, the pad, and the ring
-  // between them (under the recommended ring a warning, under the least a failure). A clone's vias as its source
+  // between them (under the recommended ring a warning, under the least a failure). A via's ring and a plated hole's
+  // have their own figures (JLCPCB asks a via's pad only 0.1 mm wider than its hole). A clone's vias as its source
   // has them are the source's design: said, not failed
   const srcVia = source?.circuit?.via, asSrc = (e) => srcVia && Math.abs(e.hole_diameter - srcVia.hole) < 1e-6 && Math.abs(e.outer_diameter - srcVia.pad) < 1e-6;
-  const rings = json.filter((e) => e.type === 'pcb_via' || (e.type === 'pcb_plated_hole' && e.outer_diameter != null && e.hole_diameter != null)).map((e) => ({ e, ring: (e.outer_diameter - e.hole_diameter) / 2, via: e.type === 'pcb_via' }));
-  const least = j.annular_min ?? 0.18, badVias = rings.filter((r) => r.via && !asSrc(r.e) && (r.e.hole_diameter < j.via_hole || r.e.outer_diameter < j.via_pad)), thinRings = rings.filter((r) => !asSrc(r.e) && r.ring < least), smallRings = rings.filter((r) => !asSrc(r.e) && r.ring >= least && r.ring < j.annular);
-  const inherited_ = rings.filter((r) => asSrc(r.e) && r.ring < j.annular).length;
+  // (a plated hole sharing its pin with a surface pad of its part is a via in that pad, such as a chip's thermal vias
+  // under its exposed pad: a via's figures)
+  const padPins = new Set(json.filter((e) => e.type === 'pcb_smtpad').map((e) => `${e.pcb_component_id}:${e.port_hints?.[0]}`));
+  const inPad = (e) => e.type === 'pcb_plated_hole' && e.port_hints?.slice(1).some((h) => padPins.has(`${e.pcb_component_id}:${String(h).replace(/^pin/, '')}`));
+  const rings = json.filter((e) => e.type === 'pcb_via' || (e.type === 'pcb_plated_hole' && e.outer_diameter != null && e.hole_diameter != null)).map((e) => ({ e, ring: (e.outer_diameter - e.hole_diameter) / 2, via: e.type === 'pcb_via' || inPad(e) }));
+  const leastOf = (r) => (r.via ? j.via_annular_min ?? j.annular_min ?? 0.18 : j.annular_min ?? 0.18), wantOf = (r) => (r.via ? j.via_annular ?? j.annular : j.annular);
+  const badVias = rings.filter((r) => r.via && !asSrc(r.e) && (r.e.hole_diameter < j.via_hole || r.e.outer_diameter < j.via_pad)), thinRings = rings.filter((r) => !asSrc(r.e) && r.ring < leastOf(r) - 1e-9), smallRings = rings.filter((r) => !asSrc(r.e) && r.ring >= leastOf(r) - 1e-9 && r.ring < wantOf(r) - 1e-9);
+  const inherited_ = rings.filter((r) => asSrc(r.e) && r.ring < wantOf(r)).length, kind = (list) => (list.every((r) => r.via) ? 'vias' : list.every((r) => !r.via) ? 'plated holes' : 'vias and plated holes');
+  const least = (list) => mm(Math.min(...list.map((r) => r.ring))), figures = (list) => [...new Set(list.map((r) => (r.via ? 'vias' : 'plated holes')))].map((k) => k === 'vias' ? `${j.via_annular_min ?? j.annular_min} mm for vias` : `${j.annular_min} mm for plated holes`).join(', ');
   if (rings.length) {
     out.push(badVias.length ? { level: 'fail', text: `${badVias.length} vias under JLCPCB's ${j.via_hole} mm hole in a ${j.via_pad} mm pad (${mm(badVias[0].e.hole_diameter)} in ${mm(badVias[0].e.outer_diameter)})` }
-      : thinRings.length ? { level: 'fail', text: `${thinRings.length} ${thinRings[0].via ? 'vias' : 'plated holes'} with a ${mm(Math.min(...thinRings.map((r) => r.ring)))} mm ring, under JLCPCB's least of ${least} mm` }
-      : smallRings.length ? { level: 'warn', text: `${smallRings.length} ${smallRings.every((r) => r.via) ? 'vias' : 'plated holes'} with a ${mm(Math.min(...smallRings.map((r) => r.ring)))} mm ring: above JLCPCB's least of ${least} mm, under the ${j.annular} mm it recommends` }
-      : { level: 'pass', text: `${rings.filter((r) => r.via).length} vias and ${rings.filter((r) => !r.via).length} plated holes, rings ${mm(Math.min(...rings.map((r) => r.ring)))} mm or more (JLCPCB recommends ${j.annular})${inherited_ ? `; ${inherited_} as the source has them` : ''}` });
+      : thinRings.length ? { level: 'fail', text: `${thinRings.length} ${kind(thinRings)} with a ${least(thinRings)} mm ring, under JLCPCB's least (${figures(thinRings)})` }
+      : smallRings.length ? { level: 'warn', text: `${smallRings.length} ${kind(smallRings)} with a ${least(smallRings)} mm ring: above JLCPCB's least, under what it recommends (${[...new Set(smallRings.map((r) => (r.via ? `${j.via_annular ?? j.annular} mm for vias` : `${j.annular} mm for plated holes`)))].join(', ')})` }
+      : { level: 'pass', text: `${rings.filter((r) => r.via).length} vias (rings ${rings.some((r) => r.via) ? least(rings.filter((r) => r.via)) : '-'} mm or more) and ${rings.filter((r) => !r.via).length} plated holes (${rings.some((r) => !r.via) ? least(rings.filter((r) => !r.via)) : '-'} mm or more): JLCPCB recommends ${j.via_annular ?? j.annular} and ${j.annular}${inherited_ ? `; ${inherited_} as the source has them` : ''}` });
+  }
+  // A via's hole to a track of another net (JLCPCB measures it from the hole's edge, not the via's pad: a small via's
+  // thin ring leaves less room than the copper clearance suggests)
+  if (j.via_hole_track && json.some((e) => e.type === 'pcb_via')) {
+    const close = viaHoleGaps(json).filter((g) => g.gap < j.via_hole_track - 1e-6);
+    const own = close.filter((g) => !(g.kept && asSrc(g.via)));
+    out.push(own.length ? { level: 'fail', text: `${own.length} tracks closer than JLCPCB's ${j.via_hole_track} mm to a via's hole (${mm(Math.min(...own.map((g) => g.gap)))} mm at ${mm(own[0].at.x)}, ${mm(own[0].at.y)})` }
+      : { level: 'pass', text: `every via's hole ${j.via_hole_track} mm or more from tracks of other nets${close.length ? `, but ${close.length} as the source has them` : ''}` });
   }
   // Silkscreen the fab can print: lines no thinner than silk_line, text no smaller than silk_text
   const silkLines = json.filter((e) => (e.type === 'pcb_silkscreen_path' || e.type === 'pcb_silkscreen_rect' || e.type === 'pcb_silkscreen_line' || e.type === 'pcb_silkscreen_circle') && e.stroke_width != null && e.stroke_width < j.silk_line);
@@ -1176,6 +1194,18 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     out.push(cells.size === matrix.keys.length && new Set(gpio).size === gpio.length
       ? { level: 'pass', text: `matrix: ${matrix.keys.length} keys on ${Object.keys(matrix.rows).length} rows × ${Object.keys(matrix.cols).length} columns, ${gpio.length} GPIO (rows ${Object.values(matrix.rows).join(' ')}; columns ${Object.values(matrix.cols).join(' ')})` }
       : { level: 'fail', text: 'matrix: two keys share a row and column, or a GPIO is used twice' });
+  }
+  // KiCad's own design-rule check, when KiCad is installed: the board as KiCad reads it, its planes poured by KiCad. A
+  // clone's pads by the edge where the source has them are allowed there, as in our checks
+  const { kicadDrc } = await import('./kicad.mjs');
+  const edgeExempt = [...new Set(inherited.map((e) => e.message?.match(/^SMT pad (\w+)\./)?.[1]).filter(Boolean))].map((ref) => ({ ref, edge: 0 }));
+  const kicad = await kicadDrc(json, { clearance: board.min_trace_to_pad_edge_clearance, edgeExempt }).catch((e) => ({ failed: e }));
+  if (!kicad) out.push({ level: 'info', text: 'KiCad isn\'t installed: its design-rule check, a second opinion, skipped' });
+  else if (kicad.failed) out.push({ level: 'warn', text: `KiCad's design-rule check didn't run: ${String(kicad.failed.message || kicad.failed).split('\n')[0]}` });
+  else {
+    const by = (list) => Object.entries(list.reduce((m, x) => ((m[x.type.replace(/_/g, ' ')] = (m[x.type.replace(/_/g, ' ')] || 0) + 1), m), {})).map(([t, n]) => `${n} ${t}`).join(', ');
+    out.push(kicad.errors.length ? { level: 'fail', text: `KiCad ${kicad.version}'s design-rule check: ${kicad.errors.length} errors (${by(kicad.errors)}); first: ${kicad.errors[0].description}` }
+      : { level: 'pass', text: `KiCad ${kicad.version}'s design-rule check, its own planes poured: no errors${kicad.warnings.length ? ` (warnings: ${by(kicad.warnings)})` : ''}` });
   }
   if (inherited.length) out.push({ level: 'info', text: `as the source has them, so not failed: ${[...new Set(inherited.map((e) => e.message.replace(/ \(.*$/, '').replace(/\. Try moving.*$/, '')))].slice(0, 4).join('; ')}${inherited.length > 4 ? ` (${inherited.length} in all)` : ''}` });
   if (source?.circuit) out.push(...sameCircuit(json, source.circuit, {}, source.arranged?.added || []), ...placementChecks(source.arranged || source.circuit, source.circuit.placement || learnPlacement(source.circuit)));
@@ -1272,11 +1302,14 @@ function bom(json) {
 }
 
 // KiCad's own files, to check with kicad-cli or finish by hand: { 'name.kicad_pcb': text, 'name.kicad_sch': text }
-export async function kicadFiles(json, name) {
+export async function kicadFiles(json, name, { clearance, track, edgeExempt } = {}) {
   const { CircuitJsonToKicadPcbConverter, CircuitJsonToKicadSchConverter } = await import('circuit-json-to-kicad');
-  const pcb = new CircuitJsonToKicadPcbConverter(json); pcb.runUntilFinished();
+  const { kicadNets, patchKicadPcb, kicadProject } = await import('./kicad.mjs');
+  const netted = kicadNets(json); // (see kicad.mjs: what the converter leaves out, made up)
+  const pcb = new CircuitJsonToKicadPcbConverter(netted); pcb.runUntilFinished();
   const sch = new CircuitJsonToKicadSchConverter(json); sch.runUntilFinished();
-  return { [`${name}.kicad_pcb`]: pcb.getOutputString(), [`${name}.kicad_sch`]: sch.getOutputString() };
+  const { pro, dru } = kicadProject(netted, { clearance, track, edgeExempt });
+  return { [`${name}.kicad_pcb`]: patchKicadPcb(pcb.getOutputString(), netted), [`${name}.kicad_sch`]: sch.getOutputString(), [`${name}.kicad_pro`]: pro, [`${name}.kicad_dru`]: dru };
 }
 
 // The 2D views for the model page, as SVG drawings: [[name, svg]]. "Group: view" names group into one tab with a

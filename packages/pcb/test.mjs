@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, laneOrder, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+import { grid, keyboard, laneOrder, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
+import { kicadNets, patchKicadPcb, kicadProject } from './kicad.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -48,10 +49,16 @@ test('the fab\'s sizes are measured from the board: a via\'s hole, pad and ring,
   const { json, matrix } = await build(v, 2, 2);
   const texts = (found) => found.map((f) => `${f.level} ${f.text}`);
   const clean = texts(await checks(json, v, matrix));
-  assert.ok(clean.some((t) => /^pass .*plated holes, rings/.test(t)) && clean.some((t) => /^pass silkscreen: lines/.test(t)), clean.join('\n'));
+  assert.ok(clean.some((t) => /^pass .*plated holes \(/.test(t)) && clean.some((t) => /^pass silkscreen: lines/.test(t)), clean.join('\n'));
   const via = (hole, pad) => ({ type: 'pcb_via', pcb_via_id: 'via_test', x: 0, y: 0, hole_diameter: hole, outer_diameter: pad, layers: ['top', 'bottom'], from_layer: 'top', to_layer: 'bottom' });
-  assert.ok(texts(await checks([...json, via(0.2, 0.3)], v, matrix)).some((t) => /^fail 1 vias with a 0\.05 mm ring, under JLCPCB's least of 0\.18/.test(t)), 'tscircuit\'s own via: a 0.05 mm ring');
-  assert.ok(texts(await checks([...json, via(0.3, 0.7)], v, matrix)).some((t) => /^warn 1 vias with a 0\.2 mm ring: above JLCPCB's least of 0\.18 mm, under the 0\.25 mm it recommends/.test(t)), 'a common 0.3 in 0.7 via: fine, with a word');
+  assert.ok(texts(await checks([...json, via(0.2, 0.25)], v, matrix)).some((t) => /^fail 1 vias with a 0\.025 mm ring, under JLCPCB's least \(0\.05 mm for vias\)/.test(t)), 'a via\'s pad under 0.1 mm wider than its hole');
+  assert.ok(texts(await checks([...json, via(0.2, 0.3)], v, matrix)).some((t) => /^warn 1 vias with a 0\.05 mm ring: above JLCPCB's least, under what it recommends \(0\.075 mm for vias\)/.test(t)), 'tscircuit\'s own via, 0.2 in 0.3: fine, with a word');
+  assert.ok(!texts(await checks([...json, via(0.3, 0.7)], v, matrix)).some((t) => /^(fail|warn) .*ring/.test(t)), 'a common 0.3 in 0.7 via');
+  // a chip's thermal via, a plated hole in its exposed pad (the same pin): a via's figures, not a plated hole's
+  const pad = { type: 'pcb_smtpad', pcb_smtpad_id: 'ep', pcb_component_id: 'chip', port_hints: ['57'], shape: 'rect', x: 50, y: 50, width: 3, height: 3, layer: 'top' };
+  const thermal = { type: 'pcb_plated_hole', pcb_plated_hole_id: 'tv', pcb_component_id: 'chip', port_hints: ['unnamed_platedhole1', 'pin57'], shape: 'circle', x: 50, y: 50, outer_diameter: 0.6, hole_diameter: 0.35, layers: ['top', 'bottom'] };
+  assert.ok(!texts(await checks([...json, pad, thermal], v, matrix)).some((t) => /^fail .*ring/.test(t)), 'a 0.125 mm ring in a pad: fine for a via');
+  assert.ok(texts(await checks([...json, { ...thermal, port_hints: ['unnamed_platedhole1', 'pin9'] }], v, matrix)).some((t) => /^fail .*plated holes with a 0\.125 mm ring/.test(t)), 'the same hole for a pin of its own: a plated hole\'s figures');
   assert.ok(texts(await checks([...json, via(0.1, 0.8)], v, matrix)).some((t) => /^fail 1 vias under JLCPCB's 0\.15 mm hole/.test(t)), 'a hole too small to drill');
   const text = { type: 'pcb_silkscreen_text', pcb_silkscreen_text_id: 'silk_test', anchor_alignment: 'center', anchor_position: { x: 0, y: 0 }, font: 'tscircuit2024', font_size: 0.5, layer: 'top', text: 'tiny', ccw_rotation: 0 };
   assert.ok(texts(await checks([...json, text], v, matrix)).some((t) => /^fail silkscreen the fab can't print: 1 texts under 1 mm high \(0\.5\)/.test(t)), 'text the fab can\'t print');
@@ -598,4 +605,64 @@ test('a routed track hugging the board edge is moved in by what it lacks', async
   const [t] = await neckDown(json, [hug], 0.1);
   assert.ok(t.route[1].y < 4.75 && t.route[2].y < 4.75, `moved in: ${t.route[1].y}`);
   assert.deepEqual([t.route[0].y, t.route[3].y], [0, 0], 'its ends stay on their pads');
+});
+
+test('KiCad\'s files: every pad, track and via on its named net; an off-centre hole where KiCad drills it; the board\'s rules', () => {
+  const json = [
+    { type: 'pcb_board', min_trace_width: 0.1, min_board_edge_clearance: 0.2 },
+    { type: 'source_component', source_component_id: 'c1', name: 'J2' },
+    { type: 'source_port', source_port_id: 'a', source_component_id: 'c1', name: 'pin1', pin_number: 1 },
+    { type: 'source_port', source_port_id: 'b', source_component_id: 'c1', name: 'pin1', pin_number: 1 }, // the same pin's second pad
+    { type: 'source_port', source_port_id: 'c', source_component_id: 'c1', name: 'pin2', pin_number: 2 },
+    { type: 'source_port', source_port_id: 'd', source_component_id: 'c1', name: 'pin3', pin_number: 3 }, // joined to nothing
+    { type: 'source_trace', source_trace_id: 't', connected_source_port_ids: ['a', 'c'], connected_source_net_ids: [], rulecad_net: '/USB+' },
+    { type: 'pcb_trace', pcb_trace_id: 'p', source_trace_id: 't', route: [] }, { type: 'pcb_via', pcb_via_id: 'v', pcb_trace_id: 'p', outer_diameter: 0.3, hole_diameter: 0.2 }];
+  const n = kicadNets(json), key = (id) => n.find((e) => e.source_port_id === id || e.pcb_trace_id === id || e.pcb_via_id === id)?.subcircuit_connectivity_map_key;
+  assert.ok(key('a') && ['b', 'c', 'p', 'v'].every((id) => key(id) === key('a')), 'one net: both pads of pin 1, pin 2, the track and its via');
+  assert.equal(key('d'), undefined, 'a pin on its own: no net');
+  assert.equal(n.find((e) => e.type === 'source_net' && e.subcircuit_connectivity_map_key === key('a')).name, '/USB+');
+  assert.equal(json.length, 9, 'the input unchanged');
+  // the converter writes a pad at its copper; KiCad drills at the pad's place and moves the copper by the offset
+  const pad = '(pad "1" thru_hole rect\n      (at -29.275 -4.485 0)\n      (size 3 1.7)\n      (drill 1\n        (offset -0.7 0)\n      )\n    )\n    (pad "31" thru_hole circle\n      (at -29.975 -1.945 0)\n      (drill 1.3)\n    )';
+  const fixed = patchKicadPcb(pad, []);
+  assert.match(fixed, /\(at -28\.575 -4\.485 0\)/);
+  assert.match(fixed, /\(at -29\.975 -1\.945 0\)/, 'a pad with no offset stays');
+  const { pro, dru } = kicadProject(n, { clearance: 0.1 });
+  assert.deepEqual([JSON.parse(pro).board.design_settings.rules.min_via_diameter, JSON.parse(pro).board.design_settings.rules.min_copper_edge_clearance], [0.3, 0.2]);
+  assert.match(dru, /^\(version 1\)/);
+});
+
+test('a via\'s hole against tracks of other nets, edge to edge: a thin ring leaves less room than the copper clearance says', () => {
+  const w = (x, y) => ({ route_type: 'wire', x, y, width: 0.2, layer: 'top' });
+  const json = [
+    { type: 'source_trace', source_trace_id: 'A', connected_source_port_ids: ['a'] }, { type: 'source_trace', source_trace_id: 'B', connected_source_port_ids: ['b'] },
+    { type: 'pcb_trace', pcb_trace_id: 'ta', source_trace_id: 'A', route: [w(-1, 0), w(0, 0)] },
+    { type: 'pcb_via', pcb_via_id: 'v', pcb_trace_id: 'ta', x: 0, y: 0, outer_diameter: 0.3, hole_diameter: 0.2 },
+    { type: 'pcb_trace', pcb_trace_id: 'tb', source_trace_id: 'B', route: [w(-1, 0.4), w(1, 0.4)] }]; // 0.15 mm from the via's copper
+  const [g] = viaHoleGaps(json);
+  assert.ok(Math.abs(g.gap - 0.2) < 1e-9, `${g.gap}: 0.4 less the hole's radius and the track's half width`);
+  json[4].route = [w(-1, 0.35), w(1, 0.35)];
+  assert.ok(viaHoleGaps(json)[0].gap < 0.2);
+  json[4].source_trace_id = 'A'; // its own net: not measured
+  assert.equal(viaHoleGaps(json).length, 0);
+});
+
+test('a pin with two pads apart (a USB-C socket\'s two VBUS pads) gets a track between them; pads that touch, or a plane net\'s, don\'t', async () => {
+  const smd = (pin, x) => ({ pin, smd: true, x, y: 0, w: 0.5, h: 0.8 });
+  let asked = [];
+  const router = { route: async (json, toRoute) => { asked = toRoute.map((c) => [c.t.from.join('.'), c.t.to.join('.')]); return { traces: [] }; } };
+  const board = (nets, j1) => ({ center: { x: 0, y: 0 }, width: 20, height: 10, thickness: 1.6, track: 0.2, autoroute: true, nets,
+    parts: [{ name: 'J1', ftype: 'simple_chip', x: 0, y: 0, pads: j1 }, { name: 'R1', ftype: 'simple_chip', x: 0, y: 3, pads: [smd('1', -1), smd('2', 1)] }] });
+  await render(board({ VBUS: ['J1.4', 'R1.1'] }, [smd('4', -3), smd('4', 3), smd('5', 0)]), router);
+  assert.equal(asked.length, 2, JSON.stringify(asked));
+  assert.ok(asked.some(([a, b]) => /^J1\.(pin)?4#4#0$/.test(a) && /^J1\.(pin)?4#4#1$/.test(b)), JSON.stringify(asked));
+  await render(board({ VBUS: ['J1.4', 'R1.1'] }, [smd('4', -0.2), smd('4', 0.2), smd('5', 3)]), router);
+  assert.equal(asked.length, 1, 'pads that touch are one copper');
+});
+
+test('an oval surface pad is read with its round ends, as a rectangle with its corners rounded all the way', () => {
+  const c = fromKicadPcb(`(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal)) (net 0 "")
+    (footprint "Q:SOT-563" (layer "F.Cu") (at 5 5) (property "Reference" "Q2") (pad "5" smd oval (at 0.75 0) (size 0.7 0.34) (layers "F.Cu")))
+    (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
+  assert.equal(c.parts[0].pads[0].corner, 0.17);
 });

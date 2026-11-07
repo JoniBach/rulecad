@@ -88,6 +88,17 @@ export function main(v) {
   track the design checks then find in a new error goes back as it was, and a board where a cut causes one is smoothed
   again without cuts. For a clone that keeps its source's routing, the checks confirm every kept track and via is still
   exactly where the source has it, and name each escape cut back and how much track went.
+- **A pin with pads apart:** a part whose footprint gives one pin two pads apart from each other (a USB-C socket's two
+  VBUS pads, both its A4) gets a track between them, as its net joins the first. Pads that touch (a half hole in its
+  header pad) are one copper already, and a plane net's pads each reach the plane.
+- **Fab checks for vias:** a via's ring is measured against JLCPCB's figures for vias (`via_annular_min`, `via_annular`:
+  its pad 0.1 mm wider than its hole, 0.15 preferred), a plated hole's against those for holes. Each via's hole is
+  measured edge to edge to the nearest track of another net (`via_hole_track`, 0.2 mm): JLCPCB measures from the hole,
+  so a small via's thin ring leaves less room than the copper clearance suggests.
+- **KiCad, as a second opinion:** `kicadFiles` writes the board as KiCad reads it (kicad.mjs: every pad, track and via
+  on its named net, a hole set off-centre in its pad where KiCad drills it, castellated pins marked, rounded pads round,
+  and a `.kicad_pro` and `.kicad_dru` with the board's rules). Where KiCad is installed, `checks` also runs its
+  design-rule check (`kicad-cli`, `KICAD_CLI` to name another), KiCad pouring the planes itself.
 - **Labels clear of copper:** `clearLabels(silk, circuit)` slides each silkscreen label across its reading direction to
   the nearest place clear of every pad and of the labels before it (the fab trims silkscreen off copper, so a label
   on a pad loses letters). A label for a pin hemmed in by its neighbours (`to`: where the pin is) goes to the nearest

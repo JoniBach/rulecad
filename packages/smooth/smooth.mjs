@@ -212,7 +212,7 @@ class Grid {
  * movable(trace) picks change; every pad, hole, via, other track and the board's edge (pcb_board's outline, or its
  * rectangle) is kept clear of. Copper of the same net (joined by its source traces) isn't in the way.
  * clearance: copper to copper (default: the board's min_trace_to_pad_edge_clearance, else 0.1);
- * holes keep min_trace_to_hole_edge_clearance (0.2) from their edge, and rulecad_keepout (a screw head's room) from
+ * holes, a via's among them, keep min_trace_to_hole_edge_clearance (0.2) from their edge, and rulecad_keepout (a screw head's room) from
  * their centre; the board's edge keeps min_board_edge_clearance (0.2).
  * leads(trace): the copper a track carries on from at each end ({ start, end }: points from its root to the track's end),
  * which may be cut back where the track turns back on it; trimmed maps a track's pcb_trace_id to what's left of its
@@ -235,7 +235,10 @@ export function smoothCircuit(json, { movable = () => true, clearance, leads = (
       const n = net(e), hx = e.x + (e.hole_offset_x ?? 0), hy = e.y + (e.hole_offset_y ?? 0);
       obstacles.push({ layer: '*', net: n, shape: holePadShape(e) });
       obstacles.push({ layer: '*', net: null, clear: holeGap, shape: { circle: { x: hx, y: hy, r: (e.hole_diameter ?? Math.max(e.hole_width ?? 0, e.hole_height ?? 0)) / 2 } } });
-    } else if (e.type === 'pcb_via') obstacles.push({ layer: '*', net: net(e), shape: { circle: { x: e.x, y: e.y, r: e.outer_diameter / 2 } } });
+    } else if (e.type === 'pcb_via') {
+      obstacles.push({ layer: '*', net: net(e), shape: { circle: { x: e.x, y: e.y, r: e.outer_diameter / 2 } } });
+      obstacles.push({ layer: '*', net: net(e), clear: holeGap, shape: { circle: { x: e.x, y: e.y, r: e.hole_diameter / 2 } } }); // (its hole too: a fab measures from it)
+    }
     else if (e.type === 'pcb_hole') {
       const r = (e.hole_diameter ?? Math.max(e.hole_width ?? 0, e.hole_height ?? 0)) / 2;
       obstacles.push({ layer: '*', net: null, clear: holeGap, shape: { circle: { x: e.x, y: e.y, r } } });
