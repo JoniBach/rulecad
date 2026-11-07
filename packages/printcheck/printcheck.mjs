@@ -3,7 +3,8 @@
 //   · tips hanging down that start in mid-air
 //   flat undersides above the bed: on a built-in breakaway support (one support gap above a surface), or bridges no
 //   wider than the printer can span: the widest circle that fits in the underside, measured to the edges that are
-//   held up by material below. An underside with no such edge starts in mid-air: it needs support. Each underside
+//   held up by material below. An underside with no such edge starts in mid-air: it needs support; one held on one
+//   side only past a print line is a ledge, which droops. Each underside
 //   is taken on its own (the faces at a height joined edge to edge), and one no wider than a print line anywhere is
 //   a step of a slope printed in layers, not a bridge.
 // Z is up and the bed is z = 0: a design is checked as it will print, so print orientation is part of the design.
@@ -27,7 +28,7 @@ const OVERHANG_SLACK = 0.5; // degrees
  */
 /** @typedef {[number, number, number]} Point a corner in mm, Z up */
 /** @typedef {Point[]} Face a polygon: three or more corners, counter-clockwise seen from outside */
-/** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number, line?: number }} Printer mm and degrees; layer and line drive the sliced-layer island check */
+/** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number, line?: number, print_gap?: number, foot?: number }} Printer mm and degrees; layer and line drive the sliced-layer island check; print_gap and foot (how far the first layer spreads each side) the first-layer check */
 /**
  * A finding: its level and words, and for programs a code (print.bridge, fit.gap, …), the numbers behind it, and where
  * it is when that's known (the box round the faces it's about, in mm).
@@ -158,8 +159,9 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
       if (widest(group) < line - eps) continue; // no wider than a line anywhere (a step of a slope cut in layers, a chamfer's tread): one layer's overhang, which the perimeter takes in its stride
       const held = (a, b) => walls.some(([c, d]) => along(a, b, c, d));
       const under = flatUp.filter((u) => Number(z) - u.z > eps && Number(z) - u.z <= gap * 1.5 + eps).map((u) => u.p); // breakaway supports' tops
-      const span = widest(group, held, under);
+      const measured = spans(group, held, under), span = measured?.span ?? null;
       if (span == null) f('warn', `an underside at z ${mm(Number(z))} starts in mid-air: needs support (or a built-in breakaway support one ${mm(gap)} mm layer below)`, 'print.mid-air', { z: Number(z) }, at);
+      else if (measured.reach > line + eps) f('warn', `a ledge at z ${mm(Number(z))} reaches ${mm(measured.reach)} mm out past what holds it, held on one side only: it droops. Slant its underside in at 45° to the wall, or support it`, 'print.ledge', { reach: measured.reach, z: Number(z) }, at);
       else if (span > bridgeMax + eps) f('warn', `${mm(span)} mm bridge at z ${mm(Number(z))}: wider than the ${bridgeMax} mm the printer can span, needs supports`, 'print.bridge', { span, max: bridgeMax, z: Number(z) }, at);
       else f('pass', `bridge ${mm(span)} mm at z ${mm(Number(z))} (up to ${bridgeMax} mm)`, 'print.bridge', { span, max: bridgeMax, z: Number(z) });
     }
@@ -175,7 +177,12 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     if (hanging.length) f('warn', `${hanging.length === 1 ? 'a point starts' : `${hanging.length} points start`} in mid-air (z ${mm(Math.min(...hanging.map((t) => t[2])))}${hanging.length > 1 ? ` to ${mm(Math.max(...hanging.map((t) => t[2])))}` : ''} mm): the lowest points of tips hanging down, with nothing below to print on`, 'print.island', { points: hanging }, hanging.reduce((b, t) => grow(b, [t]), { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] }));
     else f('pass', 'nothing starts in mid-air', 'print.island', { points: [] });
     // And as the slicer sees it: every layer against the one below
-    const sliced = islands(tris, { layer: printer.layer ?? 0.2, overhang: printer.overhang, line: printer.line ?? 0.42 }), isl = sliced.islands;
+    // (the first layer spreads `foot` each side as it is squashed on to the bed: two parts printed in place must stand
+    // further apart there than the gap that prints apart higher up, or they print as one)
+    const firstGap = printer.foot > 0 && printer.print_gap > 0 ? printer.print_gap + 2 * printer.foot : 0;
+    const sliced = islands(tris, { layer: printer.layer ?? 0.2, overhang: printer.overhang, line: printer.line ?? 0.42, firstGap }), isl = sliced.islands;
+    for (const x of sliced.fused) f('warn', `on the first layer, two parts are about ${mm(x.gap)} mm apart at (${mm(x.at[0])}, ${mm(x.at[1])}): the first layer spreads ${printer.foot} mm each side as it is squashed on, so under ${mm(firstGap)} mm they print as one. Keep them ${mm(firstGap)} mm apart on the bed, or lift one off it`, 'print.first-layer', { gap: x.gap, need: firstGap }, { lo: [x.at[0] - 1, x.at[1] - 1, 0], hi: [x.at[0] + 1, x.at[1] + 1, printer.layer ?? 0.2] });
+    if (firstGap && !sliced.fused.length) f('pass', `on the first layer, nothing printed in place stands within ${mm(firstGap)} mm of another part (the first layer spreads ${printer.foot} mm each side)`, 'print.first-layer', { need: firstGap });
     // Overhang as the printer meets it: layers lying out past the one below, less the flat undersides the bridge check
     // judges on their own. The face-by-face measure above counts the surface's facets, which on a smoothed, cell-built
     // part are steeper than its layers are.
@@ -199,36 +206,55 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
 // (held(a, b) -> true), or to the tops of breakaway supports one layer below (under: faces): its diameter in mm, the
 // gap a bridge has to span. null if nothing holds it up.
 // Sampled: points spread over each face, each measured to the held edges of the region's outline and to the supports.
+// A point with support on one side only (nothing held beyond it, away from its nearest held edge) is on a ledge, not
+// a bridge: `ledges(polys, held, under)` gives how far the longest reaches.
 /**
  * The widest circle that fits in an underside, measured to its held-up edges (the bridge it makes).
  * @param {Face[]} polys @param {(edge: [Point, Point]) => boolean} [held] @param {Face[]} [under]
  * @returns {number} mm
  */
-export function widest(polys, held = () => true, under = []) {
+export function widest(polys, held = () => true, under = []) { return spans(polys, held, under)?.span ?? null; }
+/**
+ * How far an underside reaches out past its last support, held on one side only (a ledge in the air): mm, 0 if it is
+ * held on both sides everywhere (a bridge), null if nothing holds it.
+ * @param {Face[]} polys @param {(edge: [Point, Point]) => boolean} [held] @param {Face[]} [under]
+ * @returns {number | null} mm
+ */
+export function ledges(polys, held = () => true, under = []) { return spans(polys, held, under)?.reach ?? null; }
+
+function spans(polys, held, under) {
   const key = (v) => `${v[0].toFixed(3)},${v[1].toFixed(3)}`, count = new Map(), edges = [];
   for (const p of polys) p.forEach((a, i) => { const b = p[(i + 1) % p.length], k = [key(a), key(b)].sort().join('|'); count.set(k, (count.get(k) || 0) + 1); edges.push([k, a, b]); });
   const outline = edges.filter(([k]) => count.get(k) === 1).map(([, a, b]) => [a, b]).filter(([a, b]) => held(a, b));
   const tops = under.flatMap((p) => p.map((a, i) => [a, p[(i + 1) % p.length]]));
   if (!outline.length && !tops.length) return null;
   const onTop = (pt) => under.some((p) => { let sign = 0; for (let i = 0; i < p.length; i++) { const a = p[i], b = p[(i + 1) % p.length], c = (b[0] - a[0]) * (pt[1] - a[1]) - (b[1] - a[1]) * (pt[0] - a[0]); if (Math.abs(c) < 1e-9) continue; if (sign && Math.sign(c) !== sign) return false; sign = Math.sign(c); } return true; });
-  const toSeg = (pt, [a, b]) => {
-    const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / l)) : 0;
-    return Math.hypot(pt[0] - a[0] - t * dx, pt[1] - a[1] - t * dy);
+  const nearest = (pt, [a, b]) => { // the segment's closest point to pt, and how far
+    const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((pt[0] - a[0]) * dx + (pt[1] - a[1]) * dy) / l)) : 0, c = [a[0] + t * dx, a[1] + t * dy];
+    return { c, d: Math.hypot(pt[0] - c[0], pt[1] - c[1]) };
   };
-  let best = 0;
+  const supports = [...outline, ...tops];
+  let best = 0, reach = 0;
   const N = 6;
   for (const p of polys) for (let i = 1; i < p.length - 1; i++) {
     const [a, b, c] = [p[0], p[i], p[i + 1]];
     for (let u = 0; u <= N; u++) for (let v = 0; u + v <= N; v++) {
       const w = N - u - v, pt = [0, 1].map((k) => (a[k] * u + b[k] * v + c[k] * w) / N);
       if (onTop(pt)) continue; // right over a support
-      let d = Infinity;
-      for (const s of outline) d = Math.min(d, toSeg(pt, s));
-      for (const s of tops) d = Math.min(d, toSeg(pt, s));
-      best = Math.max(best, d);
+      const near = supports.map((s) => nearest(pt, s)), first = near.reduce((m, x) => (x.d < m.d ? x : m));
+      best = Math.max(best, first.d);
+      // Held round it, or on one side only? The directions to its supports: all within one half-plane (a gap of more
+      // than a half turn between them) and it hangs out past the last of them, a ledge reaching first.d; supports
+      // on opposing sides, and a line between two of them crosses it: a bridge
+      if (first.d > 1e-9) {
+        const angles = near.filter((x) => x.d > 1e-9).map((x) => Math.atan2(x.c[1] - pt[1], x.c[0] - pt[0])).sort((a, b) => a - b);
+        let gap = angles.length ? angles[0] + 2 * Math.PI - angles.at(-1) : 2 * Math.PI;
+        for (let k = 1; k < angles.length; k++) gap = Math.max(gap, angles[k] - angles[k - 1]);
+        if (gap > Math.PI + 1e-6) reach = Math.max(reach, first.d);
+      }
     }
   }
-  return 2 * best;
+  return { span: 2 * best, reach };
 }
 
 // seams(polys) -> { gaps, tjunctions, hairlines }: edges not matched by a reverse edge, split into T-junctions (covered
@@ -312,7 +338,7 @@ export function seams(polys, eps = 1e-3) {
  *   undersides included (the bridge check judges those separately)
  */
 const SPANS = [5, 20]; // layers: the spans a lean is held over (see islands)
-export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLayer } = {}) {
+export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, firstGap = 0, onLayer } = {}) {
   if (!(layer > 0) || !(line > 0) || !(overhang > 0 && overhang < 90)) throw new Error(`islands: layer and line are lengths above 0 and overhang an angle between 0 and 90 (got layer ${layer}, line ${line}, overhang ${overhang})`);
   if (!polys.length) return { islands: [], layers: 0, overhang: 0 };
   // The pixel: a quarter of a line, or coarser on a big part so a layer stays under about a million pixels
@@ -335,6 +361,7 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLaye
   const byLayer = Array.from({ length: count }, () => []);
   for (let t = 0; t < tris.length; t++) for (let L = Math.max(0, Math.ceil((zmin[t] - lo[2]) / layer - 0.5)); L <= Math.min(count - 1, Math.floor((zmax[t] - lo[2]) / layer - 0.5)); L++) byLayer[L].push(t);
   let below = null, held = null, prev = null, counted = null, overhangArea = 0;
+  const fused = []; // on the first layer, regions nearer each other than firstGap: { at, gap } (the first layer spreads, and they print as one)
   const px = (x) => Math.floor((x - lo[0]) / pitch) + 3;
   // Only what the printer can lay counts: each layer is opened by half a line (eroded, then grown back), so anything
   // narrower than a line, which the slicer drops, is not a region at all
@@ -384,6 +411,25 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLaye
     if (same) continue;
     const filled = opened(raw);
     history[L] = filled;
+    if (L === 0 && firstGap > 0) {
+      // Each region labelled; grown by half the gap, two that meet were nearer than it. Where they meet is the spot
+      const label = (mask) => { const lab = new Int32Array(nx * ny), stack = new Int32Array(nx * ny); let n = 0; for (let st = 0; st < nx * ny; st++) { if (!mask[st] || lab[st]) continue; n++; let top = 0; stack[top++] = st; lab[st] = n; while (top) { const e = stack[--top], i = e % nx; for (const d of [i + 1 < nx ? e + 1 : -1, i > 0 ? e - 1 : -1, e + nx < nx * ny ? e + nx : -1, e >= nx ? e - nx : -1]) if (d >= 0 && mask[d] && !lab[d]) { lab[d] = n; stack[top++] = d; } } } return { lab, n }; };
+      const own = label(filled), r = Math.max(1, Math.round(firstGap / 2 / pitch)), grown = label(dilate(filled, r));
+      if (own.n > 1) {
+        const seen = new Map(); // a grown region → the first own label in it, and the first pixel of a second
+        for (let e = 0; e < nx * ny; e++) {
+          if (!own.lab[e]) continue;
+          const g = grown.lab[e], first = seen.get(g);
+          if (first == null) seen.set(g, own.lab[e]);
+          else if (first !== own.lab[e] && !fused.some((x) => x.region === g)) fused.push({ region: g, at: [lo[0] + ((e % nx) - 2.5) * pitch, lo[1] + (Math.floor(e / nx) - 2.5) * pitch, z] });
+        }
+        for (const x of fused) { // the gap itself: how far this pixel is from the other region, in pixels, by growing it until they meet
+          let d = 1; const mine = own.lab[Math.round((x.at[1] - lo[1]) / pitch + 2.5) * nx + Math.round((x.at[0] - lo[0]) / pitch + 2.5)];
+          for (; d <= 2 * r + 1; d++) { const i0 = Math.round((x.at[0] - lo[0]) / pitch + 2.5), j0 = Math.round((x.at[1] - lo[1]) / pitch + 2.5); let met = false; for (let dj = -d; dj <= d && !met; dj++) for (let di = -d; di <= d && !met; di++) { const i = i0 + di, j = j0 + dj; if (i >= 0 && j >= 0 && i < nx && j < ny && own.lab[j * nx + i] && own.lab[j * nx + i] !== mine) met = true; } if (met) break; }
+          x.gap = +(Math.max(0, d - 1) * pitch).toFixed(2); delete x.region;
+        }
+      }
+    }
     if (below) {
       held = dilate(below, reach); // where this layer may lie: on the one below, or a step out from it
       let unheld = 0;
@@ -426,7 +472,7 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, onLaye
     }
     below = filled;
   }
-  return { islands: out, layers: count, overhang: overhangArea };
+  return { islands: out, layers: count, overhang: overhangArea, fused };
 }
 
 export function shape(polys, eps = 1e-3, drop = 0.05, hang = 1) {

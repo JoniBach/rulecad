@@ -276,6 +276,9 @@ async function analyses(b, d, tag) {
           values: { stress: c.stress, at: c.stressAt, ...(safety != null ? { safety } : {}), ...(fatigue != null ? { fatigue } : {}), ...(minSafety != null ? { min: minSafety } : {}) }, refs },
       ];
     });
+    // Members the grid is too coarse for: under four cells thick, a cell's stiffness is a rough figure
+    if (r.thin && r.thin.share > 0.05) found.push({ level: 'warn', code: 'fea.coarse', values: { share: r.thin.share, cells: r.thin.cells, cell: r.grid.h }, refs: { problem: a.problem, part: part.name },
+      text: `${a.problem}: ${fmt(r.thin.share * 100)}% of the part is in members under ${r.thin.cells} cells (${fmt(r.thin.cells * r.grid.h)} mm) thick, where the stiffness is rough: use a smaller cell (${fmt(r.grid.h / 2)} mm) and see that it settles` });
     const grams = m.density ? ` (${fmt((r.volume / 1000) * m.density)} g of ${m.name})` : '';
     if (a.volume != null) {
       const want = evaluate(a.volume, lookup), tol = a.tolerance ?? 0.01, off = (r.volume - want) / want;

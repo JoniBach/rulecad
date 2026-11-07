@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+import { grid, keyboard, laneOrder, render, checks, fabFiles, kicadFiles, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 
@@ -29,6 +29,34 @@ test('a keyboard board with no framework: every track drawn by rule, the checks 
   assert.match(kicad['pad.kicad_pcb'], /^\(kicad_pcb/);
   const drawn = await views(json);
   assert.ok(drawn.every(([, svg]) => svg.startsWith('<svg')), 'board and schematic drawings');
+});
+
+test('the Pico beside the keys, every size from one key up: the lanes to its pins never cross (nearest first to whichever covers no other\'s pin), rows and columns on lanes of their own, the Pico out far enough for them', async () => {
+  const v = values({ controller: { value: 'beside', choice: ['beside', 'under'] } });
+  for (const [r, c] of [[1, 1], [1, 3], [2, 2], [2, 3], [5, 6], [2, 6], [6, 2]]) {
+    const { json, matrix } = await build(v, r, c);
+    assert.deepEqual(failures(await checks(json, v, matrix)), [], `${r} × ${c}`);
+  }
+  // laneOrder on its own: a lane may be nearest only if its run covers none of the others' pins
+  assert.deepEqual(laneOrder([{ id: 'a', from: 0, to: 10 }, { id: 'b', from: 0, to: 5 }, { id: 'c', from: 0, to: 2 }]), { c: 0, b: 1, a: 2 }, 'runs up: the shortest nearest');
+  assert.deepEqual(laneOrder([{ id: 'a', from: 0, to: -10 }, { id: 'b', from: 0, to: -5 }]), { b: 0, a: 1 }, 'runs down the same');
+  assert.deepEqual(laneOrder([{ id: 'top', from: 10, to: 0 }, { id: 'low', from: 5, to: -20 }]), { top: 0, low: 1 }, 'a run that covers the other\'s pin goes further out');
+});
+
+test('the fab\'s sizes are measured from the board: a via\'s hole, pad and ring, a plated hole\'s ring, silkscreen lines and text', async () => {
+  const v = values({ controller: { value: 'beside', choice: ['beside', 'under'] } });
+  const { json, matrix } = await build(v, 2, 2);
+  const texts = (found) => found.map((f) => `${f.level} ${f.text}`);
+  const clean = texts(await checks(json, v, matrix));
+  assert.ok(clean.some((t) => /^pass .*plated holes, rings/.test(t)) && clean.some((t) => /^pass silkscreen: lines/.test(t)), clean.join('\n'));
+  const via = (hole, pad) => ({ type: 'pcb_via', pcb_via_id: 'via_test', x: 0, y: 0, hole_diameter: hole, outer_diameter: pad, layers: ['top', 'bottom'], from_layer: 'top', to_layer: 'bottom' });
+  assert.ok(texts(await checks([...json, via(0.2, 0.3)], v, matrix)).some((t) => /^fail 1 vias with a 0\.05 mm ring, under JLCPCB's least of 0\.18/.test(t)), 'tscircuit\'s own via: a 0.05 mm ring');
+  assert.ok(texts(await checks([...json, via(0.3, 0.7)], v, matrix)).some((t) => /^warn 1 vias with a 0\.2 mm ring: above JLCPCB's least of 0\.18 mm, under the 0\.25 mm it recommends/.test(t)), 'a common 0.3 in 0.7 via: fine, with a word');
+  assert.ok(texts(await checks([...json, via(0.1, 0.8)], v, matrix)).some((t) => /^fail 1 vias under JLCPCB's 0\.15 mm hole/.test(t)), 'a hole too small to drill');
+  const text = { type: 'pcb_silkscreen_text', pcb_silkscreen_text_id: 'silk_test', anchor_alignment: 'center', anchor_position: { x: 0, y: 0 }, font: 'tscircuit2024', font_size: 0.5, layer: 'top', text: 'tiny', ccw_rotation: 0 };
+  assert.ok(texts(await checks([...json, text], v, matrix)).some((t) => /^fail silkscreen the fab can't print: 1 texts under 1 mm high \(0\.5\)/.test(t)), 'text the fab can\'t print');
+  const bars = json.filter((e) => e.type === 'pcb_silkscreen_rect');
+  assert.ok(bars.length && bars.every((e) => e.stroke_width >= v.jlcpcb.silk_line && e.is_filled), 'the keyboard\'s own bars are solid, stroked as wide as they are');
 });
 
 const node22 = Number(process.versions.node.split('.')[0]) >= 22;

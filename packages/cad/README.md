@@ -500,6 +500,8 @@ they bend. To check a final shape, give the analysis a smaller `cell`:
 The part is then analysed on those cells and again on cells a quarter bigger. For each load case, `cad check`
 reports:
 - **Stiffness and its change:** under 5% from the bigger cells and it has settled; more, and the cells are too big.
+- **Members too thin for the cells:** a warning when more than 5% of the part lies in members under four cells
+  thick (what an opening of two cells takes away), where a cell's stiffness is a rough figure: use a smaller cell.
 - **Peak stress, where it is, and the safety factor:** against the material's strength (its weaker one across a
   print's layers, where the rule set has `strength_z`), and its fatigue strength where it has one. With
   `min_safety`, a case below it fails. Peak stress at a sharp inside corner keeps rising as cells shrink, so read it
@@ -565,7 +567,12 @@ npx cad export keyboard/macropad-pcb    # <name>-fab.zip for JLCPCB, KiCad files
 Fit checks find closest gaps through a grid of triangles (nearest cubes first), and remember overlap volumes between
 placed parts in `.cache/overlaps.json`, keyed by each part's build and placement: the staggered keyboards' checks take
 about 10 s, and a re-check after an edit measures only what the edit moved. The build cache keeps its 800 most
-recently used builds.
+recently used builds, keyed by what a build is made from: the design's code, its values resolved, its parts' names
+and roles, the rule sets and the tool's own code; a rule's words, a label or the version change nothing it builds,
+so they don't start one. A lamina mechanism's slow stages (its physics, a flooded frame's probe) are kept apart in
+`.cache/stages/`, keyed by their own inputs, so a build that changes only what comes after them (a strap, a check)
+takes minutes rather than the twenty a launcher's physics takes; the design's sandbox reads them and hands back what
+it made for the tool to write. `CAD_NO_CACHE=1` computes everything afresh (and keeps it).
 
 ### Assemblies: values from other parts
 (An object can also read another object directly, outside any assembly: see "Other objects' numbers" under Variables.

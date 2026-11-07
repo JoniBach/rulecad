@@ -32,3 +32,16 @@ test('closestAt says where the gap is; distanceToFace measures to a face, not it
   assert.equal(closestAt(square(0), square(9)).at, null);
   assert.ok(Math.abs(distanceToFace([0, 0, 3], square(0)[0]) - 3) < 1e-9, 'straight above the middle, far from the corners');
 });
+
+test('solids that run into each other have no gap: a peg through a plate, a cube inside another; touching faces are not a crossing', async () => {
+  const { closestAt, overlapAt } = await import('@rulecad/fit');
+  const plate = box([-20, -20, 0], [20, 20, 2]), peg = box([-1, -1, -5], [1, 1, 10]); // the peg's corners are 1 mm from the plate's faces, yet it goes through
+  const r = closestAt(plate, peg);
+  assert.equal(r.gap, 0); assert.equal(r.overlap, true); assert.ok(r.at && Math.abs(r.at[0]) <= 1 && Math.abs(r.at[1]) <= 1 && r.at[2] >= 0 && r.at[2] <= 2, `where they cross: ${r.at}`);
+  const outer = box([0, 0, 0], [10, 10, 10]), inner = box([3, 3, 3], [7, 7, 7]);
+  assert.deepEqual([closestAt(outer, inner).gap, closestAt(inner, outer).gap], [0, 0], 'a cube wholly inside another: no surfaces cross, a corner is inside');
+  assert.ok(overlapAt(outer, inner), 'overlapAt says where');
+  assert.equal(overlapAt(box([0, 0, 0], [1, 1, 1]), box([1, 0, 0], [2, 1, 1])), null, 'touching face to face: not an overlap');
+  assert.equal(closestAt(box([0, 0, 0], [1, 1, 1]), box([1, 0, 0], [2, 1, 1])).overlap, undefined);
+  assert.ok(Math.abs(closest(box([0, 0, 0], [10, 10, 10]), box([10.3, 0, 0], [20.3, 10, 10])) - 0.3) < 1e-9, 'a gap is still a gap');
+});

@@ -12,5 +12,8 @@ closest(a, b, 5);                                   // look up to 5 mm away (def
 ```
 
 It measures from each mesh's corners and edge midpoints to the other's faces (Ericson, Real-Time Collision Detection
-5.1.5), both ways. Overlap volume needs a CAD kernel's booleans, so it stays out of this package; with JSCAD it's
+5.1.5), both ways. Two solids that run into each other have no gap, however far their corners are from each other's
+faces: `closest` is 0 for them, and `closestAt` says `overlap: true` and where (an edge of one through a face of the
+other, or a corner of one inside the other; `overlapAt(a, b)` on its own). Touching faces are not an overlap. How
+much they overlap needs a CAD kernel's booleans, so that stays out of this package; with JSCAD it's
 `measureVolume(intersect(a, b))`.

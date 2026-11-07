@@ -18,10 +18,15 @@ test('floating and oversized parts fail', () => {
   assert.equal(level(check(box([-150, -5, 0], [150, 5, 10]), printer), /bed/), 'fail');
 });
 
-test('bridges past the printer\'s limit are a warning', () => {
+test('bridges past the printer\'s limit are a warning; an underside held on one side only is a ledge, however short the reach past a line', () => {
+  const bridge = (span) => tri(union(translate([-span / 2 - 1, 0, 5], cuboid({ size: [2, 4, 10] })), translate([span / 2 + 1, 0, 5], cuboid({ size: [2, 4, 10] })), translate([0, 0, 11], cuboid({ size: [span + 4, 4, 2] }))));
+  assert.equal(level(check(bridge(8), printer), /bridge/), 'warn'); // 8 mm between the posts
+  assert.equal(level(check(bridge(4), printer), /bridge/), 'pass'); // 4 mm
   const tee = (reach) => tri(union(translate([0, 0, 5], cuboid({ size: [4, 4, 10] })), translate([0, 0, 11], cuboid({ size: [2 * reach, 4, 2] }))));
-  assert.equal(level(check(tee(10), printer), /bridge/), 'warn'); // arms reach 8 mm out from the post
-  assert.equal(level(check(tee(4), printer), /bridge/), 'pass'); // 2 mm
+  const f = check(tee(10), printer).find((x) => x.code === 'print.ledge');
+  assert.ok(f && f.level === 'warn' && Math.abs(f.values.reach - 8) < 0.2, `arms reaching 8 mm out from the post are ledges: ${f?.text}`); // not a 16 mm bridge
+  assert.equal(level(check(tee(2.6), printer), /ledge/), 'warn'); // 0.6 mm out: past a line, drooping
+  assert.equal(level(check(tee(2.2), printer), /ledge/), undefined); // 0.2 mm: within a line, held by the one beside it
 });
 
 test('breakaway supports pass; parts that start in mid-air are caught', () => {
@@ -48,6 +53,17 @@ test('a slope cut in layers is steps no wider than a line: an overhang, not brid
   const span = union(translate([-23, 0, 5], cuboid({ size: [2, 4, 10] })), translate([-17, 0, 5], cuboid({ size: [2, 4, 10] })), translate([-20, 0, 9], cuboid({ size: [8, 4, 2] })));
   const two = check(tri(union(span, translate([20, 0, 9], cuboid({ size: [8, 4, 2] })))), printer).filter((x) => x.code === 'print.bridge' || x.code === 'print.mid-air');
   assert.deepEqual(two.map((x) => [x.level, x.values.span == null ? null : +x.values.span.toFixed(2)]), [['pass', 4], ['warn', null]], two.map((x) => x.text).join('; '));
+});
+
+test('the first layer: two parts printed in place nearer than the gap plus the spread each side print as one; apart, or one lifted off the bed, they don\'t', () => {
+  const squash = { ...printer, line: 0.42, print_gap: 0.3, foot: 0.15 }; // needs 0.6 mm on the bed
+  const pair = (gap, lift = 0) => tri(union(translate([-2 - gap / 2, 0, 5], cuboid({ size: [4, 4, 10] })), translate([2 + gap / 2, 0, 5 + lift], cuboid({ size: [4, 4, 10] }))));
+  const f = (polys) => check(polys, squash).find((x) => x.code === 'print.first-layer');
+  assert.equal(f(pair(0.4)).level, 'warn', '0.4 mm apart on the bed: they print as one');
+  assert.ok(Math.abs(f(pair(0.4)).values.gap - 0.4) <= 0.15, `about 0.4 mm, to a pixel: ${f(pair(0.4)).text}`);
+  assert.equal(f(pair(0.8)).level, 'pass', '0.8 mm apart: they print apart');
+  assert.equal(f(pair(0.4, 1)).level, 'pass', '0.4 mm apart but one a millimetre off the bed: nothing to squash together');
+  assert.equal(check(pair(0.4), printer).find((x) => x.code === 'print.first-layer'), undefined, 'a printer with no spread given: not checked');
 });
 
 test('seams: open edges are holes; a cube is closed', () => {

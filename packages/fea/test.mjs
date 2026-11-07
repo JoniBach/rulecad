@@ -77,6 +77,21 @@ test('multigrid agrees with the direct solver, in 2D and 3D, with stiffnesses a 
   }
 });
 
+test('2D multigrid converges with nodes held in one direction only (the half beam: a symmetry edge of rollers, one corner pinned)', () => {
+  // Half a simply supported beam, cut at its middle: the cut edge may move along y but not x (symmetry), the far
+  // bottom corner is held in y, and the load is on the cut edge's top. The 2D smoother used to skip a node with one
+  // dof fixed, so its free dof was never smoothed and the solve never converged
+  const g = grid({ nx: 48, ny: 12, h: 1 }), f = new Float64Array(g.dofs), fixed = new Uint8Array(g.dofs);
+  for (let j = 0; j <= 12; j++) fixed[2 * g.node(0, j)] = 1; // x held along the cut, y free: rollers
+  fixed[2 * g.node(48, 0) + 1] = 1; // the support at the far end
+  f[2 * g.node(0, 12) + 1] = -1;
+  const ke = cellStiffness(0.3, 2), scale = new Float64Array(g.cells).fill(1000);
+  const a = solve(g, { scale, ke, fixed, loads: [f] }), b = solve(g, { scale, ke, fixed, loads: [f], method: 'mg', tol: 1e-10 });
+  const ca = jsBackend.dot(f, a.u[0]), cb = jsBackend.dot(f, b.u[0]);
+  assert.ok(b.converged !== false && Math.abs(cb / ca - 1) < 1e-6, `compliance ${cb} against the direct solver's ${ca} after ${b.iterations} iterations`);
+  assert.ok(b.iterations < 200, `${b.iterations} iterations`);
+});
+
 test('the threads backend: the product shared over worker threads matches plain JavaScript, in 2D and 3D, with multigrid', async () => {
   const { threadsBackend } = await import('./threads.mjs');
   assert.deepEqual(checkBackend(threadsBackend), []);
@@ -109,4 +124,16 @@ test('what is wrong with the input is said by name; a part that can still turn i
   bad((p) => { p.material = { E: 2680 }; }, /Poisson's ratio/);
   bad((p) => { p.material = { E: 0, nu: 0.35 }; }, /modulus E above 0/);
   bad((p) => { p.thickness = 0; }, /thickness above 0/);
+});
+
+test('thinShare: the share of a part in members too thin for the grid, from an opening of two cells', async () => {
+  const { thinShare } = await import('@rulecad/fea');
+  const g = grid({ nx: 40, ny: 20, h: 1 }), d = new Float64Array(g.cells);
+  for (let j = 0; j < 20; j++) for (let i = 0; i < 40; i++) d[j * 40 + i] = (j < 2 || j >= 18 || i < 6) ? 1 : 0; // two flanges 2 cells thick on a web 6 cells wide
+  const t = thinShare(g, d);
+  assert.ok(t.cells === 4 && t.share > 0.45 && t.share < 0.55, `the flanges, about half the part: ${JSON.stringify(t)}`);
+  assert.equal(thinShare(g, new Float64Array(g.cells).fill(1)).share, 0, 'a slab loses nothing');
+  const g3 = grid({ nx: 10, ny: 10, nz: 10, h: 1 }), d3 = new Float64Array(g3.cells);
+  for (let k = 0; k < 10; k++) for (let j = 0; j < 10; j++) for (let i = 0; i < 10; i++) d3[(k * 10 + j) * 10 + i] = k < 2 ? 1 : 0; // a 2-cell plate
+  assert.ok(thinShare(g3, d3).share > 0.99, 'in 3D too: a plate two cells thick is all thin');
 });

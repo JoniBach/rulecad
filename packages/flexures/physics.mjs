@@ -119,7 +119,12 @@ const sample = (loops, ds) => loops.flatMap((l) => l.flatMap((a, k) => { const b
  * @param {{ steps?: number, force?: number, contact?: number }} [o] steps along each transition (default 24); the most a
  *   hand pulls or pushes (N, default 50: more and it jams); contact stiffness (N/mm a point)
  */
-export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = {}) {
+/**
+ * The mechanism as beams and bodies, before anything moves: what the solve and the checks share. Cheap, so a build
+ * that has the solve's results kept (cache.mjs) makes it afresh and reads them against it.
+ * @param {object} m as simulate's @returns {{ skipped?: string[], sys?, bodies?, outline?, centre?, beams?, beamOf?, loose? }}
+ */
+export function systemOf(m) {
   const { parts, joints, material, height } = m, missing = Object.entries(joints).filter(([, j]) => !j.kind || !centrelines(j.kind, j.params)).map(([n]) => n);
   if (missing.length) return { skipped: missing };
   // Bodies: the ground and each rigid body, about its box's centre
@@ -141,6 +146,20 @@ export function simulate(m, { steps = 24, force = 50, contact, friction = 0 } = 
   });
   const pins = Object.entries(joints).filter(([, j]) => j.pin).map(([n, j]) => ({ name: n, from: j.from, to: j.to, at: j.pin.at, E: material.E, width: height }));
   const sys = beamSystem({ bodies, beams, pins, segments: 20 });
+  return { sys, bodies, outline, centre, beams, beamOf, loose };
+}
+
+/**
+ * The mechanism, solved through its sequence.
+ * @param {object} m lamina's own: { parts, joints, material, height, gap, states, sequence, holds, kinematic (values →
+ *   each body's transform, as [a, b, c, d, e, f]) }
+ * @param {{ steps?: number, force?: number, contact?: number, friction?: number, system?: object }} [o] steps along each transition (default 24); the most a
+ *   hand pulls or pushes (N, default 50: more and it jams); contact stiffness (N/mm a point); the system from systemOf, if made already
+ */
+export function simulate(m, { steps = 24, force = 50, contact, friction = 0, system } = {}) {
+  const { joints, material, height } = m, S = system ?? systemOf(m);
+  if (S.skipped) return { skipped: S.skipped };
+  const { sys, bodies, outline, centre, beams, beamOf, loose } = S;
 
   // Contact: each moving body's outline points against every other body, and each beam's nodes against every body but
   // its own two; a penalty spring on how far each goes in

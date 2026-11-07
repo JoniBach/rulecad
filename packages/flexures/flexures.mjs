@@ -803,6 +803,7 @@ export function curvedLeafModel({ length: L, thickness: t, width: w, rise: s }, 
 
 export { ports, size, report, models } from './compose.mjs';
 export { lamina, flexureMaterial } from './lamina.mjs';
+export { laminaCache } from './cache.mjs';
 export { beamSystem, equilibrium, energyOf, shapeOf, fixedLoads } from './beams.mjs';
 export { place, combine } from './modules.mjs';
 export { curve, curvePath, curveLines, curveModel, curveSolver, curveClearance } from './curves.mjs';

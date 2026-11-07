@@ -252,7 +252,7 @@ export async function analysePart(triangles, project, ref, { cell } = {}) {
     const { size, moment } = resultant(problem.loads.filter((l) => l.case === name));
     return measures(name, size, moment, a, c, density, { nx, ny, nz: 1, h }, [x0, y0]);
   });
-  return { problem: ref, dim: 2, material: r.material, critical: r.critical, cases, volume: volume(triangles), grid: { nx, ny, h }, origin: [x0, y0], density };
+  return { problem: ref, dim: 2, material: r.material, critical: r.critical, cases, thin: a.thin, volume: volume(triangles), grid: { nx, ny, h }, origin: [x0, y0], density };
 }
 
 // A solid part on the problem's grid: the part itself is the space (keep and avoid regions don't apply), so the
@@ -263,7 +263,7 @@ function analyseSolid(triangles, r, cell) {
   if (!density.some((d) => d)) throw new Error('the part is smaller than one cell of the problem: use a smaller cell');
   const a = analyse({ grid: g, density, material: problem.material, fixed: spec.fixed, loads: spec.loads.map((l) => l.force), backend: threadsBackend });
   const cases = spec.loads.map((l, c) => measures(l.name, l.size, l.moment, a, c, density, spec.grid, spec.origin));
-  return { problem: r.ref, dim: 3, material: r.material, critical: r.critical, cases, volume: volume(triangles), grid: spec.grid, origin: spec.origin, density };
+  return { problem: r.ref, dim: 3, material: r.material, critical: r.critical, cases, thin: a.thin, volume: volume(triangles), grid: spec.grid, origin: spec.origin, density };
 }
 
 // A load case's numbers: how far the load moves along itself (compliance over force) and the stiffness (a twist: the

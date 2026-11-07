@@ -121,7 +121,10 @@ export function main(v) {
 - **Routing:** connections no rule draws go to tscircuit's capacity autorouter. Its tracks come back as pieces of each
   net, named here by the pads they end on; where a piece ends on a one-sided pad from the other layer, a via is added
   clear of the pad; a track may change layer inside a plated hole or a via, whose copper already joins the layers; and the build fails if any pad is left without a track. Drawn tracks can name their `layer`.
-- **Keyboards** are one recipe built on the same parts: every matrix track drawn by rule, one diode per key.
+- **Keyboards** are one recipe built on the same parts: every matrix track drawn by rule, one diode per key. With the
+  Pico beside the keys, each row and column has a lane of its own to its pin (rows on the back, columns on the
+  front), given out nearest the Pico first to whichever lane's run covers none of the others' pins, so none cross,
+  from a single key up to the Pico's twenty GPIO; the Pico stands out far enough for the lanes.
 
 A keyboard:
 
@@ -140,6 +143,11 @@ npx cad preview macropad/board    # copper from above, the schematic, and the bo
 npx cad export macropad/board     # <name>-fab.zip for JLCPCB, KiCad files, the matrix for your firmware
 ```
 
+- The checks are tscircuit's design rules and JLCPCB's limits measured from the board itself: track widths, holes (vias
+  too), each via's and plated hole's ring (under `annular_min` fails, under the recommended `annular` warns), the
+  silkscreen's line widths and text heights, castellated holes, the board's size, and the matrix. A board says what
+  vias the router may make (`via_hole`, `via_pad`; the recommended ring unless it says) and what silkscreen it draws
+  (`silk_line`, `silk_text`); the keyboard recipe takes them from the fab's rules.
 - The board is also a solid, so it takes part in fit checks: switches on the board, plate over it, board in the case.
 - A Pico under the board has its connections autorouted (that needs Node 22 or newer; boards drawn wholly by rule build on
   Node 20 too). That takes minutes; then the build cache keeps it.

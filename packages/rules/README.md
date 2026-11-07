@@ -10,7 +10,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 
 | Set | What | Values |
 |---|---|---|
-| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need, and hole compensation | 12 |
+| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need (and how far the first layer spreads), and hole compensation | 13 |
 | `mx` | Cherry MX switches: plate cut-out, stem, housing, travel, key pitch | 29 |
 | `oem` | OEM keycap profile: heights and top tilt per row (from KeyV2) | 12 |
 | `m2` | M2 heat-set inserts and screws | 5 |
@@ -20,7 +20,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `xiao` | Seeed Studio XIAO modules: outline, headers, the pin on each pad | 8 |
 | `qwiic` | Qwiic / STEMMA QT sockets (JST SH, 4 pins): land pattern and pinout | 10 |
 | `jstph` | JST PH (2.0 mm) battery connector | 3 |
-| `jlcpcb` | JLCPCB's limits for two-layer boards | 12 |
+| `jlcpcb` | JLCPCB's limits for two-layer boards | 13 |
 | `wiring` | Room for hand wiring | 1 |
 | `m4`, `m5` | M4 and M5 socket head screws and hex nuts | 5 each |
 | `rp2040` | The RP2040 microcontroller: which package pins carry which GPIO | 2 |

@@ -66,6 +66,14 @@
       "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
       "checked": "2026-10-14"
     },
+    "annular_min": {
+      "value": 0.18,
+      "unit": "mm",
+      "rule": "Annular ring, absolute minimum: a via or plated hole with less fails; between this and annular is a warning",
+      "kind": "spec",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-11-07"
+    },
     "silk_line": {
       "value": 0.15,
       "unit": "mm",
@@ -93,7 +101,7 @@
     "cheap_size": {
       "value": 100,
       "unit": "mm",
-      "rule": "Two-layer boards up to 100 × 100 mm get JLCPCB's lowest price; past that it rises steeply",
+      "rule": "Two-layer boards up to 100 \u00d7 100 mm get JLCPCB's lowest price; past that it rises steeply",
       "kind": "community",
       "source": "https://hwdocs.hackclub.dev/user-contrib-guides/jlc-cost-optimizing/",
       "checked": "2026-10-14"

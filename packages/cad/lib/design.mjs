@@ -13,7 +13,8 @@
 // Boards: "engine": "pcb" in the .json makes main(v) return a tscircuit board ({ board, matrix, clone }, built with v.pcb, as
 // @rulecad/pcb describes); the build then carries its Circuit JSON (circuit) and matrix, and one part: the bare board
 // (its copper is in the 2D views).
-// Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip).
+// Builds are cached in .cache/builds/, by everything they're made from (CAD_NO_CACHE=1 to skip), and a lamina's slow
+// stages apart in .cache/stages/ (see stageStore).
 import { spawnSync } from 'node:child_process';
 import { located, lineOf } from './errors.mjs';
 import { host, readJson } from './host.mjs';
@@ -127,7 +128,18 @@ const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures')));
 // (every module of a helper package but its tests: they change nothing a design builds)
 const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
-const own = source(import.meta.url) + helperSources(shapesDir) + helperSources(flexuresDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
+const feaDir = path.dirname(createRequire(pathToFileURL(path.join(flexuresDir, 'package.json')).href).resolve('@rulecad/fea')); // (flexures' own, wherever npm put it)
+const own = source(import.meta.url) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(feaDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
+// A lamina's slow stages (the physics, the flood's probe) are kept apart from the builds, keyed by the library's code
+// and their own inputs, so a build that changes only what comes after them (a strap, a check, a rule's words) has them
+// at once: .cache/stages/. A design in the sandbox can't write them, so the sandbox hands them back and the tool writes them
+const STAGES = paths.cache('stages'), stageSalt = crypto.createHash('sha256').update(helperSources(flexuresDir) + helperSources(feaDir)).digest('hex');
+const stageStore = () => ({
+  salt: stageSalt,
+  get: (k) => { const f = path.join(STAGES, `${k}.json`); if (process.env.CAD_NO_CACHE || !host.exists(f)) return undefined; try { host.touch(f); } catch {} return host.readText(f); }, // (CAD_NO_CACHE: computed afresh, and kept)
+  put: (k, text) => { try { prune(STAGES, STAGES_KEEP); host.writeText(path.join(STAGES, `${k}.json`), text); } catch {} }, // (a cache that can't be written is only slower)
+});
+const STAGES_KEEP = 60; // (a launcher's physics is 5 MB, its probe 9)
 export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
   if (e.code === 'ERR_MODULE_NOT_FOUND' && /@rulecad\/pcb/.test(e.message)) throw new Error('boards need the board engine: npm install @rulecad/pcb');
   throw e;
@@ -175,9 +187,12 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   const problems = await problemsOf(d, object, values);
   if (Object.keys(problems).length) values.problems = problems;
 
-  // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether
+  // The cache: everything the build is made from. A hit skips running the design (and its booleans) altogether.
+  // What the design reads of its .json is its values, resolved, and its parts' names and roles: a rule's words, a
+  // label, a note or the version change nothing it builds, so they aren't in the key
   const ruleText = [...(object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u))), JSON.stringify(refs.extra)];
-  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), JSON.stringify(object), ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
+  const reads = { values, parts: object.parts, engine: object.engine, mirror: object.mirror };
+  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), reads, ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
   if (!process.env.CAD_NO_CACHE && host.exists(hit)) {
     const c = JSON.parse(host.readText(hit));
@@ -193,8 +208,10 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
   let parts, board = null, read, mechanism = null;
   const optional = Object.keys(object.mirror || {}); // inputs only the on-screen copy has: main may ask for them when they aren't there
-  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional).catch((e) => { throw syntaxAt(e, d); }));
+  const stages = stageStore();
+  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages).catch((e) => { throw syntaxAt(e, d); }));
   else {
+    flexures.laminaCache(stages);
     const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
       // Designs import JSCAD themselves, so it has to be installed where they are (it's the workspace's dependency)
       if (e.code === 'ERR_MODULE_NOT_FOUND' && /@jscad\/modeling/.test(e.message)) throw new Error(`designs need JSCAD in the workspace: npm install @jscad/modeling (in ${WS})`);
@@ -228,12 +245,12 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}), ...(mechanism ? { mechanism } : {}) };
 }
 
-// The cache keeps its most recently used builds, about CACHE_KEEP of them (an old version's builds go first)
+// A cache keeps its most recently used files, about `keep` of them (an old version's builds go first)
 const CACHE_KEEP = 800;
-function prune() {
+function prune(dir = CACHE, keep = CACHE_KEEP) {
   if (Math.random() > 0.05) return; // now and then is enough
-  const files = host.list(CACHE).map((f) => { const p = path.join(CACHE, f); return { p, t: host.mtime(p) }; }).sort((a, b) => b.t - a.t);
-  for (const { p } of files.slice(CACHE_KEEP)) host.remove(p);
+  const files = host.list(dir).map((f) => { const p = path.join(dir, f); return { p, t: host.mtime(p) }; }).sort((a, b) => b.t - a.t);
+  for (const { p } of files.slice(keep)) host.remove(p);
 }
 
 // The rules of the printer a build is checked against (the project's, else the workspace's), resolved

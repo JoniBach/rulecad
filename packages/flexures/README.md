@@ -307,6 +307,15 @@ step is the force curve; the frames are the solved shapes, each flexure's outlin
   early, which no real loading does.
 - `physics: false` turns it off.
 
+The physics is the slow stage: a launcher's takes about 17 of a build's 22 minutes, and a flooded frame's probe
+(the mechanism solved once more without the frame, for the room it needs) another two. Both are kept between builds
+when a store is given, `laminaCache({ get, put, salt })` (cad gives one, in the workspace's `.cache/stages/`): each
+stage is keyed by what it is made from (the parts, joints, states, sequence, holds, material, height, and for the
+probe the whole mechanism short of its straps, guides and finish) and by `salt`, which is this library's own code,
+so a change to a strap, a check or a rule's words finds the solve at once, and any change to what it was made from
+runs it again. What a stage keeps is JSON (typed arrays as arrays), and a build gets the same copy whether it came
+from the store or was just made. `LAMINA_TIMES=1` prints each stage's time.
+
 The beam solver stands on its own too: `beamSystem({ bodies, beams })`, `equilibrium(sys, { held, loads })`
 (Newton's method on the energy; a held unknown reports the force to hold it). It agrees with beam theory at small
 deflections, with the elastica to 0.1% at large ones, with a parallel guide's stiffness and drop, and buckles a
