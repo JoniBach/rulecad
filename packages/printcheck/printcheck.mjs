@@ -20,6 +20,7 @@ function areaNormal(poly) {
 }
 
 const OVERHANG_SLACK = 0.5; // degrees
+const LINE = 0.42; // mm: the line width when the printer gives none (a 0.4 mm nozzle's usual line)
 const LEDGE_SLACK = (15 * Math.PI) / 180; // a point's supports all within a half turn and this: a ledge
 
 /**
@@ -80,6 +81,13 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
   const over = size.filter((s) => s > printer.bed);
   f(over.length ? 'fail' : 'pass', `${size.map(mm).join(' × ')} mm${over.length ? `: bigger than the ${printer.bed} mm bed` : ', fits the bed'}`, 'print.bed', { size, bed: printer.bed });
 
+  // Faces the wrong way round: a closed solid's faces all point out, so the volume they enclose (signed, by the way
+  // their corners run) is positive. Negative, every face points in, and nothing below reads right (the base faces up,
+  // the top faces down): say that, not what follows from it
+  let signed = 0;
+  for (const p of polys) for (let i = 1; i < p.length - 1; i++) { const [a, b, c] = [p[0], p[i], p[i + 1]]; signed += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6; }
+  if (signed < -eps) { f('fail', `the faces point inwards (their corners run clockwise seen from outside): the solid is inside out. Reverse every face's corners, or the exporter's winding`, 'print.inside-out', { volume: signed }); return out; }
+
   // Flat on the bed: the lowest point is z = 0, and faces there point straight down.
   let base = 0, down = 0, support = 0, zs = [];
   // Where a finding is: the box round the faces it's about, { lo, hi } (for a reader to point at)
@@ -139,7 +147,7 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     const t0 = ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / (l * l), t1 = ((d[0] - a[0]) * dx + (d[1] - a[1]) * dy) / (l * l);
     return Math.min(t0, t1) < 1 - eps && Math.max(t0, t1) > eps;
   };
-  const bridgeMax = printer.bridge ?? 5, line = printer.line ?? 0.4;
+  const bridgeMax = printer.bridge ?? 5, line = printer.line ?? LINE;
   // Each underside on its own: the faces at a level joined where they touch, edge to edge or a corner on another's
   // edge (a T-junction, which a boolean leaves plenty of). Two pockets' ceilings at one height are two bridges, each
   // measured to its own held edges, not to the other's across the part
@@ -199,7 +207,7 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     // (the first layer spreads `foot` each side as it is squashed on to the bed: two parts printed in place must stand
     // further apart there than the gap that prints apart higher up, or they print as one)
     const firstGap = printer.foot > 0 && printer.print_gap > 0 ? printer.print_gap + 2 * printer.foot : 0;
-    const sliced = islands(tris, { layer: printer.layer ?? 0.2, overhang: printer.overhang, line: printer.line ?? 0.42, firstGap }), isl = sliced.islands;
+    const sliced = islands(tris, { layer: printer.layer ?? 0.2, overhang: printer.overhang, line: printer.line ?? LINE, firstGap }), isl = sliced.islands;
     for (const x of sliced.fused) f('warn', `on the first layer, two parts are about ${mm(x.gap)} mm apart at (${mm(x.at[0])}, ${mm(x.at[1])}): the first layer spreads ${printer.foot} mm each side as it is squashed on, so under ${mm(firstGap)} mm they print as one. Keep them ${mm(firstGap)} mm apart on the bed, or lift one off it`, 'print.first-layer', { gap: x.gap, need: firstGap }, { lo: [x.at[0] - 1, x.at[1] - 1, 0], hi: [x.at[0] + 1, x.at[1] + 1, printer.layer ?? 0.2] });
     if (firstGap && !sliced.fused.length) f('pass', `on the first layer, nothing printed in place stands within ${mm(firstGap)} mm of another part (the first layer spreads ${printer.foot} mm each side)`, 'print.first-layer', { need: firstGap });
     // Overhang as the printer meets it: layers lying out past the one below, less the flat undersides the bridge check
@@ -360,7 +368,7 @@ export function seams(polys, eps = 1e-3) {
  *   undersides included (the bridge check judges those separately)
  */
 const SPANS = [5, 20]; // layers: the spans a lean is held over (see islands)
-export function islands(polys, { layer = 0.2, overhang = 45, line = 0.42, firstGap = 0, onLayer } = {}) {
+export function islands(polys, { layer = 0.2, overhang = 45, line = LINE, firstGap = 0, onLayer } = {}) {
   if (!(layer > 0) || !(line > 0) || !(overhang > 0 && overhang < 90)) throw new Error(`islands: layer and line are lengths above 0 and overhang an angle between 0 and 90 (got layer ${layer}, line ${line}, overhang ${overhang})`);
   if (!polys.length) return { islands: [], layers: 0, overhang: 0 };
   // The pixel: a quarter of a line, or coarser on a big part so a layer stays under about a million pixels
