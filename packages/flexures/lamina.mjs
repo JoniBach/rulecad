@@ -399,7 +399,7 @@ export async function lamina(spec) {
   for (const [n, j] of Object.entries(joints)) {
     if (j.kind !== 'curve') continue;
     const c = curveClearance(j.params);
-    if (c && c.clear < gap * 0.98) { free = false; f('fail', `the ${n} flexure comes ${Math.max(0, c.clear).toFixed(2)} mm from itself, near (${c.at[0].map((x) => x.toFixed(1)).join(', ')}): under the ${gap} mm gap, its loops fuse there`, 'lamina.free', { joint: n, gap: c.clear, at: c.at }); }
+    if (c && c.clear < gap * 0.98) { free = false; f('fail', `the ${n} flexure comes ${Math.max(0, c.clear).toFixed(2)} mm from ${c.mirror ? 'its mirror image' : 'itself'}, near (${c.at[0].map((x) => x.toFixed(1)).join(', ')}): under the ${gap} mm gap, its loops fuse there`, 'lamina.free', { joint: n, gap: c.clear, at: c.at }); }
   }
   for (const [a, b] of pairs) {
     const A = parts[a].shape, B = parts[b].shape;
@@ -422,6 +422,8 @@ export async function lamina(spec) {
   if (free) f('pass', `everything clears what it isn't joined to by ${gap} mm, and each flexure touches only its two bodies: it prints free`, 'lamina.free');
 
   const kinematic = spec.kinematic !== false; // false: the physics alone says how it moves (contact pushing a follower both ways, a cam)
+  // (a state's values are numbers: a NaN or a string would run through every check and pass)
+  for (const [s, v] of Object.entries(spec.states || {})) for (const [k, q] of Object.entries(v || {})) if (typeof q !== 'number' || !Number.isFinite(q)) throw new Error(`state ${s}: ${k} is ${JSON.stringify(q)}, not a number (how far the joint moves, mm or degrees)`);
   const states = { rest: {}, ...(spec.states || {}) }, state = (s) => { const v = typeof s === 'string' ? states[s] : s; if (!v) throw new Error(`no state "${s}"`); return v; };
   const seq = spec.sequence || [], frames = [], reached = {}, solved = {};
   let planned = null;
@@ -574,18 +576,25 @@ export async function lamina(spec) {
 
   mark('holds');
   // ---- energy and forces ----
+  // (a slider whose force isn't its stiffness times its travel gives its own: a constant-force linkage, whose stiffness
+  // is its leaf's, torsional; a contact-aided leaf, two rates)
+  const ownForce = (j) => !j.turning && (j.model?.torsional || j.model?.second != null) && typeof j.model.force === 'function' && typeof j.model.energy === 'function';
   const energy = {};
   for (const [s, v] of Object.entries(solved)) {
     let e = 0;
     for (const [jn, q] of Object.entries(v)) { // a model's turning stiffness is a radian's; your own pivot's is a degree's
       const j = joints[jn]; if (!j?.stiffness) continue;
+      // (a model that isn't a linear spring along its own motion gives its own energy: a constant-force slider's
+      // stiffness is its leaf's, torsional, and its force along x comes from the linkage)
+      if (ownForce(j)) { const u = j.model.energy(Math.abs(q)); if (Number.isFinite(u)) { e += u; continue; } }
       e += j.turning ? (j.stiffness * (j.model ? rad(q) : q) * rad(q)) / 2 : (j.stiffness * q * q) / 2;
     }
     energy[s] = e / 1000; // N·mm to J
   }
   const forces = Object.entries(joints).filter(([n]) => used[n]?.most).map(([n, j]) => {
     const q = used[n].most;
-    return j.turning ? `${n} ${Math.abs(j.stiffness * (j.model ? rad(q) : q)).toFixed(1)} N·mm at ${+Math.abs(q).toFixed(1)}°` : `${n} ${Math.abs(j.stiffness * q).toFixed(2)} N at ${+Math.abs(q).toFixed(2)} mm`;
+    const along = ownForce(j) ? Math.abs(j.model.force(Math.abs(q))) : NaN; // (its own force along its motion)
+    return j.turning ? `${n} ${Math.abs(j.stiffness * (j.model ? rad(q) : q)).toFixed(1)} N·mm at ${+Math.abs(q).toFixed(1)}°` : `${n} ${(Number.isFinite(along) ? along : Math.abs(j.stiffness * q)).toFixed(2)} N at ${+Math.abs(q).toFixed(2)} mm`;
   });
   const most = Object.entries(energy).sort((x, y) => y[1] - x[1])[0], joules = (e) => (e < 0.01 ? `${(e * 1000).toFixed(1)} mJ` : `${e.toFixed(3)} J`);
   if (most && most[1] > 0) f('info', `the most stored is ${joules(most[1])}, in ${most[0]}${forces.length ? `; at their most: ${forces.join(', ')}` : ''}`, 'lamina.energy', { energy });

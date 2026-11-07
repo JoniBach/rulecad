@@ -96,3 +96,32 @@ test('solidRegion: a teardrop points any way across its axis, 45° to a point r�
     assert.ok(Math.abs(hi[a] - lo[a] - 6) < 1e-6, `${axis} ${teardrop}: its length`);
   }
 });
+
+test('cut: a with b taken out, near faces only; b wholly inside a leaves a cavity', async () => {
+  const { cut } = await import('@rulecad/shapes');
+  const { cuboid } = jscad.primitives, block = cuboid({ size: [20, 20, 20] });
+  assert.ok(Math.abs(volume(cut(block, cuboid({ size: [4, 4, 4] }))) - (8000 - 64)) < 1e-6, 'a cavity inside: 8000 - 64 mm³');
+  assert.ok(Math.abs(volume(cut(block, cuboid({ size: [4, 4, 40] }))) - (8000 - 320)) < 1e-6, 'a hole through');
+  assert.ok(Math.abs(volume(cut(block, cuboid({ size: [4, 4, 4], center: [50, 0, 0] }))) - 8000) < 1e-6, 'clear of it: unchanged');
+});
+
+test('features refuse sizes that aren\'t sizes, by name; a through hole as long as its wall leaves no skin', async () => {
+  const { teardropHole, nutPocket, wallOpening, countersink } = await import('@rulecad/shapes');
+  assert.throws(() => teardropHole({ d: 0, length: 5 }), /teardropHole: d is a size above 0 mm \(got 0\)/);
+  assert.throws(() => nutPocket({ flats: 5.5, height: -1, hole: 3 }), /nutPocket: height is a size above 0 mm/);
+  assert.throws(() => wallOpening({ width: 10, height: 5 }), /wallOpening: depth is a size above 0 mm \(got undefined\)/);
+  assert.throws(() => countersink({ hole: 3, head: 6 }), /countersink: length/);
+  assert.throws(() => slab({ width: 10, height: 10, depth: 0 }), /slab: depth is a size above 0 mm/);
+  // A 4 mm wall, a hole exactly 4 mm long: through, it comes out of the far face cleanly (a closed solid)
+  const { check } = await import('@rulecad/printcheck');
+  const wall = jscad.primitives.cuboid({ size: [4, 20, 20], center: [2, 0, 10] });
+  const holed = (through) => jscad.booleans.subtract(wall, teardropHole({ d: 4, length: 4, at: [0, 0, 10], into: '+x', through }));
+  const closed = (g) => check(jscad.geometries.geom3.toPolygons(g).map((p) => p.vertices.map((v) => [...v])), { bed: 256, overhang: 45 }).find((f) => f.code === 'print.closed');
+  assert.equal(closed(holed(true)).level, 'pass', closed(holed(true)).text);
+});
+
+test('text: arrows among letters, in line with them', () => {
+  const [w, h] = measure('A↑B'), [wa] = measure('AB');
+  assert.ok(w > wa + 2 && h < 5.5, `the arrow takes its own room in the line: ${w} × ${h} against AB's ${wa}`);
+  assert.throws(() => text({ text: 'A', height: 0, stroke: 0.84 }), /height and stroke are sizes above 0/);
+});
