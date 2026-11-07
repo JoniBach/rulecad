@@ -776,68 +776,84 @@ export async function lamina(spec) {
 
   }
 
+  // The mechanism in the plane: what the kinematic and the frame stages are made from. Nothing of the 3D (straps,
+  // guides, the finish) or the physics is part of them
+  const kinematicSpec = { ...spec, bridges: undefined, guides: undefined, finish: undefined, fire: undefined, physics: undefined, flood: undefined, grips: undefined, fixtures: undefined };
   if (kinematic) {
-  mark('free');
-  // ---- the sequence, then each state as the sequence reaches it: nothing runs into anything, nothing jams ----
-  for (let i = 0; i + 1 < seq.length; i++) {
-    // From where the last step settled; a joint both states set alike stays where it settled, so it isn't moved
-    const a = reached[seq[i]] ?? state(seq[i]), said = state(seq[i]), b = { ...state(seq[i + 1]) };
-    for (const k of Object.keys(b)) if (said[k] === b[k] && a[k] != null) b[k] = a[k];
-    const r = walk(a, b), pct = r ? `${Math.round(r.t * 100)}% of the way` : '';
-    // A step into a state that a catch holds may end on the catch: it settles there, short of the state's own travel
-    const catches = (spec.holds?.[seq[i + 1]] || []).filter(([jn]) => Math.abs((a[jn] || 0) - (b[jn] || 0)) > 1e-9);
-    const caught = r && catches.find(([jn, by]) => {
-      const mine = (x) => carries[jn].has(x), theirs = (x) => x === by || Object.keys(follows).some((fn) => carries[fn].has(by) && carries[fn].has(x));
-      return (r.kind === 'jam' && (mine(r.by) || r.by === joints[jn].to) && carries[r.joint].has(by)) || (r.kind === 'jam' && carries[jn].has(r.joint) && theirs(r.by)) || (r.kind === 'hit' && ((mine(r.a) && theirs(r.b)) || (mine(r.b) && theirs(r.a))));
-    });
-    if (caught) {
-      const [jn, by] = caught, at = r.last[jn] || 0;
-      reached[seq[i + 1]] ??= r.last;
-      f('pass', `${seq[i]} to ${seq[i + 1]}: settles on ${by} at ${+Math.abs(at).toFixed(2)}${joints[jn].turning ? '°' : ' mm'} (${jn})`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], settles: at });
-    } else if (!r) { reached[seq[i + 1]] ??= reachedLast; f('pass', `${seq[i]} to ${seq[i + 1]}: clear all the way`, 'lamina.sequence', { from: seq[i], to: seq[i + 1] }); }
-    else if (r.kind === 'jam') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.by} jams on ${joints[r.joint].to} ${pct}: it meets a face too steep to push aside (at a friction of ${mu.pass})`, 'lamina.jam', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
-    else if (r.kind === 'over') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.joint} would have to give past its limit ${pct}`, 'lamina.follow', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
-    else if (r.pushing) f('fail', `${seq[i]} to ${seq[i + 1]}: ${follows[r.pushing].by.join(' and ')} pushes ${joints[r.pushing].to} aside until ${what(r.a)} and ${what(r.b)} meet, ${pct}: it can't get out of the way (give it more room, or a shallower face)`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], joint: r.pushing, at: r.at, t: r.t });
-    else f('fail', `${seq[i]} to ${seq[i + 1]}: ${what(r.a)} runs into ${what(r.b)} ${pct}`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], at: r.at, t: r.t });
-  }
-  for (const s of Object.keys(states)) {
-    const r = reached[s] ? { v: reached[s], over: [], pushed: Object.fromEntries(Object.keys(follows).map((n) => [n, Math.abs((reached[s][n] || 0) - (state(s)[n] || 0))])) } : solve(state(s)), { v, over, pushed } = r;
-    solved[s] = v; note(v);
-    if (s === 'rest') continue;
-    const hits = clashes(shapesAt(v));
-    for (const n of over) f('fail', `${s}: ${n} would have to give past its limit to clear ${follows[n].by.join(' and ')}`, 'lamina.follow', { state: s, joint: n });
-    for (const h of hits) f('fail', `${s}: ${what(h.a)} runs into ${what(h.b)}`, 'lamina.collide', { state: s, parts: [h.a, h.b], at: h.at });
-    if (!hits.length && !over.length) f('pass', `${s}: nothing runs into anything${Object.keys(follows).some((n) => pushed[n] > slack) ? ` (${Object.keys(follows).filter((n) => pushed[n] > slack).map((n) => `${n} pushed ${+pushed[n].toFixed(2)}${joints[n].turning ? '°' : ' mm'} by what it meets`).join(', ')})` : ''}`, 'lamina.collide', { state: s });
-  }
-
-  mark('sequence');
-  // ---- holds: a latch. Pushing back towards rest jams on the catch, or runs into it ----
-  for (const [s, list] of Object.entries(spec.holds || {})) for (const [jn, by] of list) {
-    if (!joints[jn] || !parts[by]) throw new Error(`holds in ${s}: no joint "${jn}" or part "${by}"`);
-    if (seq.includes(s) && !reached[s]) { f('info', `${s}: the sequence doesn't reach it, so whether ${by} holds isn't checked`, 'lamina.holds', { state: s, joint: jn, catch: by }); continue; }
-    const v = solved[s] ?? solve(state(s)).v, q = v[jn] || 0, back = Math.sign(q) * Math.max(gap * 2, Math.abs(q) * 0.1);
-    // The follower that is the catch (or carries it): how far it must move to let go is found by moving it along its give
-    const fn = Object.keys(follows).find((x) => carries[x].has(by) || joints[x].to === by), unit = fn && joints[fn].turning ? '°' : ' mm';
-    const grips = [];
-    // A catch that bites presses into what it holds as it's moved to let go (its face leaning back): what it holds is
-    // cammed back first, out of it, then pushed towards rest from there
-    const cammed = (vals) => {
-      const out = { ...vals }, mine = carries[jn], sgn = Math.sign(q) || -1, touching = (x) => { const sh = shapesAt(x); return [...mine].some((a) => collide(sh[a], sh[by], slack)); };
-      for (let k = 0; k < 80 && touching(out); k++) out[jn] += sgn * gap / 4;
-      return out;
-    };
-    const holding = (vals0) => { const vals = fn && vals0[fn] ? cammed(vals0) : vals0, r = walk(vals, { ...vals, [jn]: (vals[jn] ?? q) - back }, { record: false, friction: mu.hold }); grips.push(r?.kind === 'jam' ? r.grip : walkRatio > 0 ? 1 / walkRatio : null); return !!r && (r.kind === 'jam' || r.kind === 'over' || (r.kind === 'hit' && [r.a, r.b].some((x) => carries[jn].has(x)) && [r.a, r.b].some((x) => x === by || (fn && carries[fn].has(x))))); }; // held: it jams, or what it moves runs into the catch
-    const held = holding(v), grip = grips[0]; // the least friction it holds at: 0 when it holds whatever the friction
-    let lets = null;
-    if (held && fn) {
-      const g = follows[fn].give ?? 1, most = Math.min(limitOf(fn, g), follows[fn].most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
-      if (!holding({ ...v, [fn]: g * reach })) { let lo = 0, hi = reach; for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (holding({ ...v, [fn]: g * mid })) lo = mid; else hi = mid; } lets = hi; }
+    // The kinematics (the sequence walked, each state, the latches, the strain and stops) are a stage kept between builds
+    // (cache.mjs), by the mechanism in the plane: nothing of the 3D (straps, guides, the finish) or the physics is part
+    // of them. What it found, and what the later stages read of it (where the sequence reached, each state solved, how far
+    // each joint was used), is kept with it; a build gets the kept copy whether it ran or not
+    const start = findings.length;
+    const kept = await stage('kinematics', kinematicSpec, async () => {
+    mark('free');
+    // ---- the sequence, then each state as the sequence reaches it: nothing runs into anything, nothing jams ----
+    for (let i = 0; i + 1 < seq.length; i++) {
+      // From where the last step settled; a joint both states set alike stays where it settled, so it isn't moved
+      const a = reached[seq[i]] ?? state(seq[i]), said = state(seq[i]), b = { ...state(seq[i + 1]) };
+      for (const k of Object.keys(b)) if (said[k] === b[k] && a[k] != null) b[k] = a[k];
+      const r = walk(a, b), pct = r ? `${Math.round(r.t * 100)}% of the way` : '';
+      // A step into a state that a catch holds may end on the catch: it settles there, short of the state's own travel
+      const catches = (spec.holds?.[seq[i + 1]] || []).filter(([jn]) => Math.abs((a[jn] || 0) - (b[jn] || 0)) > 1e-9);
+      const caught = r && catches.find(([jn, by]) => {
+        const mine = (x) => carries[jn].has(x), theirs = (x) => x === by || Object.keys(follows).some((fn) => carries[fn].has(by) && carries[fn].has(x));
+        return (r.kind === 'jam' && (mine(r.by) || r.by === joints[jn].to) && carries[r.joint].has(by)) || (r.kind === 'jam' && carries[jn].has(r.joint) && theirs(r.by)) || (r.kind === 'hit' && ((mine(r.a) && theirs(r.b)) || (mine(r.b) && theirs(r.a))));
+      });
+      if (caught) {
+        const [jn, by] = caught, at = r.last[jn] || 0;
+        reached[seq[i + 1]] ??= r.last;
+        f('pass', `${seq[i]} to ${seq[i + 1]}: settles on ${by} at ${+Math.abs(at).toFixed(2)}${joints[jn].turning ? '°' : ' mm'} (${jn})`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], settles: at });
+      } else if (!r) { reached[seq[i + 1]] ??= reachedLast; f('pass', `${seq[i]} to ${seq[i + 1]}: clear all the way`, 'lamina.sequence', { from: seq[i], to: seq[i + 1] }); }
+      else if (r.kind === 'jam') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.by} jams on ${joints[r.joint].to} ${pct}: it meets a face too steep to push aside (at a friction of ${mu.pass})`, 'lamina.jam', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
+      else if (r.kind === 'over') f('fail', `${seq[i]} to ${seq[i + 1]}: ${r.joint} would have to give past its limit ${pct}`, 'lamina.follow', { from: seq[i], to: seq[i + 1], joint: r.joint, t: r.t });
+      else if (r.pushing) f('fail', `${seq[i]} to ${seq[i + 1]}: ${follows[r.pushing].by.join(' and ')} pushes ${joints[r.pushing].to} aside until ${what(r.a)} and ${what(r.b)} meet, ${pct}: it can't get out of the way (give it more room, or a shallower face)`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], joint: r.pushing, at: r.at, t: r.t });
+      else f('fail', `${seq[i]} to ${seq[i + 1]}: ${what(r.a)} runs into ${what(r.b)} ${pct}`, 'lamina.sequence', { from: seq[i], to: seq[i + 1], parts: [r.a, r.b], at: r.at, t: r.t });
     }
-    const tight = lets != null && lets < gap; // a catch that lets go within a print gap holds by luck
-    f(held && !tight ? 'pass' : 'fail', `${s}: ${held ? `${by} holds ${joints[jn].to} against the ${jn} flexure ${grip > 0 ? `at any friction over ${+grip.toFixed(2)} (checked at ${mu.hold})` : 'whatever the friction'}${lets != null ? `, and lets go once ${fn} moves ${+lets.toFixed(2)}${unit}${tight ? `: less than the ${gap} mm gap, too shallow to trust` : ''}` : fn ? `, and ${fn} can't move far enough to let go` : ''}` : `nothing holds ${joints[jn].to}: pushed ${+Math.abs(back).toFixed(2)} back towards rest it passes ${by}${grip ? `, pushing it aside: it would take a friction over ${+grip.toFixed(2)} to hold (checked at ${mu.hold}); tilt the catch so the load presses it in` : ''}`}`, 'lamina.holds', { state: s, joint: jn, catch: by, ...(lets != null ? { release: lets } : {}) });
-  }
-
-  strainAndStops();
+    for (const s of Object.keys(states)) {
+      const r = reached[s] ? { v: reached[s], over: [], pushed: Object.fromEntries(Object.keys(follows).map((n) => [n, Math.abs((reached[s][n] || 0) - (state(s)[n] || 0))])) } : solve(state(s)), { v, over, pushed } = r;
+      solved[s] = v; note(v);
+      if (s === 'rest') continue;
+      const hits = clashes(shapesAt(v));
+      for (const n of over) f('fail', `${s}: ${n} would have to give past its limit to clear ${follows[n].by.join(' and ')}`, 'lamina.follow', { state: s, joint: n });
+      for (const h of hits) f('fail', `${s}: ${what(h.a)} runs into ${what(h.b)}`, 'lamina.collide', { state: s, parts: [h.a, h.b], at: h.at });
+      if (!hits.length && !over.length) f('pass', `${s}: nothing runs into anything${Object.keys(follows).some((n) => pushed[n] > slack) ? ` (${Object.keys(follows).filter((n) => pushed[n] > slack).map((n) => `${n} pushed ${+pushed[n].toFixed(2)}${joints[n].turning ? '°' : ' mm'} by what it meets`).join(', ')})` : ''}`, 'lamina.collide', { state: s });
+    }
+  
+    mark('sequence');
+    // ---- holds: a latch. Pushing back towards rest jams on the catch, or runs into it ----
+    for (const [s, list] of Object.entries(spec.holds || {})) for (const [jn, by] of list) {
+      if (!joints[jn] || !parts[by]) throw new Error(`holds in ${s}: no joint "${jn}" or part "${by}"`);
+      if (seq.includes(s) && !reached[s]) { f('info', `${s}: the sequence doesn't reach it, so whether ${by} holds isn't checked`, 'lamina.holds', { state: s, joint: jn, catch: by }); continue; }
+      const v = solved[s] ?? solve(state(s)).v, q = v[jn] || 0, back = Math.sign(q) * Math.max(gap * 2, Math.abs(q) * 0.1);
+      // The follower that is the catch (or carries it): how far it must move to let go is found by moving it along its give
+      const fn = Object.keys(follows).find((x) => carries[x].has(by) || joints[x].to === by), unit = fn && joints[fn].turning ? '°' : ' mm';
+      const grips = [];
+      // A catch that bites presses into what it holds as it's moved to let go (its face leaning back): what it holds is
+      // cammed back first, out of it, then pushed towards rest from there
+      const cammed = (vals) => {
+        const out = { ...vals }, mine = carries[jn], sgn = Math.sign(q) || -1, touching = (x) => { const sh = shapesAt(x); return [...mine].some((a) => collide(sh[a], sh[by], slack)); };
+        for (let k = 0; k < 80 && touching(out); k++) out[jn] += sgn * gap / 4;
+        return out;
+      };
+      const holding = (vals0) => { const vals = fn && vals0[fn] ? cammed(vals0) : vals0, r = walk(vals, { ...vals, [jn]: (vals[jn] ?? q) - back }, { record: false, friction: mu.hold }); grips.push(r?.kind === 'jam' ? r.grip : walkRatio > 0 ? 1 / walkRatio : null); return !!r && (r.kind === 'jam' || r.kind === 'over' || (r.kind === 'hit' && [r.a, r.b].some((x) => carries[jn].has(x)) && [r.a, r.b].some((x) => x === by || (fn && carries[fn].has(x))))); }; // held: it jams, or what it moves runs into the catch
+      const held = holding(v), grip = grips[0]; // the least friction it holds at: 0 when it holds whatever the friction
+      let lets = null;
+      if (held && fn) {
+        const g = follows[fn].give ?? 1, most = Math.min(limitOf(fn, g), follows[fn].most ?? Infinity), reach = Number.isFinite(most) ? most : gap * 100;
+        if (!holding({ ...v, [fn]: g * reach })) { let lo = 0, hi = reach; for (let i = 0; i < 7; i++) { const mid = (lo + hi) / 2; if (holding({ ...v, [fn]: g * mid })) lo = mid; else hi = mid; } lets = hi; }
+      }
+      const tight = lets != null && lets < gap; // a catch that lets go within a print gap holds by luck
+      f(held && !tight ? 'pass' : 'fail', `${s}: ${held ? `${by} holds ${joints[jn].to} against the ${jn} flexure ${grip > 0 ? `at any friction over ${+grip.toFixed(2)} (checked at ${mu.hold})` : 'whatever the friction'}${lets != null ? `, and lets go once ${fn} moves ${+lets.toFixed(2)}${unit}${tight ? `: less than the ${gap} mm gap, too shallow to trust` : ''}` : fn ? `, and ${fn} can't move far enough to let go` : ''}` : `nothing holds ${joints[jn].to}: pushed ${+Math.abs(back).toFixed(2)} back towards rest it passes ${by}${grip ? `, pushing it aside: it would take a friction over ${+grip.toFixed(2)} to hold (checked at ${mu.hold}); tilt the catch so the load presses it in` : ''}`}`, 'lamina.holds', { state: s, joint: jn, catch: by, ...(lets != null ? { release: lets } : {}) });
+    }
+  
+    strainAndStops();
+      return { findings: findings.slice(start), reached, solved, used: Object.fromEntries(Object.entries(used).map(([k, u]) => [k, { most: u.most, signs: [...u.signs] }])), reachedLast };
+    });
+    findings.splice(start); findings.push(...kept.findings);
+    for (const k of Object.keys(reached)) delete reached[k]; Object.assign(reached, kept.reached);
+    for (const k of Object.keys(solved)) delete solved[k]; Object.assign(solved, kept.solved);
+    for (const k of Object.keys(used)) delete used[k]; for (const [k, u] of Object.entries(kept.used)) used[k] = { most: u.most, signs: new Set(u.signs) };
+    reachedLast = kept.reachedLast;
   } else for (const s of Object.keys(states)) solved[s] = state(s);
 
   mark('holds');
@@ -862,7 +878,7 @@ export async function lamina(spec) {
   // ---- the mechanism as it would behave: its flexures as beams bending as far as they bend, its bodies touching, a
   // hand driving, holding and letting go (physics.mjs). The force each step takes, where a latch lets go, whether a
   // catch holds when let go of, the strain all the way, and the shapes as they bend ----
-  let sim = null;
+  let sim = null, physicsInputs = null;
   const handMost = (typeof spec.physics === 'object' && spec.physics.force) || 50; // N: the most a hand pulls or pushes
   if (spec.physics !== false && seq.length) {
     const o = typeof spec.physics === 'object' ? spec.physics : {};
@@ -870,7 +886,8 @@ export async function lamina(spec) {
     const seen = spec.fixtures ? { ...parts, ground: { ...parts.ground, shape: union([parts.ground.shape, all(spec.fixtures)]) } } : parts; // fixtures: fixed, in the physics, not in the print
     const m = { parts: seen, joints, material, height, gap, states, sequence: seq, holds: spec.holds, loose, grips: spec.grips, ...(spec.fire ? { fire: spec.fire } : {}) };
     // (the solve is the slow stage, kept between builds by what it's made from; the system it ran on is made afresh)
-    const S = systemOf(m), run = await stage('physics', { m, o }, () => { const { sys, centre, beamOf, ...rest } = simulate({ ...m, kinematic: places }, { ...o, system: S }); return rest; });
+    physicsInputs = { m, o };
+    const S = systemOf(m), run = await stage('physics', physicsInputs, () => { const { sys, centre, beamOf, ...rest } = simulate({ ...m, kinematic: places }, { ...o, system: S }); return rest; });
     sim = run.skipped ? run : { ...run, sys: S.sys, centre: S.centre, beamOf: S.beamOf };
     if (sim.skipped) { f('info', `${sim.skipped.join(', ')}: no centreline to solve as beams (a notch, a cartwheel, a shape of your own), so how it behaves comes from the kinematic model only`, 'lamina.physics'); sim = null; }
   }
@@ -1210,7 +1227,9 @@ export async function lamina(spec) {
     // with (from the beams), the frame an elastic plate as tall as the print, held where a hand holds it (`grip`, or
     // its back quarter); every clearance to what moves then checked on the frame as it bends. A frame that closes
     // onto what moves (prongs either side of a channel pulled together) fails ----
-    if (spec.check?.frame !== false && !empty(parts.ground.shape)) {
+    // (a stage kept between builds, by the mechanism in the plane, the physics it ran, the frame's own bridges and where
+    // it's held: a strap or a check after it doesn't start it again)
+    const frameStart = findings.length, frameKept = spec.check?.frame !== false && !empty(parts.ground.shape) ? await stage('frame', { spec: kinematicSpec, physics: physicsInputs, bridges: bridges.filter((x) => x.owner === 'ground').map((x) => x.shape), grip: spec.grip }, async () => {
       const G = parts.ground.shape, { lo, hi } = box(G), side = Math.max(0.25, Math.sqrt(((hi[0] - lo[0]) * (hi[1] - lo[1])) / FE_MOST));
       const nx = Math.ceil((hi[0] - lo[0]) / side) + 2, ny = Math.ceil((hi[1] - lo[1]) / side) + 2, x0 = lo[0] - side, y0 = lo[1] - side;
       const g = feaGrid({ nx, ny, h: side }), fill = coverage(G, g, x0, y0);
@@ -1266,7 +1285,9 @@ export async function lamina(spec) {
           ? `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull; at ${w.state} it closes ${w.closed.toFixed(2)} mm towards ${what(w.part)}${where}, leaving ${w.after.toFixed(2)} mm${level === 'fail' ? ': it pinches it. Stiffen the frame there, or tie it across' : ''}`
           : `the frame bends up to ${most.toFixed(2)} mm under the flexures' pull, closing no gap to what moves`, 'lamina.frame', { most, ...(w || {}), shown });
       }
-    }
+      return { findings: findings.slice(frameStart) };
+    }) : null;
+    if (frameKept) { findings.splice(frameStart); findings.push(...frameKept.findings); }
 
     mark('frame');
     // ---- across the plane: each moving body pushed across the print at its farthest point from what holds it, by a
