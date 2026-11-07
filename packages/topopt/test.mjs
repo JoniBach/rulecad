@@ -421,3 +421,23 @@ test('refine: densities interpolated onto a finer grid keep their total and thei
   assert.equal(despike(size, wall, { up: '+z' }).emptied, 0, 'a wall is not spikes');
 });
 
+
+test('a 2D grid covers its space: a 40 × 10 mm space on 3 mm cells is 14 × 4 cells, centred on it, not 13 × 3', async () => {
+  const { discretise } = await import('@rulecad/topopt');
+  const d = discretise({ space: { at: [20, 5], size: [40, 10] }, cell: 3, volume: 0.5, supports: [{ at: [0, 5], r: 1 }], loads: [{ at: [40, 5], r: 1, force: [0, -1] }] });
+  assert.deepEqual([d.grid.nx, d.grid.ny], [14, 4]);
+  assert.ok(Math.abs(d.origin[0] - -1) < 1e-9 && Math.abs(d.origin[1] - -1) < 1e-9, `centred: ${d.origin}`);
+});
+
+test('surface: no faces of zero area where corners meet at a grid face, and still closed', async () => {
+  const { surface } = await import('@rulecad/topopt');
+  const nx = 12, ny = 10, nz = 8, d = new Float64Array(nx * ny * nz);
+  for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) d[(k * ny + j) * nx + i] = (i < 9 && j > 1) || k < 2 ? 1 : 0;
+  const s = surface({ nx, ny, nz, h: 1 }, d, [0, 0, 0], { smooth: 4 }), V = s.vertices;
+  const area = (f) => { const [a, b, c] = f.map((i) => V[i]); const u = [0, 1, 2].map((k) => b[k] - a[k]), v = [0, 1, 2].map((k) => c[k] - a[k]); return Math.hypot(u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]) / 2; };
+  const zero = s.faces.filter((f) => area(f) < 1e-9).length;
+  assert.ok(zero < s.faces.length * 0.02, `${zero} of ${s.faces.length} faces have no area`);
+  const edges = new Map(); for (const f of s.faces) for (let i = 0; i < 3; i++) { const k = `${f[i]}>${f[(i + 1) % 3]}`; edges.set(k, (edges.get(k) || 0) + 1); }
+  const open = [...edges.keys()].filter((k) => { const [a, b] = k.split('>'); return !edges.has(`${b}>${a}`); }).length;
+  assert.equal(open, 0, 'every edge matched by one running the other way');
+});
