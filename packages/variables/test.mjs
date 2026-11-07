@@ -111,3 +111,14 @@ test('names are an object\'s own: nothing inherited is a function, a variable or
   assert.throws(() => resolve({ variables: { a: { unit: 'mm' } } }), /"a" has no value/);
   assert.throws(() => resolve({ uses: ['p'], variables: {} }, { load: async () => sets.p }), /load must return the rule set itself/);
 });
+
+test('one grammar: an expression parsed once, its value and its unit read from the same tree', async () => {
+  const { unitsOf } = await import('@rulecad/variables');
+  const src = '-(w + x1c.line * 3) / 2 + round(w, 0.5) - max(w, 4)', vals = { w: 10, 'x1c.line': 0.42 }, units = { w: 'mm', 'x1c.line': 'mm' };
+  assert.ok(Math.abs(evaluate(src, (n) => vals[n]) - (-(10 + 1.26) / 2 + 10 - 10)) < 1e-12);
+  assert.deepEqual(unitsOf(src, (n) => units[n]), { unit: 'mm', problems: [], value: { mm: 1 } });
+  for (const bad of ['w +', '(w', 'w w', '*']) {
+    assert.throws(() => evaluate(bad, () => 1), /ends too soon|missing \)|unexpected/);
+    assert.deepEqual(unitsOf(bad, () => 'mm').problems, [], `${bad}: what doesn't parse is evaluate's to say`);
+  }
+});
