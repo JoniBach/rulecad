@@ -28,6 +28,12 @@ function toTriangle(px, py, pz, t) {
   return to(a[0] + abx * v + acx * w, a[1] + aby * v + acy * w, a[2] + abz * v + acz * w);
 }
 
+// Faces given are faces: a list of polygons of three or more [x, y, z] corners, all numbers. Said by name, not left
+// to fail inside as a TypeError
+function faces(what, polys, which) {
+  if (!Array.isArray(polys)) throw new Error(`${what}: ${which} is a list of faces (polygons of [x, y, z] corners), not ${polys === null ? 'null' : typeof polys}`);
+  for (const p of polys) if (!Array.isArray(p) || p.length < 3 || !p.every((v) => Array.isArray(v) && v.length === 3 && v.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error(`${what}: ${which} has a face that isn't three or more [x, y, z] corners of numbers`);
+}
 const tris = (polys) => polys.flatMap((t) => t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]]));
 /**
  * How far a point is from a face (a polygon), in mm: to its nearest point, inside it or on its edge.
@@ -92,6 +98,8 @@ export function closest(polysA, polysB, reach = 2) {
  * @returns {{ gap: number, at: Point | null }} gap Infinity and at null if farther apart than reach
  */
 export function closestAt(polysA, polysB, reach = 2) {
+  faces('closestAt', polysA, 'a'); faces('closestAt', polysB, 'b');
+  if (!(typeof reach === 'number' && reach > 0)) throw new Error(`closestAt: reach is a distance above 0 mm (got ${reach})`);
   const A = tris(polysA), B = tris(polysB);
   const near = (p, bx) => p.every((c, k) => c >= bx.lo[k] - reach && c <= bx.hi[k] + reach);
   let best = Infinity, at = null;
@@ -193,6 +201,7 @@ function overlap(A, B) {
  * @returns {boolean}
  */
 export function inside(p, faces) {
+  if (!Array.isArray(p) || p.length !== 3 || !p.every(Number.isFinite)) throw new Error(`inside: the point is [x, y, z] in numbers (got ${JSON.stringify(p)})`);
   const d = [1, 0.000317, 0.000137]; // an odd direction, so the ray misses the edges and corners of square shapes
   let n = 0;
   for (const [a, b, c] of tris(faces)) if (crosses(p, d, a, b, c)) n++;

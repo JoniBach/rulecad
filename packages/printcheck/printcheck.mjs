@@ -33,8 +33,8 @@ const LEDGE_SLACK = (15 * Math.PI) / 180; // a point's supports all within a hal
 /** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number, line?: number, print_gap?: number, foot?: number }} Printer mm and degrees; layer and line drive the sliced-layer island check; print_gap and foot (how far the first layer spreads each side) the first-layer check */
 /**
  * A finding: its level and words, and for programs a code (print.bridge, fit.gap, …), the numbers behind it, and where
- * it is when that's known (the box round the faces it's about, in mm).
- * @typedef {{ level: 'pass' | 'warn' | 'fail' | 'info', text: string, code?: string, values?: Record<string, any>, at?: { lo: number[], hi: number[] }, refs?: Record<string, any> }} Finding
+ * it is when that's known: at, a point (the middle of it), and box, the box round the faces it's about, in mm.
+ * @typedef {{ level: 'pass' | 'warn' | 'fail' | 'info', text: string, code?: string, values?: Record<string, any>, at?: number[], box?: { lo: number[], hi: number[] }, refs?: Record<string, any> }} Finding
  */
 
 export function bounds(polys) {
@@ -54,7 +54,8 @@ export function bounds(polys) {
  * @returns {Finding[]}
  */
 export function check(polys, printer, { eps = 1e-3, parts = null, slice = true } = {}) {
-  const out = [], f = (level, text, code, values, at) => out.push({ level, text, code, ...(values && { values }), ...(at && { at }) });
+  // (a finding's at is a point, the middle of where it is; box is the box round it: one shape across the kit)
+  const out = [], f = (level, text, code, values, box) => out.push({ level, text, code, ...(values && { values }), ...(box && Number.isFinite(box.lo?.[0]) ? { at: box.lo.map((x, k) => (x + box.hi[k]) / 2), box } : {}) });
   // What can't be checked is said at the door, not found out deep inside
   for (const k of ['bed', 'overhang']) if (!(Number(printer?.[k]) > 0)) throw new Error(`check(model, printer): the printer's "${k}" is needed, a number above 0 (got ${JSON.stringify(printer?.[k])}): { bed: 256, overhang: 45, layer: 0.2 }`);
   for (const k of ['layer', 'line', 'bridge', 'support_gap']) if (printer[k] != null && !(Number(printer[k]) > 0)) throw new Error(`check(model, printer): the printer's "${k}" must be a number above 0 (got ${JSON.stringify(printer[k])})`);
