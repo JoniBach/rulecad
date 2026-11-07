@@ -42,7 +42,10 @@ r.thin;            // { share, cells }: how much of the part is in members under
   symmetric Gauss-Seidel through those blocks.
 - **Threads:** `import { threadsBackend } from '@rulecad/fea/threads'` (Node only) shares each product over the
   machine's cores (`FEA_THREADS` to say how many), the rest as `jsBackend`. On a 134,000-unknown grid a product takes
-  6.8 ms on seven threads against 19 ms on one, and an optimisation step about a third of the time.
+  6.8 ms on seven threads against 19 ms on one, and an optimisation step about a third of the time. It needs Node 22
+  or later: on Node 20 a product now and then came out wrong when the workers let go of an old operator's shared
+  memory (a few solves in sixty, more with more threads, none on Node 22 or 24), so there it is plain JavaScript
+  under another name (its `name` says so).
 
 Tested against beam theory: a cantilever's tip moves within 1% of `F L³ / 3 E I` in 2D, and within 2% in 3D.
 Multigrid is tested against the direct solver with stiffnesses a millionfold apart.
