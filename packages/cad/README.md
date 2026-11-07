@@ -18,7 +18,8 @@ npx cad link bathroom/soap-tray      # a link that opens the model in a browser 
 ```
 
 **New here?** [The tutorial](TUTORIAL.md) walks from an empty folder to a part of your own, checked against the thing
-it fits, in about twenty minutes. This page is the reference.
+it fits, in about twenty minutes. This page is the reference. [The worked examples](EXAMPLES.md) go on from there: parts, variants and a release, a lid on a hinge, a model
+measured into rules, an optimised arm, a board, and a mechanism printed flat, each tested as written.
 
 ```
 rules/                     shared facts, one file per set: x1c.json (printer), mx.json (Cherry MX). A set from
