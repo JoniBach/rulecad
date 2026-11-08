@@ -136,12 +136,17 @@ Test them as the levers: preload, zero, load in steps (stop before 1 mm), unload
 `projects/gears`: what backlash and module print well on this printer, so `@rulecad/gears` can start from measured
 numbers rather than estimates (its `DEFAULTS` say which are estimates).
 
-- **`gears/sampler`**, the plate (240 × 229 mm): a pair of 3 mm pins for each of four modules (0.8, 1, 1.5, 2) at each
-  of three backlashes (0.1, 0.2, 0.3 mm), each pair at its centre distance and labelled `M1 B0.2` and so on. The front
-  row is a module 1 rack and a 40-tooth ring printed into the plate, each with a pin for its pinion.
-- **`gears/sampler-gears`**, the gears (248 × 136 mm): 17 teeth each, a row a module, a pair at each backlash. One, two
-  or three dots on the top face say the backlash (0.1, 0.2, 0.3). The last two are the rack's and the ring's pinions
-  (module 1, two dots).
+- **`gears/sampler`**, the frame (180 × 179 mm, a ladder of bars, not a plate): a pair of 3 mm pins on a bar for each
+  of three modules (0.8, 1, 1.5; if 1.5 runs, 2 will) at each of three backlashes (0.1, 0.2, 0.3 mm), each pair at its
+  centre distance with its label (`M1 B0.2`) on a tab, the bars joined by rails. The front row has a rail for a loose
+  module 1 rack and a lip on a floor for a loose 40-tooth ring, each with a pin for its pinion.
+- **`gears/sampler-gears`**, the gears (191 × 146 mm): 17 teeth each, a row a module, a pair at each backlash. One, two
+  or three dots on the top face say the backlash (0.1, 0.2, 0.3). Then the rack's and the ring's pinions (module 1, two
+  dots), and the loose rack and ring.
+- **`gears/sampler-mounted`**: the plate with every gear on its pin, each pair meshed, the rack on its rail and the ring
+  in its lip, each driven by its pinion. `npx cad check gears/sampler-mounted --sweep` turns every pair and finds each
+  measures the play it was drawn with. 59 g of PLA in all, where the first plate was 227 g. It is written by `node projects/gears/make-sampler.mjs` from
+  `sampler-layout.mjs`, which the plate reads too, so the pins and the gears on them can't disagree.
 
 Print both in PLA at the X1C's defaults (0.2 mm layers), gears face down as exported. Press each pair onto the pins its
 label names, dots up.
@@ -151,8 +156,8 @@ For each pair, record:
 1. **Turns freely?** Turn one gear a whole turn by hand: smooth, tight in places, or binding.
 2. **Play:** hold one gear still and rock the other: none you can feel, a little, or a knock.
 3. **Teeth:** for module 0.8 especially, whether the teeth printed whole, with their tips and roots, or as blobs.
-4. **The rack and the ring:** whether the pinion runs the rack's whole length, and round the whole ring, without
-   catching.
+4. **The rack and the ring:** whether the rack slides its whole travel along the rail, and the ring turns all the way
+   round in its lip, as their pinions turn, without catching.
 
 The smallest backlash that turns freely at each module becomes the kit's default (with the plate named as its
 source, `kind: measured`); the smallest module whose teeth printed whole becomes its floor.
@@ -162,3 +167,35 @@ npx cad check gears/sampler
 npx cad export gears/sampler
 npx cad export gears/sampler-gears
 ```
+
+## The strap tensioner
+
+`gears/tensioner`: a crank through two herringbone stages (17 to 34, then 17 to 51: six turns of the crank for one of
+the spool) to a spool held by a ratchet and a leaf pawl, on a skeleton frame (a spine, a boss round each shaft, two feet). The gears turn on three 6 mm pins printed
+standing on it; the pawl stands on a post on the frame, outside every gear's reach. The ratchet is on the spool's shaft, so the gears carry the
+winding and never the held load. Herringbone teeth push nothing along their shafts, so the gears stay put without
+collars. `npx cad check gears/tensioner --sweep` turns the crank through a whole turn with both stages in phase.
+
+Predicted, for a 100 N pull on a 10 mm spool (1 N·m at the spool), each part sized to about twice what that needs:
+
+| What | Predicted | From |
+|---|---|---|
+| Force on the 40 mm crank | 4.6 N (95% a stage) | the ratio |
+| Teeth, worst stage (the second's pinion, module 1.25, 6 mm wide) | 13.9 MPa by Lewis, 2.8× under PLA's 39 MPa; 17.8 MPa by finite elements (2.2×) | `strength`, `toothStress` |
+| The pawl's click over each tooth | 5.1 N to lift it, 3.3 N at the rim | `ratchetModel` |
+| The pawl's strain at a tooth's height | 0.7%, under PLA's 2% | `ratchetModel` |
+| The pawl holding | 50 N end-on; it buckles at 97 N free-ended (1.9×) | Euler |
+| The pawl's post | under 3 MPa at its foot under that 50 N | bending, 12 mm square |
+| Material | 86 g of PLA: frame 22, spool shaft 41, middle shaft 13, crank and arm 9, pawl 1 | volumes |
+
+The pawl is 35 mm long, to reach from a post outside the spool gear to the ratchet, and nine lines thick, so that
+length still holds: at three lines, as first drawn, holding 100 N would have folded it at 11 N.
+
+Every part prints without supports: the crank's arm is its own part, printed flat and slipped onto a flat on the
+crank shaft; the second pinion's teeth run straight down onto the gear under them; the ratchet sits on a spacer as wide
+as itself; the spool's top flange slants in at 45°; the frame prints base down, its pins and post standing. Not yet right: the pawl's seat on
+the ratchet is set by eye (the check allows it into the teeth, where it would bend); checking it as a flexure through the ratchet's turn is
+for the flexures package's lamina tools, next.
+
+To measure: the pull it holds before the pawl gives (buckles or slips), the force on the crank at 50 and 100 N, and
+whether the clicks are crisp.

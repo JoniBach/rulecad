@@ -79,7 +79,8 @@ What every gear takes:
   1.2 it is rough.
 - **`backlash`**: the play, with the centre you gave.
 - **`overlap`** and **`thrust`**: for helical gears, with `width` given, how much the twist adds to the contact ratio, and the push along the axis for each newton driven (none for a herringbone).
-- **`findings`**: `mesh.contact`, `mesh.centre` (axes too close jam the teeth; too far knock), `mesh.module` and
+- **`findings`**: `mesh.contact`, `mesh.centre` (axes closer than the gears need eat their backlash, 2 Δa tan α of it, and past
+  it jam the teeth; too far apart, they knock), `mesh.module` and
   `mesh.pressure` (gears that can't mesh), `mesh.interference` (a ring too near its pinion's size), `mesh.helix` (helical
   gears that cross: outer gears that mesh are of opposite hands; a pinion and its ring or rack, of the same hand).
 
@@ -101,6 +102,39 @@ teeth for a ratio that also put together, nearest the ratio first and then the s
 planet's place round the carrier and the turn that puts it in phase with the sun, and the ring's turn. When no set
 gives the ratio exactly, the nearest is returned and `planetary.ratio` says how far off it is (a fail past 5%).
 `planetaryRatio({ sun, ring }, { held, input, output })` is the ratio of any teeth, any way round.
+
+## Worms and bevel gears
+
+A **worm** is a screw whose thread, cut along its axis, is the basic rack's tooth: `worm({ module, starts, diameter,
+length, bore })` draws it along z. Its wheel is a helical gear at the worm's lead angle and of its hand,
+`wormWheel(wormSpec, { teeth, width, bore })` (the usual printable wheel: not throated, so they touch at a point,
+which printed teeth spread). `wormMesh(wormSpec, { teeth })` gives the centre distance, the ratio (`starts` teeth of the
+wheel for each turn of the worm), whether it **locks** (the lead angle under the friction angle: the wheel can't turn
+the worm back; `worm.locks`) and how **efficient** it is. A single start of module 1 on a 10 mm worm: a 5.71° lead,
+it locks at μ 0.25, 27% efficient. Three starts on 8 mm: 20.6°, it doesn't.
+
+A **bevel gear** carries a turn round a corner. `bevel({ module, teeth, mate, shaftAngle, width, bore })` draws a
+straight bevel by Tredgold's construction: the tooth drawn on the back cone as a spur gear of z / cos δ teeth, wrapped
+onto the back cone and seen from the apex onto the back end, every section nearer the apex that one scaled, so the
+teeth run straight to the apex. The back end is on the bed and the apex up z. `bevelModel` gives the pitch cone angle
+(tan δ = sin Σ / (z₂/z₁ + cos Σ)), the cone distance R, the virtual teeth, and refuses a face width over R / 3;
+`bevelMesh` the ratio and the contact ratio of the back cones' equivalent spur gears. In an assembly, the two cones
+must share their apex.
+
+## The mesh, measured
+
+`mesh()` reckons a pair from the formulas. `contact(a, b, { centre, steps })` measures it from the teeth as drawn,
+with their fillets, rounds and backlash and the centre distance given. It turns the driver through one tooth in steps,
+and at each step turns the driven gear each way until its outline meets the driver's:
+
+- **backlash**: the turn between the two meetings, as play at the pitch circle (`mesh.backlash`, a warn when it falls
+  under 0.02 mm);
+- **transmission error**: how far the driven gear's forward meeting wanders across a tooth (`mesh.error`);
+- **interference**: steps where the outlines already cross where the ratio puts them (`mesh.interference`).
+
+`a` and `b` are the parameters the models take; `b.kind` is `'internal'` for a ring or `'rack'` for a rack. For 18
+teeth on 30 at module 1 it measures 0.150 to 0.152 mm of play against the 0.15 mm drawn, and 1 µm of transmission
+error; with the axes 0.2 mm apart, 0.30 mm (2 Δa tan α more). `cad check` measures every mesh in an assembly this way.
 
 ## How it prints
 
@@ -136,6 +170,14 @@ strength(gearModel({ module: 1, teeth: 18 }), { width: 6, material: { strength: 
 It is a first number. A printed tooth is weaker than a moulded one where its layers and voids are, and stronger than
 Lewis says where the root fillet and its neighbours share the load. Where it matters, print one and load it.
 
+Where it matters, `toothStress(params, { width, torque, material: { E, nu, strength } })` analyses one tooth by
+finite elements (`@rulecad/fea`, plane stress): the tooth and a slice of rim, the rim's cut edges held, the load at
+the tip along the line of action. It gives the peak stress at the root of the loaded side, with the fillet as drawn,
+and runs a grid a third coarser to say whether it has settled (`gear.fe.coarse` when it moved over 5%). For 18 teeth
+it reads about 1.33× Lewis, and 1.25× for 40: the fillet's stress concentration, which Lewis leaves out (AGMA's
+geometry factor for a tip-loaded 18-tooth pinion implies about 1.3).
+
+
 ## What isn't refused, and what is
 
 A model or a solid refuses what isn't a gear, by name, before any maths: `gearModel: teeth is a whole number of 6 or
@@ -166,6 +208,11 @@ a point.
 | Planetary assembly | R = S + 2P; (S + R) / n whole; 2a sin(π / n) > d_a,planet | KHK, planetary gears |
 | Tooth bending (Lewis) | σ = K_v F_t / (b m Y); helical: m cos β, z / cos³β teeth | Budynas and Nisbett, Shigley's Mechanical Engineering Design, 10th ed., §14-1 and Table 14-2 |
 | Velocity factor (Barth, cut profile) | K_v = (3.05 + V) / 3.05, V in m/s | Shigley, eq. 14-4b |
+| Tooth by finite elements | plane stress, 32 cells a module, load F_t / cos α along the line of action at the tip | `@rulecad/fea`; AGMA 908-B89 for the geometry factor it is compared with |
+| Worm lead angle | tan γ = s π m / (π d) | ISO 21771 (worms: ISO/TR 10828) |
+| Worm locking and efficiency | locks when γ < atan μ; η = tan γ (cos α_n − μ tan γ) / (cos α_n tan γ + μ) | Dudley (1984), ch. 3; Shigley, §13-11 |
+| Bevel pitch cone | tan δ₁ = sin Σ / (z₂/z₁ + cos Σ); R = r / sin δ; virtual teeth z / cos δ | Tredgold's approximation; Shigley, §13-12 |
+| Bevel face width | at most R / 3 | AGMA 2005 |
 
 ## Words used
 

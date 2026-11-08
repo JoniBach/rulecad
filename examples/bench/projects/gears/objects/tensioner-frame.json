@@ -1,0 +1,143 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-frame",
+  "title": "Tensioner: the frame",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A skeleton frame: a spine along the three shafts, a boss round each pin (printed standing, the gears turn on them), two feet across, and a branch out to the post the pawl stands on.",
+  "variables": {
+    "start": {
+      "value": -14,
+      "unit": "mm",
+      "rule": "Behind the crank's pinion (11.9 mm tips)"
+    },
+    "mid_x": {
+      "value": 31.875,
+      "unit": "mm",
+      "rule": "The middle shaft: m (17 + 34) / 2 from the crank"
+    },
+    "out_x": {
+      "value": 74.375,
+      "unit": "mm",
+      "rule": "The spool shaft: m (17 + 51) / 2 further"
+    },
+    "post_x": {
+      "value": 116.375,
+      "unit": "mm",
+      "rule": "Under the pawl's root block (its face at 109.375 mm, 14 mm long), outside the spool gear's tips"
+    },
+    "post_y": {
+      "value": 19.2,
+      "unit": "mm",
+      "rule": "In line with the pawl"
+    },
+    "post": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "Square: the pawl's 50 N at its top bends it to under 3 MPa"
+    },
+    "post_height": {
+      "value": 14.4,
+      "unit": "mm",
+      "rule": "Up to the ratchet's level"
+    },
+    "base": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "The spine and feet, four millimetres"
+    },
+    "spine": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The spine along the shafts: as wide as a boss"
+    },
+    "boss": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Round each pin, deep enough to hold it upright"
+    },
+    "thick": {
+      "value": "x1c.layer * 40",
+      "unit": "mm",
+      "rule": "The bosses, eight millimetres"
+    },
+    "foot": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "The feet across: wide enough that a crank's pull doesn't tip it"
+    },
+    "foot_w": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "A foot's width"
+    },
+    "pin": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The shafts, printed with the frame: 6 mm keeps the crank's pin under 7 MPa"
+    },
+    "crank_pin": {
+      "value": 19.4,
+      "unit": "mm",
+      "rule": "Up the crank's tube to just under its arm"
+    },
+    "mid_pin": {
+      "value": 12.9,
+      "unit": "mm",
+      "rule": "Up through the middle shaft's two gears"
+    },
+    "out_pin": {
+      "value": 37.9,
+      "unit": "mm",
+      "rule": "Up through the spool shaft's gear, ratchet and spool"
+    },
+    "post_len": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "Along the pawl: under its whole root"
+    },
+    "root_x": {
+      "value": 109.375,
+      "unit": "mm",
+      "rule": "The pawl's root face, where its leaf starts"
+    },
+    "snap": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The push pins' shafts"
+    },
+    "snap_lip": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "The barb's lip: it clicks over the pawl's root and holds (a square back)"
+    },
+    "snap_length": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "Through the pawl's 4 mm root"
+    },
+    "snap_near": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "As the pawl's holes"
+    },
+    "snap_far": {
+      "value": 10.5,
+      "unit": "mm",
+      "rule": "As the pawl's holes"
+    },
+    "flange": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "A push pin's foot flange, buried in the post"
+    },
+    "snap_back": {
+      "value": 90,
+      "unit": "deg",
+      "rule": "A square back: the pin holds for good"
+    }
+  }
+}

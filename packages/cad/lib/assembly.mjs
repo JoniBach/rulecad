@@ -20,6 +20,7 @@ import { host, readJson } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { evaluate, loadRuleSet } from './rules.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { locate, build, readObject, jscad } from './design.mjs';
@@ -29,7 +30,7 @@ import { bounds } from '@rulecad/printcheck';
 import { closest, closestAt, inside, distanceToFace, overlapAt } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
-import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase } from '@rulecad/gears';
+import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact, wormModel, wormMesh, bevelModel, bevelMesh } from '@rulecad/gears';
 import { ops as booleans } from '@rulecad/shapes';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -366,6 +367,18 @@ function motionOf(a, placed, num, ref) {
   return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes };
 }
 
+// A pair measured from its drawn teeth (@rulecad/gears contact: backlash, transmission error, interference), kept in
+// .cache/gears/ by the pair, the centre distance and the gears package's code, as it takes half a second
+let gearsCode = null;
+function measured(a, b, centre) {
+  gearsCode ||= (() => { const dir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))); return fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join(''); })();
+  const file = paths.cache('gears', `${crypto.createHash('sha256').update(JSON.stringify([gearsCode, a, b, +centre.toFixed(6)])).digest('hex')}.json`);
+  if (!process.env.CAD_NO_CACHE && host.exists(file)) return JSON.parse(host.readText(file));
+  const r = contact(a, b, { centre, steps: 12 }), keep = { findings: r.findings, backlash: r.backlash, error: r.error };
+  try { host.writeText(file, JSON.stringify(keep)); } catch {} // (only slower without it)
+  return keep;
+}
+
 // A planetary gearbox: "planetary": [{ "sun", "carrier", "ring", "planets": [items], "drive": "sun" | "carrier" | "ring",
 // "module", "teeth": [sun, planet, ring] }]. One of the sun, carrier and ring is held (no joint, or a fixed one); the
 // one named by drive turns on its joint, and every other moving part (the third, and each planet on the carrier)
@@ -432,11 +445,89 @@ function planetaries(list, joints, items, num) {
       if (Math.abs(miss) > 1e-6) f('fail', `planet ${p.id} can't mesh with the sun and the ring at once where it is (${(p.beta / DEG).toFixed(2)}° round the sun): planets go every ${(360 / planets.length).toFixed(2)}°, and (S + R) / planets must be whole (${S + R} / ${planets.length})`, 'planetary.phase', [O, centre]);
       const m = meshOf(sun, planet, { centre: p.r });
       for (const x of m.findings) f(x.level, `sun and ${p.id}: ${x.text}`, x.code, [O, centre]);
+      if (i === 0) {
+        for (const x of measured({ ...common, teeth: S }, { ...common, teeth: P }, p.r).findings) f(x.level, `sun and ${p.id}: ${x.text}`, x.code, [O, centre]);
+        for (const x of measured({ ...common, teeth: P }, { ...common, teeth: R, kind: 'internal' }, p.r).findings) f(x.level, `${p.id} and the ring: ${x.text}`, x.code, [O, centre]);
+      }
     });
     const ratioText = `the ${drive} drives the ${third}${held[0] === 'carrier' ? '' : ' and the planets'} (the ${held[0]} held): ${Number(Math.abs(k3).toFixed(4))} turns of the ${third} for each turn of the ${drive}, ${k3 * sg[drive] * sg[third] < 0 ? 'opposite ways' : 'the same way'}`;
     out.push({ joint: follower.id, with: lead.id, kind: 'planetary', text: ratioText, findings, between: [O, O], planetary: true });
   });
   return out;
+}
+
+// Bevel gears: "mesh": { "with": <the other's joint>, "module", "teeth": [its, this one's], "bevel": true } on revolutes
+// whose axes meet at the shaft angle, each gear drawn as @rulecad/gears draws one (back end at z = 0, apex up z). The
+// cones must share their apex. The ratio is the surface speeds' where the pitch cones touch; the phase puts a tooth
+// of one against a space of the other along that line.
+function bevelDrive(j, lead, spec, teeth, common, joints, items, num) {
+  const what = `joint ${j.id}: mesh`, DEG = Math.PI / 180;
+  const col = (W, k) => [W[k], W[4 + k], W[8 + k]], org = (W) => [W[3], W[7], W[11]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add = (a, b) => a.map((x, i) => x + b[i]), times = (a, k) => a.map((x) => x * k);
+  const crossP = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], len = (v) => Math.hypot(...v), unit = (v) => times(v, 1 / len(v));
+  const ang = (v, x0, z) => Math.atan2(dot(crossP(x0, v), z), dot(x0, v));
+  const v = jointValues({ joints, poses: {} }, {}); v[lead.id] = [0]; v[j.id] = [0];
+  const worlds = placeItems({ items, joints }, v), W1 = worlds[lead.child], W2 = worlds[j.child];
+  const O1 = org(W1), Z1 = col(W1, 2), X1 = col(W1, 0), O2 = org(W2), Z2 = col(W2, 2), X2 = col(W2, 0);
+  const shaft = Math.acos(Math.max(-1, Math.min(1, dot(Z1, Z2)))) / DEG;
+  let g1, g2;
+  try { g1 = bevelModel({ ...common, teeth: teeth[0], mate: teeth[1], shaftAngle: shaft }); g2 = bevelModel({ ...common, teeth: teeth[1], mate: teeth[0], shaftAngle: shaft }); } catch (e) { throw new Error(`${what}: ${e.message}`); }
+  // each cone's apex: along its axis, its cone distance × cos δ from its back end
+  const A1 = add(O1, times(Z1, g1.coneDistance * Math.cos(g1.pitchAngle * DEG))), A2 = add(O2, times(Z2, g2.coneDistance * Math.cos(g2.pitchAngle * DEG)));
+  const findings = [];
+  const apart = len(sub(A1, A2));
+  if (apart > 0.01) findings.push({ level: 'fail', text: `the cones' apexes are ${Number(apart.toFixed(3))} mm apart: bevel gears mesh only when their cones meet at one point (move one along its axis)`, code: 'mesh.bevel' });
+  // where the pitch cones touch: from the apex, δ1 from the first's axis toward the second's (both pointing away)
+  const out1 = times(Z1, -1), out2 = times(Z2, -1), across = unit(sub(out2, times(out1, dot(out1, out2))));
+  const g = add(times(out1, Math.cos(g1.pitchAngle * DEG)), times(across, Math.sin(g1.pitchAngle * DEG))), P = add(A1, times(g, g1.coneDistance));
+  const radial = (Z, X) => { const r = sub(g, times(Z, dot(g, Z))); return ang(r, X, Z); };
+  const b1 = radial(Z1, X1), b2 = radial(Z2, X2);
+  // the second turns so the surface speeds match where they touch: ω2 = ω1 (Z1 × P)·(Z2 × P) / |Z2 × P|², P from the apex
+  const p = sub(P, A1), r = dot(crossP(Z1, p), crossP(Z2, p)) / dot(crossP(Z2, p), crossP(Z2, p));
+  const sgn = (jt, Z) => Math.sign(dot(col(mul(jt.parent < 0 ? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] : worlds[jt.parent], jt.a), 2), Z));
+  const s1 = sgn(lead, Z1), s2 = sgn(j, Z2), z2 = teeth[1];
+  const phi = b2 - Math.PI / z2 - r * b1;
+  j.follow = [lead.id, s2 * r * s1, (s2 * phi) / DEG];
+  const m = bevelMesh({ ...common, teeth: teeth[0], shaftAngle: shaft }, { ...common, teeth: teeth[1], shaftAngle: shaft });
+  findings.push(...m.findings);
+  return { joint: j.id, with: lead.id, kind: 'bevel', findings, between: [O1, O2], text: `bevel gears at ${Number(shaft.toFixed(2))}°, ${Number((teeth[0] / teeth[1]).toFixed(4))} turns of the second for each of the first (cones of ${Number(g1.pitchAngle.toFixed(2))}° and ${Number(g2.pitchAngle.toFixed(2))}°)` };
+}
+
+// A worm and its wheel: "mesh": { "with": <the worm's joint>, "module", "teeth": [starts, wheel's teeth], "worm": {
+// "diameter"?, "hand"? } } on the wheel's revolute, the axes crossed. In the wheel's middle plane the worm's thread is a
+// rack along the worm's axis, moving a lead a turn: the wheel follows it as a pinion does a rack, its helix's turn at
+// that plane taken into account. The worm is drawn as @rulecad/gears draws it (axis up its z, from z = 0).
+function wormDrive(j, lead, spec, teeth, common, joints, items, num) {
+  const what = `joint ${j.id}: mesh`, DEG = Math.PI / 180;
+  const col = (W, k) => [W[k], W[4 + k], W[8 + k]], org = (W) => [W[3], W[7], W[11]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const crossP = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], len = (v) => Math.hypot(...v);
+  const ang = (v, x0, z) => Math.atan2(dot(crossP(x0, v), z), dot(x0, v));
+  const ws = spec.worm === true ? {} : spec.worm;
+  let w, wheel;
+  try {
+    w = wormModel({ ...common, starts: teeth[0], ...(ws.diameter != null ? { diameter: num(ws.diameter) } : {}), ...(ws.hand ? { hand: ws.hand } : {}) });
+    wheel = gearModel({ ...common, teeth: teeth[1], helix: w.leadAngle, hand: w.hand });
+  } catch (e) { throw new Error(`${what}: ${e.message}`); }
+  const v = jointValues({ joints, poses: {} }, {}); v[lead.id] = [0]; v[j.id] = [0];
+  const worlds = placeItems({ items, joints }, v), Ww = worlds[lead.child], W2 = worlds[j.child];
+  const Ow = org(Ww), U = col(Ww, 2), Xw = col(Ww, 0), O2 = org(W2), Z2 = col(W2, 2), X2 = col(W2, 0);
+  if (Math.abs(dot(U, Z2)) > 1e-6) throw new Error(`${what}: a worm's axis and its wheel's cross at right angles`);
+  // the line between the axes: across both (the worm's along U, the wheel's along Z2)
+  const rel = sub(O2, Ow), at = dot(rel, U), toWheel = sub(sub(rel, U.map((x) => x * at)), Z2.map((x) => x * dot(rel, Z2))), dist = len(toWheel), Y = toWheel.map((x) => x / dist), Zr = crossP(U, Y);
+  const sense = w.hand === 'left' ? -1 : 1, sw = Math.sign(dot(col(mul(lead.parent < 0 ? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] : worlds[lead.parent], lead.a), 2), U));
+  const s2 = Math.sign(dot(Z2, Zr)), tw = ang(Y, Xw, U), g2 = ang(X2, U, Zr) * 1, r2 = wheel.pitch / 2;
+  // the wheel's helix: its tooth 0 at the worm's plane is turned by k z there
+  const zMid = dot(sub(Ow, O2), Z2), k = (sense * Math.tan(w.leadAngle * DEG)) / r2;
+  const phr = rackPhase(wheel, at), L = w.lead;
+  // space centres of the thread, at the wheel, sit at z0 = sense L (tw − θw) / 2π along the worm; the wheel turns as on a rack
+  const theta = (dw) => { const z0 = (sense * L * (tw - sw * dw * DEG)) / (2 * Math.PI); return s2 * ((z0 - phr) / r2 - g2) - k * zMid; };
+  const a0 = theta(0), a1 = theta(1);
+  j.follow = [lead.id, (a1 - a0) / DEG, a0 / DEG];
+  const m = wormMesh({ ...common, starts: teeth[0], ...(ws.diameter != null ? { diameter: num(ws.diameter) } : {}), ...(ws.hand ? { hand: ws.hand } : {}) }, { teeth: teeth[1] });
+  const c = meshOf(wheel, rackModel({ ...common, teeth: 4 }), { centre: dist - w.pitch / 2 });
+  const findings = [...m.findings, ...c.findings.filter((x) => x.code === 'mesh.centre').map((x) => ({ ...x, text: x.text.replace("centre to the rack's pitch line", "the wheel's centre to the worm's pitch cylinder") }))];
+  return { joint: j.id, with: lead.id, kind: 'worm', findings, between: [Ow.map((x, i) => x + U[i] * at), O2], text: `a worm of ${teeth[0]} start${teeth[0] > 1 ? 's' : ''}, ${Number((teeth[1] / teeth[0]).toFixed(3))} turns of the worm for one of the wheel` };
 }
 
 // Gears that mesh: "mesh": { "with": <the driving joint>, "module", "teeth": [its, this one's], "shift"?, "ring"? } on
@@ -464,11 +555,13 @@ function gearMeshes(joints, items, num) {
     if (!lead) throw new Error(`${what}: "with" names the driving joint (${joints.filter((x) => x !== j).map((x) => x.id).join(', ')}; got ${JSON.stringify(spec.with)})`);
     if (lead.type !== 'revolute') throw new Error(`${what}: ${lead.id} is a ${lead.type}; the driver is a gear turning on a revolute`);
     if (j.type !== 'revolute' && j.type !== 'prismatic') throw new Error(`${what}: a gear turns on a revolute, a rack slides on a prismatic (this is a ${j.type})`);
-    const kind = j.type === 'prismatic' ? 'rack' : spec.ring ? 'internal' : 'external';
+    const kind = spec.bevel ? 'bevel' : spec.worm ? 'worm' : j.type === 'prismatic' ? 'rack' : spec.ring ? 'internal' : 'external';
     if (!(lead.parent === j.parent || (still(lead.parent) && still(j.parent)))) throw new Error(`${what}: ${lead.id} and ${j.id} turn on parts that move apart (a planet on a carrier): a mesh needs both on one part, or both on parts held still`);
     const teeth = list(spec.teeth).map(num), shift = list(spec.shift ?? [0, 0]).map(num);
     if (teeth.length !== 2) throw new Error(`${what}: teeth is [the driver's, this one's] (got ${JSON.stringify(spec.teeth)})`);
     const common = { module: num(spec.module), ...(spec.pressureAngle != null ? { pressureAngle: num(spec.pressureAngle) } : {}), ...(spec.backlash != null ? { backlash: num(spec.backlash) } : {}) };
+    if (kind === 'worm') { out.push(wormDrive(j, lead, spec, teeth, common, joints, items, num)); continue; }
+    if (kind === 'bevel') { out.push(bevelDrive(j, lead, spec, teeth, common, joints, items, num)); continue; }
     let A, B;
     try {
       A = gearModel({ ...common, teeth: teeth[0], shift: shift[0] });
@@ -492,13 +585,14 @@ function gearMeshes(joints, items, num) {
       const k = (Math.PI * A.pitch) / 360, g1 = angleIn(along(X1, Zr), U, Zr);
       j.follow = [lead.id, sTravel * s1 * k, sTravel * (k * g1 + rackPhase(A, at))];
       const m = meshOf(A, B, { centre: height });
-      result.findings = m.findings; result.between = [O1, [R0[0] + at * U[0], R0[1] + at * U[1], R0[2] + at * U[2]]]; result.text = m.text;
+      result.findings = [...m.findings, ...measured({ ...common, teeth: teeth[0], shift: shift[0] }, { ...common, teeth: teeth[1], kind: 'rack' }, height).findings]; result.between = [O1, [R0[0] + at * U[0], R0[1] + at * U[1], R0[2] + at * U[2]]]; result.text = m.text;
     } else {
       const O2 = org(W2), X2 = col(W2, 0), Z2 = col(W2, 2), ax2 = axisOf(j);
       if (Math.abs(Math.abs(dot(ax2.dir, Z2)) - 1) > 1e-6 || len(along(sub(O2, ax2.at), ax2.dir)) > 1e-4) throw new Error(`${what}: ${j.id} doesn't turn its gear about the gear's own centre and axis: anchor the gear's joint at its centre, along its axis`);
       if (Math.abs(Math.abs(dot(Z1, Z2)) - 1) > 1e-6) throw new Error(`${what}: ${lead.id} and ${j.id} turn about axes that aren't parallel (spur gears need parallel axes)`);
       const s = Math.sign(dot(Z1, Z2)), d = along(sub(O2, O1), Z1), beta = angleIn(d, X1, Z1), g2 = angleIn(along(X2, Z1), X1, Z1);
       const m = meshOf(A, B, { centre: len(d) });
+      m.findings.push(...measured({ ...common, teeth: teeth[0], shift: shift[0] }, { ...common, teeth: teeth[1], shift: shift[1] ?? 0, kind }, len(d)).findings);
       // b's angle in the driver's frame is ratio × a's + phase; its joint measures about its own z (the other way when flipped)
       j.follow = [lead.id, s * m.ratio, s * (phase(A, B, beta) - g2)];
       result.findings = m.findings; result.between = [O1, O2]; result.text = m.text;
@@ -667,6 +761,18 @@ export function checkAssembly(s) {
     }
     if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`, { code: 'joint.range', refs: { joints: outside } });
     for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`, { code: 'loop', values: { gap: l.gap, angle: l.angle }, refs: { label: l.label } });
+    // Held by something: in a mechanism, every part but the first either turns or slides on a joint, or is fastened,
+    // through a chain of fits with "fastens", to the first. A part only placed somewhere stays there in the model and
+    // nowhere else: a ring gear resting on its case turns with the planets; a pawl resting on its post walks off it.
+    if (s.motion.joints.some((j) => j.type !== 'fixed')) {
+      const ids = s.motion.items.map((x) => x[0]), top = (n) => String(n).split(/[.@]/)[0];
+      const held = new Set([ids[0], ...s.motion.joints.map((j) => ids[j.child])]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
+      for (let grew = true; grew;) { grew = false; for (const [a, b] of links) { if (held.has(a) && !held.has(b)) { held.add(b); grew = true; } if (held.has(b) && !held.has(a)) { held.add(a); grew = true; } } }
+      const placed = new Set(s.objects.filter((o) => !o.unplaced && o.role !== 'reference').map((o) => top(o.id)));
+      const loose = ids.filter((id) => !held.has(id) && placed.has(id));
+      if (loose.length) f('warn', `${loose.join(', ')} ${loose.length > 1 ? 'are' : 'is'} placed, but nothing holds ${loose.length > 1 ? 'them' : 'it'}: give ${loose.length > 1 ? 'each' : 'it'} a joint, or fasten it to what it sits on (pins, screws, a press) and say so with a fit that "fastens"`, `${loose.length} loose`, { code: 'assembly.loose', refs: { items: loose } });
+      else f('pass', `every part turns or slides on a joint, or is fastened to the ${ids[0]}`, null, { code: 'assembly.held' });
+    }
     // Gears: each mesh's centre distance and contact ratio, said between the two axes (the rest by --sweep)
     for (const g of s.motion.meshes || []) {
       f('info', g.planetary ? g.text : `${g.with} drives ${g.joint}: ${g.text}`, null, { code: 'mesh.ratio', refs: { joints: [g.with, g.joint] } });

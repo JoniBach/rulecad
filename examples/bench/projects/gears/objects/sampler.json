@@ -7,7 +7,7 @@
     "x1c"
   ],
   "engine": "manifold",
-  "description": "Pins for twelve pairs of 17-tooth gears, four modules by three backlashes, each pair at its centre distance and labelled; a rack and a ring gear printed into the plate, each with a pin for its pinion. Print it with sampler-gears, press the gears on, and record which pairs turn freely and how much play each has.",
+  "description": "Pins for nine pairs of 17-tooth gears (modules 0.8, 1 and 1.5 by backlashes 0.1, 0.2 and 0.3 mm), each pair on a bar at its centre distance with its label on a tab, the bars joined by two rails; a rail for a loose rack and a lip on a floor for a loose ring, each with a pin for its pinion. Print it with sampler-gears and press the gears on (sampler-mounted shows where each goes).",
   "variables": {
     "module_a": {
       "value": 0.8,
@@ -23,11 +23,6 @@
       "value": 1.5,
       "unit": "mm",
       "rule": "The plate's rows: Module 1.5"
-    },
-    "module_d": {
-      "value": 2,
-      "unit": "mm",
-      "rule": "The plate's rows: Module 2: comfortable, the largest tried"
     },
     "backlash_a": {
       "value": 0.1,
@@ -64,14 +59,14 @@
       "rule": "The gears' face width, twenty layers"
     },
     "thick": {
-      "value": "x1c.layer * 12",
+      "value": "x1c.layer * 10",
       "unit": "mm",
-      "rule": "The plate, twelve layers"
+      "rule": "The bars and rails, ten layers: stiff enough to hold a pin upright"
     },
     "column": {
-      "value": 80,
+      "value": 60,
       "unit": "mm",
-      "rule": "Room for the largest pair (module 2: 34 mm apart, 38 mm tips) and its label"
+      "rule": "Room for the largest pair (module 1.5: 25.5 mm apart, 28.5 mm tips) and its label"
     },
     "margin": {
       "value": 6,
@@ -110,6 +105,51 @@
       "value": "x1c.line * 8",
       "unit": "mm",
       "rule": "The rack's bar under its roots: eight lines"
+    },
+    "rack_travel": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "How far the rack slides each way: its pinion a little over a third of a turn"
+    },
+    "rail_width": {
+      "value": "x1c.line * 6",
+      "unit": "mm",
+      "rule": "The rail behind the rack: six lines"
+    },
+    "rail_height": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "Up most of the rack's width"
+    },
+    "clear": {
+      "value": "x1c.line / 2",
+      "unit": "mm",
+      "rule": "Half a line between a loose part and what guides it, so it slides"
+    },
+    "lip": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "The ring's lip: four lines"
+    },
+    "lip_height": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "Up most of the ring's width"
+    },
+    "bar": {
+      "value": "x1c.line * 16",
+      "unit": "mm",
+      "rule": "A pair's bar: about two pin-widths round each pin"
+    },
+    "spine": {
+      "value": "x1c.line * 10",
+      "unit": "mm",
+      "rule": "The two rails down the sides that join the bars into one print"
+    },
+    "tab": {
+      "value": "label + x1c.line * 4",
+      "unit": "mm",
+      "rule": "The label's tab: its letters and a margin"
     }
   }
 }

@@ -460,30 +460,47 @@ export function main (v) {
   "title": "Slide base",
   "version": "0.1.0",
   "uses": ["x1c"],
+  "engine": "manifold",
   "anchors": {
     "axle": { "at": [0, "centre", "thick"], "axis": [0, 0, 1] },
     "track": { "at": ["start", 0, "thick"], "axis": [1, 0, 0] }
   },
   "variables": {
     "centre": { "value": 7.2, "unit": "mm", "rule": "The pinion's axle above the rack's pitch line: its pitch radius and its shift, m z / 2 + x m" },
-    "length": { "value": 140, "unit": "mm", "rule": "Room for the rack's whole travel" },
+    "length": { "value": 120, "unit": "mm", "rule": "The rack (75.4 mm) and its travel, ±22 mm" },
     "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the knob at rest: half its 24 teeth, 12 × π" },
-    "wide": { "value": 40, "unit": "mm", "rule": "Under the rack and the knob" },
-    "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" }
+    "strip": { "value": 12, "unit": "mm", "rule": "The strip under the rack, from behind its guide to under its teeth" },
+    "boss": { "value": 12, "unit": "mm", "rule": "Round the axle's foot" },
+    "foot": { "value": 40, "unit": "mm", "rule": "A foot across the middle, so it stands without rocking" },
+    "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
+    "pin": { "value": "3.2 - x1c.line / 2", "unit": "mm", "rule": "The axle: the pinion's 3.2 mm bore less half a line, so it turns" },
+    "pin_height": { "value": "x1c.layer * 60", "unit": "mm", "rule": "Up through the pinion and its knob" },
+    "guide_y": { "value": "0 - 5.45 - x1c.line / 2", "unit": "mm", "rule": "Behind the rack's back (1.25 + 4.2 mm under its pitch line), half a line clear" },
+    "guide": { "value": "x1c.line * 4", "unit": "mm", "rule": "The guide wall: four lines" },
+    "guide_height": { "value": "x1c.layer * 20", "unit": "mm", "rule": "Most of the rack's width" }
   }
 }
 ```
 
 ```js projects/home/objects/rail.js
-// The base: a plate under the rack's travel and the knob, the axle above the rack.
+// The base as little as holds it: a strip under the rack's travel with a wall behind the rack (so it slides straight
+// and can't back away from the pinion), a boss carrying the pinion's axle, and a foot across the middle.
 import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
 
 export function main (v) {
-  return jscad.primitives.cuboid({ size: [v.length, v.wide, v.thick], center: [0, v.wide / 4, v.thick / 2] })
+  const y0 = v.guide_y - v.guide, strip = cuboid({ size: [v.length, v.strip, v.thick], center: [0, y0 + v.strip / 2, v.thick / 2] })
+  const boss = cylinder({ radius: v.boss / 2, height: v.thick, center: [0, v.centre, v.thick / 2] })
+  const neck = cuboid({ size: [v.boss, v.centre - y0, v.thick], center: [0, (y0 + v.centre) / 2, v.thick / 2] })
+  const foot = cuboid({ size: [v.boss, v.foot, v.thick], center: [0, y0 + v.foot / 2 - v.boss, v.thick / 2] })
+  const axle = cylinder({ radius: v.pin / 2, height: v.pin_height, center: [0, v.centre, v.thick + v.pin_height / 2] })
+  const guide = cuboid({ size: [v.length, v.guide, v.guide_height], center: [0, v.guide_y - v.guide / 2, v.thick + v.guide_height / 2] })
+  return v.ops.union(strip, boss, neck, foot, axle, guide)
 }
 ```
 
-The assembly: the knob turns on the base's axle, and the rack slides along its track, its middle under the knob at
+The assembly: the knob turns on the base's axle (a pin printed with the base), and the rack slides along its track
+against a guide wall, its middle under the knob at
 rest, so half a turn either way (±22 mm) keeps the pinion on its teeth. The slide's joint doesn't say
 how far it moves for a turn of the knob: its `mesh` says which joint drives it, and the gears' module and teeth (read
 from the parts, so they can't disagree). The check works out the travel a turn and the phase that puts a tooth in a
@@ -513,7 +530,8 @@ npx cad check home/slider --sweep --steps 12
 ```
 
 The check says `knob drives slide: 43.98 mm of rack a turn`, the contact ratio, and that the axle is where the gears
-need it (`centre distance 7.2 mm, as they need`). Set the base's `centre` to 7 and it fails: the teeth would jam. The
+need it (`centre distance 7.2 mm, as they need`). Set the base's `centre` to 6.9 and it fails: 0.3 mm closer is more than the
+teeth's 0.15 mm of backlash allows, and they would jam. The
 sweep turns the knob from −180° to 180° with the rack following, and names any teeth that touch on the way. The link
 carries the knob as a slider, with the rack moving with it: `npx cad link home/slider --md`.
 
@@ -533,7 +551,7 @@ planetary({ module: 1, ratio: 0.25, planets: 3, held: 'ring', input: 'carrier', 
 
 The ring is the sun and two planets across (18 + 2 × 18 = 54), and the planets go in evenly: 18 + 54 = 72 is a whole
 number of threes. The parts: a case with the ring on it and a pin for the sun, the sun with the spool's shaft, three
-planets, and the carrier with the planets' pins and the crank.
+planets, the carrier with the planets' pins and the crank arm, and the crank's handle.
 
 ```json projects/home/objects/winder-case.json
 {
@@ -544,21 +562,36 @@ planets, and the carrier with the planets' pins and the crank.
   "uses": ["x1c"],
   "engine": "manifold",
   "variables": {
-    "radius": { "value": 34, "unit": "mm", "rule": "Round the ring's rim (62.5 mm across)" },
+    "radius": { "value": 33, "unit": "mm", "rule": "The ring's rim: the case is a rim under it" },
+    "rim": { "value": "x1c.line * 14", "unit": "mm", "rule": "The rim under the ring's, wide enough for its push pins" },
+    "snap": { "value": 2, "unit": "mm", "rule": "Two push pins hold the ring still: their shafts" },
+    "snap_lip": { "value": 0.3, "unit": "mm", "rule": "The barb's lip, clicking over the floor of the ring's counterbore" },
+    "snap_back": { "value": 90, "unit": "deg", "rule": "A square back: it holds for good" },
+    "snap_at": { "value": 30.6, "unit": "mm", "rule": "Halfway across the ring's rim, between its roots and its outside" },
+    "snap_length": { "value": 4, "unit": "mm", "rule": "Up the ring's 6 mm rim to its 2 mm counterbore" },
+    "flange": { "value": 2, "unit": "mm", "rule": "A push pin's foot flange, buried in the rim" },
+    "hub": { "value": 12, "unit": "mm", "rule": "Round the sun's axle" },
+    "spoke": { "value": "x1c.line * 12", "unit": "mm", "rule": "Three spokes from the hub to the rim" },
+    "spokes": { "value": 3, "rule": "Three: it stands without rocking" },
     "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Base, fifteen layers" },
     "pin": { "value": 3, "unit": "mm", "rule": "The sun's axle" },
-    "pin_height": { "value": 24, "unit": "mm", "rule": "Up through the sun and its shaft" }
+    "pin_height": { "value": 22, "unit": "mm", "rule": "Up through the sun and its shaft" }
   }
 }
 ```
 
 ```js projects/home/objects/winder-case.js
-// The case: a base with the sun's axle standing in the middle. The ring sits on it.
+// The case as little as holds it: a rim the ring sits on (two push pins hold it still), a hub with the sun's axle
+// standing in it, and spokes between.
 import jscad from '@jscad/modeling'
-const { cylinder } = jscad.primitives
+const { cylinder, cuboid } = jscad.primitives
+const { rotateZ } = jscad.transforms
 
 export function main (v) {
-  return v.ops.union(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }),
+  const rim = v.ops.subtract(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }), cylinder({ radius: v.radius - v.rim, height: v.t, center: [0, 0, v.t / 2] }))
+  const spokes = Array.from({ length: v.spokes }, (_, k) => rotateZ((2 * Math.PI * k) / v.spokes, cuboid({ size: [v.radius - v.rim / 2, v.spoke, v.t], center: [(v.radius - v.rim / 2) / 2, 0, v.t / 2] })))
+  const snaps = [0, Math.PI].map((a) => jscad.transforms.translate([v.snap_at * Math.cos(a), v.snap_at * Math.sin(a), v.t - v.flange], v.flexures.snapPin({ diameter: v.snap, length: v.snap_length, lip: v.snap_lip, back: v.snap_back }, v.ops)))
+  return v.ops.union(rim, cylinder({ radius: v.hub / 2, height: v.t, center: [0, 0, v.t / 2] }), ...spokes, ...snaps,
     cylinder({ radius: v.pin / 2, height: v.pin_height, center: [0, 0, v.t + v.pin_height / 2] }))
 }
 ```
@@ -570,17 +603,33 @@ export function main (v) {
   "title": "Winder ring gear",
   "version": "0.1.0",
   "uses": ["x1c"],
+  "engine": "manifold",
   "variables": {
+    "rim": { "value": 66, "unit": "mm", "rule": "Across the outside: a rim wide enough for the push pins' holes" },
+    "snap": { "value": 2, "unit": "mm", "rule": "The case's push pins" },
+    "clear": { "value": "x1c.line / 2", "unit": "mm", "rule": "Half a line round a pin" },
+    "snap_at": { "value": 30.6, "unit": "mm", "rule": "As the case's pins" },
+    "counterbore": { "value": 2, "unit": "mm", "rule": "Deep enough that a barb clicks below the ring's top, clear of the crank arm" },
+    "barb": { "value": 1.6, "unit": "mm", "rule": "The counterbore's radius: the barb and its clearance" },
     "module": { "value": 1, "unit": "mm", "rule": "3.6 lines across a tooth on the X1C" },
     "teeth": { "value": 54, "rule": "The sun and two planets across: 18 + 2 × 18" },
-    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "Face width, forty layers" }
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "Face width, thirty layers: plenty for a spool's pull" }
   }
 }
 ```
 
 ```js projects/home/objects/winder-ring.js
+// The ring gear, held to the case by two push pins: through-holes in its rim, counterbored at the top for the barbs.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
 export function main (v) {
-  return v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width })
+  const holes = [0, Math.PI].flatMap((a) => {
+    const x = v.snap_at * Math.cos(a), y = v.snap_at * Math.sin(a)
+    return [cylinder({ radius: v.snap / 2 + v.clear, height: v.width, center: [x, y, v.width / 2] }),
+      cylinder({ radius: v.barb, height: v.counterbore, center: [x, y, v.width - v.counterbore / 2] })]
+  })
+  return v.ops.subtract(v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width, rim: v.rim }), ...holes)
 }
 ```
 
@@ -595,7 +644,7 @@ export function main (v) {
   "variables": {
     "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
     "teeth": { "value": 18, "rule": "From planetary(): 18 for 4 : 1 with three planets" },
-    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "As the ring" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "As the ring" },
     "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "A 3 mm pin and half a line's clearance" }
   }
 }
@@ -621,7 +670,7 @@ The sun is a planet with the spool's shaft on top, bored through for its axle:
   "variables": {
     "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
     "teeth": { "value": 18, "rule": "From planetary()" },
-    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "As the ring" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "As the ring" },
     "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "On the case's 3 mm axle" },
     "shaft": { "value": 8, "unit": "mm", "rule": "The spool's shaft, inside the sun's roots" },
     "shaft_height": { "value": 12, "unit": "mm", "rule": "Up through the carrier, and a spool's width over it" }
@@ -641,54 +690,89 @@ export function main (v) {
 }
 ```
 
-The carrier: a disc over the gears, inside the ring's tips, with a pin down into each planet and the crank on top. Its
-anchors are where the planets turn, every 120° at the sun-to-planet distance (m (S + P) / 2 = 18 mm).
+The carrier is drawn as it prints: a flat plate on the bed (the disc over the gears, inside the ring's tips, and the
+crank arm in the same plane, reaching out over the ring), with a pin standing up from it for each planet. The assembly
+turns it over, so its pins hang down into the planets. The planets turn every 120° at the sun-to-planet distance
+(m (S + P) / 2 = 18 mm). The handle is a part of its own, printed upright and pressed into the arm's end, as a crank
+handle usually is.
 
 ```json projects/home/objects/winder-carrier.json
 {
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "winder-carrier",
-  "title": "Winder carrier and crank",
+  "title": "Winder carrier and crank arm",
   "version": "0.1.0",
   "uses": ["x1c"],
   "engine": "manifold",
   "anchors": {
-    "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] },
-    "p0": { "at": ["a", 0, "0 - drop"], "axis": [0, 0, 1] },
-    "p1": { "at": ["0 - a / 2", "a * 0.8660254", "0 - drop"], "axis": [0, 0, 1] },
-    "p2": { "at": ["0 - a / 2", "0 - a * 0.8660254", "0 - drop"], "axis": [0, 0, 1] }
+    "axis": { "at": [0, 0, 0], "axis": [0, 0, -1] },
+    "grip": { "at": ["arm", 0, 0], "axis": [0, 0, -1] },
+    "p0": { "at": ["a", 0, "t + drop"], "axis": [0, 0, -1] },
+    "p1": { "at": ["0 - a / 2", "a * 0.8660254", "t + drop"], "axis": [0, 0, -1] },
+    "p2": { "at": ["0 - a / 2", "0 - a * 0.8660254", "t + drop"], "axis": [0, 0, -1] }
   },
   "variables": {
     "a": { "value": 18, "unit": "mm", "rule": "Sun to planet: m (S + P) / 2" },
-    "drop": { "value": "8 + x1c.layer * 2", "unit": "mm", "rule": "A planet's width and two layers' gap above it" },
+    "drop": { "value": "6 + x1c.layer * 2", "unit": "mm", "rule": "A planet's width and two layers' gap above it" },
     "radius": { "value": 25, "unit": "mm", "rule": "Inside the ring's tips (26 mm)" },
     "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
     "hole": { "value": 9, "unit": "mm", "rule": "Round the sun's 8 mm shaft" },
     "pin": { "value": 3, "unit": "mm", "rule": "The planets' axles" },
-    "arm": { "value": 45, "unit": "mm", "rule": "The crank's reach" },
+    "arm": { "value": 45, "unit": "mm", "rule": "The crank's reach, out over the ring" },
     "bar": { "value": 10, "unit": "mm", "rule": "The crank arm's width" },
-    "handle": { "value": 20, "unit": "mm", "rule": "The handle's height" },
-    "grip": { "value": 8, "unit": "mm", "rule": "The handle's diameter" }
+    "peg": { "value": 4, "unit": "mm", "rule": "The handle's peg" },
+    "fit": { "value": "x1c.line / 4", "unit": "mm", "rule": "A press fit for the handle's peg: a quarter line" },
+    "planets": { "value": 3, "rule": "From planetary(): three planets" }
   }
 }
 ```
 
 ```js projects/home/objects/winder-carrier.js
+// The carrier as it prints: a flat plate (the disc and the crank arm) on the bed, the planets' pins standing up from it.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid } = jscad.primitives
 
 export function main (v) {
-  const disc = cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] })
-  const arm = cuboid({ size: [v.arm, v.bar, v.t], center: [v.arm / 2, 0, v.t + v.t / 2] })
-  const handle = cylinder({ radius: v.grip / 2, height: v.handle, center: [v.arm - v.grip / 2, 0, v.t * 2 + v.handle / 2] })
-  const third = (2 * Math.PI) / 3
-  const pins = [0, 1, 2].map((k) => cylinder({ radius: v.pin / 2, height: v.drop, center: [v.a * Math.cos(k * third), v.a * Math.sin(k * third), 0 - v.drop / 2] }))
-  const hole = cylinder({ radius: v.hole / 2, height: v.t * 2, center: [0, 0, v.t] })
-  return v.ops.subtract(v.ops.union(disc, arm, handle, ...pins), hole)
+  const plate = v.ops.union(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }),
+    cuboid({ size: [v.arm, v.bar, v.t], center: [v.arm / 2, 0, v.t / 2] }), cylinder({ radius: v.bar / 2, height: v.t, center: [v.arm, 0, v.t / 2] }))
+  const third = (2 * Math.PI) / v.planets
+  const pins = [0, 1, 2].map((k) => cylinder({ radius: v.pin / 2, height: v.drop, center: [v.a * Math.cos(k * third), v.a * Math.sin(k * third), v.t + v.drop / 2] }))
+  const hole = cylinder({ radius: v.hole / 2, height: v.t, center: [0, 0, v.t / 2] })
+  const socket = cylinder({ radius: v.peg / 2 - v.fit, height: v.t, center: [v.arm, 0, v.t / 2] })
+  return v.ops.subtract(v.ops.union(plate, ...pins), hole, socket)
 }
 ```
 
-The assembly holds the ring in the case and turns the carrier on the crank; the `planetary` turns the sun and the
+```json projects/home/objects/winder-handle.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-handle",
+  "title": "Winder handle",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "anchors": { "peg": { "at": [0, 0, "grip_height"], "axis": [0, 0, -1] } },
+  "variables": {
+    "grip": { "value": 9, "unit": "mm", "rule": "A finger round it" },
+    "grip_height": { "value": 22, "unit": "mm", "rule": "A finger's width and a little" },
+    "peg": { "value": 4, "unit": "mm", "rule": "Into the arm's socket" },
+    "peg_height": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Through the arm" }
+  }
+}
+```
+
+```js projects/home/objects/winder-handle.js
+// The handle as it prints: the grip on the bed, its peg standing on top.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
+export function main (v) {
+  return v.ops.union(cylinder({ radius: v.grip / 2, height: v.grip_height, center: [0, 0, v.grip_height / 2] }),
+    cylinder({ radius: v.peg / 2, height: v.peg_height, center: [0, 0, v.grip_height + v.peg_height / 2] }))
+}
+```
+
+The assembly holds the ring on the case, by two push pins up from the case's rim into counterbored holes in the
+ring's (the fit that says so is what the check reads as holding it), and turns the carrier on the crank; the `planetary` turns the sun and the
 planets with it, in phase. The gears sit two layers off the case, so nothing rubs as it turns. The case, the sun and the carrier
 are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so the check measures them quickly.
 
@@ -701,13 +785,15 @@ are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so t
     { "id": "ring", "object": "winder-ring", "at": [0, 0, "case.t"] },
     { "id": "sun", "object": "winder-sun" },
     { "id": "carrier", "object": "winder-carrier" },
+    { "id": "handle", "object": "winder-handle" },
     { "id": "p0", "object": "winder-gear" },
     { "id": "p1", "object": "winder-gear" },
     { "id": "p2", "object": "winder-gear" }
   ],
   "joints": [
     { "id": "sun", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.4"], "axis": [0, 0, 1] }, "child": "sun.axis", "min": -3000, "max": 3000 },
-    { "id": "crank", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.8 + ring.width"], "axis": [0, 0, 1] }, "child": "carrier.axis", "min": -180, "max": 180, "label": "Crank" },
+    { "id": "crank", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.8 + ring.width + carrier.t"], "axis": [0, 0, 1] }, "child": "carrier.axis", "min": -180, "max": 180, "label": "Crank" },
+    { "id": "handle", "type": "fixed", "parent": "carrier.grip", "child": "handle.peg" },
     { "id": "p0", "type": "revolute", "parent": "carrier.p0", "child": "p0.axis", "min": -3000, "max": 3000 },
     { "id": "p1", "type": "revolute", "parent": "carrier.p1", "child": "p1.axis", "min": -3000, "max": 3000 },
     { "id": "p2", "type": "revolute", "parent": "carrier.p2", "child": "p2.axis", "min": -3000, "max": 3000 }
@@ -716,6 +802,8 @@ are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so t
     { "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1", "p2"], "drive": "carrier",
       "module": "ring.module", "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }
   ],
+  "fits": [{ "a": "handle", "b": "carrier", "min": "0 - carrier.fit * 2", "note": "The handle's peg pressed into the arm" },
+    { "a": "ring", "b": "case", "fastens": true, "note": "The ring held still on the case by its two push pins" }],
   "poses": { "rest": { "crank": 0 }, "quarter": { "crank": 90 } }
 }
 ```

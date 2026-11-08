@@ -995,6 +995,7 @@ test('gears in an assembly: mesh turns a joint into its mate\'s follower in phas
     assert.match(checked, /drive drives wheel: 0\.6 turns of the second for each turn of the first \(18:30\), turning opposite ways/);
     assert.match(checked, /drive and wheel: centre distance 24 mm, as they need: 0\.15 mm of backlash/);
     assert.match(checked, /drive and slide: centre distance 9 mm, as they need/);
+    assert.match(checked, /drive and wheel: as drawn, 0\.1[45]\d* (to 0\.1[45]\d* )?mm of play at the pitch circle/, 'measured from the drawn teeth');
     assert.match(checked, /drive drives slide: 56\.55 mm of rack a turn/);
     assert.match(checked, /no parts overlap/);
     const swept = cad('check', 'demo/train', '--sweep', '--steps', '18');
@@ -1002,11 +1003,11 @@ test('gears in an assembly: mesh turns a joint into its mate\'s follower in phas
     // the same follow without the phase: the teeth meet
     train(24, { follow: 'drive', ratio: -0.6, offset: 0 });
     assert.match(cad('check', 'demo/train', '--sweep', '--steps', '18'), /sweep drive, -90 to 90° in 18 steps: .*pinion\.body hits wheel\.body/);
-    // axes too close: said, between them
-    train(23.8, meshed);
+    // axes too close: more than the backlash allows, said between them
+    train(23.7, meshed);
     const close = JSON.parse(cad('check', 'demo/train', '--json')).findings.find((x) => x.code === 'mesh.centre' && x.text.startsWith('drive and wheel'));
-    assert.equal(close.level, 'fail'); assert.match(close.text, /0\.2 mm closer than these gears need \(24 mm\): the teeth jam/);
-    assert.deepEqual(close.between.map((p) => p.map((x) => +x.toFixed(6))), [[0, 0, 2], [0, 23.8, 2]]);
+    assert.equal(close.level, 'fail'); assert.match(close.text, /0\.3 mm closer than these gears need \(24 mm\): more than their 0\.15 mm of backlash allows, and the teeth jam/);
+    assert.deepEqual(close.between.map((p) => p.map((x) => +x.toFixed(6))), [[0, 0, 2], [0, 23.7, 2]]);
     // what isn't a mesh
     train(24, { mesh: { with: 'nothing', module: 1, teeth: [18, 30] } });
     assert.match(cad('check', 'demo/train'), /joint wheel: mesh: "with" names the driving joint/);
@@ -1045,7 +1046,10 @@ test('a planetary gearbox in an assembly: the carrier drives, the sun and every 
     box();
     const checked = cad('check', 'box/gearbox');
     assert.match(checked, /the carrier drives the sun and the planets \(the ring held\): 5 turns of the sun for each turn of the carrier, the same way/, checked);
+    // the ring only placed on the case, nothing fastening it: said
+    assert.match(checked, /! ring is placed, but nothing holds it: give it a joint, or fasten it/);
     assert.match(checked, /sun and p2: centre distance 22\.5 mm, as they need/);
+    assert.match(checked, /sun and p0: as drawn, [\d.]+ (to [\d.]+ )?mm of play/); assert.match(checked, /p0 and the ring: as drawn, [\d.]+ (to [\d.]+ )?mm of play/);
     assert.match(checked, /no parts overlap/);
     assert.doesNotMatch(checked, /✗/);
     // at −15° JSCAD's intersection read the sun 2.7 mm³ into a planet 0.07 mm from it; measured with Manifold, clear
@@ -1055,5 +1059,59 @@ test('a planetary gearbox in an assembly: the carrier drives, the sun and every 
     // a planet out of place: it can't mesh with both
     box(250);
     assert.match(cad('check', 'box/gearbox'), /✗ planet p2 can't mesh with the sun and the ring at once where it is/);
+  } finally { done(); }
+});
+
+test('a worm and its wheel in an assembly: the wheel follows a tooth a turn, in phase, and the sweep proves it', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const vars = { module: { value: 1, unit: 'mm', rule: 'Tooth size' }, bore: { value: 3, unit: 'mm', rule: 'Shaft' } };
+    object(ws, 'drive/worm', { variables: { ...vars, length: { value: 24, unit: 'mm', rule: 'Thread length' } }, anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } } },
+      'export function main (v) { return v.gears.worm({ module: v.module, length: v.length, bore: v.bore }) }\n');
+    object(ws, 'drive/wheel', { variables: { ...vars, teeth: { value: 30, rule: 'Teeth' }, width: { value: 6, unit: 'mm', rule: 'Face width' } }, anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } } },
+      'export function main (v) { return v.gears.wormWheel({ module: v.module }, { teeth: v.teeth, width: v.width, bore: v.bore }) }\n');
+    fs.mkdirSync(path.join(ws, 'projects/drive/assemblies'));
+    const drive = (wheel) => fs.writeFileSync(path.join(ws, 'projects/drive/assemblies/box.json'), JSON.stringify({ title: 'Worm drive', kind: 'fit',
+      items: [{ id: 'worm', object: 'worm' }, { id: 'wheel', object: 'wheel' }],
+      // the worm along x, 20 mm over the wheel's axis (along y), the wheel's middle on the worm's axis
+      joints: [{ id: 'turn', type: 'revolute', parent: { at: [-12, 0, 20], axis: [1, 0, 0] }, child: 'worm.axis', min: -720, max: 720, label: 'Worm' },
+        { id: 'wheel', type: 'revolute', parent: { at: [0, -3, 0], axis: [0, 1, 0] }, child: 'wheel.axis', min: -720, max: 720, ...wheel }],
+    }));
+    drive({ mesh: { with: 'turn', module: 'worm.module', teeth: [1, 'wheel.teeth'], worm: true } });
+    const checked = cad('check', 'drive/box');
+    assert.match(checked, /turn drives wheel: a worm of 1 start, 30 turns of the worm for one of the wheel/, checked);
+    assert.match(checked, /it locks: the lead angle \(5\.71°\) is under the friction angle/);
+    assert.match(checked, /centre distance 15 mm, as they need/, 'the wheel\'s centre its pitch radius (15 mm) from the worm\'s pitch cylinder');
+    assert.match(checked, /no parts overlap/);
+    assert.match(cad('check', 'drive/box', '--sweep', '--steps', '16'), /sweep turn, -720 to 720° in 16 steps: nothing collides/);
+    // the same ratio with no phase: the thread runs into the teeth
+    drive({ follow: 'turn', ratio: 1 / 30, offset: 0 });
+    assert.match(cad('check', 'drive/box', '--sweep', '--steps', '16'), /worm\.body hits wheel\.body/);
+  } finally { done(); }
+});
+
+test('bevel gears in an assembly: cones that share their apex mesh in phase at 90°, and the sweep proves it', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const gear = (teeth, mate) => ({ variables: { module: { value: 1.5, unit: 'mm', rule: 'Tooth size' }, teeth: { value: teeth, rule: 'Teeth' }, mate: { value: mate, rule: 'Its mate' }, bore: { value: 4, unit: 'mm', rule: 'Shaft' } }, anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } } });
+    const BEVEL = 'export function main (v) { return v.gears.bevel({ module: v.module, teeth: v.teeth, mate: v.mate, bore: v.bore }) }\n';
+    object(ws, 'corner/small', gear(20, 30), BEVEL);
+    object(ws, 'corner/large', gear(30, 20), BEVEL);
+    fs.mkdirSync(path.join(ws, 'projects/corner/assemblies'));
+    // the small gear up z, its apex 22.5 mm over its back (R cos δ = the large gear's pitch radius); the large one
+    // pointing back along −x at that apex, its back end 15 mm from it
+    const pair = (at, mesh = { mesh: { with: 'input', module: 1.5, teeth: [20, 30], bevel: true } }) => fs.writeFileSync(path.join(ws, 'projects/corner/assemblies/pair.json'), JSON.stringify({ title: 'Corner drive', kind: 'fit',
+      items: [{ id: 'small', object: 'small' }, { id: 'large', object: 'large' }],
+      joints: [{ id: 'input', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 0, 1] }, child: 'small.axis', min: -90, max: 90, label: 'Input' },
+        { id: 'output', type: 'revolute', parent: { at, axis: [-1, 0, 0] }, child: 'large.axis', min: -360, max: 360, ...mesh }],
+    }));
+    pair([15, 0, 22.5]);
+    const checked = cad('check', 'corner/pair');
+    assert.match(checked, /bevel gears at 90°, 0\.6667 turns of the second for each of the first \(cones of 33\.69° and 56\.31°\)/, checked);
+    assert.match(checked, /no parts overlap/); assert.doesNotMatch(checked, /✗/);
+    assert.match(cad('check', 'corner/pair', '--sweep', '--steps', '16'), /sweep input, -90 to 90° in 16 steps: nothing collides/);
+    // the cones' apexes apart: said
+    pair([16, 0, 22.5]);
+    assert.match(cad('check', 'corner/pair'), /✗ .*the cones' apexes are 1 mm apart/);
   } finally { done(); }
 });

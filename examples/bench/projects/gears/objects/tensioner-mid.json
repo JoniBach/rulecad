@@ -1,0 +1,60 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-mid",
+  "title": "Tensioner: the middle shaft",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The first stage's 34-tooth gear (left-handed) and the second stage's 17-tooth pinion (right-handed) on one hub.",
+  "variables": {
+    "module": {
+      "value": 1.25,
+      "unit": "mm",
+      "rule": "The smallest that carries a 100 N strap at 2\u00d7: the weakest tooth (the second pinion) 2.8\u00d7 under PLA by Lewis, about 2.2\u00d7 by finite elements"
+    },
+    "helix": {
+      "value": 30,
+      "unit": "deg",
+      "rule": "Herringbone: no thrust, the gears stay on their shafts and centre themselves"
+    },
+    "width": {
+      "value": "x1c.layer * 30",
+      "unit": "mm",
+      "rule": "Face width, thirty layers"
+    },
+    "bore": {
+      "value": "6 + x1c.line / 2",
+      "unit": "mm",
+      "rule": "On the frame's 6 mm pin, half a line clear, so it turns"
+    },
+    "teeth": {
+      "value": 34,
+      "rule": "Two to one on the first stage"
+    },
+    "pinion": {
+      "value": 17,
+      "rule": "The second stage's pinion"
+    },
+    "gap": {
+      "value": "x1c.layer * 5",
+      "unit": "mm",
+      "rule": "Between the stages: the first stage's gears and the second's clear each other"
+    }
+  },
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  }
+}

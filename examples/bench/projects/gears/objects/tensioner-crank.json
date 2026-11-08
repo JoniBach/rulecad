@@ -1,0 +1,83 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-crank",
+  "title": "Tensioner: crank pinion and shaft",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A 17-tooth herringbone pinion, right-handed, on a shaft up past the second stage, its top flatted for the crank arm.",
+  "variables": {
+    "module": {
+      "value": 1.25,
+      "unit": "mm",
+      "rule": "The smallest that carries a 100 N strap at 2\u00d7: the weakest tooth (the second pinion) 2.8\u00d7 under PLA by Lewis, about 2.2\u00d7 by finite elements"
+    },
+    "helix": {
+      "value": 30,
+      "unit": "deg",
+      "rule": "Herringbone: no thrust, the gears stay on their shafts and centre themselves"
+    },
+    "width": {
+      "value": "x1c.layer * 30",
+      "unit": "mm",
+      "rule": "Face width, thirty layers"
+    },
+    "bore": {
+      "value": "6 + x1c.line / 2",
+      "unit": "mm",
+      "rule": "On the frame's 6 mm pin, half a line clear, so it turns"
+    },
+    "teeth": {
+      "value": 17,
+      "rule": "The fewest at 20\u00b0 without a shift"
+    },
+    "shaft": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The crank's tube round its 6 mm pin, inside the pinion's roots"
+    },
+    "shaft_top": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Up past the second stage (13 mm) to the arm"
+    },
+    "flat": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "A flat on the shaft's top for the arm to drive"
+    },
+    "drive_length": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The flat's length: the arm's thickness and a little"
+    }
+  },
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "top": {
+      "at": [
+        0,
+        0,
+        "shaft_top"
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  }
+}

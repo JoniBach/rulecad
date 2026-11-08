@@ -100,8 +100,12 @@ test('mesh: centre distance, ratio and contact ratio as the formulas give them; 
   const m = mesh(a, b);
   near(m.centre, 30, 1e-9, 'centre'); assert.equal(m.ratio, -0.5);
   near(m.contact, 1.635, 0.002, 'contact ratio of 20 on 40 at module 1 (worked by hand: 1.635)');
-  assert.match(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').text, /0\.1 mm closer .* jam/);
-  assert.equal(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').level, 'fail');
+  // closer eats the backlash (2 Δa tan α of it): 0.1 closer leaves 0.08 mm, 0.2 closer 0.004 (tight), 0.3 jams
+  assert.equal(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').level, 'pass');
+  assert.match(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').text, /0\.1 mm closer than the 30 they need: 0\.08 mm of backlash/);
+  assert.equal(mesh(a, b, { centre: 29.8 }).findings.find((x) => x.code === 'mesh.centre').level, 'warn');
+  assert.match(mesh(a, b, { centre: 29.7 }).findings.find((x) => x.code === 'mesh.centre').text, /0\.3 mm closer .* more than their 0\.15 mm of backlash allows, and the teeth jam/);
+  assert.equal(mesh(a, b, { centre: 29.7 }).findings.find((x) => x.code === 'mesh.centre').level, 'fail');
   assert.equal(mesh(a, b, { centre: 30.5 }).findings.find((x) => x.code === 'mesh.centre').level, 'warn', 'half a mm out: loose');
   assert.equal(mesh(a, b, { centre: 30.05 }).findings.find((x) => x.code === 'mesh.centre').level, 'pass');
   // shifted pair: the working centre from the working pressure angle
@@ -323,4 +327,76 @@ test('strength by Lewis: σ = F / b m Y, the torque at a safety factor, helical 
   assert.ok(strength(g, { width: 6, material: pla, torque: 500, speed: 600 }).stress > s.stress, 'speed adds Barth\'s factor');
   assert.throws(() => strength(g, { width: 6, material: {} }), /the material needs a strength above 0 MPa/);
   assert.throws(() => strength(rackModel({ module: 1, teeth: 9 }), { width: 6, material: pla, torque: 100 }), /a rack takes a force, not a torque/);
+});
+
+test('contact: the mesh measured from the drawn teeth agrees with the reckoning, and finds interference where it is', async () => {
+  const { contact } = await import('@rulecad/gears');
+  const p18 = { module: 1, teeth: 18 }, p30 = { module: 1, teeth: 30 };
+  const nominal = contact(p18, p30);
+  assert.ok(nominal.backlash.least > 0.145 && nominal.backlash.most < 0.16, `0.15 mm drawn: ${JSON.stringify(nominal.backlash)}`);
+  assert.ok(nominal.error < 0.005, `transmission error under 5 µm: ${nominal.error}`);
+  // apart: the play grows by about 2 Δa tan α
+  const apart = contact(p18, p30, { centre: 24.2 });
+  near(apart.backlash.least, 0.15 + 2 * 0.2 * Math.tan((20 * Math.PI) / 180), 0.01, 'further apart');
+  // closer: the play goes, then the teeth cross
+  assert.equal(contact(p18, p30, { centre: 23.8 }).findings.find((x) => x.code === 'mesh.backlash').level, 'warn', '0.2 closer: tight');
+  assert.equal(contact(p18, p30, { centre: 23.7 }).findings[0].code, 'mesh.interference', '0.3 closer: they cross');
+  // a ring and a rack, measured as drawn
+  for (const [b, what] of [[{ module: 1, teeth: 60, kind: 'internal' }, 'ring'], [{ module: 1, teeth: 30, kind: 'rack' }, 'rack']]) {
+    const r = contact(p18, b);
+    assert.ok(r.backlash.least > 0.14 && r.backlash.most < 0.16, `${what}: ${JSON.stringify(r.backlash)}`);
+  }
+  // no backlash drawn: the play is all but gone, and said
+  assert.equal(contact({ ...p18, backlash: 0 }, { ...p30, backlash: 0 }).findings.find((x) => x.code === 'mesh.backlash').level, 'warn');
+});
+
+test('a tooth by finite elements: the root of its loaded side, settled, about 1.3× Lewis (the fillet\'s concentration)', async () => {
+  const { toothStress } = await import('@rulecad/gears');
+  const pla = { E: 2680, nu: 0.36, strength: 39, name: 'PLA' };
+  const r = toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 400, material: pla });
+  // AGMA's geometry factor for 18 teeth loaded at the tip (J ≈ 0.24 against Y 0.309) puts the concentration near 1.3
+  assert.ok(r.ratio > 1.15 && r.ratio < 1.5, `${r.ratio}× Lewis`);
+  assert.ok(Math.abs(r.change) < 0.05, `settled: ${r.change}`);
+  assert.ok(Math.hypot(...r.at) - 7.75 < 0.5, `at the root: ${r.at}`);
+  assert.equal(r.findings[0].code, 'gear.fe'); assert.equal(r.findings[0].level, 'warn', '400 N·mm on a 6 mm module 1 pinion of PLA: under 2×');
+  assert.match(toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 600, material: pla }).findings[0].text, /over PLA's 39 MPa, it breaks/);
+  assert.throws(() => toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 400, material: {} }), /needs a modulus E/);
+});
+
+test('worms: the thread\'s axial section is the basic rack\'s tooth, one lead a turn; the wheel\'s numbers, locking and efficiency', async () => {
+  const { wormModel, worm, wormWheel, wormMesh } = await import('@rulecad/gears');
+  const w = wormModel({ module: 1 });
+  near(w.leadAngle, Math.atan(1 / 10) / (Math.PI / 180), 1e-9, 'lead angle: atan(lead / π d)');
+  assert.equal(w.locks, true, 'a single start at μ 0.25 locks');
+  const s = worm({ module: 1, length: 12, chamfer: 0 });
+  assert.equal(closed(s), 0, 'closed');
+  // along +x (angle 0), the radius up the axis: crests a pitch apart, at the tip radius, the space centres at the root
+  const onAxis = jscad.geometries.geom3.toPolygons(s).flatMap((q) => q.vertices).filter((v) => Math.abs(v[1]) < 0.05 && v[0] > 0);
+  const crest = onAxis.filter((v) => v[0] > 5.95).map((v) => v[2]);
+  assert.ok(crest.length > 3, `crests along +x: ${crest.length}`);
+  const pitch = Math.PI, phaseOf = (z) => ((z % pitch) + pitch) % pitch;
+  // the rack's teeth are centred half a pitch from its spaces: the crests at z ≡ π/2 (mod π) at angle 0
+  for (const z of crest) assert.ok(Math.abs(phaseOf(z) - pitch / 2) < 0.6, `a crest at z ${z.toFixed(2)}: ${phaseOf(z).toFixed(2)} into the pitch`);
+  assert.ok(onAxis.some((v) => v[0] < 3.8), 'the roots reach the root radius');
+  assert.equal(closed(wormWheel({ module: 1 }, { teeth: 30, width: 6 })), 0, 'the wheel closes');
+  const m = wormMesh({ module: 1 }, { teeth: 30 });
+  assert.equal(m.centre, 20); near(m.ratio, 1 / 30, 1e-12, 'one tooth a turn');
+  assert.equal(wormMesh({ module: 1, starts: 3, diameter: 8 }, { teeth: 30 }).locks, false, 'three starts on a thin worm: back-drivable');
+  assert.throws(() => wormModel({ module: 1, starts: 5 }), /starts is a whole number from 1 to 4/);
+  assert.throws(() => wormModel({ module: 1, diameter: 5 }), /leaves under two modules of core/);
+});
+
+test('bevel gears: cone angles that add to the shaft angle, Tredgold\'s virtual teeth, a closed solid, and refusals', async () => {
+  const { bevelModel, bevel, bevelMesh } = await import('@rulecad/gears');
+  const a = bevelModel({ module: 1.5, teeth: 20, mate: 30 }), b = bevelModel({ module: 1.5, teeth: 30, mate: 20 });
+  near(a.pitchAngle, Math.atan(20 / 30) / (Math.PI / 180), 1e-9, 'tan δ1 = z1 / z2 at 90°'); near(a.pitchAngle + b.pitchAngle, 90, 1e-9, 'they add to the shaft angle');
+  near(a.coneDistance, 15 / Math.sin(a.pitchAngle * (Math.PI / 180)), 1e-9, 'R = r / sin δ'); near(a.virtualTeeth, 20 / Math.cos(a.pitchAngle * (Math.PI / 180)), 1e-9, 'z / cos δ');
+  const at60 = bevelModel({ module: 1, teeth: 20, mate: 20, shaftAngle: 60 }); near(at60.pitchAngle, 30, 1e-9, 'a 1:1 pair at 60°: 30° cones');
+  const s = bevel({ module: 1.5, teeth: 20, mate: 30, bore: 4 });
+  assert.equal(closed(s), 0, 'closed');
+  const [lo, hi] = jscad.measurements.measureBoundingBox(s); near(hi[2], a.width * Math.cos(a.pitchAngle * (Math.PI / 180)), 1e-6, 'as tall as the face width along the axis');
+  assert.equal(bevelMesh({ module: 1.5, teeth: 20 }, { module: 1.5, teeth: 30 }).ratio, 2 / 3);
+  assert.throws(() => bevelModel({ module: 1.5, teeth: 20, mate: 30, width: 12 }), /over a third of the cone distance/);
+  assert.throws(() => bevelModel({ module: 1, teeth: 10, mate: 40 }), /undercut \(as [\d.]+ on their back cone\)/);
+  assert.throws(() => bevelModel({ module: 1, teeth: 20 }), /mate is a whole number of 6 or more/);
 });

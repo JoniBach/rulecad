@@ -253,6 +253,7 @@ function loop({ teeth: z, thickness: s, r, rb, ra, rf, fillet, round, grow = 0 }
     flankT: (rho) => -hAt(rho), point: (t, rho) => [rho * Math.cos(t), rho * Math.sin(t)],
   });
   const tooth = [...h.pts, [ra, 0], ...h.pts.slice(1).reverse().map(([x, y]) => [x, -y])];
+  if (!Number.isInteger(z)) return { tooth, fillet: h.fillet, round: h.round };
   const out = [];
   for (let k = 0; k < z; k++) {
     const c = Math.cos((TAU * k) / z), sn = Math.sin((TAU * k) / z);
@@ -324,7 +325,7 @@ export function rackProfile(p, grow = 0) {
 
 // A solid from loops at heights: each slice is the loops at a height, grown (a chamfer: drawn smaller there) and turned
 // (a helix), all with the same points, so the walls join point to point. Caps are triangulated with their holes.
-function loft(profile, width, { chamfer, twist, slide }) {
+function loft(profile, width, { chamfer, twist, slide, scale }) {
   const [bottom, top] = Array.isArray(chamfer) ? chamfer : [chamfer, 0];
   if (bottom + top >= width) throw new Error(`the chamfers (${bottom} and ${top} mm) are as tall as the gear (${width} mm)`);
   // heights: the chamfers' ends, and for a twist enough between that no slice turns more than a degree or so
@@ -335,10 +336,11 @@ function loft(profile, width, { chamfer, twist, slide }) {
     zs.push(width / 2); // (a herringbone's apex)
   }
   if (slide) { const n = Math.ceil(width / 0.5); for (let i = 1; i < n; i++) zs.push((width * i) / n); zs.push(width / 2); }
+  if (scale) for (let i = 1; i < 8; i++) zs.push((width * i) / 8); // (straight lines toward the apex: a few slices keep the caps' triangles sound)
   const heights = [...new Set(zs.map((z) => +z.toFixed(9)))].sort((x, y) => x - y);
   const slices = heights.map((z) => {
     const grow = z < bottom ? -(bottom - z) : z > width - top ? -(z - (width - top)) : 0;
-    const loops = profile(grow), turn = twist ? twist(z) : 0, c = Math.cos(turn), s = Math.sin(turn), dx = slide ? slide(z) : 0;
+    const loops = profile(grow, z), turn = twist ? twist(z) : 0, k = scale ? scale(z) : 1, c = Math.cos(turn) * k, s = Math.sin(turn) * k, dx = slide ? slide(z) : 0;
     const at = (p) => [p[0] * c - p[1] * s + dx, p[0] * s + p[1] * c];
     const sides = loops.flatMap((pts) => pts.map((p, i) => [at(p), at(pts[(i + 1) % pts.length])]));
     return slice.transform(mat4.fromTranslation(mat4.create(), [0, 0, z]), slice.fromSides(sides));
@@ -473,9 +475,13 @@ export function mesh(a, b, { centre, width } = {}) {
     // further apart opens a gap along the line of action of 2 Δa sin αw, which is 2 Δa tan αw round the pitch circle
     const added = 2 * off * Math.tan(aw);
     backlash += added;
-    if (off < -0.01) f('fail', `the axes are ${fmt(-off, 3)} mm closer than these gears need (${fmt(need, 3)} mm${b.kind === 'rack' ? ', centre to the rack\'s pitch line' : ''}): the teeth jam`, 'mesh.centre', { centre, need });
+    // closer than they need eats the backlash (2 Δa tan αw of it) and the clearance under the tips (0.25 m); past
+    // either, the teeth jam
+    const tipRoom = m * (Math.min(a.rack.dedendum, b.rack?.dedendum ?? a.rack.dedendum) - Math.max(a.rack.addendum, b.rack?.addendum ?? a.rack.addendum)) + off;
+    if (backlash < 0 || tipRoom < 0) f('fail', `the axes are ${fmt(-off, 3)} mm closer than these gears need (${fmt(need, 3)} mm${b.kind === 'rack' ? ', centre to the rack\'s pitch line' : ''}): ${backlash < 0 ? `more than their ${fmt(a.backlash / 2 + b.backlash / 2, 2)} mm of backlash allows` : 'the tips reach the roots'}, and the teeth jam`, 'mesh.centre', { centre, need });
+    else if (off < -0.005 && backlash < 0.05) f('warn', `the axes are ${fmt(-off, 3)} mm closer than these gears need (${fmt(need, 3)} mm): ${fmt(backlash, 3)} mm of play left, tight enough to bind as printed`, 'mesh.centre', { centre, need });
     else if (backlash > 0.4) f('warn', `the axes are ${fmt(off, 3)} mm further apart than these gears need (${fmt(need, 3)} mm): ${fmt(backlash, 2)} mm of backlash, loose enough to knock`, 'mesh.centre', { centre, need });
-    else f('pass', `centre distance ${fmt(centre, 3)} mm, as they need${Math.abs(off) > 0.005 ? ` (${off > 0 ? '+' : ''}${fmt(off, 3)})` : ''}: ${fmt(backlash, 2)} mm of backlash`, 'mesh.centre', { centre, need });
+    else f('pass', `centre distance ${fmt(centre, 3)} mm, ${Math.abs(off) > 0.005 ? `${fmt(Math.abs(off), 3)} mm ${off > 0 ? 'further apart' : 'closer'} than the ${fmt(need, 3)} they need` : 'as they need'}: ${fmt(backlash, 2)} mm of backlash`, 'mesh.centre', { centre, need });
   }
   const thrust = a.herringbone || !ha ? 0 : Math.tan(ha * DEG);
   return { kind: b.kind, centre: need, ratio, contact, overlap, thrust, pressureAngle: aw / DEG, backlash, text: sense, findings: out };
@@ -551,6 +557,12 @@ export function printable(g, printer, width) {
 
 // Planetary gearboxes: the teeth for a ratio, laid out in phase
 export { planetary, planetaryRatio } from './planetary.mjs';
+// The mesh measured from the drawn teeth: backlash, transmission error, interference
+export { contact } from './contact.mjs';
+// A tooth's root stress by finite elements
+export { toothStress } from './tooth.mjs';
+// Worms and their wheels
+export { wormModel, worm, wormWheel, wormMesh } from './worm.mjs';
 
 // ---------- strength ----------
 
@@ -599,4 +611,72 @@ export function strength(g, o = {}) {
     f(n >= safety ? 'pass' : n >= 1 ? 'warn' : 'fail', `at ${fmt(o.torque / 1000, 3)} N·m the teeth see ${fmt(stress, 1)} MPa at their roots (Lewis, Y ${fmt(Y, 3)}${Kv > 1 ? `, ×${fmt(Kv, 2)} for speed` : ''}): ${fmt(n, 1)}× under ${name}'s ${sigma} MPa${n >= safety ? '' : n >= 1 ? `, under the ${safety}× asked` : ': they break'}`, 'gear.strength', { stress, safety: n });
   } else if (r) f('info', `the teeth carry ${fmt(result.torque / 1000, 3)} N·m at ${safety}× under ${name}'s ${sigma} MPa (Lewis, Y ${fmt(Y, 3)})`, 'gear.strength', { torque: result.torque });
   return result;
+}
+
+// ---------- bevel gears ----------
+
+/**
+ * A straight bevel gear's numbers, for a mate of `mate` teeth with the shafts at `shaftAngle` (90° by default): the
+ * pitch cone angle δ (tan δ = sin Σ / (z₂/z₁ + cos Σ)), the cone distance R (to the apex along the pitch cone), the
+ * virtual teeth z / cos δ of its back cone (Tredgold), and the face width's limit R / 3. Module and diameters at the
+ * back (large) end.
+ * @param {{ module: number, teeth: number, mate: number, shaftAngle?: number, width?: number, pressureAngle?: number, backlash?: number }} p
+ */
+export function bevelModel(p) {
+  const what = 'bevelModel', c = common(what, p), z = whole(what, 'teeth', p?.teeth, 6), mate = whole(what, 'mate', p?.mate, 6);
+  const sigma = between(what, 'shaftAngle', p.shaftAngle ?? 90, 30, 150, '°') * DEG, a = c.pressureAngle * DEG;
+  const delta = Math.atan2(Math.sin(sigma), mate / z + Math.cos(sigma)), d = c.module * z, R = d / (2 * Math.sin(delta));
+  const virtual = z / Math.cos(delta);
+  const need = c.addendum - (virtual * Math.sin(a) ** 2) / 2;
+  if (c.shift < need - 0.01) throw new Error(`${what}: ${z} teeth on a ${(delta / DEG).toFixed(1)}° cone are undercut (as ${virtual.toFixed(1)} on their back cone): give a profile shift of at least ${(Math.ceil(need * 100) / 100).toFixed(2)}, or more teeth`);
+  const width = p.width === undefined ? R / 3 : size(what, 'width', p.width);
+  if (width > R / 3 + 1e-9) throw new Error(`${what}: a face width of ${width} mm is over a third of the cone distance (${(R / 3).toFixed(2)} mm): the small end's teeth get too small to carry anything`);
+  const g = gearModel({ ...p, teeth: z, helix: 0 });
+  return { ...g, kind: 'bevel', mate, shaftAngle: sigma / DEG, pitchAngle: delta / DEG, coneDistance: R, virtualTeeth: virtual, width, height: width * Math.cos(delta), smallEnd: 1 - width / R };
+}
+
+/**
+ * A straight bevel gear: its back (large) end on the bed at z = 0, its axis up z toward the cone's apex, the spur
+ * profile of its back end scaled toward the apex up the face width, so every tooth runs straight to the apex and the
+ * pitch surface is the cone. (A printable approximation to the octoidal profile: close for teeth of 12 or more.)
+ * @param {{ module: number, teeth: number, mate: number, shaftAngle?: number, width?: number, bore?: number, chamfer?: number }} p
+ */
+export function bevel(p) {
+  const g = bevelModel(p), h = g.height, H = g.coneDistance * Math.cos(g.pitchAngle * DEG), scale = (z) => 1 - z / H;
+  const chamfer = chamfers('bevel', { ...p, chamfer: p.chamfer ?? 0 }, h);
+  if (p.bore != null && !(size('bevel', 'bore', p.bore) < g.root * g.smallEnd - 4 * g.module * g.smallEnd)) throw new Error(`bevel: a bore of ${p.bore} mm leaves under two modules of web under the small end's teeth`);
+  return loft((grow, z) => [bevelSection(g, grow), ...(p.bore != null ? [reversed(bore(p.bore, p.flat, -grow)).map(([x, y]) => [x / scale(z), y / scale(z)])] : [])], h, { chamfer, scale });
+}
+
+// A bevel gear's section across its axis at its back end, by Tredgold's construction: the tooth drawn on the back
+// cone, developed flat as a spur gear of z / cos δ teeth; wrapped back onto the back cone (heights along its slant,
+// angles × 1 / cos δ); then seen from the apex onto the plane of the back end's pitch circle. Every section nearer the
+// apex is this one scaled toward the axis, the teeth running straight to the apex.
+function bevelSection(g, grow = 0) {
+  const d = g.pitchAngle * DEG, m = g.module, zv = g.virtualTeeth, a = g.pressureAngle * DEG;
+  const rv = (m * zv) / 2, r = g.pitch / 2, H = r / Math.tan(d); // the developed pitch radius; the apex over the pitch circle
+  const { tooth } = loop({ teeth: zv, thickness: g.thickness, r: rv, rb: rv * Math.cos(a), ra: rv + m * (g.rack.addendum + g.shift), rf: rv - m * (g.rack.dedendum - g.shift), fillet: g.rack.rootFillet * m, round: g.rack.tipRound * m, grow });
+  const mapped = tooth.map(([x, y]) => {
+    const rho = Math.hypot(x, y), phi = Math.atan2(y, x) / Math.cos(d); // along the back cone's slant from its apex; round the axis
+    const q = rho * Math.cos(d), zq = -r * Math.tan(d) + rho * Math.sin(d); // on the back cone: radius, height
+    const k = q * (H / (H - zq)); // seen from the apex, on the plane z = 0
+    return [k * Math.cos(phi), k * Math.sin(phi)];
+  });
+  const out = [];
+  for (let i = 0; i < g.teeth; i++) { const c = Math.cos((TAU * i) / g.teeth), s = Math.sin((TAU * i) / g.teeth); for (const [x, y] of mapped) out.push([x * c - y * s, x * s + y * c]); }
+  return out;
+}
+
+/**
+ * How two bevel gears mesh: turns of b for one of a, the cone angles (they add to the shaft angle), and the contact
+ * ratio of their back cones' equivalent spur gears (Tredgold). @param {object} a @param {object} b the gears' parameters
+ */
+export function bevelMesh(a, b) {
+  const ga = bevelModel({ ...a, mate: b.teeth }), gb = bevelModel({ ...b, mate: a.teeth });
+  const out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
+  if (Math.abs(ga.shaftAngle - gb.shaftAngle) > 1e-9) f('fail', `shaft angles differ (${ga.shaftAngle}° and ${gb.shaftAngle}°)`, 'mesh.bevel');
+  const virtual = (g) => gearModel({ module: g.module, teeth: Math.max(6, Math.round(g.virtualTeeth)), shift: Math.max(g.shift, 0), pressureAngle: g.pressureAngle });
+  const back = mesh(virtual(ga), virtual(gb));
+  for (const x of back.findings) out.push({ ...x, text: `on the back cones: ${x.text}` });
+  return { ratio: ga.teeth / gb.teeth, pitchAngles: [ga.pitchAngle, gb.pitchAngle], coneDistance: ga.coneDistance, contact: back.contact, findings: out };
 }

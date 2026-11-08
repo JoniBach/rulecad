@@ -1,0 +1,142 @@
+{
+  "title": "Strap tensioner",
+  "kind": "fit",
+  "description": "A crank through two herringbone stages (2 : 1 and 3 : 1) to a spool held by a ratchet, on a frame: six turns of the crank for one of the spool. The gears turn on 6 mm pins printed with the frame; the pawl stands on a post outside every gear's reach. The ratchet is on the spool's shaft, so the gears carry only the winding, never the held load.",
+  "items": [
+    {
+      "id": "frame",
+      "object": "tensioner-frame",
+      "at": [
+        0,
+        0,
+        -8.4
+      ]
+    },
+    {
+      "id": "crank",
+      "object": "tensioner-crank"
+    },
+    {
+      "id": "arm",
+      "object": "tensioner-arm"
+    },
+    {
+      "id": "mid",
+      "object": "tensioner-mid"
+    },
+    {
+      "id": "out",
+      "object": "tensioner-out"
+    },
+    {
+      "id": "pawl",
+      "object": "tensioner-pawl",
+      "at": [
+        109.375,
+        19.2,
+        14
+      ],
+      "rotate": [
+        0,
+        0,
+        180
+      ]
+    }
+  ],
+  "joints": [
+    {
+      "id": "crank",
+      "type": "revolute",
+      "parent": {
+        "at": [
+          0,
+          0,
+          0
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "crank.axis",
+      "min": -180,
+      "max": 180,
+      "label": "Crank"
+    },
+    {
+      "id": "arm",
+      "type": "fixed",
+      "parent": "crank.top",
+      "child": "arm.hole"
+    },
+    {
+      "id": "mid",
+      "type": "revolute",
+      "parent": {
+        "at": [
+          31.875,
+          0,
+          0
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "mid.axis",
+      "min": -1000,
+      "max": 1000,
+      "mesh": {
+        "with": "crank",
+        "module": "crank.module",
+        "teeth": [
+          "crank.teeth",
+          "mid.teeth"
+        ]
+      }
+    },
+    {
+      "id": "out",
+      "type": "revolute",
+      "parent": {
+        "at": [
+          74.375,
+          0,
+          7
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "out.axis",
+      "min": -1000,
+      "max": 1000,
+      "mesh": {
+        "with": "mid",
+        "module": "mid.module",
+        "teeth": [
+          "mid.pinion",
+          "out.teeth"
+        ]
+      }
+    }
+  ],
+  "fits": [
+    {
+      "a": "pawl",
+      "b": "out",
+      "min": -2,
+      "note": "The pawl rides the ratchet's teeth: it bends over each as the spool winds in"
+    },
+    {
+      "a": "pawl",
+      "b": "frame",
+      "fastens": true,
+      "note": "The pawl's root pressed down over the post's two push pins"
+    }
+  ]
+}

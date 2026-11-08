@@ -366,9 +366,14 @@ then y, then z, as `rotate` does.
   true` makes it a ring gear round its pinion. `shift` ([the driver's, this one's]), `pressureAngle` and `backlash` are
   as `@rulecad/gears` takes them. Each gear is drawn as `v.gears` draws it (axis up its z, first tooth on +x; a rack
   along its x, teeth up +y) and its joint is anchored at its centre, along its axis. The check gives the ratio, the
-  contact ratio and the centre distance (`mesh.centre`: closer than the gears need jams them, further adds backlash),
-  each placed between the two axes; `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
+  contact ratio and the centre distance (`mesh.centre`: closer than the gears need eats their backlash, and past it they jam; further adds backlash),
+  each placed between the two axes, and measures the pair from its drawn teeth (`mesh.backlash`, `mesh.interference`,
+  kept in `.cache/gears/`); `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
   one part, or on parts held still; planets on a carrier are a `planetary`.
+- **Worms and bevels:** `"worm": true` (or `{ "diameter", "hand" }`) in a mesh makes the driving joint a worm and
+  this one its wheel, `teeth` [starts, the wheel's], the axes crossed at right angles; the check says the ratio,
+  whether it locks, and the centre distance. `"bevel": true` makes the two bevel gears, their axes meeting at the
+  shaft angle; the cones must share their apex (`mesh.bevel`). Both follow in phase, so `--sweep` turns them clean.
 - **Planetary gearboxes:** `"planetary": [{ "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1",
   "p2"], "drive": "carrier", "module": 1, "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }]` names the items. One of
   the sun, carrier and ring is held (no joint, or a fixed one); the one `drive` names turns on its revolute, and the
@@ -376,6 +381,10 @@ then y, then z, as `rotate` does.
   centre distance and contact ratio, and fails a planet that can't mesh with the sun and the ring where it is
   (`planetary.phase`: planets go every 360° / n, and (S + R) / n is whole). `planetary()` in `@rulecad/gears` finds
   teeth for a ratio.
+- **What holds each part:** in an assembly that moves, every part but the first turns or slides on a joint, or is
+  fastened to the first through fits with `"fastens": true` (the pins, screws or press that do it, named in the fit's
+  note): `{ "a": "ring", "b": "case", "fastens": true, "note": "Two push pins" }`. A part only placed somewhere is
+  said (`assembly.loose`): a ring gear resting on its case would turn with its planets.
 - **Loops:** each item has one joint to its parent. Where parts join in a ring (two links between the same two
   parts), let joints place every part, then name the meeting that closes the ring in `loops`. The check measures it
   in every pose: `"loops": [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }]`. Its anchors
