@@ -25,9 +25,9 @@
       "rule": "The spool shaft: m (17 + 51) / 2 further"
     },
     "post_x": {
-      "value": 112.7,
+      "value": 116.375,
       "unit": "mm",
-      "rule": "The pawl's post under its root, just outside the spool gear's tips (35 mm from its shaft)"
+      "rule": "Under the pawl's root block (its face at 109.375 mm, 14 mm long), outside the spool gear's tips"
     },
     "post_y": {
       "value": 19.2,
@@ -93,6 +93,51 @@
       "value": 37.9,
       "unit": "mm",
       "rule": "Up through the spool shaft's gear, ratchet and spool"
+    },
+    "post_len": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "Along the pawl: under its whole root"
+    },
+    "root_x": {
+      "value": 109.375,
+      "unit": "mm",
+      "rule": "The pawl's root face, where its leaf starts"
+    },
+    "snap": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The push pins' shafts"
+    },
+    "snap_lip": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "The barb's lip: it clicks over the pawl's root and holds (a square back)"
+    },
+    "snap_length": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "Through the pawl's 4 mm root"
+    },
+    "snap_near": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "As the pawl's holes"
+    },
+    "snap_far": {
+      "value": 10.5,
+      "unit": "mm",
+      "rule": "As the pawl's holes"
+    },
+    "flange": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "A push pin's foot flange, buried in the post"
+    },
+    "snap_back": {
+      "value": 90,
+      "unit": "deg",
+      "rule": "A square back: the pin holds for good"
     }
   }
 }

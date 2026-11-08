@@ -936,3 +936,12 @@ test('curvedLeaf is drawn in the frame the others are: its root at the origin, i
   assert.ok(Math.abs(hi[1] - 0.42) < 0.05 && Math.abs(lo[1] - (-2 - 0.42)) < 0.05, `the chord on y = 0, bowing 2 mm to -y: ${lo[1]} to ${hi[1]}`);
   assert.ok(Math.abs(lo[2]) < 1e-9 && Math.abs(hi[2] - 6) < 1e-9, 'z from 0 to its width');
 });
+
+test('snapPin builds with the booleans it is given: on Manifold, a pin Manifold reads as a closed solid', async () => {
+  const { ops } = await import('@rulecad/shapes');
+  const m = await ops('manifold'), pin = snapPin({ diameter: 2.5, length: 4, lip: 0.3, back: 90 }, m);
+  const before = m.stats.fallbacks;
+  m.union(pin, jscad.primitives.cuboid({ size: [10, 10, 2], center: [0, 0, -1] }));
+  assert.equal(m.stats.fallbacks, before, 'unions with no fall back to JSCAD');
+  assert.ok(Math.abs(jscad.measurements.measureVolume(pin) - jscad.measurements.measureVolume(snapPin({ diameter: 2.5, length: 4, lip: 0.3, back: 90 }))) < 0.5, 'the same pin either way');
+});

@@ -761,6 +761,18 @@ export function checkAssembly(s) {
     }
     if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`, { code: 'joint.range', refs: { joints: outside } });
     for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`, { code: 'loop', values: { gap: l.gap, angle: l.angle }, refs: { label: l.label } });
+    // Held by something: in a mechanism, every part but the first either turns or slides on a joint, or is fastened,
+    // through a chain of fits with "fastens", to the first. A part only placed somewhere stays there in the model and
+    // nowhere else: a ring gear resting on its case turns with the planets; a pawl resting on its post walks off it.
+    if (s.motion.joints.some((j) => j.type !== 'fixed')) {
+      const ids = s.motion.items.map((x) => x[0]), top = (n) => String(n).split(/[.@]/)[0];
+      const held = new Set([ids[0], ...s.motion.joints.map((j) => ids[j.child])]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
+      for (let grew = true; grew;) { grew = false; for (const [a, b] of links) { if (held.has(a) && !held.has(b)) { held.add(b); grew = true; } if (held.has(b) && !held.has(a)) { held.add(a); grew = true; } } }
+      const placed = new Set(s.objects.filter((o) => !o.unplaced && o.role !== 'reference').map((o) => top(o.id)));
+      const loose = ids.filter((id) => !held.has(id) && placed.has(id));
+      if (loose.length) f('warn', `${loose.join(', ')} ${loose.length > 1 ? 'are' : 'is'} placed, but nothing holds ${loose.length > 1 ? 'them' : 'it'}: give ${loose.length > 1 ? 'each' : 'it'} a joint, or fasten it to what it sits on (pins, screws, a press) and say so with a fit that "fastens"`, `${loose.length} loose`, { code: 'assembly.loose', refs: { items: loose } });
+      else f('pass', `every part turns or slides on a joint, or is fastened to the ${ids[0]}`, null, { code: 'assembly.held' });
+    }
     // Gears: each mesh's centre distance and contact ratio, said between the two axes (the rest by --sweep)
     for (const g of s.motion.meshes || []) {
       f('info', g.planetary ? g.text : `${g.with} drives ${g.joint}: ${g.text}`, null, { code: 'mesh.ratio', refs: { joints: [g.with, g.joint] } });

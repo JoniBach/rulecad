@@ -1046,6 +1046,8 @@ test('a planetary gearbox in an assembly: the carrier drives, the sun and every 
     box();
     const checked = cad('check', 'box/gearbox');
     assert.match(checked, /the carrier drives the sun and the planets \(the ring held\): 5 turns of the sun for each turn of the carrier, the same way/, checked);
+    // the ring only placed on the case, nothing fastening it: said
+    assert.match(checked, /! ring is placed, but nothing holds it: give it a joint, or fasten it/);
     assert.match(checked, /sun and p2: centre distance 22\.5 mm, as they need/);
     assert.match(checked, /sun and p0: as drawn, [\d.]+ (to [\d.]+ )?mm of play/); assert.match(checked, /p0 and the ring: as drawn, [\d.]+ (to [\d.]+ )?mm of play/);
     assert.match(checked, /no parts overlap/);

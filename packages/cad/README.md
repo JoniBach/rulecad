@@ -381,6 +381,10 @@ then y, then z, as `rotate` does.
   centre distance and contact ratio, and fails a planet that can't mesh with the sun and the ring where it is
   (`planetary.phase`: planets go every 360° / n, and (S + R) / n is whole). `planetary()` in `@rulecad/gears` finds
   teeth for a ratio.
+- **What holds each part:** in an assembly that moves, every part but the first turns or slides on a joint, or is
+  fastened to the first through fits with `"fastens": true` (the pins, screws or press that do it, named in the fit's
+  note): `{ "a": "ring", "b": "case", "fastens": true, "note": "Two push pins" }`. A part only placed somewhere is
+  said (`assembly.loose`): a ring gear resting on its case would turn with its planets.
 - **Loops:** each item has one joint to its parent. Where parts join in a ring (two links between the same two
   parts), let joints place every part, then name the meeting that closes the ring in `loops`. The check measures it
   in every pose: `"loops": [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }]`. Its anchors

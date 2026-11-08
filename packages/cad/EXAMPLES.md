@@ -562,8 +562,14 @@ planets, the carrier with the planets' pins and the crank arm, and the crank's h
   "uses": ["x1c"],
   "engine": "manifold",
   "variables": {
-    "radius": { "value": 31.25, "unit": "mm", "rule": "The ring's rim (62.5 mm across): the case is a rim under it" },
-    "rim": { "value": "x1c.line * 10", "unit": "mm", "rule": "The rim under the ring, ten lines wide" },
+    "radius": { "value": 33, "unit": "mm", "rule": "The ring's rim: the case is a rim under it" },
+    "rim": { "value": "x1c.line * 14", "unit": "mm", "rule": "The rim under the ring's, wide enough for its push pins" },
+    "snap": { "value": 2, "unit": "mm", "rule": "Two push pins hold the ring still: their shafts" },
+    "snap_lip": { "value": 0.3, "unit": "mm", "rule": "The barb's lip, clicking over the floor of the ring's counterbore" },
+    "snap_back": { "value": 90, "unit": "deg", "rule": "A square back: it holds for good" },
+    "snap_at": { "value": 30.6, "unit": "mm", "rule": "Halfway across the ring's rim, between its roots and its outside" },
+    "snap_length": { "value": 4, "unit": "mm", "rule": "Up the ring's 6 mm rim to its 2 mm counterbore" },
+    "flange": { "value": 2, "unit": "mm", "rule": "A push pin's foot flange, buried in the rim" },
     "hub": { "value": 12, "unit": "mm", "rule": "Round the sun's axle" },
     "spoke": { "value": "x1c.line * 12", "unit": "mm", "rule": "Three spokes from the hub to the rim" },
     "spokes": { "value": 3, "rule": "Three: it stands without rocking" },
@@ -575,7 +581,8 @@ planets, the carrier with the planets' pins and the crank arm, and the crank's h
 ```
 
 ```js projects/home/objects/winder-case.js
-// The case as little as holds it: a rim the ring sits on, a hub with the sun's axle standing in it, and spokes between.
+// The case as little as holds it: a rim the ring sits on (two push pins hold it still), a hub with the sun's axle
+// standing in it, and spokes between.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid } = jscad.primitives
 const { rotateZ } = jscad.transforms
@@ -583,7 +590,8 @@ const { rotateZ } = jscad.transforms
 export function main (v) {
   const rim = v.ops.subtract(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }), cylinder({ radius: v.radius - v.rim, height: v.t, center: [0, 0, v.t / 2] }))
   const spokes = Array.from({ length: v.spokes }, (_, k) => rotateZ((2 * Math.PI * k) / v.spokes, cuboid({ size: [v.radius - v.rim / 2, v.spoke, v.t], center: [(v.radius - v.rim / 2) / 2, 0, v.t / 2] })))
-  return v.ops.union(rim, cylinder({ radius: v.hub / 2, height: v.t, center: [0, 0, v.t / 2] }), ...spokes,
+  const snaps = [0, Math.PI].map((a) => jscad.transforms.translate([v.snap_at * Math.cos(a), v.snap_at * Math.sin(a), v.t - v.flange], v.flexures.snapPin({ diameter: v.snap, length: v.snap_length, lip: v.snap_lip, back: v.snap_back }, v.ops)))
+  return v.ops.union(rim, cylinder({ radius: v.hub / 2, height: v.t, center: [0, 0, v.t / 2] }), ...spokes, ...snaps,
     cylinder({ radius: v.pin / 2, height: v.pin_height, center: [0, 0, v.t + v.pin_height / 2] }))
 }
 ```
@@ -595,7 +603,14 @@ export function main (v) {
   "title": "Winder ring gear",
   "version": "0.1.0",
   "uses": ["x1c"],
+  "engine": "manifold",
   "variables": {
+    "rim": { "value": 66, "unit": "mm", "rule": "Across the outside: a rim wide enough for the push pins' holes" },
+    "snap": { "value": 2, "unit": "mm", "rule": "The case's push pins" },
+    "clear": { "value": "x1c.line / 2", "unit": "mm", "rule": "Half a line round a pin" },
+    "snap_at": { "value": 30.6, "unit": "mm", "rule": "As the case's pins" },
+    "counterbore": { "value": 2, "unit": "mm", "rule": "Deep enough that a barb clicks below the ring's top, clear of the crank arm" },
+    "barb": { "value": 1.6, "unit": "mm", "rule": "The counterbore's radius: the barb and its clearance" },
     "module": { "value": 1, "unit": "mm", "rule": "3.6 lines across a tooth on the X1C" },
     "teeth": { "value": 54, "rule": "The sun and two planets across: 18 + 2 × 18" },
     "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "Face width, thirty layers: plenty for a spool's pull" }
@@ -604,8 +619,17 @@ export function main (v) {
 ```
 
 ```js projects/home/objects/winder-ring.js
+// The ring gear, held to the case by two push pins: through-holes in its rim, counterbored at the top for the barbs.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
 export function main (v) {
-  return v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width })
+  const holes = [0, Math.PI].flatMap((a) => {
+    const x = v.snap_at * Math.cos(a), y = v.snap_at * Math.sin(a)
+    return [cylinder({ radius: v.snap / 2 + v.clear, height: v.width, center: [x, y, v.width / 2] }),
+      cylinder({ radius: v.barb, height: v.counterbore, center: [x, y, v.width - v.counterbore / 2] })]
+  })
+  return v.ops.subtract(v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width, rim: v.rim }), ...holes)
 }
 ```
 
@@ -747,7 +771,8 @@ export function main (v) {
 }
 ```
 
-The assembly holds the ring in the case and turns the carrier on the crank; the `planetary` turns the sun and the
+The assembly holds the ring on the case, by two push pins up from the case's rim into counterbored holes in the
+ring's (the fit that says so is what the check reads as holding it), and turns the carrier on the crank; the `planetary` turns the sun and the
 planets with it, in phase. The gears sit two layers off the case, so nothing rubs as it turns. The case, the sun and the carrier
 are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so the check measures them quickly.
 
@@ -777,7 +802,8 @@ are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so t
     { "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1", "p2"], "drive": "carrier",
       "module": "ring.module", "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }
   ],
-  "fits": [{ "a": "handle", "b": "carrier", "min": "0 - carrier.fit * 2", "note": "The handle's peg pressed into the arm" }],
+  "fits": [{ "a": "handle", "b": "carrier", "min": "0 - carrier.fit * 2", "note": "The handle's peg pressed into the arm" },
+    { "a": "ring", "b": "case", "fastens": true, "note": "The ring held still on the case by its two push pins" }],
   "poses": { "rest": { "crank": 0 }, "quarter": { "crank": 90 } }
 }
 ```

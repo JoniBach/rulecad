@@ -131,6 +131,12 @@
       "b": "out",
       "min": -2,
       "note": "The pawl rides the ratchet's teeth: it bends over each as the spool winds in"
+    },
+    {
+      "a": "pawl",
+      "b": "frame",
+      "fastens": true,
+      "note": "The pawl's root pressed down over the post's two push pins"
     }
   ]
 }

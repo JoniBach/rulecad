@@ -7,7 +7,7 @@
     "x1c"
   ],
   "engine": "manifold",
-  "description": "A leaf pawl whose square tip meets the ratchet's teeth: it bends over each tooth as the spool winds in and holds it from unwinding.",
+  "description": "A leaf pawl whose square tip meets the ratchet's teeth: it bends over each tooth as the spool winds in and holds it from unwinding. Its root block presses down over two push pins on the frame's post.",
   "variables": {
     "length": {
       "value": 35,
@@ -23,6 +23,31 @@
       "value": "x1c.layer * 20",
       "unit": "mm",
       "rule": "The ratchet's width"
+    },
+    "root": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The root block: long enough for its two push pins"
+    },
+    "snap": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The frame's push pins"
+    },
+    "clear": {
+      "value": "x1c.line / 2",
+      "unit": "mm",
+      "rule": "Half a line round a push pin, so it goes through"
+    },
+    "snap_near": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "The first pin, in from the root's face"
+    },
+    "snap_far": {
+      "value": 10.5,
+      "unit": "mm",
+      "rule": "The second, near the root's far end"
     }
   }
 }

@@ -64,6 +64,7 @@
       "properties": {
         "a": { "$ref": "#/$defs/names" },
         "b": { "$ref": "#/$defs/names" },
+        "fastens": { "type": "boolean", "description": "a and b are fastened together (pins, screws, a press): what holds a part that has no joint" },
         "min": { "$ref": "#/$defs/expr" },
         "max": { "$ref": "#/$defs/expr" },
         "note": { "type": "string" },
