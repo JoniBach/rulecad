@@ -64,6 +64,8 @@
       "properties": {
         "a": { "$ref": "#/$defs/names" },
         "b": { "$ref": "#/$defs/names" },
+        "engage": { "$ref": "#/$defs/expr", "description": "a goes at least this far (mm) onto b along the joint between them: a part slid onto a shaft or a pin, not resting on its end" },
+        "radius": { "$ref": "#/$defs/expr", "description": "With engage: how near the joint's axis to look (mm, default 10)" },
         "fastens": { "type": "boolean", "description": "a and b are fastened together (pins, screws, a press): what holds a part that has no joint" },
         "min": { "$ref": "#/$defs/expr" },
         "max": { "$ref": "#/$defs/expr" },
