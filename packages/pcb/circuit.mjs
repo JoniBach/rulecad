@@ -27,6 +27,7 @@
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
 //   route_via { pad, hole } (mm): the vias the router makes, when not via_pad and via_hole (the planes' vias)
 //   join_pads false: a pin's pads apart aren't joined by a track (see samePin)
+//   track_gap (mm) routed tracks closer than this (a fab's least gap) are necked to neck where they pass
 //   via_hole_gap (mm) a routed track closer to a via's hole than this is bowed out round it (JLCPCB: 0.2)
 //   smooth true: routed tracks pulled tight once routed (@rulecad/smooth), where the straight run keeps clearance
 //   neck (mm) a routed track still too close to another after repair is narrowed to this where they pass (the fab's smallest)
@@ -35,7 +36,8 @@
 //            either is routed to the nearest pad of its net that reaches the plane. via_pad, via_hole, plane_clearance
 //            (mm, defaults 0.6, 0.3, 0.2) size them
 //   copper { tracks: [{ a, b, width, layer, island }], vias: [{ x, y, pad, hole, island }], islands: [{ id, net, pins, via }] }:
-//            a source's own routing, kept (moveGroup's keep): laid as it is; its pins count as joined
+//            a source's own routing, kept (moveGroup's keep): laid as it is; its pins count as joined. An island marked
+//            after: true is laid once the rest is routed, unseen by the router
 //   pads may be castellated ({ castellated: true }: a half hole on the edge, joined at its inner edge) or a rounded
 //            rectangle round their hole ({ rect: { w, h, offset: [x, y] } }: an oval pad, a hole off-centre)
 // All positions are in mm, in the board's own frame. A part on the bottom is seen from above: mirrored in x.
@@ -240,7 +242,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
   const netNamed = (names) => Object.entries(board.nets || {}).find(([, spec]) => (Array.isArray(spec) ? spec : spec.pins).some((p) => names.includes(p)))?.[0];
   const samePin = [...pinPads].flatMap(([pin, pads]) => {
     const net = pads.length > 1 && netNamed(pads[0].names), part = pin.slice(0, pin.indexOf('.'));
-    if (pads.length < 2 || !net || board.planes?.[net] || board.join_pads === false) return [];
+    if (pads.length < 2 || !net || board.planes?.[net] || board.join_pads === false || pads[0].names.some((n) => joined.has(n))) return []; // (or the source's kept copper joins them)
     return pads.slice(1).filter((q, i) => Math.hypot(q.x - pads[i].x, q.y - pads[i].y) > q.reach + pads[i].reach)
       .map((q) => ({ from: [part, pads[0].key], to: [part, q.key], width: board.track, net }));
   });
@@ -278,8 +280,12 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
       const t = add('pcb_trace', { route: r.route, source_trace_id: r.source_trace_id, subcircuit_id: SUB, rulecad_routed: true });
       for (const v of r.vias) add('pcb_via', { pcb_trace_id: t.pcb_trace_id, ...v, layers: copper, subcircuit_id: SUB }); // whose via it is: the checks need it
     }
+    // kept copper laid once routed (an island marked after): unseen by the router, so the rest routes as it would
+    // without it; smoothing and the checks see it
+    if (board.copper?.islands.some((k) => k.after)) keptCopper(out, add, board, copper, planeNets || {}, true);
     if (board.smooth) await smoothRouted(out, board);
     if (board.via_hole_gap) await viaHoleRepair(out, board.via_hole_gap, board.neck);
+    if (board.track_gap && board.neck) await gapRepair(out, board.track_gap, board.neck);
   }
   if (planeNets) await pours(out, add, board, planeNets, netOf);
   if (board.silk?.length) clearSilkAfter(out, add, board);
@@ -432,6 +438,41 @@ export async function viaHoleRepair(out, gapMin, neck = 0) {
   }
 }
 
+// Routed tracks of different nets a hair closer than the fab's least gap (the design checks allow a little; a fab's
+// rule doesn't): each routed segment of the pair necked down where they pass (to neck), which opens the gap by half the
+// width it loses, each change checked
+export async function gapRepair(out, gapMin, neck) {
+  const { runAllChecks } = await import('@tscircuit/checks');
+  const errors = async () => (await runAllChecks(structuredClone(out))).filter((e) => /_error$/.test(e.type))
+    .map((e) => JSON.stringify([e.type, ...[...new Set(JSON.stringify(e).match(/pcb_[a-z_]+?_\d+/g) || [])].sort()]));
+  const parent = new Map(), root = (x) => { while (parent.get(x) !== x) x = parent.get(x); return x; };
+  for (const t of out.filter((e) => e.type === 'source_trace')) {
+    const ends = [t.source_trace_id, ...(t.connected_source_port_ids || []), ...(t.connected_source_net_ids || [])];
+    for (const e of ends) if (!parent.has(e)) parent.set(e, e);
+    for (const e of ends.slice(1)) parent.set(root(e), root(ends[0]));
+  }
+  const netOf = (t) => (parent.has(t.source_trace_id) ? root(t.source_trace_id) : t.pcb_trace_id);
+  const ps = (p, o) => { const dx = o.b.x - o.a.x, dy = o.b.y - o.a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l)) : 0; return Math.hypot(p.x - o.a.x - t * dx, p.y - o.a.y - t * dy); };
+  const segs = out.filter((e) => e.type === 'pcb_trace').flatMap((t) => t.route.slice(1).map((q, i) => ({ t, i, a: t.route[i], b: q }))
+    .filter((g) => g.a.route_type === 'wire' && g.b.route_type === 'wire' && g.a.layer === g.b.layer));
+  const w = (g) => Math.max(g.a.width ?? 0, g.b.width ?? 0), before = new Set(await errors()), was = new Map();
+  for (let x = 0; x < segs.length; x++) for (let y = x + 1; y < segs.length; y++) {
+    const g = segs[x], h = segs[y];
+    if (g.t === h.t || g.a.layer !== h.a.layer || netOf(g.t) === netOf(h.t)) continue;
+    if (Math.min(g.a.x, g.b.x) > Math.max(h.a.x, h.b.x) + 1 || Math.min(h.a.x, h.b.x) > Math.max(g.a.x, g.b.x) + 1) continue;
+    const d = Math.min(ps(g.a, h), ps(g.b, h), ps(h.a, g), ps(h.b, g)) - w(g) / 2 - w(h) / 2;
+    if (d <= 1e-6 || d >= gapMin - 1e-9) continue;
+    for (const s of [g, h]) if (s.t.rulecad_routed && w(s) > neck) {
+      if (!was.has(s.t.pcb_trace_id)) was.set(s.t.pcb_trace_id, s.t.route);
+      s.t.route = s.t.route.map((q, k) => (k === s.i || k === s.i + 1 ? { ...q, width: Math.min(q.width ?? neck, neck) } : q));
+      s.a = s.t.route[s.i]; s.b = s.t.route[s.i + 1];
+    }
+  }
+  for (const e of (await errors()).filter((x) => !before.has(x))) for (const [id, route] of was) if (e.includes(`"${id}"`)) {
+    out.find((x) => x.type === 'pcb_trace' && x.pcb_trace_id === id).route = route; was.delete(id);
+  }
+}
+
 // Each routed track's kept escape at either end: the stub of the source's track it carries on from (its end not on a
 // pad), followed back from the joint segment by segment while it's a single line on one layer, stopping at a via or a
 // branch. -> Map(pcb_trace_id -> { start, end }), each { lead: points from the stub's root to the joint, segs: the stub's
@@ -471,9 +512,9 @@ export const holeSize = (e) => (e.outer_diameter != null ? { w: e.outer_diameter
 
 // The source's copper kept with a block of parts (moveGroup's keep): its tracks and vias as they were, each island a
 // source trace joining its pins (and its plane, if its via reaches one), so nothing routes them again
-function keptCopper(out, add, board, copper, planeNets) {
+function keptCopper(out, add, board, copper, planeNets, later = false) {
   const pins = padsByPin(out);
-  for (const k of board.copper.islands) { // (stubs are laid with the connection they start: see the traces below)
+  for (const k of board.copper.islands.filter((x) => !!x.after === later)) { // (stubs are laid with the connection they start: see the traces below)
     const ports = [...new Set(k.pins.flatMap((p) => (pins.get(p) || []).map((f) => f.sp.source_port_id)))];
     const plane = k.via && planeNets[k.net];
     if (!ports.length || (ports.length < 2 && !plane)) continue; // nothing left to join
@@ -600,8 +641,9 @@ function planeVias(out, add, board, copper) {
     ...out.filter((e) => e.type === 'pcb_hole').map((e) => ({ id: e.pcb_hole_id, x: e.x, y: e.y, r: e.hole_diameter / 2 }))];
   const segs = [], sameNet = Object.fromEntries(Object.keys(board.planes).map((n) => [n, []])); // plane tracks drawn so far; each net's vias
   const kept = board.copper || { tracks: [], vias: [], islands: [] }; // the source's copper, kept: in the way, and some pads already reach their plane by it
-  for (const g of kept.tracks) if (g.layer === 'top' || g.layer === 'bottom') segs.push({ a: g.a, b: g.b, layer: g.layer, w: g.width });
-  for (const v of kept.vias) circles.push({ id: `kept${circles.length}`, x: v.x, y: v.y, r: v.pad / 2 });
+  const laterIds = new Set((kept.islands || []).filter((k) => k.after).map((k) => k.id)); // (laid once routed: not in the router's way)
+  for (const g of kept.tracks) if ((g.layer === 'top' || g.layer === 'bottom') && !laterIds.has(g.island)) segs.push({ a: g.a, b: g.b, layer: g.layer, w: g.width });
+  for (const v of kept.vias) if (!laterIds.has(v.island)) circles.push({ id: `kept${circles.length}`, x: v.x, y: v.y, r: v.pad / 2 });
   const reachedBy = new Set(kept.islands.filter((k) => k.via && board.planes[k.net]).flatMap((k) => k.pins));
   const toRect = (x, y, q) => Math.hypot(Math.max(Math.abs(x - q.x) - q.w / 2, 0), Math.max(Math.abs(y - q.y) - q.h / 2, 0));
   const toSeg = (x, y, a, c) => { const dx = c.x - a.x, dy = c.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l)) : 0; return Math.hypot(x - a.x - t * dx, y - a.y - t * dy); };

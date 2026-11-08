@@ -1092,6 +1092,14 @@ const mm = (x) => String(Number(x.toFixed(3))); // 0.30000000000000004 reads as 
 // matrix, and for a clone (source: { circuit, arranged }) the source's circuit and placement
 export { viaHoleGaps }; // (in circuit.mjs, which repairs by it)
 
+// A source board's nearest track to its edge, copper to edge (mm): what its own layout allows there
+export function sourceEdgeGap(circuit) {
+  const edges = [circuit.outline, ...(circuit.cutouts || [])].filter((o) => o?.length).flatMap((o) => o.map((p, i) => [p, o[(i + 1) % o.length]]));
+  const ps = (p, a, b) => { const dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0; return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy); };
+  const gaps = (circuit.routing?.tracks || []).map((g) => Math.min(...edges.map(([a, b]) => Math.min(ps(g.a, a, b), ps(g.b, a, b), ps(a, g.a, g.b), ps(b, g.a, g.b)))) - g.width / 2);
+  return gaps.length && edges.length ? Math.min(...gaps) : null;
+}
+
 export async function checks(json, v, matrix, source) { // source: a clone's { circuit, arranged } (its own checks join these)
   const { runAllChecks } = await import('@tscircuit/checks');
   const out = [], j = v.jlcpcb;
@@ -1109,8 +1117,15 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   // A clone's pads as close to the edge as the source has them, and parts that reach past it as they do there, are the
   // source's design (a mid-mount socket in its notch): said, not failed. Anything else near the edge fails as usual
   const inherited = [], same = source?.circuit ? asSource(json, source.circuit, source.arranged?.kept) : null, planeNames = new Set(json.filter((e) => e.type === 'source_net').map((e) => e.name));
+  // A clone's own kept tracks as near the edge as the source's own come (its tracks by its USB-C notch): the source's
+  // nearest track to its edge, copper to edge, measured on the source
+  const srcEdge = source?.circuit ? sourceEdgeGap(source.circuit) : null, keptIds = new Set(json.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept).map((e) => e.pcb_trace_id));
+  const keptByEdge = (e) => { const m = e.message?.match(/^Trace too close to board edge \(([\d.]+)mm/), id = JSON.stringify(e).match(/pcb_trace_\d+/)?.[0];
+    if (!m || srcEdge == null || !keptIds.has(id)) return false;
+    const t = json.find((x) => x.pcb_trace_id === id), w = Math.max(...t.route.map((q) => q.width ?? 0));
+    return Number(m[1]) - w / 2 >= srcEdge - 1e-3; };
   const drc = (await runAllChecks(json)).filter((e) => !(e.type === 'pcb_component_outside_board_error' && fits(e.pcb_component_id)) && !onEdge(e))
-    .filter((e) => !(same?.(e) && inherited.push(e)))
+    .filter((e) => !((same?.(e) || keptByEdge(e)) && inherited.push(e)))
     .filter((e) => !(planeNames.has(e.message?.match(/is not connected to net \[(.+)\] by a PCB trace/)?.[1]))); // planes join these: checked below, pad by pad
   const problems = [...json, ...drc].filter((e) => /_error$/.test(e.type));
   const seen = new Set(), errors = problems.filter((e) => !seen.has(e.message) && seen.add(e.message));
@@ -1252,6 +1267,13 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   if (!kicad) out.push({ level: 'info', text: 'KiCad isn\'t installed: its design-rule check, a second opinion, skipped' });
   else if (kicad.failed) out.push({ level: 'warn', text: `KiCad's design-rule check didn't run: ${String(kicad.failed.message || kicad.failed).split('\n')[0]}` });
   else {
+    // the same for KiCad: a kept track by the edge no nearer than the source's own (KiCad's place is 100 mm in, y down)
+    const keptSegs = json.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept).flatMap((t) => t.route.slice(1).map((q, i) => [t.route[i], q]));
+    const onKept = (pos) => keptSegs.some(([a, b]) => { const p = { x: pos.x - 100, y: 100 - pos.y }, dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0; return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 0.02; });
+    const asSrcEdge = (x) => x.type === 'copper_edge_clearance' && srcEdge != null && x.items.some((i) => /^Track /.test(i.description) && onKept(i.pos)) && Number(x.description.match(/actual ([\d.]+) mm/)?.[1]) >= srcEdge - 1e-3;
+    const srcEdgeHits = kicad.errors.filter(asSrcEdge);
+    kicad.errors = kicad.errors.filter((x) => !asSrcEdge(x));
+    if (srcEdgeHits.length) inherited.push(...srcEdgeHits.map((x) => ({ message: `KiCad: ${x.description}` })));
     const by = (list) => Object.entries(list.reduce((m, x) => ((m[x.type.replace(/_/g, ' ')] = (m[x.type.replace(/_/g, ' ')] || 0) + 1), m), {})).map(([t, n]) => `${n} ${t}`).join(', ');
     out.push(kicad.errors.length ? { level: 'fail', text: `KiCad ${kicad.version}'s design-rule check: ${kicad.errors.length} errors (${by(kicad.errors)}); first: ${kicad.errors[0].description}` }
       : { level: 'pass', text: `KiCad ${kicad.version}'s design-rule check, its own planes poured: no errors${kicad.warnings.length ? ` (warnings: ${by(kicad.warnings)})` : ''}` });

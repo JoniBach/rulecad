@@ -44,6 +44,27 @@ export function main (v) {
   const usbParts = ['J1', ...src.placement.filter((r) => r.anchor === 'J1').map((r) => r.part)]
   let c = moveGroup(src, src.parts.map((p) => p.ref).filter((r) => r !== 'J2' && !usbParts.includes(r)), { turn: v.core_turn, dx: v.core_x, dy: v.core_y }, { keep: true })
   c = arrange(c, { J1: { x: v.usb_x, y: top + v.usb_out, rotation: 0 } })
+  // Sea-Picro's VBUS bridge: the socket's two VBUS pads (both its A4) joined under the socket on the back, by Sea-Picro's
+  // own tracks and vias, moved with the socket (the router finds no clean way round the socket's other pads for it).
+  // Kept as Sea-Picro's routing is, and checked with it
+  const j1src = src.parts.find((p) => p.ref === 'J1'), j1now = c.parts.find((p) => p.ref === 'J1')
+  const vbus = j1src.pads.filter((q) => q.pin === 'A4'), vbusNet = Object.entries(src.nets).find(([, pins]) => pins.includes('J1.A4'))?.[0]
+  const padAt = vbus.map((q) => ({ x: j1src.x + q.x, y: j1src.y + q.y, w: q.w, h: q.h }))
+  const spanX = [Math.min(...padAt.map((q) => q.x)), Math.max(...padAt.map((q) => q.x))]
+  const under = (q) => q.x >= spanX[0] - padAt[0].w / 2 && q.x <= spanX[1] + padAt[0].w / 2 && Math.abs(q.y - padAt[0].y) <= padAt[0].h
+  const move = (q) => ({ ...q, x: q.x + j1now.x - j1src.x, y: q.y + j1now.y - j1src.y })
+  const back = src.routing.tracks.filter((g) => g.net === vbusNet && g.layer === 'bottom' && under(g.a) && under(g.b))
+  const bridgeVias = src.routing.vias.filter((q) => q.net === vbusNet && under(q))
+  // on the front, each via joined to its pad by Sea-Picro's own track from that pad, as far as the via
+  const onPad = (q) => padAt.some((d) => Math.abs(q.x - d.x) <= d.w / 2 && Math.abs(q.y - d.y) <= d.h / 2)
+  const nearest = (q, g) => { const dx = g.b.x - g.a.x, dy = g.b.y - g.a.y, t = Math.max(0, Math.min(1, ((q.x - g.a.x) * dx + (q.y - g.a.y) * dy) / (dx * dx + dy * dy))); return { x: g.a.x + t * dx, y: g.a.y + t * dy } }
+  const front = bridgeVias.flatMap((q) => src.routing.tracks.filter((g) => g.net === vbusNet && g.layer === 'top' && (onPad(g.a) || onPad(g.b)))
+    .map((g) => (onPad(g.a) ? g : { ...g, a: g.b, b: g.a })).map((g) => ({ ...g, b: nearest(q, g) })).filter((g) => Math.hypot(g.b.x - q.x, g.b.y - q.y) <= q.pad / 2).slice(0, 1))
+  if (back.length && bridgeVias.length === vbus.length && front.length === vbus.length) {
+    const island = 'vbus_bridge', kept = c.kept || { tracks: [], vias: [], islands: [], stubs: [] }
+    c = { ...c, kept: { ...kept, tracks: [...kept.tracks, ...[...back, ...front].map((g) => ({ ...g, a: move(g.a), b: move(g.b), island }))],
+      vias: [...kept.vias, ...bridgeVias.map((q) => ({ ...move(q), island }))], islands: [...kept.islands, { id: island, net: vbusNet, pins: ['J1.A4'], via: false, after: true }] } }
+  }
   c = addPins(c, 'J2', extras.map((e) => ({ ...half, ...e, x: 0, y: 0 }))) // placed with the rest below
 
   // Which pin goes where, grouped for whoever wires the keyboard, each group on the side its signals leave the core
@@ -132,7 +153,7 @@ export function main (v) {
   const mounting = [[v.hole_a_x, v.hole_a_y], [v.hole_b_x, v.hole_b_y]].map(([x, y]) => ({ x, y, d: v.hole_d, keepout: v.hole_keepout }))
   return {
     board: { outline, thickness: v.thickness, track: v.track, autoroute: true, layers: k.layers, planes: k.planes,
-      via_pad: k.via_pad, via_hole: k.via_hole, route_via: { pad: v.via_pad, hole: v.via_hole }, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, smooth: true, via_hole_gap: v.jlcpcb.via_hole_track, copper: k.copper, parts, nets: k.nets, holes: [...k.holes, ...mounting], silk: labels },
+      via_pad: k.via_pad, via_hole: k.via_hole, route_via: { pad: v.via_pad, hole: v.via_hole }, plane_clearance: k.plane_clearance, clearance: v.clearance, neck: v.jlcpcb.track_min, smooth: true, via_hole_gap: v.jlcpcb.via_hole_track, track_gap: v.jlcpcb.gap_min, copper: k.copper, parts, nets: k.nets, holes: [...k.holes, ...mounting], silk: labels },
     clone: { circuit: src, arranged: c }
   }
 }
