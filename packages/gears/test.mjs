@@ -145,6 +145,11 @@ test('the phase puts a tooth in a gap: at every angle the teeth clear; half a pi
   const rackClear = (deg, extra = 0) => { const P = place(A, (deg * Math.PI) / 180, [at, mesh(g, k).centre]), R = K.map(([x, y]) => [x + per * deg + s0 + extra, y]); return clear(P, R); };
   for (let deg = -30; deg < 30; deg += 2.5) assert.ok(rackClear(deg), `rack clears at ${deg}°`);
   assert.ok(!rackClear(0, Math.PI / 2), 'half a pitch out, the rack collides');
+  // odd and even pinions alike (the phase was once half a tooth out for odd ones)
+  for (const teeth of [17, 18, 19, 21, 24]) {
+    const p = gearModel({ module: 1, teeth }), P = spurProfile({ module: 1, teeth }).loops[0], s1 = rackPhase(p, 30), per1 = (Math.PI * p.pitch) / 360, c1 = mesh(p, k).centre;
+    for (let deg = -20; deg <= 20; deg += 5) assert.ok(clear(place(P, (deg * Math.PI) / 180, [30, c1]), K.map(([x, y]) => [x + per1 * deg + s1, y])), `${teeth} teeth on the rack, clear at ${deg}°`);
+  }
 });
 
 test('what isn\'t a gear is refused by name, before any maths', () => {
