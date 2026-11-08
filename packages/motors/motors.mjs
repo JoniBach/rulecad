@@ -39,7 +39,7 @@ export const DEFAULTS = {
   running: { value: Math.SQRT1_2, unit: '× holding torque', rule: 'A stepper moving, against holding torque: holding has both phases at full current, and a driver moving it keeps the vector the size of one phase, 1/√2 of that', kind: 'spec' },
   supply: { value: 24, unit: 'V', rule: 'The stepper driver\'s supply, if you don\'t say: above the motor\'s rated volts, as a chopper drive needs, and what a printer\'s board runs at', kind: 'default' },
   fit: { value: 0.1, unit: 'mm', rule: 'Gap each side of a shaft in its bore, with the printed hole\'s shrinkage allowed for, so it slides on and no more', kind: 'estimate' },
-  press: { value: -0.05, unit: 'mm', rule: 'Each side of a shaft in a press-fit bore: tight enough to hold, and a D flat does the driving', kind: 'estimate' },
+  press: { value: -0.02, unit: 'mm', rule: 'Each side of a shaft in a press-fit bore as printed: a hair tight, 0.8% strain on a 5 mm shaft, well inside what PLA stretches to before it cracks. A D flat does the driving', kind: 'estimate' },
   grip: { value: 1.5, unit: '× shaft diameter', rule: 'The shortest length of bore worth trusting to drive a gear', kind: 'community' }
 };
 const D = (k) => DEFAULTS[k].value;
@@ -152,6 +152,17 @@ function dSection(d, flats, across) {
  */
 export function motor(m, ops = booleans) {
   isModel('motor', m);
+  const { body, shaft } = motorParts(m, ops);
+  return shaft ? ops.union(body, shaft) : body;
+}
+
+/**
+ * The motor's body and its shaft as two solids (null where the bell is the output), so an assembly can let the shaft
+ * turn in what it drives while the body stays checked against everything else.
+ * @param {Motor} m @param {{ union: Function, subtract: Function }} [ops] @returns {{ body: object, shaft: object | null }}
+ */
+export function motorParts(m, ops = booleans) {
+  isModel('motor', m);
   const { body, boss, shaft, mount: h } = m, [cx, cy] = body.centre, parts = [];
   const low = -body.length, high = body.top;
   if (body.shape === 'square') {
@@ -163,14 +174,16 @@ export function motor(m, ops = booleans) {
   if (h.ear) parts.push(box(h.holes[0][0], h.holes[1][0], cy - h.ear, cy + h.ear, -h.earThickness, 0));
   if (h.tab) parts.push(box(cx - h.tab / 2, cx + h.tab / 2, cy - body.depth / 2, cy + body.depth / 2, 0, h.tabThickness));
   if (boss.height) parts.push(disc(boss.diameter, high, high + boss.height));
-  let solid = ops.union(parts);
+  let solid = ops.union(parts), rod = null;
   if (m.type === 'brushless') solid = ops.subtract(solid, disc(shaft.diameter, low - 1, high + 1));
   else if (shaft.length) {
-    const flatFrom = shaft.flats ? shaft.tip - shaft.flatLength : shaft.tip;
-    solid = ops.union(solid, ...(flatFrom > shaft.base ? [disc(shaft.diameter, 0, flatFrom)] : []), ...(shaft.flats ? [translate([0, 0, Math.max(flatFrom, 0)], extrude(shaft.tip - Math.max(flatFrom, 0), dSection(shaft.diameter, shaft.flats, shaft.across)))] : []));
+    const flatFrom = shaft.flats ? shaft.tip - shaft.flatLength : shaft.tip, rods = [];
+    if (flatFrom > shaft.base) rods.push(disc(shaft.diameter, shaft.base, flatFrom));
+    if (shaft.flats) rods.push(translate([0, 0, Math.max(flatFrom, shaft.base)], extrude(shaft.tip - Math.max(flatFrom, shaft.base), dSection(shaft.diameter, shaft.flats, shaft.across))));
+    rod = rods.length > 1 ? ops.union(rods) : rods[0];
   }
-  if (h.holes.length && (h.diameter || h.ear) && h.ear) solid = ops.subtract(solid, h.holes.map((p) => disc(h.diameter, -h.earThickness - 1, 1, p)));
-  return solid;
+  if (h.holes.length && h.ear) solid = ops.subtract(solid, h.holes.map((p) => disc(h.diameter, -h.earThickness - 1, 1, p)));
+  return { body: solid, shaft: rod };
 }
 
 // The printer's clearances, from its rule set, with a design's own printer laid over them
@@ -244,7 +257,8 @@ export function mount(m, p, ops = booleans) {
 
 /**
  * A bore for the motor's shaft, as numbers, with what's wrong with it.
- * @param {Motor} m @param {{ depth: number, fit?: 'slide' | 'press', printer?: object }} p depth: how far the shaft goes in
+ * @param {Motor} m @param {{ depth: number, tip?: number, fit?: 'slide' | 'press', printer?: object }} p depth: the bore's
+ *   length; tip: how far from the bore's mouth the shaft's tip sits (default depth; more, if the tip comes out the far side)
  * @returns {{ depth: number, diameter: number, across: number, flats: number, flatFrom: number, grip: number, findings: object[] }}
  *   flatFrom: the height in the bore where the flat starts (the shaft's tip end is at depth); below it the bore is round, so the round root of the shaft can pass
  */
@@ -254,20 +268,22 @@ export function boreModel(m, p) {
   const depth = positive(what, 'depth', p.depth), fit = p.fit ?? 'slide';
   if (!['slide', 'press'].includes(fit)) throw new Error(`${what}: fit is slide or press (got ${shown(fit)})`);
   if (m.type === 'servo' || m.type === 'brushless') throw new Error(`${what}: a ${m.type}'s output is ${m.type === 'servo' ? 'a spline finer than a printer draws: drive it through its horn' : 'its bell: bolt to that'}, not a bore`);
-  const pr = printerOf(p.printer), { shaft } = m, each = fit === 'slide' ? D('fit') : D('press'), diameter = shaft.diameter + 2 * each + pr.holeComp, flat = Math.min(depth, shaft.flatLength);
+  const tip = p.tip ?? depth;
+  if (!(isNum(tip) && tip > 0)) throw new Error(`${what}: tip is how far from the bore's mouth the shaft's tip sits, above 0 (got ${shown(p.tip)})`);
+  const pr = printerOf(p.printer), { shaft } = m, each = fit === 'slide' ? D('fit') : D('press'), diameter = shaft.diameter + 2 * each + pr.holeComp, flatFrom = Math.max(0, tip - shaft.flatLength), flat = Math.max(0, Math.min(depth, tip) - flatFrom);
   const out = [], f = (level, text, code) => out.push({ level, text, code });
   if (depth > shaft.length) f('warn', `the bore is ${depth} mm deep and the shaft only ${shaft.length} mm long: the last ${+(depth - shaft.length).toFixed(2)} mm holds nothing`, 'bore.depth');
-  const grip = Math.min(depth, shaft.length), want = D('grip') * shaft.diameter;
-  if (grip < want) f('warn', `only ${+grip.toFixed(2)} mm of the shaft is in the bore: ${want} mm or more, or the part rocks on it`, 'bore.grip');
+  const grip = Math.min(depth, shaft.length), want = shaft.flats ? Math.min(D('grip') * shaft.diameter, 0.8 * shaft.flatLength) : D('grip') * shaft.diameter;
+  if (grip < want) f('warn', `only ${+grip.toFixed(2)} mm of the shaft is in the bore: ${r3(want)} mm or more, or the part rocks on it`, 'bore.grip');
   if (shaft.flats && flat < 0.5 * want) f('warn', `only ${+flat.toFixed(2)} mm of bore meets the flat: it's the flat that turns the part`, 'bore.flat');
   if (!shaft.flats) f('warn', 'this shaft has no flat: only friction or a grub screw turns the part', 'bore.flat');
-  return { depth, diameter: r3(diameter), across: r3(shaft.across + 2 * each + pr.holeComp), flats: shaft.flats, flatFrom: depth - flat, grip, fit, findings: out };
+  return { depth, diameter: r3(diameter), across: r3(shaft.across + 2 * each + pr.holeComp), flats: shaft.flats, flatFrom, grip, fit, findings: out };
 }
 
 /**
  * The bore a gear or hub takes for the motor's shaft, to subtract: round where the round of the shaft passes, with
  * the flat where the flat is. The shaft goes in from z = 0, its tip going to z = depth.
- * @param {Motor} m @param {{ depth: number, fit?: 'slide' | 'press', printer?: object }} p as boreModel
+ * @param {Motor} m @param {{ depth: number, tip?: number, fit?: 'slide' | 'press', printer?: object }} p as boreModel
  * @param {{ union: Function, subtract: Function }} [ops] @returns {object} a JSCAD solid to subtract
  */
 export function bore(m, p, ops = booleans) {

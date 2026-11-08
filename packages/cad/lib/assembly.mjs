@@ -32,6 +32,7 @@ import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact, wormModel, wormMesh, bevelModel, bevelMesh } from '@rulecad/gears';
 import { ops as booleans } from '@rulecad/shapes';
+import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit } from './motors.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -94,6 +95,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   for (const [k, r] of Object.entries(a.requires || {})) requires.push({ object: k, range: r, from: ref });
   const built = new Map(); // each object or component is built once per set of values, however many copies are placed
   const source = async (it, extra) => {
+    if (it.motor) { const key = JSON.stringify(['motor', it.id, it.motor]); if (!built.has(key)) built.set(key, motorBuilt(it.motor, num, it.id)); return built.get(key); }
     // from: inputs worked out from items built before this one ({ "usb_y": "board.pcb.pico_y" }): numbers, in this
     // assembly's names, so a part can take a value only another part knows once it's built
     const from = Object.fromEntries(Object.entries(it.from || {}).map(([k, x]) => [k, num(x)]));
@@ -130,7 +132,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   let builtCount = 0;
   for (const it of a.items || []) {
     if (!/^[a-z][\w-]*$/.test(it.id || '')) throw new Error(`each item needs an id (letters, digits, - or _): got ${JSON.stringify(it.id)}`);
-    if (!it.object === !it.assembly) throw new Error(`item ${it.id}: give either "object" or "assembly"`);
+    if ([it.object, it.assembly, it.motor].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly" or "motor"`);
     // Copies: one, a grid from repeat x/y, or a layout's keys. Each: { id, offset (from at), extra (values to set) }
     const rx = it.repeat?.x, ry = it.repeat?.y, rl = it.repeat?.layout, copies = [];
     if (rl) {
@@ -184,6 +186,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     for (const c of copies) { placed.push([it, c]); ids.push(c.id); }
   }
   const motion = motionOf(a, placed, num, ref);
+  fits.push(...shaftFits(motion.drives, motion.joints, placed.map(([, c]) => c.id)).map((x) => ({ ...x, num })));
   for (const [it, c] of placed) {
     const src = c.src, id = c.id;
     if (src.sub) {
@@ -339,7 +342,7 @@ function motionOf(a, placed, num, ref) {
     joints.push({ id: j.id, type: j.type, parent: p.item, child: c.item, a: p.frame, b: c.frame, dofs,
       ...(j.label ? { label: j.label } : {}), ...(path ? { path } : {}), ...(j.cone != null ? { cone: num(j.cone) } : {}),
       ...(j.follow ? { follow: [j.follow, j.ratio != null ? num(j.ratio) : 1, j.offset != null ? num(j.offset) : 0] } : {}),
-      ...(j.mesh ? { meshSpec: j.mesh } : {}) });
+      ...(j.mesh ? { meshSpec: j.mesh } : {}), ...(j.brake ? { brake: j.brake } : {}) });
   }
   for (const j of joints) if (j.follow) {
     const l = joints.find((x) => x.id === j.follow[0]);
@@ -353,6 +356,7 @@ function motionOf(a, placed, num, ref) {
     return [c.id, ...rows(translate(base, rotate(rot, translate([c.offset[0], c.offset[1], 0], jscad.geometries.geom3.create()))).transforms)];
   });
   const meshes = [...gearMeshes(joints, items, num), ...planetaries(a.planetary || [], joints, items, num)];
+  const drives = motorDrives(a, placed, joints, num), loads = loadsOf(a, anchor, num, joints);
   const poses = Object.fromEntries(Object.entries(a.poses || {}).map(([n, set]) => [n, Object.fromEntries(Object.entries(set).filter(([id]) => !id.includes('.')).map(([id, v]) => {
     if (!joints.some((j) => j.id === id)) throw new Error(`pose ${n}: no joint "${id}"`);
     return [id, Array.isArray(v) ? v.map(num) : num(v)];
@@ -364,7 +368,7 @@ function motionOf(a, placed, num, ref) {
   const marks = placed.flatMap(([, c], k) => Object.entries(c.src?.b?.object.anchors || {}).map(([name, spec]) => {
     try { return { item: k, id: c.id, name, frame: frameOf(spec, evalIn(c.src.b.values, `${c.src.objName} anchor ${name}`)) }; } catch { return null; }
   })).filter(Boolean);
-  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes };
+  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes, drives, loads };
 }
 
 // A pair measured from its drawn teeth (@rulecad/gears contact: backlash, transmission error, interference), kept in
@@ -527,7 +531,7 @@ function wormDrive(j, lead, spec, teeth, common, joints, items, num) {
   const m = wormMesh({ ...common, starts: teeth[0], ...(ws.diameter != null ? { diameter: num(ws.diameter) } : {}), ...(ws.hand ? { hand: ws.hand } : {}) }, { teeth: teeth[1] });
   const c = meshOf(wheel, rackModel({ ...common, teeth: 4 }), { centre: dist - w.pitch / 2 });
   const findings = [...m.findings, ...c.findings.filter((x) => x.code === 'mesh.centre').map((x) => ({ ...x, text: x.text.replace("centre to the rack's pitch line", "the wheel's centre to the worm's pitch cylinder") }))];
-  return { joint: j.id, with: lead.id, kind: 'worm', findings, between: [Ow.map((x, i) => x + U[i] * at), O2], text: `a worm of ${teeth[0]} start${teeth[0] > 1 ? 's' : ''}, ${Number((teeth[1] / teeth[0]).toFixed(3))} turns of the worm for one of the wheel` };
+  return { joint: j.id, with: lead.id, kind: 'worm', worm: m, findings, between: [Ow.map((x, i) => x + U[i] * at), O2], text: `a worm of ${teeth[0]} start${teeth[0] > 1 ? 's' : ''}, ${Number((teeth[1] / teeth[0]).toFixed(3))} turns of the worm for one of the wheel` };
 }
 
 // Gears that mesh: "mesh": { "with": <the driving joint>, "module", "teeth": [its, this one's], "shift"?, "ring"? } on
@@ -652,6 +656,9 @@ function saveOverlaps() {
 }
 
 // checkAssembly(built) -> findings, as @rulecad/printcheck: { level, text, card? } (card: a short line for the mirror)
+// What a project prints in, for the motors' heat and press-fit checks
+const materialOf = (project) => { try { return readJson(path.join(paths.project(project), 'project.json')).material; } catch { return null; } };
+
 export function checkAssembly(s) {
   const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(3))}`;
   // Versions: every pin, from this assembly and its components, against every copy of that object
@@ -696,7 +703,9 @@ export function checkAssembly(s) {
   for (const x of s.fits) {
     if (x.poses && !x.poses.includes(s.pose)) continue; // a fit for some poses only: the folded screen over the keys
     if (x.holes) { holesFit(x); continue; }
+    if (x.silent) continue; // lets a pair overlap, and has nothing to report
     if (x.engage != null) { engageFit(x); continue; }
+    if (x.shaft != null) { shaftFit(x, s, f, { placeItems, jointValues, mul, materialName: materialOf(s.project) }); continue; }
     const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
     const reach = Math.max(2, ...[lo, hi].filter(Number.isFinite)) + 1; // look past the range, so a gap near it is measured
@@ -806,6 +815,7 @@ export function checkAssembly(s) {
       }
     }
   }
+  motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers
@@ -898,8 +908,8 @@ export function motionData(s) {
   }));
   return { motion: {
     items: mo.items.map(([n, ...m]) => [n, ...m.map(r)]),
-    joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
-      ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}) })),
+    joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone, step }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
+      ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}), ...(step ? { step } : {}) })),
     poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
     part: s.parts.map((p) => names.indexOf(p.item)),
     ...(allow.length ? { allow } : {}),

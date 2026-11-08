@@ -153,6 +153,7 @@ own copy anywhere and name it in `viewUrl`.
   `notchHinge`, `bistable`, `livingHinge` as shapes, each with a `<name>Model(shape, { E })` giving its stiffness and the
   strain at a travel, and `printable(shape, printer, material, model)` for how it prints. Drawn flat: bending along y,
   width up z, so a flexure bends within its layers.
+- `v.motors`: motors (`@rulecad/motors`): `motorModel`, `mount` and `bore` for the holes a part needs round a motor and its shaft, `performance` for its torque and speed. In an assembly a motor is an item (see Motors).
 - `v.gears`: gears (`@rulecad/gears`): `spur`, `rack` and `internal` as shapes, from a module and teeth, each with its
   model (`gearModel`, `rackModel`, `internalModel`) and `printable(model, printer, width)`. Drawn flat: the axis up z,
   the first tooth on +x, the face on the bed. Two gears in an assembly mesh with a joint's `mesh` (see Joints).
@@ -403,6 +404,18 @@ then y, then z, as `rotate` does.
 - **Links:** an assembly's link carries its joints. The page shows a slider for each joint, a button for each pose,
   and a quick look for parts pushed into each other when you let a slider go. The quick look can miss parts that cross
   without a corner going in, so `--sweep` is the real check.
+
+### Motors
+
+An item can be a motor instead of a printed object: `{ "id": "drive", "motor": { "model": "nema17", "drives": "elbow" }, "at": […], "rotate": […] }`. It comes from `@rulecad/motors`, is bought and not printed (a reference, in the assembly but never on a plate), and its anchors (`shaft`, `tip`, `face`, `horn`, `hole1` …) work in joints like any other. `set` changes a figure (`{ "holding_torque": { "value": 0.5, "kind": "measured", "source": "…" } }`), `speed` is the motor's speed (rpm), `margin` how many times over the torque must be (2 by default), `duty` the share of the time it runs.
+
+- `"drives"`: the joint it turns, a revolute. The viewer's slider moves in a stepper's steps; a servo brings its range. Whatever follows that joint through a `mesh` or a `planetary` moves with it. `motor.axis` fails if its shaft isn't on the joint's axis.
+- `"loads"` at the top of the assembly say what it has to do: `{ "joint": "elbow", "torque": 0.5 }` (N m), `{ "joint": "slide", "force": 12 }` (N), or `{ "mass": 0.2, "at": "forearm.tip" }` (kg, a mass carried at an anchor, whose torque at each joint comes from where the pose puts it; the check runs the motor through its range and reports the worst).
+- `motor.torque`: what reaches the joint through the gears, against the load: a fail under 1 times, a warning under the margin. It says what its figures rest on. `motor.speed`: how fast it moves and how long its range takes. Stages pass on `stageEfficiency` of the power (0.95 a mesh, an estimate).
+- `motor.holds`: with the power on (holding torque, or stall torque) and off (detent torque, a built-in gearbox's friction, a worm that locks, gears under 50% efficient, or `"brake": "a ratchet and pawl"` on the joint). Dropping with the power off is a warning: it may be what you want.
+- `motor.mount`: the part a motor is fastened to (a `fastens` fit), read as drawn: how thick it is at the screw holes against the screws' size, and the screws' bearing on the plastic under the motor's full torque. How far the whole part bends isn't checked yet.
+- `motor.heat`: the motor's case against the softening point of the material the project prints in. Too hot says the current to set the driver to.
+- A `"shaft": true` fit (or `"press"`) between a motor and what it drives reads the bore from the part as drawn: that it's on the shaft (`shaft.seat`), that its flat is there (`shaft.flat`; the shaft turns to meet it, so where the flat faces doesn't matter), how much of the flat it grips (`shaft.grip`), and, pressed on, the hoop stress in the hub (`shaft.hoop`).
 
 ## Optimised parts
 

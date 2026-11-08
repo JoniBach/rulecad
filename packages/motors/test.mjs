@@ -82,7 +82,7 @@ test('the D-bore takes its shaft, and the flat turns the part: round where the r
   }
   // deeper than the flat: the mouth is round, so the shaft's round root goes in
   const n = motorModel('nema17'), b = boreModel(n, { depth: 20 });
-  assert.equal(b.flatFrom, 5); assert.ok(!b.findings.some((f) => f.code === 'bore.depth'));
+  assert.equal(b.flatFrom, 5); assert.equal(boreModel(n, { depth: 8, tip: 20 }).flatFrom, 5, 'the tip past the far side'); assert.ok(!b.findings.some((f) => f.code === 'bore.depth'));
   assert.ok(boreModel(n, { depth: 30 }).findings.some((f) => f.code === 'bore.depth'), 'past the shaft');
   assert.ok(boreModel(n, { depth: 3 }).findings.some((f) => f.code === 'bore.grip'), 'too little of it');
   const press = boreModel(n, { depth: 10, fit: 'press' }), slide = boreModel(n, { depth: 10 });

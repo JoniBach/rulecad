@@ -2,7 +2,7 @@
 
 [The tutorial](TUTORIAL.md) ends with a wall hook checked against its screw. These examples carry on from there, one
 for each thing the [README](README.md) describes after that: parts, variants and releases, joints and poses, a model
-from elsewhere, an optimised part, a board, a mechanism printed flat, gears, and a gearbox. Each is a few files and the commands to run
+from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, and a motor. Each is a few files and the commands to run
 them. The tests write every file here and run every command, so what you read is what works.
 
 They start from a workspace `npm create rulecad my-designs` makes, as the tutorial does, and run in order: later
@@ -819,3 +819,160 @@ The check says `the carrier drives the sun and the planets (the ring held): 4 tu
 carrier, the same way`, and each planet's centre distance and contact ratio. The sweep turns the crank from −180° to
 180°, the sun four times as far, and looks for anything that touches. Move a planet's anchor off its 120° and the
 check fails it: it can't mesh with the sun and the ring at once there.
+
+## 10. A motor: the focus slider, driven
+
+The same slide, with a 28BYJ-48 geared stepper in place of the knob: 5 V, a few pounds to buy, slow and strong. A motor in an
+assembly is an item with `"motor"`, drawn from `@rulecad/motors`, bought and not printed. Its shaft turns the joint it
+drives, the viewer's slider moves in the motor's steps, and `loads` say what it has to do. Its figures come with their
+kinds: the 28BYJ-48's torque varies between makers, and the check says what its answer rests on.
+
+The pinion takes the motor's shaft, two flats and all, with `v.motors.bore`. The motor sits under the plate, shaft up
+through it, so its body needs room below: two feet stand the rail up.
+
+```json projects/home/objects/drive-pinion.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "drive-pinion",
+  "title": "Motor pinion",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": { "axis": { "at": [0, 0, "0 - gap"], "axis": [0, 0, 1] } },
+  "variables": {
+    "module": { "value": 1, "unit": "mm", "rule": "As the rack" },
+    "teeth": { "value": 14, "rule": "As the knob's pinion" },
+    "shift": { "value": 0.2, "rule": "14 teeth need at least 0.19" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "The rack's width" },
+    "gap": { "value": "x1c.layer + 0.1", "unit": "mm", "rule": "Clear of the plate" },
+    "tip": { "value": 5.1, "unit": "mm", "rule": "Where the shaft's tip is from the pinion's underside: 10 mm of shaft less the 4.6 mm plate and the gap" }
+  }
+}
+```
+
+```js projects/home/objects/drive-pinion.js
+// A pinion with the motor's shaft in it: the flats of the bore run only as far as the shaft's flats do.
+export function main (v) {
+  const motor = v.motors.motorModel('28byj48')
+  return v.ops.subtract(v.gears.spur({ module: v.module, teeth: v.teeth, shift: v.shift, width: v.width }), v.motors.bore(motor, { depth: v.width, tip: v.tip }, v.ops))
+}
+```
+
+```json projects/home/objects/drive-rail.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "drive-rail",
+  "title": "Motor rail",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": {
+    "axle": { "at": [0, "centre", "thick"], "axis": [0, 0, 1] },
+    "track": { "at": ["start", 0, "thick"], "axis": [1, 0, 0] }
+  },
+  "variables": {
+    "centre": { "value": 7.2, "unit": "mm", "rule": "The pinion's axis above the rack's pitch line: m z / 2 + x m" },
+    "length": { "value": 120, "unit": "mm", "rule": "The rack and its travel" },
+    "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the pinion at rest" },
+    "thick": { "value": "x1c.layer * 23", "unit": "mm", "rule": "23 layers: the motor's boss pocket, and enough for its M3 screws" },
+    "y0": { "value": -14.5, "unit": "mm", "rule": "Past the motor's near ear" },
+    "y1": { "value": 29, "unit": "mm", "rule": "Past its far ear, 17.5 mm off the axis" },
+    "plate": { "value": 26, "unit": "mm", "rule": "Wide enough round the motor's boss and its ears" },
+    "guide_y": { "value": "0 - 5.45 - x1c.line / 2", "unit": "mm", "rule": "Behind the rack's back, half a line clear" },
+    "guide": { "value": "x1c.line * 4", "unit": "mm", "rule": "The guide wall: four lines" },
+    "guide_height": { "value": "x1c.layer * 20", "unit": "mm", "rule": "Most of the rack's width" },
+    "hole": { "value": 3.5, "unit": "mm", "rule": "M3 clearance, for the feet" },
+    "foot_x": { "value": 52, "unit": "mm", "rule": "Each foot's screw, from the middle" },
+    "foot_y": { "value": -11, "unit": "mm", "rule": "On the strip, behind the guide" }
+  }
+}
+```
+
+```js projects/home/objects/drive-rail.js
+// The rail: a strip under the rack, a plate for the motor (turned 90° on its shaft, so its ears clear the rack), a wall
+// behind the rack, and the motor's own cuts.
+import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+const { translate, rotateZ } = jscad.transforms
+
+export function main (v) {
+  const motor = v.motors.motorModel('28byj48')
+  const strip = cuboid({ size: [v.length, 12, v.thick], center: [0, v.y0 + 6, v.thick / 2] })
+  const seat = cuboid({ size: [v.plate, v.y1 - v.y0, v.thick], center: [8, (v.y0 + v.y1) / 2, v.thick / 2] })
+  const guide = cuboid({ size: [v.length, v.guide, v.guide_height], center: [0, v.guide_y - v.guide / 2, v.thick + v.guide_height / 2] })
+  const cuts = translate([0, v.centre, 0], rotateZ(Math.PI / 2, v.motors.mount(motor, { plate: v.thick, screw: 'M3' }, v.ops)))
+  const screws = [1, -1].map((s) => cylinder({ radius: v.hole / 2, height: v.thick + 2, center: [s * v.foot_x, v.foot_y, v.thick / 2] }))
+  return v.ops.subtract(v.ops.union(strip, seat, guide), cuts, screws)
+}
+```
+
+```json projects/home/objects/drive-foot.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "drive-foot",
+  "title": "Rail foot",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "variables": {
+    "height": { "value": 21, "unit": "mm", "rule": "Under the motor: its 19 mm can and 2 mm to the table" },
+    "size": { "value": 12, "unit": "mm", "rule": "As wide as the strip" },
+    "long": { "value": 28, "unit": "mm", "rule": "Across the strip's end, for a stance that doesn't rock" },
+    "hole": { "value": 2.9, "unit": "mm", "rule": "M3 screw, self-tapped into the plastic" },
+    "depth": { "value": 12, "unit": "mm", "rule": "Plenty for an M3 × 16" }
+  }
+}
+```
+
+```js projects/home/objects/drive-foot.js
+// A foot: a block under each end of the rail, screwed on from above.
+import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+const { subtract } = jscad.booleans
+
+export function main (v) {
+  const block = cuboid({ size: [v.size, v.long, v.height], center: [0, 0, v.height / 2] })
+  return subtract(block, cylinder({ radius: v.hole / 2, height: v.depth, center: [0, 0, v.height - v.depth / 2] }))
+}
+```
+
+The assembly says the motor drives the pinion's joint, the slide follows by its `mesh`, and the load is a force on the
+slide: a 200 g camera on a rail with the friction of plastic on plastic, about 1 N. The `shaft` fit reads the bore from
+the pinion as drawn. `duty` says the motor runs a fifth of the time, since a focus stack is mostly standing still.
+
+```json projects/home/assemblies/driven.json
+{
+  "title": "Motorised focus slider",
+  "kind": "fit",
+  "items": [
+    { "id": "rail", "object": "drive-rail" },
+    { "id": "foot_a", "object": "drive-foot", "at": ["0 - rail.foot_x", "rail.foot_y", "0 - foot_a.height"] },
+    { "id": "foot_b", "object": "drive-foot", "at": ["rail.foot_x", "rail.foot_y", "0 - foot_b.height"] },
+    { "id": "drive", "motor": { "model": "28byj48", "drives": "pinion", "duty": 0.2, "screw": "M3" }, "at": [0, "rail.centre", 0], "rotate": [0, 0, 90] },
+    { "id": "gear", "object": "drive-pinion" },
+    { "id": "rack", "object": "rack" }
+  ],
+  "joints": [
+    { "id": "pinion", "type": "revolute", "parent": "rail.axle", "child": "gear.axis", "label": "Motor" },
+    { "id": "slide", "type": "prismatic", "parent": "rail.track", "child": "rack.slide", "min": -100, "max": 100,
+      "mesh": { "with": "pinion", "module": "gear.module", "teeth": ["gear.teeth", "rack.teeth"], "shift": ["gear.shift", 0] } }
+  ],
+  "fits": [
+    { "a": "foot_a", "b": "rail", "fastens": true, "min": 0, "note": "A foot, screwed on" },
+    { "a": "foot_b", "b": "rail", "fastens": true, "min": 0, "note": "A foot, screwed on" },
+    { "a": "drive", "b": "rail", "fastens": true, "min": 0, "note": "The motor, on its two ears" },
+    { "a": "drive", "b": "gear", "shaft": true, "note": "The motor's shaft in the pinion" }
+  ],
+  "loads": [{ "joint": "slide", "force": 1, "note": "A 200 g camera sliding, plastic on plastic" }],
+  "poses": { "home": { "pinion": 0 } }
+}
+```
+
+```sh
+npx cad check home/driven
+npx cad check home/driven --sweep --steps 12
+```
+
+The check says which motor it is and how far a step moves (`0.0879° a step`, or 0.0107 mm of slide), that its shaft is
+on the pinion's axis, the force reaching the slide against the 1 N it has to push and how many times over, how fast the
+slide moves, and that the slide holds with the power off: the 28BYJ-48's own gearbox friction, far more than the load can
+turn it back with. The torque's line ends `(rests on community figures: measure it)`, because that's what its torque is.
