@@ -473,9 +473,13 @@ export function mesh(a, b, { centre, width } = {}) {
     // further apart opens a gap along the line of action of 2 Δa sin αw, which is 2 Δa tan αw round the pitch circle
     const added = 2 * off * Math.tan(aw);
     backlash += added;
-    if (off < -0.01) f('fail', `the axes are ${fmt(-off, 3)} mm closer than these gears need (${fmt(need, 3)} mm${b.kind === 'rack' ? ', centre to the rack\'s pitch line' : ''}): the teeth jam`, 'mesh.centre', { centre, need });
+    // closer than they need eats the backlash (2 Δa tan αw of it) and the clearance under the tips (0.25 m); past
+    // either, the teeth jam
+    const tipRoom = m * (Math.min(a.rack.dedendum, b.rack?.dedendum ?? a.rack.dedendum) - Math.max(a.rack.addendum, b.rack?.addendum ?? a.rack.addendum)) + off;
+    if (backlash < 0 || tipRoom < 0) f('fail', `the axes are ${fmt(-off, 3)} mm closer than these gears need (${fmt(need, 3)} mm${b.kind === 'rack' ? ', centre to the rack\'s pitch line' : ''}): ${backlash < 0 ? `more than their ${fmt(a.backlash / 2 + b.backlash / 2, 2)} mm of backlash allows` : 'the tips reach the roots'}, and the teeth jam`, 'mesh.centre', { centre, need });
+    else if (off < -0.005 && backlash < 0.05) f('warn', `the axes are ${fmt(-off, 3)} mm closer than these gears need (${fmt(need, 3)} mm): ${fmt(backlash, 3)} mm of play left, tight enough to bind as printed`, 'mesh.centre', { centre, need });
     else if (backlash > 0.4) f('warn', `the axes are ${fmt(off, 3)} mm further apart than these gears need (${fmt(need, 3)} mm): ${fmt(backlash, 2)} mm of backlash, loose enough to knock`, 'mesh.centre', { centre, need });
-    else f('pass', `centre distance ${fmt(centre, 3)} mm, as they need${Math.abs(off) > 0.005 ? ` (${off > 0 ? '+' : ''}${fmt(off, 3)})` : ''}: ${fmt(backlash, 2)} mm of backlash`, 'mesh.centre', { centre, need });
+    else f('pass', `centre distance ${fmt(centre, 3)} mm, ${Math.abs(off) > 0.005 ? `${fmt(Math.abs(off), 3)} mm ${off > 0 ? 'further apart' : 'closer'} than the ${fmt(need, 3)} they need` : 'as they need'}: ${fmt(backlash, 2)} mm of backlash`, 'mesh.centre', { centre, need });
   }
   const thrust = a.herringbone || !ha ? 0 : Math.tan(ha * DEG);
   return { kind: b.kind, centre: need, ratio, contact, overlap, thrust, pressureAngle: aw / DEG, backlash, text: sense, findings: out };
@@ -549,6 +553,8 @@ export function printable(g, printer, width) {
 
 // Planetary gearboxes: the teeth for a ratio, laid out in phase
 export { planetary, planetaryRatio } from './planetary.mjs';
+// The mesh measured from the drawn teeth: backlash, transmission error, interference
+export { contact } from './contact.mjs';
 
 // ---------- strength ----------
 

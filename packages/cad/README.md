@@ -366,8 +366,9 @@ then y, then z, as `rotate` does.
   true` makes it a ring gear round its pinion. `shift` ([the driver's, this one's]), `pressureAngle` and `backlash` are
   as `@rulecad/gears` takes them. Each gear is drawn as `v.gears` draws it (axis up its z, first tooth on +x; a rack
   along its x, teeth up +y) and its joint is anchored at its centre, along its axis. The check gives the ratio, the
-  contact ratio and the centre distance (`mesh.centre`: closer than the gears need jams them, further adds backlash),
-  each placed between the two axes; `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
+  contact ratio and the centre distance (`mesh.centre`: closer than the gears need eats their backlash, and past it they jam; further adds backlash),
+  each placed between the two axes, and measures the pair from its drawn teeth (`mesh.backlash`, `mesh.interference`,
+  kept in `.cache/gears/`); `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
   one part, or on parts held still; planets on a carrier are a `planetary`.
 - **Planetary gearboxes:** `"planetary": [{ "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1",
   "p2"], "drive": "carrier", "module": 1, "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }]` names the items. One of

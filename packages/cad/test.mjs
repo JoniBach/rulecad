@@ -995,6 +995,7 @@ test('gears in an assembly: mesh turns a joint into its mate\'s follower in phas
     assert.match(checked, /drive drives wheel: 0\.6 turns of the second for each turn of the first \(18:30\), turning opposite ways/);
     assert.match(checked, /drive and wheel: centre distance 24 mm, as they need: 0\.15 mm of backlash/);
     assert.match(checked, /drive and slide: centre distance 9 mm, as they need/);
+    assert.match(checked, /drive and wheel: as drawn, 0\.1[45]\d* (to 0\.1[45]\d* )?mm of play at the pitch circle/, 'measured from the drawn teeth');
     assert.match(checked, /drive drives slide: 56\.55 mm of rack a turn/);
     assert.match(checked, /no parts overlap/);
     const swept = cad('check', 'demo/train', '--sweep', '--steps', '18');
@@ -1002,11 +1003,11 @@ test('gears in an assembly: mesh turns a joint into its mate\'s follower in phas
     // the same follow without the phase: the teeth meet
     train(24, { follow: 'drive', ratio: -0.6, offset: 0 });
     assert.match(cad('check', 'demo/train', '--sweep', '--steps', '18'), /sweep drive, -90 to 90° in 18 steps: .*pinion\.body hits wheel\.body/);
-    // axes too close: said, between them
-    train(23.8, meshed);
+    // axes too close: more than the backlash allows, said between them
+    train(23.7, meshed);
     const close = JSON.parse(cad('check', 'demo/train', '--json')).findings.find((x) => x.code === 'mesh.centre' && x.text.startsWith('drive and wheel'));
-    assert.equal(close.level, 'fail'); assert.match(close.text, /0\.2 mm closer than these gears need \(24 mm\): the teeth jam/);
-    assert.deepEqual(close.between.map((p) => p.map((x) => +x.toFixed(6))), [[0, 0, 2], [0, 23.8, 2]]);
+    assert.equal(close.level, 'fail'); assert.match(close.text, /0\.3 mm closer than these gears need \(24 mm\): more than their 0\.15 mm of backlash allows, and the teeth jam/);
+    assert.deepEqual(close.between.map((p) => p.map((x) => +x.toFixed(6))), [[0, 0, 2], [0, 23.7, 2]]);
     // what isn't a mesh
     train(24, { mesh: { with: 'nothing', module: 1, teeth: [18, 30] } });
     assert.match(cad('check', 'demo/train'), /joint wheel: mesh: "with" names the driving joint/);
@@ -1046,6 +1047,7 @@ test('a planetary gearbox in an assembly: the carrier drives, the sun and every 
     const checked = cad('check', 'box/gearbox');
     assert.match(checked, /the carrier drives the sun and the planets \(the ring held\): 5 turns of the sun for each turn of the carrier, the same way/, checked);
     assert.match(checked, /sun and p2: centre distance 22\.5 mm, as they need/);
+    assert.match(checked, /sun and p0: as drawn, [\d.]+ (to [\d.]+ )?mm of play/); assert.match(checked, /p0 and the ring: as drawn, [\d.]+ (to [\d.]+ )?mm of play/);
     assert.match(checked, /no parts overlap/);
     assert.doesNotMatch(checked, /✗/);
     // at −15° JSCAD's intersection read the sun 2.7 mm³ into a planet 0.07 mm from it; measured with Manifold, clear

@@ -511,7 +511,8 @@ npx cad check home/slider --sweep --steps 12
 ```
 
 The check says `knob drives slide: 43.98 mm of rack a turn`, the contact ratio, and that the axle is where the gears
-need it (`centre distance 7.2 mm, as they need`). Set the base's `centre` to 7 and it fails: the teeth would jam. The
+need it (`centre distance 7.2 mm, as they need`). Set the base's `centre` to 6.9 and it fails: 0.3 mm closer is more than the
+teeth's 0.15 mm of backlash allows, and they would jam. The
 sweep turns the knob from −180° to 180° with the rack following, and names any teeth that touch on the way. The link
 carries the knob as a slider, with the rack moving with it: `npx cad link home/slider --md`.
 

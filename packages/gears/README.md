@@ -79,7 +79,8 @@ What every gear takes:
   1.2 it is rough.
 - **`backlash`**: the play, with the centre you gave.
 - **`overlap`** and **`thrust`**: for helical gears, with `width` given, how much the twist adds to the contact ratio, and the push along the axis for each newton driven (none for a herringbone).
-- **`findings`**: `mesh.contact`, `mesh.centre` (axes too close jam the teeth; too far knock), `mesh.module` and
+- **`findings`**: `mesh.contact`, `mesh.centre` (axes closer than the gears need eat their backlash, 2 Δa tan α of it, and past
+  it jam the teeth; too far apart, they knock), `mesh.module` and
   `mesh.pressure` (gears that can't mesh), `mesh.interference` (a ring too near its pinion's size), `mesh.helix` (helical
   gears that cross: outer gears that mesh are of opposite hands; a pinion and its ring or rack, of the same hand).
 
@@ -101,6 +102,21 @@ teeth for a ratio that also put together, nearest the ratio first and then the s
 planet's place round the carrier and the turn that puts it in phase with the sun, and the ring's turn. When no set
 gives the ratio exactly, the nearest is returned and `planetary.ratio` says how far off it is (a fail past 5%).
 `planetaryRatio({ sun, ring }, { held, input, output })` is the ratio of any teeth, any way round.
+
+## The mesh, measured
+
+`mesh()` reckons a pair from the formulas. `contact(a, b, { centre, steps })` measures it from the teeth as drawn,
+with their fillets, rounds and backlash and the centre distance given. It turns the driver through one tooth in steps,
+and at each step turns the driven gear each way until its outline meets the driver's:
+
+- **backlash**: the turn between the two meetings, as play at the pitch circle (`mesh.backlash`, a warn when it falls
+  under 0.02 mm);
+- **transmission error**: how far the driven gear's forward meeting wanders across a tooth (`mesh.error`);
+- **interference**: steps where the outlines already cross where the ratio puts them (`mesh.interference`).
+
+`a` and `b` are the parameters the models take; `b.kind` is `'internal'` for a ring or `'rack'` for a rack. For 18
+teeth on 30 at module 1 it measures 0.150 to 0.152 mm of play against the 0.15 mm drawn, and 1 µm of transmission
+error; with the axes 0.2 mm apart, 0.30 mm (2 Δa tan α more). `cad check` measures every mesh in an assembly this way.
 
 ## How it prints
 

@@ -100,8 +100,12 @@ test('mesh: centre distance, ratio and contact ratio as the formulas give them; 
   const m = mesh(a, b);
   near(m.centre, 30, 1e-9, 'centre'); assert.equal(m.ratio, -0.5);
   near(m.contact, 1.635, 0.002, 'contact ratio of 20 on 40 at module 1 (worked by hand: 1.635)');
-  assert.match(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').text, /0\.1 mm closer .* jam/);
-  assert.equal(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').level, 'fail');
+  // closer eats the backlash (2 Δa tan α of it): 0.1 closer leaves 0.08 mm, 0.2 closer 0.004 (tight), 0.3 jams
+  assert.equal(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').level, 'pass');
+  assert.match(mesh(a, b, { centre: 29.9 }).findings.find((x) => x.code === 'mesh.centre').text, /0\.1 mm closer than the 30 they need: 0\.08 mm of backlash/);
+  assert.equal(mesh(a, b, { centre: 29.8 }).findings.find((x) => x.code === 'mesh.centre').level, 'warn');
+  assert.match(mesh(a, b, { centre: 29.7 }).findings.find((x) => x.code === 'mesh.centre').text, /0\.3 mm closer .* more than their 0\.15 mm of backlash allows, and the teeth jam/);
+  assert.equal(mesh(a, b, { centre: 29.7 }).findings.find((x) => x.code === 'mesh.centre').level, 'fail');
   assert.equal(mesh(a, b, { centre: 30.5 }).findings.find((x) => x.code === 'mesh.centre').level, 'warn', 'half a mm out: loose');
   assert.equal(mesh(a, b, { centre: 30.05 }).findings.find((x) => x.code === 'mesh.centre').level, 'pass');
   // shifted pair: the working centre from the working pressure angle
@@ -318,4 +322,25 @@ test('strength by Lewis: σ = F / b m Y, the torque at a safety factor, helical 
   assert.ok(strength(g, { width: 6, material: pla, torque: 500, speed: 600 }).stress > s.stress, 'speed adds Barth\'s factor');
   assert.throws(() => strength(g, { width: 6, material: {} }), /the material needs a strength above 0 MPa/);
   assert.throws(() => strength(rackModel({ module: 1, teeth: 9 }), { width: 6, material: pla, torque: 100 }), /a rack takes a force, not a torque/);
+});
+
+test('contact: the mesh measured from the drawn teeth agrees with the reckoning, and finds interference where it is', async () => {
+  const { contact } = await import('@rulecad/gears');
+  const p18 = { module: 1, teeth: 18 }, p30 = { module: 1, teeth: 30 };
+  const nominal = contact(p18, p30);
+  assert.ok(nominal.backlash.least > 0.145 && nominal.backlash.most < 0.16, `0.15 mm drawn: ${JSON.stringify(nominal.backlash)}`);
+  assert.ok(nominal.error < 0.005, `transmission error under 5 µm: ${nominal.error}`);
+  // apart: the play grows by about 2 Δa tan α
+  const apart = contact(p18, p30, { centre: 24.2 });
+  near(apart.backlash.least, 0.15 + 2 * 0.2 * Math.tan((20 * Math.PI) / 180), 0.01, 'further apart');
+  // closer: the play goes, then the teeth cross
+  assert.equal(contact(p18, p30, { centre: 23.8 }).findings.find((x) => x.code === 'mesh.backlash').level, 'warn', '0.2 closer: tight');
+  assert.equal(contact(p18, p30, { centre: 23.7 }).findings[0].code, 'mesh.interference', '0.3 closer: they cross');
+  // a ring and a rack, measured as drawn
+  for (const [b, what] of [[{ module: 1, teeth: 60, kind: 'internal' }, 'ring'], [{ module: 1, teeth: 30, kind: 'rack' }, 'rack']]) {
+    const r = contact(p18, b);
+    assert.ok(r.backlash.least > 0.14 && r.backlash.most < 0.16, `${what}: ${JSON.stringify(r.backlash)}`);
+  }
+  // no backlash drawn: the play is all but gone, and said
+  assert.equal(contact({ ...p18, backlash: 0 }, { ...p30, backlash: 0 }).findings.find((x) => x.code === 'mesh.backlash').level, 'warn');
 });

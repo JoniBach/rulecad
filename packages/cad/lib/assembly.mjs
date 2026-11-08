@@ -20,6 +20,7 @@ import { host, readJson } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { evaluate, loadRuleSet } from './rules.mjs';
 import { paths, printerOf } from './workspace.mjs';
 import { locate, build, readObject, jscad } from './design.mjs';
@@ -29,7 +30,7 @@ import { bounds } from '@rulecad/printcheck';
 import { closest, closestAt, inside, distanceToFace, overlapAt } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
-import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase } from '@rulecad/gears';
+import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact } from '@rulecad/gears';
 import { ops as booleans } from '@rulecad/shapes';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -366,6 +367,18 @@ function motionOf(a, placed, num, ref) {
   return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes };
 }
 
+// A pair measured from its drawn teeth (@rulecad/gears contact: backlash, transmission error, interference), kept in
+// .cache/gears/ by the pair, the centre distance and the gears package's code, as it takes half a second
+let gearsCode = null;
+function measured(a, b, centre) {
+  gearsCode ||= (() => { const dir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))); return fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join(''); })();
+  const file = paths.cache('gears', `${crypto.createHash('sha256').update(JSON.stringify([gearsCode, a, b, +centre.toFixed(6)])).digest('hex')}.json`);
+  if (!process.env.CAD_NO_CACHE && host.exists(file)) return JSON.parse(host.readText(file));
+  const r = contact(a, b, { centre, steps: 12 }), keep = { findings: r.findings, backlash: r.backlash, error: r.error };
+  try { host.writeText(file, JSON.stringify(keep)); } catch {} // (only slower without it)
+  return keep;
+}
+
 // A planetary gearbox: "planetary": [{ "sun", "carrier", "ring", "planets": [items], "drive": "sun" | "carrier" | "ring",
 // "module", "teeth": [sun, planet, ring] }]. One of the sun, carrier and ring is held (no joint, or a fixed one); the
 // one named by drive turns on its joint, and every other moving part (the third, and each planet on the carrier)
@@ -432,6 +445,10 @@ function planetaries(list, joints, items, num) {
       if (Math.abs(miss) > 1e-6) f('fail', `planet ${p.id} can't mesh with the sun and the ring at once where it is (${(p.beta / DEG).toFixed(2)}° round the sun): planets go every ${(360 / planets.length).toFixed(2)}°, and (S + R) / planets must be whole (${S + R} / ${planets.length})`, 'planetary.phase', [O, centre]);
       const m = meshOf(sun, planet, { centre: p.r });
       for (const x of m.findings) f(x.level, `sun and ${p.id}: ${x.text}`, x.code, [O, centre]);
+      if (i === 0) {
+        for (const x of measured({ ...common, teeth: S }, { ...common, teeth: P }, p.r).findings) f(x.level, `sun and ${p.id}: ${x.text}`, x.code, [O, centre]);
+        for (const x of measured({ ...common, teeth: P }, { ...common, teeth: R, kind: 'internal' }, p.r).findings) f(x.level, `${p.id} and the ring: ${x.text}`, x.code, [O, centre]);
+      }
     });
     const ratioText = `the ${drive} drives the ${third}${held[0] === 'carrier' ? '' : ' and the planets'} (the ${held[0]} held): ${Number(Math.abs(k3).toFixed(4))} turns of the ${third} for each turn of the ${drive}, ${k3 * sg[drive] * sg[third] < 0 ? 'opposite ways' : 'the same way'}`;
     out.push({ joint: follower.id, with: lead.id, kind: 'planetary', text: ratioText, findings, between: [O, O], planetary: true });
@@ -492,13 +509,14 @@ function gearMeshes(joints, items, num) {
       const k = (Math.PI * A.pitch) / 360, g1 = angleIn(along(X1, Zr), U, Zr);
       j.follow = [lead.id, sTravel * s1 * k, sTravel * (k * g1 + rackPhase(A, at))];
       const m = meshOf(A, B, { centre: height });
-      result.findings = m.findings; result.between = [O1, [R0[0] + at * U[0], R0[1] + at * U[1], R0[2] + at * U[2]]]; result.text = m.text;
+      result.findings = [...m.findings, ...measured({ ...common, teeth: teeth[0], shift: shift[0] }, { ...common, teeth: teeth[1], kind: 'rack' }, height).findings]; result.between = [O1, [R0[0] + at * U[0], R0[1] + at * U[1], R0[2] + at * U[2]]]; result.text = m.text;
     } else {
       const O2 = org(W2), X2 = col(W2, 0), Z2 = col(W2, 2), ax2 = axisOf(j);
       if (Math.abs(Math.abs(dot(ax2.dir, Z2)) - 1) > 1e-6 || len(along(sub(O2, ax2.at), ax2.dir)) > 1e-4) throw new Error(`${what}: ${j.id} doesn't turn its gear about the gear's own centre and axis: anchor the gear's joint at its centre, along its axis`);
       if (Math.abs(Math.abs(dot(Z1, Z2)) - 1) > 1e-6) throw new Error(`${what}: ${lead.id} and ${j.id} turn about axes that aren't parallel (spur gears need parallel axes)`);
       const s = Math.sign(dot(Z1, Z2)), d = along(sub(O2, O1), Z1), beta = angleIn(d, X1, Z1), g2 = angleIn(along(X2, Z1), X1, Z1);
       const m = meshOf(A, B, { centre: len(d) });
+      m.findings.push(...measured({ ...common, teeth: teeth[0], shift: shift[0] }, { ...common, teeth: teeth[1], shift: shift[1] ?? 0, kind }, len(d)).findings);
       // b's angle in the driver's frame is ratio × a's + phase; its joint measures about its own z (the other way when flipped)
       j.follow = [lead.id, s * m.ratio, s * (phase(A, B, beta) - g2)];
       result.findings = m.findings; result.between = [O1, O2]; result.text = m.text;
