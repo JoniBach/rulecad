@@ -153,6 +153,9 @@ own copy anywhere and name it in `viewUrl`.
   `notchHinge`, `bistable`, `livingHinge` as shapes, each with a `<name>Model(shape, { E })` giving its stiffness and the
   strain at a travel, and `printable(shape, printer, material, model)` for how it prints. Drawn flat: bending along y,
   width up z, so a flexure bends within its layers.
+- `v.gears`: gears (`@rulecad/gears`): `spur`, `rack` and `internal` as shapes, from a module and teeth, each with its
+  model (`gearModel`, `rackModel`, `internalModel`) and `printable(model, printer, width)`. Drawn flat: the axis up z,
+  the first tooth on +x, the face on the bed. Two gears in an assembly mesh with a joint's `mesh` (see Joints).
 - A rule set can also carry `"footprints"` (pad data from @rulecad/pcb's `fromKicad`, with its source), which a
   board's code reads as `v.parts.footprints.usb_c`.
 - `cad clone` writes a rule set with a `"circuit"`: a published board's parts, pads, nets, planes and outline, read
@@ -267,7 +270,7 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   can't write or delete files, start programs or workers, or load addons, and it reads only the workspace and the
   packages designs use, by their real paths (a `node_modules` link spelled through another link, as macOS spells its
   temporary folders through `/tmp` and `/var`, is refused by name: make the link with the real path). To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
-  `@rulecad/flexures` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
+  `@rulecad/flexures`, `@rulecad/gears` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
   started with none of your environment (no tokens). Those shut the ordinary roads to the network, not every one:
   before Node 25 the permission model doesn't cover the network, so a design written to get round them might still
   reach it. Run only designs you trust. It gets its values as data and returns its parts; what it prints
@@ -357,6 +360,15 @@ then y, then z, as `rotate` does.
   from 0 to its length.
 - **Followers:** `"follow": "lid"` gives a joint another joint's values, times `ratio` (default 1), plus `offset`. Use
   it for the second hinge of a pair, or for gears.
+- **Gears:** `"mesh": { "with": "drive", "module": "pinion.module", "teeth": ["pinion.teeth", "wheel.teeth"] }` on a
+  revolute makes its gear follow the gear on the joint `with` names, at the ratio of their teeth and in phase: a tooth
+  of one sits in a gap of the other at every angle. On a prismatic it is a rack under a pinion (mm a turn); `"ring":
+  true` makes it a ring gear round its pinion. `shift` ([the driver's, this one's]), `pressureAngle` and `backlash` are
+  as `@rulecad/gears` takes them. Each gear is drawn as `v.gears` draws it (axis up its z, first tooth on +x; a rack
+  along its x, teeth up +y) and its joint is anchored at its centre, along its axis. The check gives the ratio, the
+  contact ratio and the centre distance (`mesh.centre`: closer than the gears need jams them, further adds backlash),
+  each placed between the two axes; `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
+  one part, or on parts held still: a planet on a turning carrier is not yet a mesh.
 - **Loops:** each item has one joint to its parent. Where parts join in a ring (two links between the same two
   parts), let joints place every part, then name the meeting that closes the ring in `loops`. The check measures it
   in every pose: `"loops": [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }]`. Its anchors

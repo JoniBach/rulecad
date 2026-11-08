@@ -29,6 +29,7 @@ import { bounds } from '@rulecad/printcheck';
 import { closest, closestAt, inside, distanceToFace } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
+import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase } from '@rulecad/gears';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -334,7 +335,8 @@ function motionOf(a, placed, num, ref) {
     });
     joints.push({ id: j.id, type: j.type, parent: p.item, child: c.item, a: p.frame, b: c.frame, dofs,
       ...(j.label ? { label: j.label } : {}), ...(path ? { path } : {}), ...(j.cone != null ? { cone: num(j.cone) } : {}),
-      ...(j.follow ? { follow: [j.follow, j.ratio != null ? num(j.ratio) : 1, j.offset != null ? num(j.offset) : 0] } : {}) });
+      ...(j.follow ? { follow: [j.follow, j.ratio != null ? num(j.ratio) : 1, j.offset != null ? num(j.offset) : 0] } : {}),
+      ...(j.mesh ? { meshSpec: j.mesh } : {}) });
   }
   for (const j of joints) if (j.follow) {
     const l = joints.find((x) => x.id === j.follow[0]);
@@ -347,6 +349,7 @@ function motionOf(a, placed, num, ref) {
     // A repeated item turns as a whole about its at: each copy's offset turns with it (keys on a tilted plate)
     return [c.id, ...rows(translate(base, rotate(rot, translate([c.offset[0], c.offset[1], 0], jscad.geometries.geom3.create()))).transforms)];
   });
+  const meshes = gearMeshes(joints, items, num);
   const poses = Object.fromEntries(Object.entries(a.poses || {}).map(([n, set]) => [n, Object.fromEntries(Object.entries(set).filter(([id]) => !id.includes('.')).map(([id, v]) => {
     if (!joints.some((j) => j.id === id)) throw new Error(`pose ${n}: no joint "${id}"`);
     return [id, Array.isArray(v) ? v.map(num) : num(v)];
@@ -358,7 +361,76 @@ function motionOf(a, placed, num, ref) {
   const marks = placed.flatMap(([, c], k) => Object.entries(c.src?.b?.object.anchors || {}).map(([name, spec]) => {
     try { return { item: k, id: c.id, name, frame: frameOf(spec, evalIn(c.src.b.values, `${c.src.objName} anchor ${name}`)) }; } catch { return null; }
   })).filter(Boolean);
-  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks };
+  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes };
+}
+
+// Gears that mesh: "mesh": { "with": <the driving joint>, "module", "teeth": [its, this one's], "shift"?, "ring"? } on
+// a revolute (a gear, or a ring with "ring": true) or a prismatic (a rack). It becomes a follow: the ratio from the
+// teeth, and the offset that puts a tooth in a gap, read from where the two gears are with their joints at 0. Each
+// gear is drawn as @rulecad/gears draws it (its axis up its own z, its first tooth on +x; a rack along its x, teeth up
+// +y, its first space at x = 0), and its joint turns it about its own axis. The centre distance is checked here, the
+// rest of the meshing by --sweep.
+function gearMeshes(joints, items, num) {
+  const out = [], list = (x) => (x == null ? [] : [].concat(x));
+  const col = (W, k) => [W[k], W[4 + k], W[8 + k]], org = (W) => [W[3], W[7], W[11]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const crossP = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const along = (v, axis) => sub(v, axis.map((x) => x * dot(v, axis))), len = (v) => Math.hypot(...v);
+  const angleIn = (v, x0, z) => Math.atan2(dot(crossP(x0, v), z), dot(x0, v)) / (Math.PI / 180); // v's angle from x0 about z, degrees
+  // Is an item held still relative to another: every joint between it and the world fixed (or no joint at all)?
+  const byChild = new Map(joints.map((j) => [j.child, j]));
+  const still = (i) => { for (let k = i, n = 0; k >= 0 && n < 99; n++) { const j = byChild.get(k); if (!j) return true; if (j.type !== 'fixed') return false; k = j.parent; } return true; };
+  for (const j of joints) {
+    if (!j.meshSpec) continue;
+    const spec = j.meshSpec, what = `joint ${j.id}: mesh`;
+    delete j.meshSpec;
+    if (j.follow) throw new Error(`${what}: a meshed joint follows its mate already: give mesh or follow, not both`);
+    const lead = joints.find((x) => x.id === spec.with);
+    if (!lead) throw new Error(`${what}: "with" names the driving joint (${joints.filter((x) => x !== j).map((x) => x.id).join(', ')}; got ${JSON.stringify(spec.with)})`);
+    if (lead.type !== 'revolute') throw new Error(`${what}: ${lead.id} is a ${lead.type}; the driver is a gear turning on a revolute`);
+    if (j.type !== 'revolute' && j.type !== 'prismatic') throw new Error(`${what}: a gear turns on a revolute, a rack slides on a prismatic (this is a ${j.type})`);
+    const kind = j.type === 'prismatic' ? 'rack' : spec.ring ? 'internal' : 'external';
+    if (!(lead.parent === j.parent || (still(lead.parent) && still(j.parent)))) throw new Error(`${what}: ${lead.id} and ${j.id} turn on parts that move apart (a planet on a carrier): a mesh needs both on one part, or both on parts held still`);
+    const teeth = list(spec.teeth).map(num), shift = list(spec.shift ?? [0, 0]).map(num);
+    if (teeth.length !== 2) throw new Error(`${what}: teeth is [the driver's, this one's] (got ${JSON.stringify(spec.teeth)})`);
+    const common = { module: num(spec.module), ...(spec.pressureAngle != null ? { pressureAngle: num(spec.pressureAngle) } : {}), ...(spec.backlash != null ? { backlash: num(spec.backlash) } : {}) };
+    let A, B;
+    try {
+      A = gearModel({ ...common, teeth: teeth[0], shift: shift[0] });
+      B = kind === 'rack' ? rackModel({ ...common, teeth: teeth[1] }) : (kind === 'internal' ? internalModel : gearModel)({ ...common, teeth: teeth[1], shift: shift[1] ?? 0 });
+    } catch (e) { throw new Error(`${what}: ${e.message}`); }
+    // Where the two gears are with their own joints at 0 (everything else as it stands by default)
+    const v = jointValues({ joints: joints.map((x) => (x.meshSpec ? { ...x, meshSpec: undefined } : x)), poses: {} }, {});
+    v[lead.id] = [0]; v[j.id] = [0];
+    const worlds = placeItems({ items, joints }, v), W1 = worlds[lead.child], W2 = worlds[j.child];
+    const axisOf = (jt) => { const P = mul(jt.parent < 0 ? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] : worlds[jt.parent], jt.a); return { at: org(P), dir: col(P, 2) }; };
+    const O1 = org(W1), X1 = col(W1, 0), Z1 = col(W1, 2), ax1 = axisOf(lead);
+    // the driver turns about its own centre and axis, or its teeth wander
+    if (Math.abs(Math.abs(dot(ax1.dir, Z1)) - 1) > 1e-6 || len(along(sub(O1, ax1.at), ax1.dir)) > 1e-4) throw new Error(`${what}: ${lead.id} doesn't turn its gear about the gear's own centre and axis: anchor the gear's joint at its centre, along its axis`);
+    const result = { joint: j.id, with: lead.id, kind, findings: [], between: null };
+    if (kind === 'rack') {
+      const R0 = org(W2), U = col(W2, 0), Y = col(W2, 1), Zr = col(W2, 2), ax2 = axisOf(j);
+      const sTravel = Math.sign(dot(ax2.dir, U));
+      if (Math.abs(Math.abs(dot(ax2.dir, U)) - 1) > 1e-6) throw new Error(`${what}: ${j.id} doesn't slide the rack along its length (the rack's x)`);
+      if (Math.abs(Math.abs(dot(Z1, Zr)) - 1) > 1e-6) throw new Error(`${what}: the pinion's axis isn't across the rack (along the rack's z)`);
+      const s1 = Math.sign(dot(Z1, Zr)), rel = sub(O1, R0), at = dot(rel, U), height = dot(rel, Y);
+      const k = (Math.PI * A.pitch) / 360, g1 = angleIn(along(X1, Zr), U, Zr);
+      j.follow = [lead.id, sTravel * s1 * k, sTravel * (k * g1 + rackPhase(A, at))];
+      const m = meshOf(A, B, { centre: height });
+      result.findings = m.findings; result.between = [O1, [R0[0] + at * U[0], R0[1] + at * U[1], R0[2] + at * U[2]]]; result.text = m.text;
+    } else {
+      const O2 = org(W2), X2 = col(W2, 0), Z2 = col(W2, 2), ax2 = axisOf(j);
+      if (Math.abs(Math.abs(dot(ax2.dir, Z2)) - 1) > 1e-6 || len(along(sub(O2, ax2.at), ax2.dir)) > 1e-4) throw new Error(`${what}: ${j.id} doesn't turn its gear about the gear's own centre and axis: anchor the gear's joint at its centre, along its axis`);
+      if (Math.abs(Math.abs(dot(Z1, Z2)) - 1) > 1e-6) throw new Error(`${what}: ${lead.id} and ${j.id} turn about axes that aren't parallel (spur gears need parallel axes)`);
+      const s = Math.sign(dot(Z1, Z2)), d = along(sub(O2, O1), Z1), beta = angleIn(d, X1, Z1), g2 = angleIn(along(X2, Z1), X1, Z1);
+      const m = meshOf(A, B, { centre: len(d) });
+      // b's angle in the driver's frame is ratio × a's + phase; its joint measures about its own z (the other way when flipped)
+      j.follow = [lead.id, s * m.ratio, s * (phase(A, B, beta) - g2)];
+      result.findings = m.findings; result.between = [O1, O2]; result.text = m.text;
+    }
+    out.push(result);
+  }
+  return out;
 }
 
 // Where each item's anchors are in a pose: [{ id: 'keyboard@pivot', item, at: [x, y, z] }]
@@ -506,6 +578,14 @@ export function checkAssembly(s) {
     }
     if (outside.length) f('fail', `joints out of range: ${outside.join(', ')}`, `${outside.length} joints out of range`, { code: 'joint.range', refs: { joints: outside } });
     for (const l of loopGaps(s)) f(l.ok ? 'pass' : 'fail', `${l.label}: ${l.ok ? 'closed' : 'apart'} (${mm(l.gap)} mm, axes ${mm(l.angle)}° apart)`, `${l.label}: ${l.ok ? 'closed' : 'apart'}`, { code: 'loop', values: { gap: l.gap, angle: l.angle }, refs: { label: l.label } });
+    // Gears: each mesh's centre distance and contact ratio, said between the two axes (the rest by --sweep)
+    for (const g of s.motion.meshes || []) {
+      f('info', `${g.with} drives ${g.joint}: ${g.text}`, null, { code: 'mesh.ratio', refs: { joints: [g.with, g.joint] } });
+      for (const x of g.findings) {
+        const mid = g.between[0].map((v, k) => (v + g.between[1][k]) / 2);
+        f(x.level, `${g.with} and ${g.joint}: ${x.text}`, x.level === 'pass' ? null : `${g.joint}: ${x.code.split('.')[1]}`, { code: x.code, at: mid, between: g.between, ...(x.values ? { values: x.values } : {}), refs: { joints: [g.with, g.joint] } });
+      }
+    }
   }
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
