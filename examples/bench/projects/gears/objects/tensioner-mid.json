@@ -25,9 +25,9 @@
       "rule": "Face width, forty layers"
     },
     "bore": {
-      "value": "4 + x1c.line / 2",
+      "value": "6 + x1c.line / 2",
       "unit": "mm",
-      "rule": "A 4 mm shaft, half a line clear"
+      "rule": "On the frame's 6 mm pin, half a line clear, so it turns"
     },
     "teeth": {
       "value": 34,

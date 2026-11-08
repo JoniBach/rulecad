@@ -7,7 +7,7 @@
     "x1c"
   ],
   "engine": "manifold",
-  "description": "The base the three shafts stand in (4 mm steel rods, pressed in) and the post the pawl stands on, outside every gear's reach.",
+  "description": "The base with the three shafts printed standing on it (6 mm pins the gears turn on) and the post the pawl stands on, outside every gear's reach.",
   "variables": {
     "length": {
       "value": 162,
@@ -28,11 +28,6 @@
       "value": "x1c.layer * 40",
       "unit": "mm",
       "rule": "Eight millimetres: deep enough to hold a rod upright"
-    },
-    "rod": {
-      "value": "4 - x1c.line / 4",
-      "unit": "mm",
-      "rule": "A 4 mm rod pressed in: a quarter line under"
     },
     "mid_x": {
       "value": 38.25,
@@ -63,6 +58,26 @@
       "value": 18.4,
       "unit": "mm",
       "rule": "Up to the ratchet's level, two layers' gap and all"
+    },
+    "pin": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The shafts, printed with the frame: 6 mm keeps the crank's pin under 7 MPa at a 4.6 N pull"
+    },
+    "crank_pin": {
+      "value": 33.4,
+      "unit": "mm",
+      "rule": "Up the crank's tube to just under its arm"
+    },
+    "mid_pin": {
+      "value": 16.9,
+      "unit": "mm",
+      "rule": "Up through the middle shaft's two gears"
+    },
+    "out_pin": {
+      "value": 43.9,
+      "unit": "mm",
+      "rule": "Up through the spool shaft's gear, ratchet and spool"
     }
   }
 }

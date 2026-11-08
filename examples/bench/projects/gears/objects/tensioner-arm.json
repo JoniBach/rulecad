@@ -10,9 +10,9 @@
   "description": "The crank arm and handle, printed flat, slipped onto the crank shaft's flat.",
   "variables": {
     "shaft": {
-      "value": 8,
+      "value": 10,
       "unit": "mm",
-      "rule": "The crank shaft's diameter"
+      "rule": "The crank tube's diameter"
     },
     "flat": {
       "value": 1.5,

@@ -170,9 +170,8 @@ npx cad export gears/sampler-gears
 ## The strap tensioner
 
 `gears/tensioner`: a crank through two herringbone stages (17 to 34, then 17 to 51: six turns of the crank for one of
-the spool) to a spool held by a ratchet and a leaf pawl, on a frame. The three shafts are 4 mm steel rods (drawn as
-reference parts: bought, not printed) pressed into the frame's base; the pawl stands on a post on the frame, outside
-every gear's reach. The ratchet is on the spool's shaft, so the gears carry the
+the spool) to a spool held by a ratchet and a leaf pawl, on a frame. The gears turn on three 6 mm pins printed
+standing on the frame's base; the pawl stands on a post on the frame, outside every gear's reach. The ratchet is on the spool's shaft, so the gears carry the
 winding and never the held load. Herringbone teeth push nothing along their shafts, so the gears stay put without
 collars. `npx cad check gears/tensioner --sweep` turns the crank through a whole turn with both stages in phase.
 
@@ -192,7 +191,7 @@ length still holds: at three lines, as first drawn, holding 100 N would have fol
 
 Every part prints without supports: the crank's arm is its own part, printed flat and slipped onto a flat on the
 crank shaft; the second pinion's teeth run straight down onto the gear under them; the ratchet sits on a spacer as wide
-as itself; the spool's top flange slants in at 45°; the frame prints base down, its post standing. Not yet right: the pawl's seat on
+as itself; the spool's top flange slants in at 45°; the frame prints base down, its pins and post standing. Not yet right: the pawl's seat on
 the ratchet is set by eye (the check allows it into the teeth, where it would bend); checking it as a flexure through the ratchet's turn is
 for the flexures package's lamina tools, next.
 

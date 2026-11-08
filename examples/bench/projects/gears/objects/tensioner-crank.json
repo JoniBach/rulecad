@@ -25,18 +25,18 @@
       "rule": "Face width, forty layers"
     },
     "bore": {
-      "value": "4 + x1c.line / 2",
+      "value": "6 + x1c.line / 2",
       "unit": "mm",
-      "rule": "A 4 mm shaft, half a line clear"
+      "rule": "On the frame's 6 mm pin, half a line clear, so it turns"
     },
     "teeth": {
       "value": 17,
       "rule": "The fewest at 20\u00b0 without a shift"
     },
     "shaft": {
-      "value": 8,
+      "value": 10,
       "unit": "mm",
-      "rule": "The crank's shaft, inside the pinion's roots"
+      "rule": "The crank's tube round its 6 mm pin, inside the pinion's roots"
     },
     "shaft_top": {
       "value": 34,

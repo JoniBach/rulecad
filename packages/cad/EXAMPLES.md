@@ -460,6 +460,7 @@ export function main (v) {
   "title": "Slide base",
   "version": "0.1.0",
   "uses": ["x1c"],
+  "engine": "manifold",
   "anchors": {
     "axle": { "at": [0, "centre", "thick"], "axis": [0, 0, 1] },
     "track": { "at": ["start", 0, "thick"], "axis": [1, 0, 0] }
@@ -470,21 +471,32 @@ export function main (v) {
     "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the knob at rest: half its 24 teeth, 12 × π" },
     "wide": { "value": 40, "unit": "mm", "rule": "Under the rack and the knob" },
     "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
-    "middle": { "value": "wide / 4", "unit": "mm", "rule": "The plate's middle, between the rack and the knob" }
+    "middle": { "value": "wide / 4", "unit": "mm", "rule": "The plate's middle, between the rack and the knob" },
+    "pin": { "value": "3.2 - x1c.line / 2", "unit": "mm", "rule": "The axle: the pinion's 3.2 mm bore less half a line, so it turns" },
+    "pin_height": { "value": "x1c.layer * 60", "unit": "mm", "rule": "Up through the pinion and its knob" },
+    "guide_y": { "value": "0 - 5.45 - x1c.line / 2", "unit": "mm", "rule": "Behind the rack's back (1.25 + 4.2 mm under its pitch line), half a line clear" },
+    "guide": { "value": "x1c.line * 4", "unit": "mm", "rule": "The guide wall: four lines" },
+    "guide_height": { "value": "x1c.layer * 20", "unit": "mm", "rule": "Most of the rack's width" }
   }
 }
 ```
 
 ```js projects/home/objects/rail.js
-// The base: a plate under the rack's travel and the knob, the axle above the rack.
+// The base: a plate under the rack's travel and the knob, the pinion's axle standing above the rack, and a wall behind
+// the rack so it slides straight and can't back away from the pinion.
 import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
 
 export function main (v) {
-  return jscad.primitives.cuboid({ size: [v.length, v.wide, v.thick], center: [0, v.middle, v.thick / 2] })
+  const plate = cuboid({ size: [v.length, v.wide, v.thick], center: [0, v.middle, v.thick / 2] })
+  const axle = cylinder({ radius: v.pin / 2, height: v.pin_height, center: [0, v.centre, v.thick + v.pin_height / 2] })
+  const guide = cuboid({ size: [v.length, v.guide, v.guide_height], center: [0, v.guide_y - v.guide / 2, v.thick + v.guide_height / 2] })
+  return v.ops.union(plate, axle, guide)
 }
 ```
 
-The assembly: the knob turns on the base's axle, and the rack slides along its track, its middle under the knob at
+The assembly: the knob turns on the base's axle (a pin printed with the base), and the rack slides along its track
+against a guide wall, its middle under the knob at
 rest, so half a turn either way (±22 mm) keeps the pinion on its teeth. The slide's joint doesn't say
 how far it moves for a turn of the knob: its `mesh` says which joint drives it, and the gears' module and teeth (read
 from the parts, so they can't disagree). The check works out the travel a turn and the phase that puts a tooth in a
