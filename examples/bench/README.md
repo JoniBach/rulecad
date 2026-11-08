@@ -130,3 +130,35 @@ hangs clear of the bench.
 `bench/bracket-bench` is the rig assembled with a bracket.
 
 Test them as the levers: preload, zero, load in steps (stop before 1 mm), unload, three repeats on three prints.
+
+## The gear sampler
+
+`projects/gears`: what backlash and module print well on this printer, so `@rulecad/gears` can start from measured
+numbers rather than estimates (its `DEFAULTS` say which are estimates).
+
+- **`gears/sampler`**, the plate (240 × 229 mm): a pair of 3 mm pins for each of four modules (0.8, 1, 1.5, 2) at each
+  of three backlashes (0.1, 0.2, 0.3 mm), each pair at its centre distance and labelled `M1 B0.2` and so on. The front
+  row is a module 1 rack and a 40-tooth ring printed into the plate, each with a pin for its pinion.
+- **`gears/sampler-gears`**, the gears (248 × 136 mm): 17 teeth each, a row a module, a pair at each backlash. One, two
+  or three dots on the top face say the backlash (0.1, 0.2, 0.3). The last two are the rack's and the ring's pinions
+  (module 1, two dots).
+
+Print both in PLA at the X1C's defaults (0.2 mm layers), gears face down as exported. Press each pair onto the pins its
+label names, dots up.
+
+For each pair, record:
+
+1. **Turns freely?** Turn one gear a whole turn by hand: smooth, tight in places, or binding.
+2. **Play:** hold one gear still and rock the other: none you can feel, a little, or a knock.
+3. **Teeth:** for module 0.8 especially, whether the teeth printed whole, with their tips and roots, or as blobs.
+4. **The rack and the ring:** whether the pinion runs the rack's whole length, and round the whole ring, without
+   catching.
+
+The smallest backlash that turns freely at each module becomes the kit's default (with the plate named as its
+source, `kind: measured`); the smallest module whose teeth printed whole becomes its floor.
+
+```sh
+npx cad check gears/sampler
+npx cad export gears/sampler
+npx cad export gears/sampler-gears
+```

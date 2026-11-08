@@ -908,6 +908,10 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(run(ws, ['check', 'home/arm']).out, /arm down: moves [\d.]+ mm under 10 N/);
     assert.match(run(ws, ['check', 'home/pad']).out, /matrix: 4 keys on 2 rows × 2 columns/);
     assert.ok(fs.readdirSync(path.join(ws, '.preview/home')).some((f) => f.endsWith('flick-sequence.svg')), 'the mechanism animated');
+    const slider = run(ws, ['check', 'home/slider']).out;
+    assert.match(slider, /knob drives slide: 43\.98 mm of rack a turn/, 'the gears: travel a turn');
+    assert.match(slider, /knob and slide: centre distance 7\.2 mm, as they need/);
+    assert.match(run(ws, ['check', 'home/slider', '--sweep', '--steps', '12']).out, /sweep knob, -180 to 180° in 12 steps: nothing collides/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -959,4 +963,50 @@ test('a node_modules link spelled through another link: the sandbox names the li
     assert.match(out, new RegExp(`sandbox was refused ${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, a link to ${real.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), out);
     assert.match(out, /Make that link with its real path/);
   } finally { done(); fs.rmSync(alias, { force: true }); fs.rmSync(real, { recursive: true, force: true }); }
+});
+
+test('gears in an assembly: mesh turns a joint into its mate\'s follower in phase, the centre distance is checked, and the sweep proves it turns', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const gear = (teeth) => ({ variables: { module: { value: 1, unit: 'mm', rule: 'Tooth size' }, teeth: { value: teeth, rule: 'Teeth' }, width: { value: 6, unit: 'mm', rule: 'Face width' }, bore: { value: 3, unit: 'mm', rule: 'Shaft' } },
+      anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } } });
+    const GEAR = 'export function main (v) { return v.gears.spur({ module: v.module, teeth: v.teeth, width: v.width, bore: v.bore }) }\n';
+    object(ws, 'demo/pinion', gear(18), GEAR);
+    object(ws, 'demo/wheel', gear(30), GEAR);
+    object(ws, 'demo/bar', { variables: { module: { value: 1, unit: 'mm', rule: 'Tooth size' }, teeth: { value: 20, rule: 'Teeth' }, width: { value: 6, unit: 'mm', rule: 'Face width' } }, anchors: { slide: { at: [0, 0, 0], axis: [1, 0, 0] } } },
+      'export function main (v) { return v.gears.rack({ module: v.module, teeth: v.teeth, width: v.width }) }\n');
+    object(ws, 'demo/plate', { variables: { t: { value: 2, unit: 'mm', rule: 'Plate' } } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [40, 30, v.t], center: [0, -40, v.t / 2] }) }\n");
+    fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'));
+    const train = (wheelAt, wheel = {}) => fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/train.json'), JSON.stringify({ title: 'Train', kind: 'fit',
+      items: [{ id: 'plate', object: 'plate' }, { id: 'pinion', object: 'pinion' }, { id: 'wheel', object: 'wheel' }, { id: 'bar', object: 'bar' }],
+      joints: [
+        { id: 'drive', type: 'revolute', parent: { item: 'plate', at: [0, 0, 'plate.t'], axis: [0, 0, 1] }, child: 'pinion.axis', min: -90, max: 90, label: 'Crank' },
+        { id: 'wheel', type: 'revolute', parent: { item: 'plate', at: [0, wheelAt, 'plate.t'], axis: [0, 0, 1] }, child: 'wheel.axis', min: -360, max: 360, ...wheel },
+        // the rack under the pinion: its pitch line 9 mm below the pinion's centre (the pitch radius), along x
+        { id: 'slide', type: 'prismatic', parent: { item: 'plate', at: [-31.4, -9, 'plate.t'], axis: [1, 0, 0] }, child: 'bar.slide', min: -40, max: 40, mesh: { with: 'drive', module: 'pinion.module', teeth: ['pinion.teeth', 'bar.teeth'] } }],
+    }));
+    const meshed = { mesh: { with: 'drive', module: 'pinion.module', teeth: ['pinion.teeth', 'wheel.teeth'] } };
+    train(24, meshed);
+    const checked = cad('check', 'demo/train');
+    assert.match(checked, /drive drives wheel: 0\.6 turns of the second for each turn of the first \(18:30\), turning opposite ways/);
+    assert.match(checked, /drive and wheel: centre distance 24 mm, as they need: 0\.15 mm of backlash/);
+    assert.match(checked, /drive and slide: centre distance 9 mm, as they need/);
+    assert.match(checked, /drive drives slide: 56\.55 mm of rack a turn/);
+    assert.match(checked, /no parts overlap/);
+    const swept = cad('check', 'demo/train', '--sweep', '--steps', '18');
+    assert.match(swept, /sweep drive, -90 to 90° in 18 steps: nothing collides/, swept);
+    // the same follow without the phase: the teeth meet
+    train(24, { follow: 'drive', ratio: -0.6, offset: 0 });
+    assert.match(cad('check', 'demo/train', '--sweep', '--steps', '18'), /sweep drive, -90 to 90° in 18 steps: .*pinion\.body hits wheel\.body/);
+    // axes too close: said, between them
+    train(23.8, meshed);
+    const close = JSON.parse(cad('check', 'demo/train', '--json')).findings.find((x) => x.code === 'mesh.centre' && x.text.startsWith('drive and wheel'));
+    assert.equal(close.level, 'fail'); assert.match(close.text, /0\.2 mm closer than these gears need \(24 mm\): the teeth jam/);
+    assert.deepEqual(close.between.map((p) => p.map((x) => +x.toFixed(6))), [[0, 0, 2], [0, 23.8, 2]]);
+    // what isn't a mesh
+    train(24, { mesh: { with: 'nothing', module: 1, teeth: [18, 30] } });
+    assert.match(cad('check', 'demo/train'), /joint wheel: mesh: "with" names the driving joint/);
+    train(24, { mesh: { with: 'drive', module: 1, teeth: [12, 30] } });
+    assert.match(cad('check', 'demo/train'), /joint wheel: mesh: gearModel: 12 teeth at 20° are undercut/);
+  } finally { done(); }
 });

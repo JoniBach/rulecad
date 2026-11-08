@@ -2,7 +2,7 @@
 
 [The tutorial](TUTORIAL.md) ends with a wall hook checked against its screw. These examples carry on from there, one
 for each thing the [README](README.md) describes after that: parts, variants and releases, joints and poses, a model
-from elsewhere, an optimised part, a board, and a mechanism printed flat. Each is a few files and the commands to run
+from elsewhere, an optimised part, a board, a mechanism printed flat, and gears. Each is a few files and the commands to run
 them. The tests write every file here and run every command, so what you read is what works.
 
 They start from a workspace `npm create rulecad my-designs` makes, as the tutorial does, and run in order: later
@@ -384,3 +384,138 @@ npx cad animate home/flick
 `animate` writes the sequence as an animated SVG in `.preview/`, the leaf drawn bent, and a page that plays it with
 the force on each step. The launcher in `examples/bench/projects/launcher` is the same idea at full size: a flooded
 frame, catches, a trigger, and a shot.
+
+## 8. Gears: a focus slider on a rack and pinion
+
+A slide for a phone or a small camera, moved by a knob: a pinion turns, and a rack carries the slide along. The gears
+come from `v.gears` (`@rulecad/gears`), drawn from their module and teeth; the assembly says which gear drives which,
+and the check works out the rest.
+
+The pinion has 14 teeth. Fewer than 17 at the standard 20° are undercut, so it is drawn with a profile shift of 0.2,
+which `@rulecad/gears` names when it refuses one without (`give a profile shift of at least 0.19`). One turn of the knob
+moves the slide π × 14 × 1 = 43.98 mm.
+
+```json projects/home/objects/pinion.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "pinion",
+  "title": "Focus knob and pinion",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "anchors": { "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] } },
+  "variables": {
+    "module": { "value": 1, "unit": "mm", "rule": "Tooth size: 3.6 lines across a tooth at the pitch circle on the X1C" },
+    "teeth": { "value": 14, "rule": "Few teeth for a fine travel a turn" },
+    "shift": { "value": 0.2, "rule": "Profile shift: 14 teeth at 20° need at least 0.19, or they are undercut" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "Face width, thirty layers" },
+    "bore": { "value": 3.2, "unit": "mm", "rule": "An M3 screw as its axle, 0.2 mm clear" },
+    "knob": { "value": 5.5, "unit": "mm", "rule": "The knob's radius, inside the teeth's roots" },
+    "grip": { "value": "x1c.layer * 40", "unit": "mm", "rule": "The knob's height, forty layers" }
+  }
+}
+```
+
+```js projects/home/objects/pinion.js
+// A pinion with a knob on top: the gear's face on the bed, the knob printed on it.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+const { union, subtract } = jscad.booleans
+
+export function main (v) {
+  const gear = v.gears.spur({ module: v.module, teeth: v.teeth, shift: v.shift, width: v.width, bore: v.bore })
+  const knob = cylinder({ radius: v.knob, height: v.grip, center: [0, 0, v.width + v.grip / 2] })
+  const hole = cylinder({ radius: v.bore / 2, height: v.grip, center: [0, 0, v.width + v.grip / 2] })
+  return union(gear, subtract(knob, hole))
+}
+```
+
+```json projects/home/objects/rack.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "rack",
+  "title": "Slide rack",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "anchors": { "slide": { "at": [0, 0, 0], "axis": [1, 0, 0] } },
+  "variables": {
+    "module": { "value": 1, "unit": "mm", "rule": "The pinion's module: gears that mesh share it" },
+    "teeth": { "value": 24, "rule": "Long enough for 60 mm of travel" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "The pinion's face width" },
+    "back": { "value": "x1c.line * 10", "unit": "mm", "rule": "Bar under the teeth: ten lines" }
+  }
+}
+```
+
+```js projects/home/objects/rack.js
+// The rack: along x, its teeth up +y, its pitch line on y = 0.
+export function main (v) {
+  return v.gears.rack({ module: v.module, teeth: v.teeth, width: v.width, height: v.back })
+}
+```
+
+```json projects/home/objects/rail.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "rail",
+  "title": "Slide base",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "anchors": {
+    "axle": { "at": [0, "centre", "thick"], "axis": [0, 0, 1] },
+    "track": { "at": ["start", 0, "thick"], "axis": [1, 0, 0] }
+  },
+  "variables": {
+    "centre": { "value": 7.2, "unit": "mm", "rule": "The pinion's axle above the rack's pitch line: its pitch radius and its shift, m z / 2 + x m" },
+    "length": { "value": 140, "unit": "mm", "rule": "Room for the rack's whole travel" },
+    "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the knob at rest: half its 24 teeth, 12 × π" },
+    "wide": { "value": 40, "unit": "mm", "rule": "Under the rack and the knob" },
+    "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" }
+  }
+}
+```
+
+```js projects/home/objects/rail.js
+// The base: a plate under the rack's travel and the knob, the axle above the rack.
+import jscad from '@jscad/modeling'
+
+export function main (v) {
+  return jscad.primitives.cuboid({ size: [v.length, v.wide, v.thick], center: [0, v.wide / 4, v.thick / 2] })
+}
+```
+
+The assembly: the knob turns on the base's axle, and the rack slides along its track, its middle under the knob at
+rest, so half a turn either way (±22 mm) keeps the pinion on its teeth. The slide's joint doesn't say
+how far it moves for a turn of the knob: its `mesh` says which joint drives it, and the gears' module and teeth (read
+from the parts, so they can't disagree). The check works out the travel a turn and the phase that puts a tooth in a
+gap, and says whether the axle is where the gears need it.
+
+```json projects/home/assemblies/slider.json
+{
+  "title": "Focus slider",
+  "kind": "fit",
+  "items": [
+    { "id": "rail", "object": "rail" },
+    { "id": "pinion", "object": "pinion" },
+    { "id": "rack", "object": "rack" }
+  ],
+  "joints": [
+    { "id": "knob", "type": "revolute", "parent": "rail.axle", "child": "pinion.axis", "min": -180, "max": 180, "label": "Knob" },
+    { "id": "slide", "type": "prismatic", "parent": "rail.track", "child": "rack.slide", "min": -100, "max": 100,
+      "mesh": { "with": "knob", "module": "pinion.module", "teeth": ["pinion.teeth", "rack.teeth"], "shift": ["pinion.shift", 0] } }
+  ],
+  "poses": { "home": { "knob": 0 }, "out": { "knob": 150 } }
+}
+```
+
+```sh
+npx cad check home/slider
+npx cad check home/slider --sweep --steps 12
+```
+
+The check says `knob drives slide: 43.98 mm of rack a turn`, the contact ratio, and that the axle is where the gears
+need it (`centre distance 7.2 mm, as they need`). Set the base's `centre` to 7 and it fails: the teeth would jam. The
+sweep turns the knob from −180° to 180° with the rack following, and names any teeth that touch on the way. The link
+carries the knob as a slider, with the rack moving with it: `npx cad link home/slider --md`.
+
+To see the gears' geometry, `@rulecad/gears/diagram` draws a pair the way a textbook does: pitch and base circles,
+the line of action and the path of contact.

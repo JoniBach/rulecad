@@ -100,7 +100,22 @@
         "ratio": { "$ref": "#/$defs/expr" },
         "offset": { "$ref": "#/$defs/values" },
         "path": { "type": "array", "items": { "$ref": "#/$defs/vec3" } },
-        "cone": { "$ref": "#/$defs/expr" }
+        "cone": { "$ref": "#/$defs/expr" },
+        "mesh": {
+          "type": "object",
+          "description": "Gears: this joint's gear meshes with the gear on the joint named by with, which drives it",
+          "required": ["with", "module", "teeth"],
+          "additionalProperties": false,
+          "properties": {
+            "with": { "type": "string" },
+            "module": { "$ref": "#/$defs/expr" },
+            "teeth": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/expr" } },
+            "shift": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/expr" } },
+            "pressureAngle": { "$ref": "#/$defs/expr" },
+            "backlash": { "$ref": "#/$defs/expr" },
+            "ring": { "type": "boolean" }
+          }
+        }
       }
     },
     "loop": {
