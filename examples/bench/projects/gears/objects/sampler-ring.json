@@ -1,0 +1,45 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "sampler-ring",
+  "title": "Gear sampler: the ring",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "description": "The sampler's loose ring gear: it turns inside the plate's lip as its pinion turns.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Module 1"
+    },
+    "teeth": {
+      "value": 40,
+      "rule": "As the plate's ring_teeth"
+    },
+    "backlash": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "As the plate's check_backlash"
+    },
+    "width": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "As the gears"
+    }
+  }
+}

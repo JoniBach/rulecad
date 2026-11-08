@@ -1,0 +1,928 @@
+{
+  "title": "Gear sampler, mounted",
+  "kind": "fit",
+  "description": "Every sampler gear on the pin its label names, each pair meshed; the rack on its rail and the ring in its lip, each driven by its pinion. Written by make-sampler.mjs from sampler-layout.mjs, which the plate reads too.",
+  "items": [
+    {
+      "id": "plate",
+      "object": "sampler"
+    },
+    {
+      "id": "rack-pinion",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "ring-pinion",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m0_8-b0_1-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m0_8-b0_1-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m0_8-b0_2-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m0_8-b0_2-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m0_8-b0_3-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "m0_8-b0_3-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "m1-b0_1-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m1-b0_1-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m1-b0_2-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m1-b0_2-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m1-b0_3-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "m1-b0_3-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "m1_5-b0_1-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1.5,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m1_5-b0_1-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1.5,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m1_5-b0_2-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1.5,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m1_5-b0_2-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1.5,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m1_5-b0_3-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1.5,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "m1_5-b0_3-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 1.5,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "m2-b0_1-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 2,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m2-b0_1-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 2,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "m2-b0_2-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 2,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m2-b0_2-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 2,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "m2-b0_3-a",
+      "object": "sampler-gear",
+      "set": {
+        "module": 2,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "m2-b0_3-b",
+      "object": "sampler-gear",
+      "set": {
+        "module": 2,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "rack",
+      "object": "sampler-rack"
+    },
+    {
+      "id": "ring",
+      "object": "sampler-ring"
+    }
+  ],
+  "joints": [
+    {
+      "id": "rack-pinion",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          49.4159,
+          25.84,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "rack-pinion.axis",
+      "min": -80,
+      "max": 80
+    },
+    {
+      "id": "ring-pinion",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          211.5,
+          36.14,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "ring-pinion.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m0_8-b0_1-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          33.2,
+          85.88,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m0_8-b0_1-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m0_8-b0_1-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          46.8,
+          85.88,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m0_8-b0_1-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m0_8-b0_1-a",
+        "module": 0.8,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m0_8-b0_2-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          113.2,
+          85.88,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m0_8-b0_2-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m0_8-b0_2-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          126.8,
+          85.88,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m0_8-b0_2-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m0_8-b0_2-a",
+        "module": 0.8,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m0_8-b0_3-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          193.2,
+          85.88,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m0_8-b0_3-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m0_8-b0_3-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          206.8,
+          85.88,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m0_8-b0_3-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m0_8-b0_3-a",
+        "module": 0.8,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m1-b0_1-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          31.5,
+          118.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1-b0_1-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m1-b0_1-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          48.5,
+          118.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1-b0_1-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m1-b0_1-a",
+        "module": 1,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m1-b0_2-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          111.5,
+          118.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1-b0_2-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m1-b0_2-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          128.5,
+          118.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1-b0_2-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m1-b0_2-a",
+        "module": 1,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m1-b0_3-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          191.5,
+          118.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1-b0_3-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m1-b0_3-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          208.5,
+          118.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1-b0_3-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m1-b0_3-a",
+        "module": 1,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m1_5-b0_1-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          27.25,
+          158.73,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1_5-b0_1-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m1_5-b0_1-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          52.75,
+          158.73,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1_5-b0_1-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m1_5-b0_1-a",
+        "module": 1.5,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m1_5-b0_2-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          107.25,
+          158.73,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1_5-b0_2-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m1_5-b0_2-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          132.75,
+          158.73,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1_5-b0_2-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m1_5-b0_2-a",
+        "module": 1.5,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m1_5-b0_3-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          187.25,
+          158.73,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1_5-b0_3-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m1_5-b0_3-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          212.75,
+          158.73,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m1_5-b0_3-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m1_5-b0_3-a",
+        "module": 1.5,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m2-b0_1-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          23,
+          207.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m2-b0_1-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m2-b0_1-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          57,
+          207.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m2-b0_1-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m2-b0_1-a",
+        "module": 2,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m2-b0_2-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          103,
+          207.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m2-b0_2-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m2-b0_2-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          137,
+          207.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m2-b0_2-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m2-b0_2-a",
+        "module": 2,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "m2-b0_3-a",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          183,
+          207.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m2-b0_3-a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "m2-b0_3-b",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          217,
+          207.98,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "m2-b0_3-b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "m2-b0_3-a",
+        "module": 2,
+        "teeth": [
+          17,
+          17
+        ]
+      }
+    },
+    {
+      "id": "rack",
+      "type": "prismatic",
+      "parent": {
+        "item": "plate",
+        "at": [
+          18,
+          17.34,
+          "plate.thick"
+        ],
+        "axis": [
+          1,
+          0,
+          0
+        ]
+      },
+      "child": "rack.slide",
+      "min": -12,
+      "max": 12,
+      "mesh": {
+        "with": "rack-pinion",
+        "module": 1,
+        "teeth": [
+          17,
+          20
+        ]
+      }
+    },
+    {
+      "id": "ring",
+      "type": "revolute",
+      "parent": {
+        "item": "plate",
+        "at": [
+          200,
+          36.14,
+          "plate.thick"
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "ring.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "ring-pinion",
+        "module": 1,
+        "teeth": [
+          17,
+          40
+        ],
+        "ring": true
+      }
+    }
+  ]
+}

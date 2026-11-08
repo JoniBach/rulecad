@@ -9,6 +9,9 @@
     "tensioner-mid",
     "tensioner-out",
     "tensioner-pawl",
-    "tensioner-arm"
+    "tensioner-arm",
+    "sampler-gear",
+    "sampler-rack",
+    "sampler-ring"
   ]
 }

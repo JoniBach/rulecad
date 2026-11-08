@@ -1,0 +1,82 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "sampler-gear",
+  "title": "Gear sampler: a gear",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "One of the sampler's gears, marked on top with as many dots as its backlash's place (one for 0.1, two for 0.2, three for 0.3): the mounted assembly sets its module, backlash and dots.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Set by the assembly: the pair's row",
+      "tweak": {
+        "min": 0.5,
+        "max": 3
+      }
+    },
+    "teeth": {
+      "value": 17,
+      "rule": "The fewest at 20\u00b0 without a shift"
+    },
+    "backlash": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Set by the assembly: the pair's column",
+      "tweak": {
+        "min": 0,
+        "max": 0.5
+      }
+    },
+    "width": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "Face width, twenty layers, as the plate's pins expect"
+    },
+    "dots": {
+      "value": 2,
+      "rule": "Set by the assembly: the backlash's place",
+      "tweak": {
+        "min": 1,
+        "max": 3
+      }
+    },
+    "bore": {
+      "value": "3 + x1c.line",
+      "unit": "mm",
+      "rule": "The plate's 3 mm pin and a line's clearance, so it turns"
+    },
+    "dot": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "A marking dot three lines across"
+    },
+    "dot_height": {
+      "value": "x1c.layer * 3",
+      "unit": "mm",
+      "rule": "Three layers proud"
+    },
+    "dot_pitch": {
+      "value": "x1c.line * 5",
+      "unit": "mm",
+      "rule": "Dots five lines apart"
+    }
+  }
+}

@@ -7,7 +7,7 @@
     "x1c"
   ],
   "engine": "manifold",
-  "description": "Pins for twelve pairs of 17-tooth gears, four modules by three backlashes, each pair at its centre distance and labelled; a rack and a ring gear printed into the plate, each with a pin for its pinion. Print it with sampler-gears, press the gears on, and record which pairs turn freely and how much play each has.",
+  "description": "Pins for twelve pairs of 17-tooth gears, four modules by three backlashes, each pair at its centre distance and labelled; a rail for a loose rack and a lip for a loose ring, each with a pin for its pinion. Print it with sampler-gears and press the gears on (the mounted assembly, sampler-mounted, shows where each goes); record which pairs turn freely and how much play each has.",
   "variables": {
     "module_a": {
       "value": 0.8,
@@ -110,6 +110,36 @@
       "value": "x1c.line * 8",
       "unit": "mm",
       "rule": "The rack's bar under its roots: eight lines"
+    },
+    "rack_travel": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "How far the rack slides each way: its pinion a little over a third of a turn"
+    },
+    "rail_width": {
+      "value": "x1c.line * 6",
+      "unit": "mm",
+      "rule": "The rail behind the rack: six lines"
+    },
+    "rail_height": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "Up most of the rack's width"
+    },
+    "clear": {
+      "value": "x1c.line / 2",
+      "unit": "mm",
+      "rule": "Half a line between a loose part and what guides it, so it slides"
+    },
+    "lip": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "The ring's lip: four lines"
+    },
+    "lip_height": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "Up most of the ring's width"
     }
   }
 }
