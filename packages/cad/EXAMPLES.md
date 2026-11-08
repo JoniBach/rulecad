@@ -469,7 +469,8 @@ export function main (v) {
     "length": { "value": 140, "unit": "mm", "rule": "Room for the rack's whole travel" },
     "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the knob at rest: half its 24 teeth, 12 × π" },
     "wide": { "value": 40, "unit": "mm", "rule": "Under the rack and the knob" },
-    "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" }
+    "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
+    "middle": { "value": "wide / 4", "unit": "mm", "rule": "The plate's middle, between the rack and the knob" }
   }
 }
 ```
@@ -479,7 +480,7 @@ export function main (v) {
 import jscad from '@jscad/modeling'
 
 export function main (v) {
-  return jscad.primitives.cuboid({ size: [v.length, v.wide, v.thick], center: [0, v.wide / 4, v.thick / 2] })
+  return jscad.primitives.cuboid({ size: [v.length, v.wide, v.thick], center: [0, v.middle, v.thick / 2] })
 }
 ```
 
@@ -534,7 +535,7 @@ planetary({ module: 1, ratio: 0.25, planets: 3, held: 'ring', input: 'carrier', 
 
 The ring is the sun and two planets across (18 + 2 × 18 = 54), and the planets go in evenly: 18 + 54 = 72 is a whole
 number of threes. The parts: a case with the ring on it and a pin for the sun, the sun with the spool's shaft, three
-planets, and the carrier with the planets' pins and the crank.
+planets, the carrier with the planets' pins and the crank arm, and the crank's handle.
 
 ```json projects/home/objects/winder-case.json
 {
@@ -642,22 +643,26 @@ export function main (v) {
 }
 ```
 
-The carrier: a disc over the gears, inside the ring's tips, with a pin down into each planet and the crank on top. Its
-anchors are where the planets turn, every 120° at the sun-to-planet distance (m (S + P) / 2 = 18 mm).
+The carrier is drawn as it prints: a flat plate on the bed (the disc over the gears, inside the ring's tips, and the
+crank arm in the same plane, reaching out over the ring), with a pin standing up from it for each planet. The assembly
+turns it over, so its pins hang down into the planets. The planets turn every 120° at the sun-to-planet distance
+(m (S + P) / 2 = 18 mm). The handle is a part of its own, printed upright and pressed into the arm's end, as a crank
+handle usually is.
 
 ```json projects/home/objects/winder-carrier.json
 {
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "winder-carrier",
-  "title": "Winder carrier and crank",
+  "title": "Winder carrier and crank arm",
   "version": "0.1.0",
   "uses": ["x1c"],
   "engine": "manifold",
   "anchors": {
-    "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] },
-    "p0": { "at": ["a", 0, "0 - drop"], "axis": [0, 0, 1] },
-    "p1": { "at": ["0 - a / 2", "a * 0.8660254", "0 - drop"], "axis": [0, 0, 1] },
-    "p2": { "at": ["0 - a / 2", "0 - a * 0.8660254", "0 - drop"], "axis": [0, 0, 1] }
+    "axis": { "at": [0, 0, 0], "axis": [0, 0, -1] },
+    "grip": { "at": ["arm", 0, 0], "axis": [0, 0, -1] },
+    "p0": { "at": ["a", 0, "t + drop"], "axis": [0, 0, -1] },
+    "p1": { "at": ["0 - a / 2", "a * 0.8660254", "t + drop"], "axis": [0, 0, -1] },
+    "p2": { "at": ["0 - a / 2", "0 - a * 0.8660254", "t + drop"], "axis": [0, 0, -1] }
   },
   "variables": {
     "a": { "value": 18, "unit": "mm", "rule": "Sun to planet: m (S + P) / 2" },
@@ -666,26 +671,56 @@ anchors are where the planets turn, every 120° at the sun-to-planet distance (m
     "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
     "hole": { "value": 9, "unit": "mm", "rule": "Round the sun's 8 mm shaft" },
     "pin": { "value": 3, "unit": "mm", "rule": "The planets' axles" },
-    "arm": { "value": 45, "unit": "mm", "rule": "The crank's reach" },
+    "arm": { "value": 45, "unit": "mm", "rule": "The crank's reach, out over the ring" },
     "bar": { "value": 10, "unit": "mm", "rule": "The crank arm's width" },
-    "handle": { "value": 20, "unit": "mm", "rule": "The handle's height" },
-    "grip": { "value": 8, "unit": "mm", "rule": "The handle's diameter" }
+    "peg": { "value": 4, "unit": "mm", "rule": "The handle's peg" },
+    "fit": { "value": "x1c.line / 4", "unit": "mm", "rule": "A press fit for the handle's peg: a quarter line" },
+    "planets": { "value": 3, "rule": "From planetary(): three planets" }
   }
 }
 ```
 
 ```js projects/home/objects/winder-carrier.js
+// The carrier as it prints: a flat plate (the disc and the crank arm) on the bed, the planets' pins standing up from it.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid } = jscad.primitives
 
 export function main (v) {
-  const disc = cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] })
-  const arm = cuboid({ size: [v.arm, v.bar, v.t], center: [v.arm / 2, 0, v.t + v.t / 2] })
-  const handle = cylinder({ radius: v.grip / 2, height: v.handle, center: [v.arm - v.grip / 2, 0, v.t * 2 + v.handle / 2] })
-  const third = (2 * Math.PI) / 3
-  const pins = [0, 1, 2].map((k) => cylinder({ radius: v.pin / 2, height: v.drop, center: [v.a * Math.cos(k * third), v.a * Math.sin(k * third), 0 - v.drop / 2] }))
-  const hole = cylinder({ radius: v.hole / 2, height: v.t * 2, center: [0, 0, v.t] })
-  return v.ops.subtract(v.ops.union(disc, arm, handle, ...pins), hole)
+  const plate = v.ops.union(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }),
+    cuboid({ size: [v.arm, v.bar, v.t], center: [v.arm / 2, 0, v.t / 2] }), cylinder({ radius: v.bar / 2, height: v.t, center: [v.arm, 0, v.t / 2] }))
+  const third = (2 * Math.PI) / v.planets
+  const pins = [0, 1, 2].map((k) => cylinder({ radius: v.pin / 2, height: v.drop, center: [v.a * Math.cos(k * third), v.a * Math.sin(k * third), v.t + v.drop / 2] }))
+  const hole = cylinder({ radius: v.hole / 2, height: v.t, center: [0, 0, v.t / 2] })
+  const socket = cylinder({ radius: v.peg / 2 - v.fit, height: v.t, center: [v.arm, 0, v.t / 2] })
+  return v.ops.subtract(v.ops.union(plate, ...pins), hole, socket)
+}
+```
+
+```json projects/home/objects/winder-handle.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-handle",
+  "title": "Winder handle",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "anchors": { "peg": { "at": [0, 0, "grip_height"], "axis": [0, 0, -1] } },
+  "variables": {
+    "grip": { "value": 9, "unit": "mm", "rule": "A finger round it" },
+    "grip_height": { "value": 22, "unit": "mm", "rule": "A finger's width and a little" },
+    "peg": { "value": 4, "unit": "mm", "rule": "Into the arm's socket" },
+    "peg_height": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Through the arm" }
+  }
+}
+```
+
+```js projects/home/objects/winder-handle.js
+// The handle as it prints: the grip on the bed, its peg standing on top.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
+export function main (v) {
+  return v.ops.union(cylinder({ radius: v.grip / 2, height: v.grip_height, center: [0, 0, v.grip_height / 2] }),
+    cylinder({ radius: v.peg / 2, height: v.peg_height, center: [0, 0, v.grip_height + v.peg_height / 2] }))
 }
 ```
 
@@ -702,13 +737,15 @@ are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so t
     { "id": "ring", "object": "winder-ring", "at": [0, 0, "case.t"] },
     { "id": "sun", "object": "winder-sun" },
     { "id": "carrier", "object": "winder-carrier" },
+    { "id": "handle", "object": "winder-handle" },
     { "id": "p0", "object": "winder-gear" },
     { "id": "p1", "object": "winder-gear" },
     { "id": "p2", "object": "winder-gear" }
   ],
   "joints": [
     { "id": "sun", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.4"], "axis": [0, 0, 1] }, "child": "sun.axis", "min": -3000, "max": 3000 },
-    { "id": "crank", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.8 + ring.width"], "axis": [0, 0, 1] }, "child": "carrier.axis", "min": -180, "max": 180, "label": "Crank" },
+    { "id": "crank", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.8 + ring.width + carrier.t"], "axis": [0, 0, 1] }, "child": "carrier.axis", "min": -180, "max": 180, "label": "Crank" },
+    { "id": "handle", "type": "fixed", "parent": "carrier.grip", "child": "handle.peg" },
     { "id": "p0", "type": "revolute", "parent": "carrier.p0", "child": "p0.axis", "min": -3000, "max": 3000 },
     { "id": "p1", "type": "revolute", "parent": "carrier.p1", "child": "p1.axis", "min": -3000, "max": 3000 },
     { "id": "p2", "type": "revolute", "parent": "carrier.p2", "child": "p2.axis", "min": -3000, "max": 3000 }
@@ -717,6 +754,7 @@ are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so t
     { "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1", "p2"], "drive": "carrier",
       "module": "ring.module", "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }
   ],
+  "fits": [{ "a": "handle", "b": "carrier", "min": "0 - carrier.fit * 2", "note": "The handle's peg pressed into the arm" }],
   "poses": { "rest": { "crank": 0 }, "quarter": { "crank": 90 } }
 }
 ```
