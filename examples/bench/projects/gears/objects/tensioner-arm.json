@@ -7,7 +7,7 @@
     "x1c"
   ],
   "engine": "manifold",
-  "description": "The crank arm and handle, printed flat, slipped onto the crank shaft's flat.",
+  "description": "The crank arm and handle, printed flat, slipped down over the crank shaft's flat until its top is level with the shaft's top. Its anchor is its top face, where the shaft ends.",
   "variables": {
     "shaft": {
       "value": 10,
@@ -55,7 +55,7 @@
       "at": [
         0,
         0,
-        0
+        "thick"
       ],
       "axis": [
         0,
