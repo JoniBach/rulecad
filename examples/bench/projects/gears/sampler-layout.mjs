@@ -2,8 +2,8 @@
 // (assemblies/sampler-mounted.json, written from this by make-sampler.mjs), so the pins and the gears on them can't
 // disagree. g is @rulecad/gears; v the plate's variables.
 export function layout (v, g) {
-  const z = v.teeth, cols = 3, modules = [v.module_a, v.module_b, v.module_c, v.module_d], backlashes = [v.backlash_a, v.backlash_b, v.backlash_c]
-  const out = { pins: [], labels: [], rails: [], lip: null, rack: null, ring: null }
+  const z = v.teeth, cols = 3, modules = [v.module_a, v.module_b, v.module_c], backlashes = [v.backlash_a, v.backlash_b, v.backlash_c]
+  const out = { pins: [], labels: [], rails: [], bars: [], lip: null, rack: null, ring: null }
   const rowTop = v.label + v.margin, m = 1, pinion = g.gearModel({ module: m, teeth: z })
   // Front row, left: a rack loose on the plate, sliding along a rail behind it, its pinion on a pin
   const rack = g.rackModel({ module: m, teeth: v.rack_teeth, height: v.rack_bar, backlash: v.check_backlash })
@@ -27,6 +27,7 @@ export function layout (v, g) {
     backlashes.forEach((b, k) => {
       const xa = v.column * k + (v.column - centre) / 2, id = `m${mod}-b${b}`.replace(/\./g, '_')
       out.pins.push({ id: `${id}-a`, x: xa, y: at, module: mod, backlash: b, dots: k + 1 }, { id: `${id}-b`, x: xa + centre, y: at, module: mod, backlash: b, dots: k + 1, meshes: `${id}-a` })
+      out.bars.push({ x0: xa, x1: xa + centre, y: at })
       out.labels.push({ text: `M${mod} B${b}`, x: v.column * k + v.column / 2, y: y + v.label })
     })
     y += v.label + v.margin + tip + v.margin

@@ -7,42 +7,27 @@
     "x1c"
   ],
   "engine": "manifold",
-  "description": "The base with the three shafts printed standing on it (6 mm pins the gears turn on) and the post the pawl stands on, outside every gear's reach.",
+  "description": "A skeleton frame: a spine along the three shafts, a boss round each pin (printed standing, the gears turn on them), two feet across, and a branch out to the post the pawl stands on.",
   "variables": {
-    "length": {
-      "value": 162,
-      "unit": "mm",
-      "rule": "From behind the crank to past the pawl's post"
-    },
     "start": {
-      "value": -18,
+      "value": -14,
       "unit": "mm",
-      "rule": "Behind the crank's pinion (14.25 mm tips)"
-    },
-    "wide": {
-      "value": 86,
-      "unit": "mm",
-      "rule": "Under the spool shaft's gear (39.75 mm tips) both sides"
-    },
-    "thick": {
-      "value": "x1c.layer * 40",
-      "unit": "mm",
-      "rule": "Eight millimetres: deep enough to hold a rod upright"
+      "rule": "Behind the crank's pinion (11.9 mm tips)"
     },
     "mid_x": {
-      "value": 38.25,
+      "value": 31.875,
       "unit": "mm",
       "rule": "The middle shaft: m (17 + 34) / 2 from the crank"
     },
     "out_x": {
-      "value": 89.25,
+      "value": 74.375,
       "unit": "mm",
       "rule": "The spool shaft: m (17 + 51) / 2 further"
     },
     "post_x": {
-      "value": 133.6,
+      "value": 112.7,
       "unit": "mm",
-      "rule": "The pawl's post: under its root, just outside the spool gear's tips (40.6 mm from its shaft)"
+      "rule": "The pawl's post under its root, just outside the spool gear's tips (35 mm from its shaft)"
     },
     "post_y": {
       "value": 19.2,
@@ -52,30 +37,60 @@
     "post": {
       "value": 12,
       "unit": "mm",
-      "rule": "Square: the pawl's 50 N at its top bends it to 3 MPa"
+      "rule": "Square: the pawl's 50 N at its top bends it to under 3 MPa"
     },
     "post_height": {
-      "value": 18.4,
+      "value": 14.4,
       "unit": "mm",
-      "rule": "Up to the ratchet's level, two layers' gap and all"
+      "rule": "Up to the ratchet's level"
+    },
+    "base": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "The spine and feet, four millimetres"
+    },
+    "spine": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The spine along the shafts: as wide as a boss"
+    },
+    "boss": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Round each pin, deep enough to hold it upright"
+    },
+    "thick": {
+      "value": "x1c.layer * 40",
+      "unit": "mm",
+      "rule": "The bosses, eight millimetres"
+    },
+    "foot": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "The feet across: wide enough that a crank's pull doesn't tip it"
+    },
+    "foot_w": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "A foot's width"
     },
     "pin": {
       "value": 6,
       "unit": "mm",
-      "rule": "The shafts, printed with the frame: 6 mm keeps the crank's pin under 7 MPa at a 4.6 N pull"
+      "rule": "The shafts, printed with the frame: 6 mm keeps the crank's pin under 7 MPa"
     },
     "crank_pin": {
-      "value": 33.4,
+      "value": 19.4,
       "unit": "mm",
       "rule": "Up the crank's tube to just under its arm"
     },
     "mid_pin": {
-      "value": 16.9,
+      "value": 12.9,
       "unit": "mm",
       "rule": "Up through the middle shaft's two gears"
     },
     "out_pin": {
-      "value": 43.9,
+      "value": 37.9,
       "unit": "mm",
       "rule": "Up through the spool shaft's gear, ratchet and spool"
     }

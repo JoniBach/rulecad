@@ -32,9 +32,9 @@
       "id": "pawl",
       "object": "tensioner-pawl",
       "at": [
-        130.25,
+        109.375,
         19.2,
-        18
+        14
       ],
       "rotate": [
         0,
@@ -75,7 +75,7 @@
       "type": "revolute",
       "parent": {
         "at": [
-          38.25,
+          31.875,
           0,
           0
         ],
@@ -102,9 +102,9 @@
       "type": "revolute",
       "parent": {
         "at": [
-          89.25,
+          74.375,
           0,
-          9
+          7
         ],
         "axis": [
           0,

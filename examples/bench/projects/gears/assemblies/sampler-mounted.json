@@ -188,60 +188,6 @@
       }
     },
     {
-      "id": "m2-b0_1-a",
-      "object": "sampler-gear",
-      "set": {
-        "module": 2,
-        "backlash": 0.1,
-        "dots": 1
-      }
-    },
-    {
-      "id": "m2-b0_1-b",
-      "object": "sampler-gear",
-      "set": {
-        "module": 2,
-        "backlash": 0.1,
-        "dots": 1
-      }
-    },
-    {
-      "id": "m2-b0_2-a",
-      "object": "sampler-gear",
-      "set": {
-        "module": 2,
-        "backlash": 0.2,
-        "dots": 2
-      }
-    },
-    {
-      "id": "m2-b0_2-b",
-      "object": "sampler-gear",
-      "set": {
-        "module": 2,
-        "backlash": 0.2,
-        "dots": 2
-      }
-    },
-    {
-      "id": "m2-b0_3-a",
-      "object": "sampler-gear",
-      "set": {
-        "module": 2,
-        "backlash": 0.3,
-        "dots": 3
-      }
-    },
-    {
-      "id": "m2-b0_3-b",
-      "object": "sampler-gear",
-      "set": {
-        "module": 2,
-        "backlash": 0.3,
-        "dots": 3
-      }
-    },
-    {
       "id": "rack",
       "object": "sampler-rack"
     },
@@ -277,7 +223,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          211.5,
+          161.5,
           36.14,
           "plate.thick"
         ],
@@ -297,7 +243,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          33.2,
+          23.2,
           85.88,
           "plate.thick"
         ],
@@ -317,7 +263,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          46.8,
+          36.8,
           85.88,
           "plate.thick"
         ],
@@ -346,7 +292,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          113.2,
+          83.2,
           85.88,
           "plate.thick"
         ],
@@ -366,7 +312,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          126.8,
+          96.8,
           85.88,
           "plate.thick"
         ],
@@ -395,7 +341,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          193.2,
+          143.2,
           85.88,
           "plate.thick"
         ],
@@ -415,7 +361,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          206.8,
+          156.8,
           85.88,
           "plate.thick"
         ],
@@ -444,7 +390,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          31.5,
+          21.5,
           118.98,
           "plate.thick"
         ],
@@ -464,7 +410,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          48.5,
+          38.5,
           118.98,
           "plate.thick"
         ],
@@ -493,7 +439,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          111.5,
+          81.5,
           118.98,
           "plate.thick"
         ],
@@ -513,7 +459,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          128.5,
+          98.5,
           118.98,
           "plate.thick"
         ],
@@ -542,7 +488,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          191.5,
+          141.5,
           118.98,
           "plate.thick"
         ],
@@ -562,7 +508,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          208.5,
+          158.5,
           118.98,
           "plate.thick"
         ],
@@ -591,7 +537,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          27.25,
+          17.25,
           158.73,
           "plate.thick"
         ],
@@ -611,7 +557,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          52.75,
+          42.75,
           158.73,
           "plate.thick"
         ],
@@ -640,7 +586,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          107.25,
+          77.25,
           158.73,
           "plate.thick"
         ],
@@ -660,7 +606,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          132.75,
+          102.75,
           158.73,
           "plate.thick"
         ],
@@ -689,7 +635,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          187.25,
+          137.25,
           158.73,
           "plate.thick"
         ],
@@ -709,7 +655,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          212.75,
+          162.75,
           158.73,
           "plate.thick"
         ],
@@ -725,153 +671,6 @@
       "mesh": {
         "with": "m1_5-b0_3-a",
         "module": 1.5,
-        "teeth": [
-          17,
-          17
-        ],
-        "backlash": 0.3
-      }
-    },
-    {
-      "id": "m2-b0_1-a",
-      "type": "revolute",
-      "parent": {
-        "item": "plate",
-        "at": [
-          23,
-          207.98,
-          "plate.thick"
-        ],
-        "axis": [
-          0,
-          0,
-          1
-        ]
-      },
-      "child": "m2-b0_1-a.axis",
-      "min": -360,
-      "max": 360
-    },
-    {
-      "id": "m2-b0_1-b",
-      "type": "revolute",
-      "parent": {
-        "item": "plate",
-        "at": [
-          57,
-          207.98,
-          "plate.thick"
-        ],
-        "axis": [
-          0,
-          0,
-          1
-        ]
-      },
-      "child": "m2-b0_1-b.axis",
-      "min": -360,
-      "max": 360,
-      "mesh": {
-        "with": "m2-b0_1-a",
-        "module": 2,
-        "teeth": [
-          17,
-          17
-        ],
-        "backlash": 0.1
-      }
-    },
-    {
-      "id": "m2-b0_2-a",
-      "type": "revolute",
-      "parent": {
-        "item": "plate",
-        "at": [
-          103,
-          207.98,
-          "plate.thick"
-        ],
-        "axis": [
-          0,
-          0,
-          1
-        ]
-      },
-      "child": "m2-b0_2-a.axis",
-      "min": -360,
-      "max": 360
-    },
-    {
-      "id": "m2-b0_2-b",
-      "type": "revolute",
-      "parent": {
-        "item": "plate",
-        "at": [
-          137,
-          207.98,
-          "plate.thick"
-        ],
-        "axis": [
-          0,
-          0,
-          1
-        ]
-      },
-      "child": "m2-b0_2-b.axis",
-      "min": -360,
-      "max": 360,
-      "mesh": {
-        "with": "m2-b0_2-a",
-        "module": 2,
-        "teeth": [
-          17,
-          17
-        ],
-        "backlash": 0.2
-      }
-    },
-    {
-      "id": "m2-b0_3-a",
-      "type": "revolute",
-      "parent": {
-        "item": "plate",
-        "at": [
-          183,
-          207.98,
-          "plate.thick"
-        ],
-        "axis": [
-          0,
-          0,
-          1
-        ]
-      },
-      "child": "m2-b0_3-a.axis",
-      "min": -360,
-      "max": 360
-    },
-    {
-      "id": "m2-b0_3-b",
-      "type": "revolute",
-      "parent": {
-        "item": "plate",
-        "at": [
-          217,
-          207.98,
-          "plate.thick"
-        ],
-        "axis": [
-          0,
-          0,
-          1
-        ]
-      },
-      "child": "m2-b0_3-b.axis",
-      "min": -360,
-      "max": 360,
-      "mesh": {
-        "with": "m2-b0_3-a",
-        "module": 2,
         "teeth": [
           17,
           17
@@ -914,7 +713,7 @@
       "parent": {
         "item": "plate",
         "at": [
-          200,
+          150,
           36.14,
           "plate.thick"
         ],

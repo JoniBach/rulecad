@@ -6,7 +6,7 @@ const { cylinder } = jscad.primitives
 const { translate } = jscad.transforms
 
 export function main (v) {
-  const modules = [v.module_a, v.module_b, v.module_c, v.module_d], backlashes = [v.backlash_a, v.backlash_b, v.backlash_c]
+  const modules = [v.module_a, v.module_b, v.module_c], backlashes = [v.backlash_a, v.backlash_b, v.backlash_c]
   const g = v.gears, z = v.teeth, parts = {}
   const gear = (mod, b, dots, x, y) => {
     const ring = (v.bore / 2 + g.gearModel({ module: mod, teeth: z }).root / 2) / 2, step = v.dot_pitch / ring // halfway between the bore and the roots

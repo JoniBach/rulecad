@@ -10,9 +10,9 @@
   "description": "The second stage's 51-tooth gear (left-handed), the ratchet wheel and the strap's spool on one shaft.",
   "variables": {
     "module": {
-      "value": 1.5,
+      "value": 1.25,
       "unit": "mm",
-      "rule": "Stout teeth for a hand's torque: 5.4 lines across a tooth"
+      "rule": "The smallest that carries a 100 N strap at 2\u00d7: the weakest tooth (the second pinion) 2.8\u00d7 under PLA by Lewis, about 2.2\u00d7 by finite elements"
     },
     "helix": {
       "value": 30,
@@ -20,9 +20,9 @@
       "rule": "Herringbone: no thrust, the gears stay on their shafts and centre themselves"
     },
     "width": {
-      "value": "x1c.layer * 40",
+      "value": "x1c.layer * 30",
       "unit": "mm",
-      "rule": "Face width, forty layers"
+      "rule": "Face width, thirty layers"
     },
     "bore": {
       "value": "6 + x1c.line / 2",
@@ -53,9 +53,9 @@
       "rule": "A tooth tip to root: the pawl's lift"
     },
     "ratchet_width": {
-      "value": "x1c.layer * 30",
+      "value": "x1c.layer * 20",
       "unit": "mm",
-      "rule": "Thirty layers"
+      "rule": "Twenty layers: the pawl's width"
     },
     "spool": {
       "value": 10,

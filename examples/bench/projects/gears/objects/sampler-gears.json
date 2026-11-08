@@ -24,11 +24,6 @@
       "unit": "mm",
       "rule": "As the plate's rows: module 1.5"
     },
-    "module_d": {
-      "value": 2,
-      "unit": "mm",
-      "rule": "As the plate's rows: module 2"
-    },
     "backlash_a": {
       "value": 0.1,
       "unit": "mm",

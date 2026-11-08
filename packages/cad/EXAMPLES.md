@@ -467,11 +467,12 @@ export function main (v) {
   },
   "variables": {
     "centre": { "value": 7.2, "unit": "mm", "rule": "The pinion's axle above the rack's pitch line: its pitch radius and its shift, m z / 2 + x m" },
-    "length": { "value": 140, "unit": "mm", "rule": "Room for the rack's whole travel" },
+    "length": { "value": 120, "unit": "mm", "rule": "The rack (75.4 mm) and its travel, ±22 mm" },
     "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the knob at rest: half its 24 teeth, 12 × π" },
-    "wide": { "value": 40, "unit": "mm", "rule": "Under the rack and the knob" },
+    "strip": { "value": 12, "unit": "mm", "rule": "The strip under the rack, from behind its guide to under its teeth" },
+    "boss": { "value": 12, "unit": "mm", "rule": "Round the axle's foot" },
+    "foot": { "value": 40, "unit": "mm", "rule": "A foot across the middle, so it stands without rocking" },
     "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
-    "middle": { "value": "wide / 4", "unit": "mm", "rule": "The plate's middle, between the rack and the knob" },
     "pin": { "value": "3.2 - x1c.line / 2", "unit": "mm", "rule": "The axle: the pinion's 3.2 mm bore less half a line, so it turns" },
     "pin_height": { "value": "x1c.layer * 60", "unit": "mm", "rule": "Up through the pinion and its knob" },
     "guide_y": { "value": "0 - 5.45 - x1c.line / 2", "unit": "mm", "rule": "Behind the rack's back (1.25 + 4.2 mm under its pitch line), half a line clear" },
@@ -482,16 +483,19 @@ export function main (v) {
 ```
 
 ```js projects/home/objects/rail.js
-// The base: a plate under the rack's travel and the knob, the pinion's axle standing above the rack, and a wall behind
-// the rack so it slides straight and can't back away from the pinion.
+// The base as little as holds it: a strip under the rack's travel with a wall behind the rack (so it slides straight
+// and can't back away from the pinion), a boss carrying the pinion's axle, and a foot across the middle.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
 
 export function main (v) {
-  const plate = cuboid({ size: [v.length, v.wide, v.thick], center: [0, v.middle, v.thick / 2] })
+  const y0 = v.guide_y - v.guide, strip = cuboid({ size: [v.length, v.strip, v.thick], center: [0, y0 + v.strip / 2, v.thick / 2] })
+  const boss = cylinder({ radius: v.boss / 2, height: v.thick, center: [0, v.centre, v.thick / 2] })
+  const neck = cuboid({ size: [v.boss, v.centre - y0, v.thick], center: [0, (y0 + v.centre) / 2, v.thick / 2] })
+  const foot = cuboid({ size: [v.boss, v.foot, v.thick], center: [0, y0 + v.foot / 2 - v.boss, v.thick / 2] })
   const axle = cylinder({ radius: v.pin / 2, height: v.pin_height, center: [0, v.centre, v.thick + v.pin_height / 2] })
   const guide = cuboid({ size: [v.length, v.guide, v.guide_height], center: [0, v.guide_y - v.guide / 2, v.thick + v.guide_height / 2] })
-  return v.ops.union(plate, axle, guide)
+  return v.ops.union(strip, boss, neck, foot, axle, guide)
 }
 ```
 
@@ -558,21 +562,28 @@ planets, the carrier with the planets' pins and the crank arm, and the crank's h
   "uses": ["x1c"],
   "engine": "manifold",
   "variables": {
-    "radius": { "value": 34, "unit": "mm", "rule": "Round the ring's rim (62.5 mm across)" },
+    "radius": { "value": 31.25, "unit": "mm", "rule": "The ring's rim (62.5 mm across): the case is a rim under it" },
+    "rim": { "value": "x1c.line * 10", "unit": "mm", "rule": "The rim under the ring, ten lines wide" },
+    "hub": { "value": 12, "unit": "mm", "rule": "Round the sun's axle" },
+    "spoke": { "value": "x1c.line * 12", "unit": "mm", "rule": "Three spokes from the hub to the rim" },
+    "spokes": { "value": 3, "rule": "Three: it stands without rocking" },
     "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Base, fifteen layers" },
     "pin": { "value": 3, "unit": "mm", "rule": "The sun's axle" },
-    "pin_height": { "value": 24, "unit": "mm", "rule": "Up through the sun and its shaft" }
+    "pin_height": { "value": 22, "unit": "mm", "rule": "Up through the sun and its shaft" }
   }
 }
 ```
 
 ```js projects/home/objects/winder-case.js
-// The case: a base with the sun's axle standing in the middle. The ring sits on it.
+// The case as little as holds it: a rim the ring sits on, a hub with the sun's axle standing in it, and spokes between.
 import jscad from '@jscad/modeling'
-const { cylinder } = jscad.primitives
+const { cylinder, cuboid } = jscad.primitives
+const { rotateZ } = jscad.transforms
 
 export function main (v) {
-  return v.ops.union(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }),
+  const rim = v.ops.subtract(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }), cylinder({ radius: v.radius - v.rim, height: v.t, center: [0, 0, v.t / 2] }))
+  const spokes = Array.from({ length: v.spokes }, (_, k) => rotateZ((2 * Math.PI * k) / v.spokes, cuboid({ size: [v.radius - v.rim / 2, v.spoke, v.t], center: [(v.radius - v.rim / 2) / 2, 0, v.t / 2] })))
+  return v.ops.union(rim, cylinder({ radius: v.hub / 2, height: v.t, center: [0, 0, v.t / 2] }), ...spokes,
     cylinder({ radius: v.pin / 2, height: v.pin_height, center: [0, 0, v.t + v.pin_height / 2] }))
 }
 ```
@@ -587,7 +598,7 @@ export function main (v) {
   "variables": {
     "module": { "value": 1, "unit": "mm", "rule": "3.6 lines across a tooth on the X1C" },
     "teeth": { "value": 54, "rule": "The sun and two planets across: 18 + 2 × 18" },
-    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "Face width, forty layers" }
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "Face width, thirty layers: plenty for a spool's pull" }
   }
 }
 ```
@@ -609,7 +620,7 @@ export function main (v) {
   "variables": {
     "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
     "teeth": { "value": 18, "rule": "From planetary(): 18 for 4 : 1 with three planets" },
-    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "As the ring" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "As the ring" },
     "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "A 3 mm pin and half a line's clearance" }
   }
 }
@@ -635,7 +646,7 @@ The sun is a planet with the spool's shaft on top, bored through for its axle:
   "variables": {
     "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
     "teeth": { "value": 18, "rule": "From planetary()" },
-    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "As the ring" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "As the ring" },
     "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "On the case's 3 mm axle" },
     "shaft": { "value": 8, "unit": "mm", "rule": "The spool's shaft, inside the sun's roots" },
     "shaft_height": { "value": 12, "unit": "mm", "rule": "Up through the carrier, and a spool's width over it" }
@@ -678,7 +689,7 @@ handle usually is.
   },
   "variables": {
     "a": { "value": 18, "unit": "mm", "rule": "Sun to planet: m (S + P) / 2" },
-    "drop": { "value": "8 + x1c.layer * 2", "unit": "mm", "rule": "A planet's width and two layers' gap above it" },
+    "drop": { "value": "6 + x1c.layer * 2", "unit": "mm", "rule": "A planet's width and two layers' gap above it" },
     "radius": { "value": 25, "unit": "mm", "rule": "Inside the ring's tips (26 mm)" },
     "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
     "hole": { "value": 9, "unit": "mm", "rule": "Round the sun's 8 mm shaft" },
