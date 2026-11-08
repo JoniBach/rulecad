@@ -27,6 +27,7 @@ export const DEFAULTS = {
   tipRound: { value: 0.1, unit: '× module', rule: 'A tip a printer can draw: rounded about a quarter line at module 1, so no corner is left to the slicer', kind: 'estimate' },
   backlash: { value: 0.15, unit: 'mm', rule: 'Play between mating teeth, split between the two: FDM gear guides give 0.1 to 0.2 mm; measure it with the sampler plate', kind: 'estimate' },
   chamfer: { value: 0.3, unit: 'mm', rule: 'A chamfer round the bed face, so the first layer\'s squish (elephant\'s foot) doesn\'t widen the teeth there', kind: 'estimate' },
+  efficiency: { value: 0.95, unit: 'per mesh', rule: 'Power a printed mesh passes on, dry: metal spur gears pass 98 to 99%, and dry plastic teeth rub more. Measure yours', kind: 'estimate' },
   module: { value: 0.8, unit: 'mm at a 0.4 mm nozzle', rule: 'The smallest module worth printing: twice the nozzle, so a tooth is three lines at the pitch circle', kind: 'estimate' },
 };
 const D = (k) => DEFAULTS[k].value;
@@ -556,6 +557,22 @@ export function printable(g, printer, width) {
 }
 
 // Planetary gearboxes: the teeth for a ratio, laid out in phase
+/**
+ * How much of the power a stage passes on: DEFAULTS.efficiency per mesh a tooth force goes through. A planetary's
+ * goes through two (sun to planet, planet to ring); a worm's is its own, from its lead angle and friction.
+ * @param {'spur' | 'helical' | 'herringbone' | 'rack' | 'internal' | 'bevel' | 'planetary' | 'worm'} kind
+ * @param {{ efficiency?: number, worm?: { efficiency: number } }} [o] efficiency: your measured figure per mesh
+ * @returns {number} from 0 to 1
+ */
+export function stageEfficiency(kind, o = {}) {
+  const each = o.efficiency ?? D('efficiency');
+  if (!(typeof each === 'number' && each > 0 && each <= 1)) throw new Error(`stageEfficiency: efficiency is from 0 to 1 (got ${shown(o.efficiency)})`);
+  if (kind === 'worm') { if (!o.worm || !(o.worm.efficiency > 0)) throw new Error('stageEfficiency: a worm needs its model ({ worm: wormModel(…) }), for its lead angle and friction'); return o.worm.efficiency; }
+  if (['spur', 'helical', 'herringbone', 'rack', 'internal', 'bevel'].includes(kind)) return each;
+  if (kind === 'planetary') return each ** 2;
+  throw new Error(`stageEfficiency: no kind of stage ${shown(kind)} (spur, helical, herringbone, rack, internal, bevel, planetary or worm)`);
+}
+
 export { planetary, planetaryRatio } from './planetary.mjs';
 // The mesh measured from the drawn teeth: backlash, transmission error, interference
 export { contact } from './contact.mjs';

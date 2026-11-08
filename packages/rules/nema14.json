@@ -2,6 +2,7 @@
   "_doc": "A NEMA 14 stepper, 34 mm body (14HS13-0804S). kind as in x1c.json. Mounting face at z = 0, shaft up +z from the origin.",
   "name": "nema14",
   "part": "motor",
+  "variants": {"14HS13-0804S":{"kind":"spec","source":"StepperOnline 14HS13-0804S listing, https://www.omc-stepperonline.com/nema-14-bipolar-1-8deg-18ncm-25-5oz-in-0-8a-5-4v-35x35x34mm-4-wires-14hs13-0804s","values":{}}},
   "rules": {
     "type": { "value": "stepper", "rule": "What sort of motor it is", "kind": "spec", "source": "StepperOnline 14HS13-0804S listing, https://www.omc-stepperonline.com/nema-14-bipolar-1-8deg-18ncm-25-5oz-in-0-8a-5-4v-35x35x34mm-4-wires-14hs13-0804s", "checked": "2026-11-08" },
     "body_shape": { "value": "square", "rule": "A square frame with its corners cut", "kind": "spec", "source": "StepperOnline 14HS13-0804S listing, https://www.omc-stepperonline.com/nema-14-bipolar-1-8deg-18ncm-25-5oz-in-0-8a-5-4v-35x35x34mm-4-wires-14hs13-0804s", "checked": "2026-11-08" },

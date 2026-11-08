@@ -2,6 +2,7 @@
   "_doc": "A NEMA 17 stepper, 48 mm body (17HS19-2004S1). For the 40 mm body (17HS4401, 0.40 N m) give body_length 40 and holding_torque 0.4. kind as in x1c.json. Mounting face at z = 0, shaft up +z from the origin.",
   "name": "nema17",
   "part": "motor",
+  "variants": {"17HS4401":{"kind":"community","source":"https://market.samm.com/17hs4401-nema17-step-motor-en","values":{"body_length":40,"holding_torque":0.4,"rated_current":1.5,"resistance":1.8,"inductance":4.2,"mass":0.28}},"17HS19-2004S1":{"kind":"spec","source":"StepperOnline 17HS19-2004S1 drawing A0842, https://static.maritex.eu/file/display/5sXxpHH1SP-JwnhJEZ0lhfX-xdYKZRi3/17HS19-2004S1_Full_Datasheet.pdf","values":{}}},
   "rules": {
     "type": { "value": "stepper", "rule": "What sort of motor it is", "kind": "spec", "source": "StepperOnline 17HS19-2004S1 drawing A0842, https://static.maritex.eu/file/display/5sXxpHH1SP-JwnhJEZ0lhfX-xdYKZRi3/17HS19-2004S1_Full_Datasheet.pdf", "checked": "2026-11-08" },
     "body_shape": { "value": "square", "rule": "A square frame with its corners cut", "kind": "spec", "source": "StepperOnline 17HS19-2004S1 drawing A0842, https://static.maritex.eu/file/display/5sXxpHH1SP-JwnhJEZ0lhfX-xdYKZRi3/17HS19-2004S1_Full_Datasheet.pdf", "checked": "2026-11-08" },

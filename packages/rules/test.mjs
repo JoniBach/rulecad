@@ -45,7 +45,7 @@ test('rules check says what is wrong with a set: no source, a bad kind, a stray 
   s = base(); s.rules.boss_height.kind = 'guess'; assert.deepEqual(codes(s), ['rules.kind']);
   s = base(); s.rules.boss_heigth = s.rules.boss_height; assert.deepEqual(codes(s), ['rules.name']);
   s = base(); s.rules.boss_height.unit = 'in'; assert.deepEqual(codes(s), ['rules.unit', 'rules.unit']);
-  s = base(); delete s.rules.mass; assert.deepEqual(codes(s), ['rules.missing']);
+  s = base(); delete s.rules.shaft_length; assert.deepEqual(codes(s), ['rules.missing']);
   s = base(); s.rules.body_shape.value = 'hexagon'; assert.deepEqual(codes(s), ['rules.choice']);
   s = base(); s.rules.boss_height.checked = 'soon'; assert.deepEqual(codes(s), ['rules.checked']);
   assert.deepEqual(checkRuleSet({ name: 'x', interface: { body_size: 'length' }, rules: { width: { value: 1, rule: 'a width', kind: 'spec', source: 's', checked: '2026-01-01' } } }, vocabulary).map((x) => x.code), ['rules.name', 'rules.interface']);

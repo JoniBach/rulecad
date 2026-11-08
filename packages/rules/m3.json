@@ -1,7 +1,7 @@
 {
   "_doc": "M3 socket head screws, for motor faces. kind as in x1c.json.",
   "name": "m3",
-  "interface": {"screw_clearance": "clearance", "screw_head": "head", "screw_head_height": "head_height"},
+  "interface": {"screw_clearance":"clearance","screw_head":"head","screw_head_height":"head_height"},
   "rules": {
     "clearance": { "value": 3.4, "unit": "mm", "rule": "Clearance hole for an M3 screw, medium fit", "kind": "spec", "source": "ISO 273 medium fit", "checked": "2026-11-08" },
     "head": { "value": 5.5, "unit": "mm", "rule": "M3 socket head cap screw head diameter", "kind": "spec", "source": "ISO 4762", "checked": "2026-11-08" },

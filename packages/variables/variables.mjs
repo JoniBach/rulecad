@@ -295,6 +295,11 @@ export function checkRuleSet(set, vocabulary) {
     if (!fields[shared]) f('rules.name', `interface: ${shared} is not in the vocabulary`, own);
     if (!rules[own]) f('rules.interface', `interface: ${shared} names ${own}, which isn't one of its rules`, own);
   }
+  for (const [name, v] of Object.entries(set.variants || {})) {
+    if (!KINDS.includes(v.kind)) f('rules.kind', `variant ${name}: kind ${JSON.stringify(v.kind)} is not one of ${KINDS.join(', ')}`);
+    if (!(typeof v.source === 'string' && v.source)) f('rules.source', `variant ${name} has no source`);
+    for (const rule of Object.keys(v.values || {})) if (!rules[rule]) f('rules.variant', `variant ${name} changes ${rule}, which isn't one of its rules`, rule);
+  }
   return out;
 }
 

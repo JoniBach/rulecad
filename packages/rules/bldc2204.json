@@ -11,7 +11,7 @@
     "boss_diameter": { "value": 8, "unit": "mm", "rule": "Hub round the centre", "kind": "estimate", "source": "as commonly made; measure yours", "checked": "2026-11-08" },
     "boss_height": { "value": 0, "unit": "mm", "rule": "No boss below the base", "kind": "estimate", "source": "as commonly made; measure yours", "checked": "2026-11-08" },
     "shaft_diameter": { "value": 3.4, "unit": "mm", "rule": "The hollow centre's bore: the output is the bell, not a shaft", "kind": "spec", "source": "2204 260KV brushless gimbal motor listing, https://robu.in/?p=57801", "checked": "2026-11-08" },
-    "shaft_length": { "value": 13.1, "unit": "mm", "rule": "Through the bell", "kind": "spec", "source": "2204 260KV brushless gimbal motor listing, https://robu.in/?p=57801", "checked": "2026-11-08" },
+    "shaft_length": { "value": 0, "unit": "mm", "rule": "The output is the bell itself: no shaft stands proud", "kind": "spec", "source": "2204 260KV brushless gimbal motor listing, https://robu.in/?p=57801", "checked": "2026-11-08" },
     "shaft_flats": { "value": 0, "unit": "", "rule": "A bore, no flats", "kind": "spec", "source": "2204 260KV brushless gimbal motor listing, https://robu.in/?p=57801", "checked": "2026-11-08" },
     "mount_pattern": { "value": "square", "rule": "Four holes on a square", "kind": "estimate", "source": "varies by maker; measure yours", "checked": "2026-11-08" },
     "mount_hole_spacing": { "value": 12, "unit": "mm", "rule": "Hole centres along each side", "kind": "estimate", "source": "varies by maker; measure yours", "checked": "2026-11-08" },
