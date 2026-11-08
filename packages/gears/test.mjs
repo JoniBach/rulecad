@@ -210,9 +210,9 @@ test('the diagram: the pair in phase and the mesh close up, with its numbers, fo
 
 test('the README\'s example runs as written and prints what the README says', async () => {
   const fs = await import('node:fs'), { execFileSync } = await import('node:child_process');
-  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'); // (git on Windows checks it out with CRLF)
   const js = readme.match(/```js\n([\s\S]*?)```/)[1], expected = readme.match(/```text\n([\s\S]*?)```/)[1];
   const file = new URL('./.readme-example.mjs', import.meta.url);
   fs.writeFileSync(file, js);
-  try { assert.equal(execFileSync(process.execPath, [(await import('node:url')).fileURLToPath(file)], { encoding: 'utf8' }), expected); } finally { fs.rmSync(file); }
+  try { assert.equal(execFileSync(process.execPath, [(await import('node:url')).fileURLToPath(file)], { encoding: 'utf8' }).replace(/\r\n/g, '\n'), expected); } finally { fs.rmSync(file); }
 });
