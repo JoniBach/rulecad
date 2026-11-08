@@ -47,6 +47,8 @@ its numbers come from.
 | Spur gear | Teeth on the outside, straight across. Prints flat on the bed with no supports, its teeth in the layers. | `spur({ module, teeth, width, bore?, flat? })` |
 | Rack | A gear of infinite radius: straight teeth on a bar, for a slide driven by a pinion. | `rack({ module, teeth, width, height? })` |
 | Ring gear | Teeth on the inside of a ring, for a pinion turning within it (planetary gearboxes). Turns the same way as its pinion. | `internal({ module, teeth, width, rim? })` |
+| Helical gear | A spur gear's teeth turned along the width by the helix angle: smoother and quieter, more teeth in mesh, but it pushes along its axis. | `helical({ module, teeth, width, helix, hand? })` |
+| Herringbone | Helical one way to the middle and back: no push along the axis, it stays on its shaft and centres itself. Prints with no supports. | `herringbone({ module, teeth, width, helix? })` (30° by default) |
 
 Each has a model with its numbers (`gearModel`, `rackModel`, `internalModel`) and an outline in 2D (`spurProfile`,
 `rackProfile`, `internalProfile`: loops of `[x, y]` points). A spur gear's first tooth is on +x, its axis along z. A
@@ -64,6 +66,7 @@ What every gear takes:
 | `width` | (required for a solid) | Up z. A whole number of layers prints as drawn. |
 | `chamfer` | 0.3 mm, at most a quarter module | Round the bed face, so the first layer's squish doesn't widen the teeth there. `[bed, top]` for both faces. |
 | `bore`, `flat` | none | A hole for a shaft, and the depth of a flat across it (a D shaft). |
+| `helix`, `hand`, `herringbone` | 0°, right, no | Helical teeth: the angle (up to 45°), which way they turn (`"right"` turns anticlockwise up z), and whether they turn back at the middle. Racks and rings take them too. `module` and `pressureAngle` stay the transverse ones, so the centre distance is a spur gear's. |
 
 ## How a pair meshes
 
@@ -75,8 +78,10 @@ What every gear takes:
 - **`contact`**: the contact ratio, how many pairs of teeth share the load on average. Under 1 the drive jumps; under
   1.2 it is rough.
 - **`backlash`**: the play, with the centre you gave.
+- **`overlap`** and **`thrust`**: for helical gears, with `width` given, how much the twist adds to the contact ratio, and the push along the axis for each newton driven (none for a herringbone).
 - **`findings`**: `mesh.contact`, `mesh.centre` (axes too close jam the teeth; too far knock), `mesh.module` and
-  `mesh.pressure` (gears that can't mesh), `mesh.interference` (a ring too near its pinion's size).
+  `mesh.pressure` (gears that can't mesh), `mesh.interference` (a ring too near its pinion's size), `mesh.helix` (helical
+  gears that cross: outer gears that mesh are of opposite hands; a pinion and its ring or rack, of the same hand).
 
 `phase(a, b, angle)` is the turn that puts a tooth of a in a space of b: b's angle is `ratio × a's angle + phase`,
 with `angle` the direction from a's centre to b's. `rackPhase(pinion, at)` does the same for a rack.
@@ -90,6 +95,7 @@ with `angle` the direction from a's centre to b's. `rackPhase(pinion, at)` does 
 - `gear.root`: a tooth narrower at its root than the thinnest wall.
 - `gear.tip`: tips narrower than a line print as one bead.
 - `gear.layers`: a width that isn't a whole number of layers.
+- `gear.helix`: helical teeth lean most at their tips; past 45° the flanks sag. `gear.thrust` says the push along the axis.
 
 Spur gears, racks and rings all print flat, with no supports: the teeth are in the layers, where the filament is
 strongest. Every tooth has a round at its root (the commonest place a tooth cracks) and at its tip.
@@ -118,6 +124,10 @@ a point.
 | Contact ratio | (√(r_a1² − r_b1²) + √(r_a2² − r_b2²) − a sin α_w) / (π m cos α) | Dudley (1984); KHK |
 | Rack contact | (√(r_a² − r_b²) − r sin α + m (h_a − x) / sin α) / (π m cos α) | KHK |
 | Root fillet | 0.38 m | ISO 53 profile A |
+| Helical twist | the profile turns z tan β / r up the width | ISO 21771 (transverse module) |
+| Overlap ratio | ε_β = b tan β / π m (each half of a herringbone on its own) | ISO 21771 |
+| Thrust | F_a = F_t tan β | Dudley (1984) |
+| Flank lean at the tip | tan β_a = tan β · r_a / r | ISO 21771 |
 | Ring and pinion | at least 10 teeth apart (12 to be safe) at 20° | KHK, internal gears |
 
 ## Words used
@@ -133,6 +143,8 @@ a point.
 | Contact ratio | The path of contact over the base pitch: how many pairs of teeth share the load on average. |
 | Profile shift | Moving the teeth outwards (or in) by a fraction of the module, without changing the module or the teeth. |
 | Backlash | Play between mating teeth, so they don't bind as printed parts vary. |
+| Helix angle | How far helical teeth lean from straight across, at the pitch circle. |
+| Hand | Which way helical teeth turn. Two outer gears that mesh are of opposite hands. |
 | Undercut | A pinion of few teeth having its flank cut away under the base circle, or its mate's tip fouling there. |
 
 ## Sources
