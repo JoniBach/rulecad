@@ -1115,3 +1115,24 @@ test('bevel gears in an assembly: cones that share their apex mesh in phase at 9
     assert.match(cad('check', 'corner/pair'), /✗ .*the cones' apexes are 1 mm apart/);
   } finally { done(); }
 });
+
+test('engage: a sleeve seated over a post passes; resting on the post\'s end, touching and not overlapping, it fails', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'shaft/post', { variables: { r: { value: 2, unit: 'mm', rule: 'Post' }, h: { value: 10, unit: 'mm', rule: 'Post' } }, anchors: { top: { at: [0, 0, 'h'], axis: [0, 0, 1] } } },
+      "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cylinder({ radius: v.r, height: v.h, center: [0, 0, v.h / 2] }) }\n");
+    const sleeve = (anchorAt) => object(ws, 'shaft/sleeve', { variables: { r: { value: 4, unit: 'mm', rule: 'Sleeve' }, hole: { value: 2.2, unit: 'mm', rule: 'Round the post' }, t: { value: 4, unit: 'mm', rule: 'Sleeve' } }, anchors: { seat: { at: [0, 0, anchorAt], axis: [0, 0, 1] } } },
+      "import jscad from '@jscad/modeling'\nconst { cylinder } = jscad.primitives\nexport function main (v) { return jscad.booleans.subtract(cylinder({ radius: v.r, height: v.t, center: [0, 0, v.t / 2] }), cylinder({ radius: v.hole, height: v.t, center: [0, 0, v.t / 2] })) }\n");
+    fs.mkdirSync(path.join(ws, 'projects/shaft/assemblies'));
+    fs.writeFileSync(path.join(ws, 'projects/shaft/assemblies/pair.json'), JSON.stringify({ title: 'Sleeve on a post', kind: 'fit',
+      items: [{ id: 'post', object: 'post' }, { id: 'sleeve', object: 'sleeve' }],
+      joints: [{ id: 'on', type: 'fixed', parent: 'post.top', child: 'sleeve.seat' }],
+      fits: [{ a: 'sleeve', b: 'post', engage: 'sleeve.t', note: 'Sleeve over the post' }] }));
+    sleeve(0); // its anchor on its bottom face: it stands on the post's end
+    const resting = cad('check', 'shaft/pair');
+    assert.match(resting, /no parts overlap/, 'touching end to end overlaps nothing');
+    assert.match(resting, /✗ Sleeve over the post: not on at all \(end to end\) along their joint, where it should go 4 mm on/);
+    sleeve('t'); // its anchor on its top face: it goes down over the post
+    assert.match(cad('check', 'shaft/pair'), /✓ Sleeve over the post: 4 mm on along their joint/);
+  } finally { done(); }
+});

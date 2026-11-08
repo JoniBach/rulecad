@@ -137,6 +137,12 @@
       "b": "frame",
       "fastens": true,
       "note": "The pawl's root pressed down over the post's two push pins"
+    },
+    {
+      "a": "arm",
+      "b": "crank",
+      "engage": "arm.thick",
+      "note": "The crank arm over the shaft's flat"
     }
   ]
 }

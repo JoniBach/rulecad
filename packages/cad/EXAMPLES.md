@@ -520,6 +520,7 @@ gap, and says whether the axle is where the gears need it.
     { "id": "slide", "type": "prismatic", "parent": "rail.track", "child": "rack.slide", "min": -100, "max": 100,
       "mesh": { "with": "knob", "module": "pinion.module", "teeth": ["pinion.teeth", "rack.teeth"], "shift": ["pinion.shift", 0] } }
   ],
+  "fits": [{ "a": "pinion", "b": "rail", "engage": "pinion.width", "note": "The pinion down its axle" }],
   "poses": { "home": { "knob": 0 }, "out": { "knob": 150 } }
 }
 ```
@@ -803,7 +804,8 @@ are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so t
       "module": "ring.module", "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }
   ],
   "fits": [{ "a": "handle", "b": "carrier", "min": "0 - carrier.fit * 2", "note": "The handle's peg pressed into the arm" },
-    { "a": "ring", "b": "case", "fastens": true, "note": "The ring held still on the case by its two push pins" }],
+    { "a": "ring", "b": "case", "fastens": true, "note": "The ring held still on the case by its two push pins" },
+    { "a": "handle", "b": "carrier", "engage": "carrier.t", "note": "The handle's peg through the arm" }],
   "poses": { "rest": { "crank": 0 }, "quarter": { "crank": 90 } }
 }
 ```
