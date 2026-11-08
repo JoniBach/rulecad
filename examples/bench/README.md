@@ -162,3 +162,25 @@ npx cad check gears/sampler
 npx cad export gears/sampler
 npx cad export gears/sampler-gears
 ```
+
+## The strap tensioner
+
+`gears/tensioner`: a crank through two herringbone stages (17 to 34, then 17 to 51: six turns of the crank for one of
+the spool) to a spool held by a ratchet and a leaf pawl. The ratchet is on the spool's shaft, so the gears carry the
+winding and never the held load. Herringbone teeth push nothing along their shafts, so the gears stay put without
+collars. `npx cad check gears/tensioner --sweep` turns the crank through a whole turn with both stages in phase.
+
+Predicted, for a 100 N pull on a 10 mm spool (1 N·m at the spool):
+
+| What | Predicted | From |
+|---|---|---|
+| Force on the 40 mm crank | 4.6 N (95% a stage) | the ratio |
+| Teeth, worst stage (the second's pinion) | 7.3 MPa by Lewis, 5.4× under PLA's 39 MPa; 9.3 MPa by finite elements (1.29× Lewis) | `strength`, `toothStress` |
+| The pawl's click over each tooth | 6.2 N to lift it, 4 N at the rim (0.2 N·mm at the crank: barely felt) | `ratchetModel` |
+| The pawl's strain at a tooth's height | 0.9%, under PLA's 2% | `ratchetModel` |
+| The pawl holding | 50 N end-on; it buckles at 85 N free-ended (693 N with its tip held by the tooth) | Euler |
+
+The pawl is six lines thick because three buckled: as drawn first, holding 100 N would have folded it at 11 N.
+
+To measure: the pull it holds before the pawl gives (buckles or slips), the force on the crank at 50 and 100 N, and
+whether the clicks are crisp.

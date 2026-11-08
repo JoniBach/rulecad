@@ -1,0 +1,28 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-pawl",
+  "title": "Tensioner: the pawl",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A leaf pawl whose square tip meets the ratchet's teeth: it bends over each tooth as the spool winds in and holds it from unwinding.",
+  "variables": {
+    "length": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "Long enough to lift a tooth's height (1.5 mm) at 0.9% strain"
+    },
+    "thick": {
+      "value": "x1c.line * 6",
+      "unit": "mm",
+      "rule": "Six lines: it holds the spool end-on, as a column (85 N to buckle free-ended, against 50 N at the rim for a 100 N strap); three lines buckled at 11 N"
+    },
+    "width": {
+      "value": "x1c.layer * 30",
+      "unit": "mm",
+      "rule": "The ratchet's width"
+    }
+  }
+}

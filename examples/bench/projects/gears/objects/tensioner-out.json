@@ -1,0 +1,95 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-out",
+  "title": "Tensioner: the spool shaft",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The second stage's 51-tooth gear (left-handed), the ratchet wheel and the strap's spool on one shaft.",
+  "variables": {
+    "module": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Stout teeth for a hand's torque: 5.4 lines across a tooth"
+    },
+    "helix": {
+      "value": 30,
+      "unit": "deg",
+      "rule": "Herringbone: no thrust, the gears stay on their shafts and centre themselves"
+    },
+    "width": {
+      "value": "x1c.layer * 40",
+      "unit": "mm",
+      "rule": "Face width, forty layers"
+    },
+    "bore": {
+      "value": "4 + x1c.line / 2",
+      "unit": "mm",
+      "rule": "A 4 mm shaft, half a line clear"
+    },
+    "teeth": {
+      "value": 51,
+      "rule": "Three to one on the second stage: six to one in all"
+    },
+    "gap": {
+      "value": "x1c.layer * 5",
+      "unit": "mm",
+      "rule": "Gear to ratchet"
+    },
+    "ratchet_teeth": {
+      "value": 24,
+      "rule": "A click every 15\u00b0"
+    },
+    "ratchet_radius": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "The ratchet's tips"
+    },
+    "ratchet_height": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "A tooth tip to root: the pawl's lift"
+    },
+    "ratchet_width": {
+      "value": "x1c.layer * 30",
+      "unit": "mm",
+      "rule": "Thirty layers"
+    },
+    "spool": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The spool's radius: the strap winds on at this"
+    },
+    "spool_height": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "A 15 mm strap and its flanges"
+    },
+    "flange": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "The flanges' radius"
+    },
+    "flange_thick": {
+      "value": "x1c.layer * 10",
+      "unit": "mm",
+      "rule": "Ten layers"
+    }
+  },
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  }
+}
