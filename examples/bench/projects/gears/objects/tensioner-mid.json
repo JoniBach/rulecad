@@ -41,11 +41,6 @@
       "value": "x1c.layer * 5",
       "unit": "mm",
       "rule": "Between the stages: the first stage's gears and the second's clear each other"
-    },
-    "hub": {
-      "value": 16,
-      "unit": "mm",
-      "rule": "The hub between them, inside the pinion's roots"
     }
   },
   "anchors": {

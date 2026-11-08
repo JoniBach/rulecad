@@ -1,13 +1,13 @@
 {
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "tensioner-crank",
-  "title": "Tensioner: crank and first pinion",
+  "title": "Tensioner: crank pinion and shaft",
   "version": "0.1.0",
   "uses": [
     "x1c"
   ],
   "engine": "manifold",
-  "description": "A 17-tooth herringbone pinion, right-handed, on a shaft up to a crank.",
+  "description": "A 17-tooth herringbone pinion, right-handed, on a shaft up past the second stage, its top flatted for the crank arm.",
   "variables": {
     "module": {
       "value": 1.5,
@@ -43,30 +43,15 @@
       "unit": "mm",
       "rule": "Up past the second stage and the ratchet"
     },
-    "arm": {
-      "value": 40,
+    "flat": {
+      "value": 1.5,
       "unit": "mm",
-      "rule": "The crank's reach"
+      "rule": "A flat on the shaft's top for the arm to drive"
     },
-    "bar": {
-      "value": 10,
+    "drive_length": {
+      "value": 8,
       "unit": "mm",
-      "rule": "The arm's width"
-    },
-    "thick": {
-      "value": "x1c.layer * 20",
-      "unit": "mm",
-      "rule": "The arm, twenty layers"
-    },
-    "handle": {
-      "value": 25,
-      "unit": "mm",
-      "rule": "A finger's length"
-    },
-    "grip": {
-      "value": 10,
-      "unit": "mm",
-      "rule": "The handle across"
+      "rule": "The flat's length: the arm's thickness and a little"
     }
   },
   "anchors": {
@@ -75,6 +60,18 @@
         0,
         0,
         0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "top": {
+      "at": [
+        0,
+        0,
+        "shaft_top"
       ],
       "axis": [
         0,

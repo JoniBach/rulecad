@@ -1,0 +1,67 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-arm",
+  "title": "Tensioner: crank arm",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The crank arm and handle, printed flat, slipped onto the crank shaft's flat.",
+  "variables": {
+    "shaft": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The crank shaft's diameter"
+    },
+    "flat": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "As the shaft's flat"
+    },
+    "clear": {
+      "value": "x1c.line / 2",
+      "unit": "mm",
+      "rule": "Half a line round the shaft: a firm slip fit"
+    },
+    "arm": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The crank's reach"
+    },
+    "bar": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The arm's width"
+    },
+    "thick": {
+      "value": "x1c.layer * 30",
+      "unit": "mm",
+      "rule": "The arm, thirty layers: it prints flat"
+    },
+    "handle": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "A finger's length"
+    },
+    "grip": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The handle across"
+    }
+  },
+  "anchors": {
+    "hole": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  }
+}

@@ -182,5 +182,11 @@ Predicted, for a 100 N pull on a 10 mm spool (1 N·m at the spool):
 
 The pawl is six lines thick because three buckled: as drawn first, holding 100 N would have folded it at 11 N.
 
+Every part prints without supports: the crank's arm is its own part, printed flat and slipped onto a flat on the
+crank shaft; the second pinion's teeth run straight down onto the gear under them; the ratchet sits on a spacer as wide
+as itself; the spool's top flange slants in at 45°. Not yet right: the pawl's seat on the ratchet is set by eye (the
+check allows it 28.6 mm³ into the teeth, where it would bend); checking it as a flexure through the ratchet's turn is
+for the flexures package's lamina tools, next.
+
 To measure: the pull it holds before the pawl gives (buckles or slips), the force on the crank at 50 and 100 N, and
 whether the clicks are crisp.

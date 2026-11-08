@@ -8,6 +8,7 @@
     "tensioner-crank",
     "tensioner-mid",
     "tensioner-out",
-    "tensioner-pawl"
+    "tensioner-pawl",
+    "tensioner-arm"
   ]
 }
