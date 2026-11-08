@@ -513,8 +513,10 @@ export function phase(a, b, angle = 0) {
  */
 export function rackPhase(pinion, at = 0) {
   const r = pinion.pitch / 2, p = Math.PI * pinion.module;
-  // at angle −90° the pinion's first tooth points down at the rack, and must sit over a space (spaces at x = kp)
-  const s = at - r * (Math.PI / 2);
+  // at angle −90° the pinion's first tooth points down at the rack, and must sit over a space (spaces at x = kp): the
+  // travel there, r (−π/2) + phase, is at, so the phase is at + r π/2. (With the sign the other way the rack sat half a
+  // tooth out for an odd number of teeth, and right for an even one, where the error is whole pitches.)
+  const s = at + r * (Math.PI / 2);
   return ((s % p) + p) % p;
 }
 
