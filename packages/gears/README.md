@@ -119,6 +119,23 @@ strongest. Every tooth has a round at its root (the commonest place a tooth crac
 The defaults, each with its rule, are in `DEFAULTS`. The backlash, the chamfer, the tip round and the smallest module
 are estimates until a printed sampler measures them.
 
+## How strong it is
+
+`strength(model, { width, material, torque?, safety?, speed? })` reads the teeth by the Lewis equation: the bending
+stress at a tooth's root with the whole load at its tip, σ = F_t / (b m Y), Y the Lewis form factor for its teeth
+(`lewisFactor(z)`). Given a torque (N·mm), it says the stress and how far under the material's strength
+(`gear.strength`: a warn under the safety factor, 2 by default; a fail past the strength). Without one, it says the
+torque the gear carries at the safety factor. Helical teeth are read in their normal section; a speed (rpm) adds
+Barth's velocity factor.
+
+```js
+strength(gearModel({ module: 1, teeth: 18 }), { width: 6, material: { strength: 39, name: 'PLA' }, torque: 500 });
+// at 0.5 N·m the teeth see 30 MPa at their roots (Lewis, Y 0.309): 1.3× under PLA's 39 MPa, under the 2× asked
+```
+
+It is a first number. A printed tooth is weaker than a moulded one where its layers and voids are, and stronger than
+Lewis says where the root fillet and its neighbours share the load. Where it matters, print one and load it.
+
 ## What isn't refused, and what is
 
 A model or a solid refuses what isn't a gear, by name, before any maths: `gearModel: teeth is a whole number of 6 or
@@ -147,6 +164,8 @@ a point.
 | Ring and pinion | at least 10 teeth apart (12 to be safe) at 20° | KHK, internal gears |
 | Planetary ratio | (ω_s − ω_c) / (ω_r − ω_c) = −R / S; ring held, sun in: 1 + R / S | Willis; Dudley (1984), ch. 3 |
 | Planetary assembly | R = S + 2P; (S + R) / n whole; 2a sin(π / n) > d_a,planet | KHK, planetary gears |
+| Tooth bending (Lewis) | σ = K_v F_t / (b m Y); helical: m cos β, z / cos³β teeth | Budynas and Nisbett, Shigley's Mechanical Engineering Design, 10th ed., §14-1 and Table 14-2 |
+| Velocity factor (Barth, cut profile) | K_v = (3.05 + V) / 3.05, V in m/s | Shigley, eq. 14-4b |
 
 ## Words used
 
@@ -172,3 +191,4 @@ a point.
 - ISO 21771:2007, *Gears: cylindrical involute gears and gear pairs, concepts and geometry*.
 - D. W. Dudley, *Handbook of Practical Gear Design*, McGraw-Hill, 1984.
 - KHK, *Gear Technical Reference* (khkgears.net): undercut, profile shift, internal gears.
+- R. G. Budynas and J. K. Nisbett, *Shigley's Mechanical Engineering Design*, 10th ed., McGraw-Hill, 2015: the Lewis equation and form factors.

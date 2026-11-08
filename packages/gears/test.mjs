@@ -300,3 +300,22 @@ test('planetary: teeth that put together for the ratio asked, nearest first; eve
   for (let c = 0; c < 20; c += 2.5) assert.ok(at(c), `every planet clear with the carrier at ${c}°`);
   assert.ok(!at(0, 180 / P), 'a planet half a tooth out collides');
 });
+
+test('strength by Lewis: σ = F / b m Y, the torque at a safety factor, helical teeth in their normal section', async () => {
+  const { strength, lewisFactor } = await import('@rulecad/gears');
+  assert.equal(lewisFactor(18), 0.309); assert.equal(lewisFactor(Infinity), 0.485);
+  near(lewisFactor(25), (0.337 + 0.346) / 2, 1e-12, 'between rows, along a line');
+  const pla = { strength: 39, name: 'PLA' }, g = gearModel({ module: 1, teeth: 18 });
+  const s = strength(g, { width: 6, material: pla, torque: 500 });
+  near(s.stress, 500 / 9 / (6 * 1 * 0.309), 1e-9, 'by hand: 55.6 N over 6 × 1 × 0.309');
+  assert.equal(s.findings[0].level, 'warn', '1.3× is under the 2× asked'); assert.match(s.findings[0].text, /1\.3× under PLA's 39 MPa, under the 2× asked/);
+  assert.equal(strength(g, { width: 6, material: pla, torque: 2000 }).findings[0].level, 'fail', 'past the strength: they break');
+  near(strength(g, { width: 6, material: pla, safety: 2 }).torque, (39 / 2) * 6 * 1 * 0.309 * 9, 1e-9, 'the torque it carries at 2×');
+  // helical: the normal module and the virtual teeth, a little weaker per tooth than the transverse numbers suggest
+  const h = strength(gearModel({ module: 1, teeth: 18, helix: 30 }), { width: 6, material: pla, torque: 500 });
+  near(h.Y, lewisFactor(18 / Math.cos(Math.PI / 6) ** 3), 1e-12, 'virtual teeth z / cos³β');
+  near(h.stress, 500 / 9 / (6 * Math.cos(Math.PI / 6) * h.Y), 1e-9, 'normal module');
+  assert.ok(strength(g, { width: 6, material: pla, torque: 500, speed: 600 }).stress > s.stress, 'speed adds Barth\'s factor');
+  assert.throws(() => strength(g, { width: 6, material: {} }), /the material needs a strength above 0 MPa/);
+  assert.throws(() => strength(rackModel({ module: 1, teeth: 9 }), { width: 6, material: pla, torque: 100 }), /a rack takes a force, not a torque/);
+});

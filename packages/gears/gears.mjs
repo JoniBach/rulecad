@@ -549,3 +549,52 @@ export function printable(g, printer, width) {
 
 // Planetary gearboxes: the teeth for a ratio, laid out in phase
 export { planetary, planetaryRatio } from './planetary.mjs';
+
+// ---------- strength ----------
+
+// The Lewis form factor for 20° full-depth teeth, by number of teeth (Budynas and Nisbett, Shigley's Mechanical
+// Engineering Design, 10th ed., Table 14-2); a rack is 0.485. Between rows, read along a straight line.
+const LEWIS = [[12, 0.245], [13, 0.261], [14, 0.277], [15, 0.290], [16, 0.296], [17, 0.303], [18, 0.309], [19, 0.314], [20, 0.322], [21, 0.328], [22, 0.331], [24, 0.337], [26, 0.346], [28, 0.353], [30, 0.359], [34, 0.371], [38, 0.384], [43, 0.397], [50, 0.409], [60, 0.422], [75, 0.435], [100, 0.447], [150, 0.460], [300, 0.472], [400, 0.480]];
+/** The Lewis form factor Y for z teeth (20° full depth); Infinity for a rack. @param {number} z */
+export function lewisFactor(z) {
+  if (z === Infinity) return 0.485;
+  if (z <= LEWIS[0][0]) return LEWIS[0][1];
+  if (z >= LEWIS.at(-1)[0]) return LEWIS.at(-1)[1] + ((0.485 - LEWIS.at(-1)[1]) * (1 - 400 / z));
+  const i = LEWIS.findIndex(([n]) => n >= z), [n0, y0] = LEWIS[i - 1], [n1, y1] = LEWIS[i];
+  return y0 + ((y1 - y0) * (z - n0)) / (n1 - n0);
+}
+
+/**
+ * How strong a gear's teeth are by the Lewis equation: the bending stress at the root of a tooth carrying the whole
+ * load at its tip, σ = F_t / (b m Y), against the material's strength. Give a torque (N·mm) for the stress and safety
+ * factor at it; give a safety factor for the torque the gear carries at it. Helical teeth are read in their normal
+ * section (m cos β, z / cos³β teeth). A speed (rpm) adds Barth's velocity factor, (3.05 + V) / 3.05 for a cut (here a
+ * printed) profile. A first number: the root fillet and a tooth's neighbours help, a printed tooth's layers and
+ * voids hurt. Where it matters, measure it, or analyse the tooth (fea).
+ * @param {GearModel} g
+ * @param {{ width: number, material: { strength: number, name?: string }, torque?: number, safety?: number, speed?: number }} o
+ */
+export function strength(g, o = {}) {
+  if (!g || !['external', 'internal', 'rack'].includes(g.kind)) throw new Error(`strength: give a gear's model, not ${shown(g)}`);
+  const width = size('strength', 'width', o.width), sigma = o.material?.strength;
+  if (!(isNum(sigma) && sigma > 0)) throw new Error(`strength: the material needs a strength above 0 MPa (got ${shown(sigma)})`);
+  if (o.torque !== undefined) size('strength', 'torque', o.torque);
+  const safety = o.safety === undefined ? 2 : size('strength', 'safety', o.safety);
+  const beta = (g.helix ?? 0) * DEG, mn = g.module * Math.cos(beta);
+  const teeth = g.kind === 'rack' ? Infinity : g.teeth / Math.cos(beta) ** 3;
+  // an internal gear's teeth are stouter at the root than an outer gear's of as many teeth: read as a rack's, a little kind
+  const Y = g.kind === 'internal' ? lewisFactor(Infinity) : lewisFactor(teeth);
+  const r = g.kind === 'rack' ? null : g.pitch / 2;
+  const V = o.speed !== undefined && r ? (size('strength', 'speed', o.speed) * 2 * Math.PI * r) / 60000 : 0, Kv = (3.05 + V) / 3.05;
+  const perNewton = Kv / (width * mn * Y); // MPa for each newton at the pitch circle
+  const out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
+  const name = o.material.name ?? 'the material';
+  const result = { Y, velocity: Kv, force: (sigma / safety) / perNewton, torque: r ? ((sigma / safety) / perNewton) * r : null, findings: out };
+  if (o.torque !== undefined) {
+    if (!r) throw new Error('strength: a rack takes a force, not a torque (the torque is its pinion\'s)');
+    const F = o.torque / r, stress = F * perNewton, n = sigma / stress;
+    Object.assign(result, { stress, safety: n });
+    f(n >= safety ? 'pass' : n >= 1 ? 'warn' : 'fail', `at ${fmt(o.torque / 1000, 3)} N·m the teeth see ${fmt(stress, 1)} MPa at their roots (Lewis, Y ${fmt(Y, 3)}${Kv > 1 ? `, ×${fmt(Kv, 2)} for speed` : ''}): ${fmt(n, 1)}× under ${name}'s ${sigma} MPa${n >= safety ? '' : n >= 1 ? `, under the ${safety}× asked` : ': they break'}`, 'gear.strength', { stress, safety: n });
+  } else if (r) f('info', `the teeth carry ${fmt(result.torque / 1000, 3)} N·m at ${safety}× under ${name}'s ${sigma} MPa (Lewis, Y ${fmt(Y, 3)})`, 'gear.strength', { torque: result.torque });
+  return result;
+}
