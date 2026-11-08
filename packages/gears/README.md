@@ -86,6 +86,22 @@ What every gear takes:
 `phase(a, b, angle)` is the turn that puts a tooth of a in a space of b: b's angle is `ratio × a's angle + phase`,
 with `angle` the direction from a's centre to b's. `rackPhase(pinion, at)` does the same for a rack.
 
+## Planetary gearboxes
+
+A sun in the middle, planets round it on a carrier, and a ring round them all. Hold one of the three and the other two
+turn at a ratio set by the teeth alone. `planetary({ module, ratio, planets, held, input, output, size })` finds the
+teeth for a ratio that also put together, nearest the ratio first and then the smallest:
+
+- the ring is the sun and two planets across: R = S + 2P;
+- the planets go in evenly spaced: S + R a whole number of times the number of planets;
+- the planets' tips clear each other by a module, and the ring has at least 12 teeth more than a planet;
+- the sun and planets have 17 teeth or more (`least`), so none is undercut; the rim fits `size` if given.
+
+`best` holds the teeth (ring held, sun in, carrier out, 5:1: a sun of 18, three planets of 27, a ring of 72), each
+planet's place round the carrier and the turn that puts it in phase with the sun, and the ring's turn. When no set
+gives the ratio exactly, the nearest is returned and `planetary.ratio` says how far off it is (a fail past 5%).
+`planetaryRatio({ sun, ring }, { held, input, output })` is the ratio of any teeth, any way round.
+
 ## How it prints
 
 `printable(model, printer, width)` reads the gear against the printer (`{ line, layer, nozzle, wall_min }`, as in
@@ -129,6 +145,8 @@ a point.
 | Thrust | F_a = F_t tan β | Dudley (1984) |
 | Flank lean at the tip | tan β_a = tan β · r_a / r | ISO 21771 |
 | Ring and pinion | at least 10 teeth apart (12 to be safe) at 20° | KHK, internal gears |
+| Planetary ratio | (ω_s − ω_c) / (ω_r − ω_c) = −R / S; ring held, sun in: 1 + R / S | Willis; Dudley (1984), ch. 3 |
+| Planetary assembly | R = S + 2P; (S + R) / n whole; 2a sin(π / n) > d_a,planet | KHK, planetary gears |
 
 ## Words used
 
@@ -146,6 +164,7 @@ a point.
 | Helix angle | How far helical teeth lean from straight across, at the pitch circle. |
 | Hand | Which way helical teeth turn. Two outer gears that mesh are of opposite hands. |
 | Undercut | A pinion of few teeth having its flank cut away under the base circle, or its mate's tip fouling there. |
+| Sun, planets, carrier, ring | A planetary gearbox's parts: the middle gear, the gears round it, what holds the planets' axles, and the ring gear round them all. |
 
 ## Sources
 
