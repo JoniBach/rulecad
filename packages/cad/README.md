@@ -265,7 +265,8 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   watertight; `npm install manifold-3d`) with `"engine": "manifold"` in the object's JSON or `CAD_ENGINE=manifold`.
 - **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model. Whatever it does, it
   can't write or delete files, start programs or workers, or load addons, and it reads only the workspace and the
-  packages designs use. To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
+  packages designs use, by their real paths (a `node_modules` link spelled through another link, as macOS spells its
+  temporary folders through `/tmp` and `/var`, is refused by name: make the link with the real path). To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
   `@rulecad/flexures` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
   started with none of your environment (no tokens). Those shut the ordinary roads to the network, not every one:
   before Node 25 the permission model doesn't cover the network, so a design written to get round them might still

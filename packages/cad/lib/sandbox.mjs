@@ -44,6 +44,18 @@ function readable() {
   return [...new Set(dirs.filter(Boolean).flatMap((d) => [d, real(d)]).filter(Boolean))];
 }
 
+// A read the permission model refused, said with what to do. Node names the first path it may not read; when that is
+// a link (macOS spells its temporary folders through /tmp and /var, both links into /private), the design's packages
+// are reached through a node_modules link spelled through it, which the sandbox follows by its real path and may not.
+function refused(e) {
+  if (e.code !== 'design.sandbox' || !e.resource) return e.message;
+  const res = e.resource, to = (() => { try { return fs.lstatSync(res).isSymbolicLink() ? fs.realpathSync(res) : null; } catch { return null; } })();
+  const trust = 'or trust the workspace ("sandbox": false in cad.config.json, then cad trust)';
+  return to
+    ? `the design's sandbox was refused ${res}, a link to ${to}: something the design loads is reached through it (a node_modules link spelled through ${res}, most likely). Make that link with its real path (ln -s "$(pwd -P)/node_modules"), ${trust}`
+    : `the design's sandbox was refused ${res}: a design may read only its workspace and the packages it uses. Keep what it needs inside the workspace, ${trust}`;
+}
+
 /**
  * Run a design's main(values) in the sandbox: { parts, read } as the build makes them.
  * @param {{ js: string }} d the design @param {object} values @param {object} meta the .json's parts @param {'jscad' | 'manifold'} [engine] v.ops's booleans
@@ -69,7 +81,7 @@ export function runSandboxed(d, values, meta, engine = 'jscad', optional = [], s
         return reject(located(new Error(`the design's sandbox stopped: ${Buffer.concat(err).toString('utf8').trim().split('\n').slice(-3).join(' ') || 'no output'}`), d.js, 'design.sandbox'));
       }
       if (err.length) process.stderr.write(Buffer.concat(err)); // what the design printed
-      if (r.error) return reject(located(Object.assign(new Error(r.error.message), { code: r.error.code, ...(r.error.line ? { line: r.error.line } : {}), ...(r.error.syntax ? { name: 'SyntaxError' } : {}) }), d.js, r.error.code || 'design.run'));
+      if (r.error) return reject(located(Object.assign(new Error(refused(r.error)), { code: r.error.code, ...(r.error.line ? { line: r.error.line } : {}), ...(r.error.syntax ? { name: 'SyntaxError' } : {}) }), d.js, r.error.code || 'design.run'));
       if (stages) for (const [k, text] of Object.entries(r.stages || {})) stages.put(k, text);
       resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read), mechanism: r.mechanism || null });
     });

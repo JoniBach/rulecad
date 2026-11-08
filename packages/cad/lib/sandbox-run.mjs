@@ -33,5 +33,5 @@ try {
   done({ parts, read: [...read], ...(mechanism ? { mechanism } : {}), ...(Object.keys(kept).length ? { stages: kept } : {}) });
 } catch (e) {
   const line = lineOf(e, js);
-  done({ error: { message: e?.message || String(e), ...(line ? { line } : {}), ...(e?.name === 'SyntaxError' ? { syntax: true } : {}), code: e?.code && typeof e.code === 'string' && !/^ERR_/.test(e.code) ? e.code : e?.code === 'ERR_ACCESS_DENIED' ? 'design.sandbox' : 'design.run' } });
+  done({ error: { message: e?.message || String(e), ...(line ? { line } : {}), ...(e?.name === 'SyntaxError' ? { syntax: true } : {}), code: e?.code && typeof e.code === 'string' && !/^ERR_/.test(e.code) ? e.code : e?.code === 'ERR_ACCESS_DENIED' ? 'design.sandbox' : 'design.run', ...(e?.code === 'ERR_ACCESS_DENIED' && e.resource ? { resource: e.resource } : {}) } });
 }
