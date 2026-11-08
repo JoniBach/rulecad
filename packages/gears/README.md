@@ -103,6 +103,24 @@ planet's place round the carrier and the turn that puts it in phase with the sun
 gives the ratio exactly, the nearest is returned and `planetary.ratio` says how far off it is (a fail past 5%).
 `planetaryRatio({ sun, ring }, { held, input, output })` is the ratio of any teeth, any way round.
 
+## Worms and bevel gears
+
+A **worm** is a screw whose thread, cut along its axis, is the basic rack's tooth: `worm({ module, starts, diameter,
+length, bore })` draws it along z. Its wheel is a helical gear at the worm's lead angle and of its hand,
+`wormWheel(wormSpec, { teeth, width, bore })` (the usual printable wheel: not throated, so they touch at a point,
+which printed teeth spread). `wormMesh(wormSpec, { teeth })` gives the centre distance, the ratio (`starts` teeth of the
+wheel for each turn of the worm), whether it **locks** (the lead angle under the friction angle: the wheel can't turn
+the worm back; `worm.locks`) and how **efficient** it is. A single start of module 1 on a 10 mm worm: a 5.71° lead,
+it locks at μ 0.25, 27% efficient. Three starts on 8 mm: 20.6°, it doesn't.
+
+A **bevel gear** carries a turn round a corner. `bevel({ module, teeth, mate, shaftAngle, width, bore })` draws a
+straight bevel by Tredgold's construction: the tooth drawn on the back cone as a spur gear of z / cos δ teeth, wrapped
+onto the back cone and seen from the apex onto the back end, every section nearer the apex that one scaled, so the
+teeth run straight to the apex. The back end is on the bed and the apex up z. `bevelModel` gives the pitch cone angle
+(tan δ = sin Σ / (z₂/z₁ + cos Σ)), the cone distance R, the virtual teeth, and refuses a face width over R / 3;
+`bevelMesh` the ratio and the contact ratio of the back cones' equivalent spur gears. In an assembly, the two cones
+must share their apex.
+
 ## The mesh, measured
 
 `mesh()` reckons a pair from the formulas. `contact(a, b, { centre, steps })` measures it from the teeth as drawn,
@@ -191,6 +209,10 @@ a point.
 | Tooth bending (Lewis) | σ = K_v F_t / (b m Y); helical: m cos β, z / cos³β teeth | Budynas and Nisbett, Shigley's Mechanical Engineering Design, 10th ed., §14-1 and Table 14-2 |
 | Velocity factor (Barth, cut profile) | K_v = (3.05 + V) / 3.05, V in m/s | Shigley, eq. 14-4b |
 | Tooth by finite elements | plane stress, 32 cells a module, load F_t / cos α along the line of action at the tip | `@rulecad/fea`; AGMA 908-B89 for the geometry factor it is compared with |
+| Worm lead angle | tan γ = s π m / (π d) | ISO 21771 (worms: ISO/TR 10828) |
+| Worm locking and efficiency | locks when γ < atan μ; η = tan γ (cos α_n − μ tan γ) / (cos α_n tan γ + μ) | Dudley (1984), ch. 3; Shigley, §13-11 |
+| Bevel pitch cone | tan δ₁ = sin Σ / (z₂/z₁ + cos Σ); R = r / sin δ; virtual teeth z / cos δ | Tredgold's approximation; Shigley, §13-12 |
+| Bevel face width | at most R / 3 | AGMA 2005 |
 
 ## Words used
 

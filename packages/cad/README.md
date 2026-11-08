@@ -370,6 +370,10 @@ then y, then z, as `rotate` does.
   each placed between the two axes, and measures the pair from its drawn teeth (`mesh.backlash`, `mesh.interference`,
   kept in `.cache/gears/`); `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
   one part, or on parts held still; planets on a carrier are a `planetary`.
+- **Worms and bevels:** `"worm": true` (or `{ "diameter", "hand" }`) in a mesh makes the driving joint a worm and
+  this one its wheel, `teeth` [starts, the wheel's], the axes crossed at right angles; the check says the ratio,
+  whether it locks, and the centre distance. `"bevel": true` makes the two bevel gears, their axes meeting at the
+  shaft angle; the cones must share their apex (`mesh.bevel`). Both follow in phase, so `--sweep` turns them clean.
 - **Planetary gearboxes:** `"planetary": [{ "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1",
   "p2"], "drive": "carrier", "module": 1, "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }]` names the items. One of
   the sun, carrier and ring is held (no joint, or a fixed one); the one `drive` names turns on its revolute, and the

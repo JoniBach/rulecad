@@ -114,7 +114,9 @@
             "shift": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/expr" } },
             "pressureAngle": { "$ref": "#/$defs/expr" },
             "backlash": { "$ref": "#/$defs/expr" },
-            "ring": { "type": "boolean" }
+            "ring": { "type": "boolean" },
+            "bevel": { "type": "boolean" },
+            "worm": { "anyOf": [{ "type": "boolean" }, { "type": "object", "additionalProperties": false, "properties": { "diameter": { "$ref": "#/$defs/expr" }, "hand": { "enum": ["right", "left"] } } }] }
           }
         }
       }

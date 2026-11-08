@@ -357,3 +357,41 @@ test('a tooth by finite elements: the root of its loaded side, settled, about 1.
   assert.match(toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 600, material: pla }).findings[0].text, /over PLA's 39 MPa, it breaks/);
   assert.throws(() => toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 400, material: {} }), /needs a modulus E/);
 });
+
+test('worms: the thread\'s axial section is the basic rack\'s tooth, one lead a turn; the wheel\'s numbers, locking and efficiency', async () => {
+  const { wormModel, worm, wormWheel, wormMesh } = await import('@rulecad/gears');
+  const w = wormModel({ module: 1 });
+  near(w.leadAngle, Math.atan(1 / 10) / (Math.PI / 180), 1e-9, 'lead angle: atan(lead / π d)');
+  assert.equal(w.locks, true, 'a single start at μ 0.25 locks');
+  const s = worm({ module: 1, length: 12, chamfer: 0 });
+  assert.equal(closed(s), 0, 'closed');
+  // along +x (angle 0), the radius up the axis: crests a pitch apart, at the tip radius, the space centres at the root
+  const onAxis = jscad.geometries.geom3.toPolygons(s).flatMap((q) => q.vertices).filter((v) => Math.abs(v[1]) < 0.05 && v[0] > 0);
+  const crest = onAxis.filter((v) => v[0] > 5.95).map((v) => v[2]);
+  assert.ok(crest.length > 3, `crests along +x: ${crest.length}`);
+  const pitch = Math.PI, phaseOf = (z) => ((z % pitch) + pitch) % pitch;
+  // the rack's teeth are centred half a pitch from its spaces: the crests at z ≡ π/2 (mod π) at angle 0
+  for (const z of crest) assert.ok(Math.abs(phaseOf(z) - pitch / 2) < 0.6, `a crest at z ${z.toFixed(2)}: ${phaseOf(z).toFixed(2)} into the pitch`);
+  assert.ok(onAxis.some((v) => v[0] < 3.8), 'the roots reach the root radius');
+  assert.equal(closed(wormWheel({ module: 1 }, { teeth: 30, width: 6 })), 0, 'the wheel closes');
+  const m = wormMesh({ module: 1 }, { teeth: 30 });
+  assert.equal(m.centre, 20); near(m.ratio, 1 / 30, 1e-12, 'one tooth a turn');
+  assert.equal(wormMesh({ module: 1, starts: 3, diameter: 8 }, { teeth: 30 }).locks, false, 'three starts on a thin worm: back-drivable');
+  assert.throws(() => wormModel({ module: 1, starts: 5 }), /starts is a whole number from 1 to 4/);
+  assert.throws(() => wormModel({ module: 1, diameter: 5 }), /leaves under two modules of core/);
+});
+
+test('bevel gears: cone angles that add to the shaft angle, Tredgold\'s virtual teeth, a closed solid, and refusals', async () => {
+  const { bevelModel, bevel, bevelMesh } = await import('@rulecad/gears');
+  const a = bevelModel({ module: 1.5, teeth: 20, mate: 30 }), b = bevelModel({ module: 1.5, teeth: 30, mate: 20 });
+  near(a.pitchAngle, Math.atan(20 / 30) / (Math.PI / 180), 1e-9, 'tan δ1 = z1 / z2 at 90°'); near(a.pitchAngle + b.pitchAngle, 90, 1e-9, 'they add to the shaft angle');
+  near(a.coneDistance, 15 / Math.sin(a.pitchAngle * (Math.PI / 180)), 1e-9, 'R = r / sin δ'); near(a.virtualTeeth, 20 / Math.cos(a.pitchAngle * (Math.PI / 180)), 1e-9, 'z / cos δ');
+  const at60 = bevelModel({ module: 1, teeth: 20, mate: 20, shaftAngle: 60 }); near(at60.pitchAngle, 30, 1e-9, 'a 1:1 pair at 60°: 30° cones');
+  const s = bevel({ module: 1.5, teeth: 20, mate: 30, bore: 4 });
+  assert.equal(closed(s), 0, 'closed');
+  const [lo, hi] = jscad.measurements.measureBoundingBox(s); near(hi[2], a.width * Math.cos(a.pitchAngle * (Math.PI / 180)), 1e-6, 'as tall as the face width along the axis');
+  assert.equal(bevelMesh({ module: 1.5, teeth: 20 }, { module: 1.5, teeth: 30 }).ratio, 2 / 3);
+  assert.throws(() => bevelModel({ module: 1.5, teeth: 20, mate: 30, width: 12 }), /over a third of the cone distance/);
+  assert.throws(() => bevelModel({ module: 1, teeth: 10, mate: 40 }), /undercut \(as [\d.]+ on their back cone\)/);
+  assert.throws(() => bevelModel({ module: 1, teeth: 20 }), /mate is a whole number of 6 or more/);
+});
