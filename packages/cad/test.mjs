@@ -946,3 +946,17 @@ test('a check reads the object against its schema first; a measurement with no r
     assert.match(cad('check', 'demo/plain'), /variables\.w\.value: should be number or string or boolean or array or object, not null/);
   } finally { done(); }
 });
+
+test('a node_modules link spelled through another link: the sandbox names the link it was refused, and the remedy', { skip: process.platform === 'win32' && 'linked folders need privileges on Windows' }, () => {
+  const { ws, cad, done } = workspace();
+  // a folder outside the workspace, reached through a link beside it: the way macOS spells /var/folders through /var
+  const real = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-alias-'))), alias = `${real}-link`;
+  try {
+    fs.symlinkSync(real, alias, 'dir'); fs.symlinkSync(ROOT_MODULES, path.join(real, 'node_modules'), 'dir');
+    fs.rmSync(path.join(ws, 'node_modules')); fs.symlinkSync(path.join(alias, 'node_modules'), path.join(ws, 'node_modules'), 'dir');
+    cad('new', 'home/tray');
+    const out = cad('check', 'home/tray');
+    assert.match(out, new RegExp(`sandbox was refused ${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}, a link to ${real.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`), out);
+    assert.match(out, /Make that link with its real path/);
+  } finally { done(); fs.rmSync(alias, { force: true }); fs.rmSync(real, { recursive: true, force: true }); }
+});
