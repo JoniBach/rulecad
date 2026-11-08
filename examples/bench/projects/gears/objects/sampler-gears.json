@@ -1,0 +1,87 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "sampler-gears",
+  "title": "Gear sampler: the gears",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The sampler's gears laid out to print: a row a module (0.8, 1, 1.5, 2), a pair at each backlash, marked on top with one, two or three dots (0.1, 0.2, 0.3 mm); and two more module 1 gears at 0.2 for the rack and the ring. Each goes on the plate's pins where its label says.",
+  "variables": {
+    "module_a": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "As the plate's rows: module 0.8"
+    },
+    "module_b": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "As the plate's rows: module 1"
+    },
+    "module_c": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "As the plate's rows: module 1.5"
+    },
+    "module_d": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "As the plate's rows: module 2"
+    },
+    "backlash_a": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "As the plate's columns: 0.1 mm"
+    },
+    "backlash_b": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "As the plate's columns: 0.2 mm"
+    },
+    "backlash_c": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "As the plate's columns: 0.3 mm"
+    },
+    "teeth": {
+      "value": 17,
+      "rule": "As the plate"
+    },
+    "width": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "Face width, twenty layers, as the plate's pins expect"
+    },
+    "bore": {
+      "value": "3 + x1c.line",
+      "unit": "mm",
+      "rule": "The plate's 3 mm pin and a line's clearance, so a gear turns on it"
+    },
+    "gap": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Between gears as they print"
+    },
+    "dot": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "A marking dot three lines across"
+    },
+    "dot_height": {
+      "value": "x1c.layer * 3",
+      "unit": "mm",
+      "rule": "Three layers proud of the face"
+    },
+    "extra_backlash": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "The rack's and ring's pinions: their backlash"
+    },
+    "dot_pitch": {
+      "value": "x1c.line * 5",
+      "unit": "mm",
+      "rule": "Dots five lines apart along their ring: clear of each other, easy to count"
+    }
+  }
+}

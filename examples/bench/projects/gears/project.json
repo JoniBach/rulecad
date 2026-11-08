@@ -1,0 +1,6 @@
+{
+  "name": "gears",
+  "description": "Gears from @rulecad/gears, printed and measured: a sampler plate that sets the kit's default backlash and smallest module on this printer.",
+  "material": "PLA",
+  "objects": ["sampler", "sampler-gears"]
+}
