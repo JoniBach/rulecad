@@ -1,0 +1,68 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-frame",
+  "title": "Tensioner: the frame",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The base the three shafts stand in (4 mm steel rods, pressed in) and the post the pawl stands on, outside every gear's reach.",
+  "variables": {
+    "length": {
+      "value": 162,
+      "unit": "mm",
+      "rule": "From behind the crank to past the pawl's post"
+    },
+    "start": {
+      "value": -18,
+      "unit": "mm",
+      "rule": "Behind the crank's pinion (14.25 mm tips)"
+    },
+    "wide": {
+      "value": 86,
+      "unit": "mm",
+      "rule": "Under the spool shaft's gear (39.75 mm tips) both sides"
+    },
+    "thick": {
+      "value": "x1c.layer * 40",
+      "unit": "mm",
+      "rule": "Eight millimetres: deep enough to hold a rod upright"
+    },
+    "rod": {
+      "value": "4 - x1c.line / 4",
+      "unit": "mm",
+      "rule": "A 4 mm rod pressed in: a quarter line under"
+    },
+    "mid_x": {
+      "value": 38.25,
+      "unit": "mm",
+      "rule": "The middle shaft: m (17 + 34) / 2 from the crank"
+    },
+    "out_x": {
+      "value": 89.25,
+      "unit": "mm",
+      "rule": "The spool shaft: m (17 + 51) / 2 further"
+    },
+    "post_x": {
+      "value": 133.6,
+      "unit": "mm",
+      "rule": "The pawl's post: under its root, just outside the spool gear's tips (40.6 mm from its shaft)"
+    },
+    "post_y": {
+      "value": 19.2,
+      "unit": "mm",
+      "rule": "In line with the pawl"
+    },
+    "post": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "Square: the pawl's 50 N at its top bends it to 3 MPa"
+    },
+    "post_height": {
+      "value": 18.4,
+      "unit": "mm",
+      "rule": "Up to the ratchet's level, two layers' gap and all"
+    }
+  }
+}

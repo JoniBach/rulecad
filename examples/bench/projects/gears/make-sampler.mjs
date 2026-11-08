@@ -22,13 +22,13 @@ const items = [{ id: 'plate', object: 'sampler' }], joints = [];
 for (const p of L.pins) {
   items.push({ id: p.id, object: 'sampler-gear', set: { module: p.module, backlash: p.backlash, dots: p.dots } });
   joints.push({ id: p.id, type: 'revolute', parent: { item: 'plate', at: at(p.x, p.y), axis: [0, 0, 1] }, child: `${p.id}.axis`, min: -360, max: 360,
-    ...(p.meshes ? { mesh: { with: p.meshes, module: p.module, teeth: [values.teeth, values.teeth] } } : {}) });
+    ...(p.meshes ? { mesh: { with: p.meshes, module: p.module, teeth: [values.teeth, values.teeth], backlash: p.backlash } } : {}) });
 }
 items.push({ id: 'rack', object: 'sampler-rack' }, { id: 'ring', object: 'sampler-ring' });
 joints.push({ id: 'rack', type: 'prismatic', parent: { item: 'plate', at: at(L.rack.x, L.rack.y), axis: [1, 0, 0] }, child: 'rack.slide', min: -L.rack.travel, max: L.rack.travel,
-  mesh: { with: 'rack-pinion', module: 1, teeth: [values.teeth, values.rack_teeth] } });
+  mesh: { with: 'rack-pinion', module: 1, teeth: [values.teeth, values.rack_teeth], backlash: values.check_backlash } });
 joints.push({ id: 'ring', type: 'revolute', parent: { item: 'plate', at: at(L.ring.x, L.ring.y), axis: [0, 0, 1] }, child: 'ring.axis', min: -360, max: 360,
-  mesh: { with: 'ring-pinion', module: 1, teeth: [values.teeth, values.ring_teeth], ring: true } });
+  mesh: { with: 'ring-pinion', module: 1, teeth: [values.teeth, values.ring_teeth], backlash: values.check_backlash, ring: true } });
 // the rack's pinion turns no further than the rack can slide
 joints.find((j) => j.id === 'rack-pinion').min = -Math.floor((L.rack.travel / (Math.PI * values.teeth)) * 360);
 joints.find((j) => j.id === 'rack-pinion').max = Math.floor((L.rack.travel / (Math.PI * values.teeth)) * 360);

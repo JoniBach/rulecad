@@ -10,14 +10,14 @@
   "description": "A leaf pawl whose square tip meets the ratchet's teeth: it bends over each tooth as the spool winds in and holds it from unwinding.",
   "variables": {
     "length": {
-      "value": 25,
+      "value": 41,
       "unit": "mm",
-      "rule": "Long enough to lift a tooth's height (1.5 mm) at 0.9% strain"
+      "rule": "From its post outside the spool gear's reach to the ratchet: lifts a tooth's height (1.5 mm) at 0.45% strain"
     },
     "thick": {
-      "value": "x1c.line * 6",
+      "value": "x1c.line * 8",
       "unit": "mm",
-      "rule": "Six lines: it holds the spool end-on, as a column (85 N to buckle free-ended, against 50 N at the rim for a 100 N strap); three lines buckled at 11 N"
+      "rule": "Eight lines: it holds the spool end-on, as a column; 41 mm long it buckles at 75 N free-ended, against 50 N at the rim for a 100 N strap"
     },
     "width": {
       "value": "x1c.layer * 30",

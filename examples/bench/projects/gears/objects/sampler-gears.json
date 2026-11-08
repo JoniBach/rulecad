@@ -7,7 +7,7 @@
     "x1c"
   ],
   "engine": "manifold",
-  "description": "The sampler's gears laid out to print: a row a module (0.8, 1, 1.5, 2), a pair at each backlash, marked on top with one, two or three dots (0.1, 0.2, 0.3 mm); and two more module 1 gears at 0.2 for the rack and the ring. Each goes on the plate's pins where its label says.",
+  "description": "The sampler's gears laid out to print: a row a module (0.8, 1, 1.5, 2), a pair at each backlash, marked on top with one, two or three dots (0.1, 0.2, 0.3 mm); the rack's and ring's pinions (module 1, two dots); and the loose rack and ring. The mounted assembly (sampler-mounted) shows where each goes.",
   "variables": {
     "module_a": {
       "value": 0.8,
@@ -82,6 +82,19 @@
       "value": "x1c.line * 5",
       "unit": "mm",
       "rule": "Dots five lines apart along their ring: clear of each other, easy to count"
+    },
+    "rack_teeth": {
+      "value": 20,
+      "rule": "As the plate's rack"
+    },
+    "ring_teeth": {
+      "value": 40,
+      "rule": "As the plate's ring"
+    },
+    "rack_bar": {
+      "value": "x1c.line * 8",
+      "unit": "mm",
+      "rule": "As the plate's rack_bar"
     }
   }
 }

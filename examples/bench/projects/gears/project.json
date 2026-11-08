@@ -12,6 +12,8 @@
     "tensioner-arm",
     "sampler-gear",
     "sampler-rack",
-    "sampler-ring"
+    "sampler-ring",
+    "tensioner-frame",
+    "tensioner-rod"
   ]
 }

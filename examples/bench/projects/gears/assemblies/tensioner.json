@@ -1,8 +1,53 @@
 {
   "title": "Strap tensioner",
   "kind": "fit",
-  "description": "A crank through two herringbone stages (2 : 1 and 3 : 1) to a spool held by a ratchet: six turns of the crank for one of the spool. The ratchet is on the spool's shaft, so the gears carry only the winding, never the held load.",
+  "description": "A crank through two herringbone stages (2 : 1 and 3 : 1) to a spool held by a ratchet, on a frame: six turns of the crank for one of the spool. The shafts are 4 mm rods pressed into the frame; the pawl stands on a post outside every gear's reach. The ratchet is on the spool's shaft, so the gears carry only the winding, never the held load.",
   "items": [
+    {
+      "id": "frame",
+      "object": "tensioner-frame",
+      "at": [
+        0,
+        0,
+        -8.4
+      ]
+    },
+    {
+      "id": "rod-crank",
+      "object": "tensioner-rod",
+      "at": [
+        0,
+        0,
+        -8.4
+      ],
+      "set": {
+        "length": 41
+      }
+    },
+    {
+      "id": "rod-mid",
+      "object": "tensioner-rod",
+      "at": [
+        38.25,
+        0,
+        -8.4
+      ],
+      "set": {
+        "length": 25
+      }
+    },
+    {
+      "id": "rod-out",
+      "object": "tensioner-rod",
+      "at": [
+        89.25,
+        0,
+        -8.4
+      ],
+      "set": {
+        "length": 52
+      }
+    },
     {
       "id": "crank",
       "object": "tensioner-crank"
@@ -23,9 +68,14 @@
       "id": "pawl",
       "object": "tensioner-pawl",
       "at": [
-        64.25,
+        130.25,
         19.2,
         18
+      ],
+      "rotate": [
+        0,
+        0,
+        180
       ]
     }
   ],
@@ -117,6 +167,42 @@
       "b": "out",
       "min": -2,
       "note": "The pawl rides the ratchet's teeth: it bends over each as the spool winds in"
+    },
+    {
+      "a": "rod-crank",
+      "b": "crank",
+      "min": -1,
+      "note": "The shaft through its gears' bores"
+    },
+    {
+      "a": "rod-mid",
+      "b": "mid",
+      "min": -1,
+      "note": "The shaft through its gears' bores"
+    },
+    {
+      "a": "rod-out",
+      "b": "out",
+      "min": -1,
+      "note": "The shaft through its gears' bores"
+    },
+    {
+      "a": "rod-crank",
+      "b": "frame",
+      "min": -1,
+      "note": "The rod pressed into the frame"
+    },
+    {
+      "a": "rod-mid",
+      "b": "frame",
+      "min": -1,
+      "note": "The rod pressed into the frame"
+    },
+    {
+      "a": "rod-out",
+      "b": "frame",
+      "min": -1,
+      "note": "The rod pressed into the frame"
     }
   ]
 }
