@@ -462,11 +462,12 @@ export function main (v) {
   "uses": ["x1c"],
   "anchors": {
     "axle": { "at": [0, "centre", "thick"], "axis": [0, 0, 1] },
-    "track": { "at": ["0 - length / 2", 0, "thick"], "axis": [1, 0, 0] }
+    "track": { "at": ["start", 0, "thick"], "axis": [1, 0, 0] }
   },
   "variables": {
     "centre": { "value": 7.2, "unit": "mm", "rule": "The pinion's axle above the rack's pitch line: its pitch radius and its shift, m z / 2 + x m" },
     "length": { "value": 140, "unit": "mm", "rule": "Room for the rack's whole travel" },
+    "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the knob at rest: half its 24 teeth, 12 × π" },
     "wide": { "value": 40, "unit": "mm", "rule": "Under the rack and the knob" },
     "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" }
   }
@@ -482,7 +483,8 @@ export function main (v) {
 }
 ```
 
-The assembly: the knob turns on the base's axle, and the rack slides along its track. The slide's joint doesn't say
+The assembly: the knob turns on the base's axle, and the rack slides along its track, its middle under the knob at
+rest, so half a turn either way (±22 mm) keeps the pinion on its teeth. The slide's joint doesn't say
 how far it moves for a turn of the knob: its `mesh` says which joint drives it, and the gears' module and teeth (read
 from the parts, so they can't disagree). The check works out the travel a turn and the phase that puts a tooth in a
 gap, and says whether the axle is where the gears need it.
