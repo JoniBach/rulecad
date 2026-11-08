@@ -2,7 +2,7 @@
 
 [The tutorial](TUTORIAL.md) ends with a wall hook checked against its screw. These examples carry on from there, one
 for each thing the [README](README.md) describes after that: parts, variants and releases, joints and poses, a model
-from elsewhere, an optimised part, a board, a mechanism printed flat, and gears. Each is a few files and the commands to run
+from elsewhere, an optimised part, a board, a mechanism printed flat, gears, and a gearbox. Each is a few files and the commands to run
 them. The tests write every file here and run every command, so what you read is what works.
 
 They start from a workspace `npm create rulecad my-designs` makes, as the tutorial does, and run in order: later
@@ -517,3 +517,213 @@ carries the knob as a slider, with the rack moving with it: `npx cad link home/s
 
 To see the gears' geometry, `@rulecad/gears/diagram` draws a pair the way a textbook does: pitch and base circles,
 the line of action and the path of contact.
+
+## 9. A gearbox: a spool winder through a planetary
+
+A crank that winds a spool four times for each turn: a planetary gearbox, the crank on the carrier, the spool on the
+sun, the ring held in the case. `planetary()` in `@rulecad/gears` finds the teeth for the ratio and checks that they
+put together:
+
+```js
+planetary({ module: 1, ratio: 0.25, planets: 3, held: 'ring', input: 'carrier', output: 'sun' })
+// 0.25 : 1 (carrier to sun, ring held), as asked: sun 18, planets 18 × 3, ring 54
+```
+
+The ring is the sun and two planets across (18 + 2 × 18 = 54), and the planets go in evenly: 18 + 54 = 72 is a whole
+number of threes. The parts: a case with the ring on it and a pin for the sun, the sun with the spool's shaft, three
+planets, and the carrier with the planets' pins and the crank.
+
+```json projects/home/objects/winder-case.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-case",
+  "title": "Winder case",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "variables": {
+    "radius": { "value": 34, "unit": "mm", "rule": "Round the ring's rim (62.5 mm across)" },
+    "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Base, fifteen layers" },
+    "pin": { "value": 3, "unit": "mm", "rule": "The sun's axle" },
+    "pin_height": { "value": 24, "unit": "mm", "rule": "Up through the sun and its shaft" }
+  }
+}
+```
+
+```js projects/home/objects/winder-case.js
+// The case: a base with the sun's axle standing in the middle. The ring sits on it.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
+export function main (v) {
+  return v.ops.union(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }),
+    cylinder({ radius: v.pin / 2, height: v.pin_height, center: [0, 0, v.t + v.pin_height / 2] }))
+}
+```
+
+```json projects/home/objects/winder-ring.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-ring",
+  "title": "Winder ring gear",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "variables": {
+    "module": { "value": 1, "unit": "mm", "rule": "3.6 lines across a tooth on the X1C" },
+    "teeth": { "value": 54, "rule": "The sun and two planets across: 18 + 2 × 18" },
+    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "Face width, forty layers" }
+  }
+}
+```
+
+```js projects/home/objects/winder-ring.js
+export function main (v) {
+  return v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width })
+}
+```
+
+```json projects/home/objects/winder-gear.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-gear",
+  "title": "Winder planet",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "anchors": { "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] } },
+  "variables": {
+    "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
+    "teeth": { "value": 18, "rule": "From planetary(): 18 for 4 : 1 with three planets" },
+    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "As the ring" },
+    "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "A 3 mm pin and half a line's clearance" }
+  }
+}
+```
+
+```js projects/home/objects/winder-gear.js
+export function main (v) {
+  return v.gears.spur({ module: v.module, teeth: v.teeth, width: v.width, bore: v.bore })
+}
+```
+
+The sun is a planet with the spool's shaft on top, bored through for its axle:
+
+```json projects/home/objects/winder-sun.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-sun",
+  "title": "Winder sun and spool shaft",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": { "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] } },
+  "variables": {
+    "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
+    "teeth": { "value": 18, "rule": "From planetary()" },
+    "width": { "value": "x1c.layer * 40", "unit": "mm", "rule": "As the ring" },
+    "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "On the case's 3 mm axle" },
+    "shaft": { "value": 8, "unit": "mm", "rule": "The spool's shaft, inside the sun's roots" },
+    "shaft_height": { "value": 12, "unit": "mm", "rule": "Up through the carrier, and a spool's width over it" }
+  }
+}
+```
+
+```js projects/home/objects/winder-sun.js
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
+export function main (v) {
+  const gear = v.gears.spur({ module: v.module, teeth: v.teeth, width: v.width, bore: v.bore })
+  const shaft = cylinder({ radius: v.shaft / 2, height: v.shaft_height, center: [0, 0, v.width + v.shaft_height / 2] })
+  const hole = cylinder({ radius: v.bore / 2, height: v.shaft_height, center: [0, 0, v.width + v.shaft_height / 2] })
+  return v.ops.union(gear, v.ops.subtract(shaft, hole))
+}
+```
+
+The carrier: a disc over the gears, inside the ring's tips, with a pin down into each planet and the crank on top. Its
+anchors are where the planets turn, every 120° at the sun-to-planet distance (m (S + P) / 2 = 18 mm).
+
+```json projects/home/objects/winder-carrier.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-carrier",
+  "title": "Winder carrier and crank",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": {
+    "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] },
+    "p0": { "at": ["a", 0, "0 - drop"], "axis": [0, 0, 1] },
+    "p1": { "at": ["0 - a / 2", "a * 0.8660254", "0 - drop"], "axis": [0, 0, 1] },
+    "p2": { "at": ["0 - a / 2", "0 - a * 0.8660254", "0 - drop"], "axis": [0, 0, 1] }
+  },
+  "variables": {
+    "a": { "value": 18, "unit": "mm", "rule": "Sun to planet: m (S + P) / 2" },
+    "drop": { "value": "8 + x1c.layer * 2", "unit": "mm", "rule": "A planet's width and two layers' gap above it" },
+    "radius": { "value": 25, "unit": "mm", "rule": "Inside the ring's tips (26 mm)" },
+    "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
+    "hole": { "value": 9, "unit": "mm", "rule": "Round the sun's 8 mm shaft" },
+    "pin": { "value": 3, "unit": "mm", "rule": "The planets' axles" },
+    "arm": { "value": 45, "unit": "mm", "rule": "The crank's reach" },
+    "bar": { "value": 10, "unit": "mm", "rule": "The crank arm's width" },
+    "handle": { "value": 20, "unit": "mm", "rule": "The handle's height" },
+    "grip": { "value": 8, "unit": "mm", "rule": "The handle's diameter" }
+  }
+}
+```
+
+```js projects/home/objects/winder-carrier.js
+import jscad from '@jscad/modeling'
+const { cylinder, cuboid } = jscad.primitives
+
+export function main (v) {
+  const disc = cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] })
+  const arm = cuboid({ size: [v.arm, v.bar, v.t], center: [v.arm / 2, 0, v.t + v.t / 2] })
+  const handle = cylinder({ radius: v.grip / 2, height: v.handle, center: [v.arm - v.grip / 2, 0, v.t * 2 + v.handle / 2] })
+  const third = (2 * Math.PI) / 3
+  const pins = [0, 1, 2].map((k) => cylinder({ radius: v.pin / 2, height: v.drop, center: [v.a * Math.cos(k * third), v.a * Math.sin(k * third), 0 - v.drop / 2] }))
+  const hole = cylinder({ radius: v.hole / 2, height: v.t * 2, center: [0, 0, v.t] })
+  return v.ops.subtract(v.ops.union(disc, arm, handle, ...pins), hole)
+}
+```
+
+The assembly holds the ring in the case and turns the carrier on the crank; the `planetary` turns the sun and the
+planets with it, in phase. The gears sit two layers off the case, so nothing rubs as it turns. The case, the sun and the carrier
+are built with Manifold's booleans (`"engine": "manifold"`): closed solids, so the check measures them quickly.
+
+```json projects/home/assemblies/winder.json
+{
+  "title": "Spool winder",
+  "kind": "fit",
+  "items": [
+    { "id": "case", "object": "winder-case" },
+    { "id": "ring", "object": "winder-ring", "at": [0, 0, "case.t"] },
+    { "id": "sun", "object": "winder-sun" },
+    { "id": "carrier", "object": "winder-carrier" },
+    { "id": "p0", "object": "winder-gear" },
+    { "id": "p1", "object": "winder-gear" },
+    { "id": "p2", "object": "winder-gear" }
+  ],
+  "joints": [
+    { "id": "sun", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.4"], "axis": [0, 0, 1] }, "child": "sun.axis", "min": -3000, "max": 3000 },
+    { "id": "crank", "type": "revolute", "parent": { "item": "case", "at": [0, 0, "case.t + 0.8 + ring.width"], "axis": [0, 0, 1] }, "child": "carrier.axis", "min": -180, "max": 180, "label": "Crank" },
+    { "id": "p0", "type": "revolute", "parent": "carrier.p0", "child": "p0.axis", "min": -3000, "max": 3000 },
+    { "id": "p1", "type": "revolute", "parent": "carrier.p1", "child": "p1.axis", "min": -3000, "max": 3000 },
+    { "id": "p2", "type": "revolute", "parent": "carrier.p2", "child": "p2.axis", "min": -3000, "max": 3000 }
+  ],
+  "planetary": [
+    { "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1", "p2"], "drive": "carrier",
+      "module": "ring.module", "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }
+  ],
+  "poses": { "rest": { "crank": 0 }, "quarter": { "crank": 90 } }
+}
+```
+
+```sh
+npx cad check home/winder
+npx cad check home/winder --sweep --steps 24
+```
+
+The check says `the carrier drives the sun and the planets (the ring held): 4 turns of the sun for each turn of the
+carrier, the same way`, and each planet's centre distance and contact ratio. The sweep turns the crank from −180° to
+180°, the sun four times as far, and looks for anything that touches. Move a planet's anchor off its 120° and the
+check fails it: it can't mesh with the sun and the ring at once there.

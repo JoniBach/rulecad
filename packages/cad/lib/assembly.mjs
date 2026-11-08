@@ -26,7 +26,7 @@ import { locate, build, readObject, jscad } from './design.mjs';
 import { materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 import { bounds } from '@rulecad/printcheck';
-import { closest, closestAt, inside, distanceToFace } from '@rulecad/fit';
+import { closest, closestAt, inside, distanceToFace, overlapAt } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase } from '@rulecad/gears';
@@ -522,12 +522,18 @@ export { closest };
 
 // How much two parts overlap (mm³), from JSCAD's intersection.
 export function overlap(ga, gb) {
-  const v = jscad.measurements.measureVolume((solid ? solid.intersect : jscad.booleans.intersect)(ga, gb));
-  return Math.abs(v) < 1e-6 ? 0 : Math.abs(v);
+  const fell = solid?.stats.fallbacks ?? 0;
+  const v = Math.abs(jscad.measurements.measureVolume((solid ? solid.intersect : jscad.booleans.intersect)(ga, gb)));
+  if (v < 1e-6) return 0;
+  // JSCAD's answer (no Manifold, or a shape Manifold couldn't read): only if their surfaces really cross, which fit
+  // says exactly (slower, so only here)
+  if (!solid || solid.stats.fallbacks > fell) { const faces = (g) => jscad.geometries.geom3.toPolygons(g).map((q) => q.vertices); if (!overlapAt(faces(ga), faces(gb))) return 0; }
+  return v;
 }
-// How overlaps are measured: with Manifold where it's installed. JSCAD's intersection misreads faces that come near
-// without touching: two gears 0.07 mm apart (their backlash) read as 2.7 mm³ into each other at one angle in twenty.
-// Manifold is exact there; a shape it can't read as a closed solid falls back to JSCAD's for that pair.
+// How overlaps are measured: whether the surfaces cross, exactly (fit), and then how much, with Manifold where it's
+// installed. JSCAD's intersection misreads faces that come near without touching: two gears 0.07 mm apart (their
+// backlash) read as 2.7 mm³ into each other at one angle in twenty, and a planet 0.4 mm over a case as 1.3 mm³.
+// Manifold is exact; a shape it can't read as a closed solid falls back to JSCAD's for that pair.
 let solid = null, tried = false;
 async function measurer() {
   if (tried) return; tried = true;
@@ -542,7 +548,7 @@ function pairOverlap(pa, pb) {
   if (!pa.hash || !pb.hash) return overlap(pa.geometry, pb.geometry);
   remembered ||= (() => { try { return JSON.parse(host.readText(OVERLAPS)); } catch { return {}; } })();
   const at = (p) => `${p.hash}@${Array.from(p.m || []).map((x) => Math.round(x * 1e6) / 1e6).join(',')}`;
-  const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`${solid ? 'manifold' : 'jscad'}|${x}|${y}`).digest('hex');
+  const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`crossing+${solid ? 'manifold' : 'jscad'}|${x}|${y}`).digest('hex');
   if (!(k in remembered)) { remembered[k] = overlap(pa.geometry, pb.geometry); fresh++; }
   return remembered[k];
 }

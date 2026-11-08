@@ -912,6 +912,10 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(slider, /knob drives slide: 43\.98 mm of rack a turn/, 'the gears: travel a turn');
     assert.match(slider, /knob and slide: centre distance 7\.2 mm, as they need/);
     assert.match(run(ws, ['check', 'home/slider', '--sweep', '--steps', '12']).out, /sweep knob, -180 to 180° in 12 steps: nothing collides/);
+    const winder = run(ws, ['check', 'home/winder']).out;
+    assert.match(winder, /the carrier drives the sun and the planets \(the ring held\): 4 turns of the sun for each turn of the carrier, the same way/, 'the planetary: four turns a crank');
+    assert.doesNotMatch(winder, /✗/, winder);
+    assert.match(run(ws, ['check', 'home/winder', '--sweep', '--steps', '24']).out, /sweep crank, -180 to 180° in 24 steps: nothing collides/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
