@@ -48,6 +48,9 @@ async function pipe(bytes, stream, most = Infinity) {
 // fromTriangles([[[x,y,z] ×3], …]) -> { q, p, t }: shared corners merged on a grid ~1/5000 of the model's size.
 /** @param {Triangle[]} tris @returns {{ q: number, p: number[], t: number[] }} */
 export function fromTriangles(tris) {
+  // (triangles: three corners each; a quad or a polygon is split into a fan, not passed through as a broken model)
+  if (tris.some((t) => !Array.isArray(t) || t.length < 3)) throw new Error('fromTriangles: each face needs three corners or more');
+  if (tris.some((t) => t.length > 3)) tris = tris.flatMap((t) => (t.length === 3 ? [t] : t.slice(1, -1).map((_, i) => [t[0], t[i + 1], t[i + 2]])));
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; // a loop: spreading big models overflows the stack
   for (const tri of tris) for (const v of tri) for (let k = 0; k < 3; k++) { if (v[k] < lo[k]) lo[k] = v[k]; if (v[k] > hi[k]) hi[k] = v[k]; }
   const extent = tris.length ? Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) : 0;
@@ -110,12 +113,12 @@ export async function decode(token) {
   try { model = JSON.parse(new TextDecoder().decode(await pipe(unb64(m[2]), new DecompressionStream('deflate-raw'), LIMITS.bytes))); }
   catch (e) { if (e?.tooBig) throw e; throw new Error('This link is damaged: it may have been cut short when it was shared. Copy the whole link again.'); }
   if (model && Array.isArray(model.shapes)) model = expand(model);
-  const errors = check(model);
+  const errors = problems(model);
   if (errors.length) throw new Error(errors[0]);
   return model;
 }
 
-export function check(m) {
+function problems(m) {
   if (!m || typeof m !== 'object' || !Array.isArray(m.p) || !Array.isArray(m.t)) return ['no model in the link'];
   if (typeof m.q !== 'number' || !Number.isFinite(m.q) || !(m.q > 0)) return ['bad grid size'];
   if (m.p.length % 3 || m.t.length % 3) return ['broken model data'];
@@ -132,6 +135,13 @@ export function check(m) {
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || x.slice(0, 3).some((name, k) => (k === 2 && name == null ? false : typeof name !== 'string' || name.length > LIMITS.text)) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[4] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];
 }
+
+/**
+ * What's wrong with a model's data, as findings (the kit's one result shape): [{ level: 'fail', text, code: 'link.data' }],
+ * empty when it's sound.
+ * @param {any} m @returns {{ level: 'fail', text: string, code: string }[]}
+ */
+export function check(m) { return problems(m).map((text) => ({ level: 'fail', text, code: 'link.data' })); }
 
 // A link's motion, as data: numbers where numbers go, items and joints that exist, nothing that could run
 const nums = (a, n) => Array.isArray(a) && (n == null || a.length === n) && a.every((x) => typeof x === 'number' && Number.isFinite(x));
@@ -154,7 +164,7 @@ function motionOk(mo, places) {
 export function expand(m) {
   const { shapes, place, ...meta } = m;
   if (!Array.isArray(place) || shapes.length > LIMITS.shapes || place.length > LIMITS.places) throw new Error('model too big for a link');
-  for (const sh of shapes) { const e = check(sh); if (e.length) throw new Error(e[0]); }
+  for (const sh of shapes) { const e = problems(sh); if (e.length) throw new Error(e[0]); }
   // (counted before any copy is made: a few placements of a big shape would otherwise be built in full, then refused)
   let count = 0;
   for (const [i] of place) { count += (shapes[i]?.t.length || 0) / 3; if (count > LIMITS.triangles) throw new Error('model too big for a link'); }
@@ -329,11 +339,12 @@ export function fromSTL(bytes) {
     if (count > LIMITS.triangles) throw new Error(`${count} triangles: more than a link can hold (${LIMITS.triangles})`);
     const tris = [];
     for (let i = 0, o = 84; i < count; i++, o += 50) tris.push([0, 1, 2].map((v) => [0, 1, 2].map((k) => view.getFloat32(o + 12 + v * 12 + k * 4, true))));
+    if (tris.some((t) => t.some((p) => p.some((c) => !Number.isFinite(c))))) throw new Error('this STL file is damaged: some of its corners are not numbers');
     return tris;
   }
   const text = new TextDecoder().decode(u8);
-  if (!/^\s*solid\b/.test(text) || !/\bvertex\b/.test(text)) throw new Error("this isn't an STL file");
-  const v = [...text.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]);
+  if (!/^\s*solid\b/i.test(text) || !/\bvertex\b/i.test(text)) throw new Error("this isn't an STL file"); // (keywords in any case: some exporters write SOLID, VERTEX)
+  const v = [...text.matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/gi)].map((m) => [Number(m[1]), Number(m[2]), Number(m[3])]);
   if (v.length % 3 || v.some((p) => p.some((c) => !Number.isFinite(c)))) throw new Error('this STL file is damaged');
   if (v.length / 3 > LIMITS.triangles) throw new Error(`${v.length / 3} triangles: more than a link can hold (${LIMITS.triangles})`);
   return Array.from({ length: v.length / 3 }, (_, i) => v.slice(i * 3, i * 3 + 3));

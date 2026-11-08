@@ -16,7 +16,8 @@ function workspace(config) {
   fs.writeFileSync(path.join(ws, 'package.json'), JSON.stringify({ type: 'module' }));
   if (config) fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify(config));
   fs.symlinkSync(ROOT_MODULES, path.join(ws, 'node_modules'), 'junction');
-  const cad = (...a) => { try { return execFileSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', stdio: 'pipe' }); } catch (e) { return `${e.stdout}${e.stderr}`; } };
+  const env = { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') }; // (the user's own trust list, kept out of their home)
+  const cad = (...a) => { try { return execFileSync(process.execPath, [BIN, ...a], { cwd: ws, encoding: 'utf8', stdio: 'pipe', env }); } catch (e) { return `${e.stdout}${e.stderr}`; } };
   return { ws, cad, done: () => fs.rmSync(ws, { recursive: true, force: true }) };
 }
 
@@ -148,6 +149,31 @@ test('cad agents: AGENTS.md for AI agents, included from CLAUDE.md without losin
     assert.equal(fs.readFileSync(path.join(ws, 'CLAUDE.md'), 'utf8'), 'Our own notes.\n\n@AGENTS.md\n');
     cad('agents');
     assert.equal(fs.readFileSync(path.join(ws, 'CLAUDE.md'), 'utf8'), 'Our own notes.\n\n@AGENTS.md\n', 'only once');
+    // An AGENTS.md edited here is kept, unless --force
+    fs.appendFileSync(path.join(ws, 'AGENTS.md'), '\n## Our house rules\n');
+    assert.match(cad('agents'), /AGENTS\.md here has been edited .*: it is kept as it is \(cad agents --force replaces it\)/);
+    assert.match(fs.readFileSync(path.join(ws, 'AGENTS.md'), 'utf8'), /Our house rules/);
+    cad('agents', '--force');
+    assert.doesNotMatch(fs.readFileSync(path.join(ws, 'AGENTS.md'), 'utf8'), /Our house rules/);
+  } finally { done(); }
+});
+
+test('cad set refuses a value outside its range, cad add fit a part that isn\'t there; --json is JSON for rules, variants, history and export', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    cad('new', 'home/tray');
+    assert.match(cad('set', 'home/tray', 'width=-5'), /not changed: width = -5 is outside its range/);
+    assert.match(cad('set', 'home/tray', 'width=50'), /set width/);
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'));
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/pair.json'), JSON.stringify({ title: 'Pair', kind: 'fit', items: [{ id: 'a', object: 'tray' }, { id: 'b', object: 'tray', at: [100, 0, 0] }] }));
+    assert.match(cad('add', 'fit', 'home/pair', '--a', 'a.lid', '--b', 'b.body', '--min', '0', '--max', '1'), /fit a: tray has no part "lid" \(parts: body\)/);
+    assert.match(cad('add', 'fit', 'home/pair', '--a', 'c.body', '--b', 'b.body', '--min', '0', '--max', '1'), /fit a: no item "c" in home\/pair/);
+    assert.match(cad('add', 'fit', 'home/pair', '--a', 'a.body', '--b', 'b.body', '--min', '0', '--max', '1'), /added a fit/);
+    for (const args of [['rules', 'home/tray'], ['variants', 'home/tray'], ['history', 'home/tray'], ['export', 'home/tray']]) {
+      const out = cad(...args, '--json');
+      assert.doesNotThrow(() => JSON.parse(out), `${args.join(' ')} --json: ${out}`);
+    }
+    assert.ok(JSON.parse(cad('export', 'home/tray', '--json')).file.endsWith('.3mf'));
   } finally { done(); }
 });
 
@@ -416,10 +442,11 @@ test('cad set and cad add: edits that keep the file as it was, and refuse to bre
     cad('new', 'bathroom/soap-tray');
     const f = path.join(ws, 'projects/bathroom/objects/soap-tray.json'), before = fs.readFileSync(f, 'utf8');
     const name = JSON.parse(cad('values', 'bathroom/soap-tray', '--json')).values.find((v) => typeof v.value === 'number' && !v.expr).name;
-    assert.match(cad('set', 'bathroom/soap-tray', `${name}=7`), new RegExp(`set ${name}`));
-    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7);
+    const tw = JSON.parse(before).variables[name].tweak, to = tw ? Math.min(tw.max, Math.max(tw.min, 7)) : 7; // (within its range: a value outside it is refused)
+    assert.match(cad('set', 'bathroom/soap-tray', `${name}=${to}`), new RegExp(`set ${name}`));
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, to);
     assert.match(cad('set', 'bathroom/soap-tray', `${name}=x1c.nope`), /not changed: .*no rule "nope"/);
-    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, 7, 'a bad edit leaves the file as it was');
+    assert.equal(JSON.parse(fs.readFileSync(f, 'utf8')).variables[name].value, to, 'a bad edit leaves the file as it was');
     assert.match(cad('set', 'bathroom/soap-tray', 'extra=1'), /has no variable "extra" \(add it with --new/);
     assert.match(cad('set', 'bathroom/soap-tray', 'extra=1', '--new', '--unit', 'mm', '--rule', 'A test'), /set extra/);
     assert.equal(fs.readFileSync(f, 'utf8').split('\n').slice(0, 3).join('\n'), before.split('\n').slice(0, 3).join('\n'), 'the rest of the file is untouched');
@@ -448,7 +475,11 @@ test('sandbox: a design can make shapes, but not read or write files, reach the 
     assert.match(tryIt('write', "process.binding('fs')"), /restricted|denied|not allowed|binding/i);
     assert.ok(!fs.existsSync(path.join(ws, 'pwned')));
     fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false }));
-    assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs');
+    assert.match(tryIt('untrusted', "import fs from 'node:fs'"), /designs can't import "node:fs"/, 'a workspace that turns the sandbox off isn\'t believed until its user trusts it');
+    assert.match(cad('trust'), /trusted .* for designs run outside the sandbox/);
+    assert.match(tryIt('trusted', "import fs from 'node:fs'"), /fits the bed/, 'a workspace can trust its own designs, once its user says so');
+    fs.writeFileSync(path.join(ws, 'cad.config.json'), JSON.stringify({ sandbox: false, targets: { show: 'mine/show.mjs' } }));
+    assert.match(cad('show', 'demo/trusted'), /asks for designs run outside the sandbox and the show target mine\/show\.mjs .* run cad trust once/, 'asking for more is asked again');
   } finally { done(); }
 });
 
@@ -672,6 +703,9 @@ test('the live view: serves its page, streams each step, and its stop button set
     assert.equal(mesh.byteLength, 8 + mesh.getUint32(0, true) * 12 + mesh.getUint32(4, true) * 12);
     assert.match(await (await fetch(new URL('three/three.module.js', view.url))).text(), /WebGLRenderer/);
     assert.equal(view.stopped(), false);
+    const foreign = await fetch(new URL('stop', view.url), { method: 'POST', headers: { Origin: 'http://elsewhere.example' } });
+    assert.equal(foreign.status, 403, 'another site\'s page can\'t stop the run');
+    assert.equal(view.stopped(), false);
     await fetch(new URL('stop', view.url), { method: 'POST' });
     assert.equal(view.stopped(), true);
     reader.cancel();
@@ -875,4 +909,40 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(run(ws, ['check', 'home/pad']).out, /matrix: 4 keys on 2 rows × 2 columns/);
     assert.ok(fs.readdirSync(path.join(ws, '.preview/home')).some((f) => f.endsWith('flick-sequence.svg')), 'the mechanism animated');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('releases: a design released as a git tag, its history, a change bumped, an earlier release rebuilt and compared (paths in git\'s terms on every system)', () => {
+  const { ws, cad, done } = workspace();
+  const git = (...a) => execFileSync('git', a, { cwd: ws, encoding: 'utf8', stdio: 'pipe' });
+  try {
+    git('init', '-q', '-b', 'main'); git('config', 'user.email', 'test@example.com'); git('config', 'user.name', 'Test'); git('config', 'commit.gpgsign', 'false'); git('config', 'tag.gpgsign', 'false');
+    fs.writeFileSync(path.join(ws, '.gitignore'), 'node_modules\n.cache\nexports\n.preview\n.versions\n');
+    cad('new', 'home/tray');
+    git('add', '-A'); git('commit', '-q', '-m', 'A tray');
+    assert.match(cad('release', 'home/tray', '-m', 'First tray', '--dry-run'), /home\/tray@0\.1\.0/);
+    assert.match(cad('release', 'home/tray', '-m', 'First tray'), /tagged home\/tray@0\.1\.0/);
+    assert.match(git('tag', '-l'), /home\/tray@0\.1\.0/);
+    assert.match(cad('history', 'home/tray'), /0\.1\.0 +\d{4}-\d\d-\d\d +first +First tray/);
+    // A change: wider, inside its range. Its bump is said, then made; the earlier release still builds from its tag
+    const w = JSON.parse(fs.readFileSync(path.join(ws, 'projects/home/objects/tray.json'), 'utf8')).variables.width, to = Math.min(w.tweak?.max ?? w.value + 5, w.value + 5);
+    cad('set', 'home/tray', `width=${to}`);
+    assert.match(cad('release', 'home/tray', '-m', 'Wider', '--dry-run'), /home\/tray@0\.1\.1 \(patch, from 0\.1\.0\)/);
+    assert.match(cad('release', 'home/tray', '-m', 'Wider'), /tagged home\/tray@0\.1\.1/);
+    assert.match(cad('export', 'home/tray@0.1.0'), /tray@0\.1\.0/);
+    assert.ok(fs.existsSync(path.join(ws, 'exports', 'home', 'tray@0.1.0.3mf')), 'the earlier release, rebuilt from its tag');
+    assert.match(cad('diff', 'home/tray', '0.1.0', '0.1.1'), /width/);
+    assert.match(fs.readFileSync(path.join(ws, 'projects/home/CHANGELOG.md'), 'utf8'), /tray 0\.1\.1 \(patch[\s\S]*Wider/);
+  } finally { done(); }
+});
+
+test('a check reads the object against its schema first; a measurement with no rule, and an object with no name, are warnings', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/plain', { variables: { w: { value: 10, unit: 'mm' } } }, BOX.replace(/v\.(d|h)\b/g, 'v.w'));
+    const out = cad('check', 'demo/plain');
+    assert.match(out, /! a variable has no rule saying why it is what it is: w/);
+    const file = path.join(ws, 'projects/demo/objects/plain.json'), j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    j.variables.w.value = null; fs.writeFileSync(file, JSON.stringify(j));
+    assert.match(cad('check', 'demo/plain'), /variables\.w\.value: should be number or string or boolean or array or object, not null/);
+  } finally { done(); }
 });

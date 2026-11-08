@@ -29,6 +29,9 @@ test('project: only the fields something reads, so other edits are not changes t
   const before = project(layout, ['homing']);
   const edited = { ...layout, defaults: { legend: 'x' } };
   assert.deepEqual(project(edited, ['homing']), before);
+  assert.ok(before.every((k) => typeof k.x === 'number' && typeof k.y === 'number'), 'positions always count');
+  const gap = { ...layout, rows: [[{ gap: 0.5 }, ...[layout.rows[0]].flat()], ...layout.rows.slice(1)] };
+  assert.notDeepEqual(project(gap, ['homing']), before, 'a gap that moves keys is a change');
 });
 
 test('gaps: space between keys moves the keys after it and counts in the width', () => {

@@ -111,3 +111,32 @@ test('names are an object\'s own: nothing inherited is a function, a variable or
   assert.throws(() => resolve({ variables: { a: { unit: 'mm' } } }), /"a" has no value/);
   assert.throws(() => resolve({ uses: ['p'], variables: {} }, { load: async () => sets.p }), /load must return the rule set itself/);
 });
+
+test('one grammar: an expression parsed once, its value and its unit read from the same tree', async () => {
+  const { unitsOf } = await import('@rulecad/variables');
+  const src = '-(w + x1c.line * 3) / 2 + round(w, 0.5) - max(w, 4)', vals = { w: 10, 'x1c.line': 0.42 }, units = { w: 'mm', 'x1c.line': 'mm' };
+  assert.ok(Math.abs(evaluate(src, (n) => vals[n]) - (-(10 + 1.26) / 2 + 10 - 10)) < 1e-12);
+  assert.deepEqual(unitsOf(src, (n) => units[n]), { unit: 'mm', problems: [], value: { mm: 1 } });
+  for (const bad of ['w +', '(w', 'w w', '*']) {
+    assert.throws(() => evaluate(bad, () => 1), /ends too soon|missing \)|unexpected/);
+    assert.deepEqual(unitsOf(bad, () => 'mm').problems, [], `${bad}: what doesn't parse is evaluate's to say`);
+  }
+});
+
+test('lint reads code as code: 1e3, 0x1F, 1_000 and numbers inside a template\'s ${…} are seen; // in a string hides nothing; names with digits aren\'t numbers', () => {
+  const found = (src) => lint(src).map((f) => `${f.line}:${f.text}`);
+  assert.deepEqual(found('const a = 1e3, b = 0x1F, c = 1_000, d = .5'), ['1:1e3', '1:0x1F', '1:1_000', '1:.5']);
+  assert.deepEqual(found('const t = `${v.w * 4} mm`'), ['1:4']);
+  assert.deepEqual(found('const u = "http://x" + v.w * 7'), ['1:7']);
+  assert.deepEqual(found('const x1 = v.p2, y = arr[2].x3\nconst z = `a ${`b ${9}`} c`'), ['2:9']);
+  assert.deepEqual(found('f(0, 1, 2, 2.0, 1e0)'), [], '0, 1 and 2 however written');
+  assert.deepEqual(found('/* 9\n 8 */ const k = 3 // 4'), ['2:3']);
+});
+
+test('units through a division: a plain number over millimetres is per millimetre, so a wrong unit on it is said', async () => {
+  const { unitsOf } = await import('@rulecad/variables');
+  const unitOf = (n) => ({ w: 'mm', a: 'deg' })[n];
+  assert.equal(unitsOf('2 / w', unitOf).unit, 'mm^-1');
+  assert.equal(unitsOf('w * (2 / w)', unitOf).unit, 'a plain number');
+  assert.deepEqual(unitsOf('2 / w + w', unitOf).problems, ['adds mm to mm^-1']);
+});

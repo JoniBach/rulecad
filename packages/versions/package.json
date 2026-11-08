@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/versions",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Semver for physical parts: a change to what other parts fit against is major, so you know when an old print stops fitting.",
   "type": "module",
   "exports": {
@@ -30,11 +30,15 @@
     "url": "git+https://github.com/JoniBach/rulecad.git",
     "directory": "packages/versions"
   },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/versions#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
   "scripts": {
     "test": "node --test"
   },
   "dependencies": {
-    "@rulecad/variables": "^0.1.0 || ^0.2.0",
+    "@rulecad/variables": "^0.1.0 || ^0.2.0 || ^0.3.0",
     "@rulecad/keyboard-layout": "^0.1.0"
   },
   "types": "./versions.d.mts"

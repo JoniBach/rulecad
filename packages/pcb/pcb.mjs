@@ -15,7 +15,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { circuitJson, bounds, smtBounds, slideClear, viaHoleGaps } from './circuit.mjs';
 export { bounds };
-import { loadRuleSet } from '@rulecad/cad/rules';
+import { createRequire } from 'node:module';
+// The published rule sets a footprint's pins come from (a Pico's GPIO, a XIAO's labels): read from @rulecad/rules as
+// published, not through @rulecad/cad, which pcb would then depend on (and cad names pcb: a loop), and which copies a
+// set into the current folder when it reads one
+const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`);
 import jscad from '@jscad/modeling';
 
 // A rows × cols grid of keys at the key pitch, centred on the origin: [{ r, c, x, y, n }], n counting from 1, row 0

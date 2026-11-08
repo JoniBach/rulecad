@@ -33,8 +33,8 @@ const LEDGE_SLACK = (15 * Math.PI) / 180; // a point's supports all within a hal
 /** @typedef {{ bed: number, overhang: number, layer?: number, support_gap?: number, bridge?: number, line?: number, print_gap?: number, foot?: number }} Printer mm and degrees; layer and line drive the sliced-layer island check; print_gap and foot (how far the first layer spreads each side) the first-layer check */
 /**
  * A finding: its level and words, and for programs a code (print.bridge, fit.gap, …), the numbers behind it, and where
- * it is when that's known (the box round the faces it's about, in mm).
- * @typedef {{ level: 'pass' | 'warn' | 'fail' | 'info', text: string, code?: string, values?: Record<string, any>, at?: { lo: number[], hi: number[] }, refs?: Record<string, any> }} Finding
+ * it is when that's known: at, a point (the middle of it), and box, the box round the faces it's about, in mm.
+ * @typedef {{ level: 'pass' | 'warn' | 'fail' | 'info', text: string, code?: string, values?: Record<string, any>, at?: number[], box?: { lo: number[], hi: number[] }, refs?: Record<string, any> }} Finding
  */
 
 export function bounds(polys) {
@@ -53,8 +53,9 @@ export function bounds(polys) {
  * @param {{ eps?: number, parts?: { triangles: Face[], role?: 'part' | 'support' }[] }} [options]
  * @returns {Finding[]}
  */
-export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
-  const out = [], f = (level, text, code, values, at) => out.push({ level, text, code, ...(values && { values }), ...(at && { at }) });
+export function check(polys, printer, { eps = 1e-3, parts = null, slice = true } = {}) {
+  // (a finding's at is a point, the middle of where it is; box is the box round it: one shape across the kit)
+  const out = [], f = (level, text, code, values, box) => out.push({ level, text, code, ...(values && { values }), ...(box && Number.isFinite(box.lo?.[0]) ? { at: box.lo.map((x, k) => (x + box.hi[k]) / 2), box } : {}) });
   // What can't be checked is said at the door, not found out deep inside
   for (const k of ['bed', 'overhang']) if (!(Number(printer?.[k]) > 0)) throw new Error(`check(model, printer): the printer's "${k}" is needed, a number above 0 (got ${JSON.stringify(printer?.[k])}): { bed: 256, overhang: 45, layer: 0.2 }`);
   for (const k of ['layer', 'line', 'bridge', 'support_gap']) if (printer[k] != null && !(Number(printer[k]) > 0)) throw new Error(`check(model, printer): the printer's "${k}" must be a number above 0 (got ${JSON.stringify(printer[k])})`);
@@ -203,7 +204,9 @@ export function check(polys, printer, { eps = 1e-3, parts = null } = {}) {
     const hanging = tips.filter((t) => t[2] - lo[2] > eps && !rests([t, t, t]));
     if (hanging.length) f('warn', `${hanging.length === 1 ? 'a point starts' : `${hanging.length} points start`} in mid-air (z ${mm(Math.min(...hanging.map((t) => t[2])))}${hanging.length > 1 ? ` to ${mm(Math.max(...hanging.map((t) => t[2])))}` : ''} mm): the lowest points of tips hanging down, with nothing below to print on`, 'print.island', { points: hanging }, hanging.reduce((b, t) => grow(b, [t]), { lo: [Infinity, Infinity, Infinity], hi: [-Infinity, -Infinity, -Infinity] }));
     else f('pass', 'nothing starts in mid-air', 'print.island', { points: [] });
-    // And as the slicer sees it: every layer against the one below
+    // And as the slicer sees it: every layer against the one below (slice: false leaves this out, the slow part: a page
+    // can check a part at once, then slice it off its own thread)
+    if (!slice) { f('info', 'not sliced: the layers are checked on their own (islands, the first layer, layer overhang)', 'print.unsliced'); continue; }
     // (the first layer spreads `foot` each side as it is squashed on to the bed: two parts printed in place must stand
     // further apart there than the gap that prints apart higher up, or they print as one)
     const firstGap = printer.foot > 0 && printer.print_gap > 0 ? printer.print_gap + 2 * printer.foot : 0;

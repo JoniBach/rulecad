@@ -40,7 +40,8 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
     const run = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)).result.result.value;
     // (45 s: a cold CI machine can be slow to load the page)
-    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) if (await run(expr)) return true; return false; };
+    // (a page mid-reload answers with no result: that's not yet, so it's asked again rather than failing the test)
+    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) if (await run(expr).catch(() => false)) return true; return false; };
 
     assert.ok(await until(`!!document.querySelector('.drop input')`), 'the drop screen shows without a link');
     const shot = async (name) => fs.writeFileSync(new URL(`./${name}`, import.meta.url), Buffer.from((await send('Page.captureScreenshot', { format: 'png' }, sessionId)).result.data, 'base64'));
@@ -53,6 +54,10 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     const rules = await run(`[...document.querySelectorAll('#rules li')].map((l) => l.textContent).join(' | ')`);
     assert.match(rules, /bridge/, rules);
     assert.match(rules, /fits the bed/);
+    // the quick checks at once, then the sliced ones from the worker in their place, the page answering meanwhile
+    assert.ok(await until(`/islands? (in|when sliced)/.test([...document.querySelectorAll('#rules li')].map((l) => l.textContent).join(' '))`), 'the sliced check arrives from its worker');
+    const after = await run(`[...document.querySelectorAll('#rules li')].map((l) => l.textContent).join(' | ')`);
+    assert.ok(!/slicing it, layer by layer/.test(after), `and replaces the waiting line: ${after}`);
     assert.match(await run('location.hash'), /^#m=1\./, 'the address is now the model\'s link');
     await new Promise((r) => setTimeout(r, 1500)); // a frame or two of the model turning
     await shot('viewer.png');
