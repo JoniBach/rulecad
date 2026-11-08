@@ -1,0 +1,53 @@
+{
+  "name": "@rulecad/gears",
+  "version": "0.1.0",
+  "description": "Gears for printed parts: involute spur gears, racks and ring gears drawn from their rules, with their numbers, how a pair meshes (centre distance, ratio, contact ratio, phase) and how they print.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./gears.d.mts",
+      "default": "./gears.mjs"
+    },
+    "./diagram": {
+      "types": "./diagram.d.mts",
+      "default": "./diagram.mjs"
+    }
+  },
+  "files": [
+    "gears.mjs",
+    "diagram.mjs",
+    "gears.d.mts",
+    "diagram.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "jscad",
+    "3d-printing",
+    "gears",
+    "involute",
+    "rack-and-pinion",
+    "cad"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/gears"
+  },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/gears#readme",
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "@jscad/modeling": "^2.12.0"
+  },
+  "types": "./gears.d.mts"
+}
