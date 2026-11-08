@@ -15,8 +15,10 @@
   },
   "files": [
     "gears.mjs",
+    "planetary.mjs",
     "diagram.mjs",
     "gears.d.mts",
+    "planetary.d.mts",
     "diagram.d.mts",
     "README.md",
     "LICENSE"

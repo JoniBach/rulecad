@@ -546,3 +546,6 @@ export function printable(g, printer, width) {
   }
   return out;
 }
+
+// Planetary gearboxes: the teeth for a ratio, laid out in phase
+export { planetary, planetaryRatio } from './planetary.mjs';

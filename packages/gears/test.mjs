@@ -259,3 +259,44 @@ test('helical pairs mesh at every height with opposite hands (a ring or rack wit
   assert.equal(printable(gearModel({ module: 1, teeth: 20, helix: 25 }), x1c).find((x) => x.code === 'gear.helix').level, 'pass');
   assert.ok(printable(gearModel({ module: 1, teeth: 20, helix: 25 }), x1c).some((x) => x.code === 'gear.thrust'));
 });
+
+test('planetary: teeth that put together for the ratio asked, nearest first; every planet in phase with the sun and the ring as the carrier turns', async () => {
+  const { planetary, planetaryRatio } = await import('@rulecad/gears');
+  // known gearboxes
+  for (const [spec, teeth, ratio] of [
+    [{ module: 1, ratio: 5 }, [18, 27, 72], 5],
+    [{ module: 1, ratio: 4, planets: 4 }, [17, 17, 51], 4],
+    [{ module: 1, ratio: -3, held: 'carrier', input: 'sun', output: 'ring' }, [18, 18, 54], -3],
+  ]) {
+    const { best, findings } = planetary(spec);
+    assert.deepEqual([best.sun.teeth, best.planet.teeth, best.ring.teeth], teeth, JSON.stringify(spec));
+    near(best.ratio, ratio, 1e-12, 'ratio'); assert.equal(findings.find((x) => x.code === 'planetary.ratio').level, 'pass');
+    assert.equal(best.ring.teeth, best.sun.teeth + 2 * best.planet.teeth, 'the ring is the sun and two planets across');
+    assert.equal((best.sun.teeth + best.ring.teeth) % best.planets.length, 0, 'the planets go in evenly spaced');
+  }
+  // Willis, every way round: one way is the other's inverse
+  const t = { sun: 18, ring: 72 };
+  near(planetaryRatio(t, { held: 'ring', input: 'sun', output: 'carrier' }) * planetaryRatio(t, { held: 'ring', input: 'carrier', output: 'sun' }), 1, 1e-12, 'inverse');
+  near(planetaryRatio(t, { held: 'sun', input: 'ring', output: 'carrier' }), 90 / 72, 1e-12, 'sun held');
+  // asked for what doesn't fit: the nearest that does, said
+  const small = planetary({ module: 1, ratio: 2.5, size: 80 });
+  assert.equal(small.findings[0].level, 'fail'); assert.match(small.findings[0].text, /16\.8% from the 2\.5 asked: the nearest that puts together/);
+  assert.throws(() => planetary({ module: 1, ratio: 5, size: 30 }), /no teeth put together within a rim of 30 mm/);
+  assert.throws(() => planetary({ module: 1, ratio: 5, planets: 1 }), /planets is a whole number from 2 to 8/);
+  assert.throws(() => planetary({ module: 1, ratio: 5, held: 'ring', input: 'ring' }), /held, input and output are the sun, the carrier and the ring, one each/);
+  // in phase: turn the carrier (the ring held) and every planet clears the sun and the ring
+  const { best } = planetary({ module: 1, ratio: 5 }), deg = Math.PI / 180;
+  const sunP = spurProfile({ module: 1, teeth: best.sun.teeth }).loops[0], planetP = spurProfile({ module: 1, teeth: best.planet.teeth }).loops[0];
+  const ringHole = internalProfile({ module: 1, teeth: best.ring.teeth }).loops[1], ring = place(ringHole, best.ring.angle * deg);
+  const S = best.sun.teeth, P = best.planet.teeth, R = best.ring.teeth;
+  const at = (c, nudge = 0) => {
+    const sun = place(sunP, (1 + R / S) * c * deg);
+    return best.planets.every((pl, k) => {
+      const where = (pl.place + c) * deg, centre = [best.centre * Math.cos(where), best.centre * Math.sin(where)];
+      const planet = place(planetP, (pl.angle + (k ? 0 : nudge) + c * (1 - R / P)) * deg, centre);
+      return !planet.some((q) => inside(q, sun)) && !sun.some((q) => inside(q, planet)) && planet.every((q) => inside(q, ring)) && !ring.some((q) => inside(q, planet));
+    });
+  };
+  for (let c = 0; c < 20; c += 2.5) assert.ok(at(c), `every planet clear with the carrier at ${c}°`);
+  assert.ok(!at(0, 180 / P), 'a planet half a tooth out collides');
+});
