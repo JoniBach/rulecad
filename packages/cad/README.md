@@ -368,7 +368,14 @@ then y, then z, as `rotate` does.
   along its x, teeth up +y) and its joint is anchored at its centre, along its axis. The check gives the ratio, the
   contact ratio and the centre distance (`mesh.centre`: closer than the gears need jams them, further adds backlash),
   each placed between the two axes; `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
-  one part, or on parts held still: a planet on a turning carrier is not yet a mesh.
+  one part, or on parts held still; planets on a carrier are a `planetary`.
+- **Planetary gearboxes:** `"planetary": [{ "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1",
+  "p2"], "drive": "carrier", "module": 1, "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }]` names the items. One of
+  the sun, carrier and ring is held (no joint, or a fixed one); the one `drive` names turns on its revolute, and the
+  third, and each planet on its revolute on the carrier, follow it, in phase. The check says the ratio, each planet's
+  centre distance and contact ratio, and fails a planet that can't mesh with the sun and the ring where it is
+  (`planetary.phase`: planets go every 360° / n, and (S + R) / n is whole). `planetary()` in `@rulecad/gears` finds
+  teeth for a ratio.
 - **Loops:** each item has one joint to its parent. Where parts join in a ring (two links between the same two
   parts), let joints place every part, then name the meeting that closes the ring in `loops`. The check measures it
   in every pose: `"loops": [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }]`. Its anchors

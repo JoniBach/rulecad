@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/gears",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Gears for printed parts: involute spur gears, racks and ring gears drawn from their rules, with their numbers, how a pair meshes (centre distance, ratio, contact ratio, phase) and how they print.",
   "type": "module",
   "exports": {
@@ -15,8 +15,10 @@
   },
   "files": [
     "gears.mjs",
+    "planetary.mjs",
     "diagram.mjs",
     "gears.d.mts",
+    "planetary.d.mts",
     "diagram.d.mts",
     "README.md",
     "LICENSE"

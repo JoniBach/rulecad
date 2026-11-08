@@ -52,7 +52,13 @@ function common(what, p) {
   const dedendum = between(what, 'dedendum', p.dedendum ?? D('dedendum'), addendum, 2, ' (times the module, at least the addendum)');
   const rootFillet = between(what, 'rootFillet', p.rootFillet ?? D('rootFillet'), 0, 0.6, ' (times the module)');
   const tipRound = between(what, 'tipRound', p.tipRound ?? D('tipRound'), 0, 0.4, ' (times the module)');
-  return { module, pressureAngle, shift, backlash, addendum, dedendum, rootFillet, tipRound };
+  // Helical teeth: the spur profile turned along the width by the helix angle (the module and pressure angle are the
+  // transverse ones, in the gear's own plane, so a helical gear's centre distance is a spur gear's)
+  const helix = between(what, 'helix', p.helix ?? 0, 0, 45, '°');
+  if (p.hand != null && p.hand !== 'right' && p.hand !== 'left') throw new Error(`${what}: hand is "right" or "left" (got ${shown(p.hand)})`);
+  if (p.herringbone != null && typeof p.herringbone !== 'boolean') throw new Error(`${what}: herringbone is true or false (got ${shown(p.herringbone)})`);
+  if (p.herringbone && !helix) throw new Error(`${what}: a herringbone needs a helix angle (say helix: 30)`);
+  return { module, pressureAngle, shift, backlash, addendum, dedendum, rootFillet, tipRound, helix, hand: p.hand ?? 'right', herringbone: !!p.herringbone };
 }
 
 // ---------- the numbers ----------
@@ -97,6 +103,7 @@ export function gearModel(p) {
   const rootHalf = halfAt(s, r, rb, Math.max(rf, rb));
   return {
     kind: 'external', module: m, teeth, pressureAngle, shift: x, backlash,
+    helix: c.helix, hand: c.hand, herringbone: c.herringbone, thrust: c.herringbone ? 0 : Math.tan(c.helix * DEG),
     pitch: 2 * r, base: 2 * rb, tip: 2 * ra, root: 2 * rf, thickness: s,
     circularPitch: Math.PI * m, basePitch: Math.PI * m * Math.cos(a),
     topLand: 2 * ra * Math.sin(tipHalf), rootThickness: 2 * Math.max(rf, rb) * Math.sin(rootHalf),
@@ -124,6 +131,7 @@ export function internalModel(p) {
   if (!(toothHalf(ra) > 0)) throw new Error(`${what}: the teeth come to a point at the tip circle: less profile shift`);
   return {
     kind: 'internal', module: m, teeth, pressureAngle, shift: x, backlash,
+    helix: c.helix, hand: c.hand, herringbone: c.herringbone, thrust: c.herringbone ? 0 : Math.tan(c.helix * DEG),
     pitch: 2 * r, base: 2 * rb, tip: 2 * ra, root: 2 * rf, thickness: s, space: e, rim,
     circularPitch: Math.PI * m, basePitch: Math.PI * m * Math.cos(a),
     topLand: 2 * Math.max(ra, rb) * Math.sin(toothHalf(Math.max(ra, rb))), rootThickness: 2 * rf * Math.sin(toothHalf(rf)),
@@ -147,6 +155,7 @@ export function rackModel(p) {
   if (!(tipHalf > 0)) throw new Error(`${what}: the teeth come to a point: a smaller addendum or pressure angle`);
   return {
     kind: 'rack', module: m, teeth, pressureAngle, shift: 0, backlash, height, thickness: s,
+    helix: c.helix, hand: c.hand, herringbone: c.herringbone, thrust: c.herringbone ? 0 : Math.tan(c.helix * DEG),
     length: teeth * Math.PI * m, tipLine: m * c.addendum, rootLine: -m * c.dedendum,
     circularPitch: Math.PI * m, basePitch: Math.PI * m * Math.cos(a),
     topLand: 2 * tipHalf, rootThickness: s + 2 * m * c.dedendum * Math.tan(a),
@@ -315,20 +324,23 @@ export function rackProfile(p, grow = 0) {
 
 // A solid from loops at heights: each slice is the loops at a height, grown (a chamfer: drawn smaller there) and turned
 // (a helix), all with the same points, so the walls join point to point. Caps are triangulated with their holes.
-function loft(profile, width, { chamfer, twist }) {
+function loft(profile, width, { chamfer, twist, slide }) {
   const [bottom, top] = Array.isArray(chamfer) ? chamfer : [chamfer, 0];
   if (bottom + top >= width) throw new Error(`the chamfers (${bottom} and ${top} mm) are as tall as the gear (${width} mm)`);
   // heights: the chamfers' ends, and for a twist enough between that no slice turns more than a degree or so
   const zs = [0, ...(bottom > 0 ? [bottom] : []), ...(top > 0 ? [width - top] : []), width];
   if (twist) {
-    const most = Math.max(...zs.map((z) => Math.abs(twist(z)))), n = Math.ceil(most / (1.5 * DEG));
+    const most = Math.max(...[0, 0.25, 0.5, 0.75, 1].map((f) => Math.abs(twist(width * f)))), n = Math.ceil(most / (1.5 * DEG));
     for (let i = 1; i < n; i++) zs.push((width * i) / n);
+    zs.push(width / 2); // (a herringbone's apex)
   }
+  if (slide) { const n = Math.ceil(width / 0.5); for (let i = 1; i < n; i++) zs.push((width * i) / n); zs.push(width / 2); }
   const heights = [...new Set(zs.map((z) => +z.toFixed(9)))].sort((x, y) => x - y);
   const slices = heights.map((z) => {
     const grow = z < bottom ? -(bottom - z) : z > width - top ? -(z - (width - top)) : 0;
-    const loops = profile(grow), turn = twist ? twist(z) : 0, c = Math.cos(turn), s = Math.sin(turn);
-    const sides = loops.flatMap((pts) => pts.map((p, i) => { const q = pts[(i + 1) % pts.length]; return [[p[0] * c - p[1] * s, p[0] * s + p[1] * c], [q[0] * c - q[1] * s, q[0] * s + q[1] * c]]; }));
+    const loops = profile(grow), turn = twist ? twist(z) : 0, c = Math.cos(turn), s = Math.sin(turn), dx = slide ? slide(z) : 0;
+    const at = (p) => [p[0] * c - p[1] * s + dx, p[0] * s + p[1] * c];
+    const sides = loops.flatMap((pts) => pts.map((p, i) => [at(p), at(pts[(i + 1) % pts.length])]));
     return slice.transform(mat4.fromTranslation(mat4.create(), [0, 0, z]), slice.fromSides(sides));
   });
   return extrudeFromSlices({ numberOfSlices: slices.length, repair: false, callback: (t, i) => slices[i] }, slices[0]);
@@ -343,22 +355,42 @@ function loft(profile, width, { chamfer, twist }) {
  */
 export function spur(p) {
   const width = size('spur', 'width', p?.width), chamfer = chamfers('spur', p, width);
-  spurProfile(p); // (refuses here, before any slicing)
-  return loft((grow) => spurProfile(p, grow).loops, width, { chamfer });
+  const { model: g } = spurProfile(p); // (refuses here, before any slicing)
+  return loft((grow) => spurProfile(p, grow).loops, width, { chamfer, twist: twistOf(g, width) });
 }
+
+// How far a helical gear's profile has turned at height z: z tan β / r, the right hand turning anticlockwise up z; a
+// herringbone turns to the middle and back. Gears that mesh outside each other are of opposite hands; a pinion and its
+// ring, or its rack, of the same hand.
+function twistOf(g, width) {
+  if (!g.helix) return null;
+  const k = (g.hand === 'left' ? -1 : 1) * Math.tan(g.helix * DEG) / (g.pitch / 2);
+  return g.herringbone ? (z) => k * Math.min(z, width - z) : (z) => k * z;
+}
+
+/** A helical gear: a spur gear's profile turned along its width by the helix angle. Meshes with one of the opposite hand. @param {GearSpec & Solid & { helix: number, hand?: 'right' | 'left' }} p */
+export function helical(p) {
+  if (!(p?.helix > 0)) throw new Error(`helical: give a helix angle above 0° (got ${shown(p?.helix)}); 15° to 30° print well`);
+  return spur({ ...p, herringbone: false });
+}
+
+/** A herringbone gear: helical one way to the middle of its width and back, so it pushes no thrust along its axis and stays on its shaft. Prints with no supports. @param {GearSpec & Solid & { helix?: number }} p */
+export function herringbone(p) { return spur({ ...p, helix: p?.helix ?? 30, herringbone: true }); }
 
 /** An internal (ring) gear, its rim round it. @param {GearSpec & Solid & { rim?: number }} p */
 export function internal(p) {
   const width = size('internal', 'width', p?.width), chamfer = chamfers('internal', p, width);
-  internalProfile(p);
-  return loft((grow) => internalProfile(p, grow).loops, width, { chamfer });
+  const { model: g } = internalProfile(p);
+  return loft((grow) => internalProfile(p, grow).loops, width, { chamfer, twist: twistOf(g, width) });
 }
 
 /** A rack along x, its teeth up +y, its width up z. @param {GearSpec & Solid & { height?: number }} p */
 export function rack(p) {
   const width = size('rack', 'width', p?.width), chamfer = chamfers('rack', p, width);
-  rackProfile(p);
-  return loft((grow) => rackProfile(p, grow).loops, width, { chamfer });
+  const { model: g } = rackProfile(p);
+  // a helical rack's teeth slide along it with height as its pinion's turn: z tan β, the same hand as the pinion
+  const k = g.helix ? (g.hand === 'left' ? -1 : 1) * Math.tan(g.helix * DEG) : 0;
+  return loft((grow) => rackProfile(p, grow).loops, width, { chamfer, ...(k ? { slide: g.herringbone ? (z) => k * Math.min(z, width - z) : (z) => k * z } : {}) });
 }
 
 function chamfers(what, p, width) {
@@ -386,14 +418,22 @@ function working(a, sum, zs) {
  * a centre distance checked: closer than needed jams the teeth, further adds backlash.
  * @param {GearModel} a @param {GearModel} b @param {{ centre?: number }} [o]
  */
-export function mesh(a, b, { centre } = {}) {
+export function mesh(a, b, { centre, width } = {}) {
   const out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
   for (const [k, g] of [['a', a], ['b', b]]) if (!g || !['external', 'internal', 'rack'].includes(g.kind)) throw new Error(`mesh: ${k} is a gear's model (gearModel, internalModel or rackModel), not ${shown(g)}`);
   if (a.kind !== 'external' && b.kind !== 'external') throw new Error(`mesh: a ${a.kind} and a ${b.kind} don't mesh: one of them is an outer gear`);
-  if (b.kind === 'external' && a.kind !== 'external') return flip(mesh(b, a, { centre }));
+  if (b.kind === 'external' && a.kind !== 'external') return flip(mesh(b, a, { centre, width }));
   if (Math.abs(a.module - b.module) > 1e-9) f('fail', `modules differ (${a.module} and ${b.module} mm): teeth of different sizes don't mesh`, 'mesh.module');
   if (Math.abs(a.pressureAngle - b.pressureAngle) > 1e-9) f('fail', `pressure angles differ (${a.pressureAngle}° and ${b.pressureAngle}°): the flanks don't roll on each other`, 'mesh.pressure');
   const m = a.module, al = a.pressureAngle * DEG, pb = Math.PI * m * Math.cos(al);
+  // Helical teeth: the same angle, opposite hands outside each other, the same hand on a ring or a rack
+  const ha = a.helix ?? 0, hb = b.helix ?? 0;
+  if (Math.abs(ha - hb) > 1e-9) f('fail', `helix angles differ (${ha}° and ${hb}°): the teeth cross each other`, 'mesh.helix');
+  else if (ha > 0) {
+    const same = b.kind !== 'external';
+    if ((a.hand === b.hand) !== same) f('fail', `both are ${a.hand}-handed: ${same ? `a pinion and its ${b.kind === 'rack' ? 'rack' : 'ring'} are of the same hand` : 'outer gears that mesh are of opposite hands'}`, 'mesh.helix');
+    if (!!a.herringbone !== !!b.herringbone) f('fail', 'a herringbone meshes only with a herringbone', 'mesh.helix');
+  }
   const ra1 = a.tip / 2, rb1 = a.base / 2, r1 = a.pitch / 2;
   let need, ratio, contact, aw = al;
   if (b.kind === 'external') {
@@ -418,10 +458,14 @@ export function mesh(a, b, { centre } = {}) {
     ratio = Math.PI * a.pitch; // mm a turn
     contact = (Math.sqrt(ra1 ** 2 - rb1 ** 2) - r1 * Math.sin(al) + (m * (b.rack.addendum - a.shift)) / Math.sin(al)) / pb;
   }
+  // the overlap ratio: how far a tooth's own twist carries the contact on across the width (εβ = b tan β / π m, each
+  // half of a herringbone on its own)
+  const overlap = ha > 0 && width !== undefined ? ((a.herringbone ? width / 2 : width) * Math.tan(ha * DEG)) / (Math.PI * m) : 0;
+  if (overlap) contact += overlap;
   const sense = b.kind === 'rack' ? `${fmt(ratio)} mm of rack a turn (${fmt(ratio / 360, 4)} mm a degree)` : `${fmt(Math.abs(ratio), 4)} turns of the second for each turn of the first (${a.teeth}:${b.teeth}), ${ratio < 0 ? 'turning opposite ways' : 'the same way'}`;
   if (contact < 1) f('fail', `contact ratio ${fmt(contact)}: under 1, a pair of teeth lets go before the next takes up, and the drive jumps: more teeth, or a longer addendum`, 'mesh.contact', { contact });
   else if (contact < 1.2) f('warn', `contact ratio ${fmt(contact)}: under 1.2 the drive is rough, and a printed tooth's errors can make it jump`, 'mesh.contact', { contact });
-  else f('pass', `contact ratio ${fmt(contact)}: ${fmt(contact)} pairs of teeth share the load on average`, 'mesh.contact', { contact });
+  else f('pass', `contact ratio ${fmt(contact)}${overlap ? ` (${fmt(contact - overlap)} across the teeth and ${fmt(overlap)} along their twist)` : ''}: ${fmt(contact)} pairs of teeth share the load on average`, 'mesh.contact', { contact });
   let backlash = a.backlash / 2 + b.backlash / 2;
   if (centre !== undefined) {
     if (!isNum(centre)) throw new Error(`mesh: centre is a distance in mm (got ${shown(centre)})`);
@@ -433,7 +477,8 @@ export function mesh(a, b, { centre } = {}) {
     else if (backlash > 0.4) f('warn', `the axes are ${fmt(off, 3)} mm further apart than these gears need (${fmt(need, 3)} mm): ${fmt(backlash, 2)} mm of backlash, loose enough to knock`, 'mesh.centre', { centre, need });
     else f('pass', `centre distance ${fmt(centre, 3)} mm, as they need${Math.abs(off) > 0.005 ? ` (${off > 0 ? '+' : ''}${fmt(off, 3)})` : ''}: ${fmt(backlash, 2)} mm of backlash`, 'mesh.centre', { centre, need });
   }
-  return { kind: b.kind, centre: need, ratio, contact, pressureAngle: aw / DEG, backlash, text: sense, findings: out };
+  const thrust = a.herringbone || !ha ? 0 : Math.tan(ha * DEG);
+  return { kind: b.kind, centre: need, ratio, contact, overlap, thrust, pressureAngle: aw / DEG, backlash, text: sense, findings: out };
 }
 const flip = (r) => ({ ...r, ratio: r.kind === 'rack' ? r.ratio : 1 / r.ratio });
 const fmt = (x, d = 2) => String(+x.toFixed(d));
@@ -490,9 +535,68 @@ export function printable(g, printer, width) {
   if (g.rootThickness < least - 1e-9) f('fail', `a tooth is ${fmt(g.rootThickness)} mm across at its root, under the thinnest wall (${fmt(least)} mm): a larger module`, 'gear.root', rootAt);
   else f('pass', `a tooth is ${fmt(g.rootThickness)} mm across at its root, ${fmt(rootLines, 1)} lines`, 'gear.root', rootAt);
   if (g.topLand < line) f('warn', `the tips are ${fmt(g.topLand)} mm across, under a line (${line} mm): they print as one bead, rounded off; fine for meshing, but don't count on the tip`, 'gear.tip', tipAt);
+  if (g.helix > 0) {
+    // the flank leans most at the tip: tan β_a = tan β × r_a / r
+    const ra = g.kind === 'rack' ? 1 : g.tip / (g.kind === 'internal' ? g.root : g.pitch), lean = Math.atan(Math.tan(g.helix * DEG) * Math.max(1, ra)) / DEG;
+    if (lean > 45) f('warn', `the teeth lean ${fmt(lean, 1)}° from upright at their tips: past 45° the flanks sag as they print; a smaller helix angle`, 'gear.helix', tipAt);
+    else f('pass', `the teeth lean ${fmt(lean, 1)}° from upright at their tips: prints with no supports`, 'gear.helix');
+    if (!g.herringbone) f('info', `a helix of ${g.helix}° pushes ${fmt(Math.tan(g.helix * DEG), 2)} N along the axis for each newton it drives: hold the gear on its shaft, or make it a herringbone`, 'gear.thrust');
+  }
   if (width !== undefined) {
     const layers = width / layer;
     if (Math.abs(layers - Math.round(layers)) > 0.05) f('warn', `${width} mm wide is ${fmt(layers)} layers of ${layer} mm: a whole number prints as drawn`, 'gear.layers');
   }
   return out;
+}
+
+// Planetary gearboxes: the teeth for a ratio, laid out in phase
+export { planetary, planetaryRatio } from './planetary.mjs';
+
+// ---------- strength ----------
+
+// The Lewis form factor for 20° full-depth teeth, by number of teeth (Budynas and Nisbett, Shigley's Mechanical
+// Engineering Design, 10th ed., Table 14-2); a rack is 0.485. Between rows, read along a straight line.
+const LEWIS = [[12, 0.245], [13, 0.261], [14, 0.277], [15, 0.290], [16, 0.296], [17, 0.303], [18, 0.309], [19, 0.314], [20, 0.322], [21, 0.328], [22, 0.331], [24, 0.337], [26, 0.346], [28, 0.353], [30, 0.359], [34, 0.371], [38, 0.384], [43, 0.397], [50, 0.409], [60, 0.422], [75, 0.435], [100, 0.447], [150, 0.460], [300, 0.472], [400, 0.480]];
+/** The Lewis form factor Y for z teeth (20° full depth); Infinity for a rack. @param {number} z */
+export function lewisFactor(z) {
+  if (z === Infinity) return 0.485;
+  if (z <= LEWIS[0][0]) return LEWIS[0][1];
+  if (z >= LEWIS.at(-1)[0]) return LEWIS.at(-1)[1] + ((0.485 - LEWIS.at(-1)[1]) * (1 - 400 / z));
+  const i = LEWIS.findIndex(([n]) => n >= z), [n0, y0] = LEWIS[i - 1], [n1, y1] = LEWIS[i];
+  return y0 + ((y1 - y0) * (z - n0)) / (n1 - n0);
+}
+
+/**
+ * How strong a gear's teeth are by the Lewis equation: the bending stress at the root of a tooth carrying the whole
+ * load at its tip, σ = F_t / (b m Y), against the material's strength. Give a torque (N·mm) for the stress and safety
+ * factor at it; give a safety factor for the torque the gear carries at it. Helical teeth are read in their normal
+ * section (m cos β, z / cos³β teeth). A speed (rpm) adds Barth's velocity factor, (3.05 + V) / 3.05 for a cut (here a
+ * printed) profile. A first number: the root fillet and a tooth's neighbours help, a printed tooth's layers and
+ * voids hurt. Where it matters, measure it, or analyse the tooth (fea).
+ * @param {GearModel} g
+ * @param {{ width: number, material: { strength: number, name?: string }, torque?: number, safety?: number, speed?: number }} o
+ */
+export function strength(g, o = {}) {
+  if (!g || !['external', 'internal', 'rack'].includes(g.kind)) throw new Error(`strength: give a gear's model, not ${shown(g)}`);
+  const width = size('strength', 'width', o.width), sigma = o.material?.strength;
+  if (!(isNum(sigma) && sigma > 0)) throw new Error(`strength: the material needs a strength above 0 MPa (got ${shown(sigma)})`);
+  if (o.torque !== undefined) size('strength', 'torque', o.torque);
+  const safety = o.safety === undefined ? 2 : size('strength', 'safety', o.safety);
+  const beta = (g.helix ?? 0) * DEG, mn = g.module * Math.cos(beta);
+  const teeth = g.kind === 'rack' ? Infinity : g.teeth / Math.cos(beta) ** 3;
+  // an internal gear's teeth are stouter at the root than an outer gear's of as many teeth: read as a rack's, a little kind
+  const Y = g.kind === 'internal' ? lewisFactor(Infinity) : lewisFactor(teeth);
+  const r = g.kind === 'rack' ? null : g.pitch / 2;
+  const V = o.speed !== undefined && r ? (size('strength', 'speed', o.speed) * 2 * Math.PI * r) / 60000 : 0, Kv = (3.05 + V) / 3.05;
+  const perNewton = Kv / (width * mn * Y); // MPa for each newton at the pitch circle
+  const out = [], f = (level, text, code, values) => out.push({ level, text, code, ...(values ? { values } : {}) });
+  const name = o.material.name ?? 'the material';
+  const result = { Y, velocity: Kv, force: (sigma / safety) / perNewton, torque: r ? ((sigma / safety) / perNewton) * r : null, findings: out };
+  if (o.torque !== undefined) {
+    if (!r) throw new Error('strength: a rack takes a force, not a torque (the torque is its pinion\'s)');
+    const F = o.torque / r, stress = F * perNewton, n = sigma / stress;
+    Object.assign(result, { stress, safety: n });
+    f(n >= safety ? 'pass' : n >= 1 ? 'warn' : 'fail', `at ${fmt(o.torque / 1000, 3)} N·m the teeth see ${fmt(stress, 1)} MPa at their roots (Lewis, Y ${fmt(Y, 3)}${Kv > 1 ? `, ×${fmt(Kv, 2)} for speed` : ''}): ${fmt(n, 1)}× under ${name}'s ${sigma} MPa${n >= safety ? '' : n >= 1 ? `, under the ${safety}× asked` : ': they break'}`, 'gear.strength', { stress, safety: n });
+  } else if (r) f('info', `the teeth carry ${fmt(result.torque / 1000, 3)} N·m at ${safety}× under ${name}'s ${sigma} MPa (Lewis, Y ${fmt(Y, 3)})`, 'gear.strength', { torque: result.torque });
+  return result;
 }

@@ -912,6 +912,10 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(slider, /knob drives slide: 43\.98 mm of rack a turn/, 'the gears: travel a turn');
     assert.match(slider, /knob and slide: centre distance 7\.2 mm, as they need/);
     assert.match(run(ws, ['check', 'home/slider', '--sweep', '--steps', '12']).out, /sweep knob, -180 to 180° in 12 steps: nothing collides/);
+    const winder = run(ws, ['check', 'home/winder']).out;
+    assert.match(winder, /the carrier drives the sun and the planets \(the ring held\): 4 turns of the sun for each turn of the carrier, the same way/, 'the planetary: four turns a crank');
+    assert.doesNotMatch(winder, /✗/, winder);
+    assert.match(run(ws, ['check', 'home/winder', '--sweep', '--steps', '24']).out, /sweep crank, -180 to 180° in 24 steps: nothing collides/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -1008,5 +1012,48 @@ test('gears in an assembly: mesh turns a joint into its mate\'s follower in phas
     assert.match(cad('check', 'demo/train'), /joint wheel: mesh: "with" names the driving joint/);
     train(24, { mesh: { with: 'drive', module: 1, teeth: [12, 30] } });
     assert.match(cad('check', 'demo/train'), /joint wheel: mesh: gearModel: 12 teeth at 20° are undercut/);
+  } finally { done(); }
+});
+
+test('a planetary gearbox in an assembly: the carrier drives, the sun and every planet follow in phase, and the sweep proves it turns', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const gear = (teeth) => ({ variables: { module: { value: 1, unit: 'mm', rule: 'Tooth size' }, teeth: { value: teeth, rule: 'Teeth' }, width: { value: 6, unit: 'mm', rule: 'Face width' }, bore: { value: 3, unit: 'mm', rule: 'Shaft' } },
+      anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } } });
+    const GEAR = 'export function main (v) { return v.gears.spur({ module: v.module, teeth: v.teeth, width: v.width, bore: v.bore }) }\n';
+    object(ws, 'box/sun', gear(18), GEAR);
+    object(ws, 'box/planet', gear(27), GEAR);
+    object(ws, 'box/ring', { variables: { module: { value: 1, unit: 'mm', rule: 'Tooth size' }, teeth: { value: 72, rule: 'Teeth' }, width: { value: 6, unit: 'mm', rule: 'Face width' } } },
+      'export function main (v) { return v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width }) }\n');
+    // the carrier: a disc over the gears, inside the ring's tips, holding the planets' axles below it
+    const at = (deg) => [22.5 * Math.cos((deg * Math.PI) / 180), 22.5 * Math.sin((deg * Math.PI) / 180), '0 - drop'];
+    object(ws, 'box/carrier', { variables: { a: { value: 22.5, unit: 'mm', rule: 'Sun to planet: m (S + P) / 2' }, drop: { value: 6.4, unit: 'mm', rule: 'A planet\'s width and a gap' }, r: { value: 28, unit: 'mm', rule: 'Inside the ring\'s tips' }, t: { value: 2, unit: 'mm', rule: 'Plate' } },
+      anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] }, p0: { at: at(0), axis: [0, 0, 1] }, p1: { at: at(120), axis: [0, 0, 1] }, p2: { at: at(240), axis: [0, 0, 1] } } },
+      "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cylinder({ radius: v.r, height: v.t, center: [0, 0, v.t / 2] }) }\n");
+    object(ws, 'box/case', { variables: { t: { value: 2, unit: 'mm', rule: 'Base' } } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cylinder({ radius: 45, height: v.t, center: [0, 0, v.t / 2] }) }\n");
+    fs.mkdirSync(path.join(ws, 'projects/box/assemblies'));
+    const box = (third = 240) => fs.writeFileSync(path.join(ws, 'projects/box/assemblies/gearbox.json'), JSON.stringify({ title: 'Gearbox', kind: 'fit',
+      items: ['case', 'sun', 'carrier', 'planet', 'planet', 'planet'].map((o, i) => ({ id: i >= 3 ? `p${i - 3}` : o, object: o })).concat([{ id: 'ring', object: 'ring', at: [0, 0, 2.4] }]),
+      joints: [
+        { id: 'sun', type: 'revolute', parent: { item: 'case', at: [0, 0, 2.4], axis: [0, 0, 1] }, child: 'sun.axis', min: -1000, max: 1000 },
+        { id: 'carrier', type: 'revolute', parent: { item: 'case', at: [0, 0, 8.8], axis: [0, 0, 1] }, child: 'carrier.axis', min: -60, max: 60, label: 'Carrier' },
+        ...[0, 1, 2].map((k) => ({ id: `p${k}`, type: 'revolute', parent: k === 2 ? { item: 'carrier', at: [22.5 * Math.cos((third * Math.PI) / 180), 22.5 * Math.sin((third * Math.PI) / 180), '0 - carrier.drop'], axis: [0, 0, 1] } : `carrier.p${k}`, child: `p${k}.axis`, min: -1000, max: 1000 })),
+      ],
+      planetary: [{ sun: 'sun', carrier: 'carrier', ring: 'ring', planets: ['p0', 'p1', 'p2'], drive: 'carrier', module: 1, teeth: ['sun.teeth', 'p0.teeth', 'ring.teeth'] }],
+      poses: { rest: { carrier: 0 }, back: { carrier: -15 } },
+    }));
+    box();
+    const checked = cad('check', 'box/gearbox');
+    assert.match(checked, /the carrier drives the sun and the planets \(the ring held\): 5 turns of the sun for each turn of the carrier, the same way/, checked);
+    assert.match(checked, /sun and p2: centre distance 22\.5 mm, as they need/);
+    assert.match(checked, /no parts overlap/);
+    assert.doesNotMatch(checked, /✗/);
+    // at −15° JSCAD's intersection read the sun 2.7 mm³ into a planet 0.07 mm from it; measured with Manifold, clear
+    assert.match(cad('check', 'box/gearbox', '--pose', 'back'), /Gearbox \(back\)[\s\S]*✓ no parts overlap/);
+    const swept = cad('check', 'box/gearbox', '--sweep', '--steps', '16');
+    assert.match(swept, /sweep carrier, -60 to 60° in 16 steps: nothing collides/, swept);
+    // a planet out of place: it can't mesh with both
+    box(250);
+    assert.match(cad('check', 'box/gearbox'), /✗ planet p2 can't mesh with the sun and the ring at once where it is/);
   } finally { done(); }
 });

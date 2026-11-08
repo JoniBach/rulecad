@@ -221,3 +221,106 @@ test('the README\'s example runs as written and prints what the README says', as
   fs.writeFileSync(file, js);
   try { assert.equal(execFileSync(process.execPath, [(await import('node:url')).fileURLToPath(file)], { encoding: 'utf8' }).replace(/\r\n/g, '\n'), expected); } finally { fs.rmSync(file); }
 });
+
+test('helical and herringbone: the profile turns z tan β / r up the width, back at the middle for a herringbone; solids close', async () => {
+  const { helical, herringbone } = await import('@rulecad/gears');
+  const p = { module: 1, teeth: 20, width: 10, helix: 20, chamfer: 0 }, k = Math.tan((20 * Math.PI) / 180) / 10;
+  // the angle of the tooth tip nearest +x at a height
+  // the angle of the tooth tip nearest an expected angle, at a height
+  const tipAngle = (g, z, near0 = 0) => { const vs = jscad.geometries.geom3.toPolygons(g).flatMap((q) => q.vertices).filter((v) => Math.abs(v[2] - z) < 1e-6 && Math.hypot(v[0], v[1]) > 10.99); const a = vs.map((v) => { let d = Math.atan2(v[1], v[0]) - near0; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }).filter((x) => Math.abs(x) < Math.PI / 20); return near0 + (Math.min(...a) + Math.max(...a)) / 2; };
+  const h = helical(p);
+  near(tipAngle(h, 10, 10 * k) - tipAngle(h, 0), 10 * k, 1e-3, 'right hand: anticlockwise up z by w tan β / r');
+  near(tipAngle(helical({ ...p, hand: 'left' }), 10, -10 * k) - tipAngle(helical({ ...p, hand: 'left' }), 0), -10 * k, 1e-3, 'left hand: the other way');
+  const hb = herringbone(p);
+  near(tipAngle(hb, 5, 5 * k) - tipAngle(hb, 0), 5 * k, 1e-3, 'herringbone: to the middle'); near(tipAngle(hb, 10) - tipAngle(hb, 0), 0, 1e-3, 'and back');
+  for (const g of [h, hb, helical({ ...p, chamfer: 0.25 }), internal({ module: 1, teeth: 60, width: 6, helix: 15 }), rack({ module: 1, teeth: 8, width: 6, helix: 15 })]) assert.equal(closed(g), 0, 'closed');
+  assert.throws(() => helical({ ...p, helix: 0 }), /helical: give a helix angle above 0°/);
+  assert.throws(() => gearModel({ module: 1, teeth: 20, helix: 50 }), /helix is a number from 0 to 45°/);
+  assert.throws(() => gearModel({ module: 1, teeth: 20, helix: 20, hand: 'up' }), /hand is "right" or "left"/);
+  assert.throws(() => gearModel({ module: 1, teeth: 20, herringbone: true }), /a herringbone needs a helix angle/);
+});
+
+test('helical pairs mesh at every height with opposite hands (a ring or rack with the same); the overlap ratio adds to the contact', () => {
+  const clear = (A, B) => !A.some((q) => inside(q, B)) && !B.some((q) => inside(q, A));
+  const k = (g, hand) => ((hand === 'left' ? -1 : 1) * Math.tan((20 * Math.PI) / 180)) / (g.pitch / 2);
+  const p1 = { module: 1, teeth: 18, helix: 20 }, a = gearModel(p1), A = spurProfile(p1).loops[0];
+  for (const [hand2, ok] of [['left', true], ['right', false]]) {
+    const p2 = { module: 1, teeth: 31, helix: 20, hand: hand2 }, b = gearModel(p2), B = spurProfile(p2).loops[0], m = mesh(a, b), ph = phase(a, b, 0);
+    const at = (z, deg) => clear(place(A, (deg * Math.PI) / 180 + k(a, 'right') * z), place(B, ((m.ratio * deg + ph) * Math.PI) / 180 + k(b, hand2) * z, [m.centre, 0]));
+    const everywhere = [0, 4, 8].every((z) => [0, 5, 10].every((deg) => at(z, deg)));
+    assert.equal(everywhere, ok, `${hand2}-handed mate: ${ok ? 'clear at every height' : 'collides up the width'}`);
+    assert.equal(m.findings.some((x) => x.code === 'mesh.helix'), !ok, `${hand2}: said`);
+  }
+  const m = mesh(a, gearModel({ module: 1, teeth: 31, helix: 20, hand: 'left' }), { width: 8 });
+  near(m.overlap, (8 * Math.tan((20 * Math.PI) / 180)) / Math.PI, 1e-12, 'overlap ratio b tan β / π m');
+  assert.ok(m.contact > mesh(gearModel({ module: 1, teeth: 18 }), gearModel({ module: 1, teeth: 31 })).contact + 0.9, 'contact grows by the overlap');
+  near(m.thrust, Math.tan((20 * Math.PI) / 180), 1e-12, 'thrust per newton');
+  assert.equal(mesh(gearModel({ ...p1, herringbone: true }), gearModel({ module: 1, teeth: 31, helix: 20, hand: 'left', herringbone: true })).thrust, 0, 'a herringbone pushes nothing along its axis');
+  assert.ok(!mesh(a, internalModel({ module: 1, teeth: 60, helix: 20 })).findings.some((x) => x.code === 'mesh.helix'), 'a ring: the same hand');
+  assert.ok(!mesh(a, rackModel({ module: 1, teeth: 9, helix: 20 })).findings.some((x) => x.code === 'mesh.helix'), 'a rack: the same hand');
+  assert.equal(mesh(a, gearModel({ module: 1, teeth: 31, helix: 25, hand: 'left' })).findings.find((x) => x.code === 'mesh.helix').level, 'fail', 'angles differ');
+  const x1c = { line: 0.42, layer: 0.2, nozzle: 0.4 };
+  assert.equal(printable(gearModel({ module: 1, teeth: 20, helix: 43 }), x1c).find((x) => x.code === 'gear.helix').level, 'warn', '43° leans past 45° at the tips');
+  assert.equal(printable(gearModel({ module: 1, teeth: 20, helix: 25 }), x1c).find((x) => x.code === 'gear.helix').level, 'pass');
+  assert.ok(printable(gearModel({ module: 1, teeth: 20, helix: 25 }), x1c).some((x) => x.code === 'gear.thrust'));
+});
+
+test('planetary: teeth that put together for the ratio asked, nearest first; every planet in phase with the sun and the ring as the carrier turns', async () => {
+  const { planetary, planetaryRatio } = await import('@rulecad/gears');
+  // known gearboxes
+  for (const [spec, teeth, ratio] of [
+    [{ module: 1, ratio: 5 }, [18, 27, 72], 5],
+    [{ module: 1, ratio: 4, planets: 4 }, [17, 17, 51], 4],
+    [{ module: 1, ratio: -3, held: 'carrier', input: 'sun', output: 'ring' }, [18, 18, 54], -3],
+  ]) {
+    const { best, findings } = planetary(spec);
+    assert.deepEqual([best.sun.teeth, best.planet.teeth, best.ring.teeth], teeth, JSON.stringify(spec));
+    near(best.ratio, ratio, 1e-12, 'ratio'); assert.equal(findings.find((x) => x.code === 'planetary.ratio').level, 'pass');
+    assert.equal(best.ring.teeth, best.sun.teeth + 2 * best.planet.teeth, 'the ring is the sun and two planets across');
+    assert.equal((best.sun.teeth + best.ring.teeth) % best.planets.length, 0, 'the planets go in evenly spaced');
+  }
+  // Willis, every way round: one way is the other's inverse
+  const t = { sun: 18, ring: 72 };
+  near(planetaryRatio(t, { held: 'ring', input: 'sun', output: 'carrier' }) * planetaryRatio(t, { held: 'ring', input: 'carrier', output: 'sun' }), 1, 1e-12, 'inverse');
+  near(planetaryRatio(t, { held: 'sun', input: 'ring', output: 'carrier' }), 90 / 72, 1e-12, 'sun held');
+  // asked for what doesn't fit: the nearest that does, said
+  const small = planetary({ module: 1, ratio: 2.5, size: 80 });
+  assert.equal(small.findings[0].level, 'fail'); assert.match(small.findings[0].text, /16\.8% from the 2\.5 asked: the nearest that puts together/);
+  assert.throws(() => planetary({ module: 1, ratio: 5, size: 30 }), /no teeth put together within a rim of 30 mm/);
+  assert.throws(() => planetary({ module: 1, ratio: 5, planets: 1 }), /planets is a whole number from 2 to 8/);
+  assert.throws(() => planetary({ module: 1, ratio: 5, held: 'ring', input: 'ring' }), /held, input and output are the sun, the carrier and the ring, one each/);
+  // in phase: turn the carrier (the ring held) and every planet clears the sun and the ring
+  const { best } = planetary({ module: 1, ratio: 5 }), deg = Math.PI / 180;
+  const sunP = spurProfile({ module: 1, teeth: best.sun.teeth }).loops[0], planetP = spurProfile({ module: 1, teeth: best.planet.teeth }).loops[0];
+  const ringHole = internalProfile({ module: 1, teeth: best.ring.teeth }).loops[1], ring = place(ringHole, best.ring.angle * deg);
+  const S = best.sun.teeth, P = best.planet.teeth, R = best.ring.teeth;
+  const at = (c, nudge = 0) => {
+    const sun = place(sunP, (1 + R / S) * c * deg);
+    return best.planets.every((pl, k) => {
+      const where = (pl.place + c) * deg, centre = [best.centre * Math.cos(where), best.centre * Math.sin(where)];
+      const planet = place(planetP, (pl.angle + (k ? 0 : nudge) + c * (1 - R / P)) * deg, centre);
+      return !planet.some((q) => inside(q, sun)) && !sun.some((q) => inside(q, planet)) && planet.every((q) => inside(q, ring)) && !ring.some((q) => inside(q, planet));
+    });
+  };
+  for (let c = 0; c < 20; c += 2.5) assert.ok(at(c), `every planet clear with the carrier at ${c}°`);
+  assert.ok(!at(0, 180 / P), 'a planet half a tooth out collides');
+});
+
+test('strength by Lewis: σ = F / b m Y, the torque at a safety factor, helical teeth in their normal section', async () => {
+  const { strength, lewisFactor } = await import('@rulecad/gears');
+  assert.equal(lewisFactor(18), 0.309); assert.equal(lewisFactor(Infinity), 0.485);
+  near(lewisFactor(25), (0.337 + 0.346) / 2, 1e-12, 'between rows, along a line');
+  const pla = { strength: 39, name: 'PLA' }, g = gearModel({ module: 1, teeth: 18 });
+  const s = strength(g, { width: 6, material: pla, torque: 500 });
+  near(s.stress, 500 / 9 / (6 * 1 * 0.309), 1e-9, 'by hand: 55.6 N over 6 × 1 × 0.309');
+  assert.equal(s.findings[0].level, 'warn', '1.3× is under the 2× asked'); assert.match(s.findings[0].text, /1\.3× under PLA's 39 MPa, under the 2× asked/);
+  assert.equal(strength(g, { width: 6, material: pla, torque: 2000 }).findings[0].level, 'fail', 'past the strength: they break');
+  near(strength(g, { width: 6, material: pla, safety: 2 }).torque, (39 / 2) * 6 * 1 * 0.309 * 9, 1e-9, 'the torque it carries at 2×');
+  // helical: the normal module and the virtual teeth, a little weaker per tooth than the transverse numbers suggest
+  const h = strength(gearModel({ module: 1, teeth: 18, helix: 30 }), { width: 6, material: pla, torque: 500 });
+  near(h.Y, lewisFactor(18 / Math.cos(Math.PI / 6) ** 3), 1e-12, 'virtual teeth z / cos³β');
+  near(h.stress, 500 / 9 / (6 * Math.cos(Math.PI / 6) * h.Y), 1e-9, 'normal module');
+  assert.ok(strength(g, { width: 6, material: pla, torque: 500, speed: 600 }).stress > s.stress, 'speed adds Barth\'s factor');
+  assert.throws(() => strength(g, { width: 6, material: {} }), /the material needs a strength above 0 MPa/);
+  assert.throws(() => strength(rackModel({ module: 1, teeth: 9 }), { width: 6, material: pla, torque: 100 }), /a rack takes a force, not a torque/);
+});

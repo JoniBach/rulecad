@@ -18,6 +18,7 @@
     "fits": { "type": "array", "items": { "$ref": "#/$defs/fit" } },
     "joints": { "type": "array", "items": { "$ref": "#/$defs/joint" } },
     "loops": { "type": "array", "items": { "$ref": "#/$defs/loop" } },
+    "planetary": { "type": "array", "items": { "$ref": "#/$defs/planetary" } },
     "poses": { "type": "object", "description": "Named sets of joint values ({ \"hinge\": 90 }), and of items' variables (\"action.travel\": 25: a flexure drawn bent in that pose, printed as drawn)", "additionalProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/values" } } },
     "pose": { "type": "string" }
   },
@@ -116,6 +117,22 @@
             "ring": { "type": "boolean" }
           }
         }
+      }
+    },
+    "planetary": {
+      "type": "object",
+      "description": "A planetary gearbox: one of sun, carrier and ring held, the one named by drive turning, the rest following it in phase",
+      "required": ["sun", "carrier", "ring", "planets", "module", "teeth"],
+      "additionalProperties": false,
+      "properties": {
+        "sun": { "type": "string" }, "carrier": { "type": "string" }, "ring": { "type": "string" },
+        "planets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "drive": { "enum": ["sun", "carrier", "ring"] },
+        "module": { "$ref": "#/$defs/expr" },
+        "teeth": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "$ref": "#/$defs/expr" } },
+        "pressureAngle": { "$ref": "#/$defs/expr" },
+        "backlash": { "$ref": "#/$defs/expr" },
+        "note": { "type": "string" }
       }
     },
     "loop": {
