@@ -908,6 +908,10 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(run(ws, ['check', 'home/arm']).out, /arm down: moves [\d.]+ mm under 10 N/);
     assert.match(run(ws, ['check', 'home/pad']).out, /matrix: 4 keys on 2 rows × 2 columns/);
     assert.ok(fs.readdirSync(path.join(ws, '.preview/home')).some((f) => f.endsWith('flick-sequence.svg')), 'the mechanism animated');
+    const slider = run(ws, ['check', 'home/slider']).out;
+    assert.match(slider, /knob drives slide: 43\.98 mm of rack a turn/, 'the gears: travel a turn');
+    assert.match(slider, /knob and slide: centre distance 7\.2 mm, as they need/);
+    assert.match(run(ws, ['check', 'home/slider', '--sweep', '--steps', '12']).out, /sweep knob, -180 to 180° in 12 steps: nothing collides/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
