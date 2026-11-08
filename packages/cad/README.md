@@ -385,6 +385,10 @@ then y, then z, as `rotate` does.
   fastened to the first through fits with `"fastens": true` (the pins, screws or press that do it, named in the fit's
   note): `{ "a": "ring", "b": "case", "fastens": true, "note": "Two push pins" }`. A part only placed somewhere is
   said (`assembly.loose`): a ring gear resting on its case would turn with its planets.
+- **Onto a shaft:** `{ "a": "arm", "b": "crank", "engage": "arm.thick" }` checks that a part slid onto a shaft, a pin or a
+  peg goes that far onto it along the joint between them (`fit.engage`), not just against its end: an arm resting on
+  a shaft's end touches it face to face, as a seated one does, and nothing overlaps either way, so only this tells
+  them apart. It looks within `radius` (10 mm) of the joint's axis.
 - **Loops:** each item has one joint to its parent. Where parts join in a ring (two links between the same two
   parts), let joints place every part, then name the meeting that closes the ring in `loops`. The check measures it
   in every pose: `"loops": [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }]`. Its anchors

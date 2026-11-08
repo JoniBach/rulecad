@@ -696,6 +696,7 @@ export function checkAssembly(s) {
   for (const x of s.fits) {
     if (x.poses && !x.poses.includes(s.pose)) continue; // a fit for some poses only: the folded screen over the keys
     if (x.holes) { holesFit(x); continue; }
+    if (x.engage != null) { engageFit(x); continue; }
     const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
     const reach = Math.max(2, ...[lo, hi].filter(Number.isFinite)) + 1; // look past the range, so a gap near it is measured
@@ -729,6 +730,29 @@ export function checkAssembly(s) {
       { code: 'fit', values: { ...(worst.gap < 0 ? { overlap: -worst.gap } : { gap: worst.gap }), min: lo, max: hi, inRange: results.filter((r) => r.ok).length, copies: results.length },
         refs: { a: x.a, b: x.b, label: x.label, ...(s.pose ? { pose: s.pose } : {}), outOfRange: results.filter((r) => !r.ok).map((r) => r.id), ...where }, ...(worst.at ? { at: { lo: worst.at, hi: worst.at } } : {}) });
   }
+  // Engage fits: a part slid onto a shaft, a pin or a peg goes onto it, not just against its end. Along the axis of the
+  // joint between them, each part's material near the axis (within radius, 10 mm) spans a stretch; how far the two
+  // stretches overlap is how far one is on the other. An arm resting on a shaft's end touches it face to face, as a
+  // seated one does, and nothing overlaps either way: only this tells them apart.
+  function engageFit(x) {
+    const top = (n) => String(n).split(/[.@]/)[0], ids = s.motion?.items.map((i) => i[0]) || [], a = top(x.a), b = top(x.b), label = x.note || `${x.a} onto ${x.b}`;
+    const j = (s.motion?.joints || []).find((jt) => { const pair = [ids[jt.child], jt.parent < 0 ? null : ids[jt.parent]]; return pair.includes(a) && pair.includes(b); });
+    if (!j) return f('fail', `${label}: no joint between ${a} and ${b} to measure along (engage measures along the joint that holds one on the other)`, null, { code: 'fit.engage', refs: { a: x.a, b: x.b } });
+    const worlds = placeItems(s.motion, s.jointValues), P = mul(j.parent < 0 ? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] : worlds[j.parent], j.a);
+    const O = [P[3], P[7], P[11]], Z = [P[2], P[6], P[10]], r = x.radius != null ? x.num(x.radius) : 10, need = x.num(x.engage);
+    const span = (parts) => {
+      let lo = Infinity, hi = -Infinity;
+      for (const p of parts) for (const t of p.triangles) for (const v of t) {
+        const d = [v[0] - O[0], v[1] - O[1], v[2] - O[2]], along = d[0] * Z[0] + d[1] * Z[1] + d[2] * Z[2];
+        if (Math.hypot(d[0] - along * Z[0], d[1] - along * Z[1], d[2] - along * Z[2]) <= r) { lo = Math.min(lo, along); hi = Math.max(hi, along); }
+      }
+      return [lo, hi];
+    };
+    const [la, ha] = span(pickIn(x.a, x)), [lb, hb] = span(pickIn(x.b, x)), on = Math.max(0, Math.min(ha, hb) - Math.max(la, lb));
+    const ok = on >= need - 1e-3; // (flush is on: a hair under, in the floating point, is not short)
+    f(ok ? 'pass' : 'fail', `${label}: ${on > 1e-3 ? `${mm(on)} mm on` : `not on at all (${Math.max(la, lb) - Math.min(ha, hb) < 1e-3 ? 'end to end' : 'apart'})`} along their joint${ok ? '' : `, where it should go ${mm(need)} mm on: its anchor is on the wrong face, or the shaft too short`}`, ok ? null : `${a}: not on ${b}`, { code: 'fit.engage', values: { engaged: on, need }, refs: { a: x.a, b: x.b, joint: j.id } });
+  }
+
   // Holes fits: each mounting hole's screw path, clear into a hole, with material round it
   function holesFit(x) {
     const A = pick(x.a), B = pick(x.b), label = x.label || `${x.a} into ${x.b}`;
