@@ -24,6 +24,7 @@ import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
+import { checkSets, drawSet, draftSet } from '../lib/sheet.mjs';
 import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
 
 // What the print file asks of the AMS: which filament each kind of part prints in
@@ -46,6 +47,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad trust                         allow what this workspace's cad.config.json asks (no sandbox, its own targets)
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
+  cad rules check [set …]           rule sets held to what makes them traceable (exit 1 on a failure) [--json]
+  cad rules draw <set>              a dimension drawing of what a set says a part mounts by, <set>.svg, to compare with its datasheet [--out file]
+  cad rules draft <name> --from <file.pdf>   the figures in a datasheet's text, into rules/<name>.json for you to name and check (all kind estimate)
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
   cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
@@ -104,7 +108,7 @@ const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'val
 const OPTIONS = ['all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
-  'unit', 'rule', 'label', // cad set
+  'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate']; // cad add
 // What a command takes, where that isn't <project>/<object>
 const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
@@ -311,6 +315,30 @@ async function analyses(b, d, tag) {
   return all;
 }
 
+// cad rules check / draw / draft: rule sets themselves, not a design's use of them
+function ruleSheets(what, names) {
+  if (what === 'check') {
+    const results = checkSets(names), bad = results.filter((r) => r.findings.length);
+    if (opt('json')) console.log(JSON.stringify(results.map((r) => ({ name: r.name, findings: r.findings })), null, 2));
+    else {
+      for (const r of bad) { console.log(`${r.name}: ${r.findings.length} to fix`); for (const x of r.findings) console.log(`  FAIL  ${x.text}  (${x.code})`); }
+      console.log(`${results.length - bad.length} of ${results.length} rule sets pass`);
+    }
+    process.exitCode = bad.length ? 1 : 0;
+    return;
+  }
+  const name = names[0];
+  if (!name) throw new Error(`usage: cad rules ${what} <set>${what === 'draft' ? ' --from <file.pdf>' : ''}`);
+  if (what === 'draw') { const to = opt('out') || `${name}.svg`; fs.writeFileSync(to, drawSet(name)); return console.log(`drew ${to}: compare it with the datasheet`); }
+  if (!opt('from')) throw new Error('usage: cad rules draft <name> --from <file.pdf>');
+  const { set, found } = draftSet(name, opt('from'));
+  if (!found) return console.log(`no figures in ${opt('from')}'s text: it's probably a picture of a drawing, so read it by eye and write rules/${name}.json by hand`);
+  const to = path.join(paths.rules ? paths.rules() : path.join(WS, 'rules'), `${name}.json`);
+  if (fs.existsSync(to) && !opt('force')) throw new Error(`${path.relative(WS, to)} already exists (--force replaces it)`);
+  fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, JSON.stringify(set, null, 2) + '\n');
+  return console.log(`${found} figures in ${path.relative(WS, to)}, every one an estimate: name them from the vocabulary, check them against the datasheet, then cad rules check ${name}`);
+}
+
 async function main() {
   const first = args[0], pos = positional(), [cmd = first, ref] = pos; // names first or options first: cad check --json keyboard/case
   if (!first || ['help', '--help', '-h'].includes(first)) return console.log(HELP);
@@ -336,6 +364,8 @@ async function main() {
     fs.writeFileSync(pj, JSON.stringify(p, null, 2) + '\n');
     return console.log(`made projects/${project}/objects/${name}.{js,json}`);
   }
+
+  if (cmd === 'rules' && ['check', 'draw', 'draft'].includes(ref)) return ruleSheets(ref, pos.slice(2));
 
   if (cmd === 'trust') { // this workspace may do what its cad.config.json asks (designs outside the sandbox, its own targets)
     const what = asks();

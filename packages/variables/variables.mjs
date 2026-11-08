@@ -260,6 +260,44 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
 
 // Round for display: at most 2 decimals, no trailing zeros.
 /** A number to two decimals at most; a name as it is. @param {number | string} n @returns {string} */
+// A published rule set, held to what makes it traceable: every value says what it is, how far to trust it, where it
+// comes from and when it was checked. A set with "part" (a motor) uses the shared names in vocabulary (the rule sets'
+// vocabulary.json), every required one, each in its unit; an older set says which of its rules is which in "interface".
+const KINDS = ['measured', 'spec', 'community', 'default', 'derived', 'estimate'];
+/**
+ * @param {RuleSet & { part?: string, interface?: Record<string, string> }} set
+ * @param {{ units: string[], prefixes: string[], fields: Record<string, { unit?: string, choice?: string[] }>, parts: Record<string, string[]> }} vocabulary
+ * @returns {{ level: 'fail', code: string, text: string, rule?: string }[]} what's wrong with it: nothing, if it passes
+ */
+export function checkRuleSet(set, vocabulary) {
+  const out = [], f = (code, text, rule) => out.push({ level: 'fail', code, text, ...(rule ? { rule } : {}) }), { units, prefixes, fields, parts } = vocabulary, rules = set?.rules;
+  if (!rules || typeof rules !== 'object' || !Object.keys(rules).length) { f('rules.shape', 'it has no rules'); return out; }
+  for (const [name, r] of Object.entries(rules)) {
+    if (!(typeof r.value === 'number' ? Number.isFinite(r.value) : typeof r.value === 'string' && r.value)) f('rules.value', `${name} has no value`, name);
+    if (!(typeof r.rule === 'string' && r.rule.length > 5)) f('rules.says', `${name} doesn't say what it is ("rule")`, name);
+    if (!KINDS.includes(r.kind)) f('rules.kind', `${name}: kind ${JSON.stringify(r.kind)} is not one of ${KINDS.join(', ')}`, name);
+    if (!(typeof r.source === 'string' && r.source)) f('rules.source', `${name} has no source`, name);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.checked))) f('rules.checked', `${name}: checked is the date it was last checked, YYYY-MM-DD (got ${JSON.stringify(r.checked)})`, name);
+    if (set.part) {
+      if (r.unit != null && !units.includes(r.unit)) f('rules.unit', `${name}: unit ${JSON.stringify(r.unit)} is not one of ${units.filter(Boolean).join(', ')}`, name);
+      if (typeof r.value === 'number' && r.unit == null) f('rules.unit', `${name} is a number with no unit (give "unit", "" if it has none)`, name);
+      const field = fields[name];
+      if (prefixes.some((p) => name.startsWith(p)) && !field) f('rules.name', `${name} is not in the vocabulary (a name starting ${prefixes.join(', ')} says how a part mounts, so everything reads it the same way)`, name);
+      if (field?.unit != null && r.unit !== field.unit) f('rules.unit', `${name} is in ${JSON.stringify(field.unit)}, not ${JSON.stringify(r.unit ?? null)}`, name);
+      if (field?.choice && !field.choice.includes(r.value)) f('rules.choice', `${name} is one of ${field.choice.join(', ')} (got ${JSON.stringify(r.value)})`, name);
+    }
+  }
+  if (set.part) {
+    if (!parts[set.part]) f('rules.part', `part ${JSON.stringify(set.part)} is not one of ${Object.keys(parts).join(', ')}`);
+    else for (const name of parts[set.part]) if (!rules[name]) f('rules.missing', `a ${set.part} needs ${name}`, name);
+  }
+  for (const [shared, own] of Object.entries(set.interface || {})) {
+    if (!fields[shared]) f('rules.name', `interface: ${shared} is not in the vocabulary`, own);
+    if (!rules[own]) f('rules.interface', `interface: ${shared} names ${own}, which isn't one of its rules`, own);
+  }
+  return out;
+}
+
 export const fmt = (n) => (typeof n === 'number' ? String(Number(n.toFixed(2))) : String(n)); // choices are names
 
 // lint(source) -> [{ line, text }]: number literals in a design's code that should be variables. Every measurement
