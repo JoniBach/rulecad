@@ -39,7 +39,11 @@ holes with 0.1 in header holes beside them.
        letting go of Sea-Picro's tracks near them.
      - `headers: 0` drops the header holes (half holes only, which reach less far in) and makes the board 2 mm
        narrower. That passed its checks in an earlier layout; with this one it's untested.
-   - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors.
+   - **The USB-C socket** sits on the top edge in the same notch Sea-Picro uses, with its fuse and CC resistors. Its two
+     VBUS pads (both its A4) are joined as Sea-Picro joins them: Sea-Picro's own bridge under the socket, on the back,
+     with its two vias, moved with the socket. It's laid once the rest is routed, so the router routes as it would
+     without it. Its tracks come as near the notch's edge (0.15 mm) as Sea-Picro's do, so the checks say so instead of
+     failing them.
    - **Two mounting holes** for M2 screws (2.1 mm, as on a Raspberry Pi Pico), in the clear space between the core and
      the USB-C parts. No track comes within 1.5 mm of either hole's centre. An M2 screw head is 3.8 mm across, so its
      rim sits on solder mask over tracks: use a nylon screw or washer. Wider clear circles crowded the tracks to the
@@ -50,12 +54,17 @@ holes with 0.1 in header holes beside them.
    header hole: a square pin and its plastic spacer under the board, as a standard 2.54 mm male header. The board
    itself is the same.
 4. The rest is autorouted on 4 layers like Sea-Picro: tracks on the outside, a GND plane and a 3.3 V plane inside.
+   The router's vias are 0.3 mm across with a 0.15 mm hole (`via_pad`, `via_hole`: JLCPCB's preferred ring); the
+   planes' vias are Sea-Picro's 0.5 mm.
    Then the router's tracks are smoothed (`smooth: true`, [@rulecad/smooth](../../packages/smooth)): their wiggles,
    detours and doubling-backs are pulled straight wherever the straight run keeps its clearance, and sharp bends are
    cut across. Where a routed track carried on from one of Sea-Picro's escapes and turned straight back (the escape
    led towards Sea-Picro's own pin, somewhere else on this board), the escape is cut back to where the track can
    leave cleanly, never into the fan-out from the RP2040's pins. A check confirms the rest of Sea-Picro's tracks and
    vias are exactly where Sea-Picro has them, and names each escape cut back.
+   Last, two of JLCPCB's rules that the router doesn't know are met by small repairs, each checked: a track closer
+   than 0.2 mm to a via's hole is necked to 0.1 mm where it passes, bowed round the via, or the via nudged; and two
+   tracks a hair under 0.1 mm apart are necked where they pass.
 
 The checks prove the result:
 
@@ -63,7 +72,10 @@ The checks prove the result:
 - **Every small part is still by the pin it serves:** decoupling capacitors by their power pins, the crystal's
   capacitors by the crystal.
 - **Every plane pad reaches its copper.**
-- **Clearances and the fab's rules:** JLCPCB's limits, including its rules for castellated holes.
+- **Clearances and the fab's rules:** JLCPCB's limits, including its rules for castellated holes and for vias (each
+  via's hole 0.2 mm from tracks of other nets).
+- **KiCad agrees:** where KiCad is installed, `cad check` also runs KiCad's own design-rule check on the board, KiCad
+  pouring the planes itself.
 
 Where the board does what Sea-Picro does, such as USB-C pads close to the notch's edge, the checks say so instead of
 failing it.
@@ -74,20 +86,23 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 59.7 × 21.0 mm. It routes in about 40 minutes, and `cad check` passes everything:
 - the circuit is Sea-Picro's, plus the added 3V3 and two GND pins
-- Sea-Picro's own routing, kept exactly as it was
+- Sea-Picro's own routing, kept exactly as it was (but for 7 escapes cut back, and its VBUS bridge moved with the socket)
 - the placement
 - both planes
-- JLCPCB's clearances and track widths
+- JLCPCB's clearances, track widths and gaps, and its rules for vias
 - the castellations and the outline
+- KiCad 10's design-rule check: no errors
+
+One warning stays: the 34 half holes' copper ring is 0.2 mm, Sea-Picro's, over JLCPCB's least and under the 0.25 mm
+it recommends.
 
 The autorouter is sensitive here: a shift of a tenth of a millimetre can take a layout from passing to dozens of
 clearance errors. This one was found by trying small moves of the core and the mounting holes in turn (the first hole
-at `hole_a_x` 8.4 mm, the core at `core_y` 0.15 mm, the 20th layout tried); if you change the layout, expect to try a
-few nearby values.
+at `hole_a_x` 8.4 mm, the core at `core_y` 0.15 mm); if you change the layout, expect to try a few nearby values.
+Anything new the router has to fit changes the whole route: that's why the VBUS bridge is laid after routing.
 
-`cad export` makes the files JLCPCB needs. It hasn't been made yet. Before ordering:
-- **Open `exports/thin-picro/module@0.6.2.kicad_pcb` in KiCad and run its design-rule check** as a second opinion.
-- **Check the pinout** below against your keyboard's wiring.
+`cad export` makes the files JLCPCB needs, and KiCad's own (`module@0.7.0.kicad_pcb` with its project and rules).
+Before ordering, **check the pinout** below against your keyboard's wiring.
 
 ## Pinout
 
