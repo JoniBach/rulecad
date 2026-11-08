@@ -555,6 +555,8 @@ export function printable(g, printer, width) {
 export { planetary, planetaryRatio } from './planetary.mjs';
 // The mesh measured from the drawn teeth: backlash, transmission error, interference
 export { contact } from './contact.mjs';
+// A tooth's root stress by finite elements
+export { toothStress } from './tooth.mjs';
 
 // ---------- strength ----------
 

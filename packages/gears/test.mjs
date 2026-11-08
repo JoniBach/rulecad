@@ -344,3 +344,16 @@ test('contact: the mesh measured from the drawn teeth agrees with the reckoning,
   // no backlash drawn: the play is all but gone, and said
   assert.equal(contact({ ...p18, backlash: 0 }, { ...p30, backlash: 0 }).findings.find((x) => x.code === 'mesh.backlash').level, 'warn');
 });
+
+test('a tooth by finite elements: the root of its loaded side, settled, about 1.3× Lewis (the fillet\'s concentration)', async () => {
+  const { toothStress } = await import('@rulecad/gears');
+  const pla = { E: 2680, nu: 0.36, strength: 39, name: 'PLA' };
+  const r = toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 400, material: pla });
+  // AGMA's geometry factor for 18 teeth loaded at the tip (J ≈ 0.24 against Y 0.309) puts the concentration near 1.3
+  assert.ok(r.ratio > 1.15 && r.ratio < 1.5, `${r.ratio}× Lewis`);
+  assert.ok(Math.abs(r.change) < 0.05, `settled: ${r.change}`);
+  assert.ok(Math.hypot(...r.at) - 7.75 < 0.5, `at the root: ${r.at}`);
+  assert.equal(r.findings[0].code, 'gear.fe'); assert.equal(r.findings[0].level, 'warn', '400 N·mm on a 6 mm module 1 pinion of PLA: under 2×');
+  assert.match(toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 600, material: pla }).findings[0].text, /over PLA's 39 MPa, it breaks/);
+  assert.throws(() => toothStress({ module: 1, teeth: 18 }, { width: 6, torque: 400, material: {} }), /needs a modulus E/);
+});

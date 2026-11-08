@@ -17,10 +17,12 @@
     "gears.mjs",
     "planetary.mjs",
     "contact.mjs",
+    "tooth.mjs",
     "diagram.mjs",
     "gears.d.mts",
     "planetary.d.mts",
     "contact.d.mts",
+    "tooth.d.mts",
     "diagram.d.mts",
     "README.md",
     "LICENSE"
@@ -53,5 +55,8 @@
   "peerDependencies": {
     "@jscad/modeling": "^2.12.0"
   },
-  "types": "./gears.d.mts"
+  "types": "./gears.d.mts",
+  "dependencies": {
+    "@rulecad/fea": "^0.2.9"
+  }
 }

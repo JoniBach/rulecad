@@ -152,6 +152,14 @@ strength(gearModel({ module: 1, teeth: 18 }), { width: 6, material: { strength: 
 It is a first number. A printed tooth is weaker than a moulded one where its layers and voids are, and stronger than
 Lewis says where the root fillet and its neighbours share the load. Where it matters, print one and load it.
 
+Where it matters, `toothStress(params, { width, torque, material: { E, nu, strength } })` analyses one tooth by
+finite elements (`@rulecad/fea`, plane stress): the tooth and a slice of rim, the rim's cut edges held, the load at
+the tip along the line of action. It gives the peak stress at the root of the loaded side, with the fillet as drawn,
+and runs a grid a third coarser to say whether it has settled (`gear.fe.coarse` when it moved over 5%). For 18 teeth
+it reads about 1.33× Lewis, and 1.25× for 40: the fillet's stress concentration, which Lewis leaves out (AGMA's
+geometry factor for a tip-loaded 18-tooth pinion implies about 1.3).
+
+
 ## What isn't refused, and what is
 
 A model or a solid refuses what isn't a gear, by name, before any maths: `gearModel: teeth is a whole number of 6 or
@@ -182,6 +190,7 @@ a point.
 | Planetary assembly | R = S + 2P; (S + R) / n whole; 2a sin(π / n) > d_a,planet | KHK, planetary gears |
 | Tooth bending (Lewis) | σ = K_v F_t / (b m Y); helical: m cos β, z / cos³β teeth | Budynas and Nisbett, Shigley's Mechanical Engineering Design, 10th ed., §14-1 and Table 14-2 |
 | Velocity factor (Barth, cut profile) | K_v = (3.05 + V) / 3.05, V in m/s | Shigley, eq. 14-4b |
+| Tooth by finite elements | plane stress, 32 cells a module, load F_t / cos α along the line of action at the tip | `@rulecad/fea`; AGMA 908-B89 for the geometry factor it is compared with |
 
 ## Words used
 
