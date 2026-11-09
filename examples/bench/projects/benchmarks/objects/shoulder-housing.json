@@ -1,0 +1,151 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-housing",
+  "title": "Shoulder housing and fixed ring",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The fixed ring on a plain round base, with three posts for the clips. It bolts through the stand to the motor on the same four screws. First layer: one disc and five small holes.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        "plate"
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "back": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "radius": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "Over the three posts: the footprint"
+    },
+    "plate": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Under the ring, room to sink the screw heads"
+    },
+    "thin": {
+      "value": 2.4,
+      "unit": "mm",
+      "rule": "Outside the ring the base needn't be thick: cut from above, so the first layer stays whole"
+    },
+    "inner": {
+      "value": 31,
+      "unit": "mm",
+      "rule": "The thick part, to the ring's outside"
+    },
+    "width": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The ring's face"
+    },
+    "rim": {
+      "value": 62,
+      "unit": "mm",
+      "rule": "Round the 54-tooth ring"
+    },
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The gears'"
+    },
+    "teeth": {
+      "value": 54,
+      "rule": "The held ring"
+    },
+    "spacing": {
+      "value": 31,
+      "unit": "mm",
+      "rule": "The NEMA 17's hole square"
+    },
+    "hole": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "M3 clearance"
+    },
+    "head": {
+      "value": 6.4,
+      "unit": "mm",
+      "rule": "An M3 head and its clearance"
+    },
+    "sink": {
+      "value": 3.2,
+      "unit": "mm",
+      "rule": "Screw heads sunk below the planets"
+    },
+    "shaft": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Clear of the shaft"
+    },
+    "post_r": {
+      "value": 36,
+      "unit": "mm",
+      "rule": "Outside the output ring's 32 mm"
+    },
+    "post": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "Each post"
+    },
+    "post_height": {
+      "value": 25.7,
+      "unit": "mm",
+      "rule": "To just over the output ring's flange"
+    },
+    "pilot": {
+      "value": 2.9,
+      "unit": "mm",
+      "rule": "An M3 screw, self-tapped"
+    },
+    "pilot_depth": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "For an M3 × 10"
+    },
+    "third": {
+      "value": 3,
+      "rule": "Three posts"
+    },
+    "start": {
+      "value": 30,
+      "unit": "deg",
+      "rule": "The first post's angle, away from the motor's screws"
+    },
+    "half_turn": {
+      "value": 180,
+      "unit": "deg",
+      "rule": "Degrees to radians"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

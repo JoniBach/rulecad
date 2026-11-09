@@ -1,0 +1,18 @@
+{
+  "name": "gears",
+  "description": "Gears from @rulecad/gears, printed and measured: a sampler plate that sets the kit's default backlash and smallest module on this printer, and a strap tensioner: two herringbone stages into a ratchet.",
+  "material": "PLA",
+  "objects": [
+    "sampler",
+    "sampler-gears",
+    "tensioner-crank",
+    "tensioner-mid",
+    "tensioner-out",
+    "tensioner-pawl",
+    "tensioner-arm",
+    "sampler-gear",
+    "sampler-rack",
+    "sampler-ring",
+    "tensioner-frame"
+  ]
+}

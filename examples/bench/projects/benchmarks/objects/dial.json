@@ -1,0 +1,143 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "dial",
+  "title": "Reading dial",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A flat dial with a tick every degree at 104 mm, bolted on the stand's four holes, for reading play, twist and repeatability off an arm's pointer.",
+  "anchors": {
+    "back": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "front": {
+      "at": [
+        0,
+        0,
+        "thick"
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "hub": {
+      "value": 46,
+      "unit": "mm",
+      "rule": "Square, over the four M3 holes"
+    },
+    "thick": {
+      "value": 1.6,
+      "unit": "mm",
+      "rule": "Eight layers"
+    },
+    "reach": {
+      "value": 112,
+      "unit": "mm",
+      "rule": "Past the pointer's 100 mm"
+    },
+    "half": {
+      "value": 23,
+      "unit": "deg",
+      "rule": "The sector, each side of level: past the last tick and its figure"
+    },
+    "ticks": {
+      "value": 20,
+      "unit": "deg",
+      "rule": "The ticks, each side of level"
+    },
+    "every": {
+      "value": 5,
+      "unit": "deg",
+      "rule": "A long tick this often, a figure twice as far apart"
+    },
+    "half_turn": {
+      "value": 180,
+      "unit": "deg",
+      "rule": "Degrees to radians"
+    },
+    "corner": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Corners rounded"
+    },
+    "spacing": {
+      "value": 31,
+      "unit": "mm",
+      "rule": "The NEMA 17's hole square"
+    },
+    "hole": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "M3 clearance"
+    },
+    "shaft": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Clear of the shaft"
+    },
+    "tick_r": {
+      "value": 100,
+      "unit": "mm",
+      "rule": "The inner end of each tick, under the pointer"
+    },
+    "tick": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Tick width, over a line"
+    },
+    "tick_short": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "A degree"
+    },
+    "tick_long": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Every five degrees"
+    },
+    "tick_height": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Two layers proud"
+    },
+    "label": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Figure height"
+    },
+    "stroke": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Stroke"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

@@ -7,6 +7,7 @@
     "strength": {"value": 34, "unit": "MPa", "rule": "Tensile strength along the layers (x-y), ± 4", "kind": "spec", "source": "Bambu Lab PETG HF technical data sheet V1.0 (ISO 527)", "checked": "2026-10-27"},
     "strength_z": {"value": 23, "unit": "MPa", "rule": "Tensile strength across the layers (z), ± 4", "kind": "spec", "source": "Bambu Lab PETG HF technical data sheet V1.0 (ISO 527)", "checked": "2026-10-27"},
     "poisson": {"value": 0.38, "rule": "Poisson's ratio (Bambu publish none)", "kind": "estimate", "source": "Typical for PETG; printed parts vary", "checked": "2026-10-27"},
-    "density": {"value": 1.27, "unit": "g/cm³", "rule": "Density of PETG", "kind": "estimate", "source": "Typical for PETG (1.23 to 1.29 g/cm³ across makers' data sheets)", "checked": "2026-10-27"}
+    "density": {"value": 1.27, "unit": "g/cm³", "rule": "Density of PETG", "kind": "estimate", "source": "Typical for PETG (1.23 to 1.29 g/cm³ across makers' data sheets)", "checked": "2026-10-27"},
+    "softening": { "value": 69, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa: where a part under a little load starts to creep", "kind": "spec", "source": "Bambu PETG HF technical data, ISO 75 at 0.45 MPa, https://bambulab.com/hu/filament/guide", "checked": "2026-11-08" }
   }
 }

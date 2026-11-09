@@ -153,6 +153,10 @@ own copy anywhere and name it in `viewUrl`.
   `notchHinge`, `bistable`, `livingHinge` as shapes, each with a `<name>Model(shape, { E })` giving its stiffness and the
   strain at a travel, and `printable(shape, printer, material, model)` for how it prints. Drawn flat: bending along y,
   width up z, so a flexure bends within its layers.
+- `v.motors`: motors (`@rulecad/motors`): `motorModel`, `mount` and `bore` for the holes a part needs round a motor and its shaft, `performance` for its torque and speed. In an assembly a motor is an item (see Motors).
+- `v.gears`: gears (`@rulecad/gears`): `spur`, `rack` and `internal` as shapes, from a module and teeth, each with its
+  model (`gearModel`, `rackModel`, `internalModel`) and `printable(model, printer, width)`. Drawn flat: the axis up z,
+  the first tooth on +x, the face on the bed. Two gears in an assembly mesh with a joint's `mesh` (see Joints).
 - A rule set can also carry `"footprints"` (pad data from @rulecad/pcb's `fromKicad`, with its source), which a
   board's code reads as `v.parts.footprints.usb_c`.
 - `cad clone` writes a rule set with a `"circuit"`: a published board's parts, pads, nets, planes and outline, read
@@ -265,8 +269,9 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   watertight; `npm install manifold-3d`) with `"engine": "manifold"` in the object's JSON or `CAD_ENGINE=manifold`.
 - **Sandbox:** a JSCAD design runs in a separate Node process under Node's permission model. Whatever it does, it
   can't write or delete files, start programs or workers, or load addons, and it reads only the workspace and the
-  packages designs use. To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
-  `@rulecad/flexures` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
+  packages designs use, by their real paths (a `node_modules` link spelled through another link, as macOS spells its
+  temporary folders through `/tmp` and `/var`, is refused by name: make the link with the real path). To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
+  `@rulecad/flexures`, `@rulecad/gears` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
   started with none of your environment (no tokens). Those shut the ordinary roads to the network, not every one:
   before Node 25 the permission model doesn't cover the network, so a design written to get round them might still
   reach it. Run only designs you trust. It gets its values as data and returns its parts; what it prints
@@ -356,6 +361,35 @@ then y, then z, as `rotate` does.
   from 0 to its length.
 - **Followers:** `"follow": "lid"` gives a joint another joint's values, times `ratio` (default 1), plus `offset`. Use
   it for the second hinge of a pair, or for gears.
+- **Gears:** `"mesh": { "with": "drive", "module": "pinion.module", "teeth": ["pinion.teeth", "wheel.teeth"] }` on a
+  revolute makes its gear follow the gear on the joint `with` names, at the ratio of their teeth and in phase: a tooth
+  of one sits in a gap of the other at every angle. On a prismatic it is a rack under a pinion (mm a turn); `"ring":
+  true` makes it a ring gear round its pinion. `shift` ([the driver's, this one's]), `pressureAngle` and `backlash` are
+  as `@rulecad/gears` takes them. Each gear is drawn as `v.gears` draws it (axis up its z, first tooth on +x; a rack
+  along its x, teeth up +y) and its joint is anchored at its centre, along its axis. The check gives the ratio, the
+  contact ratio and the centre distance (`mesh.centre`: closer than the gears need eats their backlash, and past it they jam; further adds backlash),
+  each placed between the two axes, and measures the pair from its drawn teeth (`mesh.backlash`, `mesh.interference`,
+  kept in `.cache/gears/`); `--sweep` turns the train and looks for teeth that touch. Both gears' axes sit on
+  one part, or on parts held still; planets on a carrier are a `planetary`.
+- **Worms and bevels:** `"worm": true` (or `{ "diameter", "hand" }`) in a mesh makes the driving joint a worm and
+  this one its wheel, `teeth` [starts, the wheel's], the axes crossed at right angles; the check says the ratio,
+  whether it locks, and the centre distance. `"bevel": true` makes the two bevel gears, their axes meeting at the
+  shaft angle; the cones must share their apex (`mesh.bevel`). Both follow in phase, so `--sweep` turns them clean.
+- **Planetary gearboxes:** `"planetary": [{ "sun": "sun", "carrier": "carrier", "ring": "ring", "planets": ["p0", "p1",
+  "p2"], "drive": "carrier", "module": 1, "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }]` names the items. One of
+  the sun, carrier and ring is held (no joint, or a fixed one); the one `drive` names turns on its revolute, and the
+  third, and each planet on its revolute on the carrier, follow it, in phase. The check says the ratio, each planet's
+  centre distance and contact ratio, and fails a planet that can't mesh with the sun and the ring where it is
+  (`planetary.phase`: planets go every 360° / n, and (S + R) / n is whole). `planetary()` in `@rulecad/gears` finds
+  teeth for a ratio.
+- **What holds each part:** in an assembly that moves, every part but the first turns or slides on a joint, or is
+  fastened to the first through fits with `"fastens": true` (the pins, screws or press that do it, named in the fit's
+  note): `{ "a": "ring", "b": "case", "fastens": true, "note": "Two push pins" }`. A part only placed somewhere is
+  said (`assembly.loose`): a ring gear resting on its case would turn with its planets.
+- **Onto a shaft:** `{ "a": "arm", "b": "crank", "engage": "arm.thick" }` checks that a part slid onto a shaft, a pin or a
+  peg goes that far onto it along the joint between them (`fit.engage`), not just against its end: an arm resting on
+  a shaft's end touches it face to face, as a seated one does, and nothing overlaps either way, so only this tells
+  them apart. It looks within `radius` (10 mm) of the joint's axis.
 - **Loops:** each item has one joint to its parent. Where parts join in a ring (two links between the same two
   parts), let joints place every part, then name the meeting that closes the ring in `loops`. The check measures it
   in every pose: `"loops": [{ "a": "link_l.top", "b": "mount_l.axis", "label": "Left pivot lines up" }]`. Its anchors
@@ -370,6 +404,19 @@ then y, then z, as `rotate` does.
 - **Links:** an assembly's link carries its joints. The page shows a slider for each joint, a button for each pose,
   and a quick look for parts pushed into each other when you let a slider go. The quick look can miss parts that cross
   without a corner going in, so `--sweep` is the real check.
+
+### Motors
+
+An item can be a motor instead of a printed object: `{ "id": "drive", "motor": { "model": "nema17", "drives": "elbow" }, "at": […], "rotate": […] }`. It comes from `@rulecad/motors`, is bought and not printed (a reference, in the assembly but never on a plate), and its anchors (`shaft`, `tip`, `face`, `horn`, `hole1` …) work in joints like any other. `set` changes a figure (`{ "holding_torque": { "value": 0.5, "kind": "measured", "source": "…" } }`), `speed` is the motor's speed (rpm), `margin` how many times over the torque must be (2 by default), `duty` the share of the time it runs.
+
+- `"drives"`: the joint it turns, a revolute. The viewer's slider moves in a stepper's steps; a servo brings its range. Whatever follows that joint through a `mesh` or a `planetary` moves with it. `motor.axis` fails if its shaft isn't on the joint's axis.
+- `"loads"` at the top of the assembly say what it has to do: `{ "joint": "elbow", "torque": 0.5 }` (N m), `{ "joint": "slide", "force": 12 }` (N), or `{ "mass": 0.2, "at": "forearm.tip" }` (kg, a mass carried at an anchor, whose torque at each joint comes from where the pose puts it; the check runs the motor through its range and reports the worst). `"gravity": [0, -1, 0]` says which way is down, if not `-z`.
+- A compound planetary is a `planetary` with `"output": { "ring", "planet", "teeth" }`: a second ring on the planets' second step, following them in phase.
+- `motor.torque`: what reaches the joint through the gears, against the load: a fail under 1 times, a warning under the margin. It says what its figures rest on. `motor.speed`: how fast it moves and how long its range takes. Stages pass on `stageEfficiency` of the power (0.95 a mesh, an estimate).
+- `motor.holds`: with the power on (holding torque, or stall torque) and off (detent torque, a built-in gearbox's friction, a worm that locks, gears under 50% efficient, or `"brake": "a ratchet and pawl"` on the joint). Dropping with the power off is a warning: it may be what you want.
+- `motor.mount`: the part a motor is fastened to (a `fastens` fit), read as drawn: how thick it is at the screw holes against the screws' size, and the screws' bearing on the plastic under the motor's full torque. How far the whole part bends isn't checked yet.
+- `motor.heat`: the motor's case against the softening point of the material the project prints in. Too hot says the current to set the driver to.
+- A `"shaft": true` fit (or `"press"`) between a motor and what it drives reads the bore from the part as drawn: that it's on the shaft (`shaft.seat`), that its flat is there (`shaft.flat`; the shaft turns to meet it, so where the flat faces doesn't matter), how much of the flat it grips (`shaft.grip`), and, pressed on, the hoop stress in the hub (`shaft.hoop`).
 
 ## Optimised parts
 

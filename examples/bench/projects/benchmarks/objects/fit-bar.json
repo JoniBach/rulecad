@@ -1,0 +1,115 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "fit-bar",
+  "title": "Fit bar",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "Stepped holes, D-bores and M3 pilots in one solid block, all blind from the top so the first layer is a plain rectangle. Numbers 3, 4 and 5 on the measuring sheet.",
+  "variables": {
+    "pitch": {
+      "value": 11,
+      "unit": "mm",
+      "rule": "Between holes along a row"
+    },
+    "row": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Between rows, with room for the labels"
+    },
+    "cols": {
+      "value": 5,
+      "rule": "Five sizes of each"
+    },
+    "rows": {
+      "value": 3,
+      "rule": "Plain holes, D-bores, pilots"
+    },
+    "height": {
+      "value": 9,
+      "unit": "mm",
+      "rule": "Deep enough for 6 mm bores over a solid floor"
+    },
+    "margin": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Round the outside"
+    },
+    "corner": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The footprint's corners, rounded so they stay down"
+    },
+    "hole_from": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Row 1, plain holes: an M3 screw's clearance, around where it should come out"
+    },
+    "hole_step": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Up by this each column"
+    },
+    "hole_depth": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Deep enough to gauge with a drill shank or calipers"
+    },
+    "bore_from": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Row 2, D-bores for the 5 mm NEMA shaft: drawn diameter"
+    },
+    "bore_step": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Up by this each column"
+    },
+    "bore_depth": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The shaft goes in this far"
+    },
+    "pilot_from": {
+      "value": 2.6,
+      "unit": "mm",
+      "rule": "Row 3, pilots for an M3 screw to self-tap"
+    },
+    "pilot_step": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Up by this each column"
+    },
+    "pilot_depth": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "An M3 × 10 and more"
+    },
+    "label": {
+      "value": 3.2,
+      "unit": "mm",
+      "rule": "Figure height: about eight lines"
+    },
+    "stroke": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Stroke, over a line wide"
+    },
+    "emboss": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Two layers proud"
+    },
+    "press_base": {
+      "value": 4.96,
+      "unit": "mm",
+      "rule": "What bore() draws for the press fit before compensation, 5 - 2 × 0.02"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

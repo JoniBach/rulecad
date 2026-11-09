@@ -1,0 +1,28 @@
+{
+  "name": "benchmarks",
+  "description": "The measurements a robot joint rests on, printed: small parts with plain first layers, one test each. MEASURE.md says what to read off each and where the number goes.",
+  "material": "PLA",
+  "objects": [
+    "card-gear",
+    "card-gears",
+    "dial",
+    "fit-bar",
+    "gear-card",
+    "input-lever",
+    "mesh-rig",
+    "rig-lever",
+    "rig-pinion",
+    "rig-wheel",
+    "servo-arm",
+    "servo-stand",
+    "shoulder-arm",
+    "shoulder-clip",
+    "shoulder-housing",
+    "shoulder-output",
+    "shoulder-planet",
+    "shoulder-speck",
+    "shoulder-sun",
+    "stand",
+    "test-arm"
+  ]
+}

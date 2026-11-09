@@ -19,6 +19,10 @@
   "devDependencies": {
     "@jscad/modeling": "^2.13.0",
     "manifold-3d": "^3.5.4",
+    "sharp": "^0.35.5",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "sharp": "^0.35.5"
   }
 }

@@ -743,15 +743,17 @@ export function pinJointCheck({ pin: d, width: w, clearance = 0.2, lift = 0.2 },
  *   length down from the tip (default 3 × diameter); gap: the split's width (default 1); lead: the tip cone's angle
  *   from the axis, degrees (default 45); back: the barb's back angle (default 45); head: a flange at the foot, its
  *   radius past the peg (default diameter / 2)
+ * @param {{ union: Function, subtract: Function }} [ops] the booleans to build it with: a design's v.ops, so a design on
+ *   Manifold gets a pin Manifold reads as a closed solid (JSCAD's own leave seams it can't)
  */
-export function snapPin({ diameter: d, length: L, lip = 0.4, slot, gap = 1, lead = 45, back = 45, head }) {
+export function snapPin({ diameter: d, length: L, lip = 0.4, slot, gap = 1, lead = 45, back = 45, head }, ops = { union, subtract }) {
   const r = d / 2, s = slot ?? 3 * d, flange = head ?? r, seg = 48;
   const fall = back >= 90 ? 0 : lip / Math.tan((back * Math.PI) / 180), rise = (r + lip) / Math.tan((lead * Math.PI) / 180);
   const foot = cylinder({ radius: r + flange, height: 2, center: [0, 0, 1], segments: seg }), shaft = cylinder({ radius: r, height: L + fall + 0.01, center: [0, 0, 2 + (L + fall) / 2], segments: seg });
   const z0 = 2 + L, barbBack = jscad.primitives.cylinderElliptic({ height: Math.max(fall, 0.01), startRadius: [r, r], endRadius: [r + lip, r + lip], center: [0, 0, z0 + Math.max(fall, 0.01) / 2], segments: seg });
   const barbTip = jscad.primitives.cylinderElliptic({ height: rise, startRadius: [r + lip, r + lip], endRadius: [0.01, 0.01], center: [0, 0, z0 + fall + rise / 2], segments: seg });
   const split = block(0, 0, z0 + fall + rise - s / 2 + 1, [2 * (r + lip) + 2, gap, s + 2]);
-  return subtract(union(foot, shaft, barbBack, barbTip), split);
+  return ops.subtract(ops.union(foot, shaft, barbBack, barbTip), split);
 }
 /**
  * The socket for a snap pin: a block with a hole the peg's diameter plus the clearance, through it, so the barb

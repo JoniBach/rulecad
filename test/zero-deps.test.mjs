@@ -27,7 +27,7 @@ for (const p of packages) test(`@rulecad/${p} needs nothing but other @rulecad p
     const src = fs.readFileSync(path.join(root, 'packages', p, f), 'utf8');
     for (const [, from] of src.matchAll(/^\s*(?:import|export)\b[^'\n]*\bfrom\s+'([^']+)'/gm)) {
       if (from.startsWith('./')) assert.ok(modules.includes(from.slice(2)), `${p}/${f} imports ${from}, which the package doesn't ship (or is its Node-only extra)`);
-      else assert.ok(Object.keys({ ...pj.dependencies, ...pj.peerDependencies }).includes(from), `${p}/${f} imports ${from} without depending on it`);
+      else assert.ok(Object.keys({ ...pj.dependencies, ...pj.peerDependencies }).some((d) => from === d || from.startsWith(`${d}/`)), `${p}/${f} imports ${from} without depending on it`); // (a file of one, such as @rulecad/rules/nema17.json)
     }
     // (a peer may be loaded when it's asked for, as Manifold is: any other import() could reach for anything; a type's
     // import('./x.mjs') in a comment loads nothing)

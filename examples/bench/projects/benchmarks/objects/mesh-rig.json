@@ -1,0 +1,156 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "mesh-rig",
+  "title": "Mesh rig",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A plate with two pins, bolted to the stand's front on its four holes: one spur pair, each with a lever, to find what a printed mesh passes on. Number 12 on the sheet.",
+  "anchors": {
+    "back": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "pinion": {
+      "at": [
+        "pinion_x",
+        0,
+        "plate"
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "wheel": {
+      "at": [
+        "pinion_x + centre",
+        0,
+        "plate"
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "wide": {
+      "value": 84,
+      "unit": "mm",
+      "rule": "Over the two pins and the four holes"
+    },
+    "tall": {
+      "value": 50,
+      "unit": "mm",
+      "rule": "Over the four holes"
+    },
+    "plate": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Twenty layers"
+    },
+    "corner": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Corners rounded"
+    },
+    "spacing": {
+      "value": 31,
+      "unit": "mm",
+      "rule": "The stand's hole square"
+    },
+    "hole": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "M3 clearance"
+    },
+    "teeth_a": {
+      "value": 14,
+      "rule": "The pinion"
+    },
+    "teeth_b": {
+      "value": 42,
+      "rule": "The wheel, three times as many"
+    },
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The shoulder's"
+    },
+    "shift": {
+      "value": 0.2,
+      "rule": "14 teeth need at least 0.19"
+    },
+    "backlash": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Change this to the card's winner",
+      "tweak": {
+        "min": 0,
+        "max": 0.5
+      }
+    },
+    "pin": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Each gear's pin"
+    },
+    "pin_height": {
+      "value": 11,
+      "unit": "mm",
+      "rule": "Through a gear and its lever, and its washer"
+    },
+    "pilot": {
+      "value": 2.9,
+      "unit": "mm",
+      "rule": "A screw and washer keep the gear on"
+    },
+    "pilot_depth": {
+      "value": 9,
+      "unit": "mm",
+      "rule": "An M3 × 10"
+    },
+    "pinion_x": {
+      "value": -27,
+      "unit": "mm",
+      "rule": "The pinion's pin, from the holes' middle"
+    },
+    "centre": {
+      "value": 28.195,
+      "unit": "mm",
+      "rule": "Pinion to wheel, as mesh() gives it for 14 teeth shifted 0.2 on 42: the assembly's check holds it to that"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

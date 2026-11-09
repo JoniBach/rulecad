@@ -1,0 +1,53 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tensioner-pawl",
+  "title": "Tensioner: the pawl",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A leaf pawl whose square tip meets the ratchet's teeth: it bends over each tooth as the spool winds in and holds it from unwinding. Its root block presses down over two push pins on the frame's post.",
+  "variables": {
+    "length": {
+      "value": 35,
+      "unit": "mm",
+      "rule": "From its post just outside the spool gear (33 mm tips) to the ratchet: lifts a tooth (1.5 mm) at 0.7% strain"
+    },
+    "thick": {
+      "value": "x1c.line * 9",
+      "unit": "mm",
+      "rule": "Nine lines: 35 mm long and 4 mm wide, it buckles at about 97 N free-ended against 50 N held at the rim for a 100 N strap (1.9\u00d7)"
+    },
+    "width": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "The ratchet's width"
+    },
+    "root": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The root block: long enough for its two push pins"
+    },
+    "snap": {
+      "value": 2.5,
+      "unit": "mm",
+      "rule": "The frame's push pins"
+    },
+    "clear": {
+      "value": "x1c.line / 2",
+      "unit": "mm",
+      "rule": "Half a line round a push pin, so it goes through"
+    },
+    "snap_near": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "The first pin, in from the root's face"
+    },
+    "snap_far": {
+      "value": 10.5,
+      "unit": "mm",
+      "rule": "The second, near the root's far end"
+    }
+  }
+}

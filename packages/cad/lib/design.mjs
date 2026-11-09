@@ -32,6 +32,8 @@ import { readLayout, hasLayout, keys, width, depth } from './layout.mjs';
 import { optimised, forDesign } from './optimise.mjs';
 import * as shapes from '@rulecad/shapes';
 import * as flexures from '@rulecad/flexures';
+import * as gears from '@rulecad/gears';
+import * as motors from '@rulecad/motors';
 import { engineId, packageVersion, materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 
@@ -125,11 +127,11 @@ const CACHE = paths.cache('builds'), CACHE_VERSION = 3;
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
-const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures')));
+const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors')));
 // (every module of a helper package but its tests: they change nothing a design builds)
 const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
 const feaDir = path.dirname(createRequire(pathToFileURL(path.join(flexuresDir, 'package.json')).href).resolve('@rulecad/fea')); // (flexures' own, wherever npm put it)
-const own = source(import.meta.url) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(feaDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
+const own = source(import.meta.url) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
 // A lamina's slow stages (the physics, the flood's probe) are kept apart from the builds, keyed by the library's code
 // and their own inputs, so a build that changes only what comes after them (a strap, a check, a rule's words) has them
 // at once: .cache/stages/. A design in the sandbox can't write them, so the sandbox hands them back and the tool writes them
@@ -219,7 +221,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       throw syntaxAt(located(e, d.js, 'design.run'), d);
     });
     if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
-    const w = watch(values, { shapes, flexures, ops: await shapes.ops(booleans(object)), ...(pcb ? { pcb } : {}) }, optional);
+    const w = watch(values, { shapes, flexures, gears, motors, ops: await shapes.ops(booleans(object)), ...(pcb ? { pcb } : {}) }, optional);
     read = w.read;
     let made;
     try { ({ shapes: made, mechanism } = unpack(await mod.main(w.v))); } catch (e) { throw Object.assign(located(e, d.js, 'design.run'), { line: lineOf(e, pathToFileURL(d.js).href) || undefined }); }

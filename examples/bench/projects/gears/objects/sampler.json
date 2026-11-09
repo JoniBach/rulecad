@@ -1,0 +1,155 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "sampler",
+  "title": "Gear sampler: the plate",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "Pins for nine pairs of 17-tooth gears (modules 0.8, 1 and 1.5 by backlashes 0.1, 0.2 and 0.3 mm), each pair on a bar at its centre distance with its label on a tab, the bars joined by two rails; a rail for a loose rack and a lip on a floor for a loose ring, each with a pin for its pinion. Print it with sampler-gears and press the gears on (sampler-mounted shows where each goes).",
+  "variables": {
+    "module_a": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "The plate's rows: The smallest worth trying on a 0.4 mm nozzle: twice the nozzle"
+    },
+    "module_b": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The plate's rows: Module 1: 3.6 lines across a tooth"
+    },
+    "module_c": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "The plate's rows: Module 1.5"
+    },
+    "backlash_a": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "The plate's columns: either side of the kit's 0.15 mm (FDM guides give 0.1 to 0.2)"
+    },
+    "backlash_b": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "The plate's columns: either side of the kit's 0.15 mm (FDM guides give 0.1 to 0.2)"
+    },
+    "backlash_c": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "The plate's columns: either side of the kit's 0.15 mm (FDM guides give 0.1 to 0.2)"
+    },
+    "teeth": {
+      "value": 17,
+      "rule": "The fewest at 20\u00b0 without a profile shift, so every pair is drawn the same way"
+    },
+    "pin": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "A pin the gears turn on"
+    },
+    "pin_height": {
+      "value": "width + x1c.layer * 10",
+      "unit": "mm",
+      "rule": "Through the gear and two millimetres over"
+    },
+    "width": {
+      "value": "x1c.layer * 20",
+      "unit": "mm",
+      "rule": "The gears' face width, twenty layers"
+    },
+    "thick": {
+      "value": "x1c.layer * 10",
+      "unit": "mm",
+      "rule": "The bars and rails, ten layers: stiff enough to hold a pin upright"
+    },
+    "column": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "Room for the largest pair (module 1.5: 25.5 mm apart, 28.5 mm tips) and its label"
+    },
+    "margin": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Between a row's tips and the next row's label"
+    },
+    "label": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Label height: a capital this tall"
+    },
+    "stroke": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "Label lines two extrusion lines wide"
+    },
+    "emboss": {
+      "value": "x1c.layer * 3",
+      "unit": "mm",
+      "rule": "Labels three layers proud of the plate"
+    },
+    "rack_teeth": {
+      "value": 20,
+      "rule": "A rack long enough to turn its pinion a full turn and more"
+    },
+    "ring_teeth": {
+      "value": 40,
+      "rule": "A ring 23 teeth more than its 17-tooth pinion: well clear of the 10 where tips foul"
+    },
+    "check_backlash": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "The rack's and ring's own backlash: the middle of the three"
+    },
+    "rack_bar": {
+      "value": "x1c.line * 8",
+      "unit": "mm",
+      "rule": "The rack's bar under its roots: eight lines"
+    },
+    "rack_travel": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "How far the rack slides each way: its pinion a little over a third of a turn"
+    },
+    "rail_width": {
+      "value": "x1c.line * 6",
+      "unit": "mm",
+      "rule": "The rail behind the rack: six lines"
+    },
+    "rail_height": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "Up most of the rack's width"
+    },
+    "clear": {
+      "value": "x1c.line / 2",
+      "unit": "mm",
+      "rule": "Half a line between a loose part and what guides it, so it slides"
+    },
+    "lip": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "The ring's lip: four lines"
+    },
+    "lip_height": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "Up most of the ring's width"
+    },
+    "bar": {
+      "value": "x1c.line * 16",
+      "unit": "mm",
+      "rule": "A pair's bar: about two pin-widths round each pin"
+    },
+    "spine": {
+      "value": "x1c.line * 10",
+      "unit": "mm",
+      "rule": "The two rails down the sides that join the bars into one print"
+    },
+    "tab": {
+      "value": "label + x1c.line * 4",
+      "unit": "mm",
+      "rule": "The label's tab: its letters and a margin"
+    }
+  }
+}

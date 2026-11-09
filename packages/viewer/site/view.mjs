@@ -419,7 +419,7 @@ function moving(mo, parts, mid, alts = new Map()) {
   for (const j of free) j.dofs.forEach(([lo, hi], d) => {
     const angle = DOFS[j.type][d] === 'angle', unit = angle ? '°' : ' mm';
     const name = `${j.label || j.id}${j.dofs.length > 1 ? ` ${j.type === 'ball' ? 'xyz'[d] : DOFS[j.type][d]}` : ''}`;
-    const row = el('label', 'joint'), out = el('b'), input = Object.assign(el('input'), { type: 'range', min: lo, max: hi, step: angle ? 1 : Math.max(0.01, (hi - lo) / 400) });
+    const row = el('label', 'joint'), out = el('b'), input = Object.assign(el('input'), { type: 'range', min: lo, max: hi, step: j.step ?? (angle ? 1 : Math.max(0.01, (hi - lo) / 400)) }); // a stepper's slider moves in its steps
     const show = () => { input.value = values[j.id][d]; out.textContent = `${Number(values[j.id][d].toFixed(angle ? 0 : 2))}${unit}`; };
     input.oninput = () => { values[j.id][d] = Number(input.value); show(); place(); pick(null); $('clash').textContent = ''; };
     input.onchange = () => look();

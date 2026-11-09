@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/flexures",
-  "version": "0.5.0",
+  "version": "0.5.2",
   "description": "Compliant mechanisms for printed parts: leaf springs, guides, serpentine springs and notch hinges as JSCAD shapes, each with its stiffness, its strain at a travel, and how it prints.",
   "type": "module",
   "exports": {
@@ -14,6 +14,8 @@
     "plane.mjs",
     "bent.mjs",
     "flooded.mjs",
+    "print3d.mjs",
+    "checks.mjs",
     "cache.mjs",
     "physics.mjs",
     "modules.mjs",
@@ -27,6 +29,8 @@
     "plane.d.mts",
     "bent.d.mts",
     "flooded.d.mts",
+    "print3d.d.mts",
+    "checks.d.mts",
     "cache.d.mts",
     "physics.d.mts",
     "modules.d.mts",

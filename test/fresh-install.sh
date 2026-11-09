@@ -15,5 +15,5 @@ cp "$ROOT/test/watch-loads.mjs" "$ROOT/test/board-paths.mjs" .
 node --import ./watch-loads.mjs board-paths.mjs
 [ -d node_modules/react ] && echo "(react is installed, unused: brought by circuit-json-to-gerber and the autorouter's dependencies)" || true
 node "$WORK/node_modules/create-rulecad/index.mjs" project --no-install >/dev/null
-cd project && ln -s "$WORK/node_modules" node_modules
+cd project && ln -s "$(cd "$WORK" && pwd -P)/node_modules" node_modules # (the real path: on macOS $WORK is spelled through /var, a link the sandbox may not read)
 npx cad check home/soap-tray | tail -2

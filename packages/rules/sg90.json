@@ -1,0 +1,31 @@
+{
+  "_doc": "A TowerPro SG90 9 g servo. Its clones vary, so measure the one you have before cutting a tight slot. kind as in x1c.json. Mounting face at z = 0, shaft up +z from the origin. The face at z = 0 is the underside of the tabs; the body goes down through the plate.",
+  "name": "sg90",
+  "part": "motor",
+  "rules": {
+    "type": { "value": "servo", "rule": "A position servo: it turns to an angle and holds it", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "body_shape": { "value": "box", "rule": "A rectangular case", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "body_width": { "value": 22.7, "unit": "mm", "rule": "Case length (B)", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "body_depth": { "value": 12.2, "unit": "mm", "rule": "Case width (D)", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "body_length": { "value": 17, "unit": "mm", "rule": "Case below the tabs (F)", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "body_top": { "value": 10, "unit": "mm", "rule": "Case above the tabs: the height C of 27 less F", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "boss_diameter": { "value": 11.8, "unit": "mm", "rule": "Boss round the output, about the case's width", "kind": "community", "source": "common SG90 drawings; measure yours", "checked": "2026-11-08" },
+    "boss_height": { "value": 3.3, "unit": "mm", "rule": "Output boss above the case: A of 30.3 less C of 27", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "boss_offset": { "value": 5.35, "unit": "mm", "rule": "The output is this far from the case's centre, towards one end (6 mm from that end)", "kind": "community", "source": "common SG90 drawings; measure yours", "checked": "2026-11-08" },
+    "shaft_diameter": { "value": 4.7, "unit": "mm", "rule": "Output spline outside diameter (21 teeth, finer than a printer draws: drive it through a horn)", "kind": "community", "source": "common SG90 horns", "checked": "2026-11-08" },
+    "shaft_length": { "value": 3.3, "unit": "mm", "rule": "Spline height above the boss", "kind": "community", "source": "common SG90 drawings; measure yours", "checked": "2026-11-08" },
+    "shaft_flats": { "value": 0, "unit": "", "rule": "A spline, no flats", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "horn_screw": { "value": "M2", "rule": "The screw that holds a horn on", "kind": "community", "source": "https://forum.arduino.cc/t/servo-arm-screw-mount-size/696481", "checked": "2026-11-08" },
+    "horn_spline": { "value": 21, "unit": "teeth", "rule": "Teeth on the output", "kind": "community", "source": "common SG90 horns", "checked": "2026-11-08" },
+    "mount_pattern": { "value": "pair", "rule": "Two tabs, one at each end of the case", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "mount_tab_length": { "value": 32.3, "unit": "mm", "rule": "End to end of the tabs (E)", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "mount_tab_thickness": { "value": 2.5, "unit": "mm", "rule": "Tab thickness", "kind": "community", "source": "common SG90 drawings; measure yours", "checked": "2026-11-08" },
+    "mount_hole_spacing": { "value": 27.5, "unit": "mm", "rule": "Between the tabs' holes", "kind": "community", "source": "common SG90 drawings; measure yours", "checked": "2026-11-08" },
+    "mount_hole_diameter": { "value": 2, "unit": "mm", "rule": "The tabs' holes, for the self-tapping screws supplied", "kind": "community", "source": "common SG90 drawings; measure yours", "checked": "2026-11-08" },
+    "mass": { "value": 0.009, "unit": "kg", "rule": "Mass of the motor", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "rated_voltage": { "value": 4.8, "unit": "V", "rule": "Voltage for these figures", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "stall_torque": { "value": 0.1765, "unit": "N m", "rule": "Stall torque at 4.8 V: 1.8 kg cm", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "speed_60": { "value": 0.1, "unit": "s", "rule": "Time to turn 60° at 4.8 V", "kind": "spec", "source": "TowerPro SG90 digital servo data sheet (dimensions A to F), https://www.rcscomponents.kiev.ua/datasheets/SG90_Digital-info.pdf", "checked": "2026-11-08" },
+    "range": { "value": 180, "unit": "deg", "rule": "Range of travel, ±15° between units", "kind": "community", "source": "https://protosupplies.com/product/servo-motor-micro-sg90/", "checked": "2026-11-08" }
+  }
+}

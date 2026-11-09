@@ -1,6 +1,7 @@
 {
   "_doc": "Seeed Studio XIAO modules (ESP32-C3/C6/S3, nRF52840, RP2040, RP2350, SAMD21 ...): one size and pinout across the family, so a board can take any of them. kind as in x1c.json.",
   "name": "xiao",
+  "interface": {"body_length": "length", "body_width": "width"},
   "rules": {
     "length": { "value": 21, "unit": "mm", "rule": "Module length, USB end to far end", "kind": "spec", "source": "https://wiki.seeedstudio.com/xiao_rp2350_arduino", "checked": "2026-10-16" },
     "width": { "value": 17.8, "unit": "mm", "rule": "Module width", "kind": "spec", "source": "https://wiki.seeedstudio.com/xiao_rp2350_arduino", "checked": "2026-10-16" },
