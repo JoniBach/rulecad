@@ -1,6 +1,7 @@
 {
   "_doc": "Raspberry Pi Pico (the base model: RP2040, micro-USB), and the cable that plugs into it. kind as in x1c.json.",
   "name": "pico",
+  "interface": {"body_length": "length", "body_width": "width", "mount_hole_diameter": "mount_hole"},
   "rules": {
     "length": {
       "value": 51,

@@ -153,6 +153,12 @@ strongest. Every tooth has a round at its root (the commonest place a tooth crac
 The defaults, each with its rule, are in `DEFAULTS`. The backlash, the chamfer, the tip round and the smallest module
 are estimates until a printed sampler measures them.
 
+## How much gets through
+
+`stageEfficiency(kind)` is the share of the power a stage passes on: 0.95 per mesh for printed teeth (an estimate,
+`DEFAULTS.efficiency`), so a planetary's two meshes pass 0.9. A worm's comes from its lead angle and friction
+(`stageEfficiency('worm', { worm: wormModel(…) })`). Give your own figure with `{ efficiency }`.
+
 ## How strong it is
 
 `strength(model, { width, material, torque?, safety?, speed? })` reads the teeth by the Lewis equation: the bending

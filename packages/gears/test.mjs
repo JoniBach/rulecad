@@ -400,3 +400,14 @@ test('bevel gears: cone angles that add to the shaft angle, Tredgold\'s virtual 
   assert.throws(() => bevelModel({ module: 1, teeth: 10, mate: 40 }), /undercut \(as [\d.]+ on their back cone\)/);
   assert.throws(() => bevelModel({ module: 1, teeth: 20 }), /mate is a whole number of 6 or more/);
 });
+
+test('a stage passes on its share of the power: per mesh, two in a planetary, a worm by its own lead', async () => {
+  const { stageEfficiency, wormModel } = await import('@rulecad/gears');
+  assert.equal(stageEfficiency('spur'), 0.95); assert.equal(stageEfficiency('rack'), 0.95);
+  near(stageEfficiency('planetary'), 0.9025, 1e-9, 'two meshes');
+  assert.equal(stageEfficiency('spur', { efficiency: 0.9 }), 0.9);
+  const w = wormModel({ module: 1, starts: 1 }); assert.equal(stageEfficiency('worm', { worm: w }), w.efficiency);
+  assert.throws(() => stageEfficiency('worm'), /needs its model/);
+  assert.throws(() => stageEfficiency('chain'), /no kind of stage "chain"/);
+  assert.throws(() => stageEfficiency('spur', { efficiency: 2 }), /from 0 to 1/);
+});

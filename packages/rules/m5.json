@@ -1,6 +1,7 @@
 {
   "_doc": "M5 socket head screws and hex nuts. kind as in x1c.json.",
   "name": "m5",
+  "interface": {"screw_clearance": "clearance", "screw_head": "head", "screw_head_height": "head_height"},
   "rules": {
     "clearance": {"value": 5.5, "unit": "mm", "rule": "Clearance hole for an M5 screw, medium fit", "kind": "spec", "source": "ISO 273", "checked": "2026-10-27"},
     "head": {"value": 8.5, "unit": "mm", "rule": "M5 socket head cap screw head diameter", "kind": "spec", "source": "ISO 4762", "checked": "2026-10-27"},

@@ -13,6 +13,9 @@
     "description": { "type": "string" },
     "licence": { "type": "string" },
     "private": { "type": "boolean" },
+    "part": { "type": "string", "description": "What sort of part it describes (motor): its names come from vocabulary.json, and cad rules check holds it to them" },
+    "interface": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Which rule is which shared name in vocabulary.json, for a set that keeps its own names" },
+    "variants": { "type": "object", "description": "A maker's part numbers for this part, each the rules that differ: { \"17HS4401\": { \"kind\", \"source\", \"values\": { \"body_length\": 40 } } }" },
     "footprints": { "type": "object" },
     "circuit": { "type": "object", "description": "A published board's circuit (parts, pads, nets, planes, outline), read by cad clone, for @rulecad/pcb's clone()" },
     "rules": {

@@ -21,6 +21,35 @@ function workspace(config) {
   return { ws, cad, done: () => fs.rmSync(ws, { recursive: true, force: true }) };
 }
 
+test('cad rules check, draw and draft: a set held to its rules, drawn from them, and a datasheet\'s figures offered, never trusted', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    assert.match(cad('rules', 'check', 'nema17'), /1 of 1 rule sets pass/);
+    fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'rules/bad.json'), JSON.stringify({ name: 'bad', rules: { width: { value: 3, unit: 'mm', rule: 'A width in mm', kind: 'guess', checked: 'soon' } } }));
+    const r = spawnSync('node', [BIN, 'rules', 'check', 'bad'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(r.status, 1); assert.match(r.stdout, /kind "guess"/); assert.match(r.stdout, /has no source/); assert.match(r.stdout, /YYYY-MM-DD/);
+    const check = JSON.parse(cad('rules', 'check', 'pico', '--json'));
+    assert.deepEqual(check, [{ name: 'pico', findings: [] }]);
+    // drawn from its figures; a set that says nothing of its shape is refused, not drawn wrong
+    cad('rules', 'draw', 'nema17');
+    const svg = fs.readFileSync(path.join(ws, 'nema17.svg'), 'utf8');
+    for (const t of ['42.3', 'holes 31', 'boss Ø22', 'shaft 24', 'flat 15', '4 × M3, 4.5 deep']) assert.ok(svg.includes(t), `the drawing shows ${t}`);
+    assert.equal(spawnSync('node', [BIN, 'rules', 'draw', 'x1c'], { cwd: ws, encoding: 'utf8' }).status, 1);
+    // a small PDF with figures in its text, and one with none (a scan): only ever estimates
+    const pdf = (body) => Buffer.from(`%PDF-1.4\n1 0 obj<<>>stream\n${body}\nendstream\nendobj\n`, 'latin1');
+    fs.writeFileSync(path.join(ws, 'sheet.pdf'), pdf('BT (Shaft 5 mm, torque 0.59 N m) Tj ET'));
+    assert.match(cad('rules', 'draft', 'mine', '--from', 'sheet.pdf'), /2 figures/);
+    const draft = JSON.parse(fs.readFileSync(path.join(ws, 'rules/mine.json'), 'utf8'));
+    assert.deepEqual(Object.values(draft.rules).map((x) => [x.value, x.kind]), [[5, 'estimate'], [0.59, 'estimate']]);
+    fs.writeFileSync(path.join(ws, 'scan.pdf'), pdf('q 1 0 0 1 0 0 cm /Im0 Do Q'));
+    assert.match(cad('rules', 'draft', 'scan', '--from', 'scan.pdf'), /read it by eye/);
+    assert.ok(!fs.existsSync(path.join(ws, 'rules/scan.json')));
+    // the drawings in the rules package are what the sets say today
+    for (const f of fs.readdirSync(new URL('../rules/drawings/', import.meta.url))) { cad('rules', 'draw', f.slice(0, -4), '--out', 'x.svg'); assert.equal(fs.readFileSync(path.join(ws, 'x.svg'), 'utf8'), fs.readFileSync(new URL(`../rules/drawings/${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n'), `${f} is stale: cad rules draw it again`); } // (git on Windows checks it out with CRLF)
+  } finally { done(); }
+});
+
 test('the quick start: new, check, tweak, export, link, with the printer rules copied in', () => {
   const { ws, cad, done } = workspace();
   try {

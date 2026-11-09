@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const TYPED = ['variables', 'fea', 'topopt', 'keyboard-layout', 'printcheck', 'fit', 'model-link', 'versions', 'shapes', 'flexures', 'smooth', 'gears'];
+const TYPED = ['variables', 'fea', 'topopt', 'keyboard-layout', 'printcheck', 'fit', 'model-link', 'versions', 'shapes', 'flexures', 'smooth', 'gears', 'motors'];
 for (const dir of TYPED) {
   // every module the package ships (its main entry, what that imports, and extras under their own paths such as fea's ./threads)
   const { files } = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, 'utf8'));
