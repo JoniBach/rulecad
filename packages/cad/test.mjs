@@ -1333,3 +1333,60 @@ test('a bought bearing: placed from its set, turning a shaft, its printed seat r
     assert.match(cad('check', 'home/seat'), /no bought part "bearing-999" \(.*bearing-608/);
   } finally { done(); }
 });
+
+test('a task: reach and speed over a sheet, the error budget moved by a measurement, a machine, a drawing planned and refused', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true }); fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link'] }));
+    fs.writeFileSync(path.join(ws, 'rules/armrig.json'), JSON.stringify({ name: 'armrig', rules: { play: { value: 0.05, unit: '°', rule: 'Shoulder play', kind: 'estimate', source: 'a guess', checked: '2026-11-09' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 0, 1] }, tip: { at: ['long', 0, 0], axis: [0, 0, 1] } }, variables: { long: { value: 150, unit: 'mm', rule: 'Long', tweak: { min: 20, max: 400 } }, thick: { value: 5, unit: 'mm', rule: 'Thick' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, v.thick, v.thick], center: [v.long / 2, 0, v.thick / 2] }) }\n");
+    const task = { tool: 'fore.tip', sheet: { size: 'a5', at: [180, 0, 30] }, speed: 50, accuracy: 0.6 };
+    const asm = () => ({ title: 'Arm', kind: 'fit', uses: ['armrig'], items: [{ id: 'upper', object: 'link', set: { long: 150 } }, { id: 'fore', object: 'link', set: { long: 150 } }, { id: 'link0', object: 'link', at: [0, 0, 20] }, { id: 'm1', motor: { model: 'nema17', drives: 'elbow', speed: 300, driver: 'd1', microsteps: 16 }, at: [0, 0, -50] }, { id: 'd1', bought: 'drv8825', at: [0, 80, 0] }, { id: 'psu', bought: 'supply-12v', variant: 'LRS-50-12', set: { output_current: 1 }, at: [200, 200, 0] }],
+      joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 30] }, child: 'upper.base', min: -130, max: 130 }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150, errors: { play: 'armrig.play' } }],
+      fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }], task });
+    const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
+    const check = () => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/arm', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const by = (list, code) => list.find((x) => x.code === code);
+    write(asm());
+    let f = check();
+    assert.equal(by(f, 'task.reach').level, 'pass', by(f, 'task.reach').text);
+    assert.match(by(f, 'task.speed').text, /nothing says how fast shoulder/, 'one joint has no motor');
+    assert.ok(by(f, 'task.reach').values.samples.length > 50, 'the samples, for other programs');
+    assert.ok(fs.existsSync(path.join(ws, '.preview/home/arm-reach.svg')) && fs.existsSync(path.join(ws, '.preview/home/arm-error.svg')));
+    const before = by(f, 'task.accuracy').values.worst;
+    assert.match(by(f, 'task.accuracy').text, /Rests on estimates \(elbow's play/);
+    assert.match(by(f, 'power.supply').text, /draws 1\.25 A at 12 V .* and the supply gives 1 A/); assert.equal(by(f, 'power.supply').level, 'fail');
+    assert.ok(f.some((x) => x.code === 'motor.driver' && x.level === 'warn' && /heat sink/.test(x.text)), 'over the bare rating'); assert.ok(f.some((x) => x.code === 'motor.driver' && /set the trimmer to 1 V for 2 A per coil/.test(x.text)));
+    // A measurement moves the budget, and the ledger says so
+    const m = cad('measured', 'home/arm', 'armrig.play=0.02', '--source', 'bench test 14');
+    assert.match(m, /armrig\.play: measured 0\.02 °?, ?predicted 0\.05|armrig\.play: measured 0\.02/); assert.match(m, /fore\.tip error at its worst point: [\d.]+ mm to [\d.]+ mm/);
+    assert.ok(by(check(), 'task.accuracy').values.worst < before, 'less play, less error at the pen');
+    // A sheet moved further than the arm goes fails at a named corner, by how much
+    write({ ...asm(), task: { ...task, sheet: { size: 'a5', at: [290, 0, 30] } } });
+    f = check(); assert.equal(by(f, 'task.reach').level, 'fail'); assert.match(by(f, 'task.reach').text, /the (upper|lower) right corner of the sheet can't be reached: fore\.tip misses it by [\d.]+ mm/);
+    assert.ok(by(f, 'task.reach').at, 'it says where');
+    // a machine needs steppers on every joint of the chain, and says which is missing
+    write(asm()); assert.match(cad('machine', 'home/arm'), /joint shoulder has no stepper driving it/);
+    const two = asm(); two.items.push({ id: 'm0', motor: { model: 'nema17', drives: 'shoulder', speed: 300, microsteps: 16 }, at: [0, 0, 0] }); two.fits.push({ a: 'm0', b: 'upper', min: -1000, silent: true }, { a: 'm1', b: 'fore', min: -1000, silent: true });
+    two.items[3].motor.driver = undefined; write(two);
+    const machine = JSON.parse(cad('machine', 'home/arm', '--json'));
+    assert.equal(machine.kinematics, 'scara'); assert.equal(machine.axes.length, 2);
+    assert.ok(Math.abs(machine.axes[0].stepsPerUnit - (200 * 16) / 360) < 1e-5); assert.equal(machine.task.speed, 50);
+    assert.match(machine.axes[0]._why.microsteps, /resolution only/);
+    // a drawing, planned and replayed; one bigger than the sheet refused at the stroke that leaves it
+    fs.writeFileSync(path.join(ws, 'square.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="148mm" height="210mm" viewBox="0 0 148 210"><rect id="sq" x="24" y="55" width="100" height="100" fill="none"/><circle id="c" cx="74" cy="105" r="20" fill="none"/></svg>');
+    const plotted = spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'square.svg', '--json'], { cwd: ws, encoding: 'utf8' }), p = JSON.parse(plotted.stdout);
+    assert.equal(p.ok, true, plotted.stdout.slice(0, 400)); assert.equal(plotted.status, 0);
+    const steps = JSON.parse(fs.readFileSync(p.file, 'utf8'));
+    assert.equal(steps.format, 'rulecad.steps/1'); assert.ok(steps.drawn.length >= 2 && steps.drawn[0].error, 'lines carry their predicted error');
+    assert.match(fs.readFileSync(path.join(ws, '.preview/home/arm-square-plot.svg'), 'utf8'), /<animate attributeName="points"/);
+    const { replay, chainFromMotion } = await import('@rulecad/robots');
+    const send = await import(pathToFileURL(fileURLToPath(new URL('../../examples/bench/projects/arm/send.mjs', import.meta.url))).href), lines = send.linesOf(steps), dry = send.dryRun(['e', ...lines, 'd']);
+    assert.ok(dry.m > 50 && dry.p > 1, 'the sender takes it'); assert.throws(() => send.linesOf({ format: 'x' }), /not a step file/);
+    fs.writeFileSync(path.join(ws, 'big.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="400mm" height="400mm" viewBox="0 0 400 400"><rect id="huge" x="10" y="10" width="380" height="380" fill="none"/></svg>');
+    const big = spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'big.svg'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(big.status, 1); assert.match(big.stdout, /stroke huge leaves the 148 × 210 mm sheet/);
+  } finally { done(); }
+});

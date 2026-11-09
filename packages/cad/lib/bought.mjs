@@ -81,6 +81,8 @@ export function boughtModel(name, variant) {
 // An item with "bought": built like any other, a reference, its figures in values and its rules in entries
 export function boughtBuilt(spec, it, num, id) {
   const m = boughtModel(spec, it.variant);
+  // Figures that differ from the set's, by name: a smaller supply, a measured bearing
+  for (const [k, x] of Object.entries(it.set || {})) { if (!m.rules[k]) throw new Error(`item ${id}: ${spec} has no figure "${k}" (${Object.keys(m.rules).join(', ')})`); m.rules = { ...m.rules, [k]: { ...m.rules[k], value: num(x), kind: 'estimate', source: 'set on this item' } }; }
   if (!SHAPES[m.part]) throw new Error(`item ${id}: ${spec} is a ${m.part}: bought parts are ${Object.keys(SHAPES).join(', ')}, and a motor goes in "motor"`);
   const values = Object.fromEntries(Object.entries(m.rules).filter(([, r]) => typeof r.value === 'number').map(([k, r]) => [k, r.value]));
   let shape;

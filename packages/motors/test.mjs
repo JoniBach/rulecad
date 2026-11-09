@@ -143,3 +143,21 @@ test('the curve is what performance says, with the working point and the load on
   assert.match(svg, /through 38:1/); assert.match(svg, /the load, 0\.73 N m/); assert.match(svg, /7\.45? N m at 8 rpm/);
   assert.ok(svg.startsWith('<svg')); assert.match(svg, /rests on spec/);
 });
+
+test('drivers and the power budget: the trimmer from the sense resistor, refusals by name, a supply too small', async () => {
+  const { driver, setting, powerBudget } = await import('@rulecad/motors');
+  assert.ok(Math.abs(setting(driver('a4988'), 1.47).vref - 0.8) < 0.01, 'Vref 0.8 V for 1.47 A on a 0.068 ohm board');
+  assert.equal(setting(driver('drv8825'), 1).vref, 0.5);
+  assert.equal(setting(driver('a4988', { variant: 'pre-2017-green' }), 1).vref, 0.4);
+  assert.throws(() => driver('l298'), /no driver "l298" \(a4988, drv8825, tmc2209\)/);
+  const over = setting(driver('a4988'), 1.5).findings, past = setting(driver('a4988'), 2.5).findings, volts = setting(driver('tmc2209'), 1, { supply: 36 }).findings;
+  assert.equal(over[0].level, 'warn'); assert.match(over[0].text, /heat sink/);
+  assert.equal(past[0].level, 'fail'); assert.equal(volts[0].level, 'fail'); assert.match(volts[0].text, /takes 4\.75 to 29 V/);
+  assert.equal(setting(driver('a4988'), 1, { microsteps: 32 }).findings[0].level, 'fail');
+  const parts = [{ name: 'a', current: 2, resistance: 1.1 }, { name: 'b', current: 2, resistance: 1.1 }, { name: 'board', current: 0.1, voltage: 5 }];
+  const r = powerBudget(parts, { voltage: 12, current: 2 });
+  assert.ok(Math.abs(r.watts - (2 * (2 * 4 * 1.1) / 0.85 + 0.5)) < 1e-9);
+  assert.equal(r.findings[0].level, 'fail', 'a chopper at 12 V on 21 W: a 2 A supply, with its margin, is short');
+  assert.equal(powerBudget(parts, { voltage: 24, current: 5 }).findings[0].level, 'pass');
+  assert.throws(() => powerBudget(parts, {}), /give the supply's voltage/);
+});

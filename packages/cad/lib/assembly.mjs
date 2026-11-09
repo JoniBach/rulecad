@@ -37,6 +37,8 @@ import { runningChecks, seatFit } from './seats.mjs';
 import { seatSize } from '@rulecad/shapes';
 import { wiresOf, wireChecks, wireRows } from './wires.mjs';
 import { printedParts } from './list.mjs';
+import { taskOf, taskChecks } from './task.mjs';
+import { powerChecks } from './power.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -102,7 +104,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const source = async (it, extra) => {
     if (it.motor) { const key = JSON.stringify(['motor', it.id, it.motor]); if (!built.has(key)) built.set(key, motorBuilt(it.motor, num, it.id)); return built.get(key); }
     if (it.bought) {
-      const key = JSON.stringify(['bought', it.id, it.bought, it.variant]);
+      const key = JSON.stringify(['bought', it.id, it.bought, it.variant, it.set]);
       if (!built.has(key)) built.set(key, boughtSets().get(it.bought) === 'motor' ? motorBuilt({ model: it.bought }, num, it.id) : boughtBuilt(it.bought, it, num, it.id));
       return built.get(key);
     }
@@ -195,7 +197,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     }
     for (const c of copies) { placed.push([it, c]); ids.push(c.id); }
   }
-  const motion = motionOf(a, placed, num, ref), wires = wiresOf(a, placed, motion.joints);
+  const motion = motionOf(a, placed, num, ref), wires = wiresOf(a, placed, motion.joints), task = taskOf(a, motion, num);
   fits.push(...shaftFits(motion.drives, motion.joints, placed.map(([, c]) => c.id)).map((x) => ({ ...x, num })));
   for (const [it, c] of placed) {
     const src = c.src, id = c.id;
@@ -267,7 +269,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -860,6 +862,8 @@ export function checkAssembly(s) {
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });
   motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));
+  powerChecks(s, f);
+  taskChecks(s, f);
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers

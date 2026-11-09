@@ -80,6 +80,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad printed <project>/<object> --result ok|failed [--note "…"] [--material PETG] [--version 0.1.0]
   cad release <project> --all -m "…"   release every object that changed (each with this message), then the project
 
+  cad machine <project>/<assembly>  the machine as plain data: axes, steps, limits, homing, the task, in exports/
+  cad plot <project>/<assembly> <drawing.svg>   plans a drawing on the machine: a step file in exports/, an animation in
+                                    .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, fasteners, wire, printed parts in grams
   cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
@@ -110,8 +113,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'match', 'variants', 'compare', 'help'];
-const OPTIONS = ['table', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'machine', 'plot', 'match', 'variants', 'compare', 'help'];
+const OPTIONS = ['table', 'calibrate', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
@@ -124,7 +127,7 @@ const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep and --watch take one or not).
-const FLAGS = ['table', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
+const FLAGS = ['table', 'calibrate', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -418,6 +421,7 @@ async function main() {
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'measured') return measuredCommand(ref);
   if (cmd === 'list' || cmd === 'wires') return listCommand(cmd, ref);
+  if (cmd === 'machine' || cmd === 'plot') return machineCommand(cmd, ref);
   if (cmd === 'history') return history(ref);
   if (cmd === 'diff') return diff(locate(ref), pos[2], pos[3] || null);
   if (cmd === 'printed') return printed(locate(ref));
@@ -900,6 +904,22 @@ async function status(project) {
       console.log(`  ${name.padEnd(16)} ${s.last ? s.last.version.padEnd(8) : 'unreleased'} ${s.kind === 'first' ? '' : s.kind ? `changed since: needs a ${s.kind} release` : 'up to date'}`);
     }
   }
+}
+
+async function machineCommand(what, ref) {
+  if (!isAssembly(ref)) throw new Error(`cad ${what} works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  const m = await import('../lib/machine.mjs'), s = await buildAssembly(ref);
+  if (what === 'machine') { const out = m.machineOf(s), file = m.writeMachine(s, out); return console.log(opt('json') ? JSON.stringify(out, null, 2) : file); }
+  const source = positional()[2], tol = opt('tol') != null ? Number(opt('tol')) : undefined;
+  if (!source && !opt('calibrate')) throw new Error('usage: cad plot <project>/<assembly> <drawing.svg> [--calibrate]');
+  const { sheetFrame } = await import('@rulecad/robots'), f = s.task?.sheet ? sheetFrame(s.task.sheet) : null;
+  const svg = opt('calibrate') ? m.CALIBRATION(f?.width ?? 148, f?.height ?? 210) : fs.readFileSync(source, 'utf8'), base = `${s.name}-${opt('calibrate') ? 'calibration' : path.basename(source, path.extname(source))}`;
+  const r = m.plot(s, svg, { tolerance: tol, name: base });
+  const failed = !r.ok;
+  if (opt('json')) { console.log(JSON.stringify({ ok: r.ok, findings: r.findings, ...(r.time ? { time: r.time } : {}), ...(r.ok ? { file: m.writePlot(s, r, base).file } : {}) }, null, 2)); process.exitCode = failed ? 1 : 0; return; }
+  report(r.findings, { assembly: ref, title: `${ref}: ${base}` });
+  if (r.ok) { const w = m.writePlot(s, r, base); console.log(path.relative(WS, w.file)); console.log(path.relative(WS, w.preview)); }
+  process.exitCode = failed ? 1 : 0;
 }
 
 async function listCommand(what, ref) {

@@ -69,7 +69,7 @@ export function loadsOf(a, anchor, num, joints) {
 // ---------- the train from a motor to a joint ----------
 // Walks up the follow links from a joint to the one that leads it: the turns of that lead per turn of this joint
 // (or per mm, where the joint slides), the share of power that gets through, what's in the way.
-function trainFrom(motion, id) {
+export function trainFrom(motion, id) {
   const stages = [], meshes = motion.meshes || [];
   let j = motion.joints.find((x) => x.id === id), ratio = 1, efficiency = 1, slide = j.type === 'prismatic' ? 1 : null, locks = null;
   while (j.follow) {
@@ -121,7 +121,7 @@ function worstLoad(motion, loads, j, drive, { placeItems, jointValues, mul }) {
 }
 
 // A motor's speed if the assembly doesn't say: its corner speed, its rated speed, or half its free speed
-function workingSpeed(model, spec) {
+export function workingSpeed(model, spec) {
   if (spec.speed != null) return spec.speed;
   const p = performance(model, {});
   return model.type === 'dc' ? p.limit / 2 : model.figures.pull_in_torque ? p.limit : model.type === 'servo' ? p.limit : model.type === 'brushless' ? p.limit / 4 : p.limit / 5;
