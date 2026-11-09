@@ -297,7 +297,7 @@ function spans(polys, held, under) {
 // seams(polys) -> { gaps, tjunctions, hairlines }: edges not matched by a reverse edge, split into T-junctions (covered
 // all along by reverse edges on the same line, or lying along a longer reverse edge), hairlines (within HAIRLINE of
 // another face) and real gaps.
-const FIRST_LARGE = 80, FIRST_SPRAWL = 3; // mm, and times a circle's outline: a part over 80 mm across whose first layer has three times the edge a plain shape would
+const FIRST_LARGE = 80, FIRST_SPRAWL = 8; // mm, and times a circle's outline: a part over 80 mm across whose first layer has eight times the edge a plain shape would
 export const HAIRLINE = 0.01; // mm: a fortieth of a print line
 const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], vdot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 function pointToTriangle(p, a, b, c) { // Ericson, Real-Time Collision Detection 5.1.5
