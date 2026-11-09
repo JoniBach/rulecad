@@ -136,3 +136,10 @@ test('the README\'s example runs as written and prints what the README says', as
   fs.writeFileSync(file, js);
   try { assert.equal(execFileSync(process.execPath, [(await import('node:url')).fileURLToPath(file)], { encoding: 'utf8' }).replace(/\r\n/g, '\n'), expected); } finally { fs.rmSync(file); }
 });
+
+test('the curve is what performance says, with the working point and the load on it', async () => {
+  const { curve } = await import('@rulecad/motors/diagram');
+  const svg = curve(motorModel('nema17'), { ratio: 38, efficiency: 0.47, at: { speed: 8, load: 0.735 } });
+  assert.match(svg, /through 38:1/); assert.match(svg, /the load, 0\.73 N m/); assert.match(svg, /7\.45? N m at 8 rpm/);
+  assert.ok(svg.startsWith('<svg')); assert.match(svg, /rests on spec/);
+});

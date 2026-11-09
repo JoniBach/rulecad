@@ -71,7 +71,7 @@
     "@rulecad/topopt": "^0.3.0",
     "@rulecad/flexures": "^0.5.0",
     "@rulecad/gears": "^0.3.2",
-    "@rulecad/motors": "^0.1.1"
+    "@rulecad/motors": "^0.1.2"
   },
   "peerDependencies": {
     "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0 || ^0.5.0"
