@@ -1017,6 +1017,11 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(driven, /slide holds with the power off/);
     assert.doesNotMatch(driven, /✗/, driven);
     assert.match(run(ws, ['check', 'home/driven', '--sweep', '--steps', '12']).out, /sweep pinion, -180 to 180° in 12 steps: nothing collides/);
+    const shoulder = run(ws, ['check', 'home/shoulder']).out;
+    assert.match(shoulder, /the second ring turns 0\.02632 of the sun's turn, the other way \(38:1/, 'the compound planetary');
+    assert.match(shoulder, /motor into out: 7\.442 N m there against 0\.735 N m needed/, 'the worst of its range, from a mass on the output');
+    assert.match(shoulder, /out holds with the power off: the gears/);
+    assert.doesNotMatch(shoulder, /✗/, shoulder);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -77,7 +77,7 @@ function trainFrom(motion, id) {
   while (j.follow) {
     const [lead, r] = j.follow, m = meshes.find((x) => x.joint === j.id) || meshes.find((x) => x.planetary && (x.members || []).includes(j.id));
     const kind = m?.kind === 'external' ? 'spur' : m?.kind || 'spur';
-    const eff = stageEfficiency(kind === 'external' ? 'spur' : kind, kind === 'worm' ? { worm: m.worm } : {});
+    const eff = m?.efficiency ?? stageEfficiency(kind, kind === 'worm' ? { worm: m.worm } : {});
     efficiency *= eff; stages.push({ joint: j.id, kind, ratio: r, efficiency: eff });
     if (kind === 'worm' && m.worm.locks) locks = `the worm (its ${n3(m.worm.leadAngle, 1)}° lead is under the friction angle)`;
     if (slide != null && stages.length === 1) slide = Math.abs(r); // mm of slide for each degree of the gear
@@ -101,7 +101,7 @@ function loadAt(motion, loads, worlds, j, mul) {
   for (const l of loads) {
     if (l.joint === j.id) total += l.value;
     else if (l.mass != null && beyond(l.item)) {
-      const X = rowsAt(worlds[l.item], [l.frame[3], l.frame[7], l.frame[11]]), F = [0, 0, -l.mass * G];
+      const X = rowsAt(worlds[l.item], [l.frame[3], l.frame[7], l.frame[11]]), g = motion.gravity || [0, 0, -1], F = g.map((c) => (c * l.mass * G) / Math.hypot(...g));
       total += j.type === 'prismatic' ? dot(Z, F) : dot(Z, cross(sub(X, O), F)) / 1000;
     }
   }
@@ -154,7 +154,7 @@ export function motorChecks(s, f, helpers, materialName) {
       continue;
     }
     // Reflected to the motor's own shaft: what each load needs of it, and what it would take to hold against it
-    let need = 0, back = 0;
+    let need = 0, back = 0, backOn = 0;
     const lines = [], at = (x) => axisOf(motion, worlds, x, mul).O;
     let locked = null;
     for (const { j: x, t, load } of loaded) {
@@ -165,7 +165,7 @@ export function motorChecks(s, f, helpers, materialName) {
       need += needed; const ηback = Math.max(0, 2 - 1 / η);
       if (t.locks) locked = t.locks;
       else if (η <= 0.5) locked = `the gears (${n3(η * 100, 0)}% forwards, under the 50% where they can't be driven backwards)`;
-      back += (atLead / reduction) * ηback;
+      back += (atLead / reduction) * ηback; backOn += atLead / reduction;
       lines.push({ x, t, load, unit, reduction, atLead, η });
     }
     const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = rated.motor.torque, margin = need ? avail / need : Infinity;
@@ -175,19 +175,19 @@ export function motorChecks(s, f, helpers, materialName) {
     f(level, `${d.id} into ${main.x.id}${lines.length > 1 ? ` and ${lines.length - 1} more` : ''}: ${gives} there against ${what} needed${main.load.where ? ` (worst: ${main.load.where})` : ''}, ${n3(margin, 2)} times over${caveat}.${fix}`, level === 'pass' ? null : `${d.id}: ${n3(margin, 2)}× torque`, { code: 'motor.torque', at: at(main.x), refs: { item: d.id, joint: main.x.id }, values: { available: avail * main.reduction * main.η, needed: main.load.torque, margin } });
     if (d.spec.speed != null && performance(m, { speed: motorSpeed }).findings.some((x) => x.code === 'motor.speed')) f('fail', `${d.id} is asked for ${motorSpeed} rpm, past what a ${m.name} does`, `${d.id}: too fast`, { code: 'motor.speed', refs: { item: d.id } });
     else {
-      const dof = main.x.dofs[0], span = dof[1] - dof[0], time = main.x.type === 'prismatic' ? (span / main.t.slide / 360 / speedOut) * 60 : (span / 360 / speedOut) * 60;
-      f('info', `${main.x.id} moves at ${main.x.type === 'prismatic' ? `${n3((speedOut * 360 * main.t.slide) / 60, 2)} mm/s` : `${n3(speedOut, 2)} rpm`} with ${d.id} at ${n3(motorSpeed, 1)} rpm: its whole range in ${n3(time, 1)} s`, null, { code: 'motor.speed', at: at(main.x), values: { rpm: speedOut, time } });
+      const slideRate = main.x.type === 'prismatic' ? (speedOut * 360 * main.t.slide) / 60 : null, span = slideRate ? main.x.dofs[0][1] - main.x.dofs[0][0] : 0, time = slideRate ? span / slideRate : 60 / speedOut; // along a slide's travel, or a turn
+      f('info', `${main.x.id} moves at ${slideRate ? `${n3(slideRate, 2)} mm/s` : `${n3(speedOut, 2)} rpm`} with ${d.id} at ${n3(motorSpeed, 1)} rpm: ${slideRate ? 'its whole range' : 'a turn'} in ${n3(time, 1)} s`, null, { code: 'motor.speed', at: at(main.x), values: { rpm: speedOut, time } });
     }
     mountCheck(s, d, f, W, avail, materialName);
     // Does it hold?
     const fig = (k) => m.figures[k]?.value, kt = m.type === 'brushless' ? 60 / (2 * Math.PI * fig('kv')) : 0;
     const on = fig('holding_torque') ?? fig('stall_torque') ?? (kt ? kt * fig('rated_current') : 0), off_ = fig('detent_torque') ?? fig('friction_torque') ?? null, brake = lines.map((l) => motion.joints.find((x) => x.id === l.x.id)?.brake).find(Boolean) ?? motion.joints.find((x) => x.id === d.joint)?.brake;
-    const backS = n3(back), pmargin = back ? on / back : Infinity;
-    if (locked || brake) f('pass', `${main.x.id} holds with the power off: ${brake ? `its brake (${brake})` : locked} holds it`, null, { code: 'motor.holds', at: at(main.x) });
+    const backS = n3(back), pmargin = backOn ? on / backOn : Infinity;
+    if (locked || brake) f('pass', `${main.x.id} holds with the power off: ${brake ? `its brake (${brake})` : locked} is what holds it`, null, { code: 'motor.holds', at: at(main.x) });
     else if (off_ != null && back <= off_) f('pass', `${main.x.id} holds with the power off: ${backS} N m back at the motor against ${n3(off_)} N m of ${fig('detent_torque') != null ? 'detent' : 'gearbox friction'}`, null, { code: 'motor.holds', at: at(main.x) });
     else if (off_ != null) f('warn', `${main.x.id} drops with the power off: ${backS} N m back at the motor against ${n3(off_)} N m of ${fig('detent_torque') != null ? 'detent' : 'gearbox friction'}. A worm, a ratchet, or more ratio`, `${main.x.id}: drops unpowered`, { code: 'motor.holds', at: at(main.x), values: { back, holds: off_ } });
     else f('warn', `${main.x.id}: there's no figure for what holds it with the power off (${m.name} gives none): assume it can be turned back, and measure it`, `${main.x.id}: unpowered unknown`, { code: 'motor.holds', at: at(main.x) });
-    if (pmargin < 1) f('fail', `${main.x.id} slips with the power on: ${backS} N m back at the motor against ${n3(on)} N m of ${fig('holding_torque') != null ? 'holding' : 'stall'} torque`, `${main.x.id}: slips`, { code: 'motor.holds', at: at(main.x), values: { back, holds: on } });
+    if (pmargin < 1) f('fail', `${main.x.id} slips with the power on: ${n3(backOn)} N m back at the motor against ${n3(on)} N m of ${fig('holding_torque') != null ? 'holding' : 'stall'} torque`, `${main.x.id}: slips`, { code: 'motor.holds', at: at(main.x), values: { back: backOn, holds: on } });
     else f('pass', `${main.x.id} holds with the power on, ${n3(pmargin, 1)} times over`, null, { code: 'motor.holds', at: at(main.x), values: { margin: pmargin } });
     // The case, against what it's bolted to
     const mat = material(materialName), rise = fig('temperature_rise');
@@ -208,12 +208,12 @@ function mountCheck(s, d, f, W, avail, materialName) {
   if (!parts.length) return;
   const inv = (p) => { const q = [p[0] - W[3], p[1] - W[7], p[2] - W[11]]; return [W[0] * q[0] + W[4] * q[1] + W[8] * q[2], W[1] * q[0] + W[5] * q[1] + W[9] * q[2], W[2] * q[0] + W[6] * q[1] + W[10] * q[2]]; };
   const pts = parts.flatMap((p) => p.triangles.flat().map(inv)), side = m.mount.side, nominal = mountModel(m, { plate: 10 }), hd = nominal.holes[0].diameter;
-  let t = Infinity;
-  for (const [hx, hy] of m.mount.holes) for (const p of pts) { const r = Math.hypot(p[0] - hx, p[1] - hy), z = p[2] * side; if (r < hd / 2 + 3 && z > 0.5) t = Math.min(t, z); }
+  let t = Infinity, plate = 0; // the shortest wall a hole has, and the plate round it (more, if the screw's head is sunk)
+  for (const [hx, hy] of m.mount.holes) for (const p of pts) { const r = Math.hypot(p[0] - hx, p[1] - hy), z = p[2] * side; if (r < hd / 2 + 2 && z > 0.5) { t = Math.min(t, z); plate = Math.max(plate, z); } }
   if (t === Infinity) return f('warn', `${d.id}: couldn't find the plate at its screw holes in ${other}`, `${d.id}: mount not found`, { code: 'motor.mount' });
-  const here = mountModel(m, { plate: +t.toFixed(2), ...(d.spec.screw ? { screw: d.spec.screw } : {}) }), mat = material(materialName) || material('pla'), radius = Math.max(...m.mount.holes.map(([x, y]) => Math.hypot(x, y))), each = avail / (m.mount.holes.length * radius / 1000), bearing = each / (hd * t), margin = mat.strength / bearing;
+  const here = mountModel(m, { plate: +plate.toFixed(2), ...(d.spec.screw ? { screw: d.spec.screw } : {}) }), mat = material(materialName) || material('pla'), radius = Math.max(...m.mount.holes.map(([x, y]) => Math.hypot(x, y))), each = avail / (m.mount.holes.length * radius / 1000), bearing = each / (hd * t), margin = mat.strength / bearing;
   for (const x of here.findings) f(x.level, `${d.id} on ${other}: ${x.text}`, x.level === 'pass' ? null : `${d.id}: ${x.code.split('.')[1]}`, { code: 'motor.mount' });
-  f(margin < 2 ? 'fail' : 'pass', `${d.id} on ${other}: ${n3(t, 2)} mm of plate at the screws, each taking ${n3(each, 1)} N against the torque (bearing ${n3(bearing, 1)} MPa, ${n3(margin, 0)} times under ${mat.name.toUpperCase()}'s ${mat.strength} MPa)`, margin < 2 ? `${d.id}: screws pull through` : null, { code: 'motor.mount', values: { plate: t, bearing, margin } });
+  f(margin < 2 ? 'fail' : 'pass', `${d.id} on ${other}: ${n3(plate, 2)} mm of plate at the screws, each taking ${n3(each, 1)} N against the torque (bearing ${n3(bearing, 1)} MPa, ${n3(margin, 0)} times under ${mat.name.toUpperCase()}'s ${mat.strength} MPa)`, margin < 2 ? `${d.id}: screws pull through` : null, { code: 'motor.mount', values: { plate, bearing, margin } });
 }
 
 // A "shaft" fit: a motor's shaft in the bore of a part. Reads the bore from the part as drawn: a slice across the

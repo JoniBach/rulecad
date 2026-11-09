@@ -19,6 +19,7 @@
     "joints": { "type": "array", "items": { "$ref": "#/$defs/joint" } },
     "loops": { "type": "array", "items": { "$ref": "#/$defs/loop" } },
     "planetary": { "type": "array", "items": { "$ref": "#/$defs/planetary" } },
+    "gravity": { "$ref": "#/$defs/vec3", "description": "Which way down is, for masses in loads (default [0, 0, -1])" },
     "loads": { "type": "array", "description": "What the assembly has to do: a torque (N m) or force (N) on a joint, or a mass (kg) carried at an anchor", "items": { "type": "object", "additionalProperties": false, "properties": { "joint": { "type": "string" }, "torque": { "$ref": "#/$defs/expr" }, "force": { "$ref": "#/$defs/expr" }, "mass": { "$ref": "#/$defs/expr" }, "at": { "$ref": "#/$defs/anchorRef" }, "note": { "type": "string" } } } },
     "poses": { "type": "object", "description": "Named sets of joint values ({ \"hinge\": 90 }), and of items' variables (\"action.travel\": 25: a flexure drawn bent in that pose, printed as drawn)", "additionalProperties": { "type": "object", "additionalProperties": { "$ref": "#/$defs/values" } } },
     "pose": { "type": "string" }
@@ -134,6 +135,7 @@
       "required": ["sun", "carrier", "ring", "planets", "module", "teeth"],
       "additionalProperties": false,
       "properties": {
+        "output": { "type": "object", "required": ["ring", "planet", "teeth"], "additionalProperties": false, "description": "A compound planetary: a second ring, on the planets' second step", "properties": { "ring": { "type": "string" }, "planet": { "$ref": "#/$defs/expr" }, "teeth": { "$ref": "#/$defs/expr" } } },
         "sun": { "type": "string" }, "carrier": { "type": "string" }, "ring": { "type": "string" },
         "planets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
         "drive": { "enum": ["sun", "carrier", "ring"] },

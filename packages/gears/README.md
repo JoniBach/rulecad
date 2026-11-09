@@ -103,6 +103,17 @@ planet's place round the carrier and the turn that puts it in phase with the sun
 gives the ratio exactly, the nearest is returned and `planetary.ratio` says how far off it is (a fail past 5%).
 `planetaryRatio({ sun, ring }, { held, input, output })` is the ratio of any teeth, any way round.
 
+## Compound planetaries
+
+`compoundPlanetary({ module, ratio, planets, size })` finds teeth for two rings a few teeth apart: one held, the other
+the output, each meshing its own step of a stepped planet, so a ratio of 30 to 200 fits in one stage. The ratio is
+Willis's twice over, `(S + R1) / S / (1 − R1 P2 / (P1 R2))` (`compoundRatio`). The planets' steps differ by what the
+rings do, so one centre distance serves both, and every tooth count is a multiple of the planets, so identical planets
+go in evenly and in phase. (Profile shift can't do this job alone: moving one ring by three teeth on one set of planets
+needs a shift near two modules at the sizes that print, far past what a tooth takes.) It finds the efficiency too,
+`compoundEfficiency`, an estimate: the rings pass power relative to the carrier many times the output's, so a high ratio is
+well under 50%, and can't be driven backwards.
+
 ## Worms and bevel gears
 
 A **worm** is a screw whose thread, cut along its axis, is the basic rack's tooth: `worm({ module, starts, diameter,

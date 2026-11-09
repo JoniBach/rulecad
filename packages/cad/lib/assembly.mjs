@@ -30,7 +30,7 @@ import { bounds } from '@rulecad/printcheck';
 import { closest, closestAt, inside, distanceToFace, overlapAt } from '@rulecad/fit';
 import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
-import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact, wormModel, wormMesh, bevelModel, bevelMesh } from '@rulecad/gears';
+import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact, wormModel, wormMesh, bevelModel, bevelMesh, compoundEfficiency } from '@rulecad/gears';
 import { ops as booleans } from '@rulecad/shapes';
 import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit } from './motors.mjs';
 
@@ -368,7 +368,7 @@ function motionOf(a, placed, num, ref) {
   const marks = placed.flatMap(([, c], k) => Object.entries(c.src?.b?.object.anchors || {}).map(([name, spec]) => {
     try { return { item: k, id: c.id, name, frame: frameOf(spec, evalIn(c.src.b.values, `${c.src.objName} anchor ${name}`)) }; } catch { return null; }
   })).filter(Boolean);
-  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes, drives, loads };
+  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes, drives, loads, gravity: (a.gravity || [0, 0, -1]).map(num) };
 }
 
 // A pair measured from its drawn teeth (@rulecad/gears contact: backlash, transmission error, interference), kept in
@@ -433,15 +433,16 @@ function planetaries(list, joints, items, num) {
     // the third's rotation for the driver's: from the relation, with the held one still
     const rot = (d) => { const r = { [held[0]]: 0, [drive]: sg[drive] * d }; r[third] = (sigma0 - coef[drive] * r[drive]) / coef[third]; return r; };
     // a straight line in the driver's value (f: degrees in, radians out): [ratio, offset in degrees]
-    const lin = (f) => { const a = f(0), b = f(1); return [(b - a) / DEG, a / DEG]; };
+    const lin = (f) => { const a = f(0), b = f(1), o = a / DEG; return [(b - a) / DEG, ((o + 180) % 360 + 360) % 360 - 180]; }; // (the offset a part-turn: a whole turn is the same place)
+    const free = (j) => { j.dofs[0] = [-1e6, 1e6, j.dofs[0][2]]; }; // what follows a sun can turn past a turn
     const [k3, o3] = lin((d) => sg[third] * rot(d * DEG)[third]);
-    follower.follow = [lead.id, k3, o3];
+    follower.follow = [lead.id, k3, o3]; free(follower);
     const findings = [], f = (level, text, code, between) => findings.push({ level, text, code, ...(between ? { between } : {}) });
     pl.forEach((p, i) => {
       // the planet's first tooth from the sun's mesh: π = −(S/P) σ + β (1 + S/P) + π − π/P, β the planet's place
       const tooth = (d) => { const r = rot(d * DEG), beta = p.beta + r.carrier; return -(S / P) * r.sun + beta * (1 + S / P) + Math.PI - Math.PI / P; };
       const [kp, op] = lin((d) => p.s * (tooth(d) - p.gamma - rot(d * DEG).carrier));
-      p.joint.follow = [lead.id, kp, op];
+      p.joint.follow = [lead.id, kp, op]; free(p.joint);
       // and with the ring: in phase with it too, or it can't go there
       const ringTooth = (P / R) * tooth(0) + p.beta * (1 - P / R) - Math.PI / R, pitch = (2 * Math.PI) / R;
       const miss = (((ringTooth - gr) % pitch) + pitch * 1.5) % pitch - pitch / 2;
@@ -455,7 +456,25 @@ function planetaries(list, joints, items, num) {
       }
     });
     const ratioText = `the ${drive} drives the ${third}${held[0] === 'carrier' ? '' : ' and the planets'} (the ${held[0]} held): ${Number(Math.abs(k3).toFixed(4))} turns of the ${third} for each turn of the ${drive}, ${k3 * sg[drive] * sg[third] < 0 ? 'opposite ways' : 'the same way'}`;
-    out.push({ joint: follower.id, with: lead.id, kind: 'planetary', text: ratioText, findings, between: [O, O], planetary: true });
+    out.push({ joint: follower.id, with: lead.id, kind: 'planetary', text: ratioText, findings, between: [O, O], planetary: true, members: [follower.id, ...planetJoints.map((j) => j.id)] });
+    // A second ring, on the planets' second step: it follows the planets' turning as the first ring would
+    if (g.output) {
+      const k2 = index(g.output.ring, 'output ring'), j2 = moving(k2), P2 = num(g.output.planet), R2 = num(g.output.teeth), oc = { ...common };
+      if (!j2 || j2.type !== 'revolute') throw new Error(`${what}: the output ring ${g.output.ring} turns on a revolute`);
+      if (j2.follow || j2.meshSpec) throw new Error(`${what}: ${j2.id} follows the planets here: give it no follow or mesh of its own`);
+      if (R2 - P2 !== R - P) throw new Error(`${what}: the output ring and the planets' second step must differ as the first do: ${R2} - ${P2} isn't ${R} - ${P}, so one centre distance can't serve both`);
+      let p2, r2;
+      try { p2 = gearModel({ ...oc, teeth: P2 }); r2 = internalModel({ ...oc, teeth: R2 }); } catch (e) { throw new Error(`${what}: ${e.message}`); }
+      const g2 = ang(flat(col(W(k2), 0), Z), X0, Z), s2 = sign(j2), p0 = pl[0], ps = Math.PI / R2;
+      const toothAt = (d) => { const r = rot(d * DEG); return -(S / P) * r.sun + (p0.beta + r.carrier) * (1 + S / P) + Math.PI - Math.PI / P; };
+      const ring2 = (d) => { const r = rot(d * DEG); return (P2 / R2) * toothAt(d) + (p0.beta + r.carrier) * (1 - P2 / R2) - ps - g2; };
+      const [k, o] = lin((d) => s2 * ring2(d));
+      j2.follow = [lead.id, k, o]; free(j2);
+      const eff = compoundEfficiency({ planet: P, planet2: P2, ring: R, ring2: R2 }), fails = [], ff = (level, text, code) => fails.push({ level, text, code, between: [O, O] });
+      for (const x of meshOf(p2, r2, { centre: pl[0].r }).findings) ff(x.level, `${pl[0].id} and the output ring: ${x.text}`, x.code);
+      pl.forEach((p, i) => { const t2 = (P2 / R2) * ((-(S / P) * sigma0 + p.beta * (1 + S / P) + Math.PI - Math.PI / P)) + p.beta * (1 - P2 / R2) - ps, pitch2 = (2 * Math.PI) / R2, miss = (((t2 - (P2 / R2) * ((-(S / P) * sigma0 + p0.beta * (1 + S / P) + Math.PI - Math.PI / P)) - p0.beta * (1 - P2 / R2) + ps) % pitch2) + pitch2 * 1.5) % pitch2 - pitch2 / 2; if (Math.abs(miss) > 1e-6) ff('fail', `planet ${p.id} can't mesh with the output ring where it is: every tooth count a multiple of the planets puts them all in phase`, 'planetary.phase'); });
+      out.push({ joint: j2.id, with: lead.id, kind: 'planetary', efficiency: eff, text: `the second ring turns ${Number(Math.abs(k).toFixed(5))} of the ${drive}'s turn, ${k * s2 * sg[drive] < 0 ? 'the other way' : 'the same way'} (${Number((1 / Math.abs(k)).toFixed(2))}:1, about ${Math.round(eff * 100)}% efficient, an estimate)`, findings: fails, between: [O, O], planetary: true });
+    }
   });
   return out;
 }

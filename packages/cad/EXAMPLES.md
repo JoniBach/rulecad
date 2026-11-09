@@ -2,7 +2,7 @@
 
 [The tutorial](TUTORIAL.md) ends with a wall hook checked against its screw. These examples carry on from there, one
 for each thing the [README](README.md) describes after that: parts, variants and releases, joints and poses, a model
-from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, and a motor. Each is a few files and the commands to run
+from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, a motor, and a robot joint. Each is a few files and the commands to run
 them. The tests write every file here and run every command, so what you read is what works.
 
 They start from a workspace `npm create rulecad my-designs` makes, as the tutorial does, and run in order: later
@@ -976,3 +976,268 @@ The check says which motor it is and how far a step moves (`0.0879° a step`, or
 on the pinion's axis, the force reaching the slide against the 1 N it has to push and how many times over, how fast the
 slide moves, and that the slide holds with the power off: the 28BYJ-48's own gearbox friction, far more than the load can
 turn it back with. The torque's line ends `(rests on community figures: measure it)`, because that's what its torque is.
+
+## 11. A robot joint: a stepper through a compound planetary
+
+A shoulder for a small desktop arm: a NEMA 17 turning a 38:1 gearbox on one axis, 500 g at 150 mm on the output. The
+gearbox is a compound planetary: two rings a few teeth apart, one held and one the output, with stepped planets (18 teeth on the
+held ring and the sun, 21 on the output ring). `compoundPlanetary` found the teeth; three planets of 18/21, a sun of 18,
+rings of 54 and 57. The planets are held by the sun and the two rings: there's no carrier to print, and the assembly's
+`carrier` is a speck that's only there to carry the planets' joints. At 38:1 the gearbox is under half efficient, so
+the load can't turn it backwards: the joint holds with the power off.
+
+```json projects/home/objects/joint-housing.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "joint-housing",
+  "title": "Joint housing and fixed ring",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": { "axis": { "at": [0, 0, "plate"], "axis": [0, 0, 1] } },
+  "variables": {
+    "plate": { "value": 5, "unit": "mm", "rule": "Enough for M3 screws into a NEMA 17 (1.5 × their size)" },
+    "width": { "value": 8, "unit": "mm", "rule": "The fixed ring's face: strong enough for the motor's whole torque" },
+    "rim": { "value": 62, "unit": "mm", "rule": "Round the 54-tooth ring, three lines and more of wall" },
+    "module": { "value": 1, "unit": "mm", "rule": "The gears'" },
+    "teeth": { "value": 54, "rule": "The held ring" },
+    "post_r": { "value": 37, "unit": "mm", "rule": "Three posts outside the output ring's 33 mm" },
+    "post": { "value": 7, "unit": "mm", "rule": "Each post's diameter" },
+    "post_height": { "value": 19.7, "unit": "mm", "rule": "From the plate to under the clips, just over the output ring" },
+    "pilot": { "value": 2.9, "unit": "mm", "rule": "An M3 screw, self-tapped" },
+    "pilot_depth": { "value": 8, "unit": "mm", "rule": "For an M3 × 10" }
+  }
+}
+```
+
+```js projects/home/objects/joint-housing.js
+// A motor plate with the fixed ring standing on it. The motor bolts underneath, its shaft up through the middle.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+const { translate } = jscad.transforms
+
+export function main (v) {
+  const motor = v.motors.motorModel('nema17')
+  const plate = cylinder({ radius: v.rim / 2, height: v.plate, center: [0, 0, v.plate / 2], segments: 96 })
+  const ring = translate([0, 0, v.plate], v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width, rim: v.rim }))
+  const at = (a) => [v.post_r * Math.cos(a), v.post_r * Math.sin(a)]
+  const angles = [Math.PI / 6, (5 * Math.PI) / 6, (3 * Math.PI) / 2]
+  const lobes = angles.map((a) => cylinder({ radius: v.post, height: v.plate, center: [...at(a), v.plate / 2], segments: 32 }))
+  const posts = angles.map((a) => cylinder({ radius: v.post / 2, height: v.post_height + v.plate, center: [...at(a), (v.post_height + v.plate) / 2], segments: 32 }))
+  const arms = angles.map((a) => jscad.transforms.rotateZ(a, jscad.primitives.cuboid({ size: [v.post_r - v.rim / 2 + 2, v.post, v.plate], center: [(v.post_r + v.rim / 2 - 2) / 2, 0, v.plate / 2] })))
+  const pilots = angles.map((a) => cylinder({ radius: v.pilot / 2, height: v.pilot_depth, center: [...at(a), v.plate + v.post_height - v.pilot_depth / 2], segments: 24 }))
+  return v.ops.subtract(v.ops.union(plate, ring, lobes, posts, arms), v.motors.mount(motor, { plate: v.plate, counterbore: true }, v.ops), pilots)
+}
+```
+
+```json projects/home/objects/joint-sun.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "joint-sun",
+  "title": "Sun gear on the motor's shaft",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": { "axis": { "at": [0, 0, "0 - gap"], "axis": [0, 0, 1] } },
+  "variables": {
+    "gap": { "value": 0.3, "unit": "mm", "rule": "Clear of the motor plate" },
+    "module": { "value": 1, "unit": "mm", "rule": "The gears'" },
+    "teeth": { "value": 18, "rule": "As the planets' first step" },
+    "width": { "value": 8, "unit": "mm", "rule": "The first stage" },
+    "hub": { "value": 12, "unit": "mm", "rule": "A hub above the teeth, inside the planets' second step" },
+    "tall": { "value": 16, "unit": "mm", "rule": "Up through both stages, so 12 mm of the shaft's flat is gripped" },
+    "tip": { "value": 18.7, "unit": "mm", "rule": "Where the shaft's 24 mm tip is from the sun's underside, 5.3 mm above the mounting face" }
+  }
+}
+```
+
+```js projects/home/objects/joint-sun.js
+// The sun with a hub above it, up through both stages, for grip on the shaft's flat.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
+export function main (v) {
+  const motor = v.motors.motorModel('nema17')
+  const gear = v.gears.spur({ module: v.module, teeth: v.teeth, width: v.width })
+  const hub = cylinder({ radius: v.hub / 2, height: v.tall, center: [0, 0, v.tall / 2], segments: 64 })
+  return v.ops.subtract(v.ops.union(gear, hub), v.motors.bore(motor, { depth: v.tall, tip: v.tip }, v.ops))
+}
+```
+
+```json projects/home/objects/joint-planet.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "joint-planet",
+  "title": "Stepped planet",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": { "axis": { "at": [0, 0, "0 - gap"], "axis": [0, 0, 1] } },
+  "variables": {
+    "gap": { "value": 0.3, "unit": "mm", "rule": "Clear of the motor plate" },
+    "module": { "value": 1, "unit": "mm", "rule": "The gears'" },
+    "low": { "value": 18, "rule": "On the sun and the held ring" },
+    "high": { "value": 21, "rule": "On the output ring" },
+    "width": { "value": 8, "unit": "mm", "rule": "Each stage" }
+  }
+}
+```
+
+```js projects/home/objects/joint-planet.js
+// A planet in two steps, in one piece, printed with the wider step on the bed.
+import jscad from '@jscad/modeling'
+const { translate } = jscad.transforms
+
+export function main (v) {
+  const low = v.gears.spur({ module: v.module, teeth: v.low, width: v.width })
+  const high = translate([0, 0, v.width], v.gears.spur({ module: v.module, teeth: v.high, width: v.width }))
+  return v.ops.union(low, high)
+}
+```
+
+```json projects/home/objects/joint-output.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "joint-output",
+  "title": "Output ring and flange",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": { "axis": { "at": [0, 0, "top + width"], "axis": [0, 0, -1] }, "tip": { "at": [150, 0, "top + width"], "axis": [0, 0, -1] } },
+  "variables": {
+    "top": { "value": 3, "unit": "mm", "rule": "The flange, printed on the bed" },
+    "width": { "value": 8, "unit": "mm", "rule": "The output ring's face" },
+    "rim": { "value": 66, "unit": "mm", "rule": "Round the 57-tooth ring" },
+    "module": { "value": 1, "unit": "mm", "rule": "The gears'" },
+    "teeth": { "value": 57, "rule": "The output ring" },
+    "hole": { "value": 3.5, "unit": "mm", "rule": "M3 clearance, on a 40 mm circle, for the arm" },
+    "middle": { "value": 15, "unit": "mm", "rule": "A hole in the middle for the motor's shaft to come up in" },
+    "bolt": { "value": 20, "unit": "mm", "rule": "Radius of the arm's bolt circle" }
+  }
+}
+```
+
+```js projects/home/objects/joint-output.js
+// The output ring, drawn as it prints: its flange on the bed, the teeth standing on it; it goes on upside down.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+const { translate } = jscad.transforms
+
+export function main (v) {
+  const flange = cylinder({ radius: v.rim / 2, height: v.top, center: [0, 0, v.top / 2], segments: 96 })
+  const ring = translate([0, 0, v.top], v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width, rim: v.rim }))
+  const holes = [0, 1, 2, 3].map((k) => cylinder({ radius: v.hole / 2, height: v.top + 1, center: [v.bolt * Math.cos(k * Math.PI / 2), v.bolt * Math.sin(k * Math.PI / 2), v.top / 2], segments: 24 }))
+  const middle = cylinder({ radius: v.middle / 2, height: v.top + 1, center: [0, 0, v.top / 2], segments: 48 })
+  return v.ops.subtract(v.ops.union(flange, ring), holes, middle)
+}
+```
+
+Three clips on three posts keep the output ring from lifting off. It turns under them with 0.3 mm to spare.
+
+```json projects/home/objects/joint-clip.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "joint-clip",
+  "title": "Retaining clip",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "variables": {
+    "reach": { "value": 6, "unit": "mm", "rule": "In over the flange's edge, 4 mm" },
+    "back": { "value": 4, "unit": "mm", "rule": "Round the post" },
+    "wide": { "value": 8, "unit": "mm", "rule": "As wide as the post and a little" },
+    "thick": { "value": 3, "unit": "mm", "rule": "Fifteen layers" },
+    "hole": { "value": 3.5, "unit": "mm", "rule": "M3 clearance" }
+  }
+}
+```
+
+```js projects/home/objects/joint-clip.js
+// A flat tab screwed to a post, its nose over the flange.
+import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+const { subtract } = jscad.booleans
+
+export function main (v) {
+  const tab = cuboid({ size: [v.reach + v.back, v.wide, v.thick], center: [(v.back - v.reach) / 2, 0, v.thick / 2] })
+  return subtract(tab, cylinder({ radius: v.hole / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: 24 }))
+}
+```
+
+```json projects/home/objects/joint-speck.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "joint-speck",
+  "title": "Carrier (not printed)",
+  "version": "0.1.0",
+  "role": "reference",
+  "anchors": {
+    "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] },
+    "a": { "at": [18, 0, 0], "axis": [0, 0, 1] },
+    "b": { "at": ["0 - 9", "18 * sind(120)", 0], "axis": [0, 0, 1] },
+    "c": { "at": ["0 - 9", "0 - 18 * sind(120)", 0], "axis": [0, 0, 1] }
+  },
+  "variables": { "r": { "value": 0.2, "unit": "mm", "rule": "A speck, so the planets' joints have something to hang from" } }
+}
+```
+
+```js projects/home/objects/joint-speck.js
+// Nothing is printed here: the planets ride on the sun and the rings. A mark for the planets' joints to be on.
+import jscad from '@jscad/modeling'
+const { sphere } = jscad.primitives
+
+export function main (v) { return sphere({ radius: v.r, center: [0, 0, 60] }) }
+```
+
+The joint's load is a mass on the output. The check finds the worst angle by running the motor through its range.
+
+```json projects/home/assemblies/shoulder.json
+{
+  "title": "Robot shoulder",
+  "kind": "fit",
+  "gravity": [0, -1, 0],
+  "items": [
+    { "id": "housing", "object": "joint-housing" },
+    { "id": "motor", "motor": { "model": "nema17", "drives": "drive", "speed": 300, "duty": 0.3 } },
+    { "id": "sun", "object": "joint-sun" },
+    { "id": "carrier", "object": "joint-speck" },
+    { "id": "p1", "object": "joint-planet" },
+    { "id": "p2", "object": "joint-planet" },
+    { "id": "p3", "object": "joint-planet" },
+    { "id": "output", "object": "joint-output" },
+    { "id": "clip1", "object": "joint-clip", "at": ["37 * cosd(30)", "37 * sind(30)", 24.7], "rotate": [0, 0, 30] },
+    { "id": "clip2", "object": "joint-clip", "at": ["37 * cosd(150)", "37 * sind(150)", 24.7], "rotate": [0, 0, 150] },
+    { "id": "clip3", "object": "joint-clip", "at": [0, -37, 24.7], "rotate": [0, 0, 270] }
+  ],
+  "joints": [
+    { "id": "drive", "type": "revolute", "parent": "housing.axis", "child": "sun.axis", "label": "Motor" },
+    { "id": "turn", "type": "revolute", "parent": "housing.axis", "child": "carrier.axis" },
+    { "id": "s1", "type": "revolute", "parent": "carrier.a", "child": "p1.axis" },
+    { "id": "s2", "type": "revolute", "parent": "carrier.b", "child": "p2.axis" },
+    { "id": "s3", "type": "revolute", "parent": "carrier.c", "child": "p3.axis" },
+    { "id": "out", "type": "revolute", "parent": { "at": [0, 0, 13.4], "axis": [0, 0, 1] }, "child": "output.axis" }
+  ],
+  "planetary": [{ "sun": "sun", "carrier": "carrier", "ring": "housing", "planets": ["p1", "p2", "p3"], "drive": "sun", "module": 1, "teeth": [18, 18, 54], "output": { "ring": "output", "planet": 21, "teeth": 57 } }],
+  "fits": [
+    { "a": "motor", "b": "housing", "fastens": true, "min": 0, "note": "The motor, on its four screws" },
+    { "a": "clip1", "b": "housing", "fastens": true, "min": 0, "note": "A clip, screwed on" },
+    { "a": "clip2", "b": "housing", "fastens": true, "min": 0, "note": "A clip, screwed on" },
+    { "a": "clip3", "b": "housing", "fastens": true, "min": 0, "note": "A clip, screwed on" },
+    { "a": "motor", "b": "sun", "shaft": true, "note": "The motor's shaft in the sun" }
+  ],
+  "loads": [{ "mass": 0.5, "at": "output.tip", "note": "500 g at 150 mm: a forearm" }],
+  "poses": { "home": { "drive": 0 } }
+}
+```
+
+```sh
+npx cad check home/shoulder
+```
+
+The check says the output ring turns 1/38 of the motor's turn, the other way; that 7.44 N m reaches the joint at 300 rpm
+against the 0.735 N m it needs at its worst, ten times over; that it turns a full turn in 7.6 s at that speed; and
+that the gears, under 50% efficient, hold it with the power off. `npx cad check home/shoulder --sweep --steps 24` turns the
+motor all the way round and finds no teeth touching, and neither do the output ring's steps.
+
+Ten times over is more margin than the job needs, but the gearbox is the size it is for what the motor could do to it, not
+the arm: stalled against a stop, the 7.44 N m at the output puts 33 MPa on the planets' top teeth (`strength`, the Lewis
+equation, for teeth 8 mm wide), against PLA's 39. Give that a home switch, or a smaller current.

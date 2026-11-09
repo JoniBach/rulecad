@@ -573,7 +573,7 @@ export function stageEfficiency(kind, o = {}) {
   throw new Error(`stageEfficiency: no kind of stage ${shown(kind)} (spur, helical, herringbone, rack, internal, bevel, planetary or worm)`);
 }
 
-export { planetary, planetaryRatio } from './planetary.mjs';
+export { planetary, planetaryRatio, compoundPlanetary, compoundRatio, compoundEfficiency } from './planetary.mjs';
 // The mesh measured from the drawn teeth: backlash, transmission error, interference
 export { contact } from './contact.mjs';
 // A tooth's root stress by finite elements
