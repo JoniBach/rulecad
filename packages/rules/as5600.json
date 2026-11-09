@@ -1,0 +1,22 @@
+{
+  "_doc": "A hobby AS5600 magnetic encoder board and its 6 mm magnet. The chip's figures are ams's own; the board's are community until measured, because many unbranded boards share the name. Its two mounting holes' spacing varies between makers and is left out: measure yours. The magnet sits on the shaft under the chip, centred on the axis. kind as in x1c.json. Board in the x-y plane, chip on top.",
+  "name": "as5600",
+  "part": "encoder",
+  "rules": {
+    "resolution": { "value": 12, "unit": "bit", "rule": "Absolute angle over a turn: 4096 steps", "kind": "spec", "source": "ams AS5600 datasheet v1-06, copy at https://dtsheet.com/doc/1463520/pdf", "checked": "2026-11-09" },
+    "air_gap_min": { "value": 0.5, "unit": "mm", "rule": "Least gap from magnet to chip, typical", "kind": "spec", "source": "ams AS5600 datasheet v1-06, copy at https://dtsheet.com/doc/1463520/pdf", "checked": "2026-11-09" },
+    "air_gap_max": { "value": 3, "unit": "mm", "rule": "Most gap from magnet to chip, typical; it depends on the magnet", "kind": "spec", "source": "ams AS5600 datasheet v1-06, copy at https://dtsheet.com/doc/1463520/pdf", "checked": "2026-11-09" },
+    "magnet_field_min": { "value": 30, "unit": "mT", "rule": "Least field across the chip for it to work", "kind": "spec", "source": "ams AS5600 datasheet v1-06, copy at https://dtsheet.com/doc/1463520/pdf", "checked": "2026-11-09" },
+    "magnet_field_max": { "value": 90, "unit": "mT", "rule": "Most field across the chip", "kind": "spec", "source": "ams AS5600 datasheet v1-06, copy at https://dtsheet.com/doc/1463520/pdf", "checked": "2026-11-09" },
+    "magnet_diameter": { "value": 6, "unit": "mm", "rule": "The disc usually supplied, as sold", "kind": "community", "source": "https://zbotic.in/as5600-magnetic-encoder-absolute-position-sensing-explained/", "checked": "2026-11-09" },
+    "magnet_thickness": { "value": 2.5, "unit": "mm", "rule": "The disc usually supplied, as sold", "kind": "community", "source": "https://zbotic.in/as5600-magnetic-encoder-absolute-position-sensing-explained/", "checked": "2026-11-09" },
+    "magnet_polarity": { "value": "diametric", "rule": "Magnetised across its diameter: north and south on opposite halves of the round face, not on the flat faces", "kind": "community", "source": "https://zbotic.in/as5600-magnetic-encoder-absolute-position-sensing-explained/", "checked": "2026-11-09" },
+    "supply_voltage_min": { "value": 3.3, "unit": "V", "rule": "Supply as the board is sold", "kind": "community", "source": "AS5600 module, as sold, https://www.tinytronics.nl/shop/en/sensors/magnetic-field/as5600-magnetic-angle-sensor-encoder-module", "checked": "2026-11-09" },
+    "supply_voltage_max": { "value": 5, "unit": "V", "rule": "5 V works once the board's resistor R1 is removed; it is 3.3 V as sold", "kind": "community", "source": "AS5600 module, as sold, https://www.tinytronics.nl/shop/en/sensors/magnetic-field/as5600-magnetic-angle-sensor-encoder-module", "checked": "2026-11-09" },
+    "body_width": { "value": 23, "unit": "mm", "rule": "Board side, as sold; measure yours", "kind": "community", "source": "AS5600 module, as sold, https://www.tinytronics.nl/shop/en/sensors/magnetic-field/as5600-magnetic-angle-sensor-encoder-module", "checked": "2026-11-09" },
+    "body_depth": { "value": 23, "unit": "mm", "rule": "Board side, as sold; measure yours", "kind": "community", "source": "AS5600 module, as sold, https://www.tinytronics.nl/shop/en/sensors/magnetic-field/as5600-magnetic-angle-sensor-encoder-module", "checked": "2026-11-09" },
+    "mount_hole_diameter": { "value": 3.7, "unit": "mm", "rule": "The board's mounting holes, as sold; measure yours", "kind": "community", "source": "AS5600 module, as sold, https://www.tinytronics.nl/shop/en/sensors/magnetic-field/as5600-magnetic-angle-sensor-encoder-module", "checked": "2026-11-09" },
+    "pin_pitch": { "value": 2.54, "unit": "mm", "rule": "The header's pin pitch", "kind": "community", "source": "AS5600 module, as sold, https://www.tinytronics.nl/shop/en/sensors/magnetic-field/as5600-magnetic-angle-sensor-encoder-module", "checked": "2026-11-09" },
+    "mass": { "value": 0.003, "unit": "kg", "rule": "Mass of the board, as sold", "kind": "community", "source": "AS5600 module, as sold, https://www.tinytronics.nl/shop/en/sensors/magnetic-field/as5600-magnetic-angle-sensor-encoder-module", "checked": "2026-11-09" }
+  }
+}

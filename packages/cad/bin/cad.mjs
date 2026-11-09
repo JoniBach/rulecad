@@ -80,6 +80,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad printed <project>/<object> --result ok|failed [--note "…"] [--material PETG] [--version 0.1.0]
   cad release <project> --all -m "…"   release every object that changed (each with this message), then the project
 
+  cad list <project>/<assembly>     what it takes to build: bought parts by set, fasteners, wire, printed parts in grams
+  cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
                                     against measured, shown by cad history [--unit mm] [--source "how"] [--rule "what it is"]
@@ -108,7 +110,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'match', 'variants', 'compare', 'help'];
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['table', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
@@ -415,6 +417,7 @@ async function main() {
   if (cmd === 'variants') return variants(locate(ref));
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'measured') return measuredCommand(ref);
+  if (cmd === 'list' || cmd === 'wires') return listCommand(cmd, ref);
   if (cmd === 'history') return history(ref);
   if (cmd === 'diff') return diff(locate(ref), pos[2], pos[3] || null);
   if (cmd === 'printed') return printed(locate(ref));
@@ -897,6 +900,20 @@ async function status(project) {
       console.log(`  ${name.padEnd(16)} ${s.last ? s.last.version.padEnd(8) : 'unreleased'} ${s.kind === 'first' ? '' : s.kind ? `changed since: needs a ${s.kind} release` : 'up to date'}`);
     }
   }
+}
+
+async function listCommand(what, ref) {
+  if (!isAssembly(ref)) throw new Error(`cad ${what} works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  const s = await buildAssembly(ref);
+  if (what === 'list') {
+    const { shoppingList, listText } = await import('../lib/list.mjs'), l = shoppingList(s);
+    return console.log(opt('json') ? JSON.stringify(l, null, 2) : listText(ref, l));
+  }
+  const { wiresFor } = await import('../lib/assembly.mjs'), { wiringSheet } = await import('../lib/wires.mjs'), rows = wiresFor(s);
+  if (opt('json')) return console.log(JSON.stringify(rows.map(({ route, ...r }) => r), null, 2));
+  if (!rows.length) return console.log(`${ref} has no "wires"`);
+  if (opt('out')) { fs.writeFileSync(path.resolve(opt('out')), wiringSheet(rows) + '\n'); return console.log(`wrote ${opt('out')}`); }
+  console.log(wiringSheet(rows));
 }
 
 async function measuredCommand(ref) {

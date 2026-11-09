@@ -36,6 +36,7 @@ import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit, axi
 import { runningChecks, seatFit } from './seats.mjs';
 import { seatSize } from '@rulecad/shapes';
 import { wiresOf, wireChecks, wireRows } from './wires.mjs';
+import { printedParts } from './list.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -689,6 +690,14 @@ function saveOverlaps() {
 // What a project prints in, for the motors' heat and press-fit checks
 const materialOf = (project) => { try { return readJson(path.join(paths.project(project), 'project.json')).material; } catch { return null; } };
 
+// What's printed and how much it weighs, so "design small" is seen on every change
+function massFinding(s, f) {
+  if (!s.parts.some((p) => p.role === 'reference') && !s.motion?.joints.length) return; // a machine, not a keyboard plate
+  const parts = printedParts(s); if (!parts.length) return;
+  const sorted = [...parts].sort((a, b) => b.grams - a.grams), total = sorted.reduce((t, p) => t + p.grams, 0);
+  f('info', `${Number(total.toFixed(1))} g printed in ${sorted.length} parts; heaviest ${sorted.slice(0, 3).map((p) => `${p.id} ${p.grams} g`).join(', ')}`, null, { code: 'mass.parts', values: { grams: total, parts: Object.fromEntries(sorted.map((p) => [p.id, p.grams])) } });
+}
+
 export function checkAssembly(s) {
   const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(3))}`;
   // Versions: every pin, from this assembly and its components, against every copy of that object
@@ -847,6 +856,7 @@ export function checkAssembly(s) {
     }
   }
   boughtFindings(s, f);
+  massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });
   motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));

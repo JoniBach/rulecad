@@ -1,0 +1,17 @@
+{
+  "_doc": "A 51104 single-direction thrust ball bearing, 20 x 35 x 10, from NTN's figures. It takes axial load only, so it has no radial play class. kind as in x1c.json. Axis along z, one face at z = 0.",
+  "name": "bearing-51104",
+  "part": "bearing",
+  "rules": {
+    "type": { "value": "thrust", "rule": "A single-direction thrust ball bearing: two washers and a ball cage", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "bore": { "value": 20, "unit": "mm", "rule": "Bore of the shaft washer (d)", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 35, "unit": "mm", "rule": "Outside diameter of the housing washer (D)", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "width": { "value": 10, "unit": "mm", "rule": "Height of the bearing along its axis (T)", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "chamfer": { "value": 0.3, "unit": "mm", "rule": "Corner radius of the washers (r)", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "shaft_washer_diameter": { "value": 35, "unit": "mm", "rule": "Outside diameter of the shaft washer (d1)", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "housing_washer_bore": { "value": 21, "unit": "mm", "rule": "Bore of the housing washer (D1): the shaft must clear it", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "static_rating": { "value": 24700, "unit": "N", "rule": "Basic static axial load rating (C0a)", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "dynamic_rating": { "value": 14200, "unit": "N", "rule": "Basic dynamic axial load rating (Ca)", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" },
+    "mass": { "value": 0.033, "unit": "kg", "rule": "Mass of the bearing", "kind": "spec", "source": "NTN Bearing Finder, item 51104, https://bearingfinder.ntnamericas.com/item/thrust-ball-bearings/single-direction-thrust-ball-bearings/51104", "checked": "2026-11-09" }
+  }
+}

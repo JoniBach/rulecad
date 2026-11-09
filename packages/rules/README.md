@@ -33,6 +33,13 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `rp2040` | The RP2040 microcontroller: which package pins carry which GPIO | 2 |
 | `dial-indicator` | A dial indicator with a plunger, for measuring small movements | 2 |
 | `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them | 6, 7 |
+| `bearing-608`, `bearing-625`, `bearing-6800`, `bearing-f623`, `bearing-51104` | Ball bearings from NTN's figures: 608, 625, 6800, the flanged F623 and the 51104 thrust bearing: bore, outer diameter, width, chamfer, ratings, radial play class | 9, 9, 9, 10, 10 |
+| `bearing-mr105` | MR105 miniature bearing, 5 x 10 mm (4 wide shielded, 3 open), distributor figures: community until measured | 8 |
+| `endstop-10t85` | The lever microswitch endstop marked 10T85: body, holes, force. Community until measured, and its lever travel is not published anywhere found | 12 |
+| `as5600` | AS5600 magnetic encoder board and its 6 mm diametric magnet: resolution, air gap, field, board size | 15 |
+| `a4988`, `drv8825`, `tmc2209` | Stepper driver modules on the StepStick footprint: voltages, current with and without cooling, sense resistor, Vref formula and gain, microsteps, header spacing, pinout. The TMC2209's module figures are community until measured | 18, 18, 19 |
+| `cnc-shield-v3` | Arduino CNC shield V3: step, direction, enable and limit pins on the Uno, the Z limit quirk between revisions, A axis jumpers, microstep jumpers. Community until measured | 19 |
+| `supply-12v`, `supply-24v` | Enclosed 12 V and 24 V switching supplies by current (Mean Well's LRS series as variants): current, power, case size. Community until measured | 7, 8 |
 | `al6061`, `al7075`, `s275`, `ss304`, `ti64` | Aluminium 6061-T6 and 7075-T6, structural steel S275, stainless 304, titanium Ti-6Al-4V, for analysis | 4 or 5 each |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such
@@ -40,13 +47,15 @@ as KiCad's library or KeyV2), **default** (a setting that works), **derived** (r
 against the real thing, and see its `licence`), or **estimate** (nobody has published it: measure it and correct it). Use them with `@rulecad/variables` (`uses: ['x1c']`, then `x1c.line * 3` in any expression), or read
 the JSON from anywhere.
 
-**Shared names.** A set that describes a part (`"part": "motor"`) uses the names in [`vocabulary.json`](vocabulary.json):
+**Shared names.** A set that describes a part (`"part": "motor"`, or bearing, switch, encoder, driver, board, supply) uses the names in [`vocabulary.json`](vocabulary.json):
 `body_*`, `boss_*`, `shaft_*`, `mount_*`, `cable_*` and the rest, each in its unit, so one piece of code can read any of
 them. An older set keeps its own names and says which is which (`"interface": { "body_length": "length" }`). `cad rules
 check` holds every set to all this. `cad rules draw nema17` draws what a set says the part mounts by, for comparing with
 its datasheet by eye:
 
 ![The NEMA 17 rule set as a drawing](drawings/nema17.svg)
+
+Bearings draw as an end view and a section (bore, outer diameter, width), and driver modules as the board with its two header rows at their spacing, so a bought part can be held against its datasheet the same way.
 
 `cad rules draft mymotor --from datasheet.pdf` pulls the figures out of a datasheet's text for you to name and check. It
 marks every one `estimate`, and many datasheets are pictures it can't read at all: a person reads the datasheet, the

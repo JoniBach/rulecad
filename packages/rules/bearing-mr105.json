@@ -1,0 +1,16 @@
+{
+  "_doc": "An MR105 miniature ball bearing, 5 x 10 mm. The width depends on the seals: the open bearing is 3 mm and the shielded MR105ZZ is 4 mm (the default here, as usually sold; variant open gives 3). Maker's drawings were not found, so these figures, from distributors, are community until measured. Ratings differ by maker and by seal type: see the rule text. kind as in x1c.json. Bore along z, one face at z = 0.",
+  "name": "bearing-mr105",
+  "part": "bearing",
+  "variants": {"open":{"kind":"community","source":"EZO MR105 (open) as listed by a distributor, https://www.albeco.com.pl/en/product/1AU1/single-row-deep-groove-ball-bearing-miniature-mr105-ezo.html","values":{"width":3}}},
+  "rules": {
+    "type": { "value": "radial", "rule": "A single-row deep groove ball bearing", "kind": "community", "source": "EZO MR105 (open) as listed by a distributor, https://www.albeco.com.pl/en/product/1AU1/single-row-deep-groove-ball-bearing-miniature-mr105-ezo.html", "checked": "2026-11-09" },
+    "bore": { "value": 5, "unit": "mm", "rule": "Bore (d), from the designation", "kind": "community", "source": "EZO MR105 (open) as listed by a distributor, https://www.albeco.com.pl/en/product/1AU1/single-row-deep-groove-ball-bearing-miniature-mr105-ezo.html", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 10, "unit": "mm", "rule": "Outside diameter (D), from the designation", "kind": "community", "source": "EZO MR105 (open) as listed by a distributor, https://www.albeco.com.pl/en/product/1AU1/single-row-deep-groove-ball-bearing-miniature-mr105-ezo.html", "checked": "2026-11-09" },
+    "width": { "value": 4, "unit": "mm", "rule": "Width of the shielded MR105ZZ (the open bearing is 3 mm: use variant open)", "kind": "community", "source": "MR105ZZ sold as 5 x 10 x 4, https://www.bearingboys.co.uk/Miniature-Bearings/MR105ZZ-Budget-Shielded-Miniature-Ball-Bearing-5mm-x-10mm-x-4mm-7805-p", "checked": "2026-11-09" },
+    "chamfer": { "value": 0.1, "unit": "mm", "rule": "Corner radius of the rings, from one distributor's table; measure yours", "kind": "community", "source": "https://www.skdin.com/products/productid-MR105", "checked": "2026-11-09" },
+    "static_rating": { "value": 168, "unit": "N", "rule": "Basic static radial load rating of EZO's open MR105; other sellers list 133 N, so treat it as a guide", "kind": "community", "source": "EZO MR105 (open) as listed by a distributor, https://www.albeco.com.pl/en/product/1AU1/single-row-deep-groove-ball-bearing-miniature-mr105-ezo.html", "checked": "2026-11-09" },
+    "dynamic_rating": { "value": 432, "unit": "N", "rule": "Basic dynamic radial load rating of EZO's open MR105; other sellers list 365 to 500 N, so treat it as a guide", "kind": "community", "source": "EZO MR105 (open) as listed by a distributor, https://www.albeco.com.pl/en/product/1AU1/single-row-deep-groove-ball-bearing-miniature-mr105-ezo.html", "checked": "2026-11-09" },
+    "radial_play": { "value": "CN", "rule": "Normal clearance, as Albeco lists for EZO's stainless SMR105ZZ; miniature bearings are also sold in MC clearance classes, so read the box of yours", "kind": "community", "source": "https://www.albeco.com.pl/en/product/1883/single-row-deep-groove-ball-bearing-stainless-steel-s-mr-105-zz-ezo.html", "checked": "2026-11-09" }
+  }
+}

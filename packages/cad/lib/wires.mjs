@@ -1,7 +1,7 @@
 // Wires in the assembly: anchors at each end, a route between them, and the longest the route gets through the machine's
 // poses. A wire that won't reach the elbow at full stretch, or is too thin for what it carries, is found here rather than
 // on the bench. "wires": [{ "from": "elbow.connector", "to": "board.Y", "via": ["upper.cable"], "gauge": "awg22" }]
-import { loadRuleSet } from './rules.mjs';
+import { peekRuleSet as loadRuleSet } from './rules.mjs';
 
 const n3 = (x, d = 1) => String(Number(x.toFixed(d)));
 const GAUGE = /^awg(\d{1,2})$/i;
@@ -50,6 +50,17 @@ function currentOf(w, s, top, signal) {
   return { current: signal, why: 'a signal' };
 }
 
+// A wire ending on a board's axis connector: the board's pins for that axis, from its rule set
+function pinsAt(w, s) {
+  for (const end of [w.from, w.to]) {
+    const [id, anchor] = String(end).split('.'), o = s.objects.find((x) => x.id === id && x.bought?.part === 'board'), e = o?.built.entries;
+    if (!e || !/^[A-Z]$/.test(anchor ?? '')) continue;
+    const pin = (k) => e.find((x) => x.name === `${o.bought.set}.${k}_pin_${anchor.toLowerCase()}`)?.value;
+    if (pin('step')) return `step ${pin('step')}, dir ${pin('dir')}${pin('limit') ? `, limit ${pin('limit')}` : ''}`;
+  }
+  return null;
+}
+
 export function wireRows(s, helpers) {
   const motion = s.motion, wires = s.wires; if (!wires?.length) return [];
   const rules = loadRuleSet('wire').rules, density = rules.current_density.value, loop = rules.service_loop.value, base = rules.awg_base.value, signal = rules.signal_current.value;
@@ -61,7 +72,7 @@ export function wireRows(s, helpers) {
     let longest = 0, shortest = Infinity, atLongest = null;
     for (const W of poses) { const P = fns.map((fn) => fn(W)); let l = pathLen; for (let k = 1; k < P.length; k++) l += Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1], P[k][2] - P[k - 1][2]); if (l > longest) { longest = l; atLongest = P; } shortest = Math.min(shortest, l); }
     const { current, why } = currentOf(w, s, top, signal), gauge = w.gauge ? Number(GAUGE.exec(w.gauge)[1]) : null, area = gauge != null ? areaOf(gauge, base) : null, capacity = area != null ? area * density : null;
-    return { id: w.id, from: w.from, to: w.to, via: w.via ?? [], gauge: w.gauge ?? null, colour: w.colour ?? null, conductors: w.conductors ?? (s.motion.drives.some((d) => [top(w.from), top(w.to)].includes(d.id)) ? 4 : 1), connectors: w.connectors ?? null,
+    return { id: w.id, from: w.from, to: w.to, via: w.via ?? [], pins: pinsAt(w, s), gauge: w.gauge ?? null, colour: w.colour ?? null, conductors: w.conductors ?? (s.motion.drives.some((d) => [top(w.from), top(w.to)].includes(d.id)) ? 4 : 1), connectors: w.connectors ?? null,
       longest, shortest, length: Math.ceil(longest + loop), loop, current, why, area, capacity, route: atLongest };
   });
 }
@@ -79,6 +90,6 @@ export function wireChecks(s, f, helpers) {
 // The sheet: each wire, its length, gauge, colour and connectors, in Markdown
 export function wiringSheet(rows) {
   const line = (a) => `| ${a.join(' | ')} |`;
-  return [line(['Wire', 'From', 'To', 'Length (mm)', 'Gauge', 'Conductors', 'Colour', 'Connectors', 'Carries']), line(['---', '---', '---', '---:', '---', '---:', '---', '---', '---']),
-    ...rows.map((w) => line([w.id, w.from, w.to, w.length, w.gauge ?? '', w.conductors, w.colour ?? '', Array.isArray(w.connectors) ? w.connectors.join(' to ') : w.connectors ?? '', `${n3(w.current, 2)} A, ${w.why}`]))].join('\n');
+  return [line(['Wire', 'From', 'To', 'Length (mm)', 'Gauge', 'Conductors', 'Colour', 'Connectors', 'Board pins', 'Carries']), line(['---', '---', '---', '---:', '---', '---:', '---', '---', '---', '---']),
+    ...rows.map((w) => line([w.id, w.from, w.to, w.length, w.gauge ?? '', w.conductors, w.colour ?? '', Array.isArray(w.connectors) ? w.connectors.join(' to ') : w.connectors ?? '', w.pins ?? '', `${n3(w.current, 2)} A, ${w.why}`]))].join('\n');
 }

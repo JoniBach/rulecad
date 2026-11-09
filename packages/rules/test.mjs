@@ -39,6 +39,45 @@ test('rules check passes every published set, with a motor held to the shared na
   assert.deepEqual(motors, ['28byj48', 'bldc2204', 'mg90s', 'n20', 'nema14', 'nema17', 'sg90']);
 });
 
+test('every bearing is a real ring, and every radial one says its play class', () => {
+  const bearings = sets.filter((s) => s.set.part === 'bearing');
+  assert.deepEqual(bearings.map((b) => b.name).sort(), ['bearing-51104', 'bearing-608', 'bearing-625', 'bearing-6800', 'bearing-f623', 'bearing-mr105']);
+  for (const { name, set: { rules: r } } of bearings) {
+    assert.ok(r.outer_diameter.value > r.bore.value && r.bore.value > 0 && r.width.value > 0, `${name}: outer > bore > 0 and width > 0`);
+    assert.ok(r.static_rating.value > 0 && r.dynamic_rating.value > 0, `${name}: rated`);
+    if (r.type.value !== 'thrust') assert.ok(r.radial_play, `${name}: a radial bearing has a radial play class`);
+    if (r.type.value === 'flanged') assert.ok(r.flange_diameter.value > r.outer_diameter.value, `${name}: the flange stands out`);
+    if (r.type.value === 'thrust') assert.ok(r.housing_washer_bore.value > r.bore.value, `${name}: the housing washer clears the shaft`);
+  }
+});
+
+test('every driver turns Vref into amps as its own datasheet works it through', () => {
+  const r = (name) => sets.find((s) => s.name === name).set.rules, amps = (name, vref) => vref * r(name).vref_gain.value;
+  assert.ok(Math.abs(amps('a4988', 0.8) - 0.8 / (8 * r('a4988').sense_resistor.value)) < 1e-3, 'A4988: Imax = Vref / (8 Rs)');
+  assert.ok(Math.abs(amps('a4988', 0.8) - 1.47) < 0.01, 'A4988 at 0.068 ohm: 0.8 V gives 1.47 A');
+  assert.ok(Math.abs(amps('drv8825', 0.5) - 1) < 0.01, 'DRV8825: 0.5 V gives 1 A');
+  assert.ok(Math.abs(amps('tmc2209', 1.2) - 0.9) < 0.06, 'TMC2209 at 0.11 ohm: 1.2 V gives about 0.9 A RMS');
+  for (const name of ['a4988', 'drv8825', 'tmc2209']) assert.ok(r(name).current_cooled.value >= r(name).current_bare.value && r(name).row_spacing.value === 12.7 && r(name).pin_pitch.value === 2.54, name);
+  for (const [v, s] of Object.entries(sets.find((x) => x.name === 'a4988').set.variants)) assert.ok(Math.abs(s.values.vref_gain - 1 / (8 * s.values.sense_resistor)) < 1e-3, `a4988 variant ${v}`);
+});
+
+test('a hobby part says it is community until measured', () => {
+  for (const name of ['bearing-mr105', 'endstop-10t85', 'as5600', 'tmc2209', 'cnc-shield-v3', 'supply-12v', 'supply-24v']) {
+    const { set } = sets.find((s) => s.name === name);
+    assert.match(set._doc, /community until measured/, `${name} says so in its _doc`);
+    assert.ok(Object.values(set.rules).some((r) => r.kind === 'community'), `${name} has community figures`);
+  }
+});
+
+test('a supply\'s variants each carry their own current and case', () => {
+  for (const name of ['supply-12v', 'supply-24v']) {
+    const { set } = sets.find((s) => s.name === name);
+    const vs = Object.values(set.variants);
+    assert.ok(vs.length >= 6, `${name} has its range of currents`);
+    assert.ok(vs.every((v) => v.values.output_current > 0 && v.values.body_width > 0 && v.values.output_voltage === set.rules.output_voltage.value), name);
+  }
+});
+
 test('rules check says what is wrong with a set: no source, a bad kind, a stray name, the wrong unit, a required rule missing', () => {
   const base = () => JSON.parse(JSON.stringify(sets.find((s) => s.name === 'nema17').set)), codes = (s) => checkRuleSet(s, vocabulary).map((x) => x.code);
   let s = base(); delete s.rules.boss_height.source; assert.deepEqual(codes(s), ['rules.source']);

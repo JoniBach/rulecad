@@ -4,7 +4,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import jscad from '@jscad/modeling';
-import { loadRuleSet } from './rules.mjs';
+import { peekRuleSet as loadRuleSet } from './rules.mjs';
 import { RULE_DIRS } from './workspace.mjs';
 import { named } from './parts.mjs';
 
@@ -41,24 +41,26 @@ const SHAPES = {
     return { parts: { body: extrudeRotate({ segments: SEG }, polygon({ points: pts })) }, anchors: { bore: z([0, 0, w / 2]), outer: z([0, 0, w / 2]), face: z([0, 0, 0]), top: z([0, 0, w]) } };
   },
   switch(v) {
-    const w = v.body_width, d = v.body_depth, h = v.body_height, lever = v.lever_length ?? w, up = v.lever_height ?? 3;
-    const holes = (v.hole_spacing ?? 0) / 2;
-    const body = subtract(box(w, d, h, 0, 0, 0), ...(holes ? [-holes, holes].map((x) => translate([x, 0, (v.hole_offset ?? h / 2)], jscad.transforms.rotateX(Math.PI / 2, cylinder({ radius: (v.hole_diameter ?? 2.3) / 2, height: d + 2, segments: 24 })))) : []));
-    return { parts: { body, lever: box(lever, Math.min(4, d), 0.4, (lever - w) / 2, 0, h + up) }, anchors: { lever: z([lever - w / 2, 0, h + up]), left: z([-holes, 0, v.hole_offset ?? h / 2], [0, 1, 0]), right: z([holes, 0, v.hole_offset ?? h / 2], [0, 1, 0]), base: z([0, 0, 0]) } };
+    const w = v.body_width, d = v.body_depth, h = v.body_length, holes = (v.mount_hole_spacing ?? 0) / 2, up = h / 2;
+    const pin = (x) => translate([x, 0, up], jscad.transforms.rotateX(Math.PI / 2, cylinder({ radius: (v.mount_hole_diameter ?? 2.4) / 2, height: d + 2, segments: 24 })));
+    const body = holes ? subtract(box(w, d, h), pin(-holes), pin(holes)) : box(w, d, h);
+    return { parts: { body, lever: box(w, Math.min(4, d), 0.4, w * 0.1, 0, h + 2) }, anchors: { lever: z([w * 0.6, 0, h + 2]), left: z([-holes, 0, up], [0, 1, 0]), right: z([holes, 0, up], [0, 1, 0]), base: z([0, 0, 0]) } };
   },
-  board(v) {
-    const w = v.board_width, l = v.board_length, t = v.board_thickness ?? 1.6;
-    return { parts: { body: box(w, l, t) }, anchors: { centre: z([0, 0, t / 2]), top: z([0, 0, t]), bottom: z([0, 0, 0]) } };
+  board(v, set) {
+    const w = v.body_width, d = v.body_depth, t = 1.6;
+    const axes = [...new Set(Object.keys(set.rules).map((k) => /^step_pin_(\w+)$/.exec(k)?.[1]).filter(Boolean))].map((a) => a.toUpperCase());
+    // Where a board's axis connectors are along its edge is for routing a wire, no closer than that
+    const sockets = Object.fromEntries(axes.map((a, i) => [a, z([-w / 2 + ((i + 0.5) * w) / axes.length, d / 2, t], [0, 1, 0])]));
+    return { parts: { body: box(w, d, t) }, anchors: { centre: z([0, 0, t / 2]), top: z([0, 0, t]), bottom: z([0, 0, 0]), ...sockets } };
   },
   driver(v) {
-    const w = v.board_width, l = v.board_length, t = v.board_thickness ?? 1.6, row = (v.header_row_spacing ?? 12.7) / 2, pins = v.header_pins ?? 8, pitch = v.header_pitch ?? 2.54, run = pitch * (pins - 1), pin = 0.64;
-    const rows = [-row, row].flatMap((x) => Array.from({ length: pins }, (_, i) => box(pin, pin, (v.pin_length ?? 8) + t, x, -run / 2 + i * pitch, -(v.pin_length ?? 8))));
-    const chip = (v.chip_size ?? 5) * 1;
-    return { parts: { body: union(box(w, l, t), box(chip, chip, 1, 0, 0, t)), pins: union(rows) }, anchors: { header: z([0, 0, 0]), top: z([0, 0, t]), pin1: z([-row, -run / 2, 0]) } };
+    const w = v.body_width, d = v.body_depth, t = 1.6, row = v.row_spacing / 2, pins = v.pin_count / 2, pitch = v.pin_pitch, run = pitch * (pins - 1), pin = 0.64, drop = 8;
+    const rows = [-row, row].flatMap((y) => Array.from({ length: pins }, (_, i) => box(pin, pin, drop + t, -run / 2 + i * pitch, y, -drop)));
+    return { parts: { body: union(box(w, d, t), box(5, 5, 1, 0, 0, t)), pins: union(rows) }, anchors: { header: z([0, 0, 0]), top: z([0, 0, t]) } };
   },
-  encoder(v) { return SHAPES.board(v); },
+  encoder(v, set) { return SHAPES.board(v, set); },
   supply(v) {
-    const w = v.body_width, d = v.body_depth, h = v.body_height;
+    const w = v.body_width, d = v.body_depth, h = v.body_length;
     return { parts: { body: box(w, d, h) }, anchors: { base: z([0, 0, 0]), top: z([0, 0, h]), terminals: z([0, -d / 2, h / 2], [0, -1, 0]) } };
   },
 };
@@ -71,7 +73,7 @@ export function boughtModel(name, variant) {
   if (variant != null) {
     const vs = set.variants || {};
     if (!vs[variant]) throw new Error(`${name} has no variant "${variant}" (${Object.keys(vs).join(', ') || 'none'})`);
-    rules = { ...set.rules, ...Object.fromEntries(Object.entries(vs[variant].rules ?? vs[variant]).map(([k, r]) => [k, typeof r === 'object' ? r : { ...set.rules[k], value: r }])) };
+    rules = { ...set.rules, ...Object.fromEntries(Object.entries(vs[variant].values ?? {}).map(([k, value]) => [k, { ...set.rules[k], value, kind: vs[variant].kind ?? set.rules[k]?.kind, source: vs[variant].source ?? set.rules[k]?.source }])) };
   }
   return { name, part: set.part, variant: variant ?? null, rules };
 }

@@ -473,7 +473,7 @@ export function main (v) {
     "boss": { "value": 12, "unit": "mm", "rule": "Round the axle's foot" },
     "foot": { "value": 40, "unit": "mm", "rule": "A foot across the middle, so it stands without rocking" },
     "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Fifteen layers" },
-    "pin": { "value": "3.2 - x1c.line / 2", "unit": "mm", "rule": "The axle: the pinion's 3.2 mm bore less half a line, so it turns" },
+    "pin": { "value": "3.2 - 2 * x1c.fit - x1c.hole_comp", "unit": "mm", "rule": "The axle: the pinion's 3.2 mm bore, less the printer's fit each side and what a printed bore loses, so it turns" },
     "pin_height": { "value": "x1c.layer * 60", "unit": "mm", "rule": "Up through the pinion and its knob" },
     "guide_y": { "value": "0 - 5.45 - x1c.line / 2", "unit": "mm", "rule": "Behind the rack's back (1.25 + 4.2 mm under its pitch line), half a line clear" },
     "guide": { "value": "x1c.line * 4", "unit": "mm", "rule": "The guide wall: four lines" },
@@ -646,7 +646,7 @@ export function main (v) {
     "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
     "teeth": { "value": 18, "rule": "From planetary(): 18 for 4 : 1 with three planets" },
     "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "As the ring" },
-    "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "A 3 mm pin and half a line's clearance" }
+    "bore": { "value": "3 + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "A 3 mm pin, the printer's fit each side, and what a printed bore loses" }
   }
 }
 ```
@@ -672,7 +672,7 @@ The sun is a planet with the spool's shaft on top, bored through for its axle:
     "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
     "teeth": { "value": 18, "rule": "From planetary()" },
     "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "As the ring" },
-    "bore": { "value": "3 + x1c.line / 2", "unit": "mm", "rule": "On the case's 3 mm axle" },
+    "bore": { "value": "3 + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "On the case's 3 mm axle: the printer's fit each side, and what a printed bore loses" },
     "shaft": { "value": 8, "unit": "mm", "rule": "The spool's shaft, inside the sun's roots" },
     "shaft_height": { "value": 12, "unit": "mm", "rule": "Up through the carrier, and a spool's width over it" }
   }
