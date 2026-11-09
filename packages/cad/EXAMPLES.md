@@ -1072,7 +1072,7 @@ export function main (v) {
   "version": "0.1.0",
   "uses": ["x1c"],
   "engine": "manifold",
-  "anchors": { "axis": { "at": [0, 0, "0 - gap"], "axis": [0, 0, 1] } },
+  "anchors": { "axis": { "at": [0, 0, "width * 2 + gap"], "axis": [0, 0, -1] } },
   "variables": {
     "gap": { "value": 0.3, "unit": "mm", "rule": "Clear of the motor plate" },
     "module": { "value": 1, "unit": "mm", "rule": "The gears'" },
@@ -1089,9 +1089,9 @@ import jscad from '@jscad/modeling'
 const { translate } = jscad.transforms
 
 export function main (v) {
-  const low = v.gears.spur({ module: v.module, teeth: v.low, width: v.width })
-  const high = translate([0, 0, v.width], v.gears.spur({ module: v.module, teeth: v.high, width: v.width }))
-  return v.ops.union(low, high)
+  const high = v.gears.spur({ module: v.module, teeth: v.high, width: v.width })
+  const low = translate([0, 0, v.width], v.gears.spur({ module: v.module, teeth: v.low, width: v.width, chamfer: 0 }))
+  return v.ops.union(high, low)
 }
 ```
 

@@ -1,0 +1,308 @@
+{
+  "title": "Robot shoulder on the test stand",
+  "kind": "fit",
+  "description": "A 17HS4401 behind the stand, the dial and a 38:1 compound planetary in front, the arm on the output with its pointer over the dial. Every tooth count a multiple of the three planets.",
+  "gravity": [
+    0,
+    0,
+    -1
+  ],
+  "items": [
+    {
+      "id": "stand",
+      "object": "stand",
+      "rotate": [
+        90,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "motor",
+      "motor": {
+        "model": "17HS4401",
+        "drives": "drive",
+        "speed": 300,
+        "duty": 0.3
+      }
+    },
+    {
+      "id": "dial",
+      "object": "dial"
+    },
+    {
+      "id": "housing",
+      "object": "shoulder-housing"
+    },
+    {
+      "id": "sun",
+      "object": "shoulder-sun"
+    },
+    {
+      "id": "carrier",
+      "object": "shoulder-speck"
+    },
+    {
+      "id": "p1",
+      "object": "shoulder-planet"
+    },
+    {
+      "id": "p2",
+      "object": "shoulder-planet"
+    },
+    {
+      "id": "p3",
+      "object": "shoulder-planet"
+    },
+    {
+      "id": "output",
+      "object": "shoulder-output"
+    },
+    {
+      "id": "arm",
+      "object": "shoulder-arm"
+    },
+    {
+      "id": "clip1",
+      "object": "shoulder-clip"
+    },
+    {
+      "id": "clip2",
+      "object": "shoulder-clip"
+    },
+    {
+      "id": "clip3",
+      "object": "shoulder-clip"
+    }
+  ],
+  "joints": [
+    {
+      "id": "m",
+      "type": "fixed",
+      "parent": "stand.face",
+      "child": "motor.face"
+    },
+    {
+      "id": "d",
+      "type": "fixed",
+      "parent": "stand.front",
+      "child": "dial.back"
+    },
+    {
+      "id": "h",
+      "type": "fixed",
+      "parent": "dial.front",
+      "child": "housing.back"
+    },
+    {
+      "id": "drive",
+      "type": "revolute",
+      "parent": "housing.axis",
+      "child": "sun.axis",
+      "label": "Motor"
+    },
+    {
+      "id": "turn",
+      "type": "revolute",
+      "parent": "housing.axis",
+      "child": "carrier.axis"
+    },
+    {
+      "id": "s1",
+      "type": "revolute",
+      "parent": "carrier.a",
+      "child": "p1.axis"
+    },
+    {
+      "id": "s2",
+      "type": "revolute",
+      "parent": "carrier.b",
+      "child": "p2.axis"
+    },
+    {
+      "id": "s3",
+      "type": "revolute",
+      "parent": "carrier.c",
+      "child": "p3.axis"
+    },
+    {
+      "id": "out",
+      "type": "revolute",
+      "parent": {
+        "item": "housing",
+        "at": [
+          0,
+          0,
+          13.4
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "output.axis"
+    },
+    {
+      "id": "a",
+      "type": "fixed",
+      "parent": "output.outer",
+      "child": "arm.hub"
+    },
+    {
+      "id": "c1",
+      "type": "fixed",
+      "parent": {
+        "item": "housing",
+        "at": [
+          31.1769,
+          18.0,
+          25.7
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          0.866025,
+          0.5,
+          0
+        ]
+      },
+      "child": "clip1.base"
+    },
+    {
+      "id": "c2",
+      "type": "fixed",
+      "parent": {
+        "item": "housing",
+        "at": [
+          -31.1769,
+          18.0,
+          25.7
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          -0.866025,
+          0.5,
+          0
+        ]
+      },
+      "child": "clip2.base"
+    },
+    {
+      "id": "c3",
+      "type": "fixed",
+      "parent": {
+        "item": "housing",
+        "at": [
+          -0.0,
+          -36.0,
+          25.7
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          -0.0,
+          -1.0,
+          0
+        ]
+      },
+      "child": "clip3.base"
+    }
+  ],
+  "planetary": [
+    {
+      "sun": "sun",
+      "carrier": "carrier",
+      "ring": "housing",
+      "planets": [
+        "p1",
+        "p2",
+        "p3"
+      ],
+      "drive": "sun",
+      "module": 1,
+      "teeth": [
+        18,
+        18,
+        54
+      ],
+      "output": {
+        "ring": "output",
+        "planet": 21,
+        "teeth": 57
+      }
+    }
+  ],
+  "fits": [
+    {
+      "a": "motor",
+      "b": "stand",
+      "fastens": true,
+      "min": 0,
+      "note": "The motor, on its four screws"
+    },
+    {
+      "a": "dial",
+      "b": "stand",
+      "fastens": true,
+      "min": 0,
+      "note": "The dial, on the same screws"
+    },
+    {
+      "a": "housing",
+      "b": "dial",
+      "fastens": true,
+      "min": 0,
+      "note": "The housing, on the same screws"
+    },
+    {
+      "a": "clip1",
+      "b": "housing",
+      "fastens": true,
+      "min": 0,
+      "note": "A clip, screwed on"
+    },
+    {
+      "a": "clip2",
+      "b": "housing",
+      "fastens": true,
+      "min": 0,
+      "note": "A clip, screwed on"
+    },
+    {
+      "a": "clip3",
+      "b": "housing",
+      "fastens": true,
+      "min": 0,
+      "note": "A clip, screwed on"
+    },
+    {
+      "a": "motor",
+      "b": "sun",
+      "shaft": true,
+      "note": "The motor's shaft in the sun"
+    }
+  ],
+  "loads": [
+    {
+      "mass": 0.5,
+      "at": "arm.r150",
+      "note": "500 g at 150 mm"
+    }
+  ],
+  "poses": {
+    "home": {
+      "drive": 0
+    }
+  }
+}

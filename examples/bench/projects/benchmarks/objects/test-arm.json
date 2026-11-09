@@ -1,0 +1,176 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "test-arm",
+  "title": "Test arm",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A 100 mm arm for the motor's shaft: holes at known radii to hang a weight from, a nub to press on a kitchen scale, and a pointer that reads against the dial. Numbers 7 to 9 and 17 on the sheet.",
+  "anchors": {
+    "mouth": {
+      "at": [
+        0,
+        0,
+        "hub_height"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "r25": {
+      "at": [
+        "r1",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "r50": {
+      "at": [
+        "r2",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "r100": {
+      "at": [
+        "r4",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "length": {
+      "value": 100,
+      "unit": "mm",
+      "rule": "To the pointer"
+    },
+    "beyond": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Past it, for the nub"
+    },
+    "bar": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "The arm's width"
+    },
+    "thick": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Twenty-five layers"
+    },
+    "corner": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Rounded ends"
+    },
+    "hub": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "Round the shaft"
+    },
+    "hub_height": {
+      "value": 18.5,
+      "unit": "mm",
+      "rule": "Up the shaft to 0.4 mm off the dial, over a closed floor"
+    },
+    "depth": {
+      "value": 16.8,
+      "unit": "mm",
+      "rule": "The bore: the shaft and a little"
+    },
+    "tip": {
+      "value": 16.5,
+      "unit": "mm",
+      "rule": "Where the shaft's tip comes from the bore's mouth: 24 mm less the stand and the dial"
+    },
+    "comp": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Printed holes shrink by this: set it from the fit bar",
+      "tweak": {
+        "min": -0.2,
+        "max": 0.4
+      }
+    },
+    "hole": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "For a string or an S-hook"
+    },
+    "r1": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r2": {
+      "value": 50,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r3": {
+      "value": 75,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r4": {
+      "value": 100,
+      "unit": "mm",
+      "rule": "A hole, under the pointer"
+    },
+    "pointer": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The pointer's foot"
+    },
+    "point": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "Its tip"
+    },
+    "pointer_top": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "To just over the dial's ticks"
+    },
+    "pointer_r": {
+      "value": 106,
+      "unit": "mm",
+      "rule": "The tip over the dial's ticks"
+    },
+    "nub": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "A rounded end to press on a scale"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

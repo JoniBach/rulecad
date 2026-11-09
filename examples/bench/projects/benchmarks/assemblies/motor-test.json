@@ -1,0 +1,107 @@
+{
+  "title": "17HS4401 on the test stand",
+  "kind": "fit",
+  "description": "Motor on the back of the stand, the dial on the front, the arm on the shaft with its pointer over the dial.",
+  "items": [
+    {
+      "id": "stand",
+      "object": "stand",
+      "rotate": [
+        90,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "motor",
+      "motor": {
+        "model": "17HS4401",
+        "drives": "turn",
+        "speed": 120,
+        "duty": 0.3
+      }
+    },
+    {
+      "id": "dial",
+      "object": "dial"
+    },
+    {
+      "id": "arm",
+      "object": "test-arm"
+    }
+  ],
+  "joints": [
+    {
+      "id": "m",
+      "type": "fixed",
+      "parent": "stand.face",
+      "child": "motor.face"
+    },
+    {
+      "id": "d",
+      "type": "fixed",
+      "parent": "stand.front",
+      "child": "dial.back"
+    },
+    {
+      "id": "turn",
+      "type": "revolute",
+      "parent": {
+        "item": "stand",
+        "at": [
+          0,
+          0,
+          -2
+        ],
+        "axis": [
+          0,
+          0,
+          -1
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "child": "arm.mouth",
+      "min": -20,
+      "max": 20,
+      "label": "Motor"
+    }
+  ],
+  "fits": [
+    {
+      "a": "motor",
+      "b": "stand",
+      "fastens": true,
+      "min": 0,
+      "note": "The motor, on its four screws"
+    },
+    {
+      "a": "dial",
+      "b": "stand",
+      "fastens": true,
+      "min": 0,
+      "note": "The dial, on the same screws"
+    },
+    {
+      "a": "motor",
+      "b": "arm",
+      "shaft": true,
+      "note": "The shaft in the arm"
+    }
+  ],
+  "loads": [
+    {
+      "mass": 0.1,
+      "at": "arm.r100",
+      "note": "100 g at 100 mm, a first test"
+    }
+  ],
+  "poses": {
+    "level": {
+      "turn": 0
+    }
+  }
+}

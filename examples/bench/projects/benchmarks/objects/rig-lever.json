@@ -1,0 +1,96 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "rig-lever",
+  "title": "Mesh rig: wheel lever",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A plain flat lever that screws to the wheel.",
+  "anchors": {
+    "back": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "bar": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Width"
+    },
+    "thick": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Fifteen layers"
+    },
+    "corner": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Rounded ends"
+    },
+    "reach": {
+      "value": 80,
+      "unit": "mm",
+      "rule": "The lever"
+    },
+    "tail": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "Behind the bore, for the second screw"
+    },
+    "hole_m3": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "M3 clearance"
+    },
+    "bolt": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Each side of the bore"
+    },
+    "bore": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Clear of the pin's screw and washer"
+    },
+    "hole": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "For a string"
+    },
+    "r1": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r2": {
+      "value": 55,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r3": {
+      "value": 80,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

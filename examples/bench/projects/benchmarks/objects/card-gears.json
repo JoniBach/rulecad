@@ -1,0 +1,144 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "card-gears",
+  "title": "Gear card: its 18 gears",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The card's eighteen gears on one bed, each a separate part, in the order they sit on the card.",
+  "variables": {
+    "module_a": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "The smallest worth printing"
+    },
+    "module_b": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The shoulder's"
+    },
+    "module_c": {
+      "value": 1.25,
+      "unit": "mm",
+      "rule": "One step up"
+    },
+    "backlash_a": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Tight"
+    },
+    "backlash_b": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Middle"
+    },
+    "backlash_c": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "Loose"
+    },
+    "teeth": {
+      "value": 14,
+      "rule": "Few teeth, for a small card"
+    },
+    "shift": {
+      "value": 0.2,
+      "rule": "14 teeth at 20° need at least 0.19"
+    },
+    "gap": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Between pairs"
+    },
+    "margin": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Round the outside"
+    },
+    "head": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "The strip along the top for the module figures"
+    },
+    "side": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The strip down the side for the backlash figures"
+    },
+    "thick": {
+      "value": 2.4,
+      "unit": "mm",
+      "rule": "Twelve layers: stiff enough, solid on the bed"
+    },
+    "corner": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The card's corners, rounded so they stay down"
+    },
+    "pin": {
+      "value": 2.79,
+      "unit": "mm",
+      "rule": "The gears' 3 mm bore less half a line"
+    },
+    "pin_height": {
+      "value": 6.5,
+      "unit": "mm",
+      "rule": "Through a 5 mm gear and a little"
+    },
+    "label": {
+      "value": 3.2,
+      "unit": "mm",
+      "rule": "Figure height"
+    },
+    "stroke": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Stroke"
+    },
+    "emboss": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Two layers proud"
+    },
+    "width": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Twenty-five layers"
+    },
+    "bore": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "On a 2.79 mm printed pin"
+    },
+    "dot": {
+      "value": 0.9,
+      "unit": "mm",
+      "rule": "A dot, two lines"
+    },
+    "dot_height": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Two layers"
+    },
+    "dot_pitch": {
+      "value": 1.4,
+      "unit": "mm",
+      "rule": "Between dots"
+    },
+    "space": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Between gears on the bed"
+    },
+    "across": {
+      "value": 6,
+      "rule": "Gears to a row on the bed"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}
