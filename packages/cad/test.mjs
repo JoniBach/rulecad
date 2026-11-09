@@ -46,7 +46,7 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
     assert.match(cad('rules', 'draft', 'scan', '--from', 'scan.pdf'), /read it by eye/);
     assert.ok(!fs.existsSync(path.join(ws, 'rules/scan.json')));
     // the drawings in the rules package are what the sets say today
-    for (const f of fs.readdirSync(new URL('../rules/drawings/', import.meta.url))) { cad('rules', 'draw', f.slice(0, -4), '--out', 'x.svg'); assert.equal(fs.readFileSync(path.join(ws, 'x.svg'), 'utf8'), fs.readFileSync(new URL(`../rules/drawings/${f}`, import.meta.url), 'utf8'), `${f} is stale: cad rules draw it again`); }
+    for (const f of fs.readdirSync(new URL('../rules/drawings/', import.meta.url))) { cad('rules', 'draw', f.slice(0, -4), '--out', 'x.svg'); assert.equal(fs.readFileSync(path.join(ws, 'x.svg'), 'utf8'), fs.readFileSync(new URL(`../rules/drawings/${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n'), `${f} is stale: cad rules draw it again`); // (git on Windows checks it out with CRLF) }
   } finally { done(); }
 });
 
