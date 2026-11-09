@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Fills site/ with what the page loads beside view.mjs: the link format and the print check (@rulecad/model-link and
-// @rulecad/printcheck, copied, so the site is plain files with nothing to install) and, with --three, the parts of three.js the page uses (site/three.min.js, MIT,
+// Fills site/ with what the page loads beside view.mjs: the link format, the print check and the kinematics
+// (@rulecad/model-link, @rulecad/printcheck and @rulecad/robots, copied, so the site is plain files with nothing to install) and, with --three, the parts of three.js the page uses (site/three.min.js, MIT,
 // site/three.LICENSE; rebuild it after adding a name to the list below).
 //   node scripts/build.mjs [--three]
 import fs from 'node:fs';
@@ -12,6 +12,9 @@ const require = createRequire(import.meta.url);
 const SITE = fileURLToPath(new URL('../site/', import.meta.url));
 fs.copyFileSync(require.resolve('@rulecad/model-link'), path.join(SITE, 'model-link.mjs'));
 fs.copyFileSync(require.resolve('@rulecad/printcheck'), path.join(SITE, 'printcheck.mjs')); // a dropped STL is checked here
+const robots = path.dirname(require.resolve('@rulecad/robots')); // a machine's link draws in the page: its own folder, its modules import each other
+fs.mkdirSync(path.join(SITE, 'robots'), { recursive: true });
+for (const f of fs.readdirSync(robots)) if (f.endsWith('.mjs') && f !== 'test.mjs' && !f.endsWith('.d.mts')) fs.copyFileSync(path.join(robots, f), path.join(SITE, 'robots', f));
 
 if (process.argv.includes('--three')) {
   const { build } = await import('esbuild');

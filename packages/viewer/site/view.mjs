@@ -2,7 +2,7 @@
 // with a parts panel to show, hide and restyle each part, tick the parts a download holds, make print files (STL,
 // or a 3MF in Bambu Studio's layout) in the browser, and slice it layer by layer with its islands in red. Nothing is uploaded:
 // the model lives in the link (or, for a short link, in the Gist it names).
-import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, posesOf, stl, threemf, filename, thingOf, jointValues, placeItems, mul, inv, DOFS } from './model-link.mjs';
+import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, posesOf, stl, threemf, filename, thingOf, jointValues, placeItems, mul, inv, DOFS, compactSteps } from './model-link.mjs';
 import { check } from './printcheck.mjs';
 import { WebGLRenderer, Scene, PerspectiveCamera, BufferGeometry, Float32BufferAttribute, Mesh, MeshLambertMaterial, LineSegments,
   LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3, Plane, Points, PointsMaterial } from './three.min.js';
@@ -98,11 +98,14 @@ function show(model) {
     return [k, g];
   }));
   const motion = model.motion && moving(model.motion, parts, mid, alts);
+  if (model.wires?.length) wireLines(model.wires, turn, mid, motion); // faint, never parts: no check sees them
 
   // ---------- state ----------
-  const view = { mode: 'solid', supports: true, references: true, explode: 0, spin: true, selected: new Set() };
+  const view = { mode: 'solid', supports: true, references: true, explode: 0, spin: true, selected: new Set(), step: null };
+  const itemOf = (p) => p.name.split('.')[0]; // the assembly item a part belongs to
   const effective = (p) => {
     if (!p.visible || (p.role === 'support' && !view.supports) || (p.role === 'reference' && !view.references)) return 'hidden';
+    if (view.step && !view.step.shown.has(itemOf(p))) return 'hidden'; // an assembly step: only what's on by then
     return p.style !== 'auto' ? p.style : p.role !== 'part' ? 'faint' : view.mode;
   };
   const apply = () => {
@@ -121,6 +124,8 @@ function show(model) {
       .map((label) => ({ label, y: Math.min(...parts.filter((p) => p.label === label).map((p) => p.g.boundingBox.min.y)) })).sort((a, b) => a.y - b.y);
     const gap = (box.max.y - box.min.y) * 0.9 * view.explode;
     for (const p of parts) p.node.position.y = p.role === 'support' ? -gap : kinds.findIndex((x) => x.label === p.label) * gap;
+    // A step shown: the new part held off along the way it goes on (JSCAD's z up is the page's y), and lit
+    if (view.step) for (const p of parts) if (view.step.now.has(itemOf(p))) { const [x, y, z] = view.step.dir, far = r * 0.45; p.node.position.set(x * far, z * far, -y * far); p.faces.color.setHex(0x8a8a8a); }
     renderTree();
   };
 
@@ -243,6 +248,7 @@ function show(model) {
     parts.forEach((p) => { p.visible = true; p.style = 'auto'; });
     $('explode').value = 0; $('spin').checked = $('supports').checked = $('references').checked = true;
     $('mode').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.mode === 'solid'));
+    view.step = null; document.querySelectorAll('ol.steps button.on').forEach((x) => x.classList.remove('on'));
     turn.rotation.y = 0; tilt.rotation.x = 0.45; status(''); motion?.reset(); if ($('slice').checked) { $('slice').checked = false; $('slice').onchange(); } apply();
   };
   $('supports').closest('label').hidden = !parts.some((p) => p.role === 'support');
@@ -252,6 +258,7 @@ function show(model) {
   const narrow = matchMedia(DRAWER), foot = document.querySelector('footer');
   const panel = (open) => {
     $('panel').hidden = !open; foot.hidden = narrow.matches && open;
+    if (open && narrow.matches) $('build').hidden = true; // one pane under the model at a time on a phone
     $('toggle').textContent = narrow.matches && open ? 'Info' : 'Parts';
     $('toggle').title = narrow.matches && open ? 'Show the title and downloads' : 'Show or hide the parts panel';
   };
@@ -271,17 +278,23 @@ function show(model) {
     camera.aspect = w / h; camera.position.set(0, 0, (r * 1.15) / Math.tan((Math.PI / 180) * 15) / Math.min(1, camera.aspect)); camera.updateProjectionMatrix();
   };
   new ResizeObserver(size).observe(stage); size();
+  if (model.build) buildPage(model, { apply, view, foot, narrow, panel, spin: (on) => { view.spin = on; $('spin').checked = on; } });
+  // A machine: the tool mode and the playback need @rulecad/robots, loaded only for a link that has one
+  let machine = null;
+  if (model.task && motion) drawing(model, motion, { turn, tilt, camera, renderer, stage, mid, spin: (on) => { view.spin = on; $('spin').checked = on; } }).then((m) => { machine = m; }, (e) => { $('toolsay').textContent = `Couldn't start the pen (${e.message})`; $('tool').hidden = false; });
 
   // Drag turns and tilts; a click without a drag picks the part under the pointer
   let drag = null, last = performance.now();
   const ray = new Raycaster(), at = new Vector2();
-  stage.addEventListener('pointerdown', (e) => { if (e.target !== renderer.domElement) return; drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY }; stage.setPointerCapture(e.pointerId); });
+  stage.addEventListener('pointerdown', (e) => { if (e.target !== renderer.domElement) return; if (machine?.press(e)) { stage.setPointerCapture(e.pointerId); drag = null; return; } drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY }; stage.setPointerCapture(e.pointerId); });
   stage.addEventListener('pointermove', (e) => {
+    if (machine?.drag(e)) return;
     if (!drag) return;
     turn.rotation.y += (e.clientX - drag.x) * 0.01; tilt.rotation.x = Math.max(-1.4, Math.min(1.4, tilt.rotation.x + (e.clientY - drag.y) * 0.01));
     drag.x = e.clientX; drag.y = e.clientY;
   });
   stage.addEventListener('pointerup', (e) => {
+    if (machine?.release(e)) return;
     if (drag && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) {
       const rect = renderer.domElement.getBoundingClientRect();
       at.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
@@ -294,6 +307,7 @@ function show(model) {
   renderer.setAnimationLoop((now) => {
     if (stage.classList.contains('flat')) { last = now; return; } // a 2D view is up: nothing to draw
     if (!drag && view.spin) turn.rotation.y += ((now - last) / 60000) * 2 * Math.PI;
+    machine?.frame(now);
     last = now; scene.updateMatrixWorld(); slicer.frame(); renderer.render(scene, camera);
   });
   apply();
@@ -386,6 +400,7 @@ function slicing(model, parts, turn, mid, renderer, flatten) {
 // against where it was. When a slider is let go, a quick look for parts pushed into each other: a corner of one inside
 // the other. The real check is cad check --sweep; this one misses parts that cross without a corner going in.
 function moving(mo, parts, mid, alts = new Map()) {
+  const listeners = [];
   const start = jointValues(mo, mo.pose), was = placeItems(mo, start).map(inv);
   // A pose's shapes (mo.swap): each listed part drawn as its pose shape, every other part as it came
   for (const p of parts) p.own = p.g;
@@ -413,6 +428,7 @@ function moving(mo, parts, mid, alts = new Map()) {
       if (d) p.moved.matrix.set(...d, 0, 0, 0, 1); else p.moved.matrix.identity();
       p.moved.matrixWorldNeedsUpdate = true;
     }
+    for (const f of listeners) f(now, values);
   };
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const sliders = [];
@@ -479,7 +495,278 @@ function moving(mo, parts, mid, alts = new Map()) {
   };
   $('motion').hidden = !free.length && poses.length < 2;
   place();
-  return { reset: () => go(mo.pose || null) };
+  // For the pen and the playback: set some joints (the chain's), and hear of every move
+  const set = (names, q) => { names.forEach((n, i) => { values[n] = [q[i]]; }); sliders.forEach((f) => f()); place(); pick(null); $('clash').textContent = ''; };
+  return { reset: () => go(mo.pose || null), set, listen: (f) => { listeners.push(f); place(); }, values: () => values };
+}
+
+// ---------- wires ----------
+// A machine's wires, drawn faint along their routes and moving with the items they run between. Never parts: nothing
+// in the page checks them, downloads them or lists them.
+function wireLines(list, turn, mid, motion) {
+  const pts = list.flatMap(([, route]) => route.slice(1).flatMap((p, i) => [route[i], p])), count = pts.length, pos = new Float32Array(count * 3);
+  const g = new BufferGeometry(); g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  const lines = new LineSegments(g, new LineBasicMaterial({ color: 0x4f7281, transparent: true, opacity: 0.8 })); turn.add(lines);
+  const draw = (worlds) => {
+    const a = g.getAttribute('position').array;
+    pts.forEach(([item, x, y, z], i) => {
+      const W = worlds?.[item], wx = W ? W[0] * x + W[1] * y + W[2] * z + W[3] : x, wy = W ? W[4] * x + W[5] * y + W[6] * z + W[7] : y, wz = W ? W[8] * x + W[9] * y + W[10] * z + W[11] : z;
+      a[i * 3] = wx - mid.x; a[i * 3 + 1] = wz - mid.y; a[i * 3 + 2] = -wy - mid.z;
+    });
+    g.getAttribute('position').needsUpdate = true; g.computeBoundingSphere();
+  };
+  if (motion) motion.listen(draw); else draw(null);
+}
+
+// ---------- drawing with the machine ----------
+// A link with a task (a pen and a sheet): the sheet and the region the arm reaches drawn on the model, the pen dragged
+// by hand and the joints following through inverse kinematics in the page, a step file played with its drawn line in
+// its predicted-error colour, and a strip of the margins (torque, reach, accuracy, heat) at the pose on show.
+const COLOUR = { ok: [0.45, 0.82, 0.58], warn: [0.91, 0.77, 0.42], fail: [0.91, 0.5, 0.41] };
+const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+function errorColour(e, limit) { const t = limit > 0 ? e / limit : 0; return t < 0.5 ? mix(COLOUR.ok, COLOUR.warn, t * 2) : t < 1 ? mix(COLOUR.warn, COLOUR.fail, (t - 0.5) * 2) : COLOUR.fail; }
+
+async function drawing(model, motion, { turn, tilt, camera, renderer, stage, mid, spin }) {
+  const T = model.task, { chainFromMotion, ik, fk, jacobian } = await import('./robots/robots.mjs'), { marginAt } = await import('./robots/kinematics.mjs');
+  const chain = chainFromMotion(model.motion, { tip: T.item, tool: T.point }), P = T.plane, names = chain.names, mo = model.motion, cos = Math.abs(P.n[2]);
+  const toView = ([x, y, z]) => [x - mid.x, z - mid.y, -y - mid.z], fromView = ([x, y, z]) => [x + mid.x, -(z + mid.z), y + mid.y], lift = 0.4;
+  const onPlane = (x, y, up = lift) => [0, 1, 2].map((k) => P.at[k] + P.u[k] * x + P.v[k] * y + P.n[k] * up), W2 = P.width / 2, H2 = P.height / 2;
+  const planeXY = (p) => { const d = [0, 1, 2].map((k) => p[k] - P.at[k]); return [d[0] * P.u[0] + d[1] * P.u[1] + d[2] * P.u[2], d[0] * P.v[0] + d[1] * P.v[1] + d[2] * P.v[2]]; };
+  const geo = (list) => { const g = new BufferGeometry(); g.setAttribute('position', new Float32BufferAttribute(list.flatMap(toView), 3)); return g; };
+  const layer = new Group(); turn.add(layer);
+  const outline = new LineSegments(geo([[-W2, -H2], [W2, -H2], [W2, -H2], [W2, H2], [W2, H2], [-W2, H2], [-W2, H2], [-W2, -H2]].map(([x, y]) => onPlane(x, y))), new LineBasicMaterial({ color: 0xffffff }));
+  const pen = new Points(geo([onPlane(0, 0)]), new PointsMaterial({ color: 0xffffff, size: 11, sizeAttenuation: false, depthTest: false, transparent: true }));
+  pen.renderOrder = 4; layer.add(outline, pen);
+  const trail = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ color: 0xffffff })), trailAt = [];
+  trail.visible = false; layer.add(trail);
+  const say = (id, t, bad) => { $(id).textContent = t; $(id).classList.toggle('hit', !!bad); };
+  // What the arm reaches on this plane, off the page's thread: the sheet, and a margin round it
+  const flat = (cells, colour, opacity) => { const pos = cells.flatMap(([x, y, z], i, a) => { const c = a.step, [u, v] = planeXY([x, y, z]), s = onPlane; return [s(u - c, v - c, lift / 2), s(u + c, v - c, lift / 2), s(u + c, v + c, lift / 2), s(u - c, v - c, lift / 2), s(u + c, v + c, lift / 2), s(u - c, v + c, lift / 2)]; }); const g = geo(pos); const m = new Mesh(g, new MeshLambertMaterial({ color: 0x000000, emissive: colour, transparent: true, opacity, side: 2, depthWrite: false })); m.renderOrder = 1; return m; };
+  const area = { width: P.width * 1.5, height: P.height * 1.5 }, step = Math.max(1, Math.min(P.width, P.height) / 36), worker = new Worker(new URL('./reach.mjs', import.meta.url), { type: 'module' });
+  let reachNote = '';
+  worker.onmessage = ({ data }) => {
+    worker.terminate();
+    if (data.error) { say('toolsay', `The reach couldn't be worked out here: ${data.error}`, true); return; }
+    const halve = step / 2, cells = data.cells.map((c) => [...c, ...planeXY(c)]), on = cells.filter((c) => Math.abs(c[4]) <= W2 + halve && Math.abs(c[5]) <= H2 + halve);
+    const reachable = cells.filter((c) => c[3]), missing = on.filter((c) => !c[3]);
+    reachable.step = halve; missing.step = halve;
+    layer.add(flat(reachable, 0x2f7f9f, 0.3)); if (missing.length) layer.add(flat(missing, 0xc0442c, 0.55));
+    reachNote = `${on.filter((c) => c[3]).length} of ${on.length} points on the sheet in reach`;
+    $('tool').dataset.reach = String(reachable.length);
+    if (!mode.checked && !busy) say('toolsay', reachNote);
+  };
+  worker.onerror = (e) => say('toolsay', `The reach couldn't be worked out here (${e.message || 'the worker failed'})`, true);
+  worker.postMessage({ motion: { items: mo.items, joints: mo.joints }, tip: T.item, tool: T.point, sheet: { ...area, at: P.at, normal: P.n, u: P.u }, step, elbow: T.elbow });
+
+  // ---------- the strip: margins at this pose ----------
+  const G = 9.80665, DEG_T = T.torque || [], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const strip = $('strip'), chips = {}, chip = (key, label, title) => { const c = document.createElement('span'), b = document.createElement('b'); c.className = 'chip'; c.title = title; c.append(`${label} `, b); strip.append(c); chips[key] = { c, b }; };
+  chip('torque', 'Torque', 'What the motors give against what this pose needs of them (the check takes the worst pose)');
+  chip('reach', 'Reach', 'How far the pen can still go before an arm joint or the arm\'s stretch stops it');
+  chip('accuracy', 'Accuracy', 'What the error budget predicts at this pose, against the task\'s accuracy');
+  chip('heat', 'Heat', 'The motor case at rated current against the plastic it\'s bolted to: the same in every pose');
+  strip.hidden = false;
+  const setChip = (key, text, level) => { const { c, b } = chips[key]; b.textContent = text; c.className = `chip${level ? ` ${level}` : ''}`; };
+  // A mass carried beyond a joint, at these joint values, as motors.mjs's loadAt
+  const byChild = new Map(mo.joints.map((x) => [x.child, x]));
+  const loadAt = (j, worlds) => {
+    const Par = j.parent < 0 ? j.a : mul(worlds[j.parent], j.a), O = [Par[3], Par[7], Par[11]], Z = [Par[2], Par[6], Par[10]];
+    const beyond = (k) => { for (let i = k, n = 0; i >= 0 && n < 99; n++) { const x = byChild.get(i); if (!x) return false; if (x === j) return true; i = x.parent; } return false; };
+    let total = 0;
+    for (const l of T.loads || []) {
+      if (l.joint === j.id) total += l.value;
+      else if (l.mass != null && beyond(l.item)) { const W = worlds[l.item], X = [W[0] * l.at[0] + W[1] * l.at[1] + W[2] * l.at[2] + W[3], W[4] * l.at[0] + W[5] * l.at[1] + W[6] * l.at[2] + W[7], W[8] * l.at[0] + W[9] * l.at[1] + W[10] * l.at[2] + W[11]], g = T.gravity || [0, 0, -1], len = Math.hypot(...g), F = g.map((c) => (c * l.mass * G) / len); total += j.type === 'prismatic' ? dot(Z, F) : dot(Z, cross(O.map((c, k) => X[k] - c), F)) / 1000; }
+    }
+    return Math.abs(total);
+  };
+  const updateStrip = (worlds, q, tip) => {
+    let worst = Infinity;
+    for (const t of DEG_T) { const j = mo.joints.find((x) => x.id === t.joint), load = j ? loadAt(j, worlds) : 0; worst = Math.min(worst, load > 1e-9 ? t.available / load : Infinity); }
+    if (!DEG_T.length) setChip('torque', 'no load given', '');
+    else if (!Number.isFinite(worst)) setChip('torque', 'no load here', 'ok');
+    else setChip('torque', `${worst.toFixed(1)}×`, worst < 1 ? 'fail' : worst < 2 ? 'warn' : 'ok');
+    const room = marginAt(chain, q, tip);
+    setChip('reach', `${room.toFixed(0)} mm`, room <= 0 ? 'fail' : room < 10 ? 'warn' : 'ok');
+    if (T.accuracy == null) setChip('accuracy', 'not asked', '');
+    else { const J = jacobian(chain, q), lever = names.map((_, i) => Math.hypot(J[0][i], J[1][i], J[2][i])), e = (T.terms || []).reduce((t, [i, , deg]) => t + deg * lever[i], T.deflection || 0), m = e / T.accuracy; setChip('accuracy', `${e.toFixed(2)} of ${T.accuracy} mm`, m > 1 ? 'fail' : m > 0.8 ? 'warn' : 'ok'); }
+    if (!T.heat) setChip('heat', 'no figures', '');
+    else { const k = T.heat.case / T.heat.softening; setChip('heat', `${T.heat.case.toFixed(0)} of ${T.heat.softening} °C`, k > 1 ? 'fail' : k > 0.9 ? 'warn' : 'ok'); }
+  };
+  let current = names.map((n) => motion.values()[n][0]), tipAt = fk(chain, current).position;
+  const moved = (worlds, values) => {
+    current = names.map((n) => values[n][0]); tipAt = fk(chain, current).position;
+    const at = toView(onPlane(...planeXY(tipAt))), a = pen.geometry.getAttribute('position'); a.setXYZ(0, ...at); a.needsUpdate = true; pen.geometry.computeBoundingSphere();
+    updateStrip(worlds, current, tipAt);
+  };
+  motion.listen(moved);
+
+  // ---------- the pen, dragged ----------
+  const mode = $('toolmode'); $('tool').hidden = false;
+  let busy = false, lastGood = null, down = false;
+  const ray = new Raycaster(), at = new Vector2(), world = new Plane(), hit = new Vector3();
+  const viewOn = new Vector3(), viewN = new Vector3(), onView = toView(onPlane(0, 0, 0)), nView = [P.n[0], P.n[2], -P.n[1]]; // (a direction, so no centring)
+  viewOn.fromArray(onView); viewN.fromArray(nView);
+  const pointOf = (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    at.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    turn.updateWorldMatrix(true, false); ray.setFromCamera(at, camera);
+    world.setFromNormalAndCoplanarPoint(viewN.clone().normalize(), viewOn).applyMatrix4(turn.matrixWorld);
+    if (!ray.ray.intersectPlane(world, hit)) return null;
+    return planeXY(fromView(turn.worldToLocal(hit.clone()).toArray()));
+  };
+  const follow = ([x, y]) => {
+    const target = onPlane(x, y, 0);
+    let r; try { r = ik(chain, target, { ...(T.elbow ? { elbow: T.elbow } : {}), start: lastGood ?? current }); } catch (e) { say('toolsay', e.message, true); return; }
+    const onSheet = Math.abs(x) <= W2 && Math.abs(y) <= H2;
+    if (!r.ok) { pen.material.color.setHex(0xe8806a); say('toolsay', `Out of reach: ${r.reason}`, true); return; }
+    pen.material.color.setHex(0xffffff); lastGood = r.q; motion.set(names, r.q);
+    say('toolsay', `${names.map((n, i) => `${mo.joints.find((j) => j.id === n)?.label || n} ${r.q[i].toFixed(1)}°`).join(', ')}. Pen at ${x.toFixed(1)}, ${y.toFixed(1)} mm${onSheet ? '' : ', off the sheet'}`);
+    if (onSheet) { const v = toView(onPlane(x, y)); if (trailAt.length >= 6) trailAt.push(...trailAt.slice(-3), ...v); else trailAt.push(...v); trail.geometry.dispose(); trail.geometry = new BufferGeometry(); trail.geometry.setAttribute('position', new Float32BufferAttribute(trailAt, 3)); trail.visible = true; }
+  };
+  mode.onchange = () => {
+    spin(false); busy = true;
+    if (mode.checked) { if (cos > 0.7) tilt.rotation.x = 1.15; lastGood = current; say('toolsay', 'Drag the pen across the sheet: the joints follow'); }
+    else { say('toolsay', reachNote); busy = false; }
+  };
+  const press = (e) => { if (!mode.checked || e.button > 0) return false; const p = pointOf(e); if (!p || Math.abs(p[0]) > area.width / 2 || Math.abs(p[1]) > area.height / 2) return false; player.stop(); down = true; follow(p); return true; };
+  const drag = (e) => { if (!down) return false; const p = pointOf(e); if (p) follow(p); return true; };
+  const release = () => { if (!down) return false; down = false; return true; };
+
+  // ---------- playback ----------
+  const lineGeo = new BufferGeometry(), line = new LineSegments(lineGeo, new LineBasicMaterial({ vertexColors: true })); line.visible = false; layer.add(line);
+  const player = (() => {
+    let plan = null, t = 0, playing = false;
+    const fail = (text) => { say('playsay', text, true); $('player').hidden = false; };
+    const seek = (to) => {
+      if (!plan) return;
+      t = Math.min(plan.T, Math.max(0, to));
+      let lo = 0, hi = plan.frames.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (plan.frames[mid].t < t) lo = mid + 1; else hi = mid; }
+      const b = plan.frames[lo], a = plan.frames[Math.max(0, lo - 1)], k = b.t > a.t ? (t - a.t) / (b.t - a.t) : 1;
+      motion.set(names, a.q.map((v, i) => v + (b.q[i] - v) * Math.max(0, Math.min(1, k))));
+      let n = 0, end = plan.ends.length; while (n < end) { const m = (n + end) >> 1; if (plan.ends[m] <= t + 1e-9) n = m + 1; else end = m; }
+      lineGeo.setDrawRange(0, n * 2); lineGeo.computeBoundingSphere(); line.visible = n > 0;
+      $('scrub').value = plan.T ? t / plan.T : 0; $('playat').textContent = `${t.toFixed(1)} of ${plan.T.toFixed(1)} s`; plan.drawn = n;
+      window.rulecadTool && (window.rulecadTool.drawn = n);
+    };
+    const go = (on) => { playing = on && !!plan; $('play').textContent = playing ? 'Pause' : 'Play'; };
+    function load(raw) {
+      let c;
+      try { c = raw && Array.isArray(raw.b) ? raw : compactSteps(raw); } catch (e) { return fail(e.message); }
+      const idx = names.map((n) => c.names.indexOf(n));
+      if (idx.includes(-1)) return fail(`This step file drives ${c.names.join(', ')}, and this machine's joints are ${names.join(', ')}`);
+      const per = idx.map((i) => c.spu[i]), frames = [], state = [...c.start];
+      const qOf = () => idx.map((i, k) => state[i] / per[k]);
+      let time = 0, pen = false; frames.push({ t: 0, q: qOf(), stroke: -1 });
+      for (const r of c.b) {
+        if (r[0] >= 2) { pen = r[0] === 3; time += r[1] / 1000; frames.push({ t: time, q: qOf(), stroke: -1, pen }); continue; }
+        r.slice(3).forEach((s, k) => { state[k] += s; });
+        time += r[1] / 1000; frames.push({ t: time, q: qOf(), stroke: r[0] === 1 ? r[2] : -1, pen });
+      }
+      // The pen's path on each stroke, with the times it's there: each drawn point's moment, by how far along it is
+      const byStroke = new Map();
+      frames.forEach((f, i) => { if (f.stroke < 0) return; if (!byStroke.has(f.stroke)) byStroke.set(f.stroke, []); byStroke.get(f.stroke).push(i); });
+      const tipOf = (i) => fk(chain, frames[i].q).position, segs = [];
+      for (const [stroke, pts, err] of c.drawn) {
+        const ids = byStroke.get(stroke); if (!ids || pts.length < 6) continue;
+        const P3 = []; for (let i = 0; i < pts.length; i += 3) P3.push([pts[i] / 100, pts[i + 1] / 100, pts[i + 2] / 100]);
+        const along = [Math.max(0, ids[0] - 1), ...ids], A = along.map(tipOf), ts = along.map((i) => frames[i].t), lens = [0]; let L = 0;
+        for (let i = 1; i < A.length; i++) { L += Math.hypot(A[i][0] - A[i - 1][0], A[i][1] - A[i - 1][1], A[i][2] - A[i - 1][2]); lens.push(L); }
+        let run = 0, S = 0; const arc = P3.map((p, i) => (i ? (S += Math.hypot(p[0] - P3[i - 1][0], p[1] - P3[i - 1][1], p[2] - P3[i - 1][2])) : 0)), total = arc.at(-1) || 1, time_ = (s) => { const want = (s / total) * L; while (run < lens.length - 2 && lens[run + 1] < want) run++; const span = lens[run + 1] - lens[run] || 1; return ts[run] + ((want - lens[run]) / span) * (ts[run + 1] - ts[run]); };
+        const limit = T.accuracy ?? Math.max(1e-6, ...(err || [1]).map((x) => x / 1000));
+        for (let i = 1; i < P3.length; i++) segs.push({ end: Math.min(time, time_(arc[i])), a: P3[i - 1], b: P3[i], c: errorColour(err ? (err[i - 1] + err[i]) / 2000 : 0, limit) });
+      }
+      segs.sort((a, b) => a.end - b.end);
+      lineGeo.setAttribute('position', new Float32BufferAttribute(segs.flatMap((s) => [...toView(onPlane(...planeXY(s.a))), ...toView(onPlane(...planeXY(s.b)))]), 3));
+      lineGeo.setAttribute('color', new Float32BufferAttribute(segs.flatMap((s) => [...s.c, ...s.c]), 3));
+      plan = { frames, T: time || 1e-3, ends: segs.map((s) => s.end), drawn: 0 };
+      $('player').hidden = false; say('playsay', `${c.name || 'A drawing'}: ${c.drawn.length} line${c.drawn.length === 1 ? '' : 's'}, in its predicted-error colour`);
+      seek(0); go(false);
+      if (!window.rulecadTool) window.rulecadTool = {}; // for the page's tests, and anyone curious
+      window.rulecadTool.segments = segs.length; window.rulecadTool.time = plan.T;
+      spin(false);
+    }
+    return { load, stop: () => go(false), toggle: () => { if (plan && t >= plan.T - 1e-9) seek(0); go(!playing); }, seek, frame: (dt, speed) => { if (!playing) return; seek(t + dt * speed); if (t >= plan.T - 1e-9) { go(false); say('playsay', 'Finished'); } }, ended: () => !!plan && t >= plan.T - 1e-9 };
+  })();
+  $('play').onclick = () => player.toggle();
+  $('scrub').oninput = (e) => { player.stop(); if (window.rulecadTool?.time) player.seek(Number(e.target.value) * window.rulecadTool.time); };
+  const speed = $('speed'); let last = 0;
+  // A step file chosen, or dropped anywhere on the page
+  const openFile = async (file) => { if (!file) return; try { player.load(JSON.parse(await file.text())); } catch (e) { say('playsay', `${file.name} isn't a step file: ${e.message}`, true); $('player').hidden = false; } };
+  $('stepload').onclick = () => $('stepfile').click();
+  $('stepfile').onchange = (e) => openFile(e.target.files[0]);
+  addEventListener('dragover', (e) => e.preventDefault());
+  addEventListener('drop', (e) => { e.preventDefault(); openFile(e.dataTransfer?.files?.[0]); });
+  if (model.steps) player.load(model.steps);
+  window.rulecadTool = Object.assign(window.rulecadTool || {}, { project: (x, y) => { const p = new Vector3(...toView(onPlane(x, y))); turn.localToWorld(p); p.project(camera); const rect = renderer.domElement.getBoundingClientRect(); return [(p.x + 1) / 2 * rect.width + rect.left, (1 - p.y) / 2 * rect.height + rect.top]; }, pen: () => planeXY(tipAt), ended: () => player.ended() });
+  return { press, drag, release, frame: (now) => { if (last) player.frame(Math.min(0.1, (now - last) / 1000), Number(speed.value) || 1); last = now; } };
+}
+
+// ---------- the build page ----------
+// A link as the whole project, beside the model: what to buy, the plates, the wiring sheet, the assembly steps (each
+// showing the model at that step, the new part held off along its way on) and the machine's settings. All of it the
+// link's data, written as text.
+function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
+  const box = $('build'), b = model.build, btn = $('buildbtn');
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const section = (title, ...kids) => { const s = el('section'); s.append(el('h2', null, title), ...kids); return s; };
+  const table = (heads, rows) => { const w = el('div', 'wrap'), t = el('table'), head = el('tr'); head.append(...heads.map((h) => el('th', null, h))); t.append(head); for (const r of rows) { const tr = el('tr'); tr.append(...r.map((c) => { const td = el('td', typeof c === 'number' ? 'num' : null, c == null ? '' : String(c)); return td; })); t.append(tr); } w.append(t); return w; };
+  const trouble = (x) => el('p', 'problem-line', `Couldn't make this part of the page: ${x.error}`);
+  const head = el('div', 'buildhead'), close = el('button', null, 'Close'); head.append(el('h2', null, 'Build'), close);
+  const parts = [head];
+  // What to buy
+  const L = b.list;
+  if (L?.error) parts.push(section('What to buy', trouble(L)));
+  else if (L) {
+    const kids = [];
+    if (L.bought?.length) kids.push(el('h3', null, 'Bought'), table(['Qty', 'Part', 'What', 'Items'], L.bought.map((x) => [x.qty, `${x.set}${x.variant ? ` (${x.variant})` : ''}`, x.part, x.items.join(', ')])));
+    if (L.fasteners?.length) kids.push(el('h3', null, 'Fasteners'), table(['Qty', 'Fastener', 'Where'], L.fasteners.map((x) => [x.qty, x.fastener, x.from.join('; ')])));
+    if (L.wires?.length) kids.push(el('h3', null, 'Wire'), table(['mm', 'Gauge', 'Runs'], L.wires.map((x) => [x.length, x.gauge ?? 'not given', x.runs.join(', ')])));
+    if (L.printed?.length) kids.push(el('h3', null, `Printed (${L.totals.material})`), table(['Grams', 'Minutes', 'Part'], L.printed.map((x) => [x.grams, x.minutes, x.id])));
+    kids.push(el('p', null, `${L.totals.printedGrams} g printed, about ${L.totals.minutes} min of printing, ${L.totals.machineGrams} g as a machine${L.totals.noMassFor ? ` (no mass for ${L.totals.noMassFor.join(', ')})` : ''}.`));
+    parts.push(section('What to buy', ...kids));
+  }
+  // Plates
+  const PL = b.plates;
+  if (PL?.error) parts.push(section('Plates', trouble(PL)));
+  else if (PL) parts.push(section('Plates', ...PL.plates.flatMap((p) => {
+    const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), tag = (n, a) => { const e = document.createElementNS(NS, n); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); return e; };
+    svg.setAttribute('viewBox', `0 0 ${PL.bed} ${PL.bed}`); svg.setAttribute('class', 'bed');
+    for (const q of p.parts) { const r = tag('rect', { x: q.x, y: PL.bed - q.y - q.d, width: q.w, height: q.d, fill: 'rgba(255,255,255,0.12)', stroke: '#b4b4b4', 'stroke-width': 0.6 }), t = tag('title', {}); t.textContent = `${q.id}: ${q.w} × ${q.d} mm`; r.append(t); const lab = tag('text', { x: q.x + q.w / 2, y: PL.bed - q.y - q.d / 2, 'font-size': Math.min(8, q.d * 0.5), 'text-anchor': 'middle', 'dominant-baseline': 'middle' }); lab.textContent = q.id; svg.append(r, lab); }
+    return [el('h3', null, `${p.name} (${p.filament})`), el('p', null, `${p.parts.length} part${p.parts.length === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min`), svg];
+  }), el('p', null, `Parts ${PL.gap} mm apart. Print each with cad export <project>/<plate>.`)));
+  // Wiring
+  if (b.wires?.error) parts.push(section('Wiring', trouble(b.wires)));
+  else if (b.wires?.length) parts.push(section('Wiring', table(['Wire', 'From', 'To', 'mm', 'Gauge', 'Cores', 'Colour', 'Connectors', 'Board pins', 'Carries'], b.wires.map((w) => [w.id, w.from, w.to, w.length, w.gauge ?? '', w.conductors, w.colour ?? '', Array.isArray(w.connectors) ? w.connectors.join(' to ') : w.connectors ?? '', w.pins ?? '', `${Number(w.current.toFixed(2))} A, ${w.why}`]))));
+  // Steps
+  const O = b.order;
+  if (O) {
+    if (O.error) parts.push(section('Assembly', trouble(O)));
+    else if (O.stuck) parts.push(section('Assembly', el('p', 'problem-line', O.stuck.text)));
+    else {
+      const ol = el('ol', 'steps');
+      O.steps.forEach((st, i) => {
+        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map((f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}`).join('; ')));
+        const shown = new Set(O.steps.slice(0, i + 1).flatMap((x) => x.items));
+        but.onclick = () => { const on = view.step?.n === st.n; view.step = on ? null : { n: st.n, shown, now: new Set(st.items), dir: st.dir }; if (!on) spin(false); box.querySelectorAll('ol.steps button').forEach((x) => x.classList.toggle('on', !on && x === but)); apply(); };
+        li.append(but); ol.append(li);
+      });
+      parts.push(section('Assembly', ol));
+    }
+  }
+  // Settings
+  const M = b.machine;
+  if (M?.error) parts.push(section('Machine settings', trouble(M)));
+  else if (M) parts.push(section('Machine settings', el('p', null, `${M.kinematics} machine, tool ${M.tool}, speed ${M.task.speed ?? '?'} mm/s, accuracy ${M.task.accuracy ?? '?'} mm, acceleration ${M.task.accel} mm/s²`), table(['Axis', 'Motor', 'Steps per', 'Range', 'Max steps/s', 'Micro', 'Ratio', 'Homing'], M.axes.map((a) => [a.name, a.model, `${a.stepsPerUnit} per ${a.unit}`, `${a.limits[0]} to ${a.limits[1]} ${a.unit}`, a.maxRate, `1/${a.microsteps}`, a.ratio, a.homing ? `${a.homing.endstop}, ${a.homing.direction > 0 ? '+' : '-'}` : 'none']))));
+  box.replaceChildren(...parts);
+  let panelWas = false; // the parts panel makes way (on a phone, the footer too), and comes back with it
+  const set = (on) => {
+    if (on) panelWas = !$('panel').hidden;
+    box.hidden = !on; if (on) panel(false);
+    if (narrow.matches) foot.hidden = on;
+    if (!on) { if (panelWas) panel(true); view.step = null; box.querySelectorAll('ol.steps button.on').forEach((x) => x.classList.remove('on')); apply(); }
+  };
+  btn.hidden = false; btn.onclick = () => set(box.hidden); close.onclick = () => set(false);
 }
 
 // ---------- the split ----------

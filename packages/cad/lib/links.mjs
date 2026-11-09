@@ -6,8 +6,9 @@ import { fmt } from './rules.mjs';
 import { paths, config } from './workspace.mjs';
 import { host, readJson } from './host.mjs';
 import { pcbEngine } from './design.mjs';
-import { shapes, motionData } from './assembly.mjs';
+import { shapes, motionData, checkAssembly, wireRoutesOf } from './assembly.mjs';
 import { slotOf } from './threemf.mjs';
+import { taskData, stepsData, buildData, ledgerRows } from './buildpage.mjs';
 
 /** The project's filaments: { base: { slot: 1, … }, legend: { slot: 2, … } } in project.json. @param {string} project */
 export const filaments = (project) => readJson(path.join(paths.project(project), 'project.json')).filaments || {};
@@ -53,7 +54,7 @@ export async function objectModel(b, { title, version, src, set, filaments: fil 
 }
 
 /** A built assembly as a model: each shape once and placed (nine keys cost one keycap), its boards' views, its joints. */
-export async function assemblyModel(s, { title, versions, filaments: fil = {}, noRules = false }) {
+export async function assemblyModel(s, { title, versions, filaments: fil = {}, noRules = false, steps }) {
   const placed = shapes(s.parts), list = placed.shapes.length ? placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: triangles(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; }) : [];
   // A pose that sets items' variables draws some parts differently (a flexure bent): each such part's shape in that
   // pose goes in the link as a "pose" part, placed as the part is, to be swapped in when the page shows the pose
@@ -86,6 +87,14 @@ export async function assemblyModel(s, { title, versions, filaments: fil = {}, n
     model.motion.part.push(...alts.map((x) => model.motion.part[x.of]));
     model.motion.swap = {};
     alts.forEach((x, i) => (model.motion.swap[x.pose] ||= []).push([x.of, list.length - alts.length + i]));
+  }
+  // A machine's link carries the rest of the project: its task, a drawing to play, its wires' routes, the build page
+  if (s.wires?.length) model.wires = wireRoutesOf(s);
+  if (s.task || s.wires?.length || s.objects.some((o) => o.bought || o.motor)) {
+    const findings = s.task ? checkAssembly(s) : [];
+    if (s.task && model.motion) { model.task = taskData(s, findings); const carried = stepsData(s, steps); if (carried) model.steps = carried; }
+    Object.assign(model, await buildData(s));
+    if (!noRules && s.task) { const rows = ledgerRows(s, findings); if (rows.length) model.sheet = [...rows, ...(model.sheet ?? [])]; }
   }
   return model;
 }

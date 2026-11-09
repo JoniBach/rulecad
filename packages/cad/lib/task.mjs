@@ -22,7 +22,7 @@ export function taskOf(a, motion, num) {
   const [id, name] = String(t.tool).split('.'), mark = motion.marks.find((m) => m.id === id && m.name === name);
   if (!mark) throw new Error(`${what}: no anchor "${t.tool}" (anchors: ${motion.marks.filter((m) => m.id === id).map((m) => m.name).join(', ') || `no item ${id}`})`);
   const vec = (v) => v.map(num), value = (k) => { if (t[k] == null) return null; const x = num(t[k]); if (!(x > 0)) throw new Error(`${what}: ${k} is above 0 (got ${x})`); return x; };
-  const out = { tool: t.tool, item: id, point: [mark.frame[3], mark.frame[7], mark.frame[11]], speed: value('speed'), accuracy: value('accuracy'), elbow: t.elbow ?? null, deflection: t.deflection != null ? num(t.deflection) : 0 };
+  const out = { tool: t.tool, item: id, point: [mark.frame[3], mark.frame[7], mark.frame[11]], speed: value('speed'), accuracy: value('accuracy'), elbow: t.elbow ?? null, deflection: t.deflection != null ? num(t.deflection) : 0, payload: t.payload != null ? num(t.payload) : null, accel: t.accel != null ? num(t.accel) : null };
   if (t.elbow != null && !['left', 'right'].includes(t.elbow)) throw new Error(`${what}: elbow is left or right (got ${JSON.stringify(t.elbow)})`);
   if (t.sheet) out.sheet = { ...t.sheet, at: vec(t.sheet.at), ...(t.sheet.normal ? { normal: vec(t.sheet.normal) } : {}), ...(t.sheet.u ? { u: vec(t.sheet.u) } : {}) };
   if (t.region) out.region = t.region;
@@ -110,7 +110,8 @@ function terms(s, c) {
   const motion = s.motion, specs = new Map((s.a.joints || []).map((j) => [j.id, j]));
   return c.names.map((id) => {
     const out = [], t = trainFrom(motion, id), d = motion.drives.find((x) => x.joint === t.root), spec = specs.get(id);
-    if (d?.model.stepAngle) { const micro = d.spec.microsteps ?? 16; out.push({ term: 'step', value: d.model.stepAngle / micro / t.ratio, kind: 'spec', note: `${n3(d.model.stepAngle, 3)}° at 1/${micro} step, ${n3(t.ratio, 1)}:1` }); }
+    if (d?.model.stepAngle) { const micro = d.spec.microsteps ?? 16; out.push({ term: 'step', value: t.slide != null ? (d.model.stepAngle / micro) * t.slide : d.model.stepAngle / micro / t.ratio, kind: 'spec', note: `${n3(d.model.stepAngle, 3)}° at 1/${micro} step, ${n3(t.ratio, 1)}:1` }); }
+    const belt = motion.joints.find((x) => x.id === id)?.slide?.stretch; if (belt) out.push({ term: 'belt stretch', value: (belt.load * belt.length) / (belt.k * belt.width), kind: 'estimate', note: `${belt.load} N over ${belt.length} mm` });
     for (const [term, expr] of Object.entries(spec?.errors ?? {})) out.push({ term, value: s.num(expr), kind: kindOf(expr), expr });
     return { joint: id, terms: out, geared: t.stages.length > 0 };
   });

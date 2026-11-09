@@ -114,7 +114,7 @@ export function momentChecks(s, f, helpers, masses, payload) {
       }
       const strength = mat?.strength ?? 30, margin = strength / worstClip.stress, level = margin < 1 ? 'fail' : margin < 2 ? 'warn' : 'pass';
       f(level, `${j.id}: ${say}. ${clips.length} printed clips, the worst (${worstClip.id}) at ${n3(worstClip.stress, 1)} MPa against ${strength} MPa (FE on ${cell} mm cells, an estimate), ${n3(margin, 1)} times over`, level === 'pass' ? null : `${j.id}: clip ${n3(margin, 1)}×`, { code: 'joint.moment', at, refs: { ...refs, clips }, values: { ...values, stress: worstClip.stress, strength, margin } });
-    } else f(s.a.gravity || s.task?.payload != null ? 'warn' : 'info', `${j.id}: ${say}, and nothing named takes it: give the joint a "support" (bearings, or printed clips)`, `${j.id}: no support named`, { code: 'joint.moment', at, refs, values });
+    } else f(s.task && (s.a.gravity || s.task.payload != null) ? 'warn' : 'info', `${j.id}: ${say}, and nothing named takes it: give the joint a "support" (bearings, or printed clips)`, `${j.id}: no support named`, { code: 'joint.moment', at, refs, values });
   }
   return out;
 }
@@ -212,7 +212,7 @@ export function loadChecks(s, f, helpers) {
   if (!motion?.joints?.length || !(s.task || s.a.gravity)) return;
   const masses = massesOf(s, helpers), payload = s.task?.payload ? { kg: s.task.payload, item: motion.items.findIndex((x) => x[0] === s.task.item), point: s.task.point } : null;
   const unknown = masses.filter((m) => !m.known).map((m) => m.id);
-  if (unknown.length) f('warn', `no mass known for ${unknown.join(', ')}: their rule sets give none, so they weigh nothing here`, 'masses unknown', { code: 'joint.moment.mass', refs: { items: unknown } });
+  if (unknown.length && s.task) f('warn', `no mass known for ${unknown.join(', ')}: their rule sets give none, so they weigh nothing here`, 'masses unknown', { code: 'joint.moment.mass', refs: { items: unknown } });
   s.jointLoads = momentChecks(s, f, helpers, masses, payload);
   if (s.task?.payload != null || s.a.gravity) { const d = deflectionChecks(s, f, helpers, masses, payload); if (d && s.a.task?.deflection == null) s.task.deflection = d; }
   accelChecks(s, f, helpers, masses, payload);

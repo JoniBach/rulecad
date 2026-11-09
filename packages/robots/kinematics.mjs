@@ -180,7 +180,7 @@ export function planar2R(l1, l2, opts = {}) {
 /**
  * The serial chain from the root to a named item, from an assembly's motion ({ items, joints } as cad builds it and
  * model-link carries it), without describing the joints again. Fixed joints fold into their neighbours; anything else
- * that is not revolute or prismatic is refused by name, as is a follow whose leader is off the chain.
+ * that is not revolute or prismatic is refused by name. A gearbox's output whose motor is off the chain is a joint of its own.
  * @param {{ items: any[][], joints: any[] }} motion
  * @param {{ tip: string | number, tool?: Vec3 }} opts tip: the item at the end (id or index); tool: a point in its frame
  * @returns {Chain}
@@ -203,10 +203,9 @@ export function chainFromMotion(motion, opts) {
     if (j.type === 'fixed') { carried = mul(carried, mul(j.a, inv(j.b))); continue; }
     if (j.type !== 'revolute' && j.type !== 'prismatic') throw refuse('chain.type', `chainFromMotion: joint ${j.id} is a ${j.type}: a chain takes revolute, prismatic and fixed joints`);
     const out = { name: j.id, type: j.type, a: mul(carried, j.a), b: j.b, limits: [j.dofs[0][0], j.dofs[0][1]] };
-    if (j.follow) {
-      if (!path.some((p) => p.id === j.follow[0])) throw refuse('chain.follow', `chainFromMotion: joint ${j.id} follows ${j.follow[0]}, which is not between the root and ${motion.items[tip][0]}`);
-      out.follow = { joint: j.follow[0], ratio: j.follow[1] ?? 1, offset: j.follow[2] ?? 0 };
-    }
+    // A follower whose leader is on the chain moves with it. A gearbox's output follows a motor's shaft that is off the
+    // chain: to the chain that is a joint of its own (the ratio is the drive's business, read through trainFrom)
+    if (j.follow && path.some((p) => p.id === j.follow[0])) out.follow = { joint: j.follow[0], ratio: j.follow[1] ?? 1, offset: j.follow[2] ?? 0 };
     joints.push(out); carried = I3;
   }
   if (!joints.length) throw refuse('chain.empty', `chainFromMotion: every joint up to "${motion.items[tip][0]}" is fixed: no joints to make a chain from`);

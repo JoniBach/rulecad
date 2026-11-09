@@ -35,11 +35,15 @@ import { ops as booleans } from '@rulecad/shapes';
 import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit, axisOf } from './motors.mjs';
 import { runningChecks, seatFit } from './seats.mjs';
 import { seatSize } from '@rulecad/shapes';
-import { wiresOf, wireChecks, wireRows } from './wires.mjs';
+import { wiresOf, wireChecks, wireRows, wireTubes, wireRoutes } from './wires.mjs';
 import { printedParts } from './list.mjs';
 import { taskOf, taskChecks } from './task.mjs';
 import { powerChecks } from './power.mjs';
+import { loadChecks } from './loads.mjs';
+import { gripChecks } from './grip.mjs';
+import { gaitOf, gaitChecks } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
+import { orderChecks } from './order.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -135,7 +139,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
         const [ref, named] = String(it.object).split(':'), [objName, pin] = ref.split('@'), variant = named || it.variant;
         const d = locate(`${project}/${objName}`), at = { ...(pin ? materialise(d, pin) : d), ...(variant ? { variant } : {}) };
         const b = await build(at, set, opts);
-        built.set(key, { key, objName, b, version: pin || b.object.version, variant, role: ['reference', 'board'].includes(b.object.role) ? 'reference' : 'part' }); // a board is made by a fab: checked, never printed
+        built.set(key, { key, objName, b, version: pin || b.object.version, variant, role: ['reference', 'board'].includes(b.object.role) ? 'reference' : 'part', set: base }); // a board is made by a fab: checked, never printed. set: what it's made with, as printed (not bent by a pose)
       }
     }
     return built.get(key);
@@ -197,7 +201,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     }
     for (const c of copies) { placed.push([it, c]); ids.push(c.id); }
   }
-  const motion = motionOf(a, placed, num, ref), wires = wiresOf(a, placed, motion.joints), task = taskOf(a, motion, num);
+  const motion = motionOf(a, placed, num, ref), wires = wiresOf(a, placed, motion.joints), task = taskOf(a, motion, num), gait = gaitOf(a, motion, num);
   fits.push(...shaftFits(motion.drives, motion.joints, placed.map(([, c]) => c.id)).map((x) => ({ ...x, num })));
   for (const [it, c] of placed) {
     const src = c.src, id = c.id;
@@ -209,7 +213,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       for (const n of sub.seen) seen.add(n);
       items.push({ ...it, id, sub, role: 'part' });
     } else {
-      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}) });
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}) });
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role });
     }
   }
@@ -269,7 +273,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -647,6 +651,8 @@ export function anchorsAt(s, values = s.jointValues) {
 // keyCentres(layout): each key's centre, from lib/layout.mjs (kept under this name for older callers)
 export { keyCentres };
 export const wiresFor = (s) => wireRows(s, { placeItems, jointValues, mul });
+export const wireTubesOf = (s) => wireTubes(s, { placeItems, mul });
+export const wireRoutesOf = (s) => wireRoutes(s, { placeItems, mul });
 
 // ---------- checks ----------
 export { closest };
@@ -863,7 +869,11 @@ export function checkAssembly(s) {
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });
   motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));
   powerChecks(s, f);
+  loadChecks(s, f, { placeItems, jointValues, mul });
+  gripChecks(s, f);
+  gaitChecks(s, f, { jointValues, placeItems, sweepOne: (v) => clashesOf(s.at(v), named) });
   taskChecks(s, f);
+  orderChecks(s, f);
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers

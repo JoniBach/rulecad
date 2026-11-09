@@ -87,6 +87,42 @@ export function wireChecks(s, f, helpers) {
   }
 }
 
+// A route's stations: each anchor as [item, local point]; a path joint in the route is its whole polyline, on its parent
+function stations(s, chain, mul) {
+  const motion = s.motion, out = [], ids = motion.items.map((x) => x[0]);
+  for (const v of chain) {
+    if (typeof v === 'string' && !v.includes('.')) { const j = motion.joints.find((x) => x.id === v); if (j) for (const p of j.path) { const W = mul(j.a, [1, 0, 0, p[0], 0, 1, 0, p[1], 0, 0, 1, p[2]]); out.push([j.parent, W[3], W[7], W[11]]); } continue; }
+    const bits = String(v).split('.'), name = bits.pop(), id = bits.join('.'), m = motion.marks.find((x) => x.id === id && x.name === name);
+    if (m) out.push([ids.indexOf(id), m.frame[3], m.frame[7], m.frame[11]]);
+  }
+  return out;
+}
+const worldOf = (W, [, x, y, z]) => [W[0] * x + W[1] * y + W[2] * z + W[3], W[4] * x + W[5] * y + W[6] * z + W[7], W[8] * x + W[9] * y + W[10] * z + W[11]];
+const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+
+/** Each wire's route as stations a link carries: [[id, [[item, x, y, z], …]]], the item -1 (world) when nothing moves. */
+export function wireRoutes(s, { placeItems, mul }) {
+  const hasJoints = s.motion.joints.length > 0, W = hasJoints ? null : placeItems(s.motion, s.jointValues);
+  return (s.wires || []).map((w) => [w.id, stations(s, [w.from, ...(w.via ?? []), w.to], mul).map((p) => (hasJoints ? p.map((v) => +v.toFixed(3)) : [-1, ...worldOf(p[0] < 0 ? I : W[p[0]], p).map((v) => +v.toFixed(3))]))]);
+}
+
+// A thin square tube along each wire at the assembly's pose, for previews: drawn faint, never a part, so no check sees it
+export function wireTubes(s, { placeItems, mul }) {
+  const worlds = placeItems(s.motion, s.jointValues), r = 0.5, out = [];
+  for (const w of s.wires || []) {
+    const pts = stations(s, [w.from, ...(w.via ?? []), w.to], mul).map((p) => worldOf(p[0] < 0 ? I : worlds[p[0]], p)), tris = [];
+    for (let k = 1; k < pts.length; k++) {
+      const a = pts[k - 1], b = pts[k], d = b.map((c, i) => c - a[i]), l = Math.hypot(...d); if (l < 1e-6) continue;
+      const z = d.map((c) => c / l), side = Math.abs(z[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], x0 = [z[1] * side[2] - z[2] * side[1], z[2] * side[0] - z[0] * side[2], z[0] * side[1] - z[1] * side[0]], m = Math.hypot(...x0), x = x0.map((c) => c / m), y = [z[1] * x[2] - z[2] * x[1], z[2] * x[0] - z[0] * x[2], z[0] * x[1] - z[1] * x[0]];
+      const corner = (o, sx, sy) => o.map((c, i) => c + (sx * x[i] + sy * y[i]) * r), ring = (o) => [corner(o, 1, 1), corner(o, -1, 1), corner(o, -1, -1), corner(o, 1, -1)], A = ring(a), B = ring(b);
+      for (let q = 0; q < 4; q++) { const n = (q + 1) % 4; tris.push([A[q], A[n], B[n]], [A[q], B[n], B[q]]); }
+      tris.push([A[0], A[2], A[1]], [A[0], A[3], A[2]], [B[0], B[1], B[2]], [B[0], B[2], B[3]]);
+    }
+    if (tris.length) out.push({ name: `wire.${w.id}`, role: 'wire', label: `wire ${w.id}`, item: null, triangles: tris });
+  }
+  return out;
+}
+
 // The sheet: each wire, its length, gauge, colour and connectors, in Markdown
 export function wiringSheet(rows) {
   const line = (a) => `| ${a.join(' | ')} |`;

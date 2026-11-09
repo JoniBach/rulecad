@@ -35,7 +35,8 @@ export function motorDrives(a, placed, joints, num) {
     if (id == null) { drives.push({ item: k, id: c.id, model: c.src.motor, spec: it.motor, joint: null }); return; } // on the bench, turning nothing
     const j = joints.find((x) => x.id === id);
     if (!j) throw new Error(`${what}: drives "${id}", which isn't a joint (${joints.map((x) => x.id).join(', ') || 'none'})`);
-    if (j.type !== 'revolute') throw new Error(`${what}: a motor turns a revolute (${j.id} is a ${j.type}): drive the gear, and let the slide follow it`);
+    if (j.type === 'prismatic' && (it.motor.leadscrew || it.motor.belt)) j.slide = slideDrive(it.motor, what, j, num);
+    else if (j.type !== 'revolute') throw new Error(`${what}: a motor turns a revolute (${j.id} is a ${j.type}): drive the gear and let the slide follow it, or give "leadscrew" or "belt"`);
     if (j.follow) throw new Error(`${what}: ${j.id} follows ${j.follow[0]}: a motor drives the joint that leads the train`);
     if (taken.has(id)) throw new Error(`${what}: ${id} is driven by ${taken.get(id)} already: one motor to a joint`);
     taken.set(id, c.id);
@@ -49,6 +50,19 @@ export function motorDrives(a, placed, joints, num) {
     drives.push({ item: k, id: c.id, model, spec: it.motor, joint: id });
   });
   return drives;
+}
+
+// A motor driving a slide directly, through a lead screw or a belt: mm per turn, how much power gets through, and whether
+// it holds with the power off. A screw locks when its lead angle is under its friction angle
+function slideDrive(spec, what, j, num) {
+  if (spec.leadscrew) {
+    const lead = num(spec.leadscrew.lead), d = num(spec.leadscrew.diameter ?? 8), mu = num(spec.leadscrew.friction ?? 0.2), lambda = Math.atan(lead / (Math.PI * d)), phi = Math.atan(mu);
+    if (!(lead > 0)) throw new Error(`${what}: a lead screw's lead is above 0 mm (got ${lead})`);
+    return { kind: 'screw', mmPerTurn: lead, efficiency: Math.tan(lambda) / Math.tan(lambda + phi), locks: lambda < phi ? `the lead screw (its ${n3((lambda * 180) / Math.PI, 1)}° lead is under the ${n3((phi * 180) / Math.PI, 1)}° friction angle)` : null, detail: `a ${lead} mm lead` };
+  }
+  const pitch = num(spec.belt.pitch ?? 2), teeth = num(spec.belt.teeth);
+  if (!(teeth > 0)) throw new Error(`${what}: a belt needs its pulley's "teeth"`);
+  return { kind: 'belt', mmPerTurn: teeth * pitch, efficiency: 0.95, locks: null, detail: `a ${teeth} T pulley`, stretch: spec.belt.stiffness != null ? { k: num(spec.belt.stiffness), width: num(spec.belt.width ?? 6), length: num(spec.belt.length ?? 300), load: num(spec.belt.load ?? 5) } : null };
 }
 
 // The fits a motor brings with it, in the assembly's own shape
@@ -72,6 +86,7 @@ export function loadsOf(a, anchor, num, joints) {
 export function trainFrom(motion, id) {
   const stages = [], meshes = motion.meshes || [];
   let j = motion.joints.find((x) => x.id === id), ratio = 1, efficiency = 1, slide = j.type === 'prismatic' ? 1 : null, locks = null;
+  if (j.slide) return { root: j.id, ratio: 1, efficiency: j.slide.efficiency, stages: [{ joint: j.id, kind: j.slide.kind, ratio: 1, efficiency: j.slide.efficiency }], slide: j.slide.mmPerTurn / 360, locks: j.slide.locks };
   while (j.follow) {
     const [lead, r] = j.follow, m = meshes.find((x) => x.joint === j.id) || meshes.find((x) => x.planetary && (x.members || []).includes(j.id));
     const kind = m?.kind === 'external' ? 'spur' : m?.kind || 'spur';
@@ -191,8 +206,8 @@ export function motorChecks(s, f, helpers, materialName) {
     const mat = material(materialName), rise = fig('temperature_rise');
     if (mat?.softening != null && rise != null) {
       const duty = d.spec.duty != null ? d.spec.duty : 1, room = 25, caseT = room + rise * duty, ok = caseT <= mat.softening, name = mat.name.toUpperCase(), I = fig('rated_current');
-      if (ok) f('pass', `${d.id}'s case reaches at most ${n3(caseT, 1)} °C ${duty < 1 ? `at ${n3(duty * 100, 0)}% duty` : 'at rated current'}, under ${name}'s ${mat.softening} °C`, null, { code: 'motor.heat', at: S });
-      else { const k = Math.sqrt((mat.softening - room) / (rise * duty)); f('warn', `${d.id}'s case can reach ${n3(caseT, 1)} °C at rated current, past where ${name} softens (${mat.softening} °C). Set the driver to ${I ? `${n3(I * k, 2)} A` : `${n3(k * 100, 0)}% of its current`} (${n3(k * 100, 0)}% of the torque), or print the mount in a material that takes it`, `${d.id}: mount will soften`, { code: 'motor.heat', at: S, values: { case: caseT, softening: mat.softening } }); }
+      if (ok) f('pass', `${d.id}'s case reaches at most ${n3(caseT, 1)} °C ${duty < 1 ? `at ${n3(duty * 100, 0)}% duty` : 'at rated current'}, under ${name}'s ${mat.softening} °C`, null, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } });
+      else { const k = Math.sqrt((mat.softening - room) / (rise * duty)); f('warn', `${d.id}'s case can reach ${n3(caseT, 1)} °C at rated current, past where ${name} softens (${mat.softening} °C). Set the driver to ${I ? `${n3(I * k, 2)} A` : `${n3(k * 100, 0)}% of its current`} (${n3(k * 100, 0)}% of the torque), or print the mount in a material that takes it`, `${d.id}: mount will soften`, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } }); }
     }
   }
 }
