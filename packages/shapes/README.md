@@ -50,6 +50,31 @@ const window = gabled([-1, 1], [-1, 4], [10, 13]);                              
 - `diamond(size, axis, length)`: a square hole turned 45 degrees, for small holes in upright walls.
 - `vents({ count, width, pitch, length, depth })`: slots side by side along x.
 
+## Seats for bought parts
+
+The printed side of a bearing or a shaft. Each one prints without supports in the orientation it is drawn for, and takes
+its sizes from rules: the bearing's from its rule set, the fit from the printer's (`hole_comp`, `fit`, `press`, `slip`).
+
+```js
+import { bearingSeat, seatSize, plainBearing, shaftShoulder, clipGroove } from '@rulecad/shapes'
+
+const seat = bearingSeat(v['608'], { fit: 'press', printer: v.x1c, at: [0, 0, 12], into: '-z', through: true, relief: 5 })
+seat.seat.pocket                                     // 22.05: the diameter as drawn; clearance -0.05 once printed
+plainBearing(8, { length: 10, printer: v.x1c, at: [0, 0, 10], into: '-z', through: true })    // a bore to subtract
+plainBearing(8, { length: 10, wall: 2, printer: v.x1c })                                      // a bush, standing up, to add
+shaftShoulder(8, { shoulder: 12, height: 3, at: [0, 0, 20] })                                 // a collar: flat top, 45 degree underside
+clipGroove(8, { width: 1, depth: 0.5, at: [0, 0, 30] })                                       // a groove: flat lower face, sloped top
+```
+
+| Figure | How it is worked out |
+|---|---|
+| Pocket, as drawn | outer + `hole_comp` - `press` (or + `slip`, or + a clearance you give, in mm across) |
+| Ledge (`lip`) | a quarter of the races' radial depth by default, so it carries the outer race only; at most half |
+| Plain bore, as drawn | shaft + 2 × clearance + `hole_comp`, the clearance being the printer's `fit` each side by default |
+
+`press` and `slip` are estimates until they are measured with the seats coupon in the bench project: print it once per
+filament, press a bearing into each pocket, and write the one that holds without cracking into the printer's rules.
+
 ## Print-aware features
 
 Holes, pockets and ribs drawn so they print without supports with the part lying as drawn (z up from the bed).

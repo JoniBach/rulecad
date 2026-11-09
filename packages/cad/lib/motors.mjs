@@ -89,7 +89,7 @@ function trainFrom(motion, id) {
 
 // World axis of a joint and the world position of a point on an item
 const rowsAt = (W, p) => [0, 1, 2].map((k) => W[4 * k] * p[0] + W[4 * k + 1] * p[1] + W[4 * k + 2] * p[2] + W[4 * k + 3]);
-const axisOf = (motion, worlds, j, mul) => { const P = j.parent < 0 ? j.a : mul(worlds[j.parent], j.a); return { O: [P[3], P[7], P[11]], Z: [P[2], P[6], P[10]] }; };
+export const axisOf = (motion, worlds, j, mul) => { const P = j.parent < 0 ? j.a : mul(worlds[j.parent], j.a); return { O: [P[3], P[7], P[11]], Z: [P[2], P[6], P[10]] }; };
 const sub = (a, b) => a.map((x, i) => x - b[i]), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 

@@ -55,9 +55,9 @@
       "rule": "Twenty-five layers"
     },
     "bore": {
-      "value": 3,
+      "value": "2.79 + 2 * x1c.fit + x1c.hole_comp",
       "unit": "mm",
-      "rule": "On a 2.79 mm printed pin"
+      "rule": "Runs on a 2.79 mm printed pin: the printer's fit each side, and what a printed hole comes out small by"
     },
     "dots": {
       "value": 1,

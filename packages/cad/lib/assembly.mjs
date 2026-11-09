@@ -32,7 +32,8 @@ import { keys as keyCentres, readLayout, hasLayout } from './layout.mjs';
 import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatrix } from '@rulecad/model-link';
 import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact, wormModel, wormMesh, bevelModel, bevelMesh, compoundEfficiency } from '@rulecad/gears';
 import { ops as booleans } from '@rulecad/shapes';
-import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit } from './motors.mjs';
+import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit, axisOf } from './motors.mjs';
+import { runningChecks } from './seats.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -834,6 +835,7 @@ export function checkAssembly(s) {
       }
     }
   }
+  runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));
   // Plates print everything: no references
   if (s.a.kind === 'plate') {

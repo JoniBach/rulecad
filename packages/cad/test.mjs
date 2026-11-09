@@ -1242,3 +1242,20 @@ test('engage: a sleeve seated over a post passes; resting on the post\'s end, to
     assert.match(cad('check', 'shaft/pair'), /✓ Sleeve over the post: 4 mm on along their joint/);
   } finally { done(); }
 });
+
+test('joint.running: a child turning on a printed pin, against the printer\'s fit, less what a bore prints small by', async () => {
+  const { runningGap } = await import('./lib/seats.mjs');
+  const jscad = (await import('@jscad/modeling')).default, { cylinder } = jscad.primitives, { subtract } = jscad.booleans, { geom3 } = jscad.geometries;
+  const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
+  const pin = (d, z0 = 0, z1 = 8) => tris(cylinder({ radius: d / 2, height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: 64 }));
+  const ring = (bore, od, z0, z1) => tris(subtract(cylinder({ radius: od / 2, height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: 64 }), cylinder({ radius: bore / 2, height: z1 - z0 + 2, center: [0, 0, (z0 + z1) / 2], segments: 64 })));
+  const g = runningGap(pin(2.79), ring(3, 12, 1, 6));
+  assert.ok(Math.abs(g.gap - 0.105) < 0.005, `the gear card's pegs: ${g.gap}`);
+  assert.equal(g.pinOn, 'a');
+  assert.ok(Math.abs(g.length - 5) < 1, 'as far as they share');
+  const round = runningGap(ring(3, 12, 1, 6), pin(2.79));
+  assert.equal(round.pinOn, 'b', 'either way round');
+  assert.equal(runningGap(pin(2.79), ring(8, 12, 1, 6)), null, 'room, not a running fit');
+  assert.equal(runningGap(pin(2.79, 0, 1), ring(3, 12, 2, 6)), null, 'nothing shared along the axis');
+  assert.equal(runningGap(ring(3, 12, 0, 5), ring(3, 12, 0, 5)), null, 'two bores: nothing turns on a pin');
+});
