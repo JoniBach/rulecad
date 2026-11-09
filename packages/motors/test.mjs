@@ -82,7 +82,7 @@ test('the D-bore takes its shaft, and the flat turns the part: round where the r
   }
   // deeper than the flat: the mouth is round, so the shaft's round root goes in
   const n = motorModel('nema17'), b = boreModel(n, { depth: 20 });
-  assert.equal(b.flatFrom, 5); assert.ok(!b.findings.some((f) => f.code === 'bore.depth'));
+  assert.equal(b.flatFrom, 5); assert.equal(boreModel(n, { depth: 8, tip: 20 }).flatFrom, 5, 'the tip past the far side'); assert.ok(!b.findings.some((f) => f.code === 'bore.depth'));
   assert.ok(boreModel(n, { depth: 30 }).findings.some((f) => f.code === 'bore.depth'), 'past the shaft');
   assert.ok(boreModel(n, { depth: 3 }).findings.some((f) => f.code === 'bore.grip'), 'too little of it');
   const press = boreModel(n, { depth: 10, fit: 'press' }), slide = boreModel(n, { depth: 10 });
@@ -135,4 +135,11 @@ test('the README\'s example runs as written and prints what the README says', as
   const file = new URL('./.readme-example.mjs', import.meta.url);
   fs.writeFileSync(file, js);
   try { assert.equal(execFileSync(process.execPath, [(await import('node:url')).fileURLToPath(file)], { encoding: 'utf8' }).replace(/\r\n/g, '\n'), expected); } finally { fs.rmSync(file); }
+});
+
+test('the curve is what performance says, with the working point and the load on it', async () => {
+  const { curve } = await import('@rulecad/motors/diagram');
+  const svg = curve(motorModel('nema17'), { ratio: 38, efficiency: 0.47, at: { speed: 8, load: 0.735 } });
+  assert.match(svg, /through 38:1/); assert.match(svg, /the load, 0\.73 N m/); assert.match(svg, /7\.45? N m at 8 rpm/);
+  assert.ok(svg.startsWith('<svg')); assert.match(svg, /rests on spec/);
 });

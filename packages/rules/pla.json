@@ -6,6 +6,7 @@
     "modulus_z": {"value": 2160, "unit": "MPa", "rule": "Young's modulus across the layers (z), ± 90", "kind": "spec", "source": "Bambu Lab PLA Basic technical data sheet V2.0 (ISO 527)", "checked": "2026-10-27"},
     "strength": {"value": 39, "unit": "MPa", "rule": "Tensile strength along the layers (x-y), ± 2", "kind": "community", "source": "Bambu Lab PLA Basic technical data sheet V2.0 (ISO 527), as quoted by resellers: check the current sheet", "checked": "2026-10-27"},
     "poisson": {"value": 0.36, "rule": "Poisson's ratio (Bambu publish none)", "kind": "estimate", "source": "Typical for PLA; Farah, Anderson, Langer (2016), Physical and mechanical properties of PLA, Advanced Drug Delivery Reviews 107", "checked": "2026-10-27"},
-    "density": {"value": 1.26, "unit": "g/cm³", "rule": "Density of the filament", "kind": "spec", "source": "Bambu Lab PLA Basic technical data sheet V2.0", "checked": "2026-10-27"}
+    "density": {"value": 1.26, "unit": "g/cm³", "rule": "Density of the filament", "kind": "spec", "source": "Bambu Lab PLA Basic technical data sheet V2.0", "checked": "2026-10-27"},
+    "softening": { "value": 57, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa: where a part under a little load starts to creep", "kind": "spec", "source": "Bambu PLA Basic Technical Data Sheet, ISO 75 at 0.45 MPa, https://cdn.shopify.com/s/files/1/0380/5149/files/Bambu_PLA_Basic_Technical_Data_Sheet.pdf", "checked": "2026-11-08" }
   }
 }

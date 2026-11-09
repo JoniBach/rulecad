@@ -1,18 +1,24 @@
 {
   "name": "@rulecad/motors",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Motors for printed machines: steppers, DC gear motors, servos and brushless motors from their datasheets, as models with sourced figures, solids to place in an assembly, the mounts and D-bores a part takes for them, and what torque and speed reach the output.",
   "type": "module",
   "exports": {
     ".": {
       "types": "./motors.d.mts",
       "default": "./motors.mjs"
+    },
+    "./diagram": {
+      "types": "./diagram.d.mts",
+      "default": "./diagram.mjs"
     }
   },
   "types": "./motors.d.mts",
   "files": [
     "motors.mjs",
+    "diagram.mjs",
     "motors.d.mts",
+    "diagram.d.mts",
     "README.md",
     "LICENSE"
   ],

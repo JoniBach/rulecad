@@ -98,5 +98,7 @@ motor's limit is a `motor.speed` failure.
 | Brushless | T = K_t I, K_t = 60 / (2π KV) | The motor constant in SI units: K_t = K_e |
 | Through gears | T_out = T ratio η, n_out = n / ratio | |
 
+`curve(model, { ratio, efficiency, at: { speed, load } })` from `@rulecad/motors/diagram` draws the torque against speed, as an SVG, with a working point and its load marked.
+
 A stepper's real curve is on its datasheet when the maker gives one; the kit doesn't have one for any motor yet, says so
 in `how`, and the straight model is on the cautious side of most motors but not all of them. Measure yours.

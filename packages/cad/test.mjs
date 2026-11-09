@@ -906,6 +906,72 @@ function replay(doc, ws) {
   return { text, files, commands };
 }
 
+test('a motor in an assembly: on the axis of its joint, torque reaching a load, holding on and off, a shaft read from its bore', () => {
+  const { ws, cad, done } = workspace();
+  const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  const findings = (a) => { const out = cad('check', `home/${a}`, '--json'), r = JSON.parse(out); assert.ok(r.findings, out); return r.findings.filter((x) => /^(motor|shaft)\./.test(x.code)); };
+  const code = (list, c) => list.filter((x) => x.code === c);
+  try {
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['arm', 'hub'] });
+    write('projects/home/objects/arm.json', { name: 'arm', version: '0.1.0', anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] }, tip: { at: [100, 0, 0], axis: [0, 0, 1] } }, variables: { long: { value: 110, unit: 'mm', rule: 'The arm' } } });
+    write('projects/home/objects/arm.js', "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, 6, 4], center: [v.long / 2 + 12, 0, 40] }) }\n");
+    write('projects/home/objects/hub.json', { name: 'hub', version: '0.1.0', engine: 'manifold', anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } }, variables: { wall: { value: 4, unit: 'mm', rule: 'The wall', tweak: { min: 1, max: 20 } }, depth: { value: 12, unit: 'mm', rule: 'The bore' }, flat: { value: 1, rule: 'Cut the flat', tweak: { min: 0, max: 1 } }, press: { value: 0, rule: 'Press fit', tweak: { min: 0, max: 1 } }, comp: { value: 0.1, unit: 'mm', rule: 'How much the printed hole shrinks', tweak: { min: -0.2, max: 0.2 } } } });
+    write('projects/home/objects/hub.js', "import jscad from '@jscad/modeling'\nconst { cylinder } = jscad.primitives\nexport function main (v) {\n  const m = v.motors.motorModel('nema17'), hole = v.flat ? v.motors.bore(m, { depth: v.depth, tip: v.depth, fit: v.press ? 'press' : 'slide', printer: { hole_comp: v.comp } }, v.ops) : cylinder({ radius: 2.65, height: v.depth + 1, center: [0, 0, v.depth / 2], segments: 48 })\n  return v.ops.subtract(cylinder({ radius: 2.5 + v.wall, height: v.depth, center: [0, 0, v.depth / 2], segments: 48 }), hole)\n}\n");
+    const arm = (motor, extra = {}) => ({ title: 'Arm', kind: 'fit', items: [{ id: 'm', motor: { model: 'nema17', drives: 'j', ...motor }, at: [0, 0, 0], rotate: [-90, 0, 0] }, { id: 'arm', object: 'arm' }], joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'arm.axis' }], ...extra });
+    // on the axis, or said not to be
+    write('projects/home/assemblies/off.json', { ...arm({}), items: [{ id: 'm', motor: { model: 'nema17', drives: 'j' }, at: [3, 0, 0], rotate: [-90, 0, 0] }, { id: 'arm', object: 'arm' }] });
+    assert.equal(code(findings('off'), 'motor.axis')[0].level, 'fail');
+    // a kilogram 100 mm out is 0.98 N m, more than the motor's 0.417 moving: failed, with the ratio that would do
+    write('projects/home/assemblies/heavy.json', arm({}, { loads: [{ mass: 1, at: 'arm.tip' }] }));
+    const heavy = findings('heavy'), t = code(heavy, 'motor.torque')[0];
+    assert.equal(t.level, 'fail'); assert.match(t.text, /A ratio of [\d.]+:1 would give it 2 times/);
+    assert.ok(Math.abs(t.values.needed - 0.980665) < 0.01, `${t.values.needed} N m at the worst angle`);
+    assert.ok(code(heavy, 'motor.holds').some((x) => x.level === 'fail'), 'it slips with the power on, too');
+    // a tenth of that passes; it holds powered, and says it drops unpowered, past the detent torque
+    write('projects/home/assemblies/light.json', arm({}, { loads: [{ mass: 0.15, at: 'arm.tip' }] }));
+    const light = findings('light'), h = code(light, 'motor.holds');
+    assert.equal(code(light, 'motor.torque')[0].level, 'pass');
+    assert.ok(h.some((x) => x.level === 'warn' && /drops with the power off/.test(x.text)), h.map((x) => x.text).join('\n'));
+    assert.ok(h.some((x) => x.level === 'pass' && /holds with the power on/.test(x.text)));
+    // a brake on the joint holds it
+    write('projects/home/assemblies/braked.json', { ...arm({}, { loads: [{ mass: 0.15, at: 'arm.tip' }] }), joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'arm.axis', brake: 'a ratchet and pawl' }] });
+    assert.ok(code(findings('braked'), 'motor.holds').some((x) => x.level === 'pass' && /a ratchet and pawl/.test(x.text)));
+    // heat: a stepper's 105 °C against PLA's 57, and the current to set
+    assert.match(code(light, 'motor.heat')[0].text, /Set the driver to [\d.]+ A/);
+    // a shaft read from its bore
+    const hub = (name, set, fit = true) => write(`projects/home/assemblies/${name}.json`, { title: 'Hub', kind: 'fit', items: [{ id: 'm', motor: { model: 'nema17', drives: 'j' } }, { id: 'hub', object: 'hub', set }], joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 12], axis: [0, 0, 1] }, child: 'hub.axis' }], fits: [{ a: 'm', b: 'hub', shaft: fit }] });
+    hub('good', {});
+    assert.ok(code(findings('good'), 'shaft.grip').some((x) => x.level === 'pass'), JSON.stringify(findings('good')));
+    hub('round', { flat: 0 });
+    assert.match(code(findings('round'), 'shaft.flat')[0].text, /bore is round and the shaft has a flat/);
+    hub('thin', { wall: 1, press: 1, comp: -0.1 }, 'press');
+    assert.ok(code(findings('thin'), 'shaft.hoop').some((x) => x.level === 'fail'), JSON.stringify(findings('thin')));
+    hub('thick', { wall: 4, press: 1 }, 'press');
+    assert.ok(code(findings('thick'), 'shaft.hoop').some((x) => x.level === 'pass'), JSON.stringify(findings('thick')));
+    // refusals by name
+    write('projects/home/assemblies/nojoint.json', arm({ drives: 'nope' }));
+    assert.match(cad('check', 'home/nojoint'), /drives "nope", which isn't a joint/);
+    write('projects/home/assemblies/two.json', { ...arm({}), items: [{ id: 'm', motor: { model: 'nema17', drives: 'j' } }, { id: 'n', motor: { model: 'nema17', drives: 'j' } }, { id: 'arm', object: 'arm' }] });
+    assert.match(cad('check', 'home/two'), /driven by m already/);
+    write('projects/home/assemblies/nomotor.json', arm({ model: 'nema99' }));
+    assert.match(cad('check', 'home/nomotor'), /no motor "nema99"/);
+  } finally { done(); }
+});
+
+test('a motor drives a joint in its own steps; a servo brings its range, and refuses more', async () => {
+  const { motorDrives } = await import('./lib/motors.mjs'), { motorModel } = await import('@rulecad/motors');
+  const item = (model, drives) => [{ motor: { model, drives } }, { id: 'm', src: { motor: motorModel(model) } }];
+  const stepper = { id: 'j', type: 'revolute', dofs: [[-180, 180, 0]] };
+  motorDrives({ joints: [{ id: 'j' }] }, [item('28byj48', 'j')], [stepper], (x) => x);
+  assert.equal(stepper.step, 5.625 / 64);
+  const servo = { id: 'j', type: 'revolute', dofs: [[-180, 180, 0]] };
+  motorDrives({ joints: [{ id: 'j' }] }, [item('sg90', 'j')], [servo], (x) => x);
+  assert.deepEqual(servo.dofs[0], [-90, 90, 0]);
+  assert.throws(() => motorDrives({ joints: [{ id: 'j', min: -120, max: 120 }] }, [item('sg90', 'j')], [{ id: 'j', type: 'revolute', dofs: [[-120, 120, 0]] }], (x) => x), /turns 180°/);
+  assert.throws(() => motorDrives({ joints: [{ id: 'j' }] }, [item('sg90', 'j')], [{ id: 'j', type: 'prismatic', dofs: [[0, 1, 0]] }], (x) => x), /a motor turns a revolute/);
+  assert.throws(() => motorDrives({ joints: [{ id: 'j' }] }, [item('sg90', 'j')], [{ id: 'j', type: 'revolute', follow: ['k', 1, 0], dofs: [[0, 1, 0]] }], (x) => x), /leads the train/);
+});
+
 test('the tutorial: every file and command in TUTORIAL.md works as written, in a workspace npm create rulecad makes', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tutorial-')), ws = path.join(root, 'my-designs');
   try {
@@ -945,6 +1011,17 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(winder, /the carrier drives the sun and the planets \(the ring held\): 4 turns of the sun for each turn of the carrier, the same way/, 'the planetary: four turns a crank');
     assert.doesNotMatch(winder, /✗/, winder);
     assert.match(run(ws, ['check', 'home/winder', '--sweep', '--steps', '24']).out, /sweep crank, -180 to 180° in 24 steps: nothing collides/);
+    const driven = run(ws, ['check', 'home/driven']).out;
+    assert.match(driven, /drive: 28byj48, 30 g, drives pinion, 0\.0879° a step/, 'the motor');
+    assert.match(driven, /drive into slide: [\d.]+ N there against 1 N needed .*rests on community figures/, 'the torque, and what it rests on');
+    assert.match(driven, /slide holds with the power off/);
+    assert.doesNotMatch(driven, /✗/, driven);
+    assert.match(run(ws, ['check', 'home/driven', '--sweep', '--steps', '12']).out, /sweep pinion, -180 to 180° in 12 steps: nothing collides/);
+    const shoulder = run(ws, ['check', 'home/shoulder']).out;
+    assert.match(shoulder, /the second ring turns 0\.02632 of the sun's turn, the other way \(38:1/, 'the compound planetary');
+    assert.match(shoulder, /motor into out: 7\.442 N m there against 0\.735 N m needed/, 'the worst of its range, from a mass on the output');
+    assert.match(shoulder, /out holds with the power off: the gears/);
+    assert.doesNotMatch(shoulder, /✗/, shoulder);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

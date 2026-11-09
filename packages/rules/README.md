@@ -31,7 +31,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `m1_6`, `m3` | M1.6 and M3 screws for motor faces | 3 each |
 | `rp2040` | The RP2040 microcontroller: which package pins carry which GPIO | 2 |
 | `dial-indicator` | A dial indicator with a plunger, for measuring small movements | 2 |
-| `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them | 5, 6 |
+| `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them | 6, 7 |
 | `al6061`, `al7075`, `s275`, `ss304`, `ti64` | Aluminium 6061-T6 and 7075-T6, structural steel S275, stainless 304, titanium Ti-6Al-4V, for analysis | 4 or 5 each |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such

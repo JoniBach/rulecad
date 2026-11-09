@@ -411,3 +411,20 @@ test('a stage passes on its share of the power: per mesh, two in a planetary, a 
   assert.throws(() => stageEfficiency('chain'), /no kind of stage "chain"/);
   assert.throws(() => stageEfficiency('spur', { efficiency: 2 }), /from 0 to 1/);
 });
+
+test('a compound planetary: stepped planets on two rings, one centre distance, the ratio by Willis, all in phase', async () => {
+  const { compoundPlanetary, compoundRatio, compoundEfficiency, mesh, gearModel, internalModel } = await import('@rulecad/gears');
+  // by hand: sun 18, planets 18/21, rings 54/57: the carrier turns 18/72 of the sun, and the ring 1 - (54 × 21)/(18 × 57) of the carrier
+  near(compoundRatio({ sun: 18, planet: 18, planet2: 21, ring: 54, ring2: 57 }), 4 / (1 - (54 * 21) / (18 * 57)), 1e-12, 'Willis, twice');
+  near(compoundRatio({ sun: 18, planet: 18, planet2: 21, ring: 54, ring2: 57 }), -38, 0.02, 'about 38:1, the other way');
+  const { best: b, findings } = compoundPlanetary({ module: 1, ratio: -38, planets: 3, size: 75 });
+  assert.equal(b.ring2.teeth - b.ring.teeth, b.planet2.teeth - b.planet.teeth, 'the rings differ as the planets do, so one centre distance serves both');
+  for (const t of [b.sun.teeth, b.planet.teeth, b.planet2.teeth, b.ring.teeth, b.ring2.teeth]) assert.equal(t % 3, 0, `${t} is a multiple of the planets`);
+  near(mesh(b.planet2.model, b.ring2.model).centre, b.centre, 1e-9, 'one centre distance');
+  assert.ok(Math.abs(b.ratio + 38) / 38 < 0.05, `${b.ratio}`);
+  assert.ok(!findings.some((x) => x.level === 'fail'), findings.filter((x) => x.level === 'fail').map((x) => x.text).join('\n'));
+  // a high ratio is much less efficient than its gears look
+  assert.ok(compoundEfficiency({ planet: 18, planet2: 21, ring: 54, ring2: 57 }) < 0.5);
+  assert.throws(() => compoundPlanetary({ module: 1, ratio: 0.5 }), /more than 1/);
+  assert.throws(() => compoundPlanetary({ module: 1, ratio: 50, size: 10 }), /no teeth put together within a rim of 10/);
+});

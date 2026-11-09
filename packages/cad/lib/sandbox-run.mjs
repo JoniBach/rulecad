@@ -5,6 +5,7 @@ import path from 'node:path';
 import * as shapes from '@rulecad/shapes';
 import * as flexures from '@rulecad/flexures';
 import * as gears from '@rulecad/gears';
+import * as motors from '@rulecad/motors';
 import { named, faces, unpack, watch } from './parts.mjs';
 import { lineOf } from './errors.mjs';
 
@@ -28,7 +29,7 @@ console.log = console.info = console.debug = (...a) => console.error(...a);
 try {
   const mod = await import(js);
   if (typeof mod.main !== 'function') throw Object.assign(new Error('the design has no exported main(v)'), { code: 'design.main' });
-  const { v, read } = watch(values, { shapes, flexures, gears, ops: await shapes.ops(engine || 'jscad') }, optional);
+  const { v, read } = watch(values, { shapes, flexures, gears, motors, ops: await shapes.ops(engine || 'jscad') }, optional);
   const { shapes: made, mechanism } = unpack(await mod.main(v));
   const parts = named(made, meta).map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) }));
   done({ parts, read: [...read], ...(mechanism ? { mechanism } : {}), ...(Object.keys(kept).length ? { stages: kept } : {}) });
