@@ -1,0 +1,92 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "servo-stand",
+  "title": "SG90 stand",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A solid block with a pocket from the top for an SG90: the first layer is one plain rectangle. Lie it on its side and clamp the flange to read stall torque off a scale.",
+  "variables": {
+    "long": {
+      "value": 38,
+      "unit": "mm",
+      "rule": "Round the SG90's 32.3 mm tabs"
+    },
+    "wide": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Round its 12.2 mm case"
+    },
+    "body": {
+      "value": 22.7,
+      "unit": "mm",
+      "rule": "The case, length"
+    },
+    "across": {
+      "value": 12.2,
+      "unit": "mm",
+      "rule": "The case, width"
+    },
+    "fit": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "All round: SG90 clones vary"
+    },
+    "depth": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "Its 17 mm below the tabs, and a little"
+    },
+    "floor": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Under the pocket"
+    },
+    "corner": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Corners rounded"
+    },
+    "flange": {
+      "value": 66,
+      "unit": "mm",
+      "rule": "The first layer, long enough for a G-clamp each side"
+    },
+    "flange_t": {
+      "value": 2.4,
+      "unit": "mm",
+      "rule": "Twelve layers"
+    },
+    "spacing": {
+      "value": 27.5,
+      "unit": "mm",
+      "rule": "Between the tabs' holes"
+    },
+    "pilot": {
+      "value": 1.7,
+      "unit": "mm",
+      "rule": "For the screws that come with it"
+    },
+    "pilot_depth": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "Their length"
+    },
+    "window": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "A window at the floor for the wires, narrow enough to bridge"
+    },
+    "window_h": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Its height"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

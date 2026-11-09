@@ -1,0 +1,101 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "rig-wheel",
+  "title": "Mesh rig: wheel",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The 42-tooth wheel, flat on the bed; its lever screws to the bed face, which goes outermost.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        "width + gap"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "top": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The shoulder's"
+    },
+    "teeth": {
+      "value": 42,
+      "rule": "Three times the pinion"
+    },
+    "backlash": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Change to the card's winner",
+      "tweak": {
+        "min": 0,
+        "max": 0.5
+      }
+    },
+    "width": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The gear"
+    },
+    "bore": {
+      "value": 5.4,
+      "unit": "mm",
+      "rule": "On a 5 mm printed pin: change to the fit bar's winner"
+    },
+    "gap": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Clear of the plate"
+    },
+    "pilot": {
+      "value": 2.9,
+      "unit": "mm",
+      "rule": "An M3 screw, self-tapped"
+    },
+    "bolt": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Each side of the bore, along the lever"
+    },
+    "pilot_depth": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Into the 6 mm gear"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

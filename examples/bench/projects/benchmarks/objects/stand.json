@@ -1,0 +1,93 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "stand",
+  "title": "Motor stand",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A plate and a foot: clamp the foot to a table edge and the motor bolts to the back of the plate, its shaft sticking out over the edge. The dial, the mesh rig and the shoulder bolt to the front, on the same four holes. Prints on its front face, as a plain rectangle.",
+  "anchors": {
+    "face": {
+      "at": [
+        0,
+        0,
+        "plate"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "front": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "width": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "Round the NEMA 17's 42 mm, with a margin for its screws"
+    },
+    "height": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "As wide"
+    },
+    "plate": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Enough for M3 screws, 1.5 × their size"
+    },
+    "corner": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Corners rounded so they stay down"
+    },
+    "foot": {
+      "value": 70,
+      "unit": "mm",
+      "rule": "Reaches back under the motor's 40 mm body, for a G-clamp behind it"
+    },
+    "wall": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "The foot"
+    },
+    "rib": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Gussets each side of the plate, at 45°, so they print"
+    },
+    "rib_wide": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Each gusset"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

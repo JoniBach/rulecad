@@ -211,6 +211,10 @@ export function check(polys, printer, { eps = 1e-3, parts = null, slice = true }
     // further apart there than the gap that prints apart higher up, or they print as one)
     const firstGap = printer.foot > 0 && printer.print_gap > 0 ? printer.print_gap + 2 * printer.foot : 0;
     const sliced = islands(tris, { layer: printer.layer ?? 0.2, overhang: printer.overhang, line: printer.line ?? LINE, firstGap }), isl = sliced.islands;
+    // A big part whose first layer is mostly thin strips (bars, spokes, a skeleton) lifts and curls where a plain
+    // footprint would stick. A small part (a gear) is allowed its small shapes.
+    const { lo: lo0, hi: hi0 } = bounds(tris), across = Math.max(hi0[0] - lo0[0], hi0[1] - lo0[1]);
+    if (across > FIRST_LARGE && sliced.firstThin > FIRST_THIN) f('warn', `${mm(sliced.firstThin * 100)}% of the first layer is strips under ${FIRST_STRIP} mm wide on a part ${mm(across)} mm across: they lift and curl. Make the footprint smaller and solid, and take material out above the first layer`, 'print.first-layer.thin', { share: sliced.firstThin });
     for (const x of sliced.fused) f('warn', `on the first layer, two parts are about ${mm(x.gap)} mm apart at (${mm(x.at[0])}, ${mm(x.at[1])}): the first layer spreads ${printer.foot} mm each side as it is squashed on, so under ${mm(firstGap)} mm they print as one. Keep them ${mm(firstGap)} mm apart on the bed, or lift one off it`, 'print.first-layer', { gap: x.gap, need: firstGap }, { lo: [x.at[0] - 1, x.at[1] - 1, 0], hi: [x.at[0] + 1, x.at[1] + 1, printer.layer ?? 0.2] });
     if (firstGap && !sliced.fused.length) f('pass', `on the first layer, nothing printed in place stands within ${mm(firstGap)} mm of another part (the first layer spreads ${printer.foot} mm each side)`, 'print.first-layer', { need: firstGap });
     // Overhang as the printer meets it: layers lying out past the one below, less the flat undersides the bridge check
@@ -293,6 +297,7 @@ function spans(polys, held, under) {
 // seams(polys) -> { gaps, tjunctions, hairlines }: edges not matched by a reverse edge, split into T-junctions (covered
 // all along by reverse edges on the same line, or lying along a longer reverse edge), hairlines (within HAIRLINE of
 // another face) and real gaps.
+const FIRST_STRIP = 4, FIRST_LARGE = 80, FIRST_THIN = 0.5; // mm, mm and a share: a first layer that's mostly strips under 4 mm wide, on a part over 80 mm across
 export const HAIRLINE = 0.01; // mm: a fortieth of a print line
 const vsub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], vdot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 function pointToTriangle(p, a, b, c) { // Ericson, Real-Time Collision Detection 5.1.5
@@ -394,6 +399,7 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = LINE, firstG
   const byLayer = Array.from({ length: count }, () => []);
   for (let t = 0; t < tris.length; t++) for (let L = Math.max(0, Math.ceil((zmin[t] - lo[2]) / layer - 0.5)); L <= Math.min(count - 1, Math.floor((zmax[t] - lo[2]) / layer - 0.5)); L++) byLayer[L].push(t);
   let below = null, held = null, prev = null, counted = null, overhangArea = 0;
+  let firstThin = 0; // the share of the first layer in strips narrower than FIRST_STRIP
   const fused = []; // on the first layer, regions nearer each other than firstGap: { at, gap } (the first layer spreads, and they print as one)
   const px = (x) => Math.floor((x - lo[0]) / pitch) + 3;
   // Only what the printer can lay counts: each layer is opened by half a line (eroded, then grown back), so anything
@@ -444,6 +450,12 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = LINE, firstG
     if (same) continue;
     const filled = opened(raw);
     history[L] = filled;
+    if (L === 0) { // how much of the first layer is thin strips: what's left of it when everything narrower than FIRST_STRIP is taken away
+      const r = Math.max(1, Math.round(FIRST_STRIP / 2 / pitch)), wide = dilate(sweep(filled, r, true), r);
+      let area = 0, kept = 0;
+      for (let n = 0; n < nx * ny; n++) if (filled[n]) { area++; if (wide[n]) kept++; }
+      firstThin = area ? 1 - kept / area : 0;
+    }
     if (L === 0 && firstGap > 0) {
       // Each region labelled; grown by half the gap, two that meet were nearer than it. Where they meet is the spot
       const label = (mask) => { const lab = new Int32Array(nx * ny), stack = new Int32Array(nx * ny); let n = 0; for (let st = 0; st < nx * ny; st++) { if (!mask[st] || lab[st]) continue; n++; let top = 0; stack[top++] = st; lab[st] = n; while (top) { const e = stack[--top], i = e % nx; for (const d of [i + 1 < nx ? e + 1 : -1, i > 0 ? e - 1 : -1, e + nx < nx * ny ? e + nx : -1, e >= nx ? e - nx : -1]) if (d >= 0 && mask[d] && !lab[d]) { lab[d] = n; stack[top++] = d; } } } return { lab, n }; };
@@ -505,7 +517,7 @@ export function islands(polys, { layer = 0.2, overhang = 45, line = LINE, firstG
     }
     below = filled;
   }
-  return { islands: out, layers: count, overhang: overhangArea, fused };
+  return { firstThin, islands: out, layers: count, overhang: overhangArea, fused };
 }
 
 export function shape(polys, eps = 1e-3, drop = 0.05, hang = 1) {
