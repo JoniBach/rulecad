@@ -8,8 +8,8 @@
 //   s 90           the servo on pin 9 to 90 degrees
 //   ?              this list
 //
-// Steps are driver steps: set MICROSTEPS below to match the jumpers under the driver. Moves ramp up and down, so a
-// lost step in a move is the motor's limit and not a sudden start.
+// Steps are driver steps: with no jumpers under a driver, 200 is one turn of a 1.8° motor; with all three fitted, 3200.
+// Moves ramp up and down, so a lost step in a move is the motor's limit and not a sudden start.
 #include <Servo.h>
 
 const int STEP[] = { 2, 3, 4 }, DIR[] = { 5, 6, 7 }, ENABLE_PIN = 8, SERVO_PIN = 9;
