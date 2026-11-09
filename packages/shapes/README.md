@@ -72,6 +72,8 @@ clipGroove(8, { width: 1, depth: 0.5, at: [0, 0, 30] })                         
 | Ledge (`lip`) | a quarter of the races' radial depth by default, so it carries the outer race only; at most half |
 | Plain bore, as drawn | shaft + 2 × clearance + `hole_comp`, the clearance being the printer's `fit` each side by default |
 
+`lm8uuPocket`, `nutTrap`, `pulleyBore` and `beltClamp` are the same idea for a linear bearing, a lead-screw nut's flange and body, a pulley on its shaft and a GT2 belt's grip.
+
 `press` and `slip` are estimates until they are measured with the seats coupon in the bench project: print it once per
 filament, press a bearing into each pocket, and write the one that holds without cracking into the printer's rules.
 

@@ -170,3 +170,22 @@ test('seats: a bearing pocket to the printer\'s fit, ledge and relief, printing 
   assert.throws(() => shaftShoulder(8, { shoulder: 6, height: 3 }), /stands proud/);
   assert.throws(() => clipGroove(8, { width: 1, depth: 3 }), /too little of a 8 mm shaft/);
 });
+
+test('seats for a Z axis: a linear bearing, a lead-screw nut, a pulley bore and a belt grip, printing unsupported', async () => {
+  const { lm8uuPocket, nutTrap, pulleyBore, beltClamp } = await import('@rulecad/shapes');
+  const { check } = await import('@rulecad/printcheck');
+  const { cuboid } = jscad.primitives, { translate } = jscad.transforms, { subtract } = jscad.booleans, { geom3 } = jscad.geometries;
+  const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42, print_gap: 0.3, foot: 0.15 };
+  const x1c = { hole_comp: 0.1, fit: 0.2, press: 0.05, slip: 0.1 }, tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
+  const ok = (g, what) => assert.deepEqual(check(tris(g), printer).filter((f) => f.level === 'fail' || (f.level === 'warn' && /support|mid-air|ledge/.test(f.text))), [], what);
+  const block = (h) => translate([0, 0, h / 2], cuboid({ size: [40, 40, h] }));
+  const lm = { bore: 8, outer_diameter: 15, length: 24 }, pocket = lm8uuPocket(lm, { printer: x1c, at: [0, 0, 30], into: '-z', through: true });
+  assert.equal(pocket.pocket, 15.05); ok(subtract(block(30), pocket), 'stood up, through');
+  ok(subtract(translate([0, 0, 25], cuboid({ size: [30, 30, 50] })), lm8uuPocket(lm, { printer: x1c, at: [-15, 0, 25], into: '+x', through: true })), 'across, a teardrop');
+  const nut = { flange_diameter: 22, flange_thickness: 3.5, body_diameter: 10.2, length: 15, hole_circle: 16, hole_count: 4 };
+  const trap = nutTrap(nut, { printer: x1c, at: [0, 0, 20] }); assert.ok(trap.flange > 22.3); ok(subtract(block(20), trap), 'a nut, from the top');
+  assert.throws(() => nutTrap({ ...nut, hole_circle: 11 }, { printer: x1c }), /don't fall between/);
+  assert.equal(pulleyBore({ bore: 5 }, { length: 12, printer: x1c, at: [0, 0, 12], through: true }).bore, 5.3);
+  ok(beltClamp({ pitch: 2, width: 6 }, { length: 20, height: 5, wall: 2 }), 'a belt grip, teeth up');
+  assert.throws(() => beltClamp({ pitch: 0, width: 6 }, { length: 20, height: 5, wall: 2 }), /beltClamp: pitch is a size/);
+});

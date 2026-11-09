@@ -1,0 +1,13 @@
+{
+  "_doc": "An 8 mm hardened ground linear shaft from a distributor's listing: community until measured. Ooznest's page gives h7 in its table and h6 in its description, so measure a shaft where the fit matters. Variant ewellix-h6 is a bought branded shaft.",
+  "name": "rod-8",
+  "part": "rod",
+  "variants": {"ewellix-h6":{"kind":"community","source":"Ewellix 8 mm shaft as listed by RS, https://za.rs-online.com/web/p/linear-shafts/3411532","values":{"tolerance":"h6","hardness":"64 HRC"}}},
+  "rules": {
+    "diameter": { "value": 8, "unit": "mm", "rule": "Shaft diameter", "kind": "community", "source": "Ooznest 8 mm hardened ground linear shaft, https://ooznest.co.uk/8mm-solid-hardened-ground-bearing-linear-shaft-cut-to-size", "checked": "2026-11-09" },
+    "tolerance": { "value": "h7 +0.000 -0.009 in the table, h6 in the description", "rule": "Diameter tolerance as the page gives it: it contradicts itself", "kind": "community", "source": "Ooznest 8 mm hardened ground linear shaft, https://ooznest.co.uk/8mm-solid-hardened-ground-bearing-linear-shaft-cut-to-size", "checked": "2026-11-09" },
+    "hardness": { "value": "59 HRC", "rule": "Induction layer hardness, the page's minimum", "kind": "community", "source": "Ooznest 8 mm hardened ground linear shaft, https://ooznest.co.uk/8mm-solid-hardened-ground-bearing-linear-shaft-cut-to-size", "checked": "2026-11-09" },
+    "material": { "value": "CF53 steel", "rule": "Shaft material", "kind": "community", "source": "Ooznest 8 mm hardened ground linear shaft, https://ooznest.co.uk/8mm-solid-hardened-ground-bearing-linear-shaft-cut-to-size", "checked": "2026-11-09" },
+    "straightness": { "value": "+/- 0.2 mm", "rule": "Straightness as listed (cut-to-size shaft; no length given)", "kind": "community", "source": "Ooznest 8 mm hardened ground linear shaft, https://ooznest.co.uk/8mm-solid-hardened-ground-bearing-linear-shaft-cut-to-size", "checked": "2026-11-09" }
+  }
+}

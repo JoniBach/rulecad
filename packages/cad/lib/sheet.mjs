@@ -112,9 +112,77 @@ function driverDrawing(set) {
   return sheet(set, pens, W, H);
 }
 
+// A round part from its end and along its axis: linear bearings, nuts, couplers, pulleys, idlers, rods. Each says what it has: flange, hole circle, a dashed pitch circle, the bores of a coupler
+function roundDrawing(set, { D, d = 0, L, bores, flange, circle: holeCircle, pitchD, notes = [] }) {
+  const R = Math.max(D, flange?.D ?? 0) / 2, S = Math.max(3, Math.min(14, 90 / R)), W = 2 * R * S + L * S + 340, H = 2 * R * S + 190;
+  const cx = R * S + 70, cy = H / 2 + 22, sx = cx + R * S + 120, top = cy - R * S, bottom = cy + R * S;
+  const pens = pen(), { line, circle, rect, text, span } = pens;
+  // ---- from the end ----
+  if (flange) circle(cx, cy, (flange.D / 2) * S, '#f6f4ee');
+  circle(cx, cy, (D / 2) * S, FILL);
+  if (pitchD) circle(cx, cy, (pitchD / 2) * S, 'none', THIN);
+  if (d) circle(cx, cy, (d / 2) * S, '#fff');
+  if (holeCircle) for (let i = 0; i < holeCircle.count; i++) { const a = (2 * Math.PI * i) / holeCircle.count; circle(cx + (holeCircle.D / 2) * Math.cos(a) * S, cy + (holeCircle.D / 2) * Math.sin(a) * S, (holeCircle.hole / 2) * S, '#fff'); }
+  line(cx - R * S - 8, cy, cx + R * S + 8, cy, THIN, 0.5, '8 3 2 3'); line(cx, cy - R * S - 8, cx, cy + R * S + 8, THIN, 0.5, '8 3 2 3');
+  span(cx - R * S, bottom + 6, cx + R * S, bottom + 6, `Ø${fig(flange?.D ?? D)}`, 18);
+  if (d) span(cx - (d / 2) * S, top - 6, cx + (d / 2) * S, top - 6, `bore Ø${fig(d)}`, -14);
+  // ---- along the axis ----
+  const ring = (x, len, a, b, fill = FILL) => { for (const side of [-1, 1]) rect(x, side < 0 ? cy - (b / 2) * S : cy + (a / 2) * S, len * S, ((b - a) / 2) * S, fill); };
+  if (bores) { ring(sx, L / 2, bores[0], D); ring(sx + (L / 2) * S, L / 2, bores[1], D); }
+  else if (d) ring(sx, L, d, D);
+  else rect(sx, cy - (D / 2) * S, L * S, D * S, METAL);
+  if (flange) ring(sx + flange.at * S, flange.w, d, flange.D, '#ddd9cf');
+  line(sx - 12, cy, sx + L * S + 12, cy, THIN, 0.5, '8 3 2 3');
+  span(sx, bottom + 6, sx + L * S, bottom + 6, `${fig(L)}`, 18);
+  span(sx + L * S + 6, cy - (D / 2) * S, sx + L * S + 6, cy + (D / 2) * S, `Ø${fig(D)}`, 30);
+  notes.forEach((t, i) => text(cx, bottom + 66 + i * 18, t, 'middle', 11));
+  return sheet(set, pens, W, H);
+}
+
+// A lead screw from the side: the crest and root, the starts' flanks, and pitch against lead
+function leadScrewDrawing(set) {
+  const n = (k) => set.rules[k]?.value ?? 0, D = n('diameter'), root = n('root_diameter'), P = n('pitch'), lead = n('lead'), starts = n('starts') || 1;
+  const L = Math.max(3 * lead, 20), S = Math.min(14, 420 / L), W = L * S + 240, H = D * S + 200, x0 = 110, cy = H / 2 + 12;
+  const pens = pen(), { line, rect, text, span } = pens;
+  rect(x0, cy - (D / 2) * S, L * S, D * S, METAL);
+  for (const side of [-1, 1]) line(x0, cy + side * (root / 2) * S, x0 + L * S, cy + side * (root / 2) * S, THIN, 0.6, '4 3');
+  const lean = (D * S * Math.tan((n('helix_angle') * Math.PI) / 180)) / 2;
+  for (let i = 0; i * P <= L + 1e-9; i++) { const x = x0 + i * P * S; if (x - lean >= x0 && x + lean <= x0 + L * S) line(x - lean, cy + (D / 2) * S, x + lean, cy - (D / 2) * S, i % starts === 0 ? INK : THIN, i % starts === 0 ? 1.6 : 0.7); }
+  line(x0 - 12, cy, x0 + L * S + 12, cy, THIN, 0.5, '8 3 2 3');
+  const below = cy + (D / 2) * S + 6, above = cy - (D / 2) * S - 6;
+  span(x0, below, x0 + P * S, below, `pitch ${fig(P)}`, 18);
+  span(x0, below, x0 + lead * S, below, `lead ${fig(lead)}`, 44);
+  span(x0 + L * S + 6, cy - (D / 2) * S, x0 + L * S + 6, cy + (D / 2) * S, `Ø${fig(D)}`, 30);
+  span(x0 - 6, cy - (root / 2) * S, x0 - 6, cy + (root / 2) * S, `root Ø${fig(root)}`, -18);
+  text(x0 + (L * S) / 2, above - 8, `${set.rules.thread?.value ?? ''}, ${fig(starts)} start${starts > 1 ? 's' : ''}, helix ${fig(n('helix_angle'))}°`, 'middle', 12);
+  text(x0 + (L * S) / 2, below + 72, 'each dark line one start, repeating at the lead', 'middle', 11);
+  return sheet(set, pens, W, H);
+}
+
+// A short length of belt, teeth along it
+function beltDrawing(set) {
+  const n = (k) => set.rules[k]?.value ?? 0, P = n('pitch'), w = n('width'), L = P * 8, S = 12, W = L * S + 220, H = w * S + 190, x0 = 90, cy = H / 2 + 10;
+  const pens = pen(), { line, rect, text, span } = pens;
+  rect(x0, cy - (w / 2) * S, L * S, w * S);
+  for (let i = 0; i <= 8; i++) line(x0 + i * P * S, cy - (w / 2) * S, x0 + i * P * S, cy + (w / 2) * S, THIN, 0.7);
+  span(x0, cy + (w / 2) * S + 6, x0 + P * S, cy + (w / 2) * S + 6, `pitch ${fig(P)}`, 18);
+  span(x0 + L * S + 6, cy - (w / 2) * S, x0 + L * S + 6, cy + (w / 2) * S, `${fig(w)}`, 18);
+  text(x0 + (L * S) / 2, cy + (w / 2) * S + 66, `${fig(n('stiffness'))} N per unit strain, pitch line ${n('pitch_line_offset')} beyond the teeth`, 'middle', 11);
+  text(x0 + (L * S) / 2, cy + (w / 2) * S + 84, `rated ${fig(n('rated_tension'))} N, breaks at ${fig(n('breaking_strength'))} N`, 'middle', 11);
+  return sheet(set, pens, W, H);
+}
+
 export function drawing(set, vocab) {
   if (set.part === 'bearing') return bearingDrawing(set);
   if (set.part === 'driver') return driverDrawing(set);
+  const v = (k) => set.rules[k]?.value ?? 0;
+  if (set.part === 'leadscrew') return leadScrewDrawing(set);
+  if (set.part === 'belt') return beltDrawing(set);
+  if (set.part === 'linear_bearing') return roundDrawing(set, { D: v('outer_diameter'), d: v('bore'), L: v('length'), notes: [`linear bearing: ${fig(v('dynamic_rating'))} N dynamic, ${fig(v('static_rating'))} N static`] });
+  if (set.part === 'nut') { return roundDrawing(set, { D: v('body_diameter'), d: v('diameter'), L: v('length'), flange: { D: v('flange_diameter'), w: v('flange_width'), at: v('flange_offset') }, circle: { D: v('hole_circle'), count: v('hole_count'), hole: v('mount_hole_diameter') || 3.5 }, notes: [`${set.rules.thread?.value ?? ''}, ${set.rules.material?.value ?? ''}, lead ${fig(v('lead'))}`, `${fig(v('hole_count'))} × Ø${fig(v('mount_hole_diameter'))} on Ø${fig(v('hole_circle'))}`] }); }
+  if (set.part === 'coupler') return roundDrawing(set, { D: v('outer_diameter'), L: v('length'), bores: [v('bore_a'), v('bore_b')], d: 0, notes: [`bores Ø${fig(v('bore_a'))} and Ø${fig(v('bore_b'))}`, String(set.rules.style?.value ?? '')] });
+  if (set.part === 'pulley' || set.part === 'idler') return roundDrawing(set, { D: v('outer_diameter'), d: v('bore'), L: v('body_width'), pitchD: v('pitch_diameter'), notes: [set.part === 'pulley' ? `${fig(v('teeth'))} teeth, pitch circle Ø${fig(v('pitch_diameter'))} (thin), across the teeth Ø${fig(v('tooth_diameter'))}` : `${set.rules.toothed?.value === 'yes' ? `${fig(v('teeth'))} teeth` : 'smooth'}, for ${fig(v('belt_width'))} mm belt`, set.part === 'pulley' ? `for ${fig(v('belt_width'))} mm belt` : ''] });
+  if (set.part === 'rod') return roundDrawing(set, { D: v('diameter'), L: 40, notes: [`${String(set.rules.tolerance?.value ?? '')}; ${String(set.rules.hardness?.value ?? '')}`] });
   const get = (k) => { const r = set.rules[set.interface?.[k] ?? k]; return r?.value; }, n = (k, d = 0) => { const x = get(k); return typeof x === 'number' ? x : d; };
   if (!set.part && !Object.keys(set.interface || {}).some((k) => k.startsWith('body_'))) throw new Error(`rule set "${set.name}" doesn't say what shape it is (no body_ names in it, or "part", or "interface"): there's nothing to draw`);
   const shape = get('body_shape') ?? 'box', round = shape === 'round', w = round ? n('body_diameter') : n('body_width'), d = round ? w : shape === 'square' ? w : n('body_depth', n('body_width'));

@@ -1,0 +1,12 @@
+{
+  "_doc": "A smooth (toothless) GT2 idler, sold as \"20 tooth size\", with ball bearings for 6 mm belt and a 5 mm bore: community until measured. Its running surface diameter is not published. Run it on the back of the belt: Gates's smallest smooth idler on the teeth side is 25.4 mm, its smallest back-side idler 12.7 mm.",
+  "name": "idler-gt2-smooth-20",
+  "part": "idler",
+  "rules": {
+    "toothed": { "value": "no", "rule": "Smooth running surface", "kind": "community", "source": "TinyTronics GT2-20 toothless idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-toothless-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "bore": { "value": 5, "unit": "mm", "rule": "Bore: a 5 mm axle", "kind": "community", "source": "TinyTronics GT2-20 toothless idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-toothless-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "belt_width": { "value": 6, "unit": "mm", "rule": "For 6 mm belt", "kind": "community", "source": "TinyTronics GT2-20 toothless idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-toothless-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 18, "unit": "mm", "rule": "Outside diameter, the flanges (the seller gives one diameter)", "kind": "community", "source": "TinyTronics GT2-20 toothless idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-toothless-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "body_width": { "value": 8.5, "unit": "mm", "rule": "Height along the bore", "kind": "community", "source": "TinyTronics GT2-20 toothless idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-toothless-5mm-axis-with-ball-bearing", "checked": "2026-11-09" }
+  }
+}
