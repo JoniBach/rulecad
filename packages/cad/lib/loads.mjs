@@ -10,7 +10,7 @@ import { paths } from './workspace.mjs';
 import { peekRuleSet } from './rules.mjs';
 import { solidFill } from './optimise.mjs';
 import { materialOf } from './list.mjs';
-import { axisOf, trainFrom, workingSpeed } from './motors.mjs';
+import { axisOf, trainFrom, workingSpeed, atCurrent } from './motors.mjs';
 import { sample, chainOf } from './task.mjs';
 
 const G = 9.80665, sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -113,7 +113,7 @@ export function momentChecks(s, f, helpers, masses, payload) {
         if (!worstClip || r.stress > worstClip.stress) worstClip = { id, ...r };
       }
       const strength = mat?.strength ?? 30, margin = strength / worstClip.stress, level = margin < 1 ? 'fail' : margin < 2 ? 'warn' : 'pass';
-      f(level, `${j.id}: ${say}. ${clips.length} printed clips, the worst (${worstClip.id}) at ${n3(worstClip.stress, 1)} MPa against ${strength} MPa (FE on ${cell} mm cells, an estimate), ${n3(margin, 1)} times over`, level === 'pass' ? null : `${j.id}: clip ${n3(margin, 1)}×`, { code: 'joint.moment', at, refs: { ...refs, clips }, values: { ...values, stress: worstClip.stress, strength, margin } });
+      f(level, `${j.id}: ${say}. ${clips.length} printed clips, the worst (${worstClip.id}) at ${n3(worstClip.stress, 2)} MPa against ${strength} MPa (FE on ${cell} mm cells, an estimate), ${n3(margin, 1)} times over`, level === 'pass' ? null : `${j.id}: clip ${n3(margin, 1)}×`, { code: 'joint.moment', at, refs: { ...refs, clips }, values: { ...values, stress: worstClip.stress, strength, margin } });
     } else f(s.task && (s.a.gravity || s.task.payload != null) ? 'warn' : 'info', `${j.id}: ${say}, and nothing named takes it: give the joint a "support" (bearings, or printed clips)`, `${j.id}: no support named`, { code: 'joint.moment', at, refs, values });
   }
   return out;
@@ -179,7 +179,7 @@ export function accelChecks(s, f, helpers, masses, payload) {
     if (payload && beyond(motion, j, payload.item)) { const X = rowsAt(base[payload.item], payload.point), r = sub(X, axis.O), rad = norm(sub(r, scale(axis.Z, dot(r, axis.Z)))); I += payload.kg * rad * rad; }
     for (const p of posesOf(s, jointValues).slice(0, 30)) gravity = Math.max(gravity, Math.abs(loadAt(motion, masses, payload, placeItems(motion, p.values), j, mul).torque));
     const m = d.model, speed = workingSpeed(m, d.spec), ratio = t.ratio, eff = t.efficiency, rotor = (m.figures.rotor_inertia?.value ?? 0) * 0.1, kgmm2 = I / (ratio * ratio * eff) + rotor; // kg mm²
-    const avail = performance(m, { speed }).motor.torque, left = avail - gravity / (ratio * eff), refs = { joint: id, item: d.id }, at = axis.O;
+    const avail = atCurrent(m, d.spec, performance(m, { speed }).motor.torque), left = avail - gravity / (ratio * eff), refs = { joint: id, item: d.id }, at = axis.O;
     if (left <= 0) { f('fail', `${id} stalls: ${d.id} gives ${n3(avail, 3)} N m at ${n3(speed, 0)} rpm, and the load takes ${n3(gravity / (ratio * eff), 3)} N m of it through ${n3(ratio, 1)}:1`, `${id}: stalls`, { code: 'motor.accel', at, refs, values: { available: avail, gravity } }); limits.push(0); continue; }
     const alphaMotor = (left * 1e6) / kgmm2, alpha = (alphaMotor / ratio) * (180 / Math.PI); // rad/s² at the motor, deg/s² at the joint
     limits.push(alpha);

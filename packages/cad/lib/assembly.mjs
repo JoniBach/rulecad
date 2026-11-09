@@ -451,7 +451,7 @@ function planetaries(list, joints, items, num) {
     const rot = (d) => { const r = { [held[0]]: 0, [drive]: sg[drive] * d }; r[third] = (sigma0 - coef[drive] * r[drive]) / coef[third]; return r; };
     // a straight line in the driver's value (f: degrees in, radians out): [ratio, offset in degrees]
     const lin = (f) => { const a = f(0), b = f(1), o = a / DEG; return [(b - a) / DEG, ((o + 180) % 360 + 360) % 360 - 180]; }; // (the offset a part-turn: a whole turn is the same place)
-    const free = (j) => { j.dofs[0] = [-1e6, 1e6, j.dofs[0][2]]; }; // what follows a sun can turn past a turn
+    const free = (j) => { j.limits = j.dofs[0].slice(0, 2); j.dofs[0] = [-1e6, 1e6, j.dofs[0][2]]; }; // what follows a sun can turn past a turn
     const [k3, o3] = lin((d) => sg[third] * rot(d * DEG)[third]);
     follower.follow = [lead.id, k3, o3]; free(follower);
     const findings = [], f = (level, text, code, between) => findings.push({ level, text, code, ...(between ? { between } : {}) });

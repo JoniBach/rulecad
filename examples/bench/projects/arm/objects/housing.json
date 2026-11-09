@@ -1,0 +1,39 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "housing",
+  "title": "Shoulder housing and fixed ring",
+  "version": "0.1.0",
+  "uses": ["x1c", "arm", "m3"],
+  "engine": "manifold",
+  "orientation": "The motor plate on the bed, the ring and posts up",
+  "anchors": {
+    "axis": {"at": [0, 0, "plate"], "axis": [0, 0, 1]},
+    "motor": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "plate": {"value": "arm.plate", "unit": "mm", "rule": "The motor plate", "interface": true},
+    "gear": {"value": "arm.gear", "unit": "mm", "rule": "The fixed ring's face: strong enough for the motor's whole torque"},
+    "rim": {"value": 62, "unit": "mm", "rule": "Round the 54-tooth ring, three lines and more of wall"},
+    "module": {"value": 1, "unit": "mm", "rule": "The gears'"},
+    "teeth": {"value": 54, "rule": "The fixed ring"},
+    "post_r": {"value": 37, "unit": "mm", "rule": "Three posts outside the output ring", "interface": true},
+    "post": {"value": 7, "unit": "mm", "rule": "Each post's diameter"},
+    "post_high": {"value": "arm.bridge_low - arm.face - plate", "unit": "mm", "rule": "From the plate to under the bridge", "interface": true},
+    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped", "kind": "community"},
+    "pilot_depth": {"value": 8, "unit": "mm", "rule": "For an M3 × 16 through the bridge"},
+    "column_r": {"value": 37, "unit": "mm", "rule": "Over the base's columns"},
+    "lobe": {"value": 12, "unit": "mm", "rule": "The plate reaches out over each column"},
+    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance, down into the column"},
+    "head": {"value": "m3.head + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "The screw head's counterbore"},
+    "head_depth": {"value": "m3.head_height + x1c.layer", "unit": "mm", "rule": "A socket head's height, sunk"},
+    "segments": {"value": 64, "rule": "Round enough"},
+    "ring_segments": {"value": 96, "rule": "Smooth to the eye and to the gear"},
+    "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
+    "p1": {"value": 30, "unit": "°", "rule": "First post"},
+    "p2": {"value": 150, "unit": "°", "rule": "Second post"},
+    "p3": {"value": 270, "unit": "°", "rule": "Third post"},
+    "f1": {"value": 90, "unit": "°", "rule": "First foot, over a column"},
+    "f2": {"value": 210, "unit": "°", "rule": "Second foot"},
+    "f3": {"value": 330, "unit": "°", "rule": "Third foot"}
+  }
+}

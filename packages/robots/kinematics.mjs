@@ -202,7 +202,7 @@ export function chainFromMotion(motion, opts) {
   for (const j of path) {
     if (j.type === 'fixed') { carried = mul(carried, mul(j.a, inv(j.b))); continue; }
     if (j.type !== 'revolute' && j.type !== 'prismatic') throw refuse('chain.type', `chainFromMotion: joint ${j.id} is a ${j.type}: a chain takes revolute, prismatic and fixed joints`);
-    const out = { name: j.id, type: j.type, a: mul(carried, j.a), b: j.b, limits: [j.dofs[0][0], j.dofs[0][1]] };
+    const out = { name: j.id, type: j.type, a: mul(carried, j.a), b: j.b, limits: j.limits ?? [j.dofs[0][0], j.dofs[0][1]] };
     // A follower whose leader is on the chain moves with it. A gearbox's output follows a motor's shaft that is off the
     // chain: to the chain that is a joint of its own (the ratio is the drive's business, read through trainFrom)
     if (j.follow && path.some((p) => p.id === j.follow[0])) out.follow = { joint: j.follow[0], ratio: j.follow[1] ?? 1, offset: j.follow[2] ?? 0 };

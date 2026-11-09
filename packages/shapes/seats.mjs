@@ -76,16 +76,18 @@ export function seatSize(bearing, { fit = 'press', lip, printer } = {}) {
 export function bearingSeat(bearing, { fit = 'press', lip, relief = 1, through = false, into = '-z', lead = UP[into] ? 0 : 0.4, printer, at = [0, 0, 0] } = {}) {
   const what = 'bearingSeat', s = seatSize(bearing, { fit, lip, printer });
   size(what, 'relief', relief); size(what, 'lead', lead, { zero: true });
-  const R = s.pocket / 2, r = s.relief / 2, up = UP[into] ?? null, D = s.depth, past = D + relief + (through ? OUT : 0), cuts = [];
-  cuts.push(tear(R, R, lead ? 0 : OUT, -D, up));
-  if (lead) { cuts.push(tear(R + lead, R, 0, -lead, up)); cuts.push(tear(R + lead, R + lead, OUT, 0, up)); }
-  if (into === '+z') {
-    // the ledge printed as a ceiling: a 45° cone, to a point if nothing runs through it
-    const end = through ? r : TINY, rise = R - end;
-    cuts.push(tear(R, end, -D, -D - rise));
-    if (through) cuts.push(tear(r, r, -D - rise / 2, -Math.max(past, D + rise + OUT)));
-  } else cuts.push(tear(r, r, -D + EDGE, -past, up));
-  const g = along(union(cuts), into, at);
+  const R = s.pocket / 2, r = s.relief / 2, up = UP[into] ?? null, D = s.depth, past = D + relief + (through ? OUT : 0);
+  if (up) { // across a part, a teardrop's roof on each step
+    const cuts = [tear(R, R, lead ? 0 : OUT, -D, up), tear(r, r, -D + EDGE, -past, up)];
+    if (lead) cuts.push(tear(R + lead, R, 0, -lead, up), tear(R + lead, R + lead, OUT, 0, up));
+    return Object.assign(along(union(cuts), into, at), { seat: s });
+  }
+  // Going up or down, one profile turned about the axis: no seams between the steps for a boolean to leak at
+  const mouth = lead ? [[R + lead, OUT], [R + lead, 0], [R, -lead]] : [[R, OUT]], z0 = -D, floor = through ? Math.min(-past, -D - R) - OUT : -past;
+  const inner = into === '+z' ? (through ? [[R, z0], [r, z0 - (R - r)], [r, floor]] : [[R, z0], [TINY, z0 - (R - TINY)]]) : [[R, z0], [r, z0], [r, -past]];
+  const pts = [[0, OUT], ...mouth, ...inner, [0, inner.at(-1)[1]]].reverse();
+  const turned = extrudeRotate({ segments: SEGMENTS }, polygon({ points: pts }));
+  const g = along(turned, into, at);
   return Object.assign(g, { seat: s });
 }
 

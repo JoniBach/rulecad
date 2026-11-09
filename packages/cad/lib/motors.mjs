@@ -135,6 +135,9 @@ function worstLoad(motion, loads, j, drive, { placeItems, jointValues, mul }) {
   return { torque: Math.abs(worst), where };
 }
 
+// What a stepper gives at the current it's set to: torque goes with the current, up to its rating
+export const atCurrent = (m, spec, torque) => (m.type === 'stepper' && spec.current != null && m.figures.rated_current?.value ? torque * Math.min(1, spec.current / m.figures.rated_current.value) : torque);
+
 // A motor's speed if the assembly doesn't say: its corner speed, its rated speed, or half its free speed
 export function workingSpeed(model, spec) {
   if (spec.speed != null) return spec.speed;
@@ -181,7 +184,7 @@ export function motorChecks(s, f, helpers, materialName) {
       back += (atLead / reduction) * ηback; backOn += atLead / reduction;
       lines.push({ x, t, load, unit, reduction, atLead, η });
     }
-    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = rated.motor.torque, margin = need ? avail / need : Infinity;
+    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = atCurrent(m, d.spec, rated.motor.torque), margin = need ? avail / need : Infinity;
     const main = lines[0], what = main.unit === 'N m' ? `${n3(main.load.torque)} N m` : `${n3(main.load.torque, 2)} N`, gives = main.unit === 'N m' ? `${n3(avail * main.reduction * main.η)} N m` : `${n3((avail * main.reduction * main.η * Math.PI * 1000) / (main.t.slide * 180), 1)} N`;
     const trust = rated.rests.filter((k) => k !== 'spec' && k !== 'measured'), caveat = trust.length ? ` (rests on ${trust.join(' and ')} figures: measure it)` : '';
     const level = margin < 1 ? 'fail' : margin < K ? 'warn' : 'pass', fix = margin < 1 && main.t.slide == null ? ` A ratio of ${n3((main.reduction * K) / margin, 1)}:1 would give it ${K} times` : '';
@@ -194,7 +197,7 @@ export function motorChecks(s, f, helpers, materialName) {
     mountCheck(s, d, f, W, avail, materialName);
     // Does it hold?
     const fig = (k) => m.figures[k]?.value, kt = m.type === 'brushless' ? 60 / (2 * Math.PI * fig('kv')) : 0;
-    const on = fig('holding_torque') ?? fig('stall_torque') ?? (kt ? kt * fig('rated_current') : 0), off_ = fig('detent_torque') ?? fig('friction_torque') ?? null, brake = lines.map((l) => motion.joints.find((x) => x.id === l.x.id)?.brake).find(Boolean) ?? motion.joints.find((x) => x.id === d.joint)?.brake;
+    const on = atCurrent(m, d.spec, fig('holding_torque') ?? fig('stall_torque') ?? (kt ? kt * fig('rated_current') : 0)), off_ = fig('detent_torque') ?? fig('friction_torque') ?? null, brake = lines.map((l) => motion.joints.find((x) => x.id === l.x.id)?.brake).find(Boolean) ?? motion.joints.find((x) => x.id === d.joint)?.brake;
     const backS = n3(back), pmargin = backOn ? on / backOn : Infinity;
     if (locked || brake) f('pass', `${main.x.id} holds with the power off: ${brake ? `its brake (${brake})` : locked} is what holds it`, null, { code: 'motor.holds', at: at(main.x) });
     else if (off_ != null && back <= off_) f('pass', `${main.x.id} holds with the power off: ${backS} N m back at the motor against ${n3(off_)} N m of ${fig('detent_torque') != null ? 'detent' : 'gearbox friction'}`, null, { code: 'motor.holds', at: at(main.x) });

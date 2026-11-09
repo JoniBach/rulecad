@@ -4,7 +4,7 @@
 //   "gait": { "legs": ["fl.foot.tip", …], "pattern": "trot", "stride": 40, "lift": 15, "period": 1.2, "height": 120, "mass": 1.5 }
 import { chainFromMotion, fk, gait } from '@rulecad/robots';
 import { performance } from '@rulecad/motors';
-import { trainFrom, workingSpeed } from './motors.mjs';
+import { trainFrom, workingSpeed, atCurrent } from './motors.mjs';
 
 const n3 = (x, d = 2) => String(Number(x.toFixed(d)));
 
@@ -38,7 +38,7 @@ export function gaitChecks(s, f, { jointValues, placeItems, sweepOne }) {
   for (const [id, t] of Object.entries(r.summary.torque)) {
     const j = motion.joints.find((x) => x.id === id), tr = j && trainFrom(motion, id), d = tr && motion.drives.find((x) => x.joint === tr.root);
     if (!d) { f('warn', `gait: nothing drives ${id}, so its ${n3(t, 3)} N m through the cycle isn't checked`, `gait: ${id} undriven`, { code: 'gait.torque', refs: { joint: id } }); continue; }
-    const speed = workingSpeed(d.model, d.spec), avail = performance(d.model, { speed }).motor.torque * tr.ratio * tr.efficiency, margin = avail / t, level = margin < 1 ? 'fail' : margin < 2 ? 'warn' : 'pass';
+    const speed = workingSpeed(d.model, d.spec), avail = atCurrent(d.model, d.spec, performance(d.model, { speed }).motor.torque) * tr.ratio * tr.efficiency, margin = avail / t, level = margin < 1 ? 'fail' : margin < 2 ? 'warn' : 'pass';
     f(level, `gait: ${id} needs ${n3(t, 3)} N m at its worst in the cycle, and ${d.id} gives ${n3(avail, 3)} N m there, ${n3(margin, 1)} times over`, level === 'pass' ? null : `gait: ${id} ${n3(margin, 1)}×`, { code: 'motor.torque', refs: { joint: id, item: d.id }, values: { needed: t, available: avail, margin } });
   }
   // Leg against leg, leg against body: the cycle as a sweep

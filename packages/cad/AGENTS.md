@@ -107,6 +107,24 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   design aid and the material values are data-sheet figures: such a part needs testing, recorded under
   `"verification"`, not just a check.
 
+## Machines
+A machine is an assembly with a `task` at the top: the tool, the sheet or volume it works in, how fast and how accurately.
+EXAMPLES chapter 12 builds one from start to finish.
+- **Task first.** Write the `task` before any part: what the tool must reach, at what speed, to what accuracy. The checks
+  (`task.reach`, `task.speed`, `task.accuracy`) report margins against it, in every pose and across the sheet.
+- **Reach before shape.** Find the link lengths from the far and near corners of the work, keeping away from full stretch
+  (the speed check finds that) and from the fold (the hole near the base). Write down why; the parts come after.
+- **Bench before trusting a budget.** The error budget stacks what each joint adds. A gearbox's play and twist are
+  guesses until bench tests 14, 15 and 17 have measured them: give them as rules of `"kind": "estimate"`, read the
+  sentence that says what the figure rests on, and use `npx cad measured` to replace them. A passing budget on estimates
+  is a target, not a prediction. Report it that way.
+- **Never set a driver's current from memory.** Give the motor item a `driver` and a `current`, and take the trimmer's
+  voltage from what `cad check` says for that board and its sense resistors; read the resistors on your own board first.
+  State why the current is what it is: the torque it needs, the driver's rating without a heat sink, the motor's heat.
+- **Everything bought is an item.** Motors, drivers, bearings, switches, the supply: `bought` items and `wires` make the
+  shopping list (`cad list`), the wiring sheet (`cad wires`) and the firmware's settings (`cad machine`) from one assembly.
+- Before moving anything: `cad plot` the drawing and watch the preview. It refuses a stroke that leaves the sheet.
+
 ## Talking to the person
 - Give links as one labelled line (`npx cad link <project>/<object> --md`), never a raw URL. If it says
   "(not a release)", say so. If it says the link is too long for chat, don't paste it: tell the person, and offer
