@@ -41,7 +41,7 @@ const importMap = { imports: { '@jscad/modeling': '../assets/jscad.mjs', ...Obje
 
 // ---- data: the published rule sets ----
 const ruleDir = path.join(ROOT, 'packages/rules'), sets = []
-for (const f of fs.readdirSync(ruleDir).filter((f) => f.endsWith('.json') && f !== 'package.json').sort()) {
+for (const f of fs.readdirSync(ruleDir).filter((f) => f.endsWith('.json') && !['package.json', 'vocabulary.json'].includes(f)).sort()) {
   const set = JSON.parse(fs.readFileSync(path.join(ruleDir, f), 'utf8'))
   copy(path.join(ruleDir, f), path.join(ASSETS, 'data/rules', f))
   sets.push({ name: set.name || f.replace('.json', ''), doc: set._doc || '', rules: set.rules })
