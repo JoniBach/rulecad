@@ -6,7 +6,8 @@ const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${n
 import { grid, keyboard, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
-import { kicadNets, patchKicadPcb, kicadProject } from './kicad.mjs';
+import { smoothCircuit } from '@rulecad/smooth';
+import { kicadNets, patchKicadPcb, kicadProject, kicadCli, kicadFab, drillMismatches, needsKicadFab } from './kicad.mjs';
 
 // A board's values as a design gets them: the published rule sets and the board's own variables
 const values = (variables) => resolve({ uses: ['mx', 'pico', 'sod123', 'm2', 'jlcpcb'], variables: {
@@ -355,7 +356,8 @@ test('4 layers: a plane net reaches its inner layer through a via per pad, its c
   assert.deepEqual(sameCircuit(json, c).map((f) => f.level), ['pass']);
   const found = await checks(json, { jlcpcb: loadRuleSet('jlcpcb').rules ? Object.fromEntries(Object.entries(loadRuleSet('jlcpcb').rules).map(([n, r]) => [n, r.value])) : {}, track: 0.2 });
   assert.match(found.map((f) => `${f.level}: ${f.text}`).join(' | '), /pass: plane B on inner1: all 4 pads reach it \(4 vias and holes inside its copper\)/);
-  const fab = await fabFiles(json, 'clone');
+  // (a stub route leaves pads unjoined, which KiCad refuses to plot: this is the Gerber writer's own inner layers)
+  const fab = await fabFiles(json.map((e) => (e.rect_border_radius ? { ...e, rect_border_radius: 0 } : e)), 'clone');
   assert.ok(fab['clone.G1']?.length > 50, 'the inner layer has its own Gerber');
   assert.throws(() => clone(c, { layers: 2, planes: ['B'] }).planes.B, /Cannot read/, 'on 2 layers, no planes');
   await assert.rejects(render({ outline: k.outline, thickness: 1.2, track: 0.2, autoroute: true, planes: k.planes, parts: k.parts, nets: k.nets }, stub), /planes need a board of 4 layers/);
@@ -718,4 +720,43 @@ test('an oval surface pad is read with its round ends, as a rectangle with its c
     (footprint "Q:SOT-563" (layer "F.Cu") (at 5 5) (property "Reference" "Q2") (pad "5" smd oval (at 0.75 0) (size 0.7 0.34) (layers "F.Cu")))
     (gr_rect (start 0 0) (end 10 10) (layer "Edge.Cuts")))`);
   assert.equal(c.parts[0].pads[0].corner, 0.17);
+});
+
+const SLOTTED = `(kicad_pcb (version 20211014) (layers (0 "F.Cu" signal) (31 "B.Cu" signal)) (net 0 "")
+  (footprint "J:USB" (layer "F.Cu") (at 10 10) (property "Reference" "J1")
+    (pad "S1" thru_hole oval (at -2 0) (size 1 2.2) (drill oval 0.6 1.8) (layers *.Cu *.Mask)))
+  (gr_rect (start 0 0) (end 20 20) (layer "Edge.Cuts")))`;
+const slottedBoard = () => { const k = clone(fromKicadPcb(SLOTTED)); return render({ outline: k.outline, thickness: 1.6, track: 0.2, parts: k.parts, nets: k.nets }); };
+
+test('a slotted hole stays a slot, from the source board to the board', async () => {
+  const hole = (await slottedBoard()).find((e) => e.type === 'pcb_plated_hole');
+  assert.deepEqual([hole.shape, hole.hole_width, hole.hole_height, hole.rect_pad_width, hole.rect_pad_height], ['pill_hole_with_rect_pad', 0.6, 1.8, 1, 2.2]);
+  assert.equal(needsKicadFab([hole]), true, 'a slot needs KiCad');
+  assert.equal(needsKicadFab([{ type: 'pcb_plated_hole', rect_border_radius: 0.5 }]), false, 'a rounded pad with no plane to touch');
+  assert.equal(needsKicadFab([{ type: 'pcb_plated_hole', rect_border_radius: 0.5 }, { type: 'pcb_copper_pour' }]), true, 'a rounded pad beside a plane');
+});
+
+test('drill files against the design: a hole missing, moved or the wrong size, a slot drilled round, a hole too many', () => {
+  const design = [{ type: 'pcb_via', x: 1, y: 2, hole_diameter: 0.2 }, { type: 'pcb_via', x: 1, y: 2, hole_diameter: 0.2 }, { type: 'pcb_plated_hole', x: 5, y: 5, hole_width: 0.6, hole_height: 1.8 }, { type: 'pcb_hole', x: 9, y: 9, hole_diameter: 2 }];
+  const pth = (t) => `T1C0.200\nT2C0.600\n%\nT1\nX1.0Y2.0\nT2\n${t}\nM30`, npth = 'T1C2.000\n%\nT1\nX9.0Y9.0\nM30', slot = 'X5.0Y5.6G85X5.0Y4.4';
+  assert.deepEqual(drillMismatches(design, pth(slot), npth), [], 'a via laid twice is drilled once');
+  assert.match(drillMismatches(design, pth('X5.0Y5.0'), npth)[0], /0\.6 mm in the file, 0\.6 mm slot running 1\.200 mm in the design/);
+  assert.match(drillMismatches(design, pth(`${slot}\nT1\nX7.0Y7.0`), npth)[0], /hole at \(7\.000, 7\.000\) the design doesn't have/);
+  assert.match(drillMismatches(design, pth(slot), 'T1C2.000\n%\nM30')[0], /no unplated hole at \(9\.000, 9\.000\)/);
+});
+
+test('KiCad plots the fab files: every layer named for the fab, a real slot, the design\'s origin', { skip: !kicadCli() && 'KiCad isn\'t installed' }, async () => {
+  const files = await kicadFab(await slottedBoard(), 'b', { allow: () => true });
+  assert.deepEqual(Object.keys(files).sort(), ['b-NPTH.DRL', 'b-PTH.DRL', 'b.GBL', 'b.GBO', 'b.GBP', 'b.GBS', 'b.GKO', 'b.GTL', 'b.GTO', 'b.GTP', 'b.GTS']);
+  assert.match(files['b-PTH.DRL'], /G85/);
+  const nums = [...files['b.GKO'].matchAll(/X(-?\d+)Y(-?\d+)/g)].map((m) => Math.abs(Number(m[1])) / 1e6);
+  assert.ok(Math.max(...nums) === 10, `the outline runs to 10 mm from the design's origin, not KiCad's page (${Math.max(...nums)})`);
+});
+
+test('smoothing keeps clear of a slot along its whole length', () => {
+  const w = (x, y) => ({ route_type: 'wire', x, y, width: 0.15, layer: 'top' });
+  const json = [{ type: 'pcb_board', center: { x: 0, y: 0 }, width: 20, height: 20 }, { type: 'pcb_trace', pcb_trace_id: 't', route: [w(-3, 0.7), w(0, 2), w(3, 0.7)] },
+    { type: 'pcb_plated_hole', pcb_plated_hole_id: 'h', shape: 'pill_hole_with_rect_pad', x: 0, y: 0, hole_width: 0.6, hole_height: 1.8, rect_pad_width: 0.6, rect_pad_height: 1.8 }];
+  // straight along y = 0.7 it would cross the slot's top end, which a circle at the narrow width wouldn't reach
+  assert.equal(smoothCircuit(json, { clearance: 0.1 }).changed, 0);
 });

@@ -177,7 +177,8 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
         add('pcb_solder_paste', { layer: part.layer, shape: 'rect', width: p.w * PASTE, height: p.h * PASTE, x: p.x, y: p.y, pcb_component_id: pc.pcb_component_id, pcb_smtpad_id: pad.pcb_smtpad_id, subcircuit_id: SUB });
       } else if (p.rect) { // an oval pad or a hole off-centre: a rounded rectangle, its hole offset turned with the part
         const sz = size(p.rect.w, p.rect.h), o0 = at(0, 0), o1 = at(p.rect.offset[0], p.rect.offset[1]);
-        add('pcb_plated_hole', { ...own, pcb_port_id: port.pcb_port_id, shape: 'circular_hole_with_rect_pad', hole_shape: 'circle', pad_shape: 'rect', hole_diameter: p.hole,
+        const slot = p.rect.slot && size(p.rect.slot[0], p.rect.slot[1]); // (a slotted hole, as a USB-C socket's shell legs need)
+        add('pcb_plated_hole', { ...own, pcb_port_id: port.pcb_port_id, ...(slot ? { shape: 'pill_hole_with_rect_pad', hole_shape: 'pill', hole_width: slot.w, hole_height: slot.h } : { shape: 'circular_hole_with_rect_pad', hole_shape: 'circle', hole_diameter: p.hole }), pad_shape: 'rect',
           rect_pad_width: sz.w, rect_pad_height: sz.h, rect_border_radius: Math.min(sz.w, sz.h) / 2, hole_offset_x: Math.round((o1.x - o0.x) * 1e6) / 1e6, hole_offset_y: Math.round((o1.y - o0.y) * 1e6) / 1e6,
           port_hints: [`unnamed_platedhole${i + 1}`, p.pin], x: p.x, y: p.y, layers, is_covered_with_solder_mask: false });
       } else {

@@ -611,10 +611,10 @@ async function board(cmd, d, b, { title, version, tag }) {
   // board and schematic beside it, and the matrix for firmware
   const dir = paths.exports(d.project), { zip: zipOf } = await import('@rulecad/model-link');
   fs.mkdirSync(dir, { recursive: true });
-  const fab = await pcb.fabFiles(b.circuit, d.name), zip = path.join(dir, `${name}-fab.zip`);
+  const fab = await pcb.fabFiles(b.circuit, d.name, { source: b.source }), zip = path.join(dir, `${name}-fab.zip`);
   fs.writeFileSync(zip, await zipOf(Object.entries(fab)));
   const written = [zip];
-  for (const [f, t] of Object.entries(await pcb.kicadFiles(b.circuit, name))) { fs.writeFileSync(path.join(dir, f), t); written.push(path.join(dir, f)); }
+  for (const [f, t] of Object.entries(await pcb.kicadFiles(b.circuit, name, { source: b.source }))) { fs.writeFileSync(path.join(dir, f), t); written.push(path.join(dir, f)); }
   if (b.matrix) { const f = path.join(dir, `${name}-matrix.json`); fs.writeFileSync(f, JSON.stringify(b.matrix, null, 2) + '\n'); written.push(f); }
   const done = [{ level: 'pass', text: `fab zip: ${Object.keys(fab).length} files (${Object.keys(fab).filter((f) => !/\.(csv|DRL)$/.test(f)).length} Gerber layers, 2 drill files, BOM, placement)` }];
   if (opt('json')) return console.log(JSON.stringify({ object: `${d.project}/${d.name}`, version, files: written.map((f) => path.relative(WS, f)), findings: done }, null, 2));

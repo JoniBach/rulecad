@@ -12,10 +12,13 @@
 //  - the rules: kicadProject() writes the project file KiCad reads them from, with the board's own minimums (pcb_board's
 //    min_* values, which our checks use), and a custom rule file for exceptions the source has (pads by its edge)
 //  - kicadDrc(): KiCad's own design-rule check on all of that, when KiCad is installed
+//  - kicadFab(): the Gerber and drill files, plotted by KiCad from the board that check has just passed
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+
+const KICAD_CENTRE = 100; // where the converter puts the design's (0, 0) on KiCad's page (mm)
 
 /**
  * Circuit JSON with every source port, source trace, pcb trace and via keyed to its net, and a named source net for
@@ -91,6 +94,8 @@ export function patchKicadPcb(text, json) {
     if (edgePins.has(`${e.pcb_component_id}:${e.port_hints?.[1]}`)) out += '\n      (property pad_prop_castellated)';
     return out;
   });
+  // the drill and place origin at the design's own (0, 0), so plots and our placement file share one frame
+  text = text.replace(/\(setup\b/, `(setup\n\t\t(aux_axis_origin ${KICAD_CENTRE} ${KICAD_CENTRE})`);
   // a via twice at one place, the same size, layers and net: once
   const seen = new Set();
   text = text.replace(/\n  \(via\s*\(at (-?[\d.e-]+) (-?[\d.e-]+)\)\s*\(size ([\d.]+)\)\s*\(drill ([\d.]+)\)\s*\(layers ([^)]*)\)\s*(\(net \d+\))?[\s\S]*?\n  \)/g, (all, x, y, size, drill, layers, net) => {
@@ -134,6 +139,30 @@ export function kicadCli(env = process.env) {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
+// The board written where KiCad reads it, for fn({ cli, dir, board }); gone afterwards
+async function onKicadBoard(json, o, fn) {
+  const cli = kicadCli();
+  if (!cli) return null;
+  const { CircuitJsonToKicadPcbConverter } = await import('circuit-json-to-kicad');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-kicad-'));
+  try {
+    const netted = kicadNets(json), pcb = new CircuitJsonToKicadPcbConverter(netted); pcb.runUntilFinished();
+    const { pro, dru } = kicadProject(netted, o), board = path.join(dir, 'board.kicad_pcb');
+    fs.writeFileSync(board, patchKicadPcb(pcb.getOutputString(), netted));
+    fs.writeFileSync(path.join(dir, 'board.kicad_pro'), pro); fs.writeFileSync(path.join(dir, 'board.kicad_dru'), dru);
+    return await fn({ cli, dir, board });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+// kicad-cli's design-rule check, KiCad pouring the planes (extra: more arguments, as --save-board)
+function runDrc(cli, dir, board, extra = []) {
+  const version = execFileSync(cli, ['version'], { encoding: 'utf8' }).trim();
+  execFileSync(cli, ['pcb', 'drc', '--refill-zones', ...extra, '--format', 'json', '--severity-all', '-o', path.join(dir, 'drc.json'), board], { stdio: 'pipe' });
+  const d = JSON.parse(fs.readFileSync(path.join(dir, 'drc.json'), 'utf8'));
+  const all = [...d.violations, ...d.unconnected_items].filter((x) => x.type !== 'lib_footprint_issues'); // (KiCad's library has no "tscircuit" footprints: nothing about the board)
+  return { version, errors: all.filter((x) => x.severity === 'error'), warnings: all.filter((x) => x.severity !== 'error') };
+}
+
 /**
  * KiCad's own design-rule check on the board, as a second opinion: its files written as kicadFiles() writes them
  * (KiCad pours the planes itself, by its rules), checked by kicad-cli. -> { version, errors: [{ type, description,
@@ -141,19 +170,80 @@ export function kicadCli(env = process.env) {
  * @param {object[]} json @param {{ clearance?: number, track?: number, edgeExempt?: { ref: string, edge: number }[] }} [o]
  */
 export async function kicadDrc(json, o = {}) {
-  const cli = kicadCli();
-  if (!cli) return null;
-  const { CircuitJsonToKicadPcbConverter } = await import('circuit-json-to-kicad');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-kicad-'));
-  try {
-    const netted = kicadNets(json), pcb = new CircuitJsonToKicadPcbConverter(netted); pcb.runUntilFinished();
-    const { pro, dru } = kicadProject(netted, o);
-    fs.writeFileSync(path.join(dir, 'board.kicad_pcb'), patchKicadPcb(pcb.getOutputString(), netted));
-    fs.writeFileSync(path.join(dir, 'board.kicad_pro'), pro); fs.writeFileSync(path.join(dir, 'board.kicad_dru'), dru);
-    const version = execFileSync(cli, ['version'], { encoding: 'utf8' }).trim();
-    execFileSync(cli, ['pcb', 'drc', '--refill-zones', '--format', 'json', '--severity-all', '-o', path.join(dir, 'drc.json'), path.join(dir, 'board.kicad_pcb')], { stdio: 'pipe' });
-    const d = JSON.parse(fs.readFileSync(path.join(dir, 'drc.json'), 'utf8'));
-    const all = [...d.violations, ...d.unconnected_items].filter((x) => x.type !== 'lib_footprint_issues'); // (KiCad's library has no "tscircuit" footprints: nothing about the board)
-    return { version, errors: all.filter((x) => x.severity === 'error'), warnings: all.filter((x) => x.severity !== 'error') };
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  return onKicadBoard(json, o, ({ cli, dir, board }) => runDrc(cli, dir, board));
+}
+
+/**
+ * Whether a board's fab files must come from KiCad: slotted holes (the Gerber writer can't drill one), or rounded pads
+ * beside a copper plane (it plots them square, so their corners reach into a plane cut round the true shape).
+ * @param {object[]} json @returns {boolean}
+ */
+export function needsKicadFab(json) {
+  const plated = json.filter((e) => e.type === 'pcb_plated_hole');
+  return plated.some((e) => e.hole_width != null && e.hole_height != null && e.hole_width !== e.hole_height) || (plated.some((e) => e.rect_border_radius) && json.some((e) => e.type === 'pcb_copper_pour'));
+}
+
+/**
+ * Every hole the board's design has, found in KiCad's drill files: its place, its size, and a slot's length. Excellon text
+ * in mm with its zero at the design's. -> what's wrong, in words ([] when they agree).
+ * @param {object[]} json @param {string} pth @param {string} npth @returns {string[]}
+ */
+export function drillMismatches(json, pth, npth) {
+  const read = (text) => {
+    const tools = new Map(), out = []; let size = null;
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim(), tool = line.match(/^T(\d+)(?:[A-Z]\S*?)?C([\d.]+)/), pick = line.match(/^T(\d+)$/), at = line.match(/^X(-?[\d.]+)Y(-?[\d.]+)(?:G85X(-?[\d.]+)Y(-?[\d.]+))?/);
+      if (tool) tools.set(tool[1], Number(tool[2])); else if (pick) size = tools.get(pick[1]);
+      else if (at) out.push({ x: (Number(at[1]) + (at[3] != null ? Number(at[3]) : Number(at[1]))) / 2, y: (Number(at[2]) + (at[4] != null ? Number(at[4]) : Number(at[2]))) / 2, d: size, run: at[3] != null ? Math.hypot(Number(at[3]) - Number(at[1]), Number(at[4]) - Number(at[2])) : 0, used: false });
+    }
+    return out;
+  };
+  const near = 0.011, wrong = [];
+  const compare = (text, all, kind) => {
+    const found = read(text), seen = new Set(), wanted = all.filter((h) => { const k = [h.x.toFixed(3), h.y.toFixed(3), h.d, h.run].join(); return !seen.has(k) && seen.add(k); }); // (a via laid twice is drilled once)
+    for (const h of wanted) {
+      const f = found.find((q) => !q.used && Math.hypot(q.x - h.x, q.y - h.y) < near);
+      if (!f) { wrong.push(`no ${kind} hole at (${h.x.toFixed(3)}, ${h.y.toFixed(3)})`); continue; }
+      f.used = true;
+      if (Math.abs(f.d - h.d) > near || Math.abs(f.run - h.run) > near) wrong.push(`${kind} hole at (${h.x.toFixed(3)}, ${h.y.toFixed(3)}): ${f.d} mm${f.run ? ' slot' : ''} in the file, ${h.d} mm${h.run ? ` slot running ${h.run.toFixed(3)} mm` : ''} in the design`);
+    }
+    for (const f of found.filter((q) => !q.used)) wrong.push(`a ${kind} hole at (${f.x.toFixed(3)}, ${f.y.toFixed(3)}) the design doesn't have`);
+  };
+  const hole = (e) => { const w = e.hole_width, h = e.hole_height, slot = e.hole_diameter == null && w != null && h != null; return { x: e.x + (e.hole_offset_x ?? 0), y: e.y + (e.hole_offset_y ?? 0), d: slot ? Math.min(w, h) : e.hole_diameter ?? w, run: slot ? Math.abs(w - h) : 0 }; };
+  compare(pth, json.filter((e) => e.type === 'pcb_plated_hole' || e.type === 'pcb_via').map(hole), 'plated');
+  compare(npth, json.filter((e) => e.type === 'pcb_hole').map(hole), 'unplated');
+  return wrong;
+}
+
+/**
+ * The Gerber and drill files, plotted by KiCad from the very board its design-rule check has just passed, planes poured,
+ * named as a fab expects: { 'name.GTL': text, ..., 'name-PTH.DRL': text, 'name-NPTH.DRL': text }. Throws if the check
+ * finds an error (allow(finding): one that's accepted, the source's own) or the drill files aren't the design's holes;
+ * null when KiCad isn't installed.
+ * @param {object[]} json @param {string} name @param {{ clearance?: number, track?: number, edgeExempt?: object[], allow?: (x: any) => boolean }} [o]
+ */
+export async function kicadFab(json, name, o = {}) {
+  return onKicadBoard(json, o, ({ cli, dir, board }) => {
+    const drc = runDrc(cli, dir, board, ['--save-board']), errors = drc.errors.filter((x) => !o.allow?.(x));
+    if (errors.length) throw new Error(`no fab files: KiCad's design-rule check found ${errors.length} errors on the board it would plot (first: ${errors[0].description})`);
+    const copper = json.find((e) => e.type === 'pcb_board')?.num_layers ?? 2, inner = Array.from({ length: copper - 2 }, (_, i) => `In${i + 1}.Cu`);
+    const layers = ['F.Cu', ...inner, 'B.Cu', 'F.Paste', 'B.Paste', 'F.SilkS', 'B.SilkS', 'F.Mask', 'B.Mask', 'Edge.Cuts'];
+    const plots = path.join(dir, 'plots'), drills = path.join(dir, 'drills');
+    fs.mkdirSync(plots); fs.mkdirSync(drills);
+    execFileSync(cli, ['pcb', 'export', 'gerbers', '--layers', layers.join(','), '--use-drill-file-origin', '--no-x2', '--no-netlist', '-o', `${plots}/`, board], { stdio: 'pipe' });
+    execFileSync(cli, ['pcb', 'export', 'drill', '--format', 'excellon', '--excellon-separate-th', '--excellon-units', 'mm', '--excellon-zeros-format', 'decimal', '--excellon-oval-format', 'alternate', '--drill-origin', 'plot', '-o', `${drills}/`, board], { stdio: 'pipe' });
+    const ext = { F_Cu: 'GTL', B_Cu: 'GBL', F_Paste: 'GTP', B_Paste: 'GBP', F_Silkscreen: 'GTO', B_Silkscreen: 'GBO', F_Mask: 'GTS', B_Mask: 'GBS', Edge_Cuts: 'GKO' };
+    const out = {};
+    for (const f of fs.readdirSync(plots)) {
+      if (f.endsWith('.gbrjob')) continue;
+      const layer = f.replace(/^board-/, '').replace(/\.[^.]+$/, ''), inn = layer.match(/^In(\d+)_Cu$/), e = inn ? `G${inn[1]}` : ext[layer];
+      if (!e) throw new Error(`no fab files: KiCad plotted a layer we can't name (${f})`);
+      out[`${name}.${e}`] = fs.readFileSync(path.join(plots, f), 'utf8');
+    }
+    if (Object.keys(out).length !== layers.length) throw new Error(`no fab files: KiCad plotted ${Object.keys(out).length} of ${layers.length} layers`);
+    const pth = fs.readFileSync(path.join(drills, 'board-PTH.drl'), 'utf8'), npth = fs.readFileSync(path.join(drills, 'board-NPTH.drl'), 'utf8');
+    const wrong = drillMismatches(json, pth, npth);
+    if (wrong.length) throw new Error(`no fab files: KiCad's drill files aren't the design's holes (${wrong.length}; first: ${wrong[0]})`);
+    return { ...out, [`${name}-PTH.DRL`]: pth, [`${name}-NPTH.DRL`]: npth };
+  });
 }

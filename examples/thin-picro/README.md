@@ -101,8 +101,10 @@ clearance errors. This one was found by trying small moves of the core and the m
 at `hole_a_x` 8.4 mm, the core at `core_y` 0.15 mm); if you change the layout, expect to try a few nearby values.
 Anything new the router has to fit changes the whole route: that's why the VBUS bridge is laid after routing.
 
-`cad export` makes the files JLCPCB needs, and KiCad's own (`module@0.7.0.kicad_pcb` with its project and rules).
-Before ordering, **check the pinout** below against your keyboard's wiring.
+`cad export` makes the files JLCPCB needs, and KiCad's own (`module@0.7.1.kicad_pcb` with its project and rules). It
+needs KiCad installed: KiCad plots the Gerbers and drill files from the board its design-rule check has just passed,
+because this board's rounded pads beside its planes, and the USB-C socket's slotted legs, are more than the other
+Gerber writer can draw. Before ordering, **check the pinout** below against your keyboard's wiring.
 
 ## Pinout
 

@@ -234,7 +234,9 @@ export function smoothCircuit(json, { movable = () => true, clearance, leads = (
     else if (e.type === 'pcb_plated_hole') {
       const n = net(e), hx = e.x + (e.hole_offset_x ?? 0), hy = e.y + (e.hole_offset_y ?? 0);
       obstacles.push({ layer: '*', net: n, shape: holePadShape(e) });
-      obstacles.push({ layer: '*', net: null, clear: holeGap, shape: { circle: { x: hx, y: hy, r: (e.hole_diameter ?? Math.max(e.hole_width ?? 0, e.hole_height ?? 0)) / 2 } } });
+      const sw = e.hole_width ?? 0, sh = e.hole_height ?? 0, along = Math.abs(sw - sh) / 2, wide = sw > sh; // (a slot: its line and half its narrow side)
+      obstacles.push({ layer: '*', net: null, clear: holeGap, shape: e.hole_diameter == null && along ? { capsule: { a: { x: hx - (wide ? along : 0), y: hy - (wide ? 0 : along) }, b: { x: hx + (wide ? along : 0), y: hy + (wide ? 0 : along) }, r: Math.min(sw, sh) / 2 } }
+        : { circle: { x: hx, y: hy, r: (e.hole_diameter ?? Math.max(sw, sh)) / 2 } } });
     } else if (e.type === 'pcb_via') {
       obstacles.push({ layer: '*', net: net(e), shape: { circle: { x: e.x, y: e.y, r: e.outer_diameter / 2 } } });
       obstacles.push({ layer: '*', net: net(e), clear: holeGap, shape: { circle: { x: e.x, y: e.y, r: e.hole_diameter / 2 } } }); // (its hole too: a fab measures from it)

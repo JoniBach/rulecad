@@ -95,6 +95,11 @@ export function main(v) {
   its pad 0.1 mm wider than its hole, 0.15 preferred), a plated hole's against those for holes. Each via's hole is
   measured edge to edge to the nearest track of another net (`via_hole_track`, 0.2 mm): JLCPCB measures from the hole,
   so a small via's thin ring leaves less room than the copper clearance suggests.
+- **Fab files, plotted by KiCad where they must be:** the Gerber writer plots a rounded pad square, so beside a copper
+  plane its corners would short to it, and it can't drill a slot. For a board with either, `fabFiles` has KiCad plot the
+  Gerbers and drill files from the very board its design-rule check has just passed, and refuses if the check finds an
+  error or the drill files aren't the design's holes, slots included. Without KiCad such a board's fab files aren't
+  made. The plots share the design's origin with the placement file. A source's slotted holes are kept as slots.
 - **KiCad, as a second opinion:** `kicadFiles` writes the board as KiCad reads it (kicad.mjs: every pad, track and via
   on its named net, a hole set off-centre in its pad where KiCad drills it, castellated pins marked, rounded pads round,
   and a `.kicad_pro` and `.kicad_dru` with the board's rules). Where KiCad is installed, `checks` also runs its
