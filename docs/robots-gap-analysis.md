@@ -10,6 +10,23 @@ step what the design predicts and whether the build agrees. Three words come up 
 arithmetic and the bookkeeping), **observability** (every prediction is visible, with its source, and can be compared
 with a measurement), and **minimal retry** (a mistake is found by a check, not by a print or a burnt driver).
 
+## Decision, 2026-11-09
+
+The plan that came out of this analysis is filed as GitHub issue #172 (umbrella) with #173 to #202 in milestones 10
+to 12: Robots 1, the arm draws; Robots 2, the arm lifts; Robots 3, a leg, then gait. Three things changed from the
+analysis as first written:
+
+- **The plotter and the printer are set aside as detours.** The plotter adds only belts and GRBL to what the arm
+  needs; the printer is a thermal and electrical project. Their catalogue items (belts, rails, lead screws) arrive
+  when the arm's Z axis needs them. The sections below keep them for the record.
+- **The arm mounts two ways.** A SCARA's joints are vertical, so gravity never loads its motors, which is why it is
+  easy and why it hides what robots struggle with. The same parts bolt upright on the same base for the second
+  milestone, so the drawing proves the kinematics and the lifting proves the load checks, with no new hardware. A leg
+  is an upright two-link arm pushing on the floor, so the third milestone follows from the same parts.
+- **One new package, everything else in place.** `@rulecad/robots` holds the maths that must run alone and in the
+  browser (chains, kinematics, reach, toolpaths, later gaits) with no dependencies; the catalogue goes in rules, seats
+  in shapes, drivers and power in motors, the task, checks, commands and targets in cad.
+
 ## 1. The three machines
 
 | | SCARA drawing arm | XY plotter | 3D printer |
