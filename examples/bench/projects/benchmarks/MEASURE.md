@@ -57,6 +57,7 @@ Write the number in the last column and send it back: it replaces the kit's figu
 | 18 | Fastest move under load | With 200 g at 100 mm, raise the rate until it misses steps | 8 rpm predicted | |
 | 19 | Servo stall torque | Arm's 25 mm hole pressing on the scale | 0.18 N m | |
 | 20 | Servo dimensions | Calipers on the tabs, hole spacing and output | Community figures | |
+| 21 | Bearing press and slip | Print `seats-coupon` once per filament. Press a 608 into each pocket by hand or in a vice: note the tightest that goes in without cracking, then write it back with `cad measured benchmarks/<assembly> x1c.press=<value>` (and `x1c.slip`) | press 0.05 mm, slip 0.1 mm across | |
 
 Number 11 is a correction to 7 to 9. Take number 16 last: it wrecks the gears.
 
