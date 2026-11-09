@@ -1,0 +1,149 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-arm",
+  "title": "Shoulder arm",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A 150 mm arm for the output: holes at known radii, a pointer that reads against the dial, and a boss that clears the clips. First layer: one plain bar.",
+  "anchors": {
+    "hub": {
+      "at": [
+        0,
+        0,
+        "thick + boss"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "r150": {
+      "at": [
+        "r3",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "r100": {
+      "at": [
+        "r2",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "length": {
+      "value": 150,
+      "unit": "mm",
+      "rule": "To the far hole"
+    },
+    "beyond": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Past it, for the nub"
+    },
+    "bar": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Width"
+    },
+    "thick": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Twenty-five layers"
+    },
+    "corner": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Rounded ends"
+    },
+    "hub": {
+      "value": 50,
+      "unit": "mm",
+      "rule": "Over the four bolts"
+    },
+    "boss": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Lifts the arm clear of the clips"
+    },
+    "hole": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "M3 clearance"
+    },
+    "bolt": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Radius of the bolt circle"
+    },
+    "bolts": {
+      "value": 4,
+      "rule": "Four bolts"
+    },
+    "hang": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "For a string"
+    },
+    "r1": {
+      "value": 50,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r2": {
+      "value": 100,
+      "unit": "mm",
+      "rule": "A hole, near the pointer"
+    },
+    "r3": {
+      "value": 150,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "pointer_r": {
+      "value": 106,
+      "unit": "mm",
+      "rule": "Over the dial's ticks"
+    },
+    "pointer": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Its foot"
+    },
+    "point": {
+      "value": 0.8,
+      "unit": "mm",
+      "rule": "Its tip"
+    },
+    "pointer_top": {
+      "value": 33.5,
+      "unit": "mm",
+      "rule": "Reaches back to just over the dial"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shoulder-output",
+  "title": "Shoulder output ring",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "The output ring on a plain round flange, printed flange down and fitted upside down. Four pilot holes take the arm.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        "top + width"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ]
+    },
+    "outer": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "top": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The flange, on the bed"
+    },
+    "width": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The ring's face"
+    },
+    "rim": {
+      "value": 64,
+      "unit": "mm",
+      "rule": "Round the 57-tooth ring"
+    },
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "The gears'"
+    },
+    "teeth": {
+      "value": 57,
+      "rule": "The output ring"
+    },
+    "pilot": {
+      "value": 2.9,
+      "unit": "mm",
+      "rule": "An M3 screw from the arm, self-tapped"
+    },
+    "bolt": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Radius of the arm's bolt circle"
+    },
+    "bolts": {
+      "value": 4,
+      "rule": "Four bolts"
+    },
+    "half_turn": {
+      "value": 180,
+      "unit": "deg",
+      "rule": "Degrees to radians"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

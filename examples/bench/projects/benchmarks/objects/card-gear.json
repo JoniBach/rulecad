@@ -1,0 +1,90 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "card-gear",
+  "title": "Gear card: a gear",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "One gear of the card, its backlash marked with dots on top.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "module": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Set by the card",
+      "tweak": {
+        "min": 0.5,
+        "max": 2
+      }
+    },
+    "teeth": {
+      "value": 14,
+      "rule": "The card's"
+    },
+    "shift": {
+      "value": 0.2,
+      "rule": "The card's"
+    },
+    "backlash": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Set by the card",
+      "tweak": {
+        "min": 0,
+        "max": 0.5
+      }
+    },
+    "width": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Twenty-five layers"
+    },
+    "bore": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "On a 2.79 mm printed pin"
+    },
+    "dots": {
+      "value": 1,
+      "rule": "One dot for the tight backlash, two for the middle, three for the loose",
+      "tweak": {
+        "min": 1,
+        "max": 3
+      }
+    },
+    "dot": {
+      "value": 0.9,
+      "unit": "mm",
+      "rule": "A dot, two lines"
+    },
+    "dot_height": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Two layers"
+    },
+    "dot_pitch": {
+      "value": 1.4,
+      "unit": "mm",
+      "rule": "Between dots"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

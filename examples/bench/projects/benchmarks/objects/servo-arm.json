@@ -1,0 +1,91 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "servo-arm",
+  "title": "SG90 arm",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A 60 mm arm that screws to a servo horn, with holes at known radii.",
+  "anchors": {
+    "axis": {
+      "at": [
+        0,
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "variables": {
+    "length": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "From the output"
+    },
+    "bar": {
+      "value": 12,
+      "unit": "mm",
+      "rule": "Width"
+    },
+    "thick": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Twenty layers"
+    },
+    "corner": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Rounded ends"
+    },
+    "tail": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "Behind the output, for the horn's other arm"
+    },
+    "middle": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Over the horn's middle, for its screw"
+    },
+    "slot": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Along the middle, for the horn's screws wherever its holes are"
+    },
+    "slot_to": {
+      "value": 15,
+      "unit": "mm",
+      "rule": "How far out"
+    },
+    "hole": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "For a string"
+    },
+    "r1": {
+      "value": 25,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r2": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "r3": {
+      "value": 55,
+      "unit": "mm",
+      "rule": "A hole"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes and corners"
+    }
+  }
+}

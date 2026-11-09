@@ -1,0 +1,91 @@
+{
+  "title": "Mesh rig on the stand",
+  "kind": "fit",
+  "description": "One spur pair with a lever each, to find what a printed mesh passes on.",
+  "items": [
+    {
+      "id": "stand",
+      "object": "stand",
+      "rotate": [
+        90,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "rig",
+      "object": "mesh-rig"
+    },
+    {
+      "id": "pinion",
+      "object": "rig-pinion"
+    },
+    {
+      "id": "wheel",
+      "object": "rig-wheel"
+    },
+    {
+      "id": "lever",
+      "object": "rig-lever"
+    }
+  ],
+  "joints": [
+    {
+      "id": "r",
+      "type": "fixed",
+      "parent": "stand.front",
+      "child": "rig.back"
+    },
+    {
+      "id": "p",
+      "type": "revolute",
+      "parent": "rig.pinion",
+      "child": "pinion.axis",
+      "min": -60,
+      "max": 60,
+      "value": 0,
+      "label": "Pinion lever"
+    },
+    {
+      "id": "w",
+      "type": "revolute",
+      "parent": "rig.wheel",
+      "child": "wheel.axis",
+      "min": -30,
+      "max": 30,
+      "mesh": {
+        "with": "p",
+        "module": 1,
+        "teeth": [
+          14,
+          42
+        ],
+        "shift": [
+          0.2,
+          0
+        ],
+        "backlash": 0.2
+      }
+    },
+    {
+      "id": "l",
+      "type": "fixed",
+      "parent": "wheel.top",
+      "child": "lever.back"
+    }
+  ],
+  "fits": [
+    {
+      "a": "rig",
+      "b": "stand",
+      "fastens": true,
+      "min": 0,
+      "note": "The rig, on four screws"
+    }
+  ],
+  "poses": {
+    "level": {
+      "p": 0
+    }
+  }
+}

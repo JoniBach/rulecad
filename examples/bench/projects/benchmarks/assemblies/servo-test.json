@@ -1,0 +1,86 @@
+{
+  "title": "SG90 on its stand",
+  "kind": "fit",
+  "description": "The servo dropped in its pocket, its arm on the horn.",
+  "items": [
+    {
+      "id": "stand",
+      "object": "servo-stand"
+    },
+    {
+      "id": "servo",
+      "motor": {
+        "model": "sg90",
+        "drives": "turn"
+      },
+      "at": [
+        5.35,
+        0,
+        20
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "arm",
+      "object": "servo-arm"
+    }
+  ],
+  "joints": [
+    {
+      "id": "turn",
+      "type": "revolute",
+      "parent": {
+        "item": "stand",
+        "at": [
+          5.35,
+          0,
+          38.6
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ],
+        "ref": [
+          1,
+          0,
+          0
+        ]
+      },
+      "child": "arm.axis",
+      "label": "Servo"
+    }
+  ],
+  "fits": [
+    {
+      "a": "servo",
+      "b": "stand",
+      "fastens": true,
+      "min": 0,
+      "note": "The servo, on its two tab screws"
+    },
+    {
+      "a": "arm",
+      "b": "servo",
+      "fastens": true,
+      "min": 0,
+      "note": "The arm, on the horn (not drawn)"
+    }
+  ],
+  "loads": [
+    {
+      "joint": "turn",
+      "torque": 0.05,
+      "note": "50 mN m, a first test"
+    }
+  ],
+  "poses": {
+    "middle": {
+      "turn": 0
+    }
+  }
+}

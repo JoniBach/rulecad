@@ -1,0 +1,652 @@
+{
+  "title": "Gear card, mounted",
+  "kind": "fit",
+  "description": "Every gear on its pin, each pair meshed.",
+  "items": [
+    {
+      "id": "card",
+      "object": "gear-card"
+    },
+    {
+      "id": "g00a",
+      "object": "card-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "g00b",
+      "object": "card-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "g01a",
+      "object": "card-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "g01b",
+      "object": "card-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "g02a",
+      "object": "card-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "g02b",
+      "object": "card-gear",
+      "set": {
+        "module": 0.8,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "g10a",
+      "object": "card-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "g10b",
+      "object": "card-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "g11a",
+      "object": "card-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "g11b",
+      "object": "card-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "g12a",
+      "object": "card-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "g12b",
+      "object": "card-gear",
+      "set": {
+        "module": 1,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "g20a",
+      "object": "card-gear",
+      "set": {
+        "module": 1.25,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "g20b",
+      "object": "card-gear",
+      "set": {
+        "module": 1.25,
+        "backlash": 0.1,
+        "dots": 1
+      }
+    },
+    {
+      "id": "g21a",
+      "object": "card-gear",
+      "set": {
+        "module": 1.25,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "g21b",
+      "object": "card-gear",
+      "set": {
+        "module": 1.25,
+        "backlash": 0.2,
+        "dots": 2
+      }
+    },
+    {
+      "id": "g22a",
+      "object": "card-gear",
+      "set": {
+        "module": 1.25,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    },
+    {
+      "id": "g22b",
+      "object": "card-gear",
+      "set": {
+        "module": 1.25,
+        "backlash": 0.3,
+        "dots": 3
+      }
+    }
+  ],
+  "joints": [
+    {
+      "id": "g00a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          17.56,
+          59.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g00a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g00b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          29.0533,
+          59.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g00b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g00a",
+        "module": 0.8,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.1
+      }
+    },
+    {
+      "id": "g01a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          17.56,
+          36.75,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g01a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g01b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          29.0533,
+          36.75,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g01b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g01a",
+        "module": 0.8,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.2
+      }
+    },
+    {
+      "id": "g02a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          17.56,
+          14.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g02a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g02b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          29.0533,
+          14.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g02b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g02a",
+        "module": 0.8,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.3
+      }
+    },
+    {
+      "id": "g10a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          45.8133,
+          59.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g10a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g10b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          60.18,
+          59.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g10b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g10a",
+        "module": 1,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.1
+      }
+    },
+    {
+      "id": "g11a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          45.8133,
+          36.75,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g11a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g11b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          60.18,
+          36.75,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g11b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g11a",
+        "module": 1,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.2
+      }
+    },
+    {
+      "id": "g12a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          45.8133,
+          14.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g12a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g12b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          60.18,
+          14.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g12b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g12a",
+        "module": 1,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.3
+      }
+    },
+    {
+      "id": "g20a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          80.63,
+          59.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g20a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g20b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          98.5883,
+          59.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g20b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g20a",
+        "module": 1.25,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.1
+      }
+    },
+    {
+      "id": "g21a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          80.63,
+          36.75,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g21a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g21b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          98.5883,
+          36.75,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g21b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g21a",
+        "module": 1.25,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.2
+      }
+    },
+    {
+      "id": "g22a",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          80.63,
+          14.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g22a.axis",
+      "min": -360,
+      "max": 360
+    },
+    {
+      "id": "g22b",
+      "type": "revolute",
+      "parent": {
+        "item": "card",
+        "at": [
+          98.5883,
+          14.25,
+          2.6999999999999997
+        ],
+        "axis": [
+          0,
+          0,
+          1
+        ]
+      },
+      "child": "g22b.axis",
+      "min": -360,
+      "max": 360,
+      "mesh": {
+        "with": "g22a",
+        "module": 1.25,
+        "teeth": [
+          14,
+          14
+        ],
+        "shift": [
+          0.2,
+          0.2
+        ],
+        "backlash": 0.3
+      }
+    }
+  ]
+}
