@@ -203,6 +203,20 @@ between?, refs? }`, points in mm in the world.
 - J. E. Bresenham, "Algorithm for computer control of a digital plotter", *IBM Systems Journal* 4(1), 1965, 25-30.
 - S. Jeon, Grbl's motion planner (`planner.c`, junction deviation), [github.com/grbl/grbl](https://github.com/grbl/grbl).
 
+## Legs and gaits
+
+A leg is a chain with a foot. `leg(name, { at, upper, lower, hip, knee })` makes a two-joint leg turning about y, hip at `at` in the body's frame. `gait({ legs, pattern, stride, lift, height, period, mass })` runs a gait through its cycle: in stance the foot is carried back along x under the body; in swing it is lifted and carried forward. Patterns are duty factors and phases: `crawl`, `walk`, `trot` and `tripod`, or your own `{ duty, phase }`.
+
+| Figure | Formula |
+|---|---|
+| Static margin | the least distance from the centre of mass to the edge of the support polygon, mm; below 0 it tips |
+| Load per stance foot | the least-squares spread that balances the weight and its moments |
+| Joint torque | τ = Jᵀ F, the Jacobian transposed against the ground's force on the foot |
+
+A crawl's or a walk's body surges along x by `surge` (a quarter of the stride by default), away from each foot as it swings, since a centred body would sit on the line between two feet.
+
+Only static and quasi-static gaits: the body's own acceleration, balance and feedback are not modelled. A trot rests on two feet, so it is reported quasi-static with its torques and no stability claim.
+
 ## Not here
 
 Position only: the tool's orientation is not a target, and a redundant chain moves however the solver finds it.

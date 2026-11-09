@@ -16,11 +16,13 @@
     "reach.mjs",
     "svg.mjs",
     "toolpath.mjs",
+    "gait.mjs",
     "robots.d.mts",
     "kinematics.d.mts",
     "reach.d.mts",
     "svg.d.mts",
     "toolpath.d.mts",
+    "gait.d.mts",
     "README.md",
     "LICENSE"
   ],

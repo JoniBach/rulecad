@@ -665,3 +665,36 @@ test('findings are in the kit\'s shape', () => {
   assert.equal(locked[0].code, 'chain.locked'); assert.equal(locked[0].level, 'warn'); assert.deepEqual(locked[0].at, [5, 0, 0]);
   nearAll(zeros(planar2R(1, 1)), [0, 0], 0);
 });
+
+test('legs and gaits: a crawl stable with its margin, a trot quasi-static with torque through the cycle, a stride past the leg refused', async () => {
+  const { leg, gait, stabilityMargin, footLoads, legTorques, fk } = await import('@rulecad/robots');
+  const quad = [['fl', 100, 60], ['fr', 100, -60], ['bl', -100, 60], ['br', -100, -60]].map(([n, x, y]) => leg(n, { at: [x, y, 0], upper: 90, lower: 90 }));
+  // By hand: a square of feet, centre of mass in the middle
+  assert.ok(Math.abs(stabilityMargin([[0, 0], [100, 0], [100, 100], [0, 100]], [50, 50]) - 50) < 1e-9);
+  assert.ok(stabilityMargin([[0, 0], [100, 0], [0, 100]], [90, 90]) < 0, 'outside the triangle');
+  assert.ok(Math.abs(stabilityMargin([[-10, 0], [10, 0]], [0, 3]) + 3) < 1e-9, 'a line of feet, off it by 3');
+  assert.deepEqual(footLoads([[-100, -60], [100, -60], [100, 60], [-100, 60]], [0, 0], 8).map((x) => +x.toFixed(6)), [2, 2, 2, 2], 'level and centred: an equal share');
+  assert.deepEqual(footLoads([[-100, 0], [100, 0]], [50, 0], 10).map((x) => +x.toFixed(6)), [2.5, 7.5], 'the lever rule');
+  // A leg's torque, by hand: lower leg straight down from the knee, 4 N up on the foot: hip's lever is the upper link's reach
+  const l = leg('t', { at: [0, 0, 0], upper: 100, lower: 100 }), q = [0, 90]; // the upper link along +x, the lower straight down
+  const end = fk(l.chain, q).position; assert.ok(Math.hypot(end[0] - 100, end[2] + 100) < 1e-6, `foot at ${end}`);
+  const tau = legTorques(l.chain, q, [0, 0, 4]);
+  assert.ok(Math.abs(Math.abs(tau[0]) - 0.4) < 1e-6, `hip 0.4 N m, got ${tau[0]}`); assert.ok(Math.abs(tau[1]) < 1e-6, 'the knee is on the line of the force');
+
+  const crawl = gait({ legs: quad, pattern: 'crawl', stride: 40, lift: 15, height: 120, period: 4, mass: 1.5 });
+  assert.equal(crawl.ok, true, JSON.stringify(crawl.findings));
+  assert.equal(crawl.summary.standing, true); assert.ok(crawl.summary.margin > 1, `crawl's margin ${crawl.summary.margin}`);
+  assert.equal(crawl.findings.find((x) => x.code === 'gait.stable').level, 'pass');
+  assert.ok(Math.abs(crawl.summary.clearance - 15) < 2, `lifts ${crawl.summary.clearance}`);
+
+  const trot = gait({ legs: quad, pattern: 'trot', stride: 40, lift: 15, height: 120, period: 1.2, mass: 1.5 });
+  assert.equal(trot.summary.standing, false); assert.match(trot.findings.find((x) => x.code === 'gait.stable').text, /quasi-static/);
+  const halfWeight = 1.5 * 9.80665 / 2, hip = trot.summary.torque['fl.hip'], knee = trot.summary.torque['fl.knee'];
+  assert.ok(hip > 0 && knee > 0, 'torque at every joint through the cycle');
+  assert.ok(trot.frames.every((f) => Math.abs(f.feet.filter((e) => e.stance).reduce((t, e) => t + e.load, 0) - 2 * halfWeight) < 1e-6), 'the feet carry the weight, at every moment');
+
+  const far = gait({ legs: quad, pattern: 'crawl', stride: 300, lift: 15, height: 150, period: 4, mass: 1.5 });
+  assert.equal(far.ok, false); assert.match(far.findings[0].text, /leg \w+ can't reach its foot/); assert.equal(far.findings[0].code, 'gait.reach');
+  assert.throws(() => gait({ legs: quad, pattern: 'gallop', stride: 40, lift: 15, height: 120, period: 1, mass: 1 }), /no pattern "gallop"/);
+  assert.throws(() => leg('x', { at: [0, 0], upper: 1, lower: 1 }), /at is the hip/);
+});
