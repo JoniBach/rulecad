@@ -178,8 +178,8 @@ test('a mesh turned inside out is named as that, not as the bridges and bed it s
   assert.ok(!check(cube, printer).some((x) => x.code === 'print.inside-out'), 'the right way out: not said');
 });
 
-test('a big part whose first layer is thin strips is warned about; a plain footprint, and a small part, are not', () => {
-  const tris = (g) => jscad.geometries.geom3.toPolygons(g).map((q) => q.vertices), code = (g) => check(tris(g), printer).filter((f) => f.code === 'print.first-layer.thin');
+test('a big part whose first layer is cut up is warned about; a plain footprint, and a small part, are not', () => {
+  const tris = (g) => jscad.geometries.geom3.toPolygons(g).map((q) => q.vertices), code = (g) => check(tris(g), printer).filter((f) => f.code === 'print.first-layer.sprawl');
   const bar = (x, y, a, b) => cuboid({ size: [a, b, 2], center: [x, y, 1] });
   const ladder = union(bar(0, -28, 120, 3), bar(0, 28, 120, 3), ...[-50, -30, -10, 10, 30, 50].map((x) => bar(x, 0, 3, 56)));
   assert.equal(code(ladder).length, 1, 'bars 3 mm wide');
