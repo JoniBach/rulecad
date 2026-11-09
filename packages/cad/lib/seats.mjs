@@ -93,3 +93,36 @@ export function runningChecks(s, f, { axisOf, placeItems, jointValues, mul }) {
     else f('pass', `${j.id}: ${words}`, null, { code: 'joint.running', at, refs: refsOut, values });
   }
 }
+
+// fit.seat: a printed pocket against the bought bearing in it, read from the part as drawn, so a pocket drawn by hand is
+// caught as well as one from bearingSeat. { "a": "b1", "b": "housing", "seat": "press" | "slip" | clearance in mm }
+export function seatFit(x, s, f, { placeItems, jointValues, mul, seatSize }) {
+  const top = (n) => String(n).split(/[.@]/)[0], o = s.objects.find((y) => y.bought?.part === 'bearing' && (y.id === top(x.a) || y.id === top(x.b))), label = x.note || `${x.a} in ${x.b}`, code = 'fit.seat';
+  if (!o) return f('fail', `${label}: a seat holds a bought bearing, and neither ${x.a} nor ${x.b} is one`, `${label}: no bearing`, { code });
+  const other = top(x.a) === o.id ? top(x.b) : top(x.a), parts = s.parts.filter((p) => p.item === other || p.leaf === other);
+  if (!parts.length) return f('fail', `${label}: no part "${other}"`, null, { code });
+  const motion = s.motion, ids = motion.items.map((y) => y[0]), W = placeItems(motion, jointValues(motion, motion.pose ?? undefined))[ids.indexOf(o.id)];
+  const inv = (p) => { const q = [p[0] - W[3], p[1] - W[7], p[2] - W[11]]; return [W[0] * q[0] + W[4] * q[1] + W[8] * q[2], W[1] * q[0] + W[5] * q[1] + W[9] * q[2], W[2] * q[0] + W[6] * q[1] + W[10] * q[2]]; };
+  const tris = parts.flatMap((p) => p.triangles).map((t) => t.map(inv)), v = o.built.values, w = v.width, R = v.outer_diameter / 2, r = v.bore / 2;
+  const printer = printerRules(s), want = seatSize(v, { fit: x.seat === true ? 'press' : x.seat, printer }), refs = { item: o.id, part: other };
+  const firstWall = (z) => { const segs = sliceAt(tris, z); if (segs.length < 3) return null; const h = []; for (let k = 0; k < RAYS; k++) { const a = rayHits(segs, ((k + 0.37) * 2 * Math.PI) / RAYS); if (!a.length) return null; h.push(a[0]); } return h; };
+  const mid = firstWall(w / 2);
+  if (!mid) return f('fail', `${label}: halfway along ${o.bought.set}, ${other} doesn't go round it`, `${label}: no seat`, { code, refs });
+  const drawn = 2 * Math.max(...mid), diff = drawn - want.pocket, values = { drawn, wanted: want.pocket, difference: diff, comp: want.comp, clearance: want.clearance };
+  const inMaterial = 2 * Math.min(...mid) < 2 * r + 0.1;
+  if (inMaterial) return f('fail', `${label}: ${other} is solid where the bearing goes (the wall is ${n3(Math.min(...mid), 2)} mm from its axis, inside the ${v.bore} mm bore)`, `${label}: no pocket`, { code, refs, values });
+  const say = `${o.bought.set} (${n3(2 * R, 2)} mm) in a pocket drawn ${n3(drawn, 3)} mm`;
+  if (Math.abs(diff) > 0.15) f('fail', `${label}: ${say}, and a ${typeof want.fit === 'string' ? want.fit : `${want.fit} mm`} fit on this printer wants ${n3(want.pocket, 3)} mm: ${n3(Math.abs(diff), 2)} mm too ${diff < 0 ? 'small: it will not press in' : 'big: it will rattle'}`, `${label}: seat ${diff < 0 ? 'small' : 'big'}`, { code, refs, values });
+  else if (Math.abs(diff) > 0.05) f('warn', `${label}: ${say}, ${n3(diff, 3)} mm from the ${n3(want.pocket, 3)} mm a ${typeof want.fit === 'string' ? want.fit : `${want.fit} mm`} fit wants`, `${label}: seat off`, { code, refs, values });
+  else f('pass', `${label}: ${say}, a ${typeof want.fit === 'string' ? want.fit : `${want.fit} mm`} fit (printed about ${n3(want.clearance, 3)} mm)`, null, { code, refs, values });
+  // How much of the race the wall holds, and what stops it
+  const levels = 9, held = Array.from({ length: levels }, (_, k) => firstWall(w * (k + 0.5) / levels)).filter((h) => h && Math.min(...h) < R + 0.5).length / levels;
+  if (held < 0.8) f('warn', `${label}: the pocket holds only ${n3(held * w, 1)} mm of the ${w} mm race: the bearing can tip`, `${label}: shallow`, { code: 'fit.seat', refs, values: { held: held * w, width: w } });
+  const ledges = [firstWall(-0.3), firstWall(w + 0.3)].map((h) => (h ? Math.min(...h) : null)).filter((h) => h != null && h < R - 0.1);
+  if (!ledges.length) f('warn', `${label}: nothing stops the bearing at either face: draw a lip`, `${label}: no lip`, { code: 'fit.seat', refs });
+  else {
+    const lip = Math.max(...ledges);
+    if (lip < r + (R - r) / 2) f('fail', `${label}: the lip comes in to ${n3(2 * lip, 2)} mm across, onto the inner race (which turns): it wants ${n3(2 * r + (R - r), 2)} mm or more`, `${label}: lip on inner race`, { code: 'fit.seat', refs, values: { lip: 2 * lip } });
+    else f('pass', `${label}: a ${n3(R - lip, 2)} mm lip stops the outer race and clears the inner`, null, { code: 'fit.seat', refs, values: { lip: 2 * lip } });
+  }
+}

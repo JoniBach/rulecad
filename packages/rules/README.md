@@ -10,6 +10,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 
 | Set | What | Values |
 |---|---|---|
+| `wire` | Hook-up wire by gauge: current density, service loop | 4 |
 | `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need (and how far the first layer spreads), and hole compensation | 13 |
 | `mx` | Cherry MX switches: plate cut-out, stem, housing, travel, key pitch | 29 |
 | `oem` | OEM keycap profile: heights and top tilt per row (from KeyV2) | 12 |

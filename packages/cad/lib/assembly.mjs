@@ -33,7 +33,10 @@ import { DOFS, frame, turn, mul, pathLength, jointValues, placeItems, jointMatri
 import { gearModel, internalModel, rackModel, mesh as meshOf, phase, rackPhase, contact, wormModel, wormMesh, bevelModel, bevelMesh, compoundEfficiency } from '@rulecad/gears';
 import { ops as booleans } from '@rulecad/shapes';
 import { motorBuilt, motorDrives, shaftFits, loadsOf, motorChecks, shaftFit, axisOf } from './motors.mjs';
-import { runningChecks } from './seats.mjs';
+import { runningChecks, seatFit } from './seats.mjs';
+import { seatSize } from '@rulecad/shapes';
+import { wiresOf, wireChecks, wireRows } from './wires.mjs';
+import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -97,6 +100,11 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const built = new Map(); // each object or component is built once per set of values, however many copies are placed
   const source = async (it, extra) => {
     if (it.motor) { const key = JSON.stringify(['motor', it.id, it.motor]); if (!built.has(key)) built.set(key, motorBuilt(it.motor, num, it.id)); return built.get(key); }
+    if (it.bought) {
+      const key = JSON.stringify(['bought', it.id, it.bought, it.variant]);
+      if (!built.has(key)) built.set(key, boughtSets().get(it.bought) === 'motor' ? motorBuilt({ model: it.bought }, num, it.id) : boughtBuilt(it.bought, it, num, it.id));
+      return built.get(key);
+    }
     // from: inputs worked out from items built before this one ({ "usb_y": "board.pcb.pico_y" }): numbers, in this
     // assembly's names, so a part can take a value only another part knows once it's built
     const from = Object.fromEntries(Object.entries(it.from || {}).map(([k, x]) => [k, num(x)]));
@@ -133,7 +141,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   let builtCount = 0;
   for (const it of a.items || []) {
     if (!/^[a-z][\w-]*$/.test(it.id || '')) throw new Error(`each item needs an id (letters, digits, - or _): got ${JSON.stringify(it.id)}`);
-    if ([it.object, it.assembly, it.motor].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly" or "motor"`);
+    if ([it.object, it.assembly, it.motor, it.bought].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly", "motor" or "bought"`);
     // Copies: one, a grid from repeat x/y, or a layout's keys. Each: { id, offset (from at), extra (values to set) }
     const rx = it.repeat?.x, ry = it.repeat?.y, rl = it.repeat?.layout, copies = [];
     if (rl) {
@@ -186,7 +194,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     }
     for (const c of copies) { placed.push([it, c]); ids.push(c.id); }
   }
-  const motion = motionOf(a, placed, num, ref);
+  const motion = motionOf(a, placed, num, ref), wires = wiresOf(a, placed, motion.joints);
   fits.push(...shaftFits(motion.drives, motion.joints, placed.map(([, c]) => c.id)).map((x) => ({ ...x, num })));
   for (const [it, c] of placed) {
     const src = c.src, id = c.id;
@@ -198,7 +206,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       for (const n of sub.seen) seen.add(n);
       items.push({ ...it, id, sub, role: 'part' });
     } else {
-      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role });
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}) });
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role });
     }
   }
@@ -235,6 +243,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   // A fit with * applies to every copy: "key-*.switch.bottom" becomes one fit for key-0-0, key-0-1, …
   // With * on both sides, each copy is checked against all the others: { "a": "key-*.cap", "b": "key-*.cap" }
   for (let x of a.fits || []) {
+    if (x.seat != null && x.min == null) x = { ...x, min: -1000 }; // a seat presses, so the pair may overlap
     if (x.holes) x = { ...x, a: x.holes, b: x.into }; // a holes fit: a board's holes (a) over what its screws go into (b)
     const star = [x.a, x.b].find((n) => n.includes('*'));
     if (!star) { fits.push({ ...x, num }); continue; }
@@ -257,7 +266,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -634,6 +643,7 @@ export function anchorsAt(s, values = s.jointValues) {
 
 // keyCentres(layout): each key's centre, from lib/layout.mjs (kept under this name for older callers)
 export { keyCentres };
+export const wiresFor = (s) => wireRows(s, { placeItems, jointValues, mul });
 
 // ---------- checks ----------
 export { closest };
@@ -725,6 +735,7 @@ export function checkAssembly(s) {
     if (x.holes) { holesFit(x); continue; }
     if (x.silent) continue; // lets a pair overlap, and has nothing to report
     if (x.engage != null) { engageFit(x); continue; }
+    if (x.seat != null) { seatFit(x, s, f, { placeItems, jointValues, mul, seatSize }); continue; }
     if (x.shaft != null) { shaftFit(x, s, f, { placeItems, jointValues, mul, materialName: materialOf(s.project) }); continue; }
     const A = pickIn(x.a, x), key = x.note || `${x.a} / ${x.b}`;
     const lo = x.min != null ? x.num(x.min) : -Infinity, hi = x.max != null ? x.num(x.max) : Infinity;
@@ -835,7 +846,9 @@ export function checkAssembly(s) {
       }
     }
   }
+  boughtFindings(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
+  if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });
   motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
@@ -846,7 +859,7 @@ export function checkAssembly(s) {
   const est = new Set();
   for (const o of s.objects) for (const e of o.built.entries) if (e.kind === 'estimate' && (e.used || !e.name.includes('.'))) est.add(e.name);
   for (const n of s.seen) { const [u, k] = n.split('.'); if (loadRuleSet(u).rules[k]?.kind === 'estimate') est.add(n); }
-  if (est.size) f('warn', `uses estimates, not measurements: ${[...est].join(', ')}. Measure them and record kind: measured`, `Estimate: ${[...est].join(', ')}`, { code: 'rules.estimate', refs: { rules: [...est] } });
+  if (est.size) f('warn', `uses estimates, not measurements: ${[...est].join(', ')}. Measure each and settle it with cad measured ${s.project}/${s.name} <name>=<value>`, `Estimate: ${[...est].join(', ')}`, { code: 'rules.estimate', refs: { rules: [...est] } });
   saveOverlaps();
   return out;
 }

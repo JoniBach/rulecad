@@ -1,0 +1,10 @@
+{
+  "_doc": "Hook-up wire by American Wire Gauge: the copper's area from the gauge's definition, and how much current a wire in a machine should be asked to carry. The current density is a working limit for short runs in free air and is an estimate: feel the wire under load.",
+  "name": "wire",
+  "rules": {
+    "current_density": { "value": 10, "unit": "A/mm²", "rule": "Current a hook-up wire in a machine may carry per square millimetre of copper, for short runs in free air: under the 17 A/mm² chassis-wiring figure, as wires in a bundle or a chain run warmer", "kind": "estimate", "source": "PowerStream's AWG chart gives 2.2 A for 26 AWG (0.128 mm², 17 A/mm²) as chassis wiring, https://www.powerstream.com/Wire_Size.htm; taken at about 0.6 of it", "checked": "2026-11-09" },
+    "service_loop": { "value": 40, "unit": "mm", "rule": "Slack added to a wire's longest run, for a strain relief and the connector", "kind": "default", "source": "A working allowance; the wire's route is otherwise taken as drawn", "checked": "2026-11-09" },
+    "signal_current": { "value": 0.02, "unit": "A", "rule": "What a signal wire (an endstop, a step line) carries", "kind": "estimate", "source": "Arduino Uno I/O pins are rated 20 mA, https://docs.arduino.cc/hardware/uno-rev3/", "checked": "2026-11-09" },
+    "awg_base": { "value": 0.127, "unit": "mm", "rule": "A wire of gauge n is 0.127 × 92^((36 − n) / 39) mm across", "kind": "spec", "source": "The AWG definition, ASTM B258", "checked": "2026-11-09" }
+  }
+}

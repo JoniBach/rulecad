@@ -80,6 +80,10 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad printed <project>/<object> --result ok|failed [--note "…"] [--material PETG] [--version 0.1.0]
   cad release <project> --all -m "…"   release every object that changed (each with this message), then the project
 
+  cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
+                                    check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
+                                    against measured, shown by cad history [--unit mm] [--source "how"] [--rule "what it is"]
+                                    [--table: what the assembly still assumes, as Markdown; --out MEASURE.md: kept in that file]
   cad measure <model.stl|3mf>       a model from elsewhere, measured: size, the stretches along its length with the same
                                     cross-section, and each section's shape, with a drawing in .preview/measure/
                                     [--along x|y|z] [--at 10,50: sections there too] [--line 0.6,2.5;4.6,2.5: where lines
@@ -104,8 +108,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'match', 'variants', 'compare', 'help'];
-const OPTIONS = ['all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'match', 'variants', 'compare', 'help'];
+const OPTIONS = ['table', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
@@ -118,7 +122,7 @@ const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep and --watch take one or not).
-const FLAGS = ['all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
+const FLAGS = ['table', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -410,6 +414,7 @@ async function main() {
   if (cmd === 'release') return ref.includes('/') ? releaseObject(locate(ref)) : opt('all') ? releaseAll(ref) : releaseProject(ref);
   if (cmd === 'variants') return variants(locate(ref));
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
+  if (cmd === 'measured') return measuredCommand(ref);
   if (cmd === 'history') return history(ref);
   if (cmd === 'diff') return diff(locate(ref), pos[2], pos[3] || null);
   if (cmd === 'printed') return printed(locate(ref));
@@ -894,10 +899,40 @@ async function status(project) {
   }
 }
 
+async function measuredCommand(ref) {
+  const { recordMeasured, assumptionsTable, writeTable, ledgerLines } = await import('../lib/measured.mjs');
+  if (opt('table')) {
+    const table = await assumptionsTable(ref);
+    if (opt('out')) { writeTable(path.resolve(opt('out')), table); return console.log(`wrote the table to ${opt('out')}`); }
+    return console.log(table);
+  }
+  const values = Object.fromEntries(positional().slice(2).map((x) => { const i = x.indexOf('='); if (i < 1) throw new Error(`usage: cad measured <project>/<assembly> <name>=<value> … (got "${x}")`); return [x.slice(0, i), Number(x.slice(i + 1))]; }));
+  const r = await recordMeasured(ref, values, { unit: opt('unit'), source: opt('source'), rule: opt('rule') });
+  if (opt('json')) return console.log(JSON.stringify({ entries: r.entries, moved: r.moved }, null, 2));
+  for (const l of ledgerLines(r.entries)) say(l);
+  for (const m of r.moved) say(m.figure ? `  ${m.figure}: ${Number(m.from.toFixed(4))} ${m.unit} to ${Number(m.to.toFixed(4))} ${m.unit}` : `  ${m.code}: ${m.text}`);
+  if (!r.moved.length) say('  nothing the checks say has moved');
+}
+
+async function ledger(project, name) {
+  const { readLedger, ledgerLines } = await import('../lib/measured.mjs');
+  const rows = readLedger(project).filter((e) => !name || e.assembly === name);
+  return { rows, lines: ledgerLines(rows) };
+}
+
 async function history(ref) {
   const [project, name] = ref.split('/');
+  if (name && isAssembly(ref)) {
+    const { rows, lines } = await ledger(project, name);
+    if (opt('json')) return console.log(JSON.stringify({ assembly: ref, ledger: rows }, null, 2));
+    if (!lines.length) return say(`${ref}: nothing measured yet (cad measured ${ref} <name>=<value>)`);
+    say('predicted against measured:'); for (const l of lines) say(`  ${l}`);
+    return;
+  }
   if (!name) {
-    if (opt('json')) return console.log(JSON.stringify({ project, releases: tags(project).reverse() }, null, 2));
+    const { rows, lines } = await ledger(project);
+    if (lines.length && !opt('json')) { console.log('predicted against measured:'); for (const l of lines) console.log(`  ${l}`); }
+    if (opt('json')) return console.log(JSON.stringify({ project, releases: tags(project).reverse(), ledger: rows }, null, 2));
     for (const t of tags(project).reverse()) console.log(`${t.tag}  ${t.date}  ${t.kind}  ${t.message}`);
     return status(project);
   }

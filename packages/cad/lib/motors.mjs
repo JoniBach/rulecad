@@ -2,11 +2,11 @@
 // slider is the motor turning), and the assembly can say what it has to do: "loads" on joints or masses on links.
 // From those, what reaches each loaded joint through the meshes and planetaries, whether the joint holds with the
 // power on and off, and whether the shaft and its mount are fit for it.
-import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { motorModel, motorParts, mountModel, performance } from '@rulecad/motors';
 import { stageEfficiency } from '@rulecad/gears';
 import { named } from './parts.mjs';
+import { referenceBuilt } from './bought.mjs';
 
 const require = createRequire(import.meta.url);
 const n3 = (x, d = 3) => String(Number(x.toFixed(d)));
@@ -22,9 +22,7 @@ export function motorBuilt(spec, num, id) {
   const anchors = Object.fromEntries(Object.entries(model.anchors).map(([k, a]) => [k, { at: a.origin, axis: a.axis }]));
   const values = Object.fromEntries(Object.entries(model.figures).filter(([, f]) => typeof f.value === 'number').map(([k, f]) => [k, f.value]));
   const entries = Object.entries(model.figures).map(([k, f]) => ({ name: `${model.name}.${k}`, value: f.value, unit: f.unit, rule: f.rule, kind: f.kind, source: f.source, checked: f.checked, set: model.name }));
-  const hash = crypto.createHash('sha256').update(JSON.stringify(model.figures)).digest('hex').slice(0, 16);
-  const b = { object: { name: model.name, title: model.name, role: 'reference', version: '0.0.0', anchors }, values, entries, deps: [], units: {}, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash };
-  return { key: `motor:${id}:${hash}`, objName: `motor:${model.name}`, b, version: '0.0.0', role: 'reference', motor: model, spec };
+  return referenceBuilt({ id, key: 'motor', objName: `motor:${model.name}`, name: model.name, parts, anchors, entries, values, extra: { motor: model, spec, bought: { set: model.name, variant: null, part: 'motor', mass: model.mass ?? null } } });
 }
 
 // Which joint each motor drives, checked by name; a servo's range and a stepper's step go on the joint. The shaft
