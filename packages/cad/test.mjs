@@ -1242,3 +1242,94 @@ test('engage: a sleeve seated over a post passes; resting on the post\'s end, to
     assert.match(cad('check', 'shaft/pair'), /✓ Sleeve over the post: 4 mm on along their joint/);
   } finally { done(); }
 });
+
+test('joint.running: a child turning on a printed pin, against the printer\'s fit, less what a bore prints small by', async () => {
+  const { runningGap } = await import('./lib/seats.mjs');
+  const jscad = (await import('@jscad/modeling')).default, { cylinder } = jscad.primitives, { subtract } = jscad.booleans, { geom3 } = jscad.geometries;
+  const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
+  const pin = (d, z0 = 0, z1 = 8) => tris(cylinder({ radius: d / 2, height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: 64 }));
+  const ring = (bore, od, z0, z1) => tris(subtract(cylinder({ radius: od / 2, height: z1 - z0, center: [0, 0, (z0 + z1) / 2], segments: 64 }), cylinder({ radius: bore / 2, height: z1 - z0 + 2, center: [0, 0, (z0 + z1) / 2], segments: 64 })));
+  const g = runningGap(pin(2.79), ring(3, 12, 1, 6));
+  assert.ok(Math.abs(g.gap - 0.105) < 0.005, `the gear card's pegs: ${g.gap}`);
+  assert.equal(g.pinOn, 'a');
+  assert.ok(Math.abs(g.length - 5) < 1, 'as far as they share');
+  const round = runningGap(ring(3, 12, 1, 6), pin(2.79));
+  assert.equal(round.pinOn, 'b', 'either way round');
+  assert.equal(runningGap(pin(2.79), ring(8, 12, 1, 6)), null, 'room, not a running fit');
+  assert.equal(runningGap(pin(2.79, 0, 1), ring(3, 12, 2, 6)), null, 'nothing shared along the axis');
+  assert.equal(runningGap(ring(3, 12, 0, 5), ring(3, 12, 0, 5)), null, 'two bores: nothing turns on a pin');
+});
+
+test('cad measured: a measurement where the estimate was, what moved, the ledger, and the table of what is still assumed', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['block'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/block.json'), JSON.stringify({ name: 'block', title: 'Block', version: '0.1.0', uses: ['x1c'], engine: 'manifold', variables: { side: { value: '200 * x1c.press', unit: 'mm', rule: 'A side, from the press' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/block.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.side, v.side, v.side], center: [v.side / 2, v.side / 2, v.side / 2] }) }\n");
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/one.json'), JSON.stringify({ title: 'One', kind: 'fit', items: [{ id: 'a', object: 'block' }, { id: 'b', object: 'block', at: [20, 0, 0] }], fits: [{ a: 'a', b: 'b', min: 0, max: 100, note: 'apart' }] }));
+    const first = cad('check', 'home/one');
+    assert.match(first, /uses estimates, not measurements: x1c\.press/); assert.match(first, /cad measured home\/one <name>=<value>/);
+    assert.match(cad('measured', 'home/one', '--table'), /\| `x1c\.press` \| .*\| `cad measured home\/one x1c\.press=<value>` \|/);
+    const out = cad('measured', 'home/one', 'x1c.press=0.08', '--source', 'seats coupon');
+    assert.match(out, /x1c\.press: measured 0\.08 mm, predicted 0\.05 \(estimate\), ratio 1\.6/); assert.match(out, /apart: closest gap 4 mm/);
+    const rule = JSON.parse(fs.readFileSync(path.join(ws, 'rules/x1c.json'), 'utf8')).rules.press;
+    assert.equal(rule.value, 0.08); assert.equal(rule.kind, 'measured'); assert.equal(rule.source, 'seats coupon');
+    assert.doesNotMatch(cad('check', 'home/one'), /x1c\.press\. /, 'no longer an estimate');
+    assert.match(cad('history', 'home/one'), /x1c\.press: measured 0\.08/);
+    assert.match(cad('history', 'home'), /ratio 1\.6/);
+    assert.match(cad('measured', 'home/one', 'x1c.nothing=1'), /x1c has no rule "nothing"/);
+    assert.match(cad('measured', 'home/one', 'x1c.press=2', '--unit', 'in'), /is in mm, and this is in in/);
+    assert.match(cad('measured', 'home/none', 'x1c.press=2'), /no assembly "home\/none"/);
+  } finally { done(); }
+});
+
+test('wires: longest through the poses, a gauge against what it carries, the sheet; a bad route refused by name', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 0, 1] }, tip: { at: [100, 0, 0], axis: [0, 0, 1] } }, variables: { long: { value: 100, unit: 'mm', rule: 'Long' }, thick: { value: 5, unit: 'mm', rule: 'Thick' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, v.thick, v.thick], center: [v.long / 2, 0, v.thick / 2] }) }\n");
+    const a = { title: 'Arm', kind: 'fit', items: [{ id: 'base', object: 'link' }, { id: 'arm', object: 'link' }, { id: 'stepper', motor: { model: 'nema17' }, at: [0, 60, 40] }],
+      joints: [{ id: 'j', type: 'revolute', parent: 'base.tip', child: 'arm.base', min: -90, max: 90 }], fits: [{ a: 'arm', b: 'base', min: -1000, silent: true }],
+      wires: [{ id: 'm1', from: 'stepper.connector', to: 'arm.tip', gauge: 'awg22' }, { id: 'thin', from: 'stepper.connector', to: 'arm.tip', gauge: 'awg28' }] };
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
+    const check = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/arm', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings.filter((x) => x.code.startsWith('wire.'));
+    const len = check.find((x) => x.code === 'wire.length' && x.refs.wire === 'm1');
+    assert.equal(len.values.length, Math.ceil(len.values.longest + 40), 'its longest, and the loop');
+    assert.ok(len.values.longest > len.values.shortest + 50, 'it changes as the arm swings');
+    assert.equal(check.find((x) => x.code === 'wire.gauge' && x.refs.wire === 'm1').level, 'pass');
+    const thin = check.find((x) => x.code === 'wire.gauge' && x.refs.wire === 'thin');
+    assert.equal(thin.level, 'fail'); assert.match(thin.text, /awg28 carries 0\.81 A at most, and this carries 2 A/);
+    a.wires = [{ from: 'arm.nothing', to: 'base.tip' }]; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
+    assert.match(cad('check', 'home/arm'), /wire w1: no anchor "arm\.nothing" .*arm has base, tip/);
+    a.wires = [{ from: 'arm.tip', to: 'base.tip', gauge: 'thick' }]; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
+    assert.match(cad('check', 'home/arm'), /wire 1: gauge is awg and a number/);
+  } finally { done(); }
+});
+
+test('a bought bearing: placed from its set, turning a shaft, its printed seat read as drawn; an unknown part refused by name', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['housing'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/housing.json'), JSON.stringify({ name: 'housing', title: 'Housing', version: '0.1.0', uses: ['x1c'], engine: 'manifold', anchors: { seat: { at: [0, 0, 'tall - depth'], axis: [0, 0, 1] } }, variables: { tall: { value: 12, unit: 'mm', rule: 'Tall' }, depth: { value: 7, unit: 'mm', rule: 'Depth' }, off: { value: 0, unit: 'mm', rule: 'How far the pocket is from its fit', tweak: { min: -1, max: 1 } } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/housing.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nconst bearing = { bore: 8, outer_diameter: 22, width: 7 }\nexport function main (v) {\n  const seat = v.shapes.bearingSeat(bearing, { fit: v.off ? -0.05 + v.off : 'press', printer: v.x1c, at: [0, 0, v.tall], into: '-z', relief: 2, through: true })\n  return v.ops.subtract(cuboid({ size: [34, 34, v.tall], center: [0, 0, v.tall / 2] }), seat)\n}\n");
+    const a = { title: 'Seat', kind: 'fit', items: [{ id: 'housing', object: 'housing' }, { id: 'b1', bought: 'bearing-608', at: [0, 0, 5] }], fits: [{ a: 'b1', b: 'housing', seat: 'press', fastens: true }] };
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/seat.json'), JSON.stringify(a));
+    const check = (o) => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/seat', ...(o ?? []), '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    let f = check();
+    assert.deepEqual(f.filter((x) => x.level === 'fail').map((x) => x.text), []);
+    const seat = f.filter((x) => x.code === 'fit.seat');
+    assert.equal(seat[0].level, 'pass'); assert.match(seat[0].text, /bearing-608 \(22 mm\) in a pocket drawn 22\.0\d+ mm, a press fit/);
+    assert.equal(seat[1].level, 'pass'); assert.match(seat[1].text, /lip stops the outer race/);
+    assert.equal(f.find((x) => x.code === 'bought.item').refs.set, 'bearing-608');
+    a.items[0].set = { off: -0.3 }; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/seat.json'), JSON.stringify(a));
+    f = check().filter((x) => x.code === 'fit.seat');
+    assert.equal(f[0].level, 'fail'); assert.match(f[0].text, /0\.3\d? mm too small: it will not press in/);
+    assert.match(cad('list', 'home/seat'), /1 ×\s+bearing-608\s+a bearing/);
+    a.items[1].bought = 'bearing-999'; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/seat.json'), JSON.stringify(a));
+    assert.match(cad('check', 'home/seat'), /no bought part "bearing-999" \(.*bearing-608/);
+  } finally { done(); }
+});

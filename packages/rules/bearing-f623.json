@@ -1,0 +1,17 @@
+{
+  "_doc": "An F623 flanged miniature ball bearing, 3 x 10 x 4 with an 11.5 mm flange, open, from NTN's figures for its FL623. The shielded F623ZZ keeps the same envelope. kind as in x1c.json. Bore along z, the flange's outer face at z = 0.",
+  "name": "bearing-f623",
+  "part": "bearing",
+  "rules": {
+    "type": { "value": "flanged", "rule": "A single-row ball bearing with a flange on its outer ring", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "bore": { "value": 3, "unit": "mm", "rule": "Bore (d)", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 10, "unit": "mm", "rule": "Outside diameter (D), below the flange", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "width": { "value": 4, "unit": "mm", "rule": "Width (B), flange included", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "chamfer": { "value": 0.15, "unit": "mm", "rule": "Corner radius of the rings (r)", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "flange_diameter": { "value": 11.5, "unit": "mm", "rule": "Flange diameter (D3)", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "flange_width": { "value": 1, "unit": "mm", "rule": "Flange width (C1)", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "static_rating": { "value": 224, "unit": "N", "rule": "Basic static radial load rating (Cor)", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "dynamic_rating": { "value": 640, "unit": "N", "rule": "Basic dynamic radial load rating (Cr)", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" },
+    "radial_play": { "value": "CN", "rule": "Radial internal clearance class: CN, normal (the page gives the class, not its micrometres)", "kind": "spec", "source": "NTN Bearing Finder, item FL623, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/fl623?plpver=10", "checked": "2026-11-09" }
+  }
+}

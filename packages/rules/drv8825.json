@@ -1,0 +1,25 @@
+{
+  "_doc": "A DRV8825 stepper driver module on the StepStick footprint, as made by Pololu (Rs = 0.100 ohm). Pololu's figures are spec; the pin order is community, and clone boards are community until measured. It has no logic supply pin: the FAULT pin sits where the A4988 has VDD. Board in the x-y plane, the header rows along x.",
+  "name": "drv8825",
+  "part": "driver",
+  "rules": {
+    "motor_voltage_min": { "value": 8.2, "unit": "V", "rule": "Least motor supply (VMOT)", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "motor_voltage_max": { "value": 45, "unit": "V", "rule": "Most motor supply (VMOT). Long leads and low-ESR capacitors can spike past it", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "logic_voltage_min": { "value": 2.2, "unit": "V", "rule": "Least high level on RESET and SLEEP. There is no logic supply: the board works with 3.3 V and 5 V systems", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "logic_voltage_max": { "value": 5.25, "unit": "V", "rule": "Most high level on RESET and SLEEP", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "current_bare": { "value": 1.5, "unit": "A", "rule": "Continuous per coil, about, with no heat sink or moving air", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "current_cooled": { "value": 2.2, "unit": "A", "rule": "Most per coil, with sufficient added cooling (the chip alone is rated 2.5 A at 24 V and 25 degrees C)", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "sense_resistor": { "value": 0.1, "unit": "ohm", "rule": "The board's sense resistors, R2 and R3", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "vref_formula": { "value": "Imax = Vref * 2", "rule": "The current limit from the voltage on the trimmer. In full step each coil carries about 0.7 of the limit", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "vref_gain": { "value": 2, "unit": "A/V", "rule": "Limit per volt of Vref: 0.5 V sets 1 A", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "microsteps": { "value": "1, 1/2, 1/4, 1/8, 1/16, 1/32", "rule": "Full down to thirty-second, set with MODE0, MODE1 and MODE2", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "max_microsteps": { "value": 32, "unit": "", "rule": "The finest division of a full step", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "thermal_shutdown": { "value": 160, "unit": "degC", "rule": "The chip stops above this temperature, typically (150 at least, 180 at most)", "kind": "spec", "source": "TI DRV8825 datasheet SLVSA73F, https://www.ti.com/lit/ds/symlink/drv8825.pdf", "checked": "2026-11-09" },
+    "pin_pitch": { "value": 2.54, "unit": "mm", "rule": "Pin spacing along a header row (0.1 in)", "kind": "spec", "source": "Pololu DRV8825 carrier, https://www.pololu.com/product/2133", "checked": "2026-11-09" },
+    "row_spacing": { "value": 12.7, "unit": "mm", "rule": "Between the two header rows (0.5 in)", "kind": "spec", "source": "Pololu DRV8825 carrier dimension diagram, https://pololu.com/file/0J1075/drv8825-stepper-motor-driver-carrier-high-current-dimension-diagram.pdf", "checked": "2026-11-09" },
+    "pin_count": { "value": 16, "unit": "", "rule": "Pins in all, eight to a row", "kind": "spec", "source": "Pololu DRV8825 carrier dimension diagram, https://pololu.com/file/0J1075/drv8825-stepper-motor-driver-carrier-high-current-dimension-diagram.pdf", "checked": "2026-11-09" },
+    "body_width": { "value": 20.3, "unit": "mm", "rule": "Board length along the header rows", "kind": "spec", "source": "Pololu DRV8825 carrier dimension diagram, https://pololu.com/file/0J1075/drv8825-stepper-motor-driver-carrier-high-current-dimension-diagram.pdf", "checked": "2026-11-09" },
+    "body_depth": { "value": 15.2, "unit": "mm", "rule": "Board width across the rows", "kind": "spec", "source": "Pololu DRV8825 carrier dimension diagram, https://pololu.com/file/0J1075/drv8825-stepper-motor-driver-carrier-high-current-dimension-diagram.pdf", "checked": "2026-11-09" },
+    "pinout": { "value": "EN M0 M1 M2 RST SLP STEP DIR | VMOT GND B2 B1 A1 A2 FLT GND", "rule": "The two rows, each from one end to the other: as the A4988, with FAULT in place of VDD. Compare with your board's silkscreen", "kind": "community", "source": "https://docs.soldered.com/drv8825/hardware/", "checked": "2026-11-09" }
+  }
+}

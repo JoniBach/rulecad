@@ -58,6 +58,30 @@
       "source": "Common FDM practice; tune with a test print",
       "checked": "2026-10-11"
     },
+    "press": {
+      "value": 0.05,
+      "unit": "mm",
+      "rule": "How much smaller across a printed bore is than a bought part pressed into it, once printed (a ball bearing's outer race): hole_comp is added as well",
+      "kind": "estimate",
+      "source": "A reasoned guess, half a typical 0.1 mm hole error; measure it with the seats coupon (examples/bench/projects/benchmarks/objects/seats-coupon)",
+      "checked": "2026-11-09"
+    },
+    "slip": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "How much larger across a printed bore is than a bought part that slides into it by hand, once printed: hole_comp is added as well",
+      "kind": "estimate",
+      "source": "A reasoned guess; measure it with the seats coupon (examples/bench/projects/benchmarks/objects/seats-coupon)",
+      "checked": "2026-11-09"
+    },
+    "print_flow": {
+      "value": 12,
+      "unit": "mm³/s",
+      "rule": "Average plastic laid per second over a whole print, walls, travel and all: for estimating minutes from a part's volume",
+      "kind": "estimate",
+      "source": "A rule of thumb for a 0.4 mm nozzle on default settings; check it against a real print's time",
+      "checked": "2026-11-09"
+    },
     "print_gap": {
       "value": 0.3,
       "unit": "mm",

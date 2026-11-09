@@ -123,7 +123,7 @@ export function motorModel(which, change = {}) {
   };
   if (type === 'stepper') m.stepAngle = v('step_angle') / m.ratio;
   // Anchors an assembly places a motor by: the shaft where it leaves the motor, its tip, and the mounting face
-  m.anchors = { face: { origin: [0, 0, 0], axis: [0, 0, 1] }, shaft: { origin: [0, 0, base], axis: [0, 0, 1] }, tip: { origin: [0, 0, tip], axis: [0, 0, 1] }, ...(type === 'servo' ? { horn: { origin: [0, 0, tip], axis: [0, 0, 1] } } : {}), ...Object.fromEntries(holes.map((h, i) => [`hole${i + 1}`, { origin: [h[0], h[1], 0], axis: [0, 0, 1] }])) };
+  m.anchors = { face: { origin: [0, 0, 0], axis: [0, 0, 1] }, connector: { origin: [centre[0], centre[1] + depth / 2, -m.body.length / 2], axis: [0, 1, 0] }, shaft: { origin: [0, 0, base], axis: [0, 0, 1] }, tip: { origin: [0, 0, tip], axis: [0, 0, 1] }, ...(type === 'servo' ? { horn: { origin: [0, 0, tip], axis: [0, 0, 1] } } : {}), ...Object.fromEntries(holes.map((h, i) => [`hole${i + 1}`, { origin: [h[0], h[1], 0], axis: [0, 0, 1] }])) };
   return m;
 }
 

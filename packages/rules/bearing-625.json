@@ -1,0 +1,16 @@
+{
+  "_doc": "A 625 deep groove ball bearing, 5 x 16 x 5, open, from NTN's figures. The shielded 625ZZ and sealed 625-2RS keep the same envelope. kind as in x1c.json. Bore along z, one face at z = 0.",
+  "name": "bearing-625",
+  "part": "bearing",
+  "rules": {
+    "type": { "value": "radial", "rule": "A single-row deep groove ball bearing, open", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "bore": { "value": 5, "unit": "mm", "rule": "Bore (d)", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 16, "unit": "mm", "rule": "Outside diameter (D)", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "width": { "value": 5, "unit": "mm", "rule": "Width (B)", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "chamfer": { "value": 0.3, "unit": "mm", "rule": "Corner radius of the rings (r), the most the shaft and housing fillets may be", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "static_rating": { "value": 680, "unit": "N", "rule": "Basic static radial load rating (Cor)", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "dynamic_rating": { "value": 1940, "unit": "N", "rule": "Basic dynamic radial load rating (Cr)", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "radial_play": { "value": "CN", "rule": "Radial internal clearance class: CN, normal (the page gives the class, not its micrometres)", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" },
+    "mass": { "value": 0.004, "unit": "kg", "rule": "Mass of the open bearing", "kind": "spec", "source": "NTN Bearing Finder, item 625, https://bearingfinder.ntnamericas.com/item/deep-groove-ball-bearings/single-row-radial-ball-bearings/625", "checked": "2026-11-09" }
+  }
+}
