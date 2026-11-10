@@ -1022,6 +1022,13 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(shoulder, /motor into out: 7\.442 N m there against 0\.735 N m needed/, 'the worst of its range, from a mass on the output');
     assert.match(shoulder, /out holds with the power off: the gears/);
     assert.doesNotMatch(shoulder, /✗/, shoulder);
+    // The leg (chapter 14): it stands and steps, nothing overlaps (the output ring's phase, a joint whose range leaves out 0), and the motors carry it
+    const stand = JSON.parse(run(ws, ['check', 'leg/stand', '--json']).out).findings, of = (c) => stand.filter((x) => x.code === c);
+    assert.equal(of('overlap')[0].level, 'pass', of('overlap')[0].text);
+    assert.equal(of('gait.clearance')[0].level, 'pass'); assert.equal(of('gait.sweep')[0].level, 'pass');
+    assert.ok(stand.some((x) => x.code === 'motor.torque' && /gait: knee needs/.test(x.text) && x.level === 'pass'), JSON.stringify(of('motor.torque')));
+    assert.match(of('gait.stable')[0].text, /one leg, on a stand/);
+    assert.ok(fs.existsSync(path.join(ws, '.preview/leg/stand-gait.svg')), 'its step animated');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -1331,5 +1338,360 @@ test('a bought bearing: placed from its set, turning a shaft, its printed seat r
     assert.match(cad('list', 'home/seat'), /1 ×\s+bearing-608\s+a bearing/);
     a.items[1].bought = 'bearing-999'; fs.writeFileSync(path.join(ws, 'projects/home/assemblies/seat.json'), JSON.stringify(a));
     assert.match(cad('check', 'home/seat'), /no bought part "bearing-999" \(.*bearing-608/);
+  } finally { done(); }
+});
+
+test('a task: reach and speed over a sheet, the error budget moved by a measurement, a machine, a drawing planned and refused', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true }); fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link'] }));
+    fs.writeFileSync(path.join(ws, 'rules/armrig.json'), JSON.stringify({ name: 'armrig', rules: { play: { value: 0.05, unit: '°', rule: 'Shoulder play', kind: 'estimate', source: 'a guess', checked: '2026-11-09' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 0, 1] }, tip: { at: ['long', 0, 0], axis: [0, 0, 1] } }, variables: { long: { value: 150, unit: 'mm', rule: 'Long', tweak: { min: 20, max: 400 } }, thick: { value: 5, unit: 'mm', rule: 'Thick' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, v.thick, v.thick], center: [v.long / 2, 0, v.thick / 2] }) }\n");
+    const task = { tool: 'fore.tip', sheet: { size: 'a5', at: [180, 0, 30] }, speed: 50, accuracy: 0.6 };
+    const asm = () => ({ title: 'Arm', kind: 'fit', uses: ['armrig'], items: [{ id: 'upper', object: 'link', set: { long: 150 } }, { id: 'fore', object: 'link', set: { long: 150 } }, { id: 'link0', object: 'link', at: [0, 0, 20] }, { id: 'm1', motor: { model: 'nema17', drives: 'elbow', speed: 300, driver: 'd1', microsteps: 16 }, at: [0, 0, -50] }, { id: 'd1', bought: 'drv8825', at: [0, 80, 0] }, { id: 'psu', bought: 'supply-12v', variant: 'LRS-50-12', set: { output_current: 1 }, at: [200, 200, 0] }],
+      joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 30] }, child: 'upper.base', min: -130, max: 130 }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150, errors: { play: 'armrig.play' } }],
+      fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }], task });
+    const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
+    const check = () => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/arm', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const by = (list, code) => list.find((x) => x.code === code);
+    write(asm());
+    let f = check();
+    assert.equal(by(f, 'task.reach').level, 'pass', by(f, 'task.reach').text);
+    assert.match(by(f, 'task.speed').text, /nothing says how fast shoulder/, 'one joint has no motor');
+    assert.ok(by(f, 'task.reach').values.samples.length > 50, 'the samples, for other programs');
+    assert.ok(fs.existsSync(path.join(ws, '.preview/home/arm-reach.svg')) && fs.existsSync(path.join(ws, '.preview/home/arm-error.svg')));
+    const before = by(f, 'task.accuracy').values.worst;
+    assert.match(by(f, 'task.accuracy').text, /Rests on estimates \(elbow's play/);
+    assert.match(by(f, 'power.supply').text, /draws 1\.25 A at 12 V .* and the supply gives 1 A/); assert.equal(by(f, 'power.supply').level, 'fail');
+    assert.ok(f.some((x) => x.code === 'motor.driver' && x.level === 'warn' && /heat sink/.test(x.text)), 'over the bare rating'); assert.ok(f.some((x) => x.code === 'motor.driver' && /set the trimmer to 1 V for 2 A per coil/.test(x.text)));
+    // A measurement moves the budget, and the ledger says so
+    const m = cad('measured', 'home/arm', 'armrig.play=0.02', '--source', 'bench test 14');
+    assert.match(m, /armrig\.play: measured 0\.02 °?, ?predicted 0\.05|armrig\.play: measured 0\.02/); assert.match(m, /fore\.tip error at its worst point: [\d.]+ mm to [\d.]+ mm/);
+    assert.ok(by(check(), 'task.accuracy').values.worst < before, 'less play, less error at the pen');
+    // A sheet moved further than the arm goes fails at a named corner, by how much
+    write({ ...asm(), task: { ...task, sheet: { size: 'a5', at: [290, 0, 30] } } });
+    f = check(); assert.equal(by(f, 'task.reach').level, 'fail'); assert.match(by(f, 'task.reach').text, /the (upper|lower) right corner of the sheet can't be reached: fore\.tip misses it by [\d.]+ mm/);
+    assert.ok(by(f, 'task.reach').at, 'it says where');
+    // a machine needs steppers on every joint of the chain, and says which is missing
+    write(asm()); assert.match(cad('machine', 'home/arm'), /joint shoulder has no stepper driving it/);
+    const two = asm(); two.items.push({ id: 'm0', motor: { model: 'nema17', drives: 'shoulder', speed: 300, microsteps: 16 }, at: [0, 0, 0] }); two.fits.push({ a: 'm0', b: 'upper', min: -1000, silent: true }, { a: 'm1', b: 'fore', min: -1000, silent: true });
+    two.items[3].motor.driver = undefined; write(two);
+    const machine = JSON.parse(cad('machine', 'home/arm', '--json'));
+    assert.equal(machine.kinematics, 'scara'); assert.equal(machine.axes.length, 2);
+    assert.ok(Math.abs(machine.axes[0].stepsPerUnit - (200 * 16) / 360) < 1e-5); assert.equal(machine.task.speed, 50);
+    assert.match(machine.axes[0]._why.microsteps, /resolution only/);
+    // a drawing, planned and replayed; one bigger than the sheet refused at the stroke that leaves it
+    fs.writeFileSync(path.join(ws, 'square.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="148mm" height="210mm" viewBox="0 0 148 210"><rect id="sq" x="24" y="55" width="100" height="100" fill="none"/><circle id="c" cx="74" cy="105" r="20" fill="none"/></svg>');
+    const plotted = spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'square.svg', '--json'], { cwd: ws, encoding: 'utf8' }), p = JSON.parse(plotted.stdout);
+    assert.equal(p.ok, true, plotted.stdout.slice(0, 400)); assert.equal(plotted.status, 0);
+    const steps = JSON.parse(fs.readFileSync(p.file, 'utf8'));
+    assert.equal(steps.format, 'rulecad.steps/1'); assert.ok(steps.drawn.length >= 2 && steps.drawn[0].error, 'lines carry their predicted error');
+    assert.match(fs.readFileSync(path.join(ws, '.preview/home/arm-square-plot.svg'), 'utf8'), /<animate attributeName="points"/);
+    const { replay, chainFromMotion } = await import('@rulecad/robots');
+    const send = await import(pathToFileURL(fileURLToPath(new URL('../../examples/bench/projects/arm/send.mjs', import.meta.url))).href), lines = send.linesOf(steps), dry = send.dryRun(['e', ...lines, 'd']);
+    assert.ok(dry.m > 50 && dry.p > 1, 'the sender takes it'); assert.throws(() => send.linesOf({ format: 'x' }), /not a step file/);
+    fs.writeFileSync(path.join(ws, 'big.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="400mm" height="400mm" viewBox="0 0 400 400"><rect id="huge" x="10" y="10" width="380" height="380" fill="none"/></svg>');
+    const big = spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'big.svg'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(big.status, 1); assert.match(big.stdout, /stroke huge leaves the 148 × 210 mm sheet/);
+  } finally { done(); }
+});
+
+test('loads on an upright arm: a tipping moment on its bearing, or printed clips by FE; the links bending; acceleration', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link', 'clip'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 1, 0] }, tip: { at: ['long', 0, 0], axis: [0, 1, 0] } }, variables: { long: { value: 150, unit: 'mm', rule: 'Long', tweak: { min: 20, max: 400 } }, wide: { value: 12, unit: 'mm', rule: 'Wide', tweak: { min: 2, max: 30 } }, thick: { value: 8, unit: 'mm', rule: 'Thick' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long + 20, v.wide, v.thick], center: [v.long / 2, 0, 0] }) }\n");
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/clip.json'), JSON.stringify({ name: 'clip', title: 'Clip', version: '0.1.0', engine: 'manifold', variables: { side: { value: 2, unit: 'mm', rule: 'Side' }, tall: { value: 8, unit: 'mm', rule: 'Tall' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/clip.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.side, v.side, v.tall], center: [0, 0, v.tall / 2] }) }\n");
+    const asm = (support, payload = 0.1, wide = 12) => ({ title: 'Arm', kind: 'fit', gravity: [0, 0.7, -1], items: [{ id: 'base', object: 'clip', at: [0, 0, -200] }, { id: 'upper', object: 'link', set: { wide } }, { id: 'fore', object: 'link', set: { wide } }, { id: 'b1', bought: 'bearing-6800', at: [0, 30, 0], rotate: [90, 0, 0] }, { id: 'c1', object: 'clip', at: [20, 0, -100] }, { id: 'c2', object: 'clip', at: [-20, 0, -100] }, { id: 'c3', object: 'clip', at: [0, 20, -100] }, { id: 'm0', motor: { model: 'nema17', drives: 'shoulder', speed: 200 }, at: [0, 60, 0], rotate: [90, 0, 0] }, { id: 'm1', motor: { model: 'nema17', drives: 'elbow', speed: 200 }, at: [150, 60, 0], rotate: [90, 0, 0] }],
+      joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'upper.base', min: -130, max: 130, support }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150 }], fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }, { a: 'm0', b: 'upper', min: -1000, silent: true }, { a: 'm1', b: 'fore', min: -1000, silent: true }, { a: 'b1', b: 'upper', min: -1000, silent: true }, { a: 'm0', b: 'b1', min: -1000, silent: true }],
+      task: { tool: 'fore.tip', sheet: { size: [60, 60], at: [200, 0, 80], normal: [0, 1, 0] }, speed: 20, payload } });
+    const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(a));
+    const check = () => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/arm', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    const by = (list, code, n = 0) => list.filter((x) => x.code === code)[n];
+    write(asm({ bearings: ['b1'] }));
+    let f = check();
+    assert.equal(by(f, 'task.reach').level, 'pass', by(f, 'task.reach').text);
+    const m = by(f, 'joint.moment'); assert.match(m.text, /shoulder: \d+ g carried: .* N m tipping/); assert.match(m.text, /b1 take [\d.]+ N equivalent against \d+ N static/); assert.ok(m.values.margin > 1 && m.values.tipping > 0);
+    const heavy = by(f, 'joint.moment', 0).values.tipping;
+    assert.ok(by(f, 'link.deflection').values.total > 0.01, JSON.stringify(by(f, 'link.deflection')));
+    assert.equal(by(f, 'link.deflection').predict.name, 'link.deflection');
+    assert.match(by(f, 'assembly.frequency').text, /lowest mode is about \d+ Hz/);
+    assert.ok(by(f, 'motor.accel').values.alpha > 0); assert.match(by(f, 'task.time').text, /a move across the task/);
+    const stiffer = (write(asm({ bearings: ['b1'] }, 0.1, 24)), check());
+    assert.ok(by(stiffer, 'link.deflection').values.total < by(f, 'link.deflection').values.total, 'a wider arm bends less');
+    write(asm({ bearings: ['b1'] }, 0.14)); assert.ok(by(check(), 'motor.accel').values.alpha < by(f, 'motor.accel').values.alpha, 'more payload, less acceleration');
+    write(asm({ bearings: ['b1'] }, 2)); const stall = by(check(), 'motor.accel'); assert.equal(stall.level, 'fail'); assert.match(stall.text, /shoulder stalls/);
+    write(asm({ clips: ['c1', 'c2', 'c3'], pitch: 40, cell: 0.5 }, 0.5));
+    const clip = by(check(), 'joint.moment'); assert.match(clip.text, /3 printed clips, the worst \(c\d\) at [\d.]+ MPa/); assert.ok(clip.values.stress > 0);
+    assert.equal(clip.level, 'fail', clip.text);
+    write(asm(undefined)); assert.equal(by(check(), 'joint.moment').level, 'warn');
+  } finally { done(); }
+});
+
+test('a gait in an assembly: a crawl checked through its cycle, motors against its torque, and legs that collide found', async () => {
+  const { ws, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link', 'body'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 1, 0] }, tip: { at: ['long', 0, 0], axis: [0, 1, 0] } }, variables: { long: { value: 90, unit: 'mm', rule: 'Long' }, side: { value: 6, unit: 'mm', rule: 'Side' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, v.side, v.side], center: [v.long / 2, 0, 0] }) }\n");
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/body.json'), JSON.stringify({ name: 'body', title: 'Body', version: '0.1.0', engine: 'manifold', variables: { long: { value: 140, unit: 'mm', rule: 'Long' }, wide: { value: 80, unit: 'mm', rule: 'Wide' }, thick: { value: 10, unit: 'mm', rule: 'Thick' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/body.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, v.wide, v.thick] }) }\n");
+    const legs = [['fl', 100, 60], ['fr', 100, -60], ['bl', -100, 60], ['br', -100, -60]], items = [{ id: 'body', object: 'body' }], joints = [], fits = [];
+    for (const [n, x, y] of legs) {
+      items.push({ id: `${n}u`, object: 'link' }, { id: n, object: 'link' }, { id: `${n}m`, motor: { model: 'nema17', drives: `${n}h`, speed: 100 }, at: [x, y + 60 * Math.sign(y), 40], rotate: [Math.sign(y) * 90, 0, 0] });
+      joints.push({ id: `${n}h`, type: 'revolute', parent: { at: [x, y, 0], axis: [0, 1, 0] }, child: `${n}u.base`, min: 0, max: 180, value: 90 }, { id: `${n}k`, type: 'revolute', parent: `${n}u.tip`, child: `${n}.base`, min: -150, max: 0, value: -30 });
+      fits.push({ a: `${n}u`, b: n, min: -1000, silent: true }, { a: `${n}m`, b: `${n}u`, min: -1000, silent: true });
+    }
+    const a = { title: 'Quad', kind: 'fit', items, joints, fits, gait: { legs: legs.map(([n]) => `${n}.tip`), pattern: 'crawl', stride: 30, lift: 12, period: 4, height: 150, mass: 1.5 } };
+    const write = (x) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/quad.json'), JSON.stringify(x));
+    const check = () => { const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/quad', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.ok(r.findings, JSON.stringify(r.error)); return r.findings; };
+    write(a);
+    let f = check();
+    assert.match(f.find((x) => x.code === 'gait.stable').text, /gait: statically stable: the least margin is/);
+    assert.equal(f.find((x) => x.code === 'gait.clearance').level, 'pass');
+    assert.equal(f.find((x) => x.code === 'gait.sweep').level, 'pass', f.find((x) => x.code === 'gait.sweep').text);
+    assert.ok(f.filter((x) => x.code === 'motor.torque' && /gait: flh needs/.test(x.text)).length === 1);
+    assert.ok(f.some((x) => x.code === 'gait.torque' && x.level === 'warn' && /nothing drives flk/.test(x.text)));
+    write({ ...a, gait: { ...a.gait, stride: 500 } });
+    f = check(); assert.equal(f.find((x) => x.code === 'gait.reach').level, 'fail'); assert.match(f.find((x) => x.code === 'gait.reach').text, /can't reach its foot/);
+    write({ ...a, gait: { ...a.gait, legs: ['fl.nowhere'] } });
+    const bad = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/quad', '--json'], { cwd: ws, encoding: 'utf8' }).stdout); assert.match(bad.error.message, /gait: no anchor "fl\.nowhere"/);
+  } finally { done(); }
+});
+
+test('a motor driving a slide: through a lead screw that holds, or a belt that does not, with steps per mm and the belt in the budget', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['block'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/block.json'), JSON.stringify({ name: 'block', title: 'Block', version: '0.1.0', engine: 'manifold', anchors: { tip: { at: [20, 0, 0], axis: [0, 0, 1] }, base: { at: [0, 0, 0], axis: [0, 0, 1] } }, variables: { side: { value: 10, unit: 'mm', rule: 'Side' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/block.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.side, v.side, v.side], center: [0, 0, v.side / 2] }) }\n");
+    const asm = (motor) => ({ title: 'Z', kind: 'fit', items: [{ id: 'carriage', object: 'block' }, { id: 'm', motor: { model: 'nema17', drives: 'z', speed: 200, ...motor }, at: [0, 0, -60] }],
+      joints: [{ id: 'z', type: 'prismatic', parent: { at: [0, 0, 0], axis: [0, 0, 1] }, child: 'carriage.base', min: 0, max: 50 }], fits: [{ a: 'm', b: 'carriage', min: -1000, silent: true }],
+      loads: [{ joint: 'z', force: 10 }], task: { tool: 'carriage.tip', volume: { x: [20, 20], y: [0, 0], z: [0, 40] }, speed: 20 } });
+    const write = (a) => fs.writeFileSync(path.join(ws, 'projects/home/assemblies/z.json'), JSON.stringify(a));
+    const check = () => JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/z', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings;
+    write(asm({ leadscrew: { lead: 2 } }));
+    let f = check();
+    const holds = f.filter((x) => x.code === 'motor.holds');
+    assert.ok(holds.some((x) => x.level === 'pass' && /holds with the power off: the lead screw \(its [\d.]+° lead/.test(x.text)), holds.map((x) => x.text).join(' / '));
+    const machine = JSON.parse(cad('machine', 'home/z', '--json')); assert.equal(machine.axes[0].unit, 'mm'); assert.equal(machine.axes[0].stepsPerUnit, (200 * 16) / 2);
+    write(asm({ belt: { teeth: 20, stiffness: 20, width: 6, length: 400, load: 5 } }));
+    f = check();
+    assert.ok(f.some((x) => x.code === 'motor.holds' && /drops with the power off/.test(x.text)), f.filter((x) => x.code === 'motor.holds').map((x) => x.text).join(' / '));
+    assert.equal(JSON.parse(cad('machine', 'home/z', '--json')).axes[0].stepsPerUnit, (200 * 16) / 40, 'mm per turn: teeth × pitch');
+  } finally { done(); }
+});
+
+test('building it: the order worked out and refused when nothing reaches a part; plates by filament, re-packed only where a part changed', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const dirs = ['projects/home/objects', 'projects/home/assemblies', 'rules'];
+    for (const d of dirs) fs.mkdirSync(path.join(ws, d), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['block', 'badge', 'cup', 'lid'], filaments: { base: { slot: 1 }, legend: { slot: 2 } } }));
+    const object = (name, js, json) => { fs.writeFileSync(path.join(ws, `projects/home/objects/${name}.json`), JSON.stringify({ name, title: name, version: '0.1.0', engine: 'manifold', ...json })); fs.writeFileSync(path.join(ws, `projects/home/objects/${name}.js`), `import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nconst { subtract, union } = jscad.booleans\n${js}\n`); };
+    const v = (val, rule = 'A size') => ({ value: val, unit: 'mm', rule, tweak: { min: 1, max: 500 } });
+    object('block', 'export function main (v) { return cuboid({ size: [v.long, 20, v.tall], center: [v.long / 2, 0, v.tall / 2] }) }', { anchors: { base: { at: [0, 0, 'tall'], axis: [0, 0, 1] }, tip: { at: ['long', 0, 'tall'], axis: [0, 0, 1] }, head: { at: ['long / 2', 0, 'tall'], axis: [0, 0, 1] } }, variables: { long: v(60), tall: v(10) } });
+    object('badge', 'export function main (v) { return { body: cuboid({ size: [v.long, 20, 4], center: [v.long / 2, 0, 2] }), legend: cuboid({ size: [10, 8, 1], center: [v.long / 2, 0, 4.5] }) } }', { parts: { body: { label: 'Body' }, legend: { label: 'Legend', filament: 'legend' } }, variables: { long: v(30) } });
+    object('cup', 'export function main (v) { return subtract(cuboid({ size: [40, 40, 20], center: [0, 0, 10] }), cuboid({ size: [30, 30, 40], center: [0, 0, 22] })) }', { variables: { deep: v(1) } });
+    object('lid', 'export function main (v) { return cuboid({ size: [40, 40, 3], center: [0, 0, 1.5] }) }', { variables: { deep: v(1) } });
+    // A cup, a nut in it, and a lid that stops the nut coming out: the lid is written first, and must go on last
+    const pile = { title: 'Pile', kind: 'fit', uses: [], items: [{ id: 'cup', object: 'cup' }, { id: 'lid', object: 'lid', at: [0, 0, 22] }, { id: 'nut', object: 'block', set: { long: 12, tall: 6 }, at: [-6, 0, 10.5] }],
+      fits: [{ a: 'lid', b: 'cup', fastens: true, min: 0, note: 'The lid, on two screws', fastener: 'M3x10', count: 2 }, { a: 'nut', b: 'cup', fastens: true, min: 0, note: 'The nut, dropped in its pocket' }] };
+    const write = (name, a) => fs.writeFileSync(path.join(ws, `projects/home/assemblies/${name}.json`), JSON.stringify(a));
+    write('pile', pile);
+    const order = JSON.parse(cad('order', 'home/pile', '--json'));
+    const pictures = cad('order', 'home/pile', '--preview');
+    if (!/no Chrome|Chrome took|Chrome made/.test(pictures)) { assert.match(pictures, /pile-step-03\.png/, pictures); assert.ok(fs.existsSync(path.join(ws, '.preview/home/pile-step-01.png')), 'each step an exploded picture'); }
+    assert.deepEqual(order.steps.map((x) => x.items[0]), ['cup', 'nut', 'lid'], JSON.stringify(order.steps));
+    assert.match(order.steps[2].text, /The lid, on two screws \(2 × M3x10\)/, 'its fasteners named from the fit');
+    assert.deepEqual(order.steps[2].dir, [0, 0, 1], 'and it comes down from above');
+    const check = () => JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/pile', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings;
+    assert.equal(check().find((x) => x.code === 'assembly.order').level, 'pass', 'found by cad check');
+    // A wall over the screw, fastened on before the screw can go in: no order reaches it. The screw's anchor points up.
+    write('walled', { title: 'Walled', kind: 'fit', uses: [], items: [{ id: 'base', object: 'block', set: { long: 60, tall: 10 } }, { id: 'clip', object: 'block', set: { long: 20, tall: 10 }, at: [10, 0, 10] }, { id: 'stud', object: 'block', set: { long: 20, tall: 10 }, at: [10, 0, 20] }, { id: 'wall', object: 'block', set: { long: 60, tall: 10 }, at: [0, 0, 30] }],
+      fits: [{ a: 'wall', b: 'base', fastens: true, min: 0, note: 'The wall' }, { a: 'stud', b: 'wall', fastens: true, min: 0, note: 'The stud' }, { a: 'clip', b: 'stud', fastens: true, min: 0, note: 'The clip, to the stud', access: 'clip.head' }] });
+    const stuck = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/walled', '--json'], { cwd: ws, encoding: 'utf8' }).stdout).findings.find((x) => x.code === 'assembly.order');
+    assert.equal(stuck.level, 'fail'); assert.match(stuck.text, /screw of "The clip, to the stud" can't be reached in any order: wall stands over it/); assert.equal(stuck.refs.wall, 'wall');
+    // A part in a sealed box: nothing can reach it, and the finding names it
+    object('shell', 'export function main (v) { return subtract(cuboid({ size: [40, 40, 40], center: [0, 0, 20] }), cuboid({ size: [30, 30, 30], center: [0, 0, 20] })) }', { variables: { deep: v(1) } });
+    write('sealed', { title: 'Sealed', kind: 'fit', uses: [], items: [{ id: 'shell', object: 'shell' }, { id: 'loose', object: 'block', set: { long: 10, tall: 5 }, at: [-5, 0, 10] }], fits: [{ a: 'loose', b: 'shell', fastens: true, min: 0 }] });
+    const sealed = JSON.parse(cad('order', 'home/sealed', '--json'));
+    assert.match(sealed.stuck.text, /shell can't be reached in any order|loose can't be reached in any order/, JSON.stringify(sealed));
+    // A bearing pressed in before the shaft goes through it, whichever order they're written in; the shaft is listed first
+    write('spindle', { title: 'Spindle', kind: 'fit', uses: [], items: [{ id: 'pin', object: 'block', set: { long: 5, tall: 40 }, at: [-2.5, 0, 45] }, { id: 'brg', bought: 'bearing-608', at: [0, 0, 30] }, { id: 'housing', object: 'block', set: { long: 60, tall: 10 }, at: [-30, 0, 0] }],
+      fits: [{ a: 'brg', b: 'housing', seat: 'press' }, { a: 'pin', b: 'brg', engage: 5, min: -1000 }] });
+    const spindle = JSON.parse(cad('order', 'home/spindle', '--json')).steps.flatMap((x) => x.items);
+    assert.ok(spindle.indexOf('brg') < spindle.indexOf('pin'), `the bearing before its shaft: ${spindle}`);
+    assert.ok(spindle.indexOf('housing') < spindle.indexOf('brg'), 'and the bearing into its housing');
+    // Plates: one for the base filament, the two-coloured badge on its own, the gap the first layer's rule, on the bed
+    write('kit', { title: 'Kit', kind: 'fit', uses: [], items: [{ id: 'a', object: 'block', set: { long: 100 }, at: [0, 0, 0] }, { id: 'b', object: 'block', set: { long: 100 }, at: [0, 50, 0] }, { id: 'c', object: 'block', set: { long: 200 }, at: [0, 100, 0] }, { id: 'e', object: 'badge', at: [0, 150, 0] }, { id: 'motor', motor: { model: 'nema17' }, at: [300, 0, 0] }] });
+    const first = JSON.parse(cad('plates', 'home/kit', '--json'));
+    assert.deepEqual(first.plates.map((x) => [x.name, x.filament, x.parts.length]), [['kit-base-1', 'base', 3], ['kit-base-legend-1', 'base+legend', 1]], JSON.stringify(first.plates));
+    assert.equal(first.gap, 0.84, "the first layer's rule: 0.3 + 2 × 0.15 up to whole lines");
+    assert.deepEqual(first.checks.flatMap((x) => x.findings.filter((y) => y.level === 'fail').map((y) => y.text)), [], 'the plates print clean');
+    assert.ok(first.plates[0].parts.every((p) => p.x > 0 && p.x + p.w < 256 && p.y > 0 && p.y + p.d < 256), 'all on the bed');
+    const sheet = JSON.parse(fs.readFileSync(path.join(ws, 'projects/home/assemblies/kit-base-1.json'), 'utf8'));
+    assert.equal(sheet.kind, 'plate'); assert.ok(sheet.packed.parts.a, 'it remembers what is on it');
+    assert.match(cad('export', 'home/kit-base-1'), /kit-base-1\.3mf/, 'exports as a print');
+    assert.ok(fs.existsSync(path.join(ws, 'exports/home/kit-base-1.3mf')));
+    // A changed part re-packs only its plate: the other file is left exactly as it was
+    const stood = fs.readFileSync(path.join(ws, 'projects/home/assemblies/kit-base-legend-1.json'), 'utf8'), asm = JSON.parse(fs.readFileSync(path.join(ws, 'projects/home/assemblies/kit.json'), 'utf8'));
+    asm.items[2].set = { long: 180 }; write('kit', asm);
+    const again = JSON.parse(cad('plates', 'home/kit', '--json'));
+    assert.deepEqual(again.repacked, ['kit-base-1'], 'only the plate with the changed part'); assert.equal(fs.readFileSync(path.join(ws, 'projects/home/assemblies/kit-base-legend-1.json'), 'utf8'), stood);
+    assert.equal(again.plates.find((x) => x.name === 'kit-base-1').parts.find((p) => p.id === 'c').w, 180, 'with its new size');
+    assert.equal(again.plates.find((x) => x.name === 'kit-base-legend-1').stood, true);
+    // Too big for the bed, by name
+    asm.items[2].set = { long: 400 }; write('kit', asm);
+    const big = spawnSync(process.execPath, [BIN, 'plates', 'home/kit', '--json'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(big.status, 1); assert.match(big.stdout, /c \(block\) is 400 × 20 mm: bigger than the 256 mm bed/);
+    assert.equal(JSON.parse(big.stdout).findings[0].code, 'plate.bed');
+  } finally { done(); }
+});
+
+test('a machine\'s link: the task, the step file, the wires and the build page travel with the model, small and data only; the ledger in the rules', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    for (const d of ['projects/home/objects', 'projects/home/assemblies', 'rules']) fs.mkdirSync(path.join(ws, d), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link'] }));
+    fs.writeFileSync(path.join(ws, 'rules/armrig.json'), JSON.stringify({ name: 'armrig', rules: { play: { value: 0.05, unit: '°', rule: 'Shoulder play', kind: 'estimate', source: 'a guess', checked: '2026-11-09' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 0, 1] }, tip: { at: ['long', 0, 0], axis: [0, 0, 1] }, connector: { at: [10, 0, 'thick'], axis: [0, 0, 1] } }, variables: { long: { value: 150, unit: 'mm', rule: 'Long', tweak: { min: 20, max: 400 } }, thick: { value: 5, unit: 'mm', rule: 'Thick' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, v.thick, v.thick], center: [v.long / 2, 0, v.thick / 2] }) }\n");
+    const task = { tool: 'fore.tip', sheet: { size: 'a5', at: [180, 0, 30] }, speed: 50, accuracy: 0.6 };
+    const asm = { title: 'Arm', kind: 'fit', uses: ['armrig'], items: [{ id: 'upper', object: 'link', set: { long: 150 } }, { id: 'fore', object: 'link', set: { long: 150 } }, { id: 'm0', motor: { model: 'nema17', drives: 'shoulder', speed: 300, microsteps: 16 }, at: [0, 0, -50] }, { id: 'm1', motor: { model: 'nema17', drives: 'elbow', speed: 300, microsteps: 16 }, at: [150, 0, -50] }],
+      joints: [{ id: 'shoulder', type: 'revolute', parent: { at: [0, 0, 30] }, child: 'upper.base', min: -130, max: 130 }, { id: 'elbow', type: 'revolute', parent: 'upper.tip', child: 'fore.base', min: -150, max: 150, errors: { play: 'armrig.play' } }],
+      fits: [{ a: 'upper', b: 'fore', min: -1000, silent: true }, { a: 'm0', b: 'upper', min: -1000, silent: true }, { a: 'm1', b: 'fore', min: -1000, silent: true }], loads: [{ joint: 'elbow', torque: 0.05 }],
+      wires: [{ id: 'elbow-motor', from: 'upper.connector', to: 'fore.connector', gauge: 'awg22' }], task };
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/arm.json'), JSON.stringify(asm));
+    assert.match(cad('wires', 'home/arm'), /elbow-motor/);
+    const sheetFile = path.join(ws, 'exports/home/arm.wiring.md');
+    assert.match(fs.readFileSync(sheetFile, 'utf8'), /\| elbow-motor \| upper\.connector \| fore\.connector \|/, 'the wiring sheet in the exports');
+    fs.writeFileSync(path.join(ws, 'square.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="148mm" height="210mm" viewBox="0 0 148 210"><rect id="sq" x="24" y="55" width="100" height="100" fill="none"/></svg>');
+    assert.equal(spawnSync(process.execPath, [BIN, 'plot', 'home/arm', 'square.svg'], { cwd: ws, encoding: 'utf8' }).status, 0);
+    cad('measured', 'home/arm', 'task.accuracy=0.4', '--source', 'bench');
+    const out = cad('link', 'home/arm', '--long');
+    assert.match(out, /carries the drawing arm-square/);
+    const url = out.match(/view\s+(\S+)/)[1], token = url.split('#m=')[1], { decode } = await import('@rulecad/model-link');
+    const m = await decode(token);
+    assert.equal(m.task.tool, 'fore.tip'); assert.equal(m.task.plane.width, 148); assert.ok(m.task.torque.length && m.task.elbow, JSON.stringify(m.task).slice(0, 300));
+    assert.ok(m.steps.b.length && m.steps.drawn[0][2].length, 'the drawing with its predicted errors'); assert.equal(m.wires[0][0], 'elbow-motor');
+    assert.ok(m.build.list.bought.length && m.build.plates.plates.length && m.build.wires[0].length && m.build.machine.axes.length === 2, 'the whole project');
+    const ledger = m.sheet.filter((r) => r[0] === 'Predicted against measured'); assert.ok(ledger.find((r) => r[1] === 'task.accuracy' && r[2] === '0.4' && /predicted/.test(r[4])), JSON.stringify(ledger));
+    assert.ok(token.length < 200000, `the machine's data is small (${token.length} chars)`);
+    // The wire is drawn, faint, with the model, and goes in no check: it is not one of the parts
+    assert.ok(!m.parts.some((p) => /wire/.test(p[0])), 'never a part');
+    // A step file for another machine's joints is refused by name
+    const steps = path.join(ws, 'exports/home/arm-square.steps.json'), data = JSON.parse(fs.readFileSync(steps, 'utf8'));
+    data.axes[0].name = 'other'; fs.writeFileSync(path.join(ws, 'wrong.steps.json'), JSON.stringify(data));
+    assert.match(cad('link', 'home/arm', '--steps', 'wrong.steps.json'), /for joints other, elbow, and this machine's are shoulder, elbow: plot it again/);
+    assert.match(cad('preview', 'home/arm').trim(), /arm\.png$/, 'a preview takes the wires too');
+    const { check } = await import('@rulecad/model-link');
+    assert.equal(check({ q: 1, p: [], t: [], task: { tool: 1 } })[0].text, 'broken task', 'a link with bad task data is turned away');
+    assert.equal(check({ q: 1, p: [], t: [], steps: { names: ['a'], spu: [1], start: [0], b: [[0, 1, 0, 'x']], drawn: [] } })[0].text, 'broken step file');
+  } finally { done(); }
+});
+
+test('tool.grip: a servo closing compliant fingers on a payload, with the leaves\' strain and a stiff leaf refused', async () => {
+  const { gripChecks } = await import('./lib/grip.mjs');
+  const servo = { id: 's', model: { type: 'servo', figures: { stall_torque: { value: 0.1765 } } } }, run = (grip, payload = 0.05) => { const out = []; gripChecks({ a: { task: { grip } }, motion: { drives: [servo] }, task: { payload, accel: 500 }, num: (x) => x, project: 'x' }, (level, text, card, extra) => out.push({ level, text, ...extra })); return out; };
+  const good = run({ servo: 's', horn: 12, leaf: { length: 30, thickness: 1, width: 8 }, travel: 5, friction: 0.4 });
+  const g = good.find((x) => x.code === 'tool.grip'); assert.equal(g.level, 'pass', g.text); assert.ok(g.values.margin >= 2);
+  assert.equal(run({ servo: 's', horn: 12, leaf: { length: 30, thickness: 1, width: 8 }, travel: 5, friction: 0.4 }, 2).find((x) => x.code === 'tool.grip').level, 'fail');
+  const stiff = run({ servo: 's', horn: 12, leaf: { length: 10, thickness: 3, width: 8 }, travel: 5, friction: 0.4 }); assert.match(stiff.find((x) => x.code === 'tool.grip').text, /can't close them/); assert.equal(stiff.find((x) => x.code === 'tool.strain').level, 'fail');
+  assert.throws(() => run({ servo: 'none', horn: 12, leaf: {}, travel: 5 }), /task\.grip: servo "none" isn't a motor item/);
+});
+
+test('a gait of one leg: its foot out of the hip anchor\'s plane, a joint behind a gearbox moved by the motor it follows, and played', async () => {
+  const { ws, cad, done } = workspace();
+  const asm = { title: 'Leg', kind: 'fit', items: [{ id: 'shaft', object: 'link' }, { id: 'thigh', object: 'link' }, { id: 'shin', object: 'shin' }],
+    joints: [{ id: 'd', type: 'revolute', parent: { at: [0, -60, 0], axis: [0, 1, 0] }, child: 'shaft.base', min: -10, max: 10 },
+      { id: 'h', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'thigh.base', follow: 'd', ratio: 0.5, offset: 90, min: 40, max: 140 },
+      { id: 'k', type: 'revolute', parent: 'thigh.tip', child: 'shin.base', min: -150, max: 0, value: -30 }],
+    fits: [{ a: 'thigh', b: 'shin', min: -1000 }, { a: 'shaft', b: 'thigh', min: -1000 }], gait: { legs: ['shin.tip'], pattern: { duty: 0.6, phase: [0] }, stride: 20, lift: 10, period: 2, height: 120, mass: 0.75, clearance: 8 } };
+  const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  try {
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['link', 'shin'] });
+    const LINK = "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, 6, 6], center: [v.long / 2, 0, 0] }) }\n";
+    write('projects/home/objects/link.json', { name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 1, 0] }, tip: { at: ['long', 0, 0], axis: [0, 1, 0] } }, variables: { long: { value: 80, unit: 'mm', rule: 'Long' } } });
+    write('projects/home/objects/link.js', LINK);
+    // The shin's foot is 8 mm out of the plane of the hip's anchor, as a real leg's is, its gearbox beside its links
+    write('projects/home/objects/shin.json', { name: 'shin', title: 'Shin', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 1, 0] }, tip: { at: ['long', 8, 0], axis: [0, 1, 0] } }, variables: { long: { value: 80, unit: 'mm', rule: 'Long' } } });
+    write('projects/home/objects/shin.js', LINK);
+    write('projects/home/assemblies/leg.json', asm);
+    const r = JSON.parse(spawnSync(process.execPath, [BIN, 'check', 'home/leg', '--json'], { cwd: ws, encoding: 'utf8' }).stdout), f = r.findings;
+    assert.ok(f, JSON.stringify(r.error));
+    assert.ok(!f.some((x) => x.code === 'gait.reach'), JSON.stringify(f.filter((x) => x.code?.startsWith('gait')))); // reached: the foot stays in its own plane
+    assert.equal(f.find((x) => x.code === 'gait.clearance').level, 'pass');
+    assert.match(f.find((x) => x.code === 'gait.stable').text, /one leg, on a stand/);
+    assert.equal(f.find((x) => x.code === 'gait.sweep').level, 'pass');
+    assert.match(cad('animate', 'home/leg'), /leg-gait\.svg/);
+    assert.ok(fs.readFileSync(path.join(ws, '.preview/home/leg-gait.svg'), 'utf8').includes('<animate'));
+    // In the link: the joints that lead, the motor's shaft in place of what follows it, at the motor's values
+    const out = cad('link', 'home/leg', '--long'), token = out.match(/view\s+(\S+)/)[1].split('#m=')[1], { decode } = await import('@rulecad/model-link');
+    const m = await decode(token), seq = m.motion.sequence;
+    assert.deepEqual(seq.names, ['d', 'k']);
+    const hip = (seq.q[0][0] * 0.5) + 90;
+    assert.ok(Math.abs(seq.q[0][1]) > 1 && hip > 40 && hip < 140, `${seq.q[0]}`);
+    assert.equal(seq.period, 2);
+    const { check } = await import('@rulecad/model-link');
+    assert.equal(check({ q: 1, p: [], t: [], motion: { items: [['a']], joints: [], part: [], sequence: { period: 2, names: ['nope'], q: [[0]] } } })[0].text, 'broken motion', 'a sequence is data, checked');
+  } finally { done(); }
+});
+
+test('a rod and a linear bushing are bought items, cut to the length set on the item', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/rod.json'), JSON.stringify({ title: 'Rod', kind: 'fit', items: [{ id: 'rod', bought: 'rod-8', set: { length: 123 } }, { id: 'bush', bought: 'lm8uu', at: [0, 0, 10] }], fits: [{ a: 'rod', b: 'bush', fastens: true, min: -1000 }] }));
+    const out = cad('list', 'home/rod');
+    assert.match(out, /rod-8/); assert.match(out, /lm8uu/);
+    assert.match(cad('check', 'home/rod'), /123 mm|rod-8/);
+  } finally { done(); }
+});
+
+test('tool.grip reads the finger\'s own material when it names one; a link bends as everything bolted to its joint, and a gearbox output joins the chain through its motor', async () => {
+  const { gripChecks } = await import('./lib/grip.mjs');
+  const servo = { id: 's', model: { type: 'servo', figures: { stall_torque: { value: 0.1765 } } } }, spec = { servo: 's', horn: 12, leaf: { length: 40, thickness: 1, width: 12 }, travel: 3, friction: 0.4 };
+  const run = (grip) => { const out = []; gripChecks({ a: { task: { grip } }, motion: { drives: [servo] }, task: { payload: 0.05, accel: 300 }, num: (x) => x, project: 'x' }, (level, text, card, extra) => out.push({ level, text, ...extra })); return out; };
+  assert.match(run({ ...spec, material: 'petg' }).find((x) => x.code === 'tool.strain').text, /in a PETG leaf/);
+  assert.doesNotMatch(run(spec).find((x) => x.code === 'tool.strain').text, /PETG/, 'the project\'s material when it names none');
+  const { ws, done } = workspace();
+  const write = (f, x) => { fs.mkdirSync(path.join(ws, path.dirname(f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  const obj = (name, size, anchors) => { write(`projects/home/objects/${name}.json`, { name, version: '0.1.0', engine: 'manifold', anchors, variables: { x: { value: size[0], unit: 'mm', rule: 'Long' }, y: { value: size[1], unit: 'mm', rule: 'Wide' }, z: { value: size[2], unit: 'mm', rule: 'Thick' } } }); write(`projects/home/objects/${name}.js`, "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.x, v.y, v.z], center: [v.x / 2, 0, v.z / 2] }) }\n"); };
+  try {
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['hub', 'bar'] });
+    obj('hub', [8, 10, 6], { base: { at: [0, 0, 3], axis: [0, 0, 1], ref: [1, 0, 0] }, out: { at: [8, 0, 3], axis: [1, 0, 0], ref: [0, 1, 0] } });
+    obj('bar', [100, 10, 6], { in: { at: [0, 0, 3], axis: [1, 0, 0], ref: [0, 1, 0] }, tip: { at: [100, 0, 3], axis: [0, 0, 1], ref: [1, 0, 0] } });
+    const a30 = Math.PI / 6, r = 108;
+    write('projects/home/assemblies/lift.json', { title: 'A link', kind: 'fit', gravity: [0, 0, -1], items: [{ id: 'hub', object: 'hub' }, { id: 'bar', object: 'bar' }, { id: 'turn', object: 'hub' }],
+      joints: [{ id: 'drive', type: 'revolute', parent: { at: [-200, 0, 0], axis: [0, 0, 1] }, child: 'turn.base', min: -360, max: 360 }, { id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 0, 1] }, child: 'hub.base', follow: 'drive', ratio: 0.5, min: -90, max: 90 }, { id: 'bolted', type: 'fixed', parent: 'hub.out', child: 'bar.in' }],
+      task: { tool: 'bar.tip', volume: { x: [r * Math.cos(a30), r * Math.cos(a30)], y: [r * Math.sin(a30), r * Math.sin(a30)], z: [0, 0] }, payload: 0.1, accel: 100 } });
+    const res = spawnSync(process.execPath, [BIN, 'check', 'home/lift', '--json'], { cwd: ws, encoding: 'utf8' }), json = JSON.parse(res.stdout);
+    const link = json.findings.find((x) => x.code === 'link.deflection');
+    assert.ok(link, json.findings.map((x) => x.code).join(', '));
+    assert.ok(link.values.total > 0.05 && link.values.total < 5, `the bar, bolted to the joint's hub, bends as a cantilever (${link.values.total} mm)`);
+    assert.equal(link.values.rows[0].link, 'hub');
+  } finally { done(); }
+});
+
+test('a link for a machine working in a volume: flat along any axis, or a single point', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 1, 0] }, tip: { at: [100, 0, 0], axis: [0, 1, 0] } }, variables: { side: { value: 6, unit: 'mm', rule: 'Side' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [100, v.side, v.side], center: [50, 0, 0] }) }\n");
+    const asm = (volume) => JSON.stringify({ title: 'A', kind: 'fit', items: [{ id: 'arm', object: 'link' }], joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'arm.base', min: -90, max: 90 }], task: { tool: 'arm.tip', volume } });
+    for (const volume of [{ x: [60, 90], y: [0, 0], z: [-40, 40] }, { x: [100, 100], y: [0, 0], z: [0, 0] }]) {
+      fs.writeFileSync(path.join(ws, 'projects/home/assemblies/a.json'), asm(volume));
+      assert.doesNotMatch(cad('link', 'home/a', '--md', '--long'), /broken task/);
+    }
   } finally { done(); }
 });

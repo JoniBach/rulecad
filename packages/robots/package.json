@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/robots",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Kinematics for serial chains as plain data: forward and inverse kinematics, the Jacobian, reach over a sheet or a volume, an SVG drawing turned into joint moves and step blocks. No dependencies; runs in a browser with no build step.",
   "type": "module",
   "exports": {
@@ -16,11 +16,13 @@
     "reach.mjs",
     "svg.mjs",
     "toolpath.mjs",
+    "gait.mjs",
     "robots.d.mts",
     "kinematics.d.mts",
     "reach.d.mts",
     "svg.d.mts",
     "toolpath.d.mts",
+    "gait.d.mts",
     "README.md",
     "LICENSE"
   ],

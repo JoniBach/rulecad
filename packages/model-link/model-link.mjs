@@ -15,6 +15,7 @@
 //     { …, shapes: [{ role, label, slot?, q, p, t }], place: [[shape, a, b, c, d, e, f, g, h, i, j, k, l, name?]] }
 //     (a 3 × 4 transform by rows, in mm). decode() expands them, so the rest of the page sees one model.
 //   motion (optional): joints a page can move, each part with its item (see "motion" below); without it, nothing moves.
+//   task, steps, wires, build (optional, what a machine's link adds; see "a machine's link" below). Data, read as text.
 // "1." is the format version: newer pages must keep reading old links.
 
 /** @typedef {[[number, number, number], [number, number, number], [number, number, number]]} Triangle corners in mm, counter-clockwise seen from outside, Z up */
@@ -132,6 +133,10 @@ function problems(m) {
   if (Array.isArray(m.views) && m.views.length > LIMITS.views) return [`${m.views.length} flat views: more than a link can hold (${LIMITS.views})`];
   if (m.views != null && (!Array.isArray(m.views) || m.views.some((v) => !Array.isArray(v) || typeof v[0] !== 'string' || typeof v[1] !== 'string' || v[1].length > LIMITS.viewSize))) return ['broken views'];
   if (m.motion != null && !motionOk(m.motion, m.parts?.length ?? 1)) return ['broken motion'];
+  if (m.task != null && !taskOk(m.task)) return ['broken task'];
+  if (m.steps != null && !stepsOk(m.steps)) return ['broken step file'];
+  if (m.wires != null && !wiresOk(m.wires)) return ['broken wires'];
+  if (m.build != null && !plain(m.build)) return ['broken build page'];
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || x.slice(0, 3).some((name, k) => (k === 2 && name == null ? false : typeof name !== 'string' || name.length > LIMITS.text)) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[4] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];
 }
@@ -157,7 +162,73 @@ function motionOk(mo, places) {
   if (mo.poses != null && (typeof mo.poses !== 'object' || Object.values(mo.poses).some((p) => !p || typeof p !== 'object' || Object.values(p).some((v) => !(typeof v === 'number' || nums(v)))))) return false;
   const pair = (x) => Array.isArray(x) && x.length === 2 && x.every((i) => Number.isInteger(i) && i >= 0 && i < places);
   if (mo.swap != null && (typeof mo.swap !== 'object' || Object.entries(mo.swap).some(([n, list]) => !mo.poses?.[n] || !Array.isArray(list) || !list.every(pair)))) return false;
+  if (mo.sequence != null && !(mo.sequence && Array.isArray(mo.sequence.names) && mo.sequence.names.every((n) => typeof n === 'string' && mo.joints.some((j) => j.id === n)) && Array.isArray(mo.sequence.q) && mo.sequence.q.length <= LIMITS.places && mo.sequence.q.every((row) => nums(row, mo.sequence.names.length)) && typeof mo.sequence.period === 'number' && mo.sequence.period > 0)) return false;
   return mo.allow == null || (Array.isArray(mo.allow) && mo.allow.every(pair));
+}
+
+// ---------- a machine's link ----------
+//   task: { tool, item, point: [x, y, z], plane: { at, u, v, n, width, height }, elbow?, speed?, accuracy?, deflection?,
+//           terms?: [[joint index in the chain, name, degrees, kind]], loads?: [{ item (index), at: [x, y, z], mass } |
+//           { joint, value }], gravity?: [x, y, z], torque?: [{ joint, available }], heat?: { motor, case, softening } }:
+//     the tool's anchor as chainFromMotion takes it (@rulecad/robots), the plane the pen moves on, and what the margins
+//     read at each pose: error terms (degrees) carried to the tool, masses carried beyond each joint, what each motor gives.
+//   steps: a step file from cad plot, cut down by compactSteps: { name, machine?, names, spu, start, b, drawn }.
+//     b: blocks, [kind, milliseconds, stroke, …axis steps]; kind 0 travel, 1 draw, 2 pen up, 3 pen down (those last two
+//     are only [kind, milliseconds]). drawn: lines, [stroke, [x, y, z, …] in 0.01 mm, [predicted error in microns, per
+//     point] | null], stroke matching a block's.
+//   wires: [[id, [[item (index, -1 fixed), x, y, z], …]]], routes drawn faint, moving with their items; never parts.
+//   build: the build page's content, read as text and numbers (the shopping list, plates, wiring, steps, settings).
+const INT = 2 ** 31;
+const int = (x) => Number.isInteger(x) && Math.abs(x) < INT;
+const text = (x) => typeof x === 'string' && x.length <= LIMITS.text;
+// Only data: strings in bounds, finite numbers, booleans, null, and arrays or plain objects of those
+function plain(x, depth = 0) {
+  if (x === null || typeof x === 'boolean' || (typeof x === 'number' && Number.isFinite(x)) || text(x)) return true;
+  if (depth > 8 || typeof x !== 'object') return false;
+  return Array.isArray(x) ? x.length <= LIMITS.places * 4 && x.every((y) => plain(y, depth + 1)) : Object.keys(x).length <= 200 && Object.values(x).every((y) => plain(y, depth + 1));
+}
+function taskOk(t) {
+  if (!t || typeof t !== 'object' || !text(t.tool) || !text(t.item) || !nums(t.point, 3) || !t.plane || !['at', 'u', 'v', 'n'].every((k) => nums(t.plane[k], 3)) || !(t.plane.width > 0) || !(t.plane.height > 0)) return false;
+  if (t.terms != null && !(Array.isArray(t.terms) && t.terms.every((x) => Array.isArray(x) && Number.isInteger(x[0]) && text(x[1]) && nums([x[2]]) && text(x[3])))) return false;
+  if (t.loads != null && !(Array.isArray(t.loads) && t.loads.every((l) => l && typeof l === 'object' && (typeof l.joint === 'string' ? nums([l.value]) : Number.isInteger(l.item) && nums(l.at, 3) && nums([l.mass]))))) return false;
+  if (t.torque != null && !(Array.isArray(t.torque) && t.torque.every((x) => x && text(x.joint) && nums([x.available])))) return false;
+  if (t.gravity != null && !nums(t.gravity, 3)) return false;
+  for (const k of ['speed', 'accuracy', 'deflection']) if (t[k] != null && !nums([t[k]])) return false;
+  return (t.elbow == null || ['left', 'right'].includes(t.elbow)) && (t.heat == null || (text(t.heat.motor) && nums([t.heat.case, t.heat.softening], 2)));
+}
+function stepsOk(x) {
+  if (!x || typeof x !== 'object' || !Array.isArray(x.names) || !x.names.every(text) || !nums(x.spu, x.names.length) || !nums(x.start, x.names.length) || !Array.isArray(x.b) || !Array.isArray(x.drawn)) return false;
+  const n = x.names.length;
+  if (x.b.some((r) => !Array.isArray(r) || !int(r[0]) || r[0] < 0 || r[0] > 3 || !int(r[1]) || (r[0] < 2 ? r.length !== n + 3 || !r.slice(2).every(int) : r.length !== 2))) return false;
+  return x.drawn.every((d) => Array.isArray(d) && int(d[0]) && Array.isArray(d[1]) && d[1].length % 3 === 0 && d[1].every(int) && (d[2] === null || (Array.isArray(d[2]) && d[2].length === d[1].length / 3 && d[2].every(int))));
+}
+const wiresOk = (w) => Array.isArray(w) && w.every((x) => Array.isArray(x) && text(x[0]) && Array.isArray(x[1]) && x[1].every((p) => Array.isArray(p) && p.length === 4 && p.every((v) => typeof v === 'number' && Number.isFinite(v))));
+
+/**
+ * A step file (rulecad.steps/1, from cad plot) as a link or a page carries it: what playback needs, in whole numbers.
+ * A very long drawing's blocks and points are merged and thinned to stay small: motion only, the drawing itself is not moved.
+ * @param {object} steps @param {{ maxBlocks?: number, maxPoints?: number }} [options] @returns {object} @throws an Error naming what's wrong
+ */
+export function compactSteps(steps, { maxBlocks = 4000, maxPoints = 8000 } = {}) {
+  if (!steps || steps.format !== 'rulecad.steps/1' || !Array.isArray(steps.blocks) || !Array.isArray(steps.axes)) throw new Error('this is not a step file (format rulecad.steps/1, from cad plot)');
+  const names = steps.axes.map((a) => a.name), spu = steps.axes.map((a) => a.stepsPerUnit), n = names.length;
+  if (!names.every((x) => typeof x === 'string') || !spu.every((x) => x > 0) || !Array.isArray(steps.start) || steps.start.length !== n) throw new Error('this step file has no axes this page can read');
+  const row = (b) => (b.type === 'pen' ? [b.state === 'down' ? 3 : 2, Math.round(b.dwell * 1000)] : [b.kind === 'draw' ? 1 : 0, Math.round(b.time * 1000), b.stroke ?? -1, ...b.steps.map(Math.round)]);
+  let b = steps.blocks.map(row);
+  while (b.length > maxBlocks) { // neighbouring moves of one kind on one stroke merged, two at a time, until it's few enough
+    const out = [];
+    for (let i = 0; i < b.length; i++) {
+      const x = b[i], y = b[i + 1];
+      if (y && x[0] < 2 && y[0] === x[0] && y[2] === x[2]) { out.push([x[0], x[1] + y[1], x[2], ...x.slice(3).map((s, k) => s + y[3 + k])]); i++; } else out.push(x);
+    }
+    if (out.length === b.length) break; // only pen changes left
+    b = out;
+  }
+  const drawn = (steps.drawn || []).map((d) => [d.stroke ?? -1, d.points, d.error]);
+  let count = drawn.reduce((t, d) => t + d[1].length, 0), keep = 1;
+  while (count / keep > maxPoints) keep++;
+  return { ...(steps.drawing ? { name: String(steps.drawing).slice(0, LIMITS.text) } : {}), ...(steps.machine ? { machine: String(steps.machine).slice(0, LIMITS.text) } : {}), names, spu, start: steps.start,
+    b, drawn: drawn.map(([stroke, points, error]) => { const at = points.map((_, i) => i).filter((i) => i === 0 || i === points.length - 1 || i % keep === 0); return [stroke, at.flatMap((i) => points[i].map((v) => Math.round(v * 100))), error ? at.map((i) => Math.round(error[i] * 1000)) : null]; }) };
 }
 
 // Placed shapes -> one model ({ q, p, t, parts }), each copy its own part.
@@ -204,7 +275,7 @@ export const posesOf = (m) => (m.parts || []).map((part, k) => ({ k, part })).fi
 
 // ---------- motion ----------
 // Joints between items, so a page (or a tool) can move them: an assembly's hinges, rails and ball joints.
-//   motion: { items: [[name, …12?]], joints: [joint], poses: { name: { joint: value } }, pose?, part: [item per place],
+//   motion: { items: [[name, …12?]], joints: [joint], poses: { name: { joint: value } }, pose?, part: [item per place], sequence?: { period, names: [joint], q: [values per frame] } (a gait, played),
 //             allow?: [[place, place]], swap?: { pose: [[place, place]] } }
 //   An item with 12 numbers sits there (a 3 × 4 transform by rows, as in place); one without is placed by the joint
 //   whose child it is. part[n] is the item place n moves with (-1: it never moves); allow pairs may overlap (press fits).

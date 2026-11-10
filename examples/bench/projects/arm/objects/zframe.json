@@ -1,0 +1,41 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "zframe",
+  "title": "Z axis frame",
+  "version": "0.1.0",
+  "uses": ["x1c", "m3"],
+  "engine": "manifold",
+  "orientation": "Flat on the bed: the rods' holes run along the bed and have teardrop roofs, the motor's mount cut through the top bar",
+  "description": "Bolts into the forearm's yoke where the pen holder or gripper bolts. Two bars hold two 8 mm rods; a 28BYJ-48 on the top bar turns a T8 screw between them.",
+  "anchors": {
+    "mount": {"at": [0, 0, "block_w / 2"], "axis": [0, 0, -1], "ref": [1, 0, 0]},
+    "motor": {"at": ["sx", "y_out", "half"], "axis": [0, -1, 0], "ref": [1, 0, 0]},
+    "slide": {"at": ["sx", "0 - y_in", "half"], "axis": [0, 1, 0], "ref": [1, 0, 0]},
+    "rod1": {"at": ["sx - rod_gap", "0 - y_out", "half"], "axis": [0, 1, 0], "ref": [1, 0, 0]},
+    "rod2": {"at": ["sx + rod_gap", "0 - y_out", "half"], "axis": [0, 1, 0], "ref": [1, 0, 0]},
+    "screw": {"at": ["sx", "0 - y_in", "half"], "axis": [0, 1, 0], "ref": [1, 0, 0]},
+    "cable": {"at": ["sx", "y_out", 0], "axis": [0, 0, 1]}
+  },
+  "variables": {
+    "width": {"value": 24, "unit": "mm", "rule": "The bars' thickness: the motor's screws sit 8 mm off the shaft, so the plate has to reach past them", "interface": true},
+    "block_w": {"value": 16, "unit": "mm", "rule": "The block's thickness, the yoke's slot"},
+    "half": {"value": "width / 2", "unit": "mm", "rule": "Half of it: the rods and the screw lie here"},
+    "block_x": {"value": 8, "unit": "mm", "rule": "Half the block in the yoke"},
+    "block_y": {"value": 9, "unit": "mm", "rule": "Half the block across it"},
+    "bolt_x": {"value": 4, "unit": "mm", "rule": "Half the yoke's screws' spacing"},
+    "bolt": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
+    "spine_x": {"value": 12, "unit": "mm", "rule": "The spine's far edge"},
+    "bar_x": {"value": 75, "unit": "mm", "rule": "The bars' far edge: past the second rod's hole"},
+    "y_in": {"value": 41, "unit": "mm", "rule": "Half the window between the bars: the carriage and its 50 mm of travel", "interface": true},
+    "y_out": {"value": 51, "unit": "mm", "rule": "Outside the bars: 10 mm of bar, enough for the motor's screws"},
+    "sx": {"value": 43, "unit": "mm", "rule": "From the bolts to the screw", "interface": true},
+    "rod_gap": {"value": 20, "unit": "mm", "rule": "Each rod from the screw: wide enough to clear the nut's flange and take the load's tipping"},
+    "rod": {"value": 8, "unit": "mm", "rule": "The 8 mm rod's hole: a light press, printed", "label": "Rod", "show": true},
+    "screw": {"value": 9, "unit": "mm", "rule": "The lead screw through the bottom bar, loose: its end only steadied"},
+    "tab": {"value": 17.5, "unit": "mm", "rule": "Half the 28BYJ-48's tab screws' spacing", "kind": "community", "source": "28byj48 in @rulecad/rules"},
+    "offset": {"value": 8, "unit": "mm", "rule": "The 28BYJ-48's screws sit this far from its shaft", "kind": "community", "source": "28byj48 in @rulecad/rules"},
+    "motor_hole": {"value": 4.2, "unit": "mm", "rule": "The motor's tab screws, an M3 or a 4 mm"},
+    "boss": {"value": 12, "unit": "mm", "rule": "Round the motor's boss, through the top bar"},
+    "segments": {"value": 48, "rule": "Round enough"}
+  }
+}

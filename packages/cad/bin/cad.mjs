@@ -13,7 +13,7 @@ import { check } from '@rulecad/printcheck';
 import { preview } from '../lib/preview.mjs';
 import { measure, match } from '../lib/meshcmd.mjs';
 import { cloneBoard } from '../lib/clone.mjs';
-import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData } from '../lib/assembly.mjs';
+import { isAssembly, buildAssembly, checkAssembly, shapes, sweep, motionData, wireTubesOf } from '../lib/assembly.mjs';
 import { valuesOf, why } from '../lib/explain.mjs';
 import { errorData, near } from '../lib/errors.mjs';
 import { schemaFindings } from '../lib/schema.mjs';
@@ -56,7 +56,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path)
-  cad animate <project>/<object>    a lamina mechanism's sequence, start to finish, in .preview/: an animated SVG, the
+  cad animate <project>/<object>    a lamina mechanism's sequence, or an assembly's gait, start to finish, in .preview/: an animated SVG, the
                                     data (shapes, forces, energies, strains each frame, JSON) and a page that plays it
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
@@ -67,6 +67,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     [--md: one labelled Markdown link, for chat (the page downloads any parts): short unless --long]
                                     [--short: the model's data in a secret GitHub Gist, so links are ~80 characters]
                                     [--no-rules: leave out the Rules panel's list of values and their sources]
+                                    [--steps file.steps.json | --no-steps: the drawing a machine's link carries, by default the newest cad plot wrote]
   Assemblies with joints: check checks every pose; --pose <name> picks one (check, preview, show, link)
                                     [--sweep [joint]: move each joint (or one) through its range, looking for collisions]
                                     [--steps 24: how many steps a sweep takes]
@@ -80,8 +81,13 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad printed <project>/<object> --result ok|failed [--note "…"] [--material PETG] [--version 0.1.0]
   cad release <project> --all -m "…"   release every object that changed (each with this message), then the project
 
+  cad machine <project>/<assembly>  the machine as plain data: axes, steps, limits, homing, the task, in exports/
+  cad plot <project>/<assembly> <drawing.svg>   plans a drawing on the machine: a step file in exports/, an animation in
+                                    .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
+  cad order <project>/<assembly>    the order it goes together in, each step with its fasteners [--preview: an exploded picture of each step in .preview/]
+  cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, fasteners, wire, printed parts in grams
-  cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends [--out wiring.md]
+  cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends, written to exports/ [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
                                     against measured, shown by cad history [--unit mm] [--source "how"] [--rule "what it is"]
@@ -110,8 +116,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'match', 'variants', 'compare', 'help'];
-const OPTIONS = ['table', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
+const OPTIONS = ['table', 'calibrate', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
@@ -124,7 +130,7 @@ const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep and --watch take one or not).
-const FLAGS = ['table', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
+const FLAGS = ['table', 'calibrate', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -418,6 +424,8 @@ async function main() {
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'measured') return measuredCommand(ref);
   if (cmd === 'list' || cmd === 'wires') return listCommand(cmd, ref);
+  if (cmd === 'machine' || cmd === 'plot') return machineCommand(cmd, ref);
+  if (cmd === 'plates' || cmd === 'order') return platesCommand(cmd, ref);
   if (cmd === 'history') return history(ref);
   if (cmd === 'diff') return diff(locate(ref), pos[2], pos[3] || null);
   if (cmd === 'printed') return printed(locate(ref));
@@ -657,11 +665,20 @@ async function assembly(cmd, ref) {
     process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;
     return;
   }
+  if (cmd === 'animate') {
+    if (!s.gait) throw new Error(`${ref} has no gait: cad animate plays a gait ("gait" at the top of the assembly), or a lamina mechanism's sequence`);
+    const { gaitSvg, gaitData } = await import('../lib/animate.mjs'), { framesOf } = await import('../lib/gait.mjs'), r = framesOf(s);
+    if (!r.frames.length) throw new Error(`${ref}'s gait has nothing to play: ${r.findings.map((x) => x.text).join('; ')}`);
+    const svg = paths.preview(s.project, `${s.name}-gait.svg`), json = paths.preview(s.project, `${s.name}-gait.json`);
+    fs.mkdirSync(path.dirname(svg), { recursive: true });
+    fs.writeFileSync(svg, gaitSvg(s, r, { title: `${title}: ${typeof a.gait.pattern === 'string' ? a.gait.pattern : 'a gait'}` })); fs.writeFileSync(json, JSON.stringify(gaitData(s, r)));
+    console.log(svg); return console.log(json);
+  }
   if (cmd === 'preview') {
     const out = paths.preview(s.project, `${s.name}${pose ? `-${pose}` : ''}${opt('explode') ? '-exploded' : ''}.png`);
     const size = (await import('@rulecad/printcheck')).bounds(s.triangles).size.map((n) => fmt(n)).join(' × ');
     const faint = [...new Set(s.parts.filter((p) => p.role !== 'part').map((p) => `${p.object || p.item}${p.role === 'support' ? ' supports' : ''}`))]; // each kind once
-    await preview(s.parts, { title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode') });
+    await preview([...s.parts, ...wireTubesOf(s)], { title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode') });
     return console.log(out);
   }
   if (cmd === 'export') {
@@ -677,7 +694,8 @@ async function assembly(cmd, ref) {
     return console.log(out);
   }
   const link = async () => {
-    const model = await assemblyModel(s, { title, versions, filaments: filaments(s.project), noRules: !!opt('no-rules') });
+    const model = await assemblyModel(s, { title, versions, filaments: filaments(s.project), noRules: !!opt('no-rules'), steps: opt('no-steps') ? false : opt('steps') });
+    if (model.steps) say(`carries the drawing ${model.steps.name ?? '(unnamed)'} (${model.steps.b.length} blocks; --no-steps to leave it out)`);
     const url = await linkTo(model);
     return { view: url, stl: `${url}&get=stl`, '3mf': `${url}&get=3mf`, src: model.src, size: url.length, title, version: '' };
   };
@@ -902,6 +920,47 @@ async function status(project) {
   }
 }
 
+async function machineCommand(what, ref) {
+  if (!isAssembly(ref)) throw new Error(`cad ${what} works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  const m = await import('../lib/machine.mjs'), s = await buildAssembly(ref);
+  if (what === 'machine') { const out = m.machineOf(s), file = m.writeMachine(s, out); (await import('../lib/buildpage.mjs')).writeWiring(s); return console.log(opt('json') ? JSON.stringify(out, null, 2) : file); }
+  const source = positional()[2], tol = opt('tol') != null ? Number(opt('tol')) : undefined;
+  if (!source && !opt('calibrate')) throw new Error('usage: cad plot <project>/<assembly> <drawing.svg> [--calibrate]');
+  const { sheetFrame } = await import('@rulecad/robots'), f = s.task?.sheet ? sheetFrame(s.task.sheet) : null;
+  const svg = opt('calibrate') ? m.CALIBRATION(f?.width ?? 148, f?.height ?? 210) : fs.readFileSync(source, 'utf8'), base = `${s.name}-${opt('calibrate') ? 'calibration' : path.basename(source, path.extname(source))}`;
+  const r = m.plot(s, svg, { tolerance: tol, name: base });
+  const failed = !r.ok;
+  if (opt('json')) { console.log(JSON.stringify({ ok: r.ok, findings: r.findings, ...(r.time ? { time: r.time } : {}), ...(r.ok ? { file: m.writePlot(s, r, base).file } : {}) }, null, 2)); process.exitCode = failed ? 1 : 0; return; }
+  report(r.findings, { assembly: ref, title: `${ref}: ${base}` });
+  if (r.ok) { const w = m.writePlot(s, r, base); console.log(path.relative(WS, w.file)); console.log(path.relative(WS, w.preview)); }
+  process.exitCode = failed ? 1 : 0;
+}
+
+async function platesCommand(what, ref) {
+  if (!isAssembly(ref)) throw new Error(`cad ${what} works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  const s = await buildAssembly(ref);
+  if (what === 'order') {
+    const { orderOf, orderText, stepPictures } = await import('../lib/order.mjs'), r = orderOf(s);
+    if (opt('json')) return console.log(JSON.stringify(r, null, 2));
+    console.log(orderText(ref, r));
+    if (r.stuck) { process.exitCode = 1; return; }
+    if (opt('preview')) { const pics = stepPictures(s, r); for (const [i, parts] of pics.entries()) { const st = r.steps[i], out = paths.preview(s.project, `${s.name}-step-${String(st.n).padStart(2, '0')}.png`); await preview(parts, { title: `${s.a.title || s.name}: step ${st.n} of ${r.steps.length}`, meta: st.text, out }); console.log(path.relative(WS, out)); } }
+    return;
+  }
+  const { platesOf, checkPlate } = await import('../lib/plates.mjs'), gap = opt('gap') != null ? Number(opt('gap')) : undefined;
+  if (gap != null && !(gap > 0)) throw new Error(`--gap is a distance in mm, above 0 (got ${opt('gap')})`);
+  const r = await platesOf(s, { write: true, gap }), results = [];
+  for (const p of r.plates.filter((x) => !x.stood)) results.push({ name: p.name, findings: await checkPlate(`${s.project}/${p.name}`) });
+  const fails = [...r.findings, ...results.flatMap((x) => x.findings)].some((x) => x.level === 'fail');
+  if (opt('json')) { console.log(JSON.stringify({ assembly: ref, bed: r.bed, gap: r.gap, plates: r.plates, repacked: r.touched, removed: r.removed, findings: r.findings, checks: results }, null, 2)); process.exitCode = fails ? 1 : 0; return; }
+  report(r.findings);
+  say(`${ref}: ${r.plates.length} plate${r.plates.length === 1 ? '' : 's'}, parts ${r.gap} mm apart (the first layer's rule)`);
+  for (const p of r.plates) say(`  ${p.name}${p.stood ? ' (unchanged)' : ''}: ${p.filament}, ${p.parts.length} part${p.parts.length === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min: ${p.parts.map((x) => x.id).join(', ')}`);
+  if (r.removed.length) say(`  removed ${r.removed.join(', ')} (nothing is on them now)`);
+  for (const x of results) { const bad = x.findings.filter((y) => (y.level === 'fail' || y.level === 'warn') && y.code !== 'rules.estimate'); say(`  ${x.name}: ${bad.length ? `${bad.length} to look at` : 'prints clean'}`); for (const y of bad) say(`    [${y.level}] ${y.text}`); }
+  process.exitCode = fails ? 1 : 0;
+}
+
 async function listCommand(what, ref) {
   if (!isAssembly(ref)) throw new Error(`cad ${what} works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
   const s = await buildAssembly(ref);
@@ -913,7 +972,8 @@ async function listCommand(what, ref) {
   if (opt('json')) return console.log(JSON.stringify(rows.map(({ route, ...r }) => r), null, 2));
   if (!rows.length) return console.log(`${ref} has no "wires"`);
   if (opt('out')) { fs.writeFileSync(path.resolve(opt('out')), wiringSheet(rows) + '\n'); return console.log(`wrote ${opt('out')}`); }
-  console.log(wiringSheet(rows));
+  const { writeWiring } = await import('../lib/buildpage.mjs'), file = writeWiring(s);
+  console.log(wiringSheet(rows)); say(path.relative(WS, file));
 }
 
 async function measuredCommand(ref) {

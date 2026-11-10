@@ -1,0 +1,192 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A Z axis on a GT2 belt",
+  "kind": "fit",
+  "description": "The same frame and carriage driven by a 20-tooth pulley on a 6 mm GT2 belt, shown with the motor on the axis of the slide (the kit wants that for its checks): really the pulley's axis crosses it. The screw is gone; the belt stretches under load and the stretch goes in the budget.",
+  "gravity": [
+    0,
+    -1,
+    0
+  ],
+  "uses": [
+    "lift"
+  ],
+  "items": [
+    {
+      "id": "frame",
+      "object": "zframe"
+    },
+    {
+      "id": "car",
+      "object": "zcar"
+    },
+    {
+      "id": "zm",
+      "motor": {
+        "model": "28byj48",
+        "drives": "z",
+        "belt": {
+          "teeth": 20,
+          "pitch": 2,
+          "stiffness": "lift.belt_k",
+          "width": 6,
+          "length": 240,
+          "load": "lift.belt_load"
+        },
+        "microsteps": 1,
+        "duty": 0.3
+      }
+    },
+    {
+      "id": "rod1",
+      "bought": "rod-8",
+      "set": {
+        "length": 102
+      }
+    },
+    {
+      "id": "rod2",
+      "bought": "rod-8",
+      "set": {
+        "length": 102
+      }
+    },
+    {
+      "id": "lm1",
+      "bought": "lm8uu"
+    },
+    {
+      "id": "lm2",
+      "bought": "lm8uu"
+    }
+  ],
+  "joints": [
+    {
+      "id": "zm_on",
+      "type": "fixed",
+      "parent": "frame.motor",
+      "child": "zm.face"
+    },
+    {
+      "id": "z",
+      "type": "prismatic",
+      "parent": "frame.slide",
+      "child": "car.slide",
+      "min": 0,
+      "max": 50,
+      "label": "Z"
+    },
+    {
+      "id": "rod1_on",
+      "type": "fixed",
+      "parent": "frame.rod1",
+      "child": "rod1.bottom"
+    },
+    {
+      "id": "rod2_on",
+      "type": "fixed",
+      "parent": "frame.rod2",
+      "child": "rod2.bottom"
+    },
+    {
+      "id": "lm1_on",
+      "type": "fixed",
+      "parent": "car.lm1",
+      "child": "lm1.face"
+    },
+    {
+      "id": "lm2_on",
+      "type": "fixed",
+      "parent": "car.lm2",
+      "child": "lm2.face"
+    }
+  ],
+  "fits": [
+    {
+      "a": "zm",
+      "b": "frame",
+      "fastens": true,
+      "min": -0.1,
+      "note": "The stepper's face on the top bar"
+    },
+    {
+      "a": "rod1",
+      "b": "frame",
+      "fastens": true,
+      "min": -100,
+      "note": "The rod pressed in its holes"
+    },
+    {
+      "a": "rod2",
+      "b": "frame",
+      "fastens": true,
+      "min": -100,
+      "note": "The rod pressed in its holes"
+    },
+    {
+      "a": "lm1",
+      "b": "car",
+      "fastens": true,
+      "min": -100,
+      "note": "The bearing in its pocket"
+    },
+    {
+      "a": "lm2",
+      "b": "car",
+      "fastens": true,
+      "min": -100,
+      "note": "The bearing in its pocket"
+    },
+    {
+      "a": "rod1",
+      "b": "car",
+      "min": -100,
+      "note": "The rod runs through the carriage's bearing"
+    },
+    {
+      "a": "rod2",
+      "b": "car",
+      "min": -100,
+      "note": "The rod runs through the carriage's bearing"
+    },
+    {
+      "a": "rod1",
+      "b": "lm1",
+      "min": -100,
+      "note": "Rod in bearing"
+    },
+    {
+      "a": "rod2",
+      "b": "lm2",
+      "min": -100,
+      "note": "Rod in bearing"
+    }
+  ],
+  "loads": [
+    {
+      "mass": "lift.z_mass",
+      "at": "car.tool",
+      "note": "The gripper, servo, payload and carriage, as the screw sees them"
+    }
+  ],
+  "task": {
+    "tool": "car.tool",
+    "volume": {
+      "x": [
+        73,
+        73
+      ],
+      "y": [
+        -26,
+        24
+      ],
+      "z": [
+        12,
+        12
+      ]
+    },
+    "accuracy": 0.5,
+    "accel": 100,
+    "payload": "lift.z_mass"
+  }
+}

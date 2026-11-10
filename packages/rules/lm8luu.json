@@ -1,0 +1,13 @@
+{
+  "_doc": "An LM8LUU long linear ball bushing, 8 x 15 x 45, sealed at both ends. Samick's figures as distributors list them, so community until measured. Bore along z.",
+  "name": "lm8luu",
+  "part": "linear_bearing",
+  "rules": {
+    "bore": { "value": 8, "unit": "mm", "rule": "Bore: the 8 mm shaft", "kind": "community", "source": "Samick LM8LUU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8luu-linear-bushing.html", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 15, "unit": "mm", "rule": "Outside diameter: the housing fits here", "kind": "community", "source": "Samick LM8LUU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8luu-linear-bushing.html", "checked": "2026-11-09" },
+    "length": { "value": 45, "unit": "mm", "rule": "Overall length", "kind": "community", "source": "Samick LM8LUU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8luu-linear-bushing.html", "checked": "2026-11-09" },
+    "static_rating": { "value": 780, "unit": "N", "rule": "Basic static load rating", "kind": "community", "source": "Samick LM8LUU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8luu-linear-bushing.html; Samick LM08LUU-NS as listed by a distributor, https://www.albeco.com.pl/en/product/36B83/linear-ball-bearing-nickel-plated-lm08luu-ns-samick.html", "checked": "2026-11-09" },
+    "dynamic_rating": { "value": 430, "unit": "N", "rule": "Basic dynamic load rating", "kind": "community", "source": "Samick LM8LUU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8luu-linear-bushing.html; Samick LM08LUU-NS as listed by a distributor, https://www.albeco.com.pl/en/product/36B83/linear-ball-bearing-nickel-plated-lm08luu-ns-samick.html", "checked": "2026-11-09" },
+    "mass": { "value": 0.031, "unit": "kg", "rule": "Mass of the bushing", "kind": "community", "source": "Samick LM8LUU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8luu-linear-bushing.html", "checked": "2026-11-09" }
+  }
+}

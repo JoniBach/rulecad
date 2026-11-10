@@ -76,16 +76,18 @@ export function seatSize(bearing, { fit = 'press', lip, printer } = {}) {
 export function bearingSeat(bearing, { fit = 'press', lip, relief = 1, through = false, into = '-z', lead = UP[into] ? 0 : 0.4, printer, at = [0, 0, 0] } = {}) {
   const what = 'bearingSeat', s = seatSize(bearing, { fit, lip, printer });
   size(what, 'relief', relief); size(what, 'lead', lead, { zero: true });
-  const R = s.pocket / 2, r = s.relief / 2, up = UP[into] ?? null, D = s.depth, past = D + relief + (through ? OUT : 0), cuts = [];
-  cuts.push(tear(R, R, lead ? 0 : OUT, -D, up));
-  if (lead) { cuts.push(tear(R + lead, R, 0, -lead, up)); cuts.push(tear(R + lead, R + lead, OUT, 0, up)); }
-  if (into === '+z') {
-    // the ledge printed as a ceiling: a 45° cone, to a point if nothing runs through it
-    const end = through ? r : TINY, rise = R - end;
-    cuts.push(tear(R, end, -D, -D - rise));
-    if (through) cuts.push(tear(r, r, -D - rise / 2, -Math.max(past, D + rise + OUT)));
-  } else cuts.push(tear(r, r, -D + EDGE, -past, up));
-  const g = along(union(cuts), into, at);
+  const R = s.pocket / 2, r = s.relief / 2, up = UP[into] ?? null, D = s.depth, past = D + relief + (through ? OUT : 0);
+  if (up) { // across a part, a teardrop's roof on each step
+    const cuts = [tear(R, R, lead ? 0 : OUT, -D, up), tear(r, r, -D + EDGE, -past, up)];
+    if (lead) cuts.push(tear(R + lead, R, 0, -lead, up), tear(R + lead, R + lead, OUT, 0, up));
+    return Object.assign(along(union(cuts), into, at), { seat: s });
+  }
+  // Going up or down, one profile turned about the axis: no seams between the steps for a boolean to leak at
+  const mouth = lead ? [[R + lead, OUT], [R + lead, 0], [R, -lead]] : [[R, OUT]], z0 = -D, floor = through ? Math.min(-past, -D - R) - OUT : -past;
+  const inner = into === '+z' ? (through ? [[R, z0], [r, z0 - (R - r)], [r, floor]] : [[R, z0], [TINY, z0 - (R - TINY)]]) : [[R, z0], [r, z0], [r, -past]];
+  const pts = [[0, OUT], ...mouth, ...inner, [0, inner.at(-1)[1]]].reverse();
+  const turned = extrudeRotate({ segments: SEGMENTS }, polygon({ points: pts }));
+  const g = along(turned, into, at);
   return Object.assign(g, { seat: s });
 }
 
@@ -142,4 +144,55 @@ export function clipGroove(shaft, { width, depth, at = [0, 0, 0] } = {}) {
   // cutter's outside runs 1 mm past the shaft, with its slope carried on so the face is one line
   const g = extrudeRotate({ segments: SEGMENTS }, polygon({ points: [[r, 0], [over, 0], [over, width + rise], [r, width]] }));
   return Object.assign(translate(at, g), { root: 2 * r });
+}
+
+/**
+ * A pocket for a linear bearing's outside (an LM8UU), to subtract: a straight press or slip for its whole length, and on
+ * through for the rod. Stood up (±z) or across (±x, ±y), with a teardrop's roof when across.
+ * @param {{ outer_diameter: number, length: number, bore: number }} bearing
+ * @param {{ fit?: 'press' | 'slip' | number, clearance?: number, through?: boolean, printer: object, at?: number[], into?: string }} o clearance: round the rod, each side
+ * @returns {object} a JSCAD geom3 to subtract, with .pocket the diameter as drawn
+ */
+export function lm8uuPocket(bearing, { fit = 'press', clearance = 1, through = false, printer, at = [0, 0, 0], into = '-z' } = {}) {
+  const what = 'lm8uuPocket', p = printerOf(what, printer), L = size(what, 'length', bearing?.length), s = seatSize({ bore: bearing?.bore, outer_diameter: bearing?.outer_diameter, width: L }, { fit, printer: p, lip: 0.01 }), up = UP[into] ?? null, R = s.pocket / 2, rod = bearing.bore / 2 + clearance;
+  const cuts = [tear(R, R, OUT, -L, up)];
+  if (into === '+z') { const rise = R - rod; cuts.push(tear(R, rod, -L, -L - rise)); cuts.push(tear(rod, rod, -L - rise / 2, -(L + rise + (through ? OUT : 2)))); } else cuts.push(tear(rod, rod, -L + EDGE, -(L + 2 + (through ? OUT : 0)), up));
+  return Object.assign(along(union(cuts), into, at), { pocket: s.pocket, clearance: s.clearance });
+}
+
+/**
+ * A pocket for a lead-screw nut, to subtract: its flange let in from a face, its body on through, and its bolts' holes on
+ * their circle. Goes down from a top face; the flange sits flush.
+ * @param {{ flange_diameter: number, flange_thickness?: number, body_diameter: number, length: number, hole_circle: number, hole_count: number, hole_diameter?: number }} nut
+ * @param {{ fit?: number, printer: object, at?: number[], depth?: number }} o fit: clearance across the flange (default the printer's fit, each side)
+ */
+export function nutTrap(nut, { fit, printer, at = [0, 0, 0], depth } = {}) {
+  const what = 'nutTrap', p = printerOf(what, printer), comp = size(what, 'printer.hole_comp', p.hole_comp, { zero: true }), gap = fit ?? 2 * size(what, 'printer.fit', p.fit), flange = size(what, 'flange_diameter', nut?.flange_diameter), body = size(what, 'body_diameter', nut.body_diameter), length = size(what, 'length', nut.length), circle = size(what, 'hole_circle', nut.hole_circle), n = size(what, 'hole_count', nut.hole_count), hole = nut.hole_diameter ?? 3.5;
+  const t = nut.flange_thickness ?? 3.5, D = depth ?? length, r = (body + comp + gap) / 2, R = (flange + comp + gap) / 2;
+  if (circle / 2 + hole / 2 > R + 0.01 || circle / 2 - hole / 2 < r) throw new Error(`nutTrap: holes on a ${circle} mm circle don't fall between the ${body} mm body and the ${flange} mm flange`);
+  const cuts = [tear(R, R, OUT, -t), tear(r, r, -t + EDGE, -D - OUT)], holes = Array.from({ length: n }, (_, i) => { const a = (i * 2 * Math.PI) / n; return translate([(circle / 2) * Math.cos(a), (circle / 2) * Math.sin(a), 0], tear((hole + comp) / 2, (hole + comp) / 2, 0, -D - OUT)); });
+  return Object.assign(translate(at, union(...cuts, ...holes)), { flange: 2 * R, body: 2 * r });
+}
+
+/**
+ * A bore for a pulley on a stepper's round shaft (no flat: a pulley's grub screw bears on the shaft), or a plain idler's
+ * axle, to subtract. A pass-through with a chamfered mouth.
+ * @param {{ bore: number }} pulley @param {{ length: number, printer: object, at?: number[], into?: string, through?: boolean }} o
+ */
+export function pulleyBore(pulley, { length, printer, at = [0, 0, 0], into = '-z', through = false } = {}) {
+  return plainBearing(size('pulleyBore', 'bore', pulley?.bore), { length, printer, at, into, through, clearance: printerOf('pulleyBore', printer).slip ?? printer.fit / 2 });
+}
+
+/**
+ * A comb that grips a GT2 belt, to add: teeth of the belt's pitch on a block, the belt pressed in face first and held by
+ * a plain cover. Printed teeth up, so nothing overhangs.
+ * @param {{ pitch: number, width: number }} belt @param {{ length: number, height: number, wall: number, at?: number[] }} o
+ * @returns {object} a JSCAD geom3 to add, x along the belt, z up
+ */
+export function beltClamp(belt, { length, height, wall, at = [0, 0, 0] } = {}) {
+  const what = 'beltClamp', pitch = size(what, 'pitch', belt?.pitch), width = size(what, 'width', belt.width);
+  size(what, 'length', length); size(what, 'height', height); size(what, 'wall', wall);
+  const count = Math.floor(length / pitch), base = translate([0, 0, height / 2], cuboid({ size: [length, width + 2 * wall, height] })), teeth = [], tooth = pitch * 0.45;
+  for (let i = 0; i < count; i++) teeth.push(translate([-length / 2 + pitch * (i + 0.5), 0, height + 0.375], cuboid({ size: [tooth, width + 2 * wall, 0.75] })));
+  return translate(at, union(base, ...teeth));
 }

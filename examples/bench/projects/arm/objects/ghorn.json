@@ -1,0 +1,17 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "ghorn",
+  "title": "Double-arm servo horn (bought, comes with the SG90)",
+  "version": "0.1.0",
+  "role": "reference",
+  "anchors": {
+    "axis": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "reach": {"value": 18, "unit": "mm", "rule": "Axis to the tip's centre, about, on the long double horn in the bag", "kind": "estimate", "source": "A guess from the usual SG90 horn set: measure yours"},
+    "wide": {"value": 4.5, "unit": "mm", "rule": "The arm's width, and the tip's round"},
+    "thick": {"value": 2, "unit": "mm", "rule": "The arm's thickness, centred on the horn's plane"},
+    "hub": {"value": 7, "unit": "mm", "rule": "Round the spline"},
+    "segments": {"value": 24, "rule": "Round enough"}
+  }
+}

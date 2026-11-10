@@ -74,7 +74,7 @@ export function printerRules(s) {
 // hole_comp smaller across, so half of that comes off the gap each side; what's left is held against the printer's fit
 export function runningChecks(s, f, { axisOf, placeItems, jointValues, mul }) {
   const motion = s.motion; if (!motion?.joints?.length) return;
-  const worlds = placeItems(motion, jointValues(motion, motion.pose ?? undefined)), ids = motion.items.map((x) => x[0]);
+  const worlds = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined)), ids = motion.items.map((x) => x[0]);
   const P = printerRules(s), fit = P.fit ?? 0.2, comp = P.hole_comp ?? 0.1;
   const refs = new Set(s.objects.filter((o) => o.role === 'reference').map((o) => String(o.id).split('.')[0]));
   const partsOf = (id) => s.parts.filter((p) => p.item === id || p.leaf === id);
@@ -101,7 +101,7 @@ export function seatFit(x, s, f, { placeItems, jointValues, mul, seatSize }) {
   if (!o) return f('fail', `${label}: a seat holds a bought bearing, and neither ${x.a} nor ${x.b} is one`, `${label}: no bearing`, { code });
   const other = top(x.a) === o.id ? top(x.b) : top(x.a), parts = s.parts.filter((p) => p.item === other || p.leaf === other);
   if (!parts.length) return f('fail', `${label}: no part "${other}"`, null, { code });
-  const motion = s.motion, ids = motion.items.map((y) => y[0]), W = placeItems(motion, jointValues(motion, motion.pose ?? undefined))[ids.indexOf(o.id)];
+  const motion = s.motion, ids = motion.items.map((y) => y[0]), W = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined))[ids.indexOf(o.id)];
   const inv = (p) => { const q = [p[0] - W[3], p[1] - W[7], p[2] - W[11]]; return [W[0] * q[0] + W[4] * q[1] + W[8] * q[2], W[1] * q[0] + W[5] * q[1] + W[9] * q[2], W[2] * q[0] + W[6] * q[1] + W[10] * q[2]]; };
   const tris = parts.flatMap((p) => p.triangles).map((t) => t.map(inv)), v = o.built.values, w = v.width, R = v.outer_diameter / 2, r = v.bore / 2;
   const printer = printerRules(s), want = seatSize(v, { fit: x.seat === true ? 'press' : x.seat, printer }), refs = { item: o.id, part: other };

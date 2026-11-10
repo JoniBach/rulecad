@@ -1,0 +1,31 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "side",
+  "title": "Body side plate",
+  "version": "0.1.0",
+  "uses": ["x1c", "leg", "m3"],
+  "engine": "manifold",
+  "orientation": "Flat on the bed: the hips' faces down",
+  "description": "Two hip hubs joined by a spar, with the windows the hip motors go through and four pilot holes for the cross beams. The two sides are the same print, turned end for end.",
+  "anchors": {
+    "hip1": {"at": ["half", 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]},
+    "hip2": {"at": ["0 - half", 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "half": {"value": "leg.body_half", "unit": "mm", "rule": "Hip to the middle: the body's half-length", "interface": true},
+    "thick": {"value": 6, "unit": "mm", "rule": "The plate: enough for the housing's three M3 screws to bite"},
+    "hub": {"value": 46, "unit": "mm", "rule": "A hub's radius: past the housing's feet"},
+    "spar": {"value": 30, "unit": "mm", "rule": "The spar's depth between the hubs"},
+    "feet_r": {"value": 37, "unit": "mm", "rule": "The housing's three feet", "interface": true},
+    "a1": {"value": 90, "unit": "°", "rule": "The housing's first foot"},
+    "a2": {"value": 210, "unit": "°", "rule": "Second"},
+    "a3": {"value": 330, "unit": "°", "rule": "Third"},
+    "pilot": {"value": 2.9, "unit": "mm", "rule": "M3, self-tapped", "kind": "community"},
+    "window": {"value": 44.5, "unit": "mm", "rule": "The motor's way through the plate: a NEMA 17 and 1.1 mm each side"},
+    "corner": {"value": 3, "unit": "mm", "rule": "Round the corners of the window"},
+    "beam_at": {"value": 27, "unit": "mm", "rule": "The two cross beams, between the hip motors: the motors take the space from 54 mm to the plate's end"},
+    "beam_y": {"value": 16, "unit": "mm", "rule": "Each beam's two screws, this far either side of its middle"},
+    "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
+    "segments": {"value": 64, "rule": "Round enough"}
+  }
+}

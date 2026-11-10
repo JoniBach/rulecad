@@ -1,0 +1,23 @@
+{
+  "name": "arm",
+  "description": "A SCARA arm sized from its task: an A5 sheet, a pen, 0.3 mm at 50 mm/s. EXAMPLES chapter 12 explains it.",
+  "material": "PLA",
+  "objects": [
+    "base",
+    "housing",
+    "sun",
+    "planet",
+    "speck",
+    "output",
+    "bridge",
+    "spindle",
+    "upper",
+    "clip",
+    "forearm",
+    "holder",
+    "gripper",
+    "ghorn",
+    "zframe",
+    "zcar"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "output",
+  "title": "Output ring and flange",
+  "version": "0.1.0",
+  "uses": ["x1c", "arm", "m3"],
+  "engine": "manifold",
+  "orientation": "The flange on the bed, the teeth standing on it",
+  "description": "Printed flange down and fitted upside down: the same part on the shoulder and the elbow.",
+  "anchors": {
+    "axis": {"at": [0, 0, "top + width"], "axis": [0, 0, -1]},
+    "flange": {"at": [0, 0, 0], "axis": [0, 0, -1]}
+  },
+  "variables": {
+    "top": {"value": "arm.flange", "unit": "mm", "rule": "The flange, printed on the bed", "interface": true},
+    "width": {"value": "arm.gear", "unit": "mm", "rule": "The output ring's face"},
+    "rim": {"value": 66, "unit": "mm", "rule": "Round the 57-tooth ring"},
+    "module": {"value": 1, "unit": "mm", "rule": "The gears'"},
+    "teeth": {"value": 57, "rule": "The output ring"},
+    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped into the flange", "kind": "community"},
+    "middle": {"value": 15, "unit": "mm", "rule": "A hole in the middle for the motor's shaft to come up in"},
+    "bolt": {"value": 20, "unit": "mm", "rule": "Radius of the bolt circle", "interface": true},
+    "segments": {"value": 24, "rule": "Small holes"},
+    "ring_segments": {"value": 96, "rule": "Smooth to the eye and to the gear"},
+    "quarter": {"value": 1.57079633, "rule": "The bolts, a quarter turn apart, in radians"},
+    "bolts": {"value": 4, "rule": "Four"}
+  }
+}

@@ -10,6 +10,34 @@ step what the design predicts and whether the build agrees. Three words come up 
 arithmetic and the bookkeeping), **observability** (every prediction is visible, with its source, and can be compared
 with a measurement), and **minimal retry** (a mistake is found by a check, not by a print or a burnt driver).
 
+## Closed out, 2026-11-09
+
+The plan below has run its course in code: what was asked for in Robots 1, 2 and 3 (#172) is in the kit, and this section says
+plainly what was built, what was measured, and what remains.
+
+**Built.** `@rulecad/robots`: chains, forward and inverse kinematics, reach, toolpaths, legs and gaits. In `cad`: a `task` at the
+top of an assembly with `task.reach`, `task.speed` and an error budget `task.accuracy`; `cad machine`, `cad plot` and a streamer
+for the Uno; drivers, wires and a wiring sheet; `cad list`, `cad plates`, assembly order; bought parts as rule sets (bearings,
+endstops, an encoder, drivers, supplies, belts, rods, linear bushings, lead screws); joint moments, inertia and the grip; a `gait`
+at the top of an assembly, checked for stability, clearance, torque and collisions through its cycle, animated by `cad animate` and
+played in the model page's Motion panel. The viewer draws with the arm. `npm create rulecad --machine arm|leg` makes either
+machine from a sheet and an accuracy or a robot's mass. Worked examples: the drawing arm (Examples chapter 12), the upright arm
+(chapter 13) and a leg on a test stand with a quadruped as a design exercise (chapter 14). The docs site has the machines guide.
+
+**Measured: nothing yet.** Nothing here has been printed and measured. Every play, twist, friction and stiffness figure the arm and
+the leg rest on is an `estimate` or a `community` figure, and the checks that use them say so. The printing and the measuring are
+the next step, and belong to whoever builds one: bench tests 14, 15 and 17 in `examples/bench/projects/benchmarks/MEASURE.md` for
+the gearbox, `cad measured` to write the results back, and the ledger of predicted against measured to read what changed.
+
+**What remains.** In order of what a builder would meet first:
+
+- Printing the arm and the leg, and measuring them: play, repeatability, the stand's torque against the scale. Without that, the error budget and the
+  stance torque are targets, not predictions.
+- A step file for a gait, for the streamer grown to more axes, and the streamer itself grown past three (#199's last box): the leg steps in the model page, not yet on a bench.
+- Anything beyond statics: dynamics, balance control, closed-loop feedback from encoders or IMUs. The kit has a `gait` for slow, quasi-static walking and no
+  controller; a machine that walks fast or falls over and gets up is out of scope and stays so.
+- The XY plotter and the 3D printer set aside as detours in the decision below, should someone want them.
+
 ## Decision, 2026-11-09
 
 The plan that came out of this analysis is filed as GitHub issue #172 (umbrella) with #173 to #202 in milestones 10

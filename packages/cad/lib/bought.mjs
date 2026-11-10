@@ -59,6 +59,11 @@ const SHAPES = {
     return { parts: { body: union(box(w, d, t), box(5, 5, 1, 0, 0, t)), pins: union(rows) }, anchors: { header: z([0, 0, 0]), top: z([0, 0, t]) } };
   },
   encoder(v, set) { return SHAPES.board(v, set); },
+  linear_bearing(v) { // bore along z, from z = 0
+    const r = v.bore / 2, R = v.outer_diameter / 2, L = v.length, c = 0.3;
+    return { parts: { body: extrudeRotate({ segments: SEG }, polygon({ points: [[r + c, 0], [R - c, 0], [R, c], [R, L - c], [R - c, L], [r + c, L], [r, L - c], [r, c]] })) }, anchors: { bore: z([0, 0, L / 2]), face: z([0, 0, 0]), top: z([0, 0, L]) } };
+  },
+  rod(v) { return { parts: { body: translate([0, 0, v.length / 2], cylinder({ radius: v.diameter / 2, height: v.length, segments: SEG })) }, anchors: { bottom: z([0, 0, 0]), top: z([0, 0, v.length]) } }; },
   supply(v) {
     const w = v.body_width, d = v.body_depth, h = v.body_length;
     return { parts: { body: box(w, d, h) }, anchors: { base: z([0, 0, 0]), top: z([0, 0, h]), terminals: z([0, -d / 2, h / 2], [0, -1, 0]) } };
@@ -81,6 +86,8 @@ export function boughtModel(name, variant) {
 // An item with "bought": built like any other, a reference, its figures in values and its rules in entries
 export function boughtBuilt(spec, it, num, id) {
   const m = boughtModel(spec, it.variant);
+  // Figures that differ from the set's, by name: a smaller supply, a measured bearing
+  for (const [k, x] of Object.entries(it.set || {})) { if (!m.rules[k]) throw new Error(`item ${id}: ${spec} has no figure "${k}" (${Object.keys(m.rules).join(', ')})`); m.rules = { ...m.rules, [k]: { ...m.rules[k], value: num(x), kind: 'estimate', source: 'set on this item' } }; }
   if (!SHAPES[m.part]) throw new Error(`item ${id}: ${spec} is a ${m.part}: bought parts are ${Object.keys(SHAPES).join(', ')}, and a motor goes in "motor"`);
   const values = Object.fromEntries(Object.entries(m.rules).filter(([, r]) => typeof r.value === 'number').map(([k, r]) => [k, r.value]));
   let shape;

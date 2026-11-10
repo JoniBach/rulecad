@@ -1,0 +1,220 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A Z axis on a T8 lead screw",
+  "kind": "fit",
+  "description": "The wrist's Z axis on its own, bolted down by the block that goes in the forearm's yoke. Fifty millimetres of travel on two 8 mm rods and LM8UU bearings, a 28BYJ-48 turning a T8 screw of 8 mm lead. The rods stand along y, so down is -y.",
+  "gravity": [
+    0,
+    -1,
+    0
+  ],
+  "uses": [
+    "lift"
+  ],
+  "items": [
+    {
+      "id": "frame",
+      "object": "zframe"
+    },
+    {
+      "id": "car",
+      "object": "zcar"
+    },
+    {
+      "id": "zm",
+      "motor": {
+        "model": "28byj48",
+        "drives": "z",
+        "leadscrew": {
+          "lead": "lift.z_lead",
+          "diameter": 8,
+          "friction": "lift.z_friction"
+        },
+        "microsteps": 1,
+        "duty": 0.3
+      }
+    },
+    {
+      "id": "rod1",
+      "bought": "rod-8",
+      "set": {
+        "length": 102
+      }
+    },
+    {
+      "id": "rod2",
+      "bought": "rod-8",
+      "set": {
+        "length": 102
+      }
+    },
+    {
+      "id": "screw",
+      "bought": "rod-8",
+      "set": {
+        "length": 92
+      }
+    },
+    {
+      "id": "lm1",
+      "bought": "lm8uu"
+    },
+    {
+      "id": "lm2",
+      "bought": "lm8uu"
+    }
+  ],
+  "joints": [
+    {
+      "id": "zm_on",
+      "type": "fixed",
+      "parent": "frame.motor",
+      "child": "zm.face"
+    },
+    {
+      "id": "z",
+      "type": "prismatic",
+      "parent": "frame.slide",
+      "child": "car.slide",
+      "min": 0,
+      "max": 50,
+      "label": "Z"
+    },
+    {
+      "id": "rod1_on",
+      "type": "fixed",
+      "parent": "frame.rod1",
+      "child": "rod1.bottom"
+    },
+    {
+      "id": "rod2_on",
+      "type": "fixed",
+      "parent": "frame.rod2",
+      "child": "rod2.bottom"
+    },
+    {
+      "id": "screw_on",
+      "type": "fixed",
+      "parent": "frame.screw",
+      "child": "screw.bottom"
+    },
+    {
+      "id": "lm1_on",
+      "type": "fixed",
+      "parent": "car.lm1",
+      "child": "lm1.face"
+    },
+    {
+      "id": "lm2_on",
+      "type": "fixed",
+      "parent": "car.lm2",
+      "child": "lm2.face"
+    }
+  ],
+  "fits": [
+    {
+      "a": "zm",
+      "b": "frame",
+      "fastens": true,
+      "min": -0.1,
+      "note": "The stepper's face on the top bar"
+    },
+    {
+      "a": "zm",
+      "b": "screw",
+      "min": -100,
+      "note": "Coupled, drawn as one line"
+    },
+    {
+      "a": "rod1",
+      "b": "frame",
+      "fastens": true,
+      "min": -100,
+      "note": "The rod pressed in its holes"
+    },
+    {
+      "a": "rod2",
+      "b": "frame",
+      "fastens": true,
+      "min": -100,
+      "note": "The rod pressed in its holes"
+    },
+    {
+      "a": "lm1",
+      "b": "car",
+      "fastens": true,
+      "min": -100,
+      "note": "The bearing in its pocket"
+    },
+    {
+      "a": "lm2",
+      "b": "car",
+      "fastens": true,
+      "min": -100,
+      "note": "The bearing in its pocket"
+    },
+    {
+      "a": "rod1",
+      "b": "car",
+      "min": -100,
+      "note": "The rod runs through the carriage's bearing"
+    },
+    {
+      "a": "rod2",
+      "b": "car",
+      "min": -100,
+      "note": "The rod runs through the carriage's bearing"
+    },
+    {
+      "a": "rod1",
+      "b": "lm1",
+      "min": -100,
+      "note": "Rod in bearing"
+    },
+    {
+      "a": "rod2",
+      "b": "lm2",
+      "min": -100,
+      "note": "Rod in bearing"
+    },
+    {
+      "a": "screw",
+      "b": "car",
+      "min": -100,
+      "note": "The screw through the nut"
+    },
+    {
+      "a": "screw",
+      "b": "frame",
+      "min": -100,
+      "note": "The screw's end, loose in the bottom bar"
+    }
+  ],
+  "loads": [
+    {
+      "mass": "lift.z_mass",
+      "at": "car.tool",
+      "note": "The gripper, servo, payload and carriage, as the screw sees them"
+    }
+  ],
+  "task": {
+    "tool": "car.tool",
+    "volume": {
+      "x": [
+        73,
+        73
+      ],
+      "y": [
+        -26,
+        24
+      ],
+      "z": [
+        12,
+        12
+      ]
+    },
+    "accuracy": 0.5,
+    "accel": 100,
+    "payload": "lift.z_mass"
+  }
+}

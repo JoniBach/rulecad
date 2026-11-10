@@ -196,6 +196,7 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
   // deps: each name's own references (what its expression reads), for explaining a value; stack: whose expression is being read
   const done = new Map(), busy = new Set(), deps = new Map(), stack = [];
   const pathOf = (name) => (name.includes('.') ? `rules.${name}.value` : `variables.${name}.value`);
+  const ruleOf = (name) => { let [t, r] = name.split('.'); if (!own(ruleSets, t)) t = t.replace(/_/g, '-'); return ruleSets[t]?.rules[r]; };
   const lookup = (name) => {
     if (stack.length) deps.get(stack[stack.length - 1]).add(name);
     if (done.has(name)) return done.get(name);
@@ -221,6 +222,8 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
     deps.set(name, new Set()); stack.push(name);
     try { v = evaluate(src, (n) => lookup(where(n))); } catch (e) {
       busy.delete(name); stack.pop();
+      // A rule with words for a value and no unit (a bearing's "radial", a pinout) is text, read as it is
+      if (name.includes('.') && typeof src === 'string' && !ruleOf(name)?.unit) { done.set(name, src); return src; }
       const out = e.message.startsWith('"') || e.message.startsWith('no ') ? e : fail(e.code || 'var.expression', `"${name}" = ${JSON.stringify(src)}: ${e.message}`);
       if (!out.path) out.path = pathOf(name); // the first expression that reads the bad name: where to fix it
       throw out;

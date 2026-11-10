@@ -1,0 +1,35 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "shin",
+  "title": "Shin and foot",
+  "version": "0.1.0",
+  "uses": ["x1c", "leg", "m3"],
+  "engine": "manifold",
+  "orientation": "The bar and the foot flat on the bed, the boss up. The foot's V groove at 45° needs no support",
+  "description": "From the knee's output flange to a round foot: a bar in one piece with the disc the grip pad snaps round.",
+  "anchors": {
+    "hub": {"at": [0, 0, "boss"], "axis": [0, 0, -1], "ref": [1, 0, 0]},
+    "tip": {"at": ["long", 0, "foot_w / 2"], "axis": [0, 0, 1], "ref": [1, 0, 0]},
+    "pad": {"at": ["long", 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]},
+    "cable": {"at": ["long / 2", 0, "bar"], "axis": [0, 0, 1]}
+  },
+  "variables": {
+    "long": {"value": "leg.shin", "unit": "mm", "rule": "Knee to the foot's centre", "label": "Shin", "show": true, "interface": true},
+    "bar": {"value": 8, "unit": "mm", "rule": "The bar's thickness, sized in the chapter: 2 MPa under the worst stance load"},
+    "wide": {"value": 20, "unit": "mm", "rule": "The bar's width at the knee"},
+    "toe": {"value": 16, "unit": "mm", "rule": "Its width at the foot: tapered, as the bending falls to nothing at the foot"},
+    "boss": {"value": "leg.boss", "unit": "mm", "rule": "The bar passes under the knee's clips, the boss above reaches the flange"},
+    "boss_d": {"value": 46, "unit": "mm", "rule": "Round the 40 mm bolt circle"},
+    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
+    "head": {"value": "m3.head + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "The screw's head, counterbored in the bed side"},
+    "head_depth": {"value": "m3.head_height + x1c.layer", "unit": "mm", "rule": "Sunk"},
+    "bolt": {"value": 20, "unit": "mm", "rule": "The output's bolt circle, radius"},
+    "bolts": {"value": 4, "rule": "On the bolt circle"},
+    "quarter": {"value": 1.57079633, "rule": "A quarter turn in radians"},
+    "foot_w": {"value": 14, "unit": "mm", "rule": "The foot's width across the leg: wide enough to stand on the pad's tread", "interface": true},
+    "foot_r": {"value": "leg.foot_r - pad_t", "unit": "mm", "rule": "The disc's radius, under the pad"},
+    "pad_t": {"value": 3, "unit": "mm", "rule": "The pad's thickness, its tread included", "interface": true},
+    "groove": {"value": 1, "unit": "mm", "rule": "The V groove the pad's ridge locks into, 1 mm deep: at 45° it prints without support", "interface": true},
+    "segments": {"value": 64, "rule": "Round enough"}
+  }
+}

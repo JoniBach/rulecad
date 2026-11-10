@@ -1,0 +1,165 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "Gripper: closing check",
+  "kind": "fit",
+  "description": "The gripper's three pieces moved apart so the fingers' closing can be swept: the palm, and each finger on a slide that follows the servo by how far the horn pushes it. The real part is one print, at rest; this is the check, not the build.",
+  "gravity": [
+    0,
+    0,
+    -1
+  ],
+  "uses": [
+    "lift"
+  ],
+  "items": [
+    {
+      "id": "palm",
+      "object": "gripper",
+      "set": {
+        "part": 1
+      }
+    },
+    {
+      "id": "upper",
+      "object": "gripper",
+      "set": {
+        "part": 2
+      }
+    },
+    {
+      "id": "lower",
+      "object": "gripper",
+      "set": {
+        "part": 3
+      }
+    },
+    {
+      "id": "gservo",
+      "motor": {
+        "model": "sg90",
+        "drives": "squeeze",
+        "duty": 0.05
+      }
+    },
+    {
+      "id": "ghorn",
+      "object": "ghorn"
+    }
+  ],
+  "joints": [
+    {
+      "id": "servo_on",
+      "type": "fixed",
+      "parent": "palm.servo",
+      "child": "gservo.face"
+    },
+    {
+      "id": "squeeze",
+      "type": "revolute",
+      "parent": "palm.horn",
+      "child": "ghorn.axis",
+      "min": 0,
+      "max": 17,
+      "label": "Grip"
+    },
+    {
+      "id": "close_up",
+      "type": "prismatic",
+      "parent": "palm.upper",
+      "child": "upper.upper",
+      "min": 0,
+      "max": 4,
+      "follow": "squeeze",
+      "ratio": 0.176
+    },
+    {
+      "id": "close_low",
+      "type": "prismatic",
+      "parent": "palm.lower",
+      "child": "lower.lower",
+      "min": 0,
+      "max": 4,
+      "follow": "squeeze",
+      "ratio": 0.176
+    }
+  ],
+  "fits": [
+    {
+      "a": "gservo",
+      "b": "palm",
+      "fastens": true,
+      "min": -0.3,
+      "note": "The servo on its two posts, its case and boss down in the pocket"
+    },
+    {
+      "a": "gservo",
+      "b": "upper",
+      "min": -0.05,
+      "note": "The servo clears the finger"
+    },
+    {
+      "a": "ghorn",
+      "b": "upper",
+      "min": -0.25,
+      "note": "The horn's tip on the finger's flat"
+    },
+    {
+      "a": "ghorn",
+      "b": "lower",
+      "min": -0.25,
+      "note": "The horn's tip on the finger's flat"
+    },
+    {
+      "a": "upper",
+      "b": "palm",
+      "min": -2,
+      "note": "The leaf's root runs into its arm: the fingers slide here as a check, the leaf really bends"
+    },
+    {
+      "a": "lower",
+      "b": "palm",
+      "min": -2,
+      "note": "The leaf's root runs into its arm"
+    }
+  ],
+  "task": {
+    "tool": "upper.tool",
+    "volume": {
+      "x": [
+        85,
+        85
+      ],
+      "y": [
+        0,
+        0
+      ],
+      "z": [
+        8,
+        8
+      ]
+    },
+    "payload": "lift.grip_payload",
+    "grip": {
+      "material": "petg",
+      "servo": "gservo",
+      "horn": "lift.grip_horn",
+      "leaf": {
+        "length": "lift.leaf_l",
+        "thickness": "lift.leaf_t",
+        "width": "lift.leaf_w"
+      },
+      "travel": "lift.grip_travel",
+      "friction": "lift.friction",
+      "lever": "lift.grip_lever"
+    },
+    "accel": 300
+  },
+  "poses": {
+    "open": {
+      "squeeze": 0
+    },
+    "closed": {
+      "squeeze": 17
+    }
+  }
+}

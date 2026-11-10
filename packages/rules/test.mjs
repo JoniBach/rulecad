@@ -62,11 +62,25 @@ test('every driver turns Vref into amps as its own datasheet works it through', 
 });
 
 test('a hobby part says it is community until measured', () => {
-  for (const name of ['bearing-mr105', 'endstop-10t85', 'as5600', 'tmc2209', 'cnc-shield-v3', 'supply-12v', 'supply-24v']) {
+  for (const name of ['bearing-mr105', 'endstop-10t85', 'as5600', 'tmc2209', 'cnc-shield-v3', 'supply-12v', 'supply-24v', 't8-screw', 't8-nut', 'rod-8', 'lm8uu', 'lm8luu', 'coupler-5-8', 'gt2-belt-6', 'pulley-gt2-16', 'pulley-gt2-20', 'idler-gt2-toothed-20', 'idler-gt2-smooth-20']) {
     const { set } = sets.find((s) => s.name === name);
     assert.match(set._doc, /community until measured/, `${name} says so in its _doc`);
     assert.ok(Object.values(set.rules).some((r) => r.kind === 'community'), `${name} has community figures`);
   }
+});
+
+test('the motion parts: a lead screw\'s lead is pitch by starts, a pulley\'s pitch diameter is teeth by pitch over pi', () => {
+  const r = (name) => sets.find((s) => s.name === name).set.rules;
+  assert.equal(r('t8-screw').lead.value, r('t8-screw').pitch.value * r('t8-screw').starts.value);
+  for (const [v, s] of Object.entries(sets.find((x) => x.name === 't8-screw').set.variants)) assert.equal(s.values.lead, r('t8-screw').pitch.value * s.values.starts, `t8-screw variant ${v}`);
+  for (const name of ['pulley-gt2-16', 'pulley-gt2-20']) {
+    const p = r(name);
+    assert.ok(Math.abs(p.pitch_diameter.value - (p.teeth.value * p.pitch.value) / Math.PI) < 0.03, `${name}: pitch diameter`);
+    assert.ok(Math.abs(p.pitch_diameter.value - p.tooth_diameter.value - 2 * r('gt2-belt-6').pitch_line_offset.value) < 0.03, `${name}: teeth inside the pitch circle by the belt's offset`);
+  }
+  assert.ok(Math.abs(r('gt2-belt-6').stiffness.value - 6 * r('gt2-belt-6').stiffness_per_width.value) < 5, 'belt stiffness per width');
+  for (const name of ['lm8uu', 'lm8luu']) assert.ok(r(name).outer_diameter.value > r(name).bore.value && r(name).length.value > 0 && r(name).static_rating.value > 0, name);
+  assert.equal(r('coupler-5-8').bore_a.value, 5); assert.equal(r('coupler-5-8').bore_b.value, 8);
 });
 
 test('a supply\'s variants each carry their own current and case', () => {

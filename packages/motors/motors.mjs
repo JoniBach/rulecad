@@ -20,6 +20,8 @@ import m2 from '@rulecad/rules/m2.json' with { type: 'json' };
 import m3 from '@rulecad/rules/m3.json' with { type: 'json' };
 import m4 from '@rulecad/rules/m4.json' with { type: 'json' };
 
+export { driver, setting, powerBudget, DRIVER_EFFICIENCY } from './drivers.mjs';
+
 const { cuboid, cylinder, polygon } = jscad.primitives;
 const { extrudeLinear } = jscad.extrusions;
 const { translate } = jscad.transforms;

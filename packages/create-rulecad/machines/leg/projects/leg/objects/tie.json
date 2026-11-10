@@ -1,0 +1,19 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "tie",
+  "title": "Stand top tie",
+  "version": "0.1.0",
+  "uses": ["x1c", "leg"],
+  "engine": "manifold",
+  "orientation": "Flat on the bed, the rods up through it",
+  "description": "A bar across the tops of the two rods, so they cannot lean apart.",
+  "variables": {
+    "long": {"value": "leg.rod_x * 2 + width * 2", "unit": "mm", "rule": "From rod to rod, and a width past each"},
+    "width": {"value": 20, "unit": "mm", "rule": "Across the bar"},
+    "thick": {"value": 8, "unit": "mm", "rule": "Thick enough not to flex"},
+    "socket": {"value": "leg.rod_d + x1c.hole_comp", "unit": "mm", "rule": "The rod, pressed through"},
+    "rod_x": {"value": "leg.rod_x", "unit": "mm", "rule": "Each rod"},
+    "corner": {"value": 5, "unit": "mm", "rule": "The bar's corners"},
+    "segments": {"value": 48, "rule": "Round enough"}
+  }
+}

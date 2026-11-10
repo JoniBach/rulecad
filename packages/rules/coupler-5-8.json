@@ -1,0 +1,12 @@
+{
+  "_doc": "A 5 mm to 8 mm flexible shaft coupler, the spiral-cut set-screw hobby part, from Adafruit's listing: community until measured. Listings of the same part disagree on its outside diameter (18 to 20 mm), and jaw couplers differ again, so measure yours before designing a clearance round it. Axis along z, the 5 mm side at z = 0.",
+  "name": "coupler-5-8",
+  "part": "coupler",
+  "rules": {
+    "bore_a": { "value": 5, "unit": "mm", "rule": "The motor side's bore", "kind": "community", "source": "Adafruit 5 mm to 8 mm flex shaft coupler, https://www.adafruit.com/product/1176", "checked": "2026-11-09" },
+    "bore_b": { "value": 8, "unit": "mm", "rule": "The lead screw side's bore", "kind": "community", "source": "Adafruit 5 mm to 8 mm flex shaft coupler, https://www.adafruit.com/product/1176", "checked": "2026-11-09" },
+    "length": { "value": 25, "unit": "mm", "rule": "Overall length", "kind": "community", "source": "Adafruit 5 mm to 8 mm flex shaft coupler, https://www.adafruit.com/product/1176", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 18, "unit": "mm", "rule": "Outside diameter", "kind": "community", "source": "Adafruit 5 mm to 8 mm flex shaft coupler, https://www.adafruit.com/product/1176", "checked": "2026-11-09" },
+    "style": { "value": "spiral cut, machined aluminium, two set screws each side (2 mm Allen key)", "rule": "What it is and how it grips", "kind": "community", "source": "Adafruit 5 mm to 8 mm flex shaft coupler, https://www.adafruit.com/product/1176", "checked": "2026-11-09" }
+  }
+}

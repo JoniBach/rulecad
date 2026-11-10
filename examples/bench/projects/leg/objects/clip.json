@@ -1,0 +1,20 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "clip",
+  "title": "Retaining clip",
+  "version": "0.1.0",
+  "uses": ["x1c", "m3"],
+  "orientation": "Flat on the bed",
+  "description": "Holds the knee's output ring from dropping off its posts.",
+  "anchors": {
+    "post": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "reach": {"value": 6, "unit": "mm", "rule": "In over the flange's edge, 4 mm"},
+    "back": {"value": 4, "unit": "mm", "rule": "Round the post"},
+    "wide": {"value": 8, "unit": "mm", "rule": "As wide as the post and a little"},
+    "thick": {"value": 3, "unit": "mm", "rule": "Fifteen layers"},
+    "hole": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
+    "segments": {"value": 24, "rule": "Small round hole"}
+  }
+}

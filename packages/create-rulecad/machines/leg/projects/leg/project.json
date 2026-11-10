@@ -1,0 +1,21 @@
+{
+  "name": "leg",
+  "description": "A leg from the arm's parts, on a stand that reads its stance on a scale. EXAMPLES chapter 14 explains it.",
+  "material": "PLA",
+  "objects": [
+    "carriage",
+    "foot",
+    "tie",
+    "collar",
+    "housing",
+    "sun",
+    "planet",
+    "output",
+    "bridge",
+    "spindle",
+    "thigh",
+    "clip",
+    "shin",
+    "pad"
+  ]
+}

@@ -30,6 +30,7 @@ const zip = await threemf(back);         // Uint8Array, a .3mf (one object, two 
   joint's values, followers included, and `placeItems(motion, values)` gives where each item is. The page uses these
   for its sliders, and `cad` uses the same functions to place an assembly, so both agree. The format is described at
   the top of the motion section in `model-link.mjs`.
+- **A machine's link:** a model can carry `task` (the tool's anchor and the plane it moves on, with what the margins read), `steps` (a step file cut down by `compactSteps(file)`, small enough for a link), `wires` (routes drawn faint, never parts) and `build` (the build page's text and numbers). All of it is checked as data when a link is decoded, and a page never runs any of it. The formats are in the comment at the top of the "a machine's link" section in `model-link.mjs`.
 - **Safety:** links are data, never code. `decode()` checks the format and sizes (`LIMITS`), refuses damaged links,
   and refuses links from a newer format version.
 - **Short links:** `parseHash(location.hash)` also reads `#s=<id>`, a GitHub Gist holding the data, and

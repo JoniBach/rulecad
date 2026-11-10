@@ -1,0 +1,33 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "zcar",
+  "title": "Z axis carriage",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "orientation": "Standing, the rods' direction vertical: both LM8UU pockets and the nut trap open from the top, nothing to bridge",
+  "description": "Rides the frame's two rods on LM8UU bearings; a flanged T8 nut in the middle takes the screw's push. The tool anchor is on its front face.",
+  "anchors": {
+    "slide": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]},
+    "tool": {"at": ["long", 0, "high / 2"], "axis": [1, 0, 0], "ref": [0, 1, 0]},
+    "lm1": {"at": ["0 - rod_gap", 0, "high - lm_l"], "axis": [0, 0, 1], "ref": [1, 0, 0]},
+    "lm2": {"at": ["rod_gap", 0, "high - lm_l"], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "high": {"value": 30, "unit": "mm", "rule": "Along the rods: the two bearings' length and a floor", "label": "Carriage", "show": true, "interface": true},
+    "long": {"value": 30, "unit": "mm", "rule": "Half the carriage's width along the arm: the rods' spacing and a wall", "interface": true},
+    "deep": {"value": 13.5, "unit": "mm", "rule": "Half across: the nut's flange and a wall"},
+    "rod_gap": {"value": 20, "unit": "mm", "rule": "Each rod from the screw, as the frame"},
+    "rod_d": {"value": 8, "unit": "mm", "rule": "The rod, the LM8UU's bore"},
+    "lm_d": {"value": 15, "unit": "mm", "rule": "The LM8UU's outside diameter"},
+    "lm_l": {"value": 24, "unit": "mm", "rule": "The LM8UU's length"},
+    "flange": {"value": 22, "unit": "mm", "rule": "The T8 nut's flange"},
+    "flange_t": {"value": 3.5, "unit": "mm", "rule": "The flange's thickness"},
+    "nut_d": {"value": 10.2, "unit": "mm", "rule": "The nut's body"},
+    "nut_l": {"value": 15, "unit": "mm", "rule": "The nut's length"},
+    "hole_c": {"value": 16, "unit": "mm", "rule": "The flange's bolt circle"},
+    "holes": {"value": 4, "rule": "Bolts in the flange"},
+    "hole_d": {"value": 3.5, "unit": "mm", "rule": "A flange bolt's hole"},
+    "segments": {"value": 48, "rule": "Round enough"}
+  }
+}
