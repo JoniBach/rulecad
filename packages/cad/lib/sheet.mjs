@@ -38,7 +38,151 @@ const INK = '#1a1a1a', THIN = '#666', FILL = '#eceae4', METAL = '#c4c8cc';
 /** @param {string} name the rule set's name @returns {string} an SVG drawing of what it says the part mounts by */
 export function drawSet(name) { return drawing(readSet(fileOf(name)), vocabulary()); }
 
+// The drawing's marks, in sheet units: each adds to out, and span is a dimension with its extension lines, ticks and figure
+function pen() {
+  const out = [];
+  const line = (a, b, c, e, s = INK, sw = 1.2, dash = '') => out.push(`<line x1="${fig(a)}" y1="${fig(b)}" x2="${fig(c)}" y2="${fig(e)}" stroke="${s}" stroke-width="${sw}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`);
+  const circle = (x, y, r, fill = 'none', s = INK) => out.push(`<circle cx="${fig(x)}" cy="${fig(y)}" r="${fig(r)}" fill="${fill}" stroke="${s}" stroke-width="1.2"/>`);
+  const rect = (x, y, a, b, fill = FILL) => out.push(`<rect x="${fig(x)}" y="${fig(y)}" width="${fig(a)}" height="${fig(b)}" fill="${fill}" stroke="${INK}" stroke-width="1.2"/>`);
+  const text = (x, y, t, a = 'middle', z = 12) => out.push(`<text x="${fig(x)}" y="${fig(y)}" text-anchor="${a}" font-size="${z}" font-family="system-ui, sans-serif" fill="${INK}">${t}</text>`);
+  const span = (x1, y1, x2, y2, t, across_ = 14) => { // a dimension: extension lines, a line with its ticks, the figure
+    const horizontal = Math.abs(y2 - y1) < 1e-6, ox = horizontal ? 0 : across_, oy = horizontal ? across_ : 0;
+    line(x1, y1, x1 + ox, y1 + oy, THIN, 0.6); line(x2, y2, x2 + ox, y2 + oy, THIN, 0.6); line(x1 + ox, y1 + oy, x2 + ox, y2 + oy, THIN, 0.8);
+    for (const [a, b] of [[x1 + ox, y1 + oy], [x2 + ox, y2 + oy]]) line(a - 3, b + 3, a + 3, b - 3, THIN, 0.8);
+    if (horizontal) text((x1 + x2) / 2, y1 + oy + (across_ > 0 ? 13 : -4), t); else text(x1 + ox + (across_ > 0 ? 4 : -4), (y1 + y2) / 2 + 4, t, across_ > 0 ? 'start' : 'end');
+  };
+  return { out, line, circle, rect, text, span };
+}
+
+// The sheet's heading (what's trustworthy) and its frame
+function sheet(set, { out, text }, W, H) {
+  const kinds = Object.values(set.rules).reduce((m, r) => ({ ...m, [r.kind]: (m[r.kind] || 0) + 1 }), {});
+  text(20, 26, set.name, 'start', 16);
+  text(20, 44, `all in mm. ${Object.entries(kinds).map(([k, c]) => `${c} ${k}`).join(', ')}: compare it with the datasheet`, 'start', 11);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fig(W)} ${fig(H + 60)}" width="${fig(W)}" height="${fig(H + 60)}"><rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>\n`;
+}
+
+// A bearing from its end and in section: bore, outer diameter, width, and the flange or the thrust washers where it has them
+function bearingDrawing(set) {
+  const n = (k) => set.rules[k]?.value ?? 0, thrust = set.rules.type?.value === 'thrust';
+  const d = n('bore'), D = n('outer_diameter'), B = n('width'), F = n('flange_diameter'), Fw = n('flange_width'), d1 = n('shaft_washer_diameter'), D1 = n('housing_washer_bore');
+  const R = Math.max(D, F) / 2, S = Math.max(4, Math.min(20, 90 / R)), W = 2 * R * S + B * S + 330, H = 2 * R * S + 170;
+  const cx = R * S + 70, cy = H / 2 + 22, sx = cx + R * S + 120, top = cy - R * S, bottom = cy + R * S;
+  const pens = pen(), { line, circle, rect, text, span } = pens;
+  // ---- from the end ----
+  if (F) circle(cx, cy, (F / 2) * S, '#f6f4ee');
+  circle(cx, cy, (D / 2) * S, FILL);
+  if (D1) circle(cx, cy, (D1 / 2) * S, 'none', THIN);
+  circle(cx, cy, (d / 2) * S, '#fff');
+  line(cx - R * S - 8, cy, cx + R * S + 8, cy, THIN, 0.5, '8 3 2 3'); line(cx, cy - R * S - 8, cx, cy + R * S + 8, THIN, 0.5, '8 3 2 3');
+  span(cx - (D / 2) * S, bottom + 6, cx + (D / 2) * S, bottom + 6, `Ø${fig(D)}`, 18);
+  span(cx - (d / 2) * S, top - 6, cx + (d / 2) * S, top - 6, `bore Ø${fig(d)}`, -14);
+  if (F) text(cx, bottom + 66, `flange Ø${fig(F)}, ${fig(Fw)} thick`);
+  if (thrust) text(cx, bottom + 66, `shaft washer Ø${fig(d1)}, housing washer bore Ø${fig(D1)}`);
+  // ---- the section, axis along the sheet ----
+  for (const side of [-1, 1]) {
+    const y = (a, b) => (side < 0 ? [cy - b * S, (b - a) * S] : [cy + a * S, (b - a) * S]);
+    const [ry, rh] = y(d / 2, D / 2); rect(sx, ry, B * S, rh);
+    if (F) { const [fy, fh] = y(D / 2, F / 2); rect(sx, fy, Fw * S, fh, '#ddd9cf'); }
+    if (thrust) line(sx + (B * S) / 2, ry, sx + (B * S) / 2, ry + rh, THIN, 0.8, '4 3');
+  }
+  line(sx - 12, cy, sx + B * S + 12, cy, THIN, 0.5, '8 3 2 3');
+  span(sx, bottom + 6, sx + B * S, bottom + 6, `${fig(B)}`, 18);
+  span(sx + B * S + 6, cy - (D / 2) * S, sx + B * S + 6, cy + (D / 2) * S, `Ø${fig(D)}`, 30);
+  text(sx + (B * S) / 2, top - 22, `chamfer ${fig(n('chamfer'))}`, 'middle', 11);
+  text(cx, bottom + 86, `${set.rules.type?.value || 'bearing'}: ${fig(n('dynamic_rating'))} N dynamic, ${fig(n('static_rating'))} N static${set.rules.radial_play ? `, ${set.rules.radial_play.value}` : ''}`, 'middle', 11);
+  return sheet(set, pens, W, H);
+}
+
+// A driver module from above: the board and its two header rows, at their spacing
+function driverDrawing(set) {
+  const n = (k) => set.rules[k]?.value ?? 0, w = n('body_width'), d = n('body_depth'), pitch = n('pin_pitch'), row = n('row_spacing'), count = n('pin_count') / 2;
+  const S = 16, W = w * S + 260, H = d * S + 170, cx = W / 2, cy = H / 2 + 22, X = (x) => cx + x * S, Y = (y) => cy - y * S;
+  const pens = pen(), { line, circle, rect, text, span } = pens;
+  rect(X(-w / 2), Y(d / 2), w * S, d * S);
+  const pins = Array.from({ length: count }, (_, i) => (i - (count - 1) / 2) * pitch);
+  for (const y of [-row / 2, row / 2]) for (const x of pins) circle(X(x), Y(y), (pitch / 3.2) * S, METAL);
+  line(X(-w / 2) - 10, Y(0), X(w / 2) + 10, Y(0), THIN, 0.5, '8 3 2 3');
+  span(X(-w / 2), Y(-d / 2) + 6, X(w / 2), Y(-d / 2) + 6, `${fig(w)}`, 18);
+  span(X(-w / 2) - 6, Y(d / 2), X(-w / 2) - 6, Y(-d / 2), `${fig(d)}`, -18);
+  span(X(w / 2) + 6, Y(row / 2), X(w / 2) + 6, Y(-row / 2), `rows ${fig(row)}`, 18);
+  span(X(pins[0]), Y(d / 2) - 6, X(pins[1]), Y(d / 2) - 6, `pitch ${fig(pitch)}`, -14);
+  text(cx, Y(-d / 2) + 66, `${n('pin_count')} pins: ${set.rules.vref_formula?.value ?? ''}`, 'middle', 11);
+  text(cx, Y(-d / 2) + 84, `Rs ${n('sense_resistor')} ohm, ${n('vref_gain')} A per volt of Vref`, 'middle', 11);
+  return sheet(set, pens, W, H);
+}
+
+// A round part from its end and along its axis: linear bearings, nuts, couplers, pulleys, idlers, rods. Each says what it has: flange, hole circle, a dashed pitch circle, the bores of a coupler
+function roundDrawing(set, { D, d = 0, L, bores, flange, circle: holeCircle, pitchD, notes = [] }) {
+  const R = Math.max(D, flange?.D ?? 0) / 2, S = Math.max(3, Math.min(14, 90 / R)), W = 2 * R * S + L * S + 340, H = 2 * R * S + 190;
+  const cx = R * S + 70, cy = H / 2 + 22, sx = cx + R * S + 120, top = cy - R * S, bottom = cy + R * S;
+  const pens = pen(), { line, circle, rect, text, span } = pens;
+  // ---- from the end ----
+  if (flange) circle(cx, cy, (flange.D / 2) * S, '#f6f4ee');
+  circle(cx, cy, (D / 2) * S, FILL);
+  if (pitchD) circle(cx, cy, (pitchD / 2) * S, 'none', THIN);
+  if (d) circle(cx, cy, (d / 2) * S, '#fff');
+  if (holeCircle) for (let i = 0; i < holeCircle.count; i++) { const a = (2 * Math.PI * i) / holeCircle.count; circle(cx + (holeCircle.D / 2) * Math.cos(a) * S, cy + (holeCircle.D / 2) * Math.sin(a) * S, (holeCircle.hole / 2) * S, '#fff'); }
+  line(cx - R * S - 8, cy, cx + R * S + 8, cy, THIN, 0.5, '8 3 2 3'); line(cx, cy - R * S - 8, cx, cy + R * S + 8, THIN, 0.5, '8 3 2 3');
+  span(cx - R * S, bottom + 6, cx + R * S, bottom + 6, `Ø${fig(flange?.D ?? D)}`, 18);
+  if (d) span(cx - (d / 2) * S, top - 6, cx + (d / 2) * S, top - 6, `bore Ø${fig(d)}`, -14);
+  // ---- along the axis ----
+  const ring = (x, len, a, b, fill = FILL) => { for (const side of [-1, 1]) rect(x, side < 0 ? cy - (b / 2) * S : cy + (a / 2) * S, len * S, ((b - a) / 2) * S, fill); };
+  if (bores) { ring(sx, L / 2, bores[0], D); ring(sx + (L / 2) * S, L / 2, bores[1], D); }
+  else if (d) ring(sx, L, d, D);
+  else rect(sx, cy - (D / 2) * S, L * S, D * S, METAL);
+  if (flange) ring(sx + flange.at * S, flange.w, d, flange.D, '#ddd9cf');
+  line(sx - 12, cy, sx + L * S + 12, cy, THIN, 0.5, '8 3 2 3');
+  span(sx, bottom + 6, sx + L * S, bottom + 6, `${fig(L)}`, 18);
+  span(sx + L * S + 6, cy - (D / 2) * S, sx + L * S + 6, cy + (D / 2) * S, `Ø${fig(D)}`, 30);
+  notes.forEach((t, i) => text(cx, bottom + 66 + i * 18, t, 'middle', 11));
+  return sheet(set, pens, W, H);
+}
+
+// A lead screw from the side: the crest and root, the starts' flanks, and pitch against lead
+function leadScrewDrawing(set) {
+  const n = (k) => set.rules[k]?.value ?? 0, D = n('diameter'), root = n('root_diameter'), P = n('pitch'), lead = n('lead'), starts = n('starts') || 1;
+  const L = Math.max(3 * lead, 20), S = Math.min(14, 420 / L), W = L * S + 240, H = D * S + 200, x0 = 110, cy = H / 2 + 12;
+  const pens = pen(), { line, rect, text, span } = pens;
+  rect(x0, cy - (D / 2) * S, L * S, D * S, METAL);
+  for (const side of [-1, 1]) line(x0, cy + side * (root / 2) * S, x0 + L * S, cy + side * (root / 2) * S, THIN, 0.6, '4 3');
+  const lean = (D * S * Math.tan((n('helix_angle') * Math.PI) / 180)) / 2;
+  for (let i = 0; i * P <= L + 1e-9; i++) { const x = x0 + i * P * S; if (x - lean >= x0 && x + lean <= x0 + L * S) line(x - lean, cy + (D / 2) * S, x + lean, cy - (D / 2) * S, i % starts === 0 ? INK : THIN, i % starts === 0 ? 1.6 : 0.7); }
+  line(x0 - 12, cy, x0 + L * S + 12, cy, THIN, 0.5, '8 3 2 3');
+  const below = cy + (D / 2) * S + 6, above = cy - (D / 2) * S - 6;
+  span(x0, below, x0 + P * S, below, `pitch ${fig(P)}`, 18);
+  span(x0, below, x0 + lead * S, below, `lead ${fig(lead)}`, 44);
+  span(x0 + L * S + 6, cy - (D / 2) * S, x0 + L * S + 6, cy + (D / 2) * S, `Ø${fig(D)}`, 30);
+  span(x0 - 6, cy - (root / 2) * S, x0 - 6, cy + (root / 2) * S, `root Ø${fig(root)}`, -18);
+  text(x0 + (L * S) / 2, above - 8, `${set.rules.thread?.value ?? ''}, ${fig(starts)} start${starts > 1 ? 's' : ''}, helix ${fig(n('helix_angle'))}°`, 'middle', 12);
+  text(x0 + (L * S) / 2, below + 72, 'each dark line one start, repeating at the lead', 'middle', 11);
+  return sheet(set, pens, W, H);
+}
+
+// A short length of belt, teeth along it
+function beltDrawing(set) {
+  const n = (k) => set.rules[k]?.value ?? 0, P = n('pitch'), w = n('width'), L = P * 8, S = 12, W = L * S + 220, H = w * S + 190, x0 = 90, cy = H / 2 + 10;
+  const pens = pen(), { line, rect, text, span } = pens;
+  rect(x0, cy - (w / 2) * S, L * S, w * S);
+  for (let i = 0; i <= 8; i++) line(x0 + i * P * S, cy - (w / 2) * S, x0 + i * P * S, cy + (w / 2) * S, THIN, 0.7);
+  span(x0, cy + (w / 2) * S + 6, x0 + P * S, cy + (w / 2) * S + 6, `pitch ${fig(P)}`, 18);
+  span(x0 + L * S + 6, cy - (w / 2) * S, x0 + L * S + 6, cy + (w / 2) * S, `${fig(w)}`, 18);
+  text(x0 + (L * S) / 2, cy + (w / 2) * S + 66, `${fig(n('stiffness'))} N per unit strain, pitch line ${n('pitch_line_offset')} beyond the teeth`, 'middle', 11);
+  text(x0 + (L * S) / 2, cy + (w / 2) * S + 84, `rated ${fig(n('rated_tension'))} N, breaks at ${fig(n('breaking_strength'))} N`, 'middle', 11);
+  return sheet(set, pens, W, H);
+}
+
 export function drawing(set, vocab) {
+  if (set.part === 'bearing') return bearingDrawing(set);
+  if (set.part === 'driver') return driverDrawing(set);
+  const v = (k) => set.rules[k]?.value ?? 0;
+  if (set.part === 'leadscrew') return leadScrewDrawing(set);
+  if (set.part === 'belt') return beltDrawing(set);
+  if (set.part === 'linear_bearing') return roundDrawing(set, { D: v('outer_diameter'), d: v('bore'), L: v('length'), notes: [`linear bearing: ${fig(v('dynamic_rating'))} N dynamic, ${fig(v('static_rating'))} N static`] });
+  if (set.part === 'nut') { return roundDrawing(set, { D: v('body_diameter'), d: v('diameter'), L: v('length'), flange: { D: v('flange_diameter'), w: v('flange_width'), at: v('flange_offset') }, circle: { D: v('hole_circle'), count: v('hole_count'), hole: v('mount_hole_diameter') || 3.5 }, notes: [`${set.rules.thread?.value ?? ''}, ${set.rules.material?.value ?? ''}, lead ${fig(v('lead'))}`, `${fig(v('hole_count'))} × Ø${fig(v('mount_hole_diameter'))} on Ø${fig(v('hole_circle'))}`] }); }
+  if (set.part === 'coupler') return roundDrawing(set, { D: v('outer_diameter'), L: v('length'), bores: [v('bore_a'), v('bore_b')], d: 0, notes: [`bores Ø${fig(v('bore_a'))} and Ø${fig(v('bore_b'))}`, String(set.rules.style?.value ?? '')] });
+  if (set.part === 'pulley' || set.part === 'idler') return roundDrawing(set, { D: v('outer_diameter'), d: v('bore'), L: v('body_width'), pitchD: v('pitch_diameter'), notes: [set.part === 'pulley' ? `${fig(v('teeth'))} teeth, pitch circle Ø${fig(v('pitch_diameter'))} (thin), across the teeth Ø${fig(v('tooth_diameter'))}` : `${set.rules.toothed?.value === 'yes' ? `${fig(v('teeth'))} teeth` : 'smooth'}, for ${fig(v('belt_width'))} mm belt`, set.part === 'pulley' ? `for ${fig(v('belt_width'))} mm belt` : ''] });
+  if (set.part === 'rod') return roundDrawing(set, { D: v('diameter'), L: 40, notes: [`${String(set.rules.tolerance?.value ?? '')}; ${String(set.rules.hardness?.value ?? '')}`] });
   const get = (k) => { const r = set.rules[set.interface?.[k] ?? k]; return r?.value; }, n = (k, d = 0) => { const x = get(k); return typeof x === 'number' ? x : d; };
   if (!set.part && !Object.keys(set.interface || {}).some((k) => k.startsWith('body_'))) throw new Error(`rule set "${set.name}" doesn't say what shape it is (no body_ names in it, or "part", or "interface"): there's nothing to draw`);
   const shape = get('body_shape') ?? 'box', round = shape === 'round', w = round ? n('body_diameter') : n('body_width'), d = round ? w : shape === 'square' ? w : n('body_depth', n('body_width'));
@@ -52,17 +196,7 @@ export function drawing(set, vocab) {
   const W = 2 * reach * S + (L + Math.max(shaftL, top + bossH) + 8) * S + 200, H = Math.max(2 * reach * S + 150, 280);
   const fx = reach * S + 70, fy = H / 2 + 8, X = (x) => fx + x * S, Y = (y) => fy - y * S; // the face view, shaft at the origin
   const sx = fx + reach * S + 90 + L * S, SX = (z) => sx + z * S, SY = (y) => fy - y * S; // the side view: z along the sheet, the mounting face at z = 0
-  const out = [];
-  const line = (a, b, c, e, s = INK, sw = 1.2, dash = '') => out.push(`<line x1="${fig(a)}" y1="${fig(b)}" x2="${fig(c)}" y2="${fig(e)}" stroke="${s}" stroke-width="${sw}"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`);
-  const circle = (x, y, r, fill = 'none', s = INK) => out.push(`<circle cx="${fig(x)}" cy="${fig(y)}" r="${fig(r)}" fill="${fill}" stroke="${s}" stroke-width="1.2"/>`);
-  const rect = (x, y, a, b, fill = FILL) => out.push(`<rect x="${fig(x)}" y="${fig(y)}" width="${fig(a)}" height="${fig(b)}" fill="${fill}" stroke="${INK}" stroke-width="1.2"/>`);
-  const text = (x, y, t, a = 'middle', z = 12) => out.push(`<text x="${fig(x)}" y="${fig(y)}" text-anchor="${a}" font-size="${z}" font-family="system-ui, sans-serif" fill="${INK}">${t}</text>`);
-  const span = (x1, y1, x2, y2, t, across_ = 14) => { // a dimension: extension lines, a line with its ticks, the figure
-    const horizontal = Math.abs(y2 - y1) < 1e-6, ox = horizontal ? 0 : across_, oy = horizontal ? across_ : 0;
-    line(x1, y1, x1 + ox, y1 + oy, THIN, 0.6); line(x2, y2, x2 + ox, y2 + oy, THIN, 0.6); line(x1 + ox, y1 + oy, x2 + ox, y2 + oy, THIN, 0.8);
-    for (const [a, b] of [[x1 + ox, y1 + oy], [x2 + ox, y2 + oy]]) line(a - 3, b + 3, a + 3, b - 3, THIN, 0.8);
-    if (horizontal) text((x1 + x2) / 2, y1 + oy + (across_ > 0 ? 13 : -4), t); else text(x1 + ox + (across_ > 0 ? 4 : -4), (y1 + y2) / 2 + 4, t, across_ > 0 ? 'start' : 'end');
-  };
+  const pens = pen(), { out, line, circle, rect, text, span } = pens;
   // ---- the face, from the shaft's end ----
   if (tabs) rect(X(cx - tabs / 2), Y(cy + d / 2), tabs * S, d * S, '#f6f4ee');
   for (const [hx, hy] of earR ? holes : []) circle(X(hx), Y(hy), earR * S, '#f6f4ee');
@@ -96,11 +230,7 @@ export function drawing(set, vocab) {
   if (shaftL) span(SX(top + (top ? bossH : 0)), under, SX(top + (top ? bossH : 0) + shaftL), under, `shaft ${fig(shaftL)}`, 36);
   if (flat) span(SX(top + (top ? bossH : 0) + shaftL - flat), SY(shaftD / 2) - 4, SX(top + (top ? bossH : 0) + shaftL), SY(shaftD / 2) - 4, `flat ${fig(flat)}`, -14);
   if (bossH) text(SX(bossAt + bossH / 2), under + 74, `boss ${fig(bossH)} high`, 'middle', 11);
-  // ---- what's trustworthy ----
-  const kinds = Object.values(set.rules).reduce((m, r) => ({ ...m, [r.kind]: (m[r.kind] || 0) + 1 }), {});
-  text(20, 26, set.name, 'start', 16);
-  text(20, 44, `all in mm. ${Object.entries(kinds).map(([k, c]) => `${c} ${k}`).join(', ')}: compare it with the datasheet`, 'start', 11);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fig(W)} ${fig(H + 60)}" width="${fig(W)}" height="${fig(H + 60)}"><rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>\n`;
+  return sheet(set, pens, W, H);
 }
 
 // ---------- a draft from a datasheet's text ----------

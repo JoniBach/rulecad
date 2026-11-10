@@ -1,0 +1,13 @@
+{
+  "_doc": "An LM8UU linear ball bushing, 8 x 15 x 24, sealed at both ends. Samick's figures as a distributor lists them, so community until measured (no manufacturer data sheet could be read: THK's catalogue page would not decode). Other makers rate it a little differently. Bore along z.",
+  "name": "lm8uu",
+  "part": "linear_bearing",
+  "rules": {
+    "bore": { "value": 8, "unit": "mm", "rule": "Bore: the 8 mm shaft", "kind": "community", "source": "Samick LM8UU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8uu-linear-bushing.html", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 15, "unit": "mm", "rule": "Outside diameter: the housing fits here", "kind": "community", "source": "Samick LM8UU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8uu-linear-bushing.html", "checked": "2026-11-09" },
+    "length": { "value": 24, "unit": "mm", "rule": "Overall length", "kind": "community", "source": "Samick LM8UU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8uu-linear-bushing.html", "checked": "2026-11-09" },
+    "static_rating": { "value": 400, "unit": "N", "rule": "Basic static load rating", "kind": "community", "source": "Samick LM8UU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8uu-linear-bushing.html", "checked": "2026-11-09" },
+    "dynamic_rating": { "value": 260, "unit": "N", "rule": "Basic dynamic load rating", "kind": "community", "source": "Samick LM8UU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8uu-linear-bushing.html", "checked": "2026-11-09" },
+    "mass": { "value": 0.016, "unit": "kg", "rule": "Mass of the bushing", "kind": "community", "source": "Samick LM8UU as listed by a distributor, https://shop.slsbearings.com/sg/samick-lm8uu-linear-bushing.html", "checked": "2026-11-09" }
+  }
+}

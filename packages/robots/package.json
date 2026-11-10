@@ -1,0 +1,37 @@
+{
+  "name": "@rulecad/robots",
+  "version": "0.1.1",
+  "description": "Kinematics for serial chains as plain data: forward and inverse kinematics, the Jacobian, reach over a sheet or a volume, an SVG drawing turned into joint moves and step blocks. No dependencies; runs in a browser with no build step.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./robots.d.mts",
+      "default": "./robots.mjs"
+    }
+  },
+  "types": "./robots.d.mts",
+  "files": [
+    "robots.mjs",
+    "kinematics.mjs",
+    "reach.mjs",
+    "svg.mjs",
+    "toolpath.mjs",
+    "gait.mjs",
+    "robots.d.mts",
+    "kinematics.d.mts",
+    "reach.d.mts",
+    "svg.d.mts",
+    "toolpath.d.mts",
+    "gait.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": ["robotics", "kinematics", "inverse-kinematics", "scara", "toolpath", "svg", "stepper"],
+  "engines": { "node": ">=20.10" },
+  "sideEffects": false,
+  "repository": { "type": "git", "url": "git+https://github.com/JoniBach/rulecad.git", "directory": "packages/robots" },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/robots#readme",
+  "bugs": { "url": "https://github.com/JoniBach/rulecad/issues" },
+  "scripts": { "test": "node --test" }
+}

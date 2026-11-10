@@ -20,5 +20,11 @@ export function loadRuleSet(name, dir) {
   }
   return readJson(own);
 }
+// A rule set read as it is, the workspace's if it has one: for figures a check only reads, leaving the workspace alone
+export function peekRuleSet(name) {
+  const file = RULE_DIRS.map((d) => path.join(d, `${name}.json`)).find((f) => host.exists(f));
+  if (!file) throw new Error(`no rule set "${name}" (rules/${name}.json)`);
+  return readJson(file);
+}
 // resolve() as @rulecad/variables describes it, loading the rule sets it isn't handed
 export const resolve = (object, opts = {}) => resolveWith(object, { load: loadRuleSet, ...opts });

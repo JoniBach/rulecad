@@ -1,0 +1,28 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "seats-coupon",
+  "title": "Seats coupon",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "description": "A 608 bearing's pocket at three printed clearances, from a press to a slip: print once per filament, press a bearing into each, and write the one that holds without cracking into the printer's rules (press and slip).",
+  "variables": {
+    "bore": { "value": 8, "unit": "mm", "rule": "A 608's bore (bearing-608)" },
+    "outer": { "value": 22, "unit": "mm", "rule": "A 608's outside diameter (bearing-608)" },
+    "bearing_width": { "value": 7, "unit": "mm", "rule": "A 608's width (bearing-608)" },
+    "press_tight": { "value": -0.1, "unit": "mm", "rule": "Row one: a tight press, printed clearance across" },
+    "press_mid": { "value": -0.05, "unit": "mm", "rule": "Row two: the press the printer's rules start from" },
+    "slip": { "value": 0.1, "unit": "mm", "rule": "Row three: a slip by hand" },
+    "pitch": { "value": 30, "unit": "mm", "rule": "Pockets apart, with a wall between that a pressed race doesn't crack" },
+    "edge": { "value": 16, "unit": "mm", "rule": "From a pocket's centre to the plate's edge" },
+    "thick": { "value": 10, "unit": "mm", "rule": "The plate: the bearing's width, the ledge and a floor to hold it" },
+    "corner": { "value": 4, "unit": "mm", "rule": "The plate's corners" },
+    "relief": { "value": 3, "unit": "mm", "rule": "On through the plate past the ledge, so a bearing can be pushed back out" },
+    "label": { "value": 3, "unit": "mm", "rule": "The figures' height" },
+    "stroke": { "value": "x1c.line", "unit": "mm", "rule": "One print line, for the figures" },
+    "emboss": { "value": "x1c.layer * 2", "unit": "mm", "rule": "Two layers proud" },
+    "segments": { "value": 64, "rule": "Round corners" }
+  }
+}

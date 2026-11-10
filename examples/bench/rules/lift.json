@@ -1,0 +1,23 @@
+{
+  "_doc": "What the arm's lifting adds to the drawing arm's rules: the payload, the masses a motor has to raise, the gripper's numbers. Examples chapter 13 explains each.",
+  "name": "lift",
+  "rules": {
+    "payload": {"value": 0.1, "unit": "kg", "rule": "The most the arm is rated to carry at the tool", "kind": "default", "source": "Design: the top of the range the arm is for, 50 to 100 g", "checked": "2026-11-09"},
+    "upper_mass": {"value": 0.376, "unit": "kg", "rule": "The upper arm, the elbow's gears, the elbow's motor and the switch: as the shoulder sees them", "kind": "derived", "source": "joint.moment's carried mass in chapter 13, less what's beyond the elbow", "checked": "2026-11-09"},
+    "fore_mass": {"value": 0.07, "unit": "kg", "rule": "The forearm and the elbow's output gear, about", "kind": "derived", "source": "joint.moment's carried mass in chapter 13", "checked": "2026-11-09"},
+    "tool_mass": {"value": 0.148, "unit": "kg", "rule": "The gripper with its servo and horn, and the payload", "kind": "derived", "source": "joint.moment's carried mass in chapter 13", "checked": "2026-11-09"},
+    "grip_horn": {"value": 12.3, "unit": "mm", "rule": "The horn's lever at full close, where it's smallest (18 mm reach × cos 47°): what the servo's torque turns into the push on each finger", "kind": "derived", "source": "gripper's reach and close_a", "checked": "2026-11-09"},
+    "grip_lever": {"value": 0.38, "rule": "What of the push reaches the jaw, on the worse finger: from the leaf's bending centre, the contact is nearer than the jaw", "kind": "estimate", "source": "A beam argument in the chapter, an estimate until the grip is measured", "checked": "2026-11-09"},
+    "grip_travel": {"value": 3, "unit": "mm", "rule": "How far the horn pushes each finger at the flat to close it fully", "kind": "derived", "source": "gripper's flat: tip travel between rest_a and close_a", "checked": "2026-11-09"},
+    "leaf_l": {"value": 50, "unit": "mm", "rule": "The gripper's leaf length", "kind": "default", "source": "gripper's leaf_l", "checked": "2026-11-09"},
+    "leaf_t": {"value": 1, "unit": "mm", "rule": "The gripper's leaf thickness", "kind": "default", "source": "gripper's leaf_t", "checked": "2026-11-09"},
+    "leaf_w": {"value": 16, "unit": "mm", "rule": "The gripper's leaf width", "kind": "default", "source": "gripper's width", "checked": "2026-11-09"},
+    "grip_payload": {"value": 0.05, "unit": "kg", "rule": "What the closing check holds, the object the gripper is rated for at 2×", "kind": "default", "source": "Issue: a 50 g object at 2× margin", "checked": "2026-11-09"},
+    "z_lead": {"value": 8, "unit": "mm", "rule": "The T8 screw's lead: four starts, the screw at the screw's own rule", "kind": "community", "source": "t8-screw in @rulecad/rules", "checked": "2026-11-09"},
+    "z_friction": {"value": 0.2, "rule": "Brass or POM on steel, about, dry", "kind": "estimate", "source": "A hand figure: bench it", "checked": "2026-11-09"},
+    "z_mass": {"value": 0.25, "unit": "kg", "rule": "What the Z axis lifts: the gripper, the payload, the servo and the carriage, about", "kind": "derived", "source": "This chapter's masses", "checked": "2026-11-09"},
+    "belt_k": {"value": 2817, "unit": "N/strain/mm", "rule": "A 6 mm GT2 belt's stiffness per unit strain per mm of width", "kind": "spec", "source": "gt2-belt-6 in @rulecad/rules", "checked": "2026-11-09"},
+    "belt_load": {"value": 5, "unit": "N", "rule": "The belt's working pull: the load's weight and its acceleration at a few hundred mm/s²", "kind": "estimate", "source": "Worked in chapter 13", "checked": "2026-11-09"},
+    "friction": {"value": 0.4, "rule": "PETG on a clean plastic or wood part, about", "kind": "estimate", "source": "A hand figure for a dry contact: a soft pad on the jaw would double it", "checked": "2026-11-09"}
+  }
+}

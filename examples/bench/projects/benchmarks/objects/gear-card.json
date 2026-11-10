@@ -80,7 +80,7 @@
     "pin": {
       "value": 2.79,
       "unit": "mm",
-      "rule": "The gears' 3 mm bore less half a line"
+      "rule": "A pin the gears run on: their bore is drawn from it"
     },
     "pin_height": {
       "value": 6.5,

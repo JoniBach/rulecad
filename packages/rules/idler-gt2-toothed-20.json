@@ -1,0 +1,14 @@
+{
+  "_doc": "A 20 tooth GT2 idler with ball bearings for 6 mm belt and a 5 mm bore, the unbranded hobby part: community until measured. Its outer diameter is the flange: listings give 18 mm (TinyTronics, Motedis). The diameter over the teeth is not published. Gates's smallest inside toothed idler is 12 grooves, so 20 is fine.",
+  "name": "idler-gt2-toothed-20",
+  "part": "idler",
+  "variants": {"motedis":{"kind":"community","source":"Motedis GT2 idler, 20 teeth, 5 mm bore, https://www.motedis.es/en/Idler-wheel-GT2-20-teeth-5mm-bore-for-6mm-belt","values":{"body_width":9}}},
+  "rules": {
+    "toothed": { "value": "yes", "rule": "Teeth engage the belt's teeth", "kind": "community", "source": "TinyTronics GT2-20 idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-20-teeth-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "teeth": { "value": 20, "unit": "teeth", "rule": "Tooth count", "kind": "community", "source": "TinyTronics GT2-20 idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-20-teeth-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "bore": { "value": 5, "unit": "mm", "rule": "Bore: a 5 mm axle", "kind": "community", "source": "TinyTronics GT2-20 idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-20-teeth-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "belt_width": { "value": 6, "unit": "mm", "rule": "For 6 mm belt", "kind": "community", "source": "TinyTronics GT2-20 idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-20-teeth-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 18, "unit": "mm", "rule": "Outside diameter, the flanges (the seller gives one diameter)", "kind": "community", "source": "TinyTronics GT2-20 idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-20-teeth-5mm-axis-with-ball-bearing", "checked": "2026-11-09" },
+    "body_width": { "value": 8.5, "unit": "mm", "rule": "Height along the bore", "kind": "community", "source": "TinyTronics GT2-20 idler with ball bearing, https://www.tinytronics.nl/en/mechanics-and-actuators/parts/pulleys/gt2-20-pulley-20-teeth-5mm-axis-with-ball-bearing", "checked": "2026-11-09" }
+  }
+}

@@ -34,7 +34,7 @@ copy(require.resolve('@jscad/modeling/dist/jscad-modeling.min.js'), path.join(AS
 // The file formats' schemas, at the address their $id names (jonibach.github.io/rulecad/schemas/…), for editors
 for (const f of fs.readdirSync(path.join(ROOT, 'packages/cad/schemas'))) copy(path.join(ROOT, 'packages/cad/schemas', f), path.join(OUT, 'schemas', f))
 copy(path.join(path.dirname(require.resolve('@jscad/modeling/package.json')), 'LICENSE'), path.join(ASSETS, 'jscad.LICENSE'))
-const browser = { variables: ['variables.mjs'], shapes: ['shapes.mjs', 'enclosure.mjs', 'features.mjs', 'ops.mjs', 'optimised.mjs'], flexures: ['flexures.mjs'], fit: ['fit.mjs'], printcheck: ['printcheck.mjs'],
+const browser = { robots: ['robots.mjs', 'kinematics.mjs', 'reach.mjs', 'svg.mjs', 'toolpath.mjs', 'gait.mjs'], variables: ['variables.mjs'], shapes: ['shapes.mjs', 'enclosure.mjs', 'features.mjs', 'seats.mjs', 'ops.mjs', 'optimised.mjs'], flexures: ['flexures.mjs'], fit: ['fit.mjs'], printcheck: ['printcheck.mjs'],
   'keyboard-layout': ['keyboard-layout.mjs'], 'model-link': ['model-link.mjs'], versions: ['versions.mjs'] }
 for (const [dir, files] of Object.entries(browser)) for (const f of files) copy(path.join(ROOT, 'packages', dir, f), path.join(ASSETS, 'lib', f))
 const importMap = { imports: { '@jscad/modeling': '../assets/jscad.mjs', ...Object.fromEntries(Object.entries(browser).map(([dir, [f]]) => [`@rulecad/${dir}`, `../assets/lib/${f}`])) } }
@@ -90,7 +90,8 @@ const groups = [
   ['Check', 'Will it print? Does it fit?', ['printcheck', 'fit']],
   ['Boards', 'Circuit boards from the same rules.', ['pcb']],
   ['Share', 'A model in a link, and the page that opens it.', ['model-link', 'viewer']],
-  ['Keyboards', 'One layout file for plate, keycaps, case and board.', ['keyboard-layout']]
+  ['Keyboards', 'One layout file for plate, keycaps, case and board.', ['keyboard-layout']],
+  ['Machines', 'Arms and axes as plain data: where they reach and how they draw.', ['robots']]
 ]
 const order = groups.flatMap((g) => g[2])
 const name = (dir) => pkg(dir).name
@@ -98,6 +99,7 @@ const name = (dir) => pkg(dir).name
 // ---- what each page demonstrates ----
 const stage3d = '<div class="stage"><span class="hint">Drag to turn, scroll to zoom</span></div>'
 const demo = {
+  robots: () => `<div class="demo stack" id="demo"><p class="muted">Drag on the drawing: the pen goes where you drag, and a 150 + 120 mm two-link arm follows it through <code>ik()</code>, the closed form, running here. The shading is <code>reach()</code> over an A5 sheet.</p><div class="controls"><label>Elbow <select id="elbow"><option value="either">either</option><option value="right" selected>right</option><option value="left">left</option></select></label></div><svg id="arm" role="img" aria-label="A two-link arm following a pen over a sheet" style="width:100%;max-height:520px;background:#0a0a0a;touch-action:none"></svg><p class="muted" id="readout"></p><p class="muted" id="sheet-note"></p></div>`,
   shapes: () => `<div class="demo" id="demo"><div class="controls"><p class="muted">The enclosure kit's own code, running here: a macropad's case as a <code>shell</code> with a gabled opening for the USB cable, its <code>lid</code> (printed face down; shown lifted and turned over), and a <code>dovetail</code> rail.</p><div class="row"><button id="open">Open in the model page</button></div></div>${stage3d}</div>`,
   variables: () => `<div class="demo stack" id="demo"><div><p class="muted">A design's variables, resolved against the published <code>x1c</code> printer rules as you type. Change a rule name, a sum or a value.</p><textarea id="object" spellcheck="false">${esc(JSON.stringify({ uses: ['x1c'], variables: {
     wall: { value: 'x1c.line * 4', unit: 'mm', rule: 'Four print lines' }, floor: { value: 'x1c.layer * 8', unit: 'mm', rule: 'Eight layers' },
@@ -119,6 +121,7 @@ const demo = {
   viewer: () => `<div class="demo stack"><p class="muted">The model page itself, live on this site. Open the soap tray from create-rulecad's starter project, or drop an STL file on the page to check it for printing.</p><div class="row">${made.cad.link ? `<a class="button" href="${esc(made.cad.link)}">Open the soap tray</a>` : ''}<a class="button" href="../../">Open an empty model page (drop an STL)</a></div></div>`
 }
 const intro = {
+  robots: 'Arms and axes as plain data: forward and inverse kinematics, the Jacobian, reach over a sheet, and an SVG drawing turned into joint moves and step blocks.',
   cad: 'The command line at the centre: every measurement a variable with its rule, checks for printing and fit, previews, print files and links.',
   'create-rulecad': 'Start a project: a workspace with a printer\'s rules, a starter design and the notes an AI agent needs.',
   variables: 'Variables that say where each number comes from: expressions over rule sets, resolved, and a lint that keeps numbers out of code.',
@@ -178,13 +181,20 @@ ${demo[dir] ? demo[dir]() : ''}
   const script = fs.existsSync(path.join(HERE, 'src/demos', `${dir}.mjs`)) ? `<script type="module" src="../assets/demos/${dir}.mjs"></script>` : ''
   write(path.join(DOCS, dir, 'index.html'), page(`${p.name}: rulecad`, intro[dir] || p.description, dir, body, { map: !!script, script }))
 }
+// ---- guides: pages of their own, written in Markdown in docs/guides ----
+const guides = fs.readdirSync(path.join(HERE, 'guides')).filter((f) => f.endsWith('.md')).sort().map((f) => {
+  const text = fs.readFileSync(path.join(HERE, 'guides', f), 'utf8'), dir = f.replace(/\.md$/, ''), title = text.match(/^# (.*)$/m)?.[1] || dir
+  return { dir, title, text }
+})
 const index = `<h1>rulecad</h1>
 <p class="lede">Design physical things as code, where every measurement says which rule it comes from: a printer's line width, a screw's clearance, a switch's stem. Check that they print and fit, version them by what fits what, draw their circuit boards from the same rules, and share them as links.</p>
 <pre><code>npm create rulecad@latest my-project
 cd my-project && npx cad check home/soap-tray</code></pre>
 <p>${inline('Each library below has a page: what it is for, how to use it, and a demonstration. The ones marked *live* run their own code in this page.')}</p>
+${guides.length ? `<h2>Guides</h2><p class="muted">Walked from start to finish, in commands.</p><div class="grid">${guides.map((g) => `<a class="card" href="${g.dir}/"><span class="kind">guide</span><h3>${esc(g.title)}</h3></a>`).join('')}</div>` : ''}
 ${groups.map(([title, line, dirs]) => `<h2>${esc(title)}</h2><p class="muted">${esc(line)}</p><div class="grid">${dirs.map((d) => `<a class="card" href="${d}/"><span class="kind">${esc(name(d))}${browser[d] || d === 'rules' ? ' · live' : ''}</span><h3>${esc(d)}</h3><p>${esc(intro[d] || pkg(d).description)}</p></a>`).join('')}</div>`).join('\n')}
 <h2>How they fit together</h2>
 <p>${inline('`cad` is the command line. It reads designs whose variables come from `variables` and rule sets such as `rules`, builds shapes with JSCAD and `shapes`, checks them with `printcheck` and `fit`, releases them with `versions`, lays out keyboards with `keyboard-layout`, draws boards with `pcb`, and shares them with `model-link`, which the `viewer` opens. `create-rulecad` starts a project with all of it in place.')}</p>`
+for (const g of guides) write(path.join(DOCS, g.dir, 'index.html'), page(`${g.title}: rulecad`, g.title, g.dir, `<div class="readme">${markdown(g.text, { link: (u) => (u.startsWith('../') || /^(https?:|mailto:|#)/.test(u) ? u : `${REPO}/blob/main/${u}`) })}</div>`))
 write(path.join(DOCS, 'index.html'), page('rulecad libraries', 'Design physical things as code: the rulecad libraries, with live demonstrations.', null, index).replace('href="assets/style.css"', 'href="assets/style.css"'))
 console.log(`docs: ${order.length} library pages and an index in ${path.relative(process.cwd(), DOCS) || DOCS}${made.boards.length ? `, ${made.boards.length} boards drawn` : ''}${made.cad.check ? ', the starter project checked' : ''}`)

@@ -55,3 +55,56 @@ test('the folder is named apart from --share\'s value, and any folder name makes
     assert.throws(() => execFileSync(process.execPath, [CREATE, path.join(root, 'x'), '--no-install', '--share'], { stdio: 'pipe' }), /--share is gist or long/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test('--machine arm: a fresh workspace, sized from the sheet and the accuracy, checks clean and plots its test drawing with no edits', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-')), dir = path.join(root, 'my-arm');
+  try {
+    const made = execFileSync(process.execPath, [CREATE, dir, '--no-install', '--machine', 'arm', '--sheet', 'a5', '--accuracy', '0.3'], { encoding: 'utf8', env: { ...process.env, RULECAD_LOCAL: path.resolve(MODULES, '..') } });
+    assert.match(made, /an arm for a landscape A5 sheet at 0\.3 mm: upper arm 160 mm, forearm 115 mm/);
+    for (const f of ['rules/arm.json', 'projects/arm/project.json', 'projects/arm/assemblies/arm.json', 'projects/arm/drawings/test.svg', 'projects/arm/firmware/arm/arm.ino', 'projects/arm/send.mjs']) assert.ok(fs.existsSync(path.join(dir, f)), f);
+    fs.symlinkSync(MODULES, path.join(dir, 'node_modules'), 'junction'); // stands in for npm install
+    const cad = (...a) => JSON.parse(execFileSync(process.execPath, [CAD, ...a, '--json'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 }));
+    const r = cad('check', 'arm/arm');
+    assert.ok(r.findings, JSON.stringify(r));
+    const fails = r.findings.filter((x) => x.level === 'fail');
+    assert.equal(fails.length, 0, fails.map((x) => x.text).join('\n'));
+    assert.equal(r.findings.find((x) => x.code === 'task.reach').level, 'pass');
+    const plot = execFileSync(process.execPath, [CAD, 'plot', 'arm/arm', 'projects/arm/drawings/test.svg'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 });
+    assert.match(plot, /s|step|plot/i);
+    assert.ok(fs.readdirSync(path.join(dir, 'exports/arm')).some((f) => f.endsWith('.steps.json')), 'a step file for the streamer');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--machine arm sizes itself, refuses what it cannot make, and asks no one when there is no terminal', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-'));
+  const make = (name, ...a) => execFileSync(process.execPath, [CREATE, path.join(root, name), '--no-install', ...a], { encoding: 'utf8' });
+  try {
+    assert.match(make('a4', '--machine', 'arm', '--sheet', 'a4', '--accuracy', '0.5'), /A4 sheet at 0\.5 mm/);
+    const rules = JSON.parse(fs.readFileSync(path.join(root, 'a4/rules/arm.json'), 'utf8')).rules;
+    assert.ok(rules.upper.value > 160 && rules.sheet_w.value === 297, JSON.stringify(rules.upper));
+    const asm = fs.readFileSync(path.join(root, 'a4/projects/arm/assemblies/arm.json'), 'utf8');
+    assert.match(asm, /"size": "a4"/); assert.match(asm, /"accuracy": 0\.5/);
+    assert.match(fs.readFileSync(path.join(root, 'a4/projects/arm/drawings/test.svg'), 'utf8'), /width="297mm"/);
+    assert.match(make('by-default', '--machine', 'arm'), /A5 sheet at 0\.3 mm/, 'no flags and no terminal: the defaults');
+    assert.match(make('a-leg', '--machine', 'leg', '--robot', '2'), /2 kg robot/);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'a-leg/rules/leg.json'), 'utf8')).rules.robot.value, 2);
+    assert.throws(() => make('x', '--machine', 'hexapod'), /--machine is arm or leg/);
+    assert.throws(() => make('y', '--machine', 'arm', '--sheet', 'a3'), /--sheet is a6, a5, a4/);
+    assert.throws(() => make('z', '--machine', 'arm', '--accuracy', '0'), /--accuracy is above 0/);
+    assert.ok(!fs.existsSync(path.join(root, 'hexapod')), 'an option\'s value is not the folder');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--machine leg: the stand checks with no failures, and its step of a gait can be animated', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-')), dir = path.join(root, 'my-leg');
+  try {
+    execFileSync(process.execPath, [CREATE, dir, '--no-install', '--machine', 'leg'], { encoding: 'utf8' });
+    fs.symlinkSync(MODULES, path.join(dir, 'node_modules'), 'junction');
+    const r = JSON.parse(execFileSync(process.execPath, [CAD, 'check', 'leg/stand', '--json'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 }));
+    assert.ok(r.findings, JSON.stringify(r));
+    const fails = r.findings.filter((x) => x.level === 'fail');
+    assert.equal(fails.length, 0, fails.map((x) => x.text).join('\n'));
+    assert.ok(r.findings.find((x) => x.code === 'gait.clearance'), 'its step');
+    assert.match(execFileSync(process.execPath, [CAD, 'animate', 'leg/stand'], { cwd: dir, encoding: 'utf8' }), /stand-gait\.svg/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

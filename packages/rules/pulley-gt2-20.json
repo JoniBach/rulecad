@@ -1,0 +1,16 @@
+{
+  "_doc": "A 20 tooth GT2 pulley for 6 mm belt with a 5 mm bore, the hobby part as Adafruit lists it: community until measured. Pitch and tooth diameters are Gates's: variant gates-2MR-20S-06 is Gates's own sprocket, stocked with a 3/16 in plain bore.",
+  "name": "pulley-gt2-20",
+  "part": "pulley",
+  "variants": {"gates-2MR-20S-06":{"kind":"spec","source":"Gates Light Power and Precision Belt Drive Design Manual, copy at https://www.maxiparts.com.au/Documents/Supplier/Gates/light-power-and-precision-manual.pdf, Sprocket Specification Tables, 2mm pitch, 2MR-20S-06","values":{"outer_diameter":17.4,"body_width":15.88,"bore":4.78}}},
+  "rules": {
+    "teeth": { "value": 20, "unit": "teeth", "rule": "Grooves", "kind": "spec", "source": "Gates Light Power and Precision Belt Drive Design Manual, copy at https://www.maxiparts.com.au/Documents/Supplier/Gates/light-power-and-precision-manual.pdf, Sprocket Specification Tables, 2mm pitch, 2MR-20S-06", "checked": "2026-11-09" },
+    "pitch": { "value": 2, "unit": "mm", "rule": "Tooth pitch", "kind": "spec", "source": "Gates Light Power and Precision Belt Drive Design Manual, copy at https://www.maxiparts.com.au/Documents/Supplier/Gates/light-power-and-precision-manual.pdf, Sprocket Specification Tables, 2mm pitch, 2MR-20S-06", "checked": "2026-11-09" },
+    "pitch_diameter": { "value": 12.73, "unit": "mm", "rule": "Pitch diameter, 0.501 in on Gates's table; teeth * pitch / pi", "kind": "spec", "source": "Gates Light Power and Precision Belt Drive Design Manual, copy at https://www.maxiparts.com.au/Documents/Supplier/Gates/light-power-and-precision-manual.pdf, Sprocket Specification Tables, 2mm pitch, 2MR-20S-06", "checked": "2026-11-09" },
+    "tooth_diameter": { "value": 12.22, "unit": "mm", "rule": "Across the teeth, 0.481 in on Gates's table (the hobby pulley measures the same)", "kind": "spec", "source": "Gates Light Power and Precision Belt Drive Design Manual, copy at https://www.maxiparts.com.au/Documents/Supplier/Gates/light-power-and-precision-manual.pdf, Sprocket Specification Tables, 2mm pitch, 2MR-20S-06", "checked": "2026-11-09" },
+    "belt_width": { "value": 6, "unit": "mm", "rule": "The 6 mm belt", "kind": "spec", "source": "Gates Light Power and Precision Belt Drive Design Manual, copy at https://www.maxiparts.com.au/Documents/Supplier/Gates/light-power-and-precision-manual.pdf, Sprocket Specification Tables, 2mm pitch, 2MR-20S-06", "checked": "2026-11-09" },
+    "bore": { "value": 5, "unit": "mm", "rule": "Bore of the hobby pulley: a NEMA 17 shaft", "kind": "community", "source": "Adafruit GT2 20 tooth 5 mm bore pulley, https://www.adafruit.com/products/1251", "checked": "2026-11-09" },
+    "outer_diameter": { "value": 16, "unit": "mm", "rule": "Rim (flange) outside diameter of the hobby pulley; sellers differ", "kind": "community", "source": "Adafruit GT2 20 tooth 5 mm bore pulley, https://www.adafruit.com/products/1251", "checked": "2026-11-09" },
+    "body_width": { "value": 16, "unit": "mm", "rule": "Overall width of the hobby pulley; sellers differ", "kind": "community", "source": "Adafruit GT2 20 tooth 5 mm bore pulley, https://www.adafruit.com/products/1251", "checked": "2026-11-09" }
+  }
+}

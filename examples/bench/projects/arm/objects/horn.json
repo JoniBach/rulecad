@@ -1,0 +1,17 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "horn",
+  "title": "Servo horn (bought, comes with the SG90)",
+  "version": "0.1.0",
+  "role": "reference",
+  "anchors": {
+    "axis": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "reach": {"value": 18, "unit": "mm", "rule": "Axis to the arm's tip, a single-arm horn as sold, about: measure yours", "kind": "estimate", "source": "Measured on one horn: SG90 horns vary"},
+    "wide": {"value": 5, "unit": "mm", "rule": "The arm's width"},
+    "thick": {"value": 2, "unit": "mm", "rule": "The arm's thickness"},
+    "hub": {"value": 7, "unit": "mm", "rule": "Round the spline"},
+    "segments": {"value": 24, "rule": "Round enough"}
+  }
+}

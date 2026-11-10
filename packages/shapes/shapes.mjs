@@ -106,5 +106,6 @@ export const size = (g) => { const [lo, hi] = measureBoundingBox(g); return [hi[
 export { scale };
 export { outline, slab, shell, lid, dovetail, gabled, diamond, vents } from './enclosure.mjs';
 export { countersink, teardropHole, nutPocket, crushRibs, wallOpening } from './features.mjs';
+export { seatSize, bearingSeat, plainBearing, shaftShoulder, clipGroove, lm8uuPocket, nutTrap, pulleyBore, beltClamp } from './seats.mjs';
 export { ops } from './ops.mjs';
 export { fromOutlines, regionShape, optimisedOutline, solidRegion, optimisedSolid } from './optimised.mjs';

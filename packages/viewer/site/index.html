@@ -13,7 +13,7 @@
   /* Glass inks on Glass ground (github.com/JoniBach/glass), sized for a desk, not a mirror across the room */
   :root { --ground: #000; --ink-1: #fff; --ink-2: #b4b4b4; --ink-3: #5c5c5c; --line: #2a2a2a; --gap: 24px; }
   html, body { margin: 0; height: 100%; background: var(--ground); color: var(--ink-1); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif; }
-  body { display: grid; grid-template-rows: 1fr auto; grid-template-columns: 1fr auto; }
+  body { display: grid; grid-template-rows: 1fr auto; grid-template-columns: 1fr auto auto; }
   #stage { position: relative; min-height: 0; cursor: grab; touch-action: none; }
   #stage:active { cursor: grabbing; }
   #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -49,6 +49,39 @@
   .joint b { font-weight: 500; font-variant-numeric: tabular-nums; }
   .joint input { grid-column: 1 / -1; width: 100%; }
   #poses:empty, .clash:empty, #islandlist:empty { display: none; }
+  #tool[hidden], #player[hidden] { display: none; }
+  #tool { display: grid; gap: 8px; padding: 2px 0 6px; }
+  #player { display: grid; gap: 6px; }
+  #player .row { justify-content: space-between; }
+  #player select { font: inherit; font-size: 13px; color: var(--ink-1); background: #000; border: 1px solid var(--ink-3); border-radius: 6px; padding: 3px 4px; }
+  #playat { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  #stepload { padding: 6px 10px; font-size: 13px; width: 100%; }
+  /* The margins strip: torque, reach, accuracy and heat at the pose on show, over the foot of the model */
+  .strip { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 2; display: flex; flex-wrap: wrap; gap: 5px 6px; justify-content: center; pointer-events: none; }
+  .strip[hidden] { display: none; }
+  .strip .chip { background: rgba(0,0,0,.72); border: 1px solid var(--ink-3); border-radius: 6px; padding: 3px 9px; font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .strip .chip b { font-weight: 500; color: var(--ink-1); }
+  .strip .chip.ok { border-color: #5fb483; } .strip .chip.ok b { color: #8fd3aa; }
+  .strip .chip.warn { border-color: #d6b35a; } .strip .chip.warn b { color: #e8c46a; }
+  .strip .chip.fail { border-color: #e8806a; } .strip .chip.fail b { color: #e8806a; }
+  /* The build page: the link as the whole project, beside the model (under it on a phone) */
+  #build { width: min(560px, 44vw); grid-row: 1; grid-column: 3; border-left: 1px solid var(--line); overflow-y: auto; padding: 4px 18px 40px; font-size: 14px; color: var(--ink-2); }
+  #build[hidden] { display: none; }
+  #build h2 { margin: 18px 0 8px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; font-weight: 500; color: var(--ink-2); }
+  #build h3 { margin: 10px 0 2px; font-size: 14px; font-weight: 500; color: var(--ink-1); }
+  #build .buildhead { display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #000; padding: 8px 0; }
+  #build table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  #build th, #build td { text-align: left; vertical-align: top; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  #build th { color: var(--ink-3); font-weight: 400; }
+  #build td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #build .wrap { overflow-x: auto; }
+  #build .bed { display: block; width: 100%; max-width: 280px; background: #0b0b0b; border: 1px solid var(--line); margin-top: 6px; }
+  #build .bed text { fill: var(--ink-2); }
+  #build ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  #build ol.steps button { width: 100%; text-align: left; font-size: 13px; padding: 7px 10px; }
+  #build ol.steps button.on { border-color: var(--ink-1); color: var(--ink-1); background: #151515; }
+  #build ol.steps .fix { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+  #build .problem-line { color: #e8806a; }
   #slicing[hidden] { display: none; }
   #islandlist { flex-wrap: wrap; border-color: #e8806a; }
   #islandlist button { flex: none; padding: 4px 10px; color: #e8806a; }
@@ -108,8 +141,8 @@
   #flat img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; user-select: none; -webkit-user-drag: none; pointer-events: none; }
   #stage.flat canvas { visibility: hidden; }
   .corner { position: absolute; top: 14px; right: 14px; z-index: 2; display: flex; gap: 8px; }
-  #toggle, #rulesbtn { padding: 6px 12px; font-size: 13px; background: #000; }
-  #toggle[hidden], #rulesbtn[hidden] { display: none; }
+  #toggle, #rulesbtn, #buildbtn { padding: 6px 12px; font-size: 13px; background: #000; }
+  #toggle[hidden], #rulesbtn[hidden], #buildbtn[hidden] { display: none; }
   .views { right: 170px; }
   /* The rules sheet: over the model, every value with where it comes from, grouped by object and by rule set */
   #sheet { position: absolute; inset: 0; z-index: 4; background: #000; overflow-y: auto; padding: 14px 18px 40px; }
@@ -143,10 +176,11 @@
     #grip { display: grid; place-items: center; grid-row: 2; grid-column: 1; height: 22px; touch-action: none; cursor: row-resize; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
     #grip::after { content: ""; width: 44px; height: 4px; border-radius: 2px; background: var(--ink-3); }
     #grip:active::after, #grip.dragging::after { background: var(--ink-1); }
-    footer, #panel, body > #sheet { grid-row: 3; grid-column: 1; min-height: 0; overflow-y: auto; }
+    footer, #panel, #build, body > #sheet { grid-row: 3; grid-column: 1; min-height: 0; overflow-y: auto; }
     footer { padding: 16px; grid-template-columns: 1fr; gap: 12px; align-items: start; align-content: start; border-top: 0; }
     footer[hidden] { display: none; }
-    #panel { width: auto; border-left: 0; }
+    #panel, #build { width: auto; border-left: 0; }
+    .strip .chip { font-size: 12px; padding: 2px 7px; }
     body > #sheet { position: static; }
     h1 { font-size: 22px; }
     .actions { justify-content: flex-start; }
@@ -155,19 +189,20 @@
   }
   @media (max-width: 760px) and (orientation: landscape), (pointer: coarse) and (max-width: 1100px) and (orientation: landscape) {
     body { grid-template-rows: 1fr; grid-template-columns: var(--split) auto minmax(0, 1fr); }
-    #stage, #grip, footer, #panel, body > #sheet { grid-row: 1; }
+    #stage, #grip, footer, #panel, #build, body > #sheet { grid-row: 1; }
     #grip { grid-column: 2; width: 22px; height: auto; cursor: col-resize; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
     #grip::after { width: 4px; height: 44px; }
-    footer, #panel, body > #sheet { grid-column: 3; }
+    footer, #panel, #build, body > #sheet { grid-column: 3; }
     .problem { grid-column: 1 / -1; }
   }
 </style>
 </head>
 <body>
-<div id="stage"><div class="corner"><button id="rulesbtn" hidden title="Where every measurement comes from">Rules</button><button id="toggle" title="Show or hide the parts panel">Parts</button></div>
+<div id="stage"><div class="corner"><button id="buildbtn" hidden title="Everything it takes to build it: the shopping list, the plates, the wiring, the steps, the settings">Build</button><button id="rulesbtn" hidden title="Where every measurement comes from">Rules</button><button id="toggle" title="Show or hide the parts panel">Parts</button></div>
   <section id="sheet" hidden aria-label="Rules"><div class="sheet-head"><h2>Rules</h2><input id="sheetfind" type="search" placeholder="Find" aria-label="Find a rule"><button id="sheetclose">Close</button></div><p class="sheet-sub">Every measurement, and where it comes from. Estimates are guesses nobody has checked yet.</p><div id="sheetbody"></div></section>
   <div class="views"><button id="pick" hidden aria-expanded="false" title="Choose a view"></button><div class="seg" id="tabs" hidden></div><div class="seg" id="subtabs" hidden></div><button id="jump" hidden title="Show this board flat, from above">Board view ›</button></div>
-  <div id="flat" hidden><img alt="2D view"></div></div>
+  <div id="flat" hidden><img alt="2D view"></div>
+  <div id="strip" class="strip" hidden></div></div>
 <div id="grip" role="separator" aria-orientation="horizontal" title="Drag to share the screen between the model and the info; double tap for half and half"></div>
 <aside id="panel" hidden><!-- closed until the script opens it on a wide screen with a mouse -->
   <div class="panel-head"><h2>View</h2><button id="close" title="Hide the parts panel">Close</button></div>
@@ -184,11 +219,17 @@
       <label class="joint"><span>Layer</span><b id="layerat"></b><input type="range" id="layer" min="1" max="1" step="1" value="1" aria-label="The layer to cut at"></label>
       <div class="clash" id="islands"></div><div class="seg" id="islandlist"></div></div></div>
   <div id="motion" hidden><h2>Motion</h2>
-    <div class="controls"><div class="seg" id="poses"></div><div id="joints"></div><div class="clash" id="clash"></div></div></div>
+    <div class="controls"><div class="seg" id="poses"></div>
+      <div id="tool" hidden><label class="row"><input type="checkbox" id="toolmode"> Draw with the pen</label><div class="clash" id="toolsay"></div>
+        <button id="stepload" title="Play a step file from cad plot: choose one, or drop it on the page">Play a step file…</button><input type="file" id="stepfile" accept=".json" hidden>
+        <div id="player" hidden><div class="row"><button id="play">Play</button><select id="speed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option><option value="10">10×</option></select><span id="playat"></span></div>
+          <input type="range" id="scrub" min="0" max="1" step="0.0005" value="0" aria-label="Where in the drawing"><div class="clash" id="playsay"></div></div></div>
+      <div id="joints"></div><div class="clash" id="clash"></div></div></div>
   <h2>Parts</h2>
   <div class="picked" id="picked"></div>
   <ul class="tree" id="tree"></ul>
 </aside>
+<aside id="build" hidden aria-label="Build"></aside>
 <footer>
   <div><h1 id="title"></h1><details id="about" hidden><summary>Details</summary><div class="meta" id="meta"></div><div class="note" id="note"></div></details><ul class="rules" id="rules"></ul></div>
   <div><div class="actions"><button data-get="stl">Download STL</button><button data-get="3mf">Download 3MF</button><button id="copy">Copy link</button></div><div id="picked-foot"></div><div id="status"></div></div>

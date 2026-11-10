@@ -13,6 +13,12 @@ A model page you can host anywhere, as plain static files: no server code, no bu
 - **Things that move:** a link with joints (a `cad` assembly with joints and poses) gets a Motion panel. It has a
   slider for each joint, a button for each pose, and, when you let a slider go, a quick look for parts pushed into
   each other.
+- **Machines:** a link for an assembly with a `task` (a pen, a sheet) adds, in the Motion panel:
+  - **Draw with the pen:** the sheet and the region the arm reaches are drawn on the model (worked out off the page's thread). Drag on the sheet and the joints follow, by inverse kinematics in the page with `@rulecad/robots`; out of reach, the pen stops and says why.
+  - **Playback:** a step file from `cad plot`, carried in the link, or dropped on the page, or chosen with the button, plays on the model with Play, a scrubber and a speed. The drawn line appears on the sheet in its predicted-error colour: green well inside the task's accuracy, red past it.
+  - **The margins strip** over the model, for the pose on show: torque, reach, accuracy and heat, coloured by margin (red under, amber close). Torque and accuracy are worked out at each pose from what the link carries; heat is the same in every pose.
+  - **Build:** a button that opens the rest of the project beside the model, or under it on a phone: the shopping list, the plates, the wiring sheet, the assembly steps (each shown on the model) and the machine's settings. Nothing in it runs; it's the link's data, shown as text.
+  Wires are drawn faint along their routes and move with their joints.
 - **Sliced as the printer builds it:** the Slice panel has a layer slider. Everything above the layer is cut away and
   its outline drawn, so you can step up through the part from the bed. Off the page's thread, every layer is checked
   against the one below (`islands()` in `@rulecad/printcheck`). An island, a region with nothing under it that the
@@ -41,7 +47,7 @@ npm pack @rulecad/viewer && tar xzf rulecad-viewer-*.tgz   # package/site/ is th
 ## Working on it
 
 `site/view.mjs` is the page and `site/index.html` its layout and styles. `node scripts/build.mjs` copies the link
-format and the print check in beside them (`--three` rebuilds the trimmed three.js after a name is added to its
+format, the print check and `@rulecad/robots` (into `site/robots/`) in beside them (`--three` rebuilds the trimmed three.js after a name is added to its
 list). `node --test test/viewer.browser.mjs` from the repository root drops an STL into the page in headless Chrome
 and saves screenshots.
 

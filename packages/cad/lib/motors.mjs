@@ -2,11 +2,11 @@
 // slider is the motor turning), and the assembly can say what it has to do: "loads" on joints or masses on links.
 // From those, what reaches each loaded joint through the meshes and planetaries, whether the joint holds with the
 // power on and off, and whether the shaft and its mount are fit for it.
-import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { motorModel, motorParts, mountModel, performance } from '@rulecad/motors';
 import { stageEfficiency } from '@rulecad/gears';
 import { named } from './parts.mjs';
+import { referenceBuilt } from './bought.mjs';
 
 const require = createRequire(import.meta.url);
 const n3 = (x, d = 3) => String(Number(x.toFixed(d)));
@@ -22,9 +22,7 @@ export function motorBuilt(spec, num, id) {
   const anchors = Object.fromEntries(Object.entries(model.anchors).map(([k, a]) => [k, { at: a.origin, axis: a.axis }]));
   const values = Object.fromEntries(Object.entries(model.figures).filter(([, f]) => typeof f.value === 'number').map(([k, f]) => [k, f.value]));
   const entries = Object.entries(model.figures).map(([k, f]) => ({ name: `${model.name}.${k}`, value: f.value, unit: f.unit, rule: f.rule, kind: f.kind, source: f.source, checked: f.checked, set: model.name }));
-  const hash = crypto.createHash('sha256').update(JSON.stringify(model.figures)).digest('hex').slice(0, 16);
-  const b = { object: { name: model.name, title: model.name, role: 'reference', version: '0.0.0', anchors }, values, entries, deps: [], units: {}, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash };
-  return { key: `motor:${id}:${hash}`, objName: `motor:${model.name}`, b, version: '0.0.0', role: 'reference', motor: model, spec };
+  return referenceBuilt({ id, key: 'motor', objName: `motor:${model.name}`, name: model.name, parts, anchors, entries, values, extra: { motor: model, spec, bought: { set: model.name, variant: null, part: 'motor', mass: model.mass ?? null } } });
 }
 
 // Which joint each motor drives, checked by name; a servo's range and a stepper's step go on the joint. The shaft
@@ -37,7 +35,8 @@ export function motorDrives(a, placed, joints, num) {
     if (id == null) { drives.push({ item: k, id: c.id, model: c.src.motor, spec: it.motor, joint: null }); return; } // on the bench, turning nothing
     const j = joints.find((x) => x.id === id);
     if (!j) throw new Error(`${what}: drives "${id}", which isn't a joint (${joints.map((x) => x.id).join(', ') || 'none'})`);
-    if (j.type !== 'revolute') throw new Error(`${what}: a motor turns a revolute (${j.id} is a ${j.type}): drive the gear, and let the slide follow it`);
+    if (j.type === 'prismatic' && (it.motor.leadscrew || it.motor.belt)) j.slide = slideDrive(it.motor, what, j, num);
+    else if (j.type !== 'revolute') throw new Error(`${what}: a motor turns a revolute (${j.id} is a ${j.type}): drive the gear and let the slide follow it, or give "leadscrew" or "belt"`);
     if (j.follow) throw new Error(`${what}: ${j.id} follows ${j.follow[0]}: a motor drives the joint that leads the train`);
     if (taken.has(id)) throw new Error(`${what}: ${id} is driven by ${taken.get(id)} already: one motor to a joint`);
     taken.set(id, c.id);
@@ -51,6 +50,19 @@ export function motorDrives(a, placed, joints, num) {
     drives.push({ item: k, id: c.id, model, spec: it.motor, joint: id });
   });
   return drives;
+}
+
+// A motor driving a slide directly, through a lead screw or a belt: mm per turn, how much power gets through, and whether
+// it holds with the power off. A screw locks when its lead angle is under its friction angle
+function slideDrive(spec, what, j, num) {
+  if (spec.leadscrew) {
+    const lead = num(spec.leadscrew.lead), d = num(spec.leadscrew.diameter ?? 8), mu = num(spec.leadscrew.friction ?? 0.2), lambda = Math.atan(lead / (Math.PI * d)), phi = Math.atan(mu);
+    if (!(lead > 0)) throw new Error(`${what}: a lead screw's lead is above 0 mm (got ${lead})`);
+    return { kind: 'screw', mmPerTurn: lead, efficiency: Math.tan(lambda) / Math.tan(lambda + phi), locks: lambda < phi ? `the lead screw (its ${n3((lambda * 180) / Math.PI, 1)}° lead is under the ${n3((phi * 180) / Math.PI, 1)}° friction angle)` : null, detail: `a ${lead} mm lead` };
+  }
+  const pitch = num(spec.belt.pitch ?? 2), teeth = num(spec.belt.teeth);
+  if (!(teeth > 0)) throw new Error(`${what}: a belt needs its pulley's "teeth"`);
+  return { kind: 'belt', mmPerTurn: teeth * pitch, efficiency: 0.95, locks: null, detail: `a ${teeth} T pulley`, stretch: spec.belt.stiffness != null ? { k: num(spec.belt.stiffness), width: num(spec.belt.width ?? 6), length: num(spec.belt.length ?? 300), load: num(spec.belt.load ?? 5) } : null };
 }
 
 // The fits a motor brings with it, in the assembly's own shape
@@ -71,9 +83,10 @@ export function loadsOf(a, anchor, num, joints) {
 // ---------- the train from a motor to a joint ----------
 // Walks up the follow links from a joint to the one that leads it: the turns of that lead per turn of this joint
 // (or per mm, where the joint slides), the share of power that gets through, what's in the way.
-function trainFrom(motion, id) {
+export function trainFrom(motion, id) {
   const stages = [], meshes = motion.meshes || [];
   let j = motion.joints.find((x) => x.id === id), ratio = 1, efficiency = 1, slide = j.type === 'prismatic' ? 1 : null, locks = null;
+  if (j.slide) return { root: j.id, ratio: 1, efficiency: j.slide.efficiency, stages: [{ joint: j.id, kind: j.slide.kind, ratio: 1, efficiency: j.slide.efficiency }], slide: j.slide.mmPerTurn / 360, locks: j.slide.locks };
   while (j.follow) {
     const [lead, r] = j.follow, m = meshes.find((x) => x.joint === j.id) || meshes.find((x) => x.planetary && (x.members || []).includes(j.id));
     const kind = m?.kind === 'external' ? 'spur' : m?.kind || 'spur';
@@ -89,7 +102,7 @@ function trainFrom(motion, id) {
 
 // World axis of a joint and the world position of a point on an item
 const rowsAt = (W, p) => [0, 1, 2].map((k) => W[4 * k] * p[0] + W[4 * k + 1] * p[1] + W[4 * k + 2] * p[2] + W[4 * k + 3]);
-const axisOf = (motion, worlds, j, mul) => { const P = j.parent < 0 ? j.a : mul(worlds[j.parent], j.a); return { O: [P[3], P[7], P[11]], Z: [P[2], P[6], P[10]] }; };
+export const axisOf = (motion, worlds, j, mul) => { const P = j.parent < 0 ? j.a : mul(worlds[j.parent], j.a); return { O: [P[3], P[7], P[11]], Z: [P[2], P[6], P[10]] }; };
 const sub = (a, b) => a.map((x, i) => x - b[i]), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
@@ -122,8 +135,11 @@ function worstLoad(motion, loads, j, drive, { placeItems, jointValues, mul }) {
   return { torque: Math.abs(worst), where };
 }
 
+// What a stepper gives at the current it's set to: torque goes with the current, up to its rating
+export const atCurrent = (m, spec, torque) => (m.type === 'stepper' && spec.current != null && m.figures.rated_current?.value ? torque * Math.min(1, spec.current / m.figures.rated_current.value) : torque);
+
 // A motor's speed if the assembly doesn't say: its corner speed, its rated speed, or half its free speed
-function workingSpeed(model, spec) {
+export function workingSpeed(model, spec) {
   if (spec.speed != null) return spec.speed;
   const p = performance(model, {});
   return model.type === 'dc' ? p.limit / 2 : model.figures.pull_in_torque ? p.limit : model.type === 'servo' ? p.limit : model.type === 'brushless' ? p.limit / 4 : p.limit / 5;
@@ -135,7 +151,7 @@ const material = (name) => { const n = String(name || 'pla').toLowerCase().split
 export function motorChecks(s, f, helpers, materialName) {
   const motion = s.motion, drives = motion?.drives || [], loads = motion?.loads || [], { placeItems, jointValues, mul } = helpers;
   if (!drives.length) { if (loads.length) f('warn', `there are loads, but no motor: nothing has been checked against them (add a "motor" item that "drives" a joint)`, null, { code: 'motor.loads' }); return; }
-  const worlds = placeItems(motion, jointValues(motion, motion.pose ?? undefined));
+  const worlds = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined));
   for (const d of drives) {
     const m = d.model, grams = n3(m.mass * 1000, 1), K = d.spec.margin != null ? d.spec.margin : 2, W = worlds[d.item];
     f('info', `${d.id}: ${m.name}, ${grams} g${d.joint ? `, drives ${d.joint}` : ''}${m.stepAngle ? `, ${n3(m.stepAngle, 4)}° a step` : ''}${m.range ? `, ${m.range}° of travel` : ''}`, null, { code: 'motor.model', refs: { item: d.id, joint: d.joint }, values: { model: m.name, grams: m.mass * 1000, stepAngle: m.stepAngle } });
@@ -168,7 +184,7 @@ export function motorChecks(s, f, helpers, materialName) {
       back += (atLead / reduction) * ηback; backOn += atLead / reduction;
       lines.push({ x, t, load, unit, reduction, atLead, η });
     }
-    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = rated.motor.torque, margin = need ? avail / need : Infinity;
+    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = atCurrent(m, d.spec, rated.motor.torque), margin = need ? avail / need : Infinity;
     const main = lines[0], what = main.unit === 'N m' ? `${n3(main.load.torque)} N m` : `${n3(main.load.torque, 2)} N`, gives = main.unit === 'N m' ? `${n3(avail * main.reduction * main.η)} N m` : `${n3((avail * main.reduction * main.η * Math.PI * 1000) / (main.t.slide * 180), 1)} N`;
     const trust = rated.rests.filter((k) => k !== 'spec' && k !== 'measured'), caveat = trust.length ? ` (rests on ${trust.join(' and ')} figures: measure it)` : '';
     const level = margin < 1 ? 'fail' : margin < K ? 'warn' : 'pass', fix = margin < 1 && main.t.slide == null ? ` A ratio of ${n3((main.reduction * K) / margin, 1)}:1 would give it ${K} times` : '';
@@ -181,7 +197,7 @@ export function motorChecks(s, f, helpers, materialName) {
     mountCheck(s, d, f, W, avail, materialName);
     // Does it hold?
     const fig = (k) => m.figures[k]?.value, kt = m.type === 'brushless' ? 60 / (2 * Math.PI * fig('kv')) : 0;
-    const on = fig('holding_torque') ?? fig('stall_torque') ?? (kt ? kt * fig('rated_current') : 0), off_ = fig('detent_torque') ?? fig('friction_torque') ?? null, brake = lines.map((l) => motion.joints.find((x) => x.id === l.x.id)?.brake).find(Boolean) ?? motion.joints.find((x) => x.id === d.joint)?.brake;
+    const on = atCurrent(m, d.spec, fig('holding_torque') ?? fig('stall_torque') ?? (kt ? kt * fig('rated_current') : 0)), off_ = fig('detent_torque') ?? fig('friction_torque') ?? null, brake = lines.map((l) => motion.joints.find((x) => x.id === l.x.id)?.brake).find(Boolean) ?? motion.joints.find((x) => x.id === d.joint)?.brake;
     const backS = n3(back), pmargin = backOn ? on / backOn : Infinity;
     if (locked || brake) f('pass', `${main.x.id} holds with the power off: ${brake ? `its brake (${brake})` : locked} is what holds it`, null, { code: 'motor.holds', at: at(main.x) });
     else if (off_ != null && back <= off_) f('pass', `${main.x.id} holds with the power off: ${backS} N m back at the motor against ${n3(off_)} N m of ${fig('detent_torque') != null ? 'detent' : 'gearbox friction'}`, null, { code: 'motor.holds', at: at(main.x) });
@@ -193,8 +209,8 @@ export function motorChecks(s, f, helpers, materialName) {
     const mat = material(materialName), rise = fig('temperature_rise');
     if (mat?.softening != null && rise != null) {
       const duty = d.spec.duty != null ? d.spec.duty : 1, room = 25, caseT = room + rise * duty, ok = caseT <= mat.softening, name = mat.name.toUpperCase(), I = fig('rated_current');
-      if (ok) f('pass', `${d.id}'s case reaches at most ${n3(caseT, 1)} °C ${duty < 1 ? `at ${n3(duty * 100, 0)}% duty` : 'at rated current'}, under ${name}'s ${mat.softening} °C`, null, { code: 'motor.heat', at: S });
-      else { const k = Math.sqrt((mat.softening - room) / (rise * duty)); f('warn', `${d.id}'s case can reach ${n3(caseT, 1)} °C at rated current, past where ${name} softens (${mat.softening} °C). Set the driver to ${I ? `${n3(I * k, 2)} A` : `${n3(k * 100, 0)}% of its current`} (${n3(k * 100, 0)}% of the torque), or print the mount in a material that takes it`, `${d.id}: mount will soften`, { code: 'motor.heat', at: S, values: { case: caseT, softening: mat.softening } }); }
+      if (ok) f('pass', `${d.id}'s case reaches at most ${n3(caseT, 1)} °C ${duty < 1 ? `at ${n3(duty * 100, 0)}% duty` : 'at rated current'}, under ${name}'s ${mat.softening} °C`, null, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } });
+      else { const k = Math.sqrt((mat.softening - room) / (rise * duty)); f('warn', `${d.id}'s case can reach ${n3(caseT, 1)} °C at rated current, past where ${name} softens (${mat.softening} °C). Set the driver to ${I ? `${n3(I * k, 2)} A` : `${n3(k * 100, 0)}% of its current`} (${n3(k * 100, 0)}% of the torque), or print the mount in a material that takes it`, `${d.id}: mount will soften`, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } }); }
     }
   }
 }
@@ -222,7 +238,7 @@ export function shaftFit(x, s, f, { placeItems, jointValues, mul, materialName, 
   // (a printed hole comes out holeComp smaller across, so a drawn bore is that much tighter on the real shaft)
   const motion = s.motion, top = (n) => String(n).split(/[.@]/)[0], drives = motion?.drives || [], d = drives.find((y) => y.id === top(x.a) || y.id === top(x.b)), other = d && (top(x.a) === d.id ? top(x.b) : top(x.a)), label = x.note || `${d?.id ?? x.a}'s shaft in ${other ?? x.b}`;
   if (!d) return f('fail', `${label}: neither ${x.a} nor ${x.b} is a motor`, null, { code: 'shaft.motor' });
-  const worlds = placeItems(motion, jointValues(motion, motion.pose ?? undefined)), W = worlds[d.item], m = d.model, S = m.shaft, r = S.diameter / 2;
+  const worlds = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined)), W = worlds[d.item], m = d.model, S = m.shaft, r = S.diameter / 2;
   const inv = (p) => { const q = [p[0] - W[3], p[1] - W[7], p[2] - W[11]]; return [W[0] * q[0] + W[4] * q[1] + W[8] * q[2], W[1] * q[0] + W[5] * q[1] + W[9] * q[2], W[2] * q[0] + W[6] * q[1] + W[10] * q[2]]; };
   const parts = s.parts.filter((p) => p.item === other || p.leaf === other);
   if (!parts.length) return f('fail', `${label}: no part "${other}"`, null, { code: 'shaft.part' });

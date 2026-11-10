@@ -102,3 +102,24 @@ motor's limit is a `motor.speed` failure.
 
 A stepper's real curve is on its datasheet when the maker gives one; the kit doesn't have one for any motor yet, says so
 in `how`, and the straight model is on the cautious side of most motors but not all of them. Measure yours.
+
+## Drivers and the power budget
+
+A stepper's current is set on its driver, and the driver's heat and the supply's size follow from it. `driver(name)` reads a driver's rule set; `setting(d, current, { cooled, supply, microsteps })` gives the trimmer voltage and whatever is wrong with the choice; `powerBudget(parts, { voltage, current, margin })` adds up the machine against a supply.
+
+```js
+import { driver, setting, powerBudget } from '@rulecad/motors'
+
+setting(driver('a4988'), 1.2).vref                 // 0.653 V, by the module's sense resistor: read yours
+powerBudget([{ name: 'shoulder', current: 1.5, resistance: 1.1 }], { voltage: 24, current: 5 })
+```
+
+| Figure | Formula | Source |
+|---|---|---|
+| A4988 current limit | I = Vref / (8 Rs) | Pololu's A4988 carrier page |
+| DRV8825 current limit | I = 2 Vref | Pololu's DRV8825 carrier page |
+| TMC2209 current (Vref) | Irms = (325 mV / (Rs + 20 mΩ)) (1 / √2) (Vref / 2.5 V) | BigTreeTech and FYSETC module pages |
+| A stepper's draw | P = 2 I² R / 0.85, both coils at the set current, through a chopper about 85% efficient | Copper loss; the efficiency is an estimate |
+
+A chopper draws power, not the phase current, so a motor set to 2 A takes much less than 2 A from a 24 V supply. Microsteps add resolution, not accuracy.
+

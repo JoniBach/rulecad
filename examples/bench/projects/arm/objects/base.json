@@ -1,0 +1,41 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "base",
+  "title": "Base: plate and motor stand",
+  "version": "0.1.0",
+  "uses": ["x1c", "arm", "m2", "m3", "m5"],
+  "engine": "manifold",
+  "orientation": "The plate on the bed, columns up",
+  "description": "A square plate that bolts down through four corner holes, flat on the bench or upright on a stand, with three columns round the motor carrying the shoulder housing and a post for the home switch.",
+  "anchors": {
+    "top": {"at": [0, 0, "column_top"], "axis": [0, 0, 1]},
+    "cable": {"at": ["0 - side / 2", 0, "foot"], "axis": [0, 0, 1]},
+    "switch": {"at": ["(post_r + switch_pitch / 2) * cosd(post_a)", "(post_r + switch_pitch / 2) * sind(post_a)", "post_top + switch_half"], "axis": [0, 0, 1], "ref": ["0 - cosd(post_a)", "0 - sind(post_a)", 0]}
+  },
+  "variables": {
+    "side": {"value": 96, "unit": "mm", "rule": "The plate's side: round the columns, with room for the bolts", "label": "Plate", "show": true},
+    "foot": {"value": "arm.foot", "unit": "mm", "rule": "The plate's thickness"},
+    "corner": {"value": 8, "unit": "mm", "rule": "The plate's corners, rounded"},
+    "bolt": {"value": "m5.clearance", "unit": "mm", "rule": "Bolts through to the bench, or an upright stand"},
+    "bolt_at": {"value": 38, "unit": "mm", "rule": "Half the bolts' square: the same pattern on a bench and on a stand"},
+    "column_top": {"value": "arm.face", "unit": "mm", "rule": "Up to the shoulder motor's mounting face"},
+    "column_r": {"value": 37, "unit": "mm", "rule": "Round the motor's corners"},
+    "column": {"value": 10, "unit": "mm", "rule": "Solid, stiff enough for the arm's tipping load: section against 2 x the arm's weight in the chapter"},
+    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped into the column's top", "kind": "community"},
+    "pilot_depth": {"value": 16, "unit": "mm", "rule": "For an M3 × 20 through the housing's plate"},
+    "post_r": {"value": 50, "unit": "mm", "rule": "The switch post, outside the housing's posts", "interface": true},
+    "post_a": {"value": 235, "unit": "°", "rule": "Round from the front: where the upper arm's flag meets the switch's lever at the shoulder's home, -116°", "interface": true},
+    "post_w": {"value": 14, "unit": "mm", "rule": "The post's width along the radius, for the switch's two screws"},
+    "post_d": {"value": 12, "unit": "mm", "rule": "The post's depth, tangential"},
+    "post_top": {"value": "arm.bridge_low + arm.bridge - 6", "unit": "mm", "rule": "The switch lies on the post, its lever under the arm's flag"},
+    "switch_pilot": {"value": "m2.clearance - 0.6", "unit": "mm", "rule": "An M2 screw self-tapped into the post", "kind": "community"},
+    "switch_pitch": {"value": "arm.switch_pitch", "unit": "mm", "rule": "The switch's screw spacing"},
+    "switch_depth": {"value": 10, "unit": "mm", "rule": "Pilot depth for M2 × 8"},
+    "segments": {"value": 64, "rule": "Round enough"},
+    "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
+    "c1": {"value": 90, "unit": "°", "rule": "First column, between the motor's corners"},
+    "c2": {"value": 210, "unit": "°", "rule": "Second column"},
+    "c3": {"value": 330, "unit": "°", "rule": "Third column"},
+    "switch_half": {"value": 3, "unit": "mm", "rule": "Half the switch's thickness: it lies on the post, its screws straight down"}
+  }
+}

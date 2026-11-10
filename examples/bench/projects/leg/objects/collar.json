@@ -1,0 +1,19 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "collar",
+  "title": "Rod collar: the carriage's stop",
+  "version": "0.1.0",
+  "uses": ["x1c", "leg", "m3"],
+  "engine": "manifold",
+  "orientation": "Flat on the bed, the rod's hole upright, the clamp's slot through one side",
+  "description": "Set on a rod under the carriage: the carriage drops onto it when the foot lifts, so the foot really leaves the scale.",
+  "variables": {
+    "bore": {"value": "leg.rod_d + x1c.hole_comp", "unit": "mm", "rule": "The rod"},
+    "outer": {"value": 22, "unit": "mm", "rule": "Round the rod, wall enough to take the screw"},
+    "high": {"value": 10, "unit": "mm", "rule": "Along the rod"},
+    "slot": {"value": 1.5, "unit": "mm", "rule": "The slot the clamp screw closes"},
+    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "The clamp's M3, across the slot: its hole a teardrop"},
+    "screw_out": {"value": 8, "unit": "mm", "rule": "The screw, clear of the rod"},
+    "segments": {"value": 48, "rule": "Round enough"}
+  }
+}

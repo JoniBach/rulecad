@@ -125,3 +125,67 @@ test('text: arrows among letters, in line with them', () => {
   assert.ok(w > wa + 2 && h < 5.5, `the arrow takes its own room in the line: ${w} × ${h} against AB's ${wa}`);
   assert.throws(() => text({ text: 'A', height: 0, stroke: 0.84 }), /height and stroke are sizes above 0/);
 });
+
+test('seats: a bearing pocket to the printer\'s fit, ledge and relief, printing unsupported each way it goes in', async () => {
+  const { seatSize, bearingSeat, plainBearing, shaftShoulder, clipGroove, ops } = await import('@rulecad/shapes');
+  const { check } = await import('@rulecad/printcheck');
+  const { cuboid } = jscad.primitives, { translate } = jscad.transforms, { subtract, union } = jscad.booleans, { geom3 } = jscad.geometries;
+  const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42, print_gap: 0.3, foot: 0.15 };
+  const x1c = { hole_comp: 0.1, fit: 0.2, press: 0.05, slip: 0.1 }, b608 = { bore: 8, outer_diameter: 22, width: 7 };
+  const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
+  const ok = (g, what) => { const bad = check(tris(g), printer).filter((f) => f.level === 'fail' || /support|mid-air|ledge/.test(f.text) && f.level === 'warn'); assert.deepEqual(bad, [], what); };
+
+  const s = seatSize(b608, { printer: x1c });
+  assert.equal(s.pocket, 22.05, 'the outside, plus what a hole prints small, less the press');
+  assert.equal(s.clearance, -0.05);
+  assert.equal(s.relief, 22.05 - 2 * 1.75);
+  assert.equal(seatSize(b608, { fit: 'slip', printer: x1c }).pocket, 22.2);
+  assert.equal(seatSize(b608, { fit: 0.3, printer: x1c }).clearance, 0.3);
+
+  const block = (h) => translate([0, 0, h / 2], cuboid({ size: [34, 34, h] }));
+  const down = bearingSeat(b608, { printer: x1c, at: [0, 0, 12], into: '-z', through: true, relief: 5 });
+  assert.equal(down.seat.pocket, 22.05, 'the cutter says what it was drawn to');
+  ok(subtract(block(12), down), 'going down from the top, through');
+  ok(subtract(block(12), bearingSeat(b608, { printer: x1c, at: [0, 0, 12], into: '-z' })), 'going down, blind: the floor is on the bed side');
+  ok(subtract(block(16), bearingSeat(b608, { printer: x1c, at: [0, 0, 0], into: '+z' })), 'up from the bed: a cone, no ceiling');
+  ok(subtract(translate([0, 0, 15], cuboid({ size: [14, 34, 30] })), bearingSeat(b608, { printer: x1c, at: [-7, 0, 15], into: '+x', through: true, relief: 8 })), 'across a part: a teardrop');
+
+  const bore = plainBearing(8, { length: 10, printer: x1c, at: [0, 0, 10], into: '-z', through: true });
+  assert.equal(bore.bore, 8.5, 'the shaft, the fit each side, the compensation');
+  ok(subtract(block(10), bore), 'a plain bore up and down');
+  ok(subtract(translate([0, 0, 10], cuboid({ size: [14, 34, 20] })), plainBearing(5, { length: 14, printer: x1c, at: [-7, 0, 10], into: '+x', through: true })), 'a plain bore across');
+  ok(plainBearing(8, { length: 10, wall: 2, printer: x1c }), 'a bush, standing up');
+
+  const shaft = translate([0, 0, 20], jscad.primitives.cylinder({ radius: 4, height: 40, segments: 64 }));
+  const collar = shaftShoulder(8, { shoulder: 12, height: 3, at: [0, 0, 20] });
+  ok(union(shaft, collar), 'a collar: its underside at 45°');
+  ok(subtract(shaft, clipGroove(8, { width: 1, depth: 0.5, at: [0, 0, 30] })), 'a groove: its top sloped');
+
+  // Refusals by name
+  assert.throws(() => bearingSeat(b608, {}), /bearingSeat: give the printer's rules/);
+  assert.throws(() => seatSize({ bore: 22, outer_diameter: 8, width: 7 }, { printer: x1c }), /outer diameter \(8\) is above the bore \(22\)/);
+  assert.throws(() => seatSize(b608, { lip: 4, printer: x1c }), /reaches the inner race/);
+  assert.throws(() => seatSize(b608, { fit: 'tight', printer: x1c }), /fit is press or slip/);
+  assert.throws(() => plainBearing(8, { length: 10, wall: 2, printer: x1c, into: '+x' }), /prints standing up/);
+  assert.throws(() => shaftShoulder(8, { shoulder: 6, height: 3 }), /stands proud/);
+  assert.throws(() => clipGroove(8, { width: 1, depth: 3 }), /too little of a 8 mm shaft/);
+});
+
+test('seats for a Z axis: a linear bearing, a lead-screw nut, a pulley bore and a belt grip, printing unsupported', async () => {
+  const { lm8uuPocket, nutTrap, pulleyBore, beltClamp } = await import('@rulecad/shapes');
+  const { check } = await import('@rulecad/printcheck');
+  const { cuboid } = jscad.primitives, { translate } = jscad.transforms, { subtract } = jscad.booleans, { geom3 } = jscad.geometries;
+  const printer = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42, print_gap: 0.3, foot: 0.15 };
+  const x1c = { hole_comp: 0.1, fit: 0.2, press: 0.05, slip: 0.1 }, tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
+  const ok = (g, what) => assert.deepEqual(check(tris(g), printer).filter((f) => f.level === 'fail' || (f.level === 'warn' && /support|mid-air|ledge/.test(f.text))), [], what);
+  const block = (h) => translate([0, 0, h / 2], cuboid({ size: [40, 40, h] }));
+  const lm = { bore: 8, outer_diameter: 15, length: 24 }, pocket = lm8uuPocket(lm, { printer: x1c, at: [0, 0, 30], into: '-z', through: true });
+  assert.equal(pocket.pocket, 15.05); ok(subtract(block(30), pocket), 'stood up, through');
+  ok(subtract(translate([0, 0, 25], cuboid({ size: [30, 30, 50] })), lm8uuPocket(lm, { printer: x1c, at: [-15, 0, 25], into: '+x', through: true })), 'across, a teardrop');
+  const nut = { flange_diameter: 22, flange_thickness: 3.5, body_diameter: 10.2, length: 15, hole_circle: 16, hole_count: 4 };
+  const trap = nutTrap(nut, { printer: x1c, at: [0, 0, 20] }); assert.ok(trap.flange > 22.3); ok(subtract(block(20), trap), 'a nut, from the top');
+  assert.throws(() => nutTrap({ ...nut, hole_circle: 11 }, { printer: x1c }), /don't fall between/);
+  assert.equal(pulleyBore({ bore: 5 }, { length: 12, printer: x1c, at: [0, 0, 12], through: true }).bore, 5.3);
+  ok(beltClamp({ pitch: 2, width: 6 }, { length: 20, height: 5, wall: 2 }), 'a belt grip, teeth up');
+  assert.throws(() => beltClamp({ pitch: 0, width: 6 }, { length: 20, height: 5, wall: 2 }), /beltClamp: pitch is a size/);
+});

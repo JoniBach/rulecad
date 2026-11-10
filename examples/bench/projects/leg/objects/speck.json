@@ -1,0 +1,17 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "speck",
+  "title": "Carrier (not printed)",
+  "version": "0.1.0",
+  "role": "reference",
+  "anchors": {
+    "axis": {"at": [0, 0, 0], "axis": [0, 0, 1]},
+    "a": {"at": [18, 0, 0], "axis": [0, 0, 1]},
+    "b": {"at": ["0 - 9", "18 * sind(120)", 0], "axis": [0, 0, 1]},
+    "c": {"at": ["0 - 9", "0 - 18 * sind(120)", 0], "axis": [0, 0, 1]}
+  },
+  "variables": {
+    "r": {"value": 0.2, "unit": "mm", "rule": "A speck, so the planets' joints have something to hang from"},
+    "far": {"value": 110, "unit": "mm", "rule": "Out of the way, past the leg"}
+  }
+}
