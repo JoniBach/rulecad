@@ -140,3 +140,11 @@ test('STL edge cases: a binary file of NaNs is damaged, an upper-case text STL i
   assert.equal(m.t.length, 6, 'a quad is two triangles');
   assert.throws(() => fromTriangles([[[0, 0, 0], [1, 0, 0]]]), /three corners or more/);
 });
+
+test('a board\'s fab zip rides in its link, by name and bytes; a name that could leave its folder, or bytes that aren\'t base64, are refused', async () => {
+  const { encode, decode, check, fromTriangles } = await import('@rulecad/model-link');
+  const m = { title: 'board', ...fromTriangles([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]), fab: [{ name: 'module@0.7.1-fab.zip', zip: Buffer.from('PK').toString('base64') }] };
+  assert.deepEqual((await decode(await encode(m))).fab, m.fab);
+  assert.deepEqual(check(m), []);
+  for (const fab of [[{ name: '../x.zip', zip: 'AA==' }], [{ name: 'x.zip', zip: '<script>' }], [{ name: 'x.txt', zip: 'AA==' }], { name: 'x.zip' }]) assert.deepEqual(check({ ...m, fab }).map((f) => f.text), ['broken fab files']);
+});

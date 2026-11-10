@@ -11,6 +11,8 @@
 //     these come after the parts they stand in for.
 //     views (optional): [[name, svg]], 2D drawings shown beside the 3D model (a board's copper, a schematic); "Group:
 //     view" names share a tab. The page shows them as images, so nothing in them runs.
+//     fab (optional): [{ name, zip }], a board's files for its fab (Gerbers, drill files, BOM, placement), each a zip
+//     file's name and its bytes in base64: the page offers each as a download, as it is.
 //   Or placed shapes, for things made of repeated parts (nine keys): each shape once, then where each copy goes:
 //     { …, shapes: [{ role, label, slot?, q, p, t }], place: [[shape, a, b, c, d, e, f, g, h, i, j, k, l, name?]] }
 //     (a 3 × 4 transform by rows, in mm). decode() expands them, so the rest of the page sees one model.
@@ -18,10 +20,10 @@
 // "1." is the format version: newer pages must keep reading old links.
 
 /** @typedef {[[number, number, number], [number, number, number], [number, number, number]]} Triangle corners in mm, counter-clockwise seen from outside, Z up */
-/** @typedef {{ title?: string, version?: string, src?: string, material?: string, orientation?: string, rules?: [string, any, string][], q?: number, p?: number[], t?: number[], parts?: any[], shapes?: any[], place?: any[], views?: [string, string][], motion?: any }} Model */
+/** @typedef {{ title?: string, version?: string, src?: string, material?: string, orientation?: string, fab?: { name: string, zip: string }[], rules?: [string, any, string][], q?: number, p?: number[], t?: number[], parts?: any[], shapes?: any[], place?: any[], views?: [string, string][], motion?: any }} Model */
 
 export const VERSION = 1;
-export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 32, viewSize: 4e6, sheet: 5000, // every keycap with its own legend is its own shape
+export const LIMITS = { vertices: 200000, triangles: 400000, shapes: 512, places: 2048, views: 32, viewSize: 4e6, sheet: 5000, fab: 8, fabSize: 8e6, // a fab zip, in base64 characters // every keycap with its own legend is its own shape
   size: 1e5, // mm: no corner further than this from the origin (a link is a part or an assembly, not a map)
   text: 2000, // characters in a title, a name or a label
   bytes: 160e6 }; // of a link once unpacked: its views at their largest, and the biggest model, with room to spare
@@ -131,6 +133,8 @@ function problems(m) {
   if (m.sheet != null && (!Array.isArray(m.sheet) || m.sheet.length > LIMITS.sheet || m.sheet.some((r) => !Array.isArray(r) || r.length > 9 || r.some((c) => typeof c !== 'string')))) return ['broken rules sheet'];
   if (Array.isArray(m.views) && m.views.length > LIMITS.views) return [`${m.views.length} flat views: more than a link can hold (${LIMITS.views})`];
   if (m.views != null && (!Array.isArray(m.views) || m.views.some((v) => !Array.isArray(v) || typeof v[0] !== 'string' || typeof v[1] !== 'string' || v[1].length > LIMITS.viewSize))) return ['broken views'];
+  if (m.fab != null && (!Array.isArray(m.fab) || m.fab.length > LIMITS.fab || m.fab.some((f) => !f || typeof f.name !== 'string' || !/^[\w@.+-]{1,200}\.zip$/.test(f.name)
+    || typeof f.zip !== 'string' || f.zip.length > LIMITS.fabSize || !/^[A-Za-z0-9+/]*={0,2}$/.test(f.zip)))) return ['broken fab files'];
   if (m.motion != null && !motionOk(m.motion, m.parts?.length ?? 1)) return ['broken motion'];
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || x.slice(0, 3).some((name, k) => (k === 2 && name == null ? false : typeof name !== 'string' || name.length > LIMITS.text)) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[4] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];

@@ -48,8 +48,22 @@ export async function objectModel(b, { title, version, src, set, filaments: fil 
     rules: b.entries.filter((e) => e.show).map((e) => [e.label || e.name, fmt(e.value), e.unit || '']),
     ...sheet([[b.object.name, b.entries]], { noRules }),
     ...(b.circuit ? { views: await (await pcbEngine()).views(b.circuit) } : {}), // boards: the 2D board and schematic
+    ...(b.circuit ? await fabOf([[b.object.name, version, b]]) : {}), // and the zip to order it with
     ...fromParts(b.parts.map((p) => ({ name: p.name, role: p.role, label: p.label, slot: slotOf(fil, p.filament), triangles: triangles(p.triangles) }))),
   };
+}
+
+// Each board's fab zip (cad export's: Gerbers, drill files, BOM, placement), for the page to offer as a download. A
+// board whose files can't be made here (one that needs KiCad, without it) goes without, and says why
+async function fabOf(boards) {
+  const pcb = await pcbEngine(), { zip } = await import('@rulecad/model-link'), fab = [];
+  for (const [name, version, b] of boards) {
+    try {
+      const files = await pcb.fabFiles(b.circuit, name, { source: b.source });
+      fab.push({ name: `${name}${version ? `@${version}` : ''}-fab.zip`.replace(/[^\w@.+-]/g, '-'), zip: Buffer.from(await zip(Object.entries(files))).toString('base64') });
+    } catch (e) { console.error(`  ${name}: no fab zip in the link (${String(e.message || e).split('\n')[0]})`); }
+  }
+  return fab.length ? { fab } : {};
 }
 
 /** A built assembly as a model: each shape once and placed (nine keys cost one keycap), its boards' views, its joints. */
@@ -77,7 +91,7 @@ export async function assemblyModel(s, { title, versions, filaments: fil = {}, n
       if (!boards.length) return {};
       const pcb = await pcbEngine(), views = [];
       for (const o of boards) for (const [n, svg] of await pcb.views(o.built.circuit)) views.push([boards.length > 1 ? `${o.objName} ${n}` : n, svg]);
-      return { views };
+      return { views, ...(await fabOf(boards.map((o) => [o.objName, o.version || o.built.object?.version, o.built]))) };
     })()),
     ...fromShapes(list),
   };

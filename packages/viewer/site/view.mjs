@@ -12,6 +12,15 @@ const DRAWER = '(max-width: 760px), (pointer: coarse) and (max-width: 1100px)'; 
 const status = (t) => { $('status').textContent = t; };
 
 // A print file of the parts ticked (pick: { keep, name }), or of every printed part
+// A board's fab zip, as the link carries it: the bytes saved as they are
+function saveFab(f) {
+  const bytes = Uint8Array.from(atob(f.zip), (c) => c.charCodeAt(0));
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([bytes], { type: 'application/zip' })), download: f.name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  status(`Downloaded ${f.name}: upload it to JLCPCB as it is`);
+}
+
 async function download(model, kind, pick = {}) {
   if (pick.keep && !pick.keep.size) return status('Tick the parts to download in the parts panel');
   status(`Making ${kind.toUpperCase()}…`);
@@ -669,6 +678,14 @@ function open(model, hash, findings) {
   flatViews(model);
   if (findings) showFindings(findings);
   for (const b of document.querySelectorAll('[data-get]')) b.addEventListener('click', () => download(model, b.dataset.get, project.picked()));
+  // A board's files for the fab: a button each, before the 3D downloads
+  const actions = document.querySelector('.actions'), fabs = Array.isArray(model.fab) ? model.fab : [];
+  fabs.forEach((f) => {
+    const b = Object.assign(document.createElement('button'), { className: 'fab', textContent: fabs.length > 1 ? `Download for JLCPCB: ${f.name.replace(/-fab\.zip$/, '')}` : 'Download for JLCPCB',
+      title: `${f.name}: Gerbers, drill files, parts list and placement, ready to upload` });
+    b.addEventListener('click', () => saveFab(f));
+    actions.insertBefore(b, actions.firstChild);
+  });
   $('copy').addEventListener('click', async () => {
     await navigator.clipboard.writeText(`${location.origin}${location.pathname}${hash}`); status('Link copied'); // short stays short
   });
