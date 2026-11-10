@@ -1680,3 +1680,18 @@ test('tool.grip reads the finger\'s own material when it names one; a link bends
     assert.equal(link.values.rows[0].link, 'hub');
   } finally { done(); }
 });
+
+test('a link for a machine working in a volume: flat along any axis, or a single point', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/home/objects'), { recursive: true }); fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['link'] }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.json'), JSON.stringify({ name: 'link', title: 'Link', version: '0.1.0', engine: 'manifold', anchors: { base: { at: [0, 0, 0], axis: [0, 1, 0] }, tip: { at: [100, 0, 0], axis: [0, 1, 0] } }, variables: { side: { value: 6, unit: 'mm', rule: 'Side' } } }));
+    fs.writeFileSync(path.join(ws, 'projects/home/objects/link.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [100, v.side, v.side], center: [50, 0, 0] }) }\n");
+    const asm = (volume) => JSON.stringify({ title: 'A', kind: 'fit', items: [{ id: 'arm', object: 'link' }], joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 1, 0] }, child: 'arm.base', min: -90, max: 90 }], task: { tool: 'arm.tip', volume } });
+    for (const volume of [{ x: [60, 90], y: [0, 0], z: [-40, 40] }, { x: [100, 100], y: [0, 0], z: [0, 0] }]) {
+      fs.writeFileSync(path.join(ws, 'projects/home/assemblies/a.json'), asm(volume));
+      assert.doesNotMatch(cad('link', 'home/a', '--md', '--long'), /broken task/);
+    }
+  } finally { done(); }
+});

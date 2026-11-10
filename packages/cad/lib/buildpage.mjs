@@ -24,7 +24,10 @@ const r = (x) => +Number(x).toFixed(6);
 function planeOf(t) {
   if (t.sheet) { const f = sheetFrame(t.sheet); return { at: f.at, u: f.u, v: f.v, n: f.n, width: f.width, height: f.height }; }
   const area = t.region ?? t.volume, xr = area.x ?? [area.lo[0], area.hi[0]], yr = area.y ?? [area.lo[1], area.hi[1]], zr = area.z != null ? (Array.isArray(area.z) ? area.z : [area.z, area.z]) : area.lo ? [area.lo[2] ?? 0, area.hi?.[2] ?? area.lo[2] ?? 0] : [0, 0];
-  return { at: [(xr[0] + xr[1]) / 2, (yr[0] + yr[1]) / 2, (zr[0] + zr[1]) / 2], u: [1, 0, 0], v: [0, 1, 0], n: [0, 0, 1], width: xr[1] - xr[0], height: yr[1] - yr[0] };
+  // The two longest sides are the plane the page draws on: a volume can be flat in any of its axes, or a single point
+  const at = [(xr[0] + xr[1]) / 2, (yr[0] + yr[1]) / 2, (zr[0] + zr[1]) / 2], side = [xr[1] - xr[0], yr[1] - yr[0], zr[1] - zr[0]], thin = side.indexOf(Math.min(...side));
+  const [a, b] = [0, 1, 2].filter((k) => k !== thin), axis = (k) => [0, 1, 2].map((m) => (m === k ? 1 : 0)), n = [0, 1, 2].map((m) => (m === thin ? (thin === 1 ? -1 : 1) : 0));
+  return { at, u: axis(a), v: axis(b), n, width: Math.max(side[a], 1), height: Math.max(side[b], 1) };
 }
 
 /** The task as the page reads it. @param {object} s a built assembly with a task @param {object[]} findings from checkAssembly */
