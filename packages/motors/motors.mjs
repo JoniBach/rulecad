@@ -40,7 +40,7 @@ for (const s of Object.values(CATALOGUE)) for (const v of Object.keys(s.variants
 export const DEFAULTS = {
   running: { value: Math.SQRT1_2, unit: '× holding torque', rule: 'A stepper moving, against holding torque: holding has both phases at full current, and a driver moving it keeps the vector the size of one phase, 1/√2 of that', kind: 'spec' },
   supply: { value: 24, unit: 'V', rule: 'The stepper driver\'s supply, if you don\'t say: above the motor\'s rated volts, as a chopper drive needs, and what a printer\'s board runs at', kind: 'default' },
-  fit: { value: 0.1, unit: 'mm', rule: 'Gap each side of a shaft in its bore, with the printed hole\'s shrinkage allowed for, so it slides on and no more', kind: 'estimate' },
+  fit: { value: 0.05, unit: 'mm', rule: 'Gap each side of a shaft in its bore, with the printed hole\'s shrinkage allowed for, so it slides on and no more: measured on the fit bar, a 5 mm D-shaft sliding in a bore drawn 5.2 mm', kind: 'measured' },
   press: { value: -0.02, unit: 'mm', rule: 'Each side of a shaft in a press-fit bore as printed: a hair tight, 0.8% strain on a 5 mm shaft, well inside what PLA stretches to before it cracks. A D flat does the driving', kind: 'estimate' },
   grip: { value: 1.5, unit: '× shaft diameter', rule: 'The shortest length of bore worth trusting to drive a gear', kind: 'community' }
 };

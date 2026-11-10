@@ -39,7 +39,7 @@ Write the number in the last column and send it back: it replaces the kit's figu
 |---|---|---|---|---|
 | 1 | Backlash that turns freely, at each module | Gears on the card's pins, the dots on top: one for 0.1, two for 0.2, three for 0.3. Note the tightest pair of each module that turns without catching over several turns | 0.15 mm | |
 | 2 | Smallest module that keeps its tooth shape | Look at the tips of the card's gears under a light | 0.8 | |
-| 3 | D-bore for the 5 mm shaft | Press a shaft into row 2 of the fit bar. Note the smallest that slides on, and the largest that grips | 5.3 mm slide | |
+| 3 | D-bore for the 5 mm shaft | Press a shaft into row 2 of the fit bar. Note the smallest that slides on, and the largest that grips | 5.3 mm slide | 5.2 mm drawn slides comfortably, 5.1 mm tight; 5.0 mm too tight, 5.3 mm and up too big (2026-11-10, PLA) |
 | 4 | Hole size, printed against drawn | Calipers or drill shanks in row 1: drawn minus measured | 0.1 mm | |
 | 5 | M3 pilot | Run an M3 screw into each of row 3. Note the smallest that doesn't split and turns by hand with a driver | 2.9 mm | |
 | 6 | Motor dimensions | Calipers on boss, hole spacing, shaft, flat | From the drawing | |
