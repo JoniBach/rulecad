@@ -15,15 +15,20 @@ export function gaitOf(a, motion, num) {
   const legs = g.legs.map((ref) => {
     const [id, name] = String(ref).split('.'), mark = motion.marks.find((m) => m.id === id && m.name === name);
     if (!mark) throw new Error(`gait: no anchor "${ref}" (items: ${[...new Set(motion.marks.map((m) => m.id))].join(', ')})`);
-    const c = chainFromMotion(motion, { tip: id, tool: [mark.frame[3], mark.frame[7], mark.frame[11]] }), hip = fk(c, c.names.map(() => 0)).frames[0].at;
-    return { name: id, chain: c, at: hip };
+    // A leg's gearbox sits beside its links, so the foot's plane is not the hip anchor's: it stands in its own plane, over the hip
+    const c = chainFromMotion(motion, { tip: id, tool: [mark.frame[3], mark.frame[7], mark.frame[11]] }), zero = fk(c, c.names.map(() => 0)), hip = zero.frames[0].at;
+    return { name: id, chain: c, at: [hip[0], zero.position[1], hip[2]] };
   });
   const out = { legs, pattern: g.pattern, stride: num(g.stride), lift: num(g.lift), period: num(g.period), height: num(g.height), mass: num(g.mass), ...(g.steps ? { steps: num(g.steps) } : {}), ...(g.com ? { com: g.com.map(num) } : {}) };
   return out;
 }
 
 // The joint values of a frame of the cycle, in the assembly's terms
-export const frameValues = (s, frame, jointValues) => jointValues(s.motion, Object.fromEntries(frame.feet.flatMap((e) => { const l = s.gait.legs.find((x) => x.name === e.leg); return l.chain.names.map((n, i) => [n, [e.q[i]]]); })));
+export const frameValues = (s, frame, jointValues) => { // a joint behind a gearbox is moved by the motor's shaft it follows
+  const set = {};
+  for (const e of frame.feet) { const l = s.gait.legs.find((x) => x.name === e.leg); l.chain.names.forEach((n, i) => { let j = s.motion.joints.find((x) => x.id === n), v = e.q[i]; while (j.follow) { const [lead, r = 1, o = 0] = j.follow; v = (v - o) / r; j = s.motion.joints.find((x) => x.id === lead); } set[j.id] = [v]; }); }
+  return jointValues(s.motion, set);
+};
 export const framesOf = (s) => (s.gaitRun ??= gait(s.gait));
 
 export function gaitChecks(s, f, { jointValues, placeItems, sweepOne }) {
@@ -46,4 +51,16 @@ export function gaitChecks(s, f, { jointValues, placeItems, sweepOne }) {
   for (const [k, frame] of r.frames.entries()) { if (k % every) continue; const c = sweepOne(frameValues(s, frame, jointValues)); if (c.length && !clashes) { clashes = c; first = frame.t; } }
   if (clashes) f('fail', `gait: at ${n3(first * 100, 0)}% of the cycle ${clashes.slice(0, 3).map(([a, b]) => `${a} hits ${b}`).join(', ')}`, 'gait: clash', { code: 'gait.sweep', refs: { at: first } });
   else f('pass', `gait: nothing collides through the cycle (${Math.ceil(r.frames.length / every)} poses of it)`, null, { code: 'gait.sweep' });
+}
+
+// A gait as joint values through its cycle, for the viewer's Motion panel and cad animate: the joints that lead
+// (a motor's shaft in place of a gearbox's output), and their values at each frame
+export function gaitSequence(s) {
+  if (!s.gait) return null;
+  const r = framesOf(s); if (!r.frames.length) return null;
+  const leads = (id) => { let j = s.motion.joints.find((x) => x.id === id); while (j.follow) j = s.motion.joints.find((x) => x.id === j.follow[0]); return j.id; };
+  const names = [...new Set(s.gait.legs.flatMap((l) => l.chain.names).map(leads))];
+  const toLead = (id, q) => { let j = s.motion.joints.find((x) => x.id === id), v = q; while (j.follow) { const [lead, ratio = 1, offset = 0] = j.follow; v = (v - offset) / ratio; j = s.motion.joints.find((x) => x.id === lead); } return v; };
+  const round = (x) => Number(x.toFixed(4));
+  return { kind: 'gait', period: s.gait.period, names, q: r.frames.map((f) => names.map((n) => { for (const e of f.feet) { const l = s.gait.legs.find((x) => x.name === e.leg); const i = l.chain.names.findIndex((m) => leads(m) === n); if (i >= 0) return round(toLead(l.chain.names[i], e.q[i])); } return 0; })) };
 }

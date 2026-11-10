@@ -143,6 +143,7 @@ export function gait(o) {
   const summary = { standing, stable, margin: worstMargin, at: worstFrame, torque, worst: { joint: worst[0], torque: worst[1] }, kind, clearance: peak };
   if (standing && !stable) findings.push({ level: 'fail', text: `the body tips: at ${(worstFrame * 100).toFixed(0)}% of the cycle its centre of mass is ${(-worstMargin).toFixed(1)} mm outside the feet`, code: 'gait.stable', values: { margin: worstMargin, at: worstFrame } });
   else if (standing) findings.push({ level: 'pass', text: `statically stable: the least margin is ${worstMargin.toFixed(1)} mm, at ${(worstFrame * 100).toFixed(0)}% of the cycle`, code: 'gait.stable', values: { margin: worstMargin, at: worstFrame } });
+  else if (legs.length === 1) findings.push({ level: 'info', text: 'one leg, on a stand: it steps but has nothing to balance', code: 'gait.stable', values: {} });
   else findings.push({ level: 'info', text: `quasi-static: at times it rests on two feet, so its balance depends on moving, and is not static (the worst moment is ${Math.max(0, -worstMargin).toFixed(1)} mm off the support line)`, code: 'gait.stable', values: { margin: worstMargin } });
   findings.push({ level: 'info', text: `the worst joint is ${worst[0]}, ${worst[1].toFixed(3)} N m, at a body of ${mass} kg`, code: 'gait.torque', values: { torque } });
   return { ok: !(standing && !stable), frames, summary, findings, friction };

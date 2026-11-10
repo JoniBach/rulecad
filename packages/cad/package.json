@@ -61,7 +61,7 @@
     "@rulecad/keyboard-layout": "^0.1.2",
     "@rulecad/printcheck": "^0.3.0",
     "@rulecad/fit": "^0.4.0",
-    "@rulecad/model-link": "^0.3.0",
+    "@rulecad/model-link": "^0.3.1",
     "@rulecad/versions": "^0.1.0",
     "@rulecad/shapes": "^0.4.4",
     "@rulecad/rules": "^0.3.9",
@@ -72,7 +72,7 @@
     "@rulecad/flexures": "^0.5.0",
     "@rulecad/gears": "^0.3.2",
     "@rulecad/motors": "^0.1.4",
-    "@rulecad/robots": "^0.1.0"
+    "@rulecad/robots": "^0.1.1"
   },
   "peerDependencies": {
     "@rulecad/pcb": "^0.1.0 || ^0.2.0 || ^0.3.0 || ^0.4.0 || ^0.5.0"

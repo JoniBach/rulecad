@@ -41,6 +41,10 @@ export function massesOf(s, { placeItems, jointValues }) {
   return out;
 }
 
+// A joint's value set through its leader when it follows a motor off the chain (a gearbox's output): the model moves by its leader
+const chainSet = (motion, names, q) => Object.fromEntries(names.map((n, i) => { const j = motion.joints.find((x) => x.id === n), lead = j?.follow && !names.includes(j.follow[0]) ? j.follow : null; return lead ? [lead[0], [(q[i] - (lead[2] ?? 0)) / (lead[1] ?? 1)]] : [n, [q[i]]]; }));
+// A mesh's bounding box, as lo and hi: a loop, as a large part's triangles overflow Math.min(...spread)
+function extent(tris) { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (const t of tris) for (const p of t) for (let k = 0; k < 3; k++) { if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; } return { lo, hi }; }
 const beyond = (motion, j, item) => { const by = new Map(motion.joints.map((x) => [x.child, x])); for (let i = item, n = 0; i >= 0 && n < 99; n++) { const x = by.get(i); if (!x) return false; if (x === j) return true; i = x.parent; } return false; };
 
 // Force and moment about a joint's origin, at one pose
@@ -58,7 +62,7 @@ function loadAt(motion, masses, payload, worlds, j, mul) {
 function posesOf(s, jointValues) {
   const motion = s.motion, base = jointValues(motion, motion.pose ?? undefined), leads = Object.fromEntries(Object.entries(base).filter(([id]) => !motion.joints.find((x) => x.id === id)?.follow)), out = [];
   for (const p of Object.keys(motion.poses || {})) out.push({ label: `pose ${p}`, values: jointValues(motion, p) });
-  if (s.task) { const { c, r } = sample(s), every = Math.max(1, Math.ceil(r.samples.length / 40)); r.samples.filter((x, i) => x.reachable && !(i % every)).forEach((x) => out.push({ label: 'on the task', point: x.point, values: jointValues(motion, { ...leads, ...Object.fromEntries(c.names.map((n, i) => [n, [x.q[i]]])) }) })); }
+  if (s.task) { const { c, r } = sample(s), every = Math.max(1, Math.ceil(r.samples.length / 40)); r.samples.filter((x, i) => x.reachable && !(i % every)).forEach((x) => out.push({ label: 'on the task', point: x.point, values: jointValues(motion, { ...leads, ...chainSet(motion, c.names, x.q) }) })); }
   if (!out.length) for (const j of motion.joints.filter((x) => !x.follow && x.dofs.length === 1)) for (const v of j.dofs[0].slice(0, 2)) out.push({ label: `${j.id} at ${n3(v, 1)}`, values: jointValues(motion, { ...leads, [j.id]: [v] }) });
   out.push({ label: 'as drawn', values: base });
   return out;
@@ -77,7 +81,7 @@ function bearingMargin(rows, loads) {
 function clipStress(tris, force, modulus, nu, cell) {
   const key = crypto.createHash('sha256').update(JSON.stringify([tris.length, tris[0], force, modulus, cell])).digest('hex').slice(0, 20), file = paths.cache('clip', key);
   if (!process.env.CAD_NO_CACHE && host.exists(file)) return JSON.parse(host.readText(file));
-  const lo = [0, 1, 2].map((k) => Math.min(...tris.flat().map((p) => p[k]))), hi = [0, 1, 2].map((k) => Math.max(...tris.flat().map((p) => p[k]))), n = hi.map((h, k) => Math.max(1, Math.ceil((h - lo[k]) / cell)));
+  const { lo, hi } = extent(tris), n = hi.map((h, k) => Math.max(1, Math.ceil((h - lo[k]) / cell)));
   const gr = { nx: n[0], ny: n[1], nz: n[2], h: cell }, density = solidFill(tris, gr, lo), g = makeGrid(gr), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs);
   // nodes at the foot (the lowest two layers) are held, and the load shared over the top two layers
   const at = positions(g), nodeZ = (id) => Math.round(at[id][2] / cell), onPart = new Uint8Array(g.nodes);
@@ -101,7 +105,7 @@ export function momentChecks(s, f, helpers, masses, payload) {
     const { L, p } = worst, spec = specs.get(j.id) ?? {}, at = L.O, refs = { joint: j.id }, say = `${n3(L.carried * 1000, 0)} g carried: ${n3(L.tipping, 3)} N m tipping, ${n3(L.radial, 2)} N across and ${n3(L.axial, 2)} N along it, worst ${p.label}`, values = { axial: L.axial, radial: L.radial, tipping: L.tipping, carried: L.carried };
     out[j.id] = { ...values, pose: p.label };
     if (spec.support?.bearings?.length) {
-      const rows = spec.support.bearings.map((id) => { const o = s.objects.find((x) => x.id === id); if (!o || o.bought?.part !== 'bearing') throw new Error(`joint ${j.id}: support names "${id}", which isn't a bought bearing`); const v = o.built.values, W = worst.w[motion.items.findIndex((x) => x[0] === id)]; return { id, bore: v.bore, outer: v.outer_diameter, C0: v.static_rating, along: dot(sub([W[3], W[7], W[11]], L.O), L.Z) }; });
+      const rows = spec.support.bearings.map((id) => { const o = s.objects.find((x) => x.id === id); if (!o || !['bearing', 'linear_bearing'].includes(o.bought?.part)) throw new Error(`joint ${j.id}: support names "${id}", which isn't a bought bearing`); const v = o.built.values, W = worst.w[motion.items.findIndex((x) => x[0] === id)]; return { id, bore: v.bore, outer: v.outer_diameter, C0: v.static_rating, along: dot(sub([W[3], W[7], W[11]], L.O), L.Z) }; });
       const m = bearingMargin(rows, L), level = m.margin < 1 ? 'fail' : m.margin < 2 ? 'warn' : 'pass';
       f(level, `${j.id}: ${say}. ${rows.map((r) => r.id).join(' and ')} take ${n3(m.P0, 1)} N equivalent against ${n3(m.C0, 0)} N static, ${n3(m.margin, 1)} times over`, level === 'pass' ? null : `${j.id}: bearing ${n3(m.margin, 1)}×`, { code: 'joint.moment', at, refs: { ...refs, bearings: rows.map((r) => r.id) }, values: { ...values, equivalent: m.P0, rating: m.C0, margin: m.margin } });
     } else if (spec.support?.clips?.length) {
@@ -124,7 +128,7 @@ export function momentChecks(s, f, helpers, masses, payload) {
 function linkFE(tris, O, far, force, E, nu, cell) {
   const key = crypto.createHash('sha256').update(JSON.stringify([tris.length, tris.slice(0, 4), O, far, force, E, cell])).digest('hex').slice(0, 20), file = paths.cache('link', key);
   if (!process.env.CAD_NO_CACHE && host.exists(file)) return JSON.parse(host.readText(file));
-  const lo = [0, 1, 2].map((k) => Math.min(...tris.flat().map((p) => p[k]))), hi = [0, 1, 2].map((k) => Math.max(...tris.flat().map((p) => p[k]))), n = hi.map((h, k) => Math.max(1, Math.ceil((h - lo[k]) / cell)));
+  const { lo, hi } = extent(tris), n = hi.map((h, k) => Math.max(1, Math.ceil((h - lo[k]) / cell)));
   const gr = { nx: n[0], ny: n[1], nz: n[2], h: cell }, density = solidFill(tris, gr, lo), g = makeGrid(gr), fixed = new Uint8Array(g.dofs), f = new Float64Array(g.dofs), onPart = new Uint8Array(g.nodes);
   for (let e = 0; e < density.length; e++) if (density[e] >= 0.5) for (let k = 0; k < 8; k++) onPart[g.edof[e * 24 + 3 * k] / 3] = 1;
   const nodeAt = positions(g), pos = (id) => [lo[0] + nodeAt[id][0], lo[1] + nodeAt[id][1], lo[2] + nodeAt[id][2]];
@@ -133,7 +137,7 @@ function linkFE(tris, O, far, force, E, nu, cell) {
   if (!held.length || !near.length) return { deflection: 0, cell, missing: true };
   for (const id of held) for (let k = 0; k < 3; k++) fixed[3 * id + k] = 1;
   for (const id of near) for (let k = 0; k < 3; k++) f[3 * id + k] = force[k] / near.length;
-  const size = norm(force), a = analyse({ grid: g, density, material: { E, nu }, fixed, loads: [f] }), out = { deflection: size ? a.compliance[0] / size : 0, stress: Math.max(...Array.from(a.stress[0]).filter((_, e) => density[e] >= 0.5)), cell };
+  const size = norm(force), a = analyse({ grid: g, density, material: { E, nu }, fixed, loads: [f] }), out = { deflection: size ? a.compliance[0] / size : 0, stress: Array.from(a.stress[0]).reduce((m, x, e) => (density[e] >= 0.5 && x > m ? x : m), 0), cell };
   host.writeText(file, JSON.stringify(out)); return out;
 }
 
@@ -145,15 +149,16 @@ export function deflectionChecks(s, f, helpers, masses, payload) {
   const far = reached.reduce((a, b) => (lever(b) > lever(a) ? b : a)), near = reached.reduce((a, b) => (lever(b) < lever(a) ? b : a));
   const links = motion.joints.filter((j) => c.names.includes(j.id));
   const at = (x, label) => {
-    const v = jointValues(motion, { ...Object.fromEntries(c.names.map((n, i) => [n, [x.q[i]]])) }), W = placeItems(motion, v), rows = [];
+    const v = jointValues(motion, chainSet(motion, c.names, x.q)), W = placeItems(motion, v), rows = [];
     let total = 0, carried = 0, tool = x.point, dir = (() => { const g = motion.gravity || [0, 0, -1], l = norm(g); return g.map((q) => q / l); })();
     links.forEach((j, i) => {
-      const parts = s.parts.filter((p) => p.item === ids[j.child] && p.role !== 'support' && p.role !== 'reference'); if (!parts.length) return;
+      const group = new Set([j.child]); for (let more = true; more;) { more = false; for (const x of motion.joints) if (x.type === 'fixed' && group.has(x.parent) && !group.has(x.child)) { group.add(x.child); more = true; } } // the link is everything bolted to the joint's child
+      const parts = s.parts.filter((p) => group.has(ids.indexOf(p.item)) && p.role !== 'support' && p.role !== 'reference'); if (!parts.length) return;
       const m = masses.filter((q) => beyond(motion, j, q.item)).reduce((t, q) => t + q.kg, 0) + (payload && beyond(motion, j, payload.item) ? payload.kg : 0);
       if (!m) return;
       const O = axisOf(motion, W, j, mul).O, nextJ = links[i + 1], end = nextJ ? axisOf(motion, W, nextJ, mul).O : tool, Wc = W[j.child];
-      const local = parts.flatMap((p) => p.localTriangles ?? p.triangles.map((t) => t.map((q) => invAt(Wc, q)))), Lo = invAt(Wc, O), Le = invAt(Wc, end), F = [dir[0] * Wc[0] + dir[1] * Wc[4] + dir[2] * Wc[8], dir[0] * Wc[1] + dir[1] * Wc[5] + dir[2] * Wc[9], dir[0] * Wc[2] + dir[1] * Wc[6] + dir[2] * Wc[10]].map((q) => q * m * G);
-      const box = [0, 1, 2].map((k) => Math.max(...local.flat().map((p) => p[k])) - Math.min(...local.flat().map((p) => p[k]))), cell = Math.max(1, Math.min(...box) / 3), fe = linkFE(local, Lo, Le, F, E, nu, cell), L = norm(sub(Lo, Le)) || 1, beyondLength = norm(sub(tool, end)), drop = fe.deflection + (1.5 * fe.deflection * beyondLength) / L;
+      const local = parts.flatMap((p) => { const Wp = W[ids.indexOf(p.item)]; return p.localTriangles && Wp ? p.localTriangles.map((t) => t.map((q) => invAt(Wc, rowsAt(Wp, q)))) : p.triangles.map((t) => t.map((q) => invAt(Wc, q))); }), Lo = invAt(Wc, O), Le = invAt(Wc, end), F = [dir[0] * Wc[0] + dir[1] * Wc[4] + dir[2] * Wc[8], dir[0] * Wc[1] + dir[1] * Wc[5] + dir[2] * Wc[9], dir[0] * Wc[2] + dir[1] * Wc[6] + dir[2] * Wc[10]].map((q) => q * m * G);
+      const e = extent(local), box = [0, 1, 2].map((k) => e.hi[k] - e.lo[k]), sup = s.a.joints?.find((x) => x.id === j.id)?.support, cell = sup?.cell != null ? s.num(sup.cell) : Math.max(1, Math.min(4, Math.min(...box) / 3)), fe = linkFE(local, Lo, Le, F, E, nu, cell), L = norm(sub(Lo, Le)) || 1, beyondLength = norm(sub(tool, end)), drop = fe.deflection + (1.5 * fe.deflection * beyondLength) / L;
       total += drop; carried = Math.max(carried, m); rows.push({ link: ids[j.child], deflection: fe.deflection, at_tool: drop, cell: fe.cell, stress: fe.stress });
     });
     return { label, total, carried, rows };

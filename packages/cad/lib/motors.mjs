@@ -151,7 +151,7 @@ const material = (name) => { const n = String(name || 'pla').toLowerCase().split
 export function motorChecks(s, f, helpers, materialName) {
   const motion = s.motion, drives = motion?.drives || [], loads = motion?.loads || [], { placeItems, jointValues, mul } = helpers;
   if (!drives.length) { if (loads.length) f('warn', `there are loads, but no motor: nothing has been checked against them (add a "motor" item that "drives" a joint)`, null, { code: 'motor.loads' }); return; }
-  const worlds = placeItems(motion, jointValues(motion, motion.pose ?? undefined));
+  const worlds = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined));
   for (const d of drives) {
     const m = d.model, grams = n3(m.mass * 1000, 1), K = d.spec.margin != null ? d.spec.margin : 2, W = worlds[d.item];
     f('info', `${d.id}: ${m.name}, ${grams} g${d.joint ? `, drives ${d.joint}` : ''}${m.stepAngle ? `, ${n3(m.stepAngle, 4)}° a step` : ''}${m.range ? `, ${m.range}° of travel` : ''}`, null, { code: 'motor.model', refs: { item: d.id, joint: d.joint }, values: { model: m.name, grams: m.mass * 1000, stepAngle: m.stepAngle } });
@@ -238,7 +238,7 @@ export function shaftFit(x, s, f, { placeItems, jointValues, mul, materialName, 
   // (a printed hole comes out holeComp smaller across, so a drawn bore is that much tighter on the real shaft)
   const motion = s.motion, top = (n) => String(n).split(/[.@]/)[0], drives = motion?.drives || [], d = drives.find((y) => y.id === top(x.a) || y.id === top(x.b)), other = d && (top(x.a) === d.id ? top(x.b) : top(x.a)), label = x.note || `${d?.id ?? x.a}'s shaft in ${other ?? x.b}`;
   if (!d) return f('fail', `${label}: neither ${x.a} nor ${x.b} is a motor`, null, { code: 'shaft.motor' });
-  const worlds = placeItems(motion, jointValues(motion, motion.pose ?? undefined)), W = worlds[d.item], m = d.model, S = m.shaft, r = S.diameter / 2;
+  const worlds = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined)), W = worlds[d.item], m = d.model, S = m.shaft, r = S.diameter / 2;
   const inv = (p) => { const q = [p[0] - W[3], p[1] - W[7], p[2] - W[11]]; return [W[0] * q[0] + W[4] * q[1] + W[8] * q[2], W[1] * q[0] + W[5] * q[1] + W[9] * q[2], W[2] * q[0] + W[6] * q[1] + W[10] * q[2]]; };
   const parts = s.parts.filter((p) => p.item === other || p.leaf === other);
   if (!parts.length) return f('fail', `${label}: no part "${other}"`, null, { code: 'shaft.part' });

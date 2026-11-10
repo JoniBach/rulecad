@@ -124,6 +124,9 @@ EXAMPLES chapter 12 builds one from start to finish.
 - **Everything bought is an item.** Motors, drivers, bearings, switches, the supply: `bought` items and `wires` make the
   shopping list (`cad list`), the wiring sheet (`cad wires`) and the firmware's settings (`cad machine`) from one assembly.
 - Before moving anything: `cad plot` the drawing and watch the preview. It refuses a stroke that leaves the sheet.
+- **A gait is the same idea for a body.** Give an assembly a `gait` (`legs`, `pattern`, `stride`, `lift`, `period`, `height`, `mass`): the body at the world origin, the hips at z = 0, the feet as anchors. One leg on a stand is a gait of one leg (`"pattern": { "duty": 0.6, "phase": [0] }`). Anchor a round foot at its centre, so the contact rolls with the shin and the height stays true. Report a gait's numbers as they are: quasi-static, the torque from the weight alone, no dynamics.
+- **Say what the machine weighs.** A robot built from these parts is heavier than the first sizing said it was: list `cad list`'s grams and set the gait's `mass` to that, and report the torque margin at the real mass.
+- Start a machine from a template rather than from an empty assembly: `npm create rulecad my-arm --machine arm --sheet a5 --accuracy 0.3`, or `--machine leg`.
 
 ## Talking to the person
 - Give links as one labelled line (`npx cad link <project>/<object> --md`), never a raw URL. If it says

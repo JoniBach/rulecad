@@ -181,13 +181,20 @@ ${demo[dir] ? demo[dir]() : ''}
   const script = fs.existsSync(path.join(HERE, 'src/demos', `${dir}.mjs`)) ? `<script type="module" src="../assets/demos/${dir}.mjs"></script>` : ''
   write(path.join(DOCS, dir, 'index.html'), page(`${p.name}: rulecad`, intro[dir] || p.description, dir, body, { map: !!script, script }))
 }
+// ---- guides: pages of their own, written in Markdown in docs/guides ----
+const guides = fs.readdirSync(path.join(HERE, 'guides')).filter((f) => f.endsWith('.md')).sort().map((f) => {
+  const text = fs.readFileSync(path.join(HERE, 'guides', f), 'utf8'), dir = f.replace(/\.md$/, ''), title = text.match(/^# (.*)$/m)?.[1] || dir
+  return { dir, title, text }
+})
 const index = `<h1>rulecad</h1>
 <p class="lede">Design physical things as code, where every measurement says which rule it comes from: a printer's line width, a screw's clearance, a switch's stem. Check that they print and fit, version them by what fits what, draw their circuit boards from the same rules, and share them as links.</p>
 <pre><code>npm create rulecad@latest my-project
 cd my-project && npx cad check home/soap-tray</code></pre>
 <p>${inline('Each library below has a page: what it is for, how to use it, and a demonstration. The ones marked *live* run their own code in this page.')}</p>
+${guides.length ? `<h2>Guides</h2><p class="muted">Walked from start to finish, in commands.</p><div class="grid">${guides.map((g) => `<a class="card" href="${g.dir}/"><span class="kind">guide</span><h3>${esc(g.title)}</h3></a>`).join('')}</div>` : ''}
 ${groups.map(([title, line, dirs]) => `<h2>${esc(title)}</h2><p class="muted">${esc(line)}</p><div class="grid">${dirs.map((d) => `<a class="card" href="${d}/"><span class="kind">${esc(name(d))}${browser[d] || d === 'rules' ? ' · live' : ''}</span><h3>${esc(d)}</h3><p>${esc(intro[d] || pkg(d).description)}</p></a>`).join('')}</div>`).join('\n')}
 <h2>How they fit together</h2>
 <p>${inline('`cad` is the command line. It reads designs whose variables come from `variables` and rule sets such as `rules`, builds shapes with JSCAD and `shapes`, checks them with `printcheck` and `fit`, releases them with `versions`, lays out keyboards with `keyboard-layout`, draws boards with `pcb`, and shares them with `model-link`, which the `viewer` opens. `create-rulecad` starts a project with all of it in place.')}</p>`
+for (const g of guides) write(path.join(DOCS, g.dir, 'index.html'), page(`${g.title}: rulecad`, g.title, g.dir, `<div class="readme">${markdown(g.text, { link: (u) => (u.startsWith('../') || /^(https?:|mailto:|#)/.test(u) ? u : `${REPO}/blob/main/${u}`) })}</div>`))
 write(path.join(DOCS, 'index.html'), page('rulecad libraries', 'Design physical things as code: the rulecad libraries, with live demonstrations.', null, index).replace('href="assets/style.css"', 'href="assets/style.css"'))
 console.log(`docs: ${order.length} library pages and an index in ${path.relative(process.cwd(), DOCS) || DOCS}${made.boards.length ? `, ${made.boards.length} boards drawn` : ''}${made.cad.check ? ', the starter project checked' : ''}`)

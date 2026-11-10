@@ -1,0 +1,15 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "scale",
+  "title": "Kitchen scale (not printed)",
+  "version": "0.1.0",
+  "role": "reference",
+  "uses": ["leg"],
+  "anchors": {
+    "top": {"at": [0, 0, "high"], "axis": [0, 0, 1]}
+  },
+  "variables": {
+    "side": {"value": 120, "unit": "mm", "rule": "The platform: a common 5 kg kitchen scale. Measure yours", "kind": "estimate"},
+    "high": {"value": "leg.scale_h", "unit": "mm", "rule": "Its height"}
+  }
+}

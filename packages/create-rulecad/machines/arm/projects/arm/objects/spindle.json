@@ -1,0 +1,34 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "spindle",
+  "title": "Spindle: disc and shaft",
+  "version": "0.1.0",
+  "uses": ["x1c", "arm", "m3"],
+  "engine": "manifold",
+  "orientation": "The disc on the bed, the shaft up, as it goes on",
+  "description": "The output's flange turns the spindle; the spindle's shaft runs in the 6800 and carries the upper arm on a hexagon at its top.",
+  "anchors": {
+    "down": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]},
+    "seat": {"at": [0, 0, "collar_top + width"], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "disc": {"value": "arm.disc", "unit": "mm", "rule": "Thick enough for a countersunk M3"},
+    "rim": {"value": 46, "unit": "mm", "rule": "Round the 40 mm bolt circle"},
+    "bolt": {"value": 20, "unit": "mm", "rule": "On the output's bolt circle"},
+    "hole": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
+    "head": {"value": "m3.head", "unit": "mm", "rule": "A countersunk head, flush with the disc so the bridge passes over"},
+    "shaft": {"value": "arm.bearing_bore - x1c.press", "unit": "mm", "rule": "A close slide into the bearing's bore, clamped end to end by the upper arm's screw"},
+    "width": {"value": "arm.bearing_width", "unit": "mm", "rule": "The bearing"},
+    "collar_top": {"value": "arm.bridge_low + arm.bridge - width - arm.output_top", "unit": "mm", "rule": "Where the inner race rests, above the disc's underside"},
+    "shoulder": {"value": 13, "unit": "mm", "rule": "Stops the inner race; clears the outer race"},
+    "hex": {"value": 8, "unit": "mm", "rule": "Hexagon across its flats: inside the bore, drives the upper arm"},
+    "hex_long": {"value": 5, "unit": "mm", "rule": "Into the arm's socket"},
+    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped", "kind": "community"},
+    "pilot_depth": {"value": 12, "unit": "mm", "rule": "For the arm's M3"},
+    "cos30": {"value": "cosd(30)", "rule": "A hexagon, across corners to across flats"},
+    "bolts": {"value": 4, "rule": "On the bolt circle"},
+    "quarter": {"value": 1.57079633, "rule": "A quarter turn in radians"},
+    "segments": {"value": 64, "rule": "Round enough"},
+    "hex_segments": {"value": 6, "rule": "A hexagon's sides"}
+  }
+}

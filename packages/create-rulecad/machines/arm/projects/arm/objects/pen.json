@@ -1,0 +1,17 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "pen",
+  "title": "Pen (bought, a fineliner)",
+  "version": "0.1.0",
+  "role": "reference",
+  "anchors": {
+    "tip": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "d": {"value": 10, "unit": "mm", "rule": "A fineliner's body, about: measure yours and set the holder's bore"},
+    "long": {"value": 140, "unit": "mm", "rule": "Its length"},
+    "point": {"value": 15, "unit": "mm", "rule": "The tapered point"},
+    "tip_d": {"value": 2, "unit": "mm", "rule": "At the tip"},
+    "segments": {"value": 32, "rule": "Round enough"}
+  }
+}

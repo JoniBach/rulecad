@@ -1,0 +1,21 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "foot",
+  "title": "Stand foot block",
+  "version": "0.1.0",
+  "uses": ["x1c", "leg", "m5"],
+  "engine": "manifold",
+  "orientation": "Flat on the bed, the rod's socket opening up",
+  "description": "Holds a rod upright, and bolts to the bench through two holes.",
+  "variables": {
+    "long": {"value": 36, "unit": "mm", "rule": "Along the bench: the rod and a bolt each side"},
+    "wide": {"value": 26, "unit": "mm", "rule": "Across: the socket and the bolts"},
+    "thick": {"value": "leg.foot_block", "unit": "mm", "rule": "The socket's depth and a floor"},
+    "socket": {"value": "leg.rod_d + x1c.hole_comp", "unit": "mm", "rule": "The rod, a press into the printed bore"},
+    "depth": {"value": "leg.foot_socket", "unit": "mm", "rule": "How far the rod goes in"},
+    "bolt": {"value": "m5.clearance", "unit": "mm", "rule": "To the bench"},
+    "bolt_x": {"value": 12, "unit": "mm", "rule": "The bolts, either side of the rod"},
+    "corner": {"value": 4, "unit": "mm", "rule": "The block's corners, rounded"},
+    "segments": {"value": 48, "rule": "Round enough"}
+  }
+}

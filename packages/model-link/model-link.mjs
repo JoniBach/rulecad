@@ -162,6 +162,7 @@ function motionOk(mo, places) {
   if (mo.poses != null && (typeof mo.poses !== 'object' || Object.values(mo.poses).some((p) => !p || typeof p !== 'object' || Object.values(p).some((v) => !(typeof v === 'number' || nums(v)))))) return false;
   const pair = (x) => Array.isArray(x) && x.length === 2 && x.every((i) => Number.isInteger(i) && i >= 0 && i < places);
   if (mo.swap != null && (typeof mo.swap !== 'object' || Object.entries(mo.swap).some(([n, list]) => !mo.poses?.[n] || !Array.isArray(list) || !list.every(pair)))) return false;
+  if (mo.sequence != null && !(mo.sequence && Array.isArray(mo.sequence.names) && mo.sequence.names.every((n) => typeof n === 'string' && mo.joints.some((j) => j.id === n)) && Array.isArray(mo.sequence.q) && mo.sequence.q.length <= LIMITS.places && mo.sequence.q.every((row) => nums(row, mo.sequence.names.length)) && typeof mo.sequence.period === 'number' && mo.sequence.period > 0)) return false;
   return mo.allow == null || (Array.isArray(mo.allow) && mo.allow.every(pair));
 }
 
@@ -274,7 +275,7 @@ export const posesOf = (m) => (m.parts || []).map((part, k) => ({ k, part })).fi
 
 // ---------- motion ----------
 // Joints between items, so a page (or a tool) can move them: an assembly's hinges, rails and ball joints.
-//   motion: { items: [[name, …12?]], joints: [joint], poses: { name: { joint: value } }, pose?, part: [item per place],
+//   motion: { items: [[name, …12?]], joints: [joint], poses: { name: { joint: value } }, pose?, part: [item per place], sequence?: { period, names: [joint], q: [values per frame] } (a gait, played),
 //             allow?: [[place, place]], swap?: { pose: [[place, place]] } }
 //   An item with 12 numbers sits there (a 3 × 4 transform by rows, as in place); one without is placed by the joint
 //   whose child it is. part[n] is the item place n moves with (-1: it never moves); allow pairs may overlap (press fits).

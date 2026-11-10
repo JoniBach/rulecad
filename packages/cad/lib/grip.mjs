@@ -12,7 +12,7 @@ export function gripChecks(s, f) {
   const code = 'tool.grip', d = s.motion.drives.find((x) => x.id === g.servo), payload = s.task.payload ?? 0;
   if (!d) throw new Error(`task.grip: servo "${g.servo}" isn't a motor item (${s.motion.drives.map((x) => x.id).join(', ') || 'none'})`);
   if (d.model.type !== 'servo') throw new Error(`task.grip: ${g.servo} is a ${d.model.type}: the grip is worked out for a servo through its horn`);
-  const name = materialOf(s.project).name, rules = peekRuleSet(name).rules, E = rules.modulus.value, strength = rules.strength.value;
+  const name = String(g.material ?? materialOf(s.project).name).toLowerCase(), rules = peekRuleSet(name).rules, E = rules.modulus.value, strength = rules.strength.value;
   const horn = s.num(g.horn), travel = s.num(g.travel), lever = g.lever != null ? s.num(g.lever) : 1, mu = s.num(g.friction ?? 0.4), L = { length: s.num(g.leaf.length), thickness: s.num(g.leaf.thickness), width: s.num(g.leaf.width) }, m = leafModel(L, { E });
   const torque = d.model.figures.stall_torque.value * (g.torque_share != null ? s.num(g.torque_share) : 0.6), pull = ((torque * 1000) / horn / 2) * lever, spring = m.stiffness * travel, grip = pull - spring, accel = (s.task.accel ?? 0) / 1000, need = payload * (G + accel);
   const held = 2 * mu * grip, margin = need > 0 ? held / need : Infinity, want = g.margin != null ? s.num(g.margin) : 2, stress = m.stress(travel), strain = stress / strength, values = { grip, pull, spring, held, need, margin, stress };

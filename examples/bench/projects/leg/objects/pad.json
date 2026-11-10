@@ -1,0 +1,27 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "pad",
+  "title": "Grip pad",
+  "version": "0.1.0",
+  "uses": ["x1c", "leg"],
+  "engine": "manifold",
+  "material": "TPU",
+  "orientation": "On one flat side: a C with its tread across the layers. TPU, 95A: PLA on a kitchen scale would slip",
+  "description": "A printed tread that snaps round the foot's disc, its inner ridge in the disc's groove. It takes the ground's push and bends a little under it.",
+  "anchors": {
+    "axis": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
+  },
+  "variables": {
+    "width": {"value": 14, "unit": "mm", "rule": "The foot's width, the disc's", "interface": true},
+    "inner": {"value": "leg.foot_r - 3", "unit": "mm", "rule": "The disc's radius"},
+    "outer": {"value": "leg.foot_r", "unit": "mm", "rule": "Out to the tread"},
+    "grip": {"value": 0.05, "unit": "mm", "rule": "How much the pad's bore is under the disc: TPU stretches, and it stays on"},
+    "ridge": {"value": 1, "unit": "mm", "rule": "The ridge in the groove, 45°"},
+    "sweep": {"value": 200, "unit": "°", "rule": "Round the disc: past half way, so it snaps on and stays"},
+    "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
+    "ribs": {"value": 11, "rule": "Cuts across the tread, each a little more edge on the ground"},
+    "rib_w": {"value": 1.2, "unit": "mm", "rule": "Each cut's width: three lines of 0.4"},
+    "rib_d": {"value": 1, "unit": "mm", "rule": "Each cut's depth, a third of the pad's thickness"},
+    "segments": {"value": 64, "rule": "Round enough"}
+  }
+}

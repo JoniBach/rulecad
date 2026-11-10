@@ -56,7 +56,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path)
-  cad animate <project>/<object>    a lamina mechanism's sequence, start to finish, in .preview/: an animated SVG, the
+  cad animate <project>/<object>    a lamina mechanism's sequence, or an assembly's gait, start to finish, in .preview/: an animated SVG, the
                                     data (shapes, forces, energies, strains each frame, JSON) and a page that plays it
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
@@ -664,6 +664,15 @@ async function assembly(cmd, ref) {
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
     process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;
     return;
+  }
+  if (cmd === 'animate') {
+    if (!s.gait) throw new Error(`${ref} has no gait: cad animate plays a gait ("gait" at the top of the assembly), or a lamina mechanism's sequence`);
+    const { gaitSvg, gaitData } = await import('../lib/animate.mjs'), { framesOf } = await import('../lib/gait.mjs'), r = framesOf(s);
+    if (!r.frames.length) throw new Error(`${ref}'s gait has nothing to play: ${r.findings.map((x) => x.text).join('; ')}`);
+    const svg = paths.preview(s.project, `${s.name}-gait.svg`), json = paths.preview(s.project, `${s.name}-gait.json`);
+    fs.mkdirSync(path.dirname(svg), { recursive: true });
+    fs.writeFileSync(svg, gaitSvg(s, r, { title: `${title}: ${typeof a.gait.pattern === 'string' ? a.gait.pattern : 'a gait'}` })); fs.writeFileSync(json, JSON.stringify(gaitData(s, r)));
+    console.log(svg); return console.log(json);
   }
   if (cmd === 'preview') {
     const out = paths.preview(s.project, `${s.name}${pose ? `-${pose}` : ''}${opt('explode') ? '-exploded' : ''}.png`);

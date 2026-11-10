@@ -1,0 +1,32 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "bridge",
+  "title": "Bridge: the 6800's seat",
+  "version": "0.1.0",
+  "uses": ["x1c", "leg", "m3"],
+  "engine": "manifold",
+  "orientation": "Upside to the sky, as it goes on: the pocket opens upward and its ledge prints flat",
+  "description": "Three arms across the housing's posts, holding the bearing that takes the output's tipping load.",
+  "anchors": {
+    "seat": {"at": [0, 0, "thick - width"], "axis": [0, 0, 1]},
+    "under": {"at": [0, 0, 0], "axis": [0, 0, 1]}
+  },
+  "variables": {
+    "thick": {"value": "leg.bridge", "unit": "mm", "rule": "The bearing's width and a ledge", "interface": true},
+    "bore": {"value": "leg.bearing_bore", "unit": "mm", "rule": "The 6800's bore"},
+    "outer": {"value": "leg.bearing_outer", "unit": "mm", "rule": "The 6800's outside"},
+    "width": {"value": "leg.bearing_width", "unit": "mm", "rule": "The 6800's width"},
+    "relief": {"value": "thick - width", "unit": "mm", "rule": "Through the ledge, so the seat prints without a bridge"},
+    "hub": {"value": 34, "unit": "mm", "rule": "Round the pocket, three lines and more of wall"},
+    "post_r": {"value": 37, "unit": "mm", "rule": "On the housing's posts"},
+    "lobe": {"value": 12, "unit": "mm", "rule": "Each arm's width"},
+    "p1": {"value": 30, "unit": "°", "rule": "First post"},
+    "p2": {"value": 150, "unit": "°", "rule": "Second post"},
+    "p3": {"value": 270, "unit": "°", "rule": "Third post"},
+    "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
+    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
+    "head": {"value": "m3.head + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "The screw head's counterbore"},
+    "head_depth": {"value": "m3.head_height + x1c.layer", "unit": "mm", "rule": "A socket head's height, sunk, so the thigh passes over"},
+    "segments": {"value": 64, "rule": "Round enough"}
+  }
+}

@@ -494,9 +494,20 @@ function moving(mo, parts, mid, alts = new Map()) {
     c.textContent = pairs.length ? `Collides: ${[...new Set(pairs)].slice(0, 3).join('; ')}${pairs.length > 3 ? ` and ${pairs.length - 3} more` : ''}` : 'Nothing collides here (a quick look)';
   };
   $('motion').hidden = !free.length && poses.length < 2;
+  // A gait (mo.sequence): play its frames in time, the joints it names set as the frames say, and scrub through them by hand
+  if (mo.sequence?.q?.length) {
+    const seq = mo.sequence, row = el('div', 'row'), btn = el('button', null, 'Play gait'), scrub = Object.assign(el('input'), { type: 'range', min: 0, max: 1, step: 0.001, value: 0 }); scrub.setAttribute('aria-label', 'Where in the gait');
+    row.append(btn, scrub); $('poses').after(row);
+    let playing = false, last = 0, phase = 0;
+    const show = (t) => { phase = t - Math.floor(t); const n = seq.q.length, x = phase * n, a = Math.floor(x) % n, b = (a + 1) % n, k = x - Math.floor(x); set(seq.names, seq.q[a].map((v, i) => v + (seq.q[b][i] - v) * k)); scrub.value = phase; };
+    const tick = (now) => { if (!playing) return; if (last) show(phase + (now - last) / 1000 / seq.period); last = now; requestAnimationFrame(tick); };
+    btn.onclick = () => { playing = !playing; btn.textContent = playing ? 'Pause' : 'Play gait'; last = 0; if (playing) requestAnimationFrame(tick); };
+    scrub.oninput = () => { playing = false; btn.textContent = 'Play gait'; show(Number(scrub.value)); };
+  }
   place();
   // For the pen and the playback: set some joints (the chain's), and hear of every move
-  const set = (names, q) => { names.forEach((n, i) => { values[n] = [q[i]]; }); sliders.forEach((f) => f()); place(); pick(null); $('clash').textContent = ''; };
+  // A joint behind a gearbox (a follower) is moved by the motor's shaft it follows, here as everywhere
+  const set = (names, q) => { names.forEach((n, i) => { let j = mo.joints.find((x) => x.id === n), v = q[i]; while (j?.follow) { const [lead, r = 1, o = 0] = j.follow; v = (v - o) / r; j = mo.joints.find((x) => x.id === lead); } if (j) values[j.id] = [v]; }); values = jointValues(mo, values); sliders.forEach((f) => f()); place(); pick(null); $('clash').textContent = ''; };
   return { reset: () => go(mo.pose || null), set, listen: (f) => { listeners.push(f); place(); }, values: () => values };
 }
 

@@ -107,6 +107,15 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     await run(`document.querySelector('#joints input').value = 45; document.querySelector('#joints input').dispatchEvent(new Event('input')); true`);
     await new Promise((r) => setTimeout(r, 500));
     await shot('viewer-motion.png');
+    // A gait: Play in the Motion panel, frames in time on the joints it names; the scrubber sets one by hand
+    const gaited = await encode({ title: 'gait', ...fromShapes([{ shape: 'block', triangles: block, matrix: I, name: 'block.body' }, { shape: 'arm', triangles: arm, matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 12], name: 'arm.body' }]),
+      motion: { items: [['block', ...I], ['arm']], part: [0, 1], poses: { flat: { hinge: 0 } }, pose: 'flat', sequence: { period: 2, names: ['hinge'], q: [[0], [30], [60], [30]] },
+        joints: [{ id: 'hinge', label: 'Arm', type: 'revolute', parent: 0, child: 1, a: frame([5, 0, 12], [0, 1, 0]), b: frame([0, 0, 0], [0, 1, 0]), dofs: [[-90, 90, 0]] }] } });
+    await run(`location.hash = '#m=${gaited}'; location.reload(); true`).catch(() => {});
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'gait'`), 'the gait link opens');
+    await run(`(() => { const s = document.querySelector('[aria-label="Where in the gait"]'); s.value = 0.5; s.dispatchEvent(new Event('input')); return true; })()`);
+    assert.equal(await run(`document.querySelector('#joints b').textContent`), '60°', 'half way through the gait, the hinge is at its third frame');
+    assert.equal(await run(`[...document.querySelectorAll('#motion button')].some((b) => b.textContent === 'Play gait')`), true);
     // A pose that changes a part's shape (a flexure bent): the "pose" part is swapped in for it there, and only there
     const thick = tri(cuboid({ size: [10, 2, 6] })); // reaches back over the block and 3 mm down, 1 mm into its top
     const posed = await encode({ title: 'posed', ...fromShapes([{ shape: 'block', triangles: block, matrix: I, name: 'block.body' }, { shape: 'arm', triangles: arm, matrix: [1, 0, 0, 5, 0, 1, 0, 0, 0, 0, 1, 12], name: 'arm.body' },

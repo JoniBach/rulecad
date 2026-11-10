@@ -41,7 +41,7 @@ import { taskOf, taskChecks } from './task.mjs';
 import { powerChecks } from './power.mjs';
 import { loadChecks } from './loads.mjs';
 import { gripChecks } from './grip.mjs';
-import { gaitOf, gaitChecks } from './gait.mjs';
+import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
 
@@ -435,6 +435,7 @@ function planetaries(list, joints, items, num) {
     // Every part where it is with these joints at 0
     const v = jointValues({ joints, poses: {} }, {});
     for (const j of [lead, follower, ...planetJoints]) v[j.id] = [0];
+    if (g.output) { const j2 = moving(index(g.output.ring, 'output ring')); if (j2) v[j2.id] = [0]; } // (a range that leaves out 0 would put the ring where the phase isn't reckoned)
     const worlds = placeItems({ items, joints }, v), W = (k) => worlds[k];
     const O = org(W(idx.sun)), Z = col(W(idx.sun), 2), X0 = col(W(idx.sun), 0);
     const sign = (j) => Math.sign(dot(mul(j.parent < 0 ? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] : worlds[j.parent], j.a).filter((_, i) => [2, 6, 10].includes(i)), Z));
@@ -971,6 +972,7 @@ export function motionData(s) {
     poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
     part: s.parts.map((p) => names.indexOf(p.item)),
     ...(allow.length ? { allow } : {}),
+    ...(s.gait ? { sequence: gaitSequence(s) ?? undefined } : {}),
   } };
 }
 

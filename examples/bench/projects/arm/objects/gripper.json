@@ -1,0 +1,432 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "gripper",
+  "title": "Gripper: palm and two fingers on leaves",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "m2",
+    "m3"
+  ],
+  "engine": "manifold",
+  "material": "PETG",
+  "orientation": "Flat on the bed, the leaves printed upright in their layers: every wall of the leaves is a whole layer stack, no overhang, the same outline the whole way up",
+  "description": "Bolts into the forearm's yoke where the pen holder bolts. Two fingers on long leaves, closed by a double-arm horn turning in the leaves' own plane: no lift, no twist. Drawn at rest, open, the leaves straight.",
+  "anchors": {
+    "mount": {
+      "at": [
+        0,
+        0,
+        "half"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "tool": {
+      "at": [
+        "jaw_at",
+        0,
+        "half"
+      ],
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "ref": [
+        0,
+        1,
+        0
+      ]
+    },
+    "servo": {
+      "at": [
+        "xs",
+        0,
+        "face"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "horn": {
+      "at": [
+        "xs",
+        0,
+        "horn_z"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        "cosd(rest_a)",
+        "sind(rest_a)",
+        0
+      ]
+    },
+    "cable": {
+      "at": [
+        "xs",
+        0,
+        0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ]
+    },
+    "upper": {
+      "at": [
+        "jaw_x0",
+        "pad_y",
+        "half"
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    },
+    "lower": {
+      "at": [
+        "jaw_x0",
+        "0 - pad_y",
+        "half"
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  },
+  "variables": {
+    "part": {
+      "value": 0,
+      "rule": "0 the whole print, 1 the palm, 2 the upper finger, 3 the lower: the closing check moves the fingers apart from the palm",
+      "tweak": {
+        "min": 0,
+        "max": 3
+      }
+    },
+    "width": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "The print's thickness, and the width of the leaves: the yoke's slot and stiff against the payload's weight across the leaves",
+      "interface": true
+    },
+    "half": {
+      "value": "width / 2",
+      "unit": "mm",
+      "rule": "Half of it, where the horn turns and the load sits"
+    },
+    "block_x": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Half the block in the yoke, along the arm"
+    },
+    "block_y": {
+      "value": 9,
+      "unit": "mm",
+      "rule": "Half the block across it"
+    },
+    "bolt_x": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Half the yoke's two M3 screws' spacing, as the pen holder's"
+    },
+    "bolt": {
+      "value": "m3.clearance + x1c.hole_comp",
+      "unit": "mm",
+      "rule": "M3 clearance through the block"
+    },
+    "xs": {
+      "value": 62,
+      "unit": "mm",
+      "rule": "From the bolts to the servo's shaft: the leaves' length and the servo's body set it"
+    },
+    "leaf_l": {
+      "value": 50,
+      "unit": "mm",
+      "rule": "A leaf's length: long, so the servo spends little of its torque bending it and the strain stays small",
+      "label": "Leaf",
+      "show": true
+    },
+    "leaf_t": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "A leaf's thickness: two and a bit lines"
+    },
+    "taper": {
+      "value": 0.25,
+      "rule": "Thicker toward both ends, the strain spread along it"
+    },
+    "fillet": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "A round where each leaf meets a block: no square corner to yield at"
+    },
+    "into": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "How far a leaf runs into the block at each end"
+    },
+    "y_in": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "A finger's inner face at rest: the stem's side, its full travel and a gap"
+    },
+    "y_out": {
+      "value": 18.5,
+      "unit": "mm",
+      "rule": "A finger's outer edge"
+    },
+    "y_flat": {
+      "value": 16,
+      "unit": "mm",
+      "rule": "The flat the horn presses, the finger cut back to here so the tip reaches it from the outside"
+    },
+    "up_end": {
+      "value": "xs + 6.5",
+      "unit": "mm",
+      "rule": "The upper leaf ends just before the horn's contact"
+    },
+    "low_end": {
+      "value": "xs - 15.5",
+      "unit": "mm",
+      "rule": "The lower leaf ends just before its contact: the two arms of a horn press on opposite sides of its axis"
+    },
+    "up_root": {
+      "value": "up_end - leaf_l",
+      "unit": "mm",
+      "rule": "Where the upper leaf grows from"
+    },
+    "low_root": {
+      "value": "low_end - leaf_l",
+      "unit": "mm",
+      "rule": "Where the lower leaf grows from"
+    },
+    "arm_y": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Where the root arms join the palm, off the middle: clear of the forearm's bar, which runs on behind the yoke"
+    },
+    "root": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "The root arms' depth along the arm"
+    },
+    "overlap": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "A leaf's tip into the finger's back"
+    },
+    "flat_a": {
+      "value": 7,
+      "unit": "mm",
+      "rule": "The flat, starting out from the axis along the arm: where the tip touches at rest"
+    },
+    "flat_b": {
+      "value": 15.5,
+      "unit": "mm",
+      "rule": "The flat's far end: where the tip gets to at full close, with a little over"
+    },
+    "jaw_x0": {
+      "value": 78,
+      "unit": "mm",
+      "rule": "The jaws begin, past the end of the stem and the servo's front"
+    },
+    "jaw_x1": {
+      "value": 92,
+      "unit": "mm",
+      "rule": "The jaws end"
+    },
+    "pad_y": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Half a post across"
+    },
+    "jaw_at": {
+      "value": 85,
+      "unit": "mm",
+      "rule": "Halfway along the jaws: the payload's point and the tool's anchor"
+    },
+    "stem_x1": {
+      "value": 75,
+      "unit": "mm",
+      "rule": "The stem ends past the servo's front screw"
+    },
+    "stem_y": {
+      "value": 8.4,
+      "unit": "mm",
+      "rule": "Half the stem round the servo's body: 6.1 and a 2 mm wall"
+    },
+    "stem_y0": {
+      "value": 5.5,
+      "unit": "mm",
+      "rule": "Half the stem behind the servo"
+    },
+    "face": {
+      "value": "horn_top + 13.3",
+      "unit": "mm",
+      "rule": "The servo's mounting tabs: its case and boss reach down 13.3 mm to the horn"
+    },
+    "horn_z": {
+      "value": "half",
+      "unit": "mm",
+      "rule": "The horn's plane: the middle of the leaves' width, so a push on the finger doesn't twist it",
+      "interface": true
+    },
+    "horn_t": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The horn's thickness"
+    },
+    "horn_top": {
+      "value": "horn_z + horn_t / 2",
+      "unit": "mm",
+      "rule": "The side of the horn toward the servo"
+    },
+    "case_z": {
+      "value": "face - 10",
+      "unit": "mm",
+      "rule": "Where the servo's case ends, coming down"
+    },
+    "pocket_back": {
+      "value": 17.3,
+      "unit": "mm",
+      "rule": "The case's pocket, behind the shaft"
+    },
+    "pocket_front": {
+      "value": 6.6,
+      "unit": "mm",
+      "rule": "The case's pocket, ahead of the shaft"
+    },
+    "pocket_y": {
+      "value": 6.3,
+      "unit": "mm",
+      "rule": "Half the case's pocket across"
+    },
+    "boss": {
+      "value": 12.4,
+      "unit": "mm",
+      "rule": "Round the servo's boss, through the stem"
+    },
+    "hub": {
+      "value": 13,
+      "unit": "mm",
+      "rule": "Round the horn's hub"
+    },
+    "cavity": {
+      "value": 6.5,
+      "unit": "mm",
+      "rule": "The floor under the horn: what's left of the stem where the horn sweeps"
+    },
+    "pad_front": {
+      "value": 8.4,
+      "unit": "mm",
+      "rule": "The servo's front screw, from the shaft"
+    },
+    "pad_back": {
+      "value": 19.1,
+      "unit": "mm",
+      "rule": "The servo's rear screw, from the shaft"
+    },
+    "pad_x": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "A post under each of the servo's tabs, how far past its screw, along the arm"
+    },
+    "pad_gap": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Air between a post and the case's pocket"
+    },
+    "dip": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "How far the posts run down into the stem"
+    },
+    "pilot": {
+      "value": "m2.clearance - 0.6",
+      "unit": "mm",
+      "rule": "An M2 screw self-tapped into a post",
+      "kind": "community"
+    },
+    "pilot_d": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "A pilot hole's depth"
+    },
+    "reach": {
+      "value": 18,
+      "unit": "mm",
+      "rule": "The horn's arm, from the axis to its tip, as drawn by the kit's reference horn"
+    },
+    "slack": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "The wedge's reach past the horn's tip"
+    },
+    "spare": {
+      "value": 20,
+      "unit": "\u00b0",
+      "rule": "The wedge's angular spare each side"
+    },
+    "rest_a": {
+      "value": 64,
+      "unit": "\u00b0",
+      "rule": "The horn's arm direction at rest: the tip just touching the finger's flat"
+    },
+    "close_a": {
+      "value": 47,
+      "unit": "\u00b0",
+      "rule": "The horn's arm direction at full close: 3 mm of push at the flat"
+    },
+    "wedge_n": {
+      "value": 8,
+      "rule": "Steps round a wedge's arc"
+    },
+    "half_turn": {
+      "value": 180,
+      "unit": "\u00b0",
+      "rule": "Half a turn"
+    },
+    "deg": {
+      "value": 0.017453293,
+      "rule": "Radians in a degree"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Round enough"
+    }
+  }
+}

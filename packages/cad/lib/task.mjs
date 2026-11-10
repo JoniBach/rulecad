@@ -25,8 +25,9 @@ export function taskOf(a, motion, num) {
   const out = { tool: t.tool, item: id, point: [mark.frame[3], mark.frame[7], mark.frame[11]], speed: value('speed'), accuracy: value('accuracy'), elbow: t.elbow ?? null, deflection: t.deflection != null ? num(t.deflection) : 0, payload: t.payload != null ? num(t.payload) : null, accel: t.accel != null ? num(t.accel) : null };
   if (t.elbow != null && !['left', 'right'].includes(t.elbow)) throw new Error(`${what}: elbow is left or right (got ${JSON.stringify(t.elbow)})`);
   if (t.sheet) out.sheet = { ...t.sheet, at: vec(t.sheet.at), ...(t.sheet.normal ? { normal: vec(t.sheet.normal) } : {}), ...(t.sheet.u ? { u: vec(t.sheet.u) } : {}) };
-  if (t.region) out.region = t.region;
-  if (t.volume) out.volume = t.volume;
+  const ranges = (o) => Object.fromEntries(Object.entries(o).map(([k, x]) => [k, Array.isArray(x) ? x.map(num) : typeof x === 'object' ? x : num(x)]));
+  if (t.region) out.region = ranges(t.region);
+  if (t.volume) out.volume = ranges(t.volume);
   try { if (out.sheet) sheetFrame(out.sheet); } catch (e) { throw new Error(`${what}: ${e.message}`); }
   return out;
 }
@@ -67,6 +68,7 @@ function reachCheck(s, f, picture) {
 
 // How fast a sampled point can go: in each direction across the sheet, the speed at which the first joint hits its limit
 function fastest(c, q, frame, limits) {
+  if (!frame) return fastestAnyWay(c, q, limits);
   const J = jacobian(c, q), rows = frame ? [frame.u, frame.v].map((d) => c.names.map((_, i) => d[0] * J[0][i] + d[1] * J[1][i] + d[2] * J[2][i])) : [J[0], J[1]];
   const N = c.names.length, a = dot2(rows[0], rows[0]), b = dot2(rows[0], rows[1]), d = dot2(rows[1], rows[1]), det = a * d - b * b;
   if (Math.abs(det) < 1e-9) return 0;
@@ -80,6 +82,17 @@ function fastest(c, q, frame, limits) {
   return worst;
 }
 const dot2 = (a, b) => a.reduce((t, x, i) => t + x * b[i], 0);
+// In a volume or along a single axis: every way the joints can move together, the slowest the tool goes before a joint runs out
+function fastestAnyWay(c, q, limits) {
+  const J = jacobian(c, q), N = c.names.length, turns = N === 1 ? [[1]] : N === 2 ? Array.from({ length: 24 }, (_, k) => [Math.cos((k * Math.PI) / 12), Math.sin((k * Math.PI) / 12)]) : Array.from({ length: 200 }, (_, k) => { const z = 1 - (2 * (k + 0.5)) / 200, r = Math.sqrt(1 - z * z), a = k * 2.399963; return [r * Math.cos(a), r * Math.sin(a), z, ...new Array(N - 3).fill(0)]; });
+  let worst = Infinity;
+  for (const d of turns) {
+    const v = J.map((row) => dot2(row, d)), tool = Math.hypot(...v); if (tool < 1e-9) continue;
+    let scale = Infinity; d.forEach((x, i) => { if (Math.abs(x) > 1e-12) scale = Math.min(scale, limits[i] / Math.abs(x)); });
+    worst = Math.min(worst, tool * scale);
+  }
+  return worst === Infinity ? 0 : worst;
+}
 
 // deg/s (or mm/s) each joint of the chain can go, from what drives it. null: nothing drives it
 function jointSpeeds(s, c) {

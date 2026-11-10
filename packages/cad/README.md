@@ -657,6 +657,8 @@ nothing jams, that its catches hold, and that every flexure has a hard stop befo
 moving bodies in blue and the flexures in orange, drawn bent, holding a moment at each state. Under it, each driven step's force against its travel, with a marker that follows the frames; a mechanism that fires adds the shot in slow motion. The printer's
 `print_gap` is the gap the checks hold it to.
 
+An assembly with a `gait` (EXAMPLES chapter 14) plays too: `cad animate <project>/<assembly>` writes the cycle as an animated SVG in `.preview/` (a side view of the legs and a plan of the feet and what they stand on) and its data as JSON. The model page plays the same cycle in its Motion panel.
+
 ## Checks
 
 - **Closed solids:** every edge must be matched by faces on the other side. T-junctions (an edge covered by several
