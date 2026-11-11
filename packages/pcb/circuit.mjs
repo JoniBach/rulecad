@@ -22,6 +22,8 @@
 //            width or board.track; pins are named part.pin, by the pin's label, its name or its number
 //   silk   { rect: { x, y, w, h }, layer } | { text, x, y, size, layer, rotation } (rotation: degrees, counter-clockwise)
 //   effort how hard the autorouter searches (default its own, 1): more for a crowded board, at more time
+//   pipeline the autorouter's pipeline to try first (a class it exports, e.g. 'AutoroutingPipelineSolver4'); unset, its
+//            own. If one fails, the next in PIPELINES is tried
 //   holes  [{ x, y, d, keepout }] in the board (mounting holes; keepout: a radius the router keeps tracks out of, for a screw head)
 //   layers 2 (default), 4 or 6 copper layers: tracks on the outer two, planes inside
 //   clearance (mm) the router keeps from everything in its way (a clone: the source's); unset, the router's own
@@ -1073,15 +1075,28 @@ export async function neckDown(json, traces, neck) {
   return out;
 }
 
+// The autorouter's pipelines tried after its own, in order, when one fails: an older, plainer search
+const PIPELINES = ['AutoroutingPipelineSolver', 'AutoroutingPipelineSolver4'];
+
 async function routeOnce(json, toRoute, board, limit = 0) {
   // The autorouter uses JavaScript features from Node 22 (iterator helpers): say so, rather than fail inside it
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
-  const { AutoroutingPipelineSolver } = await import('@tscircuit/capacity-autorouter');
+  const router = await import('@tscircuit/capacity-autorouter');
   const srj = await routeInput(json, toRoute, board);
-  const solver = new AutoroutingPipelineSolver(srj, { cacheProvider: null, ...(board.effort ? { effort: board.effort } : {}) }); // effort: how hard it searches (1, the router's own)
-  // stepped by hand, so a repair can be given a time limit (a first route has none)
-  while (!solver.solved && !solver.failed) { solver.step(); if (limit && Date.now() > limit) throw new Error('a repair took too long'); }
-  if (solver.failed) throw new Error(`the autorouter couldn't route every connection: ${solver.error || 'no reason given'}`);
+  // The router's own pipeline first; if it gives up, or one of its later stages throws (its via clean-up can, on a
+  // crowded two-sided board: "a layer transition without a via"), the next one, a different search from the start
+  const pipelines = [...new Set([board.pipeline || PIPELINES[0], ...PIPELINES])];
+  let solver = null; const tried = [];
+  for (const name of pipelines) {
+    if (!router[name]) continue;
+    solver = new router[name](srj, { cacheProvider: null, ...(board.effort ? { effort: board.effort } : {}) }); // effort: how hard it searches (1, the router's own)
+    // stepped by hand, so a repair can be given a time limit (a first route has none)
+    try { while (!solver.solved && !solver.failed) { solver.step(); if (limit && Date.now() > limit) throw Object.assign(new Error('a repair took too long'), { late: true }); } }
+    catch (e) { if (e.late) throw e; solver.failed = true; solver.error = solver.error || e.message; }
+    if (!solver.failed) break;
+    tried.push(`${name}: ${solver.error || 'no reason given'}`);
+  }
+  if (solver.failed) throw new Error(`the autorouter couldn't route every connection (${tried.join('; ')})`);
   // The routes for the connections asked for (the solver also hands back the fixed ones), each from its first pad to
   // its second, as tscircuit records them
   const traces = [], asked = new Map(srj.connections.map((c) => [c.name, c.pointsToConnect]));
