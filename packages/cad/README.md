@@ -93,6 +93,9 @@ fragment, which never reaches the web host, so the public page can open private 
 which version it holds (`keyboard/keycap@0.1.0`, or `+changes` if it isn't a release). The page is `@rulecad/viewer`: host your
 own copy anywhere and name it in `viewUrl`.
 
+- **Circuit boards:** a board's link also carries its fab zip, the same one `cad export` writes (Gerbers, drill files,
+  parts list, placement; plotted by KiCad where the board needs it). The page offers it as **Download for JLCPCB**. A
+  board whose zip can't be made here (one that needs KiCad, without it) goes without, and `cad link` says why.
 - **Rules:** a link carries the model's values and the rules they use (value, source, kind, date checked) for the
   page's Rules panel; estimates are marked there. A rule set with `"private": true` stays out of links, and
   `--no-rules` leaves the list out altogether. Anyone with a link can read what it carries.

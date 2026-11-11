@@ -5,7 +5,8 @@ A model page you can host anywhere, as plain static files: no server code, no bu
 
 - **Open a model link** (`#m=…`, made by `cad link` or `@rulecad/model-link`): the model turns slowly, and you can
   drag to turn it yourself. A parts panel shows, hides and restyles each part and ticks the ones a download holds.
-  Downloads are STL, or 3MF in Bambu Studio's layout with each part on its filament slot.
+  Downloads are STL, or 3MF in Bambu Studio's layout with each part on its filament slot. A circuit board's link also
+  carries its fab zip (Gerbers, drill files, parts list, placement): a **Download for JLCPCB** button saves it as it is.
 - **On a phone:** the model and an info pane share the screen, with the model on top in portrait and on the left in
   landscape, so nothing covers it. The Parts button swaps the parts panel into the pane, and the rules sheet opens
   there too. Drag the grip between the two to change how the screen is shared (it's remembered), or double tap it
