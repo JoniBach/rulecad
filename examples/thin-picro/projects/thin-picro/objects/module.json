@@ -2,7 +2,7 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "module",
   "title": "Thin RP2040 module",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "engine": "pcb",
   "role": "board",
   "uses": [

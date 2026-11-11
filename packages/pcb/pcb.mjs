@@ -581,7 +581,7 @@ export function fromKicadPcb(text) {
 export function clone(circuit, o = {}) {
   const inner = (l) => /^In\d+\.Cu$/.test(l), layers = o.layers ?? circuit.layers ?? 2;
   const planes = o.planes ?? Object.entries(circuit.planes || {}).filter(([, ls]) => ls.some(inner)).map(([n]) => n);
-  const notes = [], castellated = new Set(), oval = new Set();
+  const notes = [], castellated = new Set();
   const parts = circuit.parts.map((p) => {
     const quarterTurn = p.rotation % 90 === 0, t = (p.rotation * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
     const pads = p.pads.map((q) => {
@@ -589,11 +589,10 @@ export function clone(circuit, o = {}) {
       if (!q.smd) {
         const at = quarterTurn ? { x: q.x, y: q.y } : { x: q.x * c - q.y * s, y: q.x * s + q.y * c };
         if (q.castellated) { castellated.add(p.ref); return { pin, hint: q.pin, ...at, hole: q.hole, outer: Math.min(q.w, q.h), castellated: true }; }
-        if (q.hole_size) oval.add(p.ref); // a slot: drilled round, at its narrow width
         if (q.w === q.h && !q.hole_offset) return { pin, hint: q.pin, ...at, hole: q.hole, outer: q.w };
         // an oval pad, or a hole off its centre: a rounded rectangle round the hole, turned with the part (quarter turns)
         const sw = (q.angle + (quarterTurn ? 0 : p.rotation)) % 180 === 90, w = sw ? q.h : q.w, h = sw ? q.w : q.h;
-        return { pin, hint: q.pin, ...at, hole: q.hole, outer: Math.min(w, h), rect: { w, h, offset: q.hole_offset || [0, 0] } };
+        return { pin, hint: q.pin, ...at, hole: q.hole, outer: Math.min(w, h), rect: { w, h, offset: q.hole_offset || [0, 0], ...(q.hole_size ? { slot: sw ? [q.hole_size[1], q.hole_size[0]] : q.hole_size } : {}) } }; // (slot: a slotted hole's width and height)
       }
       const turn = q.angle + (quarterTurn ? 0 : p.rotation);
       if (turn % 90 === 0) { // a rectangle, its sides swapped by a quarter turn of its own
@@ -625,7 +624,6 @@ export function clone(circuit, o = {}) {
   if (layers >= 4 && Object.keys(onPlanes).length) notes.push(`planes on inner layers: ${Object.entries(onPlanes).map(([n, q]) => `${n} on ${q.layer} (${q.pins.length} pads)`).join(', ')}`);
   else if (planes.length) notes.push(`left to planes, not routed: ${planes.map((n) => `${n} (${circuit.nets[n]?.length ?? 0} pads)`).join(', ')}. On 2 layers these nets need a pour joined to every pad: build the board with 4 layers ({ layers: 4 }) to give them planes`);
   if (castellated.size) notes.push(`castellated pads on ${plural(castellated, 'part', 'parts')}: half holes on the board's edge, which the fab cuts through (an option when ordering)`);
-  if (oval.size) notes.push(`slots drilled round, at their narrow width, on ${plural(oval, 'part', 'parts')}`);
   if (dropped.size) notes.push(`${dropped.size} pins with no pad left on this board are out of their nets: ${[...dropped].slice(0, 5).join(', ')}`);
   const src = circuit.source || {}; // the source's via and clearance, which its layout was made to
   const sizes = { ...(src.via ? { via_pad: src.via.pad, via_hole: src.via.hole } : {}), ...(src.clearance ? { plane_clearance: src.clearance } : {}) };
@@ -1100,6 +1098,27 @@ export function sourceEdgeGap(circuit) {
   return gaps.length && edges.length ? Math.min(...gaps) : null;
 }
 
+// The rules KiCad checks a board by: its own clearance, and a clone's pads by the edge where the source has them
+// (inherited: the design-rule errors already said to be the source's)
+function kicadRules(json, inherited) {
+  const edgeExempt = [...new Set(inherited.map((e) => e.message?.match(/^SMT pad (\w+)\./)?.[1]).filter(Boolean))].map((ref) => ({ ref, edge: 0 }));
+  return { clearance: json.find((e) => e.type === 'pcb_board')?.min_trace_to_pad_edge_clearance, edgeExempt };
+}
+// A KiCad finding that is the source's own: a kept track by the edge no nearer than the source's nearest (KiCad's place
+// is 100 mm in, y down)
+function kicadSourceEdge(json, source) {
+  const srcEdge = source?.circuit ? sourceEdgeGap(source.circuit) : null;
+  const keptSegs = json.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept).flatMap((t) => t.route.slice(1).map((q, i) => [t.route[i], q]));
+  const onKept = (pos) => keptSegs.some(([a, b]) => { const p = { x: pos.x - 100, y: 100 - pos.y }, dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0; return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 0.02; });
+  return (x) => x.type === 'copper_edge_clearance' && srcEdge != null && x.items.some((i) => /^Track /.test(i.description) && onKept(i.pos)) && Number(x.description.match(/actual ([\d.]+) mm/)?.[1]) >= srcEdge - 1e-3;
+}
+// The design-rule errors a clone has where its source has them, for kicadRules
+async function sourceErrors(json, source) {
+  if (!source?.circuit) return [];
+  const { runAllChecks } = await import('@tscircuit/checks'), same = asSource(json, source.circuit, source.arranged?.kept);
+  return (await runAllChecks(structuredClone(json))).filter((e) => same(e));
+}
+
 export async function checks(json, v, matrix, source) { // source: a clone's { circuit, arranged } (its own checks join these)
   const { runAllChecks } = await import('@tscircuit/checks');
   const out = [], j = v.jlcpcb;
@@ -1262,16 +1281,11 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
   // KiCad's own design-rule check, when KiCad is installed: the board as KiCad reads it, its planes poured by KiCad. A
   // clone's pads by the edge where the source has them are allowed there, as in our checks
   const { kicadDrc } = await import('./kicad.mjs');
-  const edgeExempt = [...new Set(inherited.map((e) => e.message?.match(/^SMT pad (\w+)\./)?.[1]).filter(Boolean))].map((ref) => ({ ref, edge: 0 }));
-  const kicad = await kicadDrc(json, { clearance: board.min_trace_to_pad_edge_clearance, edgeExempt }).catch((e) => ({ failed: e }));
+  const kicad = await kicadDrc(json, kicadRules(json, inherited)).catch((e) => ({ failed: e }));
   if (!kicad) out.push({ level: 'info', text: 'KiCad isn\'t installed: its design-rule check, a second opinion, skipped' });
   else if (kicad.failed) out.push({ level: 'warn', text: `KiCad's design-rule check didn't run: ${String(kicad.failed.message || kicad.failed).split('\n')[0]}` });
   else {
-    // the same for KiCad: a kept track by the edge no nearer than the source's own (KiCad's place is 100 mm in, y down)
-    const keptSegs = json.filter((e) => e.type === 'pcb_trace' && e.rulecad_kept).flatMap((t) => t.route.slice(1).map((q, i) => [t.route[i], q]));
-    const onKept = (pos) => keptSegs.some(([a, b]) => { const p = { x: pos.x - 100, y: 100 - pos.y }, dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0; return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < 0.02; });
-    const asSrcEdge = (x) => x.type === 'copper_edge_clearance' && srcEdge != null && x.items.some((i) => /^Track /.test(i.description) && onKept(i.pos)) && Number(x.description.match(/actual ([\d.]+) mm/)?.[1]) >= srcEdge - 1e-3;
-    const srcEdgeHits = kicad.errors.filter(asSrcEdge);
+    const asSrcEdge = kicadSourceEdge(json, source), srcEdgeHits = kicad.errors.filter(asSrcEdge);
     kicad.errors = kicad.errors.filter((x) => !asSrcEdge(x));
     if (srcEdgeHits.length) inherited.push(...srcEdgeHits.map((x) => ({ message: `KiCad: ${x.description}` })));
     const by = (list) => Object.entries(list.reduce((m, x) => ((m[x.type.replace(/_/g, ' ')] = (m[x.type.replace(/_/g, ' ')] || 0) + 1), m), {})).map(([t, n]) => `${n} ${t}`).join(', ');
@@ -1344,7 +1358,17 @@ function planeChecks(json) {
 // ---------- files ----------
 // The fab files: Gerbers (KiCad's Protel names, which JLCPCB reads), drill files, BOM and placement -> { name: text }
 const PROTEL = { F_Cu: 'GTL', B_Cu: 'GBL', F_Mask: 'GTS', B_Mask: 'GBS', F_SilkScreen: 'GTO', B_SilkScreen: 'GBO', F_Paste: 'GTP', B_Paste: 'GBP', Edge_Cuts: 'GKO' };
-export async function fabFiles(json, name) {
+export async function fabFiles(json, name, { source } = {}) {
+  // Rounded pads and slots are more than the Gerber writer draws: it plots a rounded pad square, so its corners reach
+  // into a plane cut round the true shape, and it can't drill a slot. KiCad plots those boards, and checks the very copper
+  // it plots first; without KiCad they aren't made at all
+  const { kicadFab, needsKicadFab } = await import('./kicad.mjs');
+  if (needsKicadFab(json)) {
+    const made = await kicadFab(json, name, { ...kicadRules(json, await sourceErrors(json, source)), allow: kicadSourceEdge(json, source) });
+    if (!made) throw new Error('this board has slotted holes, or rounded pads beside a copper plane: its fab files need KiCad (install it, or name kicad-cli in KICAD_CLI)');
+    const { convertCircuitJsonToPickAndPlaceCsv } = await import('circuit-json-to-pnp-csv');
+    return { ...made, [`${name}-bom.csv`]: bom(json), [`${name}-cpl.csv`]: convertCircuitJsonToPickAndPlaceCsv(json) };
+  }
   const { convertSoupToGerberCommands, stringifyGerberCommandLayers, convertSoupToExcellonDrillCommands, stringifyExcellonDrill } = await import('circuit-json-to-gerber');
   const { convertCircuitJsonToPickAndPlaceCsv } = await import('circuit-json-to-pnp-csv');
   const out = {};
@@ -1372,7 +1396,8 @@ function bom(json) {
 }
 
 // KiCad's own files, to check with kicad-cli or finish by hand: { 'name.kicad_pcb': text, 'name.kicad_sch': text }
-export async function kicadFiles(json, name, { clearance, track, edgeExempt } = {}) {
+export async function kicadFiles(json, name, { clearance, track, edgeExempt: exempt, source } = {}) {
+  const edgeExempt = exempt ?? kicadRules(json, await sourceErrors(json, source)).edgeExempt;
   const { CircuitJsonToKicadPcbConverter, CircuitJsonToKicadSchConverter } = await import('circuit-json-to-kicad');
   const { kicadNets, patchKicadPcb, kicadProject } = await import('./kicad.mjs');
   const netted = kicadNets(json); // (see kicad.mjs: what the converter leaves out, made up)

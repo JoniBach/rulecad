@@ -83,6 +83,17 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     assert.ok(await until(`document.getElementById('title')?.textContent === 'board'`), 'the board link opens');
     await run(`[...document.querySelectorAll('#tabs button')].find((b) => b.textContent === 'Board').click(); true`);
     assert.equal(await run(`[...document.querySelectorAll('#subtabs button')].map((b) => b.textContent).join(', ')`), 'both sides, front, back');
+    // A board link with its fab zip: a button that saves those bytes as they are, under their name
+    const zipBytes = Buffer.from('PK\x03\x04 a fab zip, as the link carries it');
+    const withFab = await encode({ title: 'board fab', ...fromTriangles(tee), views: [['Board: both sides', board]], fab: [{ name: 'board@1.0.0-fab.zip', zip: zipBytes.toString('base64') }] });
+    await run(`location.hash = '#m=${withFab}'; location.reload(); true`).catch(() => {});
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'board fab'`), 'the board link with its fab zip opens');
+    assert.equal(await run(`[...document.querySelectorAll('.actions button')].map((b) => b.textContent).join(', ')`), 'Download for JLCPCB, Download STL, Download 3MF, Copy link');
+    const saved = await run(`new Promise((done) => { HTMLAnchorElement.prototype.click = function () { fetch(this.href).then((r) => r.arrayBuffer()).then((b) => done([this.download, [...new Uint8Array(b)]])); };
+      document.querySelector('.actions .fab').click(); })`);
+    assert.deepEqual(saved, ['board@1.0.0-fab.zip', [...zipBytes]], 'the zip, byte for byte, under its own name');
+    assert.equal(await run(`(location.hash = '#m=${link}', location.reload(), true)`).catch(() => true), true);
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'board'`) && !(await run(`!!document.querySelector('.actions .fab')`)), 'no fab zip, no button');
     // A 4-layer board: a view of each copper layer, the inner ones (its planes) in order between front and back
     const four = board.replace('</svg>', '<path d="M0 30L80 30" stroke="green" data-pcb-layer="inner2"/><path d="M40 0L40 60" stroke="gray" data-pcb-layer="inner1"/></svg>');
     const link4 = await encode({ title: 'board4', ...fromTriangles(tee), views: [['Board: both sides', four]] });
