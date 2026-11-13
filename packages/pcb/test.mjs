@@ -316,7 +316,9 @@ test('a route that changes layer inside a plated hole becomes two routes; throug
   const pieces = layerChanges(route, [hole]);
   assert.equal(pieces.length, 2);
   assert.deepEqual(pieces.map((p) => [p[0].layer, p.at(-1).layer]), [['bottom', 'bottom'], ['top', 'top']]);
-  assert.deepEqual([pieces[0].at(-1).x, pieces[1][0].x], [-0.5, -0.5], 'both end in the hole');
+  assert.deepEqual([pieces[0].at(-1).x, pieces[1][0].x], [0, 0], "both taken on to the hole's centre, so they join its copper");
+  const corner = route.map((p) => (p.route_type === 'through_obstacle' ? { ...p, start: { x: -0.8, y: 0.8 }, end: { x: -0.8, y: 0.8 } } : p));
+  assert.equal(layerChanges(corner, [hole]).length, 2, "a change marked in the corner of the router's square round the hole counts");
   assert.throws(() => layerChanges(route, [{ ...hole, x: 5 }]), /through a part at \(-0\.50, 0\.00\)/);
   assert.equal(layerChanges(route, [{ type: 'pcb_via', x: -0.5, y: 0, outer_diameter: 0.6 }]).length, 2, 'a via joins the layers too');
 });
