@@ -7,6 +7,13 @@ import { motorModel, motorParts, mountModel, performance } from '@rulecad/motors
 import { stageEfficiency } from '@rulecad/gears';
 import { named } from './parts.mjs';
 import { referenceBuilt } from './bought.mjs';
+import crypto from 'node:crypto';
+import { grid as makeGrid, analyse, positions } from '@rulecad/fea';
+import { threadsBackend } from '@rulecad/fea/threads';
+import { host } from './host.mjs';
+import { paths, printerOf } from './workspace.mjs';
+import { peekRuleSet } from './rules.mjs';
+import { solidFill } from './optimise.mjs';
 
 const require = createRequire(import.meta.url);
 const n3 = (x, d = 3) => String(Number(x.toFixed(d)));
@@ -194,7 +201,7 @@ export function motorChecks(s, f, helpers, materialName) {
       const slideRate = main.x.type === 'prismatic' ? (speedOut * 360 * main.t.slide) / 60 : null, span = slideRate ? main.x.dofs[0][1] - main.x.dofs[0][0] : 0, time = slideRate ? span / slideRate : 60 / speedOut; // along a slide's travel, or a turn
       f('info', `${main.x.id} moves at ${slideRate ? `${n3(slideRate, 2)} mm/s` : `${n3(speedOut, 2)} rpm`} with ${d.id} at ${n3(motorSpeed, 1)} rpm: ${slideRate ? 'its whole range' : 'a turn'} in ${n3(time, 1)} s`, null, { code: 'motor.speed', at: at(main.x), values: { rpm: speedOut, time } });
     }
-    mountCheck(s, d, f, W, avail, materialName);
+    mountCheck(s, d, f, W, avail, materialName, { worlds, mul });
     // Does it hold?
     const fig = (k) => m.figures[k]?.value, kt = m.type === 'brushless' ? 60 / (2 * Math.PI * fig('kv')) : 0;
     const on = atCurrent(m, d.spec, fig('holding_torque') ?? fig('stall_torque') ?? (kt ? kt * fig('rated_current') : 0)), off_ = fig('detent_torque') ?? fig('friction_torque') ?? null, brake = lines.map((l) => motion.joints.find((x) => x.id === l.x.id)?.brake).find(Boolean) ?? motion.joints.find((x) => x.id === d.joint)?.brake;
@@ -216,8 +223,8 @@ export function motorChecks(s, f, helpers, materialName) {
 }
 
 // The part a motor is fastened to, under the motor's full torque as a reaction at its screws: how thick it is at the
-// holes (read from the part as drawn), and the screws' bearing on the plastic. Not yet: how far the whole part bends.
-function mountCheck(s, d, f, W, avail, materialName) {
+// holes (read from the part as drawn), the screws' bearing on the plastic, and how far the whole part bends (mountBends).
+function mountCheck(s, d, f, W, avail, materialName, frame) {
   const m = d.model, top = (n) => String(n).split(/[.@]/)[0], fit = s.fits.find((x) => x.fastens && [top(x.a), top(x.b)].includes(d.id));
   if (!fit || !m.mount.holes.length) return;
   const other = top(fit.a) === d.id ? top(fit.b) : top(fit.a), parts = s.parts.filter((p) => p.item === other || p.leaf === other);
@@ -230,6 +237,132 @@ function mountCheck(s, d, f, W, avail, materialName) {
   const here = mountModel(m, { plate: +plate.toFixed(2), ...(d.spec.screw ? { screw: d.spec.screw } : {}) }), mat = material(materialName) || material('pla'), radius = Math.max(...m.mount.holes.map(([x, y]) => Math.hypot(x, y))), each = avail / (m.mount.holes.length * radius / 1000), bearing = each / (hd * t), margin = mat.strength / bearing;
   for (const x of here.findings) f(x.level, `${d.id} on ${other}: ${x.text}`, x.level === 'pass' ? null : `${d.id}: ${x.code.split('.')[1]}`, { code: 'motor.mount' });
   f(margin < 2 ? 'fail' : 'pass', `${d.id} on ${other}: ${n3(plate, 2)} mm of plate at the screws, each taking ${n3(each, 1)} N against the torque (bearing ${n3(bearing, 1)} MPa, ${n3(margin, 0)} times under ${mat.name.toUpperCase()}'s ${mat.strength} MPa)`, margin < 2 ? `${d.id}: screws pull through` : null, { code: 'motor.mount', values: { plate, bearing, margin } });
+  mountBends(s, d, f, W, avail, mat, { other, parts, inv, plate, hd, ...frame });
+}
+
+// ---------- the mount, bent ----------
+// The part as a whole under the motor: its weight (gravity as the assembly has it, in the pose it's checked in) at its
+// centre and its full torque about the shaft, both carried into the part where the screws clamp it, by FE on the part as
+// drawn (cubes, two across the plate at the screws). The part is held where it meets the printed parts it's fastened to,
+// or at the joint it turns on; failing both, where it stands (its lowest face). Reported: how far the shaft's tip moves,
+// against the printer's fit clearance (what the parts it drives are drawn with), and the peak stress against the
+// material's strength. Kept in .cache, like the other FE checks.
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const len3 = (a) => Math.hypot(a[0], a[1], a[2]);
+function box3(pts) { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (const p of pts) for (let k = 0; k < 3; k++) { if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; } return { lo, hi }; }
+// A small dense solve (Gaussian elimination, partial pivoting); a pivot near nothing is held at a hair, not divided by
+function solveSmall(A, b) {
+  const n = b.length, M = A.map((r, i) => [...r, b[i]]), big = Math.max(1e-30, ...A.map((r, i) => Math.abs(r[i])));
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    [M[c], M[p]] = [M[p], M[c]]; if (Math.abs(M[c][c]) < 1e-12 * big) M[c][c] = 1e-12 * big;
+    for (let r = 0; r < n; r++) if (r !== c) { const k = M[r][c] / M[c][c]; for (let q = c; q <= n; q++) M[r][q] -= k * M[c][q]; }
+  }
+  return M.map((r, i) => r[n] / r[i]);
+}
+
+/**
+ * The FE itself, in the motor's frame (the mounting face at z = 0, the shaft along z). tris: the part; holes: the screws'
+ * [x, y]; hole: their diameter; held: boxes ({ lo, hi }) and balls ({ at, r }) where the part is held, or null for its
+ * lowest face along `down`; weight: N at `centre`, along `down`; torque: N mm about z; tip: the shaft's tip.
+ * @returns {{ deflection: number, stress: number, atHoles: boolean, cell: number, across: number, held: string } | { missing: string }}
+ */
+export function mountFE({ tris, holes, hole, plate, side, held, down, weight, centre, torque, tip, ref = null, E, nu, budget = 9000 }) {
+  const key = crypto.createHash('sha256').update(JSON.stringify([3, tris, holes, hole, plate, side, held, down, weight, centre, torque, tip, ref, E, nu, budget])).digest('hex').slice(0, 24), file = paths.cache('mount', `${key}.json`);
+  if (!process.env.CAD_NO_CACHE && host.exists(file)) return JSON.parse(host.readText(file));
+  const { lo, hi } = box3(tris.flat()), span = sub3(hi, lo);
+  let cell = Math.max(0.4, plate / 2);
+  const count = (h) => span.reduce((t, x) => t * Math.max(1, Math.ceil(x / h)), 1);
+  while (count(cell) > budget) cell *= 1.1;
+  const n = span.map((x) => Math.max(1, Math.ceil(x / cell))), gr = { nx: n[0], ny: n[1], nz: n[2], h: cell };
+  const density = solidFill(tris, gr, lo), g = makeGrid(gr), at = positions(g), pos = (id) => add3(lo, at[id]), onPart = new Uint8Array(g.nodes);
+  for (let e = 0; e < density.length; e++) if (density[e] >= 0.5) for (let k = 0; k < 8; k++) onPart[g.edof[e * 24 + 3 * k] / 3] = 1;
+  // Clamped: the plate round each screw, under its head (about twice the hole across), through the plate's thickness
+  const grip = hole / 2 + Math.max(hole / 2, 1.5 * cell), clamp = [], hold = [];
+  const inHeld = (p) => held.some((b) => (b.r != null ? len3(sub3(p, b.at)) <= Math.max(b.r, 2.5 * cell) : p.every((x, k) => x >= b.lo[k] - cell && x <= b.hi[k] + cell)));
+  let lowest = Infinity; if (!held) for (const t of tris) for (const p of t) lowest = Math.min(lowest, -(p[0] * down[0] + p[1] * down[1] + p[2] * down[2]));
+  for (let id = 0; id < g.nodes; id++) {
+    if (!onPart[id]) continue;
+    const p = pos(id), z = p[2] * side; // (the screws' clamp first: a part held all over its face is still loaded at them)
+    if (z >= -cell && z <= plate + cell && holes.some(([x, y]) => Math.hypot(p[0] - x, p[1] - y) <= grip)) clamp.push(id);
+    else if (held ? inHeld(p) : -(p[0] * down[0] + p[1] * down[1] + p[2] * down[2]) <= lowest + cell * 0.75) hold.push(id);
+  }
+  const heldBy = !held ? 'on its lowest face' : held.some((b) => b.r != null) ? 'at the joint that carries it' : 'where it is fastened';
+  if (!hold.length) return { missing: `nothing of it is held ${heldBy}` };
+  if (!clamp.length) return { missing: 'the screws are where it is held', cell };
+  // The motor's weight and torque, shared over the clamped nodes as a rigid body would put them there
+  const P = clamp.map(pos), c = P.reduce((t, p) => add3(t, p), [0, 0, 0]).map((x) => x / P.length), R = P.map((p) => sub3(p, c));
+  const J = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; for (const r of R) { const rr = r[0] * r[0] + r[1] * r[1] + r[2] * r[2]; for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) J[a][b] += (a === b ? rr : 0) - r[a] * r[b]; }
+  const Fw = down.map((x) => x * weight), arm = sub3(centre, c), Mw = cross(arm, Fw);
+  const loads = [1, -1].map((sign) => {
+    const M = [Mw[0], Mw[1], Mw[2] + sign * torque], w = solveSmall(J, M), out = new Float64Array(g.dofs);
+    clamp.forEach((id, i) => { const t = cross(w, R[i]); for (let k = 0; k < 3; k++) out[3 * id + k] = Fw[k] / clamp.length + t[k]; });
+    return out;
+  });
+  const fixed = new Uint8Array(g.dofs); for (const id of hold) for (let k = 0; k < 3; k++) fixed[3 * id + k] = 1;
+  let a; try { a = analyse({ grid: g, density, material: { E, nu }, fixed, loads, backend: threadsBackend }); } catch (e) { return { missing: e.code === 'fea.unheld' ? `it isn't held still ${heldBy}` : e.message, cell }; }
+  // The motor moves as a rigid body with the clamped plate: the best fit of a shift and a small turn, at the shaft's tip
+  // Where the driven joint stands on this same part, the shaft is measured against the part there (they move together)
+  let base = null;
+  if (ref) { let best = Infinity; for (let id = 0; id < g.nodes; id++) if (onPart[id]) best = Math.min(best, len3(sub3(pos(id), ref))); base = []; for (let id = 0; id < g.nodes; id++) if (onPart[id] && len3(sub3(pos(id), ref)) <= best + cell) base.push(id); }
+  const rigid = (u) => {
+    const A = Array.from({ length: 6 }, () => new Array(6).fill(0)), b = new Array(6).fill(0);
+    clamp.forEach((id, i) => {
+      const [x, y, z] = R[i], rows = [[1, 0, 0, 0, z, -y], [0, 1, 0, -z, 0, x], [0, 0, 1, y, -x, 0]]; // u = t + θ × r
+      rows.forEach((row, k) => { for (let p = 0; p < 6; p++) { b[p] += row[p] * u[3 * id + k]; for (let q = 0; q < 6; q++) A[p][q] += row[p] * row[q]; } });
+    });
+    const s6 = solveSmall(A, b), moved = add3(s6.slice(0, 3), cross(s6.slice(3), sub3(tip, c)));
+    return len3(base ? sub3(moved, [0, 1, 2].map((q) => base.reduce((t, id) => t + u[3 * id + q], 0) / base.length)) : moved);
+  };
+  const deflection = Math.max(...a.u.map(rigid));
+  // A cell's stress is read at its centre, inside the surface: across k cells, bending reads (k - 1) / k of the surface's
+  const across = Math.max(2, Math.round(plate / cell)), lift = across / (across - 1);
+  let stress = 0, atHoles = false;
+  for (const st of a.stress) for (let e = 0; e < density.length; e++) {
+    if (density[e] < 0.5 || st[e] * lift <= stress) continue;
+    const p = add3(lo, [((e % n[0]) + 0.5) * cell, ((Math.floor(e / n[0]) % n[1]) + 0.5) * cell, (Math.floor(e / (n[0] * n[1])) + 0.5) * cell]);
+    stress = st[e] * lift; atHoles = holes.some(([x, y]) => Math.hypot(p[0] - x, p[1] - y) <= grip + cell);
+  }
+  const out = { deflection, relative: !!base, stress, atHoles, cell, across, held: heldBy, cells: g.cells };
+  host.writeText(file, JSON.stringify(out)); return out;
+}
+
+function mountBends(s, d, f, W, avail, mat, { other, parts, inv, plate, hd, worlds, mul }) {
+  const m = d.model, top = (x) => String(x).split(/[.@]/)[0], motion = s.motion, ids = motion.items.map((x) => x[0]);
+  if (!(mat?.modulus > 0) || !(mat?.strength > 0)) return;
+  const tris = parts.filter((p) => p.role !== 'support').flatMap((p) => p.triangles.map((t) => t.map(inv)));
+  // Where it's held: at the joint it hangs from, if it's carried by one (fixed to a link, or turning on a joint); else at
+  // the printed parts it's fastened to that sit below it (along gravity), not the motor nor anything bought
+  const g = motion.gravity || [0, 0, -1], gl = Math.hypot(...g) || 1, down = [0, 1, 2].map((r) => (W[r] * g[0] + W[4 + r] * g[1] + W[8 + r] * g[2]) / gl);
+  const k = ids.indexOf(other), from = motion.joints.find((j) => j.child === k), boxes = [];
+  if (from && worlds) boxes.push({ at: inv(axisOf(motion, worlds, from, mul).O), r: 8 });
+  else {
+    const motors = new Set((motion.drives || []).map((x) => x.id)), mine = box3(tris.flat()), depth = (b) => [0, 1, 2].reduce((t, q) => t + ((b.lo[q] + b.hi[q]) / 2) * down[q], 0);
+    for (const x of s.fits) {
+      if (!x.fastens || ![top(x.a), top(x.b)].includes(other)) continue;
+      const them = top(x.a) === other ? top(x.b) : top(x.a); if (them === d.id || motors.has(them)) continue;
+      const theirs = s.parts.filter((p) => (p.item === them || p.leaf === them) && p.role !== 'reference' && p.role !== 'support');
+      const b = theirs.length && box3(theirs.flatMap((p) => p.triangles.flat().map(inv)));
+      if (b && depth(b) > depth(mine)) boxes.push(b);
+    }
+  }
+  const fig = (x) => m.figures[x]?.value, hold = atCurrent(m, d.spec, fig('holding_torque') ?? fig('stall_torque') ?? 0), T = Math.max(avail, hold); // N m: the most it can put on its screws
+  const side = m.mount.side, centre = [m.body.centre[0], m.body.centre[1], (-side * m.body.length) / 2], tip = m.anchors.tip?.origin ?? [0, 0, m.shaft.tip];
+  const driven = motion.joints.find((j) => j.id === d.joint), ref = driven && driven.parent === k && worlds ? inv(axisOf(motion, worlds, driven, mul).O) : null;
+  const fe = mountFE({ tris, holes: m.mount.holes, hole: hd, plate, side, held: boxes.length ? boxes : null, down, weight: (m.mass ?? 0) * G, centre, torque: T * 1000, tip, ref, E: mat.modulus, nu: mat.poisson ?? 0.36 });
+  const S = rowsAt(W, tip), refs = { item: d.id, part: other }, name = mat.name.toUpperCase();
+  if (fe.missing) return f('warn', `${d.id} on ${other}: couldn't bend the part under the motor: ${fe.missing}. Fasten it to what holds it (a "fastens" fit)`, `${d.id}: mount not solved`, { code: 'motor.mount', at: S, refs });
+  let limit = 0.2; try { limit = d.spec.deflection != null ? s.num(d.spec.deflection) : peekRuleSet(printerOf(s.project)).rules.fit?.value ?? 0.2; } catch {}
+  const bend = limit / Math.max(fe.deflection, 1e-9), strong = mat.strength / Math.max(fe.stress, 1e-9), margin = Math.min(bend, strong), K = 2, bad = margin < K;
+  const where = fe.atHoles ? 'at the screw holes' : 'in the part, away from the screws';
+  const how = `FE on ${n3(fe.cell, 2)} mm cubes, ${fe.across} across the plate, held ${fe.held}; an estimate: cells this coarse read a plate 10 to 20% stiffer than it is`;
+  const said = `${d.id} on ${other}: under the motor's ${n3((m.mass ?? 0) * 1000, 0)} g and ${n3(T, 3)} N m, the shaft's tip moves ${n3(fe.deflection, 3)} mm${fe.relative ? ` against ${d.joint}'s seat on ${other}` : ''}, ${bend >= 1 ? `${n3(bend, 1)} times inside` : `${n3(1 / bend, 1)} times`} the ${n3(limit, 2)} mm fit the parts it drives are drawn with, and the stress peaks at ${n3(fe.stress, 2)} MPa ${where}, ${strong >= 1 ? `${n3(strong, 1)} times under` : `${n3(1 / strong, 1)} times`} ${name}'s ${mat.strength} MPa (${how})`;
+  let fix = '';
+  if (bad) {
+    const grow = Math.max(bend < K ? Math.cbrt(K / bend) : 1, strong < K ? Math.sqrt(K / strong) : 1), want = Math.ceil(plate * grow * 5) / 5; // bending goes with the cube of the thickness, stress with its square
+    fix = `. A plate about ${n3(want, 1)} mm thick where it bends (${n3(plate, 2)} mm at the screws now), or ribs under it, or a stiffer material (${bend < K ? `${n3((K / bend), 1)} times ${name}'s ${mat.modulus} MPa modulus` : `${n3((mat.strength * K) / strong, 0)} MPa strength or more`}), or hold it closer to the motor`;
+  }
+  f(bad ? 'fail' : 'pass', said + fix, bad ? `${d.id}: mount ${bend < strong ? 'bends' : 'overstressed'} ${n3(margin, 1)}×` : null, { code: 'motor.mount', at: S, refs, values: { deflection: fe.deflection, relative: fe.relative, limit, stress: fe.stress, strength: mat.strength, margin, cell: fe.cell, held: fe.held } });
 }
 
 // A "shaft" fit: a motor's shaft in the bore of a part. Reads the bore from the part as drawn: a slice across the
