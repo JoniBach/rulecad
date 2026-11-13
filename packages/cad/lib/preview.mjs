@@ -55,7 +55,9 @@ async function shoot(server, out, { width = 1800, height = 1200 } = {}) {
     });
   } finally {
     server.close();
-    fs.rmSync(profile, { recursive: true, force: true });
+    // Chrome's helpers can still be writing to its profile as it exits (macOS: "Directory not empty"): try a few
+    // times, and leave it in the temporary folder rather than fail a picture that was made
+    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch { /* the OS clears it */ }
   }
   return out;
 }

@@ -679,8 +679,8 @@ async function assembly(cmd, ref) {
     const size = (await import('@rulecad/printcheck')).bounds(s.triangles).size.map((n) => fmt(n)).join(' × ');
     const faint = [...new Set(s.parts.filter((p) => p.role !== 'part').map((p) => `${p.object || p.item}${p.role === 'support' ? ' supports' : ''}`))]; // each kind once
     await preview([...s.parts, ...wireTubesOf(s)], { title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode') });
-    console.log(out);
-    // each motor at work beside it: its curve with the working point, and the torque through its train
+    // each motor at work beside it: its curve with the working point, and the torque through its train (said before
+    // the picture, which stays the last line, for whatever reads it)
     if (s.motion?.drives?.length && !pose && !opt('explode')) {
       const { motorWork, workCurve, trainSvg } = await import('../lib/motorsvg.mjs');
       for (const w of motorWork(s)) {
@@ -690,7 +690,7 @@ async function assembly(cmd, ref) {
         }
       }
     }
-    return;
+    return console.log(out);
   }
   if (cmd === 'export') {
     if (a.kind !== 'plate') throw new Error(`${ref} is a fit assembly, for checking: export its objects, or make a plate (kind: plate) to print them together`);
