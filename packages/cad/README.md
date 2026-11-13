@@ -420,6 +420,7 @@ An item can be a motor instead of a printed object: `{ "id": "drive", "motor": {
 - `motor.mount`: the part a motor is fastened to (a `fastens` fit), read as drawn: how thick it is at the screw holes against the screws' size, and the screws' bearing on the plastic under the motor's full torque. How far the whole part bends isn't checked yet.
 - `motor.heat`: the motor's case against the softening point of the material the project prints in. Too hot says the current to set the driver to.
 - A `"shaft": true` fit (or `"press"`) between a motor and what it drives reads the bore from the part as drawn: that it's on the shaft (`shaft.seat`), that its flat is there (`shaft.flat`; the shaft turns to meet it, so where the flat faces doesn't matter), how much of the flat it grips (`shaft.grip`), and, pressed on, the hoop stress in the hub (`shaft.hoop`).
+- `cad preview` of an assembly with a motor draws each one at work beside the picture, as SVG: `<assembly>-<motor>-curve.svg`, its torque against speed at the output with the load and the working speed marked, and `<assembly>-<motor>-train.svg`, the torque from its shaft through each stage to the joint with the load, against what the load needs there, and whether it holds with the power on and off. The numbers are the check's.
 
 ### Building it
 
