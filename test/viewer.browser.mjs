@@ -7,14 +7,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import jscad from '@jscad/modeling';
 import { fromTriangles, fromShapes, stl, encode, frame } from '@rulecad/model-link';
 import { tri } from './jscad.mjs';
+import { CHROME, startChrome } from './chrome.mjs';
 
 const SITE = fileURLToPath(new URL('../packages/viewer/site/', import.meta.url));
-const CHROME = process.env.CAD_CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/chromium', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium'].find((f) => fs.existsSync(f));
+// The model page draws with the GPU where there is one (four times quicker than software GL on a desktop); on Linux,
+// as on CI, there's none, so it's asked for software GL rather than left to Chrome's deprecated fallback
+const GL = { softwareGL: process.platform === 'linux' };
 const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript' };
 
 test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', timeout: 120000 }, async () => {
@@ -29,32 +32,48 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     r.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r);
   }).listen(0);
   const port = server.address().port;
-  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...(process.env.CI ? { DBUS_SESSION_BUS_ADDRESS: 'disabled:', DBUS_SYSTEM_BUS_ADDRESS: 'disabled:' } : {}) } });
-  const TS = Date.now(); let said = ''; chrome.stderr.on('data', (d) => { said += d; });
+  let chrome;
   try {
-    const wsUrl = await new Promise((res, rej) => { let s = ''; chrome.stderr.on('data', (d) => { s += d; const m = s.match(/ws:\/\/\S+/); if (m) res(m[0]); }); setTimeout(() => rej(new Error(`Chrome did not start within a minute. It said:\n${s.slice(-1500)}`)), 60000).unref(); }); // a cold CI machine can take a while
-    (process.env.PROBE || process.env.CI) && process.stderr.write(`PROBE chrome started in ${Date.now() - TS} ms\n`);
-    const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
-    let id = 0; const waiting = new Map();
-    ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
-    const send = (method, params = {}, sessionId) => new Promise((r, no) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params, sessionId })); setTimeout(() => no(new Error(`Chrome didn't answer ${method}`)), 30000).unref(); });
-    const { result: { targetId } } = await send('Target.createTarget', { url: `http://localhost:${port}/` });
+    chrome = await startChrome({ profile: `${dir}/profile`, size: '1200,800', ...GL });
+    const ws = new WebSocket(chrome.wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
+    let id = 0; const waiting = new Map(), errors = [];
+    ws.addEventListener('message', (e) => {
+      const m = JSON.parse(e.data);
+      if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+      if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text);
+      if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') errors.push(`${m.params.entry.text} ${m.params.entry.url ?? ''}`);
+    });
+    // A question Chrome leaves unanswered fails after ms; its late answer, if one comes, is dropped
+    const send = (method, params = {}, sessionId, ms = 30000) => new Promise((r, no) => {
+      const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params, sessionId }));
+      setTimeout(() => { if (waiting.delete(i)) no(new Error(`Chrome didn't answer ${method} within ${ms / 1000} s`)); }, ms).unref();
+    });
+    // The page opened as the other browser tests open theirs: a blank tab, watched, then sent to the page
+    const { result: { targetId } } = await send('Target.createTarget', { url: 'about:blank' });
     const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
-    const run = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)).result.result.value;
-    // (45 s: a cold CI machine can be slow to load the page)
+    await send('Runtime.enable', {}, sessionId); await send('Log.enable', {}, sessionId); await send('Page.enable', {}, sessionId);
+    const run = async (expression, ms) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId, ms)).result.result?.value;
+    // Polls until expr is true, for up to ms (45 s: a cold CI machine can be slow to load the page). Each look gets
+    // 10 s, so a look Chrome never answers costs that, not the whole wait.
     // (a page mid-reload answers with no result: that's not yet, so it's asked again rather than failing the test)
-    const T0 = Date.now(), log = (m) => (process.env.PROBE || process.env.CI) && process.stderr.write(`PROBE ${((Date.now() - T0) / 1000).toFixed(1)} ${m}\n`);
-    log('target created');
-    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) { const a = Date.now(); let v; try { v = await run(expr); } catch (e) { v = 'ERR ' + e.message; } if ((process.env.PROBE || process.env.CI) && v !== true) { let st; try { st = await send('Runtime.evaluate', { expression: 'document.readyState + " " + location.href + " " + document.body?.innerHTML.slice(0, 80)', returnByValue: true }, sessionId); } catch (e) { st = e.message; } log(`${expr.slice(0, 40)} -> ${v} in ${Date.now() - a} ms; ${JSON.stringify(st).slice(0, 300)}`); } if (v === true) return true; } return false; };
+    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) if (await run(expr, 10000).catch(() => false)) return true; return false; };
+    // What the page shows, its errors and what Chrome said, for a wait that runs out
+    const stuck = async () => {
+      const page = await run(`JSON.stringify({ state: document.readyState, at: location.href.slice(0, 60), status: document.getElementById('status')?.textContent, body: document.body?.innerText.slice(0, 200) })`, 10000).catch((e) => e.message);
+      return `\n  the page: ${page}\n  its errors: ${JSON.stringify(errors)}\n  Chrome started in ${chrome.startedIn} ms and said:\n${chrome.said(1500)}`;
+    };
 
-    assert.ok(await until(`!!document.querySelector('.drop input')`), 'the drop screen shows without a link');
+    await send('Page.navigate', { url: `http://localhost:${port}/` }, sessionId);
+    const dropScreen = await until(`!!document.querySelector('.drop input')`);
+    assert.ok(dropScreen, `the drop screen shows without a link${dropScreen ? '' : await stuck()}`);
     const shot = async (name) => fs.writeFileSync(new URL(`./${name}`, import.meta.url), Buffer.from((await send('Page.captureScreenshot', { format: 'png' }, sessionId)).result.data, 'base64'));
     await shot('viewer-drop.png');
     await send('DOM.enable', {}, sessionId);
     const { result: { root } } = await send('DOM.getDocument', {}, sessionId);
     const { result: { nodeId } } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: '.drop input' }, sessionId);
     await send('DOM.setFileInputFiles', { nodeId, files: [file] }, sessionId);
-    assert.ok(await until(`document.getElementById('title')?.textContent === 'tee'`), 'the model opens');
+    const opened = await until(`document.getElementById('title')?.textContent === 'tee'`);
+    assert.ok(opened, `the model opens${opened ? '' : await stuck()}`);
     const rules = await run(`[...document.querySelectorAll('#rules li')].map((l) => l.textContent).join(' | ')`);
     assert.match(rules, /bridge/, rules);
     assert.match(rules, /fits the bed/);
@@ -149,13 +168,13 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     // the rules sheet opens in the pane, so nothing covers the model
     await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId);
     await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 800, deviceScaleFactor: 1, mobile: true }, sessionId);
-    await run(`location.reload(); true`).catch(() => {});
-    assert.ok(await until(`document.getElementById('title')?.textContent === 'arm' && !!document.querySelector('#joints input')`), 'the link opens on a phone');
+    // The same link again, so its title can't tell the new page from the old: the old one is marked, and waited out
+    await run(`window.reloading = true; location.reload(); true`).catch(() => {});
+    assert.ok(await until(`!window.reloading && document.getElementById('title')?.textContent === 'arm' && !!document.querySelector('#joints input')`), 'the link opens on a phone');
     const box = (sel) => run(`(() => { const r = document.querySelector('${sel}').getBoundingClientRect(); return [r.top, r.height]; })()`);
     assert.deepEqual(await box('#stage'), [0, 400], 'the model has the top half, the grip and pane the rest');
     assert.equal(await run(`document.querySelector('footer').hidden + ' ' + document.getElementById('panel').hidden`), 'false true');
     await run(`document.getElementById('toggle').click(); true`);
-    // (waited for: once on CI the page hadn't yet wired the button when the click landed)
     assert.ok(await until(`document.querySelector('footer').hidden && !document.getElementById('panel').hidden && document.getElementById('toggle').textContent === 'Info'`), 'Parts swaps the pane for the parts list, and the button reads Info');
     const [gy] = await box('#grip');
     for (const [type, y] of [['touchStart', gy + 11], ['touchMove', 500], ['touchMove', 600], ['touchEnd', 600]]) await send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 200, y }] }, sessionId);
@@ -165,15 +184,8 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     await shot('viewer-phone.png');
     ws.close();
   } finally {
-    // Stop Chrome and wait for it (its profile folder is in use until then). It can ignore a polite stop, and while its
-    // output pipe is open Node can't finish, so after 3 s it's killed outright.
-    if (process.env.PROBE || process.env.CI) process.stderr.write(`PROBE chrome stderr:\n${said.slice(0, 5000)}\n...\n${said.slice(-2500)}\n`);
     server.close();
-    const exited = () => chrome.exitCode !== null || chrome.signalCode !== null;
-    const gone = (ms) => (exited() ? Promise.resolve(true) : Promise.race([new Promise((r) => chrome.once('exit', () => r(true))), new Promise((r) => setTimeout(() => r(false), ms).unref())]));
-    chrome.kill();
-    if (!(await gone(3000))) { chrome.kill('SIGKILL'); await gone(3000); }
-    chrome.stderr.destroy();
+    await chrome?.stop(); // and waited for: its profile folder is in use until then
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} // a temp folder: the system clears it anyway
   }
 });
@@ -210,10 +222,11 @@ test('a machine: the pen follows a drag, a step file plays to its end, the build
     r.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r);
   }).listen(0);
   const port = server.address().port;
-  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
   const errors = [];
+  let chrome;
   try {
-    const wsUrl = await new Promise((res, rej) => { let s = ''; chrome.stderr.on('data', (d) => { s += d; const m = s.match(/ws:\/\/\S+/); if (m) res(m[0]); }); setTimeout(() => rej(new Error('Chrome did not start')), 60000).unref(); });
+    chrome = await startChrome({ profile: `${dir}/profile`, size: '1200,800', ...GL });
+    const wsUrl = chrome.wsUrl;
     const sock = new WebSocket(wsUrl); await new Promise((r) => sock.addEventListener('open', r, { once: true }));
     let id = 0; const waiting = new Map();
     sock.addEventListener('message', (e) => {
@@ -288,8 +301,8 @@ test('a machine: the pen follows a drag, a step file plays to its end, the build
     // A phone, in portrait: the model on top, the pen by touch
     await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId);
     await send('Emulation.setDeviceMetricsOverride', { width: 400, height: 800, deviceScaleFactor: 1, mobile: true }, sessionId);
-    await run(`location.reload(); true`).catch(() => {});
-    assert.ok(await until(`document.getElementById('title')?.textContent === 'Arm' && !document.getElementById('tool').hidden && !!window.rulecadTool?.time`), 'the link opens on a phone');
+    await run(`window.reloading = true; location.reload(); true`).catch(() => {}); // (the old page marked, as above)
+    assert.ok(await until(`!window.reloading && document.getElementById('title')?.textContent === 'Arm' && !document.getElementById('tool').hidden && !!window.rulecadTool?.time`), 'the link opens on a phone');
     assert.deepEqual(await run(`(() => { const r = document.getElementById('stage').getBoundingClientRect(); return [r.top, r.height]; })()`), [0, 400], 'the model on top');
     await run(`document.getElementById('toggle').click(); document.getElementById('toolmode').click(); true`);
     await new Promise((r) => setTimeout(r, 300));
@@ -307,11 +320,7 @@ test('a machine: the pen follows a drag, a step file plays to its end, the build
     sock.close();
   } finally {
     server.close();
-    const exited = () => chrome.exitCode !== null || chrome.signalCode !== null;
-    const gone = (ms) => (exited() ? Promise.resolve(true) : Promise.race([new Promise((r) => chrome.once('exit', () => r(true))), new Promise((r) => setTimeout(() => r(false), ms).unref())]));
-    chrome.kill();
-    if (!(await gone(3000))) { chrome.kill('SIGKILL'); await gone(3000); }
-    chrome.stderr.destroy();
+    await chrome?.stop();
     try { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(ws, { recursive: true, force: true }); } catch {} // a temp folder: the system clears it anyway
   }
 });
