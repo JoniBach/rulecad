@@ -967,14 +967,14 @@ export function layerChanges(route, holes) {
   const pieces = [[]];
   for (const p of route) {
     if (p.route_type !== 'through_obstacle') { pieces.at(-1).push(p); continue; }
-    const at = p.start, inHole = holes.some((h) => {
-      const r = Math.max(holeSize(h).w, holeSize(h).h) / 2;
-      return Math.hypot(at.x - h.x, at.y - h.y) <= r + 1e-6 && Math.hypot(p.end.x - h.x, p.end.y - h.y) <= r + 1e-6;
-    });
-    if (!inHole) throw new Error(`the autorouter ran a track through a part at (${at.x.toFixed(2)}, ${at.y.toFixed(2)}) mm: move the parts apart or give it more room`);
+    // The router sees a hole or via as a square round its copper, so it may mark the change anywhere in that square,
+    // corners included: in it counts, and the track is taken on to the hole's centre on each side, so it joins its copper
+    const at = p.start, inSquare = (q, h, r) => Math.abs(q.x - h.x) <= r + 1e-6 && Math.abs(q.y - h.y) <= r + 1e-6;
+    const hole = holes.find((h) => { const r = Math.max(holeSize(h).w, holeSize(h).h) / 2; return inSquare(at, h, r) && inSquare(p.end, h, r); });
+    if (!hole) throw new Error(`the autorouter ran a track through a part at (${at.x.toFixed(2)}, ${at.y.toFixed(2)}) mm: move the parts apart or give it more room`);
     const width = p.width ?? pieces.at(-1).at(-1)?.width;
-    pieces.at(-1).push({ route_type: 'wire', x: at.x, y: at.y, width, layer: p.from_layer });
-    pieces.push([{ route_type: 'wire', x: p.end.x, y: p.end.y, width, layer: p.to_layer }]);
+    pieces.at(-1).push({ route_type: 'wire', x: at.x, y: at.y, width, layer: p.from_layer }, { route_type: 'wire', x: hole.x, y: hole.y, width, layer: p.from_layer });
+    pieces.push([{ route_type: 'wire', x: hole.x, y: hole.y, width, layer: p.to_layer }, { route_type: 'wire', x: p.end.x, y: p.end.y, width, layer: p.to_layer }]);
   }
   return pieces.filter((q) => q.length > 1);
 }
@@ -1075,28 +1075,33 @@ export async function neckDown(json, traces, neck) {
   return out;
 }
 
-// The autorouter's pipelines tried after its own, in order, when one fails: an older, plainer search
-const PIPELINES = ['AutoroutingPipelineSolver', 'AutoroutingPipelineSolver4'];
+// The autorouter's pipelines, tried in order until one routes the board: its own, then its others, each a different search
+const PIPELINES = ['AutoroutingPipelineSolver', 'AutoroutingPipelineSolver4', 'AutoroutingPipelineSolver5', 'AutoroutingPipelineSolver6', 'AutoroutingPipelineSolver8'];
 
 async function routeOnce(json, toRoute, board, limit = 0) {
   // The autorouter uses JavaScript features from Node 22 (iterator helpers): say so, rather than fail inside it
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
   const router = await import('@tscircuit/capacity-autorouter');
   const srj = await routeInput(json, toRoute, board);
-  // The router's own pipeline first; if it gives up, or one of its later stages throws (its via clean-up can, on a
-  // crowded two-sided board: "a layer transition without a via"), the next one, a different search from the start
-  const pipelines = [...new Set([board.pipeline || PIPELINES[0], ...PIPELINES])];
-  let solver = null; const tried = [];
+  // The router's own pipeline first. If it gives up, one of its later stages throws (its via clean-up can, on a crowded
+  // two-sided board: "a layer transition without a via"), or what it hands back fails here (a pad left without a
+  // track, a track through a part), the next one: a different search from the start
+  const pipelines = [...new Set([board.pipeline || PIPELINES[0], ...PIPELINES])], tried = [];
   for (const name of pipelines) {
     if (!router[name]) continue;
-    solver = new router[name](srj, { cacheProvider: null, ...(board.effort ? { effort: board.effort } : {}) }); // effort: how hard it searches (1, the router's own)
+    const solver = new router[name](srj, { cacheProvider: null, ...(board.effort ? { effort: board.effort } : {}) }); // effort: how hard it searches (1, the router's own)
     // stepped by hand, so a repair can be given a time limit (a first route has none)
     try { while (!solver.solved && !solver.failed) { solver.step(); if (limit && Date.now() > limit) throw Object.assign(new Error('a repair took too long'), { late: true }); } }
     catch (e) { if (e.late) throw e; solver.failed = true; solver.error = solver.error || e.message; }
-    if (!solver.failed) break;
-    tried.push(`${name}: ${solver.error || 'no reason given'}`);
+    if (solver.failed) { tried.push(`${name}: ${solver.error || 'no reason given'}`); continue; }
+    try { return routedTraces(solver, srj, json); } catch (e) { tried.push(`${name}: ${e.message}`); }
   }
-  if (solver.failed) throw new Error(`the autorouter couldn't route every connection (${tried.join('; ')})`);
+  throw new Error(tried.length > 1 ? `the autorouter couldn't route every connection, with any of its pipelines (${tried.join('; ')})` : tried[0]?.replace(/^\w+: /, '') || 'the autorouter has none of its pipelines');
+}
+
+// What a solved pipeline hands back, as tracks on the board: throws if a pad is left without a track or a track runs
+// through a part
+function routedTraces(solver, srj, json) {
   // The routes for the connections asked for (the solver also hands back the fixed ones), each from its first pad to
   // its second, as tscircuit records them
   const traces = [], asked = new Map(srj.connections.map((c) => [c.name, c.pointsToConnect]));

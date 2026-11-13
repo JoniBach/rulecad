@@ -59,9 +59,10 @@ export const picoGpio = (side) => Object.entries(loadRuleSet('pico').rules[`gpio
 // ---------- any board ----------
 // Parts for any board, not only keyboards. Each returns a part as circuit.mjs describes it: put them in board.parts, join
 // their pins with board.nets, and set board.autoroute. o (all optional): { rotation: 0 | 90 | 180 | 270, layer,
-// mpn, labels: { pin1: 'GND', ... }, sch: { x, y } }. Pin labels name the pins in nets ('U1.GND') and on the schematic.
+// mpn, labels: { pin1: 'GND', ... }, sch: { x, y }, model: { boxes: [{ min, max }] } (its 3D body in its own frame, z up
+// from the board's face, mm) }. Pin labels name the pins in nets ('U1.GND') and on the schematic.
 const chip = (name, x, y, o, more) => ({ name, ftype: 'simple_chip', x, y, layer: o.layer ?? 'top', rotation: o.rotation ?? 0, mpn: o.mpn, ...(o.package ? { package: o.package } : {}),
-  courtyard: o.courtyard ?? null, sch: { x: o.sch?.x ?? x / 2, y: o.sch?.y ?? y / 2, pinLabels: o.labels ?? {} }, ...more });
+  courtyard: o.courtyard ?? null, sch: { x: o.sch?.x ?? x / 2, y: o.sch?.y ?? y / 2, pinLabels: o.labels ?? {} }, ...(o.model ? { model: o.model } : {}), ...more });
 const pinNo = (p) => Number(p.pin.replace(/\D/g, ''));
 // A rule set's pin map ({ "1": "GND", ... }) as pin labels ({ pin1: 'GND', ... })
 const labelsFrom = (set, rule) => Object.fromEntries(Object.entries(loadRuleSet(set).rules[rule].pins).map(([n, l]) => [`pin${n}`, l]));
