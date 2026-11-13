@@ -30,11 +30,11 @@ const gearBore = bore(m, { depth: 8 });                       // and this from y
 ```text
 stepper 5 31 0.59 spec
 22.5 3.5 M3 9
-5.3 4.8 0
+5.2 4.7 0
 16.69 600 spec
 ```
 
-So the 48 mm NEMA 17 gets a 22.5 mm pocket for its boss and 3.5 mm holes for M3 × 9 screws, a D-bore 5.3 mm across and
+So the 48 mm NEMA 17 gets a 22.5 mm pocket for its boss and 3.5 mm holes for M3 × 9 screws, a D-bore 5.2 mm across and
 4.8 mm over its flat, and 16.7 N m at the output of 50:1 gears turning at 12 rpm.
 
 ## The motors
