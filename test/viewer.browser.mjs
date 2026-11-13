@@ -29,7 +29,7 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     r.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r);
   }).listen(0);
   const port = server.address().port;
-  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...(process.env.CI ? { DBUS_SESSION_BUS_ADDRESS: 'disabled:', DBUS_SYSTEM_BUS_ADDRESS: 'disabled:' } : {}) } });
   const TS = Date.now(); let said = ''; chrome.stderr.on('data', (d) => { said += d; });
   try {
     const wsUrl = await new Promise((res, rej) => { let s = ''; chrome.stderr.on('data', (d) => { s += d; const m = s.match(/ws:\/\/\S+/); if (m) res(m[0]); }); setTimeout(() => rej(new Error(`Chrome did not start within a minute. It said:\n${s.slice(-1500)}`)), 60000).unref(); }); // a cold CI machine can take a while
@@ -167,7 +167,7 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
   } finally {
     // Stop Chrome and wait for it (its profile folder is in use until then). It can ignore a polite stop, and while its
     // output pipe is open Node can't finish, so after 3 s it's killed outright.
-    if (process.env.PROBE || process.env.CI) process.stderr.write(`PROBE chrome stderr:\n${said.slice(-6000)}\n`);
+    if (process.env.PROBE || process.env.CI) process.stderr.write(`PROBE chrome stderr:\n${said.slice(0, 5000)}\n...\n${said.slice(-2500)}\n`);
     server.close();
     const exited = () => chrome.exitCode !== null || chrome.signalCode !== null;
     const gone = (ms) => (exited() ? Promise.resolve(true) : Promise.race([new Promise((r) => chrome.once('exit', () => r(true))), new Promise((r) => setTimeout(() => r(false), ms).unref())]));
