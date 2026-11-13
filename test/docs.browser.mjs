@@ -7,11 +7,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { CHROME, startChrome } from './chrome.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const CHROME = process.env.CAD_CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/chromium', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium'].find((f) => fs.existsSync(f));
 const TYPES = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
 // What each page's demonstration must have drawn, as a script that returns true
 const drawn = {
@@ -35,10 +35,10 @@ test('every library page runs without a script error, and its demonstration draw
   });
   await new Promise((r) => server.listen(0, r));
   const port = server.address().port, dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-docs-chrome-'));
-  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  let chrome;
   try {
-    const wsUrl = await new Promise((r, no) => { let buf = ''; chrome.stderr.on('data', (d) => { buf += d; const m = buf.match(/ws:\/\/\S+/); if (m) r(m[0]); }); setTimeout(() => no(new Error('Chrome did not start')), 20000).unref(); });
-    const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
+    chrome = await startChrome({ profile: `${dir}/profile`, size: '1200,900' });
+    const ws = new WebSocket(chrome.wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
     let id = 0; const waiting = new Map(), errors = [];
     ws.addEventListener('message', (e) => {
       const m = JSON.parse(e.data);
@@ -64,5 +64,5 @@ test('every library page runs without a script error, and its demonstration draw
       for (const e of errors) problems.push(`${p}: ${e}`);
     }
     assert.deepEqual(problems, []);
-  } finally { chrome.kill(); server.close(); fs.rmSync(out, { recursive: true, force: true }); }
+  } finally { await chrome?.stop(); server.close(); fs.rmSync(out, { recursive: true, force: true }); }
 });

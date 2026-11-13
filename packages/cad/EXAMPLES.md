@@ -980,6 +980,256 @@ turn it back with. The torque's line ends `(rests on community figures: measure 
 thousandths of a millimetre against the pinion's seat on the rail, far inside the 0.2 mm the pinion is drawn with. A NEMA 17 hung from a 2 mm PLA plate would
 fail the same check, and say how thick the plate would need to be.
 
+### The spool winder, driven
+
+The winder from chapter 9 with an N20 gear motor where the crank was, so it winds at a steady speed. The motor turns
+the sun now, and the slow part is the carrier: four turns of the motor's shaft for one of the spool's. So the spool
+moves onto the carrier. What changes:
+
+- The case loses its axle pin. The motor hangs under the hub on its two M1.6 screws, and three ears reach out past the
+  ring for feet tall enough to stand it over the motor.
+- The sun takes the motor's D-shaft with `v.motors.bore`, and keeps its 8 mm shaft, which the spool now turns on.
+- The carrier and the spool are one part, printed upside down: the outer cheek on the bed, the drum, a 45° cone out
+  to the carrier's plate (the spool's inner cheek, printed without supports), and the planets' pins on top. The drum
+  is hollow, open on the bed, under a roof that closes in at 45°.
+- The handle goes. The ring and the planets are the hand winder's.
+
+The N20's figures are Pololu's, for its 100:1 gearbox. Unbranded N20s look the same and vary widely: treat a cheap
+one's torque as about half until it has been measured.
+
+```json projects/home/objects/winder-base.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-base",
+  "title": "Winder base for an N20",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "variables": {
+    "radius": { "value": 33, "unit": "mm", "rule": "The ring's rim: as the hand winder's case" },
+    "rim": { "value": "x1c.line * 14", "unit": "mm", "rule": "The rim under the ring's, wide enough for its push pins" },
+    "snap": { "value": 2, "unit": "mm", "rule": "Two push pins hold the ring still: their shafts" },
+    "snap_lip": { "value": 0.3, "unit": "mm", "rule": "The barb's lip, clicking over the floor of the ring's counterbore" },
+    "snap_back": { "value": 90, "unit": "deg", "rule": "A square back: it holds for good" },
+    "snap_at": { "value": 30.6, "unit": "mm", "rule": "Halfway across the ring's rim, between its roots and its outside" },
+    "snap_length": { "value": 4, "unit": "mm", "rule": "Up the ring's 6 mm rim to its 2 mm counterbore" },
+    "flange": { "value": 2, "unit": "mm", "rule": "A push pin's foot flange, buried in the rim" },
+    "hub": { "value": 14, "unit": "mm", "rule": "Round the N20's face: its two M1.6 holes 9 mm apart, with a wall outside them" },
+    "spoke": { "value": "x1c.line * 12", "unit": "mm", "rule": "Three spokes from the hub to the rim" },
+    "spokes": { "value": 3, "rule": "Three: it stands without rocking" },
+    "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Base, fifteen layers" },
+    "ear_at": { "value": 38, "unit": "mm", "rule": "A foot's screw, outside the ring (33 mm) by a screw head's radius and a little" },
+    "ear": { "value": 10, "unit": "mm", "rule": "An ear's width, round its screw" },
+    "hole": { "value": "3 + x1c.hole_comp + x1c.fit * 2", "unit": "mm", "rule": "M3 clearance for a foot's screw" }
+  }
+}
+```
+
+```js projects/home/objects/winder-base.js
+// The hand winder's case with the motor under it: the axle pin goes, the hub takes the N20's face and screws, and three
+// ears reach out past the ring, a quarter turn round from the spokes, for the feet that stand it over the motor.
+import jscad from '@jscad/modeling'
+const { cylinder, cuboid } = jscad.primitives
+const { rotateZ, translate } = jscad.transforms
+
+export function main (v) {
+  const motor = v.motors.motorModel('n20')
+  const rim = v.ops.subtract(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }), cylinder({ radius: v.radius - v.rim, height: v.t, center: [0, 0, v.t / 2] }))
+  const turn = (k) => (2 * Math.PI * k) / v.spokes
+  const spokes = Array.from({ length: v.spokes }, (_, k) => rotateZ(turn(k), cuboid({ size: [v.radius - v.rim / 2, v.spoke, v.t], center: [(v.radius - v.rim / 2) / 2, 0, v.t / 2] })))
+  const ears = Array.from({ length: v.spokes }, (_, k) => rotateZ(turn(k) + Math.PI / 2, v.ops.union(
+    cuboid({ size: [v.ear_at - v.radius + v.rim, v.ear, v.t], center: [(v.ear_at + v.radius - v.rim) / 2, 0, v.t / 2] }),
+    cylinder({ radius: v.ear / 2, height: v.t, center: [v.ear_at, 0, v.t / 2] }))))
+  const holes = Array.from({ length: v.spokes }, (_, k) => rotateZ(turn(k) + Math.PI / 2, cylinder({ radius: v.hole / 2, height: v.t * 2, center: [v.ear_at, 0, v.t / 2] })))
+  const snaps = [0, Math.PI].map((a) => translate([v.snap_at * Math.cos(a), v.snap_at * Math.sin(a), v.t - v.flange], v.flexures.snapPin({ diameter: v.snap, length: v.snap_length, lip: v.snap_lip, back: v.snap_back }, v.ops)))
+  const body = v.ops.union(rim, cylinder({ radius: v.hub / 2, height: v.t, center: [0, 0, v.t / 2] }), ...spokes, ...ears, ...snaps)
+  return v.ops.subtract(body, v.motors.mount(motor, { plate: v.t, screw: 'M1.6' }, v.ops), ...holes)
+}
+```
+
+```json projects/home/objects/winder-foot.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-foot",
+  "title": "Winder foot",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "variables": {
+    "height": { "value": 32, "unit": "mm", "rule": "Under the motor: its 25 mm, its terminals, and room for the wires to bend" },
+    "size": { "value": 10, "unit": "mm", "rule": "As wide as the base's ear" },
+    "hole": { "value": 2.9, "unit": "mm", "rule": "M3 screw, self-tapped into the plastic" },
+    "depth": { "value": 12, "unit": "mm", "rule": "Plenty for an M3 × 16 through the 3 mm ear" }
+  }
+}
+```
+
+```js projects/home/objects/winder-foot.js
+// A foot under each of the base's ears, screwed on from above.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
+export function main (v) {
+  const block = cylinder({ radius: v.size / 2, height: v.height, center: [0, 0, v.height / 2] })
+  return v.ops.subtract(block, cylinder({ radius: v.hole / 2, height: v.depth, center: [0, 0, v.height - v.depth / 2] }))
+}
+```
+
+The sun's bore runs right through it, with the flat only as far as the motor's shaft reaches: 10 mm of shaft, less
+the base and the gap under the sun.
+
+```json projects/home/objects/winder-drive.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-drive",
+  "title": "Winder sun on the motor",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": { "axis": { "at": [0, 0, 0], "axis": [0, 0, 1] } },
+  "variables": {
+    "module": { "value": 1, "unit": "mm", "rule": "As the ring" },
+    "teeth": { "value": 18, "rule": "From planetary()" },
+    "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "As the ring" },
+    "shaft": { "value": 8, "unit": "mm", "rule": "The reel turns on it, inside the sun's roots" },
+    "shaft_height": { "value": 12, "unit": "mm", "rule": "Up through the reel's plate and into its cone" },
+    "tip": { "value": 6.6, "unit": "mm", "rule": "Where the N20's shaft ends, from the sun's underside: 10 mm of shaft less the 3 mm base and the 0.4 mm gap" }
+  }
+}
+```
+
+```js projects/home/objects/winder-drive.js
+// The sun with the N20's D-shaft in it, and the 8 mm shaft above that carries the reel.
+import jscad from '@jscad/modeling'
+const { cylinder } = jscad.primitives
+
+export function main (v) {
+  const motor = v.motors.motorModel('n20')
+  const gear = v.gears.spur({ module: v.module, teeth: v.teeth, width: v.width })
+  const shaft = cylinder({ radius: v.shaft / 2, height: v.shaft_height, center: [0, 0, v.width + v.shaft_height / 2] })
+  return v.ops.subtract(v.ops.union(gear, shaft), v.motors.bore(motor, { depth: v.width + v.shaft_height, tip: v.tip }, v.ops))
+}
+```
+
+```json projects/home/objects/winder-reel.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "winder-reel",
+  "title": "Winder reel and carrier",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "engine": "manifold",
+  "anchors": {
+    "axis": { "at": [0, 0, "base"], "axis": [0, 0, -1] },
+    "p0": { "at": ["a", 0, "base + t + drop"], "axis": [0, 0, -1] },
+    "p1": { "at": ["0 - a / 2", "a * 0.8660254", "base + t + drop"], "axis": [0, 0, -1] },
+    "p2": { "at": ["0 - a / 2", "0 - a * 0.8660254", "base + t + drop"], "axis": [0, 0, -1] }
+  },
+  "variables": {
+    "a": { "value": 18, "unit": "mm", "rule": "Sun to planet: m (S + P) / 2" },
+    "drop": { "value": "6 + x1c.layer * 2", "unit": "mm", "rule": "A planet's width and two layers' gap above it" },
+    "radius": { "value": 22, "unit": "mm", "rule": "The carrier's plate: past the planets' pins (18 mm out, 1.5 mm round) by four lines" },
+    "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "The plate, fifteen layers" },
+    "hole": { "value": 9, "unit": "mm", "rule": "Round the sun's 8 mm shaft, which it turns on" },
+    "pin": { "value": 3, "unit": "mm", "rule": "The planets' axles" },
+    "planets": { "value": 3, "rule": "From planetary(): three planets" },
+    "drum": { "value": 24, "unit": "mm", "rule": "The spool's core: a strap bends round it easily" },
+    "wall": { "value": "x1c.line * 4", "unit": "mm", "rule": "The drum's wall: four lines" },
+    "length": { "value": 16, "unit": "mm", "rule": "A 15 mm strap and a millimetre" },
+    "cheek": { "value": 40, "unit": "mm", "rule": "The outer cheek: a few turns of strap" },
+    "cheek_t": { "value": "x1c.layer * 6", "unit": "mm", "rule": "Six layers, on the bed" },
+    "base": { "value": "cheek_t + length + radius - drum / 2", "unit": "mm", "rule": "The plate's far face: the cheek, the drum, and a 45° cone out to the plate" }
+  }
+}
+```
+
+```js projects/home/objects/winder-reel.js
+// The carrier and the spool in one part, printed upside down: the outer cheek on the bed, the drum, a 45° cone out to
+// the carrier's plate, and the planets' pins standing up from it. The assembly turns it over.
+import jscad from '@jscad/modeling'
+const { cylinder, cylinderElliptic } = jscad.primitives
+
+export function main (v) {
+  const cone = v.base - v.cheek_t - v.length
+  const cheek = cylinder({ radius: v.cheek / 2, height: v.cheek_t, center: [0, 0, v.cheek_t / 2] })
+  const drum = cylinder({ radius: v.drum / 2, height: v.length, center: [0, 0, v.cheek_t + v.length / 2] })
+  const flare = cylinderElliptic({ height: cone, startRadius: [v.drum / 2, v.drum / 2], endRadius: [v.radius, v.radius], center: [0, 0, v.cheek_t + v.length + cone / 2] })
+  const plate = cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.base + v.t / 2] })
+  const third = (2 * Math.PI) / v.planets
+  const pins = Array.from({ length: v.planets }, (_, k) => cylinder({ radius: v.pin / 2, height: v.drop, center: [v.a * Math.cos(k * third), v.a * Math.sin(k * third), v.base + v.t + v.drop / 2] }))
+  const hole = cylinder({ radius: v.hole / 2, height: v.base + v.t, center: [0, 0, (v.base + v.t) / 2] })
+  // hollow inside the drum, open on the bed, its roof closing in at 45° to the bore so it prints without supports
+  const inside = v.drum / 2 - v.wall, roof = inside - v.hole / 2, deep = v.cheek_t + v.length
+  const hollow = v.ops.union(cylinder({ radius: inside, height: deep, center: [0, 0, deep / 2] }),
+    cylinderElliptic({ height: roof, startRadius: [inside, inside], endRadius: [v.hole / 2, v.hole / 2], center: [0, 0, deep + roof / 2] }))
+  return v.ops.subtract(v.ops.union(cheek, drum, flare, plate, ...pins), hole, hollow)
+}
+```
+
+The motor drives the sun, and the planetary takes the rest: `"drive": "sun"`. The load is the strap: 10 N at the
+full spool's 20 mm radius, 0.2 N m on the reel. With the catalogue's 100:1 gearbox the check warns, 0.301 N m against
+0.2 N m, 1.5 times over. Pololu sells the same motor at 150:1, and `"set": { "ratio": 150 }` scales the torque and
+speed to it.
+
+```json projects/home/assemblies/winder-driven.json
+{
+  "title": "Motorised spool winder",
+  "kind": "fit",
+  "items": [
+    { "id": "base", "object": "winder-base" },
+    { "id": "foot_a", "object": "winder-foot", "at": [0, "base.ear_at", "0 - foot_a.height"] },
+    { "id": "foot_b", "object": "winder-foot", "at": ["0 - base.ear_at * 0.8660254", "0 - base.ear_at / 2", "0 - foot_b.height"] },
+    { "id": "foot_c", "object": "winder-foot", "at": ["base.ear_at * 0.8660254", "0 - base.ear_at / 2", "0 - foot_c.height"] },
+    { "id": "drive", "motor": { "model": "n20", "set": { "ratio": 150 }, "drives": "sun", "screw": "M1.6" } },
+    { "id": "ring", "object": "winder-ring", "at": [0, 0, "base.t"] },
+    { "id": "sun", "object": "winder-drive" },
+    { "id": "reel", "object": "winder-reel" },
+    { "id": "p0", "object": "winder-gear" },
+    { "id": "p1", "object": "winder-gear" },
+    { "id": "p2", "object": "winder-gear" }
+  ],
+  "joints": [
+    { "id": "sun", "type": "revolute", "parent": { "item": "base", "at": [0, 0, "base.t + 0.4"], "axis": [0, 0, 1] }, "child": "sun.axis", "label": "Motor" },
+    { "id": "reel", "type": "revolute", "parent": { "item": "base", "at": [0, 0, "base.t + 0.8 + ring.width + reel.t"], "axis": [0, 0, 1] }, "child": "reel.axis", "min": -180, "max": 180 },
+    { "id": "p0", "type": "revolute", "parent": "reel.p0", "child": "p0.axis", "min": -3000, "max": 3000 },
+    { "id": "p1", "type": "revolute", "parent": "reel.p1", "child": "p1.axis", "min": -3000, "max": 3000 },
+    { "id": "p2", "type": "revolute", "parent": "reel.p2", "child": "p2.axis", "min": -3000, "max": 3000 }
+  ],
+  "planetary": [
+    { "sun": "sun", "carrier": "reel", "ring": "ring", "planets": ["p0", "p1", "p2"], "drive": "sun",
+      "module": "ring.module", "teeth": ["sun.teeth", "p0.teeth", "ring.teeth"] }
+  ],
+  "fits": [
+    { "a": "ring", "b": "base", "fastens": true, "note": "The ring held still on the base by its two push pins" },
+    { "a": "drive", "b": "base", "fastens": true, "min": 0, "note": "The motor, on its two M1.6 screws" },
+    { "a": "drive", "b": "sun", "shaft": true, "note": "The motor's shaft in the sun" },
+    { "a": "foot_a", "b": "base", "fastens": true, "min": 0, "note": "A foot, screwed on" },
+    { "a": "foot_b", "b": "base", "fastens": true, "min": 0, "note": "A foot, screwed on" },
+    { "a": "foot_c", "b": "base", "fastens": true, "min": 0, "note": "A foot, screwed on" }
+  ],
+  "loads": [{ "joint": "reel", "torque": 0.2, "note": "A strap pulled with 10 N at the full spool's 20 mm radius" }],
+  "poses": { "rest": { "sun": 0 } }
+}
+```
+
+```sh
+npx cad check home/winder-driven   # warns: nothing says whether it holds with the power off
+npx cad check home/winder-driven --sweep --steps 12   # warns, as above
+```
+
+The check says the sun drives the carrier at a quarter of its speed, the shaft has 6.6 mm of its flat in the sun's
+bore, and the motor gives `0.45 N m there against 0.2 N m needed, 2.25 times over (rests on derived figures)`: scaled
+from the 100:1 gearbox's, so measure it. It takes a DC motor's working speed as half its free speed: the reel at
+about 26 rpm, a turn in 2.3 s, about 2 m of strap a minute onto the bare drum. `npx cad preview home/winder-driven`
+draws the motor's curve beside the picture, with that point on it: against the 0.2 N m load alone it would run nearer
+40 rpm. Printed, it's 51 g in ten parts, the reel 19 g of it.
+
+It warns that nothing says whether the spool holds with the power off. It doesn't: an N20's spur gearbox can be turned
+back from its shaft, and the planetary is no help, since a pull on the reel turns the motor four times as fast the
+easy way. A ratchet on the reel holds it: the strap tensioner in `examples/bench/projects/gears` has one. Draw it on,
+give the reel's joint `"brake": "the ratchet"`, and the check passes it. Print the winder and report two things: how
+fast it winds against a known weight, and whether the spool runs back when the power goes. They become the N20's
+measured figures.
+
 ## 11. A robot joint: a stepper through a compound planetary
 
 A shoulder for a small desktop arm: a NEMA 17 turning a 38:1 gearbox on one axis, 500 g at 150 mm on the output. The

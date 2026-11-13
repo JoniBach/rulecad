@@ -895,11 +895,12 @@ function replay(doc, ws) {
     const [lang, file] = info.split(' ');
     if (file) { fs.mkdirSync(path.dirname(path.join(ws, file)), { recursive: true }); fs.writeFileSync(path.join(ws, file), body); files++; continue; }
     if (lang !== 'sh') continue;
-    for (const line of body.split('\n').map((l) => l.replace(/\s+#.*$/, '').trim()).filter((l) => l.startsWith('npx cad ') && !l.startsWith('npx cad preview'))) {
+    // a command the text says warns ("# warns: why") may warn, never fail
+    for (const { line, warns } of body.split('\n').map((l) => ({ line: l.replace(/\s+#.*$/, '').trim(), warns: /#\s*warns\b/.test(l) })).filter(({ line: l }) => l.startsWith('npx cad ') && !l.startsWith('npx cad preview'))) {
       const a = [...line.slice('npx cad '.length).matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]);
       const r = run(ws, a);
       assert.equal(r.code, 0, `${line}\n${r.out}`);
-      assert.doesNotMatch(r.out, /^\s+[✗!] /m, `${line}\n${r.out}`);
+      assert.doesNotMatch(r.out, warns ? /^\s+✗ /m : /^\s+[✗!] /m, `${line}\n${r.out}`);
       commands++;
     }
   }
@@ -1052,6 +1053,23 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(driven, /✓ drive on rail: under the motor's 30 g and [\d.]+ N m, the shaft's tip moves [\d.]+ mm/, 'the rail bent under its motor, by FE');
     assert.doesNotMatch(driven, /✗/, driven);
     assert.match(run(ws, ['check', 'home/driven', '--sweep', '--steps', '12']).out, /sweep pinion, -180 to 180° in 12 steps: nothing collides/);
+    // The winder, driven: the sun on an N20, the spool on the carrier; enough torque, and an honest unknown when unpowered
+    const wound = run(ws, ['check', 'home/winder-driven']).out;
+    assert.match(wound, /the sun drives the carrier and the planets \(the ring held\): 0\.25 turns of the carrier for each turn of the sun/);
+    assert.match(wound, /The motor's shaft in the sun: 6\.6 mm of the flat in the bore/);
+    assert.match(wound, /drive into reel: 0\.45 N m there against 0\.2 N m needed .*2\.25 times over/, 'the 150:1 gearbox, scaled');
+    assert.match(wound, /reel: there's no figure for what holds it with the power off/);
+    assert.doesNotMatch(wound, /✗/, wound);
+    // ...and drawn as the preview draws it: the motor's curve at the working point, the torque through the train
+    const drawn = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { buildAssembly } from ${JSON.stringify(pathToFileURL(fileURLToPath(new URL('./lib/assembly.mjs', import.meta.url))).href)};
+      import { motorWork, workCurve, trainSvg } from ${JSON.stringify(pathToFileURL(fileURLToPath(new URL('./lib/motorsvg.mjs', import.meta.url))).href)};
+      const [w] = motorWork(await buildAssembly('home/winder-driven'));
+      console.log(JSON.stringify({ joint: w.joint, margin: w.margin, curve: workCurve(w), train: trainSvg(w) }));`], { cwd: ws, encoding: 'utf8' }));
+    assert.equal(drawn.joint, 'reel'); assert.ok(Math.abs(drawn.margin - 2.25) < 0.01, String(drawn.margin));
+    assert.match(drawn.curve, /n20, through 4:1/); assert.match(drawn.curve, /the load, 0\.2 N m/);
+    assert.match(drawn.train, /drive's shaft/); assert.match(drawn.train, /planetary 4:1/); assert.match(drawn.train, /2\.25× the 0\.2/);
+    assert.match(drawn.train, /no figure for what holds it/);
     const shoulder = run(ws, ['check', 'home/shoulder']).out;
     assert.match(shoulder, /the second ring turns 0\.02632 of the sun's turn, the other way \(38:1/, 'the compound planetary');
     assert.match(shoulder, /motor into out: 7\.442 N m there against 0\.735 N m needed/, 'the worst of its range, from a mass on the output');
