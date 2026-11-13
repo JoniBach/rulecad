@@ -30,8 +30,10 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
   }).listen(0);
   const port = server.address().port;
   const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=1200,800', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const TS = Date.now(); let said = ''; chrome.stderr.on('data', (d) => { said += d; });
   try {
     const wsUrl = await new Promise((res, rej) => { let s = ''; chrome.stderr.on('data', (d) => { s += d; const m = s.match(/ws:\/\/\S+/); if (m) res(m[0]); }); setTimeout(() => rej(new Error(`Chrome did not start within a minute. It said:\n${s.slice(-1500)}`)), 60000).unref(); }); // a cold CI machine can take a while
+    (process.env.PROBE || process.env.CI) && process.stderr.write(`PROBE chrome started in ${Date.now() - TS} ms\n`);
     const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
     let id = 0; const waiting = new Map();
     ws.addEventListener('message', (e) => { const m = JSON.parse(e.data); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); } });
@@ -41,7 +43,9 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     const run = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId)).result.result.value;
     // (45 s: a cold CI machine can be slow to load the page)
     // (a page mid-reload answers with no result: that's not yet, so it's asked again rather than failing the test)
-    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) if (await run(expr).catch(() => false)) return true; return false; };
+    const T0 = Date.now(), log = (m) => (process.env.PROBE || process.env.CI) && process.stderr.write(`PROBE ${((Date.now() - T0) / 1000).toFixed(1)} ${m}\n`);
+    log('target created');
+    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 200))) { const a = Date.now(); let v; try { v = await run(expr); } catch (e) { v = 'ERR ' + e.message; } if ((process.env.PROBE || process.env.CI) && v !== true) { let st; try { st = await send('Runtime.evaluate', { expression: 'document.readyState + " " + location.href + " " + document.body?.innerHTML.slice(0, 80)', returnByValue: true }, sessionId); } catch (e) { st = e.message; } log(`${expr.slice(0, 40)} -> ${v} in ${Date.now() - a} ms; ${JSON.stringify(st).slice(0, 300)}`); } if (v === true) return true; } return false; };
 
     assert.ok(await until(`!!document.querySelector('.drop input')`), 'the drop screen shows without a link');
     const shot = async (name) => fs.writeFileSync(new URL(`./${name}`, import.meta.url), Buffer.from((await send('Page.captureScreenshot', { format: 'png' }, sessionId)).result.data, 'base64'));
@@ -163,6 +167,7 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
   } finally {
     // Stop Chrome and wait for it (its profile folder is in use until then). It can ignore a polite stop, and while its
     // output pipe is open Node can't finish, so after 3 s it's killed outright.
+    if (process.env.PROBE || process.env.CI) process.stderr.write(`PROBE chrome stderr:\n${said.slice(-6000)}\n`);
     server.close();
     const exited = () => chrome.exitCode !== null || chrome.signalCode !== null;
     const gone = (ms) => (exited() ? Promise.resolve(true) : Promise.race([new Promise((r) => chrome.once('exit', () => r(true))), new Promise((r) => setTimeout(() => r(false), ms).unref())]));
