@@ -959,6 +959,40 @@ test('a motor in an assembly: on the axis of its joint, torque reaching a load, 
   } finally { done(); }
 });
 
+test('a motor\'s mount bent by FE: a NEMA 17 on a 2 mm PLA plate fails on deflection and warns on heat, a 6 mm plate held close passes', () => {
+  const { ws, cad, done } = workspace();
+  const write = (f, x) => { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), typeof x === 'string' ? x : JSON.stringify(x)); };
+  const findings = (a) => { const out = cad('check', `home/${a}`, '--json'), r = JSON.parse(out); assert.ok(r.findings, out); return r.findings.filter((x) => /^motor\./.test(x.code)); };
+  try {
+    write('projects/home/project.json', { name: 'home', material: 'PLA', objects: ['plate', 'wall', 'arm'] });
+    // A plate standing out 45 mm from a wall, the motor hung under it, its shaft up through the plate
+    write('projects/home/objects/plate.json', { name: 'plate', version: '0.1.0', engine: 'manifold', variables: { thick: { value: 2, unit: 'mm', rule: 'The plate', tweak: { min: 1, max: 10 } }, reach: { value: 60, unit: 'mm', rule: 'Out to the wall', tweak: { min: 25, max: 100 } } } });
+    write('projects/home/objects/plate.js', "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) {\n  const m = v.motors.motorModel('nema17')\n  return v.ops.subtract(cuboid({ size: [v.reach + 22, 42.3, v.thick], center: [(v.reach - 22) / 2, 0, v.thick / 2] }), v.motors.mount(m, { plate: v.thick }, v.ops))\n}\n");
+    write('projects/home/objects/wall.json', { name: 'wall', version: '0.1.0', variables: { at: { value: 45, unit: 'mm', rule: 'Where the wall starts', tweak: { min: 20, max: 100 } }, reach: { value: 60, unit: 'mm', rule: 'As the plate', tweak: { min: 25, max: 100 } } } });
+    write('projects/home/objects/wall.js', "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.reach + 10 - v.at, 50, 30], center: [(v.reach + 10 + v.at) / 2, 0, -15] }) }\n");
+    write('projects/home/objects/arm.json', { name: 'arm', version: '0.1.0', anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } }, variables: { long: { value: 60, unit: 'mm', rule: 'The arm' } } });
+    write('projects/home/objects/arm.js', "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) { return cuboid({ size: [v.long, 6, 4], center: [v.long / 2 + 12, 0, 40] }) }\n");
+    const bracket = (name, set, wall = {}) => write(`projects/home/assemblies/${name}.json`, { title: 'Bracket', kind: 'fit',
+      items: [{ id: 'wall', object: 'wall', set: wall }, { id: 'plate', object: 'plate', set }, { id: 'm', motor: { model: 'nema17', drives: 'j' } }, { id: 'arm', object: 'arm' }],
+      joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 0], axis: [0, 0, 1] }, child: 'arm.axis' }],
+      fits: [{ a: 'm', b: 'plate', fastens: true, min: 0 }, { a: 'plate', b: 'wall', fastens: true, min: 0 }], loads: [{ joint: 'j', torque: 0.05 }] });
+    bracket('thin', {});
+    const thin = findings('thin'), bent = thin.find((x) => x.code === 'motor.mount' && x.values?.deflection != null);
+    assert.equal(bent.level, 'fail', bent.text);
+    assert.ok(bent.values.deflection > 2 * bent.values.limit, `${bent.values.deflection} mm at the shaft's tip`);
+    assert.match(bent.text, /shaft's tip moves [\d.]+ mm, [\d.]+ times the 0\.2 mm fit/);
+    assert.match(bent.text, /A plate about [\d.]+ mm thick where it bends \(2 mm at the screws now\), or ribs under it, or a stiffer material/, 'what fixes it');
+    assert.match(bent.text, /FE on [\d.]+ mm cubes, 2 across the plate, held where it is fastened/, 'how far to trust it');
+    const heat = thin.find((x) => x.code === 'motor.heat');
+    assert.equal(heat.level, 'warn'); assert.match(heat.text, /past where PLA softens .* Set the driver to [\d.]+ A/, 'and what fixes the heat');
+    // thicker, and held right beside the motor: it passes, the stress against PLA's strength with a margin
+    bracket('thick', { thick: 6, reach: 30 }, { at: 22, reach: 30 });
+    const ok = findings('thick').find((x) => x.code === 'motor.mount' && x.values?.deflection != null);
+    assert.equal(ok.level, 'pass', ok.text);
+    assert.ok(ok.values.deflection < bent.values.deflection / 5 && ok.values.margin >= 2 && ok.values.stress > 0, JSON.stringify(ok.values));
+  } finally { done(); }
+});
+
 test('a motor drives a joint in its own steps; a servo brings its range, and refuses more', async () => {
   const { motorDrives } = await import('./lib/motors.mjs'), { motorModel } = await import('@rulecad/motors');
   const item = (model, drives) => [{ motor: { model, drives } }, { id: 'm', src: { motor: motorModel(model) } }];
@@ -1016,6 +1050,7 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.match(driven, /drive: 28byj48, 30 g, drives pinion, 0\.0879° a step/, 'the motor');
     assert.match(driven, /drive into slide: [\d.]+ N there against 1 N needed .*rests on community figures/, 'the torque, and what it rests on');
     assert.match(driven, /slide holds with the power off/);
+    assert.match(driven, /✓ drive on rail: under the motor's 30 g and [\d.]+ N m, the shaft's tip moves [\d.]+ mm/, 'the rail bent under its motor, by FE');
     assert.doesNotMatch(driven, /✗/, driven);
     assert.match(run(ws, ['check', 'home/driven', '--sweep', '--steps', '12']).out, /sweep pinion, -180 to 180° in 12 steps: nothing collides/);
     // The winder, driven: the sun on an N20, the spool on the carrier; enough torque, and an honest unknown when unpowered

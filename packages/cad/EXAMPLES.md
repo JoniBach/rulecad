@@ -976,6 +976,9 @@ The check says which motor it is and how far a step moves (`0.0879° a step`, or
 on the pinion's axis, the force reaching the slide against the 1 N it has to push and how many times over, how fast the
 slide moves, and that the slide holds with the power off: the 28BYJ-48's own gearbox friction, far more than the load can
 turn it back with. The torque's line ends `(rests on community figures: measure it)`, because that's what its torque is.
+`motor.mount` bends the rail under the motor by FE, held where its feet are screwed on: the shaft's tip moves a few
+thousandths of a millimetre against the pinion's seat on the rail, far inside the 0.2 mm the pinion is drawn with. A NEMA 17 hung from a 2 mm PLA plate would
+fail the same check, and say how thick the plate would need to be.
 
 ### The spool winder, driven
 
