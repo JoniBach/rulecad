@@ -6,10 +6,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { liveView } from '../packages/cad/lib/live.mjs';
-
-const CHROME = process.env.CAD_CHROME || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/chromium', '/usr/bin/google-chrome', '/opt/pw-browsers/chromium'].find((f) => fs.existsSync(f));
+import { CHROME, startChrome } from './chrome.mjs';
 
 test('the live view draws a 3D part in view, and dragging turns it', { skip: !CHROME && 'no Chrome', timeout: 300000 }, async () => {
   // A block in the middle of a 12-cell cube, as an optimiser's step
@@ -19,18 +17,18 @@ test('the live view draws a 3D part in view, and dragging turns it', { skip: !CH
   const view = await liveView({ port: 0, title: 'a block' });
   view.step({ step: 1, steps: 10, compliance: 1, change: 0.1, beta: 1, grid: { nx: n, ny: n, nz: n, h: 2 }, density });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-live-chrome-'));
-  const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}/profile`, '--no-first-run', '--window-size=500,900', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...(process.env.CI ? ['--no-sandbox'] : []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+  let chrome;
   try {
-    const wsUrl = await new Promise((r, no) => { let buf = ''; chrome.stderr.on('data', (d) => { buf += d; const m = buf.match(/ws:\/\/\S+/); if (m) r(m[0]); }); setTimeout(() => no(new Error('Chrome did not start')), 120000); }); // the browser tests run at once, on CI's two cores
+    chrome = await startChrome({ profile: `${dir}/profile`, size: '500,900' });
     note('Chrome started');
-    const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
+    const ws = new WebSocket(chrome.wsUrl); await new Promise((r) => ws.addEventListener('open', r, { once: true }));
     let id = 0; const waiting = new Map(), errors = [];
     ws.addEventListener('message', (e) => {
       const m = JSON.parse(e.data);
       if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
       if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
     });
-    const send = (method, params = {}, sessionId) => new Promise((r, no) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params, sessionId })); setTimeout(() => no(new Error(`${method} timed out`)), 20000); });
+    const send = (method, params = {}, sessionId) => new Promise((r, no) => { const i = ++id; waiting.set(i, r); ws.send(JSON.stringify({ id: i, method, params, sessionId })); setTimeout(() => no(new Error(`${method} timed out`)), 20000).unref(); });
     const { result: { targetId } } = await send('Target.createTarget', { url: 'about:blank' });
     const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
     await send('Runtime.enable', {}, sessionId);
@@ -61,8 +59,7 @@ test('the live view draws a 3D part in view, and dragging turns it', { skip: !CH
     assert.notEqual((await run(look)).picture, before, 'dragging across the 3D panel turned nothing'); note('turned');
     assert.deepEqual(errors, []);
   } finally {
-    // Killed outright: asked politely, Chrome without a GPU can take its time going, and the test would wait on it
-    chrome.kill('SIGKILL'); await new Promise((r) => { chrome.once('exit', r); setTimeout(r, 5000); });
+    await chrome?.stop();
     await view.close();
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
