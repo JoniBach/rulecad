@@ -1214,7 +1214,13 @@ speed to it.
 ```sh
 npx cad check home/winder-driven   # warns: nothing says whether it holds with the power off
 npx cad check home/winder-driven --sweep --steps 12   # warns, as above
+npx cad animate home/winder-driven
+npx cad preview home/winder-driven --check
 ```
+
+`cad animate` cuts the gearbox across its shafts and turns it: the planets roll round the held ring as the sun turns,
+and the reel, picked out as the part with the load, turns a quarter as far. `cad preview --check` labels the motor's
+torque where it starts and where it arrives, with the margin and the open question of holding unpowered.
 
 The check says the sun drives the carrier at a quarter of its speed, the shaft has 6.6 mm of its flat in the sun's
 bore, and the motor gives `0.45 N m there against 0.2 N m needed, 2.25 times over (rests on derived figures)`: scaled
