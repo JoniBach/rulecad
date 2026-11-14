@@ -129,6 +129,14 @@
       "kind": "community",
       "source": "Bambu Studio's default elephant foot compensation, 0.15 mm, the amount it shrinks the first layer by to undo the spread",
       "checked": "2026-11-07"
+    },
+    "pilot_m3": {
+      "value": 2.9,
+      "unit": "mm",
+      "rule": "Hole to draw for an M3 screw to form its own thread in PLA: 2.9 mm and 3.0 mm drawn both hold the screw straight, and smaller holes send it in at an angle. Drawn as it is: no hole compensation",
+      "kind": "measured",
+      "source": "fit bar, examples/bench/projects/benchmarks/MEASURE.md row 5, PLA",
+      "checked": "2026-11-10"
     }
   }
 }
