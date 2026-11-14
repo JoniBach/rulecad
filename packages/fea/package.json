@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/fea",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "How far a part bends under load: finite elements on a grid of squares (2D) or cubes (3D), with a multigrid solver, in plain JavaScript.",
   "type": "module",
   "exports": {
@@ -11,6 +11,10 @@
     "./threads": {
       "types": "./threads.d.mts",
       "default": "./threads.mjs"
+    },
+    "./frame": {
+      "types": "./frame.d.mts",
+      "default": "./frame.mjs"
     }
   },
   "files": [
@@ -19,7 +23,9 @@
     "README.md",
     "LICENSE",
     "threads.mjs",
-    "threads.d.mts"
+    "threads.d.mts",
+    "frame.mjs",
+    "frame.d.mts"
   ],
   "license": "MIT",
   "keywords": [
