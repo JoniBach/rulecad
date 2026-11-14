@@ -66,7 +66,30 @@ views.forEach(([name, pos], i) => {
   renderer.render(scene, cam);
   const l = document.createElement('div'); l.className = 'label'; l.textContent = name;
   l.style.left = `${x + 32}px`; l.style.top = `${(i < 3 ? 112 : V + 24)}px`; document.body.append(l);
+  if (data.marks?.length && (name === '3/4' || name === 'front')) marks(cam, x, i < 3 ? 0 : V);
 });
+
+// A check view's labels: a dot at each point, a line to its text, the texts stacked along the foot of the view in
+// the order their points are, so none sits on another or on its point
+function marks(cam, x0, top) {
+  const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
+  document.body.append(svg); // in the page first, so text can be measured
+  svg.setAttribute('width', W); svg.setAttribute('height', H); svg.style.position = 'absolute'; svg.style.left = '0'; svg.style.top = '0';
+  const colour = { pass: '#7bd88f', warn: '#f0b44c', fail: '#ff6b5b', info: '#d0d0d0' };
+  const pts = data.marks.map((m) => { const v = new THREE.Vector3(m.at[0], m.at[2], -m.at[1]).sub(center).project(cam); return { ...m, px: x0 + ((v.x + 1) / 2) * V, py: top + ((1 - v.y) / 2) * V }; }).sort((a, b) => a.py - b.py);
+  const gapY = 30, right = x0 + V - 16;
+  pts.forEach((p, k) => { p.row = top + V - 28 - (pts.length - 1 - k) * gapY; }); // stacked along the view's foot, in their points' order
+  for (const p of pts) {
+    const y = p.row;
+    const c = colour[p.level] || colour.info, add = (tag, a) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); svg.append(e); return e; };
+    // the text right-aligned in the view, on a dark backing so it reads over a part; the line to its left end
+    const t = add('text', { x: right, y: y + 5, fill: c, 'font-size': 15, 'text-anchor': 'end', 'font-family': '-apple-system, Helvetica Neue, sans-serif' }); t.textContent = p.text;
+    const w = t.getComputedTextLength(), left = right - w;
+    const back = add('rect', { x: left - 6, y: y - 11, width: w + 12, height: 22, rx: 4, fill: '#000', 'fill-opacity': 0.82 }); svg.insertBefore(back, t);
+    add('polyline', { points: `${p.px},${p.py} ${left - 10},${y} ${left - 6},${y}`, fill: 'none', stroke: c, 'stroke-width': 1.5 });
+    add('circle', { cx: p.px, cy: p.py, r: 5, fill: c });
+  }
+}
 document.body.dataset.ready = '1';
 </script>
 </body></html>

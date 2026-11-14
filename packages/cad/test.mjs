@@ -1063,13 +1063,21 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     // ...and drawn as the preview draws it: the motor's curve at the working point, the torque through the train
     const drawn = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       import { buildAssembly } from ${JSON.stringify(pathToFileURL(fileURLToPath(new URL('./lib/assembly.mjs', import.meta.url))).href)};
-      import { motorWork, workCurve, trainSvg } from ${JSON.stringify(pathToFileURL(fileURLToPath(new URL('./lib/motorsvg.mjs', import.meta.url))).href)};
-      const [w] = motorWork(await buildAssembly('home/winder-driven'));
-      console.log(JSON.stringify({ joint: w.joint, margin: w.margin, curve: workCurve(w), train: trainSvg(w) }));`], { cwd: ws, encoding: 'utf8' }));
+      import { motorWork, workCurve, trainSvg, workMarks } from ${JSON.stringify(pathToFileURL(fileURLToPath(new URL('./lib/motorsvg.mjs', import.meta.url))).href)};
+      import { driveSvg } from ${JSON.stringify(pathToFileURL(fileURLToPath(new URL('./lib/drive.mjs', import.meta.url))).href)};
+      const s = await buildAssembly('home/winder-driven'), [w] = motorWork(s);
+      console.log(JSON.stringify({ joint: w.joint, margin: w.margin, curve: workCurve(w), train: trainSvg(w), marks: workMarks(s), drive: driveSvg(s) }));`], { cwd: ws, encoding: 'utf8', maxBuffer: 1 << 26 }));
     assert.equal(drawn.joint, 'reel'); assert.ok(Math.abs(drawn.margin - 2.25) < 0.01, String(drawn.margin));
     assert.match(drawn.curve, /n20, through 4:1/); assert.match(drawn.curve, /the load, 0\.2 N m/);
     assert.match(drawn.train, /drive's shaft/); assert.match(drawn.train, /planetary 4:1/); assert.match(drawn.train, /2\.25× the 0\.2/);
     assert.match(drawn.train, /no figure for what holds it/);
+    // the check view's labels, at the motor's shaft and at the reel; the drive animated, cut through the gears
+    assert.deepEqual(drawn.marks.map((m) => m.text), ['drive: 0.125 N m at the shaft', 'reel: 0.45 N m, 2.25× the load; unpowered unknown']);
+    assert.ok(drawn.marks.every((m) => m.at.length === 3));
+    assert.match(drawn.drive, /reel turns 90° while sun turns once \(4:1\)/);
+    assert.match(drawn.drive, /at [\d.]+ mm: base, ring, sun, reel/);
+    assert.ok((drawn.drive.match(/animateTransform/g) || []).length >= 10, 'the sun, the planets and the reel each turn and move');
+    assert.ok(drawn.drive.length < 400000, `small: ${drawn.drive.length} bytes`);
     const shoulder = run(ws, ['check', 'home/shoulder']).out;
     assert.match(shoulder, /the second ring turns 0\.02632 of the sun's turn, the other way \(38:1/, 'the compound planetary');
     assert.match(shoulder, /motor into out: 7\.442 N m there against 0\.735 N m needed/, 'the worst of its range, from a mass on the output');

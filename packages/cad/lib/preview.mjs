@@ -18,9 +18,9 @@ const CHROME = process.env.CAD_CHROME || [
 ].find((f) => fs.existsSync(f));
 const THREE = path.dirname(createRequire(import.meta.url).resolve('three')); // wherever npm put it
 
-export async function preview(parts, { title = '', meta = '', out, explode = false }) {
+export async function preview(parts, { title = '', meta = '', out, explode = false, marks = null }) {
   const flat = (tris) => { const positions = []; for (const t of tris) for (let i = 1; i < t.length - 1; i++) positions.push(...t[0], ...t[i], ...t[i + 1]); return positions; };
-  const data = JSON.stringify({ title, meta, explode, parts: parts.map((p) => ({ name: p.name, role: p.role, label: p.label, item: p.object || p.item, positions: flat(p.triangles) })) });
+  const data = JSON.stringify({ title, meta, explode, marks, parts: parts.map((p) => ({ name: p.name, role: p.role, label: p.label, item: p.object || p.item, positions: flat(p.triangles) })) });
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x').pathname;
     const send = (type, body) => { res.writeHead(200, { 'Content-Type': type }); res.end(body); };

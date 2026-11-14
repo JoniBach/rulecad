@@ -55,9 +55,11 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
-  cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path)
+  cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets
+                                    its curve and its train as SVGs, and --check labels the torque at each joint it drives
   cad animate <project>/<object>    a lamina mechanism's sequence, or an assembly's gait, start to finish, in .preview/: an animated SVG, the
-                                    data (shapes, forces, energies, strains each frame, JSON) and a page that plays it
+                                    data (shapes, forces, energies, strains each frame, JSON) and a page that plays it; an
+                                    assembly with a motor or gears: the drive turning them, cut across the shafts [--turns n]
   cad optimise <project>/<problem>  the stiffest layout for a problem in the project's problems/ (name:variant for a
                                     variant): a picture in .preview/, the result kept for designs [--fresh] [--json]
                                     [--watch [port]: a live view of it at http://127.0.0.1:8090/, with a stop button]
@@ -117,7 +119,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
   'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
-const OPTIONS = ['table', 'calibrate', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
+const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
@@ -130,7 +132,7 @@ const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep and --watch take one or not).
-const FLAGS = ['table', 'calibrate', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -666,7 +668,12 @@ async function assembly(cmd, ref) {
     return;
   }
   if (cmd === 'animate') {
-    if (!s.gait) throw new Error(`${ref} has no gait: cad animate plays a gait ("gait" at the top of the assembly), or a lamina mechanism's sequence`);
+    if (!s.gait) { // a motor turning what it drives: the gears cut across their shafts, the load's part turning with them
+      const { driveSvg } = await import('../lib/drive.mjs'), out = paths.preview(s.project, `${s.name}-drive.svg`);
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out, driveSvg(s, { title, ...(opt('turns') ? { turns: Number(opt('turns')) } : {}) }));
+      return console.log(out);
+    }
     const { gaitSvg, gaitData } = await import('../lib/animate.mjs'), { framesOf } = await import('../lib/gait.mjs'), r = framesOf(s);
     if (!r.frames.length) throw new Error(`${ref}'s gait has nothing to play: ${r.findings.map((x) => x.text).join('; ')}`);
     const svg = paths.preview(s.project, `${s.name}-gait.svg`), json = paths.preview(s.project, `${s.name}-gait.json`);
@@ -675,13 +682,19 @@ async function assembly(cmd, ref) {
     console.log(svg); return console.log(json);
   }
   if (cmd === 'preview') {
-    const out = paths.preview(s.project, `${s.name}${pose ? `-${pose}` : ''}${opt('explode') ? '-exploded' : ''}.png`);
+    const check = !!opt('check'); // the check view: each motor's torque labelled at its joints, never on the rest view
+    const out = paths.preview(s.project, `${s.name}${pose ? `-${pose}` : ''}${opt('explode') ? '-exploded' : ''}${check ? '-check' : ''}.png`);
+    let marks = null;
+    if (check) {
+      if (!s.motion?.drives?.length) throw new Error(`${ref} has no motor: cad preview --check labels the torque a motor sends through its joints`);
+      marks = (await import('../lib/motorsvg.mjs')).workMarks(s);
+    }
     const size = (await import('@rulecad/printcheck')).bounds(s.triangles).size.map((n) => fmt(n)).join(' × ');
     const faint = [...new Set(s.parts.filter((p) => p.role !== 'part').map((p) => `${p.object || p.item}${p.role === 'support' ? ' supports' : ''}`))]; // each kind once
-    await preview([...s.parts, ...wireTubesOf(s)], { title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode') });
+    await preview([...s.parts, ...wireTubesOf(s)], { title: check ? `${title}: the motor at work` : title, meta: `${size} mm · ${versions}${faint.length ? ` · faint: ${faint.join(', ')}` : ''}`, out, explode: !!opt('explode'), marks });
     // each motor at work beside it: its curve with the working point, and the torque through its train (said before
     // the picture, which stays the last line, for whatever reads it)
-    if (s.motion?.drives?.length && !pose && !opt('explode')) {
+    if (s.motion?.drives?.length && !pose && !opt('explode') && !check) {
       const { motorWork, workCurve, trainSvg } = await import('../lib/motorsvg.mjs');
       for (const w of motorWork(s)) {
         for (const [kind, svg] of [['curve', workCurve(w)], ['train', trainSvg(w)]]) {

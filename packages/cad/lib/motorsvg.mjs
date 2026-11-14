@@ -2,7 +2,7 @@
 // through its train, a bar for each stage, against what the load needs there. The numbers are the check's own.
 import { mul, jointValues, placeItems } from '@rulecad/model-link';
 import { curve } from '@rulecad/motors/diagram';
-import { motorChecks, trainFrom } from './motors.mjs';
+import { motorChecks, trainFrom, axisOf } from './motors.mjs';
 import { materialOf } from './list.mjs';
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -70,4 +70,27 @@ export function trainSvg(w, { title = '' } = {}) {
   }
   const height = y + 8;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${out.join('')}</svg>\n`;
+}
+
+// Labels for a check view: at each joint the motor's torque passes through, what reaches it and the margin; at the
+// joint with the load, whether it holds with the power off. Never drawn on the rest view.
+export function workMarks(s, works = motorWork(s)) {
+  const motion = s.motion, worlds = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined)), out = [];
+  for (const w of works) {
+    const stages = [...w.train.stages].reverse(), atMotor = w.available / (w.train.ratio * w.train.efficiency);
+    const where = (id) => { const j = motion.joints.find((x) => x.id === id); return j ? axisOf(motion, worlds, j, mul).O : null; };
+    const first = where(w.drive.joint);
+    if (first && stages.length) out.push({ at: first, text: `${w.id}: ${fig(atMotor)} N m at the shaft`, level: 'info' });
+    let have = atMotor;
+    for (const [k, st] of stages.entries()) {
+      const slide = w.train.slide != null && k === stages.length - 1;
+      have = slide ? w.available : have * (1 / Math.abs(st.ratio)) * st.efficiency;
+      const at = where(st.joint), last = k === stages.length - 1;
+      if (!at) continue;
+      const off = last ? w.holds.find((h) => /power off|no figure/.test(h.text)) : null;
+      out.push({ at, text: `${st.joint}: ${fig(have)} ${slide ? 'N' : 'N m'}${last ? `, ${fig(w.margin)}× the load${off ? `; unpowered ${off.level === 'pass' ? 'holds' : off.level === 'fail' ? 'slips' : 'unknown'}` : ''}` : ''}`, level: last ? w.level : 'info' });
+    }
+    if (!stages.length && first) out.push({ at: first, text: `${w.joint}: ${fig(w.available)} N m, ${fig(w.margin)}× the load`, level: w.level });
+  }
+  return out;
 }
