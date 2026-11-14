@@ -49,3 +49,10 @@ test('changes of role, unit and range are reported: a variable made interface, o
   assert.throws(() => bump('1.2.3', 'Major'), /major, minor or patch/);
   assert.throws(() => bump('1.2.3'), /major, minor or patch/);
 });
+
+test('a list rule compares entry by entry: the same list is no change, another length is a patch', () => {
+  const at = (lengths) => { const object = { uses: ['m3'], variables: { l: { value: 'min(m3.lengths)' } } }; return { object, entries: resolve(object, { sets: { m3: { name: 'm3', rules: { lengths: { value: lengths, unit: 'mm' } } } } }).entries, js: 'x' }; };
+  assert.equal(compare(at([5, 6, 8]), at([5, 6, 8])).kind, null);
+  assert.deepEqual(compare(at([5, 6, 8]), at([5, 6, 10])).reasons, [{ kind: 'patch', text: 'rule m3.lengths 5, 6, 8 → 5, 6, 10' }]);
+  assert.equal(compare(at([5, 6, 8]), at([5, 6])).kind, 'patch');
+});

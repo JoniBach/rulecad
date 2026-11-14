@@ -53,7 +53,7 @@ export function compare(before, after) {
   const change = (name) => (v(before, name) === v(after, name) ? `${val(before, name).value} → ${val(after, name).value}` : `${v(before, name)} → ${v(after, name)}`);
   const sorted = (x) => (Array.isArray(x) ? x.map(sorted) : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, sorted(x[k])])) : x); // (the same settings in another order are the same)
   const vars = (r) => r.object.variables || {};
-  const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : a === b); // numbers, or choices
+  const same = (a, b) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((x, i) => same(x, b[i])) : a === b); // numbers, choices, or a list rule entry by entry
 
   for (const [name, d] of Object.entries(vars(before))) {
     const now = vars(after)[name];

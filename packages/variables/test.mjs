@@ -140,3 +140,47 @@ test('units through a division: a plain number over millimetres is per millimetr
   assert.equal(unitsOf('w * (2 / w)', unitOf).unit, 'a plain number');
   assert.deepEqual(unitsOf('2 / w + w', unitOf).problems, ['adds mm to mm^-1']);
 });
+
+test('a list rule: each entry through the one grammar, read as an array, and only min() and max() take it in an expression', async () => {
+  const { fmt } = await import('@rulecad/variables');
+  const sets = { m3: { name: 'm3', rules: { major_diameter: { value: 3, unit: 'mm' }, lengths: { value: [5, 6, 'major_diameter * 4', 16], unit: 'mm' } } } };
+  const r = resolve({ uses: ['m3'], variables: { shortest: { value: 'min(m3.lengths)', unit: 'mm' }, longest: { value: 'max(m3.lengths, 20) + 1', unit: 'mm' } } }, { sets });
+  assert.deepEqual(r.values.m3.lengths, [5, 6, 12, 16], 'an expression among the entries is worked out like any value');
+  assert.equal(r.values.shortest, 5); assert.equal(r.values.longest, 21);
+  assert.deepEqual(r.entries.find((e) => e.name === 'm3.lengths').value, [5, 6, 12, 16]);
+  assert.ok(r.entries.find((e) => e.name === 'm3.lengths').used, 'a list a variable reads is used');
+  assert.deepEqual(r.units, [], 'its unit is each entry\'s');
+  assert.equal(fmt([5, 6.004, 12]), '5, 6, 12');
+  // anything else refuses the list by name, and says what would be accepted
+  assert.throws(() => resolve({ uses: ['m3'], variables: { a: { value: 'm3.lengths * 2' } } }, { sets }), /"m3.lengths" is a list: take min\(m3.lengths\) or max\(m3.lengths\)/);
+  assert.throws(() => resolve({ uses: ['m3'], variables: { a: { value: 'm3.lengths' } } }, { sets }), /is a list/);
+  assert.throws(() => resolve({ uses: ['m3'], variables: { a: { value: 'min(m3.lengths + 1)' } } }, { sets }), /is a list/);
+  assert.throws(() => resolve({ variables: { a: { value: [1, 2] } } }), (e) => e.code === 'var.list' && /only a rule in a rule set holds a list/.test(e.message));
+  const bad = (value) => () => resolve({ uses: ['s'], variables: {} }, { sets: { s: { name: 's', rules: { l: { value, unit: 'mm' } } } } });
+  assert.throws(bad([]), /"s.l" = \[\]: is an empty list/);
+  assert.throws(bad([1, 'nope + 1']), /no rule "nope" in s/);
+  assert.throws(bad([1, [2]]), /"s.l"/);
+});
+
+test('rules check holds a list rule to order, and a part to what its vocabulary says holds between its figures', async () => {
+  const { checkRuleSet } = await import('@rulecad/variables');
+  const rule = (value, unit = 'mm') => ({ value, ...(unit != null ? { unit } : {}), rule: 'what it is, in words', kind: 'spec', source: 'a table', checked: '2026-11-14' });
+  const vocabulary = { units: ['mm', ''], prefixes: ['head_'], parts: { thread: ['major_diameter', 'pitch'] },
+    fields: { major_diameter: { unit: 'mm' }, pitch: { unit: 'mm' }, tap_drill: { unit: 'mm' }, clearance: { unit: 'mm' }, head: { unit: 'mm' }, lengths: { unit: 'mm', list: true } },
+    checks: { thread: [{ ascending: ['tap_drill', 'major_diameter', 'clearance', 'head'], says: 'drill, thread, hole, head' }, { near: 'tap_drill', to: 'major_diameter - pitch', within: '0.2 * pitch', says: 'a tap drill is about the thread less its pitch' }] } };
+  const base = () => ({ name: 'm3', part: 'thread', rules: { major_diameter: rule(3), pitch: rule(0.5), tap_drill: rule(2.5), clearance: rule(3.4), head: rule(5.5), lengths: rule([5, 6, 8]) } });
+  const codes = (s) => checkRuleSet(s, vocabulary).map((x) => x.code);
+  assert.deepEqual(codes(base()), []);
+  let s = base(); s.rules.lengths.value = [5, 8, 6]; assert.deepEqual(checkRuleSet(s, vocabulary).map((x) => [x.code, x.rule, x.values]), [['rules.order', 'lengths', { before: 8, after: 6 }]]);
+  s = base(); s.rules.lengths.value = [5, 5]; assert.deepEqual(codes(s), ['rules.order'], 'a length given twice is out of order too');
+  s = base(); s.rules.lengths.value = []; assert.deepEqual(codes(s), ['rules.value']);
+  s = base(); s.rules.lengths.value = [5, '6']; assert.deepEqual(codes(s), ['rules.value'], 'a published list is numbers');
+  s = base(); s.rules.lengths.value = 5; assert.deepEqual(codes(s), ['rules.list']);
+  s = base(); s.rules.head.value = [5.5]; assert.deepEqual(codes(s), ['rules.list'], 'a field that is one value takes no list');
+  s = base(); delete s.rules.lengths.unit; assert.deepEqual(codes(s), ['rules.unit', 'rules.unit']);
+  s = base(); s.rules.head.value = 3.2; assert.match(checkRuleSet(s, vocabulary)[0].text, /head \(3.2\) is not larger than clearance \(3.4\): drill, thread, hole, head/);
+  s = base(); s.rules.tap_drill.value = 3.1; assert.deepEqual(codes(s), ['rules.order', 'rules.near'], 'a tap drill over the thread');
+  s = base(); s.rules.tap_drill.value = 2.2; assert.deepEqual(checkRuleSet(s, vocabulary).map((x) => [x.code, x.rule]), [['rules.near', 'tap_drill']]);
+  s = base(); delete s.rules.head; delete s.rules.tap_drill; assert.deepEqual(codes(s), [], 'what a size is not made with is not held to anything');
+  assert.deepEqual(checkRuleSet({ name: 'x', rules: { l: { ...rule([3, 2]), unit: undefined } } }, vocabulary).map((x) => x.code), ['rules.order'], 'a list in a set with no part is still in order');
+});
