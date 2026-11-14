@@ -172,7 +172,93 @@ function beltDrawing(set) {
   return sheet(set, pens, W, H);
 }
 
+// A thread set: the screw in each head form it has, its nuts and washer from above and from the side, and its holes,
+// every one dimensioned from the set's own figures, to hold against the standard's table. Seats are level across the
+// row: a head stands above the line, a countersunk head sits under it, and a length runs from that line to the tip.
+function threadDrawing(set) {
+  const n = (k) => (typeof set.rules[k]?.value === 'number' ? set.rules[k].value : 0), has = (k) => n(k) > 0, says = (k) => String(set.rules[k]?.value ?? '');
+  const d = n('major_diameter'), P = n('pitch'), lengths = Array.isArray(set.rules.lengths?.value) ? set.rules.lengths.value : [];
+  const L = lengths.find((l) => l >= 2.5 * d) ?? lengths.at(-1) ?? 3 * d; // a length it is sold in, near three diameters
+  const heads = [
+    has('head') && { name: 'socket cap', form: 'cap', D: n('head'), k: n('head_height'), key: n('head_key') },
+    has('button_head') && { name: 'button', form: 'button', D: n('button_head'), k: n('button_head_height'), key: n('button_key') },
+    has('countersunk_head') && { name: `countersunk ${fig(n('countersunk_angle'))}°`, form: 'countersunk', D: n('countersunk_head'), k: n('countersunk_head_height') || (n('countersunk_head') - d) / 2 / Math.tan((n('countersunk_angle') * Math.PI) / 360), key: n('countersunk_key') },
+    has('hex_head_flats') && { name: 'hexagon', form: 'hex', D: n('hex_head_flats'), k: n('hex_head_height'), note: 'across flats' },
+    has('pan_head') && { name: 'pan', form: 'pan', D: n('pan_head'), k: n('pan_head_height'), note: says('pan_head_drive') },
+  ].filter(Boolean);
+  if (!heads.length) heads.push({ name: 'thread', form: 'stud', D: d, k: 0 });
+  const nuts = [
+    has('nut_flats') && { name: 'hexagon nut', s: n('nut_flats'), m: n('nut_height'), sides: 6 },
+    has('square_nut_flats') && { name: 'square nut', s: n('square_nut_flats'), m: n('square_nut_height'), sides: 4 },
+    has('lock_nut_height') && { name: 'lock nut', s: n('lock_nut_flats') || n('nut_flats'), m: n('lock_nut_height'), sides: 6 },
+    has('washer_diameter') && { name: 'washer', s: n('washer_diameter'), m: n('washer_thickness'), bore: n('washer_bore') },
+  ].filter(Boolean);
+  const holes = [['tap drill', 'tap_drill'], ['close', 'clearance_close'], ['normal', 'clearance'], ['loose', 'clearance_loose'], ['pilot in plastic', 'pilot'], ['insert hole', 'insert_hole']].filter(([, k]) => has(k)).map(([name, k]) => ({ name, D: n(k), ring: k === 'insert_hole' ? n('insert_diameter') : k === 'pilot' ? n('pilot_boss') : k.startsWith('clearance') ? d : 0 })); // (dashed round a hole: an insert's knurls, a pilot's boss; grey inside one: the thread passing through)
+  const widest = Math.max(d, ...heads.map((h) => h.D), ...nuts.map((x) => x.s), ...holes.map((h) => Math.max(h.D, h.ring))), S = Math.max(3, Math.min(16, 90 / widest));
+  const col = widest * S + 84, count = Math.max(heads.length, nuts.length, 3), X = (i) => 60 + col * (i + 0.5);
+  const big = Math.max(0, ...holes.map((h) => Math.max(h.D, h.ring))) * S, holeCol = Math.max(big + 64, Math.min(col, (count * col) / Math.max(holes.length, 1))), HX = (i) => 60 + holeCol * (i + 0.5); // (holes are small: their row is spaced closer, so six fit under four screws)
+  const W = Math.max(count * col, holes.length * holeCol) + 80;
+  const pens = pen(), { out, line, circle, rect, text, span } = pens, poly = (pts, fill = FILL) => out.push(`<polygon points="${pts.map(([a, b]) => `${fig(a)},${fig(b)}`).join(' ')}" fill="${fill}" stroke="${INK}" stroke-width="1.2"/>`);
+  // ---- the screws, from the side ----
+  const maxK = Math.max(...heads.map((h) => (h.form === 'countersunk' ? 0 : h.k))), yFace = 92 + maxK * S, yTip = yFace + L * S, root = (has('root_diameter') ? (d - n('root_diameter')) / 2 : 0.6134 * P) * S; // (its root where the set gives one; else an external thread is 0.6134 of its pitch deep: ISO 68-1)
+  heads.forEach((h, i) => {
+    const cx = X(i), r = (h.D / 2) * S, kS = h.k * S, sunk = h.form === 'countersunk', top = sunk ? yFace : yFace - kS, under = sunk ? yFace + kS : yFace;
+    rect(cx - (d / 2) * S, under, d * S, yTip - under, METAL);
+    for (const side of [-1, 1]) line(cx + side * ((d / 2) * S - root), under + 2, cx + side * ((d / 2) * S - root), yTip, THIN, 0.6, '4 3');
+    if (h.form === 'cap' || h.form === 'hex') rect(cx - r, top, 2 * r, kS, METAL);
+    if (h.form === 'pan') out.push(`<rect x="${fig(cx - r)}" y="${fig(top)}" width="${fig(2 * r)}" height="${fig(kS)}" rx="${fig(Math.min(kS, r) * 0.45)}" fill="${METAL}" stroke="${INK}" stroke-width="1.2"/>`);
+    if (h.form === 'button') { const R = (r * r + kS * kS) / (2 * kS); out.push(`<path d="M ${fig(cx - r)} ${fig(yFace)} A ${fig(R)} ${fig(R)} 0 0 1 ${fig(cx + r)} ${fig(yFace)} Z" fill="${METAL}" stroke="${INK}" stroke-width="1.2"/>`); }
+    if (sunk) poly([[cx - r, top], [cx + r, top], [cx + (d / 2) * S, under], [cx - (d / 2) * S, under]], METAL);
+    if (h.key) { const kw = (h.key / 2) * S, deep = Math.min(kS * 0.6, h.key * S); for (const side of [-1, 1]) line(cx + side * kw, top, cx + side * kw, top + deep, THIN, 0.7, '3 2'); line(cx - kw, top + deep, cx + kw, top + deep, THIN, 0.7, '3 2'); }
+    if (h.form !== 'stud') span(cx - r, top - 6, cx + r, top - 6, `${h.form === 'hex' ? '' : 'Ø'}${fig(h.D)}`, -14);
+    if (h.k) span(cx + r + 6, top, cx + r + 6, top + kS, fig(h.k), 12);
+    if (i === 0) { span(cx - (d / 2) * S, yTip + 6, cx + (d / 2) * S, yTip + 6, `Ø${fig(d)}`, 14); span(cx - Math.max(r, (d / 2) * S) - 6, yFace, cx - Math.max(r, (d / 2) * S) - 6, yTip, fig(L), -14); }
+    text(cx, yTip + 58, h.name);
+    const under2 = [h.key ? `key ${fig(h.key)}` : '', h.note || ''].filter(Boolean).join(', ');
+    if (under2) text(cx, yTip + 74, under2, 'middle', 11);
+  });
+  line(40, yFace, W - 40, yFace, THIN, 0.5, '8 3 2 3');
+  // ---- nuts and the washer: from above, then from the side ----
+  const tall = Math.max(0, ...nuts.map((x) => (x.sides === 6 ? x.s * 2 / Math.sqrt(3) : x.s))) * S, yPlan = yTip + 104 + tall / 2, ySide = yPlan + tall / 2 + 48, maxM = Math.max(0, ...nuts.map((x) => x.m)) * S;
+  nuts.forEach((x, i) => {
+    const cx = X(i), r = (x.s / 2) * S, across = x.sides === 6 ? x.s * S / Math.sqrt(3) : r;
+    if (x.sides === 6) poly([[r, across / 2], [0, across], [-r, across / 2], [-r, -across / 2], [0, -across], [r, -across / 2]].map(([a, b]) => [cx + a, yPlan + b]));
+    else if (x.sides === 4) rect(cx - r, yPlan - r, 2 * r, 2 * r);
+    else circle(cx, yPlan, r, FILL);
+    circle(cx, yPlan, ((x.bore || d) / 2) * S, '#fff');
+    span(cx - r, yPlan + tall / 2 + 4, cx + r, yPlan + tall / 2 + 4, `${x.sides ? '' : 'Ø'}${fig(x.s)}`, 14);
+    const half = x.sides === 6 ? across : r;
+    rect(cx - half, ySide, 2 * half, x.m * S, METAL);
+    span(cx + half + 6, ySide, cx + half + 6, ySide + x.m * S, fig(x.m), 12);
+    text(cx, ySide + maxM + 20, x.name);
+    if (x.bore) text(cx, ySide + maxM + 36, `hole Ø${fig(x.bore)}`, 'middle', 11);
+    else if (x.sides) text(cx, ySide + maxM + 36, 'across flats', 'middle', 11);
+  });
+  // ---- the holes ----
+  const yHole = (nuts.length ? ySide + maxM + 62 : yTip + 104) + big / 2;
+  holes.forEach((h, i) => {
+    const cx = HX(i);
+    if (h.ring > h.D) out.push(`<circle cx="${fig(cx)}" cy="${fig(yHole)}" r="${fig((h.ring / 2) * S)}" fill="none" stroke="${THIN}" stroke-width="0.8" stroke-dasharray="4 3"/>`);
+    circle(cx, yHole, (h.D / 2) * S, '#fff');
+    if (h.ring && h.ring < h.D) out.push(`<circle cx="${fig(cx)}" cy="${fig(yHole)}" r="${fig((h.ring / 2) * S)}" fill="${METAL}" stroke="${THIN}" stroke-width="0.8"/>`);
+    span(cx - (h.D / 2) * S, yHole + big / 2 + 4, cx + (h.D / 2) * S, yHole + big / 2 + 4, `Ø${fig(h.D)}`, 14);
+    text(cx, yHole + big / 2 + 50, h.name);
+  });
+  // ---- what a drawing can't show ----
+  const notes = [
+    `${says('thread')}, ${says('thread_form')}: pitch ${fig(P)}${has('pitch_fine') ? `, fine ${fig(n('pitch_fine'))}` : ''}${has('set_screw_key') ? `, set screw key ${fig(n('set_screw_key'))}` : ''}${says('thread_form') === 'unified' ? ' (divide by 25.4 for the inch table)' : ''}`,
+    lengths.length ? `socket cap lengths: ${lengths.map(fig).join(', ')}` : '',
+    has('proof_stress') ? `${has('property_class') ? `class ${fig(n('property_class'))}: ` : ''}proof stress ${fig(n('proof_stress'))} MPa${has('stainless_proof_stress') ? `; ${says('stainless_class')}: ${fig(n('stainless_proof_stress'))} MPa` : ''}` : '',
+    has('insert_hole') ? `insert${has('insert_diameter') ? ` Ø${fig(n('insert_diameter'))}` : ''}${has('insert_length') ? ` × ${fig(n('insert_length'))} long` : ''} (dashed) in a Ø${fig(n('insert_hole'))} hole${has('insert_taper') ? `, tapered ${fig(n('insert_taper'))}°` : ''}${has('insert_wall') ? `, ${fig(n('insert_wall'))} of wall round it at least` : ''}` : '',
+    has('pilot') ? `pilot Ø${fig(n('pilot'))}${has('pilot_depth') ? `, ${fig(n('pilot_depth'))} deep at least` : ''}${has('pilot_boss') ? `, in a boss of Ø${fig(n('pilot_boss'))} at least (dashed)` : ''}: a starting figure, your printer's measured one comes first` : '',
+  ].filter(Boolean);
+  const yNotes = (holes.length ? yHole + big / 2 + 80 : nuts.length ? ySide + maxM + 66 : yTip + 104);
+  notes.forEach((t, i) => text(40, yNotes + i * 17, t, 'start', 11));
+  return sheet(set, pens, Math.max(W, 620), yNotes + notes.length * 17 - 50);
+}
+
 export function drawing(set, vocab) {
+  if (set.part === 'thread') return threadDrawing(set);
   if (set.part === 'bearing') return bearingDrawing(set);
   if (set.part === 'driver') return driverDrawing(set);
   const v = (k) => set.rules[k]?.value ?? 0;
