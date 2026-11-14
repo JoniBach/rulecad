@@ -130,6 +130,13 @@ test('frame: Euler buckling of a pinned-pinned and a fixed-free column', () => {
   const stout = (shear) => buckling(subdivide({ nodes: { foot: [0, 0, 0], top: [0, 0, 150] }, elements: [{ a: 'foot', b: 'top', section: bar, material: alu }], supports: { foot: 'fixed' }, loads: [{ node: 'top', force: [0, 0, -P] }] }, 8), { shear }).factors[0] * P;
   const pe = (Math.PI ** 2 * alu.E * bar.Iz) / (2 * 150) ** 2;
   close('Euler with shear (Engesser), stout fixed-free', stout(true), pe / (1 + pe / (G * bar.Asy)));
+  // Beside a slender tie pulled a hundred times harder, the column still buckles at its own load. With the loads
+  // reversed the tie would buckle at a factor thousands of times smaller: those negative factors must neither be
+  // taken for the answer nor hide it.
+  const wire = { A: 3, Iy: 0.7, Iz: 0.7, J: 1.4 }, tied = buckling(subdivide({ nodes: { a: [0, 0, 0], b: [0, 0, L], c: [500, 0, 0], d: [500, 0, L] }, elements: [{ id: 'col', a: 'a', b: 'b', section: bar, material: alu }, { id: 'tie', a: 'c', b: 'd', section: wire, material: alu }],
+    supports: { a: 'fixed', c: 'fixed', d: { x: true, y: true, rz: true } }, loads: [{ node: 'b', force: [0, 0, -P] }, { node: 'd', force: [0, 0, 100 * P] }] }, 8), { shear: false });
+  close('Euler, fixed-free, beside a tie in tension', tied.factors[0] * P, euler(bar.Iz, 2));
+  assert.ok(tied.statics.elements.some((e) => e.of === 'tie' && e.axial > 0) && Math.abs(tied.modes[0].shape.d[0]) < 1e-6, 'the tie is in tension, and it is the column that bows');
 });
 
 test('frame: first bending frequencies, and the units of mass', () => {
@@ -231,8 +238,8 @@ test('frame: struts on ball joints make a truss; gravity and spread loads balanc
 
 test('frame: element matrices are the textbook ones', () => {
   // With no shear the geometric stiffness is (P / L) [6/5, L/10, 2L²/15, −L²/30] and the consistent mass
-  // (m L / 420) [156, 22L, 54, −13L, 4L², −3L²] (Przemieniecki 1968, chapters 11 and 12; Cook et al. 2002, the
-  // chapters on vibration and on stress stiffening), here without rotary inertia by a section with no second moment to speak of
+  // (m L / 420) [156, 22L, 54, −13L, 4L², −3L²] (the mass: Przemieniecki 1968, chapter 11; the geometric stiffness:
+  // McGuire, Gallagher and Ziemian 2000, chapter 9; both in Cook et al. 2002), here without rotary inertia by a section with no second moment to speak of
   const L = 200, thin = { A: 600, Iy: 1e-9, Iz: 1e-9, J: 1 }, { k, kg, m } = elementMatrices(thin, alu, L), at = (M, i, j) => M[i * 12 + j], mass = alu.density * 1e-6 * 600 * L;
   for (const [i, j, want] of [[1, 1, 6 / (5 * L)], [1, 5, 1 / 10], [5, 5, (2 * L) / 15], [5, 11, -L / 30], [1, 7, -6 / (5 * L)], [2, 4, -1 / 10], [4, 4, (2 * L) / 15]]) close(`geometric stiffness [${i}][${j}]`, at(kg, i, j), want, 1e-12);
   for (const [i, j, want] of [[1, 1, 156], [1, 5, 22 * L], [1, 7, 54], [1, 11, -13 * L], [5, 5, 4 * L * L], [5, 11, -3 * L * L], [2, 4, -22 * L], [0, 0, 140], [0, 6, 70]]) close(`consistent mass [${i}][${j}]`, at(m, i, j), (want * mass) / 420, 1e-9);
@@ -289,7 +296,7 @@ test('frame: a frame of fifty beams is in balance, and solves statically in mill
   close('fifty-beam frame: reactions carry the weight', sum[2], weight, 1e-9);
   assert.ok(Math.abs(sum[1]) < 1e-6 && r.deflection.most > 0 && r.deflection.most < 1, `it moves a little: ${r.deflection.most} mm at ${r.deflection.node}`);
   // time: reading, assembling, factorising, solving and every element's forces, after warming up. Under 20 ms is
-  // what is asked of it on a desk machine (it takes about 1 ms); the limit here is 250 ms, for a slow shared runner.
+  // what is asked of it on a desk machine (it takes about 3 ms); the limit here is 250 ms, for a slow shared runner.
   for (let i = 0; i < 30; i++) frame(model).statics();
   const times = Array.from({ length: 40 }, () => { const t = performance.now(); frame(model).statics(); return performance.now() - t; }).sort((a, b) => a - b), median = times[20];
   report.push({ name: `fifty-beam frame (${f.freedoms} freedoms): static solve, ms (median of 40)`, got: median, want: 20, err: 0 });

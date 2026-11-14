@@ -282,7 +282,7 @@ function jacobi(A, n) {
 }
 
 // The largest μ of B x = μ K x (K positive definite and factorised, B symmetric: the mass, or minus the geometric
-// stiffness) and their vectors, by subspace iteration (Bathe 2014, section 11.6): a block of vectors is put through
+// stiffness) and their vectors, by subspace iteration (Bathe 2014, chapter 11): a block of vectors is put through
 // K⁻¹ B again and again, and the small problem in the block (Rayleigh-Ritz) is solved by Jacobi rotations. The block
 // is made orthonormal in K, not in B, so a B of low rank (one lumped mass, one beam in compression) is no trouble:
 // vectors the block cannot tell apart are dropped. Only positive μ are wanted, `want` of them; if the block settles
@@ -290,7 +290,7 @@ function jacobi(A, n) {
 // settled in 30 steps, it doubles, up to the whole problem, where one step is exact. Buckling starts with a wider
 // block than modes do: a frame's columns buckle at loads close together, and close values settle slowly in a
 // block that holds only some of them.
-function lowest(solveK, B, want, block = Math.max(2 * want, want + 8), tol = 1e-9) {
+function lowest(solveK, B, want, block = Math.max(2 * want, want + 8), tol = 1e-9, limit = 400) {
   const n = B.n;
   let seed = 12345;
   const random = () => { let t = (seed += 0x6D2B79F5); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 2147483648 - 1; };
@@ -319,7 +319,7 @@ function lowest(solveK, B, want, block = Math.max(2 * want, want + 8), tol = 1e-
     const values = by.map((c) => ritz.values[c]), size = Math.max(Math.abs(values[0]), Math.abs(values[r - 1])), wanted = values.filter((v) => v > 1e-12 * size).slice(0, want);
     if (since === 1 && r < offered) exhausted = true; // fresh vectors added nothing new: the block already holds all B can reach
     const settled = !!last && last.length === wanted.length && wanted.every((v, i) => Math.abs(v - last[i]) <= tol * v);
-    if (r >= n || (settled && (wanted.length >= want || exhausted || q >= n)) || step >= 400) return { values: wanted, vectors: mix(Z, wanted.length) };
+    if (r >= n || (settled && (wanted.length >= want || exhausted || q >= n)) || step + 1 >= limit) return { values: wanted, vectors: mix(Z, wanted.length) };
     last = wanted;
     Y = mix(BZ);
     if ((settled || since >= 30) && q < n) { const more = Math.min(n, 2 * q) - q; for (let i = 0; i < more; i++) Y.push(fresh()); q += more; since = 0; last = null; }
@@ -454,8 +454,8 @@ const condensedLoad = (el, fb) => { if (!el.T) return fb; const fc = new Float64
  *   modes: (o?: { count?: number, masses?: Record<string, number> }) => { frequencies: number[], modes: VibrationMode[] },
  *   freedoms: number, nodes: string[] }}
  *   statics, buckling and modes use the model's own loads, gravity and masses unless given others (another load case
- *   on the same factorisation). samples: stations along each element (11). count: how many modes (3 for buckling, 6
- *   for vibration). freedoms: how many unknowns were solved for.
+ *   on the same factorisation). samples: stations along each element (11). count: how many modes (1 for buckling, 6
+ *   for vibration; fewer come back if the frame has fewer). freedoms: how many unknowns were solved for.
  */
 export function frame(model, o = {}) {
   const f = read(model, o), { ids, N, els, held, ground } = f;
@@ -570,12 +570,30 @@ export function frame(model, o = {}) {
   }
 
   function buckling(c = {}) {
-    const count = c.count ?? 3;
+    const count = c.count ?? 1;
     if (!(Number.isInteger(count) && count >= 1)) refuse('input', `count is ${said(count)}: how many buckling modes, a whole number from 1`);
     const s = statics(c), axial = s.elements.map((e) => e.axial), size = Math.max(...axial.map(Math.abs));
     if (!axial.some((a) => a < -1e-9 * Math.max(size, 1e-300))) refuse('compression', 'no element is in compression under these loads, so nothing can buckle: buckling needs a load that squeezes at least one element along its length');
-    const B = assemble((el) => toGlobal(el.kg, el.R), axial.map((a) => -a)), { values, vectors } = lowest(factor.solve, B, count, 2 * count + 16);
-    const modes = values.map((mu, i) => ({ factor: 1 / mu, shape: shapeOf(vectors[i]) }));
+    const B = assemble((el) => toGlobal(el.kg, el.R), axial.map((a) => -a)), block = 2 * count + 16;
+    // K φ = λ B φ, B = −Kg, for the smallest λ above 0. B is indefinite: with the loads reversed, whatever is in
+    // tension would buckle, and those (negative) factors can be far smaller in size and crowd the iteration. So it
+    // is shifted to just under the first factor: K − σ B has a Cholesky factor exactly when σ is under it (and over
+    // the first negative one), which brackets it between a σ that factorises and one that does not, and the
+    // iteration on (K − σ B)⁻¹ B then finds 1 / (λ − σ), where the first factor leads every negative one at least
+    // fourfold. (Factors more than about twice the first still have to outlast the negative ones, by a wider block:
+    // the first is always quick, the rest only when little is in tension.)
+    let high = Infinity, low = 0, shifted = factor;
+    for (let i = 0; i < n; i++) { const b = B.v[diagonal(B, i)]; if (b > 0) high = Math.min(high, K.v[diagonal(K, i)] / b); } // one freedom moved alone: no frame buckles later than that
+    const rough = lowest(factor.solve, B, 1, block, 1e-3, 4);
+    if (rough.values.length) high = Math.min(high, 1 / rough.values[0]); // (a Ritz value is never under the true one)
+    if (Number.isFinite(high)) for (let tries = 0, sigma = 0.9 * high; tries < 60 && low < 0.8 * high; tries++, sigma = low ? (low + high) / 2 : high / 2) {
+      const A = profile(first);
+      for (let i = 0; i < A.v.length; i++) A.v[i] = K.v[i] - sigma * B.v[i];
+      const fa = factorise(A);
+      if (fa.loose.length) high = sigma; else { low = sigma; shifted = fa; }
+    }
+    const { values, vectors } = lowest(shifted.solve, B, count, block);
+    const modes = values.map((mu, i) => ({ factor: low + 1 / mu, shape: shapeOf(vectors[i]) }));
     return { factors: modes.map((m) => m.factor), modes, statics: s };
   }
 
@@ -603,8 +621,9 @@ export function frame(model, o = {}) {
 export const statics = (model, o = {}) => frame(model, o).statics(o);
 /**
  * The factors by which a frame's loads must grow to buckle it, lowest first, and the shapes it buckles into: linear
- * buckling, from the geometric stiffness of each element's axial force in the static solve.
- * @param {FrameModel} model @param {{ shear?: boolean, count?: number }} [o] count: how many modes (3)
+ * buckling, from the geometric stiffness of each element's axial force in the static solve. The first factor is
+ * always quick to find; asking for more costs more where slender members are in tension.
+ * @param {FrameModel} model @param {{ shear?: boolean, count?: number }} [o] count: how many modes (1)
  * @returns {{ factors: number[], modes: BucklingMode[], statics: StaticResult }}
  */
 export const buckling = (model, o = {}) => frame(model, o).buckling(o);
