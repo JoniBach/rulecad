@@ -1,0 +1,27 @@
+{
+  "name": "@rulecad/frames",
+  "version": "0.0.1",
+  "description": "Structures from beams: aluminium extrusion of any maker's profile, plain tube and angle, or printed beams, with the brackets, slot nuts, mounts and linear guides that attach to them. A first release that holds the name while the package is built: it installs and has nothing to call yet.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./frames.d.mts",
+      "default": "./frames.mjs"
+    }
+  },
+  "types": "./frames.d.mts",
+  "files": [
+    "frames.mjs",
+    "frames.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": ["aluminium-extrusion", "t-slot", "v-slot", "frames", "3d-printing", "jscad", "cad"],
+  "engines": { "node": ">=20.10" },
+  "sideEffects": false,
+  "repository": { "type": "git", "url": "git+https://github.com/JoniBach/rulecad.git", "directory": "packages/frames" },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/frames#readme",
+  "bugs": { "url": "https://github.com/JoniBach/rulecad/issues" },
+  "scripts": { "test": "node --test" }
+}
