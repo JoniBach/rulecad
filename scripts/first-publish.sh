@@ -36,9 +36,10 @@ done
 # shellcheck disable=SC2086
 scripts/trust.sh $new
 echo
-echo "Now on npm:"
+# npm takes a few minutes to process a new package before the registry shows it: say which it is, and how to look
+echo "On npm:"
 for dir in $new; do
   name="$(node -p "require('./packages/$dir/package.json').name")"
-  echo "  $name $(npm view "$name" version 2>/dev/null || echo '(not found: look above)')"
+  echo "  $name $(npm view "$name" version --prefer-online 2>/dev/null || echo "published, still being processed by npm: look again in a few minutes with 'npm view $name version'")"
 done
 echo "Later releases go out through the workflow: bump a version, merge, done."
