@@ -24,10 +24,8 @@ for (const p of packages) if (!publish.includes(p) && !brandNew.includes(p) && !
 // GitHub Actions can't publish a package npm has never seen (trusted publishing needs it to exist): those, and what
 // depends on them, wait for a first publish by hand; everything else goes out now
 const firstPublish = brandNew.length && process.env.GITHUB_ACTIONS ? `\n${brandNew.map((p) => p.name).join(', ')} ${brandNew.length > 1 ? 'are' : 'is'} new to npm, and this workflow can only publish packages that already exist there${held.length ? `; held back with ${brandNew.length > 1 ? 'them' : 'it'}: ${held.map((p) => p.name).join(', ')}` : ''}.
-Publish ${brandNew.length > 1 ? 'each' : 'it'} once by hand, one command at a time (each asks for two-factor in the browser), then trust this workflow for ${brandNew.length > 1 ? 'them' : 'it'} and run it again:
-  node scripts/types.mjs
-${brandNew.map((p) => `  npm publish --workspace packages/${p.dir} --access public`).join('\n')}
-${brandNew.map((p) => `  npm trust github ${p.name} --file publish.yml --repo JoniBach/rulecad --allow-publish --yes`).join('\n')}
+Publish ${brandNew.length > 1 ? 'them' : 'it'} once from a terminal, which also trusts this workflow for ${brandNew.length > 1 ? 'them' : 'it'} (npm asks you to approve each step in the browser), then run the workflow again:
+  scripts/first-publish.sh ${brandNew.map((p) => p.dir).join(' ')}
   gh workflow run publish.yml` : null;
 let published = 0;
 for (const { dir, name, version } of publish) {

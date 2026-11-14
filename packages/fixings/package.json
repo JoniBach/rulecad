@@ -1,0 +1,27 @@
+{
+  "name": "@rulecad/fixings",
+  "version": "0.0.1",
+  "description": "Screws, nuts, washers and inserts from rule sets, and the holes and seats they need in printed parts. A first release that holds the name while the package is built: it installs and has nothing to call yet.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./fixings.d.mts",
+      "default": "./fixings.mjs"
+    }
+  },
+  "types": "./fixings.d.mts",
+  "files": [
+    "fixings.mjs",
+    "fixings.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": ["screws", "fasteners", "threads", "3d-printing", "jscad", "cad"],
+  "engines": { "node": ">=20.10" },
+  "sideEffects": false,
+  "repository": { "type": "git", "url": "git+https://github.com/JoniBach/rulecad.git", "directory": "packages/fixings" },
+  "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/fixings#readme",
+  "bugs": { "url": "https://github.com/JoniBach/rulecad/issues" },
+  "scripts": { "test": "node --test" }
+}
