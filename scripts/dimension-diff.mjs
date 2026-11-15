@@ -145,6 +145,10 @@ export async function measuresAt(rev, { only, jobs = 4, cache = path.join(ROOT, 
     const keep = (o, r) => { measures.set(o.id, r); if (!r.error) fs.writeFileSync(kept(o), JSON.stringify(r)); n++; if (Date.now() - t > 30000 || n === due.length) { t = Date.now(); say(`  ${n} of ${due.length} built at ${rev}`); } };
     const go = async () => { for (let q; (q = queue.shift());) { const at = new Map(q.list.map((o) => [`${o.project}/${o.name}`, o])); const got = await run(dir, q.ws, [...at.keys()], (n, r) => keep(at.get(n), r)); for (const [n, o] of at) if (!measures.has(o.id)) keep(o, got.get(n)); } };
     await Promise.all(Array.from({ length: Math.max(1, jobs) }, go));
+    // a failure is built again once, alone in its workspace: workers sharing a workspace can meet as cad copies a kit
+    // rule set into its rules/ (one reads the file while the other writes it); a real failure fails again
+    const again = due.filter((o) => measures.get(o.id)?.error), byWs2 = again.reduce((m, o) => m.set(o.ws, [...(m.get(o.ws) || []), o]), new Map());
+    for (const [ws, list] of byWs2) { const at = new Map(list.map((o) => [`${o.project}/${o.name}`, o])); n -= list.length; const got = await run(dir, ws, [...at.keys()], (k, r) => keep(at.get(k), r)); for (const [k, o] of at) if (got.get(k)?.error) keep(o, got.get(k)); }
   }
   return { objects, measures, built: due.length };
 }
