@@ -45,6 +45,18 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
     fs.writeFileSync(path.join(ws, 'scan.pdf'), pdf('q 1 0 0 1 0 0 cm /Im0 Do Q'));
     assert.match(cad('rules', 'draft', 'scan', '--from', 'scan.pdf'), /read it by eye/);
     assert.ok(!fs.existsSync(path.join(ws, 'rules/scan.json')));
+    // a thread set: held to the thread vocabulary and to sense, and drawn as the screw in each head form it has, its nuts and its holes
+    assert.match(cad('rules', 'check', 'm1_6', 'm3', 'm12', 'unc_6_32', 'unc_1_4_20'), /5 of 5 rule sets pass/);
+    cad('rules', 'draw', 'm3');
+    const m3 = fs.readFileSync(path.join(ws, 'm3.svg'), 'utf8');
+    for (const t of ['socket cap', 'Ø5.5', 'key 2.5', 'button', 'Ø5.7', 'countersunk 90°', 'Ø6.72', 'hexagon nut', 'square nut', 'lock nut', 'washer', 'Ø7', 'tap drill', 'Ø2.5', 'close', 'Ø3.2', 'normal', 'Ø3.4', 'loose', 'Ø3.6', 'M3, metric: pitch 0.5', 'socket cap lengths: 5, 6, 8, 10, 12, 16, 20, 25, 30', 'class 8.8: proof stress 580 MPa', 'insert hole']) assert.ok(m3.includes(`>${t}`), `the M3 drawing shows ${t}`);
+    cad('rules', 'draw', 'm1_6'); assert.ok(!fs.readFileSync(path.join(ws, 'm1_6.svg'), 'utf8').includes('>button'), 'a head form a size is not made in is not drawn');
+    cad('rules', 'draw', 'unc_6_32'); for (const t of ['6-32 UNC, unified', 'countersunk 82°', 'Ø5.74']) assert.ok(fs.readFileSync(path.join(ws, 'unc_6_32.svg'), 'utf8').includes(`>${t}`), `the 6-32 drawing shows ${t}`);
+    const thin = JSON.parse(fs.readFileSync(new URL('../rules/m3.json', import.meta.url), 'utf8')); thin.name = 'thin'; thin.rules.head.value = 3.5; thin.rules.lengths.value = [6, 5, 8];
+    fs.writeFileSync(path.join(ws, 'rules/thin.json'), JSON.stringify(thin));
+    const t = spawnSync('node', [BIN, 'rules', 'check', 'thin', '--json'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(t.status, 1); assert.deepEqual(JSON.parse(t.stdout)[0].findings.map((x) => [x.code, x.rule]), [['rules.order', 'lengths'], ['rules.order', 'head']]);
+    assert.match(JSON.parse(t.stdout)[0].findings[1].text, /head \(3.5\) is not larger than clearance_loose \(3.6\): a cap head is wider than the loosest clearance hole/);
     // the drawings in the rules package are what the sets say today
     for (const f of fs.readdirSync(new URL('../rules/drawings/', import.meta.url))) { cad('rules', 'draw', f.slice(0, -4), '--out', 'x.svg'); assert.equal(fs.readFileSync(path.join(ws, 'x.svg'), 'utf8'), fs.readFileSync(new URL(`../rules/drawings/${f}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n'), `${f} is stale: cad rules draw it again`); } // (git on Windows checks it out with CRLF)
   } finally { done(); }

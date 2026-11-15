@@ -13,7 +13,7 @@
     "description": { "type": "string" },
     "licence": { "type": "string" },
     "private": { "type": "boolean" },
-    "part": { "type": "string", "description": "What sort of part it describes (motor): its names come from vocabulary.json, and cad rules check holds it to them" },
+    "part": { "type": "string", "description": "What sort of part it describes (motor, bearing, thread): its names come from vocabulary.json, and cad rules check holds it to them" },
     "interface": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Which rule is which shared name in vocabulary.json, for a set that keeps its own names" },
     "variants": { "type": "object", "description": "A maker's part numbers for this part, each the rules that differ: { \"17HS4401\": { \"kind\", \"source\", \"values\": { \"body_length\": 40 } } }" },
     "footprints": { "type": "object" },
@@ -25,7 +25,7 @@
         "required": ["value"],
         "additionalProperties": false,
         "properties": {
-          "value": { "type": ["number", "string"] },
+          "value": { "type": ["number", "string", "array"], "minItems": 1, "items": { "type": ["number", "string"] }, "description": "A number, an expression, text, or a list of numbers or expressions in the rule's one unit (the lengths a screw is sold in)" },
           "unit": { "type": "string" },
           "rule": { "type": "string" },
           "kind": { "type": "string", "description": "How far to trust it, most to least: measured, spec, community, default, derived, estimate" },

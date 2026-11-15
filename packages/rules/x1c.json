@@ -129,6 +129,22 @@
       "kind": "community",
       "source": "Bambu Studio's default elephant foot compensation, 0.15 mm, the amount it shrinks the first layer by to undo the spread",
       "checked": "2026-11-07"
+    },
+    "thread_gap": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Gap between the flanks of a printed screw thread and the thread it screws into, measured on the radius (twice this across the diameter). A printed pair is drawn half of it each; a printed thread for a bought screw or nut takes all of it. An internal thread gets hole_comp as well, as any printed hole does",
+      "kind": "estimate",
+      "source": "A reasoned guess, the same as fit, the gap between parts that slide together; the fixings coupon prints M6 to M12 threads at three clearances to measure it (docs/fixings-and-frames.md, section 2.5)",
+      "checked": "2026-11-15"
+    },
+    "pilot_m3": {
+      "value": 2.9,
+      "unit": "mm",
+      "rule": "Hole to draw for an M3 screw to form its own thread in PLA: 2.9 mm and 3.0 mm drawn both hold the screw straight, and smaller holes send it in at an angle. Drawn as it is: no hole compensation",
+      "kind": "measured",
+      "source": "fit bar, examples/bench/projects/benchmarks/MEASURE.md row 5, PLA",
+      "checked": "2026-11-10"
     }
   }
 }

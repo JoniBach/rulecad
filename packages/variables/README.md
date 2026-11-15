@@ -28,6 +28,9 @@ entries               // every variable and rule with its value, source and whet
 
 - **Expressions:** `+ - * /`, brackets, `min`, `max`, `round(x, step)`, and `sind`/`cosd`/`tand` in degrees, over
   numbers and names. `evaluate(src, lookup)` runs one on its own.
+- **Lists:** a rule may hold a list, `"value": [5, 6, 8, 10]` with one `unit` for all of it (the lengths a screw is
+  sold in). Each entry is a number or an expression. A design reads it as an array; in an expression only `min()` and
+  `max()` take a list, and anything else refuses it by name.
 - **Rule sets** are handed in through `sets`, or fetched by name with `load: (name) => …` (from files, a URL, anywhere).
 - **Tweaks:** only variables with a `tweak` range can be set, and only within it. Errors say which variable and why.
 - **Names, not numbers:** `choice: [...]`, `type: 'text'` or `type: 'anchor'` (one of `ANCHORS`: tl tc tr / ml mc

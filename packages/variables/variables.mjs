@@ -4,10 +4,13 @@
 // Expressions are arithmetic only (+ - * / and brackets, min, max, round, and sind, cosd, tand of degrees) over numbers
 // and names: parsed here, never
 // eval'd, so a JSON file can't run code.
+// A rule may hold a list (the lengths a screw is sold in): "value": [5, 6, 8, 10], each entry a number or an expression
+// like any other value, all in the rule's one unit. A design reads it as an array (v.m3.lengths); in an expression only
+// min() and max() take a list, and anything else refuses it by name.
 // No imports and no file access: it runs in a browser as well. Rule sets are handed in (sets) or fetched by name
 // through load(name), such as one that reads rules/<name>.json.
 
-/** @typedef {{ value: number | string, unit?: string, rule?: string, kind?: 'spec' | 'community' | 'default' | 'estimate' | 'measured' | 'derived', source?: string, licence?: string, checked?: string, label?: string, show?: boolean, interface?: boolean, tweak?: { min: number, max: number }, choice?: string[], type?: 'text' | 'anchor' | 'layout' | 'problem' }} Variable */
+/** @typedef {{ value: number | string | (number | string)[], unit?: string, rule?: string, kind?: 'spec' | 'community' | 'default' | 'estimate' | 'measured' | 'derived', source?: string, licence?: string, checked?: string, label?: string, show?: boolean, interface?: boolean, tweak?: { min: number, max: number }, choice?: string[], type?: 'text' | 'anchor' | 'layout' | 'problem' }} Variable */
 /** @typedef {{ name?: string, rules: Record<string, Variable> }} RuleSet */
 /** @typedef {{ uses?: string[], variables?: Record<string, Variable>, [field: string]: any }} DesignObject */
 /** @typedef {{ name: string, value: number | string, used?: boolean, set?: boolean, [field: string]: any }} Entry */
@@ -86,12 +89,12 @@ function parse(src) {
  */
 export function evaluate(src, lookup = (name) => { throw new Error(`no value for "${name}"`); }) {
   if (typeof src === 'number') { if (!Number.isFinite(src)) throw new Error('is not a finite number'); return src; }
-  const walk = (x) => {
+  const walk = (x, list = false) => { // list: inside min() or max(), where a name may be a list rule
     if (x.n != null) return x.n;
-    if (x.id != null) return lookup(x.id);
+    if (x.id != null) { const v = lookup(x.id); if (Array.isArray(v) && !list) throw new Error(`"${x.id}" is a list: take min(${x.id}) or max(${x.id}), or read it in the design`); return v; }
     if (x.neg) return -walk(x.neg);
     if (x.pos) return walk(x.pos);
-    if (x.fn) return FNS[x.fn](...x.args.map(walk));
+    if (x.fn) { const spread = x.fn === 'min' || x.fn === 'max'; return FNS[x.fn](...x.args.flatMap((a) => walk(a, spread))); }
     const a = walk(x.a), b = walk(x.b);
     return x.op === '+' ? a + b : x.op === '-' ? a - b : x.op === '*' ? a * b : a / b;
   };
@@ -217,10 +220,13 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
       if (isName(d)) { busy.delete(name); const c = checkName(name, d, shown ? display[name] : given ? set[name] : d.value); done.set(name, c); return c; }
       src = shown ? display[name] : given ? Number(set[name]) : d.value; where = (n) => n; // display: the screen's settings win
       if (src === undefined) throw fail('var.value', `"${name}" has no value`, `variables.${name}`);
+      if (Array.isArray(src)) throw fail('var.list', `"${name}" is a list: only a rule in a rule set holds a list (a design reads it as v.<set>.<rule>)`, `variables.${name}.value`);
     }
     let v;
     deps.set(name, new Set()); stack.push(name);
-    try { v = evaluate(src, (n) => lookup(where(n))); } catch (e) {
+    // A list rule: each entry through the same grammar, so the list is numbers by the time a design reads it
+    const each = (x) => { if (typeof x !== 'number' && typeof x !== 'string') throw new Error('each entry of a list is a number or an expression'); const n = evaluate(x, (k) => lookup(where(k))); if (Array.isArray(n)) throw new Error('holds a list inside a list'); return n; };
+    try { v = Array.isArray(src) ? src.map(each) : evaluate(src, (n) => lookup(where(n))); if (Array.isArray(v) && !v.length) throw new Error('is an empty list'); } catch (e) {
       busy.delete(name); stack.pop();
       // A rule with words for a value and no unit (a bearing's "radial", a pinout) is text, read as it is
       if (name.includes('.') && typeof src === 'string' && !ruleOf(name)?.unit) { done.set(name, src); return src; }
@@ -266,33 +272,54 @@ export function resolve(object, { sets = {}, set = {}, display = {}, load } = {}
 // A published rule set, held to what makes it traceable: every value says what it is, how far to trust it, where it
 // comes from and when it was checked. A set with "part" (a motor) uses the shared names in vocabulary (the rule sets'
 // vocabulary.json), every required one, each in its unit; an older set says which of its rules is which in "interface".
+// A vocabulary may also say what must hold between a part's figures, in "checks": { "<part>": [ … ] }, each one of
+//   { "ascending": ["tap_drill", "major_diameter", "clearance"], "says": "…" }   the names it has, each larger than the last
+//   { "near": "tap_drill", "to": "major_diameter - pitch", "within": "0.2 * pitch", "says": "…" }   expressions over its own rules
+// and a field marked "list": true holds a list (the lengths a screw is sold in), which must ascend.
 const KINDS = ['measured', 'spec', 'community', 'default', 'derived', 'estimate'];
+const finite = (x) => typeof x === 'number' && Number.isFinite(x);
 /**
  * @param {RuleSet & { part?: string, interface?: Record<string, string> }} set
- * @param {{ units: string[], prefixes: string[], fields: Record<string, { unit?: string, choice?: string[] }>, parts: Record<string, string[]> }} vocabulary
- * @returns {{ level: 'fail', code: string, text: string, rule?: string }[]} what's wrong with it: nothing, if it passes
+ * @param {{ units: string[], prefixes: string[], fields: Record<string, { unit?: string, choice?: string[], list?: boolean }>, parts: Record<string, string[]>, checks?: Record<string, { ascending?: string[], near?: string, to?: string, within?: string, says: string }[]> }} vocabulary
+ * @returns {{ level: 'fail', code: string, text: string, rule?: string, values?: Record<string, number> }[]} what's wrong with it: nothing, if it passes
  */
 export function checkRuleSet(set, vocabulary) {
-  const out = [], f = (code, text, rule) => out.push({ level: 'fail', code, text, ...(rule ? { rule } : {}) }), { units, prefixes, fields, parts } = vocabulary, rules = set?.rules;
+  const out = [], f = (code, text, rule, values) => out.push({ level: 'fail', code, text, ...(rule ? { rule } : {}), ...(values ? { values } : {}) }), { units, prefixes, fields, parts } = vocabulary, rules = set?.rules;
   if (!rules || typeof rules !== 'object' || !Object.keys(rules).length) { f('rules.shape', 'it has no rules'); return out; }
   for (const [name, r] of Object.entries(rules)) {
-    if (!(typeof r.value === 'number' ? Number.isFinite(r.value) : typeof r.value === 'string' && r.value)) f('rules.value', `${name} has no value`, name);
+    const list = Array.isArray(r.value);
+    if (!(list ? r.value.length && r.value.every(finite) : finite(r.value) || (typeof r.value === 'string' && r.value))) f('rules.value', list ? `${name} is a list, so every entry is a number and there is at least one` : `${name} has no value`, name);
+    else if (list) { const i = r.value.findIndex((x, k) => k && x <= r.value[k - 1]); if (i > 0) f('rules.order', `${name} is a list in ascending order: ${r.value[i]} follows ${r.value[i - 1]}`, name, { before: r.value[i - 1], after: r.value[i] }); }
     if (!(typeof r.rule === 'string' && r.rule.length > 5)) f('rules.says', `${name} doesn't say what it is ("rule")`, name);
     if (!KINDS.includes(r.kind)) f('rules.kind', `${name}: kind ${JSON.stringify(r.kind)} is not one of ${KINDS.join(', ')}`, name);
     if (!(typeof r.source === 'string' && r.source)) f('rules.source', `${name} has no source`, name);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.checked))) f('rules.checked', `${name}: checked is the date it was last checked, YYYY-MM-DD (got ${JSON.stringify(r.checked)})`, name);
     if (set.part) {
       if (r.unit != null && !units.includes(r.unit)) f('rules.unit', `${name}: unit ${JSON.stringify(r.unit)} is not one of ${units.filter(Boolean).join(', ')}`, name);
-      if (typeof r.value === 'number' && r.unit == null) f('rules.unit', `${name} is a number with no unit (give "unit", "" if it has none)`, name);
+      if ((typeof r.value === 'number' || list) && r.unit == null) f('rules.unit', `${name} is a number with no unit (give "unit", "" if it has none)`, name);
       const field = fields[name];
       if (prefixes.some((p) => name.startsWith(p)) && !field) f('rules.name', `${name} is not in the vocabulary (a name starting ${prefixes.join(', ')} says how a part mounts, so everything reads it the same way)`, name);
       if (field?.unit != null && r.unit !== field.unit) f('rules.unit', `${name} is in ${JSON.stringify(field.unit)}, not ${JSON.stringify(r.unit ?? null)}`, name);
       if (field?.choice && !field.choice.includes(r.value)) f('rules.choice', `${name} is one of ${field.choice.join(', ')} (got ${JSON.stringify(r.value)})`, name);
+      if (field && !!field.list !== list) f('rules.list', field.list ? `${name} is a list: "value": [ … ] (got ${JSON.stringify(r.value)})` : `${name} is one value, not a list`, name);
     }
   }
   if (set.part) {
     if (!parts[set.part]) f('rules.part', `part ${JSON.stringify(set.part)} is not one of ${Object.keys(parts).join(', ')}`);
     else for (const name of parts[set.part]) if (!rules[name]) f('rules.missing', `a ${set.part} needs ${name}`, name);
+    // What must hold between its figures: only over the numbers it has, so a size made without a head form passes
+    const num = (name) => (finite(rules[name]?.value) ? rules[name].value : undefined);
+    const work = (src) => { try { return evaluate(src, (n) => { const v = num(n); if (v === undefined) throw new Error('absent'); return v; }); } catch { return undefined; } };
+    for (const c of vocabulary.checks?.[set.part] || []) {
+      if (c.ascending) {
+        const have = c.ascending.filter((n) => num(n) !== undefined);
+        for (let i = 1; i < have.length; i++) if (!(num(have[i]) > num(have[i - 1]))) f('rules.order', `${have[i]} (${num(have[i])}) is not larger than ${have[i - 1]} (${num(have[i - 1])}): ${c.says}`, have[i], { [have[i - 1]]: num(have[i - 1]), [have[i]]: num(have[i]) });
+      }
+      if (c.near) {
+        const v = num(c.near), to = work(c.to), within = work(c.within);
+        if (v !== undefined && to !== undefined && within !== undefined && !(Math.abs(v - to) <= within + 1e-9)) f('rules.near', `${c.near} (${v}) is not within ${fmt(within)} of ${c.to} (${fmt(to)}): ${c.says}`, c.near, { [c.near]: v, expected: to, within });
+      }
+    }
   }
   for (const [shared, own] of Object.entries(set.interface || {})) {
     if (!fields[shared]) f('rules.name', `interface: ${shared} is not in the vocabulary`, own);
@@ -306,7 +333,7 @@ export function checkRuleSet(set, vocabulary) {
   return out;
 }
 
-export const fmt = (n) => (typeof n === 'number' ? String(Number(n.toFixed(2))) : String(n)); // choices are names
+export const fmt = (n) => (typeof n === 'number' ? String(Number(n.toFixed(2))) : Array.isArray(n) ? n.map(fmt).join(', ') : String(n)); // choices are names; a list rule, each entry
 
 // lint(source) -> [{ line, text }]: number literals in a design's code that should be variables. Every measurement
 // belongs in a variable that says where it comes from; only 0, 1 and 2 (and numbers in comments and strings) pass.
