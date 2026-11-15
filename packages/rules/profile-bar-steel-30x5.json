@@ -1,0 +1,11 @@
+{
+  "_doc": "A 30 x 5 mm steel bar, as a ready size of the bar family (profile-bar holds the family and how to give any other size). It has no maker's sheet: every dimension is the nominal one stock is sold by, so measure the bar in hand, and its area, second moments, torsion constant and mass are worked out from its outline. The drawn outline leaves out the small radius on a drawn bar's edges.",
+  "name": "profile-bar-steel-30x5",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "bar", "rule": "A flat or square bar: a solid rectangle", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "width": { "value": 30, "unit": "mm", "rule": "Across", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "height": { "value": 5, "unit": "mm", "rule": "Thickness, up", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "material": { "value": "s275", "rule": "Structural steel S275: the kit's steel. Hollow sections and bar are sold in several grades (S235, S275, S355): name the grade on your supplier's sheet where it matters", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" }
+  }
+}

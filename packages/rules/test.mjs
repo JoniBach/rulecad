@@ -219,7 +219,9 @@ test('what holds a screw in plastic: inserts from one maker, pilots as starting 
 
 // ---------- profiles, slots and the alloys they are made of ----------
 test('profiles and slots: one maker one set, named for size and maker, every figure saying what it rests on', () => {
-  const profiles = sets.filter((s) => s.set.part === 'profile'), slots = sets.filter((s) => s.set.part === 'slot'), byName = Object.fromEntries(sets.map((s) => [s.name, s.set]));
+  // (plain sections and custom outlines have no maker and no sheet: they have their own test below)
+  const slotted = (s) => ['t-slot', 'v-slot'].includes(s.set.rules.family?.value);
+  const profiles = sets.filter((s) => s.set.part === 'profile' && slotted(s)), slots = sets.filter((s) => s.set.part === 'slot'), byName = Object.fromEntries(sets.map((s) => [s.name, s.set]));
   for (const { name } of profiles) assert.match(name, /^profile-\d{4}-(misumi|bosch|motedis|item|generic)(-[a-z0-9]+)?$/, `${name}: profile-<size>-<maker>[-<series>]`);
   for (const { name } of slots) assert.match(name, /^slot-\d+(-[a-z0-9]+)*$/, `${name}: slot-<opening>[-<maker>][-<variant>]`);
   // three named makers each have a 20 mm and a 40 mm profile, and unbranded stock has generic ones
@@ -260,6 +262,39 @@ test('profiles and slots: one maker one set, named for size and maker, every fig
   assert.equal(v.pitch, 20); assert.ok(Math.abs(v.tongue - 5.8) < 1e-12);
 });
 
+
+test('plain sections: a base set to each family, ready sizes named for what they are, and no figure a sheet would have to give', () => {
+  const byName = Object.fromEntries(sets.map((s) => [s.name, s.set])), plain = sets.filter((s) => s.set.part === 'profile' && !['t-slot', 'v-slot'].includes(s.set.rules.family?.value));
+  const families = ['tube', 'round-tube', 'angle', 'channel', 'bar', 'round-bar', 'custom'];
+  for (const f of families) assert.equal(byName[`profile-${f}`]?.rules.family.value, f, `profile-${f} is the base set of the ${f} family`);
+  assert.ok(plain.length >= families.length + 8, 'the families and a few ready sizes');
+  for (const { name, set: { rules: r, _doc } } of plain) {
+    const m = name.match(/^profile-(tube|round-tube|angle|channel|bar|round-bar|custom)(?:-(al|steel)-(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?){0,2}))?$/);
+    assert.ok(m, `${name}: profile-<family>, or profile-<family>-<al|steel>-<size>`);
+    assert.equal(r.family.value, m[1], `${name} is of the family it is named for`);
+    for (const k of ['width', 'height', 'material']) assert.ok(r[k], `${name} has ${k}`);
+    assert.ok(byName[r.material.value]?.rules.density && byName[r.material.value].rules.modulus, `${name}.material names a material set`);
+    assert.equal(!!r.wall, ['tube', 'round-tube', 'angle', 'channel'].includes(m[1]), `${name}: a wall where the family has one`);
+    // its section figures are worked out from its outline: writing them here would be a second copy to go stale
+    for (const k of ['area', 'inertia_x', 'inertia_y', 'torsion_constant', 'mass_per_metre', 'slot', 'bore_diameter']) assert.equal(r[k], undefined, `${name} has no ${k}`);
+    for (const [k, x] of Object.entries(r)) { assert.ok(vocabulary.fields[k], `${name}.${k} is a name in the vocabulary`); assert.ok(['default', 'estimate'].includes(x.kind), `${name}.${k}: a nominal size is a default, a guess an estimate (no sheet is behind either)`); }
+    assert.match(_doc, /The drawn outline leaves out/, `${name} says what its drawing leaves out`);
+    if (m[3]) { // a ready size: the size in its name is the size in its rules, and its material the one named
+      const size = m[3].split('x').map(Number), round = m[1].startsWith('round');
+      assert.deepEqual(round ? [r.width.value, ...(r.wall ? [r.wall.value] : [])] : [r.width.value, r.height.value, ...(r.wall ? [r.wall.value] : [])], size, `${name}: named for its size`);
+      assert.equal(r.material.value.startsWith('al'), m[2] === 'al', `${name}: named for its material`);
+    }
+  }
+  // the kit's own outlines: each beside a set of its name, with its source and licence, and nothing of a maker's
+  const outlines = fs.existsSync(dir + 'outlines') ? fs.readdirSync(dir + 'outlines') : [];
+  assert.ok(outlines.includes('profile-custom.json'));
+  for (const file of outlines) {
+    const o = JSON.parse(fs.readFileSync(`${dir}outlines/${file}`, 'utf8'));
+    assert.equal(byName[file.replace(/\.json$/, '')]?.part, 'profile', `outlines/${file} belongs to a profile set of its name`);
+    assert.match(o.source, /drawn for the kit/, `outlines/${file}: the kit holds only outlines drawn for it`); assert.equal(o.licence, 'CC0-1.0');
+    assert.ok(Array.isArray(o.loops) && o.loops.every((l) => l.length >= 3 && l.every((p) => p.length === 2 && p.every(Number.isFinite))));
+  }
+});
 test('the alloys profiles are made of: each temper its own set, strengths the least the standard or the maker gives', () => {
   for (const name of ['al6063-t5', 'al6063-t6', 'al6063-t66', 'al6060-t66', 'al6005a-t6', 'al6n01-t5', 'al6060-rexroth']) {
     const r = rulesOf(name);

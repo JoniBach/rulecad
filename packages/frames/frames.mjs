@@ -7,7 +7,7 @@
 // Every profile, slot family and slot nut is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the
 // origin; the beam runs along z. Its faces are top (+y), bottom (-y), front (-x) and back (+x). Units: mm, degrees.
-import { SETS, FIELDS } from './catalogue.mjs';
+import { SETS, FIELDS, OUTLINES } from './catalogue.mjs';
 import { polygonSection, torsionConstant, signedArea, gap, inside } from './section.mjs';
 
 export { polygonSection, torsionConstant, signedArea } from './section.mjs';
@@ -27,6 +27,7 @@ export const DEFAULTS = {
   inertia: { value: 0.1, unit: '', rule: 'The same for a second moment of area, which weighs metal by the square of its distance from the middle: what a simple outline gets wrong is at the faces, so it counts about twice', kind: 'estimate' },
   torsion: { value: 0.15, unit: '', rule: 'The same for the torsion constant, which goes with the cube of a wall\'s thickness: three times the allowance', kind: 'estimate' },
   thread: { value: 0.5, unit: '', rule: 'The least share of a full thread\'s height that a bore should leave for a tapped thread: (major diameter - bore) / (1.299 x pitch). A standard tap drill leaves about three quarters. Under half is said (makers do it: a notched bore meant for a thread-forming screw); under a quarter is taken for the wrong thread', kind: 'estimate' },
+  outline: { value: 0.2, unit: 'mm', rule: 'How far the envelope of a measured outline may be from the set\'s width and height before a check says so: an extrusion\'s own tolerance on a 20 to 40 mm side is 0.15 to 0.2 mm (item\'s and Rexroth\'s tables), so more than this is another section or another scale', kind: 'estimate' },
   cells: { value: 40000, unit: 'cells', rule: 'Raster cells over a section\'s bounding box when solving for its torsion constant: 0.1 mm cells on a 20 mm section, which settles a solid rectangle to about 1%', kind: 'default' },
 };
 
@@ -68,7 +69,7 @@ export const slotNuts = () => ofPart('slot_nut');
  * @typedef {{ at: [number, number], width: number }} Hollow a closed square hollow in a corner, by its centre and side
  * @typedef {{ loops: number[][][], source: string, licence: string, name?: string }} MeasuredOutline
  * @typedef {{ kind: 'profile', name: string, family: string, series: number, cells: [number, number], pitch: [number, number],
- *   width: number, height: number, cornerRadius: number, wall: number, figures: Record<string, Figure>,
+ *   title: string, width: number, height: number, cornerRadius: number, wall: number, figures: Record<string, Figure>,
  *   faces: Record<'top' | 'bottom' | 'front' | 'back', FaceSlot[]>, slots: Record<string, Slot>, bores: Bore[], chambers: Chamber[], hollows: Hollow[],
  *   sheet: { area: number | null, inertiaX: number | null, inertiaY: number | null, modulusX: number | null, modulusY: number | null, torsion: number | null, massPerMetre: number | null },
  *   material: { name: string, alloy: string | null, density: number | null, modulus: number | null, poisson: number | null, strength: number | null, figures: Record<string, Figure> } | null,
@@ -263,9 +264,14 @@ export function profileModel(which, change = {}, given = {}) {
   const lengths = v('lengths', []);
   if (!Array.isArray(lengths)) throw new Error(`${what}: ${name}: lengths is a list (got ${shown(lengths)})`);
   const supply = { lengths, cutMin: num('cut_length_min', null), cutMax: num('cut_length_max', null), cutTolerance: num('cut_tolerance', null), straightness: num('straightness_per_metre', null), twist: num('twist_per_metre', null) };
-  const measured = given.outline ? readOutline(given.outline) : null;
+  // a measured outline: the one handed in, or the kit's own beside the set (rules/outlines/<name>.json)
+  const drawn = given.outline ?? OUTLINES[name];
+  if (family === 'custom' && !drawn) throw new Error(`${what}: ${name}: a custom profile is its outline, and none came with it: hand one in ({ outline: { source, licence, loops } }), or keep it beside the set as rules/outlines/${name}.json`);
+  const measured = drawn ? readOutline(drawn) : null;
+  const fig = (x) => String(+x.toFixed(2)), size = round ? `Ø${fig(width)}` : `${fig(width)} x ${fig(height)}`, plain = { tube: 'tube', 'round-tube': 'round tube', angle: 'angle', channel: 'channel', bar: 'bar', 'round-bar': 'round bar' }[family];
+  const title = plain ? `${size}${wall ? ` x ${fig(wall)}` : ''} ${plain}${figures.material ? `, ${v('material')}` : ''}` : `${size} ${family} (${name})`;
   const kinds = new Set([...Object.values(figures), ...Object.values(slotsUsed).flatMap((s) => Object.values(s.figures))].map((f) => f.kind));
-  return { kind: 'profile', name, family, series, cells, pitch, width, height, cornerRadius, wall, figures, faces, slots: slotsUsed, bores, chambers, hollows, sheet, material, supply, measured, rests: [...kinds] };
+  return { kind: 'profile', name, title, family, series, cells, pitch, width, height, cornerRadius, wall, figures, faces, slots: slotsUsed, bores, chambers, hollows, sheet, material, supply, measured, rests: [...kinds] };
 }
 
 // ---------- the outline ----------
@@ -356,6 +362,24 @@ export function section(model, o = {}) {
 }
 
 /**
+ * The figures to design a beam of this profile with: each one the maker's sheet gives, as the sheet gives it, and each it
+ * does not give worked out from the outline. A plain section (tube, angle, bar) has no sheet, so all of its are worked
+ * out; a maker's profile mostly has its own. Every figure says which it is.
+ * @param {Profile} model
+ * @param {{ cells?: number }} [o] raster cells for the torsion constant, solved only where the sheet gives none
+ * @returns {Record<'area' | 'inertiaX' | 'inertiaY' | 'modulusX' | 'modulusY' | 'torsion' | 'massPerMetre', { value: number | null, unit: string, kind: string, source: string, from: 'sheet' | 'outline' }>}
+ */
+export function beamFigures(model, o = {}) {
+  const m = isModel('beamFigures', model), s = section(m, { ...o, torsion: m.sheet.torsion == null }), out = {};
+  const names = { area: ['area', 'mm²'], inertiaX: ['inertia_x', 'mm⁴'], inertiaY: ['inertia_y', 'mm⁴'], modulusX: ['section_modulus_x', 'mm³'], modulusY: ['section_modulus_y', 'mm³'], torsion: ['torsion_constant', 'mm⁴'], massPerMetre: ['mass_per_metre', 'kg/m'] };
+  for (const [k, [rule, unit]] of Object.entries(names)) {
+    out[k] = m.sheet[k] != null ? { value: m.sheet[k], unit, kind: m.figures[rule].kind, source: m.figures[rule].source, from: 'sheet' }
+      : { value: s[k], unit, kind: 'derived', source: `worked out from the ${s.measured ? 'measured' : 'drawn'} outline of ${m.name}${k === 'massPerMetre' && m.material ? ` and the density of ${m.material.name}` : ''}`, from: 'outline' };
+  }
+  return out;
+}
+
+/**
  * What a check of a profile finds, in the kit's one shape: slots that do not fit inside the section or run into each
  * other, a bore that a slot or a hollow breaks into, a bore too wide or too tight for the thread it is tapped to, and
  * section figures on the sheet that the drawn outline does not bear out. 'fail' is a set that cannot be right, 'warn' one to look at, 'info' something to know (a bore that leaves a thin thread). An empty list is a clean pass.
@@ -391,6 +415,12 @@ export function profileFindings(model, o = {}) {
       else if (share < DEFAULTS.thread.value / 2) say('warn', 'profile.bore.tap', `${thin}: under ${Math.round(DEFAULTS.thread.value * 50)}% there is hardly a thread, so the thread is probably not this bore's`, { rule, values: { ...values, share } });
       else if (share < DEFAULTS.thread.value) say('info', 'profile.bore.tap', `${thin}: under ${Math.round(DEFAULTS.thread.value * 100)}%, so a screw in its end wants more depth than in a hole drilled to the tap drill`, { rule, values: { ...values, share } });
     }
+  }
+  // a measured outline against the size the set gives
+  if (m.measured) {
+    const xs = m.measured.loops.flatMap((l) => l.map((p) => p[0])), ys = m.measured.loops.flatMap((l) => l.map((p) => p[1])), w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys), mid = [(Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...ys) + Math.min(...ys)) / 2];
+    if (Math.abs(w - m.width) > DEFAULTS.outline.value || Math.abs(h - m.height) > DEFAULTS.outline.value) say('warn', 'profile.outline.size', `the measured outline is ${f2(w)} x ${f2(h)} mm, and the set says ${f2(m.width)} x ${f2(m.height)}: one of them is another section, or the outline is not in mm`, { rule: Math.abs(w - m.width) > DEFAULTS.outline.value ? 'width' : 'height', values: { outline_width: w, outline_height: h, width: m.width, height: m.height } });
+    if (Math.hypot(...mid) > DEFAULTS.outline.value) say('warn', 'profile.outline.middle', `the measured outline's envelope has its middle at ${f2(mid[0])}, ${f2(mid[1])}: an outline is drawn about the middle of its envelope, so slots and bores are found where the set says`, { at: mid });
   }
   // the sheet's section figures against the drawn outline's
   const s = section(m, { ...o, torsion: o.torsion ?? m.sheet.torsion != null }), words = { area: ['area', 'area', 'mm²'], inertiaX: ['inertia_x', 'second moment about x', 'mm⁴'], inertiaY: ['inertia_y', 'second moment about y', 'mm⁴'], torsion: ['torsion_constant', 'torsion constant', 'mm⁴'], massPerMetre: ['mass_per_metre', 'mass per metre', 'kg/m'] };

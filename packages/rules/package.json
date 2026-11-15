@@ -8,6 +8,7 @@
   },
   "files": [
     "*.json",
+    "outlines/*.json",
     "drawings/*.svg",
     "README.md",
     "LICENSE"

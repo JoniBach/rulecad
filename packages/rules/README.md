@@ -69,6 +69,9 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `slot-5-motedis`, `slot-6-motedis-i`, `slot-8-motedis-i` | The slots of Motedis' I-type profiles (made to match item's Lines 5, 6 and 8): what Motedis prints, the rest item's figures and marked community | 7 each |
 | `profile-2020-motedis-i5`, `profile-2040-motedis-i5`, `profile-3030-motedis-i6`, `profile-4040-motedis-i8`, `profile-4080-motedis-i8` | Motedis I-type profiles 20x20 and 20x40 (slot 5), 30x30L (slot 6), 40x40L and 40x80L (slot 8): Motedis' own section figures, with what it does not print taken from item's and marked community | 21 to 25 |
 | `slot-10` | A generic 10 mm slot for unbranded B-type stock of the 40 and 45 mm series: the opening from a named seller, the rest Rexroth's figures. Community until measured | 7 |
+| `profile-tube`, `profile-round-tube`, `profile-angle`, `profile-channel`, `profile-bar`, `profile-round-bar` | Plain sections as families: square and rectangular tube, round tube, angle, channel, flat and round bar. Each holds a starting size and material; any other is given by size, wall and material, and its section figures are worked out from its outline | 4 to 6 |
+| `profile-tube-al-20x20x2`, `profile-tube-al-25x25x2`, `profile-tube-al-40x20x2`, `profile-tube-steel-25x25x2`, `profile-tube-steel-40x40x2`, `profile-round-tube-al-25x2`, `profile-round-tube-steel-25x2`, `profile-angle-al-25x25x3`, `profile-angle-steel-30x30x3`, `profile-channel-al-30x20x2`, `profile-bar-al-25x5`, `profile-bar-steel-30x5`, `profile-round-bar-al-10`, `profile-round-bar-steel-10` | Ready sizes of the plain families in aluminium (6063-T5) and steel (S275), named `profile-<family>-<al or steel>-<size>`: nominal sizes, to measure against the bar in hand | 4 to 6 |
+| `profile-custom` | The custom family: any closed outline, with its section figures worked out from it. The kit's own example is a T section, its outline in `outlines/profile-custom.json` | 4 |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such
 as KiCad's library or KeyV2), **default** (a setting that works), **derived** (read off someone else's model with `cad measure`: check it
@@ -137,6 +140,7 @@ one set, because two makers' "2020" differ in their slots, and a file's name say
 | File | What |
 |---|---|
 | `profile-<size>-<maker>[-<the maker's series or type>]` | A profile: `profile-2020-misumi-hfs5`, `profile-4040-bosch-l`, `profile-2020-generic`. The size is cells of the series, across then up, as it is sold (`2040`), so files sort by size and then by maker |
+| `profile-<family>` and `profile-<family>-<al or steel>-<size>` | A plain section's family (`profile-tube`, `profile-angle`, `profile-round-bar`) and a ready size of it (`profile-tube-al-25x25x2`, `profile-round-bar-steel-10`): width, height and wall as the family has them. `profile-custom` is any closed outline, with its outline in `outlines/<the set's name>.json` |
 | `slot-<opening>[-<maker>][-<variant>]` | A slot family: `slot-6-bosch`, `slot-10-misumi-45`. With no maker it is the generic one for unbranded stock (`slot-6`, `slot-8`, and `slot-8-i` for the 40 mm series' I-type slot) |
 | `slot-nut-<slot>-<thread>-<kind>` | A slot nut (none published yet: the names are in the vocabulary) |
 | `al<alloy>-<temper>` | The material a profile names: `al6063-t5` |

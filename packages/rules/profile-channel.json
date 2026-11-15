@@ -1,0 +1,12 @@
+{
+  "_doc": "The channel family of plain sections, with a starting size (30 x 20 x 2 mm, al6063-t5): a channel (a u): a web along the bottom and a flange up each side. A plain section has no slots and no maker's sheet: give the size, the wall and the material you have (profileModel('channel', { width: 40, height: 20, wall: 3 })), and its area, second moments, torsion constant and mass are worked out from its outline. It is fastened through drilled holes, clamps and printed saddles. The drawn outline leaves out the rounds in the roots between web and flanges.",
+  "name": "profile-channel",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "channel", "rule": "A channel (a U): a web along the bottom and a flange up each side", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "width": { "value": 30, "unit": "mm", "rule": "Across the web, outside, to start from", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "height": { "value": 20, "unit": "mm", "rule": "Height of the flanges, outside, to start from", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "wall": { "value": 2, "unit": "mm", "rule": "Thickness of web and flanges, to start from", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "material": { "value": "al6063-t5", "rule": "Extruded aluminium, EN AW-6063 T5: one of the alloys such sections are extruded in (6060 and 6063 in Europe, 6061 and 6063 in America). Name the alloy on your supplier's sheet where it matters", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" }
+  }
+}

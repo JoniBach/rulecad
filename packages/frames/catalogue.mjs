@@ -1,5 +1,5 @@
 // The rule sets @rulecad/frames reads, by name: every profile, slot family and slot nut in @rulecad/rules, the threads
-// their bores tap to and the materials they name. Generated from the rules package (one import per set, so a bundler
+// their bores tap to, the materials they name and the outlines the kit draws itself. Generated from the rules package (one import per set, so a bundler
 // can see them): after adding a set there, add its line here. A test holds the two together.
 import s_al6000_item from '@rulecad/rules/al6000-item.json' with { type: 'json' };
 import s_al6060_rexroth from '@rulecad/rules/al6060-rexroth.json' with { type: 'json' };
@@ -54,6 +54,28 @@ import s_profile_4080_motedis_i8 from '@rulecad/rules/profile-4080-motedis-i8.js
 import s_profile_4545_bosch_l from '@rulecad/rules/profile-4545-bosch-l.json' with { type: 'json' };
 import s_profile_4545_misumi_hfs8 from '@rulecad/rules/profile-4545-misumi-hfs8.json' with { type: 'json' };
 import s_profile_4590_misumi_hfs8 from '@rulecad/rules/profile-4590-misumi-hfs8.json' with { type: 'json' };
+import s_profile_angle_al_25x25x3 from '@rulecad/rules/profile-angle-al-25x25x3.json' with { type: 'json' };
+import s_profile_angle_steel_30x30x3 from '@rulecad/rules/profile-angle-steel-30x30x3.json' with { type: 'json' };
+import s_profile_angle from '@rulecad/rules/profile-angle.json' with { type: 'json' };
+import s_profile_bar_al_25x5 from '@rulecad/rules/profile-bar-al-25x5.json' with { type: 'json' };
+import s_profile_bar_steel_30x5 from '@rulecad/rules/profile-bar-steel-30x5.json' with { type: 'json' };
+import s_profile_bar from '@rulecad/rules/profile-bar.json' with { type: 'json' };
+import s_profile_channel_al_30x20x2 from '@rulecad/rules/profile-channel-al-30x20x2.json' with { type: 'json' };
+import s_profile_channel from '@rulecad/rules/profile-channel.json' with { type: 'json' };
+import s_profile_custom from '@rulecad/rules/profile-custom.json' with { type: 'json' };
+import s_profile_round_bar_al_10 from '@rulecad/rules/profile-round-bar-al-10.json' with { type: 'json' };
+import s_profile_round_bar_steel_10 from '@rulecad/rules/profile-round-bar-steel-10.json' with { type: 'json' };
+import s_profile_round_bar from '@rulecad/rules/profile-round-bar.json' with { type: 'json' };
+import s_profile_round_tube_al_25x2 from '@rulecad/rules/profile-round-tube-al-25x2.json' with { type: 'json' };
+import s_profile_round_tube_steel_25x2 from '@rulecad/rules/profile-round-tube-steel-25x2.json' with { type: 'json' };
+import s_profile_round_tube from '@rulecad/rules/profile-round-tube.json' with { type: 'json' };
+import s_profile_tube_al_20x20x2 from '@rulecad/rules/profile-tube-al-20x20x2.json' with { type: 'json' };
+import s_profile_tube_al_25x25x2 from '@rulecad/rules/profile-tube-al-25x25x2.json' with { type: 'json' };
+import s_profile_tube_al_40x20x2 from '@rulecad/rules/profile-tube-al-40x20x2.json' with { type: 'json' };
+import s_profile_tube_steel_25x25x2 from '@rulecad/rules/profile-tube-steel-25x25x2.json' with { type: 'json' };
+import s_profile_tube_steel_40x40x2 from '@rulecad/rules/profile-tube-steel-40x40x2.json' with { type: 'json' };
+import s_profile_tube from '@rulecad/rules/profile-tube.json' with { type: 'json' };
+import s_s275 from '@rulecad/rules/s275.json' with { type: 'json' };
 import s_slot_10_bosch_45l from '@rulecad/rules/slot-10-bosch-45l.json' with { type: 'json' };
 import s_slot_10_bosch from '@rulecad/rules/slot-10-bosch.json' with { type: 'json' };
 import s_slot_10_misumi_45 from '@rulecad/rules/slot-10-misumi-45.json' with { type: 'json' };
@@ -84,6 +106,7 @@ import s_unc_5_16_18 from '@rulecad/rules/unc_5_16_18.json' with { type: 'json' 
 import s_unc_6_32 from '@rulecad/rules/unc_6_32.json' with { type: 'json' };
 import s_unc_8_32 from '@rulecad/rules/unc_8_32.json' with { type: 'json' };
 import s_unf_10_32 from '@rulecad/rules/unf_10_32.json' with { type: 'json' };
+import o_profile_custom from '@rulecad/rules/outlines/profile-custom.json' with { type: 'json' };
 import vocabulary from '@rulecad/rules/vocabulary.json' with { type: 'json' };
 
 /** The names a profile, a slot and a slot nut are written in: the fields of vocabulary.json. @type {Record<string, { unit?: string, choice?: string[], list?: boolean, says: string }>} */
@@ -99,9 +122,16 @@ export const SETS = Object.fromEntries([
   s_profile_4040_bosch_l, s_profile_4040_generic, s_profile_4040_item_8, s_profile_4040_item_8l, s_profile_4040_misumi_hfs8,
   s_profile_4040_motedis_b10, s_profile_4040_motedis_i8, s_profile_4080_bosch_l, s_profile_4080_item_8,
   s_profile_4080_item_8l, s_profile_4080_misumi_hfs8, s_profile_4080_motedis_i8, s_profile_4545_bosch_l,
-  s_profile_4545_misumi_hfs8, s_profile_4590_misumi_hfs8, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45,
-  s_slot_10_misumi, s_slot_10_motedis, s_slot_10, s_slot_5_item, s_slot_5_motedis, s_slot_6_bosch, s_slot_6_item_light,
-  s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i, s_slot_6_motedis, s_slot_6, s_slot_8_bosch, s_slot_8_i,
-  s_slot_8_item_light, s_slot_8_item, s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_unc_10_24, s_unc_1_4_20,
-  s_unc_3_8_16, s_unc_4_40, s_unc_5_16_18, s_unc_6_32, s_unc_8_32, s_unf_10_32
+  s_profile_4545_misumi_hfs8, s_profile_4590_misumi_hfs8, s_profile_angle_al_25x25x3, s_profile_angle_steel_30x30x3,
+  s_profile_angle, s_profile_bar_al_25x5, s_profile_bar_steel_30x5, s_profile_bar, s_profile_channel_al_30x20x2,
+  s_profile_channel, s_profile_custom, s_profile_round_bar_al_10, s_profile_round_bar_steel_10, s_profile_round_bar,
+  s_profile_round_tube_al_25x2, s_profile_round_tube_steel_25x2, s_profile_round_tube, s_profile_tube_al_20x20x2,
+  s_profile_tube_al_25x25x2, s_profile_tube_al_40x20x2, s_profile_tube_steel_25x25x2, s_profile_tube_steel_40x40x2,
+  s_profile_tube, s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
+  s_slot_10, s_slot_5_item, s_slot_5_motedis, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi,
+  s_slot_6_motedis_i, s_slot_6_motedis, s_slot_6, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light, s_slot_8_item,
+  s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_unc_10_24, s_unc_1_4_20, s_unc_3_8_16, s_unc_4_40, s_unc_5_16_18,
+  s_unc_6_32, s_unc_8_32, s_unf_10_32
 ].map((s) => [s.name, s]));
+/** The kit's own outlines, by the name of the set each belongs to (rules/outlines/<name>.json). @type {Record<string, { name?: string, source: string, licence: string, loops: number[][][] }>} */
+export const OUTLINES = { "profile-custom": o_profile_custom };

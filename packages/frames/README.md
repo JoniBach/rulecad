@@ -59,7 +59,8 @@ count from 1 along +x or +y. Lengths are in mm, areas mm², second moments and t
 | `faces` | `top`, `bottom`, `front`, `back`: each a list with one entry per cell along it, `{ face, index, slot, at, normal, along }`. `slot` is a slot family's name, or `null` where the face is closed there |
 | `slots` | The slot families it uses, by name: `{ opening, mouth, lip, lipAngle, cavityWidth, cavityDepth, floorWidth, flankAngle, straight, trackWidth, trackAngle, nutFamily, figures }` |
 | `bores` | Each bore: `{ at, diameter, thread, threadSet, tapDrill, major, threadPitch, where }`, `where` being `cell`, `corner` or `given` |
-| `chambers`, `hollows` | The closed hollow where two cells meet, and square hollows in the corners of a lighter section |
+| `title` | A line for a list: `'25 x 25 x 2 tube, al6063-t5'`, `'20 x 20 t-slot (profile-2020-misumi-hfs5)'` |
+| `chambers`, `hollows` | The closed hollow where two cells meet (`{ at, axis, width, length, depth, ends, slot }`: `ends` are its half widths toward each end, narrower toward a place where four cells meet), and square hollows in the corners of a lighter section |
 | `sheet` | What the sheet says: `{ area, inertiaX, inertiaY, modulusX, modulusY, torsion, massPerMetre }`, `null` where it gives none |
 | `material` | The material set it names: `{ name, alloy, density, modulus, poisson, strength, figures }`, or `null` |
 | `supply` | `{ lengths, cutMin, cutMax, cutTolerance, straightness, twist }` |
@@ -93,6 +94,56 @@ A measured outline takes its place when you have one: `readOutline(json)` holds 
 `rules/outlines/<set name>.json`. The kit publishes no maker's outline. It draws its own, and a maker's model is
 measured in your own workspace.
 
+### Plain sections: a family and a size
+
+Tube, round tube, angle, channel, flat bar and round bar have no maker's sheet. Each is a family with a base set
+(`profile-tube`, `profile-round-tube`, `profile-angle`, `profile-channel`, `profile-bar`, `profile-round-bar`) that
+holds a starting size, and any other size is the family's name with the figures you have:
+
+```js
+const tube = profileModel('tube', { width: 25, height: 25, wall: 2, material: 'al6063-t5' });
+tube.title;                                   // '25 x 25 x 2 tube, al6063-t5'
+section(tube).area;                           // 184 mm²: 25² less 21²
+beamFigures(tube).torsion;                    // { value: 25410, unit: 'mm⁴', kind: 'derived', from: 'outline', source }
+profileModel('angle', { width: 40, height: 25, wall: 3, material: 's275' });   // unequal legs, in steel
+profileModel('round-bar', { width: 12, height: 12 });                          // a round section's width and height are its diameter
+```
+
+| Family | `width` | `height` | `wall` | Also |
+|---|---|---|---|---|
+| `tube` | Outside, across | Outside, up | The wall, all round | `corner_radius` outside (cold-formed steel tube is rounded by about twice its wall) |
+| `round-tube` | Outside diameter | The same | The wall | |
+| `angle` | The leg along the bottom | The leg up the side | Both legs' thickness | The legs meet at the lower left |
+| `channel` | Across the web | The flanges' height | Web and flanges | The web is along the bottom |
+| `bar` | Across | Thickness | none | |
+| `round-bar` | Diameter | The same | none | |
+
+`material` is a material set's name (`al6063-t5`, `s275`, or one of your own through `given`), and gives the mass per
+metre. A few common sizes are ready sets, named for what they are (`profile-tube-al-25x25x2`,
+`profile-angle-steel-30x30x3`): each is its family at that size, for a workspace that wants a name to point at.
+
+`beamFigures(model)` gives the figures to design a beam with, whatever the profile: the sheet's own where the maker
+prints one (`from: 'sheet'`, with the sheet's kind and source), and the outline's where it does not (`kind:
+'derived'`, `from: 'outline'`). A plain section's are all worked out; MISUMI prints no torsion constant, so that one
+figure of an HFS profile is worked out and the rest are the page's.
+
+### A custom section
+
+Family `custom` is any closed outline. A custom profile is its outline: the set gives the family, the envelope and
+the material, and the outline comes with it, as `rules/outlines/<set name>.json` in a workspace or handed in:
+
+```js
+const hat = { source: 'traced from my own bar', licence: 'my own measurement',
+  loops: [[[-20, -10], [-10, -10], [-10, 8], [10, 8], [10, -10], [20, -10], [20, -8], [12, -8], [12, 10], [-12, 10], [-12, -8], [-20, -8]]] };
+const mine = profileModel('custom', { width: 40, height: 20, material: 's275' }, { outline: hat });
+section(mine).area;                           // 152 mm²
+```
+
+`profileModel('custom')` alone is the kit's own example, a 30 x 30 x 3 mm T section drawn for the kit. A custom set
+with no outline is refused by name, and a check says where an outline's envelope is not the set's width and height
+(`profile.outline.size`) or is not drawn about its own middle (`profile.outline.middle`).
+`cad measure <model> --profile <name>` writes the set and the outline from a model or a DXF.
+
 ### What a check finds
 
 `profileFindings(model)` returns findings in rulecad's one shape, `{ level, code, text, rule, at, values }`:
@@ -108,6 +159,8 @@ measured in your own workspace.
 | `profile.section.area` and `.mass_per_metre` | warn | The sheet's figure and the outline's differ by more than 5% |
 | `profile.section.inertia_x` and `.inertia_y` | warn | By more than 10% |
 | `profile.section.torsion_constant` | warn | By more than 15% |
+| `profile.outline.size` | warn | A measured outline's envelope is more than 0.2 mm from the set's width or height |
+| `profile.outline.middle` | warn | A measured outline is not drawn about the middle of its envelope |
 
 The allowances are in `DEFAULTS`, each with the sentence it rests on. They are estimates: a section drawn from a
 fully dimensioned slot comes within them (MISUMI's eight profiles are within 4% on area and 6% on second moments),
@@ -157,6 +210,7 @@ Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm (one and two cells
 | `slotModel(which, change?, given?)`, `slotPath(slot)` | A slot family's model, and its outline as it cuts into a face |
 | `outline(model)`, `readOutline(json)` | The section as loops; a measured outline held to its format |
 | `section(model, { torsion?, cells? })` | Section figures from the outline, beside the sheet's |
+| `beamFigures(model, { cells? })` | The figures to design a beam with: the sheet's where it gives one, the outline's where it does not |
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |

@@ -1,0 +1,13 @@
+{
+  "_doc": "A 20 x 20 x 2 mm aluminium tube, as a ready size of the tube family (profile-tube holds the family and how to give any other size). It has no maker's sheet: every dimension is the nominal one stock is sold by, so measure the bar in hand, and its area, second moments, torsion constant and mass are worked out from its outline. The drawn outline leaves out the rounds inside an extruded tube's corners (drawn square inside when corner_radius is 0).",
+  "name": "profile-tube-al-20x20x2",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "tube", "rule": "A square or rectangular tube", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "width": { "value": 20, "unit": "mm", "rule": "Outside, across", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "height": { "value": 20, "unit": "mm", "rule": "Outside, up", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "wall": { "value": 2, "unit": "mm", "rule": "Wall thickness, the same all round", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "corner_radius": { "value": 0, "unit": "mm", "rule": "Outside corners of an extruded aluminium tube are nearly square: drawn square. Give the radius where yours is rounded (cold-formed steel tube is, by about twice its wall)", "kind": "estimate", "source": "the kit's own guess: no sheet is behind it", "checked": "2026-11-15" },
+    "material": { "value": "al6063-t5", "rule": "Extruded aluminium, EN AW-6063 T5: one of the alloys such sections are extruded in (6060 and 6063 in Europe, 6061 and 6063 in America). Name the alloy on your supplier's sheet where it matters", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" }
+  }
+}

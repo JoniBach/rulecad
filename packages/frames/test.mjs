@@ -145,6 +145,72 @@ test('a grid of cells both ways: the hollows round a place where four cells meet
   assert.deepEqual(profileModel('2040-bosch').chambers[0].ends, [8.5, 8.5]);
 });
 
+test('plain sections as families: any size from a base set, its figures worked out and equal to the closed forms', () => {
+  const fig = (name, change) => { const m = profileModel(name, change); return { m, s: section(m, { torsion: false }) }; };
+  // a family by its name, with the size, wall and material you have: nothing else to write
+  const { m: tube, s: ts } = fig('tube', { width: 25, height: 25, wall: 2, material: 'al6063-t5' });
+  assert.deepEqual([tube.name, tube.family, tube.title, tube.width, tube.wall, tube.material.name], ['profile-tube', 'tube', '25 x 25 x 2 tube, al6063-t5', 25, 2, 'al6063-t5']);
+  assert.equal(tube.figures.width.kind, 'given'); assert.deepEqual(Object.values(tube.faces).flat().map((p) => p.slot), [null, null, null, null], 'a plain section has faces and no slots');
+  within(ts.area, 25 * 25 - 21 * 21, 1e-12, 'square tube area'); within(ts.inertiaX, (25 ** 4 - 21 ** 4) / 12, 1e-12, 'square tube I'); within(ts.massPerMetre, (184 * 2.7) / 1000, 1e-12, 'mass from the density');
+  const { m: rect, s: rs } = fig('tube', { width: 40, height: 20, wall: 2, material: 's275' });
+  assert.equal(rect.title, '40 x 20 x 2 tube, s275'); within(rs.area, 40 * 20 - 36 * 16, 1e-12, 'rectangular tube area');
+  within(rs.inertiaX, (40 * 20 ** 3 - 36 * 16 ** 3) / 12, 1e-12, 'Ix'); within(rs.inertiaY, (20 * 40 ** 3 - 16 * 36 ** 3) / 12, 1e-12, 'Iy'); within(rs.massPerMetre, (224 * 7.85) / 1000, 1e-12, 'steel');
+  within(section(rect).torsion, (2 * 2 * 38 ** 2 * 18 ** 2) / (38 + 18), 0.04, 'a thin rectangular tube against Bredt, 2 t a² b² / (a + b) on its middle line');
+  // a rounded corner takes metal off the outside and the inside alike
+  assert.ok(section(profileModel('tube-steel-25x25x2'), { torsion: false }).area < 184 && profileModel('tube-steel-25x25x2').cornerRadius === 4);
+  const { m: rt, s: rts } = fig('round-tube', { width: 30, height: 30, wall: 1.5 });
+  assert.equal(rt.title, 'Ø30 x 1.5 round tube, al6063-t5'); within(rts.area, (Math.PI * (30 ** 2 - 27 ** 2)) / 4, 1e-9, 'round tube area'); within(rts.inertiaX, (Math.PI * (30 ** 4 - 27 ** 4)) / 64, 2e-3, 'round tube I');
+  const { s: bs } = fig('bar', { width: 30, height: 5 }); within(bs.area, 150, 1e-12, 'flat bar'); within(bs.inertiaX, (30 * 5 ** 3) / 12, 1e-12, 'b h³ / 12'); within(bs.modulusX, (30 * 5 ** 2) / 6, 1e-12, 'b h² / 6');
+  const { s: rb } = fig('round-bar', { width: 12, height: 12 }); within(rb.area, Math.PI * 36, 1e-9, 'round bar'); within(rb.inertiaY, (Math.PI * 12 ** 4) / 64, 1e-3, 'pi d⁴ / 64');
+  // a channel 40 x 20 x 3: web along the bottom, a flange up each side; the textbook sum of three rectangles
+  const { s: cs } = fig('channel', { width: 40, height: 20, wall: 3 }), A = 40 * 3 + 2 * 17 * 3, yc = (40 * 3 * 1.5 + 2 * 17 * 3 * (3 + 8.5)) / A, Ix = (40 * 27) / 12 + 120 * (yc - 1.5) ** 2 + 2 * ((3 * 17 ** 3) / 12 + 51 * (11.5 - yc) ** 2);
+  within(cs.area, A, 1e-12, 'channel area'); assert.ok(Math.abs(cs.centroid[1] - (yc - 10)) < 1e-9 && Math.abs(cs.centroid[0]) < 1e-9); within(cs.inertiaX, Ix, 1e-9, 'channel Ix');
+  const { s: as } = fig('angle', { width: 40, height: 25, wall: 3 }); within(as.area, 40 * 3 + 22 * 3, 1e-12, 'an angle with unequal legs');
+  // every ready size is its family at that size
+  for (const name of frames.profiles().filter((n) => /-(al|steel)-/.test(n))) {
+    const m = profileModel(name), base = profileModel(m.family, { width: m.width, height: m.height, ...(m.wall ? { wall: m.wall } : {}), corner_radius: m.cornerRadius, material: m.material.name });
+    assert.deepEqual(outline(m), outline(base), `${name} draws as its family does at that size`); assert.deepEqual(profileFindings(m, { torsion: false }), [], `${name} checks clean`);
+  }
+  // refusals
+  assert.throws(() => profileModel('tube', { wall: 13 }), /a tube needs a wall above 0 and thinner than half its smaller side \(got 13\)/);
+  assert.throws(() => profileModel('round-tube', { width: 30 }), /a round section's width and height are both its diameter \(got 30 and 25\)/);
+  assert.throws(() => profileModel('pipe'), /no profile "pipe"/);
+});
+
+test('beamFigures: the sheet\'s figure where the sheet gives one, the outline\'s where it does not, each saying which', () => {
+  const sold = frames.beamFigures(profileModel('2020-misumi-hfs5'));
+  assert.deepEqual([sold.area.value, sold.area.kind, sold.area.from, sold.inertiaX.value, sold.massPerMetre.value], [183, 'spec', 'sheet', 7420, 0.5]);
+  assert.match(sold.area.source, /MISUMI.*page 2-529/);
+  assert.deepEqual([sold.torsion.kind, sold.torsion.from, sold.torsion.unit], ['derived', 'outline', 'mm⁴'], 'MISUMI prints no torsion constant: worked out'); within(sold.torsion.value, 809, 0.02, 'J');
+  assert.match(sold.torsion.source, /worked out from the drawn outline of profile-2020-misumi-hfs5/);
+  const item = frames.beamFigures(profileModel('2020-item-5')); assert.deepEqual([item.torsion.value, item.torsion.from], [700, 'sheet'], 'item prints one: used as printed');
+  const tube = frames.beamFigures(profileModel('tube', { width: 25, height: 25, wall: 2 }));
+  for (const k of ['area', 'inertiaX', 'inertiaY', 'modulusX', 'modulusY', 'torsion', 'massPerMetre']) assert.deepEqual([tube[k].kind, tube[k].from], ['derived', 'outline'], `a tube's ${k} is worked out`);
+  within(tube.torsion.value, 2 * 23 ** 3 + (4 * 23 * 2 ** 3) / 3, 0.05, 'a square tube against Bredt (a thin-wall formula, and this wall is a twelfth of the side)'); assert.match(tube.massPerMetre.source, /and the density of al6063-t5/);
+  assert.throws(() => frames.beamFigures({}), /give a profile's model/);
+});
+
+test('custom: any closed outline, its figures worked out, held to the size its set gives', () => {
+  // the kit's own example: a 30 x 30 x 3 T, flange uppermost, by the textbook sum of two rectangles
+  const m = profileModel('custom'), s = section(m, { torsion: false }), A = 90 + 81, yc = (90 * 13.5 + 81 * -1.5) / A, Ix = (30 * 27) / 12 + 90 * (13.5 - yc) ** 2 + (3 * 27 ** 3) / 12 + 81 * (-1.5 - yc) ** 2;
+  assert.deepEqual([m.family, m.title, outline(m).measured], ['custom', '30 x 30 custom (profile-custom)', true]); assert.match(outline(m).source, /drawn for the kit/);
+  within(s.area, A, 1e-12, 'T area'); assert.ok(Math.abs(s.centroid[1] - yc) < 1e-9); within(s.inertiaX, Ix, 1e-9, 'T Ix'); within(s.inertiaY, (3 * 30 ** 3 + 27 * 3 ** 3) / 12, 1e-9, 'T Iy');
+  within(section(m).torsion, ((30 + 27) * 3 ** 3) / 3, 0.12, 'an open thin section: about the sum of b t³ / 3');
+  assert.deepEqual(profileFindings(m), []);
+  // any other outline: a set of your own (or the family with your sizes), and the outline handed in
+  const hat = { source: 'traced from my own bar', licence: 'my own measurement', loops: [[[-20, -10], [-10, -10], [-10, 8], [10, 8], [10, -10], [20, -10], [20, -8], [12, -8], [12, 10], [-12, 10], [-12, -8], [-20, -8]]] };
+  const own = profileModel('custom', { width: 40, height: 20, material: 's275' }, { outline: hat }), os = section(own, { torsion: false });
+  within(os.area, 2 * 10 * 2 + 2 * 16 * 2 + 24 * 2, 1e-12, 'a hat section: two feet, two webs and a top'); within(os.massPerMetre, (os.area * 7.85) / 1000, 1e-12, 'in steel'); assert.deepEqual(profileFindings(own, { torsion: false }), []);
+  // the set's size is its outline's: said where they differ, and where the outline is not about its envelope's middle
+  assert.deepEqual(profileFindings(profileModel('custom', { width: 45, height: 20 }, { outline: hat }), { torsion: false }).map((f) => [f.level, f.code, f.rule]), [['warn', 'profile.outline.size', 'width']]);
+  const off = { ...hat, loops: hat.loops.map((l) => l.map(([x, y]) => [x + 5, y])) };
+  assert.deepEqual(profileFindings(profileModel('custom', { width: 40, height: 20 }, { outline: off }), { torsion: false }).map((f) => f.code), ['profile.outline.middle']);
+  // a custom profile with no outline is nothing
+  const bare = { name: 'profile-mine', part: 'profile', rules: { family: rule('custom'), width: rule(40, 'mm'), height: rule(20, 'mm') } };
+  assert.throws(() => profileModel(bare), /profile-mine: a custom profile is its outline, and none came with it: hand one in \(\{ outline: \{ source, licence, loops \} \}\), or keep it beside the set as rules\/outlines\/profile-mine\.json/);
+  assert.equal(section(profileModel(bare, {}, { outline: hat }), { torsion: false }).area, os.area);
+});
+
 test('outline: closed loops from the interface values, the outside counter-clockwise and holes clockwise; a measured outline in its place', () => {
   const m = profileModel('2020-misumi-hfs5'), o = outline(m);
   assert.equal(o.measured, false); assert.equal(o.loops.length, 2);

@@ -1,0 +1,11 @@
+{
+  "_doc": "The round bar family of plain sections, with a starting size (Ø10 mm, al6063-t5): a round bar: a solid circle. A plain section has no slots and no maker's sheet: give the size, the wall and the material you have (profileModel('round-bar', { width: 12, height: 12 })), and its area, second moments, torsion constant and mass are worked out from its outline. It is fastened through drilled holes, clamps and printed saddles. The drawn outline leaves out nothing a round bar has.",
+  "name": "profile-round-bar",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "round-bar", "rule": "A round bar: a solid circle", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "width": { "value": 10, "unit": "mm", "rule": "Diameter, to start from", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "height": { "value": 10, "unit": "mm", "rule": "Diameter again: a round section's width and height are both its diameter, to start from", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "material": { "value": "al6063-t5", "rule": "Extruded aluminium, EN AW-6063 T5: one of the alloys such sections are extruded in (6060 and 6063 in Europe, 6061 and 6063 in America). Name the alloy on your supplier's sheet where it matters", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" }
+  }
+}

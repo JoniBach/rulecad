@@ -334,7 +334,7 @@ function profileDrawing(set, g) {
     const families = [...new Set(Object.values(m.faces).flat().map((q) => q.slot ?? 'closed'))];
     notes.push(`slot: ${families.join(', ')}${families.length > 1 ? ` (${['top', 'bottom', 'front', 'back'].map((f) => `${f} ${m.faces[f].map((q) => q.slot ?? 'closed').join(' | ')}`).join('; ')})` : ''}: ${fig(sl.mouth)} wide, ${fig(sl.cavityWidth)} under lips ${fig(sl.lip)} thick, ${fig(sl.cavityDepth)} deep, floor ${fig(sl.floorWidth)}`);
   }
-  if (o.measured) notes.push(`a measured outline: ${esc(o.source)}`);
+  if (o.measured) notes.push(`drawn from its outline: ${esc(o.source)}`);
   const kinds = ['cell', 'given', 'corner'].map((w) => m.bores.filter((b) => b.where === w)).filter((l) => l.length);
   for (const list of kinds) notes.push(`${list.length} × ${list[0].where === 'corner' ? 'corner hole' : 'bore'} Ø${fig(list[0].diameter)}${list[0].thread ? `, taps ${esc(list[0].thread)}${list[0].tapDrill ? ` (tap drill Ø${fig(list[0].tapDrill)})` : ''}` : ''}`);
   if (m.bores.length) { const b = m.bores.find((q) => q.where !== 'corner') ?? m.bores[0], a = X(b.at[0]) + (b.diameter / 2) * S * 0.7, c = Y(b.at[1]) + (b.diameter / 2) * S * 0.7; line(a, c, a + 26, c + 26, THIN, 0.8); text(a + 30, c + 34, `Ø${fig(b.diameter)}`, 'start'); }
@@ -342,7 +342,7 @@ function profileDrawing(set, g) {
   if (m.wall) notes.push(`wall ${fig(m.wall)}`);
   if (m.hollows.length) notes.push(`${m.hollows.length} × corner hollow ${fig(m.hollows[0].width)} square`);
   if (m.chambers.length) notes.push(`${m.chambers.length} × hollow between cells, ${fig(m.chambers[0].width)} wide`);
-  notes.push(`${m.family}${m.cells[0] * m.cells[1] > 1 ? `, ${m.cells[0]} × ${m.cells[1]} cells of ${fig(m.pitch[0])}` : ''}${m.material ? `, ${esc(m.material.alloy ?? m.material.name)} (${m.material.name})` : ''}`);
+  notes.push(`${m.family}${m.cells[0] * m.cells[1] > 1 ? `, ${m.cells[0]} × ${m.cells[1]} cells of ${fig(m.pitch[0])}` : ''}${m.material ? `, ${m.material.alloy ? `${esc(m.material.alloy)} (${m.material.name})` : m.material.name}` : ''}`);
   if (m.supply.lengths.length || m.supply.cutMax) notes.push([m.supply.lengths.length ? `sold as ${m.supply.lengths.map(fig).join(', ')}` : '', m.supply.cutMax ? `cut ${fig(m.supply.cutMin ?? 0)} to ${fig(m.supply.cutMax)}${m.supply.cutTolerance != null ? ` ±${fig(m.supply.cutTolerance)}` : ''}` : '', m.supply.straightness != null ? `straight within ${fig(m.supply.straightness)} mm/m` : '', m.supply.twist != null ? `twist within ${fig(m.supply.twist)}°/m` : ''].filter(Boolean).join('; '));
   // the table: what the sheet says, what the outline comes to
   const rows = [['area, mm²', 'area', s.area], ['second moment about x, mm⁴', 'inertiaX', s.inertiaX], ['second moment about y, mm⁴', 'inertiaY', s.inertiaY], ['torsion constant, mm⁴', 'torsion', s.torsion], ['mass, kg/m', 'massPerMetre', s.massPerMetre]];

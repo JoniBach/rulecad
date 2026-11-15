@@ -71,6 +71,19 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     assert.match(cad('rules', 'check', 'profile-2020-misumi-hfs5', 'profile-2040-misumi-hfs5', 'slot-6-misumi', 'al6n01-t5'), /^4 of 4 rule sets pass\n$/);
     const bosch = run('rules', 'check', 'profile-2020-bosch', 'profile-2020-motedis-b6');
     assert.equal(bosch.status, 0); assert.match(bosch.stdout, /profile-2020-bosch: passes, \d to know\n {2}NOTE {2}the bore \(Ø5\.5\) leaves 38% of a full M6 thread/); assert.match(bosch.stdout, /WARN {2}area: the sheet says 160 mm², the drawn outline comes to 171\.3 \(\+7\.1%, more than 5%\)/); assert.match(bosch.stdout, /2 of 2 rule sets pass \(2 with something to know\)/);
+    // plain sections and the custom family: no sheet, so nothing to differ from, and each draws with its figures worked out
+    assert.match(cad('rules', 'check', 'profile-tube-al-25x25x2', 'profile-tube', 'profile-round-bar-steel-10', 'profile-custom'), /^4 of 4 rule sets pass\n$/);
+    cad('rules', 'draw', 'profile-tube-al-25x25x2'); const tubeSvg = fs.readFileSync(path.join(ws, 'profile-tube-al-25x25x2.svg'), 'utf8');
+    assert.match(tubeSvg, />wall 2</); assert.match(tubeSvg, />tube, al6063-t5</); assert.match(tubeSvg, />not given</); assert.match(tubeSvg, />184</, 'its area, worked out: 25² less 21²');
+    cad('rules', 'draw', 'profile-custom'); assert.match(fs.readFileSync(path.join(ws, 'profile-custom.svg'), 'utf8'), />drawn from its outline: drawn for the kit: a 30 x 30 x 3 mm T section</);
+    // a custom profile of your own: a set with family custom and its outline beside it; without the outline it is refused by name
+    fs.mkdirSync(path.join(ws, 'rules/outlines'), { recursive: true });
+    write('rules/profile-hat.json', { name: 'profile-hat', part: 'profile', rules: { family: { value: 'custom', rule: 'A hat section, folded from 2 mm sheet', kind: 'measured', source: 'my own bar', checked: '2026-11-15' }, width: { value: 40, unit: 'mm', rule: 'Across the section', kind: 'measured', source: 'my own bar', checked: '2026-11-15' }, height: { value: 20, unit: 'mm', rule: 'Up the section', kind: 'measured', source: 'my own bar', checked: '2026-11-15' } } });
+    const noOutline = run('rules', 'check', 'profile-hat'); assert.equal(noOutline.status, 1); assert.match(noOutline.stdout, /FAIL {2}profile-hat: a custom profile is its outline, and none came with it.*rules\/outlines\/profile-hat\.json.*\(profile\.model\)/);
+    write('rules/outlines/profile-hat.json', { name: 'profile-hat', source: 'traced from my own bar', licence: 'my own measurement', loops: [[[-20, -10], [-10, -10], [-10, 8], [10, 8], [10, -10], [20, -10], [20, -8], [12, -8], [12, 10], [-12, 10], [-12, -8], [-20, -8]]] });
+    assert.match(cad('rules', 'check', 'profile-hat'), /^1 of 1 rule sets pass\n$/);
+    cad('rules', 'draw', 'profile-hat'); assert.match(fs.readFileSync(path.join(ws, 'profile-hat.svg'), 'utf8'), />152</, 'the hat\'s area from its outline');
+    fs.rmSync(path.join(ws, 'rules/outlines'), { recursive: true }); fs.rmSync(path.join(ws, 'rules/profile-hat.json'));
     // a draft: every field of the vocabulary, each an estimate, and it checks and draws as it stands
     assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /a draft profile in rules.my-2020\.json, every figure an estimate/);
     const draft = read('rules/my-2020.json');
@@ -112,7 +125,7 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     fs.mkdirSync(path.join(ws, 'rules/outlines'));
     write('rules/outlines/my-2020.json', { name: 'my-2020', source: 'a bar from the shelf, traced', licence: 'my own measurement', checked: '2026-11-15', loops: [[[-10, -10], [10, -10], [10, 10], [-10, 10]], [[-2, -2], [2, -2], [2, 2], [-2, 2]]] });
     const measured = run('rules', 'check', 'my-2020'); assert.equal(measured.status, 0); assert.match(measured.stdout, /area: the sheet says 183 mm², the measured outline comes to 384/);
-    cad('rules', 'draw', 'my-2020'); assert.ok(fs.readFileSync(path.join(ws, 'my-2020.svg'), 'utf8').includes('a measured outline: a bar from the shelf, traced'));
+    cad('rules', 'draw', 'my-2020'); assert.ok(fs.readFileSync(path.join(ws, 'my-2020.svg'), 'utf8').includes('drawn from its outline: a bar from the shelf, traced'));
     write('rules/outlines/my-2020.json', { name: 'my-2020', source: 'a bar', loops: [[[0, 0], [1, 0]]] });
     const bad = run('rules', 'check', 'my-2020'); assert.equal(bad.status, 1); assert.match(bad.stdout, /outlines\/my-2020\.json: \(top\): needs "licence"/); assert.match(bad.stdout, /loops\[0\]: needs at least 3 entries/);
     assert.match(cad('rules', 'check'), /rule sets pass/, 'an outline is not taken for a rule set');
