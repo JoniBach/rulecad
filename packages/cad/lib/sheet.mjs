@@ -7,7 +7,9 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { checkRuleSet } from '@rulecad/variables';
+import { profileModel, slotModel, slotPath, outline, section, profileFindings } from '@rulecad/frames';
 import { RULE_DIRS } from './workspace.mjs';
+import { schema, validate } from './schema.mjs';
 
 const vocabularyFile = fileURLToPath(import.meta.resolve('@rulecad/rules/vocabulary.json'));
 const readSet = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -25,10 +27,49 @@ function fileOf(name) {
   return file;
 }
 
-/** Every named set checked (or all of them): [{ name, file, findings }] */
+// What a profile's model reads beside its own set: any other set by name (its slot family, a thread, its material),
+// the workspace's first, and a measured outline in outlines/<name>.json beside the set, held to its schema
+function given(name, file, all = allSets()) {
+  const load = (n) => (all.has(n) ? readSet(all.get(n)) : undefined), at = path.join(path.dirname(file), 'outlines', `${name}.json`), problems = [];
+  let measured;
+  if (fs.existsSync(at)) {
+    try { measured = readSet(at); problems.push(...validate(measured, schema('outline')).map((x) => `outlines/${name}.json: ${x.path}: ${x.message}`)); } catch (e) { problems.push(`outlines/${name}.json isn't JSON: ${e.message}`); }
+    if (problems.length) measured = undefined;
+  }
+  return { load, ...(measured ? { outline: measured } : {}), problems };
+}
+const own = (e) => e.message.replace(/^\w+: /, ''); // a refusal without the function's name: the set's name follows
+
+// A profile, a slot or a slot nut held to sense as well as to the vocabulary: what @rulecad/frames finds in its model
+function partFindings(set, name, file, all) {
+  const out = [], say = (level, code, text, extra = {}) => out.push({ level, code, text, ...extra }), g = given(name, file, all);
+  for (const p of g.problems) say('fail', 'outline.schema', p);
+  try {
+    if (set.part === 'profile') out.push(...profileFindings(profileModel(set, {}, g)));
+    if (set.part === 'slot') slotModel(set, {}, g);
+    if (set.part === 'slot_nut') {
+      const r = (k) => set.rules[k]?.value, slot = g.load(String(r('slot')));
+      if (slot?.part !== 'slot') say('warn', 'slot_nut.slot', `slot names the slot family it is made for, and there is no slot set "${r('slot')}": its fit is not checked`, { rule: 'slot' });
+      else {
+        const s = slotModel(slot, {}, g), room = s.cavityDepth - s.lip;
+        if (!(r('width') < s.cavityWidth)) say('fail', 'slot_nut.fit', `it is ${r('width')} mm across, and ${s.name} is ${s.cavityWidth} mm wide under its lips: it does not go in`, { rule: 'width', values: { width: r('width'), cavity_width: s.cavityWidth } });
+        if (!(r('width') > s.opening) && !['t-bolt'].includes(r('nut_kind')) && !(r('length') > s.opening)) say('fail', 'slot_nut.fit', `it is ${r('width')} mm across and ${r('length')} long, and ${s.name} opens ${s.opening} mm: it pulls straight out`, { rule: 'width', values: { width: r('width'), opening: s.opening } });
+        if (!(r('height') <= room)) say('fail', 'slot_nut.fit', `it is ${r('height')} mm tall, and ${s.name} has ${+room.toFixed(2)} mm under its lips: it does not go in`, { rule: 'height', values: { height: r('height'), room } });
+      }
+      if (![...all.values()].some((f) => { const t = readSet(f); return t.part === 'thread' && (t.name === r('thread') || t.rules.thread?.value === r('thread')); })) say('warn', 'slot_nut.thread', `thread ${JSON.stringify(r('thread'))} is no thread set here (M5, or a set's name)`, { rule: 'thread' });
+    }
+  } catch (e) { say('fail', `${set.part}.model`, own(e)); }
+  return out;
+}
+
+/** Every named set checked (or all of them): [{ name, file, findings }]. A finding's level is fail, warn or info */
 export function checkSets(names = []) {
   const v = vocabulary(), all = allSets();
-  return (names.length ? names.map((n) => [n, fileOf(n)]) : [...all]).map(([name, file]) => ({ name, file, findings: checkRuleSet(readSet(file), v) }));
+  return (names.length ? names.map((n) => [n, fileOf(n)]) : [...all]).map(([name, file]) => {
+    const set = readSet(file), findings = checkRuleSet(set, v);
+    if (!findings.length && ['profile', 'slot', 'slot_nut'].includes(set.part)) findings.push(...partFindings(set, name, file, all));
+    return { name, file, findings };
+  });
 }
 
 // ---------- a dimension drawing ----------
@@ -36,7 +77,7 @@ const fig = (x) => String(+Number(x).toFixed(2));
 const INK = '#1a1a1a', THIN = '#666', FILL = '#eceae4', METAL = '#c4c8cc';
 
 /** @param {string} name the rule set's name @returns {string} an SVG drawing of what it says the part mounts by */
-export function drawSet(name) { return drawing(readSet(fileOf(name)), vocabulary()); }
+export function drawSet(name) { const file = fileOf(name); return drawing(readSet(file), vocabulary(), given(name, file)); }
 
 // The drawing's marks, in sheet units: each adds to out, and span is a dimension with its extension lines, ticks and figure
 function pen() {
@@ -257,7 +298,97 @@ function threadDrawing(set) {
   return sheet(set, pens, Math.max(W, 620), yNotes + notes.length * 17 - 50);
 }
 
-export function drawing(set, vocab) {
+// ---------- profiles, slots and slot nuts ----------
+const pathOf = (loops, X, Y) => loops.map((l) => `M ${l.map(([x, y]) => `${fig(X(x))} ${fig(Y(y))}`).join(' L ')} Z`).join(' ');
+const sig = (x, n = 4) => String(+Number(x).toPrecision(n));
+
+// A profile's section to scale, with what a sheet's drawing dimensions (size, slot, bore, corner), and under it the
+// sheet's section figures beside what the drawn outline comes to
+function profileDrawing(set, g) {
+  const m = profileModel(set, {}, g), o = outline(m), s = section(m), W = m.width, H = m.height;
+  const S = Math.min(18, 380 / Math.max(W, H)), sheetW = Math.max(W * S + 330, 640), cx = 130 + (W * S) / 2, cy = 110 + (H * S) / 2, X = (x) => cx + x * S, Y = (y) => cy - y * S;
+  const pens = pen(), { out, line, text, span } = pens;
+  out.push(`<path d="${pathOf(o.loops, X, Y)}" fill="${METAL}" fill-rule="evenodd" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>`);
+  line(X(-W / 2) - 10, Y(0), X(W / 2) + 10, Y(0), THIN, 0.5, '8 3 2 3'); line(X(0), Y(H / 2) - 10, X(0), Y(-H / 2) + 10, THIN, 0.5, '8 3 2 3');
+  span(X(-W / 2), Y(-H / 2) + 6, X(W / 2), Y(-H / 2) + 6, fig(W), 22);
+  span(X(-W / 2) - 6, Y(H / 2), X(-W / 2) - 6, Y(-H / 2), fig(H), -22);
+  // the slot nearest the top right: its opening and cavity above, its lip and depth at the side
+  const face = ['top', 'back', 'bottom', 'front'].find((f) => m.faces[f].some((p) => p.slot)), notes = [];
+  if (face && !o.measured) {
+    const p = m.faces[face].filter((q) => q.slot).at(-1), sl = m.slots[p.slot], top = face === 'top' || face === 'bottom', sign = face === 'top' || face === 'back' ? 1 : -1;
+    if (top) {
+      const y0 = Y(p.at[1]) - sign * 6, d = -sign * 14;
+      span(X(p.at[0] - sl.mouth / 2), y0, X(p.at[0] + sl.mouth / 2), y0, fig(sl.mouth), d);
+      span(X(p.at[0] - sl.cavityWidth / 2), y0 - sign * 24, X(p.at[0] + sl.cavityWidth / 2), y0 - sign * 24, fig(sl.cavityWidth), d);
+      const x0 = X(W / 2) + 6;
+      span(x0, Y(p.at[1]), x0, Y(p.at[1] - sign * sl.lip), fig(sl.lip), 16);
+      span(x0 + 44, Y(p.at[1]), x0 + 44, Y(p.at[1] - sign * sl.cavityDepth), fig(sl.cavityDepth), 16);
+    } else {
+      const x0 = X(p.at[0]) + sign * 6, d = sign * 14;
+      span(x0, Y(p.at[1] + sl.mouth / 2), x0, Y(p.at[1] - sl.mouth / 2), fig(sl.mouth), d);
+      span(x0 + sign * 30, Y(p.at[1] + sl.cavityWidth / 2), x0 + sign * 30, Y(p.at[1] - sl.cavityWidth / 2), fig(sl.cavityWidth), d);
+      const y0 = Y(-H / 2) + 6;
+      span(X(p.at[0]), y0 + 40, X(p.at[0] - sign * sl.lip), y0 + 40, fig(sl.lip), 14);
+      span(X(p.at[0]), y0 + 70, X(p.at[0] - sign * sl.cavityDepth), y0 + 70, fig(sl.cavityDepth), 14);
+    }
+    const families = [...new Set(Object.values(m.faces).flat().map((q) => q.slot ?? 'closed'))];
+    notes.push(`slot: ${families.join(', ')}${families.length > 1 ? ` (${['top', 'bottom', 'front', 'back'].map((f) => `${f} ${m.faces[f].map((q) => q.slot ?? 'closed').join(' | ')}`).join('; ')})` : ''}: ${fig(sl.mouth)} wide, ${fig(sl.cavityWidth)} under lips ${fig(sl.lip)} thick, ${fig(sl.cavityDepth)} deep, floor ${fig(sl.floorWidth)}`);
+  }
+  if (o.measured) notes.push(`a measured outline: ${esc(o.source)}`);
+  const kinds = ['cell', 'given', 'corner'].map((w) => m.bores.filter((b) => b.where === w)).filter((l) => l.length);
+  for (const list of kinds) notes.push(`${list.length} × ${list[0].where === 'corner' ? 'corner hole' : 'bore'} Ø${fig(list[0].diameter)}${list[0].thread ? `, taps ${esc(list[0].thread)}${list[0].tapDrill ? ` (tap drill Ø${fig(list[0].tapDrill)})` : ''}` : ''}`);
+  if (m.bores.length) { const b = m.bores.find((q) => q.where !== 'corner') ?? m.bores[0], a = X(b.at[0]) + (b.diameter / 2) * S * 0.7, c = Y(b.at[1]) + (b.diameter / 2) * S * 0.7; line(a, c, a + 26, c + 26, THIN, 0.8); text(a + 30, c + 34, `Ø${fig(b.diameter)}`, 'start'); }
+  if (m.cornerRadius) text(X(W / 2) + 8, Y(H / 2) - 8, `R${fig(m.cornerRadius)}`, 'start', 11);
+  if (m.wall) notes.push(`wall ${fig(m.wall)}`);
+  if (m.hollows.length) notes.push(`${m.hollows.length} × corner hollow ${fig(m.hollows[0].width)} square`);
+  if (m.chambers.length) notes.push(`${m.chambers.length} × hollow between cells, ${fig(m.chambers[0].width)} wide`);
+  notes.push(`${m.family}${m.cells[0] * m.cells[1] > 1 ? `, ${m.cells[0]} × ${m.cells[1]} cells of ${fig(m.pitch[0])}` : ''}${m.material ? `, ${esc(m.material.alloy ?? m.material.name)} (${m.material.name})` : ''}`);
+  if (m.supply.lengths.length || m.supply.cutMax) notes.push([m.supply.lengths.length ? `sold as ${m.supply.lengths.map(fig).join(', ')}` : '', m.supply.cutMax ? `cut ${fig(m.supply.cutMin ?? 0)} to ${fig(m.supply.cutMax)}${m.supply.cutTolerance != null ? ` ±${fig(m.supply.cutTolerance)}` : ''}` : '', m.supply.straightness != null ? `straight within ${fig(m.supply.straightness)} mm/m` : '', m.supply.twist != null ? `twist within ${fig(m.supply.twist)}°/m` : ''].filter(Boolean).join('; '));
+  // the table: what the sheet says, what the outline comes to
+  const rows = [['area, mm²', 'area', s.area], ['second moment about x, mm⁴', 'inertiaX', s.inertiaX], ['second moment about y, mm⁴', 'inertiaY', s.inertiaY], ['torsion constant, mm⁴', 'torsion', s.torsion], ['mass, kg/m', 'massPerMetre', s.massPerMetre]];
+  const ty = Y(-H / 2) + 120, tx = 40, col = [0, 230, 330, 440];
+  ['', 'sheet', o.measured ? 'measured' : 'drawn', 'difference'].forEach((t, i) => text(tx + col[i], ty, t, i ? 'end' : 'start', 11));
+  line(tx, ty + 6, tx + 450, ty + 6, THIN, 0.6);
+  rows.forEach(([label, k, got], i) => { const y = ty + 24 + i * 18, c = s.sheet[k]; text(tx, y, label, 'start', 11); text(tx + col[1], y, m.sheet[k] != null ? sig(m.sheet[k]) : 'not given', 'end', 11); text(tx + col[2], y, got != null ? sig(got) : 'no material', 'end', 11); text(tx + col[3], y, c ? `${c.difference >= 0 ? '+' : ''}${(c.difference * 100).toFixed(1)}%` : '', 'end', 11); });
+  const ny = ty + 24 + rows.length * 18 + 14;
+  notes.forEach((t, i) => text(tx, ny + i * 17, t, 'start', 11));
+  return sheet(set, pens, sheetW, ny + notes.length * 17 - 44);
+}
+
+// A slot cut into a block of metal, every figure of its family dimensioned
+function slotDrawing(set, g) {
+  const sl = slotModel(set, {}, g), block = sl.cavityWidth + 8, deep = sl.cavityDepth + 4, S = Math.min(30, 380 / block), W = block * S + 300, x0 = 110 + (block * S) / 2, y0 = 110, X = (u) => x0 + u * S, Y = (v) => y0 + v * S;
+  const pens = pen(), { out, line, text, span } = pens, pts = [[-block / 2, 0], ...slotPath(sl), [block / 2, 0], [block / 2, deep], [-block / 2, deep]];
+  out.push(`<path d="M ${pts.map(([u, v]) => `${fig(X(u))} ${fig(Y(v))}`).join(' L ')} Z" fill="${METAL}" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>`);
+  line(X(0), Y(0) - 14, X(0), Y(deep) + 10, THIN, 0.5, '8 3 2 3');
+  span(X(-sl.opening / 2), Y(0) - 6, X(sl.opening / 2), Y(0) - 6, fig(sl.opening), -14);
+  if (sl.trackWidth) span(X(-sl.trackWidth / 2), Y(0) - 34, X(sl.trackWidth / 2), Y(0) - 34, `track ${fig(sl.trackWidth)}`, -14);
+  span(X(-sl.cavityWidth / 2), Y(deep) + 6, X(sl.cavityWidth / 2), Y(deep) + 6, fig(sl.cavityWidth), 16);
+  if (sl.floorWidth < sl.cavityWidth) span(X(-sl.floorWidth / 2), Y(deep) + 46, X(sl.floorWidth / 2), Y(deep) + 46, `floor ${fig(sl.floorWidth)}`, 16);
+  span(X(block / 2) + 6, Y(0), X(block / 2) + 6, Y(sl.lip), fig(sl.lip), 16);
+  span(X(block / 2) + 56, Y(0), X(block / 2) + 56, Y(sl.cavityDepth), fig(sl.cavityDepth), 16);
+  const notes = [`opening ${fig(sl.opening)}, lip ${fig(sl.lip)}${sl.lipAngle ? ` sloping ${fig(sl.lipAngle)}°` : ''}, ${fig(sl.cavityWidth)} wide under the lips, ${fig(sl.cavityDepth)} deep`, sl.floorWidth < sl.cavityWidth ? `walls straight to ${fig(sl.straight)} below the face, then flanks at ${fig(sl.flankAngle)}° to a floor of ${fig(sl.floorWidth)}` : 'straight walls', sl.trackWidth ? `V mouth ${fig(sl.trackWidth)} across at ${fig(sl.trackAngle)}°` : '', `takes the nuts of ${esc(sl.nutFamily)}`].filter(Boolean);
+  const ny = Y(deep) + 110; notes.forEach((t, i) => text(40, ny + i * 17, t, 'start', 11));
+  return sheet(set, pens, Math.max(W, 620), ny + notes.length * 17 - 44);
+}
+
+// A slot nut from above and from the side
+function nutDrawing(set) {
+  const n = (k) => (typeof set.rules[k]?.value === 'number' ? set.rules[k].value : 0), says = (k) => String(set.rules[k]?.value ?? ''), L = n('length'), w = n('width'), h = n('height'), d = parseFloat(says('thread').replace(/^[^0-9]*/, '')) || 0;
+  const S = Math.min(24, 260 / Math.max(L, w, 1)), pens = pen(), { line, circle, rect, text, span } = pens, x0 = 90, y0 = 100;
+  rect(x0, y0, L * S, w * S, METAL); if (d) circle(x0 + (L * S) / 2, y0 + (w * S) / 2, (d / 2) * S, '#fff');
+  span(x0, y0 + w * S + 6, x0 + L * S, y0 + w * S + 6, fig(L), 16); span(x0 + L * S + 6, y0, x0 + L * S + 6, y0 + w * S, fig(w), 16);
+  const y1 = y0 + w * S + 80; rect(x0, y1, L * S, h * S, METAL); span(x0 + L * S + 6, y1, x0 + L * S + 6, y1 + h * S, fig(h), 16);
+  line(x0 + (L * S) / 2, y0 - 10, x0 + (L * S) / 2, y1 + h * S + 10, THIN, 0.5, '8 3 2 3');
+  const ny = y1 + h * S + 50; [`${esc(says('nut_kind'))} nut, ${esc(says('thread'))}, for ${esc(says('slot'))}`, says('nut_entry') === 'end' ? 'goes in from an open end of the slot' : 'goes in anywhere along the slot'].forEach((t, i) => text(40, ny + i * 17, t, 'start', 11));
+  return sheet(set, pens, Math.max(L * S + 260, 520), ny - 10);
+}
+const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+export function drawing(set, vocab, g = { load: () => undefined, problems: [] }) {
+  if (set.part === 'profile') return profileDrawing(set, g);
+  if (set.part === 'slot') return slotDrawing(set, g);
+  if (set.part === 'slot_nut') return nutDrawing(set);
   if (set.part === 'thread') return threadDrawing(set);
   if (set.part === 'bearing') return bearingDrawing(set);
   if (set.part === 'driver') return driverDrawing(set);
@@ -338,6 +469,19 @@ export function pdfText(file) {
   }
   return lines;
 }
+
+/**
+ * A set with every field the vocabulary gives a part (profile, slot, slot_nut), each a starting value marked estimate,
+ * for a person to fill from the maker's sheet. @param {string} part @param {string} name @returns {object | null} null for a part with no draft
+ */
+export function draftPart(part, name) {
+  const v = vocabulary(), fields = v.drafts?.[part];
+  if (!fields) return null;
+  const stamp = new Date().toISOString().slice(0, 10), rules = {};
+  for (const [k, value] of Object.entries(fields)) rules[k] = { value, ...(v.fields[k]?.unit != null ? { unit: v.fields[k].unit } : {}), rule: `DRAFT, not read from a sheet yet: ${v.fields[k]?.says ?? k}`, kind: 'estimate', source: 'DRAFT: give the sheet, its page and the date you read it', checked: stamp };
+  return { _doc: `A draft ${part.replace('_', ' ')}: every field the vocabulary has for one, each with a starting value. Put in the figures from the maker's sheet, with the sheet and its page as the source and today's date, and change each kind to spec as you go. Delete what the sheet has no figure for (cad rules check says which a ${part.replace('_', ' ')} needs). Then cad rules check ${name}, and cad rules draw ${name} to hold against the sheet's drawing.`, name, part, rules };
+}
+export const draftParts = () => Object.keys(vocabulary().drafts || {});
 
 /** Every figure a datasheet's text gives, as a rule set of estimates for a person to name and check. @returns {{ set: object, found: number }} */
 export function draftSet(name, file) {

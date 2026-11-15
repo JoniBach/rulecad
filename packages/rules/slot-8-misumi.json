@@ -1,0 +1,14 @@
+{
+  "_doc": "The T-slot of MISUMI's 6 series (30 mm) aluminium extrusions (HFS and its sister types). Opening, lip, cavity width and depth are printed on MISUMI's pages; the width of the floor and the angle of the flanks are scaled off its drawing, and say so. Drawn by cad rules draw to hold against the page.",
+  "name": "slot-8-misumi",
+  "part": "slot",
+  "rules": {
+    "opening": { "value": 8, "unit": "mm", "rule": "Slot width between the lips (the catalogue calls the 6 series (30 mm) \"slot width 8\")", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-571, https://my.misumi-ec.com/pdf/fa/2014/p2_571.pdf", "checked": "2026-11-15" },
+    "lip_thickness": { "value": 2, "unit": "mm", "rule": "From the face to the underside of the lip, dimensioned on the section drawing", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-571, https://my.misumi-ec.com/pdf/fa/2014/p2_571.pdf", "checked": "2026-11-15" },
+    "cavity_width": { "value": 16.5, "unit": "mm", "rule": "Width under the lips: \"T Slot Dimension 16.5mm\"", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-569, https://my.misumi-ec.com/pdf/fa/2014/p2_569.pdf", "checked": "2026-11-15" },
+    "cavity_depth": { "value": 9, "unit": "mm", "rule": "From the face to the slot's floor: \"Slot Depth 9mm\"", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-569, https://my.misumi-ec.com/pdf/fa/2014/p2_569.pdf", "checked": "2026-11-15" },
+    "floor_width": { "value": 9, "unit": "mm", "rule": "Width of the flat floor, where the flanks land on the core: the drawing shows walls straight down to 5.3 mm below the face, then flanks closing in. Not dimensioned: measure yours", "kind": "estimate", "source": "scaled off the section drawing on MISUMI FA Mechanical Standard Components catalogue 2014, page 2-571, https://my.misumi-ec.com/pdf/fa/2014/p2_571.pdf (the drawing prints no figure for it)", "checked": "2026-11-15" },
+    "flank_angle": { "value": 45, "unit": "deg", "rule": "The flanks close in at 45 degrees, as drawn. Not dimensioned", "kind": "estimate", "source": "scaled off the section drawing on MISUMI FA Mechanical Standard Components catalogue 2014, page 2-571, https://my.misumi-ec.com/pdf/fa/2014/p2_571.pdf (the drawing prints no figure for it)", "checked": "2026-11-15" },
+    "nut_family": { "value": "slot-8-misumi", "rule": "It takes MISUMI's own nuts for this series; another maker's nut is not promised to fit", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-569, https://my.misumi-ec.com/pdf/fa/2014/p2_569.pdf", "checked": "2026-11-15" }
+  }
+}

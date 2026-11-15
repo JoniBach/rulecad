@@ -1,7 +1,7 @@
 {
   "name": "@rulecad/frames",
-  "version": "0.0.1",
-  "description": "Structures from beams: aluminium extrusion of any maker's profile, plain tube and angle, or printed beams, with the brackets, slot nuts, mounts and linear guides that attach to them. A first release that holds the name while the package is built: it installs and has nothing to call yet.",
+  "version": "0.1.0",
+  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. Beams, joins, fittings and guides follow.",
   "type": "module",
   "exports": {
     ".": {
@@ -12,16 +12,33 @@
   "types": "./frames.d.mts",
   "files": [
     "frames.mjs",
+    "section.mjs",
+    "catalogue.mjs",
     "frames.d.mts",
+    "section.d.mts",
+    "catalogue.d.mts",
     "README.md",
     "LICENSE"
   ],
   "license": "MIT",
   "keywords": ["aluminium-extrusion", "t-slot", "v-slot", "frames", "3d-printing", "jscad", "cad"],
-  "engines": { "node": ">=20.10" },
+  "engines": {
+    "node": ">=20.10"
+  },
   "sideEffects": false,
-  "repository": { "type": "git", "url": "git+https://github.com/JoniBach/rulecad.git", "directory": "packages/frames" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/frames"
+  },
   "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/frames#readme",
-  "bugs": { "url": "https://github.com/JoniBach/rulecad/issues" },
-  "scripts": { "test": "node --test" }
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@rulecad/rules": "^0.3.11"
+  }
 }

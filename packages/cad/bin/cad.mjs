@@ -24,7 +24,7 @@ import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
-import { checkSets, drawSet, draftSet } from '../lib/sheet.mjs';
+import { checkSets, drawSet, draftSet, draftPart, draftParts } from '../lib/sheet.mjs';
 import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
 
 // What the print file asks of the AMS: which filament each kind of part prints in
@@ -50,6 +50,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad rules check [set …]           rule sets held to what makes them traceable (exit 1 on a failure) [--json]
   cad rules draw <set>              a dimension drawing of what a set says a part mounts by, <set>.svg, to compare with its datasheet [--out file]
   cad rules draft <name> --from <file.pdf>   the figures in a datasheet's text, into rules/<name>.json for you to name and check (all kind estimate)
+  cad rules draft profile|slot|slot_nut <name>   every field a beam's profile, a slot family or a slot nut has, to fill from its sheet
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
   cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
@@ -332,24 +333,36 @@ async function analyses(b, d, tag) {
 // cad rules check / draw / draft: rule sets themselves, not a design's use of them
 function ruleSheets(what, names) {
   if (what === 'check') {
-    const results = checkSets(names), bad = results.filter((r) => r.findings.length);
+    // a set fails on a finding of level fail; a warning or a note is said and the set still passes
+    const results = checkSets(names), fails = (r) => r.findings.filter((x) => x.level === 'fail').length, bad = results.filter(fails), noted = results.filter((r) => r.findings.length && !fails(r));
     if (opt('json')) console.log(JSON.stringify(results.map((r) => ({ name: r.name, findings: r.findings })), null, 2));
     else {
-      for (const r of bad) { console.log(`${r.name}: ${r.findings.length} to fix`); for (const x of r.findings) console.log(`  FAIL  ${x.text}  (${x.code})`); }
-      console.log(`${results.length - bad.length} of ${results.length} rule sets pass`);
+      for (const r of results.filter((x) => x.findings.length)) { console.log(`${r.name}: ${fails(r) ? `${fails(r)} to fix` : `passes, ${r.findings.length} to know`}`); for (const x of r.findings) console.log(`  ${{ fail: 'FAIL', warn: 'WARN', info: 'NOTE' }[x.level] ?? 'FAIL'}  ${x.text}  (${x.code})`); }
+      console.log(`${results.length - bad.length} of ${results.length} rule sets pass${noted.length ? ` (${noted.length} with something to know)` : ''}`);
     }
     process.exitCode = bad.length ? 1 : 0;
     return;
   }
   const name = names[0];
-  if (!name) throw new Error(`usage: cad rules ${what} <set>${what === 'draft' ? ' --from <file.pdf>' : ''}`);
+  if (!name) throw new Error(`usage: cad rules ${what} <set>${what === 'draft' ? ` --from <file.pdf>, or cad rules draft ${draftParts().join('|')} <name>` : ''}`);
   if (what === 'draw') { const to = opt('out') || `${name}.svg`; fs.writeFileSync(to, drawSet(name)); return console.log(`drew ${to}: compare it with the datasheet`); }
-  if (!opt('from')) throw new Error('usage: cad rules draft <name> --from <file.pdf>');
+  const save = (as, set) => {
+    const to = path.join(paths.rules ? paths.rules() : path.join(WS, 'rules'), `${as}.json`);
+    if (fs.existsSync(to) && !opt('force')) throw new Error(`${path.relative(WS, to)} already exists (--force replaces it)`);
+    fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, JSON.stringify(set, null, 2) + '\n');
+    return to;
+  };
+  // cad rules draft profile <name>: every field of the vocabulary for that part, to fill from a sheet
+  if (draftParts().includes(name) && !opt('from')) {
+    const part = name, as = names[1];
+    if (!as) throw new Error(`usage: cad rules draft ${part} <name>`);
+    const to = save(as, draftPart(part, as));
+    return console.log(`a draft ${part.replace('_', ' ')} in ${path.relative(WS, to)}, every figure an estimate: fill it from the maker's sheet (source, page, date), then cad rules check ${as} and cad rules draw ${as}`);
+  }
+  if (!opt('from')) throw new Error(`usage: cad rules draft <name> --from <file.pdf>, or cad rules draft ${draftParts().join('|')} <name>`);
   const { set, found } = draftSet(name, opt('from'));
   if (!found) return console.log(`no figures in ${opt('from')}'s text: it's probably a picture of a drawing, so read it by eye and write rules/${name}.json by hand`);
-  const to = path.join(paths.rules ? paths.rules() : path.join(WS, 'rules'), `${name}.json`);
-  if (fs.existsSync(to) && !opt('force')) throw new Error(`${path.relative(WS, to)} already exists (--force replaces it)`);
-  fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, JSON.stringify(set, null, 2) + '\n');
+  const to = save(name, set);
   return console.log(`${found} figures in ${path.relative(WS, to)}, every one an estimate: name them from the vocabulary, check them against the datasheet, then cad rules check ${name}`);
 }
 

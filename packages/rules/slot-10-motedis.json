@@ -1,0 +1,14 @@
+{
+  "_doc": "The 10 mm slot of Motedis' B-type profiles (40 mm series). Motedis prints the opening and the depth; it sells the section as B-type, made to match Bosch Rexroth's 10 mm slot, so the lip, the cavity's width and the floor are Rexroth's figures (slot-10-bosch), marked community until someone measures a Motedis bar.",
+  "name": "slot-10-motedis",
+  "part": "slot",
+  "rules": {
+    "opening": { "value": 10, "unit": "mm", "rule": "Slot width, \"10\" on the data picture (\"Nuten mit einer Breite von 10 mm\" where the page says so)", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-40x40-B-Typ-Nut-10\", https://www.motedis.com/de/Aluprofil-40x40-B-Typ-Nut-10", "checked": "2026-11-15" },
+    "lip_thickness": { "value": 6, "unit": "mm", "rule": "Lip thickness: Motedis prints none. Rexroth's figure for the slot this is made to match (slot-10-bosch)", "kind": "community", "source": "slot-10-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "cavity_width": { "value": 20.1, "unit": "mm", "rule": "Width under the lips: Motedis prints none. Rexroth's figure (slot-10-bosch)", "kind": "community", "source": "slot-10-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "cavity_depth": { "value": 12.5, "unit": "mm", "rule": "Slot depth, \"12,5\" on the data picture", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-40x40-B-Typ-Nut-10\", https://www.motedis.com/de/Aluprofil-40x40-B-Typ-Nut-10", "checked": "2026-11-15" },
+    "floor_width": { "value": 12.2, "unit": "mm", "rule": "Width of the flat floor: as slot-10-bosch, itself scaled off Rexroth's drawing", "kind": "estimate", "source": "slot-10-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "flank_angle": { "value": 45, "unit": "deg", "rule": "The flanks close in at 45 degrees, as slot-10-bosch", "kind": "estimate", "source": "slot-10-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "nut_family": { "value": "slot-10-bosch", "rule": "Sold as B-type: it takes nuts made for Bosch Rexroth's 10 mm slot", "kind": "community", "source": "Motedis, product page and data picture \"Aluprofil-40x40-B-Typ-Nut-10\", https://www.motedis.com/de/Aluprofil-40x40-B-Typ-Nut-10", "checked": "2026-11-15" }
+  }
+}

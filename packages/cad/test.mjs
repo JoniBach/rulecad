@@ -62,6 +62,63 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
   } finally { done(); }
 });
 
+test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet passes the check and draws as the sheet does; slots, bores and section figures are held to sense', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const read = (f) => JSON.parse(fs.readFileSync(path.join(ws, f), 'utf8')), write = (f, x) => fs.writeFileSync(path.join(ws, f), JSON.stringify(x, null, 2)), run = (...a) => spawnSync('node', [BIN, ...a], { cwd: ws, encoding: 'utf8' });
+    const vocabulary = JSON.parse(fs.readFileSync(new URL('../rules/vocabulary.json', import.meta.url), 'utf8')), published = (n) => JSON.parse(fs.readFileSync(new URL(`../rules/${n}.json`, import.meta.url), 'utf8'));
+    // the published sets: three makers' 20 mm profiles pass, and a warning is said without failing the set
+    assert.match(cad('rules', 'check', 'profile-2020-misumi-hfs5', 'profile-2040-misumi-hfs5', 'slot-6-misumi', 'al6n01-t5'), /^4 of 4 rule sets pass\n$/);
+    const bosch = run('rules', 'check', 'profile-2020-bosch', 'profile-2020-motedis-b6');
+    assert.equal(bosch.status, 0); assert.match(bosch.stdout, /profile-2020-bosch: passes, \d to know\n {2}NOTE {2}the bore \(Ø5\.5\) leaves 38% of a full M6 thread/); assert.match(bosch.stdout, /WARN {2}area: the sheet says 160 mm², the drawn outline comes to 171\.3 \(\+7\.1%, more than 5%\)/); assert.match(bosch.stdout, /2 of 2 rule sets pass \(2 with something to know\)/);
+    // a draft: every field of the vocabulary, each an estimate, and it checks and draws as it stands
+    assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /a draft profile in rules.my-2020\.json, every figure an estimate/);
+    const draft = read('rules/my-2020.json');
+    assert.deepEqual(Object.keys(draft.rules), Object.keys(vocabulary.drafts.profile)); assert.equal(draft.part, 'profile');
+    for (const [k, r] of Object.entries(draft.rules)) { assert.equal(r.kind, 'estimate', k); assert.match(r.rule, /^DRAFT, not read from a sheet yet: /); assert.equal(r.unit, vocabulary.fields[k].unit, `${k} in its unit`); }
+    assert.match(cad('rules', 'check', 'my-2020'), /1 of 1 rule sets pass/);
+    assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /already exists \(--force replaces it\)/);
+    assert.match(cad('rules', 'draft', 'profile'), /usage: cad rules draft profile <name>/);
+    cad('rules', 'draft', 'slot', 'my-slot'); cad('rules', 'draft', 'slot_nut', 'my-nut');
+    assert.deepEqual(Object.keys(read('rules/my-slot.json').rules), Object.keys(vocabulary.drafts.slot)); assert.deepEqual(Object.keys(read('rules/my-nut.json').rules), Object.keys(vocabulary.drafts.slot_nut));
+    assert.match(cad('rules', 'check', 'my-slot', 'my-nut'), /2 of 2 rule sets pass/);
+    cad('rules', 'draw', 'my-slot'); for (const t of ['>6<', '>12<', '>2<', 'track 9', 'floor 6']) assert.ok(fs.readFileSync(path.join(ws, 'my-slot.svg'), 'utf8').includes(t), `the slot's drawing shows ${t}`);
+    cad('rules', 'draw', 'my-nut'); assert.ok(fs.readFileSync(path.join(ws, 'my-nut.svg'), 'utf8').includes('slide-in nut, M5, for slot-6'));
+    // a person fills the drafts from MISUMI's page for HFS5-2020: the figures the sheet has, its page as the source, the rest deleted
+    const sheet = published('profile-2020-misumi-hfs5').rules, slotSheet = published('slot-6-misumi').rules, fill = (d, from, extra = {}) => { for (const k of Object.keys(d.rules)) { if (from[k]) d.rules[k] = from[k]; else delete d.rules[k]; } Object.assign(d.rules, extra); return d; };
+    write('rules/my-slot.json', fill(read('rules/my-slot.json'), slotSheet, { nut_family: { ...slotSheet.nut_family, value: 'my-slot' } }));
+    write('rules/my-2020.json', fill(draft, sheet, { slot: { ...sheet.slot, value: 'my-slot' } }));
+    assert.match(cad('rules', 'check', 'my-2020', 'my-slot'), /^2 of 2 rule sets pass\n$/);
+    cad('rules', 'draw', 'my-2020');
+    const svg = fs.readFileSync(path.join(ws, 'my-2020.svg'), 'utf8');
+    for (const t of ['>20<', '>6<', '>12<', '>2<', 'Ø4.2', 'R1', '>183<', '>7420<', '-0.3%', 'taps M5 (tap drill Ø4.2)', 'slot: my-slot: 6 wide, 12 under lips 2 thick, 6 deep, floor 5.9', 'A6N01SS-T5 (al6n01-t5)', 'sold as 1000, 4000; cut 50 to 4000 ±0.5']) assert.ok(svg.includes(t), `the drawing shows ${t}`);
+    assert.equal(svg.replaceAll('my-slot', 'slot-6-misumi').replaceAll('my-2020', 'profile-2020-misumi-hfs5'), fs.readFileSync(new URL('../rules/drawings/profile-2020-misumi-hfs5.svg', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), 'and it is the drawing of the published set');
+    // what the check catches: a bore that breaks into the slots and is no thread, a slot too wide for its cell, a figure off the sheet
+    const broken = (change) => { const x = read('rules/my-2020.json'); x.name = 'broken'; for (const [k, v] of Object.entries(change)) x.rules[k] = { ...x.rules[k], value: v }; write('rules/broken.json', x); const r = run('rules', 'check', 'broken', '--json'); return { status: r.status, found: JSON.parse(r.stdout)[0].findings }; };
+    let b = broken({ bore_diameter: 9 });
+    assert.equal(b.status, 1); assert.deepEqual([...new Set(b.found.map((x) => `${x.level} ${x.code}`))], ['fail profile.bore.clear', 'fail profile.bore.tap', 'warn profile.section.area', 'warn profile.section.mass_per_metre']);
+    assert.match(b.found[0].text, /the bore at 0, 0 \(Ø9\) breaks into the top face's slot/); assert.equal(b.found[0].rule, 'bore_diameter');
+    b = broken({ area: 150 }); assert.equal(b.status, 0); assert.deepEqual(b.found.map((x) => [x.level, x.code, x.values.sheet]), [['warn', 'profile.section.area', 150]]);
+    b = broken({ slot: 'slot-7' }); assert.equal(b.status, 1); assert.match(b.found[0].text, /^broken: no slot family "slot-7"/); assert.equal(b.found[0].code, 'profile.model');
+    b = broken({ family: 'girder' }); assert.equal(b.status, 1); assert.deepEqual(b.found.map((x) => x.code), ['rules.choice'], 'held to the vocabulary first');
+    const wide = read('rules/my-slot.json'); wide.name = 'wide'; wide.rules.floor_width.value = 2; write('rules/wide.json', wide);
+    const w = run('rules', 'check', 'wide'); assert.equal(w.status, 1); assert.match(w.stdout, /FAIL {2}wide: its flanks would start above the underside of its lips.*\(slot\.model\)/);
+    // a slot nut against its slot
+    const nut = read('rules/my-nut.json'); nut.rules.slot.value = 'slot-6-misumi';
+    write('rules/my-nut.json', nut); assert.match(cad('rules', 'check', 'my-nut'), /1 of 1 rule sets pass\n$/);
+    nut.rules.width.value = 13; nut.rules.height.value = 5; write('rules/my-nut.json', nut);
+    const n = run('rules', 'check', 'my-nut'); assert.equal(n.status, 1); assert.match(n.stdout, /it is 13 mm across, and slot-6-misumi is 12 mm wide under its lips/); assert.match(n.stdout, /it is 5 mm tall, and slot-6-misumi has 4 mm under its lips/);
+    // a measured outline beside the set takes the drawn one's place, through its schema
+    fs.mkdirSync(path.join(ws, 'rules/outlines'));
+    write('rules/outlines/my-2020.json', { name: 'my-2020', source: 'a bar from the shelf, traced', licence: 'my own measurement', checked: '2026-11-15', loops: [[[-10, -10], [10, -10], [10, 10], [-10, 10]], [[-2, -2], [2, -2], [2, 2], [-2, 2]]] });
+    const measured = run('rules', 'check', 'my-2020'); assert.equal(measured.status, 0); assert.match(measured.stdout, /area: the sheet says 183 mm², the measured outline comes to 384/);
+    cad('rules', 'draw', 'my-2020'); assert.ok(fs.readFileSync(path.join(ws, 'my-2020.svg'), 'utf8').includes('a measured outline: a bar from the shelf, traced'));
+    write('rules/outlines/my-2020.json', { name: 'my-2020', source: 'a bar', loops: [[[0, 0], [1, 0]]] });
+    const bad = run('rules', 'check', 'my-2020'); assert.equal(bad.status, 1); assert.match(bad.stdout, /outlines\/my-2020\.json: \(top\): needs "licence"/); assert.match(bad.stdout, /loops\[0\]: needs at least 3 entries/);
+    assert.match(cad('rules', 'check'), /rule sets pass/, 'an outline is not taken for a rule set');
+  } finally { done(); }
+});
+
 test('the quick start: new, check, tweak, export, link, with the printer rules copied in', () => {
   const { ws, cad, done } = workspace();
   try {

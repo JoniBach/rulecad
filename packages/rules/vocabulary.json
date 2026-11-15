@@ -1,7 +1,7 @@
 {
   "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. A profile (a beam's section), a slot family and a slot nut are parts too: a profile names its slot family on each face, the thread its bores tap to and its material by their rule sets, and \"drafts\" holds every field of those parts with a starting value, in the order cad rules draft writes them. Read by cad rules check and cad rules draw.",
   "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", "mm²", "mm³", "mm⁴", "kg/m", "mm/m", "deg/m", ""],
-  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_"],
+  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "corner_hollow_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_"],
   "fields": {
     "type": { "choice": ["stepper", "dc", "servo", "brushless", "radial", "flanged", "thrust"], "says": "what sort of motor, or of bearing" },
     "body_shape": { "choice": ["square", "round", "box"], "says": "the body's outline, seen from the mounting face" },
@@ -195,12 +195,15 @@
     "slot_front": { "says": "the front face (-x) where it differs, written as slot_top is, along +y" },
     "slot_back": { "says": "the back face (+x) where it differs, written as slot_top is, along +y" },
     "chamber_width": { "unit": "mm", "says": "the width of the closed hollow between two cells of a profile, where it is wider than the slot's cavity; 0 for a solid web between cells" },
+    "chamber_length": { "unit": "mm", "says": "how far the hollow between two cells keeps its full width, along the line joining the cells' middles; left out where it starts closing in at once" },
     "bore_diameter": { "unit": "mm", "says": "the bore through the centre of each cell of a profile, as extruded" },
     "bore_thread": { "says": "the thread a profile's centre bore is tapped to, as its thread set writes it: M5" },
     "bore_at": { "says": "where a profile's bores are: cells for the centre of every cell (the default), none, or their centres from the middle of the section as x,y pairs with semicolons between (-10,0; 10,0)" },
     "corner_bore_diameter": { "unit": "mm", "says": "a hole in each corner of a profile, as extruded" },
     "corner_bore_thread": { "says": "the thread a profile's corner holes are tapped to, as its thread set writes it" },
     "corner_bore_inset": { "unit": "mm", "says": "a corner hole's centre from each of the two faces it sits between" },
+    "corner_hollow_width": { "unit": "mm", "says": "the side of the closed square hollow in each corner of a profile, where it has them (a lighter section)" },
+    "corner_hollow_wall": { "unit": "mm", "says": "the wall between a corner hollow and each of the two faces it sits behind" },
     "area": { "unit": "mm²", "says": "a profile's cross-sectional area of metal" },
     "inertia_x": { "unit": "mm⁴", "says": "a profile's second moment of area about its x axis (across), for bending up and down" },
     "inertia_y": { "unit": "mm⁴", "says": "a profile's second moment of area about its y axis (upward), for bending side to side" },
@@ -249,7 +252,7 @@
     "slot_nut": ["slot", "thread", "nut_kind", "length", "width", "height", "nut_entry"]
   },
   "drafts": {
-    "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "area": 386, "inertia_x": 13300, "inertia_y": 13300, "section_modulus_x": 1330, "section_modulus_y": 1330, "torsion_constant": 22500, "mass_per_metre": 1.04, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },
+    "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "chamber_length": 2, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "corner_hollow_width": 0, "corner_hollow_wall": 2, "area": 183, "inertia_x": 7030, "inertia_y": 7030, "section_modulus_x": 703, "section_modulus_y": 703, "torsion_constant": 1100, "mass_per_metre": 0.5, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },
     "slot": { "opening": 6, "lip_thickness": 2, "lip_angle": 0, "cavity_width": 12, "cavity_depth": 6, "floor_width": 6, "flank_angle": 45, "track_width": 9, "track_angle": 90, "nut_family": "slot-6" },
     "slot_nut": { "slot": "slot-6", "thread": "M5", "nut_kind": "slide-in", "nut_entry": "end", "length": 10, "width": 10, "height": 4 }
   },
@@ -283,6 +286,7 @@
     "profile": [
       { "ascending": ["bore_diameter", "series"], "says": "a bore is inside its cell" },
       { "ascending": ["corner_bore_inset", "series"], "says": "a corner hole is inside its corner" },
+      { "ascending": ["corner_hollow_width", "series"], "says": "a corner hollow is inside its corner" },
       { "ascending": ["cut_length_min", "cut_length_max"], "says": "the shortest cut is shorter than the longest" }
     ],
     "slot": [
