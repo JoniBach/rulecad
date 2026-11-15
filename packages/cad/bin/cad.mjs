@@ -588,12 +588,12 @@ async function editAssembly(what, ref) {
   const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
   const pick = (keys) => Object.fromEntries(keys.map((k) => [k, typeof opt(k) === 'string' ? parseValue(opt(k)) : undefined]).filter(([, v]) => v !== undefined));
   const text = (keys) => Object.fromEntries(keys.filter((k) => typeof opt(k) === 'string').map((k) => [k, String(opt(k))]));
+  // (an item's at is a point, 1,2,3, or an address on a beam: --at x1.top@50%)
+  const at = () => (typeof opt('at') !== 'string' ? {} : /^[a-z][\w-]*\./i.test(opt('at')) ? { at: String(opt('at')) } : { at: list('at') });
   let entry;
   if (what === 'fit') entry = { ...text(['a', 'b']), ...pick(['min', 'max']), ...(list('poses') ? { poses: list('poses').map(String) } : {}), ...text(['note', 'label']) };
   else if (what === 'joint') entry = { ...text(['id', 'type', 'parent', 'child', 'label', 'follow']), ...pick(['min', 'max', 'value', 'ratio']) };
-  // (an item's at is a point, 1,2,3, or an address on a beam: --at x1.top@50%)
-  const at = () => (typeof opt('at') !== 'string' ? {} : /^[a-z][\w-]*\./i.test(opt('at')) ? { at: String(opt('at')) } : { at: list('at') });
-  if (what === 'beam') {
+  else if (what === 'beam') {
     if (typeof opt('profile') !== 'string') throw new Error('usage: cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0 [--roll 90] [--length 300] [--material al6063-t5], or --length 300 --at 0,0,0 --rotate 0,90,0');
     entry = { ...text(['id']), beam: { profile: String(opt('profile')), ...pick(['length']), ...text(['material']) }, ...(list('from') ? { from: list('from') } : {}), ...(list('to') ? { to: list('to') } : {}), ...pick(['roll']), ...at(), ...(list('rotate') ? { rotate: list('rotate') } : {}) };
   } else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...at(), ...(list('rotate') ? { rotate: list('rotate') } : {}),
