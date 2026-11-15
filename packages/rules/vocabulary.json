@@ -1,7 +1,7 @@
 {
-  "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. Read by cad rules check and cad rules draw.",
-  "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", ""],
-  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_"],
+  "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. A profile (a beam's section), a slot family and a slot nut are parts too: a profile names its slot family on each face, the thread its bores tap to and its material by their rule sets, and \"drafts\" holds every field of those parts with a starting value, in the order cad rules draft writes them. Read by cad rules check and cad rules draw.",
+  "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", "mm²", "mm³", "mm⁴", "kg/m", "mm/m", "deg/m", ""],
+  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_"],
   "fields": {
     "type": { "choice": ["stepper", "dc", "servo", "brushless", "radial", "flanged", "thrust"], "says": "what sort of motor, or of bearing" },
     "body_shape": { "choice": ["square", "round", "box"], "says": "the body's outline, seen from the mounting face" },
@@ -59,7 +59,7 @@
     "radial_load": { "unit": "N", "says": "the most sideways load on the shaft" },
     "bore": { "unit": "mm", "says": "a bearing's bore: the shaft fits here" },
     "outer_diameter": { "unit": "mm", "says": "a bearing's outside diameter: the housing fits here" },
-    "width": { "unit": "mm", "says": "a bearing's width along its axis; a thrust bearing's height" },
+    "width": { "unit": "mm", "says": "a bearing's width along its axis; a thrust bearing's height; a profile's section across (x); a slot nut across its slot" },
     "chamfer": { "unit": "mm", "says": "the corner radius of a bearing's rings, the most a shaft or housing fillet may be" },
     "static_rating": { "unit": "N", "says": "a bearing's basic static load rating (radial, or axial for a thrust bearing)" },
     "dynamic_rating": { "unit": "N", "says": "a bearing's basic dynamic load rating (radial, or axial for a thrust bearing)" },
@@ -111,11 +111,11 @@
     "helix_angle": { "unit": "deg", "says": "a lead screw's lead angle at the pitch diameter" },
     "friction_coefficient": { "unit": "", "says": "the thread friction assumed for a lead screw's efficiency" },
     "efficiency_note": { "says": "how a lead screw's efficiency and back-driving are worked out, and how far to trust them" },
-    "length": { "unit": "mm", "says": "a nut, linear bearing or coupler end to end" },
+    "length": { "unit": "mm", "says": "a nut, linear bearing or coupler end to end; a slot nut along its slot" },
     "flange_offset": { "unit": "mm", "says": "from a nut's short end to its flange" },
     "hole_circle": { "unit": "mm", "says": "the circle a part's mounting holes sit on" },
     "hole_count": { "unit": "", "says": "mounting holes" },
-    "material": { "says": "what the part is made of" },
+    "material": { "says": "what the part is made of; for a profile, the name of the material rule set it is analysed with: al6063-t5" },
     "tolerance": { "says": "a rod's diameter tolerance, as the source gives it" },
     "hardness": { "says": "a rod's surface hardness, as the source gives it" },
     "straightness": { "says": "a rod's straightness, as the source gives it" },
@@ -168,7 +168,7 @@
     "washer_thickness": { "unit": "mm", "says": "a plain washer's thickness" },
     "set_screw_key": { "unit": "mm", "says": "the hex key a socket set screw takes" },
     "set_screw_point": { "unit": "mm", "says": "the diameter of a flat point set screw's end, at most" },
-    "lengths": { "unit": "mm", "list": true, "says": "the lengths the socket head cap screw is sold in, shortest first (a countersunk screw's length includes its head)" },
+    "lengths": { "unit": "mm", "list": true, "says": "the lengths the socket head cap screw is sold in, shortest first (a countersunk screw's length includes its head); for a profile, the stock bars it is sold as" },
     "property_class": { "unit": "", "says": "the steel property class its strength figure is for: 8.8" },
     "proof_stress": { "unit": "MPa", "says": "the stress a steel screw of that class holds with no permanent set" },
     "stainless_class": { "says": "the stainless grade and class its second strength figure is for: A2-70" },
@@ -181,7 +181,51 @@
     "insert_wall": { "unit": "mm", "says": "the least plastic round a heat-set insert's hole" },
     "pilot": { "unit": "mm", "says": "a starting hole for the screw to form its own thread in printed plastic, as drawn, before a printer's measured figure (x1c.pilot_m3) replaces it" },
     "pilot_depth": { "unit": "mm", "says": "the least depth of thread a screw needs in plastic" },
-    "pilot_boss": { "unit": "mm", "says": "the least outside diameter of a boss round a pilot hole" }
+    "pilot_boss": { "unit": "mm", "says": "the least outside diameter of a boss round a pilot hole" },
+    "family": { "choice": ["t-slot", "v-slot", "tube", "round-tube", "angle", "channel", "bar", "round-bar", "custom", "printed"], "says": "what sort of section a profile is: slotted for nuts (t-slot), slotted with faces wheels run on (v-slot), a plain bought section, an outline of your own (custom), or one printed in plastic" },
+    "series": { "unit": "mm", "says": "a slotted profile's base size: the side of one cell, which is the pitch of its slots and bores" },
+    "cells_across": { "unit": "", "says": "how many cells side by side across the section (x): 2 for a 40 x 20 lying flat. In a model, cells is [across, up]" },
+    "cells_up": { "unit": "", "says": "how many cells one above another up the section (y)" },
+    "height": { "unit": "mm", "says": "a profile's section upward (y); a slot nut from its seat under the lips to its back" },
+    "corner_radius": { "unit": "mm", "says": "the radius of a profile's outside corners" },
+    "wall": { "unit": "mm", "says": "the wall thickness of a tube, an angle or a channel" },
+    "slot": { "says": "the slot family in every face of a profile, by its rule set's name (slot-6-misumi), or closed for none; for a slot nut, the slot family it is made for" },
+    "slot_top": { "says": "the top face (+y) where it differs: a slot family, closed, or one of either per slot along +x, with commas (slot-6, closed)" },
+    "slot_bottom": { "says": "the bottom face (-y) where it differs, written as slot_top is, along +x" },
+    "slot_front": { "says": "the front face (-x) where it differs, written as slot_top is, along +y" },
+    "slot_back": { "says": "the back face (+x) where it differs, written as slot_top is, along +y" },
+    "chamber_width": { "unit": "mm", "says": "the width of the closed hollow between two cells of a profile, where it is wider than the slot's cavity; 0 for a solid web between cells" },
+    "bore_diameter": { "unit": "mm", "says": "the bore through the centre of each cell of a profile, as extruded" },
+    "bore_thread": { "says": "the thread a profile's centre bore is tapped to, as its thread set writes it: M5" },
+    "bore_at": { "says": "where a profile's bores are: cells for the centre of every cell (the default), none, or their centres from the middle of the section as x,y pairs with semicolons between (-10,0; 10,0)" },
+    "corner_bore_diameter": { "unit": "mm", "says": "a hole in each corner of a profile, as extruded" },
+    "corner_bore_thread": { "says": "the thread a profile's corner holes are tapped to, as its thread set writes it" },
+    "corner_bore_inset": { "unit": "mm", "says": "a corner hole's centre from each of the two faces it sits between" },
+    "area": { "unit": "mm²", "says": "a profile's cross-sectional area of metal" },
+    "inertia_x": { "unit": "mm⁴", "says": "a profile's second moment of area about its x axis (across), for bending up and down" },
+    "inertia_y": { "unit": "mm⁴", "says": "a profile's second moment of area about its y axis (upward), for bending side to side" },
+    "section_modulus_x": { "unit": "mm³", "says": "a profile's section modulus about its x axis: inertia_x over the distance to the furthest fibre" },
+    "section_modulus_y": { "unit": "mm³", "says": "a profile's section modulus about its y axis" },
+    "torsion_constant": { "unit": "mm⁴", "says": "a profile's torsion constant (St Venant's, written It or J on a sheet): torque = shear modulus x torsion_constant x twist per length. Far below the polar moment for a slotted section" },
+    "mass_per_metre": { "unit": "kg/m", "says": "a profile's mass for a metre of length" },
+    "alloy": { "says": "a profile's alloy and temper, as its sheet writes them: EN AW-6063 T66" },
+    "cut_tolerance": { "unit": "mm", "says": "how far a cut length may be over or under what was ordered, each way" },
+    "cut_length_min": { "unit": "mm", "says": "the shortest length a maker cuts a profile to" },
+    "cut_length_max": { "unit": "mm", "says": "the longest length a maker cuts a profile to" },
+    "straightness_per_metre": { "unit": "mm/m", "says": "how far a profile may bow from straight, for each metre of length" },
+    "twist_per_metre": { "unit": "deg/m", "says": "how far a profile may twist about its axis, for each metre of length" },
+    "opening": { "unit": "mm", "says": "a slot's width at its narrowest, between the lips: what a screw or a tongue passes" },
+    "lip_thickness": { "unit": "mm", "says": "a slot's lip, from the profile's face to the lip's underside at the opening: what a nut clamps against" },
+    "lip_angle": { "unit": "deg", "says": "how the underside of a slot's lip slopes away from the face, going from the opening outward: 0 where it is parallel to the face" },
+    "cavity_width": { "unit": "mm", "says": "a slot's widest width, under the lips: what a nut must be narrower than" },
+    "cavity_depth": { "unit": "mm", "says": "from the profile's face to the floor of its slot" },
+    "floor_width": { "unit": "mm", "says": "the width of the flat floor of a slot, where its walls close in below the lips; left out for straight walls" },
+    "flank_angle": { "unit": "deg", "says": "the angle of the flanks that close a slot in toward its floor, from the face's plane: 45 for the usual slot, 90 for straight walls" },
+    "track_width": { "unit": "mm", "says": "the width across a V-slot's chamfered mouth at the face: the track a V-wheel runs on" },
+    "track_angle": { "unit": "deg", "says": "the angle between the two faces of a V-slot's mouth: 90 for a wheel with a 90 degree V" },
+    "nut_family": { "says": "the slot family whose nuts a slot takes, by its rule set's name: its own, or the one it is made to match" },
+    "nut_kind": { "choice": ["slide-in", "drop-in", "roll-in", "hammer", "t-bolt", "square", "hex"], "says": "what sort of slot nut: slid in from an end, dropped in and turned, rolled in on a spring, a hammer head, a bolt with a T head, or a plain square or hexagon nut" },
+    "nut_entry": { "choice": ["anywhere", "end"], "says": "whether a slot nut goes in anywhere along the slot, or only from an open end" }
   },
   "parts": {
     "motor": ["type", "body_shape", "body_length", "shaft_diameter", "shaft_length", "shaft_flats", "mount_pattern", "mount_hole_spacing", "mass"],
@@ -199,7 +243,15 @@
     "belt": ["pitch", "pitch_line_offset", "width", "stiffness"],
     "pulley": ["teeth", "pitch_diameter", "bore", "belt_width", "outer_diameter", "body_width"],
     "idler": ["toothed", "bore", "belt_width", "outer_diameter", "body_width"],
-    "thread": ["thread_form", "thread", "major_diameter", "pitch"]
+    "thread": ["thread_form", "thread", "major_diameter", "pitch"],
+    "profile": ["family", "width", "height"],
+    "slot": ["opening", "lip_thickness", "cavity_width", "cavity_depth"],
+    "slot_nut": ["slot", "thread", "nut_kind", "length", "width", "height", "nut_entry"]
+  },
+  "drafts": {
+    "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "area": 386, "inertia_x": 13300, "inertia_y": 13300, "section_modulus_x": 1330, "section_modulus_y": 1330, "torsion_constant": 22500, "mass_per_metre": 1.04, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },
+    "slot": { "opening": 6, "lip_thickness": 2, "lip_angle": 0, "cavity_width": 12, "cavity_depth": 6, "floor_width": 6, "flank_angle": 45, "track_width": 9, "track_angle": 90, "nut_family": "slot-6" },
+    "slot_nut": { "slot": "slot-6", "thread": "M5", "nut_kind": "slide-in", "nut_entry": "end", "length": 10, "width": 10, "height": 4 }
   },
   "checks": {
     "thread": [
@@ -227,6 +279,17 @@
       { "ascending": ["major_diameter", "insert_hole", "insert_diameter"], "says": "an insert's hole is wider than its thread and narrower than its knurls, which the plastic flows round" },
       { "ascending": ["insert_length", "insert_depth"], "says": "a blind hole is deeper than its insert" },
       { "ascending": ["stainless_proof_stress", "proof_stress"], "says": "the stainless figure is the lower of the two" }
+    ],
+    "profile": [
+      { "ascending": ["bore_diameter", "series"], "says": "a bore is inside its cell" },
+      { "ascending": ["corner_bore_inset", "series"], "says": "a corner hole is inside its corner" },
+      { "ascending": ["cut_length_min", "cut_length_max"], "says": "the shortest cut is shorter than the longest" }
+    ],
+    "slot": [
+      { "ascending": ["opening", "cavity_width"], "says": "a slot is wider under its lips than between them, or it holds no nut" },
+      { "ascending": ["lip_thickness", "cavity_depth"], "says": "a slot's floor is below its lips" },
+      { "ascending": ["floor_width", "cavity_width"], "says": "a slot closes in toward its floor (leave floor_width out for straight walls)" },
+      { "ascending": ["opening", "track_width"], "says": "a V-slot's mouth is wider at the face than between the lips" }
     ]
   }
 }
