@@ -16,6 +16,8 @@
 //   { "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length", "label": "Screws find their inserts" }
 // The path must be clear for depth mm (it lands in a hole) and solid within "ring" mm of it (default: the hole's
 // diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
+// A screwed joint is a fasten (lib/fasten.mjs): { "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1"] }.
+// Its holes are read from the parts as drawn, its screws placed as reference parts, and it holds as a fit that fastens does.
 import { host, readJson } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -44,7 +46,7 @@ import { gripChecks } from './grip.mjs';
 import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
-import { fastenOf, hardwarePart, fastenChecks } from './fasten.mjs';
+let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -245,7 +247,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
         }
       }
     });
-    for (const h of hardware) out.push(hardwarePart(h, toMat4(worlds[h.host])));
+    for (const h of hardware) out.push(fastening.hardwarePart(h, toMat4(worlds[h.host])));
     return out;
   };
   for (const x of a.fits || []) for (const p of x.poses || []) if (!motion.poses[p]) throw new Error(`fit ${x.note || x.label || `${x.a} / ${x.b}`}: no pose "${p}" (poses: ${Object.keys(motion.poses).join(', ') || 'none'})`);
@@ -257,9 +259,10 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   // fit that fastens (what holds a part, what the order of assembly and the list read)
   let fastened = null;
   if (a.fasten?.length && a.kind !== 'plate') {
-    fastened = fastenOf({ a, project, parts, objects, motion, num }, worlds0);
+    fastening ||= await import('./fasten.mjs');
+    fastened = fastening.fastenOf({ a, project, parts, objects, motion, num }, worlds0);
     hardware = fastened.hardware;
-    parts.push(...hardware.map((h) => hardwarePart(h, toMat4(worlds0[h.host]))));
+    parts.push(...hardware.map((h) => fastening.hardwarePart(h, toMat4(worlds0[h.host]))));
     fits.push(...fastened.fits.map((x) => ({ ...x, num })));
   }
   // A fit with * applies to every copy: "key-*.switch.bottom" becomes one fit for key-0-0, key-0-1, …
@@ -884,7 +887,7 @@ export function checkAssembly(s) {
       }
     }
   }
-  fastenChecks(s, f, { placeItems });
+  if (s.a.fasten?.length && fastening) fastening.fastenChecks(s, f, { placeItems });
   boughtFindings(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });

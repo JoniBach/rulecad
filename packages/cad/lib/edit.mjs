@@ -58,18 +58,18 @@ const assemblyFile = (ref) => {
 };
 
 /**
- * Add to an assembly: a fit, a joint, an item or a loop (appended to its list), or a pose (by name).
- * @param {string} ref project/assembly @param {'fit' | 'joint' | 'item' | 'loop' | 'pose'} what @param {any} entry (a pose: { name, values })
+ * Add to an assembly: a fit, a joint, an item, a loop or a fasten (appended to its list), or a pose (by name).
+ * @param {string} ref project/assembly @param {'fit' | 'joint' | 'item' | 'loop' | 'fasten' | 'pose'} what @param {any} entry (a pose: { name, values })
  * @returns {{ file: string }}
  */
 export function addToAssembly(ref, what, entry) {
-  const file = assemblyFile(ref), before = fs.readFileSync(file, 'utf8'), list = { fit: 'fits', joint: 'joints', item: 'items', loop: 'loops' }[what];
+  const file = assemblyFile(ref), before = fs.readFileSync(file, 'utf8'), list = { fit: 'fits', joint: 'joints', item: 'items', loop: 'loops', fasten: 'fasten' }[what];
   let text = before;
   if (what === 'pose') {
     if (getAt(text, ['poses']) === undefined) text = setAt(text, ['poses'], {});
     text = setAt(text, ['poses', entry.name], entry.values);
   } else {
-    if (!list) throw new CadError('edit.what', `can't add a ${what} (fit, joint, item, loop or pose)`);
+    if (!list) throw new CadError('edit.what', `can't add a ${what} (fit, joint, item, loop, fasten or pose)`);
     if (getAt(text, [list]) === undefined) text = setAt(text, [list], []);
     const ids = (getAt(text, [list]) || []).map((x) => x.id).filter(Boolean);
     if (entry.id && ids.includes(entry.id)) throw new CadError('edit.duplicate', `${ref} already has a ${what} "${entry.id}"`, { file });
@@ -83,6 +83,14 @@ export function addToAssembly(ref, what, entry) {
         const parts = fs.existsSync(obj) ? Object.keys(JSON.parse(fs.readFileSync(obj, 'utf8')).parts || { body: {} }) : null;
         if (parts && !parts.includes(part)) throw new CadError('edit.part', `fit ${side}: ${it.object} has no part "${part}" (parts: ${parts.join(', ')})`, { file });
       }
+    }
+    // a fasten names the parts its screw passes and ends in, and where the screws go: each must be an item of the assembly
+    if (what === 'fasten') {
+      const items = (getAt(text, ['items']) || []).map((x) => x.id), has = (n) => items.includes(String(n).split(/[.@]/)[0]);
+      if (!entry.screw) throw new CadError('edit.incomplete', 'a fasten needs its screw, by thread and head: --screw "M3 cap"', { file });
+      if (!entry.into || !Array.isArray(entry.through)) throw new CadError('edit.incomplete', 'a fasten needs the parts the screw passes and the one it ends in: --through bracket --into base', { file });
+      if ((entry.at == null) === (entry.holes == null)) throw new CadError('edit.incomplete', 'a fasten needs where its screws go: --at bracket.h1,bracket.h2 (an anchor each) or --holes bracket.body (a part whose holes they use), one of the two', { file });
+      for (const n of [...entry.through, entry.into, ...(entry.holes ? [entry.holes] : []), ...(entry.at || []).filter((x) => typeof x === 'string')]) if (!has(n)) throw new CadError('edit.part', `fasten: no item "${String(n).split(/[.@]/)[0]}" in ${ref} (items: ${items.join(', ') || 'none'})`, { file });
     }
     text = appendAt(text, [list], entry);
   }

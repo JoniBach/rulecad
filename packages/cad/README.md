@@ -330,6 +330,46 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - `check`, `preview` (`--explode` lifts each kind of object above the last: plate, switches, keycaps), `show`, `link` and, for plates, `export` all take
   `<project>/<assembly>`.
 
+### Screwed joints: `fasten`
+
+A joint held by screws is one relation, and it knows the screw:
+
+```json
+"fasten": [
+  { "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1", "bracket.h2"] },
+  { "screw": "M3x16 cap", "through": ["cover", "frame"], "into": "frame-back", "holes": "cover.body", "nut": true, "washer": true }
+]
+```
+
+`screw` names the thread and head as `@rulecad/fixings` reads them (`M3 cap`, `M4 button`, `M3x12 countersunk`,
+`6-32 UNC cap`). `through` lists the parts the screw passes, in order from under its head, and `into` is the part it
+ends in. The screws' places are given one of two ways: `at`, an anchor on each screw's axis (a point on the hole's
+centre line, the anchor's axis along the screw), or `holes`, a part whose own round holes are the places (for a
+circuit board, its mounting holes). `nut` (`true`, `hex`, `square` or `lock`) says a nut holds the screw where the
+last part does not; `washer` puts a plain washer under the head; `length` gives the length where the name has none;
+`torque` gives the tightening torque in N m. Add one with `cad add fasten <project>/<assembly> --screw "M3 cap"
+--through bracket --into base --at bracket.h1,bracket.h2`.
+
+Nothing about the holes is declared. Each part is read as drawn: along the screw's axis the mesh is sliced, and the
+outline round the axis gives the hole's centre, its diameter (across its corners, as it was drawn) and where it
+starts and stops. From that the check says:
+
+| Finding | What it checks |
+|---|---|
+| `fasten.holes` | One axis runs from under the head through every part: a hole 0.05 mm or more off it fails, with the distance |
+| `fasten.clearance` | Each part passed through has a clearance hole for the thread as drawn on this printer, between the close and the loose figure; it says what the hole measures and what it should be |
+| `fasten.end` | The far end is a pilot, a hole to tap, a thread drawn to print, an insert's hole or a nut's seat of this thread, or a clearance hole with `nut` |
+| `fasten.length` | The length chosen where none is given: the shortest sold length that fits the stack as measured. A given length is checked for reaching the far end, bottoming out in a blind hole (1 mm is kept at the tip) and standing more than a diameter proud |
+| `fasten.engagement` | The thread engaged at the far end against the rule for what it is in: the thread's `pilot_depth` or the engagement rule for the project's material, an insert's length, a nut's height. A short one names the length or the depth that would do |
+| `fasten.seat` | The head (or its washer) has a flat seat as wide as itself and square to the screw, read under the head from the part; a countersunk head has a countersink of its angle. It says the force and torque the seat takes on the project's material, and with `torque` holds the pressure against the material's strength and names the washer that would bring it within |
+
+Every finding has `at` (under the head) and `between` (head to tip), so the viewer points at the screw. The screws,
+nuts, washers and inserts are placed as reference parts from `@rulecad/fixings`: faint in previews, lifted along
+their own axes by `--explode`, checked for overlap with everything but what they are threaded into, moving with the
+part they sit in through every pose, and carried in links. `cad list` counts them and `cad order` names them on the
+step. A `fasten` holds its parts as a fit with `"fastens": true` does and lines their holes up as a holes fit does;
+both older forms still work, and an assembly with no `fasten` checks as before.
+
 ### Joints and poses
 
 Things that move (a lid, a hinged screen, a drawer, a ball head) are one assembly with joints, not one assembly per

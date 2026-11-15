@@ -109,7 +109,11 @@ function measure(segs, R) {
     if ((p[1] > 0) !== (q[1] > 0) && p[0] + ((0 - p[1]) / (q[1] - p[1])) * (q[0] - p[0]) > 0) inside = !inside; // (a ray from the axis along +x)
   }
   // corners only: a point where the outline runs straight on is a seam between two faces, not a corner
-  const list = [...pts.values()], round = closed ? roundOf(list) : null;
+  const list = !closed ? [] : [...pts].filter(([k, e]) => {
+    const [p, q] = at.get(k).filter((j) => mine.has(j)).map((j) => (key(segs[j][0]) === k ? segs[j][1] : segs[j][0]));
+    const ux = e[0] - p[0], uy = e[1] - p[1], vx = q[0] - e[0], vy = q[1] - e[1];
+    return Math.abs(ux * vy - uy * vx) > 2e-3 * Math.hypot(ux, uy) * Math.hypot(vx, vy); // (0.1°: a seam left by a boolean lies within its snap of the line; a round's corners turn by degrees)
+  }).map(([, e]) => e), round = closed ? roundOf(list) : null;
   let shape = 'other', d = null, flats = null, offset = null, c = null, corner = null;
   if (round) {
     c = round.c; d = 2 * round.r; offset = Math.hypot(c[0], c[1]);
@@ -123,7 +127,7 @@ function measure(segs, R) {
 }
 const same = (a, b) => {
   if (!a.loop || !b.loop) return !a.loop && !b.loop;
-  const near = (x, y) => (x == null || y == null ? x == y : Math.abs(x - y) < 1e-4);
+  const near = (x, y) => (x == null || y == null ? x == y : Math.abs(x - y) < 1e-3); // (a fit through corners snapped to a boolean's grid wanders by less)
   return near(a.free, b.free) && a.loop.shape === b.loop.shape && a.loop.inside === b.loop.inside && near(a.loop.d, b.loop.d) && near(a.loop.offset, b.loop.offset);
 };
 
@@ -162,7 +166,7 @@ export function profile(tris, O, D, R) {
     const z0 = zs[i], z1 = zs[i + 1], len = z1 - z0; if (len < 1e-5) continue;
     const e = Math.min(1e-3, len / 4), a = measure(slice(near, z0 + e), R), b = measure(slice(near, z1 - e), R), solid = solidAt((z0 + z1) / 2);
     const hole = !solid && !!a.loop?.inside && !!b.loop?.inside, last = segs.at(-1);
-    if (last && last.solid === solid && Math.abs(last.z1 - z0) < 1e-9 && same(last.a, last.b) && same(a, b) && same(last.b, a)) last.z1 = z1;
+    if (last && last.solid === solid && Math.abs(last.z1 - z0) < 1e-4 && same(last.a, last.b) && same(a, b) && same(last.b, a)) last.z1 = z1;
     else segs.push({ z0, z1, solid, hole, a, b });
   }
   return { segs, near, x: f.x, y: f.y };
@@ -533,7 +537,8 @@ export function fastenOf(s, worlds) {
         } else {
           const under = Math.min(ring(near, zLocal(zSeat + e), boreR + 0.6 * (bearR - boreR), false), ring(near, zLocal(zSeat + e), bearR - e, false)), over = Math.max(ring(near, zLocal(zSeat - e), boreR + 0.6 * (bearR - boreR), false), ring(near, zLocal(zSeat - e), bearR - e, false));
           const whole = under > 1 - 1e-9 && over < 1e-9, values = { under: r3(under), across: 2 * bearR, hole: r3(2 * boreR) };
-          if (!flat || !whole) say('fasten.seat', 'fail', !flat || over > 1e-9 ? `the ${washer ? 'washer' : 'head'} has no flat seat on ${A.name}: the face under it is not square to the screw (${cone ? 'a cone' : `material stands above the seat on ${Math.round(over * 100)}% of the way round`})` : `the ${washer ? 'washer' : 'head'} overhangs its seat on ${A.name}: there is material under ${Math.round(under * 100)}% of the ring out to its ${mm(2 * bearR)} mm, where a flat seat as wide as the ${washer ? 'washer' : 'head'} is asked`, values);
+          if (!flat || !whole) say('fasten.seat', 'fail', flat && washer && over > 1e-9 && zSeat - A.reach[0] > 0.01 ? `the washer, ${mm(2 * bearR)} mm across, does not go down ${A.name}'s counterbore to the seat: the counterbore is drawn for the head alone (${mm(head.across)} mm)`
+            : !flat || over > 1e-9 ? `the ${washer ? 'washer' : 'head'} has no flat seat on ${A.name}: the face under it is not square to the screw (${cone ? 'a cone' : `material stands above the seat on ${Math.round(over * 100)}% of the way round`})` : `the ${washer ? 'washer' : 'head'} overhangs its seat on ${A.name}: there is material under ${Math.round(under * 100)}% of the ring out to its ${mm(2 * bearR)} mm, where a flat seat as wide as the ${washer ? 'washer' : 'head'} is asked`, values);
           else {
             // what the seat takes: the ring under the head as drawn, against the strength of what it sits on
             let st = null;
@@ -543,11 +548,11 @@ export function fastenOf(s, worlds) {
             else {
               const D2 = st.head === 'hex' ? head.across * Math.cos(Math.PI / 6) : head.across, area = (d) => (Math.PI / 4) * (d * d - (2 * boreR) ** 2), bare = area(D2), onWasher = st.washer ? area(st.washer.diameter) : null, mine = washer ? onWasher : bare;
               const takes = st.limit * mine, K = DEFAULTS.nut_factor.value, torqueOf = (N) => (K * fx.major * N) / 1000, v2 = { ...values, area: +mine.toFixed(2), limit: st.limit, force: +takes.toFixed(1), torque: +torqueOf(takes).toFixed(3) };
-              if (torque == null) say('fasten.seat', 'pass', `${where}; on ${st.material} (${mm(st.limit)} MPa) its ${mm(+mine.toFixed(1))} mm² takes ${mm(+takes.toFixed(0))} N, a tightening of ${mm(+torqueOf(takes).toFixed(2))} N m${!washer && onWasher ? `: the ${fx.thread} washer would raise that to ${mm(+(st.limit * onWasher).toFixed(0))} N (${mm(+torqueOf(st.limit * onWasher).toFixed(2))} N m)` : ''}`, v2);
+              if (torque == null) say('fasten.seat', 'pass', `${where}; on ${st.material} (${mm(st.limit)} MPa) its ${mm(+mine.toFixed(1))} mm² takes ${mm(+takes.toFixed(0))} N, a tightening of ${mm(+torqueOf(takes).toFixed(2))} N m${!washer && onWasher && sunk <= 0.01 ? `: the ${fx.thread} washer would raise that to ${mm(+(st.limit * onWasher).toFixed(0))} N (${mm(+torqueOf(st.limit * onWasher).toFixed(2))} N m)` : ''}`, v2);
               else {
                 const p = st.force / mine, within = p <= st.limit + 1e-9, pw = onWasher ? st.force / onWasher : null;
                 if (within) say('fasten.seat', 'pass', `${where}; at ${mm(torque)} N m the screw clamps with ${mm(st.force)} N, ${mm(+p.toFixed(1))} MPa under the ${washer ? 'washer' : 'head'} on ${st.material}, whose strength is ${mm(st.limit)} MPa`, { ...v2, pressure: +p.toFixed(1) });
-                else say('fasten.seat', 'fail', `at ${mm(torque)} N m the screw clamps with ${mm(st.force)} N: ${mm(+p.toFixed(1))} MPa under the ${washer ? 'washer' : 'head'} on ${st.material}, whose strength is ${mm(st.limit)} MPa. ${!washer && pw != null && pw <= st.limit ? `The ${fx.thread} washer, ${mm(st.washer.diameter)} mm across, brings it to ${mm(+pw.toFixed(1))} MPa, within: give "washer": true` : `The seat takes ${mm(+takes.toFixed(0))} N (${mm(+torqueOf(takes).toFixed(2))} N m): tighten to that, or spread the load wider`}`, { ...v2, pressure: +p.toFixed(1), ...(pw != null ? { washer: +pw.toFixed(1) } : {}) });
+                else say('fasten.seat', 'fail', `at ${mm(torque)} N m the screw clamps with ${mm(st.force)} N: ${mm(+p.toFixed(1))} MPa under the ${washer ? 'washer' : 'head'} on ${st.material}, whose strength is ${mm(st.limit)} MPa. ${!washer && pw != null && pw <= st.limit && sunk <= 0.01 ? `The ${fx.thread} washer, ${mm(st.washer.diameter)} mm across, brings it to ${mm(+pw.toFixed(1))} MPa, within: give "washer": true` : `The seat takes ${mm(+takes.toFixed(0))} N (${mm(+torqueOf(takes).toFixed(2))} N m): tighten to that, or spread the load wider`}`, { ...v2, pressure: +p.toFixed(1), ...(pw != null ? { washer: +pw.toFixed(1) } : {}) });
               }
             }
           }

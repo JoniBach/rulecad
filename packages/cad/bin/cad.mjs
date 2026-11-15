@@ -53,6 +53,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
   cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
+  cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
+                                    a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
+                                    [--washer] [--length 12] [--torque 0.5] [--note …]
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets
@@ -123,22 +126,23 @@ const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-s
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
-  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate']; // cad add
+  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', // cad add
+  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque']; // cad add fasten
 // What a command takes, where that isn't <project>/<object>
-const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
+const USAGE = { add: 'fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
   diff: '<project>/<object> <from> [<to>]', compare: '<project>/<object> <a> <b>', match: '<project>/<object> <model.stl|model.3mf>', clone: '<board.kicad_pcb | GitHub link> <name>' };
 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
-// (--sweep and --watch take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
+// (--sweep, --watch and --nut take one or not).
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
   if (FLAGS.includes(k)) return true;
   if (args[i + 1] && !args[i + 1].startsWith('--')) return args[i + 1];
-  if (['sweep', 'watch'].includes(k)) return true;
+  if (['sweep', 'watch', 'nut'].includes(k)) return true;
   throw new Error(`${args[i]} needs a value after it`);
 };
 // The arguments that aren't options or an option's value: cad values keyboard/case depth width --json
@@ -561,7 +565,7 @@ async function editVariables(ref) {
   console.log(`set ${r.changed.join(', ')} in ${path.relative(WS, r.file)}`);
 }
 
-// cad add fit|joint|item|loop|pose <project>/<assembly> --key value …: add to an assembly, keeping its layout
+// cad add fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …: add to an assembly, keeping its layout
 async function editAssembly(what, ref) {
   const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
   const pick = (keys) => Object.fromEntries(keys.map((k) => [k, typeof opt(k) === 'string' ? parseValue(opt(k)) : undefined]).filter(([, v]) => v !== undefined));
@@ -572,11 +576,15 @@ async function editAssembly(what, ref) {
   else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...(list('at') ? { at: list('at') } : {}), ...(list('rotate') ? { rotate: list('rotate') } : {}),
     ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
   else if (what === 'loop') entry = text(['a', 'b', 'label']);
+  else if (what === 'fasten') { // --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2 | --holes bracket.body [--nut [hex] --washer --length 12 --torque 0.5 --note …]
+    const names = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => x.trim()).filter(Boolean) : undefined);
+    entry = { ...text(['screw']), through: names('through') ?? [], ...text(['into']), ...(names('at') ? { at: names('at') } : {}), ...text(['holes']), ...(opt('nut') ? { nut: opt('nut') === true ? true : String(opt('nut')) } : {}), ...(opt('washer') ? { washer: true } : {}), ...pick(['length', 'torque']), ...text(['note']) };
+  }
   else if (what === 'pose') {
     const pairs = positional().slice(3);
     if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
     entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
-  } else throw new Error('usage: cad add fit|joint|item|loop|pose <project>/<assembly> --key value …');
+  } else throw new Error('usage: cad add fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …');
   const r = addToAssembly(ref, what, entry);
   if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
   console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);

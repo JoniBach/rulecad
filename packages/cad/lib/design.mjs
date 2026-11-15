@@ -34,7 +34,6 @@ import * as shapes from '@rulecad/shapes';
 import * as flexures from '@rulecad/flexures';
 import * as gears from '@rulecad/gears';
 import * as motors from '@rulecad/motors';
-import { designFixings } from './fixings.mjs';
 import { resolve as resolveWith } from '@rulecad/variables';
 import { engineId, packageVersion, materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
@@ -133,7 +132,8 @@ const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shape
 // (every module of a helper package but its tests: they change nothing a design builds)
 const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
 const feaDir = path.dirname(createRequire(pathToFileURL(path.join(flexuresDir, 'package.json')).href).resolve('@rulecad/fea')); // (flexures' own, wherever npm put it)
-const own = source(import.meta.url) + source('./fixings.mjs') + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(fixingsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
+// (as one digest, so each build's key hashes a line and not a megabyte of source)
+const own = crypto.createHash('sha256').update(source(import.meta.url) + source('./fixings.mjs') + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(fixingsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling')).digest('hex'); // every shapes module, not just its entry
 // A lamina's slow stages (the physics, the flood's probe) are kept apart from the builds, keyed by the library's code
 // and their own inputs, so a build that changes only what comes after them (a strap, a check, a rule's words) has them
 // at once: .cache/stages/. A design in the sandbox can't write them, so the sandbox hands them back and the tool writes them
@@ -251,7 +251,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       throw syntaxAt(located(e, d.js, 'design.run'), d);
     });
     if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
-    const ops = await shapes.ops(booleans(object)), df = designFixings({ ...fixed().context, ops });
+    const ops = await shapes.ops(booleans(object)), df = (await import('./fixings.mjs')).designFixings({ ...fixed().context, ops }); // (loaded when a design is run here: the sandbox's runner has its own)
     const w = watch(values, { shapes, flexures, gears, motors, fixings: df.fixings, ops, ...(pcb ? { pcb } : {}) }, optional);
     read = w.read;
     let made;

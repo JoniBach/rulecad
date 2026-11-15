@@ -137,6 +137,178 @@ export function main (v) {
   } finally { done(); }
 });
 
+// A bracket on a base, each drawn with v.fixings: the base's ends and the bracket's seats are choices, so one pair of objects tries every joint
+function fastened(ws) {
+  fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'), { recursive: true });
+  const size = { width: { value: 40, unit: 'mm', rule: 'Room for two screws' }, depth: { value: 20, unit: 'mm', rule: 'A screw and its walls' }, pitch: { value: 24, unit: 'mm', rule: 'Between the screws' } };
+  object(ws, 'demo/base', { uses: ['x1c'], variables: { ...size, tall: { value: 'x1c.layer * 60', unit: 'mm', rule: 'Whole layers' }, hole_depth: { value: 9, unit: 'mm', rule: 'The thread engaged and room at the tip', tweak: { min: 3, max: 11 } },
+    end: { value: 'pilot', choice: ['pilot', 'insert', 'through', 'pocket'], rule: 'What holds the screw' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const f = v.fixings, block = cuboid({ size: [v.width, v.depth, v.tall], center: [0, 0, v.tall / 2] })
+  const cut = (x) => (v.end === 'pilot' ? [f.hole('M3', { kind: 'pilot', depth: v.hole_depth, at: [x, 0, v.tall] })] : v.end === 'insert' ? [f.hole('M3', { kind: 'insert', at: [x, 0, v.tall] })]
+    : [f.hole('M3', { depth: v.tall, at: [x, 0, v.tall] }), ...(v.end === 'pocket' ? [f.nutPocket('M3', { at: [x, 0, 0], into: '+z' })] : [])])
+  return v.ops.subtract(block, ...[-1, 1].flatMap((s) => cut(s * v.pitch / 2)))
+}
+`);
+  object(ws, 'demo/bracket', { uses: ['x1c'], anchors: { h1: { at: ['-pitch / 2 + shift', 0, 'thick'], axis: [0, 0, 1] }, h2: { at: ['pitch / 2 + shift', 0, 'thick'], axis: [0, 0, 1] }, pivot: { at: [0, 0, 0], axis: [0, 0, 1] } }, variables: { ...size,
+    thick: { value: 'x1c.layer * 25', unit: 'mm', rule: 'Whole layers', tweak: { min: 2, max: 12 } }, shift: { value: 0, unit: 'mm', rule: 'The holes moved along, to try a misfit', tweak: { min: -3, max: 3 } },
+    bore: { value: 0, unit: 'mm', rule: 'A hole typed by hand, to try a wrong size (0: the thread\'s own)', tweak: { min: 0, max: 6 } }, seat: { value: 'hole', choice: ['hole', 'counterbore', 'countersink'], rule: 'How the head sits' } } }, `import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+export function main (v) {
+  const plate = cuboid({ size: [v.width, v.depth, v.thick], center: [0, 0, v.thick / 2] })
+  const cut = (x) => (v.bore ? cylinder({ radius: v.bore / 2, height: v.thick * 2, center: [x, 0, v.thick / 2] })
+    : v.seat === 'hole' ? v.fixings.hole('M3', { depth: v.thick, at: [x, 0, v.thick] }) : v.fixings[v.seat]('M3', { length: v.thick, thickness: v.thick, at: [x, 0, v.thick] }))
+  return v.ops.subtract(plate, ...[-1, 1].map((s) => cut(s * v.pitch / 2 + v.shift)))
+}
+`);
+  fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['base', 'bracket'] }));
+  const file = path.join(ws, 'projects/demo/assemblies/joint.json');
+  // write(change): the assembly with its items' sets and its fasten changed; check(): its findings and exit code
+  const write = ({ base = {}, bracket = {}, fasten = {}, more = {} } = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'Bracket on its base', kind: 'fit',
+    items: [{ id: 'base', object: 'base', set: base }, { id: 'bracket', object: 'bracket', at: [0, 0, 'base.tall'], set: bracket }],
+    fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, note: 'The bracket sits on the base' }],
+    fasten: [{ screw: 'M3 cap', through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'], ...fasten }], ...more }));
+  const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/joint', '--json'], { cwd: ws, encoding: 'utf8' }); let out; try { out = JSON.parse(r.stdout); } catch { assert.fail(`${r.stdout}${r.stderr}`); } return { status: r.status, findings: out.findings, of: (code) => out.findings.filter((x) => x.code === code), fails: out.findings.filter((x) => x.level === 'fail').map((x) => x.code) }; };
+  return { file, write, check };
+}
+
+test('fasten: a bracket screwed to a base passes; moved 1 mm, a 3 mm hole, a short screw and a long one each fail by name, with what would do', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const { file, write, check } = fastened(ws);
+    write();
+    let r = check();
+    assert.equal(r.status, 0); assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), [], 'a bracket fastened to a base by two M3 screws passes');
+    for (const code of ['fasten.holes', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat']) assert.deepEqual(r.of(code).map((x) => x.level), ['pass'], code);
+    assert.match(r.of('fasten.holes')[0].text, /^bracket to base, 2 M3 cap screws: one axis from under the head through bracket into base/);
+    assert.match(r.of('fasten.clearance')[0].text, /bracket's hole measures 3\.5 mm, an M3 clearance hole as drawn \(m3\.clearance 3\.4 mm and x1c\.hole_comp 0\.1 mm\)/);
+    assert.match(r.of('fasten.end')[0].text, /ends in base, in a pilot the screw forms its own thread in: 2\.9 mm as drawn \(x1c\.pilot_m3, measured\), 9 mm deep/);
+    // the length is chosen from the stack as measured: 5 mm of bracket, 5 mm of thread asked in plastic, so M3x10
+    assert.match(r.of('fasten.length')[0].text, /M3x10 cap chosen, the shortest sold that fits: 5 mm under its head and 5 mm into base, 3 mm short of bottoming out/);
+    assert.deepEqual(r.of('fasten.length')[0].values, { length: 10, grip: 5, into: 5 });
+    assert.match(r.of('fasten.engagement')[0].text, /5 mm of thread in pla \(a plastic\), 10 turns: m3\.pilot_depth asks 5 mm/);
+    assert.match(r.of('fasten.seat')[0].text, /a flat seat on bracket, whole out to the head's 5\.5 mm; on pla \(39 MPa\) its 14\.2 mm² takes 55\d N, a tightening of 0\.33 N m: the M3 washer would raise that to 112\d N/);
+    // every finding points at the screw: under its head, and from there to its tip
+    for (const x of r.findings.filter((y) => y.code.startsWith('fasten.'))) { assert.deepEqual(x.at, [-12, 0, 17]); assert.deepEqual(x.between, [[-12, 0, 17], [-12, 0, 7]]); assert.deepEqual(x.refs.screws, ['bracket.h1', 'bracket.h2']); }
+    // the screws are placed as reference parts, checked for overlap with the rest, and on the list and in the order as a fit that fastens is
+    assert.match(r.of('overlap')[0].text, /no parts overlap \(4 object instances\)/);
+    assert.match(cad('list', 'demo/joint'), /2 ×\s+M3x10 cap\s+bracket fastened to base/);
+    assert.match(cad('order', 'demo/joint'), /2\. bracket goes on: bracket fastened to base \(2 × M3x10 cap\)/);
+
+    // moved 1 mm: the holes no longer share an axis, said with the distance
+    write({ bracket: { shift: 1 } }); r = check();
+    assert.equal(r.status, 1); assert.deepEqual(r.fails, ['fasten.holes']);
+    assert.match(r.of('fasten.holes')[0].text, /base's hole is 1 mm off the screw's axis: the holes do not line up/); assert.equal(r.of('fasten.holes')[0].values.distance, 1);
+    // a 3 mm hole in the bracket: no clearance hole, said with what it should be
+    write({ bracket: { bore: 3 } }); r = check();
+    assert.deepEqual(r.fails, ['fasten.clearance']);
+    assert.match(r.of('fasten.clearance')[0].text, /bracket's hole measures 3 mm where an M3 screw passes through: a clearance hole should be 3\.5 mm as drawn \(m3\.clearance 3\.4 mm and x1c\.hole_comp 0\.1 mm\), 3\.3 mm at the closest/);
+    assert.deepEqual(r.of('fasten.clearance')[0].values, { diameter: 3, wanted: 3.5, least: 3.3, most: 3.7 });
+    // an M3x6 through the 5 mm plate into plastic: 1 mm of thread, and the length that would do
+    write({ fasten: { screw: 'M3x6 cap' } }); r = check();
+    assert.deepEqual(r.fails, ['fasten.engagement']);
+    assert.match(r.of('fasten.engagement')[0].text, /M3x6 cap engages 1 mm of thread in pla \(a plastic\), 2 turns, where m3\.pilot_depth asks 5 mm: M3x10 cap would do/);
+    assert.equal(r.of('fasten.length')[0].level, 'pass', 'it reaches');
+    // an M3x20 into a 6 mm blind hole bottoms out
+    write({ base: { hole_depth: 6 }, fasten: { length: 20 } }); r = check();
+    assert.deepEqual(r.fails, ['fasten.length']);
+    assert.match(r.of('fasten.length')[0].text, /M3x20 cap bottoms out: with 5 mm under its head it goes 15 mm into a hole 6 mm deep, where 1 mm is kept at its tip, so it tightens on its tip and not on its head\. M3x10 cap would do/);
+    // one that does not reach, one nobody sells, and a hole too shallow for any: each said
+    write({ bracket: { thick: 8 }, fasten: { length: 8 } }); r = check();
+    assert.match(r.of('fasten.length')[0].text, /M3x8 cap does not reach base: it is 8 mm long and there is 8 mm under its head\. M3x16 cap would do/);
+    write({ fasten: { length: 7 } }); assert.match(check().of('fasten.length')[0].text, /7 mm/);
+    write({ base: { hole_depth: 4 } }); r = check();
+    assert.match(r.of('fasten.length')[0].text, /no length chosen: .*leaves 3 mm of room for the screw .* where 5 mm of thread is asked: no length can do both\. Deepen the far end to 6 mm or more/);
+
+    // bad input is refused by name before anything is measured
+    write({ fasten: { screw: 'M7 cap' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: .*M7.*M3/s);
+    write({ fasten: { into: 'lid' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: no part "lid" \(items: base, bracket\)/);
+    write({ fasten: { holes: 'bracket.body' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: give "at" .* or "holes" .*, one of the two/);
+    write({ fasten: { nut: 'wing' } }); assert.match(cad('check', 'demo/joint'), /fasten 1: "nut" is true \(a hexagon nut\) or hex, square, lock \(got "wing"\)/);
+    write({ fasten: { screw: 'M3x12 cap', length: 10 } }); assert.match(cad('check', 'demo/joint'), /fasten 1: M3x12 cap gives the length, and "length" says 10: give it once/);
+    // and a misspelt key by the schema, with its path
+    write({ fasten: { thru: ['bracket'] } }); assert.match(cad('check', 'demo/joint'), /fasten\[0\]\.thru: not allowed here/);
+
+    // a fasten holds its parts as a fit that fastens does: in a mechanism, a bracket only placed is loose, and fastened it is held, in every pose
+    object(ws, 'demo/knob', { variables: { w: { value: 10, unit: 'mm', rule: 'Width' } }, anchors: { axis: { at: [0, 0, 0], axis: [0, 0, 1] } } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.w], center: [0, 0, v.w / 2] }) }\n");
+    const more = { joints: [{ id: 'spin', type: 'revolute', parent: { item: 'base', at: [0, 40, 0] }, child: 'knob.axis', min: 0, max: 90 }], poses: { shut: { spin: 0 }, open: { spin: 90 } } };
+    const withKnob = (fasten) => { write({ more }); const a = JSON.parse(fs.readFileSync(file, 'utf8')); a.items.push({ id: 'knob', object: 'knob' }); if (!fasten) delete a.fasten; fs.writeFileSync(file, JSON.stringify(a)); return check(); };
+    r = withKnob(false);
+    assert.match(r.of('assembly.loose')[0].text, /bracket is placed, but nothing holds it/);
+    r = withKnob(true);
+    assert.equal(r.of('assembly.loose').length, 0); assert.equal(r.of('assembly.held')[0].level, 'pass');
+    assert.match(r.of('poses')[0].text, /2 poses checked/);
+    assert.deepEqual(r.of('fasten.holes').map((x) => x.level), ['pass'], 'the same in both poses, so said once');
+  } finally { done(); }
+});
+
+test('fasten: seats and ends read from the parts: a counterbore on an insert, a countersunk screw and its nut, a nut\'s seat, a washer, a part\'s own holes; cad add fasten', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const { file, write, check } = fastened(ws);
+    // a cap screw down a counterbore into a heat-set insert: the stack is measured from the counterbore's floor
+    write({ base: { end: 'insert' }, bracket: { seat: 'counterbore', thick: 8 } });
+    let r = check();
+    assert.equal(r.status, 0); assert.deepEqual(r.fails, []);
+    assert.match(r.of('fasten.end')[0].text, /ends in base, in a heat-set insert's hole: 4 mm as drawn \(m3\.insert_hole, a community figure\), 6\.7 mm deep/);
+    assert.match(r.of('fasten.length')[0].text, /M3x8 cap chosen, the shortest sold that fits: 5 mm under its head and 3 mm into base/);
+    assert.match(r.of('fasten.engagement')[0].text, /3 mm of thread in the insert, 5\.7 mm long, 6 turns: fixings\.insert_engagement asks a diameter of thread or the whole insert, 3 mm/);
+    assert.match(r.of('fasten.seat')[0].text, /a flat seat on bracket, 3 mm down its counterbore, whole out to the head's 5\.5 mm/);
+    assert.match(r.of('overlap')[0].text, /no parts overlap \(6 object instances\)/, 'two screws and two inserts with the two parts');
+    const listed = cad('list', 'demo/joint'); assert.match(listed, /2 ×\s+M3x8 cap/); assert.match(listed, /2 ×\s+M3 insert/);
+    // a countersunk screw in a countersink of its angle, held by a nut on the far face
+    write({ base: { end: 'through' }, bracket: { seat: 'countersink', thick: 8 }, fasten: { screw: 'M3 countersunk', nut: true } });
+    r = check();
+    assert.deepEqual(r.fails, []);
+    assert.match(r.of('fasten.seat')[0].text, /the countersunk head sits in a (89\.\d|90)° countersink in bracket/); assert.ok(Math.abs(r.of('fasten.seat')[0].values.angle - 90) < 1);
+    assert.match(r.of('fasten.end')[0].text, /ends in an M3 hex nut on the far face of base, past a 3\.5 mm clearance hole/);
+    assert.match(r.of('fasten.length')[0].text, /M3x25 countersunk chosen/); // (8 + 12 mm of parts and a 2.4 mm nut: 20 is short, 25 the next sold)
+    assert.match(r.of('fasten.engagement')[0].text, /2\.4 mm of thread in its M3 hex nut, 2\.4 mm high/);
+    // with no nut given, nothing holds a screw in a clearance hole; and a cap head has no flat seat in a countersink
+    write({ base: { end: 'through' }, bracket: { seat: 'countersink', thick: 8 }, fasten: { screw: 'M3 cap' } });
+    r = check();
+    assert.deepEqual(r.fails.sort(), ['fasten.end', 'fasten.seat']);
+    assert.match(r.of('fasten.end')[0].text, /nothing holds the screw in base: its hole measures 3\.5 mm, a clearance hole\. The far end should be a pilot the screw forms its own thread in \(2\.9 mm\), a hole to tap \(2\.6 mm\), a heat-set insert's hole \(4 mm\), a nut's seat on a clearance hole, or a clearance hole with "nut"/);
+    assert.match(r.of('fasten.seat')[0].text, /the head has no flat seat on bracket: the face under it is not square to the screw \(a cone\)/);
+    // a countersunk screw on a square-edged hole stands proud on a line
+    write({ base: { end: 'through' }, fasten: { screw: 'M3 countersunk', nut: true } });
+    assert.match(check().of('fasten.seat')[0].text, /a countersunk head sits in a 90° countersink, and bracket's hole has a square edge: the head stands 1\.\d+ mm proud/);
+    // a nut's seat drawn under the base is found, and the nut sits in it, turned to its flats; the screws' places are the bracket's own holes
+    write({ base: { end: 'pocket' }, fasten: { at: undefined, holes: 'bracket.body' } });
+    r = check();
+    assert.deepEqual(r.fails, []);
+    assert.match(r.of('fasten.end')[0].text, /ends in an M3 hex nut in its seat in base, 5\.6 mm across the flats for the nut's 5\.5 mm, past a 3\.5 mm clearance hole/);
+    assert.match(r.of('overlap')[0].text, /no parts overlap \(6 object instances\)/, 'the nuts lie in their seats, corners to corners');
+    assert.deepEqual(r.of('fasten.holes')[0].refs.screws, ['hole at -12, 0, 2.5', 'hole at 12, 0, 2.5']);
+    assert.deepEqual(r.of('fasten.holes')[0].refs.places, [[-12, 0, 17], [12, 0, 17]]);
+    // a tightening torque is held against what the head sits on, and the washer that brings it within is named; with it, it passes
+    write({ fasten: { torque: 0.5 } }); r = check();
+    assert.deepEqual(r.fails, ['fasten.seat']);
+    assert.match(r.of('fasten.seat')[0].text, /at 0\.5 N m the screw clamps with 833\.3 N: 5\d(\.\d)? MPa under the head on pla, whose strength is 39 MPa\. The M3 washer, 7 mm across, brings it to 2\d(\.\d)? MPa, within: give "washer": true/);
+    write({ fasten: { torque: 0.5, washer: true } }); r = check();
+    assert.deepEqual(r.fails, []);
+    assert.match(r.of('fasten.seat')[0].text, /whole out to the washer's 7 mm; at 0\.5 N m the screw clamps with 833\.3 N, 2\d(\.\d)? MPa under the washer on pla/);
+    assert.match(r.of('fasten.length')[0].text, /M3x12 cap chosen, the shortest sold that fits: 5\.5 mm under its head \(its washer with it\)/);
+    // cad add fasten writes the relation, and refuses one that names no item of the assembly or no place for its screws
+    const a = JSON.parse(fs.readFileSync(file, 'utf8')); delete a.fasten; fs.writeFileSync(file, JSON.stringify(a, null, 2));
+    assert.match(cad('add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'lid', '--into', 'base', '--holes', 'bracket.body'), /fasten: no item "lid" in demo\/joint \(items: base, bracket\)/);
+    assert.match(cad('add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'bracket', '--into', 'base'), /a fasten needs where its screws go: --at .* or --holes/);
+    assert.match(cad('add', 'fasten', 'demo/joint', '--screw', 'M3 cap', '--through', 'bracket', '--into', 'base', '--at', 'bracket.h1,bracket.h2', '--washer', '--note', 'Bracket screwed down'), /added a fasten to/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fasten, [{ screw: 'M3 cap', through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'], washer: true, note: 'Bracket screwed down' }]);
+    assert.match(cad('check', 'demo/joint'), /Bracket screwed down, 2 M3 cap screws: M3x12 cap chosen/);
+
+    // the measure itself: a plate with a counterbored hole, read along the hole's axis and 0.4 mm off it
+    const { profile } = await import('./lib/fasten.mjs'), jscad = (await import('@jscad/modeling')).default, { polygons } = await import('./lib/design.mjs');
+    const { cuboid, cylinder } = jscad.primitives, plate = jscad.booleans.subtract(cuboid({ size: [20, 20, 8], center: [0, 0, 4] }), cylinder({ radius: 1.75, height: 20, segments: 48 }), cylinder({ radius: 3, height: 3, center: [0, 0, 6.5], segments: 48 }));
+    const tris = polygons(plate, { triangulate: true }), segs = profile(tris, [0, 0, 10], [0, 0, -1], 5).segs.filter((g) => g.hole);
+    assert.deepEqual(segs.map((g) => [+g.z0.toFixed(3), +g.z1.toFixed(3), g.a.loop.shape, +g.a.loop.d.toFixed(3), +g.a.loop.offset.toFixed(3)]), [[2, 5, 'round', 6, 0], [5, 10, 'round', 3.5, 0]]);
+    const off = profile(tris, [0.4, 0, 10], [0, 0, -1], 5).segs.filter((g) => g.hole).at(-1);
+    assert.equal(+off.a.loop.offset.toFixed(3), 0.4); assert.equal(+off.a.loop.d.toFixed(3), 3.5); assert.ok(Math.abs(off.a.free - 1.35) < 0.01, 'the wall is that much nearer');
+    assert.ok(profile(tris, [5, 5, 10], [0, 0, -1], 2).segs.every((g) => g.solid && !g.hole), 'through the plate itself: solid all the way');
+  } finally { done(); }
+});
+
 test('your own printer, and no extras configured', () => {
   const { ws, cad, done } = workspace({ printer: 'tiny' });
   try {
