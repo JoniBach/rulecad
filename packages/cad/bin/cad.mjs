@@ -53,7 +53,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad rules draft profile|slot|slot_nut <name>   every field a beam's profile, a slot family or a slot nut has, to fill from its sheet
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
-  cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
+  cad add fit|joint|item|beam|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets
@@ -129,9 +129,9 @@ const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-s
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
-  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate']; // cad add
+  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', 'length']; // cad add
 // What a command takes, where that isn't <project>/<object>
-const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
+const USAGE = { add: 'fit|joint|item|beam|loop|pose <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
   diff: '<project>/<object> <from> [<to>]', compare: '<project>/<object> <a> <b>', match: '<project>/<object> <model.stl|model.3mf>', clone: '<board.kicad_pcb | GitHub link> <name>' };
 
@@ -591,15 +591,20 @@ async function editAssembly(what, ref) {
   let entry;
   if (what === 'fit') entry = { ...text(['a', 'b']), ...pick(['min', 'max']), ...(list('poses') ? { poses: list('poses').map(String) } : {}), ...text(['note', 'label']) };
   else if (what === 'joint') entry = { ...text(['id', 'type', 'parent', 'child', 'label', 'follow']), ...pick(['min', 'max', 'value', 'ratio']) };
-  else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...(list('at') ? { at: list('at') } : {}), ...(list('rotate') ? { rotate: list('rotate') } : {}),
+  // (an item's at is a point, 1,2,3, or an address on a beam: --at x1.top@50%)
+  const at = () => (typeof opt('at') !== 'string' ? {} : /^[a-z][\w-]*\./i.test(opt('at')) ? { at: String(opt('at')) } : { at: list('at') });
+  if (what === 'beam') {
+    if (typeof opt('profile') !== 'string') throw new Error('usage: cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0 [--roll 90] [--length 300] [--material al6063-t5], or --length 300 --at 0,0,0 --rotate 0,90,0');
+    entry = { ...text(['id']), beam: { profile: String(opt('profile')), ...pick(['length']), ...text(['material']) }, ...(list('from') ? { from: list('from') } : {}), ...(list('to') ? { to: list('to') } : {}), ...pick(['roll']), ...at(), ...(list('rotate') ? { rotate: list('rotate') } : {}) };
+  } else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...at(), ...(list('rotate') ? { rotate: list('rotate') } : {}),
     ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
   else if (what === 'loop') entry = text(['a', 'b', 'label']);
   else if (what === 'pose') {
     const pairs = positional().slice(3);
     if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
     entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
-  } else throw new Error('usage: cad add fit|joint|item|loop|pose <project>/<assembly> --key value …');
-  const r = addToAssembly(ref, what, entry);
+  } else throw new Error('usage: cad add fit|joint|item|beam|loop|pose <project>/<assembly> --key value …');
+  const r = addToAssembly(ref, what === 'beam' ? 'item' : what, entry);
   if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
   console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);
 }

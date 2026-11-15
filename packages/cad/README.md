@@ -158,6 +158,10 @@ own copy anywhere and name it in `viewUrl`.
   strain at a travel, and `printable(shape, printer, material, model)` for how it prints. Drawn flat: bending along y,
   width up z, so a flexure bends within its layers.
 - `v.motors`: motors (`@rulecad/motors`): `motorModel`, `mount` and `bore` for the holes a part needs round a motor and its shaft, `performance` for its torque and speed. In an assembly a motor is an item (see Motors).
+- `v.frames`: beams and profiles (`@rulecad/frames`): `profileModel` for a profile's figures, slots and faces
+  (`v.frames.profileModel('2020-misumi-hfs5').slots['slot-6-misumi'].opening`, to draw a tab that drops into a slot),
+  `slotModel`, `beamModel`, `beam` and `outline`. A profile measured into this workspace's `rules/` (`cad measure
+  --profile`) is read before the kit's, with its outline. In an assembly a beam is an item (see Beams).
 - `v.gears`: gears (`@rulecad/gears`): `spur`, `rack` and `internal` as shapes, from a module and teeth, each with its
   model (`gearModel`, `rackModel`, `internalModel`) and `printable(model, printer, width)`. Drawn flat: the axis up z,
   the first tooth on +x, the face on the bed. Two gears in an assembly mesh with a joint's `mesh` (see Joints).
@@ -443,6 +447,46 @@ An item can be a motor instead of a printed object: `{ "id": "drive", "motor": {
 - A `"shaft": true` fit (or `"press"`) between a motor and what it drives reads the bore from the part as drawn: that it's on the shaft (`shaft.seat`), that its flat is there (`shaft.flat`; the shaft turns to meet it, so where the flat faces doesn't matter), how much of the flat it grips (`shaft.grip`), and, pressed on, the hoop stress in the hub (`shaft.hoop`).
 - `cad preview --check` of an assembly with a motor writes `<assembly>-check.png`: the same six views, with a label at each joint the motor's torque passes through (what reaches it, and at the loaded joint the margin and whether it holds unpowered). The rest view never carries them.
 - `cad preview` of an assembly with a motor draws each one at work beside the picture, as SVG: `<assembly>-<motor>-curve.svg`, its torque against speed at the output with the load and the working speed marked, and `<assembly>-<motor>-train.svg`, the torque from its shaft through each stage to the joint with the load, against what the load needs there, and whether it holds with the power on and off. The numbers are the check's.
+
+### Beams
+
+An item can be a beam, a length of an aluminium extrusion, a tube or a bar from `@rulecad/frames`:
+
+```json
+{ "id": "x1", "beam": { "profile": "2020-misumi-hfs5", "length": 300 }, "from": [0, 0, 0], "to": [300, 0, 0], "roll": 0 }
+```
+
+- `"profile"` names the profile (`2020-misumi-hfs5`, `profile-4040-item-8`, or a set in this workspace's `rules/`).
+  `"length"` is mm from end `a` to end `b`, a number or an expression (`"x1.length"`). Placed by its ends, the length
+  may be left out: it is the distance from `from` to `to`, and a length that disagrees with them is refused with both.
+  `"material"` names a material set in place of the profile's alloy. `"printed": true` is for printed beams, a later
+  release: it is refused by name for now.
+- Placed by its ends, end `a` is at `from` and end `b` at `to`; at roll 0 its top faces up (+z), or +y when it stands
+  upright, and `"roll"` turns it about its own axis, in degrees. Or place it with `at` and `rotate` as any item, in its
+  own frame: end `a` at the origin, the beam up +z, its top +y. The face names and a picture are in the
+  `@rulecad/frames` README ("Face names in an assembly").
+- A beam is bought: drawn faint, never on a plate, on `cad list` by profile and length (`2 × profile-2020-misumi-hfs5
+  x 300 mm  a beam  150 g each`, weighed by the maker's mass per metre where the sheet gives one), and in the overlap
+  check by its envelope, a plain box. `cad check` says each beam's mass beside the sheet's, and warns of a length
+  longer than the profile is sold in. Its numbers are values: `x1.length`, `x1.width`, `x1.height`, `x1.mass`.
+- `cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0 [--roll 90]` adds one.
+
+Every beam has addresses, taken wherever an anchor is: an item's `at`, a joint's `parent` or `child`, a `loop`, a
+fit's `a` or `b`, a fit's `access`, and a load's `at`.
+
+| Address | Where |
+|---|---|
+| `x1.a`, `x1.b` | The middle of each end, its z out of the end |
+| `x1.a.1`, `x1.b.2` | A bore in an end |
+| `x1.top`, `x1.top.2` | A face's first and second place (a slot, or the face where it is closed), at the middle of the beam |
+| `x1.top@120`, `x1.top@-20`, `x1.top@50%` | 120 mm from end `a`, 20 mm from end `b`, half way along |
+| `x1.top.2@120` | The second slot of a face that has more than one |
+
+A face's anchor has its z out of the face and its x along the beam toward `b`. An item placed at an address
+(`{ "id": "plate", "object": "plate", "at": "x1.top@50%" }`) puts its own origin there, its z out of the face and its
+x along the beam, turned by its `rotate` in that frame; it moves with the beam. A distance past either end is refused
+with the beam's length: `"top@320" is past the end of profile-2020-misumi-hfs5 x 300: it is 300 mm long`. In a fit, an
+address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm by default).
 
 ### Building it
 

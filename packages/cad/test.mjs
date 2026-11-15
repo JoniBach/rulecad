@@ -1926,3 +1926,88 @@ test('a link for a machine working in a volume: flat along any axis, or a single
     }
   } finally { done(); }
 });
+
+test('beams in an assembly: four placed by their ends make a rectangle, a plate at x1.top@50% sits on the slot\'s centre line, and an address past the end is refused with the length', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/frame.json');
+    fs.mkdirSync(at('objects'), { recursive: true }); fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: ['plate'] }));
+    fs.writeFileSync(at('objects/plate.json'), JSON.stringify({ name: 'plate', title: 'Plate', version: '0.1.0', uses: ['x1c'], anchors: { centre: { at: [0, 0, 0], axis: [0, 0, 1] } }, variables: { side: { value: 40, unit: 'mm', rule: 'Side' }, thick: { value: 3, unit: 'mm', rule: 'Thick' } } }));
+    // v.frames in a design: the tab is the slot's opening, read from the profile's slot family (through the sandbox)
+    fs.writeFileSync(at('objects/plate.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) {\n  const p = v.frames.profileModel('2020-misumi-hfs5'), slot = p.slots[p.faces.top[0].slot]\n  return v.ops.union(cuboid({ size: [v.side, v.side, v.thick], center: [0, 0, v.thick / 2] }), cuboid({ size: [v.side / 2, slot.opening, v.thick], center: [0, 0, -v.thick / 2] }))\n}\n");
+    const B = (id, from, to, beam = {}) => ({ id, beam: { profile: '2020-misumi-hfs5', ...beam }, from, to });
+    const a = { title: 'Frame', kind: 'fit', items: [B('x1', [0, 0, 0], [300, 0, 0]), B('x2', [0, 200, 0], [300, 200, 0], { length: 'x1.length' }),
+      B('y1', [-10, -10, 0], [-10, 210, 0]), B('y2', [310, -10, 0], [310, 210, 0]), { id: 'plate', object: 'plate', at: 'x1.top@50%' }],
+      fits: [{ a: 'plate', b: 'x1', min: -1000, note: 'the tab in the slot' }, { a: 'plate', b: 'x1.top@50%', min: -1000, max: 0.01, note: 'on the face' }], loops: [{ a: 'plate.centre', b: 'x1.top@50%', label: 'on the centre line' }, { a: 'plate.centre', b: 'x1.top@-20', label: 'not at b' }] };
+    const write = () => fs.writeFileSync(file, JSON.stringify(a));
+    write();
+    // where every part is: each beam's box, and the plate's
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { bounds } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../../printcheck/printcheck.mjs')).href)});
+      const s = await buildAssembly('frame/frame'), r = (v) => v.map((x) => Math.round(x * 100) / 100);
+      console.log(JSON.stringify({ parts: Object.fromEntries(s.parts.map((p) => { const b = bounds(p.triangles); return [p.name, [r(b.lo), r(b.hi), p.role]]; })), findings: checkAssembly(s).map(({ level, code, text }) => ({ level, code, text })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r = probe();
+    // a rectangle 340 by 220 of 20 mm beams: the long sides 300 between the short ones, all on z = 0
+    assert.deepEqual(r.parts['x1.body'], [[0, -10, -10], [300, 10, 10], 'reference']);
+    assert.deepEqual(r.parts['x2.body'], [[0, 190, -10], [300, 210, 10], 'reference']);
+    assert.deepEqual(r.parts['y1.body'], [[-20, -10, -10], [0, 210, 10], 'reference']);
+    assert.deepEqual(r.parts['y2.body'], [[300, -10, -10], [320, 210, 10], 'reference']);
+    // the plate on the top face, centred on the slot's centre line (y = 0) half way along, its tab down in the slot
+    assert.deepEqual(r.parts['plate.body'], [[130, -20, 7], [170, 20, 13], 'part']);
+    const by = (code) => r.findings.filter((x) => x.code === code);
+    assert.equal(by('overlap')[0].level, 'pass', JSON.stringify(by('overlap'))); // beams meet face to face; the tab is allowed in by its fit
+    assert.match(by('fit').find((x) => /on the face/.test(x.text)).text, /on the face: press fit/); // (the faces near the address: the tab is in the beam's envelope)
+    assert.deepEqual(by('loop').map((x) => [x.level, x.text]), [['pass', 'on the centre line: closed (0 mm, axes 0° apart)'], ['fail', 'not at b: apart (130 mm, axes 0° apart)']]);
+    assert.match(by('beam.mass')[0].text, /^x1: profile-2020-misumi-hfs5 x 300: 147\.82 g/);
+    assert.equal(by('bought.item').length, 4);
+    // on the list by profile and length, weighed by the sheet's 0.5 kg/m
+    const list = cad('list', 'frame/frame');
+    assert.match(list, /2 ×\s+profile-2020-misumi-hfs5 x 300 mm\s+a beam\s+150 g each\s+x1, x2/);
+    assert.match(list, /2 ×\s+profile-2020-misumi-hfs5 x 220 mm\s+a beam\s+110 g each\s+y1, y2/);
+    // turned about its axis: an upright 2040 at roll 90 has its top toward -x, and the plate goes with it
+    a.items.splice(0, 4, { id: 'x1', beam: { profile: '2040-misumi-hfs5' }, from: [0, 0, 0], to: [0, 0, 100], roll: 90 }); a.fits = []; a.loops = []; write();
+    r = probe();
+    assert.deepEqual(r.parts['x1.body'], [[-10, -20, 0], [10, 20, 100], 'reference']);
+    assert.deepEqual(r.parts['plate.body'], [[-13, -30, 30], [-7, 10, 70], 'part']);
+    // refused by name: past the end (with the length), a length that disagrees with the ends, a printed beam
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); fs.writeFileSync(file, JSON.stringify(b)); assert.match(cad('check', 'frame/frame'), pattern); };
+    refused((b) => { b.items[1].at = 'x1.top@120'; }, /item plate: at: x1: "top@120" is past the end of profile-2040-misumi-hfs5 x 100: it is 100 mm long/);
+    refused((b) => { b.items[1].at = 'x1.top@-101'; }, /"top@-101" is past the end of .* it is 100 mm long/);
+    refused((b) => { b.loops = [{ a: 'plate.centre', b: 'x1.side@20' }]; }, /x1: profile-2040-misumi-hfs5 x 100 has no "side@20": it has a, b, a\.1/);
+    refused((b) => { b.items[0].beam.length = 120; }, /item x1: its length is 120 mm, and its ends are 100 mm apart/);
+    refused((b) => { b.items[0].beam.printed = true; }, /item x1: a printed beam \("printed": true\) is a later release/);
+    refused((b) => { b.items[0].beam.colour = 'red'; }, /item x1: a beam has no "colour": it takes profile, length, printed, material/);
+    refused((b) => { delete b.items[0].from; delete b.items[0].to; delete b.items[0].roll; }, /item x1: give the beam a length, or place it by its ends/);
+    // cad add beam: one placed by its ends, kept to the schema
+    write();
+    assert.match(cad('add', 'beam', 'frame/frame', '--id', 'z1', '--profile', '2020-misumi-hfs5', '--from', '30,0,0', '--to', '30,0,100', '--roll', '90'), /added a beam/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).items.at(-1), { id: 'z1', beam: { profile: '2020-misumi-hfs5' }, from: [30, 0, 0], to: [30, 0, 100], roll: 90 });
+    assert.match(cad('add', 'item', 'frame/frame', '--id', 'p2', '--object', 'plate', '--at', 'z1.front@50%'), /added an item/);
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).items.at(-1).at, 'z1.front@50%');
+  } finally { done(); }
+});
+
+test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a beam item takes one by name', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const { framesContext, designFrames } = await import(pathToFileURL(path.join(path.dirname(BIN), '../lib/frames.mjs')).href);
+    const kit = JSON.parse(fs.readFileSync(path.join(ROOT_MODULES, '@rulecad/rules/profile-2020-misumi-hfs5.json'), 'utf8'));
+    const own = { ...kit, name: 'profile-2020-mine', rules: { ...kit.rules, width: { ...kit.rules.width, value: 21 }, height: { ...kit.rules.height, value: 21 } } };
+    fs.mkdirSync(path.join(ws, 'rules'), { recursive: true }); fs.writeFileSync(path.join(ws, 'rules/profile-2020-mine.json'), JSON.stringify(own));
+    const context = framesContext(path.join(ws, 'rules'));
+    assert.deepEqual(Object.keys(context.sets), ['profile-2020-mine']);
+    const v = designFrames(context);
+    assert.equal(v.profileModel('2020-mine').width, 21);
+    assert.equal(v.profileModel('2020-misumi-hfs5').width, 20); // the kit's, as before
+    assert.equal(v.beamModel('2020-mine', { length: 100 }).profile.width, 21);
+    assert.throws(() => designFrames({}).profileModel('2020-mine'), /no profile "2020-mine"/);
+    const before = context.hash; fs.writeFileSync(path.join(ws, 'rules/profile-2020-mine.json'), JSON.stringify({ ...own, title: 'changed' }));
+    assert.notEqual(framesContext(path.join(ws, 'rules')).hash, before); // (a build that reads it is made again)
+    fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/frame/assemblies/one.json'), JSON.stringify({ title: 'One', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-mine' }, from: [0, 0, 0], to: [0, 250, 0] }] }));
+    assert.match(cad('list', 'frame/one'), /1 ×\s+profile-2020-mine x 250 mm\s+a beam/);
+  } finally { done(); }
+});

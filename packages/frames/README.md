@@ -242,6 +242,21 @@ A section with cells missing (OpenBuilds' C-Beam) has places inside its C on the
 the outside places of the same column or row, and `index` says which column or row each is in. Place by `origin` and
 `axis`, never by the number alone.
 
+### Face names in an assembly
+
+![A 2040's section seen from end b with every place named, and the beam from its front with top@120, top@50% and top@-20 marked](https://raw.githubusercontent.com/JoniBach/rulecad/main/packages/frames/faces.svg)
+
+The face names belong to the beam, so they turn with it. In a cad assembly a beam placed by its ends (`"from"`,
+`"to"`) has end `a` at `from` and end `b` at `to`. At roll 0 its top faces up (+z), or +y when the beam stands upright
+(within 0.1° of z). Looking along the beam from `a` to `b` with its top up, its front is on the right and its back on
+the left: a beam run along +x has its front toward -y, facing a viewer in front of it. `"roll"` turns the beam about
+the line from `a` to `b` by that many degrees, right-handed, and the faces turn with it: at roll 90 the top of a beam
+run along +x faces -y.
+
+In an assembly an address names the item first: `x1.a`, `x1.a.1`, `x1.top@120`, `x1.top.2@-20`, `x1.top@50%`. A place's
+anchor has its z out of the face and its x along the beam toward `b`, so a part placed at an address sits on the face
+with its own x along the beam. The cad README says where addresses are taken.
+
 ### The solid
 
 `beam(m, { display })` takes a beam's model, or a profile with the options `beamModel` takes. `display: 'link'` is a

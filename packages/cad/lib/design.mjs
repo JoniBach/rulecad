@@ -27,13 +27,14 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import crypto from 'node:crypto';
 import { resolve, loadRuleSet } from './rules.mjs';
-import { WS, paths, printerOf } from './workspace.mjs';
+import { WS, paths, printerOf, RULE_DIRS } from './workspace.mjs';
 import { readLayout, hasLayout, keys, width, depth } from './layout.mjs';
 import { optimised, forDesign } from './optimise.mjs';
 import * as shapes from '@rulecad/shapes';
 import * as flexures from '@rulecad/flexures';
 import * as gears from '@rulecad/gears';
 import * as motors from '@rulecad/motors';
+import { designFrames, framesContext } from './frames.mjs';
 import { engineId, packageVersion, materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 
@@ -127,11 +128,11 @@ const CACHE = paths.cache('builds'), CACHE_VERSION = 3;
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
-const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors')));
+const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors'))), framesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/frames')));
 // (every module of a helper package but its tests: they change nothing a design builds)
 const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
 const feaDir = path.dirname(createRequire(pathToFileURL(path.join(flexuresDir, 'package.json')).href).resolve('@rulecad/fea')); // (flexures' own, wherever npm put it)
-const own = source(import.meta.url) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
+const own = source(import.meta.url) + source('./frames.mjs') + helperSources(framesDir) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
 // A lamina's slow stages (the physics, the flood's probe) are kept apart from the builds, keyed by the library's code
 // and their own inputs, so a build that changes only what comes after them (a strap, a check, a rule's words) has them
 // at once: .cache/stages/. A design in the sandbox can't write them, so the sandbox hands them back and the tool writes them
@@ -194,7 +195,9 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   // label, a note or the version change nothing it builds, so they aren't in the key
   const ruleText = [...(object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u))), JSON.stringify(refs.extra)];
   const reads = { values, parts: object.parts, engine: object.engine, mirror: object.mirror };
-  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), reads, ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
+  // (v.frames reads the workspace's own profile sets: a build is made from them too, lib/frames.mjs)
+  const framed = framesContext(RULE_DIRS[0]);
+  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, framed.hash, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), reads, ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
   if (!process.env.CAD_NO_CACHE && host.exists(hit)) {
     const c = JSON.parse(host.readText(hit));
@@ -211,7 +214,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   let parts, board = null, read, mechanism = null;
   const optional = Object.keys(object.mirror || {}); // inputs only the on-screen copy has: main may ask for them when they aren't there
   const stages = stageStore();
-  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages).catch((e) => { throw syntaxAt(e, d); }));
+  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages, { frames: framed }).catch((e) => { throw syntaxAt(e, d); }));
   else {
     flexures.laminaCache(stages);
     const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
@@ -221,7 +224,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       throw syntaxAt(located(e, d.js, 'design.run'), d);
     });
     if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
-    const w = watch(values, { shapes, flexures, gears, motors, ops: await shapes.ops(booleans(object)), ...(pcb ? { pcb } : {}) }, optional);
+    const w = watch(values, { shapes, flexures, gears, motors, frames: designFrames(framed), ops: await shapes.ops(booleans(object)), ...(pcb ? { pcb } : {}) }, optional);
     read = w.read;
     let made;
     try { ({ shapes: made, mechanism } = unpack(await mod.main(w.v))); } catch (e) { throw Object.assign(located(e, d.js, 'design.run'), { line: lineOf(e, pathToFileURL(d.js).href) || undefined }); }

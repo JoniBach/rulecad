@@ -46,10 +46,13 @@
         "bought": { "type": "string", "description": "A part from a rule set (\"608\", \"drv8825\"): bought, not printed; drawn faint from its figures, with anchors from what it is" },
         "variant": { "type": "string" },
         "set": { "type": "object" },
-        "at": { "$ref": "#/$defs/vec3" },
+        "beam": { "type": "object", "required": ["profile"], "additionalProperties": false, "description": "A length of a profile from @rulecad/frames: bought and cut to length, faint in previews; placed by its ends (from, to, roll) or by at and rotate", "properties": { "profile": { "type": "string", "description": "A profile's name: 2020-misumi-hfs5, profile-4040-item-8, or a set in this workspace's rules/" }, "length": { "$ref": "#/$defs/expr", "description": "mm from end a to end b; may be left out when from and to are both given" }, "printed": { "type": "boolean", "description": "A printed beam (a later release): a bought one is false, the default" }, "material": { "type": "string", "description": "A material set in place of the profile's alloy: al6063-t5, or a plastic" } } },
+        "at": { "anyOf": [{ "$ref": "#/$defs/vec3" }, { "$ref": "#/$defs/address" }] },
         "rotate": { "$ref": "#/$defs/vec3" },
+        "to": { "$ref": "#/$defs/vec3", "description": "A beam's end b, with from its end a" },
+        "roll": { "$ref": "#/$defs/expr", "description": "Degrees a beam placed by its ends turns about its own axis, a toward b; at 0 its top faces up (+z), or +y when it stands upright" },
         "place": {},
-        "from": {},
+        "from": { "description": "For a beam: its end a, [x, y, z]. For an object: inputs worked out from items built before it, { input: expression }" },
         "repeat": {
           "type": "object",
           "additionalProperties": false,
@@ -94,6 +97,7 @@
         "within": { "$ref": "#/$defs/expr", "description": "With an anchor name (item@anchor): only faces this close to it (mm, default 10)" }
       }
     },
+    "address": { "type": "string", "pattern": "^[a-z][\\w-]*(\\.[\\w-]+)+(@-?\\d+(\\.\\d+)?%?)?$", "description": "An anchor by name, <item>.<anchor>; on a beam an end (x1.a, x1.b), an end bore (x1.a.1), or a face with a distance from end a (x1.top@120), from end b (x1.top@-20) or a share of the length (x1.top@50%), the second slot of a face x1.top.2@120" },
     "anchorRef": {
       "anyOf": [
         { "type": "string", "description": "item.anchor" },
