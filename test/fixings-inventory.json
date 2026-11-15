@@ -1,0 +1,77 @@
+{
+  "_doc": "Screw dimensions typed by hand, by place: scripts/fixings-inventory.mjs counts them and test/fixings-inventory.test.mjs fails if a count rises. Each fixings migration step lowers them: node scripts/fixings-inventory.mjs --record",
+  "places": {
+    "examples/bench/projects/arm": {
+      "named": 26,
+      "reads": 9,
+      "typed": 2,
+      "table": 0
+    },
+    "examples/bench/projects/bench": {
+      "named": 12,
+      "reads": 10,
+      "typed": 0,
+      "table": 0
+    },
+    "examples/bench/projects/benchmarks": {
+      "named": 17,
+      "reads": 0,
+      "typed": 1,
+      "table": 0
+    },
+    "examples/bench/projects/leg": {
+      "named": 21,
+      "reads": 8,
+      "typed": 0,
+      "table": 0
+    },
+    "examples/bench/projects/showcase": {
+      "named": 0,
+      "reads": 0,
+      "typed": 1,
+      "table": 0
+    },
+    "examples/thin-picro/projects/thin-picro": {
+      "named": 2,
+      "reads": 0,
+      "typed": 0,
+      "table": 0
+    },
+    "packages/cad/EXAMPLES.md": {
+      "named": 66,
+      "reads": 17,
+      "typed": 6,
+      "table": 0
+    },
+    "packages/cad/TUTORIAL.md": {
+      "named": 2,
+      "reads": 0,
+      "typed": 0,
+      "table": 0
+    },
+    "packages/create-rulecad/machines/arm/projects/arm": {
+      "named": 21,
+      "reads": 9,
+      "typed": 0,
+      "table": 0
+    },
+    "packages/create-rulecad/machines/leg/projects/leg": {
+      "named": 17,
+      "reads": 8,
+      "typed": 0,
+      "table": 0
+    },
+    "packages/motors": {
+      "named": 0,
+      "reads": 0,
+      "typed": 0,
+      "table": 4
+    }
+  },
+  "total": {
+    "named": 184,
+    "reads": 61,
+    "typed": 10,
+    "table": 4
+  }
+}

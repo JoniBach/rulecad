@@ -1,0 +1,41 @@
+// The dimension diff (scripts/dimension-diff.mjs): every example object compared between two commits. These tests
+// build nothing: they hold how an object is known (so one made from the same files is never rebuilt) and what a
+// comparison reports.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { treeOf, objectsOf, compare } from '../scripts/dimension-diff.mjs';
+
+test('the diff between a commit and itself is empty, and builds nothing', () => {
+  const objects = objectsOf(treeOf('HEAD'));
+  assert.ok(objects.length > 100, `every example object is found (${objects.length})`);
+  for (const ws of ['examples/bench', 'examples/thin-picro', 'packages/create-rulecad/template', 'packages/create-rulecad/machines/arm', 'packages/create-rulecad/machines/leg']) assert.ok(objects.some((o) => o.ws === ws), `${ws}'s objects are in it`);
+  const r = compare({ objects, measures: new Map() }, { objects: objectsOf(treeOf('HEAD')), measures: new Map() });
+  assert.deepEqual(r.rows, []); assert.equal(r.unchanged, objects.length);
+});
+
+test('an object is known by what it is built from: its project, its workspace\'s rules and the kit\'s code, not tests or documents', () => {
+  const tree = treeOf('HEAD'), key = (t) => new Map(objectsOf(t).map((o) => [o.id, o.key])), was = key(tree);
+  const edit = (f) => { const t = new Map(tree); assert.ok(t.has(f), f); t.set(f, '0'.repeat(40)); return key(t); };
+  const moved = (now) => [...was].filter(([id, k]) => now.get(id) !== k).map(([id]) => id);
+  const arm = moved(edit('examples/bench/projects/arm/objects/base.json'));
+  assert.ok(arm.length > 1 && arm.every((id) => id.startsWith('examples/bench/arm/')), 'a change in a project moves its objects, and only those');
+  assert.equal(moved(edit('examples/bench/rules/m3.json')).every((id) => id.startsWith('examples/bench/')), true, 'a workspace\'s rules move its own objects');
+  assert.equal(moved(edit('packages/rules/m3.json')).length, was.size, 'the kit\'s rules move every object');
+  assert.equal(moved(edit('packages/shapes/shapes.mjs')).length, was.size, 'the kit\'s code moves every object');
+  assert.deepEqual(moved(edit('packages/shapes/test.mjs')), [], 'a test moves nothing');
+  assert.deepEqual(moved(edit('packages/cad/EXAMPLES.md')), [], 'a document moves nothing');
+});
+
+test('a comparison names each hole, volume, size and v.fixings figure that moved, and a build that fails', () => {
+  const objects = (k) => [{ id: 'w/p/a', key: `a${k}` }, { id: 'w/p/b', key: `b${k}` }, { id: 'w/p/c', key: `c${k}` }, { id: 'w/p/d', key: 'same' }];
+  const m = (hole, volume, size, fixings) => ({ values: { hole, wall: 2 }, parts: { body: { volume, size } }, ...(fixings ? { fixings } : {}) });
+  const a = { objects: objects(1), measures: new Map([['w/p/a', m(3.4, 1000, [10, 10, 5])], ['w/p/b', m(2.9, 500, [5, 5, 5], ['fixings.hole: {"diameter":2.9}'])], ['w/p/c', m(3, 1, [1, 1, 1])]]) };
+  const b = { objects: objects(2), measures: new Map([['w/p/a', m(3.4, 1000.004, [10, 10, 5])], ['w/p/b', m(3, 512.3, [5, 5, 5.2], ['fixings.hole: {"diameter":3}'])], ['w/p/c', { error: 'no rule "clearence" in m4' }]]) };
+  const r = compare(a, b);
+  assert.deepEqual(r.rows.map((x) => [x.object, x.what, x.from, x.to]), [
+    ['w/p/b', 'hole', '2.9', '3'], ['w/p/b', 'part body volume (mm³)', '500', '512.3'], ['w/p/b', 'part body size (mm)', '5 × 5 × 5', '5 × 5 × 5.2'],
+    ['w/p/b', 'v.fixings drew', 'fixings.hole: {"diameter":2.9}', '(no longer)'], ['w/p/b', 'v.fixings drew', '(none)', 'fixings.hole: {"diameter":3}'],
+    ['w/p/c', 'the build', 'builds', 'fails: no rule "clearence" in m4'],
+  ]);
+  assert.equal(r.same, 1, 'a hundredth of a mm³ is the same solid'); assert.equal(r.unchanged, 1);
+});
