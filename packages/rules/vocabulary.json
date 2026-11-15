@@ -194,6 +194,7 @@
     "slot_bottom": { "says": "the bottom face (-y) where it differs, written as slot_top is, along +x" },
     "slot_front": { "says": "the front face (-x) where it differs, written as slot_top is, along +y" },
     "slot_back": { "says": "the back face (+x) where it differs, written as slot_top is, along +y" },
+    "cells_absent": { "says": "cells of the grid that are not there, as across,up pairs counted from 1 at the lower left with semicolons between: a C-beam is 4 cells by 2 with \"2,2; 3,2\" absent. The faces left open by them carry slots as outside faces do" },
     "chamber_width": { "unit": "mm", "says": "the width of the closed hollow between two cells of a profile, where it is wider than the slot's cavity; 0 for a solid web between cells" },
     "chamber_length": { "unit": "mm", "says": "how far the hollow between two cells keeps its full width, along the line joining the cells' middles; left out where it starts closing in at once" },
     "chamber_depth": { "unit": "mm", "says": "how far the hollow between two cells reaches to each side of the line between them; left out where it is the slot's cavity depth (two cavities back to back)" },

@@ -222,15 +222,18 @@ test('profiles and slots: one maker one set, named for size and maker, every fig
   // (plain sections and custom outlines have no maker and no sheet: they have their own test below)
   const slotted = (s) => ['t-slot', 'v-slot'].includes(s.set.rules.family?.value);
   const profiles = sets.filter((s) => s.set.part === 'profile' && slotted(s)), slots = sets.filter((s) => s.set.part === 'slot'), byName = Object.fromEntries(sets.map((s) => [s.name, s.set]));
-  for (const { name } of profiles) assert.match(name, /^profile-\d{4}-(misumi|bosch|motedis|item|generic)(-[a-z0-9]+)?$/, `${name}: profile-<size>-<maker>[-<series>]`);
+  for (const { name } of profiles) assert.match(name, /^profile-\d{4}-(misumi|bosch|motedis|item|generic|openbuilds|makerbeam|openbeam|8020)(-[a-z0-9]+)?$/, `${name}: profile-<size>-<maker>[-<series>]`);
   for (const { name } of slots) assert.match(name, /^slot-\d+(-[a-z0-9]+)*$/, `${name}: slot-<opening>[-<maker>][-<variant>]`);
   // three named makers each have a 20 mm and a 40 mm profile, and unbranded stock has generic ones
   for (const maker of ['misumi', 'bosch', 'motedis', 'generic']) for (const size of ['2020', '4040']) assert.ok(profiles.some((p) => p.name.startsWith(`profile-${size}-${maker}`)), `${maker} has a ${size}`);
   for (const size of ['2020', '2040', '3030', '3060', '4040', '4080', '4545', '4590']) assert.ok(byName[`profile-${size}-misumi-hfs${{ 20: 5, 30: 6 }[size.slice(0, 2)] ?? 8}`], `MISUMI's ${size}`);
   for (const { name, set: { rules: r, _doc } } of profiles) {
-    for (const k of ['family', 'series', 'cells_across', 'cells_up', 'width', 'height', 'slot', 'bore_diameter', 'area', 'inertia_x', 'inertia_y', 'mass_per_metre', 'alloy', 'material']) assert.ok(r[k], `${name} has ${k}`);
+    for (const k of ['family', 'series', 'cells_across', 'cells_up', 'width', 'height', 'slot', 'bore_diameter', 'alloy', 'material']) assert.ok(r[k], `${name} has ${k}`);
+    // a maker's sheet gives the section's figures; where a maker publishes none, the set has none (they are worked out from the outline) and says so
+    if (r.area || r.inertia_x || r.inertia_y) for (const k of ['area', 'inertia_x', 'inertia_y', 'mass_per_metre']) assert.ok(r[k], `${name} has ${k}`);
+    else { assert.match(_doc, /publishes no area, second moments or mass/, `${name} says its maker gives no section figures`); assert.ok(/-(openbuilds|makerbeam|openbeam)/.test(name), `${name}: a maker with a sheet has its figures`); }
     assert.equal(r.width.value, r.series.value * r.cells_across.value, `${name}: cells of its series across`); assert.equal(r.height.value, r.series.value * r.cells_up.value);
-    assert.ok(r.cells_across.value >= r.cells_up.value && r.inertia_x.value <= r.inertia_y.value, `${name} lies flat: inertia_x is the smaller second moment`);
+    assert.ok(r.cells_across.value >= r.cells_up.value && (!r.inertia_x || r.inertia_x.value <= r.inertia_y.value), `${name} lies flat: inertia_x is the smaller second moment`);
     assert.equal(byName[r.slot.value]?.part, 'slot', `${name}.slot names a slot set`);
     assert.ok(byName[r.material.value]?.rules.density && byName[r.material.value].rules.modulus, `${name}.material names a material set`);
     assert.match(_doc, /The drawn outline leaves out/, `${name} says what its drawing leaves out`);
@@ -250,7 +253,7 @@ test('profiles and slots: one maker one set, named for size and maker, every fig
     assert.ok(r.opening.value < r.cavity_width.value && r.lip_thickness.value < r.cavity_depth.value && r.floor_width.value < r.cavity_width.value, `${name} is a slot`);
     assert.equal(byName[r.nut_family.value]?.part, 'slot', `${name}.nut_family names a slot set`);
     if (/-(misumi|bosch)/.test(name)) { for (const k of ['opening', 'lip_thickness', 'cavity_width', 'cavity_depth']) assert.equal(r[k].kind, 'spec', `${name}.${k} is printed on the maker's page`); assert.equal(r.floor_width.kind, 'estimate', `${name}.floor_width is scaled off the drawing, and says so`); assert.match(r.floor_width.rule, /Not dimensioned/); }
-    if (!/-(misumi|bosch|motedis|item)/.test(name)) for (const x of Object.values(r)) assert.equal(x.kind, 'community', `${name}: a generic slot is community`);
+    if (!/-(misumi|bosch|motedis|item|openbuilds|makerbeam|openbeam|8020)/.test(name)) for (const x of Object.values(r)) assert.equal(x.kind, 'community', `${name}: a generic slot is community`);
   }
   // two makers' 2020 differ where their slots do
   assert.notDeepEqual(['lip_thickness', 'cavity_depth'].map((k) => rulesOf('slot-6-misumi')[k].value), ['lip_thickness', 'cavity_depth'].map((k) => rulesOf('slot-6-bosch')[k].value));

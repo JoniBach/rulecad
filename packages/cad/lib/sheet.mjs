@@ -342,7 +342,7 @@ function profileDrawing(set, g) {
   if (m.wall) notes.push(`wall ${fig(m.wall)}`);
   if (m.hollows.length) notes.push(`${m.hollows.length} × corner hollow ${fig(m.hollows[0].width)} square`);
   if (m.chambers.length) notes.push(`${m.chambers.length} × hollow between cells, ${fig(m.chambers[0].width)} wide`);
-  notes.push(`${m.family}${m.cells[0] * m.cells[1] > 1 ? `, ${m.cells[0]} × ${m.cells[1]} cells of ${fig(m.pitch[0])}` : ''}${m.material ? `, ${m.material.alloy ? `${esc(m.material.alloy)} (${m.material.name})` : m.material.name}` : ''}`);
+  notes.push(`${m.family}${m.cells[0] * m.cells[1] > 1 ? `, ${m.cells[0]} × ${m.cells[1]} cells of ${fig(m.pitch[0])}${m.absent?.length ? ` with ${m.absent.length} not there` : ''}` : ''}${m.material ? `, ${m.material.alloy ? `${esc(m.material.alloy)} (${m.material.name})` : m.material.name}` : ''}`);
   if (m.supply.lengths.length || m.supply.cutMax) notes.push([m.supply.lengths.length ? `sold as ${m.supply.lengths.map(fig).join(', ')}` : '', m.supply.cutMax ? `cut ${fig(m.supply.cutMin ?? 0)} to ${fig(m.supply.cutMax)}${m.supply.cutTolerance != null ? ` ±${fig(m.supply.cutTolerance)}` : ''}` : '', m.supply.straightness != null ? `straight within ${fig(m.supply.straightness)} mm/m` : '', m.supply.twist != null ? `twist within ${fig(m.supply.twist)}°/m` : ''].filter(Boolean).join('; '));
   // the table: what the sheet says, what the outline comes to
   const rows = [['area, mm²', 'area', s.area], ['second moment about x, mm⁴', 'inertiaX', s.inertiaX], ['second moment about y, mm⁴', 'inertiaY', s.inertiaY], ['torsion constant, mm⁴', 'torsion', s.torsion], ['mass, kg/m', 'massPerMetre', s.massPerMetre]];

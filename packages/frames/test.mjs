@@ -211,6 +211,39 @@ test('custom: any closed outline, its figures worked out, held to the size its s
   assert.equal(section(profileModel(bare, {}, { outline: hat }), { torsion: false }).area, os.area);
 });
 
+test('cells that are not there: a C-beam is four cells by two less the upper middle pair, with slots on the faces they leave open', () => {
+  const m = profileModel('4080-openbuilds-cbeam'), o = outline(m), s = section(m);
+  assert.deepEqual([m.family, m.cells, m.absent, m.width, m.height], ['v-slot', [4, 2], [[2, 2], [3, 2]], 80, 40]);
+  // a place for every open side of a cell, by the way it looks: the tops of the arms, and the floor of the C lower down
+  assert.deepEqual(m.faces.top.map((p) => [p.index, p.at]), [[1, [-30, 20]], [2, [-10, 0]], [3, [10, 0]], [4, [30, 20]]]);
+  assert.deepEqual(m.faces.back.map((p) => [p.index, p.at]), [[1, [40, -10]], [2, [-20, 10]], [2, [40, 10]]], 'the left arm\'s inside looks the same way as the outside on the right');
+  assert.deepEqual(m.faces.front.map((p) => p.at), [[-40, -10], [-40, 10], [20, 10]]); assert.equal(m.faces.bottom.length, 4);
+  assert.equal(Object.values(m.faces).flat().filter((p) => p.slot === 'slot-6-openbuilds').length, 14, '14 slots: 10 outside and 4 inside the C');
+  assert.deepEqual(m.bores.map((b) => b.at), [[-30, -10], [-10, -10], [10, -10], [30, -10], [-30, 10], [30, 10]], 'a bore to each cell that is there');
+  assert.equal(m.chambers.length, 5, 'three hollows along the bottom and one up each arm');
+  assert.deepEqual(m.chambers.find((c) => c.at[0] === 0).ends, [8.2, 8.2], 'the middle one faces the bottom and the C\'s floor: full width both ways');
+  assert.deepEqual(m.chambers.find((c) => c.at[0] === -20).ends, [8.2, 5.5], 'one beside an arm keeps to the cavity\'s width at the corner it shares with the arm\'s slots');
+  // the outline: one outside loop round the C, clear of every hole, nothing outside the envelope or in the channel
+  assert.equal(o.loops.length, 1 + 5 + 6); assert.ok(signedArea(o.loops[0]) > 0 && o.loops.slice(1).every((l) => signedArea(l) < 0));
+  for (const [x, y] of o.loops[0]) assert.ok(Math.abs(x) <= 40 + 1e-9 && Math.abs(y) <= 20 + 1e-9 && !(Math.abs(x) < 20 - 1e-9 && y > 1e-9), `${x}, ${y} is on the C`);
+  for (let i = 1; i < o.loops.length; i++) { assert.ok(o.loops[i].every((p) => inside(p, o.loops[0]))); for (let j = i + 1; j < o.loops.length; j++) assert.ok(gap(o.loops[i], o.loops[j]) > 0.5); }
+  for (const [x, y] of [[0, 10], [-10, 5], [-10, -19], [-30, -10], [-22, 10], [-10, -1], [0, -3.2]]) assert.ok(!insideMetal(o.loops, [x, y]), `${x}, ${y} is the channel, a slot or a bore`);
+  for (const [x, y] of [[-38, 18], [38, -18], [-10, -7], [0, -1], [-20, -1]]) assert.ok(insideMetal(o.loops, [x, y]), `${x}, ${y} is metal`);
+  assert.deepEqual(profileFindings(m).map((f) => f.code), []);
+  // about six cells of the 20 x 20 less what joining them saves, and its middle below the envelope's (the C is open upward)
+  const one = section(profileModel('2020-openbuilds'), { torsion: false }).area; assert.ok(s.area > 4.5 * one && s.area < 6 * one, `${s.area} mm² against six cells of ${one}`);
+  assert.ok(s.centroid[1] < -2 && Math.abs(s.centroid[0]) < 1e-6); assert.ok(s.inertiaX < s.inertiaY);
+  // a V-Slot's mouth is its wheel's track
+  const v = m.slots['slot-6-openbuilds']; assert.deepEqual([v.opening, v.mouth, v.trackWidth, v.trackAngle], [6.25, 9.15, 9.15, 90]);
+  assert.deepEqual(slotPath(v).slice(0, 3).map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]), [[-4.575, 0], [-3.125, 1.45], [-3.125, 1.8]], 'the V runs 1.45 down to the opening, then the lip\'s edge');
+  // refusals: a pair outside the grid, every cell gone, a hole in the middle
+  const grid = (absent, across = 3, up = 3) => ({ name: 'grid', part: 'profile', rules: { ...SETS['profile-2020-openbuilds'].rules, cells_across: rule(across, ''), cells_up: rule(up, ''), width: rule(20 * across, 'mm'), height: rule(20 * up, 'mm'), cells_absent: rule(absent) } });
+  assert.throws(() => profileModel(grid('4,1')), /cells_absent is across,up pairs inside the grid of 3 by 3, counted from 1, with semicolons between: 2,2; 3,2 \(got "4,1"\)/);
+  assert.throws(() => profileModel(grid('1,1', 1, 1)), /cells_absent leaves no cell/);
+  assert.throws(() => outline(profileModel(grid('2,2'))), /its cells do not make one piece with one outside/);
+  const ell = profileModel(grid('2,2; 3,2; 2,3; 3,3')); assert.equal(outline(ell).loops.length, 1 + 4 + 5, 'an L of five cells: four hollows and five bores'); assert.deepEqual(profileFindings(ell, { torsion: false }).filter((f) => f.level === 'fail'), []);
+});
+
 test('outline: closed loops from the interface values, the outside counter-clockwise and holes clockwise; a measured outline in its place', () => {
   const m = profileModel('2020-misumi-hfs5'), o = outline(m);
   assert.equal(o.measured, false); assert.equal(o.loops.length, 2);

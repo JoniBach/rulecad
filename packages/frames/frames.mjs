@@ -68,7 +68,7 @@ export const slotNuts = () => ofPart('slot_nut');
  *   above the other (its width runs along x); ends are its half widths toward - and + along that width; depth is how far it reaches each side of the line between the cells
  * @typedef {{ at: [number, number], width: number }} Hollow a closed square hollow in a corner, by its centre and side
  * @typedef {{ loops: number[][][], source: string, licence: string, name?: string }} MeasuredOutline
- * @typedef {{ kind: 'profile', name: string, family: string, series: number, cells: [number, number], pitch: [number, number],
+ * @typedef {{ kind: 'profile', name: string, family: string, series: number, cells: [number, number], absent: [number, number][], pitch: [number, number],
  *   title: string, width: number, height: number, cornerRadius: number, wall: number, figures: Record<string, Figure>,
  *   faces: Record<'top' | 'bottom' | 'front' | 'back', FaceSlot[]>, slots: Record<string, Slot>, bores: Bore[], chambers: Chamber[], hollows: Hollow[],
  *   sheet: { area: number | null, inertiaX: number | null, inertiaY: number | null, modulusX: number | null, modulusY: number | null, torsion: number | null, massPerMetre: number | null },
@@ -207,6 +207,11 @@ export function profileModel(which, change = {}, given = {}) {
   const series = num('series', Math.min(width, height)), cells = [num('cells_across', 1), num('cells_up', 1)];
   for (const [k, c] of [['cells_across', cells[0]], ['cells_up', cells[1]]]) if (!(Number.isInteger(c) && c >= 1)) throw new Error(`${what}: ${name}: ${k} is a whole number of cells, 1 or more (got ${shown(c)})`);
   const pitch = [width / cells[0], height / cells[1]], cornerRadius = num('corner_radius', 0), wall = num('wall', 0);
+  // cells of the grid that are not there (a C-beam's two upper middle ones): [across, up] from 1, as the set writes them
+  const absent = String(v('cells_absent', '')).split(';').map((p) => p.trim()).filter(Boolean).map((p) => p.split(',').map((x) => Number(x.trim())));
+  for (const c of absent) if (!(c.length === 2 && Number.isInteger(c[0]) && Number.isInteger(c[1]) && c[0] >= 1 && c[0] <= cells[0] && c[1] >= 1 && c[1] <= cells[1])) throw new Error(`${what}: ${name}: cells_absent is across,up pairs inside the grid of ${cells[0]} by ${cells[1]}, counted from 1, with semicolons between: 2,2; 3,2 (got ${shown(v('cells_absent'))})`);
+  if (absent.length >= cells[0] * cells[1]) throw new Error(`${what}: ${name}: cells_absent leaves no cell`);
+  const has = (i, j) => i >= 0 && j >= 0 && i < cells[0] && j < cells[1] && !absent.some((c) => c[0] === i + 1 && c[1] === j + 1), centre = (i, j) => [(i - (cells[0] - 1) / 2) * pitch[0], (j - (cells[1] - 1) / 2) * pitch[1]];
   if (!(cornerRadius >= 0 && cornerRadius <= Math.min(width, height) / 2)) throw new Error(`${what}: ${name}: corner_radius is from 0 to half the smaller side, ${Math.min(width, height) / 2} (got ${shown(cornerRadius)})`);
   if (['tube', 'round-tube', 'angle', 'channel'].includes(family) && !(wall > 0 && wall < Math.min(width, height) / (family === 'angle' ? 1 : 2))) throw new Error(`${what}: ${name}: a ${family} needs a wall above 0 and thinner than ${family === 'angle' ? 'its legs' : 'half its smaller side'} (got ${shown(v('wall'))})`);
   // ---- slots: the family on every face, then each face's own ----
@@ -216,17 +221,22 @@ export function profileModel(which, change = {}, given = {}) {
   for (const face of FACES) {
     const [nx, ny, ax, ay] = place[face], count = ax ? cells[0] : cells[1], step = ax ? pitch[0] : pitch[1];
     const names = slotted ? faceSlots(what, name, figures[`slot_${face}`] ? `slot_${face}` : 'slot', v(`slot_${face}`, all), count) : Array(count).fill(null);
-    faces[face] = names.map((slot, i) => {
-      if (slot && !slotsUsed[slot]) { const s = find(slot); if (!s) throw new Error(`${what}: ${name}: no slot family "${slot}"${guess(slot, slots())}. There are: ${slots().join(', ')}`); slotsUsed[slot] = slotModel(s, {}, given); }
-      const along = (i - (count - 1) / 2) * step;
-      return { face, index: i + 1, slot, at: [ax ? along : (nx * width) / 2, ay ? along : (ny * height) / 2], normal: [nx, ny], along: [ax, ay] };
-    });
+    for (const slot of names) if (slot && !slotsUsed[slot]) { const s = find(slot); if (!s) throw new Error(`${what}: ${name}: no slot family "${slot}"${guess(slot, slots())}. There are: ${slots().join(', ')}`); slotsUsed[slot] = slotModel(s, {}, given); }
+    // one place for every side of a cell that looks this way with no cell beyond it: the outside faces, and the faces a
+    // missing cell leaves open. index counts along the face from 1, whichever row or column the side is in
+    faces[face] = [];
+    for (let k = 0; k < count; k++) for (let q = 0; q < (ax ? cells[1] : cells[0]); q++) {
+      const [i, j] = ax ? [k, q] : [q, k];
+      if (!has(i, j) || has(i + nx, j + ny)) continue;
+      const c = centre(i, j);
+      faces[face].push({ face, index: k + 1, slot: names[k], at: [c[0] + (nx * pitch[0]) / 2, c[1] + (ny * pitch[1]) / 2], normal: [nx, ny], along: [ax, ay] });
+    }
   }
   // ---- bores: the centre of each cell, corners, or where the set says ----
   const bores = [], boreD = num('bore_diameter', 0), at = String(v('bore_at', 'cells')).trim();
   const thread = (rule) => { const written = v(rule, null), s = threadSet(written, find), n = (k) => (isNum(s?.rules[k]?.value) ? s.rules[k].value : null); return { thread: written == null ? null : String(written), threadSet: s?.name ?? null, tapDrill: n('tap_drill'), major: n('major_diameter'), threadPitch: n('pitch') }; };
   if (boreD > 0 && at !== 'none') {
-    const centres = at === 'cells' ? Array.from({ length: cells[0] * cells[1] }, (_, k) => [((k % cells[0]) - (cells[0] - 1) / 2) * pitch[0], (Math.floor(k / cells[0]) - (cells[1] - 1) / 2) * pitch[1]])
+    const centres = at === 'cells' ? Array.from({ length: cells[0] * cells[1] }, (_, k) => [k % cells[0], Math.floor(k / cells[0])]).filter(([i, j]) => has(i, j)).map(([i, j]) => centre(i, j))
       : at.split(';').map((p) => p.split(',').map((x) => Number(x.trim())));
     for (const c of centres) { if (!(c.length === 2 && c.every(isNum))) throw new Error(`${what}: ${name}: bore_at is cells, none, or x,y pairs with semicolons between: -10,0; 10,0 (got ${shown(at)})`); bores.push({ at: c, diameter: boreD, ...thread('bore_thread'), where: at === 'cells' ? 'cell' : 'given' }); }
   }
@@ -248,9 +258,11 @@ export function profileModel(which, change = {}, given = {}) {
     // An end that points at an outside face has chamber_width. An end that points at a place where four cells meet (a
     // grid both ways) has three other hollows for neighbours there, so it keeps to the cavity's own width: the hollows
     // then stand as far apart as two slots do round a cell's corner, which is the web a cell is known to have
-    const own = Math.min(chamberWidth, slotsUsed[base].cavityWidth) / 2, ends = (k, n) => [k > 0 ? own : chamberWidth / 2, k + 1 < n ? own : chamberWidth / 2];
-    for (let j = 0; j < cells[1]; j++) for (let i = 0; i + 1 < cells[0]; i++) chambers.push({ at: [(i + 1 - cells[0] / 2) * pitch[0], (j - (cells[1] - 1) / 2) * pitch[1]], axis: 'x', width: chamberWidth, length: chamberLength, depth: chamberDepth, ends: ends(j, cells[1]), slot: base });
-    for (let i = 0; i < cells[0]; i++) for (let j = 0; j + 1 < cells[1]; j++) chambers.push({ at: [(i - (cells[0] - 1) / 2) * pitch[0], (j + 1 - cells[1] / 2) * pitch[1]], axis: 'y', width: chamberWidth, length: chamberLength, depth: chamberDepth, ends: ends(i, cells[0]), slot: base });
+    // (an end has its full width only where neither cell beyond it is there: a plain outside face. One cell there is a
+    // corner with slots and another hollow round it, as close as where four meet)
+    const own = Math.min(chamberWidth, slotsUsed[base].cavityWidth) / 2, end = (a, b) => (has(...a) || has(...b) ? own : chamberWidth / 2);
+    for (let j = 0; j < cells[1]; j++) for (let i = 0; i + 1 < cells[0]; i++) if (has(i, j) && has(i + 1, j)) chambers.push({ at: [(i + 1 - cells[0] / 2) * pitch[0], (j - (cells[1] - 1) / 2) * pitch[1]], axis: 'x', width: chamberWidth, length: chamberLength, depth: chamberDepth, ends: [end([i, j - 1], [i + 1, j - 1]), end([i, j + 1], [i + 1, j + 1])], slot: base });
+    for (let i = 0; i < cells[0]; i++) for (let j = 0; j + 1 < cells[1]; j++) if (has(i, j) && has(i, j + 1)) chambers.push({ at: [(i - (cells[0] - 1) / 2) * pitch[0], (j + 1 - cells[1] / 2) * pitch[1]], axis: 'y', width: chamberWidth, length: chamberLength, depth: chamberDepth, ends: [end([i - 1, j], [i - 1, j + 1]), end([i + 1, j], [i + 1, j + 1])], slot: base });
   }
   // ---- what the sheet says it is worth, what it is made of, how it is sold ----
   const sheet = { area: num('area', null), inertiaX: num('inertia_x', null), inertiaY: num('inertia_y', null), modulusX: num('section_modulus_x', null), modulusY: num('section_modulus_y', null), torsion: num('torsion_constant', null), massPerMetre: num('mass_per_metre', null) };
@@ -271,7 +283,7 @@ export function profileModel(which, change = {}, given = {}) {
   const fig = (x) => String(+x.toFixed(2)), size = round ? `Ø${fig(width)}` : `${fig(width)} x ${fig(height)}`, plain = { tube: 'tube', 'round-tube': 'round tube', angle: 'angle', channel: 'channel', bar: 'bar', 'round-bar': 'round bar' }[family];
   const title = plain ? `${size}${wall ? ` x ${fig(wall)}` : ''} ${plain}${figures.material ? `, ${v('material')}` : ''}` : `${size} ${family} (${name})`;
   const kinds = new Set([...Object.values(figures), ...Object.values(slotsUsed).flatMap((s) => Object.values(s.figures))].map((f) => f.kind));
-  return { kind: 'profile', name, title, family, series, cells, pitch, width, height, cornerRadius, wall, figures, faces, slots: slotsUsed, bores, chambers, hollows, sheet, material, supply, measured, rests: [...kinds] };
+  return { kind: 'profile', name, title, family, series, cells, absent, pitch, width, height, cornerRadius, wall, figures, faces, slots: slotsUsed, bores, chambers, hollows, sheet, material, supply, measured, rests: [...kinds] };
 }
 
 // ---------- the outline ----------
@@ -322,13 +334,29 @@ export function outline(model) {
   if (family === 'round-bar' || family === 'round-tube') { loops.push(circle([0, 0], W, false)); if (family === 'round-tube') loops.push(circle([0, 0], W - 2 * t, true)); return { loops, measured: false, source }; }
   if (family === 'angle') return { loops: [[[-W / 2, -H / 2], [W / 2, -H / 2], [W / 2, -H / 2 + t], [-W / 2 + t, -H / 2 + t], [-W / 2 + t, H / 2], [-W / 2, H / 2]]], measured: false, source };
   if (family === 'channel') return { loops: [[[-W / 2, -H / 2], [W / 2, -H / 2], [W / 2, H / 2], [W / 2 - t, H / 2], [W / 2 - t, -H / 2 + t], [-W / 2 + t, -H / 2 + t], [-W / 2 + t, H / 2], [-W / 2, H / 2]]], measured: false, source };
-  // the envelope, walked counter-clockwise (the metal on the left), each face's slots cut in as they come
-  const outer = [], arc = (cx, cy, a0) => { if (r > 1e-9) for (let i = 0; i <= SEG; i++) { const a = (a0 + (90 * i) / SEG) * RAD; outer.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } else outer.push([cx, cy]); };
-  const cut = (face, backwards) => { const list = backwards ? m.faces[face].slice().reverse() : m.faces[face]; for (const p of list) if (p.slot) { const pts = slotLoop(p, m.slots[p.slot]); outer.push(...(backwards ? pts.reverse() : pts)); } };
-  cut('bottom', false); arc(W / 2 - r, -H / 2 + r, -90);
-  cut('back', false); arc(W / 2 - r, H / 2 - r, 0);
-  cut('top', true); arc(-W / 2 + r, H / 2 - r, 90);
-  cut('front', true); arc(-W / 2 + r, -H / 2 + r, 180);
+  // The outside of the cells, walked counter-clockwise (the metal on the left) one cell's side at a time, each side's
+  // slot cut in as it comes. A corner that turns left is rounded; one that turns right (inside a C) is left square
+  const [nx, ny] = m.cells, gone = m.absent ?? [], has = (i, j) => i >= 0 && j >= 0 && i < nx && j < ny && !gone.some((c) => c[0] === i + 1 && c[1] === j + 1), [px, py] = m.pitch, key = (a, b) => `${a},${b}`, sides = new Map();
+  // each open side as a step from one grid point to the next: [from, to, the face's name, the cell]
+  for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) if (has(i, j)) {
+    if (!has(i, j - 1)) sides.set(key(i, j), [[i, j], [i + 1, j], 'bottom', [i, j]]);
+    if (!has(i + 1, j)) sides.set(key(i + 1, j), [[i + 1, j], [i + 1, j + 1], 'back', [i, j]]);
+    if (!has(i, j + 1)) sides.set(key(i + 1, j + 1), [[i + 1, j + 1], [i, j + 1], 'top', [i, j]]);
+    if (!has(i - 1, j)) sides.set(key(i, j + 1), [[i, j + 1], [i, j], 'front', [i, j]]);
+  }
+  const at = ([a, b]) => [-W / 2 + a * px, -H / 2 + b * py], first = [...sides.values()].sort((p, q) => p[0][1] - q[0][1] || p[0][0] - q[0][0])[0], outer = [];
+  let side = first, walked = 0;
+  do {
+    const [from, to, face, cell] = side, d = [to[0] - from[0], to[1] - from[1]], next = sides.get(key(...to));
+    if (!next || ++walked > sides.size) throw new Error(`outline: ${m.name}: its cells do not make one piece with one outside (cells_absent leaves a hole, or cells touching only at a corner)`);
+    const c = [(cell[0] - (nx - 1) / 2) * px, (cell[1] - (ny - 1) / 2) * py], place = m.faces[face].find((p) => Math.abs(p.at[0] - (c[0] + (p.normal[0] * px) / 2)) < 1e-9 && Math.abs(p.at[1] - (c[1] + (p.normal[1] * py) / 2)) < 1e-9);
+    if (place?.slot) { const pts = slotLoop(place, m.slots[place.slot]); outer.push(...(d[0] * place.along[0] + d[1] * place.along[1] > 0 ? pts : pts.reverse())); }
+    const e = [next[1][0] - next[0][0], next[1][1] - next[0][1]], turn = d[0] * e[1] - d[1] * e[0], corner = at(to);
+    if (turn > 0 && r > 1e-9) { const cx = corner[0] - r * d[0] + r * e[0], cy = corner[1] - r * d[1] + r * e[1], a0 = Math.atan2(-e[1], -e[0]) / RAD; for (let i = 0; i <= SEG; i++) { const a = (a0 + (90 * i) / SEG) * RAD; outer.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } }
+    else if (turn !== 0) outer.push(corner);
+    side = next;
+  } while (side !== first);
+  if (walked !== sides.size) throw new Error(`outline: ${m.name}: its cells do not make one piece with one outside (cells_absent leaves a hole, or cuts the section in two)`);
   loops.push(outer);
   if (family === 'tube') loops.push(roundRect(W - 2 * t, H - 2 * t, Math.max(0, r - t)).reverse());
   for (const ch of m.chambers) loops.push(chamberLoop(ch, m.slots[ch.slot]).reverse());
