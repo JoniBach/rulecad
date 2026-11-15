@@ -336,6 +336,70 @@ hollows and hooked lips the dimensions do not describe, and come out 8 to 21% he
 `printable(x)` takes a beam's model, its solid or a profile's model, and fails it: a beam of a profile is bought and
 cut, and what prints is the parts that fasten to it. Printed beams come in a later release.
 
+## The cut list
+
+A frame's beams, listed for the saw: `cutList(beams, { kerf?, trim?, tolerance?, stock? })` takes beams' models, or
+`{ id, beam }` with each item's name.
+
+```js
+import { beamModel, cutList, cutListText, beamSheet } from '@rulecad/frames';
+
+const beams = [300, 300, 260, 260].map((length, i) => ({ id: `x${i + 1}`, beam: beamModel('2020-misumi-hfs5', { length }) }));
+const c = cutList(beams);
+cutListText(c);              // the marks, then each profile's lengths, bars to buy and the cuts on each
+beamSheet(c.marks[0].beam, { mark: 'A', items: c.marks[0].items }).svg; // its cut-and-drill sheet
+```
+
+Beams that are the same (one profile, one material, one length, and the same operations at the same places) share a
+**mark**, A, B, C and on, by profile and then the longest first. Each mark in `c.marks` has `mark`, `profile`,
+`material`, `length` (the long side where an end is mitred) and `shortLength`, `count`, `items`, `grams` each and
+`weighedBy` (`sheet` where the maker gives a mass per metre, else `section`: a light 40 mm section is heavy when
+weighed from its drawn outline), `ops` (each operation in a few words) and `beam` (the model).
+
+Each profile's beams are packed into the lengths it is sold in (`lengths` in its set). Every cut takes the saw's
+**kerf**, the last one on a bar too, as it parts the beam from the offcut. The first end of every bar is **trimmed**
+square before the first beam is measured. Where a set gives no lengths but a cut-to-length range, the maker cuts each
+beam and no bar is packed (`supply: 'cut'`). Where it gives neither, a 6 m bar is assumed (`supply: 'assumed'`, an
+estimate). Each entry in `c.stock` has `cuts` (each length and how many), `buy` (each bar length and how many),
+`bars` (each with its `cuts` in order, each cut's `at` measured from the bar's first end, and its `offcut`),
+`unpacked`, `bought` and `offcut` in mm.
+
+The packing is **first-fit decreasing**, a simple rule that does not always find the fewest bars: the longest beam
+first, each onto the first bar with room for it, else onto a new bar. It runs once with each sold length as the new
+bar's length (and once with the shortest that holds the beam), then cuts each bar down to the shortest sold length
+that holds what is on it, and keeps the plan that buys the least metal, then the fewest bars. `packBars(pieces,
+lengths, { kerf, trim })` is the packing alone. A box of twelve 2020 beams (four each of 300, 260 and 220 mm) buys
+one 4000 mm MISUMI bar with an 834 mm offcut: four 1000 mm bars are also 4000 mm of metal, so the one bar wins.
+
+| Rule (`CUT_DEFAULTS`) | Value | Kind | Source |
+|---|---|---|---|
+| `kerf` | 3 mm | default | A 250 mm, 80-tooth carbide blade for non-ferrous metals (Popular Tools NF2503080) cuts 3.0 mm |
+| `trim` | 10 mm | estimate | A working allowance for a bruised or out-of-square mill end; no supplier's figure was found |
+| `tolerance` | ±0.5 mm | estimate | MISUMI's for its cut lengths, used where a profile's set gives no `cut_tolerance` |
+| `stock` | 6000 mm | estimate | The length Bosch Rexroth and item sell their profiles in, used where a set gives no lengths |
+
+Give your own saw's figures as options (`cutList(beams, { kerf: 2.4 })`); `c.rules` holds the rules used, each with
+`value`, `unit`, `rule`, `kind`, `source` and `checked`.
+
+The checks (`c.findings`, code `frame.cut`):
+
+| Level | When |
+|---|---|
+| fail | A beam longer than any length its profile is sold in, after the trim and one kerf, or than the maker cuts to |
+| warn | Two marks of one profile whose lengths differ by less than two cuts' tolerance: they should match, or the saw cannot hold them apart |
+| info | Two or more beams of one mark: each is cut to the tolerance, so they can differ by twice it; cut them against one stop where they must match |
+
+### A cut-and-drill sheet
+
+`beamSheet(beam, { mark, items, grams })` draws one SVG sheet for a beam, in mm, so it prints to scale at 100%. The
+beam is drawn 1:1, 1:2, 1:5, 1:10 and on, the smallest that keeps it within 200 mm, and its section at end a at 4:1,
+2:1 or 1:1. On it: the section seen from end a with top up and each face named, and each tapped bore with its thread
+and depth; a view of each face that has work on it, or a mitre seen from it, with that face up and end a on the left,
+every slot's centre line, and each operation numbered and dimensioned from end a to 0.1 mm; and the operations in
+order from end a, each with its full line. A face only a few mm wide at a small scale is drawn wider across, and the
+view says by how much. It returns `{ svg, scale, faces, dimensions }`, `dimensions` being each operation's figure as
+the sheet prints it.
+
 ## Formulas
 
 | What | Formula | Source |
@@ -352,6 +416,7 @@ cut, and what prints is the parts that fasten to it. Printed beams come in a lat
 | Thin closed tube, for checking | J = 4 A_m² t / s (A_m inside the wall's mid-line, s its length), plus s t³ / 3 for the wall itself | Bredt's formula |
 | Mass per metre | area × density (mm² × g/cm³ is grams a metre) | |
 | A beam's mass | m = A × L × ρ / 1000, in grams from mm², mm and g/cm³ | A prism's volume is its section's area times its length |
+| Room a bar gives | bar length − trim − Σ (each beam's length + kerf) ≥ 0, the offcut being what is left | Each cut takes a kerf; the trim squares the bar's first end |
 | A mitre's short side | L − w tan θ for each mitred end, w the section's side across the cut and θ the angle from square | Trigonometry |
 | Tap depth, by default | 2 × the major diameter in aluminium (1 in steel, 2.5 in plastic) | The engagement rule set in `@rulecad/rules`, through `@rulecad/fixings` |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
@@ -393,6 +458,10 @@ lists them.
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
+| `cutList(beams, { kerf?, trim?, tolerance?, stock? })`, `cutListText(c)` | The cut list: marks, the bars to buy, the cut order and offcut on each, `frame.cut` findings |
+| `packBars(pieces, lengths, { kerf?, trim? })`, `beamMarks(beams)` | The packing alone; the beams by mark |
+| `CUT_DEFAULTS` | The kerf, trim, cut tolerance and assumed stock length, each with what it rests on |
+| `beamSheet(beam, { mark?, items?, grams? })` | A beam's cut-and-drill sheet, SVG to scale |
 | `printable(x)` | A beam or profile is bought: one `beam.printable` failure |
 | `DEFAULTS` | The allowances a check uses, each with what it rests on |
 | `status` | `{ release: 'ready', plan }` |

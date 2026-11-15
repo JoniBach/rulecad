@@ -545,3 +545,93 @@ test('beam.op checks: a hole into a slot\'s lips or a bore\'s side, a tap deeper
   const n = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'notch', at: 'top@50%', length: 12 }] });
   within(jscad.measurements.measureVolume(beam(beamModel('2020-misumi-hfs5', { length: 300 }))) - jscad.measurements.measureVolume(beam(n)), 2 * 12 * 3 * 2, 0.02, 'the notch takes both lips');
 });
+
+// ---------- the cut list ----------
+const box = () => {
+  const B = (L, ops) => beamModel('2020-misumi-hfs5', { length: L, ...(ops ? { ops } : {}) }), out = [];
+  for (const [p, L] of [['x', 300], ['y', 260], ['z', 220]]) for (let i = 1; i <= 4; i++) out.push({ id: `${p}${i}`, beam: B(L, p === 'z' && i === 1 ? [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-12.5', thread: 'M5' }] : null) });
+  return out;
+};
+
+test('the cut list: a box of twelve beams in three lengths, marked, weighed by the sheet, packed into the lengths sold with a kerf and a trim', () => {
+  const c = frames.cutList(box());
+  // three lengths; the beam with an access hole is its own mark beside the three plain 220s
+  assert.deepEqual(c.stock[0].cuts, [{ length: 300, count: 4 }, { length: 260, count: 4 }, { length: 220, count: 4 }]);
+  assert.deepEqual(c.marks.map((m) => [m.mark, m.length, m.count, m.items.join(' '), m.grams, m.weighedBy]), [['A', 300, 4, 'x1 x2 x3 x4', 150, 'sheet'], ['B', 260, 4, 'y1 y2 y3 y4', 130, 'sheet'], ['C', 220, 3, 'z2 z3 z4', 110, 'sheet'], ['D', 220, 1, 'z1', 110, 'sheet']]);
+  assert.deepEqual(c.marks[3].ops, ['tap M5 x 10 at a', 'access Ø5.3 at top.1@207.5']);
+  // MISUMI sells 1000 and 4000 mm bars: four 1000s or one 4000 are both 4000 mm, so the one bar; 3 mm kerf, 10 mm trim
+  const s = c.stock[0];
+  assert.equal(s.supply, 'sold'); assert.deepEqual(s.buy, [{ length: 4000, count: 1 }]);
+  assert.equal(s.bars[0].offcut, 4000 - 10 - 4 * 303 - 4 * 263 - 4 * 223); // 834
+  assert.deepEqual(s.bars[0].cuts.slice(0, 2).map((x) => [x.mark, x.item, x.at]), [['A', 'x1', 10], ['A', 'x2', 313]]);
+  assert.deepEqual(c.totals, { beams: 12, grams: 1560, bars: 1, bought: 4000, offcut: 834 });
+  for (const k of ['kerf', 'trim', 'tolerance', 'stock']) for (const f of ['value', 'unit', 'rule', 'kind', 'source', 'checked']) assert.ok(c.rules[k][f] != null, `${k} has ${f}`);
+  assert.equal(c.rules.kerf.value, 3); assert.equal(c.rules.trim.kind, 'estimate'); assert.equal(frames.CUT_DEFAULTS.stock.kind, 'estimate');
+  const text = frames.cutListText(c).join('\n');
+  assert.match(text, /profile-2020-misumi-hfs5: 3 lengths, 4 × 300, 4 × 260, 4 × 220 mm/);
+  assert.match(text, /buy 1 × 4000 mm; kerf 3, trim 10; 834 mm left over/);
+  assert.match(text, /bar 1, 4000 mm: trim 10, A 300 \(x1\), .*; offcut 834/);
+  // a workshop's own saw: a thinner kerf, as given
+  const own = frames.cutList(box(), { kerf: 2, trim: 5 });
+  assert.equal(own.stock[0].offcut, 4000 - 5 - 4 * 302 - 4 * 262 - 4 * 222); assert.equal(own.rules.kerf.kind, 'measured');
+  assert.throws(() => frames.cutList(box(), { blade: 2 }), /cutList: no option "blade": it takes kerf, trim, tolerance, stock/);
+  assert.throws(() => frames.cutList(box(), { kerf: -1 }), /cutList: kerf is a number in mm, at least 0/);
+  assert.throws(() => frames.cutList([{ id: 'x1' }]), /cutList: beams\[0\] is a beam's model \(beamModel\) or \{ id, beam \}/);
+});
+
+test('packing: first-fit decreasing never puts more on a bar than fits with its kerfs and trim, and picks the bars that buy the least', () => {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let t = 0; t < 200; t++) {
+    const sold = [[1000, 4000], [6000], [250, 500, 1000, 1500, 2000], [3048, 6146.8]][t % 4], kerf = [3, 0, 2.4][t % 3], trim = [10, 0, 5][(t >> 1) % 3];
+    const pieces = Array.from({ length: 1 + Math.floor(rnd() * 30) }, (_, i) => ({ id: i, length: Math.round((20 + rnd() * (t % 7 ? 1200 : 7000)) * 10) / 10 }));
+    const r = frames.packBars(pieces, sold, { kerf, trim });
+    for (const b of r.bars) {
+      assert.ok(sold.includes(b.length), `a bar is a length sold (${b.length})`);
+      const used = trim + b.cuts.reduce((s, x) => s + x.length + kerf, 0);
+      assert.ok(used <= b.length + 1e-6, `bar of ${b.length} holds ${used}`); assert.ok(Math.abs(b.offcut - (b.length - used)) < 1e-6);
+      assert.ok(b.cuts.every((x, i) => i === 0 || x.at >= b.cuts[i - 1].at + b.cuts[i - 1].length + kerf - 1e-6), 'cuts in order with a kerf between');
+    }
+    const longest = Math.max(...sold);
+    assert.equal(r.bars.flatMap((b) => b.cuts).length + r.unpacked.length, pieces.length, 'every piece is on a bar or unpacked');
+    assert.ok(r.unpacked.every((p) => p.length + kerf + trim > longest), 'only a piece no bar holds is unpacked');
+  }
+  // a short bar where it holds the rest: 900 + 400 in [1000, 4000] buys 1000 + 1000, not 4000
+  assert.deepEqual(frames.packBars([{ length: 900 }, { length: 400 }], [1000, 4000]).buy, [{ length: 1000, count: 2 }]);
+  assert.deepEqual(frames.packBars([{ length: 600 }, { length: 600 }, { length: 600 }], [1000, 4000]).buy, [{ length: 1000, count: 3 }]); // (3000 mm of metal, not 4000)
+  assert.deepEqual(frames.packBars([{ length: 600 }, { length: 600 }, { length: 600 }], [1300, 4000]).buy, [{ length: 1300, count: 2 }]);
+  assert.throws(() => frames.packBars([{ length: 0 }], [1000]), /packBars: pieces is a list of \{ length \}, each above 0 mm/);
+  assert.throws(() => frames.packBars([{ length: 10 }], []), /packBars: lengths is a list of the lengths sold/);
+});
+
+test('frame.cut: a beam longer than any length sold, lengths the cut tolerance cannot hold apart, beams that must match; a maker\'s cut lengths and an assumed stock', () => {
+  const B = (id, L, p = '2020-misumi-hfs5') => ({ id, beam: beamModel(p, { length: L }) });
+  const c = frames.cutList([B('long', 3995), B('x1', 300), B('x2', 300.4), B('x3', 300.4)]);
+  const say = c.findings.map((f) => `${f.level} ${f.text}`);
+  assert.ok(say.some((t) => /^fail long: 3995 mm of profile-2020-misumi-hfs5 is longer than any length it is sold in \(1000, 4000 mm\): a bar gives 3987 mm after a 10 mm trim and a 3 mm cut/.test(t)), say.join('\n'));
+  assert.ok(say.some((t) => /^warn profile-2020-misumi-hfs5: mark C \(x1\) at 300 mm and mark B \(x2, x3\) at 300\.4 mm differ by 0\.4 mm, less than two cuts at ±0\.5 mm can hold apart/.test(t)), say.join('\n'));
+  assert.ok(say.some((t) => /^info mark B \(x2, x3\): 2 beams of 300\.4 mm, each cut to ±0\.5 mm, may differ by up to 1 mm/.test(t)));
+  assert.deepEqual(c.stock[0].unpacked.map((u) => u.item), ['long']); assert.ok(c.findings.every((f) => f.code === 'frame.cut'));
+  // no sold length in its set: 6 m assumed (an estimate); cut to length by the maker: each beam bought at its length
+  const g = frames.cutList([B('g1', 500, 'angle-al-25x25x3'), B('g2', 500, 'angle-al-25x25x3')]).stock[0];
+  assert.deepEqual([g.supply, g.lengths, g.buy], ['assumed', [6000], [{ length: 6000, count: 1 }]]);
+  assert.match(frames.cutListText(frames.cutList([B('g1', 500, 'angle-al-25x25x3')])).join('\n'), /no sold length in its set: 6000 mm assumed/);
+  const cutBy = profileModel({ ...published.find((s) => s.name === 'profile-2020-misumi-hfs5'), name: 'test-cut' }, { lengths: [] });
+  const m = frames.cutList([{ id: 'c1', beam: beamModel(cutBy, { length: 450 }) }, { id: 'c2', beam: beamModel(cutBy, { length: 4500 }) }]);
+  assert.deepEqual([m.stock[0].supply, m.stock[0].buy], ['cut', [{ length: 450, count: 1 }]]);
+  assert.match(m.findings.find((f) => f.level === 'fail').text, /c2: 4500 mm of test-cut is longer than the 4000 mm the maker cuts it to/);
+});
+
+test('a cut-and-drill sheet: to scale, each operation from end a to 0.1 mm, the face up named, each tap\'s thread and depth', () => {
+  const c = frames.cutList(box()), d = c.marks.find((m) => m.mark === 'D'), sh = frames.beamSheet(d.beam, { mark: d.mark, items: d.items });
+  assert.equal(sh.scale, 2); assert.deepEqual(sh.faces, ['top']);
+  // the access hole 12.5 mm from end b of 220: 207.5 from end a, on the sheet as 207.5
+  assert.deepEqual(sh.dimensions, [{ op: 3, distance: 207.5, text: '207.5' }]);
+  assert.match(sh.svg, />207\.5</); assert.match(sh.svg, />top face up: seen from the top, end a on the left</);
+  assert.match(sh.svg, />Mark D: profile-2020-misumi-hfs5 x 220\.0 mm</); assert.match(sh.svg, />1 off: z1/);
+  assert.match(sh.svg, />\(1\) a\.1: tap M5 x 10 deep</); assert.match(sh.svg, />tap M5 in bore a\.1, 10 mm deep/);
+  assert.match(sh.svg, /width="297mm"/); assert.ok(!/NaN|undefined/.test(sh.svg), 'no NaN on the sheet');
+  // a mitre about the top is seen from the top; a hole in the front gets the front's view; long beams drawn smaller
+  const m = frames.beamSheet(beamModel('2020-misumi-hfs5', { length: 1200, ops: [{ op: 'mitre', at: 'b', angle: 45, about: 'top' }, { op: 'drill', at: 'front@100.25', diameter: 5 }] }));
+  assert.deepEqual([m.scale, m.faces], [10, ['top', 'front']]); assert.match(m.svg, />100\.3</);
+  assert.throws(() => frames.beamSheet({}), /beamSheet: give a beam's model/);
+});

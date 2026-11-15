@@ -1,6 +1,7 @@
 // @rulecad/frames: structures from beams, of any profile. This release reads a profile (a beam's constant section, as
 // a model from its rule set, its outline, and what that outline is worth beside the maker's sheet) and makes beams of
-// it: a length with its mass, its anchors, the operations on it (cut, mitre, tap, holes, pockets, notches) and its solid. Beams in assemblies, joins, fittings and guides follow: the
+// it: a length with its mass, its anchors, the operations on it (cut, mitre, tap, holes, pockets, notches) and its solid;
+// and a frame's cut list (the bars to buy and the cuts on each) and a cut-and-drill sheet for each kind of beam. Beams in assemblies, joins, fittings and guides follow: the
 // plan is https://github.com/JoniBach/rulecad/issues/240.
 //
 // Every profile, slot family and slot nut is a rule set in @rulecad/rules, so the numbers are open data and live
@@ -10,3 +11,5 @@
 export * from './profile.mjs';
 export { beamModel, beam, beamAnchor, printable } from './beam.mjs';
 export { OPS, OP_DEFAULTS } from './ops.mjs';
+export { CUT_DEFAULTS, beamMarks, packBars, cutList, cutListText } from './cutlist.mjs';
+export { beamSheet } from './cutsheet.mjs';
