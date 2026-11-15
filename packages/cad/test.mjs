@@ -30,7 +30,22 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
     const r = spawnSync('node', [BIN, 'rules', 'check', 'bad'], { cwd: ws, encoding: 'utf8' });
     assert.equal(r.status, 1); assert.match(r.stdout, /kind "guess"/); assert.match(r.stdout, /has no source/); assert.match(r.stdout, /YYYY-MM-DD/);
     const check = JSON.parse(cad('rules', 'check', 'pico', '--json'));
-    assert.deepEqual(check, [{ name: 'pico', findings: [] }]);
+    assert.deepEqual(check.map((x) => [x.name, x.findings, x.notes.map((n) => [n.level, n.code, n.rule, n.values.alias])]), [['pico', [], [['info', 'rules.alias', 'length', 'body_length'], ['info', 'rules.alias', 'width', 'body_width'], ['info', 'rules.alias', 'mount_hole', 'mount_hole_diameter']]]], 'an alias is a note, never a failure');
+    // a workspace's copy of a thread set from before the sets were widened (rules 0.3.9's m3): it checks clean, is
+    // used as it is, and is told what the kit's set has that it lacks
+    const old = { _doc: 'M3 socket head screws, for motor faces. kind as in x1c.json.', name: 'm3', interface: { screw_clearance: 'clearance', screw_head: 'head', screw_head_height: 'head_height' }, rules: {
+      clearance: { value: 3.4, unit: 'mm', rule: 'Clearance hole for an M3 screw, medium fit', kind: 'spec', source: 'ISO 273 medium fit', checked: '2026-11-08' },
+      head: { value: 5.5, unit: 'mm', rule: 'M3 socket head cap screw head diameter', kind: 'spec', source: 'ISO 4762', checked: '2026-11-08' },
+      head_height: { value: 3, unit: 'mm', rule: 'M3 socket head cap screw head height', kind: 'spec', source: 'ISO 4762', checked: '2026-11-08' } } };
+    fs.writeFileSync(path.join(ws, 'rules/m3.json'), JSON.stringify(old, null, 2));
+    const copy = spawnSync('node', [BIN, 'rules', 'check', 'm3'], { cwd: ws, encoding: 'utf8' });
+    assert.equal(copy.status, 0, copy.stdout); assert.match(copy.stdout, /1 of 1 rule sets pass/);
+    assert.match(copy.stdout, /m3: NOTE {2}clearance is also read as screw_clearance, head is also read as screw_head, head_height is also read as screw_head_height {2}\(rules\.alias\)/);
+    assert.match(copy.stdout, /m3: NOTE {2}your copy is used as it is; the kit's m3 now also has thread_form, thread, .* and \d+ more \(--json lists them\): copy any you want into rules\/m3\.json, or delete it to read the kit's own {2}\(rules\.new\)/);
+    const added = JSON.parse(cad('rules', 'check', 'm3', '--json'))[0].notes.find((n) => n.code === 'rules.new').refs.rules;
+    for (const k of ['pilot', 'nut_flats', 'insert_hole', 'lengths']) assert.ok(added.includes(k), `told of ${k}`);
+    assert.ok(!added.includes('clearance'), 'not told of what it has');
+    fs.rmSync(path.join(ws, 'rules/m3.json'));
     // drawn from its figures; a set that says nothing of its shape is refused, not drawn wrong
     cad('rules', 'draw', 'nema17');
     const svg = fs.readFileSync(path.join(ws, 'nema17.svg'), 'utf8');

@@ -47,7 +47,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad trust                         allow what this workspace's cad.config.json asks (no sandbox, its own targets)
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
-  cad rules check [set …]           rule sets held to what makes them traceable (exit 1 on a failure) [--json]
+  cad rules check [set …]           rule sets held to what makes them traceable (exit 1 on a failure) [--json]; notes,
+                                    never failures: an alias in "interface", and what the kit's set has that your copy lacks
   cad rules draw <set>              a dimension drawing of what a set says a part mounts by, <set>.svg, to compare with its datasheet [--out file]
   cad rules draft <name> --from <file.pdf>   the figures in a datasheet's text, into rules/<name>.json for you to name and check (all kind estimate)
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
@@ -339,9 +340,15 @@ async function analyses(b, d, tag) {
 function ruleSheets(what, names) {
   if (what === 'check') {
     const results = checkSets(names), bad = results.filter((r) => r.findings.length);
-    if (opt('json')) console.log(JSON.stringify(results.map((r) => ({ name: r.name, findings: r.findings })), null, 2));
+    if (opt('json')) console.log(JSON.stringify(results.map((r) => ({ name: r.name, findings: r.findings, ...(r.notes ? { notes: r.notes } : {}) })), null, 2));
     else {
       for (const r of bad) { console.log(`${r.name}: ${r.findings.length} to fix`); for (const x of r.findings) console.log(`  FAIL  ${x.text}  (${x.code})`); }
+      // notes never fail: an alias names one line per set, what a copy lacks of the kit's set says it whole
+      for (const r of results.filter((x) => x.notes)) {
+        const alias = r.notes.filter((x) => x.code === 'rules.alias'), rest = r.notes.filter((x) => x.code !== 'rules.alias');
+        if (alias.length) console.log(`${r.name}: NOTE  ${alias.map((x) => `${x.rule} is also read as ${x.values.alias}`).join(', ')}  (rules.alias)`);
+        for (const x of rest) console.log(`${r.name}: NOTE  ${x.text}  (${x.code})`);
+      }
       console.log(`${results.length - bad.length} of ${results.length} rule sets pass`);
     }
     process.exitCode = bad.length ? 1 : 0;
