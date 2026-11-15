@@ -141,7 +141,8 @@ export async function measuresAt(rev, { only, jobs = 4, cache = path.join(ROOT, 
     const byWs = Map.groupBy ? Map.groupBy(due, (o) => o.ws) : due.reduce((m, o) => m.set(o.ws, [...(m.get(o.ws) || []), o]), new Map());
     for (const [ws, list] of byWs) { const n = Math.max(1, Math.min(jobs, Math.ceil(list.length / 8))); for (let i = 0; i < n; i++) queue.push({ ws, list: list.filter((_, k) => k % n === i) }); }
     // (each kept as it comes, so a run that is stopped keeps what it built)
-    const keep = (o, r) => { measures.set(o.id, r); if (!r.error) fs.writeFileSync(kept(o), JSON.stringify(r)); };
+    let n = 0, t = Date.now();
+    const keep = (o, r) => { measures.set(o.id, r); if (!r.error) fs.writeFileSync(kept(o), JSON.stringify(r)); n++; if (Date.now() - t > 30000 || n === due.length) { t = Date.now(); say(`  ${n} of ${due.length} built at ${rev}`); } };
     const go = async () => { for (let q; (q = queue.shift());) { const at = new Map(q.list.map((o) => [`${o.project}/${o.name}`, o])); const got = await run(dir, q.ws, [...at.keys()], (n, r) => keep(at.get(n), r)); for (const [n, o] of at) if (!measures.has(o.id)) keep(o, got.get(n)); } };
     await Promise.all(Array.from({ length: Math.max(1, jobs) }, go));
   }
