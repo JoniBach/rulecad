@@ -142,12 +142,12 @@ function fastened(ws) {
   fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'), { recursive: true });
   const size = { width: { value: 40, unit: 'mm', rule: 'Room for two screws' }, depth: { value: 20, unit: 'mm', rule: 'A screw and its walls' }, pitch: { value: 24, unit: 'mm', rule: 'Between the screws' } };
   object(ws, 'demo/base', { uses: ['x1c'], variables: { ...size, tall: { value: 'x1c.layer * 60', unit: 'mm', rule: 'Whole layers' }, hole_depth: { value: 9, unit: 'mm', rule: 'The thread engaged and room at the tip', tweak: { min: 3, max: 11 } },
-    end: { value: 'pilot', choice: ['pilot', 'insert', 'through', 'pocket'], rule: 'What holds the screw' } } }, `import jscad from '@jscad/modeling'
+    end: { value: 'pilot', choice: ['pilot', 'insert', 'through', 'pocket', 'trap'], rule: 'What holds the screw' } } }, `import jscad from '@jscad/modeling'
 const { cuboid } = jscad.primitives
 export function main (v) {
   const f = v.fixings, block = cuboid({ size: [v.width, v.depth, v.tall], center: [0, 0, v.tall / 2] })
   const cut = (x) => (v.end === 'pilot' ? [f.hole('M3', { kind: 'pilot', depth: v.hole_depth, at: [x, 0, v.tall] })] : v.end === 'insert' ? [f.hole('M3', { kind: 'insert', at: [x, 0, v.tall] })]
-    : [f.hole('M3', { depth: v.tall, at: [x, 0, v.tall] }), ...(v.end === 'pocket' ? [f.nutPocket('M3', { at: [x, 0, 0], into: '+z' })] : [])])
+    : [f.hole('M3', { depth: v.tall, at: [x, 0, v.tall] }), ...(v.end === 'pocket' ? [f.nutPocket('M3', { at: [x, 0, 0], into: '+z' })] : v.end === 'trap' ? [f.nutTrap('M3', { depth: v.depth / 2, into: '+y', at: [x, 0 - v.depth / 2, v.tall / 2] })] : [])])
   return v.ops.subtract(block, ...[-1, 1].flatMap((s) => cut(s * v.pitch / 2)))
 }
 `);
@@ -282,6 +282,13 @@ test('fasten: seats and ends read from the parts: a counterbore on an insert, a 
     assert.match(r.of('overlap')[0].text, /no parts overlap \(6 object instances\)/, 'the nuts lie in their seats, corners to corners');
     assert.deepEqual(r.of('fasten.holes')[0].refs.screws, ['hole at -12, 0, 2.5', 'hole at 12, 0, 2.5']);
     assert.deepEqual(r.of('fasten.holes')[0].refs.places, [[-12, 0, 17], [12, 0, 17]]);
+    // a nut slid into a slot from the side, across the screw, partway down the base (v.fixings.nutTrap): its seat is found there, and the nut sits in it with its flats to the slot's walls
+    write({ base: { end: 'trap' } });
+    r = check();
+    assert.deepEqual(r.fails, []);
+    assert.match(r.of('fasten.end')[0].text, /ends in an M3 hex nut in its seat in base, 5\.7 mm across the flats for the nut's 5\.5 mm, past a 3\.5 mm clearance hole/);
+    assert.match(r.of('fasten.length')[0].text, /M3x12 cap chosen/, 'the screw ends past the nut in the slot, not at the base\'s far face');
+    assert.match(r.of('overlap')[0].text, /no parts overlap \(6 object instances\)/, 'each nut lies in its slot, flats to the walls');
     // a tightening torque is held against what the head sits on, and the washer that brings it within is named; with it, it passes
     write({ fasten: { torque: 0.5 } }); r = check();
     assert.deepEqual(r.fails, ['fasten.seat']);

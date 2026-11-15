@@ -128,7 +128,8 @@ function measure(segs, R) {
     shape = round.all && sides === 6 ? 'hex' : round.all && sides === 4 ? 'square' : 'round';
     corner = round.corner;
   }
-  return { free, loop: { closed, inside: closed && inside, shape, d, flats, offset, c, corner } };
+  const [bp, bq] = segs[best], bl = Math.hypot(bq[0] - bp[0], bq[1] - bp[1]), along = bl > 0 ? [(bq[0] - bp[0]) / bl, (bq[1] - bp[1]) / bl] : null; // (the nearest wall's run: a nut's corners point along a slot's walls)
+  return { free, loop: { closed, inside: closed && inside, shape, d, flats, offset, c, corner, along } };
 }
 const same = (a, b) => {
   if (!a.loop || !b.loop) return !a.loop && !b.loop;
@@ -475,7 +476,10 @@ export function fastenOf(s, worlds, opts = {}) {
         for (; m < B.segs.length; m++) {
           const seg = B.segs[m];
           if (seg.solid) { blind = true; break; }
-          if (!seg.hole) continue;
+          if (!seg.hole) { // a slot open to the side across the screw, the hole going on past it: a nut's slot (v.fixings.nutTrap)
+            if (!pocket && seg.a.free > free + 0.3 && same(seg.a, seg.b) && B.segs.slice(m + 1).some((s) => s.hole)) pocket = seg;
+            continue;
+          }
           if (Math.min(seg.a.free, seg.b.free) < free - tol) { blind = true; break; } // (it narrows: a hole's point, a step)
           if (seg.a.free > free + 0.3 && same(seg.a, seg.b) && !pocket) pocket = seg; // (it widens to a seat on the far side)
           if (!pocket) stop = seg.z1;
@@ -516,7 +520,7 @@ export function fastenOf(s, worlds, opts = {}) {
         else if (!isClearance) say('fasten.end', 'fail', `a nut holds this screw, so ${x.into} is passed through: its hole measures ${mm(end.d)} mm, and a clearance hole should be ${mm(clr.normal?.diameter ?? fx.major)} mm as drawn`, endValues);
         else {
           const zNut = end.pocket && seatNut ? end.pocket.z0 : end.far;
-          end.kind = 'nut'; end.nut = { kind, model: nm, z: zNut, seated: !!(end.pocket && seatNut), corner: end.pocket && seatNut && end.pocket.a.loop.corner ? { seg: end.pocket } : null };
+          end.kind = 'nut'; end.nut = { kind, model: nm, z: zNut, seated: !!(end.pocket && seatNut), corner: end.pocket && seatNut && (end.pocket.a.loop.corner || end.pocket.a.loop.along) ? { seg: end.pocket } : null };
           say('fasten.end', 'pass', `ends in ${an(nm.name)} ${nm.name} ${end.nut.seated ? `in its seat in ${x.into}, ${mm(seatNut.across)} mm across the flats for the nut's ${mm(nm.flats)} mm` : `on the far face of ${x.into}`}, past a ${mm(end.d)} mm clearance hole`, { ...endValues, flats: nm.flats });
         }
       } else {
@@ -636,7 +640,7 @@ export function fastenOf(s, worlds, opts = {}) {
       if (washer) piece('washer', fx.thread, {}, at(zSeat), up, A, up, []);
       if (end.kind === 'nut') {
         let X = null;
-        if (end.nut.corner) { const lp = end.nut.corner.seg.a.loop, pr = end.nut.corner.seg.of, v = [lp.corner[0] - lp.c[0], lp.corner[1] - lp.c[1]], local = add(pr.x.map((c) => c * v[0]), pr.y, v[1]), pm = end.nut.corner.seg.part.m; X = pm ? [0, 1, 2].map((r) => pm[r] * local[0] + pm[4 + r] * local[1] + pm[8 + r] * local[2]) : local; }
+        if (end.nut.corner) { const lp = end.nut.corner.seg.a.loop, pr = end.nut.corner.seg.of, v = lp.corner ? [lp.corner[0] - lp.c[0], lp.corner[1] - lp.c[1]] : lp.along, local = add(pr.x.map((c) => c * v[0]), pr.y, v[1]), pm = end.nut.corner.seg.part.m; X = pm ? [0, 1, 2].map((r) => pm[r] * local[0] + pm[4 + r] * local[1] + pm[8 + r] * local[2]) : local; }
         piece('nut', fx.thread, { kind: end.nut.kind }, at(end.nut.z), D, B, D, [], X);
       }
       if (end.kind === 'insert' && end.insert) piece('insert', fx.thread, {}, at(end.mouth), up, B, up, ends);
