@@ -97,6 +97,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
                                     against measured, shown by cad history [--unit mm] [--source "how"] [--rule "what it is"]
                                     [--table: what the assembly still assumes, as Markdown; --out MEASURE.md: kept in that file]
+                                    The fixings coupon's rules need no --rule: x1c.pilot_m4, x1c.insert_m3 (and _petg for one
+                                    plastic), x1c.nut_fit, x1c.nut_slip, x1c.thread_gap, x1c.thread_flank (45 or 60)
   cad measure <model.stl|3mf>       a model from elsewhere, measured: size, the stretches along its length with the same
                                     cross-section, and each section's shape, with a drawing in .preview/measure/
                                     [--along x|y|z] [--at 10,50: sections there too] [--line 0.6,2.5;4.6,2.5: where lines

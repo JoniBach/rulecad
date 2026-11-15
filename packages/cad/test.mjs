@@ -1769,6 +1769,54 @@ test('cad measured: a measurement where the estimate was, what moved, the ledger
   } finally { done(); }
 });
 
+test('cad measured from the fixings coupon: each result lands in the printer\'s rule set with its source and date, and a pilot then rests on a measured rule', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const js = `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const f = v.fixings, top = v.thick
+  return v.ops.subtract(cuboid({ size: [v.width, v.width, top], center: [0, 0, top / 2] }), f.hole('M4', { kind: 'pilot', at: [0, 0, top] }), f.nutPocket('M3', { at: [v.width / 2 - top, 0, top] }))
+}
+`;
+    object(ws, 'home/plate', { uses: ['x1c'], engine: 'manifold', variables: { width: { value: 30, unit: 'mm', rule: 'Room for both' }, thick: { value: 'x1c.layer * 40', unit: 'mm', rule: 'The pilot and a floor' } } }, js);
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['plate'] }));
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/coupon.json'), JSON.stringify({ title: 'Coupon', kind: 'fit', items: [{ id: 'plate', object: 'plate' }] }));
+    const drawn = () => JSON.parse(cad('check', 'home/plate', '--json')).findings;
+    const pilot = (f) => f.find((x) => x.code === 'hole.drawn' && x.refs.thread === 'M4'), pocket = (f) => f.find((x) => x.code === 'nutPocket.drawn');
+    assert.deepEqual([pilot(drawn()).refs.rule, pilot(drawn()).refs.kind], ['m4.pilot', 'community'], 'before: the thread\'s starting figure');
+    const kit = fs.readFileSync(new URL('../rules/x1c.json', import.meta.url), 'utf8');
+    // a refusal writes nothing: the flank is one of the two forms the coupon prints
+    assert.match(cad('measured', 'home/coupon', 'x1c.pilot_m4=3.85', 'x1c.thread_flank=50'), /x1c\.thread_flank is 45 or 60: the flank forms the coupon prints \(got 50\)/);
+    assert.ok(!fs.existsSync(path.join(ws, 'rules/x1c.json')) || !JSON.parse(fs.readFileSync(path.join(ws, 'rules/x1c.json'), 'utf8')).rules.pilot_m4, 'nothing written');
+    const out = cad('measured', 'home/coupon', 'x1c.pilot_m4=3.85', 'x1c.nut_fit=0.05', 'x1c.thread_gap=0.25', 'x1c.thread_flank=60');
+    assert.match(out, /x1c\.pilot_m4: measured 3\.85 mm, predicted 3\.75 \(m4\.pilot, community\), ratio 1\.0267/);
+    assert.match(out, /x1c\.nut_fit: measured 0\.05 mm, predicted 0 \(snug, no clearance\)/);
+    assert.match(out, /x1c\.thread_gap: measured 0\.25 mm, predicted 0\.2 \(estimate\), ratio 1\.25/);
+    assert.match(out, /x1c\.thread_flank: measured 60 °, predicted 45 \(flanks: printed, the default\)/);
+    // in the workspace's copy of the printer's rule set, each with its rule, source and date
+    const rules = JSON.parse(fs.readFileSync(path.join(ws, 'rules/x1c.json'), 'utf8')).rules, today = new Date().toISOString().slice(0, 10);
+    for (const k of ['pilot_m4', 'nut_fit', 'thread_gap', 'thread_flank']) {
+      assert.equal(rules[k].kind, 'measured', k); assert.equal(rules[k].checked, today, k); assert.match(rules[k].source, /fixings coupon|bench/, k); assert.ok(rules[k].rule.length > 40, k);
+    }
+    assert.deepEqual([rules.pilot_m4.value, rules.pilot_m4.unit, rules.nut_fit.value, rules.thread_gap.value, rules.thread_flank.value, rules.thread_flank.unit], [3.85, 'mm', 0.05, 0.25, 60, '°']);
+    assert.match(rules.pilot_m4.rule, /M4 screw to form its own thread in PLA/); assert.match(rules.thread_flank.rule, /designs still draw flanks: 'printed'/);
+    assert.equal(fs.readFileSync(new URL('../rules/x1c.json', import.meta.url), 'utf8'), kit, 'the kit\'s own rule set is untouched');
+    // fixings.hole('M4', { kind: 'pilot' }) now rests on the measured rule, and the nut pocket takes the measured fit
+    const after = drawn();
+    assert.deepEqual([pilot(after).values.diameter, pilot(after).refs.rule, pilot(after).refs.kind], [3.85, 'x1c.pilot_m4', 'measured']);
+    assert.match(pilot(after).text, /an M4 pilot drawn 3\.85 mm: it rests on x1c\.pilot_m4 \(3\.85 mm\), a measured rule, as drawn/);
+    assert.ok(!after.some((x) => x.code === 'hole.material'), 'the measured pilot names the project\'s plastic');
+    assert.equal(pocket(after).values.flats, 5.65, 'm3.nut_flats 5.5, x1c.hole_comp 0.1 and x1c.nut_fit 0.05');
+    // the ledger: predicted against measured
+    const history = cad('history', 'home/coupon');
+    assert.match(history, /predicted against measured:/); assert.match(history, /x1c\.pilot_m4: measured 3\.85 mm, predicted 3\.75/);
+    // a rule the coupon does not measure, and no rule given, is still refused by name
+    assert.match(cad('measured', 'home/coupon', 'x1c.pilot_m7=3'), /x1c has no rule "pilot_m7"/);
+  } finally { done(); }
+});
+
 test('wires: longest through the poses, a gauge against what it carries, the sheet; a bad route refused by name', async () => {
   const { ws, cad, done } = workspace();
   try {
