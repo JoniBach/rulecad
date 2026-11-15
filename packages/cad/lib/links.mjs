@@ -103,8 +103,9 @@ export async function assemblyModel(s, { title, versions, filaments: fil = {}, n
     alts.forEach((x, i) => (model.motion.swap[x.pose] ||= []).push([x.of, list.length - alts.length + i]));
   }
   // A machine's link carries the rest of the project: its task, a drawing to play, its wires' routes, the build page
+  // (an assembly with screws has one too: its shopping list and its steps, each with its screws and key)
   if (s.wires?.length) model.wires = wireRoutesOf(s);
-  if (s.task || s.wires?.length || s.objects.some((o) => o.bought || o.motor)) {
+  if (s.task || s.wires?.length || s.a.fasten?.length || s.objects.some((o) => o.bought || o.motor)) {
     const findings = s.task ? checkAssembly(s) : [];
     if (s.task && model.motion) { model.task = taskData(s, findings); const carried = stepsData(s, steps); if (carried) model.steps = carried; }
     Object.assign(model, await buildData(s));

@@ -723,6 +723,8 @@ async function drawing(model, motion, { turn, tilt, camera, renderer, stage, mid
 }
 
 // ---------- the build page ----------
+// One fastening of a step: the fit, its screws by count and name, the key that turns them and how tight (as cad order says it)
+const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.given ? `to ${f.tighten.torque} N m` : f.tighten.load ? `to ${f.tighten.torque} N m (what the joint's load leaves the thread)` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
 // A link as the whole project, beside the model: what to buy, the plates, the wiring sheet, the assembly steps (each
 // showing the model at that step, the new part held off along its way on) and the machine's settings. All of it the
 // link's data, written as text.
@@ -740,10 +742,10 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
   else if (L) {
     const kids = [];
     if (L.bought?.length) kids.push(el('h3', null, 'Bought'), table(['Qty', 'Part', 'What', 'Items'], L.bought.map((x) => [x.qty, `${x.set}${x.variant ? ` (${x.variant})` : ''}`, x.part, x.items.join(', ')])));
-    if (L.fasteners?.length) kids.push(el('h3', null, 'Fasteners'), table(['Qty', 'Fastener', 'Where'], L.fasteners.map((x) => [x.qty, x.fastener, x.from.join('; ')])));
+    if (L.fasteners?.length) kids.push(el('h3', null, 'Fasteners'), table(['Qty', 'Fastener', 'Grams', 'Buy', 'Where'], L.fasteners.map((x) => [x.qty, x.fastener, x.mass ?? '', x.packs ? `${x.packs} × ${L.totals.pack.size}, ${x.spare} spare` : '', x.from.join('; ')])));
     if (L.wires?.length) kids.push(el('h3', null, 'Wire'), table(['mm', 'Gauge', 'Runs'], L.wires.map((x) => [x.length, x.gauge ?? 'not given', x.runs.join(', ')])));
     if (L.printed?.length) kids.push(el('h3', null, `Printed (${L.totals.material})`), table(['Grams', 'Minutes', 'Part'], L.printed.map((x) => [x.grams, x.minutes, x.id])));
-    kids.push(el('p', null, `${L.totals.printedGrams} g printed, about ${L.totals.minutes} min of printing, ${L.totals.machineGrams} g as a machine${L.totals.noMassFor ? ` (no mass for ${L.totals.noMassFor.join(', ')})` : ''}.`));
+    kids.push(el('p', null, `${L.totals.printedGrams} g printed, about ${L.totals.minutes} min of printing, ${L.totals.fixingsGrams ? `${L.totals.fixingsGrams} g of fixings, ` : ''}${L.totals.machineGrams} g as a machine${L.totals.noMassFor ? ` (no mass for ${L.totals.noMassFor.join(', ')})` : ''}.`));
     parts.push(section('What to buy', ...kids));
   }
   // Plates
@@ -766,7 +768,7 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
     else {
       const ol = el('ol', 'steps');
       O.steps.forEach((st, i) => {
-        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map((f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}`).join('; ')));
+        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map(fastenerText).join('; ')));
         const shown = new Set(O.steps.slice(0, i + 1).flatMap((x) => x.items));
         but.onclick = () => { const on = view.step?.n === st.n; view.step = on ? null : { n: st.n, shown, now: new Set(st.items), dir: st.dir }; if (!on) spin(false); box.querySelectorAll('ol.steps button').forEach((x) => x.classList.toggle('on', !on && x === but)); apply(); };
         li.append(but); ol.append(li);

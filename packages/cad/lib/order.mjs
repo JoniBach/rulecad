@@ -130,10 +130,21 @@ export function assemblyOrder(s) {
       else if (later) add(later, q.id, `${q.id} covers the screw of ${x.note || later}`);
     }
   }
+  // A fasten's screws (lib/fasten.mjs): what stands over a head goes on after the parts the screw joins. A part that
+  // must be there first (it comes before them, it is one of them, or it is no step at all) closes the way, unless a
+  // ball-end key reaches the head tilted
+  for (const rel of s.fastened?.relations ?? []) for (const sc of rel.screws) {
+    const acc = sc.access; if (!acc?.blockers?.length) continue;
+    const screwed = [...rel.through, rel.into].map(top).filter((t) => by.has(t)), later = [...screwed].sort(earlier).at(-1), walls = [...new Set(acc.blockers.map((b) => b.item))];
+    const first = walls.filter((q) => !by.has(q) || screwed.includes(q) || (later && reaches(q, later)));
+    if (first.length) { if (acc.tilt == null) bad.push({ fit: { note: rel.label }, wall: first[0], at: acc.top, later, fasten: rel.index, screw: sc.index, member: screwed.includes(first[0]), fixed: !by.has(first[0]) }); continue; }
+    for (const q of walls) add(later, q, `${q} covers the screws of ${rel.label}`);
+  }
   const box = (g) => { const p = g.tris.flat(); return [0, 1, 2].map((k) => { const v = p.map((x) => x[k]); return (Math.min(...v) + Math.max(...v)) / 2; }); };
   if (bad.length) {
-    const b = bad[0], label = b.fit.note || `${b.fit.a} to ${b.fit.b}`;
-    return { steps: [], stuck: { item: b.later, screw: label, wall: b.wall, at: b.at, text: `the screw of "${label}" can't be reached in any order: ${b.wall} stands over it and goes on first (${[...before.get(b.wall)].slice(0, 1).map(([, why]) => why)})` } };
+    const b = bad[0], label = b.fit.note || `${b.fit.a} to ${b.fit.b}`, why = b.member ? 'it is one of the parts the screw joins' : b.fixed ? 'it is in place before anything is fitted' : `goes on first (${[...before.get(b.wall)].slice(0, 1).map(([, w]) => w)})`;
+    return { steps: [], stuck: { item: b.later, screw: label, wall: b.wall, at: b.at, ...(b.fasten != null ? { fasten: b.fasten, screws: bad.filter((x) => x.fasten === b.fasten).map((x) => x.screw) } : {}),
+      text: `the screw of "${label}" can't be reached in any order: ${b.wall} stands over it${b.member || b.fixed ? `, and ${why}` : ` and ${why}`}` } };
   }
   let span = 1;
   for (const g of all) for (const t of g.tris) for (const p of t) for (const c of p) span = Math.max(span, Math.abs(c) * 2);
@@ -190,7 +201,7 @@ export function assemblyOrder(s) {
   for (const [i, x] of seq.entries()) {
     if (x.group) { steps.push({ items: x.group.map((g) => g.id), object: null, dir: round(x.d), fasteners: [], together: true }); continue; }
     const { p, d } = x, list = [...new Set(s.fits.filter((f) => [...names(f.a), ...names(f.b)].includes(p.id) && (f.fastens || f.seat != null || f.fastener) && [...names(f.a), ...names(f.b)].every((n) => (at.get(n) ?? 0) <= i)))];
-    steps.push({ items: [p.id], object: p.object, dir: round(d), fasteners: list.map((f) => ({ fit: f.note || f.label || `${f.a} to ${f.b}`, ...(f.fastener ? { fastener: f.fastener } : {}), ...(f.count != null ? { count: f.num(f.count) } : {}) })) });
+    steps.push({ items: [p.id], object: p.object, dir: round(d), fasteners: list.map((f) => ({ fit: f.note || f.label || `${f.a} to ${f.b}`, ...(f.fastener ? { fastener: f.fastener } : {}), ...(f.count != null ? { count: f.num(f.count) } : {}), ...(f.key ? { key: f.key } : {}), ...(f.tighten ? { tighten: f.tighten } : {}) })) });
   }
   // Copies of one thing fitted the same way, one after another, are one step
   const merged = [];
@@ -199,13 +210,16 @@ export function assemblyOrder(s) {
     if (last && st.object && !st.together && last.object === st.object && last.dir.join() === st.dir.join() && JSON.stringify(last.fasteners.map((f) => f.fit)) === JSON.stringify(st.fasteners.map((f) => f.fit))) last.items.push(...st.items);
     else merged.push({ items: [...st.items], object: st.object, dir: st.dir, fasteners: st.fasteners, ...(st.together ? { together: true } : {}) });
   }
-  merged.forEach((st, i) => { st.n = i + 1; st.text = `${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}${st.together ? ' go on as one' : i ? ` goes on${st.items.length > 1 ? ', one by one' : ''}` : ' first'}${st.fasteners.length ? `: ${st.fasteners.map((f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}`).join('; ')}` : ''}`; });
+  merged.forEach((st, i) => { st.n = i + 1; st.text = `${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}${st.together ? ' go on as one' : i ? ` goes on${st.items.length > 1 ? ', one by one' : ''}` : ' first'}${st.fasteners.length ? `: ${st.fasteners.map(fastenerText).join('; ')}` : ''}`; });
   return { steps: merged, stuck: null };
 }
 
+/** One fastening of a step as the order and the build page say it: the fit, its screws by count and name, the key and how tight. */
+export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.given ? `to ${f.tighten.torque} N m` : f.tighten.load ? `to ${f.tighten.torque} N m (what the joint's load leaves the thread)` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
+
 // Cached by what the parts are and where they are, with everything else that changes the answer
 function orderFile(s) {
-  const key = crypto.createHash('sha256').update(JSON.stringify([4, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([5, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
   return paths.cache('order', `${key}.json`);
 }
 export function orderOf(s) {

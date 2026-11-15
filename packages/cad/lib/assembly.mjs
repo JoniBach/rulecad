@@ -16,6 +16,8 @@
 //   { "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length", "label": "Screws find their inserts" }
 // The path must be clear for depth mm (it lands in a hole) and solid within "ring" mm of it (default: the hole's
 // diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
+// A screwed joint is a fasten (lib/fasten.mjs): { "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1"] }.
+// Its holes are read from the parts as drawn, its screws placed as reference parts, and it holds as a fit that fastens does.
 import { host, readJson } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -44,6 +46,7 @@ import { gripChecks } from './grip.mjs';
 import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
+let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -217,7 +220,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role });
     }
   }
-  // Every part, with its item where the joints put it at these values (jointValues)
+  // Every part, with its item where the joints put it at these values (jointValues); then the hardware of its fasten
+  // relations (lib/fasten.mjs), each piece with the item it sits in
+  let hardware = [];
   const partsAt = (worlds) => {
     const out = [];
     placed.forEach(([, c], k) => {
@@ -229,7 +234,8 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
         for (const p of src.sub.parts) {
           if (p.role === 'support' && a.kind !== 'plate') continue;
           out.push({ ...p, name: `${id}.${p.name}`, item: id, leaf: `${id}.${p.leaf}`, label: `${id} ${p.label}`,
-            geometry: transform(m, p.geometry), polygons: move(p.polygons), triangles: move(p.triangles), m: jscad.maths.mat4.multiply(jscad.maths.mat4.create(), m, p.m) });
+            geometry: transform(m, p.geometry), polygons: move(p.polygons), triangles: move(p.triangles), m: jscad.maths.mat4.multiply(jscad.maths.mat4.create(), m, p.m),
+            ...(p.hardware ? { moves: id, allow: p.allow.map((l) => `${id}.${l}`), lift: jscad.maths.vec3.transform([0, 0, 0], p.lift, [...m.slice(0, 12), 0, 0, 0, 1]) } : {}) }); // (a component's screws move with it)
         }
       } else {
         for (const p of src.b.parts) {
@@ -241,12 +247,24 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
         }
       }
     });
+    for (const h of hardware) out.push(fastening.hardwarePart(h, toMat4(worlds[h.host])));
     return out;
   };
   for (const x of a.fits || []) for (const p of x.poses || []) if (!motion.poses[p]) throw new Error(`fit ${x.note || x.label || `${x.a} / ${x.b}`}: no pose "${p}" (poses: ${Object.keys(motion.poses).join(', ') || 'none'})`);
   const pose = opts.pose ?? motion.pose;
   const jv = jointValues(motion, pose);
-  parts.push(...partsAt(placeItems(motion, jv)));
+  const worlds0 = placeItems(motion, jv);
+  parts.push(...partsAt(worlds0));
+  // Screwed joints: each screw followed through the parts as they stand, its hardware placed, and the joint counted as a
+  // fit that fastens (what holds a part, what the order of assembly and the list read)
+  let fastened = null;
+  if (a.fasten?.length && a.kind !== 'plate') {
+    fastening ||= await import('./fasten.mjs');
+    fastened = fastening.fastenOf({ a, project, parts, objects, motion, num }, worlds0, { access: pose === motion.pose });
+    hardware = fastened.hardware;
+    parts.push(...hardware.map((h) => fastening.hardwarePart(h, toMat4(worlds0[h.host]))));
+    fits.push(...fastened.fits.map((x) => ({ ...x, num })));
+  }
   // A fit with * applies to every copy: "key-*.switch.bottom" becomes one fit for key-0-0, key-0-1, …
   // With * on both sides, each copy is checked against all the others: { "a": "key-*.cap", "b": "key-*.cap" }
   for (let x of a.fits || []) {
@@ -271,9 +289,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const at = (p) => {
     if (typeof p === 'string' && others[p]) return others[p];
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
-    return { ...s, parts: moved, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
+    return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -385,7 +403,9 @@ function motionOf(a, placed, num, ref) {
   const marks = placed.flatMap(([, c], k) => Object.entries(c.src?.b?.object.anchors || {}).map(([name, spec]) => {
     try { return { item: k, id: c.id, name, frame: frameOf(spec, evalIn(c.src.b.values, `${c.src.objName} anchor ${name}`)) }; } catch { return null; }
   })).filter(Boolean);
-  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes, drives, loads, gravity: (a.gravity || [0, 0, -1]).map(num) };
+  // Where each screw of a fasten goes, where it says so with anchors: a point on its axis, the anchor's z along it
+  const fasten = (a.fasten || []).map((x, i) => (Array.isArray(x.at) ? x.at : []).map((n) => ({ ...anchor(n, `fasten ${i + 1}`), name: typeof n === 'string' ? n : null })));
+  return { items, joints, poses, pose: a.pose || Object.keys(poses)[0], loops, ref, marks, meshes, drives, loads, fasten, gravity: (a.gravity || [0, 0, -1]).map(num) };
 }
 
 // A pair measured from its drawn teeth (@rulecad/gears contact: backlash, transmission error, interference), kept in
@@ -695,6 +715,9 @@ function saveOverlaps() {
   try { host.writeText(OVERLAPS, JSON.stringify(remembered)); fresh = 0; } catch {} // only slower without it
 }
 
+// A screw and what it is threaded into (its part, its nut, its insert) share space by design: fasten's hardware says which
+const threaded = (a, b) => !!(a.allow?.includes(b.leaf) || b.allow?.includes(a.leaf));
+
 // checkAssembly(built) -> findings, as @rulecad/printcheck: { level, text, card? } (card: a short line for the mirror)
 // What a project prints in, for the motors' heat and press-fit checks
 const materialOf = (project) => { try { return readJson(path.join(paths.project(project), 'project.json')).material; } catch { return null; } };
@@ -721,7 +744,7 @@ export function checkAssembly(s) {
   }
   // Overlaps between object instances, inside components too. Bounding boxes first: most pairs can't touch.
   const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`);
-  const allowed = (a, b) => s.fits.some((x) => x.min != null && x.num(x.min) < 0 && ((named(a, x.a) && named(b, x.b)) || (named(a, x.b) && named(b, x.a))));
+  const allowed = (a, b) => threaded(a, b) || s.fits.some((x) => x.min != null && x.num(x.min) < 0 && ((named(a, x.a) && named(b, x.b)) || (named(a, x.b) && named(b, x.a))));
   const box = new Map(), bx = (p) => box.get(p) || (box.set(p, bounds(p.triangles)), box.get(p));
   const touch = (a, b) => [0, 1, 2].every((k) => bx(a).lo[k] <= bx(b).hi[k] + 1e-6 && bx(b).lo[k] <= bx(a).hi[k] + 1e-6);
   const clashes = [];
@@ -864,6 +887,7 @@ export function checkAssembly(s) {
       }
     }
   }
+  if (s.a.fasten?.length && fastening) fastening.fastenChecks(s, f, { placeItems });
   boughtFindings(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
@@ -902,7 +926,7 @@ export function loopGaps(s) {
 
 // Pairs of parts that overlap, as checkAssembly finds them (fits with a negative min allowed): [[a, b, mm³]]
 function clashesOf(s, named) {
-  const allowed = (a, b) => s.fits.some((x) => x.min != null && x.num(x.min) < 0 && ((named(a, x.a) && named(b, x.b)) || (named(a, x.b) && named(b, x.a))));
+  const allowed = (a, b) => threaded(a, b) || s.fits.some((x) => x.min != null && x.num(x.min) < 0 && ((named(a, x.a) && named(b, x.b)) || (named(a, x.b) && named(b, x.a))));
   const boxes = s.parts.map((p) => bounds(p.triangles)), out = [];
   for (let i = 0; i < s.parts.length; i++) for (let j = i + 1; j < s.parts.length; j++) {
     const pa = s.parts[i], pb = s.parts[j], A = boxes[i], B = boxes[j];
@@ -963,14 +987,14 @@ export function motionData(s) {
   const named = (p, n) => p.name === n || p.leaf === n || p.item === n || p.name.startsWith(`${n}.`), allow = [];
   const loose = s.fits.filter((x) => x.min != null && x.num(x.min) < 0);
   s.parts.forEach((pa, i) => s.parts.forEach((pb, j) => {
-    if (j > i && pa.item !== pb.item && loose.some((x) => (named(pa, x.a) && named(pb, x.b)) || (named(pa, x.b) && named(pb, x.a)))) allow.push([i, j]);
+    if (j > i && pa.item !== pb.item && (threaded(pa, pb) || loose.some((x) => (named(pa, x.a) && named(pb, x.b)) || (named(pa, x.b) && named(pb, x.a))))) allow.push([i, j]);
   }));
   return { motion: {
     items: mo.items.map(([n, ...m]) => [n, ...m.map(r)]),
     joints: mo.joints.map(({ id, type, parent, child, a, b, dofs, label, follow, path, cone, step }) => ({ id, type, parent, child, a: a.map(r), b: b.map(r), dofs: dofs.map((d) => d.map(r)),
       ...(label ? { label } : {}), ...(follow ? { follow } : {}), ...(path ? { path: path.map((p) => p.map(r)) } : {}), ...(cone != null ? { cone } : {}), ...(step ? { step } : {}) })),
     poses: mo.poses, ...(s.pose ? { pose: s.pose } : {}),
-    part: s.parts.map((p) => names.indexOf(p.item)),
+    part: s.parts.map((p) => names.indexOf(p.moves ?? p.item)), // (a screw moves with the item it sits in)
     ...(allow.length ? { allow } : {}),
     ...(s.gait ? { sequence: gaitSequence(s) ?? undefined } : {}),
   } };

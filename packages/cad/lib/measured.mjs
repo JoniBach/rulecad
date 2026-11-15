@@ -1,14 +1,17 @@
 // A bench exists so measurements replace estimates and the predictions move. cad measured writes a measured value where
 // the estimate was (in the workspace's copy of the rule set), or a measurement of something a check predicts (a figure
 // no rule holds, like the pen's error at the far corner), runs the assembly's checks either side, says what moved, and
-// keeps a ledger of predicted against measured beside prints.jsonl.
+// keeps a ledger of predicted against measured beside prints.jsonl. The rules the fixings coupon measures (a pilot or an
+// insert hole per thread, the nut fits, the thread gap and flank form) need no --rule: what each is comes from here.
 import fs from 'node:fs';
 import path from 'node:path';
 import { setAt } from './jsonedit.mjs';
 import { CadError } from './errors.mjs';
-import { paths, WS } from './workspace.mjs';
+import { paths, WS, RULE_DIRS } from './workspace.mjs';
 import { loadRuleSet } from './rules.mjs';
 import { buildAssembly, checkAssembly, assemblyPath } from './assembly.mjs';
+import { fixingsContext } from './design.mjs';
+import { fixingsFor, threads } from '@rulecad/fixings';
 
 const today = () => new Date().toISOString().slice(0, 10), n = (x) => String(Number(Number(x).toFixed(4)));
 export const ledgerFile = (project) => path.join(paths.project(project), 'ledger.jsonl');
@@ -27,6 +30,40 @@ function ruleFile(name) {
   return { set, rule, data, file: path.join(WS, 'rules', `${set}.json`) };
 }
 
+// The printer's rules the fixings read that a printer's set may not hold yet, each measured on the fixings coupon
+// (examples/bench/projects/benchmarks/MEASURE.md): what it is, its unit, and what the kit drew before it was measured,
+// so the ledger shows predicted against measured. A pilot or an insert hole is per thread, and may name a plastic
+// (x1c.pilot_m4, x1c.pilot_m4_petg); the rest are one per printer.
+const COUPON = 'the fixings coupon (examples/bench/projects/benchmarks/MEASURE.md)';
+function fixingsRule(project, set, key) {
+  if (set !== printerName(project)) return null;
+  let fx; const f = () => (fx ||= (() => { const { context } = fixingsContext({ project, dir: paths.project(project) }); return { ...fixingsFor({ sets: context.sets, printer: context.printer }), material: context.material }; })());
+  const plastic = (p) => (p ?? f().material ?? 'the project\'s plastic').toUpperCase();
+  const hole = key.match(/^(pilot|insert)_(.+)$/);
+  if (hole) {
+    const bySet = new Map(threads().map((t) => [fixingsFor().fixingModel(t).set, t]));
+    const [setName, thread] = [...bySet].filter(([k]) => hole[2] === k || hole[2].startsWith(`${k}_`)).sort((a, b) => b[0].length - a[0].length)[0] ?? [];
+    if (!thread) return null;
+    const own = hole[2].slice(setName.length + 1) || null;
+    if (own && !/^[a-z][a-z0-9]*$/.test(own)) return null;
+    const h = f().holeModel(thread, { kind: hole[1], ...(own ? { material: own } : {}) });
+    return { unit: 'mm', predicted: h.nominal, was: `${h.basis.rule}, ${h.basis.kind}`,
+      rule: hole[1] === 'pilot' ? `Hole to draw for ${/^(M|8|11|18)/.test(thread) ? 'an' : 'a'} ${thread} screw to form its own thread in ${plastic(own)}, standing upright: the one on ${COUPON} the screw went into straight and held in, turned by hand. Drawn as it is: no hole compensation`
+        : `Hole to draw for ${/^(M|8|11|18)/.test(thread) ? 'an' : 'a'} ${thread} heat-set insert in ${plastic(own)}: the one on ${COUPON} the insert went into straight and flush, and held when a screw was tightened in it. Drawn as it is: no hole compensation`,
+      source: COUPON };
+  }
+  if (key === 'nut_fit') return { unit: 'mm', predicted: f().nutPocketModel('M3').clearance, was: 'snug, no clearance', source: COUPON,
+    rule: `Clearance across the flats of a nut pocket let in from a face, on top of hole_comp: the tightest on ${COUPON} a hex nut dropped into by hand and did not turn in as its screw was tightened. A nut pocket's snug fit` };
+  if (key === 'nut_slip') { const t = f().nutTrapModel('M3', { depth: 1 }); return { unit: 'mm', predicted: t.clearance, was: t.rests.find((r) => /slip$/.test(r.name))?.name ?? 'slip', source: COUPON,
+    rule: `Clearance across the flats of a nut slot a nut slides into from the side, on top of hole_comp: the tightest on ${COUPON} a hex nut slid into by hand, stayed in turned over, and did not turn as its screw was tightened. A nut slot's slip fit` }; }
+  if (key === 'thread_flank') { const t = f().threadModel('M8', { length: f().holeModel('M8', { kind: 'thread' }).depth, internal: true }); return { unit: '°', predicted: t.overhang.drawn, was: 'flanks: printed, the default', source: COUPON, allowed: [t.overhang.drawn, t.overhang.standard],
+    rule: `The down-facing flank of a printed thread standing upright, as an overhang from upright: ${t.overhang.drawn} is the form laid back to the printer's overhang (flanks: 'printed', the kit's default), ${t.overhang.standard} the standard's own form (flanks: 'standard'). The one on ${COUPON} that held, turned smoothly and printed clean. A record for choosing the default: designs still draw flanks: 'printed' unless they say otherwise` }; }
+  return null;
+}
+const printerName = (project) => { try { return fixingsContext({ project, dir: paths.project(project) }).context.printer?.name ?? 'x1c'; } catch { return 'x1c'; } };
+// A rule the workspace's copy lacks and the kit's own set of that name holds (a set copied before the rule was added)
+function kitRule(set, key) { try { return JSON.parse(fs.readFileSync(path.join(RULE_DIRS.at(-1), `${set}.json`), 'utf8')).rules?.[key] ?? null; } catch { return null; } }
+
 /**
  * Write measurements back.
  * @param {string} ref project/assembly
@@ -39,6 +76,7 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
   if (!project || !name || !fs.existsSync(assemblyPath(ref))) throw new CadError('measured.assembly', `no assembly "${ref}": give <project>/<assembly>, the one whose predictions it moves`);
   if (!Object.keys(values).length) throw new CadError('measured.usage', 'usage: cad measured <project>/<assembly> <name>=<value> … [--unit mm] [--source "how it was measured"]');
   const before = await findingsOf(ref), entries = [], predictions = predictionsOf(before);
+  const writes = []; // (every value is checked before any is written, so a refusal leaves the rule set as it was)
   for (const [k, value] of Object.entries(values)) {
     if (!Number.isFinite(value)) throw new CadError('measured.value', `${k}: a measurement is a number (got ${value})`);
     const named = predictions.filter((x) => x.code === k || x.predict.name === k);
@@ -48,13 +86,16 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
       continue;
     }
     const { set, rule: key, data, file } = ruleFile(k);
-    const old = data.rules?.[key];
-    if (!old && !rule) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
-    if (unit && old?.unit && unit !== old.unit) throw new CadError('measured.unit', `${k} is in ${old.unit}, and this is in ${unit}: give it in ${old.unit}`);
-    const entry = { value, unit: unit ?? old?.unit ?? '', rule: rule ?? old.rule, kind: 'measured', source: source || 'measured on the bench', checked: date };
-    fs.writeFileSync(file, setAt(fs.readFileSync(file, 'utf8'), ['rules', key], entry));
-    entries.push({ date, assembly: name, name: k, figure: entry.rule, unit: entry.unit, predicted: typeof old?.value === 'number' ? old.value : null, was: old?.kind ?? null, measured: value, ratio: typeof old?.value === 'number' && old.value ? value / old.value : null, ...(source ? { source } : {}) });
+    const old = data.rules?.[key], known = fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
+    if (known?.allowed && !known.allowed.includes(value)) throw new CadError('measured.value', `${k} is ${known.allowed.join(' or ')}: the flank forms the coupon prints (got ${value})`);
+    if (!old && !rule && !known) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
+    const had = old ?? known, prior = typeof had?.value === 'number' ? had.value : known?.predicted ?? null;
+    if (unit && had?.unit && unit !== had.unit) throw new CadError('measured.unit', `${k} is in ${had.unit}, and this is in ${unit}: give it in ${had.unit}`);
+    const entry = { value, unit: unit ?? had?.unit ?? '', rule: rule ?? had.rule, kind: 'measured', source: source || known?.source || 'measured on the bench', checked: date };
+    writes.push([file, key, entry]);
+    entries.push({ date, assembly: name, name: k, figure: entry.rule, unit: entry.unit, predicted: prior, was: old ? old.kind : known?.was ?? known?.kind ?? null, measured: value, ratio: prior ? value / prior : null, ...(source ? { source } : {}) });
   }
+  for (const [file, key, entry] of writes) fs.writeFileSync(file, setAt(fs.readFileSync(file, 'utf8'), ['rules', key], entry));
   const after = await findingsOf(ref), was = new Map(before.map((x) => [keyOf(x), x])), moved = [];
   for (const x of after) {
     const y = was.get(keyOf(x));

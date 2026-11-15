@@ -260,3 +260,95 @@ export function lengthFor(stack, m, o = {}) {
   if (blind) out.push(finding('info', `draw its blind hole ${mm(depth)} mm deep or more: the ${mm(pick.engaged)} mm the screw goes in and ${mm(DEFAULTS.tip_room.value)} mm at its tip`, 'lengthFor.depth', { values: { depth } }));
   return { name: pick.name, thread: fx.thread, head: form, length: pick.length, grip, engaged: pick.engaged, need: end.need, room: Number.isFinite(most) ? r3(most) : null, spare: Number.isFinite(most) ? r3(most - pick.engaged) : null, depth, into: end.kind, lengths, rests, findings: out };
 }
+
+// ---------- screws as a group, under a load ----------
+const xyz = (what, k, v, n) => { if (!(Array.isArray(v) && v.length >= 2 && v.length <= n && v.every(isNum))) throw new Error(`${what}: ${k} is ${n === 3 ? '[x, y, z]' : '[x, y]'} in numbers (got ${shown(v)})`); return [v[0], v[1], v[2] ?? 0]; };
+const crossed = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+
+/**
+ * A load shared between a group of screws that stand side by side, by the elastic method about the group's centroid:
+ * the force across the joint shared equally, a twist about the screws' axis shared in proportion to each screw's
+ * distance from the centroid, the pull along the screws shared equally, and a moment that tips the joint by tension
+ * growing with the distance from the centroid. Screws in one line (or one alone) cannot share a moment about that line
+ * by tension: the part tips about the edge of the face it is clamped by, `pivot` from the line, and the screws hold it.
+ * @param {number[][]} places each screw's place across the joint, [x, y] in mm; the screws stand along z
+ * @param {{ force?: number[], moment?: number[], at?: number[], pivot?: number }} [o]
+ *   force: [x, y, z] in N on the part the screws hold, z along the screws, positive pulling it off the joint;
+ *   moment: [x, y, z] in N·m on that part, about `at`; at: where the force acts, [x, y] or [x, y, z] in mm, z the
+ *   height off the joint's face (default the centroid); pivot: for screws in a line, how far the clamped face
+ *   reaches past the line, in mm
+ * @returns {{ count: number, centroid: number[], polar: number, line: boolean, screws: { at: number[], shear: number, tension: number, across: number[] }[], turns: number | null, rests: object[] }}
+ *   polar: the sum of the squared distances from the centroid, mm²; screws: each one's shear (N, across the joint) and
+ *   tension (N, along it: under 0, the load presses that screw's parts together); turns: a twist one screw alone
+ *   cannot hold by shear, in N·m (it holds by friction only)
+ */
+export function screwGroup(places, o = {}) {
+  const what = 'screwGroup';
+  if (!Array.isArray(places) || !places.length) throw new Error(`${what}: places lists each screw's [x, y] across the joint, in mm (got ${shown(places)})`);
+  options(what, o, '{ force: [0, 0, 20], at: [12, 0] }');
+  const P = places.map((p, i) => xyz(what, `places[${i}]`, p, 2)), n = P.length, c = [P.reduce((t, p) => t + p[0], 0) / n, P.reduce((t, p) => t + p[1], 0) / n, 0];
+  const F = o.force != null ? xyz(what, 'force', o.force, 3) : [0, 0, 0], M0 = o.moment != null ? xyz(what, 'moment', o.moment, 3).map((m) => m * 1000) : [0, 0, 0], A = o.at != null ? xyz(what, 'at', o.at, 3) : c;
+  if (o.pivot != null) positive(what, 'pivot (how far the clamped face reaches past the line of screws, in mm)', o.pivot);
+  const M = crossed([A[0] - c[0], A[1] - c[1], A[2]], F).map((m, k) => m + M0[k]); // N mm about the centroid
+  const r = P.map((p) => [p[0] - c[0], p[1] - c[1]]), Sxx = r.reduce((t, q) => t + q[0] * q[0], 0), Syy = r.reduce((t, q) => t + q[1] * q[1], 0), Sxy = r.reduce((t, q) => t + q[0] * q[1], 0), polar = Sxx + Syy;
+  const det = Sxx * Syy - Sxy * Sxy, line = det <= 1e-9 * Math.max(polar * polar, 1);
+  // tension: the pull shared, and Σ P (y, -x) = (Mx, My) taken by a plane of tension through the centroid
+  let tension;
+  if (!line) { const b = (-M[1] * Syy - M[0] * Sxy) / det, cc = (M[0] * Sxx + M[1] * Sxy) / det; tension = r.map(([x, y]) => F[2] / n + b * x + cc * y); }
+  else {
+    const far = r.reduce((m, q) => (Math.hypot(...q) > Math.hypot(...m) ? q : m), [0, 0]), l = Math.hypot(...far), u = l > 1e-9 ? [far[0] / l, far[1] / l] : [1, 0], w = [u[1], -u[0]];
+    const s = r.map((q) => q[0] * u[0] + q[1] * u[1]), S2 = s.reduce((t, x) => t + x * x, 0), along = M[0] * w[0] + M[1] * w[1], about = l > 1e-9 ? M[0] * u[0] + M[1] * u[1] : Math.hypot(M[0], M[1]);
+    if (Math.abs(about) > 1e-9 && o.pivot == null) throw new Error(`${what}: the screws stand in one line${n === 1 ? ' (there is one)' : ''}, and ${mm(n1(Math.abs(about) / 1000))} N·m tips the part about it: give pivot, how far the clamped face reaches past the line in mm`);
+    tension = s.map((x) => F[2] / n + (S2 > 1e-9 ? (along * x) / S2 : 0) + (Math.abs(about) > 1e-9 ? Math.abs(about) / (n * o.pivot) : 0));
+  }
+  const screws = r.map(([x, y], i) => { const across = polar > 1e-9 ? [F[0] / n - (M[2] * y) / polar, F[1] / n + (M[2] * x) / polar] : [F[0] / n, F[1] / n]; return { at: [P[i][0], P[i][1]], shear: Math.hypot(...across), tension: tension[i], across }; }); // (not rounded: a check rounds what it prints)
+  return { count: n, centroid: [r3(c[0]), r3(c[1])], polar: r3(polar), line, screws, turns: polar > 1e-9 || Math.abs(M[2]) < 1e-9 ? null : r3(Math.abs(M[2]) / 1000),
+    rests: [{ name: 'the elastic method, in shear', value: 'P/n and M d / Σd² about the centroid', kind: 'spec', source: 'Eccentrically loaded bolt groups, the elastic method: https://steelcalculator.pages.dev/reference/bolt-group-capacity/ (read 2026-11-15)' },
+      { name: 'the elastic method, in tension', value: 'a plane of tension through the centroid', kind: 'estimate', source: 'No source read: a moment shared as the shear is, each screw\'s pull growing with its distance from the centroid, which holds while the clamped parts stay pressed together. A joint that opens tips about its edge and loads its far screws more' }] };
+}
+
+/**
+ * One screw of a joint under its share of a load: how many times that load it holds before the screw yields, the
+ * internal thread strips, and the clamped parts slip, at its preload. The screw takes its preload and the whole pull
+ * on it (a printed part is far softer than a steel screw, so little of the pull goes into easing the clamp), with
+ * its shear, against its proof load; the thread takes the same pull and preload against its stripping load; the clamp
+ * is eased by the whole pull for slipping, the safe side each time. With no torque given, the preload is the most that
+ * leaves the thread twice the pull, within the seat and three quarters of the proof load, and the torque for it is said.
+ * @param {Fixing | string} m @param {{ tension?: number, shear?: number, depth?: number, material?: string | object, end?: string, torque?: number, most?: number, K?: number, friction?: number, screw?: 'steel' | 'stainless', proof?: number, sets?: object }} o
+ *   tension, shear: the screw's share, in N; depth and material: the thread engaged and what it is in (a pilot, tap or
+ *   printed thread), or end: 'insert' or 'nut' where the thread is metal; torque: the tightening torque given, N·m;
+ *   most: the most clamp force the seat under the head takes, N; friction: between the clamped parts (default fixings.clamp_friction)
+ * @returns {{ thread: string, tension: number, shear: number, preload: { force: number, torque: number, given: boolean }, proof: number, strip: number | null,
+ *   margins: { screw: number, thread: number | null, slip: number | null }, margin: number, governs: string, rests: object[], findings: object[] }}
+ *   margins: how many times the load each holds (null: not checked); margin: the least of the screw's and the thread's
+ */
+export function screwLoad(m, o = {}) {
+  const what = 'screwLoad';
+  options(what, o, '{ tension: 20, depth: 5, material: \'pla\' }');
+  const fx = fixingOf(what, m, o), num = (k, v) => { if (v != null && !(isNum(v) && v >= 0)) throw new Error(`${what}: ${k} is a number of N, 0 or more (got ${shown(v)})`); return v ?? 0; };
+  const T = Math.max(0, isNum(o.tension) ? o.tension : num('tension', o.tension)), S = num('shear', o.shear), mu = o.friction ?? DEFAULTS.clamp_friction.value;
+  if (!(isNum(mu) && mu > 0)) throw new Error(`${what}: friction is a number above 0 (got ${shown(o.friction)})`);
+  if (o.most != null) positive(what, 'most (the clamp force the seat takes, in N)', o.most);
+  const threaded = o.material != null, st = threaded ? stripping(fx, { depth: o.depth, material: o.material, sets: o.sets, screw: o.screw, proof: o.proof }) : null;
+  if (!threaded && o.end != null) oneOf(what, 'end', o.end, ['insert', 'nut']);
+  const pr0 = preload(fx, { force: 1, K: o.K, screw: o.screw, proof: o.proof, sets: o.sets }), P = pr0.proof, K = pr0.K, d = fx.major, want = DEFAULTS.load_margin.value;
+  let pre;
+  if (o.torque != null) { const p = preload(fx, { torque: positive(what, 'torque (in N·m)', o.torque), K: o.K, screw: o.screw, proof: o.proof, sets: o.sets }); pre = { force: p.force, torque: p.torque, given: true }; }
+  else {
+    const F = Math.max(0, Math.min(o.most ?? Infinity, DEFAULTS.preload_share.value * P, st ? st.strip - want * T : Infinity)), t = Math.floor((K * d * F) / 1000 * 100 + 1e-9) / 100;
+    pre = { force: n1((t * 1000) / (K * d)), torque: t, given: false };
+  }
+  const Fp = pre.force, a2 = T * T + 3 * S * S, b2 = 2 * Fp * T, c2 = Fp * Fp - P * P;
+  const screwK = Fp >= P ? 0 : a2 > 0 ? (-b2 + Math.sqrt(b2 * b2 - 4 * a2 * c2)) / (2 * a2) : Infinity;
+  const threadK = !st ? null : Fp >= st.strip ? 0 : T > 0 ? (st.strip - Fp) / T : Infinity, slipK = S > 0 ? (mu * Fp) / (S + mu * T) : null;
+  const margin = Math.min(screwK, threadK ?? Infinity), governs = threadK != null && threadK <= screwK ? 'thread' : 'screw', k2 = (x) => (x === Infinity ? 'any number of' : mm(n2(x)));
+  const level = margin < 1 ? 'fail' : margin < want ? 'warn' : 'pass', load = `${mm(n1(T))} N of pull and ${mm(n1(S))} N of shear`;
+  const clamp = `clamped with ${mm(Fp)} N (${mm(pre.torque)} N·m${pre.given ? '' : ', the torque to tighten to'}, T = K d F with K = ${mm(K)}${o.K == null ? ', an estimate' : ''})`;
+  const threadSays = st ? `its thread in ${st.material} strips at about ${mm(st.strip)} N (an estimate: ${st.shear} MPa in shear), ${Fp >= st.strip ? 'under the preload alone' : `${k2(threadK)} times this pull over the preload`}`
+    : o.end === 'insert' ? 'its thread is in a brass insert, whose hold in the plastic is its maker\'s figure and not checked here' : o.end === 'nut' ? 'its thread is in a steel nut, not checked here: the screw\'s proof load stands for it' : 'nothing says what its thread is in, so the thread is not checked';
+  const out = [finding(level, `${a(fx.thread)} screw with ${load}, ${clamp}: ${threadSays}; the screw yields at ${k2(screwK)} times it (proof load ${mm(P)} N). ${margin === Infinity ? 'Nothing pulls on it' : `It holds ${k2(margin)} times the load, the ${governs} first`}${level === 'pass' ? '' : `, where the kit asks ${want} times`}`,
+    'screwLoad.margin', { values: { tension: n1(T), shear: n1(S), preload: Fp, torque: pre.torque, proof: P, strip: st?.strip ?? null, screw: screwK === Infinity ? null : n2(screwK), thread: threadK == null || threadK === Infinity ? null : n2(threadK), margin: margin === Infinity ? null : n2(margin) } })];
+  if (slipK != null) out.push(finding(slipK >= want ? 'pass' : 'warn', `the clamp of ${mm(Fp)} N, eased by the pull, holds the ${mm(n1(S))} N of shear by friction ${mm(n2(slipK))} times over (fixings.clamp_friction ${mm(mu)}, an estimate)${slipK >= want ? '' : `: under ${want} times the parts may slip until the screw bears on its hole`}`, 'screwLoad.slip', { values: { slip: n2(slipK), friction: mu } }));
+  return { thread: fx.thread, tension: n1(T), shear: n1(S), preload: pre, proof: P, strip: st?.strip ?? null, margins: { screw: screwK === Infinity ? Infinity : n2(screwK), thread: threadK == null ? null : threadK === Infinity ? Infinity : n2(threadK), slip: slipK == null ? null : n2(slipK) }, margin: margin === Infinity ? Infinity : n2(margin), governs,
+    rests: [...(st ? st.rests : []), ...pr0.rests, ...(slipK != null && o.friction == null ? [rest('fixings.clamp_friction', DEFAULTS.clamp_friction)] : []), rest('fixings.load_margin', DEFAULTS.load_margin)], findings: out };
+}

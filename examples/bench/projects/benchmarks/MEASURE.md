@@ -15,6 +15,7 @@ parts measure them, one test each. Every part has a plain, solid first layer. So
 | 4. Servo stand (when you need servos) | `servo-stand`, `servo-arm` | 18 g | 19, 20 |
 | 5. Mesh rig | `mesh-rig`, `rig-pinion`, `rig-wheel`, `rig-lever` (the stand from 3) | 42 g | 12, part one |
 | 6. Shoulder | `shoulder-housing`, `shoulder-sun`, `shoulder-planet` × 3, `shoulder-output`, `shoulder-clip` × 3, `shoulder-arm`, `input-lever` | 117 g | 12 to 18 |
+| 7. Fixings coupon (once in PLA, once in PETG) | `fixings-coupon` | 55 g, about an hour | 22 to 28 |
 
 Do 1 and 2 first, and change the parts that follow to the sizes that won: `comp` in `test-arm` and `shoulder-sun`, `bore` and `backlash` in the mesh rig's parts.
 
@@ -29,6 +30,7 @@ G-clamp the foot to a table with the plate's front just past the table's edge, s
 | **Electronics** | Arduino Uno; CNC Shield V3; three A4988 drivers with heat sinks; a 24 V supply of at least 5 A; a 5 V supply of at least 2 A for servos; a multimeter; jumper wires |
 | **Screws, socket head** | M3 × 8: 2. M3 × 10: 9. M3 × 12: 12. M3 nuts: 4. M3 washers: 2 |
 | **Measuring** | Digital calipers; a kitchen scale reading to 1 g; a G-clamp; string or small S-hooks; weights from 10 g to 500 g (coins and water bottles will do); a thermometer that reads a surface |
+| **For the fixings coupon** | Socket cap screws: M2 × 6, M2.5 × 6, M3 × 6, M3 × 8, M4 × 8, M5 × 16; M3 and M4 hex nuts; CNC Kitchen heat-set inserts, M2 × 3 and M3 × 5.7, and a soldering iron with an insert tip; steel bolts or set screws M6 × 16, M8 × 20 and M10 × 25 or longer; a spanner |
 | **Also** | PTFE grease, for the second round of the efficiency test; a spare print's worth of PLA |
 
 ## The measurements
@@ -58,8 +60,23 @@ Write the number in the last column and send it back: it replaces the kit's figu
 | 19 | Servo stall torque | Arm's 25 mm hole pressing on the scale | 0.18 N m | |
 | 20 | Servo dimensions | Calipers on the tabs, hole spacing and output | Community figures | |
 | 21 | Bearing press and slip | Print `seats-coupon` once per filament. Press a 608 into each pocket by hand or in a vice: note the tightest that goes in without cracking, then write it back with `cad measured benchmarks/<assembly> x1c.press=<value>` (and `x1c.slip`) | press 0.05 mm, slip 0.1 mm across | |
+| 22 | Pilots, rows M2, M2.5, M3, M4, M5 | Each figure is the hole as drawn. Drive a screw of that size into each by hand with a driver. The best is the smallest the screw goes into straight, without splitting the boss, that turns with an even drag and cannot be pulled out by hand. `cad measured benchmarks/fixings-test x1c.pilot_m4=<figure>` (and `pilot_m2`, `pilot_m2_5`, `pilot_m3`, `pilot_m5`; from the PETG print, `x1c.pilot_m4_petg`) | M2 2.1, M2.5 2.5, M3 2.9, M4 3.75, M5 4.7 mm | |
+| 23 | Insert holes, rows IM2, IM3 | Each figure is the hole as drawn. Set an insert in each with the iron. The best goes in straight and flush, pushes no ring of plastic up round it, and does not turn when a screw is tightened in it. `x1c.insert_m2=<figure>`, `x1c.insert_m3=<figure>` (`_petg` from the PETG print) | 3.2 and 4.0 mm, the insert maker's | |
+| 24 | Nut pockets, rows NM3, NM4 | Each figure is the clearance across the flats. Press a nut in with a thumb, then drive a screw into it from the top. The best is the tightest the nut goes into by hand and does not turn in as the screw is driven. `x1c.nut_fit=<figure>` | 0 mm (a snug fit) | |
+| 25 | Nut slots, rows TM3 and TM4 (the back edge) | Each figure is the clearance across the flats. Drop a nut into the slot from the top, then run a screw in from the coupon's back edge through it and tighten. The best is the tightest the nut drops into by hand, that keeps it when the coupon is turned over, and where it does not turn as the screw tightens. `x1c.nut_slip=<figure>` | 0.1 mm (`x1c.slip`) | |
+| 26 | Counterbore, CM3 | Drive an M3 × 8 cap screw in: its head sits wholly under the top face, a hex key reaches it, and it tightens in the pilot under it. If the head rubs, raise `x1c.fit` | `x1c.fit` 0.2 mm each side | |
+| 27 | Printed threads, rows M6P, M8P, M10P | Each figure is the gap on the radius between the printed thread and a bought bolt. Turn a bolt into each by hand. The best is the tightest it turns all the way into smoothly, with no binding and no wobble, and that does not strip when tightened firmly with a spanner. Where the sizes differ, take the figure two of the three agree on. `x1c.thread_gap=<figure>` | 0.2 mm, an estimate | |
+| 28 | Thread flanks, M8P against M8S | Rows M8P and M8S are the same holes in the two forms a printed thread can take: P has its down-facing flanks laid back to 45° (the kit's default, easy to print, about 51% of the standard's flank overlap at 0.2 mm), S keeps the standard's 60° form (more overlap, 63%, but its down-facing flanks overhang 60°). Compare them at each gap, in this order: it holds (tighten a bolt firmly with a spanner: no stripping, the least wobble), it turns smoothly (no catching all the way in), it prints clean (look into the hole with a light: whole teeth, no drooping or strings on the flanks' undersides). The form that wins the first test wins, and the next test settles a tie. Write 45 for P or 60 for S: `x1c.thread_flank=45`. It records the result; changing the kit's default form is a decision of its own | 45, the printed form | |
 
 Number 11 is a correction to 7 to 9. Take number 16 last: it wrecks the gears.
+
+The fixings coupon (22 to 28) is one plate with a figure beside every feature, and each row named on its left: a
+pilot row by its thread (M4), then I for insert holes, N for nut pockets, T for nut slots, C for the counterbore,
+and a printed thread by its size and form (M8P, M8S). The figure beside a feature is the one to write back. Print it
+once in PLA and once in PETG, both upright as it is drawn. A pilot or an insert hole is written per plastic: the PLA
+figure without a suffix, the PETG one with `_petg`. The nut fits, the thread gap and the flank form are one figure per
+printer: write the PLA figure, and note the PETG one in the last column where it differs. `cad history
+benchmarks/fixings-test` then shows each against what the kit drew before.
 
 ## Wiring
 

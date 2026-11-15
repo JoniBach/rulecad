@@ -64,7 +64,7 @@ and stresses in MPa.
 | [Seats](#seats) | `counterbore`, `countersink`, `nutPocket`, `nutTrap`, `squareNutSlot`, `captiveNut`, `insertBoss` |
 | [Reference hardware](#reference-hardware) | `screw`, `nut`, `washer`, `insert` |
 | [Threads cut for printing](#threads-cut-for-printing) | `thread`, `threadModel` |
-| [Strength and length](#strength-and-length) | `engagement`, `stripping`, `preload`, `torqueFor`, `seating`, `lengthFor` |
+| [Strength and length](#strength-and-length) | `engagement`, `stripping`, `preload`, `torqueFor`, `seating`, `lengthFor`, `screwGroup`, `screwLoad` |
 | [Refusals and printability](#refusals-and-printability) | `printable` |
 
 ## Start here: a plate with four counterbored holes and an insert boss
@@ -214,7 +214,7 @@ insert hole are figures for the hole as drawn, already sized for printing, and t
 
 **A pilot says what it rests on.** A pilot depends on the printer and the plastic as well as the screw. The printer's
 own measured rule comes first: `pilot_m3` on the X1C's rule set, or `pilot_m3_petg` for one plastic when you pass
-`material: 'PETG'`. Without one, the thread's starting figure is used (`m3.pilot`, a community figure, or an estimate
+`material: 'PETG'`. An insert hole reads the printer's `insert_m3` the same way. Without one, the thread's starting figure is used (`m3.pilot`, a community figure, or an estimate
 for the sizes nobody has published), and the finding says to measure it. A measurement made on one printer is never
 borrowed for another.
 
@@ -271,7 +271,8 @@ Each has a twin with `Model` on its name (`counterboreModel`) that gives the num
   form, since shapes' helper takes no angle. The seat is as wide as the head's theoretical sharp edge, so any head
   made to the standard sits flush.
 - **Nut pocket.** `fit` is `snug` by default (no clearance once printed, so the nut cannot turn), or `slip`, `press`,
-  or a clearance in mm. A hexagon goes through shapes' `nutPocket`: open from above, with a 45° roof going up from
+  or a clearance in mm. Where the printer has a measured `nut_fit`, snug is that clearance; a slot's and a closed
+  pocket's slip is the printer's `nut_slip` where it has one. A hexagon goes through shapes' `nutPocket`: open from above, with a 45° roof going up from
   the bed, and with a flat on top across a part. A square pocket is drawn here, turned corner up across a part.
 - **Nut slot.** `depth` is from the face to the screw's axis, and `at` is the point on the face level with the nut's
   middle. From the side of a screw standing up (`axis: 'z'`), the slot goes through shapes' `wallOpening`: its roof
@@ -431,6 +432,8 @@ or a rule set with a `strength` and a `modulus`. Its class (plastic, aluminium o
 | `preload(m, { torque })`, `preload(m, { force })`, `torqueFor(m, { force })` | The clamp force a tightening torque gives, and the torque for a force. `K` for another nut factor |
 | `seating(m, { head, material, force })` | The pressure under the head, the plain washer that would bring it within, and the most the seat takes. `torque` in place of `force`; with neither, a screw tightened fully |
 | `lengthFor(stack, m, { into })` | The shortest sold length that passes the stack and engages enough at the far end without bottoming out or standing proud |
+| `screwGroup(places, { force, moment, at, pivot })` | A load on a joint shared between its screws: each one's shear across the joint and pull along it. `places` are the screws' `[x, y]` across the joint; `force` and `moment` are on the part they hold, `z` along the screws and positive pulling it off |
+| `screwLoad(m, { tension, shear, depth, material, torque })` | One screw under its share: how many times that load it holds before the screw yields and the thread strips at its preload, and whether the parts slip. With no `torque`, the preload that leaves the thread twice the pull, within `most` (what the seat takes), and the torque for it |
 
 The screw is class 8.8 steel as its rule set gives it. `screw: 'stainless'` takes the A2-70 figure, and
 `proof: 830` any other class by its proof stress in MPa (830 is class 10.9). A fixing's name carries no property
@@ -545,7 +548,8 @@ hole: depth is a number above 0, in mm (got -2)
 - **Standards** (`spec`): threads, clearance holes, heads, nuts, washers, lengths and proof stresses, each from its
   standard as tabulated on the pages its rule names. The thread profiles are ISO 68-1's and ISO 2904's formulas.
 - **Measured**: the X1C's M3 pilot (`x1c.pilot_m3`, 2.9 mm, from the kit's fit bar). It is the only measured figure
-  so far. The fixings coupon in the plan measures the rest, per printer and plastic.
+  so far. The fixings coupon (`examples/bench/projects/benchmarks/objects/fixings-coupon`) measures the rest, per
+  printer and plastic, and `cad measured` writes each result to the printer's rule set.
 - **Community**: heat-set inserts (CNC Kitchen's sheet), pilots for M2 to M4 (Bambu Lab's figures for PLA) and for
   the PT screws (the maker's factor for ABS), the engagement rules, the printer's `hole_comp`, `fit` and `bridge`,
   the two layers a nut pocket is sunk, and the three quarters of proof load a fully tightened screw is taken to carry.
@@ -589,6 +593,9 @@ with its `rule`, `kind` and `source`.
 | Clamp force from torque | T = K d F, with K = 0.2 | The short form of the torque relation, as at Wikipedia, Bolted joint. VDI 2230 splits K into thread friction, head friction and pitch: that fuller form is not applied here |
 | A screw tightened fully | F = 0.75 × proof load | Wikipedia, Bolted joint |
 | Pressure under a head | p = F / (π/4 (D² - dh²)), D the head (a hexagon's flats) or the washer, dh the hole as drawn | Geometry; the limit is the material's strength, an estimate |
+| Shear on each screw of a group | S = F / n + M d / Σd², the second across the line from the centroid, the two added as vectors | The elastic method for eccentrically loaded bolt groups, as at steelcalculator.pages.dev (Bolt group capacity) |
+| Pull on each screw of a group | P = Fz / n + b x + c y, with Σ P y = Mx and Σ P x = -My about the centroid; screws in a line tip about the clamped face's edge, P = M / (n × pivot) | An estimate of this package: the plane through the centroid holds while the parts stay pressed together. No source was read for it |
+| A screw under its load | the screw: (Fp + k P)² + 3 (k S)² = proof load²; the thread: Fp + k P = strip load; the clamp: μ (Fp - k P) = k S; the margin is the least k of the first two | Von Mises on the stress area; the screw takes the whole pull and the clamp loses the whole pull, each the safe side for a part far softer than the screw. μ is `fixings.clamp_friction`, an estimate |
 | A screw's length | grip = stack + washer - sunk; engaged = length - grip; fits where need ≤ engaged ≤ room | Geometry, with the rules for need and room in the table under `lengthFor` |
 
 VDI 2230 and Machinery's Handbook are named because the plan asked for them. Neither was read at first hand for
@@ -631,6 +638,7 @@ Each figure's own source is in its rule (`m.figures.<name>.source`, and `DEFAULT
 - [Thread shear area](https://engineersedge.com/calculators/thread_shear_area_15876.htm), Engineers Edge, and [Thread calcs](https://roymech.org/Useful_Tables/Screws/Thread_Calcs.html), Roymech: the thread shear areas of Machinery's Handbook and FED-STD-H28/2B.
 - [Tensile stress area of bolt](https://help.solidworks.com/2014/English/SolidWorks/cworks/r_Tensile_Stress_Area_Bolt.htm), SolidWorks help, citing Machinery's Handbook.
 - [Bolted joint](https://en.wikipedia.org/wiki/Bolted_joint), Wikipedia: torque and preload, the nut factor, and how tightening methods scatter.
+- [Bolt group capacity](https://steelcalculator.pages.dev/reference/bolt-group-capacity/), the elastic method: direct and torsional shear in a group.
 - [Von Mises yield criterion](https://en.wikipedia.org/wiki/Von_Mises_yield_criterion), Wikipedia: shear yield from tensile yield.
 
 All were read on 2026-11-15. The plan for this package is [issue 212](https://github.com/JoniBach/rulecad/issues/212),

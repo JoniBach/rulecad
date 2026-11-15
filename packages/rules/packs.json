@@ -1,0 +1,7 @@
+{
+  "_doc": "How small fixings are bought: in packs, so a shopping list rounds a count up to whole packs and says how many are spare. kind as in x1c.json.",
+  "name": "packs",
+  "rules": {
+    "pack": { "value": 10, "unit": "", "rule": "Screws, nuts, washers and inserts up to M6 are bought in packs of 10: the shopping list rounds each count up to whole packs of this size and shows the spares. An estimate: sellers offer packs from 5 to 1000 (Spalding Fasteners lists 5, 10, 20, 50, 100 and more of an M3x8; Hi-Line and Zoro sell M3x8 cap screws by the 100), and 10 is a common small pack. Set your own where you buy", "kind": "estimate", "source": "Sellers' listings for M3x8 socket cap screws: https://www.spaldingfasteners.co.uk/PARENT744, https://hi-line.com/m3-50-x-8-mm-socket-head-cap-screw-stainless-steel/, https://www.zoro.com/titan-fasteners-m3-x-05-x-8mm-socket-head-cap-screw-304-stainless-steel-pkg-of-100-bsw03008/i/G408426669/", "checked": "2026-11-15" }
+  }
+}

@@ -53,6 +53,9 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
   cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
+  cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
+                                    a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
+                                    [--washer] [--length 12] [--torque 0.5] [--note …]
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets
@@ -88,12 +91,14 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
   cad order <project>/<assembly>    the order it goes together in, each step with its fasteners [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
-  cad list <project>/<assembly>     what it takes to build: bought parts by set, fasteners, wire, printed parts in grams
+  cad list <project>/<assembly>     what it takes to build: bought parts by set, every screw, nut and insert in packs, wire, printed parts in grams
   cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends, written to exports/ [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
                                     against measured, shown by cad history [--unit mm] [--source "how"] [--rule "what it is"]
                                     [--table: what the assembly still assumes, as Markdown; --out MEASURE.md: kept in that file]
+                                    The fixings coupon's rules need no --rule: x1c.pilot_m4, x1c.insert_m3 (and _petg for one
+                                    plastic), x1c.nut_fit, x1c.nut_slip, x1c.thread_gap, x1c.thread_flank (45 or 60)
   cad measure <model.stl|3mf>       a model from elsewhere, measured: size, the stretches along its length with the same
                                     cross-section, and each section's shape, with a drawing in .preview/measure/
                                     [--along x|y|z] [--at 10,50: sections there too] [--line 0.6,2.5;4.6,2.5: where lines
@@ -123,22 +128,23 @@ const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-s
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
-  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate']; // cad add
+  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', // cad add
+  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque']; // cad add fasten
 // What a command takes, where that isn't <project>/<object>
-const USAGE = { add: 'fit|joint|item|loop|pose <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
+const USAGE = { add: 'fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
   diff: '<project>/<object> <from> [<to>]', compare: '<project>/<object> <a> <b>', match: '<project>/<object> <model.stl|model.3mf>', clone: '<board.kicad_pcb | GitHub link> <name>' };
 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
-// (--sweep and --watch take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short'];
+// (--sweep, --watch and --nut take one or not).
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
   if (FLAGS.includes(k)) return true;
   if (args[i + 1] && !args[i + 1].startsWith('--')) return args[i + 1];
-  if (['sweep', 'watch'].includes(k)) return true;
+  if (['sweep', 'watch', 'nut'].includes(k)) return true;
   throw new Error(`${args[i]} needs a value after it`);
 };
 // The arguments that aren't options or an option's value: cad values keyboard/case depth width --json
@@ -489,6 +495,7 @@ async function main() {
         ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
         : check(b.triangles, printer(b, d), { parts: b.parts })),
       ...(b.mechanism?.findings || []), // a lamina mechanism's own: it prints free, stops, holds, clears in every state
+      ...(b.fixings || []), // what v.fixings drew: each hole and seat, what it was drawn to and the rule it rests on
       ...(await analyses(b, d, tag)),
     ], { object: `${d.project}/${d.name}`, title, version, ...(Object.keys(set).length ? { set } : {}), orientation: b.object.orientation, parts: b.parts.map((p) => ({ name: p.name, role: p.role || 'part' })) });
     if (b.object.orientation) say(`  orientation: ${b.object.orientation}`);
@@ -560,7 +567,7 @@ async function editVariables(ref) {
   console.log(`set ${r.changed.join(', ')} in ${path.relative(WS, r.file)}`);
 }
 
-// cad add fit|joint|item|loop|pose <project>/<assembly> --key value …: add to an assembly, keeping its layout
+// cad add fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …: add to an assembly, keeping its layout
 async function editAssembly(what, ref) {
   const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
   const pick = (keys) => Object.fromEntries(keys.map((k) => [k, typeof opt(k) === 'string' ? parseValue(opt(k)) : undefined]).filter(([, v]) => v !== undefined));
@@ -571,11 +578,15 @@ async function editAssembly(what, ref) {
   else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...(list('at') ? { at: list('at') } : {}), ...(list('rotate') ? { rotate: list('rotate') } : {}),
     ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
   else if (what === 'loop') entry = text(['a', 'b', 'label']);
+  else if (what === 'fasten') { // --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2 | --holes bracket.body [--nut [hex] --washer --length 12 --torque 0.5 --note …]
+    const names = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => x.trim()).filter(Boolean) : undefined);
+    entry = { ...text(['screw']), through: names('through') ?? [], ...text(['into']), ...(names('at') ? { at: names('at') } : {}), ...text(['holes']), ...(opt('nut') ? { nut: opt('nut') === true ? true : String(opt('nut')) } : {}), ...(opt('washer') ? { washer: true } : {}), ...pick(['length', 'torque']), ...text(['note']) };
+  }
   else if (what === 'pose') {
     const pairs = positional().slice(3);
     if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
     entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
-  } else throw new Error('usage: cad add fit|joint|item|loop|pose <project>/<assembly> --key value …');
+  } else throw new Error('usage: cad add fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …');
   const r = addToAssembly(ref, what, entry);
   if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
   console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);

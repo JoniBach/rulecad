@@ -12,14 +12,14 @@ import { holeModel, hole } from './holes.mjs';
 import { counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket, nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss, printable } from './seats.mjs';
 import { screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert } from './hardware.mjs';
 import { threadModel, thread } from './threads.mjs';
-import { engagement, stripping, preload, torqueFor, seating, lengthFor } from './strength.mjs';
+import { engagement, stripping, preload, torqueFor, seating, lengthFor, screwGroup, screwLoad } from './strength.mjs';
 
 export { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS } from './model.mjs';
 export { holeModel, hole, HOLE_KINDS } from './holes.mjs';
 export { counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket, nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss, printable } from './seats.mjs';
 export { screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert } from './hardware.mjs';
 export { threadModel, thread, THREAD_FORMS } from './threads.mjs';
-export { engagement, stripping, preload, torqueFor, seating, lengthFor, MATERIALS, MATERIAL_CLASSES, ENDS } from './strength.mjs';
+export { engagement, stripping, preload, torqueFor, seating, lengthFor, screwGroup, screwLoad, MATERIALS, MATERIAL_CLASSES, ENDS } from './strength.mjs';
 
 /**
  * What this release is. `release` is `'placeholder'` until the package has functions to call (0.1.0), then `'ready'`:
@@ -28,7 +28,7 @@ export { engagement, stripping, preload, torqueFor, seating, lengthFor, MATERIAL
  */
 export const status = Object.freeze({ release: 'ready', plan: 'https://github.com/JoniBach/rulecad/issues/212' });
 
-const MODELS = { engagement, stripping, preload, torqueFor, seating, threadModel, holeModel, counterboreModel, countersinkModel, nutPocketModel, nutTrapModel, squareNutSlotModel, captiveNutModel, insertBossModel, screwModel, nutModel, washerModel, insertModel };
+const MODELS = { engagement, stripping, preload, torqueFor, seating, screwLoad, threadModel, holeModel, counterboreModel, countersinkModel, nutPocketModel, nutTrapModel, squareNutSlotModel, captiveNutModel, insertBossModel, screwModel, nutModel, washerModel, insertModel };
 const SOLIDS = { thread, hole, counterbore, countersink, nutPocket, nutTrap, squareNutSlot, captiveNut, insertBoss, nut, washer, insert }, JOINED = { screw };
 
 /**
@@ -48,6 +48,7 @@ export function fixingsFor({ sets, printer, ops, display } = {}) {
   const drawn = ['threadModel', 'thread', 'holeModel', 'hole'], as = (k, o) => (display && drawn.includes(k) && o && typeof o === 'object' && !Array.isArray(o) ? { display, ...o } : o);
   for (const [k, f] of Object.entries({ ...MODELS, ...SOLIDS })) out[k] = (m, o = {}) => f(m, with_(as(k, o)));
   out.lengthFor = (stack, m, o = {}) => lengthFor(stack, m, with_(o));
+  out.screwGroup = screwGroup;
   for (const [k, f] of Object.entries(JOINED)) out[k] = (m, o = {}) => (ops ? f(m, with_(o), ops) : f(m, with_(o)));
   return out;
 }

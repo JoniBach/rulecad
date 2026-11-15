@@ -1,0 +1,11 @@
+{
+  "title": "Fixings coupon",
+  "kind": "fit",
+  "description": "The fixings coupon on its own, for cad measured: write each result back with cad measured benchmarks/fixings-test <rule>=<value> (MEASURE.md, rows 22 to 28), and the ledger keeps predicted against measured.",
+  "items": [
+    {
+      "id": "coupon",
+      "object": "fixings-coupon"
+    }
+  ]
+}

@@ -31,6 +31,8 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `unc_4_40`, `unc_6_32`, `unc_8_32`, `unc_10_24`, `unf_10_32`, `unc_1_4_20`, `unc_5_16_18`, `unc_3_8_16` | Unified inch threads 4-40 to 3/8-16 to the same names, in millimetres, each rule's text giving its inch figure: ASME B1.1 threads, ASME B18.3 socket screws, with holes, nuts, washers and lengths | 39 to 49 each |
 | `pt_k22`, `pt_k25`, `pt_k30`, `pt_k35`, `pt_k40`, `pt_k50` | Thread-forming screws for plastic (the PT type, WN 1412), 2.2 to 5 mm: thread, pan head with a Torx variant, and the maker's pilot, depth and boss for ABS. Community until measured in printed plastic | 11 each |
 | `engagement` | How much thread a screw needs in what it screws into, in screw diameters: steel, aluminium, plastic | 3 |
+| `hexkey` | Hex keys (ISO 2936): sizes, width across corners, long and short arms, how far a ball end tilts, and a socket's wall: what a key needs to reach a screw's head | 6 |
+| `packs` | How small fixings are bought: the pack a shopping list rounds a count up to (an estimate) | 1 |
 | `rp2040` | The RP2040 microcontroller: which package pins carry which GPIO | 2 |
 | `dial-indicator` | A dial indicator with a plunger, for measuring small movements | 2 |
 | `pla`, `petg` | Bambu Lab PLA Basic and PETG HF, printed, for analysis: stiffness and strength along the layers and across them | 6, 7 |

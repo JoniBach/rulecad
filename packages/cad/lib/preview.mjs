@@ -1,6 +1,7 @@
 // preview(parts, { title, meta, out, explode }) -> out: a 1800 × 1200 PNG of six views (front, side, 3/4, top, bottom, 3/4 below),
 // parts: [{ name, role, label, item, triangles }]; supports and references are drawn faint (lines only); explode drops
-// supports below and, in an assembly, lifts each kind of object above the one before (plate, switches, keycaps).
+// supports below and, in an assembly, lifts each kind of object above the one before (plate, switches, keycaps); a part
+// with `lift` (a screw, a nut: lib/fasten.mjs) goes with the part it sits in (`with`) and then out along its own axis.
 // rendered by headless Chrome from lib/preview/page.html, served on this Mac only for the few seconds it takes.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,7 +21,7 @@ const THREE = path.dirname(createRequire(import.meta.url).resolve('three')); // 
 
 export async function preview(parts, { title = '', meta = '', out, explode = false, marks = null }) {
   const flat = (tris) => { const positions = []; for (const t of tris) for (let i = 1; i < t.length - 1; i++) positions.push(...t[0], ...t[i], ...t[i + 1]); return positions; };
-  const data = JSON.stringify({ title, meta, explode, marks, parts: parts.map((p) => ({ name: p.name, role: p.role, label: p.label, item: p.object || p.item, positions: flat(p.triangles) })) });
+  const data = JSON.stringify({ title, meta, explode, marks, parts: parts.map((p) => ({ name: p.name, role: p.role, label: p.label, item: p.object || p.item, ...(p.lift ? { lift: p.lift, with: p.with } : {}), positions: flat(p.triangles) })) });
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x').pathname;
     const send = (type, body) => { res.writeHead(200, { 'Content-Type': type }); res.end(body); };
