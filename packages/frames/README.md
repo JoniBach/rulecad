@@ -4,7 +4,7 @@ Structures built from beams. A beam is a length of a profile: an aluminium extru
 plain tube or angle, or a beam printed in plastic. Part of [rulecad](https://github.com/JoniBach/rulecad), a kit for
 designing physical things where every measurement says which rule it comes from.
 
-This release reads a profile, which is everything the rest is built on:
+This release reads a profile, which is everything the rest is built on, and makes beams of it:
 
 - **`profileModel`**: a profile as a model from its rule set and its slot family's, every figure with how far to
   trust it and where it comes from, its slots, bores and hollows each in their place.
@@ -13,15 +13,18 @@ This release reads a profile, which is everything the rest is built on:
 - **`section`**: what that outline is worth as a beam (area, centroid, second moments, torsion constant, mass per
   metre), each beside the figure on the maker's sheet.
 - **`profileFindings`**: what a check of a profile finds, as `cad rules check` reports it.
+- **`beamModel`** and **`beam`**: a length of a profile, with its mass and centre of mass, the anchors an assembly
+  places it and its fittings by, and its solid as a light box or the true section.
 
-Beams with addresses along their faces, joins that do their own drilling, fittings, slot nuts and linear guides
-follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+Beams in assemblies, joins that do their own drilling, fittings, slot nuts and linear guides follow in later
+releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
-npm install @rulecad/frames
+npm install @rulecad/frames @jscad/modeling
 ```
 
-It needs only `@rulecad/rules`, where the profiles live as open data, and runs anywhere JavaScript does.
+It depends on `@rulecad/rules`, where the profiles live as open data, and takes JSCAD (`@jscad/modeling`, which a
+rulecad design already has) as a peer for a beam's solid.
 
 ## A profile
 
@@ -174,6 +177,96 @@ fully dimensioned slot comes within them (MISUMI's eight profiles are within 4% 
 and one outside them has a dimension wrong or a shape the dimensions do not describe, such as the L-shaped hollows of
 a light 40 mm section. A warning is a reason to look, and the sheet's figure stays the one to design with.
 
+## A beam
+
+A beam is a length of a profile. It lies along z: end `a` at z = 0, end `b` at z = its length, its section in x and y
+as the profile draws it.
+
+```js
+import { beamModel, beam, beamAnchor, printable } from '@rulecad/frames'
+
+const b = beamModel('2040-misumi-hfs5', { length: 300 })
+b.mass                       // 264.3 g: the drawn section's 326.2 mm² x 300 mm x 2.7 g/cm³
+b.weight                     // { computed: 264.3, sheet: 264, difference: 0.001 }: the sheet's 0.88 kg/m
+b.centreOfMass               // [0, 0, 150]
+b.figures.inertiaX           // { value: 13580, unit: 'mm⁴', kind: 'spec', from: 'sheet', source: 'MISUMI …' }
+b.anchors['top.2']           // { origin: [10, 10, 150], axis: [0, 1, 0], ref: [0, 0, 1] }
+beamAnchor(b, 'top.2@-20')   // the same place 20 mm from end b: origin [10, 10, 280]
+
+beam(b, { display: 'link' })  // a plain 40 x 20 x 300 box: 12 triangles
+beam(b)                       // the true section run 300 mm (display: 'preview', the default)
+printable(b)                  // [{ level: 'fail', code: 'beam.printable', text: '… is a bought beam …' }]
+```
+
+`beamModel(profile, { length, ends, material, given, cells })` takes a profile's model or anything `profileModel`
+takes, and:
+
+| Option | What |
+|---|---|
+| `length` | mm from end `a` to end `b`. Required |
+| `ends` | Each end `cut` square (the default) or `tapped`, its bores carrying the profile's `bore_thread`: one word for both, `[a, b]`, or `{ a, b }`. Mitres and drilling are operations on a beam, in a later release |
+| `material` | A material set's name in place of the profile's alloy, to weigh the same frame in another metal or a plastic. The sheet's mass is then not compared |
+| `given` | `profileModel`'s third argument: slot families, threads and materials of your own |
+| `cells` | Raster cells for the torsion constant, where the sheet gives none |
+
+The model:
+
+| Field | What |
+|---|---|
+| `kind`, `name`, `title` | `'beam'`, `'profile-2040-misumi-hfs5 x 300'`, and a line for a list |
+| `profile`, `length`, `ends` | The profile's model, the length, and each end's `{ kind, thread }` |
+| `material` | `{ name, density, modulus, given }`, `given` true where the option changed it |
+| `area`, `centroid` | The section's, from its outline |
+| `mass`, `centreOfMass` | Grams from the section's area, the length and the material's density; the section's centroid at half the length |
+| `weight` | `{ computed, sheet, difference }`: the mass beside the sheet's mass per metre times the length |
+| `figures` | `beamFigures(profile)`: the figures to design with, the sheet's where it gives one |
+| `places` | Every place a face offers, `{ name, face, index, slot, at, normal, along, depth }`: `slot` is `null` on a closed face, `depth` the slot's cavity depth |
+| `bores` | Each bore in each end, `{ name, end, at, diameter, thread, tapped }` |
+| `anchors` | By name, each `{ origin, axis, ref }` (below) |
+| `bought`, `printed` | `true` and `false`: a beam of a profile is cut from stock |
+| `findings` | `beam.mass` (info: the mass and how it was worked out; warn: more than 5% from the sheet's), `beam.length` (warn: longer than the profile is sold or cut in, or shorter than the maker cuts) |
+
+### Anchors and addresses
+
+Each anchor is a point (`origin`), the direction out of the beam there (`axis`), and a direction square to it that
+fixes the turn about it (`ref`): at an end the beam's up (+y), on a face along the beam toward end `b` (+z).
+
+| Address | Where |
+|---|---|
+| `a`, `b` | The middle of each end, `axis` out of the end |
+| `a.1`, `b.2` | The bores in each end, numbered as `profile.bores` lists them |
+| `top`, `top.1`, `top.2` | The places on a face, counted along it (+x for top and bottom, +y for front and back). `top` is the first. A face with one place has `top` and `top.1`. A place's anchor is where it meets the face, at half the length, `axis` out of the face |
+| `top@120`, `top@-20`, `top@50%` | With `beamAnchor`: 120 mm from end `a`, 20 mm from end `b`, the middle. A distance past an end is refused with the beam's length |
+
+A section with cells missing (OpenBuilds' C-Beam) has places inside its C on the same faces: they are numbered after
+the outside places of the same column or row, and `index` says which column or row each is in. Place by `origin` and
+`axis`, never by the number alone.
+
+### The solid
+
+`beam(m, { display })` takes a beam's model, or a profile with the options `beamModel` takes. `display: 'link'` is a
+plain box of the section's envelope (a round section is a twelve-sided prism), 12 triangles, for a link and an
+overlap check. `'preview'` is the true section, every slot, bore and hollow, run the whole length: 872 triangles for a
+2040. The solid carries `.model` (the beam's model) and `.display`.
+
+### Mass beside the sheet
+
+The mass is worked out from the section and the alloy, so it says what the drawn or measured outline weighs. For a
+section whose slots are fully dimensioned it comes within 2% of the sheet. A 300 mm 40 x 20, by maker:
+
+| Profile | Mass, g | Sheet, g | Difference | Ix against the sheet | Iy against the sheet |
+|---|---|---|---|---|---|
+| MISUMI HFS5-2040 | 264.3 | 264 | +0.1% | +0.9% | 0.0% |
+| item Profile 8 40x20 Line 5 | 264.6 | 267 | -0.9% | +0.2% | -0.3% |
+| Bosch Rexroth 20x40 | 243.8 | 240 | +1.6% | +1.7% | +4.2% |
+
+Light 40 mm sections (Bosch Rexroth 40x40L, item's light Line 8, Motedis I-type light, generic I-type 4040) have
+hollows and hooked lips the dimensions do not describe, and come out 8 to 21% heavy. Their beams say so
+(`beam.mass`, warn) and name the sheet's mass to use instead; their `figures` are the sheet's.
+
+`printable(x)` takes a beam's model, its solid or a profile's model, and fails it: a beam of a profile is bought and
+cut, and what prints is the parts that fasten to it. Printed beams come in a later release.
+
 ## Formulas
 
 | What | Formula | Source |
@@ -189,6 +282,8 @@ a light 40 mm section. A warning is a reason to look, and the sheet's figure sta
 | Solid rectangle a × b, for checking | J = a b³ (1/3 − (64 b / π⁵ a) Σ tanh(n π a / 2b) / n⁵), n odd | Timoshenko and Goodier, the chapter on torsion |
 | Thin closed tube, for checking | J = 4 A_m² t / s (A_m inside the wall's mid-line, s its length), plus s t³ / 3 for the wall itself | Bredt's formula |
 | Mass per metre | area × density (mm² × g/cm³ is grams a metre) | |
+| A beam's mass | m = A × L × ρ / 1000, in grams from mm², mm and g/cm³ | A prism's volume is its section's area times its length |
+| A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
 | Share of a full thread a bore leaves | (major diameter − bore) / (1.299 × pitch) | The 60° thread's height is H = 0.866 pitch, and "percent of thread" counts 3/4 H a side: 1.299 pitch on the diameter |
 
 Why the torsion constant is solved for and not taken from the polar moment: a slotted section is open. MISUMI's
@@ -206,8 +301,10 @@ it was read. A dimension the maker prints is `spec`. One scaled off the maker's 
 (the width of a slot's floor) is an `estimate`. A figure taken from the section a profile is made to match, or from
 a seller of unbranded stock, is `community`. `model.rests` and each figure's `kind` say which you are standing on.
 
-Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm (one and two cells), Bosch Rexroth's 20x20, 20x40,
-30x30 and 40x40L, Motedis' B-type 20x20 and 40x40, and generic 2020, 2040, 3030 and 4040 for unbranded stock.
+Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm, Bosch Rexroth, item (Lines 5, 6 and 8, standard and
+light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, MakerBeamXL and OpenBeam, 80/20's
+inch series, generic stock in 20, 30 and 40 mm, and plain tube, angle, channel and bar in any size. `profiles()`
+lists them.
 
 ## Exports
 
@@ -221,6 +318,10 @@ Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm (one and two cells
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |
+| `beamModel(profile, { length, ends?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors |
+| `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
+| `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
+| `printable(x)` | A beam or profile is bought: one `beam.printable` failure |
 | `DEFAULTS` | The allowances a check uses, each with what it rests on |
 | `status` | `{ release: 'ready', plan }` |
 
