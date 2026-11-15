@@ -734,3 +734,15 @@ test('a printed carrier slides into the slot of a profile drawn from the same ru
   assert.throws(() => carrierModel('slot-8-misumi', {}), /thread is the screw's/);
   assert.throws(() => carrier(one, { pose: 'upside' }), /pose is slot or print/);
 });
+
+test('a printer\'s measured slot_fit (the slot coupon) draws a carrier before its general fit, and says so', () => {
+  const { carrierModel } = frames, x1c = JSON.parse(fs.readFileSync(new URL('x1c.json', rulesDir), 'utf8'));
+  const plain = carrierModel('slot-8', { thread: 'M5' }), values = Object.fromEntries(Object.entries(x1c.rules).filter(([, r]) => typeof r.value === 'number').map(([k, r]) => [k, r.value]));
+  const measured = carrierModel('slot-8', { thread: 'M5', printer: { name: 'x1c', rules: { ...x1c.rules, slot_fit: { value: 0.15, unit: 'mm', kind: 'measured', source: 'the slot coupon' } } } });
+  assert.deepEqual([plain.clearance, plain.rests[0].name], [0.2, 'x1c.fit']);
+  assert.deepEqual([measured.clearance, measured.rests[0].name, measured.rests[0].kind], [0.15, 'x1c.slot_fit', 'measured']);
+  assert.ok(Math.abs(measured.least - 0.15) < 1e-3, `stands ${measured.least} mm clear`);
+  assert.match(measured.findings.find((f) => f.code === 'carrier.fit').text, /offset in by x1c\.slot_fit 0\.15 mm/);
+  // a design's plain values (v.x1c) as well
+  assert.equal(carrierModel('slot-8', { thread: 'M5', printer: { ...values, slot_fit: 0.25 } }).clearance, 0.25);
+});

@@ -443,8 +443,8 @@ steel's: a list's grams. A nut with a shaped underside (a sprung or rolled nut) 
 
 `carrierModel(where, { thread, holds?, face?, length?, count?, pitch?, load?, printer?, material? })` is a block that
 slides along a slot like a slide-in nut, printed, holding a hex nut or a heat-set insert. `where` is a slot, or a profile
-with its `face`. It is drawn from the slot's own rules: the cavity offset in by the printer's `fit` (0.2 mm on the
-X1C), the corners met where the cavity's corner is convex and rounded about the corner where it is re-entrant, so it
+with its `face`. It is drawn from the slot's own rules: the cavity offset in by the printer's `slot_fit` where it has one (measured on
+the slot coupon, below) or else its `fit` (0.2 mm on the X1C), the corners met where the cavity's corner is convex and rounded about the corner where it is re-entrant, so it
 stands that far clear of every point of the slot and its inside corners at the tongue are round. It lies floor down to
 print: its flanks face down at the slot's flank angle (45° in every published slot), within the printer's overhang, and
 its first layer is one solid piece.

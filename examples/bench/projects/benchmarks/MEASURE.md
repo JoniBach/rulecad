@@ -15,6 +15,7 @@ parts measure them, one test each. Every part has a plain, solid first layer. So
 | 4. Servo stand (when you need servos) | `servo-stand`, `servo-arm` | 18 g | 19, 20 |
 | 5. Mesh rig | `mesh-rig`, `rig-pinion`, `rig-wheel`, `rig-lever` (the stand from 3) | 42 g | 12, part one |
 | 6. Shoulder | `shoulder-housing`, `shoulder-sun`, `shoulder-planet` × 3, `shoulder-output`, `shoulder-clip` × 3, `shoulder-arm`, `input-lever` | 117 g | 12 to 18 |
+| 8. Slot coupon (when you build with aluminium beams) | `slot-coupon` (26 loose pieces) | 40 g, about 45 minutes | 29 to 33 |
 
 Do 1 and 2 first, and change the parts that follow to the sizes that won: `comp` in `test-arm` and `shoulder-sun`, `bore` and `backlash` in the mesh rig's parts.
 
@@ -29,6 +30,7 @@ G-clamp the foot to a table with the plate's front just past the table's edge, s
 | **Electronics** | Arduino Uno; CNC Shield V3; three A4988 drivers with heat sinks; a 24 V supply of at least 5 A; a 5 V supply of at least 2 A for servos; a multimeter; jumper wires |
 | **Screws, socket head** | M3 × 8: 2. M3 × 10: 9. M3 × 12: 12. M3 nuts: 4. M3 washers: 2 |
 | **Measuring** | Digital calipers; a kitchen scale reading to 1 g; a G-clamp; string or small S-hooks; weights from 10 g to 500 g (coins and water bottles will do); a thermometer that reads a surface |
+| **For the slot coupon** | An offcut of your own beam, 50 to 100 mm long, cut square at one end; M2.5 hex nuts and M2.5 × 8 screws for slot 6, M5 hex nuts and M5 × 10 screws for slot 8; one of the bought slot nuts made for your beam (slide-in or drop-in) |
 | **Also** | PTFE grease, for the second round of the efficiency test; a spare print's worth of PLA |
 
 ## The measurements
@@ -58,8 +60,20 @@ Write the number in the last column and send it back: it replaces the kit's figu
 | 19 | Servo stall torque | Arm's 25 mm hole pressing on the scale | 0.18 N m | |
 | 20 | Servo dimensions | Calipers on the tabs, hole spacing and output | Community figures | |
 | 21 | Bearing press and slip | Print `seats-coupon` once per filament. Press a 608 into each pocket by hand or in a vice: note the tightest that goes in without cracking, then write it back with `cad measured benchmarks/<assembly> x1c.press=<value>` (and `x1c.slip`) | press 0.05 mm, slip 0.1 mm across | |
+| 29 | Tongues, slot 6 and slot 8 | Each tongue's figure is its clearance a side in the beam's opening. Lay the head on the beam's face with the tongue in the slot and push it the beam's length from the square end. The best is the tightest that slides all the way by hand, and does not rattle when the beam is shaken across. `cad measured benchmarks/slot-test x1c.slot_fit=<figure>` | 0.2 mm a side (`x1c.fit`, community) | |
+| 30 | Carriers, slot 6 (M2.5) and slot 8 (M5) | Each carrier's figure is its clearance a side all round the slot. Drop its nut into its side (or its end), slide it into the beam from the square end, and run a screw into it through a scrap of plate. The best is the tightest that slides the beam's length by hand, nut in, and that pulls up square when the screw is tightened. Where it is looser than the tongue in 29, write the carrier's figure to `x1c.slot_fit` instead: a part that fills the slot needs the larger | 0.2 mm a side | |
+| 31 | Printed slots, slot 6 and slot 8 | Each block's figure is how far its printed slot is opened a side. Slide a bought slot nut for your beam down each from the top. The best is the tightest it runs the length of by hand without catching, and that holds it upright when the block is tipped on its side. `x1c.printed_slot_fit=<figure>` | 0.2 mm a side | |
+| 32 | The slot itself, by caliper | On the beam's square end: the opening across the face, the lips' thickness, the cavity's width under the lips and its depth from the face (the depth rod of the calipers). Write each to the slot set your beam's profile names, or to `slot-6` or `slot-8` for an unbranded beam: `cad measured benchmarks/slot-test slot-8.opening=<mm> slot-8.lip_thickness=<mm> slot-8.cavity_width=<mm> slot-8.cavity_depth=<mm>`. They go in your workspace's copy of the set as measured, and cad refuses figures that make no slot | slot 6: opening 6, lips 1.5, cavity 12 wide, 5.5 deep. Slot 8: 8, 2.2, 16.5, 9 (community figures) | |
+| 33 | The fit, confirmed | With 29 to 32 written back, print again the carrier whose figure you wrote to `x1c.slot_fit`: `cad export benchmarks/slot-coupon --part slot-8-carrier-<figure>` (or `slot-6-`). It is now drawn from your measured slot. It should slide as that carrier did in 30; a design's own carriers take the same fit with `printer: v.x1c` | | |
 
 Number 11 is a correction to 7 to 9. Take number 16 last: it wrecks the gears.
+
+The slot coupon (29 to 33) is 26 loose pieces, each with its figure, the clearance a side, on top: in the front row
+five tongues for slot 6 and five for slot 8 (a T-shaped key, its head on the face and its tongue in the opening), in
+the middle row five carriers for each (a block that slides in the slot holding a hex nut), and at the back three short
+printed slots for each, standing on end. The slot 8 pieces are the larger. Slot 6 is the slot of 20 mm beams, slot 8
+of 30 and 40 mm beams. Every piece is drawn from the slot's rule set, so once 32 is written back the coupon prints from
+your own slot. `cad history benchmarks/slot-test` then shows each figure against what the kit drew before.
 
 ## Wiring
 

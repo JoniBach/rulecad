@@ -42,8 +42,9 @@ export const givenFor = (context, profile, given = {}) => {
 };
 
 /**
- * @rulecad/frames as a design gets it (v.frames): every export, with profileModel, slotModel, beamModel and beam reading
- * the workspace's own rule sets (a profile measured with cad measure --profile, with its outline) before the kit's.
+ * @rulecad/frames as a design gets it (v.frames): every export, with profileModel, slotModel, beamModel, beam, carrierModel
+ * and carrier reading the workspace's own rule sets (a profile measured with cad measure --profile, with its outline, or
+ * a slot measured by caliper on the slot coupon) before the kit's.
  * @param {{ sets?: Record<string, object>, outlines?: Record<string, object> }} [context] framesContext()'s
  * @returns {Record<string, any>}
  */
@@ -54,6 +55,9 @@ export function designFrames(context = {}) {
   bound.slotModel = (which, change = {}, given = {}) => frames.slotModel(which, change, { ...given, sets: { ...(context.sets || {}), ...(given.sets || {}) } });
   bound.beamModel = (profile, o = {}) => frames.beamModel(typeof profile === 'string' ? bound.profileModel(profile, {}, o.given) : profile, { ...o, given: givenFor(context, profile, o.given) });
   bound.beam = (m, o = {}) => frames.beam(m?.kind === 'beam' || m?.kind === 'profile' ? m : typeof m === 'string' ? bound.profileModel(m, {}, o.given) : m, o);
+  // (a printed carrier drawn from the workspace's slot, as measured by caliper on the slot coupon)
+  bound.carrierModel = (where, o = {}) => frames.carrierModel(where, { ...o, given: givenFor(context, where, o?.given) });
+  bound.carrier = (m, o = {}) => frames.carrier(m, m?.kind === 'slot-carrier' ? o : { ...o, given: givenFor(context, m, o?.given) });
   return bound;
 }
 

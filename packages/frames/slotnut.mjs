@@ -269,7 +269,8 @@ export function carrierModel(where, o = {}) {
     slot = pl.slot; profile = p.name; face = pl.address;
   } else slot = slotModel(where, {}, given);
   const pr = printerOf(what, o.printer), mat = materialOf(what, o.material ?? 'pla'), fx = { ...(o.sets ? { sets: o.sets } : {}), printer: pr };
-  const F = (k) => printerFigure(pr, k), c = F('fit').value, layer = F('layer').value, line = F('line').value, overhang = F('overhang').value;
+  // (a printer's slot_fit, measured on the slot coupon, before its general fit)
+  const F = (k) => printerFigure(pr, k), fitKey = isNum(pr.rules?.slot_fit?.value) ? 'slot_fit' : 'fit', c = F(fitKey).value, layer = F('layer').value, line = F('line').value, overhang = F('overhang').value;
   if (!(c >= 0 && layer > 0 && line > 0)) throw new Error(`${what}: the printer's fit, layer and line are numbers above 0 (got ${shown([c, layer, line])})`);
   const count = o.count ?? 1;
   if (!(Number.isInteger(count) && count >= 1)) throw new Error(`${what}: count is a whole number, 1 or more (got ${shown(o.count)})`);
@@ -280,7 +281,7 @@ export function carrierModel(where, o = {}) {
   const top = Math.min(...loop.map((p) => p[1])), bottom = Math.max(...loop.map((p) => p[1])), shoulder = r3(slot.lip + c), least = segGap(loop, [...cavity]);
   if (!(least > c - 1e-6) || bottom - top < 2 * layer) throw new Error(`${what}: ${slot.name} is too small for a carrier ${mm(c)} mm clear of it (it comes ${least} mm from the slot)`);
   const half = (v) => { const x = across(loop, v); return x ? Math.min(-x[0], x[1]) : 0; };
-  const out = [], rests = [{ name: F('fit').name, value: c, kind: F('fit').kind }, { name: F('layer').name, value: layer }, { name: F('line').name, value: line }];
+  const out = [], rests = [{ name: F(fitKey).name, value: c, kind: F(fitKey).kind }, { name: F('layer').name, value: layer }, { name: F('line').name, value: line }];
   const floor = r3(CARRIER_DEFAULTS.floor.value * layer), wall = CARRIER_DEFAULTS.wall.value * line, roofMin = CARRIER_DEFAULTS.roof.value * line;
   const ts = threadSet(o.thread, { sets: { ...(given.sets ?? {}), ...(o.sets ?? {}) } }), tr = ts?.rules;
   if (!tr) throw new Error(`${what}: no thread set for ${shown(o.thread)}`);
@@ -342,7 +343,7 @@ export function carrierModel(where, o = {}) {
     hold: { value: held, punch, shoulders, shear: tau }, load: o.load ?? null, margin, volume: 0, grams: 0, material: mat.name, printer: pr.name, least: r3(least), overhang: r3(worst), rests: [...rests, { name: `${mat.name}.strength`, value: mat.rules.strength.value }, { name: 'fixings.shear_ratio', value: FIX.shear_ratio.value }], findings: out };
   const solid = carrierSolid(model, fx);
   model.volume = r3(measureVolume(solid)); model.grams = r3((model.volume * mat.rules.density.value) / 1000);
-  out.unshift(finding('info', `${slot.name}'s cavity offset in by ${F('fit').name} ${mm(c)} mm: ${mm(2 * half(shoulder + 0.01))} mm wide under the lips, ${mm(2 * half(top + 0.01))} mm in the opening, ${mm(bottom - top)} mm deep; it stands ${mm(least)} mm clear of the slot at its nearest, its inside corners at the tongue rounded ${mm(c)} mm (as round as the fit allows against a sharp lip)`, 'carrier.fit', { values: { clearance: c, least: r3(least), depth: r3(bottom - top) } }));
+  out.unshift(finding('info', `${slot.name}'s cavity offset in by ${F(fitKey).name} ${mm(c)} mm: ${mm(2 * half(shoulder + 0.01))} mm wide under the lips, ${mm(2 * half(top + 0.01))} mm in the opening, ${mm(bottom - top)} mm deep; it stands ${mm(least)} mm clear of the slot at its nearest, its inside corners at the tongue rounded ${mm(c)} mm (as round as the fit allows against a sharp lip)`, 'carrier.fit', { values: { clearance: c, least: r3(least), depth: r3(bottom - top) } }));
   out.push(finding(worst <= overhang + 0.25 ? 'pass' : 'warn', `laid floor down, its steepest face looking down is ${mm(worst)}° from upright (the printer's overhang ${mm(overhang)}°): ${worst <= overhang + 0.25 ? 'it prints without supports' : 'it needs supports there, or a slot with steeper flanks'}`, 'carrier.printable', { values: { overhang: r3(worst), limit: overhang } }));
   out.push(finding('pass', `its first layer is one solid piece, ${mm(2 * half(bottom - 0.01))} mm across and ${mm(total)} mm long${insert ? `, with the insert's ${mm(insert.diameter)} mm hole${count > 1 ? 's' : ''} in it` : `, with ${mm(floor)} mm (${CARRIER_DEFAULTS.floor.value} layers) under each nut and the screw's ${mm(screwHole)} mm hole through it, room for a long screw's end`}`, 'carrier.first-layer', { values: { width: r3(2 * half(bottom - 0.01)), length: total } }));
   out.push(finding(margin == null ? 'info' : margin >= CARRIER_DEFAULTS.margin.value - 1e-9 ? 'pass' : 'fail', `each ${holds} holds about ${Math.round(held)} N straight out of the slot (${punch <= shoulders ? `the ${mm(levels.roofTop != null ? levels.roofTop - top : levels.insertTop - top)} mm of plastic over it shears through first` : 'the shoulders under the lips shear off first'}: ${Math.round(punch)} N through the top, ${Math.round(shoulders)} N at the shoulders, at ${tau} MPa, ${mat.name}'s strength over √3: an estimate until tested, Frames 2.13)${margin == null ? '' : `: ${margin}× the ${o.load} N load, ${margin >= CARRIER_DEFAULTS.margin.value ? 'within' : 'short of'} the ${CARRIER_DEFAULTS.margin.value}× asked`}`, 'carrier.hold', { values: { hold: held, punch, shoulders, ...(margin != null ? { load: o.load, margin } : {}) } }));

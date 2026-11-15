@@ -96,6 +96,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
                                     against measured, shown by cad history [--unit mm] [--source "how"] [--rule "what it is"]
                                     [--table: what the assembly still assumes, as Markdown; --out MEASURE.md: kept in that file]
+                                    The slot coupon's need no --rule: x1c.slot_fit, x1c.printed_slot_fit; a slot measured by
+                                    caliper goes in your copy of its set (slot-8.opening=8.1), checked as a slot
   cad measure <model.stl|3mf>       a model from elsewhere, measured: size, the stretches along its length with the same
                                     cross-section, and each section's shape, with a drawing in .preview/measure/
                                     [--along x|y|z] [--at 10,50: sections there too] [--line 0.6,2.5;4.6,2.5: where lines

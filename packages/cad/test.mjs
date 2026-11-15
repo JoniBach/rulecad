@@ -1522,6 +1522,41 @@ test('cad measured: a measurement where the estimate was, what moved, the ledger
   } finally { done(); }
 });
 
+test('cad measured from the slot coupon: the slot fit lands in the printer\'s rule set, a slot\'s caliper figures in the workspace\'s copy of its set, and a carrier is drawn from both', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const js = `export function main (v) {
+  const m = v.frames.carrierModel('slot-8', { thread: 'M5', printer: v.x1c })
+  return v.frames.carrier(m, { pose: 'print', printer: v.x1c })
+}
+`;
+    object(ws, 'home/carrier', { uses: ['x1c'], engine: 'manifold', variables: {} }, js);
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['carrier'] }));
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/coupon.json'), JSON.stringify({ title: 'Coupon', kind: 'fit', items: [{ id: 'carrier', object: 'carrier' }] }));
+    // the carrier's width across the slot: the cavity less the clearance each side
+    const across = () => Number(cad('check', 'home/carrier').match(/([\d.]+) × ([\d.]+) × ([\d.]+) mm, fits the bed/)[2]);
+    assert.equal(across(), 16.1, 'before: slot-8\'s community cavity 16.5 less x1c.fit 0.2 each side');
+    const kit = ['x1c', 'slot-8'].map((n) => fs.readFileSync(new URL(`../rules/${n}.json`, import.meta.url), 'utf8'));
+    const own = (n) => path.join(ws, `rules/${n}.json`), measuredIn = (n, k) => fs.existsSync(own(n)) && JSON.parse(fs.readFileSync(own(n), 'utf8')).rules[k]?.kind === 'measured';
+    // figures that make no slot are refused, and nothing is written
+    assert.match(cad('measured', 'home/coupon', 'x1c.slot_fit=0.15', 'slot-8.opening=17'), /slot-8: .*cavity_width is wider than opening, 17/);
+    assert.ok(!measuredIn('x1c', 'slot_fit') && !measuredIn('slot-8', 'opening'), 'nothing written');
+    const out = cad('measured', 'home/coupon', 'x1c.slot_fit=0.15', 'x1c.printed_slot_fit=0.25', 'slot-8.opening=8.1', 'slot-8.cavity_width=16.3');
+    assert.match(out, /x1c\.slot_fit: measured 0\.15 mm, predicted 0\.2 \(x1c\.fit, community\), ratio 0\.75/);
+    assert.match(out, /x1c\.printed_slot_fit: measured 0\.25 mm, predicted 0\.2/);
+    assert.match(out, /slot-8\.opening: measured 8\.1 mm, predicted 8 \(community\)/);
+    const x1c = JSON.parse(fs.readFileSync(own('x1c'), 'utf8')).rules, slot = JSON.parse(fs.readFileSync(own('slot-8'), 'utf8')).rules, today = new Date().toISOString().slice(0, 10);
+    for (const r of [x1c.slot_fit, x1c.printed_slot_fit, slot.opening, slot.cavity_width]) { assert.equal(r.kind, 'measured'); assert.equal(r.checked, today); assert.equal(r.unit, 'mm'); assert.match(r.source, /slot coupon/); }
+    assert.match(x1c.slot_fit.rule, /slid the beam's length by hand without rattling/); assert.match(slot.opening.source, /calipers on your own beam/);
+    assert.deepEqual([x1c.slot_fit.value, slot.opening.value, slot.cavity_width.value, slot.cavity_depth.kind], [0.15, 8.1, 16.3, 'community'], 'only what was measured');
+    assert.deepEqual(['x1c', 'slot-8'].map((n) => fs.readFileSync(new URL(`../rules/${n}.json`, import.meta.url), 'utf8')), kit, 'the kit\'s own rule sets are untouched');
+    // drawn again from them: the measured cavity less the measured fit each side
+    assert.equal(across(), 16, '16.3 less 0.15 each side');
+    assert.match(cad('history', 'home/coupon'), /x1c\.slot_fit: measured 0\.15 mm, predicted 0\.2/);
+  } finally { done(); }
+});
+
 test('wires: longest through the poses, a gauge against what it carries, the sheet; a bad route refused by name', async () => {
   const { ws, cad, done } = workspace();
   try {
