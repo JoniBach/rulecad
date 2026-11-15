@@ -47,6 +47,17 @@ export function optionsOf(what, o, example) {
   if (o == null || typeof o !== 'object' || Array.isArray(o)) throw new Error(`${what}: the second argument is its options (${example}), not ${shown(o)}`);
   return o;
 }
+/**
+ * A hole or a seat held to the part it is in: refused by name where it is deeper than the part is thick there.
+ * @param {string} what @param {{ thickness?: number }} o thickness: the part's, along the hole, in mm @param {number} deep how deep the cut goes @param {string} says what the cut is
+ * @returns {number | null} the thickness, where one was given
+ */
+export function inPart(what, o, deep, says) {
+  if (o.thickness == null) return null;
+  positive(what, 'thickness', o.thickness);
+  if (deep > o.thickness - 1e-9) throw new Error(`${what}: ${says} goes ${mm(deep)} mm into a part ${mm(o.thickness)} mm thick there: it is deeper than the part, and would break out of its far face. Make it shallower, or the part thicker`);
+  return o.thickness;
+}
 const HOW = { '-z': 'going down from a top face', '+z': 'going up from the bed', '+x': 'lying along x', '-x': 'lying along x', '+y': 'lying along y', '-y': 'lying along y' };
 /** How a direction is said in a finding. */
 export const said = (into) => HOW[into];
@@ -64,12 +75,13 @@ export const said = (into) => HOW[into];
 /**
  * A hole for a fixing, as numbers, sized by what it is for.
  * @param {Fixing | string} m a fixing's model, or its name ('M3')
- * @param {{ kind?: string, depth?: number, through?: boolean, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object,
+ * @param {{ kind?: string, depth?: number, through?: boolean, thickness?: number, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object,
  *   mate?: 'printed' | 'bought', gap?: number, flanks?: 'printed' | 'standard', hand?: 'right' | 'left', starts?: number, pitch?: number, segments?: number, display?: 'thread' | 'plain', flat?: boolean }} [o]
  *   kind: clearance (the normal hole a screw passes through, the default), close, loose, pilot (the screw forms its own
  *   thread in the plastic), tap (the tap drill), insert (a heat-set insert), or thread (a thread modelled to print, which
  *   also takes threadModel's mate, gap, flanks, hand, starts, pitch, segments, display and flat);
  *   depth: how deep, or the thickness passed through; through: out of the far face (the default for the clearances);
+ *   thickness: the part's, along the hole: a hole through it is that deep, and a blind one deeper than it is refused;
  *   printer: the printer's rule set, or its values (default the kit's X1C); material: the plastic, for a pilot ('PLA',
  *   'PETG'), or what a tapped hole is in ('aluminium'); axis: z for a hole standing up, x or y for one on its side
  *   (or into, a direction: '+x', '-z'); lead: the lead-in chamfer; sets: the workspace's rule sets, where m is a name
@@ -110,7 +122,7 @@ export function holeModel(m, o = {}) {
   if (kind === 'insert') need = depthFrom(through ? 'insert_length' : 'insert_depth');
   else if (kind === 'pilot' && fx.figures.pilot_depth) need = depthFrom('pilot_depth');
   else if (kind === 'pilot' || kind === 'tap') { const e = engagementOf(kind === 'pilot' ? 'plastic' : o.material); rests.push(rest(`engagement.${e}`, ENGAGEMENT[e])); need = r3(ENGAGEMENT[e].value * fx.major); }
-  if (depth != null) positive(what, 'depth', depth); else depth = need;
+  if (depth != null) positive(what, 'depth', depth); else depth = through && o.thickness != null ? positive(what, 'thickness', o.thickness) : need;
   if (need != null && depth < need - 1e-9) out.push(finding('warn', `${a(fx.thread)} ${spec.says} ${mm(depth)} mm deep is short: ${rests.at(-1).name} asks ${mm(need)} mm${kind === 'insert' && !through ? ' of blind hole' : ' of thread'}`, 'hole.depth', { values: { depth, need } }));
 
   if (o.lead != null && !(isNum(o.lead) && o.lead >= 0)) throw new Error(`${what}: lead is the lead-in chamfer, 0 mm or more (got ${shown(o.lead)})`);
@@ -118,6 +130,7 @@ export function holeModel(m, o = {}) {
   let lead = o.lead ?? (spec.blind && !dir.across ? pr.n('chamfer') : 0);
   if (lead && depth != null) lead = Math.min(lead, depth / 2);
   const point = !through && dir.into === '+z' ? r3(diameter / 2) : 0;
+  if (!through && depth != null) inPart(what, o, depth + point, `a blind ${spec.says} ${mm(depth)} mm deep${point ? ` with its ${mm(point)} mm point` : ''}`);
   out.push(finding('pass', dir.across ? `${said(dir.into)}, the hole is a teardrop: a 45° roof, so it prints with no support`
     : point ? `${said(dir.into)}, the hole ends in a 45° point ${mm(point)} mm high, so its end needs no bridge` : `${said(dir.into)}, a round hole prints as drawn`, 'hole.printable', { values: { into: dir.into } }));
   if (kind === 'pilot' && dir.across) out.push(finding('warn', `a pilot lying on its side has a teardrop's roof, and ${basis.name} is for a hole standing upright: the screw has less to bite, so try it`, 'hole.side'));
@@ -129,7 +142,7 @@ export function holeModel(m, o = {}) {
  * A hole for a fixing, to subtract: round standing up, a teardrop lying on its side (through @rulecad/shapes'
  * teardropHole), with its lead-in where it has one, and a 45° point where it ends going up from the bed.
  * @param {Fixing | string} m
- * @param {{ kind?: string, depth?: number, through?: boolean, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object, at?: number[],
+ * @param {{ kind?: string, depth?: number, through?: boolean, thickness?: number, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object, at?: number[],
  *   mate?: 'printed' | 'bought', gap?: number, flanks?: 'printed' | 'standard', hand?: 'right' | 'left', starts?: number, pitch?: number, segments?: number, display?: 'thread' | 'plain', flat?: boolean }} [o]
  *   as holeModel, and at: the point on the face where the hole starts. A clearance hole needs depth: the thickness it passes
  * @returns {object} a JSCAD geom3 to subtract, with .model holding holeModel's numbers

@@ -6,7 +6,7 @@
 import jscad from '@jscad/modeling';
 import { countersink as cone90, nutPocket as hexPocket, wallOpening } from '@rulecad/shapes';
 import { DEFAULTS, fixingOf, printerOf, headOf, nutOf, figure, cite, rest, finding, positive, oneOf, isNum, shown, mm, r3, a, layers } from './model.mjs';
-import { holeModel, directionOf, pointOf, optionsOf, said } from './holes.mjs';
+import { holeModel, directionOf, pointOf, optionsOf, said, inPart } from './holes.mjs';
 import { along, bore, lathe, teardrop, UP, OUT, SEGMENTS, DIRECTIONS } from './draw.mjs';
 
 /**
@@ -41,10 +41,10 @@ const lengthOf = (what, o, least, why) => {
  * A counterbore for a screw's head, as numbers: wide enough for the head with the printer's fit round it, and deep
  * enough to hide it.
  * @param {Fixing | string} m
- * @param {{ head?: string, depth?: number, diameter?: number, length?: number, hole?: string, printer?: object, into?: string, axis?: string, sets?: object }} [o]
+ * @param {{ head?: string, depth?: number, diameter?: number, length?: number, thickness?: number, hole?: string, printer?: object, into?: string, axis?: string, sets?: object }} [o]
  *   head: cap, button, hex or pan (default the model's, else cap); depth: of the seat (default the head's height, up to
  *   a whole layer); diameter: of the seat, for a socket's room; length: the whole hole's, from the face, to cut the
- *   screw's hole as well; hole: clearance, close or loose
+ *   screw's hole as well; thickness: the part's there (a seat deeper than the part is refused); hole: clearance, close or loose
  * @returns {{ thread: string, head: string, diameter: number, depth: number, sunk: number, hole: number, length: number | null, cone: number, into: string, teardrop: boolean, rests: object[], findings: object[] }}
  *   sunk: how far the head's top lies under the face (below 0: it stands proud); cone: the height of the 45° cone the seat ends in where it goes up from the bed
  */
@@ -59,6 +59,7 @@ export function counterboreModel(m, o = {}) {
   const least = r3(head.across + comp), diameter = o.diameter == null ? r3(head.across + 2 * fit + comp) : positive(what, 'diameter', o.diameter);
   const depth = o.depth == null ? layers(head.height, layer) : positive(what, 'depth', o.depth), sunk = r3(depth - head.height);
   const cone = dir.into === '+z' ? r3((diameter - h.diameter) / 2) : 0, length = lengthOf(what, o, depth + cone, 'the seat\'s depth');
+  inPart(what, o, depth + cone, `a seat ${mm(depth)} mm deep for ${a(fx.thread)} ${form} head${cone ? ` with its ${mm(cone)} mm cone` : ''}`);
   out.push(finding('info', `a counterbore for ${a(fx.thread)} ${form} head drawn ${mm(diameter)} mm across and ${mm(depth)} mm deep: the head is ${mm(head.across)} mm across${head.flats ? ' its corners' : ''} and ${mm(head.height)} mm high (${head.figures.map((n) => cite(fx, n)).join(', ')})${o.diameter == null ? `, with ${pr.cite('fit')} ${mm(fit)} mm each side and ${pr.cite('hole_comp')} ${mm(comp)} mm across` : ''}; its top lies ${sunk > 1e-9 ? `${mm(sunk)} mm under the face` : sunk < -1e-9 ? `${mm(-sunk)} mm proud of the face` : 'flush with the face'}`,
     'counterbore.drawn', { values: { diameter, depth, sunk, hole: h.diameter }, refs: { thread: fx.thread, set: fx.set, head: form } }));
   if (diameter < least - 1e-9) out.push(finding('fail', `a ${mm(diameter)} mm seat is smaller than the ${mm(head.across)} mm head once printed: ${mm(least)} mm at least`, 'counterbore.diameter', { values: { diameter, least } }));
@@ -88,7 +89,8 @@ export function counterbore(m, o = {}) {
  * A countersink for a flat-head screw, as numbers: a cone to the head's angle, as wide as the head's sharp edge, so
  * any head sits flush.
  * @param {Fixing | string} m
- * @param {{ length?: number, hole?: string, printer?: object, into?: string, axis?: string, sets?: object }} [o] length: the whole hole's, from the face (default the cone and no more)
+ * @param {{ length?: number, thickness?: number, hole?: string, printer?: object, into?: string, axis?: string, sets?: object }} [o] length: the whole hole's, from the face (default the cone and no more);
+ *   thickness: the part's there (a cone deeper than the part is refused)
  * @returns {{ thread: string, diameter: number, angle: number, depth: number, hole: number, length: number, into: string, teardrop: boolean, rests: object[], findings: object[] }}
  *   diameter: of the cone at the face, as drawn; depth: of the cone
  */
@@ -99,6 +101,7 @@ export function countersinkModel(m, o = {}) {
   const angle = head.angle ?? 90, diameter = r3(head.diameter + comp), depth = r3((diameter - h.diameter) / 2 / Math.tan((angle * Math.PI) / 360));
   if (!(angle > 0 && angle < 180)) throw new Error(`${what}: ${cite(fx, 'countersunk_angle')} is the cone's whole angle, between 0° and 180° (got ${shown(angle)})`);
   const length = lengthOf(what, o, depth, 'the cone\'s depth') ?? depth, slope = angle / 2, limit = pr.n('overhang'), out = [];
+  inPart(what, o, depth, `a countersink ${mm(depth)} mm deep for ${a(fx.thread)} flat head`);
   out.push(finding('info', `a countersink for ${a(fx.thread)} flat head drawn ${mm(diameter)} mm across at ${mm(angle)}°, ${mm(depth)} mm deep on a ${mm(h.diameter)} mm hole: ${cite(fx, 'countersunk_head')} ${mm(head.diameter)} mm, the head's sharp-edge diameter, so any head sits flush, plus ${pr.cite('hole_comp')} ${mm(comp)} mm across`,
     'countersink.drawn', { values: { diameter, angle, depth, hole: h.diameter }, refs: { thread: fx.thread, set: fx.set } }));
   out.push(dir.across ? finding('pass', `${said(dir.into)}, the cone and its hole are teardrops: 45° roofs, no support`, 'countersink.printable', { values: { into: dir.into } })
@@ -146,15 +149,16 @@ function pocket(s, flats, depth, hole, at, into) {
 /**
  * A pocket for a nut, let in from a face along the screw's axis, as numbers.
  * @param {Fixing | string} m
- * @param {{ kind?: string, depth?: number, fit?: string | number, hole?: string, printer?: object, into?: string, axis?: string, sets?: object }} [o]
+ * @param {{ kind?: string, depth?: number, thickness?: number, fit?: string | number, hole?: string, printer?: object, into?: string, axis?: string, sets?: object }} [o]
  *   kind: hex, square or lock (default the model's, else hex); depth: of the pocket (default the nut's height and two
- *   layers); fit: snug (the default: no clearance once printed, so the nut cannot turn), slip, press, or a clearance in mm
+ *   layers); thickness: the part's there (a pocket deeper than the part is refused); fit: snug (the default: no clearance once printed, so the nut cannot turn), slip, press, or a clearance in mm
  * @returns {{ thread: string, kind: string, flats: number, nominal: number, corner: number, depth: number, height: number, hole: number, clearance: number, roof: number, into: string, rests: object[], findings: object[] }}
  *   flats: across the flats, as drawn; nominal: the nut's; corner: across the pocket's corners; roof: the height of the 45° roof, going up from the bed
  */
 export function nutPocketModel(m, o = {}) {
   const what = 'nutPocket', s = nutSeat(what, m, o, 'snug'), { fx, pr, nut, h } = s, dir = directionOf(what, o), layer = pr.n('layer'), out = [];
   const depth = o.depth == null ? r3(nut.height + DEFAULTS.nut_sink.value * layer) : positive(what, 'depth', o.depth), roof = dir.into === '+z' ? r3((s.corner - h.diameter) / 2) : 0;
+  inPart(what, o, depth + roof, `a pocket ${mm(depth)} mm deep for ${nutName(s)}${roof ? ` with its ${mm(roof)} mm roof` : ''}`);
   out.push(finding('info', `a pocket for ${nutName(s)} drawn ${mm(s.flats)} mm across the flats and ${mm(depth)} mm deep: ${s.how}; the nut is ${mm(nut.height)} mm high (${cite(fx, nut.figures[1])})${o.depth == null ? `, sunk ${DEFAULTS.nut_sink.value} layers of ${pr.cite('layer')}` : ''}`,
     'nutPocket.drawn', { values: { flats: s.flats, depth, hole: h.diameter, clearance: s.f.clearance }, refs: { thread: fx.thread, set: fx.set, nut: nut.kind } }));
   if (depth < nut.height - 1e-9) out.push(finding('warn', `the nut stands ${mm(nut.height - depth)} mm proud of a ${mm(depth)} mm pocket`, 'nutPocket.proud', { values: { depth, height: nut.height } }));
@@ -237,7 +241,8 @@ export function squareNutSlot(m, o = {}) { optionsOf('squareNutSlot', o, '{ dept
  * high as the nut and a layer, and a 45° roof over it to the screw's hole. The pause height is where the pocket's
  * walls end: the printer stops there, the nut goes in, and the next layers close the roof.
  * @param {Fixing | string} m
- * @param {{ kind?: string, fit?: string | number, hole?: string, printer?: object, sets?: object, at?: number[] }} [o] at: the middle of the pocket's floor, its z measured from the bed; fit: slip by default
+ * @param {{ kind?: string, fit?: string | number, hole?: string, thickness?: number, printer?: object, sets?: object, at?: number[] }} [o] at: the middle of the pocket's floor, its z measured from the bed; fit: slip by default;
+ *   thickness: the part's height there, from the bed (a pocket whose roof would break out of the top is refused)
  * @returns {{ thread: string, kind: string, flats: number, height: number, pause: number, layer: number, roof: number, top: number, hole: number, rests: object[], findings: object[] }}
  *   height: of the pocket's upright walls; pause: the z to pause at; layer: the number of the last layer laid before the pause; top: the z where the roof meets the hole
  */
@@ -245,6 +250,7 @@ export function captiveNutModel(m, o = {}) {
   const what = 'captiveNut', s = nutSeat(what, m, o, 'slip'), { fx, pr, nut, h } = s, at = pointOf(what, o.at), layer = pr.n('layer'), out = [];
   if (!(layer > 0)) throw new Error(`${what}: the printer's layer is above 0 mm (got ${shown(layer)})`);
   const height = layers(nut.height + DEFAULTS.nut_slack.value * layer, layer), pause = r3(at[2] + height), n = Math.round(pause / layer), roof = r3((s.corner - h.diameter) / 2);
+  if (o.thickness != null) { positive(what, 'thickness', o.thickness); if (pause + roof > o.thickness - 1e-9) throw new Error(`${what}: a closed pocket for ${nutName(s)} from z = ${mm(at[2])} mm ends its roof at z = ${mm(r3(pause + roof))} mm, and the part is ${mm(o.thickness)} mm high there: it is deeper than the part, and would break out of its top. Start it lower, or make the part taller`); }
   out.push(finding('info', `a closed pocket for ${nutName(s)} drawn ${mm(s.flats)} mm across the flats and ${mm(height)} mm high: ${s.how}; the nut is ${mm(nut.height)} mm high (${cite(fx, nut.figures[1])}), with ${DEFAULTS.nut_slack.value} layer over it`,
     'captiveNut.drawn', { values: { flats: s.flats, height, hole: h.diameter, clearance: s.f.clearance }, refs: { thread: fx.thread, set: fx.set, nut: nut.kind } }));
   out.push(finding('info', `pause the print at z = ${mm(pause)} mm, once layer ${n} is down (${mm(layer)} mm layers, the bed at z = 0), drop the ${fx.thread} ${nut.kind === 'hex' ? '' : `${nut.kind} `}nut in, and carry on: the next ${mm(roof)} mm closes a roof over it`, 'captiveNut.pause', { values: { pause, layer: n, height: layer } }));
@@ -312,14 +318,17 @@ export function insertBoss(m, o = {}) {
 }
 
 /**
- * What a printer can make of it, as findings. A fixing is bought, so it fails; a hole's or a seat's model (or the
- * solid made from one) gives its finding on how it prints in the direction it was drawn for.
- * @param {object} x a fixing's model, a model from holeModel or a seat's twin, or a solid one of them made
+ * What a printer can make of it, as findings. A fixing is bought, so it fails, and so does a screw, a nut, a washer
+ * or an insert drawn as a light solid; a hole's, a seat's or a printed thread's model (or the solid made from one)
+ * gives its finding on how it prints in the direction it was drawn for, and so does hardware with its thread drawn.
+ * @param {object} x a fixing's model, a model from holeModel, threadModel, a seat's twin or a piece of hardware's, or a solid one of them made
  * @returns {object[]} findings
  */
 export function printable(x) {
-  if (x?.kind === 'fixing') return [finding('fail', `${a(x.thread)} ${x.item === 'thread' ? 'fixing' : x.item} is bought and fitted, not printed: its hole and its seat are what print (hole, counterbore, nutPocket)`, 'fixing.printable')];
-  const model = x?.model && Array.isArray(x.model.findings) ? x.model : x;
-  if (!model || !Array.isArray(model.findings)) throw new Error(`printable: give a fixing's model, or a hole's or seat's (holeModel, counterboreModel, nutPocketModel), not ${shown(x)}`);
-  return model.findings.filter((f) => typeof f.code === 'string' && f.code.endsWith('.printable'));
+  const bought = (thread, item) => [finding('fail', `${a(thread)} ${item === 'thread' ? 'fixing' : item} is bought and fitted, not printed: its hole and its seat are what print (hole, counterbore, nutPocket)${['screw', 'nut'].includes(item) ? `, or draw it with its thread to print it ({ display: 'thread' })` : ''}`, 'fixing.printable')];
+  if (x?.kind === 'fixing') return bought(x.thread, x.item);
+  const model = x?.model && Array.isArray(x.model.findings) ? x.model : x?.model?.model && Array.isArray(x.model.model.findings) ? x.model.model : x;
+  if (!model || !Array.isArray(model.findings)) throw new Error(`printable: give a fixing's model, or a hole's, a seat's or a thread's (holeModel, counterboreModel, nutPocketModel, threadModel), not ${shown(x)}`);
+  const found = model.findings.filter((f) => typeof f.code === 'string' && f.code.endsWith('.printable'));
+  return !found.length && ['screw', 'nut', 'washer', 'insert'].includes(model.item) ? bought(model.thread, model.item) : found;
 }

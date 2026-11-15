@@ -380,7 +380,7 @@ test('printable: a fixing is bought; a hole or a seat says how it prints', () =>
     for (const x of model.findings) { assert.ok(['pass', 'info', 'warn', 'fail'].includes(x.level)); assert.ok(x.text && x.code, 'a finding in the kit\'s one shape'); }
     for (const r of model.rests) { assert.ok(r.name && r.kind && r.source, `what it rests on: ${JSON.stringify(r)}`); }
   }
-  assert.throws(() => printable(3), /give a fixing's model, or a hole's or seat's/);
+  assert.throws(() => printable(3), /printable: give a fixing's model, or a hole's, a seat's or a thread's/);
   // a long hexagon's flat on top, past the printer's bridge, is a warning
   assert.equal(printable(nutPocketModel('M12', { into: '+x' }))[0].level, 'warn');
   assert.equal(printable(countersinkModel('M3', { into: '+z', printer: { overhang: 40 } }))[0].level, 'warn');
@@ -739,6 +739,58 @@ test('lengthFor: M3x10 for a 6 mm plate into a 5.7 mm insert, M3x12 would bottom
   assert.throws(() => lengthFor(3, 'M3', { into: 'insert', sunk: 5 }), /a seat sunk 5 mm is deeper than the 3 mm stack it is in/); assert.throws(() => lengthFor(6, 'M2.5', { into: 'nut', head: 'button' }), /M2\.5 is not made with a button head/);
   // bound to a workspace as the rest are
   assert.equal(fixingsFor().lengthFor(6, 'M3', { into: 'insert' }).name, 'M3x10 cap'); assert.equal(fixingsFor().stripping('M3', { depth: 6, material: 'pla' }).strip, 1114.1);
+});
+
+// ---------- refusals and printability across the package (Fixings 1.9) ----------
+test('refused by name before any geometry: a pocket, a seat or a blind hole deeper than the part, and a depth of nothing or less', () => {
+  // deeper than the part: each says what it is, how deep it goes and how thick the part is
+  assert.throws(() => nutPocketModel('M4', { thickness: 3 }), /nutPocket: a pocket 3\.6 mm deep for an M4 nut goes 3\.6 mm into a part 3 mm thick there: it is deeper than the part, and would break out of its far face\. Make it shallower, or the part thicker/);
+  assert.throws(() => nutPocket('M4', { thickness: 3, at: [0, 0, 3] }), /deeper than the part/, 'the solid is refused as its numbers are');
+  assert.throws(() => nutPocketModel('M4', { into: '+z', thickness: 5 }), /a pocket 3\.6 mm deep for an M4 nut with its 1\.799 mm roof goes 5\.399 mm into a part 5 mm thick/);
+  assert.throws(() => counterboreModel('M3', { thickness: 3 }), /counterbore: a seat 3 mm deep for an M3 cap head goes 3 mm into a part 3 mm thick there: it is deeper than the part/);
+  assert.throws(() => counterboreModel('M3', { into: '+z', thickness: 4 }), /with its 1\.25 mm cone goes 4\.25 mm into a part 4 mm thick/);
+  assert.throws(() => countersinkModel('M3', { thickness: 1.5 }), /countersink: a countersink 1\.66 mm deep for an M3 flat head goes 1\.66 mm into a part 1\.5 mm thick/);
+  assert.throws(() => holeModel('M3', { kind: 'pilot', thickness: 4 }), /hole: a blind pilot 5 mm deep goes 5 mm into a part 4 mm thick there: it is deeper than the part/);
+  assert.throws(() => holeModel('M3', { kind: 'insert', into: '+z', thickness: 8 }), /a blind insert hole 6\.7 mm deep with its 2 mm point goes 8\.7 mm into a part 8 mm thick/);
+  assert.throws(() => holeModel('M10', { kind: 'thread', depth: 12, thickness: 10 }), /hole: a blind threaded hole 12 mm deep goes 12 mm into a part 10 mm thick there: it is deeper than the part/);
+  assert.throws(() => captiveNutModel('M4', { at: [0, 0, 4], thickness: 8 }), /captiveNut: a closed pocket for an M4 nut from z = 4 mm ends its roof at z = 9\.257 mm, and the part is 8 mm high there: it is deeper than the part/);
+  assert.throws(() => insertBossModel('M3', { height: 4 }), /the part is 4 mm thick there and an M3 insert 5\.7 mm long/);
+  // and within the part, each is as it was: the thickness changes nothing but a through hole's depth
+  assert.equal(nutPocketModel('M4', { thickness: 6 }).depth, 3.6); assert.equal(counterboreModel('M3', { thickness: 8 }).depth, 3); assert.equal(holeModel('M3', { kind: 'pilot', thickness: 8 }).depth, 5);
+  assert.equal(holeModel('M3', { thickness: 6 }).depth, 6, 'a clearance hole through a part is as deep as the part'); near(bb(hole('M3', { thickness: 6, at: [0, 0, 6] }))[0][2], -0.1, 1e-9, 'and its solid runs out of the far face');
+  assert.equal(holeModel('M10', { kind: 'thread', through: true, thickness: 12 }).depth, 12); assert.equal(captiveNutModel('M4', { at: [0, 0, 4], thickness: 12 }).pause, 7.4);
+  // nothing, less than nothing, and what is not a number
+  for (const [what, f] of [['hole depth', () => holeModel('M3', { depth: 0 })], ['hole thickness', () => holeModel('M3', { thickness: -6 })], ['counterbore depth', () => counterboreModel('M3', { depth: -1 })], ['counterbore diameter', () => counterboreModel('M3', { diameter: 0 })],
+    ['counterbore thickness', () => counterboreModel('M3', { thickness: 0 })], ['pocket depth', () => nutPocketModel('M3', { depth: 0 })], ['slot depth', () => nutTrapModel('M3', { depth: -4 })], ['boss height', () => insertBossModel('M3', { height: 0 })],
+    ['boss wall', () => insertBossModel('M3', { wall: -1 })], ['screw length', () => screwModel('M3', { length: 0 })], ['thread length', () => threadModel('M10', { length: 0 })], ['engagement depth', () => engagement('M3', { depth: 0, material: 'pla' })],
+    ['stripping depth', () => stripping('M3', { depth: -6, material: 'pla' })], ['a stack', () => lengthFor(-6, 'M3', { into: 'insert' })], ['a depth as text', () => holeModel('M3', { depth: '6' })]]) assert.throws(f, /is a number above 0|each above 0 mm/, what);
+  // every function that takes a fixing refuses an unknown thread, and what is no fixing, by name
+  const every = { holeModel, hole, counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket, nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss,
+    screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, threadModel, thread, engagement, stripping, preload, torqueFor, seating };
+  for (const [name, f] of Object.entries(every)) {
+    const o = { depth: 6, length: 10, material: 'pla', ...(name === 'torqueFor' ? { force: 100 } : { torque: 1 }) };
+    assert.throws(() => f('M7', o), /no thread "M7"\. There are: M1\.6, M2/, `${name}: an unknown thread`);
+    assert.throws(() => f({ thread: 'M3' }, o), /give a fixing's model \(fixingModel\) or its name|give a thread: a fixing's name or model/, `${name}: what is no fixing`);
+    assert.throws(() => f('M3', 'deep'), /the second argument is its options/, `${name}: options that are no options`);
+  }
+  assert.throws(() => lengthFor(6, 'M7', { into: 'nut' }), /no thread "M7"/); assert.throws(() => lengthFor(6, 'M3', 'nut'), /the second argument is its options/);
+  for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function' && !['fixingModel', 'parseName', 'threads', 'printable', 'fixingsFor', 'lengthFor'].includes(k))) assert.ok(every[name], `${name} is held to these refusals`);
+});
+
+test('printable: every drawn feature says how it prints, and what is bought says so', () => {
+  const drawn = { hole: hole('M3', { depth: 6 }), pilot: hole('M3', { kind: 'pilot' }), 'threaded hole': hole('M10', { kind: 'thread', depth: 12 }), counterbore: counterbore('M3'), countersink: countersink('M3'), nutPocket: nutPocket('M3'), nutTrap: nutTrap('M3', { depth: 8 }),
+    squareNutSlot: squareNutSlot('M3', { depth: 8 }), captiveNut: captiveNut('M3'), insertBoss: insertBoss('M3'), thread: thread('M10', { length: 20 }), 'internal thread': thread('M10', { length: 10, internal: true }), 'threaded screw': screw('M10x30 hex', { display: 'thread' }), 'threaded nut': nut('M10', { display: 'thread' }) };
+  for (const [what, g] of Object.entries(drawn)) {
+    const f = printable(g); assert.equal(f.length, 1, what); assert.equal(f[0].level, 'pass', `${what}: ${f[0].text}`); assert.match(f[0].code, /\.printable$/, what); assert.ok(f[0].text.length > 20, what);
+    assert.deepEqual(printable(g.model), f, `${what}: the model says what its solid does`);
+  }
+  // what is bought is not printed: the light solids, and the fixing itself
+  for (const [g, item] of [[screw('M3x12 cap'), 'screw'], [nut('M3'), 'nut'], [washer('M3'), 'washer'], [insert('M3'), 'insert']]) {
+    const f = printable(g); assert.equal(f.length, 1, item); assert.equal(f[0].level, 'fail'); assert.equal(f[0].code, 'fixing.printable'); assert.match(f[0].text, new RegExp(`an M3 ${item} is bought and fitted, not printed`));
+  }
+  assert.match(printable(screwModel('M3x12 cap'))[0].text, /or draw it with its thread to print it \(\{ display: 'thread' \}\)/);
+  // a warning where the printer would struggle: a standard flank past its overhang, a bridge past its span
+  assert.equal(printable(threadModel('M10', { length: 20, flanks: 'standard' }))[0].level, 'warn'); assert.equal(printable(nutPocketModel('M12', { into: '+x' }))[0].level, 'warn');
 });
 
 test('the rules this package adds say what they are and where they come from', () => {

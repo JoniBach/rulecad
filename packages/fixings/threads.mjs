@@ -310,7 +310,8 @@ export function threadSurface(t, o) {
  *   along that axis from the origin, its flat facing down (a screw's) or its roof up (a hole's)
  */
 export function thread(spec, o = {}) {
-  const t = threadModel(spec, { ...o, what: o?.what ?? 'thread' });
+  if (o == null || typeof o !== 'object' || Array.isArray(o)) throw new Error(`thread: the second argument is its options ({ length: 20, internal: true }), not ${shown(o)}`);
+  const t = threadModel(spec, { ...o, what: o.what ?? 'thread' });
   const g = t.internal ? cutter(t, { z0: -OUT, z1: t.length + OUT, face0: 0, face1: t.length, low: 'flare', high: 'flare', toward: Math.PI }) : screwThread(t);
   if (t.axis === 'z') return Object.assign(g, { model: t });
   const laid = rotateY(Math.PI / 2, g); // z to x: the thread's own x (where a screw's flat is) turns down, its -x (a hole's roof) up
@@ -345,11 +346,12 @@ function cutter(t, o) {
 export function threadedHoleModel(what, fx, o, dir) {
   const pr = printerOf(what, o.printer), e = engagementOf(o.material), need = r3(ENGAGEMENT[e].value * fx.major), through = o.through ?? false;
   if (typeof through !== 'boolean') throw new Error(`${what}: through is true or false (got ${shown(o.through)})`);
-  const depth = o.depth == null ? need : positive(what, 'depth', o.depth);
+  const depth = o.depth != null ? positive(what, 'depth', o.depth) : through && o.thickness != null ? positive(what, 'thickness', o.thickness) : need;
   if (o.lead != null && !(isNum(o.lead) && o.lead >= 0)) throw new Error(`${what}: lead is the lead-in chamfer, 0 mm or more (got ${shown(o.lead)})`);
   const t = threadModel(fx, { what, length: depth, internal: true, printer: o.printer, sets: o.sets, mate: o.mate, gap: o.gap, flanks: o.flanks, hand: o.hand, starts: o.starts, pitch: o.pitch, segments: o.segments, display: o.display,
     leadIn: o.lead, top: dir.into === '+z' ? '-z' : '+z', axis: dir.across ? dir.axis : 'z', flat: dir.across ? o.flat : undefined });
   const point = !through && dir.into === '+z' ? r3(t.outline.lo / (t.leadIn / t.run || 1)) : 0, out = [...t.findings];
+  if (o.thickness != null) { positive(what, 'thickness', o.thickness); if (!through && depth + point > o.thickness - 1e-9) throw new Error(`${what}: a blind threaded hole ${mm(depth)} mm deep${point ? ` with its ${mm(point)} mm point` : ''} goes ${mm(r3(depth + point))} mm into a part ${mm(o.thickness)} mm thick there: it is deeper than the part, and would break out of its far face. Make it shallower, or the part thicker`); }
   if (depth < need - 1e-9) out.push(finding('warn', `${a(fx.thread)} thread ${mm(depth)} mm deep is short: engagement.${e} asks ${mm(need)} mm of thread`, 'hole.depth', { values: { depth, need } }));
   out.push(finding('info', `${a(fx.thread)} threaded hole drawn ${mm(t.drawn.major)} mm over its roots: it rests on ${cite(fx, 'major_diameter')} (${mm(fx.major)} mm), the ${t.mate === 'bought' ? 'whole' : 'half'} of ${t.rests.find((r) => /thread_gap$/.test(r.name))?.name ?? 'the gap given'} each side and ${pr.cite('hole_comp')} ${mm(t.comp)} mm across`, 'hole.drawn', { values: { diameter: t.drawn.major, nominal: fx.major, comp: t.comp }, refs: { thread: fx.thread, set: fx.set, rule: cite(fx, 'major_diameter'), kind: fx.figures.major_diameter.kind } }));
   if (point) out.push(finding('info', `going up from the bed, the hole ends in a point ${mm(point)} mm high past its thread, so its end needs no bridge`, 'hole.point', { values: { point } }));
