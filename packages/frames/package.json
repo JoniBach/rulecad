@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/frames",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. Beams, joins, fittings and guides follow.",
   "type": "module",
   "exports": {
@@ -39,6 +39,6 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@rulecad/rules": "^0.3.11"
+    "@rulecad/rules": "^0.3.13"
   }
 }
