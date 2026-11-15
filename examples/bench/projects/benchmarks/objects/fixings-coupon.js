@@ -46,15 +46,15 @@ export function main (v) {
     const c = f.counterboreModel(t), p = f.holeModel(t, { kind: 'pilot' }), length = 2 * c.depth, top = base + p.depth + length
     return { name: `C${t}`, items: [{ label: fig(c.diameter), ...round(c.diameter + 2 * wall, top, (x, y) => v.ops.union(f.counterbore(t, { length, at: [x, y, top], into: '-z' }), f.hole(t, { kind: 'pilot', at: [x, y, top - length] }))) }] }
   }
-  // A nut slot the nut drops into from the top, across a screw lying along the row's open edge (open: -1 the front, 1
-  // the back): the screw comes in through that face, through the nut, and on into the block for its end
-  const traps = (t, open) => {
+  // A nut slot the nut drops into from the top, across a screw lying along y: the screw comes in through the coupon's
+  // back edge, through the nut, and on into the block for its end
+  const traps = (t) => {
     const m = f.nutTrapModel(t, { depth: 1, axis: 'y', into: '-z' }), fits = around(m.clearance, v.fits), widest = f.nutTrapModel(t, { depth: 1, axis: 'y', into: '-z', fit: Math.max(...fits) })
     const half = widest.reach - 1, depth = half + wall, axisZ = base + wall + half, top = axisZ + depth, deep = 2 * (wall + m.gap), across = widest.width + 2 * wall
-    return { name: `T${t}`, open, items: fits.map((fit) => ({ label: fig(fit), across, deep, top, make: (x, y) => {
-      const face = y + open * deep / 2, slot = face - open * (wall + m.gap / 2) // y is the block's middle; its open face is on the row's edge
+    return { name: `T${t}`, edge: true, items: fits.map((fit) => ({ label: fig(fit), across, deep, top, make: (x, y) => {
+      const face = y + deep / 2, slot = face - wall - m.gap / 2 // y is the block's middle; its open face is on the back edge
       return { solid: stand(roundedRectangle({ size: [across, deep], center: [x, y], roundRadius: wall / 2, segments: seg }), top),
-        cut: v.ops.union(f.nutTrap(t, { fit, depth, axis: 'y', into: '-z', at: [x, slot, top] }), f.hole(t, { depth: deep - wall, through: false, at: [x, face, axisZ], into: open < 0 ? '+y' : '-y' })) }
+        cut: v.ops.union(f.nutTrap(t, { fit, depth, axis: 'y', into: '-z', at: [x, slot, top] }), f.hole(t, { depth: deep - wall, through: false, at: [x, face, axisZ], into: '-y' })) }
     } })) }
   }
   // A printed thread for a bought screw, at three gaps, in the form its flanks are drawn
@@ -65,19 +65,18 @@ export function main (v) {
   }
 
   // ---------- the rows, front to back ----------
-  const rows = [[traps('M3', -1), counterbore('M3'), pockets('M3')], [pilots('M2'), pilots('M2.5')], [pilots('M3'), inserts('M2')], [pilots('M4'), inserts('M3')], [pilots('M5')],
-    [threads('M6', 'printed'), threads('M10', 'printed')], [threads('M8', 'printed'), threads('M8', 'standard')], [traps('M4', 1), pockets('M4')]]
+  const rows = [[pockets('M3'), pockets('M4')], [pilots('M2'), pilots('M2.5')], [pilots('M3'), inserts('M2')], [pilots('M4'), inserts('M3')], [pilots('M5'), counterbore('M3')],
+    [threads('M6', 'printed'), threads('M10', 'printed')], [threads('M8', 'printed'), threads('M8', 'standard')], [traps('M3'), traps('M4')]]
   const solids = [], cuts = [], labels = []
   let y = v.gap, length = 0
   for (const row of rows) {
-    const deep = Math.max(...row.flatMap((g) => g.items.map((it) => it.deep))), back = row.some((g) => g.open < 0) // front traps carry their figures behind them
-    const line = back ? y + deep + v.gap + v.label / 2 : y + v.label / 2, mid = back ? y + deep / 2 : y + v.label + v.gap + deep / 2
+    const deep = Math.max(...row.flatMap((g) => g.items.map((it) => it.deep))), line = y + v.label / 2, mid = y + v.label + v.gap + deep / 2
     let x = v.gap
     for (const g of row) {
       const nameWidth = width(g.name)
       labels.push(say(g.name, x + nameWidth / 2, mid, base)); x += nameWidth + v.gap
       for (const it of g.items) {
-        const pitch = Math.max(it.across, width(it.label)), cx = x + pitch / 2, cy = g.open ? (g.open < 0 ? y + it.deep / 2 : y + v.label + v.gap + deep - it.deep / 2) : mid, m = it.make(cx, cy)
+        const pitch = Math.max(it.across, width(it.label) + v.gap), cx = x + pitch / 2, cy = g.edge ? mid + deep / 2 - it.deep / 2 : mid, m = it.make(cx, cy)
         solids.push(m.solid); cuts.push(m.cut); labels.push(say(it.label, cx, line, base)); x += pitch + v.gap
       }
       x += v.gap
