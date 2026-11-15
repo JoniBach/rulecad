@@ -8,7 +8,7 @@ import { nutPocket as shapesNutPocket } from '@rulecad/shapes';
 
 const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeModel, hole, HOLE_KINDS, counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket,
   nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss, printable, screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, fixingsFor,
-  threadModel, thread, THREAD_FORMS, engagement, stripping, preload, torqueFor, seating, lengthFor, MATERIALS, MATERIAL_CLASSES, ENDS } = fixings;
+  threadModel, thread, THREAD_FORMS, engagement, stripping, preload, torqueFor, seating, lengthFor, screwGroup, screwLoad, MATERIALS, MATERIAL_CLASSES, ENDS } = fixings;
 const { measureBoundingBox: bb, measureVolume: vol } = jscad.measurements, { geom3 } = jscad.geometries, { subtract, union, intersect } = jscad.booleans;
 const { cuboid, cylinder } = jscad.primitives, { translate, rotateX, rotateY } = jscad.transforms;
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
@@ -205,6 +205,27 @@ test('holes: another printer\'s rule set gives that printer\'s figure, and a pil
   const plain = holeModel('M3', { printer: { hole_comp: 0.2 } }); assert.equal(plain.diameter, 3.6); assert.equal(plain.rests[1].kind, 'given');
   const bare = holeModel('M3', { printer: { name: 'bare', rules: {} } }); assert.equal(bare.diameter, 3.5); assert.ok(bare.findings.some((f) => f.code === 'hole.printer' && /bare has no hole_comp: the X1C's 0\.1 mm is used/.test(f.text)));
   assert.equal(holeModel('M3', { kind: 'pilot', printer: { pilot_m3: 3 } }).diameter, 3);
+});
+
+test('the fixings coupon\'s measurements: a printer\'s measured insert hole, nut fit and nut slip are read before the starting figures', () => {
+  const rule = (value, what) => ({ value, unit: 'mm', rule: what, kind: 'measured', source: 'the fixings coupon, PLA', checked: '2026-11-15' });
+  const mk4 = { name: 'mk4', rules: { insert_m3: rule(4.1, 'Hole to draw for an M3 heat-set insert'), nut_fit: rule(0.05, 'Clearance across a nut pocket\'s flats'), nut_slip: rule(0.15, 'Clearance across a nut slot\'s flats') } };
+  const i = holeModel('M3', { kind: 'insert', printer: mk4 });
+  assert.deepEqual([i.diameter, i.comp, i.basis.rule, i.basis.kind], [4.1, 0, 'mk4.insert_m3', 'measured']);
+  assert.match(i.findings[0].text, /an M3 insert hole drawn 4\.1 mm: it rests on mk4\.insert_m3 \(4\.1 mm\), a measured rule/);
+  assert.match(holeModel('M3', { kind: 'insert' }).findings[0].text, /rests on m3\.insert_hole \(4 mm\), a community figure.*x1c has no measured insert_m3, so measure it on this printer/);
+  assert.equal(insertBossModel('M3', { printer: mk4 }).hole, 4.1, 'and the boss round it'); assert.match(insertBossModel('M3', { printer: mk4 }).findings[0].text, /mk4\.insert_m3, as drawn/);
+  // a pocket's snug fit is the printer's nut_fit, a slot's slip its nut_slip; a fit given in mm is drawn as given
+  const p = nutPocketModel('M4', { printer: mk4 });
+  assert.deepEqual([p.flats, p.clearance], [7.15, 0.05]); assert.ok(p.rests.some((r) => r.name === 'mk4.nut_fit'));
+  assert.match(p.findings[0].text, /and mk4\.nut_fit 0\.05 mm/);
+  const t = nutTrapModel('M4', { depth: 10, printer: mk4 });
+  assert.deepEqual([t.width, t.clearance], [7.25, 0.15]); assert.ok(t.rests.some((r) => r.name === 'mk4.nut_slip'));
+  assert.equal(captiveNutModel('M4', { at: [0, 0, 4], printer: mk4 }).flats, 7.25, 'a nut dropped in mid-print slips in as a slot\'s does');
+  assert.deepEqual([nutPocketModel('M4', { printer: mk4, fit: 0 }).flats, nutPocketModel('M4', { printer: mk4, fit: 'press' }).flats], [7.1, 7.05]);
+  // without them, as before: snug is no clearance, slip the printer's slip
+  assert.deepEqual([nutPocketModel('M4').clearance, nutTrapModel('M4', { depth: 10 }).clearance], [0, 0.1]);
+  assert.throws(() => nutPocketModel('M4', { printer: { name: 'p', rules: { nut_fit: { value: 'tight', kind: 'measured' } } } }), /nutPocket: p\.nut_fit is a clearance in mm \(got "tight"\)/);
 });
 
 test('holes drawn: round standing up, a teardrop on its side, a blind hole to its depth with a lead-in, a point where it ends going up', () => {
@@ -699,6 +720,49 @@ test('seating: the pressure under a head against what it sits on, and the washer
   assert.throws(() => seating('M3', { material: 'pla', force: -5 }), /force \(in N\) is a number above 0/); assert.throws(() => seating('M3', { material: 'pla', hole: 'pilot' }), /hole is clearance, close or loose/);
 });
 
+test('screwGroup: a load shared between screws, across the joint by distance from the centroid and along it by a plane through the centroid', () => {
+  // A NEMA 17's four screws on its 31 mm square under 0.283 N·m about the shaft: T / (4 r) each, r = 15.5 √2 mm, as the motor mount check works it
+  const T = 0.28284271247461906, r = 15.5 * Math.SQRT2, nema = screwGroup([[-15.5, -15.5], [15.5, -15.5], [15.5, 15.5], [-15.5, 15.5]], { moment: [0, 0, T] });
+  for (const sc of nema.screws) { near(sc.shear, (T * 1000) / (4 * r), 1e-3, 'torque shared'); assert.equal(sc.tension, 0); }
+  near(nema.polar, 4 * r * r, 1e-6, 'Σ r²'); assert.deepEqual(nema.centroid, [0, 0]); assert.equal(nema.line, false); assert.ok(nema.rests.length === 2);
+  // two screws 24 mm apart, 19.6 N pulling straight off over the right one: it takes it all (W/2 + W e x / Σx²), the other none
+  const two = screwGroup([[-12, 0], [12, 0]], { force: [0, 0, 19.6133], at: [12, 0] });
+  near(two.screws[1].tension, 19.613, 1e-3, 'the near screw'); near(two.screws[0].tension, 0, 1e-3, 'the far one'); assert.equal(two.line, true);
+  // a force across the joint at the centroid is shared equally; lifted 10 mm off the face it tips the part towards the force, by the line's own spread when the moment is along it
+  const across = screwGroup([[-12, 0], [12, 0]], { force: [10, 0, 0], at: [0, 0, 10] });
+  for (const sc of across.screws) near(sc.shear, 5, 1e-9, 'shared equally'); near(across.screws[0].tension, 100 * 12 / 288, 1e-3, 'the heel lifts'); near(across.screws[1].tension, -100 * 12 / 288, 1e-3, 'the toe presses');
+  // a moment about the line of screws: they cannot share it by tension, so the part tips about the edge `pivot` from the line, and each holds its share
+  assert.throws(() => screwGroup([[-12, 0], [12, 0]], { force: [0, 10, 0], at: [0, 0, 10] }), /the screws stand in one line, and 0\.1 N·m tips the part about it: give pivot/);
+  const tipped = screwGroup([[-12, 0], [12, 0]], { force: [0, 10, 0], at: [0, 0, 10], pivot: 5 }); for (const s of tipped.screws) near(s.tension, 100 / (2 * 5), 1e-3, 'tipped about an edge 5 mm off');
+  // one screw: a twist it cannot hold by shear is said as turns
+  assert.equal(screwGroup([[0, 0]], { moment: [0, 0, 0.1] }).turns, 0.1);
+  assert.throws(() => screwGroup([], {}), /places lists each screw's \[x, y\]/); assert.throws(() => screwGroup([[0, 0]], { force: [1, 'a'] }), /force is \[x, y, z\] in numbers/);
+});
+
+test('screwLoad: a bracket with 2 kg on two M3 screws into PLA pilots holds 30.3 times its load, the thread first, as worked by hand', () => {
+  // By hand: W = 2 kg × 9.80665 = 19.613 N, all on one screw (screwGroup above).
+  // Thread: 0.875 π d Le = 0.875 π 3 × 5 = 41.233 mm², at 39 MPa (pla.strength) / √3 = 22.517 MPa: strips at 928.4 N.
+  // Preload at 0.2 N·m: F = T / (K d) = 0.2 / (0.2 × 0.003) = 333.3 N (fixings.nut_factor 0.2).
+  // Thread margin: (928.4 - 333.3) / 19.613 = 30.34. Screw: proof load (π/4)(3 - 0.9382 × 0.5)² × 580 = 2917.9 N, (2917.9 - 333.3) / 19.613 = 131.78.
+  const W = 2 * 9.80665, l = screwLoad('M3', { tension: W, depth: 5, material: 'pla', torque: 0.2 });
+  assert.equal(l.strip, 928.4); assert.equal(l.proof, 2917.9); assert.deepEqual(l.preload, { force: 333.3, torque: 0.2, given: true });
+  near(l.margins.thread, (928.4 - 333.3) / W, 0.01, 'the thread'); near(l.margins.screw, (2917.9 - 333.3) / W, 0.01, 'the screw'); assert.equal(l.margin, l.margins.thread); assert.equal(l.governs, 'thread'); assert.equal(l.margins.slip, null);
+  assert.equal(l.findings[0].level, 'pass'); assert.match(l.findings[0].text, /^an M3 screw with 19\.6 N of pull and 0 N of shear, clamped with 333\.3 N \(0\.2 N·m, T = K d F with K = 0\.2, an estimate\): its thread in pla strips at about 928\.4 N \(an estimate: 22\.52 MPa in shear\), 30\.34 times this pull over the preload; the screw yields at 131\.78 times it \(proof load 2917\.9 N\)\. It holds 30\.34 times the load, the thread first$/);
+  for (const k of ['pla.strength', 'fixings.shear_ratio', 'fixings.load_margin', 'm3.proof_stress']) assert.ok(l.rests.some((r) => r.name === k), k);
+  // no torque given: the most that leaves the thread twice the pull, within the seat's 550 N: the seat's, at 0.33 N·m; with 5 N of shear it slips 15 times short of it
+  const free = screwLoad('M3', { tension: W, shear: 5, depth: 5, material: 'pla', most: 553 });
+  assert.deepEqual(free.preload, { force: 550, torque: 0.33, given: false }); near(free.margins.slip, (0.3 * 550) / (5 + 0.3 * W), 0.01, 'μ F / (S + μ T)');
+  assert.ok(free.rests.some((r) => r.name === 'fixings.clamp_friction' && r.kind === 'estimate')); assert.equal(free.findings[1].code, 'screwLoad.slip');
+  // a heavy pull: the preload is held down to leave the thread twice it, and the torque said; past half the strip load it warns, past it fails
+  const heavy = screwLoad('M3', { tension: 400, depth: 5, material: 'pla' }); assert.equal(heavy.preload.torque, 0.07); assert.ok(heavy.margin >= 2, heavy.margin);
+  assert.equal(screwLoad('M3', { tension: 600, depth: 5, material: 'pla' }).findings[0].level, 'warn'); assert.equal(screwLoad('M3', { tension: 1000, depth: 5, material: 'pla' }).findings[0].level, 'fail');
+  // shear and pull on the screw itself: von Mises on its stress area; in an insert or a nut the thread is not checked, and says why
+  const nutted = screwLoad('M3', { tension: 1000, shear: 500, end: 'nut', torque: 1 }); assert.equal(nutted.margins.thread, null); assert.equal(nutted.governs, 'screw'); assert.match(nutted.findings[0].text, /in a steel nut, not checked here/);
+  const Fp = nutted.preload.force; near(Math.hypot(Fp + nutted.margin * 1000, Math.sqrt(3) * nutted.margin * 500), 2917.9, 2917.9 * 0.01, 'at the margin the screw is at its proof load (the margin rounded to 0.01)');
+  assert.match(screwLoad('M3', { tension: 10, end: 'insert' }).findings[0].text, /brass insert, whose hold in the plastic is its maker's figure/);
+  assert.throws(() => screwLoad('M3', { tension: -1, shear: -1 }), /shear is a number of N, 0 or more/); assert.throws(() => screwLoad('M3', { end: 'glue' }), /end is insert or nut/);
+});
+
 test('lengthFor: M3x10 for a 6 mm plate into a 5.7 mm insert, M3x12 would bottom out; refused by name where no sold length fits', () => {
   // By hand: the M3 insert in the rule set is 5.7 mm long (m3.insert_length), and M3 cap screws are sold 5, 6, 8, 10, 12, 16 ... mm.
   // Through a 6 mm plate, a screw of length L goes L - 6 into the insert. It must engage a diameter, 3 mm, and has the insert's 5.7 mm of room.
@@ -766,7 +830,7 @@ test('refused by name before any geometry: a pocket, a seat or a blind hole deep
     ['stripping depth', () => stripping('M3', { depth: -6, material: 'pla' })], ['a stack', () => lengthFor(-6, 'M3', { into: 'insert' })], ['a depth as text', () => holeModel('M3', { depth: '6' })]]) assert.throws(f, /is a number above 0|each above 0 mm/, what);
   // every function that takes a fixing refuses an unknown thread, and what is no fixing, by name
   const every = { holeModel, hole, counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket, nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss,
-    screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, threadModel, thread, engagement, stripping, preload, torqueFor, seating };
+    screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, threadModel, thread, engagement, stripping, preload, torqueFor, seating, screwLoad };
   for (const [name, f] of Object.entries(every)) {
     const o = { depth: 6, length: 10, material: 'pla', ...(name === 'torqueFor' ? { force: 100 } : { torque: 1 }) };
     assert.throws(() => f('M7', o), /no thread "M7"\. There are: M1\.6, M2/, `${name}: an unknown thread`);
@@ -774,7 +838,7 @@ test('refused by name before any geometry: a pocket, a seat or a blind hole deep
     assert.throws(() => f('M3', 'deep'), /the second argument is its options/, `${name}: options that are no options`);
   }
   assert.throws(() => lengthFor(6, 'M7', { into: 'nut' }), /no thread "M7"/); assert.throws(() => lengthFor(6, 'M3', 'nut'), /the second argument is its options/);
-  for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function' && !['fixingModel', 'parseName', 'threads', 'printable', 'fixingsFor', 'lengthFor'].includes(k))) assert.ok(every[name], `${name} is held to these refusals`);
+  for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function' && !['fixingModel', 'parseName', 'threads', 'printable', 'fixingsFor', 'lengthFor', 'screwGroup'].includes(k))) assert.ok(every[name], `${name} is held to these refusals`);
 });
 
 test('printable: every drawn feature says how it prints, and what is bought says so', () => {

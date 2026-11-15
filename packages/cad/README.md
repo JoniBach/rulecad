@@ -158,6 +158,13 @@ own copy anywhere and name it in `viewUrl`.
   strain at a travel, and `printable(shape, printer, material, model)` for how it prints. Drawn flat: bending along y,
   width up z, so a flexure bends within its layers.
 - `v.motors`: motors (`@rulecad/motors`): `motorModel`, `mount` and `bore` for the holes a part needs round a motor and its shaft, `performance` for its torque and speed. In an assembly a motor is an item (see Motors).
+- `v.fixings`: screws, nuts and inserts (`@rulecad/fixings`), bound to the project: `hole('M3', { kind: 'pilot', at })`
+  for a hole sized by what it is for, `counterbore`, `countersink`, `nutPocket`, `nutTrap`, `squareNutSlot` and
+  `insertBoss` for seats, `screw`, `nut`, `washer` and `insert` as light reference solids, `thread` for one cut to
+  print, and `engagement`, `seating` and `lengthFor` for first sums. Each reads the workspace's own thread set
+  (`rules/m3.json`) before the kit's, the project's printer and (for what a thread is in) its material, so a design
+  types no diameter and passes none. `cad check` lists what each call drew and the rule it rests on (`hole.drawn`,
+  `counterbore.drawn`, ...). A design may also import `@rulecad/fixings` itself: then it reads the kit's sets only.
 - `v.frames`: beams and profiles (`@rulecad/frames`): `profileModel` for a profile's figures, slots and faces
   (`v.frames.profileModel('2020-misumi-hfs5').slots['slot-6-misumi'].opening`, to draw a tab that drops into a slot),
   `slotModel`, `beamModel`, `beam` and `outline`. A profile measured into this workspace's `rules/` (`cad measure
@@ -299,7 +306,7 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   can't write or delete files, start programs or workers, or load addons, and it reads only the workspace and the
   packages designs use, by their real paths (a `node_modules` link spelled through another link, as macOS spells its
   temporary folders through `/tmp` and `/var`, is refused by name: make the link with the real path). To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
-  `@rulecad/flexures`, `@rulecad/gears` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
+  `@rulecad/flexures`, `@rulecad/gears`, `@rulecad/motors`, `@rulecad/fixings` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
   started with none of your environment (no tokens). Those shut the ordinary roads to the network, not every one:
   before Node 25 the permission model doesn't cover the network, so a design written to get round them might still
   reach it. Run only designs you trust. It gets its values as data and returns its parts; what it prints
@@ -347,6 +354,57 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   measured.
 - `check`, `preview` (`--explode` lifts each kind of object above the last: plate, switches, keycaps), `show`, `link` and, for plates, `export` all take
   `<project>/<assembly>`.
+
+### Screwed joints: `fasten`
+
+A joint held by screws is one relation, and it knows the screw:
+
+```json
+"fasten": [
+  { "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1", "bracket.h2"] },
+  { "screw": "M3x16 cap", "through": ["cover", "frame"], "into": "frame-back", "holes": "cover.body", "nut": true, "washer": true }
+]
+```
+
+`screw` names the thread and head as `@rulecad/fixings` reads them (`M3 cap`, `M4 button`, `M3x12 countersunk`,
+`6-32 UNC cap`). `through` lists the parts the screw passes, in order from under its head, and `into` is the part it
+ends in. The screws' places are given one of two ways: `at`, an anchor on each screw's axis (a point on the hole's
+centre line, the anchor's axis along the screw), or `holes`, a part whose own round holes are the places (for a
+circuit board, its mounting holes). `nut` (`true`, `hex`, `square` or `lock`) says a nut holds the screw where the
+last part does not; `washer` puts a plain washer under the head; `length` gives the length where the name has none;
+`torque` gives the tightening torque in N m. Add one with `cad add fasten <project>/<assembly> --screw "M3 cap"
+--through bracket --into base --at bracket.h1,bracket.h2`.
+
+Nothing about the holes is declared. Each part is read as drawn: along the screw's axis the mesh is sliced, and the
+outline round the axis gives the hole's centre, its diameter (across its corners, as it was drawn) and where it
+starts and stops. From that the check says:
+
+| Finding | What it checks |
+|---|---|
+| `fasten.holes` | One axis runs from under the head through every part: a hole 0.05 mm or more off it fails, with the distance |
+| `fasten.clearance` | Each part passed through has a clearance hole for the thread as drawn on this printer, between the close and the loose figure; it says what the hole measures and what it should be |
+| `fasten.end` | The far end is a pilot, a hole to tap, a thread drawn to print, an insert's hole or a nut's seat of this thread (a pocket on the far face, or a slot across the screw partway along it, as `v.fixings.nutTrap` cuts), or a clearance hole with `nut`; into a motor, one of its own threaded mounting holes |
+| `fasten.length` | The length chosen where none is given: the shortest sold length that fits the stack as measured (into a motor, the longest that stops short of the end of its thread). A given length is checked for reaching the far end, bottoming out in a blind hole (1 mm is kept at the tip) and standing more than a diameter proud |
+| `fasten.engagement` | The thread engaged at the far end against the rule for what it is in: the thread's `pilot_depth` or the engagement rule for the project's material, an insert's length, a nut's height. A short one names the length or the depth that would do |
+| `fasten.seat` | The head (or its washer) has a flat seat as wide as itself and square to the screw, read under the head from the part; a countersunk head has a countersink of its angle. It says the force and torque the seat takes on the project's material, and with `torque` holds the pressure against the material's strength and names the washer that would bring it within |
+| `fasten.access` | A key or driver reaches the head along its axis, in the build pose: a cylinder as wide as the key across its corners, as long as its long arm (both from the `hexkey` set, ISO 2936; a hexagon head's socket adds `hexkey.socket_wall`, an estimate), clear of every other part. A part over the head that goes on after the screw passes, with the step it goes on at: `cad order` puts it after. One that must be there first (it comes earlier in the order, it is one of the joined parts, or it is no step at all) fails by name with how far over the head it is; where a ball-end key tilted up to `hexkey.ball_end_tilt` (25°) clears it, it warns instead |
+| `fasten.load` | With `loads` or a motor's torque on the joint: what it holds up (the parts left with no other way to the first item, their masses, the loads hung on them, under the assembly's `gravity`, and the torque of a motor among them), shared between the screws as a group (`screwGroup` of `@rulecad/fixings`: shear by distance from the centroid, pull by a plane through it). The screw that takes the most is held against its proof load, the thread it is in against stripping, and the clamp against slipping, at its preload (`screwLoad`); the margin is how many times the load it holds, and under 2 it warns. With no `torque`, it says the torque that leaves the thread twice the load, within the seat, and `cad order` tightens to that. It names the estimates it rests on (the nut factor, a plastic's shear strength, the friction) |
+
+Every finding has `at` (under the head) and `between` (head to tip), so the viewer points at the screw. The screws,
+nuts, washers and inserts are placed as reference parts from `@rulecad/fixings`: faint in previews, lifted along
+their own axes by `--explode`, checked for overlap with everything but what they are threaded into, moving with the
+part they sit in through every pose, and carried in links. `cad list` counts them and `cad order` names them on the
+step. A `fasten` holds its parts as a fit with `"fastens": true` does and lines their holes up as a holes fit does;
+both older forms still work, and an assembly with no `fasten` checks as before.
+
+`cad list` counts every fixing (`fasten.count`): each screw, nut, washer and insert a `fasten` placed (a component's
+too), a motor's mounting screws where a fit that `fastens` holds it (as many as its holes, at the length its mount
+works out for the plate as drawn, taken to a length sold), and a fit that names its `fastener` by hand. They are
+summed by name, which is the thread, length and head (`12 × M3x8 cap`), each with its mass (an estimate from its
+outline, from `@rulecad/fixings`) and the line's, and rounded up to whole packs of `packs.pack` (10, an estimate:
+set your own in `rules/packs.json`) with the spares said. `--json` gives each line as `{ fastener, qty, kind,
+thread, length, head, grams, mass, packs, buy, spare, from }`, the totals add `fixingsGrams` to the machine's mass,
+and the build page's list shows the same.
 
 ### Joints and poses
 
@@ -500,13 +558,13 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 
 Once an assembly is checked, these say how to make it. They all read the assembly itself, so they can't disagree with it.
 
-- `cad order <project>/<assembly>`: the order it goes together in, each step with the part and the fasteners named from its `fastens` notes (`"fastener": "M3x12", "count": 2` on a fit puts them on the shopping list and the step). `--preview` writes a picture of each step to `.preview/`: what's there, and the new part held off along the way it goes on. The order is found by taking the assembly apart, so a part goes in after what it's fastened into, a bearing before its shaft, and a nut trapped by a wall before the neighbour that traps it. A part goes on along a straight line that clears everything already there; which line comes from the part as drawn.
+- `cad order <project>/<assembly>`: the order it goes together in, each step with the part and the fasteners named from its `fastens` notes (`"fastener": "M3x12", "count": 2` on a fit puts them on the shopping list and the step). A `fasten` names its screws on the step where its parts are both there, with the key that turns them and how tight: its `torque`, or the most the seat under the head takes (`2. bracket goes on: bracket fastened to base (2 × M3x10 cap) with a 2.5 mm hex key, to 0.33 N m at most (what the seat takes)`); `--json` gives each as `{ fit, fastener, count, key, tighten: { torque, given } }`, and the build page shows the same. `--preview` writes a picture of each step to `.preview/`: what's there, and the new part held off along the way it goes on. The order is found by taking the assembly apart, so a part goes in after what it's fastened into, a bearing before its shaft, and a nut trapped by a wall before the neighbour that traps it. A part goes on along a straight line that clears everything already there; which line comes from the part as drawn.
 - `assembly.order` is `cad check`'s finding on it: a part no order can reach fails by name, and a part sealed inside another too. A fit can say where a screw is driven from with `"access": "<item>.<anchor>"`, the anchor's z pointing out along the screw: whatever stands on that line goes on after the screw, and if it has to go on first the screw can't be reached at all. Works on an assembly's own items; a component (an assembly used as an item) goes on as one step.
 - `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by filament so each plate is one colour change, spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`).
 - `cad list <project>/<assembly>` lists the beams' **cut list** after the bought parts: each mark (beams that are the same, one profile, length and set of operations, share a mark, A, B, C), its count, grams each and work, then each profile's lengths to cut, the bars to buy in the lengths it is sold in, and the cuts on each bar in order with its offcut. Every cut takes the saw's 3 mm kerf and each bar's first end is trimmed 10 mm (`CUT_DEFAULTS` in `@rulecad/frames`, each with its source); the packing is first-fit decreasing. `cad check` adds the cut list's findings (`frame.cut`): a beam longer than any length sold fails, two lengths nearer than the cut tolerance can hold apart warn, and beams of one mark are reminded to be cut against one stop. Each beam's mark is in its label in the preview and the link (`x1: mark A, profile-2020-misumi-hfs5 x 300 mm`).
 - `cad beams <project>/<assembly>`: a cut-and-drill sheet for each mark, written to `exports/<project>/<assembly>.beam-<mark>.svg`, in mm so it prints to scale at 100%: the section at end a with each face named and the taps marked, a view of each face with work on it (that face up, end a on the left), every operation dimensioned from end a to 0.1 mm, and the operations in order, each tap with its thread and depth. The build page lists the sheets with the cut list.
 - `cad wires <project>/<assembly>`: the wiring sheet, printed and written to `exports/<project>/<assembly>.wiring.md` (`cad machine` writes it too): each wire's length through every pose with its service loop, gauge, colour, connectors and board pins. Wires also show faint along their routes in `cad preview` and in the link, moving with the joints, and are never parts: no overlap check sees them.
-- `cad link` for such an assembly carries the rest of the project with the model. A **Build** button on the page opens, beside it, the shopping list, the beams' cut list and their sheets, the plates drawn on their beds, the wiring sheet, the assembly steps (each shows the model at that step) and the machine's settings. The Rules panel lists **predicted against measured**: the ledger `cad measured` writes, each with its ratio, and what the checks predict that nobody has measured yet.
+- `cad link` for such an assembly (or one with a `fasten`) carries the rest of the project with the model. A **Build** button on the page opens, beside it, the shopping list, the beams' cut list and their sheets, the plates drawn on their beds, the wiring sheet, the assembly steps (each shows the model at that step) and the machine's settings. The Rules panel lists **predicted against measured**: the ledger `cad measured` writes, each with its ratio, and what the checks predict that nobody has measured yet.
 - A link for an assembly with a `task` lets the page move the machine: see "Things that move" in the viewer's README. It carries the newest step file `cad plot` wrote for this assembly (`--steps <file>` for another, `--no-steps` for none). A step file for other joints is refused by name.
 
 ## Optimised parts

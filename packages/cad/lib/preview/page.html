@@ -27,8 +27,10 @@ if (data.explode) {
   const gap = (all.max.y - all.min.y) * 0.8;
   let drop = 0;
   data.parts.forEach((p, i) => { if (p.role === 'support') { drop += gap; geos[i].translate(0, -drop, 0); geos[i].computeBoundingBox(); } });
-  const items = [...new Set(data.parts.map((p) => p.item).filter(Boolean))]; // assemblies: each item above the last
-  data.parts.forEach((p, i) => { const k = items.indexOf(p.item); if (k > 0) { geos[i].translate(0, k * gap, 0); geos[i].computeBoundingBox(); } });
+  const items = [...new Set(data.parts.filter((p) => !p.lift).map((p) => p.item).filter(Boolean))]; // assemblies: each item above the last
+  data.parts.forEach((p, i) => { const k = items.indexOf(p.lift ? p.with : p.item); if (k > 0) { geos[i].translate(0, k * gap, 0); geos[i].computeBoundingBox(); } });
+  // hardware (a screw, a nut, a washer, an insert) goes with the part it sits in, then out along its own axis (z up here is y)
+  data.parts.forEach((p, i) => { if (p.lift) { const d = gap * 0.45; geos[i].translate(p.lift[0] * d, p.lift[2] * d, -p.lift[1] * d); geos[i].computeBoundingBox(); } });
 }
 const box = new THREE.Box3(); geos.forEach((g) => box.union(g.boundingBox));
 const center = box.getCenter(new THREE.Vector3()), radius = box.getSize(new THREE.Vector3()).length() / 2;

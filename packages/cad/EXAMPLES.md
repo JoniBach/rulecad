@@ -2,7 +2,7 @@
 
 [The tutorial](TUTORIAL.md) ends with a wall hook checked against its screw. These examples carry on from there, one
 for each thing the [README](README.md) describes after that: parts, variants and releases, joints and poses, a model
-from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, a motor, a robot joint, and a machine sized from its task. Each is a few files and the commands to run
+from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, a motor, a robot joint, a machine sized from its task, and a bracket screwed on. Each is a few files and the commands to run
 them. The tests write every file here and run every command, so what you read is what works.
 
 They start from a workspace `npm create rulecad my-designs` makes, as the tutorial does, and run in order: later
@@ -5748,3 +5748,349 @@ Said plainly, because a gait that passes these checks is not a robot that walks:
 
 `npm create rulecad --machine leg` starts a project from the leg and its stand. The step file for a gait, for a streamer grown to more axes, is not done yet, and neither is a measured leg.
 
+
+## 15. Fixings: a bracket screwed on
+
+A small shelf bracket and the wall plate it screws to. Every hole and seat in them comes from `v.fixings`, named by its
+thread and never by a typed diameter: a counterbore and its clearance hole for the screws' heads, a pilot the screw
+cuts its own thread in, a boss for a heat-set insert, a slot a nut drops into, and countersinks. The assembly says which
+screws join what with `fasten`, and the check follows each screw along its axis: whether the holes line up, what holds
+its far end, how long it should be, how much thread it has, what its head sits on, whether a hex key reaches it, and
+what the shelf's weight does to it. Two mistakes follow, each caught by name. [Choosing a pilot, an insert or a
+nut](../../docs/guides/pilot-insert-nut.md) explains when each end is the right one.
+
+The bracket is shown with all three ends at once, so one small model shows each. A real one would use one kind.
+
+```json projects/fix/project.json
+{
+  "name": "fix",
+  "title": "A bracket screwed on",
+  "printer": "x1c",
+  "material": "PLA",
+  "objects": ["plate", "bracket", "wall"]
+}
+```
+
+### The plate
+
+It goes flat on the bed with its back down, and the back goes on the wall. Four posts stand out of it for the
+bracket's foot to rest on. One is the insert's boss from `insertBoss`; the other three are the same column, flared at
+the root the same way, so no inside corner is square. The top post has a pilot; the two in the middle are passed
+right through by screws coming from behind, their heads sunk flush with the back in countersinks that open on to the
+bed (a 45° cone, which prints). Two M4 countersinks at the ends take the wall's own screws, chosen for the wall.
+
+```json projects/fix/objects/plate.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "plate",
+  "title": "Wall plate",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "material": "PLA",
+  "orientation": "Flat, its back on the bed: the back goes against the wall, the four posts stand out from it",
+  "variables": {
+    "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "The plate: whole layers, and enough for the wall screws' M4 countersinks, 2.2 mm deep" },
+    "stand": { "value": "x1c.layer * 34", "unit": "mm", "rule": "The posts: as tall as the insert's hole is deep, in whole layers, so the insert's boss is a post" },
+    "pitch": { "value": 32, "unit": "mm", "rule": "Between the two screws from the front, up the wall: as the bracket's" },
+    "nut_pitch": { "value": 12, "unit": "mm", "rule": "Between the two screws from behind, up the wall: as the bracket's nuts" },
+    "width": { "value": 20, "unit": "mm", "rule": "Across the plate: a post and a few mm each side" },
+    "long": { "value": 70, "unit": "mm", "rule": "Up the plate: the bracket's foot and a wall screw beyond each end" },
+    "round": { "value": 4, "unit": "mm", "rule": "The plate's corners, rounded" },
+    "wall_pitch": { "value": 58, "unit": "mm", "rule": "Between the wall screws, clear of the bracket's foot and the posts" },
+    "floor": { "value": "x1c.layer * 5", "unit": "mm", "rule": "Plastic left under the pilot, so it does not break through the back" }
+  }
+}
+```
+
+```js projects/fix/objects/plate.js
+// The wall plate: four posts for the bracket, each the end its screw needs, and two countersunk holes for the wall.
+import jscad from '@jscad/modeling'
+const { roundedRectangle, cylinder, cylinderElliptic } = jscad.primitives
+const { extrudeLinear } = jscad.extrusions
+
+export function main (v) {
+  const f = v.fixings, top = v.thick + v.stand
+  const slab = extrudeLinear({ height: v.thick }, roundedRectangle({ size: [v.width, v.long], roundRadius: v.round }))
+  // the insert's boss, from the kit; the other posts are the same column, flared at the root the same way
+  const boss = f.insertBoss('M3', { height: v.stand, at: [0, 0 - v.pitch / 2, v.thick] }), R = boss.model.outer / 2, root = boss.model.root
+  const post = (y) => v.ops.union(cylinderElliptic({ height: root, startRadius: [R + root, R + root], endRadius: [R, R], center: [0, y, v.thick + root / 2] }),
+    cylinder({ radius: R, height: v.stand, center: [0, y, v.thick + v.stand / 2] }))
+  const body = v.ops.union(slab, boss.boss, post(v.pitch / 2), ...[-1, 1].map((s) => post(s * v.nut_pitch / 2)))
+  return v.ops.subtract(body, boss.hole,
+    f.hole('M3', { kind: 'pilot', depth: top - v.floor, at: [0, v.pitch / 2, top] }),
+    ...[-1, 1].map((s) => f.countersink('M3', { length: top, thickness: top, into: '+z', at: [0, s * v.nut_pitch / 2, 0] })),
+    ...[-1, 1].map((s) => f.countersink('M4', { length: v.thick, thickness: v.thick, at: [0, s * v.wall_pitch / 2, v.thick] })))
+}
+```
+
+### The bracket
+
+The bracket prints on its side: the web, the triangle that carries the shelf, lies flat on the bed, and the foot stands
+up from its back edge. So the first layer is one plain shape, the inside corner between web and foot is a 45° fillet,
+and every hole through the foot lies on its side: a counterbore and its hole are one teardrop cutter, with 45° roofs.
+The nut's slot opens at the top of the foot as it prints, and the nut drops in from there, so nothing spans. The web's
+lower end is deep enough (`heel`) that the foot and its fillet stand on it all the way along.
+
+```json projects/fix/objects/bracket.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "bracket",
+  "title": "Shelf bracket",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "material": "PLA",
+  "orientation": "On its side: the web flat on the bed, the foot standing up from its back edge, the nuts' slots open at the top",
+  "variables": {
+    "web": { "value": "x1c.layer * 15", "unit": "mm", "rule": "The web's thickness, flat on the bed: 3 mm carries the shelf 80 times over (EXAMPLES chapter 15 works it); thinner is a floppy edge" },
+    "wide": { "value": 44, "unit": "mm", "rule": "Up the wall: the four screws and the foot's ends" },
+    "reach": { "value": 40, "unit": "mm", "rule": "Out from the wall: the shelf's depth it carries" },
+    "heel": { "value": 14, "unit": "mm", "rule": "The web's depth at its lower end: under the whole foot and its fillet, so neither hangs in the air" },
+    "foot": { "value": "x1c.layer * 32", "unit": "mm", "rule": "The foot's thickness, where the screws pass: a counterbored head, and the nut's slot with plastic each side of it" },
+    "out": { "value": 25, "unit": "mm", "rule": "The foot, out to one side of the web: room for the screws and the nuts' slots beyond them" },
+    "at": { "value": 14, "unit": "mm", "rule": "The screws' line, from the web's face: clear of the web and its fillet for the head and the key" },
+    "pitch": { "value": 32, "unit": "mm", "rule": "Between the two screws from the front: as far apart as the foot allows, so they share the shelf's pull" },
+    "nut_pitch": { "value": 12, "unit": "mm", "rule": "Between the two nuts' slots, inside the front screws' counterbores with plastic between" },
+    "fillet": { "value": 4, "unit": "mm", "rule": "The 45° fillet in the inside corner between the web and the foot, so the corner is not square" },
+    "nut_floor": { "value": "x1c.layer * 6", "unit": "mm", "rule": "Plastic between the foot's back and the nut's slot" }
+  },
+  "anchors": {
+    "pilot": { "at": ["pitch / 2", "foot", "at"], "axis": [0, 1, 0] },
+    "insert": { "at": ["0 - pitch / 2", "foot", "at"], "axis": [0, 1, 0] },
+    "nut1": { "at": ["nut_pitch / 2", 0, "at"], "axis": [0, -1, 0] },
+    "nut2": { "at": ["0 - nut_pitch / 2", 0, "at"], "axis": [0, -1, 0] },
+    "shelf": { "at": ["wide / 2", "reach - 10", "web / 2"], "axis": [0, 0, 1] }
+  }
+}
+```
+
+The anchors are where the screws go: `pilot` and `insert` on the foot's front face, over the two front screws' holes,
+and `nut1` and `nut2` on its back, where the screws from behind come in. `shelf` is where the shelf's weight is hung.
+
+```js projects/fix/objects/bracket.js
+// A shelf bracket, drawn as it prints: the web flat on the bed, the foot standing up along its back edge.
+// Two cap screws go down counterbores in the foot into the wall plate; two more come from behind the plate into nuts
+// dropped into slots in the foot.
+import jscad from '@jscad/modeling'
+const { polygon, cuboid } = jscad.primitives
+const { extrudeLinear } = jscad.extrusions
+const { transform, translate } = jscad.transforms
+
+// (a profile drawn in y and z, extruded along x)
+const alongX = (g) => transform([0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1], g)
+
+export function main (v) {
+  const f = v.fixings, half = v.wide / 2
+  const web = extrudeLinear({ height: v.web }, polygon({ points: [[0 - half, 0], [half, 0], [half, v.reach], [0 - half, v.heel]] }))
+  const foot = cuboid({ size: [v.wide, v.foot, v.out], center: [0, v.foot / 2, v.out / 2] })
+  const fillet = translate([0 - half, 0, 0], alongX(extrudeLinear({ height: v.wide }, polygon({ points: [[v.foot, v.web], [v.foot + v.fillet, v.web], [v.foot, v.web + v.fillet]] }))))
+  const trap = f.nutTrapModel('M3', { axis: 'y', into: '-z', depth: v.out - v.at })
+  return v.ops.subtract(v.ops.union(web, foot, fillet),
+    ...[-1, 1].map((s) => f.counterbore('M3 cap', { length: v.foot, thickness: v.foot, into: '-y', at: [s * v.pitch / 2, v.foot, v.at] })),
+    ...[-1, 1].flatMap((s) => [f.hole('M3', { depth: v.foot, into: '+y', at: [s * v.nut_pitch / 2, 0, v.at] }),
+      f.nutTrap('M3', { axis: 'y', into: '-z', depth: v.out - v.at, at: [s * v.nut_pitch / 2, v.nut_floor + trap.gap / 2, v.out] })]))
+}
+```
+
+`nutTrapModel` gives the slot's numbers before it is cut: its `gap` along the screw puts the nut's middle where the
+slot is drawn, so the nut sits `nut_floor` in from the foot's back whatever the printer's slip.
+
+```sh
+npx cad check fix/plate
+npx cad check fix/bracket
+```
+
+Each prints without supports: no overhang past 45°, no ledge, nothing in mid-air, one piece, a plain first layer. Each
+seat says what it was drawn to and the rule it rests on: the pilot 2.9 mm from `x1c.pilot_m3` (measured on this
+printer), the insert's hole 4 mm from `m3.insert_hole` (a community figure, as drawn), each clearance hole 3.5 mm
+(`m3.clearance`, from ISO 273, plus `x1c.hole_comp`), the counterbore 6 mm by 3 mm, the countersink 6.82 mm at 90°, and
+the nut's slot 5.7 mm across the flats and 2.6 mm along the screw (`m3.nut_flats` and `m3.nut_height`, plus
+`x1c.hole_comp` and `x1c.slip`).
+
+### Screwed together
+
+The plate's back is the wall, at z = 0, and up the wall is y. The bracket is turned from how it prints to how it hangs,
+and stands on the posts. Two `fasten` relations hold it: two cap screws from the front, through the bracket into the
+plate, and two countersunk screws from behind, through the plate into the bracket's nuts. Neither names a length: the
+check chooses the shortest sold that fits each screw. The shelf is 2 kg hung at the `shelf` anchor, and gravity runs
+down the wall.
+
+```json projects/fix/assemblies/shelf.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A shelf bracket on its wall plate",
+  "kind": "fit",
+  "description": "The plate's back on the wall (z = 0), the bracket on its four posts, up the wall along y. Two cap screws go through the bracket's foot into the plate, one into a pilot and one into a heat-set insert; two countersunk screws come from behind the plate into nuts in the foot.",
+  "items": [
+    { "id": "plate", "object": "plate" },
+    { "id": "bracket", "object": "bracket", "rotate": [90, 0, 90], "at": ["0 - bracket.at", 0, "plate.thick + plate.stand"] }
+  ],
+  "fits": [
+    { "a": "bracket", "b": "plate", "min": 0, "max": 0.05, "note": "The foot sits on the plate's posts" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["bracket"], "into": "plate", "at": ["bracket.pilot", "bracket.insert"], "note": "Front screws" },
+    { "screw": "M3 countersunk", "through": ["plate"], "into": "bracket", "at": ["bracket.nut1", "bracket.nut2"], "nut": true, "torque": 0.3, "note": "Back screws" }
+  ],
+  "gravity": [0, -1, 0],
+  "loads": [
+    { "mass": 2, "at": "bracket.shelf", "note": "A shelf and what stands on it" }
+  ]
+}
+```
+
+```sh
+npx cad check fix/shelf
+npx cad list fix/shelf
+npx cad order fix/shelf
+```
+
+What the check says, screw by screw:
+
+- `fasten.holes`: each screw has one axis from under its head through the part it passes into the part it ends in.
+- `fasten.clearance`: the bracket's and the plate's holes measure 3.5 mm, an M3 clearance hole as drawn.
+- `fasten.end`: the top front screw ends in a pilot, 2.9 mm and 8.8 mm deep; the bottom one in an insert's hole, 4 mm
+  and 6.7 mm deep; each back screw in an M3 hex nut in its seat in the bracket, 5.7 mm across the flats for the nut's
+  5.5 mm. The slot is found where it crosses the screw, and the nut drawn there, flats to the slot's walls.
+- `fasten.length`: M3x10 cap for the pilot (3.4 mm under the head and 6.6 mm into the plate, 1.2 mm short of
+  bottoming out), M3x8 cap for the insert, M3x16 countersunk for the nuts.
+- `fasten.engagement`: 6.6 mm of thread in PLA where `m3.pilot_depth` asks 5 mm; 4.6 mm in the insert, where
+  `fixings.insert_engagement` asks a diameter or the whole insert; the nut's whole 2.4 mm.
+- `fasten.seat`: the cap heads sit flat, 3 mm down their counterbores, and PLA under them takes 553 N, a tightening
+  of 0.33 N m; the countersunk heads sit in an 89.8° countersink, flush with the back.
+- `fasten.access`: a 2.5 mm hex key reaches each cap head along its axis, and a 2 mm key each countersunk head, with
+  nothing within the key's corners for its long arm's 58.5 mm or 52 mm (`hexkey`, ISO 2936).
+- `fasten.load`: with the shelf's 2 kg, the front screws hold 41.4 times the load, the pilot's thread in PLA first;
+  the back screws 32.6 times, the screw first (the nut's thread is steel and not checked). Each holds its shear by
+  friction 9.5 and 3.6 times over. The torque on the back screws is given (0.3 N m), because the check holds the
+  pressure under a flat seat and not yet on a countersink's cone.
+
+Each relation is reckoned as if it held the bracket alone, so the two figures are each the worst case. They rest on
+estimates (the plastic's strength in shear, the nut factor, the friction), and the finding names each one.
+
+`cad list` gives the screws by thread, length and head, with what they weigh and how they are bought, and the two
+prints: the plate 5.9 g and the bracket 11.8 g, 17.7 g and about 20 minutes of printing, and 5 g of fixings.
+`cad order` gives the steps: the plate first, then the bracket with its four screws, each with its key and torque, the
+insert and the nuts named with them.
+
+### Strong enough, and small
+
+The design rule is the smallest part that carries its load about twice over. By hand, PLA at 39 MPa along the layers
+(`pla.strength`, a community figure), 2 kg is 19.6 N:
+
+| Part | Where it is worst | Load | Stress | Margin |
+|---|---|---|---|---|
+| Bracket's web | At the foot, 23.6 mm in from the shelf's weight, a section 44 mm deep and 3 mm thick | 463 N mm | 0.48 MPa | 81 times |
+| Plate | At the lowest post, 19 mm above its bottom edge, which bears on the wall; the top wall screw pulls 780 / 64 = 12.2 N | 232 N mm | 7.7 MPa | 5 times |
+| Front screws | `fasten.load` | 16.3 N of pull | | 41.4 times |
+| Back screws | `fasten.load` | 65.2 N of pull | | 32.6 times |
+
+The web's section modulus is 3 × 44² / 6 = 968 mm³ and the plate's 20 × 3² / 6 = 30 mm³; each stress is the moment
+over it. The web is stressed along its layers, since it lies flat as it prints. The plate is the part the load sizes:
+its 3 mm is the least that holds the wall screws' countersinks, and carries the shelf five times. The bracket is sized
+by its fixings, not its load: room for a head and its key, a nut's slot with plastic round it, and four screws far
+enough apart to share the pull. A thinner web would still carry the shelf, and would flap.
+
+### Two mistakes, caught
+
+A screw too short. The front screws named as M3x6 by hand:
+
+```json projects/fix/assemblies/short.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The shelf bracket on front screws too short",
+  "kind": "fit",
+  "items": [
+    { "id": "plate", "object": "plate" },
+    { "id": "bracket", "object": "bracket", "rotate": [90, 0, 90], "at": ["0 - bracket.at", 0, "plate.thick + plate.stand"] }
+  ],
+  "fits": [
+    { "a": "bracket", "b": "plate", "min": 0, "max": 0.05, "note": "The foot sits on the plate's posts" }
+  ],
+  "fasten": [
+    { "screw": "M3x6 cap", "through": ["bracket"], "into": "plate", "at": ["bracket.pilot", "bracket.insert"], "note": "Front screws" },
+    { "screw": "M3 countersunk", "through": ["plate"], "into": "bracket", "at": ["bracket.nut1", "bracket.nut2"], "nut": true, "torque": 0.3, "note": "Back screws" }
+  ]
+}
+```
+
+`npx cad check fix/short` fails, and says what would do:
+
+```text
+✗ Front screws, screw 1 (bracket.pilot): M3x6 cap engages 2.6 mm of thread in pla (a plastic), 5.2 turns, where m3.pilot_depth asks 5 mm: M3x10 cap would do
+✗ Front screws, screw 2 (bracket.insert): M3x6 cap engages 2.6 mm of thread in the insert, 5.7 mm long, 5.2 turns, where fixings.insert_engagement asks a diameter of thread or the whole insert, 3 mm: M3x8 cap would do
+```
+
+A screw that cannot be reached. Shelves usually go up plate first: screw the plate to the wall, then hang the bracket
+on it. With the wall in the assembly, drawn faint and never printed, and the plate fastened to it:
+
+```json projects/fix/objects/wall.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "wall",
+  "title": "A patch of wall",
+  "version": "0.1.0",
+  "role": "reference",
+  "variables": {
+    "size": { "value": 120, "unit": "mm", "rule": "A patch of wall round the plate" },
+    "deep": { "value": 20, "unit": "mm", "rule": "Enough to show where it is" }
+  }
+}
+```
+
+```js projects/fix/objects/wall.js
+// The wall the plate goes on: a reference, drawn faint and never printed. Its face is z = 0.
+import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+
+export function main (v) {
+  return cuboid({ size: [v.size, v.size, v.deep], center: [0, 0, 0 - v.deep / 2] })
+}
+```
+
+```json projects/fix/assemblies/wall-first.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The plate on the wall first",
+  "kind": "fit",
+  "items": [
+    { "id": "wall", "object": "wall" },
+    { "id": "plate", "object": "plate" },
+    { "id": "bracket", "object": "bracket", "rotate": [90, 0, 90], "at": ["0 - bracket.at", 0, "plate.thick + plate.stand"] }
+  ],
+  "fits": [
+    { "a": "plate", "b": "wall", "fastens": true, "min": 0, "note": "The plate on the wall, on two wall screws" },
+    { "a": "bracket", "b": "plate", "min": 0, "max": 0.05, "note": "The foot sits on the plate's posts" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["bracket"], "into": "plate", "at": ["bracket.pilot", "bracket.insert"], "note": "Front screws" },
+    { "screw": "M3 countersunk", "through": ["plate"], "into": "bracket", "at": ["bracket.nut1", "bracket.nut2"], "nut": true, "torque": 0.3, "note": "Back screws" }
+  ]
+}
+```
+
+`npx cad check fix/wall-first` fails on the back screws and on the order, naming the wall:
+
+```text
+✗ Back screws, 2 M3 countersunk screws: a 2 mm hex key cannot reach the head: wall stands over it, 0.05 mm up the screw's axis and goes on first (The plate on the wall, on two wall screws), and a ball-end key tilted 25° does not clear it either. Move the screw, open a way through wall, or fit wall after
+✗ the screw of "Back screws" can't be reached in any order: wall stands over it and goes on first (The plate on the wall, on two wall screws)
+```
+
+So this bracket goes on its plate at the bench, and the plate then goes on the wall: its wall screws are clear of the
+foot, and `cad order fix/shelf` builds it in that order. The other way to hang it plate first is to bring every screw
+in from the front: four front screws into pilots or inserts, and no nut.
+
+### The build page
+
+`npx cad link fix/shelf --md` gives a link to the model page. Since the assembly has a `fasten`, the link carries a build
+page: the prints with their grams and time, a Fasteners table (each screw, nut and insert, how many, their grams, and
+the packs to buy with what is spare), and the steps of `cad order`, each with its screws, the key and the torque to
+tighten to. The screws, the insert and the nuts are drawn faint in place.
+
+### What is measured, and what waits on the bench
+
+The pilot is the X1C's own measured figure. The insert's hole, the nut's slot, the counterbore's room for a head and
+the strength figures under `fasten.load` are not, and their findings say so. Print 7 in
+`examples/bench/projects/benchmarks/MEASURE.md`, the fixings coupon, settles them: pilots at five sizes, insert holes,
+nut pockets and slots at three fits, a counterbore and printed threads. Its results go back with `cad measured
+benchmarks/fixings-test <rule>=<figure>`, and every design drawn from `v.fixings` follows them the next time it is
+built.

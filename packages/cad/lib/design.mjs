@@ -35,6 +35,7 @@ import * as flexures from '@rulecad/flexures';
 import * as gears from '@rulecad/gears';
 import * as motors from '@rulecad/motors';
 import { designFrames, framesContext } from './frames.mjs';
+import { resolve as resolveWith } from '@rulecad/variables';
 import { engineId, packageVersion, materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
 
@@ -128,11 +129,12 @@ const CACHE = paths.cache('builds'), CACHE_VERSION = 3;
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
-const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors'))), framesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/frames')));
+const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors'))), framesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/frames'))), fixingsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/fixings')));
 // (every module of a helper package but its tests: they change nothing a design builds)
 const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
 const feaDir = path.dirname(createRequire(pathToFileURL(path.join(flexuresDir, 'package.json')).href).resolve('@rulecad/fea')); // (flexures' own, wherever npm put it)
-const own = source(import.meta.url) + source('./frames.mjs') + helperSources(framesDir) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling'); // every shapes module, not just its entry
+// (as one digest, so each build's key hashes a line and not a megabyte of source)
+const own = crypto.createHash('sha256').update(source(import.meta.url) + source('./fixings.mjs') + source('./frames.mjs') + helperSources(framesDir) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(fixingsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling')).digest('hex'); // every shapes module, not just its entry
 // A lamina's slow stages (the physics, the flood's probe) are kept apart from the builds, keyed by the library's code
 // and their own inputs, so a build that changes only what comes after them (a strap, a check, a rule's words) has them
 // at once: .cache/stages/. A design in the sandbox can't write them, so the sandbox hands them back and the tool writes them
@@ -147,6 +149,29 @@ export const pcbEngine = () => import('@rulecad/pcb').catch((e) => {
   if (e.code === 'ERR_MODULE_NOT_FOUND' && /@rulecad\/pcb/.test(e.message)) throw new Error('boards need the board engine: npm install @rulecad/pcb');
   throw e;
 });
+
+// What v.fixings is bound to (lib/fixings.mjs): the workspace's own rule sets by name (a release's own, where it is one:
+// its threads and materials are used before the kit's), the project's printer as a rule set with its values worked
+// out, and the project's material. With a hash of all of it and of the kit's sets: a build that called v.fixings is
+// made from these too, so its cache holds only while they stand.
+let kitRules = null;
+export function fixingsContext(d) {
+  const dir = d.rulesDir || RULE_DIRS[0], sets = {}, text = [];
+  for (const f of host.list(dir).filter((x) => x.endsWith('.json')).sort()) {
+    try { const raw = host.readText(path.join(dir, f)), s = JSON.parse(raw); if (s && s.rules && typeof s.rules === 'object') { sets[s.name ?? f.slice(0, -5)] = s; text.push(raw); } } catch {} // (a broken set is cad check's to name, where a design uses it)
+  }
+  const name = printerOf(d.project), peek = (n) => { const f = [dir, ...RULE_DIRS].map((x) => path.join(x, `${n}.json`)).find((x) => host.exists(x)); if (!f) throw new Error(`no rule set "${n}" (rules/${n}.json)`); return readJson(f); };
+  let printer = null;
+  try { // (a printer with no rule set is said where a print is checked; fixings then draws for the kit's)
+    const set = peek(name), values = resolveWith({ uses: [name] }, { load: peek }).values[name];
+    printer = { name: set.name ?? name, rules: Object.fromEntries(Object.entries(set.rules).map(([k, r]) => [k, typeof values[k] === 'number' ? { ...r, value: values[k] } : r])) };
+  } catch {}
+  let material = null;
+  try { const f = path.join(d.dir, 'project.json'); if (host.exists(f)) material = String(readJson(f).material || '').trim().toLowerCase().split(/\s/)[0] || null; } catch {}
+  kitRules ||= (() => { const k = RULE_DIRS.at(-1); return crypto.createHash('sha256').update(fs.readdirSync(k).filter((f) => f.endsWith('.json')).sort().map((f) => fs.readFileSync(path.join(k, f), 'utf8')).join('')).digest('hex'); })();
+  const context = { sets, printer, material };
+  return { context, hash: crypto.createHash('sha256').update(JSON.stringify([text, printer, material, kitRules])).digest('hex').slice(0, 24) };
+}
 
 // An object's on-screen settings are "display" ({ "smooth": 24 }), and a part left off screen is "display": false.
 // Their first name, "mirror", still works: read here, the rest of the tool sees it as mirror either way.
@@ -170,7 +195,8 @@ function syntaxAt(e, d) {
   return e;
 }
 
-// build(design, set, { mirror }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export) }
+// build(design, set, { mirror }) -> { object, values, entries, parts, polygons (for the mirror), triangles (for checks and export), fixings? }
+//   fixings: what the design's calls to v.fixings found (each hole and seat, what it was drawn to and rests on), as findings
 //   parts: [{ name, role, label, geometry, polygons, triangles }]; polygons and triangles: every part together
 export async function build(d, set = {}, { mirror = false } = {}) {
   const object = readObject(d);
@@ -199,22 +225,26 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   const framed = framesContext(RULE_DIRS[0]);
   const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, framed.hash, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), reads, ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
-  if (!process.env.CAD_NO_CACHE && host.exists(hit)) {
-    const c = JSON.parse(host.readText(hit));
+  // (a build that called v.fixings is also made from the workspace's thread sets, its printer and material: it holds
+  // while those stand, and is known by them too, so what is kept by a build's hash, an overlap, follows a changed pilot)
+  let fx = null; const fixed = () => (fx ||= fixingsContext(d)), known = (f) => (f ? crypto.createHash('sha256').update(key + f).digest('hex') : key);
+  const kept = !process.env.CAD_NO_CACHE && host.exists(hit) ? JSON.parse(host.readText(hit)) : null;
+  if (kept && (!kept.fixed || kept.fixed === fixed().hash)) {
+    const c = kept;
     try { host.touch(hit); } catch {} // recently used: kept when the cache is pruned
     for (const e of entries) if (c.used.includes(e.name)) e.used = true;
     const parts = c.parts.map(({ solid: f, ...p }) => ({ ...p, geometry: fromFaces(f) }));
     if (c.circuit) Object.assign(values, (await pcbEngine()).outputs(c.circuit, c.matrix));
-    return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: key, ...(c.mechanism ? { mechanism: c.mechanism } : {}), ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix, ...(c.source ? { source: c.source } : {}) } : {}) };
+    return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), cached: true, hash: known(c.fixed), ...(c.fixings ? { fixings: c.fixings } : {}), ...(c.mechanism ? { mechanism: c.mechanism } : {}), ...(c.circuit ? { circuit: c.circuit, matrix: c.matrix, ...(c.source ? { source: c.source } : {}) } : {}) };
   }
 
   // A JSCAD design runs in a sandbox (sandbox.mjs: another process that can't write files, start programs or reach
   // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
-  let parts, board = null, read, mechanism = null;
+  let parts, board = null, read, mechanism = null, fixings = null;
   const optional = Object.keys(object.mirror || {}); // inputs only the on-screen copy has: main may ask for them when they aren't there
   const stages = stageStore();
-  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages, { frames: framed }).catch((e) => { throw syntaxAt(e, d); }));
+  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism, fixings } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages, { frames: framed, fixings: fixed().context }).catch((e) => { throw syntaxAt(e, d); }));
   else {
     flexures.laminaCache(stages);
     const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
@@ -224,7 +254,8 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       throw syntaxAt(located(e, d.js, 'design.run'), d);
     });
     if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
-    const w = watch(values, { shapes, flexures, gears, motors, frames: designFrames(framed), ops: await shapes.ops(booleans(object)), ...(pcb ? { pcb } : {}) }, optional);
+    const ops = await shapes.ops(booleans(object)), df = (await import('./fixings.mjs')).designFixings({ ...fixed().context, ops }); // (loaded when a design is run here: the sandbox's runner has its own)
+    const w = watch(values, { shapes, flexures, gears, motors, frames: designFrames(framed), fixings: df.fixings, ops, ...(pcb ? { pcb } : {}) }, optional);
     read = w.read;
     let made;
     try { ({ shapes: made, mechanism } = unpack(await mod.main(w.v))); } catch (e) { throw Object.assign(located(e, d.js, 'design.run'), { line: lineOf(e, pathToFileURL(d.js).href) || undefined }); }
@@ -241,13 +272,14 @@ export async function build(d, set = {}, { mirror = false } = {}) {
       made = pcb.solids(board.circuit, { thickness: values.thickness, smooth: values.smooth, models: meshes });
     }
     try { parts = named(made, object.parts || {}); } catch (e) { throw located(e, d.js, 'design.run'); }
+    if (df.used()) fixings = df.found();
   }
   for (const e of entries) if (read.has(e.name)) e.used = true;
   try {
     prune();
-    host.writeText(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}), ...(mechanism ? { mechanism } : {}) }));
+    host.writeText(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}), ...(mechanism ? { mechanism } : {}), ...(fixings ? { fixed: fixed().hash, fixings } : {}) }));
   } catch {} // a cache that can't be written is only slower
-  return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: key, ...(board || {}), ...(mechanism ? { mechanism } : {}) };
+  return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: known(fixings ? fixed().hash : null), ...(fixings ? { fixings } : {}), ...(board || {}), ...(mechanism ? { mechanism } : {}) };
 }
 
 // A cache keeps its most recently used files, about `keep` of them (an old version's builds go first)

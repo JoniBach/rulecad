@@ -34,7 +34,7 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 1. `npx cad history <project>/<object>` first: read the print log. A failed print is the reason for most changes:
    fix the rule or variable it points at (a measured fit beats a community rule).
 2. Change, then check, preview and look, as for a new part. Change values with `npx cad set <project>/<object>
-   name=value` and assemblies with `npx cad add fit|joint|item|pose …`: they keep the file's layout and refuse an edit
+   name=value` and assemblies with `npx cad add fit|joint|item|pose|fasten …`: they keep the file's layout and refuse an edit
    that breaks it. `npx cad values` lists an object's numbers; `npx cad why <project>/<object>.<name>` shows what a
    value depends on, down to the rules (estimates marked). `--json` on check, values and why gives data to act on:
    each finding has a code, its numbers and where it is.
@@ -47,15 +47,23 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - Walls are whole numbers of print lines (`x1c.line * 3`, or your printer's set), heights whole numbers of layers.
 - Holes and slots get the printer's hole compensation; parts that slide together get its fit clearance. Chamfer
   bottom edges.
+- A hole or a seat for a screw, a nut or a heat-set insert comes from `v.fixings`, named by its thread, never from a
+  typed number: `v.fixings.hole('M3', { kind: 'pilot', at })` (kinds: `clearance`, `close`, `loose`, `pilot`, `tap`,
+  `insert`, `thread`), `counterbore`, `countersink`, `nutPocket`, `nutTrap`, `squareNutSlot`, `insertBoss`. Each reads
+  the workspace's thread set (`rules/m3.json` before the kit's), the project's printer and its material, so no
+  diameter is typed and none is passed in. `cad check` then says what each was drawn to and the rule it rests on:
+  report a figure it marks as an estimate or a community figure, and measure it. A thread's name is text
+  (`'M3x12 cap'`), so the check on numbers passes it.
 - An overhang warning means supports: say so in `orientation`, or change the shape or orientation.
 - A part that moves by bending (a spring, a snap, a hinge with no pin) is a flexure from `v.flexures`: drawn flat, so it
   bends within its layers; give its thickness in whole lines (`x1c.line`), and check its strain at the travel against
   the material's limit with `v.flexures.printable`. PLA creeps held bent and fatigues; PETG or nylon for springs.
-- Use the print-aware features in `v.shapes` before drawing your own: `countersink`, `teardropHole`, `nutPocket`,
-  `crushRibs`, `wallOpening` print without supports as drawn. Use `v.ops.union/subtract/intersect` for booleans: the
+- Use the print-aware features in `v.shapes` before drawing your own: `teardropHole`, `crushRibs`, `wallOpening`
+  print without supports as drawn (and `countersink` and `nutPocket` for a size that is no screw's). Use `v.ops.union/subtract/intersect` for booleans: the
   workspace can switch them to Manifold (faster, watertight) without touching the design.
-- Designs run sandboxed: they may import only `@jscad/modeling`, `@rulecad/shapes`, `@rulecad/flexures` and files in
-  their project, and can't write files or start programs. To see a value while designing, `console.log` it: it comes
+- Designs run sandboxed: they may import only `@jscad/modeling`, `@rulecad/shapes`, `@rulecad/flexures`,
+  `@rulecad/gears`, `@rulecad/motors`, `@rulecad/fixings` and files in their project, and can't write files or start
+  programs. To see a value while designing, `console.log` it: it comes
   out with the command's output. A misspelt `v.name` stops the build and says which name was meant.
 - Something printed under the part and removed afterwards is a named `support` part (`return { cap, pillar }`, both
   described in the .json's `parts`), not part of the shape. Look at `cad preview --explode` too.
@@ -77,7 +85,13 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   them with joints, name the positions in `poses`, and run `cad check --sweep` to find where parts collide on the way.
   See "Joints and poses" in the cad README.
 - A part is named in fits as `<item>.<part>`; an object that returns one unnamed shape has one part, `body`.
-- A gap fit can't tell whether holes line up. Where a board screws into a part, add a holes fit
+- Where parts screw together, say so with `fasten`, which knows the screw:
+  `{ "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1", "bracket.h2"] }` (anchors on the
+  holes' axes), or `"holes": "bracket.body"` to use the part's own holes; `npx cad add fasten …` writes it. The check
+  reads the holes from the parts as drawn: one axis through the stack, a clearance hole in each part passed, a pilot,
+  insert or nut at the far end, the length chosen from what is sold, thread engaged, and the seat under the head.
+  Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
+- A gap fit can't tell whether holes line up. Where a board only rests on its screws' bosses, a holes fit follows them
   (`{ "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length" }`).
 - A part built around another (a case around its board) reads it: `"uses": ["macropad/pcb"]`, then
   `pcb.board_w` and `v.pcb.board_holes`. Never copy another object's numbers by hand.

@@ -17,6 +17,7 @@
     "requires": { "type": "object", "additionalProperties": { "type": "string" }, "description": "object → semver range" },
     "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "fits": { "type": "array", "items": { "$ref": "#/$defs/fit" } },
+    "fasten": { "type": "array", "description": "Screwed joints: each names its screw, the parts it passes through in order, and the part it ends in. The holes are read from the parts as drawn and each screw followed along one axis; a fasten holds its parts as a fit that fastens does, and lines their holes up as a holes fit does", "items": { "$ref": "#/$defs/fasten" } },
     "joints": { "type": "array", "items": { "$ref": "#/$defs/joint" } },
     "loops": { "type": "array", "items": { "$ref": "#/$defs/loop" } },
     "planetary": { "type": "array", "items": { "$ref": "#/$defs/planetary" } },
@@ -115,6 +116,23 @@
       "radius": { "$ref": "#/$defs/expr", "description": "A pocket's corner radius, mm" },
       "length": { "$ref": "#/$defs/expr", "description": "A notch's length along the beam, mm" } } },
     "address": { "type": "string", "pattern": "^[a-z][\\w-]*(\\.[\\w-]+)+(@-?\\d+(\\.\\d+)?%?)?$", "description": "An anchor by name, <item>.<anchor>; on a beam an end (x1.a, x1.b), an end bore (x1.a.1), or a face with a distance from end a (x1.top@120), from end b (x1.top@-20) or a share of the length (x1.top@50%), the second slot of a face x1.top.2@120" },
+    "fasten": {
+      "type": "object",
+      "required": ["screw", "through", "into"],
+      "additionalProperties": false,
+      "properties": {
+        "screw": { "type": "string", "description": "The screw, by its thread and head: M3 cap, M4 button, M3x12 countersunk, 6-32 UNC cap (the names @rulecad/fixings reads). With no length in the name, the shortest sold length that fits is chosen" },
+        "through": { "type": "array", "items": { "type": "string" }, "description": "The parts the screw passes through, in order from under its head: items (bracket) or item.part (bracket.body). Each needs a clearance hole for the thread" },
+        "into": { "type": "string", "description": "The part the screw ends in: a pilot, a tapped or printed thread, an insert's hole or a nut's seat there, or a clearance hole with nut" },
+        "at": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/anchorRef" }, "description": "One screw at each anchor: a point on its axis (bracket.h1), the anchor's axis along the screw" },
+        "holes": { "type": "string", "description": "In place of at: a part whose holes are the screws' places, found in the part as drawn (a circuit board: its mounting holes)" },
+        "nut": { "anyOf": [{ "type": "boolean" }, { "type": "string" }], "description": "What holds the screw where the part it ends in does not: true or hex, square, lock. It sits on that part's far face, or in a nut's seat drawn there" },
+        "washer": { "type": "boolean", "description": "A plain washer under the head" },
+        "length": { "$ref": "#/$defs/expr", "description": "The screw's length in mm, where the name gives none: checked for reaching, bottoming out and standing proud" },
+        "torque": { "$ref": "#/$defs/expr", "description": "The tightening torque, N m: the pressure under the head is then held against the material it sits on (fasten.seat)" },
+        "note": { "type": "string" }
+      }
+    },
     "anchorRef": {
       "anyOf": [
         { "type": "string", "description": "item.anchor" },

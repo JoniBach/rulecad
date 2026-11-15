@@ -2,7 +2,8 @@
 // promises, whatever the design does: it can't write or delete files, start programs or workers, or load addons, and
 // it reads only the workspace and the packages designs use. That much is Node's own boundary.
 // On top of it, to keep a design to making shapes: an import hook (sandbox-hooks.mjs) lets it import only
-// @jscad/modeling, @rulecad/shapes, @rulecad/flexures, @rulecad/frames and files in its own project (no node: modules); the runner
+// @jscad/modeling, @rulecad/shapes, @rulecad/flexures, @rulecad/gears, @rulecad/motors, @rulecad/frames, @rulecad/fixings and
+// files in its own project (no node: modules); the runner
 // takes away fetch and its kin and process's own ways to Node's modules; and it is started with none of this
 // process's environment (no tokens). Those close the ordinary roads to the network, not every one: before Node 25
 // the permission model doesn't cover the network, so a design written to get round them might still reach it, and
@@ -62,7 +63,7 @@ function refused(e) {
  * @param {{ js: string }} d the design @param {object} values @param {object} meta the .json's parts @param {'jscad' | 'manifold'} [engine] v.ops's booleans
  * @param {string[]} [optional] names main may read that aren't among the values (the display's own inputs)
  * @param {{ salt: string, get: (k: string) => string | undefined, put: (k: string, text: string) => void } | null} [stages] where a lamina's slow stages are kept: the child reads them from the cache (it may read the workspace) and hands back what it made, which is written here
- * @param {{ frames?: object }} [bound] what the design's helpers are bound to: frames, the workspace's profile sets (lib/frames.mjs framesContext)
+ * @param {{ frames?: object, fixings?: { sets?: object, printer?: object, material?: string | null } | null }} [bound] what the design's helpers are bound to: frames, the workspace's profile sets (lib/frames.mjs framesContext); fixings, what v.fixings is bound to (design.mjs fixingsContext), whose calls come back as fixings
  */
 export function runSandboxed(d, values, meta, engine = 'jscad', optional = [], stages = null, bound = {}) {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -85,7 +86,7 @@ export function runSandboxed(d, values, meta, engine = 'jscad', optional = [], s
       if (err.length) process.stderr.write(Buffer.concat(err)); // what the design printed
       if (r.error) return reject(located(Object.assign(new Error(refused(r.error)), { code: r.error.code, ...(r.error.line ? { line: r.error.line } : {}), ...(r.error.syntax ? { name: 'SyntaxError' } : {}) }), d.js, r.error.code || 'design.run'));
       if (stages) for (const [k, text] of Object.entries(r.stages || {})) stages.put(k, text);
-      resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read), mechanism: r.mechanism || null });
+      resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read), mechanism: r.mechanism || null, fixings: r.fixings || null });
     });
     child.stdin.end(JSON.stringify({ js: `${pathToFileURL(js).href}?t=${fs.statSync(js).mtimeMs}`, values, meta, engine, optional, ...(stages ? { stages: { dir: stagesDir, salt: stages.salt } } : {}), bound }));
   });
