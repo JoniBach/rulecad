@@ -146,9 +146,10 @@ one set, because two makers' "2020" differ in their slots, and a file's name say
 
 | File | What |
 |---|---|
-| `profile-<size>-<maker>[-<the maker's series or type>]` | A profile: `profile-2020-misumi-hfs5`, `profile-4040-bosch-l`, `profile-2020-generic`. The size is cells of the series, across then up, as it is sold (`2040`), so files sort by size and then by maker |
+| `profile-<size>-<maker>[-<the maker's series or type>]` | A profile: `profile-2020-misumi-hfs5`, `profile-4040-bosch-l`, `profile-2020-generic`, `profile-1515-8020` (an inch size as its maker writes it, held in mm), `profile-4080-openbuilds-cbeam`. Makers so far: `misumi`, `bosch`, `item`, `motedis`, `openbuilds`, `makerbeam`, `openbeam`, `8020`, and `generic` for unbranded stock. The size is cells of the series, across then up, as it is sold (`2040`), so files sort by size and then by maker |
 | `profile-<family>` and `profile-<family>-<al or steel>-<size>` | A plain section's family (`profile-tube`, `profile-angle`, `profile-round-bar`) and a ready size of it (`profile-tube-al-25x25x2`, `profile-round-bar-steel-10`): width, height and wall as the family has them. `profile-custom` is any closed outline, with its outline in `outlines/<the set's name>.json` |
 | `slot-<opening>[-<maker>][-<variant>]` | A slot family: `slot-6-bosch`, `slot-10-misumi-45`. With no maker it is the generic one for unbranded stock (`slot-6`, `slot-8`, and `slot-8-i` for the 40 mm series' I-type slot) |
+| | A slot's own names: `opening`, `lip_thickness`, `lip_angle`, `cavity_width`, `cavity_depth`, `floor_width` with `flank_angle` (both left out for straight walls), `track_width` with `track_angle` (a V-slot's mouth), `groove_width` with `groove_depth` (a groove down the floor), `nut_family` |
 | `slot-nut-<slot>-<thread>-<kind>` | A slot nut (none published yet: the names are in the vocabulary) |
 | `al<alloy>-<temper>` | The material a profile names: `al6063-t5` |
 
@@ -156,7 +157,7 @@ A profile is read at three levels, and only the first is needed to draw it:
 
 | Level | Names | What |
 |---|---|---|
-| Interface | `family`, `series`, `cells_across`, `cells_up`, `width`, `height`, `corner_radius`, `wall` | What sort of section (`t-slot`, `v-slot`, `tube`, `round-tube`, `angle`, `channel`, `bar`, `round-bar`, `custom`, `printed`), its base size, how many cells, its envelope, a tube's wall |
+| Interface | `family`, `series`, `cells_across`, `cells_up`, `cells_absent`, `width`, `height`, `corner_radius`, `wall` | What sort of section (`t-slot`, `v-slot`, `tube`, `round-tube`, `angle`, `channel`, `bar`, `round-bar`, `custom`, `printed`), its base size, how many cells and any that are not there (a C-beam is 4 by 2 with `"2,2; 3,2"` absent), its envelope, a tube's wall |
 | | `slot`, `slot_top`, `slot_bottom`, `slot_front`, `slot_back` | The slot family in every face by its set's name (or `closed`), then any face that differs: a family, `closed`, or one of either per slot (`slot-6-bosch, closed`) |
 | | `bore_diameter`, `bore_thread`, `bore_at`, `corner_bore_diameter`, `corner_bore_thread`, `corner_bore_inset` | The bore in the middle of each cell and the thread it taps to (`M5`), holes in the corners, and bores anywhere else as `x,y; x,y` |
 | | `chamber_width`, `chamber_length`, `chamber_depth`, `corner_hollow_width`, `corner_hollow_wall` | The closed hollow between two cells, and square hollows in the corners of a lighter section |

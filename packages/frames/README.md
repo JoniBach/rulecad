@@ -81,6 +81,13 @@ hollow where the two cells' slots would have met. Each sold profile is its own r
 A face is overridden in the rule set: `"slot_bottom": "closed"` for a smooth face, `"slot_top": "slot-6, closed"` for
 one slot of two, another family's name to mix two slots in one section.
 
+A grid need not be full. `cells_absent` names the cells that are not there, as across,up pairs from 1 at the lower
+left: OpenBuilds' C-Beam is 4 cells by 2 with `"2,2; 3,2"` absent. `faces` then holds a place for every side of a cell
+with no cell beyond it, by the way it looks: `faces.top` of a C-beam has four places, two on top of the arms and two on
+the floor of the C lower down, and `faces.back` has the inside of the left arm beside the right-hand outside. `index`
+is the place's column (top and bottom) or row (front and back). Where four cells meet, or a cell stands at a corner of
+a missing one, the hollows between cells keep to the cavity's own width (`ends`), so they stand clear of each other.
+
 ### Outlines
 
 `outline(model)` returns `{ loops, measured, source }`. Each loop is a closed list of `[x, y]` points: the outside of
