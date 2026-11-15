@@ -43,6 +43,7 @@ npx cad compare keyboard/keycap dsa legend-f     # two variants (or releases) si
 npx cad import-kle layout.json keyboard/mine     # a layout from keyboard-layout-editor.com, into layouts/
 npx cad clone <github link to a .kicad_pcb> sea_picro   # a published board's circuit, into rules/, to redraw by rules
 npx cad measure cover.3mf --rules cover          # a model from elsewhere, measured into draft rules
+npx cad measure beam.stl --profile profile-2020-mine   # a beam's profile from its maker's model or a DXF of its section
 npx cad match legion-go/rail cover.3mf           # how closely a design matches that model, both ways
 ```
 
@@ -245,6 +246,26 @@ faces) show up as an even offset: set `--tol` above them.
 
 A model's licence limits what you make from it, not what you learn: measurements are facts, but a non-commercial or
 share-alike model's shape shouldn't be copied into a design under another licence. `measure` warns about those.
+
+**A beam's profile from its maker's model.** `cad measure <beam.stl|beam.3mf|section.dxf> --profile <name>` reads an
+aluminium extrusion's section and writes it as a profile rule set, for a beam the kit has no set for:
+
+```sh
+npx cad measure hfs5-2020.stl --profile profile-2020-mine --source https://example.com/hfs5-2020 --licence "the maker's terms"
+```
+
+| It does | How |
+|---|---|
+| Takes the section | From a model: across its longest axis (or `--along y`), in the middle of the longest stretch that keeps one cross-section. From a DXF: its LINE, LWPOLYLINE (with bulges), ARC and CIRCLE entities, joined into closed loops; inches, centimetres and metres are turned into mm. A SPLINE, an ELLIPSE or a block is refused by name: export the section as lines and arcs |
+| Finds each slot | On every face: the opening at its narrowest, the lip's thickness at its tip, the width under the lips, the depth, the floor's width and the flanks' angle, and a V mouth (`track_width`, `track_angle`) where there is one. An opening with no room under lips is told as a groove, or as the channel of a C section |
+| Finds the bores | Round holes at the middles of the cells are the profile's bores; other round holes and hollows are listed, and stay in the outline |
+| Names the slot family | The known family (the kit's, or your workspace's) whose opening, lip, width and depth are all within `--tol` (0.1 mm) of what was found; where none is, a new family is drafted as `rules/slot-<opening>-<name>.json` |
+| Writes | `rules/<name>.json`, a draft profile with every figure `derived` and carrying the source and licence; `rules/outlines/<name>.json`, the section itself; `.preview/measure/<name>-profile.svg` (and `.png`), the section with each slot and bore marked and listed, to check against the bar in hand |
+
+Then `cad rules check <name>` and `cad rules draw <name>`, which use the measured outline in place of a drawn one, and
+add what a model cannot say: the maker, the alloy, a material set for its mass, the thread its bore taps to. The
+outline is the model's shape, so it goes into your own workspace and nowhere else: the kit publishes no maker's
+outline, and under a non-commercial, no-derivatives or share-alike licence the command says to keep it there.
 
 ## Assemblies
 

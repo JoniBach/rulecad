@@ -420,6 +420,94 @@ test('cad measure and cad match: a model measured into draft rules, and a design
   } finally { done(); }
 });
 
+test('cad measure --profile: a beam\'s section from a model or a DXF, as a draft profile set with its outline, its slots matched to a family', async () => {
+  const { profileModel, outline, slotModel } = await import('@rulecad/frames'), jscad = (await import('@jscad/modeling')).default, { readDxf } = await import('./lib/profilemeasure.mjs');
+  const { ws, cad, done } = workspace();
+  try {
+    const run = (...a) => spawnSync('node', [BIN, ...a], { cwd: ws, encoding: 'utf8' }), read = (p) => JSON.parse(fs.readFileSync(path.join(ws, p), 'utf8'));
+    // a beam built from the kit's own outline: the outline extruded with JSCAD, off the origin, written as a binary STL
+    const stl = (file, loops, length = 90, [dx, dy] = [0, 0]) => {
+      const solid = jscad.extrusions.extrudeLinear({ height: length }, jscad.primitives.polygon({ points: loops.map((l) => l.map(([x, y]) => [x + dx, y + dy])) }));
+      const tris = jscad.geometries.geom3.toPolygons(solid).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]])), buf = Buffer.alloc(84 + tris.length * 50);
+      buf.writeUInt32LE(tris.length, 80); tris.forEach((t, i) => t.forEach((v, k) => v.forEach((c, a) => buf.writeFloatLE(c, 84 + i * 50 + 12 + k * 12 + a * 4)))); fs.writeFileSync(path.join(ws, file), buf);
+    };
+    const kit = profileModel('2020-misumi-hfs5'), family = slotModel('slot-6-misumi');
+    stl('hfs5.stl', outline(kit).loops, 90, [30, 12]);
+    const out = cad('measure', 'hfs5.stl', '--profile', 'profile-2020-measured', '--no-pictures', '--source', 'https://example.com/hfs5-2020.step', '--licence', 'CC BY-NC-SA 4.0');
+    assert.match(out, /hfs5\.stl: the section across z at 45, the middle of a stretch of 90 mm that keeps it/); assert.match(out, /20 × 20 mm, 1 hole, area 182\.49 mm²/);
+    assert.match(out, /slot A × 4 \(top, bottom, front, back\): opening 6, lip 2, 12 under the lips, 6 deep, floor 5\.9\d?\n {4}matches slot-6-misumi within 0(\.0\d)? mm/);
+    assert.match(out, /1 bore Ø4\.2\d? at the cells' middles/); assert.match(out, /licence "CC BY-NC-SA 4\.0" limits reuse: measurements are facts, but the outline is the model's shape\. Keep it in this workspace/);
+    assert.match(out, /draft profile: rules\/profile-2020-measured\.json \(8 values, kind derived\)\n {2}outline: {7}rules\/outlines\/profile-2020-measured\.json \(2 loops\)/);
+    // the draft: each figure derived, with the model's source and licence; the slot named by the family it matched
+    const set = read('rules/profile-2020-measured.json'), r = set.rules;
+    assert.deepEqual(Object.keys(r), ['family', 'series', 'cells_across', 'cells_up', 'width', 'height', 'slot', 'bore_diameter']); assert.equal(set.part, 'profile');
+    assert.deepEqual([r.family.value, r.series.value, r.cells_across.value, r.cells_up.value, r.width.value, r.height.value, r.slot.value, Math.round(r.bore_diameter.value * 10) / 10], ['t-slot', 20, 1, 1, 20, 20, 'slot-6-misumi', 4.2]);
+    for (const [k, x] of Object.entries(r)) assert.deepEqual([x.kind, x.source, x.licence], ['derived', 'https://example.com/hfs5-2020.step', 'CC BY-NC-SA 4.0'], k);
+    assert.match(set._doc, /The outline is the model's shape: it stays in this workspace/);
+    // the outline: in the workspace, with its source and licence, about the middle of its envelope whatever the model's origin
+    const o = read('rules/outlines/profile-2020-measured.json'), xs = o.loops.flat().map((p) => p[0]), ys = o.loops.flat().map((p) => p[1]);
+    assert.deepEqual([o.source, o.licence, o.unit, o.loops.length], ['https://example.com/hfs5-2020.step', 'CC BY-NC-SA 4.0', 'mm', 2]);
+    assert.deepEqual([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], [-10, 10, -10, 10]);
+    assert.deepEqual(fs.readdirSync(new URL('../rules/outlines/', import.meta.url)), ['profile-custom.json'], 'nothing measured goes into the kit');
+    // the slot found, against the set the beam was drawn from: within 0.1 mm, figure by figure
+    const drawing = fs.readFileSync(path.join(ws, '.preview/measure/profile-2020-measured-profile.svg'), 'utf8');
+    const got = drawing.match(/opening ([\d.]+), lip ([\d.]+), ([\d.]+) under the lips, ([\d.]+) deep: matches slot-6-misumi/).slice(1).map(Number);
+    [family.opening, family.lip, family.cavityWidth, family.cavityDepth].forEach((want, i) => assert.ok(Math.abs(got[i] - want) <= 0.1, `slot figure ${i}: ${got[i]} against ${want}`));
+    assert.match(drawing, /What was found \(check each against the bar in hand\)/); assert.match(drawing, /1 {2}bore Ø4\.2\d? at 0, 0/); assert.match(drawing, /the outline stays in this workspace/);
+    // and it is a profile the kit can use: it checks, and draws from the measured outline
+    assert.match(cad('rules', 'check', 'profile-2020-measured'), /^1 of 1 rule sets pass\n$/);
+    cad('rules', 'draw', 'profile-2020-measured'); assert.match(fs.readFileSync(path.join(ws, 'profile-2020-measured.svg'), 'utf8'), />drawn from its outline: https:\/\/example\.com\/hfs5-2020\.step</);
+    assert.match(cad('measure', 'hfs5.stl', '--profile', 'profile-2020-measured', '--no-pictures'), /already exists \(--force to replace them\)/);
+
+    // ---- the same section from a DXF: the outside as lines one by one in any order, the bore a CIRCLE, in inches ----
+    const loops = outline(kit).loops, dxf = (entities, units = 4) => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', String(units), '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF'].join('\r\n') + '\r\n';
+    const lines = (loop, k = 1) => loop.map((p, i) => [p, loop[(i + 1) % loop.length]]).sort((a, b) => a[0][0] * 7 + a[0][1] - b[0][0] * 7 - b[0][1]).flatMap(([[x, y], [x2, y2]], i) => (i % 2 ? ['0', 'LINE', '8', '0', '10', String(x * k), '20', String(y * k), '11', String(x2 * k), '21', String(y2 * k)] : ['0', 'LINE', '8', '0', '10', String(x2 * k), '20', String(y2 * k), '11', String(x * k), '21', String(y * k)]));
+    fs.writeFileSync(path.join(ws, 'section.dxf'), dxf([...lines(loops[0], 1 / 25.4), '0', 'CIRCLE', '8', '0', '10', '0', '20', '0', '40', String(2.1 / 25.4), '0', 'TEXT', '1', 'HFS5-2020'], 1));
+    const fromDxf = cad('measure', 'section.dxf', '--profile', 'profile-2020-dxf', '--no-pictures');
+    assert.match(fromDxf, /section\.dxf: the DXF's outline\n {2}its units are inches: turned into mm\n {2}passed over: 1 TEXT\n {2}20 × 20 mm, 1 hole/);
+    assert.match(fromDxf, /opening 6, lip 2, 12 under the lips, 6 deep, floor 5\.9\d?\n {4}matches slot-6-misumi within 0(\.0\d)? mm/); assert.match(fromDxf, /1 bore Ø4\.2 at the cells' middles/); assert.match(fromDxf, /no --licence given: say what terms the model came under/);
+    const d = read('rules/profile-2020-dxf.json').rules; assert.deepEqual([d.slot.value, d.bore_diameter.value, d.width.value, d.slot.licence], ['slot-6-misumi', 4.2, 20, undefined]);
+    assert.match(cad('rules', 'check', 'profile-2020-dxf'), /^1 of 1 rule sets pass\n$/);
+    assert.match(cad('measure', 'section.dxf'), /a DXF is a drawing of a section, not a model: cad measure <section\.dxf> --profile <name>/);
+    // the reader on its own: a polyline's bulges are arcs, an ARC and lines join into a loop, and what it cannot read it refuses by name
+    const rounded = readDxf(dxf(['0', 'LWPOLYLINE', '90', '8', '70', '1', ...[[-8, -5, 0], [8, -5, Math.tan(Math.PI / 8)], [10, -3, 0], [10, 3, Math.tan(Math.PI / 8)], [8, 5, 0], [-8, 5, Math.tan(Math.PI / 8)], [-10, 3, 0], [-10, -3, Math.tan(Math.PI / 8)]].flatMap(([x, y, b]) => ['10', String(x), '20', String(y), '42', String(b)])]));
+    const area = (l) => Math.abs(l.reduce((sum, [x, y], i) => sum + x * l[(i + 1) % l.length][1] - l[(i + 1) % l.length][0] * y, 0) / 2);
+    assert.ok(Math.abs(area(rounded.loops[0]) - (20 * 10 - (4 - Math.PI) * 4)) < 0.03, `a 20 x 10 rectangle with corners of radius 2: ${area(rounded.loops[0])}`);
+    const dee = readDxf(dxf(['0', 'ARC', '10', '0', '20', '0', '40', '5', '50', '270', '51', '90', '0', 'LINE', '10', '0', '20', '5', '11', '0', '21', '-5'])); assert.ok(Math.abs(area(dee.loops[0]) - (Math.PI * 25) / 2) < 0.03, `a half disc from an arc and a line: ${area(dee.loops[0])}`);
+    assert.throws(() => readDxf(dxf(['0', 'SPLINE', '10', '0', '20', '0'])), /the DXF has a spline \(SPLINE\), which this does not read: export the section as lines, arcs and polylines/);
+    assert.throws(() => readDxf(dxf(['0', 'ELLIPSE', '10', '0', '20', '0'])), /an ellipse \(ELLIPSE\)/);
+    assert.throws(() => readDxf(dxf(['0', 'LINE', '10', '0', '20', '0', '11', '10', '21', '0', '0', 'LINE', '10', '10', '20', '0', '11', '10', '21', '10', '0', 'LINE', '10', '10', '20', '10', '11', '0', '21', '0.5'])), /the DXF's outline is not closed: a run of 3 lines and arcs ends 0\.5 mm from where it starts, at 0, 0\.5/);
+    assert.throws(() => readDxf(dxf(lines(loops[0]), 2)), /the DXF's units \(\$INSUNITS 2\) are not ones this reads/); assert.throws(() => readDxf('hello\nworld\n'), /not a DXF/);
+
+    // ---- a slot no family fits: drafted as a family of its own, which the profile names ----
+    const odd = profileModel('2020-misumi-hfs5', {}, { sets: { 'slot-6-misumi': { name: 'slot-6-misumi', part: 'slot', rules: Object.fromEntries(Object.entries({ opening: 7, lip_thickness: 2.5, cavity_width: 11.4, cavity_depth: 5.6, floor_width: 6.4, flank_angle: 45 }).map(([k, value]) => [k, { value }])) } } });
+    stl('odd.stl', outline(odd).loops, 60);
+    const drafted = cad('measure', 'odd.stl', '--profile', 'profile-2020-odd', '--no-pictures');
+    assert.match(drafted, /opening 7, lip 2\.5, 11\.4 under the lips, 5\.6 deep, floor 6\.4\d?\n {4}no slot family within 0\.1 mm \(nearest slot-[a-z0-9-]+, 0\.\d+ off\): drafted as slot-7-2020-odd/); assert.match(drafted, /draft slot: {4}rules\/slot-7-2020-odd\.json/);
+    const slot = read('rules/slot-7-2020-odd.json'); assert.equal(slot.part, 'slot'); assert.deepEqual([slot.rules.opening.value, slot.rules.lip_thickness.value, slot.rules.cavity_width.value, slot.rules.cavity_depth.value, slot.rules.opening.kind], [7, 2.5, 11.4, 5.6, 'derived']);
+    assert.ok(Math.abs(slot.rules.flank_angle.value - 45) < 1.5 && Math.abs(slot.rules.floor_width.value - 6.4) < 0.1); assert.equal(read('rules/profile-2020-odd.json').rules.slot.value, 'slot-7-2020-odd');
+    assert.match(cad('rules', 'check', 'profile-2020-odd', 'slot-7-2020-odd'), /^2 of 2 rule sets pass\n$/);
+    // a wider tolerance takes the nearest family where a person says that is near enough
+    assert.match(cad('measure', 'odd.stl', '--profile', 'profile-2020-near', '--no-pictures', '--tol', '1.2'), /matches slot-[a-z0-9-]+ within [01](\.\d+)? mm/);
+
+    // ---- a V-slot rail of two cells standing up: turned to lie flat, its track found; a plain tube has no slot at all ----
+    stl('v2040.stl', outline(profileModel('2040-openbuilds')).loops.map((l) => l.map(([x, y]) => [-y, x])), 70);
+    const v = cad('measure', 'v2040.stl', '--profile', 'profile-2040-v', '--no-pictures');
+    assert.match(v, /turned a quarter turn to lie flat\n {2}40 × 20 mm, 3 holes/); assert.match(v, /slot A × 6 \(top, bottom, front, back\): opening 6\.25, lip 1\.8\d?, 11 under the lips, 6\.1 deep, floor 5\.7\d?, V mouth 9\.15 at 9[01](\.\d+)?°\n {4}matches slot-6-openbuilds/);
+    assert.match(v, /2 bores Ø4\.2\d? at the cells' middles/); assert.match(v, /1 hollow: 12\.2 × 16\.4 \(in the outline, not in the rules\)/);
+    const vr = read('rules/profile-2040-v.json').rules; assert.deepEqual([vr.family.value, vr.cells_across.value, vr.cells_up.value, vr.series.value, vr.slot.value], ['v-slot', 2, 1, 20, 'slot-6-openbuilds']);
+    stl('tube.stl', outline(profileModel('tube', { width: 30, height: 20, wall: 2 })).loops, 50);
+    const tube = cad('measure', 'tube.stl', '--profile', 'profile-tube-measured', '--no-pictures'); assert.match(tube, /30 × 20 mm, 1 hole, area 184 mm²/); assert.match(tube, /no slot for a nut found: written as a custom profile/);
+    assert.equal(read('rules/profile-tube-measured.json').rules.family.value, 'custom'); assert.match(cad('rules', 'check', 'profile-tube-measured'), /^1 of 1 rule sets pass\n$/);
+    // refusals, by name
+    assert.match(cad('measure', 'hfs5.stl', '--profile', 'Profile 2020'), /--profile <name>: lower case, digits, - and _/);
+    assert.match(cad('measure', 'hfs5.stl', '--profile'), /--profile needs a value after it/);
+    assert.match(cad('measure', 'hfs5.stl', '--profile', 'x', '--tol', '0'), /--tol is how close a slot must be to a known family, in mm, above 0/);
+    fs.writeFileSync(path.join(ws, 'beam.step'), 'ISO-10303-21;'); assert.match(cad('measure', 'beam.step', '--profile', 'x'), /a profile is measured from an STL or 3MF model of the beam, or a DXF of its section \(not \.step\)/);
+    assert.equal(run('measure', 'nothing.stl', '--profile', 'x').status, 1);
+  } finally { done(); }
+});
+
 test('a pose that sets an item\'s variables: the part drawn that way in that pose, as printed in the others', () => {
   const { ws, cad, done } = workspace();
   try {

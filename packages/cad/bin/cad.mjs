@@ -99,6 +99,11 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     cross-section, and each section's shape, with a drawing in .preview/measure/
                                     [--along x|y|z] [--at 10,50: sections there too] [--line 0.6,2.5;4.6,2.5: where lines
                                     along it are inside] [--rules <name> --source <url> --licence "…": draft rules]
+  cad measure <beam.stl|3mf|section.dxf> --profile <name>   a beam's profile from a model of it, or a DXF of its
+                                    section: its outline to rules/outlines/<name>.json, its slots (opening, lip, width,
+                                    depth) and bores as a draft profile set, each slot matched to a known slot family or
+                                    drafted as a new one, and a drawing of what was found [--source <url> --licence "…"]
+                                    [--tol 0.1: how close a slot must be to a family, mm] [--along x|y|z] [--force]
   cad match <project>/<object> <model.stl|3mf>   how closely the design matches a model: both ways, signed, with the
                                     worst places and sections through them [--tol 0.2 (default: the printer's fit)]
                                     [--place "rz90 t1,2,3": how to lay the model over the design, else it is fitted]
@@ -121,7 +126,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
   'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
-  'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
+  'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate']; // cad add
@@ -429,7 +434,12 @@ async function main() {
   if (cmd === 'clone') return cloneBoard(ref, pos[2], { source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), noModels: !!opt('no-models') });
   if (cmd === 'status') return status(ref);
   if (cmd === 'measure') {
-    if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>]');
+    if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>], or cad measure <beam.stl|3mf|section.dxf> --profile <name>');
+    if (opt('profile')) {
+      const { measureProfile } = await import('../lib/profilemeasure.mjs');
+      return measureProfile(ref, { profile: opt('profile'), along: opt('along'), tol: opt('tol') && opt('tol') !== true ? opt('tol') : undefined, source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), pictures: !opt('no-pictures') });
+    }
+    if (/\.dxf$/i.test(ref)) throw new Error('a DXF is a drawing of a section, not a model: cad measure <section.dxf> --profile <name> reads a beam\'s profile from it');
     const list = (k) => (opt(k) && opt(k) !== true ? String(opt(k)).split(k === 'line' ? ';' : ',').filter(Boolean) : []);
     return measure(ref, { along: opt('along'), at: list('at'), line: list('line'), rules: opt('rules'), source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), pictures: !opt('no-pictures') });
   }
