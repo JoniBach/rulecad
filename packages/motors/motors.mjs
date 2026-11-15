@@ -15,10 +15,8 @@ import sg90 from '@rulecad/rules/sg90.json' with { type: 'json' };
 import mg90s from '@rulecad/rules/mg90s.json' with { type: 'json' };
 import bldc2204 from '@rulecad/rules/bldc2204.json' with { type: 'json' };
 import x1c from '@rulecad/rules/x1c.json' with { type: 'json' };
-import m1_6 from '@rulecad/rules/m1_6.json' with { type: 'json' };
-import m2 from '@rulecad/rules/m2.json' with { type: 'json' };
-import m3 from '@rulecad/rules/m3.json' with { type: 'json' };
-import m4 from '@rulecad/rules/m4.json' with { type: 'json' };
+import engagementSet from '@rulecad/rules/engagement.json' with { type: 'json' };
+import { fixingModel, threads, holeModel, hole, counterboreModel, counterbore } from '@rulecad/fixings';
 
 export { driver, setting, powerBudget, DRIVER_EFFICIENCY } from './drivers.mjs';
 
@@ -28,7 +26,6 @@ const { translate } = jscad.transforms;
 const booleans = { union: jscad.booleans.union, subtract: jscad.booleans.subtract };
 
 const CATALOGUE = Object.fromEntries([nema17, nema14, byj, n20, sg90, mg90s, bldc2204].map((s) => [s.name, s]));
-const SCREWS = { 'M1.6': m1_6, M2: m2, M3: m3, M4: m4 };
 const key = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 const ALIASES = { ...Object.fromEntries(Object.keys(CATALOGUE).map((n) => [key(n), n])), byj48: '28byj48', '28byj': '28byj48', mg90: 'mg90s', '2204': 'bldc2204', gimbal2204: 'bldc2204', n20gearmotor: 'n20' };
 for (const s of Object.values(CATALOGUE)) for (const v of Object.keys(s.variants || {})) ALIASES[key(v)] = s.name;
@@ -190,53 +187,87 @@ export function motorParts(m, ops = booleans) {
 
 // The printer's clearances, from its rule set, with a design's own printer laid over them
 function printerOf(p) { return { fit: p?.fit ?? x1c.rules.fit.value, holeComp: p?.hole_comp ?? x1c.rules.hole_comp.value, layer: p?.layer ?? x1c.rules.layer.value, line: p?.line ?? x1c.rules.line.value }; }
-function screwOf(thread) {
-  const set = SCREWS[thread];
-  return set ? { thread, clearance: set.rules.clearance.value, head: set.rules.head.value, headHeight: set.rules.head_height.value } : null;
+const an = (thread) => `${/^(M|8-)/.test(thread) ? 'an' : 'a'} ${thread}`;
+// The screw that holds a motor, from @rulecad/fixings: on the thread its holes are tapped (a stepper's face), else the
+// one asked for, else the size its plain holes take. A screw asked for by its whole name ('M3x8 cap') brings its length
+// and head; a thread alone ('M3') is a cap screw, its length worked out from the plate
+function screwOf(what, m, said) {
+  const h = m.mount, made = (name) => { try { return fixingModel(name, {}, { anyLength: true }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^fixingModel: /, '')}`); } };
+  if (said != null && (typeof said !== 'string' || !said.trim())) throw new Error(`${what}: screw is a screw's name ('M3', or 'M3x8 cap' with its length and head), not ${shown(said)}`);
+  const asked = said == null ? null : made(said);
+  if (asked && asked.item !== 'thread' && asked.item !== 'screw') throw new Error(`${what}: screw is a screw's name ('M3', or 'M3x8 cap' with its length and head), and "${said}" is ${asked.item === 'insert' ? 'an' : 'a'} ${asked.item}`);
+  const thread = h.thread ?? asked?.thread ?? (h.diameter >= 4 ? 'M4' : h.diameter >= 3 ? 'M3' : 'M2');
+  if (h.thread && asked && asked.thread !== h.thread) throw new Error(`${what}: ${m.name}'s holes are tapped ${h.thread} (${m.name}.mount_hole_thread), so ${an(asked.thread)} screw does not go in them: give ${h.thread}, or leave screw out`);
+  if (!threads().includes(thread)) throw new Error(`${what}: no screw "${thread}" (${threads().join(', ')})`);
+  return asked?.item === 'screw' ? asked : made(`${thread} cap`);
 }
+// The engagement rule a screw in a motor's tapped hole is held to: the least any metal is given, as the motor's own
+// thread is metal and its depth is the maker's
+const LEAST = engagementSet.rules.steel;
+// fixings' cutters start this far outside the face they enter by (its draw.mjs OUT), so a cut drawn from over the
+// face starts where the motor's own cutters always have
+const LIP = 0.1;
 
 /**
- * What a part needs to hold a motor, as numbers: the pocket, the holes, the screws. mount() cuts it.
+ * What a part needs to hold a motor, as numbers: the pocket, the holes, the screws. mount() cuts it. The screws are
+ * @rulecad/fixings' models, their holes and seats its clearance hole and counterbore. Where the motor's holes are
+ * tapped, the screw's engagement in them is checked (mount.engagement): the length past the plate, held to the
+ * motor's mount_hole_depth, against one screw diameter (engagement.steel, the least any metal is given).
  * @param {Motor} m
  * @param {{ plate: number, printer?: object, screw?: string, counterbore?: boolean, recess?: number }} p
- *   plate: the part's thickness at the mount (mm); printer: its fit, hole_comp, layer; screw: the screws going through
- *   a motor's plain holes (default the size they take); counterbore: sink the screw heads; recess: let the body into
- *   the part this far as well
- * @returns {{ plate: number, side: 1 | -1, pocket: number, pocketDepth: number, shaftHole: number, holes: { at: number[], diameter: number }[], screw: object | null, screwLength: number | null, head: number | null, recess: number, findings: object[] }}
- *   side: which side of the mounting face the plate is on, +1 above it (a motor's face against the part), -1 below it (a servo through it)
+ *   plate: the part's thickness at the mount (mm); printer: its fit, hole_comp, layer; screw: the screws, by a fixing's
+ *   name: a thread ('M3', for a motor's plain holes; the size they take if not said) or a whole screw with its length
+ *   and head ('M3x8 cap'), whose length is then checked rather than worked out; counterbore: sink the screw heads;
+ *   recess: let the body into the part this far as well
+ * @returns {{ plate: number, side: 1 | -1, pocket: number, pocketDepth: number, shaftHole: number, holes: { at: number[], diameter: number }[], screw: { thread: string, name: string, clearance: number, head: number, headHeight: number, model: object }, screwLength: number, head: number | null, recess: number, engaged: number | null, printer: object, findings: object[] }}
+ *   side: which side of the mounting face the plate is on, +1 above it (a motor's face against the part), -1 below it
+ *   (a servo through it); screw.model: the fixing (fixingModel); engaged: the thread engaged in the motor (mm), where its holes are tapped
  */
 export function mountModel(m, p) {
   const what = 'mount';
   isModel(what, m);
   if (!p || typeof p !== 'object') throw new Error(`${what}: give the part's { plate } (its thickness at the mount, mm), not ${shown(p)}`);
-  const plate = positive(what, 'plate', p.plate), pr = printerOf(p.printer), { mount: h, boss, shaft } = m, out = [], f = (level, text, code) => out.push({ level, text, code });
-  const thread = h.thread ?? p.screw ?? (h.diameter >= 4 ? 'M4' : h.diameter >= 3 ? 'M3' : 'M2'), screw = screwOf(thread);
-  if (!screw) throw new Error(`${what}: no screw "${thread}" (${Object.keys(SCREWS).join(', ')})`);
+  const plate = positive(what, 'plate', p.plate), pr = printerOf(p.printer), { mount: h, boss, shaft } = m, out = [], f = (level, text, code, extra = {}) => out.push({ level, text, code, ...extra });
+  const fx = screwOf(what, m, p.screw), thread = fx.thread, d = fx.major, values = { fit: pr.fit, hole_comp: pr.holeComp, layer: pr.layer };
+  const clear = holeModel(fx, { kind: 'clearance', printer: values }), seat = p.counterbore ? counterboreModel(fx, { printer: values }) : null;
+  const screw = { thread, name: fx.name, clearance: clear.nominal, head: fx.head.across, headHeight: fx.head.height, model: fx };
   const pocket = boss.diameter ? boss.diameter + 2 * pr.fit + pr.holeComp : 0, pocketDepth = boss.height ? boss.height + 2 * pr.layer : 0;
   const shaftHole = shaft.diameter + 2 * pr.fit + pr.holeComp + 0.4;
-  const plain = !h.thread; // holes the screw only passes through, tapped by the screw or nutted
-  const holeD = m.type === 'servo' ? h.diameter - 0.4 + pr.holeComp : screw.clearance + pr.holeComp;
-  const head = p.counterbore ? screw.head + 2 * pr.fit + pr.holeComp : null;
+  const holeD = m.type === 'servo' ? h.diameter - 0.4 + pr.holeComp : clear.diameter;
+  const head = seat ? seat.diameter : null;
   if (pocketDepth >= plate && m.mount.side === 1) f('fail', `the plate is ${plate} mm thick and the boss's pocket ${pocketDepth} mm deep: it needs to be thicker than that, or it's only a hole`, 'mount.plate');
   const thickest = h.thread ? h.depth : 0;
-  // a screw's length: through the plate, into the thread, its head sunk or not
+  // a screw's length: through the plate, into the thread, its head sunk or not; or the one asked for
   const under = plate - (p.counterbore ? screw.headHeight : 0);
-  const screwLength = h.thread ? Math.floor(under + Math.min(thickest, 2.5 * parseFloat(thread.slice(1)))) : Math.ceil(plate + (h.earThickness || h.tabThickness) + 2);
+  const screwLength = fx.length ?? (h.thread ? Math.floor(under + Math.min(thickest, 2.5 * d)) : Math.ceil(plate + (h.earThickness || h.tabThickness) + 2));
   if (m.mount.side === 1 && h.thread && under + thickest < screwLength) f('warn', `an ${thread} × ${screwLength} would bottom out in the motor's ${thickest} mm of thread`, 'mount.screw');
-  if (plate < 1.5 * parseFloat(thread.slice(1))) f('warn', `a ${plate} mm plate is thin for ${thread} screws: at least ${1.5 * parseFloat(thread.slice(1))} mm, or the head pulls through`, 'mount.plate');
-  return { plate, side: h.side, pocket: r3(pocket), pocketDepth: r3(pocketDepth), shaftHole: r3(shaftHole), holes: h.holes.map((at) => ({ at, diameter: r3(holeD) })), screw, screwLength, head, recess: p.recess ?? 0, printer: pr, findings: out };
+  if (plate < 1.5 * d) f('warn', `a ${plate} mm plate is thin for ${thread} screws: at least ${1.5 * d} mm, or the head pulls through`, 'mount.plate');
+  // the screw's thread in the motor's: what passes the plate, up to the depth the motor is tapped
+  let engaged = null;
+  if (m.mount.side === 1 && h.thread && thickest > 0) {
+    engaged = +Math.max(0, Math.min(screwLength - under, thickest)).toFixed(3);
+    const least = +(LEAST.value * d).toFixed(3), n = h.holes.length, name = `${thread}x${+screwLength.toFixed(3)} ${fx.head.form}`, depthRule = `${m.name}.mount_hole_depth`;
+    const lengths = fx.figures.lengths?.value ?? [], fits = [...lengths].reverse().find((L) => L - under <= thickest + 1e-9 && L - under >= least - 1e-9);
+    const dia = (x) => `${+x.toFixed(2)} diameter${+x.toFixed(2) === 1 ? '' : 's'}`, An = an(thread).replace(/^a/, 'A'), fix = fits ? ` ${An}x${fits} ${fx.head.form} would engage ${+(fits - under).toFixed(3)} mm` : ` No length sold reaches ${least} mm of thread and stops short of the motor's ${thickest} mm: a ${p.counterbore ? 'deeper counterbore' : 'counterbore'} or a thinner plate at the screws`;
+    const said = `${n} ${name} screw${n > 1 ? 's' : ''} through ${+under.toFixed(3)} mm of plate`, vals = { values: { engaged, depth: thickest, least, length: screwLength, under: +under.toFixed(3), count: n }, refs: { screw: name, rule: depthRule, least: 'engagement.steel', kind: LEAST.kind } };
+    if (screwLength - under <= 1e-9) f('fail', `${said} do not reach the motor's thread: ${name} ends ${under - screwLength > 1e-9 ? `${+(under - screwLength).toFixed(3)} mm short of` : 'at'} its face.${fix}`, 'mount.engagement', vals);
+    else if (engaged < least - 1e-9) f('fail', `${said} engage ${engaged} mm of the motor's ${thickest} mm of ${thread} thread (${depthRule}), ${dia(engaged / d)}: less than the ${least} mm (engagement.steel, ${LEAST.value} diameter, the least any metal is given), so the thread strips before the screw holds.${fix}`, 'mount.engagement', vals);
+    else f('pass', `${said} engage ${engaged} mm of the motor's ${thickest} mm of ${thread} thread (${depthRule}), ${dia(engaged / d)}, at least the ${least} mm engagement.steel gives any metal`, 'mount.engagement', vals);
+  }
+  return { plate, side: h.side, pocket: r3(pocket), pocketDepth: r3(pocketDepth), shaftHole: r3(shaftHole), holes: h.holes.map((at) => ({ at, diameter: r3(holeD) })), screw, screwLength, head, recess: p.recess ?? 0, engaged, printer: pr, findings: out };
 }
 
 /**
  * The negative a part subtracts to hold a motor. For most motors the plate sits on the mounting face, on the shaft's
  * side (z from 0 to plate); a servo's plate is under its tabs, with the body through a slot (z from -plate to 0). The
- * part goes where the motor's mounting face is.
+ * part goes where the motor's mounting face is. The screws' holes and their counterbores are @rulecad/fixings' hole
+ * and counterbore; a servo's pilots are sized from its tabs' own holes.
  * @param {Motor} m @param {{ plate: number, printer?: object, screw?: string, counterbore?: boolean, recess?: number }} p as mountModel
  * @param {{ union: Function, subtract: Function }} [ops] the design's v.ops
  * @returns {object} a JSCAD solid to subtract
  */
 export function mount(m, p, ops = booleans) {
-  const g = mountModel(m, p), { plate, pocket, pocketDepth, shaftHole, holes, recess, printer: pr } = g, { body, mount: h } = m, [cx, cy] = body.centre, cuts = [], over = 0.5;
+  const g = mountModel(m, p), { plate, pocket, pocketDepth, shaftHole, holes, recess, printer: pr } = g, { body } = m, [cx, cy] = body.centre, cuts = [], over = 0.5;
   if (m.type === 'servo') {
     // the body through a slot, with the fit all round; the screws' pilot holes in the plate
     cuts.push(box(cx - body.width / 2 - pr.fit, cx + body.width / 2 + pr.fit, cy - body.depth / 2 - pr.fit, cy + body.depth / 2 + pr.fit, -plate - over, over));
@@ -245,9 +276,11 @@ export function mount(m, p, ops = booleans) {
   }
   if (pocket && pocketDepth) cuts.push(disc(pocket, -over, pocketDepth));
   cuts.push(disc(shaftHole, -over, plate + over));
+  // each screw's hole down through the plate, from over its top face to under the motor's, its head's seat at the top
+  const values = { fit: pr.fit, hole_comp: pr.holeComp, layer: pr.layer }, top = plate + over - LIP, length = plate + 2 * (over - LIP), fx = g.screw.model;
   for (const x of holes) {
-    cuts.push(disc(x.diameter, -over, plate + over, x.at));
-    if (g.head) cuts.push(disc(g.head, plate - g.screw.headHeight, plate + over, x.at));
+    const at = [x.at[0], x.at[1], top];
+    cuts.push(g.head ? counterbore(fx, { printer: values, at, depth: g.screw.headHeight + over - LIP, length, into: '-z' }) : hole(fx, { kind: 'clearance', printer: values, at, depth: length, into: '-z' }));
   }
   if (recess) {
     if (body.shape === 'round') cuts.push(disc(body.width + 2 * pr.fit + pr.holeComp, -recess - over, 0, [cx, cy]));

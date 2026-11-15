@@ -1429,6 +1429,17 @@ test('a motor\'s mount bent by FE: a NEMA 17 on a 2 mm PLA plate fails on deflec
     const ok = findings('thick').find((x) => x.code === 'motor.mount' && x.values?.deflection != null);
     assert.equal(ok.level, 'pass', ok.text);
     assert.ok(ok.values.deflection < bent.values.deflection / 5 && ok.values.margin >= 2 && ok.values.stress > 0, JSON.stringify(ok.values));
+    // the screws' engagement in the motor's tapped holes, for the screws as bought; in the order, counted, with the key that turns them
+    const engaged = (a) => findings(a).filter((x) => x.code === 'motor.mount' && x.values?.engaged != null);
+    const fine = engaged('thick'); assert.equal(fine.length, 1); assert.equal(fine[0].level, 'pass', fine[0].text);
+    assert.match(fine[0].text, /^m on plate: 4 M3x10 cap screws through 6 mm of plate engage 4 mm of the motor's 4\.5 mm of M3 thread \(nema17\.mount_hole_depth\)/);
+    assert.match(cad('order', 'home/thin'), /m to plate \(4 × M3x6 cap\) with a 2\.5 mm hex key/);
+    // "screw": "M3x6" on the motor item: through 6 mm of plate it does not reach the motor's thread, and fails by name
+    const short = JSON.parse(fs.readFileSync(path.join(ws, 'projects/home/assemblies/thick.json'), 'utf8'));
+    short.items.find((x) => x.id === 'm').motor.screw = 'M3x6'; write('projects/home/assemblies/short.json', short);
+    const bad = engaged('short'); assert.equal(bad.length, 1); assert.equal(bad[0].level, 'fail');
+    assert.match(bad[0].text, /^m on plate: 4 M3x6 cap screws through 6 mm of plate do not reach the motor's thread: M3x6 cap ends at its face\. An M3x10 cap would engage 4 mm/);
+    assert.match(cad('list', 'home/short'), /4 ×\s+M3x6 cap/, 'the screw the item names is the one listed');
   } finally { done(); }
 });
 

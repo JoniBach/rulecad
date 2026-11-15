@@ -581,7 +581,11 @@ export function fastenOf(s, worlds, opts = {}) {
       }
 
       // fasten.engagement: thread engaged at the far end, against the rule for what it is in
-      if (end.motor && form !== 'set') { const e = Math.max(0, Math.min(inEnd, end.depth)); say('fasten.engagement', 'pass', `${mm(e)} mm of ${x.into}'s own thread, ${mm(+(e / fx.pitch).toFixed(1))} turns of its ${mm(end.depth)} mm: a bought part's thread, held to its depth and to no engagement rule`, { engaged: r3(e), depth: end.depth, turns: +(e / fx.pitch).toFixed(1) }); }
+      if (end.motor && form !== 'set') { // a bought part's thread: held to its depth, and to the least engagement any metal is given (engagement.steel), as motor.mount is
+        const e = Math.max(0, Math.min(inEnd, end.depth)), least = r3(F.engagement(fx, { depth: 1, material: 'steel' }).need), turns = +(e / fx.pitch).toFixed(1), values = { engaged: r3(e), depth: end.depth, turns, least };
+        if (e >= least - EPS) say('fasten.engagement', 'pass', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: a bought part's thread, held to its depth and to the ${mm(least)} mm engagement.steel gives any metal`, values);
+        else say('fasten.engagement', 'fail', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: less than the ${mm(least)} mm engagement.steel gives any metal, so the thread strips before the screw holds. A longer screw, or a counterbore to sink its head`, values);
+      }
       else if (end.kind && need != null && form !== 'set') {
         const engaged = Math.max(0, Math.min(inEnd, avail)), ok = engaged >= need - EPS, values = { engaged: r3(engaged), need: r3(need), turns: +(engaged / fx.pitch).toFixed(1) };
         const what2 = end.kind === 'nut' ? `its ${end.nut.model.name}, ${mm(avail)} mm high` : end.kind === 'insert' ? `the insert, ${mm(avail)} mm long` : `${intoMat.name ? `${intoMat.name}${intoMat.cls && intoMat.known ? ` (a${intoMat.cls === 'aluminium' ? 'n' : ''} ${intoMat.cls})` : ''}` : end.kind === 'pilot' ? 'plastic' : x.into}`;

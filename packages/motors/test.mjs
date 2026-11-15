@@ -69,6 +69,80 @@ test('a servo goes through a slot, its tabs on the plate; a recess takes the bod
   near(size(deep)[0], 42.3 + 2 * 0.2, 1e-6, 'with the fit round the body');
 });
 
+test('the mount cuts through @rulecad/fixings the solid it always cut: volume and bounds for every motor in the catalogue', () => {
+  // Recorded from mount() before its holes and counterbores came from @rulecad/fixings (fixings-3 at 3aff0d8, rules 0.3.13):
+  // [motor and case, volume mm³, bounds' low corner, high corner]
+  const cases = { 'plate 5': { plate: 5 }, 'plate 6 counterbore': { plate: 6, counterbore: true }, 'plate 4 recess 10': { plate: 4, recess: 10 },
+    'plate 8 counterbore, printer': { plate: 8, counterbore: true, printer: { fit: 0.15, hole_comp: 0.2, layer: 0.28 } }, 'plate 3 M2': { plate: 3, screw: 'M2' } };
+  const before = [
+    ["nema17 plate 5", 1464.5321, [-17.25,-17.25,-0.5], [17.25,17.25,5.5]],
+    ["nema17 plate 6 counterbore", 1790.5682, [-18.5,-18.5,-0.5], [18.5,18.5,6.5]],
+    ["nema17 plate 4 recess 10", 21669.1767, [-21.35,-29.15,-10.5], [21.35,21.35,4.5]],
+    ["nema17 plate 8 counterbore, printer", 1993.1478, [-18.5,-18.5,-0.5], [18.5,18.5,8.5]],
+    ["nema14 plate 5", 1464.5321, [-14.75,-14.75,-0.5], [14.75,14.75,5.5]],
+    ["nema14 plate 6 counterbore", 1790.5682, [-16,-16,-0.5], [16,16,6.5]],
+    ["nema14 plate 4 recess 10", 15831.9117, [-17.8,-25.6,-10.5], [17.8,17.8,4.5]],
+    ["nema14 plate 8 counterbore, printer", 1993.1478, [-16,-16,-0.5], [16,16,8.5]],
+    ["28byj48 plate 5", 466.6332, [-19.8,-10.3,-0.5], [19.8,4.75,5.5]],
+    ["28byj48 plate 6 counterbore", 774.367, [-21.25,-11.75,-0.5], [21.25,4.75,6.5]],
+    ["28byj48 plate 4 recess 10", 7594.9847, [-19.8,-25,-10.5], [19.8,6.25,4.5]],
+    ["28byj48 plate 8 counterbore, printer", 908.6788, [-21.25,-11.75,-0.5], [21.25,4.75,8.5]],
+    ["28byj48 plate 3 M2", 252.4084, [-18.75,-9.25,-0.5], [18.75,4.75,3.5]],
+    ["n20 plate 5", 111.7127, [-5.45,-2.25,-0.5], [5.45,2.25,5.5]],
+    ["n20 plate 6 counterbore", 157.6981, [-6.25,-2.25,-0.5], [6.25,2.25,6.5]],
+    ["n20 plate 4 recess 10", 2289.2298, [-6.2,-13,-10.5], [6.2,5.2,4.5]],
+    ["n20 plate 8 counterbore, printer", 197.677, [-6.25,-2.25,-0.5], [6.25,2.25,8.5]],
+    ["sg90 plate 5", 1773.5199, [-19.95,-6.3,-5.5], [9.25,6.3,0.5]],
+    ["sg90 plate 6 counterbore", 2069.1065, [-19.95,-6.3,-6.5], [9.25,6.3,0.5]],
+    ["sg90 plate 4 recess 10", 1477.9332, [-19.95,-6.3,-4.5], [9.25,6.3,0.5]],
+    ["sg90 plate 8 counterbore, printer", 2633.1737, [-20,-6.25,-8.5], [9.3,6.25,0.5]],
+    ["sg90 plate 3 M2", 1182.3466, [-19.95,-6.3,-3.5], [9.25,6.3,0.5]],
+    ["mg90s plate 5", 1730.9199, [-19.85,-6.2,-5.5], [9.35,6.2,0.5]],
+    ["mg90s plate 6 counterbore", 2019.4065, [-19.85,-6.2,-6.5], [9.35,6.2,0.5]],
+    ["mg90s plate 4 recess 10", 1442.4332, [-19.85,-6.2,-4.5], [9.35,6.2,0.5]],
+    ["mg90s plate 8 counterbore, printer", 2569.6337, [-19.9,-6.15,-8.5], [9.4,6.15,0.5]],
+    ["mg90s plate 3 M2", 1153.9466, [-19.85,-6.2,-3.5], [9.35,6.2,0.5]],
+    ["bldc2204 plate 5", 204.357, [-7.25,-7.25,-0.5], [7.25,7.25,5.5]],
+    ["bldc2204 plate 6 counterbore", 334.275, [-8.15,-8.15,-0.5], [8.15,8.15,6.5]],
+    ["bldc2204 plate 4 recess 10", 7292.7972, [-14.175,-21.925,-10.5], [14.175,14.175,4.5]],
+    ["bldc2204 plate 8 counterbore, printer", 412.7786, [-8.15,-8.15,-0.5], [8.15,8.15,8.5]],
+    ["bldc2204 plate 3 M2", 136.238, [-7.25,-7.25,-0.5], [7.25,7.25,3.5]]
+  ];
+  for (const [k, volume, lo, hi] of before) {
+    const [n, ...rest] = k.split(' '), g = mount(motorModel(n), cases[rest.join(' ')]), [a, b] = bb(g);
+    near(vol(g), volume, 1e-3, `${k}: volume`);
+    for (let i = 0; i < 3; i++) { near(a[i], lo[i], 1e-4, `${k}: low corner`); near(b[i], hi[i], 1e-4, `${k}: high corner`); }
+  }
+  assert.equal(new Set(before.map(([k]) => k.split(' ')[0])).size, motors().length, 'every motor in the catalogue');
+  // the screw is fixings' model, its hole fixings' clearance hole
+  const g = mountModel(motorModel('nema17'), { plate: 5, counterbore: true });
+  assert.equal(g.screw.model.kind, 'fixing'); assert.equal(g.screw.name, 'M3 cap'); assert.equal(g.screw.clearance, 3.4); assert.equal(g.holes[0].diameter, 3.5); assert.equal(g.head, 6);
+});
+
+test('a screw\'s engagement in the motor\'s tapped holes: an M3x6 through 6 mm into a NEMA 17 fails, the length worked out passes, a thread its holes do not take is refused', () => {
+  const n17 = motorModel('nema17'), eng = (p, m = n17) => mountModel(m, p).findings.filter((f) => f.code === 'mount.engagement');
+  const short = eng({ plate: 6, screw: 'M3x6' });
+  assert.equal(short.length, 1); assert.equal(short[0].level, 'fail');
+  assert.equal(short[0].text, '4 M3x6 cap screws through 6 mm of plate do not reach the motor\'s thread: M3x6 cap ends at its face. An M3x10 cap would engage 4 mm');
+  assert.deepEqual(short[0].values, { engaged: 0, depth: 4.5, least: 3, length: 6, under: 6, count: 4 });
+  // 2 mm in: short of a diameter
+  const two = eng({ plate: 6, screw: 'M3x8' })[0];
+  assert.equal(two.level, 'fail'); assert.match(two.text, /engage 2 mm of the motor's 4\.5 mm of M3 thread \(nema17\.mount_hole_depth\), 0\.67 diameters: less than the 3 mm \(engagement\.steel/);
+  // the length mountModel works out, and a counterbore that lets a shorter screw reach
+  const own = eng({ plate: 5 })[0]; assert.equal(own.level, 'pass'); assert.match(own.text, /^4 M3x9 cap screws through 5 mm of plate engage 4 mm of the motor's 4\.5 mm of M3 thread/);
+  assert.equal(eng({ plate: 6, screw: 'M3x6', counterbore: true })[0].level, 'pass', '3 mm of plate under a sunk head');
+  assert.equal(mountModel(n17, { plate: 5 }).engaged, 4);
+  // a motor whose holes are plain, and a servo: nothing to engage in the motor
+  assert.deepEqual(eng({ plate: 5, screw: 'M3' }, motorModel('28byj48')), []); assert.deepEqual(eng({ plate: 3 }, motorModel('sg90')), []);
+  // "M3" keeps working, a whole screw's name too; the wrong thread and something that is not a screw are refused by name
+  assert.equal(mountModel(n17, { plate: 5, screw: 'M3' }).screwLength, 9); assert.equal(mountModel(n17, { plate: 5, screw: 'M3x8 button' }).screw.model.head.form, 'button');
+  assert.throws(() => mountModel(n17, { plate: 5, screw: 'M4' }), /nema17's holes are tapped M3 \(nema17\.mount_hole_thread\), so an M4 screw does not go in them/);
+  assert.throws(() => mountModel(n17, { plate: 5, screw: 'M3 hex nut' }), /screw is a screw's name .* "M3 hex nut" is a nut/);
+  assert.throws(() => mountModel(n17, { plate: 5, screw: 3 }), /screw is a screw's name/);
+  assert.throws(() => mountModel(motorModel('28byj48'), { plate: 5, screw: 'M7' }), /no thread "M7"/);
+});
+
+
 test('the D-bore takes its shaft, and the flat turns the part: round where the round of the shaft passes', () => {
   for (const n of ['nema17', '28byj48', 'n20']) {
     const m = motorModel(n), depth = Math.min(m.shaft.length, m.shaft.flatLength), hole = bore(m, { depth });

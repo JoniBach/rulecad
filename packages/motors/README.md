@@ -66,9 +66,24 @@ package's `vocabulary.json`), handed in where the name goes.
 ## Holding a motor
 
 `mount(model, { plate, printer?, screw?, counterbore?, recess? }, ops?)` is the negative a part subtracts; `mountModel`
-gives the same as numbers, with what's wrong (a plate too thin for its screws, a boss pocket as deep as the plate).
-Clearances come from the printer's rules (`fit`, `hole_comp`), and screw sizes from the screw rule sets, so a printer
-of your own or a screw you've measured carries through.
+gives the same as numbers, with what's wrong (a plate too thin for its screws, a boss pocket as deep as the plate, a
+screw that does not hold in the motor's thread). Clearances come from the printer's rules (`fit`, `hole_comp`). The
+screws are `@rulecad/fixings` models (`fixingModel`), and their holes and counterbores are its `hole` (a clearance hole)
+and `counterbore`, so a printer of your own or a screw you've measured carries through.
+
+`screw` is a fixing's name: a thread (`'M3'`), whose length is worked out from the plate, or a whole screw
+(`'M3x8 cap'`), whose length is checked as it is. Where the motor's holes are tapped, the screw is on their thread
+(`mount_hole_thread`), and a screw of another thread is refused by name. Its engagement is checked as
+`mount.engagement`:
+
+| What | Formula | Source |
+|---|---|---|
+| Length worked out | L = floor(t + min(d_tap, 2.5 d)), t the plate under the head (less the head's height where it is counterbored) | Into the motor's thread as far as it goes, up to 2.5 diameters |
+| Thread engaged | e = min(L - t, d_tap), d_tap the motor's `mount_hole_depth` | The screw's length past the plate, held to the depth the maker tapped |
+| Fails | e < 1 × d | `engagement.steel` in `@rulecad/rules`: about one diameter is the least any metal is given (Nord-Lock, Bossard); a motor's face is metal, and its maker's depth is all there is |
+
+So an M3x6 through a 6 mm plate into a NEMA 17 fails (it ends at the motor's face), and the M3x9 worked out for a
+5 mm plate passes, with 4 mm of the motor's 4.5 mm of thread.
 
 Where the part goes: on the shaft's side of the mounting face, z from 0 to `plate`, so the boss enters a pocket and the
 shaft passes through. A servo goes through the part instead: its body down a slot, its tabs on top, z from `-plate` to 0.

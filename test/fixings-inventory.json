@@ -60,18 +60,12 @@
       "reads": 8,
       "typed": 0,
       "table": 0
-    },
-    "packages/motors": {
-      "named": 0,
-      "reads": 0,
-      "typed": 0,
-      "table": 4
     }
   },
   "total": {
     "named": 184,
     "reads": 61,
     "typed": 10,
-    "table": 4
+    "table": 0
   }
 }
