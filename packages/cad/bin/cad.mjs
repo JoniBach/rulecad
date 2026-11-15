@@ -91,7 +91,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
   cad order <project>/<assembly>    the order it goes together in, each step with its fasteners [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
-  cad list <project>/<assembly>     what it takes to build: bought parts by set, fasteners, wire, printed parts in grams
+  cad list <project>/<assembly>     what it takes to build: bought parts by set, every screw, nut and insert in packs, wire, printed parts in grams
   cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends, written to exports/ [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted

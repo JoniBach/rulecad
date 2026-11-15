@@ -224,15 +224,48 @@ export function motorChecks(s, f, helpers, materialName) {
 
 // The part a motor is fastened to, under the motor's full torque as a reaction at its screws: how thick it is at the
 // holes (read from the part as drawn), the screws' bearing on the plastic, and how far the whole part bends (mountBends).
-function mountCheck(s, d, f, W, avail, materialName, frame) {
+// The part a motor is fastened to, read at its screw holes in the motor's frame: the thinnest wall at a hole (t) and the
+// plate round them (plate), or null where no fit that fastens names the motor
+function mountPlate(s, d, W) {
   const m = d.model, top = (n) => String(n).split(/[.@]/)[0], fit = s.fits.find((x) => x.fastens && [top(x.a), top(x.b)].includes(d.id));
-  if (!fit || !m.mount.holes.length) return;
-  const other = top(fit.a) === d.id ? top(fit.b) : top(fit.a), parts = s.parts.filter((p) => p.item === other || p.leaf === other);
-  if (!parts.length) return;
+  if (!fit || !m.mount.holes.length) return null;
+  const other = top(fit.a) === d.id ? top(fit.b) : top(fit.a), parts = s.parts.filter((p) => !p.hardware && (p.item === other || p.leaf === other));
+  if (!parts.length) return null;
   const inv = (p) => { const q = [p[0] - W[3], p[1] - W[7], p[2] - W[11]]; return [W[0] * q[0] + W[4] * q[1] + W[8] * q[2], W[1] * q[0] + W[5] * q[1] + W[9] * q[2], W[2] * q[0] + W[6] * q[1] + W[10] * q[2]]; };
   const pts = parts.flatMap((p) => p.triangles.flat().map(inv)), side = m.mount.side, nominal = mountModel(m, { plate: 10 }), hd = nominal.holes[0].diameter;
   let t = Infinity, plate = 0; // the shortest wall a hole has, and the plate round it (more, if the screw's head is sunk)
   for (const [hx, hy] of m.mount.holes) for (const p of pts) { const r = Math.hypot(p[0] - hx, p[1] - hy), z = p[2] * side; if (r < hd / 2 + 2 && z > 0.5) { t = Math.min(t, z); plate = Math.max(plate, z); } }
+  return { fit, other, parts, inv, t, plate, hd };
+}
+
+/**
+ * The screws that hold each motor to the part it is fastened to by a fit with "fastens" (a motor named in a "fasten"
+ * has its screws counted there): as many as its mounting holes, the length mountModel works out for the plate as drawn,
+ * taken to a length sold (the longest that does not pass it into the motor's own thread; through plain holes, the shortest that reaches).
+ * @param {object} s a built assembly @param {{ placeItems: Function, jointValues: Function }} helpers
+ * @returns {{ item: string, other: string, thread: string, length: number, wanted: number, count: number }[]}
+ */
+export function motorScrews(s, { placeItems, jointValues }) {
+  const drives = s.motion?.drives || [], top = (n) => String(n).split(/[.@]/)[0];
+  if (!drives.length) return [];
+  const named = new Set((s.a.fasten || []).flatMap((x) => [...(x.through || []), x.into].map(top)));
+  const worlds = placeItems(s.motion, s.jointValues ?? jointValues(s.motion, s.motion.pose ?? undefined)), out = [];
+  for (const d of drives) {
+    if (named.has(d.id)) continue;
+    const p = mountPlate(s, d, worlds[d.item]); if (!p || p.t === Infinity) continue;
+    const here = mountModel(d.model, { plate: +p.plate.toFixed(2), ...(d.spec.screw ? { screw: d.spec.screw } : {}) }), thread = here.screw?.thread, L = here.screwLength;
+    if (!thread || !(L > 0)) continue;
+    let sold = null; try { sold = peekRuleSet(thread.toLowerCase().replace('.', '_')).rules.lengths?.value ?? null; } catch {}
+    const length = !sold ? L : d.model.mount.thread ? [...sold].reverse().find((l) => l <= L) ?? sold[0] : sold.find((l) => l >= L) ?? sold.at(-1);
+    out.push({ item: d.id, other: p.other, thread, length, wanted: L, count: d.model.mount.holes.length });
+  }
+  return out;
+}
+
+function mountCheck(s, d, f, W, avail, materialName, frame) {
+  const m = d.model, at = mountPlate(s, d, W);
+  if (!at) return;
+  const { other, parts, inv, t, plate, hd } = at;
   if (t === Infinity) return f('warn', `${d.id}: couldn't find the plate at its screw holes in ${other}`, `${d.id}: mount not found`, { code: 'motor.mount' });
   const here = mountModel(m, { plate: +plate.toFixed(2), ...(d.spec.screw ? { screw: d.spec.screw } : {}) }), mat = material(materialName) || material('pla'), radius = Math.max(...m.mount.holes.map(([x, y]) => Math.hypot(x, y))), each = avail / (m.mount.holes.length * radius / 1000), bearing = each / (hd * t), margin = mat.strength / bearing;
   for (const x of here.findings) f(x.level, `${d.id} on ${other}: ${x.text}`, x.level === 'pass' ? null : `${d.id}: ${x.code.split('.')[1]}`, { code: 'motor.mount' });

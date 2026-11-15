@@ -371,6 +371,15 @@ part they sit in through every pose, and carried in links. `cad list` counts the
 step. A `fasten` holds its parts as a fit with `"fastens": true` does and lines their holes up as a holes fit does;
 both older forms still work, and an assembly with no `fasten` checks as before.
 
+`cad list` counts every fixing (`fasten.count`): each screw, nut, washer and insert a `fasten` placed (a component's
+too), a motor's mounting screws where a fit that `fastens` holds it (as many as its holes, at the length its mount
+works out for the plate as drawn, taken to a length sold), and a fit that names its `fastener` by hand. They are
+summed by name, which is the thread, length and head (`12 × M3x8 cap`), each with its mass (an estimate from its
+outline, from `@rulecad/fixings`) and the line's, and rounded up to whole packs of `packs.pack` (10, an estimate:
+set your own in `rules/packs.json`) with the spares said. `--json` gives each line as `{ fastener, qty, kind,
+thread, length, head, grams, mass, packs, buy, spare, from }`, the totals add `fixingsGrams` to the machine's mass,
+and the build page's list shows the same.
+
 ### Joints and poses
 
 Things that move (a lid, a hinged screen, a drawer, a ball head) are one assembly with joints, not one assembly per

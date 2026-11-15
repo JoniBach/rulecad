@@ -742,10 +742,10 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
   else if (L) {
     const kids = [];
     if (L.bought?.length) kids.push(el('h3', null, 'Bought'), table(['Qty', 'Part', 'What', 'Items'], L.bought.map((x) => [x.qty, `${x.set}${x.variant ? ` (${x.variant})` : ''}`, x.part, x.items.join(', ')])));
-    if (L.fasteners?.length) kids.push(el('h3', null, 'Fasteners'), table(['Qty', 'Fastener', 'Where'], L.fasteners.map((x) => [x.qty, x.fastener, x.from.join('; ')])));
+    if (L.fasteners?.length) kids.push(el('h3', null, 'Fasteners'), table(['Qty', 'Fastener', 'Grams', 'Buy', 'Where'], L.fasteners.map((x) => [x.qty, x.fastener, x.mass ?? '', x.packs ? `${x.packs} × ${L.totals.pack.size}, ${x.spare} spare` : '', x.from.join('; ')])));
     if (L.wires?.length) kids.push(el('h3', null, 'Wire'), table(['mm', 'Gauge', 'Runs'], L.wires.map((x) => [x.length, x.gauge ?? 'not given', x.runs.join(', ')])));
     if (L.printed?.length) kids.push(el('h3', null, `Printed (${L.totals.material})`), table(['Grams', 'Minutes', 'Part'], L.printed.map((x) => [x.grams, x.minutes, x.id])));
-    kids.push(el('p', null, `${L.totals.printedGrams} g printed, about ${L.totals.minutes} min of printing, ${L.totals.machineGrams} g as a machine${L.totals.noMassFor ? ` (no mass for ${L.totals.noMassFor.join(', ')})` : ''}.`));
+    kids.push(el('p', null, `${L.totals.printedGrams} g printed, about ${L.totals.minutes} min of printing, ${L.totals.fixingsGrams ? `${L.totals.fixingsGrams} g of fixings, ` : ''}${L.totals.machineGrams} g as a machine${L.totals.noMassFor ? ` (no mass for ${L.totals.noMassFor.join(', ')})` : ''}.`));
     parts.push(section('What to buy', ...kids));
   }
   // Plates

@@ -193,7 +193,7 @@ test('fasten: a bracket screwed to a base passes; moved 1 mm, a 3 mm hole, a sho
     for (const x of r.findings.filter((y) => y.code.startsWith('fasten.'))) { assert.deepEqual(x.at, [-12, 0, 17]); assert.deepEqual(x.between, [[-12, 0, 17], [-12, 0, 7]]); assert.deepEqual(x.refs.screws, ['bracket.h1', 'bracket.h2']); }
     // the screws are placed as reference parts, checked for overlap with the rest, and on the list and in the order as a fit that fastens is
     assert.match(r.of('overlap')[0].text, /no parts overlap \(4 object instances\)/);
-    assert.match(cad('list', 'demo/joint'), /2 ×\s+M3x10 cap\s+bracket fastened to base/);
+    assert.match(cad('list', 'demo/joint'), /2 ×\s+M3x10 cap\s+1\.001 g each, 2 g\s+1 pack of 10, 8 spare\s+bracket to base/);
     assert.match(cad('order', 'demo/joint'), /2\. bracket goes on: bracket fastened to base \(2 × M3x10 cap\)/);
 
     // moved 1 mm: the holes no longer share an axis, said with the distance
@@ -372,6 +372,55 @@ test('fasten: access and order: the key reaches each head, a part over a screw g
     r = withCover([{ a: 'cover', b: 'base', fastens: true, note: 'cover on the base' }, { a: 'bracket', b: 'cover', fastens: true, note: 'bracket hangs from the cover' }], { w: 4 });
     assert.deepEqual(r.fails, []); assert.equal(r.of('assembly.order')[0].level, 'pass');
     assert.match(r.of('fasten.access').find((x) => x.level === 'warn').text, /screw 1 \(bracket\.h1\): only a ball-end 2\.5 mm hex key reaches the head, tilted up to 25° \(hexkey\.ball_end_tilt\): cover \(8 mm over the head\) stands on the straight line, and a ball end takes less torque than a straight key/);
+  } finally { done(); }
+});
+
+test('fasten.count: cad list counts every screw by thread, length and head, with its mass and the packs it is bought in; --json and the build page carry them', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'), { recursive: true });
+    // a plate of holes over a block of pilots: twelve under a 3 mm plate, four under a 7 mm one
+    const t = (value, rule, min, max) => ({ value, unit: 'mm', rule, tweak: { min, max } });
+    object(ws, 'demo/grid', { uses: ['x1c'], variables: { cols: { value: 2, unit: '', rule: 'Holes across', tweak: { min: 1, max: 6 } }, rows: { value: 2, unit: '', rule: 'Holes down', tweak: { min: 1, max: 6 } },
+      pitch: t(12, 'Between the holes', 8, 20), thick: t(12, 'The block or plate', 2, 20), hole_depth: t(9, 'Thread engaged and room at the tip', 3, 11), kind: { value: 'pilot', choice: ['pilot', 'clear'], rule: 'What the holes are' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const holes = [], plate = cuboid({ size: [v.cols * v.pitch, v.rows * v.pitch, v.thick], center: [0, 0, v.thick / 2] })
+  for (let i = 0; i < v.cols; i++) for (let j = 0; j < v.rows; j++) {
+    const at = [(i - (v.cols - 1) / 2) * v.pitch, (j - (v.rows - 1) / 2) * v.pitch, v.thick]
+    holes.push(v.kind === 'pilot' ? v.fixings.hole('M3', { kind: 'pilot', depth: v.hole_depth, at }) : v.fixings.hole('M3', { depth: v.thick, at }))
+  }
+  return v.ops.subtract(plate, ...holes)
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['grid'] }));
+    fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/kit.json'), JSON.stringify({ title: 'Two plates screwed down', kind: 'fit',
+      items: [{ id: 'block1', object: 'grid', set: { cols: 4, rows: 3 } }, { id: 'plate1', object: 'grid', at: [0, 0, 12], set: { cols: 4, rows: 3, thick: 3, kind: 'clear' } },
+        { id: 'block2', object: 'grid', at: [80, 0, 0] }, { id: 'plate2', object: 'grid', at: [80, 0, 12], set: { thick: 7, kind: 'clear' } }],
+      fits: [{ a: 'plate1', b: 'block1', min: 0, max: 0.05 }, { a: 'plate2', b: 'block2', min: 0, max: 0.05 }, { a: 'block2', b: 'block1', fastens: true, note: 'side by side on the bench' }],
+      fasten: [{ screw: 'M3 cap', through: ['plate1'], into: 'block1', holes: 'plate1.body' }, { screw: 'M3 cap', through: ['plate2'], into: 'block2', holes: 'plate2.body' }] }));
+    const { screwModel } = await import('@rulecad/fixings'), g8 = screwModel('M3x8 cap').mass, g12 = screwModel('M3x12 cap').mass;
+    const l = JSON.parse(cad('list', 'demo/kit', '--json'));
+    assert.deepEqual(l.fasteners.map(({ fastener, qty, kind, thread, length, head, packs, buy, spare }) => ({ fastener, qty, kind, thread, length, head, packs, buy, spare })), [
+      { fastener: 'M3x8 cap', qty: 12, kind: 'screw', thread: 'M3', length: 8, head: 'cap', packs: 2, buy: 20, spare: 8 },
+      { fastener: 'M3x12 cap', qty: 4, kind: 'screw', thread: 'M3', length: 12, head: 'cap', packs: 1, buy: 10, spare: 6 }]);
+    assert.deepEqual(l.fasteners.map((f) => [f.grams, f.mass]), [[+g8.toFixed(3), +(g8 * 12).toFixed(2)], [+g12.toFixed(3), +(g12 * 4).toFixed(2)]], 'each screw\'s mass from @rulecad/fixings, and the line\'s');
+    assert.deepEqual(l.fasteners.map((f) => f.from), [['plate1 to block1'], ['plate2 to block2']]);
+    assert.equal(l.totals.fixingsGrams, +(g8 * 12 + g12 * 4).toFixed(1)); assert.equal(l.totals.machineGrams, +(l.totals.printedGrams + l.totals.boughtGrams + l.totals.fixingsGrams).toFixed(1));
+    assert.deepEqual(l.totals.pack, { size: 10, rule: 'packs.pack', kind: 'estimate' });
+    // as text: the count, the screw, its mass, the packs
+    const text = cad('list', 'demo/kit');
+    assert.match(text, new RegExp(`12 ×\\s+M3x8 cap\\s+${g8.toFixed(3).replace(/0+$/, '').replace('.', '\\.')} g each, ${(+(g8 * 12).toFixed(2)).toString().replace('.', '\\.')} g\\s+2 packs of 10, 8 spare\\s+plate1 to block1`));
+    assert.match(text, /\n\s+4 ×\s+M3x12 cap\s+[\d.]+ g each, [\d.]+ g\s+1 pack of 10, 6 spare\s+plate2 to block2/);
+    assert.match(text, /packs of 10: packs\.pack, an estimate/); assert.match(text, /[\d.]+ g of fixings, [\d.]+ g as a machine/);
+    // a fit that names its fastener by hand is still counted, beside them
+    const a = JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/assemblies/kit.json'), 'utf8')); a.fits[2] = { ...a.fits[2], fastener: 'M4x10 button', count: 2 };
+    fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/kit.json'), JSON.stringify(a));
+    assert.deepEqual(JSON.parse(cad('list', 'demo/kit', '--json')).fasteners.map((f) => [f.fastener, f.qty, f.from]).at(-1), ['M4x10 button', 2, ['side by side on the bench']]);
+    // the link's build page carries the list, and each step its screws and key
+    const out = cad('link', 'demo/kit', '--long'), { decode } = await import('@rulecad/model-link'), m = await decode(out.match(/view\s+(\S+)/)[1].split('#m=')[1]);
+    assert.deepEqual(m.build.list.fasteners.slice(0, 2).map((f) => [f.fastener, f.qty, f.packs]), [['M3x8 cap', 12, 2], ['M3x12 cap', 4, 1]]);
+    assert.ok(m.build.order.steps.some((st) => st.fasteners.some((f) => f.fastener === 'M3x8 cap' && f.count === 12 && f.key === '2.5 mm hex key')), JSON.stringify(m.build.order).slice(0, 400));
   } finally { done(); }
 });
 
@@ -1285,6 +1334,8 @@ test('a motor\'s mount bent by FE: a NEMA 17 on a 2 mm PLA plate fails on deflec
     assert.match(bent.text, /FE on [\d.]+ mm cubes, 2 across the plate, held where it is fastened/, 'how far to trust it');
     const heat = thin.find((x) => x.code === 'motor.heat');
     assert.equal(heat.level, 'warn'); assert.match(heat.text, /past where PLA softens .* Set the driver to [\d.]+ A/, 'and what fixes the heat');
+    // fasten.count: the motor's four mounting screws on the shopping list, through its fit that fastens, a length sold that stays out of the motor's own thread
+    const listed = cad('list', 'home/thin'); assert.match(listed, /\n\s+4 ×\s+M3x6 cap\s+[\d.]+ g each, [\d.]+ g\s+1 pack of 10, 6 spare\s+m on plate \(its mount, a fit that fastens\)/, listed);
     // thicker, and held right beside the motor: it passes, the stress against PLA's strength with a margin
     bracket('thick', { thick: 6, reach: 30 }, { at: 22, reach: 30 });
     const ok = findings('thick').find((x) => x.code === 'motor.mount' && x.values?.deflection != null);
