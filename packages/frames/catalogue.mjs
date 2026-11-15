@@ -117,6 +117,69 @@ import s_slot_8_item from '@rulecad/rules/slot-8-item.json' with { type: 'json' 
 import s_slot_8_misumi from '@rulecad/rules/slot-8-misumi.json' with { type: 'json' };
 import s_slot_8_motedis_i from '@rulecad/rules/slot-8-motedis-i.json' with { type: 'json' };
 import s_slot_8 from '@rulecad/rules/slot-8.json' with { type: 'json' };
+import s_slot_nut_6_bosch_m3_roll_in from '@rulecad/rules/slot-nut-6-bosch-m3-roll-in.json' with { type: 'json' };
+import s_slot_nut_6_bosch_m4_drop_in from '@rulecad/rules/slot-nut-6-bosch-m4-drop-in.json' with { type: 'json' };
+import s_slot_nut_6_bosch_m4_roll_in from '@rulecad/rules/slot-nut-6-bosch-m4-roll-in.json' with { type: 'json' };
+import s_slot_nut_6_bosch_m4_slide_in from '@rulecad/rules/slot-nut-6-bosch-m4-slide-in.json' with { type: 'json' };
+import s_slot_nut_6_bosch_m5_roll_in from '@rulecad/rules/slot-nut-6-bosch-m5-roll-in.json' with { type: 'json' };
+import s_slot_nut_6_bosch_m5_slide_in from '@rulecad/rules/slot-nut-6-bosch-m5-slide-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m3_drop_in from '@rulecad/rules/slot-nut-6-misumi-m3-drop-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m3_roll_in from '@rulecad/rules/slot-nut-6-misumi-m3-roll-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m3_slide_in from '@rulecad/rules/slot-nut-6-misumi-m3-slide-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m3_square from '@rulecad/rules/slot-nut-6-misumi-m3-square.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m4_drop_in from '@rulecad/rules/slot-nut-6-misumi-m4-drop-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m4_roll_in from '@rulecad/rules/slot-nut-6-misumi-m4-roll-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m4_slide_in from '@rulecad/rules/slot-nut-6-misumi-m4-slide-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m4_square from '@rulecad/rules/slot-nut-6-misumi-m4-square.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m5_roll_in from '@rulecad/rules/slot-nut-6-misumi-m5-roll-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m5_slide_in from '@rulecad/rules/slot-nut-6-misumi-m5-slide-in.json' with { type: 'json' };
+import s_slot_nut_6_misumi_m5_square from '@rulecad/rules/slot-nut-6-misumi-m5-square.json' with { type: 'json' };
+import s_slot_nut_6_motedis_m4_hammer from '@rulecad/rules/slot-nut-6-motedis-m4-hammer.json' with { type: 'json' };
+import s_slot_nut_6_motedis_m5_hammer from '@rulecad/rules/slot-nut-6-motedis-m5-hammer.json' with { type: 'json' };
+import s_slot_nut_6_motedis_m5_slide_in from '@rulecad/rules/slot-nut-6-motedis-m5-slide-in.json' with { type: 'json' };
+import s_slot_nut_6_motedis_m5_square from '@rulecad/rules/slot-nut-6-motedis-m5-square.json' with { type: 'json' };
+import s_slot_nut_6_openbuilds_m5_drop_in from '@rulecad/rules/slot-nut-6-openbuilds-m5-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m4_drop_in from '@rulecad/rules/slot-nut-8-bosch-m4-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m4_roll_in from '@rulecad/rules/slot-nut-8-bosch-m4-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m4_slide_in from '@rulecad/rules/slot-nut-8-bosch-m4-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m5_drop_in from '@rulecad/rules/slot-nut-8-bosch-m5-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m5_roll_in from '@rulecad/rules/slot-nut-8-bosch-m5-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m5_slide_in from '@rulecad/rules/slot-nut-8-bosch-m5-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m6_drop_in from '@rulecad/rules/slot-nut-8-bosch-m6-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m6_roll_in from '@rulecad/rules/slot-nut-8-bosch-m6-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m6_slide_in from '@rulecad/rules/slot-nut-8-bosch-m6-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m6_t_bolt from '@rulecad/rules/slot-nut-8-bosch-m6-t-bolt.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m8_roll_in from '@rulecad/rules/slot-nut-8-bosch-m8-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_bosch_m8_slide_in from '@rulecad/rules/slot-nut-8-bosch-m8-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_i_motedis_m4_hammer from '@rulecad/rules/slot-nut-8-i-motedis-m4-hammer.json' with { type: 'json' };
+import s_slot_nut_8_i_motedis_m4_roll_in from '@rulecad/rules/slot-nut-8-i-motedis-m4-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_i_motedis_m5_hammer from '@rulecad/rules/slot-nut-8-i-motedis-m5-hammer.json' with { type: 'json' };
+import s_slot_nut_8_i_motedis_m5_roll_in from '@rulecad/rules/slot-nut-8-i-motedis-m5-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_i_motedis_m6_hammer from '@rulecad/rules/slot-nut-8-i-motedis-m6-hammer.json' with { type: 'json' };
+import s_slot_nut_8_i_motedis_m6_roll_in from '@rulecad/rules/slot-nut-8-i-motedis-m6-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_i_motedis_m8_roll_in from '@rulecad/rules/slot-nut-8-i-motedis-m8-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m3_drop_in from '@rulecad/rules/slot-nut-8-misumi-m3-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m3_roll_in from '@rulecad/rules/slot-nut-8-misumi-m3-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m3_slide_in from '@rulecad/rules/slot-nut-8-misumi-m3-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m4_drop_in from '@rulecad/rules/slot-nut-8-misumi-m4-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m4_roll_in from '@rulecad/rules/slot-nut-8-misumi-m4-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m4_slide_in from '@rulecad/rules/slot-nut-8-misumi-m4-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m4_square from '@rulecad/rules/slot-nut-8-misumi-m4-square.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m5_drop_in from '@rulecad/rules/slot-nut-8-misumi-m5-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m5_roll_in from '@rulecad/rules/slot-nut-8-misumi-m5-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m5_slide_in from '@rulecad/rules/slot-nut-8-misumi-m5-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m5_square from '@rulecad/rules/slot-nut-8-misumi-m5-square.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m6_drop_in from '@rulecad/rules/slot-nut-8-misumi-m6-drop-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m6_roll_in from '@rulecad/rules/slot-nut-8-misumi-m6-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m6_slide_in from '@rulecad/rules/slot-nut-8-misumi-m6-slide-in.json' with { type: 'json' };
+import s_slot_nut_8_misumi_m6_square from '@rulecad/rules/slot-nut-8-misumi-m6-square.json' with { type: 'json' };
+import s_slot_nut_8_motedis_m4_hammer from '@rulecad/rules/slot-nut-8-motedis-m4-hammer.json' with { type: 'json' };
+import s_slot_nut_8_motedis_m4_roll_in from '@rulecad/rules/slot-nut-8-motedis-m4-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_motedis_m5_hammer from '@rulecad/rules/slot-nut-8-motedis-m5-hammer.json' with { type: 'json' };
+import s_slot_nut_8_motedis_m5_roll_in from '@rulecad/rules/slot-nut-8-motedis-m5-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_motedis_m6_hammer from '@rulecad/rules/slot-nut-8-motedis-m6-hammer.json' with { type: 'json' };
+import s_slot_nut_8_motedis_m6_roll_in from '@rulecad/rules/slot-nut-8-motedis-m6-roll-in.json' with { type: 'json' };
+import s_slot_nut_8_motedis_m8_roll_in from '@rulecad/rules/slot-nut-8-motedis-m8-roll-in.json' with { type: 'json' };
 import s_unc_10_24 from '@rulecad/rules/unc_10_24.json' with { type: 'json' };
 import s_unc_1_4_20 from '@rulecad/rules/unc_1_4_20.json' with { type: 'json' };
 import s_unc_3_8_16 from '@rulecad/rules/unc_3_8_16.json' with { type: 'json' };
@@ -153,8 +216,24 @@ export const SETS = Object.fromEntries([
   s_slot_10, s_slot_3_makerbeam_xl, s_slot_3_makerbeam, s_slot_3_openbeam, s_slot_5_item, s_slot_5_motedis,
   s_slot_6_8020, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i,
   s_slot_6_motedis, s_slot_6_openbuilds, s_slot_6, s_slot_8_8020, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light,
-  s_slot_8_item, s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_unc_10_24, s_unc_1_4_20, s_unc_3_8_16,
-  s_unc_4_40, s_unc_5_16_18, s_unc_6_32, s_unc_8_32, s_unf_10_32
+  s_slot_8_item, s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_slot_nut_6_bosch_m3_roll_in, s_slot_nut_6_bosch_m4_drop_in,
+  s_slot_nut_6_bosch_m4_roll_in, s_slot_nut_6_bosch_m4_slide_in, s_slot_nut_6_bosch_m5_roll_in, s_slot_nut_6_bosch_m5_slide_in,
+  s_slot_nut_6_misumi_m3_drop_in, s_slot_nut_6_misumi_m3_roll_in, s_slot_nut_6_misumi_m3_slide_in, s_slot_nut_6_misumi_m3_square,
+  s_slot_nut_6_misumi_m4_drop_in, s_slot_nut_6_misumi_m4_roll_in, s_slot_nut_6_misumi_m4_slide_in, s_slot_nut_6_misumi_m4_square,
+  s_slot_nut_6_misumi_m5_roll_in, s_slot_nut_6_misumi_m5_slide_in, s_slot_nut_6_misumi_m5_square, s_slot_nut_6_motedis_m4_hammer,
+  s_slot_nut_6_motedis_m5_hammer, s_slot_nut_6_motedis_m5_slide_in, s_slot_nut_6_motedis_m5_square, s_slot_nut_6_openbuilds_m5_drop_in,
+  s_slot_nut_8_bosch_m4_drop_in, s_slot_nut_8_bosch_m4_roll_in, s_slot_nut_8_bosch_m4_slide_in, s_slot_nut_8_bosch_m5_drop_in,
+  s_slot_nut_8_bosch_m5_roll_in, s_slot_nut_8_bosch_m5_slide_in, s_slot_nut_8_bosch_m6_drop_in, s_slot_nut_8_bosch_m6_roll_in,
+  s_slot_nut_8_bosch_m6_slide_in, s_slot_nut_8_bosch_m6_t_bolt, s_slot_nut_8_bosch_m8_roll_in, s_slot_nut_8_bosch_m8_slide_in,
+  s_slot_nut_8_i_motedis_m4_hammer, s_slot_nut_8_i_motedis_m4_roll_in, s_slot_nut_8_i_motedis_m5_hammer,
+  s_slot_nut_8_i_motedis_m5_roll_in, s_slot_nut_8_i_motedis_m6_hammer, s_slot_nut_8_i_motedis_m6_roll_in,
+  s_slot_nut_8_i_motedis_m8_roll_in, s_slot_nut_8_misumi_m3_drop_in, s_slot_nut_8_misumi_m3_roll_in, s_slot_nut_8_misumi_m3_slide_in,
+  s_slot_nut_8_misumi_m4_drop_in, s_slot_nut_8_misumi_m4_roll_in, s_slot_nut_8_misumi_m4_slide_in, s_slot_nut_8_misumi_m4_square,
+  s_slot_nut_8_misumi_m5_drop_in, s_slot_nut_8_misumi_m5_roll_in, s_slot_nut_8_misumi_m5_slide_in, s_slot_nut_8_misumi_m5_square,
+  s_slot_nut_8_misumi_m6_drop_in, s_slot_nut_8_misumi_m6_roll_in, s_slot_nut_8_misumi_m6_slide_in, s_slot_nut_8_misumi_m6_square,
+  s_slot_nut_8_motedis_m4_hammer, s_slot_nut_8_motedis_m4_roll_in, s_slot_nut_8_motedis_m5_hammer, s_slot_nut_8_motedis_m5_roll_in,
+  s_slot_nut_8_motedis_m6_hammer, s_slot_nut_8_motedis_m6_roll_in, s_slot_nut_8_motedis_m8_roll_in, s_unc_10_24,
+  s_unc_1_4_20, s_unc_3_8_16, s_unc_4_40, s_unc_5_16_18, s_unc_6_32, s_unc_8_32, s_unf_10_32
 ].map((s) => [s.name, s]));
 /** The kit's own outlines, by the name of the set each belongs to (rules/outlines/<name>.json). @type {Record<string, { name?: string, source: string, licence: string, loops: number[][][] }>} */
 export const OUTLINES = { "profile-custom": o_profile_custom };

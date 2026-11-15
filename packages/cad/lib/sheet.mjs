@@ -7,7 +7,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { checkRuleSet } from '@rulecad/variables';
-import { profileModel, slotModel, slotPath, outline, section, profileFindings } from '@rulecad/frames';
+import { profileModel, slotModel, slotPath, outline, section, profileFindings, slotNutModel, nutFit } from '@rulecad/frames';
 import { RULE_DIRS } from './workspace.mjs';
 import { schema, validate } from './schema.mjs';
 
@@ -50,12 +50,7 @@ function partFindings(set, name, file, all) {
     if (set.part === 'slot_nut') {
       const r = (k) => set.rules[k]?.value, slot = g.load(String(r('slot')));
       if (slot?.part !== 'slot') say('warn', 'slot_nut.slot', `slot names the slot family it is made for, and there is no slot set "${r('slot')}": its fit is not checked`, { rule: 'slot' });
-      else {
-        const s = slotModel(slot, {}, g), room = s.cavityDepth - s.lip;
-        if (!(r('width') < s.cavityWidth)) say('fail', 'slot_nut.fit', `it is ${r('width')} mm across, and ${s.name} is ${s.cavityWidth} mm wide under its lips: it does not go in`, { rule: 'width', values: { width: r('width'), cavity_width: s.cavityWidth } });
-        if (!(r('width') > s.opening) && !['t-bolt'].includes(r('nut_kind')) && !(r('length') > s.opening)) say('fail', 'slot_nut.fit', `it is ${r('width')} mm across and ${r('length')} long, and ${s.name} opens ${s.opening} mm: it pulls straight out`, { rule: 'width', values: { width: r('width'), opening: s.opening } });
-        if (!(r('height') <= room)) say('fail', 'slot_nut.fit', `it is ${r('height')} mm tall, and ${s.name} has ${+room.toFixed(2)} mm under its lips: it does not go in`, { rule: 'height', values: { height: r('height'), room } });
-      }
+      else out.push(...nutFit(slotNutModel(set, {}, g), slotModel(slot, {}, g), g));
       if (![...all.values()].some((f) => { const t = readSet(f); return t.part === 'thread' && (t.name === r('thread') || t.rules.thread?.value === r('thread')); })) say('warn', 'slot_nut.thread', `thread ${JSON.stringify(r('thread'))} is no thread set here (M5, or a set's name)`, { rule: 'thread' });
     }
   } catch (e) { say('fail', `${set.part}.model`, own(e)); }

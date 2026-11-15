@@ -635,3 +635,102 @@ test('a cut-and-drill sheet: to scale, each operation from end a to 0.1 mm, the 
   assert.deepEqual([m.scale, m.faces], [10, ['top', 'front']]); assert.match(m.svg, />100\.3</);
   assert.throws(() => frames.beamSheet({}), /beamSheet: give a beam's model/);
 });
+
+test('slot nuts: every published nut fits the slot it is made for, weighs what its block does, and says what its hold rests on', () => {
+  const { slotNutModel, nutFit, slotNut, slotNuts } = frames, names = slotNuts();
+  assert.ok(names.length >= 40, 'the makers\' nuts are in the catalogue');
+  // slot 6 (20 mm series) and slot 8 (30 and 40 mm series) each have a slide-in, a drop-in and a roll-in, M3 to M8 where made
+  const has = (o, kind, t) => names.some((n) => n.startsWith(`slot-nut-${o}-`) && n.endsWith(`-${t}-${kind}`));
+  for (const [o, kinds] of [['6', ['slide-in', 'drop-in', 'roll-in', 'hammer', 'square']], ['8', ['slide-in', 'drop-in', 'roll-in', 'hammer', 'square', 't-bolt']]]) for (const k of kinds) assert.ok(['m3', 'm4', 'm5', 'm6', 'm8'].some((t) => has(o, k, t)), `a ${k} for slot ${o}`);
+  for (const t of ['m3', 'm4', 'm5', 'm6', 'm8']) assert.ok(names.some((n) => n.includes(`-${t}-`)), `an ${t} nut`);
+  for (const name of names) {
+    const n = slotNutModel(name), slot = slotModel(n.slot);
+    assert.deepEqual(nutFit(n, slot).filter((f) => f.level === 'fail'), [], `${name} goes in ${n.slot}`);
+    assert.match(name, /^slot-nut-\d+(-[a-z0-9]+)*-m\d-(slide-in|drop-in|roll-in|hammer|square|t-bolt)$/);
+    assert.equal(name.split('-').slice(-2).join('-').replace(/^m\d-/, ''), n.nutKind); assert.equal(n.thread.toLowerCase(), name.match(/-(m\d)-/)[1]);
+    assert.ok(n.hold && n.hold.value > 0 && n.hold.unit === 'N', `${name} says what it holds`);
+    if (n.hold.kind !== 'spec') { assert.equal(n.hold.kind, 'estimate'); assert.match(n.hold.rule, /estimate until it is tested \(Frames 2\.13\)/); }
+    else assert.match(n.hold.source, /Bosch Rexroth/, 'only Rexroth rates a pull among these makers');
+    // its mass is its drawn block's: the solid's volume at steel's density
+    const g = slotNut(n), v = jscad.measurements.measureVolume(g);
+    within(v, n.volume, 0.03, `${name}'s solid against its volume`); within(n.mass, (n.volume * n.density.value) / 1000, 1e-3, `${name}'s mass`);
+    assert.ok(n.mass > 0.3 && n.mass < 20, `${name} weighs ${n.mass} g`);
+  }
+  // a figure from the sheet: Rexroth's 6 mm sliding block holds 3000 N with M5; MISUMI's HNTT5 is 10 x 10, 3.3 under its 0.8 tongue
+  assert.deepEqual([slotNutModel('slot-nut-6-bosch-m5-slide-in').hold.value, slotNutModel('slot-nut-6-bosch-m5-slide-in').hold.kind], [3000, 'spec']);
+  const h = slotNutModel('slot-nut-6-misumi-m5-slide-in'); assert.deepEqual([h.width, h.length, h.height, h.tongueWidth, h.tongueHeight], [10, 10, 3.3, 5.8, 0.8]);
+  // an M3's hold is its screw's proof load where that is the less
+  assert.match(slotNutModel('slot-nut-8-misumi-m3-slide-in').hold.rule, /^The screw's proof load, 2918 N/);
+  // a nut too wide, too tall, or no wider than the opening
+  const s6 = slotModel('slot-6-misumi'), fit = (change) => nutFit(slotNutModel('slot-nut-6-misumi-m5-slide-in', change), s6).map((f) => `${f.level} ${f.rule}`);
+  assert.deepEqual(fit({ width: 13 }), ['fail width']); assert.deepEqual(fit({ height: 5 }), ['fail height']); assert.deepEqual(fit({ width: 6 }), ['fail width']); assert.deepEqual(fit({ tongue_height: 2.5 }), ['warn tongue_height']);
+  assert.match(nutFit(slotNutModel('slot-nut-6-misumi-m5-slide-in', { width: 13 }), s6)[0].text, /it is 13 mm across, and slot-6-misumi is 12 mm wide under its lips: it does not go in/);
+  // a turned nut may be as wide as the cavity (it turns until it jams); a slid one may not
+  assert.deepEqual(nutFit(slotNutModel('slot-nut-8-bosch-m6-drop-in'), slotModel('slot-8-bosch')), []);
+  assert.deepEqual(fit({ width: 12 }), ['fail width']);
+  // the solid: pulled up under the lips, its tongue in the opening
+  const bb = jscad.measurements.measureBoundingBox(slotNut('slot-nut-6-misumi-m5-slide-in'));
+  assert.deepEqual(bb.map((p) => p.map((x) => +x.toFixed(3))), [[-5, -5, -5.3], [5, 5, -1.2]]);
+  assert.throws(() => slotNutModel('slot-nut-6-misumi-m7-slide-in'), /no slot nut "slot-nut-6-misumi-m7-slide-in"/);
+  assert.throws(() => slotNutModel('slot-nut-6-misumi-m5-slide-in', { weight: 3 }), /has no figure "weight"/);
+});
+
+test('nutFor: an M5 drop-in for a 6 mm slot\'s face, and M8 refused there, naming the nuts that are made for it', () => {
+  const { nutFor } = frames;
+  const n = nutFor('profile-2020-openbuilds', 'top', 'M5', { kind: 'drop-in' });
+  assert.equal(n.name, 'slot-nut-6-openbuilds-m5-drop-in'); assert.equal(n.nutKind, 'drop-in'); assert.equal(n.thread, 'M5'); assert.equal(n.face, 'top'); assert.deepEqual(n.fits, []);
+  assert.throws(() => nutFor('profile-2020-openbuilds', 'top', 'M8'), (e) => /no M8 nut is made for profile-2020-openbuilds's top face \(slot-6-openbuilds/.test(e.message) && /M5 drop-in \(slot-nut-6-openbuilds-m5-drop-in\)/.test(e.message));
+  // any kind where none is asked: the strongest of those made for the slot's family
+  assert.equal(nutFor('profile-2020-misumi-hfs5', 'top', 'M5').name, 'slot-nut-6-misumi-m5-slide-in');
+  // MISUMI makes no M5 drop-in for its 6 mm slot: refused, naming the M3 and M4 drop-ins and the M5s it does make
+  assert.throws(() => nutFor('profile-2020-misumi-hfs5', 'front', 'M5', { kind: 'drop-in' }), (e) => /M4 drop-in \(slot-nut-6-misumi-m4-drop-in\)/.test(e.message) && /M5 slide-in \(slot-nut-6-misumi-m5-slide-in\)/.test(e.message));
+  // a family's nuts by its nut_family: Motedis' B-type 6 mm slot takes Rexroth's and Motedis' own; its I-type 8 mm, item's family
+  assert.ok(nutFor('profile-2020-motedis-b6', 'top', 'M4', { kind: 'drop-in' }).name === 'slot-nut-6-bosch-m4-drop-in');
+  assert.equal(nutFor('profile-4040-motedis-i8', 'back', 'M8').name, 'slot-nut-8-i-motedis-m8-roll-in');
+  // a nut of your own, in a slot of the kit's
+  const own = { ...SETS['slot-nut-6-misumi-m5-slide-in'], name: 'my-nut' }; own.rules = { ...own.rules, nut_kind: { ...own.rules.nut_kind, value: 'drop-in' }, length: { ...own.rules.length, value: 5.5 } };
+  assert.equal(nutFor('profile-2020-misumi-hfs5', 'top', 'M5', { kind: 'drop-in', given: { sets: { 'my-nut': own } } }).name, 'my-nut');
+  assert.throws(() => nutFor('profile-2020-misumi-hfs5', 'side', 'M5'), /face is top, bottom, front or back/);
+  assert.throws(() => nutFor('profile-2020-misumi-hfs5', 'top.2', 'M5'), /top face has 1 slot/);
+  assert.throws(() => nutFor('profile-2020-misumi-hfs5', 'top', 'M5', { kind: 'wing' }), /kind is slide-in, drop-in, roll-in, hammer, t-bolt, square or hex|kind is slide-in, drop-in/);
+  assert.throws(() => nutFor('profile-2020-misumi-hfs5', 'top', 'M5', { sort: 1 }), /no option "sort"/);
+  assert.throws(() => nutFor('profile-tube-al-25x25x2', 'top', 'M5'), /top face has 0 slots|closed/);
+});
+
+test('a printed carrier slides into the slot of a profile drawn from the same rules, the printer\'s fit clear all round', () => {
+  const { carrierModel, carrier, CARRIER_DEFAULTS } = frames;
+  for (const [profile, face, thread, holds] of [['profile-3030-misumi-hfs6', 'top', 'M5', 'nut'], ['profile-2020-misumi-hfs5', 'front', 'M3', 'nut'], ['profile-3030-bosch', 'back', 'M4', 'nut'], ['profile-3030-misumi-hfs6', 'bottom', 'M3', 'insert'], ['profile-2020-openbuilds', 'top', 'M3', 'nut']]) {
+    const m = carrierModel(profile, { face, thread, holds }), p = profileModel(profile), place = p.faces[face][0], c = 0.2;
+    assert.equal(m.clearance, c, 'the X1C\'s fit');
+    // the carrier's section, placed in the profile's: outside the metal and the printer's fit clear of every loop of it
+    const sec = m.section.map(([y, z]) => [place.at[0] + y * place.along[0] + z * place.normal[0], place.at[1] + y * place.along[1] + z * place.normal[1]]);
+    const loops = outline(p).loops, least = Math.min(...loops.map((l) => gap(sec, l)));
+    assert.ok(least >= c - 1e-6 && least <= c + 0.01, `${m.name} in ${profile}: ${least} mm from the metal, the fit ${c}`);
+    assert.ok(!loops.slice(1).some((l) => sec.every((q) => inside(q, l))), 'not in a hollow');
+    assert.ok(sec.every((q) => Math.abs(q[0]) <= p.width / 2 + 1e-9 && Math.abs(q[1]) <= p.height / 2 + 1e-9), 'inside the envelope: nothing stands proud of the face');
+    assert.ok(Math.abs(m.least - c) < 1e-3);
+    // it prints floor down without supports, its first layer one piece, and says what it holds and weighs
+    const by = Object.fromEntries(m.findings.map((f) => [f.code, f]));
+    assert.equal(by['carrier.printable'].level, 'pass', by['carrier.printable'].text); assert.equal(by['carrier.first-layer'].level, 'pass');
+    assert.ok(m.hold.value > 100 && m.grams > 0.2 && m.grams < 5, `${m.name}: ${m.hold.value} N, ${m.grams} g`);
+    const g = carrier(m, { pose: 'print' }), bb = jscad.measurements.measureBoundingBox(g);
+    assert.ok(Math.abs(bb[0][2]) < 1e-9 && Math.abs(bb[1][2] - (m.levels.bottom - m.levels.top)) < 1e-6, 'laid on the bed');
+    within(jscad.measurements.measureVolume(g), m.volume, 1e-6, 'grams from the solid');
+    if (holds === 'nut') assert.ok(m.levels.nutBottom <= m.levels.bottom - CARRIER_DEFAULTS.floor.value * 0.2 + 1e-9 && m.levels.roofTop - m.levels.top >= 2 * 0.42 - 1e-9, 'floor under the nut, plastic over it');
+  }
+  // a strip of four at 20 mm, and sized from a load: twice it, or refused
+  const s = carrierModel('slot-8-misumi', { thread: 'M5', count: 4, pitch: 20 });
+  assert.deepEqual([s.count, s.total, s.at], [4, 73, [6.5, 26.5, 46.5, 66.5]]);
+  const one = carrierModel('slot-8-misumi', { thread: 'M5' }); within(s.grams, 4 * one.grams + (3 * (20 - one.length) * Math.abs(signedArea(one.section)) * 1.26) / 1000, 0.01, 'a strip weighs its carriers and the plain lengths between them');
+  const strong = carrierModel('slot-8-misumi', { thread: 'M3', load: 250 });
+  assert.ok(strong.hold.value >= 500 - 1e-6 && strong.margin >= 2, `${strong.hold.value} N for a 250 N load`);
+  assert.equal(carrierModel('slot-8-misumi', { thread: 'M5', load: 1000 }).findings.find((f) => f.code === 'carrier.hold').level, 'fail');
+  // refused by name: a nut too big for the slot, an insert with too little wall, bad options
+  assert.throws(() => carrierModel('slot-6-misumi', { thread: 'M5' }), /an M5 hex nut does not fit a carrier in slot-6-misumi: .* A smaller thread, an insert/);
+  assert.throws(() => carrierModel('slot-6-misumi', { thread: 'M3', holds: 'insert' }), /an M3 insert's/);
+  assert.throws(() => carrierModel('slot-8-misumi', { thread: 'M5', count: 3 }), /needs a pitch/);
+  assert.throws(() => carrierModel('slot-8-misumi', { thread: 'M5', count: 2, pitch: 5 }), /puts the nuts/);
+  assert.throws(() => carrierModel('slot-8-misumi', { thread: 'M5', size: 3 }), /no option "size"/);
+  assert.throws(() => carrierModel('slot-8-misumi', {}), /thread is the screw's/);
+  assert.throws(() => carrier(one, { pose: 'upside' }), /pose is slot or print/);
+});

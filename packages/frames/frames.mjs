@@ -13,3 +13,4 @@ export { beamModel, beam, beamAnchor, printable } from './beam.mjs';
 export { OPS, OP_DEFAULTS } from './ops.mjs';
 export { CUT_DEFAULTS, beamMarks, packBars, cutList, cutListText } from './cutlist.mjs';
 export { beamSheet } from './cutsheet.mjs';
+export { slotNutModel, nutFit, slotNut, nutFor, carrierModel, carrier, CARRIER_DEFAULTS } from './slotnut.mjs';

@@ -17,8 +17,10 @@ This release reads a profile, which is everything the rest is built on, and make
   places it and its fittings by, and its solid as a light box or the true section.
 - **Operations on a beam**: cut, mitre, tap, access, drill, counterbore, pocket, notch and deburr, each placed by an
   address on the beam, dimensioned from end a, checked, and cut into its solid.
+- **Slot nuts**: the bought nuts a slot takes (`slotNutModel`, `nutFit`, `slotNut`), the nut for a face and a thread
+  (`nutFor`), and a printed carrier for a hex nut or an insert that slides in the slot (`carrierModel`, `carrier`).
 
-Beams in assemblies, joins that do their own drilling, fittings, slot nuts and linear guides follow in later
+Joins that do their own drilling, fittings and linear guides follow in later
 releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
@@ -400,6 +402,81 @@ order from end a, each with its full line. A face only a few mm wide at a small 
 view says by how much. It returns `{ svg, scale, faces, dimensions }`, `dimensions` being each operation's figure as
 the sheet prints it.
 
+## Slot nuts
+
+A slot nut is a rule set in `@rulecad/rules` (`"part": "slot_nut"`), one for each maker, slot, thread and kind:
+`slot-nut-6-misumi-m5-slide-in`, `slot-nut-8-bosch-m6-drop-in`, `slot-nut-6-openbuilds-m5-drop-in`. The kinds are
+`slide-in` (a block slid in from an open end), `drop-in` (put in through the opening and turned), `roll-in` (tipped in
+and rolled flat, often on a spring or a sprung ball), `hammer` (turns itself as the screw is tightened), `square` (a
+plain plate) and `t-bolt` (a bolt with a T head). Published so far, for the 6 mm slot of the 20 mm series and the 8 mm
+slot of the 30 and 40 mm series, M3 to M8 where they are made: MISUMI's, Bosch Rexroth's, Motedis' and OpenBuilds'.
+
+A nut's frame is its slot's: x along the slot, y across it, z out of the face, the face at z = 0. It is drawn pulled up
+under the lips, as it sits once its screw is tight.
+
+| Export | What |
+|---|---|
+| `slotNutModel(name, change?, given?)` | A nut's model: `slot`, `thread`, `nutKind`, `entry`, `length` (along the slot), `width` (across), `height` (the body under the lips), `tongueWidth` and `tongueHeight` (the step up into the opening), `boltLength`, `hold` (the figure, newtons), `torque`, `material`, `volume`, `mass` (grams), `figures`, `findings` |
+| `nutFit(nut, slot)` | How it sits: `slot_nut.fit` fail where it is wider than the cavity (a turned nut may be as wide: it turns until it jams), no wider than the opening, taller than the room under the lips, or its tongue wider than the opening; warn where its tongue stands proud of the face. `slot_nut.entry` warn where a turned nut is longer than the opening is wide |
+| `slotNut(nut, { at?, display? })` | Its reference solid: body, tongue, the thread's hole; a T-bolt's shank. `display: 'link'` is the body alone |
+| `nutFor(profile, face, thread, { kind?, given? })` | The nut for that face: one made for the slot's nut family (a slot's `nut_family`), of that thread and kind (any kind where none is asked), that fits; the strongest first. Its `others` name the rest that would do. Refused by name where there is none, naming the nuts made for that slot, and other families' nuts that fit it by their sizes |
+
+```js
+nutFor('profile-2020-openbuilds', 'top', 'M5', { kind: 'drop-in' }).name; // 'slot-nut-6-openbuilds-m5-drop-in'
+nutFor('profile-2020-openbuilds', 'top', 'M8');
+// throws: nutFor: no M8 nut is made for profile-2020-openbuilds's top face (slot-6-openbuilds, nut family
+// slot-6-openbuilds). Made for it: M5 drop-in (slot-nut-6-openbuilds-m5-drop-in). ...
+```
+
+**What a nut holds.** `hold` is the pull straight out of the slot. Bosch Rexroth rates its nuts (Fmax: 1700 N for the
+6 mm T-nut, 3000 N for the 6 mm sliding block with M5, 4000 N for the 8 mm T-nut and T-bolt, 6000 N for the 8 mm
+sliding block with M8, 2200 N for the 8 mm swivel-in block): those are `spec`. MISUMI gives a tightening torque, and
+Motedis and OpenBuilds give nothing, so their nuts carry an `estimate`: Rexroth's figure for the same kind in the same
+slot (a hammer nut as a T-nut, whose shape it has; a roll-in as Rexroth's share of a roll-in to a sliding block; a thin
+plate as half a sliding block), and never more than the screw's proof load. Each says so in its rule, until Frames
+2.13 tests them.
+
+**Mass.** A nut's mass is its drawn block (body, tongue, less the thread's hole) at steel's density, or stainless
+steel's: a list's grams. A nut with a shaped underside (a sprung or rolled nut) weighs less than its block.
+
+### A printed carrier
+
+`carrierModel(where, { thread, holds?, face?, length?, count?, pitch?, load?, printer?, material? })` is a block that
+slides along a slot like a slide-in nut, printed, holding a hex nut or a heat-set insert. `where` is a slot, or a profile
+with its `face`. It is drawn from the slot's own rules: the cavity offset in by the printer's `fit` (0.2 mm on the
+X1C), the corners met where the cavity's corner is convex and rounded about the corner where it is re-entrant, so it
+stands that far clear of every point of the slot and its inside corners at the tongue are round. It lies floor down to
+print: its flanks face down at the slot's flank angle (45° in every published slot), within the printer's overhang, and
+its first layer is one solid piece.
+
+- **A nut** (`holds: 'nut'`, the default) slides into a slot across the screw from the side, cut by
+  `@rulecad/fixings`' `nutTrap` (its slip and the printer's bridge, its roof rising at 45° where it spans more), its
+  corners across the slot, as low as it goes with 3 layers of floor under it, one line of plastic beside it and two
+  over it. Where the carrier is too narrow for that, one carrier takes its nut from its end, flats across. The screw's
+  clearance hole runs right through.
+- **An insert** (`holds: 'insert'`) is pressed in from below, into `fixings`' insert hole, so the screw's pull drives it
+  further in; refused where the plastic round it is thinner than the insert's `insert_wall`.
+- **A strip**: `count` carriers in one piece, `pitch` mm apart.
+- **Sized from the load**: with `load` (N, on each nut) the length grows until it holds twice the load
+  (`CARRIER_DEFAULTS.margin`), and `carrier.hold` fails where no length does (the plastic over the nut decides).
+
+Its model has `section` (in the slot's frame), `cavity`, `clearance`, `least` (its nearest approach to the slot),
+`levels` (depths below the face: top, bottom, shoulder, the nut's or insert's), `length`, `total`, `at`, `hold`
+(`{ value, punch, shoulders, shear }`), `margin`, `volume`, `grams`, `overhang` and its findings: `carrier.fit`,
+`carrier.printable`, `carrier.first-layer`, `carrier.hold`, `carrier.mass`, and the nut trap's `nutTrap.printable`.
+`carrier(m, { pose })` is its solid in the slot's frame, or laid on the bed with `pose: 'print'`.
+
+| Carrier | Length | Clear of the slot | Holds (estimate) | Grams (PLA) |
+|---|---|---|---|---|
+| M5 nut in MISUMI's 8 mm slot (HFS6-3030) | 13 mm | 0.2 mm | 624 N (the 1 mm over the nut) | 0.94 |
+| M4 nut in Rexroth's 8 mm slot (30x30) | 12 mm | 0.2 mm | 1802 N | 1.05 |
+| M3 nut in MISUMI's 6 mm slot (HFS5-2020), from its end | 11 mm | 0.2 mm | 794 N | 0.39 |
+| M3 insert in MISUMI's 8 mm slot | 12 mm | 0.2 mm | 618 N | 1.51 |
+| Four M5 nuts at 20 mm in MISUMI's 8 mm slot | 73 mm | 0.2 mm | 624 N each | 6.63 |
+
+An M5 nut does not fit a carrier in a 6 mm slot (8 mm across its flats in a slot 5.6 mm deep once clear of it): it is
+refused, naming a smaller thread, an insert or a larger slot.
+
 ## Formulas
 
 | What | Formula | Source |
@@ -420,6 +497,11 @@ the sheet prints it.
 | A mitre's short side | L − w tan θ for each mitred end, w the section's side across the cut and θ the angle from square | Trigonometry |
 | Tap depth, by default | 2 × the major diameter in aluminium (1 in steel, 2.5 in plastic) | The engagement rule set in `@rulecad/rules`, through `@rulecad/fixings` |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
+| A screw's proof load | F = S_p × A_s, A_s = π/4 (d − 0.9382 P)² | ISO 898-1: proof stress S_p (580 MPa for class 8.8) on the stress area of the thread |
+| Plastic's shear strength | τ = σ / √3 | The von Mises estimate, `@rulecad/fixings`' `shear_ratio` |
+| A carrier's hold, through its top | F = τ × 2√3 s × t, s the nut's flats, t the plastic over its slot (π D t for an insert of knurl diameter D) | Punching shear round the hexagon's perimeter |
+| A carrier's hold, at its shoulders | F = τ × 2 (L h − w g), h the carrier's depth below the lips at the opening's edge, w × g the nut's slot | Two shear planes up the sides of the opening |
+| A nut's mass | m = V ρ / 1000, V its drawn block's volume in mm³ | |
 | Share of a full thread a bore leaves | (major diameter − bore) / (1.299 × pitch) | The 60° thread's height is H = 0.866 pitch, and "percent of thread" counts 3/4 H a side: 1.299 pitch on the diameter |
 
 Why the torsion constant is solved for and not taken from the polar moment: a slotted section is open. MISUMI's
@@ -454,6 +536,8 @@ lists them.
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |
+| `slotNutModel`, `nutFit`, `slotNut`, `nutFor` | A bought slot nut, how it sits in a slot, its solid, and the one for a face (above) |
+| `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
