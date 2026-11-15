@@ -709,7 +709,7 @@ test('screwGroup: a load shared between screws, across the joint by distance fro
   near(two.screws[1].tension, 19.613, 1e-3, 'the near screw'); near(two.screws[0].tension, 0, 1e-3, 'the far one'); assert.equal(two.line, true);
   // a force across the joint at the centroid is shared equally; lifted 10 mm off the face it tips the part towards the force, by the line's own spread when the moment is along it
   const across = screwGroup([[-12, 0], [12, 0]], { force: [10, 0, 0], at: [0, 0, 10] });
-  assert.deepEqual(across.screws.map((s) => s.shear), [5, 5]); near(across.screws[0].tension, 100 * 12 / 288, 1e-3, 'the heel lifts'); near(across.screws[1].tension, -100 * 12 / 288, 1e-3, 'the toe presses');
+  for (const sc of across.screws) near(sc.shear, 5, 1e-9, 'shared equally'); near(across.screws[0].tension, 100 * 12 / 288, 1e-3, 'the heel lifts'); near(across.screws[1].tension, -100 * 12 / 288, 1e-3, 'the toe presses');
   // a moment about the line of screws: they cannot share it by tension, so the part tips about the edge `pivot` from the line, and each holds its share
   assert.throws(() => screwGroup([[-12, 0], [12, 0]], { force: [0, 10, 0], at: [0, 0, 10] }), /the screws stand in one line, and 0\.1 N·m tips the part about it: give pivot/);
   const tipped = screwGroup([[-12, 0], [12, 0]], { force: [0, 10, 0], at: [0, 0, 10], pivot: 5 }); for (const s of tipped.screws) near(s.tension, 100 / (2 * 5), 1e-3, 'tipped about an edge 5 mm off');

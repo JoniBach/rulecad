@@ -724,7 +724,7 @@ async function drawing(model, motion, { turn, tilt, camera, renderer, stage, mid
 
 // ---------- the build page ----------
 // One fastening of a step: the fit, its screws by count and name, the key that turns them and how tight (as cad order says it)
-const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.given ? `to ${f.tighten.torque} N m` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
+const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.given ? `to ${f.tighten.torque} N m` : f.tighten.load ? `to ${f.tighten.torque} N m (what the joint's load leaves the thread)` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
 // A link as the whole project, beside the model: what to buy, the plates, the wiring sheet, the assembly steps (each
 // showing the model at that step, the new part held off along its way on) and the machine's settings. All of it the
 // link's data, written as text.

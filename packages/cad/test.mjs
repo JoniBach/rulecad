@@ -375,6 +375,72 @@ test('fasten: access and order: the key reaches each head, a part over a screw g
   } finally { done(); }
 });
 
+test('fasten.load: a bracket carrying 2 kg on two M3 screws into PLA pilots holds the margin worked by hand; the motor stand\'s four screws carry the force motor.mount gives', () => {
+  const { ws, cad, done } = workspace();
+  const near = (x, y, tol, what) => assert.ok(Math.abs(x - y) <= tol, `${what}: ${x} against ${y} (±${tol})`);
+  try {
+    const { write, check } = fastened(ws);
+    // The bracket hangs under the base (gravity up the screws), 2 kg at the h2 anchor, right over screw 2, tightened to 0.2 N m.
+    // By hand, each figure's source:
+    //   W = 2 kg × 9.80665 m/s² = 19.613 N (standard gravity). The bracket's own 40 × 20 × 5 mm less two 3.5 mm holes is
+    //   3903.8 mm³, × 1.26 g/cm³ (pla.density) = 4.92 g, 0.048 N at its middle: 0.024 N on each screw. Held up: 2.0049 kg.
+    //   Shared (screwGroup, the elastic method): screws at x = ±12 mm, the load at x = +12 mm: P = W/2 + W × 12 × 12 / (2 × 12²) = W
+    //   on screw 2 and 0 on screw 1; with the bracket, 19.637 N and 0.024 N.
+    //   Thread (stripping): 0.875 π d Le = 0.875 × π × 3 × 5 mm = 41.233 mm² (Le: the 5 mm the M3x10 engages, fasten.length);
+    //   shear strength 39 MPa (pla.strength, community) / √3 (fixings.shear_ratio, estimate) = 22.517 MPa; strips at 928.4 N.
+    //   Preload: F = T / (K d) = 0.2 N m / (0.2 × 3 mm) = 333.3 N (fixings.nut_factor 0.2, estimate).
+    //   Thread margin: (928.4 - 333.3) / 19.637 = 30.30 times the load. Screw: proof load (π/4)(3 - 0.9382 × 0.5)² mm² × 580 MPa
+    //   (m3.proof_stress, class 8.8) = 2917.9 N; (2917.9 - 333.3) / 19.637 = 131.6 times. The joint's margin: 30.30, the thread first.
+    write({ fasten: { torque: 0.2 }, more: { gravity: [0, 0, 1], loads: [{ mass: 2, at: 'bracket.h2', note: '2 kg hung over screw 2' }] } });
+    let r = check(), load = r.of('fasten.load');
+    assert.equal(r.status, 0, r.fails.join('\n'));
+    const main = load.find((x) => x.values?.margin != null), held = 2 + 3903.8 * 1.26 / 1e6, T2 = (held - 2) * 9.80665 / 2 + 2 * 9.80665;
+    assert.equal(main.level, 'pass'); near(main.values.kg, held, 0.0005, 'held up: 2 kg and the bracket');
+    near(main.values.tension, T2, 0.05, 'screw 2 takes the 2 kg'); near(main.values.screws[0].tension, 0, 0.05, 'screw 1 next to nothing');
+    assert.equal(main.values.preload, 333.3); assert.equal(main.values.torque, 0.2);
+    near(main.values.margin, (928.4 - 333.3) / T2, 0.01, 'the margin worked by hand'); near(main.values.margin, 30.30, 0.01, 'as written in the comment');
+    assert.match(main.text, /^bracket to base, 2 M3 cap screws carry bracket, 2\.005 kg with the load hung on it: screw 2 \(bracket\.h2\) takes the most: an M3 screw with 19\.6 N of pull and 0 N of shear, clamped with 333\.3 N \(0\.2 N·m, T = K d F with K = 0\.2, an estimate\): its thread in pla strips at about 928\.4 N \(an estimate: 22\.52 MPa in shear\), 30\.3\d? times this pull over the preload; the screw yields at 131\.\d+ times it \(proof load 2917\.9 N\)\. It holds 30\.3\d? times the load, the thread first\. It rests on estimates: /);
+    for (const k of ['pla.strength', 'fixings.shear_ratio', 'fixings.nut_factor']) assert.ok(main.refs.rests.includes(k), `rests on ${k}`);
+    assert.deepEqual(main.at, [12, 0, 17]); assert.equal(r.findings.filter((x) => x.code === 'motor.loads').length, 0, 'the loads are checked, by the fasten');
+    // 25 kg: the thread holds under twice it, a warning naming the kit's margin; no torque given, the step tightens to what the load leaves the thread
+    write({ more: { gravity: [0, 0, 1], loads: [{ mass: 25, at: 'bracket.h2' }] } }); r = check(); load = r.of('fasten.load');
+    const heavy = load.find((x) => x.values?.margin != null);
+    assert.equal(heavy.level, 'pass', heavy.text); near(heavy.values.margin, 2, 0.05, 'tightened only so far as leaves the thread twice the load'); assert.match(heavy.text, /Tighten to 0\.\d+ N m/);
+    const step = JSON.parse(cad('order', 'demo/joint', '--json')).steps.flatMap((x) => x.fasteners || []).find((x) => x.fastener === 'M3x10 cap');
+    assert.deepEqual(step.tighten, { torque: heavy.values.torque, given: false, load: true }); assert.match(cad('order', 'demo/joint'), /to 0\.\d+ N m \(what the joint's load leaves the thread\)/);
+    write({ fasten: { torque: 0.4 }, more: { gravity: [0, 0, 1], loads: [{ mass: 25, at: 'bracket.h2' }] } }); r = check(); // (928.4 - 666.7) / 245.2: 1.07 times
+    const tight = r.of('fasten.load').find((x) => x.values?.margin != null); assert.equal(tight.level, 'warn', 'tightened past it, the thread holds under twice the load');
+    assert.match(tight.text, /It holds 1\.0\d times the load, the thread first, where the kit asks 2 times/);
+    write({ fasten: { torque: 0.5 }, more: { gravity: [0, 0, 1], loads: [{ mass: 25, at: 'bracket.h2' }] } }); r = check();
+    assert.equal(r.of('fasten.load').find((x) => x.values?.margin != null).level, 'fail', 'tightened further, it strips under the load'); assert.ok(r.status !== 0);
+    // across the screws: a sideways load slips against the clamp, said with the friction it rests on
+    write({ fasten: { torque: 0.2 }, more: { gravity: [1, 0, 0], loads: [{ mass: 2, at: 'bracket.h2' }] } }); r = check();
+    const slip = r.of('fasten.load').find((x) => x.values?.slip != null); assert.match(slip.text, /holds the 9\.8 N of shear by friction 10\.\d+ times over \(fixings\.clamp_friction 0\.3, an estimate\)/);
+
+    // The motor stand of the bench: motor.mount's numbers as they were before fasten.load (recorded 2026-11-15 on 0ef929d)
+    const bench = fileURLToPath(new URL('../../examples/bench/', import.meta.url)), stand = path.join(ws, 'stand');
+    fs.cpSync(bench, stand, { recursive: true, filter: (p) => !p.includes('node_modules') }); fs.symlinkSync(ROOT_MODULES, path.join(stand, 'node_modules'), 'junction');
+    const motorOf = (name) => { const out = run(stand, ['check', `benchmarks/${name}`, '--json']).stdout; return JSON.parse(out).findings; };
+    const before = motorOf('motor-test').find((x) => x.code === 'motor.mount' && x.values?.bearing != null);
+    assert.match(before.text, /motor on stand: 5 mm of plate at the screws, each taking 3\.2 N against the torque \(bearing 0\.2 MPa, 212 times under PLA's 39 MPa\)/);
+    near(before.values.bearing, 0.18433179723502305, 1e-12, 'bearing as before'); near(before.values.margin, 211.575, 1e-9, 'margin as before');
+    // the same stand with the motor fastened by four M3 screws through it into the motor's own threads (the dial left off)
+    const a = JSON.parse(fs.readFileSync(path.join(stand, 'projects/benchmarks/assemblies/motor-test.json'), 'utf8'));
+    a.items = a.items.filter((x) => x.id !== 'dial'); a.joints = a.joints.filter((x) => x.id !== 'd'); a.fits = a.fits.filter((x) => x.a !== 'dial' && !(x.a === 'motor' && x.fastens));
+    a.fasten = [{ screw: 'M3 cap', through: ['stand'], into: 'motor', holes: 'stand', note: 'The motor, on its four screws' }];
+    fs.writeFileSync(path.join(stand, 'projects/benchmarks/assemblies/motor-fasten.json'), JSON.stringify(a));
+    const fm = motorOf('motor-fasten'), each = 0.28284271247461906 / (4 * Math.hypot(15.5, 15.5) / 1000); // T / (4 r): 3.2258 N, what motor.mount works out
+    for (const code of ['fasten.holes', 'fasten.end', 'fasten.length', 'fasten.engagement']) assert.deepEqual(fm.filter((x) => x.code === code).map((x) => x.level), ['pass'], code);
+    assert.match(fm.find((x) => x.code === 'fasten.end').text, /ends in motor's own M3 thread, 4\.5 mm deep \(nema17\.mount_hole_depth\)/);
+    assert.match(fm.find((x) => x.code === 'fasten.length').text, /M3x8 cap chosen, the longest sold that stops short of the end of the thread: 5 mm under its head and 3 mm into motor/);
+    const ml = fm.find((x) => x.code === 'fasten.load' && x.values?.share != null), mount = fm.find((x) => x.code === 'motor.mount' && x.values?.bearing != null);
+    near(ml.values.share, each, each * 1e-4, 'fasten.load: each screw\'s share of the motor\'s torque'); assert.ok(ml.refs.each, 'the same on each screw');
+    assert.match(ml.text, /motor's 0\.283 N m about its shaft \(what it gives at its working speed\), 3\.2 N on each screw from that alone/);
+    assert.match(mount.text, /each taking 3\.2 N against the torque/); near(mount.values.bearing, before.values.bearing, 1e-12, 'motor.mount unchanged beside it');
+    assert.equal(ml.values.screws.length, 4); near(ml.values.kg, 0.28, 1e-9, 'the motor held up'); assert.equal(ml.level, 'pass');
+  } finally { done(); }
+});
+
 test('fasten.count: cad list counts every screw by thread, length and head, with its mass and the packs it is bought in; --json and the build page carry them', async () => {
   const { ws, cad, done } = workspace();
   try {

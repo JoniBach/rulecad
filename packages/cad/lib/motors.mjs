@@ -5,6 +5,7 @@
 import { createRequire } from 'node:module';
 import { motorModel, motorParts, mountModel, performance } from '@rulecad/motors';
 import { stageEfficiency } from '@rulecad/gears';
+import { screwGroup } from '@rulecad/fixings';
 import { named } from './parts.mjs';
 import { referenceBuilt } from './bought.mjs';
 import crypto from 'node:crypto';
@@ -145,6 +146,13 @@ function worstLoad(motion, loads, j, drive, { placeItems, jointValues, mul }) {
 // What a stepper gives at the current it's set to: torque goes with the current, up to its rating
 export const atCurrent = (m, spec, torque) => (m.type === 'stepper' && spec.current != null && m.figures.rated_current?.value ? torque * Math.min(1, spec.current / m.figures.rated_current.value) : torque);
 
+/**
+ * The torque a motor puts on its own screws, as a reaction about its shaft: what it gives at its working speed (the
+ * assembly's, else workingSpeed), at the current it's set to. motor.torque, motor.mount and fasten.load all read this one.
+ * @param {{ model: object, spec: object }} d a drive (an assembly's motor item) @returns {number} N m
+ */
+export const mountTorque = (d) => atCurrent(d.model, d.spec, performance(d.model, { speed: workingSpeed(d.model, d.spec) }).motor.torque);
+
 // A motor's speed if the assembly doesn't say: its corner speed, its rated speed, or half its free speed
 export function workingSpeed(model, spec) {
   if (spec.speed != null) return spec.speed;
@@ -157,7 +165,7 @@ const material = (name) => { const n = String(name || 'pla').toLowerCase().split
 // The findings: f(level, text, card, extra), as the assembly's check makes them
 export function motorChecks(s, f, helpers, materialName) {
   const motion = s.motion, drives = motion?.drives || [], loads = motion?.loads || [], { placeItems, jointValues, mul } = helpers;
-  if (!drives.length) { if (loads.length) f('warn', `there are loads, but no motor: nothing has been checked against them (add a "motor" item that "drives" a joint)`, null, { code: 'motor.loads' }); return; }
+  if (!drives.length) { if (loads.length && !s.a.fasten?.length) f('warn', `there are loads, but no motor: nothing has been checked against them (add a "motor" item that "drives" a joint)`, null, { code: 'motor.loads' }); return; }
   const worlds = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined));
   for (const d of drives) {
     const m = d.model, grams = n3(m.mass * 1000, 1), K = d.spec.margin != null ? d.spec.margin : 2, W = worlds[d.item];
@@ -191,7 +199,7 @@ export function motorChecks(s, f, helpers, materialName) {
       back += (atLead / reduction) * ηback; backOn += atLead / reduction;
       lines.push({ x, t, load, unit, reduction, atLead, η });
     }
-    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = atCurrent(m, d.spec, rated.motor.torque), margin = need ? avail / need : Infinity;
+    const speedOut = motorSpeed / loaded[0].t.ratio, rated = performance(m, { speed: motorSpeed }), avail = mountTorque(d), margin = need ? avail / need : Infinity;
     const main = lines[0], what = main.unit === 'N m' ? `${n3(main.load.torque)} N m` : `${n3(main.load.torque, 2)} N`, gives = main.unit === 'N m' ? `${n3(avail * main.reduction * main.η)} N m` : `${n3((avail * main.reduction * main.η * Math.PI * 1000) / (main.t.slide * 180), 1)} N`;
     const trust = rated.rests.filter((k) => k !== 'spec' && k !== 'measured'), caveat = trust.length ? ` (rests on ${trust.join(' and ')} figures: measure it)` : '';
     const level = margin < 1 ? 'fail' : margin < K ? 'warn' : 'pass', fix = margin < 1 && main.t.slide == null ? ` A ratio of ${n3((main.reduction * K) / margin, 1)}:1 would give it ${K} times` : '';
@@ -267,7 +275,7 @@ function mountCheck(s, d, f, W, avail, materialName, frame) {
   if (!at) return;
   const { other, parts, inv, t, plate, hd } = at;
   if (t === Infinity) return f('warn', `${d.id}: couldn't find the plate at its screw holes in ${other}`, `${d.id}: mount not found`, { code: 'motor.mount' });
-  const here = mountModel(m, { plate: +plate.toFixed(2), ...(d.spec.screw ? { screw: d.spec.screw } : {}) }), mat = material(materialName) || material('pla'), radius = Math.max(...m.mount.holes.map(([x, y]) => Math.hypot(x, y))), each = avail / (m.mount.holes.length * radius / 1000), bearing = each / (hd * t), margin = mat.strength / bearing;
+  const here = mountModel(m, { plate: +plate.toFixed(2), ...(d.spec.screw ? { screw: d.spec.screw } : {}) }), mat = material(materialName) || material('pla'), each = Math.max(...screwGroup(m.mount.holes, { moment: [0, 0, avail] }).screws.map((x) => x.shear)), bearing = each / (hd * t), margin = mat.strength / bearing;
   for (const x of here.findings) f(x.level, `${d.id} on ${other}: ${x.text}`, x.level === 'pass' ? null : `${d.id}: ${x.code.split('.')[1]}`, { code: 'motor.mount' });
   f(margin < 2 ? 'fail' : 'pass', `${d.id} on ${other}: ${n3(plate, 2)} mm of plate at the screws, each taking ${n3(each, 1)} N against the torque (bearing ${n3(bearing, 1)} MPa, ${n3(margin, 0)} times under ${mat.name.toUpperCase()}'s ${mat.strength} MPa)`, margin < 2 ? `${d.id}: screws pull through` : null, { code: 'motor.mount', values: { plate, bearing, margin } });
   mountBends(s, d, f, W, avail, mat, { other, parts, inv, plate, hd, ...frame });

@@ -11,7 +11,10 @@
 // as reference parts (hardware, below): faint, checked for overlap, and carried into previews and links.
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { fixingsFor, DEFAULTS } from '@rulecad/fixings';
+import { fixingsFor, DEFAULTS, screwGroup } from '@rulecad/fixings';
+import { placeItems, jointValues } from '@rulecad/model-link';
+import { massesOf } from './loads.mjs';
+import { mountTorque } from './motors.mjs';
 import { jscad, fixingsContext } from './design.mjs';
 import { named } from './parts.mjs';
 import { paths } from './workspace.mjs';
@@ -357,6 +360,16 @@ export function fastenOf(s, worlds, opts = {}) {
     if (wantNut) { try { nutModel(wantNut); } catch (e) { throw new Error(`${what}: ${e.message}`); } }
     const R = Math.max(head?.across ?? fx.major, washer?.diameter ?? 0, fx.major * 2.2) / 2 + 1.5;
 
+    // A motor item ends the screws in its own tapped mounting holes, which its light solid does not draw
+    const drive = (s.motion.drives || []).find((d) => d.id === top(x.into)) ?? null, Wm = drive ? worlds[drive.item] : null;
+    const onMount = (O, D) => {
+      if (!drive?.model.mount?.thread || !drive.model.mount.holes?.length) return null;
+      const q = [O[0] - Wm[3], O[1] - Wm[7], O[2] - Wm[11]], l = [Wm[0] * q[0] + Wm[4] * q[1] + Wm[8] * q[2], Wm[1] * q[0] + Wm[5] * q[1] + Wm[9] * q[2]];
+      if (Math.abs(Math.abs(dot(unit(D), [Wm[2], Wm[6], Wm[10]])) - 1) > 1e-6) return null;
+      const h = drive.model.mount.holes.find(([hx, hy]) => Math.hypot(l[0] - hx, l[1] - hy) <= FASTEN.align.value);
+      return h ? { at: h, thread: drive.model.mount.thread, depth: drive.model.mount.depth, model: drive.model.name } : null;
+    };
+
     // The screws' axes: an anchor each, or the holes of a part
     const axes = [];
     if (x.at) s.motion.fasten[k].forEach((an, i) => {
@@ -374,6 +387,7 @@ export function fastenOf(s, worlds, opts = {}) {
           const O = vec3.transform([0, 0, 0], h.at, p.m), e = vec3.transform([0, 0, 0], add(h.at, h.axis), p.m), D = unit([e[0] - O[0], e[1] - O[1], e[2] - O[2]]);
           // a hole of this part is a screw's place where its axis goes on to another part of the joint
           if (others.length && !others.some((m) => reach(along(m.parts, O, D, R, false)))) continue;
+          if (drive && !onMount(O, D)) continue; // (into a motor: only its mounting holes, not the hole its boss sits in)
           axes.push({ name: `hole at ${mm(h.at[0])}, ${mm(h.at[1])}${Math.abs(h.at[2]) > 1e-6 && !board ? `, ${mm(h.at[2])}` : ''}`, O, D });
         }
       }
@@ -448,7 +462,11 @@ export function fastenOf(s, worlds, opts = {}) {
       // The far end: the hole in the last part, from its mouth
       const first = B.segs.find((seg) => seg.solid || seg.hole);
       let end = null;
-      if (first.solid) { const o = offAxis(first); say('fasten.holes', 'fail', `${solidSays(B, first)}${o != null ? ': the holes do not line up' : ''}`, o != null ? { distance: r3(o) } : undefined); bad = true; }
+      const mh = first.solid ? onMount(O, D) : null;
+      if (mh) {
+        if (mh.thread !== fx.thread) { say('fasten.end', 'fail', `${x.into}'s mounting holes are ${mh.thread} threads, and the screw is ${fx.thread}: use ${an(mh.thread)} ${mh.thread} screw`); bad = true; }
+        else end = { mouth: first.z0, d: fx.major, free: fx.major, depth: mh.depth, blind: true, far: first.z0 + mh.depth, pocket: null, main: first, motor: mh };
+      } else if (first.solid) { const o = offAxis(first); say('fasten.holes', 'fail', `${solidSays(B, first)}${o != null ? ': the holes do not line up' : ''}`, o != null ? { distance: r3(o) } : undefined); bad = true; }
       else {
         const n0 = B.segs.indexOf(first), mouth = first.z0; let n = n0;
         while (B.segs[n]?.hole && B.segs[n].a.free > B.segs[n].b.free + tol) n++; // (a lead-in at the mouth)
@@ -491,7 +509,8 @@ export function fastenOf(s, worlds, opts = {}) {
         const sh = end.pocket.a.loop.shape, across = sh === 'hex' || sh === 'square' ? end.pocket.a.loop.flats : 2 * end.pocket.a.free;
         for (const kind of sh === 'square' ? ['square'] : ['hex', 'lock']) { try { const n = nutModel(kind); if (across >= n.flats - 0.05 && across <= n.flats + 1 && (!seatNut || wantNut === kind)) seatNut = { kind, model: n, across }; } catch {} }
       }
-      if (wantNut || seatNut) {
+      if (end.motor) { end.kind = 'tap'; say('fasten.end', 'pass', `ends in ${x.into}'s own ${fx.thread} thread, ${mm(end.depth)} mm deep (${end.motor.model}.mount_hole_depth)`, endValues); }
+      else if (wantNut || seatNut) {
         const kind = wantNut ?? seatNut.kind, nm = nutModel(kind);
         if (end.blind) say('fasten.end', 'fail', `a nut is given, and ${x.into}'s hole is blind, ${mm(end.depth)} mm deep: a nut holds a screw that comes out of the far side`, endValues);
         else if (!isClearance) say('fasten.end', 'fail', `a nut holds this screw, so ${x.into} is passed through: its hole measures ${mm(end.d)} mm, and a clearance hole should be ${mm(clr.normal?.diameter ?? fx.major)} mm as drawn`, endValues);
@@ -518,7 +537,12 @@ export function fastenOf(s, worlds, opts = {}) {
       const zGrip = end.kind === 'nut' ? end.nut.z : end.mouth, grip = zGrip - zHead, stack = zGrip - zSeat, intoMat = matOf(B), tipRoom = DEFAULTS.tip_room.value;
       sc.grip = r3(grip);
       let pick = null, none = null, need = null;
-      if (end.kind && form !== 'set' && stack > 1e-6) {
+      if (end.motor && form !== 'set') { // the longest sold length that stops short of the motor's thread's end, as motor.mount chooses
+        const sold = fx.figures.lengths?.value || [], room = end.depth - tipRoom, L0 = [...sold].reverse().find((l) => l > grip + EPS && l - grip <= room + EPS);
+        if (L0) pick = { name: F.screwModel(fx, { length: L0, head: form }).name, length: L0, engaged: r3(L0 - grip), spare: r3(room - (L0 - grip)) };
+        else none = `no ${fx.thread} ${form} screw that is sold goes ${mm(grip)} mm under its head into ${x.into} and stops within its ${mm(end.depth)} mm of thread, ${mm(tipRoom)} mm kept at its tip`;
+        need = pick ? pick.engaged : null;
+      } else if (end.kind && form !== 'set' && stack > 1e-6) {
         const into = { kind: end.kind, ...(end.kind === 'nut' ? { nut: end.nut.kind } : end.blind ? (end.kind === 'insert' ? { room: Math.max(end.depth - tipRoom, end.insert?.length ?? 0) } : { depth: end.depth }) : { through: true }), ...(['tap', 'thread'].includes(end.kind) && intoMat.cls ? { material: intoMat.known ? intoMat.name : intoMat.cls } : {}) };
         try { pick = F.lengthFor(r3(stack), fx, { into, head: form, ...(washer ? { washer: true } : {}) }); need = pick.need; } catch (e) { none = e.message.replace(/^lengthFor: /, ''); }
       }
@@ -536,11 +560,12 @@ export function fastenOf(s, worlds, opts = {}) {
       let model;
       try { model = F.screwModel(fx, { length: L, head: form }); } catch (e) { sold = false; model = F.screwModel(fx, { length: L, head: form, anyLength: true }); if (given != null) say('fasten.length', 'fail', e.message.replace(/^screw: /, '')); }
       const inEnd = L - grip, zTip = zHead + L;
+      sc.dir = D; sc.engaged = end.kind ? r3(Math.max(0, Math.min(inEnd, avail))) : 0; sc.endKind = end.kind ?? null; sc.intoMaterial = intoMat.known ? intoMat.name : null; sc.bear = (washer ? washer.diameter : head?.across ?? fx.major * 2) / 2;
       sc.length = L; sc.model = model; sc.between = [at(zHead), at(zTip)]; sc.end = end.kind ?? null;
       const lenValues = { length: L, grip: r3(grip), into: r3(inEnd) }, under = `${mm(grip)} mm under its head${washer ? ' (its washer with it)' : ''}`;
       const wouldDo = pick && pick.length !== L ? `${pick.name} would do` : null;
       if (given == null) {
-        if (pick) say('fasten.length', 'pass', `${pick.name} chosen, the shortest sold that fits: ${under} and ${mm(pick.engaged)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${pick.spare != null ? `, ${mm(pick.spare)} mm short of bottoming out` : ''}`, lenValues);
+        if (pick) say('fasten.length', 'pass', `${pick.name} chosen, the ${end.motor ? 'longest sold that stops short of the end of the thread' : 'shortest sold that fits'}: ${under} and ${mm(pick.engaged)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${pick.spare != null ? `, ${mm(pick.spare)} mm short of bottoming out` : ''}`, lenValues);
         else if (none) say('fasten.length', 'fail', `no length chosen: ${none}`, lenValues);
         else if (form !== 'set') say('fasten.length', 'info', `no length chosen until the far end is one a screw holds in: ${model.name} is drawn`, lenValues);
       } else if (inEnd <= EPS) say('fasten.length', 'fail', `${model.name} does not reach ${x.into}: it is ${mm(L)} mm long and there is ${under}${wouldDo ? `. ${wouldDo}` : ''}`, lenValues);
@@ -552,7 +577,8 @@ export function fastenOf(s, worlds, opts = {}) {
       }
 
       // fasten.engagement: thread engaged at the far end, against the rule for what it is in
-      if (end.kind && need != null && form !== 'set') {
+      if (end.motor && form !== 'set') { const e = Math.max(0, Math.min(inEnd, end.depth)); say('fasten.engagement', 'pass', `${mm(e)} mm of ${x.into}'s own thread, ${mm(+(e / fx.pitch).toFixed(1))} turns of its ${mm(end.depth)} mm: a bought part's thread, held to its depth and to no engagement rule`, { engaged: r3(e), depth: end.depth, turns: +(e / fx.pitch).toFixed(1) }); }
+      else if (end.kind && need != null && form !== 'set') {
         const engaged = Math.max(0, Math.min(inEnd, avail)), ok = engaged >= need - EPS, values = { engaged: r3(engaged), need: r3(need), turns: +(engaged / fx.pitch).toFixed(1) };
         const what2 = end.kind === 'nut' ? `its ${end.nut.model.name}, ${mm(avail)} mm high` : end.kind === 'insert' ? `the insert, ${mm(avail)} mm long` : `${intoMat.name ? `${intoMat.name}${intoMat.cls && intoMat.known ? ` (a${intoMat.cls === 'aluminium' ? 'n' : ''} ${intoMat.cls})` : ''}` : end.kind === 'pilot' ? 'plastic' : x.into}`;
         const rule = end.kind === 'nut' ? 'a nut wants its whole height engaged' : end.kind === 'insert' ? `fixings.insert_engagement asks a diameter of thread or the whole insert, ${mm(need)} mm` : end.kind === 'pilot' && fx.figures.pilot_depth ? `${fx.set}.pilot_depth asks ${mm(need)} mm` : `engagement.${end.kind === 'pilot' ? 'plastic' : intoMat.cls ?? 'plastic'} asks ${mm(need / fx.major)} diameters, ${mm(need)} mm`;
@@ -590,7 +616,7 @@ export function fastenOf(s, worlds, opts = {}) {
             else {
               const D2 = st.head === 'hex' ? head.across * Math.cos(Math.PI / 6) : head.across, area = (d) => (Math.PI / 4) * (d * d - (2 * boreR) ** 2), bare = area(D2), onWasher = st.washer ? area(st.washer.diameter) : null, mine = washer ? onWasher : bare;
               const takes = st.limit * mine, K = DEFAULTS.nut_factor.value, torqueOf = (N) => (K * fx.major * N) / 1000, v2 = { ...values, area: +mine.toFixed(2), limit: st.limit, force: +takes.toFixed(1), torque: +torqueOf(takes).toFixed(3) };
-              sc.most = +torqueOf(takes).toFixed(2);
+              sc.most = +torqueOf(takes).toFixed(2); sc.seatForce = takes;
               if (torque == null) say('fasten.seat', 'pass', `${where}; on ${st.material} (${mm(st.limit)} MPa) its ${mm(+mine.toFixed(1))} mm² takes ${mm(+takes.toFixed(0))} N, a tightening of ${mm(+torqueOf(takes).toFixed(2))} N m${!washer && onWasher && sunk <= 0.01 ? `: the ${fx.thread} washer would raise that to ${mm(+(st.limit * onWasher).toFixed(0))} N (${mm(+torqueOf(st.limit * onWasher).toFixed(2))} N m)` : ''}`, v2);
               else {
                 const p = st.force / mine, within = p <= st.limit + 1e-9, pw = onWasher ? st.force / onWasher : null;
@@ -639,10 +665,74 @@ export function fastenOf(s, worlds, opts = {}) {
     through.forEach((t, j) => fits.push({ a: t, b: x.into, fastens: true, silent: true, fasten: k, note: x.note || `${t} fastened to ${x.into}`, ...(j === 0 && lines[0] ? lines[0] : {}) }));
     if (!through.length && lines[0]) fits.push({ a: x.into, b: x.into, silent: true, fasten: k, note: label, ...lines[0] });
     for (const l of lines.slice(1)) fits.push({ a: through[0] ?? x.into, b: x.into, silent: true, fasten: k, note: x.note || `${through[0] ?? x.into} fastened to ${x.into}`, ...l });
-    rel.count = count;
+    rel.count = count; rel.torque = torque;
+    rel.load = loadOf(s, worlds, rel, list, { F, fx, ids });
+    if (rel.load?.tighten != null && torque == null) for (const ft of fits.filter((q) => q.fasten === k && q.tighten)) ft.tighten = { torque: rel.load.tighten, given: false, load: true };
     relations.push(rel);
   });
   return { relations, hardware, fits };
+}
+
+// ---------- fasten.load: what a joint carries, shared between its screws ----------
+const G = 9.80665; // m/s²
+const sub3 = (p, q) => [p[0] - q[0], p[1] - q[1], p[2] - q[2]], scale3 = (p, k) => p.map((c) => c * k), rowsAt = (W, p) => [0, 1, 2].map((r) => W[4 * r] * p[0] + W[4 * r + 1] * p[1] + W[4 * r + 2] * p[2] + W[4 * r + 3]);
+// The items a joint holds up: those left with no way to the ground (the first item) once the joint's own links are cut.
+// Links are the motion's joints, fits that fasten and the other fasten relations; null where both sides keep a way.
+function beyondOf(s, rel, list, ids) {
+  const idx = (n) => ids.indexOf(top(n)), members = new Set([...rel.through, rel.into].map(idx)), links = [];
+  for (const j of s.motion.joints || []) links.push([j.parent, j.child]);
+  for (const x of s.a.fits || []) if (x.fastens) links.push([idx(x.a), idx(x.b)]);
+  list.forEach((x, k) => { if (k !== rel.index) for (const t of x.through || []) links.push([idx(t), idx(x.into)]); });
+  const cut = links.filter(([p, q]) => p >= -1 && q >= 0 && !(members.has(p) && members.has(q))), reach = (from) => {
+    const seen = new Set(from);
+    for (let grew = true; grew;) { grew = false; for (const [p, q] of cut) { if (seen.has(p) && !seen.has(q)) { seen.add(q); grew = true; } if (seen.has(q) && !seen.has(p)) { seen.add(p); grew = true; } } }
+    return seen;
+  };
+  const ground = reach([-1, 0]), loose = [...members].filter((m) => !ground.has(m));
+  if (!loose.length || loose.length === members.size) return null;
+  return reach(loose);
+}
+/**
+ * The load on one fasten relation and each screw's share of it: the masses of the parts it holds up and the "loads"
+ * hung on them, under the assembly's gravity, and the torque of a motor among them whose reaction it takes; each
+ * screw against its strength (screwLoad). Null where nothing loads the joint (no "loads", no motor beyond it).
+ */
+function loadOf(s, worlds, rel, list, { F, fx, ids }) {
+  const ok = rel.screws.filter((sc) => sc.dir && sc.at), loads = (s.motion.loads || []).filter((l) => l.mass != null);
+  if (!ok.length || ok.length < rel.screws.length) return null;
+  const beyond = beyondOf(s, rel, list, ids);
+  const drives = (s.motion.drives || []).filter((d) => beyond?.has(d.item) && d.joint && (() => { const j = s.motion.joints.find((q) => q.id === d.joint); return j && !beyond.has(j.child); })());
+  if (!loads.length && !drives.length) return null;
+  if (!beyond) return { closed: true };
+  const u = unit(ok[0].dir);
+  if (ok.some((sc) => Math.abs(dot(unit(sc.dir), u) - 1) > 1e-6)) return { skew: true };
+  const headSide = rel.through.some((t) => beyond.has(ids.indexOf(top(t)))), n = headSide ? u.map((c) => -c) : u; // n: the way the held part comes off
+  const g = s.motion.gravity || [0, 0, -1], gl = Math.hypot(...g), down = g.map((c) => c / gl);
+  let Fw = [0, 0, 0], Mw = [0, 0, 0], kg = 0;
+  const hang = (mass, X) => { const f = scale3(down, mass * G); Fw = add(Fw, f); Mw = add(Mw, cross(X, f)); kg += mass; };
+  const masses = massesOf(s, { placeItems, jointValues });
+  for (const m of masses) if (beyond.has(m.item)) { const d = (s.motion.drives || []).find((q) => q.item === m.item), mass = m.kg || (d ? d.model.mass ?? 0 : 0); if (mass > 0) hang(mass, rowsAt(worlds[m.item], m.centre)); }
+  const hung = loads.filter((l) => beyond.has(l.item));
+  for (const l of hung) hang(l.mass, rowsAt(worlds[l.item], [l.frame[3], l.frame[7], l.frame[11]]));
+  // the joint's frame: e1, e2 across it, n along the screws; places about the screws' centroid
+  const c = ok.reduce((t, sc) => add(t, sc.at, 1 / ok.length), [0, 0, 0]), seed = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], e1 = unit(cross(seed, n)), e2 = cross(n, e1);
+  const places = ok.map((sc) => { const q = sub3(sc.at, c); return [dot(q, e1), dot(q, e2)]; }), local = (v) => [dot(v, e1), dot(v, e2), dot(v, n)];
+  const Mc = sub3(Mw, cross(c, Fw)), pivot = Math.min(...ok.map((sc) => sc.bear)); // N mm about the centroid
+  const torques = drives.map((d) => { const W = worlds[d.item], T = mountTorque(d), axis = [W[2], W[6], W[10]]; return { id: d.id, torque: T, about: T * dot(axis, n), M: scale3(axis, T * 1000) }; });
+  const Mt = torques.reduce((t, q) => add(t, q.M), [0, 0, 0]);
+  // the worst of the motor turning either way; each screw against its strength at its share
+  const cases = (torques.length ? [1, -1] : [1]).map((sign) => screwGroup(places, { force: local(Fw), moment: local(add(Mc, Mt, sign)).map((m) => m / 1000), pivot }));
+  const screws = ok.map((sc, i) => {
+    const pick = cases.map((gp) => gp.screws[i]).reduce((a, b) => (b.tension > a.tension + 1e-9 || (Math.abs(b.tension - a.tension) <= 1e-9 && b.shear > a.shear) ? b : a));
+    const threaded = ['pilot', 'tap', 'thread'].includes(sc.endKind) && sc.intoMaterial && sc.engaged > 0;
+    const r = F.screwLoad(fx, { tension: Math.max(0, pick.tension), shear: pick.shear, ...(threaded ? { depth: sc.engaged, material: sc.intoMaterial } : ['insert', 'nut'].includes(sc.endKind) ? { end: sc.endKind } : {}), ...(rel.torque != null ? { torque: rel.torque } : sc.seatForce ? { most: sc.seatForce } : {}) });
+    return { sc, tension: pick.tension, shear: pick.shear, r };
+  });
+  const share = torques.length ? Math.max(...screwGroup(places, { moment: [0, 0, torques.reduce((t, q) => t + q.about, 0)] }).screws.map((x) => x.shear)) : null;
+  const worst = screws.reduce((a, b) => (b.r.margin < a.r.margin ? b : a)), slip = screws.filter((x) => x.r.margins.slip != null).reduce((a, b) => (!a || b.r.margins.slip < a.r.margins.slip ? b : a), null);
+  const tighten = rel.torque == null ? Math.min(...screws.map((x) => x.r.preload.torque)) : null;
+  const rests = [...new Map(screws.flatMap((x) => x.r.rests).filter((q) => q.kind === 'estimate' || q.kind === 'community').map((q) => [q.name, q])).values()].map((q) => q.name);
+  return { beyond: [...beyond].filter((k) => k >= 0).map((k) => ids[k]), kg, hung: hung.length, force: Fw, torques, share, screws, worst, slip, tighten, rests, line: cases[0].line, turns: cases.map((gp) => gp.turns).find((t) => t != null) ?? null };
 }
 
 /**
@@ -677,6 +767,24 @@ function accessSays(sc, rel, order) {
   return { level: 'pass', text: `${an(t.name)} ${t.name} reaches the head before ${acc.blockers.map((b) => `${b.item}${step(b.item) ? ` (step ${step(b.item)})` : ''}`).join(' and ')} goes on over it`, values: { ...values, distance: acc.blockers[0].z } };
 }
 const RANK = { fail: 0, warn: 1, info: 2, pass: 3 };
+// fasten.load for one relation: what it carries, the screw that takes the most against its strength, and slipping
+function loadSays(s, f, rel, lead) {
+  const L = rel.load; if (!L) return;
+  const refs = { fasten: rel.index, screw: rel.screw, through: rel.through, into: rel.into, screws: rel.screws.map((sc) => sc.name), ...(s.pose ? { pose: s.pose } : {}) };
+  if (L.closed) return f('info', `${lead}: ${[...rel.through, rel.into].join(' and ')} are held to the ground by other ways too, so what this joint carries is not shared out to its screws`, null, { code: 'fasten.load', refs });
+  if (L.skew) return f('info', `${lead}: the screws do not stand parallel, so the load is not shared out between them`, null, { code: 'fasten.load', refs });
+  const n = rel.screws.length, w = L.worst, who = (x) => (n > 1 ? `screw ${x.sc.index + 1} (${x.sc.name})` : 'the screw'), r1 = (x) => +x.toFixed(1);
+  const equal = L.torques.length && L.screws.every((x) => Math.abs(x.shear - L.screws[0].shear) < 1e-6);
+  const motor = L.torques.map((q) => `${q.id}'s ${mm(+q.torque.toFixed(3))} N m about its shaft (what it gives at its working speed), ${mm(r1(L.share))} N ${n > 1 ? 'on each screw' : 'on the screw'} from that alone`).join(' and ');
+  const carries = `${L.beyond.join(', ')}, ${mm(+L.kg.toFixed(3))} kg${L.hung ? ` with the load${L.hung > 1 ? 's' : ''} hung on ${L.beyond.length > 1 ? 'them' : 'it'}` : ''}${motor ? `, and ${motor}` : ''}`;
+  const x0 = w.r.findings[0], rests = L.rests.length ? ` It rests on estimates: ${L.rests.join(', ')}` : '';
+  const values = { margin: w.r.margin === Infinity ? null : w.r.margin, tension: r1(Math.max(0, w.tension)), shear: r1(w.shear), preload: w.r.preload.force, torque: w.r.preload.torque, kg: +L.kg.toFixed(4), ...(L.share != null ? { share: L.share } : {}),
+    screws: L.screws.map((x) => ({ screw: x.sc.name, tension: r1(Math.max(0, x.tension)), shear: r1(x.shear), margin: x.r.margin === Infinity ? null : x.r.margin })) };
+  f(x0.level, `${lead} carry ${carries}: ${who(w)} takes the most: ${x0.text}${L.tighten != null && rel.torque == null ? `. Tighten to ${mm(L.tighten)} N m` : ''}.${rests}`, x0.level === 'pass' ? null : `${rel.label}: load`,
+    { code: 'fasten.load', at: w.sc.at.map(r3), between: w.sc.between.map((p) => p.map(r3)), values, refs: { ...refs, rests: L.rests, ...(equal ? { each: true } : {}) } });
+  if (L.slip) { const y = L.slip.r.findings[1]; f(y.level, `${lead}: ${who(L.slip)}: ${y.text}`, y.level === 'pass' ? null : `${rel.label}: slips`, { code: 'fasten.load', at: L.slip.sc.at.map(r3), values: y.values, refs }); }
+  if (L.turns != null) f('warn', `${lead}: a twist of ${mm(L.turns)} N m about the one screw is held by friction alone: a second screw would hold it by shear`, `${rel.label}: turns`, { code: 'fasten.load', values: { turns: L.turns }, refs });
+}
 /**
  * The fasten findings of an assembly, in its findings shape: each relation's screws said together where they agree,
  * one by one where they do not, each with `at` (under the head) and `between` (head to tip) so a viewer points at the screw.
@@ -707,5 +815,6 @@ export function fastenChecks(s, f, { placeItems }) {
             refs: { ...(g.wall ? { wall: g.wall } : {}), fasten: rel.index, screw: rel.screw, through: rel.through, into: rel.into, screws: g.screws.map((sc) => sc.name), ...(g.screws.length > 1 ? { places: g.screws.map((sc) => sc.at.map(r3)) } : {}), ...(s.pose ? { pose: s.pose } : {}) } });
       }
     }
+    loadSays(s, f, rel, lead);
   }
 }
