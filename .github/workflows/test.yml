@@ -28,7 +28,7 @@ jobs:
     # drawn sizes compared with the commit this one follows (a pull request: its base), the table in the run's summary.
     # Measures are kept between runs by what each object is built from, so only what a change touches is built.
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,7 +43,11 @@ jobs:
           path: .cache/dimension-diff
           key: dimension-diff-${{ github.sha }}
           restore-keys: dimension-diff-
+      # (a change to the kit itself rebuilds every example cold, the showcase's optimisations and an autorouted board
+      # among them: the table is for reading, so a run that outlasts its time leaves the job green, the guard above holds)
       - run: node scripts/dimension-diff.mjs ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }} HEAD --md >> "$GITHUB_STEP_SUMMARY"
+        timeout-minutes: 40
+        continue-on-error: true
   browser:
     # The model page in headless Chrome: drop an STL, check it's drawn, checked and linked. Screenshots are kept.
     # Then the documentation site: every library page runs without a script error and its demonstration draws.
