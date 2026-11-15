@@ -44,6 +44,9 @@ export const DEFAULTS = {
   pitch_diameter: { value: (3 * Math.sqrt(3)) / 8, unit: '× pitch', rule: 'A 60° thread\'s pitch diameter is its major diameter less 0.6495 of its pitch: the diameter a threaded length weighs as', kind: 'spec', source: 'The ISO 68-1 basic profile, as worked at https://en.wikipedia.org/wiki/ISO_metric_screw_thread (D_p = D_maj - 0.649519 P)', checked: '2026-11-15' },
   steel_density: { ...s275.rules.density, rule: 'Density of steel, for a screw\'s, nut\'s or washer\'s mass (the kit\'s S275 figure: carbon steels differ by under 1%)' },
   stainless_density: { ...ss304.rules.density, rule: 'Density of 304 stainless steel (A2), for stainless hardware' },
+  thread_layers: { value: 5, unit: 'layers', rule: 'A printed thread needs this many layers to a pitch: a layer or two on each flank and one on the crest. Finer, and the layers no longer draw the tooth', kind: 'estimate', source: 'A working figure of this package: at a 0.2 mm layer it makes M6 (1 mm pitch) the smallest metric thread drawn. To be measured on the fixings coupon', checked: '2026-11-15' },
+  thread_lines: { value: 1, unit: 'lines', rule: 'A printed thread\'s tooth is at least this many print lines deep, measured on the standard\'s basic profile: a shallower tooth is lost in the wall\'s outer line', kind: 'estimate', source: 'A working figure of this package, to be measured on the fixings coupon', checked: '2026-11-15' },
+  thread_crest: { value: 0.125, unit: '× pitch', rule: 'The least flat left on the crest of a printed tooth whose down-facing flank has been laid back: an eighth of the pitch, the crest flat ISO 68-1 gives an external thread', kind: 'default', source: 'ISO 68-1 basic profile (the outermost eighth of the triangle\'s height is cut off), as worked at https://en.wikipedia.org/wiki/ISO_metric_screw_thread', checked: '2026-11-15' },
   brass_density: { value: 8.47, unit: 'g/cm³', rule: 'Density of free-machining brass CW614N (CuZn39Pb3), taken for a heat-set insert. The insert maker\'s sheet names no alloy, so the alloy is assumed', kind: 'estimate', source: 'Aalco, CW614N brass rod datasheet, https://www.aalco.co.uk/datasheets/Copper-and-Copper-Alloys-CW614N-Brass-Rod_31.ashx', checked: '2026-11-15' }
 };
 
@@ -332,7 +335,7 @@ export function fixingOf(what, m, o = {}) {
 }
 
 // ---------- the printer ----------
-const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press'];
+const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press', 'thread_gap'];
 /**
  * @typedef {{ name: string, figure: (k: string) => (Figure & { name: string, borrowed?: boolean }) | null, n: (k: string) => number, cite: (k: string) => string, rest: (k: string) => object }} Printer
  *   figure: a rule of the printer's own (never borrowed); n: a basic clearance as a number, the printer's own or, where it
@@ -341,7 +344,7 @@ const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overh
 /**
  * The printer's rules as fixings reads them. Handed nothing, the kit's X1C. Handed a rule set ({ name, rules }), its
  * figures with their kinds and sources. Handed plain numbers (a design's v.x1c), those, marked as given. A basic
- * clearance the printer lacks (hole_comp, fit, layer, chamfer, bridge, overhang, slip, press) is borrowed from the X1C
+ * clearance the printer lacks (hole_comp, fit, layer, line, chamfer, bridge, overhang, slip, press, thread_gap) is borrowed from the X1C
  * and cited as the X1C's; a measured figure (pilot_m3) is never borrowed, since it was measured on that machine.
  * @param {string} what @param {object} [p] @returns {Printer}
  */

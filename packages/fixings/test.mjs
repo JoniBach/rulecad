@@ -7,9 +7,10 @@ import { check } from '@rulecad/printcheck';
 import { nutPocket as shapesNutPocket } from '@rulecad/shapes';
 
 const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeModel, hole, HOLE_KINDS, counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket,
-  nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss, printable, screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, fixingsFor } = fixings;
+  nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss, printable, screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, fixingsFor,
+  threadModel, thread, THREAD_FORMS } = fixings;
 const { measureBoundingBox: bb, measureVolume: vol } = jscad.measurements, { geom3 } = jscad.geometries, { subtract, union, intersect } = jscad.booleans;
-const { cuboid, cylinder } = jscad.primitives, { translate, rotateY } = jscad.transforms;
+const { cuboid, cylinder } = jscad.primitives, { translate, rotateX, rotateY } = jscad.transforms;
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
 const json = (path) => JSON.parse(fs.readFileSync(new URL(path, import.meta.url), 'utf8'));
 const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
@@ -232,7 +233,7 @@ test('holes drawn: round standing up, a teardrop on its side, a blind hole to it
 });
 
 test('holes refuse what they cannot draw, by name', () => {
-  assert.throws(() => holeModel('M3', { kind: 'thread' }), /kind "thread" is a thread modelled to print, which arrives with this package's printed threads.*'pilot'.*'tap'.*'insert'/);
+  assert.throws(() => holeModel('M3', { kind: 'thread' }), /hole: M3 has a 0\.5 mm pitch, finer than x1c prints.*The smallest metric thread that would print is M6.*use a pilot.*an insert, or a nut/);
   assert.throws(() => holeModel('M3', { kind: 'slot' }), /hole: kind is clearance, close, loose, tap, pilot, insert or thread \(got "slot"\)/);
   assert.throws(() => holeModel('K30', { kind: 'tap' }), /PT K30 has no tap_drill in its rule set \(pt_k30\), so no tap hole: it has figures for pilot/);
   assert.throws(() => holeModel('M12', { kind: 'insert' }), /M12 has no insert_hole/);
@@ -434,6 +435,174 @@ test('hardware: every head form, nut, washer and insert is a closed light solid 
   assert.throws(() => screwModel('M3x12 cap', { material: 'brass' }), /material is steel or stainless/);
   assert.throws(() => washerModel('K30'), /PT K30 has no washer/); assert.throws(() => insertModel('M12'), /M12 has no heat-set insert/);
   assert.equal(washerModel('M3 washer').thickness, 0.5); assert.ok(rotateY, 'used above');
+});
+
+// ---------- threads cut for printing (Fixings 1.7) ----------
+// Every edge of a closed solid is walked once each way
+const sealed = (g, what) => {
+  const key = (p) => p.map((x) => x.toFixed(6)).join(','), edges = new Map();
+  for (const t of tris(g)) for (let i = 0; i < 3; i++) { const e = `${key(t[i])}>${key(t[(i + 1) % 3])}`; edges.set(e, (edges.get(e) ?? 0) + 1); }
+  for (const [e, n] of edges) { const [p, q] = e.split('>'); assert.equal(n, 1, `${what}: an edge walked twice the same way`); assert.equal(edges.get(`${q}>${p}`), 1, `${what}: an edge with no face on its other side`); }
+  assert.ok(vol(g) > 0, `${what}: faces point outwards`);
+};
+// The steepest a face overhangs from upright, in degrees, with z up (flat undersides on the bed left out)
+const steepest = (g, floor = 1e-6) => Math.max(...tris(g).map(([p, q, r]) => {
+  const u = q.map((x, k) => x - p[k]), v = r.map((x, k) => x - p[k]), n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], len = Math.hypot(...n);
+  return len < 1e-9 || Math.max(p[2], q[2], r[2]) < floor || n[2] >= 0 ? 0 : (Math.asin(-n[2] / len) * 180) / Math.PI;
+}));
+// Heights as where they fall within a pitch, to compare one column's crests with another's
+const within = (zs, P, shift = 0) => [...new Set(zs.map((z) => ((((z + shift) % P) + P + 1e-7) % P).toFixed(4)))].sort();
+// The heights of a thread's crest corners on the column at an angle round the axis, away from its ends
+const crests = (g, R, degrees, from, to) => [...new Set(tris(g).flat().filter((p) => Math.abs(Math.hypot(p[0], p[1]) - R) < 1e-6 && Math.abs(Math.atan2(p[1], p[0]) - (degrees * Math.PI) / 180) < 1e-6 && p[2] > from && p[2] < to).map((p) => p[2].toFixed(6)))].map(Number).sort((x, y) => x - y);
+
+test('threads: an M10 bolt and its nut report a clearance from the printer\'s rules, are closed solids, pass printcheck upright, and screw together', () => {
+  const bolt = screw('M10x30 hex', { display: 'thread' }), fits = nut('M10', { display: 'thread' }), b = bolt.model.threaded, n = fits.model.threaded;
+  // the clearance is the printer's rule, an estimate, and each of a printed pair takes half of it
+  for (const t of [b, n]) {
+    assert.equal(t.clearance, x1c.rules.thread_gap.value); assert.equal(t.clearance, 0.2); assert.equal(t.gap, 0.1); assert.equal(t.mate, 'printed');
+    const r = t.rests.find((x) => x.name === 'x1c.thread_gap'); assert.equal(r.kind, 'estimate'); assert.match(r.source, /fixings coupon/);
+    const f = t.findings.find((x) => x.code === 'thread.clearance'); assert.equal(f.level, 'info'); assert.deepEqual(f.refs, { rule: 'x1c.thread_gap', kind: 'estimate', mate: 'printed' });
+    assert.match(f.text, /0\.2 mm between this thread and its mate, on the radius: x1c\.thread_gap, an estimate until the fixings coupon measures it\. A printed pair takes half each, so this one is drawn 0\.1 mm off the basic profile/);
+  }
+  assert.match(x1c.rules.thread_gap.rule, /fixings coupon|printed pair/); assert.equal(x1c.rules.thread_gap.kind, 'estimate');
+  assert.equal(b.internal, false); assert.equal(n.internal, true); assert.equal(n.comp, 0.1, 'an internal thread is a printed hole: the compensation is added as well');
+  assert.deepEqual(b.drawn, { major: 9.364, minor: 8.176 }); assert.deepEqual(n.drawn, { major: 10.3, minor: 8.874 });
+  // closed, and printable: the bolt standing on its head, the nut as it stands
+  const standing = translate([0, 0, bolt.model.headHeight], rotateX(Math.PI, bolt));
+  sealed(bolt, 'the bolt'); sealed(fits, 'the nut'); prints(standing, 'an M10 bolt standing on its head'); prints(fits, 'an M10 nut');
+  assert.ok(steepest(standing) <= 45.5, `no face of the bolt overhangs past 45°: ${steepest(standing)}`); assert.ok(steepest(fits) <= 45.5, `nor of the nut: ${steepest(fits)}`);
+  near(bb(standing)[1][2], 30 + 6.4, 1e-9, 'a 30 mm thread on a 6.4 mm head'); near(bb(fits)[1][2], 8.4, 1e-9, 'the nut\'s height');
+  near(bb(standing)[1][0] * 2, 16 / Math.cos(Math.PI / 6), 1e-3, 'the hexagon head over its corners');
+  for (const t of [b, n]) { assert.equal(printable(t)[0].code, 'thread.printable'); assert.equal(printable(t)[0].level, 'pass'); }
+  assert.equal(printable(bolt)[0].code, 'thread.printable', 'a screw with its thread drawn says how it prints');
+  // the nut runs on the bolt: nothing of one in the other where their threads are in step, and a clash half a pitch out
+  assert.ok(vol(intersect(bolt, translate([0, 0, -15], fits))) < 1e-6, 'the nut on the bolt, ten turns up');
+  assert.ok(vol(intersect(bolt, translate([0, 0, -15.75], fits))) > 1, 'half a pitch out of step, the teeth would clash');
+  // triangles: bounded by the model's figure, and the light solids stay light unless the thread is asked for
+  assert.ok(tris(bolt).length <= b.triangles + 200, `${tris(bolt).length} against ${b.triangles}`); assert.ok(tris(fits).length <= n.triangles + 200);
+  assert.ok(tris(screw('M10x30 hex')).length < 100); assert.equal(screwModel('M10x30 hex').display, 'plain'); assert.equal(screwModel('M10x30 hex').threaded, null);
+});
+
+test('threads: the ISO metric and unified profile from the major diameter and the pitch, and the pitch and lead measured from the mesh', () => {
+  // the standard's own form, with no gap: ISO 68-1's basic profile
+  const basic = threadModel('M10', { length: 20, flanks: 'standard', gap: 0 }), H = (Math.sqrt(3) / 2) * 1.5;
+  assert.deepEqual(basic.basic, { major: 10, pitch: 9.026, minor: 8.376 }); assert.deepEqual(basic.drawn, { major: 10, minor: 8.376 });
+  near(basic.depth, (5 / 8) * H, 1e-3, 'a tooth is five eighths of the triangle high'); near(basic.crest, 1.5 / 8, 1e-3, 'a crest an eighth of the pitch wide'); near(basic.basic.pitch, 10 - 2 * (3 / 8) * H, 1e-3, 'pitch diameter');
+  assert.deepEqual(basic.flank, { up: 30, down: 30 }); assert.equal(basic.findings.find((f) => f.code === 'thread.printable').level, 'warn', 'and its 60° overhang is said');
+  assert.match(basic.findings.find((f) => f.code === 'thread.printable').text, /overhangs 60° from upright where it faces down, past x1c\.overhang 45°/);
+  const inch = threadModel('1/4-20', { length: 12, flanks: 'standard', gap: 0 }); assert.equal(inch.form, 'unified'); near(inch.basic.minor, 6.35 - 1.082532 * 1.27, 1e-3, '1/4-20 minor'); near(inch.basic.pitch, 6.35 - 0.649519 * 1.27, 1e-3, '1/4-20 pitch diameter');
+  assert.equal(threadModel('M10', { length: 20, pitch: 1.25 }).thread, 'M10x1.25', 'a fine pitch on the same diameter');
+  // as printed on the X1C: the down-facing flank laid back to the overhang, the tooth lower for it
+  const t = threadModel('M10', { length: 20 });
+  assert.deepEqual(t.flank, { up: 30, down: 45 }); assert.deepEqual(t.overhang, { standard: 60, drawn: 45, limit: 45 });
+  near(t.depth, (0.75 * 1.5 - 1.5 / 8) / (Math.tan(Math.PI / 6) + 1), 1e-3, 'what is left of a tooth 0.75 P wide at its root under a P/8 crest'); assert.equal(t.standardDepth, 0.812);
+  assert.match(t.findings.find((f) => f.code === 'thread.printable').text, /a 60° overhang from upright where it faces down, past x1c\.overhang 45°\. The down-facing flank is laid back to 45° about the tooth's root/);
+  assert.equal(threadModel('M10', { length: 20, printer: { overhang: 60 } }).flank.down, 30, 'a printer that lays 60° keeps the standard\'s form');
+  assert.ok(t.overlap > 0 && t.overlap < t.standardOverlap); assert.match(t.findings.find((f) => f.code === 'thread.overlap').text, /overlap a printed mate drawn the same way by 0\.246 mm on the radius, where the standard's overlap 0\.812 mm/);
+  assert.equal(threadModel('M10', { length: 20, mate: 'bought' }).gap, 0.2, 'for a bought mate this thread takes the whole gap'); assert.equal(threadModel('M10', { length: 20, gap: 0.3 }).clearance, 0.3);
+  // measured from the mesh: crests a pitch apart, a quarter of the lead on in a quarter turn, the other way for a left hand
+  const g = thread('M10', { length: 20 }), R = t.drawn.major / 2, at0 = crests(g, R, 0, 2, 18), at90 = crests(g, R, 90, 2, 18);
+  sealed(g, 'an M10 thread'); prints(g, 'an M10 thread standing on its end'); assert.ok(steepest(g) <= 45.5, `flanks within the overhang: ${steepest(g)}`);
+  assert.ok(at0.length >= 16, 'two corners to a crest'); for (let i = 2; i < at0.length; i++) near(at0[i] - at0[i - 2], 1.5, 1e-6, 'the pitch, crest to crest');
+  assert.deepEqual(within(at90, 1.5), within(at0, 1.5, 1.5 / 4), 'a right-hand thread climbs a quarter of its lead in a quarter turn');
+  const left = thread('M10', { length: 20, hand: 'left' }); assert.deepEqual(within(crests(left, R, 90, 2, 18), 1.5), within(crests(left, R, 0, 2, 18), 1.5, -1.5 / 4), 'a left-hand thread falls by it'); sealed(left, 'left hand'); near(vol(left), vol(g), 0.5, 'the same solid, mirrored');
+  const two = thread('M10', { length: 20, starts: 2 }), c0 = crests(two, R, 0, 2, 18), c90 = crests(two, R, 90, 2, 18);
+  assert.equal(two.model.lead, 3); near(c0[2] - c0[0], 1.5, 1e-6, 'two starts: still a pitch from crest to crest'); assert.deepEqual(within(c90, 1.5), within(c0, 1.5, 3 / 4), 'and twice the climb'); sealed(two, 'two starts'); prints(two, 'a two-start thread');
+  assert.ok(steepest(thread('M10', { length: 20, flanks: 'standard' })) > 55, 'the standard\'s form does overhang 60°');
+  // each end has a lead-in: the first layer is a plain circle at the root, and the thread grows out of a cone
+  const foot = tris(g).flat().filter((p) => Math.abs(p[2]) < 1e-9 && Math.hypot(p[0], p[1]) > 1e-6); for (const p of foot) near(Math.hypot(p[0], p[1]), t.drawn.minor / 2, 1e-6, 'the foot is round');
+  assert.equal(t.leadIn, t.depth); assert.equal(t.run, t.leadIn, 'a 45° cone'); near(bb(g)[1][2], 20, 1e-9, 'its length'); near(bb(g)[1][0], R, 1e-6, 'its crests');
+  // the count of triangles is bounded by the faces round, and a plain cylinder is there for a viewer
+  assert.ok(tris(g).length <= t.triangles, `${tris(g).length} within ${t.triangles}`); const coarse = thread('M10', { length: 20, segments: 24 }); assert.ok(tris(coarse).length <= coarse.model.triangles && tris(coarse).length < 0.55 * tris(g).length); sealed(coarse, '24 round');
+  const plain = thread('M10', { length: 20, display: 'plain' }); assert.ok(tris(plain).length <= plain.model.triangles); assert.ok(tris(plain).length <= 8 * 48); near(bb(plain)[1][0], R, 1e-6, 'plain: a cylinder at the crests'); sealed(plain, 'plain');
+  assert.deepEqual(THREAD_FORMS, ['metric', 'unified', 'trapezoidal']);
+});
+
+test('threads: the T8 lead screw\'s trapezoidal thread, four starts as its rule set says, and its nut drawn and printable', () => {
+  const screwSet = json('../rules/t8-screw.json'), nutSet = json('../rules/t8-nut.json');
+  // ISO 2904's basic sizes, which the catalogue's own rules were worked from
+  const basic = threadModel('T8', { length: 20, flanks: 'standard', gap: 0 });
+  assert.equal(basic.form, 'trapezoidal'); assert.equal(basic.thread, 'Tr8x8(P2)'); assert.equal(basic.starts, screwSet.rules.starts.value); assert.equal(basic.starts, 4); assert.equal(basic.lead, screwSet.rules.lead.value); assert.equal(basic.pitch, 2);
+  assert.deepEqual(basic.basic, { major: 8, pitch: screwSet.rules.pitch_diameter.value, minor: screwSet.rules.root_diameter.value }); assert.deepEqual(basic.flank, { up: 15, down: 15 });
+  near(basic.crest, 2 * (0.5 - 0.5 * Math.tan(Math.PI / 12)), 1e-3, 'a crest 0.366 of the pitch wide'); assert.equal(basic.depth, 1.25, 'h3 = 0.5 P + ac');
+  assert.ok(basic.rests.some((r) => r.name === 't8-screw.thread' && r.kind === 'community')); assert.ok(basic.rests.some((r) => r.name === 't8-screw.starts'));
+  assert.deepEqual(threadModel('T8', { length: 20, internal: true, flanks: 'standard', gap: 0, printer: { hole_comp: 0 } }).basic, { major: 8.5, pitch: 7, minor: 6 }, 'the nut: D4 = d + 2 ac, D1 = d - P');
+  // by its designation, by the nut's own rule set, and a variant of the screw's
+  assert.equal(threadModel('Tr8x8(P2)', { length: 20 }).starts, 4); assert.equal(threadModel('tr8x2', { length: 20 }).starts, 1); assert.equal(threadModel('Tr8x4(P2)LH', { length: 20 }).hand, 'left');
+  const byNut = threadModel(nutSet, { length: nutSet.rules.length.value, internal: true, mate: 'bought' });
+  assert.equal(byNut.starts, 4); assert.equal(byNut.thread, 'Tr8x8(P2)'); assert.equal(byNut.gap, 0.2, 'on a bought screw the nut takes the whole gap'); assert.ok(byNut.rests.some((r) => r.name === 't8-nut.thread'));
+  assert.equal(threadModel(screwSet, { length: 20, variant: 'lead-2' }).starts, 1); assert.equal(threadModel(screwSet, { length: 20, variant: 'lead-4' }).lead, 4);
+  assert.deepEqual(byNut.overhang, { standard: 75, drawn: 45, limit: 45 }); assert.ok(byNut.overlap > 0.3, `the nut still overlaps a bought screw: ${byNut.overlap}`);
+  // the nut: the catalogue's round body with the thread cut through it
+  const L = nutSet.rules.length.value, body = translate([0, 0, L / 2], cylinder({ radius: nutSet.rules.body_diameter.value / 2 + 2, height: L, segments: 48 })), cut = thread(nutSet, { length: L, internal: true, mate: 'bought' });
+  sealed(cut, 'the T8 cutter'); const made = subtract(body, cut); prints(made, 'a printed T8 nut');
+  assert.ok(vol(intersect(made, translate([0, 0, L / 2], cylinder({ radius: byNut.drawn.minor / 2 - 0.02, height: L + 2, segments: 64 })))) < 1e-6, 'open to its crests');
+  assert.ok(vol(intersect(made, translate([0, 0, L / 2], cylinder({ radius: 4, height: L - 4, segments: 64 })))) > 5, 'and the screw\'s 8 mm would meet its teeth');
+  // four starts measured from the cutter: at one angle a crest every pitch, and an eighth of a turn on, half a pitch higher (an eighth of the 8 mm lead)
+  const R = byNut.drawn.major / 2, c0 = crests(cut, R, 0, 3, 12), c45 = crests(cut, R, 45, 3, 12);
+  near(c0[2] - c0[0], 2, 1e-6, 'the pitch'); assert.deepEqual(within(c45, 2), within(c0, 2, 1), 'a lead of 8 mm: 1 mm in an eighth of a turn'); assert.notDeepEqual(within(c45, 2), within(c0, 2), 'which one start would not give');
+  const rod = thread('Tr8x2', { length: 20 }); sealed(rod, 'a Tr8x2 screw'); prints(rod, 'a printed Tr8x2 screw'); assert.ok(steepest(rod) <= 45.5);
+  assert.throws(() => threadModel('Tr8x3(P2)', { length: 10 }), /the lead a whole number of pitches: Tr8x2, Tr8x8\(P2\) \(got a lead of 3 mm on a 2 mm pitch\)/);
+  assert.throws(() => threadModel('Tr60x14', { length: 60 }), /a trapezoidal pitch of 14 mm is outside the crest clearances this package holds \(ISO 2904, pitches from 1\.5 to 12 mm\)/);
+  assert.equal(threadModel({ form: 'trapezoidal', diameter: 60, pitch: 14, ac: 1 }, { length: 60 }).basic.minor, 44, 'with its own crest clearance');
+  assert.throws(() => threadModel(json('../rules/nema17.json'), { length: 10 }), /nema17 names no trapezoidal thread/);
+  assert.throws(() => threadModel(screwSet, { length: 20, variant: 'lead-3' }), /t8-screw has no variant "lead-3" \(lead-2, lead-4\)/);
+});
+
+test('threads refused by name: a pitch finer than the printer resolves, with the size that would print; on its side with no flat; and what is not a thread', () => {
+  assert.throws(() => threadModel('M3', { length: 10 }), /threadModel: M3 has a 0\.5 mm pitch, finer than x1c prints: a thread needs 5 layers to a pitch \(1 mm at x1c\.layer 0\.2 mm\) and a tooth a line deep \(a pitch of 0\.776 mm at x1c\.line 0\.42 mm\)\. The smallest metric thread that would print is M6 \(1 mm pitch\)\. For M3 use a pilot the screw forms its own thread in, an insert, or a nut/);
+  for (const small of ['M1.6', 'M2', 'M2.5', 'M3', 'M4', 'M5', '4-40', '6-32', '8-32']) assert.throws(() => threadModel(small, { length: 10 }), /finer than x1c prints/, small);
+  for (const big of ['M6', 'M8', 'M10', 'M12', '10-24', '1/4-20', '5/16-18', '3/8-16']) assert.equal(threadModel(big, { length: 12 }).kind, 'thread', big);
+  assert.throws(() => threadModel('6-32', { length: 10 }), /The smallest unified thread that would print is 10-24 UNC/);
+  // a finer layer resolves a finer thread, and then the line's width decides
+  assert.throws(() => threadModel('M4', { length: 10, printer: { layer: 0.1 } }), /a pitch of 0\.776 mm at x1c\.line 0\.42 mm\)\. The smallest metric thread that would print is M5 \(0\.8 mm pitch\)/);
+  assert.equal(threadModel('M5', { length: 10, printer: { layer: 0.1 } }).pitch, 0.8);
+  assert.throws(() => threadModel('M10', { length: 20, pitch: 0.75 }), /M10x0\.75 has a 0\.75 mm pitch, finer than x1c prints/);
+  assert.throws(() => screwModel('M3x12 cap', { display: 'thread' }), /screw: M3 has a 0\.5 mm pitch, finer than x1c prints/);
+  // on its side
+  assert.throws(() => threadModel('M10', { length: 20, axis: 'x' }), /a thread lying on its side \(axis x\) has its lower half hanging over the bed.*Stand it up \(axis z\), or give \{ flat: true \}: a flat along the thread for it to lie on/);
+  assert.throws(() => holeModel('M10', { kind: 'thread', into: '+x' }), /hole: a thread lying on its side \(axis x\) has the crests of its top turns hanging in the hole.*a pointed roof over the hole, as a teardrop has/);
+  assert.throws(() => threadModel('M10', { length: 20, flat: true }), /flat is for a thread lying on its side/);
+  // and the rest, by name
+  assert.throws(() => threadModel('K30', { length: 10 }), /PT K30 is a thread-forming screw for plastic.*no thread to print/);
+  assert.throws(() => threadModel('M7', { length: 10 }), /no thread "M7"/);
+  assert.throws(() => threadModel(7, { length: 10 }), /threadModel: give a thread: a fixing's name or model \('M10', '1\/4-20'\), a trapezoidal thread/);
+  assert.throws(() => threadModel('M10'), /give a length, the thread's along its axis/); assert.throws(() => threadModel('M10', 20), /the second argument is its options/);
+  assert.throws(() => threadModel('M10', { length: -5 }), /length is a number above 0/); assert.throws(() => threadModel('M10', { length: 2 }), /an M10 thread 2 mm long is shorter than its two lead-ins and one pitch \(2\.689 mm\)|shorter than its two lead-ins/);
+  assert.throws(() => threadModel('M10', { length: 20, hand: 'both' }), /hand is right or left/); assert.throws(() => threadModel('M10', { length: 20, starts: 1.5 }), /starts is how many threads run side by side, a whole number/);
+  assert.throws(() => threadModel('M10', { length: 20, segments: 50 }), /segments is how many faces go round, a multiple of 4 from 12 to 144/); assert.throws(() => threadModel('M10', { length: 20, display: 'pretty' }), /display is thread or plain/);
+  assert.throws(() => threadModel('M10', { length: 20, internal: 'yes' }), /internal is true/); assert.throws(() => threadModel('M10', { length: 20, gap: -0.1 }), /gap is the gap between this thread and its mate on the radius, 0 mm or more/);
+  assert.throws(() => threadModel('M10', { length: 20, mate: 'steel' }), /mate is printed or bought/); assert.throws(() => threadModel('M10', { length: 20, flanks: 'sharp' }), /flanks is printed or standard/);
+  assert.throws(() => threadModel({ form: 'whitworth', diameter: 10, pitch: 1.5 }, { length: 20 }), /form is metric, unified or trapezoidal/);
+  assert.throws(() => nutModel('M10', { display: 'real' }), /nut: display is plain or thread/);
+  // another printer with no thread_gap borrows the X1C's, and says so
+  const other = threadModel('M10', { length: 20, printer: { name: 'mk4', rules: {} } }); assert.ok(other.findings.some((f) => f.code === 'thread.printer' && /mk4 has no thread_gap: the X1C's 0\.2 mm is used/.test(f.text)));
+});
+
+test('threads in a part: hole kind thread going down, through, up from the bed, and on its side with a roof; a thread lying on a flat', () => {
+  const part = (cut) => subtract(translate([0, 0, 10], cuboid({ size: [24, 24, 20] })), cut), pin = (d, lo, hi, turn = (g) => g) => turn(translate([0, 0, (lo + hi) / 2], cylinder({ radius: d / 2, height: hi - lo, segments: 64 })));
+  const h = holeModel('M10', { kind: 'thread', depth: 12 });
+  assert.equal(h.kind, 'thread'); assert.equal(h.diameter, 10.3); assert.equal(h.nominal, 10); assert.equal(h.depth, 12); assert.equal(h.through, false); assert.equal(h.threaded.internal, true); assert.equal(h.threaded.length, 12);
+  assert.equal(holeModel('M10', { kind: 'thread', mate: 'bought' }).diameter, 10.5, 'for a bought screw: the whole gap'); assert.equal(holeModel('M10', { kind: 'thread' }).depth, 25, '2.5 diameters of thread in plastic');
+  assert.ok(holeModel('M10', { kind: 'thread', depth: 8 }).findings.some((f) => f.code === 'hole.depth' && /engagement\.plastic asks 25 mm of thread/.test(f.text)));
+  assert.match(h.findings.find((f) => f.code === 'hole.drawn').text, /an M10 threaded hole drawn 10\.3 mm over its roots: it rests on m10\.major_diameter \(10 mm\)/); passes(h, 'thread.printable', 'a threaded hole');
+  for (const [what, o, clear] of [['down, blind', { depth: 12, at: [0, 0, 20] }, [8.2, 20.5]], ['down, through', { depth: 20, through: true, at: [0, 0, 20] }, [-0.5, 20.5]], ['up from the bed, blind', { depth: 10, into: '+z', at: [0, 0, 0] }, [-0.5, 9.5]]]) {
+    const cut = hole('M10', { kind: 'thread', ...o }), made = part(cut);
+    prints(made, `a threaded hole ${what}`); assert.ok(vol(made) < 24 * 24 * 20 - 300, what);
+    assert.ok(vol(intersect(made, pin(cut.model.threaded.drawn.minor - 0.05, ...clear))) < 1e-6, `${what}: open to its crests`); assert.ok(vol(intersect(made, pin(10, ...clear))) > 5, `${what}: with teeth for a 10 mm screw`);
+  }
+  assert.equal(holeModel('M10', { kind: 'thread', depth: 10, into: '+z' }).point, 4.437, 'up from the bed it ends in a 45° point, as a blind hole does');
+  near(bb(hole('M10', { kind: 'thread', depth: 10, into: '+z' }))[1][2], 10 + 4.437, 1e-6, 'the point past the thread');
+  const side = hole('M10', { kind: 'thread', depth: 24, through: true, into: '+x', flat: true, at: [-12, 0, 10] });
+  prints(part(side), 'a threaded hole on its side, with its roof'); near(bb(side)[1][2] - 10, (10.3 / 2) * Math.SQRT2, 1e-3, 'a roof to a point, as a teardrop\'s'); assert.equal(side.model.threaded.engaged, 0.75);
+  assert.equal(side.model.threaded.flank.down, 30, 'on its side the flanks face sideways and keep the standard\'s angle');
+  const lying = thread('M10', { length: 20, axis: 'x', flat: true }), [lo, hi] = bb(lying);
+  sealed(lying, 'a thread lying on its flat'); prints(translate([0, 0, -lo[2]], lying), 'a thread lying on its flat'); near(-lo[2], lying.model.flat, 1e-9, 'the flat, from the axis'); near(hi[0] - lo[0], 20, 1e-9, 'along x'); near(hi[2], 4.9, 1e-6, 'its crests above');
+  near(bb(thread('M10', { length: 20, axis: 'y', flat: true }))[1][1], 20, 1e-9, 'or along y');
+  // a viewer's plain cylinder, by the call or for a whole workspace
+  const quick = hole('M10', { kind: 'thread', depth: 12, display: 'plain', at: [0, 0, 20] }); assert.ok(tris(quick).length <= 8 * 48); near(bb(quick)[0][2], 8, 1e-9, 'plain: the bore to its depth');
+  const light = fixingsFor({ display: 'plain' }); assert.equal(light.threadModel('M10', { length: 20 }).display, 'plain'); assert.equal(light.hole('M10', { kind: 'thread', depth: 12 }).model.threaded.display, 'plain'); assert.equal(light.thread('M10', { length: 20, display: 'thread' }).model.display, 'thread', 'unless asked');
+  assert.equal(light.holeModel('M3').diameter, 3.5, 'and other holes are as they were');
 });
 
 test('the rules this package adds say what they are and where they come from', () => {

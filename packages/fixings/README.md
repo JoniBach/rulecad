@@ -155,7 +155,7 @@ argument is a model or a name.
 | `tap` | A hole to tap | `tap_drill` | Added |
 | `pilot` | The screw forms its own thread in the plastic | The printer's `pilot_<set>`, else the thread's `pilot` | None: as drawn |
 | `insert` | A heat-set insert melts in | `insert_hole` | None: as drawn |
-| `thread` | A thread modelled to print | Refused for now: it arrives with this package's printed threads | |
+| `thread` | A thread modelled to print, for a screw of about M6 or more | The thread's major diameter, the printer's `thread_gap` and `hole_comp` (see Threads cut for printing) | Added |
 
 **Compensation is applied once, and only where it belongs.** Printed holes come out small, so the printer's
 `hole_comp` is added across the diameter where the rule's figure is the size the hole must come out. A pilot and an
@@ -305,13 +305,13 @@ Nothing here has been printed yet as a test of this package: the checks are geom
 The rules this package adds to the threads' and the printer's are exported as `DEFAULTS`, each with its `rule`,
 `kind` and `source`.
 
-## What comes next
+## Threads cut for printing
 
-Threads modelled to print, the strength of a joint (thread engagement, stripping, preload, bearing pressure under a
-head) and choosing a sold length for a stack of parts are planned and are not in this release. In `@rulecad/cad` the
-package becomes `v.fixings` in designs and a `fasten` relation in assemblies. The plan and its tickets are in
-[issue 212](https://github.com/JoniBach/rulecad/issues/212), and the specification is `docs/fixings-and-frames.md`
-in the repository.
+`threadModel(spec, { length, internal, starts, hand, mate, flanks })` gives a real thread as numbers, and `thread`
+gives the solid: an external thread to add, or the cutter of an internal one to subtract. `hole(m, { kind: 'thread' })`
+cuts one in a part, and `screw(m, { display: 'thread' })` and `nut(m, { display: 'thread' })` draw the hardware with
+it. The forms are the ISO metric thread (ISO 68-1), the unified inch thread and the trapezoidal thread of a lead screw
+(ISO 2904: `'Tr8x8(P2)'`, or `'T8'` for the catalogue's). This section is finished with the rest of the document.
 
 ## Licence
 

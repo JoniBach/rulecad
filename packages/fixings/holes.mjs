@@ -5,6 +5,7 @@
 import { teardropHole } from '@rulecad/shapes';
 import { fixingOf, printerOf, figure, cite, rest, finding, positive, oneOf, isNum, shown, mm, r3, a, ENGAGEMENT, engagementOf } from './model.mjs';
 import { along, bore, DIRECTIONS } from './draw.mjs';
+import { threadedHoleModel, threadedHole } from './threads.mjs';
 
 /**
  * @typedef {import('./model.mjs').Fixing} Fixing a fixing's model, as fixingModel gives it
@@ -21,7 +22,7 @@ const HOLES = {
   pilot: { figure: 'pilot', printed: false, blind: true, says: 'pilot' },
   insert: { figure: 'insert_hole', printed: false, blind: true, says: 'insert hole' }
 };
-/** The kinds of hole: what each is for. `thread` is kept for threads modelled to print, and is refused until they arrive. */
+/** The kinds of hole: what each is for. `thread` is a thread modelled to print (threadModel), for a screw of about M6 or more. */
 export const HOLE_KINDS = [...Object.keys(HOLES), 'thread'];
 
 /**
@@ -63,9 +64,11 @@ export const said = (into) => HOW[into];
 /**
  * A hole for a fixing, as numbers, sized by what it is for.
  * @param {Fixing | string} m a fixing's model, or its name ('M3')
- * @param {{ kind?: string, depth?: number, through?: boolean, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object }} [o]
+ * @param {{ kind?: string, depth?: number, through?: boolean, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object,
+ *   mate?: 'printed' | 'bought', gap?: number, flanks?: 'printed' | 'standard', hand?: 'right' | 'left', starts?: number, pitch?: number, segments?: number, display?: 'thread' | 'plain', flat?: boolean }} [o]
  *   kind: clearance (the normal hole a screw passes through, the default), close, loose, pilot (the screw forms its own
- *   thread in the plastic), tap (the tap drill), insert (a heat-set insert), or thread (refused for now);
+ *   thread in the plastic), tap (the tap drill), insert (a heat-set insert), or thread (a thread modelled to print, which
+ *   also takes threadModel's mate, gap, flanks, hand, starts, pitch, segments, display and flat);
  *   depth: how deep, or the thickness passed through; through: out of the far face (the default for the clearances);
  *   printer: the printer's rule set, or its values (default the kit's X1C); material: the plastic, for a pilot ('PLA',
  *   'PETG'), or what a tapped hole is in ('aluminium'); axis: z for a hole standing up, x or y for one on its side
@@ -76,7 +79,7 @@ export function holeModel(m, o = {}) {
   const what = 'hole';
   optionsOf(what, o, '{ kind: \'pilot\', depth: 8 }');
   const fx = fixingOf(what, m, o), kind = oneOf(what, 'kind', o.kind ?? 'clearance', HOLE_KINDS);
-  if (kind === 'thread') throw new Error(`${what}: kind "thread" is a thread modelled to print, which arrives with this package's printed threads (thread, threadModel). Until then: 'pilot' (the screw forms its own thread), 'tap' (the tap drill) or 'insert'`);
+  if (kind === 'thread') return threadedHoleModel(what, fx, o, directionOf(what, o));
   const spec = HOLES[kind], pr = printerOf(what, o.printer), dir = directionOf(what, o), out = [], rests = [];
   // The figure the diameter rests on: for a pilot, the printer's measured rule for this thread (and plastic) before the thread's starting figure
   let basis = null;
@@ -126,12 +129,14 @@ export function holeModel(m, o = {}) {
  * A hole for a fixing, to subtract: round standing up, a teardrop lying on its side (through @rulecad/shapes'
  * teardropHole), with its lead-in where it has one, and a 45° point where it ends going up from the bed.
  * @param {Fixing | string} m
- * @param {{ kind?: string, depth?: number, through?: boolean, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object, at?: number[] }} [o]
+ * @param {{ kind?: string, depth?: number, through?: boolean, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object, at?: number[],
+ *   mate?: 'printed' | 'bought', gap?: number, flanks?: 'printed' | 'standard', hand?: 'right' | 'left', starts?: number, pitch?: number, segments?: number, display?: 'thread' | 'plain', flat?: boolean }} [o]
  *   as holeModel, and at: the point on the face where the hole starts. A clearance hole needs depth: the thickness it passes
  * @returns {object} a JSCAD geom3 to subtract, with .model holding holeModel's numbers
  */
 export function hole(m, o = {}) {
   const h = holeModel(m, o), at = pointOf('hole', o.at);
+  if (h.kind === 'thread') return threadedHole(h, at);
   if (h.depth == null) throw new Error(`hole: ${a(h.thread)} ${h.kind} hole needs depth, the thickness it passes through, in mm`);
   if (h.teardrop) return Object.assign(teardropHole({ d: h.diameter, length: h.depth, at, into: h.into, through: h.through }), { model: h });
   const r = h.diameter / 2, steps = [...(h.lead ? [[r + h.lead, 0], [r, h.lead]] : []), [r, h.depth], ...(h.point ? [[0, h.depth + h.point]] : [])];

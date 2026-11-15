@@ -11,7 +11,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | Set | What | Values |
 |---|---|---|
 | `wire` | Hook-up wire by gauge: current density, service loop | 4 |
-| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need (and how far the first layer spreads), hole compensation, and the measured pilot for an M3 screw in PLA (`pilot_m3`) | 14 |
+| `x1c` | Bambu Lab X1 Carbon: bed, line width, layer, overhang, bridges, fits, the gap parts printed in place need (and how far the first layer spreads), hole compensation, the gap a printed screw thread leaves its mate (`thread_gap`, an estimate), and the measured pilot for an M3 screw in PLA (`pilot_m3`) | 14 |
 | `mx` | Cherry MX switches: plate cut-out, stem, housing, travel, key pitch | 29 |
 | `oem` | OEM keycap profile: heights and top tilt per row (from KeyV2) | 12 |
 | `pico` | Raspberry Pi Pico: outline, headers, the GPIO on each pin | 18 |
