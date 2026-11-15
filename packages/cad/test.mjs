@@ -1514,6 +1514,23 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.ok(stand.some((x) => x.code === 'motor.torque' && /gait: knee needs/.test(x.text) && x.level === 'pass'), JSON.stringify(of('motor.torque')));
     assert.match(of('gait.stable')[0].text, /one leg, on a stand/);
     assert.ok(fs.existsSync(path.join(ws, '.preview/leg/stand-gait.svg')), 'its step animated');
+    // The bracket screwed on (chapter 15): each end found where v.fixings drew it, the lengths chosen, the shelf's load carried; a short screw and one the wall hides each fail by name
+    const shelf = JSON.parse(run(ws, ['check', 'fix/shelf', '--json']).out).findings, at = (c) => shelf.filter((x) => x.code === c);
+    assert.deepEqual(shelf.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    const ends = at('fasten.end').map((x) => x.text).join('\n');
+    assert.match(ends, /screw 1 \(bracket\.pilot\): ends in plate, in a pilot .* 2\.9 mm as drawn \(x1c\.pilot_m3, measured\)/);
+    assert.match(ends, /screw 2 \(bracket\.insert\): ends in plate, in a heat-set insert's hole: 4 mm as drawn/);
+    assert.match(ends, /Back screws, 2 M3 countersunk screws: ends in an M3 hex nut in its seat in bracket, 5\.7 mm across the flats/, 'the nut in its slot, not on the far face');
+    assert.deepEqual(at('fasten.length').map((x) => x.text.match(/(M3x\d+ \w+) chosen/)[1]), ['M3x10 cap', 'M3x8 cap', 'M3x16 countersunk']);
+    assert.match(at('fasten.seat').map((x) => x.text).join('\n'), /countersunk head sits in a (89\.\d|90)° countersink in plate/);
+    assert.deepEqual(at('fasten.load').filter((x) => x.values?.margin != null).map((x) => Math.round(x.values.margin)), [41, 33], 'the margins the chapter gives');
+    assert.match(run(ws, ['list', 'fix/shelf']).out, /2 ×\s+M3x16 countersunk[\s\S]*2 ×\s+M3 hex nut[\s\S]*1 ×\s+M3 insert[\s\S]*5\.9 g\s+about \d+ min\s+plate\s+11\.8 g\s+about \d+ min\s+bracket/);
+    const short = run(ws, ['check', 'fix/short']);
+    assert.equal(short.code, 1); assert.match(short.out, /✗ Front screws, screw 1 \(bracket\.pilot\): M3x6 cap engages 2\.6 mm of thread in pla .* M3x10 cap would do/);
+    assert.match(short.out, /✗ Front screws, screw 2 \(bracket\.insert\): M3x6 cap engages 2\.6 mm of thread in the insert.* M3x8 cap would do/);
+    const first = run(ws, ['check', 'fix/wall-first']);
+    assert.equal(first.code, 1); assert.match(first.out, /✗ Back screws, 2 M3 countersunk screws: a 2 mm hex key cannot reach the head: wall stands over it/);
+    assert.match(first.out, /✗ the screw of "Back screws" can't be reached in any order: wall stands over it and goes on first/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
