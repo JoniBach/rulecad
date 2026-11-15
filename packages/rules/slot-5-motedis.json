@@ -1,0 +1,14 @@
+{
+  "_doc": "The 5 mm slot of Motedis' I-type profiles (20 mm series). Motedis prints the opening and the depth; it sells the section as I-type, made to match item's Line 5 groove, so the lip and the cavity's width are item's figures, marked community until a bar is measured. The floor and flanks are item's as scaled off its drawing.",
+  "name": "slot-5-motedis",
+  "part": "slot",
+  "rules": {
+    "opening": { "value": 5, "unit": "mm", "rule": "Slot width, \"5\" on the data picture (\"Nutbreite: 5 mm\" on the page)", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-20x20-I-Typ-Nut-5\", https://www.motedis.com/de/Aluprofil-20x20-I-Typ-Nut-5", "checked": "2026-11-15" },
+    "lip_thickness": { "value": 1.8, "unit": "mm", "rule": "Lip thickness: Motedis prints none. item's figure for the groove this is made to match (slot-5-item)", "kind": "community", "source": "slot-5-item rule set; Motedis calls the section I-type", "checked": "2026-11-15" },
+    "cavity_width": { "value": 11.5, "unit": "mm", "rule": "Width under the lips: Motedis prints none. item's figure (slot-5-item)", "kind": "community", "source": "slot-5-item rule set; Motedis calls the section I-type", "checked": "2026-11-15" },
+    "cavity_depth": { "value": 6.35, "unit": "mm", "rule": "Slot depth, \"6,35\" on the data picture", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-20x20-I-Typ-Nut-5\", https://www.motedis.com/de/Aluprofil-20x20-I-Typ-Nut-5", "checked": "2026-11-15" },
+    "floor_width": { "value": 4.8, "unit": "mm", "rule": "Width of the floor: as slot-5-item, itself scaled off item's drawing", "kind": "estimate", "source": "slot-5-item rule set; Motedis calls the section I-type", "checked": "2026-11-15" },
+    "flank_angle": { "value": 45, "unit": "deg", "rule": "The flanks close in at 45 degrees, as slot-5-item", "kind": "estimate", "source": "slot-5-item rule set; Motedis calls the section I-type", "checked": "2026-11-15" },
+    "nut_family": { "value": "slot-5-item", "rule": "Sold as I-type: it takes nuts made for item's Line 5 groove", "kind": "community", "source": "Motedis, product page and data picture \"Aluprofil-20x20-I-Typ-Nut-5\", https://www.motedis.com/de/Aluprofil-20x20-I-Typ-Nut-5", "checked": "2026-11-15" }
+  }
+}

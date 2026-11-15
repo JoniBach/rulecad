@@ -1,0 +1,13 @@
+{
+  "_doc": "A 25 x 25 x 2 mm steel tube, as a ready size of the tube family (profile-tube holds the family and how to give any other size). It has no maker's sheet: every dimension is the nominal one stock is sold by, so measure the bar in hand, and its area, second moments, torsion constant and mass are worked out from its outline. The drawn outline leaves out the rounds inside an extruded tube's corners (drawn square inside when corner_radius is 0).",
+  "name": "profile-tube-steel-25x25x2",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "tube", "rule": "A square or rectangular tube", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "width": { "value": 25, "unit": "mm", "rule": "Outside, across", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "height": { "value": 25, "unit": "mm", "rule": "Outside, up", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "wall": { "value": 2, "unit": "mm", "rule": "Wall thickness, the same all round. A welded tube's wall is within about a tenth of this", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "corner_radius": { "value": 4, "unit": "mm", "rule": "Outside corners of a cold-formed steel tube are rounded, by about twice the wall: 4 is that guess, not a figure from a sheet. Measure yours", "kind": "estimate", "source": "the kit's own guess: no sheet is behind it", "checked": "2026-11-15" },
+    "material": { "value": "s275", "rule": "Structural steel S275: the kit's steel. Hollow sections and bar are sold in several grades (S235, S275, S355): name the grade on your supplier's sheet where it matters", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" }
+  }
+}

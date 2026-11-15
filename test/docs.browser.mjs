@@ -21,7 +21,8 @@ const drawn = {
   versions: "/major/.test(document.getElementById('verdict').textContent)", rules: "document.querySelectorAll('#rules tbody tr').length > 20",
   pcb: "!!document.querySelector('.figure svg')", cad: "!!document.querySelector('img[src=\"soap-tray.png\"]')", robots: "document.querySelector('#link1') && /shoulder/.test(document.getElementById('readout').textContent)",
   fixings: "!!document.querySelector('.stage canvas') && document.querySelectorAll('.findings li').length >= 4 && /triangles/.test(document.getElementById('count').textContent)",
-  index: "document.querySelectorAll('.card').length === 17"
+  frames: "!!document.querySelector('.stage canvas') && document.querySelectorAll('.findings li').length >= 4 && /mm² of metal/.test(document.getElementById('count').textContent)",
+  index: "document.querySelectorAll('.card').length === 18"
 };
 
 test('every library page runs without a script error, and its demonstration draws', { skip: !CHROME && 'no Chrome here' }, async () => {

@@ -1,0 +1,14 @@
+{
+  "_doc": "Bosch Rexroth's 6 mm slot, as its 20 mm strut profiles have it. Opening (6), lip (1,5), cavity width (12) and depth (5,5) are printed on the catalogue's drawing; the width of the floor and the angle of the flanks are scaled off it, and say so. The drawn slot leaves out the small rib at the tip of each lip.",
+  "name": "slot-6-bosch",
+  "part": "slot",
+  "rules": {
+    "opening": { "value": 6, "unit": "mm", "rule": "Slot width between the lips, 6 on the drawing (tolerance +0.3)", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 2-10, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "lip_thickness": { "value": 1.5, "unit": "mm", "rule": "From the face to the underside of the lip, 1,5 on the drawing", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 2-10, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "cavity_width": { "value": 12, "unit": "mm", "rule": "Width under the lips, 12 on the drawing", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 2-10, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "cavity_depth": { "value": 5.5, "unit": "mm", "rule": "From the face to the core, 5,5 on the drawing", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 2-10, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "floor_width": { "value": 7, "unit": "mm", "rule": "Width of the flat floor, where the flanks land on the core: the drawing shows walls straight down to 2.9 mm below the face, then flanks closing in. Not dimensioned: measure yours", "kind": "estimate", "source": "scaled off the section drawing on Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 2-10, as republished by RS Components (document A700000009494056) (the drawing prints no figure for it)", "checked": "2026-11-15" },
+    "flank_angle": { "value": 45, "unit": "deg", "rule": "The flanks close in at 45 degrees, as drawn. Not dimensioned", "kind": "estimate", "source": "scaled off the section drawing on Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 2-10, as republished by RS Components (document A700000009494056) (the drawing prints no figure for it)", "checked": "2026-11-15" },
+    "nut_family": { "value": "slot-6-bosch", "rule": "It takes Rexroth's 6 mm slot nuts", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 2-10, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "_doc": "The 6 mm slot of Motedis' B-type profiles (20 mm series). Motedis prints the opening and the depth; it sells the section as B-type, made to match Bosch Rexroth's 6 mm slot, so the lip, the cavity's width and the floor are Rexroth's figures (slot-6-bosch), marked community until someone measures a Motedis bar.",
+  "name": "slot-6-motedis",
+  "part": "slot",
+  "rules": {
+    "opening": { "value": 6, "unit": "mm", "rule": "Slot width, \"6\" on the data picture (\"Nuten mit einer Breite von 6 mm\" where the page says so)", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-20x20-B-Typ-Nut-6\", https://www.motedis.com/de/Aluprofil-20x20-B-Typ-Nut-6", "checked": "2026-11-15" },
+    "lip_thickness": { "value": 1.5, "unit": "mm", "rule": "Lip thickness: Motedis prints none. Rexroth's figure for the slot this is made to match (slot-6-bosch)", "kind": "community", "source": "slot-6-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "cavity_width": { "value": 12, "unit": "mm", "rule": "Width under the lips: Motedis prints none. Rexroth's figure (slot-6-bosch)", "kind": "community", "source": "slot-6-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "cavity_depth": { "value": 5.5, "unit": "mm", "rule": "Slot depth, \"5,5\" on the data picture", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-20x20-B-Typ-Nut-6\", https://www.motedis.com/de/Aluprofil-20x20-B-Typ-Nut-6", "checked": "2026-11-15" },
+    "floor_width": { "value": 7, "unit": "mm", "rule": "Width of the flat floor: as slot-6-bosch, itself scaled off Rexroth's drawing", "kind": "estimate", "source": "slot-6-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "flank_angle": { "value": 45, "unit": "deg", "rule": "The flanks close in at 45 degrees, as slot-6-bosch", "kind": "estimate", "source": "slot-6-bosch rule set; Motedis calls the section B-type", "checked": "2026-11-15" },
+    "nut_family": { "value": "slot-6-bosch", "rule": "Sold as B-type: it takes nuts made for Bosch Rexroth's 6 mm slot", "kind": "community", "source": "Motedis, product page and data picture \"Aluprofil-20x20-B-Typ-Nut-6\", https://www.motedis.com/de/Aluprofil-20x20-B-Typ-Nut-6", "checked": "2026-11-15" }
+  }
+}

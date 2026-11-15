@@ -52,13 +52,46 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `pulley-gt2-16`, `pulley-gt2-20` | GT2 16 and 20 tooth pulleys for 6 mm belt with a 5 mm bore: teeth, pitch and tooth diameters (Gates's), bore, rim, width. Community until measured, Gates's own sprockets as variants | 8, 8 |
 | `idler-gt2-toothed-20`, `idler-gt2-smooth-20` | GT2 idlers with bearings for 6 mm belt, 5 mm bore, toothed and smooth. Community until measured | 6, 5 |
 | `al6061`, `al7075`, `s275`, `ss304`, `ti64` | Aluminium 6061-T6 and 7075-T6, structural steel S275, stainless 304, titanium Ti-6Al-4V, for analysis | 4 or 5 each |
+| `al6063-t5`, `al6063-t6`, `al6063-t66`, `al6060-t66`, `al6005a-t6` | The extrusion alloys framing profiles are made of, each in its temper: modulus, shear modulus, the least proof stress and tensile strength EN 755-2 allows, density (Hydro's alloy data sheets) | 6 each |
+| `al6n01-t5`, `al6060-rexroth` | The same for two makers' own material figures: MISUMI's JIS A6N01SS-T5 and Bosch Rexroth's EN AW-6060 | 5 each |
+| `slot-6-misumi`, `slot-8-misumi`, `slot-10-misumi`, `slot-10-misumi-45` | The T-slots of MISUMI's 5, 6, 8 and 8-45 series extrusions (20, 30, 40 and 45 mm): opening, lip, cavity width and depth from the catalogue, the floor and flanks scaled off its drawing | 7 each |
+| `slot-6-bosch`, `slot-8-bosch`, `slot-10-bosch` | Bosch Rexroth's 6, 8 and 10 mm slots (20, 30 and 40 mm strut profiles), from the MGE 14.0 catalogue | 7 each |
+| `slot-6-motedis`, `slot-10-motedis` | The slots of Motedis' B-type profiles: opening and depth from Motedis, the rest Rexroth's figures and marked community | 7 each |
+| `slot-6`, `slot-8`, `slot-8-i` | Generic slots for unbranded stock: the 20 and 30 mm series' B-type slots and the 40 mm series' I-type slot 8, from named sellers' outlines. Community until measured | 7 each |
+| `profile-2020-misumi-hfs5`, `profile-2040-misumi-hfs5`, `profile-3030-misumi-hfs6`, `profile-3060-misumi-hfs6`, `profile-4040-misumi-hfs8`, `profile-4080-misumi-hfs8`, `profile-4545-misumi-hfs8`, `profile-4590-misumi-hfs8` | MISUMI HFS aluminium extrusions, 20 to 45 mm, one and two cells: section dimensions, bores and the thread each taps to, area, second moments, mass, alloy, lengths and tolerances, from the catalogue's pages | 22 to 27 |
+| `profile-2020-bosch`, `profile-2040-bosch`, `profile-3030-bosch`, `profile-4040-bosch-l` | Bosch Rexroth strut profiles 20x20, 20x40, 30x30 and 40x40L, with the catalogue's torsion constants | 26 to 30 |
+| `profile-2020-motedis-b6`, `profile-4040-motedis-b10` | Motedis B-type profiles 20x20 (slot 6) and 40x40 (slot 10): Motedis' own section figures, with what it does not print taken from Rexroth's and marked community | 20 to 23 |
+| `profile-2020-generic`, `profile-2040-generic`, `profile-3030-generic`, `profile-4040-generic` | Stand-ins for unbranded 2020, 2040, 3030 and 4040 stock, from two named sellers. Community until measured: unbranded stock is sold in more than one section under each name | 22 to 25 |
+| `al6000-item` | The aluminium of item's profiles (an EN AW-6000 series AlMgSi alloy): item's own modulus, shear modulus, least proof stress and tensile strength, density | 6 |
+| `slot-5-item`, `slot-6-item`, `slot-6-item-light`, `slot-8-item`, `slot-8-item-light` | The grooves of item's Lines 5, 6 and 8 (20, 30 and 40 mm), standard and light: opening, lip, width and depth from item's table of groove dimensions, the floor and flanks scaled off its drawings. A light groove takes the standard groove's nuts | 7 each |
+| `profile-2020-item-5`, `profile-2040-item-5`, `profile-3030-item-6`, `profile-3060-item-6`, `profile-3030-item-6l`, `profile-3060-item-6l`, `profile-4040-item-8`, `profile-4080-item-8`, `profile-4040-item-8l`, `profile-4080-item-8l` | item profiles of Lines 5, 6 and 8, one and two cells, standard and light (`l`): dimensions and every section figure (torsion included) from item's product data sheets, tolerances from its technical data | 26 to 30 |
+| `slot-10-bosch-45l` | Bosch Rexroth's 10 mm slot as its 45 mm light sections have it: 14.5 deep where the 40 mm series is 12.5. It takes the same nuts | 7 |
+| `profile-3060-bosch`, `profile-4080-bosch-l`, `profile-4545-bosch-l` | Bosch Rexroth strut profiles 30x60, 40x80L and 45x45L, with the catalogue's torsion constants | 28 to 30 |
+| `profile-2060-misumi-hfs5`, `profile-2080-misumi-hfs5` | MISUMI HFS5-2060 and HFS5-2080: three and four cells of the 5 series in a row | 23 each |
+| `slot-5-motedis`, `slot-6-motedis-i`, `slot-8-motedis-i` | The slots of Motedis' I-type profiles (made to match item's Lines 5, 6 and 8): what Motedis prints, the rest item's figures and marked community | 7 each |
+| `profile-2020-motedis-i5`, `profile-2040-motedis-i5`, `profile-3030-motedis-i6`, `profile-4040-motedis-i8`, `profile-4080-motedis-i8` | Motedis I-type profiles 20x20 and 20x40 (slot 5), 30x30L (slot 6), 40x40L and 40x80L (slot 8): Motedis' own section figures, with what it does not print taken from item's and marked community | 21 to 25 |
+| `slot-10` | A generic 10 mm slot for unbranded B-type stock of the 40 and 45 mm series: the opening from a named seller, the rest Rexroth's figures. Community until measured | 7 |
+| `profile-tube`, `profile-round-tube`, `profile-angle`, `profile-channel`, `profile-bar`, `profile-round-bar` | Plain sections as families: square and rectangular tube, round tube, angle, channel, flat and round bar. Each holds a starting size and material; any other is given by size, wall and material, and its section figures are worked out from its outline | 4 to 6 |
+| `profile-tube-al-20x20x2`, `profile-tube-al-25x25x2`, `profile-tube-al-40x20x2`, `profile-tube-steel-25x25x2`, `profile-tube-steel-40x40x2`, `profile-round-tube-al-25x2`, `profile-round-tube-steel-25x2`, `profile-angle-al-25x25x3`, `profile-angle-steel-30x30x3`, `profile-channel-al-30x20x2`, `profile-bar-al-25x5`, `profile-bar-steel-30x5`, `profile-round-bar-al-10`, `profile-round-bar-steel-10` | Ready sizes of the plain families in aluminium (6063-T5) and steel (S275), named `profile-<family>-<al or steel>-<size>`: nominal sizes, to measure against the bar in hand | 4 to 6 |
+| `profile-custom` | The custom family: any closed outline, with its section figures worked out from it. The kit's own example is a T section, its outline in `outlines/profile-custom.json` | 4 |
+| `slot-6-openbuilds` | The slot of OpenBuilds V-Slot rail: a T-slot with a V mouth for wheels. Opening, width and height under the lips from OpenBuilds' drawings; the lip and the V track (`track_width`, `track_angle`) scaled off them | 9 |
+| `profile-2020-openbuilds`, `profile-2040-openbuilds`, `profile-2060-openbuilds`, `profile-2080-openbuilds`, `profile-4080-openbuilds-cbeam` | OpenBuilds V-Slot 20x20, 20x40, 20x60, 20x80 and C-Beam (six cells in a C, with slots inside it): sizes, bores and lengths from OpenBuilds' pages. It publishes no section figures, so they are worked out from the outline | 13 to 16 |
+| `al6005a-8020` | The aluminium of 80/20's profiles ("6005A-T61 or comparable"): 80/20's own modulus, yield and tensile strength, the density worked out from its weight and area | 5 |
+| `slot-6-8020`, `slot-8-8020` | The T-slots of 80/20's 10 series (1 in) and 15 series (1.5 in), in mm with the inch figure in each rule: opening, lip, width, depth and the 2 degree drop lock from the catalogue's drawings | 8 each |
+| `profile-1010-8020`, `profile-1020-8020`, `profile-1515-8020`, `profile-1530-8020` | 80/20 inch T-slot profiles 1010, 1020, 1515 and 1530: dimensions and section figures from its Product Catalog 24 in mm, each rule giving the inch figure; bores tapped 1/4-20 (`unc_1_4_20`) and 5/16-18 (`unc_5_16_18`) | 20 or 21 |
+| `slot-3-makerbeam`, `slot-3-makerbeam-xl`, `slot-3-openbeam` | The slots of the small beams, and what each takes: MakerBeam's a square headed M3 bolt, MakerBeamXL's and OpenBeam's a plain M3 nut (DIN 934). From MakerBeam B.V.'s drawings and OpenBeam's dimensioned section | 7 to 9 |
+| `profile-1010-makerbeam`, `profile-1515-makerbeam-xl`, `profile-1515-openbeam` | MakerBeam (10 mm), MakerBeamXL and OpenBeam (15 mm): dimensions, the M3 core hole, area, second moments and weight from MakerBeam B.V.'s drawings and overview of specifications | 16 to 21 |
+| `slot-nut-6-misumi-m3-drop-in`, `slot-nut-6-misumi-m3-roll-in`, `slot-nut-6-misumi-m3-slide-in`, `slot-nut-6-misumi-m3-square`, `slot-nut-6-misumi-m4-drop-in`, `slot-nut-6-misumi-m4-roll-in`, `slot-nut-6-misumi-m4-slide-in`, `slot-nut-6-misumi-m4-square`, `slot-nut-6-misumi-m5-roll-in`, `slot-nut-6-misumi-m5-slide-in`, `slot-nut-6-misumi-m5-square`, `slot-nut-8-misumi-m3-drop-in`, `slot-nut-8-misumi-m3-roll-in`, `slot-nut-8-misumi-m3-slide-in`, `slot-nut-8-misumi-m4-drop-in`, `slot-nut-8-misumi-m4-roll-in`, `slot-nut-8-misumi-m4-slide-in`, `slot-nut-8-misumi-m4-square`, `slot-nut-8-misumi-m5-drop-in`, `slot-nut-8-misumi-m5-roll-in`, `slot-nut-8-misumi-m5-slide-in`, `slot-nut-8-misumi-m5-square`, `slot-nut-8-misumi-m6-drop-in`, `slot-nut-8-misumi-m6-roll-in`, `slot-nut-8-misumi-m6-slide-in`, `slot-nut-8-misumi-m6-square` | MISUMI's nuts for its 5 series (6 mm slot) and 6 series (8 mm slot): HNTT slide-in, HNTF drop-in (M3 and M4 only in the 6 mm slot), HNTP roll-in with a sprung ball, HNKK square plate. Sizes, heights and tongues from the 2014 catalogue's drawings; MISUMI gives a tightening torque, so each hold is an estimate | 10 to 11 each |
+| `slot-nut-6-bosch-m3-roll-in`, `slot-nut-6-bosch-m4-drop-in`, `slot-nut-6-bosch-m4-roll-in`, `slot-nut-6-bosch-m4-slide-in`, `slot-nut-6-bosch-m5-roll-in`, `slot-nut-6-bosch-m5-slide-in`, `slot-nut-8-bosch-m4-drop-in`, `slot-nut-8-bosch-m4-roll-in`, `slot-nut-8-bosch-m4-slide-in`, `slot-nut-8-bosch-m5-drop-in`, `slot-nut-8-bosch-m5-roll-in`, `slot-nut-8-bosch-m5-slide-in`, `slot-nut-8-bosch-m6-drop-in`, `slot-nut-8-bosch-m6-roll-in`, `slot-nut-8-bosch-m6-slide-in`, `slot-nut-8-bosch-m6-t-bolt`, `slot-nut-8-bosch-m8-roll-in`, `slot-nut-8-bosch-m8-slide-in` | Bosch Rexroth's nuts for its 6 and 8 mm slots: the T-nut (drop-in), sliding block (slide-in), swivel-in block (roll-in) and the M6x20 T-bolt, from MGE 14.0, with Rexroth's Fmax where it gives one; a width it does not dimension is an estimate | 10 to 11 each |
+| `slot-nut-6-motedis-m4-hammer`, `slot-nut-6-motedis-m5-hammer`, `slot-nut-6-motedis-m5-slide-in`, `slot-nut-6-motedis-m5-square`, `slot-nut-8-i-motedis-m4-hammer`, `slot-nut-8-i-motedis-m4-roll-in`, `slot-nut-8-i-motedis-m5-hammer`, `slot-nut-8-i-motedis-m5-roll-in`, `slot-nut-8-i-motedis-m6-hammer`, `slot-nut-8-i-motedis-m6-roll-in`, `slot-nut-8-i-motedis-m8-roll-in`, `slot-nut-8-motedis-m4-hammer`, `slot-nut-8-motedis-m4-roll-in`, `slot-nut-8-motedis-m5-hammer`, `slot-nut-8-motedis-m5-roll-in`, `slot-nut-8-motedis-m6-hammer`, `slot-nut-8-motedis-m6-roll-in`, `slot-nut-8-motedis-m8-roll-in` | Motedis' hammer nuts, heavy slide-in nut, threaded plate and sprung roll-in nuts for its B-type 6 and 8 mm and I-type 8 mm slots, from Motedis' drawings (one size drawn: the other threads take its body, and say so) | 10 to 11 each |
+| `slot-nut-6-openbuilds-m5-drop-in` | OpenBuilds' drop-in tee nut for V-Slot, M5: its overall "6 x 10.3 x 4.4mm", the step under it taken from the same nut drawn by Motedis | 11 |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such
 as KiCad's library or KeyV2), **default** (a setting that works), **derived** (read off someone else's model with `cad measure`: check it
 against the real thing, and see its `licence`), or **estimate** (nobody has published it: measure it and correct it). Use them with `@rulecad/variables` (`uses: ['x1c']`, then `x1c.line * 3` in any expression), or read
 the JSON from anywhere.
 
-**Shared names.** A set that describes a part (`"part": "motor"`, or bearing, switch, encoder, driver, board, supply, leadscrew, nut, rod, linear_bearing, coupler, belt, pulley, idler, thread) uses the names in [`vocabulary.json`](vocabulary.json):
+**Shared names.** A set that describes a part (`"part": "motor"`, or bearing, switch, encoder, driver, board, supply, leadscrew, nut, rod, linear_bearing, coupler, belt, pulley, idler, thread, profile, slot, slot_nut) uses the names in [`vocabulary.json`](vocabulary.json):
 `body_*`, `boss_*`, `shaft_*`, `mount_*`, `cable_*` and the rest, each in its unit, so one piece of code can read any of
 them. An older set keeps its own names and says which is which (`"interface": { "body_length": "length" }`). `cad rules
 check` holds every set to all this. `cad rules draw nema17` draws what a set says the part mounts by, for comparing with
@@ -112,6 +145,80 @@ An inch set holds millimetres like every other set, and each rule's text gives t
 uses:
 
 ![The 6-32 UNC rule set as a drawing](drawings/unc_6_32.svg)
+
+**Profiles, slots and slot nuts.** A beam's section is a set with `"part": "profile"`, whatever it is: slotted
+extrusion, tube, angle, channel, bar, a section printed in plastic or an outline of your own. One maker's profile is
+one set, because two makers' "2020" differ in their slots, and a file's name says which it is:
+
+| File | What |
+|---|---|
+| `profile-<size>-<maker>[-<the maker's series or type>]` | A profile: `profile-2020-misumi-hfs5`, `profile-4040-bosch-l`, `profile-2020-generic`, `profile-1515-8020` (an inch size as its maker writes it, held in mm), `profile-4080-openbuilds-cbeam`. Makers so far: `misumi`, `bosch`, `item`, `motedis`, `openbuilds`, `makerbeam`, `openbeam`, `8020`, and `generic` for unbranded stock. The size is cells of the series, across then up, as it is sold (`2040`), so files sort by size and then by maker |
+| `profile-<family>` and `profile-<family>-<al or steel>-<size>` | A plain section's family (`profile-tube`, `profile-angle`, `profile-round-bar`) and a ready size of it (`profile-tube-al-25x25x2`, `profile-round-bar-steel-10`): width, height and wall as the family has them. `profile-custom` is any closed outline, with its outline in `outlines/<the set's name>.json` |
+| `slot-<opening>[-<maker>][-<variant>]` | A slot family: `slot-6-bosch`, `slot-10-misumi-45`. With no maker it is the generic one for unbranded stock (`slot-6`, `slot-8`, and `slot-8-i` for the 40 mm series' I-type slot) |
+| | A slot's own names: `opening`, `lip_thickness`, `lip_angle`, `cavity_width`, `cavity_depth`, `floor_width` with `flank_angle` (both left out for straight walls), `track_width` with `track_angle` (a V-slot's mouth), `groove_width` with `groove_depth` (a groove down the floor), `nut_family` |
+| `slot-nut-<opening>[-<maker>][-<variant>]-<thread>-<kind>` | A slot nut for that maker's slot: `slot-nut-6-misumi-m5-slide-in`, `slot-nut-8-i-motedis-m5-roll-in`, `slot-nut-6-openbuilds-m5-drop-in`. Its `slot` names the slot family it is made for |
+| `al<alloy>-<temper>` | The material a profile names: `al6063-t5` |
+
+A profile is read at three levels, and only the first is needed to draw it:
+
+| Level | Names | What |
+|---|---|---|
+| Interface | `family`, `series`, `cells_across`, `cells_up`, `cells_absent`, `width`, `height`, `corner_radius`, `wall` | What sort of section (`t-slot`, `v-slot`, `tube`, `round-tube`, `angle`, `channel`, `bar`, `round-bar`, `custom`, `printed`), its base size, how many cells and any that are not there (a C-beam is 4 by 2 with `"2,2; 3,2"` absent), its envelope, a tube's wall |
+| | `slot`, `slot_top`, `slot_bottom`, `slot_front`, `slot_back` | The slot family in every face by its set's name (or `closed`), then any face that differs: a family, `closed`, or one of either per slot (`slot-6-bosch, closed`) |
+| | `bore_diameter`, `bore_thread`, `bore_at`, `corner_bore_diameter`, `corner_bore_thread`, `corner_bore_inset` | The bore in the middle of each cell and the thread it taps to (`M5`), holes in the corners, and bores anywhere else as `x,y; x,y` |
+| | `chamber_width`, `chamber_length`, `chamber_depth`, `corner_hollow_width`, `corner_hollow_wall` | The closed hollow between two cells, and square hollows in the corners of a lighter section |
+| Section | `area`, `inertia_x`, `inertia_y`, `section_modulus_x`, `section_modulus_y`, `torsion_constant`, `mass_per_metre`, `alloy`, `material` | What the sheet says the section is worth, in mm², mm⁴, mm³ and kg/m (a sheet's cm figures are converted, and the rule gives them as printed), its alloy as written and the material set to analyse it with |
+| Supply | `lengths`, `cut_length_min`, `cut_length_max`, `cut_tolerance`, `straightness_per_metre`, `twist_per_metre` | The bars it is sold as, what a maker cuts it to, and how true it is |
+| Outline | `rules/outlines/<set name>.json` | The measured section as closed loops, where the interface dimensions do not describe it |
+
+A slot family (`"part": "slot"`) is described once and named by every profile that has it: `opening` between the lips,
+`lip_thickness`, `cavity_width` under the lips, `cavity_depth` to the floor, then how it closes in (`floor_width`,
+`flank_angle`, and `lip_angle` where the lip's underside slopes), a V-slot's mouth (`track_width`, `track_angle`) and
+the `nut_family` whose nuts it takes. A slot nut (`"part": "slot_nut"`) names its `slot`, its `thread`, its
+`nut_kind` (`slide-in`, `drop-in`, `roll-in`, `hammer`, `t-bolt`, `square`, `hex`), its `length`, `width` and `height`,
+and its `nut_entry` (`anywhere`, or `end` for one that needs an open end). `height` is the body under the lips; the
+step that stands up into the opening is `tongue_width` by `tongue_height`. `hold` is the pull straight out of the slot it
+takes (newtons): the maker's figure where it gives one (Rexroth's Fmax), otherwise an estimate that says what it rests
+on, until such nuts are tested. A maker's `tightening_torque` (N m), a T-bolt's `bolt_length` and the `material` complete
+it. A nut is drawn and weighed by `@rulecad/frames` (`slotNutModel`, `nutFor`).
+
+**Cells.** A larger section is cells of its series: a 40 x 20 has `cells_across` 2 and `cells_up` 1, and is described
+lying flat, so `inertia_x` is its smaller second moment. Each sold profile is its own set, standing alone with the
+section figures of its own sheet, so a 2040 does not point at a 2020: the cells tell the drawing where the slots,
+bores and hollows go (a slot per cell on each face, a bore in each cell's middle, a hollow where two cells meet), and
+the sheet's figures stay the ones that count. Two rules and not a list, because a rule holds one value or an
+ascending list. A model made from the set by `@rulecad/frames` has `cells: [2, 1]`.
+
+**Faces.** A section is drawn in x (across) and y (up) with the middle of its envelope at the origin: `top` is +y,
+`bottom` -y, `front` -x and `back` +x, and slots along a face count from 1 along +x or +y. `"slot_bottom": "closed"`
+closes one face; `"slot_top": "slot-6, closed"` gives a two-cell face one slot; naming another family on one face
+mixes two in one section.
+
+**An outline file** holds a section measured from a model or a bar, for a shape the dimensions do not describe. It
+sits beside the rule set as `rules/outlines/<set name>.json`, is held to `outline.schema.json`, and is used by the
+drawing and the check in place of the drawn outline:
+
+```json
+{ "name": "profile-2020-mine", "source": "bar from my shelf, traced from a scan at 1200 dpi", "licence": "my own measurement", "checked": "2026-11-15",
+  "loops": [[[-10, -10], [10, -10], [10, 10], [-10, 10]], [[-2.1, -2.1], [2.1, -2.1], [2.1, 2.1], [-2.1, 2.1]]] }
+```
+
+Loops are closed, in mm, either way round: a loop inside another is a hole. The kit publishes no maker's outline: it
+draws its own from the dimensions, and a maker's model is measured in your own workspace.
+
+`cad rules draft profile my-2020` (or `slot`, `slot_nut`) writes a set with every one of these fields, each a
+starting value marked `estimate`, to fill in from the maker's sheet. `cad rules check` then holds it to the names and
+to sense: slots that fit inside the section and clear each other, a bore that clears the slots and suits the thread
+it taps to, and the sheet's area, second moments, torsion constant and mass against what the drawn outline comes to
+(a warning beyond 5%, 10% for a second moment, 15% for torsion: the drawn outline leaves out fillets, notches and
+grooves, and several sets say in their `_doc` what theirs leaves out). `cad rules draw profile-2020-misumi-hfs5`
+draws the section with its slot and bore dimensions and that comparison, to hold against the sheet:
+
+![MISUMI's HFS5-2020 rule set as a drawing](drawings/profile-2020-misumi-hfs5.svg)
+
+A dimension the maker prints is `spec` with its page. One scaled off the maker's drawing (the width of a slot's
+floor) is an `estimate` and says so; one borrowed from the section a profile is made to match is `community`. Not yet
+here: item's profiles, the 5 mm slot, V-slot, the small 10 and 15 mm beams, inch series and plain sections.
 
 `cad rules draft mymotor --from datasheet.pdf` pulls the figures out of a datasheet's text for you to name and check. It
 marks every one `estimate`, and many datasheets are pictures it can't read at all: a person reads the datasheet, the

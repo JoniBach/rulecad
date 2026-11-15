@@ -1,0 +1,12 @@
+{
+  "_doc": "The aluminium of item's profiles, for analysis. item names no single alloy: \"AlMgSi alloys of the EN-AW-6000-series are used\", chosen by application and availability, extruded to DIN EN 12020. Strengths, moduli and density are item's own technical data, which apply in the pressing direction only. item gives no Poisson's ratio.",
+  "name": "al6000-item",
+  "rules": {
+    "modulus": { "value": 70000, "unit": "MPa", "rule": "Elasticity modulus E, \"ca. 70,000\" N/mm²", "kind": "spec", "source": "item Industrietechnik, \"Technical data: Profiles\" (version 08/2026), page 1, https://cdn.item24.com/product-assets/DOK_DATA_profil-tech-daten_%23SEN_%23AIN_%23V7.pdf", "checked": "2026-11-15" },
+    "poisson": { "value": 0.33, "rule": "Poisson's ratio: item gives none, and its two rounded moduli (ca. 70,000 and ca. 25,000) come to 0.4, which no aluminium has. Hydro's sheets for 6060 and 6063 come to 0.33; that is used", "kind": "estimate", "source": "al6063-t5 rule set (Hydro, Alloy EN AW-6063, Rev.4 03/2023); not from item", "checked": "2026-11-15" },
+    "shear_modulus": { "value": 25000, "unit": "MPa", "rule": "Shear modulus G, \"ca. 25,000\" N/mm²", "kind": "spec", "source": "item Industrietechnik, \"Technical data: Profiles\" (version 08/2026), page 1, https://cdn.item24.com/product-assets/DOK_DATA_profil-tech-daten_%23SEN_%23AIN_%23V7.pdf", "checked": "2026-11-15" },
+    "strength": { "value": 195, "unit": "MPa", "rule": "Yield point Rp0,2, \"min. 195\" N/mm² (in the pressing direction)", "kind": "spec", "source": "item Industrietechnik, \"Technical data: Profiles\" (version 08/2026), page 1, https://cdn.item24.com/product-assets/DOK_DATA_profil-tech-daten_%23SEN_%23AIN_%23V7.pdf", "checked": "2026-11-15" },
+    "ultimate": { "value": 245, "unit": "MPa", "rule": "Tensile strength Rm, \"min. 245\" N/mm² (in the pressing direction)", "kind": "spec", "source": "item Industrietechnik, \"Technical data: Profiles\" (version 08/2026), page 1, https://cdn.item24.com/product-assets/DOK_DATA_profil-tech-daten_%23SEN_%23AIN_%23V7.pdf", "checked": "2026-11-15" },
+    "density": { "value": 2.7, "unit": "g/cm³", "rule": "Density 2.7 kg/dm³", "kind": "spec", "source": "item Industrietechnik, \"Technical data: Profiles\" (version 08/2026), page 1, https://cdn.item24.com/product-assets/DOK_DATA_profil-tech-daten_%23SEN_%23AIN_%23V7.pdf", "checked": "2026-11-15" }
+  }
+}

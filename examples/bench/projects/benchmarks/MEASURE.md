@@ -16,6 +16,7 @@ parts measure them, one test each. Every part has a plain, solid first layer. So
 | 5. Mesh rig | `mesh-rig`, `rig-pinion`, `rig-wheel`, `rig-lever` (the stand from 3) | 42 g | 12, part one |
 | 6. Shoulder | `shoulder-housing`, `shoulder-sun`, `shoulder-planet` × 3, `shoulder-output`, `shoulder-clip` × 3, `shoulder-arm`, `input-lever` | 117 g | 12 to 18 |
 | 7. Fixings coupon (once in PLA, once in PETG) | `fixings-coupon` | 55 g, about an hour | 22 to 28 |
+| 8. Slot coupon (when you build with aluminium beams) | `slot-coupon` (26 loose pieces) | 40 g, about 45 minutes | 29 to 33 |
 
 Do 1 and 2 first, and change the parts that follow to the sizes that won: `comp` in `test-arm` and `shoulder-sun`, `bore` and `backlash` in the mesh rig's parts.
 
@@ -31,6 +32,7 @@ G-clamp the foot to a table with the plate's front just past the table's edge, s
 | **Screws, socket head** | M3 × 8: 2. M3 × 10: 9. M3 × 12: 12. M3 nuts: 4. M3 washers: 2 |
 | **Measuring** | Digital calipers; a kitchen scale reading to 1 g; a G-clamp; string or small S-hooks; weights from 10 g to 500 g (coins and water bottles will do); a thermometer that reads a surface |
 | **For the fixings coupon** | Socket cap screws: M2 × 6, M2.5 × 6, M3 × 6, M3 × 8, M4 × 8, M5 × 16; M3 and M4 hex nuts; CNC Kitchen heat-set inserts, M2 × 3 and M3 × 5.7, and a soldering iron with an insert tip; steel bolts or set screws M6 × 16, M8 × 20 and M10 × 25 or longer; a spanner |
+| **For the slot coupon** | An offcut of your own beam, 50 to 100 mm long, cut square at one end; M2.5 hex nuts and M2.5 × 8 screws for slot 6, M5 hex nuts and M5 × 10 screws for slot 8; one of the bought slot nuts made for your beam (slide-in or drop-in) |
 | **Also** | PTFE grease, for the second round of the efficiency test; a spare print's worth of PLA |
 
 ## The measurements
@@ -67,6 +69,11 @@ Write the number in the last column and send it back: it replaces the kit's figu
 | 26 | Counterbore, CM3 | Drive an M3 × 8 cap screw in: its head sits wholly under the top face, a hex key reaches it, and it tightens in the pilot under it. If the head rubs, raise `x1c.fit` | `x1c.fit` 0.2 mm each side | |
 | 27 | Printed threads, rows M6P, M8P, M10P | Each figure is the gap on the radius between the printed thread and a bought bolt. Turn a bolt into each by hand. The best is the tightest it turns all the way into smoothly, with no binding and no wobble, and that does not strip when tightened firmly with a spanner. Where the sizes differ, take the figure two of the three agree on. `x1c.thread_gap=<figure>` | 0.2 mm, an estimate | |
 | 28 | Thread flanks, M8P against M8S | Rows M8P and M8S are the same holes in the two forms a printed thread can take: P has its down-facing flanks laid back to 45° (the kit's default, easy to print, about 51% of the standard's flank overlap at 0.2 mm), S keeps the standard's 60° form (more overlap, 63%, but its down-facing flanks overhang 60°). Compare them at each gap, in this order: it holds (tighten a bolt firmly with a spanner: no stripping, the least wobble), it turns smoothly (no catching all the way in), it prints clean (look into the hole with a light: whole teeth, no drooping or strings on the flanks' undersides). The form that wins the first test wins, and the next test settles a tie. Write 45 for P or 60 for S: `x1c.thread_flank=45`. It records the result; changing the kit's default form is a decision of its own | 45, the printed form | |
+| 29 | Tongues, slot 6 and slot 8 | Each tongue's figure is its clearance a side in the beam's opening. Lay the head on the beam's face with the tongue in the slot and push it the beam's length from the square end. The best is the tightest that slides all the way by hand, and does not rattle when the beam is shaken across. `cad measured benchmarks/slot-test x1c.slot_fit=<figure>` | 0.2 mm a side (`x1c.fit`, community) | |
+| 30 | Carriers, slot 6 (M2.5) and slot 8 (M5) | Each carrier's figure is its clearance a side all round the slot. Drop its nut into its side (or its end), slide it into the beam from the square end, and run a screw into it through a scrap of plate. The best is the tightest that slides the beam's length by hand, nut in, and that pulls up square when the screw is tightened. Where it is looser than the tongue in 29, write the carrier's figure to `x1c.slot_fit` instead: a part that fills the slot needs the larger | 0.2 mm a side | |
+| 31 | Printed slots, slot 6 and slot 8 | Each block's figure is how far its printed slot is opened a side. Slide a bought slot nut for your beam down each from the top. The best is the tightest it runs the length of by hand without catching, and that holds it upright when the block is tipped on its side. `x1c.printed_slot_fit=<figure>` | 0.2 mm a side | |
+| 32 | The slot itself, by caliper | On the beam's square end: the opening across the face, the lips' thickness, the cavity's width under the lips and its depth from the face (the depth rod of the calipers). Write each to the slot set your beam's profile names, or to `slot-6` or `slot-8` for an unbranded beam: `cad measured benchmarks/slot-test slot-8.opening=<mm> slot-8.lip_thickness=<mm> slot-8.cavity_width=<mm> slot-8.cavity_depth=<mm>`. They go in your workspace's copy of the set as measured, and cad refuses figures that make no slot | slot 6: opening 6, lips 1.5, cavity 12 wide, 5.5 deep. Slot 8: 8, 2.2, 16.5, 9 (community figures) | |
+| 33 | The fit, confirmed | With 29 to 32 written back, print again the carrier whose figure you wrote to `x1c.slot_fit`: `cad export benchmarks/slot-coupon --part slot-8-carrier-<figure>` (or `slot-6-`). It is now drawn from your measured slot. It should slide as that carrier did in 30; a design's own carriers take the same fit with `printer: v.x1c` | | |
 
 Number 11 is a correction to 7 to 9. Take number 16 last: it wrecks the gears.
 
@@ -77,6 +84,13 @@ once in PLA and once in PETG, both upright as it is drawn. A pilot or an insert 
 figure without a suffix, the PETG one with `_petg`. The nut fits, the thread gap and the flank form are one figure per
 printer: write the PLA figure, and note the PETG one in the last column where it differs. `cad history
 benchmarks/fixings-test` then shows each against what the kit drew before.
+
+The slot coupon (29 to 33) is 26 loose pieces, each with its figure, the clearance a side, on top: in the front row
+five tongues for slot 6 and five for slot 8 (a T-shaped key, its head on the face and its tongue in the opening), in
+the middle row five carriers for each (a block that slides in the slot holding a hex nut), and at the back three short
+printed slots for each, standing on end. The slot 8 pieces are the larger. Slot 6 is the slot of 20 mm beams, slot 8
+of 30 and 40 mm beams. Every piece is drawn from the slot's rule set, so once 32 is written back the coupon prints from
+your own slot. `cad history benchmarks/slot-test` then shows each figure against what the kit drew before.
 
 ## Wiring
 

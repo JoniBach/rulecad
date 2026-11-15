@@ -1,0 +1,11 @@
+{
+  "_doc": "The custom family: any section given as a closed outline, with its area, second moments, torsion constant and mass worked out from that outline. A custom profile is its outline: a set of your own with family custom, and its outline beside it as rules/outlines/<the set's name>.json (source, licence, and loops of [x, y] points in mm about the middle of the section's envelope: the outside of the metal, then each hole). cad measure <model> --profile <name> writes both from a model or a DXF. This set is the kit's own example, a 30 x 30 x 3 mm T section drawn for the kit, so the family can be tried: profileModel('custom', { width, height, material }, { outline }) takes any other. The drawn outline leaves out nothing: it is the outline.",
+  "name": "profile-custom",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "custom", "rule": "A section given by its outline", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "width": { "value": 30, "unit": "mm", "rule": "Across the example's envelope: its outline is 30 wide. A custom profile's width and height are its outline's, and the check says so where they differ", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "height": { "value": 30, "unit": "mm", "rule": "Up the example's envelope", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" },
+    "material": { "value": "al6063-t5", "rule": "Extruded aluminium, EN AW-6063 T5: one of the alloys such sections are extruded in (6060 and 6063 in Europe, 6061 and 6063 in America). Name the alloy on your supplier's sheet where it matters", "kind": "default", "source": "a starting value of the kit's: give your own with profileModel(family, { width, height, wall, material }) or in a set of your own", "checked": "2026-11-15" }
+  }
+}

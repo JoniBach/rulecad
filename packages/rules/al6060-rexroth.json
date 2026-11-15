@@ -1,0 +1,11 @@
+{
+  "_doc": "Aluminium alloy EN AW-6060 as Bosch Rexroth supplies its strut profiles, for analysis. Strength, modulus and Poisson's ratio are Rexroth's own technical data, stronger than the least EN 755-2 asks of 6060 in any temper (al6060-t66). The catalogue gives no temper, density or fatigue figure: density is the alloy's, from Hydro's data sheet.",
+  "name": "al6060-rexroth",
+  "rules": {
+    "modulus": { "value": 70000, "unit": "MPa", "rule": "Modulus of elasticity E, 70000 N/mm²", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 18-12, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "poisson": { "value": 0.34, "rule": "Poisson's ratio, µ = 0.34", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 18-13, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "strength": { "value": 195, "unit": "MPa", "rule": "0.2% proof stress Rp0.2 (in direction of pressure), 195 N/mm²", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 18-12, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "ultimate": { "value": 245, "unit": "MPa", "rule": "Minimum tensile strength Rm (in direction of pressure), 245 N/mm²", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 18-12, as republished by RS Components (document A700000009494056)", "checked": "2026-11-15" },
+    "density": { "value": 2.7, "unit": "g/cm³", "rule": "Density of EN AW-6060 (typical at 20 °C): Rexroth's catalogue gives none", "kind": "spec", "source": "Hydro, Technical datasheet, Extruded products, Alloy EN AW-6060, Rev.4 03/2023, https://hydro.com/globalassets/08-about-hydro/hydro-worldwide/austria/nenzing/alloy-data-sheets/hydro-en-aw-6060.pdf", "checked": "2026-11-15" }
+  }
+}

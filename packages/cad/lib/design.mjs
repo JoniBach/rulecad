@@ -34,6 +34,7 @@ import * as shapes from '@rulecad/shapes';
 import * as flexures from '@rulecad/flexures';
 import * as gears from '@rulecad/gears';
 import * as motors from '@rulecad/motors';
+import { designFrames, framesContext } from './frames.mjs';
 import { resolve as resolveWith } from '@rulecad/variables';
 import { engineId, packageVersion, materialise } from './versions.mjs';
 import { satisfies } from '@rulecad/versions';
@@ -128,12 +129,12 @@ const CACHE = paths.cache('builds'), CACHE_VERSION = 3;
 const source = (f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
 // What every build is made with: this code, the shape helpers and JSCAD's version (an upgrade rebuilds everything);
 // boards also with the board engine (engineId: its code and tscircuit's version), loaded only for boards
-const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors'))), fixingsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/fixings')));
+const shapesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/shapes'))), flexuresDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/flexures'))), gearsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/gears'))), motorsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/motors'))), framesDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/frames'))), fixingsDir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/fixings')));
 // (every module of a helper package but its tests: they change nothing a design builds)
 const helperSources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => source(pathToFileURL(path.join(dir, f)).href)).join('');
 const feaDir = path.dirname(createRequire(pathToFileURL(path.join(flexuresDir, 'package.json')).href).resolve('@rulecad/fea')); // (flexures' own, wherever npm put it)
 // (as one digest, so each build's key hashes a line and not a megabyte of source)
-const own = crypto.createHash('sha256').update(source(import.meta.url) + source('./fixings.mjs') + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(fixingsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling')).digest('hex'); // every shapes module, not just its entry
+const own = crypto.createHash('sha256').update(source(import.meta.url) + source('./fixings.mjs') + source('./frames.mjs') + helperSources(framesDir) + helperSources(shapesDir) + helperSources(flexuresDir) + helperSources(gearsDir) + helperSources(motorsDir) + helperSources(fixingsDir) + helperSources(feaDir) + packageVersion('@jscad/modeling')).digest('hex'); // every shapes module, not just its entry
 // A lamina's slow stages (the physics, the flood's probe) are kept apart from the builds, keyed by the library's code
 // and their own inputs, so a build that changes only what comes after them (a strap, a check, a rule's words) has them
 // at once: .cache/stages/. A design in the sandbox can't write them, so the sandbox hands them back and the tool writes them
@@ -220,7 +221,9 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   // label, a note or the version change nothing it builds, so they aren't in the key
   const ruleText = [...(object.uses || []).map((u) => JSON.stringify(sets[u] || loadRuleSet(u))), JSON.stringify(refs.extra)];
   const reads = { values, parts: object.parts, engine: object.engine, mirror: object.mirror };
-  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), reads, ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
+  // (v.frames reads the workspace's own profile sets: a build is made from them too, lib/frames.mjs)
+  const framed = framesContext(RULE_DIRS[0]);
+  const key = crypto.createHash('sha256').update(JSON.stringify([CACHE_VERSION, own, framed.hash, object.engine === 'pcb' ? engineId() : booleans(object), host.readText(d.js), reads, ruleText, files, Object.values(problems).map((p) => p.hash), set, display])).digest('hex');
   const hit = path.join(CACHE, `${key}.json`);
   // (a build that called v.fixings is also made from the workspace's thread sets, its printer and material: it holds
   // while those stand, and is known by them too, so what is kept by a build's hash, an overlap, follows a changed pilot)
@@ -241,7 +244,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   let parts, board = null, read, mechanism = null, fixings = null;
   const optional = Object.keys(object.mirror || {}); // inputs only the on-screen copy has: main may ask for them when they aren't there
   const stages = stageStore();
-  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism, fixings } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages, fixed().context).catch((e) => { throw syntaxAt(e, d); }));
+  if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism, fixings } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages, { frames: framed, fixings: fixed().context }).catch((e) => { throw syntaxAt(e, d); }));
   else {
     flexures.laminaCache(stages);
     const mod = await host.loadModule(d.js).catch((e) => { // a fresh copy after each edit
@@ -252,7 +255,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     });
     if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
     const ops = await shapes.ops(booleans(object)), df = (await import('./fixings.mjs')).designFixings({ ...fixed().context, ops }); // (loaded when a design is run here: the sandbox's runner has its own)
-    const w = watch(values, { shapes, flexures, gears, motors, fixings: df.fixings, ops, ...(pcb ? { pcb } : {}) }, optional);
+    const w = watch(values, { shapes, flexures, gears, motors, frames: designFrames(framed), fixings: df.fixings, ops, ...(pcb ? { pcb } : {}) }, optional);
     read = w.read;
     let made;
     try { ({ shapes: made, mechanism } = unpack(await mod.main(w.v))); } catch (e) { throw Object.assign(located(e, d.js, 'design.run'), { line: lineOf(e, pathToFileURL(d.js).href) || undefined }); }

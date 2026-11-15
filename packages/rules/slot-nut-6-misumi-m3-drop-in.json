@@ -1,0 +1,18 @@
+{
+  "_doc": "MISUMI's post-assembly insertion nut (HNTF5) for its 5 series, 6 mm slot, M3. MISUMI makes it in M3 and M4 only for this slot: there is no M5. Hold: MISUMI gives no figure.",
+  "name": "slot-nut-6-misumi-m3-drop-in",
+  "part": "slot_nut",
+  "rules": {
+    "slot": { "value": "slot-6-misumi", "rule": "Made for MISUMI's 5 series (slot width 6 mm)", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "thread": { "value": "M3", "rule": "Thread M3, one of the sizes the table lists (M3, M4)", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "nut_kind": { "value": "drop-in", "rule": "Put in through the opening and turned a quarter turn: a rhomboid with its corners cut at 15 degrees", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "length": { "value": 6, "unit": "mm", "rule": "Along the slot once turned: 6 on the drawing, narrow enough to pass the opening lengthwise", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "width": { "value": 10, "unit": "mm", "rule": "Across the slot once turned: 10 on the drawing, its corners cut at 15 degrees so it turns", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "height": { "value": 3.3, "unit": "mm", "rule": "The body under the lips: 3.3 on the drawing (T = 4.1 overall)", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "tongue_width": { "value": 5.8, "unit": "mm", "rule": "Width of the step that stands in the opening, dimensioned on the drawing", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "tongue_height": { "value": 0.8, "unit": "mm", "rule": "Height of that step: the drawing's overall height less the body's", "kind": "derived", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "nut_entry": { "value": "anywhere", "rule": "Post-assembly insertion: put in through the opening anywhere along the slot", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "material": { "value": "S10C equivalent steel, trivalent chromate", "rule": "Material as the table names it", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-562, https://my.misumi-ec.com/pdf/fa/2014/p2_561.pdf", "checked": "2026-11-15" },
+    "hold": { "value": 1700, "unit": "N", "rule": "Rexroth rates its T-nut in a 6 mm slot (M4) at 1700 N. An estimate until it is tested (Frames 2.13): the maker gives no figure for this nut", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4 to 3-9; the proof stress from the kit's m3 thread set (ISO 898-1)", "checked": "2026-11-15" }
+  }
+}

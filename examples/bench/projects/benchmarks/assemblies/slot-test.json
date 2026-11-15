@@ -1,0 +1,11 @@
+{
+  "title": "Slot coupon",
+  "kind": "fit",
+  "description": "The slot coupon on its own, for cad measured: write each result back with cad measured benchmarks/slot-test <rule>=<value> (MEASURE.md, rows 29 to 33), and the ledger keeps predicted against measured.",
+  "items": [
+    {
+      "id": "coupon",
+      "object": "slot-coupon"
+    }
+  ]
+}
