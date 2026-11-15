@@ -309,6 +309,33 @@ test('fasten: seats and ends read from the parts: a counterbore on an insert, a 
   } finally { done(); }
 });
 
+test('fasten: the older "fastens": true fit gives the same findings with or without a fasten beside it, and states no fasten finding of its own', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const { file, write, check } = fastened(ws);
+    const strip = (r) => r.findings.map((x) => [x.level, x.code, x.text]);
+    // the older form alone: a fit that fastens holds the bracket, and nothing says anything of screws
+    write({ fasten: {}, more: { fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, fastens: true, note: 'The bracket sits on the base' }] } });
+    const a = JSON.parse(fs.readFileSync(file, 'utf8')); delete a.fasten; fs.writeFileSync(file, JSON.stringify(a));
+    const old = check();
+    assert.equal(old.status, 0); assert.deepEqual(old.findings.filter((x) => x.code.startsWith('fasten.')), [], 'no fasten finding without a fasten');
+    assert.match(old.of('overlap')[0].text, /no parts overlap \(2 object instances\)/);
+    // a fasten added beside it adds fasten findings and the screws as parts, and changes no other finding
+    a.fasten = [{ screw: 'M3 cap', through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'] }]; fs.writeFileSync(file, JSON.stringify(a));
+    const both = check();
+    assert.equal(both.status, 0);
+    const rest = (r) => strip(r).filter(([, code]) => /^(fit|fits|gap|assembly)\b/.test(code) || /^fit/.test(code));
+    assert.ok(rest(old).length >= 1, 'the fit is judged');
+    assert.deepEqual(rest(both), rest(old), 'the older fit\'s findings are the same');
+    assert.ok(both.findings.some((x) => x.code === 'fasten.holes'));
+    // the older form does not look at holes: a misfit passes it, and fails with a fasten
+    a.items[1].set = { shift: 1 }; delete a.fasten; fs.writeFileSync(file, JSON.stringify(a));
+    assert.equal(check().status, 0, 'a fit that fastens does not follow the holes');
+    a.fasten = [{ screw: 'M3 cap', through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'] }]; fs.writeFileSync(file, JSON.stringify(a));
+    assert.deepEqual(check().fails, ['fasten.holes']);
+  } finally { done(); }
+});
+
 test('your own printer, and no extras configured', () => {
   const { ws, cad, done } = workspace({ printer: 'tiny' });
   try {
