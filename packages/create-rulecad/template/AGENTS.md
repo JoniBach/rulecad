@@ -21,6 +21,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - When a part must fit something whose model exists (a maker's CAD, a model site), measure that model:
   `npx cad measure <file> --rules <name> --source <url> --licence "…"`. Look at the drawing in `.preview/measure/`,
   then rename the draft rules for what they are and say in each `rule` what the feature does.
+- For a beam (an aluminium extrusion) the kit has no profile for, measure the maker's model or a DXF of its section:
+  `npx cad measure <beam.stl|section.dxf> --profile <name> --source <url> --licence "…"`. It writes a draft profile
+  set and the section's outline into this workspace's `rules/`. Look at the drawing, check the slot figures against
+  the maker's sheet, and never copy the outline out of the workspace: it is the maker's shape.
 - Model it from those rules, then `npx cad match <project>/<object> <file>`: report the worst places with their numbers,
   and look at the sections picture. A deliberate clearance shows as an even offset; anything else is a finding.
 - Don't copy the shape of a model whose licence is non-commercial, no-derivatives or share-alike into a design under
