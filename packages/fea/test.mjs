@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { grid, analyse, solve, cellStiffness, stress, jsBackend } from '@rulecad/fea';
 import { checkBackend } from './backend-suite.mjs';
+import './frame-cases.mjs'; // the frame solver's tests (@rulecad/fea/frame)
 
 // A cantilever L long and H deep, held along its left edge, loaded F down along its right edge
 function cantilever({ L = 100, H = 10, h = 1, F = 10, E = 2000, t = 5 } = {}) {
