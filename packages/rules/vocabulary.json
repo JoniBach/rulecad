@@ -196,6 +196,7 @@
     "slot_back": { "says": "the back face (+x) where it differs, written as slot_top is, along +y" },
     "chamber_width": { "unit": "mm", "says": "the width of the closed hollow between two cells of a profile, where it is wider than the slot's cavity; 0 for a solid web between cells" },
     "chamber_length": { "unit": "mm", "says": "how far the hollow between two cells keeps its full width, along the line joining the cells' middles; left out where it starts closing in at once" },
+    "chamber_depth": { "unit": "mm", "says": "how far the hollow between two cells reaches to each side of the line between them; left out where it is the slot's cavity depth (two cavities back to back)" },
     "bore_diameter": { "unit": "mm", "says": "the bore through the centre of each cell of a profile, as extruded" },
     "bore_thread": { "says": "the thread a profile's centre bore is tapped to, as its thread set writes it: M5" },
     "bore_at": { "says": "where a profile's bores are: cells for the centre of every cell (the default), none, or their centres from the middle of the section as x,y pairs with semicolons between (-10,0; 10,0)" },
@@ -252,7 +253,7 @@
     "slot_nut": ["slot", "thread", "nut_kind", "length", "width", "height", "nut_entry"]
   },
   "drafts": {
-    "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "chamber_length": 2, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "corner_hollow_width": 0, "corner_hollow_wall": 2, "area": 183, "inertia_x": 7030, "inertia_y": 7030, "section_modulus_x": 703, "section_modulus_y": 703, "torsion_constant": 1100, "mass_per_metre": 0.5, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },
+    "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "chamber_length": 2, "chamber_depth": 6, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "corner_hollow_width": 0, "corner_hollow_wall": 2, "area": 183, "inertia_x": 7030, "inertia_y": 7030, "section_modulus_x": 703, "section_modulus_y": 703, "torsion_constant": 1100, "mass_per_metre": 0.5, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },
     "slot": { "opening": 6, "lip_thickness": 2, "lip_angle": 0, "cavity_width": 12, "cavity_depth": 6, "floor_width": 6, "flank_angle": 45, "track_width": 9, "track_angle": 90, "nut_family": "slot-6" },
     "slot_nut": { "slot": "slot-6", "thread": "M5", "nut_kind": "slide-in", "nut_entry": "end", "length": 10, "width": 10, "height": 4 }
   },

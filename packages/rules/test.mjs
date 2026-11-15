@@ -238,7 +238,8 @@ test('profiles and slots: one maker one set, named for size and maker, every fig
       if (generic) { assert.equal(x.kind, 'community', `${name}.${k}: unbranded stock is community until measured`); continue; }
       if (name.includes('-misumi-')) { assert.match(x.source, /MISUMI FA Mechanical Standard Components catalogue 2014, page 2-\d+, https:\/\/my\.misumi-ec\.com\/pdf\/fa\/2014\/p2_\d+\.pdf/, `${name}.${k} names its page`); assert.equal(x.kind, /scaled off/.test(x.source) ? 'estimate' : 'spec', `${name}.${k}`); }
       if (name.includes('-bosch')) { assert.match(x.source, /Bosch Rexroth, Basic Mechanic Elements MGE 14\.0 \(3 842 540 392, 2019-07\), page \d+-\d+/, `${name}.${k} names its page`); assert.equal(x.kind, /scaled off/.test(x.source) ? 'estimate' : 'spec', `${name}.${k}`); }
-      if (['area', 'inertia_x', 'inertia_y', 'mass_per_metre'].includes(k)) assert.equal(x.kind, 'spec', `${name}.${k} is the sheet's own figure`);
+      // the sheet's own figure, but where the sheet's cannot be (a misprint): then worked out from another of its figures, and the rule says so
+      if (['area', 'inertia_x', 'inertia_y', 'mass_per_metre'].includes(k)) assert.ok(x.kind === 'spec' || (x.kind === 'derived' && /misprint/.test(x.rule) && /prints/.test(x.rule)), `${name}.${k} is the sheet's own figure`);
     }
     if (generic) assert.match(_doc, /until the bar in hand is measured/);
   }

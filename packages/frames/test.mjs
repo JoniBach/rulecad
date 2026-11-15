@@ -91,7 +91,12 @@ test('cells: a 2040 is two cells of its base, with a slot per cell on its wide f
   assert.deepEqual([m.cells, m.width, m.height, m.pitch], [[2, 1], 40, 20, [20, 20]]);
   assert.deepEqual(m.faces.top.map((f) => [f.index, f.at]), [[1, [-10, 10]], [2, [10, 10]]]);
   assert.equal(m.faces.front.length, 1); assert.deepEqual(m.bores.map((b) => b.at), [[-10, 0], [10, 0]]);
-  assert.deepEqual(m.chambers, [{ at: [0, 0], axis: 'x', width: 16, length: 0, ends: [8, 8], slot: 'slot-6-misumi' }]);
+  assert.deepEqual(m.chambers, [{ at: [0, 0], axis: 'x', width: 16, length: 0, depth: 6, ends: [8, 8], slot: 'slot-6-misumi' }]);
+  // a hollow shallower than two cavities back to back (a thick core between the cells) is smaller by what it stops short of
+  const shallow = profileModel('2040-misumi-hfs5', { chamber_depth: 5 }), xs = outline(shallow).loops[1].map((p) => p[0]);
+  assert.equal(shallow.chambers[0].depth, 5); assert.deepEqual([Math.min(...xs), Math.max(...xs)], [-5, 5]);
+  assert.ok(section(shallow, { torsion: false }).area > section(m, { torsion: false }).area + 5 && section(shallow, { torsion: false }).area < section(m, { torsion: false }).area + 2 * 8);
+  assert.throws(() => profileModel('2040-misumi-hfs5', { chamber_depth: 10 }), /chamber_depth is above 0 and under half a cell's size, 10 \(got 10\)/);
   const { loops } = outline(m);
   assert.equal(loops.length, 4, 'the outside, the hollow, two bores');
   // a face overridden, a face with a slot family per slot, and a section that mixes families

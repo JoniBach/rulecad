@@ -21,15 +21,21 @@ import s_profile_2020_generic from '@rulecad/rules/profile-2020-generic.json' wi
 import s_profile_2020_item_5 from '@rulecad/rules/profile-2020-item-5.json' with { type: 'json' };
 import s_profile_2020_misumi_hfs5 from '@rulecad/rules/profile-2020-misumi-hfs5.json' with { type: 'json' };
 import s_profile_2020_motedis_b6 from '@rulecad/rules/profile-2020-motedis-b6.json' with { type: 'json' };
+import s_profile_2020_motedis_i5 from '@rulecad/rules/profile-2020-motedis-i5.json' with { type: 'json' };
 import s_profile_2040_bosch from '@rulecad/rules/profile-2040-bosch.json' with { type: 'json' };
 import s_profile_2040_generic from '@rulecad/rules/profile-2040-generic.json' with { type: 'json' };
 import s_profile_2040_item_5 from '@rulecad/rules/profile-2040-item-5.json' with { type: 'json' };
 import s_profile_2040_misumi_hfs5 from '@rulecad/rules/profile-2040-misumi-hfs5.json' with { type: 'json' };
+import s_profile_2040_motedis_i5 from '@rulecad/rules/profile-2040-motedis-i5.json' with { type: 'json' };
+import s_profile_2060_misumi_hfs5 from '@rulecad/rules/profile-2060-misumi-hfs5.json' with { type: 'json' };
+import s_profile_2080_misumi_hfs5 from '@rulecad/rules/profile-2080-misumi-hfs5.json' with { type: 'json' };
 import s_profile_3030_bosch from '@rulecad/rules/profile-3030-bosch.json' with { type: 'json' };
 import s_profile_3030_generic from '@rulecad/rules/profile-3030-generic.json' with { type: 'json' };
 import s_profile_3030_item_6 from '@rulecad/rules/profile-3030-item-6.json' with { type: 'json' };
 import s_profile_3030_item_6l from '@rulecad/rules/profile-3030-item-6l.json' with { type: 'json' };
 import s_profile_3030_misumi_hfs6 from '@rulecad/rules/profile-3030-misumi-hfs6.json' with { type: 'json' };
+import s_profile_3030_motedis_i6 from '@rulecad/rules/profile-3030-motedis-i6.json' with { type: 'json' };
+import s_profile_3060_bosch from '@rulecad/rules/profile-3060-bosch.json' with { type: 'json' };
 import s_profile_3060_item_6 from '@rulecad/rules/profile-3060-item-6.json' with { type: 'json' };
 import s_profile_3060_item_6l from '@rulecad/rules/profile-3060-item-6l.json' with { type: 'json' };
 import s_profile_3060_misumi_hfs6 from '@rulecad/rules/profile-3060-misumi-hfs6.json' with { type: 'json' };
@@ -39,20 +45,28 @@ import s_profile_4040_item_8 from '@rulecad/rules/profile-4040-item-8.json' with
 import s_profile_4040_item_8l from '@rulecad/rules/profile-4040-item-8l.json' with { type: 'json' };
 import s_profile_4040_misumi_hfs8 from '@rulecad/rules/profile-4040-misumi-hfs8.json' with { type: 'json' };
 import s_profile_4040_motedis_b10 from '@rulecad/rules/profile-4040-motedis-b10.json' with { type: 'json' };
+import s_profile_4040_motedis_i8 from '@rulecad/rules/profile-4040-motedis-i8.json' with { type: 'json' };
+import s_profile_4080_bosch_l from '@rulecad/rules/profile-4080-bosch-l.json' with { type: 'json' };
 import s_profile_4080_item_8 from '@rulecad/rules/profile-4080-item-8.json' with { type: 'json' };
 import s_profile_4080_item_8l from '@rulecad/rules/profile-4080-item-8l.json' with { type: 'json' };
 import s_profile_4080_misumi_hfs8 from '@rulecad/rules/profile-4080-misumi-hfs8.json' with { type: 'json' };
+import s_profile_4080_motedis_i8 from '@rulecad/rules/profile-4080-motedis-i8.json' with { type: 'json' };
+import s_profile_4545_bosch_l from '@rulecad/rules/profile-4545-bosch-l.json' with { type: 'json' };
 import s_profile_4545_misumi_hfs8 from '@rulecad/rules/profile-4545-misumi-hfs8.json' with { type: 'json' };
 import s_profile_4590_misumi_hfs8 from '@rulecad/rules/profile-4590-misumi-hfs8.json' with { type: 'json' };
+import s_slot_10_bosch_45l from '@rulecad/rules/slot-10-bosch-45l.json' with { type: 'json' };
 import s_slot_10_bosch from '@rulecad/rules/slot-10-bosch.json' with { type: 'json' };
 import s_slot_10_misumi_45 from '@rulecad/rules/slot-10-misumi-45.json' with { type: 'json' };
 import s_slot_10_misumi from '@rulecad/rules/slot-10-misumi.json' with { type: 'json' };
 import s_slot_10_motedis from '@rulecad/rules/slot-10-motedis.json' with { type: 'json' };
+import s_slot_10 from '@rulecad/rules/slot-10.json' with { type: 'json' };
 import s_slot_5_item from '@rulecad/rules/slot-5-item.json' with { type: 'json' };
+import s_slot_5_motedis from '@rulecad/rules/slot-5-motedis.json' with { type: 'json' };
 import s_slot_6_bosch from '@rulecad/rules/slot-6-bosch.json' with { type: 'json' };
 import s_slot_6_item_light from '@rulecad/rules/slot-6-item-light.json' with { type: 'json' };
 import s_slot_6_item from '@rulecad/rules/slot-6-item.json' with { type: 'json' };
 import s_slot_6_misumi from '@rulecad/rules/slot-6-misumi.json' with { type: 'json' };
+import s_slot_6_motedis_i from '@rulecad/rules/slot-6-motedis-i.json' with { type: 'json' };
 import s_slot_6_motedis from '@rulecad/rules/slot-6-motedis.json' with { type: 'json' };
 import s_slot_6 from '@rulecad/rules/slot-6.json' with { type: 'json' };
 import s_slot_8_bosch from '@rulecad/rules/slot-8-bosch.json' with { type: 'json' };
@@ -60,6 +74,7 @@ import s_slot_8_i from '@rulecad/rules/slot-8-i.json' with { type: 'json' };
 import s_slot_8_item_light from '@rulecad/rules/slot-8-item-light.json' with { type: 'json' };
 import s_slot_8_item from '@rulecad/rules/slot-8-item.json' with { type: 'json' };
 import s_slot_8_misumi from '@rulecad/rules/slot-8-misumi.json' with { type: 'json' };
+import s_slot_8_motedis_i from '@rulecad/rules/slot-8-motedis-i.json' with { type: 'json' };
 import s_slot_8 from '@rulecad/rules/slot-8.json' with { type: 'json' };
 import s_unc_10_24 from '@rulecad/rules/unc_10_24.json' with { type: 'json' };
 import s_unc_1_4_20 from '@rulecad/rules/unc_1_4_20.json' with { type: 'json' };
@@ -77,13 +92,16 @@ export const FIELDS = vocabulary.fields;
 export const SETS = Object.fromEntries([
   s_al6000_item, s_al6060_rexroth, s_al6063_t5, s_al6063_t66, s_al6n01_t5, s_m10, s_m12, s_m1_6, s_m2, s_m2_5,
   s_m3, s_m4, s_m5, s_m6, s_m8, s_profile_2020_bosch, s_profile_2020_generic, s_profile_2020_item_5, s_profile_2020_misumi_hfs5,
-  s_profile_2020_motedis_b6, s_profile_2040_bosch, s_profile_2040_generic, s_profile_2040_item_5, s_profile_2040_misumi_hfs5,
+  s_profile_2020_motedis_b6, s_profile_2020_motedis_i5, s_profile_2040_bosch, s_profile_2040_generic, s_profile_2040_item_5,
+  s_profile_2040_misumi_hfs5, s_profile_2040_motedis_i5, s_profile_2060_misumi_hfs5, s_profile_2080_misumi_hfs5,
   s_profile_3030_bosch, s_profile_3030_generic, s_profile_3030_item_6, s_profile_3030_item_6l, s_profile_3030_misumi_hfs6,
-  s_profile_3060_item_6, s_profile_3060_item_6l, s_profile_3060_misumi_hfs6, s_profile_4040_bosch_l, s_profile_4040_generic,
-  s_profile_4040_item_8, s_profile_4040_item_8l, s_profile_4040_misumi_hfs8, s_profile_4040_motedis_b10,
-  s_profile_4080_item_8, s_profile_4080_item_8l, s_profile_4080_misumi_hfs8, s_profile_4545_misumi_hfs8,
-  s_profile_4590_misumi_hfs8, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
-  s_slot_5_item, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis,
-  s_slot_6, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light, s_slot_8_item, s_slot_8_misumi, s_slot_8, s_unc_10_24,
-  s_unc_1_4_20, s_unc_3_8_16, s_unc_4_40, s_unc_5_16_18, s_unc_6_32, s_unc_8_32, s_unf_10_32
+  s_profile_3030_motedis_i6, s_profile_3060_bosch, s_profile_3060_item_6, s_profile_3060_item_6l, s_profile_3060_misumi_hfs6,
+  s_profile_4040_bosch_l, s_profile_4040_generic, s_profile_4040_item_8, s_profile_4040_item_8l, s_profile_4040_misumi_hfs8,
+  s_profile_4040_motedis_b10, s_profile_4040_motedis_i8, s_profile_4080_bosch_l, s_profile_4080_item_8,
+  s_profile_4080_item_8l, s_profile_4080_misumi_hfs8, s_profile_4080_motedis_i8, s_profile_4545_bosch_l,
+  s_profile_4545_misumi_hfs8, s_profile_4590_misumi_hfs8, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45,
+  s_slot_10_misumi, s_slot_10_motedis, s_slot_10, s_slot_5_item, s_slot_5_motedis, s_slot_6_bosch, s_slot_6_item_light,
+  s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i, s_slot_6_motedis, s_slot_6, s_slot_8_bosch, s_slot_8_i,
+  s_slot_8_item_light, s_slot_8_item, s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_unc_10_24, s_unc_1_4_20,
+  s_unc_3_8_16, s_unc_4_40, s_unc_5_16_18, s_unc_6_32, s_unc_8_32, s_unf_10_32
 ].map((s) => [s.name, s]));
