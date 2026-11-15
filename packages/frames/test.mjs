@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as frames from '@rulecad/frames';
 import { SETS } from './catalogue.mjs';
+import { gap, inside } from './section.mjs';
 
 const { profileModel, slotModel, slotPath, outline, section, profileFindings, readOutline, polygonSection, torsionConstant, signedArea, DEFAULTS } = frames;
 const rulesDir = new URL('../rules/', import.meta.url);
@@ -90,7 +91,7 @@ test('cells: a 2040 is two cells of its base, with a slot per cell on its wide f
   assert.deepEqual([m.cells, m.width, m.height, m.pitch], [[2, 1], 40, 20, [20, 20]]);
   assert.deepEqual(m.faces.top.map((f) => [f.index, f.at]), [[1, [-10, 10]], [2, [10, 10]]]);
   assert.equal(m.faces.front.length, 1); assert.deepEqual(m.bores.map((b) => b.at), [[-10, 0], [10, 0]]);
-  assert.deepEqual(m.chambers, [{ at: [0, 0], axis: 'x', width: 16, length: 0, slot: 'slot-6-misumi' }]);
+  assert.deepEqual(m.chambers, [{ at: [0, 0], axis: 'x', width: 16, length: 0, ends: [8, 8], slot: 'slot-6-misumi' }]);
   const { loops } = outline(m);
   assert.equal(loops.length, 4, 'the outside, the hollow, two bores');
   // a face overridden, a face with a slot family per slot, and a section that mixes families
@@ -107,6 +108,36 @@ test('cells: a 2040 is two cells of its base, with a slot per cell on its wide f
   // corner holes and corner hollows, as the 3030 and the 4040 have them
   assert.deepEqual(profileModel('3030-misumi-hfs6').bores.filter((b) => b.where === 'corner').map((b) => b.at), [[-11.6, -11.6], [11.6, -11.6], [11.6, 11.6], [-11.6, 11.6]]);
   assert.deepEqual(profileModel('4040-misumi-hfs8').hollows[2], { at: [15, 15], width: 6 });
+});
+
+test('a grid of cells both ways: the hollows round a place where four cells meet stand clear of each other', () => {
+  // no two edges of a loop cross or touch, but for neighbours at their shared point
+  const simple = (loop) => { const n = loop.length; for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) { if (i === 0 && j === n - 1) continue; if (gap([loop[i], loop[(i + 1) % n], loop[i]], [loop[j], loop[(j + 1) % n], loop[j]]) <= 1e-9) return false; } return true; };
+  // the makers' two-cell sections have a hollow wider than a cavity (16 or 17 mm against 12), some stepped: each as a grid
+  for (const base of ['profile-2040-misumi-hfs5', 'profile-2040-bosch', 'profile-2040-generic']) for (const [across, up] of [[2, 2], [3, 2], [2, 3]]) {
+    const rules = { ...SETS[base].rules, cells_across: rule(across, ''), cells_up: rule(up, ''), width: rule(20 * across, 'mm'), height: rule(20 * up, 'mm') };
+    for (const k of ['area', 'inertia_x', 'inertia_y', 'section_modulus_x', 'section_modulus_y', 'torsion_constant', 'mass_per_metre']) delete rules[k]; // (the two-cell sheet's figures are not this section's)
+    const what = `${base} as ${across} by ${up}`, m = profileModel({ name: 'grid', part: 'profile', rules }), { loops } = outline(m), cavity = m.slots[rules.slot.value].cavityWidth;
+    assert.equal(m.chambers.length, (across - 1) * up + across * (up - 1), `${what}: a hollow between every two neighbours`);
+    assert.equal(loops.length, 1 + m.chambers.length + across * up, `${what}: the outside, the hollows and a bore to a cell`);
+    assert.ok(m.chambers.every((c) => c.ends.every((e) => e === c.width / 2 || e === cavity / 2)) && m.chambers.some((c) => c.ends[0] !== c.ends[1]), `${what}: an end toward the middle keeps to the cavity's width`);
+    assert.ok(signedArea(loops[0]) > 0 && loops.slice(1).every((l) => signedArea(l) < 0), `${what}: the outside counter-clockwise, holes clockwise`);
+    for (const [i, l] of loops.entries()) { assert.ok(l.length >= 3 && l.every((p) => p.every(Number.isFinite)), `${what}: loop ${i} is points`); assert.ok(simple(l), `${what}: loop ${i} does not cross itself`); }
+    for (let i = 1; i < loops.length; i++) { assert.ok(loops[i].every((p) => inside(p, loops[0])), `${what}: hole ${i} is inside the metal's outside`); for (let j = i + 1; j < loops.length; j++) assert.ok(gap(loops[i], loops[j]) > 0.5, `${what}: holes ${i} and ${j} have metal between them (${gap(loops[i], loops[j])})`); }
+    assert.deepEqual(profileFindings(m, { torsion: false }).filter((f) => f.level === 'fail'), [], `${what}: the check finds no hollow running into another`);
+    // the area: no hole counted twice (the polygon sum agrees with counting the metal on a raster), and about what its cells come to
+    const s = section(m, { torsion: false }), h = 0.01; let metal = 0;
+    for (let y = -10 * up + h / 2; y < 10 * up; y += h) { // even-odd along each line: metal is between an odd crossing and the next
+      const xs = loops.flatMap((l) => l.flatMap(([ax, ay], i) => { const [bx, by] = l[(i + 1) % l.length]; return (ay > y) !== (by > y) ? [ax + ((y - ay) * (bx - ax)) / (by - ay)] : []; })).sort((p, q) => p - q);
+      for (let k = 0; k + 1 < xs.length; k += 2) metal += (xs[k + 1] - xs[k]) * h;
+    }
+    within(s.area, metal, 0.002, `${what}: area by the polygon sum against the metal counted along scan lines`);
+    const one = section(profileModel(base.replace('2040', '2020')), { torsion: false }).area;
+    assert.ok(s.area > 0.8 * across * up * one && s.area < 1.05 * across * up * one, `${what}: ${s.area} mm² against ${across * up} cells of ${one}`);
+    assert.ok(Math.abs(s.centroid[0]) < 1e-6 && Math.abs(s.centroid[1]) < 1e-6);
+  }
+  // one row is as it was: both ends of its hollow face the outside
+  assert.deepEqual(profileModel('2040-bosch').chambers[0].ends, [8.5, 8.5]);
 });
 
 test('outline: closed loops from the interface values, the outside counter-clockwise and holes clockwise; a measured outline in its place', () => {

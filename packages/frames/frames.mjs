@@ -62,7 +62,9 @@ export const slotNuts = () => ofPart('slot_nut');
  *   trackWidth: number, trackAngle: number, nutFamily: string }} Slot
  * @typedef {{ face: 'top' | 'bottom' | 'front' | 'back', index: number, slot: string | null, at: [number, number], normal: [number, number], along: [number, number] }} FaceSlot
  * @typedef {{ at: [number, number], diameter: number, thread: string | null, threadSet: string | null, tapDrill: number | null, major: number | null, threadPitch: number | null, where: 'cell' | 'corner' | 'given' }} Bore
- * @typedef {{ at: [number, number], axis: 'x' | 'y', width: number, length: number, slot: string }} Chamber
+ * @typedef {{ at: [number, number], axis: 'x' | 'y', width: number, length: number, ends: [number, number], slot: string }} Chamber the
+ *   closed hollow between two cells: axis x between cells side by side (its width runs up y), axis y between cells one
+ *   above the other (its width runs along x); ends are its half widths toward - and + along that width
  * @typedef {{ at: [number, number], width: number }} Hollow a closed square hollow in a corner, by its centre and side
  * @typedef {{ loops: number[][][], source: string, licence: string, name?: string }} MeasuredOutline
  * @typedef {{ kind: 'profile', name: string, family: string, series: number, cells: [number, number], pitch: [number, number],
@@ -240,8 +242,12 @@ export function profileModel(which, change = {}, given = {}) {
   const chamberLength = num('chamber_length', 0);
   if (!(chamberLength >= 0 && chamberLength < Math.min(...pitch))) throw new Error(`${what}: ${name}: chamber_length is from 0 to under a cell's size (got ${shown(chamberLength)})`);
   if (base && chamberWidth > 0) {
-    for (let j = 0; j < cells[1]; j++) for (let i = 0; i + 1 < cells[0]; i++) chambers.push({ at: [(i + 1 - cells[0] / 2) * pitch[0], (j - (cells[1] - 1) / 2) * pitch[1]], axis: 'x', width: chamberWidth, length: chamberLength, slot: base });
-    for (let i = 0; i < cells[0]; i++) for (let j = 0; j + 1 < cells[1]; j++) chambers.push({ at: [(i - (cells[0] - 1) / 2) * pitch[0], (j + 1 - cells[1] / 2) * pitch[1]], axis: 'y', width: chamberWidth, length: chamberLength, slot: base });
+    // An end that points at an outside face has chamber_width. An end that points at a place where four cells meet (a
+    // grid both ways) has three other hollows for neighbours there, so it keeps to the cavity's own width: the hollows
+    // then stand as far apart as two slots do round a cell's corner, which is the web a cell is known to have
+    const own = Math.min(chamberWidth, slotsUsed[base].cavityWidth) / 2, ends = (k, n) => [k > 0 ? own : chamberWidth / 2, k + 1 < n ? own : chamberWidth / 2];
+    for (let j = 0; j < cells[1]; j++) for (let i = 0; i + 1 < cells[0]; i++) chambers.push({ at: [(i + 1 - cells[0] / 2) * pitch[0], (j - (cells[1] - 1) / 2) * pitch[1]], axis: 'x', width: chamberWidth, length: chamberLength, ends: ends(j, cells[1]), slot: base });
+    for (let i = 0; i < cells[0]; i++) for (let j = 0; j + 1 < cells[1]; j++) chambers.push({ at: [(i - (cells[0] - 1) / 2) * pitch[0], (j + 1 - cells[1] / 2) * pitch[1]], axis: 'y', width: chamberWidth, length: chamberLength, ends: ends(i, cells[0]), slot: base });
   }
   // ---- what the sheet says it is worth, what it is made of, how it is sold ----
   const sheet = { area: num('area', null), inertiaX: num('inertia_x', null), inertiaY: num('inertia_y', null), modulusX: num('section_modulus_x', null), modulusY: num('section_modulus_y', null), torsion: num('torsion_constant', null), massPerMetre: num('mass_per_metre', null) };
@@ -280,12 +286,16 @@ function slotLoop(place, slot) {
   const [nx, ny] = place.normal, [ax, ay] = place.along;
   return slotPath(slot).map(([u, v]) => [place.at[0] + u * ax - v * nx, place.at[1] + u * ay - v * ny]);
 }
-// The hollow between two cells: both cavities below their lips, back to back across the line between the cells. It
-// keeps its full width for its length, then steps in to the flanks that run down to each cavity's floor
+// The hollow between two cells: both cavities below their lips, back to back across the line between the cells. Toward
+// an outside face it keeps its full width for its length, then steps in to the flanks that run down to each cavity's
+// floor. Toward a place where four cells meet it is the cavity's own shape (its end there is narrower than its width)
 function chamberLoop(ch, slot) {
-  const W = ch.width, D = slot.cavityDepth, f = Math.min(slot.floorWidth, W), cot = 1 / Math.tan(slot.flankAngle * RAD);
-  const meet = D - ((W - f) / 2) / cot, v1 = Math.min(D, Math.max(ch.length / 2, meet, 0)), h1 = Math.min(W / 2, f / 2 + (D - v1) * cot); // (meet: where the flanks reach the full width)
-  const q = [[W / 2, v1], [h1, v1], [f / 2, D]], pts = [...q.map(([u, v]) => [-u, -v]), ...q.map(([u, v]) => [u, -v]).reverse(), ...q, ...q.map(([u, v]) => [-u, v]).reverse()].filter((p, i, a) => Math.hypot(p[0] - a[(i + a.length - 1) % a.length][0], p[1] - a[(i + a.length - 1) % a.length][1]) > 1e-9);
+  const D = slot.cavityDepth, cot = 1 / Math.tan(slot.flankAngle * RAD), ends = ch.ends ?? [ch.width / 2, ch.width / 2];
+  const quarter = (half) => { // one end, from the line between the cells down to one cavity's floor
+    const f = Math.min(slot.floorWidth / 2, half), meet = D - (half - f) / cot, v1 = Math.min(D, Math.max(half < ch.width / 2 ? 0 : ch.length / 2, meet, 0)), h1 = Math.min(half, f + (D - v1) * cot); // (meet: where the flanks reach the full width)
+    return [[half, v1], [h1, v1], [f, D]];
+  };
+  const a = quarter(ends[0]), b = quarter(ends[1]), pts = [...a.map(([u, v]) => [-u, -v]), ...b.map(([u, v]) => [u, -v]).reverse(), ...b, ...a.map(([u, v]) => [-u, v]).reverse()].filter((p, i, all) => Math.hypot(p[0] - all[(i + all.length - 1) % all.length][0], p[1] - all[(i + all.length - 1) % all.length][1]) > 1e-9);
   return pts.map(([u, v]) => (ch.axis === 'y' ? [ch.at[0] + u, ch.at[1] + v] : [ch.at[0] - v, ch.at[1] + u]));
 }
 const squareLoop = (h) => [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [h.at[0] + (a * h.width) / 2, h.at[1] + (b * h.width) / 2]);
