@@ -4,7 +4,8 @@ Structures built from beams. A beam is a length of a profile: an aluminium extru
 plain tube or angle, or a beam printed in plastic. Part of [rulecad](https://github.com/JoniBach/rulecad), a kit for
 designing physical things where every measurement says which rule it comes from.
 
-This release reads a profile, which is everything the rest is built on, and makes beams of it:
+It reads a profile, which is everything the rest is built on, makes beams of it, works them, lists what to buy and
+cut, and fastens to them:
 
 - **`profileModel`**: a profile as a model from its rule set and its slot family's, every figure with how far to
   trust it and where it comes from, its slots, bores and hollows each in their place.
@@ -15,8 +16,12 @@ This release reads a profile, which is everything the rest is built on, and make
 - **`profileFindings`**: what a check of a profile finds, as `cad rules check` reports it.
 - **`beamModel`** and **`beam`**: a length of a profile, with its mass and centre of mass, the anchors an assembly
   places it and its fittings by, and its solid as a light box or the true section.
+- **Beams in assemblies**: every place on a beam has an address (`top@120`, `top.2@50%`, `a.1`) that a cad
+  assembly places a beam's ends and its fittings by, its face names turning with it.
 - **Operations on a beam**: cut, mitre, tap, access, drill, counterbore, pocket, notch and deburr, each placed by an
   address on the beam, dimensioned from end a, checked, and cut into its solid.
+- **The cut list and sheets**: beams marked by what makes them alike, packed into the lengths a supplier sells with
+  each cut's kerf (`cutList`, `packBars`), and a cut-and-drill sheet for each beam (`beamSheet`).
 - **Slot nuts**: the bought nuts a slot takes (`slotNutModel`, `nutFit`, `slotNut`), the nut for a face and a thread
   (`nutFor`), and a printed carrier for a hex nut or an insert that slides in the slot (`carrierModel`, `carrier`).
 
@@ -476,6 +481,18 @@ Its model has `section` (in the slot's frame), `cavity`, `clearance`, `least` (i
 
 An M5 nut does not fit a carrier in a 6 mm slot (8 mm across its flats in a slot 5.6 mm deep once clear of it): it is
 refused, naming a smaller thread, an insert or a larger slot.
+
+### Your own slot, measured
+
+Slots of the same name differ between makers by tenths of a millimetre, and an unbranded beam's figures are only
+`community` ones. The [slot coupon](https://github.com/JoniBach/rulecad/tree/main/examples/bench/projects/benchmarks) (`slot-coupon`,
+with its steps in that folder's `MEASURE.md`, rows 29 to 33) is one print of loose pieces for slot 6 and slot 8: five
+tongues and five carriers at 0.1 to 0.3 mm a side, and three short printed slots. Slide each into your own beam, measure
+the slot by caliper, and `cad measured` writes the results back: the fit to the printer's rule set as `slot_fit` (and
+`printed_slot_fit` for a slot printed in a part), the slot's figures to your workspace's copy of its set, each marked
+`measured`. A carrier is then drawn from them: hand the printer in (`{ printer: v.x1c }` in a design), and
+`carrierModel` takes its `slot_fit` before its `fit`; a design's `v.frames` reads the workspace's slot sets before the
+kit's.
 
 ## Formulas
 
