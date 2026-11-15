@@ -1,0 +1,11 @@
+{
+  "_doc": "The aluminium of 80/20's T-slot profiles, for analysis: \"6005A-T61 (or comparable)\" in its Product Catalog 24, with 80/20's own strength and modulus (its T-Slot Profile Specifications, given in both inch and metric units). 80/20 gives no density or Poisson's ratio: the density is worked out from its own weight and area for the 1010. Its web shop has listed the same profiles as 6063-T6 with a yield strength of 25,000 psi: check the bar you are sent where strength matters.",
+  "name": "al6005a-8020",
+  "rules": {
+    "modulus": { "value": 70326.5, "unit": "MPa", "rule": "Elasticity E: 10,200,000 lb/in², \"70,326.5 N/mm²\"", "kind": "spec", "source": "80/20 Inc., Product Catalog 24, page 2-10 (read from a distributor's copy of the catalogue; 8020.net)", "checked": "2026-11-15" },
+    "poisson": { "value": 0.33, "rule": "Poisson's ratio: 80/20 gives none. Hydro's sheet for 6005A comes to about this from its two moduli; the kit's figure for 6000 series alloys is used", "kind": "estimate", "source": "al6005a-t6 rule set (Hydro, Alloy EN AW-6005A); not from 80/20", "checked": "2026-11-15" },
+    "strength": { "value": 241.1, "unit": "MPa", "rule": "Yield strength: 35,000 p.s.i. (min), \"241.1 N/mm² (min)\"", "kind": "spec", "source": "80/20 Inc., Product Catalog 24, page 2-10 (read from a distributor's copy of the catalogue; 8020.net)", "checked": "2026-11-15" },
+    "ultimate": { "value": 262, "unit": "MPa", "rule": "Tensile strength: 38,000 p.s.i. (min), \"262.0 N/mm² (min)\"", "kind": "spec", "source": "80/20 Inc., Product Catalog 24, page 2-10 (read from a distributor's copy of the catalogue; 8020.net)", "checked": "2026-11-15" },
+    "density": { "value": 2.7, "unit": "g/cm³", "rule": "Density, worked out from 80/20's own weight over area for the 1010: 0.0424 lb/in over 0.435 in² is 0.0975 lb/in³, 2.70 g/cm³ (anodised, as sold)", "kind": "derived", "source": "80/20 Inc., Product Catalog 24, page 2-16 (read from a distributor's copy of the catalogue; 8020.net)", "checked": "2026-11-15" }
+  }
+}

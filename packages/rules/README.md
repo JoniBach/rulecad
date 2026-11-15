@@ -74,6 +74,9 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `profile-custom` | The custom family: any closed outline, with its section figures worked out from it. The kit's own example is a T section, its outline in `outlines/profile-custom.json` | 4 |
 | `slot-6-openbuilds` | The slot of OpenBuilds V-Slot rail: a T-slot with a V mouth for wheels. Opening, width and height under the lips from OpenBuilds' drawings; the lip and the V track (`track_width`, `track_angle`) scaled off them | 9 |
 | `profile-2020-openbuilds`, `profile-2040-openbuilds`, `profile-2060-openbuilds`, `profile-2080-openbuilds`, `profile-4080-openbuilds-cbeam` | OpenBuilds V-Slot 20x20, 20x40, 20x60, 20x80 and C-Beam (six cells in a C, with slots inside it): sizes, bores and lengths from OpenBuilds' pages. It publishes no section figures, so they are worked out from the outline | 13 to 16 |
+| `al6005a-8020` | The aluminium of 80/20's profiles ("6005A-T61 or comparable"): 80/20's own modulus, yield and tensile strength, the density worked out from its weight and area | 5 |
+| `slot-6-8020`, `slot-8-8020` | The T-slots of 80/20's 10 series (1 in) and 15 series (1.5 in), in mm with the inch figure in each rule: opening, lip, width, depth and the 2 degree drop lock from the catalogue's drawings | 8 each |
+| `profile-1010-8020`, `profile-1020-8020`, `profile-1515-8020`, `profile-1530-8020` | 80/20 inch T-slot profiles 1010, 1020, 1515 and 1530: dimensions and section figures from its Product Catalog 24 in mm, each rule giving the inch figure; bores tapped 1/4-20 (`unc_1_4_20`) and 5/16-18 (`unc_5_16_18`) | 20 or 21 |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such
 as KiCad's library or KeyV2), **default** (a setting that works), **derived** (read off someone else's model with `cad measure`: check it
