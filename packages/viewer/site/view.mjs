@@ -746,6 +746,19 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
     kids.push(el('p', null, `${L.totals.printedGrams} g printed, about ${L.totals.minutes} min of printing, ${L.totals.machineGrams} g as a machine${L.totals.noMassFor ? ` (no mass for ${L.totals.noMassFor.join(', ')})` : ''}.`));
     parts.push(section('What to buy', ...kids));
   }
+  // The cut list: each mark of beam, the bars to buy with the cuts on each, and each mark's cut-and-drill sheet
+  const C = L && !L.error ? L.cut : null, BS = b.beams;
+  if (C) {
+    const mmf = (x) => String(+Number(x).toFixed(2)), kids = [table(['Mark', 'Qty', 'Profile', 'mm', 'g each', 'Work', 'Items'], C.marks.map((m) => [m.mark, m.count, m.profile, m.length, m.grams ?? '', m.ops.length ? m.ops.join('; ') : 'cut square', m.items.join(', ')]))];
+    for (const st of C.stock) {
+      kids.push(el('h3', null, `${st.profile}: buy ${st.buy.map((x) => `${x.count} × ${mmf(x.length)} mm`).join(', ')}`));
+      kids.push(table(['Bar', 'mm', 'Cuts, in order', 'Offcut'], st.bars.map((x, i) => [i + 1, x.length, x.cuts.map((c) => `${c.mark} ${mmf(c.length)} (${c.item})`).join(', '), mmf(x.offcut)])));
+    }
+    kids.push(el('p', null, `Kerf ${C.rules.kerf.value} mm at every cut, ${C.rules.trim.value} mm trimmed off each bar's first end.`));
+    if (BS?.error) kids.push(trouble(BS));
+    else if (BS?.sheets?.length) kids.push(el('h3', null, 'Cut-and-drill sheets'), table(['Mark', 'Items', 'Sheet'], BS.sheets.map((x) => [x.mark, x.items.join(', '), x.written ? x.file : `${x.file} (not written yet: cad beams)`])));
+    parts.push(section('Cut list', ...kids));
+  }
   // Plates
   const PL = b.plates;
   if (PL?.error) parts.push(section('Plates', trouble(PL)));

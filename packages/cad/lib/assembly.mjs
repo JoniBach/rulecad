@@ -44,7 +44,7 @@ import { gripChecks } from './grip.mjs';
 import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
-import { beamBuilt, beamPlace, beamAddress, beamFindings } from './beams.mjs';
+import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf } from './beams.mjs';
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
 export const isAssembly = (ref) => String(ref).includes('/') && host.exists(assemblyPath(ref.split('@')[0]));
@@ -237,7 +237,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       } else {
         for (const p of src.b.parts) {
           if (p.role === 'support' && a.kind !== 'plate') continue; // supports are snipped off before parts go together
-          out.push({ name: `${id}.${p.name}`, item: id, leaf: id, object: src.objName, role: src.role === 'reference' ? 'reference' : p.role, label: `${id}: ${p.label}`,
+          out.push({ name: `${id}.${p.name}`, item: id, leaf: id, object: src.objName, role: src.role === 'reference' ? 'reference' : p.role, label: `${id}: ${marks.has(id) ? `mark ${marks.get(id)}, ` : ''}${p.label}`,
             ...(p.filament ? { filament: p.filament } : {}), ...(p.mirror === false ? { mirror: false } : {}), part: p.name,
             geometry: transform(m, p.geometry), ...(p.collide ? { collide: transform(m, p.collide) } : {}), polygons: move(p.polygons), triangles: move(p.triangles),
             shape: `${key}:${p.name}`, hash: `${src.b.hash}:${p.name}`, local: p.polygons, localTriangles: p.triangles, m });
@@ -247,6 +247,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     return out;
   };
   for (const x of a.fits || []) for (const p of x.poses || []) if (!motion.poses[p]) throw new Error(`fit ${x.note || x.label || `${x.a} / ${x.b}`}: no pose "${p}" (poses: ${Object.keys(motion.poses).join(', ') || 'none'})`);
+  // each beam's mark on the cut list and its sheet (beams that are the same share one), shown in its label
+  const marks = marksOf(objects);
+  for (const o of objects) if (marks.has(o.id)) o.mark = marks.get(o.id);
   const pose = opts.pose ?? motion.pose;
   const jv = jointValues(motion, pose);
   parts.push(...partsAt(placeItems(motion, jv)));

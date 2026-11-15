@@ -11,9 +11,11 @@
 // Its operations ("ops": cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) are @rulecad/frames': each
 // is cut into its preview, a mitre into its envelope too, and their findings (beam.op) are the beam's.
 import * as frames from '@rulecad/frames';
-import { beamModel, beam, beamAnchor } from '@rulecad/frames';
+import fs from 'node:fs';
+import path from 'node:path';
+import { beamModel, beam, beamAnchor, cutList, beamMarks, beamSheet } from '@rulecad/frames';
 import { frame } from '@rulecad/model-link';
-import { RULE_DIRS } from './workspace.mjs';
+import { RULE_DIRS, paths } from './workspace.mjs';
 import { named } from './parts.mjs';
 import { referenceBuilt } from './bought.mjs';
 import { framesContext as contextIn, givenFor } from './frames.mjs';
@@ -106,7 +108,40 @@ export function beamAddress(m, address, what) {
   return frame(a.origin, a.axis, a.ref);
 }
 
-/** Each beam's own findings (its mass beside the sheet's, its length beside the stock's), named by item. */
+/** The assembly's beams, nested ones too, as { id, beam } for @rulecad/frames' cut list. @param {object} s a built assembly */
+export const beamsIn = (s) => s.objects.filter((o) => o.beam && !o.unplaced).map((o) => ({ id: o.id, beam: o.beam }));
+
+/** Each beam's mark: beams that are the same share one (A, B, ...), as the cut list and the sheets name them. @returns {Map<string, string>} item to mark */
+export function marksOf(objects) {
+  const list = objects.filter((o) => o.beam && !o.unplaced), out = new Map();
+  if (list.length) for (const m of beamMarks(list.map((o) => ({ id: o.id, beam: o.beam })))) for (const id of m.items) out.set(id, m.mark);
+  return out;
+}
+
+/** The cut list of an assembly's beams (frames' cutList), or null where it has none. @param {object} s a built assembly */
+export function cutListOf(s) { const b = beamsIn(s); return b.length ? cutList(b) : null; }
+
+/** The cut list as the list and the build page keep it: no beam models, the numbers and words only. */
+export const cutListData = (c) => c && { marks: c.marks.map(({ beam, ...m }) => m), stock: c.stock, totals: c.totals, rules: Object.fromEntries(Object.entries(c.rules).map(([k, r]) => [k, { value: r.value, unit: r.unit, kind: r.kind }])) };
+
+/** The sheet files cad beams writes for an assembly, by mark: exports/<project>/<assembly>.beam-<mark>.svg */
+export const sheetFile = (s, mark) => paths.exports(s.project, `${s.name}.beam-${mark}.svg`);
+
+/**
+ * One cut-and-drill sheet per mark, written to exports/<project>/<assembly>.beam-<mark>.svg, old sheets of this
+ * assembly removed. @param {object} s a built assembly @returns {{ mark: string, file: string, items: string[], scale: number }[]}
+ */
+export function writeBeamSheets(s) {
+  const c = cutListOf(s), dir = paths.exports(s.project), base = `${s.name}.beam-`;
+  if (fs.existsSync(dir)) for (const f of fs.readdirSync(dir)) if (f.startsWith(base) && f.endsWith('.svg')) fs.rmSync(path.join(dir, f));
+  if (!c) return [];
+  fs.mkdirSync(dir, { recursive: true });
+  return c.marks.map((m) => { const sh = beamSheet(m.beam, { mark: m.mark, items: m.items, grams: m.grams }), file = sheetFile(s, m.mark); fs.writeFileSync(file, sh.svg); return { mark: m.mark, file, items: m.items, scale: sh.scale }; });
+}
+
+/** Each beam's own findings (its mass beside the sheet's, its length beside the stock's), named by item; and the cut list's (frame.cut). */
 export function beamFindings(s, f) {
   for (const o of s.objects) if (o.beam && !o.unplaced) for (const x of o.beam.findings) f(x.level, `${o.id}: ${x.text}`, null, { code: x.code, ...(x.values ? { values: x.values } : {}), refs: { item: o.id, profile: o.beam.profile.name, length: o.beam.length, ...(x.rule ? { rule: x.rule } : {}) } });
+  const c = cutListOf(s);
+  if (c) for (const x of c.findings) f(x.level, x.text, null, { code: x.code, ...(x.values ? { values: x.values } : {}), refs: x.refs });
 }

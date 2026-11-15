@@ -89,7 +89,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
   cad order <project>/<assembly>    the order it goes together in, each step with its fasteners [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
-  cad list <project>/<assembly>     what it takes to build: bought parts by set, fasteners, wire, printed parts in grams
+  cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, fasteners, wire, printed parts in grams
+  cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
   cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends, written to exports/ [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
@@ -124,7 +125,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'beams', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
@@ -448,7 +449,7 @@ async function main() {
   if (cmd === 'variants') return variants(locate(ref));
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'measured') return measuredCommand(ref);
-  if (cmd === 'list' || cmd === 'wires') return listCommand(cmd, ref);
+  if (cmd === 'list' || cmd === 'wires' || cmd === 'beams') return listCommand(cmd, ref);
   if (cmd === 'machine' || cmd === 'plot') return machineCommand(cmd, ref);
   if (cmd === 'plates' || cmd === 'order') return platesCommand(cmd, ref);
   if (cmd === 'history') return history(ref);
@@ -1019,6 +1020,13 @@ async function listCommand(what, ref) {
   if (what === 'list') {
     const { shoppingList, listText } = await import('../lib/list.mjs'), l = shoppingList(s);
     return console.log(opt('json') ? JSON.stringify(l, null, 2) : listText(ref, l));
+  }
+  if (what === 'beams') {
+    const { writeBeamSheets } = await import('../lib/beams.mjs'), sheets = writeBeamSheets(s);
+    if (opt('json')) return console.log(JSON.stringify(sheets.map((x) => ({ ...x, file: path.relative(WS, x.file) })), null, 2));
+    if (!sheets.length) return console.log(`${ref} has no beams`);
+    for (const x of sheets) say(`  mark ${x.mark} (${x.items.join(', ')}), 1:${x.scale}: ${path.relative(WS, x.file)}`);
+    return;
   }
   const { wiresFor } = await import('../lib/assembly.mjs'), { wiringSheet } = await import('../lib/wires.mjs'), rows = wiresFor(s);
   if (opt('json')) return console.log(JSON.stringify(rows.map(({ route, ...r }) => r), null, 2));

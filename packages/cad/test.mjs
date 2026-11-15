@@ -999,8 +999,8 @@ test('the command line: its version, a misspelt command or option named, options
     assert.match(odd.out, /^no option --jsno \(did you mean --json\?\)/); assert.equal(odd.code, 1);
     assert.equal(JSON.parse(run(ws, ['check', '--json', 'demo/block']).stdout).object, 'demo/block', 'options first');
     assert.match(run(ws, ['check', 'demo/block', '--set']).out, /--set needs a value/);
-    assert.match(run(ws, ['add']).out, /usage: cad add fit\|joint\|item\|loop\|pose/);
-    assert.match(run(ws, ['add', 'fit']).out, /usage: cad add fit\|joint\|item\|loop\|pose/);
+    assert.match(run(ws, ['add']).out, /usage: cad add fit\|joint\|item\|beam\|loop\|pose/);
+    assert.match(run(ws, ['add', 'fit']).out, /usage: cad add fit\|joint\|item\|beam\|loop\|pose/);
     // --new takes no value: what follows it is the next variable, not lost
     assert.match(run(ws, ['set', 'demo/block', '--new', 'lip=3', '--unit', 'mm', '--rule', 'A lip']).out, /set lip/);
     const vars = () => JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/objects/block.json'), 'utf8')).variables;
@@ -2018,6 +2018,49 @@ test('beam operations in an assembly: an end tapped M5 and an access hole by exp
     refused((b) => { b.items[0].beam.profile = 'tube-al-20x20x2'; b.items[0].beam.ops = [{ op: 'tap', at: 'a', thread: 'M5' }]; }, /item x1: profile-tube-al-20x20x2 x 300: ops\[0\] \(tap\): profile-tube-al-20x20x2 has no bore in its ends to tap/);
     refused((b) => { b.items[0].beam.ops = [{ op: 'weld', at: 'a' }]; }, /no operation "weld": there are cut, mitre, tap/);
     refused((b) => { b.items[0].beam.printed = true; }, /a printed beam \("printed": true\) is a later release, and its ops become features of the print then/);
+  } finally { done(); }
+});
+
+test('beam cut list and sheets: a box of twelve beams lists three lengths, the bars to buy and their offcuts; cad beams writes a sheet per mark, the access hole at 207.5 mm', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // four of each length, apart from each other; z1 has its end tapped and an access hole 12.5 mm from end b
+    const items = [];
+    for (let i = 0; i < 4; i++) items.push({ id: `x${i + 1}`, beam: { profile: '2020-misumi-hfs5' }, from: [0, i * 40, 0], to: [300, i * 40, 0] });
+    for (let i = 0; i < 4; i++) items.push({ id: `y${i + 1}`, beam: { profile: '2020-misumi-hfs5' }, from: [400 + i * 40, 0, 0], to: [400 + i * 40, 260, 0] });
+    for (let i = 0; i < 4; i++) items.push({ id: `z${i + 1}`, beam: { profile: '2020-misumi-hfs5', ...(i === 0 ? { ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-12.5', thread: 'M5' }] } : {}) }, from: [700 + i * 40, 0, 0], to: [700 + i * 40, 0, 220] });
+    fs.writeFileSync(at('assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', items }));
+    const list = cad('list', 'frame/box');
+    assert.match(list, /Cut list \(kerf 3 mm, trim 10 mm; a sheet for each mark: cad beams frame\/box\)/);
+    assert.match(list, /A\s+4 ×\s+profile-2020-misumi-hfs5 x 300 mm\s+150 g each\s+cut square\s+x1, x2, x3, x4/);
+    assert.match(list, /D\s+1 ×\s+profile-2020-misumi-hfs5 x 220 mm\s+110 g each\s+tap M5 x 10 at a; access Ø5\.3 at top\.1@207\.5\s+z1/);
+    assert.match(list, /profile-2020-misumi-hfs5: 3 lengths, 4 × 300, 4 × 260, 4 × 220 mm/);
+    assert.match(list, /profile-2020-misumi-hfs5: buy 1 × 4000 mm; kerf 3, trim 10; 834 mm left over/);
+    assert.match(list, /bar 1, 4000 mm: trim 10, A 300 \(x1\), A 300 \(x2\), .*; offcut 834/);
+    const json = JSON.parse(cad('list', 'frame/box', '--json'));
+    assert.deepEqual(json.cut.stock[0].buy, [{ length: 4000, count: 1 }]); assert.equal(json.cut.totals.offcut, 834); assert.equal(json.cut.marks[0].beam, undefined);
+    // a sheet per mark in exports/, the access hole dimensioned 207.5 from end a, the tap's thread and depth, the face up
+    assert.match(cad('beams', 'frame/box'), /mark D \(z1\), 1:2: exports[\\/]frame[\\/]box\.beam-D\.svg/);
+    assert.deepEqual(fs.readdirSync(path.join(ws, 'exports/frame')).filter((f) => f.endsWith('.svg')).sort(), ['box.beam-A.svg', 'box.beam-B.svg', 'box.beam-C.svg', 'box.beam-D.svg']);
+    const svg = fs.readFileSync(path.join(ws, 'exports/frame/box.beam-D.svg'), 'utf8');
+    for (const t of ['>207.5<', '>Mark D: profile-2020-misumi-hfs5 x 220.0 mm<', '>(1) a.1: tap M5 x 10 deep<', '>top face up: seen from the top, end a on the left<']) assert.ok(svg.includes(t), `the sheet shows ${t}`);
+    // each beam's mark in its label, the cut list's findings on cad check, and the sheets on the build page
+    const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { buildData } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/buildpage.mjs')).href)});
+      const s = await buildAssembly('frame/box');
+      console.log(JSON.stringify({ labels: s.parts.filter((p) => /^[xz]1\\./.test(p.name)).map((p) => p.label), marks: s.objects.map((o) => o.mark).join(''), cut: checkAssembly(s).filter((f) => f.code === 'frame.cut').map((f) => f.level + ' ' + f.text), build: (await buildData(s)).build.beams }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    assert.deepEqual(r.labels, ['x1: mark A, profile-2020-misumi-hfs5 x 300 mm', 'z1: mark D, profile-2020-misumi-hfs5 x 220 mm']);
+    assert.equal(r.marks, 'AAAABBBBDCCC');
+    assert.ok(r.cut.some((t) => /^info mark A \(x1, x2, x3, x4\): 4 beams of 300 mm, each cut to ±0\.5 mm/.test(t)), r.cut.join('\n'));
+    assert.deepEqual(r.build.sheets.find((x) => x.mark === 'D'), { mark: 'D', items: ['z1'], file: 'exports/frame/box.beam-D.svg', written: true });
+    // a beam longer than any length sold fails on cad check
+    items[0].to = [4100, 0, 0]; fs.writeFileSync(at('assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', items }));
+    assert.match(cad('check', 'frame/box'), /x1: 4100 mm of profile-2020-misumi-hfs5 is longer than any length it is sold in \(1000, 4000 mm\)/);
   } finally { done(); }
 });
 

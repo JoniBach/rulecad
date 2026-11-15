@@ -1,11 +1,14 @@
 // What a machine takes to build, in numbers: the bought items by rule set with quantities, fasteners from the fits that
-// name them, wires by gauge, and the printed parts with their grams and an estimate of the minutes.
+// name them, wires by gauge, the printed parts with their grams and an estimate of the minutes, and the beams' cut list
+// (each mark, the bars to buy and the cuts on each: @rulecad/frames' cutList).
 import { peekRuleSet as loadRuleSet } from './rules.mjs';
 import { paths } from './workspace.mjs';
 import { readJson } from './host.mjs';
 import path from 'node:path';
 import { volume } from './mesh.mjs';
 import { wiresFor } from './assembly.mjs';
+import { cutListOf, cutListData } from './beams.mjs';
+import { cutListText } from '@rulecad/frames';
 
 const n = (x, d = 1) => Number(x.toFixed(d));
 
@@ -28,7 +31,7 @@ export function printedParts(s) {
   return [...by.values()].map((o) => ({ ...o, volume: n(o.volume, 0), grams: n((o.volume / 1000) * mat.density), minutes: n(o.volume / flow / 60, 0) }));
 }
 
-/** The whole list. @returns {{ bought: object[], fasteners: object[], wires: object[], printed: object[], totals: object }} */
+/** The whole list. @returns {{ bought: object[], fasteners: object[], wires: object[], printed: object[], cut: object | null, totals: object }} */
 export function shoppingList(s) {
   const mat = materialOf(s.project), printed = printedParts(s), bought = new Map(), fasteners = new Map();
   for (const o of s.objects) if (o.bought && !o.unplaced) {
@@ -45,13 +48,15 @@ export function shoppingList(s) {
   for (const w of rows) { const key = w.gauge ?? 'gauge not given', l = wires.get(key) ?? { gauge: w.gauge, conductors: 0, length: 0, runs: [] }; l.length += w.length * w.conductors; l.conductors += w.conductors; l.runs.push(w.id); wires.set(key, l); }
   const boughtList = [...bought.values()].map((b) => ({ ...b, grams: b.grams != null ? n(b.grams) : null })).sort((a, b) => a.part.localeCompare(b.part) || a.set.localeCompare(b.set) || (b.length ?? 0) - (a.length ?? 0));
   const printedGrams = printed.reduce((t, p) => t + p.grams, 0), boughtGrams = boughtList.reduce((t, b) => t + (b.grams ?? 0) * b.qty, 0), unknown = boughtList.filter((b) => b.grams == null).map((b) => b.set);
-  return { bought: boughtList, fasteners: [...fasteners.values()], wires: [...wires.values()], printed, totals: { printedGrams: n(printedGrams), boughtGrams: n(boughtGrams), machineGrams: n(printedGrams + boughtGrams), minutes: n(printed.reduce((t, p) => t + p.minutes, 0), 0), material: mat.name, ...(mat.assumed ? { densityAssumed: true } : {}), ...(unknown.length ? { noMassFor: unknown } : {}) } };
+  const cut = cutListData(cutListOf(s));
+  return { bought: boughtList, fasteners: [...fasteners.values()], wires: [...wires.values()], printed, cut, totals: { printedGrams: n(printedGrams), boughtGrams: n(boughtGrams), machineGrams: n(printedGrams + boughtGrams), minutes: n(printed.reduce((t, p) => t + p.minutes, 0), 0), material: mat.name, ...(mat.assumed ? { densityAssumed: true } : {}), ...(unknown.length ? { noMassFor: unknown } : {}) } };
 }
 
 export function listText(ref, l) {
   const out = [`${ref}: what it takes to build`];
   const row = (a) => out.push(a.join('  '));
   if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', b.items.join(', ')]); }
+  if (l.cut) { out.push('', `Cut list (kerf ${l.cut.rules.kerf.value} mm, trim ${l.cut.rules.trim.value} mm; a sheet for each mark: cad beams ${ref})`, ...cutListText(l.cut)); }
   if (l.fasteners.length) { out.push('', 'Fasteners'); for (const f of l.fasteners) row([`  ${String(f.qty).padStart(3)} ×`, f.fastener, f.from.join('; ')]); }
   if (l.wires.length) { out.push('', 'Wire'); for (const w of l.wires) row([`  ${w.length} mm of`, w.gauge ?? 'gauge not given', `in ${w.runs.join(', ')}`]); }
   if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}`]); }
