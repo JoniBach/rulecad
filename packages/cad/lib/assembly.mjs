@@ -260,7 +260,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   let fastened = null;
   if (a.fasten?.length && a.kind !== 'plate') {
     fastening ||= await import('./fasten.mjs');
-    fastened = fastening.fastenOf({ a, project, parts, objects, motion, num }, worlds0);
+    fastened = fastening.fastenOf({ a, project, parts, objects, motion, num }, worlds0, { access: pose === motion.pose });
     hardware = fastened.hardware;
     parts.push(...hardware.map((h) => fastening.hardwarePart(h, toMat4(worlds0[h.host]))));
     fits.push(...fastened.fits.map((x) => ({ ...x, num })));

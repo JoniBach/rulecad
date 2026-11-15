@@ -15,6 +15,8 @@ import { fixingsFor, DEFAULTS } from '@rulecad/fixings';
 import { jscad, fixingsContext } from './design.mjs';
 import { named } from './parts.mjs';
 import { paths } from './workspace.mjs';
+import { peekRuleSet } from './rules.mjs';
+import { orderOf, isBuilt } from './order.mjs';
 
 const { mat4, vec3 } = jscad.maths;
 const mm = (n) => String(Number(Number(n).toFixed(3))), r3 = (x) => +x.toFixed(3);
@@ -242,6 +244,44 @@ function holesIn(p) {
   return holes;
 }
 
+// ---------- the key's way to the head ----------
+// The tool a head is turned with, from the hexkey rule set: a hex key in a socket head (its size from the thread's set,
+// as the screw model gives it), a socket or a spanner on a hexagon head. radius: the room it needs round the screw's
+// axis; reach: how far over the head that room is needed (a key's long arm, put in along the axis)
+function toolFor(model, form, fx) {
+  let set; try { set = peekRuleSet('hexkey').rules; } catch { return null; }
+  const sizes = set.sizes.value, at = (s) => { const i = sizes.findIndex((k) => k >= s - 1e-6); return i < 0 ? sizes.length - 1 : i; };
+  if (form === 'hex') {
+    const flats = fx.figures.hex_head_flats?.value ?? model.headDiameter, i = at(flats);
+    return { name: `${mm(flats)} mm socket or spanner`, size: flats, radius: flats / Math.cos(Math.PI / 6) / 2 + set.socket_wall.value, reach: set.long_arm.value[i], tilt: 0, rests: ['hexkey.socket_wall', 'hexkey.long_arm'] };
+  }
+  const s = model.key; if (s == null) return null;
+  const i = at(s), exact = Math.abs(sizes[i] - s) < 1e-6;
+  return { name: `${mm(s)} mm hex key`, size: s, radius: (exact ? set.corners.value[i] : s / Math.cos(Math.PI / 6)) / 2, reach: set.long_arm.value[i], tilt: set.ball_end_tilt?.value ?? 0, rests: ['hexkey.corners', 'hexkey.long_arm', 'hexkey.ball_end_tilt'] };
+}
+// What stands in a tool's way: every part with material within its radius of the line from P along U, up to its
+// reach, each with how far over the head it is first met
+function inTheWay(parts, P, U, radius, reach) {
+  const out = new Map();
+  for (const p of parts) {
+    for (const seg of partProfile(p, P, U, radius).segs) {
+      if (seg.z1 <= 1e-3 || seg.z0 >= reach) continue;
+      if (seg.solid || Math.min(seg.a.free, seg.b.free) < radius - 1e-3) { const z = Math.max(0, seg.z0); if (!out.has(p.item) || out.get(p.item) > z) out.set(p.item, z); break; }
+    }
+  }
+  return [...out].map(([item, z]) => ({ item, z: r3(z) })).sort((a, b) => a.z - b.z);
+}
+// A screw's access: its tool, what stands on the straight line over its head, and the tilt a ball end reaches it at where that is blocked
+function accessOf(parts, tool, P, U) {
+  const lift = 0.05, start = add(P, U, lift), blockers = inTheWay(parts, start, U, tool.radius, tool.reach).map((b) => ({ ...b, z: r3(b.z + lift) })); // (from just over the head, so the head's own seat is not met)
+  let tilt = null;
+  if (blockers.length && tool.tilt > 0) {
+    const f = frameOf(start, U), t = (tool.tilt * Math.PI) / 180;
+    for (let k = 0; k < 8 && tilt == null; k++) { const a = (k * Math.PI) / 4, W = unit([0, 1, 2].map((c) => U[c] * Math.cos(t) + (f.x[c] * Math.cos(a) + f.y[c] * Math.sin(a)) * Math.sin(t))); if (!inTheWay(parts, start, W, tool.radius, tool.reach).length) tilt = tool.tilt; }
+  }
+  return { tool: { name: tool.name, size: tool.size, radius: r3(tool.radius), reach: tool.reach, rests: tool.rests }, top: P.map(r3), axis: U.map(r3), blockers, tilt };
+}
+
 // ---------- the project's fixings ----------
 const bound = new Map();
 function fixingsOf(project) {
@@ -274,10 +314,12 @@ const NUTS = ['hex', 'square', 'lock'];
  * was measured, what was found, and the hardware to place.
  * @param {{ a: object, project: string, parts: object[], objects: object[], motion: object, num: Function }} s the assembly as built (parts placed; hardware parts among them are passed over)
  * @param {number[][]} worlds each motion item's place (3 × 4 by rows), as placeItems gives it for the pose the parts stand in
- * @returns {{ relations: object[], hardware: object[], fits: object[] }} relations: one for each entry of "fasten", with its screws;
- *   hardware: every screw, nut, washer and insert to place; fits: the "fastens" fits the relations stand for
+ * @param {{ access?: boolean }} [opts] access: follow each screw's key from its head (the build pose)
+ * @returns {{ relations: object[], hardware: object[], fits: object[] }} relations: one for each entry of "fasten", with its screws
+ *   (each with `access` where asked: its tool, and what stands over its head); hardware: every screw, nut, washer and insert to place;
+ *   fits: the "fastens" fits the relations stand for, the screws' lines with their key and tightening
  */
-export function fastenOf(s, worlds) {
+export function fastenOf(s, worlds, opts = {}) {
   const list = s.a.fasten || [];
   if (!list.length) return { relations: [], hardware: [], fits: [] };
   const { F, material, printer } = fixingsOf(s.project), parts = s.parts.filter((p) => !p.hardware), ids = s.motion.items.map((x) => x[0]);
@@ -548,6 +590,7 @@ export function fastenOf(s, worlds) {
             else {
               const D2 = st.head === 'hex' ? head.across * Math.cos(Math.PI / 6) : head.across, area = (d) => (Math.PI / 4) * (d * d - (2 * boreR) ** 2), bare = area(D2), onWasher = st.washer ? area(st.washer.diameter) : null, mine = washer ? onWasher : bare;
               const takes = st.limit * mine, K = DEFAULTS.nut_factor.value, torqueOf = (N) => (K * fx.major * N) / 1000, v2 = { ...values, area: +mine.toFixed(2), limit: st.limit, force: +takes.toFixed(1), torque: +torqueOf(takes).toFixed(3) };
+              sc.most = +torqueOf(takes).toFixed(2);
               if (torque == null) say('fasten.seat', 'pass', `${where}; on ${st.material} (${mm(st.limit)} MPa) its ${mm(+mine.toFixed(1))} mm² takes ${mm(+takes.toFixed(0))} N, a tightening of ${mm(+torqueOf(takes).toFixed(2))} N m${!washer && onWasher && sunk <= 0.01 ? `: the ${fx.thread} washer would raise that to ${mm(+(st.limit * onWasher).toFixed(0))} N (${mm(+torqueOf(st.limit * onWasher).toFixed(2))} N m)` : ''}`, v2);
               else {
                 const p = st.force / mine, within = p <= st.limit + 1e-9, pw = onWasher ? st.force / onWasher : null;
@@ -571,6 +614,10 @@ export function fastenOf(s, worlds) {
         piece('nut', fx.thread, { kind: end.nut.kind }, at(end.nut.z), D, B, D, [], X);
       }
       if (end.kind === 'insert' && end.insert) piece('insert', fx.thread, {}, at(end.mouth), up, B, up, ends);
+      // fasten.access: the key's way to the head, along its axis, with every other part in place (said by fastenChecks, with the order)
+      const tool = toolFor(model, form, fx);
+      sc.tool = tool?.name ?? null;
+      if (opts.access && tool) sc.access = accessOf(parts, tool, add(A ? at(zHead) : at(zSeat), up, model.top), up);
     });
 
     // The pieces of this relation, named, and the fits it stands for
@@ -579,12 +626,16 @@ export function fastenOf(s, worlds) {
       const id = `fasten-${k + 1}-${h.kind}-${sc.index + 1}`, hostIndex = ids.indexOf(h.host.item), hostWorld = rowsToMat4(worlds[hostIndex]);
       count[h.kind]++;
       const others = sc.hardware.filter((o) => o !== h).map((o) => `fasten-${k + 1}-${o.kind}-${sc.index + 1}`); // (a screw in its own nut, washer and insert)
-      hardware.push({ id, kind: h.kind, name: h.shape.model.name, thread: fx.thread, fasten: k, screw: sc.index, grams: h.shape.model.mass, shape: h.shape, host: hostIndex, hostItem: h.host.item, with: h.host.object || h.host.item,
+      const hm = h.shape.model;
+      hardware.push({ id, kind: h.kind, name: hm.name, thread: fx.thread, fasten: k, screw: sc.index, grams: hm.mass, label, length: hm.length ?? null, head: h.kind === 'screw' ? hm.head : h.kind === 'nut' ? hm.kind : null, shape: h.shape, host: hostIndex, hostItem: h.host.item, with: h.host.object || h.host.item,
         local: mat4.multiply(mat4.create(), mat4.invert(mat4.create(), hostWorld), h.M), lift: vec3.transform([0, 0, 0], h.lift, mat4.invert(mat4.create(), [...hostWorld.slice(0, 12), 0, 0, 0, 1])), allow: [...h.allow, ...others] });
     }
     const names = new Map();
     for (const h of hardware.filter((o) => o.fasten === k)) names.set(h.name, (names.get(h.name) ?? 0) + 1);
-    const lines = [...names].map(([fastener, n]) => ({ fastener, count: n }));
+    // the screws' lines carry the key that turns them and how tight: the torque given, or the most the seat under the head takes
+    const keys = [...new Set(rel.screws.map((sc) => sc.tool).filter(Boolean))], most = rel.screws.map((sc) => sc.most).filter((t) => t != null);
+    const tighten = torque != null ? { torque, given: true } : most.length ? { torque: Math.min(...most), given: false } : null;
+    const lines = [...names].map(([fastener, n]) => ({ fastener, count: n, ...(rel.screws.some((sc) => sc.model?.name === fastener) ? { ...(keys.length ? { key: keys.join(' or ') } : {}), ...(tighten ? { tighten } : {}) } : {}) }));
     through.forEach((t, j) => fits.push({ a: t, b: x.into, fastens: true, silent: true, fasten: k, note: x.note || `${t} fastened to ${x.into}`, ...(j === 0 && lines[0] ? lines[0] : {}) }));
     if (!through.length && lines[0]) fits.push({ a: x.into, b: x.into, silent: true, fasten: k, note: label, ...lines[0] });
     for (const l of lines.slice(1)) fits.push({ a: through[0] ?? x.into, b: x.into, silent: true, fasten: k, note: x.note || `${through[0] ?? x.into} fastened to ${x.into}`, ...l });
@@ -606,10 +657,25 @@ export function hardwarePart(h, hostWorld) {
   return { name: `${h.id}.body`, item: h.id, leaf: h.id, object: h.name, role: 'reference', label: `${h.id}: ${h.name}`, part: 'body',
     geometry: jscad.transforms.transform(m, h.shape.geometry), polygons: move(h.shape.polygons), triangles: move(h.shape.triangles),
     shape: `${h.shape.hash}:body`, hash: `${h.shape.hash}:body`, local: h.shape.polygons, localTriangles: h.shape.triangles, m,
-    hardware: { kind: h.kind, name: h.name, fasten: h.fasten, screw: h.screw }, moves: h.hostItem, with: h.with, lift, allow: h.allow };
+    hardware: { kind: h.kind, name: h.name, fasten: h.fasten, screw: h.screw, thread: h.thread, grams: h.grams, from: h.label, length: h.length, head: h.head }, moves: h.hostItem, with: h.with, lift, allow: h.allow };
 }
 
-const CODES = ['fasten.holes', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat'];
+const CODES = ['fasten.holes', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'fasten.access'];
+// fasten.access for one screw, with the order of assembly: a part over the head that goes on later is no trouble
+function accessSays(sc, rel, order) {
+  const acc = sc.access, t = acc.tool, values = { key: t.size, radius: t.radius, reach: t.reach };
+  if (!acc.blockers.length) return { level: 'pass', text: `${an(t.name)} ${t.name} reaches the head along its axis: nothing within ${mm(t.radius)} mm of it for ${mm(t.reach)} mm over the head (${t.rests[0]}, ${t.rests[1]})`, values };
+  const names = (list) => list.map((b) => `${b.item} (${mm(b.z)} mm over the head)`).join(' and ');
+  const stuck = order?.stuck?.fasten === rel.index && order.stuck.screws?.includes(sc.index) ? order.stuck : null;
+  if (stuck) {
+    const b = acc.blockers.find((x) => x.item === stuck.wall) ?? acc.blockers[0], tail = stuck.text.split(`${stuck.wall} stands over it`)[1] ?? '';
+    return { level: 'fail', text: `${an(t.name)} ${t.name} cannot reach the head: ${b.item} stands over it, ${mm(b.z)} mm up the screw's axis${tail}${t.size && acc.tilt == null && /hex key/.test(t.name) ? `, and a ball-end key tilted ${mm(peekRuleSet('hexkey').rules.ball_end_tilt.value)}° does not clear it either` : ''}. Move the screw, open a way through ${b.item}, or fit ${b.item} after`, values: { ...values, distance: b.z }, wall: b.item };
+  }
+  const step = (id) => order?.steps?.find((st) => st.items.includes(id))?.n, last = Math.max(...[...rel.through, rel.into].map((n) => step(top(n)) ?? Infinity));
+  const after = order && !order.stuck && acc.blockers.every((b) => step(b.item) > last);
+  if (acc.tilt != null && !after) return { level: 'warn', text: `only a ball-end ${t.name} reaches the head, tilted up to ${mm(acc.tilt)}° (hexkey.ball_end_tilt): ${names(acc.blockers)} stand${acc.blockers.length > 1 ? '' : 's'} on the straight line, and a ball end takes less torque than a straight key`, values: { ...values, tilt: acc.tilt } };
+  return { level: 'pass', text: `${an(t.name)} ${t.name} reaches the head before ${acc.blockers.map((b) => `${b.item}${step(b.item) ? ` (step ${step(b.item)})` : ''}`).join(' and ')} goes on over it`, values: { ...values, distance: acc.blockers[0].z } };
+}
 const RANK = { fail: 0, warn: 1, info: 2, pass: 3 };
 /**
  * The fasten findings of an assembly, in its findings shape: each relation's screws said together where they agree,
@@ -620,12 +686,16 @@ const RANK = { fail: 0, warn: 1, info: 2, pass: 3 };
 export function fastenChecks(s, f, { placeItems }) {
   if (!s.a.fasten?.length) return;
   const r = s.fastened ?? fastenOf(s, placeItems(s.motion, s.jointValues));
+  // the key's way, in the build pose: with the order, which places a part that covers a head after the screw
+  const built = s.pose == null || s.pose === s.motion.pose, wanted = built && r.relations.some((rel) => rel.screws.some((sc) => sc.access?.blockers.length));
+  const order = wanted && isBuilt(s) ? orderOf(s) : null, access = new Map();
+  if (built) for (const rel of r.relations) for (const sc of rel.screws) if (sc.access) access.set(sc, [accessSays(sc, rel, order)]);
   for (const rel of r.relations) {
     const n = rel.screws.length, lead = `${rel.label}, ${n === 1 ? `${an(rel.screw)} ${rel.screw} screw` : `${n} ${rel.screw} screws`}`;
     for (const g of rel.general) f(g.level, `${rel.label}: ${g.text}`, `${rel.label}: no screws`, { code: g.code, refs: { fasten: rel.index, through: rel.through, into: rel.into } });
     for (const code of CODES) {
       const groups = new Map();
-      for (const sc of rel.screws) for (const x of sc.found[code] || []) {
+      for (const sc of rel.screws) for (const x of (code === 'fasten.access' ? access.get(sc) : sc.found[code]) || []) {
         const key = `${x.level}|${x.text}`;
         if (!groups.has(key)) groups.set(key, { ...x, screws: [] });
         groups.get(key).screws.push(sc);
@@ -634,7 +704,7 @@ export function fastenChecks(s, f, { placeItems }) {
         const all = g.screws.length === n, first = g.screws[0], who = all ? lead : `${rel.label}, ${g.screws.map((sc) => `screw ${sc.index + 1} (${sc.name})`).join(', ')}`;
         f(g.level, `${who}: ${g.text}`, g.level === 'pass' || g.level === 'info' ? null : `${rel.label}: ${code.split('.')[1]}`,
           { code, at: first.at.map(r3), between: first.between.map((p) => p.map(r3)), ...(g.values ? { values: g.values } : {}),
-            refs: { fasten: rel.index, screw: rel.screw, through: rel.through, into: rel.into, screws: g.screws.map((sc) => sc.name), ...(g.screws.length > 1 ? { places: g.screws.map((sc) => sc.at.map(r3)) } : {}), ...(s.pose ? { pose: s.pose } : {}) } });
+            refs: { ...(g.wall ? { wall: g.wall } : {}), fasten: rel.index, screw: rel.screw, through: rel.through, into: rel.into, screws: g.screws.map((sc) => sc.name), ...(g.screws.length > 1 ? { places: g.screws.map((sc) => sc.at.map(r3)) } : {}), ...(s.pose ? { pose: s.pose } : {}) } });
       }
     }
   }

@@ -336,6 +336,45 @@ test('fasten: the older "fastens": true fit gives the same findings with or with
   } finally { done(); }
 });
 
+test('fasten: access and order: the key reaches each head, a part over a screw goes on after it, one fitted first fails by name; each step says its screws, key and torque', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const { file, write, check } = fastened(ws);
+    // a cover over the first screw's head, 8 mm above it, held by a fit that fastens: once to the bracket, and in the second case the bracket hangs from it
+    object(ws, 'demo/cover', { variables: { w: { value: 10, unit: 'mm', rule: 'Over one screw', tweak: { min: 2, max: 20 } }, t: { value: 3, unit: 'mm', rule: 'Thick' } } }, "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.primitives.cuboid({ size: [v.w, v.w, v.t], center: [0, 0, v.t / 2] }) }\n");
+    const withCover = (fits, set = {}) => { write(); const a = JSON.parse(fs.readFileSync(file, 'utf8')); a.items.splice(1, 0, { id: 'cover', object: 'cover', at: [-12, 0, 28], set }); a.fits.push(...fits); fs.writeFileSync(file, JSON.stringify(a)); return check(); };
+    // nothing over the heads: the key, its room and its reach come from the hexkey rule set (ISO 2936)
+    write(); let r = check();
+    assert.deepEqual(r.of('fasten.access').map((x) => x.level), ['pass']);
+    assert.match(r.of('fasten.access')[0].text, /^bracket to base, 2 M3 cap screws: a 2\.5 mm hex key reaches the head along its axis: nothing within 1\.375 mm of it for 58\.5 mm over the head \(hexkey\.corners, hexkey\.long_arm\)/);
+    assert.deepEqual(r.of('fasten.access')[0].values, { key: 2.5, radius: 1.375, reach: 58.5 });
+    // each step names its screws, their key and how tight: the most the seat under the head takes, where no torque is given
+    const order = JSON.parse(cad('order', 'demo/joint', '--json'));
+    assert.deepEqual(order.steps[1].fasteners, [{ fit: 'bracket fastened to base', fastener: 'M3x10 cap', count: 2, key: '2.5 mm hex key', tighten: { torque: 0.33, given: false } }]);
+    assert.match(cad('order', 'demo/joint'), /2\. bracket goes on: bracket fastened to base \(2 × M3x10 cap\) with a 2\.5 mm hex key, to 0\.33 N m at most \(what the seat takes\)/);
+    write({ fasten: { torque: 0.25 } });
+    assert.match(cad('order', 'demo/joint'), /\(2 × M3x10 cap\) with a 2\.5 mm hex key, to 0\.25 N m$/m);
+    // a cover that goes on after the bracket: the order puts it last, and the key reaches the screw first
+    r = withCover([{ a: 'cover', b: 'bracket', fastens: true, note: 'cover on the bracket' }]);
+    assert.equal(r.status, 0, JSON.stringify(r.findings.filter((x) => x.level === 'fail')));
+    const pass = r.of('fasten.access').find((x) => /cover/.test(x.text));
+    assert.equal(pass.level, 'pass'); assert.match(pass.text, /screw 1 \(bracket\.h1\): a 2\.5 mm hex key reaches the head before cover \(step 3\) goes on over it/);
+    assert.match(cad('order', 'demo/joint'), /1\. base first\n\s+2\. bracket goes on: bracket fastened to base \(2 × M3x10 cap\) with a 2\.5 mm hex key[^\n]*\n\s+3\. cover goes on/);
+    // the bracket hangs from the cover, so the cover is fitted first: the screw under it fails fasten.access, naming it
+    r = withCover([{ a: 'cover', b: 'base', fastens: true, note: 'cover on the base' }, { a: 'bracket', b: 'cover', fastens: true, note: 'bracket hangs from the cover' }]);
+    assert.equal(r.status, 1); assert.deepEqual([...new Set(r.fails)].sort(), ['assembly.order', 'fasten.access']);
+    const fail = r.of('fasten.access').find((x) => x.level === 'fail');
+    assert.match(fail.text, /screw 1 \(bracket\.h1\): a 2\.5 mm hex key cannot reach the head: cover stands over it, 8 mm up the screw's axis and goes on first \(bracket hangs from the cover\), and a ball-end key tilted 25° does not clear it either\. Move the screw, open a way through cover, or fit cover after/);
+    assert.equal(fail.refs.wall, 'cover'); assert.deepEqual(fail.refs.screws, ['bracket.h1']); assert.equal(fail.values.distance, 8);
+    assert.deepEqual(r.of('fasten.access').find((x) => x.level === 'pass').refs.screws, ['bracket.h2'], 'the other screw is clear');
+    assert.match(r.of('assembly.order')[0].text, /the screw of "bracket to base" can't be reached in any order: cover stands over it and goes on first/);
+    // a narrower cover, 4 mm across: a ball-end key tilted 25° (hexkey.ball_end_tilt) passes it, so it is a warning, and the order is found
+    r = withCover([{ a: 'cover', b: 'base', fastens: true, note: 'cover on the base' }, { a: 'bracket', b: 'cover', fastens: true, note: 'bracket hangs from the cover' }], { w: 4 });
+    assert.deepEqual(r.fails, []); assert.equal(r.of('assembly.order')[0].level, 'pass');
+    assert.match(r.of('fasten.access').find((x) => x.level === 'warn').text, /screw 1 \(bracket\.h1\): only a ball-end 2\.5 mm hex key reaches the head, tilted up to 25° \(hexkey\.ball_end_tilt\): cover \(8 mm over the head\) stands on the straight line, and a ball end takes less torque than a straight key/);
+  } finally { done(); }
+});
+
 test('your own printer, and no extras configured', () => {
   const { ws, cad, done } = workspace({ printer: 'tiny' });
   try {

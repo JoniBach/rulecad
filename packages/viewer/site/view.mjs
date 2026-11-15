@@ -723,6 +723,8 @@ async function drawing(model, motion, { turn, tilt, camera, renderer, stage, mid
 }
 
 // ---------- the build page ----------
+// One fastening of a step: the fit, its screws by count and name, the key that turns them and how tight (as cad order says it)
+const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}${f.key ? ` with ${/^[aeiou8]/i.test(f.key) ? 'an' : 'a'} ${f.key}` : ''}${f.tighten ? `, ${f.tighten.given ? `to ${f.tighten.torque} N m` : `to ${f.tighten.torque} N m at most (what the seat takes)`}` : ''}`;
 // A link as the whole project, beside the model: what to buy, the plates, the wiring sheet, the assembly steps (each
 // showing the model at that step, the new part held off along its way on) and the machine's settings. All of it the
 // link's data, written as text.
@@ -766,7 +768,7 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
     else {
       const ol = el('ol', 'steps');
       O.steps.forEach((st, i) => {
-        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map((f) => `${f.fit}${f.fastener ? ` (${f.count != null ? `${f.count} × ` : ''}${f.fastener})` : ''}`).join('; ')));
+        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map(fastenerText).join('; ')));
         const shown = new Set(O.steps.slice(0, i + 1).flatMap((x) => x.items));
         but.onclick = () => { const on = view.step?.n === st.n; view.step = on ? null : { n: st.n, shown, now: new Set(st.items), dir: st.dir }; if (!on) spin(false); box.querySelectorAll('ol.steps button').forEach((x) => x.classList.toggle('on', !on && x === but)); apply(); };
         li.append(but); ol.append(li);
