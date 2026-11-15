@@ -78,7 +78,8 @@ export const said = (into) => HOW[into];
  * @param {{ kind?: string, depth?: number, through?: boolean, thickness?: number, printer?: object, material?: string, axis?: 'x' | 'y' | 'z', into?: string, lead?: number, sets?: object,
  *   mate?: 'printed' | 'bought', gap?: number, flanks?: 'printed' | 'standard', hand?: 'right' | 'left', starts?: number, pitch?: number, segments?: number, display?: 'thread' | 'plain', flat?: boolean }} [o]
  *   kind: clearance (the normal hole a screw passes through, the default), close, loose, pilot (the screw forms its own
- *   thread in the plastic), tap (the tap drill), insert (a heat-set insert), or thread (a thread modelled to print, which
+ *   thread in the plastic), tap (the tap drill), insert (a heat-set insert; a pilot and an insert read the
+ *   printer's measured pilot_<set> or insert_<set>, as x1c.pilot_m3, before the thread's starting figure), or thread (a thread modelled to print, which
  *   also takes threadModel's mate, gap, flanks, hand, starts, pitch, segments, display and flat);
  *   depth: how deep, or the thickness passed through; through: out of the far face (the default for the clearances);
  *   thickness: the part's, along the hole: a hole through it is that deep, and a blind one deeper than it is refused;
@@ -93,10 +94,10 @@ export function holeModel(m, o = {}) {
   const fx = fixingOf(what, m, o), kind = oneOf(what, 'kind', o.kind ?? 'clearance', HOLE_KINDS);
   if (kind === 'thread') return threadedHoleModel(what, fx, o, directionOf(what, o));
   const spec = HOLES[kind], pr = printerOf(what, o.printer), dir = directionOf(what, o), out = [], rests = [];
-  // The figure the diameter rests on: for a pilot, the printer's measured rule for this thread (and plastic) before the thread's starting figure
+  // The figure the diameter rests on: for a pilot or an insert, the printer's measured rule for this thread (and plastic) before the thread's starting figure
   let basis = null;
   const plastic = o.material == null ? null : String(o.material).toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (kind === 'pilot') basis = [plastic && `pilot_${fx.set}_${plastic}`, `pilot_${fx.set}`].filter(Boolean).map((k) => pr.figure(k)).find(Boolean) ?? null;
+  if (kind === 'pilot' || kind === 'insert') basis = [plastic && `${kind}_${fx.set}_${plastic}`, `${kind}_${fx.set}`].filter(Boolean).map((k) => pr.figure(k)).find(Boolean) ?? null;
   const own = !!basis;
   if (!basis) {
     if (!fx.figures[spec.figure]) throw new Error(`${what}: ${fx.thread} has no ${spec.figure} in its rule set (${fx.set}), so no ${kind} hole: it has figures for ${Object.keys(HOLES).filter((k) => fx.figures[HOLES[k].figure]).join(', ') || 'none'}`);
@@ -109,7 +110,7 @@ export function holeModel(m, o = {}) {
   const trust = { measured: 'a measured rule', spec: 'a standard\'s figure', community: 'a community figure', estimate: 'an estimate', given: 'a figure given by hand', default: 'a default', derived: 'a derived figure' }[basis.kind] ?? `a ${basis.kind} figure`;
   let text = `${a(fx.thread)} ${spec.says} drawn ${mm(diameter)} mm: it rests on ${basis.name} (${mm(nominal)} mm), ${trust}`;
   text += spec.printed ? `, plus ${pr.cite('hole_comp')} ${mm(comp)} mm across, since a printed hole comes out small` : ', as drawn (the figure is already sized for printing, so no hole compensation is added)';
-  if (kind === 'pilot' && !own) text += `. That is the thread's starting figure: ${pr.name} has no measured pilot_${fx.set}, so measure it on this printer`;
+  if ((kind === 'pilot' || kind === 'insert') && !own) text += `. That is the thread's starting figure: ${pr.name} has no measured ${kind}_${fx.set}, so measure it on this printer`;
   out.push(finding('info', text, 'hole.drawn', { values: { diameter, nominal, comp }, refs: { thread: fx.thread, set: fx.set, rule: basis.name, kind: basis.kind } }));
   if (comp && pr.rest('hole_comp').borrowed) out.push(finding('info', `${pr.name} has no hole_comp: the X1C's ${mm(comp)} mm is used`, 'hole.printer', { values: { comp } }));
   // a figure that names one plastic, asked for another

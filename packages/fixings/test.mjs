@@ -207,6 +207,27 @@ test('holes: another printer\'s rule set gives that printer\'s figure, and a pil
   assert.equal(holeModel('M3', { kind: 'pilot', printer: { pilot_m3: 3 } }).diameter, 3);
 });
 
+test('the fixings coupon\'s measurements: a printer\'s measured insert hole, nut fit and nut slip are read before the starting figures', () => {
+  const rule = (value, what) => ({ value, unit: 'mm', rule: what, kind: 'measured', source: 'the fixings coupon, PLA', checked: '2026-11-15' });
+  const mk4 = { name: 'mk4', rules: { insert_m3: rule(4.1, 'Hole to draw for an M3 heat-set insert'), nut_fit: rule(0.05, 'Clearance across a nut pocket\'s flats'), nut_slip: rule(0.15, 'Clearance across a nut slot\'s flats') } };
+  const i = holeModel('M3', { kind: 'insert', printer: mk4 });
+  assert.deepEqual([i.diameter, i.comp, i.basis.rule, i.basis.kind], [4.1, 0, 'mk4.insert_m3', 'measured']);
+  assert.match(i.findings[0].text, /an M3 insert hole drawn 4\.1 mm: it rests on mk4\.insert_m3 \(4\.1 mm\), a measured rule/);
+  assert.match(holeModel('M3', { kind: 'insert' }).findings[0].text, /rests on m3\.insert_hole \(4 mm\), a community figure.*x1c has no measured insert_m3, so measure it on this printer/);
+  assert.equal(insertBossModel('M3', { printer: mk4 }).hole, 4.1, 'and the boss round it'); assert.match(insertBossModel('M3', { printer: mk4 }).findings[0].text, /mk4\.insert_m3, as drawn/);
+  // a pocket's snug fit is the printer's nut_fit, a slot's slip its nut_slip; a fit given in mm is drawn as given
+  const p = nutPocketModel('M4', { printer: mk4 });
+  assert.deepEqual([p.flats, p.clearance], [7.15, 0.05]); assert.ok(p.rests.some((r) => r.name === 'mk4.nut_fit'));
+  assert.match(p.findings[0].text, /and mk4\.nut_fit 0\.05 mm/);
+  const t = nutTrapModel('M4', { depth: 10, printer: mk4 });
+  assert.deepEqual([t.width, t.clearance], [7.25, 0.15]); assert.ok(t.rests.some((r) => r.name === 'mk4.nut_slip'));
+  assert.equal(captiveNutModel('M4', { at: [0, 0, 4], printer: mk4 }).flats, 7.25, 'a nut dropped in mid-print slips in as a slot\'s does');
+  assert.deepEqual([nutPocketModel('M4', { printer: mk4, fit: 0 }).flats, nutPocketModel('M4', { printer: mk4, fit: 'press' }).flats], [7.1, 7.05]);
+  // without them, as before: snug is no clearance, slip the printer's slip
+  assert.deepEqual([nutPocketModel('M4').clearance, nutTrapModel('M4', { depth: 10 }).clearance], [0, 0.1]);
+  assert.throws(() => nutPocketModel('M4', { printer: { name: 'p', rules: { nut_fit: { value: 'tight', kind: 'measured' } } } }), /nutPocket: p\.nut_fit is a clearance in mm \(got "tight"\)/);
+});
+
 test('holes drawn: round standing up, a teardrop on its side, a blind hole to its depth with a lead-in, a point where it ends going up', () => {
   const pin = (d, h, at) => translate(at, cylinder({ radius: d / 2, height: h, segments: 64 }));
   // through a 6 mm plate: a 3.4 mm pin passes, a 3.6 mm pin does not

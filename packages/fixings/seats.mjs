@@ -22,10 +22,13 @@ function through(what, fx, o) {
   if (!fx.figures[n]) throw new Error(`${what}: ${fx.thread} has no ${n} in its rule set (${fx.set}): a seat sits on a clearance hole, and this thread has no figure for one`);
   return holeModel(fx, { kind, printer: o.printer });
 }
-// A fit by name, from the printer's rules, or a clearance in mm as printed
-function fitOf(what, fit, pr) {
+// A fit by name, from the printer's rules, or a clearance in mm as printed. For a nut (nut: true), snug and slip read
+// the printer's measured nut_fit and nut_slip first, where it has them (the fixings coupon measures both)
+function fitOf(what, fit, pr, nut = false) {
   if (isNum(fit)) return { name: fit, clearance: fit, rests: [] };
   if (!['snug', 'slip', 'press'].includes(fit)) throw new Error(`${what}: fit is snug (no clearance once printed), slip or press (the printer's), or a clearance in mm (got ${shown(fit)})`);
+  const own = nut && fit !== 'press' ? pr.figure(fit === 'snug' ? 'nut_fit' : 'nut_slip') : null;
+  if (own) { if (!isNum(own.value)) throw new Error(`${what}: ${own.name} is a clearance in mm (got ${shown(own.value)})`); return { name: own.name.slice(own.name.lastIndexOf('.') + 1), clearance: own.value, rests: [rest(own.name, own)] }; }
   return fit === 'snug' ? { name: fit, clearance: 0, rests: [] } : { name: fit, clearance: fit === 'slip' ? pr.n('slip') : -pr.n('press'), rests: [pr.rest(fit)] };
 }
 const figures = (fx, names) => names.map((n) => rest(cite(fx, n), fx.figures[n]));
@@ -129,7 +132,7 @@ export function countersink(m, o = {}) {
 // What every nut seat starts from: the nut, the fit, the drawn size across its flats and the screw's hole
 function nutSeat(what, m, o, fit) {
   optionsOf(what, o, '{ kind: \'hex\' }');
-  const fx = fixingOf(what, m, o), pr = printerOf(what, o.printer), nut = nutOf(what, fx, o.kind ?? fx.nut?.kind ?? 'hex'), f = fitOf(what, o.fit ?? fit, pr), comp = pr.n('hole_comp'), h = through(what, fx, o);
+  const fx = fixingOf(what, m, o), pr = printerOf(what, o.printer), nut = nutOf(what, fx, o.kind ?? fx.nut?.kind ?? 'hex'), f = fitOf(what, o.fit ?? fit, pr, true), comp = pr.n('hole_comp'), h = through(what, fx, o);
   const flats = r3(nut.flats + comp + f.clearance), corner = r3(nut.kind === 'square' ? flats * Math.SQRT2 : flats / COS30);
   const how = `${cite(fx, nut.figures[0])} ${mm(nut.flats)} mm plus ${pr.cite('hole_comp')} ${mm(comp)} mm${f.clearance ? ` and ${isNum(f.name) ? 'the fit given' : pr.cite(f.name)} ${mm(f.clearance)} mm` : ''}`;
   return { fx, pr, nut, f, comp, h, flats, corner, how, rests: [...figures(fx, nut.figures), pr.rest('hole_comp'), ...f.rests, ...h.rests] };
@@ -151,7 +154,7 @@ function pocket(s, flats, depth, hole, at, into) {
  * @param {Fixing | string} m
  * @param {{ kind?: string, depth?: number, thickness?: number, fit?: string | number, hole?: string, printer?: object, into?: string, axis?: string, sets?: object }} [o]
  *   kind: hex, square or lock (default the model's, else hex); depth: of the pocket (default the nut's height and two
- *   layers); thickness: the part's there (a pocket deeper than the part is refused); fit: snug (the default: no clearance once printed, so the nut cannot turn), slip, press, or a clearance in mm
+ *   layers); thickness: the part's there (a pocket deeper than the part is refused); fit: snug (the default: the printer's measured nut_fit where it has one, else no clearance once printed, so the nut cannot turn), slip, press, or a clearance in mm
  * @returns {{ thread: string, kind: string, flats: number, nominal: number, corner: number, depth: number, height: number, hole: number, clearance: number, roof: number, into: string, rests: object[], findings: object[] }}
  *   flats: across the flats, as drawn; nominal: the nut's; corner: across the pocket's corners; roof: the height of the 45° roof, going up from the bed
  */
@@ -187,9 +190,9 @@ export function nutPocket(m, o = {}) {
  * @param {{ kind?: string, axis?: 'x' | 'y' | 'z', into?: string, depth: number, fit?: string | number, hole?: string, printer?: object, sets?: object }} o
  *   axis: the screw's (default z, standing up); into: the way the nut slides in, square to the axis (default +x for a
  *   screw standing up, -z, dropped in from the top, for one lying down); depth: from the face to the screw's axis;
- *   fit: slip (the default: the nut slides in by hand), snug, press, or a clearance in mm
- * @returns {{ thread: string, kind: string, width: number, gap: number, depth: number, reach: number, hole: number, axis: string, into: string, span: number, rise: number, rests: object[], findings: object[] }}
- *   width: across the nut's flats, as drawn; gap: along the screw, for the nut's height; reach: how far the slot goes
+ *   fit: slip (the default: the nut slides in by hand; the printer's measured nut_slip where it has one, else its slip), snug, press, or a clearance in mm
+ * @returns {{ thread: string, kind: string, width: number, gap: number, depth: number, reach: number, hole: number, clearance: number, axis: string, into: string, span: number, rise: number, rests: object[], findings: object[] }}
+ *   width: across the nut's flats, as drawn; clearance: the fit's, across the flats; gap: along the screw, for the nut's height; reach: how far the slot goes
  *   in from the face; span: what its roof bridges; rise: how far the roof rises at 45° where that is wider than the printer bridges
  */
 export function nutTrapModel(m, o = {}) {
@@ -204,7 +207,7 @@ export function nutTrapModel(m, o = {}) {
   out.push(finding('pass', into === '-z' ? 'dropped in from the top, the slot is open above: nothing spans' : rise ? `from the side, the slot's roof spans ${mm(span)} mm, more than the printer's ${mm(bridge)} mm bridge: it rises ${mm(rise)} mm at 45° to a flat ${mm(bridge)} mm wide`
     : `from the side, the slot's roof is a ${mm(span)} mm bridge, within the printer's ${mm(bridge)} mm`, 'nutTrap.printable', { values: { into, span, limit: bridge, rise } }));
   if (rise) out.push(finding('info', 'the slot\'s floor is flat and its roof is not: bring the screw in through the floor, so it pulls the nut down on to the flat', 'nutTrap.side'));
-  return { thread: fx.thread, kind: nut.kind, width: s.flats, gap, depth, reach, hole: h.diameter, axis, into, span, rise, rests: [...s.rests, pr.rest('layer'), pr.rest('bridge')], findings: out };
+  return { thread: fx.thread, kind: nut.kind, width: s.flats, gap, depth, reach, hole: h.diameter, clearance: s.f.clearance, axis, into, span, rise, rests: [...s.rests, pr.rest('layer'), pr.rest('bridge')], findings: out };
 }
 
 /**
@@ -296,7 +299,7 @@ export function insertBossModel(m, o = {}) {
   if (height < long - 1e-9) throw new Error(`${what}: the part is ${mm(height)} mm thick there and ${a(fx.thread)} insert ${mm(long)} mm long (${cite(fx, 'insert_length')}): it would stand proud. ${mm(long)} mm or more with { through: true }, ${mm(blind)} mm for a blind hole`);
   const depth = through ? height : blind, below = !through && height < blind - 1e-9 ? r3(blind - height) : 0, root = o.root == null ? pr.n('chamfer') : o.root;
   if (!(isNum(root) && root >= 0)) throw new Error(`${what}: root is the flare at the boss's foot, 0 mm or more (got ${shown(o.root)})`);
-  out.push(finding('info', `a boss for ${a(fx.thread)} insert drawn ${mm(outer)} mm across and ${mm(height)} mm high round a ${mm(h.diameter)} mm hole ${through ? 'right through' : `${mm(depth)} mm deep`}: ${cite(fx, 'insert_hole')}, as drawn (no hole compensation), with ${mm(wall)} mm of wall where ${cite(fx, 'insert_wall')} asks ${mm(least)} mm`,
+  out.push(finding('info', `a boss for ${a(fx.thread)} insert drawn ${mm(outer)} mm across and ${mm(height)} mm high round a ${mm(h.diameter)} mm hole ${through ? 'right through' : `${mm(depth)} mm deep`}: ${h.basis.rule}, as drawn (no hole compensation), with ${mm(wall)} mm of wall where ${cite(fx, 'insert_wall')} asks ${mm(least)} mm`,
     'insertBoss.drawn', { values: { hole: h.diameter, depth, outer, wall, least, height }, refs: { thread: fx.thread, set: fx.set } }));
   if (below) out.push(finding('warn', `the blind hole runs ${mm(below)} mm on under the boss's foot (${cite(fx, 'insert_depth')} asks ${mm(blind)} mm): what it stands on must be thicker than that there`, 'insertBoss.depth', { values: { below, depth, height } }));
   out.push(finding('pass', 'standing up, the boss is a plain column with its hole open above: it prints as drawn, and the insert goes in from the top', 'insertBoss.printable', { values: { into: '-z' } }));

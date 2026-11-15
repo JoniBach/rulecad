@@ -214,7 +214,7 @@ insert hole are figures for the hole as drawn, already sized for printing, and t
 
 **A pilot says what it rests on.** A pilot depends on the printer and the plastic as well as the screw. The printer's
 own measured rule comes first: `pilot_m3` on the X1C's rule set, or `pilot_m3_petg` for one plastic when you pass
-`material: 'PETG'`. Without one, the thread's starting figure is used (`m3.pilot`, a community figure, or an estimate
+`material: 'PETG'`. An insert hole reads the printer's `insert_m3` the same way. Without one, the thread's starting figure is used (`m3.pilot`, a community figure, or an estimate
 for the sizes nobody has published), and the finding says to measure it. A measurement made on one printer is never
 borrowed for another.
 
@@ -271,7 +271,8 @@ Each has a twin with `Model` on its name (`counterboreModel`) that gives the num
   form, since shapes' helper takes no angle. The seat is as wide as the head's theoretical sharp edge, so any head
   made to the standard sits flush.
 - **Nut pocket.** `fit` is `snug` by default (no clearance once printed, so the nut cannot turn), or `slip`, `press`,
-  or a clearance in mm. A hexagon goes through shapes' `nutPocket`: open from above, with a 45° roof going up from
+  or a clearance in mm. Where the printer has a measured `nut_fit`, snug is that clearance; a slot's and a closed
+  pocket's slip is the printer's `nut_slip` where it has one. A hexagon goes through shapes' `nutPocket`: open from above, with a 45° roof going up from
   the bed, and with a flat on top across a part. A square pocket is drawn here, turned corner up across a part.
 - **Nut slot.** `depth` is from the face to the screw's axis, and `at` is the point on the face level with the nut's
   middle. From the side of a screw standing up (`axis: 'z'`), the slot goes through shapes' `wallOpening`: its roof
@@ -547,7 +548,8 @@ hole: depth is a number above 0, in mm (got -2)
 - **Standards** (`spec`): threads, clearance holes, heads, nuts, washers, lengths and proof stresses, each from its
   standard as tabulated on the pages its rule names. The thread profiles are ISO 68-1's and ISO 2904's formulas.
 - **Measured**: the X1C's M3 pilot (`x1c.pilot_m3`, 2.9 mm, from the kit's fit bar). It is the only measured figure
-  so far. The fixings coupon in the plan measures the rest, per printer and plastic.
+  so far. The fixings coupon (`examples/bench/projects/benchmarks/objects/fixings-coupon`) measures the rest, per
+  printer and plastic, and `cad measured` writes each result to the printer's rule set.
 - **Community**: heat-set inserts (CNC Kitchen's sheet), pilots for M2 to M4 (Bambu Lab's figures for PLA) and for
   the PT screws (the maker's factor for ABS), the engagement rules, the printer's `hole_comp`, `fit` and `bridge`,
   the two layers a nut pocket is sunk, and the three quarters of proof load a fully tightened screw is taken to carry.
