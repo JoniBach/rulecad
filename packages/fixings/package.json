@@ -1,7 +1,7 @@
 {
   "name": "@rulecad/fixings",
   "version": "0.1.1",
-  "description": "Screws, nuts, washers and inserts from rule sets, and the holes and seats they need in printed parts: a fixing as a model with sourced figures, holes sized by what they are for, counterbores, countersinks, nut pockets and insert bosses that print without supports, and light solids of the hardware for an assembly.",
+  "description": "Screws, nuts, washers and inserts from rule sets, and the holes and seats they need in printed parts: a fixing as a model with sourced figures, holes sized by what they are for, counterbores, countersinks, nut pockets and insert bosses that print without supports, light solids of the hardware for an assembly, threads cut for printing, and first sums for a joint (engagement, stripping, preload, seating, the sold length that fits).",
   "type": "module",
   "exports": {
     ".": {

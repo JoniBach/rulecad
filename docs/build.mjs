@@ -37,7 +37,12 @@ copy(path.join(path.dirname(require.resolve('@jscad/modeling/package.json')), 'L
 const browser = { robots: ['robots.mjs', 'kinematics.mjs', 'reach.mjs', 'svg.mjs', 'toolpath.mjs', 'gait.mjs'], variables: ['variables.mjs'], shapes: ['shapes.mjs', 'enclosure.mjs', 'features.mjs', 'seats.mjs', 'ops.mjs', 'optimised.mjs'], flexures: ['flexures.mjs'], fit: ['fit.mjs'], printcheck: ['printcheck.mjs'],
   'keyboard-layout': ['keyboard-layout.mjs'], 'model-link': ['model-link.mjs'], versions: ['versions.mjs'] }
 for (const [dir, files] of Object.entries(browser)) for (const f of files) copy(path.join(ROOT, 'packages', dir, f), path.join(ASSETS, 'lib', f))
-const importMap = { imports: { '@jscad/modeling': '../assets/jscad.mjs', ...Object.fromEntries(Object.entries(browser).map(([dir, [f]]) => [`@rulecad/${dir}`, `../assets/lib/${f}`])) } }
+// A package whose modules share names with another's (fixings has a seats.mjs, as shapes has) goes in a folder of its own.
+// fixings reads its figures from the published rule sets as JSON modules (import … with { type: 'json' }): the import
+// map points @rulecad/rules/ at the copies made below, so the page runs on the same data the package ships with.
+const nested = { fixings: ['fixings.mjs', 'model.mjs', 'holes.mjs', 'seats.mjs', 'hardware.mjs', 'threads.mjs', 'strength.mjs', 'draw.mjs'] }
+for (const [dir, files] of Object.entries(nested)) { for (const f of files) copy(path.join(ROOT, 'packages', dir, f), path.join(ASSETS, 'lib', dir, f)); browser[dir] = files }
+const importMap = { imports: { '@jscad/modeling': '../assets/jscad.mjs', '@rulecad/rules/': '../assets/data/rules/', ...Object.fromEntries(Object.entries(browser).map(([dir, [f]]) => [`@rulecad/${dir}`, `../assets/lib/${nested[dir] ? `${dir}/` : ''}${f}`])) } }
 
 // ---- data: the published rule sets ----
 const ruleDir = path.join(ROOT, 'packages/rules'), sets = []
@@ -86,7 +91,7 @@ try {
 
 // ---- the packages, grouped ----
 const groups = [
-  ['Design', 'Describe a part by its rules and check it.', ['cad', 'create-rulecad', 'variables', 'rules', 'shapes', 'flexures', 'versions']],
+  ['Design', 'Describe a part by its rules and check it.', ['cad', 'create-rulecad', 'variables', 'rules', 'shapes', 'fixings', 'flexures', 'versions']],
   ['Check', 'Will it print? Does it fit?', ['printcheck', 'fit']],
   ['Boards', 'Circuit boards from the same rules.', ['pcb']],
   ['Share', 'A model in a link, and the page that opens it.', ['model-link', 'viewer']],
@@ -106,6 +111,7 @@ const demo = {
     slot: { value: '4 + x1c.fit * 2', unit: 'mm', rule: 'A 4 mm tab slides in, with the printer\'s fit each side', interface: true },
     outside: { value: 'slot + wall * 2', unit: 'mm', rule: 'The slot and a wall each side' } } }, null, 2))}</textarea><p class="muted" id="msg"></p><div class="table"><table id="values"></table></div></div>
     <div><p class="muted">The lint that keeps measurements out of the shape's code: only 0, 1 and 2 may appear.</p><textarea id="code" spellcheck="false" style="min-height:120px">export function main (v) {\n  const box = cuboid({ size: [v.outside, 30, v.floor + 12] })\n  return subtract(box, translate([0, 0, 2], cuboid({ size: [v.slot, 28, 24] })))\n}</textarea><pre class="out" id="lint"></pre></div></div>`,
+  fixings: () => `<div class="demo" id="demo"><div class="controls"><p class="muted">The package's own code, running here on the published rule sets: a bolt and its nut drawn by <code>screw</code> and <code>nut</code> with <code>display: 'thread'</code>, as they print on a Bambu X1C. The bolt stands on its head. Below them, what <code>threadModel</code> says of the thread.</p><label>Thread <select id="thread"><option>M6</option><option>M8</option><option selected>M10</option><option>M12</option><option>1/4-20</option></select><span></span></label><label>Flanks <select id="flanks"><option value="printed" selected>laid back to the printer's overhang</option><option value="standard">the standard's own</option></select><span></span></label><ul class="findings"></ul><p class="muted" id="count"></p></div>${stage3d}</div>`,
   printcheck: () => `<div class="demo" id="demo"><div class="controls"><label>Shape <select id="shape"><option value="lean">A leaning wall</option><option value="bridge">A bridge</option><option value="shelf">A shelf</option></select><span></span></label><ul class="findings"></ul><p class="muted">Checked against a Bambu X1C: 256 mm bed, 45° overhangs, 5 mm bridges.</p></div>${stage3d}</div>`,
   fit: () => `<div class="demo" id="demo"><div class="controls"><p class="muted">A 5 mm peg in a hole. <code>closest()</code> measures the smallest gap between the two meshes.</p><p id="gap"></p></div>${stage3d}</div>`,
   'model-link': () => `<div class="demo" id="demo"><div class="controls"><p class="muted">A model made in this page, packed into a link. The model rides in the link's #fragment, which browsers never send, so nothing is uploaded.</p><p id="info" class="muted"></p><div class="row"><a class="button" id="open" target="_blank" rel="noopener">Open in the model page</a><button id="stl">Download STL</button><button id="mf">Download 3MF</button></div></div>${stage3d}</div>`,
@@ -127,6 +133,7 @@ const intro = {
   variables: 'Variables that say where each number comes from: expressions over rule sets, resolved, and a lint that keeps numbers out of code.',
   rules: 'Published facts: printers, screws, switches, fabs and parts, each value with its source and the date it was checked.',
   shapes: 'Shape helpers for printed parts: text that prints, anchors on a face, clean cuts, and an enclosure kit.',
+  fixings: 'Screws, nuts and inserts by name: holes sized by what they are for, seats that print, threads cut for printing, and the first sums on a joint.',
   flexures: 'Parts that move by bending: leaf springs, guides, serpentine springs and notch hinges, each with its stiffness, its strain, and how it prints.',
   versions: 'Semver for physical parts: a major release means an earlier print may no longer fit.',
   printcheck: 'Is this mesh printable? Bed size, overhangs, bridges, floating undersides and closed solids, in plain words.',
@@ -194,7 +201,7 @@ cd my-project && npx cad check home/soap-tray</code></pre>
 ${guides.length ? `<h2>Guides</h2><p class="muted">Walked from start to finish, in commands.</p><div class="grid">${guides.map((g) => `<a class="card" href="${g.dir}/"><span class="kind">guide</span><h3>${esc(g.title)}</h3></a>`).join('')}</div>` : ''}
 ${groups.map(([title, line, dirs]) => `<h2>${esc(title)}</h2><p class="muted">${esc(line)}</p><div class="grid">${dirs.map((d) => `<a class="card" href="${d}/"><span class="kind">${esc(name(d))}${browser[d] || d === 'rules' ? ' · live' : ''}</span><h3>${esc(d)}</h3><p>${esc(intro[d] || pkg(d).description)}</p></a>`).join('')}</div>`).join('\n')}
 <h2>How they fit together</h2>
-<p>${inline('`cad` is the command line. It reads designs whose variables come from `variables` and rule sets such as `rules`, builds shapes with JSCAD and `shapes`, checks them with `printcheck` and `fit`, releases them with `versions`, lays out keyboards with `keyboard-layout`, draws boards with `pcb`, and shares them with `model-link`, which the `viewer` opens. `create-rulecad` starts a project with all of it in place.')}</p>`
+<p>${inline('`cad` is the command line. It reads designs whose variables come from `variables` and rule sets such as `rules`, builds shapes with JSCAD and `shapes`, sizes holes and seats for screws with `fixings`, checks them with `printcheck` and `fit`, releases them with `versions`, lays out keyboards with `keyboard-layout`, draws boards with `pcb`, and shares them with `model-link`, which the `viewer` opens. `create-rulecad` starts a project with all of it in place.')}</p>`
 for (const g of guides) write(path.join(DOCS, g.dir, 'index.html'), page(`${g.title}: rulecad`, g.title, g.dir, `<div class="readme">${markdown(g.text, { link: (u) => (u.startsWith('../') || /^(https?:|mailto:|#)/.test(u) ? u : `${REPO}/blob/main/${u}`) })}</div>`))
 write(path.join(DOCS, 'index.html'), page('rulecad libraries', 'Design physical things as code: the rulecad libraries, with live demonstrations.', null, index).replace('href="assets/style.css"', 'href="assets/style.css"'))
 console.log(`docs: ${order.length} library pages and an index in ${path.relative(process.cwd(), DOCS) || DOCS}${made.boards.length ? `, ${made.boards.length} boards drawn` : ''}${made.cad.check ? ', the starter project checked' : ''}`)

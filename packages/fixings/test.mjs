@@ -817,15 +817,21 @@ test('fixingsFor: a workspace\'s rule sets and printer in hand, so a design name
 test('the README: its examples run as written, the first prints what it says, and the grammar in it is the one the code reads', async () => {
   const { execFileSync } = await import('node:child_process'), { fileURLToPath } = await import('node:url');
   const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'); // (git on Windows checks it out with CRLF)
-  const blocks = [...readme.matchAll(/```js\n([\s\S]*?)```/g)].map((b) => b[1]), expected = readme.match(/```text\n([\s\S]*?)```/)[1];
-  assert.ok(blocks.length >= 5, 'an example for the model, the holes, the seats, the hardware and a workspace');
+  // every example, with the output printed under it where it shows one (a text block straight after the code)
+  const found = [...readme.matchAll(/```js\n([\s\S]*?)```(?:\n\n```text\n([\s\S]*?)```)?/g)], blocks = found.map((b) => b[1]), expected = found[0][2];
+  assert.ok(blocks.length >= 9, 'an example for the model, a whole part, the holes, the seats, the hardware, a workspace, threads, strength and refusals');
+  assert.ok(found.filter((b) => b[2] != null).length >= 5, 'five of them show what they print');
   const run = (js, i) => {
     const file = new URL(`./.readme-example-${i}.mjs`, import.meta.url);
     fs.writeFileSync(file, js);
     try { return execFileSync(process.execPath, [fileURLToPath(file)], { encoding: 'utf8' }).replace(/\r\n/g, '\n'); } finally { fs.rmSync(file); }
   };
   assert.equal(run(blocks[0], 0), expected);
-  for (let i = 1; i < blocks.length; i++) run(blocks[i], i);
+  for (let i = 1; i < blocks.length; i++) { const said = run(blocks[i], i); if (found[i][2] != null) assert.equal(said, found[i][2], `example ${i + 1} prints what the README shows under it`); }
+  // the part of "Start here" is what its ticket asks a newcomer to be able to draw: four counterbored M3 holes and an insert boss
+  const start = blocks.find((b) => b.includes('insertBoss') && b.includes('corners')); assert.ok(start && /counterbore\('M3'/.test(start) && readme.includes('## Start here'), 'the plate with four counterbored M3 holes and an insert boss');
+  for (const heading of ['Naming a fixing', 'Holes by purpose', 'Seats', 'Reference hardware', 'Threads cut for printing', 'Strength and length', 'Refusals and printability', 'Limits', 'What is measured and what is estimated', 'Formulas', 'Glossary', 'Sources']) assert.ok(readme.includes(`\n## ${heading}`), `a section on ${heading}`);
+  assert.ok(!/What comes next/.test(readme)); assert.ok(!/^\s*(Not|No)\b/.test(readme.split('\n').find((l) => l.trim() && !l.startsWith('#'))), 'it does not open on a not');
   assert.ok(readme.includes(GRAMMAR), 'the grammar, word for word');
   assert.ok(!/[\u2014\u2013]/.test(readme), 'no dashes used as punctuation');
   for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function')) assert.ok(readme.includes(name.replace(/Model$/, '')), `${name} is described`);
