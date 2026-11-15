@@ -87,6 +87,56 @@ test('a raw number in a design fails the check', () => {
   } finally { done(); }
 });
 
+test('v.fixings: a counterbored hole, a pilot and an insert boss with no number typed, each said in the check with the rule it rests on', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const js = `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+
+export function main (v) {
+  const f = v.fixings, top = v.thick
+  const plate = cuboid({ size: [v.width, v.depth, top], center: [0, 0, top / 2] })
+  const boss = f.insertBoss('M3', { at: [v.pitch, 0, top] })
+  return v.ops.subtract(v.ops.union(plate, boss.boss), boss.hole,
+    f.counterbore('M3x12 cap', { length: top, thickness: top, at: [-v.pitch, 0, top] }),
+    f.hole('M3', { kind: 'pilot', at: [0, 0, top] }))
+}
+`;
+    object(ws, 'demo/plate', { uses: ['x1c'], orientation: 'Flat on the bed, the boss up', variables: {
+      width: { value: 40, unit: 'mm', rule: 'Three fixings in a row' }, depth: { value: 16, unit: 'mm', rule: 'A fixing and its walls' },
+      thick: { value: 'x1c.layer * 40', unit: 'mm', rule: 'Whole layers: the pilot and a floor under it' }, pitch: { value: 12, unit: 'mm', rule: 'Between the fixings' } } }, js);
+    fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['plate'] }));
+    // no number in the design but 0, 1 and 2: a thread's name is text, so 'M3' and 'M3x12 cap' are no measurements
+    assert.deepEqual([...new Set(js.replace(/'[^']*'/g, '').match(/\d+(\.\d+)?/g))].sort(), ['0', '2']);
+    const run = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'demo/plate', '--json'], { cwd: ws, encoding: 'utf8' }); return { status: r.status, findings: JSON.parse(r.stdout).findings }; };
+    const first = run(), by = (f, code) => f.filter((x) => x.code === code);
+    assert.equal(first.status, 0); assert.deepEqual(first.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), [], 'it checks clean');
+    assert.equal(by(first.findings, 'lint.numbers')[0].level, 'pass');
+    // what each hole and seat was drawn to, with what it rests on
+    const holes = by(first.findings, 'hole.drawn');
+    assert.deepEqual(holes.map((x) => [x.values.diameter, x.refs.rule, x.refs.kind]), [[3.5, 'm3.clearance', 'spec'], [2.9, 'x1c.pilot_m3', 'measured']]);
+    assert.match(holes[0].text, /an M3 clearance hole drawn 3\.5 mm: it rests on m3\.clearance \(3\.4 mm\), a standard's figure, plus x1c\.hole_comp 0\.1 mm across/);
+    assert.match(holes[1].text, /an M3 pilot drawn 2\.9 mm: it rests on x1c\.pilot_m3 \(2\.9 mm\), a measured rule, as drawn/);
+    assert.deepEqual(by(first.findings, 'counterbore.drawn')[0].values, { diameter: 6, depth: 3, sunk: 0, hole: 3.5 });
+    assert.deepEqual((({ hole, outer, height }) => [hole, outer, height])(by(first.findings, 'insertBoss.drawn')[0].values), [4, 7.2, 6.8]);
+    // the same from the cache, as a motor's or a mechanism's findings are kept with a build
+    assert.deepEqual(run().findings.filter((x) => /^(hole|counterbore|insertBoss)\./.test(x.code)), first.findings.filter((x) => /^(hole|counterbore|insertBoss)\./.test(x.code)));
+    // bound to the project: the workspace's own printer rule moves the pilot, and its own thread set is read before the kit's
+    const x1c = JSON.parse(fs.readFileSync(path.join(ws, 'rules/x1c.json'), 'utf8')); x1c.rules.pilot_m3.value = 2.8;
+    fs.writeFileSync(path.join(ws, 'rules/x1c.json'), JSON.stringify(x1c));
+    fs.writeFileSync(path.join(ws, 'rules/m3.json'), JSON.stringify({ name: 'm3', rules: { clearance: { value: 3.6, unit: 'mm', rule: 'A roomier hole, as measured here', kind: 'measured', source: 'this bench', checked: '2026-11-15' } } }));
+    assert.deepEqual(by(run().findings, 'hole.drawn').map((x) => [x.values.diameter, x.refs.kind]), [[3.7, 'measured'], [2.8, 'measured']]);
+    // a typed diameter is still a number that should be a variable, and a design may import the package itself in the sandbox
+    object(ws, 'demo/typed', { variables: { w: { value: 10, unit: 'mm', rule: 'Width' } } }, "import jscad from '@jscad/modeling'\nimport { holeModel } from '@rulecad/fixings'\nexport function main (v) { const r = 2.9 / 2 + holeModel('M3').diameter * 0; return jscad.primitives.cuboid({ size: [v.w, v.w, r * 2], center: [0, 0, r] }) }\n");
+    const typed = cad('check', 'demo/typed');
+    assert.match(typed, /should be variables: line 3: 2\.9/); assert.match(typed, /fits the bed/);
+    // the notes for agents say where holes come from, the kit's and the template's alike
+    const notes = fs.readFileSync(new URL('./AGENTS.md', import.meta.url), 'utf8');
+    assert.match(notes, /comes from `v\.fixings`, named by its thread, never from a\s+typed number/);
+    assert.equal(fs.readFileSync(new URL('../create-rulecad/template/AGENTS.md', import.meta.url), 'utf8'), notes, 'the template\'s AGENTS.md is the kit\'s');
+  } finally { done(); }
+});
+
 test('your own printer, and no extras configured', () => {
   const { ws, cad, done } = workspace({ printer: 'tiny' });
   try {

@@ -489,6 +489,7 @@ async function main() {
         ? [{ level: 'pass', text: `a reference (${(await import('@rulecad/printcheck')).bounds(b.triangles).size.map(fmt).join(' × ')} mm), not printed: no print checks`, code: 'print.reference' }]
         : check(b.triangles, printer(b, d), { parts: b.parts })),
       ...(b.mechanism?.findings || []), // a lamina mechanism's own: it prints free, stops, holds, clears in every state
+      ...(b.fixings || []), // what v.fixings drew: each hole and seat, what it was drawn to and the rule it rests on
       ...(await analyses(b, d, tag)),
     ], { object: `${d.project}/${d.name}`, title, version, ...(Object.keys(set).length ? { set } : {}), orientation: b.object.orientation, parts: b.parts.map((p) => ({ name: p.name, role: p.role || 'part' })) });
     if (b.object.orientation) say(`  orientation: ${b.object.orientation}`);

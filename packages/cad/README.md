@@ -157,6 +157,13 @@ own copy anywhere and name it in `viewUrl`.
   strain at a travel, and `printable(shape, printer, material, model)` for how it prints. Drawn flat: bending along y,
   width up z, so a flexure bends within its layers.
 - `v.motors`: motors (`@rulecad/motors`): `motorModel`, `mount` and `bore` for the holes a part needs round a motor and its shaft, `performance` for its torque and speed. In an assembly a motor is an item (see Motors).
+- `v.fixings`: screws, nuts and inserts (`@rulecad/fixings`), bound to the project: `hole('M3', { kind: 'pilot', at })`
+  for a hole sized by what it is for, `counterbore`, `countersink`, `nutPocket`, `nutTrap`, `squareNutSlot` and
+  `insertBoss` for seats, `screw`, `nut`, `washer` and `insert` as light reference solids, `thread` for one cut to
+  print, and `engagement`, `seating` and `lengthFor` for first sums. Each reads the workspace's own thread set
+  (`rules/m3.json`) before the kit's, the project's printer and (for what a thread is in) its material, so a design
+  types no diameter and passes none. `cad check` lists what each call drew and the rule it rests on (`hole.drawn`,
+  `counterbore.drawn`, ...). A design may also import `@rulecad/fixings` itself: then it reads the kit's sets only.
 - `v.gears`: gears (`@rulecad/gears`): `spur`, `rack` and `internal` as shapes, from a module and teeth, each with its
   model (`gearModel`, `rackModel`, `internalModel`) and `printable(model, printer, width)`. Drawn flat: the axis up z,
   the first tooth on +x, the face on the bed. Two gears in an assembly mesh with a joint's `mesh` (see Joints).
@@ -274,7 +281,7 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
   can't write or delete files, start programs or workers, or load addons, and it reads only the workspace and the
   packages designs use, by their real paths (a `node_modules` link spelled through another link, as macOS spells its
   temporary folders through `/tmp` and `/var`, is refused by name: make the link with the real path). To keep it to making shapes it may import only `@jscad/modeling`, `@rulecad/shapes`,
-  `@rulecad/flexures`, `@rulecad/gears` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
+  `@rulecad/flexures`, `@rulecad/gears`, `@rulecad/motors`, `@rulecad/fixings` and files in its own project (no `node:` modules), `fetch` and its kin are gone, and it is
   started with none of your environment (no tokens). Those shut the ordinary roads to the network, not every one:
   before Node 25 the permission model doesn't cover the network, so a design written to get round them might still
   reach it. Run only designs you trust. It gets its values as data and returns its parts; what it prints
