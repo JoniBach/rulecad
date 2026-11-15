@@ -109,6 +109,7 @@ test('refused by name: a thread nobody has a set for, a head or a nut that size 
   assert.throws(() => fixingModel('bolt'), /"bolt" does not start with a thread \(M3, M2\.5, 6-32, 1\/4-20, K30\)/);
   assert.throws(() => fixingModel('M3x'), /after the x comes a length/);
   assert.throws(() => fixingModel(3), /give a name, not 3/);
+  assert.throws(() => fixingModel(json('../rules/m3.json')), (e) => /give a name, not \{"_doc"/.test(e.message) && e.message.length < 400, 'a rule set handed in where the name goes is not printed back whole');
   assert.throws(() => fixingModel(''), /give a name/);
   assert.throws(() => fixingModel('M3', 3), /change is figures by their rules' names/);
   assert.throws(() => fixingModel('M3', { clearence: 3.3 }), /m3 has no figure "clearence" \(did you mean clearance\?\)/);
@@ -454,4 +455,21 @@ test('fixingsFor: a workspace\'s rule sets and printer in hand, so a design name
   for (const k of Object.keys(fixings).filter((n) => typeof fixings[n] === 'function' && !['fixingsFor', 'parseName', 'threads'].includes(n))) assert.equal(typeof f[k], 'function', `${k} is bound`);
   let joins = 0; const counted = fixingsFor({ ops: { union: (...a) => { joins++; return union(...a); }, subtract } });
   counted.screw('M6x20 hex'); assert.equal(joins, 1, 'the design\'s booleans join a hexagon head to its thread');
+});
+
+test('the README: its examples run as written, the first prints what it says, and the grammar in it is the one the code reads', async () => {
+  const { execFileSync } = await import('node:child_process'), { fileURLToPath } = await import('node:url');
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n'); // (git on Windows checks it out with CRLF)
+  const blocks = [...readme.matchAll(/```js\n([\s\S]*?)```/g)].map((b) => b[1]), expected = readme.match(/```text\n([\s\S]*?)```/)[1];
+  assert.ok(blocks.length >= 5, 'an example for the model, the holes, the seats, the hardware and a workspace');
+  const run = (js, i) => {
+    const file = new URL(`./.readme-example-${i}.mjs`, import.meta.url);
+    fs.writeFileSync(file, js);
+    try { return execFileSync(process.execPath, [fileURLToPath(file)], { encoding: 'utf8' }).replace(/\r\n/g, '\n'); } finally { fs.rmSync(file); }
+  };
+  assert.equal(run(blocks[0], 0), expected);
+  for (let i = 1; i < blocks.length; i++) run(blocks[i], i);
+  assert.ok(readme.includes(GRAMMAR), 'the grammar, word for word');
+  assert.ok(!/[\u2014\u2013]/.test(readme), 'no dashes used as punctuation');
+  for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function')) assert.ok(readme.includes(name.replace(/Model$/, '')), `${name} is described`);
 });

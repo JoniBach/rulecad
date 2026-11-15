@@ -51,7 +51,7 @@ export const DEFAULTS = {
 export const r3 = (x) => +x.toFixed(3);
 export const mm = (x) => String(+Number(x).toFixed(3));
 export const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
-export const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
+export const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; }; // (a whole rule set handed in by mistake is not printed back)
 export const near = (a, b) => { // edits between two names, to suggest the nearest
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
@@ -86,8 +86,9 @@ export const GRAMMAR = [
   '        | a variant of the thread\'s rule set                            torx, on a PT screw'
 ].join('\n');
 
-/** The head forms a screw's name can say, and the nuts. */
+/** The head forms a screw's name can say. */
 export const HEADS = ['cap', 'button', 'countersunk', 'hex', 'set', 'pan'];
+/** The kinds of nut a name can say. */
 export const NUTS = ['hex', 'square', 'lock'];
 const HEAD_WORDS = { cap: 'cap', socket: 'cap', button: 'button', countersunk: 'countersunk', csk: 'countersunk', flat: 'countersunk', hex: 'hex', set: 'set', grub: 'set', pan: 'pan' };
 const NUT_WORDS = { hex: 'hex', square: 'square', lock: 'lock', nyloc: 'lock' };
