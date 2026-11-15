@@ -339,4 +339,17 @@ test('a V mouth and a sloped lip are drawn where a slot has them', () => {
   const path = slotPath(v).map(([u, w]) => [+u.toFixed(3), +w.toFixed(3)]);
   assert.deepEqual(path.slice(0, 4), [[-4.5, 0], [-3, 1.5], [-3, 2], [-6, 2.529]]);
   assert.equal(v.mouth, 9);
+  // a groove down the middle of the floor (MakerBeamXL's, for a screw's end under the nut), and straight walls with no floor_width
+  const xl = slotModel('slot-3-makerbeam-xl');
+  assert.deepEqual([xl.opening, xl.lip, xl.cavityWidth, xl.cavityDepth, xl.floorWidth, xl.flankAngle, xl.grooveWidth, xl.grooveDepth], [3, 1, 5.5, 3.5, 5.5, 90, 3, 1.5]);
+  assert.deepEqual(slotPath(xl).map(([u, w]) => [+u.toFixed(3), +w.toFixed(3)]), [[-1.5, 0], [-1.5, 1], [-2.75, 1], [-2.75, 3.5], [-1.5, 3.5], [-1.5, 5], [1.5, 5], [1.5, 3.5], [2.75, 3.5], [2.75, 1], [1.5, 1], [1.5, 0]]);
+  assert.throws(() => slotModel('slot-3-makerbeam-xl', { groove_width: 6 }), /groove_width is narrower than the floor, 5\.5 \(got 6\)/);
+  assert.throws(() => slotModel('slot-6-misumi', { groove_width: 2 }), /a groove in the floor has both groove_width and groove_depth above 0/);
+  // the small beams' slots say what they take: a plain M3 nut is 5.5 across flats, and goes in OpenBeam's and the XL's cavity, not MakerBeam's lips
+  for (const n of ['slot-3-openbeam', 'slot-3-makerbeam-xl']) assert.ok(slotModel(n).cavityWidth >= 5.5 && slotModel(n).opening < 5.5 && /plain M3 nut/.test(SETS[n].rules.nut_family.rule), n);
+  assert.match(SETS['slot-3-makerbeam'].rules.nut_family.rule, /square headed bolt/);
+  for (const n of ['1010-makerbeam', '1515-makerbeam-xl', '1515-openbeam']) assert.deepEqual([profileModel(n).bores[0].thread, profileModel(n).bores[0].threadSet], ['M3', 'm3'], `${n} takes M3 hardware`);
+  // the inch series name the kit's inch threads, and hold millimetres with the inch figure in the rule
+  assert.deepEqual([profileModel('1010-8020').bores[0].threadSet, profileModel('1530-8020').bores[0].threadSet, profileModel('1515-8020').width], ['unc_1_4_20', 'unc_5_16_18', 38.1]);
+  assert.match(SETS['slot-6-8020'].rules.opening.rule, /\.256 in/); assert.equal(slotModel('slot-6-8020').lipAngle, 2, '80/20\'s drop lock');
 });

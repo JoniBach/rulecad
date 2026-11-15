@@ -249,8 +249,11 @@ test('profiles and slots: one maker one set, named for size and maker, every fig
     if (generic) assert.match(_doc, /until the bar in hand is measured/);
   }
   for (const { name, set: { rules: r } } of slots) {
-    for (const k of ['opening', 'lip_thickness', 'cavity_width', 'cavity_depth', 'floor_width', 'flank_angle', 'nut_family']) assert.ok(r[k], `${name} has ${k}`);
-    assert.ok(r.opening.value < r.cavity_width.value && r.lip_thickness.value < r.cavity_depth.value && r.floor_width.value < r.cavity_width.value, `${name} is a slot`);
+    for (const k of ['opening', 'lip_thickness', 'cavity_width', 'cavity_depth', 'nut_family']) assert.ok(r[k], `${name} has ${k}`);
+    // a floor narrower than the cavity with the flanks that reach it, or neither: straight walls
+    assert.equal(!!r.floor_width, !!r.flank_angle, `${name}: floor_width and flank_angle go together`);
+    assert.ok(r.opening.value < r.cavity_width.value && r.lip_thickness.value < r.cavity_depth.value && (!r.floor_width || r.floor_width.value < r.cavity_width.value), `${name} is a slot`);
+    if (r.groove_width) assert.ok(r.groove_depth.value > 0 && r.groove_width.value < (r.floor_width ?? r.cavity_width).value, `${name}: a groove is narrower than the floor it is in`);
     assert.equal(byName[r.nut_family.value]?.part, 'slot', `${name}.nut_family names a slot set`);
     if (/-(misumi|bosch)/.test(name)) { for (const k of ['opening', 'lip_thickness', 'cavity_width', 'cavity_depth']) assert.equal(r[k].kind, 'spec', `${name}.${k} is printed on the maker's page`); assert.equal(r.floor_width.kind, 'estimate', `${name}.floor_width is scaled off the drawing, and says so`); assert.match(r.floor_width.rule, /Not dimensioned/); }
     if (!/-(misumi|bosch|motedis|item|openbuilds|makerbeam|openbeam|8020)/.test(name)) for (const x of Object.values(r)) assert.equal(x.kind, 'community', `${name}: a generic slot is community`);

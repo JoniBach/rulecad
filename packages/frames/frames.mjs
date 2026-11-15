@@ -60,7 +60,7 @@ export const slotNuts = () => ofPart('slot_nut');
  *   of your own by name (a slot family, a thread, a material), a function that finds one, and a measured outline
  * @typedef {{ kind: 'slot', name: string, figures: Record<string, Figure>, opening: number, mouth: number, lip: number,
  *   lipAngle: number, cavityWidth: number, cavityDepth: number, floorWidth: number, flankAngle: number, straight: number,
- *   trackWidth: number, trackAngle: number, nutFamily: string }} Slot
+ *   trackWidth: number, trackAngle: number, grooveWidth: number, grooveDepth: number, nutFamily: string }} Slot
  * @typedef {{ face: 'top' | 'bottom' | 'front' | 'back', index: number, slot: string | null, at: [number, number], normal: [number, number], along: [number, number] }} FaceSlot
  * @typedef {{ at: [number, number], diameter: number, thread: string | null, threadSet: string | null, tapDrill: number | null, major: number | null, threadPitch: number | null, where: 'cell' | 'corner' | 'given' }} Bore
  * @typedef {{ at: [number, number], axis: 'x' | 'y', width: number, length: number, depth: number, ends: [number, number], slot: string }} Chamber the
@@ -120,13 +120,16 @@ export function slotModel(which, change = {}, given = {}) {
   // where the flanks start, from the face: the floor's depth less what the flanks take to close in
   const under = lip + ((cavityWidth - opening) / 2) * Math.tan(lipAngle * RAD), closing = floorWidth < cavityWidth ? ((cavityWidth - floorWidth) / 2) * Math.tan(flankAngle * RAD) : 0, straight = cavityDepth - closing;
   if (straight < under - 1e-9) throw new Error(`${what}: ${name}: its flanks would start above the underside of its lips: closing from ${cavityWidth} to a floor of ${floorWidth} at ${flankAngle} degrees takes ${r4(closing)} of depth, and there is ${r4(cavityDepth - under)} below the lips. A wider floor_width, a deeper cavity_depth or a shallower flank_angle fits`);
+  const grooveWidth = num('groove_width', 0), grooveDepth = num('groove_depth', 0);
+  if ((grooveWidth > 0) !== (grooveDepth > 0) || grooveWidth < 0 || grooveDepth < 0) throw new Error(`${what}: ${name}: a groove in the floor has both groove_width and groove_depth above 0 (got ${shown(v('groove_width'))} and ${shown(v('groove_depth'))})`);
+  if (grooveWidth && !(grooveWidth < floorWidth)) throw new Error(`${what}: ${name}: groove_width is narrower than the floor, ${floorWidth} (got ${grooveWidth}): a groove as wide as the floor is a deeper cavity_depth`);
   if (trackWidth) {
     if (!(trackWidth > opening)) throw new Error(`${what}: ${name}: track_width is wider than opening, ${opening} (got ${trackWidth})`);
     if (!(trackAngle > 0 && trackAngle < 180)) throw new Error(`${what}: ${name}: track_angle is between 0 and 180 degrees (got ${shown(trackAngle)})`);
     const deep = (trackWidth - opening) / 2 / Math.tan((trackAngle / 2) * RAD);
     if (deep > lip + 1e-9) throw new Error(`${what}: ${name}: its V mouth is ${r4(deep)} deep, more than lip_thickness (${lip}): a narrower track_width or a wider track_angle fits`);
   }
-  return { kind: 'slot', name, figures, opening, mouth: trackWidth || opening, lip, lipAngle, cavityWidth, cavityDepth, floorWidth, flankAngle, straight, trackWidth, trackAngle, nutFamily: String(v('nut_family', name)) };
+  return { kind: 'slot', name, figures, opening, mouth: trackWidth || opening, lip, lipAngle, cavityWidth, cavityDepth, floorWidth, flankAngle, straight, trackWidth, trackAngle, grooveWidth, grooveDepth, nutFamily: String(v('nut_family', name)) };
 }
 
 /**
@@ -140,6 +143,7 @@ export function slotPath(slot) {
   const half = [[-(tw || o) / 2, 0]];
   if (tw) half.push([-o / 2, (tw - o) / 2 / Math.tan((trackAngle / 2) * RAD)]);
   half.push([-o / 2, t], [-W / 2, t + ((W - o) / 2) * Math.tan(lipAngle * RAD)], [-W / 2, s], [-f / 2, D]);
+  if (slot.grooveWidth) half.push([-slot.grooveWidth / 2, D], [-slot.grooveWidth / 2, D + slot.grooveDepth]);
   const all = [...half, ...half.map(([u, v]) => [-u, v]).reverse()];
   return all.filter((p, i) => !i || Math.hypot(p[0] - all[i - 1][0], p[1] - all[i - 1][1]) > 1e-9);
 }

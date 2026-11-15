@@ -228,6 +228,8 @@
     "flank_angle": { "unit": "deg", "says": "the angle of the flanks that close a slot in toward its floor, from the face's plane: 45 for the usual slot, 90 for straight walls" },
     "track_width": { "unit": "mm", "says": "the width across a V-slot's chamfered mouth at the face: the track a V-wheel runs on" },
     "track_angle": { "unit": "deg", "says": "the angle between the two faces of a V-slot's mouth: 90 for a wheel with a 90 degree V" },
+    "groove_width": { "unit": "mm", "says": "the width of a groove down the middle of a slot's floor, narrower than the floor (room for a screw's end under a nut); left out where the floor is plain" },
+    "groove_depth": { "unit": "mm", "says": "how far that groove goes below the slot's floor" },
     "nut_family": { "says": "the slot family whose nuts a slot takes, by its rule set's name: its own, or the one it is made to match" },
     "nut_kind": { "choice": ["slide-in", "drop-in", "roll-in", "hammer", "t-bolt", "square", "hex"], "says": "what sort of slot nut: slid in from an end, dropped in and turned, rolled in on a spring, a hammer head, a bolt with a T head, or a plain square or hexagon nut" },
     "nut_entry": { "choice": ["anywhere", "end"], "says": "whether a slot nut goes in anywhere along the slot, or only from an open end" }

@@ -18,8 +18,11 @@ import s_m5 from '@rulecad/rules/m5.json' with { type: 'json' };
 import s_m6 from '@rulecad/rules/m6.json' with { type: 'json' };
 import s_m8 from '@rulecad/rules/m8.json' with { type: 'json' };
 import s_profile_1010_8020 from '@rulecad/rules/profile-1010-8020.json' with { type: 'json' };
+import s_profile_1010_makerbeam from '@rulecad/rules/profile-1010-makerbeam.json' with { type: 'json' };
 import s_profile_1020_8020 from '@rulecad/rules/profile-1020-8020.json' with { type: 'json' };
 import s_profile_1515_8020 from '@rulecad/rules/profile-1515-8020.json' with { type: 'json' };
+import s_profile_1515_makerbeam_xl from '@rulecad/rules/profile-1515-makerbeam-xl.json' with { type: 'json' };
+import s_profile_1515_openbeam from '@rulecad/rules/profile-1515-openbeam.json' with { type: 'json' };
 import s_profile_1530_8020 from '@rulecad/rules/profile-1530-8020.json' with { type: 'json' };
 import s_profile_2020_bosch from '@rulecad/rules/profile-2020-bosch.json' with { type: 'json' };
 import s_profile_2020_generic from '@rulecad/rules/profile-2020-generic.json' with { type: 'json' };
@@ -92,6 +95,9 @@ import s_slot_10_misumi_45 from '@rulecad/rules/slot-10-misumi-45.json' with { t
 import s_slot_10_misumi from '@rulecad/rules/slot-10-misumi.json' with { type: 'json' };
 import s_slot_10_motedis from '@rulecad/rules/slot-10-motedis.json' with { type: 'json' };
 import s_slot_10 from '@rulecad/rules/slot-10.json' with { type: 'json' };
+import s_slot_3_makerbeam_xl from '@rulecad/rules/slot-3-makerbeam-xl.json' with { type: 'json' };
+import s_slot_3_makerbeam from '@rulecad/rules/slot-3-makerbeam.json' with { type: 'json' };
+import s_slot_3_openbeam from '@rulecad/rules/slot-3-openbeam.json' with { type: 'json' };
 import s_slot_5_item from '@rulecad/rules/slot-5-item.json' with { type: 'json' };
 import s_slot_5_motedis from '@rulecad/rules/slot-5-motedis.json' with { type: 'json' };
 import s_slot_6_8020 from '@rulecad/rules/slot-6-8020.json' with { type: 'json' };
@@ -127,23 +133,24 @@ export const FIELDS = vocabulary.fields;
 /** Every rule set frames knows, by its name. @type {Record<string, { name: string, part?: string, rules: Record<string, any> }>} */
 export const SETS = Object.fromEntries([
   s_al6000_item, s_al6005a_8020, s_al6060_rexroth, s_al6063_t5, s_al6063_t66, s_al6n01_t5, s_m10, s_m12,
-  s_m1_6, s_m2, s_m2_5, s_m3, s_m4, s_m5, s_m6, s_m8, s_profile_1010_8020, s_profile_1020_8020, s_profile_1515_8020,
-  s_profile_1530_8020, s_profile_2020_bosch, s_profile_2020_generic, s_profile_2020_item_5, s_profile_2020_misumi_hfs5,
-  s_profile_2020_motedis_b6, s_profile_2020_motedis_i5, s_profile_2020_openbuilds, s_profile_2040_bosch,
-  s_profile_2040_generic, s_profile_2040_item_5, s_profile_2040_misumi_hfs5, s_profile_2040_motedis_i5,
-  s_profile_2040_openbuilds, s_profile_2060_misumi_hfs5, s_profile_2060_openbuilds, s_profile_2080_misumi_hfs5,
-  s_profile_2080_openbuilds, s_profile_3030_bosch, s_profile_3030_generic, s_profile_3030_item_6, s_profile_3030_item_6l,
-  s_profile_3030_misumi_hfs6, s_profile_3030_motedis_i6, s_profile_3060_bosch, s_profile_3060_item_6, s_profile_3060_item_6l,
-  s_profile_3060_misumi_hfs6, s_profile_4040_bosch_l, s_profile_4040_generic, s_profile_4040_item_8, s_profile_4040_item_8l,
-  s_profile_4040_misumi_hfs8, s_profile_4040_motedis_b10, s_profile_4040_motedis_i8, s_profile_4080_bosch_l,
-  s_profile_4080_item_8, s_profile_4080_item_8l, s_profile_4080_misumi_hfs8, s_profile_4080_motedis_i8,
-  s_profile_4080_openbuilds_cbeam, s_profile_4545_bosch_l, s_profile_4545_misumi_hfs8, s_profile_4590_misumi_hfs8,
-  s_profile_angle_al_25x25x3, s_profile_angle_steel_30x30x3, s_profile_angle, s_profile_bar_al_25x5, s_profile_bar_steel_30x5,
-  s_profile_bar, s_profile_channel_al_30x20x2, s_profile_channel, s_profile_custom, s_profile_round_bar_al_10,
-  s_profile_round_bar_steel_10, s_profile_round_bar, s_profile_round_tube_al_25x2, s_profile_round_tube_steel_25x2,
-  s_profile_round_tube, s_profile_tube_al_20x20x2, s_profile_tube_al_25x25x2, s_profile_tube_al_40x20x2,
-  s_profile_tube_steel_25x25x2, s_profile_tube_steel_40x40x2, s_profile_tube, s_s275, s_slot_10_bosch_45l,
-  s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis, s_slot_10, s_slot_5_item, s_slot_5_motedis,
+  s_m1_6, s_m2, s_m2_5, s_m3, s_m4, s_m5, s_m6, s_m8, s_profile_1010_8020, s_profile_1010_makerbeam, s_profile_1020_8020,
+  s_profile_1515_8020, s_profile_1515_makerbeam_xl, s_profile_1515_openbeam, s_profile_1530_8020, s_profile_2020_bosch,
+  s_profile_2020_generic, s_profile_2020_item_5, s_profile_2020_misumi_hfs5, s_profile_2020_motedis_b6,
+  s_profile_2020_motedis_i5, s_profile_2020_openbuilds, s_profile_2040_bosch, s_profile_2040_generic, s_profile_2040_item_5,
+  s_profile_2040_misumi_hfs5, s_profile_2040_motedis_i5, s_profile_2040_openbuilds, s_profile_2060_misumi_hfs5,
+  s_profile_2060_openbuilds, s_profile_2080_misumi_hfs5, s_profile_2080_openbuilds, s_profile_3030_bosch,
+  s_profile_3030_generic, s_profile_3030_item_6, s_profile_3030_item_6l, s_profile_3030_misumi_hfs6, s_profile_3030_motedis_i6,
+  s_profile_3060_bosch, s_profile_3060_item_6, s_profile_3060_item_6l, s_profile_3060_misumi_hfs6, s_profile_4040_bosch_l,
+  s_profile_4040_generic, s_profile_4040_item_8, s_profile_4040_item_8l, s_profile_4040_misumi_hfs8, s_profile_4040_motedis_b10,
+  s_profile_4040_motedis_i8, s_profile_4080_bosch_l, s_profile_4080_item_8, s_profile_4080_item_8l, s_profile_4080_misumi_hfs8,
+  s_profile_4080_motedis_i8, s_profile_4080_openbuilds_cbeam, s_profile_4545_bosch_l, s_profile_4545_misumi_hfs8,
+  s_profile_4590_misumi_hfs8, s_profile_angle_al_25x25x3, s_profile_angle_steel_30x30x3, s_profile_angle,
+  s_profile_bar_al_25x5, s_profile_bar_steel_30x5, s_profile_bar, s_profile_channel_al_30x20x2, s_profile_channel,
+  s_profile_custom, s_profile_round_bar_al_10, s_profile_round_bar_steel_10, s_profile_round_bar, s_profile_round_tube_al_25x2,
+  s_profile_round_tube_steel_25x2, s_profile_round_tube, s_profile_tube_al_20x20x2, s_profile_tube_al_25x25x2,
+  s_profile_tube_al_40x20x2, s_profile_tube_steel_25x25x2, s_profile_tube_steel_40x40x2, s_profile_tube,
+  s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
+  s_slot_10, s_slot_3_makerbeam_xl, s_slot_3_makerbeam, s_slot_3_openbeam, s_slot_5_item, s_slot_5_motedis,
   s_slot_6_8020, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i,
   s_slot_6_motedis, s_slot_6_openbuilds, s_slot_6, s_slot_8_8020, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light,
   s_slot_8_item, s_slot_8_misumi, s_slot_8_motedis_i, s_slot_8, s_unc_10_24, s_unc_1_4_20, s_unc_3_8_16,

@@ -77,6 +77,8 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `al6005a-8020` | The aluminium of 80/20's profiles ("6005A-T61 or comparable"): 80/20's own modulus, yield and tensile strength, the density worked out from its weight and area | 5 |
 | `slot-6-8020`, `slot-8-8020` | The T-slots of 80/20's 10 series (1 in) and 15 series (1.5 in), in mm with the inch figure in each rule: opening, lip, width, depth and the 2 degree drop lock from the catalogue's drawings | 8 each |
 | `profile-1010-8020`, `profile-1020-8020`, `profile-1515-8020`, `profile-1530-8020` | 80/20 inch T-slot profiles 1010, 1020, 1515 and 1530: dimensions and section figures from its Product Catalog 24 in mm, each rule giving the inch figure; bores tapped 1/4-20 (`unc_1_4_20`) and 5/16-18 (`unc_5_16_18`) | 20 or 21 |
+| `slot-3-makerbeam`, `slot-3-makerbeam-xl`, `slot-3-openbeam` | The slots of the small beams, and what each takes: MakerBeam's a square headed M3 bolt, MakerBeamXL's and OpenBeam's a plain M3 nut (DIN 934). From MakerBeam B.V.'s drawings and OpenBeam's dimensioned section | 7 to 9 |
+| `profile-1010-makerbeam`, `profile-1515-makerbeam-xl`, `profile-1515-openbeam` | MakerBeam (10 mm), MakerBeamXL and OpenBeam (15 mm): dimensions, the M3 core hole, area, second moments and weight from MakerBeam B.V.'s drawings and overview of specifications | 16 to 21 |
 
 `kind` says how far to trust a value: **spec** (a datasheet or manufacturer), **community** (a widely used figure, such
 as KiCad's library or KeyV2), **default** (a setting that works), **derived** (read off someone else's model with `cad measure`: check it
