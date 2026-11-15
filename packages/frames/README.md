@@ -15,6 +15,8 @@ This release reads a profile, which is everything the rest is built on, and make
 - **`profileFindings`**: what a check of a profile finds, as `cad rules check` reports it.
 - **`beamModel`** and **`beam`**: a length of a profile, with its mass and centre of mass, the anchors an assembly
   places it and its fittings by, and its solid as a light box or the true section.
+- **Operations on a beam**: cut, mitre, tap, access, drill, counterbore, pocket, notch and deburr, each placed by an
+  address on the beam, dimensioned from end a, checked, and cut into its solid.
 
 Beams in assemblies, joins that do their own drilling, fittings, slot nuts and linear guides follow in later
 releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
@@ -23,7 +25,8 @@ releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240
 npm install @rulecad/frames @jscad/modeling
 ```
 
-It depends on `@rulecad/rules`, where the profiles live as open data, and takes JSCAD (`@jscad/modeling`, which a
+It depends on `@rulecad/rules`, where the profiles live as open data, and `@rulecad/fixings`, which sizes anything an
+operation names by a thread. It takes JSCAD (`@jscad/modeling`, which a
 rulecad design already has) as a peer for a beam's solid.
 
 ## A profile
@@ -257,6 +260,57 @@ In an assembly an address names the item first: `x1.a`, `x1.a.1`, `x1.top@120`, 
 anchor has its z out of the face and its x along the beam toward `b`, so a part placed at an address sits on the face
 with its own x along the beam. The cad README says where addresses are taken.
 
+### Operations
+
+A beam carries a list of operations, `ops`, each a line on its cut-and-drill sheet and a cut in its solid. Each is
+placed by an address on the beam: an end (`a`, `b`), an end's bore (`a.1`), or a face's place with a distance from
+end a (`top@120`, `top@-20` from end b, `top@50%`).
+
+```js
+const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [
+  { op: 'tap', at: 'a', thread: 'M5' },          // M5 in end a's bore, 10 mm deep: 2 diameters for aluminium
+  { op: 'access', at: 'top@-10', thread: 'M5' }, // a Ø5.3 mm hole 10 mm from end b, for an M5 cap screw's 4 mm key
+] });
+b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm; the bore is Ø4.2)', 'cut end a square', ...
+```
+
+| Operation | What it is | Where | Takes |
+|---|---|---|---|
+| `cut` | A square cut to length. Each end with no cut or mitre of its own gets one (`implied: true`) | `a`, `b` | |
+| `mitre` | An end cut at an angle from square, seen on a named face | `a`, `b` | `angle` (above 0, under 90), `about` (the face), `long` (the side the length is on) |
+| `tap` | A thread cut in an end bore. `ends: 'tapped'` is the same | `a`, `b`, `a.1` | `thread` (default the profile's `bore_thread`), `depth` |
+| `access` | A hole across the beam, in line with a slot, through its floor, for a key | a face | `thread` (sizes it for that screw's key) or `diameter`, `depth` |
+| `drill` | A hole through one wall or right through, plain or tapped | a face | `thread` and `kind` (clearance, close, loose, tap) or `diameter`; `through` (`wall`, the default, or `beam`); `depth` |
+| `counterbore` | A seat for a head in a face, with the screw's hole through the wall | a face | `thread`, `head`, `diameter`, `depth` |
+| `pocket` | A milled pocket | a face | `size` (`[along, across]`) or `outline` (points about the address), `radius`, `depth` |
+| `notch` | Part of a slot's lips cut away, to load a nut mid-span | a face with a slot | `length` |
+| `deburr` | Named so the sheet asks for it | `a`, `b` | |
+
+Sizes named by a thread come from `@rulecad/fixings` as a machine cuts them: the thread's figure as drawn, with no
+printer's hole compensation and no teardrop roof. An access hole is the smallest of the thread's clearance holes
+wider than its hex key across the corners. A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
+wall goes as deep as the first run of metal along its line through the section, worked out from the outline.
+
+Each worked-out operation in `model.ops` keeps its `distance` from end a (0 and the length for the ends), its `face`
+and `place` (`top.1`), its frame (`anchor`), its sizes, and `line`, its line on the sheet. They are in order along the
+beam. In the solid, a tapped length is drawn over the thread's roots (its major diameter), so a screw drawn whole fits
+it; the holes, pockets and notches are cut from the preview, and a mitre from the link as well, since it changes the
+envelope an overlap check measures.
+
+**A mitre** is measured on its long side: the beam's `length` is the long side's, and the mitre says so, with the
+short side's length (`shortLength`). `{ op: 'mitre', at: 'a', angle: 45, about: 'top' }` on a 2040 cuts end a so that,
+seen from the top, the back is the long side (the default; `long: 'front'` for the other way) and the front is 40 mm
+shorter.
+
+**What a check finds** (`beam.op`): a hole wider than a slot's opening, which breaks into its lips (and the far slot's,
+right through); a hole that cuts into the side of a bore; a tap deeper than the bore runs, or taps from both ends that
+meet; a hole that crosses a tapped thread; a hole whose edge leaves less than half its diameter of metal to an end
+(`OP_DEFAULTS.edge`, warn), or runs off it (fail). Thread engagement is `@rulecad/fixings`' `engagement` in the beam's
+alloy: a thread tapped in a 1.9 mm slot floor gets a warning that aluminium wants 2 diameters. Refused by name: an
+operation the kit does not have, a key it does not take, an address of the wrong kind, a tap in a profile with no end
+bore, a thread too small for the bore, two cuts at one end, a mitre that leaves no short side, and any operation on a
+printed profile (they become features of the print in a later release).
+
 ### The solid
 
 `beam(m, { display })` takes a beam's model, or a profile with the options `beamModel` takes. `display: 'link'` is a
@@ -298,6 +352,8 @@ cut, and what prints is the parts that fasten to it. Printed beams come in a lat
 | Thin closed tube, for checking | J = 4 A_m² t / s (A_m inside the wall's mid-line, s its length), plus s t³ / 3 for the wall itself | Bredt's formula |
 | Mass per metre | area × density (mm² × g/cm³ is grams a metre) | |
 | A beam's mass | m = A × L × ρ / 1000, in grams from mm², mm and g/cm³ | A prism's volume is its section's area times its length |
+| A mitre's short side | L − w tan θ for each mitred end, w the section's side across the cut and θ the angle from square | Trigonometry |
+| Tap depth, by default | 2 × the major diameter in aluminium (1 in steel, 2.5 in plastic) | The engagement rule set in `@rulecad/rules`, through `@rulecad/fixings` |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
 | Share of a full thread a bore leaves | (major diameter − bore) / (1.299 × pitch) | The 60° thread's height is H = 0.866 pitch, and "percent of thread" counts 3/4 H a side: 1.299 pitch on the diameter |
 
@@ -333,7 +389,8 @@ lists them.
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |
-| `beamModel(profile, { length, ends?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors |
+| `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
+| `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
 | `printable(x)` | A beam or profile is bought: one `beam.printable` failure |

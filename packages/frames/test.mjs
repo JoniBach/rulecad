@@ -18,7 +18,7 @@ test('the package: ready, typed, and needing only the rules it reads', () => {
   assert.equal(frames.status.plan, 'https://github.com/JoniBach/rulecad/issues/240');
   assert.equal(frames.status.release, 'ready'); assert.ok(Object.isFrozen(frames.status));
   assert.ok(!pkg.version.startsWith('0.0.'), 'from 0.1.0 it has functions to call');
-  assert.deepEqual(Object.keys(pkg.dependencies), ['@rulecad/rules']);
+  assert.deepEqual(Object.keys(pkg.dependencies), ['@rulecad/fixings', '@rulecad/rules'], 'fixings sizes what an operation names by a thread');
   assert.deepEqual(Object.keys(pkg.peerDependencies), ['@jscad/modeling'], 'a beam\'s solid is JSCAD\'s, which a design already has');
   for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f} ships its declarations`); }
 });
@@ -443,7 +443,7 @@ test('a beam is bought: printable says so, for the beam, its solid and its profi
 test('beams refuse bad input by name, with what would be accepted', () => {
   assert.throws(() => beamModel('2040-misumi-hfs5'), /length is a number above 0, in mm from end a to end b \(got nothing\)/);
   assert.throws(() => beamModel('2040-misumi-hfs5', { length: -5 }), /length is a number above 0/);
-  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, lenght: 3 }), /no option "lenght": it takes length, ends, material, given, cells, display/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, lenght: 3 }), /no option "lenght": it takes length, ends, ops, material, given, cells, display/);
   assert.throws(() => beamModel('2040-misumi-hfs6', { length: 300 }), /no profile "2040-misumi-hfs6" \(did you mean 2040-misumi-hfs5\?\)/);
   assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, ends: 'mitred' }), /end a is cut or tapped \(got "mitred"\)/);
   assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, ends: { c: 'cut' } }), /ends names end a and end b \(got "c"\)/);
@@ -453,4 +453,95 @@ test('beams refuse bad input by name, with what would be accepted', () => {
   assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, material: 7 }), /material is a material set's name/);
   assert.throws(() => beam('2040-misumi-hfs5', { length: 300, display: 'fine' }), /display is link or preview \(got "fine"\)/);
   assert.throws(() => beamAnchor({}, 'a'), /give a beam's model/);
+});
+
+test('operations on a beam: an end tapped M5 and an access hole 10 mm from the other end, both in its solid', () => {
+  const V = jscad.measurements.measureVolume;
+  const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-10', thread: 'M5' }] });
+  // dimensioned from end a, in order along the beam, with a square cut at each end that has no cut of its own
+  assert.deepEqual(b.ops.map((o) => `${o.op} ${o.at} ${o.distance}${o.implied ? ' implied' : ''}`), ['tap a 0', 'cut a 0 implied', 'access top@-10 290', 'cut b 300 implied']);
+  const tap = b.ops[0], access = b.ops[2];
+  // the tap through fixings: its tap drill, and 2 diameters of thread for aluminium (the engagement rule set)
+  assert.deepEqual([tap.thread, tap.bores, tap.tapDrill, tap.major, tap.depth, tap.engagement.class, tap.engagement.enough], ['M5', ['a.1'], 4.2, 5, 10, 'aluminium', true]);
+  assert.deepEqual(b.ends.a, { kind: 'tapped', thread: 'M5' }); assert.equal(b.bores.find((x) => x.name === 'a.1').tapped, true);
+  // the access hole: the smallest of M5's clearances that passes a 4 mm key's corners, through the slot's floor into the bore
+  assert.deepEqual([access.diameter, access.key, access.rule, access.place, access.depth], [5.3, 4, 'm5.clearance_close', 'top.1', 7.897]); // (7.9 to a true circle: the bore is drawn as a polygon of its area)
+  assert.match(access.line, /access hole Ø5\.3 mm in top\.1, 290 mm from end a \(10 from end b\), 7\.9 mm deep for a 4 mm key/);
+  assert.deepEqual(b.findings.filter((f) => f.level !== 'info').map((f) => f.text), []);
+  // both in the solid: the tapped length drawn over the thread's roots, Ø5 for 10 mm round the Ø4.2 bore, and the
+  // access hole through 1.9 mm of slot floor
+  const whole = V(beam(beamModel('2020-misumi-hfs5', { length: 300 }))), cut = V(beam(b));
+  const tapped = (Math.PI / 4) * (5 ** 2 - 4.2 ** 2) * 10, hole = (Math.PI / 4) * 5.3 ** 2 * 1.9;
+  within(whole - cut, tapped + hole, 0.03, 'metal taken out');
+  const onlyTap = whole - V(beam(beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a' }] })));
+  within(onlyTap, tapped, 0.03, 'the tap alone'); within(whole - cut - onlyTap, hole, 0.05, 'the access hole alone');
+  // ends: 'tapped' is a tap at that end
+  assert.deepEqual(beamModel('2040-misumi-hfs5', { length: 300, ends: { b: 'tapped' } }).ops.filter((o) => o.op === 'tap').map((o) => `${o.at} ${o.bores}`), ['b b.1,b.2']);
+});
+
+test('a tap in a profile with no end bore is refused by name, as is bad input to any operation', () => {
+  assert.throws(() => beamModel('tube-al-20x20x2', { length: 300, ops: [{ op: 'tap', at: 'a', thread: 'M5' }] }), /ops\[0\] \(tap\): profile-tube-al-20x20x2 has no bore in its ends to tap \(no bore_diameter\)/);
+  const r = (ops, re) => assert.throws(() => beamModel('2020-misumi-hfs5', { length: 300, ops }), re);
+  r([{ op: 'weld', at: 'a' }], /no operation "weld": there are cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr/);
+  r([{ op: 'tap', at: 'a', size: 5 }], /\(tap\): no "size": tap takes at, thread, depth/);
+  r([{ op: 'tap', at: 'top@10' }], /a tap is in an end bore/);
+  r([{ op: 'tap', at: 'a.2' }], /has no bore a\.2: it has a\.1, b\.1/);
+  r([{ op: 'tap', at: 'a', thread: 'M4' }], /bore is Ø4\.2 mm, as wide as an M4 thread \(Ø4\): no thread can be cut in it/);
+  r([{ op: 'drill', at: 'a', diameter: 5 }], /drill is on a face, not an end/);
+  r([{ op: 'drill', at: 'top@400', diameter: 5 }], /"top@400" is past the end of profile-2020-misumi-hfs5 x 300: it is 300 mm long/);
+  r([{ op: 'drill', at: 'top@100' }], /give a thread \(M5\) or a diameter in mm/);
+  r([{ op: 'drill', at: 'top@100', thread: 'M5', through: 'half' }], /through is wall .* or beam/);
+  r([{ op: 'mitre', at: 'a', angle: 90, about: 'top' }], /angle is from square, above 0 and under 90 degrees/);
+  r([{ op: 'mitre', at: 'a', angle: 45, about: 'top', long: 'top' }], /long is the side the length is measured on, square to top: front or back/);
+  r([{ op: 'mitre', at: 'a', angle: 45, about: 'top' }, { op: 'cut', at: 'a' }], /end a is cut once/);
+  r([{ op: 'notch', at: 'top@100' }], /\(notch\): give length/);
+  r([{ op: 'pocket', at: 'top@100', depth: 2 }], /give size, \[along, across\] in mm, or outline/);
+  assert.throws(() => beamModel('tube', { length: 300, ops: [{ op: 'notch', at: 'top@100', length: 10 }] }), /a notch cuts a slot's lips away, and top\.1 is a closed face/);
+  assert.throws(() => beamModel('2020-misumi-hfs5', { length: 300, ops: 'tap' }), /ops is a list of operations/);
+});
+
+test('a mitre: by angle about a named face, its length on the long side and said so, and cut from the link too', () => {
+  const V = jscad.measurements.measureVolume;
+  for (const [about, end] of [['top', 'a'], ['top', 'b'], ['front', 'a'], ['back', 'b']]) {
+    const m = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'mitre', at: end, angle: 45, about }] }), mitre = m.ops.find((o) => o.op === 'mitre');
+    assert.equal(m.length, 300); assert.equal(mitre.shortLength, 280);
+    // a 45° mitre on a 20 mm side takes half a 20 mm cube off the box, and the true section loses the same share
+    within(V(beam(m, { display: 'link' })), 20 * 20 * 300 - 20 ** 3 / 2, 1e-9, `${about} ${end} link`);
+    within(V(beam(m)), m.area * (300 - 10), 1e-6, `${about} ${end} preview`);
+    assert.ok(m.findings.some((f) => f.code === 'beam.op' && f.level === 'info' && /its 300 mm is measured on the long side, (back|top); mitred, the (front|bottom) is 280 mm/.test(f.text)));
+  }
+  // a frame's corner: both ends at 45° about the top, the back long; 30° on a 40 mm side takes 23.09 mm
+  const both = beamModel('2040-misumi-hfs5', { length: 500, ops: [{ op: 'mitre', at: 'a', angle: 45, about: 'top' }, { op: 'mitre', at: 'b', angle: 45, about: 'top' }] });
+  assert.equal(both.ops.find((o) => o.op === 'mitre').shortLength, 420);
+  assert.match(both.ops[0].line, /mitre end a 45° about top: the back is the long side, 500 mm \(the length\); the front is 420 mm/);
+  assert.equal(beamModel('2040-misumi-hfs5', { length: 500, ops: [{ op: 'mitre', at: 'a', angle: 30, about: 'top' }] }).ops[0].cut, 23.094);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 60, ops: [{ op: 'mitre', at: 'a', angle: 45, about: 'top' }, { op: 'mitre', at: 'b', angle: 45, about: 'top' }] }), /the short side would be -20 mm long/);
+});
+
+test('beam.op checks: a hole into a slot\'s lips or a bore\'s side, a tap deeper than the bore, a hole too near an end, thread engagement', () => {
+  const ops = (o, p = '2020-misumi-hfs5', length = 300) => beamModel(p, { length, ops: o }).findings.filter((f) => f.level !== 'info');
+  const say = (fs) => fs.map((f) => `${f.level} ${f.code}`);
+  // a 6.6 mm clearance for M6 in a 6 mm slot opening breaks the lips; right through, the far slot's too
+  const lips = ops([{ op: 'drill', at: 'front@150', thread: 'M6', through: 'beam' }]);
+  assert.deepEqual(say(lips), ['warn beam.op', 'warn beam.op']); assert.match(lips[0].text, /\(Ø6\.6 mm\) is wider than front\.1's slot opening \(6 mm\): it breaks into the slot's lips/); assert.match(lips[1].text, /comes out in back\.1's slot/);
+  // a hole off the bore's centre line cuts into its side
+  const side = beamModel(profileModel('2020-misumi-hfs5', { bore_at: '2.5,0' }), { length: 300, ops: [{ op: 'drill', at: 'top@100', diameter: 4 }] }).findings.filter((f) => f.code === 'beam.op');
+  assert.match(side[0].text, /breaks into the side of the bore at 2\.5, 0 \(Ø4\.2\), 2\.5 mm off its centre/);
+  // a tap deeper than the bore runs, and taps at both ends that meet
+  assert.match(ops([{ op: 'tap', at: 'a', depth: 320 }])[0].text, /is 320 mm deep, deeper than the bore, which runs the beam's 300 mm/);
+  assert.match(ops([{ op: 'tap', at: 'a' }, { op: 'tap', at: 'b', depth: 25 }], '2020-misumi-hfs5', 30).find((f) => f.level === 'fail').text, /the taps at end a \(10 mm\) and end b \(25 mm\) run into each other in a 30 mm beam/);
+  // too near an end: under half a diameter of metal warns, past the end fails, and a hole across a tapped thread fails
+  assert.match(ops([{ op: 'drill', at: 'top@4', thread: 'M5' }])[0].text, /leaves 1\.25 mm of metal to end a, under the 2\.75 mm/);
+  assert.match(ops([{ op: 'drill', at: 'top@2', thread: 'M5' }])[0].text, /runs off end a: its edge is 0\.75 mm past it/);
+  const crossed = ops([{ op: 'tap', at: 'a' }, { op: 'drill', at: 'top@8', diameter: 3 }]);
+  assert.deepEqual(say(crossed), ['fail beam.op']); assert.match(crossed[0].text, /crosses the M5 thread tapped 10 mm into a\.1: move it past 11\.5 mm/);
+  assert.deepEqual(ops([{ op: 'tap', at: 'a' }, { op: 'drill', at: 'top@12', diameter: 3 }]), []);
+  // a thread tapped in a 1.9 mm slot floor engages too little aluminium (fixings' engagement)
+  const thin = ops([{ op: 'drill', at: 'top@100', thread: 'M5', kind: 'tap' }]);
+  assert.deepEqual(say(thin), ['warn engagement.depth']); assert.match(thin[0].text, /tapped hole at top@100: an M5 screw 1\.897 mm into aluminium .* engagement\.aluminium asks 2 \(10 mm\)/);
+  // the rest cut cleanly where they fit: a counterbore on a closed face, a pocket, a notch, deburring
+  const t = beamModel('tube-al-40x20x2', { length: 300, ops: [{ op: 'counterbore', at: 'top@100', thread: 'M5' }, { op: 'pocket', at: 'front@200', size: [20, 8], depth: 2 }, { op: 'deburr', at: 'b' }] });
+  assert.deepEqual(t.ops.map((o) => o.line), ['cut end a square', 'counterbore Ø10 x 5 mm for M5 cap head in top.1, 100 mm from end a, with a Ø5.5 mm hole through the wall (5 mm)', 'pocket 20 x 8 mm, corners R1.5, 2 mm deep in front.1, centred 200 mm from end a', 'deburr end b', 'cut end b square']);
+  const n = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'notch', at: 'top@50%', length: 12 }] });
+  within(jscad.measurements.measureVolume(beam(beamModel('2020-misumi-hfs5', { length: 300 }))) - jscad.measurements.measureVolume(beam(n)), 2 * 12 * 3 * 2, 0.02, 'the notch takes both lips');
 });

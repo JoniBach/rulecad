@@ -7,15 +7,16 @@
 // middle of its envelope on the z axis, top +y, bottom -y, front -x, back +x). Units: mm, grams, degrees.
 import jscad from '@jscad/modeling';
 import { profileModel, section, beamFigures, outline, DEFAULTS } from './profile.mjs';
+import { opsOf, opCutters } from './ops.mjs';
 
-const { cuboid, cylinder, polygon } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { translate } = jscad.transforms;
+const { cuboid, cylinder, polygon } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { subtract } = jscad.booleans;
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const mm = (x) => String(+Number(x).toFixed(2));
 const FACES = ['top', 'bottom', 'front', 'back'];
 const END_KINDS = ['cut', 'tapped'];
 const DISPLAYS = ['link', 'preview'];
-const OPTIONS = ['length', 'ends', 'material', 'given', 'cells', 'display'];
+const OPTIONS = ['length', 'ends', 'ops', 'material', 'given', 'cells', 'display'];
 const ROUND = ['round-tube', 'round-bar'];
 
 /**
@@ -32,7 +33,7 @@ const ROUND = ['round-tube', 'round-bar'];
  *   area: number, centroid: [number, number], mass: number | null, centreOfMass: [number, number, number],
  *   weight: { computed: number | null, sheet: number | null, difference: number | null },
  *   figures: Record<string, { value: number | null, unit: string, kind: string, source: string, from: 'sheet' | 'outline' }>,
- *   places: Place[], bores: EndBore[], anchors: Record<string, Anchor>, bought: true, printed: false,
+ *   places: Place[], bores: EndBore[], anchors: Record<string, Anchor>, ops: object[], bought: true, printed: false,
  *   rests: object[], findings: object[] }} Beam
  */
 
@@ -44,7 +45,7 @@ function endsOf(what, ends, m) {
   const threaded = m.bores.filter((b) => b.thread != null);
   return Object.fromEntries(pair.map((k, i) => {
     const end = 'ab'[i];
-    if (!END_KINDS.includes(k)) throw new Error(`${what}: end ${end} is ${END_KINDS.join(' or ')} (got ${shown(k)}). Mitres, drilling and the rest are operations on a beam, in a later release`);
+    if (!END_KINDS.includes(k)) throw new Error(`${what}: end ${end} is ${END_KINDS.join(' or ')} (got ${shown(k)}). A mitre, a drilled hole and the rest are operations: { ops: [{ op: 'mitre', at: 'a', angle: 45, about: 'top' }] }`);
     if (k === 'tapped' && !threaded.length) throw new Error(`${what}: end ${end} is tapped, and ${m.name} has no bore with a thread to tap (bore_thread): leave it cut, or give the profile a bore_thread`);
     return [end, { kind: k, thread: k === 'tapped' ? threaded[0].thread : null }];
   }));
@@ -55,8 +56,10 @@ function endsOf(what, ends, m) {
  * design it with, and its anchors. A beam is bought: it is cut from stock, and its supply is checked.
  * @param {Profile | string | object} profile a profile's model, or what profileModel takes ('2040-misumi-hfs5', or a rule set)
  * @param {{ length: number, ends?: 'cut' | 'tapped' | ['cut' | 'tapped', 'cut' | 'tapped'] | { a?: 'cut' | 'tapped', b?: 'cut' | 'tapped' },
- *   material?: string, given?: object, cells?: number }} o length: mm, end a to end b; ends: each end cut square (the default),
- *   or tapped (its bores carry the profile's bore_thread); material: a material set's name in place of the profile's
+ *   ops?: object[], material?: string, given?: object, cells?: number }} o length: mm, end a to end b (on the long side where
+ *   an end is mitred); ends: each end cut square (the default), or tapped (a tap op at that end, in the profile's bore_thread);
+ *   ops: operations, each { op, at, ... } as OPS lists (cut, mitre, tap, access, drill, counterbore, pocket, notch,
+ *   deburr), placed by an address on the beam (a, a.1, top@120); the model's ops are them worked out, dimensioned from end a; material: a material set's name in place of the profile's
  *   alloy (so a frame can be weighed in another metal or a plastic); given: profileModel's third argument; cells: raster
  *   cells for the torsion constant where the sheet gives none
  * @returns {Beam}
@@ -105,15 +108,27 @@ export function beamModel(profile, o = {}) {
   if (longest > 0 && L > longest + 1e-9) findings.push({ level: 'warn', code: 'beam.length', text: `${name}: ${mm(L)} mm is longer than ${m.name} is sold or cut in (${mm(longest)} mm): it needs a joint along its length`, rule: cutMax != null ? 'cut_length_max' : 'lengths', values: { length: L, longest } });
   if (cutMin != null && L < cutMin - 1e-9) findings.push({ level: 'warn', code: 'beam.length', text: `${name}: ${mm(L)} mm is shorter than the ${mm(cutMin)} mm the maker cuts ${m.name} to: cut it yourself, or ask`, rule: 'cut_length_min', values: { length: L, cutMin } });
   const rests = [m.figures.area, m.figures.mass_per_metre, ...(m.material ? [m.material.figures.density] : [])].filter(Boolean).map((f) => ({ value: f.value, ...(f.unit ? { unit: f.unit } : {}), kind: f.kind, source: f.source }));
-  return { kind: 'beam', name, title, profile: m, length: L, ends,
+  const b = { kind: 'beam', name, title, profile: m, length: L, ends,
     material: m.material ? { name: m.material.name, density, modulus: m.material.modulus, given: changed } : null,
-    area: s.area, centroid: s.centroid, mass, centreOfMass, weight, figures: fig, places, bores, anchors, bought: true, printed: false, rests, findings };
+    area: s.area, centroid: s.centroid, mass, centreOfMass, weight, figures: fig, places, bores, anchors, ops: [], bought: true, printed: false, rests, findings };
+  // operations: those given, a tap for an end said to be tapped, and a square cut at an end with no cut of its own
+  const given_ = o.ops ?? [];
+  if (!Array.isArray(given_)) throw new Error(`${what}: ops is a list of operations, [{ op: 'tap', at: 'a' }] (got ${shown(o.ops)})`);
+  const list = [...given_];
+  for (const e of ['a', 'b']) if (ends[e].kind === 'tapped' && !list.some((x) => x?.op === 'tap' && String(x.at ?? '').trim()[0] === e)) list.push({ op: 'tap', at: e });
+  let done;
+  try { done = opsOf(b, list, beamAnchor); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); }
+  for (const x of done.ops) if (x.op === 'tap') { ends[x.end] = { kind: 'tapped', thread: x.thread }; for (const bo of bores) if (x.bores.includes(bo.name)) bo.tapped = true; }
+  for (const e of ['a', 'b']) if (!done.ops.some((x) => x.end === e && (x.op === 'cut' || x.op === 'mitre'))) done.ops.push({ op: 'cut', at: e, end: e, face: null, place: null, distance: e === 'a' ? 0 : L, line: `cut end ${e} square`, implied: true });
+  b.ops = done.ops.sort((p, q) => p.distance - q.distance); b.findings.push(...done.findings);
+  return b;
 }
 
 /**
  * A beam as a solid, lying along z from end a at z = 0. display: 'link' is a plain box of the section's envelope (a
  * round section a twelve-sided prism): 12 triangles, light enough for a link and an overlap check. 'preview' (the
- * default) is the true section, every slot, bore and hollow, run the whole length.
+ * default) is the true section, every slot, bore and hollow, run the whole length. Each operation is cut from it: a
+ * mitre from the link too (its envelope changes), the holes, pockets and notches from the preview only.
  * @param {Beam | Profile | string | object} m a beam's model, or a profile with { length } as beamModel takes
  * @param {{ display?: 'link' | 'preview', length?: number, ends?: any, material?: string, given?: object, cells?: number }} [o]
  * @returns {object} a JSCAD geom3, with .model holding beamModel's numbers (its anchors and mass)
@@ -125,6 +140,8 @@ export function beam(m, o = {}) {
   let solid;
   if (display === 'link') solid = ROUND.includes(p.family) ? cylinder({ radius: p.width / 2, height: L, segments: 12, center: [0, 0, L / 2] }) : cuboid({ size: [p.width, p.height, L], center: [0, 0, L / 2] });
   else solid = extrudeLinear({ height: L }, polygon({ points: outline(p).loops }));
+  const cuts = opCutters(b, { envelope: display === 'link' }); // (a link keeps its box, cut only where an end is mitred)
+  if (cuts.length) solid = subtract(solid, ...cuts);
   return Object.assign(solid, { model: b, display });
 }
 

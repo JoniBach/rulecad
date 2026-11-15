@@ -1,7 +1,7 @@
 {
   "name": "@rulecad/frames",
-  "version": "0.1.3",
-  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, and its solid as a light box or the true section. Joins, fittings and guides follow.",
+  "version": "0.1.4",
+  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, the operations on it (cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) checked, and its solid as a light box or the true section. Joins, fittings and guides follow.",
   "type": "module",
   "exports": {
     ".": {
@@ -14,11 +14,13 @@
     "frames.mjs",
     "profile.mjs",
     "beam.mjs",
+    "ops.mjs",
     "section.mjs",
     "catalogue.mjs",
     "frames.d.mts",
     "profile.d.mts",
     "beam.d.mts",
+    "ops.d.mts",
     "section.d.mts",
     "catalogue.d.mts",
     "README.md",
@@ -46,6 +48,7 @@
     "@jscad/modeling": "^2.12.0"
   },
   "dependencies": {
+    "@rulecad/fixings": "^0.1.1",
     "@rulecad/rules": "^0.3.13"
   }
 }
