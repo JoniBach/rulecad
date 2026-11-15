@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import * as frames from '@rulecad/frames';
 import { SETS } from './catalogue.mjs';
 import { gap, inside } from './section.mjs';
+import jscad from '@jscad/modeling';
 
-const { profileModel, slotModel, slotPath, outline, section, profileFindings, readOutline, polygonSection, torsionConstant, signedArea, DEFAULTS } = frames;
+const { beamModel, beam, beamAnchor, printable, profileModel, slotModel, slotPath, outline, section, profileFindings, readOutline, polygonSection, torsionConstant, signedArea, DEFAULTS } = frames;
 const rulesDir = new URL('../rules/', import.meta.url);
 const published = fs.readdirSync(rulesDir).filter((f) => f.endsWith('.json') && !['package.json', 'vocabulary.json'].includes(f)).map((f) => JSON.parse(fs.readFileSync(new URL(f, rulesDir), 'utf8')));
 const rule = (value, unit) => ({ value, ...(unit != null ? { unit } : {}), rule: 'A figure for a test', kind: 'estimate', source: 'this test', checked: '2026-11-15' });
@@ -18,6 +19,7 @@ test('the package: ready, typed, and needing only the rules it reads', () => {
   assert.equal(frames.status.release, 'ready'); assert.ok(Object.isFrozen(frames.status));
   assert.ok(!pkg.version.startsWith('0.0.'), 'from 0.1.0 it has functions to call');
   assert.deepEqual(Object.keys(pkg.dependencies), ['@rulecad/rules']);
+  assert.deepEqual(Object.keys(pkg.peerDependencies), ['@jscad/modeling'], 'a beam\'s solid is JSCAD\'s, which a design already has');
   for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f} ships its declarations`); }
 });
 
@@ -352,4 +354,103 @@ test('a V mouth and a sloped lip are drawn where a slot has them', () => {
   // the inch series name the kit's inch threads, and hold millimetres with the inch figure in the rule
   assert.deepEqual([profileModel('1010-8020').bores[0].threadSet, profileModel('1530-8020').bores[0].threadSet, profileModel('1515-8020').width], ['unc_1_4_20', 'unc_5_16_18', 38.1]);
   assert.match(SETS['slot-6-8020'].rules.opening.rule, /\.256 in/); assert.equal(slotModel('slot-6-8020').lipAngle, 2, '80/20\'s drop lock');
+});
+
+const triangles = (g) => jscad.geometries.geom3.toPolygons(g).reduce((n, p) => n + p.vertices.length - 2, 0);
+
+test('a 300 mm 2040 beam: its mass within 2% of the sheet\'s mass per metre, its second moments within 5%, its link solid under 200 triangles', () => {
+  // three makers' 40 x 20 sections, each from its own sheet: MISUMI HFS5-2040, item Profile 8 40x20 Line 5, Bosch Rexroth 20x40
+  for (const name of ['2040-misumi-hfs5', '2040-item-5', '2040-bosch']) {
+    const b = beamModel(name, { length: 300 }), p = b.profile;
+    within(b.mass, p.sheet.massPerMetre * 300, 0.02, `${name} mass, g`);
+    within(b.weight.sheet, p.sheet.massPerMetre * 300, 1e-12, `${name} the sheet's mass`);
+    within(b.mass, (b.area * 300 * p.material.density) / 1000, 1e-12, `${name} mass is the section's area x length x density`);
+    const s = section(p, { torsion: false });
+    within(s.inertiaX, p.sheet.inertiaX, 0.05, `${name} Ix`); within(s.inertiaY, p.sheet.inertiaY, 0.05, `${name} Iy`);
+    const link = beam(b, { display: 'link' });
+    assert.ok(triangles(link) < 200, `${name} link: ${triangles(link)} triangles`); assert.equal(triangles(link), 12, 'a plain box');
+    assert.deepEqual(jscad.measurements.measureBoundingBox(link), [[-20, -10, 0], [20, 10, 300]]);
+    // the preview is the true section: its volume is the drawn area run the whole length
+    const preview = beam(b);
+    within(jscad.measurements.measureVolume(preview), s.area * 300, 1e-6, `${name} preview volume`);
+    assert.deepEqual(jscad.measurements.measureBoundingBox(preview).map((c) => c.map((x) => +x.toFixed(6))), [[-20, -10, 0], [20, 10, 300]]);
+    assert.ok(triangles(preview) > 500, 'every slot, bore and hollow');
+    assert.equal(preview.model, b); assert.equal(preview.display, 'preview');
+    assert.deepEqual(b.findings.map((f) => `${f.level} ${f.code}`), ['info beam.mass']);
+  }
+  assert.match(beamModel('2040-misumi-hfs5', { length: 300 }).findings[0].text, /264\.\d+ g, from the drawn section's 326\.2\d* mm² and al6n01-t5's density 2\.7 g\/cm³; the sheet's 0\.88 kg\/m gives 264 g \(\+0\.1%\)/);
+});
+
+test('a beam\'s mass and centre of mass from its section and its alloy, and the sheet\'s figure said where the section is not the maker\'s', () => {
+  // a plain tube, exactly: 25² less 21², 100 mm of 6063 at 2.7 g/cm³
+  const t = beamModel('tube', { length: 100, material: 'al6063-t5' });
+  within(t.mass, (25 * 25 - 21 * 21) * 100 * 2.7 / 1000, 1e-9, 'tube mass'); assert.deepEqual(t.centreOfMass, [0, 0, 50]);
+  // an angle's centre of mass is off the envelope's middle, toward its corner: x̄ = ȳ = (W² + W t - t²) / (2 (2W - t)) - W/2 for equal legs
+  const W = 30, th = 3, a = beamModel(profileModel('angle', { width: W, height: W, wall: th, material: 'al6063-t5' }), { length: 200 }), c = (W * W + W * th - th * th) / (2 * (2 * W - th)) - W / 2;
+  assert.ok(Math.abs(a.centreOfMass[0] - c) < 1e-6 && Math.abs(a.centreOfMass[1] - c) < 1e-6 && a.centreOfMass[2] === 100, `angle centre ${a.centreOfMass}`);
+  // another material: the same section weighed in it, and the sheet's mass no longer compared
+  const pla = beamModel('2040-misumi-hfs5', { length: 1000, material: 'al6063-t5' });
+  assert.equal(pla.material.name, 'al6063-t5'); assert.equal(pla.material.given, true); assert.equal(pla.weight.sheet, null);
+  assert.equal(pla.figures.massPerMetre.from, 'outline'); assert.equal(beamModel('2040-misumi-hfs5', { length: 1000 }).figures.massPerMetre.from, 'sheet');
+  // a light section whose hollows the dimensions do not describe weighs heavy, and the beam says to weigh it by the sheet
+  const light = beamModel('4040-bosch-l', { length: 300 }), warn = light.findings.find((f) => f.level === 'warn');
+  assert.equal(warn.code, 'beam.mass'); assert.match(warn.text, /\+11\.\d% from the sheet's mass per metre, past the 5%.*weigh it by the sheet's 450 g/); assert.equal(warn.values.sheet, 450);
+  // the figures to design with are beamFigures': the sheet's where it gives one
+  assert.equal(light.figures.inertiaX.value, light.profile.sheet.inertiaX); assert.equal(light.figures.inertiaX.from, 'sheet');
+  // a length past what it is sold in, and no material
+  const long = beamModel('2040-misumi-hfs5', { length: 4500 });
+  assert.ok(long.findings.some((f) => f.code === 'beam.length' && /longer than profile-2040-misumi-hfs5 is sold or cut in \(4000 mm\)/.test(f.text)), JSON.stringify(long.findings));
+  const bare = beamModel(plain('bar', 20, 5), { length: 100 });
+  assert.equal(bare.mass, null); assert.match(bare.findings[0].text, /names no material with a density/);
+});
+
+test('a beam\'s anchors: its ends, the bores in each end, and every place each face offers, with addresses along a face', () => {
+  const b = beamModel('2040-misumi-hfs5', { length: 300, ends: { a: 'tapped' } });
+  assert.deepEqual(Object.keys(b.anchors), ['a', 'b', 'a.1', 'a.2', 'b.1', 'b.2', 'top.1', 'top', 'top.2', 'bottom.1', 'bottom', 'bottom.2', 'front.1', 'front', 'back.1', 'back']);
+  assert.deepEqual(b.anchors.a, { origin: [0, 0, 0], axis: [0, 0, -1], ref: [0, 1, 0] });
+  assert.deepEqual(b.anchors.b, { origin: [0, 0, 300], axis: [0, 0, 1], ref: [0, 1, 0] });
+  assert.deepEqual(b.anchors['b.2'], { origin: [10, 0, 300], axis: [0, 0, 1], ref: [0, 1, 0] });
+  assert.deepEqual(b.anchors['top.2'], { origin: [10, 10, 150], axis: [0, 1, 0], ref: [0, 0, 1] });
+  assert.deepEqual(b.anchors.front, { origin: [-20, 0, 150], axis: [-1, 0, 0], ref: [0, 0, 1] });
+  assert.deepEqual(b.ends, { a: { kind: 'tapped', thread: 'M5' }, b: { kind: 'cut', thread: null } });
+  assert.deepEqual(b.bores.map((x) => `${x.name} ${x.tapped}`), ['a.1 true', 'a.2 true', 'b.1 false', 'b.2 false']);
+  assert.deepEqual(b.places.find((p) => p.name === 'top.2'), { name: 'top.2', face: 'top', index: 2, slot: 'slot-6-misumi', at: [10, 10], normal: [0, 1], along: [1, 0], depth: 6 });
+  assert.deepEqual(beamAnchor(b, 'top@120'), { name: 'top', origin: [-10, 10, 120], axis: [0, 1, 0], ref: [0, 0, 1], distance: 120 });
+  assert.equal(beamAnchor(b, 'top.2@-20').origin[2], 280); assert.equal(beamAnchor(b, 'back@50%').origin[2], 150); assert.equal(beamAnchor(b, 'front@-0').origin[2], 300);
+  assert.deepEqual(beamAnchor(b, 'a.1'), { name: 'a.1', origin: [-10, 0, 0], axis: [0, 0, -1], ref: [0, 1, 0], distance: null });
+  assert.throws(() => beamAnchor(b, 'top@320'), /"top@320" is past the end of profile-2040-misumi-hfs5 x 300: it is 300 mm long/);
+  assert.throws(() => beamAnchor(b, 'top@120%'), /it is 300 mm long/);
+  assert.throws(() => beamAnchor(b, 'top.3@10'), /has no "top\.3@10": it has a, b, a\.1/);
+  assert.throws(() => beamAnchor(b, 'a@10'), /an end is where it is/);
+  assert.throws(() => beamAnchor(b, 'top@ten'), /the distance is in mm from end a/);
+  // a C-beam: the places inside the C are on the same faces, numbered after the outside ones of the same column or row
+  const c = beamModel('4080-openbuilds-cbeam', { length: 500 });
+  assert.deepEqual(c.places.filter((p) => p.face === 'top').map((p) => `${p.name} ${p.at}`), ['top.1 -30,20', 'top.2 -10,0', 'top.3 10,0', 'top.4 30,20']);
+  assert.deepEqual(c.places.filter((p) => p.face === 'front').map((p) => `${p.name} ${p.index} ${p.at}`), ['front.1 1 -40,-10', 'front.2 2 -40,10', 'front.3 2 20,10']);
+  // a round bar's link is a twelve-sided prism
+  assert.equal(triangles(beam(profileModel('round-bar', { width: 12, height: 12, material: 'al6063-t5' }), { length: 50, display: 'link' })), 48);
+});
+
+test('a beam is bought: printable says so, for the beam, its solid and its profile', () => {
+  const b = beamModel('2020-misumi-hfs5', { length: 200 });
+  for (const x of [b, beam(b, { display: 'link' })]) assert.deepEqual(printable(x).map((f) => `${f.level} ${f.code}`), ['fail beam.printable']);
+  assert.match(printable(b)[0].text, /profile-2020-misumi-hfs5 x 200 is a bought beam: cut from profile-2020-misumi-hfs5 stock and fitted, not printed/);
+  assert.match(printable(b.profile)[0].text, /is a bought profile/);
+  assert.equal(b.bought, true); assert.equal(b.printed, false);
+  assert.throws(() => printable({}), /printable: give a beam's model/);
+});
+
+test('beams refuse bad input by name, with what would be accepted', () => {
+  assert.throws(() => beamModel('2040-misumi-hfs5'), /length is a number above 0, in mm from end a to end b \(got nothing\)/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: -5 }), /length is a number above 0/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, lenght: 3 }), /no option "lenght": it takes length, ends, material, given, cells, display/);
+  assert.throws(() => beamModel('2040-misumi-hfs6', { length: 300 }), /no profile "2040-misumi-hfs6" \(did you mean 2040-misumi-hfs5\?\)/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, ends: 'mitred' }), /end a is cut or tapped \(got "mitred"\)/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, ends: { c: 'cut' } }), /ends names end a and end b \(got "c"\)/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, ends: ['cut'] }), /ends is cut or tapped for both ends, \[a, b\], or \{ a, b \}/);
+  assert.throws(() => beamModel('tube', { length: 300, ends: 'tapped' }), /end a is tapped, and profile-tube has no bore with a thread to tap/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, material: 'unobtainium' }), /there is no "unobtainium"/);
+  assert.throws(() => beamModel('2040-misumi-hfs5', { length: 300, material: 7 }), /material is a material set's name/);
+  assert.throws(() => beam('2040-misumi-hfs5', { length: 300, display: 'fine' }), /display is link or preview \(got "fine"\)/);
+  assert.throws(() => beamAnchor({}, 'a'), /give a beam's model/);
 });
