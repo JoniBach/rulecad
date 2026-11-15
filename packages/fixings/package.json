@@ -17,6 +17,7 @@
     "seats.mjs",
     "hardware.mjs",
     "threads.mjs",
+    "strength.mjs",
     "draw.mjs",
     "fixings.d.mts",
     "model.d.mts",
@@ -24,6 +25,7 @@
     "seats.d.mts",
     "hardware.d.mts",
     "threads.d.mts",
+    "strength.d.mts",
     "draw.d.mts",
     "README.md",
     "LICENSE"

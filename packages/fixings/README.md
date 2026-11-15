@@ -313,6 +313,14 @@ cuts one in a part, and `screw(m, { display: 'thread' })` and `nut(m, { display:
 it. The forms are the ISO metric thread (ISO 68-1), the unified inch thread and the trapezoidal thread of a lead screw
 (ISO 2904: `'Tr8x8(P2)'`, or `'T8'` for the catalogue's). This section is finished with the rest of the document.
 
+## Strength and length
+
+`engagement(m, { depth, material })` says whether enough thread is engaged, `stripping(m, { depth, material })` gives
+the load that strips an internal thread against the screw's own proof load, `preload(m, { torque })` and
+`torqueFor(m, { force })` turn a tightening torque into a clamp force and back, `seating(m, { head, material })` gives
+the pressure under a head and the washer that would bring it within, and `lengthFor(stack, m, { into })` picks the
+sold length that fits a stack of parts. This section is finished with the rest of the document.
+
 ## Licence
 
 MIT.
