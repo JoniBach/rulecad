@@ -1,0 +1,18 @@
+{
+  "_doc": "Bosch Rexroth's T-bolt M6x20 for its 8 mm slot, M6 (3 842 523 921). Sold as M6x16, M6x20 and M6x25; this set is the M6x20. Fmax is Rexroth's.",
+  "name": "slot-nut-8-bosch-m6-t-bolt",
+  "part": "slot_nut",
+  "rules": {
+    "slot": { "value": "slot-8-bosch", "rule": "Made for Rexroth's 8 mm slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6", "checked": "2026-11-15" },
+    "thread": { "value": "M6", "rule": "Thread M6, one of the sizes the table lists (M6)", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6", "checked": "2026-11-15" },
+    "nut_kind": { "value": "t-bolt", "rule": "A bolt with a T head, dropped in and turned; a notch on its end shows which way the head lies", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6", "checked": "2026-11-15" },
+    "length": { "value": 8, "unit": "mm", "rule": "The head along the slot: not dimensioned; taken as Rexroth's 8 mm T-nut (8)", "kind": "estimate", "source": "scaled off Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6 (not dimensioned)", "checked": "2026-11-15" },
+    "width": { "value": 16.5, "unit": "mm", "rule": "The head across the slot: not dimensioned; taken as Rexroth's 8 mm T-nut (16.5), which turns until it jams", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6: not dimensioned there, so an estimate", "checked": "2026-11-15" },
+    "height": { "value": 6, "unit": "mm", "rule": "The head under the lips: not dimensioned; taken as Rexroth's 8 mm T-nut (6)", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6: not dimensioned there, so an estimate", "checked": "2026-11-15" },
+    "tongue_height": { "value": 1.5, "unit": "mm", "rule": "The step into the opening: taken as Rexroth's 8 mm T-nut (1.5)", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6: not dimensioned there, so an estimate", "checked": "2026-11-15" },
+    "nut_entry": { "value": "anywhere", "rule": "Put in through the opening anywhere along the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6", "checked": "2026-11-15" },
+    "bolt_length": { "value": 20, "unit": "mm", "rule": "M6x20: L = 20, of which b = 14 is threaded (the table)", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6", "checked": "2026-11-15" },
+    "material": { "value": "steel, galvanized", "rule": "Material as the table names it", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6", "checked": "2026-11-15" },
+    "hold": { "value": 4000, "unit": "N", "rule": "Fmax 4000 N, as the catalogue rates it for the 8 mm slot (M6): the pull straight out of the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-6", "checked": "2026-11-15" }
+  }
+}

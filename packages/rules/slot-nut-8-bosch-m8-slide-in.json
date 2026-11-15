@@ -1,0 +1,17 @@
+{
+  "_doc": "Bosch Rexroth's sliding block for its 8 mm slot, M8 (3 842 514 931). Fmax is Rexroth's for the M8.",
+  "name": "slot-nut-8-bosch-m8-slide-in",
+  "part": "slot_nut",
+  "rules": {
+    "slot": { "value": "slot-8-bosch", "rule": "Made for Rexroth's 8 mm slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "thread": { "value": "M8", "rule": "Thread M8, one of the sizes the table lists (M4, M5, M6, M8)", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "nut_kind": { "value": "slide-in", "rule": "A block slid in from the end of the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "length": { "value": 16, "unit": "mm", "rule": "l = 16 in the table", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "width": { "value": 16, "unit": "mm", "rule": "Across the slot: the drawing gives no figure; taken 0.5 mm under the 16.5 mm cavity", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7: not dimensioned there, so an estimate", "checked": "2026-11-15" },
+    "height": { "value": 4, "unit": "mm", "rule": "The body under the lips: h = 6.0 less h1 = 2.0 in the table", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "tongue_height": { "value": 2, "unit": "mm", "rule": "The step into the opening: h1 = 2.0 in the table", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "nut_entry": { "value": "end", "rule": "Slid in from an open end of the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "material": { "value": "steel, galvanized", "rule": "Material as the table names it", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" },
+    "hold": { "value": 6000, "unit": "N", "rule": "Fmax 6000 N, as the catalogue rates it for the 8 mm slot (M8): the pull straight out of the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-7", "checked": "2026-11-15" }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. A profile (a beam's section), a slot family and a slot nut are parts too: a profile names its slot family on each face, the thread its bores tap to and its material by their rule sets, and \"drafts\" holds every field of those parts with a starting value, in the order cad rules draft writes them. Read by cad rules check and cad rules draw.",
   "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", "mm²", "mm³", "mm⁴", "kg/m", "mm/m", "deg/m", ""],
-  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "corner_hollow_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_"],
+  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "corner_hollow_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_", "tongue_"],
   "fields": {
     "type": { "choice": ["stepper", "dc", "servo", "brushless", "radial", "flanged", "thrust"], "says": "what sort of motor, or of bearing" },
     "body_shape": { "choice": ["square", "round", "box"], "says": "the body's outline, seen from the mounting face" },
@@ -232,7 +232,12 @@
     "groove_depth": { "unit": "mm", "says": "how far that groove goes below the slot's floor" },
     "nut_family": { "says": "the slot family whose nuts a slot takes, by its rule set's name: its own, or the one it is made to match" },
     "nut_kind": { "choice": ["slide-in", "drop-in", "roll-in", "hammer", "t-bolt", "square", "hex"], "says": "what sort of slot nut: slid in from an end, dropped in and turned, rolled in on a spring, a hammer head, a bolt with a T head, or a plain square or hexagon nut" },
-    "nut_entry": { "choice": ["anywhere", "end"], "says": "whether a slot nut goes in anywhere along the slot, or only from an open end" }
+    "nut_entry": { "choice": ["anywhere", "end"], "says": "whether a slot nut goes in anywhere along the slot, or only from an open end" },
+    "tongue_width": { "unit": "mm", "says": "the width of the step on a slot nut's back that stands in the slot's opening and keeps the nut square to it; left out where it has none" },
+    "tongue_height": { "unit": "mm", "says": "how far that step stands above the nut's back, up into the opening" },
+    "hold": { "unit": "N", "says": "the pull a slot nut takes straight out of its slot with its screw tight, as its maker rates it, or an estimate until it is tested" },
+    "tightening_torque": { "unit": "N m", "says": "the torque a maker gives for tightening a screw into a slot nut" },
+    "bolt_length": { "unit": "mm", "says": "a T-bolt's shank under its head, as it is sold: 20 for an M6x20" }
   },
   "parts": {
     "motor": ["type", "body_shape", "body_length", "shaft_diameter", "shaft_length", "shaft_flats", "mount_pattern", "mount_hole_spacing", "mass"],
@@ -258,7 +263,7 @@
   "drafts": {
     "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "chamber_length": 2, "chamber_depth": 6, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "corner_hollow_width": 0, "corner_hollow_wall": 2, "area": 183, "inertia_x": 7030, "inertia_y": 7030, "section_modulus_x": 703, "section_modulus_y": 703, "torsion_constant": 1100, "mass_per_metre": 0.5, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },
     "slot": { "opening": 6, "lip_thickness": 2, "lip_angle": 0, "cavity_width": 12, "cavity_depth": 6, "floor_width": 6, "flank_angle": 45, "track_width": 9, "track_angle": 90, "nut_family": "slot-6" },
-    "slot_nut": { "slot": "slot-6", "thread": "M5", "nut_kind": "slide-in", "nut_entry": "end", "length": 10, "width": 10, "height": 4 }
+    "slot_nut": { "slot": "slot-6", "thread": "M5", "nut_kind": "slide-in", "nut_entry": "end", "length": 10, "width": 10, "height": 4, "tongue_width": 5.8, "tongue_height": 0.8, "hold": 1000, "tightening_torque": 6, "material": "steel" }
   },
   "checks": {
     "thread": [
@@ -298,6 +303,9 @@
       { "ascending": ["lip_thickness", "cavity_depth"], "says": "a slot's floor is below its lips" },
       { "ascending": ["floor_width", "cavity_width"], "says": "a slot closes in toward its floor (leave floor_width out for straight walls)" },
       { "ascending": ["opening", "track_width"], "says": "a V-slot's mouth is wider at the face than between the lips" }
+    ],
+    "slot_nut": [
+      { "ascending": ["tongue_width", "width"], "says": "a slot nut's tongue is narrower than the nut it stands on" }
     ]
   }
 }

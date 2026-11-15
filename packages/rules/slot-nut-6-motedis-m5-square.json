@@ -1,0 +1,16 @@
+{
+  "_doc": "Motedis' threaded plate (Gewindeplatte) for its B-type 6 mm slot, M5. Also sold in M4 and M6. Motedis gives no drawing and no hold.",
+  "name": "slot-nut-6-motedis-m5-square",
+  "part": "slot_nut",
+  "rules": {
+    "slot": { "value": "slot-6-motedis", "rule": "Motedis' B-type 6 mm slot (slot-6-motedis), whose nuts are Rexroth's family (its nut_family is slot-6-bosch)", "kind": "community", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "thread": { "value": "M5", "rule": "Thread M5, sold as M5", "kind": "spec", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "nut_kind": { "value": "square", "rule": "A plain threaded plate, slid into the slot (the page's words), a cheaper stand-in for the heavy nut", "kind": "spec", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "length": { "value": 14, "unit": "mm", "rule": "Along the slot: 14 (the page gives 14 x 9 x 2,5 mm, L x B x H)", "kind": "spec", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "width": { "value": 9, "unit": "mm", "rule": "Across the slot: 9 (the page's B)", "kind": "spec", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "height": { "value": 2.5, "unit": "mm", "rule": "Its thickness: 2,5 (the page's H)", "kind": "spec", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "nut_entry": { "value": "end", "rule": "Slid in from an open end of the slot", "kind": "spec", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "material": { "value": "metal (Motedis names no grade)", "rule": "Material as the product page names it", "kind": "community", "source": "Motedis, product page https://www.motedis.com/de/Gewindeplatte-B-Typ-Nut-6-M5", "checked": "2026-11-15" },
+    "hold": { "value": 1500, "unit": "N", "rule": "Half Rexroth's 6 mm sliding block (3000 N): a thin plate bends under the lips before a block does. An estimate until it is tested (Frames 2.13): the maker gives no figure for this nut", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4 to 3-9; the proof stress from the kit's m5 thread set (ISO 898-1)", "checked": "2026-11-15" }
+  }
+}
