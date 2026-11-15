@@ -1,0 +1,26 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "fixings-coupon",
+  "title": "Fixings coupon",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "orientation": "Flat on the bed, every hole opening upward: the base is the first layer",
+  "description": "Pilots for M2 to M5 at five sizes, heat-set insert holes for M2 and M3, hex nut pockets and side slots for M3 and M4 at three fits, an M3 counterbore, and printed M6, M8 and M10 threads at three gaps, M8 in both flank forms. Each figure is the one to write back with cad measured (MEASURE.md, rows 22 to 28). Print once per printer and plastic.",
+  "variables": {
+    "base": { "value": "x1c.layer * 6", "unit": "mm", "rule": "The base every feature stands on: six layers, the floor under every blind hole, and a first layer that is one plain rectangle" },
+    "wall": { "value": "x1c.wall_min * 2", "unit": "mm", "rule": "Plastic round every hole, pocket and slot: four print lines, as a design gives a boss" },
+    "gap": { "value": "x1c.wall_min", "unit": "mm", "rule": "Between features, between a feature and its figure, and round the edge" },
+    "root": { "value": "x1c.chamfer", "unit": "mm", "rule": "The 45° flare where each boss meets the base, so no inside corner is square" },
+    "step": { "value": "x1c.hole_comp", "unit": "mm", "rule": "Each row steps by the printer's hole compensation either side of what the kit draws: the amount a printed hole comes out wrong by" },
+    "pilots": { "value": 5, "rule": "Five pilots for each thread: the kit's figure and two steps either side" },
+    "fits": { "value": 3, "rule": "Three of every other feature: the kit's figure and a step either side" },
+    "label": { "value": 2.5, "unit": "mm", "rule": "Figure height: six print lines tall, readable close up, and small enough that a figure is no wider than its feature" },
+    "stroke": { "value": "x1c.line", "unit": "mm", "rule": "One print line, for the figures" },
+    "emboss": { "value": "x1c.layer * 2", "unit": "mm", "rule": "Two layers proud" },
+    "corner": { "value": 3, "unit": "mm", "rule": "The base's corners, rounded so they stay down" },
+    "segments": { "value": 48, "rule": "Facets on round holes and bosses" }
+  }
+}
