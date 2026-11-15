@@ -30,7 +30,8 @@ const inThread = typeof nodeModule.registerHooks === 'function'; // import hooks
 // (a workspace's "sandbox": false counts only once the user has trusted it: cad trust)
 export const sandboxed = () => !!flag && process.env.CAD_TRUST !== '1' && !(config.sandbox === false && trusted());
 
-// What the sandbox may read: the workspace, and the packages designs and the runner load (wherever npm put them)
+// What the sandbox may read: the workspace, and the packages designs and the runner load (wherever npm put them), and
+// what those load in turn (@rulecad/frames sizes a beam's operations through @rulecad/fixings)
 function readable() {
   const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
   const pkgDir = (name, from) => { // the package's folder: from its entry up to its package.json (exports may hide that file)
@@ -40,7 +41,7 @@ function readable() {
   // Every node_modules above the workspace and the tool (package lookups read their links), and where links lead
   const up = (dir) => { const out = []; for (let d = dir; ; d = path.dirname(d)) { out.push(path.join(d, 'node_modules')); if (path.dirname(d) === d) return out; } };
   const dirs = [WS, TOOL, ...[...up(WS), ...up(TOOL)].filter((d) => fs.existsSync(d)),
-    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/gears', '@rulecad/motors', '@rulecad/frames', '@rulecad/rules/x1c.json', '@rulecad/fea', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
+    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/gears', '@rulecad/motors', '@rulecad/frames', '@rulecad/fixings', '@rulecad/rules/x1c.json', '@rulecad/fea', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
   return [...new Set(dirs.filter(Boolean).flatMap((d) => [d, real(d)]).filter(Boolean))];
 }
 

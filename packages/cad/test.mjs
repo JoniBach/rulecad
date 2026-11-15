@@ -1990,6 +1990,37 @@ test('beams in an assembly: four placed by their ends make a rectangle, a plate 
   } finally { done(); }
 });
 
+test('beam operations in an assembly: an end tapped M5 and an access hole by expression, cut into the solid; beam.op findings; a tap with no end bore refused by name', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/ops.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const a = { title: 'Ops', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5', length: 300,
+      ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-10', thread: 'M5', depth: '2 * 3.95' }, { op: 'mitre', at: 'b', angle: 45, about: 'top' }] }, from: [0, 0, 0], to: [300, 0, 0] }] };
+    const write = (x = a) => fs.writeFileSync(file, JSON.stringify(x));
+    write();
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/ops'), o = s.objects.find((x) => x.id === 'x1'), p = s.parts.find((x) => x.name === 'x1.body');
+      console.log(JSON.stringify({ ops: o.beam.ops.map((x) => [x.op, x.at, x.distance, x.depth ?? null]), lines: o.beam.ops.map((x) => x.line), triangles: p.triangles.length, collide: p.collide ? 1 : 0, findings: checkAssembly(s).filter((f) => /^beam\\./.test(f.code)).map(({ level, code, text }) => ({ level, code, text })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const r = probe();
+    assert.deepEqual(r.ops, [['tap', 'a', 0, 10], ['cut', 'a', 0, null], ['access', 'top@-10', 290, 7.9], ['mitre', 'b', 300, null]]);
+    assert.match(r.lines[2], /access hole Ø5\.3 mm in top\.1, 290 mm from end a \(10 from end b\)/);
+    assert.ok(r.triangles > 872, `the solid has the tap, the hole and the mitre cut in (${r.triangles} triangles)`);
+    assert.ok(r.findings.some((f) => f.level === 'info' && /x1: .*its 300 mm is measured on the long side, back; mitred, the front is 280 mm/.test(f.text)), JSON.stringify(r.findings));
+    // a hole across the tapped thread is a beam.op failure on cad check, named by item
+    a.items[0].beam.ops.push({ op: 'drill', at: 'top@8', diameter: 3 }); write();
+    assert.match(cad('check', 'frame/ops'), /x1: profile-2020-misumi-hfs5 x 300: the drill at top@8 \(Ø3 mm, 8 mm from end a\) crosses the M5 thread tapped 10 mm into a\.1/);
+    // refused by name: a tap in a tube, with no end bore; an operation the kit does not have
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/ops'), pattern); };
+    refused((b) => { b.items[0].beam.profile = 'tube-al-20x20x2'; b.items[0].beam.ops = [{ op: 'tap', at: 'a', thread: 'M5' }]; }, /item x1: profile-tube-al-20x20x2 x 300: ops\[0\] \(tap\): profile-tube-al-20x20x2 has no bore in its ends to tap/);
+    refused((b) => { b.items[0].beam.ops = [{ op: 'weld', at: 'a' }]; }, /no operation "weld": there are cut, mitre, tap/);
+    refused((b) => { b.items[0].beam.printed = true; }, /a printed beam \("printed": true\) is a later release, and its ops become features of the print then/);
+  } finally { done(); }
+});
+
 test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a beam item takes one by name', async () => {
   const { ws, cad, done } = workspace();
   try {

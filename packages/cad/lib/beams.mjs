@@ -8,6 +8,8 @@
 // about its own axis, a toward b, right-handed.
 // Its addresses are anchors (lib/assembly.mjs reads them through beamAnchor): x1.a, x1.b, x1.a.1, x1.top, x1.top@120,
 // x1.top@-20, x1.top@50%, x1.top.2@120.
+// Its operations ("ops": cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) are @rulecad/frames': each
+// is cut into its preview, a mitre into its envelope too, and their findings (beam.op) are the beam's.
 import * as frames from '@rulecad/frames';
 import { beamModel, beam, beamAnchor } from '@rulecad/frames';
 import { frame } from '@rulecad/model-link';
@@ -16,7 +18,8 @@ import { named } from './parts.mjs';
 import { referenceBuilt } from './bought.mjs';
 import { framesContext as contextIn, givenFor } from './frames.mjs';
 
-const KEYS = ['profile', 'length', 'printed', 'material'];
+const KEYS = ['profile', 'length', 'printed', 'material', 'ops'];
+const OP_NUMBERS = ['angle', 'depth', 'diameter', 'length', 'radius'];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const mm = (x) => String(+Number(x).toFixed(2));
 const strip = (e) => String(e?.message ?? e).replace(/^(beamModel|beamAnchor|profileModel|beam): /, '');
@@ -35,7 +38,10 @@ export function beamOf(it, num, context = framesContext()) {
   for (const k of Object.keys(b)) if (!KEYS.includes(k)) throw new Error(`${what}: a beam has no "${k}": it takes ${KEYS.join(', ')}`);
   if (typeof b.profile !== 'string' || !b.profile) throw new Error(`${what}: beam.profile names a profile, such as 2020-misumi-hfs5 (got ${shown(b.profile)})`);
   if (b.printed != null && typeof b.printed !== 'boolean') throw new Error(`${what}: beam.printed is true or false (got ${shown(b.printed)})`);
-  if (b.printed) throw new Error(`${what}: a printed beam ("printed": true) is a later release: leave printed out for a bought beam of ${b.profile}`);
+  if (b.printed) throw new Error(`${what}: a printed beam ("printed": true) is a later release${b.ops?.length ? ', and its ops become features of the print then' : ''}: leave printed out for a bought beam of ${b.profile}`);
+  if (b.ops != null && !Array.isArray(b.ops)) throw new Error(`${what}: beam.ops is a list of operations, [{ "op": "tap", "at": "a" }] (got ${shown(b.ops)})`);
+  // an operation's numbers may be expressions, as a length is
+  const ops = (b.ops ?? []).map((o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, OP_NUMBERS.includes(k) && v != null ? num(v) : k === 'size' && Array.isArray(v) ? v.map(num) : v])) : o));
   if (b.material != null && typeof b.material !== 'string') throw new Error(`${what}: beam.material is a material set's name, such as al6063-t5 (got ${shown(b.material)})`);
   const ends = it.from != null || it.to != null;
   if (ends && (it.from == null || it.to == null)) throw new Error(`${what}: a beam placed by its ends gives both: from (end a) and to (end b)`);
@@ -51,7 +57,7 @@ export function beamOf(it, num, context = framesContext()) {
   const given = givenFor(context, b.profile);
   let model;
   try {
-    model = beamModel(frames.profileModel(b.profile, {}, given), { length, ...(b.material ? { material: b.material } : {}), given });
+    model = beamModel(frames.profileModel(b.profile, {}, given), { length, ...(b.material ? { material: b.material } : {}), ...(ops.length ? { ops } : {}), given });
   } catch (e) { throw new Error(`${what}: ${strip(e)}`); }
   return { model, length };
 }

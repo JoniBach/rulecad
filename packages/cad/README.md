@@ -469,6 +469,14 @@ An item can be a beam, a length of an aluminium extrusion, a tube or a bar from 
   x 300 mm  a beam  150 g each`, weighed by the maker's mass per metre where the sheet gives one), and in the overlap
   check by its envelope, a plain box. `cad check` says each beam's mass beside the sheet's, and warns of a length
   longer than the profile is sold in. Its numbers are values: `x1.length`, `x1.width`, `x1.height`, `x1.mass`.
+- `"ops"` lists the operations on it, each placed by an address on the beam and dimensioned from end `a`: `cut`,
+  `mitre`, `tap`, `access`, `drill`, `counterbore`, `pocket`, `notch` and `deburr`. `{ "op": "tap", "at": "a", "thread":
+  "M5" }` taps end a's bore; `{ "op": "access", "at": "top@-10", "thread": "M5" }` drills a hole for an M5 screw's key 10
+  mm from end b; `{ "op": "mitre", "at": "b", "angle": 45, "about": "top" }` mitres end b, the length then measured on
+  the long side. Numbers may be expressions. Each is cut into the beam's solid (a mitre into its envelope too), and
+  `cad check` reports its findings as `beam.op` (a hole into a slot's lips or across a tapped thread, a tap deeper than
+  the bore, a hole too near an end) and thread engagement in the alloy. What each takes is in the `@rulecad/frames`
+  README ("Operations").
 - `cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0 [--roll 90]` adds one.
 
 Every beam has addresses, taken wherever an anchor is: an item's `at`, a joint's `parent` or `child`, a `loop`, a
