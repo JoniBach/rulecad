@@ -8,16 +8,16 @@
       "table": 0
     },
     "packages/cad/EXAMPLES.md": {
-      "named": 64,
-      "reads": 17,
-      "typed": 4,
+      "named": 28,
+      "reads": 8,
+      "typed": 2,
       "table": 0
     }
   },
   "total": {
-    "named": 66,
-    "reads": 17,
-    "typed": 4,
+    "named": 30,
+    "reads": 8,
+    "typed": 2,
     "table": 0
   }
 }
