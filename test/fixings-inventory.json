@@ -13,12 +13,6 @@
       "typed": 1,
       "table": 0
     },
-    "examples/bench/projects/leg": {
-      "named": 21,
-      "reads": 8,
-      "typed": 0,
-      "table": 0
-    },
     "examples/bench/projects/showcase": {
       "named": 0,
       "reads": 0,
@@ -57,8 +51,8 @@
     }
   },
   "total": {
-    "named": 158,
-    "reads": 52,
+    "named": 137,
+    "reads": 44,
     "typed": 8,
     "table": 0
   }
