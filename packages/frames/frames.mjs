@@ -15,4 +15,4 @@ export { OPS, OP_DEFAULTS } from './ops.mjs';
 export { JOINS, JOIN_STIFFNESS, JOIN_SCALE, JOIN_TAP, joinStiffness, joinModel } from './join.mjs';
 export { CUT_DEFAULTS, beamMarks, packBars, cutList, cutListText } from './cutlist.mjs';
 export { beamSheet } from './cutsheet.mjs';
-export { slotNutModel, nutFit, slotNut, nutFor, carrierModel, carrier, CARRIER_DEFAULTS } from './slotnut.mjs';
+export { slotNutModel, nutFit, slotNut, nutFor, carrierModel, carrier, CARRIER_DEFAULTS, NUT_KINDS } from './slotnut.mjs';

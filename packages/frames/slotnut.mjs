@@ -22,6 +22,8 @@ const mm = (x) => String(+Number(x).toFixed(2));
 const r3 = (x) => +x.toFixed(3);
 const finding = (level, text, code, extra = {}) => ({ level, text, code, ...extra });
 const KINDS = FIELDS.nut_kind.choice, TURNED = ['drop-in', 'hammer', 't-bolt'];
+/** The kinds of slot nut, as a fasten's "nut" names them (slide-in, drop-in, roll-in, hammer, square, t-bolt). */
+export const NUT_KINDS = [...KINDS];
 const COS30 = Math.cos(Math.PI / 6);
 
 /**
