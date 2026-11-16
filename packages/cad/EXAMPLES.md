@@ -3530,7 +3530,7 @@ The shoulder's bearing is the same `support` with the 6800 named; the elbow's th
 
 `assembly.frequency` puts the lowest mode at about 12 Hz at full stretch, from the same FE stiffness and the mass it carries: slow enough to see, and worth moving gently at the start and end of a motion. The FE's coarseness is why this is said to one significant figure.
 
-The joints in chapter 12's gearboxes (the motor's sun, the carriers and the planets) also now show `joint.moment` warnings that nothing named takes their tipping: they carry grams, on shafts and printed pins inside the gear train, and the check doesn't know them from a real joint. They stay as warnings; the check runs with `--json` for that reason, and because the rules are estimates.
+The joints in chapter 12's gearboxes (the motor's sun, the carriers and the planets) also now show `joint.moment` warnings that nothing named takes their tipping: they carry grams, on shafts and printed pins inside the gear train, and the check doesn't know them from a real joint. `fasten.load` warns once, too: the upper arm's one screw down on the spindle's hexagon would hold the shoulder's 1.455 N m of twist by friction alone. It doesn't have to, since the hexagon carries that twist, but the check reads the screw and not the shape the parts lock by, so it can't see that. They stay as warnings; the check runs with `--json` for that reason, and because the rules are estimates.
 
 ### Closing the gripper, shown at rest
 
@@ -4294,7 +4294,8 @@ What it says:
 - `task.reach` passes with 48.9 mm in hand.
 - `tool.grip` warns at 100 g (1.2 times over) on `arm-upright` and passes on `gripper-check` at 50 g (2.3 times over). `tool.strain` passes at 10% of PETG's strength at full close, in the leaf the check reads as a plain cantilever (`leafModel`).
 - The Z axis gives 512 steps a mm, 15.5 N of force at 6 times over its 2.45 N load, and holds with the power off because of the motor's gearbox. The belt gives 102.4 steps a mm and 5.1 N, 2 times over, with 0.07 mm of stretch in the budget.
-- `cad list` prints the same 444.2 g printed as `check`'s mass table, with the gripper's 37 g in it; the whole machine weighs about 1.28 kg before the wires and the wall.
+- `fasten` chooses every screw and passes each: the housing's three M3x8 caps into the base, the spindle's four M3x8 countersunk, the bridge's and the clips' six M3x10, the forearm's four M3x12, the upper arm's M3x16 into the hexagon, the home switches' four M2x10, and two M3x30 with their nuts through the yoke and the gripper. Each head has room for its hex key. The one warning, the twist on the hexagon's screw, is above.
+- `cad list` prints the same 444.2 g printed as `check`'s mass table, with the gripper's 37 g in it, and buys those screws with the motors' own (4 M3x6 and 4 M3x12 from their mounts): 30.3 g of fixings. The whole machine weighs about 1.3 kg before the wires and the wall.
 
 `npx cad check arm/arm-upright --sweep` swings each joint of the arm through its range and finds nothing colliding, with the finger-flat contact allowed by its `fits` entry. It earned its keep: with chapter 12's limit of 160° of fold, the sweep found the gripper's servo hitting the shoulder housing and the output ring, because the gripper is 32 mm longer than the pen holder and its servo stands up from the print. The elbow is limited to 140° here, which clears with room to spare and costs nothing, since the box needs at most about 113°. Like chapter 12's sweep it is slow, half an hour on a busy laptop, so the replay leaves it out.
 
