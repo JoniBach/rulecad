@@ -67,7 +67,7 @@
     "pilot_depth": {
       "value": 7,
       "unit": "mm",
-      "rule": "How deep each of the screws that come with it goes: the pilots are sized from the SG90's tabs' holes, by v.motors"
+      "rule": "How deep each of the screws that come with it goes (their holes are sized from the SG90's tabs' holes, by v.motors)"
     },
     "window": {
       "value": 5,

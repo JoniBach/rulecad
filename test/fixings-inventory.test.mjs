@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { inventory, against, kindOf, filesOf, RECORD, ROOT } from '../scripts/fixings-inventory.mjs';
+import { inventory, against, kindOf, filesOf, RECORD, ROOT, DELIBERATE, SWEPT } from '../scripts/fixings-inventory.mjs';
 
 const record = JSON.parse(fs.readFileSync(RECORD, 'utf8'));
 
@@ -43,4 +43,20 @@ test('a typed 2.9 is caught: as a named pilot, a thread set read by hand, or a b
   const doc = 'docs/added.md', text = '# Added\n\n```json projects/x/objects/y.json\n{ "variables": { "hole": { "value": 2.9, "unit": "mm", "rule": "M3 pilot" } } }\n```\n';
   const inDoc = against(inventory({ files: [...files, doc], read: (f) => (f === doc ? text.replace(/\n/g, '\r\n') : read(f)) }), record).filter((x) => x.now > x.was);
   assert.deepEqual(inDoc.map((x) => [x.place, x.kind]), [['docs/added.md', 'named']], 'with Windows line endings too');
+});
+
+test('a screw size kept on purpose has its reason, names a variable still in its file, and is counted nowhere', () => {
+  for (const d of DELIBERATE) {
+    assert.ok(typeof d.why === 'string' && d.why.length > 40, `${d.file} ${d.name}: give the reason it stays typed`);
+    const o = JSON.parse(fs.readFileSync(`${ROOT}/${d.file}`, 'utf8'));
+    assert.ok(o.variables?.[d.name], `${d.file} has no variable ${d.name}: take it out of DELIBERATE`);
+  }
+  for (const s of SWEPT) assert.ok(fs.existsSync(`${ROOT}/${s.place}`) && s.why.length > 40, `${s.place}: a place swept, with what was found there`);
+  const r = inventory();
+  assert.deepEqual(r.deliberate.map((x) => x.name).sort(), ['hole_d', 'hole_keepout']);
+  assert.ok(!r.items.some((x) => DELIBERATE.some((d) => d.file === x.file && d.name === x.name)));
+  // the same variable in another object is counted: the reason is for that one place
+  const files = filesOf(ROOT), extra = 'examples/bench/projects/bench/objects/added.json';
+  const read = (f) => (f === extra ? JSON.stringify({ name: 'added', variables: { hole_d: { value: 2.1, unit: 'mm', rule: 'For M2 screws' } } }) : fs.readFileSync(`${ROOT}/${f}`, 'utf8'));
+  assert.deepEqual(against(inventory({ files: [...files, extra], read }), record).map((x) => [x.place, x.kind, x.now - x.was]), [['examples/bench/projects/bench', 'named', 1]]);
 });
