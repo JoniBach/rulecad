@@ -12,26 +12,6 @@
   "material": "PLA",
   "orientation": "Base flat on the bed, the wall standing. Solid infill or 6 walls: it must be far stiffer than the specimens. The specimen bolts on with M5 × 20 socket screws (nuts in the back pockets), the gauge arm with M5 × 35 (nuts slid into the side slots). Clamp the base so the wall's end is at the bench's edge and the specimen reaches out past it.",
   "variables": {
-    "hole5": {
-      "value": "m5.clearance + x1c.hole_comp",
-      "unit": "mm",
-      "rule": "M5 bolt holes, printed"
-    },
-    "nut5": {
-      "value": "m5.nut_flats + x1c.hole_comp",
-      "unit": "mm",
-      "rule": "M5 nut pockets, across the flats"
-    },
-    "nut5_corner": {
-      "value": "nut5 / cosd(30)",
-      "unit": "mm",
-      "rule": "An M5 nut across its corners: the side slots' width"
-    },
-    "nut5_h": {
-      "value": "m5.nut_height + x1c.layer * 2",
-      "unit": "mm",
-      "rule": "M5 nut pockets: depth, two layers over the nut"
-    },
     "height": {
       "value": "bench.bolt_z + m4.head / 2 + bench.gauge_gap",
       "unit": "mm",
@@ -64,14 +44,13 @@
       "unit": "mm",
       "rule": "A hole's cutter length: further than the wall is thick"
     },
-    "slot_depth": {
-      "value": "bench.wall / 2 + nut5 / 2 + x1c.fit",
-      "unit": "mm",
-      "rule": "The side slots reach past the bolt's axis by half a nut"
-    },
     "smooth": {
       "value": 48,
       "rule": "Segments in each round hole"
+    },
+    "hex_corners": {
+      "value": "1 / cosd(30)",
+      "rule": "A hexagon's width across its corners for each mm across its flats: the side slots are as wide as their nuts' corners"
     }
   }
 }
