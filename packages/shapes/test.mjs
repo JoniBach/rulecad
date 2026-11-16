@@ -182,10 +182,30 @@ test('seats for a Z axis: a linear bearing, a lead-screw nut, a pulley bore and 
   const lm = { bore: 8, outer_diameter: 15, length: 24 }, pocket = lm8uuPocket(lm, { printer: x1c, at: [0, 0, 30], into: '-z', through: true });
   assert.equal(pocket.pocket, 15.05); ok(subtract(block(30), pocket), 'stood up, through');
   ok(subtract(translate([0, 0, 25], cuboid({ size: [30, 30, 50] })), lm8uuPocket(lm, { printer: x1c, at: [-15, 0, 25], into: '+x', through: true })), 'across, a teardrop');
-  const nut = { flange_diameter: 22, flange_thickness: 3.5, body_diameter: 10.2, length: 15, hole_circle: 16, hole_count: 4 };
+  const nut = { flange_diameter: 22, flange_thickness: 3.5, body_diameter: 10.2, length: 15, hole_circle: 16, hole_count: 4, hole_diameter: 3.5 };
   const trap = nutTrap(nut, { printer: x1c, at: [0, 0, 20] }); assert.ok(trap.flange > 22.3); ok(subtract(block(20), trap), 'a nut, from the top');
+  assert.equal(trap.hole, 3.6, 'the nut\'s own hole, plus the printer\'s hole_comp');
   assert.throws(() => nutTrap({ ...nut, hole_circle: 11 }, { printer: x1c }), /don't fall between/);
+  // The screws' hole as drawn, from fixings (its diameter has hole_comp in it already): the same solid as the nut's own figure
+  const polys = (g) => JSON.stringify(geom3.toPolygons(g).map((p) => p.vertices));
+  const { hole_diameter, ...bare } = nut, given = nutTrap(bare, { hole: 3.6, printer: x1c, at: [0, 0, 20] });
+  assert.equal(given.hole, 3.6); assert.equal(polys(given), polys(trap), 'a hole given as drawn draws what the nut\'s figure did');
+  assert.equal(polys(nutTrap({ ...bare, flange_width: 3.5, mount_hole_diameter: 3.5 }, { printer: x1c, at: [0, 0, 20] })), polys(trap), 'the rule set\'s own names (t8-nut) read the same');
+  assert.throws(() => nutTrap(bare, { printer: x1c }), /nutTrap: give the screws' hole as drawn .*there is no screw size here/);
+  assert.throws(() => nutTrap(bare, { hole: 0, printer: x1c }), /nutTrap: hole is a size above 0 mm/);
   assert.equal(pulleyBore({ bore: 5 }, { length: 12, printer: x1c, at: [0, 0, 12], through: true }).bore, 5.3);
   ok(beltClamp({ pitch: 2, width: 6 }, { length: 20, height: 5, wall: 2 }), 'a belt grip, teeth up');
   assert.throws(() => beltClamp({ pitch: 0, width: 6 }, { length: 20, height: 5, wall: 2 }), /beltClamp: pitch is a size/);
+});
+
+test('shapes takes plain figures: it imports no @rulecad/fixings (fixings calls shapes, so the other way would be a cycle)', async () => {
+  const fs = await import('node:fs'), path = await import('node:path'), { fileURLToPath } = await import('node:url');
+  const here = path.dirname(fileURLToPath(import.meta.url)), pkg = JSON.parse(fs.readFileSync(path.join(here, 'package.json'), 'utf8'));
+  for (const k of ['dependencies', 'peerDependencies', 'devDependencies', 'optionalDependencies']) assert.ok(!('@rulecad/fixings' in (pkg[k] ?? {})), `no @rulecad/fixings in ${k}`);
+  const sources = fs.readdirSync(here).filter((f) => /\.m?js$/.test(f) && f !== 'test.mjs');
+  assert.ok(sources.length >= 6, 'the package\'s sources are read');
+  for (const f of sources) assert.doesNotMatch(fs.readFileSync(path.join(here, f), 'utf8'), /(?:from|import\s*\()\s*['"]@rulecad\/fixings/, `${f} imports no fixings`);
+  // and the other way round, fixings does call shapes (its seats are shapes' cutters)
+  const fixings = JSON.parse(fs.readFileSync(path.join(here, '../fixings/package.json'), 'utf8'));
+  assert.ok('@rulecad/shapes' in fixings.dependencies, 'fixings depends on shapes');
 });
