@@ -1,7 +1,7 @@
 {
   "name": "@rulecad/frames",
   "version": "0.1.7",
-  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, the operations on it (cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) checked, and its solid as a light box or the true section. A frame's cut list (the bars to buy, packed with the saw's kerf) and a cut-and-drill sheet per beam. Slot nuts: the bought nuts by maker and kind, the nut for a face, and a printed carrier for a nut or an insert. Joins, fittings and guides follow.",
+  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, the operations on it (cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) checked, and its solid as a light box or the true section. A frame's cut list (the bars to buy, packed with the saw's kerf) and a cut-and-drill sheet per beam. Slot nuts: the bought nuts by maker and kind, the nut for a face, and a printed carrier for a nut or an insert. Joins between beams by kind: the operations each puts on both beams, its screws, and its stiffness for a frame's solve. Fittings and guides follow.",
   "type": "module",
   "exports": {
     ".": {
@@ -15,6 +15,7 @@
     "profile.mjs",
     "beam.mjs",
     "ops.mjs",
+    "join.mjs",
     "cutlist.mjs",
     "cutsheet.mjs",
     "slotnut.mjs",
@@ -24,6 +25,7 @@
     "profile.d.mts",
     "beam.d.mts",
     "ops.d.mts",
+    "join.d.mts",
     "cutlist.d.mts",
     "cutsheet.d.mts",
     "slotnut.d.mts",

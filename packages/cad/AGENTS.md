@@ -93,6 +93,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   drawn: one axis through the stack, a clearance hole in each part passed, a pilot, insert or nut at the far end, the
   length chosen from what is sold, thread engaged, the seat under the head and the key's way to it, and `cad list`
   counts the screws. Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
+- **Beams are held to each other by a join**, not a fasten: `{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }`
+  (`npx cad add join …`), `b` the place on the other beam where a's end meets it. A blind or end-tap join taps a's end,
+  drills b and adds its screw to the fasten checks and the list; the other kinds are checked where they meet and say
+  their fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
+  address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in

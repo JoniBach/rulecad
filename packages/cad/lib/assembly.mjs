@@ -18,6 +18,8 @@
 // diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
 // A screwed joint is a fasten (lib/fasten.mjs): { "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1"] }.
 // Its holes are read from the parts as drawn, its screws placed as reference parts, and it holds as a fit that fastens does.
+// Beams are held to each other by joins (lib/joins.mjs): { "kind": "blind", "a": "y1.a", "b": "x1.back@120" }. Each puts
+// its operations on both beams and its screws into fasten before anything is built, and is checked once it is.
 import { host, readJson } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';

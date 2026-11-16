@@ -573,6 +573,32 @@ x along the beam, turned by its `rotate` in that frame; it moves with the beam. 
 with the beam's length: `"top@320" is past the end of profile-2020-misumi-hfs5 x 300: it is 300 mm long`. In a fit, an
 address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm by default).
 
+**Joins.** `"joins"` says how beams are held to each other. Each names an end of one beam (`a`), a place on another
+(`b`: a face with a distance where a's end meets it, or an end for a splice, a mitre or a corner) and its kind:
+
+```json
+"joins": [{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }]
+```
+
+- A join puts its operations on both beams before they are built, so they are on the cut list and the sheets: a
+  `blind` join taps the end of `a` (`tap M5 x 18.5 at a`) and drills an access hole across `b` from the opposite
+  face (`access Ø5.3 at front.1@120`), and an `end-tap` join drills a clearance hole right across `b` instead.
+- Its screws join `"fasten"`, so they are followed, checked and counted as any fasten's are (`1 × M5x12 button` on
+  `cad list`). A blind join's button head sits inside b's slot under its lips; an end-tap's cap head sits on the lips
+  of the slot across b. `fasten.seat` holds the head to the slot (wider than the opening, and inside the slot, no
+  wider than the cavity and no taller than the room under the lips), `fasten.end` takes the thread tapped in a's end
+  bore, and `fasten.access` follows the key through the access hole. `"screw"` names another screw (`"M5x12 button"`).
+- The other kinds (`bracket`, `gusset`, `cube`, `hidden`, `anchor`, `mitre`, `pivot`, `splice`, `printed`) are checked
+  where they meet and carry their stiffness; their fittings come in later releases, and each says so (`join.fitting`).
+  `"fitting": "printed"` or `"bought"` chooses for a kind with a fitting.
+- `cad check` adds `join.geometry` (the end meets the face square and flush, where `b` says, on the slot's centre line
+  where the kind needs a slot: a beam 2 mm off the face fails with `a gap of 2 mm`, and one 5 mm along names the
+  address it does meet at), `join.end` (every beam end is joined or capped: an item placed at the end, such as a foot,
+  caps it), and `join.stiffness` (the spring each join puts at a's end when the frame is solved, from
+  `@rulecad/frames`' `JOIN_STIFFNESS`: every figure an estimate until the joint rig measures it, and the finding says so).
+- `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120 [--screw "M5 button"] [--fitting printed]`
+  adds one.
+
 ### Building it
 
 Once an assembly is checked, these say how to make it. They all read the assembly itself, so they can't disagree with it.

@@ -22,11 +22,12 @@ cut, and fastens to them:
   address on the beam, dimensioned from end a, checked, and cut into its solid.
 - **The cut list and sheets**: beams marked by what makes them alike, packed into the lengths a supplier sells with
   each cut's kerf (`cutList`, `packBars`), and a cut-and-drill sheet for each beam (`beamSheet`).
+- **Joins**: how two beams are joined (`joinModel`), by kind: the operations it puts on each beam, the screws that
+  hold it, and how stiff it is taken to be when a frame is solved.
 - **Slot nuts**: the bought nuts a slot takes (`slotNutModel`, `nutFit`, `slotNut`), the nut for a face and a thread
   (`nutFor`), and a printed carrier for a hex nut or an insert that slides in the slot (`carrierModel`, `carrier`).
 
-Joins that do their own drilling, fittings and linear guides follow in later
-releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+Fittings for the joins (brackets, gussets, corners, nodes) and linear guides follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling
@@ -407,6 +408,64 @@ order from end a, each with its full line. A face only a few mm wide at a small 
 view says by how much. It returns `{ svg, scale, faces, dimensions }`, `dimensions` being each operation's figure as
 the sheet prints it.
 
+## Joins
+
+A join names an end of one beam (`a`) and a place on another (`b`): a face with a distance from b's end a where
+a's end meets it (`back@120`), or b's end for beams that meet end to end or at a corner. `joinModel` works out what
+each kind of join does to both beams, the screws that hold it, and the stiffness it is taken to have.
+
+```js
+import { beamModel, joinModel } from '@rulecad/frames'
+
+const post = beamModel('2020-misumi-hfs5', { length: 200 }), rail = beamModel('2020-misumi-hfs5', { length: 300 })
+const j = joinModel('blind', { beam: post, end: 'a' }, { beam: rail, address: 'back@120' })
+
+j.a.ops      // [{ op: 'tap', at: 'a.1', thread: 'M5', depth: 18.5 }]: the post's end bore tapped M5
+j.b.ops      // [{ op: 'access', at: 'front.1@120', thread: 'M5', through: 'beam' }]: a hole for the key, across the rail
+j.screws     // [{ screw: 'M5 button', thread: 'M5', head: 'button', bore: 'a.1' }]
+j.stiffness  // { bending: 1500000, twist: 300000, end: { rx: 300000, ry: 1500000, rz: 1500000 }, kind: 'estimate', … }
+
+beamModel(rail.profile, { length: 300, ops: j.b.ops })   // the rail with its access hole: Ø5.3 mm, 14 mm deep
+```
+
+In a blind join the screw goes into the tapped end of a, its button head slides into the slot of b, and a hex key
+reaches the head through the access hole drilled across b from the opposite face, in line with the screw. The access
+hole goes through every wall on its line (`through: 'beam'`) and stops at the slot the head sits in. An end-tap join
+drills a clearance hole right across b instead, and the screw's cap head sits on the far face.
+
+| Kind | What it is | `b` | What this release derives |
+|---|---|---|---|
+| `blind` | A tap in the end of a, a button-head screw in it, the head in a slot of b, an access hole across b | a face with a slot | The tap, the access hole, the screw |
+| `end-tap` | A tap in the end of a, a cap screw through a hole drilled across b | a face | The tap, the clearance hole, the screw |
+| `bracket` | A corner bracket with its slot nuts and screws | a face with a slot | The stiffness; the bracket comes with Frames 2.3 (printed) and 2.6 (bought) |
+| `gusset` | A flat plate (L, T or cross) over the joint | a face with a slot | The stiffness; the plate later |
+| `cube` | A three-way corner taking the beam ends | an end | The stiffness; the corner later |
+| `hidden` | A bought inner connector in the slots | a face with a slot | The stiffness; the connector with Frames 2.6 |
+| `anchor` | A bought anchor connector and its pocket | a face with a slot | The stiffness; the connector with Frames 2.6 |
+| `mitre` | Two mitred ends and a corner key or plate | an end | The stiffness; the mitres and the key later |
+| `pivot` | A hinge or pivot, which also moves | a face with a slot | The stiffness; the pivot and its joint later |
+| `splice` | Two beams end to end, with a joining plate | an end | The stiffness; the plate later |
+| `printed` | A printed node that sockets the beam ends | a face or an end | The stiffness; the node with Frames 2.3 |
+
+A kind whose fitting comes later says so in a `join.fitting` warning and adds no operations or screws. A join that
+needs a slot on a closed face is a `join.geometry` failure, with nothing derived. Bad input is refused by name: an
+unknown kind, an end with no bore to tap (a tube: join it with a bracket or a gusset), an end with two bores (give a
+join for each, `a.1` and `a.2`), `b` the wrong sort of place for the kind, a screw or a fitting the kind does not
+take.
+
+The tap is as deep as the thread engagement asks in the beam's metal (two diameters in aluminium, from
+`@rulecad/fixings`), with the screw's tip room and one and a half diameters more (`JOIN_TAP`), so that a screw of a
+sold length both engages fully and stops short of the bottom. `options.screw` names another screw (`'M5x12 button'`).
+
+### Stiffness
+
+A frame's stiffness is set at its corners, and a joint's stiffness is the honest unknown. Each kind has a bending
+and a twist stiffness in N·mm/rad for a 20 mm series profile (`JOIN_STIFFNESS`), every one an estimate with its
+reasoning in its rule. A profile of another size is scaled by the cube of its width over 20 mm, and a printed fitting
+is taken at 0.3 of a bought one's (`JOIN_SCALE`), both estimates too. `joinStiffness(kind, beam, { fitting })` gives
+the figures and the end join `@rulecad/fea/frame` takes (`{ rx: twist, ry: bending, rz: bending }`). The joint rig
+(issue 264) measures them; until then a check that uses them says it rests on estimates.
+
 ## Slot nuts
 
 A slot nut is a rule set in `@rulecad/rules` (`"part": "slot_nut"`), one for each maker, slot, thread and kind:
@@ -513,6 +572,8 @@ kit's.
 | Room a bar gives | bar length − trim − Σ (each beam's length + kerf) ≥ 0, the offcut being what is left | Each cut takes a kerf; the trim squares the bar's first end |
 | A mitre's short side | L − w tan θ for each mitred end, w the section's side across the cut and θ the angle from square | Trigonometry |
 | Tap depth, by default | 2 × the major diameter in aluminium (1 in steel, 2.5 in plastic) | The engagement rule set in `@rulecad/rules`, through `@rulecad/fixings` |
+| A join's tap depth | engagement + tip room + 1.5 × the major diameter (M5 in aluminium: 10 + 1 + 7.5 = 18.5 mm) | `engagement` and `tip_room` from `@rulecad/fixings`; `JOIN_TAP`, a working figure |
+| A join's stiffness for another size | k = k₂₀ × (w / 20)³, w the profile's larger side in mm | `JOIN_SCALE.size`, an estimate |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
 | A screw's proof load | F = S_p × A_s, A_s = π/4 (d − 0.9382 P)² | ISO 898-1: proof stress S_p (580 MPa for class 8.8) on the stress area of the thread |
 | Plastic's shear strength | τ = σ / √3 | The von Mises estimate, `@rulecad/fixings`' `shear_ratio` |
@@ -557,6 +618,8 @@ lists them.
 | `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
+| `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting? })` | A join: the operations on each beam, its screws, its fitting to come, its stiffness, what to know |
+| `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join |
 | `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
 | `cutList(beams, { kerf?, trim?, tolerance?, stock? })`, `cutListText(c)` | The cut list: marks, the bars to buy, the cut order and offcut on each, `frame.cut` findings |
