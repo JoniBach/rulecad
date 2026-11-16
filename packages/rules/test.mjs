@@ -138,7 +138,12 @@ test('every name a design reads of a thread set is kept: in the vocabulary, or a
   const walk = (d) => { if (!fs.existsSync(d)) return; for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory() && !['node_modules', '.cache'].includes(e.name)) walk(p); else if (/\/objects\/[^/]+\.(json|js)$/.test(p)) reads(fs.readFileSync(p, 'utf8'), p.slice(repo.length)); } };
   for (const d of ['examples', 'packages/create-rulecad/template', 'packages/create-rulecad/machines']) walk(repo + d);
   for (const f of ['packages/cad/EXAMPLES.md', 'packages/cad/TUTORIAL.md']) if (fs.existsSync(repo + f)) for (const [, at, body] of fs.readFileSync(repo + f, 'utf8').matchAll(/^```\w*[ \t]*(\S*\/objects\/\S+)[^\n]*\n([\s\S]*?)^```/gm)) reads(body, `${f}: ${at}`);
-  if (fs.existsSync(repo + 'examples')) assert.ok(read.size >= 10, `the designs' reads are found (${read.size})`);
+  // the scan itself, on a sample: the migration to @rulecad/fixings takes the designs' own reads toward none, so the
+  // scan is shown to find a read in a design's text, not by how many the repository still has
+  const sample = new Map(), was = [...read];
+  read.clear(); reads('const hole = v.m3.clearance + v.x1c.hole_comp, nut = v.m4.nut_flats', 'sample'); for (const k of read.keys()) sample.set(k, 1);
+  assert.deepEqual([...sample.keys()].sort(), ['m3.clearance', 'm4.nut_flats'], 'the scan finds what a design reads of a thread set');
+  read.clear(); for (const [k, w] of was) read.set(k, w);
   for (const [ref, where] of read) { const [s, r] = ref.split('.'); assert.ok(rulesOf(s)[r], `${ref}, read in ${where}, is in the kit's ${s}`); }
 });
 

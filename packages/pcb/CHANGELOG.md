@@ -3,9 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A **drilled size** here is a dimension the fab
 makes (a hole's diameter in the drill file). Each release says whether any drilled or printed size moved, and why.
 
-## Next release: a board's mounting holes named by thread (Fixings 3)
-
-The version number is set when the release is published.
+## 0.5.4: a board's mounting holes named by thread (Fixings 3)
 
 ### What reads fixings now
 

@@ -4,9 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Next release: the kit reads its screws from fixings (Fixings 3)
-
-The version number is set when the release is published.
+## 0.1.4: the kit reads its screws from fixings (Fixings 3)
 
 ### What reads fixings now
 

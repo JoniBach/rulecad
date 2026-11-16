@@ -4,9 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Next release: shapes holds no screw size (Fixings 3)
-
-The version number is set when the release is published.
+## 0.4.5: shapes holds no screw size (Fixings 3)
 
 ### What reads fixings now
 

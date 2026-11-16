@@ -5,10 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
-## Next release: screws through fixings, end to end (Fixings 3)
-
-The version number is set when the release is published. The work was released in steps as 0.7.54 to 0.7.58 on the
-development branch; this entry covers all of it.
+## 0.7.56: screws through fixings, end to end (Fixings 3)
 
 ### What reads fixings now
 
@@ -22,7 +19,9 @@ development branch; this entry covers all of it.
   is cached by them, as a `v.fixings` build is. A `fasten` through a board's holes (`"holes": "pcb.board"`) holds them
   to the thread's clearance hole as the fab drills it, with nothing added for a printer.
 - **Assemblies:** `fasten` is the one way to say a screwed joint. A fit with `"fastens": true` is for what holds parts
-  without screws (pins, a press, a clip).
+  without screws (pins, a press, a clip), with one exception for now: a NEMA motor's mounting screws stay on its
+  `"fastens": true` fit, which counts them in `cad list`, because `fasten` and `motor.mount` still choose different
+  lengths for the same screw.
 
 ### Added
 

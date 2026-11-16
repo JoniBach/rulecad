@@ -51,7 +51,8 @@ npx cad wires arm/arm                  # each wire's length through the arm's wh
 
 ### The screws
 
-Every screwed joint in the arm is a `fasten` entry in its assembly: the screw named by its thread and head, the parts it
+Every screwed joint in the arm but the motor mounts is a `fasten` entry in its assembly (the motors' screws are
+counted by their `"fastens": true` fits, and come on the same list): the screw named by its thread and head, the parts it
 passes through, and the part it ends in. The holes in the printed parts come from `v.fixings` (the
 [`@rulecad/fixings`](../fixings/) package bound to the project's printer), so a clearance hole, a pilot, a counterbore and a
 countersink are each sized from the thread's rule set and the printer's, and none is typed by hand. `cad check` follows each

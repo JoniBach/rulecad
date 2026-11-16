@@ -5,9 +5,7 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
-## Next release: screws through fixings in every template (Fixings 3)
-
-The version number is set when the release is published.
+## 0.3.16: screws through fixings in every template (Fixings 3)
 
 ### What reads fixings now
 

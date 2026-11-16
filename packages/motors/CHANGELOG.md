@@ -4,9 +4,7 @@ What changed in each release, for someone upgrading a workspace. A **printed siz
 print (a hole's diameter, a seat's depth, a part's outline). Each release says whether any printed size moved, and
 why.
 
-## Next release: motors mount through fixings (Fixings 3)
-
-The version number is set when the release is published.
+## 0.1.6: motors mount through fixings (Fixings 3)
 
 ### What reads fixings now
 

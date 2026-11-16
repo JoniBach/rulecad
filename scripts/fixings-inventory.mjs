@@ -55,6 +55,12 @@ export const DELIBERATE = [
   { file: 'examples/bench/projects/benchmarks/objects/servo-arm.json', name: 'middle', why: 'Room over the horn\'s middle for its screw\'s head and a driver, not a hole the screw passes: the horn screw goes into the servo\'s spline, and sg90.horn_screw names it' },
 ];
 
+// Files that import thread sets by name and are no screw table: a generated catalogue of every rule set a package
+// reads, one import per set so a bundler can see them, holding no figure of its own and choosing no screw by thread.
+export const CATALOGUES = [
+  { file: 'packages/frames/catalogue.mjs', why: 'Every profile, slot, slot nut, thread and material set @rulecad/frames reads, imported by name for a bundler (the docs page): its threads are the ones profiles\' bores tap to, read as sets, with no figure typed here.' },
+];
+
 // Places swept for screw sizes typed in code, and what was found (Fixings 3.9, #239). None is counted: none types a
 // hole a printed part gets for a screw.
 export const SWEPT = [
@@ -120,7 +126,7 @@ export function inventory({ root = ROOT, files = filesOf(root), read } = {}) {
       const text = read(f);
       if (text) for (const x of documentItems(f, text)) items.push({ place: f, ...x });
     } else if ((m = f.match(/^packages\/([^/]+)\/(?:.*\/)?[^/]+\.mjs$/)) && !['rules', 'fixings'].includes(m[1]) && !/(^|\/)test[^/]*\.mjs$|\.test\.mjs$/.test(f)) {
-      const text = read(f) || '';
+      const text = CATALOGUES.some((c) => c.file === f) ? '' : read(f) || '';
       for (const s of text.matchAll(/^\s*import\s+\w+\s+from\s+'@rulecad\/rules\/([\w-]+)\.json'/gm)) if (SET_FILE.test(s[1])) items.push({ place: `packages/${m[1]}`, file: f, name: s[1], kind: 'table' });
     }
   }
