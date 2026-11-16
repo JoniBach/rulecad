@@ -2872,7 +2872,7 @@ The rules these figures come from:
 }
 ```
 
-The two objects, drawn at rest with the fingers straight. The gripper is one print, the fingers joined only through their leaves; the `part` variable lets the closing check below take it apart. The double horn is the one the SG90 comes with, drawn from a few measurements of the bag's contents:
+The two objects, drawn at rest with the fingers straight. The gripper is one print, the fingers joined only through their leaves; the `part` variable lets the closing check below take it apart. Its holes are named, never typed: the block's two are `v.fixings`' M3 clearance holes, 3.5 mm, for the yoke's screws, and the posts under the servo's tabs have pilots of 1.7 mm for the screws that come with the SG90, sized from its tabs as `v.motors.mount` sizes them. The double horn is the one the SG90 comes with, drawn from a few measurements of the bag's contents:
 
 ```js projects/arm/objects/gripper.js
 // A compliant gripper, printed flat in PETG: a palm with the servo on it, and two fingers, each a rigid jaw on one long
@@ -3402,7 +3402,7 @@ The project lists the new objects:
 
 ### The upright assembly
 
-`arm-upright` is `arm` from chapter 12 with five differences: the base, the housing, the bridge and its bearing are rotated 90° about the x axis and the rest follows through the joints (their positions become `[0, "0 - arm.face", 0]` and so on: a rotation of x, y, z to x, -z, y); the pen holder is replaced by the gripper on the forearm's same anchor; the task is a box of points with `payload` and `grip`; `gravity` is set to `[0, 0, -1]` as the check needs the word down; and the elbow folds only to 140°, not 160°, for the reason under the commands below. Its one pose, `reach`, is the far corner of the box: the assembly is drawn there because the shoulder's load is worst there, and "drawn" is what `motor.torque` sweeps its motor from. The fingers are straight in it, as every flexure here is.
+`arm-upright` is `arm` from chapter 12 with five differences: the base, the housing, the bridge and its bearing are rotated 90° about the x axis and the rest follows through the joints (their positions become `[0, "0 - arm.face", 0]` and so on: a rotation of x, y, z to x, -z, y); the pen holder is replaced by the gripper on the forearm's same anchor; the task is a box of points with `payload` and `grip`; `gravity` is set to `[0, 0, -1]` as the check needs the word down; and the elbow folds only to 140°, not 160°, for the reason under the commands below. Its one pose, `reach`, is the far corner of the box: the assembly is drawn there because the shoulder's load is worst there, and "drawn" is what `motor.torque` sweeps its motor from. The fingers are straight in it, as every flexure here is. Its `fasten` list is chapter 12's, with the yoke's two screws and their nuts through the gripper where they went through the pen holder, and no set screw, since there is no pen to clamp. The check chooses each screw's length and `cad list` counts it; chapter 15 explains `fasten` in full.
 
 ```json projects/arm/assemblies/arm-upright.json
 {
@@ -3722,7 +3722,7 @@ Lifting wants a Z, the tool up and down, and on a flat arm a Z is the only way t
 
 So the Z goes at the wrist, bolted into the forearm's yoke where the gripper goes, and on the drawing arm only: on the upright arm a wrist Z runs level, in and out from the wall, and adds to the shoulder's load instead of lifting anything. The motor is the small geared stepper, the 28BYJ-48: 30 g rather than the 190 g NEMA 14, because a 250 g load on an 8 mm lead needs only 2.45 N. Everything turns on the lead's torque, `F = T × 2π × η / lead`: with an 8 mm lead the 28BYJ-48's 0.034 N m gives 15.5 N at about 58% (μ 0.2 on the nut, an `estimate` in the rule set), 6 times over.
 
-The frame bolts into the yoke, two bars hold two 8 mm rods with teardrop holes, and the screw hangs from a coupler at the top with its far end loose in the bottom bar, steadied only by the nut: this is small enough that the rods keep it straight. The carriage rides the rods on two LM8UUs and carries a flanged T8 nut. Printed standing, its pockets and trap open from the top.
+The frame bolts into the yoke, two bars hold two 8 mm rods with teardrop holes, and the screw hangs from a coupler at the top with its far end loose in the bottom bar, steadied only by the nut: this is small enough that the rods keep it straight. The carriage rides the rods on two LM8UUs and carries a flanged T8 nut. Printed standing, its pockets and trap open from the top. The frame's holes come from `v.fixings`: M3 clearance holes for the yoke's two screws, and for the motor's ears a clearance hole for the thread its mount takes, M4, 4.6 mm, as teardrops on their sides. The carriage reads the T8 nut's figures from the kit's `t8-nut` set.
 
 ```js projects/arm/objects/zframe.js
 // A Z axis for the wrist, printed flat: a frame bolted into the forearm's yoke, two bars with the rods' holes, and the
@@ -4411,7 +4411,7 @@ The stack of the same gearbox with the motor's face as zero, what the leg stands
 
 ### The gearbox, as the arm's
 
-The housing, the sun, the planets, the carrier that isn't printed, the output ring with its flange, the spindle with its shaft through a 6800, the bridge, and the clips are chapter 12's prints, read through this leg's rule set. The hip is the arm's shoulder and the knee the elbow, each turned on its side.
+The housing, the sun, the planets, the carrier that isn't printed, the output ring with its flange, the spindle with its shaft through a 6800, the bridge, and the clips are chapter 12's prints, read through this leg's rule set. The hip is the arm's shoulder and the knee the elbow, each turned on its side. Their screw holes are chapter 12's too, each from `v.fixings` by its thread: clearance holes, pilots, the cap heads' counterbores sunk a layer, and the spindle's countersinks, 6.82 mm across for an ISO 10642 head so it sits flush under the bridge, on the 48 mm disc that keeps 0.6 mm of edge round them.
 
 ```json projects/leg/objects/housing.json
 {
@@ -4786,7 +4786,7 @@ export function main (v) {
 
 ### The thigh, the shin and the foot
 
-The thigh is the arm's upper arm, 100 mm long, without its home switch or bands. The shin is new: a tapered bar from the knee's flange to a disc, printed flat, so the bending under a foot's load runs along the layers. A disc for a foot means the contact rolls as the shin leans, so a point at the disc's centre stays over the ground: that centre is the `tip` the gait moves, and `height` is the hip to that centre. The pad is TPU, printed lying down, its ridge snapping into a groove round the disc so a wet floor can't pull it off and PLA doesn't skate on a scale's top.
+The thigh is the arm's upper arm, 100 mm long, without its home switch or bands. The shin is new, and its four screws into the knee's output are sunk 1.5 mm in their counterbores, as the forearm's are, so an M3x12 takes the whole flange and stops short of the planets. It is a tapered bar from the knee's flange to a disc, printed flat, so the bending under a foot's load runs along the layers. A disc for a foot means the contact rolls as the shin leans, so a point at the disc's centre stays over the ground: that centre is the `tip` the gait moves, and `height` is the hip to that centre. The pad is TPU, printed lying down, its ridge snapping into a groove round the disc so a wet floor can't pull it off and PLA doesn't skate on a scale's top.
 
 ```json projects/leg/objects/thigh.json
 {
@@ -4988,7 +4988,7 @@ export function main (v) {
 
 ### The stand
 
-A carriage rides up two 8 mm rods on two LM8UU bushings; the hip's housing screws to its face and the hip motor goes through a window in the middle. A foot block holds each rod to the bench and a tie across their tops stops them leaning. The scale sits on the bench under the foot, between the two feet; a collar on each rod is the stop the carriage rests on when the foot lifts.
+A carriage rides up two 8 mm rods on two LM8UU bushings; the hip's housing screws to its face and the hip motor goes through a window in the middle. A foot block holds each rod to the bench and a tie across their tops stops them leaning. The scale sits on the bench under the foot, between the two feet; a collar on each rod is the stop the carriage rests on when the foot lifts. The housing's three screws cut their thread in M3 pilots through the carriage's plate, the foot blocks take M5 bolts to the bench through clearance holes of 5.6 mm, and the collar's clamp screw crosses its slot in an M3 clearance hole drawn as a teardrop, all from `v.fixings`.
 
 In this design the body's frame is the world: the hip is at the origin, so the gait's targets are in the body's frame as they should be, and the stand hangs off it rather than the other way round. That is why nothing joins the carriage to the rods: the slide is real on the bench, but the check treats the frame as still and the leg as stepping from it.
 
@@ -5322,7 +5322,7 @@ To run the leg on the bench: tare the scale with the carriage resting on its sto
 
 ### The quadruped
 
-Four legs, on a body two plates wide: a design exercise. The two side plates are the same 242 mm print, turned end for end, held apart by two beams and each with two hips. Each hip motor goes through its plate, inward, so a body 100 mm wide takes two motors back to back. The knees point outward, front and back, so a front knee never reaches a back hip.
+Four legs, on a body two plates wide: a design exercise. The two side plates are the same 242 mm print, turned end for end, held apart by two beams and each with two hips. Each hip motor goes through its plate, inward, so a body 100 mm wide takes two motors back to back. The knees point outward, front and back, so a front knee never reaches a back hip. Each hip's housing screws into M3 pilots in its plate, and each beam is held by screws through M3 clearance holes in the plates into pilots in the beam's ends: a pilot in the plate as well would leave the screw nothing to clamp, and the check's `fasten.clearance` would fail it.
 
 ```json projects/leg/objects/side.json
 {
