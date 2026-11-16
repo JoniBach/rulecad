@@ -234,3 +234,99 @@ test('what holds a screw in plastic: inserts from one maker, pilots as starting 
     assert.ok(!r.tap_drill && !r.nut_flats && !r.clearance, `${name}: no tap, no nut, and no clearance hole its maker gives`);
   }
 });
+
+// ---------- profiles, slots and the alloys they are made of ----------
+test('profiles and slots: one maker one set, named for size and maker, every figure saying what it rests on', () => {
+  // (plain sections and custom outlines have no maker and no sheet: they have their own test below)
+  const slotted = (s) => ['t-slot', 'v-slot'].includes(s.set.rules.family?.value);
+  const profiles = sets.filter((s) => s.set.part === 'profile' && slotted(s)), slots = sets.filter((s) => s.set.part === 'slot'), byName = Object.fromEntries(sets.map((s) => [s.name, s.set]));
+  for (const { name } of profiles) assert.match(name, /^profile-\d{4}-(misumi|bosch|motedis|item|generic|openbuilds|makerbeam|openbeam|8020)(-[a-z0-9]+)?$/, `${name}: profile-<size>-<maker>[-<series>]`);
+  for (const { name } of slots) assert.match(name, /^slot-\d+(-[a-z0-9]+)*$/, `${name}: slot-<opening>[-<maker>][-<variant>]`);
+  // three named makers each have a 20 mm and a 40 mm profile, and unbranded stock has generic ones
+  for (const maker of ['misumi', 'bosch', 'motedis', 'generic']) for (const size of ['2020', '4040']) assert.ok(profiles.some((p) => p.name.startsWith(`profile-${size}-${maker}`)), `${maker} has a ${size}`);
+  for (const size of ['2020', '2040', '3030', '3060', '4040', '4080', '4545', '4590']) assert.ok(byName[`profile-${size}-misumi-hfs${{ 20: 5, 30: 6 }[size.slice(0, 2)] ?? 8}`], `MISUMI's ${size}`);
+  for (const { name, set: { rules: r, _doc } } of profiles) {
+    for (const k of ['family', 'series', 'cells_across', 'cells_up', 'width', 'height', 'slot', 'bore_diameter', 'alloy', 'material']) assert.ok(r[k], `${name} has ${k}`);
+    // a maker's sheet gives the section's figures; where a maker publishes none, the set has none (they are worked out from the outline) and says so
+    if (r.area || r.inertia_x || r.inertia_y) for (const k of ['area', 'inertia_x', 'inertia_y', 'mass_per_metre']) assert.ok(r[k], `${name} has ${k}`);
+    else { assert.match(_doc, /publishes no area, second moments or mass/, `${name} says its maker gives no section figures`); assert.ok(/-(openbuilds|makerbeam|openbeam)/.test(name), `${name}: a maker with a sheet has its figures`); }
+    assert.equal(r.width.value, r.series.value * r.cells_across.value, `${name}: cells of its series across`); assert.equal(r.height.value, r.series.value * r.cells_up.value);
+    assert.ok(r.cells_across.value >= r.cells_up.value && (!r.inertia_x || r.inertia_x.value <= r.inertia_y.value), `${name} lies flat: inertia_x is the smaller second moment`);
+    assert.equal(byName[r.slot.value]?.part, 'slot', `${name}.slot names a slot set`);
+    assert.ok(byName[r.material.value]?.rules.density && byName[r.material.value].rules.modulus, `${name}.material names a material set`);
+    assert.match(_doc, /The drawn outline leaves out/, `${name} says what its drawing leaves out`);
+    const generic = name.endsWith('-generic');
+    for (const [k, x] of Object.entries(r)) {
+      assert.ok(vocabulary.fields[k], `${name}.${k} is a name in the vocabulary`);
+      if (generic) { assert.equal(x.kind, 'community', `${name}.${k}: unbranded stock is community until measured`); continue; }
+      if (name.includes('-misumi-')) { assert.match(x.source, /MISUMI FA Mechanical Standard Components catalogue 2014, page 2-\d+, https:\/\/my\.misumi-ec\.com\/pdf\/fa\/2014\/p2_\d+\.pdf/, `${name}.${k} names its page`); assert.equal(x.kind, /scaled off/.test(x.source) ? 'estimate' : 'spec', `${name}.${k}`); }
+      if (name.includes('-bosch')) { assert.match(x.source, /Bosch Rexroth, Basic Mechanic Elements MGE 14\.0 \(3 842 540 392, 2019-07\), page \d+-\d+/, `${name}.${k} names its page`); assert.equal(x.kind, /scaled off/.test(x.source) ? 'estimate' : 'spec', `${name}.${k}`); }
+      // the sheet's own figure, but where the sheet's cannot be (a misprint): then worked out from another of its figures, and the rule says so
+      if (['area', 'inertia_x', 'inertia_y', 'mass_per_metre'].includes(k)) assert.ok(x.kind === 'spec' || (x.kind === 'derived' && /misprint/.test(x.rule) && /prints/.test(x.rule)), `${name}.${k} is the sheet's own figure`);
+    }
+    if (generic) assert.match(_doc, /until the bar in hand is measured/);
+  }
+  for (const { name, set: { rules: r } } of slots) {
+    for (const k of ['opening', 'lip_thickness', 'cavity_width', 'cavity_depth', 'nut_family']) assert.ok(r[k], `${name} has ${k}`);
+    // a floor narrower than the cavity with the flanks that reach it, or neither: straight walls
+    assert.equal(!!r.floor_width, !!r.flank_angle, `${name}: floor_width and flank_angle go together`);
+    assert.ok(r.opening.value < r.cavity_width.value && r.lip_thickness.value < r.cavity_depth.value && (!r.floor_width || r.floor_width.value < r.cavity_width.value), `${name} is a slot`);
+    if (r.groove_width) assert.ok(r.groove_depth.value > 0 && r.groove_width.value < (r.floor_width ?? r.cavity_width).value, `${name}: a groove is narrower than the floor it is in`);
+    assert.equal(byName[r.nut_family.value]?.part, 'slot', `${name}.nut_family names a slot set`);
+    if (/-(misumi|bosch)/.test(name)) { for (const k of ['opening', 'lip_thickness', 'cavity_width', 'cavity_depth']) assert.equal(r[k].kind, 'spec', `${name}.${k} is printed on the maker's page`); assert.equal(r.floor_width.kind, 'estimate', `${name}.floor_width is scaled off the drawing, and says so`); assert.match(r.floor_width.rule, /Not dimensioned/); }
+    if (!/-(misumi|bosch|motedis|item|openbuilds|makerbeam|openbeam|8020)/.test(name)) for (const x of Object.values(r)) assert.equal(x.kind, 'community', `${name}: a generic slot is community`);
+  }
+  // two makers' 2020 differ where their slots do
+  assert.notDeepEqual(['lip_thickness', 'cavity_depth'].map((k) => rulesOf('slot-6-misumi')[k].value), ['lip_thickness', 'cavity_depth'].map((k) => rulesOf('slot-6-bosch')[k].value));
+  assert.notEqual(rulesOf('profile-2020-misumi-hfs5').bore_diameter.value, rulesOf('profile-2020-bosch').bore_diameter.value);
+  // a figure Motedis does not print is Rexroth's, and community
+  assert.equal(rulesOf('slot-6-motedis').opening.kind, 'spec'); assert.equal(rulesOf('slot-6-motedis').lip_thickness.kind, 'community'); assert.match(rulesOf('slot-6-motedis').lip_thickness.rule, /Motedis prints none/);
+  // through the one grammar: a design reads a profile's numbers, its sold lengths as a list and its slot's name as text
+  const v = resolve({ uses: ['profile-2040-misumi-hfs5', 'slot-6-misumi'], variables: { pitch: { value: 'profile_2040_misumi_hfs5.width / profile_2040_misumi_hfs5.cells_across', unit: 'mm' }, tongue: { value: 'slot_6_misumi.opening - 0.2', unit: 'mm' } } }, { sets: { 'profile-2040-misumi-hfs5': byName['profile-2040-misumi-hfs5'], 'slot-6-misumi': byName['slot-6-misumi'] } }).values;
+  assert.equal(v.pitch, 20); assert.ok(Math.abs(v.tongue - 5.8) < 1e-12);
+});
+
+
+test('plain sections: a base set to each family, ready sizes named for what they are, and no figure a sheet would have to give', () => {
+  const byName = Object.fromEntries(sets.map((s) => [s.name, s.set])), plain = sets.filter((s) => s.set.part === 'profile' && !['t-slot', 'v-slot'].includes(s.set.rules.family?.value));
+  const families = ['tube', 'round-tube', 'angle', 'channel', 'bar', 'round-bar', 'custom'];
+  for (const f of families) assert.equal(byName[`profile-${f}`]?.rules.family.value, f, `profile-${f} is the base set of the ${f} family`);
+  assert.ok(plain.length >= families.length + 8, 'the families and a few ready sizes');
+  for (const { name, set: { rules: r, _doc } } of plain) {
+    const m = name.match(/^profile-(tube|round-tube|angle|channel|bar|round-bar|custom)(?:-(al|steel)-(\d+(?:\.\d+)?(?:x\d+(?:\.\d+)?){0,2}))?$/);
+    assert.ok(m, `${name}: profile-<family>, or profile-<family>-<al|steel>-<size>`);
+    assert.equal(r.family.value, m[1], `${name} is of the family it is named for`);
+    for (const k of ['width', 'height', 'material']) assert.ok(r[k], `${name} has ${k}`);
+    assert.ok(byName[r.material.value]?.rules.density && byName[r.material.value].rules.modulus, `${name}.material names a material set`);
+    assert.equal(!!r.wall, ['tube', 'round-tube', 'angle', 'channel'].includes(m[1]), `${name}: a wall where the family has one`);
+    // its section figures are worked out from its outline: writing them here would be a second copy to go stale
+    for (const k of ['area', 'inertia_x', 'inertia_y', 'torsion_constant', 'mass_per_metre', 'slot', 'bore_diameter']) assert.equal(r[k], undefined, `${name} has no ${k}`);
+    for (const [k, x] of Object.entries(r)) { assert.ok(vocabulary.fields[k], `${name}.${k} is a name in the vocabulary`); assert.ok(['default', 'estimate'].includes(x.kind), `${name}.${k}: a nominal size is a default, a guess an estimate (no sheet is behind either)`); }
+    assert.match(_doc, /The drawn outline leaves out/, `${name} says what its drawing leaves out`);
+    if (m[3]) { // a ready size: the size in its name is the size in its rules, and its material the one named
+      const size = m[3].split('x').map(Number), round = m[1].startsWith('round');
+      assert.deepEqual(round ? [r.width.value, ...(r.wall ? [r.wall.value] : [])] : [r.width.value, r.height.value, ...(r.wall ? [r.wall.value] : [])], size, `${name}: named for its size`);
+      assert.equal(r.material.value.startsWith('al'), m[2] === 'al', `${name}: named for its material`);
+    }
+  }
+  // the kit's own outlines: each beside a set of its name, with its source and licence, and nothing of a maker's
+  const outlines = fs.existsSync(dir + 'outlines') ? fs.readdirSync(dir + 'outlines') : [];
+  assert.ok(outlines.includes('profile-custom.json'));
+  for (const file of outlines) {
+    const o = JSON.parse(fs.readFileSync(`${dir}outlines/${file}`, 'utf8'));
+    assert.equal(byName[file.replace(/\.json$/, '')]?.part, 'profile', `outlines/${file} belongs to a profile set of its name`);
+    assert.match(o.source, /drawn for the kit/, `outlines/${file}: the kit holds only outlines drawn for it`); assert.equal(o.licence, 'CC0-1.0');
+    assert.ok(Array.isArray(o.loops) && o.loops.every((l) => l.length >= 3 && l.every((p) => p.length === 2 && p.every(Number.isFinite))));
+  }
+});
+test('the alloys profiles are made of: each temper its own set, strengths the least the standard or the maker gives', () => {
+  for (const name of ['al6063-t5', 'al6063-t6', 'al6063-t66', 'al6060-t66', 'al6005a-t6', 'al6n01-t5', 'al6060-rexroth']) {
+    const r = rulesOf(name);
+    for (const k of ['modulus', 'poisson', 'strength', 'ultimate', 'density']) assert.ok(r[k], `${name} has ${k}`);
+    assert.ok(r.modulus.value > 68000 && r.modulus.value < 71000 && r.density.value >= 2.69 && r.density.value <= 2.72 && r.ultimate.value > r.strength.value && r.poisson.value > 0.3 && r.poisson.value < 0.36, name);
+    assert.equal(r.modulus.unit, 'MPa'); assert.equal(r.density.unit, 'g/cm³');
+  }
+  assert.ok(rulesOf('al6063-t5').strength.value < rulesOf('al6063-t6').strength.value && rulesOf('al6063-t6').strength.value < rulesOf('al6063-t66').strength.value, 'a harder temper is stronger');
+  assert.deepEqual([rulesOf('al6063-t5').strength.value, rulesOf('al6063-t66').strength.value, rulesOf('al6n01-t5').strength.value, rulesOf('al6060-rexroth').strength.value], [130, 200, 205, 195]);
+  assert.equal(rulesOf('al6n01-t5').poisson.kind, 'estimate', 'a figure the maker does not give says so');
+});

@@ -1,7 +1,7 @@
 {
   "name": "@rulecad/frames",
-  "version": "0.0.1",
-  "description": "Structures from beams: aluminium extrusion of any maker's profile, plain tube and angle, or printed beams, with the brackets, slot nuts, mounts and linear guides that attach to them. A first release that holds the name while the package is built: it installs and has nothing to call yet.",
+  "version": "0.1.7",
+  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, the operations on it (cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) checked, and its solid as a light box or the true section. A frame's cut list (the bars to buy, packed with the saw's kerf) and a cut-and-drill sheet per beam. Slot nuts: the bought nuts by maker and kind, the nut for a face, and a printed carrier for a nut or an insert. Joins, fittings and guides follow.",
   "type": "module",
   "exports": {
     ".": {
@@ -12,16 +12,49 @@
   "types": "./frames.d.mts",
   "files": [
     "frames.mjs",
+    "profile.mjs",
+    "beam.mjs",
+    "ops.mjs",
+    "cutlist.mjs",
+    "cutsheet.mjs",
+    "slotnut.mjs",
+    "section.mjs",
+    "catalogue.mjs",
     "frames.d.mts",
+    "profile.d.mts",
+    "beam.d.mts",
+    "ops.d.mts",
+    "cutlist.d.mts",
+    "cutsheet.d.mts",
+    "slotnut.d.mts",
+    "section.d.mts",
+    "catalogue.d.mts",
     "README.md",
     "LICENSE"
   ],
   "license": "MIT",
   "keywords": ["aluminium-extrusion", "t-slot", "v-slot", "frames", "3d-printing", "jscad", "cad"],
-  "engines": { "node": ">=20.10" },
+  "engines": {
+    "node": ">=20.10"
+  },
   "sideEffects": false,
-  "repository": { "type": "git", "url": "git+https://github.com/JoniBach/rulecad.git", "directory": "packages/frames" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoniBach/rulecad.git",
+    "directory": "packages/frames"
+  },
   "homepage": "https://github.com/JoniBach/rulecad/tree/main/packages/frames#readme",
-  "bugs": { "url": "https://github.com/JoniBach/rulecad/issues" },
-  "scripts": { "test": "node --test" }
+  "bugs": {
+    "url": "https://github.com/JoniBach/rulecad/issues"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "peerDependencies": {
+    "@jscad/modeling": "^2.12.0"
+  },
+  "dependencies": {
+    "@rulecad/fixings": "^0.1.1",
+    "@rulecad/rules": "^0.3.14"
+  }
 }

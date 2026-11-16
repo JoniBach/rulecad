@@ -43,6 +43,7 @@ npx cad compare keyboard/keycap dsa legend-f     # two variants (or releases) si
 npx cad import-kle layout.json keyboard/mine     # a layout from keyboard-layout-editor.com, into layouts/
 npx cad clone <github link to a .kicad_pcb> sea_picro   # a published board's circuit, into rules/, to redraw by rules
 npx cad measure cover.3mf --rules cover          # a model from elsewhere, measured into draft rules
+npx cad measure beam.stl --profile profile-2020-mine   # a beam's profile from its maker's model or a DXF of its section
 npx cad match legion-go/rail cover.3mf           # how closely a design matches that model, both ways
 ```
 
@@ -164,6 +165,10 @@ own copy anywhere and name it in `viewUrl`.
   (`rules/m3.json`) before the kit's, the project's printer and (for what a thread is in) its material, so a design
   types no diameter and passes none. `cad check` lists what each call drew and the rule it rests on (`hole.drawn`,
   `counterbore.drawn`, ...). A design may also import `@rulecad/fixings` itself: then it reads the kit's sets only.
+- `v.frames`: beams and profiles (`@rulecad/frames`): `profileModel` for a profile's figures, slots and faces
+  (`v.frames.profileModel('2020-misumi-hfs5').slots['slot-6-misumi'].opening`, to draw a tab that drops into a slot),
+  `slotModel`, `beamModel`, `beam` and `outline`. A profile measured into this workspace's `rules/` (`cad measure
+  --profile`) is read before the kit's, with its outline. In an assembly a beam is an item (see Beams).
 - `v.gears`: gears (`@rulecad/gears`): `spur`, `rack` and `internal` as shapes, from a module and teeth, each with its
   model (`gearModel`, `rackModel`, `internalModel`) and `printable(model, printer, width)`. Drawn flat: the axis up z,
   the first tooth on +x, the face on the bed. Two gears in an assembly mesh with a joint's `mesh` (see Joints).
@@ -252,6 +257,26 @@ faces) show up as an even offset: set `--tol` above them.
 
 A model's licence limits what you make from it, not what you learn: measurements are facts, but a non-commercial or
 share-alike model's shape shouldn't be copied into a design under another licence. `measure` warns about those.
+
+**A beam's profile from its maker's model.** `cad measure <beam.stl|beam.3mf|section.dxf> --profile <name>` reads an
+aluminium extrusion's section and writes it as a profile rule set, for a beam the kit has no set for:
+
+```sh
+npx cad measure hfs5-2020.stl --profile profile-2020-mine --source https://example.com/hfs5-2020 --licence "the maker's terms"
+```
+
+| It does | How |
+|---|---|
+| Takes the section | From a model: across its longest axis (or `--along y`), in the middle of the longest stretch that keeps one cross-section. From a DXF: its LINE, LWPOLYLINE (with bulges), ARC and CIRCLE entities, joined into closed loops; inches, centimetres and metres are turned into mm. A SPLINE, an ELLIPSE or a block is refused by name: export the section as lines and arcs |
+| Finds each slot | On every face: the opening at its narrowest, the lip's thickness at its tip, the width under the lips, the depth, the floor's width and the flanks' angle, and a V mouth (`track_width`, `track_angle`) where there is one. An opening with no room under lips is told as a groove, or as the channel of a C section |
+| Finds the bores | Round holes at the middles of the cells are the profile's bores; other round holes and hollows are listed, and stay in the outline |
+| Names the slot family | The known family (the kit's, or your workspace's) whose opening, lip, width and depth are all within `--tol` (0.1 mm) of what was found; where none is, a new family is drafted as `rules/slot-<opening>-<name>.json` |
+| Writes | `rules/<name>.json`, a draft profile with every figure `derived` and carrying the source and licence; `rules/outlines/<name>.json`, the section itself; `.preview/measure/<name>-profile.svg` (and `.png`), the section with each slot and bore marked and listed, to check against the bar in hand |
+
+Then `cad rules check <name>` and `cad rules draw <name>`, which use the measured outline in place of a drawn one, and
+add what a model cannot say: the maker, the alloy, a material set for its mass, the thread its bore taps to. The
+outline is the model's shape, so it goes into your own workspace and nowhere else: the kit publishes no maker's
+outline, and under a non-commercial, no-derivatives or share-alike licence the command says to keep it there.
 
 ## Assemblies
 
@@ -500,6 +525,54 @@ An item can be a motor instead of a printed object: `{ "id": "drive", "motor": {
 - `cad preview --check` of an assembly with a motor writes `<assembly>-check.png`: the same six views, with a label at each joint the motor's torque passes through (what reaches it, and at the loaded joint the margin and whether it holds unpowered). The rest view never carries them.
 - `cad preview` of an assembly with a motor draws each one at work beside the picture, as SVG: `<assembly>-<motor>-curve.svg`, its torque against speed at the output with the load and the working speed marked, and `<assembly>-<motor>-train.svg`, the torque from its shaft through each stage to the joint with the load, against what the load needs there, and whether it holds with the power on and off. The numbers are the check's.
 
+### Beams
+
+An item can be a beam, a length of an aluminium extrusion, a tube or a bar from `@rulecad/frames`:
+
+```json
+{ "id": "x1", "beam": { "profile": "2020-misumi-hfs5", "length": 300 }, "from": [0, 0, 0], "to": [300, 0, 0], "roll": 0 }
+```
+
+- `"profile"` names the profile (`2020-misumi-hfs5`, `profile-4040-item-8`, or a set in this workspace's `rules/`).
+  `"length"` is mm from end `a` to end `b`, a number or an expression (`"x1.length"`). Placed by its ends, the length
+  may be left out: it is the distance from `from` to `to`, and a length that disagrees with them is refused with both.
+  `"material"` names a material set in place of the profile's alloy. `"printed": true` is for printed beams, a later
+  release: it is refused by name for now.
+- Placed by its ends, end `a` is at `from` and end `b` at `to`; at roll 0 its top faces up (+z), or +y when it stands
+  upright, and `"roll"` turns it about its own axis, in degrees. Or place it with `at` and `rotate` as any item, in its
+  own frame: end `a` at the origin, the beam up +z, its top +y. The face names and a picture are in the
+  `@rulecad/frames` README ("Face names in an assembly").
+- A beam is bought: drawn faint, never on a plate, on `cad list` by profile and length (`2 × profile-2020-misumi-hfs5
+  x 300 mm  a beam  150 g each`, weighed by the maker's mass per metre where the sheet gives one), and in the overlap
+  check by its envelope, a plain box. `cad check` says each beam's mass beside the sheet's, and warns of a length
+  longer than the profile is sold in. Its numbers are values: `x1.length`, `x1.width`, `x1.height`, `x1.mass`.
+- `"ops"` lists the operations on it, each placed by an address on the beam and dimensioned from end `a`: `cut`,
+  `mitre`, `tap`, `access`, `drill`, `counterbore`, `pocket`, `notch` and `deburr`. `{ "op": "tap", "at": "a", "thread":
+  "M5" }` taps end a's bore; `{ "op": "access", "at": "top@-10", "thread": "M5" }` drills a hole for an M5 screw's key 10
+  mm from end b; `{ "op": "mitre", "at": "b", "angle": 45, "about": "top" }` mitres end b, the length then measured on
+  the long side. Numbers may be expressions. Each is cut into the beam's solid (a mitre into its envelope too), and
+  `cad check` reports its findings as `beam.op` (a hole into a slot's lips or across a tapped thread, a tap deeper than
+  the bore, a hole too near an end) and thread engagement in the alloy. What each takes is in the `@rulecad/frames`
+  README ("Operations").
+- `cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0 [--roll 90]` adds one.
+
+Every beam has addresses, taken wherever an anchor is: an item's `at`, a joint's `parent` or `child`, a `loop`, a
+fit's `a` or `b`, a fit's `access`, and a load's `at`.
+
+| Address | Where |
+|---|---|
+| `x1.a`, `x1.b` | The middle of each end, its z out of the end |
+| `x1.a.1`, `x1.b.2` | A bore in an end |
+| `x1.top`, `x1.top.2` | A face's first and second place (a slot, or the face where it is closed), at the middle of the beam |
+| `x1.top@120`, `x1.top@-20`, `x1.top@50%` | 120 mm from end `a`, 20 mm from end `b`, half way along |
+| `x1.top.2@120` | The second slot of a face that has more than one |
+
+A face's anchor has its z out of the face and its x along the beam toward `b`. An item placed at an address
+(`{ "id": "plate", "object": "plate", "at": "x1.top@50%" }`) puts its own origin there, its z out of the face and its
+x along the beam, turned by its `rotate` in that frame; it moves with the beam. A distance past either end is refused
+with the beam's length: `"top@320" is past the end of profile-2020-misumi-hfs5 x 300: it is 300 mm long`. In a fit, an
+address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm by default).
+
 ### Building it
 
 Once an assembly is checked, these say how to make it. They all read the assembly itself, so they can't disagree with it.
@@ -507,8 +580,10 @@ Once an assembly is checked, these say how to make it. They all read the assembl
 - `cad order <project>/<assembly>`: the order it goes together in, each step with the part and what fastens it. A `fasten` names its screws on the step where its parts are both there, with the key that turns them and how tight: its `torque`, or the most the seat under the head takes (`2. bracket goes on: bracket fastened to base (2 × M3x10 cap) with a 2.5 mm hex key, to 0.33 N m at most (what the seat takes)`); `--json` gives each as `{ fit, fastener, count, key, tighten: { torque, given } }`, and the build page shows the same. What is not a screw (pins, a clip) is named on a fit that fastens: `"fastener": "push pin", "count": 2` puts it on the shopping list and the step. `--preview` writes a picture of each step to `.preview/`: what's there, and the new part held off along the way it goes on. The order is found by taking the assembly apart, so a part goes in after what it's fastened into, a bearing before its shaft, and a nut trapped by a wall before the neighbour that traps it. A part goes on along a straight line that clears everything already there; which line comes from the part as drawn.
 - `assembly.order` is `cad check`'s finding on it: a part no order can reach fails by name, and a part sealed inside another too. A fit can say where a screw is driven from with `"access": "<item>.<anchor>"`, the anchor's z pointing out along the screw: whatever stands on that line goes on after the screw, and if it has to go on first the screw can't be reached at all. Works on an assembly's own items; a component (an assembly used as an item) goes on as one step.
 - `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by filament so each plate is one colour change, spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`).
+- `cad list <project>/<assembly>` lists the beams' **cut list** after the bought parts: each mark (beams that are the same, one profile, length and set of operations, share a mark, A, B, C), its count, grams each and work, then each profile's lengths to cut, the bars to buy in the lengths it is sold in, and the cuts on each bar in order with its offcut. Every cut takes the saw's 3 mm kerf and each bar's first end is trimmed 10 mm (`CUT_DEFAULTS` in `@rulecad/frames`, each with its source); the packing is first-fit decreasing. `cad check` adds the cut list's findings (`frame.cut`): a beam longer than any length sold fails, two lengths nearer than the cut tolerance can hold apart warn, and beams of one mark are reminded to be cut against one stop. Each beam's mark is in its label in the preview and the link (`x1: mark A, profile-2020-misumi-hfs5 x 300 mm`).
+- `cad beams <project>/<assembly>`: a cut-and-drill sheet for each mark, written to `exports/<project>/<assembly>.beam-<mark>.svg`, in mm so it prints to scale at 100%: the section at end a with each face named and the taps marked, a view of each face with work on it (that face up, end a on the left), every operation dimensioned from end a to 0.1 mm, and the operations in order, each tap with its thread and depth. The build page lists the sheets with the cut list.
 - `cad wires <project>/<assembly>`: the wiring sheet, printed and written to `exports/<project>/<assembly>.wiring.md` (`cad machine` writes it too): each wire's length through every pose with its service loop, gauge, colour, connectors and board pins. Wires also show faint along their routes in `cad preview` and in the link, moving with the joints, and are never parts: no overlap check sees them.
-- `cad link` for such an assembly (or one with a `fasten`) carries the rest of the project with the model. A **Build** button on the page opens, beside it, the shopping list, the plates drawn on their beds, the wiring sheet, the assembly steps (each shows the model at that step) and the machine's settings. The Rules panel lists **predicted against measured**: the ledger `cad measured` writes, each with its ratio, and what the checks predict that nobody has measured yet.
+- `cad link` for such an assembly (or one with a `fasten`) carries the rest of the project with the model. A **Build** button on the page opens, beside it, the shopping list, the beams' cut list and their sheets, the plates drawn on their beds, the wiring sheet, the assembly steps (each shows the model at that step) and the machine's settings. The Rules panel lists **predicted against measured**: the ledger `cad measured` writes, each with its ratio, and what the checks predict that nobody has measured yet.
 - A link for an assembly with a `task` lets the page move the machine: see "Things that move" in the viewer's README. It carries the newest step file `cad plot` wrote for this assembly (`--steps <file>` for another, `--no-steps` for none). A step file for other joints is refused by name.
 
 ## Optimised parts

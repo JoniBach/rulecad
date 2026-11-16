@@ -1,0 +1,12 @@
+{
+  "_doc": "A Ø25 x 2 mm aluminium round tube, as a ready size of the round tube family (profile-round-tube holds the family and how to give any other size). It has no maker's sheet: every dimension is the nominal one stock is sold by, so measure the bar in hand, and its area, second moments, torsion constant and mass are worked out from its outline. The drawn outline leaves out nothing a round tube has.",
+  "name": "profile-round-tube-al-25x2",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "round-tube", "rule": "A round tube", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "width": { "value": 25, "unit": "mm", "rule": "Outside diameter", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "height": { "value": 25, "unit": "mm", "rule": "Outside diameter again: a round section's width and height are both its diameter", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "wall": { "value": 2, "unit": "mm", "rule": "Wall thickness", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "material": { "value": "al6063-t5", "rule": "Extruded aluminium, EN AW-6063 T5: one of the alloys such sections are extruded in (6060 and 6063 in Europe, 6061 and 6063 in America). Name the alloy on your supplier's sheet where it matters", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" }
+  }
+}

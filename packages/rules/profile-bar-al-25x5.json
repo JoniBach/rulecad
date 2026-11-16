@@ -1,0 +1,11 @@
+{
+  "_doc": "A 25 x 5 mm aluminium bar, as a ready size of the bar family (profile-bar holds the family and how to give any other size). It has no maker's sheet: every dimension is the nominal one stock is sold by, so measure the bar in hand, and its area, second moments, torsion constant and mass are worked out from its outline. The drawn outline leaves out the small radius on a drawn bar's edges.",
+  "name": "profile-bar-al-25x5",
+  "part": "profile",
+  "rules": {
+    "family": { "value": "bar", "rule": "A flat or square bar: a solid rectangle", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "width": { "value": 25, "unit": "mm", "rule": "Across", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "height": { "value": 5, "unit": "mm", "rule": "Thickness, up", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" },
+    "material": { "value": "al6063-t5", "rule": "Extruded aluminium, EN AW-6063 T5: one of the alloys such sections are extruded in (6060 and 6063 in Europe, 6061 and 6063 in America). Name the alloy on your supplier's sheet where it matters", "kind": "default", "source": "the nominal size this set is named for: stock is sold by it, and no one maker's sheet is behind it", "checked": "2026-11-15" }
+  }
+}

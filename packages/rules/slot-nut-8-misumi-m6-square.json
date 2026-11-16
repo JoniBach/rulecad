@@ -1,0 +1,16 @@
+{
+  "_doc": "MISUMI's pre-assembly insertion square nut (HNKK6) for its 6 series, 8 mm slot, M6. Sheet metal, cheaper than the block nuts. Hold: MISUMI gives no figure.",
+  "name": "slot-nut-8-misumi-m6-square",
+  "part": "slot_nut",
+  "rules": {
+    "slot": { "value": "slot-8-misumi", "rule": "Made for MISUMI's 6 series (slot width 8 mm)", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "thread": { "value": "M6", "rule": "Thread M6, one of the sizes the table lists (M4, M5, M6)", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "nut_kind": { "value": "square", "rule": "A plain plate, slid in from the end of the slot upside down (the catalogue's words)", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "length": { "value": 16, "unit": "mm", "rule": "Along the slot: 16 on the drawing", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "width": { "value": 16, "unit": "mm", "rule": "Across the slot: 16 on the drawing", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "height": { "value": 4, "unit": "mm", "rule": "Its thickness: 4 on the drawing (a pressed plate with a raised collar round its thread)", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "nut_entry": { "value": "end", "rule": "Pre-assembly insertion: slid in from an open end of the slot before the frame is closed", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "material": { "value": "SPCC steel sheet, trivalent chromate", "rule": "Material as the table names it", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-621, https://my.misumi-ec.com/pdf/fa/2014/p2_621.pdf", "checked": "2026-11-15" },
+    "hold": { "value": 3000, "unit": "N", "rule": "Half Rexroth's 8 mm sliding block (6000 N): a thin plate bends under the lips before a block does. An estimate until it is tested (Frames 2.13): the maker gives no figure for this nut", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4 to 3-9; the proof stress from the kit's m6 thread set (ISO 898-1)", "checked": "2026-11-15" }
+  }
+}

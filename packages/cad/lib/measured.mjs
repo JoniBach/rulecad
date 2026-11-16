@@ -2,14 +2,16 @@
 // the estimate was (in the workspace's copy of the rule set), or a measurement of something a check predicts (a figure
 // no rule holds, like the pen's error at the far corner), runs the assembly's checks either side, says what moved, and
 // keeps a ledger of predicted against measured beside prints.jsonl. The rules the fixings coupon measures (a pilot or an
-// insert hole per thread, the nut fits, the thread gap and flank form) need no --rule: what each is comes from here.
+// insert hole per thread, the nut fits, the thread gap and flank form) and the slot coupon's fits need no --rule: what
+// each is comes from here; a slot's figures go in the workspace's copy of its set, checked as a slot.
 import fs from 'node:fs';
 import path from 'node:path';
 import { setAt } from './jsonedit.mjs';
 import { CadError } from './errors.mjs';
-import { paths, WS, RULE_DIRS } from './workspace.mjs';
+import { paths, WS, RULE_DIRS, printerOf } from './workspace.mjs';
 import { loadRuleSet } from './rules.mjs';
 import { buildAssembly, checkAssembly, assemblyPath } from './assembly.mjs';
+import { slotModel } from '@rulecad/frames';
 import { fixingsContext } from './design.mjs';
 import { fixingsFor, threads } from '@rulecad/fixings';
 
@@ -28,6 +30,21 @@ function ruleFile(name) {
   const set = name.slice(0, dot), rule = name.slice(dot + 1);
   const data = loadRuleSet(set); // (copies the tool's set into the workspace, the first time: the measurement goes in your copy)
   return { set, rule, data, file: path.join(WS, 'rules', `${set}.json`) };
+}
+
+// The slot coupon (examples/bench/projects/benchmarks/MEASURE.md, rows 29 to 33): the two fits it measures, which a
+// printer's set may not hold yet, each with what it is and what the kit drew before (the printer's fit), so the ledger
+// shows predicted against measured; and a slot's own figures, measured by caliper on the person's beam
+const SLOT_COUPON = 'the slot coupon (examples/bench/projects/benchmarks/MEASURE.md)';
+function slotRule(project, set, key, data) {
+  if (set === printerOf(project) && ['slot_fit', 'printed_slot_fit'].includes(key)) {
+    const fit = data.rules?.fit, was = typeof fit?.value === 'number' ? fit.value : null;
+    return { unit: 'mm', predicted: was, was: `${set}.fit, ${fit?.kind ?? 'none'}`, source: SLOT_COUPON,
+      rule: key === 'slot_fit' ? `Clearance each side between a printed part and a bought beam's slot it slides in (a tongue in the opening, a carrier in the cavity): the tightest on ${SLOT_COUPON} that slid the beam's length by hand without rattling. Printed carriers are drawn with it (@rulecad/frames carrierModel) before the general fit`
+        : `Clearance each side a slot printed in a part is opened by, so a bought slot nut slides in it: the tightest printed slot on ${SLOT_COUPON} a slide-in nut ran the length of by hand without catching. For printed beams and plates with slots`, kind: 'measured' };
+  }
+  if (data.part === 'slot' && data.rules?.[key]) return { source: `calipers on your own beam (${SLOT_COUPON}, row 32)` };
+  return null;
 }
 
 // The printer's rules the fixings read that a printer's set may not hold yet, each measured on the fixings coupon
@@ -76,7 +93,7 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
   if (!project || !name || !fs.existsSync(assemblyPath(ref))) throw new CadError('measured.assembly', `no assembly "${ref}": give <project>/<assembly>, the one whose predictions it moves`);
   if (!Object.keys(values).length) throw new CadError('measured.usage', 'usage: cad measured <project>/<assembly> <name>=<value> … [--unit mm] [--source "how it was measured"]');
   const before = await findingsOf(ref), entries = [], predictions = predictionsOf(before);
-  const writes = []; // (every value is checked before any is written, so a refusal leaves the rule set as it was)
+  const writes = [], slots = new Map(); // (every value is checked before any is written, so a refusal leaves the rule sets as they were)
   for (const [k, value] of Object.entries(values)) {
     if (!Number.isFinite(value)) throw new CadError('measured.value', `${k}: a measurement is a number (got ${value})`);
     const named = predictions.filter((x) => x.code === k || x.predict.name === k);
@@ -86,15 +103,18 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
       continue;
     }
     const { set, rule: key, data, file } = ruleFile(k);
-    const old = data.rules?.[key], known = fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
+    const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
     if (known?.allowed && !known.allowed.includes(value)) throw new CadError('measured.value', `${k} is ${known.allowed.join(' or ')}: the flank forms the coupon prints (got ${value})`);
     if (!old && !rule && !known) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
     const had = old ?? known, prior = typeof had?.value === 'number' ? had.value : known?.predicted ?? null;
     if (unit && had?.unit && unit !== had.unit) throw new CadError('measured.unit', `${k} is in ${had.unit}, and this is in ${unit}: give it in ${had.unit}`);
     const entry = { value, unit: unit ?? had?.unit ?? '', rule: rule ?? had.rule, kind: 'measured', source: source || known?.source || 'measured on the bench', checked: date };
+    if (data.part === 'slot') slots.set(set, { data, change: { ...slots.get(set)?.change, [key]: value } });
     writes.push([file, key, entry]);
     entries.push({ date, assembly: name, name: k, figure: entry.rule, unit: entry.unit, predicted: prior, was: old ? old.kind : known?.was ?? known?.kind ?? null, measured: value, ratio: prior ? value / prior : null, ...(source ? { source } : {}) });
   }
+  // a slot's figures together still make a slot (an opening narrower than its cavity, lips thinner than it is deep)
+  for (const [set, { data, change }] of slots) { try { slotModel(data, change); } catch (e) { throw new CadError('measured.value', `${set}: ${e.message.replace(/^slotModel: /, '')}`); } }
   for (const [file, key, entry] of writes) fs.writeFileSync(file, setAt(fs.readFileSync(file, 'utf8'), ['rules', key], entry));
   const after = await findingsOf(ref), was = new Map(before.map((x) => [keyOf(x), x])), moved = [];
   for (const x of after) {

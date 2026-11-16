@@ -121,7 +121,7 @@ export function assemblyOrder(s) {
   const worlds = placeItems(s.motion, s.jointValues), marks = s.motion.marks, reaches = (u, v, seen = new Set()) => { if (u === v) return true; if (seen.has(u)) return false; seen.add(u); return [...before.get(u).keys()].some((w) => reaches(w, v, seen)); };
   const R = 1.5, bad = [];
   for (const x of s.fits.filter((f) => f.access)) {
-    const [id, name] = String(x.access).split('.'), m = marks.find((k) => k.id === id && k.name === name);
+    const [id, name] = String(x.access).split('.'), m = marks.find((k) => k.id === id && k.name === name) ?? (s.items.find((i) => i.id === id)?.beam ? s.motion.address(String(x.access), 'access') : null); // (a beam's address: x1.top@120)
     if (!m) throw new Error(`fit ${x.note || `${x.a} / ${x.b}`}: access: no anchor "${x.access}" (give <item>.<anchor>${items.includes(id) ? `; ${id} has ${marks.filter((k) => k.id === id).map((k) => k.name).join(', ') || 'none'}` : ''})`);
     const W = mul(worlds[m.item], m.frame), O = [W[3], W[7], W[11]], D = [W[2], W[6], W[10]], [u, v] = basis(D), starts = [[0, 0], [R, 0], [-R, 0], [0, R], [0, -R]].map(([a, b]) => O.map((c, k) => c + a * u[k] + b * v[k]));
     const screwed = [top(x.a), top(x.b)].filter((t) => by.has(t)), later = [...screwed].sort(earlier).at(-1);

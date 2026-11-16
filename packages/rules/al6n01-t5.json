@@ -1,0 +1,11 @@
+{
+  "_doc": "Aluminium alloy JIS A6N01SS-T5, extruded, for analysis: what MISUMI's HFS series profiles are made of. Strength and modulus are MISUMI's own table (the JIS standard's reference figures); the page gives no density, Poisson's ratio or fatigue figure, so density is worked out from MISUMI's masses and Poisson's ratio is the 6000 series' usual one, both said in their rules.",
+  "name": "al6n01-t5",
+  "rules": {
+    "modulus": { "value": 69972, "unit": "MPa", "rule": "Longitudinal elastic modulus (N/mm²), as MISUMI gives it for the HFS series", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-514, \"Mechanical Properties of Aluminum Extrusions\", https://my.misumi-ec.com/pdf/fa/2014/p2_513.pdf", "checked": "2026-11-15" },
+    "poisson": { "value": 0.33, "rule": "Poisson's ratio: MISUMI gives none. Hydro's sheets for the nearest EN alloys (6005A, 6063) come to 0.33 to 0.35 from their two moduli; the kit's 6061 figure is used", "kind": "estimate", "source": "al6061 rule set (ASM, Aluminum 6061-T6); not from a sheet for A6N01", "checked": "2026-11-15" },
+    "strength": { "value": 205, "unit": "MPa", "rule": "Proof stress, \"205 or more\" (JIS standard, reference), HFS series A6N01SS-T5", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-514, \"Mechanical Properties of Aluminum Extrusions\", https://my.misumi-ec.com/pdf/fa/2014/p2_513.pdf", "checked": "2026-11-15" },
+    "ultimate": { "value": 245, "unit": "MPa", "rule": "Tensile strength, \"245 or more\" (JIS standard, reference), HFS series A6N01SS-T5", "kind": "spec", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-514, \"Mechanical Properties of Aluminum Extrusions\", https://my.misumi-ec.com/pdf/fa/2014/p2_513.pdf", "checked": "2026-11-15" },
+    "density": { "value": 2.7, "unit": "g/cm³", "rule": "Density, worked out from MISUMI's own mass per metre over sectional area: HFS6-3030 0.9 kg/m over 333 mm², HFS8-4040 1.73 over 640, HFS8-4545 2.1 over 777, each 2.70 (anodised, as sold)", "kind": "derived", "source": "MISUMI FA Mechanical Standard Components catalogue 2014, pages 2-571, 2-631 and 2-681, https://my.misumi-ec.com/pdf/fa/2014/p2_571.pdf", "checked": "2026-11-15" }
+  }
+}

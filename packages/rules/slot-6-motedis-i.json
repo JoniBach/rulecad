@@ -1,0 +1,14 @@
+{
+  "_doc": "The 6 mm slot of Motedis' I-type profiles (30 mm series). Motedis prints the opening, the lip and the depth, each a little off item's (6 against 6.2, 2,9 against 3.0, 9,9 against 9.75); it sells the section as I-type, made to match item's Line 6 groove, so the cavity's width is item's figures, marked community until a bar is measured. The floor and flanks are item's as scaled off its drawing.",
+  "name": "slot-6-motedis-i",
+  "part": "slot",
+  "rules": {
+    "opening": { "value": 6, "unit": "mm", "rule": "Slot width, \"6\" on the data picture (\"Nutbreite: 6 mm\" on the page)", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-30x30L-I-Typ-Nut-6\", https://www.motedis.com/de/Aluprofil-30x30L-I-Typ-Nut-6", "checked": "2026-11-15" },
+    "lip_thickness": { "value": 2.9, "unit": "mm", "rule": "Lip thickness, \"2,9\" on the data picture", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-30x30L-I-Typ-Nut-6\", https://www.motedis.com/de/Aluprofil-30x30L-I-Typ-Nut-6", "checked": "2026-11-15" },
+    "cavity_width": { "value": 16.3, "unit": "mm", "rule": "Width under the lips: Motedis prints none. item's figure (slot-6-item-light)", "kind": "community", "source": "slot-6-item-light rule set; Motedis calls the section I-type", "checked": "2026-11-15" },
+    "cavity_depth": { "value": 9.9, "unit": "mm", "rule": "Slot depth, \"9,9\" on the data picture", "kind": "spec", "source": "Motedis, product page and data picture \"Aluprofil-30x30L-I-Typ-Nut-6\", https://www.motedis.com/de/Aluprofil-30x30L-I-Typ-Nut-6", "checked": "2026-11-15" },
+    "floor_width": { "value": 7.7, "unit": "mm", "rule": "Width of the floor: as slot-6-item-light, itself scaled off item's drawing", "kind": "estimate", "source": "slot-6-item-light rule set; Motedis calls the section I-type", "checked": "2026-11-15" },
+    "flank_angle": { "value": 45, "unit": "deg", "rule": "The flanks close in at 45 degrees, as slot-6-item-light", "kind": "estimate", "source": "slot-6-item-light rule set; Motedis calls the section I-type", "checked": "2026-11-15" },
+    "nut_family": { "value": "slot-6-item", "rule": "Sold as I-type: it takes nuts made for item's Line 6 groove", "kind": "community", "source": "Motedis, product page and data picture \"Aluprofil-30x30L-I-Typ-Nut-6\", https://www.motedis.com/de/Aluprofil-30x30L-I-Typ-Nut-6", "checked": "2026-11-15" }
+  }
+}

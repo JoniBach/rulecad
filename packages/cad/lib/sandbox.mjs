@@ -2,8 +2,8 @@
 // promises, whatever the design does: it can't write or delete files, start programs or workers, or load addons, and
 // it reads only the workspace and the packages designs use. That much is Node's own boundary.
 // On top of it, to keep a design to making shapes: an import hook (sandbox-hooks.mjs) lets it import only
-// @jscad/modeling, @rulecad/shapes, @rulecad/flexures, @rulecad/gears, @rulecad/motors, @rulecad/fixings and files in its
-// own project (no node: modules); the runner
+// @jscad/modeling, @rulecad/shapes, @rulecad/flexures, @rulecad/gears, @rulecad/motors, @rulecad/frames, @rulecad/fixings and
+// files in its own project (no node: modules); the runner
 // takes away fetch and its kin and process's own ways to Node's modules; and it is started with none of this
 // process's environment (no tokens). Those close the ordinary roads to the network, not every one: before Node 25
 // the permission model doesn't cover the network, so a design written to get round them might still reach it, and
@@ -31,7 +31,8 @@ const inThread = typeof nodeModule.registerHooks === 'function'; // import hooks
 // (a workspace's "sandbox": false counts only once the user has trusted it: cad trust)
 export const sandboxed = () => !!flag && process.env.CAD_TRUST !== '1' && !(config.sandbox === false && trusted());
 
-// What the sandbox may read: the workspace, and the packages designs and the runner load (wherever npm put them)
+// What the sandbox may read: the workspace, and the packages designs and the runner load (wherever npm put them), and
+// what those load in turn (@rulecad/frames sizes a beam's operations through @rulecad/fixings)
 function readable() {
   const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
   const pkgDir = (name, from) => { // the package's folder: from its entry up to its package.json (exports may hide that file)
@@ -41,7 +42,7 @@ function readable() {
   // Every node_modules above the workspace and the tool (package lookups read their links), and where links lead
   const up = (dir) => { const out = []; for (let d = dir; ; d = path.dirname(d)) { out.push(path.join(d, 'node_modules')); if (path.dirname(d) === d) return out; } };
   const dirs = [WS, TOOL, ...[...up(WS), ...up(TOOL)].filter((d) => fs.existsSync(d)),
-    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/gears', '@rulecad/motors', '@rulecad/fixings', '@rulecad/rules/x1c.json', '@rulecad/fea', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
+    ...['@jscad/modeling', '@rulecad/shapes', '@rulecad/flexures', '@rulecad/gears', '@rulecad/motors', '@rulecad/frames', '@rulecad/fixings', '@rulecad/rules/x1c.json', '@rulecad/fea', '@rulecad/variables', 'manifold-3d'].flatMap((n) => [pkgDir(n, fromWs), pkgDir(n, fromTool)])];
   return [...new Set(dirs.filter(Boolean).flatMap((d) => [d, real(d)]).filter(Boolean))];
 }
 
@@ -62,9 +63,9 @@ function refused(e) {
  * @param {{ js: string }} d the design @param {object} values @param {object} meta the .json's parts @param {'jscad' | 'manifold'} [engine] v.ops's booleans
  * @param {string[]} [optional] names main may read that aren't among the values (the display's own inputs)
  * @param {{ salt: string, get: (k: string) => string | undefined, put: (k: string, text: string) => void } | null} [stages] where a lamina's slow stages are kept: the child reads them from the cache (it may read the workspace) and hands back what it made, which is written here
- * @param {{ sets?: object, printer?: object, material?: string | null } | null} [fixings] what v.fixings is bound to (design.mjs fixingsContext); what its calls found comes back as fixings
+ * @param {{ frames?: object, fixings?: { sets?: object, printer?: object, material?: string | null } | null }} [bound] what the design's helpers are bound to: frames, the workspace's profile sets (lib/frames.mjs framesContext); fixings, what v.fixings is bound to (design.mjs fixingsContext), whose calls come back as fixings
  */
-export function runSandboxed(d, values, meta, engine = 'jscad', optional = [], stages = null, fixings = null) {
+export function runSandboxed(d, values, meta, engine = 'jscad', optional = [], stages = null, bound = {}) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const args = [flag, ...readable().map((p) => `--allow-fs-read=${p}`), ...(inThread ? [] : ['--allow-worker']), '--import', pathToFileURL(path.join(here, 'sandbox-preload.mjs')).href, path.join(here, 'sandbox-run.mjs')];
   // (real paths: Node names an imported file by where it really is, so a workspace reached through a link still matches)
@@ -87,6 +88,6 @@ export function runSandboxed(d, values, meta, engine = 'jscad', optional = [], s
       if (stages) for (const [k, text] of Object.entries(r.stages || {})) stages.put(k, text);
       resolve({ parts: r.parts.map(({ solid, ...p }) => ({ ...p, geometry: fromFaces(solid) })), read: new Set(r.read), mechanism: r.mechanism || null, fixings: r.fixings || null });
     });
-    child.stdin.end(JSON.stringify({ js: `${pathToFileURL(js).href}?t=${fs.statSync(js).mtimeMs}`, values, meta, engine, optional, ...(stages ? { stages: { dir: stagesDir, salt: stages.salt } } : {}), ...(fixings ? { fixings } : {}) }));
+    child.stdin.end(JSON.stringify({ js: `${pathToFileURL(js).href}?t=${fs.statSync(js).mtimeMs}`, values, meta, engine, optional, ...(stages ? { stages: { dir: stagesDir, salt: stages.salt } } : {}), bound }));
   });
 }

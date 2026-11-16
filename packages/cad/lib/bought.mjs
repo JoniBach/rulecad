@@ -101,5 +101,5 @@ export function boughtBuilt(spec, it, num, id) {
 
 // One line in the check for each bought item, so the shopping list and the wiring can read it
 export function boughtFindings(s, f) {
-  for (const o of s.objects) if (o.bought) f('info', `${o.id}: ${o.bought.set}${o.bought.variant ? ` (${o.bought.variant})` : ''}, a ${o.bought.part}`, null, { code: 'bought.item', refs: { item: o.id, set: o.bought.set, variant: o.bought.variant, part: o.bought.part } });
+  for (const o of s.objects) if (o.bought) f('info', `${o.id}: ${o.bought.set}${o.bought.variant ? ` (${o.bought.variant})` : ''}${o.bought.length != null ? ` x ${Number(o.bought.length.toFixed(2))} mm` : ''}, a ${o.bought.part}`, null, { code: 'bought.item', refs: { item: o.id, set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(o.bought.length != null ? { length: o.bought.length } : {}) } });
 }

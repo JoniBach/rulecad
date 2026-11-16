@@ -1,7 +1,8 @@
 // What a machine takes to build, in numbers: the bought items by rule set with quantities, every screw, nut, washer and
 // insert (fasten.count: from the fasten relations, a motor's mounting screws, and fits that name a fastener), each by
-// thread, length and head with its mass and the packs it is bought in, wires by gauge, and the printed parts with
-// their grams and an estimate of the minutes.
+// thread, length and head with its mass and the packs it is bought in, wires by gauge, the printed parts with their
+// grams and an estimate of the minutes, and the beams' cut list (each mark, the bars to buy and the cuts on each:
+// @rulecad/frames' cutList).
 import { placeItems, jointValues } from '@rulecad/model-link';
 import { screwModel } from '@rulecad/fixings';
 import { peekRuleSet as loadRuleSet } from './rules.mjs';
@@ -11,6 +12,8 @@ import { readJson } from './host.mjs';
 import path from 'node:path';
 import { volume } from './mesh.mjs';
 import { wiresFor } from './assembly.mjs';
+import { cutListOf, cutListData } from './beams.mjs';
+import { cutListText } from '@rulecad/frames';
 
 const n = (x, d = 1) => Number(x.toFixed(d));
 
@@ -33,11 +36,13 @@ export function printedParts(s) {
   return [...by.values()].map((o) => ({ ...o, volume: n(o.volume, 0), grams: n((o.volume / 1000) * mat.density), minutes: n(o.volume / flow / 60, 0) }));
 }
 
-/** The whole list. @returns {{ bought: object[], fasteners: object[], wires: object[], printed: object[], totals: object }} */
+/** The whole list. @returns {{ bought: object[], fasteners: object[], wires: object[], printed: object[], cut: object | null, totals: object }} */
 export function shoppingList(s) {
   const mat = materialOf(s.project), printed = printedParts(s), bought = new Map(), fasteners = new Map();
   for (const o of s.objects) if (o.bought && !o.unplaced) {
-    const key = `${o.bought.set}|${o.bought.variant ?? ''}`, line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, items: [] };
+    // (a beam by its profile and length: one line for each length cut, lib/beams.mjs)
+    const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}`;
+    const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, items: [] };
     line.qty++; line.items.push(o.id); bought.set(key, line);
   }
   // fasten.count: the hardware a fasten placed (a component's too), one part a piece; a motor's mounting screws; and a fit
@@ -55,16 +60,18 @@ export function shoppingList(s) {
     .sort((a, b) => (a.kind ? 0 : 1) - (b.kind ? 0 : 1) || ['screw', 'nut', 'washer', 'insert'].indexOf(a.kind) - ['screw', 'nut', 'washer', 'insert'].indexOf(b.kind) || String(a.thread).localeCompare(String(b.thread)) || (a.length ?? 0) - (b.length ?? 0) || a.fastener.localeCompare(b.fastener));
   const rows = s.wires?.length ? wiresFor(s) : [], wires = new Map();
   for (const w of rows) { const key = w.gauge ?? 'gauge not given', l = wires.get(key) ?? { gauge: w.gauge, conductors: 0, length: 0, runs: [] }; l.length += w.length * w.conductors; l.conductors += w.conductors; l.runs.push(w.id); wires.set(key, l); }
-  const boughtList = [...bought.values()].map((b) => ({ ...b, grams: b.grams != null ? n(b.grams) : null })).sort((a, b) => a.part.localeCompare(b.part) || a.set.localeCompare(b.set));
+  const boughtList = [...bought.values()].map((b) => ({ ...b, grams: b.grams != null ? n(b.grams) : null })).sort((a, b) => a.part.localeCompare(b.part) || a.set.localeCompare(b.set) || (b.length ?? 0) - (a.length ?? 0));
   const printedGrams = printed.reduce((t, p) => t + p.grams, 0), boughtGrams = boughtList.reduce((t, b) => t + (b.grams ?? 0) * b.qty, 0), unknown = boughtList.filter((b) => b.grams == null).map((b) => b.set);
+  const cut = cutListData(cutListOf(s));
   const fixingsGrams = fixings.reduce((t, f) => t + (f.mass ?? 0), 0);
-  return { bought: boughtList, fasteners: fixings, wires: [...wires.values()], printed, totals: { printedGrams: n(printedGrams), boughtGrams: n(boughtGrams), fixingsGrams: n(fixingsGrams), machineGrams: n(printedGrams + boughtGrams + fixingsGrams), ...(pack && fixings.some((f) => f.packs) ? { pack } : {}), minutes: n(printed.reduce((t, p) => t + p.minutes, 0), 0), material: mat.name, ...(mat.assumed ? { densityAssumed: true } : {}), ...(unknown.length ? { noMassFor: unknown } : {}) } };
+  return { bought: boughtList, fasteners: fixings, wires: [...wires.values()], printed, cut, totals: { printedGrams: n(printedGrams), boughtGrams: n(boughtGrams), fixingsGrams: n(fixingsGrams), machineGrams: n(printedGrams + boughtGrams + fixingsGrams), ...(pack && fixings.some((f) => f.packs) ? { pack } : {}), minutes: n(printed.reduce((t, p) => t + p.minutes, 0), 0), material: mat.name, ...(mat.assumed ? { densityAssumed: true } : {}), ...(unknown.length ? { noMassFor: unknown } : {}) } };
 }
 
 export function listText(ref, l) {
   const out = [`${ref}: what it takes to build`];
   const row = (a) => out.push(a.join('  '));
-  if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', b.items.join(', ')]); }
+  if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', b.items.join(', ')]); }
+  if (l.cut) { out.push('', `Cut list (kerf ${l.cut.rules.kerf.value} mm, trim ${l.cut.rules.trim.value} mm; a sheet for each mark: cad beams ${ref})`, ...cutListText(l.cut)); }
   if (l.fasteners.length) {
     out.push('', 'Fasteners');
     for (const f of l.fasteners) row([`  ${String(f.qty).padStart(3)} ×`, f.fastener, ...(f.mass != null ? [`${f.grams} g each, ${f.mass} g`] : []), ...(f.packs ? [`${f.packs} pack${f.packs > 1 ? 's' : ''} of ${l.totals.pack.size}, ${f.spare} spare`] : []), f.from.join('; ')]);

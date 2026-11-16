@@ -1,0 +1,29 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "slot-coupon",
+  "title": "Slot coupon",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "engine": "manifold",
+  "orientation": "Loose pieces flat on the bed as drawn: tongues head down, carriers floor down, printed slots standing on end with their floor down",
+  "description": "For slot 6 (20 mm beams) and slot 8 (30 and 40 mm beams): five tongues and five printed nut carriers (M2.5 in slot 6, M5 in slot 8) at clearances either side of the printer's fit, and three short printed slots for a bought slot nut. Each piece carries its clearance a side, the figure to write back with cad measured (MEASURE.md, rows 29 to 33). Drawn from the slot's rule set: print it again once the slot is measured.",
+  "variables": {
+    "base": { "value": "x1c.layer * 6", "unit": "mm", "rule": "A tongue's head and a printed slot's floor: six layers, and a first layer that is one plain piece" },
+    "wall": { "value": "x1c.wall_min * 2", "unit": "mm", "rule": "Plastic round a printed slot, and a tongue's head beyond the opening each side: four print lines" },
+    "gap": { "value": "x1c.wall_min", "unit": "mm", "rule": "Between pieces, between a feature and its figure, and round the edge" },
+    "root": { "value": "x1c.chamfer", "unit": "mm", "rule": "The V-groove each side of a tongue's root, so the tongue meets its head with no square inside corner and the head still lies flat on the beam's face" },
+    "fit": { "value": "x1c.fit", "unit": "mm", "rule": "The middle clearance a side: what the kit draws a printed part in a slot with until the slot fit is measured" },
+    "step": { "value": "x1c.hole_comp / 2", "unit": "mm", "rule": "Tongues and carriers step by half the printer's hole compensation: a printed width comes out about that far either way, and a slot's opening is held to a tenth or two" },
+    "slot_step": { "value": "x1c.hole_comp", "unit": "mm", "rule": "Printed slots step by the printer's hole compensation, the amount a printed hole comes out wrong by" },
+    "fits": { "value": 5, "rule": "Five tongues and five carriers: the printer's fit and two steps either side" },
+    "slots": { "value": 3, "rule": "Three printed slots: the printer's fit and a step either side" },
+    "key": { "value": 12, "unit": "mm", "rule": "A tongue's length along the slot: longer than the opening is wide, so it slides straight and cannot twist" },
+    "tall": { "value": 15, "unit": "mm", "rule": "A printed slot's height: longer than a bought slide-in nut, so it slides its whole length" },
+    "label": { "value": 2.5, "unit": "mm", "rule": "Figure height: six print lines tall, readable close up, and narrow enough to sit across a carrier's top" },
+    "stroke": { "value": "x1c.line", "unit": "mm", "rule": "One print line, for the figures" },
+    "emboss": { "value": "x1c.layer * 2", "unit": "mm", "rule": "Two layers proud" },
+    "segments": { "value": 48, "rule": "Facets on the rounds of a printed slot's corners" }
+  }
+}

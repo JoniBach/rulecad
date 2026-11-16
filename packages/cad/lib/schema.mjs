@@ -8,7 +8,7 @@ import { near } from './errors.mjs';
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schemas');
 const cache = new Map();
-/** A schema by name: object, assembly, rules, layout or problem. @param {'object' | 'assembly' | 'rules' | 'layout' | 'problem'} name */
+/** A schema by name: object, assembly, rules, layout, problem or outline. @param {'object' | 'assembly' | 'rules' | 'layout' | 'problem' | 'outline'} name */
 export function schema(name) {
   if (!cache.has(name)) cache.set(name, JSON.parse(fs.readFileSync(path.join(DIR, `${name}.schema.json`), 'utf8')));
   return cache.get(name);

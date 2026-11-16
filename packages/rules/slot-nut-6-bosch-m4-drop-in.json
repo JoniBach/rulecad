@@ -1,0 +1,17 @@
+{
+  "_doc": "Bosch Rexroth's T-nut for its 6 mm slot, M4 (3 842 523 135). The 6 mm T-nut is M4 only. Fmax is Rexroth's.",
+  "name": "slot-nut-6-bosch-m4-drop-in",
+  "part": "slot_nut",
+  "rules": {
+    "slot": { "value": "slot-6-bosch", "rule": "Made for Rexroth's 6 mm slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "thread": { "value": "M4", "rule": "Thread M4, one of the sizes the table lists (M4)", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "nut_kind": { "value": "drop-in", "rule": "Dropped in through the opening and turned until it stops: Rexroth's T-nut", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "length": { "value": 5.9, "unit": "mm", "rule": "Along the slot once turned: 5.9 on the drawing", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "width": { "value": 11.5, "unit": "mm", "rule": "Across the slot once turned: 11.5 on the drawing", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "height": { "value": 4, "unit": "mm", "rule": "The body under the lips: 4 on the drawing, read as a chain of 4 and 1 as the 8 mm nut's 6 and 1.5", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "tongue_height": { "value": 1, "unit": "mm", "rule": "The step into the opening: 1 on the drawing", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "nut_entry": { "value": "anywhere", "rule": "Put in through the opening anywhere along the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "material": { "value": "steel, galvanized", "rule": "Material as the table names it", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" },
+    "hold": { "value": 1700, "unit": "N", "rule": "Fmax 1700 N, as the catalogue rates it for the 6 mm slot (every thread): the pull straight out of the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4", "checked": "2026-11-15" }
+  }
+}

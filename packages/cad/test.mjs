@@ -77,6 +77,76 @@ test('cad rules check, draw and draft: a set held to its rules, drawn from them,
   } finally { done(); }
 });
 
+test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet passes the check and draws as the sheet does; slots, bores and section figures are held to sense', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const read = (f) => JSON.parse(fs.readFileSync(path.join(ws, f), 'utf8')), write = (f, x) => fs.writeFileSync(path.join(ws, f), JSON.stringify(x, null, 2)), run = (...a) => spawnSync('node', [BIN, ...a], { cwd: ws, encoding: 'utf8' });
+    const vocabulary = JSON.parse(fs.readFileSync(new URL('../rules/vocabulary.json', import.meta.url), 'utf8')), published = (n) => JSON.parse(fs.readFileSync(new URL(`../rules/${n}.json`, import.meta.url), 'utf8'));
+    // the published sets: three makers' 20 mm profiles pass, and a warning is said without failing the set
+    assert.match(cad('rules', 'check', 'profile-2020-misumi-hfs5', 'profile-2040-misumi-hfs5', 'slot-6-misumi', 'al6n01-t5'), /^4 of 4 rule sets pass\n$/);
+    const bosch = run('rules', 'check', 'profile-2020-bosch', 'profile-2020-motedis-b6');
+    assert.equal(bosch.status, 0); assert.match(bosch.stdout, /profile-2020-bosch: passes, \d to know\n {2}NOTE {2}the bore \(Ø5\.5\) leaves 38% of a full M6 thread/); assert.match(bosch.stdout, /WARN {2}area: the sheet says 160 mm², the drawn outline comes to 171\.3 \(\+7\.1%, more than 5%\)/); assert.match(bosch.stdout, /2 of 2 rule sets pass \(2 with something to know\)/);
+    // plain sections and the custom family: no sheet, so nothing to differ from, and each draws with its figures worked out
+    assert.match(cad('rules', 'check', 'profile-tube-al-25x25x2', 'profile-tube', 'profile-round-bar-steel-10', 'profile-custom'), /^4 of 4 rule sets pass\n$/);
+    cad('rules', 'draw', 'profile-tube-al-25x25x2'); const tubeSvg = fs.readFileSync(path.join(ws, 'profile-tube-al-25x25x2.svg'), 'utf8');
+    assert.match(tubeSvg, />wall 2</); assert.match(tubeSvg, />tube, al6063-t5</); assert.match(tubeSvg, />not given</); assert.match(tubeSvg, />184</, 'its area, worked out: 25² less 21²');
+    cad('rules', 'draw', 'profile-custom'); assert.match(fs.readFileSync(path.join(ws, 'profile-custom.svg'), 'utf8'), />drawn from its outline: drawn for the kit: a 30 x 30 x 3 mm T section</);
+    // a custom profile of your own: a set with family custom and its outline beside it; without the outline it is refused by name
+    fs.mkdirSync(path.join(ws, 'rules/outlines'), { recursive: true });
+    write('rules/profile-hat.json', { name: 'profile-hat', part: 'profile', rules: { family: { value: 'custom', rule: 'A hat section, folded from 2 mm sheet', kind: 'measured', source: 'my own bar', checked: '2026-11-15' }, width: { value: 40, unit: 'mm', rule: 'Across the section', kind: 'measured', source: 'my own bar', checked: '2026-11-15' }, height: { value: 20, unit: 'mm', rule: 'Up the section', kind: 'measured', source: 'my own bar', checked: '2026-11-15' } } });
+    const noOutline = run('rules', 'check', 'profile-hat'); assert.equal(noOutline.status, 1); assert.match(noOutline.stdout, /FAIL {2}profile-hat: a custom profile is its outline, and none came with it.*rules\/outlines\/profile-hat\.json.*\(profile\.model\)/);
+    write('rules/outlines/profile-hat.json', { name: 'profile-hat', source: 'traced from my own bar', licence: 'my own measurement', loops: [[[-20, -10], [-10, -10], [-10, 8], [10, 8], [10, -10], [20, -10], [20, -8], [12, -8], [12, 10], [-12, 10], [-12, -8], [-20, -8]]] });
+    assert.match(cad('rules', 'check', 'profile-hat'), /^1 of 1 rule sets pass\n$/);
+    cad('rules', 'draw', 'profile-hat'); assert.match(fs.readFileSync(path.join(ws, 'profile-hat.svg'), 'utf8'), />152</, 'the hat\'s area from its outline');
+    fs.rmSync(path.join(ws, 'rules/outlines'), { recursive: true }); fs.rmSync(path.join(ws, 'rules/profile-hat.json'));
+    // a draft: every field of the vocabulary, each an estimate, and it checks and draws as it stands
+    assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /a draft profile in rules.my-2020\.json, every figure an estimate/);
+    const draft = read('rules/my-2020.json');
+    assert.deepEqual(Object.keys(draft.rules), Object.keys(vocabulary.drafts.profile)); assert.equal(draft.part, 'profile');
+    for (const [k, r] of Object.entries(draft.rules)) { assert.equal(r.kind, 'estimate', k); assert.match(r.rule, /^DRAFT, not read from a sheet yet: /); assert.equal(r.unit, vocabulary.fields[k].unit, `${k} in its unit`); }
+    assert.match(cad('rules', 'check', 'my-2020'), /1 of 1 rule sets pass/);
+    assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /already exists \(--force replaces it\)/);
+    assert.match(cad('rules', 'draft', 'profile'), /usage: cad rules draft profile <name>/);
+    cad('rules', 'draft', 'slot', 'my-slot'); cad('rules', 'draft', 'slot_nut', 'my-nut');
+    assert.deepEqual(Object.keys(read('rules/my-slot.json').rules), Object.keys(vocabulary.drafts.slot)); assert.deepEqual(Object.keys(read('rules/my-nut.json').rules), Object.keys(vocabulary.drafts.slot_nut));
+    assert.match(cad('rules', 'check', 'my-slot', 'my-nut'), /2 of 2 rule sets pass/);
+    cad('rules', 'draw', 'my-slot'); for (const t of ['>6<', '>12<', '>2<', 'track 9', 'floor 6']) assert.ok(fs.readFileSync(path.join(ws, 'my-slot.svg'), 'utf8').includes(t), `the slot's drawing shows ${t}`);
+    cad('rules', 'draw', 'my-nut'); assert.ok(fs.readFileSync(path.join(ws, 'my-nut.svg'), 'utf8').includes('slide-in nut, M5, for slot-6'));
+    // a person fills the drafts from MISUMI's page for HFS5-2020: the figures the sheet has, its page as the source, the rest deleted
+    const sheet = published('profile-2020-misumi-hfs5').rules, slotSheet = published('slot-6-misumi').rules, fill = (d, from, extra = {}) => { for (const k of Object.keys(d.rules)) { if (from[k]) d.rules[k] = from[k]; else delete d.rules[k]; } Object.assign(d.rules, extra); return d; };
+    write('rules/my-slot.json', fill(read('rules/my-slot.json'), slotSheet, { nut_family: { ...slotSheet.nut_family, value: 'my-slot' } }));
+    write('rules/my-2020.json', fill(draft, sheet, { slot: { ...sheet.slot, value: 'my-slot' } }));
+    assert.match(cad('rules', 'check', 'my-2020', 'my-slot'), /^2 of 2 rule sets pass\n$/);
+    cad('rules', 'draw', 'my-2020');
+    const svg = fs.readFileSync(path.join(ws, 'my-2020.svg'), 'utf8');
+    for (const t of ['>20<', '>6<', '>12<', '>2<', 'Ø4.2', 'R1', '>183<', '>7420<', '-0.3%', 'taps M5 (tap drill Ø4.2)', 'slot: my-slot: 6 wide, 12 under lips 2 thick, 6 deep, floor 5.9', 'A6N01SS-T5 (al6n01-t5)', 'sold as 1000, 4000; cut 50 to 4000 ±0.5']) assert.ok(svg.includes(t), `the drawing shows ${t}`);
+    assert.equal(svg.replaceAll('my-slot', 'slot-6-misumi').replaceAll('my-2020', 'profile-2020-misumi-hfs5'), fs.readFileSync(new URL('../rules/drawings/profile-2020-misumi-hfs5.svg', import.meta.url), 'utf8').replace(/\r\n/g, '\n'), 'and it is the drawing of the published set');
+    // what the check catches: a bore that breaks into the slots and is no thread, a slot too wide for its cell, a figure off the sheet
+    const broken = (change) => { const x = read('rules/my-2020.json'); x.name = 'broken'; for (const [k, v] of Object.entries(change)) x.rules[k] = { ...x.rules[k], value: v }; write('rules/broken.json', x); const r = run('rules', 'check', 'broken', '--json'); return { status: r.status, found: JSON.parse(r.stdout)[0].findings }; };
+    let b = broken({ bore_diameter: 9 });
+    assert.equal(b.status, 1); assert.deepEqual([...new Set(b.found.map((x) => `${x.level} ${x.code}`))], ['fail profile.bore.clear', 'fail profile.bore.tap', 'warn profile.section.area', 'warn profile.section.mass_per_metre']);
+    assert.match(b.found[0].text, /the bore at 0, 0 \(Ø9\) breaks into the top face's slot/); assert.equal(b.found[0].rule, 'bore_diameter');
+    b = broken({ area: 150 }); assert.equal(b.status, 0); assert.deepEqual(b.found.map((x) => [x.level, x.code, x.values.sheet]), [['warn', 'profile.section.area', 150]]);
+    b = broken({ slot: 'slot-7' }); assert.equal(b.status, 1); assert.match(b.found[0].text, /^broken: no slot family "slot-7"/); assert.equal(b.found[0].code, 'profile.model');
+    b = broken({ family: 'girder' }); assert.equal(b.status, 1); assert.deepEqual(b.found.map((x) => x.code), ['rules.choice'], 'held to the vocabulary first');
+    const wide = read('rules/my-slot.json'); wide.name = 'wide'; wide.rules.floor_width.value = 2; write('rules/wide.json', wide);
+    const w = run('rules', 'check', 'wide'); assert.equal(w.status, 1); assert.match(w.stdout, /FAIL {2}wide: its flanks would start above the underside of its lips.*\(slot\.model\)/);
+    // a slot nut against its slot
+    const nut = read('rules/my-nut.json'); nut.rules.slot.value = 'slot-6-misumi';
+    write('rules/my-nut.json', nut); assert.match(cad('rules', 'check', 'my-nut'), /1 of 1 rule sets pass\n$/);
+    nut.rules.width.value = 13; nut.rules.height.value = 5; write('rules/my-nut.json', nut);
+    const n = run('rules', 'check', 'my-nut'); assert.equal(n.status, 1); assert.match(n.stdout, /it is 13 mm across, and slot-6-misumi is 12 mm wide under its lips/); assert.match(n.stdout, /it is 5 mm tall, and slot-6-misumi has 4 mm under its lips/);
+    // a measured outline beside the set takes the drawn one's place, through its schema
+    fs.mkdirSync(path.join(ws, 'rules/outlines'));
+    write('rules/outlines/my-2020.json', { name: 'my-2020', source: 'a bar from the shelf, traced', licence: 'my own measurement', checked: '2026-11-15', loops: [[[-10, -10], [10, -10], [10, 10], [-10, 10]], [[-2, -2], [2, -2], [2, 2], [-2, 2]]] });
+    const measured = run('rules', 'check', 'my-2020'); assert.equal(measured.status, 0); assert.match(measured.stdout, /area: the sheet says 183 mm², the measured outline comes to 384/);
+    cad('rules', 'draw', 'my-2020'); assert.ok(fs.readFileSync(path.join(ws, 'my-2020.svg'), 'utf8').includes('drawn from its outline: a bar from the shelf, traced'));
+    write('rules/outlines/my-2020.json', { name: 'my-2020', source: 'a bar', loops: [[[0, 0], [1, 0]]] });
+    const bad = run('rules', 'check', 'my-2020'); assert.equal(bad.status, 1); assert.match(bad.stdout, /outlines\/my-2020\.json: \(top\): needs "licence"/); assert.match(bad.stdout, /loops\[0\]: needs at least 3 entries/);
+    assert.match(cad('rules', 'check'), /rule sets pass/, 'an outline is not taken for a rule set');
+  } finally { done(); }
+});
+
 test('the quick start: new, check, tweak, export, link, with the printer rules copied in', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -916,6 +986,94 @@ test('cad measure and cad match: a model measured into draft rules, and a design
   } finally { done(); }
 });
 
+test('cad measure --profile: a beam\'s section from a model or a DXF, as a draft profile set with its outline, its slots matched to a family', async () => {
+  const { profileModel, outline, slotModel } = await import('@rulecad/frames'), jscad = (await import('@jscad/modeling')).default, { readDxf } = await import('./lib/profilemeasure.mjs');
+  const { ws, cad, done } = workspace();
+  try {
+    const run = (...a) => spawnSync('node', [BIN, ...a], { cwd: ws, encoding: 'utf8' }), read = (p) => JSON.parse(fs.readFileSync(path.join(ws, p), 'utf8'));
+    // a beam built from the kit's own outline: the outline extruded with JSCAD, off the origin, written as a binary STL
+    const stl = (file, loops, length = 90, [dx, dy] = [0, 0]) => {
+      const solid = jscad.extrusions.extrudeLinear({ height: length }, jscad.primitives.polygon({ points: loops.map((l) => l.map(([x, y]) => [x + dx, y + dy])) }));
+      const tris = jscad.geometries.geom3.toPolygons(solid).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]])), buf = Buffer.alloc(84 + tris.length * 50);
+      buf.writeUInt32LE(tris.length, 80); tris.forEach((t, i) => t.forEach((v, k) => v.forEach((c, a) => buf.writeFloatLE(c, 84 + i * 50 + 12 + k * 12 + a * 4)))); fs.writeFileSync(path.join(ws, file), buf);
+    };
+    const kit = profileModel('2020-misumi-hfs5'), family = slotModel('slot-6-misumi');
+    stl('hfs5.stl', outline(kit).loops, 90, [30, 12]);
+    const out = cad('measure', 'hfs5.stl', '--profile', 'profile-2020-measured', '--no-pictures', '--source', 'https://example.com/hfs5-2020.step', '--licence', 'CC BY-NC-SA 4.0');
+    assert.match(out, /hfs5\.stl: the section across z at 45, the middle of a stretch of 90 mm that keeps it/); assert.match(out, /20 × 20 mm, 1 hole, area 182\.49 mm²/);
+    assert.match(out, /slot A × 4 \(top, bottom, front, back\): opening 6, lip 2, 12 under the lips, 6 deep, floor 5\.9\d?\n {4}matches slot-6-misumi within 0(\.0\d)? mm/);
+    assert.match(out, /1 bore Ø4\.2\d? at the cells' middles/); assert.match(out, /licence "CC BY-NC-SA 4\.0" limits reuse: measurements are facts, but the outline is the model's shape\. Keep it in this workspace/);
+    assert.match(out, /draft profile: rules\/profile-2020-measured\.json \(8 values, kind derived\)\n {2}outline: {7}rules\/outlines\/profile-2020-measured\.json \(2 loops\)/);
+    // the draft: each figure derived, with the model's source and licence; the slot named by the family it matched
+    const set = read('rules/profile-2020-measured.json'), r = set.rules;
+    assert.deepEqual(Object.keys(r), ['family', 'series', 'cells_across', 'cells_up', 'width', 'height', 'slot', 'bore_diameter']); assert.equal(set.part, 'profile');
+    assert.deepEqual([r.family.value, r.series.value, r.cells_across.value, r.cells_up.value, r.width.value, r.height.value, r.slot.value, Math.round(r.bore_diameter.value * 10) / 10], ['t-slot', 20, 1, 1, 20, 20, 'slot-6-misumi', 4.2]);
+    for (const [k, x] of Object.entries(r)) assert.deepEqual([x.kind, x.source, x.licence], ['derived', 'https://example.com/hfs5-2020.step', 'CC BY-NC-SA 4.0'], k);
+    assert.match(set._doc, /The outline is the model's shape: it stays in this workspace/);
+    // the outline: in the workspace, with its source and licence, about the middle of its envelope whatever the model's origin
+    const o = read('rules/outlines/profile-2020-measured.json'), xs = o.loops.flat().map((p) => p[0]), ys = o.loops.flat().map((p) => p[1]);
+    assert.deepEqual([o.source, o.licence, o.unit, o.loops.length], ['https://example.com/hfs5-2020.step', 'CC BY-NC-SA 4.0', 'mm', 2]);
+    assert.deepEqual([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], [-10, 10, -10, 10]);
+    assert.deepEqual(fs.readdirSync(new URL('../rules/outlines/', import.meta.url)), ['profile-custom.json'], 'nothing measured goes into the kit');
+    // the slot found, against the set the beam was drawn from: within 0.1 mm, figure by figure
+    const drawing = fs.readFileSync(path.join(ws, '.preview/measure/profile-2020-measured-profile.svg'), 'utf8');
+    const got = drawing.match(/opening ([\d.]+), lip ([\d.]+), ([\d.]+) under the lips, ([\d.]+) deep: matches slot-6-misumi/).slice(1).map(Number);
+    [family.opening, family.lip, family.cavityWidth, family.cavityDepth].forEach((want, i) => assert.ok(Math.abs(got[i] - want) <= 0.1, `slot figure ${i}: ${got[i]} against ${want}`));
+    assert.match(drawing, /What was found \(check each against the bar in hand\)/); assert.match(drawing, /1 {2}bore Ø4\.2\d? at 0, 0/); assert.match(drawing, /the outline stays in this workspace/);
+    // and it is a profile the kit can use: it checks, and draws from the measured outline
+    assert.match(cad('rules', 'check', 'profile-2020-measured'), /^1 of 1 rule sets pass\n$/);
+    cad('rules', 'draw', 'profile-2020-measured'); assert.match(fs.readFileSync(path.join(ws, 'profile-2020-measured.svg'), 'utf8'), />drawn from its outline: https:\/\/example\.com\/hfs5-2020\.step</);
+    assert.match(cad('measure', 'hfs5.stl', '--profile', 'profile-2020-measured', '--no-pictures'), /already exists \(--force to replace them\)/);
+
+    // ---- the same section from a DXF: the outside as lines one by one in any order, the bore a CIRCLE, in inches ----
+    const loops = outline(kit).loops, dxf = (entities, units = 4) => ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', String(units), '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF'].join('\r\n') + '\r\n';
+    const lines = (loop, k = 1) => loop.map((p, i) => [p, loop[(i + 1) % loop.length]]).sort((a, b) => a[0][0] * 7 + a[0][1] - b[0][0] * 7 - b[0][1]).flatMap(([[x, y], [x2, y2]], i) => (i % 2 ? ['0', 'LINE', '8', '0', '10', String(x * k), '20', String(y * k), '11', String(x2 * k), '21', String(y2 * k)] : ['0', 'LINE', '8', '0', '10', String(x2 * k), '20', String(y2 * k), '11', String(x * k), '21', String(y * k)]));
+    fs.writeFileSync(path.join(ws, 'section.dxf'), dxf([...lines(loops[0], 1 / 25.4), '0', 'CIRCLE', '8', '0', '10', '0', '20', '0', '40', String(2.1 / 25.4), '0', 'TEXT', '1', 'HFS5-2020'], 1));
+    const fromDxf = cad('measure', 'section.dxf', '--profile', 'profile-2020-dxf', '--no-pictures');
+    assert.match(fromDxf, /section\.dxf: the DXF's outline\n {2}its units are inches: turned into mm\n {2}passed over: 1 TEXT\n {2}20 × 20 mm, 1 hole/);
+    assert.match(fromDxf, /opening 6, lip 2, 12 under the lips, 6 deep, floor 5\.9\d?\n {4}matches slot-6-misumi within 0(\.0\d)? mm/); assert.match(fromDxf, /1 bore Ø4\.2 at the cells' middles/); assert.match(fromDxf, /no --licence given: say what terms the model came under/);
+    const d = read('rules/profile-2020-dxf.json').rules; assert.deepEqual([d.slot.value, d.bore_diameter.value, d.width.value, d.slot.licence], ['slot-6-misumi', 4.2, 20, undefined]);
+    assert.match(cad('rules', 'check', 'profile-2020-dxf'), /^1 of 1 rule sets pass\n$/);
+    assert.match(cad('measure', 'section.dxf'), /a DXF is a drawing of a section, not a model: cad measure <section\.dxf> --profile <name>/);
+    // the reader on its own: a polyline's bulges are arcs, an ARC and lines join into a loop, and what it cannot read it refuses by name
+    const rounded = readDxf(dxf(['0', 'LWPOLYLINE', '90', '8', '70', '1', ...[[-8, -5, 0], [8, -5, Math.tan(Math.PI / 8)], [10, -3, 0], [10, 3, Math.tan(Math.PI / 8)], [8, 5, 0], [-8, 5, Math.tan(Math.PI / 8)], [-10, 3, 0], [-10, -3, Math.tan(Math.PI / 8)]].flatMap(([x, y, b]) => ['10', String(x), '20', String(y), '42', String(b)])]));
+    const area = (l) => Math.abs(l.reduce((sum, [x, y], i) => sum + x * l[(i + 1) % l.length][1] - l[(i + 1) % l.length][0] * y, 0) / 2);
+    assert.ok(Math.abs(area(rounded.loops[0]) - (20 * 10 - (4 - Math.PI) * 4)) < 0.03, `a 20 x 10 rectangle with corners of radius 2: ${area(rounded.loops[0])}`);
+    const dee = readDxf(dxf(['0', 'ARC', '10', '0', '20', '0', '40', '5', '50', '270', '51', '90', '0', 'LINE', '10', '0', '20', '5', '11', '0', '21', '-5'])); assert.ok(Math.abs(area(dee.loops[0]) - (Math.PI * 25) / 2) < 0.03, `a half disc from an arc and a line: ${area(dee.loops[0])}`);
+    assert.throws(() => readDxf(dxf(['0', 'SPLINE', '10', '0', '20', '0'])), /the DXF has a spline \(SPLINE\), which this does not read: export the section as lines, arcs and polylines/);
+    assert.throws(() => readDxf(dxf(['0', 'ELLIPSE', '10', '0', '20', '0'])), /an ellipse \(ELLIPSE\)/);
+    assert.throws(() => readDxf(dxf(['0', 'LINE', '10', '0', '20', '0', '11', '10', '21', '0', '0', 'LINE', '10', '10', '20', '0', '11', '10', '21', '10', '0', 'LINE', '10', '10', '20', '10', '11', '0', '21', '0.5'])), /the DXF's outline is not closed: a run of 3 lines and arcs ends 0\.5 mm from where it starts, at 0, 0\.5/);
+    assert.throws(() => readDxf(dxf(lines(loops[0]), 2)), /the DXF's units \(\$INSUNITS 2\) are not ones this reads/); assert.throws(() => readDxf('hello\nworld\n'), /not a DXF/);
+
+    // ---- a slot no family fits: drafted as a family of its own, which the profile names ----
+    const odd = profileModel('2020-misumi-hfs5', {}, { sets: { 'slot-6-misumi': { name: 'slot-6-misumi', part: 'slot', rules: Object.fromEntries(Object.entries({ opening: 7, lip_thickness: 2.5, cavity_width: 11.4, cavity_depth: 5.6, floor_width: 6.4, flank_angle: 45 }).map(([k, value]) => [k, { value }])) } } });
+    stl('odd.stl', outline(odd).loops, 60);
+    const drafted = cad('measure', 'odd.stl', '--profile', 'profile-2020-odd', '--no-pictures');
+    assert.match(drafted, /opening 7, lip 2\.5, 11\.4 under the lips, 5\.6 deep, floor 6\.4\d?\n {4}no slot family within 0\.1 mm \(nearest slot-[a-z0-9-]+, 0\.\d+ off\): drafted as slot-7-2020-odd/); assert.match(drafted, /draft slot: {4}rules\/slot-7-2020-odd\.json/);
+    const slot = read('rules/slot-7-2020-odd.json'); assert.equal(slot.part, 'slot'); assert.deepEqual([slot.rules.opening.value, slot.rules.lip_thickness.value, slot.rules.cavity_width.value, slot.rules.cavity_depth.value, slot.rules.opening.kind], [7, 2.5, 11.4, 5.6, 'derived']);
+    assert.ok(Math.abs(slot.rules.flank_angle.value - 45) < 1.5 && Math.abs(slot.rules.floor_width.value - 6.4) < 0.1); assert.equal(read('rules/profile-2020-odd.json').rules.slot.value, 'slot-7-2020-odd');
+    assert.match(cad('rules', 'check', 'profile-2020-odd', 'slot-7-2020-odd'), /^2 of 2 rule sets pass\n$/);
+    // a wider tolerance takes the nearest family where a person says that is near enough
+    assert.match(cad('measure', 'odd.stl', '--profile', 'profile-2020-near', '--no-pictures', '--tol', '1.2'), /matches slot-[a-z0-9-]+ within [01](\.\d+)? mm/);
+
+    // ---- a V-slot rail of two cells standing up: turned to lie flat, its track found; a plain tube has no slot at all ----
+    stl('v2040.stl', outline(profileModel('2040-openbuilds')).loops.map((l) => l.map(([x, y]) => [-y, x])), 70);
+    const v = cad('measure', 'v2040.stl', '--profile', 'profile-2040-v', '--no-pictures');
+    assert.match(v, /turned a quarter turn to lie flat\n {2}40 × 20 mm, 3 holes/); assert.match(v, /slot A × 6 \(top, bottom, front, back\): opening 6\.25, lip 1\.8\d?, 11 under the lips, 6\.1 deep, floor 5\.7\d?, V mouth 9\.15 at 9[01](\.\d+)?°\n {4}matches slot-6-openbuilds/);
+    assert.match(v, /2 bores Ø4\.2\d? at the cells' middles/); assert.match(v, /1 hollow: 12\.2 × 16\.4 \(in the outline, not in the rules\)/);
+    const vr = read('rules/profile-2040-v.json').rules; assert.deepEqual([vr.family.value, vr.cells_across.value, vr.cells_up.value, vr.series.value, vr.slot.value], ['v-slot', 2, 1, 20, 'slot-6-openbuilds']);
+    stl('tube.stl', outline(profileModel('tube', { width: 30, height: 20, wall: 2 })).loops, 50);
+    const tube = cad('measure', 'tube.stl', '--profile', 'profile-tube-measured', '--no-pictures'); assert.match(tube, /30 × 20 mm, 1 hole, area 184 mm²/); assert.match(tube, /no slot for a nut found: written as a custom profile/);
+    assert.equal(read('rules/profile-tube-measured.json').rules.family.value, 'custom'); assert.match(cad('rules', 'check', 'profile-tube-measured'), /^1 of 1 rule sets pass\n$/);
+    // refusals, by name
+    assert.match(cad('measure', 'hfs5.stl', '--profile', 'Profile 2020'), /--profile <name>: lower case, digits, - and _/);
+    assert.match(cad('measure', 'hfs5.stl', '--profile'), /--profile needs a value after it/);
+    assert.match(cad('measure', 'hfs5.stl', '--profile', 'x', '--tol', '0'), /--tol is how close a slot must be to a known family, in mm, above 0/);
+    fs.writeFileSync(path.join(ws, 'beam.step'), 'ISO-10303-21;'); assert.match(cad('measure', 'beam.step', '--profile', 'x'), /a profile is measured from an STL or 3MF model of the beam, or a DXF of its section \(not \.step\)/);
+    assert.equal(run('measure', 'nothing.stl', '--profile', 'x').status, 1);
+  } finally { done(); }
+});
+
 test('a pose that sets an item\'s variables: the part drawn that way in that pose, as printed in the others', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -1407,8 +1565,8 @@ test('the command line: its version, a misspelt command or option named, options
     assert.match(odd.out, /^no option --jsno \(did you mean --json\?\)/); assert.equal(odd.code, 1);
     assert.equal(JSON.parse(run(ws, ['check', '--json', 'demo/block']).stdout).object, 'demo/block', 'options first');
     assert.match(run(ws, ['check', 'demo/block', '--set']).out, /--set needs a value/);
-    assert.match(run(ws, ['add']).out, /usage: cad add fit\|joint\|item\|loop\|pose/);
-    assert.match(run(ws, ['add', 'fit']).out, /usage: cad add fit\|joint\|item\|loop\|pose/);
+    assert.match(run(ws, ['add']).out, /usage: cad add fit\|joint\|item\|beam\|loop\|pose/);
+    assert.match(run(ws, ['add', 'fit']).out, /usage: cad add fit\|joint\|item\|beam\|loop\|pose/);
     // --new takes no value: what follows it is the next variable, not lost
     assert.match(run(ws, ['set', 'demo/block', '--new', 'lip=3', '--unit', 'mm', '--rule', 'A lip']).out, /set lip/);
     const vars = () => JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/objects/block.json'), 'utf8')).variables;
@@ -1966,6 +2124,41 @@ test('cad measured: a measurement where the estimate was, what moved, the ledger
   } finally { done(); }
 });
 
+test('cad measured from the slot coupon: the slot fit lands in the printer\'s rule set, a slot\'s caliper figures in the workspace\'s copy of its set, and a carrier is drawn from both', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const js = `export function main (v) {
+  const m = v.frames.carrierModel('slot-8', { thread: 'M5', printer: v.x1c })
+  return v.frames.carrier(m, { pose: 'print', printer: v.x1c })
+}
+`;
+    object(ws, 'home/carrier', { uses: ['x1c'], engine: 'manifold', variables: {} }, js);
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['carrier'] }));
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/coupon.json'), JSON.stringify({ title: 'Coupon', kind: 'fit', items: [{ id: 'carrier', object: 'carrier' }] }));
+    // the carrier's width across the slot: the cavity less the clearance each side
+    const across = () => Number(cad('check', 'home/carrier').match(/([\d.]+) × ([\d.]+) × ([\d.]+) mm, fits the bed/)[2]);
+    assert.equal(across(), 16.1, 'before: slot-8\'s community cavity 16.5 less x1c.fit 0.2 each side');
+    const kit = ['x1c', 'slot-8'].map((n) => fs.readFileSync(new URL(`../rules/${n}.json`, import.meta.url), 'utf8'));
+    const own = (n) => path.join(ws, `rules/${n}.json`), measuredIn = (n, k) => fs.existsSync(own(n)) && JSON.parse(fs.readFileSync(own(n), 'utf8')).rules[k]?.kind === 'measured';
+    // figures that make no slot are refused, and nothing is written
+    assert.match(cad('measured', 'home/coupon', 'x1c.slot_fit=0.15', 'slot-8.opening=17'), /slot-8: .*cavity_width is wider than opening, 17/);
+    assert.ok(!measuredIn('x1c', 'slot_fit') && !measuredIn('slot-8', 'opening'), 'nothing written');
+    const out = cad('measured', 'home/coupon', 'x1c.slot_fit=0.15', 'x1c.printed_slot_fit=0.25', 'slot-8.opening=8.1', 'slot-8.cavity_width=16.3');
+    assert.match(out, /x1c\.slot_fit: measured 0\.15 mm, predicted 0\.2 \(x1c\.fit, community\), ratio 0\.75/);
+    assert.match(out, /x1c\.printed_slot_fit: measured 0\.25 mm, predicted 0\.2/);
+    assert.match(out, /slot-8\.opening: measured 8\.1 mm, predicted 8 \(community\)/);
+    const x1c = JSON.parse(fs.readFileSync(own('x1c'), 'utf8')).rules, slot = JSON.parse(fs.readFileSync(own('slot-8'), 'utf8')).rules, today = new Date().toISOString().slice(0, 10);
+    for (const r of [x1c.slot_fit, x1c.printed_slot_fit, slot.opening, slot.cavity_width]) { assert.equal(r.kind, 'measured'); assert.equal(r.checked, today); assert.equal(r.unit, 'mm'); assert.match(r.source, /slot coupon/); }
+    assert.match(x1c.slot_fit.rule, /slid the beam's length by hand without rattling/); assert.match(slot.opening.source, /calipers on your own beam/);
+    assert.deepEqual([x1c.slot_fit.value, slot.opening.value, slot.cavity_width.value, slot.cavity_depth.kind], [0.15, 8.1, 16.3, 'community'], 'only what was measured');
+    assert.deepEqual(['x1c', 'slot-8'].map((n) => fs.readFileSync(new URL(`../rules/${n}.json`, import.meta.url), 'utf8')), kit, 'the kit\'s own rule sets are untouched');
+    // drawn again from them: the measured cavity less the measured fit each side
+    assert.equal(across(), 16, '16.3 less 0.15 each side');
+    assert.match(cad('history', 'home/coupon'), /x1c\.slot_fit: measured 0\.15 mm, predicted 0\.2/);
+  } finally { done(); }
+});
+
 test('cad measured from the fixings coupon: each result lands in the printer\'s rule set with its source and date, and a pilot then rests on a measured rule', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -2416,5 +2609,164 @@ test('a link for a machine working in a volume: flat along any axis, or a single
       fs.writeFileSync(path.join(ws, 'projects/home/assemblies/a.json'), asm(volume));
       assert.doesNotMatch(cad('link', 'home/a', '--md', '--long'), /broken task/);
     }
+  } finally { done(); }
+});
+
+test('beams in an assembly: four placed by their ends make a rectangle, a plate at x1.top@50% sits on the slot\'s centre line, and an address past the end is refused with the length', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/frame.json');
+    fs.mkdirSync(at('objects'), { recursive: true }); fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: ['plate'] }));
+    fs.writeFileSync(at('objects/plate.json'), JSON.stringify({ name: 'plate', title: 'Plate', version: '0.1.0', uses: ['x1c'], anchors: { centre: { at: [0, 0, 0], axis: [0, 0, 1] } }, variables: { side: { value: 40, unit: 'mm', rule: 'Side' }, thick: { value: 3, unit: 'mm', rule: 'Thick' } } }));
+    // v.frames in a design: the tab is the slot's opening, read from the profile's slot family (through the sandbox)
+    fs.writeFileSync(at('objects/plate.js'), "import jscad from '@jscad/modeling'\nconst { cuboid } = jscad.primitives\nexport function main (v) {\n  const p = v.frames.profileModel('2020-misumi-hfs5'), slot = p.slots[p.faces.top[0].slot]\n  return v.ops.union(cuboid({ size: [v.side, v.side, v.thick], center: [0, 0, v.thick / 2] }), cuboid({ size: [v.side / 2, slot.opening, v.thick], center: [0, 0, -v.thick / 2] }))\n}\n");
+    const B = (id, from, to, beam = {}) => ({ id, beam: { profile: '2020-misumi-hfs5', ...beam }, from, to });
+    const a = { title: 'Frame', kind: 'fit', items: [B('x1', [0, 0, 0], [300, 0, 0]), B('x2', [0, 200, 0], [300, 200, 0], { length: 'x1.length' }),
+      B('y1', [-10, -10, 0], [-10, 210, 0]), B('y2', [310, -10, 0], [310, 210, 0]), { id: 'plate', object: 'plate', at: 'x1.top@50%' }],
+      fits: [{ a: 'plate', b: 'x1', min: -1000, note: 'the tab in the slot' }, { a: 'plate', b: 'x1.top@50%', min: -1000, max: 0.01, note: 'on the face' }], loops: [{ a: 'plate.centre', b: 'x1.top@50%', label: 'on the centre line' }, { a: 'plate.centre', b: 'x1.top@-20', label: 'not at b' }] };
+    const write = () => fs.writeFileSync(file, JSON.stringify(a));
+    write();
+    // where every part is: each beam's box, and the plate's
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { bounds } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../../printcheck/printcheck.mjs')).href)});
+      const s = await buildAssembly('frame/frame'), r = (v) => v.map((x) => Math.round(x * 100) / 100);
+      console.log(JSON.stringify({ parts: Object.fromEntries(s.parts.map((p) => { const b = bounds(p.triangles); return [p.name, [r(b.lo), r(b.hi), p.role]]; })), findings: checkAssembly(s).map(({ level, code, text }) => ({ level, code, text })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r = probe();
+    // a rectangle 340 by 220 of 20 mm beams: the long sides 300 between the short ones, all on z = 0
+    assert.deepEqual(r.parts['x1.body'], [[0, -10, -10], [300, 10, 10], 'reference']);
+    assert.deepEqual(r.parts['x2.body'], [[0, 190, -10], [300, 210, 10], 'reference']);
+    assert.deepEqual(r.parts['y1.body'], [[-20, -10, -10], [0, 210, 10], 'reference']);
+    assert.deepEqual(r.parts['y2.body'], [[300, -10, -10], [320, 210, 10], 'reference']);
+    // the plate on the top face, centred on the slot's centre line (y = 0) half way along, its tab down in the slot
+    assert.deepEqual(r.parts['plate.body'], [[130, -20, 7], [170, 20, 13], 'part']);
+    const by = (code) => r.findings.filter((x) => x.code === code);
+    assert.equal(by('overlap')[0].level, 'pass', JSON.stringify(by('overlap'))); // beams meet face to face; the tab is allowed in by its fit
+    assert.match(by('fit').find((x) => /on the face/.test(x.text)).text, /on the face: press fit/); // (the faces near the address: the tab is in the beam's envelope)
+    assert.deepEqual(by('loop').map((x) => [x.level, x.text]), [['pass', 'on the centre line: closed (0 mm, axes 0° apart)'], ['fail', 'not at b: apart (130 mm, axes 0° apart)']]);
+    assert.match(by('beam.mass')[0].text, /^x1: profile-2020-misumi-hfs5 x 300: 147\.82 g/);
+    assert.equal(by('bought.item').length, 4);
+    // on the list by profile and length, weighed by the sheet's 0.5 kg/m
+    const list = cad('list', 'frame/frame');
+    assert.match(list, /2 ×\s+profile-2020-misumi-hfs5 x 300 mm\s+a beam\s+150 g each\s+x1, x2/);
+    assert.match(list, /2 ×\s+profile-2020-misumi-hfs5 x 220 mm\s+a beam\s+110 g each\s+y1, y2/);
+    // turned about its axis: an upright 2040 at roll 90 has its top toward -x, and the plate goes with it
+    a.items.splice(0, 4, { id: 'x1', beam: { profile: '2040-misumi-hfs5' }, from: [0, 0, 0], to: [0, 0, 100], roll: 90 }); a.fits = []; a.loops = []; write();
+    r = probe();
+    assert.deepEqual(r.parts['x1.body'], [[-10, -20, 0], [10, 20, 100], 'reference']);
+    assert.deepEqual(r.parts['plate.body'], [[-13, -30, 30], [-7, 10, 70], 'part']);
+    // refused by name: past the end (with the length), a length that disagrees with the ends, a printed beam
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); fs.writeFileSync(file, JSON.stringify(b)); assert.match(cad('check', 'frame/frame'), pattern); };
+    refused((b) => { b.items[1].at = 'x1.top@120'; }, /item plate: at: x1: "top@120" is past the end of profile-2040-misumi-hfs5 x 100: it is 100 mm long/);
+    refused((b) => { b.items[1].at = 'x1.top@-101'; }, /"top@-101" is past the end of .* it is 100 mm long/);
+    refused((b) => { b.loops = [{ a: 'plate.centre', b: 'x1.side@20' }]; }, /x1: profile-2040-misumi-hfs5 x 100 has no "side@20": it has a, b, a\.1/);
+    refused((b) => { b.items[0].beam.length = 120; }, /item x1: its length is 120 mm, and its ends are 100 mm apart/);
+    refused((b) => { b.items[0].beam.printed = true; }, /item x1: a printed beam \("printed": true\) is a later release/);
+    refused((b) => { b.items[0].beam.colour = 'red'; }, /item x1: a beam has no "colour": it takes profile, length, printed, material/);
+    refused((b) => { delete b.items[0].from; delete b.items[0].to; delete b.items[0].roll; }, /item x1: give the beam a length, or place it by its ends/);
+    // cad add beam: one placed by its ends, kept to the schema
+    write();
+    assert.match(cad('add', 'beam', 'frame/frame', '--id', 'z1', '--profile', '2020-misumi-hfs5', '--from', '30,0,0', '--to', '30,0,100', '--roll', '90'), /added a beam/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).items.at(-1), { id: 'z1', beam: { profile: '2020-misumi-hfs5' }, from: [30, 0, 0], to: [30, 0, 100], roll: 90 });
+    assert.match(cad('add', 'item', 'frame/frame', '--id', 'p2', '--object', 'plate', '--at', 'z1.front@50%'), /added an item/);
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).items.at(-1).at, 'z1.front@50%');
+  } finally { done(); }
+});
+
+test('beam operations in an assembly: an end tapped M5 and an access hole by expression, cut into the solid; beam.op findings; a tap with no end bore refused by name', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/ops.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const a = { title: 'Ops', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5', length: 300,
+      ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-10', thread: 'M5', depth: '2 * 3.95' }, { op: 'mitre', at: 'b', angle: 45, about: 'top' }] }, from: [0, 0, 0], to: [300, 0, 0] }] };
+    const write = (x = a) => fs.writeFileSync(file, JSON.stringify(x));
+    write();
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/ops'), o = s.objects.find((x) => x.id === 'x1'), p = s.parts.find((x) => x.name === 'x1.body');
+      console.log(JSON.stringify({ ops: o.beam.ops.map((x) => [x.op, x.at, x.distance, x.depth ?? null]), lines: o.beam.ops.map((x) => x.line), triangles: p.triangles.length, collide: p.collide ? 1 : 0, findings: checkAssembly(s).filter((f) => /^beam\\./.test(f.code)).map(({ level, code, text }) => ({ level, code, text })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const r = probe();
+    assert.deepEqual(r.ops, [['tap', 'a', 0, 10], ['cut', 'a', 0, null], ['access', 'top@-10', 290, 7.9], ['mitre', 'b', 300, null]]);
+    assert.match(r.lines[2], /access hole Ø5\.3 mm in top\.1, 290 mm from end a \(10 from end b\)/);
+    assert.ok(r.triangles > 872, `the solid has the tap, the hole and the mitre cut in (${r.triangles} triangles)`);
+    assert.ok(r.findings.some((f) => f.level === 'info' && /x1: .*its 300 mm is measured on the long side, back; mitred, the front is 280 mm/.test(f.text)), JSON.stringify(r.findings));
+    // a hole across the tapped thread is a beam.op failure on cad check, named by item
+    a.items[0].beam.ops.push({ op: 'drill', at: 'top@8', diameter: 3 }); write();
+    assert.match(cad('check', 'frame/ops'), /x1: profile-2020-misumi-hfs5 x 300: the drill at top@8 \(Ø3 mm, 8 mm from end a\) crosses the M5 thread tapped 10 mm into a\.1/);
+    // refused by name: a tap in a tube, with no end bore; an operation the kit does not have
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/ops'), pattern); };
+    refused((b) => { b.items[0].beam.profile = 'tube-al-20x20x2'; b.items[0].beam.ops = [{ op: 'tap', at: 'a', thread: 'M5' }]; }, /item x1: profile-tube-al-20x20x2 x 300: ops\[0\] \(tap\): profile-tube-al-20x20x2 has no bore in its ends to tap/);
+    refused((b) => { b.items[0].beam.ops = [{ op: 'weld', at: 'a' }]; }, /no operation "weld": there are cut, mitre, tap/);
+    refused((b) => { b.items[0].beam.printed = true; }, /a printed beam \("printed": true\) is a later release, and its ops become features of the print then/);
+  } finally { done(); }
+});
+
+test('beam cut list and sheets: a box of twelve beams lists three lengths, the bars to buy and their offcuts; cad beams writes a sheet per mark, the access hole at 207.5 mm', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // four of each length, apart from each other; z1 has its end tapped and an access hole 12.5 mm from end b
+    const items = [];
+    for (let i = 0; i < 4; i++) items.push({ id: `x${i + 1}`, beam: { profile: '2020-misumi-hfs5' }, from: [0, i * 40, 0], to: [300, i * 40, 0] });
+    for (let i = 0; i < 4; i++) items.push({ id: `y${i + 1}`, beam: { profile: '2020-misumi-hfs5' }, from: [400 + i * 40, 0, 0], to: [400 + i * 40, 260, 0] });
+    for (let i = 0; i < 4; i++) items.push({ id: `z${i + 1}`, beam: { profile: '2020-misumi-hfs5', ...(i === 0 ? { ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-12.5', thread: 'M5' }] } : {}) }, from: [700 + i * 40, 0, 0], to: [700 + i * 40, 0, 220] });
+    fs.writeFileSync(at('assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', items }));
+    const list = cad('list', 'frame/box');
+    assert.match(list, /Cut list \(kerf 3 mm, trim 10 mm; a sheet for each mark: cad beams frame\/box\)/);
+    assert.match(list, /A\s+4 ×\s+profile-2020-misumi-hfs5 x 300 mm\s+150 g each\s+cut square\s+x1, x2, x3, x4/);
+    assert.match(list, /D\s+1 ×\s+profile-2020-misumi-hfs5 x 220 mm\s+110 g each\s+tap M5 x 10 at a; access Ø5\.3 at top\.1@207\.5\s+z1/);
+    assert.match(list, /profile-2020-misumi-hfs5: 3 lengths, 4 × 300, 4 × 260, 4 × 220 mm/);
+    assert.match(list, /profile-2020-misumi-hfs5: buy 1 × 4000 mm; kerf 3, trim 10; 834 mm left over/);
+    assert.match(list, /bar 1, 4000 mm: trim 10, A 300 \(x1\), A 300 \(x2\), .*; offcut 834/);
+    const json = JSON.parse(cad('list', 'frame/box', '--json'));
+    assert.deepEqual(json.cut.stock[0].buy, [{ length: 4000, count: 1 }]); assert.equal(json.cut.totals.offcut, 834); assert.equal(json.cut.marks[0].beam, undefined);
+    // a sheet per mark in exports/, the access hole dimensioned 207.5 from end a, the tap's thread and depth, the face up
+    assert.match(cad('beams', 'frame/box'), /mark D \(z1\), 1:2: exports[\\/]frame[\\/]box\.beam-D\.svg/);
+    assert.deepEqual(fs.readdirSync(path.join(ws, 'exports/frame')).filter((f) => f.endsWith('.svg')).sort(), ['box.beam-A.svg', 'box.beam-B.svg', 'box.beam-C.svg', 'box.beam-D.svg']);
+    const svg = fs.readFileSync(path.join(ws, 'exports/frame/box.beam-D.svg'), 'utf8');
+    for (const t of ['>207.5<', '>Mark D: profile-2020-misumi-hfs5 x 220.0 mm<', '>(1) a.1: tap M5 x 10 deep<', '>top face up: seen from the top, end a on the left<']) assert.ok(svg.includes(t), `the sheet shows ${t}`);
+    // each beam's mark in its label, the cut list's findings on cad check, and the sheets on the build page
+    const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { buildData } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/buildpage.mjs')).href)});
+      const s = await buildAssembly('frame/box');
+      console.log(JSON.stringify({ labels: s.parts.filter((p) => /^[xz]1\\./.test(p.name)).map((p) => p.label), marks: s.objects.map((o) => o.mark).join(''), cut: checkAssembly(s).filter((f) => f.code === 'frame.cut').map((f) => f.level + ' ' + f.text), build: (await buildData(s)).build.beams }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    assert.deepEqual(r.labels, ['x1: mark A, profile-2020-misumi-hfs5 x 300 mm', 'z1: mark D, profile-2020-misumi-hfs5 x 220 mm']);
+    assert.equal(r.marks, 'AAAABBBBDCCC');
+    assert.ok(r.cut.some((t) => /^info mark A \(x1, x2, x3, x4\): 4 beams of 300 mm, each cut to ±0\.5 mm/.test(t)), r.cut.join('\n'));
+    assert.deepEqual(r.build.sheets.find((x) => x.mark === 'D'), { mark: 'D', items: ['z1'], file: 'exports/frame/box.beam-D.svg', written: true });
+    // a beam longer than any length sold fails on cad check
+    items[0].to = [4100, 0, 0]; fs.writeFileSync(at('assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', items }));
+    assert.match(cad('check', 'frame/box'), /x1: 4100 mm of profile-2020-misumi-hfs5 is longer than any length it is sold in \(1000, 4000 mm\)/);
+  } finally { done(); }
+});
+
+test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a beam item takes one by name', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const { framesContext, designFrames } = await import(pathToFileURL(path.join(path.dirname(BIN), '../lib/frames.mjs')).href);
+    const kit = JSON.parse(fs.readFileSync(path.join(ROOT_MODULES, '@rulecad/rules/profile-2020-misumi-hfs5.json'), 'utf8'));
+    const own = { ...kit, name: 'profile-2020-mine', rules: { ...kit.rules, width: { ...kit.rules.width, value: 21 }, height: { ...kit.rules.height, value: 21 } } };
+    fs.mkdirSync(path.join(ws, 'rules'), { recursive: true }); fs.writeFileSync(path.join(ws, 'rules/profile-2020-mine.json'), JSON.stringify(own));
+    const context = framesContext(path.join(ws, 'rules'));
+    assert.deepEqual(Object.keys(context.sets), ['profile-2020-mine']);
+    const v = designFrames(context);
+    assert.equal(v.profileModel('2020-mine').width, 21);
+    assert.equal(v.profileModel('2020-misumi-hfs5').width, 20); // the kit's, as before
+    assert.equal(v.beamModel('2020-mine', { length: 100 }).profile.width, 21);
+    assert.throws(() => designFrames({}).profileModel('2020-mine'), /no profile "2020-mine"/);
+    const before = context.hash; fs.writeFileSync(path.join(ws, 'rules/profile-2020-mine.json'), JSON.stringify({ ...own, title: 'changed' }));
+    assert.notEqual(framesContext(path.join(ws, 'rules')).hash, before); // (a build that reads it is made again)
+    fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/frame/assemblies/one.json'), JSON.stringify({ title: 'One', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-mine' }, from: [0, 0, 0], to: [0, 250, 0] }] }));
+    assert.match(cad('list', 'frame/one'), /1 ×\s+profile-2020-mine x 250 mm\s+a beam/);
   } finally { done(); }
 });

@@ -24,7 +24,7 @@ import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue } from '../
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
-import { checkSets, drawSet, draftSet } from '../lib/sheet.mjs';
+import { checkSets, drawSet, draftSet, draftPart, draftParts } from '../lib/sheet.mjs';
 import { filaments, slots, linkTo, objectModel, assemblyModel, VIEW } from '../lib/links.mjs';
 
 // What the print file asks of the AMS: which filament each kind of part prints in
@@ -51,9 +51,10 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     never failures: an alias in "interface", and what the kit's set has that your copy lacks
   cad rules draw <set>              a dimension drawing of what a set says a part mounts by, <set>.svg, to compare with its datasheet [--out file]
   cad rules draft <name> --from <file.pdf>   the figures in a datasheet's text, into rules/<name>.json for you to name and check (all kind estimate)
+  cad rules draft profile|slot|slot_nut <name>   every field a beam's profile, a slot family or a slot nut has, to fill from its sheet
   cad values <project>/<object> [names…]   the object's variables, resolved [--json]
   cad set <project>/<object> name=value …   change variables, keeping the file's layout [--unit, --rule, --label, --new to add one]
-  cad add fit|joint|item|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
+  cad add fit|joint|item|beam|loop|pose <project>/<assembly> --a … --b … --min …   add to an assembly, keeping its layout
   cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
                                     a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
                                     [--washer] [--length 12] [--torque 0.5] [--note …]
@@ -94,7 +95,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
   cad order <project>/<assembly>    the order it goes together in, each step with its fasteners [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
-  cad list <project>/<assembly>     what it takes to build: bought parts by set, every screw, nut and insert in packs, wire, printed parts in grams
+  cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
+  cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
   cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends, written to exports/ [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
@@ -102,10 +104,17 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     [--table: what the assembly still assumes, as Markdown; --out MEASURE.md: kept in that file]
                                     The fixings coupon's rules need no --rule: x1c.pilot_m4, x1c.insert_m3 (and _petg for one
                                     plastic), x1c.nut_fit, x1c.nut_slip, x1c.thread_gap, x1c.thread_flank (45 or 60)
+                                    The slot coupon's need no --rule: x1c.slot_fit, x1c.printed_slot_fit; a slot measured by
+                                    caliper goes in your copy of its set (slot-8.opening=8.1), checked as a slot
   cad measure <model.stl|3mf>       a model from elsewhere, measured: size, the stretches along its length with the same
                                     cross-section, and each section's shape, with a drawing in .preview/measure/
                                     [--along x|y|z] [--at 10,50: sections there too] [--line 0.6,2.5;4.6,2.5: where lines
                                     along it are inside] [--rules <name> --source <url> --licence "…": draft rules]
+  cad measure <beam.stl|3mf|section.dxf> --profile <name>   a beam's profile from a model of it, or a DXF of its
+                                    section: its outline to rules/outlines/<name>.json, its slots (opening, lip, width,
+                                    depth) and bores as a draft profile set, each slot matched to a known slot family or
+                                    drafted as a new one, and a drawing of what was found [--source <url> --licence "…"]
+                                    [--tol 0.1: how close a slot must be to a family, mm] [--along x|y|z] [--force]
   cad match <project>/<object> <model.stl|3mf>   how closely the design matches a model: both ways, signed, with the
                                     worst places and sections through them [--tol 0.2 (default: the printer's fit)]
                                     [--place "rz90 t1,2,3": how to lay the model over the design, else it is fitted]
@@ -126,15 +135,15 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'beams', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
-  'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
+  'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
-  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', // cad add
+  'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits']; // cad add fasten
 // What a command takes, where that isn't <project>/<object>
-const USAGE = { add: 'fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
+const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
   diff: '<project>/<object> <from> [<to>]', compare: '<project>/<object> <a> <b>', match: '<project>/<object> <model.stl|model.3mf>', clone: '<board.kicad_pcb | GitHub link> <name>' };
 
@@ -341,30 +350,42 @@ async function analyses(b, d, tag) {
 // cad rules check / draw / draft: rule sets themselves, not a design's use of them
 function ruleSheets(what, names) {
   if (what === 'check') {
-    const results = checkSets(names), bad = results.filter((r) => r.findings.length);
+    // a set fails on a finding of level fail; a warning or a note is said and the set still passes
+    const results = checkSets(names), fails = (r) => r.findings.filter((x) => x.level === 'fail').length, bad = results.filter(fails), noted = results.filter((r) => r.findings.length && !fails(r));
     if (opt('json')) console.log(JSON.stringify(results.map((r) => ({ name: r.name, findings: r.findings, ...(r.notes ? { notes: r.notes } : {}) })), null, 2));
     else {
-      for (const r of bad) { console.log(`${r.name}: ${r.findings.length} to fix`); for (const x of r.findings) console.log(`  FAIL  ${x.text}  (${x.code})`); }
+      for (const r of results.filter((x) => x.findings.length)) { console.log(`${r.name}: ${fails(r) ? `${fails(r)} to fix` : `passes, ${r.findings.length} to know`}`); for (const x of r.findings) console.log(`  ${{ fail: 'FAIL', warn: 'WARN', info: 'NOTE' }[x.level] ?? 'FAIL'}  ${x.text}  (${x.code})`); }
       // notes never fail: an alias names one line per set, what a copy lacks of the kit's set says it whole
       for (const r of results.filter((x) => x.notes)) {
         const alias = r.notes.filter((x) => x.code === 'rules.alias'), rest = r.notes.filter((x) => x.code !== 'rules.alias');
         if (alias.length) console.log(`${r.name}: NOTE  ${alias.map((x) => `${x.rule} is also read as ${x.values.alias}`).join(', ')}  (rules.alias)`);
         for (const x of rest) console.log(`${r.name}: NOTE  ${x.text}  (${x.code})`);
       }
-      console.log(`${results.length - bad.length} of ${results.length} rule sets pass`);
+      console.log(`${results.length - bad.length} of ${results.length} rule sets pass${noted.length ? ` (${noted.length} with something to know)` : ''}`);
     }
     process.exitCode = bad.length ? 1 : 0;
     return;
   }
   const name = names[0];
-  if (!name) throw new Error(`usage: cad rules ${what} <set>${what === 'draft' ? ' --from <file.pdf>' : ''}`);
+  if (!name) throw new Error(`usage: cad rules ${what} <set>${what === 'draft' ? ` --from <file.pdf>, or cad rules draft ${draftParts().join('|')} <name>` : ''}`);
   if (what === 'draw') { const to = opt('out') || `${name}.svg`; fs.writeFileSync(to, drawSet(name)); return console.log(`drew ${to}: compare it with the datasheet`); }
-  if (!opt('from')) throw new Error('usage: cad rules draft <name> --from <file.pdf>');
+  const save = (as, set) => {
+    const to = path.join(paths.rules ? paths.rules() : path.join(WS, 'rules'), `${as}.json`);
+    if (fs.existsSync(to) && !opt('force')) throw new Error(`${path.relative(WS, to)} already exists (--force replaces it)`);
+    fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, JSON.stringify(set, null, 2) + '\n');
+    return to;
+  };
+  // cad rules draft profile <name>: every field of the vocabulary for that part, to fill from a sheet
+  if (draftParts().includes(name) && !opt('from')) {
+    const part = name, as = names[1];
+    if (!as) throw new Error(`usage: cad rules draft ${part} <name>`);
+    const to = save(as, draftPart(part, as));
+    return console.log(`a draft ${part.replace('_', ' ')} in ${path.relative(WS, to)}, every figure an estimate: fill it from the maker's sheet (source, page, date), then cad rules check ${as} and cad rules draw ${as}`);
+  }
+  if (!opt('from')) throw new Error(`usage: cad rules draft <name> --from <file.pdf>, or cad rules draft ${draftParts().join('|')} <name>`);
   const { set, found } = draftSet(name, opt('from'));
   if (!found) return console.log(`no figures in ${opt('from')}'s text: it's probably a picture of a drawing, so read it by eye and write rules/${name}.json by hand`);
-  const to = path.join(paths.rules ? paths.rules() : path.join(WS, 'rules'), `${name}.json`);
-  if (fs.existsSync(to) && !opt('force')) throw new Error(`${path.relative(WS, to)} already exists (--force replaces it)`);
-  fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, JSON.stringify(set, null, 2) + '\n');
+  const to = save(name, set);
   return console.log(`${found} figures in ${path.relative(WS, to)}, every one an estimate: name them from the vocabulary, check them against the datasheet, then cad rules check ${name}`);
 }
 
@@ -431,7 +452,12 @@ async function main() {
   if (cmd === 'clone') return cloneBoard(ref, pos[2], { source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), noModels: !!opt('no-models') });
   if (cmd === 'status') return status(ref);
   if (cmd === 'measure') {
-    if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>]');
+    if (!ref) throw new Error('usage: cad measure <model.stl|model.3mf> [--along x] [--at 10,50] [--line 0.6,2.5] [--rules <name>], or cad measure <beam.stl|3mf|section.dxf> --profile <name>');
+    if (opt('profile')) {
+      const { measureProfile } = await import('../lib/profilemeasure.mjs');
+      return measureProfile(ref, { profile: opt('profile'), along: opt('along'), tol: opt('tol') && opt('tol') !== true ? opt('tol') : undefined, source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), pictures: !opt('no-pictures') });
+    }
+    if (/\.dxf$/i.test(ref)) throw new Error('a DXF is a drawing of a section, not a model: cad measure <section.dxf> --profile <name> reads a beam\'s profile from it');
     const list = (k) => (opt(k) && opt(k) !== true ? String(opt(k)).split(k === 'line' ? ';' : ',').filter(Boolean) : []);
     return measure(ref, { along: opt('along'), at: list('at'), line: list('line'), rules: opt('rules'), source: opt('source'), licence: opt('licence') || opt('license'), force: !!opt('force'), pictures: !opt('no-pictures') });
   }
@@ -440,7 +466,7 @@ async function main() {
   if (cmd === 'variants') return variants(locate(ref));
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'measured') return measuredCommand(ref);
-  if (cmd === 'list' || cmd === 'wires') return listCommand(cmd, ref);
+  if (cmd === 'list' || cmd === 'wires' || cmd === 'beams') return listCommand(cmd, ref);
   if (cmd === 'machine' || cmd === 'plot') return machineCommand(cmd, ref);
   if (cmd === 'plates' || cmd === 'order') return platesCommand(cmd, ref);
   if (cmd === 'history') return history(ref);
@@ -581,10 +607,15 @@ async function editAssembly(what, ref) {
   const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
   const pick = (keys) => Object.fromEntries(keys.map((k) => [k, typeof opt(k) === 'string' ? parseValue(opt(k)) : undefined]).filter(([, v]) => v !== undefined));
   const text = (keys) => Object.fromEntries(keys.filter((k) => typeof opt(k) === 'string').map((k) => [k, String(opt(k))]));
+  // (an item's at is a point, 1,2,3, or an address on a beam: --at x1.top@50%)
+  const at = () => (typeof opt('at') !== 'string' ? {} : /^[a-z][\w-]*\./i.test(opt('at')) ? { at: String(opt('at')) } : { at: list('at') });
   let entry;
   if (what === 'fit') entry = { ...text(['a', 'b']), ...pick(['min', 'max']), ...(list('poses') ? { poses: list('poses').map(String) } : {}), ...text(['note', 'label']) };
   else if (what === 'joint') entry = { ...text(['id', 'type', 'parent', 'child', 'label', 'follow']), ...pick(['min', 'max', 'value', 'ratio']) };
-  else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...(list('at') ? { at: list('at') } : {}), ...(list('rotate') ? { rotate: list('rotate') } : {}),
+  else if (what === 'beam') {
+    if (typeof opt('profile') !== 'string') throw new Error('usage: cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0 [--roll 90] [--length 300] [--material al6063-t5], or --length 300 --at 0,0,0 --rotate 0,90,0');
+    entry = { ...text(['id']), beam: { profile: String(opt('profile')), ...pick(['length']), ...text(['material']) }, ...(list('from') ? { from: list('from') } : {}), ...(list('to') ? { to: list('to') } : {}), ...pick(['roll']), ...at(), ...(list('rotate') ? { rotate: list('rotate') } : {}) };
+  } else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...at(), ...(list('rotate') ? { rotate: list('rotate') } : {}),
     ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
   else if (what === 'loop') entry = text(['a', 'b', 'label']);
   else if (what === 'fasten' && opt('from-fits')) { // a holes fit and a fit that fastens, put as one fasten
@@ -602,8 +633,8 @@ async function editAssembly(what, ref) {
     const pairs = positional().slice(3);
     if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
     entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
-  } else throw new Error('usage: cad add fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …');
-  const r = addToAssembly(ref, what, entry);
+  } else throw new Error('usage: cad add fit|joint|item|beam|loop|pose|fasten <project>/<assembly> --key value …');
+  const r = addToAssembly(ref, what === 'beam' ? 'item' : what, entry);
   if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
   console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);
 }
@@ -1018,6 +1049,13 @@ async function listCommand(what, ref) {
   if (what === 'list') {
     const { shoppingList, listText } = await import('../lib/list.mjs'), l = shoppingList(s);
     return console.log(opt('json') ? JSON.stringify(l, null, 2) : listText(ref, l));
+  }
+  if (what === 'beams') {
+    const { writeBeamSheets } = await import('../lib/beams.mjs'), sheets = writeBeamSheets(s);
+    if (opt('json')) return console.log(JSON.stringify(sheets.map((x) => ({ ...x, file: path.relative(WS, x.file) })), null, 2));
+    if (!sheets.length) return console.log(`${ref} has no beams`);
+    for (const x of sheets) say(`  mark ${x.mark} (${x.items.join(', ')}), 1:${x.scale}: ${path.relative(WS, x.file)}`);
+    return;
   }
   const { wiresFor } = await import('../lib/assembly.mjs'), { wiringSheet } = await import('../lib/wires.mjs'), rows = wiresFor(s);
   if (opt('json')) return console.log(JSON.stringify(rows.map(({ route, ...r }) => r), null, 2));

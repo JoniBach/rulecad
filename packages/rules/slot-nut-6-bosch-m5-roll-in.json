@@ -1,0 +1,17 @@
+{
+  "_doc": "Bosch Rexroth's swivel-in sliding block for its 6 mm slot, M5 (3 842 547 825). Stainless only in the 6 mm slot. Rexroth rates no Fmax for it in this slot.",
+  "name": "slot-nut-6-bosch-m5-roll-in",
+  "part": "slot_nut",
+  "rules": {
+    "slot": { "value": "slot-6-bosch", "rule": "Made for Rexroth's 6 mm slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "thread": { "value": "M5", "rule": "Thread M5, one of the sizes the table lists (M3, M4, M5)", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "nut_kind": { "value": "roll-in", "rule": "Swivelled in through the opening at the place it is wanted", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "length": { "value": 12, "unit": "mm", "rule": "l = 12 in the table", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "width": { "value": 11.5, "unit": "mm", "rule": "Across the slot: the drawing gives no figure; taken as Rexroth's 6 mm T-nut (11.5), under the 12 mm cavity", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8: not dimensioned there, so an estimate", "checked": "2026-11-15" },
+    "height": { "value": 2.1, "unit": "mm", "rule": "The body under the lips: h = 3.0 less h1 = 0.9 in the table", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "tongue_height": { "value": 0.9, "unit": "mm", "rule": "The step into the opening: h1 = 0.9 in the table", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "nut_entry": { "value": "anywhere", "rule": "Put in through the opening anywhere along the slot", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "material": { "value": "stainless steel", "rule": "Material as the table names it", "kind": "spec", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-8", "checked": "2026-11-15" },
+    "hold": { "value": 1100, "unit": "N", "rule": "Rexroth rates its swivel-in block with a spring at 2200 N in an 8 mm slot against 6000 N for its sliding block; the same share of the 6 mm sliding block's 3000 N. An estimate until it is tested (Frames 2.13): the maker gives no figure for this nut", "kind": "estimate", "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4 to 3-9; the proof stress from the kit's m5 thread set (ISO 898-1)", "checked": "2026-11-15" }
+  }
+}
