@@ -2877,12 +2877,15 @@ The two objects, drawn at rest with the fingers straight. The gripper is one pri
 ```js projects/arm/objects/gripper.js
 // A compliant gripper, printed flat in PETG: a palm with the servo on it, and two fingers, each a rigid jaw on one long
 // leaf with rounded ends. A double-arm horn in the leaves' own plane pushes each finger inward at its outer face.
+// The screws' holes: M3 clearance through the block for the yoke's two screws, from v.fixings, and pilots for the
+// servo's own self-tapping screws, sized from its tabs' holes as v.motors.mount sizes them.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder, polygon } = jscad.primitives
 const { translate } = jscad.transforms
 const { extrudeLinear } = jscad.extrusions
 
 export function main (v) {
+  const bolt = v.fixings.holeModel('M3').diameter, pilot = v.motors.mountModel(v.motors.motorModel('sg90'), { plate: v.pilot_d }).holes[0].diameter
   const f = v.flexures, W = v.width, box = (x0, x1, y0, y1, z0 = 0, z1 = W) => cuboid({ size: [x1 - x0, y1 - y0, z1 - z0], center: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2] })
   const leaf = (end, y) => translate([end - v.leaf_l, y + v.leaf_t / 2, 0], f.leaf({ length: v.leaf_l, thickness: v.leaf_t, width: W, taper: v.taper, fillet: v.fillet, tip: true, into: v.into }))
   const wedge = (a0, a1, r, h, z0) => extrudeLinear({ height: h }, polygon({ points: [[0, 0], ...Array.from({ length: v.wedge_n + 1 }, (_, i) => { const a = (a0 + (a1 - a0) * i / v.wedge_n) * v.deg; return [r * Math.cos(a), r * Math.sin(a)] })] }))
@@ -2892,8 +2895,8 @@ export function main (v) {
   const stem = v.ops.union(box(v.block_x - 1, v.xs - v.pocket_back, -v.stem_y0, v.stem_y0), box(v.xs - v.pocket_back - 2, v.stem_x1, -v.stem_y, v.stem_y))
   const armUp = box(v.up_root - v.root, v.up_root + v.into, v.arm_y, v.y_in + v.leaf_t), armLow = box(v.low_root - v.root, v.low_root + v.into, -(v.y_in + v.leaf_t), -v.arm_y)
   const pads = [box(v.xs + v.pocket_front + v.pad_gap, v.xs + v.pad_front + v.pad_x, -v.pad_y, v.pad_y, W - v.dip, v.face), box(v.xs - v.pad_back - v.pad_x, v.xs - v.pocket_back - v.pad_gap, -v.pad_y, v.pad_y, W - v.dip, v.face)]
-  const pilots = [v.xs + v.pad_front, v.xs - v.pad_back].map((x) => cylinder({ radius: v.pilot / 2, height: v.pilot_d + 1, center: [x, 0, v.face - (v.pilot_d - 1) / 2], segments: v.segments }))
-  const bolts = [-1, 1].map((s) => cylinder({ radius: v.bolt / 2, height: W + 1, center: [s * v.bolt_x, 0, W / 2], segments: v.segments }))
+  const pilots = [v.xs + v.pad_front, v.xs - v.pad_back].map((x) => cylinder({ radius: pilot / 2, height: v.pilot_d + 1, center: [x, 0, v.face - (v.pilot_d - 1) / 2], segments: v.segments }))
+  const bolts = [-1, 1].map((s) => cylinder({ radius: bolt / 2, height: W + 1, center: [s * v.bolt_x, 0, W / 2], segments: v.segments }))
   // The servo's case and boss come down into the stem from above; the horn turns in two wedges cut from the stem's top
   const pocket = box(v.xs - v.pocket_back, v.xs + v.pocket_front, -v.pocket_y, v.pocket_y, v.case_z, W + 1)
   const boss = cylinder({ radius: v.boss / 2, height: v.case_z - v.horn_z + 1, center: [v.xs, 0, v.horn_z + (v.case_z - v.horn_z + 1) / 2], segments: v.segments })
@@ -2921,9 +2924,7 @@ export function main (v) {
   "title": "Gripper: palm and two fingers on leaves",
   "version": "0.1.0",
   "uses": [
-    "x1c",
-    "m2",
-    "m3"
+    "x1c"
   ],
   "engine": "manifold",
   "material": "PETG",
@@ -3078,12 +3079,7 @@ export function main (v) {
     "bolt_x": {
       "value": 4,
       "unit": "mm",
-      "rule": "Half the yoke's two M3 screws' spacing, as the pen holder's"
-    },
-    "bolt": {
-      "value": "m3.clearance + x1c.hole_comp",
-      "unit": "mm",
-      "rule": "M3 clearance through the block"
+      "rule": "Half the spacing of the yoke's two screws, as the pen holder's"
     },
     "xs": {
       "value": 62,
@@ -3292,16 +3288,10 @@ export function main (v) {
       "unit": "mm",
       "rule": "How far the posts run down into the stem"
     },
-    "pilot": {
-      "value": "m2.clearance - 0.6",
-      "unit": "mm",
-      "rule": "An M2 screw self-tapped into a post",
-      "kind": "community"
-    },
     "pilot_d": {
       "value": 8,
       "unit": "mm",
-      "rule": "A pilot hole's depth"
+      "rule": "How deep each of the servo's screws goes into its post"
     },
     "reach": {
       "value": 18,
@@ -3490,11 +3480,11 @@ The project lists the new objects:
     { "a": "m1", "b": "sun", "shaft": true, "note": "The shaft in the sun" },
     { "a": "m2", "b": "esun", "shaft": true, "note": "The elbow motor's shaft in its sun" },
     { "a": "m2", "b": "upper", "fastens": true, "min": -0.1, "note": "The elbow motor, on its four screws, its boss seated in the plate's pocket" },
-    { "a": "housing", "b": "base", "fastens": true, "min": 0, "note": "The housing, on the base's three columns" },
-    { "a": "bridge", "b": "housing", "fastens": true, "min": 0, "note": "The bridge, on the housing's posts" },
+    { "a": "housing", "b": "base", "min": 0, "note": "The housing, on the base's three columns" },
+    { "a": "bridge", "b": "housing", "min": 0, "note": "The bridge, on the housing's posts" },
     { "a": "b1", "b": "bridge", "seat": "press", "note": "The 6800 in its seat" },
-    { "a": "es1", "b": "base", "fastens": true, "min": -0.1, "note": "The home switch on its post, 0.1 mm of resting contact allowed" },
-    { "a": "es2", "b": "upper", "fastens": true, "min": -0.1, "note": "The elbow's home switch on its post" },
+    { "a": "es1", "b": "base", "min": -0.1, "note": "The home switch on its post, 0.1 mm of resting contact allowed" },
+    { "a": "es2", "b": "upper", "min": -0.1, "note": "The elbow's home switch on its post" },
     { "a": "es1", "b": "upper", "min": -30, "note": "The arm's flag on the home switch's lever at the end of the range" },
     { "a": "es2", "b": "forearm", "min": -30, "note": "The forearm's flag on the elbow switch's lever" },
     { "a": "ghorn", "b": "gripper", "min": -30, "note": "The horn presses the fingers' flats: drawn at rest, the fingers don't move here" },
@@ -3502,6 +3492,19 @@ The project lists the new objects:
     { "a": "ecarrier", "b": "ering", "min": -1, "note": "Two specks: neither is printed" },
     { "a": "d1", "b": "shield", "fastens": true, "min": -20, "note": "Plugged in" },
     { "a": "d2", "b": "shield", "fastens": true, "min": -20, "note": "Plugged in" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["housing"], "into": "base", "at": ["housing.f1", "housing.f2", "housing.f3"], "note": "The housing on the base's three columns" },
+    { "screw": "M3 cap", "through": ["bridge"], "into": "housing", "at": ["bridge.s1", "bridge.s2", "bridge.s3"], "note": "The bridge on the housing's posts" },
+    { "screw": "M3 countersunk", "through": ["spindle"], "into": "output", "at": ["spindle.b1", "spindle.b2", "spindle.b3", "spindle.b4"], "note": "The spindle on the output's flange, its heads flush under the bridge" },
+    { "screw": "M3 cap", "through": ["upper"], "into": "spindle", "at": ["upper.hub"], "note": "The upper arm clamped down on the spindle's hexagon" },
+    { "screw": "M3 cap", "through": ["clip1"], "into": "upper", "at": ["clip1.post"], "note": "A clip on its post" },
+    { "screw": "M3 cap", "through": ["clip2"], "into": "upper", "at": ["clip2.post"], "note": "A clip on its post" },
+    { "screw": "M3 cap", "through": ["clip3"], "into": "upper", "at": ["clip3.post"], "note": "A clip on its post" },
+    { "screw": "M3 cap", "through": ["forearm"], "into": "eoutput", "at": ["forearm.b1", "forearm.b2", "forearm.b3", "forearm.b4"], "note": "The forearm on the elbow's output" },
+    { "screw": "M3 cap", "through": ["forearm", "gripper"], "into": "forearm", "at": ["forearm.h1", "forearm.h2"], "nut": true, "note": "The gripper in the forearm's yoke" },
+    { "screw": "M2 cap", "through": ["es1"], "into": "base", "at": ["base.sw1", "base.sw2"], "note": "The home switch on its post" },
+    { "screw": "M2 cap", "through": ["es2"], "into": "upper", "at": ["upper.sw1", "upper.sw2"], "note": "The elbow's home switch on its post" }
   ],
   "wires": [
     { "id": "shoulder", "from": "m1.connector", "to": "shield.X", "via": ["base.cable"], "gauge": "awg24", "colour": "black, red, green, blue", "connectors": ["JST-XH 4 pin", "screw terminal"], "note": "From the motor's own lead, down through the base" },
@@ -3724,18 +3727,21 @@ The frame bolts into the yoke, two bars hold two 8 mm rods with teardrop holes, 
 ```js projects/arm/objects/zframe.js
 // A Z axis for the wrist, printed flat: a frame bolted into the forearm's yoke, two bars with the rods' holes, and the
 // small stepper on the top bar, its shaft down through the bar to a lead screw.
+// The screws' holes are v.fixings' clearance holes: M3 for the yoke's two screws, and for the motor's ears the
+// thread its mount takes (v.motors), on their sides as teardrops.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
 
 export function main (v) {
+  const bolt = v.fixings.holeModel('M3').diameter, motorHole = v.fixings.holeModel(v.motors.mountModel(v.motors.motorModel('28byj48'), { plate: v.y_out - v.y_in }).screw.thread).diameter
   const W = v.width, box = (x0, x1, y0, y1, z0 = 0, z1 = W) => cuboid({ size: [x1 - x0, y1 - y0, z1 - z0], center: [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2] })
   const block = box(-v.block_x, v.block_x, -v.block_y, v.block_y, 0, v.block_w)
   const spine = box(v.block_x - 1, v.spine_x, -v.y_out, v.y_out)
   const top = box(v.block_x - 1, v.bar_x, v.y_in, v.y_out), bottom = box(v.block_x - 1, v.bar_x, -v.y_out, -v.y_in)
   const rods = [v.sx - v.rod_gap, v.sx + v.rod_gap].map((x) => v.shapes.teardropHole({ d: v.rod, length: 2 * v.y_out + 2, at: [x, -v.y_out - 1, v.half], into: '+y', through: true }))
   const screwFree = v.shapes.teardropHole({ d: v.screw, length: v.y_out - v.y_in + 2, at: [v.sx, -v.y_out - 1, v.half], into: '+y', through: true })
-  const bolts = [-1, 1].map((s) => cylinder({ radius: v.bolt / 2, height: W + 1, center: [s * v.bolt_x, 0, v.half], segments: v.segments }))
-  const motorHoles = [-1, 1].map((s) => v.shapes.teardropHole({ d: v.motor_hole, length: v.y_out - v.y_in + 2, at: [v.sx + s * v.tab, v.y_in - 1, v.half - v.offset], into: '+y', through: true }))
+  const bolts = [-1, 1].map((s) => cylinder({ radius: bolt / 2, height: W + 1, center: [s * v.bolt_x, 0, v.half], segments: v.segments }))
+  const motorHoles = [-1, 1].map((s) => v.shapes.teardropHole({ d: motorHole, length: v.y_out - v.y_in + 2, at: [v.sx + s * v.tab, v.y_in - 1, v.half - v.offset], into: '+y', through: true }))
   const boss = v.shapes.teardropHole({ d: v.boss, length: v.y_out - v.y_in + 2, at: [v.sx, v.y_in - 1, v.half], into: '+y', through: true })
   return v.ops.subtract(v.ops.union(block, spine, top, bottom), rods, screwFree, bolts, motorHoles, boss)
 }
@@ -3747,7 +3753,7 @@ export function main (v) {
   "name": "zframe",
   "title": "Z axis frame",
   "version": "0.1.0",
-  "uses": ["x1c", "m3"],
+  "uses": ["x1c"],
   "engine": "manifold",
   "orientation": "Flat on the bed: the rods' holes run along the bed and have teardrop roofs, the motor's mount cut through the top bar",
   "description": "Bolts into the forearm's yoke where the pen holder or gripper bolts. Two bars hold two 8 mm rods; a 28BYJ-48 on the top bar turns a T8 screw between them.",
@@ -3767,7 +3773,6 @@ export function main (v) {
     "block_x": {"value": 8, "unit": "mm", "rule": "Half the block in the yoke"},
     "block_y": {"value": 9, "unit": "mm", "rule": "Half the block across it"},
     "bolt_x": {"value": 4, "unit": "mm", "rule": "Half the yoke's screws' spacing"},
-    "bolt": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
     "spine_x": {"value": 12, "unit": "mm", "rule": "The spine's far edge"},
     "bar_x": {"value": 75, "unit": "mm", "rule": "The bars' far edge: past the second rod's hole"},
     "y_in": {"value": 41, "unit": "mm", "rule": "Half the window between the bars: the carriage and its 50 mm of travel", "interface": true},
@@ -3778,7 +3783,6 @@ export function main (v) {
     "screw": {"value": 9, "unit": "mm", "rule": "The lead screw through the bottom bar, loose: its end only steadied"},
     "tab": {"value": 17.5, "unit": "mm", "rule": "Half the 28BYJ-48's tab screws' spacing", "kind": "community", "source": "28byj48 in @rulecad/rules"},
     "offset": {"value": 8, "unit": "mm", "rule": "The 28BYJ-48's screws sit this far from its shaft", "kind": "community", "source": "28byj48 in @rulecad/rules"},
-    "motor_hole": {"value": 4.2, "unit": "mm", "rule": "The motor's tab screws, an M3 or a 4 mm"},
     "boss": {"value": 12, "unit": "mm", "rule": "Round the motor's boss, through the top bar"},
     "segments": {"value": 48, "rule": "Round enough"}
   }
@@ -3806,7 +3810,7 @@ export function main (v) {
   "name": "zcar",
   "title": "Z axis carriage",
   "version": "0.1.0",
-  "uses": ["x1c"],
+  "uses": ["x1c", "t8-nut"],
   "engine": "manifold",
   "orientation": "Standing, the rods' direction vertical: both LM8UU pockets and the nut trap open from the top, nothing to bridge",
   "description": "Rides the frame's two rods on LM8UU bearings; a flanged T8 nut in the middle takes the screw's push. The tool anchor is on its front face.",
@@ -3824,13 +3828,13 @@ export function main (v) {
     "rod_d": {"value": 8, "unit": "mm", "rule": "The rod, the LM8UU's bore"},
     "lm_d": {"value": 15, "unit": "mm", "rule": "The LM8UU's outside diameter"},
     "lm_l": {"value": 24, "unit": "mm", "rule": "The LM8UU's length"},
-    "flange": {"value": 22, "unit": "mm", "rule": "The T8 nut's flange"},
-    "flange_t": {"value": 3.5, "unit": "mm", "rule": "The flange's thickness"},
-    "nut_d": {"value": 10.2, "unit": "mm", "rule": "The nut's body"},
-    "nut_l": {"value": 15, "unit": "mm", "rule": "The nut's length"},
-    "hole_c": {"value": 16, "unit": "mm", "rule": "The flange's bolt circle"},
-    "holes": {"value": 4, "rule": "Bolts in the flange"},
-    "hole_d": {"value": 3.5, "unit": "mm", "rule": "A flange bolt's hole"},
+    "flange": {"value": "t8_nut.flange_diameter", "unit": "mm", "rule": "The T8 nut's flange"},
+    "flange_t": {"value": "t8_nut.flange_width", "unit": "mm", "rule": "The flange's thickness"},
+    "nut_d": {"value": "t8_nut.body_diameter", "unit": "mm", "rule": "The lead nut's round body"},
+    "nut_l": {"value": "t8_nut.length", "unit": "mm", "rule": "The lead nut's length"},
+    "hole_c": {"value": "t8_nut.hole_circle", "unit": "mm", "rule": "The flange's bolt circle"},
+    "holes": {"value": "t8_nut.hole_count", "rule": "Bolts in the flange"},
+    "hole_d": {"value": "t8_nut.mount_hole_diameter", "unit": "mm", "rule": "A flange bolt's hole"},
     "segments": {"value": 48, "rule": "Round enough"}
   }
 }
@@ -4415,10 +4419,13 @@ The housing, the sun, the planets, the carrier that isn't printed, the output ri
   "name": "housing",
   "title": "Shoulder housing and fixed ring",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "The motor plate on the bed, the ring and posts up",
   "anchors": {
+    "f1": {"at": ["column_r * cosd(f1)", "column_r * sind(f1)", "plate"], "axis": [0, 0, 1]},
+    "f2": {"at": ["column_r * cosd(f2)", "column_r * sind(f2)", "plate"], "axis": [0, 0, 1]},
+    "f3": {"at": ["column_r * cosd(f3)", "column_r * sind(f3)", "plate"], "axis": [0, 0, 1]},
     "axis": {"at": [0, 0, "plate"], "axis": [0, 0, 1]},
     "motor": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]}
   },
@@ -4431,13 +4438,10 @@ The housing, the sun, the planets, the carrier that isn't printed, the output ri
     "post_r": {"value": 37, "unit": "mm", "rule": "Three posts outside the output ring", "interface": true},
     "post": {"value": 7, "unit": "mm", "rule": "Each post's diameter"},
     "post_high": {"value": "leg.bridge_low - 0 - plate", "unit": "mm", "rule": "From the plate to under the bridge", "interface": true},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped", "kind": "community"},
-    "pilot_depth": {"value": 8, "unit": "mm", "rule": "For an M3 × 16 through the bridge"},
+    "pilot_depth": {"value": 8, "unit": "mm", "rule": "Each post's pilot, deep enough for the bridge's screw"},
     "column_r": {"value": 37, "unit": "mm", "rule": "Over the base's columns"},
     "lobe": {"value": 12, "unit": "mm", "rule": "The plate reaches out over each column"},
-    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance, down into the column"},
-    "head": {"value": "m3.head + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "The screw head's counterbore"},
-    "head_depth": {"value": "m3.head_height + x1c.layer", "unit": "mm", "rule": "A socket head's height, sunk"},
+    "sink": {"value": "x1c.layer", "unit": "mm", "rule": "Each foot's screw head sits a layer under the plate's face"},
     "segments": {"value": 64, "rule": "Round enough"},
     "ring_segments": {"value": 96, "rule": "Smooth to the eye and to the gear"},
     "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
@@ -4453,11 +4457,14 @@ The housing, the sun, the planets, the carrier that isn't printed, the output ri
 
 ```js projects/leg/objects/housing.js
 // The motor plate with the fixed ring and posts standing on it. The motor bolts underneath, its shaft up through the middle.
+// The screws' holes are v.fixings': an M3 pilot in each post for the bridge, and an M3 clearance hole with its cap
+// head's counterbore in each foot, sunk a layer, for the screw down into the plate under it.
 import jscad from '@jscad/modeling'
 const { cylinder, cylinderElliptic } = jscad.primitives
 const { translate } = jscad.transforms
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter, screw = v.fixings.holeModel('M3').diameter, cb = v.fixings.counterboreModel('M3 cap'), head = cb.diameter, headDepth = cb.depth + v.sink
   const motor = v.motors.motorModel('17HS4401')
   const at = (r, a) => [r * Math.cos(a), r * Math.sin(a)]
   const posts = [v.p1, v.p2, v.p3].map((a) => a * v.rad), feet = [v.f1, v.f2, v.f3].map((a) => a * v.rad)
@@ -4466,9 +4473,9 @@ export function main (v) {
   const lobes = [...posts, ...feet].map((a) => cylinder({ radius: v.lobe / 2, height: v.plate, center: [...at(v.post_r, a), v.plate / 2], segments: v.segments }))
   const joins = [...posts, ...feet].map((a) => jscad.transforms.rotateZ(a, jscad.primitives.cuboid({ size: [v.post_r - v.rim / 2 + 2, v.lobe, v.plate], center: [(v.post_r + v.rim / 2 - 2) / 2, 0, v.plate / 2] })))
   const uprights = posts.map((a) => cylinder({ radius: v.post / 2, height: v.post_high + v.plate, center: [...at(v.post_r, a), (v.post_high + v.plate) / 2], segments: v.segments }))
-  const pilots = posts.map((a) => cylinder({ radius: v.pilot / 2, height: v.pilot_depth, center: [...at(v.post_r, a), v.plate + v.post_high - v.pilot_depth / 2], segments: v.segments }))
-  const screws = feet.map((a) => cylinder({ radius: v.screw / 2, height: v.plate + 1, center: [...at(v.column_r, a), v.plate / 2], segments: v.segments }))
-  const heads = feet.map((a) => cylinder({ radius: v.head / 2, height: v.head_depth, center: [...at(v.column_r, a), v.plate - v.head_depth / 2], segments: v.segments }))
+  const pilots = posts.map((a) => cylinder({ radius: pilot / 2, height: v.pilot_depth, center: [...at(v.post_r, a), v.plate + v.post_high - v.pilot_depth / 2], segments: v.segments }))
+  const screws = feet.map((a) => cylinder({ radius: screw / 2, height: v.plate + 1, center: [...at(v.column_r, a), v.plate / 2], segments: v.segments }))
+  const heads = feet.map((a) => cylinder({ radius: head / 2, height: headDepth, center: [...at(v.column_r, a), v.plate - headDepth / 2], segments: v.segments }))
   // the pocket for the motor's boss would be bridged across: a 45° cone from its roof up through the plate needs no bridge
   const hole = v.motors.mountModel(motor, { plate: v.plate, counterbore: true }), rise = v.plate - hole.pocketDepth
   const roof = cylinderElliptic({ height: rise + 1, startRadius: [hole.pocket / 2, hole.pocket / 2], endRadius: [hole.pocket / 2 - rise - 1, hole.pocket / 2 - rise - 1], center: [0, 0, hole.pocketDepth + (rise + 1) / 2], segments: v.segments })
@@ -4583,7 +4590,7 @@ export function main (v) { return sphere({ radius: v.r, center: [0, 0, v.far] })
   "name": "output",
   "title": "Output ring and flange",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "The flange on the bed, the teeth standing on it",
   "description": "Printed flange down and fitted upside down: the same part on the shoulder and the elbow.",
@@ -4597,7 +4604,6 @@ export function main (v) { return sphere({ radius: v.r, center: [0, 0, v.far] })
     "rim": {"value": 66, "unit": "mm", "rule": "Round the 57-tooth ring"},
     "module": {"value": 1, "unit": "mm", "rule": "The gears'"},
     "teeth": {"value": 57, "rule": "The output ring"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped into the flange", "kind": "community"},
     "middle": {"value": 15, "unit": "mm", "rule": "A hole in the middle for the motor's shaft to come up in"},
     "bolt": {"value": 20, "unit": "mm", "rule": "Radius of the bolt circle", "interface": true},
     "segments": {"value": 24, "rule": "Small holes"},
@@ -4610,14 +4616,16 @@ export function main (v) { return sphere({ radius: v.r, center: [0, 0, v.far] })
 
 ```js projects/leg/objects/output.js
 // The output ring, drawn as it prints: its flange on the bed, the teeth standing on it; it goes on upside down.
+// Its four holes are v.fixings' M3 pilots, through the flange: the spindle's screws cut their thread in them.
 import jscad from '@jscad/modeling'
 const { cylinder } = jscad.primitives
 const { translate } = jscad.transforms
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
   const flange = cylinder({ radius: v.rim / 2, height: v.top, center: [0, 0, v.top / 2], segments: v.ring_segments })
   const ring = translate([0, 0, v.top], v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width, rim: v.rim }))
-  const holes = Array.from({ length: v.bolts }, (_, k) => cylinder({ radius: v.pilot / 2, height: v.top + 1, center: [v.bolt * Math.cos(k * v.quarter), v.bolt * Math.sin(k * v.quarter), v.top / 2], segments: v.segments }))
+  const holes = Array.from({ length: v.bolts }, (_, k) => cylinder({ radius: pilot / 2, height: v.top + 1, center: [v.bolt * Math.cos(k * v.quarter), v.bolt * Math.sin(k * v.quarter), v.top / 2], segments: v.segments }))
   const middle = cylinder({ radius: v.middle / 2, height: v.top + 1, center: [0, 0, v.top / 2], segments: v.ring_segments })
   return v.ops.subtract(v.ops.union(flange, ring), holes, middle)
 }
@@ -4629,11 +4637,14 @@ export function main (v) {
   "name": "bridge",
   "title": "Bridge: the 6800's seat",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "Upside to the sky, as it goes on: the pocket opens upward and its ledge prints flat",
   "description": "Three arms across the housing's posts, holding the bearing that takes the output's tipping load.",
   "anchors": {
+    "s1": {"at": ["post_r * cosd(p1)", "post_r * sind(p1)", "thick"], "axis": [0, 0, 1]},
+    "s2": {"at": ["post_r * cosd(p2)", "post_r * sind(p2)", "thick"], "axis": [0, 0, 1]},
+    "s3": {"at": ["post_r * cosd(p3)", "post_r * sind(p3)", "thick"], "axis": [0, 0, 1]},
     "seat": {"at": [0, 0, "thick - width"], "axis": [0, 0, 1]},
     "under": {"at": [0, 0, 0], "axis": [0, 0, 1]}
   },
@@ -4650,9 +4661,7 @@ export function main (v) {
     "p2": {"value": 150, "unit": "°", "rule": "Second post"},
     "p3": {"value": 270, "unit": "°", "rule": "Third post"},
     "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
-    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
-    "head": {"value": "m3.head + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "The screw head's counterbore"},
-    "head_depth": {"value": "m3.head_height + x1c.layer", "unit": "mm", "rule": "A socket head's height, sunk, so the thigh passes over"},
+    "sink": {"value": "x1c.layer", "unit": "mm", "rule": "Each screw head sits a layer under the face, so the thigh passes over"},
     "segments": {"value": 64, "rule": "Round enough"}
   }
 }
@@ -4660,18 +4669,20 @@ export function main (v) {
 
 ```js projects/leg/objects/bridge.js
 // A three-armed plate over the gearbox, the bearing's seat in the middle.
+// Each post's screw: an M3 clearance hole and its cap head's counterbore, sunk a layer, both v.fixings'.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid } = jscad.primitives
 const { rotateZ } = jscad.transforms
 
 export function main (v) {
+  const screw = v.fixings.holeModel('M3').diameter, cb = v.fixings.counterboreModel('M3 cap'), head = cb.diameter, headDepth = cb.depth + v.sink
   const posts = [v.p1, v.p2, v.p3].map((a) => a * v.rad), at = (a) => [v.post_r * Math.cos(a), v.post_r * Math.sin(a)]
   const hub = cylinder({ radius: v.hub / 2, height: v.thick, center: [0, 0, v.thick / 2], segments: v.segments * 2 })
   const arms = posts.map((a) => rotateZ(a, cuboid({ size: [v.post_r, v.lobe, v.thick], center: [v.post_r / 2, 0, v.thick / 2] })))
   const lobes = posts.map((a) => cylinder({ radius: v.lobe / 2, height: v.thick, center: [...at(a), v.thick / 2], segments: v.segments }))
   const seat = v.shapes.bearingSeat({ bore: v.bore, outer_diameter: v.outer, width: v.width }, { fit: 'press', relief: v.relief, through: true, printer: v.x1c, at: [0, 0, v.thick], into: '-z', lead: 0 })
-  const screws = posts.map((a) => cylinder({ radius: v.screw / 2, height: v.thick + 1, center: [...at(a), v.thick / 2], segments: v.segments }))
-  const heads = posts.map((a) => cylinder({ radius: v.head / 2, height: v.head_depth + 1, center: [...at(a), v.thick - (v.head_depth - 1) / 2], segments: v.segments }))
+  const screws = posts.map((a) => cylinder({ radius: screw / 2, height: v.thick + 1, center: [...at(a), v.thick / 2], segments: v.segments }))
+  const heads = posts.map((a) => cylinder({ radius: head / 2, height: headDepth + 1, center: [...at(a), v.thick - (headDepth - 1) / 2], segments: v.segments }))
   return v.ops.subtract(v.ops.union(hub, arms, lobes), seat, screws, heads)
 }
 ```
@@ -4682,28 +4693,29 @@ export function main (v) {
   "name": "spindle",
   "title": "Spindle: disc and shaft",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "The disc on the bed, the shaft up, as it goes on",
   "description": "The output's flange turns the spindle; the spindle's shaft runs in the 6800 and carries the thigh on a hexagon at its top.",
   "anchors": {
+    "b1": {"at": ["bolt", 0, "disc"], "axis": [0, 0, 1]},
+    "b2": {"at": [0, "bolt", "disc"], "axis": [0, 0, 1]},
+    "b3": {"at": ["0 - bolt", 0, "disc"], "axis": [0, 0, 1]},
+    "b4": {"at": [0, "0 - bolt", "disc"], "axis": [0, 0, 1]},
     "down": {"at": [0, 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]},
     "seat": {"at": [0, 0, "collar_top + width"], "axis": [0, 0, 1], "ref": [1, 0, 0]}
   },
   "variables": {
-    "disc": {"value": "leg.disc", "unit": "mm", "rule": "Thick enough for a countersunk M3"},
-    "rim": {"value": 46, "unit": "mm", "rule": "Round the 40 mm bolt circle"},
+    "disc": {"value": "leg.disc", "unit": "mm", "rule": "Thick enough for the countersinks, with a wall of screw hole under each"},
+    "rim": {"value": 48, "unit": "mm", "rule": "Round the 40 mm bolt circle and its countersinks, 6.82 mm across, with a 0.6 mm edge outside them"},
     "bolt": {"value": 20, "unit": "mm", "rule": "On the output's bolt circle"},
-    "hole": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
-    "head": {"value": "m3.head", "unit": "mm", "rule": "A countersunk head, flush with the disc so the bridge passes over"},
     "shaft": {"value": "leg.bearing_bore - x1c.press", "unit": "mm", "rule": "A close slide into the bearing's bore, clamped end to end by the thigh's screw"},
     "width": {"value": "leg.bearing_width", "unit": "mm", "rule": "The bearing"},
     "collar_top": {"value": "leg.bridge_low + leg.bridge - width - leg.output_top", "unit": "mm", "rule": "Where the inner race rests, above the disc's underside"},
     "shoulder": {"value": 13, "unit": "mm", "rule": "Stops the inner race; clears the outer race"},
     "hex": {"value": 8, "unit": "mm", "rule": "Hexagon across its flats: inside the bore, drives the thigh"},
     "hex_long": {"value": 5, "unit": "mm", "rule": "Into the thigh's socket"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped", "kind": "community"},
-    "pilot_depth": {"value": 12, "unit": "mm", "rule": "For the thigh's M3"},
+    "pilot_depth": {"value": 12, "unit": "mm", "rule": "The pilot in the hexagon's top, for the thigh's screw"},
     "cos30": {"value": "cosd(30)", "rule": "A hexagon, across corners to across flats"},
     "bolts": {"value": 4, "rule": "On the bolt circle"},
     "quarter": {"value": 1.57079633, "rule": "A quarter turn in radians"},
@@ -4715,10 +4727,13 @@ export function main (v) {
 
 ```js projects/leg/objects/spindle.js
 // A disc on the output's flange and a shaft up through the bearing, a hexagon at its top for the arm.
+// The screws are v.fixings': four M3 countersunk screws down through the disc into the output's flange, each hole's
+// countersink as wide as an ISO 10642 head so it sits flush, and an M3 pilot in the hexagon's top for the thigh's screw.
 import jscad from '@jscad/modeling'
 const { cylinder } = jscad.primitives
 
 export function main (v) {
+  const pilotD = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
   const plate = cylinder({ radius: v.rim / 2, height: v.disc, center: [0, 0, v.disc / 2], segments: v.segments * 2 })
   const top = v.collar_top + v.width
   const shaft = cylinder({ radius: v.shaft / 2, height: top - 1, center: [0, 0, (top + 1) / 2], segments: v.segments * 2 })
@@ -4726,9 +4741,9 @@ export function main (v) {
   const hex = cylinder({ radius: v.hex / 2 / v.cos30, height: v.hex_long, center: [0, 0, top + v.hex_long / 2], segments: v.hex_segments })
   const screws = Array.from({ length: v.bolts }, (_, k) => {
     const c = [v.bolt * Math.cos(k * v.quarter), v.bolt * Math.sin(k * v.quarter), v.disc]
-    return v.shapes.countersink({ hole: v.hole, head: v.head, length: v.disc + 1, at: c, into: '-z' })
+    return v.fixings.countersink('M3', { length: v.disc + 1, at: c, into: '-z' })
   })
-  const pilot = cylinder({ radius: v.pilot / 2, height: v.pilot_depth, center: [0, 0, top + v.hex_long - v.pilot_depth / 2], segments: v.segments })
+  const pilot = cylinder({ radius: pilotD / 2, height: v.pilot_depth, center: [0, 0, top + v.hex_long - v.pilot_depth / 2], segments: v.segments })
   return v.ops.subtract(v.ops.union(plate, shaft, collar, hex), screws, pilot)
 }
 ```
@@ -4739,7 +4754,7 @@ export function main (v) {
   "name": "clip",
   "title": "Retaining clip",
   "version": "0.1.0",
-  "uses": ["x1c", "m3"],
+  "uses": ["x1c"],
   "orientation": "Flat on the bed",
   "description": "Holds the knee's output ring from dropping off its posts.",
   "anchors": {
@@ -4750,7 +4765,6 @@ export function main (v) {
     "back": {"value": 4, "unit": "mm", "rule": "Round the post"},
     "wide": {"value": 8, "unit": "mm", "rule": "As wide as the post and a little"},
     "thick": {"value": 3, "unit": "mm", "rule": "Fifteen layers"},
-    "hole": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
     "segments": {"value": 24, "rule": "Small round hole"}
   }
 }
@@ -4758,13 +4772,15 @@ export function main (v) {
 
 ```js projects/leg/objects/clip.js
 // A flat tab screwed to a post, its nose over the flange.
+// Its screw's hole is v.fixings' M3 clearance hole.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
 const { subtract } = jscad.booleans
 
 export function main (v) {
+  const hole = v.fixings.holeModel('M3').diameter
   const tab = cuboid({ size: [v.reach + v.back, v.wide, v.thick], center: [(v.back - v.reach) / 2, 0, v.thick / 2] })
-  return subtract(tab, cylinder({ radius: v.hole / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: v.segments }))
+  return subtract(tab, cylinder({ radius: hole / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: v.segments }))
 }
 ```
 
@@ -4778,7 +4794,7 @@ The thigh is the arm's upper arm, 100 mm long, without its home switch or bands.
   "name": "thigh",
   "title": "Thigh",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "The thigh's outer face on the bed: the hub, the knee's fixed ring and its posts all rise from the one flat face",
   "description": "From the hip's hexagon to the knee's motor. The drawing arm's upper arm, shorter and without its home switch or bands: printed as one part with the knee's fixed ring, so the knee's gearbox costs a sun, three planets and an output ring.",
@@ -4802,7 +4818,6 @@ The thigh is the arm's upper arm, 100 mm long, without its home switch or bands.
     "hex_depth": {"value": "thick + collar - floor", "unit": "mm", "rule": "The socket's depth"},
     "floor": {"value": 3, "unit": "mm", "rule": "What the screw pulls against: a socket's floor"},
     "hex_fit": {"value": "x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "Across the socket's flats, over the spindle's, printed"},
-    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
     "gear": {"value": "leg.gear", "unit": "mm", "rule": "The fixed ring's face"},
     "arm_gap": {"value": "leg.ring_gap", "unit": "mm", "rule": "Between the fixed ring and the output ring"},
     "rim": {"value": 62, "unit": "mm", "rule": "Round the 54-tooth ring"},
@@ -4817,8 +4832,7 @@ The thigh is the arm's upper arm, 100 mm long, without its home switch or bands.
     "rad": {"value": 0.017453293, "rule": "Radians in a degree"},
     "clip_at": {"value": "thick + gear + arm_gap + gear + leg.flange + clip_gap", "unit": "mm", "rule": "Each post's tip, where its clip goes on, just past the output's flange"},
     "clip_gap": {"value": 0.3, "unit": "mm", "rule": "The output turns under the clips with this to spare"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 screw self-tapped into a post", "kind": "community"},
-    "pilot_depth": {"value": 8, "unit": "mm", "rule": "For an M3 × 10 through a clip"},
+    "pilot_depth": {"value": 8, "unit": "mm", "rule": "Each post's pilot, deep enough for its clip's screw"},
     "segments": {"value": 64, "rule": "Round enough"},
     "ring_segments": {"value": 96, "rule": "The rim's circle"},
     "hex_segments": {"value": 6, "rule": "A hexagon's sides"},
@@ -4831,6 +4845,8 @@ The thigh is the arm's upper arm, 100 mm long, without its home switch or bands.
 ```js projects/leg/objects/thigh.js
 // The thigh, drawn as it prints: its outer face on the bed, the knee's ring standing on it, the hub's socket opening
 // upward. The knee's NEMA 14 bolts on the bed side, its shaft up through the plate, as the arm's elbow does.
+// The screws' holes are v.fixings': an M3 clearance hole through the socket's floor for the screw into the spindle,
+// and an M3 pilot in each post for its clip.
 import jscad from '@jscad/modeling'
 const { cylinder, cylinderElliptic, cuboid, circle } = jscad.primitives
 const { translate, rotateZ } = jscad.transforms
@@ -4838,6 +4854,7 @@ const { extrudeLinear } = jscad.extrusions
 const { hull } = jscad.hulls
 
 export function main (v) {
+  const screw = v.fixings.holeModel('M3').diameter, pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
   const motor = v.motors.motorModel('nema14')
   const at = (r, a) => [v.long + r * Math.cos(a), r * Math.sin(a)]
   const posts = [v.p1, v.p2, v.p3].map((a) => a * v.rad)
@@ -4849,10 +4866,10 @@ export function main (v) {
   const lobes = posts.map((a) => cylinder({ radius: v.lobe / 2, height: v.thick, center: [...at(v.post_r, a), v.thick / 2], segments: v.segments }))
   const joins = posts.map((a) => translate([v.long, 0, 0], rotateZ(a, cuboid({ size: [v.post_r - v.rim / 2 + 2, v.lobe, v.thick], center: [(v.post_r + v.rim / 2 - 2) / 2, 0, v.thick / 2] }))))
   const uprights = posts.map((a) => cylinder({ radius: v.post / 2, height: v.clip_at, center: [...at(v.post_r, a), v.clip_at / 2], segments: v.segments }))
-  const pilots = posts.map((a) => cylinder({ radius: v.pilot / 2, height: v.pilot_depth, center: [...at(v.post_r, a), v.clip_at - v.pilot_depth / 2], segments: v.segments }))
+  const pilots = posts.map((a) => cylinder({ radius: pilot / 2, height: v.pilot_depth, center: [...at(v.post_r, a), v.clip_at - v.pilot_depth / 2], segments: v.segments }))
   const collar = cylinder({ radius: v.collar_d / 2, height: v.collar + 1, center: [0, 0, v.thick + (v.collar - 1) / 2], segments: v.segments })
   const socket = cylinder({ radius: (v.hex + v.hex_fit) / 2 / v.cos30, height: v.hex_depth + 1, center: [0, 0, v.floor + (v.hex_depth + 1) / 2], segments: v.hex_segments })
-  const through = cylinder({ radius: v.screw / 2, height: v.floor + 1, center: [0, 0, (v.floor - 1) / 2], segments: v.segments })
+  const through = cylinder({ radius: screw / 2, height: v.floor + 1, center: [0, 0, (v.floor - 1) / 2], segments: v.segments })
   const hole = v.motors.mountModel(motor, { plate: v.thick, counterbore: true }), rise = v.thick - hole.pocketDepth
   const roof = translate([v.long, 0, 0], cylinderElliptic({ height: rise + 1, startRadius: [hole.pocket / 2, hole.pocket / 2], endRadius: [hole.pocket / 2 - rise - 1, hole.pocket / 2 - rise - 1], center: [0, 0, hole.pocketDepth + (rise + 1) / 2], segments: v.segments }))
   const mount = translate([v.long, 0, 0], v.motors.mount(motor, { plate: v.thick, counterbore: true }, v.ops))
@@ -4866,11 +4883,15 @@ export function main (v) {
   "name": "shin",
   "title": "Shin and foot",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "The bar and the foot flat on the bed, the boss up. The foot's V groove at 45° needs no support",
   "description": "From the knee's output flange to a round foot: a bar in one piece with the disc the grip pad snaps round.",
   "anchors": {
+    "b1": {"at": ["bolt", 0, 0], "axis": [0, 0, 1]},
+    "b2": {"at": [0, "bolt", 0], "axis": [0, 0, 1]},
+    "b3": {"at": ["0 - bolt", 0, 0], "axis": [0, 0, 1]},
+    "b4": {"at": [0, "0 - bolt", 0], "axis": [0, 0, 1]},
     "hub": {"at": [0, 0, "boss"], "axis": [0, 0, -1], "ref": [1, 0, 0]},
     "tip": {"at": ["long", 0, "foot_w / 2"], "axis": [0, 0, 1], "ref": [1, 0, 0]},
     "pad": {"at": ["long", 0, 0], "axis": [0, 0, 1], "ref": [1, 0, 0]},
@@ -4883,9 +4904,7 @@ export function main (v) {
     "toe": {"value": 16, "unit": "mm", "rule": "Its width at the foot: tapered, as the bending falls to nothing at the foot"},
     "boss": {"value": "leg.boss", "unit": "mm", "rule": "The bar passes under the knee's clips, the boss above reaches the flange"},
     "boss_d": {"value": 46, "unit": "mm", "rule": "Round the 40 mm bolt circle"},
-    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "M3 clearance"},
-    "head": {"value": "m3.head + 2 * x1c.fit + x1c.hole_comp", "unit": "mm", "rule": "The screw's head, counterbored in the bed side"},
-    "head_depth": {"value": "m3.head_height + x1c.layer", "unit": "mm", "rule": "Sunk"},
+    "sink": {"value": 1.5, "unit": "mm", "rule": "Each screw head sits this far into the boss, so an M3x12 engages the whole flange and its tip stops at the flange's far face, clear of the planets"},
     "bolt": {"value": 20, "unit": "mm", "rule": "The output's bolt circle, radius"},
     "bolts": {"value": 4, "rule": "On the bolt circle"},
     "quarter": {"value": 1.57079633, "rule": "A quarter turn in radians"},
@@ -4900,6 +4919,7 @@ export function main (v) {
 
 ```js projects/leg/objects/shin.js
 // A tapered bar from the knee's boss to a round foot, flat on the bed. The foot's rim has a V groove for the pad's ridge.
+// The four screws into the knee's output are v.fixings': M3 clearance holes with their cap heads' counterbores.
 import jscad from '@jscad/modeling'
 const { cylinder, circle, polygon } = jscad.primitives
 const { translate } = jscad.transforms
@@ -4907,13 +4927,14 @@ const { extrudeLinear, extrudeRotate } = jscad.extrusions
 const { hull } = jscad.hulls
 
 export function main (v) {
+  const screw = v.fixings.holeModel('M3').diameter, cb = v.fixings.counterboreModel('M3 cap'), head = cb.diameter, headDepth = cb.depth + v.sink
   const dot = (r, x) => translate([x, 0], circle({ radius: r, segments: v.segments }))
   const bar = extrudeLinear({ height: v.bar }, hull(dot(v.wide / 2, 0), dot(v.toe / 2, v.long)))
   const boss = cylinder({ radius: v.boss_d / 2, height: v.boss, center: [0, 0, v.boss / 2], segments: v.segments * 2 })
   const r = v.foot_r, mid = v.foot_w / 2, g = v.groove
   const foot = translate([v.long, 0, 0], extrudeRotate({ segments: v.segments }, polygon({ points: [[0, 0], [r, 0], [r, mid - g], [r - g, mid], [r, mid + g], [r, v.foot_w], [0, v.foot_w]] })))
-  const bolts = Array.from({ length: v.bolts }, (_, k) => cylinder({ radius: v.screw / 2, height: v.boss + 1, center: [v.bolt * Math.cos(k * v.quarter), v.bolt * Math.sin(k * v.quarter), v.boss / 2], segments: v.segments }))
-  const heads = Array.from({ length: v.bolts }, (_, k) => cylinder({ radius: v.head / 2, height: v.head_depth + 1, center: [v.bolt * Math.cos(k * v.quarter), v.bolt * Math.sin(k * v.quarter), (v.head_depth - 1) / 2], segments: v.segments }))
+  const bolts = Array.from({ length: v.bolts }, (_, k) => cylinder({ radius: screw / 2, height: v.boss + 1, center: [v.bolt * Math.cos(k * v.quarter), v.bolt * Math.sin(k * v.quarter), v.boss / 2], segments: v.segments }))
+  const heads = Array.from({ length: v.bolts }, (_, k) => cylinder({ radius: head / 2, height: headDepth + 1, center: [v.bolt * Math.cos(k * v.quarter), v.bolt * Math.sin(k * v.quarter), (headDepth - 1) / 2], segments: v.segments }))
   return v.ops.subtract(v.ops.union(bar, boss, foot), bolts, heads)
 }
 ```
@@ -4977,7 +4998,7 @@ In this design the body's frame is the world: the hip is at the origin, so the g
   "name": "carriage",
   "title": "Stand carriage: the leg's mount on two rods",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3", "lm8uu"],
+  "uses": ["x1c", "leg", "lm8uu"],
   "engine": "manifold",
   "orientation": "The hip's face on the bed, the bosses up; each bearing pocket is a teardrop across the layers",
   "description": "A plate on two LM8UU bushings. The hip housing screws to its face and the hip's motor goes through its middle. It rides up the rods as the foot pushes, so the scale reads the leg.",
@@ -4986,7 +5007,7 @@ In this design the body's frame is the world: the hip is at the origin, so the g
     "cable": {"at": ["half_w", 0, 0], "axis": [0, 0, -1]}
   },
   "variables": {
-    "plate": {"value": 8, "unit": "mm", "rule": "The plate's thickness: three M3 screws bite here and carry the leg into the bushings"},
+    "plate": {"value": 8, "unit": "mm", "rule": "The plate's thickness: the housing's three screws bite here and carry the leg into the bushings"},
     "feet_r": {"value": 37, "unit": "mm", "rule": "The housing's three feet", "interface": true},
     "hub": {"value": 46, "unit": "mm", "rule": "The plate's round middle: past the feet, for the screws"},
     "arm_w": {"value": 24, "unit": "mm", "rule": "The arms' width, out to the bosses"},
@@ -4998,7 +5019,6 @@ In this design the body's frame is the world: the hip is at the origin, so the g
     "rod_y": {"value": "leg.rod_y", "unit": "mm", "rule": "The rods' distance behind the face"},
     "cut": {"value": 44.5, "unit": "mm", "rule": "The motor's way through: a NEMA 17 and 1.1 mm each side"},
     "corner": {"value": 3, "unit": "mm", "rule": "Round the corners of the motor's window"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "M3 self-tapped into the plate, from the housing", "kind": "community"},
     "a1": {"value": 90, "unit": "°", "rule": "The housing's first foot"},
     "a2": {"value": 210, "unit": "°", "rule": "Second"},
     "a3": {"value": 330, "unit": "°", "rule": "Third"},
@@ -5010,16 +5030,18 @@ In this design the body's frame is the world: the hip is at the origin, so the g
 
 ```js projects/leg/objects/carriage.js
 // A round hub for the hip, arms out to two bushing bosses, the hip's face down on the bed.
+// The housing's three screws cut their thread in v.fixings' M3 pilots, through the plate.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid, roundedRectangle } = jscad.primitives
 const { extrudeLinear } = jscad.extrusions
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
   const arms = cuboid({ size: [v.half_w * 2, v.arm_w, v.plate], center: [0, 0, v.plate / 2] })
   const hub = cylinder({ radius: v.hub, height: v.plate, center: [0, 0, v.plate / 2], segments: v.segments * 2 })
   const bosses = [-1, 1].map((s) => cuboid({ size: [v.boss_x * 2, v.boss_long, v.boss_h], center: [s * v.rod_x, 0, v.boss_h / 2] }))
   const window = extrudeLinear({ height: v.plate + 1 }, roundedRectangle({ size: [v.cut, v.cut], roundRadius: v.corner, segments: v.segments }))
-  const feet = [v.a1, v.a2, v.a3].map((a) => a * v.rad).map((a) => cylinder({ radius: v.pilot / 2, height: v.plate + 1, center: [v.feet_r * Math.cos(a), 0 - v.feet_r * Math.sin(a), v.plate / 2], segments: v.segments }))
+  const feet = [v.a1, v.a2, v.a3].map((a) => a * v.rad).map((a) => cylinder({ radius: pilot / 2, height: v.plate + 1, center: [v.feet_r * Math.cos(a), 0 - v.feet_r * Math.sin(a), v.plate / 2], segments: v.segments }))
   const pockets = [-1, 1].map((s) => v.shapes.lm8uuPocket(v.lm8uu, { printer: v.x1c, at: [s * v.rod_x, 0 - v.boss_long / 2, v.rod_y], into: '+y', through: true }))
   return v.ops.subtract(v.ops.union(arms, hub, bosses), window, feet, pockets)
 }
@@ -5031,7 +5053,7 @@ export function main (v) {
   "name": "foot",
   "title": "Stand foot block",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m5"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "Flat on the bed, the rod's socket opening up",
   "description": "Holds a rod upright, and bolts to the bench through two holes.",
@@ -5041,7 +5063,6 @@ export function main (v) {
     "thick": {"value": "leg.foot_block", "unit": "mm", "rule": "The socket's depth and a floor"},
     "socket": {"value": "leg.rod_d + x1c.hole_comp", "unit": "mm", "rule": "The rod, a press into the printed bore"},
     "depth": {"value": "leg.foot_socket", "unit": "mm", "rule": "How far the rod goes in"},
-    "bolt": {"value": "m5.clearance", "unit": "mm", "rule": "To the bench"},
     "bolt_x": {"value": 12, "unit": "mm", "rule": "The bolts, either side of the rod"},
     "corner": {"value": 4, "unit": "mm", "rule": "The block's corners, rounded"},
     "segments": {"value": 48, "rule": "Round enough"}
@@ -5051,14 +5072,16 @@ export function main (v) {
 
 ```js projects/leg/objects/foot.js
 // A block with a rod's socket in the top and a bolt through each end.
+// The bolts' holes are v.fixings' M5 clearance holes.
 import jscad from '@jscad/modeling'
 const { cylinder, roundedRectangle } = jscad.primitives
 const { extrudeLinear } = jscad.extrusions
 
 export function main (v) {
+  const bolt = v.fixings.holeModel('M5').diameter
   const block = extrudeLinear({ height: v.thick }, roundedRectangle({ size: [v.long, v.wide], roundRadius: v.corner, segments: v.segments }))
   const socket = cylinder({ radius: v.socket / 2, height: v.depth + 1, center: [0, 0, v.thick - v.depth + (v.depth + 1) / 2], segments: v.segments })
-  const bolts = [-1, 1].map((s) => cylinder({ radius: v.bolt / 2, height: v.thick + 1, center: [s * v.bolt_x, 0, v.thick / 2], segments: v.segments }))
+  const bolts = [-1, 1].map((s) => cylinder({ radius: bolt / 2, height: v.thick + 1, center: [s * v.bolt_x, 0, v.thick / 2], segments: v.segments }))
   return v.ops.subtract(block, socket, bolts)
 }
 ```
@@ -5104,7 +5127,7 @@ export function main (v) {
   "name": "collar",
   "title": "Rod collar: the carriage's stop",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "Flat on the bed, the rod's hole upright, the clamp's slot through one side",
   "description": "Set on a rod under the carriage: the carriage drops onto it when the foot lifts, so the foot really leaves the scale.",
@@ -5113,7 +5136,6 @@ export function main (v) {
     "outer": {"value": 22, "unit": "mm", "rule": "Round the rod, wall enough to take the screw"},
     "high": {"value": 10, "unit": "mm", "rule": "Along the rod"},
     "slot": {"value": 1.5, "unit": "mm", "rule": "The slot the clamp screw closes"},
-    "screw": {"value": "m3.clearance + x1c.hole_comp", "unit": "mm", "rule": "The clamp's M3, across the slot: its hole a teardrop"},
     "screw_out": {"value": 8, "unit": "mm", "rule": "The screw, clear of the rod"},
     "segments": {"value": 48, "rule": "Round enough"}
   }
@@ -5122,14 +5144,16 @@ export function main (v) {
 
 ```js projects/leg/objects/collar.js
 // A ring with a slot and a screw across it, closing round the rod. The screw's hole is a teardrop across the layers.
+// The clamp screw's hole is v.fixings' M3 clearance hole.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid } = jscad.primitives
 
 export function main (v) {
+  const screwD = v.fixings.holeModel('M3').diameter
   const ring = cylinder({ radius: v.outer / 2, height: v.high, center: [0, 0, v.high / 2], segments: v.segments * 2 })
   const hole = cylinder({ radius: v.bore / 2, height: v.high + 1, center: [0, 0, v.high / 2], segments: v.segments })
   const slot = cuboid({ size: [v.outer / 2 + 1, v.slot, v.high + 1], center: [(v.outer / 2 + 1) / 2, 0, v.high / 2] })
-  const screw = v.shapes.teardropHole({ d: v.screw, length: v.outer, at: [v.screw_out, 0 - v.outer / 2, v.high / 2], into: '+y', through: true })
+  const screw = v.shapes.teardropHole({ d: screwD, length: v.outer, at: [v.screw_out, 0 - v.outer / 2, v.high / 2], into: '+y', through: true })
   return v.ops.subtract(ring, hole, slot, screw)
 }
 ```
@@ -5234,13 +5258,23 @@ Standing, the foot is under the hip with the knee behind it. The gait is a singl
     { "sun": "sun", "carrier": "carrier", "ring": "housing", "planets": ["p1", "p2", "p3"], "drive": "sun", "module": 1, "teeth": [18, 18, 54], "output": { "ring": "output", "planet": 21, "teeth": 57 } },
     { "sun": "esun", "carrier": "ecarrier", "ring": "ering", "planets": ["ep1", "ep2", "ep3"], "drive": "sun", "module": 1, "teeth": [18, 18, 54], "output": { "ring": "eoutput", "planet": 21, "teeth": 57 } }
   ],
+  "fasten": [
+    {"screw": "M3 cap", "through": ["housing"], "into": "carriage", "at": ["housing.f1", "housing.f2", "housing.f3"], "note": "The housing on the carriage's face"},
+    {"screw": "M3 cap", "through": ["bridge"], "into": "housing", "at": ["bridge.s1", "bridge.s2", "bridge.s3"], "note": "The bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["spindle"], "into": "output", "at": ["spindle.b1", "spindle.b2", "spindle.b3", "spindle.b4"], "note": "The spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["thigh"], "into": "spindle", "at": ["thigh.hub"], "note": "The thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["clip1"], "into": "thigh", "at": ["clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["clip2"], "into": "thigh", "at": ["clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["clip3"], "into": "thigh", "at": ["clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["shin"], "into": "eoutput", "at": ["shin.b1", "shin.b2", "shin.b3", "shin.b4"], "note": "The shin on the knee's output"}
+  ],
   "fits": [
     { "a": "m1", "b": "housing", "fastens": true, "min": -0.1, "note": "The hip motor, on its four screws, its boss seated in the plate's pocket" },
     { "a": "m1", "b": "sun", "shaft": true, "note": "The shaft in the sun" },
     { "a": "m2", "b": "esun", "shaft": true, "note": "The knee motor's shaft in its sun" },
     { "a": "m2", "b": "thigh", "fastens": true, "min": -0.1, "note": "The knee motor, on its four screws" },
-    { "a": "housing", "b": "carriage", "fastens": true, "min": 0, "note": "The housing, screwed to the carriage's face" },
-    { "a": "bridge", "b": "housing", "fastens": true, "min": 0, "note": "The bridge, on the housing's posts" },
+    { "a": "housing", "b": "carriage", "min": 0, "note": "The housing, screwed to the carriage's face" },
+    { "a": "bridge", "b": "housing", "min": 0, "note": "The bridge, on the housing's posts" },
     { "a": "b1", "b": "bridge", "seat": "press", "note": "The 6800 in its seat" },
     { "a": "ecarrier", "b": "ering", "min": -1, "note": "Two specks: neither is printed" },
     { "a": "lm1", "b": "carriage", "fastens": true, "min": -0.5, "note": "The bushing, pressed in its pocket" },
@@ -5296,7 +5330,7 @@ Four legs, on a body two plates wide: a design exercise. The two side plates are
   "name": "side",
   "title": "Body side plate",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "Flat on the bed: the hips' faces down",
   "description": "Two hip hubs joined by a spar, with the windows the hip motors go through and four pilot holes for the cross beams. The two sides are the same print, turned end for end.",
@@ -5306,14 +5340,13 @@ Four legs, on a body two plates wide: a design exercise. The two side plates are
   },
   "variables": {
     "half": {"value": "leg.body_half", "unit": "mm", "rule": "Hip to the middle: the body's half-length", "interface": true},
-    "thick": {"value": 6, "unit": "mm", "rule": "The plate: enough for the housing's three M3 screws to bite"},
+    "thick": {"value": 6, "unit": "mm", "rule": "The plate: enough for the housing's three screws to bite"},
     "hub": {"value": 46, "unit": "mm", "rule": "A hub's radius: past the housing's feet"},
     "spar": {"value": 30, "unit": "mm", "rule": "The spar's depth between the hubs"},
     "feet_r": {"value": 37, "unit": "mm", "rule": "The housing's three feet", "interface": true},
     "a1": {"value": 90, "unit": "°", "rule": "The housing's first foot"},
     "a2": {"value": 210, "unit": "°", "rule": "Second"},
     "a3": {"value": 330, "unit": "°", "rule": "Third"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "M3, self-tapped", "kind": "community"},
     "window": {"value": 44.5, "unit": "mm", "rule": "The motor's way through the plate: a NEMA 17 and 1.1 mm each side"},
     "corner": {"value": 3, "unit": "mm", "rule": "Round the corners of the window"},
     "beam_at": {"value": 27, "unit": "mm", "rule": "The two cross beams, between the hip motors: the motors take the space from 54 mm to the plate's end"},
@@ -5326,17 +5359,20 @@ Four legs, on a body two plates wide: a design exercise. The two side plates are
 
 ```js projects/leg/objects/side.js
 // Two hubs and a spar, flat on the bed. Each hub is a window for a hip motor with the housing's three pilot holes round it.
+// The screws' holes are v.fixings': an M3 pilot for each of a housing's screws, and an M3 clearance hole for each of
+// the screws on into a beam's end.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid, roundedRectangle } = jscad.primitives
 const { extrudeLinear } = jscad.extrusions
 const { translate } = jscad.transforms
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter, screw = v.fixings.holeModel('M3').diameter
   const hubs = [-1, 1].map((s) => cylinder({ radius: v.hub, height: v.thick, center: [s * v.half, 0, v.thick / 2], segments: v.segments * 2 }))
   const spar = cuboid({ size: [v.half * 2, v.spar, v.thick], center: [0, 0, v.thick / 2] })
   const windows = [-1, 1].map((s) => translate([s * v.half, 0, 0], extrudeLinear({ height: v.thick + 1 }, roundedRectangle({ size: [v.window, v.window], roundRadius: v.corner, segments: v.segments }))))
-  const feet = [-1, 1].flatMap((s) => [v.a1, v.a2, v.a3].map((a) => a * v.rad).map((a) => cylinder({ radius: v.pilot / 2, height: v.thick + 1, center: [s * v.half + v.feet_r * Math.cos(a), 0 - v.feet_r * Math.sin(a), v.thick / 2], segments: v.segments })))
-  const beams = [-1, 1].flatMap((x) => [-1, 1].map((s) => cylinder({ radius: v.pilot / 2, height: v.thick + 1, center: [x * v.beam_at + s * v.beam_y, 0, v.thick / 2], segments: v.segments })))
+  const feet = [-1, 1].flatMap((s) => [v.a1, v.a2, v.a3].map((a) => a * v.rad).map((a) => cylinder({ radius: pilot / 2, height: v.thick + 1, center: [s * v.half + v.feet_r * Math.cos(a), 0 - v.feet_r * Math.sin(a), v.thick / 2], segments: v.segments })))
+  const beams = [-1, 1].flatMap((x) => [-1, 1].map((s) => cylinder({ radius: screw / 2, height: v.thick + 1, center: [x * v.beam_at + s * v.beam_y, 0, v.thick / 2], segments: v.segments })))
   return v.ops.subtract(v.ops.union(hubs, spar), windows, feet, beams)
 }
 ```
@@ -5347,7 +5383,7 @@ export function main (v) {
   "name": "beam",
   "title": "Body cross beam",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "Flat on one side, its screw holes along the bed: each hole a teardrop",
   "description": "A beam across the body between the side plates: it holds them square against the legs' push. Three of them, screwed in through the plates.",
@@ -5359,8 +5395,7 @@ export function main (v) {
     "long": {"value": "leg.body_w * 2 - leg.side_t * 2", "unit": "mm", "rule": "Between the two side plates' inner faces"},
     "deep": {"value": 46, "unit": "mm", "rule": "Across the body's length: its two screws at each end, plus room, and clear of the hip motors"},
     "wide": {"value": 12, "unit": "mm", "rule": "Thick: 25 layers of stiffness for the side plates to pull on"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 self-tapped into each end", "kind": "community"},
-    "pilot_len": {"value": 12, "unit": "mm", "rule": "For an M3 × 16 through a side plate"},
+    "pilot_len": {"value": 12, "unit": "mm", "rule": "Each end's pilot depth, for the screw through the side plate"},
     "screw_y": {"value": 16, "unit": "mm", "rule": "The two screws at each end"},
     "segments": {"value": 32, "rule": "Round enough"}
   }
@@ -5369,12 +5404,14 @@ export function main (v) {
 
 ```js projects/leg/objects/beam.js
 // A flat bar with two teardrop pilot holes in each end.
+// The pilots are v.fixings' M3 pilots, lying on their sides: the side plates' screws cut their thread in them.
 import jscad from '@jscad/modeling'
 const { cuboid } = jscad.primitives
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot', into: '+x' }).diameter
   const bar = cuboid({ size: [v.long, v.deep, v.wide], center: [0, 0, v.wide / 2] })
-  const holes = [1, -1].flatMap((end) => [-1, 1].map((s) => v.shapes.teardropHole({ d: v.pilot, length: v.pilot_len + 1, at: [end * (v.long / 2 + 1), s * v.screw_y, v.wide / 2], into: end > 0 ? '-x' : '+x' })))
+  const holes = [1, -1].flatMap((end) => [-1, 1].map((s) => v.shapes.teardropHole({ d: pilot, length: v.pilot_len + 1, at: [end * (v.long / 2 + 1), s * v.screw_y, v.wide / 2], into: end > 0 ? '-x' : '+x' })))
   return v.ops.subtract(bar, holes)
 }
 ```
@@ -5602,17 +5639,55 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"sun": "br_sun", "carrier": "br_carrier", "ring": "br_housing", "planets": ["br_p1", "br_p2", "br_p3"], "drive": "sun", "module": 1, "teeth": [18,18,54], "output": {"ring": "br_output", "planet": 21, "teeth": 57}},
     {"sun": "br_esun", "carrier": "br_ecarrier", "ring": "br_ering", "planets": ["br_ep1", "br_ep2", "br_ep3"], "drive": "sun", "module": 1, "teeth": [18,18,54], "output": {"ring": "br_eoutput", "planet": 21, "teeth": 57}}
   ],
+  "fasten": [
+    {"screw": "M3 cap", "through": ["fl_housing"], "into": "left", "at": ["fl_housing.f1", "fl_housing.f2", "fl_housing.f3"], "note": "The fl housing on the left side plate"},
+    {"screw": "M3 cap", "through": ["fl_bridge"], "into": "fl_housing", "at": ["fl_bridge.s1", "fl_bridge.s2", "fl_bridge.s3"], "note": "The fl bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["fl_spindle"], "into": "fl_output", "at": ["fl_spindle.b1", "fl_spindle.b2", "fl_spindle.b3", "fl_spindle.b4"], "note": "The fl spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["fl_thigh"], "into": "fl_spindle", "at": ["fl_thigh.hub"], "note": "The fl thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["fl_clip1"], "into": "fl_thigh", "at": ["fl_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fl_clip2"], "into": "fl_thigh", "at": ["fl_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fl_clip3"], "into": "fl_thigh", "at": ["fl_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fl_shin"], "into": "fl_eoutput", "at": ["fl_shin.b1", "fl_shin.b2", "fl_shin.b3", "fl_shin.b4"], "note": "The fl shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["fr_housing"], "into": "right", "at": ["fr_housing.f1", "fr_housing.f2", "fr_housing.f3"], "note": "The fr housing on the right side plate"},
+    {"screw": "M3 cap", "through": ["fr_bridge"], "into": "fr_housing", "at": ["fr_bridge.s1", "fr_bridge.s2", "fr_bridge.s3"], "note": "The fr bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["fr_spindle"], "into": "fr_output", "at": ["fr_spindle.b1", "fr_spindle.b2", "fr_spindle.b3", "fr_spindle.b4"], "note": "The fr spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["fr_thigh"], "into": "fr_spindle", "at": ["fr_thigh.hub"], "note": "The fr thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["fr_clip1"], "into": "fr_thigh", "at": ["fr_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fr_clip2"], "into": "fr_thigh", "at": ["fr_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fr_clip3"], "into": "fr_thigh", "at": ["fr_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fr_shin"], "into": "fr_eoutput", "at": ["fr_shin.b1", "fr_shin.b2", "fr_shin.b3", "fr_shin.b4"], "note": "The fr shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["bl_housing"], "into": "left", "at": ["bl_housing.f1", "bl_housing.f2", "bl_housing.f3"], "note": "The bl housing on the left side plate"},
+    {"screw": "M3 cap", "through": ["bl_bridge"], "into": "bl_housing", "at": ["bl_bridge.s1", "bl_bridge.s2", "bl_bridge.s3"], "note": "The bl bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["bl_spindle"], "into": "bl_output", "at": ["bl_spindle.b1", "bl_spindle.b2", "bl_spindle.b3", "bl_spindle.b4"], "note": "The bl spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["bl_thigh"], "into": "bl_spindle", "at": ["bl_thigh.hub"], "note": "The bl thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["bl_clip1"], "into": "bl_thigh", "at": ["bl_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["bl_clip2"], "into": "bl_thigh", "at": ["bl_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["bl_clip3"], "into": "bl_thigh", "at": ["bl_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["bl_shin"], "into": "bl_eoutput", "at": ["bl_shin.b1", "bl_shin.b2", "bl_shin.b3", "bl_shin.b4"], "note": "The bl shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["br_housing"], "into": "right", "at": ["br_housing.f1", "br_housing.f2", "br_housing.f3"], "note": "The br housing on the right side plate"},
+    {"screw": "M3 cap", "through": ["br_bridge"], "into": "br_housing", "at": ["br_bridge.s1", "br_bridge.s2", "br_bridge.s3"], "note": "The br bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["br_spindle"], "into": "br_output", "at": ["br_spindle.b1", "br_spindle.b2", "br_spindle.b3", "br_spindle.b4"], "note": "The br spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["br_thigh"], "into": "br_spindle", "at": ["br_thigh.hub"], "note": "The br thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["br_clip1"], "into": "br_thigh", "at": ["br_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["br_clip2"], "into": "br_thigh", "at": ["br_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["br_clip3"], "into": "br_thigh", "at": ["br_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["br_shin"], "into": "br_eoutput", "at": ["br_shin.b1", "br_shin.b2", "br_shin.b3", "br_shin.b4"], "note": "The br shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["left"], "into": "beam1", "holes": "left", "note": "A beam on two screws through the left side plate"},
+    {"screw": "M3 cap", "through": ["right"], "into": "beam1", "holes": "right", "note": "A beam on two screws through the right side plate"},
+    {"screw": "M3 cap", "through": ["left"], "into": "beam2", "holes": "left", "note": "The other beam on two screws through the left side plate"},
+    {"screw": "M3 cap", "through": ["right"], "into": "beam2", "holes": "right", "note": "The other beam on two screws through the right side plate"}
+  ],
   "fits": [
-    {"a": "beam1", "b": "left", "fastens": true, "min": 0, "note": "A beam, on two screws through each side plate"},
-    {"a": "beam1", "b": "right", "fastens": true, "min": 0},
-    {"a": "beam2", "b": "left", "fastens": true, "min": 0},
-    {"a": "beam2", "b": "right", "fastens": true, "min": 0},
+    {"a": "beam1", "b": "left", "min": 0, "note": "A beam, on two screws through each side plate"},
+    {"a": "beam1", "b": "right", "min": 0},
+    {"a": "beam2", "b": "left", "min": 0},
+    {"a": "beam2", "b": "right", "min": 0},
     {"a": "fl_m1", "b": "fl_housing", "fastens": true, "min": -0.1},
     {"a": "fl_m1", "b": "fl_sun", "shaft": true},
     {"a": "fl_m2", "b": "fl_esun", "shaft": true},
     {"a": "fl_m2", "b": "fl_thigh", "fastens": true, "min": -0.1},
-    {"a": "fl_housing", "b": "left", "fastens": true, "min": 0},
-    {"a": "fl_bridge", "b": "fl_housing", "fastens": true, "min": 0},
+    {"a": "fl_housing", "b": "left", "min": 0},
+    {"a": "fl_bridge", "b": "fl_housing", "min": 0},
     {"a": "fl_b1", "b": "fl_bridge", "seat": "press"},
     {"a": "fl_ecarrier", "b": "fl_ering", "min": -1},
     {"a": "fl_pad", "b": "fl_shin", "min": -2},
@@ -5620,8 +5695,8 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"a": "fr_m1", "b": "fr_sun", "shaft": true},
     {"a": "fr_m2", "b": "fr_esun", "shaft": true},
     {"a": "fr_m2", "b": "fr_thigh", "fastens": true, "min": -0.1},
-    {"a": "fr_housing", "b": "right", "fastens": true, "min": 0},
-    {"a": "fr_bridge", "b": "fr_housing", "fastens": true, "min": 0},
+    {"a": "fr_housing", "b": "right", "min": 0},
+    {"a": "fr_bridge", "b": "fr_housing", "min": 0},
     {"a": "fr_b1", "b": "fr_bridge", "seat": "press"},
     {"a": "fr_ecarrier", "b": "fr_ering", "min": -1},
     {"a": "fr_pad", "b": "fr_shin", "min": -2},
@@ -5629,8 +5704,8 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"a": "bl_m1", "b": "bl_sun", "shaft": true},
     {"a": "bl_m2", "b": "bl_esun", "shaft": true},
     {"a": "bl_m2", "b": "bl_thigh", "fastens": true, "min": -0.1},
-    {"a": "bl_housing", "b": "left", "fastens": true, "min": 0},
-    {"a": "bl_bridge", "b": "bl_housing", "fastens": true, "min": 0},
+    {"a": "bl_housing", "b": "left", "min": 0},
+    {"a": "bl_bridge", "b": "bl_housing", "min": 0},
     {"a": "bl_b1", "b": "bl_bridge", "seat": "press"},
     {"a": "bl_ecarrier", "b": "bl_ering", "min": -1},
     {"a": "bl_pad", "b": "bl_shin", "min": -2},
@@ -5638,8 +5713,8 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"a": "br_m1", "b": "br_sun", "shaft": true},
     {"a": "br_m2", "b": "br_esun", "shaft": true},
     {"a": "br_m2", "b": "br_thigh", "fastens": true, "min": -0.1},
-    {"a": "br_housing", "b": "right", "fastens": true, "min": 0},
-    {"a": "br_bridge", "b": "br_housing", "fastens": true, "min": 0},
+    {"a": "br_housing", "b": "right", "min": 0},
+    {"a": "br_bridge", "b": "br_housing", "min": 0},
     {"a": "br_b1", "b": "br_bridge", "seat": "press"},
     {"a": "br_ecarrier", "b": "br_ering", "min": -1},
     {"a": "br_pad", "b": "br_shin", "min": -2}
@@ -5870,17 +5945,55 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"sun": "br_sun", "carrier": "br_carrier", "ring": "br_housing", "planets": ["br_p1", "br_p2", "br_p3"], "drive": "sun", "module": 1, "teeth": [18,18,54], "output": {"ring": "br_output", "planet": 21, "teeth": 57}},
     {"sun": "br_esun", "carrier": "br_ecarrier", "ring": "br_ering", "planets": ["br_ep1", "br_ep2", "br_ep3"], "drive": "sun", "module": 1, "teeth": [18,18,54], "output": {"ring": "br_eoutput", "planet": 21, "teeth": 57}}
   ],
+  "fasten": [
+    {"screw": "M3 cap", "through": ["fl_housing"], "into": "left", "at": ["fl_housing.f1", "fl_housing.f2", "fl_housing.f3"], "note": "The fl housing on the left side plate"},
+    {"screw": "M3 cap", "through": ["fl_bridge"], "into": "fl_housing", "at": ["fl_bridge.s1", "fl_bridge.s2", "fl_bridge.s3"], "note": "The fl bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["fl_spindle"], "into": "fl_output", "at": ["fl_spindle.b1", "fl_spindle.b2", "fl_spindle.b3", "fl_spindle.b4"], "note": "The fl spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["fl_thigh"], "into": "fl_spindle", "at": ["fl_thigh.hub"], "note": "The fl thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["fl_clip1"], "into": "fl_thigh", "at": ["fl_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fl_clip2"], "into": "fl_thigh", "at": ["fl_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fl_clip3"], "into": "fl_thigh", "at": ["fl_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fl_shin"], "into": "fl_eoutput", "at": ["fl_shin.b1", "fl_shin.b2", "fl_shin.b3", "fl_shin.b4"], "note": "The fl shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["fr_housing"], "into": "right", "at": ["fr_housing.f1", "fr_housing.f2", "fr_housing.f3"], "note": "The fr housing on the right side plate"},
+    {"screw": "M3 cap", "through": ["fr_bridge"], "into": "fr_housing", "at": ["fr_bridge.s1", "fr_bridge.s2", "fr_bridge.s3"], "note": "The fr bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["fr_spindle"], "into": "fr_output", "at": ["fr_spindle.b1", "fr_spindle.b2", "fr_spindle.b3", "fr_spindle.b4"], "note": "The fr spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["fr_thigh"], "into": "fr_spindle", "at": ["fr_thigh.hub"], "note": "The fr thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["fr_clip1"], "into": "fr_thigh", "at": ["fr_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fr_clip2"], "into": "fr_thigh", "at": ["fr_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fr_clip3"], "into": "fr_thigh", "at": ["fr_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["fr_shin"], "into": "fr_eoutput", "at": ["fr_shin.b1", "fr_shin.b2", "fr_shin.b3", "fr_shin.b4"], "note": "The fr shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["bl_housing"], "into": "left", "at": ["bl_housing.f1", "bl_housing.f2", "bl_housing.f3"], "note": "The bl housing on the left side plate"},
+    {"screw": "M3 cap", "through": ["bl_bridge"], "into": "bl_housing", "at": ["bl_bridge.s1", "bl_bridge.s2", "bl_bridge.s3"], "note": "The bl bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["bl_spindle"], "into": "bl_output", "at": ["bl_spindle.b1", "bl_spindle.b2", "bl_spindle.b3", "bl_spindle.b4"], "note": "The bl spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["bl_thigh"], "into": "bl_spindle", "at": ["bl_thigh.hub"], "note": "The bl thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["bl_clip1"], "into": "bl_thigh", "at": ["bl_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["bl_clip2"], "into": "bl_thigh", "at": ["bl_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["bl_clip3"], "into": "bl_thigh", "at": ["bl_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["bl_shin"], "into": "bl_eoutput", "at": ["bl_shin.b1", "bl_shin.b2", "bl_shin.b3", "bl_shin.b4"], "note": "The bl shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["br_housing"], "into": "right", "at": ["br_housing.f1", "br_housing.f2", "br_housing.f3"], "note": "The br housing on the right side plate"},
+    {"screw": "M3 cap", "through": ["br_bridge"], "into": "br_housing", "at": ["br_bridge.s1", "br_bridge.s2", "br_bridge.s3"], "note": "The br bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["br_spindle"], "into": "br_output", "at": ["br_spindle.b1", "br_spindle.b2", "br_spindle.b3", "br_spindle.b4"], "note": "The br spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["br_thigh"], "into": "br_spindle", "at": ["br_thigh.hub"], "note": "The br thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["br_clip1"], "into": "br_thigh", "at": ["br_clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["br_clip2"], "into": "br_thigh", "at": ["br_clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["br_clip3"], "into": "br_thigh", "at": ["br_clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["br_shin"], "into": "br_eoutput", "at": ["br_shin.b1", "br_shin.b2", "br_shin.b3", "br_shin.b4"], "note": "The br shin on the knee's output"},
+    {"screw": "M3 cap", "through": ["left"], "into": "beam1", "holes": "left", "note": "A beam on two screws through the left side plate"},
+    {"screw": "M3 cap", "through": ["right"], "into": "beam1", "holes": "right", "note": "A beam on two screws through the right side plate"},
+    {"screw": "M3 cap", "through": ["left"], "into": "beam2", "holes": "left", "note": "The other beam on two screws through the left side plate"},
+    {"screw": "M3 cap", "through": ["right"], "into": "beam2", "holes": "right", "note": "The other beam on two screws through the right side plate"}
+  ],
   "fits": [
-    {"a": "beam1", "b": "left", "fastens": true, "min": 0, "note": "A beam, on two screws through each side plate"},
-    {"a": "beam1", "b": "right", "fastens": true, "min": 0},
-    {"a": "beam2", "b": "left", "fastens": true, "min": 0},
-    {"a": "beam2", "b": "right", "fastens": true, "min": 0},
+    {"a": "beam1", "b": "left", "min": 0, "note": "A beam, on two screws through each side plate"},
+    {"a": "beam1", "b": "right", "min": 0},
+    {"a": "beam2", "b": "left", "min": 0},
+    {"a": "beam2", "b": "right", "min": 0},
     {"a": "fl_m1", "b": "fl_housing", "fastens": true, "min": -0.1},
     {"a": "fl_m1", "b": "fl_sun", "shaft": true},
     {"a": "fl_m2", "b": "fl_esun", "shaft": true},
     {"a": "fl_m2", "b": "fl_thigh", "fastens": true, "min": -0.1},
-    {"a": "fl_housing", "b": "left", "fastens": true, "min": 0},
-    {"a": "fl_bridge", "b": "fl_housing", "fastens": true, "min": 0},
+    {"a": "fl_housing", "b": "left", "min": 0},
+    {"a": "fl_bridge", "b": "fl_housing", "min": 0},
     {"a": "fl_b1", "b": "fl_bridge", "seat": "press"},
     {"a": "fl_ecarrier", "b": "fl_ering", "min": -1},
     {"a": "fl_pad", "b": "fl_shin", "min": -2},
@@ -5888,8 +6001,8 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"a": "fr_m1", "b": "fr_sun", "shaft": true},
     {"a": "fr_m2", "b": "fr_esun", "shaft": true},
     {"a": "fr_m2", "b": "fr_thigh", "fastens": true, "min": -0.1},
-    {"a": "fr_housing", "b": "right", "fastens": true, "min": 0},
-    {"a": "fr_bridge", "b": "fr_housing", "fastens": true, "min": 0},
+    {"a": "fr_housing", "b": "right", "min": 0},
+    {"a": "fr_bridge", "b": "fr_housing", "min": 0},
     {"a": "fr_b1", "b": "fr_bridge", "seat": "press"},
     {"a": "fr_ecarrier", "b": "fr_ering", "min": -1},
     {"a": "fr_pad", "b": "fr_shin", "min": -2},
@@ -5897,8 +6010,8 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"a": "bl_m1", "b": "bl_sun", "shaft": true},
     {"a": "bl_m2", "b": "bl_esun", "shaft": true},
     {"a": "bl_m2", "b": "bl_thigh", "fastens": true, "min": -0.1},
-    {"a": "bl_housing", "b": "left", "fastens": true, "min": 0},
-    {"a": "bl_bridge", "b": "bl_housing", "fastens": true, "min": 0},
+    {"a": "bl_housing", "b": "left", "min": 0},
+    {"a": "bl_bridge", "b": "bl_housing", "min": 0},
     {"a": "bl_b1", "b": "bl_bridge", "seat": "press"},
     {"a": "bl_ecarrier", "b": "bl_ering", "min": -1},
     {"a": "bl_pad", "b": "bl_shin", "min": -2},
@@ -5906,8 +6019,8 @@ The quadruped carries the leg's parts, every one, as items of a single assembly.
     {"a": "br_m1", "b": "br_sun", "shaft": true},
     {"a": "br_m2", "b": "br_esun", "shaft": true},
     {"a": "br_m2", "b": "br_thigh", "fastens": true, "min": -0.1},
-    {"a": "br_housing", "b": "right", "fastens": true, "min": 0},
-    {"a": "br_bridge", "b": "br_housing", "fastens": true, "min": 0},
+    {"a": "br_housing", "b": "right", "min": 0},
+    {"a": "br_bridge", "b": "br_housing", "min": 0},
     {"a": "br_b1", "b": "br_bridge", "seat": "press"},
     {"a": "br_ecarrier", "b": "br_ering", "min": -1},
     {"a": "br_pad", "b": "br_shin", "min": -2}
