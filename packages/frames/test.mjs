@@ -803,3 +803,17 @@ test('joins refuse by name: an unknown kind, an end that has no bore or two, b t
   assert.deepEqual(joinModel('blind', { beam: W, end: 'a.2' }, { beam: B, address: 'back@10' }).a.ops, [{ op: 'tap', at: 'a.2', thread: 'M5', depth: 18.5 }]);
   assert.throws(() => beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'access', at: 'top@50', thread: 'M5', through: 'all' }] }), /through is wall \(through one wall, the default\) or beam \(through every wall on its line, to the slot on the far side/);
 });
+
+test('joins: a mitre cuts both ends at the angle given, about the face the corner lies in, and still waits for its key', () => {
+  const { joinModel } = frames;
+  const A = beamModel('2020-misumi-hfs5', { length: 300 }), B = beamModel('2020-misumi-hfs5', { length: 300 });
+  const j = joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }, { mitre: { angle: 45, a: { about: 'top', long: 'front' }, b: { about: 'top', long: 'back' } } });
+  assert.deepEqual([j.a.ops, j.b.ops], [[{ op: 'mitre', at: 'a', angle: 45, about: 'top', long: 'front' }], [{ op: 'mitre', at: 'a', angle: 45, about: 'top', long: 'back' }]]);
+  assert.match(j.findings[0].text, /The mitres are cut; the corner key or plate comes with Frames 2\.3/);
+  // the ops as beamModel takes them: 300 mm on the long side, 280 on the short
+  assert.equal(beamModel(A.profile, { length: 300, ops: j.a.ops }).ops.find((o) => o.op === 'mitre').shortLength, 280);
+  // without the cuts (cad works them out from where the beams are), nothing is cut; a bad angle or face is refused by name
+  assert.deepEqual(joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }).a.ops, []);
+  assert.throws(() => joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }, { mitre: { angle: 90, a: { about: 'top', long: 'front' }, b: { about: 'top', long: 'back' } } }), /mitre\.angle is each end's cut from square, above 0 and under 90 degrees \(got 90\)/);
+  assert.throws(() => joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }, { mitre: { angle: 45, a: { about: 'side', long: 'front' }, b: { about: 'top', long: 'back' } } }), /mitre\.a is \{ about, long \}, each a face/);
+});

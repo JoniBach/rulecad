@@ -7,7 +7,7 @@
 // spring for a frame's solve, an estimate that says so), and join.fitting (a kind whose fitting comes later).
 import { JOINS, joinModel } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
-import { beamOf, framesContext } from './beams.mjs';
+import { beamOf, beamPlace, framesContext } from './beams.mjs';
 
 const KEYS = ['kind', 'a', 'b', 'fitting', 'screw', 'note'];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
@@ -54,8 +54,9 @@ export function expandJoins(a, num, context = framesContext()) {
       ends[side] = { id, rest };
     }
     if (ends.a.id === ends.b.id) throw new Error(`${what}: a and b are on one beam, ${ends.a.id}: a join is between two beams`);
+    const mitre = j.kind === 'mitre' ? mitreOf(what, beams.get(ends.a.id), ends.a.rest, beams.get(ends.b.id), ends.b.rest, num) : null;
     let m;
-    try { m = joinModel(j.kind, { beam: modelOf(ends.a.id), end: ends.a.rest }, { beam: modelOf(ends.b.id), address: ends.b.rest }, { ...(j.screw != null ? { screw: j.screw } : {}), ...(j.fitting != null ? { fitting: j.fitting } : {}) }); }
+    try { m = joinModel(j.kind, { beam: modelOf(ends.a.id), end: ends.a.rest }, { beam: modelOf(ends.b.id), address: ends.b.rest }, { ...(j.screw != null ? { screw: j.screw } : {}), ...(j.fitting != null ? { fitting: j.fitting } : {}), ...(mitre ? { mitre } : {}) }); }
     catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^(joinModel|beamAnchor): /, '')}`); }
     for (const [side, ops] of [['a', m.a.ops], ['b', m.b.ops]]) { const id = ends[side].id; if (ops.length) extra.set(id, [...(extra.get(id) || []), ...ops]); }
     const label = j.note || `${j.kind} join of ${j.a} to ${j.b}`, mine = [];
@@ -73,6 +74,26 @@ export function expandJoins(a, num, context = framesContext()) {
     return { ...it, beam: { ...it.beam, ops } };
   });
   return { a: { ...a, items: withOps, ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}) }, joins };
+}
+
+// A mitre's cuts from where the two beams are: the angle from square that halves the corner, the face each sees the
+// corner on, and the outside of the corner, where each beam's length is measured. Both beams placed by their ends.
+function mitreOf(what, ia, ea, ib, eb, num) {
+  const fa = beamPlace(ia, num), fb = beamPlace(ib, num);
+  if (!fa || !fb) throw new Error(`${what}: a mitre join is cut from where the beams meet: place ${!fa ? ia.id : ib.id} by its ends (from, to)`);
+  if (!/^[ab]$/.test(ea)) throw new Error(`${what}: a mitre join cuts a whole end: a is ${ia.id}.a or ${ia.id}.b (got ${ia.id}.${ea})`);
+  const col = (f, k) => [f[k], f[4 + k], f[8 + k]], body = (f, e) => col(f, 2).map((c) => (e === 'a' ? c : -c)); // (along the beam, away from the corner)
+  const da = body(fa, ea), db = body(fb, eb), n = cross(da, db), nl = Math.hypot(...n), phi = (Math.acos(Math.max(-1, Math.min(1, dot(da, db)))) * 180) / Math.PI;
+  if (nl < 1e-9) throw new Error(`${what}: ${ia.id} and ${ib.id} lie along one line, so there is no corner to mitre: a splice joins them end to end`);
+  const side = (f, other) => {
+    const back = col(f, 0), top = col(f, 1), u = n.map((c) => c / nl);
+    if (Math.abs(Math.abs(dot(u, top)) - 1) < 1e-6) return { about: 'top', long: dot(back, other) > 0 ? 'front' : 'back' };
+    if (Math.abs(Math.abs(dot(u, back)) - 1) < 1e-6) return { about: 'back', long: dot(top, other) > 0 ? 'bottom' : 'top' };
+    return null;
+  };
+  const a = side(fa, db), b = side(fb, da);
+  if (!a || !b) throw new Error(`${what}: the corner of ${ia.id} and ${ib.id} lies across ${!a ? ia.id : ib.id}'s faces, not square to one: turn it with roll so a face lies in the corner's plane`);
+  return { angle: +(90 - phi / 2).toFixed(6), a, b };
 }
 
 /** The ends of each beam item a join or an item placed at it covers: Set of "x1.a". */

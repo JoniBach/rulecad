@@ -442,7 +442,7 @@ drills a clearance hole right across b instead, and the screw's cap head sits on
 | `cube` | A three-way corner taking the beam ends | an end | The stiffness; the corner later |
 | `hidden` | A bought inner connector in the slots | a face with a slot | The stiffness; the connector with Frames 2.6 |
 | `anchor` | A bought anchor connector and its pocket | a face with a slot | The stiffness; the connector with Frames 2.6 |
-| `mitre` | Two mitred ends and a corner key or plate | an end | The stiffness; the mitres and the key later |
+| `mitre` | Two mitred ends and a corner key or plate | an end | Both mitres, given `options.mitre` (cad works it out from where the beams are); the key later |
 | `pivot` | A hinge or pivot, which also moves | a face with a slot | The stiffness; the pivot and its joint later |
 | `splice` | Two beams end to end, with a joining plate | an end | The stiffness; the plate later |
 | `printed` | A printed node that sockets the beam ends | a face or an end | The stiffness; the node with Frames 2.3 |
@@ -456,6 +456,11 @@ take.
 The tap is as deep as the thread engagement asks in the beam's metal (two diameters in aluminium, from
 `@rulecad/fixings`), with the screw's tip room and one and a half diameters more (`JOIN_TAP`), so that a screw of a
 sold length both engages fully and stops short of the bottom. `options.screw` names another screw (`'M5x12 button'`).
+
+A mitre's cuts depend on where the beams are, so they are given: `options.mitre` is `{ angle, a: { about, long }, b:
+{ about, long } }`, the angle each end is cut from square (45° for a square corner, 90° less half the angle between
+the beams), the face each beam sees the corner on, and the side its length is measured on, the outside of the
+corner. In an assembly, cad works these out from the two beams' ends.
 
 ### Stiffness
 
@@ -618,7 +623,7 @@ lists them.
 | `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
-| `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting? })` | A join: the operations on each beam, its screws, its fitting to come, its stiffness, what to know |
+| `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre? })` | A join: the operations on each beam, its screws, its fitting to come, its stiffness, what to know |
 | `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join |
 | `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |

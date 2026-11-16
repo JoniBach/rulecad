@@ -588,8 +588,11 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   of the slot across b. `fasten.seat` holds the head to the slot (wider than the opening, and inside the slot, no
   wider than the cavity and no taller than the room under the lips), `fasten.end` takes the thread tapped in a's end
   bore, and `fasten.access` follows the key through the access hole. `"screw"` names another screw (`"M5x12 button"`).
-- The other kinds (`bracket`, `gusset`, `cube`, `hidden`, `anchor`, `mitre`, `pivot`, `splice`, `printed`) are checked
-  where they meet and carry their stiffness; their fittings come in later releases, and each says so (`join.fitting`).
+- A `mitre` join (`"b": "y1.a"`, an end) cuts both ends at the angle that halves the corner, about the face the corner
+  lies in, each beam's length on the outside of the corner, worked out from where the two beams are (both placed by
+  their ends). Its corner key or plate comes later.
+- The other kinds (`bracket`, `gusset`, `cube`, `hidden`, `anchor`, `pivot`, `splice`, `printed`) are checked where
+  they meet and carry their stiffness; their fittings come in later releases, and each says so (`join.fitting`).
   `"fitting": "printed"` or `"bought"` chooses for a kind with a fitting.
 - `cad check` adds `join.geometry` (the end meets the face square and flush, where `b` says, on the slot's centre line
   where the kind needs a slot: a beam 2 mm off the face fails with `a gap of 2 mm`, and one 5 mm along names the

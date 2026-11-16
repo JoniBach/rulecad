@@ -25,7 +25,7 @@ export const JOINS = {
   cube: { what: 'a three-way corner taking the beam ends', b: 'end', slot: false, made: false, fitting: 'a three-way corner', later: 'Frames 2.3 (printed) and 2.6 (bought)' },
   hidden: { what: 'a bought inner connector in the slots', b: 'face', slot: true, made: false, fitting: 'an inner connector', later: 'Frames 2.6' },
   anchor: { what: 'a bought anchor connector, and its pocket in the end of a', b: 'face', slot: true, made: false, fitting: 'an anchor connector', later: 'Frames 2.6' },
-  mitre: { what: 'two mitred ends, and a corner key or plate', b: 'end', slot: false, made: false, fitting: 'a corner key or plate, and the mitres', later: 'Frames 2.3 (printed) and 2.6 (bought)' },
+  mitre: { what: 'two mitred ends, and a corner key or plate', b: 'end', slot: false, made: false, fitting: 'a corner key or plate', later: 'Frames 2.3 (printed) and 2.6 (bought)' },
   pivot: { what: 'a hinge or pivot, which also adds a joint so it moves', b: 'face', slot: true, made: false, fitting: 'a pivot and its joint', later: 'Frames 2.3 (printed) and 2.6 (bought)' },
   splice: { what: 'two beams end to end, with a joining plate', b: 'end', slot: false, made: false, fitting: 'a splice plate', later: 'Frames 2.3 (printed) and 2.6 (bought)' },
   printed: { what: 'a printed node that sockets the beam ends', b: 'either', slot: false, made: false, fitting: 'a printed node', later: 'Frames 2.3' },
@@ -92,7 +92,9 @@ function across(b, p) {
  * @param {string} kind one of JOINS
  * @param {{ beam: object, end: string }} a a beam's model and its end: a, b, or one bore of it (a.2) where the end has several
  * @param {{ beam: object, address: string }} b a beam's model and a place on it: a face with a distance (back@120), or an end
- * @param {{ screw?: string, fitting?: 'printed' | 'bought' }} [o] screw: the screw a blind or end-tap join takes, by its thread and head ("M5 button"; the bore's thread with the kind's head where left out)
+ * @param {{ screw?: string, fitting?: 'printed' | 'bought', mitre?: { angle: number, a: { about: string, long: string }, b: { about: string, long: string } } }} [o] screw: the screw a blind or end-tap join takes, by its thread and head ("M5 button"; the bore's thread with the kind's head where left out);
+ *   mitre: for a mitre join, each end's cut from square in degrees and, for each beam, the face the corner lies in (about)
+ *   and the side its length is measured on (long, the outside): worked out from where the beams are (cad does)
  * @returns {{ kind: string, what: string, says: string, a: { end: string, bores: string[], ops: object[] }, b: { address: string, place: string | null, face: string | null, slot: string | null, distance: number | null, end: string | null, ops: object[], across?: { place: string, slot: string | null } },
  *   screws: { screw: string, thread: string, head: string, bore: string }[], fitting: { what: string, later: string, choice: string | null } | null, stiffness: object, findings: object[] }}
  */
@@ -102,7 +104,7 @@ export function joinModel(kind, a, b, o = {}) {
   if (!spec) throw new Error(`${what}: no kind of join ${shown(kind)}: there are ${Object.keys(JOINS).join(', ')}`);
   if (a?.beam?.kind !== 'beam' || b?.beam?.kind !== 'beam') throw new Error(`${what}: a and b are each { beam, ... } with a beam's model (beamModel)`);
   if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error(`${what}: the options are { screw, fitting } (got ${shown(o)})`);
-  for (const k of Object.keys(o)) if (!['screw', 'fitting'].includes(k)) throw new Error(`${what}: no option "${k}": it takes screw, fitting`);
+  for (const k of Object.keys(o)) if (!['screw', 'fitting', 'mitre'].includes(k)) throw new Error(`${what}: no option "${k}": it takes screw, fitting, mitre`);
   const A = a.beam, B = b.beam, w = `${what}: a ${kind} join of ${A.name} to ${B.name}`;
   if (o.fitting != null && !FITTINGS.includes(o.fitting)) throw new Error(`${w}: fitting is ${FITTINGS.join(' or ')} (got ${shown(o.fitting)})`);
   if (o.fitting != null && !spec.fitting) throw new Error(`${w}: a ${kind} join has no fitting to choose: its screws hold it. Leave fitting out`);
@@ -124,8 +126,17 @@ export function joinModel(kind, a, b, o = {}) {
     out.findings.push({ level: 'fail', code: 'join.geometry', text: `${says}: a ${kind} join meets a slot, and ${B.name}'s ${place.name} is a closed face: join it to a face with a slot${kind === 'blind' ? ', or use an end-tap join' : ''}`, refs: { kind, place: place.name } });
     return out;
   }
+  // a mitre: each end cut at the angle that meets the other, about the face the corner lies in, long on the outside
+  if (kind === 'mitre' && o.mitre != null) {
+    const m = o.mitre, FACES = ['top', 'bottom', 'front', 'back'];
+    if (!(typeof m.angle === 'number' && m.angle > 0 && m.angle < 90)) throw new Error(`${w}: mitre.angle is each end's cut from square, above 0 and under 90 degrees (got ${shown(m.angle)}): the beams meet at a corner, not in line or doubled back`);
+    for (const side of ['a', 'b']) if (!m[side] || !FACES.includes(m[side].about) || !FACES.includes(m[side].long)) throw new Error(`${w}: mitre.${side} is { about, long }, each a face: ${FACES.join(', ')} (got ${shown(m[side])})`);
+    out.a.ops.push({ op: 'mitre', at: end, angle: m.angle, about: m.a.about, long: m.a.long });
+    out.b.ops.push({ op: 'mitre', at: address, angle: m.angle, about: m.b.about, long: m.b.long });
+  }
   if (!spec.made) {
-    out.findings.push({ level: 'warn', code: 'join.fitting', text: `${says}: a ${kind} join is ${spec.what}. ${spec.fitting[0].toUpperCase()}${spec.fitting.slice(1)} comes with ${spec.later}: until then this join is checked where it meets and stiffens the frame by its estimate, and adds no operations, fittings or screws`, refs: { kind, later: spec.later } });
+    const cut = out.a.ops.length > 0;
+    out.findings.push({ level: 'warn', code: 'join.fitting', text: `${says}: a ${kind} join is ${spec.what}. ${cut ? 'The mitres are cut; the corner key or plate' : `${spec.fitting[0].toUpperCase()}${spec.fitting.slice(1)}`} comes with ${spec.later}: until then this join is checked where it meets and stiffens the frame by its estimate, and adds no ${cut ? '' : 'operations, '}fittings or screws`, refs: { kind, later: spec.later } });
     return out;
   }
   // blind and end-tap: a screw in each bore of a's end named, tapped

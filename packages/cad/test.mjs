@@ -2719,7 +2719,7 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     write();
     const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
-      const s = await buildAssembly('frame/tee'), ops = Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, o.beam.ops.filter((x) => !x.implied).map((x) => [x.op, x.at, x.distance, x.depth ?? null, x.diameter ?? null])]));
+      const s = await buildAssembly('frame/tee'), ops = Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, o.beam.ops.filter((x) => !x.implied).map((x) => [x.op, x.at, x.distance, x.depth ?? null, x.diameter ?? x.long ?? null])]));
       console.log(JSON.stringify({ ops, hardware: s.hardware.map((h) => [h.kind, h.name, h.head]), findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap)/.test(f.code)).map(({ level, code, text, values }) => ({ level, code, text, values })) }));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     let r = probe();
@@ -2757,6 +2757,14 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     a.joins[0] = { kind: 'bracket', a: 'y1.a', b: 'x1.back@120', fitting: 'printed' }; write();
     r = probe();
     assert.deepEqual([r.ops, r.hardware, by('join.fitting').map((x) => x.level), by('join.geometry').map((x) => x.level)], [{ x1: [], y1: [] }, [], ['warn'], ['pass']]);
+    // a mitre: each end cut at 45° about the face the corner lies in, the length on the outside of the corner
+    const ell = { title: 'Ell', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [-10, 0, 0], to: [290, 0, 0] }, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [0, -10, 0], to: [0, 290, 0] }], joins: [{ kind: 'mitre', a: 'x1.a', b: 'y1.a' }] };
+    write(ell); r = probe();
+    assert.deepEqual(r.ops, { x1: [['mitre', 'a', 0, null, 'front']], y1: [['mitre', 'a', 0, null, 'back']] });
+    assert.deepEqual([by('join.geometry').map((x) => [x.level, x.values.miss]), by('join.fitting').map((x) => x.level)], [[['pass', 0]], ['warn']]);
+    assert.match(by('join.fitting')[0].text, /The mitres are cut; the corner key or plate comes with Frames 2\.3/);
+    ell.items[1].from = [300, 0, 0]; ell.items[1].to = [500, 0, 0]; write(ell);
+    assert.match(cad('check', 'frame/tee'), /join 1: x1 and y1 lie along one line, so there is no corner to mitre: a splice joins them end to end/);
     // refused by name: a join on an item that is not a beam, a key a join does not take; cad add join kept to the beams
     const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/tee'), pattern); };
     refused((b) => { b.joins = [{ kind: 'blind', a: 'z1.a', b: 'x1.back@120' }]; }, /join 1: a is on a beam item of this assembly, and z1 is not an item \(beams: x1, y1\)/);
