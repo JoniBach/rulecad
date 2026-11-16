@@ -67,13 +67,23 @@
     { "sun": "sun", "carrier": "carrier", "ring": "housing", "planets": ["p1", "p2", "p3"], "drive": "sun", "module": 1, "teeth": [18, 18, 54], "output": { "ring": "output", "planet": 21, "teeth": 57 } },
     { "sun": "esun", "carrier": "ecarrier", "ring": "ering", "planets": ["ep1", "ep2", "ep3"], "drive": "sun", "module": 1, "teeth": [18, 18, 54], "output": { "ring": "eoutput", "planet": 21, "teeth": 57 } }
   ],
+  "fasten": [
+    {"screw": "M3 cap", "through": ["housing"], "into": "carriage", "at": ["housing.f1", "housing.f2", "housing.f3"], "note": "The housing on the carriage's face"},
+    {"screw": "M3 cap", "through": ["bridge"], "into": "housing", "at": ["bridge.s1", "bridge.s2", "bridge.s3"], "note": "The bridge on the housing's posts"},
+    {"screw": "M3 countersunk", "through": ["spindle"], "into": "output", "at": ["spindle.b1", "spindle.b2", "spindle.b3", "spindle.b4"], "note": "The spindle on the hip's output, its heads flush under the bridge"},
+    {"screw": "M3 cap", "through": ["thigh"], "into": "spindle", "at": ["thigh.hub"], "note": "The thigh clamped down on the spindle's hexagon"},
+    {"screw": "M3 cap", "through": ["clip1"], "into": "thigh", "at": ["clip1.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["clip2"], "into": "thigh", "at": ["clip2.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["clip3"], "into": "thigh", "at": ["clip3.post"], "note": "A clip on its post"},
+    {"screw": "M3 cap", "through": ["shin"], "into": "eoutput", "at": ["shin.b1", "shin.b2", "shin.b3", "shin.b4"], "note": "The shin on the knee's output"}
+  ],
   "fits": [
     { "a": "m1", "b": "housing", "fastens": true, "min": -0.1, "note": "The hip motor, on its four screws, its boss seated in the plate's pocket" },
     { "a": "m1", "b": "sun", "shaft": true, "note": "The shaft in the sun" },
     { "a": "m2", "b": "esun", "shaft": true, "note": "The knee motor's shaft in its sun" },
     { "a": "m2", "b": "thigh", "fastens": true, "min": -0.1, "note": "The knee motor, on its four screws" },
-    { "a": "housing", "b": "carriage", "fastens": true, "min": 0, "note": "The housing, screwed to the carriage's face" },
-    { "a": "bridge", "b": "housing", "fastens": true, "min": 0, "note": "The bridge, on the housing's posts" },
+    { "a": "housing", "b": "carriage", "min": 0, "note": "The housing, screwed to the carriage's face" },
+    { "a": "bridge", "b": "housing", "min": 0, "note": "The bridge, on the housing's posts" },
     { "a": "b1", "b": "bridge", "seat": "press", "note": "The 6800 in its seat" },
     { "a": "ecarrier", "b": "ering", "min": -1, "note": "Two specks: neither is printed" },
     { "a": "lm1", "b": "carriage", "fastens": true, "min": -0.5, "note": "The bushing, pressed in its pocket" },

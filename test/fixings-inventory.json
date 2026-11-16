@@ -18,23 +18,11 @@
       "reads": 0,
       "typed": 0,
       "table": 0
-    },
-    "packages/create-rulecad/machines/arm/projects/arm": {
-      "named": 21,
-      "reads": 9,
-      "typed": 0,
-      "table": 0
-    },
-    "packages/create-rulecad/machines/leg/projects/leg": {
-      "named": 17,
-      "reads": 8,
-      "typed": 0,
-      "table": 0
     }
   },
   "total": {
-    "named": 108,
-    "reads": 34,
+    "named": 70,
+    "reads": 17,
     "typed": 6,
     "table": 0
   }
