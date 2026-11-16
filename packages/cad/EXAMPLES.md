@@ -929,7 +929,9 @@ drives, the viewer's slider moves in the motor's steps, and `loads` say what it 
 kinds: the 28BYJ-48's torque varies between makers, and the check says what its answer rests on.
 
 The pinion takes the motor's shaft, two flats and all, with `v.motors.bore`. The motor sits under the plate, shaft up
-through it, so its body needs room below: two feet stand the rail up.
+through it, so its body needs room below: two feet stand the rail up. An M3 cap screw down through the rail holds
+each foot, cutting its own thread in a pilot in the foot's top. Both holes come from `v.fixings`, named by the thread:
+the rail's is an M3 clearance hole, the foot's an M3 pilot, each the printer's own figure.
 
 ```json projects/home/objects/drive-pinion.json
 {
@@ -969,20 +971,21 @@ export function main (v) {
   "engine": "manifold",
   "anchors": {
     "axle": { "at": [0, "centre", "thick"], "axis": [0, 0, 1] },
-    "track": { "at": ["start", 0, "thick"], "axis": [1, 0, 0] }
+    "track": { "at": ["start", 0, "thick"], "axis": [1, 0, 0] },
+    "f1": { "at": ["0 - foot_x", "foot_y", "thick"], "axis": [0, 0, 1] },
+    "f2": { "at": ["foot_x", "foot_y", "thick"], "axis": [0, 0, 1] }
   },
   "variables": {
     "centre": { "value": 7.2, "unit": "mm", "rule": "The pinion's axis above the rack's pitch line: m z / 2 + x m" },
     "length": { "value": 120, "unit": "mm", "rule": "The rack and its travel" },
     "start": { "value": -37.7, "unit": "mm", "rule": "The rack's middle under the pinion at rest" },
-    "thick": { "value": "x1c.layer * 23", "unit": "mm", "rule": "23 layers: the motor's boss pocket, and enough for its M3 screws" },
+    "thick": { "value": "x1c.layer * 23", "unit": "mm", "rule": "23 layers: the motor's boss pocket, and plate enough for its screws" },
     "y0": { "value": -14.5, "unit": "mm", "rule": "Past the motor's near ear" },
     "y1": { "value": 29, "unit": "mm", "rule": "Past its far ear, 17.5 mm off the axis" },
     "plate": { "value": 26, "unit": "mm", "rule": "Wide enough round the motor's boss and its ears" },
     "guide_y": { "value": "0 - 5.45 - x1c.line / 2", "unit": "mm", "rule": "Behind the rack's back, half a line clear" },
     "guide": { "value": "x1c.line * 4", "unit": "mm", "rule": "The guide wall: four lines" },
     "guide_height": { "value": "x1c.layer * 20", "unit": "mm", "rule": "Most of the rack's width" },
-    "hole": { "value": 3.5, "unit": "mm", "rule": "M3 clearance, for the feet" },
     "foot_x": { "value": 52, "unit": "mm", "rule": "Each foot's screw, from the middle" },
     "foot_y": { "value": -11, "unit": "mm", "rule": "On the strip, behind the guide" }
   }
@@ -991,18 +994,18 @@ export function main (v) {
 
 ```js projects/home/objects/drive-rail.js
 // The rail: a strip under the rack, a plate for the motor (turned 90° on its shaft, so its ears clear the rack), a wall
-// behind the rack, and the motor's own cuts.
+// behind the rack, and the motor's own cuts. Each foot's screw passes an M3 clearance hole from v.fixings.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
 const { translate, rotateZ } = jscad.transforms
 
 export function main (v) {
-  const motor = v.motors.motorModel('28byj48')
+  const motor = v.motors.motorModel('28byj48'), hole = v.fixings.holeModel('M3').diameter
   const strip = cuboid({ size: [v.length, 12, v.thick], center: [0, v.y0 + 6, v.thick / 2] })
   const seat = cuboid({ size: [v.plate, v.y1 - v.y0, v.thick], center: [8, (v.y0 + v.y1) / 2, v.thick / 2] })
   const guide = cuboid({ size: [v.length, v.guide, v.guide_height], center: [0, v.guide_y - v.guide / 2, v.thick + v.guide_height / 2] })
   const cuts = translate([0, v.centre, 0], rotateZ(Math.PI / 2, v.motors.mount(motor, { plate: v.thick, screw: 'M3' }, v.ops)))
-  const screws = [1, -1].map((s) => cylinder({ radius: v.hole / 2, height: v.thick + 2, center: [s * v.foot_x, v.foot_y, v.thick / 2] }))
+  const screws = [1, -1].map((s) => cylinder({ radius: hole / 2, height: v.thick + 2, center: [s * v.foot_x, v.foot_y, v.thick / 2] }))
   return v.ops.subtract(v.ops.union(strip, seat, guide), cuts, screws)
 }
 ```
@@ -1018,27 +1021,31 @@ export function main (v) {
     "height": { "value": 21, "unit": "mm", "rule": "Under the motor: its 19 mm can and 2 mm to the table" },
     "size": { "value": 12, "unit": "mm", "rule": "As wide as the strip" },
     "long": { "value": 28, "unit": "mm", "rule": "Across the strip's end, for a stance that doesn't rock" },
-    "hole": { "value": 2.9, "unit": "mm", "rule": "M3 screw, self-tapped into the plastic" },
-    "depth": { "value": 12, "unit": "mm", "rule": "Plenty for an M3 × 16" }
+    "depth": { "value": 12, "unit": "mm", "rule": "The pilot's depth: more than the screw down through the rail needs, so the check chooses its length" }
   }
 }
 ```
 
 ```js projects/home/objects/drive-foot.js
-// A foot: a block under each end of the rail, screwed on from above.
+// A foot: a block under each end of the rail, screwed on from above by an M3 cap screw through the rail, which cuts
+// its own thread in the M3 pilot from v.fixings.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
 const { subtract } = jscad.booleans
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
   const block = cuboid({ size: [v.size, v.long, v.height], center: [0, 0, v.height / 2] })
-  return subtract(block, cylinder({ radius: v.hole / 2, height: v.depth, center: [0, 0, v.height - v.depth / 2] }))
+  return subtract(block, cylinder({ radius: pilot / 2, height: v.depth, center: [0, 0, v.height - v.depth / 2] }))
 }
 ```
 
 The assembly says the motor drives the pinion's joint, the slide follows by its `mesh`, and the load is a force on the
 slide: a 200 g camera on a rail with the friction of plastic on plastic, about 1 N. The `shaft` fit reads the bore from
 the pinion as drawn. `duty` says the motor runs a fifth of the time, since a focus stack is mostly standing still.
+Each foot's screw is a `fasten`, as the pad's in chapter 6: the screw named by thread and head with no length, the
+part it passes through, the part it ends in and the anchor on its axis. The check follows the screw through the parts
+as drawn and chooses its length, and `cad list` counts it; chapter 15 explains `fasten` in full.
 
 ```json projects/home/assemblies/driven.json
 {
@@ -1058,10 +1065,14 @@ the pinion as drawn. `duty` says the motor runs a fifth of the time, since a foc
       "mesh": { "with": "pinion", "module": "gear.module", "teeth": ["gear.teeth", "rack.teeth"], "shift": ["gear.shift", 0] } }
   ],
   "fits": [
-    { "a": "foot_a", "b": "rail", "fastens": true, "min": 0, "note": "A foot, screwed on" },
-    { "a": "foot_b", "b": "rail", "fastens": true, "min": 0, "note": "A foot, screwed on" },
+    { "a": "foot_a", "b": "rail", "min": 0, "note": "A foot, under the rail" },
+    { "a": "foot_b", "b": "rail", "min": 0, "note": "A foot, under the rail" },
     { "a": "drive", "b": "rail", "fastens": true, "min": 0, "note": "The motor, on its two ears" },
     { "a": "drive", "b": "gear", "shaft": true, "note": "The motor's shaft in the pinion" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["rail"], "into": "foot_a", "at": ["rail.f1"], "note": "A foot, screwed on from above" },
+    { "screw": "M3 cap", "through": ["rail"], "into": "foot_b", "at": ["rail.f2"], "note": "A foot, screwed on from above" }
   ],
   "loads": [{ "joint": "slide", "force": 1, "note": "A 200 g camera sliding, plastic on plastic" }],
   "poses": { "home": { "pinion": 0 } }
@@ -1088,7 +1099,8 @@ the sun now, and the slow part is the carrier: four turns of the motor's shaft f
 moves onto the carrier. What changes:
 
 - The case loses its axle pin. The motor hangs under the hub on its two M1.6 screws, and three ears reach out past the
-  ring for feet tall enough to stand it over the motor.
+  ring for feet tall enough to stand it over the motor. An M3 cap screw down through each ear holds its foot, in an
+  M3 pilot in the foot's top, as the slider's feet are held.
 - The sun takes the motor's D-shaft with `v.motors.bore`, and keeps its 8 mm shaft, which the spool now turns on.
 - The carrier and the spool are one part, printed upside down: the outer cheek on the bed, the drum, a 45° cone out
   to the carrier's plate (the spool's inner cheek, printed without supports), and the planets' pins on top. The drum
@@ -1106,6 +1118,11 @@ one's torque as about half until it has been measured.
   "version": "0.1.0",
   "uses": ["x1c"],
   "engine": "manifold",
+  "anchors": {
+    "e1": { "at": [0, "ear_at", "t"], "axis": [0, 0, 1] },
+    "e2": { "at": ["0 - ear_at * 0.8660254", "0 - ear_at / 2", "t"], "axis": [0, 0, 1] },
+    "e3": { "at": ["ear_at * 0.8660254", "0 - ear_at / 2", "t"], "axis": [0, 0, 1] }
+  },
   "variables": {
     "radius": { "value": 33, "unit": "mm", "rule": "The ring's rim: as the hand winder's case" },
     "rim": { "value": "x1c.line * 14", "unit": "mm", "rule": "The rim under the ring's, wide enough for its push pins" },
@@ -1113,35 +1130,35 @@ one's torque as about half until it has been measured.
     "snap_lip": { "value": 0.3, "unit": "mm", "rule": "The barb's lip, clicking over the floor of the ring's counterbore" },
     "snap_back": { "value": 90, "unit": "deg", "rule": "A square back: it holds for good" },
     "snap_at": { "value": 30.6, "unit": "mm", "rule": "Halfway across the ring's rim, between its roots and its outside" },
-    "snap_length": { "value": 4, "unit": "mm", "rule": "Up the ring's 6 mm rim to its 2 mm counterbore" },
+    "snap_length": { "value": 4, "unit": "mm", "rule": "Up the ring's 6 mm rim, to the 2 mm step at its top the barb clicks over" },
     "flange": { "value": 2, "unit": "mm", "rule": "A push pin's foot flange, buried in the rim" },
     "hub": { "value": 14, "unit": "mm", "rule": "Round the N20's face: its two M1.6 holes 9 mm apart, with a wall outside them" },
     "spoke": { "value": "x1c.line * 12", "unit": "mm", "rule": "Three spokes from the hub to the rim" },
     "spokes": { "value": 3, "rule": "Three: it stands without rocking" },
     "t": { "value": "x1c.layer * 15", "unit": "mm", "rule": "Base, fifteen layers" },
     "ear_at": { "value": 38, "unit": "mm", "rule": "A foot's screw, outside the ring (33 mm) by a screw head's radius and a little" },
-    "ear": { "value": 10, "unit": "mm", "rule": "An ear's width, round its screw" },
-    "hole": { "value": "3 + x1c.hole_comp + x1c.fit * 2", "unit": "mm", "rule": "M3 clearance for a foot's screw" }
+    "ear": { "value": 10, "unit": "mm", "rule": "An ear's width, round its screw" }
   }
 }
 ```
 
 ```js projects/home/objects/winder-base.js
 // The hand winder's case with the motor under it: the axle pin goes, the hub takes the N20's face and screws, and three
-// ears reach out past the ring, a quarter turn round from the spokes, for the feet that stand it over the motor.
+// ears reach out past the ring, a quarter turn round from the spokes, for the feet that stand it over the motor. Each
+// ear has an M3 clearance hole from v.fixings for its foot's screw.
 import jscad from '@jscad/modeling'
 const { cylinder, cuboid } = jscad.primitives
 const { rotateZ, translate } = jscad.transforms
 
 export function main (v) {
-  const motor = v.motors.motorModel('n20')
+  const motor = v.motors.motorModel('n20'), hole = v.fixings.holeModel('M3').diameter
   const rim = v.ops.subtract(cylinder({ radius: v.radius, height: v.t, center: [0, 0, v.t / 2] }), cylinder({ radius: v.radius - v.rim, height: v.t, center: [0, 0, v.t / 2] }))
   const turn = (k) => (2 * Math.PI * k) / v.spokes
   const spokes = Array.from({ length: v.spokes }, (_, k) => rotateZ(turn(k), cuboid({ size: [v.radius - v.rim / 2, v.spoke, v.t], center: [(v.radius - v.rim / 2) / 2, 0, v.t / 2] })))
   const ears = Array.from({ length: v.spokes }, (_, k) => rotateZ(turn(k) + Math.PI / 2, v.ops.union(
     cuboid({ size: [v.ear_at - v.radius + v.rim, v.ear, v.t], center: [(v.ear_at + v.radius - v.rim) / 2, 0, v.t / 2] }),
     cylinder({ radius: v.ear / 2, height: v.t, center: [v.ear_at, 0, v.t / 2] }))))
-  const holes = Array.from({ length: v.spokes }, (_, k) => rotateZ(turn(k) + Math.PI / 2, cylinder({ radius: v.hole / 2, height: v.t * 2, center: [v.ear_at, 0, v.t / 2] })))
+  const holes = Array.from({ length: v.spokes }, (_, k) => rotateZ(turn(k) + Math.PI / 2, cylinder({ radius: hole / 2, height: v.t * 2, center: [v.ear_at, 0, v.t / 2] })))
   const snaps = [0, Math.PI].map((a) => translate([v.snap_at * Math.cos(a), v.snap_at * Math.sin(a), v.t - v.flange], v.flexures.snapPin({ diameter: v.snap, length: v.snap_length, lip: v.snap_lip, back: v.snap_back }, v.ops)))
   const body = v.ops.union(rim, cylinder({ radius: v.hub / 2, height: v.t, center: [0, 0, v.t / 2] }), ...spokes, ...ears, ...snaps)
   return v.ops.subtract(body, v.motors.mount(motor, { plate: v.t, screw: 'M1.6' }, v.ops), ...holes)
@@ -1158,20 +1175,21 @@ export function main (v) {
   "variables": {
     "height": { "value": 32, "unit": "mm", "rule": "Under the motor: its 25 mm, its terminals, and room for the wires to bend" },
     "size": { "value": 10, "unit": "mm", "rule": "As wide as the base's ear" },
-    "hole": { "value": 2.9, "unit": "mm", "rule": "M3 screw, self-tapped into the plastic" },
-    "depth": { "value": 12, "unit": "mm", "rule": "Plenty for an M3 × 16 through the 3 mm ear" }
+    "depth": { "value": 12, "unit": "mm", "rule": "The pilot's depth: more than the screw down through the 3 mm ear needs, so the check chooses its length" }
   }
 }
 ```
 
 ```js projects/home/objects/winder-foot.js
-// A foot under each of the base's ears, screwed on from above.
+// A foot under each of the base's ears, screwed on from above by an M3 cap screw through the ear, which cuts its own
+// thread in the M3 pilot from v.fixings.
 import jscad from '@jscad/modeling'
 const { cylinder } = jscad.primitives
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
   const block = cylinder({ radius: v.size / 2, height: v.height, center: [0, 0, v.height / 2] })
-  return v.ops.subtract(block, cylinder({ radius: v.hole / 2, height: v.depth, center: [0, 0, v.height - v.depth / 2] }))
+  return v.ops.subtract(block, cylinder({ radius: pilot / 2, height: v.depth, center: [0, 0, v.height - v.depth / 2] }))
 }
 ```
 
@@ -1303,9 +1321,14 @@ speed to it.
     { "a": "ring", "b": "base", "fastens": true, "note": "The ring held still on the base by its two push pins" },
     { "a": "drive", "b": "base", "fastens": true, "min": 0, "note": "The motor, on its two M1.6 screws" },
     { "a": "drive", "b": "sun", "shaft": true, "note": "The motor's shaft in the sun" },
-    { "a": "foot_a", "b": "base", "fastens": true, "min": 0, "note": "A foot, screwed on" },
-    { "a": "foot_b", "b": "base", "fastens": true, "min": 0, "note": "A foot, screwed on" },
-    { "a": "foot_c", "b": "base", "fastens": true, "min": 0, "note": "A foot, screwed on" }
+    { "a": "foot_a", "b": "base", "min": 0, "note": "A foot, under an ear" },
+    { "a": "foot_b", "b": "base", "min": 0, "note": "A foot, under an ear" },
+    { "a": "foot_c", "b": "base", "min": 0, "note": "A foot, under an ear" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["base"], "into": "foot_a", "at": ["base.e1"], "note": "A foot, screwed on from above" },
+    { "screw": "M3 cap", "through": ["base"], "into": "foot_b", "at": ["base.e2"], "note": "A foot, screwed on from above" },
+    { "screw": "M3 cap", "through": ["base"], "into": "foot_c", "at": ["base.e3"], "note": "A foot, screwed on from above" }
   ],
   "loads": [{ "joint": "reel", "torque": 0.2, "note": "A strap pulled with 10 N at the full spool's 20 mm radius" }],
   "poses": { "rest": { "sun": 0 } }
@@ -1356,7 +1379,7 @@ the load can't turn it backwards: the joint holds with the power off.
   "engine": "manifold",
   "anchors": { "axis": { "at": [0, 0, "plate"], "axis": [0, 0, 1] } },
   "variables": {
-    "plate": { "value": 5, "unit": "mm", "rule": "Enough for M3 screws into a NEMA 17 (1.5 × their size)" },
+    "plate": { "value": 5, "unit": "mm", "rule": "Deep enough for the motor's four screws to bite, 1.5 times their thread" },
     "width": { "value": 8, "unit": "mm", "rule": "The fixed ring's face: strong enough for the motor's whole torque" },
     "rim": { "value": 62, "unit": "mm", "rule": "Round the 54-tooth ring, three lines and more of wall" },
     "module": { "value": 1, "unit": "mm", "rule": "The gears'" },
@@ -1364,20 +1387,20 @@ the load can't turn it backwards: the joint holds with the power off.
     "post_r": { "value": 37, "unit": "mm", "rule": "Three posts outside the output ring's 33 mm" },
     "post": { "value": 7, "unit": "mm", "rule": "Each post's diameter" },
     "post_height": { "value": 19.7, "unit": "mm", "rule": "From the plate to under the clips, just over the output ring" },
-    "pilot": { "value": 2.9, "unit": "mm", "rule": "An M3 screw, self-tapped" },
-    "pilot_depth": { "value": 8, "unit": "mm", "rule": "For an M3 × 10" }
+    "pilot_depth": { "value": 8, "unit": "mm", "rule": "Each post's pilot, deep enough for its clip's screw" }
   }
 }
 ```
 
 ```js projects/home/objects/joint-housing.js
 // A motor plate with the fixed ring standing on it. The motor bolts underneath, its shaft up through the middle.
+// Each post has an M3 pilot from v.fixings: its clip's screw cuts its own thread in it.
 import jscad from '@jscad/modeling'
 const { cylinder } = jscad.primitives
 const { translate } = jscad.transforms
 
 export function main (v) {
-  const motor = v.motors.motorModel('nema17')
+  const motor = v.motors.motorModel('nema17'), pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter
   const plate = cylinder({ radius: v.rim / 2, height: v.plate, center: [0, 0, v.plate / 2], segments: 96 })
   const ring = translate([0, 0, v.plate], v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width, rim: v.rim }))
   const at = (a) => [v.post_r * Math.cos(a), v.post_r * Math.sin(a)]
@@ -1385,7 +1408,7 @@ export function main (v) {
   const lobes = angles.map((a) => cylinder({ radius: v.post, height: v.plate, center: [...at(a), v.plate / 2], segments: 32 }))
   const posts = angles.map((a) => cylinder({ radius: v.post / 2, height: v.post_height + v.plate, center: [...at(a), (v.post_height + v.plate) / 2], segments: 32 }))
   const arms = angles.map((a) => jscad.transforms.rotateZ(a, jscad.primitives.cuboid({ size: [v.post_r - v.rim / 2 + 2, v.post, v.plate], center: [(v.post_r + v.rim / 2 - 2) / 2, 0, v.plate / 2] })))
-  const pilots = angles.map((a) => cylinder({ radius: v.pilot / 2, height: v.pilot_depth, center: [...at(a), v.plate + v.post_height - v.pilot_depth / 2], segments: 24 }))
+  const pilots = angles.map((a) => cylinder({ radius: pilot / 2, height: v.pilot_depth, center: [...at(a), v.plate + v.post_height - v.pilot_depth / 2], segments: 24 }))
   return v.ops.subtract(v.ops.union(plate, ring, lobes, posts, arms), v.motors.mount(motor, { plate: v.plate, counterbore: true }, v.ops), pilots)
 }
 ```
@@ -1470,29 +1493,32 @@ export function main (v) {
     "rim": { "value": 66, "unit": "mm", "rule": "Round the 57-tooth ring" },
     "module": { "value": 1, "unit": "mm", "rule": "The gears'" },
     "teeth": { "value": 57, "rule": "The output ring" },
-    "hole": { "value": 3.5, "unit": "mm", "rule": "M3 clearance, on a 40 mm circle, for the arm" },
     "middle": { "value": 15, "unit": "mm", "rule": "A hole in the middle for the motor's shaft to come up in" },
-    "bolt": { "value": 20, "unit": "mm", "rule": "Radius of the arm's bolt circle" }
+    "bolt": { "value": 20, "unit": "mm", "rule": "Radius of the arm's bolt circle: four screws, each through a clearance hole" }
   }
 }
 ```
 
 ```js projects/home/objects/joint-output.js
-// The output ring, drawn as it prints: its flange on the bed, the teeth standing on it; it goes on upside down.
+// The output ring, drawn as it prints: its flange on the bed, the teeth standing on it; it goes on upside down. An
+// arm would bolt to its flange through four M3 clearance holes from v.fixings.
 import jscad from '@jscad/modeling'
 const { cylinder } = jscad.primitives
 const { translate } = jscad.transforms
 
 export function main (v) {
+  const hole = v.fixings.holeModel('M3').diameter
   const flange = cylinder({ radius: v.rim / 2, height: v.top, center: [0, 0, v.top / 2], segments: 96 })
   const ring = translate([0, 0, v.top], v.gears.internal({ module: v.module, teeth: v.teeth, width: v.width, rim: v.rim }))
-  const holes = [0, 1, 2, 3].map((k) => cylinder({ radius: v.hole / 2, height: v.top + 1, center: [v.bolt * Math.cos(k * Math.PI / 2), v.bolt * Math.sin(k * Math.PI / 2), v.top / 2], segments: 24 }))
+  const holes = [0, 1, 2, 3].map((k) => cylinder({ radius: hole / 2, height: v.top + 1, center: [v.bolt * Math.cos(k * Math.PI / 2), v.bolt * Math.sin(k * Math.PI / 2), v.top / 2], segments: 24 }))
   const middle = cylinder({ radius: v.middle / 2, height: v.top + 1, center: [0, 0, v.top / 2], segments: 48 })
   return v.ops.subtract(v.ops.union(flange, ring), holes, middle)
 }
 ```
 
-Three clips on three posts keep the output ring from lifting off. It turns under them with 0.3 mm to spare.
+Three clips on three posts keep the output ring from lifting off. It turns under them with 0.3 mm to spare. Each clip
+is held by an M3 cap screw through a clearance hole, cutting its own thread in an M3 pilot in its post, both from
+`v.fixings`.
 
 ```json projects/home/objects/joint-clip.json
 {
@@ -1501,25 +1527,27 @@ Three clips on three posts keep the output ring from lifting off. It turns under
   "title": "Retaining clip",
   "version": "0.1.0",
   "uses": ["x1c"],
+  "anchors": { "post": { "at": [0, 0, "thick"], "axis": [0, 0, 1] } },
   "variables": {
     "reach": { "value": 6, "unit": "mm", "rule": "In over the flange's edge, 4 mm" },
     "back": { "value": 4, "unit": "mm", "rule": "Round the post" },
     "wide": { "value": 8, "unit": "mm", "rule": "As wide as the post and a little" },
-    "thick": { "value": 3, "unit": "mm", "rule": "Fifteen layers" },
-    "hole": { "value": 3.5, "unit": "mm", "rule": "M3 clearance" }
+    "thick": { "value": 3, "unit": "mm", "rule": "Fifteen layers" }
   }
 }
 ```
 
 ```js projects/home/objects/joint-clip.js
-// A flat tab screwed to a post, its nose over the flange.
+// A flat tab screwed to a post by an M3 cap screw, its nose over the flange. The screw passes an M3 clearance hole
+// from v.fixings.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
 const { subtract } = jscad.booleans
 
 export function main (v) {
+  const hole = v.fixings.holeModel('M3').diameter
   const tab = cuboid({ size: [v.reach + v.back, v.wide, v.thick], center: [(v.back - v.reach) / 2, 0, v.thick / 2] })
-  return subtract(tab, cylinder({ radius: v.hole / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: 24 }))
+  return subtract(tab, cylinder({ radius: hole / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: 24 }))
 }
 ```
 
@@ -1579,10 +1607,15 @@ The joint's load is a mass on the output. The check finds the worst angle by run
   "planetary": [{ "sun": "sun", "carrier": "carrier", "ring": "housing", "planets": ["p1", "p2", "p3"], "drive": "sun", "module": 1, "teeth": [18, 18, 54], "output": { "ring": "output", "planet": 21, "teeth": 57 } }],
   "fits": [
     { "a": "motor", "b": "housing", "fastens": true, "min": 0, "note": "The motor, on its four screws" },
-    { "a": "clip1", "b": "housing", "fastens": true, "min": 0, "note": "A clip, screwed on" },
-    { "a": "clip2", "b": "housing", "fastens": true, "min": 0, "note": "A clip, screwed on" },
-    { "a": "clip3", "b": "housing", "fastens": true, "min": 0, "note": "A clip, screwed on" },
+    { "a": "clip1", "b": "housing", "min": 0, "note": "A clip, on its post" },
+    { "a": "clip2", "b": "housing", "min": 0, "note": "A clip, on its post" },
+    { "a": "clip3", "b": "housing", "min": 0, "note": "A clip, on its post" },
     { "a": "motor", "b": "sun", "shaft": true, "note": "The motor's shaft in the sun" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["clip1"], "into": "housing", "at": ["clip1.post"], "note": "A clip, screwed on" },
+    { "screw": "M3 cap", "through": ["clip2"], "into": "housing", "at": ["clip2.post"], "note": "A clip, screwed on" },
+    { "screw": "M3 cap", "through": ["clip3"], "into": "housing", "at": ["clip3.post"], "note": "A clip, screwed on" }
   ],
   "loads": [{ "mass": 0.5, "at": "output.tip", "note": "500 g at 150 mm: a forearm" }],
   "poses": { "home": { "drive": 0 } }
@@ -1748,7 +1781,10 @@ The rules: the reach, the stack of parts from the bench up, and what the budget 
 ### The base and the shoulder
 
 A square plate that takes four M5 bolts, flat on the bench or upright on a stand. Three columns hold the shoulder housing,
-with the motor hanging between them, and a post carries the shoulder's home switch.
+with the motor hanging between them, and a post carries the shoulder's home switch. Every hole a screw goes in comes
+from `v.fixings`, named by its thread: the M5 bolts' clearance holes, an M3 pilot in each column for the housing's
+screw, and two M2 pilots in the post for the switch's. The housing and the bridge counterbore their M3 cap heads a
+layer below their faces.
 
 ```json projects/arm/objects/base.json
 {
@@ -2040,7 +2076,9 @@ export function main (v) {
 }
 ```
 
-The spindle bolts onto the output's flange and carries the bearing's inner race on a shoulder. The bridge, on the housing's
+The spindle bolts onto the output's flange with four M3 countersunk screws into the flange's pilots, each head flush in a
+countersink as wide as an ISO 10642 head (6.72 mm), so the bridge passes over; the disc is 48 mm across so the
+countersinks keep an edge outside them. It carries the bearing's inner race on a shoulder. The bridge, on the housing's
 posts, holds the outer race in a seat drawn from the 6800's rule set and this printer's press fit.
 
 ```json projects/arm/objects/bridge.json
@@ -2554,7 +2592,12 @@ export function main (v) {
 
 One assembly, every output. The `task` block says what it is for; the `planetary` blocks are chapter 11's; the
 drivers, the supply and the wires are `bought` items and `wires` entries; the joints carry their home switches
-and the error terms that read the rules.
+and the error terms that read the rules. Each screwed joint is a `fasten`: the screw named by thread and head with no
+length, the parts it passes through and the part it ends in, at anchors on the holes' axes. The check follows each
+screw through the parts as drawn and chooses its length, and `cad list` counts it. Chapter 15 explains `fasten` in
+full. The forearm's four screws into the elbow's output are sunk 1.5 mm in their counterbores, so an M3x12 takes the
+whole 5 mm flange and stops at its face, clear of the planets; the yoke's heads are counterbored into its near cheek
+so an M3x30, the longest sold, reaches its nut on the far one.
 
 ```json projects/arm/assemblies/arm.json
 {
@@ -2702,7 +2745,7 @@ npx cad preview arm/arm
 The check runs with `--json` here because the arm's budget rests on estimates, and those are warnings the test would stop at: run
 it without `--json` and read them. What it says:
 
-- `task.reach` passes: `holder.tool` reaches the whole sheet with the elbow to the left, 25 mm to spare at the worst point, the
+- `task.reach` passes: `holder.tool` reaches the whole sheet with the elbow to the left, 5.6 mm to spare at the worst point, the
   shoulder between -11° and 101° and the elbow between 58° and 157°.
 - `task.speed` passes, just: 51.3 mm/s at the slowest point, the middle of the near edge, against the 50 asked for. The
   motors are at 300 rpm, 8000 steps a second at 1/8 step, which is about what the Uno's firmware streams; any faster and
@@ -2712,13 +2755,20 @@ it without `--json` and read them. What it says:
   The worst case is 81% of the budget, under the 100% where the check would fail, over the 80% where it stops saying pass.
   Bench test 14 (play) and 17 (repeatability) decide whether this arm draws to 0.3 mm or to 0.5.
 - The rules that are guesses are named in one warning line, `uses estimates, not measurements`, and each settles with `cad measured arm/arm <name>=<value>`.
-- `joint.moment` puts 83 N equivalent on the 6800, against its 925 N static rating, eleven times over; `fit.seat` says the
+- `joint.moment` puts 88.6 N equivalent on the 6800, against its 925 N static rating, ten times over; `fit.seat` says the
   pocket is drawn 19.038 mm, a press fit, with a 1.11 mm lip on the outer race and clear of the inner.
-- `m1 into out` gives 25 times the 0.2 N m the task asks at the shoulder (that figure is at rated current: at the 0.5 A chosen, about 8 times),
-  `m2 into elbow` 28 times. Both joints hold with the power off: 38:1 at 47% can't be driven backwards.
+- `m1 into out` gives 8.4 times the 0.2 N m the task asks at the shoulder, at the 0.5 A chosen, and `m2 into elbow` 17.7
+  times its 0.08 N m. Both joints hold with the power off: 38:1 at 47% can't be driven backwards.
+- Each `fasten` is followed screw by screw: the holes line up, each far end is a pilot (an M3's 2.9 mm, `x1c.pilot_m3`,
+  measured; an M2's 2.1 mm, `m2.pilot`, a community figure) or the yoke's nut, the length is the shortest sold that fits
+  (M3x8 into the base's columns, M3x10 into the posts, M3x8 countersunk into the output's flange, M3x12 into the elbow's,
+  M3x16 down into the spindle, M3x30 through the yoke, M2x10 for the switches, and an M3x3 set screw that clamps the
+  pen), each cap screw in a pilot has the thread its rule set's `pilot_depth` asks, and a hex key reaches every head,
+  the bridge's and the spindle's before the parts above them go on.
 - `motor.driver` gives 0.25 V on each trimmer for 0.5 A. `power.supply`: the machine draws under 1 A at 24 V, and an
   LRS-50-24 gives 2.2 A.
-- `cad list` is the shopping list: 440 g of printing in 20 parts, about 8 hours, and everything bought. `cad wires` is the
+- `cad list` is the shopping list: 440 g of printing in 20 parts, about 8 hours, and everything bought, the screws
+  included: 33 of them and the yoke's two nuts, 30 g, each length the one the check chose. `cad wires` is the
   wiring sheet: each wire's length through the arm's whole range, its gauge, its colours and its board pins.
 - `cad machine` writes `exports/arm/arm.machine.json`: steps per degree, 168.9 at 1/8 step through 38:1, the rates and the
   homing. `cad plot` plans the test drawing, a 100 mm square and a circle, in 15 s, and the preview in `.preview/arm/`
