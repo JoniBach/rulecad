@@ -54,26 +54,35 @@ formulas table and sources; a worked example replayed by a test; print-ready wit
 mechanisms shown at rest; every fix with a test that fails without it, on every platform; designs as small as the
 load allows, with a simple solid first layer and grams and margin reported per part.
 
-## 1. Where the kit stands
+## 1. Where the kit stood
 
-An inventory of the repository on 2026-11-14:
+An inventory of the repository on 2026-11-14, before the fixings migration (section 3). This section is history: it says
+what the kit was like then, and why the migration was planned. Where the migration has since changed something, the
+bullet says so.
 
-- **Thread rule sets are thin.** `m1_6`, `m2`, `m3`, `m4` and `m5` hold three to five values each (a clearance, a
-  head, sometimes a nut or an insert). None has a `part`, so `cad rules check` holds them to nothing. There is no
-  pitch, tap drill, pilot, second head form, washer, or any size above M5.
-- **Motors keeps a private table.** `@rulecad/motors` maps thread names to those sets itself. No other package can
-  ask what an M3 screw is.
-- **Designs repeat the arithmetic.** 116 variables in 54 example and template objects describe a screw by hand, and
-  66 more in the worked examples. `m3.clearance + x1c.hole_comp` is written out 46 times. An M3 self-tapping pilot is
-  typed as `2.9` forty times.
-- **A measured result has nowhere to go.** The fit bar measured M3 pilots (2.9 and 3.0 mm drawn both hold a screw
-  straight in PLA). It is recorded in a table and read by no design.
-- **Screws are missing from the shopping list.** `cad list` counts motors, bearings and drivers. It counts no
-  screw, nut or insert, and the build page tells the reader to keep an assortment.
-- **A joint is two unrelated statements.** A `"fastens": true` fit says two parts are held. A `holes` fit says
-  holes line up. Neither knows the screw, so nothing checks its length, its thread engagement or whether a key
-  reaches it.
-- **There are no beams.** No rule set describes a profile, and no item kind has a length. The gap analysis for
+- **Thread rule sets were thin.** `m1_6`, `m2`, `m3`, `m4` and `m5` held three to five values each (a clearance, a
+  head, sometimes a nut or an insert). None had a `part`, so `cad rules check` held them to nothing. There was no
+  pitch, tap drill, pilot, second head form, washer, or any size above M5. Since then, `@rulecad/rules` holds thread
+  sets from M1.6 to M12 and 4-40 to 3/8-16, each with those figures.
+- **Motors kept a private table.** `@rulecad/motors` mapped thread names to those sets itself. No other package could
+  ask what an M3 screw is. Since the migration, motors takes its screws from `@rulecad/fixings`.
+- **Designs repeated the arithmetic.** 116 variables in 54 example and template objects described a screw by hand,
+  and 66 more in the worked examples. `m3.clearance + x1c.hole_comp` was written out 46 times. An M3 self-tapping
+  pilot was typed as `2.9` forty times. Since the migration, the inventory (`scripts/fixings-inventory.mjs`) counts
+  none: every hole comes from `v.fixings`, and the few figures kept by hand are listed in the script with a reason.
+- **A measured result had nowhere to go.** The fit bar measured M3 pilots (2.9 and 3.0 mm drawn both hold a screw
+  straight in PLA). It was recorded in a table and read by no design. Since then it is the printer's rule
+  `x1c.pilot_m3`, which `v.fixings` reads for an M3 pilot on that printer.
+- **Screws were missing from the shopping list.** `cad list` counted motors, bearings and drivers. It counted no
+  screw, nut or insert, and the build page told the reader to keep an assortment of screws. Since the migration,
+  `cad list` counts every screw, nut and insert a `fasten` chose, by length and in packs, and the advice to keep an
+  assortment is gone.
+- **A joint was two unrelated statements.** A `"fastens": true` fit said two parts are held. A `holes` fit said
+  holes line up. Neither knew the screw, so nothing checked its length, its thread engagement or whether a key
+  reached it. Since the migration, a screwed joint is a `fasten` entry, which checks all three, and `cad check`
+  suggests one where it finds the two older fits on a pair.
+- **There were no beams.** No rule set described a profile, and no item kind had a length. This is still so until
+  the frames plan (section 4) is built. The gap analysis for
   machines (`docs/robots-gap-analysis.md`) lists 2020 and 2040 extrusion, T-nuts and brackets as needed for a
   plotter and a printer.
 
@@ -211,7 +220,8 @@ Three guards make this safe:
   point of the change.
 
 After step 8 the shopping lists for the arm and the leg count their M3 screws, and the sentence telling the builder
-to keep an assortment goes.
+to keep an assortment goes. Both are done: `cad list arm/arm` lists 35 screws and 2 nuts by length (30.4 g), and no
+page in the repository tells a builder to keep an assortment.
 
 ## 4. Frames
 
