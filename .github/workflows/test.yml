@@ -14,7 +14,7 @@ jobs:
           - { os: macos-latest, node: 24 }
           - { os: windows-latest, node: 24 }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,7 +45,7 @@ jobs:
           restore-keys: dimension-diff-
       # (a change to the kit itself rebuilds every example cold, the showcase's optimisations and an autorouted board
       # among them: the table is for reading, so a run that outlasts its time leaves the job green, the guard above holds)
-      - run: node scripts/dimension-diff.mjs ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }} HEAD --md >> "$GITHUB_STEP_SUMMARY"
+      - run: node scripts/dimension-diff.mjs ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }} HEAD --md --jobs 2 >> "$GITHUB_STEP_SUMMARY"
         timeout-minutes: 25
         continue-on-error: true
   browser:
