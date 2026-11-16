@@ -47,6 +47,7 @@ import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf } from './beams.mjs';
+import { expandJoins, joinChecks } from './joins.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -79,7 +80,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const outer = overrides;
   const [project, name] = ref.split('/');
   if (stack.includes(ref)) throw new Error(`assembly ${ref} contains itself (${[...stack, ref].join(' → ')})`);
-  const a = readJson(assemblyPath(ref));
+  let a = readJson(assemblyPath(ref));
   // A pose may set items' variables as well as joints ("cocked": { "run": -30, "action.travel": 25 }): a flexure bent
   // as the pose bends it, while the part itself is printed as drawn. The pose being built sets them on its items.
   const itemSets = (name) => { const out = {}; for (const [k, v] of Object.entries(a.poses?.[name] || {})) if (k.includes('.')) { const [item, ...rest] = k.split('.'); (out[item] ||= {})[rest.join('.')] = v; } return out; };
@@ -104,6 +105,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     return v;
   };
   const num = (x) => evaluate(x, lookup);
+  // Joins between beams (lib/joins.mjs): their operations go on the beams and their screws into fasten before anything is built
+  let joins = [];
+  if (a.joins != null) ({ a, joins } = expandJoins(a, num));
   const { translate, rotate, transform } = jscad.transforms, deg = Math.PI / 180;
 
   const items = [], parts = [], objects = [], fits = [], requires = [];
@@ -303,7 +307,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -933,6 +937,7 @@ export function checkAssembly(s) {
   }
   boughtFindings(s, f);
   beamFindings(s, f);
+  joinChecks(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });

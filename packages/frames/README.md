@@ -286,7 +286,7 @@ b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm
 | `cut` | A square cut to length. Each end with no cut or mitre of its own gets one (`implied: true`) | `a`, `b` | |
 | `mitre` | An end cut at an angle from square, seen on a named face | `a`, `b` | `angle` (above 0, under 90), `about` (the face), `long` (the side the length is on) |
 | `tap` | A thread cut in an end bore. `ends: 'tapped'` is the same | `a`, `b`, `a.1` | `thread` (default the profile's `bore_thread`), `depth` |
-| `access` | A hole across the beam, in line with a slot, through its floor, for a key | a face | `thread` (sizes it for that screw's key) or `diameter`, `depth` |
+| `access` | A hole across the beam, in line with a slot, through its floor, for a key | a face | `thread` (sizes it for that screw's key) or `diameter`, `depth`, `through` (`wall`, the default, or `beam`: every wall on its line, to the slot on the far side) |
 | `drill` | A hole through one wall or right through, plain or tapped | a face | `thread` and `kind` (clearance, close, loose, tap) or `diameter`; `through` (`wall`, the default, or `beam`); `depth` |
 | `counterbore` | A seat for a head in a face, with the screw's hole through the wall | a face | `thread`, `head`, `diameter`, `depth` |
 | `pocket` | A milled pocket | a face | `size` (`[along, across]`) or `outline` (points about the address), `radius`, `depth` |
