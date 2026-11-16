@@ -73,7 +73,7 @@ npx cad new home/hook
 ```
 
 That makes `projects/home/objects/hook.json` and `hook.js` from a template. Replace the `.json` with the hook's
-variables. The screw's sizes come from the `m4` rule set, which is copied into `rules/` the first time it is used:
+variables. The screw's hole comes from the shape below, which asks `v.fixings` for it by the screw's thread:
 
 ```json projects/home/objects/hook.json
 {
@@ -81,33 +81,37 @@ variables. The screw's sizes come from the `m4` rule set, which is copied into `
   "name": "hook",
   "title": "Wall hook",
   "version": "0.1.0",
-  "uses": ["x1c", "m4"],
+  "uses": ["x1c"],
   "material": "PETG",
   "orientation": "On its side, so the layers run along the arm and it can't snap off across them.",
   "variables": {
     "width": { "value": 20, "unit": "mm", "rule": "Wide enough for a coat's loop", "label": "Width", "show": true, "tweak": { "min": 10, "max": 60 } },
     "plate": { "value": 50, "unit": "mm", "rule": "The back plate: room for a screw above the arm", "label": "Plate", "show": true },
     "reach": { "value": 30, "unit": "mm", "rule": "How far the arm stands out from the wall", "label": "Reach", "show": true, "tweak": { "min": 15, "max": 60 } },
-    "thick": { "value": "x1c.line * 10", "unit": "mm", "rule": "Ten print lines: stiff enough for a coat" },
-    "hole": { "value": "m4.clearance + x1c.hole_comp", "unit": "mm", "rule": "An M4 screw's clearance hole, widened for how holes print", "interface": true }
+    "thick": { "value": "x1c.line * 10", "unit": "mm", "rule": "Ten print lines: stiff enough for a coat" }
   }
 }
 ```
 
 Then the shape. `main(v)` gets the variables as `v`, with the rule sets (`v.x1c.line`), print-aware shapes
-(`v.shapes`) and booleans (`v.ops`). Z is up and the bed is z = 0: draw the part the way it will print.
+(`v.shapes`), screws, nuts and inserts (`v.fixings`) and booleans (`v.ops`). Z is up and the bed is z = 0: draw the
+part the way it will print.
+
+`v.fixings.hole('M4', ...)` is a clearance hole for an M4 screw, sized from the `m4` rule set: 4.5 mm, the normal
+clearance ISO 273 gives, plus the printer's `x1c.hole_comp` (0.1 mm), since a printed hole comes out small. Lying on
+its side, it is drawn as a teardrop, so its roof needs no support. The check says what it was drawn to.
 
 ```js projects/home/objects/hook.js
-// A wall hook: a back plate with a screw hole, and an arm. It lies on its side to print (z is its width).
+// A wall hook: a back plate with a hole for an M4 screw, and an arm. It lies on its side to print (z is its width).
 import jscad from '@jscad/modeling'
 const { cuboid } = jscad.primitives
 
 export function main (v) {
   const plate = cuboid({ size: [v.plate, v.thick, v.width], center: [0, v.thick / 2, v.width / 2] })
   const arm = cuboid({ size: [v.thick, v.reach, v.width], center: [(v.thick - v.plate) / 2, v.thick + v.reach / 2, v.width / 2] })
-  // a hole across the part as it prints: a teardrop, so its roof needs no support. It is a line longer than the
-  // plate is thick, so it comes out of the back cleanly
-  const screw = v.shapes.teardropHole({ d: v.hole, length: v.thick + v.x1c.line, at: [v.plate / 2 / 2, v.thick, v.width / 2], into: '-y' })
+  // the screw's hole across the part as it prints, from the plate's face out through its back: v.fixings sizes it
+  // from the thread's rule set and draws it as a teardrop, so its roof needs no support
+  const screw = v.fixings.hole('M4', { depth: v.thick, at: [v.plate / 2 / 2, v.thick, v.width / 2], into: '-y' })
   return v.ops.subtract(v.ops.union(plate, arm), screw)
 }
 ```
@@ -129,7 +133,8 @@ The check names mistakes rather than drawing something else. The ones everyone m
 |---|---|
 | a number in the `.js`: `v.plate / 4` | `numbers in hook.js that should be variables: line 10: 4` |
 | a variable that isn't there: `v.thik` | `v.thik: the design has no variable "thik" (did you mean "thick"?)` |
-| a rule that isn't there: `m4.clearence` | `"m4.clearence": no rule "clearence" in m4 (hook.json: variables.hole.value)` |
+| a rule that isn't there: `x1c.lien` | `"x1c.lien": no rule "lien" in x1c (hook.json: variables.thick.value)` |
+| a thread that isn't there: `v.fixings.hole('M44', ...)` | `fixingModel: no thread "M44" (did you mean M4?)`, with the threads there are |
 | a misspelt key in the `.json`: `"lable"` | `variables.thick.lable: not allowed here (did you mean "label"?)` |
 | nothing returned from `main` | `main() returned no shape: return a JSCAD solid, or named parts` |
 
@@ -153,7 +158,6 @@ npx cad new home/screw
   "version": "0.1.0",
   "role": "reference",
   "variables": {
-    "d": { "value": 4, "unit": "mm", "rule": "An M4 screw's thread", "interface": true },
     "length": { "value": 16, "unit": "mm", "rule": "Long enough to go through the plate into a wall plug" },
     "sides": { "value": 32, "rule": "Sides drawn round the shank" }
   }
@@ -161,11 +165,13 @@ npx cad new home/screw
 ```
 
 ```js projects/home/objects/screw.js
-// An M4 screw's shank, lying along y: something the hook fits, not something to print.
+// An M4 screw's shank, lying along y: something the hook fits, not something to print. Its diameter is the thread's
+// own, from the same rule set as the hook's hole.
 import jscad from '@jscad/modeling'
 
 export function main (v) {
-  return jscad.transforms.rotateX(Math.PI / 2, jscad.primitives.cylinder({ radius: v.d / 2, height: v.length, segments: v.sides }))
+  const thread = v.fixings.fixingModel('M4')
+  return jscad.transforms.rotateX(Math.PI / 2, jscad.primitives.cylinder({ radius: thread.major / 2, height: v.length, segments: v.sides }))
 }
 ```
 
@@ -199,8 +205,12 @@ Hook on its screw (fit: hook 0.1.0, screw 0.1.0)
   ✓ The screw in its hole: closest gap 0.295 mm
 ```
 
-Change `hole` in the hook to something too tight and the check fails with the number. That is the loop: rules, a
-shape from them, and a check against the thing it meets.
+Ask `v.fixings` for an M3 hole in the hook and the check fails with the number: the M4 screw overlaps it. That is
+the loop: rules, a shape from them, and a check against the thing it meets.
+
+A screw that holds printed parts to each other gets more than a fit: a `fasten` says which parts it passes through
+and what it ends in, and the check chooses its length, finds its holes, and puts it on the shopping list. The worked
+examples screw a board into its case with one (chapter 6) and explain it in full in chapter 15.
 
 ## 7. Share it
 

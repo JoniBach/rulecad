@@ -311,7 +311,7 @@ screwed into it.
     "mcu_gap": { "value": 2, "unit": "mm", "rule": "Between the keys and the Pico" },
     "mcu_side": { "value": "left", "choice": ["left", "right"], "rule": "Which way the Pico's USB faces" },
     "mcu_row": { "value": 0, "rule": "Which key row the Pico sits beside" },
-    "mount_holes": { "value": 1, "rule": "M2 holes in the corners" },
+    "mount_holes": { "value": 1, "rule": "A mounting hole in each corner: the recipe names each by its screw's thread, below" },
     "controller": { "value": "beside", "choice": ["beside", "under"], "rule": "The Pico beside the keys" }
   }
 }
@@ -400,7 +400,8 @@ wall where `m2.insert_wall` asks 1.3 mm, and joins the wall beside it. The case 
 
 The board sits on the bosses, and one `fasten` holds it: M2 cap screws down the board's own holes (`"holes":
 "pad.board"`) into the case. The check finds the four holes in the board, follows each screw's axis into its boss, and
-chooses the length.
+chooses the length. Chapter 15 explains `fasten` in full: every finding it makes, nuts, countersunk heads, and the
+order the screws go in.
 
 ```json projects/home/assemblies/padcase.json
 {
@@ -508,7 +509,7 @@ moves the slide π × 14 × 1 = 43.98 mm.
     "teeth": { "value": 14, "rule": "Few teeth for a fine travel a turn" },
     "shift": { "value": 0.2, "rule": "Profile shift: 14 teeth at 20° need at least 0.19, or they are undercut" },
     "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "Face width, thirty layers" },
-    "bore": { "value": 3.2, "unit": "mm", "rule": "An M3 screw as its axle, 0.2 mm clear" },
+    "bore": { "value": 3.2, "unit": "mm", "rule": "The bore, turning on the base's printed axle: the base sizes its pin from it (rail.pin)" },
     "knob": { "value": 5.5, "unit": "mm", "rule": "The knob's radius, inside the teeth's roots" },
     "grip": { "value": "x1c.layer * 40", "unit": "mm", "rule": "The knob's height, forty layers" }
   }
@@ -669,7 +670,7 @@ planets, the carrier with the planets' pins and the crank arm, and the crank's h
     "snap_lip": { "value": 0.3, "unit": "mm", "rule": "The barb's lip, clicking over the floor of the ring's counterbore" },
     "snap_back": { "value": 90, "unit": "deg", "rule": "A square back: it holds for good" },
     "snap_at": { "value": 30.6, "unit": "mm", "rule": "Halfway across the ring's rim, between its roots and its outside" },
-    "snap_length": { "value": 4, "unit": "mm", "rule": "Up the ring's 6 mm rim to its 2 mm counterbore" },
+    "snap_length": { "value": 4, "unit": "mm", "rule": "Up the ring's 6 mm rim, to the 2 mm step at its top the barb clicks over" },
     "flange": { "value": 2, "unit": "mm", "rule": "A push pin's foot flange, buried in the rim" },
     "hub": { "value": 12, "unit": "mm", "rule": "Round the sun's axle" },
     "spoke": { "value": "x1c.line * 12", "unit": "mm", "rule": "Three spokes from the hub to the rim" },
@@ -711,7 +712,7 @@ export function main (v) {
     "clear": { "value": "x1c.line / 2", "unit": "mm", "rule": "Half a line round a pin" },
     "snap_at": { "value": 30.6, "unit": "mm", "rule": "As the case's pins" },
     "counterbore": { "value": 2, "unit": "mm", "rule": "Deep enough that a barb clicks below the ring's top, clear of the crank arm" },
-    "barb": { "value": 1.6, "unit": "mm", "rule": "The counterbore's radius: the barb and its clearance" },
+    "barb": { "value": 1.6, "unit": "mm", "rule": "The radius of the step the barb sits in: the barb, and room round it" },
     "module": { "value": 1, "unit": "mm", "rule": "3.6 lines across a tooth on the X1C" },
     "teeth": { "value": 54, "rule": "The sun and two planets across: 18 + 2 × 18" },
     "width": { "value": "x1c.layer * 30", "unit": "mm", "rule": "Face width, thirty layers: plenty for a spool's pull" }
