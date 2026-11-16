@@ -751,6 +751,9 @@ test('screwGroup: a load shared between screws, across the joint by distance fro
   const tipped = screwGroup([[-12, 0], [12, 0]], { force: [0, 10, 0], at: [0, 0, 10], pivot: 5 }); for (const s of tipped.screws) near(s.tension, 100 / (2 * 5), 1e-3, 'tipped about an edge 5 mm off');
   // one screw: a twist it cannot hold by shear is said as turns
   assert.equal(screwGroup([[0, 0]], { moment: [0, 0, 0.1] }).turns, 0.1);
+  // ...but a twist that rounds to 0 N·m (a clip's own weight, a hair off its screw's axis) is none: nothing to warn of
+  assert.equal(screwGroup([[0, 0]], { moment: [0, 0, 0.0004] }).turns, null);
+  assert.equal(screwGroup([[0, 0]], { moment: [0, 0, 0.0006] }).turns, 0.001);
   assert.throws(() => screwGroup([], {}), /places lists each screw's \[x, y\]/); assert.throws(() => screwGroup([[0, 0]], { force: [1, 'a'] }), /force is \[x, y, z\] in numbers/);
 });
 
