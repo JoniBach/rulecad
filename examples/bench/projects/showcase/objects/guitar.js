@@ -6,9 +6,11 @@ const { extrudeLinear } = jscad.extrusions
 const { rotateX, translate } = jscad.transforms
 
 export function main (v) {
+  // The screw holes: a 4 mm wall screw's shank passes the clearance hole ISO 273 gives a 4 mm screw (M4's), from v.fixings
+  const screw = v.fixings.holeModel('M4').diameter
   const result = v.problems[v.problem], solid = v.shapes.optimisedSolid(result, { ops: v.ops, segments: v.smooth })
   const bosses = result.regions.keep.filter((k) => k.r != null) // the round keeps are the screw bosses
-  const holes = bosses.map((k) => cylinder({ radius: v.screw / 2, height: k.length + 2, center: [k.at[0], k.at[1], k.at[2]], segments: v.smooth }))
+  const holes = bosses.map((k) => cylinder({ radius: screw / 2, height: k.length + 2, center: [k.at[0], k.at[1], k.at[2]], segments: v.smooth }))
   // A gable under each pad (the box keeps): two faces a touch steeper than 45° (booleans tip a 45° face by hundredths of a
   // degree) meeting at a ridge, so the pad's underside is self-supporting where the optimiser's struts meet it from one side
   const gables = result.regions.keep.filter((k) => k.size).map((k) => {
