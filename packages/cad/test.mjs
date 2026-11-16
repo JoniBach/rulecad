@@ -2821,6 +2821,94 @@ test('beam cut list and sheets: a box of twelve beams lists three lengths, the b
   } finally { done(); }
 });
 
+test('slot nuts: a plate on a beam between two joins with slide-in nuts fails frame.nut and passes with drop-ins; another slot\'s two nuts are loaded before its corner is closed; fasten.slot catches a plate drawn for another slot spacing', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/frame.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    const t = (value, rule, min, max) => ({ value, unit: 'mm', rule, tweak: { min, max } });
+    // a plate with two M4 clearance holes, pitch apart along its length; a cap for a beam's end
+    object(ws, 'frame/plate', { uses: ['x1c'], variables: { pitch: t(20, 'Between the holes', 5, 60), thick: t(3, 'The plate', 2, 10), length: t(40, 'Its length', 20, 100) } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const plate = cuboid({ size: [v.length, 20, v.thick], center: [0, 0, v.thick / 2] })
+  return v.ops.subtract(plate, ...[-1, 1].map((s) => v.fixings.hole('M4', { depth: v.thick, at: [s * v.pitch / 2, 0, v.thick] })))
+}
+`);
+    object(ws, 'frame/cap', {}, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5] }) }
+`);
+    const pj = JSON.parse(fs.readFileSync(at('project.json'), 'utf8')); fs.writeFileSync(at('project.json'), JSON.stringify({ ...pj, material: 'PLA' }));
+    // x1 runs between two posts, a blind join at each end, so both ends of its slots are closed; y1 stands on p1's top
+    // face at a corner (its end a joined) and is capped at end b by a foot. A plate on each, on two M4 screws.
+    const beam = (id, from, to) => ({ id, beam: { profile: '2020-misumi-hfs5' }, from, to });
+    const a = { title: 'Frame', kind: 'fit', items: [beam('p1', [-10, 0, -120], [-10, 0, 80]), beam('p2', [310, 0, -120], [310, 0, 80]), beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [-10, 10, 50], [-10, 210, 50]),
+      { id: 'foot', object: 'cap', at: 'y1.b' }, { id: 'plate', object: 'plate', at: [150, 0, 10] }, { id: 'plate2', object: 'plate', at: [-10, 110, 60], rotate: [0, 0, 90] }],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'p1.back@120' }, { kind: 'blind', a: 'x1.b', b: 'p2.front@120' }, { kind: 'blind', a: 'y1.a', b: 'p1.top@170' }],
+      fasten: [{ screw: 'M4 button', through: ['plate'], into: 'x1.top', holes: 'plate.body', nut: 'slide-in' }, { screw: 'M4 button', through: ['plate2'], into: 'y1.top', holes: 'plate2.body', nut: 'slide-in' }] };
+    const write = (x = a) => fs.writeFileSync(file, JSON.stringify(x));
+    write();
+    const probe = (order = false) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/frame'), out = { hardware: s.hardware.map((h) => [h.fasten, h.kind, h.name]), findings: checkAssembly(s).filter((f) => /^(fasten|frame\\.(nut|preload)|join\\.geometry|overlap)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) };
+      if (${order}) { const { buildData } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/buildpage.mjs')).href)}); out.order = (await buildData(s)).build.order; }
+      console.log(JSON.stringify(out));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r = probe(true);
+    const by = (code, fasten) => r.findings.filter((x) => x.code === code && (fasten == null || x.refs?.fasten === fasten));
+    // into a slot: the nut is the one made for the slot and thread, of the kind asked, two per plate with an M4x8 each
+    assert.deepEqual(r.hardware.filter((h) => h[0] < 2), [[0, 'screw', 'M4x8 button'], [0, 'nut', 'slot-nut-6-misumi-m4-slide-in'], [0, 'screw', 'M4x8 button'], [0, 'nut', 'slot-nut-6-misumi-m4-slide-in'],
+      [1, 'screw', 'M4x8 button'], [1, 'nut', 'slot-nut-6-misumi-m4-slide-in'], [1, 'screw', 'M4x8 button'], [1, 'nut', 'slot-nut-6-misumi-m4-slide-in']]);
+    for (const code of ['fasten.holes', 'fasten.slot', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'fasten.access', 'overlap', 'join.geometry']) assert.deepEqual([...new Set(by(code).map((x) => x.level))], ['pass'], `${code}: ${JSON.stringify(by(code).filter((x) => x.level !== 'pass'))}`);
+    assert.deepEqual(by('fasten.slot', 0).map((x) => [x.values.distance, x.values.play, x.values.along]), [[0, 0.3, 140], [0, 0.3, 160]]);
+    assert.match(by('fasten.end', 0)[0].text, /ends in a slide-in nut under the lips of x1's top slot: slot-nut-6-misumi-m4-slide-in, 4\.1 mm of M4 thread from 1\.2 to 5\.3 mm under the face, the slot's floor at 6 mm/);
+    // the length: 3 mm of plate and the 2 mm lip under the head, a hex nut's height of thread (3.2 mm), the tip off the floor
+    assert.match(by('fasten.length', 0)[0].text, /M4x8 button chosen, the shortest sold that fits: 5 mm under its head \(plate and the slot's 2 mm lip\), 3\.8 mm into its nut, its tip 5 mm into the slot and 1 mm short of its floor/);
+    assert.deepEqual(by('fasten.engagement', 0).map((x) => x.values), [{ engaged: 3.8, need: 3.2, turns: 5.4 }]);
+    // x1's slot is closed at both ends by joins: the slide-in nuts fail frame.nut, which names the drop-in
+    assert.deepEqual(by('frame.nut', 0).map((x) => [x.level, x.refs.joins, x.refs.alternative]), [['fail', [0, 1], 'slot-nut-6-misumi-m4-drop-in']]);
+    assert.match(by('frame.nut', 0)[0].text, /2 slide-in nuts \(slot-nut-6-misumi-m4-slide-in\) go into x1's top slot at 140 and 160 mm, between x1's end a \(the blind join of x1\.a to p1\.back@120\) and x1's end b \(the blind join of x1\.b to p2\.front@120\), which close it at both ends: a slide-in nut goes in only from an open end\. slot-nut-6-misumi-m4-drop-in \(an M4 drop-in nut\) goes in through the opening anywhere: give "nut": "drop-in"/);
+    // y1's slot: closed at its corner by a join and capped at the other end, so its two nuts go in before the corner is made
+    assert.deepEqual(by('frame.nut', 1).map((x) => x.level), ['pass']);
+    assert.deepEqual(by('frame.preload').map((x) => [x.level, x.values.nuts, x.refs.item, x.refs.join, x.refs.end]), [['info', 2, 'y1', 2, 'a']]);
+    const load = 'load 2 × slot-nut-6-misumi-m4-slide-in into y1\'s top slot through its end a, for plate2, before the blind join of y1.a to p1.top@170 closes it (or through end b before foot goes on)';
+    assert.equal(by('frame.preload')[0].text, `plate2 to y1.top: ${load}`);
+    // the build page and cad order list them at the step that makes that join: before y1 goes on
+    assert.deepEqual(r.order.steps.filter((st) => st.load).map((st) => [st.items, st.load]), [[['y1'], [load]]]);
+    assert.match(cad('order', 'frame/frame'), new RegExp(`first, ${load.replace(/[().@×]/g, '\\$&')}\\n\\s+\\d+\\. y1 \\(beam:profile-2020-misumi-hfs5\\) goes on`));
+    // with drop-ins, x1's plate passes frame.nut: they go in through the opening; cad list counts the nuts by name
+    a.fasten[0].nut = 'drop-in'; write();
+    r = probe();
+    assert.deepEqual(by('frame.nut').map((x) => [x.refs.fasten, x.level]), [[0, 'pass'], [1, 'pass']]);
+    assert.match(by('frame.nut', 0)[0].text, /2 drop-in nuts \(slot-nut-6-misumi-m4-drop-in\) go into x1's top slot through its opening, anywhere along it/);
+    assert.match(cad('list', 'frame/frame'), /2 ×\s+slot-nut-6-misumi-m4-drop-in\s+.*plate to x1\.top/);
+    // a plate drawn for slots 30 mm apart across a 2040's top face, whose slots are 20 mm apart: each screw 5 mm off
+    const wide = JSON.parse(JSON.stringify(a));
+    wide.items[2].beam.profile = '2040-misumi-hfs5'; wide.items[2].from = [0, 0, 10]; wide.items[2].to = [300, 0, 10]; wide.joins = [];
+    wide.items[5] = { id: 'plate', object: 'plate', at: [150, 0, 20], rotate: [0, 0, 90], set: { pitch: 30 } };
+    write(wide); r = probe();
+    assert.deepEqual(by('fasten.slot', 0).map((x) => [x.level, x.values.distance, x.values.play]), [['fail', 5, 0.3], ['fail', 5, 0.3]]);
+    assert.match(by('fasten.slot', 0)[0].text, /plate's hole is 5 mm off the centre line of x1's top\.[12] slot, where its 4\.6 mm hole lets an M4 screw move 0\.3 mm: the screw meets the face beside the slot, not its nut\. x1's top slots are 20 mm apart/);
+    // a 4 mm plate: no sold M4 length has a nut's height of thread and stops short of the floor
+    const thick = JSON.parse(JSON.stringify(a)); thick.items[5].set = { thick: 4 }; thick.items[5].at = [150, 0, 10]; thick.fasten.length = 1; write(thick);
+    r = probe();
+    assert.deepEqual(by('fasten.length', 0).map((x) => x.level), ['fail']);
+    assert.match(by('fasten.length', 0)[0].text, /no M4 button screw is sold from 8\.4 to 9\.7 mm long, what 6 mm under its head \(plate and the slot's 2 mm lip\) leaves: 3\.2 mm in the nut and 0\.3 mm kept off the slot's floor \(M4x8 engages too little, M4x10 reaches the floor\)/);
+    // M4x10 given: it reaches the floor
+    thick.fasten[0].screw = 'M4x10 button'; write(thick); r = probe();
+    assert.match(by('fasten.length', 0)[0].text, /M4x10 button reaches the slot's floor: with 6 mm under its head its tip goes 6 mm into x1's top slot, whose floor is 6 mm under the face/);
+    // refused by name: a slot the face has not got, a kind not made for the thread, a slot nut's kind into a part
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/frame'), pattern); };
+    refused((b) => { b.fasten[0].into = 'x1.top.2'; }, /fasten 1: x1's top face has 1 slot: into names x1\.top\.1/);
+    refused((b) => { b.fasten[0].screw = 'M5 button'; b.fasten[0].nut = 'drop-in'; }, /fasten 1: no M5 drop-in nut is made for profile-2020-misumi-hfs5's top face/);
+    refused((b) => { b.fasten[0].nut = 'wing'; }, /fasten 1: into a slot, "nut" is the slot nut's kind, slide-in, drop-in/);
+    refused((b) => { b.fasten[0].into = 'plate2'; }, /fasten 1: "nut" is true \(a hexagon nut\) or hex, square, lock \(got "drop-in"\): a drop-in nut goes in a beam's slot, so "into" names the slot \(x1\.top\)/);
+    refused((b) => { b.fasten[0].into = 'x1.top@400'; }, /fasten 1: "top\.1@400" is past the end of/);
+    write(); assert.match(cad('check', 'frame/frame'), /files match their schemas/);
+  } finally { done(); }
+});
+
 test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a beam item takes one by name', async () => {
   const { ws, cad, done } = workspace();
   try {
