@@ -1090,7 +1090,9 @@ slide moves, and that the slide holds with the power off: the 28BYJ-48's own gea
 turn it back with. The torque's line ends `(rests on community figures: measure it)`, because that's what its torque is.
 `motor.mount` bends the rail under the motor by FE, held where its feet are screwed on: the shaft's tip moves a few
 thousandths of a millimetre against the pinion's seat on the rail, far inside the 0.2 mm the pinion is drawn with. A NEMA 17 hung from a 2 mm PLA plate would
-fail the same check, and say how thick the plate would need to be.
+fail the same check, and say how thick the plate would need to be. Each foot's `fasten` passes: an M3x10 cap, the
+shortest sold that fits, 5.4 mm into the foot's 2.9 mm pilot against the 5 mm `m3.pilot_depth` asks, its head flat on
+the rail and a 2.5 mm hex key clear above it. `npx cad list home/driven` lists the two, beside the motor's own two M3x8.
 
 ### The spool winder, driven
 
@@ -1351,7 +1353,8 @@ bore, and the motor gives `0.45 N m there against 0.2 N m needed, 2.25 times ove
 from the 100:1 gearbox's, so measure it. It takes a DC motor's working speed as half its free speed: the reel at
 about 26 rpm, a turn in 2.3 s, about 2 m of strap a minute onto the bare drum. `npx cad preview home/winder-driven`
 draws the motor's curve beside the picture, with that point on it: against the 0.2 N m load alone it would run nearer
-40 rpm. Printed, it's 51 g in ten parts, the reel 19 g of it.
+40 rpm. Printed, it's 51 g in ten parts, the reel 19 g of it. The feet take three M3x8 caps through the 3 mm ears, 5 mm
+into their pilots, and the motor its two M1.6x3.
 
 It warns that nothing says whether the spool holds with the power off. It doesn't: an N20's spur gearbox can be turned
 back from its shaft, and the planetary is no help, since a pull on the reel turns the motor four times as fast the
@@ -1629,7 +1632,8 @@ npx cad check home/shoulder
 The check says the output ring turns 1/38 of the motor's turn, the other way; that 7.44 N m reaches the joint at 300 rpm
 against the 0.735 N m it needs at its worst, ten times over; that it turns a full turn in 7.6 s at that speed; and
 that the gears, under 50% efficient, hold it with the power off. `npx cad check home/shoulder --sweep --steps 24` turns the
-motor all the way round and finds no teeth touching, and neither do the output ring's steps.
+motor all the way round and finds no teeth touching, and neither do the output ring's steps. Each clip's `fasten`
+chooses an M3x8 cap, 5 mm into its post's pilot.
 
 Ten times over is more margin than the job needs, but the gearbox is the size it is for what the motor could do to it, not
 the arm: stalled against a stop, the 7.44 N m at the output puts 33 MPa on the planets' top teeth (`strength`, the Lewis
