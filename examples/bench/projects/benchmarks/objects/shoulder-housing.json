@@ -84,16 +84,6 @@
       "unit": "mm",
       "rule": "The NEMA 17's hole square"
     },
-    "hole": {
-      "value": 3.5,
-      "unit": "mm",
-      "rule": "M3 clearance"
-    },
-    "head": {
-      "value": 6.4,
-      "unit": "mm",
-      "rule": "An M3 head and its clearance"
-    },
     "sink": {
       "value": 3.2,
       "unit": "mm",
@@ -118,11 +108,6 @@
       "value": 25.7,
       "unit": "mm",
       "rule": "To just over the output ring's flange"
-    },
-    "pilot": {
-      "value": 2.9,
-      "unit": "mm",
-      "rule": "An M3 screw, self-tapped"
     },
     "pilot_depth": {
       "value": 8,

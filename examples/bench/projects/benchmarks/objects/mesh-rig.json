@@ -87,11 +87,6 @@
       "unit": "mm",
       "rule": "The stand's hole square"
     },
-    "hole": {
-      "value": 3.5,
-      "unit": "mm",
-      "rule": "M3 clearance"
-    },
     "teeth_a": {
       "value": 14,
       "rule": "The pinion"
@@ -127,11 +122,6 @@
       "value": 11,
       "unit": "mm",
       "rule": "Through a gear and its lever, and its washer"
-    },
-    "pilot": {
-      "value": 2.9,
-      "unit": "mm",
-      "rule": "A screw and washer keep the gear on"
     },
     "pilot_depth": {
       "value": 9,

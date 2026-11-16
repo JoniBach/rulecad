@@ -78,11 +78,6 @@
       "unit": "mm",
       "rule": "Clear of the plate"
     },
-    "pilot": {
-      "value": 2.9,
-      "unit": "mm",
-      "rule": "An M3 screw, self-tapped"
-    },
     "bolt": {
       "value": 10,
       "unit": "mm",
