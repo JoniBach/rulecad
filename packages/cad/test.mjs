@@ -695,8 +695,8 @@ test('a holes fit follows a board\'s mounting holes into what they screw into: i
     fs.writeFileSync(path.join(ws, 'rules/demo.json'), JSON.stringify({ name: 'demo', rules: { insert: { value: 3, unit: 'mm', rule: 'Insert depth', kind: 'spec' } } }));
     object(ws, 'demo/board', { engine: 'pcb', role: 'board', uses: ['jlcpcb'], parts: { board: { label: 'PCB' } }, variables: {
       w: { value: 30, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, thickness: { value: 'jlcpcb.thickness', unit: 'mm', rule: 'Standard' },
-      hx: { value: 11, unit: 'mm', rule: 'Hole from the centre' }, hd: { value: 2.4, unit: 'mm', rule: 'M2 clearance' } } },
-    'export function main (v) { return { center: { x: 0, y: 0 }, width: v.w, height: v.d, thickness: v.thickness, parts: [], traces: [], silk: [], holes: [-1, 1].map((s) => ({ x: s * v.hx, y: 0, d: v.hd })) } }\n');
+      hx: { value: 11, unit: 'mm', rule: 'Hole from the centre' } } },
+    "export function main (v) { return { center: { x: 0, y: 0 }, width: v.w, height: v.d, thickness: v.thickness, parts: [], traces: [], silk: [], holes: [-1, 1].map((s) => v.pcb.mount('M2', s * v.hx, 0)) } }\n"); // (named by thread: m2.clearance, as drilled)
     const block = (offset) => `import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives, { translate } = jscad.transforms, { subtract } = jscad.booleans
 export function main (v) {
@@ -710,6 +710,20 @@ export function main (v) {
     fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/stack.json'), JSON.stringify({ title: 'Board on block', kind: 'fit', uses: ['demo'], items: [{ id: 'blk', object: 'block' }, { id: 'pcb', object: 'board' }],
       fits: [{ holes: 'pcb.board', into: 'blk.body', depth: 'demo.insert', label: 'Screws find their inserts' }, { a: 'pcb.board', b: 'blk.body', min: 0, max: 0.2, label: 'Board on block' }] }));
     assert.match(cad('check', 'demo/stack'), /Screws find their inserts: 2 of 2 holes clear for 3 mm, with material around each/);
+    // the same board fastened: its own holes (v.pcb.mount('M2'), 2.4 mm) held to the thread's clearance hole as the fab drills it, not as printed
+    const asm = { title: 'Board screwed to block', kind: 'fit', items: [{ id: 'blk', object: 'block' }, { id: 'pcb', object: 'board' }],
+      fasten: [{ screw: 'M2 cap', through: ['pcb'], into: 'blk', holes: 'pcb.board' }] };
+    fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/screwed.json'), JSON.stringify(asm));
+    const screwed = JSON.parse(cad('check', 'demo/screwed', '--json')).findings, of = (c) => screwed.filter((x) => x.code === c);
+    assert.deepEqual(of('fasten.clearance').map((x) => [x.level, x.text]), [['pass', "pcb to blk, 2 M2 cap screws: pcb's hole measures 2.4 mm, an M2 clearance hole as drilled (m2.clearance 2.4 mm)"]]);
+    assert.deepEqual(of('fasten.clearance')[0].values, { diameter: 2.4, wanted: 2.4, least: 2.2, most: 2.6 });
+    assert.equal(of('fasten.holes').filter((x) => x.level === 'pass').length, 1, JSON.stringify(of('fasten.holes')));
+    assert.match(cad('list', 'demo/screwed'), /2 ×\s+M2x\d+ cap/);
+    // a workspace's own M2 set moves the board's holes: v.pcb.mount reads it before the kit's
+    const m2 = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../rules/m2.json', import.meta.url)), 'utf8'));
+    fs.writeFileSync(path.join(ws, 'rules/m2.json'), JSON.stringify({ ...m2, rules: { ...m2.rules, clearance: { ...m2.rules.clearance, value: 2.5 } } }));
+    assert.match(cad('check', 'demo/screwed'), /pcb's hole measures 2\.5 mm, an M2 clearance hole as drilled \(m2\.clearance 2\.5 mm\)/);
+    fs.rmSync(path.join(ws, 'rules/m2.json'));
     const bj = path.join(ws, 'projects/demo/objects/block.json'), b = JSON.parse(fs.readFileSync(bj, 'utf8'));
     fs.writeFileSync(bj, JSON.stringify({ ...b, variables: { ...vars, shift: { ...vars.shift, value: 4 } } }));
     const moved = cad('check', 'demo/stack');
@@ -1487,6 +1501,12 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.equal(rules.size_x?.kind, 'derived', 'the measured model became draft rules');
     assert.match(run(ws, ['check', 'home/arm']).out, /arm down: moves [\d.]+ mm under 10 N/);
     assert.match(run(ws, ['check', 'home/pad']).out, /matrix: 4 keys on 2 rows × 2 columns/);
+    // the pad in its case (chapter 6): the board's own M2 holes followed into insert bosses from v.fixings, and the screws on the list
+    const cased = run(ws, ['check', 'home/padcase']).out;
+    assert.match(cased, /4 M2 cap screws: pad's hole measures 2\.4 mm, an M2 clearance hole/, cased);
+    assert.match(cased, /ends in case, in a heat-set insert's hole: 3\.2 mm as drawn \(m2\.insert_hole/);
+    assert.match(cased, /M2x4 cap chosen, the shortest sold that fits/);
+    assert.match(run(ws, ['list', 'home/padcase']).out, /4 ×\s+M2x4 cap[\s\S]*4 ×\s+M2 insert/);
     assert.ok(fs.readdirSync(path.join(ws, '.preview/home')).some((f) => f.endsWith('flick-sequence.svg')), 'the mechanism animated');
     const slider = run(ws, ['check', 'home/slider']).out;
     assert.match(slider, /knob drives slide: 43\.98 mm of rack a turn/, 'the gears: travel a turn');

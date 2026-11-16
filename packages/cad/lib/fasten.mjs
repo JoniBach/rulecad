@@ -404,7 +404,11 @@ export function fastenOf(s, worlds, opts = {}) {
       try { const e = F.engagement(fx, { depth: 1, material: name }); return { name, cls: e.class, known: true }; } catch { return { name, cls: p.role === 'reference' ? null : 'plastic', known: false }; }
     };
     const drawn = (kind) => { try { return F.holeModel(fx, { kind }); } catch { return null; } };
-    const clr = { close: drawn('close'), normal: drawn('clearance'), loose: drawn('loose') }, sizeTol = FASTEN.size.value;
+    const clr = { close: drawn('close'), normal: drawn('clearance'), loose: drawn('loose') }, clrOf = clr, sizeTol = FASTEN.size.value;
+    // A circuit board's holes are drilled by its fab, not printed: held to the thread's clearance holes as they stand
+    const drilled = (n) => (typeof fx.figures[n]?.value === 'number' ? { diameter: fx.figures[n].value, nominal: fx.figures[n].value, comp: 0, basis: { rule: `${fx.set}.${n}` } } : null);
+    const clrDrilled = { close: drilled('clearance_close'), normal: drilled('clearance'), loose: drilled('clearance_loose') };
+    const isBoard = (m) => m.parts.some((p) => s.objects.find((o) => o.id === p.leaf)?.built?.circuit);
 
     axes.forEach((ax, i) => {
       const sc = { index: i, name: ax.name, found: {}, hardware: [] }, say = (code, level, text, values) => { (sc.found[code] ||= []).push({ level, text, ...(values ? { values } : {}) }); };
@@ -458,7 +462,7 @@ export function fastenOf(s, worlds, opts = {}) {
         if (!holes.length) { say('fasten.holes', 'fail', `${r.name} has no hole on the screw's axis`); bad = true; continue; }
         const narrow = holes.reduce((m, seg) => (size(seg) < size(m) ? seg : m), holes[0]), d = size(narrow);
         for (const seg of holes) { const o = offAxis(seg); if (o != null && o > worst) worst = o; if (o != null && o > FASTEN.align.value) { say('fasten.holes', 'fail', `${r.name}'s hole is ${mm(o)} mm off the screw's axis: the holes do not line up`, { distance: r3(o) }); bad = true; break; } }
-        cl.push({ name: r.name, d, free: 2 * Math.min(narrow.a.free, narrow.b.free) });
+        cl.push({ name: r.name, d, free: 2 * Math.min(narrow.a.free, narrow.b.free), board: isBoard(r) });
       }
       // The far end: the hole in the last part, from its mouth
       const first = B.segs.find((seg) => seg.solid || seg.hole);
@@ -494,11 +498,12 @@ export function fastenOf(s, worlds, opts = {}) {
       if (cl.length) {
         if (!clr.normal) say('fasten.clearance', 'info', `${fx.thread} has no clearance hole in its rule set (${fx.set}): the holes it passes are not held to one`);
         else for (const c of cl) {
+          const clr = c.board && clrDrilled.normal ? clrDrilled : clrOf, as = c.board && clrDrilled.normal ? 'as drilled' : 'as drawn';
           const lo = (clr.close ?? clr.normal).diameter, hi = (clr.loose ?? clr.normal).diameter, want = clr.normal, basis = `${want.basis.rule} ${mm(want.nominal)} mm${want.comp ? ` and ${printer}.hole_comp ${mm(want.comp)} mm` : ''}`;
           const values = { diameter: r3(c.d), wanted: want.diameter, least: lo, most: hi };
-          if (c.d < lo - sizeTol) say('fasten.clearance', 'fail', `${c.name}'s hole measures ${mm(c.d)} mm where ${an(fx.thread)} ${fx.thread} screw passes through: a clearance hole should be ${mm(want.diameter)} mm as drawn (${basis}), ${mm(lo)} mm at the closest`, values);
-          else if (c.d > hi + sizeTol) say('fasten.clearance', 'warn', `${c.name}'s hole measures ${mm(c.d)} mm, wider than the loosest clearance hole for ${fx.thread}, ${mm(hi)} mm as drawn: the screw does not place the part, and the head has less to sit on (${mm(want.diameter)} mm is the normal hole)`, values);
-          else say('fasten.clearance', 'pass', `${c.name}'s hole measures ${mm(c.d)} mm, ${an(fx.thread)} ${fx.thread} clearance hole as drawn (${Math.abs(c.d - want.diameter) <= sizeTol ? basis : `between the close ${mm(lo)} mm and the loose ${mm(hi)} mm; the normal hole is ${mm(want.diameter)} mm`})`, values);
+          if (c.d < lo - sizeTol) say('fasten.clearance', 'fail', `${c.name}'s hole measures ${mm(c.d)} mm where ${an(fx.thread)} ${fx.thread} screw passes through: a clearance hole should be ${mm(want.diameter)} mm ${as} (${basis}), ${mm(lo)} mm at the closest`, values);
+          else if (c.d > hi + sizeTol) say('fasten.clearance', 'warn', `${c.name}'s hole measures ${mm(c.d)} mm, wider than the loosest clearance hole for ${fx.thread}, ${mm(hi)} mm ${as}: the screw does not place the part, and the head has less to sit on (${mm(want.diameter)} mm is the normal hole)`, values);
+          else say('fasten.clearance', 'pass', `${c.name}'s hole measures ${mm(c.d)} mm, ${an(fx.thread)} ${fx.thread} clearance hole ${as} (${Math.abs(c.d - want.diameter) <= sizeTol ? basis : `between the close ${mm(lo)} mm and the loose ${mm(hi)} mm; the normal hole is ${mm(want.diameter)} mm`})`, values);
         }
       }
       if (!end) return;

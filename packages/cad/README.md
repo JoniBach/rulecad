@@ -322,7 +322,10 @@ other items' variables, so a keycap can sit exactly where its slot meets the swi
 - **Holes fits** follow a board's mounting holes into what they screw into: `{ "holes": "pcb.board", "into":
   "case.body", "depth": "m2.insert_length" }`. Each screw's path must be clear for `depth` mm and solid within `ring`
   mm of it (default: the hole's diameter) half way down. A gap fit can't see this: a board that rests on its bosses
-  passes even when the bosses are in the wrong place. `"direction": "up"` for screws from below.
+  passes even when the bosses are in the wrong place. `"direction": "up"` for screws from below. Where the screws are
+  named, a `fasten` with `"holes": "pcb.board"` does all this and more (the length, the insert, the seat), and holds a
+  board's holes to its thread's clearance hole as the fab drills it, with nothing added for a printer (EXAMPLES,
+  chapter 6).
 - `requires` pins versions (`^` same major, at least this version, 0.x included, since a minor release never breaks a
   fit here; `~` same minor); an item can use a release: `"object": "keycap@0.2.1"`, or a variant: `"keycap:oem-r3"`.
 - The check names any `estimate` rule an assembly relies on, through its positions or its objects, so guesses get

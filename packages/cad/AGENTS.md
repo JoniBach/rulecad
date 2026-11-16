@@ -87,8 +87,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   reads the holes from the parts as drawn: one axis through the stack, a clearance hole in each part passed, a pilot,
   insert or nut at the far end, the length chosen from what is sold, thread engaged, and the seat under the head.
   Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
-- A gap fit can't tell whether holes line up. Where a board only rests on its screws' bosses, a holes fit follows them
-  (`{ "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length" }`).
+- A board screwed into its case is a `fasten` too, through the board's own mounting holes:
+  `{ "screw": "M2 cap", "through": ["pcb"], "into": "case", "holes": "pcb.board" }`, into bosses the case draws with
+  `v.fixings.insertBoss('M2', ...)` under `v.pcb.board_holes`. A gap fit can't tell whether holes line up; where no
+  screw is named, a holes fit follows them (`{ "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length" }`).
 - A part built around another (a case around its board) reads it: `"uses": ["macropad/pcb"]`, then
   `pcb.board_w` and `v.pcb.board_holes`. Never copy another object's numbers by hand.
 
@@ -96,6 +98,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - `"engine": "pcb"` in the .json; `main(v)` returns a board built with `v.pcb` (see @rulecad/pcb's README).
 - Parts come from rule sets where one exists (`v.pcb.xiao`, `qwiic`, `jstph`, `header`), or any standard footprint by
   name (`v.pcb.part('U2', 'soic8', x, y)`). Turn parts in quarter turns with `rotation`, held in a variable.
+- A board's mounting holes are named by their screws' thread, never typed: `v.pcb.mount('M2', x, y)` in its `holes`
+  is the thread's clearance hole from its rule set, as the fab drills it (`{ fit: 'close' }` or `'loose'` for the others).
 - Join pins with `nets` (`GND: ['U1.GND', 'J1.GND']`) and let the autorouter draw them; `cad check` runs the fab's
   design rules. Look at the copper preview: connectors should face the edge their plug comes from.
 

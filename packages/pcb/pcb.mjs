@@ -21,6 +21,7 @@ import { createRequire } from 'node:module';
 // set into the current folder when it reads one
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`);
 import jscad from '@jscad/modeling';
+import { fixingModel } from '@rulecad/fixings';
 
 // A rows × cols grid of keys at the key pitch, centred on the origin: [{ r, c, x, y, n }], n counting from 1, row 0
 // at the back (+y)
@@ -33,6 +34,51 @@ export function grid(rows, cols, pitch) {
 // ---------- footprints, from rules ----------
 const pad = (pin, x, y, hole, outer) => ({ pin, x, y, hole, outer }); // plated, round, relative to the part
 const hole = (x, y, d) => ({ x, y, d });
+
+// ---------- mounting holes, by thread ----------
+// Which figure of a thread's rule set each fit of hole is: ISO 273's close, normal and loose clearance holes
+const MOUNT_FITS = { clearance: 'clearance', close: 'clearance_close', loose: 'clearance_loose' };
+const shown = (x) => (x === undefined ? 'nothing' : JSON.stringify(x) ?? String(x));
+
+/**
+ * A board's mounting hole, named by its screw's thread and sized from the thread's rule set (@rulecad/fixings reads
+ * it): { x, y, d, keepout?, thread, fit } as a board's `holes` take them. The fab drills it, so the hole is the figure
+ * as it stands, with nothing added for a printer: mount('M2', x, y) is m2.clearance, 2.4 mm.
+ * @param {string} thread the screw's thread: 'M2', 'M2.5', 'M3', '4-40'
+ * @param {number} x @param {number} y where, in mm, in the board's frame
+ * @param {{ fit?: 'clearance' | 'close' | 'loose', d?: number, keepout?: number, set?: object, sets?: object }} [o]
+ *   fit: the clearance hole's fit (default the normal one); d: a hole the board's maker gives instead (a Pico's 2.1 mm),
+ *   held to pass the thread; keepout: a radius from the hole's centre the router keeps tracks out of (a screw head's
+ *   room); set: the thread's figures as a design reads them (v.m2), used first; sets: a workspace's rule sets by name,
+ *   whose set for this thread is read before the kit's (cad binds them for v.pcb.mount)
+ * @returns {{ x: number, y: number, d: number, keepout?: number, thread: string, fit: string }}
+ */
+export function mount(thread, x, y, o = {}) {
+  const what = 'mount', example = "mount('M2', 10, 5) or mount('M2', 10, 5, { fit: 'close' })";
+  if (o == null || typeof o !== 'object' || Array.isArray(o)) throw new Error(`${what}: the options are an object ({ fit, d, keepout }), not ${shown(o)}: ${example}`);
+  const known = ['fit', 'd', 'keepout', 'set', 'sets'], odd = Object.keys(o).filter((k) => !known.includes(k));
+  if (odd.length) throw new Error(`${what}: no option ${odd.map((k) => `"${k}"`).join(', ')} (there are ${known.join(', ')}): ${example}`);
+  for (const [k, n] of [['x', x], ['y', y]]) if (typeof n !== 'number' || !Number.isFinite(n)) throw new Error(`${what}: ${k} is a number, in mm in the board's frame (got ${shown(n)}): ${example}`);
+  const fit = o.fit ?? 'clearance';
+  if (!(fit in MOUNT_FITS)) throw new Error(`${what}: fit is ${Object.keys(MOUNT_FITS).join(', ')} (got ${shown(fit)})`);
+  if (o.keepout != null && !(typeof o.keepout === 'number' && o.keepout > 0)) throw new Error(`${what}: keepout is a radius above 0, in mm from the hole's centre (got ${shown(o.keepout)})`);
+  if (o.set != null && (typeof o.set !== 'object' || Array.isArray(o.set))) throw new Error(`${what}: set is the thread's figures as a design reads them (v.m2), not ${shown(o.set)}`);
+  let m;
+  try { m = fixingModel(thread, {}, { sets: o.sets }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^fixingModel: /, '')}`); } // (a name that is no thread, a thread with no rule set)
+  if (m.item !== 'thread') throw new Error(`${what}: name the thread alone ('${m.thread}'), not ${shown(thread)}: the hole is for any screw on it`);
+  if (o.set?.thread != null && String(o.set.thread) !== m.thread) throw new Error(`${what}: set is ${shown(o.set.thread)}'s figures, and the hole is for ${m.thread}`);
+  const figure = MOUNT_FITS[fit], own = o.set?.[figure], ruled = m.figures[figure]?.value;
+  let d;
+  if (o.d != null) {
+    if (!(typeof o.d === 'number' && o.d > 0)) throw new Error(`${what}: d is the hole's diameter, in mm, above 0 (got ${shown(o.d)})`);
+    if (o.d <= m.major) throw new Error(`${what}: a ${o.d} mm hole is no wider than ${m.thread}'s ${m.major} mm thread (${m.set}.major_diameter): the screw would not pass. ${m.thread}'s clearance hole is ${ruled ?? 'not in its rule set'}${ruled != null ? ' mm' : ''}`);
+    d = o.d;
+  } else {
+    d = typeof own === 'number' ? own : ruled;
+    if (typeof d !== 'number') throw new Error(`${what}: ${m.thread} has no ${figure} in its rule set (${m.set}): give the hole as d`);
+  }
+  return { ...hole(x, y, d), ...(o.keepout != null ? { keepout: o.keepout } : {}), thread: m.thread, fit: o.d != null ? 'given' : fit };
+}
 
 // An MX switch, PCB mount: two pins, the centre post and the two fixing pegs
 export function mx(name, x, y, m, sch = {}) {
@@ -141,7 +187,7 @@ export function fromLayout(list, pitch) {
 //                     under: the Pico on header pins under the board, components down, turned so its two rows of pins
 //                     lie in the gaps either side of key row mcu_row + 1, its USB out the mcu_side edge; the matrix is
 //                     drawn by rule and the connections to the Pico autorouted
-//   mcu_gap, mcu_side, mcu_row, mount_holes (1: an M2 hole in each corner), thickness
+//   mcu_gap, mcu_side, mcu_row, mount_holes (1: an M2 hole in each corner, mount('M2'): m2.clearance), thickness
 // matrix: each key's row and column and the GPIO each row and column uses, for checks and firmware.
 // Lanes beside the Pico, nearest first: each runs from `from` to `to` (its pin's height) and then in to its pin,
 // across every lane nearer than it, so a lane may be given a nearer place only if its run covers none of the other
@@ -345,7 +391,7 @@ export function keyboard(v, keys) {
     ...(v.margin >= text * 2 ? [{ text: 'rulecad: diodes point to the rows', x: (keyBox.left + keyBox.right) / 2, y: bottom + v.margin / 2, size: text, layer: 'bottom' }] : [])];
   const board = { center: { x: cx, y: cy }, width: right - left, height: top - bottom, thickness: v.thickness, autoroute: under,
     silk_line: v.jlcpcb.silk_line, silk_text: v.jlcpcb.silk_text, via_hole: 0.3, via_pad: 0.3 + 2 * v.jlcpcb.annular, fab: v.jlcpcb, // (vias with the ring the fab recommends; the fab's minimums for the router)
-    parts, traces, silk: marks, holes: corners.map(([x, y]) => hole(x, y, v.m2.clearance)) };
+    parts, traces, silk: marks, holes: corners.map(([x, y]) => mount('M2', x, y, { set: v.m2 })) }; // (the m2 rules' clearance hole, as the fab drills it)
   const matrix = {
     keys: keys.map((k) => ({ key: `K${k.n}`, ...(k.label ? { label: k.label } : {}), row: k.r, col: k.c })),
     rows: Object.fromEntries(rows.map((r) => [r, rowPin[r].gpio])), cols: Object.fromEntries(cols.map((c) => [c, colPin[c].gpio])),

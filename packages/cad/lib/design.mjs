@@ -238,7 +238,7 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   // A JSCAD design runs in a sandbox (sandbox.mjs: another process that can't write files, start programs or reach
   // the network) unless the workspace trusts its designs; a board design runs here, with the board engine
   const pcb = object.engine === 'pcb' ? await pcbEngine() : null;
-  let parts, board = null, read, mechanism = null, fixings = null;
+  let parts, board = null, read, mechanism = null, fixings = null, mounted = false;
   const optional = Object.keys(object.mirror || {}); // inputs only the on-screen copy has: main may ask for them when they aren't there
   const stages = stageStore();
   if (!pcb && sandboxed() && host.name === 'node') ({ parts, read, mechanism, fixings } = await runSandboxed(d, values, object.parts || {}, booleans(object), optional, stages, fixed().context).catch((e) => { throw syntaxAt(e, d); }));
@@ -252,7 +252,9 @@ export async function build(d, set = {}, { mirror = false } = {}) {
     });
     if (typeof mod.main !== 'function') throw new Error(`${path.relative(WS, d.js)} has no exported main(v)`);
     const ops = await shapes.ops(booleans(object)), df = (await import('./fixings.mjs')).designFixings({ ...fixed().context, ops }); // (loaded when a design is run here: the sandbox's runner has its own)
-    const w = watch(values, { shapes, flexures, gears, motors, fixings: df.fixings, ops, ...(pcb ? { pcb } : {}) }, optional);
+    // v.pcb.mount('M2', ...) reads the workspace's thread sets, as v.fixings does: such a build is known by them too
+    const engine = pcb ? { ...pcb, mount: (thread, x, y, o = {}) => { mounted = true; return pcb.mount(thread, x, y, { sets: fixed().context.sets, ...o }); } } : null;
+    const w = watch(values, { shapes, flexures, gears, motors, fixings: df.fixings, ops, ...(engine ? { pcb: engine } : {}) }, optional);
     read = w.read;
     let made;
     try { ({ shapes: made, mechanism } = unpack(await mod.main(w.v))); } catch (e) { throw Object.assign(located(e, d.js, 'design.run'), { line: lineOf(e, pathToFileURL(d.js).href) || undefined }); }
@@ -274,9 +276,9 @@ export async function build(d, set = {}, { mirror = false } = {}) {
   for (const e of entries) if (read.has(e.name)) e.used = true;
   try {
     prune();
-    host.writeText(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}), ...(mechanism ? { mechanism } : {}), ...(fixings ? { fixed: fixed().hash, fixings } : {}) }));
+    host.writeText(hit, JSON.stringify({ used: entries.filter((e) => e.used).map((e) => e.name), parts: parts.map(({ geometry, ...p }) => ({ ...p, solid: faces(geometry) })), ...(board || {}), ...(mechanism ? { mechanism } : {}), ...(fixings || mounted ? { fixed: fixed().hash } : {}), ...(fixings ? { fixings } : {}) }));
   } catch {} // a cache that can't be written is only slower
-  return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: known(fixings ? fixed().hash : null), ...(fixings ? { fixings } : {}), ...(board || {}), ...(mechanism ? { mechanism } : {}) };
+  return { object, values, entries, deps, units, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash: known(fixings || mounted ? fixed().hash : null), ...(fixings ? { fixings } : {}), ...(board || {}), ...(mechanism ? { mechanism } : {}) };
 }
 
 // A cache keeps its most recently used files, about `keep` of them (an old version's builds go first)
