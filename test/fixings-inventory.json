@@ -6,18 +6,12 @@
       "reads": 0,
       "typed": 0,
       "table": 0
-    },
-    "packages/cad/EXAMPLES.md": {
-      "named": 28,
-      "reads": 8,
-      "typed": 2,
-      "table": 0
     }
   },
   "total": {
-    "named": 30,
-    "reads": 8,
-    "typed": 2,
+    "named": 2,
+    "reads": 0,
+    "typed": 0,
     "table": 0
   }
 }
