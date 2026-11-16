@@ -27,9 +27,10 @@ export function validate(value, s, root = s, at = '') {
   if (s.$ref) return validate(value, s.$ref.replace('#/$defs/', '').split('/').reduce((o, k) => o[k], root.$defs), root, at);
   if (s.anyOf) {
     const each = s.anyOf.map((x) => validate(value, x, root, at));
-    if (each.some((e) => !e.length)) return [];
     // Report the alternative that got furthest (the fewest problems), so a near miss says what's wrong with it
-    return each.sort((a, b) => a.length - b.length)[0];
+    const best = each.some((e) => !e.length) ? [] : each.sort((a, b) => a.length - b.length)[0];
+    if (Object.keys(s).every((k) => k === 'anyOf' || k === 'description')) return best;
+    out.push(...best); // beside other keywords, as JSON Schema has it: each applies (a fit: a and b, or holes and into)
   }
   if (s.type) {
     const types = [].concat(s.type);

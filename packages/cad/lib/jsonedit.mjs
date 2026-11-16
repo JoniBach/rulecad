@@ -88,3 +88,22 @@ function insert(text, s, key, value) {
   const after = last.end;
   return multi ? `${text.slice(0, after)},${eol}${indent}${piece}${text.slice(after)}` : `${text.slice(0, after)}, ${piece}${text.slice(after)}`;
 }
+
+/**
+ * Remove the value at a path: a key from its object, or an entry from its array, with the comma and the line it was on.
+ * @param {string} text @param {(string | number)[]} path @returns {string}
+ */
+export function removeAt(text, path) {
+  const s = find(text, path);
+  if (!s || !path.length) throw Object.assign(new Error(`no ${path.join('.') || 'value'} to remove`), { code: 'edit.path' });
+  const parent = find(text, path.slice(0, -1)), all = spans(text);
+  const members = all.filter((x) => x.path.length === path.length && same(x.path.slice(0, -1), parent.path)).sort((a, b) => a.start - b.start);
+  const keyed = text[parent.start] === '{';
+  // where a member starts: at its key in an object (the last "key" before its value), else at its value
+  const startOf = (m) => (keyed ? text.lastIndexOf(JSON.stringify(m.path.at(-1)), m.start) : m.start);
+  const k = members.findIndex((m) => same(m.path, path));
+  if (members.length === 1) return `${text.slice(0, parent.start + 1)}${text.slice(parent.end - 1)}`; // the only one: {} or []
+  // not the first: from the end of the one before (its comma, the line break) to this one's end; the first: to the next one's start
+  if (k > 0) return text.slice(0, members[k - 1].end) + text.slice(s.end);
+  return text.slice(0, startOf(s)) + text.slice(startOf(members[1]));
+}

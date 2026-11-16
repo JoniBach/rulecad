@@ -3,7 +3,7 @@
 // its schema, and an object's variables must still resolve. Used by cad set and cad add; a program can call them too.
 import fs from 'node:fs';
 import path from 'node:path';
-import { setAt, appendAt, getAt } from './jsonedit.mjs';
+import { setAt, appendAt, getAt, removeAt } from './jsonedit.mjs';
 import { validate, schema } from './schema.mjs';
 import { CadError } from './errors.mjs';
 import { paths } from './workspace.mjs';
@@ -96,4 +96,29 @@ export function addToAssembly(ref, what, entry) {
   }
   write(file, text, 'assembly');
   return { file };
+}
+
+/**
+ * Put a fasten in place of each holes fit and the fit that fastens the same two items (as lib/fasten.mjs's fastenFromFits
+ * finds them): the holes fit goes, the fit that fastens goes too, or keeps its gap range (min, max) with "fastens",
+ * "fastener" and "count" taken off, and the fasten is added. A screw given replaces the one found.
+ * @param {string} ref project/assembly @param {{ fasten: object, holes: number, fastens: number }[]} found @param {{ screw?: string }} [options]
+ * @returns {{ file: string, added: object[] }}
+ */
+export function fastenFromFitsEdit(ref, found, { screw } = {}) {
+  const file = assemblyFile(ref);
+  if (!found.length) throw new CadError('edit.nothing', `${ref} has no holes fit with a fit that fastens the same two items (and no fasten for them yet): nothing to put a fasten in place of`, { file });
+  let text = fs.readFileSync(file, 'utf8');
+  const fits = getAt(text, ['fits']), drop = new Set(), trim = new Set();
+  for (const g of found) { drop.add(g.holes); (fits[g.fastens].min != null || fits[g.fastens].max != null ? trim : drop).add(g.fastens); }
+  // last first, so the places of the others hold
+  for (const i of [...new Set([...drop, ...trim])].sort((a, b) => b - a)) {
+    if (drop.has(i)) { text = removeAt(text, ['fits', i]); continue; }
+    for (const k of ['count', 'fastener', 'fastens']) if (getAt(text, ['fits', i, k]) !== undefined) text = removeAt(text, ['fits', i, k]);
+  }
+  if (getAt(text, ['fasten']) === undefined) text = setAt(text, ['fasten'], []);
+  const added = found.map((g) => ({ ...g.fasten, ...(screw ? { screw } : {}) }));
+  for (const x of added) text = appendAt(text, ['fasten'], x);
+  write(file, text, 'assembly');
+  return { file, added };
 }

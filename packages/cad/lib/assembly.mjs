@@ -258,6 +258,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   // Screwed joints: each screw followed through the parts as they stand, its hardware placed, and the joint counted as a
   // fit that fastens (what holds a part, what the order of assembly and the list read)
   let fastened = null;
+  if (a.fits?.some((x) => x.holes)) fastening ||= await import('./fasten.mjs'); // (a holes fit with a fit that fastens: the fasten that says both is suggested)
   if (a.fasten?.length && a.kind !== 'plate') {
     fastening ||= await import('./fasten.mjs');
     fastened = fastening.fastenOf({ a, project, parts, objects, motion, num }, worlds0, { access: pose === motion.pose });
@@ -888,6 +889,11 @@ export function checkAssembly(s) {
     }
   }
   if (s.a.fasten?.length && fastening) fastening.fastenChecks(s, f, { placeItems });
+  // A holes fit and a fit that fastens the same two items: one fasten says both, and knows the screw
+  if (fastening) for (const g of fastening.fastenFromFits(s)) {
+    f('info', `${g.label} and the fit that fastens ${g.pair[0]} to ${g.pair[1]} are one screwed joint: a fasten says both and knows the screw (its holes, length, thread engaged, the seat under its head and the key that turns it). In place of the two, add to "fasten": ${JSON.stringify(g.fasten)}${g.screw ? '' : ' (with the screw it takes: no thread was found in the fits or the holes)'}, or run cad add fasten ${s.project}/${s.name} --from-fits`,
+      null, { code: 'fasten.suggest', refs: { fits: [g.holes, g.fastens], items: g.pair, paste: g.fasten } });
+  }
   boughtFindings(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });

@@ -20,7 +20,7 @@ import { schemaFindings } from '../lib/schema.mjs';
 import { readJson } from '../lib/host.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
-import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
+import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
@@ -57,6 +57,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
                                     a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
                                     [--washer] [--length 12] [--torque 0.5] [--note …]
+  cad add fasten <project>/<assembly> --from-fits   a fasten in place of a holes fit and a fit that fastens the same parts
+                                    (the screw read from them, or --screw "M2 cap")
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets
@@ -130,7 +132,7 @@ const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-s
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', // cad add
-  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque']; // cad add fasten
+  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits']; // cad add fasten
 // What a command takes, where that isn't <project>/<object>
 const USAGE = { add: 'fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
@@ -139,7 +141,7 @@ const USAGE = { add: 'fit|joint|item|loop|pose|fasten <project>/<assembly> --key
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -585,6 +587,13 @@ async function editAssembly(what, ref) {
   else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...(list('at') ? { at: list('at') } : {}), ...(list('rotate') ? { rotate: list('rotate') } : {}),
     ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
   else if (what === 'loop') entry = text(['a', 'b', 'label']);
+  else if (what === 'fasten' && opt('from-fits')) { // a holes fit and a fit that fastens, put as one fasten
+    const s = await buildAssembly(ref), { fastenFromFits } = await import('../lib/fasten.mjs');
+    const r = fastenFromFitsEdit(ref, fastenFromFits(s), { screw: typeof opt('screw') === 'string' ? opt('screw') : undefined });
+    if (opt('json')) return console.log(JSON.stringify(r));
+    for (const x of r.added) console.log(`added a fasten to ${path.relative(WS, r.file)} in place of its holes fit and its fit that fastens: ${JSON.stringify(x)}`);
+    return console.log(`check its screws: cad check ${ref}`);
+  }
   else if (what === 'fasten') { // --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2 | --holes bracket.body [--nut [hex] --washer --length 12 --torque 0.5 --note …]
     const names = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => x.trim()).filter(Boolean) : undefined);
     entry = { ...text(['screw']), through: names('through') ?? [], ...text(['into']), ...(names('at') ? { at: names('at') } : {}), ...text(['holes']), ...(opt('nut') ? { nut: opt('nut') === true ? true : String(opt('nut')) } : {}), ...(opt('washer') ? { washer: true } : {}), ...pick(['length', 'torque']), ...text(['note']) };
