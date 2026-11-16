@@ -280,7 +280,7 @@ const crossed = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2],
  * @returns {{ count: number, centroid: number[], polar: number, line: boolean, screws: { at: number[], shear: number, tension: number, across: number[] }[], turns: number | null, rests: object[] }}
  *   polar: the sum of the squared distances from the centroid, mm²; screws: each one's shear (N, across the joint) and
  *   tension (N, along it: under 0, the load presses that screw's parts together); turns: a twist one screw alone
- *   cannot hold by shear, in N·m (it holds by friction only)
+ *   cannot hold by shear, in N·m (it holds by friction only), null when it rounds to 0 at the thousandth
  */
 export function screwGroup(places, o = {}) {
   const what = 'screwGroup';
@@ -302,7 +302,8 @@ export function screwGroup(places, o = {}) {
     tension = s.map((x) => F[2] / n + (S2 > 1e-9 ? (along * x) / S2 : 0) + (Math.abs(about) > 1e-9 ? Math.abs(about) / (n * o.pivot) : 0));
   }
   const screws = r.map(([x, y], i) => { const across = polar > 1e-9 ? [F[0] / n - (M[2] * y) / polar, F[1] / n + (M[2] * x) / polar] : [F[0] / n, F[1] / n]; return { at: [P[i][0], P[i][1]], shear: Math.hypot(...across), tension: tension[i], across }; }); // (not rounded: a check rounds what it prints)
-  return { count: n, centroid: [r3(c[0]), r3(c[1])], polar: r3(polar), line, screws, turns: polar > 1e-9 || Math.abs(M[2]) < 1e-9 ? null : r3(Math.abs(M[2]) / 1000),
+  const twist = r3(Math.abs(M[2]) / 1000); // N·m, as said: a twist that rounds to nothing is none
+  return { count: n, centroid: [r3(c[0]), r3(c[1])], polar: r3(polar), line, screws, turns: polar > 1e-9 || !twist ? null : twist,
     rests: [{ name: 'the elastic method, in shear', value: 'P/n and M d / Σd² about the centroid', kind: 'spec', source: 'Eccentrically loaded bolt groups, the elastic method: https://steelcalculator.pages.dev/reference/bolt-group-capacity/ (read 2026-11-15)' },
       { name: 'the elastic method, in tension', value: 'a plane of tension through the centroid', kind: 'estimate', source: 'No source read: a moment shared as the shear is, each screw\'s pull growing with its distance from the centroid, which holds while the clamped parts stay pressed together. A joint that opens tips about its edge and loads its far screws more' }] };
 }

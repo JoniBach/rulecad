@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders } from '@rulecad/pcb';
+import { grid, keyboard, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders, mount, holes } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 import { smoothCircuit } from '@rulecad/smooth';
@@ -65,6 +65,37 @@ test('the fab\'s sizes are measured from the board: a via\'s hole, pad and ring,
   assert.ok(texts(await checks([...json, text], v, matrix)).some((t) => /^fail silkscreen the fab can't print: 1 texts under 1 mm high \(0\.5\)/.test(t)), 'text the fab can\'t print');
   const bars = json.filter((e) => e.type === 'pcb_silkscreen_rect');
   assert.ok(bars.length && bars.every((e) => e.stroke_width >= v.jlcpcb.silk_line && e.is_filled), 'the keyboard\'s own bars are solid, stroked as wide as they are');
+});
+
+test('mount: a board\'s mounting hole named by its thread and sized from the thread\'s rule set, as the fab drills it; the keyboard\'s corners are mount(\'M2\')', async () => {
+  const m2 = loadRuleSet('m2').rules, m3 = loadRuleSet('m3').rules;
+  // each fit is the set's figure as it stands: nothing added for a printer (the fab drills it)
+  assert.deepEqual(mount('M2', 1, 2), { x: 1, y: 2, d: m2.clearance.value, thread: 'M2', fit: 'clearance' });
+  assert.equal(mount('M2', 0, 0).d, 2.4);
+  assert.equal(mount('M2', 0, 0, { fit: 'close' }).d, m2.clearance_close.value);
+  assert.equal(mount('M2', 0, 0, { fit: 'loose' }).d, m2.clearance_loose.value);
+  assert.equal(mount('M3', 0, 0).d, m3.clearance.value);
+  assert.equal(mount('m2.5', 0, 0).thread, 'M2.5', 'a thread as fixings reads it');
+  // a hole the board's maker gives, held to pass the thread, and the router's keepout
+  assert.deepEqual(mount('M2', 3, 4, { d: 2.1, keepout: 1.5 }), { x: 3, y: 4, d: 2.1, keepout: 1.5, thread: 'M2', fit: 'given' });
+  // the figures a design reads (v.m2) first, then a workspace's own set, then the kit's
+  assert.equal(mount('M2', 0, 0, { set: { thread: 'M2', clearance: 2.5 } }).d, 2.5);
+  const own = { m2: { name: 'm2', rules: { ...m2, clearance: { ...m2.clearance, value: 2.3 } } } };
+  assert.equal(mount('M2', 0, 0, { sets: own }).d, 2.3);
+  // refused by name, with what would do
+  for (const [f, re] of [[() => mount('M7', 0, 0), /mount: no thread "M7"\. There are: M1\.6, M2/], [() => mount('M2x6 cap', 0, 0), /name the thread alone \('M2'\)/],
+    [() => mount('M2', '5', 0), /x is a number, in mm/], [() => mount('M2', 0, 0, { fit: 'tight' }), /fit is clearance, close, loose \(got "tight"\)/],
+    [() => mount('M2', 0, 0, { d: 1.9 }), /a 1\.9 mm hole is no wider than M2's 2 mm thread \(m2\.major_diameter\): the screw would not pass\. M2's clearance hole is 2\.4 mm/],
+    [() => mount('M2', 0, 0, { keepout: -1 }), /keepout is a radius above 0/], [() => mount('M2', 0, 0, { size: 2 }), /no option "size" \(there are fit, d, keepout, set, sets\)/],
+    [() => mount('M2', 0, 0, { set: { thread: 'M3', clearance: 3.4 } }), /set is "M3"'s figures, and the hole is for M2/]]) assert.throws(f, re);
+  // The keyboard's corner holes: M2 clearance holes from v.m2, and the board drilled as before (2.4 mm, no thread in the circuit)
+  const v = values({ controller: { value: 'beside', choice: ['beside', 'under'] } }), { board } = keyboard(v, grid(2, 2, v.mx.pitch));
+  assert.equal(board.holes.length, 4);
+  for (const h of board.holes) assert.deepEqual([h.d, h.thread, h.fit], [2.4, 'M2', 'clearance']);
+  const json = await render(board);
+  assert.deepEqual(holes(json).map((h) => h.d), [2.4, 2.4, 2.4, 2.4]);
+  assert.ok(json.filter((e) => e.type === 'pcb_hole').every((e) => !('thread' in e) && !('fit' in e)), 'the circuit holds only what the fab drills');
+  assert.equal(keyboard({ ...v, m2: { ...v.m2, clearance: 2.6 } }, grid(2, 2, v.mx.pitch)).board.holes[0].d, 2.6, 'the design\'s own m2 figures');
 });
 
 test('tracks and gaps measured from the board as drawn; a board that can\'t be made is refused or failed', async () => {

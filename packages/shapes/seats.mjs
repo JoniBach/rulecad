@@ -160,18 +160,35 @@ export function lm8uuPocket(bearing, { fit = 'press', clearance = 1, through = f
   return Object.assign(along(union(cuts), into, at), { pocket: s.pocket, clearance: s.clearance });
 }
 
+// The screws' holes for a bought part held by screws, as drawn: given (from fixings, already compensated), or the part's
+// own figure plus the printer's hole_comp. No screw size lives here, so with neither it is refused by name
+function screwHole(what, given, part, comp) {
+  if (given != null) return size(what, 'hole', given);
+  const own = part.hole_diameter ?? part.mount_hole_diameter;
+  if (own == null) throw new Error(`${what}: give the screws' hole as drawn ({ hole: fixings.holeModel('M3', { printer }).diameter }), or the part's own hole_diameter: there is no screw size here`);
+  return size(what, 'hole_diameter', own) + comp;
+}
+
 /**
- * A pocket for a lead-screw nut, to subtract: its flange let in from a face, its body on through, and its bolts' holes on
- * their circle. Goes down from a top face; the flange sits flush.
- * @param {{ flange_diameter: number, flange_thickness?: number, body_diameter: number, length: number, hole_circle: number, hole_count: number, hole_diameter?: number }} nut
- * @param {{ fit?: number, printer: object, at?: number[], depth?: number }} o fit: clearance across the flange (default the printer's fit, each side)
+ * A pocket for a lead-screw nut, to subtract: its flange let in from a face, its body on through, and holes for the
+ * screws that hold it, on their circle. Goes down from a top face; the flange sits flush. The screws' holes come in as
+ * plain figures, as everything here does: `hole`, the hole as drawn (a hole from @rulecad/fixings, whose diameter
+ * already has the printer's compensation in it: `fixings.holeModel('M3', { printer }).diameter`), or else the nut's
+ * own `hole_diameter` (or `mount_hole_diameter`, as its rule set names it), to which the printer's `hole_comp` is
+ * added. With neither, it is refused: there is no screw size here.
+ * @param {{ flange_diameter: number, flange_thickness?: number, flange_width?: number, body_diameter: number, length: number, hole_circle: number, hole_count: number, hole_diameter?: number, mount_hole_diameter?: number }} nut
+ *   from its rule set; flange_width is the rule set's name for flange_thickness
+ * @param {{ fit?: number, hole?: number, printer: object, at?: number[], depth?: number }} o fit: clearance across the flange (default the printer's fit, each side);
+ *   hole: the screws' holes as drawn, in mm
+ * @returns {object} a JSCAD geom3 to subtract, with .flange and .body the diameters as drawn, and .hole the screws' holes as drawn
  */
-export function nutTrap(nut, { fit, printer, at = [0, 0, 0], depth } = {}) {
-  const what = 'nutTrap', p = printerOf(what, printer), comp = size(what, 'printer.hole_comp', p.hole_comp, { zero: true }), gap = fit ?? 2 * size(what, 'printer.fit', p.fit), flange = size(what, 'flange_diameter', nut?.flange_diameter), body = size(what, 'body_diameter', nut.body_diameter), length = size(what, 'length', nut.length), circle = size(what, 'hole_circle', nut.hole_circle), n = size(what, 'hole_count', nut.hole_count), hole = nut.hole_diameter ?? 3.5;
-  const t = nut.flange_thickness ?? 3.5, D = depth ?? length, r = (body + comp + gap) / 2, R = (flange + comp + gap) / 2;
-  if (circle / 2 + hole / 2 > R + 0.01 || circle / 2 - hole / 2 < r) throw new Error(`nutTrap: holes on a ${circle} mm circle don't fall between the ${body} mm body and the ${flange} mm flange`);
-  const cuts = [tear(R, R, OUT, -t), tear(r, r, -t + EDGE, -D - OUT)], holes = Array.from({ length: n }, (_, i) => { const a = (i * 2 * Math.PI) / n; return translate([(circle / 2) * Math.cos(a), (circle / 2) * Math.sin(a), 0], tear((hole + comp) / 2, (hole + comp) / 2, 0, -D - OUT)); });
-  return Object.assign(translate(at, union(...cuts, ...holes)), { flange: 2 * R, body: 2 * r });
+export function nutTrap(nut, { fit, hole: hole_, printer, at = [0, 0, 0], depth } = {}) {
+  const what = 'nutTrap', p = printerOf(what, printer), comp = size(what, 'printer.hole_comp', p.hole_comp, { zero: true }), gap = fit ?? 2 * size(what, 'printer.fit', p.fit), flange = size(what, 'flange_diameter', nut?.flange_diameter), body = size(what, 'body_diameter', nut.body_diameter), length = size(what, 'length', nut.length), circle = size(what, 'hole_circle', nut.hole_circle), n = size(what, 'hole_count', nut.hole_count);
+  const hole = screwHole(what, hole_, nut, comp);
+  const t = nut.flange_thickness ?? nut.flange_width ?? 3.5, D = depth ?? length, r = (body + comp + gap) / 2, R = (flange + comp + gap) / 2;
+  if (circle / 2 + (hole - comp) / 2 > R + 0.01 || circle / 2 - (hole - comp) / 2 < r) throw new Error(`nutTrap: holes on a ${circle} mm circle don't fall between the ${body} mm body and the ${flange} mm flange`);
+  const cuts = [tear(R, R, OUT, -t), tear(r, r, -t + EDGE, -D - OUT)], holes = Array.from({ length: n }, (_, i) => { const a = (i * 2 * Math.PI) / n; return translate([(circle / 2) * Math.cos(a), (circle / 2) * Math.sin(a), 0], tear(hole / 2, hole / 2, 0, -D - OUT)); });
+  return Object.assign(translate(at, union(...cuts, ...holes)), { flange: 2 * R, body: 2 * r, hole });
 }
 
 /**

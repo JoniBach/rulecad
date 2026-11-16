@@ -122,7 +122,13 @@ the same names whatever the size, so `m3.clearance`, `m8.clearance` and `unc_1_4
 
 A size carries only what its standard makes in that size: there is no M2 button head in ISO 7380-1, so `m2` has no
 `button_head`. The names designs have read since the first release keep their values: `clearance` is the ISO 273
-normal hole, `head` and `head_height` the ISO 4762 head, `nut_flats` and `nut_height` the ISO 4032 nut. Where an older
+normal hole, `head` and `head_height` the ISO 4762 head, `nut_flats` and `nut_height` the ISO 4032 nut, `insert_hole`
+and `insert_length` the insert. Each is the vocabulary's own name for its figure, so nothing is renamed. Three are also
+read under the vocabulary's shared names for the screw a part mounts by, which a motor's mount reads: each thread set
+lists them as aliases in `"interface"` (`screw_clearance` is `clearance`, `screw_head` is `head`, `screw_head_height`
+is `head_height`), and `cad rules check` says so as a note, never a failure. A workspace keeps its own copy of a set
+it has used (`rules/m3.json`), and the copy is read as it is after an upgrade: `cad rules check m3` lists what the
+kit's set has that the copy lacks, to copy across, or the copy can be deleted to read the kit's. Where an older
 DIN and the current ISO disagree (a 16 mm M10 nut where DIN 934 made it 17), the set holds the ISO figure and its rule
 says so: measure the nuts you have before cutting a pocket for them.
 

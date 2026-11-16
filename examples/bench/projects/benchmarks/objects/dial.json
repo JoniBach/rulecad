@@ -90,11 +90,6 @@
       "unit": "mm",
       "rule": "The NEMA 17's hole square"
     },
-    "hole": {
-      "value": 3.5,
-      "unit": "mm",
-      "rule": "M3 clearance"
-    },
     "shaft": {
       "value": 8,
       "unit": "mm",

@@ -3,6 +3,13 @@
 Helpers for [JSCAD](https://github.com/jscad/OpenJSCAD.org) designs that get printed. JSCAD is a peer dependency: use
 the one you already have.
 
+Every helper here takes plain dimensions in mm and holds no screw size of its own. Anything named by a thread (a hole
+for an M3 screw, the seat for its head, its nut or its insert) comes from
+[`@rulecad/fixings`](https://github.com/JoniBach/rulecad/tree/main/packages/fixings#readme), which reads the thread's
+rule set and the printer's and calls this package's `countersink`, `teardropHole`, `nutPocket` and `wallOpening`
+with the figures. So `fixings.countersink('M3', ...)` and `countersink({ hole, head, ... })` draw the same cone; the
+first also says where each size came from. Shapes never imports fixings, so the two have no cycle.
+
 ```js
 import jscad from '@jscad/modeling';
 import { text, anchor, cut } from '@rulecad/shapes';
@@ -72,7 +79,19 @@ clipGroove(8, { width: 1, depth: 0.5, at: [0, 0, 30] })                         
 | Ledge (`lip`) | a quarter of the races' radial depth by default, so it carries the outer race only; at most half |
 | Plain bore, as drawn | shaft + 2 × clearance + `hole_comp`, the clearance being the printer's `fit` each side by default |
 
-`lm8uuPocket`, `nutTrap`, `pulleyBore` and `beltClamp` are the same idea for a linear bearing, a lead-screw nut's flange and body, a pulley on its shaft and a GT2 belt's grip.
+`lm8uuPocket`, `nutTrap`, `pulleyBore` and `beltClamp` are the same idea for a linear bearing, a lead-screw nut's
+flange and body, a pulley on its shaft and a GT2 belt's grip. Of these only `nutTrap` has screws, the ones that hold
+the nut's flange. Their hole is a plain figure too: `hole`, the hole as drawn, from fixings (whose diameter already
+has the printer's `hole_comp` in it), or else the nut's own `hole_diameter` (`mount_hole_diameter` in its rule set)
+plus `hole_comp`. Given neither, `nutTrap` refuses: there is no default screw.
+
+```js
+const screws = fixings.holeModel('M3', { printer: v.x1c })                             // an M3 clearance hole, as drawn
+nutTrap(v['t8-nut'], { hole: screws.diameter, printer: v.x1c, at: [0, 0, 20] })     // or leave hole out: the nut's own 3.5 mm
+```
+
+The screws stay out of this package on purpose. Shapes cannot read a thread's rule set without depending on fixings,
+and fixings already depends on shapes, so a seat takes the screw's figure and the design passes it from fixings.
 
 `press` and `slip` are estimates until they are measured with the seats coupon in the bench project: print it once per
 filament, press a bearing into each pocket, and write the one that holds without cracking into the printer's rules.
@@ -81,14 +100,17 @@ filament, press a bearing into each pocket, and write the one that holds without
 
 Holes, pockets and ribs drawn so they print without supports with the part lying as drawn (z up from the bed).
 Each starts at a point on a face (`at`) and goes into the material (`into`: `'+x'`, `'-x'`, `'+y'`, `'-y'`, `'+z'` up
-from the bed, `'-z'` down from a top). Sizes come from your rules; nothing is built in.
+from the bed, `'-z'` down from a top). Sizes come from your rules; nothing is built in. For a screw by its thread,
+call the same seats through fixings (`fixings.countersink('M3', { length: 16, at, into })`, `fixings.nutPocket('M3', ...)`,
+`fixings.hole('M3', { into: '+x', depth: 20 })`): they read the thread's figures and the printer's, and draw with
+these. The calls below are for sizes you have in hand.
 
 ```js
 import { countersink, teardropHole, nutPocket, crushRibs, wallOpening } from '@rulecad/shapes'
 
-countersink({ hole: v.hole, head: v.csk, length: 16, at: [x, y, 0], into: '+z' }) // flat head flush with the face
+countersink({ hole: v.hole, head: v.head, length: 16, at: [x, y, 0], into: '+z' }) // flat head flush with the face
 teardropHole({ d: v.hole, length: 20, at: [-10, 0, 5], into: '+x' })              // across a part: a 45° pointed roof
-nutPocket({ flats: v.m3.nut_flats + v.x1c.hole_comp, height: v.m3.nut_height, hole: v.hole, at: [x, y, 0], into: '+z' })
+nutPocket({ flats: v.flats, height: v.height, hole: v.hole, at: [x, y, 0], into: '+z' })
 crushRibs({ at: [[-9.4, 5], [9.4, 5]], into: [[1, 0], [-1, 0]], z: [3, 5], radius: 0.84, protrude: 0.5 }) // to add
 wallOpening({ width: 12.75, height: 6.9, depth: v.wall, at: [x, 0, z], into: '-y', bridge: v.x1c.bridge })
 ```

@@ -53,11 +53,6 @@
       "unit": "mm",
       "rule": "Behind the bore, for the second screw"
     },
-    "hole_m3": {
-      "value": 3.5,
-      "unit": "mm",
-      "rule": "M3 clearance"
-    },
     "bolt": {
       "value": 10,
       "unit": "mm",

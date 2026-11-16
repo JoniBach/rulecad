@@ -14,7 +14,7 @@ jobs:
           - { os: macos-latest, node: 24 }
           - { os: windows-latest, node: 24 }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +23,31 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run types # the JSDoc must make valid declarations
+  dimensions:
+    # The fixings migration's guards: screw sizes typed by hand held to the recorded count, and every example object's
+    # drawn sizes compared with the commit this one follows (a pull request: its base), the table in the run's summary.
+    # Measures are kept between runs by what each object is built from, so only what a change touches is built.
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node --test test/fixings-inventory.test.mjs test/dimension-diff.test.mjs
+      - uses: actions/cache@v4
+        with:
+          path: .cache/dimension-diff
+          key: dimension-diff-${{ github.sha }}
+          restore-keys: dimension-diff-
+      # (a change to the kit itself rebuilds every example cold, the showcase's optimisations and an autorouted board
+      # among them: the table is for reading, so a run that outlasts its time leaves the job green, the guard above holds)
+      - run: node scripts/dimension-diff.mjs ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }} HEAD --md --jobs 2 >> "$GITHUB_STEP_SUMMARY"
+        timeout-minutes: 25
+        continue-on-error: true
   browser:
     # The model page in headless Chrome: drop an STL, check it's drawn, checked and linked. Screenshots are kept.
     # Then the documentation site: every library page runs without a script error and its demonstration draws.

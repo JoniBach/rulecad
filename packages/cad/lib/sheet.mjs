@@ -27,6 +27,22 @@ function fileOf(name) {
   return file;
 }
 
+// What a check notes and never fails on. An alias: a name the vocabulary shares across parts (screw_clearance, which a
+// motor's mount reads) that a set gives to one of its own rules in "interface". A copy: a workspace's own copy of a
+// set the kit has (cad copies a set into rules/ the first time a design uses it), which is used as it is, even after
+// the kit's set gains figures: it is told which, so a design that wants one knows where it went.
+function notesOf(set, file) {
+  const notes = [], kitDir = RULE_DIRS.at(-1), name = path.basename(file, '.json');
+  for (const [shared, own] of Object.entries(set.interface || {})) if (set.rules?.[own]) notes.push({ level: 'info', code: 'rules.alias', text: `${own} is also read as ${shared}, the vocabulary's name for it`, rule: own, values: { alias: shared } });
+  const kitFile = path.join(kitDir, `${name}.json`);
+  if (path.dirname(path.resolve(file)) !== path.resolve(kitDir) && fs.existsSync(kitFile) && set.rules && typeof set.rules === 'object') {
+    const kit = readSet(kitFile), added = Object.keys(kit.rules || {}).filter((k) => !(k in set.rules));
+    if (added.length) notes.push({ level: 'info', code: 'rules.new', text: `your copy is used as it is; the kit's ${name} now also has ${added.length > 8 ? `${added.slice(0, 8).join(', ')} and ${added.length - 8} more (--json lists them)` : added.join(', ')}: copy any you want into rules/${name}.json, or delete it to read the kit's own`, values: { count: added.length }, refs: { rules: added } });
+  }
+  return notes;
+}
+
+
 // What a profile's model reads beside its own set: any other set by name (its slot family, a thread, its material),
 // the workspace's first, and a measured outline in outlines/<name>.json beside the set, held to its schema
 function given(name, file, all = allSets()) {
@@ -57,13 +73,14 @@ function partFindings(set, name, file, all) {
   return out;
 }
 
-/** Every named set checked (or all of them): [{ name, file, findings }]. A finding's level is fail, warn or info */
+/** Every named set checked (or all of them): [{ name, file, findings, notes? }]. A finding's level is fail, warn or info;
+ * notes: what is said and never fails */
 export function checkSets(names = []) {
   const v = vocabulary(), all = allSets();
   return (names.length ? names.map((n) => [n, fileOf(n)]) : [...all]).map(([name, file]) => {
-    const set = readSet(file), findings = checkRuleSet(set, v);
+    const set = readSet(file), findings = checkRuleSet(set, v), notes = notesOf(set, file);
     if (!findings.length && ['profile', 'slot', 'slot_nut'].includes(set.part)) findings.push(...partFindings(set, name, file, all));
-    return { name, file, findings };
+    return { name, file, findings, ...(notes.length ? { notes } : {}) };
   });
 }
 

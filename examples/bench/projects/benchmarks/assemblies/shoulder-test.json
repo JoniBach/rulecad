@@ -268,23 +268,20 @@
     {
       "a": "clip1",
       "b": "housing",
-      "fastens": true,
       "min": 0,
-      "note": "A clip, screwed on"
+      "note": "A clip on its post"
     },
     {
       "a": "clip2",
       "b": "housing",
-      "fastens": true,
       "min": 0,
-      "note": "A clip, screwed on"
+      "note": "A clip on its post"
     },
     {
       "a": "clip3",
       "b": "housing",
-      "fastens": true,
       "min": 0,
-      "note": "A clip, screwed on"
+      "note": "A clip on its post"
     },
     {
       "a": "motor",
@@ -304,5 +301,28 @@
     "home": {
       "drive": 0
     }
-  }
+  },
+  "fasten": [
+    {
+      "screw": "M3 cap",
+      "through": ["clip1"],
+      "into": "housing",
+      "holes": "clip1.body",
+      "note": "Clip 1, screwed to its post"
+    },
+    {
+      "screw": "M3 cap",
+      "through": ["clip2"],
+      "into": "housing",
+      "holes": "clip2.body",
+      "note": "Clip 2, screwed to its post"
+    },
+    {
+      "screw": "M3 cap",
+      "through": ["clip3"],
+      "into": "housing",
+      "holes": "clip3.body",
+      "note": "Clip 3, screwed to its post"
+    }
+  ]
 }

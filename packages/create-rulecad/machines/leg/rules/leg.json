@@ -2,10 +2,10 @@
   "_doc": "A leg made from the drawing arm's parts: the stack of the same gearbox, with the arm's motor face as this leg's zero, what the leg is asked to stand up, and the stand it does that on. Examples chapter 14 explains each.",
   "name": "leg",
   "rules": {
-    "plate": {"value": 5, "unit": "mm", "rule": "The hip housing's plate: enough for M3 screws into a NEMA 17 (1.5 × their size)", "kind": "default", "source": "EXAMPLES chapter 11's housing", "checked": "2026-11-09"},
+    "plate": {"value": 5, "unit": "mm", "rule": "The hip housing's plate: deep enough for the motor's four screws to bite, 1.5 times their thread", "kind": "default", "source": "EXAMPLES chapter 11's housing", "checked": "2026-11-09"},
     "gear": {"value": 8, "unit": "mm", "rule": "Each gear stage's face", "kind": "default", "source": "EXAMPLES chapter 11's gearbox", "checked": "2026-11-09"},
     "ring_gap": {"value": 0.4, "unit": "mm", "rule": "Between the fixed ring and the output ring", "kind": "default", "source": "EXAMPLES chapter 11's gearbox", "checked": "2026-11-09"},
-    "flange": {"value": 5, "unit": "mm", "rule": "The output ring's flange: thick enough for four M3 screws to bite", "kind": "default", "source": "EXAMPLES chapter 12", "checked": "2026-11-09"},
+    "flange": {"value": 5, "unit": "mm", "rule": "The output ring's flange: thick enough for the spindle's four screws to bite", "kind": "default", "source": "EXAMPLES chapter 12", "checked": "2026-11-09"},
     "output_top": {"value": "plate + gear + ring_gap + gear + flange", "unit": "mm", "rule": "The top of the hip's output flange, from the motor's face", "kind": "default", "source": "The stack", "checked": "2026-11-09"},
     "disc": {"value": 3, "unit": "mm", "rule": "The spindle's disc, on the flange", "kind": "default", "source": "EXAMPLES chapter 12", "checked": "2026-11-09"},
     "bridge_gap": {"value": 0.6, "unit": "mm", "rule": "Between the spindle's disc and the bridge above it", "kind": "default", "source": "EXAMPLES chapter 12", "checked": "2026-11-09"},

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "lid",
+  "title": "Lid",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "home/box"
+  ],
+  "material": "PLA",
+  "orientation": "Flat on the bed, top side up. The screw holes go straight down, so it prints without supports.",
+  "variables": {
+    "thick": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "Fifteen layers: stiff over the box, and a firm seat under each screw's head",
+      "label": "Thickness",
+      "show": true
+    }
+  }
+}

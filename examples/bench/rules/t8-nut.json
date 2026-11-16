@@ -1,0 +1,20 @@
+{
+  "_doc": "A flanged nut for a T8 lead screw, the unbranded hobby part in brass: community until measured, from the Handson Technology drawing of the common round-flange Tr8x8(P2) nut. Every listing for the POM nut found gives its thread and lead but no drawing of its body: a POM nut's outline varies from seller to seller, so variant POM-lead-4 changes only material and lead, and its outline must be measured. Axis along z, the flange's mounting face at z = 0.",
+  "name": "t8-nut",
+  "part": "nut",
+  "variants": {"POM-lead-4":{"kind":"community","source":"Rat Rig POM lead screw nut, TR8*4, https://ratrig.com/leadscrew-nut-pom-tr8-4.html","values":{"material":"POM","lead":4}},"brass-lead-2":{"kind":"community","source":"Wenzel Lab T8 lead screw nut, https://wenzel-lab.github.io/syringe-pumps-and-controller/parts/mech/lead-screw-nut.html","values":{"lead":2}}},
+  "rules": {
+    "material": { "value": "brass", "rule": "A brass or bronze nut (the data sheet says both)", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "thread": { "value": "Tr8x8(P2)", "rule": "Four-start, 2 mm pitch", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "lead": { "value": 8, "unit": "mm", "rule": "Fits the 8 mm lead screw", "kind": "community", "source": "Grobotronics brass nut for T8 lead 8, https://grobotronics.com/nut-for-lead-screw-t8-brass.html?sl=en", "checked": "2026-11-09" },
+    "diameter": { "value": 8, "unit": "mm", "rule": "The thread it fits, as the data sheet gives its inner diameter", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "flange_diameter": { "value": 22, "unit": "mm", "rule": "Flange outside diameter", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "flange_width": { "value": 3.5, "unit": "mm", "rule": "Flange thickness", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "flange_offset": { "value": 1.5, "unit": "mm", "rule": "From the short end of the nut to the flange's nearer face", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "body_diameter": { "value": 10.2, "unit": "mm", "rule": "Round body", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "length": { "value": 15, "unit": "mm", "rule": "Overall length: 10 above the flange, 3.5 flange, 1.5 below", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "hole_circle": { "value": 16, "unit": "mm", "rule": "Diameter of the circle the mounting holes sit on", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "hole_count": { "value": 4, "unit": "", "rule": "Mounting holes", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" },
+    "mount_hole_diameter": { "value": 3.5, "unit": "mm", "rule": "Plain holes for M3 screws. Pololu's similar nut has them tapped M3", "kind": "community", "source": "Handson Technology T8 flange nut data sheet, https://handsontec.com/dataspecs/linear%20motion/T8-Copper-Nut.pdf", "checked": "2026-11-09" }
+  }
+}

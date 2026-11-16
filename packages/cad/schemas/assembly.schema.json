@@ -17,7 +17,7 @@
     "requires": { "type": "object", "additionalProperties": { "type": "string" }, "description": "object → semver range" },
     "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "fits": { "type": "array", "items": { "$ref": "#/$defs/fit" } },
-    "fasten": { "type": "array", "description": "Screwed joints: each names its screw, the parts it passes through in order, and the part it ends in. The holes are read from the parts as drawn and each screw followed along one axis; a fasten holds its parts as a fit that fastens does, and lines their holes up as a holes fit does", "items": { "$ref": "#/$defs/fasten" } },
+    "fasten": { "type": "array", "description": "Screwed joints: each names its screw, the parts it passes through in order, and the part it ends in. The holes are read from the parts as drawn and each screw followed along one axis; a fasten holds its parts as a fit that fastens does, lines their holes up as a holes fit does, and puts its screws on the shopping list. Draw the holes with v.fixings, and name the screw with no length: the check chooses one", "items": { "$ref": "#/$defs/fasten" }, "defaultSnippets": [{ "label": "fasten", "description": "A screwed joint", "body": [{ "screw": "${1:M3 cap}", "through": ["${2:bracket}"], "into": "${3:base}", "at": ["${4:bracket.h1}", "${5:bracket.h2}"] }] }] },
     "joints": { "type": "array", "items": { "$ref": "#/$defs/joint" } },
     "loops": { "type": "array", "items": { "$ref": "#/$defs/loop" } },
     "planetary": { "type": "array", "items": { "$ref": "#/$defs/planetary" } },
@@ -72,7 +72,7 @@
     },
     "fit": {
       "type": "object",
-      "required": ["a", "b"],
+      "anyOf": [{ "required": ["a", "b"] }, { "required": ["holes", "into"] }],
       "additionalProperties": false,
       "properties": {
         "a": { "$ref": "#/$defs/names" },
@@ -81,8 +81,8 @@
         "radius": { "$ref": "#/$defs/expr", "description": "With engage: how near the joint's axis to look (mm, default 10)" },
         "shaft": { "anyOf": [{ "type": "boolean" }, { "enum": ["slide", "press"] }], "description": "a or b is a motor, and the other takes its shaft: reads the bore from the part as drawn" },
         "seat": { "anyOf": [{ "type": "boolean" }, { "enum": ["press", "slip"] }, { "type": "number" }], "description": "a or b is a bought bearing, and the other its printed seat: reads the pocket as drawn against the bearing's rules and the printer's fit (fit.seat)" },
-        "fastens": { "type": "boolean", "description": "a and b are fastened together (pins, screws, a press): what holds a part that has no joint" },
-        "fastener": { "type": "string", "description": "What does the fastening (an M3 × 12 screw): named on the shopping list and the assembly step" },
+        "fastens": { "type": "boolean", "description": "a and b are fastened together (pins, a press, a clip): what holds a part that has no joint. Where screws hold them, use a fasten instead: it knows the screw, checks its holes and lists it" },
+        "fastener": { "type": "string", "description": "What does the fastening, by hand (two push pins): named on the shopping list and the assembly step. A screw is a fasten's, which chooses its length and counts it" },
         "count": { "$ref": "#/$defs/expr", "description": "With fastener: how many" },
         "access": { "type": "string", "description": "<item>.<anchor>: where the screw's tool comes from, its z axis pointing out along the screw. Whatever stands on that line goes on after the screw; if nothing can, assembly.order says so" },
         "min": { "$ref": "#/$defs/expr" },
@@ -90,11 +90,11 @@
         "note": { "type": "string" },
         "label": { "type": "string" },
         "poses": { "type": "array", "items": { "type": "string" } },
-        "holes": { "type": "boolean" },
-        "depth": { "$ref": "#/$defs/expr" },
-        "direction": { "enum": ["up", "down"] },
-        "ring": { "$ref": "#/$defs/expr" },
-        "into": { "type": "string" },
+        "holes": { "type": "string", "description": "A holes fit: a circuit board's part (pcb.board) whose mounting holes are followed down into the part named by into. Where the board is screwed there, a fasten with \"holes\" says it and knows the screw: cad check suggests it, cad add fasten --from-fits writes it" },
+        "depth": { "$ref": "#/$defs/expr", "description": "With holes: how far each screw's path must be clear (mm)" },
+        "direction": { "enum": ["up", "down"], "description": "With holes: up for screws from below" },
+        "ring": { "$ref": "#/$defs/expr", "description": "With holes: how far round each screw there must be material (mm, default the hole's diameter)" },
+        "into": { "type": "string", "description": "With holes: the part the screws go into" },
         "within": { "$ref": "#/$defs/expr", "description": "With an anchor name (item@anchor): only faces this close to it (mm, default 10)" }
       }
     },
@@ -118,8 +118,13 @@
     "address": { "type": "string", "pattern": "^[a-z][\\w-]*(\\.[\\w-]+)+(@-?\\d+(\\.\\d+)?%?)?$", "description": "An anchor by name, <item>.<anchor>; on a beam an end (x1.a, x1.b), an end bore (x1.a.1), or a face with a distance from end a (x1.top@120), from end b (x1.top@-20) or a share of the length (x1.top@50%), the second slot of a face x1.top.2@120" },
     "fasten": {
       "type": "object",
+      "description": "A screwed joint: the screw by thread and head, the parts it passes in order, the part it ends in, and where the screws go (at, an anchor each, or holes, a part's own holes)",
       "required": ["screw", "through", "into"],
       "additionalProperties": false,
+      "defaultSnippets": [
+        { "label": "screws at anchors", "body": { "screw": "${1:M3 cap}", "through": ["${2:bracket}"], "into": "${3:base}", "at": ["${4:bracket.h1}", "${5:bracket.h2}"] } },
+        { "label": "screws in a part's own holes", "body": { "screw": "${1:M3 cap}", "through": ["${2:lid}"], "into": "${3:box}", "holes": "${4:lid.body}" } }
+      ],
       "properties": {
         "screw": { "type": "string", "description": "The screw, by its thread and head: M3 cap, M4 button, M3x12 countersunk, 6-32 UNC cap (the names @rulecad/fixings reads). With no length in the name, the shortest sold length that fits is chosen" },
         "through": { "type": "array", "items": { "type": "string" }, "description": "The parts the screw passes through, in order from under its head: items (bracket) or item.part (bracket.body). Each needs a clearance hole for the thread" },

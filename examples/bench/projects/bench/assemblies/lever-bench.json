@@ -4,7 +4,7 @@
   "uses": [
     "bench"
   ],
-  "note": "The rig with a specimen bolted on edge, the gauge arm on top and the hanger on the load bolt (bolts not drawn). Swap the specimen's object for lever-bar, lever-plate or lever:both.",
+  "note": "The rig with a specimen bolted on edge, the gauge arm on top and the hanger on the load bolt. The specimen's two bolts and the load bolt are fastens, so they are drawn, checked and listed; the gauge arm's two bolts are not yet (their nuts sit in side slots the check does not read as a nut's seat). Swap the specimen's object for lever-bar, lever-plate or lever:both.",
   "items": [
     {
       "id": "rig",
@@ -76,6 +76,23 @@
       "min": 1,
       "note": "The arm clears the specimen as it bends",
       "label": "Arm over specimen"
+    }
+  ],
+  "fasten": [
+    {
+      "screw": "M5x20 cap",
+      "through": ["specimen"],
+      "into": "rig",
+      "holes": "specimen.body",
+      "note": "The specimen bolted to the wall's face, its nuts in the pockets behind"
+    },
+    {
+      "screw": "M4x16 cap",
+      "through": ["hanger"],
+      "into": "specimen",
+      "holes": "hanger.body",
+      "nut": true,
+      "note": "The load bolt: through the hanger and the specimen, a nut behind"
     }
   ]
 }

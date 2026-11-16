@@ -1,0 +1,61 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "box",
+  "title": "Box",
+  "version": "0.1.0",
+  "uses": [
+    "x1c"
+  ],
+  "material": "PLA",
+  "orientation": "Open side up on the bed. Walls and corner posts are straight up, so it prints without supports.",
+  "variables": {
+    "width": {
+      "value": 60,
+      "unit": "mm",
+      "rule": "Room for small things: keys, a watch, earrings",
+      "label": "Width",
+      "show": true,
+      "tweak": {
+        "min": 40,
+        "max": 160
+      },
+      "interface": true
+    },
+    "depth": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "Room for small things, front to back",
+      "label": "Depth",
+      "show": true,
+      "tweak": {
+        "min": 30,
+        "max": 120
+      },
+      "interface": true
+    },
+    "height": {
+      "value": "x1c.layer * 100",
+      "unit": "mm",
+      "rule": "A whole number of layers, deep enough for the screws' pilots",
+      "label": "Height",
+      "show": true,
+      "interface": true
+    },
+    "wall": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "Four print lines: stiff, and no gaps between lines"
+    },
+    "floor": {
+      "value": "x1c.layer * 8",
+      "unit": "mm",
+      "rule": "Eight layers"
+    },
+    "inset": {
+      "value": "wall + x1c.line * 8",
+      "unit": "mm",
+      "rule": "Each screw this far in from the outer faces: the wall, then a post round the screw's pilot, eight lines from its centre to the wall",
+      "interface": true
+    }
+  }
+}

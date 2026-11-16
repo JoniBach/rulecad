@@ -85,14 +85,21 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   them with joints, name the positions in `poses`, and run `cad check --sweep` to find where parts collide on the way.
   See "Joints and poses" in the cad README.
 - A part is named in fits as `<item>.<part>`; an object that returns one unnamed shape has one part, `body`.
-- Where parts screw together, say so with `fasten`, which knows the screw:
+- **A screwed joint is a `fasten`**, which knows the screw:
   `{ "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1", "bracket.h2"] }` (anchors on the
-  holes' axes), or `"holes": "bracket.body"` to use the part's own holes; `npx cad add fasten …` writes it. The check
-  reads the holes from the parts as drawn: one axis through the stack, a clearance hole in each part passed, a pilot,
-  insert or nut at the far end, the length chosen from what is sold, thread engaged, and the seat under the head.
-  Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
-- A gap fit can't tell whether holes line up. Where a board only rests on its screws' bosses, a holes fit follows them
-  (`{ "holes": "pcb.board", "into": "case.body", "depth": "m2.insert_length" }`).
+  holes' axes), or `"holes": "bracket.body"` to use the part's own holes; `npx cad add fasten …` writes it. Draw each
+  part's holes with `v.fixings` (a clearance hole where the screw passes, a pilot, insert or nut seat where it ends),
+  and name the screw by thread and head with no length: the check chooses one. It reads the holes from the parts as
+  drawn: one axis through the stack, a clearance hole in each part passed, a pilot, insert or nut at the far end, the
+  length chosen from what is sold, thread engaged, the seat under the head and the key's way to it, and `cad list`
+  counts the screws. Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
+- A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
+  a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
+  `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in
+  their place. Check it after, and report what changed.
+- A board screwed into its case is a `fasten` too, through the board's own mounting holes:
+  `{ "screw": "M2 cap", "through": ["pcb"], "into": "case", "holes": "pcb.board" }`, into bosses the case draws with
+  `v.fixings.insertBoss('M2', ...)` under `v.pcb.board_holes`.
 - A part built around another (a case around its board) reads it: `"uses": ["macropad/pcb"]`, then
   `pcb.board_w` and `v.pcb.board_holes`. Never copy another object's numbers by hand.
 
@@ -100,6 +107,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - `"engine": "pcb"` in the .json; `main(v)` returns a board built with `v.pcb` (see @rulecad/pcb's README).
 - Parts come from rule sets where one exists (`v.pcb.xiao`, `qwiic`, `jstph`, `header`), or any standard footprint by
   name (`v.pcb.part('U2', 'soic8', x, y)`). Turn parts in quarter turns with `rotation`, held in a variable.
+- A board's mounting holes are named by their screws' thread, never typed: `v.pcb.mount('M2', x, y)` in its `holes`
+  is the thread's clearance hole from its rule set, as the fab drills it (`{ fit: 'close' }` or `'loose'` for the others).
 - Join pins with `nets` (`GND: ['U1.GND', 'J1.GND']`) and let the autorouter draw them; `cad check` runs the fab's
   design rules. Look at the copper preview: connectors should face the edge their plug comes from.
 

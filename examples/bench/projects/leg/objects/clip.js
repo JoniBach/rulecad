@@ -1,9 +1,11 @@
 // A flat tab screwed to a post, its nose over the flange.
+// Its screw's hole is v.fixings' M3 clearance hole.
 import jscad from '@jscad/modeling'
 const { cuboid, cylinder } = jscad.primitives
 const { subtract } = jscad.booleans
 
 export function main (v) {
+  const hole = v.fixings.holeModel('M3').diameter
   const tab = cuboid({ size: [v.reach + v.back, v.wide, v.thick], center: [(v.back - v.reach) / 2, 0, v.thick / 2] })
-  return subtract(tab, cylinder({ radius: v.hole / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: v.segments }))
+  return subtract(tab, cylinder({ radius: hole / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: v.segments }))
 }

@@ -17,3 +17,4 @@ packages/*/*.d.mts
 docs/_site/
 test/docs-shots/
 scratch/
+.cache/

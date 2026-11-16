@@ -49,6 +49,35 @@ npx cad wires arm/arm                  # each wire's length through the arm's wh
 
 `cad plates` writes plate assemblies you can export with `npx cad export` as you would any part, and checks each bed.
 
+### The screws
+
+Every screwed joint in the arm but the motor mounts is a `fasten` entry in its assembly (the motors' screws are
+counted by their `"fastens": true` fits, and come on the same list): the screw named by its thread and head, the parts it
+passes through, and the part it ends in. The holes in the printed parts come from `v.fixings` (the
+[`@rulecad/fixings`](../fixings/) package bound to the project's printer), so a clearance hole, a pilot, a counterbore and a
+countersink are each sized from the thread's rule set and the printer's, and none is typed by hand. `cad check` follows each
+screw through the parts as drawn and chooses the shortest sold length that reaches its end with enough thread engaged.
+`cad list` then counts what it chose. For the arm made above (A5, 0.3 mm), it lists:
+
+| Count | Fixing | What it holds |
+|---|---|---|
+| 4 | M2x10 cap | The two home switches, each on its post |
+| 1 | M3x3 set | The pen's clamp screw, down through the shuttle's wall |
+| 4 | M3x6 cap | The shoulder motor (m1) on the housing |
+| 3 | M3x8 cap | The housing on the base's three columns |
+| 4 | M3x8 countersunk | The spindle on the output's flange, the heads flush under the bridge |
+| 6 | M3x10 cap | The bridge on the housing's posts, and the three clips on their posts |
+| 8 | M3x12 cap | The forearm on the elbow's output, and the elbow motor (m2) on the upper arm |
+| 1 | M3x16 cap | The upper arm clamped down on the spindle's hexagon |
+| 2 | M3x30 cap | The pen holder in the forearm's yoke |
+| 2 | M3 hex nut | The ends of the two yoke screws |
+
+That is 35 screws and 2 nuts, 30.4 g of fixings, bought in packs of 10 (one pack of each size covers it). The servo's own
+screws come in its bag and are not listed. Every line in the list says which joint it is for, so a length you do not have
+in the drawer can be checked against the joint before you substitute one: give that joint's `fasten` entry a `"length"` and run
+`npx cad check arm/arm` again, and the check says whether that screw still reaches, still engages and stops short of the
+end of its hole.
+
 ## 4. Wire it and set the drivers
 
 ```sh

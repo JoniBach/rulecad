@@ -20,7 +20,7 @@ import { schemaFindings } from '../lib/schema.mjs';
 import { readJson } from '../lib/host.mjs';
 import { optimised, readProblem, analysePart, picture, problemFile } from '../lib/optimise.mjs';
 import { evaluate } from '../lib/rules.mjs';
-import { setVariables, addToAssembly, parseValue } from '../lib/edit.mjs';
+import { setVariables, addToAssembly, fastenFromFitsEdit, parseValue } from '../lib/edit.mjs';
 import { setAt } from '../lib/jsonedit.mjs';
 import { threemf, slotOf } from '../lib/threemf.mjs';
 import { liveView } from '../lib/live.mjs';
@@ -47,7 +47,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad agents                        AGENTS.md: how an AI agent should design in this workspace
   cad trust                         allow what this workspace's cad.config.json asks (no sandbox, its own targets)
   cad rules <project>/<object>      every variable: value, the rule behind it, its source
-  cad rules check [set …]           rule sets held to what makes them traceable (exit 1 on a failure) [--json]
+  cad rules check [set …]           rule sets held to what makes them traceable (exit 1 on a failure) [--json]; notes,
+                                    never failures: an alias in "interface", and what the kit's set has that your copy lacks
   cad rules draw <set>              a dimension drawing of what a set says a part mounts by, <set>.svg, to compare with its datasheet [--out file]
   cad rules draft <name> --from <file.pdf>   the figures in a datasheet's text, into rules/<name>.json for you to name and check (all kind estimate)
   cad rules draft profile|slot|slot_nut <name>   every field a beam's profile, a slot family or a slot nut has, to fill from its sheet
@@ -57,6 +58,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad add fasten <project>/<assembly> --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2
                                     a screwed joint (or --holes bracket.body for the part's own holes) [--nut [hex|square|lock]]
                                     [--washer] [--length 12] [--torque 0.5] [--note …]
+  cad add fasten <project>/<assembly> --from-fits   a fasten in place of a holes fit and a fit that fastens the same parts
+                                    (the screw read from them, or --screw "M2 cap")
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets
@@ -138,7 +141,7 @@ const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-s
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
   'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
-  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque']; // cad add fasten
+  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits']; // cad add fasten
 // What a command takes, where that isn't <project>/<object>
 const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
@@ -147,7 +150,7 @@ const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten <project>/<assembly> 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -349,9 +352,15 @@ function ruleSheets(what, names) {
   if (what === 'check') {
     // a set fails on a finding of level fail; a warning or a note is said and the set still passes
     const results = checkSets(names), fails = (r) => r.findings.filter((x) => x.level === 'fail').length, bad = results.filter(fails), noted = results.filter((r) => r.findings.length && !fails(r));
-    if (opt('json')) console.log(JSON.stringify(results.map((r) => ({ name: r.name, findings: r.findings })), null, 2));
+    if (opt('json')) console.log(JSON.stringify(results.map((r) => ({ name: r.name, findings: r.findings, ...(r.notes ? { notes: r.notes } : {}) })), null, 2));
     else {
       for (const r of results.filter((x) => x.findings.length)) { console.log(`${r.name}: ${fails(r) ? `${fails(r)} to fix` : `passes, ${r.findings.length} to know`}`); for (const x of r.findings) console.log(`  ${{ fail: 'FAIL', warn: 'WARN', info: 'NOTE' }[x.level] ?? 'FAIL'}  ${x.text}  (${x.code})`); }
+      // notes never fail: an alias names one line per set, what a copy lacks of the kit's set says it whole
+      for (const r of results.filter((x) => x.notes)) {
+        const alias = r.notes.filter((x) => x.code === 'rules.alias'), rest = r.notes.filter((x) => x.code !== 'rules.alias');
+        if (alias.length) console.log(`${r.name}: NOTE  ${alias.map((x) => `${x.rule} is also read as ${x.values.alias}`).join(', ')}  (rules.alias)`);
+        for (const x of rest) console.log(`${r.name}: NOTE  ${x.text}  (${x.code})`);
+      }
       console.log(`${results.length - bad.length} of ${results.length} rule sets pass${noted.length ? ` (${noted.length} with something to know)` : ''}`);
     }
     process.exitCode = bad.length ? 1 : 0;
@@ -609,6 +618,13 @@ async function editAssembly(what, ref) {
   } else if (what === 'item') entry = { ...text(['id', 'object', 'assembly', 'variant']), ...at(), ...(list('rotate') ? { rotate: list('rotate') } : {}),
     ...(typeof opt('set') === 'string' ? { set: Object.fromEntries(sets() && Object.entries(sets()).map(([k, v]) => [k, parseValue(v)])) } : {}) };
   else if (what === 'loop') entry = text(['a', 'b', 'label']);
+  else if (what === 'fasten' && opt('from-fits')) { // a holes fit and a fit that fastens, put as one fasten
+    const s = await buildAssembly(ref), { fastenFromFits } = await import('../lib/fasten.mjs');
+    const r = fastenFromFitsEdit(ref, fastenFromFits(s), { screw: typeof opt('screw') === 'string' ? opt('screw') : undefined });
+    if (opt('json')) return console.log(JSON.stringify(r));
+    for (const x of r.added) console.log(`added a fasten to ${path.relative(WS, r.file)} in place of its holes fit and its fit that fastens: ${JSON.stringify(x)}`);
+    return console.log(`check its screws: cad check ${ref}`);
+  }
   else if (what === 'fasten') { // --screw "M3 cap" --through bracket --into base --at bracket.h1,bracket.h2 | --holes bracket.body [--nut [hex] --washer --length 12 --torque 0.5 --note …]
     const names = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => x.trim()).filter(Boolean) : undefined);
     entry = { ...text(['screw']), through: names('through') ?? [], ...text(['into']), ...(names('at') ? { at: names('at') } : {}), ...text(['holes']), ...(opt('nut') ? { nut: opt('nut') === true ? true : String(opt('nut')) } : {}), ...(opt('washer') ? { washer: true } : {}), ...pick(['length', 'torque']), ...text(['note']) };

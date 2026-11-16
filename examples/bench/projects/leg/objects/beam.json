@@ -3,7 +3,7 @@
   "name": "beam",
   "title": "Body cross beam",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3"],
+  "uses": ["x1c", "leg"],
   "engine": "manifold",
   "orientation": "Flat on one side, its screw holes along the bed: each hole a teardrop",
   "description": "A beam across the body between the side plates: it holds them square against the legs' push. Three of them, screwed in through the plates.",
@@ -15,8 +15,7 @@
     "long": {"value": "leg.body_w * 2 - leg.side_t * 2", "unit": "mm", "rule": "Between the two side plates' inner faces"},
     "deep": {"value": 46, "unit": "mm", "rule": "Across the body's length: its two screws at each end, plus room, and clear of the hip motors"},
     "wide": {"value": 12, "unit": "mm", "rule": "Thick: 25 layers of stiffness for the side plates to pull on"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "An M3 self-tapped into each end", "kind": "community"},
-    "pilot_len": {"value": 12, "unit": "mm", "rule": "For an M3 × 16 through a side plate"},
+    "pilot_len": {"value": 12, "unit": "mm", "rule": "Each end's pilot depth, for the screw through the side plate"},
     "screw_y": {"value": 16, "unit": "mm", "rule": "The two screws at each end"},
     "segments": {"value": 32, "rule": "Round enough"}
   }

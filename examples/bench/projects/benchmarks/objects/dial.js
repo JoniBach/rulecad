@@ -5,10 +5,11 @@ const { extrudeLinear } = jscad.extrusions
 const { translate, rotateZ, center } = jscad.transforms
 
 export function main (v) {
+  const hole = v.fixings.holeModel('M3', { depth: v.thick }).diameter // the motor's M3 screws' clearance holes, from v.fixings
   const deg = Math.PI / v.half_turn, n = 2 * v.half, arc = Array.from({ length: n + 1 }, (_, i) => { const a = (i - v.half) * deg; return [v.reach * Math.cos(a), v.reach * Math.sin(a)] })
   const sector = polygon({ points: [[0, 0], ...arc] })
   const body = extrudeLinear({ height: v.thick }, jscad.booleans.union(sector, roundedRectangle({ size: [v.hub, v.hub], roundRadius: v.corner, segments: v.segments })))
-  const s = v.spacing / 2, cuts = [[s, s], [s, 0 - s], [0 - s, s], [0 - s, 0 - s]].map(([x, y]) => cylinder({ radius: v.hole / 2, height: v.thick + 1, center: [x, y, v.thick / 2], segments: v.segments }))
+  const s = v.spacing / 2, cuts = [[s, s], [s, 0 - s], [0 - s, s], [0 - s, 0 - s]].map(([x, y]) => cylinder({ radius: hole / 2, height: v.thick + 1, center: [x, y, v.thick / 2], segments: v.segments }))
   cuts.push(cylinder({ radius: v.shaft / 2, height: v.thick + 1, center: [0, 0, v.thick / 2], segments: v.segments }))
   const ticks = [], labels = []
   for (let d = 0 - v.ticks; d <= v.ticks; d++) {

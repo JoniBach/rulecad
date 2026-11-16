@@ -124,6 +124,29 @@ test('the names designs read today keep their values: clearance, head, head_heig
   }
 });
 
+test('every name a design reads of a thread set is kept: in the vocabulary, or an alias of its name there', () => {
+  // the old names: each the vocabulary's own name for its figure, or listed in "interface" as the set's name for the
+  // vocabulary's shared one (screw_clearance, what a motor's mount reads, is clearance)
+  for (const { name, set } of sets.filter((s) => s.set.part === 'thread')) {
+    for (const old of ['clearance', 'head', 'head_height', 'nut_flats', 'nut_height', 'insert_hole', 'insert_length']) if (set.rules[old]) assert.ok(vocabulary.fields[old], `${name}.${old} is a vocabulary name`);
+    for (const [shared, own] of Object.entries(set.interface || {})) { assert.ok(vocabulary.fields[shared], `${name}: ${shared} is the vocabulary's`); assert.ok(set.rules[own], `${name}: ${shared} is an alias of ${own}, which it has`); }
+  }
+  // what the repository's designs read today (its examples, templates and worked examples, where this runs in the
+  // repository): every name there is in the kit's set, so a design that reads it builds against the kit alone
+  const repo = fileURLToPath(new URL('../../', import.meta.url)), threads = new Set(sets.filter((s) => s.set.part === 'thread').map((s) => s.name)), read = new Map();
+  const reads = (text, where) => { for (const [, s, r] of text.matchAll(/\b([a-z]\w*)\.([a-z_]+)\b/g)) if (threads.has(s) && r !== 'clearence') read.set(`${s}.${r}`, where); }; // (clearence: the tutorial's own misspelling, to show its error)
+  const walk = (d) => { if (!fs.existsSync(d)) return; for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = `${d}/${e.name}`; if (e.isDirectory() && !['node_modules', '.cache'].includes(e.name)) walk(p); else if (/\/objects\/[^/]+\.(json|js)$/.test(p)) reads(fs.readFileSync(p, 'utf8'), p.slice(repo.length)); } };
+  for (const d of ['examples', 'packages/create-rulecad/template', 'packages/create-rulecad/machines']) walk(repo + d);
+  for (const f of ['packages/cad/EXAMPLES.md', 'packages/cad/TUTORIAL.md']) if (fs.existsSync(repo + f)) for (const [, at, body] of fs.readFileSync(repo + f, 'utf8').matchAll(/^```\w*[ \t]*(\S*\/objects\/\S+)[^\n]*\n([\s\S]*?)^```/gm)) reads(body, `${f}: ${at}`);
+  // the scan itself, on a sample: the migration to @rulecad/fixings takes the designs' own reads toward none, so the
+  // scan is shown to find a read in a design's text, not by how many the repository still has
+  const sample = new Map(), was = [...read];
+  read.clear(); reads('const hole = v.m3.clearance + v.x1c.hole_comp, nut = v.m4.nut_flats', 'sample'); for (const k of read.keys()) sample.set(k, 1);
+  assert.deepEqual([...sample.keys()].sort(), ['m3.clearance', 'm4.nut_flats'], 'the scan finds what a design reads of a thread set');
+  read.clear(); for (const [k, w] of was) read.set(k, w);
+  for (const [ref, where] of read) { const [s, r] = ref.split('.'); assert.ok(rulesOf(s)[r], `${ref}, read in ${where}, is in the kit's ${s}`); }
+});
+
 test('every thread from M1.6 to M12 and 4-40 to 3/8-16 is a thread set with the whole vocabulary, each figure a spec from a standard', () => {
   const threads = sets.filter((s) => s.set.part === 'thread' && s.set.rules.thread_form.value !== 'plastic').map((s) => s.name).sort();
   assert.deepEqual(threads, [...METRIC, ...INCH].sort());

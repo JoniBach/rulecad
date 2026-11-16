@@ -1,0 +1,18 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "Box with its lid screwed on",
+  "kind": "fit",
+  "uses": [
+    "x1c"
+  ],
+  "items": [
+    { "id": "box", "object": "box" },
+    { "id": "lid", "object": "lid", "at": [0, 0, "box.height"] }
+  ],
+  "fits": [
+    { "a": "lid", "b": "box", "min": 0, "max": "x1c.fit", "note": "The lid sits on the box's rim" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["lid"], "into": "box", "holes": "lid.body", "note": "Lid screwed to the box" }
+  ]
+}

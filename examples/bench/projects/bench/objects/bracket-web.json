@@ -13,16 +13,6 @@
   "material": "PLA",
   "orientation": "Standing on its back plate, as drawn. 100% infill (or walls enough to be solid), 0.2 mm layers, the same filament as the other brackets.",
   "variables": {
-    "hole5": {
-      "value": "(m5.clearance + x1c.hole_comp) / 2",
-      "unit": "mm",
-      "rule": "A fixing bolt's hole: radius, printed"
-    },
-    "hole4": {
-      "value": "(m4.clearance + x1c.hole_comp) / 2",
-      "unit": "mm",
-      "rule": "The load bolt's hole: radius, printed"
-    },
     "target": {
       "value": "bench.bracket_fill * bench.bracket_w * bench.bracket_h * (bench.reach + bench.plate)",
       "unit": "mm\u00b3",

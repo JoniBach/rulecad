@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import { placeItems, jointValues, mul } from '@rulecad/model-link';
 import { host } from './host.mjs';
 import { paths } from './workspace.mjs';
+import { motorScrews } from './motors.mjs';
 
 const top = (n) => String(n).split(/[.@]/)[0];
 const round = (v) => v.map((x) => (Math.abs(x) < 1e-9 ? 0 : +x.toFixed(6)));
@@ -197,11 +198,13 @@ export function assemblyOrder(s) {
   const seq = [], lay = (off) => { for (const x of [...off].reverse()) { if (x.group) { lay(x.sub.off); seq.push({ group: x.group, d: x.d }); } else seq.push(x); } };
   lay(apart.off);
   const at = new Map(), steps = [];
+  // a motor's mounting screws, on the fit that fastens it (motorScrews): counted, with the key that turns them
+  const motorFits = new Map(motorScrews(s, { placeItems, jointValues }).map((m) => [m.fit, { fastener: m.name, count: m.count, ...(m.key != null ? { key: `${+m.key.toFixed(3)} mm hex key` } : {}) }]));
   seq.forEach((x, i) => { for (const g of x.group ?? [x.p]) at.set(g.id, i); });
   for (const [i, x] of seq.entries()) {
     if (x.group) { steps.push({ items: x.group.map((g) => g.id), object: null, dir: round(x.d), fasteners: [], together: true }); continue; }
     const { p, d } = x, list = [...new Set(s.fits.filter((f) => [...names(f.a), ...names(f.b)].includes(p.id) && (f.fastens || f.seat != null || f.fastener) && [...names(f.a), ...names(f.b)].every((n) => (at.get(n) ?? 0) <= i)))];
-    steps.push({ items: [p.id], object: p.object, dir: round(d), fasteners: list.map((f) => ({ fit: f.note || f.label || `${f.a} to ${f.b}`, ...(f.fastener ? { fastener: f.fastener } : {}), ...(f.count != null ? { count: f.num(f.count) } : {}), ...(f.key ? { key: f.key } : {}), ...(f.tighten ? { tighten: f.tighten } : {}) })) });
+    steps.push({ items: [p.id], object: p.object, dir: round(d), fasteners: list.map((f) => ({ fit: f.note || f.label || `${f.a} to ${f.b}`, ...(f.fastener ? { fastener: f.fastener } : {}), ...(f.count != null ? { count: f.num(f.count) } : {}), ...(f.key ? { key: f.key } : {}), ...(f.tighten ? { tighten: f.tighten } : {}), ...(!f.fastener ? motorFits.get(f) : {}) })) });
   }
   // Copies of one thing fitted the same way, one after another, are one step
   const merged = [];

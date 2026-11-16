@@ -50,8 +50,8 @@ export function shoppingList(s) {
   const add = (name, n, from, more = {}) => { const line = fasteners.get(name) ?? { fastener: name, qty: 0, from: [], ...more }; line.qty += n; if (!line.from.includes(from)) line.from.push(from); fasteners.set(name, line); };
   for (const p of s.parts) if (p.hardware) { const h = p.hardware; add(h.name, 1, h.from ?? h.name, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: h.grams ?? null }); }
   for (const m of motorScrews(s, { placeItems, jointValues })) {
-    let grams = null; try { grams = screwModel(m.thread, { length: m.length, head: 'cap', anyLength: true }).mass; } catch {}
-    add(`${m.thread}x${m.length} cap`, m.count, `${m.item} on ${m.other} (its mount, a fit that fastens)`, { kind: 'screw', thread: m.thread, length: m.length, head: 'cap', grams });
+    let grams = null; try { grams = screwModel(m.thread, { length: m.length, head: m.head, anyLength: true }).mass; } catch {}
+    add(m.name, m.count, `${m.item} on ${m.other} (its mount, a fit that fastens)`, { kind: 'screw', thread: m.thread, length: m.length, head: m.head, grams });
   }
   for (const x of s.fits) if (x.fastener && x.fasten == null) add(x.fastener, x.count != null ? x.num(x.count) : 1, x.note || `${x.a} / ${x.b}`);
   // Rounded up to whole packs (packs.pack), the spares said

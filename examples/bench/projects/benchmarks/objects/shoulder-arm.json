@@ -87,11 +87,6 @@
       "unit": "mm",
       "rule": "Lifts the arm clear of the clips"
     },
-    "hole": {
-      "value": 3.5,
-      "unit": "mm",
-      "rule": "M3 clearance"
-    },
     "bolt": {
       "value": 20,
       "unit": "mm",

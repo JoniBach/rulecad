@@ -3,7 +3,7 @@
   "name": "carriage",
   "title": "Stand carriage: the leg's mount on two rods",
   "version": "0.1.0",
-  "uses": ["x1c", "leg", "m3", "lm8uu"],
+  "uses": ["x1c", "leg", "lm8uu"],
   "engine": "manifold",
   "orientation": "The hip's face on the bed, the bosses up; each bearing pocket is a teardrop across the layers",
   "description": "A plate on two LM8UU bushings. The hip housing screws to its face and the hip's motor goes through its middle. It rides up the rods as the foot pushes, so the scale reads the leg.",
@@ -12,7 +12,7 @@
     "cable": {"at": ["half_w", 0, 0], "axis": [0, 0, -1]}
   },
   "variables": {
-    "plate": {"value": 8, "unit": "mm", "rule": "The plate's thickness: three M3 screws bite here and carry the leg into the bushings"},
+    "plate": {"value": 8, "unit": "mm", "rule": "The plate's thickness: the housing's three screws bite here and carry the leg into the bushings"},
     "feet_r": {"value": 37, "unit": "mm", "rule": "The housing's three feet", "interface": true},
     "hub": {"value": 46, "unit": "mm", "rule": "The plate's round middle: past the feet, for the screws"},
     "arm_w": {"value": 24, "unit": "mm", "rule": "The arms' width, out to the bosses"},
@@ -24,7 +24,6 @@
     "rod_y": {"value": "leg.rod_y", "unit": "mm", "rule": "The rods' distance behind the face"},
     "cut": {"value": 44.5, "unit": "mm", "rule": "The motor's way through: a NEMA 17 and 1.1 mm each side"},
     "corner": {"value": 3, "unit": "mm", "rule": "Round the corners of the motor's window"},
-    "pilot": {"value": 2.9, "unit": "mm", "rule": "M3 self-tapped into the plate, from the housing", "kind": "community"},
     "a1": {"value": 90, "unit": "°", "rule": "The housing's first foot"},
     "a2": {"value": 210, "unit": "°", "rule": "Second"},
     "a3": {"value": 330, "unit": "°", "rule": "Third"},
