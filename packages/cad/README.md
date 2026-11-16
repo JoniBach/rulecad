@@ -391,6 +391,7 @@ starts and stops. From that the check says:
 | Finding | What it checks |
 |---|---|
 | `fasten.holes` | One axis runs from under the head through every part: a hole 0.05 mm or more off it fails, with the distance |
+| `fasten.slot` | Into a beam's slot: each screw over a slot's centre line within its hole's play, square to the face and along the beam (see Fastening into a slot, under Beams) |
 | `fasten.clearance` | Each part passed through has a clearance hole for the thread as drawn on this printer, between the close and the loose figure; it says what the hole measures and what it should be |
 | `fasten.end` | The far end is a pilot, a hole to tap, a thread drawn to print, an insert's hole or a nut's seat of this thread (a pocket on the far face, or a slot across the screw partway along it, as `v.fixings.nutTrap` cuts), or a clearance hole with `nut`; into a motor, one of its own threaded mounting holes |
 | `fasten.length` | The length chosen where none is given: the shortest sold length that fits the stack as measured (into a motor, the longest that stops short of the end of its thread). A given length is checked for reaching the far end, bottoming out in a blind hole (1 mm is kept at the tip) and standing more than a diameter proud |
@@ -601,6 +602,33 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   `@rulecad/frames`' `JOIN_STIFFNESS`: every figure an estimate until the joint rig measures it, and the finding says so).
 - `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120 [--screw "M5 button"] [--fitting printed]`
   adds one.
+
+**Fastening into a slot.** A `fasten` whose `into` is a slot on a beam ends in a slot nut under the slot's lips:
+
+```json
+"fasten": [{ "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "drop-in" }]
+```
+
+- `into` is a face with a slot (`x1.top`), one slot of a face with several (`x1.top.2`), or a place on it
+  (`x1.top@120`, which each screw is then held to). The nut is the one made for that slot's nut family and the thread
+  (`nutFor` of `@rulecad/frames`): `"nut"` chooses its kind (`slide-in`, `drop-in`, `roll-in`, `hammer`, `square`,
+  `t-bolt`), and left out, the strongest made for the slot. It is placed under the lips as a reference part and
+  counted by its rule set's name on `cad list` (`2 × slot-nut-6-misumi-m4-drop-in`).
+- `fasten.slot`: each screw lies over a slot's centre line, within the play its hole in the part gives it (half the
+  hole less the thread), square to the face, along the beam. A plate drawn for slots 30 mm apart on a face whose slots
+  are 20 mm apart fails with the distance, `5 mm off the centre line of x1's top.1 slot`.
+- `fasten.length` chooses the shortest sold screw that puts a hexagon nut's height of thread in the slot nut
+  (`<thread>.nut_height`, ISO 4032) and stops `FASTEN.floor` (0.3 mm, a working figure) short of the slot's floor.
+  The stack is the part, a washer, and the slot's lip. With 3 mm of plate on a 2020 slot an M4 screw has 1.3 mm to
+  land in, so `M4x8` fits it and nothing sold fits a 4 mm plate; the finding names the lengths either side.
+- `frame.nut`: a slide-in or square nut goes in only from an open end of its slot. A slot is closed by a join that
+  butts on its end, and the stretch a nut is in by a blind join's head in that slot too. Where joins close both ways,
+  the check fails and names the nut of that thread that goes in through the opening (`give "nut": "drop-in"`).
+- `frame.preload`: nuts with a way in that a join closes and no way that stays open (the other end capped by an item
+  placed there, such as a foot) go in before that join is made. The finding names the beam, the slot, the end, the
+  nuts and the join, and `cad order` and the build page list them on the step that makes it
+  (`first, load 2 × slot-nut-6-misumi-m4-slide-in into y1's top slot through its end a, for plate2, before the blind
+  join of y1.a to p1.top@170 closes it`).
 
 ### Building it
 

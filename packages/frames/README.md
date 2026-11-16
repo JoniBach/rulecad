@@ -497,6 +497,12 @@ nutFor('profile-2020-openbuilds', 'top', 'M8');
 // slot-6-openbuilds). Made for it: M5 drop-in (slot-nut-6-openbuilds-m5-drop-in). ...
 ```
 
+`NUT_KINDS` lists the kinds as a nut set's `nut_kind` takes them. A nut's `entry` says how it goes in: `end` (a
+slide-in or square nut, only from an open end of the slot) or `anywhere` (through the opening). In an assembly,
+`@rulecad/cad` reads a `fasten` into a slot (`"into": "x1.top"`) through `nutFor`, holds each screw to a slot's centre
+line, and fails a nut whose entry is `end` in a slot closed at both ends by joins (`frame.nut`), or lists it to load
+before the join that closes its way in (`frame.preload`).
+
 **What a nut holds.** `hold` is the pull straight out of the slot. Bosch Rexroth rates its nuts (Fmax: 1700 N for the
 6 mm T-nut, 3000 N for the 6 mm sliding block with M5, 4000 N for the 8 mm T-nut and T-bolt, 6000 N for the 8 mm
 sliding block with M8, 2200 N for the 8 mm swivel-in block): those are `spec`. MISUMI gives a tightening torque, and
@@ -619,7 +625,7 @@ lists them.
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |
-| `slotNutModel`, `nutFit`, `slotNut`, `nutFor` | A bought slot nut, how it sits in a slot, its solid, and the one for a face (above) |
+| `slotNutModel`, `nutFit`, `slotNut`, `nutFor`, `NUT_KINDS` | A bought slot nut, how it sits in a slot, its solid, the one for a face, and the kinds (above) |
 | `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |

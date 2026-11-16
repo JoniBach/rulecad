@@ -98,6 +98,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   drills b and adds its screw to the fasten checks and the list; the other kinds are checked where they meet and say
   their fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
   address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
+- **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
+  part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
+  a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close
+  at both ends: use the kind it names (`"nut": "drop-in"`). `frame.preload` lists nuts to load before a join; tell
+  the user, and `cad order` shows them on the step.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in
