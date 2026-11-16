@@ -18,6 +18,7 @@
     "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "fits": { "type": "array", "items": { "$ref": "#/$defs/fit" } },
     "fasten": { "type": "array", "description": "Screwed joints: each names its screw, the parts it passes through in order, and the part it ends in. The holes are read from the parts as drawn and each screw followed along one axis; a fasten holds its parts as a fit that fastens does, lines their holes up as a holes fit does, and puts its screws on the shopping list. Draw the holes with v.fixings, and name the screw with no length: the check chooses one", "items": { "$ref": "#/$defs/fasten" }, "defaultSnippets": [{ "label": "fasten", "description": "A screwed joint", "body": [{ "screw": "${1:M3 cap}", "through": ["${2:bracket}"], "into": "${3:base}", "at": ["${4:bracket.h1}", "${5:bracket.h2}"] }] }] },
+    "joins": { "type": "array", "description": "How beams are joined: each names an end of one beam (a) and a place on another (b), and its kind. A join puts its operations on both beams (a tap in a's end, an access or clearance hole across b), its screws into fasten, and a spring for the frame's solve; join.geometry checks the end meets the face square and flush where b says", "items": { "$ref": "#/$defs/join" }, "defaultSnippets": [{ "label": "join", "description": "A blind join: a's end tapped, its screw's head in b's slot", "body": [{ "kind": "${1:blind}", "a": "${2:y1.a}", "b": "${3:x1.back@120}" }] }] },
     "joints": { "type": "array", "items": { "$ref": "#/$defs/joint" } },
     "loops": { "type": "array", "items": { "$ref": "#/$defs/loop" } },
     "planetary": { "type": "array", "items": { "$ref": "#/$defs/planetary" } },
@@ -116,6 +117,20 @@
       "radius": { "$ref": "#/$defs/expr", "description": "A pocket's corner radius, mm" },
       "length": { "$ref": "#/$defs/expr", "description": "A notch's length along the beam, mm" } } },
     "address": { "type": "string", "pattern": "^[a-z][\\w-]*(\\.[\\w-]+)+(@-?\\d+(\\.\\d+)?%?)?$", "description": "An anchor by name, <item>.<anchor>; on a beam an end (x1.a, x1.b), an end bore (x1.a.1), or a face with a distance from end a (x1.top@120), from end b (x1.top@-20) or a share of the length (x1.top@50%), the second slot of a face x1.top.2@120" },
+    "join": {
+      "type": "object",
+      "description": "Two beams joined: an end of one (a), a place on the other (b), and how (kind)",
+      "required": ["kind", "a", "b"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["blind", "end-tap", "bracket", "gusset", "cube", "hidden", "anchor", "mitre", "pivot", "splice", "printed"], "description": "blind: a's end tapped, a button-head screw's head in b's slot, an access hole across b. end-tap: a's end tapped, a cap screw through a hole drilled across b. The rest are checked where they meet and stiffen the frame by an estimate; their fittings come in later releases" },
+        "a": { "type": "string", "description": "A beam's end: y1.a, or one bore of it where the end has several (y1.a.2)" },
+        "b": { "type": "string", "description": "A place on the other beam where a's end (its bore's axis) meets it: a face with a distance from its end a (x1.back@120, x1.top@-20, x1.top@50%), or an end (x1.b) for a splice, mitre or corner" },
+        "fitting": { "enum": ["printed", "bought"], "description": "For a kind with a fitting: printed or bought" },
+        "screw": { "type": "string", "description": "For blind and end-tap: the screw by thread and head (M5 button), where not the end bore's thread with the kind's head" },
+        "note": { "type": "string" }
+      }
+    },
     "fasten": {
       "type": "object",
       "description": "A screwed joint: the screw by thread and head, the parts it passes in order, the part it ends in, and where the screws go (at, an anchor each, or holes, a part's own holes)",

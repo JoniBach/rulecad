@@ -63,7 +63,7 @@ export const JOIN_SCALE = {
 };
 
 /** How deep a join taps the end of a, with what it rests on. */
-export const JOIN_TAP = { value: 1, unit: 'diameters', rule: 'A join taps the end of a as deep as the thread engagement asks in the beam\'s metal (engagement in @rulecad/fixings), with the screw\'s tip room (fixings.tip_room) and this many diameters more, so a screw of a sold length both engages fully and stops short of the bottom', kind: 'default', source: 'A working figure of @rulecad/frames: the step between sold screw lengths near a joint\'s is up to about one diameter (M5: 12, 16, 20 mm)', checked: CHECKED };
+export const JOIN_TAP = { value: 1.5, unit: 'diameters', rule: 'A join taps the end of a as deep as the thread engagement asks in the beam\'s metal (engagement in @rulecad/fixings), with the screw\'s tip room (fixings.tip_room) and this many diameters more, so a screw of a sold length both engages fully and stops short of the bottom: the step between sold lengths is up to one diameter, and half a diameter more keeps a screw that only just needs the next length off the bottom', kind: 'default', source: 'A working figure of @rulecad/frames, from the steps in the m5 set\'s sold lengths (20, 25, 30, 35 mm)', checked: CHECKED };
 const classOf = (mat) => { const E = mat?.modulus; return E == null ? 'aluminium' : E < 20000 ? 'plastic' : E < 100000 ? 'aluminium' : 'steel'; };
 
 /**

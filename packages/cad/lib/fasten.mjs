@@ -475,6 +475,10 @@ export function fastenOf(s, worlds, opts = {}) {
         while (n > 0 && narrow(A.segs[n - 1])) n--;
         if (n >= 0) { bore0 = n; zSeat = A.segs[n].z0; }
         else { say('fasten.holes', 'fail', `${A.name}'s slot has no lips on the screw's axis for its head to sit under`); bad = true; }
+      } else if (A && lips) { // a head on a beam's slot from outside (an end-tap join): it sits on the lips, the first narrow stretch from the head
+        const n = A.segs.findIndex((seg) => !seg.solid && Math.min(seg.a.free, seg.b.free) < headR - tol);
+        if (n >= 0 && !A.segs.slice(0, n).some((seg) => seg.solid)) { bore0 = n; zSeat = A.segs[n].z0; }
+        else { say('fasten.holes', 'fail', `${A.name}'s slot has no lips on the screw's axis for its head to sit on`); bad = true; }
       } else if (A) {
         for (const [n, seg] of A.segs.entries()) {
           if (seg.solid) { say('fasten.holes', 'fail', solidSays(A, seg)); bad = true; break; }

@@ -746,3 +746,60 @@ test('a printer\'s measured slot_fit (the slot coupon) draws a carrier before it
   // a design's plain values (v.x1c) as well
   assert.equal(carrierModel('slot-8', { thread: 'M5', printer: { ...values, slot_fit: 0.25 } }).clearance, 0.25);
 });
+
+test('joins: a blind join taps the end of a and puts an access hole across b in line with it, through to the slot the head sits in, with one button-head screw', () => {
+  const { joinModel, JOINS, JOIN_STIFFNESS } = frames;
+  const A = beamModel('2020-misumi-hfs5', { length: 200 }), B = beamModel('2020-misumi-hfs5', { length: 300 });
+  const j = joinModel('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@120' });
+  // the tap: as deep as aluminium's 2 diameters of M5 (10 mm), the screw's 1 mm tip room and 1.5 diameters more (7.5 mm)
+  assert.deepEqual(j.a.ops, [{ op: 'tap', at: 'a.1', thread: 'M5', depth: 18.5 }]);
+  // the access hole: across from back.1 on the same line, at the same distance, through every wall to the back slot
+  assert.deepEqual(j.b.ops, [{ op: 'access', at: 'front.1@120', thread: 'M5', through: 'beam' }]);
+  assert.deepEqual([j.b.place, j.b.slot, j.b.distance, j.b.across], ['back.1', 'slot-6-misumi', 120, { place: 'front.1', slot: 'slot-6-misumi' }]);
+  assert.deepEqual(j.screws, [{ screw: 'M5 button', thread: 'M5', head: 'button', bore: 'a.1' }]);
+  assert.equal(j.fitting, null); assert.deepEqual(j.findings, []);
+  // the ops as the beams take them: the access hole 14 mm deep, from the front face to the back slot's cavity
+  const hole = beamModel(B.profile, { length: 300, ops: j.b.ops }).ops.find((o) => o.op === 'access');
+  assert.deepEqual([hole.diameter, hole.depth, hole.through, hole.distance], [5.3, 14, 'beam', 120]);
+  assert.match(hole.line, /access hole Ø5\.3 mm in front\.1, 120 mm from end a, 14 mm deep \(through to the far side\) for a 4 mm key/);
+  assert.equal(beamModel(A.profile, { length: 200, ops: j.a.ops }).ops[0].engagement.enough, true);
+  // an end-tap join: a clearance hole right through b instead, and a cap screw
+  const e = joinModel('end-tap', { beam: A, end: 'a' }, { beam: B, address: 'back@120' });
+  assert.deepEqual([e.b.ops, e.screws[0].screw], [[{ op: 'drill', at: 'front.1@120', thread: 'M5', kind: 'clearance', through: 'beam' }], 'M5 cap']);
+  assert.equal(joinModel('blind', { beam: A, end: 'b' }, { beam: B, address: 'top@-20' }, { screw: 'M5x12 button' }).screws[0].screw, 'M5x12 button');
+  // every kind has a stiffness, each an estimate; a kind whose fitting comes later adds nothing yet, and says so
+  assert.deepEqual(Object.keys(JOIN_STIFFNESS), Object.keys(JOINS));
+  for (const s of Object.values(JOIN_STIFFNESS)) for (const v of [s.bending, s.twist]) { assert.equal(v.kind, 'estimate'); assert.match(v.source, /joint rig \(issue 264\)/); }
+  assert.deepEqual([j.stiffness.bending, j.stiffness.twist, j.stiffness.end], [1.5e6, 3e5, { rx: 3e5, ry: 1.5e6, rz: 1.5e6 }]);
+  const br = joinModel('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@120' }, { fitting: 'printed' });
+  assert.deepEqual([br.a.ops, br.b.ops, br.screws, br.findings.map((f) => `${f.level} ${f.code}`)], [[], [], [], ['warn join.fitting']]);
+  assert.match(br.findings[0].text, /A corner bracket comes with Frames 2\.3 \(printed\) and 2\.6 \(bought\)/);
+  assert.equal(br.stiffness.bending, 3e6 * 0.3); // a printed bracket: a share of a bought one's
+  const big = beamModel('4040-generic', { length: 300 });
+  assert.equal(joinModel('splice', { beam: big, end: 'b' }, { beam: big, address: 'a' }).stiffness.scale, 8); // (40 mm over 20, cubed)
+  // a closed face where the head needs a slot: join.geometry fails, and nothing is derived
+  const tube = beamModel('tube-al-20x20x2', { length: 300 }), shut = joinModel('blind', { beam: A, end: 'a' }, { beam: tube, address: 'back@120' });
+  assert.deepEqual([shut.a.ops, shut.screws, shut.findings.map((f) => `${f.level} ${f.code}`)], [[], [], ['fail join.geometry']]);
+  assert.match(shut.findings[0].text, /a blind join meets a slot, and profile-tube-al-20x20x2 x 300's back\.1 is a closed face: join it to a face with a slot, or use an end-tap join/);
+});
+
+test('joins refuse by name: an unknown kind, an end that has no bore or two, b the wrong sort of place, a screw or fitting the kind does not take', () => {
+  const { joinModel } = frames;
+  const A = beamModel('2020-misumi-hfs5', { length: 200 }), B = beamModel('2020-misumi-hfs5', { length: 300 }), W = beamModel('2040-misumi-hfs5', { length: 200 }), T = beamModel('tube-al-20x20x2', { length: 200 });
+  const r = (kind, a, b, o, re) => assert.throws(() => joinModel(kind, a, b, o), re);
+  r('weld', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, {}, /no kind of join "weld": there are blind, end-tap, bracket, gusset, cube, hidden, anchor, mitre, pivot, splice, printed/);
+  r('blind', { beam: A, end: 'top' }, { beam: B, address: 'back@10' }, {}, /a is an end of the beam, a or b, or one bore in it \(a\.1\)/);
+  r('blind', { beam: A, end: 'a' }, { beam: B, address: 'b' }, {}, /b is a face with a distance \(back@120, top@50%\) on the other beam, as a blind join meets it/);
+  r('splice', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, {}, /b is an end, a or b on the other beam, as a splice join meets it/);
+  r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back' }, {}, /b names a face with a distance from its end a, where the end of a meets it: back@120/);
+  r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@320' }, {}, /"back@320" is past the end of .* it is 300 mm long/);
+  r('blind', { beam: T, end: 'a' }, { beam: B, address: 'back@10' }, {}, /profile-tube-al-20x20x2 has no bore in its ends to tap, and a blind join screws into one: join it with a bracket or a gusset/);
+  r('blind', { beam: W, end: 'a' }, { beam: B, address: 'back@10' }, {}, /end a of profile-2040-misumi-hfs5 x 200 has 2 bores \(a\.1, a\.2\), each meeting .* give a join for each, a: a\.1 and a\.2/);
+  r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { screw: 'M5 nut' }, /screw names a screw by its thread and head/);
+  r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { screw: 'M5 cap' }, /a bracket join's screws come with its fitting \(Frames 2\.3 \(printed\) and 2\.6 \(bought\)\): leave screw out/);
+  r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { fitting: 'printed' }, /a blind join has no fitting to choose: its screws hold it/);
+  r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { fitting: 'glued' }, /fitting is printed or bought \(got "glued"\)/);
+  // the 2040's bores, one join each
+  assert.deepEqual(joinModel('blind', { beam: W, end: 'a.2' }, { beam: B, address: 'back@10' }).a.ops, [{ op: 'tap', at: 'a.2', thread: 'M5', depth: 18.5 }]);
+  assert.throws(() => beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'access', at: 'top@50', thread: 'M5', through: 'all' }] }), /through is wall \(through one wall, the default\) or beam \(through every wall on its line, to the slot on the far side/);
+});

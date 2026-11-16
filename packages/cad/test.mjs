@@ -2706,6 +2706,70 @@ test('beam operations in an assembly: an end tapped M5 and an access hole by exp
   } finally { done(); }
 });
 
+test('joins between beams: a blind join taps one end and drills an access hole across the other beam in line with it, counts one button-head screw, and a beam 2 mm off the face fails join.geometry with the gap', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/tee.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // y1 stands on x1's back face 120 mm from its end a, on the slot's centre line; the join says how they are held
+    const a = { title: 'Tee', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [300, 0, 0] }, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [120, 10, 0], to: [120, 210, 0] }],
+      joins: [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120' }] };
+    const write = (x = a) => fs.writeFileSync(file, JSON.stringify(x));
+    write();
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/tee'), ops = Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, o.beam.ops.filter((x) => !x.implied).map((x) => [x.op, x.at, x.distance, x.depth ?? null, x.diameter ?? null])]));
+      console.log(JSON.stringify({ ops, hardware: s.hardware.map((h) => [h.kind, h.name, h.head]), findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap)/.test(f.code)).map(({ level, code, text, values }) => ({ level, code, text, values })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r = probe();
+    const by = (code) => r.findings.filter((x) => x.code === code);
+    // a tapped end on y1, 18.5 mm deep (aluminium's 10 mm of M5 engaged, tip room, 1.5 diameters more), and on x1 an access
+    // hole across from the back face at the same 120 mm, from the front face through to the back slot (14 mm)
+    assert.deepEqual(r.ops, { x1: [['access', 'front.1@120', 120, 14, 5.3]], y1: [['tap', 'a.1', 0, 18.5, null]] });
+    // one button-head screw, its head in x1's back slot under the lips, into y1's thread, its key through the access hole
+    assert.deepEqual(r.hardware, [['screw', 'M5x12 button', 'button']]);
+    for (const code of ['fasten.holes', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'fasten.access', 'overlap']) assert.deepEqual(by(code).map((x) => x.level), ['pass'], `${code}: ${JSON.stringify(by(code))}`);
+    assert.match(by('fasten.seat')[0].text, /the head, 9\.5 mm across, bears on the lips of x1's slot \(slot-6-misumi\) from inside, in its 12 mm cavity/);
+    assert.match(by('fasten.end')[0].text, /ends in y1's own M5 thread, tapped 18\.5 mm into its end bore a\.1/);
+    assert.match(by('fasten.access')[0].text, /a 3 mm hex key reaches the head along its axis/);
+    assert.deepEqual(by('join.geometry').map((x) => [x.level, x.text]), [['pass', 'blind join of y1.a to x1.back@120: y1\'s end a meets x1\'s back.1 face square and flush at 120 mm from x1\'s end a, on the slot\'s centre line']]);
+    assert.deepEqual(by('join.stiffness').map((x) => [x.level, x.values]), [['info', { bending: 1.5e6, twist: 3e5 }]]);
+    assert.match(by('join.stiffness')[0].text, /an estimate, until the joint rig \(issue 264\) measures it/);
+    assert.deepEqual(by('join.end').map((x) => [x.level, x.text.split(':')[0]]), [['warn', '3 beam ends are neither joined nor capped']]);
+    // counted on the list once, as one screw of the join
+    assert.match(cad('list', 'frame/tee'), /1 ×\s+M5x12 button\s+.*blind join of y1\.a to x1\.back@120/);
+    assert.match(cad('list', 'frame/tee'), /access Ø5\.3 at front\.1@120\.0\s+x1/);
+    // y1 moved 2 mm off the face: join.geometry fails with the gap
+    a.items[1].from = [120, 12, 0]; a.items[1].to = [120, 212, 0]; write();
+    r = probe();
+    assert.deepEqual(by('join.geometry').map((x) => [x.level, x.values.gap]), [['fail', 2]]);
+    assert.match(by('join.geometry')[0].text, /y1's end a stands 2 mm off x1's back\.1 face: a gap of 2 mm, where it meets flush\. Move y1 2 mm toward x1/);
+    // 5 mm along: where the join says and where the beam is disagree, and it says which address would do
+    a.items[1].from = [125, 10, 0]; a.items[1].to = [125, 210, 0]; write();
+    assert.match(probe().findings.find((x) => x.code === 'join.geometry').text, /y1's end a is 5 mm toward x1's end b from x1\.back@120: it meets x1 125 mm from its end a, so the join says x1\.back@125, or y1 moves/);
+    // an end-tap join: a clearance hole right through x1, a cap screw on the front slot's lips
+    a.items[1].from = [120, 10, 0]; a.items[1].to = [120, 210, 0]; a.joins[0].kind = 'end-tap'; write();
+    r = probe();
+    assert.deepEqual([r.ops.x1, r.hardware], [[['drill', 'front.1@120', 120, 14, 5.5]], [['screw', 'M5x35 cap', 'cap']]]);
+    assert.deepEqual(r.findings.filter((x) => /^(fasten|overlap|join\.geometry)/.test(x.code) && x.level !== 'pass'), []);
+    // a kind whose fitting comes later: checked where it meets, nothing drilled, and it says so
+    a.joins[0] = { kind: 'bracket', a: 'y1.a', b: 'x1.back@120', fitting: 'printed' }; write();
+    r = probe();
+    assert.deepEqual([r.ops, r.hardware, by('join.fitting').map((x) => x.level), by('join.geometry').map((x) => x.level)], [{ x1: [], y1: [] }, [], ['warn'], ['pass']]);
+    // refused by name: a join on an item that is not a beam, a key a join does not take; cad add join kept to the beams
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/tee'), pattern); };
+    refused((b) => { b.joins = [{ kind: 'blind', a: 'z1.a', b: 'x1.back@120' }]; }, /join 1: a is on a beam item of this assembly, and z1 is not an item \(beams: x1, y1\)/);
+    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, note/);
+    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'y1.back@120' }]; }, /join 1: a and b are on one beam, y1/);
+    write({ ...a, joins: [] });
+    assert.match(cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'y1.a', '--b', 'x1.back@120'), /added a join/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).joins, [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120' }]);
+    assert.match(cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'q1.a', '--b', 'x1.back@120'), /join a: no beam "q1" in frame\/tee \(beams: x1, y1\)/);
+    assert.match(cad('check', 'frame/tee'), /files match their schemas/);
+  } finally { done(); }
+});
+
 test('beam cut list and sheets: a box of twelve beams lists three lengths, the bars to buy and their offcuts; cad beams writes a sheet per mark, the access hole at 207.5 mm', () => {
   const { ws, cad, done } = workspace();
   try {
