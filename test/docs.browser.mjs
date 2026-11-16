@@ -20,7 +20,7 @@ const drawn = {
   variables: "document.querySelectorAll('#values tr').length > 4", 'keyboard-layout': "document.querySelectorAll('#keys rect').length > 10",
   versions: "/major/.test(document.getElementById('verdict').textContent)", rules: "document.querySelectorAll('#rules tbody tr').length > 20",
   pcb: "!!document.querySelector('.figure svg')", cad: "!!document.querySelector('img[src=\"soap-tray.png\"]')", robots: "document.querySelector('#link1') && /shoulder/.test(document.getElementById('readout').textContent)",
-  fixings: "!!document.querySelector('.stage canvas') && document.querySelectorAll('.findings li').length >= 4 && /triangles/.test(document.getElementById('count').textContent)",
+  fixings: "!!document.querySelector('.stage canvas') && document.querySelectorAll('.findings li').length >= 4 && /triangles/.test(document.getElementById('count').textContent) && document.querySelectorAll('#holes tbody tr').length === 7 && /x1c\\.pilot_m3/.test(document.getElementById('holes').textContent)",
   index: "document.querySelectorAll('.card').length === 17"
 };
 
