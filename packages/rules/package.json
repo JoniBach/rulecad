@@ -10,6 +10,7 @@
     "*.json",
     "drawings/*.svg",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "license": "CC0-1.0",

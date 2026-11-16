@@ -28,6 +28,7 @@
     "strength.d.mts",
     "draw.d.mts",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "license": "MIT",

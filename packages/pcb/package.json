@@ -9,6 +9,7 @@
     "circuit.mjs",
     "kicad.mjs",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "license": "MIT",
