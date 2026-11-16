@@ -256,4 +256,4 @@ export function stepPictures(s, r) {
   });
 }
 
-export const orderText = (ref, r) => (r.stuck ? `${ref}: ${r.stuck.text}` : [`${ref}: how it goes together`, ...r.steps.map((st) => `  ${String(st.n).padStart(2)}. ${st.text}`)].join('\n'));
+export const orderText = (ref, r) => (r.stuck ? `${ref}: ${r.stuck.text}` : [`${ref}: how it goes together`, ...r.steps.flatMap((st) => [...(st.load || []).map((t) => `      first, ${t}`), `  ${String(st.n).padStart(2)}. ${st.text}`])].join('\n'));

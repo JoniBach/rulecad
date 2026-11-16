@@ -50,6 +50,7 @@ import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf } from './beams.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
+import { slotNutChecks } from './slotnuts.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -940,6 +941,7 @@ export function checkAssembly(s) {
   boughtFindings(s, f);
   beamFindings(s, f);
   joinChecks(s, f);
+  slotNutChecks(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });

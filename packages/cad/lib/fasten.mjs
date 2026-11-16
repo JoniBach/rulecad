@@ -356,7 +356,7 @@ function slotEnd(s, at, n, { B, O, D, x, fx, cl, clr, say, sc }) {
   const face = `${item}'s ${at.face} face`;
   if (!hits.length) { say('fasten.slot', 'fail', `the screw does not go into ${face}: its axis points along it or away from it`); return null; }
   const h = hits[0], hole = cl.at(-1), d = hole && !hole.lips ? hole.d : clr.normal?.diameter ?? fx.major, play = Math.max(0, (d - fx.major) / 2), off = Math.abs(h.across), L = at.beam.length;
-  const slot = `${item}'s ${h.p.name} slot`, values = { distance: r3(off), play: r3(play), along: r3(h.along) };
+  const named = at.beam.places.filter((q) => q.face === h.p.face).length > 1 ? h.p.name : h.p.face, slot = `${item}'s ${named} slot`, values = { distance: r3(off), play: r3(play), along: r3(h.along) };
   const pitch = at.places.length > 1 ? Math.hypot(at.places[1].at[0] - at.places[0].at[0], at.places[1].at[1] - at.places[0].at[1]) : null;
   const bad = (text, v = values) => { say('fasten.slot', 'fail', text, v); return null; };
   if (h.angle > FASTEN.square.value) return bad(`the screw meets ${face} ${mm(+h.angle.toFixed(2))}° from square: a slot nut pulls straight out of its slot, so the screw stands square to the face`, { ...values, angle: +h.angle.toFixed(2) });
@@ -365,8 +365,8 @@ function slotEnd(s, at, n, { B, O, D, x, fx, cl, clr, say, sc }) {
   if (at.distance != null && Math.abs(h.along - at.distance) > play + 1e-3) return bad(`the screw meets ${slot} ${mm(h.along)} mm from ${item}'s end a, and into says ${x.into}, ${mm(at.distance)} mm: ${mm(Math.abs(h.along - at.distance))} mm apart, where its hole gives ${mm(play)} mm`, { ...values, wanted: r3(at.distance) });
   say('fasten.slot', 'pass', `over the centre line of ${slot} (${h.p.slot})${off > 1e-3 ? `, ${mm(off)} mm off it, within the ${mm(play)} mm its ${mm(d)} mm hole gives` : ''}, ${mm(h.along)} mm from ${item}'s end a`, values);
   const sm = h.p.slotModel, zFace = h.t, zLip = zFace + sm.lip, alongW = unit([pm[8], pm[9], pm[10]]);
-  sc.slot = { item, place: h.p.name, face: at.face, slot: h.p.slot, distance: r3(h.along), nut: n.name, kind: n.nutKind, entry: n.entry, thread: fx.thread, part };
-  return { slot: { item, place: h.p.name, face: at.face, slot: h.p.slot, opening: sm.opening, lip: sm.lip, along: alongW, distance: r3(h.along), part }, kind: 'nut', mouth: zFace, depth: sm.cavityDepth, floor: zFace + sm.cavityDepth,
+  sc.slot = { item, place: h.p.name, named, face: at.face, slot: h.p.slot, distance: r3(h.along), nut: n.name, kind: n.nutKind, entry: n.entry, thread: fx.thread, part };
+  return { slot: { item, place: named, face: at.face, slot: h.p.slot, opening: sm.opening, lip: sm.lip, along: alongW, distance: r3(h.along), part }, kind: 'nut', mouth: zFace, depth: sm.cavityDepth, floor: zFace + sm.cavityDepth,
     blind: true, far: zFace + sm.cavityDepth, d: fx.major, free: fx.major, nut: { kind: n.nutKind, model: n, z: zLip, seated: true }, zThr: zLip - n.tongueHeight, thread: n.height + n.tongueHeight };
 }
 // A slot nut as a part's shape, made once for each: frames' reference solid, in the slot's frame (z out of the face)
@@ -380,16 +380,20 @@ function slotNutShape(n) {
 }
 // A thread tapped in a beam's end bore on the screw's axis, from the beam's tap operations: { thread, depth, bore, length }, or null
 function beamTap(s, B, O, D) {
+  let best = null; // (both ends' bores lie on one line: the end nearest the screw's place is the one it goes in)
   for (const p of B.parts) {
     const b = s.objects.find((o) => o.id === p.leaf)?.beam;
     if (!b || !p.m) continue;
     for (const t of b.ops.filter((x) => x.op === 'tap')) for (const bn of t.bores) {
       const bo = b.bores.find((q) => q.name === bn), P = vec3.transform([0, 0, 0], [bo.at[0], bo.at[1], bo.end === 'a' ? 0 : b.length], p.m), e = vec3.transform([0, 0, 0], [bo.at[0], bo.at[1], bo.end === 'a' ? 1 : b.length - 1], p.m);
       const Z = unit([e[0] - P[0], e[1] - P[1], e[2] - P[2]]), off = Math.hypot(...cross(add(P, O, -1), D));
-      if (Math.abs(Math.abs(dot(Z, D)) - 1) < 1e-6 && off <= FASTEN.align.value) return { thread: t.thread, depth: t.depth, bore: bn, length: b.length };
+      const near = Math.abs(dot(add(P, O, -1), D));
+      if (Math.abs(Math.abs(dot(Z, D)) - 1) < 1e-6 && off <= FASTEN.align.value && (!best || near < best.near)) best = { thread: t.thread, depth: t.depth, bore: bn, length: b.length, near };
     }
   }
-  return null;
+  if (!best) return null;
+  const { near, ...out } = best;
+  return out;
 }
 
 /**
@@ -515,14 +519,16 @@ export function fastenOf(s, worlds, opts = {}) {
         while (e >= 0 && e < segs.length && on(segs[e])) e++;
         return i < 0 ? segs : j === 0 ? segs.slice(0, e) : segs.slice(e);
       };
-      const raw = members.map((m, j) => reach(side(j, along(m.parts, ax.O, ax.D, R, false))));
+      // (a beam is open along the axis where a slot, its bore and an access hole meet: it is on the axis where any of it lies within R)
+      const isBeam = (m) => m.parts.some((p) => s.objects.find((o) => o.id === p.leaf)?.beam), reachOf = (m, segs) => (isBeam(m) ? reach(segs.map((g) => (Math.min(g.a.free, g.b.free) < R - 1e-6 ? { ...g, solid: true } : g))) : reach(segs));
+      const raw = members.map((m, j) => reachOf(m, side(j, along(m.parts, ax.O, ax.D, R, false))));
       const missing = members.filter((_, j) => !raw[j]);
       sc.at = ax.O; sc.between = [ax.O, ax.O];
       if (missing.length) return say('fasten.holes', 'fail', `${missing.map((m) => m.name).join(' and ')} ${missing.length > 1 ? 'are' : 'is'} nowhere on the screw's axis (nothing of ${missing.length > 1 ? 'them' : 'it'} within ${mm(R)} mm of it)${yoke ? `: a screw that ends in ${x.into}, the part under its head, goes through one side of it and into the other, along its anchor's axis` : ': the parts are not where the joint needs them'}`);
       const mid = (r) => (r[0] + r[1]) / 2, flip = yoke ? false : members.length > 1 ? mid(raw.at(-1)) < mid(raw[0]) : true;
       const D = flip ? ax.D.map((c) => -c) : ax.D, O = ax.O, at = (z) => add(O, D, z);
       const runs = members.map((m, j) => ({ ...m, segs: side(j, along(m.parts, O, ax.D, R, flip)) }));
-      for (const r of runs) r.reach = reach(r.segs);
+      for (const r of runs) r.reach = reachOf(r, r.segs);
       const order = runs.slice(1).find((r, j) => mid(r.reach) < mid(runs[j].reach));
       if (order) return say('fasten.holes', 'fail', `${order.name} lies before ${runs[runs.indexOf(order) - 1].name} along the screw: "through" lists the parts in order from under the head, and "into" comes last`);
       const tol = 1e-3, B = runs.at(-1), A = through.length ? runs[0] : null, headR = head ? head.across / 2 : 0;

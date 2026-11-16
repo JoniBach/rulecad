@@ -781,7 +781,7 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
     else {
       const ol = el('ol', 'steps');
       O.steps.forEach((st, i) => {
-        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map(fastenerText).join('; ')));
+        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.load?.length) but.append(el('span', 'fix', `First, ${st.load.join('; ')}`)); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map(fastenerText).join('; ')));
         const shown = new Set(O.steps.slice(0, i + 1).flatMap((x) => x.items));
         but.onclick = () => { const on = view.step?.n === st.n; view.step = on ? null : { n: st.n, shown, now: new Set(st.items), dir: st.dir }; if (!on) spin(false); box.querySelectorAll('ol.steps button').forEach((x) => x.classList.toggle('on', !on && x === but)); apply(); };
         li.append(but); ol.append(li);

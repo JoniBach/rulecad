@@ -1026,7 +1026,7 @@ async function platesCommand(what, ref) {
   if (!isAssembly(ref)) throw new Error(`cad ${what} works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
   const s = await buildAssembly(ref);
   if (what === 'order') {
-    const { orderOf, orderText, stepPictures } = await import('../lib/order.mjs'), r = orderOf(s);
+    const { orderOf, orderText, stepPictures } = await import('../lib/order.mjs'), { withPreload } = await import('../lib/slotnuts.mjs'), r = withPreload(s, orderOf(s));
     if (opt('json')) return console.log(JSON.stringify(r, null, 2));
     console.log(orderText(ref, r));
     if (r.stuck) { process.exitCode = 1; return; }

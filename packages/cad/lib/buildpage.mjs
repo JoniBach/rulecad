@@ -13,6 +13,7 @@ import { shoppingList } from './list.mjs';
 import { cutListOf, sheetFile } from './beams.mjs';
 import { wiresFor, wireRoutesOf } from './assembly.mjs';
 import { orderOf, isBuilt } from './order.mjs';
+import { withPreload } from './slotnuts.mjs';
 import { platesOf } from './plates.mjs';
 import { wiringSheet } from './wires.mjs';
 import { readLedger } from './measured.mjs';
@@ -60,7 +61,7 @@ export async function buildData(s) {
   const list = await guard(() => shoppingList(s));
   const wires = await guard(() => (s.wires?.length ? wiresFor(s).map(({ route, ...w }) => w) : null));
   const plates = await guard(() => platesOf(s).then(({ bed, gap, plates: p, findings }) => ({ bed, gap, plates: p, findings })));
-  const order = isBuilt(s) ? await guard(() => orderOf(s)) : null;
+  const order = isBuilt(s) ? await guard(() => withPreload(s, orderOf(s))) : null; // (with the slot nuts to load before a join closes their slot)
   const machine = s.task ? await guard(() => machineOf(s)) : null;
   // each mark's cut-and-drill sheet, by its file in the exports (cad beams writes them), and whether it is there yet
   const beams = await guard(() => { const c = cutListOf(s); return c ? { sheets: c.marks.map((m) => ({ mark: m.mark, items: m.items, file: ['exports', s.project, path.basename(sheetFile(s, m.mark))].join('/'), written: fs.existsSync(sheetFile(s, m.mark)) })) } : null; });
