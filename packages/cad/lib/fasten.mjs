@@ -293,10 +293,11 @@ function fixingsOf(project) {
   if (bound.get(project)?.hash !== hash) bound.set(project, { hash, F: fixingsFor({ ...(Object.keys(context.sets).length ? { sets: context.sets } : {}), ...(context.printer ? { printer: context.printer } : {}) }), material: context.material, printer: context.printer?.name ?? 'x1c' });
   return bound.get(project);
 }
-// A piece of hardware as a part's shape, made once for each name: the light solid of @rulecad/fixings, its faces, a hash
+// A piece of hardware as a part's shape, made once for each name: the light solid of @rulecad/fixings, its faces, a hash.
+// m is a model (a screw) or a thread's name (a nut, a washer, an insert), so a thread's name is the key as it is
 const shapes = new Map();
 function shapeOf(F, kind, m, o) {
-  const key = `${kind}:${m.name}:${JSON.stringify(o)}`;
+  const key = `${kind}:${typeof m === 'string' ? m : m.name}:${JSON.stringify(o)}`;
   if (!shapes.has(key)) {
     const g = F[kind](m, o), [p] = named({ body: g }, { body: { label: g.model.name } });
     shapes.set(key, { geometry: p.geometry, polygons: p.polygons, triangles: p.triangles, model: g.model, hash: `fixing:${crypto.createHash('sha256').update(JSON.stringify([key, p.polygons])).digest('hex').slice(0, 16)}` });

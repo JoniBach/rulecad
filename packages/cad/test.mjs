@@ -512,6 +512,31 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('fasten.count: nuts of two threads in one assembly are each their own size, placed and listed apart', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'), { recursive: true });
+    // a plate with one clearance hole for the thread it is set to, through its whole thickness
+    object(ws, 'demo/plate', { uses: ['x1c'], variables: { thick: { value: 12, unit: 'mm', rule: 'The plate', tweak: { min: 2, max: 20 } }, thread: { value: 'M3', choice: ['M3', 'M4'], rule: 'The screw it takes' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  return v.ops.subtract(cuboid({ size: [20, 20, v.thick], center: [0, 0, v.thick / 2] }), v.fixings.hole(v.thread, { depth: v.thick, at: [0, 0, v.thick] }))
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['plate'] }));
+    fs.writeFileSync(path.join(ws, 'projects/demo/assemblies/pair.json'), JSON.stringify({ title: 'An M3 and an M4 joint, each with a nut', kind: 'fit',
+      items: [{ id: 'block3', object: 'plate' }, { id: 'top3', object: 'plate', at: [0, 0, 12], set: { thick: 3 } },
+        { id: 'block4', object: 'plate', at: [40, 0, 0], set: { thread: 'M4' } }, { id: 'top4', object: 'plate', at: [40, 0, 12], set: { thick: 3, thread: 'M4' } }],
+      fits: [{ a: 'top3', b: 'block3', min: 0, max: 0.05 }, { a: 'top4', b: 'block4', min: 0, max: 0.05 }, { a: 'block4', b: 'block3', fastens: true, note: 'side by side' }],
+      fasten: [{ screw: 'M3 cap', through: ['top3'], into: 'block3', holes: 'top3.body', nut: true, note: 'M3 joint' }, { screw: 'M4 cap', through: ['top4'], into: 'block4', holes: 'top4.body', nut: true, note: 'M4 joint' }] }));
+    const l = JSON.parse(cad('list', 'demo/pair', '--json'));
+    assert.deepEqual(l.fasteners.filter((f) => f.kind === 'nut').map(({ fastener, qty, thread, from }) => ({ fastener, qty, thread, from })), [
+      { fastener: 'M3 hex nut', qty: 1, thread: 'M3', from: ['M3 joint'] }, { fastener: 'M4 hex nut', qty: 1, thread: 'M4', from: ['M4 joint'] }]);
+    const r = JSON.parse(cad('check', 'demo/pair', '--json'));
+    assert.deepEqual(r.findings.filter((f) => f.level === 'fail').map((f) => f.text), [], 'the M4 nut is an M4 nut, so it overlaps nothing');
+  } finally { done(); }
+});
+
 test('your own printer, and no extras configured', () => {
   const { ws, cad, done } = workspace({ printer: 'tiny' });
   try {
