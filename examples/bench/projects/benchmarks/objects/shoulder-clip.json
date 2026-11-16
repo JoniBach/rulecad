@@ -48,11 +48,6 @@
       "unit": "mm",
       "rule": "Fifteen layers"
     },
-    "hole": {
-      "value": 3.5,
-      "unit": "mm",
-      "rule": "M3 clearance"
-    },
     "corner": {
       "value": 1.5,
       "unit": "mm",

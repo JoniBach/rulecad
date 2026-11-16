@@ -3,7 +3,8 @@ import jscad from '@jscad/modeling'
 const { cylinder } = jscad.primitives
 
 export function main (v) {
+  const pilot = v.fixings.holeModel('M3', { kind: 'pilot' }).diameter // the lever's M3 screws cut their own thread: the pilot from v.fixings
   const gear = v.gears.spur({ module: v.module, teeth: v.teeth, width: v.width, backlash: v.backlash })
-  const pilots = [v.bolt, 0 - v.bolt].map((x) => cylinder({ radius: v.pilot / 2, height: v.pilot_depth + 1, center: [x, 0, v.pilot_depth / 2 - 1 / 2], segments: v.segments }))
+  const pilots = [v.bolt, 0 - v.bolt].map((x) => cylinder({ radius: pilot / 2, height: v.pilot_depth + 1, center: [x, 0, v.pilot_depth / 2 - 1 / 2], segments: v.segments }))
   return v.ops.subtract(gear, pilots, cylinder({ radius: v.bore / 2, height: 2 * v.width, center: [0, 0, 0], segments: v.segments }))
 }

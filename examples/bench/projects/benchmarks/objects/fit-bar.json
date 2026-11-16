@@ -42,11 +42,6 @@
       "unit": "mm",
       "rule": "The footprint's corners, rounded so they stay down"
     },
-    "hole_from": {
-      "value": 3,
-      "unit": "mm",
-      "rule": "Row 1, plain holes: an M3 screw's clearance, around where it should come out"
-    },
     "hole_step": {
       "value": 0.2,
       "unit": "mm",
@@ -71,11 +66,6 @@
       "value": 6,
       "unit": "mm",
       "rule": "The shaft goes in this far"
-    },
-    "pilot_from": {
-      "value": 2.6,
-      "unit": "mm",
-      "rule": "Row 3, pilots for an M3 screw to self-tap"
     },
     "pilot_step": {
       "value": 0.1,

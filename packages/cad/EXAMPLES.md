@@ -289,7 +289,8 @@ whether the stiffness has settled.
 ## 6. A board, and a case that reads it
 
 A four-key pad: keys in a matrix, one diode each, and a Pico beside them. Every track is drawn by rule; the
-checks run the fab's design rules.
+checks run the fab's design rules. Then a printed case for it, which reads the board's size and holes, and the board
+screwed into it.
 
 ```json projects/home/objects/pad.json
 {
@@ -298,6 +299,7 @@ checks run the fab's design rules.
   "title": "Four-key pad",
   "version": "0.1.0",
   "engine": "pcb",
+  "role": "board",
   "uses": ["mx", "pico", "sod123", "m2", "jlcpcb"],
   "variables": {
     "rows": { "value": 2, "rule": "Two rows" },
@@ -323,13 +325,111 @@ export function main (v) {
 }
 ```
 
+`"role": "board"` says the fab makes it: it is not printed, and a list leaves it out of the plastic.
+
 ```sh
 npx cad check home/pad
 npx cad export home/pad
 ```
 
+The board's mounting holes are named by their screws' thread. The keyboard recipe draws one in each corner with
+`v.pcb.mount('M2', x, y)`, which sizes it from the thread's rule set: `m2.clearance`, 2.4 mm (ISO 273's normal
+clearance hole), as the fab drills it, with nothing added for a printer. A board drawn by hand names its own the same
+way, in its `holes`: `v.pcb.mount('M2', 10, 5)`, or `v.pcb.mount('M2', 10, 5, { fit: 'close' })` for the close hole.
+
+### The case
+
 A case reads the board rather than copying its numbers: `"uses": ["home/pad"]`, then `v.pad.board_w` and
-`v.pad.board_holes` are the board's own.
+`v.pad.board_holes` are the board's own. The board stands on four bosses, one under each of its holes, each with a
+heat-set insert's hole in its top: `v.fixings.insertBoss('M2', ...)` sizes the hole, its depth and the least wall from
+the insert's rules, and draws the column with its foot flared. A boss is as tall as the room the board needs under it,
+so each is the board's standoff too.
+
+```json projects/home/objects/case.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "case",
+  "title": "Four-key pad case",
+  "version": "0.1.0",
+  "uses": ["x1c", "home/pad"],
+  "material": "PLA",
+  "orientation": "Upright, its floor on the bed, open at the top: the board drops in from above",
+  "variables": {
+    "floor": { "value": "x1c.layer * 10", "unit": "mm", "rule": "The floor: whole layers, stiff under a hand on the keys" },
+    "wall": { "value": "x1c.line * 5", "unit": "mm", "rule": "The walls: five lines" },
+    "gap": { "value": "x1c.fit * 2", "unit": "mm", "rule": "Round the board inside the walls, so it drops in" },
+    "stand": { "value": "x1c.layer * 25", "unit": "mm", "rule": "Under the board: room for the switches' pins and the diodes on its back, and deeper than the inserts' holes" },
+    "round": { "value": 1, "unit": "mm", "rule": "The inside corners, rounded: tight enough to clear the board's square corners by the gap" },
+    "chamfer": { "value": "x1c.chamfer * 2", "unit": "mm", "rule": "A 45° chamfer where the walls meet the floor, so no inside corner is square" }
+  }
+}
+```
+
+```js projects/home/objects/case.js
+// A tray for the four-key pad: walls round the board, and a heat-set insert's boss under each of its mounting holes,
+// for the board to stand on. The case reads the board (its size, where it is, its holes); the bosses come from
+// v.fixings, named by the board's M2 screws.
+import jscad from '@jscad/modeling'
+const { roundedRectangle } = jscad.primitives
+const { extrudeLinear } = jscad.extrusions
+const { translate } = jscad.transforms
+const { hull } = jscad.hulls
+
+export function main (v) {
+  const b = v.pad, f = v.fixings, top = v.floor + v.stand + b.thickness, c = v.chamfer
+  const w = b.board_w + 2 * v.gap, d = b.board_d + 2 * v.gap
+  const plan = (x, y, r) => roundedRectangle({ size: [x, y], roundRadius: r, center: [b.board_x, b.board_y] })
+  const shell = extrudeLinear({ height: top }, plan(w + 2 * v.wall, d + 2 * v.wall, v.round + v.wall))
+  const inside = v.ops.union(
+    hull(translate([0, 0, v.floor], extrudeLinear({ height: c }, plan(w - 2 * c, d - 2 * c, v.round - c))),
+      translate([0, 0, v.floor + c], extrudeLinear({ height: c }, plan(w, d, v.round)))),
+    translate([0, 0, v.floor + c], extrudeLinear({ height: top }, plan(w, d, v.round))))
+  // a boss under each hole, wide enough to join the wall beside it
+  const bosses = b.board_holes.map((h) => {
+    const edge = Math.min(b.board_w / 2 - Math.abs(h.x - b.board_x), b.board_d / 2 - Math.abs(h.y - b.board_y))
+    return f.insertBoss('M2', { height: v.stand, outer: 2 * (edge + v.gap + v.wall / 2), at: [h.x, h.y, v.floor] })
+  })
+  return v.ops.subtract(v.ops.union(v.ops.subtract(shell, inside), ...bosses.map((x) => x.boss)), ...bosses.map((x) => x.hole))
+}
+```
+
+Each boss is 7.9 mm across round a 3.2 mm hole 4 mm deep (`m2.insert_hole` and `m2.insert_depth`), with 2.35 mm of
+wall where `m2.insert_wall` asks 1.3 mm, and joins the wall beside it. The case prints upright with no supports.
+
+### Screwed in
+
+The board sits on the bosses, and one `fasten` holds it: M2 cap screws down the board's own holes (`"holes":
+"pad.board"`) into the case. The check finds the four holes in the board, follows each screw's axis into its boss, and
+chooses the length.
+
+```json projects/home/assemblies/padcase.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The four-key pad in its case",
+  "kind": "fit",
+  "items": [
+    { "id": "case", "object": "case" },
+    { "id": "pad", "object": "pad", "at": [0, 0, "case.floor + case.stand"] }
+  ],
+  "fits": [
+    { "a": "pad", "b": "case", "min": 0, "max": 0.05, "note": "The board stands on the bosses" }
+  ],
+  "fasten": [
+    { "screw": "M2 cap", "through": ["pad"], "into": "case", "holes": "pad.board", "note": "The board's screws" }
+  ]
+}
+```
+
+```sh
+npx cad check home/case
+npx cad check home/padcase
+npx cad list home/padcase
+```
+
+The check says the board's holes measure 2.4 mm, an M2 clearance hole; each screw ends in an insert's hole, 3.2 mm
+and 4 mm deep; M2x4 cap is the shortest sold that fits, 1.6 mm under its head and 2.4 mm into the insert; the head
+sits flat on the board; and a 1.5 mm hex key reaches each one. `cad list` counts four M2x4 cap screws and four M2
+inserts, with the case's 18.3 g of plastic.
 
 ## 7. A mechanism printed flat
 

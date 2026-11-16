@@ -8,14 +8,16 @@ const { union, subtract } = jscad.booleans
 const { translate } = jscad.transforms
 
 export function main (v) {
-  const b = v.bench, mid = b.pitch / 2, r = b.boss4, hole = v.hole4
-  const plate = b.bracket_w * b.bracket_h * b.plate - Math.PI * v.hole5 * v.hole5 * b.plate * 2
+  // The bolts' holes, as radii: the two M5 fixing bolts and the M4 load bolt, their clearance holes from v.fixings
+  const hole5 = v.fixings.holeModel('M5').diameter / 2, hole4 = v.fixings.holeModel('M4').diameter / 2
+  const b = v.bench, mid = b.pitch / 2, r = b.boss4, hole = hole4
+  const plate = b.bracket_w * b.bracket_h * b.plate - Math.PI * hole5 * hole5 * b.plate * 2
   // The boss's section: a half circle above its axis, a half square (corner down) below, less the hole
   const lowerHalf = r * r * 2 - Math.PI * hole * hole / 2, section = Math.PI * r * r / 2 + lowerHalf - Math.PI * hole * hole / 2
   const t = (v.target - plate - section * b.boss_len) / (b.bracket_h * (b.reach - b.plate) - lowerHalf)
   if (t > b.pitch - b.wrench * 2) throw new Error(`the web would be ${t.toFixed(1)} mm thick: wider than the gap between the bolts' heads`)
   const box = (x0, x1, y0, y1, z0, z1) => translate([(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], cuboid({ size: [x1 - x0, y1 - y0, z1 - z0] }))
-  const upright = (x) => translate([x, 0, b.plate / 2], cylinder({ radius: v.hole5, height: b.plate * 2, segments: v.smooth }))
+  const upright = (x) => translate([x, 0, b.plate / 2], cylinder({ radius: hole5, height: b.plate * 2, segments: v.smooth }))
   const boss = v.shapes.solidRegion({ at: [mid, 0, b.reach], r, length: b.boss_len, axis: 'x', teardrop: '-z' }, v.smooth)
   const body = union(
     box(mid - b.bracket_w / 2, mid + b.bracket_w / 2, 0 - b.bracket_h / 2, b.bracket_h / 2, 0, b.plate),

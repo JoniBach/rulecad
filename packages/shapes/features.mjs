@@ -1,6 +1,7 @@
 // Print-aware features: the holes, pockets and ribs printed parts keep needing, drawn so they print without supports
 // in the part's print orientation (z up, the bed at the bottom). Each returns a JSCAD geom3 to subtract from the part
-// (crushRibs: to add). Sizes come in from rules (m3.csk_head, m3.nut_flats, x1c.hole_comp …): no numbers live here.
+// (crushRibs: to add). Sizes come in as plain numbers, from rules (m3.countersunk_head, m3.nut_flats, x1c.hole_comp …):
+// no numbers live here. @rulecad/fixings reads a thread's rule set and the printer's and calls these with the figures.
 // Every feature starts at a point on a face (at) and goes into the material along a direction (into): '+x', '-x',
 // '+y', '-y', '+z' (up from the bed) or '-z' (down from a top face).
 //   countersink({ hole, head, length, at, into, teardrop })   a flat-head screw's hole and its 90° cone, the head flush

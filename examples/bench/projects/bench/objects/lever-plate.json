@@ -13,16 +13,6 @@
   "material": "PLA",
   "orientation": "Flat on the bed. 100% infill (or walls enough to be solid), 0.2 mm layers, the same filament as the other specimens.",
   "variables": {
-    "hole5": {
-      "value": "(m5.clearance + x1c.hole_comp) / 2",
-      "unit": "mm",
-      "rule": "A fixing bolt's hole: radius, printed"
-    },
-    "hole4": {
-      "value": "(m4.clearance + x1c.hole_comp) / 2",
-      "unit": "mm",
-      "rule": "The load bolt's hole: radius, printed"
-    },
     "target": {
       "value": "bench.fill * bench.length * bench.depth * bench.thickness",
       "unit": "mm\u00b3",

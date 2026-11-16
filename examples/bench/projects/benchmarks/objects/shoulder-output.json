@@ -64,11 +64,6 @@
       "value": 57,
       "rule": "The output ring"
     },
-    "pilot": {
-      "value": 2.9,
-      "unit": "mm",
-      "rule": "An M3 screw from the arm, self-tapped"
-    },
     "bolt": {
       "value": 20,
       "unit": "mm",

@@ -58,7 +58,7 @@
     "plate": {
       "value": 5,
       "unit": "mm",
-      "rule": "Enough for M3 screws, 1.5 × their size"
+      "rule": "Twenty-five layers: stiff under the motor, and its screws reach the motor's thread through it (motor.mount checks both)"
     },
     "corner": {
       "value": 3,

@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import jscad from '@jscad/modeling';
 import * as fixings from '@rulecad/fixings';
 import { check } from '@rulecad/printcheck';
-import { nutPocket as shapesNutPocket } from '@rulecad/shapes';
+import * as shapes from '@rulecad/shapes';
+const shapesNutPocket = shapes.nutPocket;
 
 const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeModel, hole, HOLE_KINDS, counterboreModel, counterbore, countersinkModel, countersink, nutPocketModel, nutPocket,
   nutTrapModel, nutTrap, squareNutSlotModel, squareNutSlot, captiveNutModel, captiveNut, insertBossModel, insertBoss, printable, screwModel, screw, nutModel, nut, washerModel, washer, insertModel, insert, fixingsFor,
@@ -314,6 +315,20 @@ test('seats: a countersink to the head\'s angle and sharp-edge diameter, 90° th
   assert.throws(() => countersinkModel('M1.6'), /M1\.6 is not made with a countersunk head/);
   assert.throws(() => countersinkModel('M3', { length: 1 }), /less than the cone's depth/);
   assert.equal(countersinkModel('M3', {}).findings.filter((f) => f.code === 'countersink.drawn').length, 1);
+});
+
+test('one place for each shape: a seat shapes has a helper for is shapes\' helper given the model\'s figures, to the last vertex', () => {
+  const same = (a, b, what) => assert.equal(JSON.stringify(geom3.toPolygons(a).map((p) => p.vertices)), JSON.stringify(geom3.toPolygons(b).map((p) => p.vertices)), what);
+  for (const [into, at] of [['-z', [1, 2, 10]], ['+z', [1, 2, 0]], ['+x', [-15, 0, 7]]]) {
+    const c = countersinkModel('M3', { length: 8, into });
+    same(countersink('M3', { length: 8, at, into }), shapes.countersink({ hole: c.hole, head: c.diameter, length: c.length + 0.1, at, into }), `countersink going ${into}`);
+    const p = nutPocketModel('M3', { into });
+    same(nutPocket('M3', { at, into }), shapes.nutPocket({ flats: p.flats, height: p.depth, hole: p.hole, at, into }), `hex nut pocket going ${into}`);
+  }
+  const h = holeModel('M3', { depth: 20, into: '+y' });
+  same(hole('M3', { depth: 20, into: '+y', at: [0, -10, 5] }), shapes.teardropHole({ d: h.diameter, length: 20, at: [0, -10, 5], into: '+y', through: h.through }), 'a hole on its side');
+  const t = nutTrapModel('M3', { depth: 6, into: '+x' });
+  same(nutTrap('M3', { depth: 6, into: '+x', at: [-8, 0, 4] }), shapes.wallOpening({ width: t.width, height: t.gap, depth: t.reach, at: [-8, 0, 4], into: '+x', bridge: x1c.rules.bridge.value }), 'a nut slot from the side');
 });
 
 test('seats: a nut pocket for M4 is what the lever bench draws by hand, and pockets, slots and closed pockets print for hex, square and lock nuts', () => {

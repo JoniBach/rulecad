@@ -7,7 +7,9 @@ const { subtract } = jscad.booleans
 const { extrudeLinear } = jscad.extrusions
 
 export function main (v) {
-  const b = v.bench, n = b.windows, holes = Math.PI * (v.hole5 * v.hole5 * 2 + v.hole4 * v.hole4)
+  // The bolts' holes, as radii: the two M5 fixing bolts and the M4 load bolt, their clearance holes from v.fixings
+  const hole5 = v.fixings.holeModel('M5').diameter / 2, hole4 = v.fixings.holeModel('M4').diameter / 2
+  const b = v.bench, n = b.windows, holes = Math.PI * (hole5 * hole5 * 2 + hole4 * hole4)
   const from = b.pitch + b.boss5, to = b.span - b.boss4 // the windows' row, between the bosses
   const window = (w) => [(to - from - (n + 1) * w) / n, b.depth - 2 * w] // each window's size for frame and webs w
   // The corners' rounding takes a little back: a rounded rectangle is short of its box by (4 - π) r² 
@@ -19,9 +21,9 @@ export function main (v) {
   const windows = Array.from({ length: n }, (_, i) => roundedRectangle({ center: [from + w + a / 2 + i * (a + w), 0], size: [a, c], roundRadius: v.corner, segments: v.corner_smooth }))
   const outline = subtract(
     rectangle({ center: [b.length / 2 - b.behind, 0], size: [b.length, b.depth] }),
-    circle({ center: [0, 0], radius: v.hole5, segments: v.smooth }),
-    circle({ center: [b.pitch, 0], radius: v.hole5, segments: v.smooth }),
-    circle({ center: [b.span, 0], radius: v.hole4, segments: v.smooth }),
+    circle({ center: [0, 0], radius: hole5, segments: v.smooth }),
+    circle({ center: [b.pitch, 0], radius: hole5, segments: v.smooth }),
+    circle({ center: [b.span, 0], radius: hole4, segments: v.smooth }),
     ...windows
   )
   return extrudeLinear({ height: b.thickness }, outline)

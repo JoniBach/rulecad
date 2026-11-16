@@ -36,6 +36,15 @@ export function main(v) {
 - **Parts:** `xiao`, `qwiic`, `jstph` and `header` take their sizes and pinouts from rule sets in @rulecad/rules (each
   value with its source); `part(name, footprint, x, y)` takes any footprinter name: `soic8`, `0603`, `sot23`,
   `jst4_sh`, `pinrow4` (SMD or through-hole). Options: `rotation` (0, 90, 180, 270), `layer`, `mpn`, `labels`.
+- **Mounting holes, by thread:** `mount('M2', x, y)` is a board's own hole for an M2 screw, sized from the thread's
+  rule set through @rulecad/fixings: `m2.clearance`, 2.4 mm (ISO 273's normal clearance hole). The fab drills it, so
+  nothing is added for a printer. `{ fit: 'close' }` or `{ fit: 'loose' }` take ISO 273's other two holes; `{ d: 2.1 }`
+  takes a hole the board's maker gives (a Pico's), refused where it is no wider than the thread; `{ keepout: 1.5 }` keeps
+  the router's tracks that far from the hole's centre. Put the result in the board's `holes`: `holes: [mount('M2', 10,
+  5)]`. In a cad design, `v.pcb.mount` reads the workspace's own thread set (`rules/m2.json`) before the kit's. The
+  keyboard recipe's corner holes (`mount_holes: 1`) are `mount('M2')`. A case reads them (`board_holes`) and puts an
+  insert's boss under each (`v.fixings.insertBoss('M2', ...)`); an assembly then screws the board down with `fasten`
+  and `"holes": "<item>.board"` (cad's EXAMPLES, chapter 6).
 - **Parts from KiCad:** `fromKicad(text)` turns a KiCad footprint (`.kicad_mod`) into pad data (y up) and its
   courtyard. Keep the result in a rule set's `"footprints"` with its source and pin names (`labels: { pin1: 'GND' }`),
   then place it with `footprint(name, data, x, y, o)`: a design reads rule sets, never files or the network.

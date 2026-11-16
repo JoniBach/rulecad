@@ -1,24 +1,6 @@
 {
   "_doc": "Screw dimensions typed by hand, by place: scripts/fixings-inventory.mjs counts them and test/fixings-inventory.test.mjs fails if a count rises. Each fixings migration step lowers them: node scripts/fixings-inventory.mjs --record",
   "places": {
-    "examples/bench/projects/bench": {
-      "named": 12,
-      "reads": 10,
-      "typed": 0,
-      "table": 0
-    },
-    "examples/bench/projects/benchmarks": {
-      "named": 17,
-      "reads": 0,
-      "typed": 1,
-      "table": 0
-    },
-    "examples/bench/projects/showcase": {
-      "named": 0,
-      "reads": 0,
-      "typed": 1,
-      "table": 0
-    },
     "examples/thin-picro/projects/thin-picro": {
       "named": 2,
       "reads": 0,
@@ -51,9 +33,9 @@
     }
   },
   "total": {
-    "named": 137,
-    "reads": 44,
-    "typed": 8,
+    "named": 108,
+    "reads": 34,
+    "typed": 6,
     "table": 0
   }
 }
