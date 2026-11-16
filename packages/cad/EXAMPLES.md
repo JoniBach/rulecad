@@ -4290,7 +4290,7 @@ What it says:
 - `task.reach` passes with 48.9 mm in hand.
 - `tool.grip` warns at 100 g (1.2 times over) on `arm-upright` and passes on `gripper-check` at 50 g (2.3 times over). `tool.strain` passes at 10% of PETG's strength at full close, in the leaf the check reads as a plain cantilever (`leafModel`).
 - The Z axis gives 512 steps a mm, 15.5 N of force at 6 times over its 2.45 N load, and holds with the power off because of the motor's gearbox. The belt gives 102.4 steps a mm and 5.1 N, 2 times over, with 0.07 mm of stretch in the budget.
-- `cad list` prints the same 443.5 g printed as `check`'s mass table, with the gripper's 37 g in it; the whole machine weighs about 1.27 kg before the wires and the wall.
+- `cad list` prints the same 444.2 g printed as `check`'s mass table, with the gripper's 37 g in it; the whole machine weighs about 1.28 kg before the wires and the wall.
 
 `npx cad check arm/arm-upright --sweep` swings each joint of the arm through its range and finds nothing colliding, with the finger-flat contact allowed by its `fits` entry. It earned its keep: with chapter 12's limit of 160° of fold, the sweep found the gripper's servo hitting the shoulder housing and the output ring, because the gripper is 32 mm longer than the pen holder and its servo stands up from the print. The elbow is limited to 140° here, which clears with room to spare and costs nothing, since the box needs at most about 113°. Like chapter 12's sweep it is slow, half an hour on a busy laptop, so the replay leaves it out.
 
