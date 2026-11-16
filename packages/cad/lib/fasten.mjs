@@ -11,7 +11,7 @@
 // as reference parts (hardware, below): faint, checked for overlap, and carried into previews and links.
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { fixingsFor, DEFAULTS, screwGroup } from '@rulecad/fixings';
+import { fixingsFor, DEFAULTS, screwGroup, parseName, threads } from '@rulecad/fixings';
 import { placeItems, jointValues } from '@rulecad/model-link';
 import { massesOf } from './loads.mjs';
 import { mountTorque } from './motors.mjs';
@@ -830,4 +830,39 @@ export function fastenChecks(s, f, { placeItems }) {
     }
     loadSays(s, f, rel, lead);
   }
+}
+
+// ---------- the older forms, said as one fasten ----------
+// A holes fit and a fit that fastens the same two items say apart what a fasten says at once. The screw is read from the
+// fit's fastener ("M2x6"), else a thread set the holes fit's depth names (m2.insert_length), else the board's mounting
+// holes as drawn: the largest metric thread narrower than the narrowest of them.
+const metric = (t) => { const m = /^M(\d+(?:\.\d+)?)$/.exec(t); return m ? Number(m[1]) : null; };
+function screwFrom(h, fit, s) {
+  try { const n = fit.fastener && parseName(String(fit.fastener)); if (n && (n.item === 'screw' || n.item === 'thread')) return `${n.thread}${n.length != null ? `x${n.length}` : ''} ${n.head ?? 'cap'}`; } catch {} // (a fastener in words, "Two push pins", names no thread)
+  let sets = {}; try { sets = fixingsContext({ project: s.project, dir: paths.project(s.project) }).context.sets; } catch {}
+  const known = threads({ sets }), set = /\b[mM](\d+(?:_\d+)?)\.\w/.exec([h.depth, h.ring].filter((x) => typeof x === 'string').join(' '));
+  if (set) { const t = `M${set[1].replace('_', '.')}`; if (known.includes(t)) return `${t} cap`; }
+  const board = s.objects.find((o) => o.id === top(h.holes))?.built, ds = (board?.circuit || []).filter((e) => e.type === 'pcb_hole' && !e.pcb_component_id).map((e) => e.hole_diameter).filter((d) => d > 0);
+  if (!ds.length) return null;
+  const d = Math.min(...ds), fit1 = known.filter((t) => metric(t) != null && metric(t) < d).sort((a, b) => metric(b) - metric(a))[0];
+  return fit1 ? `${fit1} cap` : null;
+}
+
+/**
+ * The fasten that would stand for each holes fit whose two items a fit that fastens also joins, and that no fasten
+ * names yet: the entry to paste, and where the two fits are in "fits".
+ * @param {{ a: object, project: string, objects: object[] }} s a built assembly
+ * @returns {{ fasten: object, holes: number, fastens: number, pair: string[], label: string, screw: string | null }[]}
+ */
+export function fastenFromFits(s) {
+  const fits = s.a.fits || [], out = [], named = new Set((s.a.fasten || []).flatMap((x) => [...(x.through || []), x.into].map(top)));
+  fits.forEach((h, i) => {
+    if (!h.holes || !h.into || h.direction === 'up') return; // (screws from below: through and into the other way round, said by hand)
+    const pair = [top(h.holes), top(h.into)], same = (x) => typeof x.a === 'string' && typeof x.b === 'string' && [top(x.a), top(x.b)].sort().join() === [...pair].sort().join();
+    const k = fits.findIndex((x) => x.fastens && !x.holes && same(x));
+    if (k < 0 || pair.every((n) => named.has(n))) return;
+    const screw = screwFrom(h, fits[k], s), note = h.label || h.note || fits[k].note;
+    out.push({ fasten: { screw: screw ?? 'M3 cap', through: [h.holes], into: h.into, holes: h.holes, ...(note ? { note } : {}) }, holes: i, fastens: k, pair, label: h.label || `${h.holes} into ${h.into}`, screw });
+  });
+  return out;
 }

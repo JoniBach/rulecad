@@ -13,7 +13,7 @@
     "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
     "description": { "type": "string" },
     "note": { "type": "string" },
-    "uses": { "type": "array", "items": { "type": "string" }, "description": "Rule sets (x1c, m3) and other objects (project/object, optionally @version)" },
+    "uses": { "type": "array", "items": { "type": "string" }, "description": "Rule sets (x1c, m3) and other objects (project/object, optionally @version). A screw's holes need none listed: v.fixings reads the thread's set, the printer and the material itself" },
     "material": { "type": "string" },
     "orientation": { "type": "string", "description": "How it sits on the bed, and anything the printer or the person assembling it should know" },
     "role": { "enum": ["part", "reference", "board"], "description": "reference: drawn faint and never printed (a switch, a tablet); board: a circuit board" },
@@ -48,7 +48,7 @@
       "required": ["value"],
       "additionalProperties": false,
       "properties": {
-        "value": { "description": "A number, an expression (x1c.line * 3), or for typed variables a name or text", "type": ["number", "string", "boolean", "array", "object"] },
+        "value": { "description": "A number, an expression (x1c.line * 3), or for typed variables a name or text. A hole for a screw, a nut or an insert is no typed number: draw it with v.fixings in the .js (v.fixings.hole('M3', { kind: 'pilot' })), and say how parts screw together with a fasten in the assembly", "type": ["number", "string", "boolean", "array", "object"] },
         "unit": { "type": "string" },
         "rule": { "type": "string", "description": "Why the value is what it is" },
         "label": { "type": "string" },

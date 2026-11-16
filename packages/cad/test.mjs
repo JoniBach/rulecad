@@ -732,6 +732,61 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('fasten.suggest: a holes fit and a fit that fastens the same parts suggest the fasten that says both; cad add fasten --from-fits puts it in their place', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    object(ws, 'demo/board', { engine: 'pcb', role: 'board', uses: ['jlcpcb', 'm2'], parts: { board: { label: 'PCB' } }, variables: {
+      w: { value: 30, unit: 'mm', rule: 'Width' }, d: { value: 20, unit: 'mm', rule: 'Depth' }, thickness: { value: 'jlcpcb.thickness', unit: 'mm', rule: 'Standard' },
+      hx: { value: 11, unit: 'mm', rule: 'Hole from the centre' }, hd: { value: 'm2.clearance', unit: 'mm', rule: 'M2 clearance' } } },
+    'export function main (v) { return { center: { x: 0, y: 0 }, width: v.w, height: v.d, thickness: v.thickness, parts: [], traces: [], silk: [], holes: [-1, 1].map((s) => ({ x: s * v.hx, y: 0, d: v.hd })) } }\n');
+    object(ws, 'demo/block', { uses: ['x1c', 'demo/board'], variables: { h: { value: 'x1c.layer * 30', unit: 'mm', rule: 'Whole layers' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const block = cuboid({ size: [v.board.board_w, v.board.board_d, v.h], center: [0, 0, 0 - v.h / 2] })
+  return v.ops.subtract(block, ...v.board.board_holes.map((h) => v.fixings.hole('M2', { kind: 'pilot', depth: v.h - v.x1c.layer * 2, at: [h.x, h.y, 0] })))
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['board', 'block'] }));
+    fs.mkdirSync(path.join(ws, 'projects/demo/assemblies'));
+    const file = path.join(ws, 'projects/demo/assemblies/stack.json');
+    const write = (fits) => fs.writeFileSync(file, `${JSON.stringify({ title: 'Board on block', kind: 'fit', uses: ['x1c', 'm2'], items: [{ id: 'blk', object: 'block' }, { id: 'pcb', object: 'board' }], fits }, null, 2)}\n`);
+    const holes = { holes: 'pcb.board', into: 'blk.body', depth: 'x1c.layer * 20', label: 'Screws find their pilots' };
+    const check = () => { const out = cad("check", "demo/stack", "--json"); try { return JSON.parse(out).findings; } catch { assert.fail(out); } };
+    // the two older forms together: a note with the fasten to paste, the screw read from the board's holes as drawn (2.4 mm: M2)
+    write([holes, { a: 'pcb.board', b: 'blk.body', min: 0, max: 0.2, fastens: true, label: 'Board on block' }]);
+    let notes = check().filter((x) => x.code === 'fasten.suggest');
+    assert.equal(notes.length, 1); assert.equal(notes[0].level, 'info');
+    assert.equal(notes[0].text, 'Screws find their pilots and the fit that fastens pcb to blk are one screwed joint: a fasten says both and knows the screw (its holes, length, thread engaged, the seat under its head and the key that turns it). In place of the two, add to "fasten": {"screw":"M2 cap","through":["pcb.board"],"into":"blk.body","holes":"pcb.board","note":"Screws find their pilots"}, or run cad add fasten demo/stack --from-fits');
+    assert.deepEqual(notes[0].refs, { fits: [0, 1], items: ['pcb', 'blk'], paste: { screw: 'M2 cap', through: ['pcb.board'], into: 'blk.body', holes: 'pcb.board', note: 'Screws find their pilots' } });
+    // the fit's fastener names the screw where it gives one; a thread set in the depth, where it does not
+    write([holes, { a: 'blk', b: 'pcb', fastens: true, fastener: 'M2x8', count: 2 }]);
+    assert.equal(check().find((x) => x.code === 'fasten.suggest').refs.paste.screw, 'M2x8 cap');
+    write([{ ...holes, depth: 'm2.pilot_depth' }, { a: 'blk', b: 'pcb', fastens: true, note: 'Two screws' }]);
+    assert.equal(check().find((x) => x.code === 'fasten.suggest').refs.paste.screw, 'M2 cap');
+    // either alone, or a fasten already there: no note
+    write([holes]); assert.ok(!check().some((x) => x.code === 'fasten.suggest'), 'a holes fit alone');
+    write([{ a: 'pcb.board', b: 'blk.body', fastens: true }]); assert.ok(!check().some((x) => x.code === 'fasten.suggest'), 'a fit that fastens alone');
+    // --from-fits: the holes fit goes, the fit that fastens keeps its gap range only, and the fasten is added; the check then follows the screws
+    write([holes, { a: 'pcb.board', b: 'blk.body', min: 0, max: 0.2, fastens: true, fastener: 'M2 screws', count: 2, label: 'Board on block' }]);
+    assert.match(cad('add', 'fasten', 'demo/stack', '--from-fits'), /added a fasten to .*stack\.json in place of its holes fit and its fit that fastens/);
+    const a = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepEqual(a.fits, [{ a: 'pcb.board', b: 'blk.body', min: 0, max: 0.2, label: 'Board on block' }]);
+    assert.deepEqual(a.fasten, [{ screw: 'M2 cap', through: ['pcb.board'], into: 'blk.body', holes: 'pcb.board', note: 'Screws find their pilots' }]);
+    assert.match(fs.readFileSync(file, 'utf8'), /^\{\n  "title": "Board on block",\n/, 'the file keeps its layout');
+    const after = check();
+    assert.ok(!after.some((x) => x.code === 'fasten.suggest'), 'said once, then gone');
+    assert.deepEqual(after.filter((x) => x.level === 'fail').map((x) => x.text), []);
+    assert.equal(after.find((x) => x.code === 'fasten.end').level, 'pass');
+    assert.match(cad('list', 'demo/stack'), /2 ×\s+M2x\d+ cap/);
+    // a fit that fastens with no range goes whole; with nothing to replace, it says so; a screw given is used
+    write([holes, { a: 'blk', b: 'pcb', fastens: true }]);
+    const j = JSON.parse(cad('add', 'fasten', 'demo/stack', '--from-fits', '--screw', 'M2x6 cap', '--json'));
+    assert.deepEqual(j.added.map((x) => x.screw), ['M2x6 cap']);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).fits, []);
+    assert.match(cad('add', 'fasten', 'demo/stack', '--from-fits'), /no holes fit with a fit that fastens the same two items/);
+  } finally { done(); }
+});
+
 // A rail-like test part: a plate with a key standing on part of it, and a notch in the key's top
 async function railPart() {
   const { primitives: { cuboid }, booleans: { union, subtract }, transforms: { translate } } = (await import('@jscad/modeling')).default;
