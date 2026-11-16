@@ -4,9 +4,7 @@
   "title": "Gripper: palm and two fingers on leaves",
   "version": "0.1.0",
   "uses": [
-    "x1c",
-    "m2",
-    "m3"
+    "x1c"
   ],
   "engine": "manifold",
   "material": "PETG",
@@ -161,12 +159,7 @@
     "bolt_x": {
       "value": 4,
       "unit": "mm",
-      "rule": "Half the yoke's two M3 screws' spacing, as the pen holder's"
-    },
-    "bolt": {
-      "value": "m3.clearance + x1c.hole_comp",
-      "unit": "mm",
-      "rule": "M3 clearance through the block"
+      "rule": "Half the spacing of the yoke's two screws, as the pen holder's"
     },
     "xs": {
       "value": 62,
@@ -375,16 +368,10 @@
       "unit": "mm",
       "rule": "How far the posts run down into the stem"
     },
-    "pilot": {
-      "value": "m2.clearance - 0.6",
-      "unit": "mm",
-      "rule": "An M2 screw self-tapped into a post",
-      "kind": "community"
-    },
     "pilot_d": {
       "value": 8,
       "unit": "mm",
-      "rule": "A pilot hole's depth"
+      "rule": "How deep each of the servo's screws goes into its post"
     },
     "reach": {
       "value": 18,

@@ -344,6 +344,9 @@ export function fastenOf(s, worlds, opts = {}) {
     if (!Array.isArray(through)) throw new Error(`${what}: "through" lists the parts the screw passes, in order from under its head (["bracket"])`);
     if (typeof x.into !== 'string' || !x.into) throw new Error(`${what}: "into" names the part the screw ends in`);
     const members = [...through, x.into].map((n) => { const ps = pick(n); if (!ps.length) throw new Error(`${what}: no part "${n}" (items: ${ids.join(', ')})`); return { name: n, parts: ps }; });
+    // A yoke (a screw through one cheek, what lies between, into the other) or a split clamp (across its own slot)
+    const yoke = through.length > 0 && through[0] === x.into;
+    if (yoke && x.holes != null) throw new Error(`${what}: a screw that ends in ${x.into}, the part under its head, is placed with "at": an anchor on each screw's axis, pointing from the head into the part`);
     if ((x.at == null) === (x.holes == null)) throw new Error(`${what}: give "at" (an anchor for each screw: ["${top(through[0] ?? x.into)}.h1"]) or "holes" (a part whose holes are the screws' places), one of the two`);
     if (x.nut != null && x.nut !== false && x.nut !== true && !NUTS.includes(x.nut)) throw new Error(`${what}: "nut" is true (a hexagon nut) or ${NUTS.join(', ')} (got ${JSON.stringify(x.nut)}): a slot nut comes with a frame's beam`);
     const wantNut = x.nut === true ? 'hex' : x.nut || null;
@@ -409,14 +412,22 @@ export function fastenOf(s, worlds, opts = {}) {
     axes.forEach((ax, i) => {
       const sc = { index: i, name: ax.name, found: {}, hardware: [] }, say = (code, level, text, values) => { (sc.found[code] ||= []).push({ level, text, ...(values ? { values } : {}) }); };
       rel.screws.push(sc);
-      // Which way the screw goes: from the part under its head towards the part it ends in (a set screw: against its anchor)
-      const raw = members.map((m) => reach(along(m.parts, ax.O, ax.D, R, false)));
+      // Which way the screw goes: from the part under its head towards the part it ends in (a set screw: against its anchor).
+      // A yoke or a split clamp ends the screw in the part under its head: its first stretch of material from the head is
+      // that side, the rest the far side, and the anchor's axis says the way (from the head into the part)
+      const side = (j, segs) => {
+        if (!yoke || (j !== 0 && j !== members.length - 1)) return segs;
+        const on = (seg) => seg.solid || seg.hole, i = segs.findIndex(on); let e = i;
+        while (e >= 0 && e < segs.length && on(segs[e])) e++;
+        return i < 0 ? segs : j === 0 ? segs.slice(0, e) : segs.slice(e);
+      };
+      const raw = members.map((m, j) => reach(side(j, along(m.parts, ax.O, ax.D, R, false))));
       const missing = members.filter((_, j) => !raw[j]);
       sc.at = ax.O; sc.between = [ax.O, ax.O];
-      if (missing.length) return say('fasten.holes', 'fail', `${missing.map((m) => m.name).join(' and ')} ${missing.length > 1 ? 'are' : 'is'} nowhere on the screw's axis (nothing of ${missing.length > 1 ? 'them' : 'it'} within ${mm(R)} mm of it): the parts are not where the joint needs them`);
-      const mid = (r) => (r[0] + r[1]) / 2, flip = members.length > 1 ? mid(raw.at(-1)) < mid(raw[0]) : true;
+      if (missing.length) return say('fasten.holes', 'fail', `${missing.map((m) => m.name).join(' and ')} ${missing.length > 1 ? 'are' : 'is'} nowhere on the screw's axis (nothing of ${missing.length > 1 ? 'them' : 'it'} within ${mm(R)} mm of it)${yoke ? `: a screw that ends in ${x.into}, the part under its head, goes through one side of it and into the other, along its anchor's axis` : ': the parts are not where the joint needs them'}`);
+      const mid = (r) => (r[0] + r[1]) / 2, flip = yoke ? false : members.length > 1 ? mid(raw.at(-1)) < mid(raw[0]) : true;
       const D = flip ? ax.D.map((c) => -c) : ax.D, O = ax.O, at = (z) => add(O, D, z);
-      const runs = members.map((m) => ({ ...m, segs: along(m.parts, O, ax.D, R, flip) }));
+      const runs = members.map((m, j) => ({ ...m, segs: side(j, along(m.parts, O, ax.D, R, flip)) }));
       for (const r of runs) r.reach = reach(r.segs);
       const order = runs.slice(1).find((r, j) => mid(r.reach) < mid(runs[j].reach));
       if (order) return say('fasten.holes', 'fail', `${order.name} lies before ${runs[runs.indexOf(order) - 1].name} along the screw: "through" lists the parts in order from under the head, and "into" comes last`);
@@ -587,7 +598,8 @@ export function fastenOf(s, worlds, opts = {}) {
         else say('fasten.engagement', 'fail', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: less than the ${mm(least)} mm engagement.steel gives any metal, so the thread strips before the screw holds. A longer screw, or a counterbore to sink its head`, values);
       }
       else if (end.kind && need != null && form !== 'set') {
-        const engaged = Math.max(0, Math.min(inEnd, avail)), ok = engaged >= need - EPS, values = { engaged: r3(engaged), need: r3(need), turns: +(engaged / fx.pitch).toFixed(1) };
+        // (held to the micron it is said in: the length was chosen from the stack rounded to the micron)
+        const engaged = Math.max(0, Math.min(inEnd, avail)), ok = r3(engaged) >= need - EPS, values = { engaged: r3(engaged), need: r3(need), turns: +(engaged / fx.pitch).toFixed(1) };
         const what2 = end.kind === 'nut' ? `its ${end.nut.model.name}, ${mm(avail)} mm high` : end.kind === 'insert' ? `the insert, ${mm(avail)} mm long` : `${intoMat.name ? `${intoMat.name}${intoMat.cls && intoMat.known ? ` (a${intoMat.cls === 'aluminium' ? 'n' : ''} ${intoMat.cls})` : ''}` : end.kind === 'pilot' ? 'plastic' : x.into}`;
         const rule = end.kind === 'nut' ? 'a nut wants its whole height engaged' : end.kind === 'insert' ? `fixings.insert_engagement asks a diameter of thread or the whole insert, ${mm(need)} mm` : end.kind === 'pilot' && fx.figures.pilot_depth ? `${fx.set}.pilot_depth asks ${mm(need)} mm` : `engagement.${end.kind === 'pilot' ? 'plastic' : intoMat.cls ?? 'plastic'} asks ${mm(need / fx.major)} diameters, ${mm(need)} mm`;
         if (ok) say('fasten.engagement', 'pass', `${mm(engaged)} mm of thread in ${what2}, ${mm(values.turns)} turns: ${rule}`, values);

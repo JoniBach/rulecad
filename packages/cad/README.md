@@ -351,7 +351,10 @@ ends in. The screws' places are given one of two ways: `at`, an anchor on each s
 centre line, the anchor's axis along the screw), or `holes`, a part whose own round holes are the places (for a
 circuit board, its mounting holes). `nut` (`true`, `hex`, `square` or `lock`) says a nut holds the screw where the
 last part does not; `washer` puts a plain washer under the head; `length` gives the length where the name has none;
-`torque` gives the tightening torque in N m. Add one with `cad add fasten <project>/<assembly> --screw "M3 cap"
+`torque` gives the tightening torque in N m. A screw across a yoke or a split clamp ends in the part under its head:
+name that part first in `through` and again as `into` (`"through": ["fork", "block"], "into": "fork", "nut": true`),
+and place each screw with `at`, an anchor whose axis points from the head into the part. Along the axis, the part's
+first stretch of material is the side under the head, and the rest is the far side. Add one with `cad add fasten <project>/<assembly> --screw "M3 cap"
 --through bracket --into base --at bracket.h1,bracket.h2`.
 
 Nothing about the holes is declared. Each part is read as drawn: along the screw's axis the mesh is sliced, and the

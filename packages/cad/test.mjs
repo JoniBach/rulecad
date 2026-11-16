@@ -258,6 +258,53 @@ test('fasten: a bracket screwed to a base passes; moved 1 mm, a 3 mm hole, a sho
   } finally { done(); }
 });
 
+test('fasten: a yoke: a screw through one cheek, the block between and into the other, its nut outside; engagement held to the micron the length was chosen to', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // a length read from the mesh a hair over a whole millimetre: the length is chosen from the stack to the micron, and so is the engagement
+    const { write, check } = fastened(ws);
+    write({ bracket: { thick: 5.0004 } });
+    let r = check();
+    assert.deepEqual(r.fails, [], 'M3x10 through 5.0004 mm engages the 5 mm m3.pilot_depth asks, as it is said');
+    assert.match(r.of('fasten.engagement')[0].text, /5 mm of thread in pla \(a plastic\), 10 turns: m3\.pilot_depth asks 5 mm/);
+
+    // a fork, its cheeks 5 mm thick with a 10 mm slot, and a block in the slot: one axis across all three, along y
+    object(ws, 'demo/fork', { uses: ['x1c'], anchors: { h: { at: [0, 0, 'tall / 2'], axis: [0, 1, 0] }, slot: { at: [0, 0, 0], axis: [0, 0, 1] } },
+      variables: { cheek: { value: 5, unit: 'mm', rule: 'Each cheek' }, slot: { value: 10, unit: 'mm', rule: 'The slot' }, tall: { value: 20, unit: 'mm', rule: 'Height' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const w = v.slot + 2 * v.cheek, body = v.ops.subtract(cuboid({ size: [16, w, v.tall + 6], center: [0, 0, (v.tall - 6) / 2] }), cuboid({ size: [18, v.slot, v.tall + 1], center: [0, 0, (v.tall + 1) / 2] }))
+  return v.ops.subtract(body, v.fixings.hole('M3', { into: '+y', depth: w, at: [0, 0 - w / 2, v.tall / 2] }))
+}
+`);
+    object(ws, 'demo/block', { uses: ['x1c'], anchors: { seat: { at: [0, 0, 0], axis: [0, 0, 1] } }, variables: { w: { value: 10, unit: 'mm', rule: 'The slot it sits in' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  return v.ops.subtract(cuboid({ size: [16, v.w, 20], center: [0, 0, 10] }), v.fixings.hole('M3', { into: '+y', depth: v.w, at: [0, 0 - v.w / 2, 10] }))
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/demo/project.json'), JSON.stringify({ name: 'demo', material: 'PLA', objects: ['base', 'bracket', 'fork', 'block'] }));
+    const file = path.join(ws, 'projects/demo/assemblies/yoke.json');
+    const yoke = (fasten, run = true) => { fs.writeFileSync(file, JSON.stringify({ title: 'A block in a fork', kind: 'fit', items: [{ id: 'fork', object: 'fork' }, { id: 'block', object: 'block' }],
+      fits: [{ a: 'block', b: 'fork', min: 0, note: 'In the slot' }], fasten: [{ screw: 'M3 cap', through: ['fork', 'block'], into: 'fork', at: ['fork.h'], nut: true, note: 'Across the fork', ...fasten }] }));
+      if (!run) return null;
+      const out = spawnSync(process.execPath, [BIN, 'check', 'demo/yoke', '--json'], { cwd: ws, encoding: 'utf8' }); let j; try { j = JSON.parse(out.stdout); } catch { assert.fail(`${out.stdout}${out.stderr}`); }
+      if (!j.findings) assert.fail(JSON.stringify(j)); return { status: out.status, of: (code) => j.findings.filter((x) => x.code === code), fails: j.findings.filter((x) => x.level === 'fail').map((x) => `${x.code}: ${x.text}`) }; };
+    r = yoke();
+    assert.deepEqual(r.fails, [], 'the screw passes the near cheek and the block, and its nut holds it on the far cheek');
+    assert.match(r.of('fasten.holes')[0].text, /Across the fork, an M3 cap screw: one axis from under the head through fork, block into fork/);
+    assert.match(r.of('fasten.end')[0].text, /nut/);
+    assert.match(r.of('fasten.length')[0].text, /M3x25 cap chosen, the shortest sold that fits: 20 mm under its head/);
+    assert.match(cad('list', 'demo/yoke'), /1 ×\s+M3x25 cap[\s\S]*1 ×\s+M3 hex nut/);
+    // the anchor's axis says the way: turned round, the head is on the other cheek and it still holds
+    const a = JSON.parse(fs.readFileSync(path.join(ws, 'projects/demo/objects/fork.json'), 'utf8')); a.anchors.h.axis = [0, -1, 0]; fs.writeFileSync(path.join(ws, 'projects/demo/objects/fork.json'), JSON.stringify(a));
+    assert.deepEqual(yoke().fails, []);
+    // a part's own holes can't say which cheek the head is on: refused by name
+    yoke({ at: undefined, holes: 'fork' }, false);
+    assert.match(cad('check', 'demo/yoke'), /fasten 1: a screw that ends in fork, the part under its head, is placed with "at"/);
+  } finally { done(); }
+});
+
 test('fasten: seats and ends read from the parts: a counterbore on an insert, a countersunk screw and its nut, a nut\'s seat, a washer, a part\'s own holes; cad add fasten', async () => {
   const { ws, cad, done } = workspace();
   try {
