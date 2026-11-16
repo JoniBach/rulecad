@@ -6037,7 +6037,9 @@ npx cad list leg/quadruped
 npx cad plates leg/quadruped
 ```
 
-The weight first, plainly: the shopping list says 1469 g of printing and 1900 g of bought parts, 3369 g as a machine, before electronics. The 1.5 kg robot the leg was sized for does not exist: eight motors weigh 1880 g alone. So the robot is 3.8 kg (`leg.robot_mass`, with its electronics an `estimate`), and every number below is at that mass.
+The weight first, plainly: the shopping list says 1470 g of printing, 1900 g of bought parts and 105 g of screws, 3474 g as a machine, before electronics. The 1.5 kg robot the leg was sized for does not exist: eight motors weigh 1880 g alone. So the robot is 3.8 kg (`leg.robot_mass`, with its electronics an `estimate` of about 0.4 kg, and the screws within that guess), and every number below is at that mass.
+
+The screws are the stand's four times over, each chosen by `fasten`, with each hip's housing on its side plate (three M3x8) and the beams held by two M3x12 at each end: 24 M3x8 cap, 16 M3x8 countersunk, 12 M3x10, 40 M3x12 with the knee motors' own and 4 M3x16, and the hip motors' 16 M3x6.
 
 Trot and crawl are run through their checks by `cad check leg/quadruped --json` and `cad check leg/crawl --json`: they take several minutes each, so the replay here leaves them out; run them yourself. What they said when this chapter was written (quasi-static, a design, nothing built):
 
