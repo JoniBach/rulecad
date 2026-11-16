@@ -2,5 +2,5 @@
   "name": "home",
   "description": "Things for the house.",
   "material": "PLA",
-  "objects": ["soap-tray"]
+  "objects": ["soap-tray", "box", "lid"]
 }

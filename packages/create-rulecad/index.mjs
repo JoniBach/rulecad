@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// npm create rulecad [folder]: a new rulecad workspace with a design to start from (a soap tray), then npm install.
+// npm create rulecad [folder]: a new rulecad workspace with designs to start from (a soap tray, and a box whose lid is
+// screwed on: a fasten, its holes from v.fixings), then npm install.
 //   --machine arm | leg   start from a whole machine instead: the arm drawn on a sheet (EXAMPLES chapter 12) or a leg on a stand
 //                         (chapter 14), sized when it is made, with its task, bought parts, wires and firmware
 //   --sheet a5 --accuracy 0.3 (for --machine arm), --robot 1.5 (for --machine leg): the sizes it is made to
@@ -39,7 +40,7 @@ fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({
   dependencies: { '@rulecad/cad': from('cad'), '@jscad/modeling': '^2.12.0' },
 }, null, 2)}\n`);
 
-console.log(`made ${path.relative(process.cwd(), dir) || '.'}: a soap tray to start from, in projects/home`);
+console.log(`made ${path.relative(process.cwd(), dir) || '.'}: a soap tray and a box with a screwed lid to start from, in projects/home`);
 
 // A machine: copy it in, and size it to what was asked
 const SHEETS = { a6: [148, 105], a5: [210, 148], a4: [297, 210] };

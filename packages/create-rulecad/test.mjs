@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const CREATE = fileURLToPath(new URL('./index.mjs', import.meta.url));
 const CAD = fileURLToPath(new URL('../cad/bin/cad.mjs', import.meta.url));
@@ -25,6 +25,36 @@ test('npm create rulecad: a workspace whose soap tray passes every check', () =>
     const short = path.join(root, 'short');
     assert.match(execFileSync(process.execPath, [CREATE, short, '--no-install', '--share', 'gist'], { encoding: 'utf8' }), /short links/);
     assert.equal(JSON.parse(fs.readFileSync(path.join(short, 'cad.config.json'), 'utf8')).targets.shorten, 'gist');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('npm create rulecad: no screw size is typed, and the example assembly screws its lid on with a fasten and lists its screws', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-')), dir = path.join(root, 'w');
+  try {
+    execFileSync(process.execPath, [CREATE, dir, '--no-install'], { encoding: 'utf8' });
+    fs.symlinkSync(MODULES, path.join(dir, 'node_modules'), 'junction'); // stands in for npm install
+    // the inventory of screw sizes typed by hand finds none, even counting the objects that read v.fixings, which it passes over
+    const { inventory, kindOf } = await import(pathToFileURL(fileURLToPath(new URL('../../scripts/fixings-inventory.mjs', import.meta.url))).href);
+    const walk = (d) => fs.readdirSync(path.join(dir, d), { withFileTypes: true }).flatMap((e) => (e.name === 'node_modules' ? [] : e.isDirectory() ? walk(path.posix.join(d, e.name)) : [path.posix.join(d, e.name)]));
+    const files = walk('.').map((f) => f.replace(/^\.\//, ''));
+    assert.deepEqual(inventory({ root: dir, files }).total, { named: 0, reads: 0, typed: 0, table: 0 });
+    const objects = files.filter((f) => /^projects\/[^/]+\/objects\/[^/]+\.json$/.test(f));
+    assert.deepEqual(objects.sort(), ['projects/home/objects/box.json', 'projects/home/objects/lid.json', 'projects/home/objects/soap-tray.json']);
+    for (const f of objects) for (const [name, v] of Object.entries(JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')).variables)) assert.equal(kindOf(v), null, `${f}: ${name}`);
+    for (const f of ['box', 'lid']) assert.match(fs.readFileSync(path.join(dir, `projects/home/objects/${f}.js`), 'utf8'), /v\.fixings\.hole\('M3'/, `${f}.js draws its holes from v.fixings`);
+    const cad = (...a) => execFileSync(process.execPath, [CAD, ...a], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 });
+    const a = JSON.parse(fs.readFileSync(path.join(dir, 'projects/home/assemblies/lidded-box.json'), 'utf8'));
+    assert.deepEqual(a.fasten, [{ screw: 'M3 cap', through: ['lid'], into: 'box', holes: 'lid.body', note: 'Lid screwed to the box' }]);
+    assert.ok(!a.fits.some((x) => x.fastens || x.holes || x.fastener), 'the screws are the fasten\'s, not a fit\'s');
+    // each part checks clean, the assembly too, with each screw followed through its holes
+    for (const o of ['box', 'lid']) assert.doesNotMatch(cad('check', `home/${o}`), /✗|!/);
+    const r = JSON.parse(cad('check', 'home/lidded-box', '--json'));
+    assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    for (const code of ['fasten.holes', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'fasten.access']) assert.deepEqual(r.findings.filter((x) => x.code === code).map((x) => x.level), ['pass'], code);
+    assert.match(r.findings.find((x) => x.code === 'fasten.length').text, /^Lid screwed to the box, 4 M3 cap screws: M3x8 cap chosen, the shortest sold that fits/);
+    // its list names the screws, and its order the step they go in at
+    assert.match(cad('list', 'home/lidded-box'), /4 ×\s+M3x8 cap\s+0\.913 g each, 3\.65 g\s+1 pack of 10, 6 spare\s+Lid screwed to the box/);
+    assert.match(cad('order', 'home/lidded-box'), /2\. lid goes on: Lid screwed to the box \(4 × M3x8 cap\) with a 2\.5 mm hex key/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

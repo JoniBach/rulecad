@@ -6,8 +6,11 @@ cd my-designs
 npx cad check home/soap-tray
 ```
 
-Makes a [rulecad](https://github.com/JoniBach/rulecad) workspace with one design to start from: a soap tray with
-ribs and drain slots, every measurement a variable that names its rule. `--no-install` makes the files without
+Makes a [rulecad](https://github.com/JoniBach/rulecad) workspace with two designs to start from, every measurement a
+variable that names its rule: a soap tray with ribs and drain slots, and a box with its lid screwed on. The box's
+assembly (`npx cad check home/lidded-box`) says how the parts screw together with a `fasten`: the holes are drawn from
+`v.fixings` by the thread's name, so no screw size is typed anywhere, and the check chooses each screw's length and
+lists the screws (`npx cad list home/lidded-box`: 4 × M3x8 cap). `--no-install` makes the files without
 running `npm install`. It asks how you'll share models: short links keep each shared model in a secret GitHub Gist
 (needs the `gh` command, signed in); long links carry the model and upload nothing. `--share gist` or `--share long`
 answers in advance (without either, and with no one to ask, links stay long).
