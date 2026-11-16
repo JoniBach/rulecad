@@ -5309,13 +5309,14 @@ npx cad list leg/stand
 npx cad animate leg/stand
 ```
 
-The check runs with `--json` here because the stand's own warning, that its figures rest on estimates, would otherwise stop the test: run it plain to read it. What it says:
+The check runs with `--json` here because the stand's warnings, that its figures rest on estimates and that two of the shin's screws want a ball-end key, would otherwise stop the test: run it plain to read it. What it says:
 
 - `gait.clearance` passes: the swing foot lifts 15 mm clear of the scale (asked 12).
 - `motor.torque` through the gait: the hip needs 0.147 N m at the worst of the cycle against 1.682 N m the 17HS4401 gives at 0.5 A through 38:1 at 47%, 11.4 times; the knee 0.451 N m against 1.419 N m, 3.1 times. Those figures are the foot's load only, not the leg's own weight in the swing, and the gearbox efficiency is an estimate.
 - `gait.sweep` passes: the leg, moved through the cycle pose by pose, hits nothing, with every planet and the sun turning as they should (the gait moves the motor's shaft that leads each output, and the rest follows).
 - The gears' overlap is zero: the second ring is put in phase at the joint's own zero, wherever its range starts. (A range that left out zero once put the ring 30° out, and every planet into its teeth.)
-- `cad list` gives 471 g of printing and about 8.6 hours. Per part, printed and bought, the leg (without the stand) is the sum above; the heaviest prints are the thigh (98 g), the carriage (92 g), the tie (43 g) and the shin (43 g).
+- `fasten` chooses every screw and passes each: the housing's three M3x8 caps into the carriage, the bridge's three M3x10, the spindle's four M3x8 countersunk, the thigh's M3x16 into the hexagon, the clips' three M3x8 and the shin's four M3x12. It warns that the shin's first and third screws are reached only by a ball-end key tilted up to 25°: in the standing pose rod1, and for one of them collar1, stands over the straight line. That is true on the bench, so the shin goes on the knee before the leg goes on the stand. The collar's clamp screw is not a `fasten` yet: its head and nut would sit on the collar's round outside, and the collar needs flats for them first.
+- `cad list` gives 471 g of printing and about 8.6 hours, and buys those screws with the motors' own (4 M3x6 and 4 M3x12 from their mounts): 24 g of fixings. Per part, printed and bought, the leg (without the stand) is the sum above; the heaviest prints are the thigh (98 g), the carriage (92 g), the tie (43 g) and the shin (43 g).
 - Margin per part, by hand (`estimate`, PLA at 39 MPa, bending at the worst stance load): the thigh 80 times, the shin 45 times, the carriage's arms 130 times. The motors' margins above are the small ones.
 - `cad animate leg/stand` writes `.preview/leg/stand-gait.svg`: the leg's sticks in side view, the foot's stance in blue and swing in orange. The model page plays the same cycle in the Motion panel of a link: `cad link leg/stand` carries it.
 
