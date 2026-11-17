@@ -5,6 +5,13 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## 0.3.17: frames in the agents' notes (Frames 2)
+
+### Changed
+
+- The template's AGENTS.md follows cad's: joins between beams, screws into a slot, fittings, guides, jigs and a
+  frame's build.
+
 ## 0.3.16: screws through fixings in every template (Fixings 3)
 
 ### What reads fixings now

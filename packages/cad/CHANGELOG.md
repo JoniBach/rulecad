@@ -5,6 +5,47 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.57: frames in assemblies (Frames 2)
+
+### Added
+
+- **Joins** (`"joins"`, `cad add join`): beam to beam by kind. A blind or end-tap join taps one beam's end, drills
+  the access hole across the other and adds its screw to the fasten checks and `cad list`; a bracket, gusset, splice,
+  cube, anchor or hinge join takes a printed fitting (`"fitting": "printed"`) or a bought one by its rule set's name.
+  `join.geometry` fails a beam that stands off or runs into the face, with the gap; `join.stiffness` is an estimate
+  until the joint rig measures it, and says so.
+- **Screws into a slot:** a fasten `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`) uses the slot nut `nutFor`
+  picks, and `fasten.slot` holds the holes to the slot's centre line; a distance places the screws as a group.
+  `frame.nut` fails slide-in nuts in a slot that joins close at both ends and names the nut that drops in;
+  `frame.preload` lists nuts to load before a join closes their way.
+- **Fittings:** printed brackets, gussets and splice plates; panels cut to their bay with clips; doors on printed
+  hinges, swept, a latched door failing its sweep; end caps, feet and castors; mounts for boards and supplies read
+  from their own rule sets, fans, drag chains, DIN rail, cable clips and runs along a slot; bought fittings with their
+  price on `cad list`.
+- **Guides:** linear rails with their screws and slot nuts at the rail's pitch, each carriage on a sliding joint and
+  held to its ratings (`joint.moment`); V-wheel carriages seated from the profile's rules, the eccentrics' range
+  checked; rods with their holders, a lead screw with its motor plate, coupler and endstop, placed by addresses.
+- **Jigs** (`cad beams --jigs`): drill and tap guides, cut-length stops and squaring corners of both hands, from the
+  assembly, laid out as one plate.
+- **A frame's build** (`cad order`, the build page): from bars to a square frame in numbered steps, every screw head
+  and slot nut given a way into its slot, joins left snug until squared; an order that would trap a nut is refused
+  with the slot and the join. `frame.square` per bay.
+- **`motor.heat`** reads the driver current the motor item sets; its case temperature is an estimate and says so.
+- **`cad measured`** takes the joint rig's readings, a join's measured stiffness and a slot nut's hold along its
+  slot, and checks every value before it writes any.
+- EXAMPLES.md chapter 16, a frame with a moving axis.
+
+### Changed
+
+- A part fastened by a fit only to a part a joint moves, but placed where it stands, is said by name
+  (`assembly.fastened`).
+- A beam placed by its ends counts as held in the loose-part check.
+- Printed fittings in a project of a plastic the kit has no set for are refused by name, where they were sized as PLA.
+
+### Printed sizes that moved
+
+None in the examples and templates that existed before. CI's dimension table compares every one.
+
 ## 0.7.56: screws through fixings, end to end (Fixings 3)
 
 ### What reads fixings now
