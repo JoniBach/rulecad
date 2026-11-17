@@ -5,6 +5,24 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## Unreleased: frame checks (Frames 3)
+
+### Added
+
+- **The frame solved** (`@rulecad/fea/frame`): an assembly with joins is solved as beam elements, each join a rigid
+  link and its spring, held at its feet or where `"frame": { "supports" }` says. `frame.deflection` gives the sag at
+  each load, each `"frame": { "points" }` and every guide, with the joins' springs and rigid, and says which it rests
+  on; `frame.stress` each beam against its alloy and each printed fitting's join against its strength;
+  `frame.buckling` each beam in compression against Euler's load and the frame's first factor; `frame.solve` what
+  the model holds. A mass on a slide along a beam is solved at each end of its travel. `cad beams` writes the
+  deflected shape as a check view, `<assembly>.frame-sag.svg`.
+- **Schema:** `"frame": { "supports", "limit", "points" }` on an assembly.
+
+### Changed
+
+- Every assembly with joins now has these findings; a frame that fails `frame.deflection` or `frame.stress` makes
+  `cad check` fail where it passed before. No printed size moves.
+
 ## 0.7.57: frames in assemblies (Frames 2)
 
 ### Added

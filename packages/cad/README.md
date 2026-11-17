@@ -668,6 +668,49 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 - `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120 [--screw "M5 button"] [--fitting printed]`
   adds one.
 
+**The frame solved.** `cad check` solves an assembly that has joins (or a `"frame"`) as a frame of beam elements
+(`@rulecad/fea/frame`) and reports four findings:
+
+- `frame.solve` says what the model holds: the beams, the nodes (each beam is cut where a join, a mounted item, a
+  load, a named point or a support meets it), where it is held, the poses solved, and each join's spring with what
+  it rests on. A join puts the end of `a` on a node at `b`'s axis through a rigid link (the end stands half `b`'s
+  width off that axis) and its spring (`join.stiffness`) at that end. It is held where `"frame": { "supports": {
+  "z1.a": "pinned", "z2.a": "fixed" } }` says; else at the beam ends a foot, levelling foot, castor plate or
+  stacking foot (printed or bought) is fitted to; else at its lowest beam ends. Feet and lowest ends are pinned: held
+  from moving and free to turn, as a foot stands on a floor. Beams no support holds through joins, and beams that
+  move, are left out by name.
+- The loads: each beam's own weight (its sheet's mass per metre), each item mounted on a beam (its mass at its
+  centre, as a force and a moment at the node where its chain of mounts meets the beam) and each `mass` in `"loads"`.
+  A mass on a moving joint mounted on a beam, such as a carriage on a guide, is solved at each end of its travel,
+  at every named pose and as drawn; the worst is named.
+- `frame.deflection`: the sag at each load's point, at each place in `"frame": { "points": ["x2.top@50%"] }` and
+  along every guide's travel, with the joins' springs and with the joins rigid, and the load's own share. The first
+  rests on the joins' springs, estimates until the joint rig measures them, and the finding says so (`refs.restsOn`:
+  `estimate` or `measured`); the rigid figure is the least the sag can be. The limit is a rail's own parallelism
+  under a guide, else `"frame": { "limit": 0.2 }`, else the task's accuracy, else the beam's span over 360. Over it fails.
+- `frame.stress`: the largest stress in each beam (axial and bending, from the section moduli) against its alloy's
+  strength, and the bending moment at each join against what its printed fitting takes (its design load at its
+  screw's distance from the corner, times its margin by finite elements). Under 2 times warns, under 1 fails. A join
+  with no strength in the kit (blind, end-tap, a bought fitting) has its largest moment said.
+- `frame.buckling`: each beam in compression against Euler's load with both ends pinned, and the whole frame's first
+  buckling factor with the joins' springs (each beam cut in four).
+- `cad beams` also writes `exports/<project>/<assembly>.frame-sag.svg`, the check view: the frame as drawn in grey
+  and the shape it takes in red, from the front and from the side, scaled and saying by how much. It is a picture of
+  the solve, never part of the model.
+
+| Figure | Formula | Source |
+|---|---|---|
+| Sag limit with nothing tighter | span / 360 | International Building Code, Table 1604.3, floor members under live load (as reproduced in 780 CMR 1604.3) |
+| Beam stress | \|N\| / A + \|My\| / Wy + \|Mz\| / Wz | Beam theory; the section moduli from the profile's rule set |
+| A beam in compression | P = π² E I / L² (both ends pinned) | Euler's column; Roark's Formulas for Stress and Strain, 7th ed., table 15.1, case 1a |
+| A printed fitting's moment | design load × its distance from the corner × its margin | The fitting's own finite-element margin at its design load, scaled linearly |
+| The solve | Timoshenko beam elements, end springs condensed out | `@rulecad/fea/frame` (its README lists its sources) |
+
+A worked check: a 2020 shelf frame, legs 400 mm, a 600 mm front beam joined blind to the legs 390 mm up, 5 kg at its
+middle, sags 0.215 mm by hand with the joins rigid (a beam whose ends turn with the corners the legs and the side
+beams' twist hold) and 0.310 mm with the blind joins' estimated 1.5 N·m/mrad springs; the solve gives the same to three
+figures (`packages/cad/test.mjs`, "frame checks: a shelf frame").
+
 **Fastening into a slot.** A `fasten` whose `into` is a slot on a beam ends in a slot nut under the slot's lips:
 
 ```json

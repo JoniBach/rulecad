@@ -106,7 +106,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
   address is what was wrong; `join.stiffness` says whether it rests on an estimate or on the joint rig's
   measurement (and its date): report it as it says. A `join.drop` is a prediction for a beam held by one join, to
-  measure and write back with `cad measured`, never a figure to tune.
+  measure and write back with `cad measured`, never a figure to tune. `frame.deflection` gives each sag twice, on
+  the joins' springs and with the joins rigid: report the first with what it rests on (`refs.restsOn`), never the
+  rigid one alone. Say where the frame stands with `"frame": { "supports" }` or fitted feet, not by moving beams.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),
