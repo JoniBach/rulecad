@@ -594,6 +594,9 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 - A `mitre` join (`"b": "y1.a"`, an end) cuts both ends at the angle that halves the corner, about the face the corner
   lies in, each beam's length on the outside of the corner, worked out from where the two beams are (both placed by
   their ends). Its corner key or plate comes later.
+- Printed fittings are sized from the project's plastic (`material` in project.json): `pla` and `petg` by name.
+  Another plastic is read from its own rule set (`rules/abs.json`), which must give `strength`, `modulus` and
+  `density`; where there is none, the build is refused by name.
 - A `bracket`, `gusset` or `splice` join with `"fitting": "printed"` adds its printed fitting from `@rulecad/frames`
   (its README, Printed fittings) as an item of its own (`y1-x1-bracket`), placed from where the two beams are (both
   placed by their ends), and a `fasten` for each leg or arm into its beam's slot, with the slot nut the fitting was

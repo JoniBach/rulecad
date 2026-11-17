@@ -3446,6 +3446,24 @@ test('panels and doors: a bay closed with a 3 mm panel lists the panel\'s size a
   } finally { done(); }
 });
 
+test('printed fittings in a project of another plastic: refused by name where no rule set gives its strength, modulus and density, and sized from it where one does', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'ABS', objects: [] }));
+    fs.writeFileSync(at('assemblies/clip.json'), JSON.stringify({ title: 'clip', kind: 'fit', items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [200, 0, 0] }, { id: 'c', fitting: { kind: 'cable-clip', profile: '2020-misumi-hfs5' }, at: 'rail.top@100' }] }));
+    // once sized as PLA without a word; now refused by name, with what would do
+    assert.match(cad('check', 'frame/clip'), /project frame: its material is "ABS", and printed fittings are sized from their plastic's strength, modulus and density: the kit has pla and petg, and there is no rules\/abs\.json\. Give rules\/abs\.json with all three, or set the material to pla or petg/);
+    fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
+    const pla = JSON.parse(fs.readFileSync(path.join(ROOT_MODULES, '@rulecad/rules/pla.json'), 'utf8'));
+    fs.writeFileSync(path.join(ws, 'rules/abs.json'), JSON.stringify({ name: 'abs', rules: { strength: pla.rules.strength } }));
+    assert.match(cad('check', 'frame/clip'), /rules\/abs\.json gives no modulus, density/);
+    fs.writeFileSync(path.join(ws, 'rules/abs.json'), JSON.stringify({ name: 'abs', rules: { ...pla.rules, density: { ...pla.rules.density, value: 1.04 } } }));
+    assert.match(cad('check', 'frame/clip'), /c: it weighs 0\.43 g of abs/);
+  } finally { done(); }
+});
+
 test('services: the worked arm\'s shield and supply mount on a rail from their own rule sets, and its power wire runs along a slot, its length and its clips reported', () => {
   const { ws, cad, done } = workspace();
   try {

@@ -48,15 +48,27 @@ export const fittingCache = {
   },
 };
 
-// The project's plastic, where the fittings know it (pla, petg), else PLA
+/**
+ * The project's plastic for its printed fittings: pla or petg by name; another named in project.json is read from its
+ * own rule set (the workspace's rules/, then the kit's) where that gives strength, modulus and density, and refused by
+ * name where it does not. A project with no project.json or no material is PLA.
+ * @param {string} project @returns {string | object} pla, petg, or the material's rule set
+ */
 export function plasticOf(project) {
-  try { const m = String(JSON.parse(fs.readFileSync(path.join(paths.project(project), 'project.json'), 'utf8')).material || 'pla').toLowerCase().split(/\s/)[0]; return ['pla', 'petg'].includes(m) ? m : 'pla'; } catch { return 'pla'; }
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(path.join(paths.project(project), 'project.json'), 'utf8')).material; } catch { return 'pla'; }
+  const m = String(raw || 'pla').trim().toLowerCase().split(/\s/)[0];
+  if (['pla', 'petg'].includes(m)) return m;
+  let set = null; try { set = peekRuleSet(m); } catch {}
+  const lacks = ['strength', 'modulus', 'density'].filter((k) => !(typeof set?.rules?.[k]?.value === 'number'));
+  if (set && !lacks.length) return set;
+  throw new Error(`project ${project}: its material is ${JSON.stringify(raw)}, and printed fittings are sized from their plastic's strength, modulus and density: ${set ? `rules/${m}.json gives no ${lacks.join(', ')}` : `the kit has pla and petg, and there is no rules/${m}.json`}. Give rules/${m}.json with all three, or set the material to pla or petg`);
 }
 
 /**
  * A fitting's model from an item's "fitting" (or a join's), refused by name where a key is not one it takes.
  * @param {object} spec { kind: bracket | gusset | splice, profile, other, face, otherFace, shape, brace, load, count, thread, head, nut }
- * @param {object} context framesContext()'s @param {string} [material] pla or petg @param {string} [what] who asks
+ * @param {object} context framesContext()'s @param {string | object} [material] pla, petg or a material's rule set (plasticOf) @param {string} [what] who asks
  */
 export function fittingModel(spec, context, material = 'pla', what = 'fitting') {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error(`${what}: fitting is { "kind": "bracket", "profile": "2020-misumi-hfs5" } (got ${shown(spec)})`);
