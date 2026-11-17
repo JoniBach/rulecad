@@ -52,6 +52,7 @@ import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext
 import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
 import { frameChecks } from './framecheck.mjs';
+import { frameHeatChecks } from './frameheat.mjs';
 import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
@@ -983,6 +984,7 @@ export function checkAssembly(s) {
   joinChecks(s, f);
   slotNutChecks(s, f);
   frameSquareChecks(s, f);
+  frameHeatChecks(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });

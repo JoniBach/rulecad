@@ -3279,6 +3279,42 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
   } finally { done(); }
 });
 
+test('frame.heat: a frame grows with the air it runs in by its alloy\'s expansion, and a printed fitting near a heater is held to its plastic\'s softening point', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // one side of a 2020 box (posts 300 mm at x 10 and 290, rails at 30 and 250 mm), a printed PLA foot on p1 and a
+    // printed end cap on p2's top; a heated bed's edge 30 mm under p1's foot
+    const P = { profile: '2020-misumi-hfs5' }, items = [{ id: 'p1', beam: P, from: [10, 10, 0], to: [10, 10, 300] }, { id: 'p2', beam: P, from: [290, 10, 0], to: [290, 10, 300] }], joins = [];
+    for (const [n, z] of [['x1', 30], ['x3', 250]]) { items.push({ id: n, beam: P, from: [20, 10, z], to: [280, 10, z] }); joins.push({ kind: 'blind', a: `${n}.a`, b: `p1.back@${z}` }, { kind: 'blind', a: `${n}.b`, b: `p2.front@${z}` }); }
+    items.push({ id: 'foot1', fitting: { kind: 'foot', profile: '2020-misumi-hfs5' }, at: 'p1.a' }, { id: 'cap2', fitting: { kind: 'end-cap', profile: '2020-misumi-hfs5' }, at: 'p2.b' });
+    const write = (name, heat) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Warm', kind: 'fit', items, joins, frame: { heat } }));
+    const bed = { name: 'bed', at: [10, 10, -30], temperature: 60, reach: 30 };
+    write('warm', { air: 45, heaters: [bed] }); write('warmer', { air: 50 }); write('none', {}); write('bad', { air: 45, heaters: [{ ...bed, reach: 0 }] });
+    const check = (name) => { const r = spawnSync(process.execPath, [BIN, 'check', `frame/${name}`, '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === 'frame.heat'); };
+    const warm = check('warm'), grow = warm.find((x) => x.values?.grows);
+    // growth by hand, ΔT = 45 - 20 = 25 °C, α = 23.4e-6 /K (FRAME_HEAT.expansion, a community figure): the beams span
+    // 280 mm in x (axis to axis), 300 mm in z: 23.4e-6 × 280 × 25 = 0.1638 mm and 23.4e-6 × 300 × 25 = 0.1755 mm
+    assert.deepEqual([grow.values.change, grow.values.size, grow.values.grows], [25, [280, 0, 300], [0.1638, 0, 0.1755]]);
+    assert.match(grow.text, /^at 45 °C the frame is 25 °C warmer than the 20 °C it was built in, so it grows by 0\.164 mm over the 280 mm its beams span in x, 0\.176 mm over the 300 mm its beams span in z; the longest beam, p1 \(300 mm\), by 0\.176 mm/);
+    assert.deepEqual(grow.refs.expansion, ['FRAME_HEAT.expansion']);
+    // the foot is within the bed's reach, so at 60 °C, over PLA's 57 °C (its heat deflection temperature); the cap is in
+    // the 45 °C air, 12 °C under, past the 10 °C margin
+    const foot = warm.find((x) => x.refs?.item === 'foot1');
+    assert.equal(foot.level, 'fail'); assert.deepEqual([foot.values.temperature, foot.values.softening, foot.values.spare], [60, 57, -3]);
+    assert.match(foot.text, /^foot1 \(foot-2020-misumi-hfs5, PLA\) works at 60 °C \(bed, [\d.]+ mm away\), 3 °C over its 57 °C softening point/);
+    const pass = warm.find((x) => x.level === 'pass');
+    assert.match(pass.text, /^1 printed fitting stays at least 10 °C under its plastic's softening point: the nearest is cap2 \(PLA\), 45 °C \(the air\) against 57 °C/);
+    // at 50 °C both are within 10 °C of softening: each warned
+    assert.deepEqual(check('warmer').filter((x) => x.refs?.item).map((x) => [x.level, x.refs.item, x.values?.spare]), [['warn', 'foot1', 7], ['warn', 'cap2', 7]]);
+    // refused by name
+    assert.match(check('none')[0].text, /frame\.heat gives neither air nor heaters/);
+    assert.match(check('bad')[0].text, /frame\.heat\.heaters 1: reach is how far from its middle a part is taken at its temperature, mm above 0 \(got 0\)/);
+  } finally { done(); }
+});
+
 test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loosening the cut tolerance widens it by the hand stack, and cad measured takes the difference measured', () => {
   const { ws, cad, done } = workspace();
   try {
