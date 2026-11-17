@@ -1413,3 +1413,28 @@ test('squareness: a bay\'s two diagonals and the difference to accept, what the 
   assert.throws(() => frames.squareness(260, 200, { kerf: 3 }), /squareness: no option "kerf": it takes tolerance/);
   assert.throws(() => frames.squareness(260, 200, { tolerance: -1 }), /tolerance is how far a cut may be from its length either way/);
 });
+
+test('measured joins: the joins set starts from the estimates, a measured figure is taken before the kit\'s and says when, and a slot nut says its hold along the slot', () => {
+  const { joinRuleSet, joinStiffness, joinModel, JOIN_STIFFNESS, JOINS, slotNutModel } = frames;
+  const set = joinRuleSet(), vocabulary = JSON.parse(fs.readFileSync(new URL('vocabulary.json', rulesDir), 'utf8'));
+  // every kind's bending and twist, and a share for each kind a printed fitting can make, in the vocabulary's names
+  assert.equal(set.part, 'joins'); assert.ok(vocabulary.parts.joins);
+  assert.equal(Object.keys(set.rules).length, Object.keys(JOINS).length * 2 + Object.values(JOINS).filter((j) => j.printed).length);
+  assert.deepEqual([set.rules.end_tap_bending.value, set.rules.blind_twist.value, set.rules.bracket_printed_share.value], [JOIN_STIFFNESS['end-tap'].bending.value, JOIN_STIFFNESS.blind.twist.value, 1]);
+  for (const [k, r] of Object.entries(set.rules)) { assert.equal(r.kind, 'estimate', k); assert.ok(vocabulary.units.includes(r.unit), `${k}: ${r.unit}`); assert.match(r.source, /joint rig/, k); }
+  // a workspace's copy with the blind join's bending measured: taken, said, and the rest still the estimates
+  const b = beamModel('2020-misumi-hfs5', { length: 150 }), given = { sets: { joins: { ...set, rules: { ...set.rules, blind_bending: { ...set.rules.blind_bending, value: 9e5, kind: 'measured', source: 'the joint rig', checked: '2026-12-01' } } } } };
+  const est = joinStiffness('blind', b), got = joinStiffness('blind', b, { given });
+  assert.deepEqual([est.bending, est.kind, est.measured], [1.5e6, 'estimate', { bending: null, twist: null }]);
+  assert.deepEqual([got.bending, got.twist, got.kind, got.measured], [9e5, 3e5, 'estimate', { bending: '2026-12-01', twist: null }]);
+  assert.deepEqual(got.rests.map((r) => [r.name, r.kind]), [['joins.blind_bending', 'measured'], ['joins.blind_twist', 'estimate']]);
+  // scaled for a 40 mm profile as the estimate is; and joinModel hands it on
+  assert.equal(joinStiffness('blind', beamModel('4040-misumi-hfs8', { length: 150 }), { given }).bending, 9e5 * 8);
+  const post = beamModel('2020-misumi-hfs5', { length: 200 });
+  assert.equal(joinModel('blind', { beam: b, end: 'a' }, { beam: post, address: 'back@100' }, { given }).stiffness.bending, 9e5);
+  // a slot nut's hold along its slot, from its set where it has one: only ever measured
+  const nut = SETS['slot-nut-6-misumi-m5-slide-in'], own = { ...nut, rules: { ...nut.rules, hold_along: { value: 420, unit: 'N', rule: 'The pull along the slot at which it slipped', kind: 'measured', source: 'the joint rig', checked: '2026-12-01' } } };
+  assert.equal(slotNutModel('slot-nut-6-misumi-m5-slide-in').holdAlong, null);
+  const m = slotNutModel('slot-nut-6-misumi-m5-slide-in', {}, { sets: { 'slot-nut-6-misumi-m5-slide-in': own } });
+  assert.deepEqual([m.holdAlong.value, m.findings.find((x) => x.code === 'slot_nut.hold_along').text], [420, 'tightened, it slips along the slot at 420 N: measured on 2026-12-01 (the joint rig)']);
+});
