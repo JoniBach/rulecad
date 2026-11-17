@@ -3482,6 +3482,29 @@ test('bought fittings: the hinge set gives its screws, an anchor at each (b1, b2
   } finally { done(); }
 });
 
+test('a table fastened to a guide\'s carriage by a fit, but placed where it stands, is said to be left behind by name; placed on the carriage it moves with it and its mass is carried', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/frame/project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const beam = (id, from, to) => ({ id, beam: { profile: '2020-misumi-hfs5' }, from, to });
+    const write = (at) => fs.writeFileSync(path.join(ws, 'projects/frame/assemblies/table.json'), JSON.stringify({ title: 'Table', kind: 'fit', gravity: [0, 0, -1],
+      items: [beam('p1', [-10, 0, -120], [-10, 0, 80]), beam('p2', [310, 0, -120], [310, 0, 80]), beam('x1', [0, 0, 0], [300, 0, 0]), { id: 'table', bought: 'supply-24v', variant: 'LRS-50-24', at }],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'p1.back@120' }, { kind: 'blind', a: 'x1.b', b: 'p2.front@120' }],
+      guides: [{ kind: 'rods', on: 'x1.top', from: 50, length: 200, spacing: 40, height: 22.5, nut: 'drop-in' }],
+      fits: [{ a: 'table', b: 'g1-carriage-1', fastens: true }] }));
+    // placed where it stands: it would stay behind as the carriage slides, its 340 g not carried; said by name
+    write([150, 0, 80]);
+    const left = cad('check', 'frame/table');
+    assert.match(left, /! table is fastened to g1-carriage-1 \(a fit that fastens\), but only g1-carriage-1 moves on g1-1: table is placed where it stands, so it stays there in every pose and its mass is left out of what g1-1 carries \(joint\.moment\)\. Place table on g1-carriage-1 by an anchor or an address/);
+    assert.match(left, /g1-carriage-1 on g1: 59 g carried/);
+    // placed on the carriage: it moves with it, its mass carried, and nothing is said
+    write('g1-carriage-1.top');
+    const on = cad('check', 'frame/table');
+    assert.doesNotMatch(on, /is fastened to g1-carriage-1/); assert.match(on, /g1-carriage-1 on g1: 399 g carried/);
+  } finally { done(); }
+});
+
 test('services: the worked arm\'s shield and supply mount on a rail from their own rule sets, and its power wire runs along a slot, its length and its clips reported', () => {
   const { ws, cad, done } = workspace();
   try {

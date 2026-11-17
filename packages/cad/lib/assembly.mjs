@@ -43,7 +43,7 @@ import { wiresOf, wireChecks, wireRows, wireTubes, wireRoutes } from './wires.mj
 import { printedParts } from './list.mjs';
 import { taskOf, taskChecks } from './task.mjs';
 import { powerChecks } from './power.mjs';
-import { loadChecks } from './loads.mjs';
+import { loadChecks, beyond } from './loads.mjs';
 import { gripChecks } from './grip.mjs';
 import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
@@ -942,6 +942,21 @@ export function checkAssembly(s) {
       const loose = ids.filter((id) => !held.has(id) && placed.has(id));
       if (loose.length) f('warn', `${loose.join(', ')} ${loose.length > 1 ? 'are' : 'is'} placed, but nothing holds ${loose.length > 1 ? 'them' : 'it'}: give ${loose.length > 1 ? 'each' : 'it'} a joint, or fasten it to what it sits on (pins, screws, a press) and say so with a fit that "fastens"`, `${loose.length} loose`, { code: 'assembly.loose', refs: { items: loose } });
       else f('pass', `every part turns or slides on a joint, or is fastened to the ${ids[0]}`, null, { code: 'assembly.held' });
+      // A fit that fastens holds two items as one, but only a joint or an anchor moves them: one fastened to a part a
+      // joint moves, and placed where it stands, stays behind in every pose and is left out of what that joint carries
+      // (one also fastened to what stays, as a servo to its stand with its arm fastened to the horn, is held there)
+      const moving = s.motion.joints.filter((j) => !j.at && j.type !== 'fixed'), across = (a, b) => moving.find((jj) => beyond(s.motion, jj, ids.indexOf(a)) !== beyond(s.motion, jj, ids.indexOf(b)));
+      const still = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child]), ...s.items.filter((it) => it.beam && it.from != null).map((it) => it.id)]), same = links.filter(([a, b]) => ids.includes(a) && ids.includes(b) && !across(a, b));
+      for (let grew = true; grew;) { grew = false; for (const [a, b] of same) { if (still.has(a) && !still.has(b)) { still.add(b); grew = true; } if (still.has(b) && !still.has(a)) { still.add(a); grew = true; } } }
+      for (const x of s.fits.filter((q) => q.fastens)) {
+        const [a, b] = [top(x.a), top(x.b)], ia = ids.indexOf(a), ib = ids.indexOf(b);
+        if (ia < 0 || ib < 0) continue;
+        const j = across(a, b);
+        if (!j || (still.has(a) && still.has(b))) continue;
+        const [mover, left] = beyond(s.motion, j, ia) ? [a, b] : [b, a];
+        f('warn', `${left} is fastened to ${mover} (a fit that fastens), but only ${mover} moves on ${j.id}: ${left} is placed where it stands, so it stays there in every pose and its mass is left out of what ${j.id} carries (joint.moment). Place ${left} on ${mover} by an anchor or an address ("at": "${mover}.<anchor>")`,
+          `${left}: left behind by ${j.id}`, { code: 'assembly.fastened', refs: { items: [left, mover], joint: j.id } });
+      }
     }
     // Gears: each mesh's centre distance and contact ratio, said between the two axes (the rest by --sweep)
     for (const g of s.motion.meshes || []) {

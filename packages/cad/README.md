@@ -491,7 +491,10 @@ then y, then z, as `rotate` does.
 - **What holds each part:** in an assembly that moves, every part but the first turns or slides on a joint, or is
   fastened to the first: by a `fasten` where screws do it, or by a fit with `"fastens": true` where pins, a press or a
   clip do (named in the fit's note): `{ "a": "ring", "b": "case", "fastens": true, "note": "Two push pins" }`. A part only placed somewhere is
-  said (`assembly.loose`): a ring gear resting on its case would turn with its planets.
+  said (`assembly.loose`): a ring gear resting on its case would turn with its planets. A fit that fastens does not
+  move a part: one fastened only to a part a joint moves (a table to a carriage), but placed where it stands, stays
+  there in every pose and its mass is not carried, so it is said by name (`assembly.fastened`). Place it on the moving
+  part by an anchor or an address (`"at": "g1-carriage-1.top"`).
 - **Onto a shaft:** `{ "a": "arm", "b": "crank", "engage": "arm.thick" }` checks that a part slid onto a shaft, a pin or a
   peg goes that far onto it along the joint between them (`fit.engage`), not just against its end: an arm resting on
   a shaft's end touches it face to face, as a seated one does, and nothing overlaps either way, so only this tells
