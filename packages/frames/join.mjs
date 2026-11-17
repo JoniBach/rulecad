@@ -168,14 +168,16 @@ export function joinModel(kind, a, b, o = {}) {
     if (kind === 'gusset' && fm.shape === 'straight') throw new Error(`${w}: a gusset join takes an L, T or cross plate, and ${fm.set} is straight: give it on a splice join`);
     out.fitting.made = true; out.fitting.bought = fm;
     out.stiffness = boughtStiffness(kind, A, fm);
+    const misfit = fm.findings.filter((x) => x.code === 'fitting.fit' && x.level === 'fail');
+    out.fitting.fits = !misfit.length;
+    out.findings.push(...misfit.map((x) => ({ ...x, text: `${says}: ${x.text}. Until one fits, the join places no fitting and adds no screws` })));
     // an anchor's pocket: a hole across a near its end, into a slotted face, down to the bore its post goes in
-    for (const op of fm.ops) {
+    if (!misfit.length) for (const op of fm.ops) {
       const face = A.places.find((q) => q.slot)?.name;
       if (!face) throw new Error(`${w}: ${fm.set}'s guide goes in a hole drilled into a slot of ${A.name}, and it has no slotted face`);
       const e = end[0], d = e === 'a' ? op.distance : -op.distance;
       out.a.ops.push({ op: 'drill', at: `${face}@${d}`, diameter: op.diameter, depth: +(Math.min(A.profile.width, A.profile.height) / 2).toFixed(3) });
     }
-    out.findings.push(...fm.findings.filter((x) => x.code === 'fitting.fit' && x.level === 'fail').map((x) => ({ ...x, text: `${says}: ${x.text}` })));
     return out;
   }
   if (!spec.made) {

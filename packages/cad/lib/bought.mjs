@@ -1,4 +1,4 @@
-// Bought parts in assemblies: a bearing, a switch, a driver, a board or a supply named by its rule set, drawn from the
+// Bought parts in assemblies: a bearing, a switch, a driver, a board, a supply or a frame's fitting named by its rule set, drawn from the
 // set's figures as a faint reference (never on a plate), with anchors from what it is. A motor is the same thing with a
 // shaft that turns a joint, so its item is built here too (lib/motors.mjs).
 import crypto from 'node:crypto';
@@ -7,6 +7,7 @@ import jscad from '@jscad/modeling';
 import { peekRuleSet as loadRuleSet } from './rules.mjs';
 import { RULE_DIRS } from './workspace.mjs';
 import { named } from './parts.mjs';
+import { boughtFittingModel, boughtFitting } from '@rulecad/frames';
 
 const { cuboid, cylinder, polygon } = jscad.primitives, { translate } = jscad.transforms, { union, subtract } = jscad.booleans, { extrudeRotate } = jscad.extrusions;
 const SEG = 48;
@@ -67,6 +68,14 @@ const SHAPES = {
     return { parts: { body: extrudeRotate({ segments: SEG }, polygon({ points: [[r + c, 0], [R - c, 0], [R, c], [R, L - c], [R - c, L], [r + c, L], [r, L - c], [r, c]] })) }, anchors: { bore: z([0, 0, L / 2]), face: z([0, 0, 0]), top: z([0, 0, L]) } };
   },
   rod(v) { return { parts: { body: translate([0, 0, v.length / 2], cylinder({ radius: v.diameter / 2, height: v.length, segments: SEG })) }, anchors: { bottom: z([0, 0, 0]), top: z([0, 0, v.length]) } }; },
+  // a bought fitting for a frame (@rulecad/frames' bought.mjs): drawn in the printed fittings' frames, an anchor on
+  // each screw's axis at its head's seat (b1, b2 .. into b; a1 .. into a); one that lies in the slots (an inner or an
+  // anchor connector) is inside the beams by design, so the overlap check leaves it out
+  fitting(v, set) {
+    const m = boughtFittingModel({ name: set.name, part: 'fitting', rules: set.rules }), count = { a: 0, b: 0 };
+    const anchors = Object.fromEntries(m.screws.map((q) => [`${q.leg}${++count[q.leg]}`, z(q.at, q.axis.map((c) => (c ? -c : 0)))]));
+    return { parts: { body: boughtFitting(m, { pose: 'fit' }) }, anchors: { origin: z([0, 0, 0]), ...anchors }, inside: ['hidden', 'anchor'].includes(m.fitting), model: m };
+  },
   supply(v) {
     const w = v.body_width, d = v.body_depth, h = v.body_length;
     return { parts: { body: box(w, d, h) }, anchors: { base: z([0, 0, 0]), top: z([0, 0, h]), terminals: z([0, -d / 2, h / 2], [0, -1, 0]) } };
@@ -99,8 +108,9 @@ export function boughtBuilt(spec, it, num, id) {
   const missing = Object.entries(shape.anchors).filter(([, a]) => a.at.some((c) => !Number.isFinite(c))).map(([k]) => k);
   if (missing.length) throw new Error(`item ${id}: ${spec}: its rules don't place the anchors ${missing.join(', ')}`);
   const parts = named(shape.parts, Object.fromEntries(Object.keys(shape.parts).map((k) => [k, { label: `${m.name} ${k}` }])));
+  if (shape.inside) parts[0].collide = jscad.geometries.geom3.create(); // (in the slots, inside the beams by design)
   const entries = Object.entries(m.rules).map(([k, r]) => ({ name: `${m.name}.${k}`, value: r.value, unit: r.unit, rule: r.rule, kind: r.kind, source: r.source, checked: r.checked, set: m.name }));
-  return referenceBuilt({ id, key: 'bought', objName: `bought:${m.name}`, name: m.name, parts, anchors: shape.anchors, entries, values, extra: { bought: { set: m.name, variant: m.variant, part: m.part, mass: values.mass ?? null, mount: mountOf(m) } } });
+  return referenceBuilt({ id, key: 'bought', objName: `bought:${m.name}`, name: m.name, parts, anchors: shape.anchors, entries, values, extra: { bought: { set: m.name, variant: m.variant, part: m.part, mass: values.mass ?? null, mount: mountOf(m), ...(m.rules.cost ? { cost: { value: m.rules.cost.value, unit: m.rules.cost.unit } } : {}), ...(shape.model ? { fitting: shape.model } : {}) } } });
 }
 
 /**
@@ -118,5 +128,14 @@ export function mountOf(m) {
 
 // One line in the check for each bought item, so the shopping list and the wiring can read it
 export function boughtFindings(s, f) {
+  // a frame's bought fitting placed at a beam's address (an end cap at x1.a, a foot, a hinge on a face): does it fit
+  // that beam's profile (its size, its slot family, a foot's stem against the end's bore)
+  const items = new Map((s.a?.items ?? []).map((it) => [it.id, it]));
+  for (const o of s.objects) if (o.bought?.fitting && !o.unplaced && items.get(o.id)?.join == null) {
+    const at = items.get(o.id)?.at, beam = typeof at === 'string' ? s.objects.find((x) => x.id === at.trim().split('.')[0])?.beam : null;
+    if (!beam) continue;
+    for (const x of boughtFittingModel(o.bought.fitting.set, { profile: beam.profile, ...(s.frames ? { given: s.frames } : {}) }).findings.filter((y) => y.code === 'fitting.fit'))
+      f(x.level, `${o.id}: ${x.text}`, x.level === 'fail' ? `${o.id}: fit` : null, { code: x.code, ...(x.values ? { values: x.values } : {}), refs: { item: o.id, beam: beam.name, ...x.refs } });
+  }
   for (const o of s.objects) if (o.bought) f('info', `${o.id}: ${o.bought.set}${o.bought.variant ? ` (${o.bought.variant})` : ''}${o.bought.length != null ? ` x ${Number(o.bought.length.toFixed(2))} mm` : ''}, a ${o.bought.part}`, null, { code: 'bought.item', refs: { item: o.id, set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(o.bought.length != null ? { length: o.bought.length } : {}) } });
 }

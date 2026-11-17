@@ -87,7 +87,7 @@ export function boughtFittingModel(which, o = {}) {
   // the screws in the printed fittings' frames (fitting.mjs), so cad's placement and fasten checks serve both
   const screw = (leg, at, axis) => ({ leg, thread, head, length, grip: t, at, axis, nutKind: m.nutKind });
   if (spec.fitting === 'bracket') { for (const [x, y] of holes.b) m.screws.push(screw('b', [x, t, y], [0, -1, 0])); for (const [x, y] of holes.a) m.screws.push(screw('a', [t, x, y], [-1, 0, 0])); m.screwAt = holes.b[0]?.[0] ?? null; }
-  if (spec.fitting === 'plate') { for (const [x, y] of holes.b) m.screws.push(screw('b', [x, y, 0], [0, 0, -1])); for (const [x, y] of holes.a) m.screws.push(screw('a', [y, x, 0], [0, 0, -1])); m.outline = plateOutline(m); m.arm = Math.max(...m.screws.map((q) => Math.hypot(q.at[0], q.at[1]))); }
+  if (spec.fitting === 'plate') { for (const [x, y] of holes.b) m.screws.push(screw('b', [x, y, t], [0, 0, -1])); for (const [x, y] of holes.a) m.screws.push(screw('a', [y, x, t], [0, 0, -1])); m.outline = plateOutline(m); m.arm = Math.max(...m.screws.map((q) => Math.hypot(q.at[0], q.at[1]))); }
   if (spec.fitting === 'anchor' && m.pocket) m.ops.push({ op: 'drill', side: 'a', distance: m.pocket.distance, diameter: m.pocket.diameter, through: 'wall', why: `${set.name}'s guide` });
   // what it costs, its stiffness and the maker's load, each saying what it rests on
   if (m.cost) m.findings.push(finding('info', `${set.name} costs ${m.cost.value} ${m.cost.unit} each (${m.cost.kind}): ${m.cost.rule}`, 'fitting.cost', { values: { cost: m.cost.value, unit: m.cost.unit } }));

@@ -3160,3 +3160,60 @@ test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a 
     assert.match(cad('list', 'frame/one'), /1 ×\s+profile-2020-mine x 250 mm\s+a beam/);
   } finally { done(); }
 });
+
+test('bought fittings: the same frame with a printed and with a cast bracket lists different parts and reports different joint stiffness, each saying what it rests on', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/corner.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // y1 stands on x1's top face 100 mm from its end a, both Motedis' 20 mm B-type profile
+    const frame = (fitting) => ({ title: 'Corner', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-motedis-b6' }, from: [0, 0, 0], to: [300, 0, 0] }, { id: 'y1', beam: { profile: '2020-motedis-b6' }, from: [100, 0, 10], to: [100, 0, 210] }],
+      joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.top@100', fitting }] });
+    const probe = (fitting) => {
+      fs.writeFileSync(file, JSON.stringify(frame(fitting)));
+      return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+        const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+        const { shoppingList } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/list.mjs')).href)});
+        const s = await buildAssembly('frame/corner'), l = shoppingList(s);
+        console.log(JSON.stringify({ items: s.items.map((i) => [i.id, i.role]), hardware: s.hardware.map((h) => [h.fasten, h.kind, h.name]), list: { bought: l.bought, printed: l.printed.map((p) => p.id), cost: l.cost },
+          findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap|frame|fitting)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+      `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    };
+    const printed = probe('printed'), cast = probe('fitting-motedis-bracket-20-b6');
+    const by = (r, code) => r.findings.filter((x) => x.code === code);
+    // different parts: a printed bracket (a part, by its grams) against a bought one (a reference, by its set and price)
+    assert.deepEqual([printed.items[2], cast.items[2]], [['y1-x1-bracket', 'part'], ['y1-x1-bracket', 'reference']]);
+    const fittings = (r) => r.list.bought.filter((b) => b.part === 'fitting').map((b) => [b.qty, b.set, b.cost, b.currency, b.items]);
+    assert.deepEqual([printed.list.printed, fittings(printed)], [['y1-x1-bracket'], []]);
+    assert.deepEqual([cast.list.printed, fittings(cast)], [[], [[1, 'fitting-motedis-bracket-20-b6', 0.36, 'EUR', ['y1-x1-bracket']]]]);
+    // the cast bracket's own screws and nuts, as its set lists them: an M4x8 cap into a hammer nut on each leg
+    assert.deepEqual(cast.hardware, [[0, 'screw', 'M4x8 cap'], [0, 'nut', 'slot-nut-6-motedis-m4-hammer'], [1, 'screw', 'M4x8 cap'], [1, 'nut', 'slot-nut-6-motedis-m4-hammer']]);
+    assert.notDeepEqual(printed.hardware.map((h) => h[2]), cast.hardware.map((h) => h[2]));
+    // what each costs: the bought bracket's price, the printed one's plastic at PLA's price a kilogram
+    assert.deepEqual([cast.list.cost.bought, cast.list.cost.currency, cast.list.cost.printed, cast.list.cost.unpriced], [0.36, 'EUR', null, ['profile-2020-motedis-b6']]);
+    assert.deepEqual([printed.list.cost.bought, printed.list.cost.printedUnit], [null, 'EUR']);
+    assert.ok(printed.list.cost.printed > 0 && printed.list.cost.printed < 0.36, `${printed.list.cost.printed} EUR of plastic`);
+    assert.match(printed.list.cost.printedRule, /g of pla at 13\.99 EUR\/kg: the plastic alone/);
+    // different joint stiffness, each saying what it rests on
+    const [kp] = by(printed, 'join.stiffness'), [kc] = by(cast, 'join.stiffness');
+    assert.deepEqual([kc.values.bending, kc.values.twist, kc.refs.set, kc.refs.kind_of_value], [3e6, 1e6, 'fitting-motedis-bracket-20-b6', 'estimate']);
+    assert.ok(kp.values.bending > 0 && Math.abs(kp.values.bending - kc.values.bending) > 1e5, `${kp.values.bending} against ${kc.values.bending}`);
+    assert.match(kp.text, /y1-x1-bracket's own by finite elements .*until the joint rig \(issue 264\) measures it/);
+    assert.match(kc.text, /fitting-motedis-bracket-20-b6's own figures from its rule set \(estimate: .*JOIN_STIFFNESS\.bracket.*\): an estimate, until the joint rig \(issue 264\) measures it/);
+    assert.match(kc.refs.rests[0].source, /^fitting-motedis-bracket-20-b6\.bending_stiffness: A working guess/);
+    // the cast bracket is placed and screwed as the printed one is: on y1's side with room, every check passing
+    assert.deepEqual(cast.findings.filter((x) => x.level === 'fail').map((x) => x.text), []);
+    for (const code of ['fasten.holes', 'fasten.slot', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'join.geometry']) assert.deepEqual([...new Set(by(cast, code).map((x) => x.level))], ['pass'], code);
+    // its holes are slots 5.2 mm wide (its lugs place it, not its screws): wider than M4's loosest hole, and said so
+    assert.deepEqual(by(cast, 'fasten.clearance').filter((x) => x.level === 'warn').map((x) => x.values?.hole ?? x.text.match(/measures ([\d.]+) mm/)[1]), ['5.2', '5.2']);
+    assert.deepEqual(by(cast, 'join.fitting'), []);
+    // cad list says each line's price and the total; on another maker's profile the cast bracket does not fit, and says so
+    const list = cad('list', 'frame/corner');
+    assert.match(list, /1 ×\s+fitting-motedis-bracket-20-b6\s+a fitting\s+mass not given\s+0\.36 EUR each\s+y1-x1-bracket/);
+    assert.match(list, /Cost: 0\.36 EUR bought \(no price given for profile-2020-motedis-b6\); fixings and bars are not priced/);
+    const other = frame('fitting-motedis-bracket-20-b6'); for (const it of other.items) it.beam.profile = '2020-misumi-hfs5';
+    fs.writeFileSync(file, JSON.stringify(other));
+    assert.match(cad('check', 'frame/corner'), /fitting-motedis-bracket-20-b6 is made for slot-6-motedis \(nut family slot-6-bosch\), and 2020-misumi-hfs5's slots are slot-6-misumi/);
+  } finally { done(); }
+});

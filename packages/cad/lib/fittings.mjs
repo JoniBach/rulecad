@@ -146,11 +146,19 @@ const faceOf = (B, place) => (B.places.filter((q) => q.face === place.face).leng
  * @returns {{ item: object, fasten: object[], model: object, stiffness: object }}
  */
 export function joinFitting(j, i, { ia, ib, A, B, m, ends, place: placeOf }, num, context, material, ids) {
-  const what = `join ${i + 1}`, label = j.note || `${j.kind} join of ${j.a} to ${j.b}`;
+  const what = `join ${i + 1}`, label = j.note || `${j.kind} join of ${j.a} to ${j.b}`, bm = m.fitting?.bought ?? null, made = bm ? bm.set : `a printed ${j.kind}`;
   const fa = placeOf(ia, num), fb = placeOf(ib, num);
-  if (!fa || !fb) throw new Error(`${what}: a printed ${j.kind} is placed from where the beams are: place ${!fa ? ia.id : ib.id} by its ends (from, to)`);
+  if (!fa || !fb) throw new Error(`${what}: ${made} is placed from where the beams are: place ${!fa ? ia.id : ib.id} by its ends (from, to)`);
   const free = (base) => { let n = base, k = 2; while (ids.has(n)) n = `${base}-${k++}`; ids.add(n); return n; };
-  if (j.kind === 'bracket') {
+  // a bought anchor connector: its post along a's axis from b's face, at the place on b the join names
+  if (bm && j.kind === 'anchor') {
+    const id = free(`${ia.id}-${ib.id}-${j.kind}`);
+    return { item: { id, bought: bm.set, at: `${ib.id}.${m.b.place}@${r3(m.b.distance)}`, join: i }, fasten: [], model: bm };
+  }
+  // its screws, each by the set's thread, length and head, into the set's nut where it names one (a corner bracket's
+  // and a plate's); an inner connector's grub screws are part of it
+  const boughtFasten = (id, legs) => legs.map(([leg, beam, place]) => ({ screw: `${bm.thread}${bm.length != null ? `x${bm.length}` : ''} ${bm.head}`, through: [id], into: `${beam}.${place}`, at: bm.screws.filter((q) => q.leg === leg).map((_, k) => `${id}.${leg}${k + 1}`), note: `${label}: ${bm.set} into ${beam}`, join: i, ...(bm.nutKind ? { nut: bm.nutKind } : {}) }));
+  if (j.kind === 'bracket' || j.kind === 'hidden') {
     const bp = B.places.find((q) => q.name === m.b.place), d = m.b.distance, ub = col(fb, 2), nb = turn(fb, [...bp.normal, 0]);
     const P = world(fb, [bp.at[0], bp.at[1], d]), roomB = B.length - d, sign = roomB >= d ? 1 : -1, dir = ub.map((c) => c * sign);
     // a's face that looks along b, toward the side with more room; of its slots, the one in the bracket's plane
@@ -158,10 +166,14 @@ export function joinFitting(j, i, { ia, ib, A, B, m, ends, place: placeOf }, num
     if (!faces.length) throw new Error(`${what}: a printed bracket lies on a face of ${ia.id} that looks along ${ib.id}, and none of ${ia.id}'s slotted faces does: turn ${ia.id} with roll so one faces along ${ib.id}`);
     const ap = faces.map((q) => ({ q, Q: world(fa, [q.at[0], q.at[1], 0]) })).sort((x, y) => Math.abs(dot(sub(x.Q, P), z)) - Math.abs(dot(sub(y.Q, P), z)))[0];
     const off = dot(sub(ap.Q, P), dir), at = d + sign * off, spec = { kind: 'bracket', profile: B.profile.name, ...(A.profile.name !== B.profile.name ? { other: A.profile.name } : {}), face: faceOf(B, bp), otherFace: faceOf(A, ap.q), ...(j.brace != null ? { brace: j.brace } : {}), ...(j.load != null ? { load: j.load } : {}), ...(j.nut ? { nut: j.nut } : {}) };
-    const fm = fittingModel(spec, context, material, what), room = sign > 0 ? B.length - at : at, endA = ends.a.rest[0], aRoom = A.length;
-    if (room < fm.leg - 1e-6) throw new Error(`${what}: a printed bracket's ${mm(fm.leg)} mm leg runs ${mm(fm.leg - room)} mm past ${ib.id}'s end ${sign > 0 ? 'b' : 'a'}: it goes on the side of ${ia.id} with more of ${ib.id}, and there is only ${mm(room)} mm there. A gusset or a blind join will do`);
-    if (aRoom < fm.leg - 1e-6) throw new Error(`${what}: a printed bracket's ${mm(fm.leg)} mm leg is longer than ${ia.id} (${mm(aRoom)} mm)`);
-    const id = free(`${ia.id}-${ib.id}-bracket`);
+    const fm = bm ?? fittingModel(spec, context, material, what), room = sign > 0 ? B.length - at : at, endA = ends.a.rest[0], aRoom = A.length, said = bm ? `${bm.set}'s` : 'a printed bracket\'s';
+    if (room < fm.leg - 1e-6) throw new Error(`${what}: ${said} ${mm(fm.leg)} mm leg runs ${mm(fm.leg - room)} mm past ${ib.id}'s end ${sign > 0 ? 'b' : 'a'}: it goes on the side of ${ia.id} with more of ${ib.id}, and there is only ${mm(room)} mm there. A gusset or a blind join will do`);
+    if (aRoom < (fm.legA ?? fm.leg) - 1e-6) throw new Error(`${what}: ${said} ${mm(fm.legA ?? fm.leg)} mm leg is longer than ${ia.id} (${mm(aRoom)} mm)`);
+    const id = free(`${ia.id}-${ib.id}-${bm ? j.kind : 'bracket'}`);
+    if (bm) {
+      const item = { id, bought: bm.set, at: `${ib.id}.${bp.name}@${r3(at)}`, rotate: sign > 0 ? [90, 0, 0] : [90, 0, 180], join: i };
+      return { item, fasten: j.kind === 'hidden' ? [] : boughtFasten(id, [['b', ib.id, bp.name], ['a', ia.id, ap.q.name]]), model: bm, side: sign > 0 ? 'b' : 'a', endA };
+    }
     const item = { id, fitting: spec, at: `${ib.id}.${bp.name}@${r3(at)}`, rotate: sign > 0 ? [90, 0, 0] : [90, 0, 180], join: i };
     const screw = `${fm.thread} ${fm.head}`;
     // (each into the slot nut the bracket was drawn for, so the screw it was thickened for is the one chosen)
@@ -191,7 +203,15 @@ export function joinFitting(j, i, { ia, ib, A, B, m, ends, place: placeOf }, num
   const Pb = world(fb, [bq.at[0], bq.at[1], d]), Qa = world(fa, [aq.at[0], aq.at[1], 0]), apart = dot(sub(Qa, Pb), n);
   if (Math.abs(apart) > 0.05) throw new Error(`${what}: a printed ${splice ? 'splice plate' : 'gusset'} lies flat on both beams, and ${ia.id}'s ${aq.face} face stands ${mm(Math.abs(apart))} mm ${apart > 0 ? 'proud of' : 'below'} ${ib.id}'s ${bq.face} face`);
   const spec0 = { kind: splice ? 'splice' : 'gusset', profile: B.profile.name, face: faceOf(B, bq), ...(j.load != null ? { load: j.load } : {}), ...(j.nut ? { nut: j.nut } : {}) };
-  let fm = fittingModel({ ...spec0, ...(splice ? {} : { shape: 'L' }) }, context, material, what), shape = 'L';
+  let fm = bm ?? fittingModel({ ...spec0, ...(splice ? {} : { shape: 'L' }) }, context, material, what), shape = bm?.shape ?? 'L';
+  if (bm) {
+    // a bought plate's shape is its set's: a T needs room along b both sides of a, an L on one
+    const { room } = shapeAt ?? { room: { a: Infinity, b: Infinity } }, xs = fm.outline.map((q) => q[0]), reach = Math.max(...xs.map(Math.abs));
+    if (shape === 'T' && Math.min(room.a, room.b) + (A.profile.width / 2) < reach - 1e-6) throw new Error(`${what}: ${bm.set} is a T, ${mm(2 * reach)} mm along ${ib.id}, and there is ${mm(Math.min(room.a, room.b))} mm on one side of ${ia.id}: an L or a bracket will do`);
+    const id = free(`${ia.id}-${ib.id}-${splice ? 'splice' : 'gusset'}`), along = dot(x, ub) > 0;
+    const item = { id, bought: bm.set, at: `${ib.id}.${bq.name}@${r3(d)}`, ...(along ? {} : { rotate: [0, 0, 180] }), join: i };
+    return { item, fasten: boughtFasten(id, [['b', ib.id, bq.name], ['a', ia.id, aq.name]]), model: bm };
+  }
   if (!splice) {
     const reach = fm.width / 2 + fm.arm, { room } = shapeAt;
     if (Math.min(room.a, room.b) + fm.width / 2 >= reach) { shape = 'T'; fm = fittingModel({ ...spec0, shape }, context, material, what); }

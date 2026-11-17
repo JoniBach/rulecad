@@ -13,14 +13,14 @@ import path from 'node:path';
 import { volume } from './mesh.mjs';
 import { wiresFor } from './assembly.mjs';
 import { cutListOf, cutListData } from './beams.mjs';
-import { cutListText } from '@rulecad/frames';
+import { cutListText, printedCost } from '@rulecad/frames';
 
 const n = (x, d = 1) => Number(x.toFixed(d));
 
 export function materialOf(project) {
   let name = 'pla';
   try { name = String(readJson(path.join(paths.project(project), 'project.json')).material || 'pla').toLowerCase().split(/\s/)[0]; } catch {}
-  try { return { name, density: loadRuleSet(name).rules.density.value }; } catch { return { name, density: 1.25, assumed: true }; }
+  try { const set = loadRuleSet(name); return { name, density: set.rules.density.value, ...(set.rules.cost ? { cost: set.rules.cost } : {}) }; } catch { return { name, density: 1.25, assumed: true }; }
 }
 
 // Every printed thing in the assembly, once for each copy: its volume, grams and minutes
@@ -43,7 +43,7 @@ export function shoppingList(s) {
     // (a beam by its profile and length: one line for each length cut, lib/beams.mjs)
     // (a panel by its sheet and size: lib/panels.mjs)
     const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, size = o.bought.size ?? null, key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}|${size ?? ''}`;
-    const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), ...(size ? { size } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, items: [] };
+    const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), ...(size ? { size } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, ...(o.bought.cost ? { cost: o.bought.cost.value, currency: o.bought.cost.unit } : {}), items: [] };
     line.qty++; line.items.push(o.id); bought.set(key, line);
   }
   // fasten.count: the hardware a fasten placed (a component's too), one part a piece; a motor's mounting screws; and a fit
@@ -67,13 +67,19 @@ export function shoppingList(s) {
   const printedGrams = printed.reduce((t, p) => t + p.grams, 0), boughtGrams = boughtList.reduce((t, b) => t + (b.grams ?? 0) * b.qty, 0), unknown = boughtList.filter((b) => b.grams == null).map((b) => b.set);
   const cut = cutListData(cutListOf(s));
   const fixingsGrams = fixings.reduce((t, f) => t + (f.mass ?? 0), 0);
-  return { bought: boughtList, fasteners: fixings, wires: [...wires.values()], printed, cut, totals: { printedGrams: n(printedGrams), boughtGrams: n(boughtGrams), fixingsGrams: n(fixingsGrams), machineGrams: n(printedGrams + boughtGrams + fixingsGrams), ...(pack && fixings.some((f) => f.packs) ? { pack } : {}), minutes: n(printed.reduce((t, p) => t + p.minutes, 0), 0), material: mat.name, ...(mat.assumed ? { densityAssumed: true } : {}), ...(unknown.length ? { noMassFor: unknown } : {}) } };
+  // what it costs, where prices are given: the bought items' by their sets, the printed parts' plastic by the material's
+  // price a kilogram; fixings and bars are not priced, and the list says which lines have no price
+  const priced = boughtList.filter((b) => b.cost != null), currencies = [...new Set(priced.map((b) => b.currency))];
+  const plastic = printedGrams > 0 ? printedCost(printedGrams, { name: mat.name, rules: mat.cost ? { cost: mat.cost } : {} }) : null;
+  const cost = priced.length || plastic ? { bought: priced.length && currencies.length === 1 ? n(priced.reduce((t, b) => t + b.cost * b.qty, 0), 2) : null, currency: currencies.length === 1 ? currencies[0] : plastic?.unit ?? null, ...(currencies.length > 1 ? { currencies } : {}),
+    unpriced: [...new Set(boughtList.filter((b) => b.cost == null).map((b) => b.set))], printed: plastic ? n(plastic.value, 2) : null, ...(plastic ? { printedUnit: plastic.unit, printedRule: plastic.rule } : {}) } : null;
+  return { bought: boughtList, fasteners: fixings, wires: [...wires.values()], printed, cut, ...(cost ? { cost } : {}), totals: { printedGrams: n(printedGrams), boughtGrams: n(boughtGrams), fixingsGrams: n(fixingsGrams), machineGrams: n(printedGrams + boughtGrams + fixingsGrams), ...(pack && fixings.some((f) => f.packs) ? { pack } : {}), minutes: n(printed.reduce((t, p) => t + p.minutes, 0), 0), material: mat.name, ...(mat.assumed ? { densityAssumed: true } : {}), ...(unknown.length ? { noMassFor: unknown } : {}) } };
 }
 
 export function listText(ref, l) {
   const out = [`${ref}: what it takes to build`];
   const row = (a) => out.push(a.join('  '));
-  if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}${b.size ? ` cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', b.items.join(', ')]); }
+  if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}${b.size ? ` cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', ...(b.cost != null ? [`${b.cost} ${b.currency} each`] : []), b.items.join(', ')]); }
   if (l.cut) { out.push('', `Cut list (kerf ${l.cut.rules.kerf.value} mm, trim ${l.cut.rules.trim.value} mm; a sheet for each mark: cad beams ${ref})`, ...cutListText(l.cut)); }
   if (l.fasteners.length) {
     out.push('', 'Fasteners');
@@ -83,5 +89,12 @@ export function listText(ref, l) {
   if (l.wires.length) { out.push('', 'Wire'); for (const w of l.wires) row([`  ${w.length} mm of`, w.gauge ?? 'gauge not given', `in ${w.runs.join(', ')}`]); }
   if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}`]); }
   out.push('', `Total: ${l.totals.printedGrams} g printed, about ${l.totals.minutes} min of printing (an estimate from volume and the printer's flow), ${l.totals.fixingsGrams ? `${l.totals.fixingsGrams} g of fixings, ` : ''}${l.totals.machineGrams} g as a machine${l.totals.noMassFor ? ` (no mass given for ${l.totals.noMassFor.join(', ')})` : ''}`);
+  if (l.cost) {
+    const c = l.cost, parts = [];
+    if (c.bought != null) parts.push(`${c.bought} ${c.currency} bought${c.unpriced.length ? ` (no price given for ${c.unpriced.join(', ')})` : ''}`);
+    else if (c.currencies) parts.push(`bought items priced in ${c.currencies.join(' and ')}, not added together`);
+    if (c.printed != null) parts.push(`${c.printed} ${c.printedUnit} of ${l.totals.material} printed (the plastic alone)`);
+    out.push(`Cost: ${parts.join(', ')}; fixings and bars are not priced. Prices are each set's, on the date it was checked`);
+  }
   return out.join('\n');
 }
