@@ -2821,6 +2821,55 @@ test('beam cut list and sheets: a box of twelve beams lists three lengths, the b
   } finally { done(); }
 });
 
+test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a cut-length stop per length and a squaring corner, each marked, printing without supports, each guide\'s bush where the beam\'s sheet puts the hole', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a box: four 300 mm posts; between them x beams at z 30 and 270 and y beams at z 10 and 290, every end blind-joined
+    // into a post's face (so each post has an access hole 10 and 30 mm from each end, each beam both ends tapped)
+    const P = { profile: '2020-misumi-hfs5' }, items = [], joins = [];
+    [[10, 10], [290, 10], [290, 250], [10, 250]].forEach(([x, y], i) => items.push({ id: `p${i + 1}`, beam: P, from: [x, y, 0], to: [x, y, 300] }));
+    for (const [n, y, pa, pb, z] of [['x1', 10, 'p1', 'p2', 30], ['x2', 250, 'p4', 'p3', 30], ['x3', 10, 'p1', 'p2', 270], ['x4', 250, 'p4', 'p3', 270]]) {
+      items.push({ id: n, beam: P, from: [20, y, z], to: [280, y, z] });
+      joins.push({ kind: 'blind', a: `${n}.a`, b: `${pa}.back@${z}` }, { kind: 'blind', a: `${n}.b`, b: `${pb}.front@${z}` });
+    }
+    for (const [n, x, pa, pb, z] of [['y1', 10, 'p1', 'p4', 10], ['y2', 290, 'p2', 'p3', 10], ['y3', 10, 'p1', 'p4', 290], ['y4', 290, 'p2', 'p3', 290]]) {
+      items.push({ id: n, beam: P, from: [x, 20, z], to: [x, 240, z] });
+      joins.push({ kind: 'blind', a: `${n}.a`, b: `${pa}.top@${z}` }, { kind: 'blind', a: `${n}.b`, b: `${pb}.bottom@${z}` });
+    }
+    fs.writeFileSync(at('assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', items, joins }));
+    const r = JSON.parse(cad('beams', 'frame/box', '--jigs', '--json'));
+    const of = (kind) => r.jigs.filter((x) => x.kind === kind);
+    // from the assembly: one drill guide per distinct hole (10 and 30 mm from an end), one tap guide for every tapped
+    // end, a stop for each of the three lengths, one squaring corner for all sixteen joins
+    assert.deepEqual(r.jigs.map((x) => [x.kind, x.name, x.mark]), [
+      ['drill-guide', 'drill-guide-2020-misumi-hfs5-5.3-at-10', 'ABCD'], ['drill-guide', 'drill-guide-2020-misumi-hfs5-5.3-at-30', 'ABCD'],
+      ['length-stop', 'length-stop-2020-misumi-hfs5-300', 'ABCD 300'], ['tap-guide', 'tap-guide-2020-misumi-hfs5-M5', 'EF'],
+      ['length-stop', 'length-stop-2020-misumi-hfs5-260', 'E 260'], ['length-stop', 'length-stop-2020-misumi-hfs5-220', 'F 220'], ['square-corner', 'square-corner-2020-misumi-hfs5', 'ABCDEF']]);
+    assert.equal(of('square-corner')[0].for.length, 16); assert.equal(of('tap-guide')[0].for.length, 4);
+    // every guide's bush where the sheet dimensions its hole, for all 16 access holes in the posts, from whichever end is nearer
+    const holes = of('drill-guide').flatMap((x) => x.for);
+    assert.equal(holes.length, 16);
+    for (const w of holes) { assert.equal(w.bush, w.sheet, `${w.label}: the bush at ${w.bush}, the sheet at ${w.sheet}`); assert.equal(w.distance, Math.min(w.sheet, 300 - w.sheet)); }
+    assert.deepEqual([...new Set(holes.map((w) => w.sheetText))].sort(), ['10.0', '270.0', '290.0', '30.0']);
+    // each prints without supports, and says its grams and margin
+    for (const x of r.jigs) { assert.deepEqual(x.checks.flatMap((c) => c.issues), [], x.name); assert.ok(x.margin >= 2 && x.grams > 1, `${x.name}: ${x.grams} g at ${x.margin}×`); assert.ok(x.findings.some((f) => f.code === 'fitting.mass')); }
+    assert.ok(of('square-corner')[0].findings.some((f) => f.code === 'jig.square' && f.level === 'pass'));
+    // laid out as one plate: 7 jigs, three of the stops with a gauge in two pieces
+    assert.deepEqual(r.plates.map((p) => [p.file.replace(/\\/g, '/'), p.parts.length]), [['exports/frame/box.jigs.3mf', 12]]);
+    assert.ok(fs.statSync(path.join(ws, 'exports/frame/box.jigs.3mf')).size > 1000);
+    assert.deepEqual(r.findings, []);
+    // the text form; a hole too far from both ends for one print is a warning in place of a guide
+    assert.match(cad('beams', 'frame/box', '--jigs'), /drill-guide-2020-misumi-hfs5-5\.3-at-30 \[ABCD\]: 11\.\d+ g, 6\.66× at its load, prints clean: for A3 \(p2: access hole Ø5\.3 mm in back\.1, 30 mm from end a/);
+    fs.writeFileSync(at('assemblies/long.json'), JSON.stringify({ title: 'Long', kind: 'fit', items: [{ id: 'l1', beam: { ...P, ops: [{ op: 'access', at: 'top@500', thread: 'M5' }] }, from: [0, 0, 0], to: [1000, 0, 0] }] }));
+    const l = JSON.parse(cad('beams', 'frame/long', '--jigs', '--json'));
+    assert.deepEqual(l.jigs.map((x) => x.kind), ['length-stop']);
+    assert.match(l.findings[0].text, /mark A \(l1\), operation 2: no drill guide: .* is 500 mm from end a and 500 mm from end b: a guide that reaches it is [\d.]+ mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
+  } finally { done(); }
+});
+
 test('slot nuts: a plate on a beam between two joins with slide-in nuts fails frame.nut and passes with drop-ins; another slot\'s two nuts are loaded before its corner is closed; fasten.slot catches a plate drawn for another slot spacing', () => {
   const { ws, cad, done } = workspace();
   try {
