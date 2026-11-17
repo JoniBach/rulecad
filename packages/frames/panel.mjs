@@ -20,6 +20,7 @@ const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const mm = (x) => String(+Number(x).toFixed(2));
 const r3 = (x) => +x.toFixed(3);
+const an = (t) => `${/^(M|[aeiou8])/i.test(String(t)) ? 'an' : 'a'} ${t}`; // (an M5, a 6-32)
 const up = (x, step) => Math.ceil(x / step - 1e-9) * step;
 const finding = (level, text, code, extra = {}) => ({ level, text, code, ...extra });
 const rule = (value, unit, text, kind, source) => ({ value, ...(unit ? { unit } : {}), rule: text, kind, source, checked: CHECKED });
@@ -81,7 +82,7 @@ export const sideToFit = (w) => [0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, -w / 2, 0, 
  * @internal A part printed on its side: its section in (y, z) of the fitted frame (as X, Y) extruded w along the slot
  * (Z), a tongue into the slot under it, and holes square to the face, each a teardrop with its point cut flat just over
  * the round so a head's seat is whole. holes: { thread, y, top, kind }, from the face at height top down through the
- * part and its tongue; pockets: { y, top, d, depth }, round pockets from the face at height top.
+ * part and its tongue, or { thread, y, depth, kind, from: 'face' }, a blind hole up from the contact face; pockets: { y, top, d, depth }, round pockets from the face at height top.
  * @param {{ loop: number[][], width: number, tongue?: object, holes?: object[], pockets?: object[], pr: object, ops?: object }} o
  * @returns {object} a JSCAD geom3 in its print pose
  */
@@ -90,8 +91,8 @@ export function sidePart({ loop, width, tongue = null, holes = [], pockets = [],
   if (tongue && tongue.depth > 0) parts.push(prism(tongueLoop(tongue.at - tongue.width / 2, tongue.at + tongue.width / 2, tongue.depth, false, root).map(([n, a]) => [a, -n]), width));
   const deep = (top) => top + (tongue?.depth ?? 0) + 2;
   const cuts = holes.map((h) => {
-    const g = hole(h.thread, { kind: h.kind ?? 'clearance', into: '-y', depth: deep(h.top), at: [h.y, h.top + 1, c], printer: pr }), r = g.model.diameter / 2;
-    return intersect(g, cuboid({ size: [4 * width + 200, 4 * h.top + 200, c + 1.02 * r + 1], center: [h.y, 0, (c + 1.02 * r - 1) / 2] }));
+    const g = h.from === 'face' ? hole(h.thread, { kind: h.kind ?? 'pilot', into: '+y', depth: h.depth + 1, at: [h.y, -1, c], printer: pr }) : hole(h.thread, { kind: h.kind ?? 'clearance', into: '-y', depth: deep(h.top), at: [h.y, h.top + 1, c], printer: pr }), r = g.model.diameter / 2;
+    return intersect(g, cuboid({ size: [4 * width + 200, 4 * (h.top ?? h.depth) + 200, c + 1.02 * r + 1], center: [h.y, 0, (c + 1.02 * r - 1) / 2] }));
   });
   for (const p of pockets) cuts.push(translate([p.y, p.top + 1, c], transform([1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1], prism(teardrop(p.d / 2), p.depth + 1)))); // (u, v) to (X, Z), down along -Y
   return combine(parts, cuts, ops);
@@ -112,7 +113,7 @@ export { closing as closingFindings };
 const screwFinding = (m, fits, sc) => m.findings.push(fits
   ? finding('pass', `${sc.thread}x${fits.lengths[0]} ${sc.head}: through ${mm(fits.t)} mm of ${m.fitting.replace('-', ' ')}, its tip ${mm(fits.lengths[0] - fits.t)} mm under the face, between ${mm(fits.windows[0].lo)} (its nut's thread engaged) and ${mm(fits.windows[0].hi)} (the slot's floor less ${FITTING_DEFAULTS.floor.value} mm)`, 'fitting.screw', { values: { lengths: fits.lengths, windows: fits.windows } })
   : finding('warn', `no ${sc.thread} ${sc.head} screw sold engages its slot nut fully and stops short of the slot's floor here: the screw's length is the fasten check's to choose`, 'fitting.screw', {}));
-const tongueFinding = (m, sd, pr) => m.findings.push(finding(sd.tongue.depth > 0 ? 'pass' : 'info', sd.tongue.depth > 0 ? `its tongue keys into ${sd.slot.name}: ${mm(sd.tongue.width)} mm wide (the ${mm(sd.slot.opening)} mm opening less ${pr.name}'s fit each side), ${mm(sd.tongue.depth)} mm deep (the lip less a ${sd.thread} slot nut's tongue, less the fit)` : `${sd.slot.name}'s lip leaves no room for a tongue over a ${sd.thread} slot nut: it lies flat on the face`, 'fitting.tongue', { values: { ...sd.tongue }, refs: { slot: sd.slot.name, nut: sd.nut.name } }));
+const tongueFinding = (m, sd, pr) => m.findings.push(finding(sd.tongue.depth > 0 ? 'pass' : 'info', sd.tongue.depth > 0 ? `its tongue keys into ${sd.slot.name}: ${mm(sd.tongue.width)} mm wide (the ${mm(sd.slot.opening)} mm opening less ${pr.name}'s fit each side), ${mm(sd.tongue.depth)} mm deep (the lip less ${an(sd.thread)} slot nut's tongue, less the fit)` : `${sd.slot.name}'s lip leaves no room for a tongue over ${an(sd.thread)} slot nut: it lies flat on the face`, 'fitting.tongue', { values: { ...sd.tongue }, refs: { slot: sd.slot.name, nut: sd.nut.name } }));
 const short = (p) => p.name.replace(/^profile-/, '');
 
 // ---------- a panel ----------

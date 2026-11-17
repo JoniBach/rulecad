@@ -21,6 +21,7 @@ const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const mm = (x) => String(+Number(x).toFixed(2));
 const r3 = (x) => +x.toFixed(3);
+const an = (t) => `${/^(M|[aeiou8])/i.test(String(t)) ? 'an' : 'a'} ${t}`; // (an M5, a 6-32)
 const up = (x, step) => Math.ceil(x / step - 1e-9) * step;
 const finding = (level, text, code, extra = {}) => ({ level, text, code, ...extra });
 const rule = (value, unit, text, kind, source) => ({ value, ...(unit ? { unit } : {}), rule: text, kind, source, checked: CHECKED });
@@ -230,7 +231,7 @@ export function castorPlateModel(profile, o = {}) {
   if (typeof o.thread !== 'string') throw new Error(`${what}: thread is the castor's bolts', as 'M6' (got ${shown(o.thread)})`);
   const bolt = screwOf(what, o.thread, 'cap', k.pr), [hx, hy] = o.holes.map((x) => x / 2), half = Math.max(p.width, p.height) / 2;
   const need = half + bolt.dk / 2 + FITTING_DEFAULTS.reach.value;
-  if (Math.min(hx, hy) < need - 1e-9) throw new Error(`${what}: the castor's holes ${mm(o.holes[0])} x ${mm(o.holes[1])} mm apart lie ${mm(Math.min(hx, hy))} mm from the middle, under the beam's outline and a ${o.thread} head (${mm(need)} mm): its bolts' heads would sit under the beam. A castor with wider holes, or a plate between`);
+  if (Math.min(hx, hy) < need - 1e-9) throw new Error(`${what}: the castor's holes ${mm(o.holes[0])} x ${mm(o.holes[1])} mm apart lie ${mm(Math.min(hx, hy))} mm from the middle, under the beam's outline and ${an(o.thread)} head (${mm(need)} mm): its bolts' heads would sit under the beam. A castor with wider holes, or a plate between`);
   const endBy = Math.max(FITTING_DEFAULTS.end.value * bolt.hd, bolt.dk / 2 + FITTING_DEFAULTS.reach.value), X = r3(hx + endBy), Y = r3(hy + endBy);
   const M = (F / 2) * (Math.min(hx, hy) - half), width = 2 * Math.max(X, Y), head = fixingModel(b.thread).figures.head_height?.value ?? sc.major;
   const sink = up(head + 0.5, k.layer), floor = Math.max(up(FITTING_DEFAULTS.least.value * sc.major, k.layer), up(Math.sqrt((6 * M * FITTING_DEFAULTS.margin.value) / (width * k.S)), k.layer));
