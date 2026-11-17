@@ -48,7 +48,7 @@ export function expandServices(a, num, context = framesContext(), material = 'pl
     if (!beams.has(id)) throw new Error(`${what}: ${key} names a beam item of this assembly, and ${id} is ${items.some((x) => x.id === id) ? 'not a beam' : 'not an item'} (beams: ${[...beams.keys()].join(', ') || 'none'})`);
     return { id, rest, B: modelOf(id) };
   };
-  const added = [], fasten = [], fits = [], mounts = [], runs = [], replaced = new Map(), ahead = new Map();
+  const added = [], fasten = [], fits = [], mounts = [], runs = [], plates = [], replaced = new Map(), ahead = new Map();
   for (const it of mounted) {
     const what = `item ${it.id}`, M = it.mount;
     if (!M || typeof M !== 'object' || Array.isArray(M)) throw new Error(`${what}: mount is { "on": "rail.top@200" }, an address on a beam's slotted face (got ${shown(M)})`);
@@ -72,6 +72,9 @@ export function expandServices(a, num, context = framesContext(), material = 'pl
       ? { screw: `${D.thread} ${D.head}`, through: [mid], into: it.id, at, note: `${it.id} on its mount, from under it`, mountOf: it.id }
       : { screw: `${D.thread} ${D.head}`, through: [it.id], into: mid, at, note: `${it.id} on its mount`, mountOf: it.id });
     replaced.set(it.id, { ...it, at: `${mid}.device` });
+    // the stretch of the slot its plate covers (either way along, as its outline reaches): a run's clips keep off it
+    const reachX = Math.max(...m.outline.map((pt) => Math.abs(pt[0]))), d0 = num(dist), at0 = d0 < 0 ? B.length + d0 : d0;
+    plates.push({ mount: mid, item: it.id, beam: bid, slot: q.name, lo: r3(at0 - reachX), hi: r3(at0 + reachX) });
     mounts.push({ id: it.id, mount: mid, beam: bid, on: M.on, set: it.bought, variant: it.variant ?? null, fix: m.fix, holes: D.holes.length, thread: D.thread, length: D.length, grams: m.grams, margin: m.margin });
   }
   // wires: each run along a slot becomes clips, and the wire goes through each clip's cable anchor in turn
@@ -92,13 +95,23 @@ export function expandServices(a, num, context = framesContext(), material = 'pl
       let clips;
       try { clips = runClips(Math.abs(to - from), v.pitch != null ? { pitch: num(v.pitch) } : {}); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^runClips: /, '')}`); }
       const sgn = to >= from ? 1 : -1, cable = v.cable != null ? num(v.cable) : SERVICE_DEFAULTS.cable.value, list = [];
-      for (const s of clips.at) {
-        const cid = free(`${w.id || `w${wi + 1}`}-clip`), d = r3(from + sgn * s);
+      // a mount on the same slot: no clip under its plate; one each side of it instead, and the wire said to go round it
+      const cw = fittingModel({ kind: 'cable-clip', profile: B.profile.name, face: faceOf(B, q), cable }, context, material, what).width, keep = cw / 2 + SERVICE_DEFAULTS.gap.value;
+      const rlo = Math.min(from, to), rhi = Math.max(from, to), round = plates.filter((pl) => pl.beam === bid && pl.slot === q.name && pl.lo - keep < rhi && pl.hi + keep > rlo).map((pl) => ({ ...pl, lo: r3(pl.lo - keep), hi: r3(pl.hi + keep) }));
+      let ds = clips.at.map((s) => r3(from + sgn * s));
+      if (round.length) {
+        ds = ds.filter((d) => !round.some((pl) => d > pl.lo && d < pl.hi));
+        for (const pl of round) for (const e of [pl.lo, pl.hi]) if (e >= rlo - 1e-9 && e <= rhi + 1e-9 && !round.some((o) => e > o.lo + 1e-9 && e < o.hi - 1e-9) && !ds.some((d) => Math.abs(d - e) < cw)) ds.push(e);
+        ds.sort((x, y) => sgn * (x - y));
+        if (!ds.length) throw new Error(`${what}: a run along ${bid}.${q.name} from ${mm(from)} to ${mm(to)} mm lies under ${round.map((pl) => pl.mount).join(' and ')}: no clip has room there; run it along another face`);
+      }
+      for (const d of ds) {
+        const cid = free(`${w.id || `w${wi + 1}`}-clip`);
         added.push({ id: cid, fitting: { kind: 'cable-clip', profile: B.profile.name, face: faceOf(B, q), cable }, at: `${bid}.${q.name}@${d}`, runOf: w.id || `w${wi + 1}` });
         fits.push({ a: cid, b: bid, fastens: true, note: `${cid}: snapped into ${bid}'s ${q.name} slot, its barbs under the lips` }); // (no screw: its barbs hold it)
         via.push(`${cid}.cable`); list.push(cid);
       }
-      runs.push({ wire: w.id || `w${wi + 1}`, along: `${bid}.${q.name}`, from, to, length: r3(Math.abs(to - from)), clips: list, count: clips.count, pitch: clips.pitch, most: v.pitch != null ? num(v.pitch) : SERVICE_DEFAULTS.pitch.value, cable });
+      runs.push({ wire: w.id || `w${wi + 1}`, along: `${bid}.${q.name}`, from, to, length: r3(Math.abs(to - from)), clips: list, count: list.length, pitch: clips.pitch, round: round.map((pl) => ({ mount: pl.mount, item: pl.item, from: pl.lo, to: pl.hi })), most: v.pitch != null ? num(v.pitch) : SERVICE_DEFAULTS.pitch.value, cable });
     }
     return { ...w, via };
   });
@@ -113,5 +126,7 @@ export function expandServices(a, num, context = framesContext(), material = 'pl
  */
 export function serviceFindings(s, f) {
   for (const m of s.mounts ?? []) f('info', `${m.id}: on a printed mount (${m.mount}) at ${m.on}, held by its ${m.holes} ${m.fix === 'tapped' ? `tapped ${m.thread} holes from ${m.set}'s rule set, screwed up from under the mount` : `holes from ${m.set}'s rule set, ${m.thread} screws down into the mount`}; the mount ${mm(m.grams)} g, ${mm(m.margin)}× its load`, null, { code: 'service.mount', refs: { item: m.id, mount: m.mount, beam: m.beam, set: m.set }, values: { holes: m.holes, length: m.length, grams: m.grams, margin: m.margin } });
-  for (const r of s.runs ?? []) f('info', `${r.wire}: ${mm(r.length)} mm along ${r.along} from ${mm(r.from)} to ${mm(r.to)} mm, held by ${r.count} cable clip${r.count > 1 ? 's' : ''} ${r.count > 1 ? `${mm(r.pitch)} mm apart (no more than ${mm(r.most)})` : ''} for a ${mm(r.cable)} mm bundle`.trimEnd(), null, { code: 'wire.run', refs: { wire: r.wire, along: r.along, clips: r.clips }, values: { length: r.length, clips: r.count, pitch: r.pitch } });
+  for (const r of s.runs ?? []) f('info', `${r.wire}: ${mm(r.length)} mm along ${r.along} from ${mm(r.from)} to ${mm(r.to)} mm, held by ${r.count} cable clip${r.count > 1 ? 's' : ''} ${r.count > 1 ? (r.round?.length ? `no more than ${mm(r.most)} mm apart, and one each side of ${r.round.map((x) => x.mount).join(' and ')},` : `${mm(r.pitch)} mm apart (no more than ${mm(r.most)})`) : ''} for a ${mm(r.cable)} mm bundle`.trimEnd(), null, { code: 'wire.run', refs: { wire: r.wire, along: r.along, clips: r.clips }, values: { length: r.length, clips: r.count, pitch: r.pitch } });
+  // a run under a mount's plate: its clips are set either side, and the wire cannot lie in the slot under the plate
+  for (const r of s.runs ?? []) for (const x of r.round ?? []) f('warn', `${r.wire}: its run along ${r.along} passes ${x.mount} (${x.item}'s mount) from ${mm(x.from)} to ${mm(x.to)} mm: no clip goes under the plate, so one is set each side of it, and the wire must go round the mount there: run it along another face, or end the run before the mount`, `${r.wire}: round ${x.mount}`, { code: 'wire.run', refs: { wire: r.wire, along: r.along, mount: x.mount, item: x.item }, values: { from: x.from, to: x.to } });
 }

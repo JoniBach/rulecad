@@ -3497,6 +3497,15 @@ test('services: the worked arm\'s shield and supply mount on a rail from their o
       const c = cad('check', 'rack/rack');
       assert.match(c, says, variant ?? 'the default'); assert.doesNotMatch(c, /^\s+✗ /m, variant ?? 'the default');
     }
+    // a run along the slot a mount sits on: no clip under the plate (they overlapped it), one each side, and a warning
+    // by name that the wire must go round the mount
+    write([{ id: 'psu', bought: 'supply-24v', variant: 'LRS-50-24', mount: { on: 'rail.top@200' } }], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.top', from: 20, to: 380 }] }]);
+    const round = cad('check', 'rack/rack');
+    assert.match(round, /✓ no parts overlap/); assert.doesNotMatch(round, /^\s+✗ /m);
+    assert.match(round, /power: 360 mm along rail\.top\.1 from 20 to 380 mm, held by 6 cable clips no more than 100 mm apart, and one each side of psu-mount, for a 6 mm bundle/);
+    assert.match(round, /! power: its run along rail\.top\.1 passes psu-mount \(psu's mount\) from 132\.75 to 267\.25 mm: no clip goes under the plate, so one is set each side of it, and the wire must go round the mount there/);
+    write([{ id: 'psu', bought: 'supply-24v', variant: 'LRS-50-24', mount: { on: 'rail.top@200' } }], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.top', from: 150, to: 250 }] }]);
+    assert.match(cad('check', 'rack/rack'), /wire power: a run along rail\.top\.1 from 150 to 250 mm lies under psu-mount: no clip has room there; run it along another face/);
     // refused by name
     write([{ ...mine('shield'), at: [0, 0, 0], mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item shield: a mounted item is placed by its mount: leave out at, rotate and repeat/);
     write([{ id: 'd1', bought: 'drv8825', mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item d1: mount holds a bought board or supply, and drv8825 is a driver/);

@@ -810,6 +810,9 @@ slotted face, its holes read from its own rule set (@rulecad/frames' README, Ser
   than `pitch` apart (`<wire>-clip`, `<wire>-clip-2`, ...), each held by a fit that fastens, and the wire is routed
   through them, so its length follows the beam. `wire.run` says the run's length and its clips, and `wire.length`
   the part of the wire along the slot and how many clips hold it. A run past the beam's end is refused by name.
+- A run along the slot a mount sits on keeps its clips off the mount's plate: one goes each side of it, and
+  `wire.run` warns by name that the wire must go round the mount there. A run that lies wholly under a plate is
+  refused by name.
 - The other service parts are fitting items by kind: `fan-mount` (`"size": 80`), `drag-chain-end` (`"holes"`,
   `"screw"`), `din-rail`, `cable-clip`, `tie-anchor` and `spool-holder`.
 
