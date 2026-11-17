@@ -250,7 +250,7 @@ export function joinModel(kind, a, b, o = {}) {
   if (!far) throw new Error(`${w}: ${B.name} has no face across from ${place.name} on the same line, for the ${kind === 'blind' ? 'key\'s access hole' : 'screw\'s hole'}`);
   const there = `${far.name}@${address.split('@')[1].trim()}`;
   out.b.across = { place: far.name, slot: far.slot };
-  out.b.ops.push(kind === 'blind' ? { op: 'access', at: there, thread, through: 'beam' } : { op: 'drill', at: there, thread, kind: 'clearance', through: 'beam' });
+  out.b.ops.push(kind === 'blind' ? { op: 'access', at: there, thread, ...(['cap', 'button', 'countersunk'].includes(head) ? { head } : {}), through: 'beam' } : { op: 'drill', at: there, thread, kind: 'clearance', through: 'beam' });
   out.screws.push({ screw: `${thread}${length != null ? `x${length}` : ''} ${head}`, thread, head, bore: bore.name });
   if (kind === 'blind' && head !== 'button') out.findings.push({ level: 'info', code: 'join.fitting', text: `${says}: a blind join's head slides in ${B.name}'s slot, and a button head is the usual one; ${head} is checked as drawn`, refs: { kind, head } });
   return out;

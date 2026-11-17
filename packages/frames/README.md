@@ -302,7 +302,7 @@ b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm
 | `cut` | A square cut to length. Each end with no cut or mitre of its own gets one (`implied: true`) | `a`, `b` | |
 | `mitre` | An end cut at an angle from square, seen on a named face | `a`, `b` | `angle` (above 0, under 90), `about` (the face), `long` (the side the length is on) |
 | `tap` | A thread cut in an end bore. `ends: 'tapped'` is the same | `a`, `b`, `a.1` | `thread` (default the profile's `bore_thread`), `depth` |
-| `access` | A hole across the beam, in line with a slot, through its floor, for a key | a face | `thread` (sizes it for that screw's key) or `diameter`, `depth`, `through` (`wall`, the default, or `beam`: every wall on its line, to the slot on the far side) |
+| `access` | A hole across the beam, in line with a slot, through its floor, for a key | a face | `thread` (sizes it for that screw's key) and `head` (the head the key turns: `cap`, the default, `button` or `countersunk`), or `diameter`; `depth`, `through` (`wall`, the default, or `beam`: every wall on its line, to the slot on the far side) |
 | `drill` | A hole through one wall or right through, plain or tapped | a face | `thread` and `kind` (clearance, close, loose, tap) or `diameter`; `through` (`wall`, the default, or `beam`); `depth` |
 | `counterbore` | A seat for a head in a face, with the screw's hole through the wall | a face | `thread`, `head`, `diameter`, `depth` |
 | `pocket` | A milled pocket | a face | `size` (`[along, across]`) or `outline` (points about the address), `radius`, `depth` |
@@ -311,7 +311,8 @@ b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm
 
 Sizes named by a thread come from `@rulecad/fixings` as a machine cuts them: the thread's figure as drawn, with no
 printer's hole compensation and no teardrop roof. An access hole is the smallest of the thread's clearance holes
-wider than its hex key across the corners. A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
+wider than its hex key across the corners, the key of the head it is for (an M5 cap screw's is 4 mm, an M5 button
+head's 3 mm). A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
 wall goes as deep as the first run of metal along its line through the section, worked out from the outline.
 
 Each worked-out operation in `model.ops` keeps its `distance` from end a (0 and the length for the ends), its `face`
@@ -436,7 +437,7 @@ const post = beamModel('2020-misumi-hfs5', { length: 200 }), rail = beamModel('2
 const j = joinModel('blind', { beam: post, end: 'a' }, { beam: rail, address: 'back@120' })
 
 j.a.ops      // [{ op: 'tap', at: 'a.1', thread: 'M5', depth: 18.5 }]: the post's end bore tapped M5
-j.b.ops      // [{ op: 'access', at: 'front.1@120', thread: 'M5', through: 'beam' }]: a hole for the key, across the rail
+j.b.ops      // [{ op: 'access', at: 'front.1@120', thread: 'M5', head: 'button', through: 'beam' }]: a hole for the button head's 3 mm key, across the rail
 j.screws     // [{ screw: 'M5 button', thread: 'M5', head: 'button', bore: 'a.1' }]
 j.stiffness  // { bending: 1500000, twist: 300000, end: { rx: 300000, ry: 1500000, rz: 1500000 }, kind: 'estimate', … }
 

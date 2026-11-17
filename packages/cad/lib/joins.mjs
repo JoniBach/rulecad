@@ -27,7 +27,9 @@ export const JOIN_CHECK = {
 
 // "y1.a" into its item and the rest
 const split = (n) => { const s = String(n).trim(), i = s.indexOf('.'); return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]; };
-const sameAt = (p, q) => String(p).trim().replace(/\.1$/, '') === String(q).trim().replace(/\.1$/, '');
+// (one place written two ways: a face's first slot with or without its number, top@250 and top.1@250, a and a.1)
+const placeOf = (p) => String(p).trim().replace(/\s+/g, '').replace(/\.1(?=@|$)/, '');
+const sameAt = (p, q) => placeOf(p) === placeOf(q);
 
 /**
  * An assembly's joins worked out before its items are built: each join's operations added to its beams' ops, and its

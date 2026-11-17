@@ -757,14 +757,17 @@ test('joins: a blind join taps the end of a and puts an access hole across b in 
   // the tap: as deep as aluminium's 2 diameters of M5 (10 mm), the screw's 1 mm tip room and 1.5 diameters more (7.5 mm)
   assert.deepEqual(j.a.ops, [{ op: 'tap', at: 'a.1', thread: 'M5', depth: 18.5 }]);
   // the access hole: across from back.1 on the same line, at the same distance, through every wall to the back slot
-  assert.deepEqual(j.b.ops, [{ op: 'access', at: 'front.1@120', thread: 'M5', through: 'beam' }]);
+  assert.deepEqual(j.b.ops, [{ op: 'access', at: 'front.1@120', thread: 'M5', head: 'button', through: 'beam' }]);
   assert.deepEqual([j.b.place, j.b.slot, j.b.distance, j.b.across], ['back.1', 'slot-6-misumi', 120, { place: 'front.1', slot: 'slot-6-misumi' }]);
   assert.deepEqual(j.screws, [{ screw: 'M5 button', thread: 'M5', head: 'button', bore: 'a.1' }]);
   assert.equal(j.fitting, null); assert.deepEqual(j.findings, []);
   // the ops as the beams take them: the access hole 14 mm deep, from the front face to the back slot's cavity
   const hole = beamModel(B.profile, { length: 300, ops: j.b.ops }).ops.find((o) => o.op === 'access');
   assert.deepEqual([hole.diameter, hole.depth, hole.through, hole.distance], [5.3, 14, 'beam', 120]);
-  assert.match(hole.line, /access hole Ø5\.3 mm in front\.1, 120 mm from end a, 14 mm deep \(through to the far side\) for a 4 mm key/);
+  // sized for the button head's key, 3 mm (m5.button_key), not a cap screw's 4 mm; the hole is still the smallest clearance past its corners
+  assert.deepEqual([hole.key, hole.rule], [3, 'm5.clearance_close']);
+  assert.match(hole.line, /access hole Ø5\.3 mm in front\.1, 120 mm from end a, 14 mm deep \(through to the far side\) for a 3 mm key/);
+  assert.throws(() => beamModel(B.profile, { length: 300, ops: [{ op: 'access', at: 'front@120', thread: 'M5', head: 'pan' }] }), /head is the screw's head the key turns, cap, button, countersunk \(got "pan"\)/);
   assert.equal(beamModel(A.profile, { length: 200, ops: j.a.ops }).ops[0].engagement.enough, true);
   // an end-tap join: a clearance hole right through b instead, and a cap screw
   const e = joinModel('end-tap', { beam: A, end: 'a' }, { beam: B, address: 'back@120' });

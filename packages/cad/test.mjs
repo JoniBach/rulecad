@@ -3133,28 +3133,31 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     const write = (nut = 'drop-in') => { fasten[0].nut = nut; fs.writeFileSync(file, JSON.stringify({ title: 'Box', kind: 'fit', items, joins, fasten })); };
     write();
     const text = cad('order', 'frame/box'), steps = text.split('\n').filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim());
-    // from bars to square: cut, drill and tap, side 1 flat (the bracket's nuts loaded before x1's head, the first of the
-    // two heads between them and p1's end a, closes p1's back slot),
-    // squared; side 2 flat, squared; the y rails on side 1; side 2 on as one; the other two bays squared; then the rest
+    // from bars to square: cut, drill and tap, side 1 flat, squared; side 2 flat, squared; the y rails on side 1; side 2
+    // on as one; the other two bays squared; then the rest. The bracket's nuts (272 and 288 mm up p1's back slot) go in
+    // through end b once x3 is on: loaded through end a before x1, they would leave x3's head at 250 mm no way in, x1's
+    // head at 30 mm closing end a and the nuts end b
     assert.match(text, /^frame\/box: from bars to a square frame\n/);
     assert.match(steps[0], /^1\. Cut the beams: .*4 × E at 260 mm, 4 × F at 220 mm \(kerf 3 mm, 10 mm off each bar's first end; cut each mark against one stop\)$/);
     assert.match(text, /profile-2020-misumi-hfs5: buy 1 × 4000 mm\n\s+bar 1, 4000 mm: .*; offcut 834/);
     assert.match(steps[1], /^2\. Drill and tap each mark as its sheet shows/);
     assert.match(text, /E \(x1, x2, x3, x4\): tap M5 x 18\.5 at a; tap M5 x 18\.5 at b: exports\/frame\/box\.beam-E\.svg/);
     assert.deepEqual(steps.slice(2, 8).map((l) => l.replace(/: (?!the next).*$/, '')), ['3. Side 1 (p1, p2, x1 and x3), built flat on the bench',
-      '4. Load 2 × slot-nut-6-misumi-m4-slide-in into p1\'s back slot from end a, past 30 and 250 mm, for bracket, before the first made of the blind join of x1.a to p1.back@30 and the blind join of x3.a to p1.back@250, each of which closes that way (or through end b before cap1 goes on): the next step makes the blind join of x1.a to p1.back@30',
-      '5. Side 1 (p1, p2, x1 and x3)', '6. Side 1 (p1, p2, x1 and x3)', '7. Side 1 (p1, p2, x1 and x3)', '8. Square side 1, then tighten its joins']);
-    assert.match(steps[4], /x1 goes on, joined to p1$/); assert.match(steps[6], /x3 goes on, joined to p1 and p2$/);
+      '4. Side 1 (p1, p2, x1 and x3)', '5. Side 1 (p1, p2, x1 and x3)', '6. Side 1 (p1, p2, x1 and x3)',
+      '7. Load 2 × slot-nut-6-misumi-m4-slide-in into p1\'s back slot through its end b, for bracket, before cap1 goes on', '8. Square side 1, then tighten its joins']);
+    assert.match(steps[3], /x1 goes on, joined to p1$/); assert.match(steps[5], /x3 goes on, joined to p1 and p2$/);
     assert.match(steps[7], /measure both diagonals, inside corner to inside corner: each 328\.02 mm across the 260 × 200 mm opening; accept a difference of up to 0\.79 mm \(beams cut to ±0\.5 mm, every corner square\), about 0\.14° of lean\. Push the corners of the long diagonal together until the two are within that, then tighten each join to its torque and measure again$/);
     assert.match(steps[12], /^13\. Square side 2, then tighten its joins: /); assert.match(steps[17], /^18\. Side 2 goes on as one, joined to y2, y4, y1 and y3$/);
     assert.match(steps[18], /^19\. Square the frame, then tighten its joins: .*then tighten each join to its torque and measure again$/);
     assert.match(text, /p1, p4, y1 and y3: measure both diagonals, inside corner to inside corner: each 340\.59 mm across the 220 × 260 mm opening; accept a difference of up to 0\.76 mm/);
     assert.deepEqual(steps.slice(19).map((l) => l.replace(/^\d+\. /, '')), ['foot1, cap1 (cap) go on', 'bracket (plate) goes on', 'plate goes on', 'foot2, cap2, foot4, cap4, foot3, cap3 (cap) go on']);
     // each join's screw with its key and torque: the lips of the post's slot under the head take 3677 N on 17.9 mm²
-    assert.match(text, /5\. Side 1 \(p1, p2, x1 and x3\): x1 goes on, joined to p1\n\s+blind join of x1\.a to p1\.back@30 \(1 × M5x12 button\) with a 3 mm hex key, to 3\.68 N m at most \(what the seat takes\)/);
+    assert.match(text, /4\. Side 1 \(p1, p2, x1 and x3\): x1 goes on, joined to p1\n\s+blind join of x1\.a to p1\.back@30 \(1 × M5x12 button\) with a 3 mm hex key, to 3\.68 N m at most \(what the seat takes\)\n\s+Snug for now: tightened to its torque at step 8, once square\n/);
     assert.match(text, /Tightening, by kind of join:\n\s+blind \(16 joins, M5x12 button with a 3 mm hex key\): 3\.68 N m, at most/);
     const json = JSON.parse(cad('order', 'frame/box', '--json'));
-    assert.deepEqual(json.frame.steps.map((x) => x.kind).join(' '), 'cut drill side load join join join square side join join join square join join join join join square mount mount mount mount');
+    assert.deepEqual(json.frame.steps.map((x) => x.kind).join(' '), 'cut drill side join join join load square side join join join square join join join join join square mount mount mount mount');
+    // x3 slides down the posts from their end b (z up), its heads clear of the nuts, which are not in yet
+    assert.deepEqual(json.frame.steps[5].dir, [0, 0, 1]);
     // what each step shows: side 2 on the bench away from side 1, then the whole frame as side 2 goes on as one, along its posts
     const st = json.frame.steps;
     assert.deepEqual([st[0].shown, st[9].shown.sort(), st[9].now, st[12].shown.sort(), st[17].now, st[17].shown.length, st[17].dir.map(Math.abs)], [[], ['p3', 'x2'], ['x2'], ['p3', 'p4', 'x2', 'x4'], ['p3', 'p4', 'x2', 'x4'], 12, [0, 0, 1]]);
@@ -3205,6 +3208,11 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.deepEqual(midJson.notFlat.map((x) => x.beams), [['p3', 'p4', 'x2', 'x4']]);
     assert.match(midJson.notFlat[0].why, /^the heads of its joins to the frame go into slots that run different ways \(the blind join of \w+\.b to p\d\.bottom@\d+ along p\d, the blind join of m\.b to x4\.front@130 along x4\), so they can't all slide in as it goes on$/);
     assert.match(midText, /The bay of p3, p4, x2 and x4 is built on the frame, not flat: the heads/);
+    // m's heads go into x3's and x4's slots, each closed at both ends once its beam is joined: each screw is slid into its
+    // slot from an end before that beam goes on, and m's join made with it in place (x4's slot runs across the way x4
+    // goes on, down p4's slot, too)
+    assert.match(midText, /\d+\. Slide an M5x12 button screw into x3's back slot head first, through its end a, to 130 mm, for the blind join of m\.a to x3\.back@130, before the blind join of x3\.a to p1\.back@250 is made: that join is made with it in place, the screw turned into m's end through the access hole\n\s+\d+\. Side 1 \(p1, p2, x1 and x3\): x3 goes on/);
+    assert.match(midText, /\d+\. Slide an M5x12 button screw into x4's front slot head first, through its end a, to 130 mm, for the blind join of m\.b to x4\.front@130, .*\n(\s+[^\d].*\n)*\s+\d+\. x4 goes on, joined to p4 and m/);
     assert.doesNotMatch(midText, /Side 2/);
   } finally { done(); }
 });

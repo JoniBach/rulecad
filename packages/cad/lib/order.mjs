@@ -238,12 +238,19 @@ export function orderOf(s) {
 // Whether an assembly is something that goes together with fastenings: anything else has no steps to find
 export const isBuilt = (s) => s.a.kind !== 'plate' && s.fits.some((x) => x.fastens || x.seat != null || x.shaft != null || x.access);
 
-/** assembly.order, in the assembly's findings shape. */
-export function orderChecks(s, f) {
+/**
+ * assembly.order, in the assembly's findings shape. With a frame's build (frameBuild, for an assembly with joins) the
+ * steps counted are its, as cad order prints them: one count for the one sequence. @param {object} s @param {Function} f
+ * @param {{ frame?: (s: object) => object }} [o]
+ */
+export function orderChecks(s, f, { frame = null } = {}) {
   if (!isBuilt(s) || (s.pose != null && s.pose !== s.motion.pose)) return;
   const r = orderOf(s);
-  if (r.stuck) f('fail', r.stuck.text, `${r.stuck.item}: can't be reached`, { code: 'assembly.order', at: r.stuck.at, refs: { item: r.stuck.item, ...(r.stuck.wall ? { wall: r.stuck.wall } : {}), ...(r.stuck.screw ? { screw: r.stuck.screw } : {}), ...(r.stuck.holders ? { holders: r.stuck.holders } : {}) } });
-  else f('pass', `goes together in ${r.steps.length} step${r.steps.length === 1 ? '' : 's'}, ${r.steps[0]?.items[0]} first, nothing trapped`, null, { code: 'assembly.order', values: { steps: r.steps.length }, refs: { first: r.steps[0]?.items[0] } });
+  if (r.stuck) return f('fail', r.stuck.text, `${r.stuck.item}: can't be reached`, { code: 'assembly.order', at: r.stuck.at, refs: { item: r.stuck.item, ...(r.stuck.wall ? { wall: r.stuck.wall } : {}), ...(r.stuck.screw ? { screw: r.stuck.screw } : {}), ...(r.stuck.holders ? { holders: r.stuck.holders } : {}) } });
+  const b = frame && s.joins?.length ? frame(s) : null;
+  if (b?.stuck) return f('fail', `no build from bars to a square frame: ${b.stuck.text}`, `${b.stuck.item}: no build`, { code: 'assembly.order', refs: { item: b.stuck.item, ...(b.stuck.place ? { place: b.stuck.place } : {}), ...(b.stuck.joins ? { joins: b.stuck.joins } : {}) } });
+  const n = b ? b.steps.length : r.steps.length, first = b ? b.steps.find((st) => st.now?.length)?.now[0] : r.steps[0]?.items[0];
+  f('pass', `goes together in ${n} step${n === 1 ? '' : 's'}${b ? ' from bars to a square frame (cad order)' : ''}, ${first} first, nothing trapped`, null, { code: 'assembly.order', values: { steps: n }, refs: { first } });
 }
 
 /** Each step's picture: what's there, and the new part held off along the way it goes on. @returns {object[][]} parts lists, for preview() */

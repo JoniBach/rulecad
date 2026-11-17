@@ -17,8 +17,13 @@ const THROUGH = ['drop-in', 'roll-in', 'hammer', 't-bolt']; // (the kinds that g
 const list = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
 const an = (t) => (/^(?:[aeiou8]|M\d)/i.test(String(t)) ? 'an' : 'a');
 
-// Each fasten's nuts in one slot: the relation, the beam and its slot, the nut, and where along the beam each is
-function groupsOf(s) {
+/**
+ * Each fasten's nuts in one slot: the relation, the beam and its slot (place: top.1, as joins name it; named: top, as
+ * said where the face has one slot), the nut, its kind and entry, the part it holds, and where along the beam each is.
+ * @param {object} s a built assembly
+ * @returns {{ rel: object, item: string, place: string, named: string, nut: string, kind: string, entry: string, thread: string, part: string, at: number[], screws: object[] }[]}
+ */
+export function nutGroupsOf(s) {
   const out = new Map();
   for (const rel of s.fastened?.relations ?? []) for (const sc of rel.screws) {
     if (!sc.slot) continue;
@@ -48,11 +53,13 @@ export function closuresOf(s, item, place) {
   return out;
 }
 
-// The two ways out of a stretch of slot from lo to hi along the beam: the nearest closure toward each end (a join before
-// an item where both stand at one place), or null where that way is open
+// The two ways out of a stretch of slot from lo to hi along the beam: every closure toward each end, nearest first (a
+// join before an item where both stand at one place). A way is closed by a join where any closure on it is a join, not
+// only the nearest: a head between the nuts and an end closed further along closes it as much as that end
 function waysOf(s, item, place, lo, hi) {
-  const cs = closuresOf(s, item, place), pick = (list, far) => list.sort((p, q) => (far ? q.at - p.at : p.at - q.at) || (q.join ? 1 : 0) - (p.join ? 1 : 0))[0] ?? null;
-  return { a: pick(cs.filter((c) => c.at < lo - EPS), true), b: pick(cs.filter((c) => c.at > hi + EPS), false) };
+  const cs = closuresOf(s, item, place), near = (far) => (p, q) => (far ? q.at - p.at : p.at - q.at) || (q.join ? 1 : 0) - (p.join ? 1 : 0);
+  const all = { a: cs.filter((c) => c.at < lo - EPS).sort(near(true)), b: cs.filter((c) => c.at > hi + EPS).sort(near(false)) };
+  return { a: all.a[0] ?? null, b: all.b[0] ?? null, all, join: { a: all.a.find((c) => c.join) ?? null, b: all.b.find((c) => c.join) ?? null } };
 }
 const closerSays = (g, w) => (w.head ? `the head of the ${w.join.label} at ${mm(w.at)} mm` : w.join ? `${g.item}'s end ${w.end} (the ${w.join.label})` : `${g.item}'s end ${w.end} (${w.item} placed there)`);
 const nutsSay = (g) => `${g.at.length} ${g.kind} nut${g.at.length > 1 ? 's' : ''} (${g.nut})`;
@@ -73,17 +80,22 @@ function throughNut(s, g) {
  */
 export function preloadOf(s) {
   const out = [];
-  for (const g of groupsOf(s)) {
+  for (const g of nutGroupsOf(s)) {
     if (g.entry !== 'end') continue;
     const w = waysOf(s, g.item, g.place, Math.min(...g.at), Math.max(...g.at));
-    if (!w.a || !w.b || (w.a.join && w.b.join) || (!w.a.join && !w.b.join)) continue; // (a way stays open; or joins close both: frame.nut's; or only items placed at the ends do, which go on after the nuts)
-    // every join on that way closes it (a head nearer the end as much as the nearest), so the nuts go in before the first made
-    const by = w.a.join ? w.a : w.b, other = by === w.a ? w.b : w.a, way = by === w.a ? 'a' : 'b', lo = Math.min(...g.at), hi = Math.max(...g.at);
-    const closers = [...new Map(closuresOf(s, g.item, g.place).filter((c) => c.join && (way === 'a' ? c.at < lo - EPS : c.at > hi + EPS)).sort((p, q) => (way === 'a' ? q.at - p.at : p.at - q.at)).map((c) => [c.join.index, c])).values()];
-    const from = closers.length > 1 || !by.end ? `from end ${way}${closers.some((c) => c.head) ? `, past ${list(closers.filter((c) => c.head).map((c) => `${mm(c.at)}`).reverse())} mm` : ''}` : `through its end ${by.end}`;
+    if (!w.a || !w.b || (w.join.a && w.join.b) || (!w.join.a && !w.join.b)) continue; // (a way stays open; or joins close both: frame.nut's; or only items placed at the ends do, which go on after the nuts)
+    // every join on that way closes it (a head nearer the end as much as the nearest), so the nuts go in before the first
+    // made; an item at that end (a foot, a cap) is off until then too
+    const way = w.join.a ? 'a' : 'b', other = way === 'a' ? 'b' : 'a', by = w.join[way], ends = w.all[other].filter((c) => c.item), caps = w.all[way].filter((c) => c.item);
+    const closers = [...new Map(w.all[way].filter((c) => c.join).map((c) => [c.join.index, c])).values()];
+    const end = closers.find((c) => c.end)?.end ?? null, heads = closers.filter((c) => c.head);
+    const from = closers.length > 1 || !end ? `from end ${way}${heads.length ? `, past ${list(heads.map((c) => `${mm(c.at)}`).reverse())} mm` : ''}` : `through its end ${end}`;
+    const capped = caps.length ? ` (${list(caps.map((c) => c.item))} off until then)` : '';
     const before = closers.length > 1 ? `before the first made of ${list(closers.map((c) => `the ${c.join.label}`).reverse())}, each of which closes that way` : `before the ${by.join.label} closes it`;
-    out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, named: g.named, part: g.part, nut: g.nut, count: g.at.length, end: by.end, way, at: by.at, join: by.join, closers: closers.map((c) => c.join), other,
-      text: `load ${g.at.length} × ${g.nut} into ${g.item}'s ${g.named} slot ${from}, for ${g.part}, ${before}${other.item ? ` (or through end ${other.end} before ${other.item} goes on)` : ''}` });
+    const or = ends.length ? ` (or through end ${other} before ${list(ends.map((c) => c.item))} go${ends.length > 1 ? '' : 'es'} on)` : '';
+    const how = `${from}${capped}, ${before}${or}`;
+    out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, named: g.named, part: g.part, nut: g.nut, count: g.at.length, end: by.end, way, at: by.at, join: by.join, closers: closers.map((c) => c.join), other: ends[0] ?? null, how,
+      text: `load ${g.at.length} × ${g.nut} into ${g.item}'s ${g.named} slot ${from}${capped}, for ${g.part}, ${before}${or}` });
   }
   return out;
 }
@@ -96,10 +108,10 @@ export function preloadOf(s) {
  */
 export function trappedOf(s) {
   const out = [];
-  for (const g of groupsOf(s)) {
+  for (const g of nutGroupsOf(s)) {
     if (g.entry !== 'end') continue;
     const w = waysOf(s, g.item, g.place, Math.min(...g.at), Math.max(...g.at));
-    if (w.a?.join && w.b?.join) out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, named: g.named, nut: g.nut, kind: g.kind, count: g.at.length, part: g.part, at: g.at, joins: [w.a.join, w.b.join], alternative: throughNut(s, g) });
+    if (w.join.a && w.join.b) out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, named: g.named, nut: g.nut, kind: g.kind, count: g.at.length, part: g.part, at: g.at, joins: [w.join.a.join, w.join.b.join], alternative: throughNut(s, g) });
   }
   return out;
 }
@@ -108,24 +120,24 @@ export function trappedOf(s) {
  * frame.nut and frame.preload, in the assembly's findings shape. @param {object} s a built assembly @param {Function} f the findings' sink
  */
 export function slotNutChecks(s, f) {
-  const groups = groupsOf(s);
+  const groups = nutGroupsOf(s);
   if (!groups.length) return;
+  const pre = preloadOf(s);
   for (const g of groups) {
     const lo = Math.min(...g.at), hi = Math.max(...g.at), where = `${g.item}'s ${g.named} slot`, first = g.screws[0];
     const refs = { fasten: g.rel.index, item: g.item, place: g.place, nut: g.nut, kind: g.kind, along: g.at };
     if (g.entry !== 'end') { f('pass', `${g.rel.label}: ${nutsSay(g)} go${g.at.length > 1 ? '' : 'es'} into ${where} through its opening, anywhere along it`, null, { code: 'frame.nut', at: first.at.map(r3), refs }); continue; }
     const w = waysOf(s, g.item, g.place, lo, hi);
-    if (w.a?.join && w.b?.join) {
-      const alt = throughNut(s, g), joins = [w.a.join.index, w.b.join.index];
-      f('fail', `${g.rel.label}: ${nutsSay(g)} go${g.at.length > 1 ? '' : 'es'} into ${where} at ${g.at.map(mm).join(' and ')} mm, between ${closerSays(g, w.a)} and ${closerSays(g, w.b)}, which close it at both ends: a ${g.kind} nut goes in only from an open end. ${alt ? `${alt.name} (${an(alt.thread)} ${alt.thread} ${alt.nutKind} nut) goes in through the opening anywhere: give "nut": "${alt.nutKind}"` : `No ${g.thread} nut made for ${g.slot} goes in through its opening: load these before the later of the two joins, or move them to a slot with an open end`}`,
+    if (w.join.a && w.join.b) {
+      const alt = throughNut(s, g), joins = [w.join.a.join.index, w.join.b.join.index];
+      f('fail', `${g.rel.label}: ${nutsSay(g)} go${g.at.length > 1 ? '' : 'es'} into ${where} at ${g.at.map(mm).join(' and ')} mm, between ${closerSays(g, w.join.a)} and ${closerSays(g, w.join.b)}, which close it at both ends: a ${g.kind} nut goes in only from an open end. ${alt ? `${alt.name} (${an(alt.thread)} ${alt.thread} ${alt.nutKind} nut) goes in through the opening anywhere: give "nut": "${alt.nutKind}"` : `No ${g.thread} nut made for ${g.slot} goes in through its opening: load these before the later of the two joins, or move them to a slot with an open end`}`,
         `${g.rel.label}: nut`, { code: 'frame.nut', at: first.at.map(r3), values: { nuts: g.at.length }, refs: { ...refs, joins, ...(alt ? { alternative: alt.name, kind_needed: alt.nutKind } : {}) } });
       continue;
     }
-    const open = !w.a ? 'a' : !w.b ? 'b' : null;
-    f('pass', `${g.rel.label}: ${nutsSay(g)} go${g.at.length > 1 ? '' : 'es'} into ${where} ${open ? `from its end ${open}, which nothing closes` : `before ${closerSays(g, w.a.join ? w.a : w.b)} closes it (frame.preload)`}`, null, { code: 'frame.nut', at: first.at.map(r3), refs });
+    const open = !w.a ? 'a' : !w.b ? 'b' : null, pl = open ? null : pre.find((p) => p.fasten === g.rel.index && p.item === g.item && p.place === g.place);
+    f('pass', `${g.rel.label}: ${nutsSay(g)} go${g.at.length > 1 ? '' : 'es'} into ${where} ${open ? `from its end ${open}, which nothing closes` : pl ? `before a join closes its way, ${pl.how} (frame.preload)` : `from an end before ${list(['a', 'b'].map((e) => w.all[e].filter((c) => c.item).map((c) => c.item)).flat())} go on`}`, null, { code: 'frame.nut', at: first.at.map(r3), refs });
   }
-  const pre = preloadOf(s);
-  for (const p of pre) f('info', `${p.label}: ${p.text}`, null, { code: 'frame.preload', values: { nuts: p.count }, refs: { fasten: p.fasten, item: p.item, place: p.place, nut: p.nut, join: p.join.index, end: p.end } });
+  for (const p of pre) f('info', `${p.label}: ${p.text}`, null, { code: 'frame.preload', values: { nuts: p.count }, refs: { fasten: p.fasten, item: p.item, place: p.place, nut: p.nut, join: p.join.index, joins: p.closers.map((j) => j.index), end: p.end, way: p.way } });
   if (!pre.length) f('pass', 'no slot nut has to be in its slot before a join closes it', null, { code: 'frame.preload' });
 }
 

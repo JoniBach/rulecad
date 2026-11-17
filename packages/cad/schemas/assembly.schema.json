@@ -109,7 +109,7 @@
       "at": { "$ref": "#/$defs/beamAddress" },
       "thread": { "type": "string", "description": "A thread by name (M5): sizes the hole, the tap or the seat through @rulecad/fixings" },
       "kind": { "enum": ["clearance", "close", "loose", "tap"], "description": "A drilled hole's kind" },
-      "head": { "type": "string", "description": "A counterbore's head: cap, button, hex or pan" },
+      "head": { "type": "string", "description": "A counterbore's head: cap, button, hex or pan; an access hole's, the head its hex key turns: cap (the default), button or countersunk" },
       "diameter": { "$ref": "#/$defs/expr", "description": "mm, in place of a thread's figure" },
       "depth": { "$ref": "#/$defs/expr", "description": "mm from the face or the end" },
       "through": { "enum": ["wall", "beam"], "description": "A drilled hole through one wall (the default) or right through the beam" },

@@ -55,7 +55,7 @@ import { expandPanels, panelBuilt, panelFindings } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
-import { frameSquareChecks } from './framebuild.mjs';
+import { frameSquareChecks, frameBuild } from './framebuild.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -976,7 +976,7 @@ export function checkAssembly(s) {
   gripChecks(s, f);
   gaitChecks(s, f, { jointValues, placeItems, sweepOne: (v) => clashesOf(s.at(v), named) });
   taskChecks(s, f);
-  orderChecks(s, f);
+  orderChecks(s, f, { frame: frameBuild });
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers

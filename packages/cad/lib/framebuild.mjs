@@ -26,7 +26,7 @@ import { placeItems } from '@rulecad/model-link';
 import path from 'node:path';
 import { cutListOf, sheetFile } from './beams.mjs';
 import { orderOf, fastenerText } from './order.mjs';
-import { preloadOf, trappedOf, closuresOf } from './slotnuts.mjs';
+import { preloadOf, trappedOf, closuresOf, nutGroupsOf } from './slotnuts.mjs';
 
 const mm = (x) => String(+Number(x).toFixed(2));
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -94,6 +94,21 @@ function joinLines(s, j) {
  *   { text, item, place, joins, nut, alternative } where a slot's nuts are shut in, or why no order reaches a screw
  */
 export function frameBuild(s) {
+  return (s.frameBuilt ??= buildFrame(s)); // (worked out once for each built assembly: cad check asks for it twice, cad order once)
+}
+
+/**
+ * Where each item goes on in a frame's build: its step's number, as cad order prints it. @param {object} b frameBuild's
+ * @returns {(id: string) => number|undefined} undefined where the build was refused or the item is in no step
+ */
+export function frameStepOf(b) {
+  if (b?.stuck) return () => undefined;
+  const at = new Map();
+  for (const st of b?.steps ?? []) for (const id of st.now ?? []) if (!at.has(id)) at.set(id, st.n);
+  return (id) => at.get(id);
+}
+
+function buildFrame(s) {
   const joins = s.joins ?? [], L = linesOf(s), beamIds = [...L.keys()], none = { steps: [], sides: [], notFlat: [], bays: [], torques: [] };
   const order = orderOf(s);
   if (order.stuck) return { ...none, stuck: { ...order.stuck } };
@@ -216,12 +231,6 @@ export function frameBuild(s) {
       if (p >= w) { const later = partners.find((x) => enter.get(x) === p); return { problem: { ids: [wall, later], why: `${wall} would stand over the screws of ${m.items.join(', ')} before ${later}, which they fasten to, is on`, stuck: { item: m.items[0], wall, text: `the screws of ${m.items.join(', ')} can't be reached: ${wall} stands over them, and it goes on before ${later}, which they fasten to` } } }; }
       steps.splice(w, 0, mountStep(m));
     }
-    // nuts: loaded just before the first of the joins that close their way is made
-    const { at } = where(), loads = preloadOf(s).map((pl) => ({ pl, k: Math.min(...pl.closers.map((j) => at.get(j.index) ?? Infinity)) })).filter((x) => Number.isFinite(x.k));
-    for (const { pl, k } of loads.sort((x, y) => y.k - x.k)) {
-      const first = pl.closers.find((j) => at.get(j.index) === k);
-      steps.splice(k, 0, { kind: 'load', items: [pl.item], enters: [], ...(bench.has(pl.item) && k < where().enter.get(pl.item) ? { side: bench.get(pl.item), bench: true } : {}), text: `Load${pl.text.slice(4)}: the next step makes ${pl.closers.length > 1 ? `the ${first.label}` : 'that join'}` });
-    }
     // the bays no side squared, once the frame is joined
     const later = bays.filter((b) => !sides.includes(b));
     if (later.length) step({ kind: 'square', items: [...new Set(later.flatMap((b) => b.beams))], text: `Square the frame, then tighten its joins: measure the diagonals of each bay${sides.length ? ' the sides did not' : ''}, push the corners of the long diagonal together until each is within, then tighten each join to its torque and measure again`, lines: later.map((b) => `${b.name}: ${b.square.text}`) });
@@ -237,6 +246,16 @@ export function frameBuild(s) {
       if (wallAt == null || wallAt >= drive) continue;
       return { problem: { ids: [cv.wall, ...cv.screwed], why: `${cv.wall} would stand over the screw of ${cv.fit} before it is driven`, stuck: { item: cv.screwed.at(-1), wall: cv.wall, text: `the screw of "${cv.fit}" can't be reached with the frame built beam by beam: ${cv.wall} goes on before it and stands over it` } } };
     }
+    // what goes into each slot and when: every head and every nut with a way in at its step (slotPlan)
+    const plan = slotPlan(s, steps, L, where);
+    if (plan.fail) {
+      const f = plan.fail, st = f.o.type === 'head' ? steps[f.o.step] : null;
+      if (st && st.kind === 'join' && st.side != null && (st.items ?? []).length > 1) return { problem: { bay: sides[st.side], why: `the head of the ${f.o.j.label} has no way into ${f.o.item}'s ${f.o.named} slot as it goes on: ${f.why}` } };
+      return { problem: { ids: [], why: f.text, stuck: { item: f.o.item, place: f.o.place, text: f.text, ...(f.o.type === 'head' ? { join: f.o.j.index } : { fasten: f.o.g.rel.index, nut: f.o.g.nut }) } } };
+    }
+    for (const [i, d] of plan.dirs) steps[i].dir = d;
+    const { enter: entered } = where();
+    for (const ld of [...plan.loads].sort((x, y) => y.k - x.k)) steps.splice(ld.k, 0, { kind: 'load', items: [ld.o.item], enters: [], ...(bench.has(ld.o.item) && ld.k < entered.get(ld.o.item) ? { side: bench.get(ld.o.item), bench: true } : {}), text: ld.text });
     // what is in view at each step: the side on the bench, or the frame so far
     const frameNow = new Set(), benchNow = new Map();
     steps.forEach((x, i) => {
@@ -251,6 +270,8 @@ export function frameBuild(s) {
       x.dir ??= x.now.length === 1 ? dirOf(x.now[0]) : [0, 0, 1];
       delete x.enters; delete x.bench;
     });
+    // a join made before its bay is squared is left snug, and tightened at that square step, which says so too
+    steps.forEach((x, i) => { if (x.kind !== 'join' || !x.joins?.length) return; const sq = steps.slice(i + 1).find((y) => y.kind === 'square'); if (sq) x.lines = [...(x.lines ?? []), `Snug for now: tightened to its torque at step ${sq.n}, once square`]; });
     // the tightening of each kind of join: the least its screws' seats take, or the torque given
     const byKind = new Map();
     for (const j of joins) for (const f of s.fits.filter((q) => j.fasten.includes(q.fasten) && q.tighten)) {
@@ -263,6 +284,98 @@ export function frameBuild(s) {
       why: k.given ? 'as given' : k.load ? 'what the joint\'s load leaves the thread' : 'at most: what the seat under the head takes (a slot\'s lips under a blind join\'s head, an estimate), or the screw tightened fully, the less' }));
     return { steps, torques };
   }
+}
+
+// What goes into each beam's slots, and when. A blind join's head slides into its slot from an end as its beam goes on;
+// a slide-in nut goes in from an end at a load step, or with its part; a nut that goes in through the opening, with its
+// part. Each needs a way in at its step: an end of the slot not yet closed (by a join on that end, or an item placed
+// there) and nothing already in the slot between it and that end (a head, a nut). A beam going on slides along the slots
+// its heads go into, from one way or the other, so its heads share the way; where neither way is clear, a head is slid
+// into its slot on its own beforehand, and the beam brought to it (its screw turned in through the access hole). A nut
+// two joins would close in goes in before the first of them, where that leaves every head its way, else at the first
+// step after that does; else it is loaded earlier. Heads are placed first, in the order their beams go on, then nuts.
+// Returns the loads ({ k: the step they go before, o, text }), each step's way on (dirs), or fail { o, text, why }.
+function slotPlan(s, steps, L, where) {
+  const joins = s.joins ?? [], { at, enter, own } = where(), EPS = 1e-3, key = (o) => `${o.item}|${o.place}`;
+  const namedOf = (id, place) => { const ps = s.objects.find((o) => o.id === id)?.beam?.places ?? [], p = ps.find((q) => q.name === place); return p && ps.filter((q) => q.face === p.face).length === 1 ? p.face : place; };
+  const first = Math.max(0, steps.findIndex((st) => st.kind !== 'cut' && st.kind !== 'drill')); // (a beam is cut and drilled before anything goes into its slots; loose or on, from then on)
+  const heads = joins.filter((j) => j.kind === 'blind' && L.has(j.items[1]) && at.has(j.index)).map((j) => ({ type: 'head', id: `h${j.index}`, j, item: j.items[1], place: j.model.b.place, named: namedOf(j.items[1], j.model.b.place), lo: j.model.b.distance, hi: j.model.b.distance, step: at.get(j.index), fastener: s.fits.find((f) => j.fasten.includes(f.fasten) && f.fastener)?.fastener ?? 'screw' }));
+  const pre = preloadOf(s);
+  const nuts = nutGroupsOf(s).filter((g) => L.has(g.item) && enter.has(g.part)).map((g, n) => {
+    const pl = pre.find((p) => p.fasten === g.rel.index && p.item === g.item && p.place === g.place) ?? null, k0 = pl ? Math.min(...pl.closers.map((j) => at.get(j.index) ?? Infinity)) : null;
+    return { type: 'nut', id: `n${n}`, g, item: g.item, place: g.place, named: g.named, lo: Math.min(...g.at), hi: Math.max(...g.at), step: enter.get(g.part), slide: g.entry === 'end', pl, k0: Number.isFinite(k0) ? k0 : null };
+  });
+  const all = [...heads, ...nuts], closes = [];
+  for (const sl of new Set(all.map(key))) { const [id, place] = sl.split('|'); for (const c of closuresOf(s, id, place)) if (c.end) { const i = c.join ? at.get(c.join.index) : enter.get(c.item); if (i != null) closes.push({ i, key: sl, end: c.end, join: c.join ?? null, item: c.item ?? null }); } }
+  const closeSays = (c) => (c.join ? `the ${c.join.label} closes it` : `${c.item} is on it`), inSays = (o) => (o.type === 'head' ? `the head of the ${o.j.label} at ${mm(o.lo)} mm is in the way` : `the ${o.g.at.length} nut${o.g.at.length > 1 ? 's' : ''} for ${o.g.part} at ${o.g.at.map(mm).join(' and ')} mm ${o.g.at.length > 1 ? 'are' : 'is'} in the way`);
+  // one pass over the steps with the loads given (plan: id -> the step it goes before) and only the active heads and nuts
+  const sim = (plan, active) => {
+    const state = new Map(), slot = (k) => { if (!state.has(k)) state.set(k, { in: [], shut: { a: null, b: null } }); return state.get(k); };
+    const block = (o, e) => { const st = slot(key(o)); if (st.shut[e]) return closeSays(st.shut[e]); const by = st.in.find((x) => (e === 'a' ? x.hi < o.lo - EPS : x.lo > o.hi + EPS)); return by ? inSays(by) : null; };
+    const way = (o, order = ['a', 'b']) => order.find((e) => !block(o, e)) ?? null, said = (o) => `from end a ${block(o, 'a')}; from end b ${block(o, 'b')}`;
+    const dirs = new Map(), ways = new Map(), on = (o) => active.has(o.id);
+    for (let i = 0; i <= steps.length; i++) {
+      for (const o of all.filter((x) => on(x) && plan.get(x.id) === i)) {
+        const e = way(o, o.pl?.way === 'b' ? ['b', 'a'] : ['a', 'b']);
+        if (!e) return { fail: { o, i, why: said(o) } };
+        ways.set(o.id, e); slot(key(o)).in.push(o);
+      }
+      if (i === steps.length) break;
+      const st = steps[i], M = new Set((st.items ?? []).filter((id) => L.has(id)));
+      // the heads that slide in as their beams go on, all one way along the slots
+      const sliding = heads.filter((h) => on(h) && !plan.has(h.id) && h.step === i), moving = sliding.map((h) => ({ h, a: M.has(h.j.items[0]) && !M.has(h.item), b: M.has(h.item) && !M.has(h.j.items[0]) })).filter((x) => x.a || x.b);
+      if (moving.length) {
+        const u = L.get(moving[0].h.item).d, par = (x) => Math.abs(Math.abs(dot(L.get(x.h.item).d, u)) - 1) < 1e-6, d0 = st.dir && Math.abs(Math.abs(dot(st.dir, u)) - 1) < 1e-6 ? Math.sign(dot(st.dir, u)) : 1;
+        let chosen = null, why = [];
+        for (const sg of [d0, -d0]) {
+          const dir = u.map((x) => +(x * sg).toFixed(6) || 0), ends = moving.filter(par).map((x) => { const p = dot(L.get(x.h.item).d, dir) > 0; return { x, e: x.a ? (p ? 'b' : 'a') : (p ? 'a' : 'b') }; });
+          const across = moving.find((x) => !par(x)); // (a head whose slot runs across the way the beam goes on can't slide in with it)
+          if (across) { why.push({ x: across, e: sg > 0 ? 'b' : 'a', by: `its slot runs across the way ${steps[i].items.join(', ')} go${steps[i].items.length > 1 ? '' : 'es'} on` }); continue; }
+          const bad = ends.find(({ x, e }) => block(x.h, e));
+          if (!bad) { chosen = { dir, ends }; break; }
+          why.push({ ...bad, by: block(bad.x.h, bad.e) });
+        }
+        if (!chosen) return { fail: { o: why[0].x.h, i, why: why[0].x === why[1].x && why[0].by === why[1].by ? why[0].by : `from end ${why[0].e} ${why[0].by}; from end ${why[1].e} ${why[1].by}` } };
+        dirs.set(i, chosen.dir); for (const { x, e } of chosen.ends) ways.set(x.h.id, e);
+      }
+      for (const h of sliding) slot(key(h)).in.push(h);
+      // nuts with their part: a slide-in nut not loaded beforehand needs its way now
+      for (const o of nuts.filter((x) => on(x) && !plan.has(x.id) && x.step === i)) {
+        if (o.slide) { const e = way(o); if (!e) return { fail: { o, i, why: said(o) } }; ways.set(o.id, e); }
+        slot(key(o)).in.push(o);
+      }
+      for (const c of closes.filter((x) => x.i === i)) slot(c.key).shut[c.end] ||= c;
+    }
+    return { dirs, ways };
+  };
+  const plan = new Map(), active = new Set(nuts.filter((o) => !o.slide).map((o) => o.id)), stuck = [];
+  const ok = () => !sim(plan, active).fail, tryAt = (o, ks) => { for (const k of ks) { if (k == null) plan.delete(o.id); else plan.set(o.id, k); if (ok()) return true; } plan.delete(o.id); return false; };
+  const down = (from, to) => { const out = []; for (let k = from; k >= to; k--) out.push(k); return out; };
+  for (const h of [...heads].sort((p, q) => p.step - q.step)) { active.add(h.id); if (!tryAt(h, [null, ...down(h.step, first)])) { active.delete(h.id); stuck.push(h); } }
+  for (const o of nuts.filter((x) => x.slide).sort((p, q) => p.step - q.step)) {
+    active.add(o.id);
+    const lo = first, ks = o.k0 != null ? [o.k0, ...Array.from({ length: Math.max(0, o.step - o.k0) }, (_, n) => o.k0 + n + 1), ...down(o.k0 - 1, lo)] : [null, ...down(o.step, lo)];
+    if (!tryAt(o, ks)) { active.delete(o.id); stuck.push(o); }
+  }
+  if (stuck.length) {
+    const o = stuck[0]; active.add(o.id);
+    const r = sim(plan, active), why = r.fail?.o === o ? r.fail.why : 'every way in is closed or taken at every step it could go in';
+    const text = o.type === 'head' ? `the head of the ${o.j.label} has no way into ${o.item}'s ${o.named} slot, at its step or before: ${why}` : `${o.item}'s ${o.named} slot: ${o.g.at.length} ${o.g.kind} nut${o.g.at.length > 1 ? 's' : ''} (${o.g.nut}) for ${o.g.part} have no way in at any step: ${why}. A nut that goes in through the opening, or the part on another slot`;
+    return { fail: { o, text, why } };
+  }
+  const r = sim(plan, active);
+  // each load said: its way, and what closes that way after it (a head or nut coming between, the end closed)
+  const timeOf = (o) => (plan.has(o.id) ? plan.get(o.id) - 0.5 : o.step);
+  const loads = [...plan].map(([id, k]) => {
+    const o = all.find((x) => x.id === id), e = r.ways.get(id), t = k - 0.5, sl = key(o);
+    const between = all.filter((x) => x !== o && key(x) === sl && timeOf(x) > t && (e === 'a' ? x.hi < o.lo - EPS : x.lo > o.hi + EPS)).map((x) => ({ t: timeOf(x), says: x.type === 'head' ? `the ${x.j.label} is made` : `the nuts for ${x.g.part} go in` }));
+    const shut = closes.filter((c) => c.key === sl && c.end === e && c.i >= k).map((c) => ({ t: c.i, says: c.join ? `the ${c.join.label} is made` : `${c.item} goes on` }));
+    const next = [...between, ...shut].sort((p, q) => p.t - q.t)[0], before = next ? `, before ${next.says}` : '';
+    if (o.type === 'head') return { k, o, text: `Slide ${/^[aeiou8]|^M/i.test(o.fastener) ? 'an' : 'a'} ${o.fastener} screw into ${o.item}'s ${o.named} slot head first, through its end ${e}, to ${mm(o.lo)} mm, for the ${o.j.label}${before}: that join is made with it in place, the screw turned into ${o.j.items[0]}'s end through the access hole` };
+    if (o.pl && k === o.k0 && e === o.pl.way) { const first = o.pl.closers.find((j) => at.get(j.index) === k); return { k, o, text: `Load${o.pl.text.slice(4)}: the next step makes ${o.pl.closers.length > 1 ? `the ${first.label}` : 'that join'}` }; }
+    return { k, o, text: `Load ${o.g.at.length} × ${o.g.nut} into ${o.item}'s ${o.named} slot through its end ${e}, for ${o.g.part}${before}` };
+  });
+  return { loads, dirs: r.dirs };
 }
 
 /** Each step's picture, numbered as the frame's build is: what is in view, the beams or parts going on held off along their way. @param {object} s @param {object} b frameBuild's @returns {{ n: number, parts: object[] }[]} the steps with something to show */
