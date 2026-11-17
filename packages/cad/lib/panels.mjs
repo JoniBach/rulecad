@@ -30,6 +30,7 @@ const near = (a, b) => Math.abs(a - b) < 1e-6;
 /** The working figures of panels in assemblies, each with what it rests on. */
 export const PANEL_CHECK = {
   plane: { value: 0.05, unit: 'mm', rule: 'A bay\'s four faces lie in one plane when they are within this of each other: a panel lies flat on all four', kind: 'default', source: 'A working figure of @rulecad/cad, the same as a join\'s flush', checked: '2026-11-17' },
+  latch_probe: { value: 0.5, unit: '°', rule: 'A door with its latch shut is also swept this far off shut, finer than the sweep\'s steps: the latch\'s tab stands just over the door\'s edge, so the door hits it within its first degree and a coarse step would jump past it', kind: 'default', source: 'A working figure of @rulecad/cad: the panels test sees the hit from 0.5° on a 400 x 300 mm door', checked: '2026-11-17' },
   inset: { value: 2, unit: 'mm', rule: 'A clip or a hinge stands this far clear of the beam that crosses the end of its beam, past that beam\'s half width or the reach of its clips', kind: 'default', source: 'A working figure of @rulecad/cad', checked: '2026-11-17' },
 };
 
@@ -168,6 +169,7 @@ export function expandPanels(a, num, context = framesContext(), material = 'pla'
         added.push({ id: cid, fitting: spec, at: place.at, ...(place.rotate ? { rotate: place.rotate } : {}), panelOf: it.id });
         fasten.push({ screw: `${cm.thread} button`, through: [cid], into: `${L.id}.${L.place.name}`, at: [`${cid}.b1`], note: `${it.id}: the ${kind.replace('-', ' ')} into ${L.id}`, nut: cm.screws[0].nutKind, panelOf: it.id });
         record.items.push(cid);
+        if (kind === 'latch') Object.assign(record, { joint: jid, latch: cid });
       }
     }
     const pm = panelModel(sheet, T, { size: [r3(u1 - u0), r3(v1 - v0)], holes });

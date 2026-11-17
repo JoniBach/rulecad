@@ -51,7 +51,7 @@ import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
 import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
-import { expandPanels, panelBuilt, panelFindings } from './panels.mjs';
+import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
@@ -1026,20 +1026,24 @@ export function sweep(s, { joint, steps = 24, progress } = {}) {
   for (const j of free) j.dofs.forEach(([lo, hi], d) => {
     const unit = DOFS[j.type][d] === 'angle' ? '°' : ' mm', name = `${j.id}${j.dofs.length > 1 ? ` ${'xyz'[d] && j.type === 'ball' ? 'xyz'[d] : DOFS[j.type][d]}` : ''}`;
     const bad = []; // [value, what]
-    for (let i = 0; i <= steps; i++) {
-      const v = lo + ((hi - lo) * i) / steps, set = { ...base, [j.id]: base[j.id].map((x, k) => (k === d ? v : x)) };
+    // a door with its latch shut: also tried just off shut, finer than a step, so a hit within the first degree is seen
+    const held = (s.panels ?? []).find((p) => p.latch && p.joint === j.id && DOFS[j.type][d] === 'angle'), probe = held ? Math.min(PANEL_CHECK.latch_probe.value, (hi - lo) / steps) : 0;
+    const values = [...Array(steps + 1).keys()].map((i) => lo + ((hi - lo) * i) / steps);
+    if (probe > 0 && probe < (hi - lo) / steps) values.splice(1, 0, lo + probe);
+    for (const [i, v] of values.entries()) {
+      const set = { ...base, [j.id]: base[j.id].map((x, k) => (k === d ? v : x)) };
       const t = s.at(Object.fromEntries(Object.entries(set).filter(([id]) => !s.motion.joints.find((x) => x.id === id).follow)));
       const what = [...clashesOf(t, isNamed).map(([a, b]) => `${a} hits ${b}`), ...loopGaps(t).filter((l) => !l.ok).map((l) => `${l.label} apart by ${mm(l.gap)} mm`)];
       if (what.length) bad.push([v, what]);
-      progress?.({ stage: 'sweep', joint: j.id, step: i, steps });
+      progress?.({ stage: 'sweep', joint: j.id, step: Math.min(i, steps), steps });
     }
     const ranges = []; // runs of steps in a row that collide
     for (const [v, what] of bad) { const r = ranges[ranges.length - 1]; if (r && Math.abs(v - r.to - (hi - lo) / steps) < 1e-9) { r.to = v; r.what = [...new Set([...r.what, ...what])]; } else ranges.push({ from: v, to: v, what }); }
-    const span = `${mm(lo)} to ${mm(hi)}${unit}`;
-    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps: nothing collides`, `${name}: clear ${span}`, { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: [] } });
-    else f('fail', `sweep ${name}, ${span} in ${steps} steps: ${ranges.map((r) => `${r.from === r.to ? `at ${mm(r.from)}` : `${mm(r.from)} to ${mm(r.to)}`}${unit.trim()}: ${r.what.slice(0, 3).join('; ')}${r.what.length > 3 ? `; and ${r.what.length - 3} more` : ''}`).join(' | ')}`,
+    const span = `${mm(lo)} to ${mm(hi)}${unit}`, note = held ? ` (${held.latch} shut over ${held.id}: also tried ${mm(probe)}${unit} off shut)` : '';
+    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps${note}: nothing collides`, `${name}: clear ${span}`, { code: 'sweep', values: { from: lo, to: hi, steps, ...(held ? { probe } : {}) }, refs: { joint: name, collisions: [], ...(held ? { latch: held.latch } : {}) } });
+    else f('fail', `sweep ${name}, ${span} in ${steps} steps${note}: ${ranges.map((r) => `${r.from === r.to ? `at ${mm(r.from)}` : `${mm(r.from)} to ${mm(r.to)}`}${unit.trim()}: ${r.what.slice(0, 3).join('; ')}${r.what.length > 3 ? `; and ${r.what.length - 3} more` : ''}`).join(' | ')}`,
       `${name}: collides ${ranges.map((r) => (r.from === r.to ? mm(r.from) : `${mm(r.from)}-${mm(r.to)}`)).join(', ')}${unit.trim()}`,
-      { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: ranges.map((r) => ({ from: r.from, to: r.to, what: r.what })) } });
+      { code: 'sweep', values: { from: lo, to: hi, steps, ...(held ? { probe } : {}) }, refs: { joint: name, ...(held ? { latch: held.latch } : {}), collisions: ranges.map((r) => ({ from: r.from, to: r.to, what: r.what })) } });
   });
   saveOverlaps();
   return out;

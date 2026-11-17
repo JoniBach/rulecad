@@ -783,8 +783,8 @@ Once an assembly is checked, these say how to make it. They all read the assembl
   `<id>-open`. A handle (`"handle": false` leaves it off) is screwed from inside into its feet, and a magnet catch
   (`"catch"`) sits on the opposite beam under the door's edge; `"latch": true` adds a turn-button latch, shown shut.
   The holes the screws pass are cut in the door. `cad check --sweep` turns the door through its range: on its own,
-  nothing collides; with its latch shut, the door hits the latch within its first degree, so sweep in steps that
-  fine to see it.
+  nothing collides. With its latch shut, the door hits the latch within its first degree, so the sweep also tries the
+  door 0.5° off shut (`latch_probe`), finer than its steps, and fails there by name.
 - In a mechanism, a beam placed by its ends is the frame: what is screwed to it is held (`assembly.loose`).
 
 **Services on a frame.** A bought board or supply with `"mount"` sits on a printed mount at an address on a beam's

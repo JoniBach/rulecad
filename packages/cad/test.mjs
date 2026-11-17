@@ -3431,9 +3431,11 @@ test('panels and doors: a bay closed with a 3 mm panel lists the panel\'s size a
     const dl = cad('list', 'frame/door');
     assert.match(dl, /2 ×\s+M4x40 cap/); assert.match(dl, /2 ×\s+M4 lock nut/); assert.match(dl, /1 ×\s+10 x 3 mm disc magnet/); assert.match(dl, /acrylic sheet, 3 mm cut 377\.9 x 286 mm/);
     // with its turn-button latch shut over the door, the sweep finds the door can't open: it lifts into the tab within
-    // its first degree (the sweep's steps must be finer than that to see it)
+    // its first degree, so the sweep also tries it 0.5° off shut, finer than its 5° steps (which jump past the tab)
+    write('door', { door: { hinge: 'z1', latch: true } });
+    assert.match(cad('check', 'frame/door', '--sweep', '--steps', '24'), /✗ sweep door-hinge, 0 to 120° in 24 steps \(door-latch shut over door: also tried 0\.5° off shut\): at 0\.5°: door\.body hits door-latch\.body/);
     write('door', { door: { hinge: 'z1', latch: true, open: 4 } });
-    assert.match(cad('check', 'frame/door', '--sweep', '--steps', '8'), /sweep door-hinge, 0 to 4° in 8 steps: 0\.5 to 1°: door\.body hits door-latch\.body/);
+    assert.match(cad('check', 'frame/door', '--sweep', '--steps', '8'), /sweep door-hinge, 0 to 4° in 8 steps \(door-latch shut over door: also tried 0\.5° off shut\): 0\.5 to 1°: door\.body hits door-latch\.body/);
     // refused by name
     write('door', { door: { hinge: 'y9' } });
     assert.match(cad('check', 'frame/door'), /door\.hinge is the beam of the bay its hinges go on, one of x1, z2, x2, z1 \(got "y9"\)/);
