@@ -991,7 +991,7 @@ test('a door\'s hinge swings the door out and away from the frame; its handle, l
   assert.ok(low >= h.standoff - 1e-9, `the door comes down to ${low} mm`);
   await prints(hinge(h), 'the frame leaf as it lies'); await prints(hinge(h, { part: 'door' }), 'the door leaf face down');
   const leaf = jscad.measurements.measureBoundingBox(hinge(h, { part: 'door', pose: 'fit' }));
-  assert.ok(leaf[0][2] >= za - h.radius - 1e-6 && leaf[0][2] > h.leaf, 'the door\'s knuckle clears the frame\'s leaf');
+  assert.ok(leaf[0][2] >= za - h.radius - 1e-3 && leaf[0][2] > h.leaf, 'the door\'s knuckle clears the frame\'s leaf (its round drawn in flats)');
   const hd = handleModel({ sheet: 3 });
   assert.ok(hd.margin >= 2); assert.equal(coded(hd, 'fitting.screw')[0].level, 'pass'); await prints(handle(hd), 'a handle on its side');
   const l = latchModel('2020-misumi-hfs5', { sheet: 3, standoff: h.standoff });
