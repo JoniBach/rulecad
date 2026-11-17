@@ -99,6 +99,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
+                                     --jigs: the jigs its beams take, as a plate in exports/ (a drill guide per distinct hole across a beam, a tap
+                                     guide per tapped end, a cut-length stop per length, a squaring corner per square join), each marked with its beam [--preview]
   cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends, written to exports/ [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
@@ -141,7 +143,7 @@ const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'val
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
-  'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
+  'unit', 'rule', 'label', 'from', 'out', 'jigs', // cad set, cad rules, cad beams
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
   'kind', 'fitting']; // cad add join
@@ -153,7 +155,7 @@ const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join <project>/<assem
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -1053,6 +1055,21 @@ async function listCommand(what, ref) {
   if (what === 'list') {
     const { shoppingList, listText } = await import('../lib/list.mjs'), l = shoppingList(s);
     return console.log(opt('json') ? JSON.stringify(l, null, 2) : listText(ref, l));
+  }
+  if (what === 'beams' && opt('jigs')) {
+    const { writeJigs, jigsText } = await import('../lib/jigs.mjs'), r = await writeJigs(s), rel = (f) => path.relative(WS, f);
+    const shown = { ...r, plates: r.plates.map((p) => ({ ...p, file: rel(p.file) })) };
+    if (opt('preview') && r.parts.length) {
+      const out = paths.preview(s.project, `${s.name}-jigs.png`);
+      await preview(r.parts.flatMap((o) => o.parts.map((p) => ({ name: p.name, label: p.name, role: 'part', triangles: p.triangles }))), { title: `${s.a.title || s.name}: jigs`, meta: `${r.jigs.length} jigs on ${r.plates.length} plate${r.plates.length === 1 ? '' : 's'}`, out });
+      shown.preview = rel(out);
+    }
+    delete shown.parts;
+    process.exitCode = r.findings.some((f) => f.level === 'fail') ? 1 : 0;
+    if (opt('json')) return console.log(JSON.stringify(shown, null, 2));
+    console.log(jigsText(ref, shown));
+    if (shown.preview) say(shown.preview);
+    return;
   }
   if (what === 'beams') {
     const { writeBeamSheets } = await import('../lib/beams.mjs'), sheets = writeBeamSheets(s);
