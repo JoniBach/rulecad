@@ -705,12 +705,14 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   corners (the gusset join's bending added to each corner join's spring in the bay's plane), one diagonal brace (a
   bar of the bay's lightest beam's section, pinned at both corners), and a 3 mm acrylic panel. Each gives its
   stiffness and how many times the open frame's it is. Over the limit it warns, naming the cheapest change that
-  brings it under, in the order gussets, brace, panel, one bay before every bay (`frame.order`). Where bracing every
+  brings it under, in the order gussets, brace, panel, one bay before every bay (`frame.order`), and names it in
+  `refs.advise` (null where the frame stands within its limit). Where bracing every
   bay that way makes it ten times stiffer or more, the text calls the open stiffness low: the open bays hold the
   push by their joins' bending alone. A bay is four beams joined round a rectangle in one plane; its corners are the
   nodes where their axes cross.
-- A panel (not a door) on a bay of the frame is a shear web in the model: one diagonal bar across the bay, pinned at
-  both corners, as stiff along it as the sheet in shear in series with its clips' grip. The clips' grip
+- A panel (not a door) on a bay of the frame is a shear web in the model: one diagonal bar across the bay, free to bend
+  at both corners (a ball at one, pinned at the other, so it carries no twist and nothing in it spins free when the
+  modes split it into pieces), as stiff along it as the sheet in shear in series with its clips' grip. The clips' grip
   (`frame.clip`, 200 N/mm a clip) is an estimate, and `frame.solve` says so; the panel's weight goes to its bay's
   four corners.
 - `frame.frequency`: the lowest three modes in each pose, the worst named, with each beam's own mass and every
