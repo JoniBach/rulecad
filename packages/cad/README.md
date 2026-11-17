@@ -660,7 +660,9 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   to the rule the spring came from. That is the kind's figure in the workspace's `rules/joins.json` (part `joins`,
   made from `@rulecad/frames`' estimates the first time: `blind_bending`, `end_tap_twist` and the rest, for a 20 mm
   profile), a printed fitting's share of its own stiffness by finite elements (`bracket_printed_share`), or a bought
-  fitting's `bending_stiffness`. A drop no more than the beam bends by itself is refused. The joint rig in
+  fitting's `bending_stiffness`. Its sentence becomes what was measured, and the drop goes in its source. A drop no
+  more than the beam bends by itself is refused, and a refusal of any value writes nothing, not even the joins set's
+  first copy. The joint rig in
   `examples/bench/projects/benchmarks` (MEASURE.md, rows 34 to 37) is built for it, and also measures a slot nut's
   hold along its slot, written to the nut's own set as `hold_along`.
 - `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120 [--screw "M5 button"] [--fitting printed]`

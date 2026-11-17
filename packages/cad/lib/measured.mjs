@@ -12,7 +12,7 @@ import path from 'node:path';
 import { setAt } from './jsonedit.mjs';
 import { CadError } from './errors.mjs';
 import { paths, WS, RULE_DIRS, printerOf } from './workspace.mjs';
-import { loadRuleSet } from './rules.mjs';
+import { loadRuleSet, peekRuleSet } from './rules.mjs';
 import { buildAssembly, checkAssembly, assemblyPath } from './assembly.mjs';
 import { slotModel, JOIN_SET, joinRuleSet } from '@rulecad/frames';
 import { fixingsContext } from './design.mjs';
@@ -27,15 +27,17 @@ const keyOf = (x) => `${x.code}|${JSON.stringify(x.refs ?? {})}`;
 // A prediction's name, as cad measured takes it: the check's code, and the part or joint it's about if there are several
 export const predictionsOf = (findings) => findings.filter((x) => x.predict);
 
+// A rule's set, read and not written: its text as it starts (the workspace's copy, else the kit's, else for the joins
+// set @rulecad/frames' estimates), so nothing is written until every value has been checked
 function ruleFile(name) {
   const dot = name.indexOf('.');
   if (dot < 1) throw new CadError('measured.name', `"${name}": name a rule as <set>.<rule> (x1c.press), or a prediction by its check's code (task.accuracy)`);
   const set = name.slice(0, dot), rule = name.slice(dot + 1);
-  const file = path.join(WS, 'rules', `${set}.json`);
+  const file = path.join(WS, 'rules', `${set}.json`), from = RULE_DIRS.map((d) => path.join(d, `${set}.json`)).find((f) => fs.existsSync(f));
   // the joins set has no file in the kit: the workspace's copy starts from @rulecad/frames' estimates
-  if (set === JOIN_SET && !RULE_DIRS.some((d) => fs.existsSync(path.join(d, `${set}.json`)))) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(joinRuleSet(), null, 2) + '\n'); }
-  const data = loadRuleSet(set); // (copies the tool's set into the workspace, the first time: the measurement goes in your copy)
-  return { set, rule, data, file };
+  if (set === JOIN_SET && !from) { const text = JSON.stringify(joinRuleSet(), null, 2) + '\n'; return { set, rule, data: JSON.parse(text), file, text, copied: `started rules/${set}.json from @rulecad/frames' estimates: yours to keep and edit` }; }
+  const data = peekRuleSet(set); // (the measurement goes in your copy: the tool's set is copied there when it is written)
+  return { set, rule, data, file, text: fs.readFileSync(from, 'utf8'), copied: from === file ? null : `copied the ${set} rule set into rules/${set}.json: yours to keep and edit` };
 }
 
 // The slot coupon (examples/bench/projects/benchmarks/MEASURE.md, rows 29 to 33): the two fits it measures, which a
@@ -60,7 +62,17 @@ const RIG = 'the joint rig (examples/bench/projects/benchmarks/MEASURE.md)';
 function rigRule(set, key, data) {
   if (data.part === 'slot_nut' && key === 'hold_along') return { unit: 'N', predicted: null, was: 'no figure: no maker publishes it', source: `${RIG}, a luggage scale`,
     rule: `The pull along its slot at which this nut slips, its screw tightened as its maker says (or firmly by hand with a hex key where it says nothing): the reading on ${RIG}'s luggage scale as the nut moved` };
-  if (set === JOIN_SET || (data.part === 'fitting' && /_stiffness$/.test(key))) return { source: RIG };
+  // what a spring measured on the rig is, in place of the estimate's sentence ("a working guess ... until the joint rig
+  // measures it"); the drop it came from goes in its source
+  const how = `measured on ${RIG}: a beam held out by the join, the drop of its end under a hung mass less the beam's own bending (F L² / that)`;
+  const turn = (who) => ({ bending: `How stiffly ${who} holds the end of a beam against turning across its axis`, twist: `How stiffly ${who} holds the end of a beam against twisting about its own axis` });
+  if (set === JOIN_SET) {
+    const j = key.match(/^(.+)_(bending|twist|printed_share)$/), kind = j?.[1].replace(/_/g, '-');
+    if (!j) return { source: RIG };
+    return { source: RIG, measuredRule: j[2] === 'printed_share' ? `A ${kind} join with a printed fitting, as a share of the fitting's own bending stiffness by finite elements: the join's spring ${how}, over the fitting's figure`
+      : `${turn(`a ${kind} join`)[j[2]]}, for a 20 mm series profile: ${how}` };
+  }
+  if (data.part === 'fitting' && /_stiffness$/.test(key)) { const k = key.replace(/_stiffness$/, ''); return { source: RIG, ...(turn('this fitting')[k] ? { measuredRule: `${turn('this fitting')[k]}, its screws tight: ${how}` } : {}) }; }
   return null;
 }
 
@@ -113,15 +125,16 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
   const writes = [], slots = new Map(); // (every value is checked before any is written, so a refusal leaves the rule sets as they were)
   // a rule's new value, checked before anything is written (a refusal leaves the rule sets as they were)
   const writeRule = (k, value, { from = null, unit: u = unit } = {}) => {
-    const { set, rule: key, data, file } = ruleFile(k);
+    const { set, rule: key, data, file, text, copied } = ruleFile(k);
     const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? rigRule(set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
     if (known?.allowed && !known.allowed.includes(value)) throw new CadError('measured.value', `${k} is ${known.allowed.join(' or ')}: the flank forms the coupon prints (got ${value})`);
     if (!old && !rule && !known) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
     const had = old ?? known, prior = typeof had?.value === 'number' ? had.value : known?.predicted ?? null;
     if (u && had?.unit && u !== had.unit) throw new CadError('measured.unit', `${k} is in ${had.unit}, and this is in ${u}: give it in ${had.unit}`);
-    const entry = { value, unit: u ?? had?.unit ?? '', rule: (from ? null : rule) ?? had.rule, kind: 'measured', source: [source || known?.source || 'measured on the bench', from].filter(Boolean).join(': '), checked: date };
+    // its sentence: what was measured, never the estimate's "until it is measured": the one given, else the rig's, else the rule's own
+    const entry = { value, unit: u ?? had?.unit ?? '', rule: (from ? null : rule) ?? known?.measuredRule ?? had.rule, kind: 'measured', source: [source || known?.source || 'measured on the bench', from].filter(Boolean).join(': '), checked: date };
     if (data.part === 'slot') slots.set(set, { data, change: { ...slots.get(set)?.change, [key]: value } });
-    writes.push([file, key, entry]);
+    writes.push({ file, key, entry, text, copied, set });
     entries.push({ date, assembly: name, name: k, figure: entry.rule, unit: entry.unit, predicted: prior, was: old ? old.kind : known?.was ?? known?.kind ?? null, measured: value, ratio: prior ? value / prior : null, ...(source ? { source } : {}) });
   };
   for (const [k, value] of Object.entries(values)) {
@@ -143,7 +156,13 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
   }
   // a slot's figures together still make a slot (an opening narrower than its cavity, lips thinner than it is deep)
   for (const [set, { data, change }] of slots) { try { slotModel(data, change); } catch (e) { throw new CadError('measured.value', `${set}: ${e.message.replace(/^slotModel: /, '')}`); } }
-  for (const [file, key, entry] of writes) fs.writeFileSync(file, setAt(fs.readFileSync(file, 'utf8'), ['rules', key], entry));
+  // every value checked: now each set is written, the workspace's copy made from where it started where there is none
+  const texts = new Map();
+  for (const w of writes) texts.set(w.file, { ...w, text: setAt(texts.get(w.file)?.text ?? w.text, ['rules', w.key], w.entry) });
+  for (const [file, w] of texts) {
+    fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, w.text);
+    if (w.copied) console.error(w.copied);
+  }
   const after = await findingsOf(ref), was = new Map(before.map((x) => [keyOf(x), x])), moved = [];
   for (const x of after) {
     const y = was.get(keyOf(x));

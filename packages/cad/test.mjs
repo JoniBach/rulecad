@@ -2270,7 +2270,10 @@ test('cad measured from the joint rig: a drop read on the dial becomes the join\
     const fe = spring(before, 'c2.a').refs.rests[0].value, beamDrop = drop(before, 'c1').predict.rig.beam;
     // a drop no more than the beam bends by itself is refused, and nothing is written
     assert.match(cad('measured', 'home/rig', 'c1.drop=0.03'), /c1\.drop: 0\.03 mm is no more than the 0\.042 mm the beam bends by itself .*stiffer than solid metal/);
-    assert.ok(!fs.existsSync(path.join(ws, 'rules/joins.json')) || JSON.parse(fs.readFileSync(path.join(ws, 'rules/joins.json'), 'utf8')).rules.blind_bending.kind === 'estimate', 'nothing measured written');
+    assert.ok(!fs.existsSync(path.join(ws, 'rules/joins.json')), 'nothing written, not even the joins set\'s first copy');
+    // nor when a later value is refused: the good drop before it is not written either, nor any set copied for it
+    assert.match(cad('measured', 'home/rig', 'c1.drop=0.5', 'c3.drop=0.03'), /c3\.drop: 0\.03 mm is no more than/);
+    for (const n of ['joins', 'fitting-misumi-hmj5']) assert.ok(!fs.existsSync(path.join(ws, `rules/${n}.json`)), `${n}: nothing written on a refusal`);
     const out = cad('measured', 'home/rig', 'c1.drop=0.5', 'c2.drop=3', 'c3.drop=0.4', 'slot-nut-6-misumi-m5-slide-in.hold_along=420');
     assert.match(out, /c1\.drop: measured 0\.5 mm, predicted 0\.337/);
     assert.match(out, /slot-nut-6-misumi-m5-slide-in\.hold_along: measured 420 N/);
@@ -2285,6 +2288,12 @@ test('cad measured from the joint rig: a drop read on the dial becomes the join\
     assert.match(joins.blind_bending.source, /0\.5 mm drop of c1 under 19\.613 N at 150 mm .*less the beam's own 0\.042 mm/);
     assert.deepEqual([joins.blind_twist.kind, joins.end_tap_bending.kind, nut.hold_along.unit], ['estimate', 'estimate', 'N'], 'only what was measured');
     assert.match(nut.hold_along.rule, /slips/);
+    // each spring's sentence is what was measured, not the estimate's "until the joint rig measures it"
+    for (const r of [joins.blind_bending, joins.bracket_printed_share, anchor.bending_stiffness]) { assert.match(r.rule, /measured on the joint rig .*: a beam held out by the join, the drop of its end under a hung mass less the beam's own bending/); assert.doesNotMatch(r.rule, /guess|until the joint rig|estimate/); }
+    assert.match(joins.blind_bending.rule, /^How stiffly a blind join holds the end of a beam against turning across its axis, for a 20 mm series profile: measured/);
+    assert.match(joins.bracket_printed_share.rule, /^A bracket join with a printed fitting, as a share of the fitting's own bending stiffness by finite elements: the join's spring measured/);
+    assert.match(anchor.bending_stiffness.rule, /^How stiffly this fitting holds the end of a beam against turning across its axis, its screws tight: measured/);
+    assert.match(joins.blind_twist.source, /A working guess/, 'what was not measured stays the estimate it was');
     // the kit's own rule sets are untouched, and it has no joins set of its own
     assert.ok(!fs.existsSync(new URL('../rules/joins.json', import.meta.url)));
     assert.equal(JSON.parse(fs.readFileSync(new URL('../rules/fitting-misumi-hmj5.json', import.meta.url), 'utf8')).rules.bending_stiffness.kind, 'estimate');
@@ -2295,12 +2304,17 @@ test('cad measured from the joint rig: a drop read on the dial becomes the join\
     assert.match(spring(after, 'c2.a').text, new RegExp(`times the [\\d.]+ a printed bracket join keeps of it, measured on the joint rig on ${today}`));
     assert.match(spring(after, 'c3.a').text, new RegExp(`\\(measured: .*\\): bending measured on the joint rig on ${today}`));
     assert.match(drop(after, 'c1').text, /bending measured on the joint rig on/);
+    // the HMJ5's own finding read from the workspace's set: its bending measured, and when; its twist still the estimate
+    const { boughtFittingModel } = await import('@rulecad/frames');
+    const hmj = boughtFittingModel({ name: 'fitting-misumi-hmj5', part: 'fitting', rules: anchor }).findings.find((x) => x.code === 'fitting.stiffness');
+    assert.match(hmj.text, new RegExp(`in bending and 500000 in twist: bending measured on the joint rig on ${today} \\(.*0\\.4 mm drop of c3.*\\); twist an estimate: `), hmj.text);
     // the slot nut, read from the workspace's set, says its hold along the slot and that it was measured
     const { framesContext } = await import(pathToFileURL(path.join(path.dirname(BIN), '../lib/frames.mjs')).href);
     const { slotNutModel } = await import('@rulecad/frames');
     const m = slotNutModel('slot-nut-6-misumi-m5-slide-in', {}, { sets: framesContext(path.join(ws, 'rules')).sets });
     assert.deepEqual([m.holdAlong.value, m.holdAlong.kind], [420, 'measured']);
     assert.match(m.findings.find((x) => x.code === 'slot_nut.hold_along').text, new RegExp(`slips along the slot at 420 N: measured on ${today}`));
+    assert.doesNotMatch(m.findings.find((x) => x.code === 'slot_nut.hold_along').text, /estimate/, 'a measured hold is not called an estimate');
     assert.match(cad('history', 'home/rig'), /c1\.drop: measured 0\.5 mm, predicted 0\.337/);
   } finally { done(); }
 });

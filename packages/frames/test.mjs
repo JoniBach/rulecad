@@ -1125,6 +1125,12 @@ test('bought fittings: each set from its maker\'s sheet, what it mounts by, whet
     for (const k of ['bending_stiffness', 'twist_stiffness']) assert.match(set.rules[k].rule, /the same figure a join with "fitting": "bought" gets, so choosing this set changes no stiffness until the joint rig measures it/, `${m.set}.${k}`);
     assert.match(coded(m, 'fitting.stiffness')[0].text, /N mm\/rad in bending .*: an estimate: .*the same figure a join with "fitting": "bought" gets/, m.set);
   }
+  // measured on the joint rig, its bending says so and when, and its twist, still the guess, says it is an estimate
+  const hm = SETS['fitting-misumi-hmj5'], rig = { value: 1.9e6, unit: 'N mm/rad', rule: 'measured on the joint rig', kind: 'measured', source: 'the joint rig: 0.4 mm drop of c3', checked: '2026-12-01' };
+  const half = boughtFittingModel({ ...hm, rules: { ...hm.rules, bending_stiffness: rig } }), both = boughtFittingModel({ ...hm, rules: { ...hm.rules, bending_stiffness: rig, twist_stiffness: { ...rig, value: 4e5 } } });
+  assert.match(coded(half, 'fitting.stiffness')[0].text, /in bending and 500000 in twist: bending measured on the joint rig on 2026-12-01 \(the joint rig: 0\.4 mm drop of c3\); twist an estimate: .*working guess/);
+  assert.match(coded(both, 'fitting.stiffness')[0].text, /: bending measured on the joint rig on 2026-12-01 \(.*\); twist measured on the joint rig on 2026-12-01 \(.*\)$/);
+  assert.doesNotMatch(coded(both, 'fitting.stiffness')[0].text, /estimate|guess/);
   // the hinge: two M4 button screws through each leaf, the frame leaf's into b (anchors b1, b2), the door leaf's a1, a2
   const hg = boughtFittingModel('fitting-motedis-hinge-20');
   assert.deepEqual(hg.screws.map((q) => [q.leg, q.thread, q.head, q.nutKind, q.at, q.axis]), [['b', 'M4', 'button', 'hammer', [11.5, -7, 4.8], [0, 0, -1]], ['b', 'M4', 'button', 'hammer', [11.5, 7, 4.8], [0, 0, -1]], ['a', 'M4', 'button', 'hammer', [-11.5, -7, 4.8], [0, 0, -1]], ['a', 'M4', 'button', 'hammer', [-11.5, 7, 4.8], [0, 0, -1]]]);

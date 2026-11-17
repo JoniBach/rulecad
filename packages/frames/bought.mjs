@@ -92,7 +92,13 @@ export function boughtFittingModel(which, o = {}) {
   if (spec.fitting === 'anchor' && m.pocket) m.ops.push({ op: 'drill', side: 'a', distance: m.pocket.distance, diameter: m.pocket.diameter, through: 'wall', why: `${set.name}'s guide` });
   // what it costs, its stiffness and the maker's load, each saying what it rests on
   if (m.cost) m.findings.push(finding('info', `${set.name} costs ${m.cost.value} ${m.cost.unit} each (${m.cost.kind}): ${m.cost.rule}`, 'fitting.cost', { values: { cost: m.cost.value, unit: m.cost.unit } }));
-  if (m.stiffness) m.findings.push(finding('info', `${set.name} holds a beam's end at ${m.stiffness.bending} N mm/rad in bending${m.stiffness.twist != null ? ` and ${m.stiffness.twist} in twist` : ''}: ${m.stiffness.kind === 'measured' ? `measured on the joint rig${m.stiffness.measured.bending ? ` on ${m.stiffness.measured.bending}` : ''}` : `an ${m.stiffness.kind}: ${m.stiffness.rule} (issue 264)`} (${m.stiffness.source})`, 'fitting.stiffness', { values: { bending: m.stiffness.bending, twist: m.stiffness.twist }, refs: { kind_of_value: m.stiffness.kind } }));
+  if (m.stiffness) {
+    // each figure as it rests: measured on the rig (and when), or the estimate's own sentence; one measured leaves the other an estimate
+    const st = m.stiffness, tw = r.twist_stiffness, est = (f) => `an ${f.kind}: ${f.rule} (issue 264) (${f.source})`, meas = (f) => `measured on the joint rig${f.checked ? ` on ${f.checked}` : ''} (${f.source})`;
+    const says = st.kind === 'measured' ? `bending ${meas(r.bending_stiffness)}${tw ? `; twist ${tw.kind === 'measured' ? meas(tw) : `${est(tw)}`}` : ''}`
+      : tw?.kind === 'measured' ? `bending ${est(r.bending_stiffness)}; twist ${meas(tw)}` : est(r.bending_stiffness);
+    m.findings.push(finding('info', `${set.name} holds a beam's end at ${st.bending} N mm/rad in bending${st.twist != null ? ` and ${st.twist} in twist` : ''}: ${says}`, 'fitting.stiffness', { values: { bending: st.bending, twist: st.twist }, refs: { kind_of_value: st.kind, ...(tw ? { twist_kind: tw.kind } : {}) } }));
+  }
   if (m.allowable != null) m.findings.push(finding('info', `its maker allows ${m.allowable} N on it (${r.allowable_load.kind})`, 'fitting.load', { values: { allowable: m.allowable } }));
   if (o.profile != null) m.findings.push(...fits(m, o.profile, o.other ?? o.profile, given));
   return m;
