@@ -2938,7 +2938,7 @@ test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a c
     const r = JSON.parse(cad('beams', 'frame/box', '--jigs', '--json'));
     const of = (kind) => r.jigs.filter((x) => x.kind === kind);
     // from the assembly: one drill guide per distinct hole (10 and 30 mm from an end), one tap guide for every tapped
-    // end, a stop for each of the three lengths, one squaring corner for all sixteen joins
+    // end, a stop for each of the three lengths, and a squaring corner of each hand (right and left) for all sixteen joins
     assert.deepEqual(r.jigs.map((x) => [x.kind, x.name, x.mark]), [
       ['drill-guide', 'drill-guide-2020-misumi-hfs5-5.3-at-10', 'ABCD'], ['drill-guide', 'drill-guide-2020-misumi-hfs5-5.3-at-30', 'ABCD'],
       ['length-stop', 'length-stop-2020-misumi-hfs5-300', 'ABCD 300'], ['tap-guide', 'tap-guide-2020-misumi-hfs5-M5', 'EF'],
@@ -3505,7 +3505,7 @@ test('a table fastened to a guide\'s carriage by a fit, but placed where it stan
   } finally { done(); }
 });
 
-test('panels and ends as items by hand: an end cap and a foot at a beam\'s ends, a panel corner on a face, and an in-slot panel edge and a slot cover, whose share in the slot the overlap check leaves out', () => {
+test('panels and ends as items by hand: an end cap (its pegs left out of the overlap check) and a foot at a beam\'s ends, a panel corner on a face, and an in-slot panel edge and a slot cover, whose share in the slot the overlap check leaves out', () => {
   const { ws, cad, done } = workspace();
   try {
     const at = (f) => path.join(ws, 'projects/frame', f);
@@ -3516,6 +3516,8 @@ test('panels and ends as items by hand: an end cap and a foot at a beam\'s ends,
       { id: 'cap', fitting: { kind: 'end-cap', profile: P }, at: 'x1.a' }, { id: 'ft', fitting: { kind: 'foot', profile: P }, at: 'x1.b' },
       { id: 'pc', fitting: { kind: 'panel-corner', profile: P, sheet: 3 }, at: 'x1.top@100' },
       { id: 'pe', fitting: { kind: 'panel-edge', profile: P, sheet: 3, length: 100 }, at: 'x1.front@150' }, { id: 'sc', fitting: { kind: 'slot-cover', profile: P, length: 100 }, at: 'x1.back@20' }] }));
+    // nothing overlaps: the end cap's pegs stand in x1's slots and bore (fittings.mjs TONGUED: without it they overlap
+    // the beam's envelope), the edge and the cover lie in the slots, measured above the face alone
     const c = cad('check', 'frame/ends');
     assert.match(c, /✓ no parts overlap \(6 object instances\)/); assert.doesNotMatch(c, /^\s+✗ /m);
     assert.match(c, /cap: it weighs [\d.]+ g of pla/); assert.match(c, /ft: M5x16 cap into the end's tapped bore/); assert.match(c, /pe: printed in-slot edge for a 3 mm sheet/);
