@@ -161,11 +161,16 @@ export function frameModelOf(s, helpers) {
   // a mount's station on its beam at a set of joint values: a slide along the beam moves it
   const mountStation = (mt, values) => { const j = mt.joint, z = j.a[11], v = j.type === 'prismatic' ? (values[j.id]?.[0] ?? 0) : 0; return Math.max(0, Math.min(mt.beam.L, z + v * j.a[10])); };
 
-  // the poses: as drawn, each named pose, and each moving joint mounted on a beam at either end of its travel
+  // the poses: as drawn, each named pose, and each moving joint mounted on a beam at either end of its travel (a slide in
+  // its middle too)
   const cases = [{ label: 'as drawn', values: base }];
   for (const p of Object.keys(motion.poses || {})) cases.push({ label: `pose ${p}`, values: jointValues(motion, p) });
   const movers = motion.joints.filter((j) => moving(j) && beams.has(ids[j.parent]) && j.dofs?.length === 1);
-  for (const j of movers) for (const v of j.dofs[0].slice(0, 2)) cases.push({ label: `${j.id} at ${n3(v, 1)}`, values: { ...base, [j.id]: [v] } });
+  // (a slide also at the middle of its travel, where a carriage between two supports bends its beam most, unless drawn there)
+  for (const j of movers) {
+    const [lo, hi] = j.dofs[0], mid = (lo + hi) / 2, drawn = base[j.id]?.[0];
+    for (const v of [lo, hi, ...(j.type === 'prismatic' && !(drawn != null && Math.abs(drawn - mid) < 1e-6) ? [mid] : [])]) cases.push({ label: `${j.id} at ${n3(v, 1)}`, values: { ...base, [j.id]: [v] } });
+  }
 
   // what weighs on the frame: items (beams' own weight is the elements'), and the masses of "loads"
   const masses = massesOf(s, { placeItems, jointValues }), carried = [], loose = [], unknown = [];
@@ -192,7 +197,7 @@ export function frameModelOf(s, helpers) {
   const loads = [];
   (motion.loads || []).forEach((l, i) => {
     if (l.mass == null) return;
-    const where = s.a.loads?.[i]?.at ?? ids[l.item], point = [l.frame[3], l.frame[7], l.frame[11]];
+    const said = s.a.loads?.[i]?.at, where = typeof said === 'string' ? said : said?.item ? `${said.item}${said.at ? ` at (${said.at.map((x) => n3(s.num(x), 1)).join(', ')})` : ''}` : ids[l.item], point = [l.frame[3], l.frame[7], l.frame[11]];
     if (beams.has(ids[l.item])) { const b = beams.get(ids[l.item]); loads.push({ index: i, kg: l.mass, where, item: l.item, point, beam: b, z: snap(b, Math.max(0, Math.min(b.L, point[2]))), note: l.note }); return; }
     const mt = mountOf(l.item);
     if (!mt) { loose.push(`load ${i + 1} (${where})`); return; }
@@ -371,6 +376,8 @@ export function frameChecks(s, f, helpers) {
   for (const g of fm.guides) {
     const w = worst((r) => sagAlong(r, g.beam, g.from, g.to, down)), own = g.tolerance ? { value: g.tolerance.value, from: `the rail's own parallelism over its length (${g.tolerance.note ?? g.tolerance.term})` } : null;
     report(`${g.beam.id} under guide ${g.id}, between ${n3(g.from, 1)} and ${n3(g.to, 1)} mm`, `${g.id}`, g.beam, w, own, null, add(g.beam.A, scale(g.beam.u, w.z)));
+    // kept for the error budget: the task's terms take the beam's sag along the guide from here (lib/task.mjs terms)
+    (s.frameGuideSag ??= new Map()).set(g.id, { sag: r3(w.sag), rigid: r3(w.rigid), pose: w.case.label, restsOn, beam: g.beam.id });
   }
 
   // ---- frame.stress: the worst in each beam against its alloy; the moment at each join against its fitting ----

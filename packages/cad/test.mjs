@@ -3867,6 +3867,50 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
   } finally { done(); }
 });
 
+test('the frame in a machine\'s error budget: an axis on a beam carries the beam\'s sag, solved with the frame, its straightness and its twist into task.accuracy as named terms', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/slide', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'slide', material: 'PLA', objects: [] }));
+    // a 600 mm 2020 beam 300 mm up, held fixed at both ends, an MGN12 rail 500 mm long on its top with an MGN12H
+    // carriage carrying 2 kg; the task: the carriage's top along x, 0.4 mm either side of 4 mm allowed
+    const a = { title: 'Axis', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 300], to: [600, 0, 300] }],
+      guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12H', on: 'x1.top', from: 50, length: 500 }], loads: [{ mass: 2, at: { item: 'g1-carriage-1', at: [0, 0, 13] } }],
+      frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' } }, task: { tool: 'g1-carriage-1.top', volume: { x: [100, 500], y: [0, 0], z: [323, 323] }, accuracy: 4 } };
+    const { frame, ...loose } = a;
+    fs.writeFileSync(at('assemblies/axis.json'), JSON.stringify(a)); fs.writeFileSync(at('assemblies/held.json'), JSON.stringify(loose));
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('slide/${name}');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^(task\\.accuracy|frame\\.deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const r = probe('axis'), acc = r.find((x) => x.code === 'task.accuracy'), guide = r.find((x) => x.code === 'frame.deflection' && x.refs.where === 'g1'), load = r.find((x) => x.code === 'frame.deflection' && x.refs.where !== 'g1');
+    const term = (f, name) => f.values.terms.find((x) => x.term === name);
+    // the beam's sag is a named term, the frame's own figure along the rail, at the slide's middle (227.1 of its 454.2 mm
+    // travel puts the carriage at x = 300, mid-span), where the frame checks solved it worst
+    assert.equal(guide.refs.pose, 'g1-1 at 227.1');
+    assert.deepEqual([term(acc, 'beam sag').mm, term(acc, 'beam sag').kind], [guide.values.sag, 'derived']);
+    assert.match(term(acc, 'beam sag').note, /^x1 under g1, solved with the frame, g1-1 at 227\.1: [\d.]+ mm with its joins rigid$/);
+    // the 2 kg's own share, by hand: a beam fixed at both ends with a load P at its middle sags P L³ / (192 E I)
+    // (Roark, table 8.1, case 1d): 2 × 9.80665 × 600³ / (192 × 69972 × 7420) = 19.6133 × 2.16e8 / 9.9683e10 = 0.0425 mm
+    assert.ok(Math.abs(load.values.alone - 0.0425) < 0.001, `${load.values.alone}`);
+    // twist: 3.33° a metre (the profile's JIS figure) over the 500 mm rail is 1.665°, turning the carriage about x1's axis;
+    // its top is 23 mm from that axis (10 to the beam's face, 13 to the carriage's top): 1.665 × π / 180 × 23 = 0.6684 mm
+    assert.deepEqual([term(acc, 'beam twist').mm, term(acc, 'beam twist').kind], [0.6684, 'spec']);
+    // straightness from the rail's own terms (4.33 mm a metre over 500 mm), and the worst case is every term summed
+    assert.equal(term(acc, 'beam straightness').mm, 2.165);
+    assert.ok(Math.abs(acc.values.worst - acc.values.terms.reduce((t, x) => t + x.mm, 0)) < 1e-9);
+    assert.deepEqual(acc.values.terms.map((x) => x.term), ['rail parallelism', 'carriage play', 'beam straightness', 'beam sag', 'beam twist']);
+    assert.match(acc.text, /Biggest: g1-1's beam straightness, 2\.165 mm\./); // (mm on a slide, not degrees)
+    // with no frame to solve (no joins, no frame key) the rail's own estimate stands: pinned ends, its own and the
+    // carriage's weight only (railTerms), so it neither knows the 2 kg nor how the beam is held
+    const held = probe('held'), hacc = held.find((x) => x.code === 'task.accuracy');
+    assert.equal(held.filter((x) => x.code === 'frame.deflection').length, 0);
+    assert.equal(term(hacc, 'beam sag').kind, 'estimate'); assert.match(term(hacc, 'beam sag').note, /pinned at its ends/); assert.notEqual(term(hacc, 'beam sag').mm, guide.values.sag);
+  } finally { done(); }
+});
+
 test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s rules, rolls its travel in a sweep clear of the beam, and the same guide on a plain T-slot is refused with why; a printed slider slides its stretch', () => {
   const { ws, cad, done } = workspace();
   try {

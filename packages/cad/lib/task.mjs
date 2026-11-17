@@ -7,6 +7,7 @@ import { chainFromMotion, reach, sheetFrame, sheetPoint, jacobian, fk } from '@r
 import { evaluate, peekRuleSet } from './rules.mjs';
 import { paths } from './workspace.mjs';
 import { trainFrom, workingSpeed } from './motors.mjs';
+import { placeItems } from '@rulecad/model-link';
 
 const n3 = (x, d = 2) => String(Number(x.toFixed(d)));
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -128,8 +129,44 @@ export function terms(s, c) {
     const belt = motion.joints.find((x) => x.id === id)?.slide?.stretch; if (belt) out.push({ term: 'belt stretch', value: (belt.load * belt.length) / (belt.k * belt.width), kind: 'estimate', note: `${belt.load} N over ${belt.length} mm` });
     for (const [term, expr] of Object.entries(spec?.errors ?? {})) out.push({ term, value: s.num(expr), kind: kindOf(expr), expr });
     for (const x of spec?._guide?.terms ?? []) out.push({ term: x.term, value: x.value, kind: x.kind, note: x.note }); // (a guide's rail: mm along its travel, from its rule sets and the beam's)
+    if (spec?._guide?.id) { const fr = frameTerms(s, spec._guide); return { joint: id, terms: [...out.filter((x) => !fr.drop.includes(x.term)), ...fr.add], geared: t.stages.length > 0 }; }
     return { joint: id, terms: out, geared: t.stages.length > 0 };
   });
+}
+
+/**
+ * The frame's share of a guide's error, in mm at the tool: the beam it runs on sags under the frame's loads (solved with
+ * the frame where the frame checks ran, in place of the guide's own pinned-ends estimate), and is only as straight and
+ * untwisted as its profile is made. Twist turns the carriage about the beam's axis, so it moves the tool by the angle
+ * times the tool's distance from that axis. Rods and screws span between holders at their ends, so the beam's own form
+ * does not reach them. @returns {{ add: object[], drop: string[] }} terms to add, and the guide's own to drop
+ */
+export function frameTerms(s, g) {
+  const none = { add: [], drop: [] }, rec = (s.guides ?? []).find((x) => x.id === g.id);
+  if (!rec?.beam || ['rods', 'screw'].includes(rec.kind)) return none;
+  const o = s.objects.find((x) => x.id === rec.beam && x.beam), p = o?.beam?.profile, L = rec.length;
+  if (!p || !(L > 0)) return none;
+  const add = [], drop = [], have = new Set((g.terms ?? []).map((x) => x.term)), solved = s.frameGuideSag?.get(g.id);
+  if (solved) {
+    drop.push('beam sag');
+    add.push({ term: 'beam sag', value: solved.sag, kind: solved.restsOn === 'beams' ? 'derived' : solved.restsOn, note: `${rec.beam} under ${g.id}, solved with the frame${solved.pose ? `, ${solved.pose}` : ''}: ${n3(solved.rigid, 3)} mm with its joins rigid` });
+  }
+  const st = p.supply?.straightness;
+  if (st != null && !have.has('beam straightness')) add.push({ term: 'beam straightness', value: +((st * L) / 1000).toFixed(4), kind: p.figures?.straightness_per_metre?.kind ?? 'spec', note: `${p.name}, ${n3(st)} mm a metre over the guide's ${n3(L, 1)} mm` });
+  const tw = p.supply?.twist, W = s.task?.point && s.motion ? worldOf(s, rec.beam) : null, T = W ? worldOf(s, s.task.item) : null;
+  if (tw != null && W && T) {
+    const q = s.task.point, P = [0, 1, 2].map((r) => T[4 * r] * q[0] + T[4 * r + 1] * q[1] + T[4 * r + 2] * q[2] + T[4 * r + 3]); // (the tool, in the world, as drawn)
+    const O = [W[3], W[7], W[11]], d = [W[2], W[6], W[10]], v = P.map((x, k) => x - O[k]), along = dot(v, d), lever = Math.hypot(...v.map((x, k) => x - along * d[k]));
+    const deg = (tw * L) / 1000;
+    if (lever > 1e-6) add.push({ term: 'beam twist', value: +(((deg * Math.PI) / 180) * lever).toFixed(4), kind: p.figures?.twist_per_metre?.kind ?? 'spec', note: `${p.name}, ${n3(tw)}° a metre over the guide's ${n3(L, 1)} mm, ${n3(deg, 3)}°, at the tool ${n3(lever, 1)} mm from ${rec.beam}'s axis` });
+  }
+  return { add, drop };
+}
+// An item's world placement as drawn (row-major 4 × 4), or null
+function worldOf(s, id) {
+  const i = s.motion.items.findIndex((x) => x[0] === id);
+  if (i < 0) return null;
+  try { return placeItems(s.motion, s.jointValues)[i]; } catch { return null; }
 }
 function kindOf(expr) {
   const kinds = [...String(expr).matchAll(/([a-z][\w-]*)\.([a-z_]\w*)/gi)].map(([, set, rule]) => { try { return peekRuleSet(set).rules[rule]?.kind ?? 'estimate'; } catch { return 'estimate'; } });
@@ -156,7 +193,8 @@ function accuracyCheck(s, f, picture) {
   const t = s.task, code = 'task.accuracy'; if (t.accuracy == null) return null;
   const { list, at, worst } = accuracyOf(s); if (!worst) return null;
   const big = [...worst.e.parts].sort((a, b) => b.mm - a.mm)[0], soft = worst.e.parts.filter((p) => p.kind === 'estimate');
-  const name = (p) => `${p.joint ? `${p.joint}'s ` : ''}${p.term}${p.angle != null ? ` (${n3(p.angle, 3)}°)` : ''}`;
+  const slides = new Set(s.motion.joints.filter((j) => j.type === 'prismatic').map((j) => j.id)); // (a sliding joint's terms are mm already)
+  const name = (p) => `${p.joint ? `${p.joint}'s ` : ''}${p.term}${p.angle != null && !slides.has(p.joint) ? ` (${n3(p.angle, 3)}°)` : ''}`;
   const unmeasured = list.filter((j) => j.geared && !j.terms.some((x) => /play|backlash/.test(x.term))).map((j) => j.joint);
   const predict = { name: code, figure: `${t.tool} error at its worst point`, value: worst.e.worst, unit: 'mm' };
   const margin = worst.e.worst / t.accuracy, level = margin > 1 ? 'fail' : margin > 0.8 ? 'warn' : 'pass';
