@@ -525,8 +525,9 @@ in `.cache/fitting`). Each fitting's findings, in the kit's one shape: `fitting.
 `fitting.printable` and `fitting.mass`.
 
 A bracket's frame: x along b's face away from a, y up a, z across, the corner line on the slots' centre. It prints
-laid on its side: the whole L is its first layer, its screw holes are teardrops, and each tongue's lower side leans
-45°. A braced bracket fills its inside corner with a web two thicknesses along each leg, with a teardrop pocket
+laid on its side: the whole L is its first layer, its screw holes are teardrops with their points cut flat just over
+the round (a bridge of about 0.8 of the hole's radius), so a head's seat is whole out to its edge, and each tongue's
+lower side leans 45°. A braced bracket fills its inside corner with a web two thicknesses along each leg, with a teardrop pocket
 round each head through it for the head and the key, so its screws stand where an unbraced one's do. A plate's frame:
 x along b, y along a, its contact face at z = 0. It prints contact face up, its tongues on top, its holes upright.
 The inside corners are rounded: a bracket's by its thickness, a gusset's by half its arm's width.

@@ -2963,6 +2963,13 @@ test('printed fittings: a bracket join with "fitting": "printed" adds a printed 
     const braced = probe();
     assert.equal(braced.fitting.name, 'bracket-2020-misumi-hfs5-m5-braced'); assert.ok(braced.fitting.bending > 1.5 * r.fitting.bending, `${braced.fitting.bending} against ${r.fitting.bending}`);
     assert.deepEqual(braced.findings.filter((x) => x.level === 'fail').map((x) => x.text), []);
+    // the same join on 4040: the same generator, M8 into roll-in nuts; each head's seat whole out to its 13 mm (the
+    // hole under it is round to its top, its roof cut flat), every check passing
+    write({ ...a, items: [{ id: 'x1', beam: { profile: '4040-item-8' }, from: [0, 0, 0], to: [300, 0, 0] }, { id: 'y1', beam: { profile: '4040-item-8' }, from: [100, 0, 20], to: [100, 0, 220] }], joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.top@100', fitting: 'printed' }] });
+    const big = probe();
+    assert.deepEqual([big.fitting.name, big.hardware.map((h) => h[2])], ['bracket-4040-item-8-m8', ['M8x20 cap', 'slot-nut-8-i-motedis-m8-roll-in', 'M8x20 cap', 'slot-nut-8-i-motedis-m8-roll-in']]);
+    assert.deepEqual(big.findings.filter((x) => x.level === 'fail').map((x) => x.text), []);
+    assert.deepEqual(big.findings.filter((x) => x.code === 'fasten.seat').map((x) => x.level), ['pass', 'pass']);
     // a bought bracket still waits for its release, and says the printed one is there
     write({ ...a, joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.top@100', fitting: 'bought' }] });
     r = probe();

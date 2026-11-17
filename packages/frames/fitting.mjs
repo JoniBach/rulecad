@@ -18,7 +18,7 @@ import petg from '@rulecad/rules/petg.json' with { type: 'json' };
 import { profileModel } from './profile.mjs';
 import { nutFor, NUT_KINDS } from './slotnut.mjs';
 
-const { polygon, cuboid } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { subtract, union } = jscad.booleans;
+const { polygon, cuboid } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { subtract, union, intersect } = jscad.booleans;
 const { translate, transform } = jscad.transforms, { generalize } = jscad.modifiers, { measureVolume } = jscad.measurements;
 const CHECKED = '2026-11-17';
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
@@ -377,12 +377,16 @@ function bracketSolid(m, pr, tongues = true, ops = null) {
   if (tongues && tb.depth > 0) for (const [p, q] of pieces(root, L - root, [s], gap)) parts.push(prism(tongueLoop(c - tb.width / 2, c + tb.width / 2, tb.depth, true, root).map(([n, a]) => [-n, a]), q - p, 'yzx', [p, 0, 0]));
   // the upright's under x = 0, along y: its loop in (z, x) as (a, -n), extruded along y (turn zxy)
   if (tongues && ta.depth > 0) for (const [p, q] of pieces(root, L - root, [s], gap)) parts.push(prism(tongueLoop(c - ta.width / 2, c + ta.width / 2, ta.depth, true, root).map(([n, a]) => [a, -n]), q - p, 'zxy', [0, p, 0]));
-  const fx = { printer: pr }, h = m.braceSize, deep = (d) => t + d + 2;
-  // through each leg a teardrop hole; braced, a teardrop pocket for the head and the key through the brace, and the hole on
-  const holes = m.brace
-    ? [counterbore(m.thread, { head: m.head, depth: h + 1, diameter: 2 * m.pocket, length: h + 1 + deep(tb.depth), into: '-y', at: [s, t + h + 1, c], ...fx }),
-      counterbore(m.thread, { head: m.head, depth: h + 1, diameter: 2 * m.pocket, length: h + 1 + deep(ta.depth), into: '-x', at: [t + h + 1, s, c], ...fx })]
-    : [hole(m.thread, { kind: 'clearance', into: '-y', depth: deep(tb.depth), at: [s, t + 1, c], ...fx }), hole(m.thread, { kind: 'clearance', into: '-x', depth: deep(ta.depth), at: [t + 1, s, c], ...fx })];
+  const fx = { printer: pr }, h = m.braceSize, deep = (d) => t + d + 2, r = m.hole / 2;
+  // through each leg a teardrop hole, its roof cut flat a fiftieth over the round (a bridge of 0.8 of its radius, which
+  // the printer spans), so the head's seat is whole out to the head's edge; braced, a teardrop pocket for the head and
+  // the key through the brace above it
+  const flat = (g) => intersect(g, cuboid({ size: [4 * L, 4 * L, c + 1.02 * r + 1], center: [L / 2, L / 2, (c + 1.02 * r - 1) / 2] }));
+  const holes = [flat(hole(m.thread, { kind: 'clearance', into: '-y', depth: deep(tb.depth), at: [s, t + 1, c], ...fx })), flat(hole(m.thread, { kind: 'clearance', into: '-x', depth: deep(ta.depth), at: [t + 1, s, c], ...fx }))];
+  // (each pocket kept above its leg's face, so the round-topped hole alone passes the leg under the head)
+  const above = (g, k) => intersect(g, cuboid({ size: [4 * L, 4 * L, 4 * L], center: k === 'y' ? [L / 2, t + 2 * L, c] : [t + 2 * L, L / 2, c] }));
+  if (m.brace) holes.push(above(counterbore(m.thread, { head: m.head, depth: h + 1, diameter: 2 * m.pocket, length: h + 1 + deep(tb.depth), into: '-y', at: [s, t + h + 1, c], ...fx }), 'y'),
+    above(counterbore(m.thread, { head: m.head, depth: h + 1, diameter: 2 * m.pocket, length: h + 1 + deep(ta.depth), into: '-x', at: [t + h + 1, s, c], ...fx }), 'x'));
   return combine(parts, holes, ops);
 }
 
