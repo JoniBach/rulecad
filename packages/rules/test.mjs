@@ -353,3 +353,22 @@ test('miniature rails: MGN7 to MGN15 from HIWIN\'s catalogue, a long carriage as
   const m12 = sets.find((x) => x.name === 'rail-mgn12').set.rules;
   assert.deepEqual([m12.static_rating.value, m12.moment_roll.value, m12.moment_pitch.value, m12.moment_yaw.value], [3920, 25.48, 13.72, 13.72]);
 });
+
+test('V-wheels and eccentric spacers: OpenBuilds\' solid and mini wheels read off its drawings, each naming its bearing and its eccentric', () => {
+  const wheels = sets.filter((s) => s.set.part === 'wheel').map((s) => s.name).sort();
+  assert.deepEqual(wheels, ['v-wheel-mini', 'v-wheel-solid']);
+  const figures = { 'v-wheel-solid': [23.9, 10.2, 5.9, 'bearing-625', 'eccentric-6-openbuilds', 39.7], 'v-wheel-mini': [15.23, 8.8, 5.78, 'bearing-mr105', 'eccentric-mini-6-openbuilds', 31.9] };
+  for (const name of wheels) {
+    const R = sets.find((x) => x.name === name).set.rules, bearing = sets.find((x) => x.name === R.wheel_bearing.value)?.set, ecc = sets.find((x) => x.name === R.wheel_eccentric.value)?.set;
+    assert.deepEqual([R.wheel_diameter.value, R.wheel_width.value, R.wheel_flat.value, R.wheel_bearing.value, R.wheel_eccentric.value, R.wheel_plate_across.value], figures[name], name);
+    assert.ok(bearing?.part === 'bearing' && ecc?.part === 'eccentric', `${name}: its bearing and eccentric are sets of their own`);
+    // its bearings fit the wheel: their outside in its seats, their bores on its M5 screw, two of them and the lip no wider than the wheel by more than a race
+    assert.equal(bearing.rules.bore.value, 5); assert.ok(2 * R.wheel_seat_depth.value + R.wheel_lip.value <= R.wheel_width.value + 1e-9);
+    assert.ok(2 * bearing.rules.width.value + R.wheel_lip.value - R.wheel_width.value < 1, `${name}: its bearings stand less than 0.5 mm proud of each face`);
+    assert.ok(R.wheel_flat.value < R.wheel_width.value && R.wheel_angle.value === 90);
+    assert.deepEqual([ecc.rules.eccentric_offset.value, ecc.rules.eccentric_height.value, ecc.rules.eccentric_bore.value], [0.79, 6, 5]);
+    assert.ok(ecc.rules.eccentric_rim_diameter.value < ecc.rules.eccentric_hole.value, `${ecc.name}: its rim turns in the plate's hole`);
+    // the plastic's figures say what they rest on
+    assert.deepEqual([R.wheel_modulus.kind, R.wheel_contact_stress.kind, R.wheel_poisson.kind], ['community', 'community', 'estimate']);
+  }
+});
