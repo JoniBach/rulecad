@@ -11,8 +11,9 @@
 // connectors, hinges, end caps, levelling feet), which a join or a mount chooses by name in place of a printed one,
 // with their price and their stiffness, an estimate until the joint rig measures it; and guides: a miniature rail on a
 // slotted face (its holes at its pitch, its screws into slot nuts, each carriage's travel, its carriages' loads against
-// their ratings, its terms in an error budget) and a printed jig that centres it. Wheels, rods and sliders follow: the
-// plan is https://github.com/JoniBach/rulecad/issues/240.
+// their ratings, its terms in an error budget) and a printed jig that centres it; a carriage on V-wheels in a V-slot's
+// tracks (a printed plate, the wheels' seats from the track, their eccentrics' preload, each wheel's load against its
+// rating) and a printed slider in or over a slot. Rods follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
 //
 // Every profile, slot family, slot nut, bought fitting and rail is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the
@@ -31,4 +32,5 @@ export { SHEETS, PANEL_DEFAULTS, panelModel, panel, panelClipModel, panelClip, p
 export { DOOR_DEFAULTS, hingeModel, hinge, handleModel, handle, latchModel, latch, magnetCatchModel, magnetCatch } from './door.mjs';
 export { SERVICE_DEFAULTS, FANS, DIN_RAIL, deviceMountModel, deviceMount, fanMountModel, fanMount, dragChainEndModel, dragChainEnd, dinRailAdapterModel, dinRailAdapter, cableClipModel, cableClip, runClips, tieAnchorModel, tieAnchor, spoolHolderModel, spoolHolder } from './services.mjs';
 export { GUIDE_KINDS, GUIDE_DEFAULTS, rails, railModel, rail, carriage, carriageMargin, guideFit, railTerms, railJigModel, railJig } from './guide.mjs';
+export { WHEEL_DEFAULTS, wheels, trackFit, wheelsModel, wheelPlate, vWheel, wheelMargin, sliderModel, slider } from './wheels.mjs';
 export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';

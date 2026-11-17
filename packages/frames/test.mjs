@@ -23,8 +23,9 @@ test('the package: ready, typed, and needing only the rules it reads', () => {
   for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f} ships its declarations`); }
 });
 
-test('the catalogue holds every profile, slot family, slot nut, bought fitting and rail the rules package has, and what they name', () => {
-  const parts = published.filter((s) => ['profile', 'slot', 'slot_nut', 'fitting', 'rail'].includes(s.part));
+test('the catalogue holds every profile, slot family, slot nut, bought fitting, rail, V-wheel and eccentric the rules package has, and what they name', () => {
+  const parts = published.filter((s) => ['profile', 'slot', 'slot_nut', 'fitting', 'rail', 'wheel', 'eccentric'].includes(s.part));
+  for (const s of published.filter((x) => x.part === 'wheel')) for (const k of ['wheel_bearing', 'wheel_eccentric']) assert.deepEqual(SETS[s.rules[k].value], published.find((x) => x.name === s.rules[k].value), `${s.name}.${k} is in catalogue.mjs`);
   assert.deepEqual(frames.boughtFittings(), published.filter((s) => s.part === 'fitting').map((s) => s.name).sort());
   for (const s of published.filter((x) => x.part === 'fitting' && x.rules.slot)) assert.equal(SETS[s.rules.slot.value]?.part, 'slot', `${s.name}.slot names a slot family`);
   assert.ok(parts.length >= 12);
