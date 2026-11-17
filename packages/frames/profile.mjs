@@ -68,7 +68,7 @@ export const slotNuts = () => ofPart('slot_nut');
  * @typedef {{ loops: number[][][], source: string, licence: string, name?: string }} MeasuredOutline
  * @typedef {{ kind: 'profile', name: string, family: string, series: number, cells: [number, number], absent: [number, number][], pitch: [number, number],
  *   title: string, width: number, height: number, cornerRadius: number, wall: number, figures: Record<string, Figure>,
- *   faces: Record<'top' | 'bottom' | 'front' | 'back', FaceSlot[]>, slots: Record<string, Slot>, bores: Bore[], chambers: Chamber[], hollows: Hollow[],
+ *   faces: Record<'top' | 'bottom' | 'front' | 'back', FaceSlot[]>, slots: Record<string, Slot>, bores: Bore[], end: { thread: string, at: [number, number] } | null, chambers: Chamber[], hollows: Hollow[],
  *   sheet: { area: number | null, inertiaX: number | null, inertiaY: number | null, modulusX: number | null, modulusY: number | null, torsion: number | null, massPerMetre: number | null },
  *   material: { name: string, alloy: string | null, density: number | null, modulus: number | null, poisson: number | null, strength: number | null, figures: Record<string, Figure> } | null,
  *   supply: { lengths: number[], cutMin: number | null, cutMax: number | null, cutTolerance: number | null, straightness: number | null, twist: number | null },
@@ -242,6 +242,14 @@ export function profileModel(which, change = {}, given = {}) {
       : at.split(';').map((p) => p.split(',').map((x) => Number(x.trim())));
     for (const c of centres) { if (!(c.length === 2 && c.every(isNum))) throw new Error(`${what}: ${name}: bore_at is cells, none, or x,y pairs with semicolons between: -10,0; 10,0 (got ${shown(at)})`); bores.push({ at: c, diameter: boreD, ...thread('bore_thread'), where: at === 'cells' ? 'cell' : 'given' }); }
   }
+  // ---- a printed end's fixing: the thread its insert or captive nut takes, and where it sits ----
+  let end = null;
+  if (figures.end_thread || figures.end_at) {
+    const et = v('end_thread'), ea = String(v('end_at', '0,0')).split(',').map((x) => Number(x.trim()));
+    if (!threadSet(et, find)) throw new Error(`${what}: ${name}: end_thread is a thread its rule sets know, as M4 (got ${shown(et)})`);
+    if (!(ea.length === 2 && ea.every(isNum) && Math.abs(ea[0]) < width / 2 && Math.abs(ea[1]) < height / 2)) throw new Error(`${what}: ${name}: end_at is x,y inside the section, from its middle: 0,-3.9 (got ${shown(v('end_at'))})`);
+    end = { thread: String(et), at: ea };
+  }
   const cornerD = num('corner_bore_diameter', 0);
   if (cornerD > 0) { const inset = positive('corner_bore_inset'); for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) bores.push({ at: [a * (width / 2 - inset), b * (height / 2 - inset)], diameter: cornerD, ...thread('corner_bore_thread'), where: 'corner' }); }
   // ---- a closed square hollow in each corner, where the section has them ----
@@ -285,7 +293,7 @@ export function profileModel(which, change = {}, given = {}) {
   const fig = (x) => String(+x.toFixed(2)), size = round ? `Ø${fig(width)}` : `${fig(width)} x ${fig(height)}`, plain = { tube: 'tube', 'round-tube': 'round tube', angle: 'angle', channel: 'channel', bar: 'bar', 'round-bar': 'round bar' }[family];
   const title = plain ? `${size}${wall ? ` x ${fig(wall)}` : ''} ${plain}${figures.material ? `, ${v('material')}` : ''}` : `${size} ${family} (${name})`;
   const kinds = new Set([...Object.values(figures), ...Object.values(slotsUsed).flatMap((s) => Object.values(s.figures))].map((f) => f.kind));
-  return { kind: 'profile', name, title, family, series, cells, absent, pitch, width, height, cornerRadius, wall, figures, faces, slots: slotsUsed, bores, chambers, hollows, sheet, material, supply, measured, rests: [...kinds] };
+  return { kind: 'profile', name, title, family, series, cells, absent, pitch, width, height, cornerRadius, wall, figures, faces, slots: slotsUsed, bores, end, chambers, hollows, sheet, material, supply, measured, rests: [...kinds] };
 }
 
 // ---------- the outline ----------

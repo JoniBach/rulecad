@@ -98,7 +98,8 @@ export function slotNutModel(which, change = {}, given = {}) {
 
 /**
  * How a bought nut sits in a slot, as findings: does it go in, does it hold, does its tongue stand proud. fail where
- * it cannot be fitted at all.
+ * it cannot be fitted at all. Where a slot's lips slope underneath (lip_angle), the nut seats lower, on its top corners, and
+ * the room under the lips is measured from there.
  * @param {SlotNut | string} nut @param {import('./profile.mjs').Slot | string} slot @param {{ sets?: object, load?: Function }} [given]
  * @returns {object[]} findings, code slot_nut.fit or slot_nut.entry
  */
@@ -106,10 +107,13 @@ export function nutFit(nut, slot, given = {}) {
   const n = typeof nut === 'string' || !nut?.kind ? slotNutModel(nut, {}, given) : nut, s = typeof slot === 'string' ? slotModel(slot, {}, given) : slot;
   if (n?.kind !== 'slot-nut') throw new Error(`nutFit: give a slot nut (slotNutModel), not ${shown(nut)}`);
   if (s?.kind !== 'slot') throw new Error(`nutFit: give a slot (slotModel), not ${shown(slot)}`);
-  const out = [], room = r3(s.cavityDepth - s.lip), turned = TURNED.includes(n.nutKind);
+  // where its top seats: under the lips at the opening, lower where their undersides slope (lip_angle) and the nut is wider than the opening
+  const seat = r3(s.lip + Math.max(0, (Math.min(n.width, s.cavityWidth) - s.opening) / 2) * Math.tan((s.lipAngle * Math.PI) / 180));
+  const out = [], room = r3(s.cavityDepth - seat), turned = TURNED.includes(n.nutKind);
   if (turned ? n.width > s.cavityWidth + 1e-9 : !(n.width < s.cavityWidth)) out.push(finding('fail', `it is ${n.width} mm across, and ${s.name} is ${s.cavityWidth} mm wide under its lips: it does not go in`, 'slot_nut.fit', { rule: 'width', values: { width: n.width, cavity_width: s.cavityWidth } }));
   if (!(n.width > s.opening)) out.push(finding('fail', `it is ${n.width} mm across and ${n.length} long, and ${s.name} opens ${s.opening} mm: it pulls straight out`, 'slot_nut.fit', { rule: 'width', values: { width: n.width, opening: s.opening } }));
   if (!(n.height <= room + 1e-9)) out.push(finding('fail', `it is ${n.height} mm tall, and ${s.name} has ${room} mm under its lips: it does not go in`, 'slot_nut.fit', { rule: 'height', values: { height: n.height, room } }));
+  if (seat > s.lip + 0.05) out.push(finding('info', `${s.name}'s lips slope underneath at ${s.lipAngle}°, so it seats ${mm(seat)} mm under the face, its top corners bearing on them rather than its whole top: the lips push apart as it is pulled`, 'slot_nut.seat', { rule: 'lip_angle', values: { seat, lip: s.lip, lip_angle: s.lipAngle } }));
   if (n.tongueWidth && n.tongueWidth > s.opening + 1e-9) out.push(finding('fail', `its tongue is ${n.tongueWidth} mm wide, and ${s.name} opens ${s.opening} mm: the tongue does not go up into it`, 'slot_nut.fit', { rule: 'tongue_width', values: { tongue_width: n.tongueWidth, opening: s.opening } }));
   else if (n.tongueWidth && n.tongueWidth > s.opening - 1e-9) out.push(finding('warn', `its tongue is ${n.tongueWidth} mm wide, as wide as ${s.name}'s opening: the figures leave it no play, so one of them is rounded (measure it)`, 'slot_nut.fit', { rule: 'tongue_width', values: { tongue_width: n.tongueWidth, opening: s.opening } }));
   if (n.tongueHeight > s.lip + 1e-9) out.push(finding('warn', `its tongue stands ${mm(n.tongueHeight - s.lip)} mm proud of the face (${n.tongueHeight} mm against ${s.name}'s ${s.lip} mm lip): what it clamps must clear it`, 'slot_nut.fit', { rule: 'tongue_height', values: { tongue_height: n.tongueHeight, lip: s.lip } }));

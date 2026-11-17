@@ -1,0 +1,70 @@
+{
+  "_doc": "The slot of the kit's printed 15 x 15 mm beam (profile-1515-printed): the slot-3-openbeam family's hex nuts (slot-nut-3-openbeam-m3-hex) go in it, and it prints lying down facing up with no support. The undersides of its lips slope at the printer's overhang angle, so its nuts bear on their top corners, not their whole top. Worked out from those nuts' sizes and the printer's rules by @rulecad/frames printedProfile; a printer with other rules gives other figures.",
+  "name": "slot-3-printed-1515",
+  "part": "slot",
+  "rules": {
+    "opening": {
+      "value": 3.3,
+      "unit": "mm",
+      "rule": "Between the lips: slot-3-openbeam's 3.2 mm or its nuts' widest tongue and a fit, whichever is wider, widened by the printer's hole compensation, since a printed gap comes out narrow",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-3-openbeam.opening, slot-nut-3-openbeam-m3-hex (tongue_width) and x1c.fit, x1c.hole_comp",
+      "checked": "2026-11-17"
+    },
+    "lip_thickness": {
+      "value": 1.6,
+      "unit": "mm",
+      "rule": "slot-3-openbeam's lip in whole layers, thicker where a nut's pull of 100 N needs it: its lips and side walls hold 883.3 N in pla, 8.83 times that pull (an estimate: one lip's spread each side of the nut)",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-3-openbeam.lip_thickness, x1c.layer, pla.strength and PRINTED_DEFAULTS pull, spread and margin",
+      "checked": "2026-11-17"
+    },
+    "lip_angle": {
+      "value": 45,
+      "unit": "deg",
+      "rule": "The undersides of the lips slope at the printer's overhang angle from the face, so they print over the cavity with no support when the beam lies down with its slot up",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from x1c.overhang",
+      "checked": "2026-11-17"
+    },
+    "cavity_width": {
+      "value": 5.76,
+      "unit": "mm",
+      "rule": "The widest of its nuts and a fit, the wall beside it 11 whole lines (4.62 mm), and narrower than the nut's corners so its flats cannot turn",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-nut-3-openbeam-m3-hex (width) and x1c.fit, x1c.line",
+      "checked": "2026-11-17"
+    },
+    "cavity_depth": {
+      "value": 5.7,
+      "unit": "mm",
+      "rule": "To the floor: the nut's corners bear on the sloping lips 2.7 mm under the face, then its height, a fit and the floor's chamfer",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-nut-3-openbeam-m3-hex (height) and x1c.fit, x1c.chamfer",
+      "checked": "2026-11-17"
+    },
+    "floor_width": {
+      "value": 4.96,
+      "unit": "mm",
+      "rule": "The floor less a chamfer at each side: no square inside corner where the wall meets the floor",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from x1c.chamfer",
+      "checked": "2026-11-17"
+    },
+    "flank_angle": {
+      "value": 45,
+      "unit": "deg",
+      "rule": "The floor's chamfers at 45 degrees",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from x1c.chamfer",
+      "checked": "2026-11-17"
+    },
+    "nut_family": {
+      "value": "slot-3-openbeam",
+      "rule": "It takes the nuts made for slot-3-openbeam: their sizes fit it (nutFit says so for each)",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-3-openbeam",
+      "checked": "2026-11-17"
+    }
+  }
+}

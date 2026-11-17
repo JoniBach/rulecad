@@ -652,7 +652,7 @@ test('slot nuts: every published nut fits the slot it is made for, weighs what i
   for (const name of names) {
     const n = slotNutModel(name), slot = slotModel(n.slot);
     assert.deepEqual(nutFit(n, slot).filter((f) => f.level === 'fail'), [], `${name} goes in ${n.slot}`);
-    assert.match(name, /^slot-nut-\d+(-[a-z0-9]+)*-m\d-(slide-in|drop-in|roll-in|hammer|square|t-bolt)$/);
+    assert.match(name, /^slot-nut-\d+(-[a-z0-9]+)*-m\d-(slide-in|drop-in|roll-in|hammer|square|t-bolt|hex)$/);
     assert.equal(name.split('-').slice(-2).join('-').replace(/^m\d-/, ''), n.nutKind); assert.equal(n.thread.toLowerCase(), name.match(/-(m\d)-/)[1]);
     assert.ok(n.hold && n.hold.value > 0 && n.hold.unit === 'N', `${name} says what it holds`);
     if (n.hold.kind !== 'spec') { assert.equal(n.hold.kind, 'estimate'); assert.match(n.hold.rule, /estimate until it is tested \(Frames 2\.13\)/); }
