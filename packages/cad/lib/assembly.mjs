@@ -51,6 +51,7 @@ import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
 import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
+import { expandPanels, panelBuilt, panelFindings } from './panels.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
@@ -112,6 +113,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   // Joins between beams (lib/joins.mjs): their operations go on the beams and their screws into fasten before anything is built
   let joins = [];
   if (a.joins != null) ({ a, joins } = expandJoins(a, num, undefined, plasticOf(project)));
+  // Panels (lib/panels.mjs): each placed on its bay, its clips or a door's hinges, handle and catch added with their fastens
+  let panels = [];
+  if ((a.items || []).some((it) => it?.panel)) ({ a, panels } = expandPanels(a, num, undefined, plasticOf(project)));
   const { translate, rotate, transform } = jscad.transforms, deg = Math.PI / 180;
 
   const items = [], parts = [], objects = [], fits = [], requires = [];
@@ -121,6 +125,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     if (it.motor) { const key = JSON.stringify(['motor', it.id, it.motor]); if (!built.has(key)) built.set(key, motorBuilt(it.motor, num, it.id)); return built.get(key); }
     if (it.beam) { const b = beamBuilt(it, num, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/beams.mjs)
     if (it.fitting) { const b = await fittingBuilt(it, it.id, framesContext(), plasticOf(project)); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/fittings.mjs)
+    if (it.panel) { const b = panelBuilt(it, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/panels.mjs)
     if (it.bought) {
       const key = JSON.stringify(['bought', it.id, it.bought, it.variant, it.set]);
       if (!built.has(key)) built.set(key, boughtSets().get(it.bought) === 'motor' ? motorBuilt({ model: it.bought }, num, it.id) : boughtBuilt(it.bought, it, num, it.id));
@@ -162,7 +167,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   let builtCount = 0;
   for (const it of a.items || []) {
     if (!/^[a-z][\w-]*$/.test(it.id || '')) throw new Error(`each item needs an id (letters, digits, - or _): got ${JSON.stringify(it.id)}`);
-    if ([it.object, it.assembly, it.motor, it.bought, it.beam, it.fitting].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly", "motor", "bought", "beam" or "fitting"`);
+    if ([it.object, it.assembly, it.motor, it.bought, it.beam, it.fitting, it.panel].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly", "motor", "bought", "beam", "fitting" or "panel"`);
     if (!it.beam && (it.to != null || it.roll != null)) throw new Error(`item ${it.id}: to and roll place a beam by its ends: place ${it.object || it.assembly || it.motor?.model || it.bought} with at and rotate`);
     // Copies: one, a grid from repeat x/y, or a layout's keys. Each: { id, offset (from at), extra (values to set) }
     const rx = it.repeat?.x, ry = it.repeat?.y, rl = it.repeat?.layout, copies = [];
@@ -228,7 +233,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       for (const n of sub.seen) seen.add(n);
       items.push({ ...it, id, sub, role: 'part' });
     } else {
-      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}) });
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}), ...(src.panel ? { panel: src.panel } : {}) });
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role, ...(src.beam ? { beam: src.beam } : {}) });
     }
   }
@@ -312,7 +317,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -943,6 +948,7 @@ export function checkAssembly(s) {
   boughtFindings(s, f);
   beamFindings(s, f);
   fittingFindings(s, f);
+  panelFindings(s, f);
   joinChecks(s, f);
   slotNutChecks(s, f);
   massFinding(s, f);

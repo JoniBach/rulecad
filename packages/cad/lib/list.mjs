@@ -41,8 +41,9 @@ export function shoppingList(s) {
   const mat = materialOf(s.project), printed = printedParts(s), bought = new Map(), fasteners = new Map();
   for (const o of s.objects) if (o.bought && !o.unplaced) {
     // (a beam by its profile and length: one line for each length cut, lib/beams.mjs)
-    const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}`;
-    const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, items: [] };
+    // (a panel by its sheet and size: lib/panels.mjs)
+    const len = o.bought.length != null ? Number(o.bought.length.toFixed(2)) : null, size = o.bought.size ?? null, key = `${o.bought.set}|${o.bought.variant ?? ''}|${len ?? ''}|${size ?? ''}`;
+    const line = bought.get(key) ?? { set: o.bought.set, variant: o.bought.variant, part: o.bought.part, ...(len != null ? { length: len } : {}), ...(size ? { size } : {}), qty: 0, grams: o.bought.mass != null ? o.bought.mass * 1000 : null, items: [] };
     line.qty++; line.items.push(o.id); bought.set(key, line);
   }
   // fasten.count: the hardware a fasten placed (a component's too), one part a piece; a motor's mounting screws; and a fit
@@ -53,6 +54,8 @@ export function shoppingList(s) {
     let grams = null; try { grams = screwModel(m.thread, { length: m.length, head: m.head, anyLength: true }).mass; } catch {}
     add(m.name, m.count, `${m.item} on ${m.other} (its mount, a fit that fastens)`, { kind: 'screw', thread: m.thread, length: m.length, head: m.head, grams });
   }
+  // what a printed fitting takes besides its screws: a hinge's pin and its nut, a catch's magnet and strike (lib/fittings.mjs)
+  for (const o of s.objects) if (o.fitting?.hardware && !o.unplaced) for (const h of o.fitting.hardware) add(h.name, h.count ?? 1, `${o.id} (${h.why ?? 'its fitting'})`, { kind: h.kind, thread: h.thread ?? null, length: h.length ?? null, head: h.head ?? null, grams: null });
   for (const x of s.fits) if (x.fastener && x.fasten == null) add(x.fastener, x.count != null ? x.num(x.count) : 1, x.note || `${x.a} / ${x.b}`);
   // Rounded up to whole packs (packs.pack), the spares said
   let pack = null; try { const r = loadRuleSet('packs').rules.pack; pack = { size: r.value, rule: 'packs.pack', kind: r.kind }; } catch {}
@@ -70,7 +73,7 @@ export function shoppingList(s) {
 export function listText(ref, l) {
   const out = [`${ref}: what it takes to build`];
   const row = (a) => out.push(a.join('  '));
-  if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', b.items.join(', ')]); }
+  if (l.bought.length) { out.push('', 'Bought'); for (const b of l.bought) row([`  ${String(b.qty).padStart(3)} ×`, `${b.set}${b.variant ? ` (${b.variant})` : ''}${b.length != null ? ` x ${b.length} mm` : ''}${b.size ? ` cut ${b.size[0]} x ${b.size[1]} mm` : ''}`, `a ${b.part}`, b.grams != null ? `${b.grams} g each` : 'mass not given', b.items.join(', ')]); }
   if (l.cut) { out.push('', `Cut list (kerf ${l.cut.rules.kerf.value} mm, trim ${l.cut.rules.trim.value} mm; a sheet for each mark: cad beams ${ref})`, ...cutListText(l.cut)); }
   if (l.fasteners.length) {
     out.push('', 'Fasteners');

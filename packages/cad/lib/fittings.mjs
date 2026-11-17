@@ -6,7 +6,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { bracketModel, bracket, plateModel, plate } from '@rulecad/frames';
+import * as frames from '@rulecad/frames';
+const { bracketModel, bracket, plateModel, plate } = frames;
 import { host } from './host.mjs';
 import { paths } from './workspace.mjs';
 import { named } from './parts.mjs';
@@ -14,6 +15,16 @@ import { givenFor } from './frames.mjs';
 import { ops as booleans } from '@rulecad/shapes';
 
 const KEYS = ['kind', 'profile', 'other', 'face', 'otherFace', 'shape', 'brace', 'load', 'count', 'thread', 'head', 'nut'];
+// The printed fittings for panels, doors and beams' ends: each kind's model and solid in @rulecad/frames, whether it
+// is drawn for a profile, and the parts it has (a hinge's two leaves, a levelling foot's body and pad: an item each)
+const MORE = {
+  'panel-clip': ['panelClipModel', 'panelClip'], 'panel-corner': ['panelCornerModel', 'panelCorner'], 'slot-cover': ['slotCoverModel', 'slotCover'], 'panel-edge': ['panelEdgeModel', 'panelEdge'],
+  'gasket-strip': ['gasketStripModel', 'gasketStrip', { profile: false }], hinge: ['hingeModel', 'hinge', { parts: ['frame', 'door'] }], handle: ['handleModel', 'handle', { profile: false }], latch: ['latchModel', 'latch'],
+  'magnet-catch': ['magnetCatchModel', 'magnetCatch'], 'end-cap': ['endCapModel', 'endCap'], foot: ['footModel', 'foot'], 'levelling-foot': ['levellingFootModel', 'levellingFoot', { parts: ['body', 'pad'] }],
+  'castor-plate': ['castorPlateModel', 'castorPlate'], 'stacking-foot': ['stackingFootModel', 'stackingFoot'],
+};
+/** The kinds of fitting an item may name. */
+export const FITTING_KINDS = ['bracket', 'gusset', 'splice', ...Object.keys(MORE)];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const strip = (e) => String(e?.message ?? e).replace(/^(bracketModel|plateModel|bracket|plate): /, '');
 
@@ -42,14 +53,26 @@ export function plasticOf(project) {
  */
 export function fittingModel(spec, context, material = 'pla', what = 'fitting') {
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error(`${what}: fitting is { "kind": "bracket", "profile": "2020-misumi-hfs5" } (got ${shown(spec)})`);
+  if (!FITTING_KINDS.includes(spec?.kind)) throw new Error(`${what}: fitting.kind is one of ${FITTING_KINDS.join(', ')} (got ${shown(spec?.kind)})`);
+  if (MORE[spec.kind]) return moreModel(spec, context, material, what);
   for (const k of Object.keys(spec)) if (!KEYS.includes(k)) throw new Error(`${what}: a fitting has no "${k}": it takes ${KEYS.join(', ')}`);
-  if (!['bracket', 'gusset', 'splice'].includes(spec.kind)) throw new Error(`${what}: fitting.kind is bracket, gusset or splice (got ${shown(spec.kind)})`);
   const given = givenFor(context, spec.profile), o = { given, material, cache: fittingCache };
   for (const k of ['thread', 'head', 'nut', 'load']) if (spec[k] != null) o[k] = spec[k];
   try {
     if (spec.kind === 'bracket') return bracketModel(spec.profile, { ...o, ...(spec.other ? { other: spec.other } : {}), ...(spec.face ? { face: spec.face } : {}), ...(spec.otherFace ? { otherFace: spec.otherFace } : {}), ...(spec.brace != null ? { brace: spec.brace } : {}) });
     return plateModel(spec.profile, { ...o, shape: spec.kind === 'splice' ? 'splice' : spec.shape ?? 'L', ...(spec.face ? { face: spec.face } : {}), ...(spec.count != null ? { count: spec.count } : {}) });
   } catch (e) { throw new Error(`${what}: ${strip(e)}`); }
+}
+
+// A panel's, a door's or an end's fitting: its options are the model's own (refused by name there), its part chosen
+function moreModel(spec, context, material, what) {
+  const [model, , o = {}] = MORE[spec.kind], { kind, profile, part, ...rest } = spec;
+  if (o.parts ? part != null && !o.parts.includes(part) : part != null) throw new Error(`${what}: ${o.parts ? `part is ${o.parts.join(' or ')}` : `a ${kind} has one part: leave part out`} (got ${shown(part)})`);
+  if (o.profile !== false && typeof profile !== 'string') throw new Error(`${what}: a ${kind} is drawn for a profile: give "profile", as 2020-misumi-hfs5 (got ${shown(profile)})`);
+  if (o.profile === false && profile != null) throw new Error(`${what}: a ${kind} is drawn for no profile: leave profile out`);
+  // (a gasket strip is PETG, which springs back, unless the item says otherwise; the rest take the project's plastic)
+  try { return o.profile === false ? frames[model]({ ...(kind === 'gasket-strip' ? {} : { material }), ...rest }) : frames[model](profile, { given: givenFor(context, profile), material, ...rest }); }
+  catch (e) { throw new Error(`${what}: ${String(e?.message ?? e).replace(/^\w+: /, '')}`); }
 }
 
 /**
@@ -59,6 +82,7 @@ export function fittingModel(spec, context, material = 'pla', what = 'fitting') 
  */
 export async function fittingBuilt(it, id, context, material = 'pla') {
   const m = fittingModel(it.fitting, context, material, `item ${id}`);
+  if (MORE[it.fitting.kind]) return moreBuilt(it, id, m);
   // joined and cut by Manifold where the workspace has it, so the solid is watertight for the overlap check (JSCAD's
   // booleans leave seams that Manifold cannot read, and JSCAD's own intersection then misreads a head in its seat)
   let ops = null; try { ops = await booleans('manifold'); } catch {}
@@ -74,6 +98,23 @@ export async function fittingBuilt(it, id, context, material = 'pla') {
   const hash = crypto.createHash('sha256').update(JSON.stringify([it.fitting, material, m.name, m.thickness, m.grams])).digest('hex').slice(0, 16);
   const b = { object: { name: m.name, title: m.title, role: 'part', version: '0.0.0', anchors }, values, entries, deps: [], units: {}, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash };
   return { key: `fitting:${id}:${hash}`, objName: `fitting:${m.name}`, b, version: '0.0.0', role: 'part', fitting: m };
+}
+
+// A panel's, a door's or an end's fitting built: fitted, its tongue (where it has one) left out of the overlap check;
+// an anchor on each screw's axis at its head (b1, b2 .. for screws into a slot or a bore; d1, d2 .. for a hinge's
+// door leaf's, through the door); a hinge's door leaf and a levelling foot's pad carry no findings or hardware of their own
+function moreBuilt(it, id, m) {
+  const [, solid, o = {}] = MORE[it.fitting.kind], part = it.fitting.part ?? o.parts?.[0], second = o.parts && part !== o.parts[0];
+  const draw = (x) => frames[solid](m, { pose: 'fit', ...(part ? { part } : {}), ...x });
+  const parts = named({ body: draw({}) }, { body: { label: `${m.title}${part ? `, ${part}` : ''}` } });
+  if (['panel-clip', 'magnet-catch', 'panel-corner'].includes(m.fitting)) parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
+  const list = it.fitting.kind === 'hinge' && part === 'door' ? m.door.map((q, k) => [`d${k + 1}`, q]) : (m.screws ?? []).filter((q) => q.into !== 'castor' && q.into !== 'pilot').map((q, k) => [`b${k + 1}`, q]);
+  const anchors = Object.fromEntries(list.map(([n, q]) => [n, { at: q.at, axis: q.axis.map((c) => (c ? -c : 0)) }]));
+  const values = { grams: m.grams, ...(m.margin != null && Number.isFinite(m.margin) ? { margin: m.margin } : {}), ...(m.load?.force ? { load: m.load.force } : {}) };
+  const hash = crypto.createHash('sha256').update(JSON.stringify([it.fitting, m.name, m.grams, part])).digest('hex').slice(0, 16);
+  const b = { object: { name: `${m.name}${part ? `-${part}` : ''}`, title: m.title, role: 'part', version: '0.0.0', anchors }, values, entries: [], deps: [], units: {}, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash };
+  const model = second ? { ...m, findings: [], hardware: [] } : m;
+  return { key: `fitting:${id}:${hash}`, objName: `fitting:${m.name}${part ? `-${part}` : ''}`, b, version: '0.0.0', role: 'part', fitting: model };
 }
 
 // ---------- a join's printed fitting, placed ----------

@@ -73,7 +73,9 @@ export function hingeModel(profile, o = {}) {
   const nutLen = Math.max(...sd.nuts.map((x) => x.length)), apart = (q) => n * q + (n - 1) * gapK - 2 * endBy;
   let kl = up(Math.max(2 * R + 2, 8), 0.5), stress = 0, margin = 0;
   for (let i = 0; i < 60; i++) { stress = r3((6 * F * za) / (2 * kl * (2 * R) ** 2)); margin = r3(k.S / stress); if (margin >= want() && apart(kl) >= nutLen + 1 - 1e-9) break; kl += 0.5; }
-  const L = r3(n * kl + (n - 1) * gapK), dEnd = Math.max(FITTING_DEFAULTS.end.value * dfx.hd, dfx.dk / 2 + FITTING_DEFAULTS.reach.value), dLeaf = r3(up(2 * dEnd, 0.5));
+  const L = r3(n * kl + (n - 1) * gapK), dEnd = Math.max(FITTING_DEFAULTS.end.value * dfx.hd, dfx.dk / 2 + FITTING_DEFAULTS.reach.value);
+  // the screws through the door stand past the frame's leaf, so their nuts under the door clear its heads
+  const dn0 = nutModel(dsc), yd = r3(up(Math.max(endBy, v0 + dEnd) + clear + dn0.flats / Math.sqrt(3), 0.5)), dLeaf = r3(up(yd + dEnd - v0, 0.5));
   const nutH = nutModel(pin, { kind: 'lock' }).height, lengths = [...(pfx.figures.lengths?.value ?? [])].sort((a, b) => a - b), pinLen = lengths.find((x) => x >= L + nutH + 0.5 - 1e-9 && x <= L + nutH + pfx.major + 1e-9) ?? null;
   const dnut = nutModel(dsc), dLen = [...(fixingModel(dsc).figures.lengths?.value ?? [])].sort((a, b) => a - b).find((x) => x >= R + T + dnut.height - 1e-9 && x <= R + T + dnut.height + fixingModel(dsc).major + 1e-9) ?? null;
   const xs = [-(L / 2 - dEnd), L / 2 - dEnd].map(r3), frameX = [-(L / 2 - endBy), L / 2 - endBy].map(r3);
@@ -81,7 +83,7 @@ export function hingeModel(profile, o = {}) {
     profile: p.name, face: sd.face, thread: sd.thread, head: 'button', sheet: T, pin, screw: dsc, length: L, knuckle: kl, knuckles: n, gap: gapK, radius: R, leaf: tl, standoff: g, axis: [ya, za], edge: v0, doorLeaf: dLeaf, plate: r3(endBy),
     parts: ['frame', 'door'], frameScrews: frameX, doorScrews: xs,
     screws: frameX.map((x) => ({ leaf: 'frame', thread: sd.thread, head: 'button', grip: tl, at: [x, 0, tl], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null })),
-    door: xs.map((x) => ({ leaf: 'door', thread: dsc, head: 'button', at: [x, r3(v0 + dEnd), za + R], axis: [0, 0, -1], length: dLen, nut: dnut.name })),
+    door: xs.map((x) => ({ leaf: 'door', thread: dsc, head: 'button', at: [x, yd, r3(za + R)], axis: [0, 0, -1], length: dLen, nut: dnut.name })),
     hardware: [{ kind: 'screw', name: `${pfx.thread}x${pinLen ?? '?'} cap`, thread: pfx.thread, length: pinLen, head: 'cap', count: 1, why: 'the pin' }, { kind: 'nut', name: nutModel(pin, { kind: 'lock' }).name, thread: pfx.thread, count: 1, why: 'on the pin' }],
     load: { force: F, what: `${F} N across the pin, ${mm(za)} mm off the beam's face` }, stress, margin, size: { length: L, knuckle: kl, standoff: g, leaf: tl, radius: R },
     volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
