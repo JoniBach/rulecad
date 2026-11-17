@@ -93,6 +93,39 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   drawn: one axis through the stack, a clearance hole in each part passed, a pilot, insert or nut at the far end, the
   length chosen from what is sold, thread engaged, the seat under the head and the key's way to it, and `cad list`
   counts the screws. Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
+- **Beams are held to each other by a join**, not a fasten: `{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }`
+  (`npx cad add join …`), `b` the place on the other beam where a's end meets it. A blind or end-tap join taps a's end,
+  drills b and adds its screw to the fasten checks and the list. A bracket, gusset or splice join with `"fitting":
+  "printed"` adds its printed fitting, sized from `"load"` (N, default 100) by finite elements, and its screws into both
+  beams' slots: report the fitting's grams, margin and stiffness from `cad check` with that load, and say the stiffness
+  leaves out the slot nuts. A bought fitting is a rule set named in `"fitting"` (`fitting-motedis-bracket-20-b6`;
+  bracket, gusset, splice, hidden and anchor joins): its screws and nuts are its set's, its price goes on `cad list`,
+  and its stiffness is its set's estimate, so report it as one. Choose printed or bought from what `cad list` costs
+  and what each stiffness rests on, and say both. A `fitting.fit` failure means the set is made for another profile
+  or slot: choose another set, never edit the set to pass. The other kinds are checked where they meet and say their
+  fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
+  address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
+- **A bay closed by a sheet is a `panel` item**: `{ "id": "front", "panel": { "sheet": "acrylic", "thickness": 3,
+  "bay": ["x1", "z2", "x2", "z1"], "out": [0, -1, 0] } }`. It is cut to the bay with its clips at a pitch, each
+  fastened into its slot; report its size and grams from `cad check` (`panel.size`) and the clips from `cad list`.
+  `"door": { "hinge": "z1" }` makes it a door on two printed hinges, turning on a joint: run `cad check --sweep` and
+  report what it finds. A turn-button latch shown shut blocks the door in its first degree, which is right.
+- **A board or supply on a frame is a bought item with `"mount"`**: `{ "id": "psu", "bought": "supply-24v",
+  "variant": "LRS-50-24", "mount": { "on": "rail.top@-90" } }`. Its holes come from its rule set (`mount_holes`, x then
+  y for each); add them from the maker's drawing, with their source, before mounting a device whose set has none. A
+  wire along a beam is a run in its `via`, `{ "along": "rail.front", "from": 300, "to": 60 }`: report its length and
+  its clips from `wire.length` and `wire.run`.
+- **Linear motion on a beam is a guide**: `"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H",
+  "on": "x1.top", "from": 50, "length": 300 }]`. Never draw a rail or carriage yourself, nor type its screws: the
+  guide places the rail, its screws into the slot at its pitch and each carriage on a sliding joint with its true
+  travel. Fix a table on a carriage with a fixed joint at `g1-carriage-1.top`. Run `cad check --sweep`, and report
+  `guide.fit`, the travel and each carriage's `joint.moment` margin; a fail there means a longer carriage
+  (`MGN12H`), a larger rail or the load nearer the carriage, never a changed rating.
+- **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
+  part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
+  a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close
+  at both ends: use the kind it names (`"nut": "drop-in"`). `frame.preload` lists nuts to load before a join; tell
+  the user, and `cad order` shows them on the step.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in

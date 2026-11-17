@@ -27,9 +27,9 @@ function solidOf(tris) {
   return { volume: Math.abs(V), centroid: V ? c.map((x) => x / V) : [0, 0, 0] };
 }
 
-/** Each moving thing's mass in kg and its centre in its item's frame (read from the parts as they stand: at the pose the assembly was built in). */
+/** Each moving thing's mass in kg and its centre in its item's frame. */
 export function massesOf(s, { placeItems, jointValues }) {
-  const motion = s.motion, ids = motion.items.map((x) => x[0]), W = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined)), density = materialOf(s.project).density, out = [];
+  const motion = s.motion, ids = motion.items.map((x) => x[0]), W = placeItems(motion, jointValues(motion, motion.pose ?? undefined)), density = materialOf(s.project).density, out = [];
   ids.forEach((id, k) => {
     const parts = s.parts.filter((p) => p.item === id && p.role !== 'support'); if (!parts.length) return;
     const o = s.objects.find((x) => x.id === id || String(x.id).startsWith(`${id}.`)), reference = parts.every((p) => p.role === 'reference');
@@ -219,7 +219,8 @@ function pinv2(J, v) {
 export function loadChecks(s, f, helpers) {
   const motion = s.motion;
   // a guide's carriages are held to their ratings whether or not the machine has a task: they carry what is on them
-  if (s.guides?.length && motion?.joints?.length) carriageChecks(s, f, helpers, { masses: massesOf(s, helpers), beyond, poses: posesOf(s, helpers.jointValues) });
+  // (the masses' centres read against the frames of the pose the parts were built at, which a pose's own check is)
+  if (s.guides?.length && motion?.joints?.length) carriageChecks(s, f, helpers, { masses: massesOf(s, { ...helpers, jointValues: (m, p) => s.jointValues ?? helpers.jointValues(m, p) }), beyond, poses: posesOf(s, helpers.jointValues) });
   if (!motion?.joints?.length || !(s.task || s.a.gravity)) return;
   const masses = massesOf(s, helpers), payload = s.task?.payload ? { kg: s.task.payload, item: motion.items.findIndex((x) => x[0] === s.task.item), point: s.task.point } : null;
   const unknown = masses.filter((m) => !m.known).map((m) => m.id);
