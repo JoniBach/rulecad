@@ -3023,6 +3023,68 @@ test('printed fittings: a gusset join puts an L plate on a corner and a T where 
   } finally { done(); }
 });
 
+test('panels and doors: a bay closed with a 3 mm panel lists the panel\'s size and its clips; a door on two hinges opens as a joint without hitting the frame', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const beam = (id, from, to) => ({ id, beam: { profile: '2020-misumi-hfs5' }, from, to });
+    // a 400 x 300 mm bay in the x-z plane, its slotted faces looking along -y
+    const frame = [beam('x1', [0, 0, 0], [400, 0, 0]), beam('x2', [0, 0, 300], [400, 0, 300]), beam('z1', [10, 0, 10], [10, 0, 290]), beam('z2', [390, 0, 10], [390, 0, 290])];
+    const write = (name, panel) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: name, kind: 'fit', items: [...frame, { id: name === 'bay' ? 'front' : 'door', panel: { sheet: 'acrylic', thickness: 3, bay: ['x1', 'z2', 'x2', 'z1'], out: [0, -1, 0], ...panel } }] }));
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/${name}'), box = (id) => { const br = s.parts.filter((p) => p.item === id); return [0, 1, 2].map((k) => [Math.min(...br.flatMap((p) => p.triangles.flat().map((v) => v[k]))), Math.max(...br.flatMap((p) => p.triangles.flat().map((v) => v[k])))].map((x) => +x.toFixed(2))); };
+      console.log(JSON.stringify({ panels: s.panels.map((p) => ({ id: p.id, size: p.size, items: p.items, grams: p.model.grams, holes: p.model.holes.length })), boxes: Object.fromEntries(s.items.filter((i) => i.fitting || i.panel).map((i) => [i.id, box(i.id)])),
+        joints: s.motion.joints.filter((j) => j.type !== 'fixed').map((j) => [j.id, j.type, j.dofs[0]]), poses: Object.keys(s.motion.poses), hardware: s.hardware.map((h) => h.kind + ' ' + h.name),
+        findings: checkAssembly(s).filter((f) => f.level === 'fail' || f.level === 'warn').map((f) => f.code + ': ' + f.text) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // the bay closed: the panel cut to it, 6.5 mm in from each slot's line (the clip's edge), 14 clips at no more than 150 mm
+    write('bay', {});
+    let r = probe('bay');
+    assert.deepEqual(r.panels.map((p) => [p.id, p.size, p.items.length]), [['front', [367, 287], 14]]);
+    assert.deepEqual(r.findings, []);
+    assert.deepEqual(r.boxes.front, [[16.5, 383.5], [-13, -10], [6.5, 293.5]], 'on the faces, 3 mm thick');
+    assert.deepEqual(r.boxes['front-clip'], [[24.5, 44.5], [-14.4, -9], [-6, 12.5]], 'a clip over its edge, keyed 1 mm into x1\'s slot');
+    assert.equal(r.hardware.filter((h) => h === 'screw M5x10 button').length, 14);
+    const list = cad('list', 'frame/bay');
+    assert.match(list, /1 ×\s+acrylic sheet, 3 mm cut 367 x 287 mm\s+a panel\s+376 g each\s+front/);
+    assert.match(list, /14 ×\s+M5x10 button/); assert.match(list, /14 ×\s+slot-nut-6-misumi-m5-slide-in/);
+    assert.match(list, /1\.5 g\s+about \d+ min\s+front-clip-14 \(fitting:panel-clip-2020-misumi-hfs5-m5-3mm\)/);
+    const checked = cad('check', 'frame/bay');
+    assert.match(checked, /front: 367 x 287 mm of 3 mm cast acrylic \(PMMA\) sheet, its corners rounded 1 mm: 376\.02 g; held by 14 clips/);
+    assert.match(checked, /files match their schemas/);
+    // a wider pitch, fewer clips
+    write('bay', { pitch: 400 }); r = probe('bay');
+    assert.equal(r.panels[0].items.length, 8);
+    // the door: on two hinges along z1, a revolute from shut to 120°, standing 10.2 mm off the faces
+    write('door', { door: { hinge: 'z1' } });
+    r = probe('door');
+    assert.deepEqual(r.findings, []);
+    assert.deepEqual(r.joints, [['door-hinge', 'revolute', [0, 120, 0]]]); assert.deepEqual(r.poses, ['door-shut', 'door-open']);
+    assert.deepEqual(r.panels[0].items, ['door-hinge-1', 'door-leaf-1', 'door-hinge-2', 'door-leaf-2', 'door-handle', 'door-catch']);
+    assert.deepEqual([r.panels[0].size, r.panels[0].holes], [[377.9, 286], 6]);
+    assert.deepEqual(r.boxes.door[1], [-23.2, -20.2], 'the door 10.2 mm off the faces');
+    const swept = cad('check', 'frame/door', '--sweep', '--steps', '24');
+    assert.match(swept, /sweep door-hinge, 0 to 120° in 24 steps: nothing collides/);
+    assert.doesNotMatch(swept, /✗/);
+    const dl = cad('list', 'frame/door');
+    assert.match(dl, /2 ×\s+M4x40 cap/); assert.match(dl, /2 ×\s+M4 lock nut/); assert.match(dl, /1 ×\s+10 x 3 mm disc magnet/); assert.match(dl, /acrylic sheet, 3 mm cut 377\.9 x 286 mm/);
+    // with its turn-button latch shut over the door, the sweep finds the door can't open: it lifts into the tab within
+    // its first degree (the sweep's steps must be finer than that to see it)
+    write('door', { door: { hinge: 'z1', latch: true, open: 4 } });
+    assert.match(cad('check', 'frame/door', '--sweep', '--steps', '8'), /sweep door-hinge, 0 to 4° in 8 steps: 0\.5 to 1°: door\.body hits door-latch\.body/);
+    // refused by name
+    write('door', { door: { hinge: 'y9' } });
+    assert.match(cad('check', 'frame/door'), /door\.hinge is the beam of the bay its hinges go on, one of x1, z2, x2, z1 \(got "y9"\)/);
+    write('bay', { out: [0, 0, 1] });
+    assert.match(cad('check', 'frame/bay'), /z2 runs across the bay's plane, not in it: its beams lie square to out/);
+    fs.writeFileSync(at('assemblies/bay.json'), JSON.stringify({ title: 'bay', kind: 'fit', items: [...frame, { id: 'front', panel: { sheet: 'acrylic', thickness: 3, bay: ['x1', 'z2', 'x2', 'x2'], out: [0, -1, 0] } }] }));
+    assert.match(cad('check', 'frame/bay'), /bay is four different beams/);
+  } finally { done(); }
+});
+
 test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a beam item takes one by name', async () => {
   const { ws, cad, done } = workspace();
   try {
