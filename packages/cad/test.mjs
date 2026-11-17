@@ -2972,6 +2972,45 @@ test('printed fittings: a bracket join with "fitting": "printed" adds a printed 
   } finally { done(); }
 });
 
+test('printed fittings: a gusset join puts an L plate on a corner and a T where b runs on both sides, a splice join a plate across two ends, each screwed into both beams\' slots', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/plates.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const beam = (id, from, to) => ({ id, beam: { profile: '2020-misumi-hfs5' }, from, to });
+    // y1 stands on x1's top face at its end a: a corner, so an L gusset on the faces that look along -y
+    const a = { title: 'Plates', kind: 'fit', items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [10, 0, 10], [10, 0, 210])], joins: [{ kind: 'gusset', a: 'y1.a', b: 'x1.top@10', fitting: 'printed' }] };
+    const write = (x = a) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/plates'), o = s.objects.find((x) => x.fitting), br = s.parts.filter((p) => p.item === o.id);
+      const lo = [0, 1, 2].map((k) => Math.min(...br.flatMap((p) => p.triangles.flat().map((v) => v[k])))), hi = [0, 1, 2].map((k) => Math.max(...br.flatMap((p) => p.triangles.flat().map((v) => v[k]))));
+      console.log(JSON.stringify({ id: o.id, fitting: { name: o.fitting.name, shape: o.fitting.shape, thickness: o.fitting.thickness, arm: o.fitting.arm }, box: [lo, hi].map((v) => v.map((x) => +x.toFixed(2))),
+        hardware: s.hardware.map((h) => h.kind + ' ' + h.name), findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap|frame)/.test(f.code)).map(({ level, code, text, values }) => ({ level, code, text, values })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const clean = (r) => r.findings.filter((x) => x.level === 'fail').map((x) => x.text);
+    write(); let r = probe();
+    assert.deepEqual([r.id, r.fitting.shape, r.fitting.name], ['y1-x1-gusset', 'L', 'gusset-l-2020-misumi-hfs5-m5']);
+    assert.deepEqual(clean(r), []);
+    // on the -y faces of both (x1's front, y1's bottom), the corner square over where they meet (x 0 to 20, z -10 to 10),
+    // an arm along each, its tongues 1 mm into the slots
+    assert.deepEqual(r.box, [[0, -10 - r.fitting.thickness, -10], [20 + r.fitting.arm, -9, 10 + r.fitting.arm]]);
+    assert.equal(r.hardware.filter((h) => h.startsWith('screw')).length, 4); assert.equal(r.hardware.filter((h) => h.startsWith('nut')).length, 4);
+    for (const code of ['fasten.holes', 'fasten.slot', 'fasten.length', 'fasten.engagement', 'overlap', 'join.geometry']) assert.ok(r.findings.some((x) => x.code === code && x.level === 'pass'), code);
+    // in the middle of x1, a T: three arms, six screws
+    a.items[1] = beam('y1', [150, 0, 10], [150, 0, 210]); a.joins[0].b = 'x1.top@150'; write(); r = probe();
+    assert.deepEqual([r.fitting.shape, r.hardware.filter((h) => h.startsWith('screw')).length, clean(r)], ['T', 6, []]);
+    // a splice: two beams end to end, a plate across the joint, two screws into each
+    write({ title: 'Plates', kind: 'fit', items: [beam('x1', [0, 0, 0], [150, 0, 0]), beam('x2', [150, 0, 0], [300, 0, 0])], joins: [{ kind: 'splice', a: 'x2.a', b: 'x1.b', fitting: 'printed' }] }); r = probe();
+    assert.deepEqual([r.id, r.fitting.name, r.hardware.filter((h) => h.startsWith('screw')).length, clean(r)], ['x2-x1-splice', 'splice-2020-misumi-hfs5-m5', 4, []]);
+    assert.equal(r.box[0][0], 150 - r.fitting.arm); assert.equal(r.box[1][0], 150 + r.fitting.arm);
+    // refused by name: a gusset with no room on a short beam
+    write({ ...a, items: [beam('x1', [0, 0, 0], [30, 0, 0]), beam('y1', [10, 0, 10], [10, 0, 210])], joins: [{ kind: 'gusset', a: 'y1.a', b: 'x1.top@10', fitting: 'printed' }] });
+    assert.match(cad('check', 'frame/plates'), /join 1: a printed gusset's [\d.]+ mm arm runs past x1's ends: there is 10 mm beside y1, and it needs [\d.]+\. A bracket will do/);
+  } finally { done(); }
+});
+
 test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a beam item takes one by name', async () => {
   const { ws, cad, done } = workspace();
   try {

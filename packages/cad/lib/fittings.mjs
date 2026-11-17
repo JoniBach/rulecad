@@ -118,7 +118,43 @@ export function joinFitting(j, i, { ia, ib, A, B, m, ends, place: placeOf }, num
       { screw, through: [id], into: `${ia.id}.${ap.q.name}`, at: [`${id}.a1`], note: `${label}: the bracket into ${ia.id}`, join: i, nut: j.nut ?? fm.screws[1].nutKind }];
     return { item, fasten, model: fm, side: sign > 0 ? 'b' : 'a', endA };
   }
-  throw new Error(`${what}: a printed ${j.kind} fitting is placed by a later step of this release: give "fitting": "printed" on a bracket join, or leave fitting out`);
+  // a plate (a gusset, or a splice plate): on a face of each beam, the two in one plane. Its frame: x along b away from
+  // the joint (a gusset's toward b's end with more room; a splice's into b), y along a away from b (a splice's across),
+  // z out of the faces; it sits at an address on b, turned in that frame
+  const splice = j.kind === 'splice', ua = col(fa, 2).map((c) => (ends.a.rest[0] === 'a' ? c : -c)), ub = col(fb, 2);
+  const d = splice ? (m.b.end === 'a' ? 0 : B.length) : m.b.distance;
+  let x, y, n, shapeAt = null;
+  if (splice) {
+    x = ub.map((c) => (m.b.end === 'a' ? c : -c));
+    const bq = B.places.find((q) => q.slot && Math.abs(dot(turn(fb, [...q.normal, 0]), x)) < 1e-6 && A.places.some((r) => r.slot && dot(turn(fa, [...r.normal, 0]), turn(fb, [...q.normal, 0])) > 1 - 1e-6));
+    if (!bq) throw new Error(`${what}: a printed splice plate lies on a slotted face of both beams, in one plane, and ${ia.id} and ${ib.id} share none`);
+    n = turn(fb, [...bq.normal, 0]); y = cross(n, x);
+  } else {
+    const half = Math.max(A.profile.width, A.profile.height) / 2;
+    const room = { b: B.length - d - half, a: d - half };
+    shapeAt = { room };
+    x = ub.map((c) => (room.b >= room.a ? c : -c)); y = ua; n = cross(x, y);
+  }
+  const bq = B.places.find((q) => q.slot && dot(turn(fb, [...q.normal, 0]), n) > 1 - 1e-6), aq = A.places.find((q) => q.slot && dot(turn(fa, [...q.normal, 0]), n) > 1 - 1e-6);
+  if (!bq || !aq) throw new Error(`${what}: a printed ${splice ? 'splice plate' : 'gusset'} lies on a slotted face of both beams that looks the same way, and ${!bq ? ib.id : ia.id} has none that does: turn it with roll`);
+  const Pb = world(fb, [bq.at[0], bq.at[1], d]), Qa = world(fa, [aq.at[0], aq.at[1], 0]), apart = dot(sub(Qa, Pb), n);
+  if (Math.abs(apart) > 0.05) throw new Error(`${what}: a printed ${splice ? 'splice plate' : 'gusset'} lies flat on both beams, and ${ia.id}'s ${aq.face} face stands ${mm(Math.abs(apart))} mm ${apart > 0 ? 'proud of' : 'below'} ${ib.id}'s ${bq.face} face`);
+  const spec0 = { kind: splice ? 'splice' : 'gusset', profile: B.profile.name, face: faceOf(B, bq), ...(j.load != null ? { load: j.load } : {}), ...(j.nut ? { nut: j.nut } : {}) };
+  let fm = fittingModel({ ...spec0, ...(splice ? {} : { shape: 'L' }) }, context, material, what), shape = 'L';
+  if (!splice) {
+    const reach = fm.width / 2 + fm.arm, { room } = shapeAt;
+    if (Math.min(room.a, room.b) + fm.width / 2 >= reach) { shape = 'T'; fm = fittingModel({ ...spec0, shape }, context, material, what); }
+    else if (Math.max(room.a, room.b) + fm.width / 2 < reach - 1e-6) throw new Error(`${what}: a printed gusset's ${mm(fm.arm)} mm arm runs past ${ib.id}'s ends: there is ${mm(Math.max(room.a, room.b))} mm beside ${ia.id}, and it needs ${mm(fm.arm)}. A bracket will do`);
+    if (A.length < fm.arm - 1e-6) throw new Error(`${what}: a printed gusset's ${mm(fm.arm)} mm arm is longer than ${ia.id} (${mm(A.length)} mm)`);
+  } else if (Math.min(A.length, B.length) < fm.arm - 1e-6) throw new Error(`${what}: a printed splice plate's ${mm(fm.arm)} mm arms are longer than ${A.length < B.length ? ia.id : ib.id}`);
+  if (A.profile.name !== B.profile.name && faceOf(A, aq) !== faceOf(B, bq)) throw new Error(`${what}: a printed plate is drawn for one profile's slots, and ${ia.id} (${A.profile.name}) and ${ib.id} (${B.profile.name}) differ: a bracket takes two`);
+  const id = free(`${ia.id}-${ib.id}-${splice ? 'splice' : 'gusset'}`), along = dot(x, ub) > 0;
+  const spec = { ...spec0, ...(splice ? {} : { shape }) };
+  const item = { id, fitting: spec, at: `${ib.id}.${bq.name}@${r3(d)}`, ...(along ? {} : { rotate: [0, 0, 180] }), join: i };
+  const anchorsOf = (leg) => fm.screws.map((sc, k) => [sc, k]).filter(([sc]) => sc.leg === leg).map((_, k) => `${id}.${leg}${k + 1}`);
+  const fasten = [{ screw: `${fm.thread} ${fm.head}`, through: [id], into: `${ib.id}.${bq.name}`, at: anchorsOf('b'), note: `${label}: the ${splice ? 'splice plate' : 'gusset'} into ${ib.id}`, join: i, nut: j.nut ?? fm.screws[0].nutKind },
+    { screw: `${fm.thread} ${fm.head}`, through: [id], into: `${ia.id}.${aq.name}`, at: anchorsOf('a'), note: `${label}: the ${splice ? 'splice plate' : 'gusset'} into ${ia.id}`, join: i, nut: j.nut ?? fm.screws[0].nutKind }];
+  return { item, fasten, model: fm };
 }
 
 /**
