@@ -3263,6 +3263,12 @@ test('bought fittings: a T plate, an inner connector and an anchor in joins, an 
     // the same foot on MISUMI's profile, whose end bore is tapped M5: it does not fit, and says so
     ends.items[0].beam.profile = '2020-misumi-hfs5'; r = probe(ends);
     assert.deepEqual(fails(r).map((t) => t.replace(/^\w+: /, '')), ["fitting-motedis-end-cap-20-b6 is made for slot-6-motedis (nut family slot-6-bosch), and 2020-misumi-hfs5's slots are slot-6-misumi (slot-6-misumi): its lugs and nuts are not promised to fit. Choose a fitting made for slot-6-misumi, or \"fitting\": \"printed\"", "fitting-motedis-foot-m6-d19's stem is M6, and 2020-misumi-hfs5's end bore is tapped M5: choose a foot with an M5 stem"]);
+    // slide-in nuts in a slot whose two ends are closed by bought items (a cap and a foot), not by joins: they go in
+    // before either, and nothing has to be loaded before a join (this once failed to read the items' join)
+    r = probe({ items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210]), { id: 'cap', bought: 'fitting-motedis-end-cap-20-b6', at: 'x1.b' }, { id: 'foot', bought: 'fitting-motedis-foot-m6-d19', at: 'x1.a' }],
+      joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.top@150', fitting: 'printed' }] });
+    assert.deepEqual([fails(r), by(r, 'frame.preload').map((x) => x.level)], [[], ['pass']]);
+    assert.match(by(r, 'frame.nut').find((x) => x.refs.item === 'x1').text, /slide-in nut .*into x1's top slot before x1's end [ab] \((cap|foot) placed there\) closes it/);
     // refused by name: a set the join does not take
     fs.writeFileSync(file, JSON.stringify({ title: 'Bought', kind: 'fit', items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210])], joins: [{ kind: 'hidden', a: 'y1.a', b: 'x1.top@150', fitting: 'fitting-motedis-plate-t-20' }] }));
     assert.match(cad('check', 'frame/bought'), /join 1: .*fitting-motedis-plate-t-20 is a joining plate, and a hidden join takes an inner connector: fitting-motedis-plate-t-20 goes in a gusset or splice join/);

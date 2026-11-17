@@ -69,7 +69,7 @@ export function preloadOf(s) {
   for (const g of groupsOf(s)) {
     if (g.entry !== 'end') continue;
     const w = waysOf(s, g.item, g.place, Math.min(...g.at), Math.max(...g.at));
-    if (!w.a || !w.b || (w.a.join && w.b.join)) continue; // (a way stays open; or joins close both: frame.nut's)
+    if (!w.a || !w.b || (w.a.join && w.b.join) || (!w.a.join && !w.b.join)) continue; // (a way stays open; or joins close both: frame.nut's; or only items placed at the ends do, which go on after the nuts)
     const by = w.a.join ? w.a : w.b, other = by === w.a ? w.b : w.a, from = by.end ? `through its end ${by.end}` : `from end ${by === w.a ? 'a' : 'b'}, past ${mm(by.at)} mm`;
     out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, nut: g.nut, count: g.at.length, end: by.end, at: by.at, join: by.join, other,
       text: `load ${g.at.length} × ${g.nut} into ${g.item}'s ${g.named} slot ${from}, for ${g.part}, before the ${by.join.label} closes it${other.item ? ` (or through end ${other.end} before ${other.item} goes on)` : ''}` });
