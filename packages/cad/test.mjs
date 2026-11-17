@@ -1867,6 +1867,30 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     const first = run(ws, ['check', 'fix/wall-first']);
     assert.equal(first.code, 1); assert.match(first.out, /✗ Back screws, 2 M3 countersunk screws: a 2 mm hex key cannot reach the head: wall stands over it/);
     assert.match(first.out, /✗ the screw of "Back screws" can't be reached in any order: wall stands over it and goes on first/);
+    // The frame (chapter 16): a box of one profile, every end joined or capped, its axis driven within its margins; the
+    // cut list from one bar, a sheet per mark and the jigs; its printed fittings on one plate; 37 steps from bars to
+    // square; a trapped nut and a plate drawn for another slot spacing each fail by name
+    const box = JSON.parse(run(ws, ['check', 'frame/box', '--json']).out).findings, of16 = (c) => box.filter((x) => x.code === c);
+    assert.deepEqual(box.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    assert.equal(of16('join.geometry').length, 16); assert.match(of16('join.end')[0].text, /every beam end is joined or capped \(24 ends\)/);
+    assert.match(of16('guide.travel')[0].text, /slides 99\.5 mm/); assert.match(of16('guide.coupler')[0].text, /reaches 12\.5 mm into coupler-5-8/);
+    assert.equal(+of16('motor.torque')[0].values.margin.toFixed(2), 6.36); assert.match(of16('motor.heat')[0].text, /at 1\.2 A, under PLA's 57 °C/);
+    assert.ok(of16('fasten.length').some((x) => /^The board plate, 2 M4 button screws: M4x8 button chosen/.test(x.text)));
+    assert.deepEqual([...new Set(of16('frame.nut').map((x) => x.level))], ['pass']); assert.equal(of16('frame.square').length, 4);
+    const cut = run(ws, ['list', 'frame/box']).out;
+    assert.match(cut, /profile-2020-misumi-hfs5: buy 1 × 4000 mm; kerf 3, trim 10; 1234 mm left over/);
+    assert.match(cut, /12 ×\s+M5x12 button[\s\S]*18 ×\s+slot-nut-6-misumi-m4-drop-in/); assert.match(cut, /Total: 124 g printed/);
+    for (const m of 'ABCDEFG') assert.ok(fs.existsSync(path.join(ws, `exports/frame/box.beam-${m}.svg`)), `the sheet for mark ${m}`);
+    assert.ok(fs.existsSync(path.join(ws, 'exports/frame/box.jigs.3mf')), 'the jigs as one plate');
+    const bed = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/box-base-1.json'), 'utf8'));
+    assert.equal(bed.items.length, 17, 'every printed part on one plate'); assert.ok(!fs.existsSync(path.join(ws, 'projects/frame/assemblies/box-base-2.json')));
+    assert.equal(run(ws, ['order', 'frame/box']).out.split('\n').filter((l) => /^\s+\d+\. /.test(l)).length, 37);
+    const trapped = run(ws, ['check', 'frame/trapped']);
+    assert.equal(trapped.code, 1); assert.match(trapped.out, /✗ The board plate: 2 slide-in nuts \(slot-nut-6-misumi-m4-slide-in\) go into x1's top slot at 105 and 155 mm, between .* which close it at both ends: .* give "nut": "drop-in"/);
+    const shut = run(ws, ['order', 'frame/trapped']);
+    assert.equal(shut.code, 1); assert.match(shut.out, /would be shut in between the blind join of x1\.a to p1\.back@30 and the blind join of x1\.b to p2\.front@30/);
+    const wide = run(ws, ['check', 'frame/spacing']);
+    assert.equal(wide.code, 1); assert.equal((wide.out.match(/✗ The board plate, screw [12] \(hole at -?15, 0, 1\.5\): plate's hole is 5 mm off the centre line of x1's top\.[12] slot/g) || []).length, 2, wide.out);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
