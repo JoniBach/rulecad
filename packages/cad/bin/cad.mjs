@@ -1034,6 +1034,7 @@ async function platesCommand(what, ref) {
     if (opt('json')) { console.log(JSON.stringify(fb ? { ...r, frame: fb } : r, null, 2)); if (r.stuck || fb?.stuck) process.exitCode = 1; return; }
     console.log(fb ? frame.frameBuildText(ref, fb) : orderText(ref, r));
     if (r.stuck || fb?.stuck) { process.exitCode = 1; return; }
+    if (opt('preview') && fb) { for (const { n, parts } of frame.frameStepPictures(s, fb)) { const st = fb.steps[n - 1], out = paths.preview(s.project, `${s.name}-step-${String(n).padStart(2, '0')}.png`); await preview(parts, { title: `${s.a.title || s.name}: step ${n} of ${fb.steps.length}`, meta: st.text, out }); console.log(path.relative(WS, out)); } return; } // (numbered as the frame's build is)
     if (opt('preview')) { const pics = stepPictures(s, r); for (const [i, parts] of pics.entries()) { const st = r.steps[i], out = paths.preview(s.project, `${s.name}-step-${String(st.n).padStart(2, '0')}.png`); await preview(parts, { title: `${s.a.title || s.name}: step ${st.n} of ${r.steps.length}`, meta: st.text, out }); console.log(path.relative(WS, out)); } }
     return;
   }

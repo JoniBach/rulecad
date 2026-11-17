@@ -14,6 +14,7 @@ import { givenFor } from './frames.mjs';
 const mm = (x) => String(+Number(x).toFixed(2)), r3 = (x) => +x.toFixed(3);
 const EPS = 1e-3; // mm: a closure this near a nut is where the nut is, not beside it
 const THROUGH = ['drop-in', 'roll-in', 'hammer', 't-bolt']; // (the kinds that go in through the opening, in the order a stand-in is offered)
+const list = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
 const an = (t) => (/^(?:[aeiou8]|M\d)/i.test(String(t)) ? 'an' : 'a');
 
 // Each fasten's nuts in one slot: the relation, the beam and its slot, the nut, and where along the beam each is
@@ -28,8 +29,12 @@ function groupsOf(s) {
   return [...out.values()];
 }
 
-// What closes a beam's slot, and where along it: joins at its ends, blind joins' heads in that slot, items at its ends
-function closuresOf(s, item, place) {
+/**
+ * What closes a beam's slot, and where along it: joins at its ends, blind joins' heads in that slot, items at its ends.
+ * @param {object} s a built assembly @param {string} item the beam @param {string} place its slot (top.1)
+ * @returns {{ at: number, end: string|null, join?: object, head?: boolean, item?: string }[]}
+ */
+export function closuresOf(s, item, place) {
   const L = s.objects.find((o) => o.id === item)?.beam?.length ?? 0, out = [], endAt = (e) => (e === 'a' ? 0 : L);
   for (const j of s.joins ?? []) {
     if (j.items[0] === item) out.push({ at: endAt(j.end[0]), end: j.end[0], join: j });
@@ -62,7 +67,9 @@ function throughNut(s, g) {
 /**
  * The nuts that must be in a slot before a join closes it: slide-in and square nuts whose stretch of slot has no way
  * that stays open, and a way a join closes. @param {object} s a built assembly
- * @returns {{ fasten: number, label: string, item: string, place: string, nut: string, count: number, end: string|null, at: number, join: object, other: object|null, text: string }[]}
+ * @returns {{ fasten: number, label: string, item: string, place: string, named: string, part: string, nut: string, count: number, end: string|null, way: string, at: number, join: object, closers: object[], other: object|null, text: string }[]}
+ *   join: the nearest join on the way the nuts go in; closers: every join on that way, nearest the nuts first (any of them
+ *   made shuts the way, so the nuts go in before the first of them is made)
  */
 export function preloadOf(s) {
   const out = [];
@@ -70,9 +77,13 @@ export function preloadOf(s) {
     if (g.entry !== 'end') continue;
     const w = waysOf(s, g.item, g.place, Math.min(...g.at), Math.max(...g.at));
     if (!w.a || !w.b || (w.a.join && w.b.join) || (!w.a.join && !w.b.join)) continue; // (a way stays open; or joins close both: frame.nut's; or only items placed at the ends do, which go on after the nuts)
-    const by = w.a.join ? w.a : w.b, other = by === w.a ? w.b : w.a, from = by.end ? `through its end ${by.end}` : `from end ${by === w.a ? 'a' : 'b'}, past ${mm(by.at)} mm`;
-    out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, nut: g.nut, count: g.at.length, end: by.end, at: by.at, join: by.join, other,
-      text: `load ${g.at.length} × ${g.nut} into ${g.item}'s ${g.named} slot ${from}, for ${g.part}, before the ${by.join.label} closes it${other.item ? ` (or through end ${other.end} before ${other.item} goes on)` : ''}` });
+    // every join on that way closes it (a head nearer the end as much as the nearest), so the nuts go in before the first made
+    const by = w.a.join ? w.a : w.b, other = by === w.a ? w.b : w.a, way = by === w.a ? 'a' : 'b', lo = Math.min(...g.at), hi = Math.max(...g.at);
+    const closers = [...new Map(closuresOf(s, g.item, g.place).filter((c) => c.join && (way === 'a' ? c.at < lo - EPS : c.at > hi + EPS)).sort((p, q) => (way === 'a' ? q.at - p.at : p.at - q.at)).map((c) => [c.join.index, c])).values()];
+    const from = closers.length > 1 || !by.end ? `from end ${way}${closers.some((c) => c.head) ? `, past ${list(closers.filter((c) => c.head).map((c) => `${mm(c.at)}`).reverse())} mm` : ''}` : `through its end ${by.end}`;
+    const before = closers.length > 1 ? `before the first made of ${list(closers.map((c) => `the ${c.join.label}`).reverse())}, each of which closes that way` : `before the ${by.join.label} closes it`;
+    out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, named: g.named, part: g.part, nut: g.nut, count: g.at.length, end: by.end, way, at: by.at, join: by.join, closers: closers.map((c) => c.join), other,
+      text: `load ${g.at.length} × ${g.nut} into ${g.item}'s ${g.named} slot ${from}, for ${g.part}, ${before}${other.item ? ` (or through end ${other.end} before ${other.item} goes on)` : ''}` });
   }
   return out;
 }
@@ -129,7 +140,7 @@ export function withPreload(s, r) {
   if (!pre.length) return r;
   const steps = r.steps.map((st) => ({ ...st })), stepOf = (id) => steps.findIndex((st) => st.items.includes(id));
   for (const p of pre) {
-    const i = Math.max(0, ...p.join.items.map(stepOf));
+    const i = Math.min(...p.closers.map((j) => Math.max(0, ...j.items.map(stepOf)))); // (the step that makes the first of the joins on the way)
     (steps[i].load ||= []).push(p.text);
   }
   return { ...r, steps };

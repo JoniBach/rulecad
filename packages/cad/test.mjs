@@ -2949,7 +2949,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     const probe = (order = false) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
       const s = await buildAssembly('frame/frame'), out = { hardware: s.hardware.map((h) => [h.fasten, h.kind, h.name]), findings: checkAssembly(s).filter((f) => /^(fasten|frame\\.(nut|preload)|join\\.geometry|overlap)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) };
-      if (${order}) { const { buildData } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/buildpage.mjs')).href)}); out.order = (await buildData(s)).build.order; }
+      if (${order}) { const { withPreload } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/slotnuts.mjs')).href)}), { orderOf } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/order.mjs')).href)}); out.order = withPreload(s, orderOf(s)); }
       console.log(JSON.stringify(out));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     let r = probe(true);
@@ -2971,10 +2971,10 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.deepEqual(by('frame.preload').map((x) => [x.level, x.values.nuts, x.refs.item, x.refs.join, x.refs.end]), [['info', 2, 'y1', 2, 'a']]);
     const load = 'load 2 × slot-nut-6-misumi-m4-slide-in into y1\'s top slot through its end a, for plate2, before the blind join of y1.a to p1.top@170 closes it (or through end b before foot goes on)';
     assert.equal(by('frame.preload')[0].text, `plate2 to y1.top: ${load}`);
-    // the build page and cad order list them at the step that makes that join: before y1 goes on
+    // the assembly order lists them at the step that makes that join: before y1 goes on (a frame's build page shows the frame's build instead)
     assert.deepEqual(r.order.steps.filter((st) => st.load).map((st) => [st.items, st.load]), [[['y1'], [load]]]);
     // cad order, a frame's build: x1's nuts would be shut in by its second join, so it is refused with the slot and the join
-    assert.match(cad('order', 'frame/frame'), /frame\/frame: x1's top slot: 2 slide-in nuts \(slot-nut-6-misumi-m4-slide-in\) for plate would be shut in by the blind join of x1\.b to p2\.front@120 \(step \d+\), the blind join of x1\.a to p1\.back@120 closing the other end/);
+    assert.match(cad('order', 'frame/frame'), /frame\/frame: x1's top slot: 2 slide-in nuts \(slot-nut-6-misumi-m4-slide-in\) for plate would be shut in between the blind join of x1\.a to p1\.back@120 and the blind join of x1\.b to p2\.front@120: whichever of the two is made second shuts them in/);
     // with drop-ins, x1's plate passes frame.nut: they go in through the opening; cad list counts the nuts by name
     a.fasten[0].nut = 'drop-in'; write();
     r = probe();
@@ -3046,26 +3046,32 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     const write = (nut = 'drop-in') => { fasten[0].nut = nut; fs.writeFileSync(file, JSON.stringify({ title: 'Box', kind: 'fit', items, joins, fasten })); };
     write();
     const text = cad('order', 'frame/box'), steps = text.split('\n').filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim());
-    // from bars to square: cut, drill and tap, side 1 flat (the bracket's nuts loaded before x3 closes p1's back slot),
+    // from bars to square: cut, drill and tap, side 1 flat (the bracket's nuts loaded before x1's head, the first of the
+    // two heads between them and p1's end a, closes p1's back slot),
     // squared; side 2 flat, squared; the y rails on side 1; side 2 on as one; the other two bays squared; then the rest
     assert.match(text, /^frame\/box: from bars to a square frame\n/);
     assert.match(steps[0], /^1\. Cut the beams: .*4 × E at 260 mm, 4 × F at 220 mm \(kerf 3 mm, 10 mm off each bar's first end; cut each mark against one stop\)$/);
     assert.match(text, /profile-2020-misumi-hfs5: buy 1 × 4000 mm\n\s+bar 1, 4000 mm: .*; offcut 834/);
     assert.match(steps[1], /^2\. Drill and tap each mark as its sheet shows/);
     assert.match(text, /E \(x1, x2, x3, x4\): tap M5 x 18\.5 at a; tap M5 x 18\.5 at b: exports\/frame\/box\.beam-E\.svg/);
-    assert.deepEqual(steps.slice(2, 8).map((l) => l.replace(/:.*$/, '')), ['3. Side 1 (p1, p2, x1 and x3), built flat on the bench', '4. Side 1 (p1, p2, x1 and x3)', '5. Side 1 (p1, p2, x1 and x3)',
-      '6. Load 2 × slot-nut-6-misumi-m4-slide-in into p1\'s back slot from end a, past 250 mm, for bracket, before the blind join of x3.a to p1.back@250 closes it (or through end b before cap1 goes on)', '7. Side 1 (p1, p2, x1 and x3)', '8. Square side 1 before its joins are tightened fully']);
-    assert.match(steps[6], /x3 goes on, joined to p1 and p2$/);
-    assert.match(steps[7], /measure both diagonals, inside corner to inside corner: each 328\.02 mm across the 260 × 200 mm opening; accept a difference of up to 0\.79 mm \(beams cut to ±0\.5 mm, every corner square\), about 0\.14° of lean$/);
-    assert.match(steps[12], /^13\. Square side 2 /); assert.match(steps[17], /^18\. Side 2 goes on as one, joined to y2, y4, y1 and y3$/);
-    assert.match(steps[18], /^19\. Square the frame before its joins are tightened fully/);
+    assert.deepEqual(steps.slice(2, 8).map((l) => l.replace(/: (?!the next).*$/, '')), ['3. Side 1 (p1, p2, x1 and x3), built flat on the bench',
+      '4. Load 2 × slot-nut-6-misumi-m4-slide-in into p1\'s back slot from end a, past 30 and 250 mm, for bracket, before the first made of the blind join of x1.a to p1.back@30 and the blind join of x3.a to p1.back@250, each of which closes that way (or through end b before cap1 goes on): the next step makes the blind join of x1.a to p1.back@30',
+      '5. Side 1 (p1, p2, x1 and x3)', '6. Side 1 (p1, p2, x1 and x3)', '7. Side 1 (p1, p2, x1 and x3)', '8. Square side 1, then tighten its joins']);
+    assert.match(steps[4], /x1 goes on, joined to p1$/); assert.match(steps[6], /x3 goes on, joined to p1 and p2$/);
+    assert.match(steps[7], /measure both diagonals, inside corner to inside corner: each 328\.02 mm across the 260 × 200 mm opening; accept a difference of up to 0\.79 mm \(beams cut to ±0\.5 mm, every corner square\), about 0\.14° of lean\. Push the corners of the long diagonal together until the two are within that, then tighten each join to its torque and measure again$/);
+    assert.match(steps[12], /^13\. Square side 2, then tighten its joins: /); assert.match(steps[17], /^18\. Side 2 goes on as one, joined to y2, y4, y1 and y3$/);
+    assert.match(steps[18], /^19\. Square the frame, then tighten its joins: .*then tighten each join to its torque and measure again$/);
     assert.match(text, /p1, p4, y1 and y3: measure both diagonals, inside corner to inside corner: each 340\.59 mm across the 220 × 260 mm opening; accept a difference of up to 0\.76 mm/);
     assert.deepEqual(steps.slice(19).map((l) => l.replace(/^\d+\. /, '')), ['foot1, cap1 (cap) go on', 'bracket (plate) goes on', 'plate goes on', 'foot2, cap2, foot4, cap4, foot3, cap3 (cap) go on']);
     // each join's screw with its key and torque: the lips of the post's slot under the head take 3677 N on 17.9 mm²
-    assert.match(text, /4\. Side 1 \(p1, p2, x1 and x3\): x1 goes on, joined to p1\n\s+blind join of x1\.a to p1\.back@30 \(1 × M5x12 button\) with a 3 mm hex key, to 3\.68 N m at most \(what the seat takes\)/);
+    assert.match(text, /5\. Side 1 \(p1, p2, x1 and x3\): x1 goes on, joined to p1\n\s+blind join of x1\.a to p1\.back@30 \(1 × M5x12 button\) with a 3 mm hex key, to 3\.68 N m at most \(what the seat takes\)/);
     assert.match(text, /Tightening, by kind of join:\n\s+blind \(16 joins, M5x12 button with a 3 mm hex key\): 3\.68 N m, at most/);
     const json = JSON.parse(cad('order', 'frame/box', '--json'));
-    assert.deepEqual(json.frame.steps.map((x) => x.kind).join(' '), 'cut drill side join join load join square side join join join square join join join join join square mount mount mount mount');
+    assert.deepEqual(json.frame.steps.map((x) => x.kind).join(' '), 'cut drill side load join join join square side join join join square join join join join join square mount mount mount mount');
+    // what each step shows: side 2 on the bench away from side 1, then the whole frame as side 2 goes on as one, along its posts
+    const st = json.frame.steps;
+    assert.deepEqual([st[0].shown, st[9].shown.sort(), st[9].now, st[12].shown.sort(), st[17].now, st[17].shown.length, st[17].dir.map(Math.abs)], [[], ['p3', 'x2'], ['x2'], ['p3', 'p4', 'x2', 'x4'], ['p3', 'p4', 'x2', 'x4'], 12, [0, 0, 1]]);
+    assert.deepEqual(json.frame.notFlat, []);
     assert.deepEqual(json.frame.sides.map((x) => x.beams), [['p1', 'p2', 'x1', 'x3'], ['p3', 'p4', 'x2', 'x4']]);
     assert.deepEqual(json.frame.bays.map((x) => [x.beams.join(), x.width, x.height, x.square.diagonal, x.square.accept]), [['p1,p2,x1,x3', 260, 200, 328.02, 0.79], ['p1,p4,y1,y3', 220, 260, 340.59, 0.76], ['p2,p3,y2,y4', 220, 260, 340.59, 0.76], ['p3,p4,x2,x4', 260, 200, 328.02, 0.79]]);
     assert.deepEqual(json.frame.torques.map((x) => [x.kind, x.joins, x.torque]), [['blind', 16, 3.68]]);
@@ -3073,20 +3079,46 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
       const { buildData } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/buildpage.mjs')).href)});
-      const s = await buildAssembly('frame/box'), f = checkAssembly(s), b = (await buildData(s)).build.frame;
-      console.log(JSON.stringify({ square: f.filter((x) => x.code === 'frame.square').map((x) => [x.level, x.refs.beams.join(), x.values.accept]), seat: f.find((x) => x.code === 'fasten.seat' && /x1\\.a/.test(x.text)), page: { steps: b.steps.length, bays: b.bays.map((x) => x.diagonal), torques: b.torques.length, stuck: b.stuck } }));
+      const { frameBuild, frameStepPictures } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/framebuild.mjs')).href)});
+      const s = await buildAssembly('frame/box'), f = checkAssembly(s), page = (await buildData(s)).build, b = page.frame, pics = frameStepPictures(s, frameBuild(s));
+      console.log(JSON.stringify({ order: page.order, pictures: pics.map((p) => p.n).join(), bench: [...new Set(pics.find((p) => p.n === 10).parts.map((p) => p.item))].sort(), moving: [...new Set(pics.find((p) => p.n === 10).parts.filter((p) => p.role === 'part').map((p) => p.item))], square: f.filter((x) => x.code === 'frame.square').map((x) => [x.level, x.refs.beams.join(), x.values.accept]), seat: f.find((x) => x.code === 'fasten.seat' && /x1\\.a/.test(x.text)), page: { steps: b.steps.length, bays: b.bays.map((x) => x.diagonal), torques: b.torques.length, stuck: b.stuck } }));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     assert.deepEqual(r.square, [['info', 'p1,p2,x1,x3', 0.79], ['info', 'p1,p4,y1,y3', 0.76], ['info', 'p2,p3,y2,y4', 0.76], ['info', 'p3,p4,x2,x4', 0.79]]);
     assert.deepEqual([r.seat.level, r.seat.values.area, r.seat.values.limit, r.seat.values.torque], ['pass', 17.94, 205, 3.68]);
     assert.match(r.seat.text, /on al6n01-t5 \(205 MPa\) the 17\.9 mm² either side of the opening takes 3677 N, a tightening of 3\.68 N m \(the lips' bending not counted: an estimate\)/);
     assert.deepEqual(r.page, { steps: 23, bays: [328.02, 340.59, 340.59, 328.02], torques: 1, stuck: null });
+    // the build page gives the frame's build as its one sequence (no assembly order beside it), and the pictures of cad
+    // order --preview are numbered as its steps are: step 10 shows side 2 on the bench, x2 going on to p3
+    assert.equal(r.order, null);
+    assert.equal(r.pictures, '3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23');
+    assert.deepEqual([r.bench, r.moving], [['p3', 'x2'], ['x2']]);
     // the plate on slide-in nuts: x1's slot is closed by a join at each end, so whichever is made second shuts them in
     write('slide-in');
     const refused = spawnSync(process.execPath, [BIN, 'order', 'frame/box'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } });
     assert.equal(refused.status, 1);
-    assert.equal(refused.stdout.trim(), 'frame/box: x1\'s top slot: 2 slide-in nuts (slot-nut-6-misumi-m4-slide-in) for plate would be shut in by the blind join of x1.b to p2.front@30 (step 5), the blind join of x1.a to p1.back@30 closing the other end: in any order the second of those joins shuts them in, and a nut loaded before it can never be taken out or replaced: give "nut": "drop-in" (slot-nut-6-misumi-m4-drop-in), which goes in through the opening anywhere');
+    assert.equal(refused.stdout.trim(), 'frame/box: x1\'s top slot: 2 slide-in nuts (slot-nut-6-misumi-m4-slide-in) for plate would be shut in between the blind join of x1.a to p1.back@30 and the blind join of x1.b to p2.front@30: whichever of the two is made second shuts them in, and a nut loaded before it can never be taken out or replaced: give "nut": "drop-in" (slot-nut-6-misumi-m4-drop-in), which goes in through the opening anywhere');
     const stuck = JSON.parse(cad('order', 'frame/box', '--json')).frame.stuck;
     assert.deepEqual([stuck.item, stuck.place, stuck.joins, stuck.alternative], ['x1', 'top.1', [0, 1], 'slot-nut-6-misumi-m4-drop-in']);
+    // every screw reached in the frame's own order: with x3 lowered to 70 mm it stands 15 mm over the plate's screws on
+    // x1, so the plate goes on while side 1 is built, before x3, not with the rest at the end
+    write();
+    const base = JSON.parse(fs.readFileSync(file, 'utf8')), low = JSON.parse(JSON.stringify(base)), x3 = low.items.find((i) => i.id === 'x3');
+    x3.from[2] = x3.to[2] = 70; low.joins = low.joins.map((j) => (j.a.startsWith('x3.') ? { ...j, b: j.b.replace('@250', '@70') } : j));
+    fs.writeFileSync(file, JSON.stringify(low));
+    const lowSteps = cad('order', 'frame/box').split('\n').filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim().replace(/^\d+\. /, ''));
+    assert.match(lowSteps[lowSteps.findIndex((l) => /^plate goes on$/.test(l)) + 1], /^Side 1 \(p1, p2, x1 and x3\): x3 goes on, joined to p1 and p2$/);
+    // a side goes on as one only where its joins let it: a middle rail m from x3 to x4 puts a head in x4's slot, which runs
+    // across the posts' slots that the y rails' heads slide along, so side 2 is built on the frame beam by beam, and says why
+    const mid = JSON.parse(JSON.stringify(base));
+    mid.items.push({ id: 'm', beam: P, from: [150, 20, 250], to: [150, 240, 250] });
+    mid.joins.push({ kind: 'blind', a: 'm.a', b: 'x3.back@130' }, { kind: 'blind', a: 'm.b', b: 'x4.front@130' });
+    fs.writeFileSync(file, JSON.stringify(mid));
+    const midText = cad('order', 'frame/box'), midJson = JSON.parse(cad('order', 'frame/box', '--json')).frame;
+    assert.deepEqual(midJson.sides.map((x) => x.beams), [['p1', 'p2', 'x1', 'x3']]);
+    assert.deepEqual(midJson.notFlat.map((x) => x.beams), [['p3', 'p4', 'x2', 'x4']]);
+    assert.match(midJson.notFlat[0].why, /^the heads of its joins to the frame go into slots that run different ways \(the blind join of \w+\.b to p\d\.bottom@\d+ along p\d, the blind join of m\.b to x4\.front@130 along x4\), so they can't all slide in as it goes on$/);
+    assert.match(midText, /The bay of p3, p4, x2 and x4 is built on the frame, not flat: the heads/);
+    assert.doesNotMatch(midText, /Side 2/);
   } finally { done(); }
 });
 

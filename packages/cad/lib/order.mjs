@@ -92,7 +92,8 @@ function hitsAlong(origin, dir, tris) {
 /**
  * The order to put an assembly together, as data.
  * @param {object} s a built assembly
- * @returns {{ steps: { n: number, items: string[], object: string|null, dir: number[], fasteners: {fit: string, fastener?: string, count?: number}[], text: string }[], stuck: object|null }}
+ * @returns {{ steps: { n: number, items: string[], object: string|null, dir: number[], fasteners: {fit: string, fastener?: string, count?: number}[], text: string }[], stuck: object|null, covers?: { fit: string, fasten?: number, screwed: string[], wall: string }[] }}
+ *   covers: each part that stands over a screw, which has to go on after the parts the screw joins
  */
 export function assemblyOrder(s) {
   const all = groups(s).filter((g) => g.bought || g.motor || g.parts.some((p) => p.role === 'part' || p.role == null) || s.fits.some((x) => [x.a, x.b].flat().some((n) => top(n) === g.id)));
@@ -119,7 +120,7 @@ export function assemblyOrder(s) {
   }
   // Screws: what stands on the tool's line goes on after the screw, and if it must already be there, nothing can
   const worlds = placeItems(s.motion, s.jointValues), marks = s.motion.marks, reaches = (u, v, seen = new Set()) => { if (u === v) return true; if (seen.has(u)) return false; seen.add(u); return [...before.get(u).keys()].some((w) => reaches(w, v, seen)); };
-  const R = 1.5, bad = [];
+  const R = 1.5, bad = [], covers = []; // (covers: what stands over a screw, kept so another order of the same parts, a frame's build, can be held to it)
   for (const x of s.fits.filter((f) => f.access)) {
     const [id, name] = String(x.access).split('.'), m = marks.find((k) => k.id === id && k.name === name) ?? (s.items.find((i) => i.id === id)?.beam ? s.motion.address(String(x.access), 'access') : null); // (a beam's address: x1.top@120)
     if (!m) throw new Error(`fit ${x.note || `${x.a} / ${x.b}`}: access: no anchor "${x.access}" (give <item>.<anchor>${items.includes(id) ? `; ${id} has ${marks.filter((k) => k.id === id).map((k) => k.name).join(', ') || 'none'}` : ''})`);
@@ -128,7 +129,7 @@ export function assemblyOrder(s) {
     for (const q of all) {
       if (screwed.includes(q.id) || !starts.some((p) => hitsAlong(p, D, q.tris))) continue;
       if (later && reaches(q.id, later)) bad.push({ fit: x, wall: q.id, at: O, later });
-      else if (later) add(later, q.id, `${q.id} covers the screw of ${x.note || later}`);
+      else if (later) { add(later, q.id, `${q.id} covers the screw of ${x.note || later}`); covers.push({ fit: x.note || `${x.a} to ${x.b}`, screwed, wall: q.id }); }
     }
   }
   // A fasten's screws (lib/fasten.mjs): what stands over a head goes on after the parts the screw joins. A part that
@@ -139,7 +140,7 @@ export function assemblyOrder(s) {
     const screwed = [...rel.through, rel.into].map(top).filter((t) => by.has(t)), later = [...screwed].sort(earlier).at(-1), walls = [...new Set(acc.blockers.map((b) => b.item))];
     const first = walls.filter((q) => !by.has(q) || screwed.includes(q) || (later && reaches(q, later)));
     if (first.length) { if (acc.tilt == null) bad.push({ fit: { note: rel.label }, wall: first[0], at: acc.top, later, fasten: rel.index, screw: sc.index, member: screwed.includes(first[0]), fixed: !by.has(first[0]) }); continue; }
-    for (const q of walls) add(later, q, `${q} covers the screws of ${rel.label}`);
+    for (const q of walls) { add(later, q, `${q} covers the screws of ${rel.label}`); covers.push({ fasten: rel.index, fit: rel.label, screwed, wall: q }); }
   }
   const box = (g) => { const p = g.tris.flat(); return [0, 1, 2].map((k) => { const v = p.map((x) => x[k]); return (Math.min(...v) + Math.max(...v)) / 2; }); };
   if (bad.length) {
@@ -214,7 +215,7 @@ export function assemblyOrder(s) {
     else merged.push({ items: [...st.items], object: st.object, dir: st.dir, fasteners: st.fasteners, ...(st.together ? { together: true } : {}) });
   }
   merged.forEach((st, i) => { st.n = i + 1; st.text = `${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}${st.together ? ' go on as one' : i ? ` goes on${st.items.length > 1 ? ', one by one' : ''}` : ' first'}${st.fasteners.length ? `: ${st.fasteners.map(fastenerText).join('; ')}` : ''}`; });
-  return { steps: merged, stuck: null };
+  return { steps: merged, stuck: null, covers };
 }
 
 /** One fastening of a step as the order and the build page say it: the fit, its screws by count and name, the key and how tight. */
@@ -222,7 +223,7 @@ export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null 
 
 // Cached by what the parts are and where they are, with everything else that changes the answer
 function orderFile(s) {
-  const key = crypto.createHash('sha256').update(JSON.stringify([5, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([6, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
   return paths.cache('order', `${key}.json`);
 }
 export function orderOf(s) {
