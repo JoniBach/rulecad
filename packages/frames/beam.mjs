@@ -126,7 +126,7 @@ export function beamModel(profile, o = {}) {
   const list = pr ? given_.filter((x) => { if (x?.op !== 'tap' || !/^[ab](\.|$)/.test(String(x.at ?? '').trim())) return true; const e = String(x.at).trim()[0]; ends[e] = { kind: pr.end, thread: m.end?.thread ?? null }; return false; }) : [...given_];
   for (const e of ['a', 'b']) if (ends[e].kind === 'tapped' && !list.some((x) => x?.op === 'tap' && String(x.at ?? '').trim()[0] === e)) list.push({ op: 'tap', at: e });
   let done;
-  try { done = opsOf(b, list, beamAnchor); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); }
+  try { done = opsOf(b, list, beamAnchor, { printed: !!pr }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); }
   for (const x of done.ops) if (x.op === 'tap') { ends[x.end] = { kind: 'tapped', thread: x.thread }; for (const bo of bores) if (x.bores.includes(bo.name)) bo.tapped = true; }
   if (!pr) for (const e of ['a', 'b']) if (!done.ops.some((x) => x.end === e && (x.op === 'cut' || x.op === 'mitre'))) done.ops.push({ op: 'cut', at: e, end: e, face: null, place: null, distance: e === 'a' ? 0 : L, line: `cut end ${e} square`, implied: true });
   b.ops = done.ops.sort((p, q) => p.distance - q.distance); b.findings.push(...done.findings);
@@ -152,7 +152,7 @@ export function beam(m, o = {}) {
   if (display === 'link') solid = ROUND.includes(p.family) ? cylinder({ radius: p.width / 2, height: L, segments: 12, center: [0, 0, L / 2] }) : cuboid({ size: [p.width, p.height, L], center: [0, 0, L / 2] });
   else solid = extrudeLinear({ height: L }, polygon({ points: outline(p).loops }));
   if (display === 'link' && o.tracks) { const tracks = trackCutters(p, L); if (tracks.length) solid = subtract(solid, ...tracks); }
-  const cuts = opCutters(b, { envelope: display === 'link' }); // (a link keeps its box, cut only where an end is mitred)
+  const cuts = opCutters(b, { envelope: display === 'link', up: b.printed ? (b.printed.pose === 'lying' ? [0, 1, 0] : [0, 0, 1]) : null }); // (a link keeps its box, cut only where an end is mitred; a printed beam's holes on their side are teardrops)
   if (cuts.length) solid = subtract(solid, ...cuts);
   return Object.assign(solid, { model: b, display });
 }

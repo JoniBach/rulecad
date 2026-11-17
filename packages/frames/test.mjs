@@ -1625,6 +1625,21 @@ test('a printed beam\'s ends: a captive nut or an insert in place of a tap, each
   assert.match(coded(plainBar, 'beam.end')[0].text, /names no end_thread or end_at for a printed end/);
 });
 
+test('operations on a printed beam are features of the print: holes sized by the printer, a hole on its side a teardrop', async () => {
+  const { opCutters } = await import('./ops.mjs');
+  // the X1C's M4 clearance: 4.5 + its hole_comp 0.1 = 4.6 (machined, 4.5 as drawn)
+  const b = beamModel('2020-printed', { length: 160, printed: true, ops: [{ op: 'drill', at: 'front@40', thread: 'M4' }, { op: 'drill', at: 'top@120', diameter: 3 }] });
+  assert.match(b.ops[0].line, /^drill Ø4\.6 mm in front\.1, 40 mm from end a/);
+  // lying down, the front hole lies on its side: its cutter rises r root 2 = 2.3 x 1.414 = 3.25 over its axis, a teardrop's point;
+  // the top one stands up, round. Not printed (no way up), the same hole is round: 2.3 over its axis
+  const top = (cutters, i) => +jscad.measurements.measureBoundingBox(cutters[i])[1][1].toFixed(2);
+  assert.equal(top(opCutters(b, { up: [0, 1, 0] }), 0), +(2.3 * Math.SQRT2).toFixed(2));
+  assert.equal(top(opCutters(b, {}), 0), 2.3);
+  await prints(frames.printedBeam(b), 'a printed beam with a hole through its side and one down from the top');
+  // a printed profile's beam is printed: operations on one not said to be are refused by name
+  assert.throws(() => beamModel('2020-printed', { length: 160, ops: [{ op: 'drill', at: 'top@20', diameter: 3 }] }), /profile-2020-printed is a printed profile: a beam of it is printed \(\{ printed: true \}\), and its operations are features of the print/);
+});
+
 test('a 400 mm printed 2020 is spliced in two: a keyed lap that prints lying down and carries what the beam carries there', async () => {
   const b = beamModel('2020-printed', { length: 400, printed: true, ends: 'tapped' }), s = frames.spliceModel(b);
   assert.deepEqual(s.findings.map((f) => `${f.level} ${f.code}`), ['pass splice.fit', 'info splice.place', 'pass splice.strength', 'info splice.screw']);

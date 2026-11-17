@@ -11,7 +11,7 @@ import { fixingModel, holeModel, counterboreModel, engagement } from '@rulecad/f
 import { outline } from './profile.mjs';
 
 const { cylinder, cuboid, polygon, roundedRectangle } = jscad.primitives, { extrudeLinear } = jscad.extrusions;
-const { transform, rotateX, translate } = jscad.transforms;
+const { transform, rotateX, translate } = jscad.transforms, { union } = jscad.booleans;
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const mm = (x) => String(+Number(x).toFixed(2));
@@ -84,10 +84,10 @@ function spans(loops, p, d) {
  * @param {(b: object, address: string) => object} anchorOf beamAnchor
  * @returns {{ ops: object[], findings: object[] }}
  */
-export function opsOf(b, list, anchorOf) {
-  const what = `${b.name}: ops`, out = [], findings = [], p = b.profile, L = b.length;
+export function opsOf(b, list, anchorOf, { printed = false } = {}) {
+  const what = `${b.name}: ops`, out = [], findings = [], p = b.profile, L = b.length, MADE = printed ? undefined : MACHINED; // (printed: the printer's holes, @rulecad/fixings' X1C, compensated as a printed hole comes out small)
   if (!Array.isArray(list)) throw new Error(`${what} is a list of operations, [{ op: 'tap', at: 'a' }] (got ${shown(list)})`);
-  if (list.length && p.family === 'printed') throw new Error(`${what}: ${p.name} is a printed profile: operations on a printed beam become features of the print, a later release (Frames 3.5)`);
+  if (list.length && p.family === 'printed' && !printed) throw new Error(`${what}: ${p.name} is a printed profile: a beam of it is printed ({ printed: true }), and its operations are features of the print`);
   const loops = outline(p).loops, cls = classOf(b.material);
   list.forEach((o, i) => {
     const w = `${what}[${i}]`;
@@ -129,7 +129,7 @@ export function opsOf(b, list, anchorOf) {
       if (thread == null) throw new Error(`${ow}: ${p.name}'s bores name no thread (bore_thread): give one, { thread: 'M5' }`);
       if (typeof thread !== 'string') throw new Error(`${ow}: thread is a thread's name, such as M5 (got ${shown(thread)})`);
       let h;
-      try { h = holeModel(thread, { kind: 'tap', material: cls, printer: MACHINED, lead: 0 }); } catch (e) { throw new Error(`${ow}: ${String(e.message).replace(/^hole: /, '')}`); }
+      try { h = holeModel(thread, { kind: 'tap', material: cls, printer: MADE, lead: 0 }); } catch (e) { throw new Error(`${ow}: ${String(e.message).replace(/^hole: /, '')}`); }
       const fig = fixFigures(thread);
       const depth = num('depth') ?? h.depth, bore = which[0].diameter;
       if (bore >= fig.major - 1e-9) throw new Error(`${ow}: ${p.name}'s bore is Ø${mm(bore)} mm, as wide as an ${thread} thread (Ø${mm(fig.major)}): no thread can be cut in it. Give a smaller thread, or leave the end cut`);
@@ -164,7 +164,7 @@ export function opsOf(b, list, anchorOf) {
             kind = o.kind ?? 'clearance';
             if (!DRILL_KINDS.includes(kind)) throw new Error(`kind is ${DRILL_KINDS.join(', ')} (got ${shown(o.kind)})`);
             if (thread == null && kind !== 'clearance') throw new Error(`a ${kind} hole is sized by its thread: give thread`);
-            if (thread != null && diameter == null) { const h = holeModel(thread, { kind, printer: MACHINED, lead: 0, depth: deep, through: true }); diameter = h.diameter; rest = h.basis.rule; }
+            if (thread != null && diameter == null) { const h = holeModel(thread, { kind, printer: MADE, lead: 0, depth: deep, through: true }); diameter = h.diameter; rest = h.basis.rule; }
           } else if (o.op === 'access') {
             const head = o.head ?? 'cap', figure = ACCESS_KEYS[head];
             if (!figure) throw new Error(`head is the screw's head the key turns, ${Object.keys(ACCESS_KEYS).join(', ')} (got ${shown(o.head)})`);
@@ -175,7 +175,7 @@ export function opsOf(b, list, anchorOf) {
               diameter = fit ? fit[1] : r3(corners + OP_DEFAULTS.key.value); rest = fit ? `${fig.set}.${fit[0]}` : 'OP_DEFAULTS.key';
             }
           } else {
-            const c = counterboreModel(thread, { printer: MACHINED, ...(o.head ? { head: o.head } : {}), ...(diameter != null ? { diameter } : {}), ...(o.depth != null ? { depth: o.depth } : {}) });
+            const c = counterboreModel(thread, { printer: MADE, ...(o.head ? { head: o.head } : {}), ...(diameter != null ? { diameter } : {}), ...(o.depth != null ? { depth: o.depth } : {}) });
             seat = { diameter: c.diameter, depth: c.depth, head: c.head }; diameter = c.hole; rest = `${fig.set}.clearance`;
           }
         } catch (e) { throw new Error(`${ow}: ${String(e.message).replace(/^(hole|counterbore): /, '')}`); }
@@ -296,11 +296,12 @@ function wedge(b, m) {
 
 /**
  * The cutters a beam's operations take out of its solid, in the beam's frame. Mitres alone where only the envelope
- * matters (a link's box); every hole, pocket and notch for a preview.
- * @param {object} b a beam's model, with its ops @param {{ envelope?: boolean }} [o]
+ * matters (a link's box); every hole, pocket and notch for a preview. up: the way up as the beam prints (a printed
+ * beam's), so a hole lying on its side is a teardrop with its point that way and prints with no support.
+ * @param {object} b a beam's model, with its ops @param {{ envelope?: boolean, up?: number[] | null }} [o]
  * @returns {object[]} JSCAD geom3s to subtract
  */
-export function opCutters(b, { envelope = false } = {}) {
+export function opCutters(b, { envelope = false, up = null } = {}) {
   const out = [];
   for (const op of b.ops ?? []) {
     if (op.op === 'mitre') { out.push(wedge(b, op)); continue; }
@@ -311,7 +312,14 @@ export function opCutters(b, { envelope = false } = {}) {
     }
     const f = op.anchor && op.face ? frameOf(op.anchor) : null;
     if (!f) continue;
-    const down = (r, depth) => cylinder({ radius: r, height: depth + OUT, segments: SEGMENTS, center: [0, 0, (OUT - depth) / 2] });
+    // a hole down the face's normal; on its side as the beam prints, a teardrop: its point toward up, 45° each side
+    const u = up ? [f[0] * up[0] + f[1] * up[1] + f[2] * up[2], f[4] * up[0] + f[5] * up[1] + f[6] * up[2]] : null, side = u && Math.hypot(...u) > 0.1 ? u.map((c) => c / Math.hypot(...u)) : null;
+    const down = (r, depth) => {
+      const c = cylinder({ radius: r, height: depth + OUT, segments: SEGMENTS, center: [0, 0, (OUT - depth) / 2] });
+      if (!side) return c;
+      const [ux, uy] = side, k = Math.SQRT1_2, tip = polygon({ points: [[r * Math.SQRT2 * ux, r * Math.SQRT2 * uy], [r * (k * ux - k * uy), r * (k * uy + k * ux)], [r * (k * ux + k * uy), r * (k * uy - k * ux)]] }); // (the point, then the tangents a quarter turn either side of it, counter-clockwise)
+      return union(c, translate([0, 0, -depth], extrudeLinear({ height: depth + OUT }, tip)));
+    };
     if (op.op === 'access' || op.op === 'drill') out.push(transform(f, down(op.diameter / 2, op.depth)));
     if (op.op === 'counterbore') out.push(transform(f, down(op.seat.diameter / 2, op.seat.depth)), transform(f, down(op.diameter / 2, op.depth)));
     if (op.op === 'pocket') {
