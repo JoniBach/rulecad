@@ -3619,7 +3619,7 @@ test('bought fittings: a T plate, an inner connector and an anchor in joins, an 
     r = probe({ items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210]), { id: 'cap', bought: 'fitting-motedis-end-cap-20-b6', at: 'x1.b' }, { id: 'foot', bought: 'fitting-motedis-foot-m6-d19', at: 'x1.a' }],
       joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.top@150', fitting: 'printed' }] });
     assert.deepEqual([fails(r), by(r, 'frame.preload').map((x) => x.level)], [[], ['pass']]);
-    assert.match(by(r, 'frame.nut').find((x) => x.refs.item === 'x1').text, /slide-in nut .*into x1's top slot before x1's end [ab] \((cap|foot) placed there\) closes it/);
+    assert.match(by(r, 'frame.nut').find((x) => x.refs.item === 'x1').text, /slide-in nut .*into x1's top slot from an end before (foot and cap|cap and foot) go on$/); // (both ends capped: each named)
     // refused by name: a set the join does not take
     fs.writeFileSync(file, JSON.stringify({ title: 'Bought', kind: 'fit', items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210])], joins: [{ kind: 'hidden', a: 'y1.a', b: 'x1.top@150', fitting: 'fitting-motedis-plate-t-20' }] }));
     assert.match(cad('check', 'frame/bought'), /join 1: .*fitting-motedis-plate-t-20 is a joining plate, and a hidden join takes an inner connector: fitting-motedis-plate-t-20 goes in a gusset or splice join/);
