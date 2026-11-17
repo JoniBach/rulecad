@@ -18,7 +18,11 @@
 // Every figure is worked out twice: with the joins' springs, and with the joins rigid. The springs are the honest
 // estimate; rigid joins bound it from the stiff side. Each finding gives both and says which joins it rests on.
 // Units: mm, N, N·mm, MPa, kg.
+import fs from 'node:fs';
+import path from 'node:path';
 import { frame as solveFrame, subdivide } from '@rulecad/fea/frame';
+import { placeItems, jointValues, mul } from '@rulecad/model-link';
+import { paths } from './workspace.mjs';
 import { massesOf } from './loads.mjs';
 import { axisOf } from './motors.mjs';
 
@@ -52,6 +56,9 @@ const restsWord = (k) => (k.measured?.bending && k.measured?.twist ? 'measured' 
 export function frameModelOf(s, helpers) {
   const motion = s.motion;
   if (!motion || !s.objects.some((o) => o.beam && !o.unplaced)) return null;
+  // beams with no joins and nothing said of their supports are parts held by other means (fastened to a plate, a lone
+  // upright on a printed base): not a frame to solve
+  if (!s.joins?.length && s.a.frame == null) return null;
   const { placeItems, jointValues, mul } = helpers, ids = motion.items.map((x) => x[0]), base = jointValues(motion, motion.pose ?? undefined), worlds = placeItems(motion, base);
   const opts = s.a.frame ?? {};
   if (typeof opts !== 'object' || Array.isArray(opts)) throw new Error(`frame is { "supports", "limit", "points" } (got ${shown(opts)})`);
@@ -131,7 +138,7 @@ export function frameModelOf(s, helpers) {
       if (!b) throw new Error(`frame.supports: "${addr}" is on a beam of the frame, as z1.a or x1.bottom@50% (beams: ${[...beams.keys()].join(', ')})`);
       if (!['pinned', 'fixed'].includes(how)) throw new Error(`frame.supports: "${addr}" is held pinned (from moving) or fixed (from turning too) (got ${shown(how)})`);
       const r = motion.address(addr, 'frame.supports');
-      supports.push({ where: addr, beam: b, z: snap(b, Math.max(0, Math.min(b.L, r.frame[11]))), how, why: 'frame.supports' });
+      supports.push({ where: addr, beam: b, z: snap(b, Math.max(0, Math.min(b.L, r.frame[11]))), how, why: 'frame.supports', said: true });
     }
   } else {
     for (const it of s.a.items || []) {
@@ -222,7 +229,7 @@ export function frameChecks(s, f, helpers) {
   if (!fm) return null;
   if (fm.empty) { if (fm.missing.length) f('info', `the frame is not solved: ${fm.missing.join(', ')} ${fm.missing.length > 1 ? 'give' : 'gives'} no modulus, shear modulus or second moments`, null, { code: 'frame.solve', refs: { beams: fm.missing } }); return null; }
   const solved = solveAll(fm);
-  if (solved.error) { f('warn', `the frame is not solved: ${solved.error}. Its supports: ${fm.supports.map((x) => `${x.where} (${x.why})`).join(', ') || 'none'}`, 'frame: not solved', { code: 'frame.solve', refs: { supports: fm.supports.map((x) => x.where), code: solved.code } }); return null; }
+  if (solved.error) { const guessed = fm.supports.every((x) => x.why === 'a lowest end'); f(guessed ? 'info' : 'warn', `the frame is not solved: ${solved.error}. Its supports: ${fm.supports.map((x) => `${x.where} (${x.why})`).join(', ') || 'none'}${guessed ? '. Say where it is held: "frame": { "supports": { "z1.a": "pinned" } }, or fit its feet' : ''}`, guessed ? null : 'frame: not solved', { code: 'frame.solve', refs: { supports: fm.supports.map((x) => x.where), code: solved.code } }); return null; }
   const { results } = solved, down = fm.down, margin = FRAME_CHECK.margin.value;
   // what the joins rest on, counted by kind
   const kinds = new Map();
@@ -282,25 +289,34 @@ export function frameChecks(s, f, helpers) {
     f('pass', `${passing.length === beamRows.length ? 'every beam' : `${passing.length} beams`} stays under its alloy's strength with ${margin} times to spare: the most stressed is ${low.b.id}, ${n3(low.w.peak, 2)} MPa against ${low.b.strength} MPa, ${n3(low.margin, 1)} times under`, null,
       { code: 'frame.stress', at: r4(add(low.b.A, scale(low.b.u, low.b.L / 2))), values: { stress: r3(low.w.peak), strength: low.b.strength, margin: r3(low.margin), beams: passing.length }, refs: { beam: low.b.id, beams: passing.map((x) => x.b.id) } });
   }
+  const rated = [], unrated = [];
   for (const x of fm.joins) {
     let M = 0, T = 0, at = null;
     for (const r of results) for (const [model, res] of [['springs', r.spring], ['rigid', r.rigid]]) {
-      const e = res.elements.find((q) => q.of === x.A.id && (x.e === 'a' ? q.id === `${x.A.id}#1` : q.id === `${x.A.id}#${res.elements.filter((p) => p.of === x.A.id).length}`)); if (!e) continue;
+      const mine = res.elements.filter((q) => q.of === x.A.id), e = x.e === 'a' ? mine[0] : mine[mine.length - 1]; if (!e) continue;
       const end = x.e === 'a' ? e.ends.a : e.ends.b, m = Math.hypot(end[4], end[5]);
-      if (m > M) { M = m; T = Math.abs(end[3]); at = { case: r.case, model }; }
+      if (!at || m > M) { M = m; T = Math.abs(end[3]); at = { case: r.case, model }; }
     }
-    const P = fm.nodes[fm.nodeAt(x.A, x.za)], fit = x.j.fitted?.model, label = x.j.label, refs = { join: x.j.index, kind: x.j.kind, a: x.j.a, b: x.j.b };
-    const strengthOf = fit?.load?.force && fit.margin && Array.isArray(fit.load.at) ? fit.load.force * Math.hypot(...fit.load.at) * fit.margin : null;
-    if (strengthOf) {
-      const m = strengthOf / (M || 1e-9), level = m < 1 ? 'fail' : m < margin ? 'warn' : 'pass';
-      f(level, `${label}: ${n3(M / 1000, 3)} N·m bending at ${x.A.id}'s end ${x.e} (${at.model === 'rigid' ? 'joins rigid' : 'joins\' springs'}${fm.cases.length > 1 ? `, ${at.case.label}` : ''}), against about ${n3(strengthOf / 1000, 2)} N·m ${x.j.fitted.item} takes: its ${fit.load.force} N at ${n3(Math.hypot(...fit.load.at), 1)} mm from the corner, ${n3(fit.margin, 1)} times under its plastic's strength by finite elements, scaled as the load grows. ${n3(m, 1)} times under it`, level === 'pass' ? null : `${label}: ${n3(m, 1)}×`,
-        { code: 'frame.stress', at: r4(P), values: { moment: r3(M), twist: r3(T), strength: r3(strengthOf), margin: r3(m) }, refs: { ...refs, item: x.j.fitted.item } });
-    } else {
-      f('info', `${label}: ${n3(M / 1000, 3)} N·m bending and ${n3(T / 1000, 3)} N·m twist at ${x.A.id}'s end ${x.e} at worst; the kit holds no strength for a ${x.j.kind} join${x.j.fitting ? ` with ${x.j.fitting}` : ''} to check it against`, null,
-        { code: 'frame.stress', at: r4(P), values: { moment: r3(M), twist: r3(T) }, refs });
-    }
+    const fit = x.j.fitted?.model, cap = fit?.load?.force && fit.margin && Array.isArray(fit.load.at) ? fit.load.force * Math.hypot(...fit.load.at) * fit.margin : null;
+    (cap ? rated : unrated).push({ x, M, T, at, fit, cap, margin: cap ? cap / (M || 1e-9) : null, P: fm.nodes[fm.nodeAt(x.A, x.za)], refs: { join: x.j.index, kind: x.j.kind, a: x.j.a, b: x.j.b } });
   }
-
+  for (const q of rated) {
+    const level = q.margin < 1 ? 'fail' : q.margin < margin ? 'warn' : 'pass';
+    if (level === 'pass' && rated.length > 1) continue;
+    f(level, `${q.x.j.label}: ${n3(q.M / 1000, 3)} N·m bending at ${q.x.A.id}'s end ${q.x.e} (${q.at.model === 'rigid' ? 'joins rigid' : 'joins\' springs'}${fm.cases.length > 1 ? `, ${q.at.case.label}` : ''}), against about ${n3(q.cap / 1000, 2)} N·m ${q.x.j.fitted.item} takes: its ${q.fit.load.force} N at ${n3(Math.hypot(...q.fit.load.at), 1)} mm from the corner, ${n3(q.fit.margin, 1)} times under its plastic's strength by finite elements, scaled as the load grows: ${n3(q.margin, 1)} times under it${level !== 'pass' ? `, where about ${margin} is wanted. A larger design load on the join ("load") sizes a stouter fitting` : ''}`, level === 'pass' ? null : `${q.x.j.label}: ${n3(q.margin, 1)}×`,
+      { code: 'frame.stress', at: r4(q.P), values: { moment: r3(q.M), twist: r3(q.T), strength: r3(q.cap), margin: r3(q.margin) }, refs: { ...q.refs, item: q.x.j.fitted.item } });
+  }
+  const okRated = rated.filter((q) => q.margin >= margin);
+  if (rated.length > 1 && okRated.length) {
+    const low = okRated.reduce((p, q) => (q.margin < p.margin ? q : p));
+    f('pass', `${okRated.length} joins with printed fittings each take their moment with ${margin} times to spare: the nearest is ${low.x.j.label}, ${n3(low.M / 1000, 3)} N·m against about ${n3(low.cap / 1000, 2)} N·m, ${n3(low.margin, 1)} times under`, null,
+      { code: 'frame.stress', at: r4(low.P), values: { moment: r3(low.M), strength: r3(low.cap), margin: r3(low.margin), joins: okRated.length }, refs: { ...low.refs, item: low.x.j.fitted.item } });
+  }
+  if (unrated.length) {
+    const most = unrated.reduce((p, q) => (q.M > p.M ? q : p)), kindsOf = [...new Set(unrated.map((q) => q.x.j.kind))];
+    f('info', `${unrated.length} join${unrated.length > 1 ? 's' : ''} (${kindsOf.join(', ')}) ha${unrated.length > 1 ? 've' : 's'} no strength in the kit to check against: the largest moment is ${n3(most.M / 1000, 3)} N·m bending and ${n3(most.T / 1000, 3)} N·m twist at ${most.x.j.label}`, null,
+      { code: 'frame.stress', at: r4(most.P), values: { moment: r3(most.M), twist: r3(most.T), joins: unrated.length }, refs: { ...most.refs, moments: unrated.map((q) => ({ join: q.x.j.index, moment: r3(q.M), twist: r3(q.T) })) } });
+  }
   // ---- frame.buckling: each beam in compression against Euler's load, and the frame's own first factor ----
   const squeezed = [];
   for (const b of fm.beams.values()) {
@@ -377,15 +393,32 @@ export function frameShape(s, helpers, o = {}) {
 export function frameShapeSvg(sh, o = {}) {
   const [i, j] = o.view === 'side' ? [1, 2] : o.view === 'top' ? [0, 1] : [0, 2], all = sh.beams.flatMap((b) => [...b.drawn, ...b.moved]);
   const lo = [Math.min(...all.map((p) => p[i])), Math.min(...all.map((p) => p[j]))], hi = [Math.max(...all.map((p) => p[i])), Math.max(...all.map((p) => p[j]))];
-  const W = 640, pad = 40, k = (W - 2 * pad) / Math.max(hi[0] - lo[0], hi[1] - lo[1], 1), H = Math.ceil((hi[1] - lo[1]) * k + 2 * pad + 40);
-  const X = (p) => (pad + (p[i] - lo[0]) * k).toFixed(1), Y = (p) => (H - 40 - pad - (p[j] - lo[1]) * k).toFixed(1);
+  const W = 640, pad = 40, k = (W - 2 * pad) / Math.max(hi[0] - lo[0], hi[1] - lo[1], 1), H = Math.ceil((hi[1] - lo[1]) * k + 2 * pad + 56);
+  const X = (p) => (pad + (p[i] - lo[0]) * k).toFixed(1), Y = (p) => (H - 56 - pad - (p[j] - lo[1]) * k).toFixed(1);
   const line = (ps, attrs) => `<polyline points="${ps.map((p) => `${X(p)},${Y(p)}`).join(' ')}" fill="none" ${attrs}/>`;
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="system-ui, sans-serif">
 <rect width="100%" height="100%" fill="#fff"/>
 ${sh.beams.map((b) => line(b.drawn, 'stroke="#bbb" stroke-width="6" stroke-linecap="round"')).join('\n')}
 ${sh.beams.map((b) => line(b.moved, 'stroke="#c0392b" stroke-width="2"')).join('\n')}
-<text x="${pad}" y="${H - 22}" font-size="13">${esc(o.title ? `${o.title}: ` : '')}${esc(sh.label)}</text>
+${o.title ? `<text x="${pad}" y="${H - 40}" font-size="13" font-weight="600">${esc(o.title)}</text>` : ''}
+<text x="${pad}" y="${H - 23}" font-size="12">${esc(sh.label)}</text>
 <text x="${pad}" y="${H - 6}" font-size="11" fill="#666">grey: as drawn; red: the shape it takes, scaled. A check view only, not the model</text>
 </svg>`;
+}
+
+/**
+ * The check view cad beams writes beside the beams' sheets: the frame's deflected shape seen from the front and from the
+ * side, scaled and saying so, as exports/<project>/<assembly>.frame-sag.svg. Null where the frame is not solved.
+ * @param {object} s a built assembly @returns {{ file: string, scale: number, most: number } | null}
+ */
+export function writeFrameShape(s) {
+  const sh = frameShape(s, { placeItems, jointValues, mul }), file = paths.exports(s.project, `${s.name}.frame-sag.svg`);
+  if (fs.existsSync(file)) fs.rmSync(file);
+  if (!sh) return null;
+  const front = frameShapeSvg(sh, { view: 'front', title: `${s.a.title || s.name}, from the front` }), side = frameShapeSvg(sh, { view: 'side', title: 'from the side' });
+  const h = (t) => Number(/height="(\d+)"/.exec(t)[1]), inner = (t) => t.replace(/^<svg[^>]*>\n?/, '').replace(/<\/svg>\s*$/, '');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="${h(front) + h(side)}" viewBox="0 0 640 ${h(front) + h(side)}" font-family="system-ui, sans-serif">\n${inner(front)}\n<g transform="translate(0 ${h(front)})">${inner(side)}</g>\n</svg>\n`);
+  return { file, scale: sh.scale, most: sh.most };
 }

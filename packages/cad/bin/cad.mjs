@@ -1079,6 +1079,8 @@ async function listCommand(what, ref) {
     if (opt('json')) return console.log(JSON.stringify(sheets.map((x) => ({ ...x, file: path.relative(WS, x.file) })), null, 2));
     if (!sheets.length) return console.log(`${ref} has no beams`);
     for (const x of sheets) say(`  mark ${x.mark} (${x.items.join(', ')}), 1:${x.scale}: ${path.relative(WS, x.file)}`);
+    const { writeFrameShape } = await import('../lib/framecheck.mjs'), sag = writeFrameShape(s);
+    if (sag) say(`  the frame's sag, drawn ${+sag.scale.toPrecision(3)} times its size (a check view): ${path.relative(WS, sag.file)}`);
     return;
   }
   const { wiresFor } = await import('../lib/assembly.mjs'), { wiringSheet } = await import('../lib/wires.mjs'), rows = wiresFor(s);
