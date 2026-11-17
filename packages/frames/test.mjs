@@ -1648,32 +1648,63 @@ test('operations on a printed beam are features of the print: holes sized by the
   assert.throws(() => beamModel('2020-printed', { length: 160, ops: [{ op: 'drill', at: 'top@20', diameter: 3 }] }), /profile-2020-printed is a printed profile: a beam of it is printed \(\{ printed: true \}\), and its operations are features of the print/);
 });
 
-test('a 400 mm printed 2020 is spliced in two: a keyed lap that prints lying down and carries what the beam carries there', async () => {
-  const b = beamModel('2020-printed', { length: 400, printed: true, ends: 'tapped' }), s = frames.spliceModel(b);
+test('a 400 mm printed 2020 is spliced in two: a keyed lap that prints lying down, each half of the section and the screws checked', async () => {
+  const b = beamModel('2020-printed', { length: 400, printed: true, ends: 'tapped' });
+  // the frame's moment: 50 N hung in the middle of the beam as a 400 mm simply supported span puts 50 / 2 x 400 / 2 =
+  // 5000 N.mm at its middle, the most anywhere on it, so at least as much as at the lap; the joint must carry twice that
+  const s = frames.spliceModel(b, { moment: 5000 });
   assert.deepEqual(s.findings.map((f) => `${f.level} ${f.code}`), ['pass splice.fit', 'info splice.place', 'pass splice.strength', 'info splice.screw']);
   // each half on the 256 mm bed; the lap as far from the middle as that allows: at = L + lap / 2 - bed
   assert.ok(s.pieces.every((p) => p.length <= 256 + 1e-9)); assert.ok(Math.abs(s.at - (400 + s.lap / 2 - 256)) < 1e-6);
-  // By hand: the ridge's apex 4 lines (1.68) in from the sides, -10 + (10 - 1.68) = -1.68; M3 button heads (5.7) pass the
-  // 6.1 opening; an M3 x 12 from the slot's floor (y 2.15) reaches 0.15 above the bed, through the nut in its 2.8 mm pocket.
-  // One screw: the nut pulls a 5.6 mm cylinder out of the ridge over it, from the pocket's roof (-10 + 2.8 + 1.483) to where
-  // the ridge narrows under 5.6 (-1.68 - 2.8): 1.237 mm, sheared at 39 / root 3 = 22.52 MPa: pi x 5.6 x 1.237 x 22.52 = 490 N
-  const [sc] = s.screws, tau = 39 / Math.sqrt(3), per = Math.PI * 5.6 * (-1.68 - 2.8 - (-10 + 2.8 + 1.483)) * tau;
-  assert.deepEqual([sc.thread, sc.length, sc.head, s.apex], ['M3', 12, 'button', -1.68]);
-  assert.ok(Math.abs(s.findings[2].values.per - per) < 0.5, `per screw ${s.findings[2].values.per} against ${per}`);
-  // two screws an arm apart carry per x arm; the beam breaks at 2 x its design moment, times 4 z (L - z) / L^2 at the lap
-  const share = (4 * s.at * (400 - s.at)) / 400 ** 2;
-  assert.ok(Math.abs(s.capacity - s.findings[2].values.per * s.findings[2].values.arm) < 1e-3); assert.ok(Math.abs(s.need - share * 2 * b.printed.design) < 1e-3);
-  assert.ok(s.capacity >= s.need);
-  // both halves print lying down, the ridge and the key on the bed, the notch open to it; together they weigh the beam less the holes
+  // By hand, the screws: an M4 button head's seat is 8.1 across, a teardrop whose point rises 4.05 x root 2 = 5.73 over
+  // its axis; under the slot's floor (y 2.15) less two lines: y = min((2.15 - 10) / 2, 2.15 - 0.84 - 5.73) = -4.42, its
+  // seat's foot 4.42 + 4.05 = 8.47 down, 1.53 over the bed (M5's 10 mm seat would reach under the bed's two lines).
+  // An M4 x 16 from the seat (2.2 deep) reaches 2.2 + 16 = 18.2 of the 20, so the nut's pocket is 20 - 18.2 + 3.2 = 5 deep.
+  // One screw across the cut, the thinner half 10 - 0.1 - 5 = 4.9 mm thick, plastic at 0.6 x 39 = 23.4 MPa across its layers:
+  //   bearing 4 x 4.9 x 23.4 = 458.6 N; torn out to the bed, e = 10 - 4.42 - 4.6 / 2 = 3.28 mm, two planes at 23.4 / root 3:
+  //   2 x 3.28 x 4.9 x 13.51 = 434.5 N, the least
+  const [sc] = s.screws, st = s.findings[2].values, e = 10 - 4.418 - 2.3;
+  assert.deepEqual([sc.thread, sc.length, sc.head, sc.pocket], ['M4', 16, 'button', 5]);
+  assert.ok(Math.abs(st.bearing - 4 * 4.9 * 23.4) < 0.05 && Math.abs(st.per - (2 * e * 4.9 * 23.4) / Math.sqrt(3)) < 0.5, `per screw ${st.per}`);
+  // the couple: per x arm; the joint carries the least of it and each half's section, and passes twice the moment given
+  assert.ok(Math.abs(s.couple - st.per * st.arm) < 1e-3); assert.equal(s.capacity, Math.min(s.couple, st.a, st.b)); assert.ok(s.capacity >= 2 * 5000);
+  // each half's section over the lap is about half the beam's: its modulus 40 to 60% of the whole printed section's
+  for (const h of ['a', 'b']) { const r = s.halves[h].modulus / b.printed.section.modulusX; assert.ok(r > 0.4 && r < 0.6, `${h}: ${r}`); }
+  // both halves print lying down; together they weigh the beam less the holes
   const [A, B] = frames.splice(s);
   for (const [g, what] of [[A, 'the half toward a'], [B, 'the half toward b']]) { const bb = jscad.measurements.measureBoundingBox(g); assert.ok(bb[0][0] > -1e-6 && bb[1][0] <= 256 + 1e-6 && Math.abs(bb[0][2]) < 1e-6, what); await prints(g, what); }
   assert.ok(A.grams + B.grams < b.mass && A.grams + B.grams > 0.95 * b.mass, `${A.grams} + ${B.grams} against ${b.mass}`);
-  // a moment the frame gives: the shortest lap does, placed the same way
+  // as drawn, half a 1 mm into the lap keeps about half the section (a 0.5 mm slab across it, against one where it is whole)
+  const z0 = s.at - s.lap / 2, slab = (x) => jscad.measurements.measureVolume(jscad.booleans.intersect(A, jscad.primitives.cuboid({ size: [0.5, 40, 40], center: [x, 0, 10] }))) / 0.5;
+  const ratio = slab(z0 + 1) / slab(20); assert.ok(ratio > 0.45 && ratio < 0.55, `half a over the lap keeps ${ratio} of the section`);
+  // with no moment given, the joint must carry what the beam breaks at there: a lap halves the section, so it fails, said
+  const full = frames.spliceModel(b), f = full.findings[2], share = (4 * full.at * (400 - full.at)) / 400 ** 2;
+  assert.equal(f.level, 'fail'); assert.ok(Math.abs(full.need - share * 2 * b.printed.design) < 1e-3); assert.ok(full.capacity < 0.55 * full.need);
+  assert.match(f.text, /a splice carries about half what the beam does: give the moment the frame puts there \(moment\), up to 7\.\d+ N·m/);
+  // a smaller moment: the shortest lap does, placed the same way
   const easy = frames.spliceModel(b, { moment: 2000 });
-  assert.equal(easy.lap, 40); assert.match(easy.findings[1].text, /where the frame puts 2 N·m/);
+  assert.equal(easy.lap, 40); assert.match(easy.findings[1].text, /where the frame puts 2 N·m/); assert.equal(easy.findings[2].level, 'pass');
   // refused by name
   assert.throws(() => frames.spliceModel(beamModel('2020-printed', { length: 400, printed: { pose: 'standing' } })), /prints standing up: a splice joins halves printed lying down/);
-  assert.throws(() => frames.spliceModel(b, { at: 100 }), /no lap with two M3 screws carries .* with its middle at 100 mm/);
-  assert.throws(() => frames.spliceModel(beamModel('2020-misumi-hfs5', { length: 400, printed: true })), /has a slot where the splice's ridge, notch or screws go/);
+  assert.throws(() => frames.spliceModel(b, { at: 100 }), /no lap with two M4 screws carries .* with its middle at 100 mm/);
+  assert.throws(() => frames.spliceModel(beamModel('2020-misumi-hfs5', { length: 400, printed: true })), /has a slot where the splice's screws go/);
   assert.throws(() => frames.spliceModel(b, { lap: 50 }), /no option "lap": it takes at, moment, thread and printer/);
+});
+
+test('a splice\'s strength is the least of its halves\' sections and its screws: a solid bar by the textbook', () => {
+  // a solid 20 x 20 PLA bar (infill 1), 400 mm: whole, Z = b h^2 / 6 = 20 x 20^2 / 6 = 1333 mm^3, 52 N·m at 39 MPa.
+  // Over the lap each half is 10 less half the 0.2 fit wide: Z = 9.9 x 20^2 / 6 = 660 mm^3, 25.74 N·m. At each end of
+  // the lap that half carries the whole moment alone, so the joint can carry no more than that, however many screws
+  const bar = beamModel(profileModel('profile-bar', { width: 20, height: 20 }), { length: 400, printed: { infill: 1 } });
+  within(bar.printed.section.modulusX, 20 * 20 ** 2 / 6, 0.01, 'the whole bar');
+  const s = frames.spliceModel(bar), st = s.findings[2].values;
+  for (const h of ['a', 'b']) within(s.halves[h].modulus, (9.9 * 20 ** 2) / 6, 0.01, `half ${h}`);
+  within(st.a, (39 * 9.9 * 20 ** 2) / 6, 0.01, 'half a carries');
+  // the screws were made to carry what the halves do (the less of that and what is asked); the halves govern
+  assert.ok(s.couple >= Math.min(st.a, st.b) - 1e-6); assert.equal(s.capacity, Math.min(st.a, st.b));
+  assert.equal(s.findings[2].level, 'fail'); assert.ok(Math.abs(s.capacity / s.need - 660 / 1333) < 0.03, `${s.capacity} of ${s.need}`);
+  // a moment within half of it passes: 10 N·m given, 20 N·m with the margin, under 25.7
+  assert.equal(frames.spliceModel(bar, { moment: 10000 }).findings[2].level, 'pass');
+  assert.equal(frames.spliceModel(bar, { moment: 13000 }).findings[2].level, 'fail');
+  assert.throws(() => frames.printedSection(bar.profile, { between: [1, -1] }), /between is \[x0, x1\], two upright cuts across the section in mm, x0 under x1/);
 });

@@ -182,7 +182,9 @@ export function printedProfile(series, o = {}) {
  * come from the shell and from the infill at its share times infill_stiffness; mass from the plastic laid. Every figure
  * is an estimate until a printed coupon is measured.
  * @param {import('./profile.mjs').Profile} p a profile's model
- * @param {{ walls?: number, infill?: number, line?: number, cells?: number }} [o] walls: lines (PRINTED_DEFAULTS.walls); infill: 0 to 1; line: mm (the X1C's)
+ * @param {{ walls?: number, infill?: number, line?: number, cells?: number, between?: [number, number] }} [o] walls: lines (PRINTED_DEFAULTS.walls); infill: 0 to 1; line: mm (the X1C's);
+ *   between: [x0, x1], the part of the section between two upright cuts (a splice's half over its lap), the cuts outlines
+ *   with walls of their own
  * @returns {{ area: number, shell: number, inner: number, plastic: number, centroid: [number, number], inertiaX: number, inertiaY: number,
  *   solid: { area: number, inertiaX: number, inertiaY: number }, modulusX: number, modulusY: number, reach: [number, number], walls: number, infill: number, thickness: number }}
  *   plastic: the area of plastic laid (shell, and inner times infill), for the mass; area, inertiaX, inertiaY: weighted for stiffness (mm², mm⁴);
@@ -194,13 +196,16 @@ export function printedSection(p, o = {}) {
   const walls = o.walls ?? PRINTED_DEFAULTS.walls.value, infill = o.infill ?? PRINTED_DEFAULTS.infill.value, line = o.line ?? x1c.rules.line.value;
   if (!(Number.isInteger(walls) && walls >= 1)) throw new Error(`${what}: walls is a whole number of lines, 1 or more (got ${shown(o.walls)})`);
   if (!(isNum(infill) && infill >= 0 && infill <= 1)) throw new Error(`${what}: infill is a share from 0 to 1, 0.4 for 40% (got ${shown(o.infill)})`);
+  const cut = o.between ?? [-Infinity, Infinity];
+  if (!(Array.isArray(cut) && cut.length === 2 && cut.every((x) => typeof x === 'number' && !Number.isNaN(x)) && cut[0] < cut[1])) throw new Error(`${what}: between is [x0, x1], two upright cuts across the section in mm, x0 under x1 (got ${shown(o.between)})`);
   const { loops } = outline(p), segs = [];
   let xa = Infinity, xb = -Infinity, ya = Infinity, yb = -Infinity;
   for (const loop of loops) for (let i = 0; i < loop.length; i++) { const a = loop[i], b = loop[(i + 1) % loop.length]; segs.push([a[0], a[1], b[0], b[1]]); xa = Math.min(xa, a[0]); xb = Math.max(xb, a[0]); ya = Math.min(ya, a[1]); yb = Math.max(yb, a[1]); }
+  const edges = [...segs, ...cut.filter(isNum).map((x) => [x, ya, x, yb])]; // (a cut is an outline of the part printed: it has walls too)
   const t = walls * line, k = infill * PRINTED_DEFAULTS.infill_stiffness.value, n = Math.round(Math.sqrt(o.cells ?? 40000)), h = Math.max(xb - xa, yb - ya) / n, cell = h * h;
-  const inside = (x, y) => { let c = false; for (const [x1, y1, x2, y2] of segs) if ((y1 > y) !== (y2 > y) && x < x1 + ((y - y1) * (x2 - x1)) / (y2 - y1)) c = !c; return c; };
-  const dist = (x, y) => { let d = Infinity; for (const [x1, y1, x2, y2] of segs) { const dx = x2 - x1, dy = y2 - y1, l = dx * dx + dy * dy, s = l ? Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / l)) : 0, ex = x - x1 - s * dx, ey = y - y1 - s * dy; d = Math.min(d, ex * ex + ey * ey); } return Math.sqrt(d); };
-  let shell = 0, inner = 0, A = 0, Sx = 0, Sy = 0, A1 = 0, S1x = 0, S1y = 0;
+  const inside = (x, y) => { if (x < cut[0] || x > cut[1]) return false; let c = false; for (const [x1, y1, x2, y2] of segs) if ((y1 > y) !== (y2 > y) && x < x1 + ((y - y1) * (x2 - x1)) / (y2 - y1)) c = !c; return c; };
+  const dist = (x, y) => { let d = Infinity; for (const [x1, y1, x2, y2] of edges) { const dx = x2 - x1, dy = y2 - y1, l = dx * dx + dy * dy, s = l ? Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / l)) : 0, ex = x - x1 - s * dx, ey = y - y1 - s * dy; d = Math.min(d, ex * ex + ey * ey); } return Math.sqrt(d); };
+  let shell = 0, inner = 0, A = 0, Sx = 0, Sy = 0, A1 = 0, S1x = 0, S1y = 0, ka = Infinity, kb = -Infinity, la = Infinity, lb = -Infinity;
   const pts = [];
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
     const x = xa + (i + 0.5) * h, y = ya + (j + 0.5) * h;
@@ -208,7 +213,9 @@ export function printedSection(p, o = {}) {
     const f = Math.max(0, Math.min(1, (t - dist(x, y)) / h + 0.5)), w = f + (1 - f) * k; // (a cell the shell's inner edge crosses counts in part, so the walls are as thick as drawn, not to the nearest cell)
     shell += f * cell; inner += (1 - f) * cell;
     A += w * cell; Sx += w * cell * x; Sy += w * cell * y; A1 += cell; S1x += cell * x; S1y += cell * y; pts.push(x, y, w);
+    ka = Math.min(ka, x - h / 2); kb = Math.max(kb, x + h / 2); la = Math.min(la, y - h / 2); lb = Math.max(lb, y + h / 2);
   }
+  if (o.between) { xa = Math.max(xa, ka); xb = Math.min(xb, kb); ya = Math.max(ya, la); yb = Math.min(yb, lb); } // (the furthest fibre of the part kept)
   const cx = Sx / A, cy = Sy / A, c1x = S1x / A1, c1y = S1y / A1;
   let Ix = 0, Iy = 0, I1x = 0, I1y = 0;
   for (let q = 0; q < pts.length; q += 3) { const x = pts[q], y = pts[q + 1], w = pts[q + 2]; Ix += w * cell * ((y - cy) ** 2 + h * h / 12); Iy += w * cell * ((x - cx) ** 2 + h * h / 12); I1x += cell * ((y - c1y) ** 2 + h * h / 12); I1y += cell * ((x - c1x) ** 2 + h * h / 12); }
