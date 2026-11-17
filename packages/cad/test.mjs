@@ -3333,8 +3333,8 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
     // a rail run into a beam joined across its face fails, naming the join
     assert.match(by(probe('crossed'), 'guide.fit').find((x) => x.level === 'fail').text, /runs into y1 joined at x1\.top@300 at 290 to 310 mm/);
     // refused by name
-    write('bad', { items: [x1], guides: [{ kind: 'wheels', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\); wheels, rods and sliders are not built yet/);
+    write('bad', { items: [x1], guides: [{ kind: 'rods', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or slider .*; rods are not built yet|guides\/0\/kind/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top@20', length: 300 }] });
     assert.match(cad('check', 'slide/bad'), /guide 1: on is a beam's slotted face, as x1\.top; where along it is "from"/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 200, length: 300 }] });
@@ -3342,6 +3342,72 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12X', on: 'x1.top', length: 300 }] });
     assert.match(cad('check', 'slide/bad'), /guide 1: rail-mgn12 has no carriage "MGN12X": it has MGN12C, MGN12H/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', length: 300, speed: 3 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: a guide has no "speed"|guides\/0.*speed/);
+    assert.match(cad('check', 'slide/bad'), /guide 1: a rail guide has no "speed"|guides\/0.*speed/);
+  } finally { done(); }
+});
+
+test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s rules, rolls its travel in a sweep clear of the beam, and the same guide on a plain T-slot is refused with why; a printed slider slides its stretch', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/roll', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'roll', material: 'PLA', objects: [] }));
+    const beam = (profile) => ({ id: 'x1', beam: { profile }, from: [0, 0, 0], to: [500, 0, 0] });
+    const write = (name, a) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: name, kind: 'fit', ...a }));
+    // four solid wheels under a plate over the top face, rolling along 400 mm of it; 1 kg 20 mm over the plate
+    write('wheels', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', wheel: 'v-wheel-solid', on: 'x1.top', from: 50, length: 400 }], loads: [{ mass: 1, at: { item: 'g1-carriage-1', at: [0, 0, 20] } }] });
+    // 3 kg held 200 mm out ahead of the plate pitches it past its wheels' ratings
+    write('heavy', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', on: 'x1.top', from: 50, length: 400 }], loads: [{ mass: 3, at: { item: 'g1-carriage-1', at: [200, 0, 20] } }] });
+    // the same guide on MISUMI's 2040, a plain T-slot; and a printed slider over the V-slot's first top slot
+    write('plain', { items: [beam('2040-misumi-hfs5')], guides: [{ kind: 'wheels', wheel: 'v-wheel-solid', on: 'x1.top', from: 50, length: 400 }] });
+    write('slider', { items: [beam('2040-openbuilds')], guides: [{ kind: 'slider', on: 'x1.top.1', from: 100, length: 200, size: 40 }] });
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly, sweep } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs');
+      const s = await buildAssembly('roll/${name}'), l = shoppingList(s), j = s.motion.joints.find((x) => x.id === 'g1-1');
+      const box = (id) => { const t = s.parts.filter((p) => p.item === id).flatMap((p) => p.triangles.flat()); return [0, 1, 2].map((k) => [Math.min(...t.map((q) => q[k])), Math.max(...t.map((q) => q[k]))].map((x) => +x.toFixed(3))); };
+      console.log(JSON.stringify({ joints: s.motion.joints.filter((j) => j.type !== 'fixed').map((j) => [j.id, j.type, j.dofs[0]]), poses: Object.keys(s.motion.poses),
+        bought: l.bought.map((b) => [b.qty, b.set, b.part]), fasteners: l.fasteners.map((x) => [x.qty, x.fastener]), printed: l.printed.map((p) => [p.id, p.grams]),
+        boxes: Object.fromEntries(['g1-carriage-1', 'g1-wheel-1', 'g1-wheel-3'].map((id) => [id, box(id)])),
+        sweep: j ? sweep(s, { steps: 12 }).map(({ level, text, values }) => ({ level, text, values })) : [],
+        findings: checkAssembly(s).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const by = (r, code) => r.findings.filter((x) => x.code === code);
+    const w = probe('wheels');
+    // from the profile's rules: the wheels' seats in the tracks of the front and back faces, both passing guide.fit
+    assert.deepEqual(by(w, 'guide.fit').map((x) => [x.level, x.values.axle, x.values.depth]), [['pass', 10.325, 1.625], ['pass', 10.325, 1.625]]);
+    assert.match(by(w, 'guide.fit')[0].text, /v-wheel-solid runs in slot-6-openbuilds's V track on profile-2040-openbuilds's front face/);
+    // the plate is printed, the four wheels bought, their screws, nuts, washers and spacers on the list
+    assert.deepEqual(w.printed.map((p) => p[0]), ['g1-carriage-1']); assert.ok(w.printed[0][1] > 5);
+    assert.deepEqual(w.bought.filter((b) => b[2] === 'wheel'), [[4, 'v-wheel-solid', 'wheel']]);
+    for (const x of [[4, 'M5x30 cap'], [4, 'M5 lock nut'], [2, 'M5 washer'], [2, 'eccentric-6-openbuilds'], [2, 'spacer 10 x 6 mm']]) assert.ok(w.fasteners.some((f) => f[0] === x[0] && f[1] === x[1]), `${x[1]}: ${JSON.stringify(w.fasteners)}`);
+    // the wheels stand either side of the 40 mm beam, their axles 20 + 10.325 out, their middles 10 mm under the top face
+    const mid = (id, k) => (w.boxes[id][k][0] + w.boxes[id][k][1]) / 2;
+    assert.equal(w.boxes['g1-carriage-1'][2][0], 11.5, 'the plate stands 1.5 mm over the top face, at z = 10');
+    assert.deepEqual([mid('g1-wheel-1', 1), mid('g1-wheel-3', 1)], [-30.325, 30.325]); assert.equal(mid('g1-wheel-1', 2), 3, 'a fixed wheel from 5.5 under the beam\'s middle up its spacer to the plate');
+    // it rolls its travel, from 0 to the stretch less its 63.9 mm over its wheels, both ends a pose; the sweep is clear of the beam
+    assert.deepEqual(w.joints, [['g1-1', 'prismatic', [0, 336.1, 0]]]); assert.ok(w.poses.includes('g1-a') && w.poses.includes('g1-b'));
+    assert.deepEqual(w.sweep.map((x) => [x.level, x.values.from, x.values.to]), [['pass', 0, 336.1]]);
+    assert.match(by(w, 'guide.travel')[0].text, /a plate on 4 v-wheel-solid wheels over x1's top face, 63\.9 mm long over its wheels, rolls from 50 to 450 mm along x1: travel 336\.1 mm/);
+    // its wheels carry what is on it: 1 kg along their axles, a quarter each with the plate's own weight
+    const [jm] = by(w, 'joint.moment');
+    assert.equal(jm.level, 'pass'); assert.equal(jm.refs.carriage, 'g1-carriage-1'); assert.ok(jm.values.carried > 1 && jm.values.carried < 1.2, `carried ${jm.values.carried}`);
+    assert.deepEqual(w.findings.filter((x) => x.level === 'fail' || (x.level === 'warn' && !/^(frame|motor\.loads)/.test(x.code))).map((x) => `${x.code} ${x.text}`), []);
+    // overloaded, it fails and names its most loaded wheel
+    const heavy = by(probe('heavy'), 'joint.moment')[0];
+    assert.equal(heavy.level, 'fail'); assert.match(heavy.text, /its most loaded wheel, w\d, takes .* past its rating/); assert.ok(heavy.values.margin < 1);
+    // the same guide on a plain T-slot is refused, with why
+    assert.match(cad('check', 'roll/plain'), /guide 1: wheels are refused on profile-2040-misumi-hfs5 under its top face: profile-2040-misumi-hfs5's front face has slot-6-misumi, a plain T-slot with no V track .*: a V-wheel's flanks need a V to run on and centre in/);
+    // a printed slider: its clearance the printer's fit, its friction said to rest on a working figure; it slides its stretch less its 40 mm
+    const sl = probe('slider');
+    assert.deepEqual(sl.joints, [['g1-1', 'prismatic', [0, 160, 0]]]); assert.deepEqual(sl.sweep.map((x) => [x.level, x.values.to]), [['pass', 160]]);
+    assert.match(by(sl, 'guide.friction')[0].text, /PLA on anodised aluminium taken as μ 0\.3/); assert.match(by(sl, 'guide.clearance')[0].text, /0\.2 mm clear a side/);
+    // refused by name
+    write('bad', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', on: 'x1.top.2', length: 400 }] });
+    assert.match(cad('check', 'roll/bad'), /guide 1: on is the face the plate lies over, as x1\.top/);
+    write('bad', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', on: 'x1.top', length: 60 }] });
+    assert.match(cad('check', 'roll/bad'), /guide 1: its carriage is 63\.9 mm long over its wheels, so a 60 mm stretch leaves it no travel/);
+    write('bad', { items: [beam('2040-openbuilds')], guides: [{ kind: 'wheels', rail: 'rail-mgn12', on: 'x1.top', length: 400 }] });
+    assert.match(cad('check', 'roll/bad'), /guide 1: a wheels guide has no "rail"|guides\/0/);
   } finally { done(); }
 });
