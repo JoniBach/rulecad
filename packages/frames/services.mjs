@@ -190,7 +190,7 @@ function rulesOf(what, set, variant) {
 
 /**
  * A printed plate that holds a bought device on a beam's slotted face, its holes read from the device's rule set
- * (mount_holes, with mount_hole_thread and mount_hole_reach for tapped holes, as a supply's; mount_hole_diameter and
+ * (mount_holes, x then y for each, with mount_hole_thread and mount_hole_reach for tapped holes, as a supply's; mount_hole_diameter and
  * board_thickness for plain ones, as a board's). A supply is screwed up from under the plate into its own thread, no
  * further than its maker allows; a board is screwed down through its holes into pilots in bosses that stand it off.
  * The plate is screwed into slot nuts past the device's body. Sized from a named load at the farthest hole by beam
@@ -204,8 +204,9 @@ export function deviceMountModel(profile, o = {}) {
   const what = 'deviceMountModel';
   options(what, o ?? {}, ['device', 'variant', 'turn', 'offset', 'standoff', 'screw', 'deviceHead', 'load', 'face', 'thread', 'head', 'nut', 'printer', 'material', 'given']);
   const r = rulesOf(what, o.device, o.variant), set = o.device.name ?? 'the device', label = `${set}${o.variant ? ` (${o.variant})` : ''}`;
-  const holes = r.mount_holes?.value;
-  if (!(Array.isArray(holes) && holes.length && holes.every((h) => Array.isArray(h) && h.length === 2 && h.every(isNum)))) throw new Error(`${what}: ${label} gives no mounting holes (mount_holes, [[x, y], ...] from its middle): a mount reads them from its rule set, so add them from its maker's drawing, or measure them`);
+  const flat = r.mount_holes?.value; // (x then y for each hole, as the vocabulary keeps a list)
+  if (!(Array.isArray(flat) && flat.length && flat.length % 2 === 0 && flat.every(isNum))) throw new Error(`${what}: ${label} gives no mounting holes (mount_holes, x then y for each from its middle): a mount reads them from its rule set, so add them from its maker's drawing, or measure them`);
+  const holes = Array.from({ length: flat.length / 2 }, (_, i) => [flat[2 * i], flat[2 * i + 1]]);
   const turn = o.turn ?? 0;
   if (!TURNS[turn]) throw new Error(`${what}: turn is 0, 90, 180 or 270, the device's x from the slot's line in degrees (got ${shown(o.turn)})`);
   if (o.offset != null && !isNum(o.offset)) throw new Error(`${what}: offset is the device's middle across the slot, in mm (got ${shown(o.offset)})`);
@@ -216,7 +217,7 @@ export function deviceMountModel(profile, o = {}) {
   if (o.offset == null && typeof r.mount_hole_thread?.value === 'string' && Array.isArray(r.mount_holes?.value)) {
     const p = profileOf(what, profile, o.given ?? {}), f = String(o.face ?? 'top').split('.')[0], half = (['top', 'bottom'].includes(f) ? p.width : p.height) / 2;
     let dk = 0; try { dk = screwOf(what, r.mount_hole_thread.value, o.deviceHead ?? 'button', printerOf(what, o.printer)).dk; } catch {}
-    const c = half + dk / 2 + FITTING_DEFAULTS.reach.value, ys = r.mount_holes.value.map((h) => turned(T, h)[1]);
+    const c = half + dk / 2 + FITTING_DEFAULTS.reach.value, fl = r.mount_holes.value, ys = Array.from({ length: Math.floor(fl.length / 2) }, (_, i) => turned(T, [fl[2 * i], fl[2 * i + 1]])[1]);
     if (ys.some((y) => Math.abs(y) < c - 1e-9)) { const lo = -c - Math.max(...ys), hi = c - Math.min(...ys); dy = r3(Math.abs(lo) <= Math.abs(hi) ? lo : hi); moved = true; }
   }
   if (!(isNum(w) && isNum(d))) throw new Error(`${what}: ${label} gives no body_width and body_depth: a mount keeps its screws clear of the body`);

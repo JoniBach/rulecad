@@ -183,4 +183,9 @@ test('rules check holds a list rule to order, and a part to what its vocabulary 
   s = base(); s.rules.tap_drill.value = 2.2; assert.deepEqual(checkRuleSet(s, vocabulary).map((x) => [x.code, x.rule]), [['rules.near', 'tap_drill']]);
   s = base(); delete s.rules.head; delete s.rules.tap_drill; assert.deepEqual(codes(s), [], 'what a size is not made with is not held to anything');
   assert.deepEqual(checkRuleSet({ name: 'x', rules: { l: { ...rule([3, 2]), unit: undefined } } }, vocabulary).map((x) => x.code), ['rules.order'], 'a list in a set with no part is still in order');
+  // points (a board's mounting holes, x then y for each) are kept in the order they are, whole points only
+  const pts = { ...vocabulary, parts: { ...vocabulary.parts, board: [] }, fields: { ...vocabulary.fields, mount_holes: { unit: 'mm', list: true, points: 2 } } }, board = (v) => ({ name: 'b', part: 'board', rules: { mount_holes: rule(v) } });
+  assert.deepEqual(checkRuleSet(board([-19.05, 24.13, -20.32, -24.13]), pts), [], 'points out of ascending order pass');
+  assert.deepEqual(checkRuleSet(board([-19.05, 24.13, -20.32]), pts).map((x) => [x.code, x.text]), [['rules.list', 'mount_holes is points of 2 numbers each, one after another: 3 numbers is not a whole number of them']]);
+  assert.deepEqual(checkRuleSet(board([-19.05, 24.13, -20.32, -24.13]), { ...pts, fields: { ...pts.fields, mount_holes: { unit: 'mm', list: true } } }).map((x) => x.code), ['rules.order'], 'without points, a list is ascending');
 });

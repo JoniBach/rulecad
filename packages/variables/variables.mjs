@@ -280,7 +280,7 @@ const KINDS = ['measured', 'spec', 'community', 'default', 'derived', 'estimate'
 const finite = (x) => typeof x === 'number' && Number.isFinite(x);
 /**
  * @param {RuleSet & { part?: string, interface?: Record<string, string> }} set
- * @param {{ units: string[], prefixes: string[], fields: Record<string, { unit?: string, choice?: string[], list?: boolean }>, parts: Record<string, string[]>, checks?: Record<string, { ascending?: string[], near?: string, to?: string, within?: string, says: string }[]> }} vocabulary
+ * @param {{ units: string[], prefixes: string[], fields: Record<string, { unit?: string, choice?: string[], list?: boolean, points?: number }>, parts: Record<string, string[]>, checks?: Record<string, { ascending?: string[], near?: string, to?: string, within?: string, says: string }[]> }} vocabulary
  * @returns {{ level: 'fail', code: string, text: string, rule?: string, values?: Record<string, number> }[]} what's wrong with it: nothing, if it passes
  */
 export function checkRuleSet(set, vocabulary) {
@@ -289,6 +289,7 @@ export function checkRuleSet(set, vocabulary) {
   for (const [name, r] of Object.entries(rules)) {
     const list = Array.isArray(r.value);
     if (!(list ? r.value.length && r.value.every(finite) : finite(r.value) || (typeof r.value === 'string' && r.value))) f('rules.value', list ? `${name} is a list, so every entry is a number and there is at least one` : `${name} has no value`, name);
+    else if (list && fields?.[name]?.points) { const n = fields[name].points; if (r.value.length % n) f('rules.list', `${name} is points of ${n} numbers each, one after another: ${r.value.length} numbers is not a whole number of them`, name); } // (points: in the order they are, not ascending)
     else if (list) { const i = r.value.findIndex((x, k) => k && x <= r.value[k - 1]); if (i > 0) f('rules.order', `${name} is a list in ascending order: ${r.value[i]} follows ${r.value[i - 1]}`, name, { before: r.value[i - 1], after: r.value[i] }); }
     if (!(typeof r.rule === 'string' && r.rule.length > 5)) f('rules.says', `${name} doesn't say what it is ("rule")`, name);
     if (!KINDS.includes(r.kind)) f('rules.kind', `${name}: kind ${JSON.stringify(r.kind)} is not one of ${KINDS.join(', ')}`, name);

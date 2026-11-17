@@ -52,7 +52,7 @@ const SHAPES = {
     // Where a board's axis connectors are along its edge is for routing a wire, no closer than that
     const sockets = Object.fromEntries(axes.map((a, i) => [a, z([-w / 2 + ((i + 0.5) * w) / axes.length, d / 2, t], [0, 1, 0])]));
     // its mounting holes, where its set gives them, drawn through it so a screw's clearance is measured in them
-    const holes = Array.isArray(set.rules.mount_holes?.value) && v.mount_hole_diameter ? set.rules.mount_holes.value : [];
+    const flat = set.rules.mount_holes?.value, holes = Array.isArray(flat) && v.mount_hole_diameter ? Array.from({ length: Math.floor(flat.length / 2) }, (_, i) => [flat[2 * i], flat[2 * i + 1]]) : [];
     const body = holes.length ? subtract(box(w, d, t), ...holes.map(([x, y]) => translate([x, y, t / 2], cylinder({ radius: v.mount_hole_diameter / 2, height: t + 2, segments: 32 })))) : box(w, d, t);
     return { parts: { body }, anchors: { centre: z([0, 0, t / 2]), top: z([0, 0, t]), bottom: z([0, 0, 0]), ...sockets } };
   },
@@ -104,13 +104,14 @@ export function boughtBuilt(spec, it, num, id) {
 }
 
 /**
- * A bought part's mounting holes from its rules, as a printed mount and the fasten checks read them: { holes, thread,
+ * A bought part's mounting holes from its rules (mount_holes: x then y for each), as a printed mount and the fasten checks read them: { holes ([[x, y], ...]), thread,
  * reach, diameter, thickness, face }, or null where its set gives none. A thread means tapped holes (a supply's), a
  * diameter plain ones (a board's). @param {{ name: string, part: string, rules: object }} m boughtModel's
  */
 export function mountOf(m) {
-  const r = m.rules, holes = r.mount_holes?.value;
-  if (!Array.isArray(holes) || !holes.length) return null;
+  const r = m.rules, flat = r.mount_holes?.value; // (x then y for each hole, as the vocabulary keeps a list)
+  if (!Array.isArray(flat) || !flat.length || flat.length % 2) return null;
+  const holes = Array.from({ length: flat.length / 2 }, (_, i) => [flat[2 * i], flat[2 * i + 1]]);
   return { set: m.name, holes, thread: typeof r.mount_hole_thread?.value === 'string' ? r.mount_hole_thread.value : null, reach: r.mount_hole_reach?.value ?? null, diameter: r.mount_hole_diameter?.value ?? null,
     thickness: m.part === 'board' ? r.board_thickness?.value ?? 1.6 : null, body: [r.body_width?.value, r.body_depth?.value], height: m.part === 'board' ? r.board_thickness?.value ?? 1.6 : r.body_length?.value ?? null, kind: r.mount_holes.kind, source: r.mount_holes.source };
 }
