@@ -540,8 +540,12 @@ An item can be a beam, a length of an aluminium extrusion, a tube or a bar from 
 - `"profile"` names the profile (`2020-misumi-hfs5`, `profile-4040-item-8`, or a set in this workspace's `rules/`).
   `"length"` is mm from end `a` to end `b`, a number or an expression (`"x1.length"`). Placed by its ends, the length
   may be left out: it is the distance from `from` to `to`, and a length that disagrees with them is refused with both.
-  `"material"` names a material set in place of the profile's alloy. `"printed": true` is for printed beams, a later
-  release: it is refused by name for now.
+  `"material"` names a material set in place of the profile's alloy. `"printed": true` makes it a printed part
+  (`@rulecad/frames` printed beams): drawn solid, weighed on `cad list` by the plastic its walls and infill lay, laid
+  on a plate as it prints by `cad plates`, off the cut list. `"printed": { "pose": "standing", "walls": 4, "infill":
+  0.6, "end": "nut" }` says how it prints; a tapped end becomes a heat-set insert (or a captive nut). The printable
+  profiles (`2020-printed` and its sizes) print lying down; another profile prints standing up, and its findings say
+  so where it cannot lie down.
 - Placed by its ends, end `a` is at `from` and end `b` at `to`; at roll 0 its top faces up (+z), or +y when it stands
   upright, and `"roll"` turns it about its own axis, in degrees. Or place it with `at` and `rotate` as any item, in its
   own frame: end `a` at the origin, the beam up +z, its top +y. The face names and a picture are in the
