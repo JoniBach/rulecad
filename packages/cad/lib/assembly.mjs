@@ -270,7 +270,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
         for (const p of src.b.parts) {
           if (p.role === 'support' && a.kind !== 'plate') continue; // supports are snipped off before parts go together
           out.push({ name: `${id}.${p.name}`, item: id, leaf: id, object: src.objName, role: src.role === 'reference' ? 'reference' : p.role, label: `${id}: ${marks.has(id) ? `mark ${marks.get(id)}, ` : ''}${p.label}`,
-            ...(p.filament ? { filament: p.filament } : {}), ...(p.mirror === false ? { mirror: false } : {}), part: p.name,
+            ...(p.filament ? { filament: p.filament } : {}), ...(p.mirror === false ? { mirror: false } : {}), ...(p.fill != null ? { fill: p.fill } : {}), part: p.name,
             geometry: transform(m, p.geometry), ...(p.collide ? { collide: transform(m, p.collide) } : {}), polygons: move(p.polygons), triangles: move(p.triangles),
             shape: `${key}:${p.name}`, hash: `${src.b.hash}:${p.name}`, local: p.polygons, localTriangles: p.triangles, m });
         }

@@ -8,19 +8,23 @@
 // about its own axis, a toward b, right-handed.
 // Its addresses are anchors (lib/assembly.mjs reads them through beamAnchor): x1.a, x1.b, x1.a.1, x1.top, x1.top@120,
 // x1.top@-20, x1.top@50%, x1.top.2@120.
+// "printed": true (or { pose, walls, infill, end, pull }) makes it a printed part (@rulecad/frames printed beams): drawn
+// solid, weighed by the plastic its walls and infill lay, on a plate laid as it prints ("laid": true, which cad plates
+// writes), off the cut list; its findings say how it prints and what stops it.
 // Its operations ("ops": cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) are @rulecad/frames': each
 // is cut into its preview, a mitre into its envelope too, and their findings (beam.op) are the beam's.
 import * as frames from '@rulecad/frames';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
-import { beamModel, beam, beamAnchor, cutList, beamMarks, beamSheet } from '@rulecad/frames';
+import { beamModel, beam, beamAnchor, cutList, beamMarks, beamSheet, printedBeam } from '@rulecad/frames';
 import { frame } from '@rulecad/model-link';
 import { RULE_DIRS, paths } from './workspace.mjs';
 import { named } from './parts.mjs';
 import { referenceBuilt } from './bought.mjs';
 import { framesContext as contextIn, givenFor } from './frames.mjs';
 
-const KEYS = ['profile', 'length', 'printed', 'material', 'ops'];
+const KEYS = ['profile', 'length', 'printed', 'material', 'ops', 'laid'];
 const OP_NUMBERS = ['angle', 'depth', 'diameter', 'length', 'radius'];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const mm = (x) => String(+Number(x).toFixed(2));
@@ -30,8 +34,8 @@ export const framesContext = () => contextIn(RULE_DIRS[0]);
 
 /**
  * The beam an item names, its length worked out: { model, length }. A length may be an expression; left out, it is the
- * distance from from to to. Refused by name: an unknown key, no profile, a printed beam (a later release), a length
- * that disagrees with its ends, ends and at both given.
+ * distance from from to to. Refused by name: an unknown key, no profile, printed neither true, false nor its options, a
+ * length that disagrees with its ends, ends and at both given.
  * @param {object} it the item @param {(x: any) => number} num the assembly's expressions @param {object} [context] framesContext()'s
  */
 export function beamOf(it, num, context = framesContext()) {
@@ -39,8 +43,8 @@ export function beamOf(it, num, context = framesContext()) {
   if (!b || typeof b !== 'object' || Array.isArray(b)) throw new Error(`${what}: beam is { "profile", "length", "material" } (got ${shown(b)})`);
   for (const k of Object.keys(b)) if (!KEYS.includes(k)) throw new Error(`${what}: a beam has no "${k}": it takes ${KEYS.join(', ')}`);
   if (typeof b.profile !== 'string' || !b.profile) throw new Error(`${what}: beam.profile names a profile, such as 2020-misumi-hfs5 (got ${shown(b.profile)})`);
-  if (b.printed != null && typeof b.printed !== 'boolean') throw new Error(`${what}: beam.printed is true or false (got ${shown(b.printed)})`);
-  if (b.printed) throw new Error(`${what}: a printed beam ("printed": true) is a later release${b.ops?.length ? ', and its ops become features of the print then' : ''}: leave printed out for a bought beam of ${b.profile}`);
+  if (b.printed != null && typeof b.printed !== 'boolean' && (typeof b.printed !== 'object' || Array.isArray(b.printed))) throw new Error(`${what}: beam.printed is true, false, or how it prints: { "pose": "lying", "walls": 3, "infill": 0.4, "end": "insert" } (got ${shown(b.printed)})`);
+  if (b.laid != null && (typeof b.laid !== 'boolean' || (b.laid && !b.printed))) throw new Error(`${what}: beam.laid draws a printed beam as it prints: true or false, with printed (got ${shown(b.laid)}${b.printed ? '' : ' on a bought beam'})`);
   if (b.ops != null && !Array.isArray(b.ops)) throw new Error(`${what}: beam.ops is a list of operations, [{ "op": "tap", "at": "a" }] (got ${shown(b.ops)})`);
   // an operation's numbers may be expressions, as a length is
   const ops = (b.ops ?? []).map((o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, OP_NUMBERS.includes(k) && v != null ? num(v) : k === 'size' && Array.isArray(v) ? v.map(num) : v])) : o));
@@ -59,7 +63,7 @@ export function beamOf(it, num, context = framesContext()) {
   const given = givenFor(context, b.profile);
   let model;
   try {
-    model = beamModel(frames.profileModel(b.profile, {}, given), { length, ...(b.material ? { material: b.material } : {}), ...(ops.length ? { ops } : {}), given });
+    model = beamModel(frames.profileModel(b.profile, {}, given), { length, ...(b.material ? { material: b.material } : {}), ...(ops.length ? { ops } : {}), ...(b.printed ? { printed: b.printed } : {}), given });
   } catch (e) { throw new Error(`${what}: ${strip(e)}`); }
   return { model, length };
 }
@@ -86,6 +90,7 @@ export function beamPlace(it, num) {
  */
 export function beamBuilt(it, num, id, context = framesContext()) {
   const { model: m, length } = beamOf(it, num, context);
+  if (m.printed) return printedBuilt(it, m, id);
   const meta = { body: { label: `${m.profile.name} x ${mm(length)} mm` } };
   const parts = named({ body: beam(m) }, meta), link = named({ body: beam(m, { display: 'link', tracks: true }) }, meta)[0];
   parts[0].collide = link.geometry; // (the overlap check measures the envelope, light, less any V tracks: a V-wheel's rim runs in them, and a rim out of them hits the beam)
@@ -95,6 +100,31 @@ export function beamBuilt(it, num, id, context = framesContext()) {
   const grams = m.weight.sheet ?? m.mass; // (weighed by the sheet where it gives a mass per metre: a light section's drawn outline can be 10 to 20% heavy)
   return referenceBuilt({ id, key: 'beam', objName: `beam:${m.profile.name}`, name: m.profile.name, parts, anchors, entries, values,
     extra: { beam: m, bought: { set: m.profile.name, variant: null, part: 'beam', mass: grams != null ? grams / 1000 : null, length } } });
+}
+
+// A printed beam, built: a printed part, solid, in its place (or laid as it prints, for a plate), its part's fill the share
+// of its section the walls and infill lay (cad list weighs it by that), its anchors and figures as a bought beam's
+function printedBuilt(it, m, id) {
+  const sec = m.printed.section, laid = !!it.beam.laid, label = `${m.profile.name} x ${mm(m.length)} mm, printed ${m.printed.pose === 'lying' ? 'lying down' : 'standing up'}`;
+  const parts = named({ body: laid ? printedBeam(m) : beam(m) }, { body: { label } });
+  parts[0].fill = +(sec.plastic / sec.solid.area).toFixed(4);
+  if (!laid) parts[0].collide = named({ body: beam(m, { display: 'link' }) }, { body: { label } })[0].geometry;
+  const anchors = laid ? {} : Object.fromEntries(Object.entries(m.anchors).map(([k, a]) => [k, { at: a.origin, axis: a.axis, ref: a.ref }]));
+  const values = { length: m.length, width: m.profile.width, height: m.profile.height, grams: m.mass, design: m.printed.design };
+  const entries = Object.entries(m.figures).filter(([, f]) => typeof f?.value === 'number').map(([k, f]) => ({ name: `${m.profile.name}.printed.${k}`, value: f.value, unit: f.unit, rule: `The printed beam's ${k}, from its walls and infill`, kind: f.kind, source: f.source, checked: '2026-11-17', set: m.profile.name }));
+  const hash = crypto.createHash('sha256').update(JSON.stringify([it.beam, m.name, m.mass, laid])).digest('hex').slice(0, 16);
+  const b = { object: { name: m.name, title: label, role: 'part', version: '0.0.0', anchors }, values, entries, deps: [], units: {}, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash };
+  return { key: `beam:${id}:${hash}`, objName: `beam:${m.profile.name}:printed`, b, version: '0.0.0', role: 'part', beam: m };
+}
+
+/**
+ * A printed beam's item as a plate takes it: its numbers worked out (the plate has none of the assembly's values), its
+ * length given (the plate places it by at), and laid as it prints.
+ * @param {object} it the assembly's item @param {(x: any) => number} num @param {number} length @returns {object} the plate item's beam
+ */
+export function laidSpec(it, num, length) {
+  const { profile, printed, material, ops } = it.beam;
+  return { profile, length, printed, ...(material ? { material } : {}), ...(ops?.length ? { ops: ops.map((o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, OP_NUMBERS.includes(k) && v != null ? num(v) : k === 'size' && Array.isArray(v) ? v.map(num) : v]))) } : {}), laid: true };
 }
 
 /**
@@ -108,12 +138,12 @@ export function beamAddress(m, address, what) {
   return frame(a.origin, a.axis, a.ref);
 }
 
-/** The assembly's beams, nested ones too, as { id, beam } for @rulecad/frames' cut list. @param {object} s a built assembly */
-export const beamsIn = (s) => s.objects.filter((o) => o.beam && !o.unplaced).map((o) => ({ id: o.id, beam: o.beam }));
+/** The assembly's bought beams, nested ones too, as { id, beam } for @rulecad/frames' cut list. @param {object} s a built assembly */
+export const beamsIn = (s) => s.objects.filter((o) => o.beam && !o.beam.printed && !o.unplaced).map((o) => ({ id: o.id, beam: o.beam })); // (a printed beam is printed, not cut)
 
 /** Each beam's mark: beams that are the same share one (A, B, ...), as the cut list and the sheets name them. @returns {Map<string, string>} item to mark */
 export function marksOf(objects) {
-  const list = objects.filter((o) => o.beam && !o.unplaced), out = new Map();
+  const list = objects.filter((o) => o.beam && !o.beam.printed && !o.unplaced), out = new Map();
   if (list.length) for (const m of beamMarks(list.map((o) => ({ id: o.id, beam: o.beam })))) for (const id of m.items) out.set(id, m.mark);
   return out;
 }

@@ -2775,7 +2775,7 @@ test('beams in an assembly: four placed by their ends make a rectangle, a plate 
     refused((b) => { b.items[1].at = 'x1.top@-101'; }, /"top@-101" is past the end of .* it is 100 mm long/);
     refused((b) => { b.loops = [{ a: 'plate.centre', b: 'x1.side@20' }]; }, /x1: profile-2040-misumi-hfs5 x 100 has no "side@20": it has a, b, a\.1/);
     refused((b) => { b.items[0].beam.length = 120; }, /item x1: its length is 120 mm, and its ends are 100 mm apart/);
-    refused((b) => { b.items[0].beam.printed = true; }, /item x1: a printed beam \("printed": true\) is a later release/);
+    refused((b) => { b.items[0].beam.printed = 'yes'; }, /item x1: beam.printed is true, false, or how it prints/);
     refused((b) => { b.items[0].beam.colour = 'red'; }, /item x1: a beam has no "colour": it takes profile, length, printed, material/);
     refused((b) => { delete b.items[0].from; delete b.items[0].to; delete b.items[0].roll; }, /item x1: give the beam a length, or place it by its ends/);
     // cad add beam: one placed by its ends, kept to the schema
@@ -2814,7 +2814,7 @@ test('beam operations in an assembly: an end tapped M5 and an access hole by exp
     const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/ops'), pattern); };
     refused((b) => { b.items[0].beam.profile = 'tube-al-20x20x2'; b.items[0].beam.ops = [{ op: 'tap', at: 'a', thread: 'M5' }]; }, /item x1: profile-tube-al-20x20x2 x 300: ops\[0\] \(tap\): profile-tube-al-20x20x2 has no bore in its ends to tap/);
     refused((b) => { b.items[0].beam.ops = [{ op: 'weld', at: 'a' }]; }, /no operation "weld": there are cut, mitre, tap/);
-    refused((b) => { b.items[0].beam.printed = true; }, /a printed beam \("printed": true\) is a later release, and its ops become features of the print then/);
+    refused((b) => { b.items[0].beam.laid = true; }, /item x1: beam.laid draws a printed beam as it prints: true or false, with printed \(got true on a bought beam\)/);
   } finally { done(); }
 });
 
@@ -4424,5 +4424,34 @@ test('frame checks: an open cube racks with a low stiffness and one brace stiffe
     const svg = fs.readFileSync(path.join(ws, 'exports/frame/gantry.frame-mode.svg'), 'utf8');
     assert.match(svg, /<animate attributeName="points"/);
     assert.match(svg, /lowest mode 7\d\.\d Hz, as drawn, x1 moving most/);
+  } finally { done(); }
+});
+
+test('a printed beam in an assembly: a printed part weighed by its walls and infill, off the cut list, laid on a plate as it prints, its tapped end an insert', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/frame/project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a printed 2020 240 mm long beside a bought one, its end a tapped: printed, an M4 heat-set insert
+    const file = path.join(ws, 'projects/frame/assemblies/frame.json'), a = { title: 'Frame', kind: 'fit', items: [
+      { id: 'x1', beam: { profile: '2020-printed', printed: true, ops: [{ op: 'tap', at: 'a' }] }, from: [0, 0, 0], to: [240, 0, 0] },
+      { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 100, 0], to: [240, 100, 0] }] };
+    fs.writeFileSync(file, JSON.stringify(a));
+    const check = cad('check', 'frame/frame');
+    assert.match(check, /✓ x1: profile-2020-printed x 240, printed lying down on its bottom face: its layers run along it/, check);
+    assert.match(check, /✓ x1: .*end a takes M4 in a heat-set insert/);
+    // on the list: x1 printed, by the plastic its walls and infill lay (PLA 1.26 g/cm³: 205.8 mm² x 240 mm = 62.2 g), y1 bought and cut
+    const list = cad('list', 'frame/frame');
+    assert.match(list, /6\d\.\d+ g\s+about \d+ min\s+x1/, list);
+    assert.match(list, /1 ×\s+profile-2020-misumi-hfs5 x 240 mm\s+a beam/);
+    assert.doesNotMatch(list, /profile-2020-printed x 240 mm\s+a beam/);
+    // on a plate, laid as it prints: on its bottom face, along x
+    const plates = cad('plates', 'frame/frame');
+    assert.match(plates, /frame-base-1: base, 1 part, [\d.]+ g, about \d+ min: x1\n\s+frame-base-1: prints clean/, plates);
+    const plate = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/frame-base-1.json'), 'utf8'));
+    assert.deepEqual(plate.items.map((it) => [it.beam?.profile, it.beam?.laid, it.beam?.length]), [['2020-printed', true, 240]]);
+    // refused by name: printed as a word
+    a.items[0].beam.printed = { pose: 'upside-down' }; fs.writeFileSync(file, JSON.stringify(a));
+    assert.match(cad('check', 'frame/frame'), /item x1: printed.pose is lying \(on its bottom face, layers along the beam\) or standing/);
   } finally { done(); }
 });

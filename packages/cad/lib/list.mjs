@@ -30,7 +30,8 @@ export function printedParts(s) {
   const by = new Map();
   for (const p of s.parts) {
     if (p.role !== 'part' && p.role != null) continue;
-    const key = p.leaf ?? p.item, mm3 = volume(p.triangles), o = by.get(key) ?? { id: key, object: p.object ?? null, volume: 0 };
+    // (a printed beam's part is drawn solid and printed with walls and infill: its fill is the share of plastic laid)
+    const key = p.leaf ?? p.item, mm3 = volume(p.triangles) * (p.fill ?? 1), o = by.get(key) ?? { id: key, object: p.object ?? null, volume: 0 };
     o.volume += mm3; by.set(key, o);
   }
   return [...by.values()].map((o) => ({ ...o, volume: n(o.volume, 0), grams: n((o.volume / 1000) * mat.density), minutes: n(o.volume / flow / 60, 0) }));
