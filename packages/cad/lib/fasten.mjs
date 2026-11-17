@@ -464,14 +464,16 @@ export function fastenOf(s, worlds, opts = {}) {
     }
     const R = Math.max(head?.across ?? fx.major, washer?.diameter ?? 0, fx.major * 2.2) / 2 + 1.5;
 
-    // A motor item ends the screws in its own tapped mounting holes, which its light solid does not draw
-    const drive = (s.motion.drives || []).find((d) => d.id === top(x.into)) ?? null, Wm = drive ? worlds[drive.item] : null;
+    // A motor item ends the screws in its own tapped mounting holes, which its light solid does not draw; so does a bought
+    // part whose rule set gives tapped mounting holes (a supply's), held to the reach its maker allows
+    const boughtMount = (() => { const o = s.objects.find((q) => q.id === top(x.into) && q.bought?.mount?.thread), k2 = o ? ids.indexOf(o.id) : -1; return o && k2 >= 0 ? { id: o.id, item: k2, model: { name: o.bought.set, mount: { thread: o.bought.mount.thread, holes: o.bought.mount.holes, depth: o.bought.mount.reach, reach: true } } } : null; })();
+    const drive = (s.motion.drives || []).find((d) => d.id === top(x.into)) ?? boughtMount, Wm = drive ? worlds[drive.item] : null;
     const onMount = (O, D) => {
       if (!drive?.model.mount?.thread || !drive.model.mount.holes?.length) return null;
       const q = [O[0] - Wm[3], O[1] - Wm[7], O[2] - Wm[11]], l = [Wm[0] * q[0] + Wm[4] * q[1] + Wm[8] * q[2], Wm[1] * q[0] + Wm[5] * q[1] + Wm[9] * q[2]];
       if (Math.abs(Math.abs(dot(unit(D), [Wm[2], Wm[6], Wm[10]])) - 1) > 1e-6) return null;
       const h = drive.model.mount.holes.find(([hx, hy]) => Math.hypot(l[0] - hx, l[1] - hy) <= FASTEN.align.value);
-      return h ? { at: h, thread: drive.model.mount.thread, depth: drive.model.mount.depth, model: drive.model.name } : null;
+      return h ? { at: h, thread: drive.model.mount.thread, depth: drive.model.mount.depth, model: drive.model.name, reach: !!drive.model.mount.reach } : null;
     };
 
     // The screws' axes: an anchor each, or the holes of a part
@@ -513,7 +515,7 @@ export function fastenOf(s, worlds, opts = {}) {
     // A circuit board's holes are drilled by its fab, not printed: held to the thread's clearance holes as they stand
     const drilled = (n) => (typeof fx.figures[n]?.value === 'number' ? { diameter: fx.figures[n].value, nominal: fx.figures[n].value, comp: 0, basis: { rule: `${fx.set}.${n}` } } : null);
     const clrDrilled = { close: drilled('clearance_close'), normal: drilled('clearance'), loose: drilled('clearance_loose') };
-    const isBoard = (m) => m.parts.some((p) => s.objects.find((o) => o.id === p.leaf)?.built?.circuit);
+    const isBoard = (m) => m.parts.some((p) => { const o = s.objects.find((q) => q.id === p.leaf); return o?.built?.circuit || o?.bought?.part === 'board'; }); // (a circuit's holes, or a bought board's, are drilled, not printed)
 
     axes.forEach((ax, i) => {
       const sc = { index: i, name: ax.name, found: {}, hardware: [] }, say = (code, level, text, values) => { (sc.found[code] ||= []).push({ level, text, ...(values ? { values } : {}) }); };
@@ -658,7 +660,7 @@ export function fastenOf(s, worlds, opts = {}) {
         if (end.slot.opening < fx.major) say('fasten.clearance', 'fail', `${where} opens ${mm(end.slot.opening)} mm, narrower than ${an(fx.thread)} ${fx.thread} screw (${mm(fx.major)} mm): it does not pass between the lips`, { opening: end.slot.opening, major: fx.major });
         else say('fasten.clearance', 'pass', `${an(fx.thread)} ${fx.thread} screw passes between the lips of ${where}, ${mm(end.slot.opening)} mm apart`, { opening: end.slot.opening, major: fx.major });
         say('fasten.end', warns.length ? 'warn' : 'pass', `ends in ${an(n.nutKind)} ${n.nutKind} nut under the lips of ${where}: ${n.name}, ${mm(end.thread)} mm of ${n.thread} thread from ${mm(end.zThr - end.mouth)} to ${mm(end.zThr - end.mouth + end.thread)} mm under the face, the slot's floor at ${mm(end.depth)} mm${n.entry === 'end' ? '. It goes in from an open end of the slot (frame.nut)' : '. It goes in through the opening, anywhere along the slot'}${warns.length ? `. ${warns.map((q) => q.text).join('; ')}` : ''}`, { thread: end.thread, floor: end.depth, height: n.height, tongue: n.tongueHeight });
-      } else if (end.motor) { end.kind = 'tap'; say('fasten.end', 'pass', `ends in ${x.into}'s own ${fx.thread} thread, ${mm(end.depth)} mm deep (${end.motor.model}.mount_hole_depth)`, endValues); }
+      } else if (end.motor) { end.kind = 'tap'; say('fasten.end', 'pass', end.motor.reach ? `ends in ${x.into}'s own ${fx.thread} thread, which its maker allows a screw ${mm(end.depth)} mm into (${end.motor.model}.mount_hole_reach)` : `ends in ${x.into}'s own ${fx.thread} thread, ${mm(end.depth)} mm deep (${end.motor.model}.mount_hole_depth)`, endValues); }
       else if (wantNut || seatNut) {
         const kind = wantNut ?? seatNut.kind, nm = nutModel(kind);
         if (end.blind) say('fasten.end', 'fail', `a nut is given, and ${x.into}'s hole is blind, ${mm(end.depth)} mm deep: a nut holds a screw that comes out of the far side`, endValues);
@@ -698,9 +700,9 @@ export function fastenOf(s, worlds, opts = {}) {
         if (L0) pick = { name: F.screwModel(fx, { length: L0, head: form }).name, length: L0, engaged: r3(Math.min(end.thread, zHead + L0 - end.zThr)), spare: r3(end.floor - zHead - L0) };
         else none = `no ${fx.thread} ${form} screw is sold from ${mm(lo)} to ${mm(hi)} mm long, what ${mm(grip)} mm under its head (${end.slot.part}${washer ? ', the washer' : ''} and the slot's ${mm(end.slot.lip)} mm lip) leaves: ${mm(need)} mm in the nut and ${mm(FASTEN.floor.value)} mm kept off the slot's floor (${(sold.filter((l) => l < lo - EPS).at(-1) ?? null) != null ? `${fx.thread}x${sold.filter((l) => l < lo - EPS).at(-1)} engages too little, ` : ''}${sold.find((l) => l > hi + EPS) != null ? `${fx.thread}x${sold.find((l) => l > hi + EPS)} reaches the floor` : 'none is that long'}). A part of another thickness, or a washer under the head`;
       } else if (end.motor && form !== 'set') { // the longest sold length that stops short of the motor's thread's end, as motor.mount chooses
-        const sold = fx.figures.lengths?.value || [], room = end.depth - tipRoom, L0 = [...sold].reverse().find((l) => l > grip + EPS && l - grip <= room + EPS);
+        const sold = fx.figures.lengths?.value || [], room = end.depth - (end.motor.reach ? 0 : tipRoom), L0 = [...sold].reverse().find((l) => l > grip + EPS && l - grip <= room + EPS); // (a maker's reach is the limit itself: no room kept past it)
         if (L0) pick = { name: F.screwModel(fx, { length: L0, head: form }).name, length: L0, engaged: r3(L0 - grip), spare: r3(room - (L0 - grip)) };
-        else none = `no ${fx.thread} ${form} screw that is sold goes ${mm(grip)} mm under its head into ${x.into} and stops within its ${mm(end.depth)} mm of thread, ${mm(tipRoom)} mm kept at its tip`;
+        else none = end.motor.reach ? `no ${fx.thread} ${form} screw that is sold goes ${mm(grip)} mm under its head into ${x.into} and stops within the ${mm(end.depth)} mm its maker allows` : `no ${fx.thread} ${form} screw that is sold goes ${mm(grip)} mm under its head into ${x.into} and stops within its ${mm(end.depth)} mm of thread, ${mm(tipRoom)} mm kept at its tip`;
         need = pick ? pick.engaged : null;
       } else if (end.kind && form !== 'set' && stack > 1e-6) {
         const into = { kind: end.kind, ...(end.kind === 'nut' ? { nut: end.nut.kind } : end.blind ? (end.kind === 'insert' ? { room: Math.max(end.depth - tipRoom, end.insert?.length ?? 0) } : { depth: end.depth }) : { through: true }), ...(['tap', 'thread'].includes(end.kind) && intoMat.cls ? { material: intoMat.known ? intoMat.name : intoMat.cls } : {}) };
@@ -726,13 +728,13 @@ export function fastenOf(s, worlds, opts = {}) {
       const wouldDo = pick && pick.length !== L ? `${pick.name} would do` : null;
       if (given == null) {
         if (pick && end.slot) say('fasten.length', 'pass', `${pick.name} chosen, the shortest sold that fits: ${under} (${end.slot.part}${washer ? ', the washer' : ''} and the slot's ${mm(end.slot.lip)} mm lip), ${mm(pick.engaged)} mm into its nut, its tip ${mm(zTip - end.mouth)} mm into the slot and ${mm(pick.spare)} mm short of its floor`, { ...lenValues, floor: r3(pick.spare) });
-        else if (pick) say('fasten.length', 'pass', `${pick.name} chosen, the ${end.motor ? 'longest sold that stops short of the end of the thread' : 'shortest sold that fits'}: ${under} and ${mm(pick.engaged)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${pick.spare != null ? `, ${mm(pick.spare)} mm short of bottoming out` : ''}`, lenValues);
+        else if (pick) say('fasten.length', 'pass', `${pick.name} chosen, the ${end.motor ? (end.motor.reach ? 'longest sold that goes no further than its maker allows' : 'longest sold that stops short of the end of the thread') : 'shortest sold that fits'}: ${under} and ${mm(pick.engaged)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${pick.spare != null ? `, ${mm(pick.spare)} mm short of bottoming out` : ''}`, lenValues);
         else if (none) say('fasten.length', 'fail', `no length chosen: ${none}`, lenValues);
         else if (form !== 'set') say('fasten.length', 'info', `no length chosen until the far end is one a screw holds in: ${model.name} is drawn`, lenValues);
       } else if (inEnd <= EPS) say('fasten.length', 'fail', `${model.name} does not reach ${x.into}: it is ${mm(L)} mm long and there is ${under}${wouldDo ? `. ${wouldDo}` : ''}`, lenValues);
       else if (end.slot && zTip > end.floor - FASTEN.floor.value + EPS) say('fasten.length', 'fail', `${model.name} reaches the slot's floor: with ${under} its tip goes ${mm(zTip - end.mouth)} mm into ${end.slot.item}'s ${end.slot.place} slot, whose floor is ${mm(end.depth)} mm under the face, where ${mm(FASTEN.floor.value)} mm is kept: it presses on the beam's core and not on its nut${wouldDo ? `. ${wouldDo}` : ''}`, { ...lenValues, floor: r3(end.floor - zTip) });
       else if (end.slot) say('fasten.length', sold ? 'pass' : 'info', `${model.name} reaches: ${under}, its tip ${mm(zTip - end.mouth)} mm into the slot, ${mm(end.floor - zTip)} mm short of its floor`, lenValues);
-      else if (end.blind && inEnd > end.depth - (end.kind === 'insert' ? 0 : tipRoom) + EPS) say('fasten.length', 'fail', `${model.name} bottoms out: with ${under} it goes ${mm(inEnd)} mm into a hole ${mm(end.depth)} mm deep${end.kind === 'insert' ? '' : `, where ${mm(tipRoom)} mm is kept at its tip`}, so it tightens on its tip and not on its head${wouldDo ? `. ${wouldDo}` : `. Deepen the hole to ${mm(inEnd + tipRoom)} mm, or use a shorter screw`}`, { ...lenValues, depth: r3(end.depth) });
+      else if (end.blind && inEnd > end.depth - (end.kind === 'insert' || end.motor?.reach ? 0 : tipRoom) + EPS) say('fasten.length', 'fail', `${model.name} bottoms out: with ${under} it goes ${mm(inEnd)} mm into a hole ${mm(end.depth)} mm deep${end.kind === 'insert' ? '' : `, where ${mm(tipRoom)} mm is kept at its tip`}, so it tightens on its tip and not on its head${wouldDo ? `. ${wouldDo}` : `. Deepen the hole to ${mm(inEnd + tipRoom)} mm, or use a shorter screw`}`, { ...lenValues, depth: r3(end.depth) });
       else {
         const far = end.kind === 'nut' ? end.nut.z + end.nut.model.height : end.far, out = end.blind ? 0 : zTip - far, most = FASTEN.proud.value * fx.major;
         if (out > most + EPS) say('fasten.length', 'warn', `${model.name} stands ${mm(out)} mm proud of ${end.kind === 'nut' ? 'its nut' : `${x.into}'s far face`}, more than its own diameter${wouldDo ? `: ${wouldDo}` : ''}`, { ...lenValues, proud: r3(out) });
@@ -742,7 +744,8 @@ export function fastenOf(s, worlds, opts = {}) {
       // fasten.engagement: thread engaged at the far end, against the rule for what it is in
       if (end.motor && form !== 'set') { // a bought part's thread: held to its depth, and to the least engagement any metal is given (engagement.steel), as motor.mount is
         const e = Math.max(0, Math.min(inEnd, end.depth)), least = r3(F.engagement(fx, { depth: 1, material: 'steel' }).need), turns = +(e / fx.pitch).toFixed(1), values = { engaged: r3(e), depth: end.depth, turns, least };
-        if (e >= least - EPS) say('fasten.engagement', 'pass', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: a bought part's thread, held to its depth and to the ${mm(least)} mm engagement.steel gives any metal`, values);
+        if (end.motor.reach && e >= Math.min(least, end.depth) - EPS) say('fasten.engagement', 'pass', `${mm(e)} mm into ${x.into}'s own thread, ${mm(turns)} turns: as far as its maker allows (${end.motor.model}.mount_hole_reach, ${mm(end.depth)} mm), its thread rated by its maker`, values);
+        else if (e >= least - EPS) say('fasten.engagement', 'pass', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: a bought part's thread, held to its depth and to the ${mm(least)} mm engagement.steel gives any metal`, values);
         else say('fasten.engagement', 'fail', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: less than the ${mm(least)} mm engagement.steel gives any metal, so the thread strips before the screw holds. A longer screw, or a counterbore to sink its head`, values);
       }
       else if (end.kind && need != null && form !== 'set') {

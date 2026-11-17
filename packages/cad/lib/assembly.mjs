@@ -52,6 +52,7 @@ import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext
 import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
 import { expandPanels, panelBuilt, panelFindings } from './panels.mjs';
+import { expandServices, serviceFindings } from './services.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
@@ -116,6 +117,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   // Panels (lib/panels.mjs): each placed on its bay, its clips or a door's hinges, handle and catch added with their fastens
   let panels = [];
   if ((a.items || []).some((it) => it?.panel)) ({ a, panels } = expandPanels(a, num, undefined, plasticOf(project)));
+  // Services (lib/services.mjs): a bought board or supply on its printed mount, a wire's run along a slot held by clips
+  let mounts = [], runs = [];
+  if ((a.items || []).some((it) => it?.mount != null) || (a.wires || []).some((w) => (w?.via ?? []).some((v) => v && typeof v === 'object'))) ({ a, mounts, runs } = expandServices(a, num, undefined, plasticOf(project)));
   const { translate, rotate, transform } = jscad.transforms, deg = Math.PI / 180;
 
   const items = [], parts = [], objects = [], fits = [], requires = [];
@@ -317,7 +321,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, mounts, runs, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -950,6 +954,7 @@ export function checkAssembly(s) {
   beamFindings(s, f);
   fittingFindings(s, f);
   panelFindings(s, f);
+  serviceFindings(s, f);
   joinChecks(s, f);
   slotNutChecks(s, f);
   massFinding(s, f);

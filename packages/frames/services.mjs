@@ -105,7 +105,7 @@ function plateMount(what, profile, o, dev) {
     need = engagement(dev.thread, { depth: 1, material: k.mat.name }).need;
     L = sold0.find((l) => l - dev.thickness >= need - 1e-9);
     if (L == null) throw new Error(`${what}: no ${dev.thread} screw sold goes through the ${mm(dev.thickness)} mm ${dev.noun} and ${mm(need)} mm into ${k.mat.name} (engagement.${k.mat.name === 'petg' ? 'petg' : 'pla'})`);
-    engaged = r3(L - dev.thickness); pilot = r3(engaged + FIX.tip_room.value);
+    engaged = r3(L - dev.thickness); pilot = r3(up(engaged + FIX.tip_room.value + k.layer, k.layer)); // (a layer over the tip's room: the hole is measured in flats)
     rb = r3(up(Math.max(1.25 * ds.major, holeModel(dev.thread, { kind: 'pilot', printer: k.pr }).diameter / 2 + walls), 0.1));
   }
   const endD = r3(up(dev.fix === 'tapped' ? ds.dk / 2 + walls : Math.max(rb + 1 + walls, FITTING_DEFAULTS.end.value * ds.hd), 0.5)); // (a boss and its root's chamfer stay on the plate)
@@ -146,31 +146,36 @@ function plateMount(what, profile, o, dev) {
   m.findings.push(fits ? finding('pass', `${sd.thread}x${fits.lengths[0]} ${head} into ${xs.length > 1 ? 'each' : 'its'} slot nut through ${mm(t)} mm of plate, its tip between ${mm(fits.windows[0].lo)} (its nut's thread engaged) and ${mm(fits.windows[0].hi)} mm under the face`, 'fitting.screw', { values: { lengths: fits.lengths, windows: fits.windows } })
     : finding('warn', `no ${sd.thread} ${head} screw sold engages its slot nut fully and stops short of the slot's floor through ${mm(t)} mm: the screw's length is the fasten check's to choose`, 'fitting.screw', {}));
   m.findings.push(finding('pass', dev.fix === 'tapped'
-    ? `${dev.holes.length} × ${dev.thread}x${L} ${dh} up through ${mm(floor)} mm of plate into the ${dev.noun}'s own thread, ${mm(engaged)} mm in: as far as its maker allows (${dev.reachSource}). Their heads sit in ${mm(pocket)} mm counterbores under the plate, so they go in before the plate goes on the beam`
+    ? `${dev.holes.length} × ${dev.thread}x${L} ${dh} up through ${mm(floor)} mm of plate into the ${dev.noun}'s own thread, ${mm(engaged)} mm in: as far as its maker allows (${dev.reachSource}). Their heads sit in ${mm(pocket)} mm counterbores under the plate${dev.moved != null ? `, the ${dev.noun} set ${mm(Math.abs(dev.moved))} mm to the side so a key reaches each from under the plate beside the beam` : ''}`
     : `${dev.holes.length} × ${dev.thread}x${L} ${dh} through the ${mm(dev.thickness)} mm ${dev.noun} into pilots in the plate, ${mm(engaged)} mm of ${k.mat.name} engaged (${mm(need)} mm asked)${standoff > 0 ? `, on ${mm(standoff)} mm bosses` : ''}`, 'fitting.device', { values: { length: L, engaged, holes: dev.holes.length, standoff } }));
+  if (dev.why) m.findings.push(finding(dev.why.level, dev.why.text, 'fitting.head', { values: { thread: dev.thread, head: dh } }));
   closingFindings(m, { S: k.S, sizeText: `${mm(b)} x ${mm(Y1 - Y0)} mm, ${mm(t)} mm thick${windows.length ? `, ${windows.length} window${windows.length > 1 ? 's' : ''} through it to save plastic` : ''}${standoff > 0 ? `, the ${dev.noun} on ${mm(standoff)} mm bosses` : ''}${dev.opening ? `, a ${mm(dev.opening)} mm opening for the air` : ''}; ${xs.length} ${sd.thread} into the slot`, marginText: `under ${m.load.what}, the plate bends to ${mm(stress)} MPa`, pose: dev.fix === 'tapped' ? 'its top face down, the counterbores opening up' : 'its beam side down, the bosses up' });
   return m;
 }
 
+// A plate's solid as it prints: beam side down, or a tapped one's top face down, drawn so ((x, y, z) to (x, -y, t - z)),
+// which keeps its counterbores opening up, their seats flat
 function plateSolid(m, pr, ops = null) {
-  const t = m.thickness, D = m.device, parts = [prism(m.outline, t)], cuts = [], o = { printer: pr };
+  const t = m.thickness, D = m.device, flip = m.fix === 'tapped', o = { printer: pr };
+  const P = (x, y, z) => (flip ? [x, -y, r3(t - z)] : [x, y, z]), flat = (loop) => (flip ? loop.map(([x, y]) => [x, -y]) : loop);
+  const parts = [prism(flat(m.outline), t)], cuts = [];
   if (m.standoff > 0) for (const [x, y] of D.holes) {
     const c = Math.min(1, m.standoff / 2); // (a 45° chamfer round each boss's root: no square inside corner)
     parts.push(translate([x, y, t - 0.01], cylinder({ radius: D.boss, height: m.standoff + 0.01, segments: 32, center: [0, 0, (m.standoff + 0.01) / 2] })));
     parts.push(translate([x, y, t - 0.01], cylinderElliptic({ startRadius: [D.boss + c, D.boss + c], endRadius: [D.boss, D.boss], height: c + 0.01, segments: 32, center: [0, 0, (c + 0.01) / 2] })));
   }
-  for (const sc of m.screws) cuts.push(hole(sc.thread, { kind: 'clearance', into: '-z', depth: t + 2, at: [sc.at[0], sc.at[1], t + 1], ...o }));
+  for (const sc of m.screws) cuts.push(hole(sc.thread, { kind: 'clearance', into: flip ? '+z' : '-z', depth: t + 2, at: P(sc.at[0], sc.at[1], t + 1), ...o }));
   for (const sc of m.deviceScrews) cuts.push(sc.into === 'device'
-    ? counterbore(sc.thread, { head: sc.head, depth: D.pocket, length: t + 2, into: '+z', at: [sc.at[0], sc.at[1], 0], ...o })
+    ? counterbore(sc.thread, { head: sc.head, depth: D.pocket, length: t + 2, into: '-z', at: P(sc.at[0], sc.at[1], 0), ...o })
     : hole(sc.thread, { kind: 'pilot', into: '-z', depth: D.pilot, at: [sc.at[0], sc.at[1], m.top], ...o }));
-  for (const w of m.windows ?? []) cuts.push(translate([0, 0, -1], prism(roundRect(w, 3), t + 2)));
-  if (m.opening) cuts.push(translate([m.opening.at[0], m.opening.at[1], t / 2], cylinder({ radius: m.opening.d / 2, height: t + 2, segments: 64 })));
+  for (const w of m.windows ?? []) cuts.push(translate([0, 0, -1], prism(flat(roundRect(w, 3)), t + 2)));
+  if (m.opening) cuts.push(translate(P(m.opening.at[0], m.opening.at[1], t / 2), cylinder({ radius: m.opening.d / 2, height: t + 2, segments: 64 })));
   return combine(parts, cuts, ops);
 }
 // The solid of any plate mount: fitted, or laid to print (a tapped one's top face down)
 function plateOut(name, m, o) {
   const pr = printerOf(name, o.printer), g = plateSolid(m, pr, o.ops ?? null);
-  return Object.assign(o.pose === 'fit' || m.fix !== 'tapped' ? g : translate([0, 0, m.thickness], rotateX(Math.PI, g)), { model: m });
+  return Object.assign(o.pose === 'fit' && m.fix === 'tapped' ? translate([0, 0, m.thickness], rotateX(Math.PI, g)) : g, { model: m });
 }
 
 // ---------- a board's or a supply's mount ----------
@@ -203,23 +208,36 @@ export function deviceMountModel(profile, o = {}) {
   if (!(Array.isArray(holes) && holes.length && holes.every((h) => Array.isArray(h) && h.length === 2 && h.every(isNum)))) throw new Error(`${what}: ${label} gives no mounting holes (mount_holes, [[x, y], ...] from its middle): a mount reads them from its rule set, so add them from its maker's drawing, or measure them`);
   const turn = o.turn ?? 0;
   if (!TURNS[turn]) throw new Error(`${what}: turn is 0, 90, 180 or 270, the device's x from the slot's line in degrees (got ${shown(o.turn)})`);
-  const dy = o.offset ?? 0;
-  if (!isNum(dy)) throw new Error(`${what}: offset is the device's middle across the slot, in mm (got ${shown(o.offset)})`);
+  if (o.offset != null && !isNum(o.offset)) throw new Error(`${what}: offset is the device's middle across the slot, in mm (got ${shown(o.offset)})`);
   const T = TURNS[turn], w = r.body_width?.value, d = r.body_depth?.value;
+  // a supply's screws go in from under the plate: where the beam stands under a hole, the device moves across (offset)
+  // until each hole is clear of the beam's face by a head and the room to turn it, unless an offset is given
+  let dy = o.offset ?? 0, moved = false;
+  if (o.offset == null && typeof r.mount_hole_thread?.value === 'string' && Array.isArray(r.mount_holes?.value)) {
+    const p = profileOf(what, profile, o.given ?? {}), f = String(o.face ?? 'top').split('.')[0], half = (['top', 'bottom'].includes(f) ? p.width : p.height) / 2;
+    let dk = 0; try { dk = screwOf(what, r.mount_hole_thread.value, o.deviceHead ?? 'button', printerOf(what, o.printer)).dk; } catch {}
+    const c = half + dk / 2 + FITTING_DEFAULTS.reach.value, ys = r.mount_holes.value.map((h) => turned(T, h)[1]);
+    if (ys.some((y) => Math.abs(y) < c - 1e-9)) { const lo = -c - Math.max(...ys), hi = c - Math.min(...ys); dy = r3(Math.abs(lo) <= Math.abs(hi) ? lo : hi); moved = true; }
+  }
   if (!(isNum(w) && isNum(d))) throw new Error(`${what}: ${label} gives no body_width and body_depth: a mount keeps its screws clear of the body`);
   const at = (p) => { const [x, y] = turned(T, p); return [x, r3(y + dy)]; }, corners = [[-w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2], [w / 2, -d / 2]].map(at);
   const footprint = [[Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1]))], [Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))]];
   const thread = r.mount_hole_thread?.value, dia = r.mount_hole_diameter?.value, tapped = typeof thread === 'string';
-  let screw = thread;
+  let screw = thread, head = o.deviceHead ?? 'button', why = null;
   if (!tapped) {
     if (!isNum(dia)) throw new Error(`${what}: ${label}'s mounting holes have no thread (mount_hole_thread) and no diameter (mount_hole_diameter): the mount takes one or the other`);
-    screw = o.screw ?? ['M5', 'M4', 'M3', 'M2.5', 'M2'].find((t) => { try { return fixingModel(t).major <= dia - 0.15; } catch { return false; } });
-    if (!screw) throw new Error(`${what}: ${label}'s ${mm(dia)} mm holes pass no metric screw from M2 up`);
+    // the largest screw its holes pass whose head sits whole on the board, the holes being where they are from its edges
+    const edge = r3(Math.min(...holes.map(([x, y]) => Math.min(w / 2 - Math.abs(x), d / 2 - Math.abs(y))))), dkOf = (t, h) => fixingModel(t).figures[h === 'cap' ? 'head' : `${h}_head`]?.value;
+    const passes = (o.screw ? [o.screw] : ['M5', 'M4', 'M3', 'M2.5', 'M2']).filter((t) => { try { return fixingModel(t).major <= dia - 0.15; } catch { return false; } });
+    if (!passes.length) throw new Error(`${what}: ${label}'s ${mm(dia)} mm holes pass no metric screw from M2 up${o.screw ? ` (${o.screw} is given)` : ''}`);
+    const heads = o.deviceHead ? [o.deviceHead] : ['button', 'cap'], pick = passes.flatMap((t) => heads.map((h) => [t, h])).find(([t, h]) => isNum(dkOf(t, h)) && dkOf(t, h) / 2 <= edge + 1e-6);
+    if (pick) { [screw, head] = pick; why = { level: 'pass', text: `${screw} ${head}: the largest whose ${mm(dkOf(screw, head))} mm head sits whole on the ${o.device.part ?? 'device'}, its holes ${mm(edge)} mm from its edges at the closest${passes[0] !== screw ? ` (${passes[0]}'s head would overhang)` : ''}` }; }
+    else { screw = passes[0]; head = heads.find((h) => isNum(dkOf(screw, h))) ?? 'cap'; why = { level: 'warn', text: `${screw} ${head}: its ${mm(dkOf(screw, head))} mm head overhangs the ${o.device.part ?? 'device'}'s edge, its holes ${mm(edge)} mm from it at the closest, and no smaller screw its holes pass has a head that sits whole` }; }
   } else if (!isNum(r.mount_hole_reach?.value)) throw new Error(`${what}: ${label}'s tapped holes give no mount_hole_reach, how far a screw may go in: take it from its maker's drawing`);
   const kindOf = r.mount_holes.kind ?? 'estimate';
   return plateMount(what, profile, o, {
-    noun: o.device.part ?? 'device', fitting: 'device-mount', fix: tapped ? 'tapped' : 'through', holes: holes.map(at), thread: screw, head: o.deviceHead ?? 'button',
-    reach: tapped ? r.mount_hole_reach.value : null, reachSource: tapped ? `${set}.mount_hole_reach, ${r.mount_hole_reach.kind}` : null,
+    noun: o.device.part ?? 'device', fitting: 'device-mount', fix: tapped ? 'tapped' : 'through', holes: holes.map(at), thread: screw, head, why,
+    reach: tapped ? r.mount_hole_reach.value : null, reachSource: tapped ? `${set}.mount_hole_reach, ${r.mount_hole_reach.kind}` : null, moved: moved ? dy : null,
     thickness: tapped ? null : r.board_thickness?.value ?? 1.6, standoff: o.standoff ?? (tapped ? 0 : SERVICE_DEFAULTS.standoff.value), footprint, anchor: { at: [0, r3(dy)], ref: [T[0], T[2], 0] },
     name: (pf, th) => `device-mount-${pf}-${String(o.variant ?? set).toLowerCase()}-${th.toLowerCase()}`, title: (pf) => `printed mount for ${label} on ${pf}`,
     rests: [{ name: `${set}.mount_holes`, value: holes, kind: kindOf }, ...(tapped ? [{ name: `${set}.mount_hole_reach`, value: r.mount_hole_reach.value, kind: r.mount_hole_reach.kind }] : [{ name: `${set}.mount_hole_diameter`, value: dia, kind: r.mount_hole_diameter.kind }]), ...(o.standoff == null && !tapped ? [{ name: 'SERVICE_DEFAULTS.standoff', value: SERVICE_DEFAULTS.standoff.value, kind: 'estimate' }] : [])],
@@ -339,7 +357,7 @@ export function cableClipModel(profile, o = {}) {
   if (!(isNum(w) && w >= 4)) throw new Error(`${what}: width is the clip's length along the slot in mm, at least 4 (got ${shown(o.width)})`);
   const sd = slotSide(what, p, o.face ?? 'top', undefined, null, k.fit, given), op = sd.slot.opening, lip = sd.slot.lip, ws = r3(op - 2 * k.fit), b = SERVICE_DEFAULTS.barb.value;
   if (ws < 2 * k.line) throw new Error(`${what}: ${sd.slot.name}'s ${mm(op)} mm opening leaves a stem ${mm(ws)} mm wide: too thin to print`);
-  const tf = r3(up(3 * k.layer, k.layer)), wall = r3(up(SERVICE_DEFAULTS.walls.value * k.line, 0.1)), Ri = r3(D / 2 + k.fit), Ro = r3(Ri + wall), half = r3(Math.max(op / 2 + 1, Ro * 0.6)), zc = r3(tf + Ro - wall / 2);
+  const tf = r3(up(3 * k.layer, k.layer)), wall = r3(up(SERVICE_DEFAULTS.walls.value * k.line, 0.1)), Ri = r3(D / 2 + k.fit), Ro = r3(Ri + wall), half = r3(Math.max(op / 2 + 1, Ro * 0.6)), zc = r3(tf + Ro - Math.min(wall, tf) / 2);
   const alpha = Math.asin(Math.min(0.95, (SERVICE_DEFAULTS.snap.value * D) / 2 / Ri)), n = 32;
   // the ring, open at its top: the outer arc round from the opening's left to its right, the inner back
   const arc = (R, a0, a1) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + ((a1 - a0) * i) / n; return [r3(R * Math.cos(a)), r3(zc + R * Math.sin(a))]; });
@@ -355,10 +373,12 @@ export function cableClipModel(profile, o = {}) {
   closingFindings(m, { S: k.S, sizeText: `a ${mm(D)} mm bundle in a ring ${mm(wall)} mm thick, its centre ${mm(zc)} mm off the face, opening ${mm(m.ring.opening)} mm to snap it in; a ${mm(ws)} mm stem through the ${mm(lip)} mm lip, barbs ${mm(b)} mm under it (an estimate: try one in a scrap of beam); ${mm(w)} mm along the slot`, marginText: `under ${m.load.what}, the stem and the ring pull to ${mm(stress)} MPa by their sections`, pose: 'on its side, its section the first layer' });
   return m;
 }
-/** A cable clip's solid: on its side to print, or fitted. @param {object} m @param {{ pose?: 'print' | 'fit', printer?: object, ops?: object }} [o] @returns {object} */
+/** A cable clip's solid: on its side to print, or fitted. @param {object} m @param {{ pose?: 'print' | 'fit', tongues?: boolean, printer?: object, ops?: object }} [o] @returns {object} */
 export function cableClip(m, o = {}) {
   if (m?.fitting !== 'cable-clip') throw new Error(`cableClip: give a cable clip's model (cableClipModel), not ${shown(m)}`);
-  const g = combine(m.sections.map((s) => prism(s, m.width)), [], o.ops ?? null);
+  // (tongues: false leaves out the stem and barbs in the slot, for an overlap check against the beam's envelope)
+  const [base, ...rest] = m.sections, flange = [[base[0][0], 0], [base.at(-3)[0], 0], [base.at(-3)[0], m.flange], [base[0][0], m.flange]];
+  const g = combine([o.tongues === false ? flange : base, ...rest].map((s) => prism(s, m.width)), [], o.ops ?? null);
   return Object.assign(o.pose === 'fit' ? transform(sideToFit(m.width), g) : g, { model: m });
 }
 
@@ -407,12 +427,12 @@ export function tieAnchorModel(profile, o = {}) {
   closingFindings(m, { S: k.S, sizeText: `${mm(w)} mm along the slot, ${mm(2 * e)} mm across, ${mm(H)} mm high; a ${mm(tunnel.w)} x ${mm(tunnel.h)} mm tunnel across it beside the screw, ${mm(floor)} mm off the face`, marginText: `under ${m.load.what}, the roof over the tunnel bends to ${mm(stress)} MPa`, pose: 'on its side, its section the first layer, the tunnel\'s roof pointed' });
   return m;
 }
-/** A tie anchor's solid: on its side to print, or fitted. @param {object} m @param {{ pose?: 'print' | 'fit', printer?: object, ops?: object }} [o] @returns {object} */
+/** A tie anchor's solid: on its side to print, or fitted. @param {object} m @param {{ pose?: 'print' | 'fit', tongues?: boolean, printer?: object, ops?: object }} [o] @returns {object} */
 export function tieAnchor(m, o = {}) {
   if (m?.fitting !== 'tie-anchor') throw new Error(`tieAnchor: give a tie anchor's model (tieAnchorModel), not ${shown(m)}`);
   const pr = printerOf('tieAnchor', o.printer), w = m.width, e = m.edge, sw = 2 * e;
   // the screw's end: a side part 2e long (print Z from 0 to 2e), the screw at its middle; the tunnel's end beyond it
-  const screwEnd = sidePart({ loop: m.section, width: sw, tongue: { at: 0, ...m.tongue }, holes: [{ thread: m.thread, y: 0, top: m.height }], pr });
+  const screwEnd = sidePart({ loop: m.section, width: sw, tongue: o.tongues === false ? null : { at: 0, ...m.tongue }, holes: [{ thread: m.thread, y: 0, top: m.height }], pr });
   const rest = translate([0, 0, sw - 0.01], prism(m.section, w - sw + 0.01));
   const T = m.tunnel, z0 = sw + (w - sw - T.w) / 2, z1 = z0 + T.w; // (in print Z: along the slot; the tunnel runs across, along print X)
   const gable = [[T.floor, z0], [T.floor + T.h, z0], [T.floor + T.h, z1 - T.h / 2], [T.floor + T.h / 2, z1], [T.floor, z1 - T.h / 2]]; // (Y, Z): its far end pointed, the print's up
@@ -457,9 +477,9 @@ export function spoolHolderModel(profile, o = {}) {
   closingFindings(m, { S: k.S, sizeText: `an arm ${mm(L)} mm out from the face, ${mm(ta)} mm deep and ${mm(w)} mm wide, a ${lip} mm lip at its tip; the pad ${mm(tb)} mm thick`, marginText: `under ${m.load.what}, the arm's root bends to ${mm(stress)} MPa`, pose: 'on its side, its section the first layer' });
   return m;
 }
-/** A spool holder's solid: on its side to print, or fitted. @param {object} m @param {{ pose?: 'print' | 'fit', printer?: object, ops?: object }} [o] @returns {object} */
+/** A spool holder's solid: on its side to print, or fitted. @param {object} m @param {{ pose?: 'print' | 'fit', tongues?: boolean, printer?: object, ops?: object }} [o] @returns {object} */
 export function spoolHolder(m, o = {}) {
   if (m?.fitting !== 'spool-holder') throw new Error(`spoolHolder: give a spool holder's model (spoolHolderModel), not ${shown(m)}`);
-  const pr = printerOf('spoolHolder', o.printer), g = sidePart({ loop: m.section, width: m.width, tongue: { at: 0, ...m.tongue }, holes: [{ thread: m.thread, y: 0, top: m.pad }], pr, ops: o.ops });
+  const pr = printerOf('spoolHolder', o.printer), g = sidePart({ loop: m.section, width: m.width, tongue: o.tongues === false ? null : { at: 0, ...m.tongue }, holes: [{ thread: m.thread, y: 0, top: m.pad }], pr, ops: o.ops });
   return Object.assign(o.pose === 'fit' ? transform(sideToFit(m.width), g) : g, { model: m });
 }

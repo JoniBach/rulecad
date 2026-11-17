@@ -1029,20 +1029,25 @@ test('a supply and a board mount on a beam from their own rule sets: the holes t
   const { deviceMountModel, deviceMount } = frames, supply = ruleSet('supply-24v'), shield = ruleSet('cnc-shield-v3');
   // the supply: Mean Well's LRS-50 base holes, M3 up from under the plate into its own thread, no deeper than L = 3 mm
   const s = deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-50-24' });
-  assert.deepEqual(s.device.holes, [[-29, -0.5], [26, -0.5]], 'LRS-50 holes 20.5 mm and 75.5 mm from the terminal end, from the middle of 99 mm');
+  // (its holes lie over the beam, so it is set to the side until a key reaches each from under the plate beside the beam)
+  assert.deepEqual(s.device.holes, [[-29, -13.85], [26, -13.85]], 'LRS-50 holes 20.5 mm and 75.5 mm from the terminal end, from the middle of 99 mm, moved 13.35 mm across');
+  assert.deepEqual(deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-50-24', offset: 0 }).device.holes, [[-29, -0.5], [26, -0.5]], 'as Mean Well draws them, where the offset is given');
+  assert.deepEqual(s.anchors.device.at, [0, -13.35, s.thickness]); assert.match(coded(s, 'fitting.device')[0].text, /set 13\.35 mm to the side so a key reaches each from under the plate beside the beam/);
   assert.deepEqual([s.fix, s.device.thread, s.device.length, s.device.engaged, s.device.floor], ['tapped', 'M3', 5, 3, 2]);
   assert.deepEqual(s.screws.map((x) => [x.at[0], x.length]), [[-56.25, 12], [56.25, 12]], 'M5x12 into the slot, clear of the 99 mm case by the head and 1 mm');
-  assert.deepEqual(s.anchors.device, { at: [0, 0, s.thickness], axis: [0, 0, 1], ref: [1, 0, 0] });
   assert.equal(coded(s, 'fitting.device')[0].level, 'pass'); assert.match(coded(s, 'fitting.device')[0].text, /3 mm in: as far as its maker allows \(supply-24v\.mount_hole_reach, spec\)/);
-  assert.ok(s.margin >= 2 && s.grams > 0 && s.grams < 25, `${s.grams} g`); await prints(deviceMount(s), 'the supply\'s mount, top face down');
+  assert.ok(s.margin >= 2 && s.grams > 0 && s.grams < 30, `${s.grams} g`); await prints(deviceMount(s), 'the supply\'s mount, top face down');
   // the default model (LRS-100) has its own holes, and a variant's holes are its own
   assert.deepEqual(deviceMountModel('2020-misumi-hfs5', { device: supply }).device.holes, [[13.5, -14.5], [13.5, 18.5]]);
   assert.equal(deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-350-24' }).device.thread, 'M4');
-  // the board: the Uno's four holes under the shield, M3 down through 1.6 mm of board into pilots on bosses
+  // the board: the Uno's four holes under the shield, 2.54 mm from its edges, so M2.5 caps (an M3's head would overhang)
+  // down through 1.6 mm of board into pilots on bosses
   const b = deviceMountModel('2020-misumi-hfs5', { device: shield });
   assert.equal(b.device.holes.length, 4); assert.deepEqual(b.device.holes[0], [-19.05, 24.13]);
-  assert.deepEqual([b.fix, b.device.thread, b.device.length], ['through', 'M3', 10]); assert.ok(b.standoff >= 3, 'stood off its soldered leads');
-  assert.ok(b.device.engaged >= 7.5, 'engagement.pla: 2.5 diameters of M3'); assert.equal(b.windows.length, 1, 'a window inside its holes saves plastic');
+  assert.deepEqual([b.fix, b.device.thread, b.device.head, b.device.length], ['through', 'M2.5', 'cap', 8]); assert.ok(b.standoff >= 3, 'stood off its soldered leads');
+  assert.match(coded(b, 'fitting.head')[0].text, /M2\.5 cap: the largest whose 4\.5 mm head sits whole on the board, its holes 2\.54 mm from its edges at the closest \(M3's head would overhang\)/);
+  assert.ok(b.device.engaged >= b.device.need, 'engagement.pla: 2.5 diameters'); assert.equal(b.windows.length, 1, 'a window inside its holes saves plastic');
+  assert.equal(deviceMountModel('2020-misumi-hfs5', { device: shield, screw: 'M3' }).findings.find((f) => f.code === 'fitting.head').level, 'warn', 'an M3 given: its head overhangs, and it says so');
   assert.ok(b.margin >= 2 && b.grams > 0, `${b.grams} g`); await prints(deviceMount(b), 'the board\'s mount, beam side down');
   // turned a quarter, its holes turn with it
   assert.deepEqual(deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-50-24', turn: 90 }).device.holes, [[0.5, -29], [0.5, 26]]);

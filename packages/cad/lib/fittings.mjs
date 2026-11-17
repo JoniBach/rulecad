@@ -12,6 +12,7 @@ import { host } from './host.mjs';
 import { paths } from './workspace.mjs';
 import { named } from './parts.mjs';
 import { givenFor } from './frames.mjs';
+import { peekRuleSet } from './rules.mjs';
 import { ops as booleans } from '@rulecad/shapes';
 
 const KEYS = ['kind', 'profile', 'other', 'face', 'otherFace', 'shape', 'brace', 'load', 'count', 'thread', 'head', 'nut'];
@@ -22,7 +23,11 @@ const MORE = {
   'gasket-strip': ['gasketStripModel', 'gasketStrip', { profile: false }], hinge: ['hingeModel', 'hinge', { parts: ['frame', 'door'] }], handle: ['handleModel', 'handle', { profile: false }], latch: ['latchModel', 'latch'],
   'magnet-catch': ['magnetCatchModel', 'magnetCatch'], 'end-cap': ['endCapModel', 'endCap'], foot: ['footModel', 'foot'], 'levelling-foot': ['levellingFootModel', 'levellingFoot', { parts: ['body', 'pad'] }],
   'castor-plate': ['castorPlateModel', 'castorPlate'], 'stacking-foot': ['stackingFootModel', 'stackingFoot'],
+  'device-mount': ['deviceMountModel', 'deviceMount'], 'fan-mount': ['fanMountModel', 'fanMount'], 'drag-chain-end': ['dragChainEndModel', 'dragChainEnd'], 'din-rail': ['dinRailAdapterModel', 'dinRailAdapter'],
+  'cable-clip': ['cableClipModel', 'cableClip'], 'tie-anchor': ['tieAnchorModel', 'tieAnchor'], 'spool-holder': ['spoolHolderModel', 'spoolHolder'],
 };
+// the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
+const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder'];
 /** The kinds of fitting an item may name. */
 export const FITTING_KINDS = ['bracket', 'gusset', 'splice', ...Object.keys(MORE)];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
@@ -67,6 +72,11 @@ export function fittingModel(spec, context, material = 'pla', what = 'fitting') 
 // A panel's, a door's or an end's fitting: its options are the model's own (refused by name there), its part chosen
 function moreModel(spec, context, material, what) {
   const [model, , o = {}] = MORE[spec.kind], { kind, profile, part, ...rest } = spec;
+  // (a device mount names its device's rule set, which is read here: its holes come from it)
+  if (kind === 'device-mount') {
+    if (typeof rest.device !== 'string') throw new Error(`${what}: a device mount names its device's rule set in "device", as supply-24v (got ${shown(rest.device)})`);
+    try { rest.device = peekRuleSet(rest.device); } catch (e) { throw new Error(`${what}: device: ${e.message}`); }
+  }
   if (o.parts ? part != null && !o.parts.includes(part) : part != null) throw new Error(`${what}: ${o.parts ? `part is ${o.parts.join(' or ')}` : `a ${kind} has one part: leave part out`} (got ${shown(part)})`);
   if (o.profile !== false && typeof profile !== 'string') throw new Error(`${what}: a ${kind} is drawn for a profile: give "profile", as 2020-misumi-hfs5 (got ${shown(profile)})`);
   if (o.profile === false && profile != null) throw new Error(`${what}: a ${kind} is drawn for no profile: leave profile out`);
@@ -107,9 +117,9 @@ function moreBuilt(it, id, m, ops) {
   const [, solid, o = {}] = MORE[it.fitting.kind], part = it.fitting.part ?? o.parts?.[0], second = o.parts && part !== o.parts[0];
   const draw = (x) => { const f = (y) => frames[solid](m, { pose: 'fit', ...(part ? { part } : {}), ...x, ...y }); try { return f(ops ? { ops } : {}); } catch { return f({}); } };
   const parts = named({ body: draw({}) }, { body: { label: `${m.title}${part ? `, ${part}` : ''}` } });
-  if (['panel-clip', 'magnet-catch', 'panel-corner'].includes(m.fitting)) parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
+  if (TONGUED.includes(m.fitting)) parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
   const list = it.fitting.kind === 'hinge' && part === 'door' ? m.door.map((q, k) => [`d${k + 1}`, q]) : (m.screws ?? []).filter((q) => q.into !== 'castor' && q.into !== 'pilot').map((q, k) => [`b${k + 1}`, q]);
-  const anchors = Object.fromEntries(list.map(([n, q]) => [n, { at: q.at, axis: q.axis.map((c) => (c ? -c : 0)) }]));
+  const anchors = { ...Object.fromEntries(list.map(([n, q]) => [n, { at: q.at, axis: q.axis.map((c) => (c ? -c : 0)) }])), ...(m.anchors ?? {}) }; // (and its own: a mount's device and screws, a clip's cable)
   const values = { grams: m.grams, ...(m.margin != null && Number.isFinite(m.margin) ? { margin: m.margin } : {}), ...(m.load?.force ? { load: m.load.force } : {}) };
   const hash = crypto.createHash('sha256').update(JSON.stringify([it.fitting, m.name, m.grams, part])).digest('hex').slice(0, 16);
   const b = { object: { name: `${m.name}${part ? `-${part}` : ''}`, title: m.title, role: 'part', version: '0.0.0', anchors }, values, entries: [], deps: [], units: {}, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash };
