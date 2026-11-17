@@ -3333,8 +3333,8 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
     // a rail run into a beam joined across its face fails, naming the join
     assert.match(by(probe('crossed'), 'guide.fit').find((x) => x.level === 'fail').text, /runs into y1 joined at x1\.top@300 at 290 to 310 mm/);
     // refused by name
-    write('bad', { items: [x1], guides: [{ kind: 'rods', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
-    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or slider .*; rods are not built yet|guides\/0\/kind/);
+    write('bad', { items: [x1], guides: [{ kind: 'belt', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\), wheels .* or screw .*; a belt is not built yet|guides\/0\/kind/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top@20', length: 300 }] });
     assert.match(cad('check', 'slide/bad'), /guide 1: on is a beam's slotted face, as x1\.top; where along it is "from"/);
     write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 200, length: 300 }] });
