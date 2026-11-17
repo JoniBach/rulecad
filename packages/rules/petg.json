@@ -8,6 +8,7 @@
     "strength_z": {"value": 23, "unit": "MPa", "rule": "Tensile strength across the layers (z), ± 4", "kind": "spec", "source": "Bambu Lab PETG HF technical data sheet V1.0 (ISO 527)", "checked": "2026-10-27"},
     "poisson": {"value": 0.38, "rule": "Poisson's ratio (Bambu publish none)", "kind": "estimate", "source": "Typical for PETG; printed parts vary", "checked": "2026-10-27"},
     "density": {"value": 1.27, "unit": "g/cm³", "rule": "Density of PETG", "kind": "estimate", "source": "Typical for PETG (1.23 to 1.29 g/cm³ across makers' data sheets)", "checked": "2026-10-27"},
-    "softening": { "value": 69, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa: where a part under a little load starts to creep", "kind": "spec", "source": "Bambu PETG HF technical data, ISO 75 at 0.45 MPa, https://bambulab.com/hu/filament/guide", "checked": "2026-11-08" }
+    "softening": { "value": 69, "unit": "°C", "rule": "Heat deflection temperature, ISO 75 at 0.45 MPa: where a part under a little load starts to creep", "kind": "spec", "source": "Bambu PETG HF technical data, ISO 75 at 0.45 MPa, https://bambulab.com/hu/filament/guide", "checked": "2026-11-08" },
+    "cost": {"value": 12.99, "unit": "EUR/kg", "rule": "What a kilogram of it costs, so a printed part's cost can stand beside a bought one's: Bambu Lab PETG Basic as a 1 kg refill, 12.99 EUR with VAT on its EU store on the date checked (a spool with it costs 3 EUR more). Another maker's or shop's will differ: set your own", "kind": "spec", "source": "Bambu Lab EU store, PETG Basic filament page, https://eu.store.bambulab.com/products/petg-basic", "checked": "2026-11-17"}
   }
 }

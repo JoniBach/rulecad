@@ -1,6 +1,6 @@
 {
-  "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list, in ascending order; one marked \"points\" holds points of that many numbers each, one after another, in the order they are. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. A profile (a beam's section), a slot family and a slot nut are parts too: a profile names its slot family on each face, the thread its bores tap to and its material by their rule sets, and \"drafts\" holds every field of those parts with a starting value, in the order cad rules draft writes them. Read by cad rules check and cad rules draw.",
-  "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", "mm²", "mm³", "mm⁴", "kg/m", "mm/m", "deg/m", ""],
+  "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list, in ascending order; one marked \"points\" holds points of that many numbers each, one after another, in the order they are. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. A profile (a beam's section), a slot family, a slot nut and a bought fitting for a frame are parts too: a profile names its slot family on each face, the thread its bores tap to and its material by their rule sets, and \"drafts\" holds every field of those parts with a starting value, in the order cad rules draft writes them. Read by cad rules check and cad rules draw.",
+  "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", "mm²", "mm³", "mm⁴", "kg/m", "mm/m", "deg/m", "N mm/rad", "EUR", "GBP", "USD", "EUR/kg", ""],
   "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "corner_hollow_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_", "tongue_"],
   "fields": {
     "type": { "choice": ["stepper", "dc", "servo", "brushless", "radial", "flanged", "thrust"], "says": "what sort of motor, or of bearing" },
@@ -240,7 +240,27 @@
     "tongue_height": { "unit": "mm", "says": "how far that step stands above the nut's back, up into the opening" },
     "hold": { "unit": "N", "says": "the pull a slot nut takes straight out of its slot with its screw tight, as its maker rates it, or an estimate until it is tested" },
     "tightening_torque": { "unit": "N m", "says": "the torque a maker gives for tightening a screw into a slot nut" },
-    "bolt_length": { "unit": "mm", "says": "a T-bolt's shank under its head, as it is sold: 20 for an M6x20" }
+    "bolt_length": { "unit": "mm", "says": "a T-bolt's shank under its head, as it is sold: 20 for an M6x20" },
+    "fitting_kind": { "choice": ["corner-bracket", "joining-plate", "inner-connector", "anchor-connector", "hinge", "end-cap", "levelling-foot"], "says": "what sort of bought fitting for a frame: a corner bracket over a join, a flat joining plate, an inner connector hidden in the slots, an anchor connector in a hole drilled near a beam's end, a hinge, an end cap, or a levelling foot" },
+    "screw_form": { "choice": ["cap", "button", "countersunk", "hex", "set", "pan"], "says": "the head of the screws a fitting is fixed with, as the kit draws them: cap, button, countersunk, hex, set (a grub screw) or pan" },
+    "screw_length": { "unit": "mm", "says": "the length of the screws a fitting is fixed with, as they are sold" },
+    "screw_count": { "unit": "", "says": "how many screws one fitting is fixed with, each with its slot nut where the fitting names one" },
+    "holes_a": { "unit": "mm", "list": true, "points": 2, "says": "where a fitting's screws pass into beam a (the beam whose end is joined), x then y for each: x from the outside of the fitting's corner along a (an anchor's or an inner connector's from a's end), y across the face from its middle" },
+    "holes_b": { "unit": "mm", "list": true, "points": 2, "says": "where a fitting's screws pass into beam b (the beam a's end meets), x then y for each: x from the outside of the fitting's corner along b (a plate's along its bar, from its middle), y across the face from its middle" },
+    "leg": { "unit": "mm", "says": "a bracket's or a connector's leg along b, from the outside of its corner to its end" },
+    "leg_a": { "unit": "mm", "says": "a bracket's or a connector's leg along a, where it differs from the leg along b" },
+    "thickness": { "unit": "mm", "says": "a bracket's leg or a plate where the screws pass through it: the grip they clamp" },
+    "plate_shape": { "choice": ["L", "T", "cross", "straight"], "says": "a joining plate's shape: an L for a corner, a T where a meets b along its length, a cross for four beams, straight for two in line" },
+    "pocket_diameter": { "unit": "mm", "says": "the hole an anchor connector needs drilled across beam a near its end" },
+    "pocket_distance": { "unit": "mm", "says": "that hole's centre from a's end" },
+    "pin_diameter": { "unit": "mm", "says": "a hinge's pin" },
+    "knuckle_diameter": { "unit": "mm", "says": "a hinge's knuckle round its pin" },
+    "thread_length": { "unit": "mm", "says": "a levelling foot's threaded stem, as it is sold" },
+    "stand_height": { "unit": "mm", "says": "a levelling foot from the floor to the top of the nut it stands on, screwed fully home: the least it holds a beam's end up" },
+    "allowable_load": { "unit": "N", "says": "the load a maker allows on a fitting, as its sheet gives it" },
+    "bending_stiffness": { "unit": "N mm/rad", "says": "how stiffly a fitting holds a beam's end against turning across its axis, its screws tight: no maker publishes it, so an estimate until the joint rig measures it" },
+    "twist_stiffness": { "unit": "N mm/rad", "says": "how stiffly a fitting holds a beam's end against twisting about its own axis: an estimate until the joint rig measures it" },
+    "cost": { "says": "the price of one, as its seller lists it on the date checked, in the unit of its currency (EUR, GBP, USD), or per kilogram for a printing plastic (EUR/kg): the rule says whether tax is in it" }
   },
   "parts": {
     "motor": ["type", "body_shape", "body_length", "shaft_diameter", "shaft_length", "shaft_flats", "mount_pattern", "mount_hole_spacing", "mass"],
@@ -261,7 +281,8 @@
     "thread": ["thread_form", "thread", "major_diameter", "pitch"],
     "profile": ["family", "width", "height"],
     "slot": ["opening", "lip_thickness", "cavity_width", "cavity_depth"],
-    "slot_nut": ["slot", "thread", "nut_kind", "length", "width", "height", "nut_entry"]
+    "slot_nut": ["slot", "thread", "nut_kind", "length", "width", "height", "nut_entry"],
+    "fitting": ["fitting_kind", "series", "material"]
   },
   "drafts": {
     "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "chamber_length": 2, "chamber_depth": 6, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "corner_hollow_width": 0, "corner_hollow_wall": 2, "area": 183, "inertia_x": 7030, "inertia_y": 7030, "section_modulus_x": 703, "section_modulus_y": 703, "torsion_constant": 1100, "mass_per_metre": 0.5, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },

@@ -1,0 +1,164 @@
+{
+  "_doc": "Motedis' laser-cut aluminium T plate for 20 mm profiles, 58 x 58 x 3 mm with five 5.5 mm holes on a 20 mm pitch: three along the bar (b) and two up the stem (a). Fixed with M5x8 cap screws into hammer nuts in a 6 mm B-type slot. Sizes from Motedis' drawing, the price from its shop page.",
+  "name": "fitting-motedis-plate-t-20",
+  "part": "fitting",
+  "rules": {
+    "fitting_kind": {
+      "value": "joining-plate",
+      "rule": "A flat joining plate over a join, on the faces of both beams",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "plate_shape": {
+      "value": "T",
+      "rule": "A T: its bar along b, its stem along a",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er; Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "series": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Made for 20 mm profiles (\"20er\"): holes on a 20 mm pitch",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er; Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "slot": {
+      "value": "slot-6-motedis",
+      "rule": "Motedis sells its fixing set for B-type slot 6 (and another for I-type slot 5)",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "material": {
+      "value": "aluminium AlMg3 (EN AW-5754 H111), laser cut",
+      "rule": "As the shop page names it (it writes 5457)",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "thread": {
+      "value": "M5",
+      "rule": "The fixing set for B-type slot 6: 5 x DIN 912 M5x8 and 5 x hammer nut B-type slot 6 [M5]",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "screw_form": {
+      "value": "cap",
+      "rule": "DIN 912 socket head cap screws",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "screw_length": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "M5x8, as the fixing set lists",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "screw_count": {
+      "value": 5,
+      "unit": "",
+      "rule": "Five holes, a screw in each",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er; Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "nut_kind": {
+      "value": "hammer",
+      "rule": "Hammer nuts (Hammermutter)",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "width": {
+      "value": 58,
+      "unit": "mm",
+      "rule": "Across the bar: 58 mm, dimensioned on the drawing",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "leg": {
+      "value": 58,
+      "unit": "mm",
+      "rule": "Bar and stem each 58 mm overall, dimensioned on the drawing",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "thickness": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "3 mm, dimensioned on the drawing",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "mount_hole_diameter": {
+      "value": 5.5,
+      "unit": "mm",
+      "rule": "5.5 mm, dimensioned on the drawing",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "holes_b": {
+      "value": [
+        -20,
+        0,
+        0,
+        0,
+        20,
+        0
+      ],
+      "unit": "mm",
+      "rule": "The bar's three holes, from its middle: 20 mm apart, 9 mm in from each side (dimensioned), on b's face's middle line",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "holes_a": {
+      "value": [
+        20,
+        0,
+        40,
+        0
+      ],
+      "unit": "mm",
+      "rule": "The stem's two holes, 20 and 40 mm from the bar's middle hole (the 20 is dimensioned; the second sits 9 mm from the stem's end as the bar's do)",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte 58x58x3 -T- 5-loch 20er, drawing https://www.motedis.com/shop/products_files/Motedis_LP20111.pdf",
+      "checked": "2026-11-17"
+    },
+    "cost": {
+      "value": 1.21,
+      "unit": "EUR",
+      "rule": "One plate in a pack of 10: 12.09 EUR the pack with 20% VAT (10.07 EUR without), on the date checked; screws and nuts apart",
+      "kind": "spec",
+      "source": "Motedis, Verbinderplatte Alu gelasert 58x58x3 -T- 5-loch 20er, product page https://www.motedis.com/de/Verbinderplatte-Alu-gelasert-58x58x3-T-5-loch-20er",
+      "checked": "2026-11-17"
+    },
+    "bending_stiffness": {
+      "value": 6000000.0,
+      "unit": "N mm/rad",
+      "rule": "How stiffly this plate, its five screws tight, holds a beam's end against turning across its axis, its screws tight. The maker gives no figure, so this is frames' working guess for this kind of join (JOIN_STIFFNESS.gusset), until the joint rig measures it",
+      "kind": "estimate",
+      "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
+      "checked": "2026-11-17"
+    },
+    "twist_stiffness": {
+      "value": 3000000.0,
+      "unit": "N mm/rad",
+      "rule": "How stiffly this plate, its five screws tight, holds a beam's end against twisting about its own axis. The maker gives no figure, so this is frames' working guess (JOIN_STIFFNESS.gusset), until the joint rig measures it",
+      "kind": "estimate",
+      "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
+      "checked": "2026-11-17"
+    }
+  }
+}
