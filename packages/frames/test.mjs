@@ -1314,3 +1314,51 @@ test('rods: a layout from the rod, bearing, screw, nut and motor sets; holders, 
   assert.throws(() => rodCarriageModel(P, { flag: { y: -40, z: -2 } }), /the flag would hang 40 mm from the middle, past the carriage's 19.5 mm/);
   assert.throws(() => endstopMountModel(P, { face: 'front', toward: 0 }), /toward is 1 or -1/);
 });
+
+// ---------- jigs ----------
+test('jigs: a drill guide\'s bush sits where the beam\'s sheet dimensions the hole, from either end; a tap guide, a cut-length stop and a squaring corner each print without supports and report grams and margin', async () => {
+  const { drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner, beamSheet, JIG_DEFAULTS } = frames;
+  const { intersect } = jscad.booleans, { measureVolume } = jscad.measurements, { cylinder } = jscad.primitives, { transform } = jscad.transforms;
+  const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'access', at: 'front@30', thread: 'M5', through: 'beam' }, { op: 'access', at: 'top@-10', thread: 'M5', through: 'beam' }, { op: 'tap', at: 'a' }] });
+  const sheet = beamSheet(b), n = (at) => b.ops.findIndex((x) => x.at === at);
+  // a probe through the guide's plate along the face's normal, at a distance z from end a: it meets no plastic where the bore is
+  const probe = (m, z, r) => {
+    const pl = b.places.find((q) => q.name === m.place), c = cylinder({ radius: r, height: m.plate.thickness - 1, segments: 48, center: [0, 0, 0] });
+    const N = [...pl.normal, 0], X = [-N[1], N[0], 0], Y = [0, 0, 1], o = [pl.at[0] + (m.plate.thickness / 2) * N[0], pl.at[1] + (m.plate.thickness / 2) * N[1], z];
+    return transform([...X, 0, ...Y.map((v) => -v), 0, ...N, 0, ...o, 1], c);
+  };
+  for (const [at, from, d] of [['front@30', 'a', 30], ['top@-10', 'b', 10]]) {
+    const i = n(at), m = drillGuideModel(b, i), fitted = drillGuide(m, { pose: 'fit' }), z = sheet.dimensions.find((x) => x.op === i + 1).distance;
+    assert.deepEqual([m.from, m.bush.at[1], m.bush.sheet, z], [from, d, z, at.endsWith('30') ? 30 : 290], at);
+    // measured on the solid: the bore is clear at the sheet's figure, and plastic is met 0.1 mm either side of it
+    const r = m.bush.diameter / 2 - 0.01, vol = (zz) => measureVolume(intersect(fitted, probe(m, zz, r)));
+    assert.ok(vol(z) < 0.01, `${at}: the bore is at ${z} mm (${vol(z)} mm³ met)`);
+    for (const dz of [-0.1, 0.1]) assert.ok(vol(z + dz) > 0.01, `${at}: plastic ${dz} mm off the sheet's figure`);
+    await prints(drillGuide(m), `a drill guide ${at}`);
+    assert.ok(m.margin >= 2 && m.grams > 5 && m.grams < 20, `${m.grams} g at ${m.margin}×`);
+    assert.ok(m.stop.sag <= JIG_DEFAULTS.within.value + 1e-9);
+  }
+  const g = drillGuideModel(b, n('front@30'));
+  // sized from the rules: a bush twice the drill long, Ø5.3 + the printer's slip and hole compensation; a tongue the opening less the slip
+  assert.deepEqual([g.bush.diameter, g.plate.thickness, g.tongue.width, g.tongue.depth, g.stop.thickness], [5.5, 10.6, 5.9, 1.8, 3.2]);
+  assert.match(coded(g, 'jig.drill')[0].text, /its bush sits 30 mm from end a, where the sheet dimensions the hole 30 mm from end a, on front\.1's slot centre line to within 0\.05 mm/);
+  assert.match(coded(g, 'fitting.mass')[0].text, /it weighs \d+\.\d+ g of pla/);
+  // a tap guide over end a's bore; a cut-length stop for 300 mm in two gauge pieces; a squaring corner within 0.5° of square
+  const tg = tapGuideModel(b, b.ops.find((x) => x.op === 'tap'));
+  assert.deepEqual([tg.thread, tg.bores, tg.plate.thickness, tg.sleeve.inside], ['M5', [{ at: [0, 0], diameter: 5.2 }], 10, [20.4, 20.4]]);
+  const ls = lengthStopModel('2020-misumi-hfs5', 300);
+  assert.deepEqual([ls.gauge.pieces, ls.gauge.length, ls.within], [2, 150, 0.2]);
+  const sc = squareCornerModel({ profile: '2020-misumi-hfs5' }, { profile: '2020-misumi-hfs5' });
+  assert.ok(sc.square <= 0.5, `${sc.square}°`); assert.equal(coded(sc, 'jig.square')[0].level, 'pass');
+  for (const [s, what] of [[tapGuide(tg), 'a tap guide'], [lengthStop(ls), 'a length stop'], [lengthStop(ls, { part: 'gauge' }), 'a gauge piece'], [squareCorner(sc), 'a squaring corner']]) await prints(s, what);
+  for (const m of [tg, ls, sc]) { assert.ok(m.margin >= 2, `${m.name} at ${m.margin}×`); assert.ok(m.grams > 1, m.name); assert.equal(coded(m, 'fitting.printable').length, 1); }
+  // refused by name
+  assert.throws(() => drillGuideModel(b, 0), /give one of profile-2020-misumi-hfs5 x 300's access or drill or counterbore operations, by its index .* it has 2 \(access at front@30\), 3 \(access at top@-10\)/);
+  assert.throws(() => drillGuideModel(b, 2, { from: 'c' }), /from is the end the stop goes on, a or b/);
+  const long = beamModel('2020-misumi-hfs5', { length: 1000, ops: [{ op: 'access', at: 'top@500', thread: 'M5' }] });
+  assert.throws(() => drillGuideModel(long, long.ops.findIndex((x) => x.op === 'access')), /is 500 mm from end a and 500 mm from end b: a guide that reaches it is \d+(\.\d+)? mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
+  assert.throws(() => tapGuideModel(b, 0, { shank: 4 }), /shank is the tap's shank across in mm, at least its 5 mm thread/);
+  assert.throws(() => lengthStopModel('2020-misumi-hfs5', -1), /length is the cut in mm, above 0/);
+  assert.throws(() => squareCornerModel({ profile: '2020-misumi-hfs5', face: 'side' }, { profile: '2020-misumi-hfs5' }), /a's profile-2020-misumi-hfs5 has no face "side"/);
+  assert.throws(() => squareCornerModel({ profile: 'tube-al-20x20x2' }, { profile: '2020-misumi-hfs5' }), /top face is closed: a squaring corner keys into a slot on each beam/);
+});
