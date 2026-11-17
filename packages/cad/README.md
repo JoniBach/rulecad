@@ -688,22 +688,35 @@ Once an assembly is checked, these say how to make it. They all read the assembl
   1. **Cut** the beams: each mark's count and length, the bars to buy and the cuts on each (the cut list).
   2. **Drill and tap** each mark as its cut-and-drill sheet shows (each mark's work and its sheet's file).
   3. **Sides built flat**: each bay that shares no beam with a side already chosen is built on the bench, beam by beam,
-     each beam's joins with their screws, key and torque, then squared by its diagonals. Of two bays that share a
-     post, the first found is a side and the other is squared once the frame is joined.
-  4. **Nuts to load**: a step of its own just before the join that would close their slot (`frame.preload`).
-  5. **Joins**: the beams in no side go on one at a time, each joined to what is there; a side goes on as one.
-  6. **Square the frame**: the diagonals of each bay no side squared, before the joins are tightened fully.
-  7. **Mount** the rest in the assembly's order, with their fastenings; copies of one thing in a row are one step.
+     each beam's joins with their screws, key and torque, then squared by its diagonals and its joins tightened. Of
+     two bays that share a post, the first found is a side and the other is squared once the frame is joined.
+  4. **Nuts to load**: a step of its own just before the first join made of those that close their way into the slot
+     (`frame.preload`). Every join on that way counts: a blind join's head nearer the end closes it as much as the
+     join next to the nuts.
+  5. **Joins**: the beams in no side go on one at a time in the assembly's order, each joined to what is there. A
+     side goes on as one only where it can: the heads of its blind joins to the frame slide along slots that all run
+     one way, each with a way in from the end that leads. Where it can't, its beams go on one at a time on the frame
+     instead, and the build says why (`The bay of p3, p4, x2 and x4 is built on the frame, not flat: the heads of its
+     joins to the frame go into slots that run different ways (...)`).
+  6. **Square the frame**: the diagonals of each bay no side squared, then the joins tightened.
+  7. **Mount** the rest in the assembly's order, with their fastenings; copies of one thing in a row are one step. A
+     part that a beam would stand over the screws of goes on before that beam, once the beams it fastens to are
+     there, even in the middle of a side's build.
 
-  It ends with the tightening of each kind of join (`blind (16 joins, M5x12 button with a 3 mm hex key): 3.68 N m`).
-  A slide-in nut in a stretch of slot that joins close at both ends (`frame.nut`) is shut in by whichever of the two
-  joins is made second, in any order: the build is refused, naming the slot, the nuts, the join that would shut them
-  in, its step, the other join, and the nut that goes in through the opening (`frame/box: x1's top slot: 2 slide-in
-  nuts (...) for plate would be shut in by the blind join of x1.b to p2.front@30 (step 5), ...: give "nut": "drop-in"`),
-  and `cad order` exits 1. A screw no order reaches refuses it the same way. `--json` adds `frame`: `{ steps: [{ n,
-  kind, text, lines, items, joins }], sides, bays, torques, stuck }`, kind one of `cut`, `drill`, `side`, `join`,
-  `load`, `square`, `mount`. The build page shows the same as "Building the frame", with the torques and the
-  diagonals as tables.
+  Every screw is reached in this order: what stands over a screw (`fasten.access`, or a fit's `access`) goes on
+  after the step that drives it. Where a side built flat would break that, the side is built on the frame instead;
+  where no build does, it is refused with the screw and what stands over it. It ends with the tightening of each
+  kind of join (`blind (16 joins, M5x12 button with a 3 mm hex key): 3.68 N m`). A slide-in nut in a stretch of slot
+  that joins close at both ends (`frame.nut`) is shut in by whichever of the two joins is made second, in any order:
+  the build is refused, naming the slot, the nuts, the two joins, and the nut that goes in through the opening
+  (`frame/box: x1's top slot: 2 slide-in nuts (...) for plate would be shut in between the blind join of x1.a to
+  p1.back@30 and the blind join of x1.b to p2.front@30: ...: give "nut": "drop-in"`), and `cad order` exits 1.
+  `--json` adds `frame`: `{ steps: [{ n, kind, text, lines, items, joins, shown, now, dir }], sides, notFlat, bays,
+  torques, stuck }`, kind one of `cut`, `drill`, `side`, `join`, `load`, `square`, `mount`; `shown` is what is in
+  view at that step (the side on the bench, or the frame so far) and `now` what goes on in it. `--preview` draws each
+  step that shows something, numbered as the build is. The build page shows the same as "Building the frame", its
+  one sequence of steps (each a button that shows that step in the viewer), with the torques and the diagonals as
+  tables.
 - `assembly.order` is `cad check`'s finding on it: a part no order can reach fails by name, and a part sealed inside another too. A fit can say where a screw is driven from with `"access": "<item>.<anchor>"`, the anchor's z pointing out along the screw: whatever stands on that line goes on after the screw, and if it has to go on first the screw can't be reached at all. Works on an assembly's own items; a component (an assembly used as an item) goes on as one step.
 - `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by filament so each plate is one colour change, spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`).
 - `cad list <project>/<assembly>` lists the beams' **cut list** after the bought parts: each mark (beams that are the same, one profile, length and set of operations, share a mark, A, B, C), its count, grams each and work, then each profile's lengths to cut, the bars to buy in the lengths it is sold in, and the cuts on each bar in order with its offcut. Every cut takes the saw's 3 mm kerf and each bar's first end is trimmed 10 mm (`CUT_DEFAULTS` in `@rulecad/frames`, each with its source); the packing is first-fit decreasing. `cad check` adds the cut list's findings (`frame.cut`): a beam longer than any length sold fails, two lengths nearer than the cut tolerance can hold apart warn, and beams of one mark are reminded to be cut against one stop. Each beam's mark is in its label in the preview and the link (`x1: mark A, profile-2020-misumi-hfs5 x 300 mm`).

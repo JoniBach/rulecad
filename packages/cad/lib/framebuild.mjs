@@ -6,16 +6,21 @@
 //   Sides: a bay is four beams joined in a rectangle in one plane (two parallel beams joined to two others square to
 //   them). Bays that share no beam are built flat on the bench as sides, squared, and then joined to the rest (a beam
 //   is in one side at most, so of two bays that share a post the first found is the side, and the other is squared
-//   once the frame is joined). Beams that are in no side go on one at a time, each joined to what is already there; a
-//   side goes on as one when a beam already there is joined to it.
+//   once the frame is joined). Beams that are in no side go on one at a time in the assembly's order, each joined to
+//   what is already there. A side goes on as one when a beam already there is joined to it, and only where the heads
+//   of its blind joins to the frame can slide in as it does: along slots that all run one way, each with a way in from
+//   the end that leads that no join already made closes. Where that fails, or a side built flat would stand a beam over
+//   a screw before it is driven, the side is built on the frame beam by beam instead, and the build says why (notFlat).
 //   Nuts: a slide-in nut goes into a slot from an open end. Where joins close its stretch of slot at both ends
 //   (frame.nut), every order shuts it in at the second of those joins: the build is refused, naming the slot and the
-//   join, and the nut that goes in through the opening. Where a join closes one way and an item placed at the end the
-//   other (frame.preload), it is loaded just before that join.
+//   two joins, and the nut that goes in through the opening. Where joins close one way and an item placed at the end
+//   the other (frame.preload), it is loaded just before the first of the joins on that way is made.
 //   Squareness: each bay's two diagonals, inside corner to inside corner, and the difference to accept, from the cut
-//   tolerance of its beams (@rulecad/frames squareness): a side's once it is built, the rest once the frame is joined.
-// The steps of the parts that are not beams (and not a join's fitting) follow the assembly's order (lib/order.mjs),
-// whose screw access it keeps: where no order reaches a screw, the build is refused with that reason.
+//   tolerance of its beams (@rulecad/frames squareness): a side's once it is built, the rest once the frame is joined,
+//   each then tightened.
+// The steps of the parts that are not beams (and not a join's fitting) follow the assembly's order (lib/order.mjs); a
+// part a beam would stand over the screws of goes on before that beam. Every screw is held to what the assembly order
+// found stands over it (its covers): where no build reaches one, the build is refused with that reason.
 import { squareness, CUT_DEFAULTS } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
 import path from 'node:path';
@@ -156,7 +161,9 @@ export function frameBuild(s) {
       for (const j of js) made.add(j.index);
       return { joins: js.map((j) => j.index), lines: js.flatMap((j) => { const l = joinLines(s, j); return l.length ? l : [`${j.label}: ${j.fitted ? `its ${j.fitted.item}` : 'no screws: its fitting comes with the kind'}`]; }) };
     };
-    const placeOne = (id, set, prefix = '', side = null) => { const x = joinStep([id], set); step({ kind: 'join', items: [id], ...(side != null ? { side, bench: side > 0 } : {}), enters: side ? [] : [id], text: `${prefix}${id} goes on${x.joins.length ? `, joined to ${list([...new Set(x.joins.map((k) => joins[k].items.find((q) => q !== id)))])}` : ''}`, ...x }); set.add(id); };
+    // (the way a beam goes on: where its end's head goes into a slot of a beam already there, along that slot from its nearer end)
+    const slideOf = (id, js) => { const j = js.find((q) => q.kind === 'blind' && q.items[0] === id && L.has(q.items[1])); if (!j) return {}; const b = L.get(j.items[1]), sg = j.model.b.distance < b.L / 2 ? -1 : 1; return { dir: b.d.map((x) => +(x * sg).toFixed(6) || 0) }; };
+    const placeOne = (id, set, prefix = '', side = null) => { const x = joinStep([id], set); step({ kind: 'join', items: [id], ...(side != null ? { side, bench: side > 0 } : {}), ...slideOf(id, x.joins.map((k) => joins[k])), enters: side ? [] : [id], text: `${prefix}${id} goes on${x.joins.length ? `, joined to ${list([...new Set(x.joins.map((k) => joins[k].items.find((q) => q !== id)))])}` : ''}`, ...x }); set.add(id); };
     // sides, each built flat
     sides.forEach((bay, i) => {
       const own = new Set(bay.beams), set = new Set(), name = `Side ${i + 1} (${bay.name})`;

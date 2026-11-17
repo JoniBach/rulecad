@@ -144,7 +144,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - **A frame's build is `cad order`**: from bars to a square frame in numbered steps (cut, drill and tap, sides built
   flat and squared, nuts to load, joins with their torque, the diagonals, then the rest). Give the user its steps and
   its diagonals (`frame.square`: each and the difference to accept). If it is refused for a slot's nuts, change the
-  nut to the kind it names; never reorder the joins to get round it.
+  nut to the kind it names; never reorder the joins to get round it. Where a side is built on the frame, not flat,
+  the build says why; pass that on.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in
