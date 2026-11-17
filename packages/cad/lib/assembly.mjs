@@ -51,6 +51,7 @@ import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
 import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
+import { frameChecks } from './framecheck.mjs';
 import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
@@ -988,6 +989,7 @@ export function checkAssembly(s) {
   motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));
   powerChecks(s, f);
   loadChecks(s, f, { placeItems, jointValues, mul });
+  frameChecks(s, f, { placeItems, jointValues, mul });
   gripChecks(s, f);
   gaitChecks(s, f, { jointValues, placeItems, sweepOne: (v) => clashesOf(s.at(v), named) });
   taskChecks(s, f);
