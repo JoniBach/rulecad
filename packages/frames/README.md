@@ -913,9 +913,36 @@ squareness(260, 200, { tolerance: 0.1 }).accept   // 0.16 mm, for a saw that hol
 ```
 
 A bay whose diagonals differ by more than `accept` leans: loosen its joins, push the corners at the ends of the long
-diagonal together, tighten and measure again. Joint play is a second source, left to the frame checks of issue 268.
-@rulecad/cad finds every bay of an assembly (four beams joined in a rectangle in one plane) and puts its diagonals on
-the frame's build (`cad order`) and in `frame.square`.
+diagonal together, tighten and measure again.
+
+The terms stack as an arm's error budget stacks its joints. `cuts` names the beams whose cut lengths set the opening,
+each along the width or the height: a beam cut t long moves one diagonal against the other by t × span / d. `plays`
+names each join's play s along the beam it meets (`JOIN_PLAY[kind].value`, an estimate for every kind), which moves a
+corner along that beam, s × span / d. `accept` is their sum, the worst case, and `rss` their root-sum-square; `terms`
+lists each one's share.
+
+```js
+import { squareness, JOIN_PLAY } from '@rulecad/frames'
+
+const slip = JOIN_PLAY.blind.value   // 0.1 mm
+const cuts = [{ name: 'x1', along: 'width' }, { name: 'x3', along: 'width' }]
+const plays = ['width', 'width', 'height', 'height'].map((along, i) => ({ name: `j${i + 1}`, along, slip }))
+const q = squareness(260, 200, { cuts, plays })
+q.accept   // 1.07 mm: 2 × 0.5 × 260 / d + 2 × 0.1 × 260 / d + 2 × 0.1 × 200 / d, d = 328.02
+q.rss      // 0.58 mm
+squareness(260, 200, { cuts, plays, tolerance: 1 }).accept   // 1.87 mm: the cut terms double, 0.79 mm more
+```
+
+@rulecad/cad finds every bay of an assembly (four beams joined in a rectangle in one plane), names the beams whose
+ends butt the bay's others as its cuts and the joins between them as its plays, and puts its diagonals on the frame's
+build (`cad order`) and in `frame.square`.
+
+| Figure | Formula | Source |
+|---|---|---|
+| A diagonal | d = √(w² + h²) | Pythagoras |
+| A side's share of the diagonal difference | x × side / d for a change x in that side | ∂d/∂w = w / d |
+| The lean a difference stands for | δ = difference × d / (2 w h) | Diagonals √(w² + h² ± 2 w h sin δ) of a bay leaning by δ |
+| A join's play | 0.1 to 0.3 mm by kind; end-tap 0.25 | `JOIN_PLAY`: estimates; end-tap is half ISO 273's medium clearance for M5 (5.5 mm) |
 
 ## Slot nuts
 
@@ -1176,13 +1203,13 @@ lists them.
 | `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
 | `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
 | `JIG_KINDS`, `JIG_DEFAULTS`, `drillGuideModel(beam, op, { from?, load? })`, `drillGuide(m, { pose?, mark? })`, `tapGuideModel(beam, op, { shank?, load? })`, `tapGuide(m, { pose?, mark? })`, `lengthStopModel(profile, length, { load? })`, `lengthStop(m, { part?, mark? })`, `squareCornerModel({ profile, face?, end?, length? }, { profile, face?, edge? }, { hand?, load? })`, `squareCorner(m, { pose?, mark? })` | Jigs for hand tools: a drill guide and a tap guide from a beam's operations, a cut-length stop with its gauge, and a squaring corner; each takes `printer` and `material` too |
-| `squareness(width, height, { tolerance? })` | A bay's two diagonals, inside corner to inside corner, and the difference between them to accept, with the lean it stands for |
+| `squareness(width, height, { tolerance?, cuts?, plays? })` | A bay's two diagonals, inside corner to inside corner, and the difference between them to accept, stacked from its cuts and its joins' play, with the lean it stands for |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre?, given? })` | A join: the operations on each beam, its screws, its fitting (printed, or a bought set by name), its stiffness, what to know |
 | `BOUGHT_KINDS`, `boughtFittings(given?)`, `boughtFittingModel(set, { profile?, other?, join?, given? })`, `boughtFitting(m, { pose? })`, `boughtStiffness(kind, beam, m)`, `printedCost(grams, material)` | Bought fittings: the kinds and the join kinds that take each, the sets, one set's model (screws, holes, price, stiffness, fit), its reference solid, a join's stiffness with it, and a printed part's plastic beside its price |
-| `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting?, given? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join, a workspace's measured figure first |
+| `JOINS`, `JOIN_STIFFNESS`, `JOIN_PLAY`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting?, given? })` | The kinds; each kind's stiffness and its play once tightened (mm), all estimates; the scales and the tap depth; one join's stiffness as an end join, a workspace's measured figure first |
 | `JOIN_SET`, `joinRuleSet()` | The name of the rule set measured joins go in (`joins`), and that set as the kit starts it |
 | `beam(m, { display?, tracks?, ...beamModel's })` | A beam's solid, `link` or `preview`; a link with its V tracks cut (`tracks`) |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |

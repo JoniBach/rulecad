@@ -683,8 +683,8 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 - The loads: each beam's own weight (its sheet's mass per metre), each item mounted on a beam (its mass at its
   centre, as a force and a moment at the node where its chain of mounts meets the beam; a riding beam's sheet weight
   at its middle the same way) and each `mass` in `"loads"`.
-  A mass on a moving joint mounted on a beam, such as a carriage on a guide, is solved at each end of its travel,
-  at every named pose and as drawn; the worst is named.
+  A mass on a moving joint mounted on a beam, such as a carriage on a guide, is solved at each end of its travel
+  (a slide in its middle too), at every named pose and as drawn; the worst is named.
 - `frame.deflection`: the sag at each load's point, at each place in `"frame": { "points": ["x2.top@50%"] }` and
   along every guide's travel, with the joins' springs and with the joins rigid, and the load's own share. The first
   rests on the joins' springs, estimates until the joint rig measures them, and the finding says so (`refs.restsOn`:
@@ -744,6 +744,12 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 | A move's frequency | 1 / t, t = speed / accel | A working figure (`frame.ramp`); the lowest mode wanted at twice it |
 | A stepper's full-step rate | rpm / 60 × 360 / step angle | The motor's step angle and its working speed (`workingSpeed`) |
 | A beam fixed at both ends, mass M at its middle (the check of the modal solve) | f = (1/2π) √(192 E I / (L³ (M + 0.375 m))) | Blevins, Formulas for Natural Frequency and Mode Shape (1979), table 8-8 |
+| A beam fixed at both ends, load P at its middle (the check of a guide's sag in the error budget) | P L³ / (192 E I) | Roark's Formulas for Stress and Strain, table 8.1, case 1d |
+| A bay's diagonal difference to accept (frame.square) | Σ t × span / d over the beams that set the opening, plus Σ s × span / d over its joins; root-sum-square beside it | The derivative of d = √(w² + h²) with a side, ∂d/∂w = w / d; stacked as an arm's error budget stacks its joints |
+| A join's play s (frame.square) | 0.1 to 0.3 mm by kind; end-tap 0.25 mm | `JOIN_PLAY` in `@rulecad/frames`, estimates; end-tap is half ISO 273's medium clearance for M5 (5.5 mm) |
+| A beam's twist at the tool | twist per metre × length × π / 180 × the tool's distance from the beam's axis | The profile's `twist_per_metre` (MISUMI's JIS special grade figure for its 2020 HFS5) |
+| A frame's growth (frame.heat) | α L ΔT, α = 23.4e-6 /K | 6063 aluminium (Wikipedia's table; suppliers' 6063-T5 sheets 23.4 to 23.5 µm/m °C), a community figure where the alloy's set gives none |
+| A printed fitting's softening | the plastic's heat deflection temperature, ISO 75 at 0.45 MPa, warned within 10 °C | The plastic's set (`pla.softening` 57 °C, `petg.softening` 69 °C, Bambu's data sheets); the 10 °C an estimate |
 
 A worked check: a 2020 shelf frame, legs 400 mm, a 600 mm front beam joined blind to the legs 390 mm up, 5 kg at its
 middle, sags 0.215 mm by hand with the joins rigid (a beam whose ends turn with the corners the legs and the side
@@ -787,10 +793,29 @@ a brace in both bays that way about 240 times ("frame checks: an open cube racks
   (`5. Load 2 × slot-nut-6-misumi-m4-slide-in into y1's top slot through its end a, for plate2, before the blind join
   of y1.a to p1.top@170 closes it`).
 - `frame.square`: each bay of the frame (four beams joined in a rectangle in one plane), with its two diagonals,
-  inside corner to inside corner, and the difference between them to accept: twice the cut tolerance times the longer
-  side over the diagonal, what the beams' lengths allow with every corner square (`squareness` in `@rulecad/frames`).
-  A 260 × 200 mm opening of beams cut to ±0.5 mm: each diagonal 328.02 mm, accept up to 0.79 mm. Joint play is not in
-  it yet (issue 268).
+  inside corner to inside corner, and the difference between them to accept, stacked from its parts as an arm's
+  error budget stacks its joints (`squareness` in `@rulecad/frames`). Each beam of the bay whose end butts another
+  beam of the bay sets the opening along it by its cut length: cut t long or short, it moves one diagonal against the
+  other by t × span / d (span the opening along that beam, d the diagonal). Each join of the bay's beams lets the end
+  of `a` sit off by its play s along `b` (`JOIN_PLAY`, an estimate for every kind): s × span / d, span the opening
+  along `b`. The difference to accept is their sum, the worst case, with their root-sum-square beside it, and the
+  finding lists each term. The cut tolerance is the assembly's `"frame": { "cut": { "tolerance": 1 } }` where given
+  (this workshop's saw, also taken by the cut list), else the profile's `cut_tolerance`, else 0.5 mm. A 260 × 200 mm
+  opening of MISUMI 2020 (d = 328.02 mm) with its two rails butting the posts and four blind joins: 2 × 0.5 × 260 / d
+  + 4 × 0.1 × 200 / d = 1.04 mm, 0.57 mm root-sum-square; at ±1 mm it widens by 2 × 0.5 × 260 / d = 0.79 mm, to 1.83.
+  Each bay is a prediction: once squared and tightened, measure both diagonals and give their difference to
+  `cad measured <project>/<assembly> frame.square.<beams>=<mm>` (the name is in the finding, `frame.square.p1-p2-x1-x3`).
+  The ledger keeps it against the prediction, and the finding then says the difference measured: within what the
+  cuts and joins allow passes, more warns that the bay leans. The build page's bays carry the same figures.
+- `frame.heat`, where the assembly gives `"frame": { "heat": { "air": 45, "built": 20, "heaters": [{ "name": "bed",
+  "at": [150, 150, 60], "temperature": 60, "reach": 40 }] } }`: the frame grows from the air it was built in (`built`,
+  20 °C where left out) to the air it runs in by its alloy's expansion, ΔL = α L ΔT, for the longest beam and for the
+  span of its beams each way (α from the alloy's set where it gives `expansion`, else 23.4e-6 /K for 6063, a community
+  figure). A frame of one alloy grows alike every way, so it stays square. Each printed fitting is held to its plastic's
+  `softening` (the heat deflection temperature its set gives, ISO 75 at 0.45 MPa) at the air's temperature, or a
+  heater's where its drawn parts come within the heater's `reach` of its middle: over it fails, within 10 °C of it
+  warns (`FRAME_HEAT.margin`, an estimate), and the rest pass in one finding naming the nearest. Bad input is refused by
+  name (`frame.heat.heaters 1: reach is how far ...`).
 - A blind or end-tap join's head on a slot's lips: `fasten.seat` gives what the lips take, the head's circle less the
   strip of the opening across it (A = π D² / 4 - 2 (c √(R² - c²) + R² asin(c / R)), R half the head, c half the opening), at the beam alloy's strength, and the torque for that force (T = K d F, the nut
   factor an estimate), or the screw tightened fully where that is less. An M5 button head on a MISUMI 6 mm slot:
@@ -940,7 +965,15 @@ slotted face, its holes read from its own rule set (@rulecad/frames' README, Ser
   the rating, under 2 times over it warns. How they combine is an estimate, said as one.
 - A task whose chain runs through a carriage's joint counts the rail's terms in its error budget (`task.accuracy`):
   its running parallelism and its carriage's play from its rule set (`spec`), the beam's straightness over the rail
-  from the profile's, and the beam's sag (an estimate).
+  from the profile's, and the beam's sag. Where the frame is solved (the assembly has joins or a `"frame"`), the sag is
+  the frame's own figure along the guide's travel, worst over the poses (`frame.deflection`), tagged as the frame's
+  figures are (`estimate` while any join's spring is, `measured`, or `derived` with no joins); else it is the rail's
+  own estimate, the beam pinned at its ends under its own and its carriages' weight. The beam's twist is a term too:
+  the profile's `twist_per_metre` over the guide's length turns the carriage about the beam's axis, which moves the
+  tool by that angle times the tool's distance from the axis (3.33° a metre over 500 mm with the tool 23 mm from the
+  axis: 1.665° × π / 180 × 23 = 0.668 mm). Wheels and sliders, which run on the beam itself, take its straightness and
+  twist the same way; rods and screws span between holders at their ends and take neither. A slide is solved at the
+  middle of its travel as well as at its ends, where a carriage between two supports bends its beam most.
 - Refused by name: a kind not built yet (a belt), a face that is not a beam's slotted face, `on` with a distance (that
   is `from`), a rail past the beam's end, a carriage its set has not got, and a rail too short for its carriages.
 

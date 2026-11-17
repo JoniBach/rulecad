@@ -2,6 +2,22 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## Unreleased: squareness from cuts and joins' play (Frames 3)
+
+### Added
+
+- `JOIN_PLAY`: each join kind's play, how far the end of `a` may sit off where it was squared once its screws are
+  tight, in mm. Every one an estimate (end-tap from ISO 273's medium clearance for M5).
+- `squareness(width, height, { tolerance, cuts, plays })`: the beams whose cut lengths set the opening, each with its
+  own tolerance where it differs, and each join's play, stacked across the diagonals (sum for the worst case,
+  root-sum-square beside it); the result carries `terms` and `rss`. Left out, `cuts` is two beams along the larger
+  side and `plays` none, which gives the figures it gave before.
+
+### Changed
+
+- `cutList`'s `tolerance`, given, is taken before a profile's own `cut_tolerance` (the maker's figure is for its
+  cut service; a workshop's saw is its own).
+
 ## 0.1.8: joins, fittings, guides, jigs and the build (Frames 2)
 
 ### Added

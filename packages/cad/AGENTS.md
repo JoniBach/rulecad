@@ -112,7 +112,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   `frame.rack` gives the racking stiffness each way and the gain each change (gussets, a brace, a panel) solves to:
   report the stiffness, the gain and the change it advises, and say the push and the joins' springs are estimates.
   `frame.frequency` gives the lowest mode against what the machine excites: report it with its pose, and look at
-  `<assembly>.frame-mode.svg` from `cad beams` to see what moves.
+  `<assembly>.frame-mode.svg` from `cad beams` to see what moves. A task on a guide counts the beam's sag (the
+  frame's own figure where the frame is solved), straightness and twist in `task.accuracy`: report the biggest term
+  as it is named. `frame.heat` (given `"frame": { "heat": { "air": 45 } }`) says how much the frame grows and holds
+  each printed fitting to its plastic's softening point: move a failing fitting from the heat or print it in a plastic
+  that softens higher, never raise the softening figure.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),
@@ -152,7 +156,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   the user, and `cad order` shows them on the step.
 - **A frame's build is `cad order`**: from bars to a square frame in numbered steps (cut, drill and tap, sides built
   flat and squared, nuts to load, joins with their torque, the diagonals, then the rest). Give the user its steps and
-  its diagonals (`frame.square`: each and the difference to accept). If it is refused for a slot's nuts, change the
+  its diagonals (`frame.square`: each and the difference to accept, stacked from the cut tolerances and the joins'
+  play; `"frame": { "cut": { "tolerance": 1 } }` where the user's saw holds less than the profile's figure). Once
+  squared, the difference they measure goes back with `cad measured <ref> frame.square.<beams>=<mm>`. If it is refused for a slot's nuts, change the
   nut to the kind it names; never reorder the joins to get round it. Where a side is built on the frame, not flat,
   the build says why; pass that on. Its load and "Slide ... screw into ... head first" steps give each nut and head a
   way into its slot: pass them on as written. `cad check` counts the same steps.

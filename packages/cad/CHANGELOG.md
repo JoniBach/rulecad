@@ -22,12 +22,30 @@ and head, the parts it passes through and the part it ends in.
   that reaches the limit. A panel on a bay is a shear web in the model (its clips' grip an estimate). `frame.frequency`
   gives the lowest modes with every carried mass, in the worst pose, against steppers' full-step rates and the task's
   moves. `cad beams` writes the lowest mode animated, `<assembly>.frame-mode.svg`.
-- **Schema:** `"frame": { "supports", "limit", "points", "rack": { "load", "limit" } }` on an assembly.
+- **Squareness and the frame in the error budget** (#268): `frame.square` stacks each bay's cut tolerances and its
+  joins' play (`JOIN_PLAY`, estimates) across its diagonals, worst case and root-sum-square, lists each term, and is a
+  prediction `cad measured` takes as `frame.square.<beams>=<mm>`, the difference measured; once measured, it passes
+  within what the parts allow and warns that the bay leans past it. `"frame": { "cut": { "tolerance" } }` is the
+  workshop's own cut tolerance, taken by `frame.square` and the cut list. A task on a guide counts the beam's sag
+  (the frame's solved figure where the frame is solved), its straightness and its twist as named `task.accuracy`
+  terms. `frame.heat` gives the frame's growth from built to running air and holds each printed fitting to its
+  plastic's softening point, at the air's temperature or a heater's within its reach.
+- **Schema:** `"frame": { "supports", "limit", "points", "rack": { "load", "limit" }, "cut": { "tolerance" }, "heat":
+  { "air", "built", "heaters" } }` on an assembly.
 
 ### Changed
 
 - Every assembly with joins now has these findings; a frame that fails `frame.deflection` or `frame.stress` makes
   `cad check` fail where it passed before. No printed size moves.
+- `frame.square`'s difference to accept now counts only the beams whose cut lengths set the opening, and adds the
+  joins' play: the 260 × 200 mm bay of a 2020 box with blind joins goes from 0.79 to 1.04 mm, its 220 × 260 mm bays
+  from 0.76 to 0.95 mm (before, the longer side counted whichever beams set it). The build page's bays carry `rss`
+  and `terms` too.
+- A slide on a beam is solved at the middle of its travel too, so `frame.solve` counts one pose more for each slide not
+  drawn there, and a carriage between two supports is solved where it bends its beam most.
+- On a sliding joint, `task.accuracy` names its biggest term in mm alone, no longer with a degree sign.
+- `frame.deflection` names a load hung on an item by that item and its point (`g1-carriage-1 at (0, 0, 13)`), where it
+  said `[object Object]`.
 
 ## 0.7.57: frames in assemblies (Frames 2)
 
