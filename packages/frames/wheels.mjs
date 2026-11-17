@@ -223,8 +223,9 @@ export function wheelPlate(m, o = {}) {
 
 /**
  * A wheel's solid in its frame, with the spacer under it (an eccentric on the eccentric side, drawn at mid-turn, its
- * rim that turns in the plate). collide: the part outside the beam's envelope, for an overlap check that measures the
- * beam by its envelope (the rim's tip runs in the track, inside it: trackFit checks it there).
+ * rim that turns in the plate). collide: the part outside the beam's face only, for an overlap check against a plain
+ * envelope; against a beam's link with its tracks cut (beam(m, { display: 'link', tracks: true })) the whole wheel is
+ * checked, so a rim out of its track is found.
  * @param {object} m wheelsModel's @param {{ eccentric?: boolean, collide?: boolean }} [o] @returns {object} a JSCAD geom3
  */
 export function vWheel(m, o = {}) {

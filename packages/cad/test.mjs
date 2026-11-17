@@ -1059,7 +1059,7 @@ test('cad measure --profile: a beam\'s section from a model or a DXF, as a draft
     // ---- a V-slot rail of two cells standing up: turned to lie flat, its track found; a plain tube has no slot at all ----
     stl('v2040.stl', outline(profileModel('2040-openbuilds')).loops.map((l) => l.map(([x, y]) => [-y, x])), 70);
     const v = cad('measure', 'v2040.stl', '--profile', 'profile-2040-v', '--no-pictures');
-    assert.match(v, /turned a quarter turn to lie flat\n {2}40 × 20 mm, 3 holes/); assert.match(v, /slot A × 6 \(top, bottom, front, back\): opening 6\.25, lip 1\.8\d?, 11 under the lips, 6\.1 deep, floor 5\.7\d?, V mouth 9\.15 at 9[01](\.\d+)?°\n {4}matches slot-6-openbuilds/);
+    assert.match(v, /turned a quarter turn to lie flat\n {2}40 × 20 mm, 3 holes/); assert.match(v, /slot A × 6 \(top, bottom, front, back\): opening 6\.25, lip 1\.8\d?, 11 under the lips, 6\.1 deep, floor 5\.7\d?, V mouth 9\.16 at 9[01](\.\d+)?°\n {4}matches slot-6-openbuilds/);
     assert.match(v, /2 bores Ø4\.2\d? at the cells' middles/); assert.match(v, /1 hollow: 12\.2 × 16\.4 \(in the outline, not in the rules\)/);
     const vr = read('rules/profile-2040-v.json').rules; assert.deepEqual([vr.family.value, vr.cells_across.value, vr.cells_up.value, vr.series.value, vr.slot.value], ['v-slot', 2, 1, 20, 'slot-6-openbuilds']);
     stl('tube.stl', outline(profileModel('tube', { width: 30, height: 20, wall: 2 })).loops, 50);
@@ -3818,13 +3818,17 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
     write('slider', { items: [beam('2040-openbuilds')], guides: [{ kind: 'slider', on: 'x1.top.1', from: 100, length: 200, size: 40 }] });
     const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
-      const { buildAssembly, checkAssembly, sweep } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs');
+      const { buildAssembly, checkAssembly, sweep, overlap } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs');
+      const { default: jscad } = await import(${JSON.stringify(pathToFileURL(path.join(ROOT_MODULES, '@jscad/modeling/src/index.js')).href)});
       const s = await buildAssembly('roll/${name}'), l = shoppingList(s), j = s.motion.joints.find((x) => x.id === 'g1-1');
+      const solidOf = (id) => { const p = s.parts.find((x) => x.item === id); return p && (p.collide ?? p.geometry); }, wh = solidOf('g1-wheel-1');
       const box = (id) => { const t = s.parts.filter((p) => p.item === id).flatMap((p) => p.triangles.flat()); return [0, 1, 2].map((k) => [Math.min(...t.map((q) => q[k])), Math.max(...t.map((q) => q[k]))].map((x) => +x.toFixed(3))); };
       console.log(JSON.stringify({ joints: s.motion.joints.filter((j) => j.type !== 'fixed').map((j) => [j.id, j.type, j.dofs[0]]), poses: Object.keys(s.motion.poses),
         bought: l.bought.map((b) => [b.qty, b.set, b.part]), fasteners: l.fasteners.map((x) => [x.qty, x.fastener]), printed: l.printed.map((p) => [p.id, p.grams]),
         boxes: Object.fromEntries(['g1-carriage-1', 'g1-wheel-1', 'g1-wheel-3'].map((id) => [id, box(id)])),
         sweep: j ? sweep(s, { steps: 12 }).map(({ level, text, values }) => ({ level, text, values })) : [],
+        into: wh ? [0, 0.3].map((dy) => +overlap(jscad.transforms.translate([0, dy, 0], wh), solidOf('x1')).toFixed(3)) : null,
+        stop: wh ? (() => { const bb = jscad.measurements.measureBoundingBox(wh); return +overlap(wh, jscad.primitives.cuboid({ size: [bb[1][0] - bb[0][0], 1, 4], center: [(bb[0][0] + bb[1][0]) / 2, -19.5, 0] })).toFixed(3); })() : null,
         findings: checkAssembly(s).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     const by = (r, code) => r.findings.filter((x) => x.code === code);
@@ -3843,6 +3847,12 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
     // it rolls its travel, from 0 to the stretch less its 63.9 mm over its wheels, both ends a pose; the sweep is clear of the beam
     assert.deepEqual(w.joints, [['g1-1', 'prismatic', [0, 336.1, 0]]]); assert.ok(w.poses.includes('g1-a') && w.poses.includes('g1-b'));
     assert.deepEqual(w.sweep.map((x) => [x.level, x.values.from, x.values.to]), [['pass', 0, 336.1]]);
+    // the overlap check sees the whole wheel against the beam's envelope less its tracks: clear where it seats, and 0.3 mm
+    // further in (toward the beam, +y for the front side's w1), its rim in the beam
+    assert.equal(w.into[0], 0); assert.ok(w.into[1] > 1, `0.3 mm into the beam: ${w.into[1]} mm³`);
+    // and a part across the track's line (a block 1 mm into the front face where w1 rolls, as an end cap or a crossing
+    // beam would be) is found in the wheel's rim: the rim inside the face is part of what is checked
+    assert.ok(w.stop > 1, `a block in the track's line: ${w.stop} mm³`);
     assert.match(by(w, 'guide.travel')[0].text, /a plate on 4 v-wheel-solid wheels over x1's top face, 63\.9 mm long over its wheels, rolls from 50 to 450 mm along x1: travel 336\.1 mm/);
     // its wheels carry what is on it: 1 kg along their axles, a quarter each with the plate's own weight
     const [jm] = by(w, 'joint.moment');

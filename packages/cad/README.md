@@ -548,7 +548,7 @@ An item can be a beam, a length of an aluminium extrusion, a tube or a bar from 
   `@rulecad/frames` README ("Face names in an assembly").
 - A beam is bought: drawn faint, never on a plate, on `cad list` by profile and length (`2 × profile-2020-misumi-hfs5
   x 300 mm  a beam  150 g each`, weighed by the maker's mass per metre where the sheet gives one), and in the overlap
-  check by its envelope, a plain box. `cad check` says each beam's mass beside the sheet's, and warns of a length
+  check by its envelope, a plain box less any V tracks along it. `cad check` says each beam's mass beside the sheet's, and warns of a length
   longer than the profile is sold in. Its numbers are values: `x1.length`, `x1.width`, `x1.height`, `x1.mass`.
 - `"ops"` lists the operations on it, each placed by an address on the beam and dimensioned from end `a`: `cut`,
   `mitre`, `tap`, `access`, `drill`, `counterbore`, `pocket`, `notch` and `deburr`. `{ "op": "tap", "at": "a", "thread":
@@ -877,8 +877,10 @@ A carriage on V-wheels runs on a V-slot beam's own tracks, and a printed slider 
   the default) or in it (`"mode": "in"`, a block under the lips, put in from the beam's end); `size` is its own
   length. Its clearance a side is the printer's fit, and `guide.friction` says its friction and wear rest on working
   figures until they are measured.
-- The overlap check measures a beam by its envelope, so a wheel's rim and a slider's key, which stand in the slot, are
-  left out of it; `guide.fit` checks the rim's seat in the track.
+- The overlap check measures a beam by its envelope less its V tracks. A wheel is checked whole: its rim in the track
+  is clear, and a rim out of the track, or a part or beam across the track's line (an end cap, a crossing beam), is
+  found. A slider's key, which stands in the slot's opening, is left out of the check. `guide.fit` checks the rim's
+  seat in the track.
 
 Two smooth rods carry a printed carriage on linear bearings, and a lead screw drives it from a motor; an endstop homes
 it. Each is placed by an address: the rods' holders at the ends of the stretch on the face, the motor plate before

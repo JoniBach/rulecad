@@ -1257,6 +1257,17 @@ test('wheels: a carriage on V-wheels for a V-slot 2040 seats its wheels from the
   // a wheel's collide solid stops at the beam's face; its rim reaches past it into the track
   const bound = (g) => jscad.measurements.measureBoundingBox(g);
   assert.ok(Math.abs(bound(vWheel(m, { collide: true }))[1][0] - 10.32) < 1e-6 && bound(vWheel(m))[1][0] > 11.9);
+  // the beam's link with its tracks cut: the whole wheel w1, seated in the front face's track, is clear of it, and the
+  // same wheel 0.05 mm into the beam is not; the plain envelope reads the seated rim as 94 mm³ in the beam
+  const vol = (g) => jscad.measurements.measureVolume(g), bm = frames.beamModel(V, { length: 200 });
+  const box = frames.beam(bm, { display: 'link' }), tracked = frames.beam(bm, { display: 'link', tracks: true });
+  const placed = (dx) => jscad.transforms.translate([-(20 + m.seat.axle) + dx, 0, 100], jscad.transforms.rotateX(-Math.PI / 2, vWheel(m)));
+  assert.equal(vol(jscad.booleans.intersect(tracked, placed(0))), 0); assert.ok(vol(jscad.booleans.intersect(tracked, placed(0.05))) > 0.05);
+  assert.ok(vol(jscad.booleans.intersect(box, placed(0))) > 90);
+  // each V track is cut along the beam (its V and the opening under it to the cavity's depth), a plain T-slot's box is whole
+  within(vol(box) - vol(tracked), 6 * 200 * (((9.16 + 6.25) / 2) * 1.455 + 6.25 * (6.1 - 1.455)), 0.001, 'six tracks');
+  const plainB = frames.beamModel('2040-misumi-hfs5', { length: 200 });
+  assert.equal(vol(frames.beam(plainB, { display: 'link', tracks: true })), vol(frames.beam(plainB, { display: 'link' })));
   // refused by name: a plain T-slot has no track, and says why and what guides there instead
   assert.throws(() => wheelsModel('2040-misumi-hfs5', {}), /wheels are refused on profile-2040-misumi-hfs5 under its top face: .*front face has slot-6-misumi, a plain T-slot with no V track .*: a V-wheel's flanks need a V to run on .* a rail \(kind rail\) or a printed slider \(kind slider\)/);
   const plain = trackFit('2040-misumi-hfs5', 'front', 'v-wheel-solid');

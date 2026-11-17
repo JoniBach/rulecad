@@ -340,7 +340,9 @@ printed profile (they become features of the print in a later release).
 `beam(m, { display })` takes a beam's model, or a profile with the options `beamModel` takes. `display: 'link'` is a
 plain box of the section's envelope (a round section is a twelve-sided prism), 12 triangles, for a link and an
 overlap check. `'preview'` is the true section, every slot, bore and hollow, run the whole length: 872 triangles for a
-2040. The solid carries `.model` (the beam's model) and `.display`.
+2040. `tracks: true` cuts each V track from a link's box along the beam (the V mouth, and the opening under it to the
+cavity's depth), so a V-wheel's rim running in its track is clear of it and a rim out of its track is not; on a beam
+with no V track it is the plain box. The solid carries `.model` (the beam's model) and `.display`.
 
 ### Mass beside the sheet
 
@@ -1182,7 +1184,7 @@ lists them.
 | `BOUGHT_KINDS`, `boughtFittings(given?)`, `boughtFittingModel(set, { profile?, other?, join?, given? })`, `boughtFitting(m, { pose? })`, `boughtStiffness(kind, beam, m)`, `printedCost(grams, material)` | Bought fittings: the kinds and the join kinds that take each, the sets, one set's model (screws, holes, price, stiffness, fit), its reference solid, a join's stiffness with it, and a printed part's plastic beside its price |
 | `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting?, given? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join, a workspace's measured figure first |
 | `JOIN_SET`, `joinRuleSet()` | The name of the rule set measured joins go in (`joins`), and that set as the kit starts it |
-| `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
+| `beam(m, { display?, tracks?, ...beamModel's })` | A beam's solid, `link` or `preview`; a link with its V tracks cut (`tracks`) |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
 | `cutList(beams, { kerf?, trim?, tolerance?, stock? })`, `cutListText(c)` | The cut list: marks, the bars to buy, the cut order and offcut on each, `frame.cut` findings |
 | `packBars(pieces, lengths, { kerf?, trim? })`, `beamMarks(beams)` | The packing alone; the beams by mark |

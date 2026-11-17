@@ -255,7 +255,8 @@ export function guideBuilt(it, id) {
   }
   if (part === 'wheel') {
     const parts = named({ body: vWheel(m, { eccentric: it._guide.eccentric }) }, { body: { label: `${m.wheel} on ${it._guide.eccentric ? m.eccentric : 'a plain spacer'}` } });
-    parts[0].collide = named({ body: vWheel(m, { eccentric: it._guide.eccentric, collide: true }) }, {})[0].geometry; // (its rim's tip runs in the track, inside the beam's envelope: the seat is checked as guide.fit)
+    // (the whole wheel is checked for overlaps: its rim runs in the track, which the beam's envelope leaves open, so a rim
+    // that strays out of it, or a beam or part across its track's line, is found)
     const anchors = { axle: { at: [0, 0, 0], axis: [0, 0, 1], ref: [1, 0, 0] } }, values = { diameter: SETS_OF(m).diameter, axle: m.seat.axle, depth: m.seat.depth, radial: m.ratings.radial, axial: m.ratings.axial };
     return referenceBuilt({ id, key: 'guide-wheel', objName: `wheel:${m.wheel}${it._guide.eccentric ? ':eccentric' : ''}`, name: m.wheel, parts, anchors, entries: [], values, extra: { guide: m, bought: { set: m.wheel, variant: null, part: 'wheel', mass: m.kitMass } } });
   }
