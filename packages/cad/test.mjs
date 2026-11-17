@@ -1680,6 +1680,9 @@ test('a motor in an assembly: on the axis of its joint, torque reaching a load, 
     write('projects/home/assemblies/cool.json', arm({ current: Number(advised) }, { loads: [{ mass: 0.15, at: 'arm.tip' }] }));
     const cool = code(findings('cool'), 'motor.heat')[0];
     assert.equal(cool.level, 'pass', cool.text); assert.match(cool.text, new RegExp(`at ${advised.replace('.', '\\.')} A, under PLA's`));
+    // and says the case's temperature is an estimate, the maker's rise scaled by the current squared
+    assert.match(cool.text, /\(an estimate: nema17's [\d.]+ °C rise at rated current, scaled by the current squared \(its copper loss\), over a 25 °C room\)$/, cool.text);
+    assert.match(code(light, 'motor.heat')[0].text, /°C at rated current \(an estimate: nema17's [\d.]+ °C rise at rated current, over a 25 °C room\), past where PLA softens/);
     // a shaft read from its bore
     const hub = (name, set, fit = true) => write(`projects/home/assemblies/${name}.json`, { title: 'Hub', kind: 'fit', items: [{ id: 'm', motor: { model: 'nema17', drives: 'j' } }, { id: 'hub', object: 'hub', set }], joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 12], axis: [0, 0, 1] }, child: 'hub.axis' }], fits: [{ a: 'm', b: 'hub', shaft: fit }] });
     hub('good', {});
