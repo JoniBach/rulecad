@@ -3490,6 +3490,13 @@ test('services: the worked arm\'s shield and supply mount on a rail from their o
       fasten: kinds.map(([id, , a, n]) => ({ screw: 'M5 button', through: [id], into: a.split('@')[0], at: Array.from({ length: n }, (_, k) => `${id}.b${k + 1}`) })) }));
     const more = cad('check', 'rack/more');
     assert.doesNotMatch(more, /^\s+(✗|!) /m); assert.match(more, /fan: printed mount for a 40 mm fan on 2020-misumi-hfs5/); assert.match(more, /spool: printed spool holder/);
+    // the set's default supply (LRS-100-24) and the four-hole M4 ones: each screw read off the cut plate stops within
+    // Mean Well's 3 mm, the mesh's grid allowed (a seat read 0.0002 mm off once failed all of these)
+    for (const [variant, says] of [[null, /2 M3 button screws: M3x5 button chosen, the longest sold that goes no further than its maker allows: 2 mm under its head and 3 mm into psu/], ['LRS-200-24', /4 M4 button screws: M4x6 button chosen, the longest sold that goes no further than its maker allows: 3 mm under its head and 3 mm into psu/]]) {
+      write([{ id: 'psu', bought: 'supply-24v', ...(variant ? { variant } : {}), mount: { on: 'rail.top@-120' } }], []);
+      const c = cad('check', 'rack/rack');
+      assert.match(c, says, variant ?? 'the default'); assert.doesNotMatch(c, /^\s+✗ /m, variant ?? 'the default');
+    }
     // refused by name
     write([{ ...mine('shield'), at: [0, 0, 0], mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item shield: a mounted item is placed by its mount: leave out at, rotate and repeat/);
     write([{ id: 'd1', bought: 'drv8825', mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item d1: mount holds a bought board or supply, and drv8825 is a driver/);
