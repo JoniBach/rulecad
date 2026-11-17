@@ -80,7 +80,7 @@ export function hingeModel(profile, o = {}) {
   const dnut = nutModel(dsc), dLen = [...(fixingModel(dsc).figures.lengths?.value ?? [])].sort((a, b) => a - b).find((x) => x >= R + T + dnut.height - 1e-9 && x <= R + T + dnut.height + fixingModel(dsc).major + 1e-9) ?? null;
   const xs = [-(L / 2 - dEnd), L / 2 - dEnd].map(r3), frameX = [-(L / 2 - endBy), L / 2 - endBy].map(r3);
   const m = { kind: 'fitting', fitting: 'hinge', name: `hinge-${short(p)}-${sd.thread.toLowerCase()}-${mm(T)}mm`, title: `printed door hinge for ${short(p)}, a ${mm(T)} mm door, ${sd.thread} into the slot`,
-    profile: p.name, face: sd.face, thread: sd.thread, head: 'button', sheet: T, pin, screw: dsc, length: L, knuckle: kl, knuckles: n, gap: gapK, radius: R, leaf: tl, standoff: g, axis: [ya, za], edge: v0, doorLeaf: dLeaf, plate: r3(endBy),
+    profile: p.name, face: sd.face, thread: sd.thread, head: 'button', sheet: T, pin, screw: dsc, length: L, knuckle: kl, knuckles: n, gap: gapK, radius: R, leaf: tl, standoff: g, axis: [ya, za], edge: v0, doorLeaf: dLeaf, plate: r3(endBy), headRoom: r3(sc.dk / 2),
     parts: ['frame', 'door'], frameScrews: frameX, doorScrews: xs,
     screws: frameX.map((x) => ({ leaf: 'frame', thread: sd.thread, head: 'button', grip: tl, at: [x, 0, tl], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null })),
     door: xs.map((x) => ({ leaf: 'door', thread: dsc, head: 'button', at: [x, yd, r3(za + R)], axis: [0, 0, -1], length: dLen, nut: dnut.name })),
@@ -112,7 +112,9 @@ export function hinge(m, o = {}) {
   if (part === 'frame') {
     // its plate on the face; at each outer knuckle a riser from the plate to the knuckle, its root toward the slot rounded
     const plate = sec([[ya - R, 0], [m.plate, 0], [m.plate, tl], [ya - R, tl]]);
-    const riser = sec(roundConcave(ccw([[ya - R, 0], [ya + R + 3, 0], [ya + R + 3, tl], [ya + R, tl], [ya + R, za], ...arc(ya, za, R, 0, Math.PI, 16).slice(1, -1), [ya - R, za]]), Math.min(R, 2), null, 8));
+    // (its root's round no wider than the room left before the heads on the slot's line, so they seat flat)
+    const rr = Math.max(0.2, Math.min(2, -(m.headRoom ?? 0) - (ya + R) - 0.5));
+    const riser = sec(roundConcave(ccw([[ya - R, 0], [ya + R + rr, 0], [ya + R + rr, tl], [ya + R, tl], [ya + R, za], ...arc(ya, za, R, 0, Math.PI, 16).slice(1, -1), [ya - R, za]]), rr, null, 8));
     const parts = [along(plate, -L / 2, L / 2), ...[0, m.knuckles - 1].map((i) => along(riser, ...seg(i)))];
     const holes = [pinAt(za, 1), ...m.frameScrews.map((x) => hole(m.thread, { kind: 'clearance', into: '-z', depth: tl + 2, at: [x, 0, tl + 1], ...fx }))];
     return Object.assign(combine(parts, holes, o.ops), { model: m });

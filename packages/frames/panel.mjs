@@ -155,7 +155,7 @@ export function panelModel(sheet, thickness, o = {}) {
 
 /**
  * A panel's solid: the sheet from [0, 0] to its size on x and y, z from 0 to its thickness, its corners rounded and its
- * holes cut. @param {Panel} m panelModel's @param {{ printer?: object }} [o]
+ * holes cut. @param {Panel} m panelModel's @param {{ printer?: object, ops?: object }} [o] ops: booleans to cut with, JSCAD's where left out
  * @returns {object} a JSCAD geom3, with .model
  */
 export function panel(m, o = {}) {
@@ -163,7 +163,7 @@ export function panel(m, o = {}) {
   const [a, b] = m.size, r = m.corner, pr = printerOf('panel', o.printer);
   const out = r > 0 ? roundConcave(ccw([[0, 0], [a, 0], [a, b], [0, b]]).reverse(), r).reverse() : [[0, 0], [a, 0], [a, b], [0, b]];
   const body = prism(out, m.thickness), cuts = m.holes.map((h) => hole(h.thread, { kind: 'clearance', into: '-z', depth: m.thickness + 2, at: [h.at[0], h.at[1], m.thickness + 1], printer: pr }));
-  return Object.assign(cuts.length ? subtract(body, ...cuts) : body, { model: m });
+  return Object.assign(cuts.length ? (o.ops ? o.ops.subtract(body, ...cuts) : subtract(body, ...cuts)) : body, { model: m });
 }
 
 // ---------- a panel clip ----------

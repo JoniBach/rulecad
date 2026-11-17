@@ -10,6 +10,7 @@ import { beamOf, beamPlace, framesContext } from './beams.mjs';
 import { givenFor } from './frames.mjs';
 import { named } from './parts.mjs';
 import { referenceBuilt } from './bought.mjs';
+import { ops as booleans } from '@rulecad/shapes';
 
 const KEYS = ['sheet', 'thickness', 'bay', 'out', 'pitch', 'nut', 'load', 'door'];
 const DOOR_KEYS = ['hinge', 'open', 'handle', 'catch', 'latch', 'load'];
@@ -196,9 +197,10 @@ function doorSpec(what, d, bay, num) {
  * it by its sheet, thickness and size), its anchors (a door's pivot, hinge, screw and handle places), and its
  * figures as values (door.width, door.height, door.grams). @param {object} it @param {string} id
  */
-export function panelBuilt(it, id) {
+export async function panelBuilt(it, id) {
   if (!it._panel) throw new Error(`item ${id}: a panel is worked out from its bay before it is built`);
-  const { model: m, anchors } = it._panel, parts = named({ body: panel(m) }, { body: { label: m.title } });
+  let ops = null; try { ops = await booleans('manifold'); } catch {} // (cut by Manifold where installed, so the overlap check reads it exactly)
+  const { model: m, anchors } = it._panel, parts = named({ body: (() => { try { return panel(m, ops ? { ops } : {}); } catch { return panel(m); } })() }, { body: { label: m.title } });
   const values = { width: m.size[0], height: m.size[1], thickness: m.thickness, grams: m.grams };
   return referenceBuilt({ id, key: 'panel', objName: `panel:${m.name}`, name: m.name, parts, anchors, entries: [], values,
     extra: { panel: m, bought: { set: `${m.sheet} sheet, ${mm(m.thickness)} mm`, variant: null, part: 'panel', mass: m.grams / 1000, size: m.size } } });

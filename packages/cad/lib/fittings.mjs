@@ -82,10 +82,10 @@ function moreModel(spec, context, material, what) {
  */
 export async function fittingBuilt(it, id, context, material = 'pla') {
   const m = fittingModel(it.fitting, context, material, `item ${id}`);
-  if (MORE[it.fitting.kind]) return moreBuilt(it, id, m);
   // joined and cut by Manifold where the workspace has it, so the solid is watertight for the overlap check (JSCAD's
   // booleans leave seams that Manifold cannot read, and JSCAD's own intersection then misreads a head in its seat)
   let ops = null; try { ops = await booleans('manifold'); } catch {}
+  if (MORE[it.fitting.kind]) return moreBuilt(it, id, m, ops);
   const draw = (o) => { const f = m.fitting === 'bracket' ? bracket : plate; try { return f(m, { ...o, ...(ops ? { ops } : {}) }); } catch { return f(m, o); } };
   const parts = named({ body: draw({ pose: 'fit' }) }, { body: { label: m.title } });
   // its tongues stand in the slots, inside the beams' envelopes: the overlap check measures the body without them
@@ -103,9 +103,9 @@ export async function fittingBuilt(it, id, context, material = 'pla') {
 // A panel's, a door's or an end's fitting built: fitted, its tongue (where it has one) left out of the overlap check;
 // an anchor on each screw's axis at its head (b1, b2 .. for screws into a slot or a bore; d1, d2 .. for a hinge's
 // door leaf's, through the door); a hinge's door leaf and a levelling foot's pad carry no findings or hardware of their own
-function moreBuilt(it, id, m) {
+function moreBuilt(it, id, m, ops) {
   const [, solid, o = {}] = MORE[it.fitting.kind], part = it.fitting.part ?? o.parts?.[0], second = o.parts && part !== o.parts[0];
-  const draw = (x) => frames[solid](m, { pose: 'fit', ...(part ? { part } : {}), ...x });
+  const draw = (x) => { const f = (y) => frames[solid](m, { pose: 'fit', ...(part ? { part } : {}), ...x, ...y }); try { return f(ops ? { ops } : {}); } catch { return f({}); } };
   const parts = named({ body: draw({}) }, { body: { label: `${m.title}${part ? `, ${part}` : ''}` } });
   if (['panel-clip', 'magnet-catch', 'panel-corner'].includes(m.fitting)) parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
   const list = it.fitting.kind === 'hinge' && part === 'door' ? m.door.map((q, k) => [`d${k + 1}`, q]) : (m.screws ?? []).filter((q) => q.into !== 'castor' && q.into !== 'pilot').map((q, k) => [`b${k + 1}`, q]);

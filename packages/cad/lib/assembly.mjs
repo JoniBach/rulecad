@@ -125,7 +125,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     if (it.motor) { const key = JSON.stringify(['motor', it.id, it.motor]); if (!built.has(key)) built.set(key, motorBuilt(it.motor, num, it.id)); return built.get(key); }
     if (it.beam) { const b = beamBuilt(it, num, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/beams.mjs)
     if (it.fitting) { const b = await fittingBuilt(it, it.id, framesContext(), plasticOf(project)); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/fittings.mjs)
-    if (it.panel) { const b = panelBuilt(it, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/panels.mjs)
+    if (it.panel) { const b = await panelBuilt(it, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/panels.mjs)
     if (it.bought) {
       const key = JSON.stringify(['bought', it.id, it.bought, it.variant, it.set]);
       if (!built.has(key)) built.set(key, boughtSets().get(it.bought) === 'motor' ? motorBuilt({ model: it.bought }, num, it.id) : boughtBuilt(it.bought, it, num, it.id));
@@ -923,7 +923,8 @@ export function checkAssembly(s) {
     // nowhere else: a ring gear resting on its case turns with the planets; a pawl resting on its post walks off it.
     if (s.motion.joints.some((j) => j.type !== 'fixed')) {
       const ids = s.motion.items.map((x) => x[0]), top = (n) => String(n).split(/[.@]/)[0];
-      const held = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child])]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
+      // (a beam placed by its ends is the frame, held where it is drawn: what is screwed to it is held by it)
+      const held = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child]), ...s.items.filter((it) => it.beam && it.from != null).map((it) => it.id)]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
       for (let grew = true; grew;) { grew = false; for (const [a, b] of links) { if (held.has(a) && !held.has(b)) { held.add(b); grew = true; } if (held.has(b) && !held.has(a)) { held.add(a); grew = true; } } }
       const placed = new Set(s.objects.filter((o) => !o.unplaced && o.role !== 'reference').map((o) => top(o.id)));
       const loose = ids.filter((id) => !held.has(id) && placed.has(id));
