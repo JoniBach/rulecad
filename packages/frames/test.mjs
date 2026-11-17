@@ -1716,7 +1716,8 @@ test('a printed beam\'s creep: a sustained stress against a share of its strengt
   // Hand calculation (PETG HF, petg.json): along its layers (lying) 34 MPa, across (standing) 23 MPa (strength_z).
   //   creep limit lying = 0.15 x 34 = 5.1 MPa; standing = 0.15 x 23 = 3.45 MPa (PRINTED_DEFAULTS.creep, an estimate)
   //   2.55 MPa sustained, lying: 5.1 / 2.55 = 2 times under: passes. Standing: 3.45 / 2.55 = 1.353: passes.
-  //   6 MPa lying: 5.1 / 6 = 0.85: fails.
+  //   6 MPa lying: 5.1 / 6 = 0.85: fails, and the text says it the right way round: 6 / 5.1 = 1.18 times over (to two places).
+  //   10 MPa lying: 10 / 5.1 = 1.96 times over (its margin 5.1 / 10 = 0.51).
   assert.equal(PRINTED_DEFAULTS.creep.kind, 'estimate'); assert.match(PRINTED_DEFAULTS.creep.source, /Waseem et al\. \(2020\).*15 MPa.*1\.2 to 2\.3 hours/);
   assert.deepEqual([lying.printed.creep.limit, standing.printed.creep.limit], [5.1, 3.45]);
   const a = beamCreep(lying, { stress: 2.55 });
@@ -1724,7 +1725,9 @@ test('a printed beam\'s creep: a sustained stress against a share of its strengt
   assert.match(a.text, /a sustained 2\.55 MPa against the 5\.1 MPa it may hold for months \(0\.15 of its 34 MPa along its layers, PRINTED_DEFAULTS\.creep, an estimate\): 2 times under it/);
   assert.equal(beamCreep(standing, { stress: 2.55 }).values.margin, 1.353);
   const over = beamCreep(lying, { stress: 6 });
-  assert.equal(over.level, 'fail'); assert.match(over.text, /0\.85 times under it, so it creeps on toward breaking/);
+  assert.equal(over.level, 'fail'); assert.match(over.text, /: 1\.18 times over it, so it creeps on toward breaking/); assert.doesNotMatch(over.text, /times under/);
+  const ten = beamCreep(beamModel('profile-2020-printed', { length: 200, material: 'petg', printed: true }), { stress: 10 });
+  assert.deepEqual([ten.level, ten.values.margin], ['fail', 0.51]); assert.match(ten.text, /a sustained 10 MPa against the 5\.1 MPa .*: 1\.96 times over it, so it creeps on toward breaking/); assert.doesNotMatch(ten.text, /times under/);
   // a moment: stress = M / Z, Z the printed section's (printedSection's modulusX)
   const Z = lying.printed.section.modulusX;
   assert.equal(beamCreep(lying, { moment: 2.55 * Z }).values.stress, 2.55);
