@@ -3217,3 +3217,54 @@ test('bought fittings: the same frame with a printed and with a cast bracket lis
     assert.match(cad('check', 'frame/corner'), /fitting-motedis-bracket-20-b6 is made for slot-6-motedis \(nut family slot-6-bosch\), and 2020-misumi-hfs5's slots are slot-6-misumi/);
   } finally { done(); }
 });
+
+test('bought fittings: a T plate, an inner connector and an anchor in joins, an end cap and a levelling foot on beam ends, each checked against its beam and listed with its price', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/bought.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const beam = (id, from, to, profile = '2020-motedis-b6') => ({ id, beam: { profile }, from, to });
+    const probe = (a) => {
+      fs.writeFileSync(file, JSON.stringify({ title: 'Bought', kind: 'fit', ...a }));
+      return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+        const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+        const { shoppingList } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/list.mjs')).href)});
+        const s = await buildAssembly('frame/bought'), l = shoppingList(s);
+        const box = (id) => { const br = s.parts.filter((p) => p.item === id); return [0, 1, 2].map((k) => [Math.min(...br.flatMap((p) => p.triangles.flat().map((v) => v[k]))), Math.max(...br.flatMap((p) => p.triangles.flat().map((v) => v[k])))].map((x) => +x.toFixed(2))); };
+        console.log(JSON.stringify({ items: s.items.map((i) => i.id), boxes: Object.fromEntries(s.items.filter((i) => i.role === 'reference' && !/^[xy]\\d$/.test(i.id)).map((i) => [i.id, box(i.id)])), hardware: s.hardware.map((h) => h.kind + ' ' + h.name),
+          ops: Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, o.beam.ops.filter((x) => !x.implied).map((x) => x.line)])), cost: l.cost, bought: l.bought.filter((b) => b.part === 'fitting').map((b) => [b.qty, b.set, b.cost]),
+          findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap|frame|fitting)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+      `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    };
+    const fails = (r) => r.findings.filter((x) => x.level === 'fail').map((x) => x.text), by = (r, code) => r.findings.filter((x) => x.code === code);
+    // a T plate where y1 meets x1 along its length: its three screws in x1, two in y1, each into a hammer nut
+    let r = probe({ items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210])], joins: [{ kind: 'gusset', a: 'y1.a', b: 'x1.top@150', fitting: 'fitting-motedis-plate-t-20' }] });
+    assert.deepEqual(fails(r), []);
+    assert.deepEqual([r.hardware.filter((h) => h === 'screw M5x8 cap').length, r.hardware.filter((h) => h === 'nut slot-nut-6-motedis-m5-hammer').length], [5, 5]);
+    assert.deepEqual(r.boxes['y1-x1-gusset'], [[121, 179], [-13, -10], [-9, 49]]); // (58 mm along x1, 3 mm thick on the faces at y = -10, from 9 mm under x1's axis to 49 above)
+    for (const code of ['fasten.holes', 'fasten.slot', 'join.geometry']) assert.deepEqual([...new Set(by(r, code).map((x) => x.level))], ['pass'], code);
+    assert.deepEqual([by(r, 'join.stiffness')[0].values.bending, r.bought, r.cost.bought], [6e6, [[1, 'fitting-motedis-plate-t-20', 1.21]], 1.21]);
+    // an inner connector: in the slots, out of sight, its grub screws part of it; no nuts, no machining, no overlap
+    r = probe({ items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210])], joins: [{ kind: 'hidden', a: 'y1.a', b: 'x1.top@150', fitting: 'fitting-motedis-inner-20-b6' }] });
+    assert.deepEqual([fails(r), r.hardware, r.ops, by(r, 'join.stiffness')[0].values.bending], [[], [], { x1: [], y1: [] }, 1.5e6]);
+    assert.deepEqual([...new Set(by(r, 'overlap').map((x) => x.level))], ['pass']);
+    assert.deepEqual(by(r, 'join.fitting'), []);
+    // MISUMI's centre joint on its own profile: the hole for its guide drilled across y1, 10 mm from its end, on the cut list
+    r = probe({ items: [beam('x1', [0, 0, 0], [300, 0, 0], '2020-misumi-hfs5'), beam('y1', [150, 0, 10], [150, 0, 210], '2020-misumi-hfs5')], joins: [{ kind: 'anchor', a: 'y1.a', b: 'x1.top@150', fitting: 'fitting-misumi-hmj5' }] });
+    assert.deepEqual(fails(r), []);
+    assert.equal(r.ops.y1.length, 1); assert.match(r.ops.y1[0], /Ø7\.1 mm .*10 mm from end a/);
+    assert.deepEqual([by(r, 'join.stiffness')[0].values.bending, r.bought, r.cost ?? null], [2e6, [[1, 'fitting-misumi-hmj5', null]], null]); // (MISUMI prints no price, and nothing is printed)
+    // on a beam's ends: an end cap and a levelling foot, each a bought item at the end, which covers it
+    const ends = { items: [beam('x1', [0, 0, 0], [300, 0, 0]), { id: 'cap', bought: 'fitting-motedis-end-cap-20-b6', at: 'x1.b' }, { id: 'foot', bought: 'fitting-motedis-foot-m6-d19', at: 'x1.a' }] };
+    r = probe(ends);
+    assert.deepEqual([fails(r), by(r, 'fitting.fit').map((x) => [x.level, x.refs.item]), by(r, 'join.end')], [[], [['pass', 'cap'], ['pass', 'foot']], []]);
+    assert.deepEqual([r.bought, r.cost.bought], [[[1, 'fitting-motedis-end-cap-20-b6', 0.07], [1, 'fitting-motedis-foot-m6-d19', 2]], 2.07]);
+    // the same foot on MISUMI's profile, whose end bore is tapped M5: it does not fit, and says so
+    ends.items[0].beam.profile = '2020-misumi-hfs5'; r = probe(ends);
+    assert.deepEqual(fails(r).map((t) => t.replace(/^\w+: /, '')), ["fitting-motedis-end-cap-20-b6 is made for slot-6-motedis (nut family slot-6-bosch), and 2020-misumi-hfs5's slots are slot-6-misumi (slot-6-misumi): its lugs and nuts are not promised to fit. Choose a fitting made for slot-6-misumi, or \"fitting\": \"printed\"", "fitting-motedis-foot-m6-d19's stem is M6, and 2020-misumi-hfs5's end bore is tapped M5: choose a foot with an M5 stem"]);
+    // refused by name: a set the join does not take
+    fs.writeFileSync(file, JSON.stringify({ title: 'Bought', kind: 'fit', items: [beam('x1', [0, 0, 0], [300, 0, 0]), beam('y1', [150, 0, 10], [150, 0, 210])], joins: [{ kind: 'hidden', a: 'y1.a', b: 'x1.top@150', fitting: 'fitting-motedis-plate-t-20' }] }));
+    assert.match(cad('check', 'frame/bought'), /join 1: .*fitting-motedis-plate-t-20 is a joining plate, and a hidden join takes an inner connector: fitting-motedis-plate-t-20 goes in a gusset or splice join/);
+  } finally { done(); }
+});
