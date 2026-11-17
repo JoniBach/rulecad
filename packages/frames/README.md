@@ -537,6 +537,68 @@ The inside corners are rounded: a bracket's by its thickness, a gusset's by half
 | `stiffness.linear` (N/mm) | The load over the loaded screw's mean movement along it |
 | `stiffness.bending` (N·mm/rad) | F s² / δ: the load times the screw's distance from the corner squared, over its movement. It is the fitting's own; the slot nuts, the lips and the screws are not in it, so a joint is softer, and the joint rig (issue 264) measures that |
 
+## Panels and doors
+
+A panel is a sheet of acrylic, polycarbonate or aluminium (`SHEETS`, each with its density from the maker's data
+sheet and the thicknesses stockists commonly hold), cut to a size, its corners rounded 1 mm. Its mass is the sheet's
+density times its volume less its holes. A thickness no stockist commonly holds is a `panel.thickness` warning.
+
+The printed parts that hold it are drawn from the profile's, the thread's and the printer's rules, as the brackets are:
+
+| Part | What it is | Prints |
+|---|---|---|
+| `panelClipModel(profile, { sheet })` | A block screwed into a slot nut on the slot's line, keyed by a tongue, reaching over the panel's edge with a step as deep as the sheet. The panel's edge goes `edge` from the slot's line (6.5 mm for M5 on a 2020) | On its side |
+| `panelCornerModel(profile, { sheet })` | An L over a panel's corner where two beams meet, a screw into each slot past the crossing, the step's corner rounded where the panel's rounded corner sits | Top face down |
+| `panelEdgeModel(profile, { sheet, length })` | A channel in a slot's opening with a groove for a thinner sheet. Refused where the walls would be thinner than two lines (a 5 mm sheet in a 6 mm opening) | Groove up |
+| `slotCoverModel(profile, { length })` | A flange on the face, a stem in the opening, a barb under each lip leaning 45° | Flange down |
+| `gasketStripModel({ gap, length })` | A hollow triangle of two-line walls leaning 30°, as high as a door's standoff and its squeeze, in PETG | On its base |
+
+A door is a panel that stands off the faces on printed hinges:
+
+| Part | What it is | Prints |
+|---|---|---|
+| `hingeModel(profile, { sheet })` | The frame's leaf on the hinge beam's face, two screws into slot nuts, its two knuckles risen over the beam's outer edge; the door's leaf on the door's outer face, its knuckle between them, two screws through the door into nuts; an M4 cap screw and lock nut for the pin | The frame's leaf as it lies, the door's face down, the pin's hole a teardrop |
+| `handleModel({ sheet })` | A grip between two feet 64 mm apart, screwed from inside the door into a pilot in each foot | On its side |
+| `latchModel(profile, { sheet, standoff })` | A turn button: a post screwed into a slot nut, a tab that turns over the door's edge | Tab down |
+| `magnetCatchModel(profile, { standoff })` | A block under the door's edge with a disc magnet pressed into its tower; a steel washer stuck to the door is the strike | On its side |
+
+The door stands off the faces by the frame's leaf, a button head and 1 mm (10.2 mm for M5 on a 2020), so it passes
+over the heads. The hinge's axis lies over the beam's outer edge at the door's outer face, and the door's edge on the
+hinge side stops a knuckle and 1 mm from it. Turned about that axis, every point of the door stays at the standoff or
+higher from shut to 180°: the door swings out and away from the frame, never into it.
+
+```js
+import { panelModel, panelClipModel, hingeModel } from '@rulecad/frames'
+
+panelModel('acrylic', 3, { size: [367, 287] }).grams   // 376.02
+const c = panelClipModel('2020-misumi-hfs5', { sheet: 3 })
+c.height, c.edge, c.grams, c.margin                    // 4.4 mm, 6.5 mm, 1.53 g, 2.43 at 30 N
+const h = hingeModel('2020-misumi-hfs5', { sheet: 3 })
+h.standoff, h.axis, h.grams, h.margin                  // 10.2 mm, [-10, 13.2], 10.16 g for both leaves, 13.9 at 50 N
+```
+
+Each part is sized from a named load by beam formulas (the formulas below) to about twice the margin, then made thick
+enough that a screw sold engages its slot nut and stops short of the slot's floor, as a bracket is. The loads are
+working figures (`PANEL_DEFAULTS.load`, 30 N pushing a panel out at one clip; `DOOR_DEFAULTS.load`, 50 N across a
+hinge's pin; `DOOR_DEFAULTS.pull`, 100 N on a handle): give the loads your frame carries. The findings are the
+brackets': `fitting.size`, `fitting.tongue`, `fitting.screw`, `fitting.margin` (said to be an estimate),
+`fitting.printable`, `fitting.mass`, and a hinge's `fitting.pin` and `fitting.swing`.
+
+## Ends and feet
+
+| Part | What it is | Prints |
+|---|---|---|
+| `endCapModel(profile)` | A plate the beam's outline, pegs pushed into each slot's opening and the bore, their roots chamfered 45° | Plate down |
+| `footModel(profile)` | A pad 2 mm past the beam each way, screwed into the end's tapped bore through a counterbore in its underside | As it stands |
+| `levellingFootModel(profile, { stud? })` | A body screwed into the end's bore and a pad that screws up and down a printed M12 thread (10 mm of travel, 12 mm always engaged); or, with `stud: 'M8'`, an M8 nut sunk in the body for a bought foot's stud | As they stand, threads upright |
+| `castorPlateModel(profile, { holes, thread })` | A plate for a castor whose hole spacing (from its maker's drawing) and bolts are given, screwed into the end's bore. Refused where the castor's bolts' heads would sit under the beam | Beam side down |
+| `stackingFootModel(profile)` | A plate on the end with a socket under it that fits over the end of the same profile below | Beam side down |
+
+A part screwed into the end says the tap the end needs (`ops`: `{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }`,
+as a join's tap) and the screw sold that engages the aluminium and stops inside it. Each part's frame is the end's
+address on the beam (`x1.a`): z out of the end, x along the beam's top. Seen from outside end a the section lies
+mirrored, so a section's point (x, y) is at (y, x) there and at (y, −x) at end b.
+
 ## Slot nuts
 
 A slot nut is a rule set in `@rulecad/rules` (`"part": "slot_nut"`), one for each maker, slot, thread and kind:
@@ -656,6 +718,14 @@ kit's.
 | A fitting's margin | S / σ_peak, σ_peak the largest von Mises stress at a cell's centre away from the screws, times k / (k − 1) for k cells across the leg | `@rulecad/fea`; the lift reads a cell's centre out to the surface, as cad's motor mount check does |
 | A fitting's bending stiffness | k = F s² / δ | A force F at distance s turns the joint by δ / s |
 | A screw's tip window in a slot nut | lip − nut tongue + min(nut's thread, hex nut height) ≤ L − t ≤ slot depth − 0.3 | The nut's thread from its tongue down; ISO 4032's nut height; `FITTING_DEFAULTS.floor`, as cad's `FASTEN.floor` |
+| A clip's or a latch's least reach over the sheet | t = √(6 M k / (b S)), M = F × the lever, b the part's width, k the margin asked (2) | Beam theory for a cantilever bent at its root (σ = 6M / b t²) |
+| A hinge's risers | σ = 6 F z_a / (2 l (2R)²), F across the pin at height z_a, two risers each l long and 2R deep | The same, two risers sharing the load |
+| A handle's grip | σ = 6 (F s / 4) / (b h²), F at the middle of a grip s between its feet | A simply supported beam with a load at its middle: M = F s / 4 |
+| A levelling foot's stem | σ = 32 (F / 10) L / (π d_r³), d_r = 0.8 × the thread's major diameter | A round stem bent at its root by a side push of a tenth of the load, an estimate of uneven ground |
+| A foot's bearing | p = F / A, A the pad less the counterbore | |
+| A gasket's wall strain | ε = 3 t δ / (2 L²), against S / E | A cantilever pushed δ at its tip, its strain at the root |
+| A panel's mass | m = (a b − (4 − π) r² − Σ holes) × T × ρ / 1000 | A rounded rectangle's area, times its thickness and density |
+| The door clears the frame | z_a + Δy sin θ + Δz cos θ ≥ z_a − T for every point of the door, Δy ≥ 0 and −T ≤ Δz ≤ 0 from the axis, 0 ≤ θ ≤ 180° | A point turned about the hinge's axis; with the axis at the door's outer face and its edge past the axis, nothing comes below the door's inner face |
 | A head's bearing on a fitting | p = F / (π/4 (d_k² − d_h²)) | The head's ring over the clearance hole |
 | A screw's proof load | F = S_p × A_s, A_s = π/4 (d − 0.9382 P)² | ISO 898-1: proof stress S_p (580 MPa for class 8.8) on the stress area of the thread |
 | Plastic's shear strength | τ = σ / √3 | The von Mises estimate, `@rulecad/fixings`' `shear_ratio` |
@@ -682,6 +752,12 @@ its thickness, which read a part 10 to 20% stiffer than it is. A dimension the m
 (the width of a slot's floor) is an `estimate`. A figure taken from the section a profile is made to match, or from
 a seller of unbranded stock, is `community`. `model.rests` and each figure's `kind` say which you are standing on.
 
+Panels' densities are the makers' (Evonik's PLEXIGLAS GS, Covestro's Makrolon GP, Aalco's 5754 sheet); the
+thicknesses stocked are `community`. The panel parts' loads, a clip's grip, the barb, the squeeze, a hinge's
+clearance, the handle's room for the fingers and the magnet's size are working figures or estimates
+(`PANEL_DEFAULTS`, `DOOR_DEFAULTS`, `END_DEFAULTS` say which); their margins are by beam formulas, and the magnet's
+pull is not checked, as no maker's figure is held.
+
 Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm, Bosch Rexroth, item (Lines 5, 6 and 8, standard and
 light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, MakerBeamXL and OpenBeam, 80/20's
 inch series, generic stock in 20, 30 and 40 mm, and plain tube, angle, channel and bar in any size. `profiles()`
@@ -704,6 +780,10 @@ lists them.
 | `bracketModel(profile, { other?, face?, otherFace?, thread?, head?, nut?, brace?, load?, width?, printer?, material?, cache? })`, `bracket(m, { pose?, tongues?, ops? })` | A printed corner bracket's model and its solid |
 | `plateModel(profile, { shape?, face?, thread?, head?, nut?, count?, load?, width?, printer?, material?, cache? })`, `plate(m, { pose?, tongues?, ops? })` | A printed gusset (L, T, cross) or splice plate, and its solid |
 | `FITTINGS`, `FITTING_DEFAULTS`, `fittingFE(o)` | The kinds of printed fitting; the margins and working figures they are drawn with; the finite elements on a part |
+| `SHEETS`, `PANEL_DEFAULTS`, `panelModel(sheet, thickness, { size, corner?, holes? })`, `panel(m, { ops? })` | Sheets by material, the panel parts' working figures, a panel's model and its solid |
+| `panelClipModel`, `panelClip`, `panelCornerModel`, `panelCorner`, `panelEdgeModel`, `panelEdge`, `slotCoverModel`, `slotCover`, `gasketStripModel`, `gasketStrip` | The printed parts that hold a panel, each a model and its solid (`{ pose: 'print' \| 'fit' }`) |
+| `DOOR_DEFAULTS`, `hingeModel`, `hinge(m, { part: 'frame' \| 'door', pose? })`, `handleModel`, `handle`, `latchModel`, `latch`, `magnetCatchModel`, `magnetCatch` | A door's printed parts |
+| `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre? })` | A join: the operations on each beam, its screws, its fitting to come, its stiffness, what to know |

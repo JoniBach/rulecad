@@ -101,6 +101,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   leaves out the slot nuts. The other kinds are checked where they meet and say their fitting comes later
   (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
   address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
+- **A bay closed by a sheet is a `panel` item**: `{ "id": "front", "panel": { "sheet": "acrylic", "thickness": 3,
+  "bay": ["x1", "z2", "x2", "z1"], "out": [0, -1, 0] } }`. It is cut to the bay with its clips at a pitch, each
+  fastened into its slot; report its size and grams from `cad check` (`panel.size`) and the clips from `cad list`.
+  `"door": { "hinge": "z1" }` makes it a door on two printed hinges, turning on a joint: run `cad check --sweep` and
+  report what it finds. A turn-button latch shown shut blocks the door in its first degree, which is right.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
   a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close

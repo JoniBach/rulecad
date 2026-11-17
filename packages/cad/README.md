@@ -611,6 +611,12 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   "2020-misumi-hfs5" }, "at": "x1.top@130", "rotate": [90, 0, 0] }`. It is a printed part, joined and cut by Manifold
   where the workspace has it; its anchors `b1`, `a1` (and `b2`, ... on a plate) lie on its screws' axes for a fasten's
   `at`. The overlap check measures its body without its tongues, which stand in the slots.
+- The printed parts for panels, doors and beams' ends are fitting items too (@rulecad/frames' README, Panels and
+  doors, Ends and feet): `"kind"` is `panel-clip`, `panel-corner`, `slot-cover`, `panel-edge`, `gasket-strip`,
+  `hinge`, `handle`, `latch`, `magnet-catch`, `end-cap`, `foot`, `levelling-foot`, `castor-plate` or
+  `stacking-foot`, with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
+  "frame"` and `"part": "door"`, and a levelling foot's pad is `"part": "pad"`. An end part goes at the end's address
+  (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs.
 - The other kinds (`cube`, `hidden`, `anchor`, `pivot`, `printed`, and a bought bracket, gusset or splice) are
   checked where they meet and carry their stiffness; their fittings come in later releases, and each says so
   (`join.fitting`).
@@ -661,6 +667,35 @@ Once an assembly is checked, these say how to make it. They all read the assembl
 - `cad wires <project>/<assembly>`: the wiring sheet, printed and written to `exports/<project>/<assembly>.wiring.md` (`cad machine` writes it too): each wire's length through every pose with its service loop, gauge, colour, connectors and board pins. Wires also show faint along their routes in `cad preview` and in the link, moving with the joints, and are never parts: no overlap check sees them.
 - `cad link` for such an assembly (or one with a `fasten`) carries the rest of the project with the model. A **Build** button on the page opens, beside it, the shopping list, the beams' cut list and their sheets, the plates drawn on their beds, the wiring sheet, the assembly steps (each shows the model at that step) and the machine's settings. The Rules panel lists **predicted against measured**: the ledger `cad measured` writes, each with its ratio, and what the checks predict that nobody has measured yet.
 - A link for an assembly with a `task` lets the page move the machine: see "Things that move" in the viewer's README. It carries the newest step file `cad plot` wrote for this assembly (`--steps <file>` for another, `--no-steps` for none). A step file for other joints is refused by name.
+
+**Panels and doors.** An item with `"panel"` is a sheet cut to the bay of four beams it closes:
+
+```json
+{ "id": "front", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["x1", "z2", "x2", "z1"], "out": [0, -1, 0] } }
+```
+
+- The bay is four beams placed by their ends, two each way round a rectangle, in order. Each has a slotted face that
+  looks along `out`; the four faces lie in one plane. Refused by name: a beam that runs across the plane, faces out
+  of one plane, a beam with no such face (turn it with `roll`), a bay that is not two beams each way.
+- The panel lies on those faces, its edges 6.5 mm in from each slot's line for an M5 clip on a 2020, and is cut to
+  what is left: a 400 x 300 mm bay of 2020 (slot lines 380 x 300 mm apart) takes 367 x 287 mm. `cad list` counts it
+  under Bought by its sheet and size (`acrylic sheet, 3 mm cut 367 x 287 mm`) with its mass from the sheet's density.
+- Its printed clips go along each edge at no more than `"pitch"` apart (150 mm by default, `PANEL_DEFAULTS.pitch`),
+  clear of the beams across the edge's ends and of their clips: each is an item (`front-clip`, `front-clip-2`, ...)
+  with a fasten into its beam's slot, so its screw is chosen, checked and counted (14 × M5x10 button and 14 slot
+  nuts round a 400 x 300 mm bay). `"nut"` chooses their slot nuts' kind; `"load"` (N) the load each clip is sized for.
+- `cad check` says `panel.size` (its sheet, size, mass and how many clips hold it) and `panel.thickness` (a warning
+  where the sheet is not commonly stocked in that thickness), with each clip's own findings.
+- With `"door": { "hinge": "z1" }` the panel is a door. It stands off the faces by the hinge's frame leaf, a head
+  and 1 mm (10.2 mm on a 2020), on two printed hinges along the beam named, each a frame leaf screwed into its slot
+  and a door leaf screwed through the door into nuts, an M4 cap screw and lock nut for each pin (on `cad list`). It
+  turns on a revolute joint `<id>-hinge` from 0 to `"open"` (120° by default), with poses `<id>-shut` and
+  `<id>-open`. A handle (`"handle": false` leaves it off) is screwed from inside into its feet, and a magnet catch
+  (`"catch"`) sits on the opposite beam under the door's edge; `"latch": true` adds a turn-button latch, shown shut.
+  The holes the screws pass are cut in the door. `cad check --sweep` turns the door through its range: on its own,
+  nothing collides; with its latch shut, the door hits the latch within its first degree, so sweep in steps that
+  fine to see it.
+- In a mechanism, a beam placed by its ends is the frame: what is screwed to it is held (`assembly.loose`).
 
 ## Optimised parts
 
