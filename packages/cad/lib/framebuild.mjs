@@ -4,10 +4,10 @@
 // everything else. Each join's screws carry their key and how tight (fasten: the seat under the head, the lips of a
 // slot under a blind join's head, or the torque given).
 //   Sides: a bay is four beams joined in a rectangle in one plane (two parallel beams joined to two others square to
-//   them). Bays that share no beam are built flat on the bench as sides, squared, and then joined to the rest: a side
-//   is built flat where the order allows it, that is where every screw of its own joins is reached with its beams alone
-//   (fasten.access names nothing of the side over a head). Beams that are in no side go on one at a time, each joined
-//   to what is already there; a side goes on as one when a beam already there is joined to it.
+//   them). Bays that share no beam are built flat on the bench as sides, squared, and then joined to the rest (a beam
+//   is in one side at most, so of two bays that share a post the first found is the side, and the other is squared
+//   once the frame is joined). Beams that are in no side go on one at a time, each joined to what is already there; a
+//   side goes on as one when a beam already there is joined to it.
 //   Nuts: a slide-in nut goes into a slot from an open end. Where joins close its stretch of slot at both ends
 //   (frame.nut), every order shuts it in at the second of those joins: the build is refused, naming the slot and the
 //   join, and the nut that goes in through the opening. Where a join closes one way and an item placed at the end the
@@ -92,22 +92,10 @@ export function frameBuild(s) {
   const order = orderOf(s);
   if (order.stuck) return { steps: [], sides: [], bays: [], torques: [], stuck: { ...order.stuck } };
   const bays = baysOf(s);
-  // sides: bays that share no beam, each where its own joins' screws are reached with its beams alone
-  const blockedBy = (bay) => {
-    const own = new Set(bay.beams), why = [];
-    for (const j of joins.filter((x) => own.has(x.items[0]) && own.has(x.items[1]))) for (const k of j.fasten) for (const sc of s.fastened?.relations?.[k]?.screws ?? []) {
-      const b = (sc.access?.blockers ?? []).map((q) => q.item).filter((q) => own.has(q) && !j.items.includes(q));
-      if (b.length && sc.access.tilt == null) why.push(`${b[0]} stands over the screw of the ${j.label}`);
-    }
-    return why;
-  };
-  const sides = [], used = new Set(), notSides = [];
-  for (const bay of bays) {
-    if (bay.beams.some((b) => used.has(b))) continue;
-    const why = blockedBy(bay);
-    if (why.length) { notSides.push({ beams: bay.beams, why: why[0] }); continue; }
-    sides.push(bay); for (const b of bay.beams) used.add(b);
-  }
+  // sides: bays that share no beam with a side already chosen, in the order they are found; a bay that shares one is
+  // squared once the frame is joined
+  const sides = [], used = new Set();
+  for (const bay of bays) if (!bay.beams.some((b) => used.has(b))) { sides.push(bay); for (const b of bay.beams) used.add(b); }
   const joinsBetween = (id, set) => joins.filter((j) => (j.items[0] === id && set.has(j.items[1])) || (j.items[1] === id && set.has(j.items[0])));
   const steps = [], made = new Set(), at = new Map(); // (at: join index to the step that makes it)
   const step = (x) => { steps.push(x); for (const k of x.joins ?? []) at.set(k, steps.length - 1); };
@@ -193,7 +181,7 @@ export function frameBuild(s) {
   for (const j of joins) if (byKind.has(j.kind)) byKind.get(j.kind).joins++;
   const torques = [...byKind.values()].map((k) => ({ kind: k.kind, joins: k.joins, fasteners: [...k.fasteners], key: [...k.keys].join(' or '), torque: k.torque,
     why: k.given ? 'as given' : k.load ? 'what the joint\'s load leaves the thread' : 'at most: what the seat under the head takes (a slot\'s lips under a blind join\'s head, an estimate), or the screw tightened fully, the less' }));
-  return { steps, sides: sides.map((b) => ({ beams: b.beams, name: b.name, square: b.square })), notSides, bays, torques, stuck: null };
+  return { steps, sides: sides.map((b) => ({ beams: b.beams, name: b.name, square: b.square })), bays, torques, stuck: null };
 }
 
 /** The frame's build as text, for cad order. @param {string} ref @param {object} b frameBuild's */
@@ -202,7 +190,6 @@ export function frameBuildText(ref, b) {
   const out = [`${ref}: from bars to a square frame`];
   for (const st of b.steps) { out.push(`  ${String(st.n).padStart(2)}. ${st.text}`); for (const l of st.lines ?? []) out.push(`        ${l}`); }
   if (b.torques.length) { out.push('  Tightening, by kind of join:'); for (const t of b.torques) out.push(`    ${t.kind} (${t.joins} join${t.joins > 1 ? 's' : ''}, ${t.fasteners.join(', ')}${t.key ? ` with ${/^[aeiou8]/i.test(t.key) ? 'an' : 'a'} ${t.key}` : ''}): ${mm(t.torque)} N m, ${t.why}`); }
-  for (const x of b.notSides ?? []) out.push(`  (${x.beams.join(', ')} is not built flat as a side: ${x.why})`);
   return out.join('\n');
 }
 

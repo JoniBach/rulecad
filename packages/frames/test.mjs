@@ -1391,3 +1391,20 @@ test('jigs: a drill guide\'s bush sits where the beam\'s sheet dimensions the ho
   assert.throws(() => squareCornerModel({ profile: '2020-misumi-hfs5', face: 'side' }, { profile: '2020-misumi-hfs5' }), /a's profile-2020-misumi-hfs5 has no face "side"/);
   assert.throws(() => squareCornerModel({ profile: 'tube-al-20x20x2' }, { profile: '2020-misumi-hfs5' }), /top face is closed: a squaring corner keys into a slot on each beam/);
 });
+
+test('squareness: a bay\'s two diagonals and the difference to accept, what the cut tolerance allows with every corner square; refused by name', () => {
+  // 260 × 200 opening: d = √(260² + 200²) = 328.02 mm; accept = 2 × 0.5 × 260 / 328.02 = 0.79 mm, a lean of 0.79 × 328.02 / (2 × 260 × 200) rad
+  const q = frames.squareness(260, 200);
+  assert.deepEqual([q.diagonal, q.accept, q.lean, q.tolerance], [328.02, 0.79, 0.143, 0.5]);
+  assert.equal(q.findings[0].code, 'frame.square'); assert.equal(q.rests[0].kind, 'estimate');
+  // a beam leaning by that much: the diagonals' difference is the accepted one
+  const d = (s) => Math.sqrt(260 ** 2 + 200 ** 2 + s * 2 * 260 * 200 * Math.sin((q.lean * Math.PI) / 180));
+  assert.ok(Math.abs(d(1) - d(-1) - q.accept) < 0.01, `${d(1) - d(-1)}`);
+  // a tighter saw, the larger side counts, a square bay
+  assert.equal(frames.squareness(260, 200, { tolerance: 0.1 }).accept, 0.16);
+  assert.equal(frames.squareness(200, 260).accept, 0.79);
+  assert.deepEqual([frames.squareness(300, 300).diagonal, frames.squareness(300, 300).accept], [424.26, 0.71]);
+  assert.throws(() => frames.squareness(0, 200), /squareness: width is the bay's opening, inside face to inside face, a number of mm above 0 \(got 0\)/);
+  assert.throws(() => frames.squareness(260, 200, { kerf: 3 }), /squareness: no option "kerf": it takes tolerance/);
+  assert.throws(() => frames.squareness(260, 200, { tolerance: -1 }), /tolerance is how far a cut may be from its length either way/);
+});
