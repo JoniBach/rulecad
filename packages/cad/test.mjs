@@ -3505,6 +3505,23 @@ test('a table fastened to a guide\'s carriage by a fit, but placed where it stan
   } finally { done(); }
 });
 
+test('panels and ends as items by hand: an end cap and a foot at a beam\'s ends, a panel corner on a face, and an in-slot panel edge and a slot cover, whose share in the slot the overlap check leaves out', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5';
+    fs.writeFileSync(at('assemblies/ends.json'), JSON.stringify({ title: 'ends', kind: 'fit', items: [{ id: 'x1', beam: { profile: P }, from: [0, 0, 0], to: [300, 0, 0] },
+      { id: 'cap', fitting: { kind: 'end-cap', profile: P }, at: 'x1.a' }, { id: 'ft', fitting: { kind: 'foot', profile: P }, at: 'x1.b' },
+      { id: 'pc', fitting: { kind: 'panel-corner', profile: P, sheet: 3 }, at: 'x1.top@100' },
+      { id: 'pe', fitting: { kind: 'panel-edge', profile: P, sheet: 3, length: 100 }, at: 'x1.front@150' }, { id: 'sc', fitting: { kind: 'slot-cover', profile: P, length: 100 }, at: 'x1.back@20' }] }));
+    const c = cad('check', 'frame/ends');
+    assert.match(c, /✓ no parts overlap \(6 object instances\)/); assert.doesNotMatch(c, /^\s+✗ /m);
+    assert.match(c, /cap: it weighs [\d.]+ g of pla/); assert.match(c, /ft: M5x16 cap into the end's tapped bore/); assert.match(c, /pe: printed in-slot edge for a 3 mm sheet/);
+  } finally { done(); }
+});
+
 test('services: the worked arm\'s shield and supply mount on a rail from their own rule sets, and its power wire runs along a slot, its length and its clips reported', () => {
   const { ws, cad, done } = workspace();
   try {

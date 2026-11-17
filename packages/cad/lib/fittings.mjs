@@ -14,6 +14,7 @@ import { named } from './parts.mjs';
 import { givenFor } from './frames.mjs';
 import { peekRuleSet } from './rules.mjs';
 import { ops as booleans } from '@rulecad/shapes';
+import jscad from '@jscad/modeling';
 
 const KEYS = ['kind', 'profile', 'other', 'face', 'otherFace', 'shape', 'brace', 'load', 'count', 'thread', 'head', 'nut'];
 // The printed fittings for panels, doors and beams' ends: each kind's model and solid in @rulecad/frames, whether it
@@ -30,6 +31,9 @@ const MORE = {
 };
 // the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
 const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder', 'rail-jig', 'slider', 'end-cap'];
+// parts that lie in a slot by design (an in-slot panel edge, a slot cover's strip): only what stands above the face is
+// measured by the overlap check, as a tongue is left out
+const IN_SLOT = ['panel-edge', 'slot-cover'];
 /** The kinds of fitting an item may name. */
 export const FITTING_KINDS = ['bracket', 'gusset', 'splice', ...Object.keys(MORE)];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
@@ -135,6 +139,7 @@ function moreBuilt(it, id, m, ops, pose = 'fit') {
   const draw = (x) => { const f = (y) => frames[solid](m, { pose, ...(part ? { part } : {}), ...x, ...y }); try { return f(ops ? { ops } : {}); } catch { return f({}); } };
   const parts = named({ body: draw({}) }, { body: { label: `${m.title}${part ? `, ${part}` : ''}` } });
   if (TONGUED.includes(m.fitting) && pose === 'fit') parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
+  if (IN_SLOT.includes(m.fitting) && pose === 'fit') { const { intersect } = jscad.booleans, { cuboid } = jscad.primitives, above = intersect(parts[0].geometry, cuboid({ size: [1e4, 1e4, 1e3], center: [0, 0, 500] })); parts[0].collide = above; }
   const list = it.fitting.kind === 'hinge' && part === 'door' ? m.door.map((q, k) => [`d${k + 1}`, q]) : (m.screws ?? []).filter((q) => q.into !== 'castor' && q.into !== 'pilot').map((q, k) => [`b${k + 1}`, q]);
   const anchors = { ...Object.fromEntries(list.map(([n, q]) => [n, { at: q.at, axis: q.axis.map((c) => (c ? -c : 0)) }])), ...(m.anchors ?? {}) }; // (and its own: a mount's device and screws, a clip's cable)
   const values = { grams: m.grams, ...(m.margin != null && Number.isFinite(m.margin) ? { margin: m.margin } : {}), ...(m.load?.force ? { load: m.load.force } : {}) };

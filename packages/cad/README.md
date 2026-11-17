@@ -627,7 +627,9 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs. In a mechanism, hold it
   as anything else is held: a foot by a `fasten` of its screw into the beam (`{ "screw": "M5 cap", "through": ["foot1"],
   "into": "p1", "at": ["foot1.b1"] }`, the beam's end tapped as its `ops` say), and an end cap by a fit that fastens,
-  its pegs a press fit (`"min": -5`). The overlap check measures an end cap without its pegs, which stand in the beam.
+  its pegs a press fit (`"min": -5`). The overlap check measures an end cap without its pegs, which stand in the beam,
+  and an in-slot panel edge or a slot cover by what stands above the face alone: the rest lies in the slot by design.
+  A panel item (below) holds its sheet with clips; a panel corner or an in-slot edge is placed by hand as an item.
 - A `bracket`, `gusset`, `splice`, `hidden` or `anchor` join with a bought fitting's set by name (`"fitting":
   "fitting-motedis-bracket-20-b6"`, @rulecad/frames' README, Bought fittings) adds that fitting as an item placed
   where the printed one would go: a reference drawn from its set, listed under Bought with its price. Its screws join
