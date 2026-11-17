@@ -41,5 +41,5 @@ export { ROD_DEFAULTS, rodsLayout, rodHolderModel, rodHolder, motorPlateModel, m
 export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';
 export { JIG_KINDS, JIG_DEFAULTS, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner } from './jig.mjs';
 export { squareness } from './square.mjs';
-export { PRINTED_DEFAULTS, PRINTED_SERIES, PRINTED_CHECKED, printedProfile, printedSection, printerFigures } from './printing.mjs';
+export { PRINTED_DEFAULTS, PRINTED_SERIES, PRINTED_CHECKED, printedProfile, printedSection, printerFigures, beamCreep } from './printing.mjs';
 export { printedBeam, spliceModel, splice } from './printed.mjs';

@@ -40,6 +40,9 @@ export const PRINTED_DEFAULTS = {
   cheek: rule(4, 'lines', 'The least width a splice\'s notch leaves each side where it meets the bed', 'estimate', `${KIT}: four lines, so the notch's cheeks print as solid walls and do not snap off`),
   lap: rule(2, '× height', 'The shortest lap a splice is tried at; its screws\' bearing makes it longer where the joint needs it', 'default', KIT),
   end_wall: rule(1.5, '× diameter', 'Plastic between a beam\'s end and a captive nut that a screw from the end meets, as a share of the thread\'s diameter', 'estimate', `${KIT}: what the nut pulls against, about as much as an insert's own wall`),
+  creep: rule(0.15, '× strength', 'A printed beam held under a load for months is kept to this share of its strength (along or across its layers, as it lies), so it does not creep on to break: a sustained stress over it fails beam.creep', 'estimate', 'Waseem et al. (2020), Multi-Response Optimization of Tensile Creep Behavior of PLA 3D Printed Parts, Polymers 12, 2962, table 3: printed PLA (its filament 50 MPa) held at 15 MPa, 0.3 of its strength, at 25 °C broke in 1.2 to 2.3 hours. Half that share is a working figure of @rulecad/frames with no long test behind it; PETG is taken the same'),
+  creep_modulus: rule(0.5, '× modulus', 'A printed beam under a load held for months bends as if its modulus were this share of the short-term figure: its sag under the sustained load grows to its short-term sag over this share', 'estimate', 'A working figure of @rulecad/frames, not measured: printed plastics creep at room temperature, and a sustained load on the beam coupon read after a month would measure it'),
+  splice_share: rule(0.5, '× strength', 'A beam longer than the bed is spliced, and the splice carries about this share of the moment the whole beam does: each half keeps half its section over the lap', 'estimate', 'splice() of @rulecad/frames (issue 269): a 400 mm printed 2020\'s halves keep 361.5 and 363.9 mm³ of its 717.6 mm³ over the lap'),
   strength_bearing: rule(1, '× strength', 'A screw bearing on the side of its hole in printed plastic crushes it at about the plastic\'s strength', 'estimate', `${KIT}: bearing taken at the tensile strength, below a printed part's compressive strength`),
 };
 
@@ -260,9 +263,10 @@ export function printedOf(b, pr, ends) {
   const p = b.profile, L = b.length, P = printerFigures('beamModel', pr.printer), mat = p.material, out = [];
   if (!mat?.figures?.strength || !mat.density) throw new Error(`beamModel: a printed beam is of a plastic with a strength and a density, and ${p.name} is of ${mat?.name ?? 'no material'}: give { material: 'pla' }`);
   const fig = (k) => (isNum(mat.figures[k]?.value) ? mat.figures[k].value : null), bed = P.n('bed'), overhang = P.n('overhang'), bridge = P.n('bridge'), line = P.n('line');
-  const lying = pr.pose === 'lying', S = lying ? fig('strength') : fig('strength_z') ?? r3(fig('strength') * PRINTED_DEFAULTS.across.value), E = lying ? fig('modulus') : fig('modulus_z') ?? fig('modulus');
+  const lying = pr.pose === 'lying', coupon = couponFigures(mat, pr.pose);
+  const S = coupon.strength?.value ?? (lying ? fig('strength') : fig('strength_z') ?? r3(fig('strength') * PRINTED_DEFAULTS.across.value)), E = coupon.modulus?.value ?? (lying ? fig('modulus') : fig('modulus_z') ?? fig('modulus'));
   const sAlong = fig('strength'), sAcross = fig('strength_z') ?? r3(sAlong * PRINTED_DEFAULTS.across.value);
-  const sKind = lying || fig('strength_z') != null ? mat.figures.strength.kind : 'estimate', said = `${b.name}, printed ${lying ? 'lying down' : 'standing up'}`;
+  const sKind = coupon.strength ? coupon.strength.kind : lying || fig('strength_z') != null ? mat.figures.strength.kind : 'estimate', said = `${b.name}, printed ${lying ? 'lying down' : 'standing up'}`;
   // ---- can it print so ----
   const why = [];
   if (lying) {
@@ -284,7 +288,7 @@ export function printedOf(b, pr, ends) {
     torsion: est(r3(solid.torsion * share), 'mm⁴', `the solid section's torsion constant (${mm(solid.torsion)}) times the share its second moment keeps (${share.toFixed(3)})`),
     massPerMetre: est(r3((sec.plastic * mat.density) / 1000), 'kg/m', `the plastic laid times ${mat.name}'s density ${mat.density} g/cm³`) };
   const design = r3(((S / PRINTED_DEFAULTS.margin.value) * sec.inertiaX) / sec.reach[0]);
-  out.push(finding('info', `${said}: ${mm(grams)} g of ${mat.name} (${mm(sec.plastic)} mm² of plastic laid: ${mm(sec.shell)} mm² of ${pr.walls} walls, ${mm(sec.inner)} mm² inside at ${Math.round(pr.infill * 100)}% infill); it bends like ${mm(sec.inertiaX)} mm⁴ of solid plastic (${Math.round(share * 100)}% of the solid section's) at ${E} MPa ${lying ? 'along' : 'across'} its layers. All estimates until a printed coupon is measured`, 'beam.mass', { values: { grams, plastic: sec.plastic, shell: sec.shell, inner: sec.inner, inertia: sec.inertiaX, modulus: E }, refs: { material: mat.name, kind: 'estimate' } }));
+  out.push(finding('info', `${said}: ${mm(grams)} g of ${mat.name} (${mm(sec.plastic)} mm² of plastic laid: ${mm(sec.shell)} mm² of ${pr.walls} walls, ${mm(sec.inner)} mm² inside at ${Math.round(pr.infill * 100)}% infill); it bends like ${mm(sec.inertiaX)} mm⁴ of solid plastic (${Math.round(share * 100)}% of the solid section's) at ${E} MPa ${lying ? 'along' : 'across'} its layers${coupon.modulus ? ` (${coupon.names.modulus}, ${coupon.modulus.kind}, from the beam coupon: the walls and infill as it was printed)` : ''}. ${coupon.modulus ? 'Its stiffness rests on the beam coupon; the plastic laid is still worked out from its walls and infill' : 'All estimates until the beam coupon is measured (cad measured, MEASURE.md)'}`, 'beam.mass', { values: { grams, plastic: sec.plastic, shell: sec.shell, inner: sec.inner, inertia: sec.inertiaX, modulus: E }, refs: { material: mat.name, kind: 'estimate' } }));
   out.push(finding('info', `${said}: it is designed to carry ${mm(design / 1000)} N·m bending it up and down: ${S} MPa ${lying ? 'along' : 'across'} its layers${sKind === 'estimate' ? ` (${PRINTED_DEFAULTS.across.value} of its strength along them, an estimate)` : ''}, over ${PRINTED_DEFAULTS.margin.value} times the margin, times its second moment over ${mm(sec.reach[0])} mm to its furthest fibre`, 'beam.strength', { values: { moment: design, strength: S, margin: PRINTED_DEFAULTS.margin.value }, refs: { kind: sKind } }));
   // ---- each slot's hold in plastic ----
   const slots = [];
@@ -316,13 +320,51 @@ export function printedOf(b, pr, ends) {
     }
   }
   b.bought = false;
-  b.printed = { pose: pr.pose, walls: pr.walls, infill: pr.infill, printer: P.name, bed, grams, section: sec, modulus: E, strength: S, strengthKind: sKind, design, slots, ends: endFix, pull: pr.pull };
+  const creep = { share: PRINTED_DEFAULTS.creep.value, limit: r3(S * PRINTED_DEFAULTS.creep.value), modulus: PRINTED_DEFAULTS.creep_modulus.value };
+  b.printed = { pose: pr.pose, walls: pr.walls, infill: pr.infill, printer: P.name, bed, grams, section: sec, modulus: E, strength: S, strengthKind: sKind, design, slots, ends: endFix, pull: pr.pull, creep,
+    coupon: { modulus: coupon.modulus ? coupon.names.modulus : null, strength: coupon.strength ? coupon.names.strength : null }, modulusKind: coupon.modulus?.kind ?? mat.figures[lying ? 'modulus' : mat.figures.modulus_z ? 'modulus_z' : 'modulus']?.kind ?? null };
   b.mass = grams; b.weight = { computed: grams, sheet: null, difference: null }; b.figures = figures;
   b.material = { name: mat.name, density: mat.density, modulus: E, given: b.material?.given ?? false };
   b.title = `${b.title}, printed ${lying ? 'lying down' : 'standing up'}`;
   b.findings = [...b.findings.filter((x) => !['beam.mass', 'beam.length'].includes(x.code)), ...out];
   b.rests = [...b.rests, { value: pr.walls, unit: 'lines', kind: 'default', source: 'PRINTED_DEFAULTS.walls or the beam\'s own' }, { value: pr.infill, kind: 'default', source: 'PRINTED_DEFAULTS.infill or the beam\'s own' }, { value: PRINTED_DEFAULTS.infill_stiffness.value, kind: 'estimate', source: PRINTED_DEFAULTS.infill_stiffness.source }];
   return b;
+}
+
+// What the beam coupon measured for a plastic, by the pose its beam printed in: the modulus a printed beam bends at and
+// the stress it broke at, its section counted by printedSection (beam_modulus, beam_strength; _z for one printed
+// standing up). Null where nothing was measured, so the plastic's own figures stand.
+const COUPON_KEYS = { lying: { modulus: 'beam_modulus', strength: 'beam_strength' }, standing: { modulus: 'beam_modulus_z', strength: 'beam_strength_z' } };
+function couponFigures(mat, pose) {
+  const keys = COUPON_KEYS[pose], got = (k) => (isNum(mat.figures[k]?.value) && mat.figures[k].value > 0 ? mat.figures[k] : null);
+  return { modulus: got(keys.modulus), strength: got(keys.strength), names: { modulus: `${mat.name}.${keys.modulus}`, strength: `${mat.name}.${keys.strength}` } };
+}
+
+/**
+ * beam.creep: a printed beam under a load it holds for months, against the stress its plastic may hold so long (its
+ * strength for its pose times PRINTED_DEFAULTS.creep), and where a sag and its limit are given, the sag it creeps to (its
+ * short-term sag over PRINTED_DEFAULTS.creep_modulus) against that limit. Both shares are estimates, and the finding says so.
+ * Refused by name: a bought beam, no stress or moment, a sag without its limit.
+ * @param {object} b a printed beam's model (beamModel with printed)
+ * @param {{ stress?: number, moment?: number, sag?: number, limit?: number }} o stress: MPa, the peak bending stress the
+ *   sustained load causes; or moment: N·mm, bending it up and down (stress = moment over the printed section's modulus);
+ *   sag: mm under the sustained load, short-term; limit: mm, the sag allowed
+ * @returns {{ level: 'pass' | 'fail', code: 'beam.creep', text: string, values: Record<string, number>, refs: Record<string, any> }}
+ */
+export function beamCreep(b, o = {}) {
+  const what = 'beamCreep';
+  if (!b?.printed?.creep) throw new Error(`${what}: ${b?.name ?? shown(b)} is not a printed beam: creep is checked on one made with beamModel(profile, { length, printed: true })`);
+  if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error(`${what}: options are { stress, moment, sag, limit } (got ${shown(o)})`);
+  for (const k of Object.keys(o)) if (!['stress', 'moment', 'sag', 'limit'].includes(k)) throw new Error(`${what}: no option "${k}": it takes stress (MPa) or moment (N·mm), and sag with limit (mm)`);
+  for (const k of ['stress', 'moment', 'sag']) if (o[k] != null && !(isNum(o[k]) && o[k] >= 0)) throw new Error(`${what}: ${k} is a number, 0 or more (got ${shown(o[k])})`);
+  if (o.limit != null && !(isNum(o.limit) && o.limit > 0)) throw new Error(`${what}: limit is the sag allowed in mm, above 0 (got ${shown(o.limit)})`);
+  if (o.stress == null && o.moment == null) throw new Error(`${what}: give the sustained load as stress (MPa, the peak bending stress) or moment (N·mm)`);
+  if ((o.sag == null) !== (o.limit == null)) throw new Error(`${what}: sag and limit go together: the sag under the sustained load and the sag allowed, in mm`);
+  const p = b.printed, c = p.creep, lying = p.pose === 'lying', stress = r3(o.stress ?? o.moment / p.section.modulusX), margin = stress > 0 ? c.limit / stress : Infinity;
+  const long = o.sag != null ? r3(o.sag / c.modulus) : null, over = long != null && long > o.limit + 1e-9, level = margin < 1 || over ? 'fail' : 'pass';
+  const text = `${b.name}: a sustained ${mm(stress)} MPa against the ${mm(c.limit)} MPa it may hold for months (${c.share} of its ${p.strength} MPa ${lying ? 'along' : 'across'} its layers, PRINTED_DEFAULTS.creep, an estimate): ${margin === Infinity ? 'no stress at all' : `${mm(margin)} times under it`}${margin < 1 ? ', so it creeps on toward breaking: a deeper section, a shorter span, or aluminium' : ''}${long != null ? `; its ${mm(o.sag)} mm sag creeps to about ${mm(long)} mm (its modulus taken at ${c.modulus} of the short-term figure, an estimate), ${over ? `${mm(long / o.limit)} times over` : 'within'} the ${mm(o.limit)} mm allowed` : ''}`;
+  return { level, code: 'beam.creep', text, values: { stress, limit: c.limit, margin: margin === Infinity ? null : r3(margin), strength: p.strength, share: c.share, ...(long != null ? { sag: o.sag, creep: long, sagLimit: o.limit } : {}) },
+    refs: { material: b.material?.name ?? null, pose: p.pose, kind: 'estimate', rests: [{ name: 'PRINTED_DEFAULTS.creep', value: c.share, kind: PRINTED_DEFAULTS.creep.kind, source: PRINTED_DEFAULTS.creep.source }, { name: 'PRINTED_DEFAULTS.creep_modulus', value: c.modulus, kind: PRINTED_DEFAULTS.creep_modulus.kind, source: PRINTED_DEFAULTS.creep_modulus.source }] } };
 }
 
 // How far a point of the section is from the nearest edge of its outline (its outside, its slots): the room round an end's fixing

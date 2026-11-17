@@ -1708,3 +1708,43 @@ test('a splice\'s strength is the least of its halves\' sections and its screws:
   assert.equal(frames.spliceModel(bar, { moment: 13000 }).findings[2].level, 'fail');
   assert.throws(() => frames.printedSection(bar.profile, { between: [1, -1] }), /between is \[x0, x1\], two upright cuts across the section in mm, x0 under x1/);
 });
+
+test('a printed beam\'s creep: a sustained stress against a share of its strength for its pose, and its sag as it creeps; the beam coupon\'s figures taken before the plastic\'s', () => {
+  const { beamCreep, PRINTED_DEFAULTS } = frames;
+  const lying = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: true });
+  const standing = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: { pose: 'standing' } });
+  // Hand calculation (PETG HF, petg.json): along its layers (lying) 34 MPa, across (standing) 23 MPa (strength_z).
+  //   creep limit lying = 0.15 x 34 = 5.1 MPa; standing = 0.15 x 23 = 3.45 MPa (PRINTED_DEFAULTS.creep, an estimate)
+  //   2.55 MPa sustained, lying: 5.1 / 2.55 = 2 times under: passes. Standing: 3.45 / 2.55 = 1.353: passes.
+  //   6 MPa lying: 5.1 / 6 = 0.85: fails.
+  assert.equal(PRINTED_DEFAULTS.creep.kind, 'estimate'); assert.match(PRINTED_DEFAULTS.creep.source, /Waseem et al\. \(2020\).*15 MPa.*1\.2 to 2\.3 hours/);
+  assert.deepEqual([lying.printed.creep.limit, standing.printed.creep.limit], [5.1, 3.45]);
+  const a = beamCreep(lying, { stress: 2.55 });
+  assert.deepEqual([a.level, a.code, a.values.margin, a.refs.kind, a.refs.pose], ['pass', 'beam.creep', 2, 'estimate', 'lying']);
+  assert.match(a.text, /a sustained 2\.55 MPa against the 5\.1 MPa it may hold for months \(0\.15 of its 34 MPa along its layers, PRINTED_DEFAULTS\.creep, an estimate\): 2 times under it/);
+  assert.equal(beamCreep(standing, { stress: 2.55 }).values.margin, 1.353);
+  const over = beamCreep(lying, { stress: 6 });
+  assert.equal(over.level, 'fail'); assert.match(over.text, /0\.85 times under it, so it creeps on toward breaking/);
+  // a moment: stress = M / Z, Z the printed section's (printedSection's modulusX)
+  const Z = lying.printed.section.modulusX;
+  assert.equal(beamCreep(lying, { moment: 2.55 * Z }).values.stress, 2.55);
+  // the sag it creeps to: 0.3 mm short-term over 0.5 (creep_modulus) = 0.6 mm, over a 0.5 mm limit: 1.2 times over
+  const sag = beamCreep(lying, { stress: 1, sag: 0.3, limit: 0.5 });
+  assert.deepEqual([sag.level, sag.values.creep], ['fail', 0.6]); assert.match(sag.text, /its 0\.3 mm sag creeps to about 0\.6 mm .*1\.2 times over the 0\.5 mm allowed/);
+  assert.equal(beamCreep(lying, { stress: 1, sag: 0.2, limit: 0.5 }).level, 'pass');
+  // refused by name
+  assert.throws(() => beamCreep(beamModel('2020-misumi-hfs5', { length: 240 }), { stress: 1 }), /beamCreep: .* is not a printed beam/);
+  assert.throws(() => beamCreep(lying, {}), /give the sustained load as stress/);
+  assert.throws(() => beamCreep(lying, { stress: 1, sag: 1 }), /sag and limit go together/);
+  assert.throws(() => beamCreep(lying, { load: 1 }), /no option "load"/);
+  // the beam coupon's figures, in a copy of the plastic's set (as cad measured writes it): a printed beam takes them
+  // before the plastic's own, each for its pose, and its creep limit follows the strength measured
+  const petg = structuredClone(SETS.petg), got = (value) => ({ value, unit: 'MPa', rule: 'From the beam coupon', kind: 'measured', source: 'this test', checked: '2026-11-17' });
+  petg.rules.beam_modulus = got(1500); petg.rules.beam_strength = got(30); petg.rules.beam_modulus_z = got(1200);
+  const given = { sets: { petg } };
+  const m = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: true, given }), z = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: { pose: 'standing' }, given });
+  assert.deepEqual([m.material.modulus, m.printed.strength, m.printed.strengthKind, m.printed.coupon.modulus, m.printed.modulusKind, m.printed.creep.limit], [1500, 30, 'measured', 'petg.beam_modulus', 'measured', 4.5]);
+  assert.deepEqual([z.material.modulus, z.printed.strength, z.printed.coupon.strength], [1200, 23, null], 'standing: its own coupon figure where measured, the plastic\'s across the layers where not');
+  assert.match(m.findings.find((x) => x.code === 'beam.mass').text, /at 1500 MPa along its layers \(petg\.beam_modulus, measured, from the beam coupon/);
+  assert.match(lying.findings.find((x) => x.code === 'beam.mass').text, /All estimates until the beam coupon is measured/);
+});
