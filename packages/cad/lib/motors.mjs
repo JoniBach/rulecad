@@ -223,9 +223,12 @@ export function motorChecks(s, f, helpers, materialName) {
     // The case, against what it's bolted to
     const mat = material(materialName), rise = fig('temperature_rise');
     if (mat?.softening != null && rise != null) {
-      const duty = d.spec.duty != null ? d.spec.duty : 1, room = 25, caseT = room + rise * duty, ok = caseT <= mat.softening, name = mat.name.toUpperCase(), I = fig('rated_current');
-      if (ok) f('pass', `${d.id}'s case reaches at most ${n3(caseT, 1)} °C ${duty < 1 ? `at ${n3(duty * 100, 0)}% duty` : 'at rated current'}, under ${name}'s ${mat.softening} °C`, null, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } });
-      else { const k = Math.sqrt((mat.softening - room) / (rise * duty)); f('warn', `${d.id}'s case can reach ${n3(caseT, 1)} °C at rated current, past where ${name} softens (${mat.softening} °C). Set the driver to ${I ? `${n3(I * k, 2)} A` : `${n3(k * 100, 0)}% of its current`} (${n3(k * 100, 0)}% of the torque), or print the mount in a material that takes it`, `${d.id}: mount will soften`, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } }); }
+      // (the rise is the maker's at rated current; the heat goes as the current squared, so a driver set lower runs cooler)
+      const I = fig('rated_current'), set = d.spec.current != null && I ? Math.min(1, (d.spec.current / I) ** 2) : 1;
+      const duty = d.spec.duty != null ? d.spec.duty : 1, room = 25, caseT = room + rise * duty * set, ok = caseT <= mat.softening, name = mat.name.toUpperCase();
+      const how = [set < 1 ? `at ${n3(d.spec.current, 2)} A` : null, duty < 1 ? `at ${n3(duty * 100, 0)}% duty` : null].filter(Boolean).join(' and ') || 'at rated current';
+      if (ok) f('pass', `${d.id}'s case reaches at most ${n3(caseT, 1)} °C ${how}, under ${name}'s ${mat.softening} °C`, null, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } });
+      else { const k = Math.sqrt((mat.softening - room) / (rise * duty)); f('warn', `${d.id}'s case can reach ${n3(caseT, 1)} °C ${how}, past where ${name} softens (${mat.softening} °C). Set the driver to ${I ? `${n3(I * k, 2)} A` : `${n3(k * 100, 0)}% of its current`} (${n3(k * 100, 0)}% of the torque), or print the mount in a material that takes it`, `${d.id}: mount will soften`, { code: 'motor.heat', at: S, refs: { item: d.id }, values: { case: caseT, softening: mat.softening } }); }
     }
   }
 }

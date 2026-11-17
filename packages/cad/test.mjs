@@ -1675,6 +1675,11 @@ test('a motor in an assembly: on the axis of its joint, torque reaching a load, 
     assert.ok(code(findings('braked'), 'motor.holds').some((x) => x.level === 'pass' && /a ratchet and pawl/.test(x.text)));
     // heat: a stepper's 105 °C against PLA's 57, and the current to set
     assert.match(code(light, 'motor.heat')[0].text, /Set the driver to [\d.]+ A/);
+    // set to that, the case runs cool enough (its rise goes as the current squared)
+    const advised = /Set the driver to ([\d.]+) A/.exec(code(light, 'motor.heat')[0].text)[1];
+    write('projects/home/assemblies/cool.json', arm({ current: Number(advised) }, { loads: [{ mass: 0.15, at: 'arm.tip' }] }));
+    const cool = code(findings('cool'), 'motor.heat')[0];
+    assert.equal(cool.level, 'pass', cool.text); assert.match(cool.text, new RegExp(`at ${advised.replace('.', '\\.')} A, under PLA's`));
     // a shaft read from its bore
     const hub = (name, set, fit = true) => write(`projects/home/assemblies/${name}.json`, { title: 'Hub', kind: 'fit', items: [{ id: 'm', motor: { model: 'nema17', drives: 'j' } }, { id: 'hub', object: 'hub', set }], joints: [{ id: 'j', type: 'revolute', parent: { at: [0, 0, 12], axis: [0, 0, 1] }, child: 'hub.axis' }], fits: [{ a: 'm', b: 'hub', shaft: fit }] });
     hub('good', {});
