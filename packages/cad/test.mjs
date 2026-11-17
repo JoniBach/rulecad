@@ -3464,6 +3464,24 @@ test('printed fittings in a project of another plastic: refused by name where no
   } finally { done(); }
 });
 
+test('bought fittings: the hinge set gives its screws, an anchor at each (b1, b2 the frame leaf\'s, a1, a2 the door leaf\'s), so a fasten screws its frame leaf into a slot and the list counts them', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // the frame leaf's two holes over x1's top slot line, the pin 11.5 mm off it
+    fs.writeFileSync(at('assemblies/hinge.json'), JSON.stringify({ title: 'hinge', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-motedis-b6' }, from: [0, 0, 0], to: [300, 0, 0] }, { id: 'h', bought: 'fitting-motedis-hinge-20', at: [100, -11.5, 10], rotate: [0, 0, 90] }],
+      fasten: [{ screw: 'M4 button', through: ['h'], into: 'x1.top', at: ['h.b1', 'h.b2'], nut: 'hammer' }] }));
+    const c = cad('check', 'frame/hinge');
+    assert.doesNotMatch(c, /^\s+✗ /m);
+    assert.match(c, /h to x1\.top, 2 M4 button screws: M4x10 button chosen, the shortest sold that fits/);
+    assert.match(c, /h to x1\.top, 2 M4 button screws: h's hole measures 4\.5 mm, an M4 clearance hole as drawn/);
+    const l = cad('list', 'frame/hinge');
+    assert.match(l, /2 ×\s+M4x10 button/); assert.match(l, /2 ×\s+slot-nut-6-motedis-m4-hammer/); assert.match(l, /1 ×\s+fitting-motedis-hinge-20\s+a fitting/);
+  } finally { done(); }
+});
+
 test('services: the worked arm\'s shield and supply mount on a rail from their own rule sets, and its power wire runs along a slot, its length and its clips reported', () => {
   const { ws, cad, done } = workspace();
   try {

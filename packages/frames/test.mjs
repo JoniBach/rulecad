@@ -1115,6 +1115,19 @@ test('bought fittings: each set from its maker\'s sheet, what it mounts by, whet
   const br = boughtFittingModel('fitting-motedis-bracket-20-b6', { profile: '2020-motedis-b6' });
   assert.deepEqual([br.fitting, br.thread, br.length, br.head, br.nutKind, br.screws.map((q) => [q.leg, q.at, q.axis])], ['bracket', 'M4', 8, 'cap', 'hammer', [['b', [11, 3.5, 0], [0, -1, 0]], ['a', [3.5, 11, 0], [-1, 0, 0]]]]);
   assert.deepEqual([br.cost.value, br.cost.unit, br.findings.map((f) => `${f.level} ${f.code}`)], [0.36, 'EUR', ['info fitting.cost', 'info fitting.stiffness', 'pass fitting.fit']]);
+  // each set's stiffness is frames' working guess for its join, the same figure a literal "bought" gets: the finding
+  // and the set's rule say so, as an estimate until the joint rig measures it; one unit, the grammar's
+  const kindOf = { 'corner-bracket': 'bracket', 'joining-plate': 'gusset', 'inner-connector': 'hidden', 'anchor-connector': 'anchor' };
+  for (const m of models.filter((x) => x.stiffness)) {
+    const g = frames.JOIN_STIFFNESS[kindOf[m.fittingKind]], set = published.find((x) => x.name === m.set);
+    assert.deepEqual([m.stiffness.bending, m.stiffness.twist], [g.bending.value, g.twist.value], m.set);
+    assert.deepEqual([set.rules.bending_stiffness.unit, set.rules.twist_stiffness.unit, g.bending.unit, g.twist.unit], ['N mm/rad', 'N mm/rad', 'N mm/rad', 'N mm/rad'], m.set);
+    for (const k of ['bending_stiffness', 'twist_stiffness']) assert.match(set.rules[k].rule, /the same figure a join with "fitting": "bought" gets, so choosing this set changes no stiffness until the joint rig measures it/, `${m.set}.${k}`);
+    assert.match(coded(m, 'fitting.stiffness')[0].text, /N mm\/rad in bending .*: an estimate: .*the same figure a join with "fitting": "bought" gets/, m.set);
+  }
+  // the hinge: two M4 button screws through each leaf, the frame leaf's into b (anchors b1, b2), the door leaf's a1, a2
+  const hg = boughtFittingModel('fitting-motedis-hinge-20');
+  assert.deepEqual(hg.screws.map((q) => [q.leg, q.thread, q.head, q.nutKind, q.at, q.axis]), [['b', 'M4', 'button', 'hammer', [11.5, -7, 4.8], [0, 0, -1]], ['b', 'M4', 'button', 'hammer', [11.5, 7, 4.8], [0, 0, -1]], ['a', 'M4', 'button', 'hammer', [-11.5, -7, 4.8], [0, 0, -1]], ['a', 'M4', 'button', 'hammer', [-11.5, 7, 4.8], [0, 0, -1]]]);
   // whether it fits: another maker's slot family, another size, a foot's stem against the end's bore
   const wrong = (n, p) => boughtFittingModel(n, { profile: p }).findings.filter((f) => f.level === 'fail').map((f) => f.text);
   assert.match(wrong('fitting-motedis-bracket-20-b6', '2020-misumi-hfs5')[0], /made for slot-6-motedis \(nut family slot-6-bosch\), and 2020-misumi-hfs5's slots are slot-6-misumi/);

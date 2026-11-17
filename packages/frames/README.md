@@ -486,7 +486,7 @@ corner. In an assembly, cad works these out from the two beams' ends.
 ### Stiffness
 
 A frame's stiffness is set at its corners, and a joint's stiffness is the honest unknown. Each kind has a bending
-and a twist stiffness in N·mm/rad for a 20 mm series profile (`JOIN_STIFFNESS`), every one an estimate with its
+and a twist stiffness in N mm/rad for a 20 mm series profile (`JOIN_STIFFNESS`), every one an estimate with its
 reasoning in its rule. A profile of another size is scaled by the cube of its width over 20 mm, and a printed fitting
 is taken at 0.3 of a bought one's (`JOIN_SCALE`), both estimates too. `joinStiffness(kind, beam, { fitting })` gives
 the figures and the end join `@rulecad/fea/frame` takes (`{ rx: twist, ry: bending, rz: bending }`). The joint rig
@@ -605,7 +605,7 @@ The inside corners are rounded: a bracket's by its thickness, a gusset's by half
 | Stiffness | How it is read |
 |---|---|
 | `stiffness.linear` (N/mm) | The load over the loaded screw's mean movement along it |
-| `stiffness.bending` (N·mm/rad) | F s² / δ: the load times the screw's distance from the corner squared, over its movement. It is the fitting's own; the slot nuts, the lips and the screws are not in it, so a joint is softer, and the joint rig (issue 264) measures that |
+| `stiffness.bending` (N mm/rad) | F s² / δ: the load times the screw's distance from the corner squared, over its movement. It is the fitting's own; the slot nuts, the lips and the screws are not in it, so a joint is softer, and the joint rig (issue 264) measures that |
 
 ## Panels and doors
 
@@ -1098,7 +1098,9 @@ a seller of unbranded stock, is `community`. `model.rests` and each figure's `ki
 
 A bought fitting's sizes are its maker's drawing (`spec`); a screw's place along a leg that the drawing shows but does
 not dimension is an `estimate`. Its price is the seller's on the date checked. Its stiffness is a working guess,
-the same as `JOIN_STIFFNESS` for its kind, until the joint rig (issue 264) measures it: no maker publishes one.
+the same as `JOIN_STIFFNESS` for its kind, until the joint rig (issue 264) measures it: no maker publishes one. So
+until then a set gives the same stiffness as a join with `"fitting": "bought"`, and its rule and its
+`fitting.stiffness` finding say so. Stiffness is written in N mm/rad, the rule sets' unit, throughout.
 
 Panels' densities are the makers' (Evonik's PLEXIGLAS GS, Covestro's Makrolon GP, Aalco's 5754 sheet); the
 thicknesses stocked are `community`. The panel parts' loads, a clip's grip, the barb, the squeeze, a hinge's

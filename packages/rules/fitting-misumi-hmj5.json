@@ -108,7 +108,7 @@
     "bending_stiffness": {
       "value": 2000000.0,
       "unit": "N mm/rad",
-      "rule": "How stiffly this centre joint, its set screw tight, holds a beam's end against turning across its axis, its screws tight. The maker gives no figure, so this is frames' working guess for this kind of join (JOIN_STIFFNESS.anchor), until the joint rig measures it",
+      "rule": "How stiffly this centre joint, its set screw tight, holds a beam's end against turning across its axis, its screws tight. The maker gives no figure, so this is frames' working guess for this kind of join (JOIN_STIFFNESS.anchor): the same figure a join with \"fitting\": \"bought\" gets, so choosing this set changes no stiffness until the joint rig measures it",
       "kind": "estimate",
       "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
       "checked": "2026-11-17"
@@ -116,7 +116,7 @@
     "twist_stiffness": {
       "value": 500000.0,
       "unit": "N mm/rad",
-      "rule": "How stiffly this centre joint, its set screw tight, holds a beam's end against twisting about its own axis. The maker gives no figure, so this is frames' working guess (JOIN_STIFFNESS.anchor), until the joint rig measures it",
+      "rule": "How stiffly this centre joint, its set screw tight, holds a beam's end against twisting about its own axis. The maker gives no figure, so this is frames' working guess (JOIN_STIFFNESS.anchor): the same figure a join with \"fitting\": \"bought\" gets, so choosing this set changes no stiffness until the joint rig measures it",
       "kind": "estimate",
       "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
       "checked": "2026-11-17"

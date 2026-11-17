@@ -34,10 +34,10 @@ export const JOINS = {
   printed: { what: 'a printed node that sockets the beam ends', b: 'either', slot: false, made: false, fitting: 'a printed node', later: 'a later release' },
 };
 
-// One kind's stiffness for a 20 mm series profile: bending (about either axis across the beam) and twist, N·mm/rad
+// One kind's stiffness for a 20 mm series profile: bending (about either axis across the beam) and twist, N mm/rad
 const guess = (kind, bending, twist, why) => ({
-  bending: { value: bending, unit: 'N·mm/rad', rule: `How stiffly a ${kind} join holds the end of a against turning across its axis, for a 20 mm series profile: ${why}`, kind: 'estimate', source: 'A working guess of @rulecad/frames, made without a measurement or a published figure: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED },
-  twist: { value: twist, unit: 'N·mm/rad', rule: `How stiffly a ${kind} join holds the end of a against twisting about its own axis, for a 20 mm series profile: ${why}`, kind: 'estimate', source: 'A working guess of @rulecad/frames, made without a measurement or a published figure: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED },
+  bending: { value: bending, unit: 'N mm/rad', rule: `How stiffly a ${kind} join holds the end of a against turning across its axis, for a 20 mm series profile: ${why}`, kind: 'estimate', source: 'A working guess of @rulecad/frames, made without a measurement or a published figure: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED },
+  twist: { value: twist, unit: 'N mm/rad', rule: `How stiffly a ${kind} join holds the end of a against twisting about its own axis, for a 20 mm series profile: ${why}`, kind: 'estimate', source: 'A working guess of @rulecad/frames, made without a measurement or a published figure: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED },
 });
 
 /**
@@ -93,7 +93,7 @@ const printedShare = (kind) => ({ value: 1, unit: '', rule: `A ${kind} join with
  */
 export function joinRuleSet() {
   const rules = {};
-  for (const [kind, s] of Object.entries(JOIN_STIFFNESS)) for (const k of ['bending', 'twist']) rules[`${ruleKey(kind)}_${k}`] = { ...s[k], unit: 'N mm/rad' };
+  for (const [kind, s] of Object.entries(JOIN_STIFFNESS)) for (const k of ['bending', 'twist']) rules[`${ruleKey(kind)}_${k}`] = { ...s[k] };
   for (const kind of SHARED) rules[`${ruleKey(kind)}_printed_share`] = printedShare(kind);
   return { _doc: 'How stiff each kind of join between two beams is, for a 20 mm series profile: the springs at a beam\'s end in a frame\'s solve. Started from @rulecad/frames\' estimates (JOIN_STIFFNESS); the joint rig (examples/bench/projects/benchmarks/MEASURE.md) measures them and cad measured writes each here as measured.', name: JOIN_SET, part: 'joins', rules };
 }
@@ -104,7 +104,7 @@ const measuredOn = (r) => (r?.kind === 'measured' ? r.checked ?? null : null);
 
 /**
  * The stiffness a join of this kind is taken to have between these beams, as numbers and as an end join for
- * @rulecad/fea/frame ({ rx: twist, ry, rz: bending, in N·mm/rad }), with what it rests on. A figure the workspace's
+ * @rulecad/fea/frame ({ rx: twist, ry, rz: bending, in N mm/rad }), with what it rests on. A figure the workspace's
  * joins set holds (given.sets.joins, measured on the joint rig) is taken before the kit's estimate; measured says the
  * date each was measured, or null.
  * @param {string} kind @param {object} beam the beam whose end is joined (a) @param {{ fitting?: 'printed' | 'bought', given?: { sets?: object } }} [o]

@@ -10,7 +10,7 @@
 // it), across the joint along z from its middle; a plate's joint middle at the origin, b along x, a along +y, the
 // beams' faces at z = 0 and the plate above them; an anchor's where a's axis meets b's face, a along +z; an end cap's
 // and a foot's the end's address frame (z out of the end); a hinge's pin along y at x = 0, its leaves on z = 0.
-// Units: mm, N, N·mm/rad, the currency its seller lists.
+// Units: mm, N, N mm/rad, the currency its seller lists.
 import jscad from '@jscad/modeling';
 import { SETS } from './catalogue.mjs';
 import { profileModel } from './profile.mjs';
@@ -88,10 +88,11 @@ export function boughtFittingModel(which, o = {}) {
   const screw = (leg, at, axis) => ({ leg, thread, head, length, grip: t, at, axis, nutKind: m.nutKind });
   if (spec.fitting === 'bracket') { for (const [x, y] of holes.b) m.screws.push(screw('b', [x, t, y], [0, -1, 0])); for (const [x, y] of holes.a) m.screws.push(screw('a', [t, x, y], [-1, 0, 0])); m.screwAt = holes.b[0]?.[0] ?? null; }
   if (spec.fitting === 'plate') { for (const [x, y] of holes.b) m.screws.push(screw('b', [x, y, t], [0, 0, -1])); for (const [x, y] of holes.a) m.screws.push(screw('a', [y, x, t], [0, 0, -1])); m.outline = plateOutline(m); m.arm = Math.max(...m.screws.map((q) => Math.hypot(q.at[0], q.at[1]))); }
+  if (spec.fitting === 'hinge') { for (const [x, y] of holes.b) m.screws.push(screw('b', [x, y, t], [0, 0, -1])); for (const [x, y] of holes.a) m.screws.push(screw('a', [-x, y, t], [0, 0, -1])); } // (the frame leaf's into b's slot, the door leaf's through the door)
   if (spec.fitting === 'anchor' && m.pocket) m.ops.push({ op: 'drill', side: 'a', distance: m.pocket.distance, diameter: m.pocket.diameter, through: 'wall', why: `${set.name}'s guide` });
   // what it costs, its stiffness and the maker's load, each saying what it rests on
   if (m.cost) m.findings.push(finding('info', `${set.name} costs ${m.cost.value} ${m.cost.unit} each (${m.cost.kind}): ${m.cost.rule}`, 'fitting.cost', { values: { cost: m.cost.value, unit: m.cost.unit } }));
-  if (m.stiffness) m.findings.push(finding('info', `${set.name} holds a beam's end at ${m.stiffness.bending} N·mm/rad in bending${m.stiffness.twist != null ? ` and ${m.stiffness.twist} in twist` : ''}: ${m.stiffness.kind === 'measured' ? `measured on the joint rig${m.stiffness.measured.bending ? ` on ${m.stiffness.measured.bending}` : ''}` : `an ${m.stiffness.kind}, until the joint rig (issue 264) measures it`} (${m.stiffness.source})`, 'fitting.stiffness', { values: { bending: m.stiffness.bending, twist: m.stiffness.twist }, refs: { kind_of_value: m.stiffness.kind } }));
+  if (m.stiffness) m.findings.push(finding('info', `${set.name} holds a beam's end at ${m.stiffness.bending} N mm/rad in bending${m.stiffness.twist != null ? ` and ${m.stiffness.twist} in twist` : ''}: ${m.stiffness.kind === 'measured' ? `measured on the joint rig${m.stiffness.measured.bending ? ` on ${m.stiffness.measured.bending}` : ''}` : `an ${m.stiffness.kind}: ${m.stiffness.rule} (issue 264)`} (${m.stiffness.source})`, 'fitting.stiffness', { values: { bending: m.stiffness.bending, twist: m.stiffness.twist }, refs: { kind_of_value: m.stiffness.kind } }));
   if (m.allowable != null) m.findings.push(finding('info', `its maker allows ${m.allowable} N on it (${r.allowable_load.kind})`, 'fitting.load', { values: { allowable: m.allowable } }));
   if (o.profile != null) m.findings.push(...fits(m, o.profile, o.other ?? o.profile, given));
   return m;

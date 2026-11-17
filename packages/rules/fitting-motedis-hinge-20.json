@@ -32,6 +32,13 @@
       "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
       "checked": "2026-11-17"
     },
+    "screw_form": {
+      "value": "button",
+      "rule": "Button heads: the shop lists no fixing set for this hinge, so this is the kit's choice for a thin leaf, an estimate until you choose your own",
+      "kind": "estimate",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), product page https://www.motedis.com/de/Scharnier-20x20-leicht",
+      "checked": "2026-11-17"
+    },
     "nut_kind": {
       "value": "hammer",
       "rule": "Hammer nuts in the slot, as for Motedis' other fittings: the shop names none for this hinge",

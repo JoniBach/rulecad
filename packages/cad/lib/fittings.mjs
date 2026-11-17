@@ -120,7 +120,7 @@ export async function fittingBuilt(it, id, context, material = 'pla') {
   // an anchor on each screw's axis at its head's seat, z out of the fitting toward the head: b1, b2 .. into b; a1 .. into a
   const count = { a: 0, b: 0 }, anchors = Object.fromEntries(m.screws.map((sc) => [`${sc.leg}${++count[sc.leg]}`, { at: m.fitting === 'bracket' ? sc.at : [sc.at[0], sc.at[1], m.thickness], axis: sc.axis.map((c) => (c ? -c : 0)) }]));
   const values = { thickness: m.thickness, width: m.width, grams: m.grams, margin: m.margin, stiffness: m.stiffness.bending, load: m.load.force, ...(m.leg ? { leg: m.leg } : { arm: m.arm }) };
-  const entries = Object.entries({ thickness: ['mm', 'sized from the load'], grams: ['g', 'its mass'], margin: ['×', 'its strength over the peak stress at the load, by finite elements'], stiffness: ['N·mm/rad', 'its own bending stiffness about the joint, by finite elements'] })
+  const entries = Object.entries({ thickness: ['mm', 'sized from the load'], grams: ['g', 'its mass'], margin: ['×', 'its strength over the peak stress at the load, by finite elements'], stiffness: ['N mm/rad', 'its own bending stiffness about the joint, by finite elements'] })
     .map(([k, [unit, rule]]) => ({ name: `${m.name}.${k}`, value: values[k], unit, rule: `The printed fitting's ${rule}`, kind: 'derived', source: '@rulecad/frames fitting.mjs', checked: '2026-11-17', set: m.name }));
   const hash = crypto.createHash('sha256').update(JSON.stringify([it.fitting, material, m.name, m.thickness, m.grams])).digest('hex').slice(0, 16);
   const b = { object: { name: m.name, title: m.title, role: 'part', version: '0.0.0', anchors }, values, entries, deps: [], units: {}, parts, polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles), hash };
@@ -254,7 +254,7 @@ export function joinFitting(j, i, { ia, ib, A, B, m, ends, place: placeOf }, num
 export function fittedStiffness(k, fm) {
   const share = k.share ?? { value: 1, kind: 'estimate' }, fe = fm.stiffness.bending, bending = fe * share.value;
   return { ...k, bending, end: { rx: k.twist, ry: bending, rz: bending }, measured: { ...(k.measured ?? {}), bending: share.kind === 'measured' ? share.checked ?? null : null }, fitting: { name: fm.name, bending, fe, share: share.value, shareKind: share.kind, linear: fm.stiffness.linear, margin: fm.margin, grams: fm.grams, load: fm.load.force },
-    rests: [{ value: fe, unit: 'N·mm/rad', kind: 'derived', source: `${fm.name}: by finite elements on the printed fitting as drawn; the slot nuts and lips not in it` }, ...(share.value !== 1 || share.kind === 'measured' ? [{ value: share.value, unit: '', kind: share.kind, source: share.source, ...(share.checked ? { checked: share.checked } : {}) }] : []), ...k.rests.slice(1)] };
+    rests: [{ value: fe, unit: 'N mm/rad', kind: 'derived', source: `${fm.name}: by finite elements on the printed fitting as drawn; the slot nuts and lips not in it` }, ...(share.value !== 1 || share.kind === 'measured' ? [{ value: share.value, unit: '', kind: share.kind, source: share.source, ...(share.checked ? { checked: share.checked } : {}) }] : []), ...k.rests.slice(1)] };
 }
 
 /**
