@@ -14,9 +14,9 @@
     "lip_thickness": {
       "value": 2,
       "unit": "mm",
-      "rule": "slot-8-misumi's lip in whole layers, thicker where a nut's pull of 100 N needs it: its lips and side walls hold 1303.74 N in pla, 13.04 times that pull (an estimate: one lip's spread each side of the nut)",
+      "rule": "slot-8-misumi's lip in whole layers, thicker where a nut's pull of 100 N needs it: its lips and side walls hold 782.24 N in pla, 7.82 times that pull, the side walls the weaker: the lips lie in the layers and bend along them at 39 MPa, the walls stand through the layers and bend across them at 23.4 MPa (an estimate: one lip's spread each side of the nut)",
       "kind": "derived",
-      "source": "worked out by @rulecad/frames printedProfile from slot-8-misumi.lip_thickness, x1c.layer, pla.strength and PRINTED_DEFAULTS pull, spread and margin",
+      "source": "worked out by @rulecad/frames printedProfile from slot-8-misumi.lip_thickness, x1c.layer, pla.strength, pla.strength x PRINTED_DEFAULTS.across and PRINTED_DEFAULTS pull, spread and margin",
       "checked": "2026-11-17"
     },
     "lip_angle": {

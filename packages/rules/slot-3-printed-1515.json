@@ -14,9 +14,9 @@
     "lip_thickness": {
       "value": 1.6,
       "unit": "mm",
-      "rule": "slot-3-openbeam's lip in whole layers, thicker where a nut's pull of 100 N needs it: its lips and side walls hold 883.3 N in pla, 8.83 times that pull (an estimate: one lip's spread each side of the nut)",
+      "rule": "slot-3-openbeam's lip in whole layers, thicker where a nut's pull of 100 N needs it: its lips and side walls hold 529.98 N in pla, 5.3 times that pull, the side walls the weaker: the lips lie in the layers and bend along them at 39 MPa, the walls stand through the layers and bend across them at 23.4 MPa (an estimate: one lip's spread each side of the nut)",
       "kind": "derived",
-      "source": "worked out by @rulecad/frames printedProfile from slot-3-openbeam.lip_thickness, x1c.layer, pla.strength and PRINTED_DEFAULTS pull, spread and margin",
+      "source": "worked out by @rulecad/frames printedProfile from slot-3-openbeam.lip_thickness, x1c.layer, pla.strength, pla.strength x PRINTED_DEFAULTS.across and PRINTED_DEFAULTS pull, spread and margin",
       "checked": "2026-11-17"
     },
     "lip_angle": {

@@ -28,6 +28,9 @@ What changed in each release, for someone upgrading a workspace.
   holes are sized by the printer and a hole on its side as it prints is a teardrop (`opsOf`'s `printed`,
   `opCutters`' `up`).
 - `printable` gives a printed beam's own findings; a bought beam or a profile still fails.
+- A printed slot's side walls bend across the layers lying down: their hold is worked out at the plastic's strength
+  across them (`strength_z`, or 0.6 of its strength), the lips' along them. `profile-2020-printed` holds 427 N on its
+  drop-in nut, not 711 N; the published printed slot sets say so.
 
 - `cutList`'s `tolerance`, given, is taken before a profile's own `cut_tolerance` (the maker's figure is for its
   cut service; a workshop's saw is its own).

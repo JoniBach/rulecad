@@ -446,6 +446,12 @@ counts the inside at the infill's share, on a raster of the outline. Its stiffne
 Standing, a beam bends across its layers: on the material's `strength_z`, or 0.6 of its strength where it gives none
 (PLA's sheet gives none; PETG's gives 0.68).
 
+A slot's lips and side walls are each checked at the strength the way their bending stress runs. A plate bends with
+its stress running from its root out across it. Lying down, a top slot's lips lie flat in the layers, so they bend
+along them, and its side walls stand up through the layers, so their stress runs up them, across the layers. The
+walls govern the kit's printed slots: `profile-2020-printed` holds 427 N on MISUMI's M4 drop-in in PLA (23.4 MPa
+across the layers), 4.3 times a 100 N pull.
+
 ### A splice for a beam longer than the bed
 
 `spliceModel(beam, { at, moment, thread })` joins two halves printed lying down with a lap. Over the lap the half
@@ -1159,7 +1165,7 @@ kit's.
 | A join's tap depth | engagement + tip room + 1.5 × the major diameter (M5 in aluminium: 10 + 1 + 7.5 = 18.5 mm) | `engagement` and `tip_room` from `@rulecad/fixings`; `JOIN_TAP`, a working figure |
 | A printed section | shell: the cells within walls x line of the outline count 1, the rest the infill's share (a cell the shell's edge crosses in part); I = Σ w (y - ȳ)² dA about the stiffness-weighted centroid | A rule of mixtures on a raster; an estimate until a printed coupon is bent |
 | A printed beam's design moment | M = (S / 2) I / c, S the plastic's strength for its pose (strength along the layers, strength_z or 0.6 x strength across them) | Beam theory; the kit's twice margin |
-| A printed lip's hold | flat lips: σ = 6 (F / 2) a / (b t²), a from the lip's root to the middle of the nut's bearing; sloped lips also push the wall out by (F / 2) tan θ, σ = 6 (F / 2) tan θ h / (b w²); b = nut length + 2 lips | Cantilever bending; the spread a working figure |
+| A printed lip's hold | flat lips: σ = 6 (F / 2) a / (b t²), a from the lip's root to the middle of the nut's bearing; sloped lips also push the wall out by (F / 2) tan θ, σ = 6 (F / 2) tan θ h / (b w²); b = nut length + 2 lips; each at the strength its stress runs in (lying down, a top slot's lips along the layers, its walls across them) | Cantilever bending; the spread a working figure |
 | A splice screw's hold | the least of π d_head t_B τ, π s t_A τ and the screw's proof load, τ = S / √3 | Von Mises' shear yield; ISO 898-1 for the proof stress |
 | A splice's capacity | M = F x (lap - 2 x 2.5 d), against 2 x the design moment x 4 z (L - z) / L² | Two screws as a couple; a spread load on a simply supported span |
 | A join's stiffness for another size | k = k₂₀ × (w / 20)³, w the profile's larger side in mm | `JOIN_SCALE.size`, an estimate |

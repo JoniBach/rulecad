@@ -1523,11 +1523,17 @@ test('printable profiles: each worked out from its slot family\'s nuts and the p
   //   ends: an M5 insert needs 6.5 + 2 x 2.6 + 2 x 0.42 = 12.54 > 12.15; M4 needs 5.7 + 2 x 2.1 + 0.84 = 10.74: M4, at 0, -7.85 / 2
   //   hold at 100 N: along the slot 6 + 2 x 2 = 10; the wall pushed out by 50 N, 7.85 - 3.95 = 3.9 below the seat:
   //   6 x 50 x 3.9 / (10 x 4.62^2) = 5.482 MPa; the lip's root 2 + 2.33 = 4.33 thick, 0.38 out: 6 x 50 x 0.38 / (10 x 4.33^2) = 0.608 MPa
-  //   so the wall governs: 39 / 5.482 = 7.11 times, 711 N
+  //   lying down, the lips lie in the layers and bend along them (PLA 39 MPa); the walls stand up through the layers and
+  //   their bending stress runs up them, across the layers: PLA gives no strength_z, so 0.6 x 39 = 23.4 MPa (PRINTED_DEFAULTS.across)
+  //   lips 39 / 0.608 = 64 times; walls 23.4 / 5.482 = 4.27 times: the wall governs, 427 N (at 39 MPa it would read 711 N)
+  //   PETG gives 23 MPa across its layers (strength_z): 23 / 5.482 = 4.20 times, 420 N
   const { slot, profile, values } = printedProfile(20), r = (k) => slot.rules[k].value;
   assert.deepEqual(['opening', 'lip_thickness', 'lip_angle', 'cavity_width', 'cavity_depth', 'floor_width', 'flank_angle', 'nut_family'].map(r), [6.1, 2, 45, 10.76, 7.85, 9.96, 45, 'slot-6-misumi']);
   assert.deepEqual([values.wallLines, values.wall, values.solid, values.endThread, values.endAt], [11, 4.62, 12.15, 'M4', [0, -3.925]]);
-  assert.ok(Math.abs(values.hold - (100 * 39) / ((6 * 50 * 3.9) / (10 * 4.62 ** 2))) < 0.5, `hold ${values.hold}`);
+  const wallStress = (6 * 50 * 3.9) / (10 * 4.62 ** 2);
+  assert.ok(Math.abs(values.hold - (100 * 23.4) / wallStress) < 0.5, `hold ${values.hold}`);
+  assert.ok(Math.abs(printedProfile(20, { material: 'petg' }).values.hold - (100 * 23) / wallStress) < 0.5, 'PETG: its own strength across its layers');
+  assert.match(slot.rules.lip_thickness.rule, /hold 426\.89 N in pla, 4\.27 times that pull, the side walls the weaker: .* the walls stand through the layers and bend across them at 23\.4 MPa/);
   assert.deepEqual([profile.rules.slot_top.value, profile.rules.slot.value, profile.rules.end_thread.value, profile.rules.end_at.value], ['slot-6-printed-2020', 'closed', 'M4', '0,-3.925']);
   // 15: OpenBeam's M3 hex nut, held by its flats: a cavity of whole lines between 5.5 + 0.2 and its corners 6.35 less 0.2: 15 - 2 x 11 x 0.42 = 5.76
   assert.equal(printedProfile(15).values.cavityWidth, 5.76);
@@ -1576,7 +1582,9 @@ test('a 240 mm printed 2020 beam prints lying down with no support, takes a boug
   // tapped ends become M4 heat-set inserts, the cut list's square cuts no operation of a print
   assert.deepEqual([b.ends.a, b.ends.b], [{ kind: 'insert', thread: 'M4' }, { kind: 'insert', thread: 'M4' }]); assert.deepEqual(b.ops, []);
   assert.ok(coded(b, 'beam.end').every((f) => f.level === 'pass'));
-  assert.equal(coded(b, 'beam.slot')[0].level, 'pass');
+  // the slot's hold on the beam is the profile's: its walls, upright as it lies, bend across the layers at 0.6 x 39 MPa
+  assert.equal(coded(b, 'beam.slot')[0].level, 'pass'); assert.ok(Math.abs(b.printed.slots[0].hold - frames.printedProfile(20).values.hold) < 1e-6 && b.printed.slots[0].governs === 'wall');
+  assert.deepEqual([coded(b, 'beam.slot')[0].values.lip, coded(b, 'beam.slot')[0].values.wall], [39, 23.4]);
   // as it prints: on its bottom face along x, the slot on top (a 1 mm slab across the top at mid-length is 20 x 10 less the 6.1 opening)
   const g = frames.printedBeam(b), bb = jscad.measurements.measureBoundingBox(g);
   assert.deepEqual(bb.map((p) => p.map((x) => +x.toFixed(3) + 0)), [[0, -10, 0], [240, 10, 20]]);

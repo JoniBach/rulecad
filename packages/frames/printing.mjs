@@ -82,6 +82,14 @@ function lipStress({ opening, lip, lipAngle, cavityWidth, cavityDepth }, wall, n
   const sWall = wall > 0 ? (6 * push * lever) / (b * wall * wall) : Infinity;
   return { stress: Math.max(sLip, sWall), lip: sLip, wall: sWall, along: b, arm, root, contact, lever, push };
 }
+// What a slot's lips and walls hold, each at the plastic's strength in the direction its bending stress runs: lips and
+// walls of a slot bend at their roots, their stress running across the plate from the root out, so a plate lying flat
+// in the layers bends along them and one standing up through the layers bends across them.
+// Returns the margin (the least of the two), the hold at pull F and which governs.
+function slotHold(st, F, sLip, sWall) {
+  const lip = st.lip > 0 ? sLip / st.lip : Infinity, wall = st.wall > 0 ? sWall / st.wall : Infinity, margin = Math.min(lip, wall);
+  return { margin: r3(margin), hold: r3(F * margin), governs: wall <= lip ? 'wall' : 'lip', lip: r3(lip), wall: r3(wall) };
+}
 
 /**
  * A printable profile and its slot, as rule sets: a square section of the size asked with one slot, in its top face, that
@@ -126,22 +134,25 @@ export function printedProfile(series, o = {}) {
   if (!(lines >= 2 && cavityWidth <= most + 1e-9)) throw new Error(`${what}: a ${series} mm section has no wall of whole ${line} mm lines that leaves ${mm(least)} mm for ${N.name}${kind === 'hex' ? ` and under ${mm(most)} mm to hold its flats` : ''}: a larger section or a smaller nut`);
   // the lips: the family's thickness (so its nuts' tongues and screws' lengths still serve), whole layers, thicker where the pull needs it
   const geometry = (lip) => { const contact = lip + ((width - opening) / 2) * tan, cavityDepth = r3(contact + height + fit + chamfer); return { opening, lip, lipAngle, cavityWidth, cavityDepth }; };
-  const strength = SETS[material].rules.strength.value, margin = PRINTED_DEFAULTS.margin.value, spread = PRINTED_DEFAULTS.spread.value;
-  let lip = up(Math.max(v(S, 'lip_thickness'), tongueH, 2 * layer), layer), g = geometry(lip), st = lipStress(g, wall, { width, length }, F, spread);
-  while (strength / st.stress < margin && lip < series / 4) { lip = r3(lip + layer); g = geometry(lip); st = lipStress(g, wall, { width, length }, F, spread); }
-  if (strength / st.stress < margin) throw new Error(`${what}: ${series} mm: no lip under a quarter of the section holds ${F} N with ${margin} times the margin in ${material}: a smaller pull, or a larger section`);
+  // lying down with its slot up, the lips lie flat in the layers and bend along them; the side walls stand up through
+  // the layers and bend across them, at the plastic's strength across its layers (strength_z, or PRINTED_DEFAULTS.across of it)
+  const strength = SETS[material].rules.strength.value, strengthZ = SETS[material].rules.strength_z?.value ?? r3(strength * PRINTED_DEFAULTS.across.value), margin = PRINTED_DEFAULTS.margin.value, spread = PRINTED_DEFAULTS.spread.value;
+  const holdOf = (lip) => slotHold(lipStress(geometry(lip), wall, { width, length }, F, spread), F, strength, strengthZ);
+  let lip = up(Math.max(v(S, 'lip_thickness'), tongueH, 2 * layer), layer), g = geometry(lip), st = holdOf(lip);
+  while (st.margin < margin && lip < series / 4) { lip = r3(lip + layer); g = geometry(lip); st = holdOf(lip); }
+  if (st.margin < margin) throw new Error(`${what}: ${series} mm: no lip under a quarter of the section holds ${F} N with ${margin} times the margin in ${material}: a smaller pull, or a larger section`);
   const { cavityDepth } = g, floorWidth = r3(cavityWidth - 2 * chamfer), solid = r3(series - cavityDepth), yc = r3(-cavityDepth / 2);
   // the ends: the largest thread whose heat-set insert, with its wall and a line to spare, fits in the solid under the slot
   const endThread = END_THREADS.find((t) => { const f = fixingModel(t).figures, h = f.insert_hole?.value, wl = f.insert_wall?.value; return isNum(h) && isNum(wl) && h + 2 * wl + 2 * line <= Math.min(solid, series) + 1e-9; });
   if (!endThread) throw new Error(`${what}: ${series} mm: the ${mm(solid)} mm under the slot holds no heat-set insert of ${END_THREADS.at(-1)} or more`);
-  const hold = r3((F * strength) / st.stress), held = r3(strength / st.stress), cell = `${series}${series}`, opens = String(v(S, 'opening')).split('.')[0];
+  const hold = st.hold, held = st.margin, acrossSaid = SETS[material].rules.strength_z ? `${material}.strength_z` : `${material}.strength x PRINTED_DEFAULTS.across`, cell = `${series}${series}`, opens = String(v(S, 'opening')).split('.')[0];
   const slotName = `slot-${S.name.match(/^slot-([\d.]+)/)?.[1] ?? opens}-printed-${cell}`, name = `profile-${cell}-printed`;
   const by = `worked out by @rulecad/frames printedProfile`, nutsSaid = nuts.map((s) => s.name).join(', '), pr = (...ks) => ks.map((k) => P.cite(k)).join(', ');
   const d = (value, unit, text, from) => rule(value, unit, text, 'derived', `${by} from ${from}`);
   const slot = { _doc: `The slot of the kit's printed ${series} x ${series} mm beam (${name}): the ${family} family's ${kind} nuts (${nutsSaid}) go in it, and it prints lying down facing up with no support. The undersides of its lips slope at the printer's overhang angle, so its nuts bear on their top corners, not their whole top. Worked out from those nuts' sizes and the printer's rules by @rulecad/frames printedProfile; a printer with other rules gives other figures.`,
     name: slotName, part: 'slot', rules: {
       opening: d(opening, 'mm', `Between the lips: ${family}'s ${v(S, 'opening')} mm or its nuts' widest tongue and a fit, whichever is wider, widened by the printer's hole compensation, since a printed gap comes out narrow`, `${S.name}.opening, ${nutsSaid} (tongue_width) and ${pr('fit', 'hole_comp')}`),
-      lip_thickness: d(lip, 'mm', `${family}'s lip in whole layers, thicker where a nut's pull of ${F} N needs it: its lips and side walls hold ${mm(hold)} N in ${material}, ${mm(held)} times that pull (an estimate: one lip's spread each side of the nut)`, `${S.name}.lip_thickness, ${pr('layer')}, ${material}.strength and PRINTED_DEFAULTS pull, spread and margin`),
+      lip_thickness: d(lip, 'mm', `${family}'s lip in whole layers, thicker where a nut's pull of ${F} N needs it: its lips and side walls hold ${mm(hold)} N in ${material}, ${mm(held)} times that pull, the ${st.governs === 'wall' ? 'side walls' : 'lips'} the weaker: the lips lie in the layers and bend along them at ${strength} MPa, the walls stand through the layers and bend across them at ${strengthZ} MPa (an estimate: one lip's spread each side of the nut)`, `${S.name}.lip_thickness, ${pr('layer')}, ${material}.strength, ${acrossSaid} and PRINTED_DEFAULTS pull, spread and margin`),
       lip_angle: d(lipAngle, 'deg', `The undersides of the lips slope at the printer's overhang angle from the face, so they print over the cavity with no support when the beam lies down with its slot up`, pr('overhang')),
       cavity_width: d(cavityWidth, 'mm', `The widest of its nuts and a fit, the wall beside it ${lines} whole lines (${mm(wall)} mm)${kind === 'hex' ? ', and narrower than the nut\'s corners so its flats cannot turn' : ''}`, `${nutsSaid} (width) and ${pr('fit', 'line')}`),
       cavity_depth: d(cavityDepth, 'mm', `To the floor: the nut's corners bear on the sloping lips ${mm(g.lip + ((width - opening) / 2) * tan)} mm under the face, then its height, a fit and the floor's chamfer`, `${nutsSaid} (height) and ${pr('fit', 'chamfer')}`),
@@ -242,7 +253,8 @@ export function printedOf(b, pr, ends) {
   const p = b.profile, L = b.length, P = printerFigures('beamModel', pr.printer), mat = p.material, out = [];
   if (!mat?.figures?.strength || !mat.density) throw new Error(`beamModel: a printed beam is of a plastic with a strength and a density, and ${p.name} is of ${mat?.name ?? 'no material'}: give { material: 'pla' }`);
   const fig = (k) => (isNum(mat.figures[k]?.value) ? mat.figures[k].value : null), bed = P.n('bed'), overhang = P.n('overhang'), bridge = P.n('bridge'), line = P.n('line');
-  const lying = pr.pose === 'lying', S = lying ? fig('strength') : fig('strength_z') ?? fig('strength') * PRINTED_DEFAULTS.across.value, E = lying ? fig('modulus') : fig('modulus_z') ?? fig('modulus');
+  const lying = pr.pose === 'lying', S = lying ? fig('strength') : fig('strength_z') ?? r3(fig('strength') * PRINTED_DEFAULTS.across.value), E = lying ? fig('modulus') : fig('modulus_z') ?? fig('modulus');
+  const sAlong = fig('strength'), sAcross = fig('strength_z') ?? r3(sAlong * PRINTED_DEFAULTS.across.value);
   const sKind = lying || fig('strength_z') != null ? mat.figures.strength.kind : 'estimate', said = `${b.name}, printed ${lying ? 'lying down' : 'standing up'}`;
   // ---- can it print so ----
   const why = [];
@@ -272,9 +284,12 @@ export function printedOf(b, pr, ends) {
   for (const face of ['top', 'bottom', 'front', 'back']) for (const q of p.faces[face]) if (q.slot) {
     const s = p.slots[q.slot], nut = widestNut(s), wall = (face === 'top' || face === 'bottom' ? p.width : p.height) / (face === 'top' || face === 'bottom' ? p.cells[0] : p.cells[1]) / 2 - s.cavityWidth / 2;
     if (!nut) { out.push(finding('info', `${said}: no nut set of ${s.nutFamily} fits its ${face} slot, so its hold is not worked out`, 'beam.slot', { refs: { face, slot: s.name } })); continue; }
-    const st = lipStress(s, wall, { width: v(nut, 'width'), length: v(nut, 'length') }, pr.pull, PRINTED_DEFAULTS.spread.value), hold = r3((pr.pull * S) / st.stress), margin = r3(S / st.stress);
-    slots.push({ face, slot: s.name, nut: nut.name, hold, margin });
-    out.push(finding(margin >= PRINTED_DEFAULTS.margin.value - 1e-9 ? 'pass' : 'warn', `${said}: its ${face} slot's lips and walls hold ${mm(hold)} N on ${nut.name} (${mm(margin)} times a ${pr.pull} N pull${margin < PRINTED_DEFAULTS.margin.value ? `, under the ${PRINTED_DEFAULTS.margin.value} times a printed part is sized for` : ''}): the lips bend at their roots${s.lipAngle > 0 ? ', and the nut\'s corners push the side walls apart on the sloped lips' : ''}. An estimate, from ${S} MPa and the pull spread one lip's thickness beyond the nut`, 'beam.slot', { values: { hold, margin, pull: pr.pull, stress: r3(st.stress) }, refs: { face, slot: s.name, nut: nut.name, kind: 'estimate' } }));
+    // a plate bends with its stress running from its root out across it: lying down, a top or bottom slot's lips lie in
+    // the layers (along them) and its walls stand through them (across); a side slot's the other way round; standing up, all across
+    const st = lipStress(s, wall, { width: v(nut, 'width'), length: v(nut, 'length') }, pr.pull, PRINTED_DEFAULTS.spread.value), flat = face === 'top' || face === 'bottom';
+    const sLip = lying && flat ? sAlong : sAcross, sWall = lying && !flat ? sAlong : sAcross, h = slotHold(st, pr.pull, sLip, sWall), { hold, margin } = h;
+    slots.push({ face, slot: s.name, nut: nut.name, hold, margin, governs: h.governs });
+    out.push(finding(margin >= PRINTED_DEFAULTS.margin.value - 1e-9 ? 'pass' : 'warn', `${said}: its ${face} slot's lips and walls hold ${mm(hold)} N on ${nut.name} (${mm(margin)} times a ${pr.pull} N pull${margin < PRINTED_DEFAULTS.margin.value ? `, under the ${PRINTED_DEFAULTS.margin.value} times a printed part is sized for` : ''}), the ${h.governs === 'wall' ? 'walls' : 'lips'} the weaker: the lips bend at their roots${s.lipAngle > 0 ? ', and the nut\'s corners push the side walls apart on the sloped lips' : ''}. An estimate, from ${sLip} MPa in the lips and ${sWall} MPa in the walls (${lying ? `the plastic's strength ${flat ? 'along its layers in the lips, across them in the walls' : 'across its layers in the lips, along them in the walls'}` : 'across its layers, standing up'}) and the pull spread one lip's thickness beyond the nut`, 'beam.slot', { values: { hold, margin, pull: pr.pull, stress: r3(st.stress), lip: sLip, wall: sWall }, refs: { face, slot: s.name, nut: nut.name, governs: h.governs, kind: 'estimate' } }));
   }
   // ---- the ends: an insert or a captive nut in place of a tap ----
   const endFix = {};
