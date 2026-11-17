@@ -241,7 +241,7 @@ export function frameChecks(s, f, helpers) {
     { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, loose: fm.loose, rests } });
 
   // ---- frame.deflection: each load's point, each named point, every guide ----
-  const worst = (fn) => { let w = null; for (const r of results) { const v = fn(r.spring, r), v0 = fn(r.rigid, r); if (!w || v.sag > w.sag) w = { ...v, rigid: v0.sag, case: r.case }; } return w; };
+  const worst = (fn) => { let w = null; for (const r of results) { const v = fn(r.spring, r), v0 = fn(r.rigid, r); if (!w || v.sag > w.sag) w = { ...v, rigid: v0.sag, case: { ...r.case, alone: r.alone } }; } return w; };
   const limitFor = (b, own) => {
     if (own) return { value: own.value, from: `${own.from}` };
     if (s.a.frame?.limit != null) return { value: s.num(s.a.frame.limit), from: 'the assembly\'s frame.limit' };
@@ -257,8 +257,8 @@ export function frameChecks(s, f, helpers) {
   for (const l of fm.loads) {
     const b = l.beam ?? l.mount.beam, zOf = (values) => (l.beam ? l.z : fm.mountStation(l.mount, values));
     const w = worst((res, r) => ({ sag: sagAt(res, fm.nodeAt(b, zOf(r.values)), down) }));
-    const one = results[0].alone?.get(l);
-    report(`${b.id} at ${l.where}`, l.where, b, w, null, one ? { ...one, what: `the ${n3(l.kg, 3)} kg there` } : null, fm.nodes[fm.nodeAt(b, zOf(fm.cases[0].values))]);
+    const one = w.case.alone?.get(l);
+    report(`${b.id} at ${l.where}`, l.where, b, w, null, one ? { ...one, what: `the ${n3(l.kg, 3)} kg there` } : null, fm.nodes[fm.nodeAt(b, zOf(w.case.values))]);
   }
   for (const p of fm.points) { const n = fm.nodeAt(p.beam, p.z), w = worst((r) => ({ sag: sagAt(r, n, down) })); report(`${p.beam.id} at ${p.where}`, p.where, p.beam, w, null, null, fm.nodes[n]); }
   for (const g of fm.guides) {
@@ -352,9 +352,9 @@ export function frameChecks(s, f, helpers) {
 function solveAll(fm) {
   let fs, fr;
   try { fs = solveFrame(fm.model); fr = solveFrame(fm.rigid); } catch (e) { return { error: e.message, code: e.code }; }
-  const results = fm.cases.map((c, i) => {
+  const results = fm.cases.map((c) => {
     const loads = fm.nodeLoads(c.values), spring = fs.statics({ loads }), rigid = fr.statics({ loads }), out = { case: c, loads, spring, rigid, values: c.values };
-    if (i === 0) { out.alone = new Map(); for (const l of fm.loads) { const ll = fm.nodeLoads(c.values, l), n = ll[0]?.node; if (!n) continue; out.alone.set(l, { sag: sagAt(fs.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down), rigid: sagAt(fr.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down) }); } }
+    { out.alone = new Map(); for (const l of fm.loads) { const ll = fm.nodeLoads(c.values, l), n = ll[0]?.node; if (!n) continue; out.alone.set(l, { sag: sagAt(fs.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down), rigid: sagAt(fr.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down) }); } }
     return out;
   });
   // each element's start along its beam, for sagAlong

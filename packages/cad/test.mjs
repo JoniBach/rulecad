@@ -4085,6 +4085,15 @@ test('frame checks: a shelf frame with 5 kg at mid-span sags as a hand calculati
     const x1 = by('frame.stress').find((x) => x.refs.beam === 'x1');
     assert.equal(x1.level, 'fail');
     assert.match(x1.text, /^x1: \d+\.\d+ MPa at worst .* against al6n01-t5's 205 MPa: 0\.\d+ times under it, where about 2 is wanted/);
+    // a moving mass: a cart sliding along x2 (a bearing standing in for it, 2 kg on it), from 50 to 300 mm along: solved
+    // at each end of its travel and as drawn, the worst named; and a named point, x2's middle
+    write({ ...shelf, items: [...shelf.items, { id: 'cart', bought: 'bearing-608' }], joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x2', at: [0, 10, 50], axis: [0, 0, 1] }, child: { item: 'cart', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 250 }],
+      loads: [...shelf.loads, { mass: 2, at: 'cart.bore' }], frame: { points: ['x2.top@50%'] } });
+    r = probe();
+    assert.match(by('frame.solve')[0].text, /1 item mounted on it and 2 loads, in 3 poses/);
+    const cart = by('frame.deflection').find((x) => x.refs.where === 'cart.bore'), mid = by('frame.deflection').find((x) => x.refs.where === 'x2.top@50%');
+    assert.deepEqual([cart.refs.pose, mid.refs.pose, Math.round(cart.at[0])], ['slide at 250', 'slide at 250', 310]);
+    assert.ok(cart.values.alone > 0.05 && cart.values.sag > cart.values.alone, JSON.stringify(cart.values));
     // refused by name: a support on what is not a beam of the frame
     write({ ...shelf, frame: { supports: { 'q9.a': 'pinned' } } });
     r = probe();
