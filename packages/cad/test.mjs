@@ -3070,6 +3070,24 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.match(cad('list', 'frame/frame'), /2 ×\s+slot-nut-6-misumi-m4-drop-in\s+.*plate to x1\.top/);
     // and with them, cad order loads y1's nuts on the step before the join that closes their slot
     assert.match(cad('order', 'frame/frame'), new RegExp(`\\d+\\. Load${load.slice(4).replace(/[().@×]/g, '\\$&')}: the next step makes that join\\n\\s+\\d+\\. y1 goes on, joined to p1`));
+    // into a slot at a distance places the screws as a group: the plate's two screws at 140 and 160 mm, their middle at
+    // 150, pass x1.top@150 (each held to it alone, both failed); 20 mm away fails once, with both screws' spread
+    const placed = JSON.parse(JSON.stringify(a)); placed.fasten[0].nut = 'drop-in'; placed.fasten[0].into = 'x1.top@150'; write(placed); r = probe();
+    assert.deepEqual(by('fasten.slot', 0).map((x) => x.level), ['pass', 'pass', 'pass']);
+    assert.ok(by('fasten.slot', 0).some((x) => /the middle of its 2 screws \(140 to 160 mm from x1's end a\) is 150 mm along x1's top slot, where into says x1\.top@150$/.test(x.text)));
+    placed.fasten[0].into = 'x1.top@170'; write(placed); r = probe();
+    assert.deepEqual(by('fasten.slot', 0).filter((x) => x.level === 'fail').map((x) => [x.values.along, x.values.wanted, x.values.distance]), [[150, 170, 20]]);
+    assert.match(by('fasten.slot', 0).find((x) => x.level === 'fail').text, /the middle of its 2 screws \(140 to 160 mm from x1's end a\) is 150 mm along x1's top slot, and into says x1\.top@170, 170 mm: 20 mm apart, where their holes give 0\.3 mm\. Move plate 20 mm along x1/);
+    // one place written two ways: p1's own access hole at front@120 and the join's at front.1@120 are one hole, sized for
+    // the button head's 3 mm key (m5.button_key), not a cap screw's 4 mm
+    const twice = JSON.parse(JSON.stringify(a)); twice.fasten[0].nut = 'drop-in'; twice.items[0].beam.ops = [{ op: 'access', at: 'front@120', thread: 'M5', head: 'button', through: 'beam' }]; write(twice);
+    assert.equal((cad('list', 'frame/frame').split('\n').find((l) => /\sp1$/.test(l)).match(/access Ø[\d.]+ at front/g) || []).length, 1);
+    const sheetOf = cad('beams', 'frame/frame').match(/mark \w+ \([^)]*\bp1\b[^)]*\), 1:\d+: (\S+)/)[1], sheet = fs.readFileSync(path.join(ws, sheetOf), 'utf8');
+    assert.match(sheet, /access hole Ø5\.3 mm in front\.1, 120 mm from end a \(80 from end b\), 14 mm deep \(through to the far side\) for a 3 mm key/);
+    assert.doesNotMatch(sheet, /4 mm key/);
+    // a plate 2.999 mm thick: the stack is said to a hundredth, never "4.999 mm under its head"
+    const fine = JSON.parse(JSON.stringify(a)); fine.fasten[0].nut = 'drop-in'; fine.items[5].set = { thick: 2.999 }; write(fine); r = probe();
+    assert.match(by('fasten.length', 0)[0].text, /M4x8 button chosen, the shortest sold that fits: 5 mm under its head \(plate and the slot's 2 mm lip\), 3\.8 mm into its nut/);
     // a plate drawn for slots 30 mm apart across a 2040's top face, whose slots are 20 mm apart: each screw 5 mm off
     const wide = JSON.parse(JSON.stringify(a));
     wide.items[2].beam.profile = '2040-misumi-hfs5'; wide.items[2].from = [0, 0, 10]; wide.items[2].to = [300, 0, 10]; wide.joins = [];
@@ -3171,8 +3189,12 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
       const { buildData } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/buildpage.mjs')).href)});
       const { frameBuild, frameStepPictures } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/framebuild.mjs')).href)});
       const s = await buildAssembly('frame/box'), f = checkAssembly(s), page = (await buildData(s)).build, b = page.frame, pics = frameStepPictures(s, frameBuild(s));
-      console.log(JSON.stringify({ order: page.order, pictures: pics.map((p) => p.n).join(), bench: [...new Set(pics.find((p) => p.n === 10).parts.map((p) => p.item))].sort(), moving: [...new Set(pics.find((p) => p.n === 10).parts.filter((p) => p.role === 'part').map((p) => p.item))], square: f.filter((x) => x.code === 'frame.square').map((x) => [x.level, x.refs.beams.join(), x.values.accept]), seat: f.find((x) => x.code === 'fasten.seat' && /x1\\.a/.test(x.text)), page: { steps: b.steps.length, bays: b.bays.map((x) => x.diagonal), torques: b.torques.length, stuck: b.stuck } }));
+      console.log(JSON.stringify({ order: page.order, pictures: pics.map((p) => p.n).join(), bench: [...new Set(pics.find((p) => p.n === 10).parts.map((p) => p.item))].sort(), moving: [...new Set(pics.find((p) => p.n === 10).parts.filter((p) => p.role === 'part').map((p) => p.item))], square: f.filter((x) => x.code === 'frame.square').map((x) => [x.level, x.refs.beams.join(), x.values.accept]), nut: f.find((x) => x.code === 'frame.nut' && /bracket/.test(x.text)).text, preload: f.find((x) => x.code === 'frame.preload').refs, steps: f.find((x) => x.code === 'assembly.order').values.steps, seat: f.find((x) => x.code === 'fasten.seat' && /x1\\.a/.test(x.text)), page: { steps: b.steps.length, bays: b.bays.map((x) => x.diagonal), torques: b.torques.length, stuck: b.stuck } }));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // frame.nut and frame.preload name every closure on the nuts' way: both heads, and foot1 at end a beyond them
+    assert.match(r.nut, /go into p1's back slot before a join closes its way, from end a, past 30 and 250 mm \(foot1 off until then\), before the first made of the blind join of x1\.a to p1\.back@30 and the blind join of x3\.a to p1\.back@250, each of which closes that way \(or through end b before cap1 goes on\) \(frame\.preload\)$/);
+    assert.deepEqual([r.preload.joins, r.preload.way], [[4, 0], 'a']);
+    assert.equal(r.steps, 23, 'cad check counts the frame build\'s steps');
     assert.deepEqual(r.square, [['info', 'p1,p2,x1,x3', 0.79], ['info', 'p1,p4,y1,y3', 0.76], ['info', 'p2,p3,y2,y4', 0.76], ['info', 'p3,p4,x2,x4', 0.79]]);
     assert.deepEqual([r.seat.level, r.seat.values.area, r.seat.values.limit, r.seat.values.torque], ['pass', 17.94, 205, 3.68]);
     assert.match(r.seat.text, /on al6n01-t5 \(205 MPa\) the 17\.9 mm² either side of the opening takes 3677 N, a tightening of 3\.68 N m \(the lips' bending not counted: an estimate\)/);
@@ -3197,6 +3219,15 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     fs.writeFileSync(file, JSON.stringify(low));
     const lowSteps = cad('order', 'frame/box').split('\n').filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim().replace(/^\d+\. /, ''));
     assert.match(lowSteps[lowSteps.findIndex((l) => /^plate goes on$/.test(l)) + 1], /^Side 1 \(p1, p2, x1 and x3\): x3 goes on, joined to p1 and p2$/);
+    // cad check counts the frame's build, and fasten.access names x3's step as cad order numbers it; where the build is
+    // refused (the plate on slide-in nuts), it names no step of a build that is never printed
+    const lowCheck = cad('check', 'frame/box'), x3Step = lowSteps.findIndex((l) => /x3 goes on/.test(l)) + 1;
+    assert.match(lowCheck, new RegExp(`✓ goes together in ${lowSteps.length} steps from bars to a square frame \\(cad order\\), p1 first`));
+    assert.match(lowCheck, new RegExp(`plate to x1\\.top, 2 M4 button screws: a 2\\.5 mm hex key reaches the head before x3 \\(step ${x3Step}\\) goes on over it`));
+    low.fasten[0].nut = 'slide-in'; fs.writeFileSync(file, JSON.stringify(low));
+    const lowRefused = cad('check', 'frame/box');
+    assert.match(lowRefused, /plate to x1\.top, 2 M4 button screws: a 2\.5 mm hex key reaches the head before x3 goes on over it/);
+    assert.match(lowRefused, /✗ no build from bars to a square frame: x1's top slot: 2 slide-in nuts/);
     // a side goes on as one only where its joins let it: a middle rail m from x3 to x4 puts a head in x4's slot, which runs
     // across the posts' slots that the y rails' heads slide along, so side 2 is built on the frame beam by beam, and says why
     const mid = JSON.parse(JSON.stringify(base));
@@ -3212,9 +3243,21 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     // slot from an end before that beam goes on, and m's join made with it in place (x4's slot runs across the way x4
     // goes on, down p4's slot, too)
     assert.match(midText, /\d+\. Slide an M5x12 button screw into x3's back slot head first, through its end a, to 130 mm, for the blind join of m\.a to x3\.back@130, before the blind join of x3\.a to p1\.back@250 is made: that join is made with it in place, the screw turned into m's end through the access hole\n\s+\d+\. Side 1 \(p1, p2, x1 and x3\): x3 goes on/);
-    assert.match(midText, /\d+\. Slide an M5x12 button screw into x4's front slot head first, through its end a, to 130 mm, for the blind join of m\.b to x4\.front@130, .*\n(\s+[^\d].*\n)*\s+\d+\. x4 goes on, joined to p4 and m/);
+    const midSteps = midText.split('\n').filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim().replace(/^\d+\. /, '')), x4At = midSteps.indexOf('x4 goes on, joined to p4 and m');
+    assert.match(midSteps[x4At - 1], /^Slide an M5x12 button screw into x4's front slot head first, through its end a, to 130 mm, for the blind join of m\.b to x4\.front@130, /);
     assert.doesNotMatch(midText, /Side 2/);
   } finally { done(); }
+});
+
+test('a screw\'s way: the anchor\'s axis is turned for a tie only where the part is astride what it is screwed into', async () => {
+  const { screwFlips } = await import('./lib/fasten.mjs');
+  // a saddle's legs either side of a beam, centred on it: the tie the guides' holders make, the axis turned
+  assert.equal(screwFlips([-15, 15], [-10, 10]), true);
+  // a tie any other way keeps the axis as it was before that rule: a part within the other's reach, or level with it
+  assert.equal(screwFlips([-5, 5], [-10, 10]), false);
+  assert.equal(screwFlips([-10, 10], [-10, 10]), false);
+  // no tie: toward the far part, as ever
+  assert.equal(screwFlips([0, 3], [3, 10]), false); assert.equal(screwFlips([3, 10], [0, 3]), true);
 });
 
 test('printed fittings: a bracket join with "fitting": "printed" adds a printed corner bracket on the side with room, its two screws into slot nuts, its grams on the list and its own stiffness', () => {
