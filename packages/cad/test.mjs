@@ -2236,6 +2236,64 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('cad measured from the joint rig: a drop read on the dial becomes the join\'s spring, measured, in the rule it came from, and the prediction moves to match; a slot nut\'s hold along its slot lands in its set', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/home', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: [] }));
+    // the rig as MEASURE.md builds it: a base beam, three beams held out from it by one join each, 2 kg on each one's end
+    const beam = (id, x, ops) => ({ id, beam: { profile: '2020-misumi-hfs5', ...(ops ? { ops: [{ op: 'tap', at: 'b', thread: 'M5', depth: 18.5 }] } : {}) }, from: [x, -10, 10], to: [x, -160, 10] });
+    fs.writeFileSync(at('assemblies/rig.json'), JSON.stringify({ title: 'Rig', kind: 'fit',
+      items: [{ id: 'b0', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 10], to: [400, 0, 10] }, beam('c1', 80, true), beam('c2', 200, true), beam('c3', 320, true)],
+      joins: [{ kind: 'blind', a: 'c1.a', b: 'b0.front@80' }, { kind: 'bracket', a: 'c2.a', b: 'b0.front@200', fitting: 'printed', nut: 'slide-in' }, { kind: 'anchor', a: 'c3.a', b: 'b0.front@320', fitting: 'fitting-misumi-hmj5' }],
+      loads: ['c1', 'c2', 'c3'].map((c) => ({ mass: 2, at: `${c}.b` })) }));
+    const check = () => JSON.parse(cad('check', 'home/rig', '--json')).findings;
+    const drop = (f, id) => f.find((x) => x.code === 'join.drop' && x.refs.beam === id), spring = (f, a) => f.find((x) => x.code === 'join.stiffness' && x.refs.a === a);
+    const before = check(), F = 2 * 9.80665, L = 150, EI = 69972 * 7420;
+    // the drop: the beam's own bending and the join turning, each said, with where the measured spring goes
+    const d1 = drop(before, 'c1');
+    assert.deepEqual([d1.values.arm, d1.values.beam, d1.values.join, d1.predict.name, d1.refs.rule], [L, +(F * L ** 3 / (3 * EI)).toFixed(3), +(F * L * L / 1.5e6).toFixed(3), 'c1.drop', 'joins.blind_bending']);
+    assert.match(d1.text, /2 kg at c1\.b, 150 mm out from b0's face, drops it 0\.337 mm: 0\.042 mm the beam's own bending .* and 0\.294 mm the join turning on its 1\.500 N·m\/mrad spring \(an estimate, until the joint rig \(issue 264\) measures it\)\. .*cad measured home\/rig c1\.drop=<mm>/);
+    assert.deepEqual([drop(before, 'c2').refs.rule, drop(before, 'c3').refs.rule], ['joins.bracket_printed_share', 'fitting-misumi-hmj5.bending_stiffness']);
+    const fe = spring(before, 'c2.a').refs.rests[0].value, beamDrop = drop(before, 'c1').predict.rig.beam;
+    // a drop no more than the beam bends by itself is refused, and nothing is written
+    assert.match(cad('measured', 'home/rig', 'c1.drop=0.03'), /c1\.drop: 0\.03 mm is no more than the 0\.042 mm the beam bends by itself .*stiffer than solid metal/);
+    assert.ok(!fs.existsSync(path.join(ws, 'rules/joins.json')) || JSON.parse(fs.readFileSync(path.join(ws, 'rules/joins.json'), 'utf8')).rules.blind_bending.kind === 'estimate', 'nothing measured written');
+    const out = cad('measured', 'home/rig', 'c1.drop=0.5', 'c2.drop=3', 'c3.drop=0.4', 'slot-nut-6-misumi-m5-slide-in.hold_along=420');
+    assert.match(out, /c1\.drop: measured 0\.5 mm, predicted 0\.337/);
+    assert.match(out, /slot-nut-6-misumi-m5-slide-in\.hold_along: measured 420 N/);
+    const today = new Date().toISOString().slice(0, 10), own = (n) => JSON.parse(fs.readFileSync(path.join(ws, `rules/${n}.json`), 'utf8')).rules;
+    // each spring in its rule, measured, with the drop it came from: the kind's (a 20 mm profile), a printed fitting's
+    // share of its own finite-element figure, and a bought fitting's own
+    const k1 = (F * L * L) / (0.5 - beamDrop), joins = own('joins'), anchor = own('fitting-misumi-hmj5'), nut = own('slot-nut-6-misumi-m5-slide-in');
+    assert.equal(joins.blind_bending.value, Number(k1.toPrecision(4)));
+    assert.equal(joins.bracket_printed_share.value, Number(((F * L * L) / (3 - beamDrop) / fe).toPrecision(4)));
+    assert.equal(anchor.bending_stiffness.value, Number(((F * L * L) / (0.4 - beamDrop)).toPrecision(4)));
+    for (const r of [joins.blind_bending, joins.bracket_printed_share, anchor.bending_stiffness, nut.hold_along]) { assert.equal(r.kind, 'measured'); assert.equal(r.checked, today); assert.match(r.source, /joint rig/); }
+    assert.match(joins.blind_bending.source, /0\.5 mm drop of c1 under 19\.613 N at 150 mm .*less the beam's own 0\.042 mm/);
+    assert.deepEqual([joins.blind_twist.kind, joins.end_tap_bending.kind, nut.hold_along.unit], ['estimate', 'estimate', 'N'], 'only what was measured');
+    assert.match(nut.hold_along.rule, /slips/);
+    // the kit's own rule sets are untouched, and it has no joins set of its own
+    assert.ok(!fs.existsSync(new URL('../rules/joins.json', import.meta.url)));
+    assert.equal(JSON.parse(fs.readFileSync(new URL('../rules/fitting-misumi-hmj5.json', import.meta.url), 'utf8')).rules.bending_stiffness.kind, 'estimate');
+    // checked again: each spring says it was measured and when, and each drop predicted is now the one measured
+    const after = check();
+    for (const [id, d] of [['c1', 0.5], ['c2', 3], ['c3', 0.4]]) assert.ok(Math.abs(drop(after, id).predict.value - d) < 0.002, `${id}: ${drop(after, id).predict.value} against ${d}`);
+    assert.match(spring(after, 'c1.a').text, new RegExp(`bending measured on the joint rig on ${today}; twist an estimate until the rig measures it`));
+    assert.match(spring(after, 'c2.a').text, new RegExp(`times the [\\d.]+ a printed bracket join keeps of it, measured on the joint rig on ${today}`));
+    assert.match(spring(after, 'c3.a').text, new RegExp(`\\(measured: .*\\): bending measured on the joint rig on ${today}`));
+    assert.match(drop(after, 'c1').text, /bending measured on the joint rig on/);
+    // the slot nut, read from the workspace's set, says its hold along the slot and that it was measured
+    const { framesContext } = await import(pathToFileURL(path.join(path.dirname(BIN), '../lib/frames.mjs')).href);
+    const { slotNutModel } = await import('@rulecad/frames');
+    const m = slotNutModel('slot-nut-6-misumi-m5-slide-in', {}, { sets: framesContext(path.join(ws, 'rules')).sets });
+    assert.deepEqual([m.holdAlong.value, m.holdAlong.kind], [420, 'measured']);
+    assert.match(m.findings.find((x) => x.code === 'slot_nut.hold_along').text, new RegExp(`slips along the slot at 420 N: measured on ${today}`));
+    assert.match(cad('history', 'home/rig'), /c1\.drop: measured 0\.5 mm, predicted 0\.337/);
+  } finally { done(); }
+});
+
 test('wires: longest through the poses, a gauge against what it carries, the sheet; a bad route refused by name', async () => {
   const { ws, cad, done } = workspace();
   try {
