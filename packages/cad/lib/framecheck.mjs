@@ -26,6 +26,7 @@ import { paths } from './workspace.mjs';
 import { massesOf } from './loads.mjs';
 import { axisOf, workingSpeed } from './motors.mjs';
 import { joinStiffness, PANEL_DEFAULTS } from '@rulecad/frames';
+import { printableCheck, couponChecks, printedOption } from './frameprint.mjs';
 
 const G = 9.80665;
 const FEET = ['foot', 'levelling-foot', 'castor-plate', 'stacking-foot'];
@@ -124,11 +125,12 @@ export function frameModelOf(s, helpers) {
   if (!motion || !s.objects.some((o) => o.beam && !o.unplaced)) return null;
   // beams with no joins and nothing said of their supports are parts held by other means (fastened to a plate, a lone
   // upright on a printed base): not a frame to solve
-  if (!s.joins?.length && !['supports', 'limit', 'points', 'rack'].some((k) => s.a.frame?.[k] != null)) return null;
+  if (!s.joins?.length && !['supports', 'limit', 'points', 'rack', 'printed'].some((k) => s.a.frame?.[k] != null)) return null;
   const { placeItems, jointValues, mul } = helpers, ids = motion.items.map((x) => x[0]), base = jointValues(motion, motion.pose ?? undefined), worlds = placeItems(motion, base);
   const opts = s.a.frame ?? {};
-  if (typeof opts !== 'object' || Array.isArray(opts)) throw new Error(`frame is { "supports", "limit", "points", "rack", "cut", "heat" } (got ${shown(opts)})`);
-  for (const k of Object.keys(opts)) if (!['supports', 'limit', 'points', 'rack', 'cut', 'heat'].includes(k)) throw new Error(`frame has no "${k}": it takes supports, limit, points, rack, cut, heat`);
+  if (typeof opts !== 'object' || Array.isArray(opts)) throw new Error(`frame is { "supports", "limit", "points", "rack", "cut", "heat", "printed" } (got ${shown(opts)})`);
+  for (const k of Object.keys(opts)) if (!['supports', 'limit', 'points', 'rack', 'cut', 'heat', 'printed'].includes(k)) throw new Error(`frame has no "${k}": it takes supports, limit, points, rack, cut, heat, printed`);
+  printedOption(opts.printed);
   if (opts.rack != null) {
     if (typeof opts.rack !== 'object' || Array.isArray(opts.rack)) throw new Error(`frame.rack is { "load": 20, "limit": 1 }: the side push in N and the sway allowed in mm (got ${shown(opts.rack)})`);
     for (const k of Object.keys(opts.rack)) if (!['load', 'limit'].includes(k)) throw new Error(`frame.rack has no "${k}": it takes load (N) and limit (mm)`);
@@ -147,7 +149,8 @@ export function frameModelOf(s, helpers) {
     const W = worlds[k], m = o.beam, L = m.length, A = rowsAt(W, [0, 0, 0]), u = [W[2], W[6], W[10]], top = [W[1], W[5], W[9]];
     const mat = m.profile.material, F = m.figures, E = m.material?.modulus ?? mat?.modulus, nu = mat?.poisson ?? mat?.figures?.poisson?.value;
     const Gs = mat?.figures?.shear_modulus?.value ?? (E && nu != null ? E / (2 * (1 + nu)) : null), grams = m.weight?.sheet ?? m.mass ?? 0;
-    const strength = mat?.strength ?? mat?.figures?.strength?.value ?? null;
+    // a printed beam's strength is the plastic's for its pose: along its layers lying down, across them standing up
+    const strength = m.printed?.strength ?? mat?.strength ?? mat?.figures?.strength?.value ?? null;
     beams.set(o.id, { id: o.id, k, m, L, W, A, u, top, E, G: Gs, strength, alloy: m.material?.name ?? mat?.name ?? null, grams,
       section: { A: F.area.value, Iy: F.inertiaX.value, Iz: F.inertiaY.value, J: F.torsion.value, Wy: F.modulusX.value, Wz: F.modulusY.value }, stations: new Set([0, L]) });
   }
@@ -224,9 +227,11 @@ export function frameModelOf(s, helpers) {
     for (const [addr, how] of Object.entries(opts.supports)) {
       const id = addr.split('.')[0], b = beams.get(id);
       if (!b) throw new Error(`frame.supports: "${addr}" is on a beam of the frame, as z1.a or x1.bottom@50% (beams: ${[...beams.keys()].join(', ')})`);
-      if (!['pinned', 'fixed'].includes(how)) throw new Error(`frame.supports: "${addr}" is held pinned (from moving) or fixed (from turning too) (got ${shown(how)})`);
+      if (!['pinned', 'fixed', 'resting'].includes(how)) throw new Error(`frame.supports: "${addr}" is held pinned (from moving), fixed (from turning too) or resting (from moving and from twisting about the beam's length: a beam lying across a round bar) (got ${shown(how)})`);
+      const k = b.u.findIndex((c) => Math.abs(Math.abs(c) - 1) < 1e-6);
+      if (how === 'resting' && k < 0) throw new Error(`frame.supports: "${addr}" rests on a bar, held from twisting about its length, and ${id} does not run along x, y or z: hold it pinned or fixed`);
       const r = motion.address(addr, 'frame.supports');
-      supports.push({ where: addr, beam: b, z: snap(b, Math.max(0, Math.min(b.L, r.frame[11]))), how, why: 'frame.supports', said: true });
+      supports.push({ where: addr, beam: b, z: snap(b, Math.max(0, Math.min(b.L, r.frame[11]))), how, why: 'frame.supports', said: true, ...(how === 'resting' ? { twist: `r${'xyz'[k]}` } : {}) });
     }
   } else {
     for (const it of s.a.items || []) {
@@ -294,7 +299,7 @@ export function frameModelOf(s, helpers) {
     webs.push(w); heldSheets.push({ ...p, bay: bays.indexOf(bay) }); elements.push(w.element);
   }
   const supportMap = {};
-  for (const sp of supports.filter(keep)) supportMap[nodeAt(sp.beam, sp.z)] = sp.how === 'fixed' ? 'fixed' : { x: true, y: true, z: true };
+  for (const sp of supports.filter(keep)) supportMap[nodeAt(sp.beam, sp.z)] = sp.how === 'fixed' ? 'fixed' : { x: true, y: true, z: true, ...(sp.twist ? { [sp.twist]: true } : {}) };
   const withSprings = (rigid) => ({ nodes, sections, materials, supports: supportMap, gravity: scale(down, G),
     elements: elements.map((q) => { const sp = rigid ? [] : springs.filter((p) => p.el === q); return sp.length ? { ...q, ends: Object.fromEntries(sp.map((p) => [p.end, { rx: p.x.k.twist, ry: p.x.k.bending, rz: p.x.k.bending }])) } : q; }) });
 
@@ -461,6 +466,9 @@ export function frameChecks(s, f, helpers) {
   } catch (e) { if (e.code !== 'fea.frame.compression') f('info', `the frame's own buckling factor is not found: ${e.message}`, null, { code: 'frame.buckling' }); }
   try { rackCheck(s, fm, f, { restsJoins, restsOn }); } catch (e) { f('info', `the frame's racking is not found: ${e.message}`, null, { code: 'frame.rack' }); }
   try { frequencyCheck(s, fm, f, { restsJoins, restsOn }); } catch (e) { f('info', `the frame's modes are not found: ${e.message}`, null, { code: 'frame.frequency' }); }
+  const ctx = { results, limitFor, sagAt, sagAlong, excitesOf, restsJoins, restsOn, margin };
+  try { couponChecks(s, fm, f, ctx); } catch (e) { f('info', `the beam coupon's figures are not predicted: ${e.message}`, null, { code: 'beam.coupon' }); }
+  if (s.a.frame?.printed != null) try { printableCheck(s, fm, f, ctx); } catch (e) { f('info', `which beams can be printed is not found: ${e.message}`, null, { code: 'beam.printable' }); }
   return { model: fm, results };
 }
 
@@ -533,6 +541,19 @@ function rackCheck(s, fm, f, { restsJoins, restsOn }) {
 }
 
 /**
+ * What the machine shakes its frame at: each stepper drive's full-step rate at its working speed, and the task's moves
+ * (a move ramping in t seconds shakes the frame at about 1/t).
+ * @param {object} s a built assembly
+ * @returns {{ kind: 'step' | 'move', what: string, Hz: number, from: string }[]}
+ */
+export function excitesOf(s) {
+  const excites = [];
+  for (const d of s.motion.drives ?? []) if (d.model?.stepAngle) { const rpm = workingSpeed(d.model, d.spec), at = (rpm / 60) * (360 / d.model.stepAngle); excites.push({ kind: 'step', what: `${d.id}'s full steps at ${n3(rpm, 1)} rpm`, Hz: at, from: d.spec.speed != null ? 'the motor item\'s speed' : `the working speed of a ${d.model.name}` }); }
+  if (s.task?.speed) { const acc = s.task.accel ?? FRAME_CHECK.ramp.value, t = s.task.speed / acc; excites.push({ kind: 'move', what: `the task's moves, ramping to ${n3(s.task.speed, 1)} mm/s in ${n3(t, 3)} s`, Hz: 1 / t, from: s.task.accel != null ? 'the task\'s speed and accel' : 'the task\'s speed and frame.ramp' }); }
+  return excites;
+}
+
+/**
  * frame.frequency: the frame's lowest modes in each pose, with its beams' own mass and every carried item's and load's
  * mass lumped where it is carried, against what the machine excites: each stepper's full-step rate at its working
  * speed (a mode near it rings while the motor runs at that speed), and the task's moves (a move ramping in t seconds
@@ -545,9 +566,7 @@ function frequencyCheck(s, fm, f, { restsJoins, restsOn }) {
   const hz = worst.r.frequencies, low = hz[0], rigid = solveIn(fm.rigid, worst.c.values, 1).frequencies[0];
   const shape = worst.r.modes[0].shape, lead = Object.entries(shape).reduce((p, q) => (Math.hypot(...q[1].slice(0, 3)) > Math.hypot(...p[1].slice(0, 3)) ? q : p)), beam = lead[0].split(/[.@#/]/)[0];
   const carried = Object.values(fm.nodeMasses(worst.c.values)).reduce((t, x) => t + x, 0), own = [...fm.beams.values()].reduce((t, b) => t + b.grams / 1000, 0);
-  const excites = [];
-  for (const d of s.motion.drives ?? []) if (d.model?.stepAngle) { const rpm = workingSpeed(d.model, d.spec), at = (rpm / 60) * (360 / d.model.stepAngle); excites.push({ kind: 'step', what: `${d.id}'s full steps at ${n3(rpm, 1)} rpm`, Hz: at, from: d.spec.speed != null ? 'the motor item\'s speed' : `the working speed of a ${d.model.name}` }); }
-  if (s.task?.speed) { const acc = s.task.accel ?? FRAME_CHECK.ramp.value, t = s.task.speed / acc; excites.push({ kind: 'move', what: `the task's moves, ramping to ${n3(s.task.speed, 1)} mm/s in ${n3(t, 3)} s`, Hz: 1 / t, from: s.task.accel != null ? 'the task\'s speed and accel' : 'the task\'s speed and frame.ramp' }); }
+  const excites = excitesOf(s);
   const margin = FRAME_CHECK.margin.value, band = FRAME_CHECK.band.value;
   const moves = excites.filter((x) => x.kind === 'move'), steps = excites.filter((x) => x.kind === 'step');
   const need = moves.length ? Math.max(...moves.map((x) => x.Hz)) * margin : 0, near = steps.map((x) => ({ ...x, modes: [...new Set(hz.filter((h) => Math.abs(h - x.Hz) <= band * x.Hz).map((h) => n3(h, 1)))] })).filter((x) => x.modes.length);
