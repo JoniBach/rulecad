@@ -12,6 +12,7 @@ import { solidFill } from './optimise.mjs';
 import { materialOf } from './list.mjs';
 import { axisOf, trainFrom, workingSpeed, atCurrent } from './motors.mjs';
 import { sample, chainOf } from './task.mjs';
+import { carriageChecks } from './guides.mjs';
 
 const G = 9.80665, sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], scale = (a, k) => a.map((x) => x * k);
@@ -45,7 +46,8 @@ export function massesOf(s, { placeItems, jointValues }) {
 const chainSet = (motion, names, q) => Object.fromEntries(names.map((n, i) => { const j = motion.joints.find((x) => x.id === n), lead = j?.follow && !names.includes(j.follow[0]) ? j.follow : null; return lead ? [lead[0], [(q[i] - (lead[2] ?? 0)) / (lead[1] ?? 1)]] : [n, [q[i]]]; }));
 // A mesh's bounding box, as lo and hi: a loop, as a large part's triangles overflow Math.min(...spread)
 function extent(tris) { const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity]; for (const t of tris) for (const p of t) for (let k = 0; k < 3; k++) { if (p[k] < lo[k]) lo[k] = p[k]; if (p[k] > hi[k]) hi[k] = p[k]; } return { lo, hi }; }
-const beyond = (motion, j, item) => { const by = new Map(motion.joints.map((x) => [x.child, x])); for (let i = item, n = 0; i >= 0 && n < 99; n++) { const x = by.get(i); if (!x) return false; if (x === j) return true; i = x.parent; } return false; };
+/** Whether an item moves with a joint: the joint is on its chain to the base. */
+export const beyond = (motion, j, item) => { const by = new Map(motion.joints.map((x) => [x.child, x])); for (let i = item, n = 0; i >= 0 && n < 99; n++) { const x = by.get(i); if (!x) return false; if (x === j) return true; i = x.parent; } return false; };
 
 // Force and moment about a joint's origin, at one pose
 function loadAt(motion, masses, payload, worlds, j, mul) {
@@ -59,7 +61,8 @@ function loadAt(motion, masses, payload, worlds, j, mul) {
 }
 
 // The poses the machine will be in: the task's samples, the named poses, or each joint at its ends
-function posesOf(s, jointValues) {
+/** The poses the machine will be in: the task's samples, the named poses, or each joint at its ends; and as drawn. */
+export function posesOf(s, jointValues) {
   const motion = s.motion, base = jointValues(motion, motion.pose ?? undefined), leads = Object.fromEntries(Object.entries(base).filter(([id]) => !motion.joints.find((x) => x.id === id)?.follow)), out = [];
   for (const p of Object.keys(motion.poses || {})) out.push({ label: `pose ${p}`, values: jointValues(motion, p) });
   if (s.task) { const { c, r } = sample(s), every = Math.max(1, Math.ceil(r.samples.length / 40)); r.samples.filter((x, i) => x.reachable && !(i % every)).forEach((x) => out.push({ label: 'on the task', point: x.point, values: jointValues(motion, { ...leads, ...chainSet(motion, c.names, x.q) }) })); }
@@ -99,6 +102,7 @@ export function momentChecks(s, f, helpers, masses, payload) {
   const mat = (() => { const n = materialOf(s.project).name; try { return Object.fromEntries(Object.entries(peekRuleSet(n).rules).map(([k, r]) => [k, r.value])); } catch { return null; } })();
   for (const j of motion.joints) {
     if (j.type !== 'revolute' && j.type !== 'prismatic') continue;
+    if (specs.get(j.id)?._guide) continue; // (a guide's carriage: carriageChecks holds it to its ratings)
     let worst = null;
     for (const p of poses) { const w = placeItems(motion, p.values), L = loadAt(motion, masses, payload, w, j, mul); if (!worst || L.tipping + L.radial / 50 > worst.L.tipping + worst.L.radial / 50) worst = { L, p, w }; }
     if (!worst || !worst.L.carried) continue;
@@ -214,6 +218,8 @@ function pinv2(J, v) {
 
 export function loadChecks(s, f, helpers) {
   const motion = s.motion;
+  // a guide's carriages are held to their ratings whether or not the machine has a task: they carry what is on them
+  if (s.guides?.length && motion?.joints?.length) carriageChecks(s, f, helpers, { masses: massesOf(s, helpers), beyond, poses: posesOf(s, helpers.jointValues) });
   if (!motion?.joints?.length || !(s.task || s.a.gravity)) return;
   const masses = massesOf(s, helpers), payload = s.task?.payload ? { kg: s.task.payload, item: motion.items.findIndex((x) => x[0] === s.task.item), point: s.task.point } : null;
   const unknown = masses.filter((m) => !m.known).map((m) => m.id);

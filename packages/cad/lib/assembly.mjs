@@ -53,6 +53,7 @@ import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
 import { expandPanels, panelBuilt, panelFindings } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
+import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
@@ -120,6 +121,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   // Services (lib/services.mjs): a bought board or supply on its printed mount, a wire's run along a slot held by clips
   let mounts = [], runs = [];
   if ((a.items || []).some((it) => it?.mount != null) || (a.wires || []).some((w) => (w?.via ?? []).some((v) => v && typeof v === 'object'))) ({ a, mounts, runs } = expandServices(a, num, undefined, plasticOf(project)));
+  // Guides (lib/guides.mjs): a rail on a beam's face, its screws into the slot, each carriage on its own sliding joint
+  let guides = [];
+  if (a.guides != null) ({ a, guides } = expandGuides(a, num));
   const { translate, rotate, transform } = jscad.transforms, deg = Math.PI / 180;
 
   const items = [], parts = [], objects = [], fits = [], requires = [];
@@ -130,6 +134,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     if (it.beam) { const b = beamBuilt(it, num, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/beams.mjs)
     if (it.fitting) { const b = await fittingBuilt(it, it.id, framesContext(), plasticOf(project)); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/fittings.mjs)
     if (it.panel) { const b = await panelBuilt(it, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/panels.mjs)
+    if (it._guide) { const b = guideBuilt(it, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/guides.mjs)
     if (it.bought) {
       const key = JSON.stringify(['bought', it.id, it.bought, it.variant, it.set]);
       if (!built.has(key)) built.set(key, boughtSets().get(it.bought) === 'motor' ? motorBuilt({ model: it.bought }, num, it.id) : boughtBuilt(it.bought, it, num, it.id));
@@ -321,7 +326,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, mounts, runs, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, mounts, runs, guides, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -955,6 +960,7 @@ export function checkAssembly(s) {
   fittingFindings(s, f);
   panelFindings(s, f);
   serviceFindings(s, f);
+  guideFindings(s, f);
   joinChecks(s, f);
   slotNutChecks(s, f);
   massFinding(s, f);

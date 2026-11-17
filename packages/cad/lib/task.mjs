@@ -126,6 +126,7 @@ function terms(s, c) {
     if (d?.model.stepAngle) { const micro = d.spec.microsteps ?? 16; out.push({ term: 'step', value: t.slide != null ? (d.model.stepAngle / micro) * t.slide : d.model.stepAngle / micro / t.ratio, kind: 'spec', note: `${n3(d.model.stepAngle, 3)}° at 1/${micro} step, ${n3(t.ratio, 1)}:1` }); }
     const belt = motion.joints.find((x) => x.id === id)?.slide?.stretch; if (belt) out.push({ term: 'belt stretch', value: (belt.load * belt.length) / (belt.k * belt.width), kind: 'estimate', note: `${belt.load} N over ${belt.length} mm` });
     for (const [term, expr] of Object.entries(spec?.errors ?? {})) out.push({ term, value: s.num(expr), kind: kindOf(expr), expr });
+    for (const x of spec?._guide?.terms ?? []) out.push({ term: x.term, value: x.value, kind: x.kind, note: x.note }); // (a guide's rail: mm along its travel, from its rule sets and the beam's)
     return { joint: id, terms: out, geared: t.stages.length > 0 };
   });
 }
