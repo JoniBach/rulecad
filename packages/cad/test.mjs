@@ -3085,6 +3085,54 @@ test('panels and doors: a bay closed with a 3 mm panel lists the panel\'s size a
   } finally { done(); }
 });
 
+test('services: the worked arm\'s shield and supply mount on a rail from their own rule sets, and its power wire runs along a slot, its length and its clips reported', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/rack', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'rack', material: 'PLA', objects: [] }));
+    // the arm's own shield, supply and power wire (examples/bench arm/arm), on a 400 mm rail of 2020
+    const arm = JSON.parse(fs.readFileSync(path.join(path.dirname(ROOT_MODULES), 'examples/bench/projects/arm/assemblies/arm.json'), 'utf8')), mine = (id) => { const { at: _at, ...it } = arm.items.find((x) => x.id === id); return it; };
+    const power = arm.wires.find((w) => w.id === 'power');
+    const write = (items, wires = [{ ...power, via: [{ along: 'rail.front', from: 300, to: 60 }] }]) => fs.writeFileSync(at('assemblies/rack.json'), JSON.stringify({ title: 'rack', kind: 'fit',
+      items: [{ id: 'rail', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [400, 0, 0] }, ...items], wires }));
+    write([{ ...mine('shield'), mount: { on: 'rail.top@100' } }, { ...mine('psu'), mount: { on: 'rail.top@-90' } }]);
+    const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('rack/rack'), f = checkAssembly(s);
+      console.log(JSON.stringify({ mounts: s.mounts, runs: s.runs, hardware: s.hardware.map((h) => h.kind + ' ' + h.name), at: Object.fromEntries(s.items.filter((i) => ['shield', 'psu'].includes(i.id)).map((i) => [i.id, i.at])),
+        bad: f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.code + ': ' + x.text), said: f.filter((x) => /^(service\\.mount|wire\\.(run|length)|fitting\\.(device|head))$/.test(x.code) || (/^fasten\\.(end|length|engagement)$/.test(x.code) && /on its mount/.test(x.text))).map((x) => x.code + ': ' + x.text) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // each device on its printed mount at its address, the mount listed just before it, the device placed by the mount
+    assert.deepEqual(r.mounts.map((m) => [m.id, m.mount, m.set, m.variant, m.fix, m.holes, m.thread, m.length]), [['shield', 'shield-mount', 'cnc-shield-v3', null, 'through', 4, 'M2.5', 8], ['psu', 'psu-mount', 'supply-24v', 'LRS-50-24', 'tapped', 2, 'M3', 5]]);
+    assert.deepEqual(r.at, { shield: 'shield-mount.device', psu: 'psu-mount.device' });
+    // the supply: into its own thread no further than Mean Well's L = 3 mm; the board: the Uno's 3.2 mm holes, M2.5 caps whose heads sit whole
+    const said = r.said.join('\n');
+    assert.match(said, /fasten\.length: psu on its mount, from under it, 2 M3 button screws: M3x5 button chosen, the longest sold that goes no further than its maker allows: 2 mm under its head and 3 mm into psu/);
+    assert.match(said, /fasten\.engagement: psu on its mount, from under it, 2 M3 button screws: 3 mm into psu's own thread, 6 turns: as far as its maker allows \(supply-24v\.mount_hole_reach, 3 mm\)/);
+    assert.match(said, /fasten\.length: shield on its mount, 4 M2\.5 cap screws: M2\.5x8 cap chosen/);
+    assert.match(said, /service\.mount: psu: on a printed mount \(psu-mount\) at rail\.top@-90, held by its 2 tapped M3 holes from supply-24v's rule set/);
+    // the wire: 240 mm of it along the front slot, four clips no more than 100 mm apart, its length through them
+    assert.deepEqual(r.runs.map((x) => [x.wire, x.along, x.length, x.count, x.pitch]), [['power', 'rail.front.1', 240, 4, 80]]);
+    assert.match(said, /wire\.run: power: 240 mm along rail\.front\.1 from 300 to 60 mm, held by 4 cable clips 80 mm apart \(no more than 100\) for a 6 mm bundle/);
+    assert.match(said, /wire\.length: power: psu\.terminals to shield\.top, \d+ mm with its 40 mm loop .*; 240 mm of it along rail\.front\.1, held by 4 cable clips/);
+    // what is left: one warning, true of the Uno, whose 3.2 mm holes are wide for an M2.5 (an M3's head would overhang its edge)
+    assert.deepEqual(r.bad.map((x) => x.split(':')[0]), ['fasten.clearance']); assert.match(r.bad[0], /shield's hole measures 3\.2 mm, wider than the loosest clearance hole for M2\.5, 3\.1 mm as drilled/);
+    assert.equal(r.hardware.filter((h) => h === 'screw M5x12 button').length, 4, 'two into the slot for each mount');
+    const list = cad('list', 'rack/rack');
+    assert.match(list, /4 ×\s+M2\.5x8 cap/); assert.match(list, /2 ×\s+M3x5 button/); assert.match(list, /4 ×\s+slot-nut-6-misumi-m5-slide-in/);
+    assert.match(list, /shield-mount \(fitting:device-mount-2020-misumi-hfs5-cnc-shield-v3-m5\)/); assert.match(list, /power-clip-4 \(fitting:cable-clip-6-misumi-6mm\)/);
+    assert.match(cad('check', 'rack/rack'), /files match their schemas/);
+    // refused by name
+    write([{ ...mine('shield'), at: [0, 0, 0], mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item shield: a mounted item is placed by its mount: leave out at, rotate and repeat/);
+    write([{ id: 'd1', bought: 'drv8825', mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item d1: mount holds a bought board or supply, and drv8825 is a driver/);
+    write([{ id: 'p12', bought: 'supply-12v', mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item p12: supply-12v gives no mounting holes \(mount_holes/);
+    write([{ ...mine('psu'), mount: { on: 'rail.side@100' } }]); assert.match(cad('check', 'rack/rack'), /item psu: on: profile-2020-misumi-hfs5 x 400 has no "side@100": it has a, b, a\.1, b\.1, top\.1, top/);
+    write([], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.front', from: 0, to: 500 }] }]); assert.match(cad('check', 'rack/rack'), /wire power: a run's to is from 0 to 400 mm along rail \(got 500\)/);
+    write([], [{ ...power, from: 'rail.a', to: 'rail.b', via: [{ along: 'rail.front', from: 0, to: 100, every: 50 }] }]); assert.match(cad('check', 'rack/rack'), /wire power: a run along a slot has no "every": it takes along, from, to, pitch, cable|must NOT have additional properties/);
+  } finally { done(); }
+});
+
 test('v.frames reads the workspace\'s own profile sets before the kit\'s, and a beam item takes one by name', async () => {
   const { ws, cad, done } = workspace();
   try {

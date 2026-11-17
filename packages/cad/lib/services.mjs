@@ -48,7 +48,7 @@ export function expandServices(a, num, context = framesContext(), material = 'pl
     if (!beams.has(id)) throw new Error(`${what}: ${key} names a beam item of this assembly, and ${id} is ${items.some((x) => x.id === id) ? 'not a beam' : 'not an item'} (beams: ${[...beams.keys()].join(', ') || 'none'})`);
     return { id, rest, B: modelOf(id) };
   };
-  const added = [], fasten = [], mounts = [], runs = [], replaced = new Map();
+  const added = [], fasten = [], fits = [], mounts = [], runs = [], replaced = new Map(), ahead = new Map();
   for (const it of mounted) {
     const what = `item ${it.id}`, M = it.mount;
     if (!M || typeof M !== 'object' || Array.isArray(M)) throw new Error(`${what}: mount is { "on": "rail.top@200" }, an address on a beam's slotted face (got ${shown(M)})`);
@@ -65,7 +65,7 @@ export function expandServices(a, num, context = framesContext(), material = 'pl
       ...(M.turn != null ? { turn: M.turn } : {}), ...(M.offset != null ? { offset: num(M.offset) } : {}), ...(M.standoff != null ? { standoff: num(M.standoff) } : {}), ...(M.load != null ? { load: num(M.load) } : {}),
       ...(M.nut != null ? { nut: M.nut } : {}), ...(M.head != null ? { head: M.head } : {}), ...(M.screw != null ? { screw: M.screw } : {}) };
     const m = fittingModel(spec, context, material, what), D = m.device;
-    added.push({ id: mid, fitting: spec, at: `${bid}.${rest}`, mountOf: it.id });
+    ahead.set(it.id, { id: mid, fitting: spec, at: `${bid}.${rest}`, mountOf: it.id }); // (listed just before its device: of two parts as near the base, the earlier goes on first)
     fasten.push({ screw: `${m.thread} ${m.head}`, through: [mid], into: `${bid}.${q.name}`, at: m.screws.map((_, k) => `${mid}.b${k + 1}`), nut: m.screws[0].nutKind, note: `${it.id}'s mount into ${bid}`, mountOf: it.id });
     const at = D.holes.map((_, k) => `${mid}.d${k + 1}`);
     fasten.push(m.fix === 'tapped'
@@ -95,13 +95,14 @@ export function expandServices(a, num, context = framesContext(), material = 'pl
       for (const s of clips.at) {
         const cid = free(`${w.id || `w${wi + 1}`}-clip`), d = r3(from + sgn * s);
         added.push({ id: cid, fitting: { kind: 'cable-clip', profile: B.profile.name, face: faceOf(B, q), cable }, at: `${bid}.${q.name}@${d}`, runOf: w.id || `w${wi + 1}` });
+        fits.push({ a: cid, b: bid, fastens: true, note: `${cid}: snapped into ${bid}'s ${q.name} slot, its barbs under the lips` }); // (no screw: its barbs hold it)
         via.push(`${cid}.cable`); list.push(cid);
       }
       runs.push({ wire: w.id || `w${wi + 1}`, along: `${bid}.${q.name}`, from, to, length: r3(Math.abs(to - from)), clips: list, count: clips.count, pitch: clips.pitch, most: v.pitch != null ? num(v.pitch) : SERVICE_DEFAULTS.pitch.value, cable });
     }
     return { ...w, via };
   });
-  const out = { ...a, items: [...items.map((it) => replaced.get(it.id) ?? it), ...added], ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}), ...(runs.length ? { wires } : {}) };
+  const out = { ...a, items: [...items.flatMap((it) => [...(ahead.has(it.id) ? [ahead.get(it.id)] : []), replaced.get(it.id) ?? it]), ...added], ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}), ...(runs.length ? { wires } : {}), ...(fits.length ? { fits: [...(a.fits || []), ...fits] } : {}) };
   return { a: out, mounts, runs };
 }
 
