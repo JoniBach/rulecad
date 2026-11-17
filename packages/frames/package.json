@@ -32,6 +32,8 @@
     "square.mjs",
     "section.mjs",
     "catalogue.mjs",
+    "printing.mjs",
+    "printed.mjs",
     "frames.d.mts",
     "profile.d.mts",
     "beam.d.mts",
@@ -53,6 +55,8 @@
     "square.d.mts",
     "section.d.mts",
     "catalogue.d.mts",
+    "printing.d.mts",
+    "printed.d.mts",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"

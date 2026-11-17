@@ -109,7 +109,7 @@ export function printedProfile(series, o = {}) {
   const S = SETS[v(N, 'slot')], family = familyOf(v(N, 'slot')), kind = v(N, 'nut_kind');
   if (S?.part !== 'slot') throw new Error(`${what}: ${N.name} names no slot family the kit has (${shown(v(N, 'slot'))})`);
   const P = printerFigures(what, o.printer), material = o.material ?? 'pla';
-  if (!SETS[material]?.rules?.strength) throw new Error(`${what}: material is a plastic's set with a strength, such as pla or petg (got ${shown(o.material)})`);
+  if (!SETS[material]?.rules?.strength || !SETS[material].rules.softening) throw new Error(`${what}: material is a plastic's set with a strength and a softening point, such as pla or petg (got ${shown(o.material)})`);
   const F = o.pull ?? PRINTED_DEFAULTS.pull.value;
   if (!(isNum(F) && F > 0)) throw new Error(`${what}: pull is a nut's design pull in N, above 0 (got ${shown(o.pull)})`);
   const nuts = Object.values(SETS).filter((s) => s.part === 'slot_nut' && familyOf(v(s, 'slot')) === family && v(s, 'nut_kind') === kind).sort((a, b) => a.name.localeCompare(b.name));
@@ -194,8 +194,8 @@ export function printedSection(p, o = {}) {
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
     const x = xa + (i + 0.5) * h, y = ya + (j + 0.5) * h;
     if (x > xb || y > yb || !inside(x, y)) continue;
-    const onShell = dist(x, y) <= t, w = onShell ? 1 : k;
-    if (onShell) shell += cell; else inner += cell;
+    const f = Math.max(0, Math.min(1, (t - dist(x, y)) / h + 0.5)), w = f + (1 - f) * k; // (a cell the shell's inner edge crosses counts in part, so the walls are as thick as drawn, not to the nearest cell)
+    shell += f * cell; inner += (1 - f) * cell;
     A += w * cell; Sx += w * cell * x; Sy += w * cell * y; A1 += cell; S1x += cell * x; S1y += cell * y; pts.push(x, y, w);
   }
   const cx = Sx / A, cy = Sy / A, c1x = S1x / A1, c1y = S1y / A1;
