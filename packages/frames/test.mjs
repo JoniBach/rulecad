@@ -18,7 +18,7 @@ test('the package: ready, typed, and needing only the rules it reads', () => {
   assert.equal(frames.status.plan, 'https://github.com/JoniBach/rulecad/issues/240');
   assert.equal(frames.status.release, 'ready'); assert.ok(Object.isFrozen(frames.status));
   assert.ok(!pkg.version.startsWith('0.0.'), 'from 0.1.0 it has functions to call');
-  assert.deepEqual(Object.keys(pkg.dependencies), ['@rulecad/fixings', '@rulecad/rules'], 'fixings sizes what an operation names by a thread');
+  assert.deepEqual(Object.keys(pkg.dependencies), ['@rulecad/fea', '@rulecad/fixings', '@rulecad/rules'], 'fixings sizes what an operation names by a thread; fea bends a printed fitting');
   assert.deepEqual(Object.keys(pkg.peerDependencies), ['@jscad/modeling'], 'a beam\'s solid is JSCAD\'s, which a design already has');
   for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f} ships its declarations`); }
 });
@@ -816,4 +816,111 @@ test('joins: a mitre cuts both ends at the angle given, about the face the corne
   assert.deepEqual(joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }).a.ops, []);
   assert.throws(() => joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }, { mitre: { angle: 90, a: { about: 'top', long: 'front' }, b: { about: 'top', long: 'back' } } }), /mitre\.angle is each end's cut from square, above 0 and under 90 degrees \(got 90\)/);
   assert.throws(() => joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }, { mitre: { angle: 45, a: { about: 'side', long: 'front' }, b: { about: 'top', long: 'back' } } }), /mitre\.a is \{ about, long \}, each a face/);
+});
+
+// ---------- printed fittings ----------
+const PRINTER = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42, print_gap: 0.3, foot: 0.15 };
+const faces = (g) => jscad.geometries.geom3.toPolygons(g).map((p) => p.vertices.map((v) => [...v]));
+const prints = async (g, what) => { const { check } = await import('@rulecad/printcheck'); assert.deepEqual(check(faces(g), PRINTER).filter((f) => f.level !== 'pass').map((f) => `${f.code}: ${f.text}`), [], what); };
+const coded = (m, code) => m.findings.filter((f) => f.code === code);
+
+test('a printed corner bracket for 2020 and for 4040 from one generator: each passes printcheck and reports its mass, stiffness and margin at a named load', async () => {
+  const { bracketModel, bracket, FITTING_DEFAULTS } = frames;
+  const pla = JSON.parse(fs.readFileSync(new URL('../rules/pla.json', import.meta.url), 'utf8')).rules;
+  const want = { '2020-misumi-hfs5': { width: 20, thread: 'M5', slot: 'slot-6-misumi', major: 5 }, '4040-item-8': { width: 40, thread: 'M8', slot: 'slot-8-item', major: 8 } };
+  const seen = {};
+  for (const [name, w] of Object.entries(want)) {
+    const m = bracketModel(name), slot = slotModel(w.slot);
+    seen[name] = m;
+    // drawn from the profile's rules: its cell's width, the largest thread a slot nut is made for, a tongue keyed into the slot
+    assert.equal(m.fitting, 'bracket'); assert.equal(m.width, w.width); assert.equal(m.thread, w.thread);
+    for (const k of ['a', 'b']) {
+      const tg = m.tongues[k], nut = frames.nutFor(name, 'top', w.thread, { kind: frames.slotNutModel(tg.nut).nutKind });
+      assert.equal(tg.width, +(slot.opening - 2 * 0.2).toFixed(3), 'the opening less the fit each side');
+      assert.equal(tg.depth, +(slot.lip - nut.tongueHeight - 0.2).toFixed(3), 'the lip less the nut\'s tongue less the fit');
+    }
+    // sized from the load: no thinner than the thread's major diameter, and about twice the margin
+    assert.ok(m.thickness >= w.major * FITTING_DEFAULTS.least.value - 1e-9);
+    assert.ok(m.margin >= 2 && m.margin <= 2 * FITTING_DEFAULTS.margin.value * FITTING_DEFAULTS.spread.value || m.thickness === w.major, `${name}: margin ${m.margin}`);
+    // the named load, the margin, the stiffness and the mass, as findings in the kit's one shape
+    assert.equal(m.load.force, 100); assert.match(m.load.what, /^100 N across beam a at the upright's screw, [\d.]+ mm from the corner/);
+    const [margin] = coded(m, 'fitting.margin');
+    assert.equal(margin.level, 'pass'); assert.equal(margin.values.load, 100); assert.equal(margin.values.margin, m.margin);
+    assert.ok(Math.abs(margin.values.margin - pla.strength.value / margin.values.stress) < 0.01, 'the margin is the strength over the peak stress');
+    assert.ok(m.stiffness.linear > 0 && m.stiffness.bending > 0); assert.equal(m.stiffness.kind, 'derived'); assert.match(m.stiffness.rule, /issue 264/);
+    assert.ok(Math.abs(m.stiffness.bending - (100 * m.screwAt ** 2) / m.deflection) / m.stiffness.bending < 0.01, 'the bending stiffness is F s² over the movement');
+    assert.equal(coded(m, 'fitting.stiffness')[0].values.bending, m.stiffness.bending);
+    assert.ok(m.grams > 0); assert.ok(Math.abs(m.grams - (m.volume * pla.density.value) / 1000) < 1e-3); assert.equal(coded(m, 'fitting.mass')[0].values.grams, m.grams);
+    // the screws: one in each leg, square to it, at the same distance from the corner; the nut holds twice the pull
+    assert.deepEqual(m.screws.map((s) => [s.leg, s.axis]), [['b', [0, -1, 0]], ['a', [-1, 0, 0]]]);
+    assert.ok(coded(m, 'fitting.nut').every((f) => f.level === 'pass'));
+    // print-ready: printcheck passes it as it is laid to print, its first layer the whole L
+    const g = bracket(m), bb = jscad.measurements.measureBoundingBox(g);
+    await prints(g, `${name} bracket`);
+    assert.deepEqual(bb[0].map((x) => +x.toFixed(2)), [-m.tongues.a.depth, -m.tongues.b.depth, 0].map((x) => +x.toFixed(2)));
+    assert.deepEqual(bb[1].map((x) => +x.toFixed(2)), [m.leg, m.leg, m.width]);
+    // fitted: the corner line on the slots' centre
+    const fb = jscad.measurements.measureBoundingBox(bracket(m, { pose: 'fit' }));
+    assert.equal(+fb[0][2].toFixed(3), -m.width / 2); assert.equal(+fb[1][2].toFixed(3), m.width / 2);
+  }
+  // one generator: the 4040 bracket is the 2020's drawn larger, the same findings
+  assert.deepEqual(seen['4040-item-8'].findings.map((f) => f.code), seen['2020-misumi-hfs5'].findings.map((f) => f.code));
+  assert.ok(seen['4040-item-8'].grams > seen['2020-misumi-hfs5'].grams);
+});
+
+test('a bracket is sized from its load, a brace makes it stiffer, and its finite elements are cached', async () => {
+  const { bracketModel, bracket } = frames;
+  const light = bracketModel('2020-misumi-hfs5'), heavy = bracketModel('2020-misumi-hfs5', { load: 300 });
+  assert.ok(heavy.thickness > light.thickness, 'a heavier load, a thicker leg'); assert.ok(heavy.margin >= 2 && heavy.margin <= 3.01, `margin ${heavy.margin}`);
+  assert.match(coded(heavy, 'fitting.size')[0].text, /sized from the load/); assert.match(coded(light, 'fitting.size')[0].text, /as thin as M5 lets it be, 5 mm/);
+  const braced = bracketModel('2020-misumi-hfs5', { brace: true });
+  assert.equal(braced.screwAt, light.screwAt, 'the brace keeps the screws where they were'); assert.ok(braced.pocket > 0);
+  assert.ok(braced.stiffness.linear > 1.5 * light.stiffness.linear, `braced ${braced.stiffness.linear} N/mm against ${light.stiffness.linear}`);
+  assert.ok(braced.margin > light.margin); assert.ok(braced.grams > light.grams);
+  await prints(bracket(braced), 'the braced bracket, its head pockets teardrops');
+  // cached: a second model asks the cache before it solves, and takes what the cache holds
+  const store = new Map(), cache = { get: (k) => store.get(k), set: (k, v) => store.set(k, v) };
+  const once = bracketModel('2020-misumi-hfs5', { cache });
+  assert.ok(store.size >= 1);
+  const fake = new Map([...store].map(([k, v]) => [k, { ...v, stress: v.stress / 2 }]));
+  const again = bracketModel('2020-misumi-hfs5', { cache: { get: (k) => fake.get(k), set() {} } });
+  assert.equal(once.thickness, 5); assert.equal(again.thickness, 5);
+  assert.equal(again.fe.stress, +(once.fe.stress / 2).toFixed(3), 'the cache\'s answer is taken, not solved again');
+});
+
+test('a bracket refuses what it cannot draw, by name', () => {
+  const { bracketModel } = frames;
+  assert.throws(() => bracketModel('2020-misumi-hfs5', { thickness: 4 }), /bracketModel: no option "thickness": it takes other, face/);
+  assert.throws(() => bracketModel('2020-misumi-hfs5', { brace: 'yes' }), /brace is true or false \(got "yes"\)/);
+  assert.throws(() => bracketModel('2020-misumi-hfs5', { load: 0 }), /load is the design load in N, above 0/);
+  assert.throws(() => bracketModel('2020-misumi-hfs5', { head: 'hex' }), /head is cap or button \(got "hex"\)/);
+  assert.throws(() => bracketModel('2020-misumi-hfs5', { width: 9 }), /a bracket 9 mm wide leaves no room round M5's 8.5 mm head: 10.5 mm or more/);
+  assert.throws(() => bracketModel('2020-misumi-hfs5', { thread: 'M8' }), /no M8 nut is made for profile-2020-misumi-hfs5's top face/);
+  assert.throws(() => bracketModel('4040-misumi-hfs8'), /The kit has no nut sets for that family/);
+  assert.throws(() => bracketModel('2020-nobody'), /bracketModel: no profile "2020-nobody"/);
+  assert.throws(() => bracketModel('2020-misumi-hfs5', { face: 'side' }), /face is top, bottom, front or back/);
+});
+
+test('gusset plates (L, T, cross) and a splice plate from one generator: each passes printcheck, keyed into the slot, sized and weighed', async () => {
+  const { plateModel, plate } = frames;
+  const screws = { L: 4, T: 6, cross: 8, splice: 4 }, out = {};
+  for (const shape of Object.keys(screws)) {
+    const m = plateModel('2020-misumi-hfs5', { shape });
+    out[shape] = m;
+    assert.equal(m.fitting, shape === 'splice' ? 'splice' : 'gusset'); assert.equal(m.screws.length, screws[shape]); assert.equal(m.width, 20);
+    assert.ok(m.margin >= 2, `${shape}: margin ${m.margin}`); assert.ok(m.grams > 0); assert.ok(m.stiffness.linear > 0);
+    assert.match(m.load.what, /^100 N in the plate's plane across beam a at its farthest screw/);
+    // every screw lies on a slot's centre line: y = 0 along b, x = 0 along a (a splice: both along x)
+    for (const s of m.screws) assert.ok(s.leg === 'b' || shape === 'splice' ? Math.abs(s.at[1]) < 1e-9 : Math.abs(s.at[0]) < 1e-9, `${shape}: ${s.at}`);
+    // two screws on an arm stand the larger of the head and the longest nut that fits apart, and a millimetre: the
+    // 17 mm M5 roll-in for slot-6-misumi, so 18 mm
+    assert.equal(m.pitch, 18);
+    await prints(plate(m), `${shape} plate`);
+    // fitted, its tongues reach into the slots below its contact face
+    const fb = jscad.measurements.measureBoundingBox(plate(m, { pose: 'fit' }));
+    assert.equal(+fb[0][2].toFixed(3), -m.tongues[0].depth); assert.equal(+fb[1][2].toFixed(3), m.thickness);
+  }
+  assert.ok(out.cross.grams > out.T.grams && out.T.grams > out.L.grams);
+  assert.throws(() => plateModel('2020-misumi-hfs5', { shape: 'Y' }), /plateModel: shape is L, T, cross or splice \(got "Y"\)/);
+  assert.throws(() => plateModel('2020-misumi-hfs5', { count: 0 }), /count is the screws on each arm, a whole number from 1 to 6 \(got 0\)/);
 });

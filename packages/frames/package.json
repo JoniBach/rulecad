@@ -1,7 +1,7 @@
 {
   "name": "@rulecad/frames",
   "version": "0.1.7",
-  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, the operations on it (cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) checked, and its solid as a light box or the true section. A frame's cut list (the bars to buy, packed with the saw's kerf) and a cut-and-drill sheet per beam. Slot nuts: the bought nuts by maker and kind, the nut for a face, and a printed carrier for a nut or an insert. Joins between beams by kind: the operations each puts on both beams, its screws, and its stiffness for a frame's solve. Fittings and guides follow.",
+  "description": "Structures from beams: a profile (aluminium extrusion of any maker, tube, angle or a printed beam) as a model from its rule set, its section as an outline, and what that section is worth as a beam beside the maker's figures. A beam of it: its mass, its anchors, the operations on it (cut, mitre, tap, access, drill, counterbore, pocket, notch, deburr) checked, and its solid as a light box or the true section. A frame's cut list (the bars to buy, packed with the saw's kerf) and a cut-and-drill sheet per beam. Slot nuts: the bought nuts by maker and kind, the nut for a face, and a printed carrier for a nut or an insert. Joins between beams by kind: the operations each puts on both beams, its screws, and its stiffness for a frame's solve. Printed fittings for those joins: a corner bracket (braced or not), gusset plates (L, T, cross) and a splice plate, drawn from the profile's and the thread's rules, keyed into the slot, sized from a named load by finite elements and reporting grams, stiffness and margin. More fittings and the guides follow.",
   "type": "module",
   "exports": {
     ".": {
@@ -19,6 +19,7 @@
     "cutlist.mjs",
     "cutsheet.mjs",
     "slotnut.mjs",
+    "fitting.mjs",
     "section.mjs",
     "catalogue.mjs",
     "frames.d.mts",
@@ -29,6 +30,7 @@
     "cutlist.d.mts",
     "cutsheet.d.mts",
     "slotnut.d.mts",
+    "fitting.d.mts",
     "section.d.mts",
     "catalogue.d.mts",
     "README.md",
@@ -56,6 +58,7 @@
     "@jscad/modeling": "^2.12.0"
   },
   "dependencies": {
+    "@rulecad/fea": "^0.2.10",
     "@rulecad/fixings": "^0.1.1",
     "@rulecad/rules": "^0.3.14"
   }
