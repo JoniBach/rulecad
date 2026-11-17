@@ -123,7 +123,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   if ((a.items || []).some((it) => it?.mount != null) || (a.wires || []).some((w) => (w?.via ?? []).some((v) => v && typeof v === 'object'))) ({ a, mounts, runs } = expandServices(a, num, undefined, plasticOf(project)));
   // Guides (lib/guides.mjs): a rail on a beam's face, its screws into the slot, each carriage on its own sliding joint
   let guides = [];
-  if (a.guides != null) ({ a, guides } = expandGuides(a, num));
+  if (a.guides != null) ({ a, guides } = expandGuides(a, num, undefined, plasticOf(project)));
   const { translate, rotate, transform } = jscad.transforms, deg = Math.PI / 180;
 
   const items = [], parts = [], objects = [], fits = [], requires = [];
