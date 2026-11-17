@@ -95,8 +95,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   counts the screws. Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
 - **Beams are held to each other by a join**, not a fasten: `{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }`
   (`npx cad add join …`), `b` the place on the other beam where a's end meets it. A blind or end-tap join taps a's end,
-  drills b and adds its screw to the fasten checks and the list; the other kinds are checked where they meet and say
-  their fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
+  drills b and adds its screw to the fasten checks and the list. A bracket, gusset or splice join with `"fitting":
+  "printed"` adds its printed fitting, sized from `"load"` (N, default 100) by finite elements, and its screws into both
+  beams' slots: report the fitting's grams, margin and stiffness from `cad check` with that load, and say the stiffness
+  leaves out the slot nuts. The other kinds are checked where they meet and say their fitting comes later
+  (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
   address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off

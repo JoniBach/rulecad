@@ -49,7 +49,7 @@ import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
-import { fittingBuilt, plasticOf } from './fittings.mjs';
+import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
@@ -942,6 +942,7 @@ export function checkAssembly(s) {
   }
   boughtFindings(s, f);
   beamFindings(s, f);
+  fittingFindings(s, f);
   joinChecks(s, f);
   slotNutChecks(s, f);
   massFinding(s, f);

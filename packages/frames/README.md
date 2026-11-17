@@ -26,15 +26,19 @@ cut, and fastens to them:
   hold it, and how stiff it is taken to be when a frame is solved.
 - **Slot nuts**: the bought nuts a slot takes (`slotNutModel`, `nutFit`, `slotNut`), the nut for a face and a thread
   (`nutFor`), and a printed carrier for a hex nut or an insert that slides in the slot (`carrierModel`, `carrier`).
+- **Printed fittings**: a corner bracket, braced or not (`bracketModel`, `bracket`), and flat plates over a joint, a
+  gusset (L, T, cross) or a splice plate (`plateModel`, `plate`), each drawn from the profile's and its slot nuts'
+  rules, sized from a named load by finite elements, and reporting its grams, its stiffness and its margin.
 
-Fittings for the joins (brackets, gussets, corners, nodes) and linear guides follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+More fittings (a three-way corner, a hidden-corner cover, a printed node, bought fittings) and linear guides follow
+in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling
 ```
 
-It depends on `@rulecad/rules`, where the profiles live as open data, and `@rulecad/fixings`, which sizes anything an
-operation names by a thread. It takes JSCAD (`@jscad/modeling`, which a
+It depends on `@rulecad/rules`, where the profiles live as open data, `@rulecad/fixings`, which sizes anything an
+operation names by a thread, and `@rulecad/fea`, which bends a printed fitting under its load. It takes JSCAD (`@jscad/modeling`, which a
 rulecad design already has) as a peer for a beam's solid.
 
 ## A profile
@@ -437,17 +441,20 @@ drills a clearance hole right across b instead, and the screw's cap head sits on
 |---|---|---|---|
 | `blind` | A tap in the end of a, a button-head screw in it, the head in a slot of b, an access hole across b | a face with a slot | The tap, the access hole, the screw |
 | `end-tap` | A tap in the end of a, a cap screw through a hole drilled across b | a face | The tap, the clearance hole, the screw |
-| `bracket` | A corner bracket with its slot nuts and screws | a face with a slot | The stiffness; the bracket comes with Frames 2.3 (printed) and 2.6 (bought) |
-| `gusset` | A flat plate (L, T or cross) over the joint | a face with a slot | The stiffness; the plate later |
+| `bracket` | A corner bracket with its slot nuts and screws | a face with a slot | Printed: nothing here, cad draws it (below); bought: the stiffness, the bracket with Frames 2.6 |
+| `gusset` | A flat plate (L, T or cross) over the joint | a face with a slot | Printed: as a bracket; bought: the stiffness, the plate later |
 | `cube` | A three-way corner taking the beam ends | an end | The stiffness; the corner later |
 | `hidden` | A bought inner connector in the slots | a face with a slot | The stiffness; the connector with Frames 2.6 |
 | `anchor` | A bought anchor connector and its pocket | a face with a slot | The stiffness; the connector with Frames 2.6 |
 | `mitre` | Two mitred ends and a corner key or plate | an end | Both mitres, given `options.mitre` (cad works it out from where the beams are); the key later |
 | `pivot` | A hinge or pivot, which also moves | a face with a slot | The stiffness; the pivot and its joint later |
-| `splice` | Two beams end to end, with a joining plate | an end | The stiffness; the plate later |
+| `splice` | Two beams end to end, with a joining plate | an end | Printed: as a bracket; bought: the stiffness, the plate later |
 | `printed` | A printed node that sockets the beam ends | a face or an end | The stiffness; the node with Frames 2.3 |
 
-A kind whose fitting comes later says so in a `join.fitting` warning and adds no operations or screws. A join that
+With `fitting: 'printed'`, a bracket, gusset or splice join has its fitting drawn by this release: `JOINS[kind].printed`
+names the generator, `j.fitting.made` is true, and no warning is given. Where the fitting goes depends on where the
+beams are, so the caller places it: cad's joins do (its README, Joins). A kind whose fitting comes later says so in a
+`join.fitting` warning and adds no operations or screws. A join that
 needs a slot on a closed face is a `join.geometry` failure, with nothing derived. Bad input is refused by name: an
 unknown kind, an end with no bore to tap (a tube: join it with a bracket or a gusset), an end with two bores (give a
 join for each, `a.1` and `a.2`), `b` the wrong sort of place for the kind, a screw or a fitting the kind does not
@@ -470,6 +477,64 @@ reasoning in its rule. A profile of another size is scaled by the cube of its wi
 is taken at 0.3 of a bought one's (`JOIN_SCALE`), both estimates too. `joinStiffness(kind, beam, { fitting })` gives
 the figures and the end join `@rulecad/fea/frame` takes (`{ rx: twist, ry: bending, rz: bending }`). The joint rig
 (issue 264) measures them; until then a check that uses them says it rests on estimates.
+
+## Printed fittings
+
+A printed fitting is drawn from the rules of the profile it lies on, so one generator serves every profile: its
+width is the face's cell (20 mm on a 2020, 40 on a 4040), its screws are the largest thread a slot nut is made for in
+that slot (M5 in MISUMI's 6 mm slot, M8 in item's 8 mm slot), and a tongue on each leg keys into the slot. The
+tongue is the slot's opening less the printer's fit on each side, and as deep as the lip less the tallest tongue of
+that thread's slot nuts, less the fit, so it never meets the nut. It is broken round each screw, which passes the
+opening clear of it.
+
+```js
+import { bracketModel, bracket, plateModel } from '@rulecad/frames'
+
+const m = bracketModel('2020-misumi-hfs5')            // 100 N across beam a at its screw, by default
+m.thickness, m.leg, m.screwAt                          // 6.4, 24, 18.05 (mm)
+m.grams, m.margin, m.stiffness.linear                  // 6.69 g, 4.31 times under PLA's strength, 654 N/mm
+m.load.what                                            // '100 N across beam a at the upright's screw, 18.05 mm from the corner, ...'
+bracket(m)                                             // its solid, laid on its side to print
+bracket(m, { pose: 'fit' })                            // in its fitted frame
+
+bracketModel('4040-item-8')                            // the same generator: 40 mm wide, M8, 8.2 mm thick, 24.3 g
+bracketModel('2020-misumi-hfs5', { brace: true })      // a web across its inside corner: about twice as stiff
+plateModel('2020-misumi-hfs5', { shape: 'T' })         // a T gusset; 'L', 'cross', or 'splice' for a splice plate
+```
+
+How it is sized:
+
+1. **The least thickness.** A leg or plate under a screw's head is no thinner than the thread's major diameter
+   (`FITTING_DEFAULTS.least`), so the head's clamp does not dish it.
+2. **From the load.** A bracket's design load is a force across beam a at the upright's screw, which opens or closes
+   the corner; a plate's is a force in its plane across beam a at its farthest screw. Both default to 100 N
+   (`FITTING_DEFAULTS.load`); give the load your frame carries. The part as drawn is bent by finite elements
+   (`@rulecad/fea`, cubes at least three across the leg): the leg under the base screw's head is held, the load
+   shared over the nodes under the other screw's head. Its thickness grows until the peak stress away from the
+   screws is half the plastic's strength or less, and shrinks while it is under a third, so the margin lands at
+   about twice (`margin`, `spread`).
+3. **For a screw that is sold.** A screw into a slot nut must engage the nut's thread fully and stop short of the
+   slot's floor, which leaves a window of a few tenths of a millimetre for its tip. The fitting is thickened, a layer
+   at a time, until a length sold lands in that window on every leg (an M5x12 through 6.4 mm on a 2020), as cad's
+   fasten check will hold it.
+
+The finite elements' results are kept in memory, and in a cache handed in (`{ cache: { get, set } }`: cad keeps them
+in `.cache/fitting`). Each fitting's findings, in the kit's one shape: `fitting.size`, `fitting.tongue`,
+`fitting.screw`, `fitting.margin` (pass or fail at the named load), `fitting.stiffness`, `fitting.nut` and
+`fitting.bearing` (a bracket's: each nut's rating and the head's bearing on the plastic, against twice the load),
+`fitting.printable` and `fitting.mass`.
+
+A bracket's frame: x along b's face away from a, y up a, z across, the corner line on the slots' centre. It prints
+laid on its side: the whole L is its first layer, its screw holes are teardrops, and each tongue's lower side leans
+45°. A braced bracket fills its inside corner with a web two thicknesses along each leg, with a teardrop pocket
+round each head through it for the head and the key, so its screws stand where an unbraced one's do. A plate's frame:
+x along b, y along a, its contact face at z = 0. It prints contact face up, its tongues on top, its holes upright.
+The inside corners are rounded: a bracket's by its thickness, a gusset's by half its arm's width.
+
+| Stiffness | How it is read |
+|---|---|
+| `stiffness.linear` (N/mm) | The load over the loaded screw's mean movement along it |
+| `stiffness.bending` (N·mm/rad) | F s² / δ: the load times the screw's distance from the corner squared, over its movement. It is the fitting's own; the slot nuts, the lips and the screws are not in it, so a joint is softer, and the joint rig (issue 264) measures that |
 
 ## Slot nuts
 
@@ -586,6 +651,11 @@ kit's.
 | A join's tap depth | engagement + tip room + 1.5 × the major diameter (M5 in aluminium: 10 + 1 + 7.5 = 18.5 mm) | `engagement` and `tip_room` from `@rulecad/fixings`; `JOIN_TAP`, a working figure |
 | A join's stiffness for another size | k = k₂₀ × (w / 20)³, w the profile's larger side in mm | `JOIN_SCALE.size`, an estimate |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
+| A fitting's first thickness | t = √(2 × 6 F s × 1.5 / (w S)), F the load, s the screw's distance from the corner, w the width, S the strength, 1.5 a stress raiser | Beam theory for a leg bent at its root (σ = 6M / w t²); only a start, the finite elements decide |
+| A fitting's margin | S / σ_peak, σ_peak the largest von Mises stress at a cell's centre away from the screws, times k / (k − 1) for k cells across the leg | `@rulecad/fea`; the lift reads a cell's centre out to the surface, as cad's motor mount check does |
+| A fitting's bending stiffness | k = F s² / δ | A force F at distance s turns the joint by δ / s |
+| A screw's tip window in a slot nut | lip − nut tongue + min(nut's thread, hex nut height) ≤ L − t ≤ slot depth − 0.3 | The nut's thread from its tongue down; ISO 4032's nut height; `FITTING_DEFAULTS.floor`, as cad's `FASTEN.floor` |
+| A head's bearing on a fitting | p = F / (π/4 (d_k² − d_h²)) | The head's ring over the clearance hole |
 | A screw's proof load | F = S_p × A_s, A_s = π/4 (d − 0.9382 P)² | ISO 898-1: proof stress S_p (580 MPa for class 8.8) on the stress area of the thread |
 | Plastic's shear strength | τ = σ / √3 | The von Mises estimate, `@rulecad/fixings`' `shear_ratio` |
 | A carrier's hold, through its top | F = τ × 2√3 s × t, s the nut's flats, t the plastic over its slot (π D t for an insert of knurl diameter D) | Punching shear round the hexagon's perimeter |
@@ -604,7 +674,10 @@ to within 10% of the open-section figure s t³ / 3.
 ## What it rests on
 
 Every profile, slot family and material is a rule set in `@rulecad/rules`, each value with its source and the date
-it was read. A dimension the maker prints is `spec`. One scaled off the maker's drawing because no figure is printed
+it was read. A printed fitting's working figures (`FITTING_DEFAULTS`) say what each rests on: the margin and load are
+the kit's defaults, the least thickness, the round, the brace and the end distance are estimates until the print
+tests (Frames 2.13) check them, and a fitting's stiffness and margin are finite elements on cubes about a third of
+its thickness, which read a part 10 to 20% stiffer than it is. A dimension the maker prints is `spec`. One scaled off the maker's drawing because no figure is printed
 (the width of a slot's floor) is an `estimate`. A figure taken from the section a profile is made to match, or from
 a seller of unbranded stock, is `community`. `model.rests` and each figure's `kind` say which you are standing on.
 
@@ -627,6 +700,9 @@ lists them.
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |
 | `slotNutModel`, `nutFit`, `slotNut`, `nutFor`, `NUT_KINDS` | A bought slot nut, how it sits in a slot, its solid, the one for a face, and the kinds (above) |
 | `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
+| `bracketModel(profile, { other?, face?, otherFace?, thread?, head?, nut?, brace?, load?, width?, printer?, material?, cache? })`, `bracket(m, { pose?, tongues?, ops? })` | A printed corner bracket's model and its solid |
+| `plateModel(profile, { shape?, face?, thread?, head?, nut?, count?, load?, width?, printer?, material?, cache? })`, `plate(m, { pose?, tongues?, ops? })` | A printed gusset (L, T, cross) or splice plate, and its solid |
+| `FITTINGS`, `FITTING_DEFAULTS`, `fittingFE(o)` | The kinds of printed fitting; the margins and working figures they are drawn with; the finite elements on a part |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre? })` | A join: the operations on each beam, its screws, its fitting to come, its stiffness, what to know |

@@ -592,9 +592,28 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 - A `mitre` join (`"b": "y1.a"`, an end) cuts both ends at the angle that halves the corner, about the face the corner
   lies in, each beam's length on the outside of the corner, worked out from where the two beams are (both placed by
   their ends). Its corner key or plate comes later.
-- The other kinds (`bracket`, `gusset`, `cube`, `hidden`, `anchor`, `pivot`, `splice`, `printed`) are checked where
-  they meet and carry their stiffness; their fittings come in later releases, and each says so (`join.fitting`).
-  `"fitting": "printed"` or `"bought"` chooses for a kind with a fitting.
+- A `bracket`, `gusset` or `splice` join with `"fitting": "printed"` adds its printed fitting from `@rulecad/frames`
+  (its README, Printed fittings) as an item of its own (`y1-x1-bracket`), placed from where the two beams are (both
+  placed by their ends), and a `fasten` for each leg or arm into its beam's slot, with the slot nut the fitting was
+  drawn for. So the screws are chosen, checked and counted like any fasten's (`2 × M5x12 cap` and their slot nuts),
+  the fitting's grams are on `cad list` under Printed, and `join.stiffness` takes the fitting's own bending stiffness
+  by finite elements in place of the estimate (its twist stays an estimate). `cad check` says the fitting's own
+  findings of it: `fitting.margin` at its named load, `fitting.screw` (the length sold it was thickened for),
+  `fitting.stiffness`, `fitting.mass` and the rest (@rulecad/frames' README lists them).
+  - A bracket goes on the side of a with more of b, its base leg on b's face and its upright on a's face that looks
+    along b; refused by name where its leg would run past b's end there.
+  - A gusset lies on a face of each beam that looks the same way, in one plane: an L at a corner, a T where b runs
+    on both sides of a; refused where its arm has no room.
+  - A splice plate lies across two ends on a face they share.
+  - `"brace": true` braces a bracket; `"load"` (N) is the design load it is sized to about twice the margin at
+    (default 100); `"nut"` chooses the slot nuts' kind.
+- An item may also be a printed fitting by itself: `{ "id": "br", "fitting": { "kind": "bracket", "profile":
+  "2020-misumi-hfs5" }, "at": "x1.top@130", "rotate": [90, 0, 0] }`. It is a printed part, joined and cut by Manifold
+  where the workspace has it; its anchors `b1`, `a1` (and `b2`, ... on a plate) lie on its screws' axes for a fasten's
+  `at`. The overlap check measures its body without its tongues, which stand in the slots.
+- The other kinds (`cube`, `hidden`, `anchor`, `pivot`, `printed`, and a bought bracket, gusset or splice) are
+  checked where they meet and carry their stiffness; their fittings come in later releases, and each says so
+  (`join.fitting`).
 - `cad check` adds `join.geometry` (the end meets the face square and flush, where `b` says, on the slot's centre line
   where the kind needs a slot: a beam 2 mm off the face fails with `a gap of 2 mm`, and one 5 mm along names the
   address it does meet at), `join.end` (every beam end is joined or capped: an item placed at the end, such as a foot,

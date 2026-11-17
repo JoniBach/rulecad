@@ -167,3 +167,11 @@ export function fittedStiffness(k, fm) {
   return { ...k, bending, end: { rx: k.twist, ry: bending, rz: bending }, fitting: { name: fm.name, bending, linear: fm.stiffness.linear, margin: fm.margin, grams: fm.grams, load: fm.load.force },
     rests: [{ value: bending, unit: 'N·mm/rad', kind: 'derived', source: `${fm.name}: by finite elements on the printed fitting as drawn; the slot nuts and lips not in it` }, ...k.rests.slice(1)] };
 }
+
+/**
+ * A built assembly's printed fittings' own findings (fitting.size, fitting.margin at the named load, fitting.screw,
+ * fitting.stiffness, fitting.mass and the rest), each said of its item. @param {object} s a built assembly @param {Function} f the findings' sink
+ */
+export function fittingFindings(s, f) {
+  for (const o of s.objects) if (o.fitting && !o.unplaced) for (const x of o.fitting.findings) f(x.level, `${o.id}: ${x.text}`, x.level === 'fail' || x.level === 'warn' ? `${o.id}: ${x.code.split('.')[1]}` : null, { code: x.code, ...(x.values ? { values: x.values } : {}), refs: { item: o.id, fitting: o.fitting.name, ...(x.refs ?? {}) } });
+}

@@ -2925,10 +2925,11 @@ test('printed fittings: a bracket join with "fitting": "printed" adds a printed 
       const s = await buildAssembly('frame/corner'), id = s.items.find((i) => i.fitting)?.id, br = s.parts.filter((p) => p.item === id), o = s.objects.find((x) => x.id === id);
       const lo = [0, 1, 2].map((k) => Math.min(...br.flatMap((p) => p.triangles.flat().map((v) => v[k])))), hi = [0, 1, 2].map((k) => Math.max(...br.flatMap((p) => p.triangles.flat().map((v) => v[k]))));
       console.log(JSON.stringify({ items: s.items.map((i) => [i.id, i.role]), box: [lo, hi].map((v) => v.map((x) => +x.toFixed(2))), fitting: o && { name: o.fitting.name, thickness: o.fitting.thickness, leg: o.fitting.leg, bending: o.fitting.stiffness.bending, grams: o.fitting.grams, margin: o.fitting.margin },
-        hardware: s.hardware.map((h) => [h.fasten, h.kind, h.name]), findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap|frame)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+        hardware: s.hardware.map((h) => [h.fasten, h.kind, h.name]), findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap|frame|fitting)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     let r = probe();
     const by = (code) => r.findings.filter((x) => x.code === code);
+    assert.deepEqual(by('fitting.margin').map((x) => [x.level, x.values.load, x.refs.item]), [['pass', 100, 'y1-x1-bracket']]);
     // the bracket is an item of its own, a printed part, on the side of y1 with more of x1 (toward x1's end b)
     assert.deepEqual(r.items, [['x1', 'reference'], ['y1', 'reference'], ['y1-x1-bracket', 'part']]);
     assert.deepEqual(r.fitting, { name: 'bracket-2020-misumi-hfs5-m5', thickness: 6.4, leg: 24, bending: r.fitting.bending, grams: r.fitting.grams, margin: r.fitting.margin });
@@ -2944,6 +2945,10 @@ test('printed fittings: a bracket join with "fitting": "printed" adds a printed 
     assert.deepEqual(by('join.stiffness').map((x) => [x.values.bending, x.refs.item]), [[r.fitting.bending, 'y1-x1-bracket']]);
     assert.match(by('join.stiffness')[0].text, /y1-x1-bracket's own by finite elements \(\d+(\.\d+)? N\/mm at its screw under 100 N, [\d.]+ times under its plastic's strength, [\d.]+ g\).*until the joint rig \(issue 264\) measures it/);
     assert.deepEqual(by('join.fitting'), []);
+    // cad check says the bracket's own findings too: its margin at the named load, its mass, the screw it was thickened for
+    const check = cad('check', 'frame/corner');
+    assert.match(check, /y1-x1-bracket: under 100 N across beam a at the upright's screw, 18\.05 mm from the corner, opening or closing it, the stress peaks at [\d.]+ MPa away from the screws, [\d.]+ times under PLA's 39 MPa \(within the 2× asked\)/);
+    assert.match(check, /y1-x1-bracket: it weighs [\d.]+ g of pla/); assert.match(check, /y1-x1-bracket: M5x12 cap: through 6\.4 mm of fitting/);
     // cad list: the printed bracket by its grams, the two screws and nuts
     const list = cad('list', 'frame/corner');
     assert.match(list, /Printed \(pla\)\s+[\d.]+ g\s+about \d+ min\s+y1-x1-bracket \(fitting:bracket-2020-misumi-hfs5-m5\)/);
