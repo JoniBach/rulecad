@@ -4,7 +4,9 @@
 // or a clearance hole across b) and its screws into "fasten", so the screws are followed, checked and counted as any
 // fasten's are. Once built, the checks: join.geometry (the end meets the face square and flush, where the join says,
 // on a slot where the kind needs one), join.end (every beam end is joined or capped), join.stiffness (each join's
-// spring for a frame's solve, an estimate that says so), and join.fitting (a kind whose fitting comes later).
+// spring for a frame's solve, saying whether it was measured on the joint rig, and when, or is an estimate),
+// join.fitting (a kind whose fitting comes later), and join.drop (a beam held by one join with a mass on it, as on the
+// joint rig: its drop, a prediction cad measured turns into the join's spring).
 import { JOINS, JOIN_SCALE, joinModel } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
 import { beamOf, beamPlace, framesContext } from './beams.mjs';

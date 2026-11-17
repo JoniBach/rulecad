@@ -104,7 +104,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   and what each stiffness rests on, and say both. A `fitting.fit` failure means the set is made for another profile
   or slot: choose another set, never edit the set to pass. The other kinds are checked where they meet and say their
   fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
-  address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
+  address is what was wrong; `join.stiffness` says whether it rests on an estimate or on the joint rig's
+  measurement (and its date): report it as it says. A `join.drop` is a prediction for a beam held by one join, to
+  measure and write back with `cad measured`, never a figure to tune.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),

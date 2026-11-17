@@ -641,7 +641,18 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   where the kind needs a slot: a beam 2 mm off the face fails with `a gap of 2 mm`, and one 5 mm along names the
   address it does meet at), `join.end` (every beam end is joined or capped: an item placed at the end, such as a foot,
   caps it), and `join.stiffness` (the spring each join puts at a's end when the frame is solved, from
-  `@rulecad/frames`' `JOIN_STIFFNESS`: every figure an estimate until the joint rig measures it, and the finding says so).
+  `@rulecad/frames`' `JOIN_STIFFNESS`: every figure an estimate until the joint rig measures it, and the finding says
+  which, measured with its date or an estimate).
+- `join.drop` predicts a beam held by one join and nothing else, with a `mass` load on it (on the beam or on an item
+  at one of its addresses), as a cantilever from that join: its drop is the beam's own bending, F L³ / 3 E I, and the
+  join turning on its spring k, F L² / k. It is a prediction `cad measured` takes as `<beam>.drop=<mm>`: the measured
+  drop less the beam's own bending gives the join's spring, k = F L² / (drop less F L³ / 3 E I), written as measured
+  to the rule the spring came from. That is the kind's figure in the workspace's `rules/joins.json` (part `joins`,
+  made from `@rulecad/frames`' estimates the first time: `blind_bending`, `end_tap_twist` and the rest, for a 20 mm
+  profile), a printed fitting's share of its own stiffness by finite elements (`bracket_printed_share`), or a bought
+  fitting's `bending_stiffness`. A drop no more than the beam bends by itself is refused. The joint rig in
+  `examples/bench/projects/benchmarks` (MEASURE.md, rows 34 to 37) is built for it, and also measures a slot nut's
+  hold along its slot, written to the nut's own set as `hold_along`.
 - `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120 [--screw "M5 button"] [--fitting printed]`
   adds one.
 

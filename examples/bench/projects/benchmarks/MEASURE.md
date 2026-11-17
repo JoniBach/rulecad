@@ -17,6 +17,7 @@ parts measure them, one test each. Every part has a plain, solid first layer. So
 | 6. Shoulder | `shoulder-housing`, `shoulder-sun`, `shoulder-planet` × 3, `shoulder-output`, `shoulder-clip` × 3, `shoulder-arm`, `input-lever` | 117 g | 12 to 18 |
 | 7. Fixings coupon (once in PLA, once in PETG) | `fixings-coupon` | 55 g, about an hour | 22 to 28 |
 | 8. Slot coupon (when you build with aluminium beams) | `slot-coupon` (26 loose pieces) | 40 g, about 45 minutes | 29 to 33 |
+| 9. Joint rig (when you build frames of beams) | `joint-hanger` × 3, `joint-gauge`, `nut-puller`, and the rig's printed corner bracket (`cad plates benchmarks/joint-test` lays out all six) | 82 g, about 90 minutes | 34 to 37 |
 
 Do 1 and 2 first, and change the parts that follow to the sizes that won: `comp` in `test-arm` and `shoulder-sun`, `bore` and `backlash` in the mesh rig's parts.
 
@@ -33,6 +34,7 @@ G-clamp the foot to a table with the plate's front just past the table's edge, s
 | **Measuring** | Digital calipers; a kitchen scale reading to 1 g; a G-clamp; string or small S-hooks; weights from 10 g to 500 g (coins and water bottles will do); a thermometer that reads a surface |
 | **For the fixings coupon** | Socket cap screws: M2 × 6, M2.5 × 6, M3 × 6, M3 × 8, M4 × 8, M5 × 16; M3 and M4 hex nuts; CNC Kitchen heat-set inserts, M2 × 3 and M3 × 5.7, and a soldering iron with an insert tip; steel bolts or set screws M6 × 16, M8 × 20 and M10 × 25 or longer; a spanner |
 | **For the slot coupon** | An offcut of your own beam, 50 to 100 mm long, cut square at one end; M2.5 hex nuts and M2.5 × 8 screws for slot 6, M5 hex nuts and M5 × 10 screws for slot 8; one of the bought slot nuts made for your beam (slide-in or drop-in) |
+| **For the joint rig** | 2020 beam of MISUMI's HFS5 kind (or your own 20 mm beam): one 400 mm length and three of 150 mm, cut square (one metre does: `cad beams benchmarks/joint-test` gives each one's sheet), each short one tapped M5 18.5 mm deep at its outer end and `c1` at both; one MISUMI HMJ5 centre joint; M5 slide-in slot nuts for 6 mm slots: five, and one of each kind you want to test; M5 button-head screws: 12 mm × 2, 16 mm × 3, 25 mm × 2; M5 cap screws 12 mm × 2; an M4 × 16 screw and nut for the dial's clamp; a dial indicator reading 0.01 mm with an 8 mm stem; a 2 kg mass that hangs (a 2 litre bottle of water and an S-hook or a loop of cord); a luggage scale reading to 50 kg; two G-clamps |
 | **Also** | PTFE grease, for the second round of the efficiency test; a spare print's worth of PLA |
 
 ## The measurements
@@ -74,6 +76,10 @@ Write the number in the last column and send it back: it replaces the kit's figu
 | 31 | Printed slots, slot 6 and slot 8 | Each block's figure is how far its printed slot is opened a side. Slide a bought slot nut for your beam down each from the top. The best is the tightest it runs the length of by hand without catching, and that holds it upright when the block is tipped on its side. `x1c.printed_slot_fit=<figure>` | 0.2 mm a side | |
 | 32 | The slot itself, by caliper | On the beam's square end: the opening across the face, the lips' thickness, the cavity's width under the lips and its depth from the face (the depth rod of the calipers). Write each to the slot set your beam's profile names, or to `slot-6` or `slot-8` for an unbranded beam: `cad measured benchmarks/slot-test slot-8.opening=<mm> slot-8.lip_thickness=<mm> slot-8.cavity_width=<mm> slot-8.cavity_depth=<mm>`. They go in your workspace's copy of the set as measured, and cad refuses figures that make no slot | slot 6: opening 6, lips 1.5, cavity 12 wide, 5.5 deep. Slot 8: 8, 2.2, 16.5, 9 (community figures) | |
 | 33 | The fit, confirmed | With 29 to 32 written back, print again the carrier whose figure you wrote to `x1c.slot_fit`: `cad export benchmarks/slot-coupon --part slot-8-carrier-<figure>` (or `slot-6-`). It is now drawn from your measured slot. It should slide as that carrier did in 30; a design's own carriers take the same fit with `printer: v.x1c` | | |
+| 34 | A blind join's spring (rig beam `c1`) | Clamp the base beam to the table along its edge, its front face over the edge, so the three rig beams stand out into the room. Put the dial arm on the base beam over `c1`'s join (its two screws into slide-in nuts in the top slot), the dial's stem in its clamp, the plunger resting on the hanger's top edge with a few millimetres pressed in. With the hook on and nothing hung from it, set the dial to 0. Hang the 2 kg mass gently, wait 30 seconds and read the dial; lift the mass off and check the dial comes back to 0 within 0.01 mm. Do it three times and write the mean: `cad measured benchmarks/joint-test c1.drop=<mm>`. Weigh the mass first: if it is not 2 kg, change the three loads in `joint-test.json` to what it weighs | 0.344 mm, of which the beam's own bending is 0.044 mm (`joins.blind_bending` 1.5 N·m/mrad, an estimate) | |
+| 35 | A printed corner bracket's spring (`c2`) | As 34, the dial arm moved along the slot over `c2`'s join: `cad measured benchmarks/joint-test c2.drop=<mm>`. cad works out the joint's spring from it and writes it as a share of the bracket's own stiffness by finite elements, so every printed bracket of that kind after it is taken at that share | 2.158 mm (the bracket's own 0.213 N·m/mrad, by finite elements, taken whole: `joins.bracket_printed_share` 1, an estimate) | |
+| 36 | A bought fitting's spring (`c3`, MISUMI's HMJ5 centre joint) | As 34, over `c3`'s join: `cad measured benchmarks/joint-test c3.drop=<mm>`. The spring goes to `fitting-misumi-hmj5.bending_stiffness`. With another maker's beam, join `c3` with a bought fitting made for its slot, and the spring goes to that fitting's set | 0.269 mm (`fitting-misumi-hmj5.bending_stiffness` 2 N·m/mrad, an estimate) | |
+| 37 | A slot nut's hold along its slot | Screw the nut puller onto the slot nut under test in the base beam's top slot, the hook's hole toward the beam's nearer end. Tighten the screw as the nut's maker says, or firmly by hand with the short arm of a hex key. Hook the luggage scale through the hole and pull along the slot, slowly and level, until the nut moves; the scale's peak is the figure. Three times on fresh places along the slot, and write the least: `cad measured benchmarks/joint-test slot-nut-6-misumi-m5-slide-in.hold_along=<N>` (newtons: kilograms × 9.81), naming your nut's set. If it holds at the scale's top, write the top and say so with `--source` | Nothing: no maker publishes it | |
 
 Number 11 is a correction to 7 to 9. Take number 16 last: it wrecks the gears.
 
@@ -91,6 +97,26 @@ the middle row five carriers for each (a block that slides in the slot holding a
 printed slots for each, standing on end. The slot 8 pieces are the larger. Slot 6 is the slot of 20 mm beams, slot 8
 of 30 and 40 mm beams. Every piece is drawn from the slot's rule set, so once 32 is written back the coupon prints from
 your own slot. `cad history benchmarks/slot-test` then shows each figure against what the kit drew before.
+
+The joint rig (34 to 37) measures what every frame prediction rests on: how far a join lets a beam's end turn. A
+base beam clamped to the table holds three short beams out from its front face, each by one kind of join: a blind
+join (`c1`), a printed corner bracket (`c2`) and a bought fitting (`c3`, MISUMI's HMJ5 centre joint). A printed
+hanger on each one's free end carries the mass on a hook under the beam, in line with the plate's middle, and its top
+edge is flush with the beam's top for the dial's plunger. `cad check benchmarks/joint-test` predicts each drop
+(join.drop): the beam's own bending, F L³ / 3 E I from its profile's sheet, and the join turning on its spring k,
+F L² / k. The drop is mostly the join, so the reading measures the join. Written back, cad takes the beam's own
+bending off it and writes the join's spring, k = F L² / (drop less the beam's own), into the rule the estimate was
+in, as measured with the date: the kind's figure in your workspace's `rules/joins.json` (made from the kit's
+estimates the first time), the printed bracket's share of its own stiffness by finite elements, or the bought
+fitting's set. Every frame's check then says its joins were measured, and when, and its drops move to match. The
+dial arm stands on the base beam beside the join it reads, so the base beam twisting under the load turns the arm
+and the rig beam together and reads nothing. The arm itself sags 0.12 mm for each newton the plunger presses up, and
+the plunger's spring changes by a small part of a newton over a reading of a few millimetres, so the arm adds a few
+hundredths of a millimetre at most to the printed bracket's reading and less to the others. Only bending is measured
+here: a join's twist stays an estimate. The nut puller (37) is the same base beam's other use: the load along the
+slot at which a tightened slot nut slips, which no maker publishes. It goes in the nut's own set as `hold_along`,
+and the nut says it wherever it is used. `cad history benchmarks/joint-test` then shows each figure against what the
+kit drew before.
 
 ## Wiring
 

@@ -493,6 +493,15 @@ the figures and the end join `@rulecad/fea/frame` takes (`{ rx: twist, ry: bendi
 carries its own `bending_stiffness` and `twist_stiffness`, which `boughtStiffness(kind, beam, fitting)` reads in
 their place; no maker publishes one, so each set's is an estimate too, and its rule says where it comes from.
 
+Measured figures live in a workspace's `joins` rule set (`JOIN_SET`, part `joins`). The kit has no file of it:
+`joinRuleSet()` gives it as the kit starts it, each kind's `<kind>_bending` and `<kind>_twist` (a kind's hyphen as
+an underscore: `end_tap_bending`) from `JOIN_STIFFNESS`, and for each kind a printed fitting can make, its
+`<kind>_printed_share`: the joint's stiffness as a share of the fitting's own by finite elements, which leaves out
+the slot nuts, the lips and where the faces touch (1, an estimate, until measured). cad measured writes the
+workspace's copy from it. `joinStiffness(kind, beam, { given })` takes a figure of `given.sets.joins` before the
+kit's, and its `measured` says the date each of bending and twist was measured, or null; `kind` is `measured` only
+when both were. `joinModel` hands its `given` on, so a frame's joins take the workspace's figures.
+
 ## Bought fittings
 
 A bought fitting is a rule set of part `fitting` in `@rulecad/rules`, read from its maker's drawing and shop page:
@@ -916,7 +925,7 @@ under the lips, as it sits once its screw is tight.
 
 | Export | What |
 |---|---|
-| `slotNutModel(name, change?, given?)` | A nut's model: `slot`, `thread`, `nutKind`, `entry`, `length` (along the slot), `width` (across), `height` (the body under the lips), `tongueWidth` and `tongueHeight` (the step up into the opening), `boltLength`, `hold` (the figure, newtons), `torque`, `material`, `volume`, `mass` (grams), `figures`, `findings` |
+| `slotNutModel(name, change?, given?)` | A nut's model: `slot`, `thread`, `nutKind`, `entry`, `length` (along the slot), `width` (across), `height` (the body under the lips), `tongueWidth` and `tongueHeight` (the step up into the opening), `boltLength`, `hold` (the figure, newtons), `holdAlong` (the pull along the slot at which it slips, tightened, from the set's `hold_along`: no maker publishes it, so only a set measured on the joint rig has it), `torque`, `material`, `volume`, `mass` (grams), `figures`, `findings` |
 | `nutFit(nut, slot)` | How it sits: `slot_nut.fit` fail where it is wider than the cavity (a turned nut may be as wide: it turns until it jams), no wider than the opening, taller than the room under the lips, or its tongue wider than the opening; warn where its tongue stands proud of the face. `slot_nut.entry` warn where a turned nut is longer than the opening is wide |
 | `slotNut(nut, { at?, display? })` | Its reference solid: body, tongue, the thread's hole; a T-bolt's shank. `display: 'link'` is the body alone |
 | `nutFor(profile, face, thread, { kind?, given? })` | The nut for that face: one made for the slot's nut family (a slot's `nut_family`), of that thread and kind (any kind where none is asked), that fits; the strongest first. Its `others` name the rest that would do. Refused by name where there is none, naming the nuts made for that slot, and other families' nuts that fit it by their sizes |
@@ -1017,6 +1026,7 @@ kit's.
 | Tap depth, by default | 2 × the major diameter in aluminium (1 in steel, 2.5 in plastic) | The engagement rule set in `@rulecad/rules`, through `@rulecad/fixings` |
 | A join's tap depth | engagement + tip room + 1.5 × the major diameter (M5 in aluminium: 10 + 1 + 7.5 = 18.5 mm) | `engagement` and `tip_room` from `@rulecad/fixings`; `JOIN_TAP`, a working figure |
 | A join's stiffness for another size | k = k₂₀ × (w / 20)³, w the profile's larger side in mm | `JOIN_SCALE.size`, an estimate |
+| A join's spring from the joint rig | k = F L² / (d − F L³ / 3 E I): d the measured drop of a beam held out by the join, F the weight hung at L from the face it meets, E I the beam's across the load | A cantilever's tip deflection, F L³ / 3 E I, plus its root turning on a spring, F L / k, times L (Euler-Bernoulli beam theory; the beam's shear left out, under 1% of the drop of the rig's 150 mm beams) |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
 | A fitting's first thickness | t = √(2 × 6 F s × 1.5 / (w S)), F the load, s the screw's distance from the corner, w the width, S the strength, 1.5 a stress raiser | Beam theory for a leg bent at its root (σ = 6M / w t²); only a start, the finite elements decide |
 | A fitting's margin | S / σ_peak, σ_peak the largest von Mises stress at a cell's centre away from the screws, times k / (k − 1) for k cells across the leg | `@rulecad/fea`; the lift reads a cell's centre out to the surface, as cad's motor mount check does |
@@ -1164,7 +1174,8 @@ lists them.
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre?, given? })` | A join: the operations on each beam, its screws, its fitting (printed, or a bought set by name), its stiffness, what to know |
 | `BOUGHT_KINDS`, `boughtFittings(given?)`, `boughtFittingModel(set, { profile?, other?, join?, given? })`, `boughtFitting(m, { pose? })`, `boughtStiffness(kind, beam, m)`, `printedCost(grams, material)` | Bought fittings: the kinds and the join kinds that take each, the sets, one set's model (screws, holes, price, stiffness, fit), its reference solid, a join's stiffness with it, and a printed part's plastic beside its price |
-| `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join |
+| `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting?, given? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join, a workspace's measured figure first |
+| `JOIN_SET`, `joinRuleSet()` | The name of the rule set measured joins go in (`joins`), and that set as the kit starts it |
 | `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
 | `cutList(beams, { kerf?, trim?, tolerance?, stock? })`, `cutListText(c)` | The cut list: marks, the bars to buy, the cut order and offcut on each, `frame.cut` findings |
