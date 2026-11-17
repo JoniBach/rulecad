@@ -1,6 +1,7 @@
 // Jigs for an assembly's beams (@rulecad/frames jig.mjs), generated from the assembly: a drill guide for each distinct
 // hole across a beam (access, drill, counterbore), a tap guide for each distinct tapped end, a cut-length stop for
-// each distinct length, and a squaring corner for each distinct pair of profiles a square join (blind, end-tap) holds.
+// each distinct length, and a squaring corner for each distinct pair of profiles and hand a square join (blind, end-tap)
+// holds: the L whose arm b lies on b, its tongues whole on both beams and its plate clear of every beam.
 // Distinct means drawn the same: one guide serves every hole of its size at its distance from an end, on every mark.
 // Each jig is marked with what it is for (mark and the sheet's operation number: A3; a length stop: A 260), cut into
 // a face that faces up as it prints, and laid out on the printer's bed as a plate: exports/<project>/<assembly>.jigs.3mf
@@ -40,9 +41,41 @@ function faceWorld(W, place, L) {
   return { n: dir([...place.normal, 0]), at: pt([...place.at, L / 2]), along: dir([...place.along, 0]) };
 }
 
+// 4x4s: an item's placed frame (row by row) as JSCAD's (column by column), a product of two of JSCAD's, a point through one
+const colMajor = (W) => [W[0], W[4], W[8], 0, W[1], W[5], W[9], 0, W[2], W[6], W[10], 0, W[3], W[7], W[11], 1];
+const mul = (P, Q) => Array.from({ length: 16 }, (_, i) => { const c = Math.floor(i / 4), r = i % 4; return P[r] * Q[4 * c] + P[4 + r] * Q[4 * c + 1] + P[8 + r] * Q[4 * c + 2] + P[12 + r] * Q[4 * c + 3]; });
+const apply = (M, p) => [0, 1, 2].map((k) => M[k] * p[0] + M[4 + k] * p[1] + M[8 + k] * p[2] + M[12 + k]);
+// a world point in a beam item's frame (its section in x and y about the envelope's middle, z from end a)
+const local = (W, p) => [0, 1, 2].map((k) => W[k] * (p[0] - W[3]) + W[4 + k] * (p[1] - W[7]) + W[8 + k] * (p[2] - W[11]));
+const inside = (beam, q, e = 0.01) => Math.abs(q[0]) < beam.profile.width / 2 - e && Math.abs(q[1]) < beam.profile.height / 2 - e && q[2] > e && q[2] < beam.length - e;
+const inPolygon = (pts, x, y) => { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+
+// How a squaring corner, fitted in the world by F, sits on its beams: how much of each tongue lies along its own beam
+// (from the tongue's ends, in that beam's frame), and which beams its plate meets (its outline sampled every 2 mm at
+// half its thickness). ok where both tongues lie whole on their beams and the plate meets none.
+function cornerFit(m, F, ai, bi, beams, worlds) {
+  const t = m.plate.thickness, { a: ta, b: tb } = m.tongues, why = [];
+  const along = (id, p, q) => { const W = worlds[id], B = beams.get(id), u = local(W, apply(F, p)), v = local(W, apply(F, q)), mid = u.map((x, k) => (x + v[k]) / 2);
+    const across = Math.abs(mid[0]) < B.profile.width / 2 && Math.abs(mid[1]) < B.profile.height / 2;
+    return across ? Math.max(0, Math.min(Math.max(u[2], v[2]), B.length) - Math.max(Math.min(u[2], v[2]), 0)) : 0; };
+  const on = { a: r3(along(ai, [ta.at, ta.from, t + ta.depth / 2], [ta.at, ta.to, t + ta.depth / 2])), b: r3(along(bi, [tb.from, tb.at, t + tb.depth / 2], [tb.to, tb.at, t + tb.depth / 2])) };
+  const need = { a: r3(ta.to - ta.from), b: r3(tb.to - tb.from) };
+  for (const k of ['a', 'b']) if (on[k] < need[k] - 0.01) why.push(`its ${k} tongue has ${mm(on[k])} of its ${mm(need[k])} mm on ${k === 'a' ? ai : bi}, the rest past its end`);
+  const xs = m.outline.map((p) => p[0]), ys = m.outline.map((p) => p[1]), hits = new Set();
+  for (let x = Math.min(...xs) + 0.5; x < Math.max(...xs); x += 2) for (let y = Math.min(...ys) + 0.5; y < Math.max(...ys); y += 2) {
+    if (!inPolygon(m.outline, x, y)) continue;
+    const w = apply(F, [x, y, t / 2]);
+    for (const [id, B] of beams) if (worlds[id] && !hits.has(id) && inside(B, local(worlds[id], w))) hits.add(id);
+  }
+  if (hits.size) why.push(`its plate meets ${[...hits].join(', ')}`);
+  return { ok: !why.length, on, why, short: r3(need.a - on.a + need.b - on.b + 100 * hits.size) };
+}
+
 /**
- * The jigs an assembly's beams take, each with what it is for. Holes too far from both ends for one print, and square
- * joins with no slotted faces in one plane, give a warning (jig.drill, jig.square) in place of a jig.
+ * The jigs an assembly's beams take, each with what it is for. Holes too far from both ends for one print, tapped ends
+ * no guide can be drawn for, and square joins where no corner of either hand lies whole on both beams clear of the
+ * others, give a warning (jig.drill, jig.tap, jig.square) in place of a jig. Each squaring corner's use carries its
+ * hand, how much of each tongue lies on its beam (on), and fit: the 4x4 (JSCAD's) that puts the print pose in the world.
  * @param {object} s a built assembly
  * @returns {{ jigs: { kind: string, name: string, model: object, for: object[], label: string }[], findings: object[] }}
  */
@@ -63,32 +96,45 @@ export function jigsOf(s) {
         } catch (e) { warn('jig.drill', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${i + 1}: no drill guide: ${strip(e)}`, { mark: mk.mark, op: i + 1 }); }
       }
       if (x.op === 'tap') {
-        const m = tapGuideModel(b, i, { ...(printer ? { printer } : {}) });
-        add(`tap|${m.name}|${m.profile}|${JSON.stringify(m.bores)}`, 'tap-guide', m, { ...who, label: `${mk.mark}${i + 1}`, end: x.end, bores: x.bores });
+        try {
+          const m = tapGuideModel(b, i, { ...(printer ? { printer } : {}) });
+          add(`tap|${m.name}|${m.profile}|${JSON.stringify(m.bores)}`, 'tap-guide', m, { ...who, label: `${mk.mark}${i + 1}`, end: x.end, bores: x.bores });
+        } catch (e) { warn('jig.tap', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${i + 1}: no tap guide: ${strip(e)}`, { mark: mk.mark, op: i + 1 }); }
       }
     });
     const m = lengthStopModel(b.profile, b.length, { ...(printer ? { printer } : {}) });
     add(`length|${b.profile.name}|${b.length}`, 'length-stop', m, { mark: mk.mark, items: mk.items, label: `${mk.mark} ${mm(b.length)}`, length: b.length });
   }
-  // a squaring corner for each square join: on a face of each beam in one plane, the outer pair where there are two
+  // a squaring corner for each square join: on a face of each beam in one plane, of the hand whose arm b lies on b, its
+  // tongues whole on their beams and its plate clear of every beam; the outer pair of faces first, then right-handed
   const marks = new Map(c.marks.flatMap((mk) => mk.items.map((id) => [id, mk.mark])));
   const placed = s.joins?.length ? placeItems(s.motion, s.jointValues) : [], worlds = Object.fromEntries(s.motion.items.map((x, i) => [x[0], placed[i]])), beams = new Map(s.objects.filter((o) => o.beam && !o.unplaced).map((o) => [o.id, o.beam]));
   const middle = (() => { const pts = [...beams.keys()].filter((id) => worlds[id]).map((id) => { const W = worlds[id], L = beams.get(id).length; return [W[2] * L / 2 + W[3], W[6] * L / 2 + W[7], W[10] * L / 2 + W[11]]; }); return pts.length ? [0, 1, 2].map((k) => pts.reduce((t, p) => t + p[k], 0) / pts.length) : [0, 0, 0]; })();
+  const models = new Map(), corner = (...args) => { const key = JSON.stringify(args); if (!models.has(key)) models.set(key, squareCornerModel(...args)); return models.get(key); };
   for (const j of s.joins ?? []) {
     if (!SQUARE_JOINS.includes(j.kind) || j.model.b.end != null) continue;
     const [ai, bi] = j.items, A = beams.get(ai), B = beams.get(bi), Wa = worlds[ai], Wb = worlds[bi];
     if (!A || !B || !Wa || !Wb) continue;
-    const away = [0, 1, 2].map((k) => (j.end[0] === 'a' ? 1 : -1) * Wa[4 * k + 2]); // along a, away from b
-    let best = null;
+    const end = j.end[0], away = [0, 1, 2].map((k) => (end === 'a' ? 1 : -1) * Wa[4 * k + 2]); // along a, away from b
+    const tried = [];
     for (const pa of A.places.filter((q) => q.slot)) for (const pb of B.places.filter((q) => q.slot)) {
       const fa = faceWorld(Wa, pa, A.length), fb = faceWorld(Wb, pb, B.length);
       if (dot(fa.n, fb.n) < 1 - 1e-6 || Math.abs(dot(fa.n, fa.at.map((v, k) => v - fb.at[k]))) > 0.05) continue;
-      const out = dot(fa.n, fb.at.map((v, k) => v - middle[k]));
-      if (!best || out > best.out + 1e-9) best = { pa, pb, out, edge: dot(fb.along, away) > 0 ? 'hi' : 'lo' };
+      const out = dot(fa.n, fb.at.map((v, k) => v - middle[k])), edge = dot(fb.along, away) > 0 ? 'hi' : 'lo';
+      for (const hand of ['right', 'left']) {
+        const m = corner({ profile: A.profile, face: pa.name, end, length: A.length }, { profile: B.profile, face: pb.name, edge }, { hand, ...(printer ? { printer } : {}) });
+        tried.push({ pa, pb, hand, out, m, fit: mul(colMajor(Wa), m.fit), ...cornerFit(m, mul(colMajor(Wa), m.fit), ai, bi, beams, worlds) });
+      }
     }
-    if (!best) { warn('jig.square', `${j.label}: no squaring corner: ${ai} and ${bi} have no slotted faces in one plane for it to key into`, { join: j.index }); continue; }
-    const m = squareCornerModel({ profile: A.profile, face: best.pa.name }, { profile: B.profile, face: best.pb.name, edge: best.edge }, { ...(printer ? { printer } : {}) });
-    add(`corner|${m.name}|${JSON.stringify(m.outline)}`, 'square-corner', m, { join: j.index, label: `${marks.get(ai)}${marks.get(bi)}`, marks: [marks.get(ai), marks.get(bi)], items: [ai, bi], faces: [best.pa.name, best.pb.name], text: j.label });
+    if (!tried.length) { warn('jig.square', `${j.label}: no squaring corner: ${ai} and ${bi} have no slotted faces in one plane for it to key into`, { join: j.index }); continue; }
+    const fits = tried.filter((x) => x.ok).sort((x, y) => y.out - x.out || (x.hand === 'right' ? -1 : 1) - (y.hand === 'right' ? -1 : 1));
+    if (!fits.length) {
+      const near = [...tried].sort((x, y) => x.short - y.short)[0];
+      warn('jig.square', `${j.label}: no squaring corner fits: on ${ai}'s ${near.pa.name} and ${bi}'s ${near.pb.name}, the nearest (${near.hand}-handed) ${near.why.join('; ')}. Square this join with an engineer's square`, { join: j.index });
+      continue;
+    }
+    const best = fits[0], m = best.m;
+    add(`corner|${m.name}|${JSON.stringify([m.outline, m.tongues])}`, 'square-corner', m, { join: j.index, label: `${marks.get(ai)}${marks.get(bi)}`, marks: [marks.get(ai), marks.get(bi)], items: [ai, bi], faces: [best.pa.name, best.pb.name], end, edge: m.edge, hand: best.hand, on: best.on, fit: best.fit.map(r3), text: j.label });
   }
   const out = [...jigs.values()].map((x) => ({ ...x, label: labelOf(x) }));
   return { jigs: out, findings };

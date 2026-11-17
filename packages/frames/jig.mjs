@@ -175,6 +175,8 @@ export function tapGuideModel(b, op, o = {}) {
   const { x, i } = opOf(what, b, op, JIG_KINDS['tap-guide'].ops), p = b.profile, k = partSetup(what, o), g = cleanFigures(k), F = loadOf(what, o.load);
   if (o.shank != null && !(isNum(o.shank) && o.shank >= x.major)) throw new Error(`${what}: shank is the tap's shank across in mm, at least its ${mm(x.major)} mm thread (got ${shown(o.shank)})`);
   const shank = o.shank ?? r3(J('shank') * x.major), dia = r3(shank + g.slip + g.comp), t = up(Math.max(J('bush') * x.major, 3 * k.line), k.layer);
+  const missing = (x.bores ?? []).filter((n) => !b.bores.some((q) => q.name === n)), own = b.bores.filter((q) => q.end === x.end).map((q) => q.name);
+  if (missing.length || !x.bores?.length) throw new Error(`${what}: ${opName(b, i)} taps ${missing.length ? `bore ${missing.join(', ')}, which ${b.name} does not have` : 'no bore'}: end ${x.end} has ${own.length ? own.join(', ') : 'none'}`);
   const mx = x.end === 'a' ? 1 : -1, at = x.bores.map((n) => b.bores.find((q) => q.name === n).at).map(([bx, by]) => [r3(mx * bx), r3(by)]);
   const rc = r3((p.cornerRadius ?? 0) + k.fit), wx = r3(p.width / 2 + k.fit), wy = r3(p.height / 2 + k.fit), hs = up(J('sleeve') * Math.min(p.width, p.height), k.layer);
   // the sleeve's wall: three lines, more where the side push bends it (6 F hs / (B w²)) past half the plastic's strength
@@ -264,53 +266,67 @@ export function lengthStop(m, o = {}) {
  * A squaring corner for two beams that meet square, as its model: an L that lies on a face of each in one plane, a
  * tongue along each arm in that face's slot, so it holds a's end square to b while the join is tightened. Its arms
  * run JIG_DEFAULTS.arm times the face's width past the corner. It prints on its outer face, the tongues on top.
- * @param {{ profile: string | object, face?: string }} a the beam whose end meets b, and its face in the plane
+ * An L has a hand: arm a runs along a away from b, and arm b runs along b one way only. Right-handed, arm b runs
+ * along n x u, where n is a's face's outward normal and u runs along a away from b (+X of the print frame);
+ * left-handed, the other way (-X), the mirror image. Choose the hand whose arm b lies on b, not past its end.
+ * @param {{ profile: string | object, face?: string, end?: 'a' | 'b', length?: number }} a the beam whose end meets b, its face in the plane, the end that meets b (a where not given), and its length (for the fitted pose on end b)
  * @param {{ profile: string | object, face?: string, edge?: 'lo' | 'hi' }} b the beam a meets, its face in the plane, and which edge of that face (along the place's across direction) a stands on
- * @param {{ load?: number, printer?: object, material?: string | object, given?: object }} [o]
- * @returns {object} its model: name, title, profiles, outline, arms, tongues, square, size, findings
+ * @param {{ hand?: 'right' | 'left', load?: number, printer?: object, material?: string | object, given?: object }} [o] hand: which way arm b runs (right where not given)
+ * @returns {object} its model: name, title, profiles, hand, outline, arms, tongues, square, size, fit (the 4x4 turn from the print frame to a's, or null on end b with no length), findings
  */
 export function squareCornerModel(a, b, o = {}) {
   const what = 'squareCornerModel';
-  options(what, o ?? {}, ['load', 'printer', 'material', 'given']);
-  const k = partSetup(what, o), g = cleanFigures(k), F = loadOf(what, o.load), given = o.given ?? {};
+  options(what, o ?? {}, ['hand', 'load', 'printer', 'material', 'given']);
+  const k = partSetup(what, o), g = cleanFigures(k), F = loadOf(what, o.load), given = o.given ?? {}, hand = o.hand ?? 'right';
+  if (!['right', 'left'].includes(hand)) throw new Error(`${what}: hand is the way arm b runs, right (along n x u: a's face's outward normal crossed with a's direction away from b) or left (the mirror image) (got ${shown(o.hand)})`);
+  if (a && typeof a === 'object' && a.end != null && !['a', 'b'].includes(a.end)) throw new Error(`${what}: a.end is the end of a that meets b, a or b (got ${shown(a.end)})`);
+  if (a && typeof a === 'object' && a.length != null && !(isNum(a.length) && a.length > 0)) throw new Error(`${what}: a.length is a's length in mm, above 0 (got ${shown(a.length)})`);
   const side = (s, w) => {
-    if (!s || typeof s !== 'object') throw new Error(`${what}: ${w} is { profile, face }${w === 'b' ? ', edge' : ''} (got ${shown(s)})`);
+    if (!s || typeof s !== 'object') throw new Error(`${what}: ${w} is { profile, face${w === 'a' ? ', end, length' : ', edge'} } (got ${shown(s)})`);
     const p = profileOf(what, s.profile, given), [fn, idx] = String(s.face ?? 'top').split('.'), place = p.faces[fn]?.[(idx ? +idx : 1) - 1];
     if (!place) throw new Error(`${what}: ${w}'s ${p.name} has no face ${shown(s.face)}: give top, bottom, front or back, with .2 for a second slot`);
     if (!place.slot) throw new Error(`${what}: ${w}'s ${p.name} ${s.face ?? 'top'} face is closed: a squaring corner keys into a slot on each beam`);
-    const slot = p.slots[place.slot], sp = spanOf(p, place, place.along), tw = r3(slot.opening - g.slip);
+    const slot = p.slots[place.slot], tw = r3(slot.opening - g.slip);
+    // a's face is spanned along the print frame's X (n x u in a's section), b's along its place's across direction
+    const sigma = w === 'a' && s.end === 'b' ? -1 : 1, dir = w === 'a' ? [sigma * place.normal[1], -sigma * place.normal[0]] : place.along, sp = spanOf(p, place, dir);
     if (tw < 2 * k.line) throw new Error(`${what}: ${slot.name}'s opening leaves a tongue ${mm(tw)} mm wide: too thin to print`);
-    return { p, face: s.face ?? 'top', slot, ...sp, w: r3(sp.hi - sp.lo), tongue: { width: tw, depth: r3(slot.lip - k.fit) } };
+    return { p, place, sigma, dir, face: s.face ?? 'top', slot, ...sp, w: r3(sp.hi - sp.lo), tongue: { width: tw, depth: r3(slot.lip - k.fit) } };
   };
-  const A = side(a, 'a'), B = side(b, 'b'), edge = b.edge ?? 'hi';
+  const A = side(a, 'a'), B = side(b, 'b'), edge = b.edge ?? 'hi', end = a.end ?? 'a', h = hand === 'right' ? 1 : -1;
   if (!['lo', 'hi'].includes(edge)) throw new Error(`${what}: b.edge is the side of b's face that a stands on, lo or hi (got ${shown(b.edge)})`);
   const arm = r3(J('arm') * Math.max(A.w, B.w)), la = arm, lb = arm, v0 = r3(-B.w), vb = r3(edge === 'hi' ? -B.hi : B.lo);
   // in-plane, the push at a's arm end bends the L at its corner (6 F l / (t w²)); the plate is at least JIG_DEFAULTS.plate
   const t = up(Math.max(J('plate'), (FITTING_DEFAULTS.margin.value * 6 * F * la) / (k.S * A.w * A.w)), k.layer);
-  const loop = roundConcave(ccw([[A.lo, v0], [r3(A.hi + lb), v0], [r3(A.hi + lb), 0], [A.hi, 0], [A.hi, la], [A.lo, la]]), A.w / 2);
-  const ta = [1, r3(la - 1)], tb = [r3(A.lo + 1), r3(A.hi + lb - 1)];
+  // across a's face (X): its near side xn, its side toward arm b xi, and arm b's far end xb
+  const xn = h > 0 ? A.lo : A.hi, xi = h > 0 ? A.hi : A.lo, xb = r3(xi + h * lb);
+  const loop = roundConcave(ccw([[xn, v0], [xb, v0], [xb, 0], [xi, 0], [xi, la], [xn, la]]), A.w / 2);
+  const ta = [1, r3(la - 1)], tb = [r3(Math.min(xn + h, xb - h)), r3(Math.max(xn + h, xb - h))];
   const play = deg(Math.atan(g.slip / (ta[1] - ta[0]))) + deg(Math.atan(g.slip / (tb[1] - tb[0]))), square = r3(play);
   const stress = r3((6 * F * la) / (t * A.w * A.w)), margin = r3(k.S / stress), mark = A.tongue.width / 2 + 2 * k.fit + 0.5;
-  const m = { kind: 'jig', jig: 'square-corner', name: `square-corner-${short(A.p.name)}${A.p.name === B.p.name ? '' : `-${short(B.p.name)}`}`, title: `squaring corner for ${short(A.p.name)} on ${short(B.p.name)}`,
-    profiles: [A.p.name, B.p.name], faces: [A.face, B.face], edge, outline: loop.map(([u, v]) => [r3(u), r3(v)]), plate: { thickness: t }, round: k.fit,
+  // fitted on a: X across a's face, Y along a from the end that meets b, Z into a from the plate's outer face
+  const [nx, ny] = A.place.normal, za = end === 'a' ? 0 : a.length;
+  const fitM = za == null ? null : [A.dir[0], A.dir[1], 0, 0, 0, 0, A.sigma, 0, -nx, -ny, 0, 0, r3(A.place.at[0] + t * nx), r3(A.place.at[1] + t * ny), za, 1];
+  const m = { kind: 'jig', jig: 'square-corner', name: `square-corner-${short(A.p.name)}${A.p.name === B.p.name ? '' : `-${short(B.p.name)}`}${h > 0 ? '' : '-left'}`, title: `${h > 0 ? '' : 'left-handed '}squaring corner for ${short(A.p.name)} on ${short(B.p.name)}`,
+    profiles: [A.p.name, B.p.name], faces: [A.face, B.face], end, edge, hand, outline: loop.map(([u, v]) => [r3(u), r3(v)]), plate: { thickness: t }, round: k.fit,
     arms: { a: la, b: lb }, tongues: { a: { ...A.tongue, at: 0, from: ta[0], to: ta[1] }, b: { ...B.tongue, at: vb, from: tb[0], to: tb[1] } }, square,
-    size: { length: r3(A.hi + lb - A.lo), width: r3(la - v0), height: r3(t + Math.max(A.tongue.depth, B.tongue.depth)) },
-    label: { at: [r3((A.lo + -mark) / 2), r3(la / 2), t], along: [0, 1], room: [r3(la - 4), r3(-mark - A.lo - 0.5)] },
+    size: { length: r3(A.hi + lb - A.lo), width: r3(la - v0), height: r3(t + Math.max(A.tongue.depth, B.tongue.depth)) }, fit: fitM,
+    label: { at: [r3((xn - h * mark) / 2), r3(la / 2), t], along: [0, 1], room: [r3(la - 4), r3(-h * xn - mark - 0.5)] },
     load: { force: F, what: `${F} N pushing a's arm end in the plane` }, stress, margin,
     volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [], rests: rests('arm', 'plate', 'square', 'load') };
   weigh(m, squareCorner(m), k.density);
-  closingFindings(m, { S: k.S, sizeText: `an L ${mm(t)} mm thick, its arms ${mm(arm)} mm past the corner, a tongue ${mm(A.tongue.width)} mm wide in ${A.slot.name} and one ${mm(B.tongue.width)} mm wide in ${B.slot.name}`, marginText: `under ${m.load.what}, its corner bends to ${mm(stress)} MPa`, pose: 'on its outer face, the tongues on top' });
+  closingFindings(m, { S: k.S, sizeText: `an L ${mm(t)} mm thick, ${hand}-handed, its arms ${mm(arm)} mm past the corner, a tongue ${mm(A.tongue.width)} mm wide in ${A.slot.name} and one ${mm(B.tongue.width)} mm wide in ${B.slot.name}`, marginText: `under ${m.load.what}, its corner bends to ${mm(stress)} MPa`, pose: 'on its outer face, the tongues on top' });
   const ok = square <= J('square') + 1e-9;
-  m.findings.push(finding(ok ? 'pass' : 'warn', `its tongues, ${mm(ta[1] - ta[0])} and ${mm(tb[1] - tb[0])} mm long with the printer's ${mm(g.slip)} mm slip in each slot, hold the beams within ${mm(square)}° of square${ok ? `, inside the ${J('square')}° a join is held to` : `: more than the ${J('square')}° a join is held to, so check the corner with a square as it is tightened`}`, 'jig.square', { values: { square, limit: J('square') }, refs: { profiles: [A.p.name, B.p.name] } }));
+  m.findings.push(finding(ok ? 'pass' : 'warn', `its tongues, ${mm(ta[1] - ta[0])} and ${mm(tb[1] - tb[0])} mm long with the printer's ${mm(g.slip)} mm slip in each slot, hold the beams within ${mm(square)}° of square where both lie whole on their beams${ok ? `, inside the ${J('square')}° a join is held to` : `: more than the ${J('square')}° a join is held to, so check the corner with a square as it is tightened`}`, 'jig.square', { values: { square, limit: J('square') }, refs: { profiles: [A.p.name, B.p.name] } }));
   return m;
 }
 
-/** A squaring corner's solid, in its print pose. @param {object} m squareCornerModel's @param {{ mark?: object, ops?: object }} [o] @returns {object} */
+/** A squaring corner's solid: in its print pose, or fitted on beam a (in a's frame). @param {object} m squareCornerModel's @param {{ pose?: 'print' | 'fit', mark?: object, ops?: object }} [o] @returns {object} */
 export function squareCorner(m, o = {}) {
   if (m?.jig !== 'square-corner') throw new Error(`squareCorner: give a squaring corner's model (squareCornerModel), not ${shown(m)}`);
+  if (o.pose === 'fit' && !m.fit) throw new Error(`squareCorner: a corner on a's end b is fitted from a's length: give a.length to squareCornerModel`);
   const t = m.plate.thickness, fit = m.round, { a, b } = m.tongues;
   const ta = tongueLoop(-a.width / 2, a.width / 2, a.depth, false, fit, 0.5).map(([n, x]) => [t + n, a.at + x]);
   const tb = tongueLoop(-b.width / 2, b.width / 2, b.depth, false, fit, 0.5).map(([n, y]) => [b.at + y, t + n]);
   const g = combine([prism(m.outline, 0, t, 'xy'), prism(ta, a.from, a.to, 'zx'), prism(tb, b.from, b.to, 'yz')], markCut(m.label, o.mark), o.ops);
-  return Object.assign(g, { model: m });
+  return Object.assign(o.pose === 'fit' ? transform(m.fit, g) : g, { model: m });
 }

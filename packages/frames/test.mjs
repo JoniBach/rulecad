@@ -1316,6 +1316,35 @@ test('rods: a layout from the rod, bearing, screw, nut and motor sets; holders, 
 });
 
 // ---------- jigs ----------
+test('jigs: a squaring corner has a hand: fitted on beam a, its a tongue lies in a\'s slot clear of the lips (but for its root round at the slot\'s mouth) and its arm b runs along n x u when right-handed, the other way when left, from either end of a', async () => {
+  const { squareCornerModel, squareCorner } = frames;
+  const { intersect } = jscad.booleans, { measureVolume, measureBoundingBox } = jscad.measurements;
+  const P = '2020-misumi-hfs5', L = 200, a = beamModel(P, { length: L }), solid = beam(a), env = beam(a, { display: 'link' });
+  const vol = (g, h) => measureVolume(intersect(g, h));
+  // on a's top face (n = +y): from end a, u = +z, so n x u = +x; from end b, u = -z, so n x u = -x
+  for (const [end, hand, xs, zs] of [['a', 'right', [-10, 70], [-20, 60]], ['a', 'left', [-70, 10], [-20, 60]], ['b', 'right', [-70, 10], [L - 60, L + 20]], ['b', 'left', [-10, 70], [L - 60, L + 20]]]) {
+    const m = squareCornerModel({ profile: P, face: 'top', end, length: L }, { profile: P, face: 'front' }, { hand }), g = squareCorner(m, { pose: 'fit' });
+    const [lo, hi] = measureBoundingBox(g), what = `end ${end}, ${hand}-handed`;
+    assert.deepEqual([lo[0], hi[0], lo[2], hi[2]].map((v) => +v.toFixed(2)), [...xs, ...zs], what);
+    assert.ok(Math.abs(lo[1] - (10 - m.tongues.a.depth)) < 1e-3 && Math.abs(hi[1] - (10 + m.plate.thickness)) < 1e-3, `${what}: the plate on a's top face, the tongues in (y ${lo[1]} to ${hi[1]})`);
+    // its a tongue in a's slot: inside a's envelope, touching no aluminium
+    const inA = vol(g, env);
+    assert.ok(inA > 50, `${what}: the tongue in a's slot (${inA} mm³)`);
+    // it meets the aluminium only where its tongue's root round touches the slot mouth's round, under 0.1 mm deep
+    const meet = intersect(g, solid), [mlo, mhi] = measureBoundingBox(meet);
+    assert.ok(measureVolume(meet) < 1 && mlo[1] > 10 - 0.1 && mhi[1] <= 10 + 1e-3, `${what}: it meets ${measureVolume(meet)} mm³ of a, y ${mlo[1]} to ${mhi[1]}`);
+    assert.equal(m.hand, hand); assert.equal(m.name, `square-corner-${P}${hand === 'left' ? '-left' : ''}`);
+  }
+  // the two hands are mirror images: the same grams, margin and play
+  const R = squareCornerModel({ profile: P }, { profile: P }), Lh = squareCornerModel({ profile: P }, { profile: P }, { hand: 'left' });
+  assert.deepEqual([Lh.grams, Lh.margin, Lh.square], [R.grams, R.margin, R.square]);
+  await prints(squareCorner(Lh), 'a left-handed squaring corner');
+  // refused by name
+  assert.throws(() => squareCornerModel({ profile: P }, { profile: P }, { hand: 'up' }), /hand is the way arm b runs, right .* or left \(the mirror image\) \(got "up"\)/);
+  assert.throws(() => squareCornerModel({ profile: P, end: 'c' }, { profile: P }), /a\.end is the end of a that meets b, a or b \(got "c"\)/);
+  assert.throws(() => squareCorner(squareCornerModel({ profile: P, end: 'b' }, { profile: P }), { pose: 'fit' }), /a corner on a's end b is fitted from a's length: give a\.length/);
+});
+
 test('jigs: a drill guide\'s bush sits where the beam\'s sheet dimensions the hole, from either end; a tap guide, a cut-length stop and a squaring corner each print without supports and report grams and margin', async () => {
   const { drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner, beamSheet, JIG_DEFAULTS } = frames;
   const { intersect } = jscad.booleans, { measureVolume } = jscad.measurements, { cylinder } = jscad.primitives, { transform } = jscad.transforms;
