@@ -2762,7 +2762,7 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     write(ell); r = probe();
     assert.deepEqual(r.ops, { x1: [['mitre', 'a', 0, null, 'front']], y1: [['mitre', 'a', 0, null, 'back']] });
     assert.deepEqual([by('join.geometry').map((x) => [x.level, x.values.miss]), by('join.fitting').map((x) => x.level)], [[['pass', 0]], ['warn']]);
-    assert.match(by('join.fitting')[0].text, /The mitres are cut; the corner key or plate comes with Frames 2\.3/);
+    assert.match(by('join.fitting')[0].text, /The mitres are cut; the corner key or plate comes with a later release/);
     ell.items[1].from = [300, 0, 0]; ell.items[1].to = [500, 0, 0]; write(ell);
     assert.match(cad('check', 'frame/tee'), /join 1: x1 and y1 lie along one line, so there is no corner to mitre: a splice joins them end to end/);
     // refused by name: a join on an item that is not a beam, a key a join does not take; cad add join kept to the beams

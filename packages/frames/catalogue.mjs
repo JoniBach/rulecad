@@ -1,4 +1,4 @@
-// The rule sets @rulecad/frames reads, by name: every profile, slot family and slot nut in @rulecad/rules, the threads
+// The rule sets @rulecad/frames reads, by name: every profile, slot family, slot nut and bought fitting in @rulecad/rules, the threads
 // their bores tap to, the materials they name and the outlines the kit draws itself. Generated from the rules package (one import per set, so a bundler
 // can see them): after adding a set there, add its line here. A test holds the two together.
 import s_al6000_item from '@rulecad/rules/al6000-item.json' with { type: 'json' };
@@ -7,6 +7,13 @@ import s_al6060_rexroth from '@rulecad/rules/al6060-rexroth.json' with { type: '
 import s_al6063_t5 from '@rulecad/rules/al6063-t5.json' with { type: 'json' };
 import s_al6063_t66 from '@rulecad/rules/al6063-t66.json' with { type: 'json' };
 import s_al6n01_t5 from '@rulecad/rules/al6n01-t5.json' with { type: 'json' };
+import s_fitting_misumi_hmj5 from '@rulecad/rules/fitting-misumi-hmj5.json' with { type: 'json' };
+import s_fitting_motedis_bracket_20_b6 from '@rulecad/rules/fitting-motedis-bracket-20-b6.json' with { type: 'json' };
+import s_fitting_motedis_end_cap_20_b6 from '@rulecad/rules/fitting-motedis-end-cap-20-b6.json' with { type: 'json' };
+import s_fitting_motedis_foot_m6_d19 from '@rulecad/rules/fitting-motedis-foot-m6-d19.json' with { type: 'json' };
+import s_fitting_motedis_hinge_20 from '@rulecad/rules/fitting-motedis-hinge-20.json' with { type: 'json' };
+import s_fitting_motedis_inner_20_b6 from '@rulecad/rules/fitting-motedis-inner-20-b6.json' with { type: 'json' };
+import s_fitting_motedis_plate_t_20 from '@rulecad/rules/fitting-motedis-plate-t-20.json' with { type: 'json' };
 import s_m10 from '@rulecad/rules/m10.json' with { type: 'json' };
 import s_m12 from '@rulecad/rules/m12.json' with { type: 'json' };
 import s_m1_6 from '@rulecad/rules/m1_6.json' with { type: 'json' };
@@ -195,7 +202,8 @@ import vocabulary from '@rulecad/rules/vocabulary.json' with { type: 'json' };
 export const FIELDS = vocabulary.fields;
 /** Every rule set frames knows, by its name. @type {Record<string, { name: string, part?: string, rules: Record<string, any> }>} */
 export const SETS = Object.fromEntries([
-  s_al6000_item, s_al6005a_8020, s_al6060_rexroth, s_al6063_t5, s_al6063_t66, s_al6n01_t5, s_m10, s_m12,
+  s_al6000_item, s_al6005a_8020, s_fitting_misumi_hmj5, s_fitting_motedis_bracket_20_b6, s_fitting_motedis_end_cap_20_b6, s_fitting_motedis_foot_m6_d19, s_fitting_motedis_hinge_20, s_fitting_motedis_inner_20_b6, s_fitting_motedis_plate_t_20,
+  s_al6060_rexroth, s_al6063_t5, s_al6063_t66, s_al6n01_t5, s_m10, s_m12,
   s_m1_6, s_m2, s_m2_5, s_m3, s_m4, s_m5, s_m6, s_m8, s_profile_1010_8020, s_profile_1010_makerbeam, s_profile_1020_8020,
   s_profile_1515_8020, s_profile_1515_makerbeam_xl, s_profile_1515_openbeam, s_profile_1530_8020, s_profile_2020_bosch,
   s_profile_2020_generic, s_profile_2020_item_5, s_profile_2020_misumi_hfs5, s_profile_2020_motedis_b6,

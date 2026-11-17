@@ -23,8 +23,10 @@ test('the package: ready, typed, and needing only the rules it reads', () => {
   for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f} ships its declarations`); }
 });
 
-test('the catalogue holds every profile, slot family and slot nut the rules package has, and what they name', () => {
-  const parts = published.filter((s) => ['profile', 'slot', 'slot_nut'].includes(s.part));
+test('the catalogue holds every profile, slot family, slot nut and bought fitting the rules package has, and what they name', () => {
+  const parts = published.filter((s) => ['profile', 'slot', 'slot_nut', 'fitting'].includes(s.part));
+  assert.deepEqual(frames.boughtFittings(), published.filter((s) => s.part === 'fitting').map((s) => s.name).sort());
+  for (const s of published.filter((x) => x.part === 'fitting' && x.rules.slot)) assert.equal(SETS[s.rules.slot.value]?.part, 'slot', `${s.name}.slot names a slot family`);
   assert.ok(parts.length >= 12);
   for (const s of parts) assert.deepEqual(SETS[s.name], s, `${s.name} is in catalogue.mjs as published: add its import`);
   assert.deepEqual(frames.profiles().sort(), published.filter((s) => s.part === 'profile').map((s) => s.name).sort());
@@ -773,10 +775,10 @@ test('joins: a blind join taps the end of a and puts an access hole across b in 
   assert.deepEqual([j.stiffness.bending, j.stiffness.twist, j.stiffness.end], [1.5e6, 3e5, { rx: 3e5, ry: 1.5e6, rz: 1.5e6 }]);
   const br = joinModel('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@120' }, { fitting: 'bought' });
   assert.deepEqual([br.a.ops, br.b.ops, br.screws, br.findings.map((f) => `${f.level} ${f.code}`)], [[], [], [], ['warn join.fitting']]);
-  assert.match(br.findings[0].text, /A bought corner bracket comes with Frames 2\.6 \(bought\).*A printed one is drawn now: give "fitting": "printed"/);
+  assert.match(br.findings[0].text, /A corner bracket is added once one is chosen.*A printed one is drawn now: give "fitting": "printed"\. A bought one is a set: give "fitting": "fitting-motedis-bracket-20-b6"/);
   // printed: the caller draws it (fitting.mjs), so no warning; its estimate stays until the fitting's own replaces it
   const pb = joinModel('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@120' }, { fitting: 'printed' });
-  assert.deepEqual([pb.findings, pb.fitting], [[], { what: 'a corner bracket', later: 'Frames 2.6 (bought)', choice: 'printed', made: true, printed: 'bracket' }]);
+  assert.deepEqual([pb.findings, pb.fitting], [[], { what: 'a corner bracket', choice: 'printed', made: true, printed: 'bracket' }]);
   assert.equal(pb.stiffness.bending, 3e6 * 0.3); // a printed bracket: a share of a bought one's
   assert.deepEqual(['gusset', 'splice', 'cube', 'printed'].map((k) => JOINS[k].printed ?? null), ['gusset', 'splice', null, null]);
   const big = beamModel('4040-generic', { length: 300 });
@@ -802,7 +804,7 @@ test('joins refuse by name: an unknown kind, an end that has no bore or two, b t
   r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { screw: 'M5 nut' }, /screw names a screw by its thread and head/);
   r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { screw: 'M5 cap' }, /a bracket join's screws come with its fitting \(a printed one's thread is its slot nuts', its lengths chosen by its fastens\): leave screw out/);
   r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { fitting: 'printed' }, /a blind join has no fitting to choose: its screws hold it/);
-  r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { fitting: 'glued' }, /fitting is printed or bought \(got "glued"\)/);
+  r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { fitting: 'glued' }, /fitting is printed or bought, or a bought fitting.s set by name \(fitting-motedis-bracket-20-b6\) \(got "glued"\)/);
   // the 2040's bores, one join each
   assert.deepEqual(joinModel('blind', { beam: W, end: 'a.2' }, { beam: B, address: 'back@10' }).a.ops, [{ op: 'tap', at: 'a.2', thread: 'M5', depth: 18.5 }]);
   assert.throws(() => beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'access', at: 'top@50', thread: 'M5', through: 'all' }] }), /through is wall \(through one wall, the default\) or beam \(through every wall on its line, to the slot on the far side/);
@@ -813,7 +815,7 @@ test('joins: a mitre cuts both ends at the angle given, about the face the corne
   const A = beamModel('2020-misumi-hfs5', { length: 300 }), B = beamModel('2020-misumi-hfs5', { length: 300 });
   const j = joinModel('mitre', { beam: A, end: 'a' }, { beam: B, address: 'a' }, { mitre: { angle: 45, a: { about: 'top', long: 'front' }, b: { about: 'top', long: 'back' } } });
   assert.deepEqual([j.a.ops, j.b.ops], [[{ op: 'mitre', at: 'a', angle: 45, about: 'top', long: 'front' }], [{ op: 'mitre', at: 'a', angle: 45, about: 'top', long: 'back' }]]);
-  assert.match(j.findings[0].text, /The mitres are cut; the corner key or plate comes with Frames 2\.3/);
+  assert.match(j.findings[0].text, /The mitres are cut; the corner key or plate comes with a later release/);
   // the ops as beamModel takes them: 300 mm on the long side, 280 on the short
   assert.equal(beamModel(A.profile, { length: 300, ops: j.a.ops }).ops.find((o) => o.op === 'mitre').shortLength, 280);
   // without the cuts (cad works them out from where the beams are), nothing is cut; a bad angle or face is refused by name
@@ -1087,4 +1089,54 @@ test('a run of slot takes clips at a pitch: one at each end and evenly between',
   assert.deepEqual(runClips(360), { count: 5, pitch: 90, at: [0, 90, 180, 270, 360] });
   assert.deepEqual(runClips(100, { pitch: 100 }).count, 2); assert.deepEqual(runClips(101, { pitch: 100 }).count, 3); assert.equal(runClips(0).count, 1);
   assert.throws(() => runClips(100, { pitch: 0 }), /pitch is the most between clips/);
+});
+
+test('bought fittings: each set from its maker\'s sheet, what it mounts by, whether it fits, its price and its stiffness, and a join that takes it', () => {
+  const { boughtFittingModel, boughtFitting, boughtFittings, BOUGHT_KINDS, joinModel, printedCost } = frames;
+  // every kind the ticket names has a set, each drawn as a reference, every stiffness an estimate that says so
+  const models = boughtFittings().map((n) => boughtFittingModel(n));
+  assert.deepEqual([...new Set(models.map((m) => m.fittingKind))].sort(), Object.keys(BOUGHT_KINDS).sort());
+  for (const m of models) {
+    assert.ok(boughtFitting(m, { pose: 'fit' }).polygons.length > 0, `${m.set} is drawn`);
+    if (m.stiffness) { assert.equal(m.stiffness.kind, 'estimate'); assert.match(m.stiffness.source, /joint rig \(issue 264\)/); }
+    for (const q of m.screws) assert.equal(q.thread, m.thread);
+  }
+  // the cast bracket: an M4x8 cap and a hammer nut through each leg, 11 mm from the corner, 0.36 EUR
+  const br = boughtFittingModel('fitting-motedis-bracket-20-b6', { profile: '2020-motedis-b6' });
+  assert.deepEqual([br.fitting, br.thread, br.length, br.head, br.nutKind, br.screws.map((q) => [q.leg, q.at, q.axis])], ['bracket', 'M4', 8, 'cap', 'hammer', [['b', [11, 3.5, 0], [0, -1, 0]], ['a', [3.5, 11, 0], [-1, 0, 0]]]]);
+  assert.deepEqual([br.cost.value, br.cost.unit, br.findings.map((f) => `${f.level} ${f.code}`)], [0.36, 'EUR', ['info fitting.cost', 'info fitting.stiffness', 'pass fitting.fit']]);
+  // whether it fits: another maker's slot family, another size, a foot's stem against the end's bore
+  const wrong = (n, p) => boughtFittingModel(n, { profile: p }).findings.filter((f) => f.level === 'fail').map((f) => f.text);
+  assert.match(wrong('fitting-motedis-bracket-20-b6', '2020-misumi-hfs5')[0], /made for slot-6-motedis \(nut family slot-6-bosch\), and 2020-misumi-hfs5's slots are slot-6-misumi/);
+  assert.match(wrong('fitting-motedis-bracket-20-b6', '4040-generic')[0], /made for 20 mm profiles, and 4040-generic is 40 mm/);
+  assert.match(wrong('fitting-motedis-foot-m6-d19', '2020-misumi-hfs5')[0], /stem is M6, and 2020-misumi-hfs5's end bore is tapped M5: choose a foot with an M5 stem/);
+  assert.deepEqual(wrong('fitting-motedis-foot-m6-d19', '2020-motedis-b6'), []);
+  // the T plate: three screws on b's centre line, two up a's, in the gusset's frame
+  const t = boughtFittingModel('fitting-motedis-plate-t-20');
+  assert.deepEqual([t.shape, t.screws.map((q) => `${q.leg} ${q.at[0]},${q.at[1]}`)], ['T', ['b -20,0', 'b 0,0', 'b 20,0', 'a 0,20', 'a 0,40']]);
+  // in a join: the bought bracket's own stiffness, saying what it rests on, where the printed one's is a share
+  const A = beamModel('2020-motedis-b6', { length: 200 }), B = beamModel('2020-motedis-b6', { length: 300 }), at = (kind, fitting, a = A, b = B) => joinModel(kind, { beam: a, end: 'a' }, { beam: b, address: 'back@120' }, { fitting });
+  const cast = at('bracket', 'fitting-motedis-bracket-20-b6'), printed = at('bracket', 'printed');
+  assert.deepEqual([cast.fitting.made, cast.fitting.bought.set, cast.stiffness.bending, cast.stiffness.twist, cast.stiffness.kind, cast.findings], [true, 'fitting-motedis-bracket-20-b6', 3e6, 1e6, 'estimate', []]);
+  assert.match(cast.stiffness.rests[0].source, /^fitting-motedis-bracket-20-b6\.bending_stiffness: A working guess/);
+  assert.notEqual(printed.stiffness.bending, cast.stiffness.bending);
+  // an anchor: the hole for its guide drilled into a's slotted face 10 mm from its end, down to the bore
+  const M = beamModel('2020-misumi-hfs5', { length: 200 }), N = beamModel('2020-misumi-hfs5', { length: 300 });
+  const an = at('anchor', 'fitting-misumi-hmj5', M, N);
+  assert.deepEqual([an.a.ops, an.stiffness.bending, an.findings], [[{ op: 'drill', at: 'top.1@10', diameter: 7.1, depth: 10 }], 2e6, []]);
+  const drilled = beamModel(M.profile, { length: 200, ops: an.a.ops }).ops.find((x) => x.op === 'drill');
+  assert.deepEqual([drilled.diameter, drilled.distance, drilled.depth], [7.1, 10, 10]);
+  // a set on the wrong maker's beam: the join says so, by the fit's finding
+  assert.deepEqual(at('bracket', 'fitting-motedis-bracket-20-b6', M, N).findings.map((f) => `${f.level} ${f.code}`), ['fail fitting.fit']);
+  // refused by name: a set the join does not take, a name that is no set, a plate of the wrong shape, a pivot
+  assert.throws(() => at('hidden', 'fitting-motedis-bracket-20-b6'), /fitting-motedis-bracket-20-b6 is a corner bracket, and a hidden join takes an inner connector: fitting-motedis-bracket-20-b6 goes in a bracket join/);
+  assert.throws(() => at('bracket', 'cast'), /fitting is printed or bought, or a bought fitting's set by name \(fitting-motedis-bracket-20-b6\) \(got "cast"\)/);
+  assert.throws(() => joinModel('splice', { beam: A, end: 'b' }, { beam: B, address: 'a' }, { fitting: 'fitting-motedis-plate-t-20' }), /a splice join takes a straight joining plate, and fitting-motedis-plate-t-20 is a T: give it on a gusset join/);
+  assert.throws(() => at('pivot', 'fitting-motedis-hinge-20'), /a pivot join takes no bought fitting yet/);
+  assert.throws(() => boughtFittingModel('m5'), /m5 is not a part, not a bought fitting|m5 is a thread/);
+  assert.throws(() => boughtFittingModel('fitting-motedis-hinge-20', { join: 'bracket' }), /a bracket join takes a corner bracket: fitting-motedis-hinge-20 goes on an item \("bought": "fitting-motedis-hinge-20"\)/);
+  // a printed part's plastic beside a bought one's price
+  const c = printedCost(6.71, { name: 'pla', rules: { cost: { value: 13.99, unit: 'EUR/kg', source: 's' } } });
+  assert.deepEqual([c.value, c.unit], [0.094, 'EUR']);
+  assert.equal(printedCost(6.71, { name: 'x', rules: {} }), null);
 });

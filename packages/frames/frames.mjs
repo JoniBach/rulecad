@@ -7,16 +7,19 @@
 // and the printed parts that hold them, a door's hinges, handle, latch and catch, and the parts for a beam's end (caps,
 // feet, levelling feet, castor plates, stacking feet); and the parts that carry a machine's services (cable clips and
 // tie anchors, mounts for boards, supplies, fans and drag chains read from their rule sets, a DIN rail adapter and a
-// spool holder). The guides follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
+// spool holder); and bought fittings as rule sets (a cast corner bracket, joining plates, inner and anchor
+// connectors, hinges, end caps, levelling feet), which a join or a mount chooses by name in place of a printed one,
+// with their price and their stiffness, an estimate until the joint rig measures it. The guides follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
 //
-// Every profile, slot family and slot nut is a rule set in @rulecad/rules, so the numbers are open data and live
+// Every profile, slot family, slot nut and bought fitting is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the
 // origin; a beam runs along z from end a at z = 0. Its faces are top (+y), bottom (-y), front (-x) and back (+x).
 // Units: mm, grams, degrees.
 export * from './profile.mjs';
 export { beamModel, beam, beamAnchor, printable } from './beam.mjs';
 export { OPS, OP_DEFAULTS } from './ops.mjs';
-export { JOINS, JOIN_STIFFNESS, JOIN_SCALE, JOIN_TAP, joinStiffness, joinModel } from './join.mjs';
+export { JOINS, JOIN_STIFFNESS, JOIN_SCALE, JOIN_TAP, joinStiffness, joinModel, boughtStiffness } from './join.mjs';
+export { BOUGHT_KINDS, boughtFittings, boughtFittingModel, boughtFitting, printedCost } from './bought.mjs';
 export { CUT_DEFAULTS, beamMarks, packBars, cutList, cutListText } from './cutlist.mjs';
 export { beamSheet } from './cutsheet.mjs';
 export { slotNutModel, nutFit, slotNut, nutFor, carrierModel, carrier, CARRIER_DEFAULTS, NUT_KINDS } from './slotnut.mjs';
