@@ -829,7 +829,11 @@ test('joins: a mitre cuts both ends at the angle given, about the face the corne
 });
 
 // ---------- printed fittings ----------
-const PRINTER = { bed: 256, overhang: 45, layer: 0.2, support_gap: 0.2, bridge: 5, line: 0.42, print_gap: 0.3, foot: 0.15 };
+// printcheck's figures read from the kit's x1c rule set, as cad's own checks read the project's printer (a value
+// written as another rule's name, support_gap's "layer", is that rule's)
+const X1C = JSON.parse(fs.readFileSync(new URL('x1c.json', rulesDir), 'utf8')).rules;
+const x1c = (k) => { const v = X1C[k]?.value, n = typeof v === 'string' ? X1C[v]?.value : v; if (typeof n !== 'number') throw new Error(`x1c.json gives no number for ${k} (got ${JSON.stringify(v)})`); return n; };
+const PRINTER = Object.fromEntries(['bed', 'overhang', 'layer', 'support_gap', 'bridge', 'line', 'print_gap', 'foot'].map((k) => [k, x1c(k)]));
 const faces = (g) => jscad.geometries.geom3.toPolygons(g).map((p) => p.vertices.map((v) => [...v]));
 const prints = async (g, what) => { const { check } = await import('@rulecad/printcheck'); assert.deepEqual(check(faces(g), PRINTER).filter((f) => f.level !== 'pass').map((f) => `${f.code}: ${f.text}`), [], what); };
 const coded = (m, code) => m.findings.filter((f) => f.code === code);
