@@ -3411,3 +3411,72 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
     assert.match(cad('check', 'roll/bad'), /guide 1: a wheels guide has no "rail"|guides\/0/);
   } finally { done(); }
 });
+
+test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and endstop all placed by addresses, gives its motor checks the same margin; a screw drives only rods, and an endstop out of reach is refused with where it would go', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // chapter 13's own Z axis, as EXAMPLES.md writes it: its rules, its frame and carriage, its assembly
+    const text = fs.readFileSync(fileURLToPath(new URL('./EXAMPLES.md', import.meta.url)), 'utf8').replace(/\r\n/g, '\n'), want = ['rules/lift.json', 'projects/arm/objects/zframe.js', 'projects/arm/objects/zframe.json', 'projects/arm/objects/zcar.js', 'projects/arm/objects/zcar.json', 'projects/arm/assemblies/arm-z.json'];
+    for (const [, info, body] of text.matchAll(/^```(\S*(?: \S+)?)\n([\s\S]*?)^```$/gm)) { const f = info.split(' ')[1]; if (want.includes(f)) { fs.mkdirSync(path.dirname(path.join(ws, f)), { recursive: true }); fs.writeFileSync(path.join(ws, f), body); } }
+    for (const f of want) assert.ok(fs.existsSync(path.join(ws, f)), `${f} is in chapter 13`);
+    fs.writeFileSync(path.join(ws, 'projects/arm/project.json'), JSON.stringify({ name: 'arm', material: 'PLA', objects: ['zframe', 'zcar'] }));
+    // the same axis on a 2020 standing upright: the rods and the carriage a guide on its top face, the screw and motor a
+    // guide driving it, the endstop at an address on its front face; the same motor, lead, friction and load
+    const write = (name, guides) => fs.writeFileSync(path.join(ws, `projects/arm/assemblies/${name}.json`), JSON.stringify({ title: name, kind: 'fit', uses: ['lift'],
+      items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [0, 0, 200] }], guides,
+      loads: [{ mass: 'lift.z_mass', at: 'g1-carriage-1.top', note: 'The gripper, servo, payload and carriage, as the screw sees them' }] }));
+    const rods = (endstop) => ({ kind: 'rods', on: 'x1.top', from: 60, length: 101, ...(endstop ? { endstop: { at: endstop } } : {}) });
+    const screw = { kind: 'screw', guide: 'g1', screw: 't8-screw', motor: { model: '28byj48', microsteps: 1, duty: 0.3 }, friction: 'lift.z_friction' };
+    // placed by an address: one beside the holder is refused, saying where the switch's flag would meet its lever
+    write('z-far', [rods('x1.front@60'), screw]);
+    const said = cad('check', 'arm/z-far'), place = /at (x1\.front@[\d.]+) it trips 0 mm from the travel's start/.exec(said);
+    assert.match(said, /guide 1: endstop at x1\.front@60: its mount reaches back over g1-holder-a's leg \(to 71\.5 mm along x1\)/); assert.ok(place, said);
+    write('z-rods', [rods(`x1.front@${Math.ceil(parseFloat(place[1].split('@')[1]))}`), screw]);
+    // (the probe is a file, not node -e: a worker thread the motor's finite elements start takes its parent's -e as its own)
+    const probe = (name) => { fs.writeFileSync(path.join(ws, 'probe.mjs'), `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly, sweep } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs');
+      const s = await buildAssembly('arm/${name}'), l = shoppingList(s), j = s.motion.joints.find((x) => x.type === 'prismatic');
+      console.log(JSON.stringify({ joint: [j.id, j.dofs[0].slice(0, 2), j.slide ? [j.slide.kind, j.slide.mmPerTurn] : null], items: s.a.items.map((it) => [it.id, it.at ?? null]), home: (s.a.joints || []).find((x) => x.id === j.id)?.home ?? null,
+        bought: l.bought.map((b) => [b.qty, b.set]), printed: l.printed.map((p) => [p.id, p.grams]), fasteners: l.fasteners.map((x) => [x.qty, x.fastener]),
+        sweep: sweep(s, { steps: 8 }).map(({ level, values }) => ({ level, values })),
+        findings: checkAssembly(s).map(({ level, code, text, values }) => ({ level, code, text, values: /^(motor|guide)\./.test(code) ? values : null })) }));
+      process.exit(0);
+    `); return JSON.parse(execFileSync(process.execPath, [path.join(ws, 'probe.mjs')], { cwd: ws, encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } })); };
+    const by = (r, code) => r.findings.filter((x) => x.code === code);
+    const ch = probe('arm-z'), z = probe('z-rods');
+    // the same margin: 15.5 N from the 28BYJ-48 through the 8 mm lead against 2.45 N, 6.32 times over in both
+    const [t0] = by(ch, 'motor.torque'), [t1] = by(z, 'motor.torque');
+    assert.equal(t1.level, 'pass'); assert.equal(t1.values.margin, t0.values.margin); assert.equal(+t1.values.margin.toFixed(2), 6.32);
+    assert.match(t1.text, /15\.5 N there against 2\.45 N needed/);
+    assert.deepEqual(z.joint, ['g1-1', [z.joint[1][0], z.joint[1][1]], ['screw', 8]]);
+    assert.deepEqual(by(z, 'motor.holds').map((x) => x.level), by(ch, 'motor.holds').map((x) => x.level));
+    assert.equal(by(z, 'motor.axis')[0].level, 'pass');
+    assert.match(by(z, 'motor.speed')[0].text, /moves at 1\.17 mm\/s/); assert.match(by(ch, 'motor.speed')[0].text, /moves at 1\.17 mm\/s/);
+    // all placed by addresses: the holders, the motor plate and the endstop's mount at the beam's; the rods, bearings, motor,
+    // coupler, screw, nut and switch at the anchors of the parts they sit in
+    const at = Object.fromEntries(z.items);
+    assert.deepEqual([at['g1-holder-a'], at['g1-holder-b'], at['g2-plate'], at['g1-endstop-mount']], ['x1.top.1@60', 'x1.top.1@161', 'x1.top.1@30.5', `x1.front@${Math.ceil(parseFloat(place[1].split('@')[1]))}`]);
+    assert.deepEqual([at['g1-rod-1'], at['g1-rod-2'], at['g1-bearing-1'], at['g2-motor'], at['g2-coupler'], at['g2-screw'], at['g2-nut'], at['g2-support-a'], at['g2-support-b'], at['g1-endstop']],
+      ['g1-holder-a.r1', 'g1-holder-a.r2', 'g1-carriage-1.lm1', 'g2-plate.motor', 'g2-plate.coupler', 'g2-plate.coupler', 'g1-carriage-1.nut', 'g1-holder-a.s1', 'g1-holder-b.s1', 'g1-endstop-mount.switch']);
+    // its travel from home to holder b: about chapter 13's 50 mm; the switch homes the joint; the sweep is clear
+    const home = by(z, 'guide.endstop')[0].values.home;
+    assert.ok(home >= 0 && home < 1, `home ${home}`); assert.deepEqual(z.joint[1], [home, 50.5]); assert.deepEqual(z.home, { endstop: 'g1-endstop.lever', direction: -1 });
+    assert.deepEqual(z.sweep.map((x) => x.level), ['pass']);
+    // nothing fails or warns but the chapter's own estimate (its nut's friction)
+    assert.deepEqual(z.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code} ${x.text}`), ['rules.estimate uses estimates, not measurements: lift.z_friction. Measure each and settle it with cad measured arm/z-rods <name>=<value>']);
+    assert.equal(by(z, 'joint.moment')[0].level, 'pass'); assert.match(by(z, 'joint.moment')[0].text, /against lm8uu's 400 N static rating/);
+    assert.equal(by(z, 'guide.coupler')[0].level, 'pass');
+    // the shopping list: what it takes, printed and bought
+    assert.deepEqual(z.printed.map((p) => p[0]).sort(), ['g1-carriage-1', 'g1-endstop-mount', 'g1-holder-a', 'g1-holder-b', 'g2-plate']);
+    for (const b of [[2, 'rod-8'], [2, 'lm8uu'], [1, '28byj48'], [1, 'coupler-5-8'], [1, 't8-nut'], [2, 'bearing-608'], [1, 'endstop-10t85']]) assert.ok(z.bought.some((x) => x[0] === b[0] && x[1] === b[1]), `${b[1]}: ${JSON.stringify(z.bought)}`);
+    for (const x of [[9, 'M5x12 cap'], [4, 'M3x12 button'], [2, 'M2x12 cap']]) assert.ok(z.fasteners.some((f) => f[0] === x[0] && f[1] === x[1]), `${x[1]}: ${JSON.stringify(z.fasteners)}`);
+    // refused by name: a screw on wheels, a screw naming no guide, a belt, a motor plate past the beam's end
+    const beam = (profile) => ({ id: 'x1', beam: { profile }, from: [0, 0, 0], to: [0, 0, 300] }), bad = (guides, profile = '2020-misumi-hfs5') => { fs.writeFileSync(path.join(ws, 'projects/arm/assemblies/bad.json'), JSON.stringify({ title: 'bad', kind: 'fit', items: [beam(profile)], guides })); return cad('check', 'arm/bad'); };
+    assert.match(bad([{ kind: 'wheels', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48' } }], '2040-openbuilds'), /guide 2: a screw drives a rods guide's carriage, and g1 is a wheels guide/);
+    assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g9', motor: { model: '28byj48' } }]), /guide 2: guide names the rods guide whose carriage the screw drives, by its id \(got "g9"; guides: g1, g2\)/);
+    assert.match(bad([{ kind: 'belt', on: 'x1.top', length: 200 }]), /a belt is not built yet|guides\/0/);
+    assert.match(bad([{ kind: 'rods', on: 'x1.top', length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48' } }]), /guide 2: the motor plate and coupler-5-8 take 29\.5 mm before the stretch, and it starts 0 mm along x1: give the rods guide a "from" of at least 29\.5/);
+    assert.match(bad([{ kind: 'rods', on: 'x1.top', from: 40, length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48', drives: 'z' } }]), /guide 2: motor\.drives comes from the guide: leave it out|guides\/1/);
+  } finally { done(); }
+});
