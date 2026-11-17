@@ -15,7 +15,9 @@ and head, the parts it passes through and the part it ends in.
   with twice the margin, the creep limit, its sag as it creeps and the task's moves: `beam.printable` per beam with
   its least margin, or the margin it misses by, and the joins that would need changing; then those that hold are
   printed together and solved once more, one finding listing them. A printed beam's frame stress is now held to its
-  plastic's strength for its pose (across the layers standing up), and `beam.creep` checks it.
+  plastic's strength for its pose (across the layers standing up), and `beam.creep` checks it. A sag the frame as
+  drawn already misses is held to the drawn frame's own figure and 2% more, not to the limit, so a beam far from it is
+  not reported as needing metal for it.
 - **The beam coupon**: a printed beam on two `frame.supports` with a mass on it predicts its sag and the mass it breaks
   at (`beam.coupon`); `cad measured <ref> k1.sag=<mm>` and `k1.break=<kg>` write `beam_modulus` / `beam_strength`
   (`_z` standing up) into the workspace's copy of the plastic's set as measured. The workspace's material sets (a

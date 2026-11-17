@@ -4537,6 +4537,33 @@ test('beam.printable: every beam of a case-sized frame can be printed in PETG; a
     assert.match(stress.text, /against petg's 23 MPa/);
     // (its own beam.printable says how it prints; the frame's, with refs.printable, only where frame.printed asks)
     assert.ok(!r.some((x) => x.code === 'beam.printable' && x.refs?.printable !== undefined), 'beam.printable across the frame only where frame.printed asks');
+
+    // 4. a sag the frame as drawn already misses is no fault of printing. A 300 x 200 x 180 case, 1.5 kg at 30% of a top
+    // beam, the sag allowed 0.0075 mm: in aluminium it already sags about 0.0083 mm there (frame.deflection fails). A
+    // printed beam is held there to the drawn frame's own sag and 2% more (DRAWN_SLACK): y3, a side beam far from the
+    // load, leaves that sag as it is (0.00833 mm printed against 0.0085 = 1.02 x 0.00833), so it can be printed; z3, the
+    // leg under the loaded beam's nearer end, nearly doubles it (about 0.014 mm), and x2, the loaded beam, sags many
+    // times more, so both still need aluminium. Before, every beam was held to the 0.0075 mm the drawn frame misses, and
+    // all twelve were reported as needing aluminium.
+    {
+      const W = 300, D = 200, H = 180;
+      const ring2 = (n, h) => [beam(`x${n}`, [10, 0, h], [W - 10, 0, h]), beam(`x${n + 1}`, [10, D, h], [W - 10, D, h]), beam(`y${n}`, [0, 10, h], [0, D - 10, h]), beam(`y${n + 1}`, [W, 10, h], [W, D - 10, h])];
+      write('tight', { title: 'Tight case', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, H]), beam('z2', [W, 0, 0], [W, 0, H]), beam('z3', [0, D, 0], [0, D, H]), beam('z4', [W, D, 0], [W, D, H]), ...ring2(1, H - 10), ...ring2(3, 10)],
+        joins: [...joins(1, H - 10), ...joins(3, 10)], loads: [{ mass: 1.5, at: 'x2.top@30%' }], frame: { printed: 'petg', limit: 0.0075 } });
+      r = probe('tight');
+      const deflection = r.find((x) => x.code === 'frame.deflection' && x.level === 'fail');
+      assert.ok(deflection, 'in aluminium the frame already misses its sag');
+      const one = (id) => r.find((x) => x.code === 'beam.printable' && x.refs.beam === id), sum = r.find((x) => x.code === 'beam.printable' && !x.refs.beam);
+      const y3 = one('y3'), z3 = one('z3'), x2 = one('x2');
+      assert.deepEqual([y3.level, y3.refs.printable], ['pass', true], y3.text);
+      assert.ok(y3.values.drawnSag > 0.0075 && Math.abs(y3.values.margins.deflection - 1.02) < 0.005, `y3 held to the drawn ${y3.values.drawnSag} mm and 2%: ${y3.values.margins.deflection}`);
+      assert.match(y3.text, /on sag \([\d.]+ mm at x2\.top@30% against [\d.]+ mm, the frame as drawn \([\d.]+ mm, already past its 0\.0075 mm there, printed or not\) and 2% more\)/);
+      for (const b of [z3, x2]) assert.deepEqual([b.level, b.refs.printable], ['info', false], b.text);
+      assert.ok(z3.values.sag > 1.5 * z3.values.drawnSag, 'printing z3 makes the sag much worse');
+      assert.ok(sum.values.printable > 0 && sum.refs.printable.includes('y3') && !sum.refs.printable.includes('x2'), sum.text);
+      assert.deepEqual(sum.refs.missed, ['x2.top@30%', 'x2 along its length']);
+      assert.match(sum.text, /As drawn, unprinted, the frame already misses [\d.]+ mm at x2\.top@30% \(against 0\.0075 mm\).*\(frame\.deflection says so\): there a printed beam is held to the frame as drawn, within 2%, and blamed only where printing it makes that sag worse/);
+    }
   } finally { done(); }
 });
 

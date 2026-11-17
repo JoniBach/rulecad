@@ -741,7 +741,10 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   and the beam along its length, against the same limits as `frame.deflection`; its stress against its strength with
   twice the margin; Euler's load with twice the margin; its stress against the creep limit; every sag again with the
   beam's modulus at half (`PRINTED_DEFAULTS.creep_modulus`, an estimate), its sag as it creeps; and where the task's
-  moves shake the frame, its lowest mode at twice their rate. The least is the beam's margin. A beam that holds says
+  moves shake the frame, its lowest mode at twice their rate. The least is the beam's margin. Where the frame as drawn
+  already misses a sag (`frame.deflection` fails there in the beams' own material), that is no fault of printing: there
+  the printed beam is held to the drawn frame's own sag and 2% more, so it misses only where printing it makes that
+  sag worse, and the frame's finding names each such point (`refs.missed`). A beam that holds says
   so (pass), with its pose and grams; one that does not says it needs its own material and the margin it misses by,
   `1 / margin`, and on what (info: a design choice, not a fault). It also names the joins that would need changing: a
   blind, end-tap or anchor join screws into the beam's end, where a printed beam has an insert, and a join on a face

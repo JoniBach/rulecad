@@ -10,7 +10,10 @@
 // beam along its length) against its limit; its stress against its plastic's strength with twice the margin; Euler's
 // load with twice the margin; its sustained stress against the creep limit (beam.creep); its sag as it creeps (the
 // frame solved again with the beam's modulus at PRINTED_DEFAULTS.creep_modulus of it) against the same limits; and
-// where the task's moves excite the frame, its lowest mode at twice their rate. Each is a margin, 1 where it just
+// where the task's moves excite the frame, its lowest mode at twice their rate. A sag the frame as drawn already misses
+// (frame.deflection fails there in the beams' own material) is no fault of printing: there the printed beam is held to
+// the drawn frame's own sag, within DRAWN_SLACK of it (the kit's choice), so it fails only where printing it makes that
+// sag worse, and the findings name each such point. Each is a margin, 1 where it just
 // holds; the least is the beam's. Those that pass alone are then printed together and solved once more, and any that
 // fail together are put back to the beam's own material, the one that misses most first. Every figure rests on the
 // printed section's estimates (walls, infill, creep) until the beam coupon is measured, and on the joins' springs as
@@ -32,6 +35,7 @@ const n3 = (x, d = 3) => String(+Number(x).toFixed(d)), r3 = (x) => (x == null |
 const fig = (x) => String(+Number(x).toPrecision(3));
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const PRINT_KEYS = ['material', 'walls', 'infill', 'pose'];
+const DRAWN_SLACK = 0.02; // a printed beam may add 2% to a sag the frame as drawn already misses (the kit's choice, so that a beam far from it is not blamed for it)
 const said = { deflection: 'its sag', stress: 'its stress', buckling: 'buckling', creep: 'its sustained stress (creep)', creepSag: 'its sag as it creeps', frequency: 'its lowest mode' };
 
 /**
@@ -82,25 +86,42 @@ function candidate(b, opts, pose, cache) {
 const swapped = (base, cands, k = 1) => ({ ...base, sections: { ...base.sections, ...Object.fromEntries(cands.map((c) => [c.b.id, c.section])) },
   materials: { ...base.materials, ...Object.fromEntries(cands.map((c) => [c.b.id, { ...c.material, E: c.material.E * k, G: c.material.G * k }])) } });
 
+// a beam's own sag along its length, as a target
+const alongOf = (b, ctx) => ({ what: `${b.id} along its length`, beam: b, from: 0, to: b.L, limit: ctx.limitFor(b, null) });
+
+// The frame as drawn (no beam printed): its sag at every target, and each beam along its length, in every case, keyed
+// "what|case". Where one is past its limit the frame already misses it, printed or not.
+function drawnSags(fm, ctx, targets) {
+  const solver = solveFrame(fm.model), out = new Map(), all = [...targets, ...[...fm.beams.values()].map((b) => alongOf(b, ctx))];
+  for (const cs of fm.cases) {
+    const res = stamp(fm, fm.model, solver.statics({ loads: fm.nodeLoads(cs.values) }));
+    for (const t of all) out.set(`${t.what}|${cs.label}`, t.node ? ctx.sagAt(res, t.node(cs.values), fm.down) : ctx.sagAlong(res, t.beam, t.from, t.to, fm.down).sag);
+  }
+  const missed = [];
+  for (const t of all) { let worst = 0; for (const cs of fm.cases) worst = Math.max(worst, out.get(`${t.what}|${cs.label}`)); if (worst > t.limit.value + 1e-12) missed.push({ what: t.what, sag: worst, limit: t.limit }); }
+  return { sags: out, missed };
+}
+
 /**
  * Every margin of a frame with these beams printed, each 1 where it just holds: the sags against their limits (and
  * each printed beam along its length), as it creeps too; per printed beam its stress, Euler's load and its sustained
  * stress; and the lowest mode against the task's moves.
  */
-function evaluate(s, fm, ctx, cands, targets) {
+function evaluate(s, fm, ctx, cands, targets, drawn) {
   const down = fm.down, margin = ctx.margin, model = swapped(fm.model, cands), creepK = PRINTED_DEFAULTS.creep_modulus.value, creep = swapped(fm.model, cands, creepK);
   const solver = solveFrame(model), creeper = solveFrame(creep);
-  const along = cands.map((c) => ({ what: `${c.b.id} along its length`, beam: c.b, from: 0, to: c.b.L, limit: ctx.limitFor(c.b, null) }));
-  const all = [...targets, ...along];
+  const all = [...targets, ...cands.map((c) => alongOf(c.b, ctx))];
   const sagOf = (t, res, values) => (t.node ? ctx.sagAt(res, t.node(values), down) : ctx.sagAlong(res, t.beam, t.from, t.to, down).sag);
   let def = null, creepSag = null;
   const per = new Map(cands.map((c) => [c.b.id, { stress: 0, compression: 0, case: null }]));
   for (const cs of fm.cases) {
     const loads = fm.nodeLoads(cs.values), res = stamp(fm, model, solver.statics({ loads })), cr = stamp(fm, creep, creeper.statics({ loads }));
     for (const t of all) {
-      const sag = sagOf(t, res, cs.values), long = sagOf(t, cr, cs.values), m = sag > 1e-12 ? t.limit.value / sag : Infinity, ml = long > 1e-12 ? t.limit.value / long : Infinity;
-      if (!def || m < def.margin) def = { margin: m, sag, limit: t.limit, what: t.what, case: cs.label };
-      if (!creepSag || ml < creepSag.margin) creepSag = { margin: ml, sag: long, limit: t.limit, what: t.what, case: cs.label };
+      // where the frame as drawn already misses this sag, the printed beam is held to the drawn frame's own figure
+      const base = drawn.get(`${t.what}|${cs.label}`) ?? 0, missed = base > t.limit.value + 1e-12, lim = missed ? base * (1 + DRAWN_SLACK) : t.limit.value;
+      const sag = sagOf(t, res, cs.values), long = sagOf(t, cr, cs.values), m = sag > 1e-12 ? lim / sag : Infinity, ml = long > 1e-12 ? lim / long : Infinity;
+      if (!def || m < def.margin) def = { margin: m, sag, limit: t.limit, what: t.what, case: cs.label, drawn: missed ? base : null };
+      if (!creepSag || ml < creepSag.margin) creepSag = { margin: ml, sag: long, limit: t.limit, what: t.what, case: cs.label, drawn: missed ? base : null };
     }
     for (const e of res.elements) { const p = per.get(e.of); if (!p) continue; if (e.stress && e.stress.peak > p.stress) { p.stress = e.stress.peak; p.case = cs.label; } if (e.axial < -p.compression) p.compression = -e.axial; }
   }
@@ -138,8 +159,11 @@ function joinsToChange(fm, b) {
 // what a margin is, in a few words
 function sayMargin(r, k) {
   const m = r.margins[k], x = (v) => (v === Infinity ? 'free' : `${n3(v, 2)}`);
-  if (k === 'deflection') return `${x(m)} on sag (${n3(r.def.sag)} mm at ${r.def.what} against ${n3(r.def.limit.value)} mm, ${r.def.limit.from})`;
-  if (k === 'creepSag') return `${x(m)} on sag as it creeps (${n3(r.creepSag.sag)} mm at ${r.creepSag.what})`;
+  // where the frame as drawn already misses the limit: the figure held to is its own sag plus DRAWN_SLACK
+  const held = (d) => `${fig(d.drawn * (1 + DRAWN_SLACK))} mm, the frame as drawn (${fig(d.drawn)} mm, already past its ${fig(d.limit.value)} mm there, printed or not) and ${DRAWN_SLACK * 100}% more`;
+  const sagSaid = (d) => (d.drawn != null ? fig(d.sag) : n3(d.sag));
+  if (k === 'deflection') return `${x(m)} on sag (${sagSaid(r.def)} mm at ${r.def.what} against ${r.def.drawn != null ? held(r.def) : `${n3(r.def.limit.value)} mm, ${r.def.limit.from}`})`;
+  if (k === 'creepSag') return `${x(m)} on sag as it creeps (${sagSaid(r.creepSag)} mm at ${r.creepSag.what}${r.creepSag.drawn != null ? ` against ${held(r.creepSag)}` : ''})`;
   if (k === 'stress') return `${x(m)} on stress (${n3(r.stress, 2)} MPa against ${n3(r.c.strength, 1)} MPa${r.c.spliced ? ' as spliced' : ''}, twice the margin wanted)`;
   if (k === 'buckling') return `${x(m)} on buckling (${n3(r.compression, 1)} N against Euler's ${n3(r.euler, 0)} N, twice wanted)`;
   if (k === 'creep') return `${x(m)} on creep (${n3(r.stress, 2)} MPa held against ${n3(r.c.creepLimit, 2)} MPa)`;
@@ -159,14 +183,14 @@ export function printableCheck(s, fm, f, ctx) {
     ...fm.guides.map((g) => ({ what: `guide ${g.id}`, beam: g.beam, from: g.from, to: g.to, limit: g.tolerance ? { value: g.tolerance.value, from: 'the rail\'s own parallelism' } : ctx.limitFor(g.beam, null) })),
   ];
   const rests = `the printed section's walls and infill, its plastic's figures and the creep shares (estimates until the beam coupon is measured)${fm.joins.length ? `, and ${ctx.restsJoins} as they are, made for metal beams` : ''}`;
-  const best = new Map(), none = [], cache = new Map();
+  const best = new Map(), none = [], cache = new Map(), drawn = drawnSags(fm, ctx, targets);
   for (const b of fm.beams.values()) {
     let pick = null, why = null;
     for (const pose of opts.pose ? [opts.pose] : ['lying', 'standing']) {
       const c = candidate(b, opts, pose, cache);
       if (!c) continue;
       if (c.why) { why = c.why; break; }
-      const r = evaluate(s, fm, ctx, [c], targets).get(b.id);
+      const r = evaluate(s, fm, ctx, [c], targets, drawn.sags).get(b.id);
       if (!pick || r.least > pick.least * 1.01) pick = r; // (lying down, its stronger way, unless standing is clearly better)
     }
     if (!pick) { none.push({ b, why: why ?? `${b.id} prints neither way` }); continue; }
@@ -182,13 +206,13 @@ export function printableCheck(s, fm, f, ctx) {
       ? `${b.id} can be printed in ${plastic}, ${poseSaid(c)} (${c.profile}, ${n3(c.grams, 1)} g): its least margin is ${n3(r.least, 2)} times, ${said[r.governs]}. ${order.map((k) => sayMargin(r, k)).join('; ')}${joinsSaid}. It rests on ${rests}`
       : `${b.id} needs ${b.alloy ?? 'its own material'}: printed in ${plastic}, ${poseSaid(c)} (${c.profile}), it misses by ${n3(1 / r.least, 2)} times on ${said[r.governs]}. ${order.map((k) => sayMargin(r, k)).join('; ')}. It rests on ${rests}`;
     f(ok ? 'pass' : 'info', text, null, { code: 'beam.printable', at: r4(add(b.A, scale(b.u, b.L / 2))), between: [r4(b.A), r4(add(b.A, scale(b.u, b.L)))],
-      values: { margin: r3(r.least), misses: ok ? null : r3(1 / r.least), grams: r3(c.grams), modulus: c.E, strength: r3(c.strength), margins: Object.fromEntries(Object.entries(r.margins).map(([k, v]) => [k, r3(v)])), sag: r3(r.def?.sag), limit: r3(r.def?.limit.value), creepSag: r3(r.creepSag?.sag) },
+      values: { margin: r3(r.least), misses: ok ? null : r3(1 / r.least), grams: r3(c.grams), modulus: c.E, strength: r3(c.strength), margins: Object.fromEntries(Object.entries(r.margins).map(([k, v]) => [k, r3(v)])), sag: r3(r.def?.sag), limit: r3(r.def?.limit.value), creepSag: r3(r.creepSag?.sag), drawnSag: r.def?.drawn != null ? +r.def.drawn.toPrecision(3) : null },
       refs: { beam: b.id, material: opts.material, printable: ok, pose: c.pose, spliced: c.spliced, profile: c.profile, governs: r.governs, alloy: b.alloy, joins: change.map((x) => x.join), restsOn: 'estimate' } });
   }
   // those that pass alone, printed together: put back the one that misses most until all of them hold
   let together = [...best.values()].filter((r) => r.least >= 1).map((r) => r.c), back = [], least = null;
   while (together.length) {
-    const rs = evaluate(s, fm, ctx, together, targets), worst = [...rs.values()].reduce((p, q) => (q.least < p.least ? q : p));
+    const rs = evaluate(s, fm, ctx, together, targets, drawn.sags), worst = [...rs.values()].reduce((p, q) => (q.least < p.least ? q : p));
     if (worst.least >= 1) { least = worst; break; }
     back.push(worst.c.b.id); together = together.filter((c) => c !== worst.c);
   }
@@ -198,8 +222,9 @@ export function printableCheck(s, fm, f, ctx) {
   const text = together.length === all
     ? `every beam of the frame can be printed in ${plastic} (${all}), printed together and solved once more: the least margin is ${sayMargin(least, least.governs)}${['deflection', 'creepSag', 'frequency'].includes(least.governs) ? '' : ` at ${least.c.b.id}`}; ${n3(together.reduce((t, c) => t + c.grams, 0), 0)} g of ${plastic} in all`
     : `${together.length} of the frame's ${all} beams can be printed in ${plastic}${together.length ? ` (${together.map((c) => c.b.id).join(', ')}), printed together and solved once more, the least margin ${sayMargin(least, least.governs)}` : ''}; ${metal.join(', ')} stay${metal.length === 1 ? 's' : ''} as ${metal.length === 1 ? 'it is' : 'they are'}${back.length ? `, of them ${back.join(', ')} passing alone but not printed with the rest` : ''}`;
-  f(together.length === all ? 'pass' : 'info', `${text}${changeSaid}. It rests on ${rests}`, null, { code: 'beam.printable', values: { printable: together.length, beams: all, margin: r3(least?.least), grams: r3(together.reduce((t, c) => t + c.grams, 0)) },
-    refs: { material: opts.material, printable: together.map((c) => c.b.id), metal, back, governs: least?.governs ?? null, joins: changes, poses: Object.fromEntries(together.map((c) => [c.b.id, c.pose])), restsOn: 'estimate' } });
+  const missedSaid = drawn.missed.length ? `. As drawn, unprinted, the frame already misses ${drawn.missed.map((x) => `${fig(x.sag)} mm at ${x.what} (against ${fig(x.limit.value)} mm)`).join(', ')} (frame.deflection says so): there a printed beam is held to the frame as drawn, within ${DRAWN_SLACK * 100}%, and blamed only where printing it makes that sag worse` : '';
+  f(together.length === all ? 'pass' : 'info', `${text}${changeSaid}${missedSaid}. It rests on ${rests}`, null, { code: 'beam.printable', values: { printable: together.length, beams: all, margin: r3(least?.least), grams: r3(together.reduce((t, c) => t + c.grams, 0)) },
+    refs: { material: opts.material, printable: together.map((c) => c.b.id), metal, back, governs: least?.governs ?? null, joins: changes, missed: drawn.missed.map((x) => x.what), poses: Object.fromEntries(together.map((c) => [c.b.id, c.pose])), restsOn: 'estimate' } });
 }
 
 /**
