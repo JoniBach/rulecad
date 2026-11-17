@@ -4160,3 +4160,103 @@ test('frame checks: a figure on estimated joins says so even where the springs c
     assert.ok(point('x1.top@400').values.sag < riding.values.sag * 0.8, `bare ${point('x1.top@400').values.sag} mm, with g ${riding.values.sag} mm`);
   } finally { done(); }
 });
+
+test('frame checks: an open cube racks with a low stiffness and one brace stiffens it many times, gussets and a panel solved beside it; a gantry beam\'s frequency with its carriage at mid-span agrees with the formula for a loaded beam; the mode drawn', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const write = (name, x) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify(x));
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/${name}');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|rack|frequency)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r;
+    const by = (code) => r.filter((x) => x.code === code), rack = (dir) => by('frame.rack').find((x) => x.refs.direction === dir);
+
+    // 1. an open cube: four 2020 legs 400 mm tall, a ring of four beams joined blind to them 390 mm up and another 10 mm
+    // up, the lowest ends pinned. Four upright bays, two each way, none braced.
+    const ring = (n, h) => [beam(`x${n}`, [10, 0, h], [410, 0, h]), beam(`x${n + 1}`, [10, 420, h], [410, 420, h]), beam(`y${n}`, [0, 10, h], [0, 410, h]), beam(`y${n + 1}`, [420, 10, h], [420, 410, h])];
+    const joins = (n, h) => [[`x${n}.a`, 'z1.back'], [`x${n}.b`, 'z2.front'], [`x${n + 1}.a`, 'z3.back'], [`x${n + 1}.b`, 'z4.front'], [`y${n}.a`, 'z1.top'], [`y${n}.b`, 'z3.bottom'], [`y${n + 1}.a`, 'z2.top'], [`y${n + 1}.b`, 'z4.bottom']].map(([a, b]) => ({ kind: 'blind', a, b: `${b}@${h}` }));
+    const cube = { title: 'Cube', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 400]), beam('z2', [420, 0, 0], [420, 0, 400]), beam('z3', [0, 420, 0], [0, 420, 400]), beam('z4', [420, 420, 0], [420, 420, 400]), ...ring(1, 390), ...ring(3, 10)],
+      joins: [...joins(1, 390), ...joins(3, 10)] };
+    write('cube', cube);
+    r = probe('cube');
+    // the default push, 20 N (an estimate) shared among the four top corners: the cube sways within its height over 400,
+    // but its stiffness is low: the open bays hold the push by the blind joins' bending alone (16 estimated springs). The
+    // rigid joins bound it from the stiff side. A brace in each of the two bays that way makes it many times stiffer.
+    const x = rack('along x'), open = x.values.stiffness;
+    assert.equal(x.level, 'pass');
+    assert.match(x.text, /^racked along x: 20 N pushed at the top \(frame\.push, an estimate\) sways it 0\.\d+ mm with the joins' springs, \d+(\.\d)? N\/mm \(low: its open bays hold the push by their joins' bending alone\); 0\.\d+ mm, \d+ N\/mm, with the joins rigid\. It rests on 16 joins' springs \(16 blind: an estimate\): against 0\.975 mm, its height, 390 mm, over 400 \(frame\.sway\)/);
+    assert.ok(open > 20 && open < 150 && x.values.rigidStiffness > open * 2, JSON.stringify(x.values));
+    const option = (kind, every) => x.values.options.find((o) => o.kind === kind && o.every === every);
+    // one brace: the gain, said and solved; every bay that way braced: the cube is a truss that way, far stiffer still
+    assert.ok(option('brace', false).gain > 2, JSON.stringify(option('brace', false)));
+    assert.match(x.text, new RegExp(`one diagonal brace in [xyz\\d-]+ makes it [\\d.]+ N/mm \\(${option('brace', false).gain.toFixed(1).replace('.', '\\.')} times\\)`));
+    assert.ok(option('brace', true).gain > 50, JSON.stringify(option('brace', true)));
+    // gussets and a panel, each solved: both stiffen it, gussets least (they stiffen the corners, not the bay's shear)
+    assert.ok(option('gusset', false).gain > 1.1 && option('gusset', false).gain < option('brace', false).gain, JSON.stringify(x.values.options));
+    assert.ok(option('panel', true).gain > option('gusset', true).gain, JSON.stringify(x.values.options));
+    assert.equal(rack('along y').values.stiffness, open, 'the cube is the same both ways');
+
+    // a heavier push, 100 N: over the limit, and the cheapest change that brings it under is advised by name. The
+    // sway is linear in the push, so it is 5 times the 20 N figure (each rounded to 3 places) and the stiffness the same
+    write('cube', { ...cube, frame: { rack: { load: 100 } } });
+    r = probe('cube');
+    const heavy = rack('along x');
+    assert.equal(heavy.level, 'warn');
+    assert.ok(Math.abs(heavy.values.sway - 5 * x.values.sway) < 0.005 && Math.abs(heavy.values.stiffness - open) < 0.01, `${heavy.values.sway} against 5 × ${x.values.sway}`);
+    const pick = heavy.values.options.filter((o) => !o.every).concat(heavy.values.options.filter((o) => o.every)).find((o) => o.sway <= heavy.values.limit);
+    assert.deepEqual(heavy.refs.advise, { kind: pick.kind, bays: pick.bays });
+    assert.match(heavy.text, /times over\. Solved with each change: .*The cheapest that brings it under the limit: /);
+    // refused by name
+    write('cube', { ...cube, frame: { rack: { push: 100 } } });
+    r = probe('cube');
+    assert.deepEqual(by('frame.solve').map((q) => q.text), ['frame: frame.rack has no "push": it takes load (N) and limit (mm)']);
+
+    // a panel on the front bay is a shear web of the frame: frame.solve says so with its clips' grip an estimate, and
+    // racking along x the frame is stiffer than open, and no longer offers that bay
+    write('cube', { ...cube, items: [...cube.items, { id: 'front', panel: { sheet: 'acrylic', thickness: 3, bay: ['x1', 'z2', 'x3', 'z1'], out: [0, -1, 0] } }] });
+    r = probe('cube');
+    assert.match(by('frame.solve')[0].text, /front is a shear web on its bay, \d+ N\/mm along its diagonal \(\d+ clips, their grip an estimate\)/);
+    const paneled = rack('along x');
+    assert.ok(paneled.values.stiffness > open * 1.5, `${paneled.values.stiffness} against ${open} N/mm`);
+    assert.ok(paneled.values.options.every((o) => !o.bays.some((b) => ['x1', 'z1', 'z2', 'x3'].every((id) => b.split('-').includes(id)))), JSON.stringify(paneled.values.options));
+    assert.equal(paneled.refs.panels[0].rests[0].kind, 'spec');
+
+    // 2. a gantry beam: 2020, 600 mm, held fixed at both ends, with a carriage at mid-span (a 608 bearing standing in for
+    // it, 2 kg carried on it), on a slide 200 mm either way. The lowest mode is with it at mid-span (as drawn).
+    // The hand calculation: a beam fixed at both ends with a mass M at its middle, by Rayleigh's method with the static
+    // shape (Blevins, Formulas for Natural Frequency and Mode Shape, 1979, table 8-8: M + 0.375 m of the beam's own m):
+    //   k = 192 E I / L³ = 192 × 69972 × 7420 / 600³ = 461.50 N/mm (2020 HFS5, I = 7420 mm⁴; A6N01, E = 69972 MPa)
+    //   f = (1 / 2π) √(1000 k / (M + 0.375 m)), with M ≈ 2.01 kg (2 kg and the bearing) and m ≈ 0.3 kg (0.5 kg/m):
+    //   √(461500 / 2.1225) / 2π = 74.2 Hz. The test takes M and m as the finding says them.
+    const gantry = { title: 'Gantry', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300]), { id: 'cart', bought: 'bearing-608' }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 300], axis: [0, 0, 1] }, child: { item: 'cart', at: [0, 0, 0], axis: [0, 0, 1] }, min: -200, max: 200 }],
+      loads: [{ mass: 2, at: 'cart.bore' }], frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' } } };
+    write('gantry', gantry);
+    r = probe('gantry');
+    const fq = by('frame.frequency')[0], v = fq.values, hand = Math.sqrt((1000 * 192 * 69972 * 7420) / 600 ** 3 / (v.carried + 0.375 * v.beams)) / (2 * Math.PI);
+    assert.ok(v.carried > 2 && v.carried < 2.1 && v.beams > 0.25 && v.beams < 0.35, JSON.stringify(v));
+    assert.ok(Math.abs(v.Hz - hand) / hand < 0.01, `solved ${v.Hz} Hz against the formula's ${hand}`);
+    assert.equal(fq.refs.pose, 'as drawn');
+    assert.equal(fq.level, 'info');
+    assert.match(fq.text, /^the lowest mode is 7\d\.\d Hz, worst as drawn, x1 moving most\. Its next: .* Nothing named excites it/);
+    // with the carriage at the end of its travel, 100 mm from a support, the beam rings higher
+    write('gantry', { ...gantry, joints: [{ ...gantry.joints[0], min: -200, max: -200 }] });
+    r = probe('gantry');
+    assert.ok(by('frame.frequency')[0].values.Hz > v.Hz * 1.5, JSON.stringify(by('frame.frequency')[0].values));
+
+    // 3. what the machine excites: a task's moves, ramping to its speed at its accel; a slow ramp passes, a ramp of
+    // 10 ms (100 Hz, against a 74 Hz mode) fails, saying how much stiffer it must be
+    // (the mode drawn: cad beams writes it animated beside the sag)
+    write('gantry', gantry);
+    assert.match(cad('beams', 'frame/gantry'), /the frame's lowest mode, 7\d\.?\d* Hz, animated \(a check view\): exports[\\/]frame[\\/]gantry\.frame-mode\.svg/);
+    const svg = fs.readFileSync(path.join(ws, 'exports/frame/gantry.frame-mode.svg'), 'utf8');
+    assert.match(svg, /<animate attributeName="points"/);
+    assert.match(svg, /lowest mode 7\d\.\d Hz, as drawn, x1 moving most/);
+  } finally { done(); }
+});
