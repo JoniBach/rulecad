@@ -1257,3 +1257,60 @@ test('a printed slider over or in a slot: its clearance the printer\'s fit, its 
   assert.throws(() => sliderModel('2040-openbuilds', { mode: 'under' }), /mode is over .* or in/);
   assert.throws(() => sliderModel('tube-al-20x20x2', {}), /top face is closed: a slider runs in a slot/);
 });
+
+// ---------- rods, their drive and an endstop (#260) ----------
+test('rods: a layout from the rod, bearing, screw, nut and motor sets; holders, a motor plate for any catalogue motor, a carriage and an endstop mount, each print-ready with its grams and margin; refused by name', async () => {
+  const { rodsLayout, rodHolderModel, rodHolder, motorPlateModel, motorPlate, rodCarriageModel, rodCarriage, endstopMountModel, endstopMount, rodMargin } = frames;
+  const P = '2020-misumi-hfs5', box = (g) => jscad.measurements.measureBoundingBox(g).map((v) => v.map((x) => +x.toFixed(2)));
+  // the layout of chapter 13's Z axis: the rods 40 mm apart (an LM8UU's 15 mm, the T8 nut's 22 mm flange and 1.5 mm between),
+  // 13 mm over the face, set by the 608 the screw turns in at each holder (its 11 mm radius and a 2 mm wall)
+  const L = rodsLayout(P, { screw: 't8-screw', motor: '28byj48' });
+  assert.equal(L.spacing, 40); assert.equal(L.height, 13);
+  assert.deepEqual(L.needs.map(([w, x]) => [w, x]), [['the carriage under its bearings', 10.5], ['t8-nut\'s flange', 12], ['bearing-608 in a holder', 13], ['coupler-5-8', 10], ['28byj48\'s body', 7]]);
+  assert.deepEqual(L.carriage, { length: 27, width: 59, bottom: 3.5, top: 22.5 });
+  assert.deepEqual([L.screw.lead, L.nut.flange, L.support.set, L.coupler.set, L.motor.thread], [8, 22, 'bearing-608', 'coupler-5-8', 'M4']);
+  // without a screw the rods close up over the face: an LM8UU's pockets and a wall
+  assert.equal(rodsLayout(P).spacing, 20);
+  // a holder: a saddle over the face, its legs screwed into the side slots, the 608 pressed in from its inner face
+  const h = rodHolderModel(P, { spacing: 40, height: 13, screw: 't8-screw', support: 'bearing-608' });
+  assert.deepEqual([h.thickness, h.legs, h.top, h.rodHole, h.support.pocket, h.support.depth], [9, 11.5, 26, 8.1, 22, 7]);
+  assert.deepEqual(h.screws.map((q) => [q.side, q.thread, q.axis, q.length]), [['front', 'M5', [0, 1, 0], 12], ['back', 'M5', [0, -1, 0], 12]]);
+  assert.ok(h.grams > 5 && h.margin >= 2, `${h.grams} g, ${h.margin}×`);
+  for (const c of ['fitting.screw', 'guide.support', 'fitting.size', 'fitting.margin', 'fitting.printable', 'fitting.mass']) assert.equal(coded(h, c).length, 1, c);
+  // at end b it is the same part turned to face a: its anchors and legs mirrored across the beam's middle line
+  const hb = rodHolderModel(P, { spacing: 40, height: 13, screw: 't8-screw', support: 'bearing-608', end: 'b' });
+  assert.deepEqual(hb.anchors.s1, { at: [-2, 0, 13], axis: [-1, 0, 0], ref: [0, 0, 1] }); assert.deepEqual(hb.screws.map((q) => [q.side, q.at[1]]), [['front', -16.6], ['back', 16.6]]);
+  assert.deepEqual(box(rodHolder(hb, { pose: 'fit' }))[0][0], -11.5);
+  // a motor plate for the geared 28BYJ-48 from its rules: M4 through its ears, its 9 mm boss, at least 1.5 diameters thick;
+  // a recess takes the coupler in so its short shaft reaches 6 mm in; two screws a leg hold its torque by shear
+  const mp = motorPlateModel(P, { motor: '28byj48', height: 13 });
+  assert.deepEqual([mp.thickness, mp.legs, mp.engaged, mp.recess, mp.holes.map((q) => q.at), mp.screws.length], [6, 23, 6, { d: 20, depth: 2.5 }, [[17.5, 21], [-17.5, 21]], 4]);
+  assert.match(coded(mp, 'fitting.motor')[0].text, /2 M4 clearance holes \(4\.6 mm, through its ears to a nut\) through 6 mm, its 9 mm boss in a 1\.9 mm pocket/);
+  // and a NEMA 17's, tapped M3 on its 31 mm square, its shaft over the body's half-width; its 24 mm shaft needs no recess
+  const n17 = motorPlateModel('2040-openbuilds', { motor: 'nema17' });
+  assert.deepEqual([n17.height, n17.holes.length, n17.recess, n17.mount.thread, n17.mount.tapped], [22.5, 4, null, 'M3', true]);
+  // a carriage: the LM8UU pockets from its inner end, the T8 nut's bore and its flange's four M3 pilots; a flag for a switch
+  const c = rodCarriageModel(P, { spacing: 40, height: 13, screw: 't8-screw', flag: { y: -23.4, z: -2 } });
+  assert.deepEqual([c.length, c.own, c.pocket, c.nut.bore, c.pilots.thread, c.pilots.length, c.flag], [27, 30.5, 15, 10.7, 'M3', 12, { y: -23.4, z: -2, width: 4, thickness: 3 }]);
+  assert.deepEqual(c.hardware.map((x) => [x.count, x.name]), [[4, 'M3x12 button']]);
+  assert.ok(c.margin >= 2 && c.grams > 10, `${c.grams} g, ${c.margin}×`);
+  // an endstop's mount on a side face: the switch by its own holes, its lever 12.4 mm along, the slot screw sunk ahead of it
+  const e = endstopMountModel(P, { face: 'front' });
+  assert.deepEqual([e.lever, e.switchScrew, e.screws[0].length], [{ x: 12.4, out: 14.4, reach: 12, width: 4 }, { thread: 'M2', length: 12 }, 12]);
+  assert.equal(e.thickness - e.counterbore.depth, e.screws[0].grip);
+  // each prints as drawn, with no supports
+  for (const [g, what] of [[rodHolder(h), 'a rod holder'], [rodHolder(hb), 'a rod holder at end b'], [motorPlate(mp), 'a motor plate for a 28BYJ-48'], [motorPlate(n17), 'a motor plate for a NEMA 17'], [rodCarriage(c), 'a rod carriage with a flag'], [endstopMount(e), 'an endstop mount']]) await prints(g, what);
+  // the bearings' loads: 2.45 N along the rods is the screw's; 0.074 N m of pitch is shared as a couple along each bush
+  const r = rodMargin(c, { force: [2.45, 0, 0], moment: [0, 0.074, 0] });
+  assert.equal(r.rating, 400); assert.deepEqual(r.bearings.map((b) => b.radial), [3.083, 3.083]); assert.equal(r.level, 'pass');
+  assert.equal(rodMargin(c, { force: [0, 0, -900], moment: [0, 0, 0] }).level, 'fail', '900 N across is past two 400 N bushes');
+  // refused by name
+  assert.throws(() => rodsLayout(P, { rod: 'lm8uu' }), /rod is a rod's rule set, one of rod-8 \(got "lm8uu"\)/);
+  assert.throws(() => rodsLayout(P, { motor: '28byj48' }), /a motor drives the carriage through a screw: give screw/);
+  assert.throws(() => rodsLayout(P, { screw: 't8-screw', spacing: 30 }), /spacing is the rods' distance apart, mm, at least 40/);
+  assert.throws(() => rodsLayout(P, { screw: 't8-screw', height: 10 }), /height is .* at least 13 for bearing-608 in a holder/);
+  assert.throws(() => rodHolderModel('tube-al-20x20x2', {}), /front face beside the top face is closed: a saddle's legs screw into slots either side/);
+  assert.throws(() => motorPlateModel(P, { motor: 'sg90' }), /motor is a motor's rule set, one of 28byj48, nema14, nema17/);
+  assert.throws(() => rodCarriageModel(P, { flag: { y: -40, z: -2 } }), /the flag would hang 40 mm from the middle, past the carriage's 19.5 mm/);
+  assert.throws(() => endstopMountModel(P, { face: 'front', toward: 0 }), /toward is 1 or -1/);
+});
