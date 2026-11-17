@@ -124,11 +124,11 @@ export function frameModelOf(s, helpers) {
   if (!motion || !s.objects.some((o) => o.beam && !o.unplaced)) return null;
   // beams with no joins and nothing said of their supports are parts held by other means (fastened to a plate, a lone
   // upright on a printed base): not a frame to solve
-  if (!s.joins?.length && s.a.frame == null) return null;
+  if (!s.joins?.length && !['supports', 'limit', 'points', 'rack'].some((k) => s.a.frame?.[k] != null)) return null;
   const { placeItems, jointValues, mul } = helpers, ids = motion.items.map((x) => x[0]), base = jointValues(motion, motion.pose ?? undefined), worlds = placeItems(motion, base);
   const opts = s.a.frame ?? {};
-  if (typeof opts !== 'object' || Array.isArray(opts)) throw new Error(`frame is { "supports", "limit", "points", "rack" } (got ${shown(opts)})`);
-  for (const k of Object.keys(opts)) if (!['supports', 'limit', 'points', 'rack'].includes(k)) throw new Error(`frame has no "${k}": it takes supports, limit, points, rack`);
+  if (typeof opts !== 'object' || Array.isArray(opts)) throw new Error(`frame is { "supports", "limit", "points", "rack", "cut", "heat" } (got ${shown(opts)})`);
+  for (const k of Object.keys(opts)) if (!['supports', 'limit', 'points', 'rack', 'cut', 'heat'].includes(k)) throw new Error(`frame has no "${k}": it takes supports, limit, points, rack, cut, heat`);
   if (opts.rack != null) {
     if (typeof opts.rack !== 'object' || Array.isArray(opts.rack)) throw new Error(`frame.rack is { "load": 20, "limit": 1 }: the side push in N and the sway allowed in mm (got ${shown(opts.rack)})`);
     for (const k of Object.keys(opts.rack)) if (!['load', 'limit'].includes(k)) throw new Error(`frame.rack has no "${k}": it takes load (N) and limit (mm)`);

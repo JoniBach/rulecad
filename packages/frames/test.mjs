@@ -614,6 +614,9 @@ test('frame.cut: a beam longer than any length sold, lengths the cut tolerance c
   assert.ok(say.some((t) => /^warn profile-2020-misumi-hfs5: mark C \(x1\) at 300 mm and mark B \(x2, x3\) at 300\.4 mm differ by 0\.4 mm, less than two cuts at ±0\.5 mm can hold apart/.test(t)), say.join('\n'));
   assert.ok(say.some((t) => /^info mark B \(x2, x3\): 2 beams of 300\.4 mm, each cut to ±0\.5 mm, may differ by up to 1 mm/.test(t)));
   assert.deepEqual(c.stock[0].unpacked.map((u) => u.item), ['long']); assert.ok(c.findings.every((f) => f.code === 'frame.cut'));
+  // a workshop's own tolerance, given, is taken before the maker's cut_tolerance (MISUMI's ±0.5 is for its cut service)
+  const own = frames.cutList([B('x2', 300.4), B('x3', 300.4)], { tolerance: 1 });
+  assert.equal(own.stock[0].tolerance, 1); assert.ok(own.findings.some((f) => /each cut to ±1 mm, may differ by up to 2 mm/.test(f.text) && f.refs.rule === 'tolerance (given)'));
   // no sold length in its set: 6 m assumed (an estimate); cut to length by the maker: each beam bought at its length
   const g = frames.cutList([B('g1', 500, 'angle-al-25x25x3'), B('g2', 500, 'angle-al-25x25x3')]).stock[0];
   assert.deepEqual([g.supply, g.lengths, g.buy], ['assumed', [6000], [{ length: 6000, count: 1 }]]);
@@ -1453,6 +1456,31 @@ test('squareness: a bay\'s two diagonals and the difference to accept, what the 
   assert.throws(() => frames.squareness(0, 200), /squareness: width is the bay's opening, inside face to inside face, a number of mm above 0 \(got 0\)/);
   assert.throws(() => frames.squareness(260, 200, { kerf: 3 }), /squareness: no option "kerf": it takes tolerance/);
   assert.throws(() => frames.squareness(260, 200, { tolerance: -1 }), /tolerance is how far a cut may be from its length either way/);
+});
+
+test('squareness stacks each cut and each join\'s play as an error budget stacks its joints: worst case summed, root-sum-square beside it', () => {
+  // 260 × 200, d = 328.024 mm. Two rails along the width cut to ±0.5: 0.5 × 260 / 328.024 = 0.39631 each.
+  // Four blind joins, each 0.1 mm of play (JOIN_PLAY.blind), two along the width (lever 260/d) and two along the height
+  // (lever 200/d): 0.1 × 260 / d = 0.07926 and 0.1 × 200 / d = 0.06097.
+  // Worst: 2 × 0.39631 + 2 × 0.07926 + 2 × 0.06097 = 1.07309 -> 1.07; rss: √(2 × 0.39631² + 2 × 0.07926² + 2 × 0.06097²) = 0.58153 -> 0.58
+  const d = Math.hypot(260, 200), slip = frames.JOIN_PLAY.blind.value;
+  assert.equal(slip, 0.1); assert.equal(frames.JOIN_PLAY.blind.kind, 'estimate');
+  for (const [k, r] of Object.entries(frames.JOIN_PLAY)) { assert.ok(frames.JOINS[k], k); for (const f of ['value', 'unit', 'rule', 'kind', 'source', 'checked']) assert.ok(r[f] != null, `${k}.${f}`); }
+  const cuts = [{ name: 'x1', along: 'width' }, { name: 'x3', along: 'width' }], plays = [['width', 'j1'], ['width', 'j2'], ['height', 'j3'], ['height', 'j4']].map(([along, name]) => ({ name, along, slip }));
+  const q = frames.squareness(260, 200, { cuts, plays });
+  const hand = 2 * (0.5 * 260) / d + 2 * (0.1 * 260) / d + 2 * (0.1 * 200) / d;
+  assert.ok(Math.abs(hand - 1.07309) < 1e-4, `${hand}`);
+  assert.deepEqual([q.accept, q.rss], [1.07, 0.58]);
+  assert.deepEqual(q.terms.map((x) => [x.term, x.value, x.kind]), [['x1 cut', 0.396, 'estimate'], ['x3 cut', 0.396, 'estimate'], ['j1 play', 0.079, 'estimate'], ['j2 play', 0.079, 'estimate'], ['j3 play', 0.061, 'estimate'], ['j4 play', 0.061, 'estimate']]);
+  assert.match(q.text, /accept a difference of up to 1\.07 mm \(beams cut to ±0\.5 mm and the play of 4 joins, stacked worst case, every corner square; 0\.58 mm root-sum-square\)/);
+  // loosening the cut tolerance to ±1 widens it by 2 × 0.5 × 260 / d = 0.79262 mm, the cut terms' own lever
+  const loose = frames.squareness(260, 200, { cuts, plays, tolerance: 1 });
+  assert.ok(Math.abs(loose.accept - q.accept - 0.79) < 0.011, `${loose.accept} - ${q.accept}`);
+  // a beam with its own tolerance, and refusals by name
+  assert.equal(frames.squareness(260, 200, { cuts: [{ name: 'x1', along: 'width', tolerance: 0 }, { name: 'x3', along: 'width' }] }).accept, 0.4);
+  assert.throws(() => frames.squareness(260, 200, { cuts: [{ name: 'x1', along: 'up' }] }), /squareness: cuts 1 is \{ name, along: 'width' or 'height' \}/);
+  assert.throws(() => frames.squareness(260, 200, { plays: [{ name: 'j1', along: 'width' }] }), /squareness: plays 1: slip is the join's play along the beam it meets/);
+  assert.throws(() => frames.squareness(260, 200, { plays: 3 }), /squareness: plays is a list/);
 });
 
 test('measured joins: the joins set starts from the estimates, a measured figure is taken before the kit\'s and says when, and a slot nut says its hold along the slot', () => {

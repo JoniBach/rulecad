@@ -136,6 +136,7 @@ function opWords(o) {
  * per metre, else by the drawn section.
  * @param {object[]} beams beams' models (beamModel), or { id, beam } with an item's name
  * @param {{ kerf?: number, trim?: number, tolerance?: number, stock?: number }} [o] mm, a workshop's own; CUT_DEFAULTS' where left out
+ *   (a tolerance given is taken before a profile's own cut_tolerance: the maker's figure is for its cut service)
  *   stock: each profile's { profile, supply ('sold', 'cut' by the maker, or 'assumed'), lengths, cuts (each length to cut and how
  *   many), bars, buy, unpacked, bought, offcut, kerf, trim, tolerance }
  * @returns {{ marks: object[], stock: object[], rules: object, totals: { beams: number, grams: number, bars: number, bought: number, offcut: number }, findings: object[] }}
@@ -151,8 +152,8 @@ export function cutList(beams, o = {}) {
   });
   const profiles = [...new Set(lines.map((l) => l.profile))], stock = [];
   for (const name of profiles) {
-    const ls = lines.filter((l) => l.profile === name), p = ls[0].beam.profile, s = p.supply, tol = s.cutTolerance ?? rules.tolerance.value;
-    const tolRule = s.cutTolerance != null ? 'cut_tolerance' : 'cut tolerance (CUT_DEFAULTS)';
+    const ls = lines.filter((l) => l.profile === name), p = ls[0].beam.profile, s = p.supply, tol = o.tolerance != null ? rules.tolerance.value : s.cutTolerance ?? rules.tolerance.value; // (a workshop's own, given, before the maker's cut service)
+    const tolRule = o.tolerance != null ? 'tolerance (given)' : s.cutTolerance != null ? 'cut_tolerance' : 'cut tolerance (CUT_DEFAULTS)';
     const pieces = ls.flatMap((l) => l.items.map((item) => ({ mark: l.mark, item, length: l.length })));
     let entry;
     if (s.lengths.length || s.cutMax == null) {

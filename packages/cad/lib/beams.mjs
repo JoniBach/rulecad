@@ -119,7 +119,10 @@ export function marksOf(objects) {
 }
 
 /** The cut list of an assembly's beams (frames' cutList), or null where it has none. @param {object} s a built assembly */
-export function cutListOf(s) { const b = beamsIn(s); return b.length ? cutList(b) : null; }
+export function cutListOf(s) {
+  const b = beamsIn(s), t = s.a?.frame?.cut?.tolerance;
+  return b.length ? cutList(b, t != null && Number.isFinite(s.num(t)) && s.num(t) >= 0 ? { tolerance: s.num(t) } : {}) : null; // (the workshop's own tolerance, frame.cut; refused by name in frame.square)
+}
 
 /** The cut list as the list and the build page keep it: no beam models, the numbers and words only. */
 export const cutListData = (c) => c && { marks: c.marks.map(({ beam, ...m }) => m), stock: c.stock, totals: c.totals, rules: Object.fromEntries(Object.entries(c.rules).map(([k, r]) => [k, { value: r.value, unit: r.unit, kind: r.kind }])) };

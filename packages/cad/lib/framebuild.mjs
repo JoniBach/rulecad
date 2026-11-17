@@ -21,9 +21,11 @@
 // The steps of the parts that are not beams (and not a join's fitting) follow the assembly's order (lib/order.mjs); a
 // part a beam would stand over the screws of goes on before that beam. Every screw is held to what the assembly order
 // found stands over it (its covers): where no build reaches one, the build is refused with that reason.
-import { squareness, CUT_DEFAULTS } from '@rulecad/frames';
+import { squareness, CUT_DEFAULTS, JOIN_PLAY } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
+import fs from 'node:fs';
 import path from 'node:path';
+import { paths } from './workspace.mjs';
 import { cutListOf, sheetFile } from './beams.mjs';
 import { orderOf, fastenerText } from './order.mjs';
 import { preloadOf, trappedOf, closuresOf, nutGroupsOf } from './slotnuts.mjs';
@@ -34,13 +36,33 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const norm = (a) => { const l = Math.hypot(...a); return a.map((x) => x / l); };
 const list = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
 
+// A beam's cut tolerance and what it rests on: the assembly's frame.cut.tolerance (the workshop's own saw), else the
+// profile's cut_tolerance, else CUT_DEFAULTS'
+/** The assembly's own cut tolerance (frame.cut.tolerance), mm, or null: refused by name where it is not one. @param {object} s a built assembly */
+export function cutToleranceOf(s) {
+  const c = s.a.frame?.cut;
+  if (c == null) return null;
+  if (typeof c !== 'object' || Array.isArray(c)) throw new Error(`frame.cut is { "tolerance": 0.5 }: how far this workshop's cuts may be from the length asked, in mm (got ${JSON.stringify(c)})`);
+  for (const k of Object.keys(c)) if (k !== 'tolerance') throw new Error(`frame.cut has no "${k}": it takes tolerance (mm)`);
+  if (c.tolerance == null) return null;
+  const t = s.num(c.tolerance);
+  if (!(Number.isFinite(t) && t >= 0)) throw new Error(`frame.cut.tolerance is how far a cut may be from the length asked, either way, a number of mm, 0 or more (got ${JSON.stringify(c.tolerance)})`);
+  return t;
+}
+function tolOf(s, p) {
+  const given = cutToleranceOf(s);
+  if (given != null) return { tol: given, tolKind: 'given', tolFrom: 'the assembly\'s frame.cut.tolerance' };
+  if (p.supply?.cutTolerance != null) return { tol: p.supply.cutTolerance, tolKind: p.figures?.cut_tolerance?.kind ?? 'spec', tolFrom: `${p.name}.cut_tolerance` };
+  return { tol: CUT_DEFAULTS.tolerance.value, tolKind: CUT_DEFAULTS.tolerance.kind, tolFrom: 'frames.cut.tolerance' };
+}
+
 // Each beam as a line in the world: end a, its axis, its section's two axes and sizes, its length, its cut tolerance
 function linesOf(s) {
   const placed = placeItems(s.motion, s.jointValues), worlds = Object.fromEntries(s.motion.items.map((x, i) => [x[0], placed[i]])), out = new Map(); // (placeItems: by the order of the motion's items)
   for (const o of s.objects) {
     if (!o.beam || o.unplaced || !worlds[o.id]) continue;
     const W = worlds[o.id], p = o.beam.profile;
-    out.set(o.id, { id: o.id, O: [W[3], W[7], W[11]], d: norm([W[2], W[6], W[10]]), X: [W[0], W[4], W[8]], Y: [W[1], W[5], W[9]], w: p.width, h: p.height, L: o.beam.length, tol: p.supply?.cutTolerance ?? CUT_DEFAULTS.tolerance.value });
+    out.set(o.id, { id: o.id, O: [W[3], W[7], W[11]], d: norm([W[2], W[6], W[10]]), X: [W[0], W[4], W[8]], Y: [W[1], W[5], W[9]], w: p.width, h: p.height, L: o.beam.length, ...tolOf(s, p) });
   }
   return out;
 }
@@ -71,8 +93,14 @@ export function baysOf(s) {
       seen.add(key);
       const v = C.d, u = A.d, width = Math.abs(dot(A.O, v) - dot(B.O, v)) - reach(A, v) - reach(B, v), height = Math.abs(dot(C.O, u) - dot(D.O, u)) - reach(C, u) - reach(D, u);
       if (!(width > 0 && height > 0)) continue;
-      const sq = squareness(width, height, { tolerance: Math.max(A.tol, B.tol, C.tol, D.tol) });
-      out.push({ beams: [A.id, B.id, C.id, D.id], name: `${A.id}, ${B.id}, ${C.id} and ${D.id}`, width: +width.toFixed(2), height: +height.toFixed(2), square: sq });
+      // what squares it: each beam whose end butts a beam of the bay sets the opening along it by its cut length; each
+      // join of the bay's beams lets a's end sit off by its play along b (JOIN_PLAY), stacked worst case
+      const bay = [A, B, C, D], ids4 = bay.map((x) => x.id), along = (x) => (par(x, C) ? 'width' : 'height');
+      const inBay = (s.joins ?? []).filter((j) => ids4.includes(j.items[0]) && ids4.includes(j.items[1]) && j.items[0] !== j.items[1]);
+      const cuts = bay.filter((x) => inBay.some((j) => j.items[0] === x.id)).map((x) => ({ name: x.id, along: along(x), tolerance: x.tol, kind: x.tolKind }));
+      const plays = inBay.map((j) => { const r = JOIN_PLAY[j.kind]; return r ? { name: `join ${j.index + 1} (${j.kind})`, along: along(L.get(j.items[1])), slip: r.value, kind: r.kind } : null; }).filter(Boolean);
+      const sq = squareness(width, height, { tolerance: Math.max(...bay.map((x) => x.tol)), cuts, plays });
+      out.push({ beams: ids4, name: `${A.id}, ${B.id}, ${C.id} and ${D.id}`, width: +width.toFixed(2), height: +height.toFixed(2), square: sq, joins: inBay.map((j) => j.index), tolFrom: [...new Set(bay.map((x) => x.tolFrom))] });
     }
   }
   return out;
@@ -400,8 +428,33 @@ export function frameBuildText(ref, b) {
 }
 
 
-/** frame.square for each bay of a frame, in the assembly's findings shape: the diagonals to measure and the difference to accept. */
+// The latest measurement of each prediction in the project's ledger (cad measured writes it), by name
+function measuredOf(s) {
+  let text = '';
+  try { text = fs.readFileSync(path.join(paths.project(s.project), 'ledger.jsonl'), 'utf8'); } catch { return new Map(); }
+  const out = new Map();
+  for (const l of text.split('\n')) { if (!l.trim()) continue; try { const e = JSON.parse(l); if (e.assembly === s.name && typeof e.measured === 'number') out.set(e.name, e); } catch {} }
+  return out;
+}
+
+/**
+ * frame.square for each bay of a frame, in the assembly's findings shape: the diagonals to measure and the difference to
+ * accept, each cut and join's share of it, and a prediction cad measured takes (frame.square.<beams>=<the difference
+ * measured>): once measured, it says whether the bay is square within what its parts allow.
+ */
 export function frameSquareChecks(s, f) {
   if (!s.joins?.length) return;
-  for (const b of baysOf(s)) f('info', `the bay of ${b.name}: ${b.square.text}`, null, { code: 'frame.square', values: b.square.findings[0].values, refs: { beams: b.beams } });
+  const measured = measuredOf(s);
+  let bays;
+  try { bays = baysOf(s); } catch (e) { f('fail', e.message, 'frame.cut: refused', { code: 'frame.square' }); return; }
+  for (const b of bays) {
+    const q = b.square, name = `frame.square.${b.beams.join('-')}`, m = measured.get(name), soft = q.terms.filter((x) => x.kind === 'estimate');
+    const parts = `${q.terms.map((x) => `${x.term} ${mm(x.value)}`).join(', ')} mm`;
+    const rests = soft.length ? ` It rests on estimates (${soft.map((x) => x.term).join(', ')}): measure the diagonals once it is squared and tightened, and give their difference to cad measured ${s.project}/${s.name} ${name}=<mm>` : '';
+    let level = 'info', said = '';
+    if (m) { const over = m.measured > q.accept + 1e-9; level = over ? 'warn' : 'pass'; said = ` Measured ${mm(m.measured)} mm (${m.date}): ${over ? `${mm(m.measured / q.accept)} times what its cuts and joins allow, so it leans: loosen its joins, push the long diagonal's corners together, tighten and measure again` : 'within what its cuts and joins allow'}.`; }
+    f(level, `the bay of ${b.name}: ${q.text}. Its share: ${parts}.${said}${m ? '' : rests}`, level === 'warn' ? `${b.beams.join('-')}: out of square` : null,
+      { code: 'frame.square', predict: { name, figure: `the difference between the diagonals of the bay of ${b.name}, inside corner to inside corner, squared and tightened`, value: q.accept, unit: 'mm' },
+        values: { ...q.findings[0].values, ...(m ? { measured: m.measured } : {}) }, refs: { beams: b.beams, joins: b.joins, tolerance: b.tolFrom } });
+  }
 }

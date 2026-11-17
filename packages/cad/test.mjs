@@ -3189,10 +3189,15 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
       '4. Side 1 (p1, p2, x1 and x3)', '5. Side 1 (p1, p2, x1 and x3)', '6. Side 1 (p1, p2, x1 and x3)',
       '7. Load 2 × slot-nut-6-misumi-m4-slide-in into p1\'s back slot through its end b, for bracket, before cap1 goes on', '8. Square side 1, then tighten its joins']);
     assert.match(steps[3], /x1 goes on, joined to p1$/); assert.match(steps[5], /x3 goes on, joined to p1 and p2$/);
-    assert.match(steps[7], /measure both diagonals, inside corner to inside corner: each 328\.02 mm across the 260 × 200 mm opening; accept a difference of up to 0\.79 mm \(beams cut to ±0\.5 mm, every corner square\), about 0\.14° of lean\. Push the corners of the long diagonal together until the two are within that, then tighten each join to its torque and measure again$/);
+    // side 1's 260 × 200 opening (d = 328.024): x1 and x3 butt the posts, so their cuts set the width, 0.5 × 260 / d =
+    // 0.39631 each; four blind joins land on the posts, 0.1 mm of play each along the height, 0.1 × 200 / d = 0.06097.
+    // Worst 2 × 0.39631 + 4 × 0.06097 = 1.0365 -> 1.04; rss √(2 × 0.39631² + 4 × 0.06097²) = 0.5736 -> 0.57
+    assert.match(steps[7], /measure both diagonals, inside corner to inside corner: each 328\.02 mm across the 260 × 200 mm opening; accept a difference of up to 1\.04 mm \(beams cut to ±0\.5 mm and the play of 4 joins, stacked worst case, every corner square; 0\.57 mm root-sum-square\), about 0\.19° of lean\. Push the corners of the long diagonal together until the two are within that, then tighten each join to its torque and measure again$/);
     assert.match(steps[12], /^13\. Square side 2, then tighten its joins: /); assert.match(steps[17], /^18\. Side 2 goes on as one, joined to y2, y4, y1 and y3$/);
     assert.match(steps[18], /^19\. Square the frame, then tighten its joins: .*then tighten each join to its torque and measure again$/);
-    assert.match(text, /p1, p4, y1 and y3: measure both diagonals, inside corner to inside corner: each 340\.59 mm across the 220 × 260 mm opening; accept a difference of up to 0\.76 mm/);
+    // the 220 × 260 bays (d = 340.588): y1 and y3 butt the posts and set the 220 mm width, 2 × 0.5 × 220 / d = 0.64592;
+    // four joins' play along the 260 mm posts, 4 × 0.1 × 260 / d = 0.30535: 0.9513 -> 0.95 (the posts' own cuts set nothing)
+    assert.match(text, /p1, p4, y1 and y3: measure both diagonals, inside corner to inside corner: each 340\.59 mm across the 220 × 260 mm opening; accept a difference of up to 0\.95 mm/);
     assert.deepEqual(steps.slice(19).map((l) => l.replace(/^\d+\. /, '')), ['foot1, cap1 (cap) go on', 'bracket (plate) goes on', 'plate goes on', 'foot2, cap2, foot4, cap4, foot3, cap3 (cap) go on']);
     // each join's screw with its key and torque: the lips of the post's slot under the head take 3677 N on 17.9 mm²
     assert.match(text, /4\. Side 1 \(p1, p2, x1 and x3\): x1 goes on, joined to p1\n\s+blind join of x1\.a to p1\.back@30 \(1 × M5x12 button\) with a 3 mm hex key, to 3\.68 N m at most \(what the seat takes\)\n\s+Snug for now: tightened to its torque at step 8, once square\n/);
@@ -3206,7 +3211,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.deepEqual([st[0].shown, st[9].shown.sort(), st[9].now, st[12].shown.sort(), st[17].now, st[17].shown.length, st[17].dir.map(Math.abs)], [[], ['p3', 'x2'], ['x2'], ['p3', 'p4', 'x2', 'x4'], ['p3', 'p4', 'x2', 'x4'], 12, [0, 0, 1]]);
     assert.deepEqual(json.frame.notFlat, []);
     assert.deepEqual(json.frame.sides.map((x) => x.beams), [['p1', 'p2', 'x1', 'x3'], ['p3', 'p4', 'x2', 'x4']]);
-    assert.deepEqual(json.frame.bays.map((x) => [x.beams.join(), x.width, x.height, x.square.diagonal, x.square.accept]), [['p1,p2,x1,x3', 260, 200, 328.02, 0.79], ['p1,p4,y1,y3', 220, 260, 340.59, 0.76], ['p2,p3,y2,y4', 220, 260, 340.59, 0.76], ['p3,p4,x2,x4', 260, 200, 328.02, 0.79]]);
+    assert.deepEqual(json.frame.bays.map((x) => [x.beams.join(), x.width, x.height, x.square.diagonal, x.square.accept]), [['p1,p2,x1,x3', 260, 200, 328.02, 1.04], ['p1,p4,y1,y3', 220, 260, 340.59, 0.95], ['p2,p3,y2,y4', 220, 260, 340.59, 0.95], ['p3,p4,x2,x4', 260, 200, 328.02, 1.04]]);
     assert.deepEqual(json.frame.torques.map((x) => [x.kind, x.joins, x.torque]), [['blind', 16, 3.68]]);
     // on cad check: frame.square for each bay, and the seat under a blind join's head with what its lips take
     const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
@@ -3220,7 +3225,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.match(r.nut, /go into p1's back slot before a join closes its way, from end a, past 30 and 250 mm \(foot1 off until then\), before the first made of the blind join of x1\.a to p1\.back@30 and the blind join of x3\.a to p1\.back@250, each of which closes that way \(or through end b before cap1 goes on\) \(frame\.preload\)$/);
     assert.deepEqual([r.preload.joins, r.preload.way], [[4, 0], 'a']);
     assert.equal(r.steps, 23, 'cad check counts the frame build\'s steps');
-    assert.deepEqual(r.square, [['info', 'p1,p2,x1,x3', 0.79], ['info', 'p1,p4,y1,y3', 0.76], ['info', 'p2,p3,y2,y4', 0.76], ['info', 'p3,p4,x2,x4', 0.79]]);
+    assert.deepEqual(r.square, [['info', 'p1,p2,x1,x3', 1.04], ['info', 'p1,p4,y1,y3', 0.95], ['info', 'p2,p3,y2,y4', 0.95], ['info', 'p3,p4,x2,x4', 1.04]]);
     assert.deepEqual([r.seat.level, r.seat.values.area, r.seat.values.limit, r.seat.values.torque], ['pass', 17.94, 205, 3.68]);
     assert.match(r.seat.text, /on al6n01-t5 \(205 MPa\) the 17\.9 mm² either side of the opening takes 3677 N, a tightening of 3\.68 N m \(the lips' bending not counted: an estimate\)/);
     assert.deepEqual(r.page, { steps: 23, bays: [328.02, 340.59, 340.59, 328.02], torques: 1, stuck: null });
@@ -3271,6 +3276,50 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     const midSteps = midText.split('\n').filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim().replace(/^\d+\. /, '')), x4At = midSteps.indexOf('x4 goes on, joined to p4 and m');
     assert.match(midSteps[x4At - 1], /^Slide an M5x12 button screw into x4's front slot head first, through its end a, to 130 mm, for the blind join of m\.b to x4\.front@130, /);
     assert.doesNotMatch(midText, /Side 2/);
+  } finally { done(); }
+});
+
+test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loosening the cut tolerance widens it by the hand stack, and cad measured takes the difference measured', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    // one side of a 2020 box: posts p1 and p2 300 mm tall at x 10 and 290, rails x1 and x3 at z 30 and 250 blind-joined
+    // into them. The opening is 260 × 200 mm (d = √(260² + 200²) = 328.024 mm)
+    const P = { profile: '2020-misumi-hfs5' }, items = [{ id: 'p1', beam: P, from: [10, 10, 0], to: [10, 10, 300] }, { id: 'p2', beam: P, from: [290, 10, 0], to: [290, 10, 300] }], joins = [];
+    for (const [n, z] of [['x1', 30], ['x3', 250]]) { items.push({ id: n, beam: P, from: [20, 10, z], to: [280, 10, z] }); joins.push({ kind: 'blind', a: `${n}.a`, b: `p1.back@${z}` }, { kind: 'blind', a: `${n}.b`, b: `p2.front@${z}` }); }
+    const write = (name, frame) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Side', kind: 'fit', items, joins, ...(frame ? { frame } : {}) }));
+    write('side'); write('loose', { cut: { tolerance: 1 } }); write('bad', { cut: { tolerance: -1 } });
+    const check = (name, code = 'frame.square') => { const r = spawnSync(process.execPath, [BIN, 'check', `frame/${name}`, '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === code); };
+    const [side] = check('side'), [loose] = check('loose');
+    // Hand stack, MISUMI's ±0.5 mm cut (its set's cut_tolerance): x1 and x3 butt the posts, so their cut lengths set the
+    // 260 mm width, each 0.5 × 260 / 328.024 = 0.39631 mm of diagonal difference; the four blind joins land on the posts,
+    // each 0.1 mm of play (JOIN_PLAY.blind, an estimate) along the 200 mm height, 0.1 × 200 / 328.024 = 0.06097 mm.
+    // Worst: 2 × 0.39631 + 4 × 0.06097 = 1.03651 mm. The posts' own cut lengths set no opening, so they add nothing.
+    assert.equal(side.values.accept, 1.04); assert.equal(side.predict.value, 1.04); assert.equal(side.predict.name, 'frame.square.p1-p2-x1-x3');
+    assert.deepEqual(side.values.terms.map((x) => [x.term, x.value, x.kind]), [['x1 cut', 0.396, 'spec'], ['x3 cut', 0.396, 'spec'], ['join 1 (blind) play', 0.061, 'estimate'], ['join 2 (blind) play', 0.061, 'estimate'], ['join 3 (blind) play', 0.061, 'estimate'], ['join 4 (blind) play', 0.061, 'estimate']]);
+    assert.deepEqual(side.refs.tolerance, ['profile-2020-misumi-hfs5.cut_tolerance']);
+    assert.match(side.text, /It rests on estimates \(join 1 \(blind\) play, .*\): measure the diagonals once it is squared and tightened, and give their difference to cad measured frame\/side frame\.square\.p1-p2-x1-x3=<mm>/);
+    // loosened to ±1 mm (a hand saw, frame.cut.tolerance): the two cut terms double, 2 × 1 × 260 / 328.024 = 1.58524, so
+    // the accepted difference widens by 2 × 0.5 × 260 / 328.024 = 0.79262 mm, to 1.03651 + 0.79262 = 1.82913 -> 1.83
+    assert.equal(loose.values.accept, 1.83); assert.ok(Math.abs(loose.values.accept - side.values.accept - 0.79262) < 0.011);
+    assert.deepEqual(loose.values.terms.slice(0, 2).map((x) => [x.value, x.kind]), [[0.793, 'given'], [0.793, 'given']]);
+    assert.deepEqual(loose.refs.tolerance, ['the assembly\'s frame.cut.tolerance']);
+    // the cut list takes the workshop's tolerance too
+    assert.ok(check('loose', 'frame.cut').some((x) => /mark C \(x1, x3\): 2 beams of 260 mm, each cut to ±1 mm, may differ by up to 2 mm/.test(x.text)));
+    // refused by name
+    const bad = spawnSync(process.execPath, [BIN, 'check', 'frame/bad', '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } });
+    assert.match(JSON.parse(bad.stdout).error.message, /frame\.cut\.tolerance is how far a cut may be from the length asked, either way, a number of mm, 0 or more \(got -1\)/);
+    // measured: 0.6 mm is within, so it passes; 1.5 mm is more than its parts allow, so it leans
+    assert.match(cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=0.6', '--source', 'tape, inside corners'), /frame\.square\.p1-p2-x1-x3: measured 0\.6 mm, predicted 1\.04/);
+    let [m] = check('side');
+    assert.equal(m.level, 'pass'); assert.equal(m.values.measured, 0.6); assert.match(m.text, /Measured 0\.6 mm \(\d{4}-\d\d-\d\d\): within what its cuts and joins allow\./);
+    cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=1.5');
+    [m] = check('side');
+    assert.equal(m.level, 'warn'); assert.match(m.text, /Measured 1\.5 mm \(\d{4}-\d\d-\d\d\): 1\.44 times what its cuts and joins allow, so it leans: loosen its joins/);
+    // the ledger keeps both, predicted against measured
+    const ledger = fs.readFileSync(at('ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(ledger.map((e) => [e.name, e.predicted, e.measured]), [['frame.square.p1-p2-x1-x3', 1.04, 0.6], ['frame.square.p1-p2-x1-x3', 1.04, 1.5]]);
   } finally { done(); }
 });
 
