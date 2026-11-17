@@ -39,8 +39,10 @@ cut, and fastens to them:
   dimensions a hole (`drillGuideModel`), a tap guide over an end (`tapGuideModel`), a cut-length stop with its gauge
   (`lengthStopModel`) and a squaring corner (`squareCornerModel`).
 
-More fittings (a three-way corner, a hidden-corner cover, a printed node) and the other guides (rods, screws and
-belts) follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+A whole frame from these, a box of 2020 with a motor-driven axis, cut, drilled, printed on one plate and built in
+order, is chapter 16 of [the worked examples](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md).
+More fittings (a three-way corner, a hidden-corner cover, a printed node) and a belt drive follow in later releases.
+The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling

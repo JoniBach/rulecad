@@ -234,3 +234,5 @@ commands to run, tested the same way as this page. Each is also a section of [th
 - **Optimised parts**: the stiffest layout for a load, and an analysis of what you drew.
 - **Boards**: circuit boards from the same rules as the case around them.
 - **Mechanisms printed flat**: springs, catches and triggers in one print, checked through their whole cycle.
+- **Frames**: beams of an aluminium profile placed by their ends, joined, with feet and a motor-driven axis, cut,
+  drilled and printed on one plate (chapter 16).
