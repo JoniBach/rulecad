@@ -943,6 +943,8 @@ export function checkAssembly(s) {
       const ids = s.motion.items.map((x) => x[0]), top = (n) => String(n).split(/[.@]/)[0];
       // (a beam placed by its ends is the frame, held where it is drawn: what is screwed to it is held by it)
       const held = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child]), ...s.items.filter((it) => it.beam && it.from != null).map((it) => it.id)]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
+      // (a fitting at a beam's end, an end cap pressed into it or a foot screwed into its bore, is held by that beam)
+      for (const it of s.a.items || []) { const m = typeof it.at === 'string' && (it.fitting || it.bought) ? /^([\w-]+)\.[ab]$/.exec(it.at.trim()) : null; if (m && s.items.some((x) => x.id === m[1] && x.beam)) links.push([it.id, m[1]]); }
       for (let grew = true; grew;) { grew = false; for (const [a, b] of links) { if (held.has(a) && !held.has(b)) { held.add(b); grew = true; } if (held.has(b) && !held.has(a)) { held.add(a); grew = true; } } }
       const placed = new Set(s.objects.filter((o) => !o.unplaced && o.role !== 'reference').map((o) => top(o.id)));
       const loose = ids.filter((id) => !held.has(id) && placed.has(id));

@@ -120,7 +120,9 @@ export function assemblyOrder(s) {
     const a = top(A), b = top(B), [u, v] = earlier(a, b) <= 0 ? [a, b] : [b, a];
     if (x.seat != null && (bearing(a) || bearing(b))) { const [h, r] = bearing(a) ? [b, a] : [a, b]; add(h, r, `${r} is pressed into ${h}`); continue; }
     if ((x.shaft != null || x.engage != null) && (bearing(a) || bearing(b))) { const [r, shaft] = bearing(a) ? [a, b] : [b, a]; add(r, shaft, `${r} goes in before ${shaft}`); continue; }
-    if (x.fastens) add(u, v, x.note || `${v} fastens to ${u}`);
+    // (a part placed on another, as a fitting at a beam's address is, goes on after it: its joint says so, and a fastening
+    // between the two does not turn that round, however far each is from the base)
+    if (x.fastens && !before.get(v)?.has(u)) add(u, v, x.note || `${v} fastens to ${u}`);
   }
   // Screws: what stands on the tool's line goes on after the screw, and if it must already be there, nothing can
   const worlds = placeItems(s.motion, s.jointValues), marks = s.motion.marks, reaches = (u, v, seen = new Set()) => { if (u === v) return true; if (seen.has(u)) return false; seen.add(u); return [...before.get(u).keys()].some((w) => reaches(w, v, seen)); };
@@ -227,7 +229,7 @@ export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null 
 
 // Cached by what the parts are and where they are, with everything else that changes the answer
 function orderFile(s) {
-  const key = crypto.createHash('sha256').update(JSON.stringify([7, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([8, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
   return paths.cache('order', `${key}.json`);
 }
 export function orderOf(s) {

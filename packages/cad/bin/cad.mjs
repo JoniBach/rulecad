@@ -98,6 +98,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad order <project>/<assembly>    the order it goes together in, each step with its fasteners; a frame from bars to square: cut, drill, sides built flat, nuts to load, joins with their torque, diagonals [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
+  cad frame <project>/<assembly>    a generated frame ("frame": { "kind": "box", "inside": [..] }): its size, its beams by length, its joins and ends
+                                     --expand: written into the assembly as its beams, joins and end fittings, to edit by hand [--json]
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
                                      --jigs: the jigs its beams take, as a plate in exports/ (a drill guide per distinct hole across a beam, a tap
                                      guide per tapped end, a cut-length stop per length, a squaring corner per square join), each marked with its beam [--preview]
@@ -139,11 +141,11 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'beams', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'beams', 'frame', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
-  'unit', 'rule', 'label', 'from', 'out', 'jigs', // cad set, cad rules, cad beams
+  'unit', 'rule', 'label', 'from', 'out', 'jigs', 'expand', // cad set, cad rules, cad beams, cad frame
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
   'kind', 'fitting']; // cad add join
@@ -155,7 +157,7 @@ const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join <project>/<assem
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs', 'expand'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -472,6 +474,7 @@ async function main() {
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'measured') return measuredCommand(ref);
   if (cmd === 'list' || cmd === 'wires' || cmd === 'beams') return listCommand(cmd, ref);
+  if (cmd === 'frame') return frameCommand(ref);
   if (cmd === 'machine' || cmd === 'plot') return machineCommand(cmd, ref);
   if (cmd === 'plates' || cmd === 'order') return platesCommand(cmd, ref);
   if (cmd === 'history') return history(ref);
@@ -1050,6 +1053,22 @@ async function platesCommand(what, ref) {
   if (r.removed.length) say(`  removed ${r.removed.join(', ')} (nothing is on them now)`);
   for (const x of results) { const bad = x.findings.filter((y) => (y.level === 'fail' || y.level === 'warn') && y.code !== 'rules.estimate'); say(`  ${x.name}: ${bad.length ? `${bad.length} to look at` : 'prints clean'}`); for (const y of bad) say(`    [${y.level}] ${y.text}`); }
   process.exitCode = fails ? 1 : 0;
+}
+
+// cad frame: a generated frame as it expands, and --expand writes the expansion into the assembly, to edit by hand
+async function frameCommand(ref) {
+  if (!isAssembly(ref)) throw new Error(`cad frame works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  const { expandFrame, frameText } = await import('../lib/framegen.mjs'), { assemblyPath } = await import('../lib/assembly.mjs');
+  const file = assemblyPath(ref), raw = readJson(file);
+  if (raw.frame?.kind == null) throw new Error(`${ref} asks for no generated frame: give it "frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-misumi-hfs5", "join": "blind" }`);
+  const s = await buildAssembly(ref), m = s.generated, out = expandFrame(raw, s.num).a;
+  if (opt('expand')) {
+    fs.writeFileSync(file, `${JSON.stringify(out, null, 2)}\n`);
+    if (opt('json')) return console.log(JSON.stringify({ assembly: ref, file: path.relative(WS, file), frame: m }, null, 2));
+    return console.log(`wrote ${path.relative(WS, file)}: the ${m.kind} as ${m.beams.length + (m.moving ? 1 : 0)} beams, ${m.joins.length} joins and ${m.ends.length + m.panels.length} fittings, to edit by hand (its "frame" keeps only how it is solved)`);
+  }
+  if (opt('json')) return console.log(JSON.stringify({ assembly: ref, frame: m, expanded: out }, null, 2));
+  console.log(`${ref}: ${frameText(m).join('\n')}\n(cad frame ${ref} --expand writes these into the assembly, to edit by hand)`);
 }
 
 async function listCommand(what, ref) {

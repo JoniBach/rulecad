@@ -43,7 +43,7 @@ export function frameParts(m, a, num) {
   const profile = m.profile, items = [];
   for (const b of m.beams) items.push({ id: b.id, beam: { profile }, from: b.from, to: b.to });
   for (const e of m.ends) items.push(e.fitting ? { id: e.id, fitting: { kind: e.fitting, profile }, at: e.at } : { id: e.id, bought: e.bought, at: e.at });
-  for (const p of m.panels) items.push({ id: p.id, panel: { sheet: p.sheet, thickness: p.thickness, bay: p.bay, out: p.out } });
+  for (const p of m.panels) items.push({ id: p.id, panel: { sheet: p.sheet, thickness: p.thickness, bay: p.bay, out: p.out, nut: p.nut } });
   const joints = [];
   let poses = null;
   if (m.moving) {

@@ -81,7 +81,7 @@ export function frameModel(kind, o = {}) {
   if (!arrangement) throw new Error(`${w}: join is one of ${Object.keys(FRAME_JOINS).join(', ')} (got ${shown(join.kind)})${JOINS[join.kind] ? `: a ${join.kind} join is ${JOINS[join.kind].what}, and no generator arranges corners for it. Generate with blind and change the joins by hand` : ''}`);
   if (['blind', 'end-tap'].includes(join.kind) && !P.bores.length) throw new Error(`${w}: a ${join.kind} join screws into the bore in a beam's end, and ${o.profile} has none: join it with bracket or gusset`);
   if (arrangement === 'node' && o.feet != null && !['table', 'portal'].includes(kind)) throw new Error(`${w}: feet stand under an upright beam's end, and with a cube join every end of a ${kind}'s goes into a corner node: leave feet out (the node's own foot comes with the cube's fitting), or join with blind`);
-  if (arrangement === 'node' && o.braces?.length) throw new Error(`${w}: braces turn a side's joins into gusset joins against a face, and a cube join's beams meet at nodes: brace a frame joined blind (or by another face join)`);
+  if (arrangement === 'node' && o.braces?.length) throw new Error(`${w}: braces put a printed corner bracket at each of a side's joins against a face, and a cube join's beams meet at nodes: brace a frame joined blind (or by another face join)`);
   if (o.feet != null && (typeof o.feet !== 'string' || (!FRAME_FEET[o.feet] && !o.feet.startsWith('fitting-')))) throw new Error(`${w}: feet is ${Object.keys(FRAME_FEET).join(', ')}, or a bought foot's set by name (fitting-motedis-foot-m6-d19) (got ${shown(o.feet)})`);
   const caps = o.caps ?? true;
   if (typeof caps !== 'boolean' && !(typeof caps === 'string' && caps.startsWith('fitting-'))) throw new Error(`${w}: caps is true (printed end caps), false (none) or a bought end cap's set by name (fitting-motedis-end-cap-20-b6) (got ${shown(o.caps)})`);
@@ -145,7 +145,7 @@ export function frameModel(kind, o = {}) {
   const braced = new Set(o.braces ?? []);
   const sideOf = (b) => { const m = b.from.map((v, k) => (v + b.to[k]) / 2), out = []; if (b.role !== 'along' && Math.abs(m[1] - h) < 1e-6) out.push('front'); if (b.role !== 'along' && Math.abs(m[1] - (OD - h)) < 1e-6 && kind !== 'portal') out.push('back'); if (b.role !== 'across' && Math.abs(m[0] - h) < 1e-6) out.push('left'); if (b.role !== 'across' && Math.abs(m[0] - (OW - h)) < 1e-6) out.push('right'); return out; };
   const endOf = (b, e) => ({ at: e === 'a' ? b.from : b.to, out: unit(sub(e === 'a' ? b.from : b.to, e === 'a' ? b.to : b.from)) });
-  const joinOf = (braceSide) => (braceSide ? { kind: 'gusset', fitting: 'printed' } : { ...join });
+  const joinOf = (braceSide) => (braceSide ? { kind: 'bracket', fitting: 'printed', nut: 'drop-in' } : { ...join });
   if (arrangement === 'face') {
     for (const b of beams.filter((x) => x.role !== 'upright')) for (const e of ['a', 'b']) {
       const E = endOf(b, e), meet = E.at.map((v, k) => v + E.out[k] * h); // the centre line of the beam it meets
@@ -197,19 +197,14 @@ export function frameModel(kind, o = {}) {
     if (caps) for (const e of ['a', 'b']) ends.push({ id: `cap-g-${e}`, at: `g.${e}`, ...(caps === true ? { fitting: 'end-cap' } : { bought: caps }), role: 'cap' });
   }
 
-  // panels: each side's bays between the rings, the four beams round it going round
+  // panels: one sheet over each side, from its lowest beam to its highest, on the two uprights at its edges (a shelf's
+  // rings between lie under it, so the sheet closes every bay of the side, its clips only round its edge)
   if (o.panels) {
-    const want = o.panels.sides ?? spec.sides;
-    for (const s of want) {
-      const out = SIDE_OUT[s], inSide = (b) => sideOf(b).includes(s);
-      const flat = beams.filter((b) => b.role !== 'upright' && inSide(b)).sort((u, v) => u.from[2] - v.from[2]);
-      const ups = beams.filter((b) => b.role === 'upright' && inSide(b));
-      for (let k = 0; k < flat.length - 1; k++) {
-        const lo = flat[k], hi = flat[k + 1], zm = (lo.from[2] + hi.from[2]) / 2;
-        const sidePosts = ups.filter((b) => b.from[2] <= zm && b.to[2] >= zm).sort((u, v) => (s === 'left' || s === 'right' ? u.from[1] - v.from[1] : u.from[0] - v.from[0]));
-        if (sidePosts.length !== 2) continue;
-        panels.push({ id: flat.length > 2 ? `panel-${s}-${k + 1}` : `panel-${s}`, sheet: o.panels.sheet, thickness: o.panels.thickness, bay: [lo.id, sidePosts[1].id, hi.id, sidePosts[0].id], out });
-      }
+    if (arrangement === 'node' && shelves) throw new Error(`${w}: a panel lies on one upright beam at each edge, and a shelf joined by cube nodes has its uprights in lengths between the rings: join it blind (or by another face join) to panel it`);
+    for (const s of o.panels.sides ?? spec.sides) {
+      const inSide = (b) => sideOf(b).includes(s), flat = beams.filter((b) => b.role !== 'upright' && inSide(b)).sort((u, v) => u.from[2] - v.from[2]);
+      const ups = beams.filter((b) => b.role === 'upright' && inSide(b)).sort((u, v) => (s === 'left' || s === 'right' ? u.from[1] - v.from[1] : u.from[0] - v.from[0]));
+      panels.push({ id: `panel-${s}`, sheet: o.panels.sheet, thickness: o.panels.thickness, bay: [flat[0].id, ups[1].id, flat.at(-1).id, ups[0].id], out: SIDE_OUT[s], nut: 'drop-in' });
     }
   }
 
