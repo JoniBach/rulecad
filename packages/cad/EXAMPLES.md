@@ -6587,7 +6587,10 @@ What the check says, piece by piece:
   detent (0.012 against 0.025 N m). `motor.heat`: the case reaches 53.8 °C at 1.2 A, under PLA's 57 °C.
   `joint.moment`: 556 g carried, the worse bearing takes 2.7 N against an LM8UU's 400 N.
 - `frame.square`: each bay's two diagonals, to measure when building it. The two sides along x have a 260 by 120 mm
-  opening: each diagonal 286.36 mm, and a difference of up to 0.91 mm to accept from beams cut to ±0.5 mm.
+  opening: each diagonal 286.36 mm, and a difference of up to 1.08 mm to accept. The two rails' cuts at ±0.5 mm give
+  0.91 mm of it (2 × 0.5 × 260 / 286.36) and the four blind joins' play 0.17 mm (4 × 0.1 × 120 / 286.36, an
+  estimate), stacked worst case; 0.65 mm root-sum-square. Once it is squared, the difference measured goes back with
+  `cad measured frame/box frame.square.p1-p2-x1-x3=<mm>`.
 - `join.stiffness`: what each join puts at the rail's end when the frame is solved. A blind join is 1.5 N·m/mrad in
   bending and 0.3 in twist, an estimate; a bracket's bending, 0.095 N·m/mrad, is its own by finite elements, and the
   slot nuts and lips are in neither. Both stay estimates until the joint rig (issue 264) measures one.
