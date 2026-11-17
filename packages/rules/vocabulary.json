@@ -1,7 +1,7 @@
 {
-  "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list, in ascending order; one marked \"points\" holds points of that many numbers each, one after another, in the order they are. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. A profile (a beam's section), a slot family, a slot nut and a bought fitting for a frame are parts too: a profile names its slot family on each face, the thread its bores tap to and its material by their rule sets, and \"drafts\" holds every field of those parts with a starting value, in the order cad rules draft writes them. Read by cad rules check and cad rules draw.",
-  "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", "mm²", "mm³", "mm⁴", "kg/m", "mm/m", "deg/m", "N mm/rad", "EUR", "GBP", "USD", "EUR/kg", ""],
-  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "corner_hollow_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_", "tongue_"],
+  "_doc": "The names rule sets share for what a part mounts by and what it does, so one piece of code can read any of them: a motor, a bearing, a driver, a screw. A set with \"part\" uses these names directly. An older set keeps its own names and says which is which in \"interface\". \"checks\" says what must hold between a part's figures (a head wider than its clearance hole). A field marked \"list\" holds a list, in ascending order; one marked \"points\" holds points of that many numbers each, one after another, in the order they are. A thread's older names are its vocabulary: clearance is the normal clearance hole, head and head_height the socket cap head, nut_flats and nut_height the hexagon nut. A profile (a beam's section), a slot family, a slot nut and a bought fitting for a frame are parts too: a profile names its slot family on each face, the thread its bores tap to and its material by their rule sets, and \"drafts\" holds every field of those parts with a starting value, in the order cad rules draft writes them. A rail is a miniature linear guide: its rail, its standard carriage in the set's rules and its long carriage as a variant, with the carriage's load and moment ratings. Read by cad rules check and cad rules draw.",
+  "units": ["mm", "deg", "kg", "g", "N m", "N", "V", "A", "ohm", "mH", "rpm", "rpm/V", "Hz", "s", "degC", "g cm2", ":1", "teeth", "A/V", "mT", "W", "bit", "N/strain", "N/strain/mm", "MPa", "mm²", "mm³", "mm⁴", "kg/m", "mm/m", "deg/m", "N/mm", "N mm/rad", "EUR", "GBP", "USD", "EUR/kg", ""],
+  "prefixes": ["body_", "boss_", "shaft_", "mount_", "cable_", "horn_", "screw_", "clearance_", "head_", "button_", "countersunk_", "hex_head_", "pan_head_", "nut_", "square_nut_", "lock_nut_", "washer_", "set_screw_", "insert_", "pilot_", "tap_", "slot_", "bore_", "corner_bore_", "corner_hollow_", "cavity_", "lip_", "floor_", "flank_", "track_", "cells_", "chamber_", "inertia_", "section_", "cut_", "tongue_", "rail_", "carriage_", "moment_"],
   "fields": {
     "type": { "choice": ["stepper", "dc", "servo", "brushless", "radial", "flanged", "thrust"], "says": "what sort of motor, or of bearing" },
     "body_shape": { "choice": ["square", "round", "box"], "says": "the body's outline, seen from the mounting face" },
@@ -260,7 +260,35 @@
     "allowable_load": { "unit": "N", "says": "the load a maker allows on a fitting, as its sheet gives it" },
     "bending_stiffness": { "unit": "N mm/rad", "says": "how stiffly a fitting holds a beam's end against turning across its axis, its screws tight: no maker publishes it, so an estimate until the joint rig measures it" },
     "twist_stiffness": { "unit": "N mm/rad", "says": "how stiffly a fitting holds a beam's end against twisting about its own axis: an estimate until the joint rig measures it" },
-    "cost": { "says": "the price of one, as its seller lists it on the date checked, in the unit of its currency (EUR, GBP, USD), or per kilogram for a printing plastic (EUR/kg): the rule says whether tax is in it" }
+    "cost": { "says": "the price of one, as its seller lists it on the date checked, in the unit of its currency (EUR, GBP, USD), or per kilogram for a printing plastic (EUR/kg): the rule says whether tax is in it" },
+    "rail_width": { "unit": "mm", "says": "a guide rail's width across (WR on a maker's drawing)" },
+    "rail_height": { "unit": "mm", "says": "a guide rail's height from the face it is screwed to (HR)" },
+    "rail_hole_pitch": { "unit": "mm", "says": "the distance between a guide rail's mounting holes along it (P)" },
+    "rail_hole_end": { "unit": "mm", "says": "a guide rail's standard distance from its end to the centre of its last hole (E)" },
+    "rail_hole_diameter": { "unit": "mm", "says": "a guide rail's mounting hole, through it under the counterbore (d)" },
+    "rail_counterbore_diameter": { "unit": "mm", "says": "the counterbore for a rail screw's head (D)" },
+    "rail_counterbore_depth": { "unit": "mm", "says": "how deep a rail's counterbore is from its top (h)" },
+    "rail_thread": { "says": "the thread of the screws that hold a guide rail down: M3" },
+    "rail_screw_length": { "unit": "mm", "says": "the length of the screw its maker lists for a rail's holes" },
+    "rail_mass": { "unit": "kg/m", "says": "a guide rail's mass per metre" },
+    "rail_length_max": { "unit": "mm", "says": "the longest rail its maker sells in one piece" },
+    "rail_parallelism": { "unit": "mm", "list": true, "points": 2, "says": "how far a carriage's running faces may stray from parallel to the rail's base: for each step, the rail's length up to which it holds, then the tolerance" },
+    "carriage_length": { "unit": "mm", "says": "a guide carriage's length along its rail, end seals included (L)" },
+    "carriage_length_max": { "unit": "mm", "says": "a guide carriage's greatest length along its rail with its seal lips and screws (L max): its travel is counted from it" },
+    "carriage_body_length": { "unit": "mm", "says": "a guide carriage's steel body along its rail, without its end caps (L1)" },
+    "carriage_width": { "unit": "mm", "says": "a guide carriage's width across its rail (W)" },
+    "carriage_height": { "unit": "mm", "says": "the height of a guide carriage's top face over the face its rail is screwed to (H)" },
+    "carriage_clearance": { "unit": "mm", "says": "the gap under a guide carriage, over the face its rail is screwed to (H1)" },
+    "carriage_hole_x": { "unit": "mm", "says": "the distance between a guide carriage's tapped holes along its rail (C)" },
+    "carriage_hole_y": { "unit": "mm", "says": "the distance between a guide carriage's tapped holes across its rail (B)" },
+    "carriage_thread": { "says": "the thread of a guide carriage's tapped holes: M3" },
+    "carriage_thread_depth": { "unit": "mm", "says": "how deep a guide carriage's tapped holes go" },
+    "carriage_mass": { "unit": "kg", "says": "a guide carriage's mass" },
+    "carriage_play": { "unit": "mm", "says": "the most a guide carriage moves across its rail with no load, at the preload class it is sold in" },
+    "carriage_stiffness": { "unit": "N/mm", "says": "a guide carriage's radial stiffness on its rail, at the preload class it is sold in" },
+    "moment_roll": { "unit": "N m", "says": "a guide carriage's static moment rating about its rail's axis (MR)" },
+    "moment_pitch": { "unit": "N m", "says": "a guide carriage's static moment rating about the axis across its rail, tipping it end over end (MP)" },
+    "moment_yaw": { "unit": "N m", "says": "a guide carriage's static moment rating about the axis out of its rail's face, turning it across the rail (MY)" }
   },
   "parts": {
     "motor": ["type", "body_shape", "body_length", "shaft_diameter", "shaft_length", "shaft_flats", "mount_pattern", "mount_hole_spacing", "mass"],
@@ -282,7 +310,8 @@
     "profile": ["family", "width", "height"],
     "slot": ["opening", "lip_thickness", "cavity_width", "cavity_depth"],
     "slot_nut": ["slot", "thread", "nut_kind", "length", "width", "height", "nut_entry"],
-    "fitting": ["fitting_kind", "series", "material"]
+    "fitting": ["fitting_kind", "series", "material"],
+    "rail": ["rail_width", "rail_height", "rail_hole_pitch", "rail_hole_end", "rail_thread", "carriage_length", "carriage_length_max", "carriage_width", "carriage_height", "static_rating", "moment_roll", "moment_pitch", "moment_yaw"]
   },
   "drafts": {
     "profile": { "family": "t-slot", "series": 20, "cells_across": 1, "cells_up": 1, "width": 20, "height": 20, "corner_radius": 1, "wall": 2, "slot": "slot-6", "slot_top": "slot-6", "slot_bottom": "slot-6", "slot_front": "slot-6", "slot_back": "slot-6", "chamber_width": 12, "chamber_length": 2, "chamber_depth": 6, "bore_diameter": 4.2, "bore_thread": "M5", "bore_at": "cells", "corner_bore_diameter": 0, "corner_bore_thread": "M3", "corner_bore_inset": 3, "corner_hollow_width": 0, "corner_hollow_wall": 2, "area": 183, "inertia_x": 7030, "inertia_y": 7030, "section_modulus_x": 703, "section_modulus_y": 703, "torsion_constant": 1100, "mass_per_metre": 0.5, "alloy": "EN AW-6063 T5", "material": "al6063-t5", "lengths": [1000, 2000, 3000], "cut_length_min": 50, "cut_length_max": 3000, "cut_tolerance": 0.5, "straightness_per_metre": 1, "twist_per_metre": 0.5 },

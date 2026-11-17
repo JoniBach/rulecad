@@ -335,3 +335,21 @@ test('the alloys profiles are made of: each temper its own set, strengths the le
   assert.deepEqual([rulesOf('al6063-t5').strength.value, rulesOf('al6063-t66').strength.value, rulesOf('al6n01-t5').strength.value, rulesOf('al6060-rexroth').strength.value], [130, 200, 205, 195]);
   assert.equal(rulesOf('al6n01-t5').poisson.kind, 'estimate', 'a figure the maker does not give says so');
 });
+
+test('miniature rails: MGN7 to MGN15 from HIWIN\'s catalogue, a long carriage as a variant rated above the standard one', () => {
+  const rails = sets.filter((s) => s.set.part === 'rail').map((s) => s.name).sort();
+  assert.deepEqual(rails, ['rail-mgn12', 'rail-mgn15', 'rail-mgn7', 'rail-mgn9']);
+  const pitch = { 'rail-mgn7': [15, 'M2'], 'rail-mgn9': [20, 'M3'], 'rail-mgn12': [25, 'M3'], 'rail-mgn15': [40, 'M3'] };
+  for (const name of rails) {
+    const s = sets.find((x) => x.name === name).set, size = name.replace('rail-mgn', ''), R = s.rules;
+    assert.deepEqual([R.rail_hole_pitch.value, R.rail_thread.value], pitch[name], `${name}: hole pitch and screw`);
+    assert.deepEqual(Object.keys(s.variants), [`MGN${size}C`, `MGN${size}H`], `${name}: a standard and a long carriage`);
+    const H = s.variants[`MGN${size}H`].values;
+    for (const k of ['carriage_length', 'static_rating', 'moment_roll', 'moment_pitch', 'moment_yaw']) assert.ok(H[k] > R[k].value, `${name}: the long carriage's ${k} is the larger`);
+    assert.ok(R.rail_hole_end.value <= R.rail_hole_pitch.value / 2, `${name}: its standard end distance is no more than half its pitch`);
+    assert.ok(R.carriage_height.value > R.rail_height.value + R.carriage_clearance.value - 1e-9, `${name}: the carriage stands over its rail`);
+    for (const r of Object.values(R)) assert.match(r.source, /HIWIN MG Series catalogue 2025/);
+  }
+  const m12 = sets.find((x) => x.name === 'rail-mgn12').set.rules;
+  assert.deepEqual([m12.static_rating.value, m12.moment_roll.value, m12.moment_pitch.value, m12.moment_yaw.value], [3920, 25.48, 13.72, 13.72]);
+});
