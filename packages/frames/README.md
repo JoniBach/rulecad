@@ -454,18 +454,28 @@ across the layers), 4.3 times a 100 N pull.
 
 ### A splice for a beam longer than the bed
 
-`spliceModel(beam, { at, moment, thread })` joins two halves printed lying down with a lap. Over the lap the half
-toward end a keeps a ridge on the bed, a triangle with 45° sides whose apex stays four lines in from each side; the
-half toward end b keeps the rest, its notch open to the bed. In the middle of the lap the ridge rises into a key that
-locks the halves along the beam. Two screws stand upright through the lap: button heads dropped through the slot's
-opening onto its floor, nuts in pockets in the ridge's underside, open to the bed with a 45° roof. `splice(model)`
-draws the two halves as they print.
+`spliceModel(beam, { at, moment, thread })` joins two halves printed lying down with a lap. Over the lap the section
+is cut upright down its middle: the half toward end a keeps its front side, the half toward end b its back side, so
+every cut face stands upright and both halves print with no support. In the middle of the lap the cut steps sideways
+into a key that locks the halves along the beam. Two screws cross the lap under the slot's floor: button heads in
+seats in the front face, nuts in pockets in the back face, all on their side as teardrops, and the slot stays free for
+its nuts. `splice(model)` draws the two halves as they print.
 
-The lap starts at twice the height and grows until the two screws carry what the beam itself carries there: the
-moment given, or twice the beam's design moment times 4 z (L - z) / L², a spread load on a simply supported span. It
-goes as far from the middle as the bed lets both halves be. A 400 mm printed 2020 on the X1C: halves of 215.9 and 256
-mm, a 71.9 mm lap at 180 mm, each M3 x 12 holding 490 N (its nut pulling out of the ridge), 27.9 N·m against the
-27.7 N·m the beam breaks at there.
+At each end of the lap one half carries the whole moment on its half of the section; between them the two screws pass
+it across as a couple, each pushing on the plastic of both halves. So the joint carries the least of three things:
+the section of the half toward a, that of the half toward b, each at the plastic's strength along its layers, and the
+screws' couple. A screw's share is the least of the plastic crushed under it, the plastic torn out to the bed or the
+slot's floor (both across the layers, since the screw pushes up or down through them) and the screw sheared. The lap
+starts at twice the height and grows until the screws carry what the joint must, or what the halves can if that is
+less. The lap goes as far from the middle as the bed lets both halves be.
+
+What the joint must carry is the moment given (`moment`, N·mm) times the margin of 2, or, with none given, what the
+beam itself breaks at there: twice its design moment times 4 z (L - z) / L², a spread load on a simply supported span.
+Half a section carries about half the whole, so a splice carries about half what the beam does, and with no moment
+given `splice.strength` fails and says what moment it does carry. A 400 mm printed 2020 on the X1C: halves of 196.6
+and 256 mm, its halves' sections 361 and 364 mm³ (the whole beam's 718 mm³), 14.1 N·m against the 27.4 N·m the beam
+breaks at there, so it fails. With 50 N hung in its middle (5 N·m at most), it passes: M4 x 16 screws, each holding
+435 N (torn out to the bed), on a 43.4 mm lap.
 
 ## The cut list
 
@@ -1166,8 +1176,8 @@ kit's.
 | A printed section | shell: the cells within walls x line of the outline count 1, the rest the infill's share (a cell the shell's edge crosses in part); I = Σ w (y - ȳ)² dA about the stiffness-weighted centroid | A rule of mixtures on a raster; an estimate until a printed coupon is bent |
 | A printed beam's design moment | M = (S / 2) I / c, S the plastic's strength for its pose (strength along the layers, strength_z or 0.6 x strength across them) | Beam theory; the kit's twice margin |
 | A printed lip's hold | flat lips: σ = 6 (F / 2) a / (b t²), a from the lip's root to the middle of the nut's bearing; sloped lips also push the wall out by (F / 2) tan θ, σ = 6 (F / 2) tan θ h / (b w²); b = nut length + 2 lips; each at the strength its stress runs in (lying down, a top slot's lips along the layers, its walls across them) | Cantilever bending; the spread a working figure |
-| A splice screw's hold | the least of π d_head t_B τ, π s t_A τ and the screw's proof load, τ = S / √3 | Von Mises' shear yield; ISO 898-1 for the proof stress |
-| A splice's capacity | M = F x (lap - 2 x 2.5 d), against 2 x the design moment x 4 z (L - z) / L² | Two screws as a couple; a spread load on a simply supported span |
+| A splice screw's hold, across the cut | the least of d t S_z (bearing), 2 e t S_z / √3 (torn out to the nearer of the bed and the slot's floor, e from the hole's edge) and A_s S_proof / √3 (the screw sheared); t the thinner half's plastic beside the head's seat or the nut's pocket, S_z the strength across the layers | Bearing and tear-out of a pinned plate; von Mises' shear yield; ISO 898-1 for the proof stress |
+| A splice's capacity | M = least of S Z_a, S Z_b and F (lap - 2 x 2.5 d), Z the half's printed section modulus over the lap (`printedSection` with `between`), against 2 x the moment given, or 2 x the design moment x 4 z (L - z) / L² | Each half alone at its end of the lap; two screws as a couple; a spread load on a simply supported span |
 | A join's stiffness for another size | k = k₂₀ × (w / 20)³, w the profile's larger side in mm | `JOIN_SCALE.size`, an estimate |
 | A join's spring from the joint rig | k = F L² / (d − F L³ / 3 E I): d the measured drop of a beam held out by the join, F the weight hung at L from the face it meets, E I the beam's across the load | A cantilever's tip deflection, F L³ / 3 E I, plus its root turning on a spring, F L / k, times L (Euler-Bernoulli beam theory; the beam's shear left out, under 1% of the drop of the rig's 150 mm beams) |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
@@ -1323,7 +1333,7 @@ out from the nuts' sizes and the X1C's rules, so they are `derived` and as good 
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells?, printed? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations; printed, a printed part |
 | `printedProfile(series, { nut?, printer?, pull?, material? })`, `PRINTED_SERIES` | A printable profile and its slot as rule sets, and the nut each size is drawn round |
-| `printedSection(profile, { walls?, infill?, line? })`, `PRINTED_DEFAULTS`, `printerFigures(what, printer)` | A printed section's figures from its walls and infill; the working figures printed beams use; a printer's figures |
+| `printedSection(profile, { walls?, infill?, line?, between? })`, `PRINTED_DEFAULTS`, `printerFigures(what, printer)` | A printed section's figures from its walls and infill (`between: [x0, x1]`: the part between two upright cuts, as a splice's half); the working figures printed beams use; a printer's figures |
 | `printedBeam(m)` | A printed beam's solid as it prints, its ends' inserts or nuts cut in |
 | `spliceModel(beam, { at?, moment?, thread?, printer? })`, `splice(model)` | A splice for a printed beam longer than the bed, and its two halves as they print |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |

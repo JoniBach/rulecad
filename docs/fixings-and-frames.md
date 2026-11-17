@@ -435,10 +435,11 @@ Built (issue 269): the kit's printable profiles, `profile-1515-printed` to `prof
 the top face, its lips sloped underneath at the printer's overhang angle, and are solid below with a heat-set insert or
 a captive nut in each end; a slot in a side face would hang its upper lip in mid-air, and one on the bed leaves too
 little under it for an end's insert. `"printed": true` on a beam makes a printed part with its mass and section figures
-from its walls and infill (estimates), on a plate and off the cut list. A splice is a lap with a 45° ridge on the bed in
-a notch open to it, a key in the middle and two upright screws, sized so the joint carries what the beam does there.
-A 240 mm printed 2020 prints lying down with no support and takes MISUMI's M4 drop-in nut; a 400 mm one splices into
-halves of 215.9 and 256 mm on the X1C. Still to come: the beam coupon, `beam.printable` across a frame's checks with
+from its walls and infill (estimates), on a plate and off the cut list. A splice is a lap cut upright down the
+section's middle, a key where the cut steps sideways and two screws across it; it is checked on each half's section
+and the screws' couple, and carries about half what the beam does, so it passes where the frame's moment there is
+within that. A 240 mm printed 2020 prints lying down with no support and takes MISUMI's M4 drop-in nut; a 400 mm one
+splices into halves of 196.6 and 256 mm on the X1C, and carries 50 N hung in its middle. Still to come: the beam coupon, `beam.printable` across a frame's checks with
 the material as a variable, creep, and a splice in a cad assembly.
 
 ### 4.10 Generated frames and kits

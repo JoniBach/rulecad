@@ -17,7 +17,9 @@ What changed in each release, for someone upgrading a workspace.
   findings `beam.printable`, `beam.mass`, `beam.strength`, `beam.slot` and `beam.end`. `printedBeam` draws it as it
   prints. `printedProfile` works out a printable profile from a slot family's nuts and a printer's rules;
   `PRINTED_DEFAULTS`, `PRINTED_SERIES`, `printerFigures`. `spliceModel` and `splice`: a keyed lap with two screws
-  joining two halves of a beam longer than the bed.
+  joining two halves of a beam longer than the bed, cut upright down the section's middle over the lap, checked on
+  each half's section and the screws' couple (a splice carries about half what the beam does: give the frame's
+  moment). `printedSection` takes `between`, the part of a section between two upright cuts.
 
 ### Changed
 
