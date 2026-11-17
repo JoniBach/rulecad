@@ -1,4 +1,4 @@
-// The rule sets @rulecad/frames reads, by name: every profile, slot family, slot nut and bought fitting in @rulecad/rules, the threads
+// The rule sets @rulecad/frames reads, by name: every profile, slot family, slot nut, bought fitting and rail in @rulecad/rules, the threads
 // their bores tap to, the materials they name and the outlines the kit draws itself. Generated from the rules package (one import per set, so a bundler
 // can see them): after adding a set there, add its line here. A test holds the two together.
 import s_al6000_item from '@rulecad/rules/al6000-item.json' with { type: 'json' };
@@ -24,6 +24,10 @@ import s_m4 from '@rulecad/rules/m4.json' with { type: 'json' };
 import s_m5 from '@rulecad/rules/m5.json' with { type: 'json' };
 import s_m6 from '@rulecad/rules/m6.json' with { type: 'json' };
 import s_m8 from '@rulecad/rules/m8.json' with { type: 'json' };
+import s_rail_mgn7 from '@rulecad/rules/rail-mgn7.json' with { type: 'json' };
+import s_rail_mgn9 from '@rulecad/rules/rail-mgn9.json' with { type: 'json' };
+import s_rail_mgn12 from '@rulecad/rules/rail-mgn12.json' with { type: 'json' };
+import s_rail_mgn15 from '@rulecad/rules/rail-mgn15.json' with { type: 'json' };
 import s_profile_1010_8020 from '@rulecad/rules/profile-1010-8020.json' with { type: 'json' };
 import s_profile_1010_makerbeam from '@rulecad/rules/profile-1010-makerbeam.json' with { type: 'json' };
 import s_profile_1020_8020 from '@rulecad/rules/profile-1020-8020.json' with { type: 'json' };
@@ -220,7 +224,7 @@ export const SETS = Object.fromEntries([
   s_profile_custom, s_profile_round_bar_al_10, s_profile_round_bar_steel_10, s_profile_round_bar, s_profile_round_tube_al_25x2,
   s_profile_round_tube_steel_25x2, s_profile_round_tube, s_profile_tube_al_20x20x2, s_profile_tube_al_25x25x2,
   s_profile_tube_al_40x20x2, s_profile_tube_steel_25x25x2, s_profile_tube_steel_40x40x2, s_profile_tube,
-  s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
+  s_rail_mgn7, s_rail_mgn9, s_rail_mgn12, s_rail_mgn15, s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
   s_slot_10, s_slot_3_makerbeam_xl, s_slot_3_makerbeam, s_slot_3_openbeam, s_slot_5_item, s_slot_5_motedis,
   s_slot_6_8020, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i,
   s_slot_6_motedis, s_slot_6_openbuilds, s_slot_6, s_slot_8_8020, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light,

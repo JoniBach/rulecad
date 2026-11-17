@@ -23,8 +23,8 @@ test('the package: ready, typed, and needing only the rules it reads', () => {
   for (const f of pkg.files.filter((x) => x.endsWith('.mjs'))) { assert.ok(fs.existsSync(new URL(f, import.meta.url)), `${f} is shipped and exists`); assert.ok(pkg.files.includes(f.replace(/\.mjs$/, '.d.mts')), `${f} ships its declarations`); }
 });
 
-test('the catalogue holds every profile, slot family, slot nut and bought fitting the rules package has, and what they name', () => {
-  const parts = published.filter((s) => ['profile', 'slot', 'slot_nut', 'fitting'].includes(s.part));
+test('the catalogue holds every profile, slot family, slot nut, bought fitting and rail the rules package has, and what they name', () => {
+  const parts = published.filter((s) => ['profile', 'slot', 'slot_nut', 'fitting', 'rail'].includes(s.part));
   assert.deepEqual(frames.boughtFittings(), published.filter((s) => s.part === 'fitting').map((s) => s.name).sort());
   for (const s of published.filter((x) => x.part === 'fitting' && x.rules.slot)) assert.equal(SETS[s.rules.slot.value]?.part, 'slot', `${s.name}.slot names a slot family`);
   assert.ok(parts.length >= 12);
@@ -1139,4 +1139,57 @@ test('bought fittings: each set from its maker\'s sheet, what it mounts by, whet
   const c = printedCost(6.71, { name: 'pla', rules: { cost: { value: 13.99, unit: 'EUR/kg', source: 's' } } });
   assert.deepEqual([c.value, c.unit], [0.094, 'EUR']);
   assert.equal(printedCost(6.71, { name: 'x', rules: {} }), null);
+});
+
+// ---------- guides ----------
+test('a miniature rail on a beam: its holes at the pitch, its screws into slot nuts, each carriage\'s travel, its loads against its ratings, its error terms and a printed jig', async () => {
+  const { railModel, rail, carriage, carriageMargin, guideFit, railTerms, railJigModel, railJig, rails } = frames, P = '2020-misumi-hfs5';
+  assert.deepEqual(rails(), ['rail-mgn12', 'rail-mgn15', 'rail-mgn7', 'rail-mgn9']);
+  // an MGN12 cut to 300 mm: 12 holes 25 mm apart, 12.5 mm from each end; one long carriage travels the rest
+  const m = railModel('rail-mgn12', { length: 300, variant: 'MGN12H' });
+  assert.deepEqual([m.holes.length, m.holes[0], m.holes[1] - m.holes[0], m.holes.at(-1), m.rail.thread], [12, 12.5, 25, 287.5, 'M3']);
+  assert.deepEqual(m.screws.map((q) => q.at[0]), m.holes); assert.deepEqual(m.screws[0].at, [12.5, 0, 3.5], 'each screw\'s head on its counterbore\'s floor, 8 - 4.5 mm up');
+  assert.equal(m.travel, 300 - 45.8, 'the rail less the carriage with its seals');
+  assert.deepEqual(m.carriage.ratings, { C: 3720, C0: 5880, MR: 38.22, MP: 36.26, MY: 36.26 });
+  // two carriages share it: each its own half
+  const two = railModel('rail-mgn12', { length: 300, carriages: 2 });
+  assert.deepEqual(two.lanes.map((x) => [x.from, x.to, x.travel]), [[0, 150, 114.9], [150, 300, 114.9]]);
+  // an end past half the pitch is said, with the lengths that give the standard end
+  const odd = railModel('rail-mgn12', { length: 305 });
+  assert.deepEqual([odd.holes.length, odd.rail.end], [12, 15]);
+  assert.match(odd.findings.find((f) => f.code === 'guide.end').text, /Cut it to 295 or 320 mm for its standard 10 mm ends/);
+  // on a 2020: it bridges the slot and its M3 screws take the slot's own M3 nuts; an MGN7's M2 takes none
+  const fit = guideFit(m, P, { face: 'top', from: 20, beam: 400 });
+  assert.deepEqual(fit.findings.map((f) => f.level), ['pass', 'pass', 'pass']); assert.equal(fit.nut.name, 'slot-nut-6-misumi-m3-slide-in');
+  assert.match(guideFit(railModel('rail-mgn7', { length: 200 }), P).findings[1].text, /^no M2 slot nut is made for slot-6-misumi: rail-mgn7's holes take M2, and the nuts there take M3, M4, M5/);
+  // its ends clear of a beam that crosses the face, and on the beam
+  const crossed = guideFit(m, P, { from: 20, beam: 400, keep: [{ from: 300, to: 320, what: 'y1 at x1.top@310' }] }).findings.filter((f) => f.level === 'fail');
+  assert.match(crossed[0].text, /runs into y1 at x1.top@310 at 300 to 320 mm/);
+  assert.match(guideFit(m, P, { from: 200, beam: 400 }).findings.at(-1).text, /past its end/);
+  assert.match(guideFit(m, '2020-misumi-hfs5', { face: 'top' }).findings[0].text, /bridges slot-6-misumi's 6 mm opening/);
+  // loads against its ratings: a moment past MP fails, the sum is the margin
+  assert.equal(carriageMargin(m, { force: [0, 0, -10], moment: [0, 1, 0] }).level, 'pass');
+  const over = carriageMargin(m, { force: [0, 0, -20], moment: [0, 40, 0] });
+  assert.deepEqual([over.level, over.worst], ['fail', 'pitch']); assert.ok(Math.abs(over.margin - 1 / (20 / 5880 + 40 / 36.26)) < 1e-9);
+  assert.equal(carriageMargin(railModel('rail-mgn12', { length: 300 }), { force: [0, 0, 0], moment: [0, 20, 0] }).level, 'fail', 'the standard carriage\'s 13.72 N m');
+  // what it adds to the error budget: parallelism and play from its set, the beam's straightness and sag
+  const t = railTerms(m, P, { beam: 400 });
+  assert.deepEqual(t.map((x) => [x.term, x.kind]), [['rail parallelism', 'spec'], ['carriage play', 'spec'], ['beam straightness', 'spec'], ['beam sag', 'estimate']]);
+  assert.deepEqual([t[0].value, t[1].value], [0.017, 0.01]);
+  // its solids: the rail with its counterbores, the carriage clear of the rail
+  const { measureVolume } = jscad.measurements;
+  const holes = 12 * Math.PI * (1.75 ** 2 * 3.5 + 3 ** 2 * 4.5); assert.ok(Math.abs(measureVolume(rail(m)) - (12 * 8 * 300 - holes)) < 0.02 * holes, 'the rail, less its counterbored holes');
+  const cb = jscad.measurements.measureBoundingBox(carriage(m));
+  assert.deepEqual(cb.map((p) => p.map((x) => +x.toFixed(2))), [[-22.7, -13.5, 3], [22.7, 13.5, 13]]);
+  // the jig: prints, keys into the side slots, sized from its load
+  const j = railJigModel(P, { rail: 'rail-mgn12' });
+  assert.equal(j.channel.width, 12.4); assert.deepEqual(j.key.slots, ['slot-6-misumi', 'slot-6-misumi']); assert.ok(j.key.depth >= 0.2 && j.key.depth <= 1);
+  assert.equal(coded(j, 'fitting.margin')[0].level, 'pass'); assert.ok(j.margin >= 2 && j.grams > 0 && j.grams < 20);
+  await prints(railJig(j), 'a rail jig');
+  // refused by name
+  assert.throws(() => railModel('rail-mgn12', { length: 2500 }), /rail-mgn12 is sold up to 2000 mm in one piece/);
+  assert.throws(() => railModel('rail-mgn12', { length: 80, carriages: 3 }), /3 MGN12C carriages 35.1 mm long each need more than a 26.67 mm share of a 80 mm rail/);
+  assert.throws(() => railModel('rail-mgn12', { length: 300, variant: 'MGN12X' }), /rail-mgn12 has no carriage "MGN12X": it has MGN12C, MGN12H/);
+  assert.throws(() => railModel('m3', { length: 300 }), /rail is a rail's rule set or its name: rail-mgn12/);
+  assert.throws(() => railJigModel('2040-misumi-hfs5', { rail: 'rail-mgn12' }), /top face has 2 slots: a jig centres a rail on a face of one slot/);
 });
