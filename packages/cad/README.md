@@ -764,9 +764,34 @@ slotted face, its holes read from its own rule set (@rulecad/frames' README, Ser
 - A task whose chain runs through a carriage's joint counts the rail's terms in its error budget (`task.accuracy`):
   its running parallelism and its carriage's play from its rule set (`spec`), the beam's straightness over the rail
   from the profile's, and the beam's sag (an estimate).
-- Refused by name: a kind not built yet (wheels, rods, sliders), a face that is not a beam's slotted face, `on` with a
-  distance (that is `from`), a rail past the beam's end, a carriage its set has not got, and a rail too short for its
-  carriages.
+- Refused by name: a kind not built yet (rods), a face that is not a beam's slotted face, `on` with a distance (that
+  is `from`), a rail past the beam's end, a carriage its set has not got, and a rail too short for its carriages.
+
+A carriage on V-wheels runs on a V-slot beam's own tracks, and a printed slider in or over a slot:
+
+```json
+"guides": [{ "kind": "wheels", "wheel": "v-wheel-solid", "wheels": 4, "on": "x1.top", "from": 50, "length": 400 },
+           { "kind": "slider", "mode": "over", "size": 40, "on": "x2.top.1", "from": 100, "length": 200 }]
+```
+
+- For wheels, `on` is the face the plate lies over; its wheels run in the V tracks of the two faces either side, and
+  `from` and `length` are the stretch of the beam it rolls along. The plate is a printed fitting (`wheel-plate`)
+  `<id>-carriage-1` on the sliding joint `<id>-1`, from 0 to the stretch less its length over its wheels; the wheels
+  are bought items `<id>-wheel-1`, ... held to the plate at its anchors `w1`, `w2`, ..., the ones on the second side
+  on eccentric spacers. `cad list` counts the wheels, the plate's grams, and its screws, lock nuts, washers and
+  spacers. The plate's anchor `top` takes what it carries.
+- Where each wheel seats comes from the slot's track and the wheel's rim (`guide.fit`, with the axle's distance from
+  the face). On a face with no V track (a plain T-slot) the guide is refused, saying why and what guides there
+  instead. `guide.seat` compares the seat with the maker's own plate, `guide.preload` gives the eccentrics' range,
+  and `guide.rating` each wheel's ratings, which rest on its plastic's contact pressure (an estimate).
+- Each plate's loads are shared among its wheels at every pose (`joint.moment`), each wheel's radial and axial load
+  over its ratings: past 1 it fails and names the most loaded wheel. The sharing is an estimate, said as one.
+- A slider is a printed fitting (`slider`) on its sliding joint along the slot `on` names, over it (a shoe and a key,
+  the default) or in it (`"mode": "in"`, a block under the lips, put in from the beam's end); `size` is its own
+  length. Its clearance a side is the printer's fit, and `guide.friction` says its friction and wear rest on working
+  figures until they are measured.
+- The overlap check measures a beam by its envelope, so a wheel's rim and a slider's key, which stand in the slot, are
+  left out of it; `guide.fit` checks the rim's seat in the track.
 
 ## Optimised parts
 

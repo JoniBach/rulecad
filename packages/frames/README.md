@@ -31,10 +31,13 @@ cut, and fastens to them:
   rules, sized from a named load by finite elements, and reporting its grams, its stiffness and its margin.
 - **Guides**: a miniature rail on a slotted face (`railModel`), its holes at its pitch, the slot nut its screws take
   (`guideFit`), each carriage's travel, its carriages' loads against their ratings (`carriageMargin`), what it adds to
-  an error budget (`railTerms`), and a printed jig that centres it while it is screwed down (`railJigModel`).
+  an error budget (`railTerms`), and a printed jig that centres it while it is screwed down (`railJigModel`); a
+  carriage on V-wheels in a V-slot's tracks (`wheelsModel`), where each wheel's axle goes from the track and its rim
+  (`trackFit`), its eccentrics' preload range and each wheel's load against its rating (`wheelMargin`); and a printed
+  slider in or over a slot (`sliderModel`).
 
-More fittings (a three-way corner, a hidden-corner cover, a printed node) and the other guides (wheels, rods, a
-printed slider, screws and belts) follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+More fittings (a three-way corner, a hidden-corner cover, a printed node) and the other guides (rods, screws and
+belts) follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling
@@ -716,6 +719,55 @@ A rail's frame: x along it from its end a, y across, z out of the face (0 on the
 the rail on that face, x along the rail, z up. `rail(m)` and `carriage(m)` draw them; `railJig(m, { pose })` draws
 the jig on its side to print, or fitted.
 
+## Guides: wheels in a V-slot, and a printed slider
+
+V-Slot's slots have a V mouth: a track a V-wheel runs on. A slot's rule set gives it as `track_width` (across the V at
+the face) and `track_angle`. A wheel is a rule set too (`"part": "wheel"`): `v-wheel-solid` and `v-wheel-mini`,
+OpenBuilds' Delrin wheels read off its drawings, each naming the bearings it runs on (`bearing-625`, `bearing-mr105`)
+and the eccentric spacer that sets its preload (`eccentric-6-openbuilds`, `eccentric-mini-6-openbuilds`).
+
+```js
+import { trackFit, wheelsModel, wheelMargin, sliderModel } from '@rulecad/frames'
+
+trackFit('2040-openbuilds', 'front', 'v-wheel-solid').seat     // { depth: 1.625, axle: 10.325, contact: [0, 1.45], ... }
+const m = wheelsModel('2040-openbuilds', { wheel: 'v-wheel-solid', face: 'top', wheels: 4 })
+m.wheels.map((w) => [w.x, w.y])   // [-20, -30.325], [20, -30.325] fixed; [-20, 30.325], [20, 30.325] on eccentrics
+m.length, m.gap, m.grams          // 63.9 mm over its wheels; the plate 1.5 mm over the face; 24.5 g of PLA
+wheelMargin(m, { force: [0, 0, -19.6], moment: [0, 0, 0] }).level   // 'pass': 2 kg, a quarter along each axle
+wheelsModel('2040-misumi-hfs5', {})   // refused: its front face has slot-6-misumi, a plain T-slot with no V track ...
+sliderModel('2020-misumi-hfs5', { mode: 'in', material: 'petg' })   // a block under the lips, 0.2 mm clear a side
+```
+
+- **The seat.** A wheel's flat tip enters the track until its flanks lie on the track's: the tip goes
+  (track − flat) / 2 / tan(half the V) deep, and the axle stands the wheel's radius less that from the face.
+  `trackFit` checks the tip clears the opening under the V and the flanks meet within it, and says where; each is a
+  `guide.fit` finding. A face whose slot has no track (a plain T-slot), a closed face, or a V of another angle fails
+  with why, and `wheelsModel` refuses it, naming what guides there instead (a rail or a slider).
+- **The carriage.** A printed plate lies over the face `face` names; its wheels run in the slots of the two faces
+  either side, of each the slot nearest the plate. Two wheels on one side turn on plain spacers; one or two on the
+  other turn on eccentrics, drawn at mid-turn, where the wheel just seats. Turning an eccentric moves its wheel twice
+  its offset (1.58 mm), which is the preload's range (`guide.preload`). The plate sits on the spacers, its gap over
+  the face the spacer's height and half the wheel's bearings less the tracks' depth; a plate that would sit in the
+  beam is refused. Its thickness is sized from its load (50 N unless given) at twice the margin, as a beam across
+  between the rows of wheels; it prints upside down, its top the first layer. Its screws, lock nuts, washers and
+  spacers are its `hardware`.
+- **Beside the maker's plate.** `guide.seat` compares the seat with where OpenBuilds' own plate puts the axles across a
+  20 mm rail: for the solid wheel 40.65 mm against 39.7 mm, 0.47 mm a side, within the eccentric's 0.79 mm; for the
+  mini wheel 31.86 against 31.9. The seat rests on the slot's `track_width`, which is scaled off a drawing.
+- **Ratings.** Each wheel is rated from its plastic: the rim on the track by Hertz line contact at its allowed
+  pressure (Delrin's compressive stress at 1% deformation), both flanks across the beam and one along the axle, under
+  its bearings' static rating. `wheelMargin` shares a carriage's force and moment among its wheels
+  (`WHEEL_DEFAULTS.share`) and holds each to its ratings, radial over radial plus axial over axial: under 1 it fails,
+  under 2 it warns.
+- **A slider.** `sliderModel` is a printed slider over a slot (a shoe on the face and a key in the opening) or in it
+  (a block under the lips, a neck through the opening, put in from the beam's end). Its clearance a side is the
+  printer's fit, its plastic the one named. Its friction (μ 0.3) and its pressure limit for wear (a tenth of its
+  plastic's strength) are working figures, not measurements, and `guide.friction` says so.
+
+A carriage's frame: x along the beam, y across, z out of the face the plate lies over (0 on it), its origin on the
+face's middle line at the middle of the plate. A wheel's: z along its axle toward the plate, x toward the face it runs
+on. `wheelPlate(m, { pose })` and `vWheel(m, { eccentric, collide })` draw them; `slider(m, { pose, tongues })` the slider.
+
 ## Ends and feet
 
 | Part | What it is | Prints |
@@ -880,6 +932,11 @@ kit's.
 | A beam's sag under a guide | δ = 5 w L⁴ / (384 E I) + P L³ / (48 E I) | Simply supported beam, spread and middle loads (Roark's Formulas for Stress and Strain, table 8.1) |
 | A jig's keys | δ = 2 (S / 2) l² / (3 E t), l the leg to the key, t its wall | A cantilever pushed δ at its tip, its stress 3 E t δ / (2 l²) at the root |
 | A jig's length | w = 6 F l / (t² S / 2) | A leg bent at its root by the push on the rail |
+| A V-wheel's seat | d = (T − f) / 2 / tan(θ / 2); the axle R − d from the face, T the track's width, f the rim's flat, θ the V | The wheel's flanks lying on the track's |
+| A wheel's flank load | N = π r l p² / E*, E* = E / (1 − ν²); radial 2 N cos(θ / 2), axial N sin(θ / 2) | Hertz line contact, a cylinder on a flat (Roark's Formulas for Stress and Strain, table 14.1, case 2b); r the radius at the contact's middle, l the flank's slant length, the track rigid: `WHEEL_DEFAULTS.curvature`, an estimate |
+| A wheel's margin | 1 / max over wheels (radial / radial rating + axial / axial rating) | `WHEEL_DEFAULTS.combine` and `.share`, estimates |
+| A wheel plate's thickness | t = √(6 M · 2 / (b S)), M = F s / 4 | A plate b long across the s between its rows of wheels, its load F at the middle, at twice the margin |
+| A slider's pressure | p = F / A, held to 0.1 S | `WHEEL_DEFAULTS.pressure`, an estimate |
 
 Why the torsion constant is solved for and not taken from the polar moment: a slotted section is open. MISUMI's
 HFS5-2020 has a polar moment of 14 850 mm⁴ and a torsion constant of 809 mm⁴ by this solve, eighteen times less,
@@ -923,6 +980,14 @@ rail's size and hole pitch, and their carriages' ratings differ: give a variant 
 the jig's key and how a carriage's loads combine are estimates (`GUIDE_DEFAULTS` says which); the beam's sag assumes
 pinned ends, the worse case.
 
+A V-wheel's rim, bearing seats and kit, the eccentric spacers and the plain spacers are read off OpenBuilds' drawings
+(`spec`). Its plastic's modulus and allowed contact pressure are Delrin 150's, from two data sheets, `community`
+because OpenBuilds does not name the grade; Poisson's ratio is an estimate. Where a wheel seats rests on the slot's
+`track_width`, which is scaled off OpenBuilds' rail drawing (`estimate`): measure your rail's track before trusting a
+plate drilled to it. How a carriage's loads are shared among its wheels and combined, the Hertz contact's radius, and
+a slider's friction and wear limit are working figures (`WHEEL_DEFAULTS` says which). The eccentrics' preload is not
+in the ratings.
+
 Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm, Bosch Rexroth, item (Lines 5, 6 and 8, standard and
 light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, MakerBeamXL and OpenBeam, 80/20's
 inch series, generic stock in 20, 30 and 40 mm, and plain tube, angle, channel and bar in any size. `profiles()`
@@ -950,6 +1015,7 @@ lists them.
 | `DOOR_DEFAULTS`, `hingeModel`, `hinge(m, { part: 'frame' \| 'door', pose? })`, `handleModel`, `handle`, `latchModel`, `latch`, `magnetCatchModel`, `magnetCatch` | A door's printed parts |
 | `SERVICE_DEFAULTS`, `FANS`, `DIN_RAIL`, `deviceMountModel(profile, { device, variant?, turn?, offset?, standoff?, screw? })`, `deviceMount`, `fanMountModel`, `fanMount`, `dragChainEndModel`, `dragChainEnd`, `dinRailAdapterModel`, `dinRailAdapter`, `cableClipModel`, `cableClip`, `tieAnchorModel`, `tieAnchor`, `spoolHolderModel`, `spoolHolder`, `runClips(length, { pitch? })` | The parts that carry services on a frame, each a model and its solid (`{ pose: 'print' \| 'fit' }`), and clips along a run |
 | `GUIDE_KINDS`, `GUIDE_DEFAULTS`, `rails()`, `railModel(set, { length, variant?, carriages?, given? })`, `rail(m)`, `carriage(m)`, `guideFit(m, profile, { face?, from?, beam?, nut?, keep?, given? })`, `carriageMargin(m, { force, moment })`, `railTerms(m, profile, { beam, carried?, face? })`, `railJigModel(profile, { rail, face?, length?, load? })`, `railJig(m, { pose?, tongues? })` | Guides: a rail's model (holes, screws, carriages' shares and travel), its solids, whether it fits a face, a carriage's loads against its ratings, its error terms, and the printed jig that centres it |
+| `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |

@@ -121,6 +121,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   travel. Fix a table on a carriage with a fixed joint at `g1-carriage-1.top`. Run `cad check --sweep`, and report
   `guide.fit`, the travel and each carriage's `joint.moment` margin; a fail there means a longer carriage
   (`MGN12H`), a larger rail or the load nearer the carriage, never a changed rating.
+  On a V-slot beam the same guide can be wheels: `{ "kind": "wheels", "wheel": "v-wheel-solid", "on": "x1.top",
+  "from": 50, "length": 400 }` (the plate over that face, its wheels in the tracks either side). A plain T-slot is
+  refused for wheels: use a rail or a `slider` there. Report the wheels' `guide.fit` seat, the travel and the
+  plate's `joint.moment` margin, and say the wheels' ratings are estimates.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
   a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close
