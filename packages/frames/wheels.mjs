@@ -45,6 +45,7 @@ export const WHEEL_DEFAULTS = {
   aluminium: rule(2.7, 'g/cm³', 'The density of the plain spacers\' aluminium', 'estimate', 'A usual figure for aluminium alloys'),
   friction: rule(0.3, '', 'A printed slider\'s friction on anodised aluminium, dry: the force along the beam it takes to move it, over the load pressing it on', 'estimate', 'Not measured: a working figure of @rulecad/frames until a test or the rig (#264) measures it for the plastic'),
   pressure: rule(0.1, '× strength', 'A printed slider\'s pressure on the beam is held to this share of its plastic\'s strength, so it wears slowly', 'estimate', 'Not measured: a working figure of @rulecad/frames. How fast a printed slider wears rests on its plastic, its speed and how far it runs, which nothing here measures'),
+  round: rule(0.3, 'mm', 'The rounding of a printed slider\'s inside corners: small, so its key stays square to the slot\'s lips (at 0.6 mm printcheck reads the round at the key\'s root as a second part 0.1 mm off it on the first layer)', 'default', 'A working figure of @rulecad/frames'),
   sliderLength: rule(30, 'mm', 'A printed slider\'s length along the beam when none is given', 'default', 'A working figure of @rulecad/frames'),
   sliderLoad: rule(20, 'N', 'The design load on a printed slider when none is given', 'default', 'A working figure of @rulecad/frames'),
 };
@@ -285,7 +286,7 @@ export function sliderModel(profile, o = {}) {
   const L = o.length ?? WHEEL_DEFAULTS.sliderLength.value, F = o.load ?? WHEEL_DEFAULTS.sliderLoad.value;
   if (!(isNum(L) && L >= 10)) throw new Error(`${what}: length is the slider along the beam, mm, at least 10 (got ${shown(o.length)})`);
   if (!(isNum(F) && F > 0)) throw new Error(`${what}: load is the force pressing it on (over) or pulling it out (in), in N, above 0 (got ${shown(o.load)})`);
-  const s = p.slots[q.slot], fit = k.fit, cell = Math.abs(q.along[0]) > 0.5 ? p.pitch[0] : p.pitch[1], rr = Math.min(0.6, fit * 3), line = k.line;
+  const s = p.slots[q.slot], fit = k.fit, cell = Math.abs(q.along[0]) > 0.5 ? p.pitch[0] : p.pitch[1], rr = WHEEL_DEFAULTS.round.value, line = k.line;
   const key = r3(s.opening - 2 * fit), lipT = s.lip, mouth = s.trackWidth ? (s.trackWidth - s.opening) / 2 : 0;
   if (key < 2 * line) throw new Error(`${what}: ${s.name}'s ${mm(s.opening)} mm opening leaves a key ${mm(key)} mm wide: too thin to print`);
   const allowed = WHEEL_DEFAULTS.pressure.value * k.S;

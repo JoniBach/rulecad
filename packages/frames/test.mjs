@@ -1194,3 +1194,66 @@ test('a miniature rail on a beam: its holes at the pitch, its screws into slot n
   assert.throws(() => railModel('m3', { length: 300 }), /rail is a rail's rule set or its name: rail-mgn12/);
   assert.throws(() => railJigModel('2040-misumi-hfs5', { rail: 'rail-mgn12' }), /top face has 2 slots: a jig centres a rail on a face of one slot/);
 });
+
+test('wheels: a carriage on V-wheels for a V-slot 2040 seats its wheels from the track, sets its preload on eccentrics, prints its plate, and is refused on a plain T-slot with why', async () => {
+  const { wheelsModel, wheelPlate, vWheel, wheelMargin, trackFit, wheels, WHEEL_DEFAULTS } = frames, V = '2040-openbuilds';
+  assert.deepEqual(wheels(), ['v-wheel-mini', 'v-wheel-solid']);
+  // the seat from the rules: the 5.9 mm tip into the 9.15 mm track at 45 degrees goes (9.15 - 5.9) / 2 deep, the axle its radius less that
+  const fit = trackFit(V, 'front', 'v-wheel-solid');
+  assert.ok(fit.ok); assert.deepEqual([fit.seat.depth, fit.seat.axle, fit.seat.contact], [1.625, 10.325, [0, 1.45]]);
+  const m = wheelsModel(V, { wheel: 'v-wheel-solid' });
+  assert.deepEqual(m.sides, [{ face: 'front', slot: 'slot-6-openbuilds' }, { face: 'back', slot: 'slot-6-openbuilds' }]);
+  assert.deepEqual(m.wheels.map((w) => [w.x, w.y, w.at[2], w.eccentric]), [[-20, -30.325, -10, false], [20, -30.325, -10, false], [-20, 30.325, -10, true], [20, 30.325, -10, true]], 'two fixed, two on eccentrics, in the tracks 10 mm under the top face, 20 + 10.325 out');
+  // the plate over the face: 6 mm spacers on a wheel 11 mm across its races put it 1.5 mm clear
+  assert.equal(m.gap, 1.5); assert.equal(m.length, 63.9, 'the wheels\' 40 mm pitch and a 23.9 mm wheel');
+  // the seat beside OpenBuilds' own plate (39.7 mm across a 20 mm rail): 0.475 mm a side, inside the eccentric's 0.79 mm
+  assert.equal(coded(m, 'guide.seat')[0].level, 'info'); assert.match(coded(m, 'guide.seat')[0].text, /40\.65 mm apart and OpenBuilds' own plate 39\.7 mm: 0\.47 mm a side wider, within the eccentric's 0\.79 mm/);
+  assert.match(coded(m, 'guide.preload')[0].text, /from 0\.79 mm into the track \(preload\) to 0\.79 mm clear of it, 1\.58 mm in all/);
+  // each wheel's rating from its plastic: Hertz line contact at 36 MPa, both flanks across, one along its axle
+  const Es = 3100 / (1 - 0.35 ** 2), N = (Math.PI * 11.05 * (1.45 * Math.SQRT2) * 36 ** 2) / Es;
+  within(m.ratings.radial, 2 * N * Math.SQRT1_2, 0.01, 'radial'); within(m.ratings.axial, N * Math.SQRT1_2, 0.01, 'axial');
+  // a carriage's loads shared out: 2 kg on the plate's middle presses along every axle, a quarter each
+  const two = wheelMargin(m, { force: [0, 0, -2 * 9.80665], moment: [0, 0, 0] });
+  for (const w of two.wheels) within(w.axial, 2 * 9.80665 / 4, 1e-3, w.name);
+  assert.equal(two.level, 'pass');
+  // pushed across toward +y, the -y side's two wheels take it
+  const side = wheelMargin(m, { force: [0, 40, 0], moment: [0, 0, 0] });
+  assert.deepEqual(side.wheels.map((w) => w.radial), [20, 20, 0, 0]);
+  // 3 kg 200 mm ahead pitches it past its wheels' ratings
+  assert.equal(wheelMargin(m, { force: [0, 0, -3 * 9.80665], moment: [0, 3 * 9.80665 * 0.2, 0] }).level, 'fail');
+  // the plate prints upside down, its first layer its top; sized from its load at twice the margin; weighed
+  assert.equal(coded(m, 'fitting.margin')[0].level, 'pass'); assert.ok(m.margin >= 2 && m.grams > 5 && m.grams < 60);
+  await prints(wheelPlate(m, { pose: 'print' }), 'a wheel plate');
+  // three wheels, the mini wheel: one eccentric in the middle; its seat beside OpenBuilds' mini plate's 31.9 mm
+  const mini = wheelsModel(V, { wheel: 'v-wheel-mini', wheels: 3 });
+  assert.deepEqual(mini.wheels.map((w) => [w.x, w.eccentric]), [[-17.5, false], [17.5, false], [0, true]]);
+  assert.match(coded(mini, 'guide.seat')[0].text, /31\.86 mm apart and OpenBuilds' own plate 31\.9 mm/);
+  // a wheel's collide solid stops at the beam's face; its rim reaches past it into the track
+  const bound = (g) => jscad.measurements.measureBoundingBox(g);
+  assert.ok(Math.abs(bound(vWheel(m, { collide: true }))[1][0] - 10.325) < 1e-6 && bound(vWheel(m))[1][0] > 11.9);
+  // refused by name: a plain T-slot has no track, and says why and what guides there instead
+  assert.throws(() => wheelsModel('2040-misumi-hfs5', {}), /wheels are refused on profile-2040-misumi-hfs5 under its top face: .*front face has slot-6-misumi, a plain T-slot with no V track .*: a V-wheel's flanks need a V to run on .* a rail \(kind rail\) or a printed slider \(kind slider\)/);
+  const plain = trackFit('2040-misumi-hfs5', 'front', 'v-wheel-solid');
+  assert.equal(plain.ok, false); assert.equal(plain.findings[0].code, 'guide.fit'); assert.equal(plain.findings[0].level, 'fail');
+  assert.throws(() => wheelsModel(V, { wheels: 5 }), /wheels is 4 \(two on each side\) or 3/);
+  assert.throws(() => wheelsModel(V, { wheel: 'bearing-625' }), /wheel is a wheel's rule set or its name: v-wheel-mini, v-wheel-solid/);
+  assert.throws(() => wheelsModel(V, { pitch: 10 }), /pitch is the wheels' spacing along the beam/);
+  assert.equal(WHEEL_DEFAULTS.friction.kind, 'estimate');
+});
+
+test('a printed slider over or in a slot: its clearance the printer\'s fit, its plastic named, and what its friction and wear rest on', async () => {
+  const { sliderModel, slider } = frames;
+  const over = sliderModel('2040-openbuilds', { face: 'top.1', length: 40, load: 30 });
+  assert.equal(over.key, 5.85, 'the 6.25 mm opening less 0.2 mm a side'); assert.equal(over.clearance, 0.2); assert.equal(over.material, 'pla');
+  assert.match(coded(over, 'guide.friction')[0].text, /PLA on anodised aluminium taken as μ 0\.3 \(9 N to push it under 30 N\)/);
+  assert.equal(coded(over, 'fitting.margin')[0].level, 'pass');
+  await prints(slider(over), 'a slider over a slot');
+  const inside = sliderModel('2020-misumi-hfs5', { mode: 'in', material: 'petg' });
+  assert.equal(inside.material, 'petg'); assert.match(coded(inside, 'guide.entry')[0].text, /goes in from the beam's end/);
+  assert.ok(Math.min(...inside.section.map((p) => p[1])) < -2, 'its block under the lips');
+  await prints(slider(inside), 'a slider in a slot');
+  // the overlap check's solid stands only over the face
+  assert.ok(jscad.measurements.measureBoundingBox(slider(inside, { pose: 'fit', tongues: false }))[0][2] >= -1e-9);
+  assert.throws(() => sliderModel('2040-openbuilds', { mode: 'under' }), /mode is over .* or in/);
+  assert.throws(() => sliderModel('tube-al-20x20x2', {}), /top face is closed: a slider runs in a slot/);
+});
