@@ -12,6 +12,8 @@ import { placeItems, jointValues, mul } from '@rulecad/model-link';
 import { host } from './host.mjs';
 import { paths } from './workspace.mjs';
 import { motorScrews } from './motors.mjs';
+import jscad from '@jscad/modeling';
+const { geom3 } = jscad.geometries;
 
 const top = (n) => String(n).split(/[.@]/)[0];
 const round = (v) => v.map((x) => (Math.abs(x) < 1e-9 ? 0 : +x.toFixed(6)));
@@ -24,12 +26,14 @@ function basis(d) {
 }
 
 // One thing that gets placed: its triangles, its box, what a part is known as
+// (a fitting whose tongue or pegs stand in a beam's slot, an end cap's in its end, is taken without them, as the overlap
+// check takes it: they slide out along the slot or the beam, and would otherwise hold it to its beam from every side)
 function groups(s) {
-  const by = new Map();
+  const by = new Map(), beams = new Set(s.objects.filter((o) => o.beam).map((o) => o.id));
   s.parts.forEach((p, order) => {
     if (!by.has(p.item)) by.set(p.item, { id: p.item, order, parts: [], tris: [] });
     const g = by.get(p.item); g.parts.push(p);
-    for (const t of p.triangles) g.tris.push(...fan(t));
+    for (const t of p.collide && !beams.has(p.item) ? geom3.toPolygons(p.collide).map((q) => q.vertices) : p.triangles) g.tris.push(...fan(t));
   });
   const objs = new Map(s.objects.map((o) => [o.id, o]));
   for (const g of by.values()) { const o = objs.get(g.id); g.object = o?.objName ?? null; g.bought = o?.bought ?? null; g.motor = !!o?.motor; }
@@ -223,7 +227,7 @@ export const fastenerText = (f) => `${f.fit}${f.fastener ? ` (${f.count != null 
 
 // Cached by what the parts are and where they are, with everything else that changes the answer
 function orderFile(s) {
-  const key = crypto.createHash('sha256').update(JSON.stringify([6, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
+  const key = crypto.createHash('sha256').update(JSON.stringify([7, s.parts.map((p) => [p.item, p.hash ?? p.shape, Array.from(p.m ?? []).map((x) => +x.toFixed(4))]), s.fits.map(({ num, ...x }) => x), s.motion.joints.map((j) => [j.id, j.child, j.parent])])).digest('hex');
   return paths.cache('order', `${key}.json`);
 }
 export function orderOf(s) {

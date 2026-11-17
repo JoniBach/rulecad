@@ -51,6 +51,7 @@ import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
 import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
+import { expandFrame, frameText } from './framegen.mjs';
 import { frameChecks } from './framecheck.mjs';
 import { frameHeatChecks } from './frameheat.mjs';
 import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
@@ -115,6 +116,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     return v;
   };
   const num = (x) => evaluate(x, lookup);
+  // A generated frame (lib/framegen.mjs): "frame": { "kind": "box", "inside": [..] } into beams, joins and their ends, first
+  let generated = null;
+  if (a.frame && typeof a.frame === 'object' && !Array.isArray(a.frame)) ({ a, frame: generated } = expandFrame(a, num, framesContext()));
   // Joins between beams (lib/joins.mjs): their operations go on the beams and their screws into fasten before anything is built
   let joins = [];
   if (a.joins != null) ({ a, joins } = expandJoins(a, num, undefined, plasticOf(project)));
@@ -329,7 +333,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, mounts, runs, guides, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, generated, panels, mounts, runs, guides, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -981,6 +985,7 @@ export function checkAssembly(s) {
   panelFindings(s, f);
   serviceFindings(s, f);
   guideFindings(s, f);
+  if (s.generated) { const m = s.generated, [what, ...more] = frameText(m); f('info', `generated: ${what}; ${more.map((x) => x.trim()).join('; ')}`, null, { code: 'frame.generated', values: { inside: m.inside, outside: m.outside, lengths: m.lengths.map(({ length, count }) => ({ length, count })) }, refs: { kind: m.kind, profile: m.profile, join: m.join.kind, arrangement: m.arrangement, by: m.by } }); }
   joinChecks(s, f);
   slotNutChecks(s, f);
   frameSquareChecks(s, f);
