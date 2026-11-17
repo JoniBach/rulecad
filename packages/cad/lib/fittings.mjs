@@ -29,7 +29,7 @@ const MORE = {
   'rod-holder': ['rodHolderModel', 'rodHolder'], 'rod-carriage': ['rodCarriageModel', 'rodCarriage'], 'motor-plate': ['motorPlateModel', 'motorPlate'], 'endstop-mount': ['endstopMountModel', 'endstopMount'],
 };
 // the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
-const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder', 'rail-jig', 'slider'];
+const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder', 'rail-jig', 'slider', 'end-cap'];
 /** The kinds of fitting an item may name. */
 export const FITTING_KINDS = ['bracket', 'gusset', 'splice', ...Object.keys(MORE)];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));

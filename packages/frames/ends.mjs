@@ -112,12 +112,13 @@ export function endCapModel(profile, o = {}) {
 }
 /**
  * An end cap's solid: plate down, pegs up to print (pose 'print'), or fitted on the end (pose 'fit'), its pegs into
- * the beam. @param {object} m @param {{ pose?: 'print' | 'fit' }} [o] @returns {object}
+ * the beam; `tongues: false` leaves the pegs off (the plate alone, as an overlap check measures it, since the pegs
+ * stand inside the beam's envelope). @param {object} m @param {{ pose?: 'print' | 'fit', tongues?: boolean }} [o] @returns {object}
  */
 export function endCap(m, o = {}) {
   if (m?.fitting !== 'end-cap') throw new Error(`endCap: give an end cap's model (endCapModel), not ${shown(m)}`);
-  const t = m.thickness, flip = (pts) => pts.map(([x, y]) => [x, -y]);
-  const g = union(prism(flip(m.outline), t), ...m.pegs.map((q) => rooted(flip(q.loop), m.plug, END_DEFAULTS.root.value, t)));
+  const t = m.thickness, flip = (pts) => pts.map(([x, y]) => [x, -y]), pegs = o.tongues === false ? [] : m.pegs;
+  const g = union(prism(flip(m.outline), t), ...pegs.map((q) => rooted(flip(q.loop), m.plug, END_DEFAULTS.root.value, t)));
   return Object.assign(o.pose === 'fit' ? transform([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, t, 1], g) : g, { model: m });
 }
 

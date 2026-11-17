@@ -261,9 +261,10 @@ export function motorPlateModel(profile, o = {}) {
   const b = y1 - y0, M = S * h, t0 = Math.max(up(1.5 * major, k.layer), pocketDepth + 3 * k.layer, bendT(M, b, k.S, want()));
   const t = r3(up(t0, k.layer)), margin = r3(bendMargin(M, b, t, k.S)), stress = r3((6 * M) / (b * t * t));
   // the coupler: its face where the shaft goes its own diameter into it, or the shaft's flat's length, whichever is more;
-  // a recess in the inner face takes it in where that is inside the plate
+  // a recess in the inner face takes it in where that is inside the plate; a longer shaft (a NEMA 17's 24 mm) stops
+  // there too, the coupler clear of the plate, so the shaft does not reach past the coupler's middle into the screw
   const want_ = Math.min(cs ? cs.length / 2 : Infinity, Math.max(mo.shaft.d, mo.shaft.flat ?? 0)), face = r3(Math.max(0, mo.shaft.length - want_));
-  const recess = cs && face < t + gap / 2 - 1e-9 ? { d: r3(cs.D + 2 * gap), depth: r3(t - (face - gap / 2)) } : null, couplerAt = recess ? face : r3(t + gap / 2);
+  const recess = cs && face < t + gap / 2 - 1e-9 ? { d: r3(cs.D + 2 * gap), depth: r3(t - (face - gap / 2)) } : null, couplerAt = recess ? face : r3(Math.max(t + gap / 2, face));
   if (recess && t - recess.depth < pocketDepth + pocket / 2 - shaftHole / 2 - 1e-9 + 2 * k.layer && t - recess.depth < 2 * k.layer) throw new Error(`${what}: ${mo.set}'s ${mm(mo.shaft.length)} mm shaft is too short to reach a coupler through a ${mm(t)} mm plate`);
   // the screws into the slots: two a leg along the beam, the legs reaching in from its outer face
   const legs = r3(Math.max(t, 2 * ls.along)), xs = [r3(ls.along / 2), r3(legs - ls.along / 2)];

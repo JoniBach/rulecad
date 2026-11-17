@@ -805,7 +805,9 @@ endstopMountModel('2020-misumi-hfs5', { face: 'front' }).lever          // { x: 
   thread they take (a geared motor's plain ears take the largest metric screw that passes them, to a nut), the boss's
   pocket and the shaft's hole. The plate is at least half as thick again as those screws, as @rulecad/motors asks.
   Where the shaft would reach less than its diameter (or its flat) into a coupler past the plate, a recess in the
-  inner face takes the coupler in. Two screws a leg hold the motor's torque by shear. It prints on its outer face,
+  inner face takes the coupler in. A longer shaft (a NEMA 17's 24 mm) goes half the coupler in and no further, the
+  coupler standing clear of the plate, so the shaft stops short of the screw coming in from its other end. Two
+  screws a leg hold the motor's torque by shear. It prints on its outer face,
   the boss's pocket ending in a 45° cone.
 - **The carriage.** Two bearings press into pockets from its inner end over a 3 mm floor; the lead nut's body sits in
   a bore through its middle, its flange screwed to the far end into pilots, the screw the shortest sold that engages
@@ -824,7 +826,7 @@ printcheck as drawn. A part's frame is a mount's: x along the beam, y across, z 
 
 | Part | What it is | Prints |
 |---|---|---|
-| `endCapModel(profile)` | A plate the beam's outline, pegs pushed into each slot's opening and the bore, their roots chamfered 45° | Plate down |
+| `endCapModel(profile)` | A plate the beam's outline, pegs pushed into each slot's opening and the bore, their roots chamfered 45°; `endCap(m, { tongues: false })` is the plate alone, as an overlap check measures it | Plate down |
 | `footModel(profile)` | A pad 2 mm past the beam each way, screwed into the end's tapped bore through a counterbore in its underside | As it stands |
 | `levellingFootModel(profile, { stud? })` | A body screwed into the end's bore and a pad that screws up and down a printed M12 thread (10 mm of travel, 12 mm always engaged); or, with `stud: 'M8'`, an M8 nut sunk in the body for a bought foot's stud | As they stand, threads upright |
 | `castorPlateModel(profile, { holes, thread })` | A plate for a castor whose hole spacing (from its maker's drawing) and bolts are given, screwed into the end's bore. Refused where the castor's bolts' heads would sit under the beam | Beam side down |

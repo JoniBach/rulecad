@@ -1011,6 +1011,8 @@ test('the parts for a beam\'s end: an end cap, a foot, a levelling foot, a casto
   assert.equal(cap.pegs.length, 5, 'four slots and the bore'); await prints(endCap(cap), 'an end cap, plate down');
   const fb = jscad.measurements.measureBoundingBox(endCap(cap, { pose: 'fit' }));
   assert.equal(+fb[0][2].toFixed(2), -cap.plug, 'fitted, its pegs into the beam');
+  // without its pegs (what an overlap check measures, the pegs standing inside the beam's envelope): the plate alone, on the end
+  assert.equal(+jscad.measurements.measureBoundingBox(endCap(cap, { pose: 'fit', tongues: false }))[0][2].toFixed(2), 0, 'the plate alone, from the end out');
   for (const [m, g, what] of [[footModel('2020-misumi-hfs5'), foot, 'a foot'], [stackingFootModel('2020-misumi-hfs5'), stackingFoot, 'a stacking foot'], [castorPlateModel('2020-misumi-hfs5', { holes: [38, 38], thread: 'M6' }), castorPlate, 'a castor plate']]) {
     assert.equal(coded(m, 'fitting.screw')[0].level, 'pass', what); assert.deepEqual(m.ops, [{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }], what);
     assert.ok(m.margin >= 2 && m.grams > 0, what); await prints(g(m), what);
@@ -1289,6 +1291,9 @@ test('rods: a layout from the rod, bearing, screw, nut and motor sets; holders, 
   // and a NEMA 17's, tapped M3 on its 31 mm square, its shaft over the body's half-width; its 24 mm shaft needs no recess
   const n17 = motorPlateModel('2040-openbuilds', { motor: 'nema17' });
   assert.deepEqual([n17.height, n17.holes.length, n17.recess, n17.mount.thread, n17.mount.tapped], [22.5, 4, null, 'M3', true]);
+  // its shaft goes half the coupler in, no further, so it stops short of the screw coming in from the other end (the
+  // coupler then stands clear of the plate): 12.5 mm of coupler-5-8's 25, the coupler's face 11.5 mm out
+  assert.deepEqual([n17.engaged, n17.anchors.coupler.at[0]], [12.5, 11.5]);
   // a carriage: the LM8UU pockets from its inner end, the T8 nut's bore and its flange's four M3 pilots; a flag for a switch
   const c = rodCarriageModel(P, { spacing: 40, height: 13, screw: 't8-screw', flag: { y: -23.4, z: -2 } });
   assert.deepEqual([c.length, c.own, c.pocket, c.nut.bore, c.pilots.thread, c.pilots.length, c.flag], [27, 30.5, 15, 10.7, 'M3', 12, { y: -23.4, z: -2, width: 4, thickness: 3 }]);

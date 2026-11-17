@@ -616,7 +616,10 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   `hinge`, `handle`, `latch`, `magnet-catch`, `end-cap`, `foot`, `levelling-foot`, `castor-plate`,
   `stacking-foot` or `rail-jig` (`"rail": "rail-mgn12"`), with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
   "frame"` and `"part": "door"`, and a levelling foot's pad is `"part": "pad"`. An end part goes at the end's address
-  (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs.
+  (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs. In a mechanism, hold it
+  as anything else is held: a foot by a `fasten` of its screw into the beam (`{ "screw": "M5 cap", "through": ["foot1"],
+  "into": "p1", "at": ["foot1.b1"] }`, the beam's end tapped as its `ops` say), and an end cap by a fit that fastens,
+  its pegs a press fit (`"min": -5`). The overlap check measures an end cap without its pegs, which stand in the beam.
 - A `bracket`, `gusset`, `splice`, `hidden` or `anchor` join with a bought fitting's set by name (`"fitting":
   "fitting-motedis-bracket-20-b6"`, @rulecad/frames' README, Bought fittings) adds that fitting as an item placed
   where the printed one would go: a reference drawn from its set, listed under Bought with its price. Its screws join
