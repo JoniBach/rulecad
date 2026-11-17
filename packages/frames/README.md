@@ -492,12 +492,12 @@ import { bracketModel, bracket, plateModel } from '@rulecad/frames'
 
 const m = bracketModel('2020-misumi-hfs5')            // 100 N across beam a at its screw, by default
 m.thickness, m.leg, m.screwAt                          // 6.4, 24, 18.05 (mm)
-m.grams, m.margin, m.stiffness.linear                  // 6.69 g, 4.31 times under PLA's strength, 654 N/mm
+m.grams, m.margin, m.stiffness.linear                  // 6.71 g, 4.31 times under PLA's strength, 654 N/mm
 m.load.what                                            // '100 N across beam a at the upright's screw, 18.05 mm from the corner, ...'
 bracket(m)                                             // its solid, laid on its side to print
 bracket(m, { pose: 'fit' })                            // in its fitted frame
 
-bracketModel('4040-item-8')                            // the same generator: 40 mm wide, M8, 8.2 mm thick, 24.3 g
+bracketModel('4040-item-8')                            // the same generator: 40 mm wide, M8, 8.2 mm thick, 24.4 g
 bracketModel('2020-misumi-hfs5', { brace: true })      // a web across its inside corner: about twice as stiff
 plateModel('2020-misumi-hfs5', { shape: 'T' })         // a T gusset; 'L', 'cross', or 'splice' for a splice plate
 ```
