@@ -42,6 +42,7 @@ export const FITTING_DEFAULTS = {
   reach: { value: 1, unit: 'mm', rule: 'Room left between a screw\'s head and the nearest wall of the fitting, for the head to seat and the key to turn', kind: 'default', source: 'A working figure of @rulecad/frames', checked: CHECKED },
   end: { value: 1, unit: '× hole', rule: 'Plastic from a screw\'s hole to the end of its leg or arm: the hole\'s diameter, and the head\'s radius with the reach where that is more', kind: 'estimate', source: 'A working margin of @rulecad/frames, to be checked by test (Frames 2.13)', checked: CHECKED },
   pitch: { value: 1, unit: 'mm', rule: 'Between two screws on one arm of a plate: the larger of the head and the nut along the slot, and this much more', kind: 'default', source: 'A working figure of @rulecad/frames', checked: CHECKED },
+  floor: { value: 0.3, unit: 'mm', rule: 'A screw into a slot nut stops at least this far short of the slot\'s floor, as cad\'s fasten check holds it (FASTEN.floor): a fitting is made thick enough that a length sold engages its nut fully and stops there', kind: 'default', source: 'A working figure of @rulecad/cad, mirrored here so the fitting and the check agree', checked: CHECKED },
   cells: { value: 3, unit: 'cells', rule: 'The finite elements put at least this many cubes across the thinnest leg or plate', kind: 'default', source: 'A working figure of @rulecad/frames; @rulecad/fea\'s README shows a member three cells thick reads within about 20% in bending', checked: CHECKED },
 };
 
@@ -128,6 +129,9 @@ const TURNS = { xyz: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], yzx: [0, 1, 0, 0, 0, 
 // A boolean's result, its vertices snapped and coplanar faces merged and triangulated: the unions of the tongues with
 // the body otherwise leave seams that a slicer reads as gaps
 const clean = (g) => generalize({ snap: true, triangulate: true }, g);
+// The parts joined and the cutters taken away: by JSCAD, cleaned, or by the booleans handed in ({ union, subtract }: a
+// workspace's Manifold, whose result is watertight for the overlap check that follows)
+const combine = (parts, cuts, ops) => (ops ? ops.subtract(ops.union(...parts), ...cuts) : clean(subtract(union(...parts), ...cuts)));
 const prism = (loop, h, turn = 'xyz', at = [0, 0, 0]) => translate(at, transform([...TURNS[turn], 0, 0, 0, 1], extrudeLinear({ height: h }, polygon({ points: ccw(loop) }))));
 
 // A tongue's section across its slot: n out of the contact face (0 to depth), a across from a0 to a1; its side toward
@@ -136,6 +140,15 @@ const prism = (loop, h, turn = 'xyz', at = [0, 0, 0]) => translate(at, transform
 function tongueLoop(a0, a1, depth, lean, root, sink = 0.5) {
   const pts = [[-sink, a0 - 2 * root], [0, a0 - 2 * root], [0, a0], [depth, a0 + (lean ? depth : 0)], [depth, a1], [0, a1], [0, a1 + 2 * root], [-sink, a1 + 2 * root]];
   return roundConcave(ccw(pts), root, null, 6);
+}
+
+// A tongue's stretch [lo, hi] along its slot, broken round each screw (at) by gap each side: the screw passes the slot's
+// opening clear of it, and the hole stays a closed hole through the leg. Pieces shorter than `least` are left out.
+function pieces(lo, hi, at, gap, least = 2) {
+  const out = []; let from = lo;
+  for (const c of [...at].sort((a, b) => a - b)) { if (c + gap < lo || c - gap > hi) continue; if (c - gap - from >= least) out.push([from, c - gap]); from = Math.max(from, c + gap); }
+  if (hi - from >= least) out.push([from, hi]);
+  return out;
 }
 
 // ---------- finite elements on the part as drawn ----------
@@ -203,6 +216,27 @@ function sizeBy(start, least, step, solve, want) {
     break;
   }
   return r;
+}
+
+// Where a screw's tip may stop under the face for a slot nut, as cad's fasten check holds it: past the nut's thread
+// (from its tongue, lip less the tongue's height, down through its body) by the thread it needs (a hex nut's height,
+// or all the nut has), and the floor's margin short of the slot's floor. A fitting t thick takes a screw of a sold
+// length L where t + lo <= L <= t + hi.
+function tipWindow(sd, thread) {
+  const n = sd.nut, tongue = n.tongueHeight ?? 0, from = sd.slot.lip - tongue, has = tongue + n.height;
+  let hex = has; try { hex = fixingModel(thread).figures.nut_height?.value ?? has; } catch {}
+  return { lo: r3(from + Math.min(has, hex)), hi: r3(sd.slot.cavityDepth - FITTING_DEFAULTS.floor.value) };
+}
+const soldOf = (thread) => { try { return [...(fixingModel(thread).figures.lengths?.value ?? [])].sort((a, b) => a - b); } catch { return []; } };
+// The least thickness from t up, in steps, at which every side takes a sold screw; with the lengths, or null
+function sold(t, step, sides, thread) {
+  const lengths = soldOf(thread), wins = sides.map((sd) => tipWindow(sd, thread));
+  if (!lengths.length) return null;
+  for (let k = 0; k <= 80; k++) {
+    const tt = r3(t + k * step), got = wins.map((w) => lengths.find((L) => L >= tt + w.lo - 1e-9 && L <= tt + w.hi + 1e-9) ?? null);
+    if (got.every((L) => L != null)) return { t: tt, lengths: got, windows: wins };
+  }
+  return null;
 }
 
 // The figures a screw's head and hole give a fitting
@@ -286,27 +320,34 @@ export function bracketModel(profile, o = {}) {
   };
   // the start: the base leg bent at its root by F at the upright's screw, s from the corner, a stress raiser of 1.5
   const start = Math.sqrt((want * 6 * F * 1.5 * (2.5 * least + sc.dk / 2)) / (w * S));
-  const { G, fe, margin } = sizeBy(start, least, layer, solve, want);
+  let { G, fe, margin } = sizeBy(start, least, layer, solve, want);
+  // thick enough that a length sold engages each slot nut fully and stops short of the slot's floor
+  const fits = sold(G.t, layer, [sb, sa], sb.thread), sized = G.t;
+  if (fits && fits.t > G.t + 1e-9) ({ G, fe, margin } = solve(fits.t));
   const { t, s, L } = G;
   const linear = r3(F / Math.max(fe.deflection, 1e-9)), bending = Math.round((F * s * s) / Math.max(fe.deflection, 1e-9));
   const out = [], name = `bracket-${pb.name.replace(/^profile-/, '')}${pa !== pb ? `-${pa.name.replace(/^profile-/, '')}` : ''}-${sb.thread.toLowerCase()}${brace ? '-braced' : ''}`;
   const model = { kind: 'fitting', fitting: 'bracket', name, title: `printed corner bracket${brace ? ', braced,' : ''} for ${pb.name.replace(/^profile-/, '')}${pa !== pb ? ` to ${pa.name.replace(/^profile-/, '')}` : ''}, ${sb.thread}`,
     profile: pb.name, other: pa.name, faces: { b: sb.face, a: sa.face }, thread: sb.thread, head, brace, width: w, thickness: r3(t), leg: L, screwAt: s, round: G.rf, braceSize: G.h, pocket: G.pocket, hole: sc.hd,
     tongues: { b: { slot: sb.slot.name, ...sb.tongue, nut: sb.nut.name }, a: { slot: sa.slot.name, ...sa.tongue, nut: sa.nut.name } },
-    screws: [{ leg: 'b', thread: sb.thread, head, grip: r3(t), at: [s, t, 0], axis: [0, -1, 0], nut: sb.nut.name }, { leg: 'a', thread: sb.thread, head, grip: r3(t), at: [t, s, 0], axis: [-1, 0, 0], nut: sa.nut.name }],
+    screws: [{ leg: 'b', thread: sb.thread, head, grip: r3(t), at: [s, t, 0], axis: [0, -1, 0], nut: sb.nut.name, nutKind: sb.nut.nutKind, length: fits?.lengths[0] ?? null }, { leg: 'a', thread: sb.thread, head, grip: r3(t), at: [t, s, 0], axis: [-1, 0, 0], nut: sa.nut.name, nutKind: sa.nut.nutKind, length: fits?.lengths[1] ?? null }],
+    sized: r3(sized),
     load: { force: F, what: `${F} N across beam a at the upright's screw, ${mm(s)} mm from the corner, opening or closing it`, at: [0, s, 0], direction: [-1, 0, 0] },
     stiffness: { linear, bending, kind: 'derived', rule: `By finite elements on the bracket as drawn, its base leg held under its screw's head and ${F} N on the upright's: ${linear} N/mm at the screw, and ${bending} N·mm/rad about the corner (the force times the screw's distance squared, over its movement). The slot nuts, the lips and the screws\' own give are not in it, so the joint is softer: an estimate until the joint rig (issue 264) measures it` },
     stress: fe.stress, margin: r3(margin), deflection: fe.deflection, fe, volume: 0, grams: 0, material: mat.name, printer: pr.name, section: G.section, findings: out,
     rests: [{ name: `${mat.name}.strength`, value: S }, { name: `${mat.name}.modulus`, value: E }, { name: `${pr.name}.fit`, value: fit }, ...['margin', 'least', 'round', 'brace', 'reach', 'end', 'cells'].map((k) => ({ name: `FITTING_DEFAULTS.${k}`, value: FITTING_DEFAULTS[k].value, kind: FITTING_DEFAULTS[k].kind }))] };
   const solid = bracketSolid(model, pr);
   model.volume = r3(measureVolume(solid)); model.grams = r3((model.volume * mat.rules.density.value) / 1000);
-  addFindings(model, { least, S, F, sc, sides: { b: sb, a: sa }, pr, pose: 'laid on its side, the whole L on the bed' });
+  addFindings(model, { least, S, F, sc, sides: { b: sb, a: sa }, pr, pose: 'laid on its side, the whole L on the bed', fits });
   return model;
 }
 
-function addFindings(m, { least, S, F, sc, sides, pr, pose }) {
-  const out = m.findings, want = FITTING_DEFAULTS.margin.value, thinnest = m.thickness <= least + 1e-9;
-  out.push(finding('info', `${m.title}: ${mm(m.thickness)} mm thick (${thinnest ? `as thin as ${sc.thread} lets it be, ${mm(least)} mm` : `sized from the load`}), ${m.fitting === 'bracket' ? `legs ${mm(m.leg)} mm, the screws ${mm(m.screwAt)} mm from the corner` : `arms ${mm(m.arm)} mm from the joint, ${m.screws.length} screws`}, ${mm(m.width)} mm wide`, 'fitting.size', { values: { thickness: m.thickness, width: m.width, ...(m.leg ? { leg: m.leg } : { arm: m.arm }) } }));
+function addFindings(m, { least, S, F, sc, sides, pr, pose, fits }) {
+  const out = m.findings, want = FITTING_DEFAULTS.margin.value, thinnest = m.sized <= least + 1e-9, thicker = m.thickness > m.sized + 1e-9;
+  const why = `${thinnest ? `as thin as ${sc.thread} lets it be, ${mm(least)} mm` : `sized from the load, ${mm(m.sized)} mm`}${thicker ? `, then thickened so a length sold fits: ${[...new Set(fits.lengths)].map((L) => `${sc.thread}x${L}`).join(' and ')} engages its slot nut fully and stops short of the slot's floor` : ''}`;
+  if (!fits) out.push(finding('warn', `no ${sc.thread} ${sc.head} screw sold engages its slot nut fully and stops short of the slot's floor through a fitting up to 16 mm thicker: the screw's length is the fasten check's to choose`, 'fitting.screw', { values: { thickness: m.thickness } }));
+  else out.push(finding('pass', `${[...new Set(fits.lengths)].map((L) => `${sc.thread}x${L} ${sc.head}`).join(' and ')}: through ${mm(m.thickness)} mm of fitting, ${[...new Set(fits.windows.map((w, i) => `its tip ${mm(fits.lengths[i] - m.thickness)} mm under the face, between ${mm(w.lo)} (its nut's thread engaged) and ${mm(w.hi)} (the slot's floor less ${FITTING_DEFAULTS.floor.value} mm)`))].join('; ')}`, 'fitting.screw', { values: { lengths: fits.lengths, windows: fits.windows } }));
+  out.push(finding('info', `${m.title}: ${mm(m.thickness)} mm thick (${why}), ${m.fitting === 'bracket' ? `legs ${mm(m.leg)} mm, the screws ${mm(m.screwAt)} mm from the corner` : `arms ${mm(m.arm)} mm from the joint, ${m.screws.length} screws`}, ${mm(m.width)} mm wide`, 'fitting.size', { values: { thickness: m.thickness, width: m.width, ...(m.leg ? { leg: m.leg } : { arm: m.arm }) } }));
   for (const [k, sd] of Object.entries(sides)) {
     if (!sd) continue;
     out.push(finding(sd.tongue.depth > 0 ? 'pass' : 'info', sd.tongue.depth > 0 ? `the ${k === 'b' ? (m.fitting === 'bracket' ? 'base leg' : 'arms on b') : (m.fitting === 'bracket' ? 'upright' : 'arms on a')}'s tongue keys into ${sd.slot.name}: ${mm(sd.tongue.width)} mm wide (the ${mm(sd.slot.opening)} mm opening less ${pr.name}'s fit each side), ${mm(sd.tongue.depth)} mm deep (the ${mm(sd.slot.lip)} mm lip less the ${mm(sd.tongue.under)} mm a ${sd.thread} slot nut's tongue rises into it, less the fit)` : `${sd.slot.name}'s ${mm(sd.slot.lip)} mm lip leaves no room for a tongue over a ${sd.thread} slot nut's ${mm(sd.tongue.under)} mm tongue: the ${k} side lies flat on the face`, 'fitting.tongue', { values: { ...sd.tongue }, refs: { slot: sd.slot.name, nut: sd.nut.name } }));
@@ -327,34 +368,36 @@ function addFindings(m, { least, S, F, sc, sides, pr, pose }) {
   out.push(finding('info', `it weighs ${mm(m.grams)} g of ${m.material} (${mm(m.volume)} mm³)`, 'fitting.mass', { values: { grams: m.grams, volume: m.volume } }));
 }
 
-function bracketSolid(m, pr) {
+function bracketSolid(m, pr, tongues = true, ops = null) {
   const w = m.width, c = w / 2, t = m.thickness, L = m.leg, s = m.screwAt, root = pfig(pr, 'fit');
   const parts = [extrudeLinear({ height: w }, polygon({ points: ccw(m.section) }))];
   const tb = m.tongues.b, ta = m.tongues.a;
   // the base leg's tongue under y = 0, along x: its loop in (y, z) as (-n, a), extruded along x (turn yzx)
-  if (tb.depth > 0) parts.push(prism(tongueLoop(c - tb.width / 2, c + tb.width / 2, tb.depth, true, root).map(([n, a]) => [-n, a]), L - 2 * root, 'yzx', [root, 0, 0]));
+  const gap = m.hole / 2 + 1;
+  if (tongues && tb.depth > 0) for (const [p, q] of pieces(root, L - root, [s], gap)) parts.push(prism(tongueLoop(c - tb.width / 2, c + tb.width / 2, tb.depth, true, root).map(([n, a]) => [-n, a]), q - p, 'yzx', [p, 0, 0]));
   // the upright's under x = 0, along y: its loop in (z, x) as (a, -n), extruded along y (turn zxy)
-  if (ta.depth > 0) parts.push(prism(tongueLoop(c - ta.width / 2, c + ta.width / 2, ta.depth, true, root).map(([n, a]) => [a, -n]), L - 2 * root, 'zxy', [0, root, 0]));
+  if (tongues && ta.depth > 0) for (const [p, q] of pieces(root, L - root, [s], gap)) parts.push(prism(tongueLoop(c - ta.width / 2, c + ta.width / 2, ta.depth, true, root).map(([n, a]) => [a, -n]), q - p, 'zxy', [0, p, 0]));
   const fx = { printer: pr }, h = m.braceSize, deep = (d) => t + d + 2;
   // through each leg a teardrop hole; braced, a teardrop pocket for the head and the key through the brace, and the hole on
   const holes = m.brace
     ? [counterbore(m.thread, { head: m.head, depth: h + 1, diameter: 2 * m.pocket, length: h + 1 + deep(tb.depth), into: '-y', at: [s, t + h + 1, c], ...fx }),
       counterbore(m.thread, { head: m.head, depth: h + 1, diameter: 2 * m.pocket, length: h + 1 + deep(ta.depth), into: '-x', at: [t + h + 1, s, c], ...fx })]
     : [hole(m.thread, { kind: 'clearance', into: '-y', depth: deep(tb.depth), at: [s, t + 1, c], ...fx }), hole(m.thread, { kind: 'clearance', into: '-x', depth: deep(ta.depth), at: [t + 1, s, c], ...fx })];
-  return clean(subtract(union(...parts), ...holes));
+  return combine(parts, holes, ops);
 }
 
 /**
  * A printed corner bracket's solid, from bracketModel's model or its arguments: laid on its side to print (pose
  * 'print', the default), or in its fitted frame (pose 'fit': x along b's face away from a, y up a, z across, the corner
- * line on the slots' centre).
- * @param {object | string} m a Bracket, or bracketModel's profile @param {object} [o] bracketModel's options, and pose
+ * line on the slots' centre). tongues: false leaves them off (the body alone, which may not overlap a beam's envelope);
+ * ops: booleans to join and cut with ({ union, subtract }, as @rulecad/shapes' ops gives), JSCAD's where left out.
+ * @param {object | string} m a Bracket, or bracketModel's profile @param {object} [o] bracketModel's options, pose, tongues and ops
  * @returns {object} a JSCAD geom3, with .model
  */
 export function bracket(m, o = {}) {
-  const { pose = 'print', ...rest } = o ?? {};
+  const { pose = 'print', tongues = true, ops = null, ...rest } = o ?? {};
   if (!['print', 'fit'].includes(pose)) throw new Error(`bracket: pose is print or fit (got ${shown(pose)})`);
-  const model = m?.fitting === 'bracket' ? m : bracketModel(m, rest), solid = bracketSolid(model, printerOf('bracket', rest.printer));
+  const model = m?.fitting === 'bracket' ? m : bracketModel(m, rest), solid = bracketSolid(model, printerOf('bracket', rest.printer), tongues !== false, ops);
   return Object.assign(pose === 'fit' ? translate([0, 0, -model.width / 2], solid) : solid, { model });
 }
 
@@ -420,53 +463,57 @@ export function plateModel(profile, o = {}) {
     return { t, fe, margin: S / Math.max(fe.stress, 1e-9), far };
   };
   const least = r3(Math.max(FITTING_DEFAULTS.least.value * sc.major, 2 * layer));
-  const sized = sizeBy(least, least, layer, solve, want), { t, fe, margin, far } = sized;
+  let r = sizeBy(least, least, layer, solve, want);
+  const fits = sold(r.t, layer, [sd], sd.thread), sizedT = r.t;
+  if (fits && fits.t > r.t + 1e-9) r = solve(fits.t);
+  const { t, fe, margin, far } = r;
   const linear = r3(F / Math.max(fe.deflection, 1e-9)), bending = Math.round((F * far * far) / Math.max(fe.deflection, 1e-9));
   const fitting = shape === 'splice' ? 'splice' : 'gusset', short = p.name.replace(/^profile-/, '');
   const model = { kind: 'fitting', fitting, shape, name: `${fitting === 'splice' ? 'splice' : `gusset-${shape.toLowerCase()}`}-${short}-${sd.thread.toLowerCase()}${count !== 2 ? `-x${count}` : ''}`,
     title: `printed ${fitting === 'splice' ? 'splice plate' : `${shape} gusset`} for ${short}, ${sd.thread}, ${count} screw${count > 1 ? 's' : ''} an arm`,
     profile: p.name, face: sd.face, thread: sd.thread, head, width: w, thickness: r3(t), arm, round: R, hole: sc.hd, outline, count, pitch,
     tongues: dirs.map(([dx, dy, leg]) => ({ leg, along: [dx, dy], slot: sd.slot.name, ...sd.tongue, nut: sd.nut.name })),
-    screws: screws.map((q) => ({ leg: q.leg, thread: sd.thread, head, grip: r3(t), at: [q.at[0], q.at[1], 0], axis: [0, 0, -1], nut: sd.nut.name })),
+    screws: screws.map((q) => ({ leg: q.leg, thread: sd.thread, head, grip: r3(t), at: [q.at[0], q.at[1], 0], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null })), sized: r3(sizedT),
     load: { force: F, what: `${F} N in the plate's plane across beam a at its farthest screw, ${mm(far)} mm from the joint, b's screws held`, at: [...(screws.find((q) => q.leg === 'a' && Math.abs(Math.hypot(...q.at) - far) < 1e-6)?.at ?? [0, 0]), 0], direction: shape === 'splice' ? [0, 1, 0] : [1, 0, 0] },
     stiffness: { linear, bending, kind: 'derived', rule: `By finite elements on the plate as drawn, b's screws held under their heads and ${F} N in its plane on a's farthest: ${linear} N/mm there, and ${bending} N·mm/rad about the joint (the force times that screw's distance squared, over its movement). The slot nuts, the lips and the screws' own give are not in it, so the joint is softer: an estimate until the joint rig (issue 264) measures it` },
     stress: fe.stress, margin: r3(margin), deflection: fe.deflection, fe, volume: 0, grams: 0, material: mat.name, printer: pr.name, findings: [],
     rests: [{ name: `${mat.name}.strength`, value: S }, { name: `${mat.name}.modulus`, value: E }, { name: `${pr.name}.fit`, value: fit }, ...['margin', 'least', 'reach', 'end', 'pitch', 'cells'].map((k) => ({ name: `FITTING_DEFAULTS.${k}`, value: FITTING_DEFAULTS[k].value, kind: FITTING_DEFAULTS[k].kind }))] };
   const solid = plateSolid(model, pr);
   model.volume = r3(measureVolume(solid)); model.grams = r3((model.volume * mat.rules.density.value) / 1000);
-  addFindings(model, { least, S, F, sc, sides: { b: sd }, pr, pose: 'contact face up, its head side on the bed' });
+  addFindings(model, { least, S, F, sc, sides: { b: sd }, pr, pose: 'contact face up, its head side on the bed', fits });
   return model;
 }
 
-function plateSolid(m, pr) {
+function plateSolid(m, pr, tongues = true, ops = null) {
   // (drawn turned over about x: its y runs the other way, so a's arm lies along -y here and along +y once fitted)
   const t = m.thickness, half = m.width / 2, root = pfig(pr, 'fit'), parts = [extrudeLinear({ height: t }, polygon({ points: ccw(m.outline.map(([x, y]) => [x, -y])) }))];
   // its tongues stand on its top (the contact face, in print), along each arm's slot line; in its print frame the
   // plate is turned over, so the tongue of an arm reaches to the arm's end from the joint's far edge (or from 0 for a splice)
   for (const tg of m.tongues) {
-    if (!(tg.depth > 0)) continue;
+    if (!(tg.depth > 0) || !tongues) continue;
     const from = m.fitting === 'splice' ? 0 : -half, to = (m.fitting === 'splice' ? 0 : half) + m.arm - root, loop = tongueLoop(-tg.width / 2, tg.width / 2, tg.depth, false, root);
     const [dx, ny] = tg.along, dy = -ny, start = tg.leg === 'a' && m.fitting !== 'splice' ? half + root : from;
     // along x: the loop in (y, z) = (a, t + n), extruded along x (yzx); along y: in (z, x) = (t + n, a), extruded along y (zxy)
-    const solid = dx !== 0 ? prism(loop.map(([n, a]) => [a, t + n]), to - start, 'yzx', [0, 0, 0]) : prism(loop.map(([n, a]) => [t + n, a]), to - start, 'zxy', [0, 0, 0]);
-    const d = dx !== 0 ? dx : dy, placed = d > 0 ? translate(dx !== 0 ? [start, 0, 0] : [0, start, 0], solid) : translate(dx !== 0 ? [-to, 0, 0] : [0, -to, 0], solid);
-    parts.push(placed);
+    const d = dx !== 0 ? dx : dy, [lo, hi] = d > 0 ? [start, to] : [-to, -start];
+    const at = m.screws.filter((q) => (dx !== 0 ? Math.abs(q.at[1]) < 1e-6 : Math.abs(q.at[0]) < 1e-6)).map((q) => (dx !== 0 ? q.at[0] : -q.at[1]));
+    for (const [p, q] of pieces(lo, hi, at, m.hole / 2 + 1)) parts.push(dx !== 0 ? prism(loop.map(([n, a]) => [a, t + n]), q - p, 'yzx', [p, 0, 0]) : prism(loop.map(([n, a]) => [t + n, a]), q - p, 'zxy', [0, p, 0]));
   }
   const fx = { printer: pr }, holes = m.screws.map((q) => hole(m.thread, { kind: 'clearance', into: '+z', depth: t + 4, at: [q.at[0], -q.at[1], -1], ...fx, depth: t + 2 + Math.max(0, ...m.tongues.map((g) => g.depth)) }));
-  return clean(subtract(union(...parts), ...holes));
+  return combine(parts, holes, ops);
 }
 
 /**
  * A printed plate's solid, from plateModel's model or its arguments: contact face up to print (pose 'print', the
  * default; its frame's z then runs down into the beams, so the plate is turned over), or in its fitted frame (pose
- * 'fit': x along b, y along a, the contact face at z = 0 and the plate on +z, away from the beams).
- * @param {object | string} m a Plate, or plateModel's profile @param {object} [o] plateModel's options, and pose
+ * 'fit': x along b, y along a, the contact face at z = 0 and the plate on +z, away from the beams). tongues: false leaves
+ * them off; ops: booleans to join and cut with, as bracket's.
+ * @param {object | string} m a Plate, or plateModel's profile @param {object} [o] plateModel's options, pose, tongues and ops
  * @returns {object} a JSCAD geom3, with .model
  */
 export function plate(m, o = {}) {
-  const { pose = 'print', ...rest } = o ?? {};
+  const { pose = 'print', tongues = true, ops = null, ...rest } = o ?? {};
   if (!['print', 'fit'].includes(pose)) throw new Error(`plate: pose is print or fit (got ${shown(pose)})`);
-  const model = m?.fitting === 'gusset' || m?.fitting === 'splice' ? m : plateModel(m, rest), solid = plateSolid(model, printerOf('plate', rest.printer));
+  const model = m?.fitting === 'gusset' || m?.fitting === 'splice' ? m : plateModel(m, rest), solid = plateSolid(model, printerOf('plate', rest.printer), tongues !== false, ops);
   // fitted: the contact face (z = t in print) at z = 0 and the plate above it: turned over about x
   return Object.assign(pose === 'fit' ? transform([1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, model.thickness, 1], solid) : solid, { model });
 }

@@ -104,11 +104,16 @@ function roundOf(pts) {
 // What lies round the axis in one slice: how near the nearest wall comes (free), and the outline that wall belongs
 // to: whether it closes round the axis (the axis is in a hole), its centre and diameter where it is a round or a
 // regular polygon (a nut's seat), and how far that centre is from the axis
-function measure(segs, R) {
+function measure(all, R) {
+  // Ends are joined on a 0.001 mm grid: a mesh snapped to a boolean's grid can leave one corner as two points a few
+  // ten-thousandths apart (the snap rounds a corner that lies on a grid line's middle either way), which would open a
+  // closed outline. A segment that starts and ends at one point (a sliver face, cut) is no wall: it would count its
+  // point twice
+  const G = 1e3, key = (p) => `${Math.round(p[0] * G)},${Math.round(p[1] * G)}`, segs = all.filter(([p, q]) => key(p) !== key(q));
   let best = -1, free = Infinity;
   segs.forEach(([p, q], i) => { const d = toSeg(p, q); if (d < free) { free = d; best = i; } });
   if (best < 0 || free > R) return { free: Infinity, loop: null };
-  const key = (p) => `${Math.round(p[0] * 1e6)},${Math.round(p[1] * 1e6)}`, at = new Map();
+  const at = new Map();
   segs.forEach((s, i) => { for (const p of s) { const k = key(p); if (!at.has(k)) at.set(k, []); at.get(k).push(i); } });
   const mine = new Set([best]), todo = [best];
   while (todo.length) for (const p of segs[todo.pop()]) for (const j of at.get(key(p))) if (!mine.has(j)) { mine.add(j); todo.push(j); }
@@ -116,7 +121,10 @@ function measure(segs, R) {
   for (const i of mine) {
     const [p, q] = segs[i];
     for (const e of [p, q]) { const k = key(e); pts.set(k, e); if (at.get(k).filter((j) => mine.has(j)).length !== 2) closed = false; }
-    if ((p[1] > 0) !== (q[1] > 0) && p[0] + ((0 - p[1]) / (q[1] - p[1])) * (q[0] - p[0]) > 0) inside = !inside; // (a ray from the axis along +x)
+    // (a ray from the axis along +x, its ends read on the grid they are joined on: two faces' ends a hair either side of
+    // the ray at one corner, as a teardrop's point can be, are one point and cross it once)
+    const py = Math.round(p[1] * G), qy = Math.round(q[1] * G);
+    if ((py > 0) !== (qy > 0) && p[0] + ((0 - p[1]) / (q[1] - p[1])) * (q[0] - p[0]) > 0) inside = !inside;
   }
   // corners only: a point where the outline runs straight on is a seam between two faces, not a corner
   const list = !closed ? [] : [...pts].filter(([k, e]) => {

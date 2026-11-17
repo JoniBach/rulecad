@@ -8,8 +8,9 @@
 import { JOINS, joinModel } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
 import { beamOf, beamPlace, framesContext } from './beams.mjs';
+import { joinFitting, fittedStiffness } from './fittings.mjs';
 
-const KEYS = ['kind', 'a', 'b', 'fitting', 'screw', 'note'];
+const KEYS = ['kind', 'a', 'b', 'fitting', 'screw', 'brace', 'load', 'nut', 'note'];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const mm = (x) => String(+Number(x).toFixed(2)), r3 = (x) => +x.toFixed(3);
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -33,14 +34,14 @@ const sameAt = (p, q) => String(p).trim().replace(/\.1$/, '') === String(q).trim
  * @param {object} a the assembly as read @param {(x: any) => number} num its expressions
  * @returns {{ a: object, joins: object[] }} the assembly with the joins' operations and screws in, and each join worked out
  */
-export function expandJoins(a, num, context = framesContext()) {
+export function expandJoins(a, num, context = framesContext(), material = 'pla') {
   const list = a.joins;
   if (list == null) return { a, joins: [] };
   if (!Array.isArray(list)) throw new Error(`joins is a list: [{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }] (got ${shown(list)})`);
   if (!list.length) return { a, joins: [] };
   const items = a.items || [], beams = new Map(items.filter((it) => it.beam).map((it) => [it.id, it])), models = new Map();
   const modelOf = (id) => { if (!models.has(id)) models.set(id, beamOf(beams.get(id), num, context).model); return models.get(id); };
-  const extra = new Map(), fasten = [], joins = [], first = (a.fasten || []).length;
+  const extra = new Map(), fasten = [], joins = [], first = (a.fasten || []).length, added = [], ids = new Set(items.map((it) => it.id));
   list.forEach((j, i) => {
     const what = `join ${i + 1}`;
     if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error(`${what} is { "kind", "a", "b" } (got ${shown(j)})`);
@@ -60,10 +61,19 @@ export function expandJoins(a, num, context = framesContext()) {
     catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^(joinModel|beamAnchor): /, '')}`); }
     for (const [side, ops] of [['a', m.a.ops], ['b', m.b.ops]]) { const id = ends[side].id; if (ops.length) extra.set(id, [...(extra.get(id) || []), ...ops]); }
     const label = j.note || `${j.kind} join of ${j.a} to ${j.b}`, mine = [];
+    for (const k of ['brace', 'load', 'nut']) if (j[k] != null && !(m.fitting?.printed && j.fitting === 'printed')) throw new Error(`${what}: ${k} is for a printed fitting: give "fitting": "printed" on a ${Object.keys(JOINS).filter((x) => JOINS[x].printed).join(', ')} join, or leave ${k} out`);
+    // a printed fitting: its item, placed from where the beams are, and a fasten for each leg into its beam's slot
+    let fitted = null;
+    if (m.fitting?.printed && j.fitting === 'printed') {
+      fitted = joinFitting(j, i, { ia: beams.get(ends.a.id), ib: beams.get(ends.b.id), A: modelOf(ends.a.id), B: modelOf(ends.b.id), m, ends, place: beamPlace }, num, context, material, ids);
+      added.push(fitted.item);
+      for (const x of fitted.fasten) { mine.push(first + fasten.length); fasten.push(x); }
+      m.stiffness = fittedStiffness(m.stiffness, fitted.model);
+    }
     // the head: inside b's slot under its lips (blind), or on the lips of the slot across b (end-tap), or on a plain face
     const lips = j.kind === 'blind' ? { item: ends.b.id, slot: m.b.slot, inside: true } : m.b.across?.slot ? { item: ends.b.id, slot: m.b.across.slot, inside: false } : null;
     for (const sc of m.screws) { mine.push(first + fasten.length); fasten.push({ screw: sc.screw, through: [ends.b.id], into: ends.a.id, at: [`${ends.a.id}.${sc.bore}`], note: label, join: i, ...(lips ? { lips } : {}) }); }
-    joins.push({ index: i, kind: j.kind, a: j.a, b: j.b, items: [ends.a.id, ends.b.id], end: ends.a.rest, address: ends.b.rest, label, fitting: j.fitting ?? null, model: m, fasten: mine });
+    joins.push({ index: i, kind: j.kind, a: j.a, b: j.b, items: [ends.a.id, ends.b.id], end: ends.a.rest, address: ends.b.rest, label, fitting: j.fitting ?? null, model: m, fasten: mine, ...(fitted ? { fitted: { item: fitted.item.id, model: fitted.model } } : {}) });
   });
   // each beam's own ops first; a join's op where the beam has none like it at that place (a tap at a and at a.1 are one)
   const withOps = items.map((it) => {
@@ -73,7 +83,7 @@ export function expandJoins(a, num, context = framesContext()) {
     for (const op of add) if (!ops.some((g) => g?.op === op.op && (sameAt(g.at, op.at) || (op.op === 'tap' && String(g.at).trim()[0] === op.at[0])))) ops.push(op);
     return { ...it, beam: { ...it.beam, ops } };
   });
-  return { a: { ...a, items: withOps, ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}) }, joins };
+  return { a: { ...a, items: [...withOps, ...added], ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}) }, joins };
 }
 
 // A mitre's cuts from where the two beams are: the angle from square that halves the corner, the face each sees the
@@ -152,6 +162,12 @@ export function joinChecks(s, f) {
     }
     // the spring this join puts at a's end in a frame's solve: an estimate, and it says so
     const k = m.stiffness;
+    if (k.fitting) {
+      const fm = k.fitting;
+      f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(3)} N·m/mrad in bending, ${j.fitted.item}'s own by finite elements (${fm.linear} N/mm at its screw under ${fm.load} N, ${fm.margin} times under its plastic's strength, ${fm.grams} g), and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}: the slot nuts and lips are not in either, so both are an estimate of the joint until the joint rig (issue 264) measures it`, null,
+        { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, item: j.fitted.item, kind_of_value: 'estimate', end: k.end, rests: k.rests } });
+      continue;
+    }
     f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(2)} N·m/mrad in bending and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}${k.printed ? ', a printed fitting\'s share of a bought one\'s' : ''}${k.scale !== 1 ? `, scaled ${+k.scale.toFixed(2)}× for the profile's size` : ''}: an estimate, until the joint rig (issue 264) measures it`, null,
       { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, kind_of_value: 'estimate', end: k.end, rests: k.rests } });
   }

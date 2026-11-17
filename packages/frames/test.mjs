@@ -771,10 +771,14 @@ test('joins: a blind join taps the end of a and puts an access hole across b in 
   assert.deepEqual(Object.keys(JOIN_STIFFNESS), Object.keys(JOINS));
   for (const s of Object.values(JOIN_STIFFNESS)) for (const v of [s.bending, s.twist]) { assert.equal(v.kind, 'estimate'); assert.match(v.source, /joint rig \(issue 264\)/); }
   assert.deepEqual([j.stiffness.bending, j.stiffness.twist, j.stiffness.end], [1.5e6, 3e5, { rx: 3e5, ry: 1.5e6, rz: 1.5e6 }]);
-  const br = joinModel('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@120' }, { fitting: 'printed' });
+  const br = joinModel('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@120' }, { fitting: 'bought' });
   assert.deepEqual([br.a.ops, br.b.ops, br.screws, br.findings.map((f) => `${f.level} ${f.code}`)], [[], [], [], ['warn join.fitting']]);
-  assert.match(br.findings[0].text, /A corner bracket comes with Frames 2\.3 \(printed\) and 2\.6 \(bought\)/);
-  assert.equal(br.stiffness.bending, 3e6 * 0.3); // a printed bracket: a share of a bought one's
+  assert.match(br.findings[0].text, /A bought corner bracket comes with Frames 2\.6 \(bought\).*A printed one is drawn now: give "fitting": "printed"/);
+  // printed: the caller draws it (fitting.mjs), so no warning; its estimate stays until the fitting's own replaces it
+  const pb = joinModel('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@120' }, { fitting: 'printed' });
+  assert.deepEqual([pb.findings, pb.fitting], [[], { what: 'a corner bracket', later: 'Frames 2.6 (bought)', choice: 'printed', made: true, printed: 'bracket' }]);
+  assert.equal(pb.stiffness.bending, 3e6 * 0.3); // a printed bracket: a share of a bought one's
+  assert.deepEqual(['gusset', 'splice', 'cube', 'printed'].map((k) => JOINS[k].printed ?? null), ['gusset', 'splice', null, null]);
   const big = beamModel('4040-generic', { length: 300 });
   assert.equal(joinModel('splice', { beam: big, end: 'b' }, { beam: big, address: 'a' }).stiffness.scale, 8); // (40 mm over 20, cubed)
   // a closed face where the head needs a slot: join.geometry fails, and nothing is derived
@@ -796,7 +800,7 @@ test('joins refuse by name: an unknown kind, an end that has no bore or two, b t
   r('blind', { beam: T, end: 'a' }, { beam: B, address: 'back@10' }, {}, /profile-tube-al-20x20x2 has no bore in its ends to tap, and a blind join screws into one: join it with a bracket or a gusset/);
   r('blind', { beam: W, end: 'a' }, { beam: B, address: 'back@10' }, {}, /end a of profile-2040-misumi-hfs5 x 200 has 2 bores \(a\.1, a\.2\), each meeting .* give a join for each, a: a\.1 and a\.2/);
   r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { screw: 'M5 nut' }, /screw names a screw by its thread and head/);
-  r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { screw: 'M5 cap' }, /a bracket join's screws come with its fitting \(Frames 2\.3 \(printed\) and 2\.6 \(bought\)\): leave screw out/);
+  r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { screw: 'M5 cap' }, /a bracket join's screws come with its fitting \(a printed one's thread is its slot nuts', its lengths chosen by its fastens\): leave screw out/);
   r('blind', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { fitting: 'printed' }, /a blind join has no fitting to choose: its screws hold it/);
   r('bracket', { beam: A, end: 'a' }, { beam: B, address: 'back@10' }, { fitting: 'glued' }, /fitting is printed or bought \(got "glued"\)/);
   // the 2040's bores, one join each
@@ -841,7 +845,11 @@ test('a printed corner bracket for 2020 and for 4040 from one generator: each pa
     }
     // sized from the load: no thinner than the thread's major diameter, and about twice the margin
     assert.ok(m.thickness >= w.major * FITTING_DEFAULTS.least.value - 1e-9);
-    assert.ok(m.margin >= 2 && m.margin <= 2 * FITTING_DEFAULTS.margin.value * FITTING_DEFAULTS.spread.value || m.thickness === w.major, `${name}: margin ${m.margin}`);
+    // (sized to between 2 and 3 times, unless the thread's least thickness or a screw sold made it thicker)
+    assert.ok(m.margin >= 2 && (m.margin <= FITTING_DEFAULTS.margin.value * FITTING_DEFAULTS.spread.value || m.sized === w.major || m.thickness > m.sized), `${name}: margin ${m.margin}`);
+    // thick enough that a length sold engages the nut fully and stops 0.3 mm or more short of the slot's floor
+    const [scr] = coded(m, 'fitting.screw'), nutB = frames.slotNutModel(m.tongues.b.nut), tip = m.screws[0].length - m.thickness;
+    assert.equal(scr.level, 'pass'); assert.ok(tip >= slot.lip - nutB.tongueHeight + Math.min(nutB.tongueHeight + nutB.height, w.thread === 'M5' ? 4.7 : 6.8) - 1e-9 && tip <= slot.cavityDepth - 0.3 + 1e-9, `${name}: the tip ${tip} mm under the face`);
     // the named load, the margin, the stiffness and the mass, as findings in the kit's one shape
     assert.equal(m.load.force, 100); assert.match(m.load.what, /^100 N across beam a at the upright's screw, [\d.]+ mm from the corner/);
     const [margin] = coded(m, 'fitting.margin');
@@ -871,7 +879,7 @@ test('a printed corner bracket for 2020 and for 4040 from one generator: each pa
 test('a bracket is sized from its load, a brace makes it stiffer, and its finite elements are cached', async () => {
   const { bracketModel, bracket } = frames;
   const light = bracketModel('2020-misumi-hfs5'), heavy = bracketModel('2020-misumi-hfs5', { load: 300 });
-  assert.ok(heavy.thickness > light.thickness, 'a heavier load, a thicker leg'); assert.ok(heavy.margin >= 2 && heavy.margin <= 3.01, `margin ${heavy.margin}`);
+  assert.ok(heavy.sized > light.sized && heavy.thickness > light.thickness, 'a heavier load, a thicker leg'); assert.ok(heavy.margin >= 2, `margin ${heavy.margin}`);
   assert.match(coded(heavy, 'fitting.size')[0].text, /sized from the load/); assert.match(coded(light, 'fitting.size')[0].text, /as thin as M5 lets it be, 5 mm/);
   const braced = bracketModel('2020-misumi-hfs5', { brace: true });
   assert.equal(braced.screwAt, light.screwAt, 'the brace keeps the screws where they were'); assert.ok(braced.pocket > 0);
@@ -884,7 +892,7 @@ test('a bracket is sized from its load, a brace makes it stiffer, and its finite
   assert.ok(store.size >= 1);
   const fake = new Map([...store].map(([k, v]) => [k, { ...v, stress: v.stress / 2 }]));
   const again = bracketModel('2020-misumi-hfs5', { cache: { get: (k) => fake.get(k), set() {} } });
-  assert.equal(once.thickness, 5); assert.equal(again.thickness, 5);
+  assert.equal(once.thickness, 6.4); assert.equal(again.thickness, 6.4);
   assert.equal(again.fe.stress, +(once.fe.stress / 2).toFixed(3), 'the cache\'s answer is taken, not solved again');
 });
 

@@ -48,7 +48,8 @@ import { gripChecks } from './grip.mjs';
 import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
-import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf } from './beams.mjs';
+import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
+import { fittingBuilt, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
@@ -110,7 +111,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const num = (x) => evaluate(x, lookup);
   // Joins between beams (lib/joins.mjs): their operations go on the beams and their screws into fasten before anything is built
   let joins = [];
-  if (a.joins != null) ({ a, joins } = expandJoins(a, num));
+  if (a.joins != null) ({ a, joins } = expandJoins(a, num, undefined, plasticOf(project)));
   const { translate, rotate, transform } = jscad.transforms, deg = Math.PI / 180;
 
   const items = [], parts = [], objects = [], fits = [], requires = [];
@@ -119,6 +120,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const source = async (it, extra) => {
     if (it.motor) { const key = JSON.stringify(['motor', it.id, it.motor]); if (!built.has(key)) built.set(key, motorBuilt(it.motor, num, it.id)); return built.get(key); }
     if (it.beam) { const b = beamBuilt(it, num, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/beams.mjs)
+    if (it.fitting) { const b = await fittingBuilt(it, it.id, framesContext(), plasticOf(project)); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/fittings.mjs)
     if (it.bought) {
       const key = JSON.stringify(['bought', it.id, it.bought, it.variant, it.set]);
       if (!built.has(key)) built.set(key, boughtSets().get(it.bought) === 'motor' ? motorBuilt({ model: it.bought }, num, it.id) : boughtBuilt(it.bought, it, num, it.id));
@@ -160,7 +162,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   let builtCount = 0;
   for (const it of a.items || []) {
     if (!/^[a-z][\w-]*$/.test(it.id || '')) throw new Error(`each item needs an id (letters, digits, - or _): got ${JSON.stringify(it.id)}`);
-    if ([it.object, it.assembly, it.motor, it.bought, it.beam].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly", "motor", "bought" or "beam"`);
+    if ([it.object, it.assembly, it.motor, it.bought, it.beam, it.fitting].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly", "motor", "bought", "beam" or "fitting"`);
     if (!it.beam && (it.to != null || it.roll != null)) throw new Error(`item ${it.id}: to and roll place a beam by its ends: place ${it.object || it.assembly || it.motor?.model || it.bought} with at and rotate`);
     // Copies: one, a grid from repeat x/y, or a layout's keys. Each: { id, offset (from at), extra (values to set) }
     const rx = it.repeat?.x, ry = it.repeat?.y, rl = it.repeat?.layout, copies = [];
@@ -226,7 +228,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       for (const n of sub.seen) seen.add(n);
       items.push({ ...it, id, sub, role: 'part' });
     } else {
-      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}) });
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}) });
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role, ...(src.beam ? { beam: src.beam } : {}) });
     }
   }

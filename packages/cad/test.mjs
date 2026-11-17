@@ -2754,7 +2754,7 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     assert.deepEqual([r.ops.x1, r.hardware], [[['drill', 'front.1@120', 120, 14, 5.5]], [['screw', 'M5x35 cap', 'cap']]]);
     assert.deepEqual(r.findings.filter((x) => /^(fasten|overlap|join\.geometry)/.test(x.code) && x.level !== 'pass'), []);
     // a kind whose fitting comes later: checked where it meets, nothing drilled, and it says so
-    a.joins[0] = { kind: 'bracket', a: 'y1.a', b: 'x1.back@120', fitting: 'printed' }; write();
+    a.joins[0] = { kind: 'bracket', a: 'y1.a', b: 'x1.back@120', fitting: 'bought' }; write();
     r = probe();
     assert.deepEqual([r.ops, r.hardware, by('join.fitting').map((x) => x.level), by('join.geometry').map((x) => x.level)], [{ x1: [], y1: [] }, [], ['warn'], ['pass']]);
     // a mitre: each end cut at 45° about the face the corner lies in, the length on the outside of the corner
@@ -2768,7 +2768,7 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     // refused by name: a join on an item that is not a beam, a key a join does not take; cad add join kept to the beams
     const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/tee'), pattern); };
     refused((b) => { b.joins = [{ kind: 'blind', a: 'z1.a', b: 'x1.back@120' }]; }, /join 1: a is on a beam item of this assembly, and z1 is not an item \(beams: x1, y1\)/);
-    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, note/);
+    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, brace, load, nut, note/);
     refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'y1.back@120' }]; }, /join 1: a and b are on one beam, y1/);
     write({ ...a, joins: [] });
     assert.match(cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'y1.a', '--b', 'x1.back@120'), /added a join/);
@@ -2906,6 +2906,69 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     refused((b) => { b.fasten[0].into = 'plate2'; }, /fasten 1: "nut" is true \(a hexagon nut\) or hex, square, lock \(got "drop-in"\): a drop-in nut goes in a beam's slot, so "into" names the slot \(x1\.top\)/);
     refused((b) => { b.fasten[0].into = 'x1.top@400'; }, /fasten 1: "top\.1@400" is past the end of/);
     write(); assert.match(cad('check', 'frame/frame'), /files match their schemas/);
+  } finally { done(); }
+});
+
+test('printed fittings: a bracket join with "fitting": "printed" adds a printed corner bracket on the side with room, its two screws into slot nuts, its grams on the list and its own stiffness', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/corner.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // y1 stands on x1's top face 100 mm from its end a; a printed bracket holds it
+    const a = { title: 'Corner', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [300, 0, 0] }, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [100, 0, 10], to: [100, 0, 210] }],
+      joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.top@100', fitting: 'printed' }] };
+    const write = (x = a) => fs.writeFileSync(file, JSON.stringify(x));
+    write();
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/corner'), id = s.items.find((i) => i.fitting)?.id, br = s.parts.filter((p) => p.item === id), o = s.objects.find((x) => x.id === id);
+      const lo = [0, 1, 2].map((k) => Math.min(...br.flatMap((p) => p.triangles.flat().map((v) => v[k])))), hi = [0, 1, 2].map((k) => Math.max(...br.flatMap((p) => p.triangles.flat().map((v) => v[k]))));
+      console.log(JSON.stringify({ items: s.items.map((i) => [i.id, i.role]), box: [lo, hi].map((v) => v.map((x) => +x.toFixed(2))), fitting: o && { name: o.fitting.name, thickness: o.fitting.thickness, leg: o.fitting.leg, bending: o.fitting.stiffness.bending, grams: o.fitting.grams, margin: o.fitting.margin },
+        hardware: s.hardware.map((h) => [h.fasten, h.kind, h.name]), findings: checkAssembly(s).filter((f) => /^(join|fasten|overlap|frame)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r = probe();
+    const by = (code) => r.findings.filter((x) => x.code === code);
+    // the bracket is an item of its own, a printed part, on the side of y1 with more of x1 (toward x1's end b)
+    assert.deepEqual(r.items, [['x1', 'reference'], ['y1', 'reference'], ['y1-x1-bracket', 'part']]);
+    assert.deepEqual(r.fitting, { name: 'bracket-2020-misumi-hfs5-m5', thickness: 6.4, leg: 24, bending: r.fitting.bending, grams: r.fitting.grams, margin: r.fitting.margin });
+    assert.ok(r.fitting.margin >= 2 && r.fitting.grams > 0 && r.fitting.bending > 0);
+    // its corner on y1's back face (x = 110) and x1's top (z = 10), its legs 24 mm along each, its tongues 1 mm into the slots
+    assert.deepEqual(r.box, [[109, -10, 9], [134, 10, 34]]);
+    // two screws, one into each beam's slot, each into a slide-in nut, the length it was thickened for
+    assert.deepEqual(r.hardware, [[0, 'screw', 'M5x12 cap'], [0, 'nut', 'slot-nut-6-misumi-m5-slide-in'], [1, 'screw', 'M5x12 cap'], [1, 'nut', 'slot-nut-6-misumi-m5-slide-in']]);
+    for (const code of ['fasten.holes', 'fasten.slot', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'fasten.access', 'overlap', 'join.geometry', 'frame.nut']) assert.deepEqual([...new Set(by(code).map((x) => x.level))], ['pass'], `${code}: ${JSON.stringify(by(code).filter((x) => x.level !== 'pass'))}`);
+    assert.deepEqual(by('fasten.slot').map((x) => x.values.along), [128.05, 18.05]);
+    assert.match(by('fasten.length')[0].text, /M5x12 cap chosen, the shortest sold that fits: 8\.4 mm under its head \(y1-x1-bracket and the slot's 2 mm lip\), 4\.1 mm into its nut, its tip 5\.6 mm into the slot and 0\.4 mm short of its floor/);
+    // the join's stiffness is the bracket's own by finite elements now, and still says what it leaves out
+    assert.deepEqual(by('join.stiffness').map((x) => [x.values.bending, x.refs.item]), [[r.fitting.bending, 'y1-x1-bracket']]);
+    assert.match(by('join.stiffness')[0].text, /y1-x1-bracket's own by finite elements \(\d+(\.\d+)? N\/mm at its screw under 100 N, [\d.]+ times under its plastic's strength, [\d.]+ g\).*until the joint rig \(issue 264\) measures it/);
+    assert.deepEqual(by('join.fitting'), []);
+    // cad list: the printed bracket by its grams, the two screws and nuts
+    const list = cad('list', 'frame/corner');
+    assert.match(list, /Printed \(pla\)\s+[\d.]+ g\s+about \d+ min\s+y1-x1-bracket \(fitting:bracket-2020-misumi-hfs5-m5\)/);
+    assert.match(list, /2 ×\s+M5x12 cap/); assert.match(list, /2 ×\s+slot-nut-6-misumi-m5-slide-in/);
+    // y1 near x1's end b: the bracket goes on y1's other side, toward x1's end a
+    a.items[1].from = [250, 0, 10]; a.items[1].to = [250, 0, 210]; a.joins[0].b = 'x1.top@250'; write();
+    r = probe();
+    assert.deepEqual(r.box, [[216, -10, 9], [241, 10, 34]]);
+    assert.deepEqual(r.findings.filter((x) => x.level === 'fail'), []);
+    // braced: the same screws, a stiffer bracket, every check still passing
+    a.items[1].from = [100, 0, 10]; a.items[1].to = [100, 0, 210]; a.joins[0].b = 'x1.top@100'; a.joins[0].brace = true; write();
+    const braced = probe();
+    assert.equal(braced.fitting.name, 'bracket-2020-misumi-hfs5-m5-braced'); assert.ok(braced.fitting.bending > 1.5 * r.fitting.bending, `${braced.fitting.bending} against ${r.fitting.bending}`);
+    assert.deepEqual(braced.findings.filter((x) => x.level === 'fail').map((x) => x.text), []);
+    // a bought bracket still waits for its release, and says the printed one is there
+    write({ ...a, joins: [{ kind: 'bracket', a: 'y1.a', b: 'x1.top@100', fitting: 'bought' }] });
+    r = probe();
+    assert.deepEqual([r.items.length, r.hardware, by('join.fitting').map((x) => x.level)], [2, [], ['warn']]);
+    assert.match(by('join.fitting')[0].text, /A printed one is drawn now: give "fitting": "printed"/);
+    // refused by name: a brace on a join with no printed fitting, a bracket with no room on a short beam
+    const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/corner'), pattern); };
+    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.top@100', brace: true }]; }, /join 1: brace is for a printed fitting: give "fitting": "printed" on a bracket, gusset, splice join, or leave brace out/);
+    refused((b) => { b.items[0].to = [40, 0, 0]; b.items[1].from = [20, 0, 10]; b.items[1].to = [20, 0, 210]; b.joins[0] = { kind: 'bracket', a: 'y1.a', b: 'x1.top@20', fitting: 'printed' }; }, /join 1: a printed bracket's 24 mm leg runs 14 mm past x1's end b: it goes on the side of y1 with more of x1, and there is only 10 mm there/);
+    write();
+    assert.match(cad('check', 'frame/corner'), /files match their schemas/);
   } finally { done(); }
 });
 
