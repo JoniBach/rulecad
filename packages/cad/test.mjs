@@ -3694,7 +3694,7 @@ test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and
   } finally { done(); }
 });
 
-test('guides on a frame: a rods guide on a beam joined at both ends shuts its holders\' slide-in nuts in, and cad check says so in a mechanism\'s poses; "nut": "drop-in" puts them in through the opening', () => {
+test('guides on a frame: a rods guide on a beam joined at both ends shuts its holders\' slide-in nuts in, and cad check says so in a mechanism\'s poses; "nut": "drop-in" puts them in through the opening; cad plates lays its printed fittings out as they print', () => {
   const { ws, cad, done } = workspace();
   try {
     fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
@@ -3716,5 +3716,11 @@ test('guides on a frame: a rods guide on a beam joined at both ends shuts its ho
     const drop = cad('check', 'frame/frame');
     assert.doesNotMatch(drop, /✗/, drop);
     assert.equal((drop.match(/✓ g1: g1-holder-[ab]'s leg into x1's (front|back) slot: 1 drop-in nut \(slot-nut-6-misumi-m4-drop-in\) goes into x1's (front|back) slot through its opening, anywhere along it/g) || []).length, 4, drop);
+    // its printed fittings on a plate: each item's fitting laid as it prints ("pose": "print"), checked as one print
+    assert.match(cad('plates', 'frame/frame'), /frame-base-1: base, 3 parts, [\d.]+ g, about \d+ min: (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1)\n\s+frame-base-1: prints clean/);
+    const plate = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/frame-base-1.json'), 'utf8'));
+    assert.deepEqual(plate.items.map((it) => [it.fitting?.kind, it.fitting?.pose]).sort(), [['rod-carriage', 'print'], ['rod-holder', 'print'], ['rod-holder', 'print']]);
+    const onIt = cad('check', 'frame/frame-base-1');
+    assert.doesNotMatch(onIt, /[✗!] /, onIt); assert.match(onIt, /no parts overlap \(3 object instances\)/);
   } finally { done(); }
 });

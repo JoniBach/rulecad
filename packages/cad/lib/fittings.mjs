@@ -93,15 +93,18 @@ function moreModel(spec, context, material, what) {
  * @param {object} it the item @param {string} id @param {object} context @param {string} [material]
  */
 export async function fittingBuilt(it, id, context, material = 'pla') {
-  const m = fittingModel(it.fitting, context, material, `item ${id}`);
+  // "pose": "print" lays it as it prints, for a plate (cad plates writes it so); the model is the same either way
+  const { pose = 'fit', ...spec } = it.fitting ?? {};
+  if (pose !== 'fit' && pose !== 'print') throw new Error(`item ${id}: fitting.pose is fit (in its place, the default) or print (as it prints, for a plate) (got ${shown(pose)})`);
+  const m = fittingModel(spec, context, material, `item ${id}`);
   // joined and cut by Manifold where the workspace has it, so the solid is watertight for the overlap check (JSCAD's
   // booleans leave seams that Manifold cannot read, and JSCAD's own intersection then misreads a head in its seat)
   let ops = null; try { ops = await booleans('manifold'); } catch {}
-  if (MORE[it.fitting.kind]) return moreBuilt(it, id, m, ops);
+  if (MORE[it.fitting.kind]) return moreBuilt(it, id, m, ops, pose);
   const draw = (o) => { const f = m.fitting === 'bracket' ? bracket : plate; try { return f(m, { ...o, ...(ops ? { ops } : {}) }); } catch { return f(m, o); } };
-  const parts = named({ body: draw({ pose: 'fit' }) }, { body: { label: m.title } });
+  const parts = named({ body: draw({ pose }) }, { body: { label: m.title } });
   // its tongues stand in the slots, inside the beams' envelopes: the overlap check measures the body without them
-  parts[0].collide = named({ body: draw({ pose: 'fit', tongues: false }) }, {})[0].geometry;
+  if (pose === 'fit') parts[0].collide = named({ body: draw({ pose: 'fit', tongues: false }) }, {})[0].geometry;
   // an anchor on each screw's axis at its head's seat, z out of the fitting toward the head: b1, b2 .. into b; a1 .. into a
   const count = { a: 0, b: 0 }, anchors = Object.fromEntries(m.screws.map((sc) => [`${sc.leg}${++count[sc.leg]}`, { at: m.fitting === 'bracket' ? sc.at : [sc.at[0], sc.at[1], m.thickness], axis: sc.axis.map((c) => (c ? -c : 0)) }]));
   const values = { thickness: m.thickness, width: m.width, grams: m.grams, margin: m.margin, stiffness: m.stiffness.bending, load: m.load.force, ...(m.leg ? { leg: m.leg } : { arm: m.arm }) };
@@ -115,11 +118,11 @@ export async function fittingBuilt(it, id, context, material = 'pla') {
 // A panel's, a door's or an end's fitting built: fitted, its tongue (where it has one) left out of the overlap check;
 // an anchor on each screw's axis at its head (b1, b2 .. for screws into a slot or a bore; d1, d2 .. for a hinge's
 // door leaf's, through the door); a hinge's door leaf and a levelling foot's pad carry no findings or hardware of their own
-function moreBuilt(it, id, m, ops) {
+function moreBuilt(it, id, m, ops, pose = 'fit') {
   const [, solid, o = {}] = MORE[it.fitting.kind], part = it.fitting.part ?? o.parts?.[0], second = o.parts && part !== o.parts[0];
-  const draw = (x) => { const f = (y) => frames[solid](m, { pose: 'fit', ...(part ? { part } : {}), ...x, ...y }); try { return f(ops ? { ops } : {}); } catch { return f({}); } };
+  const draw = (x) => { const f = (y) => frames[solid](m, { pose, ...(part ? { part } : {}), ...x, ...y }); try { return f(ops ? { ops } : {}); } catch { return f({}); } };
   const parts = named({ body: draw({}) }, { body: { label: `${m.title}${part ? `, ${part}` : ''}` } });
-  if (TONGUED.includes(m.fitting)) parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
+  if (TONGUED.includes(m.fitting) && pose === 'fit') parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
   const list = it.fitting.kind === 'hinge' && part === 'door' ? m.door.map((q, k) => [`d${k + 1}`, q]) : (m.screws ?? []).filter((q) => q.into !== 'castor' && q.into !== 'pilot').map((q, k) => [`b${k + 1}`, q]);
   const anchors = { ...Object.fromEntries(list.map(([n, q]) => [n, { at: q.at, axis: q.axis.map((c) => (c ? -c : 0)) }])), ...(m.anchors ?? {}) }; // (and its own: a mount's device and screws, a clip's cable)
   const values = { grams: m.grams, ...(m.margin != null && Number.isFinite(m.margin) ? { margin: m.margin } : {}), ...(m.load?.force ? { load: m.load.force } : {}) };
