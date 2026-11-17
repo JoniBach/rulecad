@@ -431,6 +431,16 @@ beams of a frame can be printed within its deflection, frequency and creep limit
 - **A beam coupon.** A short printed beam bent between two supports gives the stiffness and strength the checks
   use, by `cad measured`.
 
+Built (issue 269): the kit's printable profiles, `profile-1515-printed` to `profile-4040-printed`, have one slot, in
+the top face, its lips sloped underneath at the printer's overhang angle, and are solid below with a heat-set insert or
+a captive nut in each end; a slot in a side face would hang its upper lip in mid-air, and one on the bed leaves too
+little under it for an end's insert. `"printed": true` on a beam makes a printed part with its mass and section figures
+from its walls and infill (estimates), on a plate and off the cut list. A splice is a lap with a 45° ridge on the bed in
+a notch open to it, a key in the middle and two upright screws, sized so the joint carries what the beam does there.
+A 240 mm printed 2020 prints lying down with no support and takes MISUMI's M4 drop-in nut; a 400 mm one splices into
+halves of 215.9 and 256 mm on the X1C. Still to come: the beam coupon, `beam.printable` across a frame's checks with
+the material as a variable, creep, and a splice in a cad assembly.
+
 ### 4.10 Generated frames and kits
 
 A frame can be asked for by what it is for:

@@ -9,6 +9,10 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- **Printed beams**: `"printed": true` (or `{ pose, walls, infill, end, pull }`) on a beam item makes it a printed
+  part: drawn solid, weighed on `cad list` by the plastic its walls and infill lay (a part's `fill`), laid on a plate as
+  it prints (`"laid": true`, which `cad plates` writes), off the cut list and the beam sheets. Its findings say how it
+  prints. It was refused by name before.
 - **The frame solved** (`@rulecad/fea/frame`): an assembly with joins is solved as beam elements, each join a rigid
   link and its spring, held at its feet or where `"frame": { "supports" }` says. `frame.deflection` gives the sag at
   each load, each `"frame": { "points" }` and every guide, with the joins' springs and rigid, and says which it rests

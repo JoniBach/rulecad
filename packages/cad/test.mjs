@@ -4440,7 +4440,7 @@ test('a printed beam in an assembly: a printed part weighed by its walls and inf
     const check = cad('check', 'frame/frame');
     assert.match(check, /✓ x1: profile-2020-printed x 240, printed lying down on its bottom face: its layers run along it/, check);
     assert.match(check, /✓ x1: .*end a takes M4 in a heat-set insert/);
-    // on the list: x1 printed, by the plastic its walls and infill lay (PLA 1.26 g/cm³: 205.8 mm² x 240 mm = 62.2 g), y1 bought and cut
+    // on the list: x1 printed, by the plastic its walls and infill lay (PLA 1.26 g/cm³: 204.2 mm² x 240 mm = 61.8 g), y1 bought and cut
     const list = cad('list', 'frame/frame');
     assert.match(list, /6\d\.\d+ g\s+about \d+ min\s+x1/, list);
     assert.match(list, /1 ×\s+profile-2020-misumi-hfs5 x 240 mm\s+a beam/);

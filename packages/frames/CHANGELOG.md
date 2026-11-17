@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased: squareness from cuts and joins' play (Frames 3)
+## Unreleased: squareness from cuts and joins' play, and printed beams (Frames 3)
 
 ### Added
 
@@ -12,8 +12,22 @@ What changed in each release, for someone upgrading a workspace.
   own tolerance where it differs, and each join's play, stacked across the diagonals (sum for the worst case,
   root-sum-square beside it); the result carries `terms` and `rss`. Left out, `cuts` is two beams along the larger
   side and `plays` none, which gives the figures it gave before.
+- Printed beams: `beamModel(profile, { length, printed })` makes a printed part (lying down or standing up), its mass
+  and section figures from its walls and infill (`printedSection`), its tapped ends heat-set inserts or captive nuts,
+  findings `beam.printable`, `beam.mass`, `beam.strength`, `beam.slot` and `beam.end`. `printedBeam` draws it as it
+  prints. `printedProfile` works out a printable profile from a slot family's nuts and a printer's rules;
+  `PRINTED_DEFAULTS`, `PRINTED_SERIES`, `printerFigures`. `spliceModel` and `splice`: a keyed lap with two screws
+  joining two halves of a beam longer than the bed.
 
 ### Changed
+
+- `nutFit` seats a nut under lips that slope underneath (`lip_angle`) on its top corners, and measures its room from
+  there, with a `slot_nut.seat` finding. The 80/20 slots (2°) are the only published sets it moves, and no nut is
+  made for them in the kit.
+- An operation on a beam of a printed profile is refused only where the beam is not printed; on a printed beam its
+  holes are sized by the printer and a hole on its side as it prints is a teardrop (`opsOf`'s `printed`,
+  `opCutters`' `up`).
+- `printable` gives a printed beam's own findings; a bought beam or a profile still fails.
 
 - `cutList`'s `tolerance`, given, is taken before a profile's own `cut_tolerance` (the maker's figure is for its
   cut service; a workshop's saw is its own).
