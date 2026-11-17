@@ -611,8 +611,8 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   "2020-misumi-hfs5" }, "at": "x1.top@130", "rotate": [90, 0, 0] }`. It is a printed part, joined and cut by Manifold
   where the workspace has it; its anchors `b1`, `a1` (and `b2`, ... on a plate) lie on its screws' axes for a fasten's
   `at`. The overlap check measures its body without its tongues, which stand in the slots.
-- The printed parts for panels, doors and beams' ends are fitting items too (@rulecad/frames' README, Panels and
-  doors, Ends and feet): `"kind"` is `panel-clip`, `panel-corner`, `slot-cover`, `panel-edge`, `gasket-strip`,
+- The printed parts for panels, doors, beams' ends and services are fitting items too (@rulecad/frames' README,
+  Panels and doors, Ends and feet, Services): `"kind"` is `panel-clip`, `panel-corner`, `slot-cover`, `panel-edge`, `gasket-strip`,
   `hinge`, `handle`, `latch`, `magnet-catch`, `end-cap`, `foot`, `levelling-foot`, `castor-plate` or
   `stacking-foot`, with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
   "frame"` and `"part": "door"`, and a levelling foot's pad is `"part": "pad"`. An end part goes at the end's address
@@ -696,6 +696,32 @@ Once an assembly is checked, these say how to make it. They all read the assembl
   nothing collides; with its latch shut, the door hits the latch within its first degree, so sweep in steps that
   fine to see it.
 - In a mechanism, a beam placed by its ends is the frame: what is screwed to it is held (`assembly.loose`).
+
+**Services on a frame.** A bought board or supply with `"mount"` sits on a printed mount at an address on a beam's
+slotted face, its holes read from its own rule set (@rulecad/frames' README, Services):
+
+```json
+{ "id": "psu", "bought": "supply-24v", "variant": "LRS-50-24", "mount": { "on": "rail.top@-90" } }
+```
+
+- The mount is an item `<id>-mount` (a `device-mount` fitting), listed just before the device, and the device goes on
+  its anchor `device`: leave out the device's `at` and `rotate`. `"turn"` (0, 90, 180, 270) and `"offset"` (mm across
+  the slot) move the device on it; `"standoff"`, `"load"`, `"nut"`, `"head"` and `"screw"` are the model's own.
+- Its screws are fastens, so each is chosen, checked and counted: two into the slot past the device's body, and the
+  device's own. A supply's go up from under the mount into its tapped holes: `fasten.length` chooses the longest sold
+  that goes no further than its maker allows (`mount_hole_reach`, Mean Well's 3 mm), and `fasten.engagement` holds it
+  to that. A board's go down through its drilled holes (held to the drilled clearances) into pilots on the mount.
+  Refused by name: a mount on what is not a bought board or supply, a set with no `mount_holes`, an address that is
+  not on a slotted face, an item with both `at` and `mount`.
+- `cad check` says `service.mount` for each, with the mount's own findings (`fitting.device`, `fitting.head`, its
+  grams and margin).
+- A wire's `via` may hold a run along a slot: `{ "along": "rail.front", "from": 300, "to": 60, "pitch": 100,
+  "cable": 6 }`, its ends in mm from the beam's end a. Printed cable clips snap into the slot at each end and no more
+  than `pitch` apart (`<wire>-clip`, `<wire>-clip-2`, ...), each held by a fit that fastens, and the wire is routed
+  through them, so its length follows the beam. `wire.run` says the run's length and its clips, and `wire.length`
+  the part of the wire along the slot and how many clips hold it. A run past the beam's end is refused by name.
+- The other service parts are fitting items by kind: `fan-mount` (`"size": 80`), `drag-chain-end` (`"holes"`,
+  `"screw"`), `din-rail`, `cable-clip`, `tie-anchor` and `spool-holder`.
 
 ## Optimised parts
 

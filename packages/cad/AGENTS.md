@@ -106,6 +106,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   fastened into its slot; report its size and grams from `cad check` (`panel.size`) and the clips from `cad list`.
   `"door": { "hinge": "z1" }` makes it a door on two printed hinges, turning on a joint: run `cad check --sweep` and
   report what it finds. A turn-button latch shown shut blocks the door in its first degree, which is right.
+- **A board or supply on a frame is a bought item with `"mount"`**: `{ "id": "psu", "bought": "supply-24v",
+  "variant": "LRS-50-24", "mount": { "on": "rail.top@-90" } }`. Its holes come from its rule set (`mount_holes`, x then
+  y for each); add them from the maker's drawing, with their source, before mounting a device whose set has none. A
+  wire along a beam is a run in its `via`, `{ "along": "rail.front", "from": 300, "to": 60 }`: report its length and
+  its clips from `wire.length` and `wire.run`.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
   a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close

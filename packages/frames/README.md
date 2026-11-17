@@ -584,6 +584,42 @@ hinge's pin; `DOOR_DEFAULTS.pull`, 100 N on a handle): give the loads your frame
 brackets': `fitting.size`, `fitting.tongue`, `fitting.screw`, `fitting.margin` (said to be an estimate),
 `fitting.printable`, `fitting.mass`, and a hinge's `fitting.pin` and `fitting.swing`.
 
+## Services: cables, boards, supplies and fans
+
+The parts that carry a machine's services on its frame, drawn from the same rules as the brackets:
+
+| Part | What it is | Prints |
+|---|---|---|
+| `deviceMountModel(profile, { device, variant? })` | A plate for a bought board or supply, its holes read from the device's rule set (`mount_holes`, x then y for each, from its middle). A supply's tapped holes (`mount_hole_thread`, `mount_hole_reach`) take screws up from under the plate, sunk in counterbores, no further into the case than its maker allows. A board's plain holes (`mount_hole_diameter`) take the largest screw whose head sits whole on the board, down through it into pilots on bosses that stand it off its soldered leads. The plate is screwed into slot nuts past the device's body | A supply's top face down; a board's beam side down |
+| `fanMountModel(profile, { size })` | A plate beside the beam for a 40, 60, 80, 92 or 120 mm fan (`FANS`), a round opening for the air, the fan's four screws through its corners into pilots | Beam side down |
+| `dragChainEndModel(profile, { holes, screw })` | A plate for a drag chain's end bracket, its holes and screws from the chain maker's drawing | Beam side down |
+| `dinRailAdapterModel(profile)` | A block that carries a TS35 top-hat rail (`DIN_RAIL`) across the beam, the rail screwed through its middle, the block screwed into the slot each side of it | Beam side down |
+| `cableClipModel(profile, { cable })` | A stem through the slot's opening with barbs under its lips, a flange on the face and a ring that opens for the bundle to snap in. No screw: it goes in anywhere along the slot | On its side |
+| `tieAnchorModel(profile)` | A block screwed into a slot nut with a tunnel across it beside the screw for a cable tie, its roof pointed so it needs no bridge | On its side |
+| `spoolHolderModel(profile, { spool? })` | An arm out from a beam's side that a spool's bore hangs on, a lip at its tip, sized from the full spool's weight twice over | On its side |
+
+`runClips(length, { pitch })` places clips along a run of slot: one at each end and evenly between, no more than the
+pitch apart (100 mm by default).
+
+```js
+import { deviceMountModel } from '@rulecad/frames'
+import supply from '@rulecad/rules/supply-24v.json' with { type: 'json' }
+import shield from '@rulecad/rules/cnc-shield-v3.json' with { type: 'json' }
+
+const s = deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-50-24' })
+s.device.holes, s.device.length, s.grams      // [[-29, -13.85], [26, -13.85]], M3x5 (3 mm in, Mean Well's L), 27.66 g
+const b = deviceMountModel('2020-misumi-hfs5', { device: shield })
+b.device.thread, b.device.head, b.standoff    // M2.5, cap, 3 mm: an M3's head would overhang the Uno's edge
+```
+
+A supply's screws go in from under the plate, so where its holes lie over the beam the device is set to the side
+(`offset`) until a key reaches each beside the beam: the LRS-50's holes, 0.5 mm off its middle line, move 13.35 mm
+across a 2020. A device's x lies along the slot; `turn` (0, 90, 180, 270) turns it. A board's plate has a window
+inside its holes to save plastic, and is checked at the beam's edge with the window out of its section. The parts
+report `fitting.device` (the device's screws, their length and engagement), `fitting.head` (a board's screw and why),
+and the brackets' `fitting.screw`, `fitting.margin`, `fitting.printable` and `fitting.mass`. A rule set with no
+`mount_holes` is refused by name.
+
 ## Ends and feet
 
 | Part | What it is | Prints |
@@ -733,6 +769,14 @@ kit's.
 | A carrier's hold, at its shoulders | F = τ × 2 (L h − w g), h the carrier's depth below the lips at the opening's edge, w × g the nut's slot | Two shear planes up the sides of the opening |
 | A nut's mass | m = V ρ / 1000, V its drawn block's volume in mm³ | |
 | Share of a full thread a bore leaves | (major diameter − bore) / (1.299 × pitch) | The 60° thread's height is H = 0.866 pitch, and "percent of thread" counts 3/4 H a side: 1.299 pitch on the diameter |
+| A mount plate's margin | S / (6 F a / (b t²)), F at the farthest hole a past the beam's face, b the plate's length (less a window's), t its thickness | Beam theory for a plate bent where it leaves the beam's face |
+| A supply's screw | the shortest sold with L − reach ≥ three lines of floor: the floor is L − reach, the head sunk in the rest | The maker's reach (Mean Well's L) as the limit |
+| A board's screw | the largest whose clearance passes the hole and whose head's radius ≤ the holes' least distance from the board's edges | A head that sits whole bears on the board, not on its edge |
+| A board's standoff | ≥ engagement + tip room + a layer + three lines − t, and ≥ `SERVICE_DEFAULTS.standoff` | The pilot's depth, from `@rulecad/fixings`' engagement in plastic |
+| A clip's hold | σ = F / (w × min(stem, 2 × ring wall)) | The stem and the ring in tension, an estimate |
+| A tie anchor's roof | σ = 6 (F t_w / 8) / (b h²) | A beam across the tie's width, both ends held, its load at the middle |
+| A spool holder's arm | σ = 6 F (2 + w_s / 2) / (b t²), F = 2 m g | A cantilever with the spool's weight at its middle |
+| Clips along a run | n = max(2, ⌈L / pitch⌉ + 1), L / (n − 1) apart | One at each end, evenly between |
 
 Why the torsion constant is solved for and not taken from the polar moment: a slotted section is open. MISUMI's
 HFS5-2020 has a polar moment of 14 850 mm⁴ and a torsion constant of 809 mm⁴ by this solve, eighteen times less,
@@ -757,6 +801,13 @@ thicknesses stocked are `community`. The panel parts' loads, a clip's grip, the 
 clearance, the handle's room for the fingers and the magnet's size are working figures or estimates
 (`PANEL_DEFAULTS`, `DOOR_DEFAULTS`, `END_DEFAULTS` say which); their margins are by beam formulas, and the magnet's
 pull is not checked, as no maker's figure is held.
+
+The service parts read a device's holes from its rule set: Mean Well's LRS specification sheets give each supply's
+base holes, thread and screw reach (`spec`); Arduino's UNO R3 datasheet gives the Uno's four holes under the CNC
+shield, three dimensioned and one read off its drawing (`community`). Fan hole spacings are ARCTIC's drawings for 40
+and 80 mm (`spec`), a secondary source for 92 and 120 mm (`community`) and an estimate for 60 mm. A TS35 rail is
+Weidmüller's data sheet. A board's standoff, the clip's barb and snap, a tie's band, a spool's size and the load
+figures are working figures or estimates (`SERVICE_DEFAULTS` says which); every margin is by beam formulas.
 
 Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm, Bosch Rexroth, item (Lines 5, 6 and 8, standard and
 light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, MakerBeamXL and OpenBeam, 80/20's
@@ -783,6 +834,7 @@ lists them.
 | `SHEETS`, `PANEL_DEFAULTS`, `panelModel(sheet, thickness, { size, corner?, holes? })`, `panel(m, { ops? })` | Sheets by material, the panel parts' working figures, a panel's model and its solid |
 | `panelClipModel`, `panelClip`, `panelCornerModel`, `panelCorner`, `panelEdgeModel`, `panelEdge`, `slotCoverModel`, `slotCover`, `gasketStripModel`, `gasketStrip` | The printed parts that hold a panel, each a model and its solid (`{ pose: 'print' \| 'fit' }`) |
 | `DOOR_DEFAULTS`, `hingeModel`, `hinge(m, { part: 'frame' \| 'door', pose? })`, `handleModel`, `handle`, `latchModel`, `latch`, `magnetCatchModel`, `magnetCatch` | A door's printed parts |
+| `SERVICE_DEFAULTS`, `FANS`, `DIN_RAIL`, `deviceMountModel(profile, { device, variant?, turn?, offset?, standoff?, screw? })`, `deviceMount`, `fanMountModel`, `fanMount`, `dragChainEndModel`, `dragChainEnd`, `dinRailAdapterModel`, `dinRailAdapter`, `cableClipModel`, `cableClip`, `tieAnchorModel`, `tieAnchor`, `spoolHolderModel`, `spoolHolder`, `runClips(length, { pitch? })` | The parts that carry services on a frame, each a model and its solid (`{ pose: 'print' \| 'fit' }`), and clips along a run |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
