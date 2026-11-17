@@ -6764,5 +6764,7 @@ Five things do not, and their findings say so:
 - The printed parts' margins, which rest on PLA's strength and on beam formulas or coarse finite elements.
 - The motor's case temperature (`motor.heat`): the maker's rise at its rated current, scaled by the square of the
   current the driver is set to (1.2 A here), since the heat goes as the current squared.
-- The lead nut's friction on the screw, 0.15, an estimate that goes to the motor's checks with the lead. The frame's own sag and
-sway under the carriage's load, and its lowest frequency, come with the frame checks (issues 265 to 267).
+- The lead nut's friction on the screw, 0.15, an estimate that goes to the motor's checks with the lead.
+
+The frame's own sag and sway under the carriage's load, and its lowest frequency, come with the frame checks (issues
+265 to 267).
