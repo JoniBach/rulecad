@@ -744,9 +744,9 @@ and the eccentric spacer that sets its preload (`eccentric-6-openbuilds`, `eccen
 ```js
 import { trackFit, wheelsModel, wheelMargin, sliderModel } from '@rulecad/frames'
 
-trackFit('2040-openbuilds', 'front', 'v-wheel-solid').seat     // { depth: 1.625, axle: 10.325, contact: [0, 1.45], ... }
+trackFit('2040-openbuilds', 'front', 'v-wheel-solid').seat     // { depth: 1.63, axle: 10.32, contact: [0, 1.455], ... }
 const m = wheelsModel('2040-openbuilds', { wheel: 'v-wheel-solid', face: 'top', wheels: 4 })
-m.wheels.map((w) => [w.x, w.y])   // [-20, -30.325], [20, -30.325] fixed; [-20, 30.325], [20, 30.325] on eccentrics
+m.wheels.map((w) => [w.x, w.y])   // [-20, -30.32], [20, -30.32] fixed; [-20, 30.32], [20, 30.32] on eccentrics
 m.length, m.gap, m.grams          // 63.9 mm over its wheels; the plate 1.5 mm over the face; 24.5 g of PLA
 wheelMargin(m, { force: [0, 0, -19.6], moment: [0, 0, 0] }).level   // 'pass': 2 kg, a quarter along each axle
 wheelsModel('2040-misumi-hfs5', {})   // refused: its front face has slot-6-misumi, a plain T-slot with no V track ...
@@ -767,8 +767,11 @@ sliderModel('2020-misumi-hfs5', { mode: 'in', material: 'petg' })   // a block u
   between the rows of wheels; it prints upside down, its top the first layer. Its screws, lock nuts, washers and
   spacers are its `hardware`.
 - **Beside the maker's plate.** `guide.seat` compares the seat with where OpenBuilds' own plate puts the axles across a
-  20 mm rail: for the solid wheel 40.65 mm against 39.7 mm, 0.47 mm a side, within the eccentric's 0.79 mm; for the
-  mini wheel 31.86 against 31.9. The seat rests on the slot's `track_width`, which is scaled off a drawing.
+  20 mm rail. The wheels on one side are fixed, so the eccentrics on the other take up the whole difference, each up
+  to its offset (0.79 mm) either way from mid-turn. For the mini wheel the seat is 31.85 mm against the plate's 31.9,
+  0.05 mm, well within. For the solid wheel it is 40.64 mm against 39.7 mm, 0.94 mm, more than an eccentric can take
+  up, so `guide.seat` warns: the rail's track (9.16 on its drawing) and the mini wheel agree, so the difference is in
+  the solid wheel or its plate. Measure the track and the wheel across its rim before printing a plate for it.
 - **Ratings.** Each wheel is rated from its plastic: the rim on the track by Hertz line contact at its allowed
   pressure (Delrin's compressive stress at 1% deformation), both flanks across the beam and one along the axle, under
   its bearings' static rating. `wheelMargin` shares a carriage's force and moment among its wheels
@@ -1130,8 +1133,8 @@ margins are by beam formulas.
 A V-wheel's rim, bearing seats and kit, the eccentric spacers and the plain spacers are read off OpenBuilds' drawings
 (`spec`). Its plastic's modulus and allowed contact pressure are Delrin 150's, from two data sheets, `community`
 because OpenBuilds does not name the grade; Poisson's ratio is an estimate. Where a wheel seats rests on the slot's
-`track_width`, which is scaled off OpenBuilds' rail drawing (`estimate`): measure your rail's track before trusting a
-plate drilled to it. How a carriage's loads are shared among its wheels and combined, the Hertz contact's radius, and
+`track_width` and `track_angle` (9.16 mm and 90 degrees, printed on OpenBuilds' rail drawing: `spec`) and the wheel's
+diameter and flat: a clone's track can differ, so measure your rail's track before trusting a plate drilled to it. How a carriage's loads are shared among its wheels and combined, the Hertz contact's radius, and
 a slider's friction and wear limit are working figures (`WHEEL_DEFAULTS` says which). The eccentrics' preload is not
 in the ratings.
 

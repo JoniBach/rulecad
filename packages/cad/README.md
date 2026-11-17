@@ -869,7 +869,7 @@ A carriage on V-wheels runs on a V-slot beam's own tracks, and a printed slider 
   spacers. The plate's anchor `top` takes what it carries.
 - Where each wheel seats comes from the slot's track and the wheel's rim (`guide.fit`, with the axle's distance from
   the face). On a face with no V track (a plain T-slot) the guide is refused, saying why and what guides there
-  instead. `guide.seat` compares the seat with the maker's own plate, `guide.preload` gives the eccentrics' range,
+  instead. `guide.seat` compares the seat with the maker's own plate and warns when the eccentrics, on one side only, cannot take up the whole difference, `guide.preload` gives the eccentrics' range,
   and `guide.rating` each wheel's ratings, which rest on its plastic's contact pressure (an estimate).
 - Each plate's loads are shared among its wheels at every pose (`joint.moment`), each wheel's radial and axial load
   over its ratings: past 1 it fails and names the most loaded wheel. The sharing is an estimate, said as one.

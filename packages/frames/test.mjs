@@ -239,8 +239,8 @@ test('cells that are not there: a C-beam is four cells by two less the upper mid
   const one = section(profileModel('2020-openbuilds'), { torsion: false }).area; assert.ok(s.area > 4.5 * one && s.area < 6 * one, `${s.area} mm² against six cells of ${one}`);
   assert.ok(s.centroid[1] < -2 && Math.abs(s.centroid[0]) < 1e-6); assert.ok(s.inertiaX < s.inertiaY);
   // a V-Slot's mouth is its wheel's track
-  const v = m.slots['slot-6-openbuilds']; assert.deepEqual([v.opening, v.mouth, v.trackWidth, v.trackAngle], [6.25, 9.15, 9.15, 90]);
-  assert.deepEqual(slotPath(v).slice(0, 3).map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]), [[-4.575, 0], [-3.125, 1.45], [-3.125, 1.8]], 'the V runs 1.45 down to the opening, then the lip\'s edge');
+  const v = m.slots['slot-6-openbuilds']; assert.deepEqual([v.opening, v.mouth, v.trackWidth, v.trackAngle], [6.25, 9.16, 9.16, 90]);
+  assert.deepEqual(slotPath(v).slice(0, 3).map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]), [[-4.58, 0], [-3.125, 1.455], [-3.125, 1.8]], 'the V runs 1.455 down to the opening, then the lip\'s edge');
   // refusals: a pair outside the grid, every cell gone, a hole in the middle
   const grid = (absent, across = 3, up = 3) => ({ name: 'grid', part: 'profile', rules: { ...SETS['profile-2020-openbuilds'].rules, cells_across: rule(across, ''), cells_up: rule(up, ''), width: rule(20 * across, 'mm'), height: rule(20 * up, 'mm'), cells_absent: rule(absent) } });
   assert.throws(() => profileModel(grid('4,1')), /cells_absent is across,up pairs inside the grid of 3 by 3, counted from 1, with semicolons between: 2,2; 3,2 \(got "4,1"\)/);
@@ -1220,19 +1220,23 @@ test('a miniature rail on a beam: its holes at the pitch, its screws into slot n
 test('wheels: a carriage on V-wheels for a V-slot 2040 seats its wheels from the track, sets its preload on eccentrics, prints its plate, and is refused on a plain T-slot with why', async () => {
   const { wheelsModel, wheelPlate, vWheel, wheelMargin, trackFit, wheels, WHEEL_DEFAULTS } = frames, V = '2040-openbuilds';
   assert.deepEqual(wheels(), ['v-wheel-mini', 'v-wheel-solid']);
-  // the seat from the rules: the 5.9 mm tip into the 9.15 mm track at 45 degrees goes (9.15 - 5.9) / 2 deep, the axle its radius less that
+  // the seat from the rules: the 5.9 mm tip into the 9.16 mm track at 45 degrees goes (9.16 - 5.9) / 2 deep, the axle its radius less that
   const fit = trackFit(V, 'front', 'v-wheel-solid');
-  assert.ok(fit.ok); assert.deepEqual([fit.seat.depth, fit.seat.axle, fit.seat.contact], [1.625, 10.325, [0, 1.45]]);
+  assert.ok(fit.ok); assert.deepEqual([fit.seat.depth, fit.seat.axle, fit.seat.contact], [1.63, 10.32, [0, 1.455]]);
   const m = wheelsModel(V, { wheel: 'v-wheel-solid' });
   assert.deepEqual(m.sides, [{ face: 'front', slot: 'slot-6-openbuilds' }, { face: 'back', slot: 'slot-6-openbuilds' }]);
-  assert.deepEqual(m.wheels.map((w) => [w.x, w.y, w.at[2], w.eccentric]), [[-20, -30.325, -10, false], [20, -30.325, -10, false], [-20, 30.325, -10, true], [20, 30.325, -10, true]], 'two fixed, two on eccentrics, in the tracks 10 mm under the top face, 20 + 10.325 out');
+  assert.deepEqual(m.wheels.map((w) => [w.x, w.y, w.at[2], w.eccentric]), [[-20, -30.32, -10, false], [20, -30.32, -10, false], [-20, 30.32, -10, true], [20, 30.32, -10, true]], 'two fixed, two on eccentrics, in the tracks 10 mm under the top face, 20 + 10.32 out');
   // the plate over the face: 6 mm spacers on a wheel 11 mm across its races put it 1.5 mm clear
   assert.equal(m.gap, 1.5); assert.equal(m.length, 63.9, 'the wheels\' 40 mm pitch and a 23.9 mm wheel');
-  // the seat beside OpenBuilds' own plate (39.7 mm across a 20 mm rail): 0.475 mm a side, inside the eccentric's 0.79 mm
-  assert.equal(coded(m, 'guide.seat')[0].level, 'info'); assert.match(coded(m, 'guide.seat')[0].text, /40\.65 mm apart and OpenBuilds' own plate 39\.7 mm: 0\.47 mm a side wider, within the eccentric's 0\.79 mm/);
+  // the seat beside OpenBuilds' own plate (39.7 mm across a 20 mm rail): 0.94 mm wider in all. The fixed wheels cannot
+  // move, so the eccentrics on the back take all of it, more than their 0.79 mm from mid-turn: a warning, not 0.47 a side
+  const seatF = coded(m, 'guide.seat')[0];
+  assert.equal(seatF.level, 'warn'); assert.deepEqual([seatF.values.mine, seatF.values.maker, seatF.values.difference, seatF.values.eccentric], [40.64, 39.7, 0.94, 0.79]);
+  assert.match(seatF.text, /40\.64 mm apart and OpenBuilds' own plate 39\.7 mm: 0\.94 mm wider, all of it taken up by the eccentrics on the back side, the fixed wheels being fixed\. That is more than the eccentric's 0\.79 mm either way from mid-turn: .*the eccentrics cannot bring their wheels in to the track/);
+  assert.match(seatF.text, /rests on the slot's and the wheel's figures \(track_width spec, track_angle spec, wheel_diameter spec, wheel_flat spec\)/);
   assert.match(coded(m, 'guide.preload')[0].text, /from 0\.79 mm into the track \(preload\) to 0\.79 mm clear of it, 1\.58 mm in all/);
   // each wheel's rating from its plastic: Hertz line contact at 36 MPa, both flanks across, one along its axle
-  const Es = 3100 / (1 - 0.35 ** 2), N = (Math.PI * 11.05 * (1.45 * Math.SQRT2) * 36 ** 2) / Es;
+  const Es = 3100 / (1 - 0.35 ** 2), N = (Math.PI * (10.32 + 1.455 / 2) * (1.455 * Math.SQRT2) * 36 ** 2) / Es;
   within(m.ratings.radial, 2 * N * Math.SQRT1_2, 0.01, 'radial'); within(m.ratings.axial, N * Math.SQRT1_2, 0.01, 'axial');
   // a carriage's loads shared out: 2 kg on the plate's middle presses along every axle, a quarter each
   const two = wheelMargin(m, { force: [0, 0, -2 * 9.80665], moment: [0, 0, 0] });
@@ -1249,10 +1253,10 @@ test('wheels: a carriage on V-wheels for a V-slot 2040 seats its wheels from the
   // three wheels, the mini wheel: one eccentric in the middle; its seat beside OpenBuilds' mini plate's 31.9 mm
   const mini = wheelsModel(V, { wheel: 'v-wheel-mini', wheels: 3 });
   assert.deepEqual(mini.wheels.map((w) => [w.x, w.eccentric]), [[-17.5, false], [17.5, false], [0, true]]);
-  assert.match(coded(mini, 'guide.seat')[0].text, /31\.86 mm apart and OpenBuilds' own plate 31\.9 mm/);
+  assert.match(coded(mini, 'guide.seat')[0].text, /31\.85 mm apart and OpenBuilds' own plate 31\.9 mm: 0\.05 mm closer, .*within the eccentric's 0\.79 mm/); assert.equal(coded(mini, 'guide.seat')[0].level, 'info');
   // a wheel's collide solid stops at the beam's face; its rim reaches past it into the track
   const bound = (g) => jscad.measurements.measureBoundingBox(g);
-  assert.ok(Math.abs(bound(vWheel(m, { collide: true }))[1][0] - 10.325) < 1e-6 && bound(vWheel(m))[1][0] > 11.9);
+  assert.ok(Math.abs(bound(vWheel(m, { collide: true }))[1][0] - 10.32) < 1e-6 && bound(vWheel(m))[1][0] > 11.9);
   // refused by name: a plain T-slot has no track, and says why and what guides there instead
   assert.throws(() => wheelsModel('2040-misumi-hfs5', {}), /wheels are refused on profile-2040-misumi-hfs5 under its top face: .*front face has slot-6-misumi, a plain T-slot with no V track .*: a V-wheel's flanks need a V to run on .* a rail \(kind rail\) or a printed slider \(kind slider\)/);
   const plain = trackFit('2040-misumi-hfs5', 'front', 'v-wheel-solid');

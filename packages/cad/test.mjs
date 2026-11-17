@@ -3830,16 +3830,16 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
     const by = (r, code) => r.findings.filter((x) => x.code === code);
     const w = probe('wheels');
     // from the profile's rules: the wheels' seats in the tracks of the front and back faces, both passing guide.fit
-    assert.deepEqual(by(w, 'guide.fit').map((x) => [x.level, x.values.axle, x.values.depth]), [['pass', 10.325, 1.625], ['pass', 10.325, 1.625]]);
+    assert.deepEqual(by(w, 'guide.fit').map((x) => [x.level, x.values.axle, x.values.depth]), [['pass', 10.32, 1.63], ['pass', 10.32, 1.63]]);
     assert.match(by(w, 'guide.fit')[0].text, /v-wheel-solid runs in slot-6-openbuilds's V track on profile-2040-openbuilds's front face/);
     // the plate is printed, the four wheels bought, their screws, nuts, washers and spacers on the list
     assert.deepEqual(w.printed.map((p) => p[0]), ['g1-carriage-1']); assert.ok(w.printed[0][1] > 5);
     assert.deepEqual(w.bought.filter((b) => b[2] === 'wheel'), [[4, 'v-wheel-solid', 'wheel']]);
     for (const x of [[4, 'M5x30 cap'], [4, 'M5 lock nut'], [2, 'M5 washer'], [2, 'eccentric-6-openbuilds'], [2, 'spacer 10 x 6 mm']]) assert.ok(w.fasteners.some((f) => f[0] === x[0] && f[1] === x[1]), `${x[1]}: ${JSON.stringify(w.fasteners)}`);
-    // the wheels stand either side of the 40 mm beam, their axles 20 + 10.325 out, their middles 10 mm under the top face
+    // the wheels stand either side of the 40 mm beam, their axles 20 + 10.32 out, their middles 10 mm under the top face
     const mid = (id, k) => (w.boxes[id][k][0] + w.boxes[id][k][1]) / 2;
     assert.equal(w.boxes['g1-carriage-1'][2][0], 11.5, 'the plate stands 1.5 mm over the top face, at z = 10');
-    assert.deepEqual([mid('g1-wheel-1', 1), mid('g1-wheel-3', 1)], [-30.325, 30.325]); assert.equal(mid('g1-wheel-1', 2), 3, 'a fixed wheel from 5.5 under the beam\'s middle up its spacer to the plate');
+    assert.deepEqual([mid('g1-wheel-1', 1), mid('g1-wheel-3', 1)], [-30.32, 30.32]); assert.equal(mid('g1-wheel-1', 2), 3, 'a fixed wheel from 5.5 under the beam\'s middle up its spacer to the plate');
     // it rolls its travel, from 0 to the stretch less its 63.9 mm over its wheels, both ends a pose; the sweep is clear of the beam
     assert.deepEqual(w.joints, [['g1-1', 'prismatic', [0, 336.1, 0]]]); assert.ok(w.poses.includes('g1-a') && w.poses.includes('g1-b'));
     assert.deepEqual(w.sweep.map((x) => [x.level, x.values.from, x.values.to]), [['pass', 0, 336.1]]);
@@ -3847,7 +3847,8 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
     // its wheels carry what is on it: 1 kg along their axles, a quarter each with the plate's own weight
     const [jm] = by(w, 'joint.moment');
     assert.equal(jm.level, 'pass'); assert.equal(jm.refs.carriage, 'g1-carriage-1'); assert.ok(jm.values.carried > 1 && jm.values.carried < 1.2, `carried ${jm.values.carried}`);
-    assert.deepEqual(w.findings.filter((x) => x.level === 'fail' || (x.level === 'warn' && !/^(frame|motor\.loads)/.test(x.code))).map((x) => `${x.code} ${x.text}`), []);
+    // the one warning: the seat is 0.94 mm wider than OpenBuilds' own plate, more than the eccentrics' 0.79 mm can take up
+    assert.deepEqual(w.findings.filter((x) => x.level === 'fail' || (x.level === 'warn' && !/^(frame|motor\.loads)/.test(x.code))).map((x) => `${x.code} ${x.values?.difference ?? ''}`), ['guide.seat 0.94']);
     // overloaded, it fails and names its most loaded wheel
     const heavy = by(probe('heavy'), 'joint.moment')[0];
     assert.equal(heavy.level, 'fail'); assert.match(heavy.text, /its most loaded wheel, w\d, takes .* past its rating/); assert.ok(heavy.values.margin < 1);
