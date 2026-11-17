@@ -61,7 +61,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad add fasten <project>/<assembly> --from-fits   a fasten in place of a holes fit and a fit that fastens the same parts
                                     (the screw read from them, or --screw "M2 cap")
   cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120   two beams joined: the end of a against b's face
-                                    [--screw "M5 button"] [--fitting printed|bought] [--note …]
+                                    [--screw "M5 button"] [--fitting printed|<bought set>] [--note …]
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets

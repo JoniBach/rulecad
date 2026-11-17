@@ -441,20 +441,22 @@ drills a clearance hole right across b instead, and the screw's cap head sits on
 |---|---|---|---|
 | `blind` | A tap in the end of a, a button-head screw in it, the head in a slot of b, an access hole across b | a face with a slot | The tap, the access hole, the screw |
 | `end-tap` | A tap in the end of a, a cap screw through a hole drilled across b | a face | The tap, the clearance hole, the screw |
-| `bracket` | A corner bracket with its slot nuts and screws | a face with a slot | Printed: nothing here, cad draws it (below); bought: the stiffness, the bracket with Frames 2.6 |
-| `gusset` | A flat plate (L, T or cross) over the joint | a face with a slot | Printed: as a bracket; bought: the stiffness, the plate later |
+| `bracket` | A corner bracket with its slot nuts and screws | a face with a slot | Printed: nothing here, cad draws it (below); bought: the set's screws, nuts and stiffness (Bought fittings) |
+| `gusset` | A flat plate (L, T or cross) over the joint | a face with a slot | Printed: as a bracket; bought: as a bracket |
 | `cube` | A three-way corner taking the beam ends | an end | The stiffness; the corner later |
-| `hidden` | A bought inner connector in the slots | a face with a slot | The stiffness; the connector with Frames 2.6 |
-| `anchor` | A bought anchor connector and its pocket | a face with a slot | The stiffness; the connector with Frames 2.6 |
+| `hidden` | A bought inner connector in the slots | a face with a slot | Bought: the set's stiffness; its grub screws are part of it |
+| `anchor` | A bought anchor connector and its pocket | a face with a slot | Bought: the hole its guide needs, drilled across a, and the set's stiffness |
 | `mitre` | Two mitred ends and a corner key or plate | an end | Both mitres, given `options.mitre` (cad works it out from where the beams are); the key later |
 | `pivot` | A hinge or pivot, which also moves | a face with a slot | The stiffness; the pivot and its joint later |
-| `splice` | Two beams end to end, with a joining plate | an end | Printed: as a bracket; bought: the stiffness, the plate later |
-| `printed` | A printed node that sockets the beam ends | a face or an end | The stiffness; the node with Frames 2.3 |
+| `splice` | Two beams end to end, with a joining plate | an end | Printed: as a bracket; bought: a straight plate's set, as a bracket |
+| `printed` | A printed node that sockets the beam ends | a face or an end | The stiffness; the node later |
 
 With `fitting: 'printed'`, a bracket, gusset or splice join has its fitting drawn by this release: `JOINS[kind].printed`
 names the generator, `j.fitting.made` is true, and no warning is given. Where the fitting goes depends on where the
-beams are, so the caller places it: cad's joins do (its README, Joins). A kind whose fitting comes later says so in a
-`join.fitting` warning and adds no operations or screws. A join that
+beams are, so the caller places it: cad's joins do (its README, Joins). With a bought fitting's set by name
+(`fitting: 'fitting-motedis-bracket-20-b6'`), `j.fitting.bought` is that set's model and the stiffness is the set's
+(below). A kind whose fitting is not chosen, or comes later, says so in a `join.fitting` warning that names what there
+is, and adds no operations or screws. A join that
 needs a slot on a closed face is a `join.geometry` failure, with nothing derived. Bad input is refused by name: an
 unknown kind, an end with no bore to tap (a tube: join it with a bracket or a gusset), an end with two bores (give a
 join for each, `a.1` and `a.2`), `b` the wrong sort of place for the kind, a screw or a fitting the kind does not
@@ -476,7 +478,54 @@ and a twist stiffness in N·mm/rad for a 20 mm series profile (`JOIN_STIFFNESS`)
 reasoning in its rule. A profile of another size is scaled by the cube of its width over 20 mm, and a printed fitting
 is taken at 0.3 of a bought one's (`JOIN_SCALE`), both estimates too. `joinStiffness(kind, beam, { fitting })` gives
 the figures and the end join `@rulecad/fea/frame` takes (`{ rx: twist, ry: bending, rz: bending }`). The joint rig
-(issue 264) measures them; until then a check that uses them says it rests on estimates.
+(issue 264) measures them; until then a check that uses them says it rests on estimates. A bought fitting's set
+carries its own `bending_stiffness` and `twist_stiffness`, which `boughtStiffness(kind, beam, fitting)` reads in
+their place; no maker publishes one, so each set's is an estimate too, and its rule says where it comes from.
+
+## Bought fittings
+
+A bought fitting is a rule set of part `fitting` in `@rulecad/rules`, read from its maker's drawing and shop page:
+what it is (`fitting_kind`), the profile size and slot family it is made for, the screws it is fixed with (thread,
+head, length, count) and the slot nut each goes into, where each screw passes into beam a and beam b (`holes_a`,
+`holes_b`: x along the beam from the fitting's corner, y across the face), its sizes, a hole a beam needs drilled for
+it, its price on the date checked (`cost`), and its stiffness. A join or a mount chooses printed or a bought set by
+name; the list, the operations and the stiffness follow the choice.
+
+```js
+import { beamModel, joinModel, boughtFittingModel } from '@rulecad/frames'
+
+const post = beamModel('2020-motedis-b6', { length: 200 }), rail = beamModel('2020-motedis-b6', { length: 300 })
+const j = joinModel('bracket', { beam: post, end: 'a' }, { beam: rail, address: 'back@120' }, { fitting: 'fitting-motedis-bracket-20-b6' })
+
+j.fitting.bought.screws   // an M4x8 cap into a hammer nut on each leg, 11 mm from the corner
+j.stiffness               // { bending: 3000000, twist: 1000000, kind: 'estimate', bought: { set, rule, source }, … }
+boughtFittingModel('fitting-motedis-foot-m6-d19', { profile: '2020-misumi-hfs5' }).findings
+// fail fitting.fit: its stem is M6, and 2020-misumi-hfs5's end bore is tapped M5
+```
+
+| Set | What | Made for | Price |
+|---|---|---|---|
+| `fitting-motedis-bracket-20-b6` | Motedis' closed cast corner bracket, 18 mm, an M4x8 cap and a hammer nut on each leg | 20 mm, B-type 6 mm slot | 0.36 EUR |
+| `fitting-motedis-plate-t-20` | Motedis' laser-cut aluminium T plate, 58 x 58 x 3 mm, five M5x8 caps into hammer nuts | 20 mm, B-type 6 mm slot | 1.21 EUR |
+| `fitting-motedis-inner-20-b6` | Motedis' zinc die-cast inner connector, in the slots, two M5x6 grub screws | 20 mm, B-type 6 mm slot | 0.65 EUR |
+| `fitting-misumi-hmj5` | MISUMI's centre joint: a post in a's centre bore, its head in b's slot, held by a guide in a 7.1 mm hole drilled across a 10 mm from its end | HFS5, 6 mm slot | not printed |
+| `fitting-motedis-hinge-20` | Motedis' light polyamide hinge, 39 x 30 mm, four M4 holes | 20 x 20 | 0.87 EUR |
+| `fitting-motedis-end-cap-20-b6` | Motedis' plastic end cap, 20 x 20 mm | 20 mm, B-type 6 mm slot | 0.07 EUR |
+| `fitting-motedis-foot-m6-d19` | Motedis' levelling foot, a 19 mm base on an M6 x 40 stem | an end bore tapped M6 | 2.00 EUR |
+
+Prices include 20% VAT, as the seller's page showed them on the date each was checked; screws and nuts are sold apart.
+
+`boughtFittingModel(set, { profile, other })` checks the fitting against the profiles it goes on: their size, the
+slot family its lugs and nuts are made for (by the slot's nut family), and a foot's stem against the end bore's
+thread. Each mismatch is a `fitting.fit` failure that names what would fit. In a join a fitting that does not fit
+places nothing. A set of the wrong kind for the join (a bracket on a `hidden` join), a plate of the wrong shape (a T
+on a splice) and a name that is no set are refused by name. `boughtFitting(model, { pose: 'fit' })` draws a reference
+solid from the set's figures, in the printed fittings' frames, so one placement serves both. A fitting that lies in
+the slots (an inner or anchor connector) is drawn there.
+
+A set of your own is a JSON file of part `fitting` in your workspace's `rules/`, each figure with its rule, kind,
+source and date, as the kit's are; `given: { sets }` hands it to these functions. Pivot joins take no bought hinge
+yet: the hinge goes on a door as an item.
 
 ## Printed fittings
 
@@ -737,6 +786,7 @@ kit's.
 | Second moments about the origin's axes | Iₓ = Σ (yᵢ² + yᵢ yᵢ₊₁ + yᵢ₊₁²) cᵢ / 12, I_y the same in x, I_xy = Σ (xᵢ yᵢ₊₁ + 2 xᵢ yᵢ + 2 xᵢ₊₁ yᵢ₊₁ + xᵢ₊₁ yᵢ) cᵢ / 24 | Steger, "On the calculation of arbitrary moments of polygons" (1996) |
 | Moved to the centroid | I about the centroid = I about the origin − A d² | The parallel axis theorem |
 | Section modulus | W = I / the distance from the centroid to the furthest fibre | Beam theory |
+| A printed part's plastic | cost = grams / 1000 × the material's `cost` (EUR/kg) | The material's rule set (Bambu Lab's EU store for `pla` and `petg`) |
 | Torsion constant | Solve ∇²φ = −2 in the metal with φ = 0 on the outside and φ constant over each hole, the constant fixed by ∮ ∂φ/∂n ds = −2 A_hole round it. Then J = 2 ∫φ dA over metal and holes | Prandtl's stress function: Timoshenko and Goodier, *Theory of Elasticity*, the chapter on torsion |
 | The solve | Square cells over the section (about 40 000), the five-point Laplacian with the wall half a cell from a cell's centre, one unknown for each hole, conjugate gradients | A finite-difference scheme; checked against the closed forms below |
 | Solid circle, for checking | J = π d⁴ / 32 | The polar moment of a circle, which is its torsion constant |
@@ -788,13 +838,17 @@ to within 10% of the open-section figure s t³ / 3.
 
 ## What it rests on
 
-Every profile, slot family and material is a rule set in `@rulecad/rules`, each value with its source and the date
+Every profile, slot family, bought fitting and material is a rule set in `@rulecad/rules`, each value with its source and the date
 it was read. A printed fitting's working figures (`FITTING_DEFAULTS`) say what each rests on: the margin and load are
 the kit's defaults, the least thickness, the round, the brace and the end distance are estimates until the print
 tests (Frames 2.13) check them, and a fitting's stiffness and margin are finite elements on cubes about a third of
 its thickness, which read a part 10 to 20% stiffer than it is. A dimension the maker prints is `spec`. One scaled off the maker's drawing because no figure is printed
 (the width of a slot's floor) is an `estimate`. A figure taken from the section a profile is made to match, or from
 a seller of unbranded stock, is `community`. `model.rests` and each figure's `kind` say which you are standing on.
+
+A bought fitting's sizes are its maker's drawing (`spec`); a screw's place along a leg that the drawing shows but does
+not dimension is an `estimate`. Its price is the seller's on the date checked. Its stiffness is a working guess,
+the same as `JOIN_STIFFNESS` for its kind, until the joint rig (issue 264) measures it: no maker publishes one.
 
 Panels' densities are the makers' (Evonik's PLEXIGLAS GS, Covestro's Makrolon GP, Aalco's 5754 sheet); the
 thicknesses stocked are `community`. The panel parts' loads, a clip's grip, the barb, the squeeze, a hinge's
@@ -838,7 +892,8 @@ lists them.
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
-| `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre? })` | A join: the operations on each beam, its screws, its fitting to come, its stiffness, what to know |
+| `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre?, given? })` | A join: the operations on each beam, its screws, its fitting (printed, or a bought set by name), its stiffness, what to know |
+| `BOUGHT_KINDS`, `boughtFittings(given?)`, `boughtFittingModel(set, { profile?, other?, join?, given? })`, `boughtFitting(m, { pose? })`, `boughtStiffness(kind, beam, m)`, `printedCost(grams, material)` | Bought fittings: the kinds and the join kinds that take each, the sets, one set's model (screws, holes, price, stiffness, fit), its reference solid, a join's stiffness with it, and a printed part's plastic beside its price |
 | `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join |
 | `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |

@@ -98,8 +98,12 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   drills b and adds its screw to the fasten checks and the list. A bracket, gusset or splice join with `"fitting":
   "printed"` adds its printed fitting, sized from `"load"` (N, default 100) by finite elements, and its screws into both
   beams' slots: report the fitting's grams, margin and stiffness from `cad check` with that load, and say the stiffness
-  leaves out the slot nuts. The other kinds are checked where they meet and say their fitting comes later
-  (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
+  leaves out the slot nuts. A bought fitting is a rule set named in `"fitting"` (`fitting-motedis-bracket-20-b6`;
+  bracket, gusset, splice, hidden and anchor joins): its screws and nuts are its set's, its price goes on `cad list`,
+  and its stiffness is its set's estimate, so report it as one. Choose printed or bought from what `cad list` costs
+  and what each stiffness rests on, and say both. A `fitting.fit` failure means the set is made for another profile
+  or slot: choose another set, never edit the set to pass. The other kinds are checked where they meet and say their
+  fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
   address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
 - **A bay closed by a sheet is a `panel` item**: `{ "id": "front", "panel": { "sheet": "acrylic", "thickness": 3,
   "bay": ["x1", "z2", "x2", "z1"], "out": [0, -1, 0] } }`. It is cut to the bay with its clips at a pitch, each

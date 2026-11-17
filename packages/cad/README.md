@@ -617,9 +617,23 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   `stacking-foot`, with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
   "frame"` and `"part": "door"`, and a levelling foot's pad is `"part": "pad"`. An end part goes at the end's address
   (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs.
-- The other kinds (`cube`, `hidden`, `anchor`, `pivot`, `printed`, and a bought bracket, gusset or splice) are
-  checked where they meet and carry their stiffness; their fittings come in later releases, and each says so
-  (`join.fitting`).
+- A `bracket`, `gusset`, `splice`, `hidden` or `anchor` join with a bought fitting's set by name (`"fitting":
+  "fitting-motedis-bracket-20-b6"`, @rulecad/frames' README, Bought fittings) adds that fitting as an item placed
+  where the printed one would go: a reference drawn from its set, listed under Bought with its price. Its screws join
+  `"fasten"` into the set's nuts (`2 × M4x8 cap`, `2 × slot-nut-6-motedis-m4-hammer`), so the fasten checks hold them
+  as any fasten's; an inner connector's grub screws are part of it, and an anchor connector adds the hole its guide
+  needs, drilled across a (on the cut list). `join.stiffness` takes the set's own figures and says what they rest on
+  (an estimate in the set, until the joint rig measures it). A set made for another profile size or slot family
+  fails `fitting.fit` and places nothing; a set of the wrong kind for the join is refused by name. `"fitting":
+  "bought"` alone names the sets there are.
+- The other kinds (`cube`, `pivot`, `printed`, and a mitre's key) are checked where they meet and carry their
+  stiffness; their fittings come in later releases, and each says so (`join.fitting`).
+- A frame's bought fitting is an item too: `{ "id": "cap", "bought": "fitting-motedis-end-cap-20-b6", "at": "x1.b" }`
+  (an end cap, a levelling foot, a hinge). At a beam's address it caps the end for `join.end`, and `fitting.fit`
+  checks it against that beam's profile: a foot whose stem is not the end bore's thread fails.
+- `cad list` prints each bought line's price where its set gives one, and a cost line: the bought items' total (and
+  the sets with no price), and the printed parts' plastic at the material's price a kilogram (`pla` and `petg` carry
+  one). Fixings and bars are not priced. Swap `"fitting": "printed"` for a bought set and list again to compare.
 - `cad check` adds `join.geometry` (the end meets the face square and flush, where `b` says, on the slot's centre line
   where the kind needs a slot: a beam 2 mm off the face fails with `a gap of 2 mm`, and one 5 mm along names the
   address it does meet at), `join.end` (every beam end is joined or capped: an item placed at the end, such as a foot,
