@@ -23,12 +23,26 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run types # the JSDoc must make valid declarations
+  dimension-guards:
+    # The fixings migration's guards: screw sizes typed by hand held to the recorded count, and the dimension table's own
+    # test. These fail the run when they fail.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node --test test/fixings-inventory.test.mjs test/dimension-diff.test.mjs
   dimensions:
-    # The fixings migration's guards: screw sizes typed by hand held to the recorded count, and every example object's
-    # drawn sizes compared with the commit this one follows (a pull request: its base), the table in the run's summary.
-    # Measures are kept between runs by what each object is built from, so only what a change touches is built.
+    # Every example object's drawn sizes compared with the commit this one follows (a pull request: its base), the table
+    # in the run's summary. Measures are kept between runs by what each object is built from, so only what a change
+    # touches is built. The table is for reading: this job never fails the run, even when its runner is lost (a change
+    # to the kit itself rebuilds every example cold, the showcase's optimisations and an autorouted board among them).
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,17 +51,19 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - run: node --test test/fixings-inventory.test.mjs test/dimension-diff.test.mjs
       - uses: actions/cache@v4
         with:
           path: .cache/dimension-diff
           key: dimension-diff-${{ github.sha }}
           restore-keys: dimension-diff-
-      # (a change to the kit itself rebuilds every example cold, the showcase's optimisations and an autorouted board
-      # among them: the table is for reading, so a run that outlasts its time leaves the job green, the guard above holds)
-      - run: node scripts/dimension-diff.mjs ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }} HEAD --md --jobs 2 >> "$GITHUB_STEP_SUMMARY"
+      # One build at a time, each Node process's heap held to 6 GB of the runner's 16: with two at once the runner was
+      # lost three times on 2026-11-17 (a shutdown signal about 13 minutes in), most likely out of memory. A build past
+      # the cap stops with a heap error that the table shows against its objects; a run that outlasts its time is green.
+      - run: node scripts/dimension-diff.mjs ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }} HEAD --md --jobs 1 >> "$GITHUB_STEP_SUMMARY"
         timeout-minutes: 25
         continue-on-error: true
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
   browser:
     # The model page in headless Chrome: drop an STL, check it's drawn, checked and linked. Screenshots are kept.
     # Then the documentation site: every library page runs without a script error and its demonstration draws.
