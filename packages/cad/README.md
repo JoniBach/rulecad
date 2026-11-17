@@ -725,7 +725,8 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 - `cad beams` also writes `exports/<project>/<assembly>.frame-sag.svg`, the check view: the frame as drawn in grey
   and the shape it takes in red, from the front and from the side, scaled and saying by how much; and
   `<assembly>.frame-mode.svg`, the lowest mode animated, the frame swinging through the mode's shape and back, its
-  largest movement drawn as a tenth of the frame's size. Both are pictures of the solve, never part of the model.
+  largest movement drawn as a tenth of the frame's size, in the two views that hold that movement (it starts at one
+  extreme, so a viewer that shows no animation shows the mode at its largest). Both are pictures of the solve, never part of the model.
 
 | Figure | Formula | Source |
 |---|---|---|

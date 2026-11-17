@@ -584,7 +584,8 @@ export function frameModeSvg(md, o = {}) {
   const W = 640, pad = 40, k = (W - 2 * pad) / Math.max(hi[0] - lo[0], hi[1] - lo[1], 1), H = Math.ceil((hi[1] - lo[1]) * k + 2 * pad + 56);
   const X = (p) => (pad + (p[i] - lo[0]) * k).toFixed(1), Y = (p) => (H - 56 - pad - (p[j] - lo[1]) * k).toFixed(1), pts = (a, b) => `${X(a)},${Y(a)} ${X(b)},${Y(b)}`;
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  const swing = (l) => [pts(l.a, l.b), pts(add(l.a, l.da), add(l.b, l.db)), pts(l.a, l.b), pts(sub(l.a, l.da), sub(l.b, l.db)), pts(l.a, l.b)].join(';');
+  // (from one extreme: a viewer that shows no animation shows the mode at its largest)
+  const swing = (l) => [pts(add(l.a, l.da), add(l.b, l.db)), pts(l.a, l.b), pts(sub(l.a, l.da), sub(l.b, l.db)), pts(l.a, l.b), pts(add(l.a, l.da), add(l.b, l.db))].join(';');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="system-ui, sans-serif">
 <rect width="100%" height="100%" fill="#fff"/>
 ${md.lines.map((l) => `<polyline points="${pts(l.a, l.b)}" fill="none" stroke="#ddd" stroke-width="6" stroke-linecap="round"/>`).join('\n')}
@@ -597,14 +598,19 @@ ${o.title ? `<text x="${pad}" y="${H - 40}" font-size="13" font-weight="600">${e
 
 /**
  * The check view cad beams writes beside the sag: the frame's lowest mode, animated, from the front and the side, as
- * exports/<project>/<assembly>.frame-mode.svg. Null where the frame is not solved.
+ * exports/<project>/<assembly>.frame-mode.svg, in the two views that hold its largest movement. Null where the frame is not solved.
  * @param {object} s a built assembly @returns {{ file: string, Hz: number, beam: string } | null}
  */
 export function writeFrameMode(s) {
   const md = frameMode(s, { placeItems, jointValues, mul }), file = paths.exports(s.project, `${s.name}.frame-mode.svg`);
   if (fs.existsSync(file)) fs.rmSync(file);
   if (!md) return null;
-  const front = frameModeSvg(md, { view: 'front', title: `${s.a.title || s.name}, from the front` }), side = frameModeSvg(md, { view: 'side', title: 'from the side' });
+  // the two views that hold the mode's largest movement, the one across the frame's larger extent first
+  const move = [0, 1, 2].map((k) => md.lines.reduce((t, l) => t + Math.abs(l.da[k]) + Math.abs(l.db[k]), 0)), most = move.indexOf(Math.max(...move));
+  const extent = [0, 1, 2].map((k) => Math.max(...md.lines.flatMap((l) => [l.a[k], l.b[k]])) - Math.min(...md.lines.flatMap((l) => [l.a[k], l.b[k]])));
+  const VIEWS = { front: [0, 2], side: [1, 2], top: [0, 1] }, names = { front: 'from the front', side: 'from the side', top: 'from above' };
+  const [v1, v2] = Object.keys(VIEWS).filter((v) => VIEWS[v].includes(most)).sort((p, q) => extent[VIEWS[q].find((k) => k !== most)] - extent[VIEWS[p].find((k) => k !== most)]);
+  const front = frameModeSvg(md, { view: v1, title: `${s.a.title || s.name}, ${names[v1]}` }), side = frameModeSvg(md, { view: v2, title: names[v2] });
   const h = (t) => Number(/height="(\d+)"/.exec(t)[1]), inner = (t) => t.replace(/^<svg[^>]*>\n?/, '').replace(/<\/svg>\s*$/, '');
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="${h(front) + h(side)}" viewBox="0 0 640 ${h(front) + h(side)}" font-family="system-ui, sans-serif">\n${inner(front)}\n<g transform="translate(0 ${h(front)})">${inner(side)}</g>\n</svg>\n`);
