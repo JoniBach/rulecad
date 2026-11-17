@@ -3693,3 +3693,28 @@ test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and
     assert.match(bad([{ kind: 'rods', on: 'x1.top', from: 40, length: 200 }, { kind: 'screw', guide: 'g1', motor: { model: '28byj48', drives: 'z' } }]), /guide 2: motor\.drives comes from the guide: leave it out|guides\/1/);
   } finally { done(); }
 });
+
+test('guides on a frame: a rods guide on a beam joined at both ends shuts its holders\' slide-in nuts in, and cad check says so in a mechanism\'s poses; "nut": "drop-in" puts them in through the opening', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/frame/project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a beam between two posts, a blind join at each end, so both ends of its slots are closed; two rods along its top,
+    // as far apart and as high as a screw between them would set them
+    const beam = (id, from, to) => ({ id, beam: { profile: '2020-misumi-hfs5' }, from, to });
+    const write = (rods) => fs.writeFileSync(path.join(ws, 'projects/frame/assemblies/frame.json'), JSON.stringify({ title: 'Frame', kind: 'fit',
+      items: [beam('p1', [-10, 0, -120], [-10, 0, 80]), beam('p2', [310, 0, -120], [310, 0, 80]), beam('x1', [0, 0, 0], [300, 0, 0])],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'p1.back@120' }, { kind: 'blind', a: 'x1.b', b: 'p2.front@120' }],
+      guides: [{ kind: 'rods', on: 'x1.top', from: 50, length: 200, spacing: 40, height: 22.5, ...rods }] }));
+    // slide-in, the strongest made for the slot: shut in by the joins, and said in the check of every pose (g1-a, g1-b)
+    write({});
+    const slide = cad('check', 'frame/frame');
+    assert.match(slide, /2 poses checked: g1-a, g1-b/);
+    assert.match(slide, /✗ g1: g1-holder-a's leg into x1's front slot: 1 slide-in nut \(slot-nut-6-misumi-m5-slide-in\) goes into x1's front slot at [\d.]+ mm, between x1's end a \(the blind join of x1\.a to p1\.back@120\) and x1's end b \(the blind join of x1\.b to p2\.front@120\), which close it at both ends/);
+    // drop-in: through the opening, anywhere, for the holders' legs on both sides
+    write({ nut: 'drop-in' });
+    const drop = cad('check', 'frame/frame');
+    assert.doesNotMatch(drop, /✗/, drop);
+    assert.equal((drop.match(/✓ g1: g1-holder-[ab]'s leg into x1's (front|back) slot: 1 drop-in nut \(slot-nut-6-misumi-m4-drop-in\) goes into x1's (front|back) slot through its opening, anywhere along it/g) || []).length, 4, drop);
+  } finally { done(); }
+});

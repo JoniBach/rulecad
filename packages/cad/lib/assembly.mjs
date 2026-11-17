@@ -791,6 +791,8 @@ function massFinding(s, f) {
 }
 
 export function checkAssembly(s) {
+  // the screws found in this pose (at(pose) leaves them to be found again): the fasten and slot nut checks read the same
+  if (!s.fastened && s.a.fasten?.length && fastening) s = { ...s, fastened: fastening.fastenOf(s, placeItems(s.motion, s.jointValues)) };
   const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(3))}`;
   // Versions: every pin, from this assembly and its components, against every copy of that object
   const pins = new Map();

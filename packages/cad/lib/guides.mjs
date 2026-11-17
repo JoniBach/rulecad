@@ -20,7 +20,7 @@ import { referenceBuilt } from './bought.mjs';
 import { fittingModel } from './fittings.mjs';
 
 const KEYS = { rail: ['id', 'kind', 'rail', 'carriage', 'on', 'from', 'length', 'carriages', 'nut', 'note'], wheels: ['id', 'kind', 'wheel', 'wheels', 'pitch', 'load', 'on', 'from', 'length', 'note'], slider: ['id', 'kind', 'mode', 'size', 'load', 'on', 'from', 'length', 'note'],
-  rods: ['id', 'kind', 'rod', 'bearing', 'spacing', 'height', 'load', 'on', 'from', 'length', 'endstop', 'note'], screw: ['id', 'kind', 'guide', 'screw', 'nut', 'support', 'coupler', 'motor', 'friction', 'note'] };
+  rods: ['id', 'kind', 'rod', 'bearing', 'spacing', 'height', 'load', 'on', 'from', 'length', 'endstop', 'nut', 'note'], screw: ['id', 'kind', 'guide', 'screw', 'nut', 'support', 'coupler', 'motor', 'friction', 'note'] };
 const { cylinder } = jscad.primitives, { translate } = jscad.transforms, { subtract, union } = jscad.booleans;
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const mm = (x) => String(+Number(x).toFixed(2)), r3 = (x) => +x.toFixed(3), n3 = (x, d = 2) => String(Number(Number(x).toFixed(d)));
@@ -96,7 +96,8 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
     if (!(from >= 0 && from + length <= B.length + 1e-9)) throw new Error(`${what}: its stretch runs from ${mm(from)} to ${mm(from + length)} mm along ${bid}, which is ${mm(B.length)} mm long: move "from" or make it shorter`);
     const base = { profile: P.name, face: q.face, rod: L.rod.set, bearing: L.bearing.set, spacing: L.spacing, height: L.height, ...(g.load != null ? { load: num(g.load) } : {}) };
     const drive = L.screw ? { screw: L.screw.set, leadNut: L.nut.set, ...(L.support ? { support: L.support.set } : { support: null }) } : {};
-    const hold = (end) => fittingModel({ kind: 'rod-holder', ...base, ...drive, end }, context, material, what);
+    const slotNut = g.nut != null ? { nut: String(g.nut) } : {}; // (the slot nuts' kind for whatever screws into the slots either side: holders, motor plate, endstop mount)
+    const hold = (end) => fittingModel({ kind: 'rod-holder', ...base, ...drive, ...slotNut, end }, context, material, what);
     const hA = hold('a'), ids_ = (x) => { if (ids.has(x)) throw new Error(`${what}: ${x} is an item already: give the guide another id`); ids.add(x); return x; };
     const ha = ids_(`${id}-holder-a`), hb = ids_(`${id}-holder-b`), cid = ids_(`${id}-carriage-1`), jid = `${id}-1`, gap = ROD_DEFAULTS.gap.value;
     const n = q.normal, yd = [n[1], -n[0]], F = L.frame, at = (y, z) => [r3(q.at[0] + yd[0] * y + n[0] * z), r3(q.at[1] + yd[1] * y + n[1] * z)];
@@ -109,7 +110,7 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
       const [place, dist] = e.at.split('@'), [ebid, ...ef] = place.split('.'), side = F.sides.find((x) => x.name === ef.join('.') || x.side === ef.join('.'));
       if (ebid !== bid || !side || dist == null) throw new Error(`${what}: endstop.at is an address on a face of ${bid} beside the rods, ${F.sides.map((x) => `${bid}.${x.name}@<mm>`).join(' or ')} (got ${shown(e.at)})`);
       const sq = B.places.find((x) => x.name === side.name || (x.face === side.side && x.index === 1)), sy = [sq.normal[1], -sq.normal[0]], toward = Math.sign(sy[0] * n[0] + sy[1] * n[1]) || 1;
-      const spec = { kind: 'endstop-mount', profile: P.name, face: side.name, toward, ...(e.switch ? { switch: e.switch } : {}) }, em = fittingModel(spec, context, material, `${what}: endstop`), d = num(dist.replace(/%$/, '')) * (dist.endsWith('%') ? B.length / 100 : 1), dd = dist.startsWith('-') ? B.length + d : d;
+      const spec = { kind: 'endstop-mount', profile: P.name, face: side.name, toward, ...(e.switch ? { switch: e.switch } : {}), ...slotNut }, em = fittingModel(spec, context, material, `${what}: endstop`), d = num(dist.replace(/%$/, '')) * (dist.endsWith('%') ? B.length / 100 : 1), dd = dist.startsWith('-') ? B.length + d : d;
       const fd = ROD_DEFAULTS.flag.value;
       flag = { y: r3(side.y + side.out * em.lever.out), z: r3(side.z + em.lever.reach - fd.engage) };
       es = { spec, model: em, at: e.at, distance: r3(dd), side: side.name, mount: ids_(`${id}-endstop-mount`), sw: ids_(`${id}-endstop`), set: em.switch };
@@ -129,8 +130,8 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
       }
       lo = home; es.home = home;
     }
-    added.push({ id: ha, fitting: { kind: 'rod-holder', ...base, ...drive, end: 'a' }, at: `${bid}.${q.name}@${r3(from)}`, guideOf: id });
-    added.push({ id: hb, fitting: { kind: 'rod-holder', ...base, ...drive, end: 'b' }, at: `${bid}.${q.name}@${r3(from + length)}`, guideOf: id });
+    added.push({ id: ha, fitting: { kind: 'rod-holder', ...base, ...drive, ...slotNut, end: 'a' }, at: `${bid}.${q.name}@${r3(from)}`, guideOf: id });
+    added.push({ id: hb, fitting: { kind: 'rod-holder', ...base, ...drive, ...slotNut, end: 'b' }, at: `${bid}.${q.name}@${r3(from + length)}`, guideOf: id });
     const rods = [1, 2].map((k) => { const rid = ids_(`${id}-rod-${k}`); added.push({ id: rid, bought: L.rod.set, set: { length: r3(length) }, at: `${ha}.r${k}`, guideOf: id }); return rid; });
     added.push({ id: cid, fitting: { kind: 'rod-carriage', ...base, ...(L.screw ? { screw: L.screw.set, leadNut: L.nut.set } : {}), ...(flag ? { flag } : {}) }, guideOf: id });
     const lms = [1, 2].map((k) => { const lid = ids_(`${id}-bearing-${k}`); added.push({ id: lid, bought: L.bearing.set, at: `${cid}.lm${k}`, guideOf: id }); return lid; });
@@ -149,7 +150,7 @@ export function expandGuides(a, num, context = framesContext(), material = 'pla'
     for (const [hid, m] of [[ha, hA], [hb, hold('b')]]) legFastens(hid, m, `${id}: ${hid}'s leg`, id);
     if (sc) {
       // the motor plate outside holder a, the coupler between, the screw from the coupler to holder b's bearing
-      const pspec = { kind: 'motor-plate', profile: P.name, face: q.face, motor: L.motor.set, height: L.height, coupler: { length: L.coupler.length, D: L.coupler.D } };
+      const pspec = { kind: 'motor-plate', profile: P.name, face: q.face, motor: L.motor.set, height: L.height, coupler: { length: L.coupler.length, D: L.coupler.D }, ...slotNut };
       const pm = fittingModel(pspec, context, material, sc.what), cl = L.coupler.length, before = r3(pm.anchors.coupler.at[0] + cl + gap / 2);
       const xm = r3(from - before);
       if (xm < 0) throw new Error(`${sc.what}: the motor plate and ${L.coupler.set} take ${mm(before)} mm before the stretch, and it starts ${mm(from)} mm along ${bid}: give the rods guide a "from" of at least ${mm(before)}`);
