@@ -5,7 +5,9 @@
 // between beams by kind (the operations on both, the screws, a stiffness for the solver); and printed fittings for those
 // joins (a corner bracket, gusset and splice plates), sized from a named load by finite elements; panels cut to a bay
 // and the printed parts that hold them, a door's hinges, handle, latch and catch, and the parts for a beam's end (caps,
-// feet, levelling feet, castor plates, stacking feet). The guides follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
+// feet, levelling feet, castor plates, stacking feet); and the parts that carry a machine's services (cable clips and
+// tie anchors, mounts for boards, supplies, fans and drag chains read from their rule sets, a DIN rail adapter and a
+// spool holder). The guides follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
 //
 // Every profile, slot family and slot nut is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the
@@ -21,4 +23,5 @@ export { slotNutModel, nutFit, slotNut, nutFor, carrierModel, carrier, CARRIER_D
 export { FITTINGS, FITTING_DEFAULTS, bracketModel, bracket, plateModel, plate, fittingFE } from './fitting.mjs';
 export { SHEETS, PANEL_DEFAULTS, panelModel, panel, panelClipModel, panelClip, panelCornerModel, panelCorner, slotCoverModel, slotCover, panelEdgeModel, panelEdge, gasketStripModel, gasketStrip } from './panel.mjs';
 export { DOOR_DEFAULTS, hingeModel, hinge, handleModel, handle, latchModel, latch, magnetCatchModel, magnetCatch } from './door.mjs';
+export { SERVICE_DEFAULTS, FANS, DIN_RAIL, deviceMountModel, deviceMount, fanMountModel, fanMount, dragChainEndModel, dragChainEnd, dinRailAdapterModel, dinRailAdapter, cableClipModel, cableClip, runClips, tieAnchorModel, tieAnchor, spoolHolderModel, spoolHolder } from './services.mjs';
 export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';

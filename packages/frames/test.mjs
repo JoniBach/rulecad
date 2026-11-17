@@ -1021,3 +1021,65 @@ test('the parts for a beam\'s end: an end cap, a foot, a levelling foot, a casto
   assert.throws(() => footModel('tube-al-20x20x2'), /has no bore with a thread in its end/);
   assert.throws(() => endCapModel('2020-misumi-hfs5', { end: 'c' }), /end is a or b/);
 });
+
+// ---------- services ----------
+const ruleSet = (name) => JSON.parse(fs.readFileSync(new URL(`${name}.json`, rulesDir), 'utf8'));
+
+test('a supply and a board mount on a beam from their own rule sets: the holes their makers draw, screws that fit, print-ready and weighed', async () => {
+  const { deviceMountModel, deviceMount } = frames, supply = ruleSet('supply-24v'), shield = ruleSet('cnc-shield-v3');
+  // the supply: Mean Well's LRS-50 base holes, M3 up from under the plate into its own thread, no deeper than L = 3 mm
+  const s = deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-50-24' });
+  assert.deepEqual(s.device.holes, [[-29, -0.5], [26, -0.5]], 'LRS-50 holes 20.5 mm and 75.5 mm from the terminal end, from the middle of 99 mm');
+  assert.deepEqual([s.fix, s.device.thread, s.device.length, s.device.engaged, s.device.floor], ['tapped', 'M3', 5, 3, 2]);
+  assert.deepEqual(s.screws.map((x) => [x.at[0], x.length]), [[-56.25, 12], [56.25, 12]], 'M5x12 into the slot, clear of the 99 mm case by the head and 1 mm');
+  assert.deepEqual(s.anchors.device, { at: [0, 0, s.thickness], axis: [0, 0, 1], ref: [1, 0, 0] });
+  assert.equal(coded(s, 'fitting.device')[0].level, 'pass'); assert.match(coded(s, 'fitting.device')[0].text, /3 mm in: as far as its maker allows \(supply-24v\.mount_hole_reach, spec\)/);
+  assert.ok(s.margin >= 2 && s.grams > 0 && s.grams < 25, `${s.grams} g`); await prints(deviceMount(s), 'the supply\'s mount, top face down');
+  // the default model (LRS-100) has its own holes, and a variant's holes are its own
+  assert.deepEqual(deviceMountModel('2020-misumi-hfs5', { device: supply }).device.holes, [[13.5, -14.5], [13.5, 18.5]]);
+  assert.equal(deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-350-24' }).device.thread, 'M4');
+  // the board: the Uno's four holes under the shield, M3 down through 1.6 mm of board into pilots on bosses
+  const b = deviceMountModel('2020-misumi-hfs5', { device: shield });
+  assert.equal(b.device.holes.length, 4); assert.deepEqual(b.device.holes[0], [-19.05, 24.13]);
+  assert.deepEqual([b.fix, b.device.thread, b.device.length], ['through', 'M3', 10]); assert.ok(b.standoff >= 3, 'stood off its soldered leads');
+  assert.ok(b.device.engaged >= 7.5, 'engagement.pla: 2.5 diameters of M3'); assert.equal(b.windows.length, 1, 'a window inside its holes saves plastic');
+  assert.ok(b.margin >= 2 && b.grams > 0, `${b.grams} g`); await prints(deviceMount(b), 'the board\'s mount, beam side down');
+  // turned a quarter, its holes turn with it
+  assert.deepEqual(deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-50-24', turn: 90 }).device.holes, [[0.5, -29], [0.5, 26]]);
+  // refused by name
+  assert.throws(() => deviceMountModel('2020-misumi-hfs5', { device: ruleSet('supply-12v') }), /gives no mounting holes \(mount_holes/);
+  assert.throws(() => deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-9' }), /supply-24v has no variant "LRS-9"/);
+  assert.throws(() => deviceMountModel('2020-misumi-hfs5', { device: supply, turn: 45 }), /turn is 0, 90, 180 or 270/);
+  assert.throws(() => deviceMountModel('2020-misumi-hfs5', {}), /device is the device's rule set/);
+});
+
+test('the services\' other parts: a cable clip, a tie anchor, a fan mount, a drag chain end, a DIN rail adapter and a spool holder, each print-ready and weighed', async () => {
+  const { cableClipModel, cableClip, tieAnchorModel, tieAnchor, fanMountModel, fanMount, dragChainEndModel, dragChainEnd, dinRailAdapterModel, dinRailAdapter, spoolHolderModel, spoolHolder, FANS } = frames, P = '2020-misumi-hfs5';
+  const clip = cableClipModel(P, { cable: 6 });
+  assert.equal(clip.stem, 5.6, 'the 6.2 mm opening less the fit each side'); assert.ok(clip.ring.opening < 6 && clip.ring.opening > 3, 'the bundle snaps in past a narrower opening');
+  assert.deepEqual(clip.screws, [], 'it snaps in: no screw'); assert.ok(clip.anchors.cable.at[2] > clip.flange); await prints(cableClip(clip), 'a cable clip');
+  const tie = tieAnchorModel(P);
+  assert.equal(coded(tie, 'fitting.screw')[0].level, 'pass'); assert.ok(tie.tunnel.w >= 3.6); await prints(tieAnchor(tie), 'a tie anchor');
+  const fan = fanMountModel(P, { size: 80 });
+  assert.equal(fan.device.holes[1][0] - fan.device.holes[0][0], FANS[80].spacing.value, 'ARCTIC\'s 71.5 mm');
+  assert.ok(Math.min(...fan.device.holes.map((h) => h[1])) > 10, 'the fan stands beside the beam, clear of its face');
+  assert.ok(fan.opening.d > 70); await prints(fanMount(fan), 'a fan mount');
+  const chain = dragChainEndModel(P, { holes: [[-6, 0], [6, 0]], screw: 'M3' });
+  assert.equal(chain.device.thread, 'M3'); assert.equal(chain.thread, 'M5', 'its own screws into the slot are the slot nut\'s'); await prints(dragChainEnd(chain), 'a drag chain end');
+  const din = dinRailAdapterModel(P);
+  assert.ok(din.screws.every((x) => Math.abs(x.at[0]) > 17.5), 'its screws clear of the 35 mm rail'); assert.equal(din.hardware[0].kind, 'rail'); await prints(dinRailAdapter(din), 'a DIN rail adapter');
+  const spool = spoolHolderModel(P);
+  assert.ok(spool.arm.length > spool.spool.width, 'the arm takes the spool\'s width'); assert.ok(spool.margin >= 2); await prints(spoolHolder(spool), 'a spool holder');
+  for (const m of [clip, tie, fan, chain, din, spool]) { assert.ok(m.grams > 0, m.name); assert.equal(coded(m, 'fitting.margin')[0].level, 'pass', m.name); }
+  assert.throws(() => fanMountModel(P, { size: 50 }), /size is a fan's size in mm, one of 40, 60, 80, 92, 120/);
+  assert.throws(() => dragChainEndModel(P, { holes: [[0, 0]] }), /screw is the end bracket's screws' thread/);
+  assert.throws(() => spoolHolderModel(P, { spool: { bore: 12, width: 70, mass: 1 } }), /does not pass a 12 mm bore/);
+  assert.throws(() => cableClipModel(P, { cable: 0 }), /cable is the bundle's diameter/);
+});
+
+test('a run of slot takes clips at a pitch: one at each end and evenly between', () => {
+  const { runClips } = frames;
+  assert.deepEqual(runClips(360), { count: 5, pitch: 90, at: [0, 90, 180, 270, 360] });
+  assert.deepEqual(runClips(100, { pitch: 100 }).count, 2); assert.deepEqual(runClips(101, { pitch: 100 }).count, 3); assert.equal(runClips(0).count, 1);
+  assert.throws(() => runClips(100, { pitch: 0 }), /pitch is the most between clips/);
+});
