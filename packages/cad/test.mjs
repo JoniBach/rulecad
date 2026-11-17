@@ -4104,3 +4104,59 @@ test('frame checks: a shelf frame with 5 kg at mid-span sags as a hand calculati
     assert.match(fs.readFileSync(path.join(ws, 'exports/frame/shelf.frame-sag.svg'), 'utf8'), /deflection drawn [\d.]+ times its size \(scaled\): 0\.3\d\d mm at most/);
   } finally { done(); }
 });
+
+test('frame checks: a figure on estimated joins says so even where the springs change nothing, and a beam riding a moving joint weighs on the frame', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/portal.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a portal: two 2020 legs 400 mm tall, fixed at their feet, a 600 mm beam x1 joined blind between them 390 mm up
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const portal = { title: 'Portal', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 400]), beam('z2', [620, 0, 0], [620, 0, 400]), beam('x1', [10, 0, 390], [610, 0, 390])],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], frame: { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed' } } };
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/portal');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r;
+    const by = (code) => r.filter((x) => x.code === code), point = (where) => by('frame.deflection').find((x) => x.refs.where === where);
+
+    // 1. the middle of leg z1 hardly sags at all, with the joins' springs or rigid: the two figures match, yet both
+    // rest on the two blind joins' estimated springs, and refs.restsOn says so
+    write({ ...portal, loads: [{ mass: 5, at: 'x1.top@50%' }], frame: { ...portal.frame, points: ['z1.top@50%'] } });
+    r = probe();
+    const leg = point('z1.top@50%');
+    assert.match(leg.text, /It rests on 2 joins' springs \(2 blind: an estimate\)/);
+    assert.equal(leg.refs.restsOn, 'estimate');
+    assert.equal(point('x1.top@50%').refs.restsOn, 'estimate');
+
+    // 2. a 2 m beam g rides a slide along x1 (from 100 to 400 mm along it), its middle on the slide: g is not part of
+    // the frame, and its whole weight hangs on x1 where the slide is. The hand check is superposition: x1 is linear,
+    // so x1's sag 400 mm along with g at the slide's far end equals its sag with g's mass set down as a load on
+    // x1.top@400 (its centre straight above the node: no moment, the force alone), within 1%
+    const ride = { ...portal, items: [...portal.items, { id: 'g', beam: { profile: P, length: 2000 } }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 100], axis: [0, 0, 1] }, child: { item: 'g', at: [0, 0, 1000], axis: [0, 0, 1] }, min: 0, max: 300 }],
+      frame: { ...portal.frame, points: ['x1.top@400'] } };
+    write(ride);
+    r = probe();
+    const solve = by('frame.solve')[0], g = solve.refs.riding.find((x) => x.id === 'g');
+    assert.doesNotMatch(solve.text, /Left out/);
+    assert.match(solve.text, /g rides on slide, its [\d.]+ kg weighed on the frame/);
+    // 2020 HFS5 weighs about 0.5 kg/m (its sheet's mass per metre): 2 m of it about 1 kg
+    assert.ok(g.kg > 0.8 && g.kg < 1.3, JSON.stringify(g));
+    const riding = point('x1.top@400');
+    assert.equal(riding.refs.pose, 'slide at 300');
+    write({ ...portal, loads: [{ mass: g.kg, at: 'x1.top@400' }], frame: { ...portal.frame, points: ['x1.top@400'] } });
+    r = probe();
+    const set = point('x1.top@400');
+    assert.ok(Math.abs(riding.values.sag - set.values.sag) / set.values.sag < 0.01, `riding ${riding.values.sag} mm, set down ${set.values.sag} mm`);
+    assert.ok(Math.abs(riding.values.rigid - set.values.rigid) / set.values.rigid < 0.01, `rigid: riding ${riding.values.rigid} mm, set down ${set.values.rigid} mm`);
+    // and without g at all, x1 sags less: its weight was not dropped
+    write({ ...portal, frame: { ...portal.frame, points: ['x1.top@400'] } });
+    r = probe();
+    assert.ok(point('x1.top@400').values.sag < riding.values.sag * 0.8, `bare ${point('x1.top@400').values.sag} mm, with g ${riding.values.sag} mm`);
+  } finally { done(); }
+});

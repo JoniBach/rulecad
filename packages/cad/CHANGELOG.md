@@ -14,7 +14,8 @@ and head, the parts it passes through and the part it ends in.
   each load, each `"frame": { "points" }` and every guide, with the joins' springs and rigid, and says which it rests
   on; `frame.stress` each beam against its alloy and each printed fitting's join against its strength;
   `frame.buckling` each beam in compression against Euler's load and the frame's first factor; `frame.solve` what
-  the model holds. A mass on a slide along a beam is solved at each end of its travel. `cad beams` writes the
+  the model holds. A mass on a slide along a beam is solved at each end of its travel, and a beam riding a moving
+  joint weighs on the frame as a load. `refs.restsOn` is `estimate` whenever any join's spring is one. `cad beams` writes the
   deflected shape as a check view, `<assembly>.frame-sag.svg`.
 - **Schema:** `"frame": { "supports", "limit", "points" }` on an assembly.
 

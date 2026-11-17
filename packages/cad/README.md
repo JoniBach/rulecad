@@ -677,16 +677,19 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   width off that axis) and its spring (`join.stiffness`) at that end. It is held where `"frame": { "supports": {
   "z1.a": "pinned", "z2.a": "fixed" } }` says; else at the beam ends a foot, levelling foot, castor plate or
   stacking foot (printed or bought) is fitted to; else at its lowest beam ends. Feet and lowest ends are pinned: held
-  from moving and free to turn, as a foot stands on a floor. Beams no support holds through joins, and beams that
-  move, are left out by name.
+  from moving and free to turn, as a foot stands on a floor. Beams no support holds through joins are left out by
+  name. A beam that rides a moving joint (a gantry's cross beam on its carriages) is a load on the frame, named as
+  riding (`refs.riding`), not part of it.
 - The loads: each beam's own weight (its sheet's mass per metre), each item mounted on a beam (its mass at its
-  centre, as a force and a moment at the node where its chain of mounts meets the beam) and each `mass` in `"loads"`.
+  centre, as a force and a moment at the node where its chain of mounts meets the beam; a riding beam's sheet weight
+  at its middle the same way) and each `mass` in `"loads"`.
   A mass on a moving joint mounted on a beam, such as a carriage on a guide, is solved at each end of its travel,
   at every named pose and as drawn; the worst is named.
 - `frame.deflection`: the sag at each load's point, at each place in `"frame": { "points": ["x2.top@50%"] }` and
   along every guide's travel, with the joins' springs and with the joins rigid, and the load's own share. The first
   rests on the joins' springs, estimates until the joint rig measures them, and the finding says so (`refs.restsOn`:
-  `estimate` or `measured`); the rigid figure is the least the sag can be. The limit is a rail's own parallelism
+  `estimate` while any join's spring is one, even where the springs change no figure; `measured` when every join's
+  is; `beams` with no joins); the rigid figure is the least the sag can be. The limit is a rail's own parallelism
   under a guide, else `"frame": { "limit": 0.2 }`, else the task's accuracy, else the beam's span over 360. Over it fails.
 - `frame.stress`: the largest stress in each beam (axial and bending, from the section moduli) against its alloy's
   strength, and the bending moment at each join against what its printed fitting takes (its design load at its

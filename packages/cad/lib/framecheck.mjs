@@ -66,13 +66,13 @@ export function frameModelOf(s, helpers) {
   const byChild = new Map(motion.joints.map((j) => [j.child, j])), moving = (j) => !j.at && j.type !== 'fixed';
   const movesWith = (k) => { for (let i = k, n = 0; n < 99; n++) { const j = byChild.get(i); if (!j) return false; if (moving(j)) return true; i = j.parent; } return false; };
   const down = (() => { const g = motion.gravity || [0, 0, -1], l = Math.hypot(...g) || 1; return g.map((c) => c / l); })();
-  // the beams: still ones only (a beam on a carriage is a load, not the frame)
-  const beams = new Map(), left = [];
+  // the beams: still ones only (a beam on a carriage is a load, not the frame: its weight is carried below)
+  const beams = new Map(), left = [], riding = [];
   for (const o of s.objects) {
     if (!o.beam || o.unplaced) continue;
     const k = ids.indexOf(o.id);
     if (k < 0) continue;
-    if (movesWith(k)) { left.push(o.id); continue; }
+    if (movesWith(k)) { riding.push({ o, k }); continue; }
     const W = worlds[k], m = o.beam, L = m.length, A = rowsAt(W, [0, 0, 0]), u = [W[2], W[6], W[10]], top = [W[1], W[5], W[9]];
     const mat = m.profile.material, F = m.figures, E = m.material?.modulus ?? mat?.modulus, nu = mat?.poisson ?? mat?.figures?.poisson?.value;
     const Gs = mat?.figures?.shear_modulus?.value ?? (E && nu != null ? E / (2 * (1 + nu)) : null), grams = m.weight?.sheet ?? m.mass ?? 0;
@@ -99,12 +99,22 @@ export function frameModelOf(s, helpers) {
   // what weighs on the frame: items (beams' own weight is the elements'), and the masses of "loads"
   const masses = massesOf(s, { placeItems, jointValues }), carried = [], loose = [], unknown = [];
   for (const q of masses) {
-    if (beams.has(q.id) || left.includes(q.id)) continue;
+    if (beams.has(q.id) || left.includes(q.id) || riding.some((x) => x.o.id === q.id)) continue;
     if (!q.known) { unknown.push(q.id); continue; }
     if (!(q.kg > 0)) continue;
     const mt = mountOf(q.item);
     if (!mt) { loose.push(q.id); continue; }
     carried.push({ id: q.id, item: q.item, kg: q.kg, centre: q.centre, mount: mt });
+  }
+  // a beam riding a moving joint (a gantry's cross beam on its carriages): its sheet's weight at its middle, carried
+  // where its chain of mounts meets a still beam, like any mounted item
+  const rides = [];
+  for (const { o, k } of riding) {
+    const kg = (o.beam.weight?.sheet ?? o.beam.mass ?? 0) / 1000, mt = mountOf(k), on = byChild.get(k);
+    if (!(kg > 0)) { unknown.push(o.id); continue; }
+    if (!mt) { loose.push(o.id); continue; }
+    carried.push({ id: o.id, item: k, kg, centre: [0, 0, o.beam.length / 2], mount: mt });
+    rides.push({ id: o.id, joint: (mt.mover ?? on)?.id ?? null, kg });
   }
   const loads = [];
   (motion.loads || []).forEach((l, i) => {
@@ -206,7 +216,8 @@ export function frameModelOf(s, helpers) {
     for (const l of loads.filter(keep)) { if (only && only !== l) continue; const C = rowsAt(W[l.item], l.point); if (l.beam) put(l.beam, l.z, C, l.kg); else put(l.mount.beam, mountStation(l.mount, values), C, l.kg); }
     return out;
   };
-  return { beams, left, missing, loose, unknown, carried: carried.filter(keep), loads: loads.filter(keep), points, guides: guides.filter(keep), supports: supports.filter(keep), joins: joins.filter((x) => beams.has(x.A.id)),
+  const kept = new Set(carried.filter(keep).map((c) => c.id));
+  return { beams, left, missing, loose, unknown, riding: rides.filter((x) => kept.has(x.id)), carried: carried.filter(keep), loads: loads.filter(keep), points, guides: guides.filter(keep), supports: supports.filter(keep), joins: joins.filter((x) => beams.has(x.A.id)),
     cases, down, nodes, nodeAt, model: withSprings(false), rigid: withSprings(true), nodeLoads, mountStation, worlds, axisOf: (j) => axisOf(motion, worlds, j, mul) };
 }
 
@@ -236,9 +247,11 @@ export function frameChecks(s, f, helpers) {
   for (const x of fm.joins) { const key = `${x.j.kind}${x.j.fitting ? ` (${x.j.fitting})` : ''}: ${restsWord(x.k)}`; kinds.set(key, (kinds.get(key) ?? 0) + 1); }
   const estimates = fm.joins.filter((x) => !(x.k.measured?.bending && x.k.measured?.twist)).length;
   const restsJoins = fm.joins.length ? `${fm.joins.length} join${fm.joins.length > 1 ? 's' : ''}' springs (${[...kinds].map(([k, n]) => `${n} ${k}`).join('; ')})` : 'no joins';
+  // what every figure rests on: the joins' springs are an estimate while any is, whether or not they move a figure
+  const restsOn = estimates ? 'estimate' : fm.joins.length ? 'measured' : 'beams';
   const rests = fm.joins.map((x) => ({ join: x.j.index, kind: x.j.kind, bending: x.k.bending, twist: x.k.twist, value: restsWord(x.k) }));
-  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${fm.carried.length} item${fm.carried.length > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins, or moving)` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
-    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, loose: fm.loose, rests } });
+  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${fm.carried.length} item${fm.carried.length > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame`).join('; ')}` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins, or moving)` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
+    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
 
   // ---- frame.deflection: each load's point, each named point, every guide ----
   const worst = (fn) => { let w = null; for (const r of results) { const v = fn(r.spring, r), v0 = fn(r.rigid, r); if (!w || v.sag > w.sag) w = { ...v, rigid: v0.sag, case: { ...r.case, alone: r.alone } }; } return w; };
@@ -252,7 +265,7 @@ export function frameChecks(s, f, helpers) {
     const lim = limitFor(b, own), level = w.sag > lim.value ? 'fail' : 'pass', soft = estimates && w.sag > w.rigid * 1.001;
     const text = `${what} sags ${n3(w.sag)} mm${fm.cases.length > 1 ? `, worst ${w.case.label}` : ''}, with the joins' springs; ${n3(w.rigid)} mm with the joins rigid${alone ? ` (of these, ${n3(alone.sag)} and ${n3(alone.rigid)} mm from ${alone.what} alone)` : ''}. ${soft ? `The first rests on ${restsJoins}, so the true sag lies near it, and the rigid figure is the least it can be` : `It rests on ${restsJoins}`}: against ${n3(lim.value)} mm, ${lim.from}${level === 'fail' ? `: ${n3(w.sag / lim.value, 2)} times over. Stiffen the beam (a deeper profile), shorten its span, or stiffen its joins` : ''}`;
     f(level, text, level === 'fail' ? `${where}: sags ${n3(w.sag, 2)} mm` : null, { code: 'frame.deflection', at: r4(P), values: { sag: r3(w.sag), rigid: r3(w.rigid), limit: r3(lim.value), ...(alone ? { alone: r3(alone.sag), aloneRigid: r3(alone.rigid) } : {}) },
-      refs: { beam: b.id, where, pose: w.case.label, limit: lim.from, rests, ...(soft ? { restsOn: 'estimate' } : { restsOn: fm.joins.length ? 'measured' : 'beams' }) } });
+      refs: { beam: b.id, where, pose: w.case.label, limit: lim.from, rests, restsOn } });
   };
   for (const l of fm.loads) {
     const b = l.beam ?? l.mount.beam, zOf = (values) => (l.beam ? l.z : fm.mountStation(l.mount, values));
@@ -343,7 +356,7 @@ export function frameChecks(s, f, helpers) {
     const shape = bk.modes[0].shape, lead = Object.entries(shape).reduce((p, q) => (Math.hypot(...q[1].slice(0, 3)) > Math.hypot(...p[1].slice(0, 3)) ? q : p)), beam = lead[0].split(/[.@#/]/)[0];
     const level = factor < 1 ? 'fail' : factor < margin ? 'warn' : 'pass';
     f(level, `the whole frame, with the joins' springs, buckles first at ${n3(factor, 1)} times its load as drawn, ${beam} moving most: ${level === 'pass' ? 'far from it' : 'too near it: brace it, or a stiffer profile'} (rests on ${restsJoins})`, level === 'pass' ? null : `frame buckles at ${n3(factor, 1)}×`,
-      { code: 'frame.buckling', at: r4(fm.nodes[lead[0]] ?? fm.nodes[Object.keys(fm.nodes)[0]]), values: { factor: r3(factor) }, refs: { beam, restsOn: estimates ? 'estimate' : 'measured' } });
+      { code: 'frame.buckling', at: r4(fm.nodes[lead[0]] ?? fm.nodes[Object.keys(fm.nodes)[0]]), values: { factor: r3(factor) }, refs: { beam, restsOn } });
   } catch (e) { if (e.code !== 'fea.frame.compression') f('info', `the frame's own buckling factor is not found: ${e.message}`, null, { code: 'frame.buckling' }); }
   return { model: fm, results };
 }
