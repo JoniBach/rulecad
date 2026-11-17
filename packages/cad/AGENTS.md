@@ -115,6 +115,12 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   y for each); add them from the maker's drawing, with their source, before mounting a device whose set has none. A
   wire along a beam is a run in its `via`, `{ "along": "rail.front", "from": 300, "to": 60 }`: report its length and
   its clips from `wire.length` and `wire.run`.
+- **Linear motion on a beam is a guide**: `"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H",
+  "on": "x1.top", "from": 50, "length": 300 }]`. Never draw a rail or carriage yourself, nor type its screws: the
+  guide places the rail, its screws into the slot at its pitch and each carriage on a sliding joint with its true
+  travel. Fix a table on a carriage with a fixed joint at `g1-carriage-1.top`. Run `cad check --sweep`, and report
+  `guide.fit`, the travel and each carriage's `joint.moment` margin; a fail there means a longer carriage
+  (`MGN12H`), a larger rail or the load nearer the carriage, never a changed rating.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
   a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close

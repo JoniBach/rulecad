@@ -29,9 +29,12 @@ cut, and fastens to them:
 - **Printed fittings**: a corner bracket, braced or not (`bracketModel`, `bracket`), and flat plates over a joint, a
   gusset (L, T, cross) or a splice plate (`plateModel`, `plate`), each drawn from the profile's and its slot nuts'
   rules, sized from a named load by finite elements, and reporting its grams, its stiffness and its margin.
+- **Guides**: a miniature rail on a slotted face (`railModel`), its holes at its pitch, the slot nut its screws take
+  (`guideFit`), each carriage's travel, its carriages' loads against their ratings (`carriageMargin`), what it adds to
+  an error budget (`railTerms`), and a printed jig that centres it while it is screwed down (`railJigModel`).
 
-More fittings (a three-way corner, a hidden-corner cover, a printed node, bought fittings) and linear guides follow
-in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+More fittings (a three-way corner, a hidden-corner cover, a printed node) and the other guides (wheels, rods, a
+printed slider, screws and belts) follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling
@@ -669,6 +672,50 @@ report `fitting.device` (the device's screws, their length and engagement), `fit
 and the brackets' `fitting.screw`, `fitting.margin`, `fitting.printable` and `fitting.mass`. A rule set with no
 `mount_holes` is refused by name.
 
+## Guides: a rail on a face
+
+A guide puts linear motion on a beam. A miniature rail is a rule set in `@rulecad/rules` (`"part": "rail"`):
+`rail-mgn7`, `rail-mgn9`, `rail-mgn12` and `rail-mgn15`, from HIWIN's MG Series catalogue. Each holds the rail (its
+width, height, hole pitch, standard end distance, counterbored holes, screw, mass a metre and running parallelism) and
+its standard carriage (`MGN12C`), with the long carriage (`MGN12H`) as a variant. A carriage has its length with and
+without its seals, its tapped holes, its mass, its load ratings C and C0 and its moment ratings MR (roll about the
+rail), MP (pitch, end over end) and MY (yaw, across the rail).
+
+```js
+import { railModel, guideFit, carriageMargin, railTerms, railJigModel } from '@rulecad/frames'
+
+const m = railModel('rail-mgn12', { length: 300, variant: 'MGN12H' })
+m.holes.length, m.rail.end, m.travel        // 12 holes 25 mm apart, 12.5 mm from each end; 254.2 mm of travel
+guideFit(m, '2020-misumi-hfs5', { face: 'top', from: 50, beam: 400 }).nut.name   // slot-nut-6-misumi-m3-slide-in
+carriageMargin(m, { force: [0, 0, -20], moment: [0, 40, 0] }).level              // 'fail': 40 N m against MP 36.26
+railTerms(m, '2020-misumi-hfs5', { beam: 400 })   // parallelism, play, the beam's straightness and its sag, in mm
+railJigModel('2020-misumi-hfs5', { rail: 'rail-mgn12' }).grams                    // 7.65 g of PLA
+```
+
+- **Holes.** A rail cut to a length keeps as many holes as leave each end at least the counterbore's radius and
+  1 mm (`GUIDE_DEFAULTS.endLeast`), the rest shared between its two ends. Where an end comes out more than half the
+  pitch from its hole, `guide.end` warns, as HIWIN advises, and names the two lengths that give the standard end.
+- **Travel.** Each carriage rides its own share of the rail: the rail's length over the number of carriages. Its
+  travel is that share less the carriage's length with its seal lips (`carriage_length_max`). A rail too short for
+  its carriages is refused by name.
+- **Fit.** `guideFit` says whether the rail bridges the slot's opening and sits within the face, whether a slot nut
+  is made for that slot in the rail's thread (the nut, or the threads there are), and whether its ends are on the beam
+  and clear of what crosses its face (`keep`, with `GUIDE_DEFAULTS.clear` between). Each is a `guide.fit` finding.
+- **Loads.** `carriageMargin` holds a carriage's loads to its ratings: the force across the rail over C0 and each
+  moment over its own rating, summed. The sum's inverse is the margin: under 1 it fails, under 2 it warns. The force
+  along the rail is the drive's to take.
+- **Error budget.** `railTerms` gives what a rail adds along its travel: its running parallelism for its length and
+  its carriage's play, from its rule set; the beam's straightness over the rail, from the profile's; and the beam's
+  sag under its own weight and the rail's, an estimate.
+- **The jig.** `railJigModel` is a printed saddle that snaps over the beam, a key into the slot of each side face,
+  with a channel over the rail that holds it on the beam's middle while its screws are tightened. Its keys are as
+  deep as snapping it on allows at twice the margin, and it is as long as a 20 N push on the rail needs at twice
+  the margin. It prints on its side with no supports.
+
+A rail's frame: x along it from its end a, y across, z out of the face (0 on the face). A carriage's: its middle over
+the rail on that face, x along the rail, z up. `rail(m)` and `carriage(m)` draw them; `railJig(m, { pose })` draws
+the jig on its side to print, or fitted.
+
 ## Ends and feet
 
 | Part | What it is | Prints |
@@ -827,6 +874,12 @@ kit's.
 | A tie anchor's roof | σ = 6 (F t_w / 8) / (b h²) | A beam across the tie's width, both ends held, its load at the middle |
 | A spool holder's arm | σ = 6 F (2 + w_s / 2) / (b t²), F = 2 m g | A cantilever with the spool's weight at its middle |
 | Clips along a run | n = max(2, ⌈L / pitch⌉ + 1), L / (n − 1) apart | One at each end, evenly between |
+| A rail's holes | n = ⌊(L − 2 e) / P⌋ + 1, e = D / 2 + 1; the ends E = (L − (n − 1) P) / 2 | HIWIN MG catalogue 2-4-17, L = (n − 1) P + 2E; `GUIDE_DEFAULTS.endLeast`, an estimate |
+| A carriage's travel | L / n − L_max, n carriages on a rail L long | Each its own share of the rail |
+| A carriage's margin | 1 / (F / C0 + \|M_R\| / MR + \|M_P\| / MP + \|M_Y\| / MY), F the force square to the face and across | HIWIN's ratings, each load alone; summed, `GUIDE_DEFAULTS.combine`, an estimate |
+| A beam's sag under a guide | δ = 5 w L⁴ / (384 E I) + P L³ / (48 E I) | Simply supported beam, spread and middle loads (Roark's Formulas for Stress and Strain, table 8.1) |
+| A jig's keys | δ = 2 (S / 2) l² / (3 E t), l the leg to the key, t its wall | A cantilever pushed δ at its tip, its stress 3 E t δ / (2 l²) at the root |
+| A jig's length | w = 6 F l / (t² S / 2) | A leg bent at its root by the push on the rail |
 
 Why the torsion constant is solved for and not taken from the polar moment: a slotted section is open. MISUMI's
 HFS5-2020 has a polar moment of 14 850 mm⁴ and a torsion constant of 809 mm⁴ by this solve, eighteen times less,
@@ -838,7 +891,7 @@ to within 10% of the open-section figure s t³ / 3.
 
 ## What it rests on
 
-Every profile, slot family, bought fitting and material is a rule set in `@rulecad/rules`, each value with its source and the date
+Every profile, slot family, bought fitting, rail and material is a rule set in `@rulecad/rules`, each value with its source and the date
 it was read. A printed fitting's working figures (`FITTING_DEFAULTS`) say what each rests on: the margin and load are
 the kit's defaults, the least thickness, the round, the brace and the end distance are estimates until the print
 tests (Frames 2.13) check them, and a fitting's stiffness and margin are finite elements on cubes about a third of
@@ -862,6 +915,13 @@ shield, three dimensioned and one read off its drawing (`community`). Fan hole s
 and 80 mm (`spec`), a secondary source for 92 and 120 mm (`community`) and an estimate for 60 mm. A TS35 rail is
 Weidmüller's data sheet. A board's standoff, the clip's barb and snap, a tie's band, a spool's size and the load
 figures are working figures or estimates (`SERVICE_DEFAULTS` says which); every margin is by beam formulas.
+
+A rail's figures are HIWIN's MG Series catalogue (2025, G99TE24-2410), all `spec`: the dimension table for the rail
+and carriages, the rail lengths, the running parallelism of the normal class, the preload classes (a light clearance
+carriage's play, 4 to 10 µm) and the radial stiffness (at very light preload). Other makers' MGN rails share the
+rail's size and hole pitch, and their carriages' ratings differ: give a variant with theirs. The least end distance,
+the jig's key and how a carriage's loads combine are estimates (`GUIDE_DEFAULTS` says which); the beam's sag assumes
+pinned ends, the worse case.
 
 Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm, Bosch Rexroth, item (Lines 5, 6 and 8, standard and
 light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, MakerBeamXL and OpenBeam, 80/20's
@@ -889,6 +949,7 @@ lists them.
 | `panelClipModel`, `panelClip`, `panelCornerModel`, `panelCorner`, `panelEdgeModel`, `panelEdge`, `slotCoverModel`, `slotCover`, `gasketStripModel`, `gasketStrip` | The printed parts that hold a panel, each a model and its solid (`{ pose: 'print' \| 'fit' }`) |
 | `DOOR_DEFAULTS`, `hingeModel`, `hinge(m, { part: 'frame' \| 'door', pose? })`, `handleModel`, `handle`, `latchModel`, `latch`, `magnetCatchModel`, `magnetCatch` | A door's printed parts |
 | `SERVICE_DEFAULTS`, `FANS`, `DIN_RAIL`, `deviceMountModel(profile, { device, variant?, turn?, offset?, standoff?, screw? })`, `deviceMount`, `fanMountModel`, `fanMount`, `dragChainEndModel`, `dragChainEnd`, `dinRailAdapterModel`, `dinRailAdapter`, `cableClipModel`, `cableClip`, `tieAnchorModel`, `tieAnchor`, `spoolHolderModel`, `spoolHolder`, `runClips(length, { pitch? })` | The parts that carry services on a frame, each a model and its solid (`{ pose: 'print' \| 'fit' }`), and clips along a run |
+| `GUIDE_KINDS`, `GUIDE_DEFAULTS`, `rails()`, `railModel(set, { length, variant?, carriages?, given? })`, `rail(m)`, `carriage(m)`, `guideFit(m, profile, { face?, from?, beam?, nut?, keep?, given? })`, `carriageMargin(m, { force, moment })`, `railTerms(m, profile, { beam, carried?, face? })`, `railJigModel(profile, { rail, face?, length?, load? })`, `railJig(m, { pose?, tongues? })` | Guides: a rail's model (holes, screws, carriages' shares and travel), its solids, whether it fits a face, a carriage's loads against its ratings, its error terms, and the printed jig that centres it |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |

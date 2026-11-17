@@ -613,8 +613,8 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   `at`. The overlap check measures its body without its tongues, which stand in the slots.
 - The printed parts for panels, doors, beams' ends and services are fitting items too (@rulecad/frames' README,
   Panels and doors, Ends and feet, Services): `"kind"` is `panel-clip`, `panel-corner`, `slot-cover`, `panel-edge`, `gasket-strip`,
-  `hinge`, `handle`, `latch`, `magnet-catch`, `end-cap`, `foot`, `levelling-foot`, `castor-plate` or
-  `stacking-foot`, with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
+  `hinge`, `handle`, `latch`, `magnet-catch`, `end-cap`, `foot`, `levelling-foot`, `castor-plate`,
+  `stacking-foot` or `rail-jig` (`"rail": "rail-mgn12"`), with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
   "frame"` and `"part": "door"`, and a levelling foot's pad is `"part": "pad"`. An end part goes at the end's address
   (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs.
 - A `bracket`, `gusset`, `splice`, `hidden` or `anchor` join with a bought fitting's set by name (`"fitting":
@@ -736,6 +736,37 @@ slotted face, its holes read from its own rule set (@rulecad/frames' README, Ser
   the part of the wire along the slot and how many clips hold it. A run past the beam's end is refused by name.
 - The other service parts are fitting items by kind: `fan-mount` (`"size": 80`), `drag-chain-end` (`"holes"`,
   `"screw"`), `din-rail`, `cable-clip`, `tie-anchor` and `spool-holder`.
+
+**Guides.** `"guides"` puts linear motion on a beam: a miniature rail screwed down on a slotted face and its carriages
+(@rulecad/frames' README, Guides):
+
+```json
+"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H", "on": "x1.top", "from": 50, "length": 300 }]
+```
+
+- The rail is a bought item named by the guide's `id` (`g1`, `g2`, ... by default), placed at `from` mm along the
+  face from the beam's end a. Its screws are a fasten into the slot, one in each hole at the rail's pitch, so
+  `fasten.length` chooses them, the slot nuts are placed with them (`"nut"` chooses their kind), and `cad list`
+  counts both: an MGN12 cut to 300 mm takes twelve M3 cap screws 25 mm apart and twelve M3 slot nuts.
+- Each carriage (`"carriages"`, 1 by default) is a bought item `<id>-carriage-1`, ... on its own sliding joint
+  `<id>-1`, ... along the beam, from 0 to its travel: its share of the rail less its length with its seals. The
+  poses `<id>-a` and `<id>-b` put every carriage at the start and the end of its share; `cad check --sweep` slides
+  each through its travel. A carriage's anchors are `top` and `t1` to `t4` (its tapped holes, from its top), for a
+  table fixed on it.
+- `cad check` says `guide.holes` (the holes, their pitch and the end distance; `guide.end` where an end is past half
+  the pitch), `guide.travel`, `guide.fit` (the rail on the face, a slot nut for its screws, its ends on the beam and
+  clear of a beam joined across its face), `guide.budget` (what it adds to an error budget) and `guide.jig` (a
+  printed jig that centres the rail while it is screwed down, as a `rail-jig` fitting item).
+- Each carriage's loads are held to its ratings at every pose (`joint.moment`): the weight of all it carries and the
+  masses of `"loads"` hung on it, as a force and a moment about its middle on the rail's top, in its own frame.
+  Each load over its rating (C0, MR, MP, MY), summed, is how much of the carriage it uses: past 1 it fails and names
+  the rating, under 2 times over it warns. How they combine is an estimate, said as one.
+- A task whose chain runs through a carriage's joint counts the rail's terms in its error budget (`task.accuracy`):
+  its running parallelism and its carriage's play from its rule set (`spec`), the beam's straightness over the rail
+  from the profile's, and the beam's sag (an estimate).
+- Refused by name: a kind not built yet (wheels, rods, sliders), a face that is not a beam's slotted face, `on` with a
+  distance (that is `from`), a rail past the beam's end, a carriage its set has not got, and a rail too short for its
+  carriages.
 
 ## Optimised parts
 
