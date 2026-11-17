@@ -30,7 +30,7 @@ export const OPS = {
   cut: { what: 'a square cut to length', at: 'end', keys: [] },
   mitre: { what: 'an end cut at an angle, about a named face', at: 'end', keys: ['angle', 'about', 'long'] },
   tap: { what: 'a thread cut in an end bore', at: 'bore', keys: ['thread', 'depth'] },
-  access: { what: 'a hole across the beam, in line with a slot, for a key', at: 'face', keys: ['thread', 'diameter', 'depth'] },
+  access: { what: 'a hole across the beam, in line with a slot, for a key', at: 'face', keys: ['thread', 'head', 'diameter', 'depth', 'through'] },
   drill: { what: 'a hole through one wall or right through, plain or tapped', at: 'face', keys: ['thread', 'kind', 'diameter', 'depth', 'through'] },
   counterbore: { what: 'a seat for a head in a face, with the screw\'s hole through the wall', at: 'face', keys: ['thread', 'head', 'diameter', 'depth'] },
   pocket: { what: 'a milled pocket by outline', at: 'face', keys: ['size', 'outline', 'radius', 'depth'] },
@@ -155,8 +155,8 @@ export function opsOf(b, list, anchorOf) {
         if (thread != null && typeof thread !== 'string') throw new Error(`${ow}: thread is a thread's name, such as M5 (got ${shown(thread)})`);
         if (thread == null && o.diameter == null) throw new Error(`${ow}: give a thread (M5) or a diameter in mm`);
         const through = o.through ?? 'wall';
-        if (o.op === 'drill' && !['wall', 'beam'].includes(through)) throw new Error(`${ow}: through is wall (through one wall, the default) or beam (right through) (got ${shown(o.through)})`);
-        const deep = num('depth') ?? sideOf(o.op === 'drill' ? through : 'wall');
+        if (o.op !== 'counterbore' && !['wall', 'beam'].includes(through)) throw new Error(`${ow}: through is wall (through one wall, the default) or beam (${o.op === 'access' ? 'through every wall on its line, to the slot on the far side, where a blind join\'s head sits' : 'right through'}) (got ${shown(o.through)})`);
+        const deep = num('depth') ?? sideOf(o.op === 'counterbore' ? 'wall' : through);
         let diameter = num('diameter'), kind = null, rest = null, key = null, seat = null, fig = null;
         try {
           if (thread != null) fig = fixFigures(thread);
@@ -166,8 +166,10 @@ export function opsOf(b, list, anchorOf) {
             if (thread == null && kind !== 'clearance') throw new Error(`a ${kind} hole is sized by its thread: give thread`);
             if (thread != null && diameter == null) { const h = holeModel(thread, { kind, printer: MACHINED, lead: 0, depth: deep, through: true }); diameter = h.diameter; rest = h.basis.rule; }
           } else if (o.op === 'access') {
-            key = fig?.key ?? null;
-            if (diameter == null && key == null) throw new Error(`${thread}'s set names no hex key (head_key) to size an access hole for: give a diameter`);
+            const head = o.head ?? 'cap', figure = ACCESS_KEYS[head];
+            if (!figure) throw new Error(`head is the screw's head the key turns, ${Object.keys(ACCESS_KEYS).join(', ')} (got ${shown(o.head)})`);
+            key = fig ? (isNum(fig.figures[figure]?.value) ? fig.figures[figure].value : null) : null;
+            if (diameter == null && key == null) throw new Error(`${thread}'s set names no hex key for a ${head} head (${figure}) to size an access hole for: give a diameter`);
             if (diameter == null) {
               const corners = key / Math.cos(Math.PI / 6), fit = ['clearance_close', 'clearance', 'clearance_loose'].map((n) => [n, fig.figures[n]?.value]).find(([, v]) => isNum(v) && v > corners);
               diameter = fit ? fit[1] : r3(corners + OP_DEFAULTS.key.value); rest = fit ? `${fig.set}.${fit[0]}` : 'OP_DEFAULTS.key';
@@ -178,9 +180,9 @@ export function opsOf(b, list, anchorOf) {
           }
         } catch (e) { throw new Error(`${ow}: ${String(e.message).replace(/^(hole|counterbore): /, '')}`); }
         const depth = o.op === 'counterbore' ? Math.max(wall, seat.depth) : deep;
-        Object.assign(op, { thread, kind, diameter: r3(diameter), depth: r3(depth), through: o.op === 'drill' ? through : 'wall', ...(seat ? { seat } : {}), ...(key ? { key } : {}), ...(rest ? { rule: rest } : {}) });
+        Object.assign(op, { thread, kind, diameter: r3(diameter), depth: r3(depth), through: o.op === 'counterbore' ? 'wall' : through, ...(seat ? { seat } : {}), ...(key ? { key } : {}), ...(rest ? { rule: rest } : {}) });
         const from = `${mm(z)} mm from end a${z > L / 2 ? ` (${mm(L - z)} from end b)` : ''}`;
-        op.line = o.op === 'access' ? `access hole Ø${mm(diameter)} mm in ${place.name}, ${from}, ${mm(depth)} mm deep${key ? ` for a ${mm(key)} mm key` : ''}`
+        op.line = o.op === 'access' ? `access hole Ø${mm(diameter)} mm in ${place.name}, ${from}, ${mm(depth)} mm deep${through === 'beam' ? ' (through to the far side)' : ''}${key ? ` for a ${mm(key)} mm key` : ''}`
           : o.op === 'drill' ? `drill Ø${mm(diameter)} mm${kind === 'tap' ? ` and tap ${thread}` : ''} in ${place.name}, ${from}, ${through === 'beam' ? 'right through' : 'through one wall'} (${mm(depth)} mm)`
             : `counterbore Ø${mm(seat.diameter)} x ${mm(seat.depth)} mm for ${thread} ${seat.head} head in ${place.name}, ${from}, with a Ø${mm(diameter)} mm hole through the wall (${mm(depth)} mm)`;
         if (kind === 'tap') {
@@ -243,6 +245,9 @@ export function opsOf(b, list, anchorOf) {
   return { ops: out, findings };
 }
 
+// The hex key of each head an access hole is for, by its figure in the thread's set: a cap screw's (head_key), a
+// button head's (button_key, a size smaller from M4 up), a countersunk head's
+const ACCESS_KEYS = { cap: 'head_key', button: 'button_key', countersunk: 'countersunk_key' };
 // A thread's figures through fixings: its set, major diameter, pitch, hex key and clearance figures
 function fixFigures(thread) {
   const fx = fixingModel(thread), v = (n) => (isNum(fx.figures[n]?.value) ? fx.figures[n].value : null);

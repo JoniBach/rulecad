@@ -335,3 +335,40 @@ test('the alloys profiles are made of: each temper its own set, strengths the le
   assert.deepEqual([rulesOf('al6063-t5').strength.value, rulesOf('al6063-t66').strength.value, rulesOf('al6n01-t5').strength.value, rulesOf('al6060-rexroth').strength.value], [130, 200, 205, 195]);
   assert.equal(rulesOf('al6n01-t5').poisson.kind, 'estimate', 'a figure the maker does not give says so');
 });
+
+test('miniature rails: MGN7 to MGN15 from HIWIN\'s catalogue, a long carriage as a variant rated above the standard one', () => {
+  const rails = sets.filter((s) => s.set.part === 'rail').map((s) => s.name).sort();
+  assert.deepEqual(rails, ['rail-mgn12', 'rail-mgn15', 'rail-mgn7', 'rail-mgn9']);
+  const pitch = { 'rail-mgn7': [15, 'M2'], 'rail-mgn9': [20, 'M3'], 'rail-mgn12': [25, 'M3'], 'rail-mgn15': [40, 'M3'] };
+  for (const name of rails) {
+    const s = sets.find((x) => x.name === name).set, size = name.replace('rail-mgn', ''), R = s.rules;
+    assert.deepEqual([R.rail_hole_pitch.value, R.rail_thread.value], pitch[name], `${name}: hole pitch and screw`);
+    assert.deepEqual(Object.keys(s.variants), [`MGN${size}C`, `MGN${size}H`], `${name}: a standard and a long carriage`);
+    const H = s.variants[`MGN${size}H`].values;
+    for (const k of ['carriage_length', 'static_rating', 'moment_roll', 'moment_pitch', 'moment_yaw']) assert.ok(H[k] > R[k].value, `${name}: the long carriage's ${k} is the larger`);
+    assert.ok(R.rail_hole_end.value <= R.rail_hole_pitch.value / 2, `${name}: its standard end distance is no more than half its pitch`);
+    assert.ok(R.carriage_height.value > R.rail_height.value + R.carriage_clearance.value - 1e-9, `${name}: the carriage stands over its rail`);
+    for (const r of Object.values(R)) assert.match(r.source, /HIWIN MG Series catalogue 2025/);
+  }
+  const m12 = sets.find((x) => x.name === 'rail-mgn12').set.rules;
+  assert.deepEqual([m12.static_rating.value, m12.moment_roll.value, m12.moment_pitch.value, m12.moment_yaw.value], [3920, 25.48, 13.72, 13.72]);
+});
+
+test('V-wheels and eccentric spacers: OpenBuilds\' solid and mini wheels read off its drawings, each naming its bearing and its eccentric', () => {
+  const wheels = sets.filter((s) => s.set.part === 'wheel').map((s) => s.name).sort();
+  assert.deepEqual(wheels, ['v-wheel-mini', 'v-wheel-solid']);
+  const figures = { 'v-wheel-solid': [23.9, 10.2, 5.9, 'bearing-625', 'eccentric-6-openbuilds', 39.7], 'v-wheel-mini': [15.23, 8.8, 5.78, 'bearing-mr105', 'eccentric-mini-6-openbuilds', 31.9] };
+  for (const name of wheels) {
+    const R = sets.find((x) => x.name === name).set.rules, bearing = sets.find((x) => x.name === R.wheel_bearing.value)?.set, ecc = sets.find((x) => x.name === R.wheel_eccentric.value)?.set;
+    assert.deepEqual([R.wheel_diameter.value, R.wheel_width.value, R.wheel_flat.value, R.wheel_bearing.value, R.wheel_eccentric.value, R.wheel_plate_across.value], figures[name], name);
+    assert.ok(bearing?.part === 'bearing' && ecc?.part === 'eccentric', `${name}: its bearing and eccentric are sets of their own`);
+    // its bearings fit the wheel: their outside in its seats, their bores on its M5 screw, two of them and the lip no wider than the wheel by more than a race
+    assert.equal(bearing.rules.bore.value, 5); assert.ok(2 * R.wheel_seat_depth.value + R.wheel_lip.value <= R.wheel_width.value + 1e-9);
+    assert.ok(2 * bearing.rules.width.value + R.wheel_lip.value - R.wheel_width.value < 1, `${name}: its bearings stand less than 0.5 mm proud of each face`);
+    assert.ok(R.wheel_flat.value < R.wheel_width.value && R.wheel_angle.value === 90);
+    assert.deepEqual([ecc.rules.eccentric_offset.value, ecc.rules.eccentric_height.value, ecc.rules.eccentric_bore.value], [0.79, 6, 5]);
+    assert.ok(ecc.rules.eccentric_rim_diameter.value < ecc.rules.eccentric_hole.value, `${ecc.name}: its rim turns in the plate's hole`);
+    // the plastic's figures say what they rest on
+    assert.deepEqual([R.wheel_modulus.kind, R.wheel_contact_stress.kind, R.wheel_poisson.kind], ['community', 'community', 'estimate']);
+  }
+});

@@ -60,6 +60,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
                                     [--washer] [--length 12] [--torque 0.5] [--note …]
   cad add fasten <project>/<assembly> --from-fits   a fasten in place of a holes fit and a fit that fastens the same parts
                                     (the screw read from them, or --screw "M2 cap")
+  cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120   two beams joined: the end of a against b's face
+                                    [--screw "M5 button"] [--fitting printed|<bought set>] [--note …]
   cad why <project>/<object>.<name>  what a value reads, down to the rules and their sources [--json] [--depth N]
   cad check <project>/<object>      raw numbers in the design, then printability (exit 1 on a failure) [--json: findings as data]
   cad preview <project>/<object>    six views as a PNG in .preview/ (prints the path); an assembly with a motor also gets
@@ -93,10 +95,12 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad machine <project>/<assembly>  the machine as plain data: axes, steps, limits, homing, the task, in exports/
   cad plot <project>/<assembly> <drawing.svg>   plans a drawing on the machine: a step file in exports/, an animation in
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
-  cad order <project>/<assembly>    the order it goes together in, each step with its fasteners [--preview: an exploded picture of each step in .preview/]
+  cad order <project>/<assembly>    the order it goes together in, each step with its fasteners; a frame from bars to square: cut, drill, sides built flat, nuts to load, joins with their torque, diagonals [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
+                                     --jigs: the jigs its beams take, as a plate in exports/ (a drill guide per distinct hole across a beam, a tap
+                                     guide per tapped end, a cut-length stop per length, a squaring corner per square join), each marked with its beam [--preview]
   cad wires <project>/<assembly>    the wiring sheet: each wire's length, gauge and ends, written to exports/ [--out wiring.md]
   cad measured <project>/<assembly> <name>=<value> …   a measurement, where the estimate was: a rule (x1c.press=0.08) or a
                                     check's prediction (task.accuracy=0.8): says what moved, and keeps a ledger of predicted
@@ -139,18 +143,19 @@ const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'val
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
-  'unit', 'rule', 'label', 'from', 'out', // cad set, cad rules
+  'unit', 'rule', 'label', 'from', 'out', 'jigs', // cad set, cad rules, cad beams
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
-  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits']; // cad add fasten
+  'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
+  'kind', 'fitting']; // cad add join
 // What a command takes, where that isn't <project>/<object>
-const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
+const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join <project>/<assembly> --key value …', why: '<project>/<object>.<variable>', set: '<project>/<object> name=value …',
   optimise: '<project>/<problem>', optimize: '<project>/<problem>', history: '<project>[/<object>]', release: '<project>[/<object>] -m "what changed"',
   diff: '<project>/<object> <from> [<to>]', compare: '<project>/<object> <a> <b>', match: '<project>/<object> <model.stl|model.3mf>', clone: '<board.kicad_pcb | GitHub link> <name>' };
 
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -602,7 +607,7 @@ async function editVariables(ref) {
   console.log(`set ${r.changed.join(', ')} in ${path.relative(WS, r.file)}`);
 }
 
-// cad add fit|joint|item|loop|pose|fasten <project>/<assembly> --key value …: add to an assembly, keeping its layout
+// cad add fit|joint|item|loop|pose|fasten|join <project>/<assembly> --key value …: add to an assembly, keeping its layout
 async function editAssembly(what, ref) {
   const list = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => parseValue(x.trim())) : undefined);
   const pick = (keys) => Object.fromEntries(keys.map((k) => [k, typeof opt(k) === 'string' ? parseValue(opt(k)) : undefined]).filter(([, v]) => v !== undefined));
@@ -629,11 +634,12 @@ async function editAssembly(what, ref) {
     const names = (k) => (typeof opt(k) === 'string' ? opt(k).split(',').map((x) => x.trim()).filter(Boolean) : undefined);
     entry = { ...text(['screw']), through: names('through') ?? [], ...text(['into']), ...(names('at') ? { at: names('at') } : {}), ...text(['holes']), ...(opt('nut') ? { nut: opt('nut') === true ? true : String(opt('nut')) } : {}), ...(opt('washer') ? { washer: true } : {}), ...pick(['length', 'torque']), ...text(['note']) };
   }
+  else if (what === 'join') entry = text(['kind', 'a', 'b', 'fitting', 'screw', 'note']);
   else if (what === 'pose') {
     const pairs = positional().slice(3);
     if (typeof opt('name') !== 'string' || !pairs.length) throw new Error('usage: cad add pose <project>/<assembly> --name open hinge=90 [joint=value …]');
     entry = { name: opt('name'), values: Object.fromEntries(pairs.map((p) => { const [k, v] = p.split('='); return [k.trim(), v.includes(',') ? v.split(',').map(parseValue) : parseValue(v)]; })) };
-  } else throw new Error('usage: cad add fit|joint|item|beam|loop|pose|fasten <project>/<assembly> --key value …');
+  } else throw new Error('usage: cad add fit|joint|item|beam|loop|pose|fasten|join <project>/<assembly> --key value …');
   const r = addToAssembly(ref, what === 'beam' ? 'item' : what, entry);
   if (opt('json')) return console.log(JSON.stringify({ ...r, added: entry }));
   console.log(`added ${/^[aeiou]/.test(what) ? "an" : "a"} ${what} to ${path.relative(WS, r.file)}`);
@@ -1022,10 +1028,13 @@ async function platesCommand(what, ref) {
   if (!isAssembly(ref)) throw new Error(`cad ${what} works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
   const s = await buildAssembly(ref);
   if (what === 'order') {
-    const { orderOf, orderText, stepPictures } = await import('../lib/order.mjs'), r = orderOf(s);
-    if (opt('json')) return console.log(JSON.stringify(r, null, 2));
-    console.log(orderText(ref, r));
-    if (r.stuck) { process.exitCode = 1; return; }
+    const { orderOf, orderText, stepPictures } = await import('../lib/order.mjs'), { withPreload } = await import('../lib/slotnuts.mjs'), r = withPreload(s, orderOf(s));
+    // a frame (beams with joins): from bars to a square frame, its sides built flat, nuts loaded before the join that would shut them in
+    const frame = s.joins?.length ? (await import('../lib/framebuild.mjs')) : null, fb = frame ? frame.frameBuild(s) : null;
+    if (opt('json')) { console.log(JSON.stringify(fb ? { ...r, frame: fb } : r, null, 2)); if (r.stuck || fb?.stuck) process.exitCode = 1; return; }
+    console.log(fb ? frame.frameBuildText(ref, fb) : orderText(ref, r));
+    if (r.stuck || fb?.stuck) { process.exitCode = 1; return; }
+    if (opt('preview') && fb) { for (const { n, parts } of frame.frameStepPictures(s, fb)) { const st = fb.steps[n - 1], out = paths.preview(s.project, `${s.name}-step-${String(n).padStart(2, '0')}.png`); await preview(parts, { title: `${s.a.title || s.name}: step ${n} of ${fb.steps.length}`, meta: st.text, out }); console.log(path.relative(WS, out)); } return; } // (numbered as the frame's build is)
     if (opt('preview')) { const pics = stepPictures(s, r); for (const [i, parts] of pics.entries()) { const st = r.steps[i], out = paths.preview(s.project, `${s.name}-step-${String(st.n).padStart(2, '0')}.png`); await preview(parts, { title: `${s.a.title || s.name}: step ${st.n} of ${r.steps.length}`, meta: st.text, out }); console.log(path.relative(WS, out)); } }
     return;
   }
@@ -1049,6 +1058,21 @@ async function listCommand(what, ref) {
   if (what === 'list') {
     const { shoppingList, listText } = await import('../lib/list.mjs'), l = shoppingList(s);
     return console.log(opt('json') ? JSON.stringify(l, null, 2) : listText(ref, l));
+  }
+  if (what === 'beams' && opt('jigs')) {
+    const { writeJigs, jigsText } = await import('../lib/jigs.mjs'), r = await writeJigs(s), rel = (f) => path.relative(WS, f);
+    const shown = { ...r, plates: r.plates.map((p) => ({ ...p, file: rel(p.file) })) };
+    if (opt('preview') && r.parts.length) {
+      const out = paths.preview(s.project, `${s.name}-jigs.png`);
+      await preview(r.parts.flatMap((o) => o.parts.map((p) => ({ name: p.name, label: p.name, role: 'part', triangles: p.triangles }))), { title: `${s.a.title || s.name}: jigs`, meta: `${r.jigs.length} jigs on ${r.plates.length} plate${r.plates.length === 1 ? '' : 's'}`, out });
+      shown.preview = rel(out);
+    }
+    delete shown.parts;
+    process.exitCode = r.findings.some((f) => f.level === 'fail') ? 1 : 0;
+    if (opt('json')) return console.log(JSON.stringify(shown, null, 2));
+    console.log(jigsText(ref, shown));
+    if (shown.preview) say(shown.preview);
+    return;
   }
   if (what === 'beams') {
     const { writeBeamSheets } = await import('../lib/beams.mjs'), sheets = writeBeamSheets(s);

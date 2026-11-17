@@ -22,18 +22,34 @@ cut, and fastens to them:
   address on the beam, dimensioned from end a, checked, and cut into its solid.
 - **The cut list and sheets**: beams marked by what makes them alike, packed into the lengths a supplier sells with
   each cut's kerf (`cutList`, `packBars`), and a cut-and-drill sheet for each beam (`beamSheet`).
+- **Joins**: how two beams are joined (`joinModel`), by kind: the operations it puts on each beam, the screws that
+  hold it, and how stiff it is taken to be when a frame is solved.
 - **Slot nuts**: the bought nuts a slot takes (`slotNutModel`, `nutFit`, `slotNut`), the nut for a face and a thread
   (`nutFor`), and a printed carrier for a hex nut or an insert that slides in the slot (`carrierModel`, `carrier`).
+- **Printed fittings**: a corner bracket, braced or not (`bracketModel`, `bracket`), and flat plates over a joint, a
+  gusset (L, T, cross) or a splice plate (`plateModel`, `plate`), each drawn from the profile's and its slot nuts'
+  rules, sized from a named load by finite elements, and reporting its grams, its stiffness and its margin.
+- **Guides**: a miniature rail on a slotted face (`railModel`), its holes at its pitch, the slot nut its screws take
+  (`guideFit`), each carriage's travel, its carriages' loads against their ratings (`carriageMargin`), what it adds to
+  an error budget (`railTerms`), and a printed jig that centres it while it is screwed down (`railJigModel`); a
+  carriage on V-wheels in a V-slot's tracks (`wheelsModel`), where each wheel's axle goes from the track and its rim
+  (`trackFit`), its eccentrics' preload range and each wheel's load against its rating (`wheelMargin`); and a printed
+  slider in or over a slot (`sliderModel`).
+- **Jigs**: printed jigs for hand tools from a beam's operations: a drill guide that puts a bush where the sheet
+  dimensions a hole (`drillGuideModel`), a tap guide over an end (`tapGuideModel`), a cut-length stop with its gauge
+  (`lengthStopModel`) and a squaring corner (`squareCornerModel`).
 
-Joins that do their own drilling, fittings and linear guides follow in later
-releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+A whole frame from these, a box of 2020 with a motor-driven axis, cut, drilled, printed on one plate and built in
+order, is chapter 16 of [the worked examples](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md).
+More fittings (a three-way corner, a hidden-corner cover, a printed node) and a belt drive follow in later releases.
+The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling
 ```
 
-It depends on `@rulecad/rules`, where the profiles live as open data, and `@rulecad/fixings`, which sizes anything an
-operation names by a thread. It takes JSCAD (`@jscad/modeling`, which a
+It depends on `@rulecad/rules`, where the profiles live as open data, `@rulecad/fixings`, which sizes anything an
+operation names by a thread, and `@rulecad/fea`, which bends a printed fitting under its load. It takes JSCAD (`@jscad/modeling`, which a
 rulecad design already has) as a peer for a beam's solid.
 
 ## A profile
@@ -286,7 +302,7 @@ b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm
 | `cut` | A square cut to length. Each end with no cut or mitre of its own gets one (`implied: true`) | `a`, `b` | |
 | `mitre` | An end cut at an angle from square, seen on a named face | `a`, `b` | `angle` (above 0, under 90), `about` (the face), `long` (the side the length is on) |
 | `tap` | A thread cut in an end bore. `ends: 'tapped'` is the same | `a`, `b`, `a.1` | `thread` (default the profile's `bore_thread`), `depth` |
-| `access` | A hole across the beam, in line with a slot, through its floor, for a key | a face | `thread` (sizes it for that screw's key) or `diameter`, `depth` |
+| `access` | A hole across the beam, in line with a slot, through its floor, for a key | a face | `thread` (sizes it for that screw's key) and `head` (the head the key turns: `cap`, the default, `button` or `countersunk`), or `diameter`; `depth`, `through` (`wall`, the default, or `beam`: every wall on its line, to the slot on the far side) |
 | `drill` | A hole through one wall or right through, plain or tapped | a face | `thread` and `kind` (clearance, close, loose, tap) or `diameter`; `through` (`wall`, the default, or `beam`); `depth` |
 | `counterbore` | A seat for a head in a face, with the screw's hole through the wall | a face | `thread`, `head`, `diameter`, `depth` |
 | `pocket` | A milled pocket | a face | `size` (`[along, across]`) or `outline` (points about the address), `radius`, `depth` |
@@ -295,7 +311,8 @@ b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm
 
 Sizes named by a thread come from `@rulecad/fixings` as a machine cuts them: the thread's figure as drawn, with no
 printer's hole compensation and no teardrop roof. An access hole is the smallest of the thread's clearance holes
-wider than its hex key across the corners. A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
+wider than its hex key across the corners, the key of the head it is for (an M5 cap screw's is 4 mm, an M5 button
+head's 3 mm). A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
 wall goes as deep as the first run of metal along its line through the section, worked out from the outline.
 
 Each worked-out operation in `model.ops` keeps its `distance` from end a (0 and the length for the ends), its `face`
@@ -323,7 +340,9 @@ printed profile (they become features of the print in a later release).
 `beam(m, { display })` takes a beam's model, or a profile with the options `beamModel` takes. `display: 'link'` is a
 plain box of the section's envelope (a round section is a twelve-sided prism), 12 triangles, for a link and an
 overlap check. `'preview'` is the true section, every slot, bore and hollow, run the whole length: 872 triangles for a
-2040. The solid carries `.model` (the beam's model) and `.display`.
+2040. `tracks: true` cuts each V track from a link's box along the beam (the V mouth, and the opening under it to the
+cavity's depth), so a V-wheel's rim running in its track is clear of it and a rim out of its track is not; on a beam
+with no V track it is the plain box. The solid carries `.model` (the beam's model) and `.display`.
 
 ### Mass beside the sheet
 
@@ -407,6 +426,497 @@ order from end a, each with its full line. A face only a few mm wide at a small 
 view says by how much. It returns `{ svg, scale, faces, dimensions }`, `dimensions` being each operation's figure as
 the sheet prints it.
 
+## Joins
+
+A join names an end of one beam (`a`) and a place on another (`b`): a face with a distance from b's end a where
+a's end meets it (`back@120`), or b's end for beams that meet end to end or at a corner. `joinModel` works out what
+each kind of join does to both beams, the screws that hold it, and the stiffness it is taken to have.
+
+```js
+import { beamModel, joinModel } from '@rulecad/frames'
+
+const post = beamModel('2020-misumi-hfs5', { length: 200 }), rail = beamModel('2020-misumi-hfs5', { length: 300 })
+const j = joinModel('blind', { beam: post, end: 'a' }, { beam: rail, address: 'back@120' })
+
+j.a.ops      // [{ op: 'tap', at: 'a.1', thread: 'M5', depth: 18.5 }]: the post's end bore tapped M5
+j.b.ops      // [{ op: 'access', at: 'front.1@120', thread: 'M5', head: 'button', through: 'beam' }]: a hole for the button head's 3 mm key, across the rail
+j.screws     // [{ screw: 'M5 button', thread: 'M5', head: 'button', bore: 'a.1' }]
+j.stiffness  // { bending: 1500000, twist: 300000, end: { rx: 300000, ry: 1500000, rz: 1500000 }, kind: 'estimate', … }
+
+beamModel(rail.profile, { length: 300, ops: j.b.ops })   // the rail with its access hole: Ø5.3 mm, 14 mm deep
+```
+
+In a blind join the screw goes into the tapped end of a, its button head slides into the slot of b, and a hex key
+reaches the head through the access hole drilled across b from the opposite face, in line with the screw. The access
+hole goes through every wall on its line (`through: 'beam'`) and stops at the slot the head sits in. An end-tap join
+drills a clearance hole right across b instead, and the screw's cap head sits on the far face.
+
+| Kind | What it is | `b` | What this release derives |
+|---|---|---|---|
+| `blind` | A tap in the end of a, a button-head screw in it, the head in a slot of b, an access hole across b | a face with a slot | The tap, the access hole, the screw |
+| `end-tap` | A tap in the end of a, a cap screw through a hole drilled across b | a face | The tap, the clearance hole, the screw |
+| `bracket` | A corner bracket with its slot nuts and screws | a face with a slot | Printed: nothing here, cad draws it (below); bought: the set's screws, nuts and stiffness (Bought fittings) |
+| `gusset` | A flat plate (L, T or cross) over the joint | a face with a slot | Printed: as a bracket; bought: as a bracket |
+| `cube` | A three-way corner taking the beam ends | an end | The stiffness; the corner later |
+| `hidden` | A bought inner connector in the slots | a face with a slot | Bought: the set's stiffness; its grub screws are part of it |
+| `anchor` | A bought anchor connector and its pocket | a face with a slot | Bought: the hole its guide needs, drilled across a, and the set's stiffness |
+| `mitre` | Two mitred ends and a corner key or plate | an end | Both mitres, given `options.mitre` (cad works it out from where the beams are); the key later |
+| `pivot` | A hinge or pivot, which also moves | a face with a slot | The stiffness; the pivot and its joint later |
+| `splice` | Two beams end to end, with a joining plate | an end | Printed: as a bracket; bought: a straight plate's set, as a bracket |
+| `printed` | A printed node that sockets the beam ends | a face or an end | The stiffness; the node later |
+
+With `fitting: 'printed'`, a bracket, gusset or splice join has its fitting drawn by this release: `JOINS[kind].printed`
+names the generator, `j.fitting.made` is true, and no warning is given. Where the fitting goes depends on where the
+beams are, so the caller places it: cad's joins do (its README, Joins). With a bought fitting's set by name
+(`fitting: 'fitting-motedis-bracket-20-b6'`), `j.fitting.bought` is that set's model and the stiffness is the set's
+(below). A kind whose fitting is not chosen, or comes later, says so in a `join.fitting` warning that names what there
+is, and adds no operations or screws. A join that
+needs a slot on a closed face is a `join.geometry` failure, with nothing derived. Bad input is refused by name: an
+unknown kind, an end with no bore to tap (a tube: join it with a bracket or a gusset), an end with two bores (give a
+join for each, `a.1` and `a.2`), `b` the wrong sort of place for the kind, a screw or a fitting the kind does not
+take.
+
+The tap is as deep as the thread engagement asks in the beam's metal (two diameters in aluminium, from
+`@rulecad/fixings`), with the screw's tip room and one and a half diameters more (`JOIN_TAP`), so that a screw of a
+sold length both engages fully and stops short of the bottom. `options.screw` names another screw (`'M5x12 button'`).
+
+A mitre's cuts depend on where the beams are, so they are given: `options.mitre` is `{ angle, a: { about, long }, b:
+{ about, long } }`, the angle each end is cut from square (45° for a square corner, 90° less half the angle between
+the beams), the face each beam sees the corner on, and the side its length is measured on, the outside of the
+corner. In an assembly, cad works these out from the two beams' ends.
+
+### Stiffness
+
+A frame's stiffness is set at its corners, and a joint's stiffness is the honest unknown. Each kind has a bending
+and a twist stiffness in N mm/rad for a 20 mm series profile (`JOIN_STIFFNESS`), every one an estimate with its
+reasoning in its rule. A profile of another size is scaled by the cube of its width over 20 mm, and a printed fitting
+is taken at 0.3 of a bought one's (`JOIN_SCALE`), both estimates too. `joinStiffness(kind, beam, { fitting })` gives
+the figures and the end join `@rulecad/fea/frame` takes (`{ rx: twist, ry: bending, rz: bending }`). The joint rig
+(issue 264) measures them; until then a check that uses them says it rests on estimates. A bought fitting's set
+carries its own `bending_stiffness` and `twist_stiffness`, which `boughtStiffness(kind, beam, fitting)` reads in
+their place; no maker publishes one, so each set's is an estimate too, and its rule says where it comes from.
+
+Measured figures live in a workspace's `joins` rule set (`JOIN_SET`, part `joins`). The kit has no file of it:
+`joinRuleSet()` gives it as the kit starts it, each kind's `<kind>_bending` and `<kind>_twist` (a kind's hyphen as
+an underscore: `end_tap_bending`) from `JOIN_STIFFNESS`, and for each kind a printed fitting can make, its
+`<kind>_printed_share`: the joint's stiffness as a share of the fitting's own by finite elements, which leaves out
+the slot nuts, the lips and where the faces touch (1, an estimate, until measured). cad measured writes the
+workspace's copy from it. `joinStiffness(kind, beam, { given })` takes a figure of `given.sets.joins` before the
+kit's, and its `measured` says the date each of bending and twist was measured, or null; `kind` is `measured` only
+when both were. `joinModel` hands its `given` on, so a frame's joins take the workspace's figures.
+
+## Bought fittings
+
+A bought fitting is a rule set of part `fitting` in `@rulecad/rules`, read from its maker's drawing and shop page:
+what it is (`fitting_kind`), the profile size and slot family it is made for, the screws it is fixed with (thread,
+head, length, count) and the slot nut each goes into, where each screw passes into beam a and beam b (`holes_a`,
+`holes_b`: x along the beam from the fitting's corner, y across the face), its sizes, a hole a beam needs drilled for
+it, its price on the date checked (`cost`), and its stiffness. A join or a mount chooses printed or a bought set by
+name; the list, the operations and the stiffness follow the choice.
+
+```js
+import { beamModel, joinModel, boughtFittingModel } from '@rulecad/frames'
+
+const post = beamModel('2020-motedis-b6', { length: 200 }), rail = beamModel('2020-motedis-b6', { length: 300 })
+const j = joinModel('bracket', { beam: post, end: 'a' }, { beam: rail, address: 'back@120' }, { fitting: 'fitting-motedis-bracket-20-b6' })
+
+j.fitting.bought.screws   // an M4x8 cap into a hammer nut on each leg, 11 mm from the corner
+j.stiffness               // { bending: 3000000, twist: 1000000, kind: 'estimate', bought: { set, rule, source }, … }
+boughtFittingModel('fitting-motedis-foot-m6-d19', { profile: '2020-misumi-hfs5' }).findings
+// fail fitting.fit: its stem is M6, and 2020-misumi-hfs5's end bore is tapped M5
+```
+
+| Set | What | Made for | Price |
+|---|---|---|---|
+| `fitting-motedis-bracket-20-b6` | Motedis' closed cast corner bracket, 18 mm, an M4x8 cap and a hammer nut on each leg | 20 mm, B-type 6 mm slot | 0.36 EUR |
+| `fitting-motedis-plate-t-20` | Motedis' laser-cut aluminium T plate, 58 x 58 x 3 mm, five M5x8 caps into hammer nuts | 20 mm, B-type 6 mm slot | 1.21 EUR |
+| `fitting-motedis-inner-20-b6` | Motedis' zinc die-cast inner connector, in the slots, two M5x6 grub screws | 20 mm, B-type 6 mm slot | 0.65 EUR |
+| `fitting-misumi-hmj5` | MISUMI's centre joint: a post in a's centre bore, its head in b's slot, held by a guide in a 7.1 mm hole drilled across a 10 mm from its end | HFS5, 6 mm slot | not printed |
+| `fitting-motedis-hinge-20` | Motedis' light polyamide hinge, 39 x 30 mm, four M4 holes | 20 x 20 | 0.87 EUR |
+| `fitting-motedis-end-cap-20-b6` | Motedis' plastic end cap, 20 x 20 mm | 20 mm, B-type 6 mm slot | 0.07 EUR |
+| `fitting-motedis-foot-m6-d19` | Motedis' levelling foot, a 19 mm base on an M6 x 40 stem | an end bore tapped M6 | 2.00 EUR |
+
+Prices include 20% VAT, as the seller's page showed them on the date each was checked; screws and nuts are sold apart.
+
+`boughtFittingModel(set, { profile, other })` checks the fitting against the profiles it goes on: their size, the
+slot family its lugs and nuts are made for (by the slot's nut family), and a foot's stem against the end bore's
+thread. Each mismatch is a `fitting.fit` failure that names what would fit. In a join a fitting that does not fit
+places nothing. A set of the wrong kind for the join (a bracket on a `hidden` join), a plate of the wrong shape (a T
+on a splice) and a name that is no set are refused by name. `boughtFitting(model, { pose: 'fit' })` draws a reference
+solid from the set's figures, in the printed fittings' frames, so one placement serves both. A fitting that lies in
+the slots (an inner or anchor connector) is drawn there.
+
+A set of your own is a JSON file of part `fitting` in your workspace's `rules/`, each figure with its rule, kind,
+source and date, as the kit's are; `given: { sets }` hands it to these functions. Pivot joins take no bought hinge
+yet: the hinge goes on a door as an item.
+
+## Printed fittings
+
+A printed fitting is drawn from the rules of the profile it lies on, so one generator serves every profile: its
+width is the face's cell (20 mm on a 2020, 40 on a 4040), its screws are the largest thread a slot nut is made for in
+that slot (M5 in MISUMI's 6 mm slot, M8 in item's 8 mm slot), and a tongue on each leg keys into the slot. The
+tongue is the slot's opening less the printer's fit on each side, and as deep as the lip less the tallest tongue of
+that thread's slot nuts, less the fit, so it never meets the nut. It is broken round each screw, which passes the
+opening clear of it.
+
+```js
+import { bracketModel, bracket, plateModel } from '@rulecad/frames'
+
+const m = bracketModel('2020-misumi-hfs5')            // 100 N across beam a at its screw, by default
+m.thickness, m.leg, m.screwAt                          // 6.4, 24, 18.05 (mm)
+m.grams, m.margin, m.stiffness.linear                  // 6.71 g, 4.31 times under PLA's strength, 654 N/mm
+m.load.what                                            // '100 N across beam a at the upright's screw, 18.05 mm from the corner, ...'
+bracket(m)                                             // its solid, laid on its side to print
+bracket(m, { pose: 'fit' })                            // in its fitted frame
+
+bracketModel('4040-item-8')                            // the same generator: 40 mm wide, M8, 8.2 mm thick, 24.4 g
+bracketModel('2020-misumi-hfs5', { brace: true })      // a web across its inside corner: about twice as stiff
+plateModel('2020-misumi-hfs5', { shape: 'T' })         // a T gusset; 'L', 'cross', or 'splice' for a splice plate
+```
+
+How it is sized:
+
+1. **The least thickness.** A leg or plate under a screw's head is no thinner than the thread's major diameter
+   (`FITTING_DEFAULTS.least`), so the head's clamp does not dish it.
+2. **From the load.** A bracket's design load is a force across beam a at the upright's screw, which opens or closes
+   the corner; a plate's is a force in its plane across beam a at its farthest screw. Both default to 100 N
+   (`FITTING_DEFAULTS.load`); give the load your frame carries. The part as drawn is bent by finite elements
+   (`@rulecad/fea`, cubes at least three across the leg): the leg under the base screw's head is held, the load
+   shared over the nodes under the other screw's head. Its thickness grows until the peak stress away from the
+   screws is half the plastic's strength or less, and shrinks while it is under a third, so the margin lands at
+   about twice (`margin`, `spread`).
+3. **For a screw that is sold.** A screw into a slot nut must engage the nut's thread fully and stop short of the
+   slot's floor, which leaves a window of a few tenths of a millimetre for its tip. The fitting is thickened, a layer
+   at a time, until a length sold lands in that window on every leg (an M5x12 through 6.4 mm on a 2020), as cad's
+   fasten check will hold it.
+
+The finite elements' results are kept in memory, and in a cache handed in (`{ cache: { get, set } }`: cad keeps them
+in `.cache/fitting`). Each fitting's findings, in the kit's one shape: `fitting.size`, `fitting.tongue`,
+`fitting.screw`, `fitting.margin` (pass or fail at the named load), `fitting.stiffness`, `fitting.nut` and
+`fitting.bearing` (a bracket's: each nut's rating and the head's bearing on the plastic, against twice the load),
+`fitting.printable` and `fitting.mass`.
+
+A bracket's frame: x along b's face away from a, y up a, z across, the corner line on the slots' centre. It prints
+laid on its side: the whole L is its first layer, its screw holes are teardrops with their points cut flat just over
+the round (a bridge of about 0.8 of the hole's radius), so a head's seat is whole out to its edge, and each tongue's
+lower side leans 45°. A braced bracket fills its inside corner with a web two thicknesses along each leg, with a teardrop pocket
+round each head through it for the head and the key, so its screws stand where an unbraced one's do. A plate's frame:
+x along b, y along a, its contact face at z = 0. It prints contact face up, its tongues on top, its holes upright.
+The inside corners are rounded: a bracket's by its thickness, a gusset's by half its arm's width.
+
+| Stiffness | How it is read |
+|---|---|
+| `stiffness.linear` (N/mm) | The load over the loaded screw's mean movement along it |
+| `stiffness.bending` (N mm/rad) | F s² / δ: the load times the screw's distance from the corner squared, over its movement. It is the fitting's own; the slot nuts, the lips and the screws are not in it, so a joint is softer, and the joint rig (issue 264) measures that |
+
+## Panels and doors
+
+A panel is a sheet of acrylic, polycarbonate or aluminium (`SHEETS`, each with its density from the maker's data
+sheet and the thicknesses stockists commonly hold), cut to a size, its corners rounded 1 mm. Its mass is the sheet's
+density times its volume less its holes. A thickness no stockist commonly holds is a `panel.thickness` warning.
+
+The printed parts that hold it are drawn from the profile's, the thread's and the printer's rules, as the brackets are:
+
+| Part | What it is | Prints |
+|---|---|---|
+| `panelClipModel(profile, { sheet })` | A block screwed into a slot nut on the slot's line, keyed by a tongue, reaching over the panel's edge with a step as deep as the sheet. The panel's edge goes `edge` from the slot's line (6.5 mm for M5 on a 2020) | On its side |
+| `panelCornerModel(profile, { sheet })` | An L over a panel's corner where two beams meet, a screw into each slot past the crossing, the step's corner rounded where the panel's rounded corner sits | Top face down |
+| `panelEdgeModel(profile, { sheet, length })` | A channel in a slot's opening with a groove for a thinner sheet. Refused where the walls would be thinner than two lines (a 5 mm sheet in a 6 mm opening) | Groove up |
+| `slotCoverModel(profile, { length })` | A flange on the face, a stem in the opening, a barb under each lip leaning 45° | Flange down |
+| `gasketStripModel({ gap, length })` | A hollow triangle of two-line walls leaning 30°, as high as a door's standoff and its squeeze, in PETG | On its base |
+
+A door is a panel that stands off the faces on printed hinges:
+
+| Part | What it is | Prints |
+|---|---|---|
+| `hingeModel(profile, { sheet })` | The frame's leaf on the hinge beam's face, two screws into slot nuts, its two knuckles risen over the beam's outer edge; the door's leaf on the door's outer face, its knuckle between them, two screws through the door into nuts; an M4 cap screw and lock nut for the pin | The frame's leaf as it lies, the door's face down, the pin's hole a teardrop |
+| `handleModel({ sheet })` | A grip between two feet 64 mm apart, screwed from inside the door into a pilot in each foot | On its side |
+| `latchModel(profile, { sheet, standoff })` | A turn button: a post screwed into a slot nut, a tab that turns over the door's edge | Tab down |
+| `magnetCatchModel(profile, { standoff })` | A block under the door's edge with a disc magnet pressed into its tower; a steel washer stuck to the door is the strike | On its side |
+
+The door stands off the faces by the frame's leaf, a button head and 1 mm (10.2 mm for M5 on a 2020), so it passes
+over the heads. The hinge's axis lies over the beam's outer edge at the door's outer face, and the door's edge on the
+hinge side stops a knuckle and 1 mm from it. Turned about that axis, every point of the door stays at the standoff or
+higher from shut to 180°: the door swings out and away from the frame, never into it.
+
+```js
+import { panelModel, panelClipModel, hingeModel } from '@rulecad/frames'
+
+panelModel('acrylic', 3, { size: [367, 287] }).grams   // 376.02
+const c = panelClipModel('2020-misumi-hfs5', { sheet: 3 })
+c.height, c.edge, c.grams, c.margin                    // 4.4 mm, 6.5 mm, 1.53 g, 2.43 at 30 N
+const h = hingeModel('2020-misumi-hfs5', { sheet: 3 })
+h.standoff, h.axis, h.grams, h.margin                  // 10.2 mm, [-10, 13.2], 10.16 g for both leaves, 13.9 at 50 N
+```
+
+Each part is sized from a named load by beam formulas (the formulas below) to about twice the margin, then made thick
+enough that a screw sold engages its slot nut and stops short of the slot's floor, as a bracket is. The loads are
+working figures (`PANEL_DEFAULTS.load`, 30 N pushing a panel out at one clip; `DOOR_DEFAULTS.load`, 50 N across a
+hinge's pin; `DOOR_DEFAULTS.pull`, 100 N on a handle): give the loads your frame carries. The findings are the
+brackets': `fitting.size`, `fitting.tongue`, `fitting.screw`, `fitting.margin` (said to be an estimate),
+`fitting.printable`, `fitting.mass`, and a hinge's `fitting.pin` and `fitting.swing`.
+
+## Services: cables, boards, supplies and fans
+
+The parts that carry a machine's services on its frame, drawn from the same rules as the brackets:
+
+| Part | What it is | Prints |
+|---|---|---|
+| `deviceMountModel(profile, { device, variant? })` | A plate for a bought board or supply, its holes read from the device's rule set (`mount_holes`, x then y for each, from its middle). A supply's tapped holes (`mount_hole_thread`, `mount_hole_reach`) take screws up from under the plate, sunk in counterbores, no further into the case than its maker allows. A board's plain holes (`mount_hole_diameter`) take the largest screw whose head sits whole on the board, down through it into pilots on bosses that stand it off its soldered leads. The plate is screwed into slot nuts past the device's body | A supply's top face down; a board's beam side down |
+| `fanMountModel(profile, { size })` | A plate beside the beam for a 40, 60, 80, 92 or 120 mm fan (`FANS`), a round opening for the air, the fan's four screws through its corners into pilots | Beam side down |
+| `dragChainEndModel(profile, { holes, screw })` | A plate for a drag chain's end bracket, its holes and screws from the chain maker's drawing | Beam side down |
+| `dinRailAdapterModel(profile)` | A block that carries a TS35 top-hat rail (`DIN_RAIL`) across the beam, the rail screwed through its middle, the block screwed into the slot each side of it | Beam side down |
+| `cableClipModel(profile, { cable })` | A stem through the slot's opening with barbs under its lips, a flange on the face and a ring that opens for the bundle to snap in. No screw: it goes in anywhere along the slot | On its side |
+| `tieAnchorModel(profile)` | A block screwed into a slot nut with a tunnel across it beside the screw for a cable tie, its roof pointed so it needs no bridge | On its side |
+| `spoolHolderModel(profile, { spool? })` | An arm out from a beam's side that a spool's bore hangs on, a lip at its tip, sized from the full spool's weight twice over | On its side |
+
+`runClips(length, { pitch })` places clips along a run of slot: one at each end and evenly between, no more than the
+pitch apart (100 mm by default).
+
+```js
+import { deviceMountModel } from '@rulecad/frames'
+import supply from '@rulecad/rules/supply-24v.json' with { type: 'json' }
+import shield from '@rulecad/rules/cnc-shield-v3.json' with { type: 'json' }
+
+const s = deviceMountModel('2020-misumi-hfs5', { device: supply, variant: 'LRS-50-24' })
+s.device.holes, s.device.length, s.grams      // [[-29, -13.85], [26, -13.85]], M3x5 (3 mm in, Mean Well's L), 27.66 g
+const b = deviceMountModel('2020-misumi-hfs5', { device: shield })
+b.device.thread, b.device.head, b.standoff    // M2.5, cap, 3 mm: an M3's head would overhang the Uno's edge
+```
+
+A supply's screws go in from under the plate, so where its holes lie over the beam the device is set to the side
+(`offset`) until a key reaches each beside the beam: the LRS-50's holes, 0.5 mm off its middle line, move 13.35 mm
+across a 2020. A device's x lies along the slot; `turn` (0, 90, 180, 270) turns it. A board's plate has a window
+inside its holes to save plastic, and is checked at the beam's edge with the window out of its section. The parts
+report `fitting.device` (the device's screws, their length and engagement), `fitting.head` (a board's screw and why),
+and the brackets' `fitting.screw`, `fitting.margin`, `fitting.printable` and `fitting.mass`. A rule set with no
+`mount_holes` is refused by name.
+
+## Guides: a rail on a face
+
+A guide puts linear motion on a beam. A miniature rail is a rule set in `@rulecad/rules` (`"part": "rail"`):
+`rail-mgn7`, `rail-mgn9`, `rail-mgn12` and `rail-mgn15`, from HIWIN's MG Series catalogue. Each holds the rail (its
+width, height, hole pitch, standard end distance, counterbored holes, screw, mass a metre and running parallelism) and
+its standard carriage (`MGN12C`), with the long carriage (`MGN12H`) as a variant. A carriage has its length with and
+without its seals, its tapped holes, its mass, its load ratings C and C0 and its moment ratings MR (roll about the
+rail), MP (pitch, end over end) and MY (yaw, across the rail).
+
+```js
+import { railModel, guideFit, carriageMargin, railTerms, railJigModel } from '@rulecad/frames'
+
+const m = railModel('rail-mgn12', { length: 300, variant: 'MGN12H' })
+m.holes.length, m.rail.end, m.travel        // 12 holes 25 mm apart, 12.5 mm from each end; 254.2 mm of travel
+guideFit(m, '2020-misumi-hfs5', { face: 'top', from: 50, beam: 400 }).nut.name   // slot-nut-6-misumi-m3-slide-in
+carriageMargin(m, { force: [0, 0, -20], moment: [0, 40, 0] }).level              // 'fail': 40 N m against MP 36.26
+railTerms(m, '2020-misumi-hfs5', { beam: 400 })   // parallelism, play, the beam's straightness and its sag, in mm
+railJigModel('2020-misumi-hfs5', { rail: 'rail-mgn12' }).grams                    // 7.65 g of PLA
+```
+
+- **Holes.** A rail cut to a length keeps as many holes as leave each end at least the counterbore's radius and
+  1 mm (`GUIDE_DEFAULTS.endLeast`), the rest shared between its two ends. Where an end comes out more than half the
+  pitch from its hole, `guide.end` warns, as HIWIN advises, and names the two lengths that give the standard end.
+- **Travel.** Each carriage rides its own share of the rail: the rail's length over the number of carriages. Its
+  travel is that share less the carriage's length with its seal lips (`carriage_length_max`). A rail too short for
+  its carriages is refused by name.
+- **Fit.** `guideFit` says whether the rail bridges the slot's opening and sits within the face, whether a slot nut
+  is made for that slot in the rail's thread (the nut, or the threads there are), and whether its ends are on the beam
+  and clear of what crosses its face (`keep`, with `GUIDE_DEFAULTS.clear` between). Each is a `guide.fit` finding.
+- **Loads.** `carriageMargin` holds a carriage's loads to its ratings: the force across the rail over C0 and each
+  moment over its own rating, summed. The sum's inverse is the margin: under 1 it fails, under 2 it warns. The force
+  along the rail is the drive's to take.
+- **Error budget.** `railTerms` gives what a rail adds along its travel: its running parallelism for its length and
+  its carriage's play, from its rule set; the beam's straightness over the rail, from the profile's; and the beam's
+  sag under its own weight and the rail's, an estimate.
+- **The jig.** `railJigModel` is a printed saddle that snaps over the beam, a key into the slot of each side face,
+  with a channel over the rail that holds it on the beam's middle while its screws are tightened. Its keys are as
+  deep as snapping it on allows at twice the margin, and it is as long as a 20 N push on the rail needs at twice
+  the margin. It prints on its side with no supports.
+
+A rail's frame: x along it from its end a, y across, z out of the face (0 on the face). A carriage's: its middle over
+the rail on that face, x along the rail, z up. `rail(m)` and `carriage(m)` draw them; `railJig(m, { pose })` draws
+the jig on its side to print, or fitted.
+
+## Guides: wheels in a V-slot, and a printed slider
+
+V-Slot's slots have a V mouth: a track a V-wheel runs on. A slot's rule set gives it as `track_width` (across the V at
+the face) and `track_angle`. A wheel is a rule set too (`"part": "wheel"`): `v-wheel-solid` and `v-wheel-mini`,
+OpenBuilds' Delrin wheels read off its drawings, each naming the bearings it runs on (`bearing-625`, `bearing-mr105`)
+and the eccentric spacer that sets its preload (`eccentric-6-openbuilds`, `eccentric-mini-6-openbuilds`).
+
+```js
+import { trackFit, wheelsModel, wheelMargin, sliderModel } from '@rulecad/frames'
+
+trackFit('2040-openbuilds', 'front', 'v-wheel-solid').seat     // { depth: 1.63, axle: 10.32, contact: [0, 1.455], ... }
+const m = wheelsModel('2040-openbuilds', { wheel: 'v-wheel-solid', face: 'top', wheels: 4 })
+m.wheels.map((w) => [w.x, w.y])   // [-20, -30.32], [20, -30.32] fixed; [-20, 30.32], [20, 30.32] on eccentrics
+m.length, m.gap, m.grams          // 63.9 mm over its wheels; the plate 1.5 mm over the face; 24.5 g of PLA
+wheelMargin(m, { force: [0, 0, -19.6], moment: [0, 0, 0] }).level   // 'pass': 2 kg, a quarter along each axle
+wheelsModel('2040-misumi-hfs5', {})   // refused: its front face has slot-6-misumi, a plain T-slot with no V track ...
+sliderModel('2020-misumi-hfs5', { mode: 'in', material: 'petg' })   // a block under the lips, 0.2 mm clear a side
+```
+
+- **The seat.** A wheel's flat tip enters the track until its flanks lie on the track's: the tip goes
+  (track − flat) / 2 / tan(half the V) deep, and the axle stands the wheel's radius less that from the face.
+  `trackFit` checks the tip clears the opening under the V and the flanks meet within it, and says where; each is a
+  `guide.fit` finding. A face whose slot has no track (a plain T-slot), a closed face, or a V of another angle fails
+  with why, and `wheelsModel` refuses it, naming what guides there instead (a rail or a slider).
+- **The carriage.** A printed plate lies over the face `face` names; its wheels run in the slots of the two faces
+  either side, of each the slot nearest the plate. Two wheels on one side turn on plain spacers; one or two on the
+  other turn on eccentrics, drawn at mid-turn, where the wheel just seats. Turning an eccentric moves its wheel twice
+  its offset (1.58 mm), which is the preload's range (`guide.preload`). The plate sits on the spacers, its gap over
+  the face the spacer's height and half the wheel's bearings less the tracks' depth; a plate that would sit in the
+  beam is refused. Its thickness is sized from its load (50 N unless given) at twice the margin, as a beam across
+  between the rows of wheels; it prints upside down, its top the first layer. Its screws, lock nuts, washers and
+  spacers are its `hardware`.
+- **Beside the maker's plate.** `guide.seat` compares the seat with where OpenBuilds' own plate puts the axles across a
+  20 mm rail. The wheels on one side are fixed, so the eccentrics on the other take up the whole difference, each up
+  to its offset (0.79 mm) either way from mid-turn. For the mini wheel the seat is 31.85 mm against the plate's 31.9,
+  0.05 mm, well within. For the solid wheel it is 40.64 mm against 39.7 mm, 0.94 mm, more than an eccentric can take
+  up, so `guide.seat` warns: the rail's track (9.16 on its drawing) and the mini wheel agree, so the difference is in
+  the solid wheel or its plate. Measure the track and the wheel across its rim before printing a plate for it.
+- **Ratings.** Each wheel is rated from its plastic: the rim on the track by Hertz line contact at its allowed
+  pressure (Delrin's compressive stress at 1% deformation), both flanks across the beam and one along the axle, under
+  its bearings' static rating. `wheelMargin` shares a carriage's force and moment among its wheels
+  (`WHEEL_DEFAULTS.share`) and holds each to its ratings, radial over radial plus axial over axial: under 1 it fails,
+  under 2 it warns.
+- **A slider.** `sliderModel` is a printed slider over a slot (a shoe on the face and a key in the opening) or in it
+  (a block under the lips, a neck through the opening, put in from the beam's end). Its clearance a side is the
+  printer's fit, its plastic the one named. Its friction (μ 0.3) and its pressure limit for wear (a tenth of its
+  plastic's strength) are working figures, not measurements, and `guide.friction` says so.
+
+A carriage's frame: x along the beam, y across, z out of the face the plate lies over (0 on it), its origin on the
+face's middle line at the middle of the plate. A wheel's: z along its axle toward the plate, x toward the face it runs
+on. `wheelPlate(m, { pose })` and `vWheel(m, { eccentric, collide })` draw them; `slider(m, { pose, tongues })` the slider.
+
+## Guides: rods, a lead screw and an endstop
+
+Two smooth rods along a beam's face carry a printed carriage on linear bearings; a lead screw between them drives it
+from a motor at one end. Every part comes from a rule set: the rods (`rod-8`), the bearings (`lm8uu`, `lm8luu`), the
+screw and its nut (`t8-screw`, `t8-nut`), the ball bearing the screw turns in (`bearing-608`), the coupler
+(`coupler-5-8`), the motor (`28byj48`, `nema14`, `nema17`) and the switch (`endstop-10t85`).
+
+```js
+import { rodsLayout, rodHolderModel, motorPlateModel, rodCarriageModel, endstopMountModel, rodMargin } from '@rulecad/frames'
+
+const L = rodsLayout('2020-misumi-hfs5', { screw: 't8-screw', motor: '28byj48' })
+L.spacing, L.height                // 40 mm apart, 13 mm over the face: set by the 608 in a holder
+rodHolderModel('2020-misumi-hfs5', { spacing: 40, height: 13, screw: 't8-screw', support: 'bearing-608', end: 'a' })
+motorPlateModel('2020-misumi-hfs5', { motor: '28byj48', height: 13 })   // M4 through its ears, 6 mm thick, a coupler recess
+motorPlateModel('2040-openbuilds', { motor: 'nema17' })                 // M3 into its thread on its 31 mm square
+rodCarriageModel('2020-misumi-hfs5', { spacing: 40, height: 13, screw: 't8-screw', flag: { y: -24.4, z: -2 } })
+endstopMountModel('2020-misumi-hfs5', { face: 'front' }).lever          // { x: 12.4, out: 14.4, reach: 12, width: 4 }
+```
+
+- **The layout.** The rods stand far enough apart for two bearing pockets with the lead nut's flange between them and
+  1.5 mm of plastic each side (`ROD_DEFAULTS.web`), or close over the face where there is no screw. Their height over
+  the face is the least that clears whatever needs most room under them: the carriage under its bearings, the nut's
+  flange, the screw's ball bearing in a holder, the coupler and the motor's body (`L.needs` lists each). A spacing or
+  height given that leaves too little room is refused, naming what needs it.
+- **Saddles.** A holder and a motor plate stand across the beam, their legs down both side faces, a screw through
+  each leg into that face's slot. The face the rods run over stays clear for the carriage, the coupler and the screw.
+  The inside corners over the beam's corners have a round relief cut in them. A leg's thickness is what a sold screw
+  takes into its slot nut; a holder is as thick along the beam as a rod's diameter or the ball bearing and a wall,
+  and sized from a load along the beam at the rods' height (50 N unless given) to twice the margin. At end b the same
+  holder is turned to face a (`end: 'b'`).
+- **The motor plate.** The motor's mount is cut from its own rules: its mounting holes as clearance holes for the
+  thread they take (a geared motor's plain ears take the largest metric screw that passes them, to a nut), the boss's
+  pocket and the shaft's hole. The plate is at least half as thick again as those screws, as @rulecad/motors asks.
+  Where the shaft would reach less than its diameter (or its flat) into a coupler past the plate, a recess in the
+  inner face takes the coupler in. A longer shaft (a NEMA 17's 24 mm) goes half the coupler in and no further, the
+  coupler standing clear of the plate, so the shaft stops short of the screw coming in from its other end. Two
+  screws a leg hold the motor's torque by shear. It prints on its outer face,
+  the boss's pocket ending in a 45° cone.
+- **The carriage.** Two bearings press into pockets from its inner end over a 3 mm floor; the lead nut's body sits in
+  a bore through its middle, its flange screwed to the far end into pilots, the screw the shortest sold that engages
+  the plastic. With an endstop it has a flag at its far end that hangs beside the beam to just under the end of the
+  switch's lever. It prints on its far end, the pockets opening up and the flag on the bed.
+- **The endstop's mount.** A block on a side face's slot, the switch screwed to it through its own holes, its lever
+  facing along the beam toward b, and the block's own screw ahead of the lever, its head sunk so the flag passes over.
+- **The bearings' loads.** `rodMargin` shares a carriage's force across the rods between its two bearings, a roll as a
+  couple across their spacing, and pitch and yaw as a couple along each bush half its length long
+  (`ROD_DEFAULTS.couple`, an estimate); each bearing's radial load against its static rating.
+
+Every part reports its grams, its margin at its load (`fitting.margin`), how it prints and its screws, and passes
+printcheck as drawn. A part's frame is a mount's: x along the beam, y across, z out of the face (0 on it).
+
+## Ends and feet
+
+| Part | What it is | Prints |
+|---|---|---|
+| `endCapModel(profile)` | A plate the beam's outline, pegs pushed into each slot's opening and the bore, their roots chamfered 45°; `endCap(m, { tongues: false })` is the plate alone, as an overlap check measures it | Plate down |
+| `footModel(profile)` | A pad 2 mm past the beam each way, screwed into the end's tapped bore through a counterbore in its underside | As it stands |
+| `levellingFootModel(profile, { stud? })` | A body screwed into the end's bore and a pad that screws up and down a printed M12 thread (10 mm of travel, 12 mm always engaged); or, with `stud: 'M8'`, an M8 nut sunk in the body for a bought foot's stud | As they stand, threads upright |
+| `castorPlateModel(profile, { holes, thread })` | A plate for a castor whose hole spacing (from its maker's drawing) and bolts are given, screwed into the end's bore. Refused where the castor's bolts' heads would sit under the beam | Beam side down |
+| `stackingFootModel(profile)` | A plate on the end with a socket under it that fits over the end of the same profile below | Beam side down |
+
+A part screwed into the end says the tap the end needs (`ops`: `{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }`,
+as a join's tap) and the screw sold that engages the aluminium and stops inside it. Each part's frame is the end's
+address on the beam (`x1.a`): z out of the end, x along the beam's top. Seen from outside end a the section lies
+mirrored, so a section's point (x, y) is at (y, x) there and at (y, −x) at end b.
+
+## Jigs
+
+A hand drill, a tap and a saw meet a drawing through a jig. Each jig here is drawn from a beam's operations, the
+profile's rules and the printer's, prints without supports on a plain first layer, and reports its grams and its
+margin at a named load (`JIG_DEFAULTS.load`, 20 N: a hand pressing it on, or a tool pushing sideways).
+
+```js
+import { beamModel, drillGuideModel, drillGuide, tapGuideModel, lengthStopModel, squareCornerModel } from '@rulecad/frames'
+
+const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'access', at: 'front@30', thread: 'M5', through: 'beam' }, { op: 'tap', at: 'a' }] })
+const g = drillGuideModel(b, b.ops.findIndex((x) => x.op === 'access'))
+g.bush             // { drill: 5.3, diameter: 5.5, length: 10.6, at: [0, 30], within: 0.05, lean: 0.54, sheet: 30 }
+g.grams            // 11.96 g of PLA, 6.66 times under its load
+drillGuide(g, { pose: 'fit' })   // on the beam, in the beam's frame: its bore 30 mm from end a, where the sheet puts the hole
+tapGuideModel(b, b.ops.find((x) => x.op === 'tap')).lean            // 0.57°: the most the tap leans in its 10 mm bore
+lengthStopModel('2020-misumi-hfs5', 300).gauge                       // 2 pieces of 150 mm
+squareCornerModel({ profile: '2020-misumi-hfs5' }, { profile: '2020-misumi-hfs5' }).square   // 0.17°
+squareCornerModel({ profile: '2020-misumi-hfs5', end: 'b', length: 260 }, { profile: '2020-misumi-hfs5' }, { hand: 'left' }).name   // square-corner-2020-misumi-hfs5-left
+```
+
+| Jig | What it is | Prints |
+|---|---|---|
+| `drillGuideModel(beam, op, { from? })` | For a hole across a beam (access, drill, counterbore): a plate on the drilled face with a stop on the nearer end (or `from`), a tongue in the face's slot, and a bush for the drill at the sheet's dimension on the slot's centre line. Refused where the face is closed, or the hole is too far from both ends for the bed | Outer face down, the stop and tongue standing up, the bush upright |
+| `tapGuideModel(beam, op, { shank? })` | For a tapped end: a cap over the end, a sleeve round the section, and a bore over each tapped bore that holds the tap square | Outer face down, the sleeve standing up |
+| `lengthStopModel(profile, length)` | For one length: a block a spring clamp holds against the saw's fence or a mitre box's back, and a gauge as long as the cut, in pieces no longer than the bed takes, that sets the block from the blade's near side | Flat, every edge on the table chamfered by the printer's `chamfer` |
+| `squareCornerModel(a, b, { hand? })` | For two beams meeting square: an L on a face of each in one plane, a tongue in each slot, that holds them square while the join is tightened. Its arm b runs along b one way only: right-handed along n x u (n: a's face's outward normal; u: along a, away from b), left-handed the other way. Where a meets b near b's end, only one hand lies on b, so choose the hand whose arm runs along b | Outer face down, the tongues on top |
+
+`drillGuide`, `tapGuide`, `lengthStop` (`{ part: 'block' \| 'gauge' }`) and `squareCorner` draw them, each in its
+print pose; each but the length stop also `{ pose: 'fit' }`, on the beam in the beam's frame (a squaring corner on
+beam a, from the end given as `a.end`, with `a.length` where that end is b). Each takes a
+`mark`, a 2D outline cut 0.4 mm into a face that faces up as it prints, so a jig says which beam it is for. The
+print frames are in the header of `jig.mjs`.
+
+Sizes come from the rules. A bush is the drill (or the tap's shank) plus the printer's `slip` and `hole_comp`, and
+guides it over `JIG_DEFAULTS.bush` (2) diameters. A tongue is the slot's opening less the printer's `slip`, and its
+lip less the `fit` deep. A drill guide's stop is as thick as keeps it from bending more than `JIG_DEFAULTS.within`
+(0.05 mm) under the load. @rulecad/cad generates the whole set from an assembly: `cad beams <project>/<assembly>
+--jigs`.
+
+## Squaring a frame
+
+A rectangular bay is square when its two diagonals are equal. A tape from one inside corner to the opposite one, then
+across the other two, measures it, and the difference between the two readings says how far the bay leans.
+`squareness(width, height, { tolerance? })` gives the diagonal of an opening (inside face to inside face) and the
+difference to accept: what the cut tolerance of the beams allows with every corner square. Two opposite sides cut to
+±t can differ by 2t, which moves one diagonal against the other by up to 2t times that side over the diagonal; the
+longer side gives the most.
+
+```js
+import { squareness } from '@rulecad/frames'
+
+const q = squareness(260, 200)   // a 260 × 200 mm opening, beams cut to ±0.5 mm (CUT_DEFAULTS.tolerance)
+q.diagonal   // 328.02 mm, each
+q.accept     // 0.79 mm: the most the two may differ by
+q.lean       // 0.143°: a bay leaning by that much has diagonals that differ by 0.79 mm
+squareness(260, 200, { tolerance: 0.1 }).accept   // 0.16 mm, for a saw that holds 0.1 mm
+```
+
+A bay whose diagonals differ by more than `accept` leans: loosen its joins, push the corners at the ends of the long
+diagonal together, tighten and measure again. Joint play is a second source, left to the frame checks of issue 268.
+@rulecad/cad finds every bay of an assembly (four beams joined in a rectangle in one plane) and puts its diagonals on
+the frame's build (`cad order`) and in `frame.square`.
+
 ## Slot nuts
 
 A slot nut is a rule set in `@rulecad/rules` (`"part": "slot_nut"`), one for each maker, slot, thread and kind:
@@ -421,7 +931,7 @@ under the lips, as it sits once its screw is tight.
 
 | Export | What |
 |---|---|
-| `slotNutModel(name, change?, given?)` | A nut's model: `slot`, `thread`, `nutKind`, `entry`, `length` (along the slot), `width` (across), `height` (the body under the lips), `tongueWidth` and `tongueHeight` (the step up into the opening), `boltLength`, `hold` (the figure, newtons), `torque`, `material`, `volume`, `mass` (grams), `figures`, `findings` |
+| `slotNutModel(name, change?, given?)` | A nut's model: `slot`, `thread`, `nutKind`, `entry`, `length` (along the slot), `width` (across), `height` (the body under the lips), `tongueWidth` and `tongueHeight` (the step up into the opening), `boltLength`, `hold` (the figure, newtons), `holdAlong` (the pull along the slot at which it slips, tightened, from the set's `hold_along`: no maker publishes it, so only a set measured on the joint rig has it), `torque`, `material`, `volume`, `mass` (grams), `figures`, `findings` |
 | `nutFit(nut, slot)` | How it sits: `slot_nut.fit` fail where it is wider than the cavity (a turned nut may be as wide: it turns until it jams), no wider than the opening, taller than the room under the lips, or its tongue wider than the opening; warn where its tongue stands proud of the face. `slot_nut.entry` warn where a turned nut is longer than the opening is wide |
 | `slotNut(nut, { at?, display? })` | Its reference solid: body, tongue, the thread's hole; a T-bolt's shank. `display: 'link'` is the body alone |
 | `nutFor(profile, face, thread, { kind?, given? })` | The nut for that face: one made for the slot's nut family (a slot's `nut_family`), of that thread and kind (any kind where none is asked), that fits; the strongest first. Its `others` name the rest that would do. Refused by name where there is none, naming the nuts made for that slot, and other families' nuts that fit it by their sizes |
@@ -432,6 +942,12 @@ nutFor('profile-2020-openbuilds', 'top', 'M8');
 // throws: nutFor: no M8 nut is made for profile-2020-openbuilds's top face (slot-6-openbuilds, nut family
 // slot-6-openbuilds). Made for it: M5 drop-in (slot-nut-6-openbuilds-m5-drop-in). ...
 ```
+
+`NUT_KINDS` lists the kinds as a nut set's `nut_kind` takes them. A nut's `entry` says how it goes in: `end` (a
+slide-in or square nut, only from an open end of the slot) or `anywhere` (through the opening). In an assembly,
+`@rulecad/cad` reads a `fasten` into a slot (`"into": "x1.top"`) through `nutFor`, holds each screw to a slot's centre
+line, and fails a nut whose entry is `end` in a slot closed at both ends by joins (`frame.nut`), or lists it to load
+before the join that closes its way in (`frame.preload`).
 
 **What a nut holds.** `hold` is the pull straight out of the slot. Bosch Rexroth rates its nuts (Fmax: 1700 N for the
 6 mm T-nut, 3000 N for the 6 mm sliding block with M5, 4000 N for the 8 mm T-nut and T-bolt, 6000 N for the 8 mm
@@ -503,6 +1019,7 @@ kit's.
 | Second moments about the origin's axes | Iₓ = Σ (yᵢ² + yᵢ yᵢ₊₁ + yᵢ₊₁²) cᵢ / 12, I_y the same in x, I_xy = Σ (xᵢ yᵢ₊₁ + 2 xᵢ yᵢ + 2 xᵢ₊₁ yᵢ₊₁ + xᵢ₊₁ yᵢ) cᵢ / 24 | Steger, "On the calculation of arbitrary moments of polygons" (1996) |
 | Moved to the centroid | I about the centroid = I about the origin − A d² | The parallel axis theorem |
 | Section modulus | W = I / the distance from the centroid to the furthest fibre | Beam theory |
+| A printed part's plastic | cost = grams / 1000 × the material's `cost` (EUR/kg) | The material's rule set (Bambu Lab's EU store for `pla` and `petg`) |
 | Torsion constant | Solve ∇²φ = −2 in the metal with φ = 0 on the outside and φ constant over each hole, the constant fixed by ∮ ∂φ/∂n ds = −2 A_hole round it. Then J = 2 ∫φ dA over metal and holes | Prandtl's stress function: Timoshenko and Goodier, *Theory of Elasticity*, the chapter on torsion |
 | The solve | Square cells over the section (about 40 000), the five-point Laplacian with the wall half a cell from a cell's centre, one unknown for each hole, conjugate gradients | A finite-difference scheme; checked against the closed forms below |
 | Solid circle, for checking | J = π d⁴ / 32 | The polar moment of a circle, which is its torsion constant |
@@ -513,13 +1030,58 @@ kit's.
 | Room a bar gives | bar length − trim − Σ (each beam's length + kerf) ≥ 0, the offcut being what is left | Each cut takes a kerf; the trim squares the bar's first end |
 | A mitre's short side | L − w tan θ for each mitred end, w the section's side across the cut and θ the angle from square | Trigonometry |
 | Tap depth, by default | 2 × the major diameter in aluminium (1 in steel, 2.5 in plastic) | The engagement rule set in `@rulecad/rules`, through `@rulecad/fixings` |
+| A join's tap depth | engagement + tip room + 1.5 × the major diameter (M5 in aluminium: 10 + 1 + 7.5 = 18.5 mm) | `engagement` and `tip_room` from `@rulecad/fixings`; `JOIN_TAP`, a working figure |
+| A join's stiffness for another size | k = k₂₀ × (w / 20)³, w the profile's larger side in mm | `JOIN_SCALE.size`, an estimate |
+| A join's spring from the joint rig | k = F L² / (d − F L³ / 3 E I): d the measured drop of a beam held out by the join, F the weight hung at L from the face it meets, E I the beam's across the load | A cantilever's tip deflection, F L³ / 3 E I, plus its root turning on a spring, F L / k, times L (Euler-Bernoulli beam theory; the beam's shear left out, under 1% of the drop of the rig's 150 mm beams) |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
+| A fitting's first thickness | t = √(2 × 6 F s × 1.5 / (w S)), F the load, s the screw's distance from the corner, w the width, S the strength, 1.5 a stress raiser | Beam theory for a leg bent at its root (σ = 6M / w t²); only a start, the finite elements decide |
+| A fitting's margin | S / σ_peak, σ_peak the largest von Mises stress at a cell's centre away from the screws, times k / (k − 1) for k cells across the leg | `@rulecad/fea`; the lift reads a cell's centre out to the surface, as cad's motor mount check does |
+| A fitting's bending stiffness | k = F s² / δ | A force F at distance s turns the joint by δ / s |
+| A screw's tip window in a slot nut | lip − nut tongue + min(nut's thread, hex nut height) ≤ L − t ≤ slot depth − 0.3 | The nut's thread from its tongue down; ISO 4032's nut height; `FITTING_DEFAULTS.floor`, as cad's `FASTEN.floor` |
+| A clip's or a latch's least reach over the sheet | t = √(6 M k / (b S)), M = F × the lever, b the part's width, k the margin asked (2) | Beam theory for a cantilever bent at its root (σ = 6M / b t²) |
+| A hinge's risers | σ = 6 F z_a / (2 l (2R)²), F across the pin at height z_a, two risers each l long and 2R deep | The same, two risers sharing the load |
+| A handle's grip | σ = 6 (F s / 4) / (b h²), F at the middle of a grip s between its feet | A simply supported beam with a load at its middle: M = F s / 4 |
+| A levelling foot's stem | σ = 32 (F / 10) L / (π d_r³), d_r = 0.8 × the thread's major diameter | A round stem bent at its root by a side push of a tenth of the load, an estimate of uneven ground |
+| A foot's bearing | p = F / A, A the pad less the counterbore | |
+| A gasket's wall strain | ε = 3 t δ / (2 L²), against S / E | A cantilever pushed δ at its tip, its strain at the root |
+| A panel's mass | m = (a b − (4 − π) r² − Σ holes) × T × ρ / 1000 | A rounded rectangle's area, times its thickness and density |
+| The door clears the frame | z_a + Δy sin θ + Δz cos θ ≥ z_a − T for every point of the door, Δy ≥ 0 and −T ≤ Δz ≤ 0 from the axis, 0 ≤ θ ≤ 180° | A point turned about the hinge's axis; with the axis at the door's outer face and its edge past the axis, nothing comes below the door's inner face |
+| A head's bearing on a fitting | p = F / (π/4 (d_k² − d_h²)) | The head's ring over the clearance hole |
 | A screw's proof load | F = S_p × A_s, A_s = π/4 (d − 0.9382 P)² | ISO 898-1: proof stress S_p (580 MPa for class 8.8) on the stress area of the thread |
 | Plastic's shear strength | τ = σ / √3 | The von Mises estimate, `@rulecad/fixings`' `shear_ratio` |
 | A carrier's hold, through its top | F = τ × 2√3 s × t, s the nut's flats, t the plastic over its slot (π D t for an insert of knurl diameter D) | Punching shear round the hexagon's perimeter |
 | A carrier's hold, at its shoulders | F = τ × 2 (L h − w g), h the carrier's depth below the lips at the opening's edge, w × g the nut's slot | Two shear planes up the sides of the opening |
 | A nut's mass | m = V ρ / 1000, V its drawn block's volume in mm³ | |
 | Share of a full thread a bore leaves | (major diameter − bore) / (1.299 × pitch) | The 60° thread's height is H = 0.866 pitch, and "percent of thread" counts 3/4 H a side: 1.299 pitch on the diameter |
+| A mount plate's margin | S / (6 F a / (b t²)), F at the farthest hole a past the beam's face, b the plate's length (less a window's), t its thickness | Beam theory for a plate bent where it leaves the beam's face |
+| A supply's screw | the shortest sold with L − reach ≥ three lines of floor: the floor is L − reach, the head sunk in the rest | The maker's reach (Mean Well's L) as the limit |
+| A board's screw | the largest whose clearance passes the hole and whose head's radius ≤ the holes' least distance from the board's edges | A head that sits whole bears on the board, not on its edge |
+| A board's standoff | ≥ engagement + tip room + a layer + three lines − t, and ≥ `SERVICE_DEFAULTS.standoff` | The pilot's depth, from `@rulecad/fixings`' engagement in plastic |
+| A clip's hold | σ = F / (w × min(stem, 2 × ring wall)) | The stem and the ring in tension, an estimate |
+| A tie anchor's roof | σ = 6 (F t_w / 8) / (b h²) | A beam across the tie's width, both ends held, its load at the middle |
+| A spool holder's arm | σ = 6 F (2 + w_s / 2) / (b t²), F = 2 m g | A cantilever with the spool's weight at its middle |
+| Clips along a run | n = max(2, ⌈L / pitch⌉ + 1), L / (n − 1) apart | One at each end, evenly between |
+| A rail's holes | n = ⌊(L − 2 e) / P⌋ + 1, e = D / 2 + 1; the ends E = (L − (n − 1) P) / 2 | HIWIN MG catalogue 2-4-17, L = (n − 1) P + 2E; `GUIDE_DEFAULTS.endLeast`, an estimate |
+| A carriage's travel | L / n − L_max, n carriages on a rail L long | Each its own share of the rail |
+| A carriage's margin | 1 / (F / C0 + \|M_R\| / MR + \|M_P\| / MP + \|M_Y\| / MY), F the force square to the face and across | HIWIN's ratings, each load alone; summed, `GUIDE_DEFAULTS.combine`, an estimate |
+| A beam's sag under a guide | δ = 5 w L⁴ / (384 E I) + P L³ / (48 E I) | Simply supported beam, spread and middle loads (Roark's Formulas for Stress and Strain, table 8.1) |
+| A jig's keys | δ = 2 (S / 2) l² / (3 E t), l the leg to the key, t its wall | A cantilever pushed δ at its tip, its stress 3 E t δ / (2 l²) at the root |
+| A jig's length | w = 6 F l / (t² S / 2) | A leg bent at its root by the push on the rail |
+| A drill guide's stop | t = ∛(4 F h³ / (E W δ)), and t ≥ √(2 · 6 F h / (W S)) | A cantilever h long (`JIG_DEFAULTS.stop` of the beam's depth), W wide, bent no more than δ (`JIG_DEFAULTS.within`) by F, at twice the margin |
+| A bush and the tool's lean | d = D + slip + hole_comp; lean = atan(slip / l), l = 2 D | The printer's `slip` and `hole_comp` (x1c), the bush `JIG_DEFAULTS.bush` diameters long, an estimate |
+| A tap guide's sleeve | w = √(2 · 6 F h / (B S)) | A wall B wide and h deep bent by F at its rim |
+| A squaring corner's square | atan(slip / l_a) + atan(slip / l_b) | Each tongue's play over its length, held to `JIG_DEFAULTS.square` (0.5°, cad's `JOIN_CHECK.square`) |
+| A bay's diagonals | d = √(w² + h²); accept = 2 t max(w, h) / d; lean δ = accept d / (2 w h) | Diagonals √(w² + h² ± 2 w h sin δ) of a bay leaning δ; t the cut tolerance, `CUT_DEFAULTS.tolerance` (MISUMI's ±0.5 mm, an estimate for other saws) or the profile's `cut_tolerance` |
+| A length gauge | n = ⌈L / (bed − 2 e)⌉ pieces of L / n, within ±n × 0.1 mm | `JIG_DEFAULTS.edge` and `.gaugeError`, an estimate: check it with a rule |
+| A V-wheel's seat | d = (T − f) / 2 / tan(θ / 2); the axle R − d from the face, T the track's width, f the rim's flat, θ the V | The wheel's flanks lying on the track's |
+| A wheel's flank load | N = π r l p² / E*, E* = E / (1 − ν²); radial 2 N cos(θ / 2), axial N sin(θ / 2) | Hertz line contact, a cylinder on a flat (Roark's Formulas for Stress and Strain, table 14.1, case 2b); r the radius at the contact's middle, l the flank's slant length, the track rigid: `WHEEL_DEFAULTS.curvature`, an estimate |
+| A wheel's margin | 1 / max over wheels (radial / radial rating + axial / axial rating) | `WHEEL_DEFAULTS.combine` and `.share`, estimates |
+| A wheel plate's thickness | t = √(6 M · 2 / (b S)), M = F s / 4 | A plate b long across the s between its rows of wheels, its load F at the middle, at twice the margin |
+| A holder's or motor plate's thickness | t = √(6 M · 2 / (b S)), M = F h | A plate b wide bent where it stands on the face by F along the beam at the height h of the rods or the shaft, at twice the margin |
+| The rods' spacing | s = 2 (D / 2 + F_d / 2 + w), rounded up to 0.5 mm | D the bearing's outside diameter, F_d the lead nut's flange, w `ROD_DEFAULTS.web` |
+| A linear bearing's load | R = √((|F_y| / 2 + |M_z| / 2a)² + (|F_z| / 2 ± M_x / s + |M_y| / 2a)²), a = 0.5 L | Forces shared, a roll as a couple across the spacing s, pitch and yaw as a couple along the bush of length L (`ROD_DEFAULTS.couple`, an estimate); margin = static rating / R |
+| Where the endstop trips | home = (the switch's address + its lever's 12.4 mm) − (the flag's face at the travel's start) | The lever's place as @rulecad/cad draws a switch (`ROD_DEFAULTS.lever`, an estimate) |
+| A slider's pressure | p = F / A, held to 0.1 S | `WHEEL_DEFAULTS.pressure`, an estimate |
 
 Why the torsion constant is solved for and not taken from the polar moment: a slotted section is open. MISUMI's
 HFS5-2020 has a polar moment of 14 850 mm⁴ and a torsion constant of 809 mm⁴ by this solve, eighteen times less,
@@ -531,10 +1093,58 @@ to within 10% of the open-section figure s t³ / 3.
 
 ## What it rests on
 
-Every profile, slot family and material is a rule set in `@rulecad/rules`, each value with its source and the date
-it was read. A dimension the maker prints is `spec`. One scaled off the maker's drawing because no figure is printed
+Every profile, slot family, bought fitting, rail and material is a rule set in `@rulecad/rules`, each value with its source and the date
+it was read. A printed fitting's working figures (`FITTING_DEFAULTS`) say what each rests on: the margin and load are
+the kit's defaults, the least thickness, the round, the brace and the end distance are estimates until the print
+tests (Frames 2.13) check them, and a fitting's stiffness and margin are finite elements on cubes about a third of
+its thickness, which read a part 10 to 20% stiffer than it is. A dimension the maker prints is `spec`. One scaled off the maker's drawing because no figure is printed
 (the width of a slot's floor) is an `estimate`. A figure taken from the section a profile is made to match, or from
 a seller of unbranded stock, is `community`. `model.rests` and each figure's `kind` say which you are standing on.
+
+A bought fitting's sizes are its maker's drawing (`spec`); a screw's place along a leg that the drawing shows but does
+not dimension is an `estimate`. Its price is the seller's on the date checked. Its stiffness is a working guess,
+the same as `JOIN_STIFFNESS` for its kind, until the joint rig (issue 264) measures it: no maker publishes one. So
+until then a set gives the same stiffness as a join with `"fitting": "bought"`, and its rule and its
+`fitting.stiffness` finding say so. Stiffness is written in N mm/rad, the rule sets' unit, throughout.
+
+Panels' densities are the makers' (Evonik's PLEXIGLAS GS, Covestro's Makrolon GP, Aalco's 5754 sheet); the
+thicknesses stocked are `community`. The panel parts' loads, a clip's grip, the barb, the squeeze, a hinge's
+clearance, the handle's room for the fingers and the magnet's size are working figures or estimates
+(`PANEL_DEFAULTS`, `DOOR_DEFAULTS`, `END_DEFAULTS` say which); their margins are by beam formulas, and the magnet's
+pull is not checked, as no maker's figure is held.
+
+The service parts read a device's holes from its rule set: Mean Well's LRS specification sheets give each supply's
+base holes, thread and screw reach (`spec`); Arduino's UNO R3 datasheet gives the Uno's four holes under the CNC
+shield, three dimensioned and one read off its drawing (`community`). Fan hole spacings are ARCTIC's drawings for 40
+and 80 mm (`spec`), a secondary source for 92 and 120 mm (`community`) and an estimate for 60 mm. A TS35 rail is
+Weidmüller's data sheet. A board's standoff, the clip's barb and snap, a tie's band, a spool's size and the load
+figures are working figures or estimates (`SERVICE_DEFAULTS` says which); every margin is by beam formulas.
+
+A rail's figures are HIWIN's MG Series catalogue (2025, G99TE24-2410), all `spec`: the dimension table for the rail
+and carriages, the rail lengths, the running parallelism of the normal class, the preload classes (a light clearance
+carriage's play, 4 to 10 µm) and the radial stiffness (at very light preload). Other makers' MGN rails share the
+rail's size and hole pitch, and their carriages' ratings differ: give a variant with theirs. The least end distance,
+the jig's key and how a carriage's loads combine are estimates (`GUIDE_DEFAULTS` says which); the beam's sag assumes
+pinned ends, the worse case.
+
+The jigs rest on the printer's rule set for their fits (`slip`, `hole_comp`, `fit`, `chamfer`, `bed`) and on
+`JIG_DEFAULTS`: the 20 N load, the bush's length, a tap's shank and the gauge's error are estimates, and each says
+so; the stop's depth and its 0.05 mm bend, the sleeve, the block and the gauge's section are working figures. Their
+margins are by beam formulas.
+
+A V-wheel's rim, bearing seats and kit, the eccentric spacers and the plain spacers are read off OpenBuilds' drawings
+(`spec`). Its plastic's modulus and allowed contact pressure are Delrin 150's, from two data sheets, `community`
+because OpenBuilds does not name the grade; Poisson's ratio is an estimate. Where a wheel seats rests on the slot's
+`track_width` and `track_angle` (9.16 mm and 90 degrees, printed on OpenBuilds' rail drawing: `spec`) and the wheel's
+diameter and flat: a clone's track can differ, so measure your rail's track before trusting a plate drilled to it. How a carriage's loads are shared among its wheels and combined, the Hertz contact's radius, and
+a slider's friction and wear limit are working figures (`WHEEL_DEFAULTS` says which). The eccentrics' preload is not
+in the ratings.
+
+A rod's diameter, a linear bearing's size and ratings, the T8 screw and nut, the coupler and the switch are each
+set's figures (`community`, from sellers' sheets); the 608's are SKF's (`spec`); the motors' mounting holes are their
+sets' (the 28BYJ-48's and NEMA 17's `spec`, the 28BYJ-48's ear thickness an estimate). How tight a printed pocket holds
+a bearing (`ROD_DEFAULTS.press`), how a bush takes a moment, where a switch's lever is and the switch's hole spacing
+are estimates, said in each finding: measure them. Every margin is by beam formulas.
 
 Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm, Bosch Rexroth, item (Lines 5, 6 and 8, standard and
 light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, MakerBeamXL and OpenBeam, 80/20's
@@ -553,11 +1163,28 @@ lists them.
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |
-| `slotNutModel`, `nutFit`, `slotNut`, `nutFor` | A bought slot nut, how it sits in a slot, its solid, and the one for a face (above) |
+| `slotNutModel`, `nutFit`, `slotNut`, `nutFor`, `NUT_KINDS` | A bought slot nut, how it sits in a slot, its solid, the one for a face, and the kinds (above) |
 | `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
+| `bracketModel(profile, { other?, face?, otherFace?, thread?, head?, nut?, brace?, load?, width?, printer?, material?, cache? })`, `bracket(m, { pose?, tongues?, ops? })` | A printed corner bracket's model and its solid |
+| `plateModel(profile, { shape?, face?, thread?, head?, nut?, count?, load?, width?, printer?, material?, cache? })`, `plate(m, { pose?, tongues?, ops? })` | A printed gusset (L, T, cross) or splice plate, and its solid |
+| `FITTINGS`, `FITTING_DEFAULTS`, `fittingFE(o)` | The kinds of printed fitting; the margins and working figures they are drawn with; the finite elements on a part |
+| `SHEETS`, `PANEL_DEFAULTS`, `panelModel(sheet, thickness, { size, corner?, holes? })`, `panel(m, { ops? })` | Sheets by material, the panel parts' working figures, a panel's model and its solid |
+| `panelClipModel`, `panelClip`, `panelCornerModel`, `panelCorner`, `panelEdgeModel`, `panelEdge`, `slotCoverModel`, `slotCover`, `gasketStripModel`, `gasketStrip` | The printed parts that hold a panel, each a model and its solid (`{ pose: 'print' \| 'fit' }`) |
+| `DOOR_DEFAULTS`, `hingeModel`, `hinge(m, { part: 'frame' \| 'door', pose? })`, `handleModel`, `handle`, `latchModel`, `latch`, `magnetCatchModel`, `magnetCatch` | A door's printed parts |
+| `SERVICE_DEFAULTS`, `FANS`, `DIN_RAIL`, `deviceMountModel(profile, { device, variant?, turn?, offset?, standoff?, screw? })`, `deviceMount`, `fanMountModel`, `fanMount`, `dragChainEndModel`, `dragChainEnd`, `dinRailAdapterModel`, `dinRailAdapter`, `cableClipModel`, `cableClip`, `tieAnchorModel`, `tieAnchor`, `spoolHolderModel`, `spoolHolder`, `runClips(length, { pitch? })` | The parts that carry services on a frame, each a model and its solid (`{ pose: 'print' \| 'fit' }`), and clips along a run |
+| `GUIDE_KINDS`, `GUIDE_DEFAULTS`, `rails()`, `railModel(set, { length, variant?, carriages?, given? })`, `rail(m)`, `carriage(m)`, `guideFit(m, profile, { face?, from?, beam?, nut?, keep?, given? })`, `carriageMargin(m, { force, moment })`, `railTerms(m, profile, { beam, carried?, face? })`, `railJigModel(profile, { rail, face?, length?, load? })`, `railJig(m, { pose?, tongues? })` | Guides: a rail's model (holes, screws, carriages' shares and travel), its solids, whether it fits a face, a carriage's loads against its ratings, its error terms, and the printed jig that centres it |
+| `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
+| `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
+| `JIG_KINDS`, `JIG_DEFAULTS`, `drillGuideModel(beam, op, { from?, load? })`, `drillGuide(m, { pose?, mark? })`, `tapGuideModel(beam, op, { shank?, load? })`, `tapGuide(m, { pose?, mark? })`, `lengthStopModel(profile, length, { load? })`, `lengthStop(m, { part?, mark? })`, `squareCornerModel({ profile, face?, end?, length? }, { profile, face?, edge? }, { hand?, load? })`, `squareCorner(m, { pose?, mark? })` | Jigs for hand tools: a drill guide and a tap guide from a beam's operations, a cut-length stop with its gauge, and a squaring corner; each takes `printer` and `material` too |
+| `squareness(width, height, { tolerance? })` | A bay's two diagonals, inside corner to inside corner, and the difference between them to accept, with the lean it stands for |
+| `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
-| `beam(m, { display?, ...beamModel's })` | A beam's solid, `link` or `preview` |
+| `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre?, given? })` | A join: the operations on each beam, its screws, its fitting (printed, or a bought set by name), its stiffness, what to know |
+| `BOUGHT_KINDS`, `boughtFittings(given?)`, `boughtFittingModel(set, { profile?, other?, join?, given? })`, `boughtFitting(m, { pose? })`, `boughtStiffness(kind, beam, m)`, `printedCost(grams, material)` | Bought fittings: the kinds and the join kinds that take each, the sets, one set's model (screws, holes, price, stiffness, fit), its reference solid, a join's stiffness with it, and a printed part's plastic beside its price |
+| `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting?, given? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join, a workspace's measured figure first |
+| `JOIN_SET`, `joinRuleSet()` | The name of the rule set measured joins go in (`joins`), and that set as the kit starts it |
+| `beam(m, { display?, tracks?, ...beamModel's })` | A beam's solid, `link` or `preview`; a link with its V tracks cut (`tracks`) |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
 | `cutList(beams, { kerf?, trim?, tolerance?, stock? })`, `cutListText(c)` | The cut list: marks, the bars to buy, the cut order and offcut on each, `frame.cut` findings |
 | `packBars(pieces, lengths, { kerf?, trim? })`, `beamMarks(beams)` | The packing alone; the beams by mark |

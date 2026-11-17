@@ -6,8 +6,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import * as frames from '@rulecad/frames';
 
-// The workspace's own profile, slot and material sets (cad measure --profile writes a draft profile there, with its
-// outline in rules/outlines/), read once per change to the folder
+// The workspace's own profile, slot, slot nut, material, thread and bought fitting sets, and its joins set (cad measure
+// --profile writes a draft profile there, with its outline in rules/outlines/; cad measured writes a measured figure
+// into a copy there), read once per change to the folder
 let seen = null;
 /**
  * What @rulecad/frames is handed from a workspace: its own rule sets by name, and the measured outlines beside them.
@@ -25,7 +26,7 @@ export function framesContext(dir) {
     for (const f of files) {
       try {
         const raw = fs.readFileSync(path.join(d, f), 'utf8'), s = JSON.parse(raw);
-        if (into === sets ? s?.rules && typeof s.rules === 'object' && ['profile', 'slot', 'slot_nut', 'material', 'thread'].includes(s.part) : Array.isArray(s?.loops)) { into[s.name ?? f.slice(0, -5)] = s; text.push(raw); }
+        if (into === sets ? s?.rules && typeof s.rules === 'object' && ['profile', 'slot', 'slot_nut', 'material', 'thread', 'fitting', 'joins'].includes(s.part) : Array.isArray(s?.loops)) { into[s.name ?? f.slice(0, -5)] = s; text.push(raw); }
       } catch {} // (a broken set is cad rules check's to name)
     }
   }

@@ -87,8 +87,8 @@ export function beamPlace(it, num) {
 export function beamBuilt(it, num, id, context = framesContext()) {
   const { model: m, length } = beamOf(it, num, context);
   const meta = { body: { label: `${m.profile.name} x ${mm(length)} mm` } };
-  const parts = named({ body: beam(m) }, meta), link = named({ body: beam(m, { display: 'link' }) }, meta)[0];
-  parts[0].collide = link.geometry; // (the overlap check measures the envelope: light, and a beam's slots hold nothing else)
+  const parts = named({ body: beam(m) }, meta), link = named({ body: beam(m, { display: 'link', tracks: true }) }, meta)[0];
+  parts[0].collide = link.geometry; // (the overlap check measures the envelope, light, less any V tracks: a V-wheel's rim runs in them, and a rim out of them hits the beam)
   const anchors = Object.fromEntries(Object.entries(m.anchors).map(([k, a]) => [k, { at: a.origin, axis: a.axis, ref: a.ref }]));
   const values = { length, width: m.profile.width, height: m.profile.height, area: m.area, ...(m.mass != null ? { mass: m.mass } : {}) };
   const entries = Object.entries(m.profile.figures).filter(([, f]) => typeof f?.value === 'number').map(([k, f]) => ({ name: `${m.profile.name}.${k}`, value: f.value, unit: f.unit, rule: f.rule, kind: f.kind, source: f.source, checked: f.checked, set: m.profile.name }));

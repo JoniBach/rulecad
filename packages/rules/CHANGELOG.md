@@ -3,6 +3,17 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.16: fittings, rails, wheels and the joint rig (Frames 2)
+
+### Added
+
+- Vocabulary: `fitting`, `rail`, `wheel` and `eccentric` parts; `mount_holes` as points; stiffness in N mm/rad.
+- Sets: seven bought fittings from makers' drawings with their prices; HIWIN MGN7 to MGN15 rails and carriages;
+  OpenBuilds' V-wheels and eccentric spacers; mounting holes in the supply and shield sets; plastics' price per
+  kilogram; and the joint rig's estimates (`joins`).
+
+No existing value changed.
+
 ## 0.3.15: old thread names kept and checked (Fixings 3)
 
 ### What reads fixings now

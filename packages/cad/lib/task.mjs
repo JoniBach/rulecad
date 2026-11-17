@@ -118,14 +118,16 @@ function speedCheck(s, f) {
   else f('pass', `${t.tool} moves ${say}`, null, { code, at, values });
 }
 
-// Each joint's error terms: step resolution from its motor, and what the assembly says of its play, its twist and so on
-function terms(s, c) {
+// Each joint's error terms: step resolution from its motor, what the assembly says of its play, its twist and so on, and a
+// guide's rail's (its parallelism, its carriage's play, the beam's straightness and sag)
+export function terms(s, c) {
   const motion = s.motion, specs = new Map((s.a.joints || []).map((j) => [j.id, j]));
   return c.names.map((id) => {
     const out = [], t = trainFrom(motion, id), d = motion.drives.find((x) => x.joint === t.root), spec = specs.get(id);
     if (d?.model.stepAngle) { const micro = d.spec.microsteps ?? 16; out.push({ term: 'step', value: t.slide != null ? (d.model.stepAngle / micro) * t.slide : d.model.stepAngle / micro / t.ratio, kind: 'spec', note: `${n3(d.model.stepAngle, 3)}° at 1/${micro} step, ${n3(t.ratio, 1)}:1` }); }
     const belt = motion.joints.find((x) => x.id === id)?.slide?.stretch; if (belt) out.push({ term: 'belt stretch', value: (belt.load * belt.length) / (belt.k * belt.width), kind: 'estimate', note: `${belt.load} N over ${belt.length} mm` });
     for (const [term, expr] of Object.entries(spec?.errors ?? {})) out.push({ term, value: s.num(expr), kind: kindOf(expr), expr });
+    for (const x of spec?._guide?.terms ?? []) out.push({ term: x.term, value: x.value, kind: x.kind, note: x.note }); // (a guide's rail: mm along its travel, from its rule sets and the beam's)
     return { joint: id, terms: out, geared: t.stages.length > 0 };
   });
 }

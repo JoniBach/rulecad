@@ -781,13 +781,33 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
     else {
       const ol = el('ol', 'steps');
       O.steps.forEach((st, i) => {
-        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map(fastenerText).join('; ')));
+        const li = el('li'), but = el('button'); but.append(`${st.n}. ${st.items.join(', ')}${st.object && !st.items.includes(st.object) ? ` (${st.object})` : ''}`); if (st.load?.length) but.append(el('span', 'fix', `First, ${st.load.join('; ')}`)); if (st.fasteners.length) but.append(el('span', 'fix', st.fasteners.map(fastenerText).join('; ')));
         const shown = new Set(O.steps.slice(0, i + 1).flatMap((x) => x.items));
         but.onclick = () => { const on = view.step?.n === st.n; view.step = on ? null : { n: st.n, shown, now: new Set(st.items), dir: st.dir }; if (!on) spin(false); box.querySelectorAll('ol.steps button').forEach((x) => x.classList.toggle('on', !on && x === but)); apply(); };
         li.append(but); ol.append(li);
       });
       parts.push(section('Assembly', ol));
     }
+  }
+  // A frame, from bars to square: numbered steps (cut, drill, sides built flat, nuts to load, joins, diagonals, the rest),
+  // the tightening of each kind of join, and each bay's diagonals
+  const FR = b.frame;
+  if (FR?.error) parts.push(section('Building the frame', trouble(FR)));
+  else if (FR?.stuck) parts.push(section('Building the frame', el('p', 'problem-line', FR.stuck.text)));
+  else if (FR) {
+    // each step a button, as the assembly's are: it shows what is in view then (the side on the bench, or the frame so
+    // far), with what goes on in it held off along its way
+    const ol = el('ol', 'steps frame-steps');
+    for (const st of FR.steps) {
+      const li = el('li', st.kind), but = el('button'); but.append(`${st.n}. ${st.text}`); for (const l of st.lines ?? []) but.append(el('span', 'fix', l));
+      if (st.shown?.length) but.onclick = () => { const on = view.step?.n === st.n; view.step = on ? null : { n: st.n, shown: new Set(st.shown), now: new Set(st.now), dir: st.dir }; if (!on) spin(false); box.querySelectorAll('ol.steps button').forEach((x) => x.classList.toggle('on', !on && x === but)); apply(); };
+      li.append(but); ol.append(li);
+    }
+    const kids = [ol];
+    for (const x of FR.notFlat ?? []) kids.push(el('p', null, `The bay of ${x.name} is built on the frame, not flat: ${x.why}`));
+    if (FR.torques?.length) kids.push(el('h3', null, 'Tightening, by kind of join'), table(['Join', 'Joins', 'Screws', 'Key', 'N m', 'Why'], FR.torques.map((t) => [t.kind, t.joins, t.fasteners.join(', '), t.key, t.torque, t.why])));
+    if (FR.bays?.length) kids.push(el('h3', null, 'Diagonals'), table(['Bay', 'Opening, mm', 'Each diagonal, mm', 'Accept up to, mm'], FR.bays.map((x) => [x.name, `${x.width} × ${x.height}`, x.diagonal, x.accept])));
+    parts.push(section('Building the frame', ...kids));
   }
   // Settings
   const M = b.machine;

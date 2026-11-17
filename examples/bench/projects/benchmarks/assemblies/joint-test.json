@@ -1,0 +1,234 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "Joint rig",
+  "kind": "fit",
+  "description": "The joint rig, for cad measured: a base beam clamped to a table's edge, three short beams held out from it each by one kind of join (blind, a printed corner bracket, and MISUMI's anchor connector, a bought fitting), a hanger on each one's end with 2 kg hung from it, and a dial arm over the one being read. Each beam's drop is predicted (join.drop): write the dial's reading back with cad measured benchmarks/joint-test c1.drop=<mm> (MEASURE.md, rows 34 to 36), and the join's spring is worked out from it and written to its rule as measured. A nut puller on the base beam's top slot measures a slot nut's hold along the slot (row 37).",
+  "items": [
+    {
+      "id": "b0",
+      "beam": {
+        "profile": "2020-misumi-hfs5"
+      },
+      "from": [
+        0,
+        0,
+        10
+      ],
+      "to": [
+        400,
+        0,
+        10
+      ]
+    },
+    {
+      "id": "c1",
+      "beam": {
+        "profile": "2020-misumi-hfs5",
+        "ops": [
+          {
+            "op": "tap",
+            "at": "b",
+            "thread": "M5",
+            "depth": 18.5
+          }
+        ]
+      },
+      "from": [
+        80,
+        -10,
+        10
+      ],
+      "to": [
+        80,
+        -160,
+        10
+      ]
+    },
+    {
+      "id": "c2",
+      "beam": {
+        "profile": "2020-misumi-hfs5",
+        "ops": [
+          {
+            "op": "tap",
+            "at": "b",
+            "thread": "M5",
+            "depth": 18.5
+          }
+        ]
+      },
+      "from": [
+        200,
+        -10,
+        10
+      ],
+      "to": [
+        200,
+        -160,
+        10
+      ]
+    },
+    {
+      "id": "c3",
+      "beam": {
+        "profile": "2020-misumi-hfs5",
+        "ops": [
+          {
+            "op": "tap",
+            "at": "b",
+            "thread": "M5",
+            "depth": 18.5
+          }
+        ]
+      },
+      "from": [
+        320,
+        -10,
+        10
+      ],
+      "to": [
+        320,
+        -160,
+        10
+      ]
+    },
+    {
+      "id": "h1",
+      "object": "joint-hanger",
+      "at": "c1.b",
+      "rotate": [
+        0,
+        0,
+        -90
+      ]
+    },
+    {
+      "id": "h2",
+      "object": "joint-hanger",
+      "at": "c2.b",
+      "rotate": [
+        0,
+        0,
+        -90
+      ]
+    },
+    {
+      "id": "h3",
+      "object": "joint-hanger",
+      "at": "c3.b",
+      "rotate": [
+        0,
+        0,
+        -90
+      ]
+    },
+    {
+      "id": "gauge",
+      "object": "joint-gauge"
+    },
+    {
+      "id": "puller",
+      "object": "nut-puller",
+      "at": "b0.top@370"
+    }
+  ],
+  "joins": [
+    {
+      "kind": "blind",
+      "a": "c1.a",
+      "b": "b0.front@80",
+      "note": "c1, a blind join"
+    },
+    {
+      "kind": "bracket",
+      "a": "c2.a",
+      "b": "b0.front@200",
+      "fitting": "printed",
+      "nut": "slide-in",
+      "note": "c2, a printed bracket"
+    },
+    {
+      "kind": "anchor",
+      "a": "c3.a",
+      "b": "b0.front@320",
+      "fitting": "fitting-misumi-hmj5",
+      "note": "c3, a bought anchor connector"
+    }
+  ],
+  "joints": [
+    {
+      "id": "gauge-on",
+      "type": "fixed",
+      "parent": "b0.top@80",
+      "child": "gauge.foot"
+    }
+  ],
+  "fasten": [
+    {
+      "screw": "M5 button",
+      "through": [
+        "h1"
+      ],
+      "into": "c1",
+      "holes": "h1.body",
+      "note": "Hanger 1"
+    },
+    {
+      "screw": "M5 button",
+      "through": [
+        "h2"
+      ],
+      "into": "c2",
+      "holes": "h2.body",
+      "note": "Hanger 2"
+    },
+    {
+      "screw": "M5 button",
+      "through": [
+        "h3"
+      ],
+      "into": "c3",
+      "holes": "h3.body",
+      "note": "Hanger 3"
+    },
+    {
+      "screw": "M5 button",
+      "through": [
+        "gauge"
+      ],
+      "into": "b0.top",
+      "holes": "gauge.body",
+      "nut": "slide-in",
+      "note": "The dial arm"
+    },
+    {
+      "screw": "M5 button",
+      "through": [
+        "puller"
+      ],
+      "into": "b0.top",
+      "nut": "slide-in",
+      "note": "The nut under test",
+      "at": [
+        "puller.screw"
+      ]
+    }
+  ],
+  "loads": [
+    {
+      "mass": 2,
+      "at": "h1.hook",
+      "note": "2 kg on c1's hanger"
+    },
+    {
+      "mass": 2,
+      "at": "h2.hook",
+      "note": "2 kg on c2's hanger"
+    },
+    {
+      "mass": 2,
+      "at": "h3.hook",
+      "note": "2 kg on c3's hanger"
+    }
+  ]
+}

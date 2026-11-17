@@ -1,0 +1,76 @@
+{
+  "_doc": "Motedis' levelling foot D19 M6x40 (LFM6*40B19): a 19 mm base 10 mm high on an M6 stem 40 mm long, with a nut on the base and a lock nut along the stem. It screws into a beam's end bore tapped M6. Sizes from Motedis' drawing, the price from its shop page.",
+  "name": "fitting-motedis-foot-m6-d19",
+  "part": "fitting",
+  "rules": {
+    "fitting_kind": {
+      "value": "levelling-foot",
+      "rule": "A levelling foot: screwed into a beam's end bore, raised or lowered on its thread and locked",
+      "kind": "spec",
+      "source": "Motedis, Nivellierfuß D19 M6*40 (LFM6*40B19), product page https://www.motedis.com/de/Nivellierfuss-D19-M640",
+      "checked": "2026-11-17"
+    },
+    "series": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Sold among Motedis' 20 mm series feet; it fits any profile whose end bore is tapped M6",
+      "kind": "community",
+      "source": "Motedis, Nivellierfuß D19 M6*40 (LFM6*40B19), product page https://www.motedis.com/de/Nivellierfuss-D19-M640",
+      "checked": "2026-11-17"
+    },
+    "material": {
+      "value": "steel stem and nuts on a plastic base",
+      "rule": "As the drawing shows it",
+      "kind": "community",
+      "source": "Motedis, Nivellierfuß D19 M6*40, drawing https://www.motedis.com/shop/products_files/Motedis_LFM6-40B19-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "thread": {
+      "value": "M6",
+      "rule": "The stem is M6x1",
+      "kind": "spec",
+      "source": "Motedis, Nivellierfuß D19 M6*40, drawing https://www.motedis.com/shop/products_files/Motedis_LFM6-40B19-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "thread_length": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The stem, 40 mm",
+      "kind": "spec",
+      "source": "Motedis, Nivellierfuß D19 M6*40, drawing https://www.motedis.com/shop/products_files/Motedis_LFM6-40B19-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "body_diameter": {
+      "value": 19,
+      "unit": "mm",
+      "rule": "The base, 19 mm across at the floor (16 mm at its top)",
+      "kind": "spec",
+      "source": "Motedis, Nivellierfuß D19 M6*40, drawing https://www.motedis.com/shop/products_files/Motedis_LFM6-40B19-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "body_length": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The base, 10 mm high",
+      "kind": "spec",
+      "source": "Motedis, Nivellierfuß D19 M6*40, drawing https://www.motedis.com/shop/products_files/Motedis_LFM6-40B19-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "stand_height": {
+      "value": 16.6,
+      "unit": "mm",
+      "rule": "Floor to the top of the nut on the base: 16.6 mm",
+      "kind": "spec",
+      "source": "Motedis, Nivellierfuß D19 M6*40, drawing https://www.motedis.com/shop/products_files/Motedis_LFM6-40B19-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "cost": {
+      "value": 2.0,
+      "unit": "EUR",
+      "rule": "One in a pack of 10: 20.00 EUR the pack with 20% VAT (16.66 EUR without), on the date checked",
+      "kind": "spec",
+      "source": "Motedis, Nivellierfuß D19 M6*40 (LFM6*40B19), product page https://www.motedis.com/de/Nivellierfuss-D19-M640",
+      "checked": "2026-11-17"
+    }
+  }
+}

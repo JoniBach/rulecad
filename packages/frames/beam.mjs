@@ -16,7 +16,7 @@ const mm = (x) => String(+Number(x).toFixed(2));
 const FACES = ['top', 'bottom', 'front', 'back'];
 const END_KINDS = ['cut', 'tapped'];
 const DISPLAYS = ['link', 'preview'];
-const OPTIONS = ['length', 'ends', 'ops', 'material', 'given', 'cells', 'display'];
+const OPTIONS = ['length', 'ends', 'ops', 'material', 'given', 'cells', 'display', 'tracks'];
 const ROUND = ['round-tube', 'round-bar'];
 
 /**
@@ -128,9 +128,11 @@ export function beamModel(profile, o = {}) {
  * A beam as a solid, lying along z from end a at z = 0. display: 'link' is a plain box of the section's envelope (a
  * round section a twelve-sided prism): 12 triangles, light enough for a link and an overlap check. 'preview' (the
  * default) is the true section, every slot, bore and hollow, run the whole length. Each operation is cut from it: a
- * mitre from the link too (its envelope changes), the holes, pockets and notches from the preview only.
+ * mitre from the link too (its envelope changes), the holes, pockets and notches from the preview only. tracks: a link
+ * with its V tracks cut along it (each slot with a track_width: its V mouth, and the opening under it to the cavity's
+ * depth), for an overlap check where V-wheels run in them: a rim in its track is clear of it, a rim out of it is not.
  * @param {Beam | Profile | string | object} m a beam's model, or a profile with { length } as beamModel takes
- * @param {{ display?: 'link' | 'preview', length?: number, ends?: any, material?: string, given?: object, cells?: number }} [o]
+ * @param {{ display?: 'link' | 'preview', tracks?: boolean, length?: number, ends?: any, material?: string, given?: object, cells?: number }} [o]
  * @returns {object} a JSCAD geom3, with .model holding beamModel's numbers (its anchors and mass)
  */
 export function beam(m, o = {}) {
@@ -140,9 +142,26 @@ export function beam(m, o = {}) {
   let solid;
   if (display === 'link') solid = ROUND.includes(p.family) ? cylinder({ radius: p.width / 2, height: L, segments: 12, center: [0, 0, L / 2] }) : cuboid({ size: [p.width, p.height, L], center: [0, 0, L / 2] });
   else solid = extrudeLinear({ height: L }, polygon({ points: outline(p).loops }));
+  if (display === 'link' && o.tracks) { const tracks = trackCutters(p, L); if (tracks.length) solid = subtract(solid, ...tracks); }
   const cuts = opCutters(b, { envelope: display === 'link' }); // (a link keeps its box, cut only where an end is mitred)
   if (cuts.length) solid = subtract(solid, ...cuts);
   return Object.assign(solid, { model: b, display });
+}
+
+// The free space of each V track along a beam, a little longer than it: the V from just outside the face (its sides
+// carried on out) to the opening, then the opening's width down to the cavity's depth (the cavity is wider still)
+function trackCutters(p, L) {
+  const out = [], RAD = Math.PI / 180;
+  for (const face of FACES) for (const q of p.faces[face] ?? []) {
+    const s = q.slot ? p.slots[q.slot] : null;
+    if (!(s?.trackWidth > 0)) continue;
+    const t = Math.tan((s.trackAngle / 2) * RAD), deep = (s.trackWidth - s.opening) / 2 / t, D = Math.max(s.cavityDepth, deep), e = 0.5;
+    const n = q.normal, u = [-n[1], n[0]], at = (w, v) => [q.at[0] + u[0] * w - n[0] * v, q.at[1] + u[1] * w - n[1] * v];
+    let loop = [[-(s.trackWidth / 2 + e * t), -e], [-s.opening / 2, deep], [-s.opening / 2, D], [s.opening / 2, D], [s.opening / 2, deep], [s.trackWidth / 2 + e * t, -e]].map(([w, v]) => at(w, v));
+    if (loop.reduce((a, P, i) => { const Q = loop[(i + 1) % loop.length]; return a + P[0] * Q[1] - Q[0] * P[1]; }, 0) < 0) loop = loop.reverse();
+    out.push(jscad.transforms.translate([0, 0, -1], extrudeLinear({ height: L + 2 }, polygon({ points: loop }))));
+  }
+  return out;
 }
 
 /**

@@ -18,6 +18,8 @@
 // diameter) half way down, so the screw has something to grip. "direction": "up" for screws from below.
 // A screwed joint is a fasten (lib/fasten.mjs): { "screw": "M3 cap", "through": ["bracket"], "into": "base", "at": ["bracket.h1"] }.
 // Its holes are read from the parts as drawn, its screws placed as reference parts, and it holds as a fit that fastens does.
+// Beams are held to each other by joins (lib/joins.mjs): { "kind": "blind", "a": "y1.a", "b": "x1.back@120" }. Each puts
+// its operations on both beams and its screws into fasten before anything is built, and is checked once it is.
 import { host, readJson } from './host.mjs';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
@@ -41,12 +43,19 @@ import { wiresOf, wireChecks, wireRows, wireTubes, wireRoutes } from './wires.mj
 import { printedParts } from './list.mjs';
 import { taskOf, taskChecks } from './task.mjs';
 import { powerChecks } from './power.mjs';
-import { loadChecks } from './loads.mjs';
+import { loadChecks, beyond } from './loads.mjs';
 import { gripChecks } from './grip.mjs';
 import { gaitOf, gaitChecks, gaitSequence } from './gait.mjs';
 import { boughtBuilt, boughtFindings, boughtSets } from './bought.mjs';
 import { orderChecks } from './order.mjs';
-import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf } from './beams.mjs';
+import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
+import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
+import { expandJoins, joinChecks } from './joins.mjs';
+import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
+import { expandServices, serviceFindings } from './services.mjs';
+import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
+import { slotNutChecks } from './slotnuts.mjs';
+import { frameSquareChecks, frameBuild } from './framebuild.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -79,7 +88,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const outer = overrides;
   const [project, name] = ref.split('/');
   if (stack.includes(ref)) throw new Error(`assembly ${ref} contains itself (${[...stack, ref].join(' → ')})`);
-  const a = readJson(assemblyPath(ref));
+  let a = readJson(assemblyPath(ref));
   // A pose may set items' variables as well as joints ("cocked": { "run": -30, "action.travel": 25 }): a flexure bent
   // as the pose bends it, while the part itself is printed as drawn. The pose being built sets them on its items.
   const itemSets = (name) => { const out = {}; for (const [k, v] of Object.entries(a.poses?.[name] || {})) if (k.includes('.')) { const [item, ...rest] = k.split('.'); (out[item] ||= {})[rest.join('.')] = v; } return out; };
@@ -104,6 +113,18 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     return v;
   };
   const num = (x) => evaluate(x, lookup);
+  // Joins between beams (lib/joins.mjs): their operations go on the beams and their screws into fasten before anything is built
+  let joins = [];
+  if (a.joins != null) ({ a, joins } = expandJoins(a, num, undefined, plasticOf(project)));
+  // Panels (lib/panels.mjs): each placed on its bay, its clips or a door's hinges, handle and catch added with their fastens
+  let panels = [];
+  if ((a.items || []).some((it) => it?.panel)) ({ a, panels } = expandPanels(a, num, undefined, plasticOf(project)));
+  // Services (lib/services.mjs): a bought board or supply on its printed mount, a wire's run along a slot held by clips
+  let mounts = [], runs = [];
+  if ((a.items || []).some((it) => it?.mount != null) || (a.wires || []).some((w) => (w?.via ?? []).some((v) => v && typeof v === 'object'))) ({ a, mounts, runs } = expandServices(a, num, undefined, plasticOf(project)));
+  // Guides (lib/guides.mjs): a rail on a beam's face, its screws into the slot, each carriage on its own sliding joint
+  let guides = [];
+  if (a.guides != null) ({ a, guides } = expandGuides(a, num, undefined, plasticOf(project)));
   const { translate, rotate, transform } = jscad.transforms, deg = Math.PI / 180;
 
   const items = [], parts = [], objects = [], fits = [], requires = [];
@@ -112,6 +133,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   const source = async (it, extra) => {
     if (it.motor) { const key = JSON.stringify(['motor', it.id, it.motor]); if (!built.has(key)) built.set(key, motorBuilt(it.motor, num, it.id)); return built.get(key); }
     if (it.beam) { const b = beamBuilt(it, num, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/beams.mjs)
+    if (it.fitting) { const b = await fittingBuilt(it, it.id, framesContext(), plasticOf(project)); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/fittings.mjs)
+    if (it.panel) { const b = await panelBuilt(it, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/panels.mjs)
+    if (it._guide) { const b = guideBuilt(it, it.id); if (!built.has(b.key)) built.set(b.key, b); return built.get(b.key); } // (lib/guides.mjs)
     if (it.bought) {
       const key = JSON.stringify(['bought', it.id, it.bought, it.variant, it.set]);
       if (!built.has(key)) built.set(key, boughtSets().get(it.bought) === 'motor' ? motorBuilt({ model: it.bought }, num, it.id) : boughtBuilt(it.bought, it, num, it.id));
@@ -153,7 +177,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
   let builtCount = 0;
   for (const it of a.items || []) {
     if (!/^[a-z][\w-]*$/.test(it.id || '')) throw new Error(`each item needs an id (letters, digits, - or _): got ${JSON.stringify(it.id)}`);
-    if ([it.object, it.assembly, it.motor, it.bought, it.beam].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly", "motor", "bought" or "beam"`);
+    if ([it.object, it.assembly, it.motor, it.bought, it.beam, it.fitting, it.panel].filter(Boolean).length !== 1) throw new Error(`item ${it.id}: give one of "object", "assembly", "motor", "bought", "beam", "fitting" or "panel"`);
     if (!it.beam && (it.to != null || it.roll != null)) throw new Error(`item ${it.id}: to and roll place a beam by its ends: place ${it.object || it.assembly || it.motor?.model || it.bought} with at and rotate`);
     // Copies: one, a grid from repeat x/y, or a layout's keys. Each: { id, offset (from at), extra (values to set) }
     const rx = it.repeat?.x, ry = it.repeat?.y, rl = it.repeat?.layout, copies = [];
@@ -219,7 +243,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
       for (const n of sub.seen) seen.add(n);
       items.push({ ...it, id, sub, role: 'part' });
     } else {
-      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}) });
+      objects.push({ id, objName: src.objName, version: src.version, built: src.b, role: src.role, ...(src.set ? { set: src.set } : {}), ...(src.variant ? { variant: src.variant } : {}), ...(src.bought ? { bought: src.bought } : {}), ...(src.motor ? { motor: src.motor } : {}), ...(src.beam ? { beam: src.beam } : {}), ...(src.fitting ? { fitting: src.fitting } : {}), ...(src.panel ? { panel: src.panel } : {}) });
       items.push({ ...it, id, objName: src.objName, built: src.b, version: src.version, role: src.role, ...(src.beam ? { beam: src.beam } : {}) });
     }
   }
@@ -303,7 +327,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, mounts, runs, guides, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -742,7 +766,7 @@ function pairOverlap(pa, pb) {
   if (!pa.hash || !pb.hash) return overlap(solidOf(pa), solidOf(pb));
   remembered ||= (() => { try { return JSON.parse(host.readText(OVERLAPS)); } catch { return {}; } })();
   const at = (p) => `${p.hash}@${Array.from(p.m || []).map((x) => Math.round(x * 1e6) / 1e6).join(',')}`;
-  const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`crossing+${solid ? 'manifold' : 'jscad'}|${x}|${y}`).digest('hex');
+  const [x, y] = [at(pa), at(pb)].sort(), k = crypto.createHash('sha1').update(`crossing+tracks+${solid ? 'manifold' : 'jscad'}|${x}|${y}`).digest('hex');
   if (!(k in remembered)) { remembered[k] = overlap(solidOf(pa), solidOf(pb)); fresh++; }
   return remembered[k];
 }
@@ -767,6 +791,8 @@ function massFinding(s, f) {
 }
 
 export function checkAssembly(s) {
+  // the screws found in this pose (at(pose) leaves them to be found again): the fasten and slot nut checks read the same
+  if (!s.fastened && s.a.fasten?.length && fastening) s = { ...s, fastened: fastening.fastenOf(s, placeItems(s.motion, s.jointValues)) };
   const out = [], f = (level, text, card, extra) => out.push({ level, text, ...(card && { card }), ...extra }), mm = (n) => `${Number(n.toFixed(3))}`;
   // Versions: every pin, from this assembly and its components, against every copy of that object
   const pins = new Map();
@@ -909,12 +935,28 @@ export function checkAssembly(s) {
     // nowhere else: a ring gear resting on its case turns with the planets; a pawl resting on its post walks off it.
     if (s.motion.joints.some((j) => j.type !== 'fixed')) {
       const ids = s.motion.items.map((x) => x[0]), top = (n) => String(n).split(/[.@]/)[0];
-      const held = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child])]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
+      // (a beam placed by its ends is the frame, held where it is drawn: what is screwed to it is held by it)
+      const held = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child]), ...s.items.filter((it) => it.beam && it.from != null).map((it) => it.id)]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
       for (let grew = true; grew;) { grew = false; for (const [a, b] of links) { if (held.has(a) && !held.has(b)) { held.add(b); grew = true; } if (held.has(b) && !held.has(a)) { held.add(a); grew = true; } } }
       const placed = new Set(s.objects.filter((o) => !o.unplaced && o.role !== 'reference').map((o) => top(o.id)));
       const loose = ids.filter((id) => !held.has(id) && placed.has(id));
       if (loose.length) f('warn', `${loose.join(', ')} ${loose.length > 1 ? 'are' : 'is'} placed, but nothing holds ${loose.length > 1 ? 'them' : 'it'}: give ${loose.length > 1 ? 'each' : 'it'} a joint, or fasten it to what it sits on (pins, screws, a press) and say so with a fit that "fastens"`, `${loose.length} loose`, { code: 'assembly.loose', refs: { items: loose } });
       else f('pass', `every part turns or slides on a joint, or is fastened to the ${ids[0]}`, null, { code: 'assembly.held' });
+      // A fit that fastens holds two items as one, but only a joint or an anchor moves them: one fastened to a part a
+      // joint moves, and placed where it stands, stays behind in every pose and is left out of what that joint carries
+      // (one also fastened to what stays, as a servo to its stand with its arm fastened to the horn, is held there)
+      const moving = s.motion.joints.filter((j) => !j.at && j.type !== 'fixed'), across = (a, b) => moving.find((jj) => beyond(s.motion, jj, ids.indexOf(a)) !== beyond(s.motion, jj, ids.indexOf(b)));
+      const still = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child]), ...s.items.filter((it) => it.beam && it.from != null).map((it) => it.id)]), same = links.filter(([a, b]) => ids.includes(a) && ids.includes(b) && !across(a, b));
+      for (let grew = true; grew;) { grew = false; for (const [a, b] of same) { if (still.has(a) && !still.has(b)) { still.add(b); grew = true; } if (still.has(b) && !still.has(a)) { still.add(a); grew = true; } } }
+      for (const x of s.fits.filter((q) => q.fastens)) {
+        const [a, b] = [top(x.a), top(x.b)], ia = ids.indexOf(a), ib = ids.indexOf(b);
+        if (ia < 0 || ib < 0) continue;
+        const j = across(a, b);
+        if (!j || (still.has(a) && still.has(b))) continue;
+        const [mover, left] = beyond(s.motion, j, ia) ? [a, b] : [b, a];
+        f('warn', `${left} is fastened to ${mover} (a fit that fastens), but only ${mover} moves on ${j.id}: ${left} is placed where it stands, so it stays there in every pose and its mass is left out of what ${j.id} carries (joint.moment). Place ${left} on ${mover} by an anchor or an address ("at": "${mover}.<anchor>")`,
+          `${left}: left behind by ${j.id}`, { code: 'assembly.fastened', refs: { items: [left, mover], joint: j.id } });
+      }
     }
     // Gears: each mesh's centre distance and contact ratio, said between the two axes (the rest by --sweep)
     for (const g of s.motion.meshes || []) {
@@ -933,6 +975,13 @@ export function checkAssembly(s) {
   }
   boughtFindings(s, f);
   beamFindings(s, f);
+  fittingFindings(s, f);
+  panelFindings(s, f);
+  serviceFindings(s, f);
+  guideFindings(s, f);
+  joinChecks(s, f);
+  slotNutChecks(s, f);
+  frameSquareChecks(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });
@@ -942,7 +991,7 @@ export function checkAssembly(s) {
   gripChecks(s, f);
   gaitChecks(s, f, { jointValues, placeItems, sweepOne: (v) => clashesOf(s.at(v), named) });
   taskChecks(s, f);
-  orderChecks(s, f);
+  orderChecks(s, f, { frame: frameBuild });
   // Plates print everything: no references
   if (s.a.kind === 'plate') {
     const refs = s.objects.filter((o) => o.role === 'reference' && !o.unplaced); // an unplaced item only lends its numbers
@@ -992,20 +1041,24 @@ export function sweep(s, { joint, steps = 24, progress } = {}) {
   for (const j of free) j.dofs.forEach(([lo, hi], d) => {
     const unit = DOFS[j.type][d] === 'angle' ? '°' : ' mm', name = `${j.id}${j.dofs.length > 1 ? ` ${'xyz'[d] && j.type === 'ball' ? 'xyz'[d] : DOFS[j.type][d]}` : ''}`;
     const bad = []; // [value, what]
-    for (let i = 0; i <= steps; i++) {
-      const v = lo + ((hi - lo) * i) / steps, set = { ...base, [j.id]: base[j.id].map((x, k) => (k === d ? v : x)) };
+    // a door with its latch shut: also tried just off shut, finer than a step, so a hit within the first degree is seen
+    const held = (s.panels ?? []).find((p) => p.latch && p.joint === j.id && DOFS[j.type][d] === 'angle'), probe = held ? Math.min(PANEL_CHECK.latch_probe.value, (hi - lo) / steps) : 0;
+    const values = [...Array(steps + 1).keys()].map((i) => lo + ((hi - lo) * i) / steps);
+    if (probe > 0 && probe < (hi - lo) / steps) values.splice(1, 0, lo + probe);
+    for (const [i, v] of values.entries()) {
+      const set = { ...base, [j.id]: base[j.id].map((x, k) => (k === d ? v : x)) };
       const t = s.at(Object.fromEntries(Object.entries(set).filter(([id]) => !s.motion.joints.find((x) => x.id === id).follow)));
       const what = [...clashesOf(t, isNamed).map(([a, b]) => `${a} hits ${b}`), ...loopGaps(t).filter((l) => !l.ok).map((l) => `${l.label} apart by ${mm(l.gap)} mm`)];
       if (what.length) bad.push([v, what]);
-      progress?.({ stage: 'sweep', joint: j.id, step: i, steps });
+      progress?.({ stage: 'sweep', joint: j.id, step: Math.min(i, steps), steps });
     }
     const ranges = []; // runs of steps in a row that collide
     for (const [v, what] of bad) { const r = ranges[ranges.length - 1]; if (r && Math.abs(v - r.to - (hi - lo) / steps) < 1e-9) { r.to = v; r.what = [...new Set([...r.what, ...what])]; } else ranges.push({ from: v, to: v, what }); }
-    const span = `${mm(lo)} to ${mm(hi)}${unit}`;
-    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps: nothing collides`, `${name}: clear ${span}`, { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: [] } });
-    else f('fail', `sweep ${name}, ${span} in ${steps} steps: ${ranges.map((r) => `${r.from === r.to ? `at ${mm(r.from)}` : `${mm(r.from)} to ${mm(r.to)}`}${unit.trim()}: ${r.what.slice(0, 3).join('; ')}${r.what.length > 3 ? `; and ${r.what.length - 3} more` : ''}`).join(' | ')}`,
+    const span = `${mm(lo)} to ${mm(hi)}${unit}`, note = held ? ` (${held.latch} shut over ${held.id}: also tried ${mm(probe)}${unit} off shut)` : '';
+    if (!ranges.length) f('pass', `sweep ${name}, ${span} in ${steps} steps${note}: nothing collides`, `${name}: clear ${span}`, { code: 'sweep', values: { from: lo, to: hi, steps, ...(held ? { probe } : {}) }, refs: { joint: name, collisions: [], ...(held ? { latch: held.latch } : {}) } });
+    else f('fail', `sweep ${name}, ${span} in ${steps} steps${note}: ${ranges.map((r) => `${r.from === r.to ? `at ${mm(r.from)}` : `${mm(r.from)} to ${mm(r.to)}`}${unit.trim()}: ${r.what.slice(0, 3).join('; ')}${r.what.length > 3 ? `; and ${r.what.length - 3} more` : ''}`).join(' | ')}`,
       `${name}: collides ${ranges.map((r) => (r.from === r.to ? mm(r.from) : `${mm(r.from)}-${mm(r.to)}`)).join(', ')}${unit.trim()}`,
-      { code: 'sweep', values: { from: lo, to: hi, steps }, refs: { joint: name, collisions: ranges.map((r) => ({ from: r.from, to: r.to, what: r.what })) } });
+      { code: 'sweep', values: { from: lo, to: hi, steps, ...(held ? { probe } : {}) }, refs: { joint: name, ...(held ? { latch: held.latch } : {}), collisions: ranges.map((r) => ({ from: r.from, to: r.to, what: r.what })) } });
   });
   saveOverlaps();
   return out;

@@ -1,0 +1,144 @@
+{
+  "_doc": "Motedis' Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5): a zinc die-cast inner connector that lies hidden in the slots of two 20 mm B-type profiles where they meet, clamped by an M5x6 grub screw in each leg. No machining. Sizes from Motedis' drawing, the price from its shop page.",
+  "name": "fitting-motedis-inner-20-b6",
+  "part": "fitting",
+  "rules": {
+    "fitting_kind": {
+      "value": "inner-connector",
+      "rule": "An inner angle that lies in the slots of both beams, out of sight",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), product page https://www.motedis.com/de/Innenwinkel-20-B-Typ-Nut-6-M5",
+      "checked": "2026-11-17"
+    },
+    "series": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "Made for 20 mm profiles of B type",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), product page https://www.motedis.com/de/Innenwinkel-20-B-Typ-Nut-6-M5",
+      "checked": "2026-11-17"
+    },
+    "slot": {
+      "value": "slot-6-motedis",
+      "rule": "Made for the 6 mm B-type slot: 6 mm wide where it stands in the opening, 9.5 mm under the lips",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), product page https://www.motedis.com/de/Innenwinkel-20-B-Typ-Nut-6-M5; Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "material": {
+      "value": "zinc die cast, zinc plated (Zinkdruckguss verzinkt)",
+      "rule": "As the shop page names it; its screws are zinc-plated steel",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), product page https://www.motedis.com/de/Innenwinkel-20-B-Typ-Nut-6-M5",
+      "checked": "2026-11-17"
+    },
+    "thread": {
+      "value": "M5",
+      "rule": "Its grub screws: M5x6",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), product page https://www.motedis.com/de/Innenwinkel-20-B-Typ-Nut-6-M5; Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "screw_form": {
+      "value": "set",
+      "rule": "DIN 913 grub screws (set screws), in the connector, pressing on the slot",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "screw_length": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "M5x6, as the drawing names them",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "screw_count": {
+      "value": 2,
+      "unit": "",
+      "rule": "One in each leg, part of the connector as sold",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "leg": {
+      "value": 25.5,
+      "unit": "mm",
+      "rule": "The leg in b's slot, 25.5 mm from the outside of its corner",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "leg_a": {
+      "value": 24.85,
+      "unit": "mm",
+      "rule": "The leg in a's slot, 24.85 mm",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "width": {
+      "value": 9.5,
+      "unit": "mm",
+      "rule": "Across, under the lips: 9.5 mm (6 mm where it stands in the opening)",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "thickness": {
+      "value": 4.4,
+      "unit": "mm",
+      "rule": "Each leg 4.4 mm deep into the slot",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "holes_b": {
+      "value": [
+        19.5,
+        0
+      ],
+      "unit": "mm",
+      "rule": "The grub screw in b's leg, 6 mm from its end (25.5 - 6 from the corner)",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "holes_a": {
+      "value": [
+        17.85,
+        0
+      ],
+      "unit": "mm",
+      "rule": "The grub screw in a's leg, 7 mm from its end (24.85 - 7 from the corner)",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), drawing https://www.motedis.com/shop/products_files/Motedis_S6BIBM5-Drawing_2.pdf",
+      "checked": "2026-11-17"
+    },
+    "cost": {
+      "value": 0.65,
+      "unit": "EUR",
+      "rule": "One in a pack of 10: 6.53 EUR the pack with 20% VAT (5.44 EUR without), on the date checked, its grub screws in",
+      "kind": "spec",
+      "source": "Motedis, Innenwinkel 20 B-Typ Nut 6 M5 (S6BIBM5), product page https://www.motedis.com/de/Innenwinkel-20-B-Typ-Nut-6-M5",
+      "checked": "2026-11-17"
+    },
+    "bending_stiffness": {
+      "value": 1500000.0,
+      "unit": "N mm/rad",
+      "rule": "How stiffly this inner connector, its grub screws tight, holds a beam's end against turning across its axis, its screws tight. The maker gives no figure, so this is frames' working guess for this kind of join (JOIN_STIFFNESS.hidden): the same figure a join with \"fitting\": \"bought\" gets, so choosing this set changes no stiffness until the joint rig measures it",
+      "kind": "estimate",
+      "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
+      "checked": "2026-11-17"
+    },
+    "twist_stiffness": {
+      "value": 500000.0,
+      "unit": "N mm/rad",
+      "rule": "How stiffly this inner connector, its grub screws tight, holds a beam's end against twisting about its own axis. The maker gives no figure, so this is frames' working guess (JOIN_STIFFNESS.hidden): the same figure a join with \"fitting\": \"bought\" gets, so choosing this set changes no stiffness until the joint rig measures it",
+      "kind": "estimate",
+      "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
+      "checked": "2026-11-17"
+    }
+  }
+}

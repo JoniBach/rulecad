@@ -1,0 +1,125 @@
+{
+  "_doc": "MISUMI's Center Joint HMJ5 for its 5 series (20 mm, 6 mm slot): a centre post whose head lies in b's slot and whose shank goes into a's centre bore, held by a joint guide in an M hole drilled across a 10 mm from its end and tightened by an M4x8 set screw. Sizes from MISUMI's 2014 catalogue; it prints no price.",
+  "name": "fitting-misumi-hmj5",
+  "part": "fitting",
+  "rules": {
+    "fitting_kind": {
+      "value": "anchor-connector",
+      "rule": "An anchor (centre) joint: its post in a's end, its head in b's slot, held by a guide in a hole drilled across a",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "series": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "For HFS5-2020 and the 5 series (20 mm)",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "slot": {
+      "value": "slot-6-misumi",
+      "rule": "For MISUMI's 5 series (slot width 6 mm)",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "material": {
+      "value": "SCS13 cast stainless centre post, SUS304 joint guide, SCM435 set screw",
+      "rule": "As the table names them",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "thread": {
+      "value": "M4",
+      "rule": "Its set screw: M4x8",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "screw_form": {
+      "value": "set",
+      "rule": "A set screw in the joint guide, tightened with a hex key through the M hole",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "screw_length": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "An M4x8 set screw",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "screw_count": {
+      "value": 1,
+      "unit": "",
+      "rule": "One set screw",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "leg": {
+      "value": 20.5,
+      "unit": "mm",
+      "rule": "The centre post, 20.5 mm long",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "width": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "The post's head, 10 mm across, in b's slot",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-553 (Center Joint Kits for 5 Series), https://my.misumi-ec.com/pdf/fa/2014/p2_553.pdf",
+      "checked": "2026-11-17"
+    },
+    "pocket_diameter": {
+      "value": 7.1,
+      "unit": "mm",
+      "rule": "The M hole MISUMI drills for HFS5: 7.1 mm",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-766 (M Type Hole Alterations), https://my.misumi-ec.com/pdf/fa/2014/p2_765.pdf",
+      "checked": "2026-11-17"
+    },
+    "pocket_distance": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "Its centre 10 mm from a's end (H1 for HFS5)",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-766 (M Type Hole Alterations), https://my.misumi-ec.com/pdf/fa/2014/p2_765.pdf",
+      "checked": "2026-11-17"
+    },
+    "holes_a": {
+      "value": [
+        10,
+        0
+      ],
+      "unit": "mm",
+      "rule": "The set screw, in the joint guide in the M hole, 10 mm from a's end",
+      "kind": "spec",
+      "source": "MISUMI FA Mechanical Standard Components catalogue 2014, page 2-766 (M Type Hole Alterations), https://my.misumi-ec.com/pdf/fa/2014/p2_765.pdf",
+      "checked": "2026-11-17"
+    },
+    "bending_stiffness": {
+      "value": 2000000.0,
+      "unit": "N mm/rad",
+      "rule": "How stiffly this centre joint, its set screw tight, holds a beam's end against turning across its axis, its screws tight. The maker gives no figure, so this is frames' working guess for this kind of join (JOIN_STIFFNESS.anchor): the same figure a join with \"fitting\": \"bought\" gets, so choosing this set changes no stiffness until the joint rig measures it",
+      "kind": "estimate",
+      "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
+      "checked": "2026-11-17"
+    },
+    "twist_stiffness": {
+      "value": 500000.0,
+      "unit": "N mm/rad",
+      "rule": "How stiffly this centre joint, its set screw tight, holds a beam's end against twisting about its own axis. The maker gives no figure, so this is frames' working guess (JOIN_STIFFNESS.anchor): the same figure a join with \"fitting\": \"bought\" gets, so choosing this set changes no stiffness until the joint rig measures it",
+      "kind": "estimate",
+      "source": "A working guess of @rulecad/frames, with no measurement or published figure behind it: the joint rig (issue 264) measures it and cad measured replaces it",
+      "checked": "2026-11-17"
+    }
+  }
+}

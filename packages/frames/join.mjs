@@ -1,0 +1,257 @@
+// Joins between beams: how two beams are joined says what is done to each (its operations), what holds them (the
+// screws now, the fittings in later releases), and how stiff the joint is taken to be when a frame is solved.
+//
+// A join names an end of one beam (a) and a place on another (b): a face with a distance from b's end a for a join
+// that puts an end against a face (blind, end-tap, bracket and the rest), or b's end for one that meets end to end or
+// at a corner (splice, mitre, cube). The addresses are beam.mjs's (back@120, a, a.1). Units: mm, N, radians.
+import { parseName, engagement, fixingModel, DEFAULTS as FIX } from '@rulecad/fixings';
+import { beamAnchor } from './beam.mjs';
+import { boughtFittings, boughtFittingModel } from './bought.mjs';
+
+const CHECKED = '2026-11-16';
+const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
+const SIDES = { face: 'a face with a distance (back@120, top@50%)', end: 'an end, a or b', either: 'a face with a distance (back@120), or an end (a or b)' };
+const FITTINGS = ['printed', 'bought']; // (or a bought fitting's set by name: bought.mjs)
+
+/**
+ * The kinds of join, each with what it derives, what b is (a face, an end, or either), whether the end must meet a
+ * slot, and, for a kind with a fitting, what that fitting is, the printed fitting (fitting.mjs) that "fitting":
+ * "printed" draws where there is one, the kind of bought fitting (bought.mjs) a set's name gives where one is taken,
+ * and the release that brings the rest.
+ * @type {Record<string, { what: string, b: 'face' | 'end' | 'either', slot: boolean, head?: string, made: boolean, fitting?: string, printed?: 'bracket' | 'gusset' | 'splice', bought?: string, later?: string }>}
+ */
+export const JOINS = {
+  blind: { what: 'a tap in the end of a, a button-head screw in it, the head in a slot of b, and an access hole across b for the key', b: 'face', slot: true, head: 'button', made: true },
+  'end-tap': { what: 'a tap in the end of a, and a cap screw into it through a hole drilled across b', b: 'face', slot: false, head: 'cap', made: true },
+  bracket: { what: 'a corner bracket, printed or bought, with its slot nuts and screws', b: 'face', slot: true, made: false, fitting: 'a corner bracket', printed: 'bracket', bought: 'corner-bracket' },
+  gusset: { what: 'a flat plate (L, T or cross), printed or bought, over the joint', b: 'face', slot: true, made: false, fitting: 'a gusset plate', printed: 'gusset', bought: 'joining-plate' },
+  cube: { what: 'a three-way corner taking the beam ends', b: 'end', slot: false, made: false, fitting: 'a three-way corner', later: 'a later release (printed and bought)' },
+  hidden: { what: 'a bought inner connector in the slots', b: 'face', slot: true, made: false, fitting: 'an inner connector', bought: 'inner-connector' },
+  anchor: { what: 'a bought anchor connector, and its pocket in the end of a', b: 'face', slot: true, made: false, fitting: 'an anchor connector', bought: 'anchor-connector' },
+  mitre: { what: 'two mitred ends, and a corner key or plate', b: 'end', slot: false, made: false, fitting: 'a corner key or plate', later: 'a later release (printed and bought)' },
+  pivot: { what: 'a hinge or pivot, which also adds a joint so it moves', b: 'face', slot: true, made: false, fitting: 'a pivot and its joint', later: 'a later release, with the joint it adds (a hinge goes on a door as an item now)' },
+  splice: { what: 'two beams end to end, with a joining plate', b: 'end', slot: false, made: false, fitting: 'a splice plate', printed: 'splice', bought: 'joining-plate' },
+  printed: { what: 'a printed node that sockets the beam ends', b: 'either', slot: false, made: false, fitting: 'a printed node', later: 'a later release' },
+};
+
+// One kind's stiffness for a 20 mm series profile: bending (about either axis across the beam) and twist, N mm/rad
+const guess = (kind, bending, twist, why) => ({
+  bending: { value: bending, unit: 'N mm/rad', rule: `How stiffly a ${kind} join holds the end of a against turning across its axis, for a 20 mm series profile: ${why}`, kind: 'estimate', source: 'A working guess of @rulecad/frames, made without a measurement or a published figure: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED },
+  twist: { value: twist, unit: 'N mm/rad', rule: `How stiffly a ${kind} join holds the end of a against twisting about its own axis, for a 20 mm series profile: ${why}`, kind: 'estimate', source: 'A working guess of @rulecad/frames, made without a measurement or a published figure: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED },
+});
+
+/**
+ * Each kind's stiffness, bending and twist, for a 20 mm series profile, as springs at the end of a in a frame's solve
+ * (@rulecad/fea/frame's end joins). Every one is an estimate: a joint's stiffness is the honest unknown of a frame, and
+ * the joint rig measures it. A profile of another size is scaled by the cube of its width over 20 mm (JOIN_SCALE).
+ * @type {Record<string, { bending: object, twist: object }>}
+ */
+export const JOIN_STIFFNESS = {
+  blind: guess('blind', 1.5e6, 3e5, 'one screw on the beam\'s axis, clamped by its head on the slot\'s lips: the lips bend first, and twist is held by friction alone'),
+  'end-tap': guess('end-tap', 2e6, 4e5, 'one screw on the beam\'s axis, its head on the far face of b: stiffer than a blind join, as b\'s far wall clamps too; twist by friction alone'),
+  bracket: guess('bracket', 3e6, 1e6, 'a bought cast bracket and two slot nuts; a printed bracket is taken at JOIN_PRINTED of it'),
+  gusset: guess('gusset', 6e6, 3e6, 'a flat plate over the joint with two or more screws each side: the widest stance of any kind'),
+  cube: guess('cube', 3e6, 2e6, 'a three-way corner with the ends screwed into it'),
+  hidden: guess('hidden', 1.5e6, 5e5, 'an inner connector clamped in the slots, held by friction and a set screw'),
+  anchor: guess('anchor', 2e6, 5e5, 'an anchor connector in a pocket, pulled tight by its screw'),
+  mitre: guess('mitre', 1e6, 5e5, 'two mitred ends held by a corner key or plate: the key\'s own stiffness'),
+  pivot: guess('pivot', 1.5e6, 5e5, 'a pivot, free about its pin (its joint says which way): this figure is for the other two rotations'),
+  splice: guess('splice', 5e6, 3e6, 'two ends held by a plate along both beams'),
+  printed: guess('printed', 5e5, 3e5, 'a printed node: plastic, so far softer than the aluminium it joins'),
+};
+/** A printed fitting's stiffness beside a bought one's, and the size scale, each with what it rests on. */
+export const JOIN_SCALE = {
+  printed: { value: 0.3, unit: '', rule: 'A printed fitting\'s stiffness as a share of the bought one\'s: PLA or PETG has a modulus of about 2 to 3.5 GPa against cast aluminium\'s 70 GPa, and a printed fitting is drawn thicker to make some of that up', kind: 'estimate', source: 'A working guess of @rulecad/frames: the joint rig (issue 264) measures it', checked: CHECKED },
+  size: { value: 3, unit: '', rule: 'A join on a profile of another size is scaled by its width over 20 mm to this power: a guess between a bolted joint (its screw grows with the profile) and a section\'s own bending stiffness', kind: 'estimate', source: 'A working guess of @rulecad/frames', checked: CHECKED },
+};
+
+/** How deep a join taps the end of a, with what it rests on. */
+export const JOIN_TAP = { value: 1.5, unit: 'diameters', rule: 'A join taps the end of a as deep as the thread engagement asks in the beam\'s metal (engagement in @rulecad/fixings), with the screw\'s tip room (fixings.tip_room) and this many diameters more, so a screw of a sold length both engages fully and stops short of the bottom: the step between sold lengths is up to one diameter, and half a diameter more keeps a screw that only just needs the next length off the bottom', kind: 'default', source: 'A working figure of @rulecad/frames, from the steps in the m5 set\'s sold lengths (20, 25, 30, 35 mm)', checked: CHECKED };
+const classOf = (mat) => { const E = mat?.modulus; return E == null ? 'aluminium' : E < 20000 ? 'plastic' : E < 100000 ? 'aluminium' : 'steel'; };
+
+/**
+ * The rule set a workspace keeps its measured joins in, by name: "joins" (part "joins"). The kit holds no file of it:
+ * its starting figures are JOIN_STIFFNESS's estimates, and cad measured writes a copy into the workspace the first time
+ * the joint rig is measured, each figure the rig measured then marked measured with its date.
+ */
+export const JOIN_SET = 'joins';
+const ruleKey = (kind) => kind.replace(/-/g, '_');
+/** The kinds whose fitting can be printed (a bracket, a gusset, a splice), each with a share of its fitting's own stiffness. */
+const SHARED = Object.keys(JOINS).filter((k) => JOINS[k].printed);
+/**
+ * A printed fitting's joint as a share of the fitting's own stiffness by finite elements: the slot nuts, the lips and
+ * the contact are not in that figure, so the joint is softer. 1 until the joint rig measures it.
+ * @param {string} kind
+ */
+const printedShare = (kind) => ({ value: 1, unit: '', rule: `A ${kind} join with a printed fitting, as a share of the fitting's own bending stiffness by finite elements: that figure leaves out the slot nuts, the lips and where the faces touch, so the joint is softer than it. Taken whole until the joint rig measures the joint`, kind: 'estimate', source: 'A working figure of @rulecad/frames, with no measurement behind it: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED });
+
+/**
+ * The joins rule set as the kit starts it: each kind's bending and twist (<kind>_bending, <kind>_twist, a kind's
+ * hyphen as an underscore: end_tap_bending) from JOIN_STIFFNESS, and for each kind with a printed fitting its share
+ * (<kind>_printed_share). cad measured writes the workspace's copy from it.
+ * @returns {{ name: string, part: string, _doc: string, rules: Record<string, { value: number, unit: string, rule: string, kind: string, source: string, checked: string }> }}
+ */
+export function joinRuleSet() {
+  const rules = {};
+  for (const [kind, s] of Object.entries(JOIN_STIFFNESS)) for (const k of ['bending', 'twist']) rules[`${ruleKey(kind)}_${k}`] = { ...s[k] };
+  for (const kind of SHARED) rules[`${ruleKey(kind)}_printed_share`] = printedShare(kind);
+  return { _doc: 'How stiff each kind of join between two beams is, for a 20 mm series profile: the springs at a beam\'s end in a frame\'s solve. Started from @rulecad/frames\' estimates (JOIN_STIFFNESS); the joint rig (examples/bench/projects/benchmarks/MEASURE.md) measures them and cad measured writes each here as measured.', name: JOIN_SET, part: 'joins', rules };
+}
+
+// A figure of the workspace's joins set where it has one, else the kit's
+const ownRule = (given, key) => { const r = given?.sets?.[JOIN_SET]?.rules?.[key]; return r && typeof r.value === 'number' && Number.isFinite(r.value) && r.value > 0 ? r : null; };
+const measuredOn = (r) => (r?.kind === 'measured' ? r.checked ?? null : null);
+
+/**
+ * The stiffness a join of this kind is taken to have between these beams, as numbers and as an end join for
+ * @rulecad/fea/frame ({ rx: twist, ry, rz: bending, in N mm/rad }), with what it rests on. A figure the workspace's
+ * joins set holds (given.sets.joins, measured on the joint rig) is taken before the kit's estimate; measured says the
+ * date each was measured, or null.
+ * @param {string} kind @param {object} beam the beam whose end is joined (a) @param {{ fitting?: 'printed' | 'bought', given?: { sets?: object } }} [o]
+ * @returns {{ bending: number, twist: number, scale: number, printed: boolean, end: { rx: number, ry: number, rz: number }, kind: string, measured: { bending: string | null, twist: string | null }, share: object | null, rests: object[] }}
+ */
+export function joinStiffness(kind, beam, o = {}) {
+  const s = JOIN_STIFFNESS[kind];
+  if (!s) throw new Error(`joinStiffness: no kind of join ${shown(kind)}: there are ${Object.keys(JOINS).join(', ')}`);
+  const key = ruleKey(kind), rb = ownRule(o.given, `${key}_bending`) ?? s.bending, rt = ownRule(o.given, `${key}_twist`) ?? s.twist;
+  const share = SHARED.includes(kind) ? ownRule(o.given, `${key}_printed_share`) ?? printedShare(kind) : null;
+  const w = Math.max(beam.profile.width, beam.profile.height), scale = (w / 20) ** JOIN_SCALE.size.value, printed = o.fitting === 'printed' && JOINS[kind].fitting && kind !== 'printed' ? JOIN_SCALE.printed.value : 1;
+  const bending = rb.value * scale * printed, twist = rt.value * scale * printed, measured = { bending: measuredOn(rb), twist: measuredOn(rt) };
+  const named = (r, k) => ({ value: r.value, unit: r.unit, kind: r.kind, source: r.source, name: `${JOIN_SET}.${key}_${k}`, ...(r.kind === 'measured' ? { checked: r.checked } : {}) });
+  return { bending, twist, scale, printed: printed !== 1, end: { rx: twist, ry: bending, rz: bending }, kind: measured.bending && measured.twist ? 'measured' : 'estimate', measured, share,
+    rests: [named(rb, 'bending'), named(rt, 'twist'), ...(scale !== 1 ? [JOIN_SCALE.size] : []), ...(printed !== 1 ? [JOIN_SCALE.printed] : [])].map((r) => ({ value: r.value, unit: r.unit, kind: r.kind, source: r.source, ...(r.name ? { name: r.name } : {}), ...(r.checked ? { checked: r.checked } : {}) })) };
+}
+
+const boughtKindOf = (name, given) => { try { return boughtFittingModel(name, { given }).fittingKind; } catch { return null; } };
+
+/**
+ * A join's stiffness with a bought fitting: its set's own figures (each an estimate until the joint rig measures it,
+ * and saying so), or the kind's estimate where the set gives none, in joinStiffness's shape.
+ * @param {string} kind @param {object} beam a's @param {object} fm boughtFittingModel's
+ */
+export function boughtStiffness(kind, beam, fm) {
+  const k = joinStiffness(kind, beam);
+  if (!fm.stiffness) return { ...k, bought: { set: fm.set, own: false } };
+  const bending = fm.stiffness.bending, twist = fm.stiffness.twist ?? k.twist, measured = { bending: fm.stiffness.measured?.bending ?? null, twist: fm.stiffness.twist != null ? fm.stiffness.measured?.twist ?? null : k.measured.twist };
+  return { bending, twist, scale: 1, printed: false, end: { rx: twist, ry: bending, rz: bending }, kind: fm.stiffness.kind, measured, share: null, bought: { set: fm.set, own: true, rule: fm.stiffness.rule, source: fm.stiffness.source },
+    rests: fm.stiffness.rests.map((r) => ({ value: r.value, unit: r.unit, kind: r.kind, source: `${r.name}: ${r.source}` })) };
+}
+
+// The place across the beam from a place, on the same line (front.1 for back.1), or null
+function across(b, p) {
+  return b.places.find((q) => Math.abs(q.normal[0] + p.normal[0]) < 1e-9 && Math.abs(q.normal[1] + p.normal[1]) < 1e-9 && Math.abs(p.normal[0] * (q.at[1] - p.at[1]) - p.normal[1] * (q.at[0] - p.at[0])) < 1e-6) ?? null;
+}
+
+/**
+ * A join between two beams as numbers: the operations it puts on each, the screws that hold it (each by the bore in
+ * a's end it goes into), the fitting a later release draws for it, its stiffness, and what to know. Bad input is
+ * refused by name.
+ * @param {string} kind one of JOINS
+ * @param {{ beam: object, end: string }} a a beam's model and its end: a, b, or one bore of it (a.2) where the end has several
+ * @param {{ beam: object, address: string }} b a beam's model and a place on it: a face with a distance (back@120), or an end
+ * @param {{ screw?: string, fitting?: string, given?: object, mitre?: { angle: number, a: { about: string, long: string }, b: { about: string, long: string } } }} [o] screw: the screw a blind or end-tap join takes, by its thread and head ("M5 button"; the bore's thread with the kind's head where left out);
+ *   mitre: for a mitre join, each end's cut from square in degrees and, for each beam, the face the corner lies in (about)
+ *   and the side its length is measured on (long, the outside): worked out from where the beams are (cad does)
+ * @returns {{ kind: string, what: string, says: string, a: { end: string, bores: string[], ops: object[] }, b: { address: string, place: string | null, face: string | null, slot: string | null, distance: number | null, end: string | null, ops: object[], across?: { place: string, slot: string | null } },
+ *   screws: { screw: string, thread: string, head: string, bore: string }[], fitting: { what: string, later: string, choice: string | null } | null, stiffness: object, findings: object[] }}
+ */
+export function joinModel(kind, a, b, o = {}) {
+  const what = `joinModel`;
+  const spec = JOINS[kind];
+  if (!spec) throw new Error(`${what}: no kind of join ${shown(kind)}: there are ${Object.keys(JOINS).join(', ')}`);
+  if (a?.beam?.kind !== 'beam' || b?.beam?.kind !== 'beam') throw new Error(`${what}: a and b are each { beam, ... } with a beam's model (beamModel)`);
+  if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error(`${what}: the options are { screw, fitting, mitre, given } (got ${shown(o)})`);
+  for (const k of Object.keys(o)) if (!['screw', 'fitting', 'mitre', 'given'].includes(k)) throw new Error(`${what}: no option "${k}": it takes screw, fitting, mitre, given`);
+  const A = a.beam, B = b.beam, w = `${what}: a ${kind} join of ${A.name} to ${B.name}`, given = o.given ?? {};
+  // a bought fitting by its set's name: one of the kind this join takes
+  const sets = spec.bought ? boughtFittings(given).filter((n) => boughtKindOf(n, given) === spec.bought) : [];
+  const named = o.fitting != null && !FITTINGS.includes(o.fitting) && typeof o.fitting === 'string' && boughtFittings(given).includes(o.fitting);
+  if (o.fitting != null && !FITTINGS.includes(o.fitting) && !named) throw new Error(`${w}: fitting is ${FITTINGS.join(' or ')}, or a bought fitting's set by name${sets.length ? ` (${sets.join(', ')})` : ''} (got ${shown(o.fitting)})`);
+  if (o.fitting != null && !spec.fitting) throw new Error(`${w}: a ${kind} join has no fitting to choose: its screws hold it. Leave fitting out`);
+  if (named && !spec.bought) throw new Error(`${w}: a ${kind} join takes no bought fitting yet (${spec.fitting} comes with ${spec.later})${spec.printed ? ': give "fitting": "printed"' : ''}`);
+  if (o.screw != null && !['blind', 'end-tap'].includes(kind)) throw new Error(`${w}: a ${kind} join's screws come with its fitting (${spec.printed ? 'a printed one\'s thread is its slot nuts\', its lengths chosen by its fastens' : spec.bought ? 'a bought one\'s are its set\'s' : spec.later}): leave screw out`);
+  // a: an end, or one bore of it
+  const end = typeof a.end === 'string' ? a.end.trim() : null;
+  if (!end || !/^[ab](\.\d+)?$/.test(end)) throw new Error(`${w}: a is an end of the beam, a or b, or one bore in it (a.1) (got ${shown(a.end)})`);
+  // b: a face with a distance, or an end, as the kind takes
+  const address = typeof b.address === 'string' ? b.address.trim() : null, isEnd = address != null && /^[ab]$/.test(address);
+  if (!address || (spec.b === 'face' && isEnd) || (spec.b === 'end' && !isEnd)) throw new Error(`${w}: b is ${SIDES[spec.b]} on the other beam, as a ${kind} join meets it (got ${shown(b.address)})`);
+  if (!isEnd && !address.includes('@')) throw new Error(`${w}: b names a face with a distance from its end a, where the end of a meets it: ${address}@120, ${address}@-20 or ${address}@50% (got ${shown(address)})`);
+  const at = beamAnchor(B, address); // (refused by name where the face is not one of B's, or past its end)
+  const place = isEnd ? null : B.places.find((x) => x.name === at.name || (x.face === at.name && x.name.endsWith('.1')));
+  const out = { kind, what: spec.what, says: '', a: { end, bores: [], ops: [] }, b: { address, place: place?.name ?? null, face: place?.face ?? null, slot: place?.slot ?? null, distance: isEnd ? null : at.distance, end: isEnd ? address : null, ops: [] },
+    screws: [], fitting: spec.fitting ? { what: spec.fitting, ...(spec.later ? { later: spec.later } : {}), choice: o.fitting ?? null } : null, stiffness: joinStiffness(kind, A, named ? {} : o), findings: [] };
+  const says = `${A.name} end ${end} to ${B.name} ${address}`;
+  out.says = says;
+  if (spec.slot && place && !place.slot) {
+    out.findings.push({ level: 'fail', code: 'join.geometry', text: `${says}: a ${kind} join meets a slot, and ${B.name}'s ${place.name} is a closed face: join it to a face with a slot${kind === 'blind' ? ', or use an end-tap join' : ''}`, refs: { kind, place: place.name } });
+    return out;
+  }
+  // a mitre: each end cut at the angle that meets the other, about the face the corner lies in, long on the outside
+  if (kind === 'mitre' && o.mitre != null) {
+    const m = o.mitre, FACES = ['top', 'bottom', 'front', 'back'];
+    if (!(typeof m.angle === 'number' && m.angle > 0 && m.angle < 90)) throw new Error(`${w}: mitre.angle is each end's cut from square, above 0 and under 90 degrees (got ${shown(m.angle)}): the beams meet at a corner, not in line or doubled back`);
+    for (const side of ['a', 'b']) if (!m[side] || !FACES.includes(m[side].about) || !FACES.includes(m[side].long)) throw new Error(`${w}: mitre.${side} is { about, long }, each a face: ${FACES.join(', ')} (got ${shown(m[side])})`);
+    out.a.ops.push({ op: 'mitre', at: end, angle: m.angle, about: m.a.about, long: m.a.long });
+    out.b.ops.push({ op: 'mitre', at: address, angle: m.angle, about: m.b.about, long: m.b.long });
+  }
+  // a printed fitting this release draws: the caller places it from where the beams are and adds its screws
+  // (cad's joins do: lib/fittings.mjs), and its own stiffness by finite elements replaces the estimate
+  if (spec.printed && o.fitting === 'printed') { out.fitting.made = true; out.fitting.printed = spec.printed; return out; }
+  // a bought one: its set says its screws, nuts and holes (the caller places it from where the beams are and adds its
+  // fastens: cad's joins do), the hole a beam needs for it, whether it fits these profiles, and its stiffness
+  if (named) {
+    let fm;
+    try { fm = boughtFittingModel(o.fitting, { given, profile: B.profile, other: A.profile, join: kind }); } catch (x) { throw new Error(`${w}: fitting: ${String(x.message).replace(/^\w+: /, '')}`); }
+    if (kind === 'splice' && fm.shape !== 'straight') throw new Error(`${w}: a splice join takes a straight joining plate, and ${fm.set} is ${fm.shape === 'L' ? 'an' : 'a'} ${fm.shape}: give it on a gusset join`);
+    if (kind === 'gusset' && fm.shape === 'straight') throw new Error(`${w}: a gusset join takes an L, T or cross plate, and ${fm.set} is straight: give it on a splice join`);
+    out.fitting.made = true; out.fitting.bought = fm;
+    out.stiffness = boughtStiffness(kind, A, fm);
+    const misfit = fm.findings.filter((x) => x.code === 'fitting.fit' && x.level === 'fail');
+    out.fitting.fits = !misfit.length;
+    out.findings.push(...misfit.map((x) => ({ ...x, text: `${says}: ${x.text}. Until one fits, the join places no fitting and adds no screws` })));
+    // an anchor's pocket: a hole across a near its end, into a slotted face, down to the bore its post goes in
+    if (!misfit.length) for (const op of fm.ops) {
+      const face = A.places.find((q) => q.slot)?.name;
+      if (!face) throw new Error(`${w}: ${fm.set}'s guide goes in a hole drilled into a slot of ${A.name}, and it has no slotted face`);
+      const e = end[0], d = e === 'a' ? op.distance : -op.distance;
+      out.a.ops.push({ op: 'drill', at: `${face}@${d}`, diameter: op.diameter, depth: +(Math.min(A.profile.width, A.profile.height) / 2).toFixed(3) });
+    }
+    return out;
+  }
+  if (!spec.made) {
+    const cut = out.a.ops.length > 0;
+    const printed = spec.printed ? ` A printed one is drawn now: give "fitting": "printed".` : '';
+    const bought = spec.bought ? ` ${sets.length ? `A bought one is a set: give "fitting": "${sets[0]}"${sets.length > 1 ? ` (or ${sets.slice(1).join(', ')})` : ''}` : `A bought one is a rule set of part "fitting" (fitting_kind ${spec.bought}): the kit has none yet`}.` : '';
+    const then = cut ? `The mitres are cut; the corner key or plate comes with ${spec.later}` : spec.later ? `${spec.fitting[0].toUpperCase()}${spec.fitting.slice(1)} comes with ${spec.later}` : `${spec.fitting[0].toUpperCase()}${spec.fitting.slice(1)} is added once one is chosen`;
+    out.findings.push({ level: 'warn', code: 'join.fitting', text: `${says}: a ${kind} join is ${spec.what}. ${then}: until then this join is checked where it meets and stiffens the frame by its estimate, and adds no ${cut ? '' : 'operations, '}fittings or screws.${printed}${bought}`, refs: { kind, ...(spec.later ? { later: spec.later } : {}), ...(sets.length ? { sets } : {}) } });
+    return out;
+  }
+  // blind and end-tap: a screw in each bore of a's end named, tapped
+  const e = end[0], bores = A.bores.filter((x) => x.end === e && (end.length === 1 || x.name === end));
+  if (!A.profile.bores.length) throw new Error(`${w}: ${A.profile.name} has no bore in its ends to tap, and a ${kind} join screws into one: join it with a bracket or a gusset`);
+  if (!bores.length) throw new Error(`${w}: ${A.name} has no bore ${end}: its end ${e} has ${A.bores.filter((x) => x.end === e).map((x) => x.name).join(', ')}`);
+  if (bores.length > 1) throw new Error(`${w}: end ${e} of ${A.name} has ${bores.length} bores (${bores.map((x) => x.name).join(', ')}), each meeting ${B.name} at its own place: give a join for each, a: ${bores.map((x) => x.name).join(' and ')}`);
+  const bore = bores[0];
+  let thread = bore.thread, head = spec.head, length = null;
+  if (o.screw != null) {
+    let n;
+    try { n = parseName(String(o.screw)); } catch (x) { throw new Error(`${w}: screw: ${String(x.message).replace(/^\w+: /, '')}`); }
+    if (!['screw', 'thread'].includes(n.item)) throw new Error(`${w}: screw names a screw by its thread and head ("M5 button"): ${o.screw} is not a screw`);
+    thread = n.thread; head = n.head ?? head; length = n.length;
+  }
+  if (thread == null) throw new Error(`${w}: ${A.profile.name}'s bores name no thread (bore_thread): give the screw, { screw: 'M5 button' }`);
+  out.a.bores = [bore.name];
+  let depth;
+  try { const need = engagement(thread, { depth: 1, material: classOf(A.material) }).need; depth = +(need + FIX.tip_room.value + JOIN_TAP.value * fixingModel(thread).major).toFixed(2); }
+  catch (x) { throw new Error(`${w}: screw: ${String(x.message).replace(/^\w+: /, '')}`); }
+  out.a.ops.push({ op: 'tap', at: bore.name, thread, depth });
+  const far = across(B, place);
+  if (!far) throw new Error(`${w}: ${B.name} has no face across from ${place.name} on the same line, for the ${kind === 'blind' ? 'key\'s access hole' : 'screw\'s hole'}`);
+  const there = `${far.name}@${address.split('@')[1].trim()}`;
+  out.b.across = { place: far.name, slot: far.slot };
+  out.b.ops.push(kind === 'blind' ? { op: 'access', at: there, thread, ...(['cap', 'button', 'countersunk'].includes(head) ? { head } : {}), through: 'beam' } : { op: 'drill', at: there, thread, kind: 'clearance', through: 'beam' });
+  out.screws.push({ screw: `${thread}${length != null ? `x${length}` : ''} ${head}`, thread, head, bore: bore.name });
+  if (kind === 'blind' && head !== 'button') out.findings.push({ level: 'info', code: 'join.fitting', text: `${says}: a blind join's head slides in ${B.name}'s slot, and a button head is the usual one; ${head} is checked as drawn`, refs: { kind, head } });
+  return out;
+}

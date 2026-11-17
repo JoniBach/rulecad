@@ -391,6 +391,7 @@ starts and stops. From that the check says:
 | Finding | What it checks |
 |---|---|
 | `fasten.holes` | One axis runs from under the head through every part: a hole 0.05 mm or more off it fails, with the distance |
+| `fasten.slot` | Into a beam's slot: each screw over a slot's centre line within its hole's play, square to the face and along the beam (see Fastening into a slot, under Beams) |
 | `fasten.clearance` | Each part passed through has a clearance hole for the thread as drawn on this printer, between the close and the loose figure; it says what the hole measures and what it should be |
 | `fasten.end` | The far end is a pilot, a hole to tap, a thread drawn to print, an insert's hole or a nut's seat of this thread (a pocket on the far face, or a slot across the screw partway along it, as `v.fixings.nutTrap` cuts), or a clearance hole with `nut`; into a motor, one of its own threaded mounting holes |
 | `fasten.length` | The length chosen where none is given: the shortest sold length that fits the stack as measured (into a motor, the longest that stops short of the end of its thread). A given length is checked for reaching the far end, bottoming out in a blind hole (1 mm is kept at the tip) and standing more than a diameter proud |
@@ -490,7 +491,10 @@ then y, then z, as `rotate` does.
 - **What holds each part:** in an assembly that moves, every part but the first turns or slides on a joint, or is
   fastened to the first: by a `fasten` where screws do it, or by a fit with `"fastens": true` where pins, a press or a
   clip do (named in the fit's note): `{ "a": "ring", "b": "case", "fastens": true, "note": "Two push pins" }`. A part only placed somewhere is
-  said (`assembly.loose`): a ring gear resting on its case would turn with its planets.
+  said (`assembly.loose`): a ring gear resting on its case would turn with its planets. A fit that fastens does not
+  move a part: one fastened only to a part a joint moves (a table to a carriage), but placed where it stands, stays
+  there in every pose and its mass is not carried, so it is said by name (`assembly.fastened`). Place it on the moving
+  part by an anchor or an address (`"at": "g1-carriage-1.top"`).
 - **Onto a shaft:** `{ "a": "arm", "b": "crank", "engage": "arm.thick" }` checks that a part slid onto a shaft, a pin or a
   peg goes that far onto it along the joint between them (`fit.engage`), not just against its end: an arm resting on
   a shaft's end touches it face to face, as a seated one does, and nothing overlaps either way, so only this tells
@@ -520,7 +524,7 @@ An item can be a motor instead of a printed object: `{ "id": "drive", "motor": {
 - `motor.torque`: what reaches the joint through the gears, against the load: a fail under 1 times, a warning under the margin. It says what its figures rest on. `motor.speed`: how fast it moves and how long its range takes. Stages pass on `stageEfficiency` of the power (0.95 a mesh, an estimate).
 - `motor.holds`: with the power on (holding torque, or stall torque) and off (detent torque, a built-in gearbox's friction, a worm that locks, gears under 50% efficient, or `"brake": "a ratchet and pawl"` on the joint). Dropping with the power off is a warning: it may be what you want.
 - `motor.mount`: the part a motor is fastened to (a `fasten` into the motor, or a fit that `fastens`), read as drawn: how thick it is at the screw holes against the screws' size, the screws' engagement in the motor's tapped holes (the screws as bought: their length past the plate, held to the motor's `mount_hole_depth`, at least one diameter, `engagement.steel`, or it fails; a motor item's `"screw"` may name a whole screw, `"M3x8 cap"`, to check that one), and the screws' bearing on the plastic under the motor's full torque. Its screws are counted in `cad list` and `cad order` (at the length sold that stays in the motor's thread, with the key that turns them). Then the whole part bent, by FE on the part as drawn (cubes, two across the plate at the screws): the motor's weight at its centre, along `gravity` in the pose it's checked in, and its full torque (the larger of its working and holding torque), both carried into the plate where the screws clamp it. The part is held at the joint that carries it, if one does; else where it meets the printed parts it's fastened to that sit below it; failing both, on its lowest face. It reports how far the shaft's tip moves (against the driven joint's seat, where that is on the same part, since the two move together), against the printer's `fit` clearance (or the motor's `"deflection"` in mm), and the peak stress against the material's `strength`; under 2 times either fails, and says what fixes it: the plate thickness that would do (bending goes with its cube), ribs, or how much stiffer a material would have to be. Cells this coarse read a plate 10 to 20% stiff, and a cell's stress is read at its centre, so the peak is scaled up to the surface; it's an estimate, said as one. Kept in `.cache/mount`.
-- `motor.heat`: the motor's case against the softening point of the material the project prints in. Too hot says the current to set the driver to.
+- `motor.heat`: the motor's case against the softening point of the material the project prints in. Too hot says the current to set the driver to; the motor item's `current` set to it is read (the maker's rise at rated current, scaled by the current squared, as the heat is), so the check then passes.
 - A `"shaft": true` fit (or `"press"`) between a motor and what it drives reads the bore from the part as drawn: that it's on the shaft (`shaft.seat`), that its flat is there (`shaft.flat`; the shaft turns to meet it, so where the flat faces doesn't matter), how much of the flat it grips (`shaft.grip`), and, pressed on, the hoop stress in the hub (`shaft.hoop`).
 - `cad preview --check` of an assembly with a motor writes `<assembly>-check.png`: the same six views, with a label at each joint the motor's torque passes through (what reaches it, and at the loaded joint the margin and whether it holds unpowered). The rest view never carries them.
 - `cad preview` of an assembly with a motor draws each one at work beside the picture, as SVG: `<assembly>-<motor>-curve.svg`, its torque against speed at the output with the load and the working speed marked, and `<assembly>-<motor>-train.svg`, the torque from its shaft through each stage to the joint with the load, against what the load needs there, and whether it holds with the power on and off. The numbers are the check's.
@@ -544,7 +548,7 @@ An item can be a beam, a length of an aluminium extrusion, a tube or a bar from 
   `@rulecad/frames` README ("Face names in an assembly").
 - A beam is bought: drawn faint, never on a plate, on `cad list` by profile and length (`2 × profile-2020-misumi-hfs5
   x 300 mm  a beam  150 g each`, weighed by the maker's mass per metre where the sheet gives one), and in the overlap
-  check by its envelope, a plain box. `cad check` says each beam's mass beside the sheet's, and warns of a length
+  check by its envelope, a plain box less any V tracks along it. `cad check` says each beam's mass beside the sheet's, and warns of a length
   longer than the profile is sold in. Its numbers are values: `x1.length`, `x1.width`, `x1.height`, `x1.mass`.
 - `"ops"` lists the operations on it, each placed by an address on the beam and dimensioned from end `a`: `cut`,
   `mitre`, `tap`, `access`, `drill`, `counterbore`, `pocket`, `notch` and `deburr`. `{ "op": "tap", "at": "a", "thread":
@@ -573,18 +577,345 @@ x along the beam, turned by its `rotate` in that frame; it moves with the beam. 
 with the beam's length: `"top@320" is past the end of profile-2020-misumi-hfs5 x 300: it is 300 mm long`. In a fit, an
 address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm by default).
 
+**Joins.** `"joins"` says how beams are held to each other. Each names an end of one beam (`a`), a place on another
+(`b`: a face with a distance where a's end meets it, or an end for a splice, a mitre or a corner) and its kind:
+
+```json
+"joins": [{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }]
+```
+
+- A join puts its operations on both beams before they are built, so they are on the cut list and the sheets: a
+  `blind` join taps the end of `a` (`tap M5 x 18.5 at a`) and drills an access hole across `b` from the opposite
+  face (`access Ø5.3 at front.1@120`), sized for the key of the join's own head (an M5 button head's 3 mm key), and
+  an `end-tap` join drills a clearance hole right across `b` instead. A beam's own operation at the same place, written
+  either way (`front@120` or `front.1@120`), is the same hole, not a second one.
+- Its screws join `"fasten"`, so they are followed, checked and counted as any fasten's are (`1 × M5x12 button` on
+  `cad list`). A blind join's button head sits inside b's slot under its lips; an end-tap's cap head sits on the lips
+  of the slot across b. `fasten.seat` holds the head to the slot (wider than the opening, and inside the slot, no
+  wider than the cavity and no taller than the room under the lips), `fasten.end` takes the thread tapped in a's end
+  bore, and `fasten.access` follows the key through the access hole. `"screw"` names another screw (`"M5x12 button"`).
+- A `mitre` join (`"b": "y1.a"`, an end) cuts both ends at the angle that halves the corner, about the face the corner
+  lies in, each beam's length on the outside of the corner, worked out from where the two beams are (both placed by
+  their ends). Its corner key or plate comes later.
+- Printed fittings are sized from the project's plastic (`material` in project.json): `pla` and `petg` by name.
+  Another plastic is read from its own rule set (`rules/abs.json`), which must give `strength`, `modulus` and
+  `density`; where there is none, the build is refused by name.
+- A `bracket`, `gusset` or `splice` join with `"fitting": "printed"` adds its printed fitting from `@rulecad/frames`
+  (its README, Printed fittings) as an item of its own (`y1-x1-bracket`), placed from where the two beams are (both
+  placed by their ends), and a `fasten` for each leg or arm into its beam's slot, with the slot nut the fitting was
+  drawn for. So the screws are chosen, checked and counted like any fasten's (`2 × M5x12 cap` and their slot nuts),
+  the fitting's grams are on `cad list` under Printed, and `join.stiffness` takes the fitting's own bending stiffness
+  by finite elements in place of the estimate (its twist stays an estimate). `cad check` says the fitting's own
+  findings of it: `fitting.margin` at its named load, `fitting.screw` (the length sold it was thickened for),
+  `fitting.stiffness`, `fitting.mass` and the rest (@rulecad/frames' README lists them).
+  - A bracket goes on the side of a with more of b, its base leg on b's face and its upright on a's face that looks
+    along b; refused by name where its leg would run past b's end there.
+  - A gusset lies on a face of each beam that looks the same way, in one plane: an L at a corner, a T where b runs
+    on both sides of a; refused where its arm has no room.
+  - A splice plate lies across two ends on a face they share.
+  - `"brace": true` braces a bracket; `"load"` (N) is the design load it is sized to about twice the margin at
+    (default 100); `"nut"` chooses the slot nuts' kind.
+- An item may also be a printed fitting by itself: `{ "id": "br", "fitting": { "kind": "bracket", "profile":
+  "2020-misumi-hfs5" }, "at": "x1.top@130", "rotate": [90, 0, 0] }`. It is a printed part, joined and cut by Manifold
+  where the workspace has it; its anchors `b1`, `a1` (and `b2`, ... on a plate) lie on its screws' axes for a fasten's
+  `at`. The overlap check measures its body without its tongues, which stand in the slots.
+- The printed parts for panels, doors, beams' ends and services are fitting items too (@rulecad/frames' README,
+  Panels and doors, Ends and feet, Services): `"kind"` is `panel-clip`, `panel-corner`, `slot-cover`, `panel-edge`, `gasket-strip`,
+  `hinge`, `handle`, `latch`, `magnet-catch`, `end-cap`, `foot`, `levelling-foot`, `castor-plate`,
+  `stacking-foot` or `rail-jig` (`"rail": "rail-mgn12"`), with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
+  "frame"` and `"part": "door"`, and a levelling foot's pad is `"part": "pad"`. An end part goes at the end's address
+  (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs. In a mechanism, hold it
+  as anything else is held: a foot by a `fasten` of its screw into the beam (`{ "screw": "M5 cap", "through": ["foot1"],
+  "into": "p1", "at": ["foot1.b1"] }`, the beam's end tapped as its `ops` say), and an end cap by a fit that fastens,
+  its pegs a press fit (`"min": -5`). The overlap check measures an end cap without its pegs, which stand in the beam,
+  and an in-slot panel edge or a slot cover by what stands above the face alone: the rest lies in the slot by design.
+  A panel item (below) holds its sheet with clips; a panel corner or an in-slot edge is placed by hand as an item.
+- A `bracket`, `gusset`, `splice`, `hidden` or `anchor` join with a bought fitting's set by name (`"fitting":
+  "fitting-motedis-bracket-20-b6"`, @rulecad/frames' README, Bought fittings) adds that fitting as an item placed
+  where the printed one would go: a reference drawn from its set, listed under Bought with its price. Its screws join
+  `"fasten"` into the set's nuts (`2 × M4x8 cap`, `2 × slot-nut-6-motedis-m4-hammer`), so the fasten checks hold them
+  as any fasten's; an inner connector's grub screws are part of it, and an anchor connector adds the hole its guide
+  needs, drilled across a (on the cut list). `join.stiffness` takes the set's own figures and says what they rest on
+  (an estimate in the set, until the joint rig measures it). A set made for another profile size or slot family
+  fails `fitting.fit` and places nothing; a set of the wrong kind for the join is refused by name. `"fitting":
+  "bought"` alone names the sets there are.
+- The other kinds (`cube`, `pivot`, `printed`, and a mitre's key) are checked where they meet and carry their
+  stiffness; their fittings come in later releases, and each says so (`join.fitting`).
+- A frame's bought fitting is an item too: `{ "id": "cap", "bought": "fitting-motedis-end-cap-20-b6", "at": "x1.b" }`
+  (an end cap, a levelling foot, a hinge). At a beam's address it caps the end for `join.end`, and `fitting.fit`
+  checks it against that beam's profile: a foot whose stem is not the end bore's thread fails.
+- `cad list` prints each bought line's price where its set gives one, and a cost line: the bought items' total (and
+  the sets with no price), and the printed parts' plastic at the material's price a kilogram (`pla` and `petg` carry
+  one). Fixings and bars are not priced. Swap `"fitting": "printed"` for a bought set and list again to compare.
+- `cad check` adds `join.geometry` (the end meets the face square and flush, where `b` says, on the slot's centre line
+  where the kind needs a slot: a beam 2 mm off the face fails with `a gap of 2 mm`, and one 5 mm along names the
+  address it does meet at), `join.end` (every beam end is joined or capped: an item placed at the end, such as a foot,
+  caps it), and `join.stiffness` (the spring each join puts at a's end when the frame is solved, from
+  `@rulecad/frames`' `JOIN_STIFFNESS`: every figure an estimate until the joint rig measures it, and the finding says
+  which, measured with its date or an estimate).
+- `join.drop` predicts a beam held by one join and nothing else, with a `mass` load on it (on the beam or on an item
+  at one of its addresses), as a cantilever from that join: its drop is the beam's own bending, F L³ / 3 E I, and the
+  join turning on its spring k, F L² / k. It is a prediction `cad measured` takes as `<beam>.drop=<mm>`: the measured
+  drop less the beam's own bending gives the join's spring, k = F L² / (drop less F L³ / 3 E I), written as measured
+  to the rule the spring came from. That is the kind's figure in the workspace's `rules/joins.json` (part `joins`,
+  made from `@rulecad/frames`' estimates the first time: `blind_bending`, `end_tap_twist` and the rest, for a 20 mm
+  profile), a printed fitting's share of its own stiffness by finite elements (`bracket_printed_share`), or a bought
+  fitting's `bending_stiffness`. Its sentence becomes what was measured, and the drop goes in its source. A drop no
+  more than the beam bends by itself is refused, and a refusal of any value writes nothing, not even the joins set's
+  first copy. The joint rig in
+  `examples/bench/projects/benchmarks` (MEASURE.md, rows 34 to 37) is built for it, and also measures a slot nut's
+  hold along its slot, written to the nut's own set as `hold_along`.
+- `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120 [--screw "M5 button"] [--fitting printed]`
+  adds one.
+
+**Fastening into a slot.** A `fasten` whose `into` is a slot on a beam ends in a slot nut under the slot's lips:
+
+```json
+"fasten": [{ "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "drop-in" }]
+```
+
+- `into` is a face with a slot (`x1.top`), one slot of a face with several (`x1.top.2`), or a place on it
+  (`x1.top@120`, which places the fasten's screws as a group: the middle of their spread along the slot is held to it,
+  within the play their holes give, so two screws at 110 and 130 mm pass `x1.top@120`). The nut is the one made for that slot's nut family and the thread
+  (`nutFor` of `@rulecad/frames`): `"nut"` chooses its kind (`slide-in`, `drop-in`, `roll-in`, `hammer`, `square`,
+  `t-bolt`), and left out, the strongest made for the slot. It is placed under the lips as a reference part and
+  counted by its rule set's name on `cad list` (`2 × slot-nut-6-misumi-m4-drop-in`).
+- `fasten.slot`: each screw lies over a slot's centre line, within the play its hole in the part gives it (half the
+  hole less the thread), square to the face, along the beam. A plate drawn for slots 30 mm apart on a face whose slots
+  are 20 mm apart fails with the distance, `5 mm off the centre line of x1's top.1 slot`.
+- `fasten.length` chooses the shortest sold screw that puts a hexagon nut's height of thread in the slot nut
+  (`<thread>.nut_height`, ISO 4032) and stops `FASTEN.floor` (0.3 mm, a working figure) short of the slot's floor.
+  The stack is the part, a washer, and the slot's lip. With 3 mm of plate on a 2020 slot an M4 screw has 1.3 mm to
+  land in, so `M4x8` fits it and nothing sold fits a 4 mm plate; the finding names the lengths either side.
+- `frame.nut`: a slide-in or square nut goes in only from an open end of its slot (every fasten's, a guide's too, in
+  every pose). A slot is closed by a join that
+  butts on its end, and the stretch a nut is in by a blind join's head in that slot too. Every closure on a way counts,
+  not only the nearest: a head between the nuts and an end closed further along closes that way as much as the end,
+  and the finding names each, with an item placed at that end (`foot1 off until then`). Where joins close both ways,
+  the check fails and names the nut of that thread that goes in through the opening (`give "nut": "drop-in"`).
+- `frame.preload`: nuts with a way in that a join closes and no way that stays open (the other end capped by an item
+  placed there, such as a foot) go in before that join is made. The finding names the beam, the slot, the end, the
+  nuts and the join, and `cad order` and the build page list them as the step before the one that makes it
+  (`5. Load 2 × slot-nut-6-misumi-m4-slide-in into y1's top slot through its end a, for plate2, before the blind join
+  of y1.a to p1.top@170 closes it`).
+- `frame.square`: each bay of the frame (four beams joined in a rectangle in one plane), with its two diagonals,
+  inside corner to inside corner, and the difference between them to accept: twice the cut tolerance times the longer
+  side over the diagonal, what the beams' lengths allow with every corner square (`squareness` in `@rulecad/frames`).
+  A 260 × 200 mm opening of beams cut to ±0.5 mm: each diagonal 328.02 mm, accept up to 0.79 mm. Joint play is not in
+  it yet (issue 268).
+- A blind or end-tap join's head on a slot's lips: `fasten.seat` gives what the lips take, the head's circle less the
+  strip of the opening across it (A = π D² / 4 - 2 (c √(R² - c²) + R² asin(c / R)), R half the head, c half the opening), at the beam alloy's strength, and the torque for that force (T = K d F, the nut
+  factor an estimate), or the screw tightened fully where that is less. An M5 button head on a MISUMI 6 mm slot:
+  17.9 mm² of al6n01-t5 at 205 MPa takes 3677 N, 3.68 N m. The lips' bending is not counted: an estimate, until the
+  joint rig (issue 264) measures one.
+
 ### Building it
 
 Once an assembly is checked, these say how to make it. They all read the assembly itself, so they can't disagree with it.
 
 - `cad order <project>/<assembly>`: the order it goes together in, each step with the part and what fastens it. A `fasten` names its screws on the step where its parts are both there, with the key that turns them and how tight: its `torque`, or the most the seat under the head takes (`2. bracket goes on: bracket fastened to base (2 × M3x10 cap) with a 2.5 mm hex key, to 0.33 N m at most (what the seat takes)`); `--json` gives each as `{ fit, fastener, count, key, tighten: { torque, given } }`, and the build page shows the same. What is not a screw (pins, a clip) is named on a fit that fastens: `"fastener": "push pin", "count": 2` puts it on the shopping list and the step. `--preview` writes a picture of each step to `.preview/`: what's there, and the new part held off along the way it goes on. The order is found by taking the assembly apart, so a part goes in after what it's fastened into, a bearing before its shaft, and a nut trapped by a wall before the neighbour that traps it. A part goes on along a straight line that clears everything already there; which line comes from the part as drawn.
-- `assembly.order` is `cad check`'s finding on it: a part no order can reach fails by name, and a part sealed inside another too. A fit can say where a screw is driven from with `"access": "<item>.<anchor>"`, the anchor's z pointing out along the screw: whatever stands on that line goes on after the screw, and if it has to go on first the screw can't be reached at all. Works on an assembly's own items; a component (an assembly used as an item) goes on as one step.
-- `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by filament so each plate is one colour change, spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`).
+- `cad order` on a **frame** (an assembly with `joins`) gives its build from bars to a square frame, in numbered steps:
+  1. **Cut** the beams: each mark's count and length, the bars to buy and the cuts on each (the cut list).
+  2. **Drill and tap** each mark as its cut-and-drill sheet shows (each mark's work and its sheet's file).
+  3. **Sides built flat**: each bay that shares no beam with a side already chosen is built on the bench, beam by beam,
+     each beam's joins with their screws, key and torque, left snug (`Snug for now: tightened to its torque at step 8,
+     once square`), then squared by its diagonals and its joins tightened. Of
+     two bays that share a post, the first found is a side and the other is squared once the frame is joined.
+  4. **Nuts to load, heads slid in**: every blind join's head and every slot nut needs a way into its slot at the
+     step that puts it there: an end of the slot that nothing has closed yet (a join on that end, or an item placed
+     there) and nothing already in the slot between it and that end (a head, a nut). A beam going on slides along the
+     slots its heads go into, all one way, from whichever end leaves each head its way. A slide-in nut that a join
+     would close in is loaded on a step of its own just before the first join made of those on its way
+     (`frame.preload`), where that leaves every head its way; else at the first later step where it has a way
+     (`7. Load 2 × slot-nut-6-misumi-m4-slide-in into p1's back slot through its end b, for bracket, before cap1 goes
+     on`), else earlier. A head with no way as its beam goes on (its slot closed at both ends by then, or running
+     across the way the beam goes on) is slid into its slot on its own beforehand, and its join made with it in place
+     (`Slide an M5x12 button screw into x3's back slot head first, through its end a, to 130 mm, for the blind join of
+     m.a to x3.back@130, ...`). Where no step gives one a way, the build is refused with the slot and what is in the
+     way.
+  5. **Joins**: the beams in no side go on one at a time in the assembly's order, each joined to what is there. A
+     side goes on as one only where it can: the heads of its blind joins to the frame slide along slots that all run
+     one way, each with a way in from the end that leads. Where it can't, its beams go on one at a time on the frame
+     instead, and the build says why (`The bay of p3, p4, x2 and x4 is built on the frame, not flat: the heads of its
+     joins to the frame go into slots that run different ways (...)`).
+  6. **Square the frame**: the diagonals of each bay no side squared, then the joins tightened.
+  7. **Mount** the rest in the assembly's order, with their fastenings; copies of one thing in a row are one step. A
+     part that a beam would stand over the screws of goes on before that beam, once the beams it fastens to are
+     there, even in the middle of a side's build.
+
+  Every screw is reached in this order: what stands over a screw (`fasten.access`, or a fit's `access`) goes on
+  after the step that drives it. Where a side built flat would break that, the side is built on the frame instead;
+  where no build does, it is refused with the screw and what stands over it. It ends with the tightening of each
+  kind of join (`blind (16 joins, M5x12 button with a 3 mm hex key): 3.68 N m`). A slide-in nut in a stretch of slot
+  that joins close at both ends (`frame.nut`) is shut in by whichever of the two joins is made second, in any order:
+  the build is refused, naming the slot, the nuts, the two joins, and the nut that goes in through the opening
+  (`frame/box: x1's top slot: 2 slide-in nuts (...) for plate would be shut in between the blind join of x1.a to
+  p1.back@30 and the blind join of x1.b to p2.front@30: ...: give "nut": "drop-in"`), and `cad order` exits 1.
+  `--json` adds `frame`: `{ steps: [{ n, kind, text, lines, items, joins, shown, now, dir }], sides, notFlat, bays,
+  torques, stuck }`, kind one of `cut`, `drill`, `side`, `join`, `load`, `square`, `mount`; `shown` is what is in
+  view at that step (the side on the bench, or the frame so far) and `now` what goes on in it. `--preview` draws each
+  step that shows something, numbered as the build is. The build page shows the same as "Building the frame", its
+  one sequence of steps (each a button that shows that step in the viewer), with the torques and the diagonals as
+  tables.
+- `assembly.order` is `cad check`'s finding on it, with the count of `cad order`'s steps (a frame's build from bars to
+  square where the assembly has joins, failing where that build is refused; `fasten.access` names the same steps, and
+  none of a build that is refused): a part no order can reach fails by name, and a part sealed inside another too. A fit can say where a screw is driven from with `"access": "<item>.<anchor>"`, the anchor's z pointing out along the screw: whatever stands on that line goes on after the screw, and if it has to go on first the screw can't be reached at all. Works on an assembly's own items; a component (an assembly used as an item) goes on as one step.
+- `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by filament so each plate is one colour change, spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`). A frame's printed fittings (a join's bracket, a guide's holders and plate, a foot or an end cap) go on as their item's `fitting` with `"pose": "print"`, laid as each prints.
 - `cad list <project>/<assembly>` lists the beams' **cut list** after the bought parts: each mark (beams that are the same, one profile, length and set of operations, share a mark, A, B, C), its count, grams each and work, then each profile's lengths to cut, the bars to buy in the lengths it is sold in, and the cuts on each bar in order with its offcut. Every cut takes the saw's 3 mm kerf and each bar's first end is trimmed 10 mm (`CUT_DEFAULTS` in `@rulecad/frames`, each with its source); the packing is first-fit decreasing. `cad check` adds the cut list's findings (`frame.cut`): a beam longer than any length sold fails, two lengths nearer than the cut tolerance can hold apart warn, and beams of one mark are reminded to be cut against one stop. Each beam's mark is in its label in the preview and the link (`x1: mark A, profile-2020-misumi-hfs5 x 300 mm`).
 - `cad beams <project>/<assembly>`: a cut-and-drill sheet for each mark, written to `exports/<project>/<assembly>.beam-<mark>.svg`, in mm so it prints to scale at 100%: the section at end a with each face named and the taps marked, a view of each face with work on it (that face up, end a on the left), every operation dimensioned from end a to 0.1 mm, and the operations in order, each tap with its thread and depth. The build page lists the sheets with the cut list.
+- `cad beams <project>/<assembly> --jigs`: the jigs its beams take, made from the assembly and written as a plate, `exports/<project>/<assembly>.jigs.3mf` (`.jigs-2.3mf` and on where one bed is not enough). A **drill guide** for each distinct hole across a beam (an access hole, a drilled hole, a counterbore's hole): it stops on the nearer end, keys into the face's slot and holds a bush for the drill where the sheet dimensions the hole. A **tap guide** for each tapped end, a **cut-length stop** for each length (a block for the saw's fence and a printed gauge as long as the cut), and a **squaring corner** for each pair of profiles and hand a blind or end-tap join takes. A corner is an L whose arm b runs along beam b one way only, so where a beam meets a post near the post's end, only one hand lies on the post: each join gets the corner laid on a pair of faces the two beams share (the outer pair first) and of the hand whose tongues lie whole on both beams, its plate clear of every other beam. A box with beams near both ends of its posts takes both hands. Where no corner fits, a `jig.square` warning says why (how much of a tongue lies past a beam's end, which beam the plate meets): square that join with an engineer's square. Distinct means drawn the same: one guide serves every hole of its size at its distance from an end. Each is marked with the marks it is for (`ABCD`, `E 260`), cut into a face that faces up as it prints, printchecked, and listed with its grams, its margin and what it is for: each hole by mark and sheet number (`A3`), with its bush's distance from end a beside the sheet's figure. A hole too far from both ends for one print gives a `jig.drill` warning in place of a guide; mark it from the sheet. A tapped end no guide can be drawn for gives a `jig.tap` warning in place of its guide. `--json` gives the same, `--preview` a picture of the plate. The jigs are `@rulecad/frames`' (`drillGuideModel`, `tapGuideModel`, `lengthStopModel`, `squareCornerModel`).
 - `cad wires <project>/<assembly>`: the wiring sheet, printed and written to `exports/<project>/<assembly>.wiring.md` (`cad machine` writes it too): each wire's length through every pose with its service loop, gauge, colour, connectors and board pins. Wires also show faint along their routes in `cad preview` and in the link, moving with the joints, and are never parts: no overlap check sees them.
 - `cad link` for such an assembly (or one with a `fasten`) carries the rest of the project with the model. A **Build** button on the page opens, beside it, the shopping list, the beams' cut list and their sheets, the plates drawn on their beds, the wiring sheet, the assembly steps (each shows the model at that step) and the machine's settings. The Rules panel lists **predicted against measured**: the ledger `cad measured` writes, each with its ratio, and what the checks predict that nobody has measured yet.
 - A link for an assembly with a `task` lets the page move the machine: see "Things that move" in the viewer's README. It carries the newest step file `cad plot` wrote for this assembly (`--steps <file>` for another, `--no-steps` for none). A step file for other joints is refused by name.
+
+**Panels and doors.** An item with `"panel"` is a sheet cut to the bay of four beams it closes:
+
+```json
+{ "id": "front", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["x1", "z2", "x2", "z1"], "out": [0, -1, 0] } }
+```
+
+- The bay is four beams placed by their ends, two each way round a rectangle, in order. Each has a slotted face that
+  looks along `out`; the four faces lie in one plane. Refused by name: a beam that runs across the plane, faces out
+  of one plane, a beam with no such face (turn it with `roll`), a bay that is not two beams each way.
+- The panel lies on those faces, its edges 6.5 mm in from each slot's line for an M5 clip on a 2020, and is cut to
+  what is left: a 400 x 300 mm bay of 2020 (slot lines 380 x 300 mm apart) takes 367 x 287 mm. `cad list` counts it
+  under Bought by its sheet and size (`acrylic sheet, 3 mm cut 367 x 287 mm`) with its mass from the sheet's density.
+- Its printed clips go along each edge at no more than `"pitch"` apart (150 mm by default, `PANEL_DEFAULTS.pitch`),
+  clear of the beams across the edge's ends and of their clips: each is an item (`front-clip`, `front-clip-2`, ...)
+  with a fasten into its beam's slot, so its screw is chosen, checked and counted (14 × M5x10 button and 14 slot
+  nuts round a 400 x 300 mm bay). `"nut"` chooses their slot nuts' kind; `"load"` (N) the load each clip is sized for.
+- `cad check` says `panel.size` (its sheet, size, mass and how many clips hold it) and `panel.thickness` (a warning
+  where the sheet is not commonly stocked in that thickness), with each clip's own findings.
+- With `"door": { "hinge": "z1" }` the panel is a door. It stands off the faces by the hinge's frame leaf, a head
+  and 1 mm (10.2 mm on a 2020), on two printed hinges along the beam named, each a frame leaf screwed into its slot
+  and a door leaf screwed through the door into nuts, an M4 cap screw and lock nut for each pin (on `cad list`). It
+  turns on a revolute joint `<id>-hinge` from 0 to `"open"` (120° by default), with poses `<id>-shut` and
+  `<id>-open`. A handle (`"handle": false` leaves it off) is screwed from inside into its feet, and a magnet catch
+  (`"catch"`) sits on the opposite beam under the door's edge; `"latch": true` adds a turn-button latch, shown shut.
+  The holes the screws pass are cut in the door. `cad check --sweep` turns the door through its range: on its own,
+  nothing collides. With its latch shut, the door hits the latch within its first degree, so the sweep also tries the
+  door 0.5° off shut (`latch_probe`), finer than its steps, and fails there by name.
+- In a mechanism, a beam placed by its ends is the frame: what is screwed to it is held (`assembly.loose`).
+
+**Services on a frame.** A bought board or supply with `"mount"` sits on a printed mount at an address on a beam's
+slotted face, its holes read from its own rule set (@rulecad/frames' README, Services):
+
+```json
+{ "id": "psu", "bought": "supply-24v", "variant": "LRS-50-24", "mount": { "on": "rail.top@-90" } }
+```
+
+- The mount is an item `<id>-mount` (a `device-mount` fitting), listed just before the device, and the device goes on
+  its anchor `device`: leave out the device's `at` and `rotate`. `"turn"` (0, 90, 180, 270) and `"offset"` (mm across
+  the slot) move the device on it; `"standoff"`, `"load"`, `"nut"`, `"head"` and `"screw"` are the model's own.
+- Its screws are fastens, so each is chosen, checked and counted: two into the slot past the device's body, and the
+  device's own. A supply's go up from under the mount into its tapped holes: `fasten.length` chooses the longest sold
+  that goes no further than its maker allows (`mount_hole_reach`, Mean Well's 3 mm), and `fasten.engagement` holds it
+  to that. A board's go down through its drilled holes (held to the drilled clearances) into pilots on the mount.
+  Refused by name: a mount on what is not a bought board or supply, a set with no `mount_holes`, an address that is
+  not on a slotted face, an item with both `at` and `mount`.
+- `cad check` says `service.mount` for each, with the mount's own findings (`fitting.device`, `fitting.head`, its
+  grams and margin).
+- A wire's `via` may hold a run along a slot: `{ "along": "rail.front", "from": 300, "to": 60, "pitch": 100,
+  "cable": 6 }`, its ends in mm from the beam's end a. Printed cable clips snap into the slot at each end and no more
+  than `pitch` apart (`<wire>-clip`, `<wire>-clip-2`, ...), each held by a fit that fastens, and the wire is routed
+  through them, so its length follows the beam. `wire.run` says the run's length and its clips, and `wire.length`
+  the part of the wire along the slot and how many clips hold it. A run past the beam's end is refused by name.
+- A run along the slot a mount sits on keeps its clips off the mount's plate: one goes each side of it, and
+  `wire.run` warns by name that the wire must go round the mount there. A run that lies wholly under a plate is
+  refused by name.
+- The other service parts are fitting items by kind: `fan-mount` (`"size": 80`), `drag-chain-end` (`"holes"`,
+  `"screw"`), `din-rail`, `cable-clip`, `tie-anchor` and `spool-holder`.
+
+**Guides.** `"guides"` puts linear motion on a beam: a miniature rail screwed down on a slotted face and its carriages
+(@rulecad/frames' README, Guides):
+
+```json
+"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H", "on": "x1.top", "from": 50, "length": 300 }]
+```
+
+- The rail is a bought item named by the guide's `id` (`g1`, `g2`, ... by default), placed at `from` mm along the
+  face from the beam's end a. Its screws are a fasten into the slot, one in each hole at the rail's pitch, so
+  `fasten.length` chooses them, the slot nuts are placed with them (`"nut"` chooses their kind), and `cad list`
+  counts both: an MGN12 cut to 300 mm takes twelve M3 cap screws 25 mm apart and twelve M3 slot nuts.
+- Each carriage (`"carriages"`, 1 by default) is a bought item `<id>-carriage-1`, ... on its own sliding joint
+  `<id>-1`, ... along the beam, from 0 to its travel: its share of the rail less its length with its seals. The
+  poses `<id>-a` and `<id>-b` put every carriage at the start and the end of its share; `cad check --sweep` slides
+  each through its travel. A carriage's anchors are `top` and `t1` to `t4` (its tapped holes, from its top), for a
+  table fixed on it.
+- `cad check` says `guide.holes` (the holes, their pitch and the end distance; `guide.end` where an end is past half
+  the pitch), `guide.travel`, `guide.fit` (the rail on the face, a slot nut for its screws, its ends on the beam and
+  clear of a beam joined across its face), `guide.budget` (what it adds to an error budget) and `guide.jig` (a
+  printed jig that centres the rail while it is screwed down, as a `rail-jig` fitting item).
+- Each carriage's loads are held to its ratings at every pose (`joint.moment`): the weight of all it carries and the
+  masses of `"loads"` hung on it, as a force and a moment about its middle on the rail's top, in its own frame.
+  Each load over its rating (C0, MR, MP, MY), summed, is how much of the carriage it uses: past 1 it fails and names
+  the rating, under 2 times over it warns. How they combine is an estimate, said as one.
+- A task whose chain runs through a carriage's joint counts the rail's terms in its error budget (`task.accuracy`):
+  its running parallelism and its carriage's play from its rule set (`spec`), the beam's straightness over the rail
+  from the profile's, and the beam's sag (an estimate).
+- Refused by name: a kind not built yet (a belt), a face that is not a beam's slotted face, `on` with a distance (that
+  is `from`), a rail past the beam's end, a carriage its set has not got, and a rail too short for its carriages.
+
+A carriage on V-wheels runs on a V-slot beam's own tracks, and a printed slider in or over a slot:
+
+```json
+"guides": [{ "kind": "wheels", "wheel": "v-wheel-solid", "wheels": 4, "on": "x1.top", "from": 50, "length": 400 },
+           { "kind": "slider", "mode": "over", "size": 40, "on": "x2.top.1", "from": 100, "length": 200 }]
+```
+
+- For wheels, `on` is the face the plate lies over; its wheels run in the V tracks of the two faces either side, and
+  `from` and `length` are the stretch of the beam it rolls along. The plate is a printed fitting (`wheel-plate`)
+  `<id>-carriage-1` on the sliding joint `<id>-1`, from 0 to the stretch less its length over its wheels; the wheels
+  are bought items `<id>-wheel-1`, ... held to the plate at its anchors `w1`, `w2`, ..., the ones on the second side
+  on eccentric spacers. `cad list` counts the wheels, the plate's grams, and its screws, lock nuts, washers and
+  spacers. The plate's anchor `top` takes what it carries.
+- Where each wheel seats comes from the slot's track and the wheel's rim (`guide.fit`, with the axle's distance from
+  the face). On a face with no V track (a plain T-slot) the guide is refused, saying why and what guides there
+  instead. `guide.seat` compares the seat with the maker's own plate and warns when the eccentrics, on one side only, cannot take up the whole difference, `guide.preload` gives the eccentrics' range,
+  and `guide.rating` each wheel's ratings, which rest on its plastic's contact pressure (an estimate).
+- Each plate's loads are shared among its wheels at every pose (`joint.moment`), each wheel's radial and axial load
+  over its ratings: past 1 it fails and names the most loaded wheel. The sharing is an estimate, said as one.
+- A slider is a printed fitting (`slider`) on its sliding joint along the slot `on` names, over it (a shoe and a key,
+  the default) or in it (`"mode": "in"`, a block under the lips, put in from the beam's end); `size` is its own
+  length. Its clearance a side is the printer's fit, and `guide.friction` says its friction and wear rest on working
+  figures until they are measured.
+- The overlap check measures a beam by its envelope less its V tracks. A wheel is checked whole: its rim in the track
+  is clear, and a rim out of the track, or a part or beam across the track's line (an end cap, a crossing beam), is
+  found. A slider's key, which stands in the slot's opening, is left out of the check. `guide.fit` checks the rim's
+  seat in the track.
+
+Two smooth rods carry a printed carriage on linear bearings, and a lead screw drives it from a motor; an endstop homes
+it. Each is placed by an address: the rods' holders at the ends of the stretch on the face, the motor plate before
+it, the switch's mount where its address says:
+
+```json
+"guides": [{ "kind": "rods", "on": "x1.top", "from": 60, "length": 101, "endstop": { "at": "x1.front@82" } },
+           { "kind": "screw", "guide": "g1", "screw": "t8-screw", "motor": { "model": "28byj48", "microsteps": 1 } }]
+```
+
+- A rods guide puts printed holders (`rod-holder`) at `<beam>.<face>@from` and `@from + length` (`<id>-holder-a` and
+  `-b`), saddles screwed into the slots of the faces either side, one fasten a leg. The rods (`rod`, default `rod-8`)
+  are bought items cut to the stretch, at holder a's anchors `r1` and `r2`; the carriage (`rod-carriage`,
+  `<id>-carriage-1`) slides on the joint `<id>-1` with its bearings (`bearing`, default `lm8uu`) at its anchors `lm1`
+  and `lm2`. Its travel is the stretch less the two holders, a millimetre's gap at each and the carriage with the
+  nut's flange. `spacing` and `height` set the rods' place; their defaults leave room for what goes between and under.
+  `"nut"` chooses the kind of slot nut the holders', the motor plate's and the endstop mount's screws go into: on a
+  beam whose ends are both joined, a slide-in nut is shut in (`frame.nut` fails), so give `"nut": "drop-in"`.
+  The carriage's anchor `top` takes what it carries.
+- A screw guide names the rods guide it drives (`guide`). It adds a printed motor plate (`motor-plate`, `<id>-plate`)
+  before holder a, the motor (`<id>-motor`, a motor item: give its `model` and any of `microsteps`, `duty`, `speed`,
+  `current`, `driver`) at the plate's anchor `motor`, the coupler and the screw at its anchor `coupler`, a ball bearing
+  for the screw in each holder (`support`, default `bearing-608`, or null) and the lead nut on the carriage's anchor
+  `nut`. The motor drives the carriage's joint with `leadscrew` from the screw's set (its lead and diameter) and
+  `friction` (default the set's, an estimate), so `motor.torque`, `motor.speed` and `motor.holds` read the drive's
+  ratio as they do any lead screw. `guide.drive` and `guide.coupler` (how far the shaft reaches into the coupler) say
+  what was placed. A belt is not built yet; a screw on a rail or wheels is refused.
+- An endstop's printed mount (`endstop-mount`) goes at a side face's address (`endstop.at`), the switch (`switch`,
+  default `endstop-10t85`) on it; a flag on the carriage's far end meets its lever. Where that happens is the joint's
+  lower end and its `home` (`guide.endstop`). A switch the flag cannot reach, or a mount over a holder's leg, is
+  refused, naming the address where it trips at the travel's start.
+- Each carriage's loads are shared between its bearings at every pose (`joint.moment`) against their static rating;
+  a moment on one bush is taken as a couple along it, an estimate, said as one.
 
 ## Optimised parts
 

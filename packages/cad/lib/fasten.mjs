@@ -20,15 +20,23 @@ import { named } from './parts.mjs';
 import { paths } from './workspace.mjs';
 import { peekRuleSet } from './rules.mjs';
 import { orderOf, isBuilt } from './order.mjs';
+import { frameBuild, frameStepOf } from './framebuild.mjs';
+import { nutFor, slotNut, beamAnchor, NUT_KINDS } from '@rulecad/frames';
+import { framesContext } from './beams.mjs';
+import { givenFor } from './frames.mjs';
 
 const { mat4, vec3 } = jscad.maths;
 const mm = (n) => String(Number(Number(n).toFixed(3))), r3 = (x) => +x.toFixed(3);
+// (lengths along a screw's stack, said to a hundredth: measured off drawn parts, a micron either way is the drawing's
+// grid, not the screw, and "1.999 mm under its head and 10.001 mm" reads as a fault)
+const mm2 = (n) => String(Number(Number(n).toFixed(2)));
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const unit = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l); };
 const fan = (poly) => (poly.length === 3 ? [poly] : poly.slice(1, -1).map((_, i) => [poly[0], poly[i + 1], poly[i + 2]]));
 const top = (n) => String(n).split(/[.@]/)[0];
 const EPS = 1e-4; // mm: under this, two lengths read from a mesh are the same
+const READ = 1e-3; // mm: a length read off a part cut by a boolean, whose corners are snapped to its grid, wanders by under this (a seat read 0.0002 mm off on a supply's mount); held against a maker's limit, it is within it
 const an = (t) => (/^(?:[aeiou8]|M\d)/i.test(String(t)) ? 'an' : 'a'); // (an M3 screw, a 6-32 screw)
 
 /** The working figures of the fasten checks that no rule set holds, each with what it rests on. */
@@ -36,6 +44,8 @@ export const FASTEN = {
   align: { value: 0.05, unit: 'mm', rule: 'Holes share an axis when their centres lie this near it: the play of floating point and of a hole drawn in flats, far under any clearance', kind: 'default', source: 'A working figure of @rulecad/cad', checked: '2026-11-15' },
   size: { value: 0.06, unit: 'mm', rule: 'A hole as drawn is taken for a thread\'s pilot, tap, insert or clearance hole when its diameter is within this of that figure', kind: 'default', source: 'A working figure of @rulecad/cad: under the least step between two of a thread\'s holes (M2 tap 1.7 mm, pilot 1.9 mm)', checked: '2026-11-15' },
   proud: { value: 1, unit: '× diameter', rule: 'A screw\'s tip may stand up to its own diameter past its nut or the far face of what it is threaded through: more is a longer screw than the joint needs, and it catches', kind: 'default', source: 'A working figure of @rulecad/cad: no standard was found for it', checked: '2026-11-15' },
+  floor: { value: 0.3, unit: 'mm', rule: 'A screw into a slot nut stops at least this far short of the slot\'s floor, so it tightens on its head and does not press on the beam\'s core: the play of a cut length and a nut\'s height, not a standard', kind: 'default', source: 'A working figure of @rulecad/cad', checked: '2026-11-16' },
+  square: { value: 0.5, unit: '°', rule: 'A screw into a slot is square to the beam\'s face when its axis is within this of the face\'s normal, as a join\'s end is (JOIN_CHECK.square)', kind: 'default', source: 'A working figure of @rulecad/cad', checked: '2026-11-16' },
   countersink: { value: 2, unit: '°', rule: 'A countersink drawn in flat faces is taken for the head\'s angle when it is within this of it', kind: 'default', source: 'A working figure of @rulecad/cad', checked: '2026-11-15' },
 };
 
@@ -99,11 +109,16 @@ function roundOf(pts) {
 // What lies round the axis in one slice: how near the nearest wall comes (free), and the outline that wall belongs
 // to: whether it closes round the axis (the axis is in a hole), its centre and diameter where it is a round or a
 // regular polygon (a nut's seat), and how far that centre is from the axis
-function measure(segs, R) {
+function measure(all, R) {
+  // Ends are joined on a 0.001 mm grid: a mesh snapped to a boolean's grid can leave one corner as two points a few
+  // ten-thousandths apart (the snap rounds a corner that lies on a grid line's middle either way), which would open a
+  // closed outline. A segment that starts and ends at one point (a sliver face, cut) is no wall: it would count its
+  // point twice
+  const G = 1e3, key = (p) => `${Math.round(p[0] * G)},${Math.round(p[1] * G)}`, segs = all.filter(([p, q]) => key(p) !== key(q));
   let best = -1, free = Infinity;
   segs.forEach(([p, q], i) => { const d = toSeg(p, q); if (d < free) { free = d; best = i; } });
   if (best < 0 || free > R) return { free: Infinity, loop: null };
-  const key = (p) => `${Math.round(p[0] * 1e6)},${Math.round(p[1] * 1e6)}`, at = new Map();
+  const at = new Map();
   segs.forEach((s, i) => { for (const p of s) { const k = key(p); if (!at.has(k)) at.set(k, []); at.get(k).push(i); } });
   const mine = new Set([best]), todo = [best];
   while (todo.length) for (const p of segs[todo.pop()]) for (const j of at.get(key(p))) if (!mine.has(j)) { mine.add(j); todo.push(j); }
@@ -111,7 +126,10 @@ function measure(segs, R) {
   for (const i of mine) {
     const [p, q] = segs[i];
     for (const e of [p, q]) { const k = key(e); pts.set(k, e); if (at.get(k).filter((j) => mine.has(j)).length !== 2) closed = false; }
-    if ((p[1] > 0) !== (q[1] > 0) && p[0] + ((0 - p[1]) / (q[1] - p[1])) * (q[0] - p[0]) > 0) inside = !inside; // (a ray from the axis along +x)
+    // (a ray from the axis along +x, its ends read on the grid they are joined on: two faces' ends a hair either side of
+    // the ray at one corner, as a teardrop's point can be, are one point and cross it once)
+    const py = Math.round(p[1] * G), qy = Math.round(q[1] * G);
+    if ((py > 0) !== (qy > 0) && p[0] + ((0 - p[1]) / (q[1] - p[1])) * (q[0] - p[0]) > 0) inside = !inside;
   }
   // corners only: a point where the outline runs straight on is a seam between two faces, not a corner
   const list = !closed ? [] : [...pts].filter(([k, e]) => {
@@ -314,6 +332,126 @@ function standing(P, Z, X) {
 
 const NUTS = ['hex', 'square', 'lock'];
 
+// A head on a beam's slot (a join's screw, lib/joins.mjs: x.lips is { item, slot, inside }): the slot's opening, its
+// cavity's width under the lips, and the room there at that width, from the profile's slot family
+function lipsOf(s, l, fx) {
+  const b = s.objects.find((o) => o.id === l.item)?.beam, sl = b?.profile.slots[l.slot];
+  if (!sl) throw new Error(`fasten: ${l.item} has no slot ${l.slot} for a head to sit in`);
+  return { slot: l.slot, inside: !!l.inside, opening: sl.opening, cavityWidth: sl.cavityWidth, room: sl.straight > 0 ? sl.straight : sl.cavityDepth - sl.lip, thread: fx.thread };
+}
+// What a slot's lips take under a head D across, over an opening w: the head's circle less the strip of the opening across
+// it, A = π D² / 4 - 2 (c √(R² - c²) + R² asin(c / R)) with R = D / 2 and c = w / 2, at the beam alloy's strength (taken
+// as what it bears, an estimate: the lips' bending is not counted), and the torque for that force by T = K d F; the
+// least of that and a screw tightened fully. null where the beam's alloy has no strength in its rule set.
+function lipsTake(F, s, item, fx, D, w) {
+  const name = s.objects.find((o) => o.id === item)?.beam?.material?.name;
+  let mat = null;
+  try { mat = name ? peekRuleSet(name) : null; } catch { mat = null; }
+  if (!mat?.rules?.strength || !mat.rules.modulus) return null;
+  const R = D / 2, c = Math.min(w / 2, R), area = Math.PI * R * R - 2 * (c * Math.sqrt(R * R - c * c) + R * R * Math.asin(c / R));
+  let limit, full;
+  try { limit = F.seating(fx, { head: 'button', material: { name, rules: mat.rules }, force: 1 }).limit; full = F.preload(fx, { force: 1 }).full; } catch { return null; }
+  const K = DEFAULTS.nut_factor.value, force = limit * area, torque = (K * fx.major * force) / 1000, by = torque <= full.torque ? 'lips' : 'screw';
+  const T = +Math.min(torque, full.torque).toFixed(2);
+  return { area: +area.toFixed(2), limit, force: +force.toFixed(1), torque: T,
+    text: by === 'lips' ? `on ${name} (${mm(limit)} MPa) the ${mm(+area.toFixed(1))} mm² either side of the opening takes ${mm(+force.toFixed(0))} N, a tightening of ${mm(T)} N m (the lips' bending not counted: an estimate)`
+      : `the lips take ${mm(+force.toFixed(0))} N on ${mm(+area.toFixed(1))} mm² of ${name}, more than the screw tightened fully: ${mm(T)} N m, three quarters of its proof load` };
+}
+// "into" as a slot on a beam (x1.top, x1.top.2, x1.top@120): the beam, the face's slots the screws may go in, the distance
+// where one is given; null where into is not a beam's face (a part, or a beam's end: a tap there is read from its ops)
+function slotInto(s, n, what) {
+  const i = String(n).indexOf('.'), id = i < 0 ? n : n.slice(0, i), rest = i < 0 ? '' : n.slice(i + 1).trim(), o = s.objects.find((x) => x.id === id && x.beam);
+  const m = o && /^(top|bottom|front|back)(?:\.(\d+))?(?:@(.+))?$/.exec(rest);
+  if (!m) return null;
+  const b = o.beam, all = b.places.filter((p) => p.face === m[1]), places = m[2] ? all.filter((p) => p.index === +m[2]) : all;
+  if (!places.length) throw new Error(`${what}: ${id}'s ${m[1]} face has ${all.length} slot${all.length === 1 ? '' : 's'}: into names ${all.map((p) => `${id}.${p.name}`).join(' or ') || `another face of ${id}`}`);
+  const open = places.filter((p) => p.slot);
+  if (!open.length) throw new Error(`${what}: ${id}'s ${rest.split('@')[0]} face is closed: there is no slot there for a nut. Faces of ${b.profile.name} with a slot: ${[...new Set(b.places.filter((p) => p.slot).map((p) => p.face))].join(', ') || 'none'}`);
+  let distance = null;
+  if (m[3] != null) { try { distance = beamAnchor(b, `${open[0].name}@${m[3]}`).distance; } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); } }
+  return { item: id, beam: b, face: m[1], places: open.map((p) => ({ ...p, slotModel: b.profile.slots[p.slot] })), distance, address: rest };
+}
+// A screw into a slot (into is slotInto's): where its axis meets the face, read in the beam's own frame, held to a slot's
+// centre line within the play its hole gives it (fasten.slot); then the slot nut under the lips, as the far end: its
+// thread from its tongue down, the slot's floor under it. null where the screw is not over a slot, said as fasten.slot
+function slotEnd(s, at, n, { B, O, D, x, fx, cl, clr, say, sc }) {
+  const pm = B.parts.find((p) => p.m)?.m, item = at.item, part = top(x.through.at(-1));
+  if (!pm) { say('fasten.slot', 'fail', `${item} is not placed, so its slots are nowhere`); return null; }
+  const inv = mat4.invert(mat4.create(), pm), Ol = vec3.transform([0, 0, 0], O, inv), El = vec3.transform([0, 0, 0], add(O, D), inv), Dl = unit([El[0] - Ol[0], El[1] - Ol[1], El[2] - Ol[2]]);
+  const hits = at.places.map((p) => {
+    const nrm = [p.normal[0], p.normal[1], 0], dn = dot(Dl, nrm);
+    if (dn > -1e-6) return null; // (pointing out of the face, or along it)
+    const t = ((p.at[0] - Ol[0]) * nrm[0] + (p.at[1] - Ol[1]) * nrm[1]) / dn, Q = add(Ol, Dl, t);
+    return { p, t, across: (Q[0] - p.at[0]) * p.along[0] + (Q[1] - p.at[1]) * p.along[1], along: Q[2], angle: (Math.acos(Math.min(1, -dn)) * 180) / Math.PI };
+  }).filter(Boolean).sort((a, b) => Math.abs(a.across) - Math.abs(b.across));
+  const face = `${item}'s ${at.face} face`;
+  if (!hits.length) { say('fasten.slot', 'fail', `the screw does not go into ${face}: its axis points along it or away from it`); return null; }
+  const h = hits[0], hole = cl.at(-1), d = hole && !hole.lips ? hole.d : clr.normal?.diameter ?? fx.major, play = Math.max(0, (d - fx.major) / 2), off = Math.abs(h.across), L = at.beam.length;
+  const named = at.beam.places.filter((q) => q.face === h.p.face).length > 1 ? h.p.name : h.p.face, slot = `${item}'s ${named} slot`, values = { distance: r3(off), play: r3(play), along: r3(h.along) };
+  const pitch = at.places.length > 1 ? Math.hypot(at.places[1].at[0] - at.places[0].at[0], at.places[1].at[1] - at.places[0].at[1]) : null;
+  const bad = (text, v = values) => { say('fasten.slot', 'fail', text, v); return null; };
+  if (h.angle > FASTEN.square.value) return bad(`the screw meets ${face} ${mm(+h.angle.toFixed(2))}° from square: a slot nut pulls straight out of its slot, so the screw stands square to the face`, { ...values, angle: +h.angle.toFixed(2) });
+  if (off > play + 1e-3) return bad(`${part}'s hole is ${mm(off)} mm off the centre line of ${slot}, where its ${mm(d)} mm hole lets ${an(fx.thread)} ${fx.thread} screw move ${mm(play)} mm: the screw meets ${at.face === 'top' || at.face === 'bottom' ? 'the face' : 'the side'} beside the slot, not its nut${pitch ? `. ${item}'s ${at.face} slots are ${mm(pitch)} mm apart` : ''}. Move the hole ${mm(off)} mm, or ${part} is drawn for another profile`);
+  if (h.along < -1e-3 || h.along > L + 1e-3) return bad(`the screw meets ${face} ${mm(h.along)} mm from its end a, past the beam: it is ${mm(L)} mm long`);
+  say('fasten.slot', 'pass', `over the centre line of ${slot} (${h.p.slot})${off > 1e-3 ? `, ${mm(off)} mm off it, within the ${mm(play)} mm its ${mm(d)} mm hole gives` : ''}, ${mm(h.along)} mm from ${item}'s end a`, values);
+  const sm = h.p.slotModel, zFace = h.t, zLip = zFace + sm.lip, alongW = unit([pm[8], pm[9], pm[10]]);
+  sc.slot = { item, place: h.p.name, named, face: at.face, slot: h.p.slot, distance: r3(h.along), nut: n.name, kind: n.nutKind, entry: n.entry, thread: fx.thread, part };
+  sc.slotPlay = play; sc.slotSays = slot; // (for the place "into" gives, held over the group: slotPlaced)
+  return { slot: { item, place: named, face: at.face, slot: h.p.slot, opening: sm.opening, lip: sm.lip, along: alongW, distance: r3(h.along), part }, kind: 'nut', mouth: zFace, depth: sm.cavityDepth, floor: zFace + sm.cavityDepth,
+    blind: true, far: zFace + sm.cavityDepth, d: fx.major, free: fx.major, nut: { kind: n.nutKind, model: n, z: zLip, seated: true }, zThr: zLip - n.tongueHeight, thread: n.height + n.tongueHeight };
+}
+/**
+ * Which way a screw goes along its anchor's axis, from the reach of the first part under its head and of the part it
+ * ends in (each [from, to] along the axis): toward the far part, so the axis is turned where the far part lies before
+ * the first. A part astride the far part (a saddle's two legs either side of a beam), centred on it, gives no way by
+ * where it lies: there the anchor's axis, out toward the head, says it, and the axis is turned. Only that case: a tie
+ * any other way (a part within the other's reach, or level with it) keeps the axis as it is.
+ * @param {number[]} first @param {number[]} last @returns {boolean} true where the axis is turned
+ */
+export function screwFlips(first, last) {
+  const mid = (r) => (r[0] + r[1]) / 2, tie = Math.abs(mid(last) - mid(first)) < 1e-3, astride = first[0] < last[0] - 1e-3 && first[1] > last[1] + 1e-3;
+  return tie && astride ? true : mid(last) < mid(first);
+}
+// "into" with a distance (x1.top@150) places the fasten's screws as a group: the middle of their spread along the slot is
+// held to it, within the least play their holes give, so a plate's two screws either side of the place both pass
+function slotPlaced(rel, at, x) {
+  const on = rel.screws.filter((sc) => sc.slot);
+  if (!on.length) return;
+  const along = on.map((sc) => sc.slot.distance), lo = Math.min(...along), hi = Math.max(...along), mid = (lo + hi) / 2, play = Math.min(...on.map((sc) => sc.slotPlay));
+  const off = Math.abs(mid - at.distance), values = { along: r3(mid), wanted: r3(at.distance), distance: r3(off), play: r3(play) }, slot = on[0].slotSays, part = top(x.through.at(-1));
+  const where = on.length > 1 ? `the middle of its ${on.length} screws (${mm(lo)} to ${mm(hi)} mm from ${at.item}'s end a) is ${mm(mid)} mm along ${slot}` : `the screw meets ${slot} ${mm(mid)} mm from ${at.item}'s end a`;
+  const said = off > play + 1e-3
+    ? { level: 'fail', text: `${where}, and into says ${x.into}, ${mm(at.distance)} mm: ${mm(off)} mm apart, where ${on.length > 1 ? 'their holes give' : 'its hole gives'} ${mm(play)} mm. Move ${part} ${mm(off)} mm along ${at.item}, or give the place it is at`, values }
+    : { level: 'pass', text: `${where}, where into says ${x.into}${off > 1e-3 ? `, ${mm(off)} mm off it, within the ${mm(play)} mm ${on.length > 1 ? 'their holes give' : 'its hole gives'}` : ''}`, values };
+  for (const sc of on) (sc.found['fasten.slot'] ||= []).push(said);
+}
+// A slot nut as a part's shape, made once for each: frames' reference solid, in the slot's frame (z out of the face)
+const slotShapes = new Map();
+function slotNutShape(n) {
+  if (!slotShapes.has(n.name)) {
+    const g = slotNut(n, { given: { sets: framesContext().sets } }), [p] = named({ body: g }, { body: { label: n.name } });
+    slotShapes.set(n.name, { geometry: p.geometry, polygons: p.polygons, triangles: p.triangles, model: { name: n.name, title: n.title, mass: n.mass, kind: n.nutKind, length: null }, hash: `fixing:${crypto.createHash('sha256').update(JSON.stringify([n.name, p.polygons])).digest('hex').slice(0, 16)}` });
+  }
+  return slotShapes.get(n.name);
+}
+// A thread tapped in a beam's end bore on the screw's axis, from the beam's tap operations: { thread, depth, bore, length }, or null
+function beamTap(s, B, O, D) {
+  let best = null; // (both ends' bores lie on one line: the end nearest the screw's place is the one it goes in)
+  for (const p of B.parts) {
+    const b = s.objects.find((o) => o.id === p.leaf)?.beam;
+    if (!b || !p.m) continue;
+    for (const t of b.ops.filter((x) => x.op === 'tap')) for (const bn of t.bores) {
+      const bo = b.bores.find((q) => q.name === bn), P = vec3.transform([0, 0, 0], [bo.at[0], bo.at[1], bo.end === 'a' ? 0 : b.length], p.m), e = vec3.transform([0, 0, 0], [bo.at[0], bo.at[1], bo.end === 'a' ? 1 : b.length - 1], p.m);
+      const Z = unit([e[0] - P[0], e[1] - P[1], e[2] - P[2]]), off = Math.hypot(...cross(add(P, O, -1), D));
+      const near = Math.abs(dot(add(P, O, -1), D));
+      if (Math.abs(Math.abs(dot(Z, D)) - 1) < 1e-6 && off <= FASTEN.align.value && (!best || near < best.near)) best = { thread: t.thread, depth: t.depth, bore: bn, length: b.length, near };
+    }
+  }
+  if (!best) return null;
+  const { near, ...out } = best;
+  return out;
+}
+
 /**
  * An assembly's fasten relations, worked out from its parts as they stand: each screw followed along its axis, what
  * was measured, what was found, and the hardware to place.
@@ -344,13 +482,15 @@ export function fastenOf(s, worlds, opts = {}) {
     const form = fx.head?.form ?? (fx.made.heads.includes('cap') ? 'cap' : fx.made.heads[0]);
     if (!Array.isArray(through)) throw new Error(`${what}: "through" lists the parts the screw passes, in order from under its head (["bracket"])`);
     if (typeof x.into !== 'string' || !x.into) throw new Error(`${what}: "into" names the part the screw ends in`);
-    const members = [...through, x.into].map((n) => { const ps = pick(n); if (!ps.length) throw new Error(`${what}: no part "${n}" (items: ${ids.join(', ')})`); return { name: n, parts: ps }; });
+    const slotAt = slotInto(s, x.into, what); // (into a slot on a beam: a slot nut under its lips)
+    const members = [...through, x.into].map((n, j) => { const ps = pick(slotAt && j === through.length ? slotAt.item : n); if (!ps.length) throw new Error(`${what}: no part "${n}" (items: ${ids.join(', ')})`); return { name: n, parts: ps }; });
     // A yoke (a screw through one cheek, what lies between, into the other) or a split clamp (across its own slot)
     const yoke = through.length > 0 && through[0] === x.into;
     if (yoke && x.holes != null) throw new Error(`${what}: a screw that ends in ${x.into}, the part under its head, is placed with "at": an anchor on each screw's axis, pointing from the head into the part`);
     if ((x.at == null) === (x.holes == null)) throw new Error(`${what}: give "at" (an anchor for each screw: ["${top(through[0] ?? x.into)}.h1"]) or "holes" (a part whose holes are the screws' places), one of the two`);
-    if (x.nut != null && x.nut !== false && x.nut !== true && !NUTS.includes(x.nut)) throw new Error(`${what}: "nut" is true (a hexagon nut) or ${NUTS.join(', ')} (got ${JSON.stringify(x.nut)}): a slot nut comes with a frame's beam`);
-    const wantNut = x.nut === true ? 'hex' : x.nut || null;
+    if (slotAt && x.nut != null && x.nut !== true && !NUT_KINDS.includes(x.nut)) throw new Error(`${what}: into a slot, "nut" is the slot nut's kind, ${NUT_KINDS.join(', ')}, or true for the strongest made for the slot (got ${JSON.stringify(x.nut)})`);
+    if (!slotAt && x.nut != null && x.nut !== false && x.nut !== true && !NUTS.includes(x.nut)) throw new Error(`${what}: "nut" is true (a hexagon nut) or ${NUTS.join(', ')} (got ${JSON.stringify(x.nut)})${NUT_KINDS.includes(x.nut) ? `: a ${x.nut} nut goes in a beam's slot, so "into" names the slot (x1.top)` : ''}`);
+    const wantNut = slotAt ? null : x.nut === true ? 'hex' : x.nut || null;
     if (form === 'set' && (through.length || wantNut || x.washer)) throw new Error(`${what}: a set screw goes into one part whole: give it "into" alone (no through, nut or washer)`);
     if (form !== 'set' && !through.length) throw new Error(`${what}: "through" names what the screw holds down, the part under its head: only a set screw has none`);
     const given = fx.length ?? (x.length != null ? s.num(x.length) : null);
@@ -363,16 +503,25 @@ export function fastenOf(s, worlds, opts = {}) {
     if (x.washer) { try { washer = F.washerModel(fx.thread); } catch (e) { throw new Error(`${what}: ${e.message}`); } }
     const nutModel = (kind) => F.nutModel(fx.thread, { kind });
     if (wantNut) { try { nutModel(wantNut); } catch (e) { throw new Error(`${what}: ${e.message}`); } }
+    // the slot nut: the one made for the slot's family and the thread, of the kind asked (the strongest where none is)
+    let slotNutM = null;
+    if (slotAt) {
+      if (form === 'set') throw new Error(`${what}: a set screw goes into one part whole: into a slot, give a screw with a head ("${fx.thread} button")`);
+      try { slotNutM = nutFor(slotAt.beam.profile, slotAt.places[0].name, fx.thread, { ...(typeof x.nut === 'string' ? { kind: x.nut } : {}), given: givenFor(framesContext(), slotAt.beam.profile.name) }); }
+      catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^nutFor: /, '')}`); }
+    }
     const R = Math.max(head?.across ?? fx.major, washer?.diameter ?? 0, fx.major * 2.2) / 2 + 1.5;
 
-    // A motor item ends the screws in its own tapped mounting holes, which its light solid does not draw
-    const drive = (s.motion.drives || []).find((d) => d.id === top(x.into)) ?? null, Wm = drive ? worlds[drive.item] : null;
+    // A motor item ends the screws in its own tapped mounting holes, which its light solid does not draw; so does a bought
+    // part whose rule set gives tapped mounting holes (a supply's), held to the reach its maker allows
+    const boughtMount = (() => { const o = s.objects.find((q) => q.id === top(x.into) && q.bought?.mount?.thread), k2 = o ? ids.indexOf(o.id) : -1; return o && k2 >= 0 ? { id: o.id, item: k2, model: { name: o.bought.set, mount: { thread: o.bought.mount.thread, holes: o.bought.mount.holes, depth: o.bought.mount.reach, reach: true } } } : null; })();
+    const drive = (s.motion.drives || []).find((d) => d.id === top(x.into)) ?? boughtMount, Wm = drive ? worlds[drive.item] : null;
     const onMount = (O, D) => {
       if (!drive?.model.mount?.thread || !drive.model.mount.holes?.length) return null;
       const q = [O[0] - Wm[3], O[1] - Wm[7], O[2] - Wm[11]], l = [Wm[0] * q[0] + Wm[4] * q[1] + Wm[8] * q[2], Wm[1] * q[0] + Wm[5] * q[1] + Wm[9] * q[2]];
       if (Math.abs(Math.abs(dot(unit(D), [Wm[2], Wm[6], Wm[10]])) - 1) > 1e-6) return null;
       const h = drive.model.mount.holes.find(([hx, hy]) => Math.hypot(l[0] - hx, l[1] - hy) <= FASTEN.align.value);
-      return h ? { at: h, thread: drive.model.mount.thread, depth: drive.model.mount.depth, model: drive.model.name } : null;
+      return h ? { at: h, thread: drive.model.mount.thread, depth: drive.model.mount.depth, model: drive.model.name, reach: !!drive.model.mount.reach } : null;
     };
 
     // The screws' axes: an anchor each, or the holes of a part
@@ -402,7 +551,9 @@ export function fastenOf(s, worlds, opts = {}) {
     if (!axes.length) rel.general.push({ code: 'fasten.holes', level: 'fail', text: `no holes found in ${x.holes} that lead on to ${[...through, x.into].filter((n) => n !== x.holes).join(' or ') || 'another part'}: draw them with v.fixings, or place each screw with "at"` });
 
     const matOf = (m) => { // what a member is made of: the project's plastic for a printed part, its own word for a reference
-      const p = m.parts[0], own = s.objects.find((o) => o.id === p.leaf)?.built?.object?.material;
+      const p = m.parts[0], bm = s.objects.find((o) => o.id === p.leaf)?.beam;
+      if (bm) { const E = bm.material?.modulus; return { name: bm.material?.name ?? null, cls: E == null ? 'aluminium' : E < 20000 ? 'plastic' : E < 100000 ? 'aluminium' : 'steel', known: false }; } // (a beam: its alloy, by the class of its modulus)
+      const own = s.objects.find((o) => o.id === p.leaf)?.built?.object?.material;
       const name = own ? String(own).trim().toLowerCase().split(/\s/)[0] : p.role === 'reference' ? null : material;
       if (!name) return { name: null, cls: null, known: false };
       try { const e = F.engagement(fx, { depth: 1, material: name }); return { name, cls: e.class, known: true }; } catch { return { name, cls: p.role === 'reference' ? null : 'plastic', known: false }; }
@@ -412,7 +563,7 @@ export function fastenOf(s, worlds, opts = {}) {
     // A circuit board's holes are drilled by its fab, not printed: held to the thread's clearance holes as they stand
     const drilled = (n) => (typeof fx.figures[n]?.value === 'number' ? { diameter: fx.figures[n].value, nominal: fx.figures[n].value, comp: 0, basis: { rule: `${fx.set}.${n}` } } : null);
     const clrDrilled = { close: drilled('clearance_close'), normal: drilled('clearance'), loose: drilled('clearance_loose') };
-    const isBoard = (m) => m.parts.some((p) => s.objects.find((o) => o.id === p.leaf)?.built?.circuit);
+    const isBoard = (m) => m.parts.some((p) => { const o = s.objects.find((q) => q.id === p.leaf); return o?.built?.circuit || o?.bought?.part === 'board'; }); // (a circuit's holes, or a bought board's, are drilled, not printed)
 
     axes.forEach((ax, i) => {
       const sc = { index: i, name: ax.name, found: {}, hardware: [] }, say = (code, level, text, values) => { (sc.found[code] ||= []).push({ level, text, ...(values ? { values } : {}) }); };
@@ -426,14 +577,16 @@ export function fastenOf(s, worlds, opts = {}) {
         while (e >= 0 && e < segs.length && on(segs[e])) e++;
         return i < 0 ? segs : j === 0 ? segs.slice(0, e) : segs.slice(e);
       };
-      const raw = members.map((m, j) => reach(side(j, along(m.parts, ax.O, ax.D, R, false))));
+      // (a beam is open along the axis where a slot, its bore and an access hole meet: it is on the axis where any of it lies within R)
+      const isBeam = (m) => m.parts.some((p) => s.objects.find((o) => o.id === p.leaf)?.beam), reachOf = (m, segs) => (isBeam(m) ? reach(segs.map((g) => (Math.min(g.a.free, g.b.free) < R - 1e-6 ? { ...g, solid: true } : g))) : reach(segs));
+      const raw = members.map((m, j) => reachOf(m, side(j, along(m.parts, ax.O, ax.D, R, false))));
       const missing = members.filter((_, j) => !raw[j]);
       sc.at = ax.O; sc.between = [ax.O, ax.O];
       if (missing.length) return say('fasten.holes', 'fail', `${missing.map((m) => m.name).join(' and ')} ${missing.length > 1 ? 'are' : 'is'} nowhere on the screw's axis (nothing of ${missing.length > 1 ? 'them' : 'it'} within ${mm(R)} mm of it)${yoke ? `: a screw that ends in ${x.into}, the part under its head, goes through one side of it and into the other, along its anchor's axis` : ': the parts are not where the joint needs them'}`);
-      const mid = (r) => (r[0] + r[1]) / 2, flip = yoke ? false : members.length > 1 ? mid(raw.at(-1)) < mid(raw[0]) : true;
+      const mid = (r) => (r[0] + r[1]) / 2, flip = yoke ? false : members.length > 1 ? screwFlips(raw[0], raw.at(-1)) : true;
       const D = flip ? ax.D.map((c) => -c) : ax.D, O = ax.O, at = (z) => add(O, D, z);
       const runs = members.map((m, j) => ({ ...m, segs: side(j, along(m.parts, O, ax.D, R, flip)) }));
-      for (const r of runs) r.reach = reach(r.segs);
+      for (const r of runs) r.reach = reachOf(r, r.segs);
       const order = runs.slice(1).find((r, j) => mid(r.reach) < mid(runs[j].reach));
       if (order) return say('fasten.holes', 'fail', `${order.name} lies before ${runs[runs.indexOf(order) - 1].name} along the screw: "through" lists the parts in order from under the head, and "into" comes last`);
       const tol = 1e-3, B = runs.at(-1), A = through.length ? runs[0] : null, headR = head ? head.across / 2 : 0;
@@ -444,7 +597,19 @@ export function fastenOf(s, worlds, opts = {}) {
 
       // The seat: where the hole first comes in under the head's width
       let zSeat = A ? null : B.reach[0], cone = null, flat = true, proud = 0, bore0 = 0;
-      if (A) {
+      const lips = x.lips ? lipsOf(s, x.lips, fx) : null;
+      if (A && lips?.inside) { // a head inside a beam's slot (a blind join): it sits under the lips, the last narrow stretch of the part before the far end
+        const narrow = (seg) => !seg.solid && Math.min(seg.a.free, seg.b.free) < headR - tol; // (between the lips: open along the beam, so not a hole)
+        let n = A.segs.length - 1;
+        while (n >= 0 && !narrow(A.segs[n])) n--;
+        while (n > 0 && narrow(A.segs[n - 1])) n--;
+        if (n >= 0) { bore0 = n; zSeat = A.segs[n].z0; }
+        else { say('fasten.holes', 'fail', `${A.name}'s slot has no lips on the screw's axis for its head to sit under`); bad = true; }
+      } else if (A && lips) { // a head on a beam's slot from outside (an end-tap join): it sits on the lips, the first narrow stretch from the head
+        const n = A.segs.findIndex((seg) => !seg.solid && Math.min(seg.a.free, seg.b.free) < headR - tol);
+        if (n >= 0 && !A.segs.slice(0, n).some((seg) => seg.solid)) { bore0 = n; zSeat = A.segs[n].z0; }
+        else { say('fasten.holes', 'fail', `${A.name}'s slot has no lips on the screw's axis for its head to sit on`); bad = true; }
+      } else if (A) {
         for (const [n, seg] of A.segs.entries()) {
           if (seg.solid) { say('fasten.holes', 'fail', solidSays(A, seg)); bad = true; break; }
           if (!seg.hole) continue;
@@ -470,17 +635,19 @@ export function fastenOf(s, worlds, opts = {}) {
       for (const [j, r] of runs.slice(0, -1).entries()) {
         const segs = r.segs.filter((seg, n) => (j ? true : n >= bore0) && seg !== cone && seg.z1 > zSeat + tol), stop = segs.find((seg) => seg.solid);
         if (stop) { say('fasten.holes', 'fail', solidSays(r, stop)); bad = true; continue; }
+        if (j === 0 && lips) { cl.push({ name: r.name, d: lips.opening, lips }); continue; } // (between a slot's lips: open along the beam)
         const holes = segs.filter((seg) => seg.hole);
         if (!holes.length) { say('fasten.holes', 'fail', `${r.name} has no hole on the screw's axis`); bad = true; continue; }
         const narrow = holes.reduce((m, seg) => (size(seg) < size(m) ? seg : m), holes[0]), d = size(narrow);
         for (const seg of holes) { const o = offAxis(seg); if (o != null && o > worst) worst = o; if (o != null && o > FASTEN.align.value) { say('fasten.holes', 'fail', `${r.name}'s hole is ${mm(o)} mm off the screw's axis: the holes do not line up`, { distance: r3(o) }); bad = true; break; } }
         cl.push({ name: r.name, d, free: 2 * Math.min(narrow.a.free, narrow.b.free), board: isBoard(r) });
       }
-      // The far end: the hole in the last part, from its mouth
+      // The far end: the hole in the last part, from its mouth; or, into a slot, the slot nut under its lips
       const first = B.segs.find((seg) => seg.solid || seg.hole);
       let end = null;
-      const mh = first.solid ? onMount(O, D) : null;
-      if (mh) {
+      const mh = !slotAt && first?.solid ? onMount(O, D) : null;
+      if (slotAt) end = slotEnd(s, slotAt, slotNutM, { B, O, D, x, fx, cl, clr, say, sc });
+      else if (mh) {
         if (mh.thread !== fx.thread) { say('fasten.end', 'fail', `${x.into}'s mounting holes are ${mh.thread} threads, and the screw is ${fx.thread}: use ${an(mh.thread)} ${mh.thread} screw`); bad = true; }
         else end = { mouth: first.z0, d: fx.major, free: fx.major, depth: mh.depth, blind: true, far: first.z0 + mh.depth, pocket: null, main: first, motor: mh };
       } else if (first.solid) { const o = offAxis(first); say('fasten.holes', 'fail', `${solidSays(B, first)}${o != null ? ': the holes do not line up' : ''}`, o != null ? { distance: r3(o) } : undefined); bad = true; }
@@ -510,6 +677,12 @@ export function fastenOf(s, worlds, opts = {}) {
       if (cl.length) {
         if (!clr.normal) say('fasten.clearance', 'info', `${fx.thread} has no clearance hole in its rule set (${fx.set}): the holes it passes are not held to one`);
         else for (const c of cl) {
+          if (c.lips) { // a slot's opening: the screw passes between its lips, so it is a slot, not a clearance hole, by design
+            const values = { opening: c.lips.opening, major: fx.major };
+            if (c.lips.opening < fx.major) say('fasten.clearance', 'fail', `${c.name}'s slot opens ${mm(c.lips.opening)} mm, narrower than ${an(fx.thread)} ${fx.thread} screw (${mm(fx.major)} mm): it does not pass between the lips`, values);
+            else say('fasten.clearance', 'pass', `${an(fx.thread)} ${fx.thread} screw passes between the lips of ${c.name}'s slot, ${mm(c.lips.opening)} mm apart (${c.lips.slot}.opening): it slides along the slot until tightened`, values);
+            continue;
+          }
           const clr = c.board && clrDrilled.normal ? clrDrilled : clrOf, as = c.board && clrDrilled.normal ? 'as drilled' : 'as drawn';
           const lo = (clr.close ?? clr.normal).diameter, hi = (clr.loose ?? clr.normal).diameter, want = clr.normal, basis = `${want.basis.rule} ${mm(want.nominal)} mm${want.comp ? ` and ${printer}.hole_comp ${mm(want.comp)} mm` : ''}`;
           const values = { diameter: r3(c.d), wanted: want.diameter, least: lo, most: hi };
@@ -530,7 +703,12 @@ export function fastenOf(s, worlds, opts = {}) {
         const sh = end.pocket.a.loop.shape, across = sh === 'hex' || sh === 'square' ? end.pocket.a.loop.flats : 2 * end.pocket.a.free;
         for (const kind of sh === 'square' ? ['square'] : ['hex', 'lock']) { try { const n = nutModel(kind); if (across >= n.flats - 0.05 && across <= n.flats + 1 && (!seatNut || wantNut === kind)) seatNut = { kind, model: n, across }; } catch {} }
       }
-      if (end.motor) { end.kind = 'tap'; say('fasten.end', 'pass', `ends in ${x.into}'s own ${fx.thread} thread, ${mm(end.depth)} mm deep (${end.motor.model}.mount_hole_depth)`, endValues); }
+      if (end.slot) {
+        const n = end.nut.model, warns = n.fits.filter((q) => q.level !== 'pass'), where = `${end.slot.item}'s ${end.slot.place} slot`;
+        if (end.slot.opening < fx.major) say('fasten.clearance', 'fail', `${where} opens ${mm(end.slot.opening)} mm, narrower than ${an(fx.thread)} ${fx.thread} screw (${mm(fx.major)} mm): it does not pass between the lips`, { opening: end.slot.opening, major: fx.major });
+        else say('fasten.clearance', 'pass', `${an(fx.thread)} ${fx.thread} screw passes between the lips of ${where}, ${mm(end.slot.opening)} mm apart`, { opening: end.slot.opening, major: fx.major });
+        say('fasten.end', warns.length ? 'warn' : 'pass', `ends in ${an(n.nutKind)} ${n.nutKind} nut under the lips of ${where}: ${n.name}, ${mm(end.thread)} mm of ${n.thread} thread from ${mm(end.zThr - end.mouth)} to ${mm(end.zThr - end.mouth + end.thread)} mm under the face, the slot's floor at ${mm(end.depth)} mm${n.entry === 'end' ? '. It goes in from an open end of the slot (frame.nut)' : '. It goes in through the opening, anywhere along the slot'}${warns.length ? `. ${warns.map((q) => q.text).join('; ')}` : ''}`, { thread: end.thread, floor: end.depth, height: n.height, tongue: n.tongueHeight });
+      } else if (end.motor) { end.kind = 'tap'; say('fasten.end', 'pass', end.motor.reach ? `ends in ${x.into}'s own ${fx.thread} thread, which its maker allows a screw ${mm(end.depth)} mm into (${end.motor.model}.mount_hole_reach)` : `ends in ${x.into}'s own ${fx.thread} thread, ${mm(end.depth)} mm deep (${end.motor.model}.mount_hole_depth)`, endValues); }
       else if (wantNut || seatNut) {
         const kind = wantNut ?? seatNut.kind, nm = nutModel(kind);
         if (end.blind) say('fasten.end', 'fail', `a nut is given, and ${x.into}'s hole is blind, ${mm(end.depth)} mm deep: a nut holds a screw that comes out of the far side`, endValues);
@@ -541,10 +719,14 @@ export function fastenOf(s, worlds, opts = {}) {
           say('fasten.end', 'pass', `ends in ${an(nm.name)} ${nm.name} ${end.nut.seated ? `in its seat in ${x.into}, ${mm(seatNut.across)} mm across the flats for the nut's ${mm(nm.flats)} mm` : `on the far face of ${x.into}`}, past a ${mm(end.d)} mm clearance hole`, { ...endValues, flats: nm.flats });
         }
       } else {
-        const hit = kinds.filter((c) => Math.abs(end.d - c.hole.diameter) <= sizeTol).sort((p, q) => Math.abs(end.d - p.hole.diameter) - Math.abs(end.d - q.hole.diameter))[0];
+        const bt = beamTap(s, B, O, D);
+        if (bt && bt.thread !== fx.thread) { say('fasten.end', 'fail', `${x.into}'s bore ${bt.bore} is tapped ${bt.thread}, and the screw is ${fx.thread}: use ${an(bt.thread)} ${bt.thread} screw, or tap it ${fx.thread}`); bad = true; return; }
+        if (bt) { end.kind = 'tap'; end.blind = bt.depth < bt.length - 1e-6; end.depth = Math.min(bt.depth, bt.length); end.beamTap = bt; }
+        const hit = bt ? null : kinds.filter((c) => Math.abs(end.d - c.hole.diameter) <= sizeTol).sort((p, q) => Math.abs(end.d - p.hole.diameter) - Math.abs(end.d - q.hole.diameter))[0];
         let threaded = null;
         if (!hit && end.main.a.loop.shape !== 'round') { try { const t = F.threadModel(fx, { internal: true, length: Math.max(end.depth, fx.pitch * 2) }); if (end.free > fx.major - 2 * fx.pitch && end.free < fx.major + 1) threaded = t; } catch {} }
-        if (hit) {
+        if (bt) say('fasten.end', 'pass', `ends in ${x.into}'s own ${bt.thread} thread, tapped ${mm(end.depth)} mm into its end bore ${bt.bore} (a machined tap, on its cut-and-drill sheet)`, { ...endValues, depth: r3(end.depth) });
+        else if (hit) {
           end.kind = hit.kind;
           const basis = hit.hole.basis, trust = basis.kind === 'measured' ? 'measured' : basis.kind === 'spec' ? 'a standard\'s figure' : `${/^[aeiou]/.test(basis.kind) ? 'an' : 'a'} ${basis.kind} figure`;
           say('fasten.end', 'pass', `ends in ${x.into}, in ${hit.says}: ${mm(end.d)} mm as drawn (${basis.rule}, ${trust}), ${end.blind ? `${mm(end.depth)} mm deep` : `through its ${mm(end.depth)} mm`}`, endValues);
@@ -558,17 +740,24 @@ export function fastenOf(s, worlds, opts = {}) {
       const zGrip = end.kind === 'nut' ? end.nut.z : end.mouth, grip = zGrip - zHead, stack = zGrip - zSeat, intoMat = matOf(B), tipRoom = DEFAULTS.tip_room.value;
       sc.grip = r3(grip);
       let pick = null, none = null, need = null;
-      if (end.motor && form !== 'set') { // the longest sold length that stops short of the motor's thread's end, as motor.mount chooses
-        const sold = fx.figures.lengths?.value || [], room = end.depth - tipRoom, L0 = [...sold].reverse().find((l) => l > grip + EPS && l - grip <= room + EPS);
+      if (end.slot) { // the shortest sold length with a hex nut's height of thread in the slot nut, its tip short of the slot's floor
+        const sold = fx.figures.lengths?.value || [], hexH = fx.figures.nut_height?.value;
+        need = r3(hexH ? Math.min(end.thread, hexH) : end.thread);
+        const lo = end.zThr + need - zHead, hi = end.floor - FASTEN.floor.value - zHead, L0 = sold.find((l) => l >= lo - EPS && l <= hi + EPS);
+        end.need = need; end.window = [r3(lo), r3(hi)];
+        if (L0) pick = { name: F.screwModel(fx, { length: L0, head: form }).name, length: L0, engaged: r3(Math.min(end.thread, zHead + L0 - end.zThr)), spare: r3(end.floor - zHead - L0) };
+        else none = `no ${fx.thread} ${form} screw is sold from ${mm2(lo)} to ${mm2(hi)} mm long, what ${mm2(grip)} mm under its head (${end.slot.part}${washer ? ', the washer' : ''} and the slot's ${mm2(end.slot.lip)} mm lip) leaves: ${mm2(need)} mm in the nut and ${mm2(FASTEN.floor.value)} mm kept off the slot's floor (${(sold.filter((l) => l < lo - EPS).at(-1) ?? null) != null ? `${fx.thread}x${sold.filter((l) => l < lo - EPS).at(-1)} engages too little, ` : ''}${sold.find((l) => l > hi + EPS) != null ? `${fx.thread}x${sold.find((l) => l > hi + EPS)} reaches the floor` : 'none is that long'}). A part of another thickness, or a washer under the head`;
+      } else if (end.motor && form !== 'set') { // the longest sold length that stops short of the motor's thread's end, as motor.mount chooses
+        const sold = fx.figures.lengths?.value || [], room = end.depth - (end.motor.reach ? 0 : tipRoom), L0 = [...sold].reverse().find((l) => l > grip + EPS && l - grip <= room + (end.motor.reach ? READ : EPS)); // (a maker's reach is the limit itself: no room kept past it, the mesh's grid allowed)
         if (L0) pick = { name: F.screwModel(fx, { length: L0, head: form }).name, length: L0, engaged: r3(L0 - grip), spare: r3(room - (L0 - grip)) };
-        else none = `no ${fx.thread} ${form} screw that is sold goes ${mm(grip)} mm under its head into ${x.into} and stops within its ${mm(end.depth)} mm of thread, ${mm(tipRoom)} mm kept at its tip`;
+        else none = end.motor.reach ? `no ${fx.thread} ${form} screw that is sold goes ${mm2(grip)} mm under its head into ${x.into} and stops within the ${mm2(end.depth)} mm its maker allows` : `no ${fx.thread} ${form} screw that is sold goes ${mm2(grip)} mm under its head into ${x.into} and stops within its ${mm2(end.depth)} mm of thread, ${mm2(tipRoom)} mm kept at its tip`;
         need = pick ? pick.engaged : null;
       } else if (end.kind && form !== 'set' && stack > 1e-6) {
         const into = { kind: end.kind, ...(end.kind === 'nut' ? { nut: end.nut.kind } : end.blind ? (end.kind === 'insert' ? { room: Math.max(end.depth - tipRoom, end.insert?.length ?? 0) } : { depth: end.depth }) : { through: true }), ...(['tap', 'thread'].includes(end.kind) && intoMat.cls ? { material: intoMat.known ? intoMat.name : intoMat.cls } : {}) };
         try { pick = F.lengthFor(r3(stack), fx, { into, head: form, ...(washer ? { washer: true } : {}) }); need = pick.need; } catch (e) { none = e.message.replace(/^lengthFor: /, ''); }
       }
       // how much thread the far end offers, and how much the rule for it asks
-      const avail = !end.kind ? 0 : end.kind === 'nut' ? end.nut.model.height : end.kind === 'insert' ? Math.min(end.insert?.length ?? end.depth, end.depth) : end.depth;
+      const avail = !end.kind ? 0 : end.slot ? end.thread : end.kind === 'nut' ? end.nut.model.height : end.kind === 'insert' ? Math.min(end.insert?.length ?? end.depth, end.depth) : end.depth;
       if (need == null && end.kind) {
         if (end.kind === 'nut') need = end.nut.model.height;
         else if (end.kind === 'insert') need = Math.min(DEFAULTS.insert_engagement.value * fx.major, end.insert?.length ?? Infinity);
@@ -580,34 +769,38 @@ export function fastenOf(s, worlds, opts = {}) {
       if (L == null) { const want = grip + (need ?? fx.major), listed = fx.figures.lengths?.value; L = (Array.isArray(listed) && listed.find((l) => l >= want - 1e-9)) || Math.ceil(want); } // (none fits: drawn at the nearest, so the picture still shows the joint)
       let model;
       try { model = F.screwModel(fx, { length: L, head: form }); } catch (e) { sold = false; model = F.screwModel(fx, { length: L, head: form, anyLength: true }); if (given != null) say('fasten.length', 'fail', e.message.replace(/^screw: /, '')); }
-      const inEnd = L - grip, zTip = zHead + L;
-      sc.dir = D; sc.engaged = end.kind ? r3(Math.max(0, Math.min(inEnd, avail))) : 0; sc.endKind = end.kind ?? null; sc.intoMaterial = intoMat.known ? intoMat.name : null; sc.bear = (washer ? washer.diameter : head?.across ?? fx.major * 2) / 2;
+      const inEnd = L - grip, zTip = zHead + L, inThread = end.slot ? zTip - end.zThr : inEnd; // (a slot nut's thread starts in its tongue, in the opening)
+      sc.dir = D; sc.engaged = end.kind ? r3(Math.max(0, Math.min(inThread, avail))) : 0; sc.endKind = end.kind ?? null; sc.intoMaterial = intoMat.known ? intoMat.name : null; sc.bear = (washer ? washer.diameter : head?.across ?? fx.major * 2) / 2;
       sc.length = L; sc.model = model; sc.between = [at(zHead), at(zTip)]; sc.end = end.kind ?? null;
-      const lenValues = { length: L, grip: r3(grip), into: r3(inEnd) }, under = `${mm(grip)} mm under its head${washer ? ' (its washer with it)' : ''}`;
+      const lenValues = { length: L, grip: r3(grip), into: r3(inEnd) }, under = `${mm2(grip)} mm under its head${washer ? ' (its washer with it)' : ''}`;
       const wouldDo = pick && pick.length !== L ? `${pick.name} would do` : null;
       if (given == null) {
-        if (pick) say('fasten.length', 'pass', `${pick.name} chosen, the ${end.motor ? 'longest sold that stops short of the end of the thread' : 'shortest sold that fits'}: ${under} and ${mm(pick.engaged)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${pick.spare != null ? `, ${mm(pick.spare)} mm short of bottoming out` : ''}`, lenValues);
+        if (pick && end.slot) say('fasten.length', 'pass', `${pick.name} chosen, the shortest sold that fits: ${under} (${end.slot.part}${washer ? ', the washer' : ''} and the slot's ${mm2(end.slot.lip)} mm lip), ${mm2(pick.engaged)} mm into its nut, its tip ${mm2(zTip - end.mouth)} mm into the slot and ${mm2(pick.spare)} mm short of its floor`, { ...lenValues, floor: r3(pick.spare) });
+        else if (pick) say('fasten.length', 'pass', `${pick.name} chosen, the ${end.motor ? (end.motor.reach ? 'longest sold that goes no further than its maker allows' : 'longest sold that stops short of the end of the thread') : 'shortest sold that fits'}: ${under} and ${mm2(pick.engaged)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${pick.spare != null ? `, ${mm2(pick.spare)} mm short of bottoming out` : ''}`, lenValues);
         else if (none) say('fasten.length', 'fail', `no length chosen: ${none}`, lenValues);
         else if (form !== 'set') say('fasten.length', 'info', `no length chosen until the far end is one a screw holds in: ${model.name} is drawn`, lenValues);
-      } else if (inEnd <= EPS) say('fasten.length', 'fail', `${model.name} does not reach ${x.into}: it is ${mm(L)} mm long and there is ${under}${wouldDo ? `. ${wouldDo}` : ''}`, lenValues);
-      else if (end.blind && inEnd > end.depth - (end.kind === 'insert' ? 0 : tipRoom) + EPS) say('fasten.length', 'fail', `${model.name} bottoms out: with ${under} it goes ${mm(inEnd)} mm into a hole ${mm(end.depth)} mm deep${end.kind === 'insert' ? '' : `, where ${mm(tipRoom)} mm is kept at its tip`}, so it tightens on its tip and not on its head${wouldDo ? `. ${wouldDo}` : `. Deepen the hole to ${mm(inEnd + tipRoom)} mm, or use a shorter screw`}`, { ...lenValues, depth: r3(end.depth) });
+      } else if (inEnd <= EPS) say('fasten.length', 'fail', `${model.name} does not reach ${x.into}: it is ${mm2(L)} mm long and there is ${under}${wouldDo ? `. ${wouldDo}` : ''}`, lenValues);
+      else if (end.slot && zTip > end.floor - FASTEN.floor.value + EPS) say('fasten.length', 'fail', `${model.name} reaches the slot's floor: with ${under} its tip goes ${mm2(zTip - end.mouth)} mm into ${end.slot.item}'s ${end.slot.place} slot, whose floor is ${mm2(end.depth)} mm under the face, where ${mm2(FASTEN.floor.value)} mm is kept: it presses on the beam's core and not on its nut${wouldDo ? `. ${wouldDo}` : ''}`, { ...lenValues, floor: r3(end.floor - zTip) });
+      else if (end.slot) say('fasten.length', sold ? 'pass' : 'info', `${model.name} reaches: ${under}, its tip ${mm2(zTip - end.mouth)} mm into the slot, ${mm2(end.floor - zTip)} mm short of its floor`, lenValues);
+      else if (end.blind && inEnd > end.depth - (end.kind === 'insert' || end.motor?.reach ? 0 : tipRoom) + (end.motor?.reach ? READ : EPS)) say('fasten.length', 'fail', `${model.name} bottoms out: with ${under} it goes ${mm2(inEnd)} mm into a hole ${mm2(end.depth)} mm deep${end.kind === 'insert' ? '' : `, where ${mm2(tipRoom)} mm is kept at its tip`}, so it tightens on its tip and not on its head${wouldDo ? `. ${wouldDo}` : `. Deepen the hole to ${mm2(inEnd + tipRoom)} mm, or use a shorter screw`}`, { ...lenValues, depth: r3(end.depth) });
       else {
         const far = end.kind === 'nut' ? end.nut.z + end.nut.model.height : end.far, out = end.blind ? 0 : zTip - far, most = FASTEN.proud.value * fx.major;
-        if (out > most + EPS) say('fasten.length', 'warn', `${model.name} stands ${mm(out)} mm proud of ${end.kind === 'nut' ? 'its nut' : `${x.into}'s far face`}, more than its own diameter${wouldDo ? `: ${wouldDo}` : ''}`, { ...lenValues, proud: r3(out) });
-        else if (sold) say('fasten.length', 'pass', `${model.name} reaches: ${under}, ${mm(inEnd)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${end.blind ? `, ${mm(end.depth - inEnd)} mm short of the hole's end` : out > 1e-6 ? `, its tip ${mm(out)} mm proud` : ''}`, lenValues);
+        if (out > most + EPS) say('fasten.length', 'warn', `${model.name} stands ${mm2(out)} mm proud of ${end.kind === 'nut' ? 'its nut' : `${x.into}'s far face`}, more than its own diameter${wouldDo ? `: ${wouldDo}` : ''}`, { ...lenValues, proud: r3(out) });
+        else if (sold) say('fasten.length', 'pass', `${model.name} reaches: ${under}, ${mm2(inEnd)} mm into ${x.into}${end.kind === 'nut' ? '\'s nut' : ''}${end.blind ? `, ${mm2(end.depth - inEnd)} mm short of the hole's end` : out > 1e-6 ? `, its tip ${mm2(out)} mm proud` : ''}`, lenValues);
       }
 
       // fasten.engagement: thread engaged at the far end, against the rule for what it is in
       if (end.motor && form !== 'set') { // a bought part's thread: held to its depth, and to the least engagement any metal is given (engagement.steel), as motor.mount is
         const e = Math.max(0, Math.min(inEnd, end.depth)), least = r3(F.engagement(fx, { depth: 1, material: 'steel' }).need), turns = +(e / fx.pitch).toFixed(1), values = { engaged: r3(e), depth: end.depth, turns, least };
-        if (e >= least - EPS) say('fasten.engagement', 'pass', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: a bought part's thread, held to its depth and to the ${mm(least)} mm engagement.steel gives any metal`, values);
+        if (end.motor.reach && e >= Math.min(least, end.depth) - EPS) say('fasten.engagement', 'pass', `${mm(e)} mm into ${x.into}'s own thread, ${mm(turns)} turns: as far as its maker allows (${end.motor.model}.mount_hole_reach, ${mm(end.depth)} mm), its thread rated by its maker`, values);
+        else if (e >= least - EPS) say('fasten.engagement', 'pass', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: a bought part's thread, held to its depth and to the ${mm(least)} mm engagement.steel gives any metal`, values);
         else say('fasten.engagement', 'fail', `${mm(e)} mm of ${x.into}'s own thread, ${mm(turns)} turns of its ${mm(end.depth)} mm: less than the ${mm(least)} mm engagement.steel gives any metal, so the thread strips before the screw holds. A longer screw, or a counterbore to sink its head`, values);
       }
       else if (end.kind && need != null && form !== 'set') {
         // (held to the micron it is said in: the length was chosen from the stack rounded to the micron)
-        const engaged = Math.max(0, Math.min(inEnd, avail)), ok = r3(engaged) >= need - EPS, values = { engaged: r3(engaged), need: r3(need), turns: +(engaged / fx.pitch).toFixed(1) };
+        const engaged = Math.max(0, Math.min(inThread, avail)), ok = r3(engaged) >= need - EPS, values = { engaged: r3(engaged), need: r3(need), turns: +(engaged / fx.pitch).toFixed(1) };
         const what2 = end.kind === 'nut' ? `its ${end.nut.model.name}, ${mm(avail)} mm high` : end.kind === 'insert' ? `the insert, ${mm(avail)} mm long` : `${intoMat.name ? `${intoMat.name}${intoMat.cls && intoMat.known ? ` (a${intoMat.cls === 'aluminium' ? 'n' : ''} ${intoMat.cls})` : ''}` : end.kind === 'pilot' ? 'plastic' : x.into}`;
-        const rule = end.kind === 'nut' ? 'a nut wants its whole height engaged' : end.kind === 'insert' ? `fixings.insert_engagement asks a diameter of thread or the whole insert, ${mm(need)} mm` : end.kind === 'pilot' && fx.figures.pilot_depth ? `${fx.set}.pilot_depth asks ${mm(need)} mm` : `engagement.${end.kind === 'pilot' ? 'plastic' : intoMat.cls ?? 'plastic'} asks ${mm(need / fx.major)} diameters, ${mm(need)} mm`;
+        const rule = end.slot ? `${fx.set}.nut_height asks ${mm(need)} mm, a hexagon nut's height of thread` : end.kind === 'nut' ? 'a nut wants its whole height engaged' : end.kind === 'insert' ? `fixings.insert_engagement asks a diameter of thread or the whole insert, ${mm(need)} mm` : end.kind === 'pilot' && fx.figures.pilot_depth ? `${fx.set}.pilot_depth asks ${mm(need)} mm` : `engagement.${end.kind === 'pilot' ? 'plastic' : intoMat.cls ?? 'plastic'} asks ${mm(need / fx.major)} diameters, ${mm(need)} mm`;
         if (ok) say('fasten.engagement', 'pass', `${mm(engaged)} mm of thread in ${what2}, ${mm(values.turns)} turns: ${rule}`, values);
         else {
           const cure = avail < need - EPS ? (end.kind === 'insert' || end.kind === 'nut' ? `there is only ${mm(avail)} mm of it` : `the hole offers ${mm(avail)} mm: ${end.blind ? `deepen it to ${mm(need + tipRoom)} mm` : `${x.into} wants ${mm(need)} mm of thread on the axis`}`)
@@ -617,7 +810,19 @@ export function fastenOf(s, worlds, opts = {}) {
       } else if (end.kind && form !== 'set') say('fasten.engagement', 'info', `nothing says what ${x.into} is made of, so the thread engaged in it is not held to a rule: give its object a "material"`);
 
       // fasten.seat: a flat seat under the head, as wide as the head and square to the axis, and what it takes
-      if (A) {
+      if (A && lips) { // a head on a slot's lips: held where it spans the opening, and, inside the slot, where it fits in the cavity
+        const across = (washer ? washer.diameter : head.across), values = { across, opening: lips.opening, ...(lips.inside ? { cavity: lips.cavityWidth, room: lips.room, height: head.height } : {}) }, of = `${A.name}'s slot (${lips.slot})`;
+        if (form === 'countersunk' || across <= lips.opening + 1e-9) say('fasten.seat', 'fail', `the ${form} head, ${mm(across)} mm across, ${form === 'countersunk' ? 'has no cone to sit in on' : 'pulls through'} ${of}, whose lips are ${mm(lips.opening)} mm apart: a head wider than the opening, a button or a cap, holds`, values);
+        else if (lips.inside && across > lips.cavityWidth + 1e-9) say('fasten.seat', 'fail', `the head, ${mm(across)} mm across, does not go into ${of}, ${mm(lips.cavityWidth)} mm wide under its lips: a smaller head, or a join that puts the head outside the beam`, values);
+        else if (lips.inside && head.height > lips.room + 1e-9) say('fasten.seat', 'fail', `the head, ${mm(head.height)} mm high, does not fit under the lips of ${of}, which has ${mm(lips.room)} mm at its full width: a lower head (a button)`, values);
+        else {
+          // what the lips take: the head's circle less the strip of the opening across it, against the beam's alloy;
+          // the tightening is the least of that and a screw tightened fully (three quarters of its proof load)
+          const bt = lipsTake(F, s, x.lips.item, fx, across, lips.opening), v2 = bt ? { ...values, area: bt.area, limit: bt.limit, force: bt.force, torque: bt.torque } : values;
+          if (bt) { sc.most = bt.torque; sc.seatForce = bt.force; }
+          say('fasten.seat', 'pass', `the head, ${mm(across)} mm across, bears on the lips of ${of} ${lips.inside ? `from inside, in its ${mm(lips.cavityWidth)} mm cavity (${mm(head.height)} mm of the ${mm(lips.room)} mm under the lips)` : 'from outside'}, on each side of its ${mm(lips.opening)} mm opening${bt ? `; ${bt.text}` : ''}`, v2);
+        }
+      } else if (A) {
         const seatPart = A.segs[bore0], near = seatPart.of.near, zLocal = (z) => (flip ? -z : z), bearR = (washer ? washer.diameter : head.across) / 2, boreR = seatPart.a.free, seatMat = matOf(A); // (boreR: the hole's mouth at the seat, a lead-in with it)
         const e = 0.02;
         if (form === 'countersunk') {
@@ -657,10 +862,11 @@ export function fastenOf(s, worlds, opts = {}) {
       // The hardware, each piece where it sits: its own frame, the item it moves with, the way it comes out, what it may overlap
       const host = (r) => r.parts[0], up = D.map((c) => -c), piece = (kind, m, o, P, Z, r, lift, allow, X) => sc.hardware.push({ kind, shape: shapeOf(F, kind, m, o), M: standing(P, Z, X), host: host(r), lift, allow });
       const ends = [...new Set(B.parts.map((p) => p.leaf))];
-      if (A) piece('screw', fx, { length: L, head: form, anyLength: true }, at(zHead), up, A, up, ends);
+      if (A) piece('screw', fx, { length: L, head: form, anyLength: true }, at(zHead), up, A, up, A.parts.some((p) => s.objects.find((o) => o.id === p.leaf)?.beam) ? [...ends, ...new Set(A.parts.map((p) => p.leaf))] : ends); // (a screw through a beam, or its head in a slot, is inside the beam's envelope, which the overlap check measures)
       else piece('screw', fx, { length: L, head: form, anyLength: true }, at(zSeat), up, B, up, ends);
       if (washer) piece('washer', fx.thread, {}, at(zSeat), up, A, up, []);
-      if (end.kind === 'nut') {
+      if (end.slot) sc.hardware.push({ kind: 'nut', shape: slotNutShape(end.nut.model), M: standing(at(end.mouth), up, end.slot.along), host: host(B), lift: end.slot.along, allow: ends });
+      else if (end.kind === 'nut') {
         let X = null;
         if (end.nut.corner) { const lp = end.nut.corner.seg.a.loop, pr = end.nut.corner.seg.of, v = lp.corner ? [lp.corner[0] - lp.c[0], lp.corner[1] - lp.c[1]] : lp.along, local = add(pr.x.map((c) => c * v[0]), pr.y, v[1]), pm = end.nut.corner.seg.part.m; X = pm ? [0, 1, 2].map((r) => pm[r] * local[0] + pm[4 + r] * local[1] + pm[8 + r] * local[2]) : local; }
         piece('nut', fx.thread, { kind: end.nut.kind }, at(end.nut.z), D, B, D, [], X);
@@ -672,6 +878,7 @@ export function fastenOf(s, worlds, opts = {}) {
       if (opts.access && tool) sc.access = accessOf(parts, tool, add(A ? at(zHead) : at(zSeat), up, model.top), up);
     });
 
+    if (slotAt?.distance != null) slotPlaced(rel, slotAt, x);
     // The pieces of this relation, named, and the fits it stands for
     const count = { screw: 0, nut: 0, washer: 0, insert: 0 };
     for (const sc of rel.screws) for (const h of sc.hardware) {
@@ -688,9 +895,9 @@ export function fastenOf(s, worlds, opts = {}) {
     const keys = [...new Set(rel.screws.map((sc) => sc.tool).filter(Boolean))], most = rel.screws.map((sc) => sc.most).filter((t) => t != null);
     const tighten = torque != null ? { torque, given: true } : most.length ? { torque: Math.min(...most), given: false } : null;
     const lines = [...names].map(([fastener, n]) => ({ fastener, count: n, ...(rel.screws.some((sc) => sc.model?.name === fastener) ? { ...(keys.length ? { key: keys.join(' or ') } : {}), ...(tighten ? { tighten } : {}) } : {}) }));
-    through.forEach((t, j) => fits.push({ a: t, b: x.into, fastens: true, silent: true, fasten: k, note: x.note || `${t} fastened to ${x.into}`, ...(j === 0 && lines[0] ? lines[0] : {}) }));
+    through.forEach((t, j) => fits.push({ a: t, b: slotAt ? slotAt.item : x.into, fastens: true, silent: true, fasten: k, note: x.note || `${t} fastened to ${x.into}`, ...(j === 0 && lines[0] ? lines[0] : {}) }));
     if (!through.length && lines[0]) fits.push({ a: x.into, b: x.into, silent: true, fasten: k, note: label, ...lines[0] });
-    for (const l of lines.slice(1)) fits.push({ a: through[0] ?? x.into, b: x.into, silent: true, fasten: k, note: x.note || `${through[0] ?? x.into} fastened to ${x.into}`, ...l });
+    for (const l of lines.slice(1)) fits.push({ a: through[0] ?? x.into, b: slotAt ? slotAt.item : x.into, silent: true, fasten: k, note: x.note || `${through[0] ?? x.into} fastened to ${x.into}`, ...l });
     rel.count = count; rel.torque = torque;
     rel.load = loadOf(s, worlds, rel, list, { F, fx, ids });
     if (rel.load?.tighten != null && torque == null) for (const ft of fits.filter((q) => q.fasten === k && q.tighten)) ft.tighten = { torque: rel.load.tighten, given: false, load: true };
@@ -776,9 +983,9 @@ export function hardwarePart(h, hostWorld) {
     hardware: { kind: h.kind, name: h.name, fasten: h.fasten, screw: h.screw, thread: h.thread, grams: h.grams, from: h.label, length: h.length, head: h.head }, moves: h.hostItem, with: h.with, lift, allow: h.allow };
 }
 
-const CODES = ['fasten.holes', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'fasten.access'];
+const CODES = ['fasten.holes', 'fasten.slot', 'fasten.clearance', 'fasten.end', 'fasten.length', 'fasten.engagement', 'fasten.seat', 'fasten.access'];
 // fasten.access for one screw, with the order of assembly: a part over the head that goes on later is no trouble
-function accessSays(sc, rel, order) {
+function accessSays(sc, rel, order, numbered = null) {
   const acc = sc.access, t = acc.tool, values = { key: t.size, radius: t.radius, reach: t.reach };
   if (!acc.blockers.length) return { level: 'pass', text: `${an(t.name)} ${t.name} reaches the head along its axis: nothing within ${mm(t.radius)} mm of it for ${mm(t.reach)} mm over the head (${t.rests[0]}, ${t.rests[1]})`, values };
   const names = (list) => list.map((b) => `${b.item} (${mm(b.z)} mm over the head)`).join(' and ');
@@ -790,7 +997,8 @@ function accessSays(sc, rel, order) {
   const step = (id) => order?.steps?.find((st) => st.items.includes(id))?.n, last = Math.max(...[...rel.through, rel.into].map((n) => step(top(n)) ?? Infinity));
   const after = order && !order.stuck && acc.blockers.every((b) => step(b.item) > last);
   if (acc.tilt != null && !after) return { level: 'warn', text: `only a ball-end ${t.name} reaches the head, tilted up to ${mm(acc.tilt)}° (hexkey.ball_end_tilt): ${names(acc.blockers)} stand${acc.blockers.length > 1 ? '' : 's'} on the straight line, and a ball end takes less torque than a straight key`, values: { ...values, tilt: acc.tilt } };
-  return { level: 'pass', text: `${an(t.name)} ${t.name} reaches the head before ${acc.blockers.map((b) => `${b.item}${step(b.item) ? ` (step ${step(b.item)})` : ''}`).join(' and ')} goes on over it`, values: { ...values, distance: acc.blockers[0].z } };
+  const said = numbered ?? step;
+  return { level: 'pass', text: `${an(t.name)} ${t.name} reaches the head before ${acc.blockers.map((b) => `${b.item}${said(b.item) ? ` (step ${said(b.item)})` : ''}`).join(' and ')} goes on over it`, values: { ...values, distance: acc.blockers[0].z } };
 }
 const RANK = { fail: 0, warn: 1, info: 2, pass: 3 };
 // fasten.load for one relation: what it carries, the screw that takes the most against its strength, and slipping
@@ -823,7 +1031,9 @@ export function fastenChecks(s, f, { placeItems }) {
   // the key's way, in the build pose: with the order, which places a part that covers a head after the screw
   const built = s.pose == null || s.pose === s.motion.pose, wanted = built && r.relations.some((rel) => rel.screws.some((sc) => sc.access?.blockers.length));
   const order = wanted && isBuilt(s) ? orderOf(s) : null, access = new Map();
-  if (built) for (const rel of r.relations) for (const sc of rel.screws) if (sc.access) access.set(sc, [accessSays(sc, rel, order)]);
+  // the step numbers said are cad order's: a frame's build where the assembly has joins (none where that build is refused)
+  const numbered = wanted && s.joins?.length ? frameStepOf(frameBuild(s)) : null;
+  if (built) for (const rel of r.relations) for (const sc of rel.screws) if (sc.access) access.set(sc, [accessSays(sc, rel, order, numbered)]);
   for (const rel of r.relations) {
     const n = rel.screws.length, lead = `${rel.label}, ${n === 1 ? `${an(rel.screw)} ${rel.screw} screw` : `${n} ${rel.screw} screws`}`;
     for (const g of rel.general) f(g.level, `${rel.label}: ${g.text}`, `${rel.label}: no screws`, { code: g.code, refs: { fasten: rel.index, through: rel.through, into: rel.into } });

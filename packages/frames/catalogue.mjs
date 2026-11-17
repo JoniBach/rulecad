@@ -1,4 +1,4 @@
-// The rule sets @rulecad/frames reads, by name: every profile, slot family and slot nut in @rulecad/rules, the threads
+// The rule sets @rulecad/frames reads, by name: every profile, slot family, slot nut, bought fitting, rail, V-wheel and eccentric spacer in @rulecad/rules (and the bearings the wheels run on), the rods, linear bearings, lead screws and nuts, couplers, motors and switches a rod guide and its drive read, the threads
 // their bores tap to, the materials they name and the outlines the kit draws itself. Generated from the rules package (one import per set, so a bundler
 // can see them): after adding a set there, add its line here. A test holds the two together.
 import s_al6000_item from '@rulecad/rules/al6000-item.json' with { type: 'json' };
@@ -7,6 +7,13 @@ import s_al6060_rexroth from '@rulecad/rules/al6060-rexroth.json' with { type: '
 import s_al6063_t5 from '@rulecad/rules/al6063-t5.json' with { type: 'json' };
 import s_al6063_t66 from '@rulecad/rules/al6063-t66.json' with { type: 'json' };
 import s_al6n01_t5 from '@rulecad/rules/al6n01-t5.json' with { type: 'json' };
+import s_fitting_misumi_hmj5 from '@rulecad/rules/fitting-misumi-hmj5.json' with { type: 'json' };
+import s_fitting_motedis_bracket_20_b6 from '@rulecad/rules/fitting-motedis-bracket-20-b6.json' with { type: 'json' };
+import s_fitting_motedis_end_cap_20_b6 from '@rulecad/rules/fitting-motedis-end-cap-20-b6.json' with { type: 'json' };
+import s_fitting_motedis_foot_m6_d19 from '@rulecad/rules/fitting-motedis-foot-m6-d19.json' with { type: 'json' };
+import s_fitting_motedis_hinge_20 from '@rulecad/rules/fitting-motedis-hinge-20.json' with { type: 'json' };
+import s_fitting_motedis_inner_20_b6 from '@rulecad/rules/fitting-motedis-inner-20-b6.json' with { type: 'json' };
+import s_fitting_motedis_plate_t_20 from '@rulecad/rules/fitting-motedis-plate-t-20.json' with { type: 'json' };
 import s_m10 from '@rulecad/rules/m10.json' with { type: 'json' };
 import s_m12 from '@rulecad/rules/m12.json' with { type: 'json' };
 import s_m1_6 from '@rulecad/rules/m1_6.json' with { type: 'json' };
@@ -17,6 +24,16 @@ import s_m4 from '@rulecad/rules/m4.json' with { type: 'json' };
 import s_m5 from '@rulecad/rules/m5.json' with { type: 'json' };
 import s_m6 from '@rulecad/rules/m6.json' with { type: 'json' };
 import s_m8 from '@rulecad/rules/m8.json' with { type: 'json' };
+import s_rail_mgn7 from '@rulecad/rules/rail-mgn7.json' with { type: 'json' };
+import s_rail_mgn9 from '@rulecad/rules/rail-mgn9.json' with { type: 'json' };
+import s_rail_mgn12 from '@rulecad/rules/rail-mgn12.json' with { type: 'json' };
+import s_rail_mgn15 from '@rulecad/rules/rail-mgn15.json' with { type: 'json' };
+import s_v_wheel_solid from '@rulecad/rules/v-wheel-solid.json' with { type: 'json' };
+import s_v_wheel_mini from '@rulecad/rules/v-wheel-mini.json' with { type: 'json' };
+import s_eccentric_6_openbuilds from '@rulecad/rules/eccentric-6-openbuilds.json' with { type: 'json' };
+import s_eccentric_mini_6_openbuilds from '@rulecad/rules/eccentric-mini-6-openbuilds.json' with { type: 'json' };
+import s_bearing_625 from '@rulecad/rules/bearing-625.json' with { type: 'json' };
+import s_bearing_mr105 from '@rulecad/rules/bearing-mr105.json' with { type: 'json' };
 import s_profile_1010_8020 from '@rulecad/rules/profile-1010-8020.json' with { type: 'json' };
 import s_profile_1010_makerbeam from '@rulecad/rules/profile-1010-makerbeam.json' with { type: 'json' };
 import s_profile_1020_8020 from '@rulecad/rules/profile-1020-8020.json' with { type: 'json' };
@@ -188,6 +205,17 @@ import s_unc_5_16_18 from '@rulecad/rules/unc_5_16_18.json' with { type: 'json' 
 import s_unc_6_32 from '@rulecad/rules/unc_6_32.json' with { type: 'json' };
 import s_unc_8_32 from '@rulecad/rules/unc_8_32.json' with { type: 'json' };
 import s_unf_10_32 from '@rulecad/rules/unf_10_32.json' with { type: 'json' };
+import s_rod_8 from '@rulecad/rules/rod-8.json' with { type: 'json' };
+import s_lm8uu from '@rulecad/rules/lm8uu.json' with { type: 'json' };
+import s_lm8luu from '@rulecad/rules/lm8luu.json' with { type: 'json' };
+import s_t8_nut from '@rulecad/rules/t8-nut.json' with { type: 'json' };
+import s_t8_screw from '@rulecad/rules/t8-screw.json' with { type: 'json' };
+import s_bearing_608 from '@rulecad/rules/bearing-608.json' with { type: 'json' };
+import s_coupler_5_8 from '@rulecad/rules/coupler-5-8.json' with { type: 'json' };
+import s_endstop_10t85 from '@rulecad/rules/endstop-10t85.json' with { type: 'json' };
+import s_28byj48 from '@rulecad/rules/28byj48.json' with { type: 'json' };
+import s_nema14 from '@rulecad/rules/nema14.json' with { type: 'json' };
+import s_nema17 from '@rulecad/rules/nema17.json' with { type: 'json' };
 import o_profile_custom from '@rulecad/rules/outlines/profile-custom.json' with { type: 'json' };
 import vocabulary from '@rulecad/rules/vocabulary.json' with { type: 'json' };
 
@@ -195,7 +223,8 @@ import vocabulary from '@rulecad/rules/vocabulary.json' with { type: 'json' };
 export const FIELDS = vocabulary.fields;
 /** Every rule set frames knows, by its name. @type {Record<string, { name: string, part?: string, rules: Record<string, any> }>} */
 export const SETS = Object.fromEntries([
-  s_al6000_item, s_al6005a_8020, s_al6060_rexroth, s_al6063_t5, s_al6063_t66, s_al6n01_t5, s_m10, s_m12,
+  s_al6000_item, s_al6005a_8020, s_fitting_misumi_hmj5, s_fitting_motedis_bracket_20_b6, s_fitting_motedis_end_cap_20_b6, s_fitting_motedis_foot_m6_d19, s_fitting_motedis_hinge_20, s_fitting_motedis_inner_20_b6, s_fitting_motedis_plate_t_20,
+  s_al6060_rexroth, s_al6063_t5, s_al6063_t66, s_al6n01_t5, s_m10, s_m12,
   s_m1_6, s_m2, s_m2_5, s_m3, s_m4, s_m5, s_m6, s_m8, s_profile_1010_8020, s_profile_1010_makerbeam, s_profile_1020_8020,
   s_profile_1515_8020, s_profile_1515_makerbeam_xl, s_profile_1515_openbeam, s_profile_1530_8020, s_profile_2020_bosch,
   s_profile_2020_generic, s_profile_2020_item_5, s_profile_2020_misumi_hfs5, s_profile_2020_motedis_b6,
@@ -212,7 +241,7 @@ export const SETS = Object.fromEntries([
   s_profile_custom, s_profile_round_bar_al_10, s_profile_round_bar_steel_10, s_profile_round_bar, s_profile_round_tube_al_25x2,
   s_profile_round_tube_steel_25x2, s_profile_round_tube, s_profile_tube_al_20x20x2, s_profile_tube_al_25x25x2,
   s_profile_tube_al_40x20x2, s_profile_tube_steel_25x25x2, s_profile_tube_steel_40x40x2, s_profile_tube,
-  s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
+  s_rail_mgn7, s_rail_mgn9, s_rail_mgn12, s_rail_mgn15, s_v_wheel_solid, s_v_wheel_mini, s_eccentric_6_openbuilds, s_eccentric_mini_6_openbuilds, s_bearing_625, s_bearing_mr105, s_rod_8, s_lm8uu, s_lm8luu, s_t8_nut, s_t8_screw, s_bearing_608, s_coupler_5_8, s_endstop_10t85, s_28byj48, s_nema14, s_nema17, s_s275, s_slot_10_bosch_45l, s_slot_10_bosch, s_slot_10_misumi_45, s_slot_10_misumi, s_slot_10_motedis,
   s_slot_10, s_slot_3_makerbeam_xl, s_slot_3_makerbeam, s_slot_3_openbeam, s_slot_5_item, s_slot_5_motedis,
   s_slot_6_8020, s_slot_6_bosch, s_slot_6_item_light, s_slot_6_item, s_slot_6_misumi, s_slot_6_motedis_i,
   s_slot_6_motedis, s_slot_6_openbuilds, s_slot_6, s_slot_8_8020, s_slot_8_bosch, s_slot_8_i, s_slot_8_item_light,

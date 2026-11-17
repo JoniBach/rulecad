@@ -1,0 +1,140 @@
+{
+  "_doc": "Motedis' light hinge for 20 mm profiles (H-20x20-L): two black polyamide leaves, 39 x 30 mm open, on a 3 mm pin, each fixed by two M4 screws through 4.5 mm holes 14 mm apart. Sizes from Motedis' drawing, the price from its shop page.",
+  "name": "fitting-motedis-hinge-20",
+  "part": "fitting",
+  "rules": {
+    "fitting_kind": {
+      "value": "hinge",
+      "rule": "A hinge: a leaf on each side of its pin",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), product page https://www.motedis.com/de/Scharnier-20x20-leicht",
+      "checked": "2026-11-17"
+    },
+    "series": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "For 20 x 20 profiles",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), product page https://www.motedis.com/de/Scharnier-20x20-leicht",
+      "checked": "2026-11-17"
+    },
+    "material": {
+      "value": "polyamide (PA), black",
+      "rule": "As the shop page names it",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), product page https://www.motedis.com/de/Scharnier-20x20-leicht",
+      "checked": "2026-11-17"
+    },
+    "thread": {
+      "value": "M4",
+      "rule": "The 4.5 mm holes take M4 screws (the shop lists no fixing set): a clearance hole for M4",
+      "kind": "estimate",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "screw_form": {
+      "value": "button",
+      "rule": "Button heads: the shop lists no fixing set for this hinge, so this is the kit's choice for a thin leaf, an estimate until you choose your own",
+      "kind": "estimate",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), product page https://www.motedis.com/de/Scharnier-20x20-leicht",
+      "checked": "2026-11-17"
+    },
+    "nut_kind": {
+      "value": "hammer",
+      "rule": "Hammer nuts in the slot, as for Motedis' other fittings: the shop names none for this hinge",
+      "kind": "estimate",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), product page https://www.motedis.com/de/Scharnier-20x20-leicht",
+      "checked": "2026-11-17"
+    },
+    "screw_count": {
+      "value": 4,
+      "unit": "",
+      "rule": "Four holes, two in each leaf",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "width": {
+      "value": 39,
+      "unit": "mm",
+      "rule": "Both leaves open: 39 mm",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "leg": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "Along the pin: 30 mm",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "thickness": {
+      "value": 4.8,
+      "unit": "mm",
+      "rule": "Each leaf 4.8 mm (5.5 mm at the knuckle)",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "mount_hole_diameter": {
+      "value": 4.5,
+      "unit": "mm",
+      "rule": "4.5 mm, dimensioned on the drawing",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "holes_b": {
+      "value": [
+        11.5,
+        -7,
+        11.5,
+        7
+      ],
+      "unit": "mm",
+      "rule": "The frame leaf's holes, from the pin: 11.5 mm out (23 across the pin), 14 mm apart along it",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "holes_a": {
+      "value": [
+        11.5,
+        -7,
+        11.5,
+        7
+      ],
+      "unit": "mm",
+      "rule": "The door leaf's, the same",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "pin_diameter": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The pin, 3 mm across",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "knuckle_diameter": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The knuckle, 8 mm across",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), drawing https://www.motedis.com/shop/products_files/Motedis_H-20x20-L-Drawing.pdf",
+      "checked": "2026-11-17"
+    },
+    "cost": {
+      "value": 0.87,
+      "unit": "EUR",
+      "rule": "One hinge in a pack of 10: 8.67 EUR the pack with 20% VAT (7.22 EUR without), on the date checked; screws and nuts apart",
+      "kind": "spec",
+      "source": "Motedis, Scharnier 20x20 leicht (H-20x20-L), product page https://www.motedis.com/de/Scharnier-20x20-leicht",
+      "checked": "2026-11-17"
+    }
+  }
+}

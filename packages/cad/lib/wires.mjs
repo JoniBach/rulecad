@@ -80,7 +80,8 @@ export function wireRows(s, helpers) {
 export function wireChecks(s, f, helpers) {
   for (const w of wireRows(s, helpers)) {
     const refs = { wire: w.id, from: w.from, to: w.to }, at = w.route?.[0], values = { length: w.length, longest: w.longest, shortest: w.shortest, current: w.current, capacity: w.capacity };
-    f('info', `${w.id}: ${w.from} to ${w.to}, ${n3(w.length, 0)} mm with its ${w.loop} mm loop (${n3(w.shortest, 0)} to ${n3(w.longest, 0)} mm as the joints move)`, null, { code: 'wire.length', at, refs, values });
+    const run = (s.runs ?? []).filter((r) => r.wire === w.id), clips = run.reduce((t, r) => t + r.count, 0);
+    f('info', `${w.id}: ${w.from} to ${w.to}, ${n3(w.length, 0)} mm with its ${w.loop} mm loop (${n3(w.shortest, 0)} to ${n3(w.longest, 0)} mm as the joints move)${run.length ? `; ${run.map((r) => `${n3(r.length, 0)} mm of it along ${r.along}`).join(', ')}, held by ${clips} cable clip${clips > 1 ? 's' : ''}` : ''}`, null, { code: 'wire.length', at, refs, values: { ...values, ...(run.length ? { along: run.reduce((t, r) => t + r.length, 0), clips } : {}) } });
     if (w.capacity == null) { f('warn', `${w.id}: no gauge given, so nothing checks it against ${n3(w.current, 2)} A (${w.why})`, `${w.id}: no gauge`, { code: 'wire.gauge', at, refs, values }); continue; }
     if (w.current > w.capacity) f('fail', `${w.id}: ${w.gauge} carries ${n3(w.capacity, 2)} A at most, and this carries ${n3(w.current, 2)} A (${w.why}): a thicker wire`, `${w.id}: too thin`, { code: 'wire.gauge', at, refs, values });
     else f('pass', `${w.id}: ${w.gauge} takes ${n3(w.current, 2)} A (${w.why}), up to ${n3(w.capacity, 2)} A`, null, { code: 'wire.gauge', at, refs, values });

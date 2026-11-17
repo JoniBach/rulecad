@@ -1,6 +1,6 @@
 {
   "name": "@rulecad/variables",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Design values you can trace: every number says where it comes from, and expressions are parsed, never run.",
   "type": "module",
   "exports": {
@@ -11,7 +11,8 @@
     "variables.mjs",
     "variables.d.mts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "license": "MIT",
   "keywords": [
