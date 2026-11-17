@@ -6627,9 +6627,15 @@ rails along x at 260 mm, each tapped M5 18.5 mm deep at both ends; `B`, the two 
 square and nothing more; `C`, the two top rails along y, tapped; and `D` to `G`, the four posts at 200 mm, each tapped
 at its foot, with three access holes on the faces its rails meet. All twelve come out of one 4000 mm bar, with a
 3 mm kerf and 10 mm trimmed off its first end, leaving a 1234 mm offcut. Then the bought parts (the rods, bearings,
-coupler, screw, nut and motor), the fasteners by size with the packs to buy (12 × M5x12 button for the blind joins,
-16 × M4x10 cap and 18 drop-in nuts for the brackets, the holders and the motor plate, 4 × M5x16 cap for the feet,
-2 × M4x8 button for the board plate), and 124 g printed in 17 parts, about 134 minutes of printing.
+coupler, screw, nut and motor), the fasteners by size with the packs to buy, and 124 g printed in 17 parts, about
+134 minutes of printing. The fasteners, as `cad list` gives them:
+
+- 12 × M5x12 button, for the blind joins.
+- 16 × M4x10 cap, with 16 of the 18 drop-in nuts, for the brackets, the rod holders and the motor plate.
+- 2 × M4x8 button, with the other 2 drop-in nuts, for the board plate.
+- 4 × M5x16 cap, for the feet.
+- 4 × M3x8 cap, for the motor on its plate.
+- 4 × M3x12 button, for the lead nut's flange on the carriage.
 
 `cad beams` writes a cut-and-drill sheet for each mark, `exports/frame/box.beam-A.svg` and on: its length, each
 operation dimensioned from end `a`, and which face is up. `--jigs` makes the jigs the beams take, as one plate,
@@ -6654,18 +6660,27 @@ overhang past 45°, nothing in mid-air, nothing too near its neighbour on the fi
 npx cad order frame/box
 ```
 
-`cad order` takes the frame from bars to square in 37 numbered steps:
+`cad order` takes the frame from bars to square in 37 numbered steps, and `cad check` counts the same 37
+(`assembly.order`):
 
 1. Cut the beams, mark by mark, from the one bar.
 2. Drill and tap each mark as its sheet shows, and write the item on each beam.
 3. Side 1, the front (`p1`, `p2`, `x1` and `x3`), built flat on the bench, a join at a time, each with its screw, its
-   3 mm hex key and its torque (steps 3 to 6), then squared by its diagonals and its joins tightened (step 7).
+   3 mm hex key and its torque (steps 3 to 6). Each join is left snug, then the side is squared by its diagonals and
+   its joins tightened to their torque (step 7).
 4. Side 2, the back, the same (steps 8 to 12).
 5. The rails along y go on side 1 (steps 13 to 16), and side 2 goes on as one (step 17): the heads of its blind joins
    slide into the posts' slots from their ends.
 6. The two bays along y are squared (step 18).
 7. The rest is mounted: the feet and caps, the board plate, the holders, the carriage, the motor plate, the rods,
    the bearings, the motor, the coupler, the screw and its nut (steps 19 to 37).
+
+Every head and every nut has a way into its slot at the step that puts it there: an end of the slot that nothing has
+closed yet, and nothing already in the slot between it and that end. Here each blind join's head slides in from the
+nearer end of its post as its rail goes on, and every slot nut is a drop-in, which goes in through the opening. Where a
+slide-in nut or a head has no such way as its beam goes on, the build loads it at a step where it has one (`Load 2 ×
+... through its end b, before cap1 goes on`, or `Slide an M5x12 button screw into x3's back slot head first ...`),
+and where no step has one, it is refused with the slot and what is in the way.
 
 It ends with each kind of join's tightening: the twelve blind joins to 3.68 N m (what the lips take), the four bracket
 joins to 0.68 N m (what the PLA under each head takes).
@@ -6742,7 +6757,12 @@ can be run along its travel.
 ### What rests on estimates
 
 The beams' sections, the slot nuts, the rods, the bearings, the screw and the motor come from their makers' figures.
-Three things do not, and their findings say so: each join's stiffness, until the joint rig (issue 264) measures one;
-the torque a blind join's head puts on the lips, which counts their bearing and not their bending; and the printed
-parts' margins, which rest on PLA's strength and on beam formulas or coarse finite elements. The frame's own sag and
+Five things do not, and their findings say so:
+
+- Each join's stiffness, until the joint rig (issue 264) measures one.
+- The torque a blind join's head puts on the lips, which counts their bearing and not their bending.
+- The printed parts' margins, which rest on PLA's strength and on beam formulas or coarse finite elements.
+- The motor's case temperature (`motor.heat`): the maker's rise at its rated current, scaled by the square of the
+  current the driver is set to (1.2 A here), since the heat goes as the current squared.
+- The lead nut's friction on the screw, 0.15, an estimate that goes to the motor's checks with the lead. The frame's own sag and
 sway under the carriage's load, and its lowest frequency, come with the frame checks (issues 265 to 267).

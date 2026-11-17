@@ -138,7 +138,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   Never draw the holders, motor plate, coupler or carriage yourself: the guides place them by addresses and give the
   motor its lead screw. Report the travel, `motor.torque`'s margin, `guide.coupler`, the bearings' `joint.moment`, the
   endstop's home, and each printed part's grams and margin; if the endstop is refused, use the address it names.
-- **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
+- **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, or `x1.top@120`, the
+  middle of its screws), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
   a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close
   at both ends: use the kind it names (`"nut": "drop-in"`). `frame.preload` lists nuts to load before a join; tell
@@ -147,7 +148,8 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   flat and squared, nuts to load, joins with their torque, the diagonals, then the rest). Give the user its steps and
   its diagonals (`frame.square`: each and the difference to accept). If it is refused for a slot's nuts, change the
   nut to the kind it names; never reorder the joins to get round it. Where a side is built on the frame, not flat,
-  the build says why; pass that on.
+  the build says why; pass that on. Its load and "Slide ... screw into ... head first" steps give each nut and head a
+  way into its slot: pass them on as written. `cad check` counts the same steps.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in

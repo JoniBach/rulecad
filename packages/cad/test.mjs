@@ -1880,6 +1880,14 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     const cut = run(ws, ['list', 'frame/box']).out;
     assert.match(cut, /profile-2020-misumi-hfs5: buy 1 × 4000 mm; kerf 3, trim 10; 1234 mm left over/);
     assert.match(cut, /12 ×\s+M5x12 button[\s\S]*18 ×\s+slot-nut-6-misumi-m4-drop-in/); assert.match(cut, /Total: 124 g printed/);
+    // the chapter's fasteners as cad list gives them: the 18 nuts are 16 for the brackets, holders and motor plate and 2 for the board plate
+    for (const [n, what] of [[4, 'M3x8 cap'], [4, 'M3x12 button'], [2, 'M4x8 button'], [16, 'M4x10 cap'], [12, 'M5x12 button'], [4, 'M5x16 cap']]) assert.match(cut, new RegExp(`\\n\\s+${n} ×\\s+${what.replace('.', '\\.')}\\s`), what);
+    assert.equal((cut.match(/\n\s+18 ×\s+slot-nut-6-misumi-m4-drop-in.*/)[0].match(/The board plate/g) || []).length, 1);
+    // what rests on estimates, as the chapter says: the heat scaled by the current squared, the lead nut's friction 0.15
+    assert.match(of16('motor.heat')[0].text, /reaches at most [\d.]+ °C at 1\.2 A/);
+    assert.ok(box.some((x) => /the nut's friction μ 0\.15 \(estimate\)/.test(x.text)), 'the lead nut\'s friction');
+    // one count: cad check's assembly.order counts the build cad order prints
+    assert.equal(of16('assembly.order')[0].values.steps, 37);
     for (const m of 'ABCDEFG') assert.ok(fs.existsSync(path.join(ws, `exports/frame/box.beam-${m}.svg`)), `the sheet for mark ${m}`);
     assert.ok(fs.existsSync(path.join(ws, 'exports/frame/box.jigs.3mf')), 'the jigs as one plate');
     const bed = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/box-base-1.json'), 'utf8'));
