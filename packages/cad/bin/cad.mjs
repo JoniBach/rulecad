@@ -95,7 +95,7 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad machine <project>/<assembly>  the machine as plain data: axes, steps, limits, homing, the task, in exports/
   cad plot <project>/<assembly> <drawing.svg>   plans a drawing on the machine: a step file in exports/, an animation in
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
-  cad order <project>/<assembly>    the order it goes together in, each step with its fasteners [--preview: an exploded picture of each step in .preview/]
+  cad order <project>/<assembly>    the order it goes together in, each step with its fasteners; a frame from bars to square: cut, drill, sides built flat, nuts to load, joins with their torque, diagonals [--preview: an exploded picture of each step in .preview/]
   cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
@@ -1029,9 +1029,11 @@ async function platesCommand(what, ref) {
   const s = await buildAssembly(ref);
   if (what === 'order') {
     const { orderOf, orderText, stepPictures } = await import('../lib/order.mjs'), { withPreload } = await import('../lib/slotnuts.mjs'), r = withPreload(s, orderOf(s));
-    if (opt('json')) return console.log(JSON.stringify(r, null, 2));
-    console.log(orderText(ref, r));
-    if (r.stuck) { process.exitCode = 1; return; }
+    // a frame (beams with joins): from bars to a square frame, its sides built flat, nuts loaded before the join that would shut them in
+    const frame = s.joins?.length ? (await import('../lib/framebuild.mjs')) : null, fb = frame ? frame.frameBuild(s) : null;
+    if (opt('json')) { console.log(JSON.stringify(fb ? { ...r, frame: fb } : r, null, 2)); if (r.stuck || fb?.stuck) process.exitCode = 1; return; }
+    console.log(fb ? frame.frameBuildText(ref, fb) : orderText(ref, r));
+    if (r.stuck || fb?.stuck) { process.exitCode = 1; return; }
     if (opt('preview')) { const pics = stepPictures(s, r); for (const [i, parts] of pics.entries()) { const st = r.steps[i], out = paths.preview(s.project, `${s.name}-step-${String(st.n).padStart(2, '0')}.png`); await preview(parts, { title: `${s.a.title || s.name}: step ${st.n} of ${r.steps.length}`, meta: st.text, out }); console.log(path.relative(WS, out)); } }
     return;
   }

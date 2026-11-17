@@ -789,6 +789,19 @@ function buildPage(model, { apply, view, foot, narrow, panel, spin }) {
       parts.push(section('Assembly', ol));
     }
   }
+  // A frame, from bars to square: numbered steps (cut, drill, sides built flat, nuts to load, joins, diagonals, the rest),
+  // the tightening of each kind of join, and each bay's diagonals
+  const FR = b.frame;
+  if (FR?.error) parts.push(section('Building the frame', trouble(FR)));
+  else if (FR?.stuck) parts.push(section('Building the frame', el('p', 'problem-line', FR.stuck.text)));
+  else if (FR) {
+    const ol = el('ol', 'frame-steps');
+    for (const st of FR.steps) { const li = el('li', st.kind); li.append(el('span', null, st.text)); if (st.lines?.length) { const ul = el('ul'); for (const l of st.lines) ul.append(el('li', null, l)); li.append(ul); } ol.append(li); }
+    const kids = [ol];
+    if (FR.torques?.length) kids.push(el('h3', null, 'Tightening, by kind of join'), table(['Join', 'Joins', 'Screws', 'Key', 'N m', 'Why'], FR.torques.map((t) => [t.kind, t.joins, t.fasteners.join(', '), t.key, t.torque, t.why])));
+    if (FR.bays?.length) kids.push(el('h3', null, 'Diagonals'), table(['Bay', 'Opening, mm', 'Each diagonal, mm', 'Accept up to, mm'], FR.bays.map((x) => [x.name, `${x.width} × ${x.height}`, x.diagonal, x.accept])));
+    parts.push(section('Building the frame', ...kids));
+  }
   // Settings
   const M = b.machine;
   if (M?.error) parts.push(section('Machine settings', trouble(M)));

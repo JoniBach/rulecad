@@ -78,6 +78,22 @@ export function preloadOf(s) {
 }
 
 /**
+ * The slide-in and square nuts that joins shut in: their stretch of slot closed at both ends by joins (frame.nut's
+ * failures), each with the two joins and the nut that goes in through the opening, where there is one.
+ * @param {object} s a built assembly
+ * @returns {{ fasten: number, label: string, item: string, place: string, named: string, nut: string, kind: string, count: number, part: string, at: number[], joins: object[], alternative: object|null }[]}
+ */
+export function trappedOf(s) {
+  const out = [];
+  for (const g of groupsOf(s)) {
+    if (g.entry !== 'end') continue;
+    const w = waysOf(s, g.item, g.place, Math.min(...g.at), Math.max(...g.at));
+    if (w.a?.join && w.b?.join) out.push({ fasten: g.rel.index, label: g.rel.label, item: g.item, place: g.place, named: g.named, nut: g.nut, kind: g.kind, count: g.at.length, part: g.part, at: g.at, joins: [w.a.join, w.b.join], alternative: throughNut(s, g) });
+  }
+  return out;
+}
+
+/**
  * frame.nut and frame.preload, in the assembly's findings shape. @param {object} s a built assembly @param {Function} f the findings' sink
  */
 export function slotNutChecks(s, f) {

@@ -1,6 +1,7 @@
 // What a machine's model link adds to the model, all read from the same assembly the checks read: the task (the pen, the
 // plane, the margins' figures), a step file, the wires' routes, and the build page (shopping list with the beams' cut
-// list, each beam's cut-and-drill sheet, plates, wiring sheet, assembly steps, machine settings).
+// list, each beam's cut-and-drill sheet, plates, wiring sheet, assembly steps, a frame's build from bars to square,
+// machine settings).
 import fs from 'node:fs';
 import path from 'node:path';
 import { sheetFrame } from '@rulecad/robots';
@@ -14,6 +15,7 @@ import { cutListOf, sheetFile } from './beams.mjs';
 import { wiresFor, wireRoutesOf } from './assembly.mjs';
 import { orderOf, isBuilt } from './order.mjs';
 import { withPreload } from './slotnuts.mjs';
+import { frameBuild } from './framebuild.mjs';
 import { platesOf } from './plates.mjs';
 import { wiringSheet } from './wires.mjs';
 import { readLedger } from './measured.mjs';
@@ -65,7 +67,8 @@ export async function buildData(s) {
   const machine = s.task ? await guard(() => machineOf(s)) : null;
   // each mark's cut-and-drill sheet, by its file in the exports (cad beams writes them), and whether it is there yet
   const beams = await guard(() => { const c = cutListOf(s); return c ? { sheets: c.marks.map((m) => ({ mark: m.mark, items: m.items, file: ['exports', s.project, path.basename(sheetFile(s, m.mark))].join('/'), written: fs.existsSync(sheetFile(s, m.mark)) })) } : null; });
-  return { build: { list, wires, plates, order, machine, beams } };
+  const frame = s.joins?.length ? await guard(() => { const { steps, sides, bays, torques, stuck } = frameBuild(s); return { steps, sides: sides.map((x) => ({ beams: x.beams, name: x.name })), bays: bays.map((b) => ({ beams: b.beams, name: b.name, width: b.width, height: b.height, diagonal: b.square.diagonal, accept: b.square.accept, lean: b.square.lean })), torques, stuck }; }) : null; // (from bars to a square frame)
+  return { build: { list, wires, plates, order, machine, beams, ...(frame ? { frame } : {}) } };
 }
 
 // The ledger, in the rules sheet's own rows: each prediction the bench can measure, the measurement once it's in

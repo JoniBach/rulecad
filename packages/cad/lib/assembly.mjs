@@ -55,6 +55,7 @@ import { expandPanels, panelBuilt, panelFindings } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
 import { slotNutChecks } from './slotnuts.mjs';
+import { frameSquareChecks } from './framebuild.mjs';
 let fastening = null; // lib/fasten.mjs, loaded with the first assembly that has a fasten: the rest start as fast as before
 
 export const assemblyPath = (ref) => { const [project, name] = String(ref).split('/'); return path.join(paths.project(project || ''), 'assemblies', `${name || ''}.json`); };
@@ -963,6 +964,7 @@ export function checkAssembly(s) {
   guideFindings(s, f);
   joinChecks(s, f);
   slotNutChecks(s, f);
+  frameSquareChecks(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });
