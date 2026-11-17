@@ -16,7 +16,8 @@
 // rating) and a printed slider in or over a slot; and two smooth rods in printed holders with a printed carriage on
 // linear bearings, driven by a lead screw from a printed motor plate for the catalogue's motors, with an endstop's
 // printed mount and a flag on the carriage; and jigs for hand tools from a beam's operations (a drill guide, a tap
-// guide, a cut-length stop and a squaring corner). Belts follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
+// guide, a cut-length stop and a squaring corner); and a bay squared by its diagonals (their length and the difference
+// to accept, from the cut tolerance). Belts follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
 //
 // Every profile, slot family, slot nut, bought fitting and rail is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the
@@ -39,3 +40,4 @@ export { WHEEL_DEFAULTS, wheels, trackFit, wheelsModel, wheelPlate, vWheel, whee
 export { ROD_DEFAULTS, rodsLayout, rodHolderModel, rodHolder, motorPlateModel, motorPlate, rodCarriageModel, rodCarriage, endstopMountModel, endstopMount, rodMargin } from './rods.mjs';
 export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';
 export { JIG_KINDS, JIG_DEFAULTS, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner } from './jig.mjs';
+export { squareness } from './square.mjs';

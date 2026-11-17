@@ -334,6 +334,24 @@ function lipsOf(s, l, fx) {
   if (!sl) throw new Error(`fasten: ${l.item} has no slot ${l.slot} for a head to sit in`);
   return { slot: l.slot, inside: !!l.inside, opening: sl.opening, cavityWidth: sl.cavityWidth, room: sl.straight > 0 ? sl.straight : sl.cavityDepth - sl.lip, thread: fx.thread };
 }
+// What a slot's lips take under a head D across, over an opening w: the head's circle less the strip of the opening across
+// it, A = π D² / 4 - 2 (c √(R² - c²) + R² asin(c / R)) with R = D / 2 and c = w / 2, at the beam alloy's strength (taken
+// as what it bears, an estimate: the lips' bending is not counted), and the torque for that force by T = K d F; the
+// least of that and a screw tightened fully. null where the beam's alloy has no strength in its rule set.
+function lipsTake(F, s, item, fx, D, w) {
+  const name = s.objects.find((o) => o.id === item)?.beam?.material?.name;
+  let mat = null;
+  try { mat = name ? peekRuleSet(name) : null; } catch { mat = null; }
+  if (!mat?.rules?.strength || !mat.rules.modulus) return null;
+  const R = D / 2, c = Math.min(w / 2, R), area = Math.PI * R * R - 2 * (c * Math.sqrt(R * R - c * c) + R * R * Math.asin(c / R));
+  let limit, full;
+  try { limit = F.seating(fx, { head: 'button', material: { name, rules: mat.rules }, force: 1 }).limit; full = F.preload(fx, { force: 1 }).full; } catch { return null; }
+  const K = DEFAULTS.nut_factor.value, force = limit * area, torque = (K * fx.major * force) / 1000, by = torque <= full.torque ? 'lips' : 'screw';
+  const T = +Math.min(torque, full.torque).toFixed(2);
+  return { area: +area.toFixed(2), limit, force: +force.toFixed(1), torque: T,
+    text: by === 'lips' ? `on ${name} (${mm(limit)} MPa) the ${mm(+area.toFixed(1))} mm² either side of the opening takes ${mm(+force.toFixed(0))} N, a tightening of ${mm(T)} N m (the lips' bending not counted: an estimate)`
+      : `the lips take ${mm(+force.toFixed(0))} N on ${mm(+area.toFixed(1))} mm² of ${name}, more than the screw tightened fully: ${mm(T)} N m, three quarters of its proof load` };
+}
 // "into" as a slot on a beam (x1.top, x1.top.2, x1.top@120): the beam, the face's slots the screws may go in, the distance
 // where one is given; null where into is not a beam's face (a part, or a beam's end: a tap there is read from its ops)
 function slotInto(s, n, what) {
@@ -769,7 +787,13 @@ export function fastenOf(s, worlds, opts = {}) {
         if (form === 'countersunk' || across <= lips.opening + 1e-9) say('fasten.seat', 'fail', `the ${form} head, ${mm(across)} mm across, ${form === 'countersunk' ? 'has no cone to sit in on' : 'pulls through'} ${of}, whose lips are ${mm(lips.opening)} mm apart: a head wider than the opening, a button or a cap, holds`, values);
         else if (lips.inside && across > lips.cavityWidth + 1e-9) say('fasten.seat', 'fail', `the head, ${mm(across)} mm across, does not go into ${of}, ${mm(lips.cavityWidth)} mm wide under its lips: a smaller head, or a join that puts the head outside the beam`, values);
         else if (lips.inside && head.height > lips.room + 1e-9) say('fasten.seat', 'fail', `the head, ${mm(head.height)} mm high, does not fit under the lips of ${of}, which has ${mm(lips.room)} mm at its full width: a lower head (a button)`, values);
-        else say('fasten.seat', 'pass', `the head, ${mm(across)} mm across, bears on the lips of ${of} ${lips.inside ? `from inside, in its ${mm(lips.cavityWidth)} mm cavity (${mm(head.height)} mm of the ${mm(lips.room)} mm under the lips)` : 'from outside'}, on each side of its ${mm(lips.opening)} mm opening`, values);
+        else {
+          // what the lips take: the head's circle less the strip of the opening across it, against the beam's alloy;
+          // the tightening is the least of that and a screw tightened fully (three quarters of its proof load)
+          const bt = lipsTake(F, s, x.lips.item, fx, across, lips.opening), v2 = bt ? { ...values, area: bt.area, limit: bt.limit, force: bt.force, torque: bt.torque } : values;
+          if (bt) { sc.most = bt.torque; sc.seatForce = bt.force; }
+          say('fasten.seat', 'pass', `the head, ${mm(across)} mm across, bears on the lips of ${of} ${lips.inside ? `from inside, in its ${mm(lips.cavityWidth)} mm cavity (${mm(head.height)} mm of the ${mm(lips.room)} mm under the lips)` : 'from outside'}, on each side of its ${mm(lips.opening)} mm opening${bt ? `; ${bt.text}` : ''}`, v2);
+        }
       } else if (A) {
         const seatPart = A.segs[bore0], near = seatPart.of.near, zLocal = (z) => (flip ? -z : z), bearR = (washer ? washer.diameter : head.across) / 2, boreR = seatPart.a.free, seatMat = matOf(A); // (boreR: the hole's mouth at the seat, a lead-in with it)
         const e = 0.02;
