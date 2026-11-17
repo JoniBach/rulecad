@@ -105,6 +105,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   or slot: choose another set, never edit the set to pass. The other kinds are checked where they meet and say their
   fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
   address is what was wrong; `join.stiffness` is an estimate and says so, so report it as one.
+- **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
+  cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
+  hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner per square join),
+  each marked with the marks it is for. Report each jig's grams and margin and that it prints clean; a hole too far
+  from both ends for one print is a `jig.drill` warning: say to mark it from the sheet.
 - **A bay closed by a sheet is a `panel` item**: `{ "id": "front", "panel": { "sheet": "acrylic", "thickness": 3,
   "bay": ["x1", "z2", "x2", "z1"], "out": [0, -1, 0] } }`. It is cut to the bay with its clips at a pitch, each
   fastened into its slot; report its size and grams from `cad check` (`panel.size`) and the clips from `cad list`.

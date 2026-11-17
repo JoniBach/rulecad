@@ -15,7 +15,8 @@
 // tracks (a printed plate, the wheels' seats from the track, their eccentrics' preload, each wheel's load against its
 // rating) and a printed slider in or over a slot; and two smooth rods in printed holders with a printed carriage on
 // linear bearings, driven by a lead screw from a printed motor plate for the catalogue's motors, with an endstop's
-// printed mount and a flag on the carriage. Belts follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
+// printed mount and a flag on the carriage; and jigs for hand tools from a beam's operations (a drill guide, a tap
+// guide, a cut-length stop and a squaring corner). Belts follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
 //
 // Every profile, slot family, slot nut, bought fitting and rail is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the

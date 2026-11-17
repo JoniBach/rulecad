@@ -35,6 +35,9 @@ cut, and fastens to them:
   carriage on V-wheels in a V-slot's tracks (`wheelsModel`), where each wheel's axle goes from the track and its rim
   (`trackFit`), its eccentrics' preload range and each wheel's load against its rating (`wheelMargin`); and a printed
   slider in or over a slot (`sliderModel`).
+- **Jigs**: printed jigs for hand tools from a beam's operations: a drill guide that puts a bush where the sheet
+  dimensions a hole (`drillGuideModel`), a tap guide over an end (`tapGuideModel`), a cut-length stop with its gauge
+  (`lengthStopModel`) and a squaring corner (`squareCornerModel`).
 
 More fittings (a three-way corner, a hidden-corner cover, a printed node) and the other guides (rods, screws and
 belts) follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
@@ -832,6 +835,43 @@ as a join's tap) and the screw sold that engages the aluminium and stops inside 
 address on the beam (`x1.a`): z out of the end, x along the beam's top. Seen from outside end a the section lies
 mirrored, so a section's point (x, y) is at (y, x) there and at (y, −x) at end b.
 
+## Jigs
+
+A hand drill, a tap and a saw meet a drawing through a jig. Each jig here is drawn from a beam's operations, the
+profile's rules and the printer's, prints without supports on a plain first layer, and reports its grams and its
+margin at a named load (`JIG_DEFAULTS.load`, 20 N: a hand pressing it on, or a tool pushing sideways).
+
+```js
+import { beamModel, drillGuideModel, drillGuide, tapGuideModel, lengthStopModel, squareCornerModel } from '@rulecad/frames'
+
+const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'access', at: 'front@30', thread: 'M5', through: 'beam' }, { op: 'tap', at: 'a' }] })
+const g = drillGuideModel(b, b.ops.findIndex((x) => x.op === 'access'))
+g.bush             // { drill: 5.3, diameter: 5.5, length: 10.6, at: [0, 30], within: 0.05, lean: 0.54, sheet: 30 }
+g.grams            // 11.96 g of PLA, 6.66 times under its load
+drillGuide(g, { pose: 'fit' })   // on the beam, in the beam's frame: its bore 30 mm from end a, where the sheet puts the hole
+tapGuideModel(b, b.ops.find((x) => x.op === 'tap')).lean            // 0.57°: the most the tap leans in its 10 mm bore
+lengthStopModel('2020-misumi-hfs5', 300).gauge                       // 2 pieces of 150 mm
+squareCornerModel({ profile: '2020-misumi-hfs5' }, { profile: '2020-misumi-hfs5' }).square   // 0.17°
+```
+
+| Jig | What it is | Prints |
+|---|---|---|
+| `drillGuideModel(beam, op, { from? })` | For a hole across a beam (access, drill, counterbore): a plate on the drilled face with a stop on the nearer end (or `from`), a tongue in the face's slot, and a bush for the drill at the sheet's dimension on the slot's centre line. Refused where the face is closed, or the hole is too far from both ends for the bed | Outer face down, the stop and tongue standing up, the bush upright |
+| `tapGuideModel(beam, op, { shank? })` | For a tapped end: a cap over the end, a sleeve round the section, and a bore over each tapped bore that holds the tap square | Outer face down, the sleeve standing up |
+| `lengthStopModel(profile, length)` | For one length: a block a spring clamp holds against the saw's fence or a mitre box's back, and a gauge as long as the cut, in pieces no longer than the bed takes, that sets the block from the blade's near side | Flat, every edge on the table chamfered by the printer's `chamfer` |
+| `squareCornerModel(a, b)` | For two beams meeting square: an L on a face of each in one plane, a tongue in each slot, that holds them square while the join is tightened | Outer face down, the tongues on top |
+
+`drillGuide`, `tapGuide`, `lengthStop` (`{ part: 'block' \| 'gauge' }`) and `squareCorner` draw them, each in its
+print pose; a drill guide and a tap guide also `{ pose: 'fit' }`, on the beam in the beam's frame. Each takes a
+`mark`, a 2D outline cut 0.4 mm into a face that faces up as it prints, so a jig says which beam it is for. The
+print frames are in the header of `jig.mjs`.
+
+Sizes come from the rules. A bush is the drill (or the tap's shank) plus the printer's `slip` and `hole_comp`, and
+guides it over `JIG_DEFAULTS.bush` (2) diameters. A tongue is the slot's opening less the printer's `slip`, and its
+lip less the `fit` deep. A drill guide's stop is as thick as keeps it from bending more than `JIG_DEFAULTS.within`
+(0.05 mm) under the load. @rulecad/cad generates the whole set from an assembly: `cad beams <project>/<assembly>
+--jigs`.
+
 ## Slot nuts
 
 A slot nut is a rule set in `@rulecad/rules` (`"part": "slot_nut"`), one for each maker, slot, thread and kind:
@@ -981,6 +1021,11 @@ kit's.
 | A beam's sag under a guide | δ = 5 w L⁴ / (384 E I) + P L³ / (48 E I) | Simply supported beam, spread and middle loads (Roark's Formulas for Stress and Strain, table 8.1) |
 | A jig's keys | δ = 2 (S / 2) l² / (3 E t), l the leg to the key, t its wall | A cantilever pushed δ at its tip, its stress 3 E t δ / (2 l²) at the root |
 | A jig's length | w = 6 F l / (t² S / 2) | A leg bent at its root by the push on the rail |
+| A drill guide's stop | t = ∛(4 F h³ / (E W δ)), and t ≥ √(2 · 6 F h / (W S)) | A cantilever h long (`JIG_DEFAULTS.stop` of the beam's depth), W wide, bent no more than δ (`JIG_DEFAULTS.within`) by F, at twice the margin |
+| A bush and the tool's lean | d = D + slip + hole_comp; lean = atan(slip / l), l = 2 D | The printer's `slip` and `hole_comp` (x1c), the bush `JIG_DEFAULTS.bush` diameters long, an estimate |
+| A tap guide's sleeve | w = √(2 · 6 F h / (B S)) | A wall B wide and h deep bent by F at its rim |
+| A squaring corner's square | atan(slip / l_a) + atan(slip / l_b) | Each tongue's play over its length, held to `JIG_DEFAULTS.square` (0.5°, cad's `JOIN_CHECK.square`) |
+| A length gauge | n = ⌈L / (bed − 2 e)⌉ pieces of L / n, within ±n × 0.1 mm | `JIG_DEFAULTS.edge` and `.gaugeError`, an estimate: check it with a rule |
 | A V-wheel's seat | d = (T − f) / 2 / tan(θ / 2); the axle R − d from the face, T the track's width, f the rim's flat, θ the V | The wheel's flanks lying on the track's |
 | A wheel's flank load | N = π r l p² / E*, E* = E / (1 − ν²); radial 2 N cos(θ / 2), axial N sin(θ / 2) | Hertz line contact, a cylinder on a flat (Roark's Formulas for Stress and Strain, table 14.1, case 2b); r the radius at the contact's middle, l the flank's slant length, the track rigid: `WHEEL_DEFAULTS.curvature`, an estimate |
 | A wheel's margin | 1 / max over wheels (radial / radial rating + axial / axial rating) | `WHEEL_DEFAULTS.combine` and `.share`, estimates |
@@ -1033,6 +1078,11 @@ rail's size and hole pitch, and their carriages' ratings differ: give a variant 
 the jig's key and how a carriage's loads combine are estimates (`GUIDE_DEFAULTS` says which); the beam's sag assumes
 pinned ends, the worse case.
 
+The jigs rest on the printer's rule set for their fits (`slip`, `hole_comp`, `fit`, `chamfer`, `bed`) and on
+`JIG_DEFAULTS`: the 20 N load, the bush's length, a tap's shank and the gauge's error are estimates, and each says
+so; the stop's depth and its 0.05 mm bend, the sleeve, the block and the gauge's section are working figures. Their
+margins are by beam formulas.
+
 A V-wheel's rim, bearing seats and kit, the eccentric spacers and the plain spacers are read off OpenBuilds' drawings
 (`spec`). Its plastic's modulus and allowed contact pressure are Delrin 150's, from two data sheets, `community`
 because OpenBuilds does not name the grade; Poisson's ratio is an estimate. Where a wheel seats rests on the slot's
@@ -1076,6 +1126,7 @@ lists them.
 | `GUIDE_KINDS`, `GUIDE_DEFAULTS`, `rails()`, `railModel(set, { length, variant?, carriages?, given? })`, `rail(m)`, `carriage(m)`, `guideFit(m, profile, { face?, from?, beam?, nut?, keep?, given? })`, `carriageMargin(m, { force, moment })`, `railTerms(m, profile, { beam, carried?, face? })`, `railJigModel(profile, { rail, face?, length?, load? })`, `railJig(m, { pose?, tongues? })` | Guides: a rail's model (holes, screws, carriages' shares and travel), its solids, whether it fits a face, a carriage's loads against its ratings, its error terms, and the printed jig that centres it |
 | `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
 | `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
+| `JIG_KINDS`, `JIG_DEFAULTS`, `drillGuideModel(beam, op, { from?, load? })`, `drillGuide(m, { pose?, mark? })`, `tapGuideModel(beam, op, { shank?, load? })`, `tapGuide(m, { pose?, mark? })`, `lengthStopModel(profile, length, { load? })`, `lengthStop(m, { part?, mark? })`, `squareCornerModel({ profile, face? }, { profile, face?, edge? }, { load? })`, `squareCorner(m, { mark? })` | Jigs for hand tools: a drill guide and a tap guide from a beam's operations, a cut-length stop with its gauge, and a squaring corner; each takes `printer` and `material` too |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
