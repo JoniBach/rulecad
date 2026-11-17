@@ -3123,6 +3123,12 @@ test('services: the worked arm\'s shield and supply mount on a rail from their o
     assert.match(list, /4 ×\s+M2\.5x8 cap/); assert.match(list, /2 ×\s+M3x5 button/); assert.match(list, /4 ×\s+slot-nut-6-misumi-m5-slide-in/);
     assert.match(list, /shield-mount \(fitting:device-mount-2020-misumi-hfs5-cnc-shield-v3-m5\)/); assert.match(list, /power-clip-4 \(fitting:cable-clip-6-misumi-6mm\)/);
     assert.match(cad('check', 'rack/rack'), /files match their schemas/);
+    // the other service parts as fitting items, each screwed into the slot: nothing fails or warns
+    const P = '2020-misumi-hfs5', kinds = [['fan', { kind: 'fan-mount', size: 40 }, 'rail.top@60', 2], ['tie', { kind: 'tie-anchor' }, 'rail.top@150', 1], ['din', { kind: 'din-rail' }, 'rail.top@220', 2], ['spool', { kind: 'spool-holder' }, 'rail.front@320', 1]];
+    fs.writeFileSync(at('assemblies/more.json'), JSON.stringify({ title: 'more', kind: 'fit', items: [{ id: 'rail', beam: { profile: P }, from: [0, 0, 0], to: [400, 0, 0] }, ...kinds.map(([id, f, a]) => ({ id, fitting: { profile: P, ...f }, at: a }))],
+      fasten: kinds.map(([id, , a, n]) => ({ screw: 'M5 button', through: [id], into: a.split('@')[0], at: Array.from({ length: n }, (_, k) => `${id}.b${k + 1}`) })) }));
+    const more = cad('check', 'rack/more');
+    assert.doesNotMatch(more, /^\s+(✗|!) /m); assert.match(more, /fan: printed mount for a 40 mm fan on 2020-misumi-hfs5/); assert.match(more, /spool: printed spool holder/);
     // refused by name
     write([{ ...mine('shield'), at: [0, 0, 0], mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item shield: a mounted item is placed by its mount: leave out at, rotate and repeat/);
     write([{ id: 'd1', bought: 'drv8825', mount: { on: 'rail.top@100' } }]); assert.match(cad('check', 'rack/rack'), /item d1: mount holds a bought board or supply, and drv8825 is a driver/);

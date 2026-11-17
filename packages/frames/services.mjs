@@ -464,13 +464,13 @@ export function spoolHolderModel(profile, o = {}) {
   const F = o.load ?? r3(sp.mass * G * SERVICE_DEFAULTS.pull.value), L = r3(clear + sp.width + lipW), M = F * (clear + sp.width / 2);
   const least = up(FITTING_DEFAULTS.least.value * sc.major, k.layer), ta = r3(Math.max(least, up(bendT(M, w, k.S, want()), k.layer)));
   if (ta + lip > sp.bore - 4) throw new Error(`${what}: an arm ${mm(ta)} mm deep with its ${lip} mm lip does not pass a ${mm(sp.bore)} mm bore with 2 mm round it: a lighter spool, or a wider arm (width)`);
-  const fits = sold(least, k.layer, [sd], sd.thread), tb = fits ? fits.t : least;
-  const loop = roundConcave(ccw([[-e, 0], [r3(e + ta), 0], [r3(e + ta), r3(L - lipW)], [r3(e + ta + lip), r3(L - lipW)], [r3(e + ta + lip), L], [e, L], [e, tb], [-e, tb]]), Math.min(3, tb), null, 8).map(([y, z]) => [r3(y), r3(z)]);
-  const stress = r3((6 * M) / (w * ta * ta)), margin = r3(bendMargin(M, w, ta, k.S)), pull = r3(M / (e + ta));
+  const fits = sold(least, k.layer, [sd], sd.thread), tb = fits ? fits.t : least, rr = Math.min(3, tb), a0 = r3(up(Math.max(e, sc.dk / 2 + FITTING_DEFAULTS.reach.value + rr), 0.5)); // (the arm's root round clear of the head)
+  const loop = roundConcave(ccw([[-e, 0], [r3(a0 + ta), 0], [r3(a0 + ta), r3(L - lipW)], [r3(a0 + ta + lip), r3(L - lipW)], [r3(a0 + ta + lip), L], [a0, L], [a0, tb], [-e, tb]]), rr, null, 8).map(([y, z]) => [r3(y), r3(z)]);
+  const stress = r3((6 * M) / (w * ta * ta)), margin = r3(bendMargin(M, w, ta, k.S)), pull = r3(M / e); // (the pad tips about its edge, e from the screw)
   const m = { kind: 'fitting', fitting: 'spool-holder', name: `spool-holder-${short(p)}-${mm(sp.bore)}x${mm(sp.width)}`, title: `printed spool holder for ${short(p)}, a ${mm(sp.bore)} mm bore spool ${mm(sp.width)} mm wide`, profile: p.name, face: sd.face, thread: sd.thread, head,
     width: w, spool: sp, arm: { depth: ta, length: L, lip }, pad: tb, section: loop, tongue: { slot: sd.slot.name, ...sd.tongue, nut: sd.nut.name },
     screws: [{ thread: sd.thread, head, grip: tb, at: [0, 0, tb], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null }],
-    anchors: { spool: { at: [0, r3(e + ta), r3(clear + sp.width / 2)], axis: [0, 0, 1] } },
+    anchors: { spool: { at: [0, r3(a0 + ta), r3(clear + sp.width / 2)], axis: [0, 0, 1] } },
     load: { force: F, what: `${mm(F)} N down on the arm at the spool's middle (its ${mm(sp.mass)} kg full, × ${SERVICE_DEFAULTS.pull.value} for the tug)` }, stress, margin, size: { width: w, depth: ta, length: L, pad: tb, pull },
     volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [], rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...(o.spool ? [] : [{ name: 'SERVICE_DEFAULTS.spool', value: sp, kind: 'estimate' }]), { name: 'SERVICE_DEFAULTS.pull', value: SERVICE_DEFAULTS.pull.value, kind: 'estimate' }] };
   weigh(m, spoolHolder(m, { printer: k.pr }), k.density);
