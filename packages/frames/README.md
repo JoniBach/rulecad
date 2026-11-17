@@ -768,6 +768,55 @@ A carriage's frame: x along the beam, y across, z out of the face the plate lies
 face's middle line at the middle of the plate. A wheel's: z along its axle toward the plate, x toward the face it runs
 on. `wheelPlate(m, { pose })` and `vWheel(m, { eccentric, collide })` draw them; `slider(m, { pose, tongues })` the slider.
 
+## Guides: rods, a lead screw and an endstop
+
+Two smooth rods along a beam's face carry a printed carriage on linear bearings; a lead screw between them drives it
+from a motor at one end. Every part comes from a rule set: the rods (`rod-8`), the bearings (`lm8uu`, `lm8luu`), the
+screw and its nut (`t8-screw`, `t8-nut`), the ball bearing the screw turns in (`bearing-608`), the coupler
+(`coupler-5-8`), the motor (`28byj48`, `nema14`, `nema17`) and the switch (`endstop-10t85`).
+
+```js
+import { rodsLayout, rodHolderModel, motorPlateModel, rodCarriageModel, endstopMountModel, rodMargin } from '@rulecad/frames'
+
+const L = rodsLayout('2020-misumi-hfs5', { screw: 't8-screw', motor: '28byj48' })
+L.spacing, L.height                // 40 mm apart, 13 mm over the face: set by the 608 in a holder
+rodHolderModel('2020-misumi-hfs5', { spacing: 40, height: 13, screw: 't8-screw', support: 'bearing-608', end: 'a' })
+motorPlateModel('2020-misumi-hfs5', { motor: '28byj48', height: 13 })   // M4 through its ears, 6 mm thick, a coupler recess
+motorPlateModel('2040-openbuilds', { motor: 'nema17' })                 // M3 into its thread on its 31 mm square
+rodCarriageModel('2020-misumi-hfs5', { spacing: 40, height: 13, screw: 't8-screw', flag: { y: -24.4, z: -2 } })
+endstopMountModel('2020-misumi-hfs5', { face: 'front' }).lever          // { x: 12.4, out: 14.4, reach: 12, width: 4 }
+```
+
+- **The layout.** The rods stand far enough apart for two bearing pockets with the lead nut's flange between them and
+  1.5 mm of plastic each side (`ROD_DEFAULTS.web`), or close over the face where there is no screw. Their height over
+  the face is the least that clears whatever needs most room under them: the carriage under its bearings, the nut's
+  flange, the screw's ball bearing in a holder, the coupler and the motor's body (`L.needs` lists each). A spacing or
+  height given that leaves too little room is refused, naming what needs it.
+- **Saddles.** A holder and a motor plate stand across the beam, their legs down both side faces, a screw through
+  each leg into that face's slot. The face the rods run over stays clear for the carriage, the coupler and the screw.
+  The inside corners over the beam's corners have a round relief cut in them. A leg's thickness is what a sold screw
+  takes into its slot nut; a holder is as thick along the beam as a rod's diameter or the ball bearing and a wall,
+  and sized from a load along the beam at the rods' height (50 N unless given) to twice the margin. At end b the same
+  holder is turned to face a (`end: 'b'`).
+- **The motor plate.** The motor's mount is cut from its own rules: its mounting holes as clearance holes for the
+  thread they take (a geared motor's plain ears take the largest metric screw that passes them, to a nut), the boss's
+  pocket and the shaft's hole. The plate is at least half as thick again as those screws, as @rulecad/motors asks.
+  Where the shaft would reach less than its diameter (or its flat) into a coupler past the plate, a recess in the
+  inner face takes the coupler in. Two screws a leg hold the motor's torque by shear. It prints on its outer face,
+  the boss's pocket ending in a 45° cone.
+- **The carriage.** Two bearings press into pockets from its inner end over a 3 mm floor; the lead nut's body sits in
+  a bore through its middle, its flange screwed to the far end into pilots, the screw the shortest sold that engages
+  the plastic. With an endstop it has a flag at its far end that hangs beside the beam to just under the end of the
+  switch's lever. It prints on its far end, the pockets opening up and the flag on the bed.
+- **The endstop's mount.** A block on a side face's slot, the switch screwed to it through its own holes, its lever
+  facing along the beam toward b, and the block's own screw ahead of the lever, its head sunk so the flag passes over.
+- **The bearings' loads.** `rodMargin` shares a carriage's force across the rods between its two bearings, a roll as a
+  couple across their spacing, and pitch and yaw as a couple along each bush half its length long
+  (`ROD_DEFAULTS.couple`, an estimate); each bearing's radial load against its static rating.
+
+Every part reports its grams, its margin at its load (`fitting.margin`), how it prints and its screws, and passes
+printcheck as drawn. A part's frame is a mount's: x along the beam, y across, z out of the face (0 on it).
+
 ## Ends and feet
 
 | Part | What it is | Prints |
@@ -936,6 +985,10 @@ kit's.
 | A wheel's flank load | N = π r l p² / E*, E* = E / (1 − ν²); radial 2 N cos(θ / 2), axial N sin(θ / 2) | Hertz line contact, a cylinder on a flat (Roark's Formulas for Stress and Strain, table 14.1, case 2b); r the radius at the contact's middle, l the flank's slant length, the track rigid: `WHEEL_DEFAULTS.curvature`, an estimate |
 | A wheel's margin | 1 / max over wheels (radial / radial rating + axial / axial rating) | `WHEEL_DEFAULTS.combine` and `.share`, estimates |
 | A wheel plate's thickness | t = √(6 M · 2 / (b S)), M = F s / 4 | A plate b long across the s between its rows of wheels, its load F at the middle, at twice the margin |
+| A holder's or motor plate's thickness | t = √(6 M · 2 / (b S)), M = F h | A plate b wide bent where it stands on the face by F along the beam at the height h of the rods or the shaft, at twice the margin |
+| The rods' spacing | s = 2 (D / 2 + F_d / 2 + w), rounded up to 0.5 mm | D the bearing's outside diameter, F_d the lead nut's flange, w `ROD_DEFAULTS.web` |
+| A linear bearing's load | R = √((|F_y| / 2 + |M_z| / 2a)² + (|F_z| / 2 ± M_x / s + |M_y| / 2a)²), a = 0.5 L | Forces shared, a roll as a couple across the spacing s, pitch and yaw as a couple along the bush of length L (`ROD_DEFAULTS.couple`, an estimate); margin = static rating / R |
+| Where the endstop trips | home = (the switch's address + its lever's 12.4 mm) − (the flag's face at the travel's start) | The lever's place as @rulecad/cad draws a switch (`ROD_DEFAULTS.lever`, an estimate) |
 | A slider's pressure | p = F / A, held to 0.1 S | `WHEEL_DEFAULTS.pressure`, an estimate |
 
 Why the torsion constant is solved for and not taken from the polar moment: a slotted section is open. MISUMI's
@@ -988,6 +1041,12 @@ plate drilled to it. How a carriage's loads are shared among its wheels and comb
 a slider's friction and wear limit are working figures (`WHEEL_DEFAULTS` says which). The eccentrics' preload is not
 in the ratings.
 
+A rod's diameter, a linear bearing's size and ratings, the T8 screw and nut, the coupler and the switch are each
+set's figures (`community`, from sellers' sheets); the 608's are SKF's (`spec`); the motors' mounting holes are their
+sets' (the 28BYJ-48's and NEMA 17's `spec`, the 28BYJ-48's ear thickness an estimate). How tight a printed pocket holds
+a bearing (`ROD_DEFAULTS.press`), how a bush takes a moment, where a switch's lever is and the switch's hole spacing
+are estimates, said in each finding: measure them. Every margin is by beam formulas.
+
 Published so far: MISUMI's HFS series in 20, 30, 40 and 45 mm, Bosch Rexroth, item (Lines 5, 6 and 8, standard and
 light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, MakerBeamXL and OpenBeam, 80/20's
 inch series, generic stock in 20, 30 and 40 mm, and plain tube, angle, channel and bar in any size. `profiles()`
@@ -1016,6 +1075,7 @@ lists them.
 | `SERVICE_DEFAULTS`, `FANS`, `DIN_RAIL`, `deviceMountModel(profile, { device, variant?, turn?, offset?, standoff?, screw? })`, `deviceMount`, `fanMountModel`, `fanMount`, `dragChainEndModel`, `dragChainEnd`, `dinRailAdapterModel`, `dinRailAdapter`, `cableClipModel`, `cableClip`, `tieAnchorModel`, `tieAnchor`, `spoolHolderModel`, `spoolHolder`, `runClips(length, { pitch? })` | The parts that carry services on a frame, each a model and its solid (`{ pose: 'print' \| 'fit' }`), and clips along a run |
 | `GUIDE_KINDS`, `GUIDE_DEFAULTS`, `rails()`, `railModel(set, { length, variant?, carriages?, given? })`, `rail(m)`, `carriage(m)`, `guideFit(m, profile, { face?, from?, beam?, nut?, keep?, given? })`, `carriageMargin(m, { force, moment })`, `railTerms(m, profile, { beam, carried?, face? })`, `railJigModel(profile, { rail, face?, length?, load? })`, `railJig(m, { pose?, tongues? })` | Guides: a rail's model (holes, screws, carriages' shares and travel), its solids, whether it fits a face, a carriage's loads against its ratings, its error terms, and the printed jig that centres it |
 | `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
+| `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |

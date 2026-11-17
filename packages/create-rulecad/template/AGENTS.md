@@ -125,6 +125,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   "from": 50, "length": 400 }` (the plate over that face, its wheels in the tracks either side). A plain T-slot is
   refused for wheels: use a rail or a `slider` there. Report the wheels' `guide.fit` seat, the travel and the
   plate's `joint.moment` margin, and say the wheels' ratings are estimates.
+  Two smooth rods and a lead screw are two guides: `{ "kind": "rods", "on": "x1.top", "from": 60, "length": 101,
+  "endstop": { "at": "x1.front@82" } }` and `{ "kind": "screw", "guide": "g1", "motor": { "model": "28byj48" } }`.
+  Never draw the holders, motor plate, coupler or carriage yourself: the guides place them by addresses and give the
+  motor its lead screw. Report the travel, `motor.torque`'s margin, `guide.coupler`, the bearings' `joint.moment`, the
+  endstop's home, and each printed part's grams and margin; if the endstop is refused, use the address it names.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, `x1.top@120`), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off
   a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close

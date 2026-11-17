@@ -764,7 +764,7 @@ slotted face, its holes read from its own rule set (@rulecad/frames' README, Ser
 - A task whose chain runs through a carriage's joint counts the rail's terms in its error budget (`task.accuracy`):
   its running parallelism and its carriage's play from its rule set (`spec`), the beam's straightness over the rail
   from the profile's, and the beam's sag (an estimate).
-- Refused by name: a kind not built yet (rods), a face that is not a beam's slotted face, `on` with a distance (that
+- Refused by name: a kind not built yet (a belt), a face that is not a beam's slotted face, `on` with a distance (that
   is `from`), a rail past the beam's end, a carriage its set has not got, and a rail too short for its carriages.
 
 A carriage on V-wheels runs on a V-slot beam's own tracks, and a printed slider in or over a slot:
@@ -792,6 +792,37 @@ A carriage on V-wheels runs on a V-slot beam's own tracks, and a printed slider 
   figures until they are measured.
 - The overlap check measures a beam by its envelope, so a wheel's rim and a slider's key, which stand in the slot, are
   left out of it; `guide.fit` checks the rim's seat in the track.
+
+Two smooth rods carry a printed carriage on linear bearings, and a lead screw drives it from a motor; an endstop homes
+it. Each is placed by an address: the rods' holders at the ends of the stretch on the face, the motor plate before
+it, the switch's mount where its address says:
+
+```json
+"guides": [{ "kind": "rods", "on": "x1.top", "from": 60, "length": 101, "endstop": { "at": "x1.front@82" } },
+           { "kind": "screw", "guide": "g1", "screw": "t8-screw", "motor": { "model": "28byj48", "microsteps": 1 } }]
+```
+
+- A rods guide puts printed holders (`rod-holder`) at `<beam>.<face>@from` and `@from + length` (`<id>-holder-a` and
+  `-b`), saddles screwed into the slots of the faces either side, one fasten a leg. The rods (`rod`, default `rod-8`)
+  are bought items cut to the stretch, at holder a's anchors `r1` and `r2`; the carriage (`rod-carriage`,
+  `<id>-carriage-1`) slides on the joint `<id>-1` with its bearings (`bearing`, default `lm8uu`) at its anchors `lm1`
+  and `lm2`. Its travel is the stretch less the two holders, a millimetre's gap at each and the carriage with the
+  nut's flange. `spacing` and `height` set the rods' place; their defaults leave room for what goes between and under.
+  The carriage's anchor `top` takes what it carries.
+- A screw guide names the rods guide it drives (`guide`). It adds a printed motor plate (`motor-plate`, `<id>-plate`)
+  before holder a, the motor (`<id>-motor`, a motor item: give its `model` and any of `microsteps`, `duty`, `speed`,
+  `current`, `driver`) at the plate's anchor `motor`, the coupler and the screw at its anchor `coupler`, a ball bearing
+  for the screw in each holder (`support`, default `bearing-608`, or null) and the lead nut on the carriage's anchor
+  `nut`. The motor drives the carriage's joint with `leadscrew` from the screw's set (its lead and diameter) and
+  `friction` (default the set's, an estimate), so `motor.torque`, `motor.speed` and `motor.holds` read the drive's
+  ratio as they do any lead screw. `guide.drive` and `guide.coupler` (how far the shaft reaches into the coupler) say
+  what was placed. A belt is not built yet; a screw on a rail or wheels is refused.
+- An endstop's printed mount (`endstop-mount`) goes at a side face's address (`endstop.at`), the switch (`switch`,
+  default `endstop-10t85`) on it; a flag on the carriage's far end meets its lever. Where that happens is the joint's
+  lower end and its `home` (`guide.endstop`). A switch the flag cannot reach, or a mount over a holder's leg, is
+  refused, naming the address where it trips at the travel's start.
+- Each carriage's loads are shared between its bearings at every pose (`joint.moment`) against their static rating;
+  a moment on one bush is taken as a couple along it, an estimate, said as one.
 
 ## Optimised parts
 
