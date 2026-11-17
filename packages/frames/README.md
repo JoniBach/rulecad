@@ -452,6 +452,28 @@ along them, and its side walls stand up through the layers, so their stress runs
 walls govern the kit's printed slots: `profile-2020-printed` holds 427 N on MISUMI's M4 drop-in in PLA (23.4 MPa
 across the layers), 4.3 times a 100 N pull.
 
+### Creep, and the beam coupon's figures
+
+A printed beam in a frame holds its load for months, and plastic creeps under a held load. `beamCreep(b, { stress })`
+(or `{ moment }` in N·mm, over the printed section's modulus) holds the sustained stress to `PRINTED_DEFAULTS.creep`,
+0.15, of its strength for its pose: 5.1 MPa for PETG lying down, 3.45 MPa standing up. Over it fails `beam.creep`. With
+`{ sag, limit }` it also says the sag it creeps to, the short-term sag over `PRINTED_DEFAULTS.creep_modulus` (0.5).
+Both shares are estimates and the finding says so: printed PLA held at 0.3 of its strength broke within hours in one
+study (Waseem et al., 2020), and the kit takes half that share with no long test behind it.
+
+```js
+const b = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: true });
+beamCreep(b, { stress: 2.55 })    // { level: 'pass', code: 'beam.creep', values: { limit: 5.1, margin: 2, ... } }
+beamCreep(b, { stress: 1, sag: 0.3, limit: 0.5 })   // fails: 0.3 mm creeps to about 0.6 mm
+```
+
+The beam coupon (`cad measured` from the bench's `beam-test`, MEASURE.md rows 38 and 39) measures what a printed beam
+of walls and infill is worth. It writes four rules to the plastic's set: `beam_modulus` and `beam_strength` for a beam
+printed lying down, `beam_modulus_z` and `beam_strength_z` standing up, each the figure that makes `printedSection`'s
+section bend and break as the coupon did. A printed beam takes each before the plastic's own `modulus`, `strength` (or
+their `_z`), says so in `beam.mass` (`b.printed.coupon` names the rules it took), and its creep limit follows the
+strength measured. Until then its figures are the data sheet's and the section's estimates.
+
 ### A splice for a beam longer than the bed
 
 `spliceModel(beam, { at, moment, thread })` joins two halves printed lying down with a lap. Over the lap the section
@@ -1161,6 +1183,9 @@ kit's.
 | Second moments about the origin's axes | Iₓ = Σ (yᵢ² + yᵢ yᵢ₊₁ + yᵢ₊₁²) cᵢ / 12, I_y the same in x, I_xy = Σ (xᵢ yᵢ₊₁ + 2 xᵢ yᵢ + 2 xᵢ₊₁ yᵢ₊₁ + xᵢ₊₁ yᵢ) cᵢ / 24 | Steger, "On the calculation of arbitrary moments of polygons" (1996) |
 | Moved to the centroid | I about the centroid = I about the origin − A d² | The parallel axis theorem |
 | Section modulus | W = I / the distance from the centroid to the furthest fibre | Beam theory |
+| A printed beam's creep limit | 0.15 × its strength for its pose (`PRINTED_DEFAULTS.creep`) | An estimate: Waseem et al. (2020), Multi-Response Optimization of Tensile Creep Behavior of PLA 3D Printed Parts, Polymers 12, 2962, table 3: printed PLA held at 15 MPa (0.3 of its filament's 50 MPa) broke in 1.2 to 2.3 hours at 25 °C |
+| A printed beam's sag as it creeps | short-term sag / 0.5 (`PRINTED_DEFAULTS.creep_modulus`) | An estimate, with no measurement behind it |
+| A spliced beam's strength | 0.5 × the whole beam's (`PRINTED_DEFAULTS.splice_share`) | `splice()`: each half keeps about half the section over the lap (361.5 and 363.9 mm³ of a printed 2020's 717.6 mm³) |
 | A printed part's plastic | cost = grams / 1000 × the material's `cost` (EUR/kg) | The material's rule set (Bambu Lab's EU store for `pla` and `petg`) |
 | Torsion constant | Solve ∇²φ = −2 in the metal with φ = 0 on the outside and φ constant over each hole, the constant fixed by ∮ ∂φ/∂n ds = −2 A_hole round it. Then J = 2 ∫φ dA over metal and holes | Prandtl's stress function: Timoshenko and Goodier, *Theory of Elasticity*, the chapter on torsion |
 | The solve | Square cells over the section (about 40 000), the five-point Laplacian with the wall half a cell from a cell's centre, one unknown for each hole, conjugate gradients | A finite-difference scheme; checked against the closed forms below |

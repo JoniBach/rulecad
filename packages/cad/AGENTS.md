@@ -116,7 +116,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   frame's own figure where the frame is solved), straightness and twist in `task.accuracy`: report the biggest term
   as it is named. `frame.heat` (given `"frame": { "heat": { "air": 45 } }`) says how much the frame grows and holds
   each printed fitting to its plastic's softening point: move a failing fitting from the heat or print it in a plastic
-  that softens higher, never raise the softening figure.
+  that softens higher, never raise the softening figure. `beam.printable` (given `"frame": { "printed": "petg" }`)
+  says which beams could be printed and the margin each misses by: report the margin and what governs it, say it
+  rests on estimates (the printed section, creep) until the beam coupon is measured, and name the joins it says need
+  changing. A `beam.coupon` sag or break is a prediction to measure on the bench and write back with `cad measured`,
+  never a figure to tune; `beam.creep` fails a printed beam held too hard for months: a deeper section or aluminium.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),

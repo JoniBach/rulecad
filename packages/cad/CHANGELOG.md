@@ -9,6 +9,20 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- **Which beams can be printed**: `"frame": { "printed": "petg" }` (or `{ material, walls, infill, pose }`) tries each
+  beam of the frame printed in that plastic (the kit's printable profile of its size, lying down, spliced past the
+  bed, or standing up), solves the frame again and holds the beam to the frame's sags, its stress and Euler's load
+  with twice the margin, the creep limit, its sag as it creeps and the task's moves: `beam.printable` per beam with
+  its least margin, or the margin it misses by, and the joins that would need changing; then those that hold are
+  printed together and solved once more, one finding listing them. A printed beam's frame stress is now held to its
+  plastic's strength for its pose (across the layers standing up), and `beam.creep` checks it.
+- **The beam coupon**: a printed beam on two `frame.supports` with a mass on it predicts its sag and the mass it breaks
+  at (`beam.coupon`); `cad measured <ref> k1.sag=<mm>` and `k1.break=<kg>` write `beam_modulus` / `beam_strength`
+  (`_z` standing up) into the workspace's copy of the plastic's set as measured. The workspace's material sets (a
+  set with a density and no part) are now read by the frames a design builds. `"resting"` in `frame.supports`: held
+  from moving and from twisting about the beam's length. The bench has the coupon: `benchmarks/beam-test`,
+  MEASURE.md rows 38 and 39.
+
 - **Printed beams**: `"printed": true` (or `{ pose, walls, infill, end, pull }`) on a beam item makes it a printed
   part: drawn solid, weighed on `cad list` by the plastic its walls and infill lay (a part's `fill`), laid on a plate as
   it prints (`"laid": true`, which `cad plates` writes), off the cut list and the beam sheets. Its findings say how it

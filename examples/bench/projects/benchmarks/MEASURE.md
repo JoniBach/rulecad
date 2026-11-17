@@ -18,6 +18,7 @@ parts measure them, one test each. Every part has a plain, solid first layer. So
 | 7. Fixings coupon (once in PLA, once in PETG) | `fixings-coupon` | 55 g, about an hour | 22 to 28 |
 | 8. Slot coupon (when you build with aluminium beams) | `slot-coupon` (26 loose pieces) | 40 g, about 45 minutes | 29 to 33 |
 | 9. Joint rig (when you build frames of beams) | `joint-hanger` × 3, `joint-gauge`, `nut-puller`, and the rig's printed corner bracket (`cad plates benchmarks/joint-test` lays out all six) | 82 g, about 90 minutes | 34 to 37 |
+| 10. Beam coupon (when you print beams for a frame; once in each plastic) | `k1`, a printed 1515 beam lying down, and `k2`, the same standing up (`cad plates benchmarks/beam-test` lays out both) | 79 g, about 2 hours | 38, 39 |
 
 Do 1 and 2 first, and change the parts that follow to the sizes that won: `comp` in `test-arm` and `shoulder-sun`, `bore` and `backlash` in the mesh rig's parts.
 
@@ -35,6 +36,7 @@ G-clamp the foot to a table with the plate's front just past the table's edge, s
 | **For the fixings coupon** | Socket cap screws: M2 × 6, M2.5 × 6, M3 × 6, M3 × 8, M4 × 8, M5 × 16; M3 and M4 hex nuts; CNC Kitchen heat-set inserts, M2 × 3 and M3 × 5.7, and a soldering iron with an insert tip; steel bolts or set screws M6 × 16, M8 × 20 and M10 × 25 or longer; a spanner |
 | **For the slot coupon** | An offcut of your own beam, 50 to 100 mm long, cut square at one end; M2.5 hex nuts and M2.5 × 8 screws for slot 6, M5 hex nuts and M5 × 10 screws for slot 8; one of the bought slot nuts made for your beam (slide-in or drop-in) |
 | **For the joint rig** | 2020 beam of MISUMI's HFS5 kind (or your own 20 mm beam): one 400 mm length and three of 150 mm, cut square (one metre does: `cad beams benchmarks/joint-test` gives each one's sheet), each short one tapped M5 18.5 mm deep at its outer end and `c1` at both, and `c3` drilled with a 7.1 mm hole through one wall, its centre 10 mm from its inner end, for the HMJ5 (MISUMI's M hole for HFS5: `c3`'s sheet says which face); a 7.1 mm drill; one MISUMI HMJ5 centre joint; M5 slide-in slot nuts for 6 mm slots: five, and one of each kind you want to test; M5 button-head screws: 12 mm × 2, 16 mm × 3, 25 mm × 2; M5 cap screws 12 mm × 2; an M4 × 16 screw and nut for the dial's clamp; a dial indicator reading 0.01 mm with an 8 mm stem; a 2 kg mass that hangs (a 2 litre bottle of water and an S-hook or a loop of cord); a luggage scale reading to 50 kg; two G-clamps |
+| **For the beam coupon** | Two round bars about 8 mm across and 60 mm long (M8 bolts or offcuts of rod), laid on the table 220 mm apart, centre to centre; a loop of cord; the joint rig's 2 kg mass, dial indicator and luggage scale |
 | **Also** | PTFE grease, for the second round of the efficiency test; a spare print's worth of PLA |
 
 ## The measurements
@@ -80,6 +82,8 @@ Write the number in the last column and send it back: it replaces the kit's figu
 | 35 | A printed corner bracket's spring (`c2`) | As 34, the dial arm moved along the slot over `c2`'s join: `cad measured benchmarks/joint-test c2.drop=<mm>`. cad works out the joint's spring from it and writes it as a share of the bracket's own stiffness by finite elements, so every printed bracket of that kind after it is taken at that share | 2.158 mm (the bracket's own 0.213 N·m/mrad, by finite elements, taken whole: `joins.bracket_printed_share` 1, an estimate) | |
 | 36 | A bought fitting's spring (`c3`, MISUMI's HMJ5 centre joint) | As 34, over `c3`'s join: `cad measured benchmarks/joint-test c3.drop=<mm>`. The spring goes to `fitting-misumi-hmj5.bending_stiffness`. With another maker's beam, join `c3` with a bought fitting made for its slot, and the spring goes to that fitting's set | 0.269 mm (`fitting-misumi-hmj5.bending_stiffness` 2 N·m/mrad, an estimate) | |
 | 37 | A slot nut's hold along its slot | Screw the nut puller onto the slot nut under test in the base beam's top slot, the hook's hole toward the beam's nearer end. Tighten the screw as the nut's maker says, or firmly by hand with the short arm of a hex key. Hook the luggage scale through the hole and pull along the slot, slowly and level, until the nut moves; the scale's peak is the figure. Three times on fresh places along the slot, and write the least: `cad measured benchmarks/joint-test slot-nut-6-misumi-m5-slide-in.hold_along=<N>` (newtons: kilograms × 9.81), naming your nut's set. If it holds at the scale's top, write the top and say so with `--source` | Nothing: no maker publishes it | |
+| 38 | A printed beam's stiffness (beam coupon `k1` lying, `k2` standing) | Lay `k1` across the two bars, 10 mm of it past each, its slot up. Rest the dial's plunger on its top at the middle, the dial held on the joint rig's arm on its base beam laid beside it, and set it to 0. Hang the 2 kg mass from a loop of cord round the coupon's middle, wait 30 seconds, read the dial; lift it off and check it comes back to 0 within 0.01 mm. Three times, and write the mean: `cad measured benchmarks/beam-test k1.sag=<mm>` (and `k2.sag`). The modulus a printed beam bends at goes to your copy of the plastic's set as `beam_modulus` (`beam_modulus_z` from `k2`), measured | `k1` 0.579 mm, `k2` 0.718 mm (PLA's data sheet modulus, 2680 and 2160 MPa, and the section from 3 walls and 40% infill: estimates) | |
+| 39 | A printed beam's strength | Last, as 38 with the bars on two blocks so the cord hangs clear below: hook the luggage scale in the cord's loop and pull straight down, slowly, until the coupon breaks. The scale's peak is the figure, in kilograms: `cad measured benchmarks/beam-test k1.break=<kg>` (and `k2.break`). The stress it broke at goes to the plastic's set as `beam_strength` (`beam_strength_z`). Wear glasses: PLA snaps | `k1` 26.3 kg, `k2` 15.8 kg (39 MPa along the layers, 23.4 across: the second an estimate) | |
 
 Number 11 is a correction to 7 to 9. Take number 16 last: it wrecks the gears.
 
@@ -117,6 +121,19 @@ here: a join's twist stays an estimate. The nut puller (37) is the same base bea
 slot at which a tightened slot nut slips, which no maker publishes. It goes in the nut's own set as `hold_along`,
 and the nut says it wherever it is used. `cad history benchmarks/joint-test` then shows each figure against what the
 kit drew before.
+
+The beam coupon (38 and 39) measures what a printed beam in a frame rests on: how stiff and how strong a beam of walls
+and infill is, which no plastic's data sheet gives. Two printed 1515 beams 240 mm long, one printed lying down (its
+layers along it) and one standing up (its layers across it), each lie across two round bars 220 mm apart with 2 kg
+hung from the middle. `cad check benchmarks/beam-test` predicts each sag (beam.coupon): F L³ / 48 E I, the plastic's
+modulus for the way it printed and the section counted from its walls and infill. Written back, cad scales the modulus
+by the sag predicted over the sag measured and writes it to your copy of the plastic's set as `beam_modulus`
+(`beam_modulus_z` standing up), measured with the date. The break (39) gives the stress it broke at, `beam_strength`
+(`beam_strength_z`). Every printed beam in that plastic after it takes these before the data sheet's figures, its creep
+limit follows the strength, and `beam.printable` in a frame says it rests on them. A 1515 coupon breaks within the
+luggage scale's reach; its figures stand for any printed beam with the same walls and infill (3 and 40%), as the
+section is counted the same way for every size. For PETG, change both beams' `material` in `beam-test.json` to
+`petg` and print it again. `cad history benchmarks/beam-test` then shows each figure against the prediction.
 
 ## Wiring
 

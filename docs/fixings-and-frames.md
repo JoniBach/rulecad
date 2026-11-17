@@ -439,8 +439,20 @@ from its walls and infill (estimates), on a plate and off the cut list. A splice
 section's middle, a key where the cut steps sideways and two screws across it; it is checked on each half's section
 and the screws' couple, and carries about half what the beam does, so it passes where the frame's moment there is
 within that. A 240 mm printed 2020 prints lying down with no support and takes MISUMI's M4 drop-in nut; a 400 mm one
-splices into halves of 196.6 and 256 mm on the X1C, and carries 50 N hung in its middle. Still to come: the beam coupon, `beam.printable` across a frame's checks with
-the material as a variable, creep, and a splice in a cad assembly.
+splices into halves of 196.6 and 256 mm on the X1C, and carries 50 N hung in its middle.
+
+Built (issue 270): `"frame": { "printed": "petg" }` tries each beam of a frame printed in that plastic, lying down
+(spliced past the bed, at half the strength) or standing up, solves the frame again, and holds the beam to the frame's
+sags, its stress and buckling with twice the margin, a creep limit of 0.15 of its strength (`beam.creep`, an
+estimate resting on a published creep rupture test of printed PLA), its sag as it creeps (its modulus halved, an
+estimate) and the task's moves; each beam says its least margin or the margin it misses by, and the joins that would
+need changing, and those that hold are printed together and solved once more. A 250 mm 2020 case of twelve beams with
+2 kg on a top beam can be printed whole in PETG; a 400 mm 2020 gantry beam with 2 kg at its middle and 0.1 mm allowed
+misses by 9.8 times on its sag as it creeps. A printed beam in a frame is checked at its strength for its pose. The
+beam coupon is the bench's `beam-test`: two printed 1515 beams across two bars, its sag and its break written back by
+`cad measured` as the plastic's `beam_modulus` and `beam_strength` (`_z` standing). Until a person prints and measures
+it, every printed beam's stiffness and strength rest on the data sheet and the section's estimates. Still to come: a
+splice in a cad assembly.
 
 ### 4.10 Generated frames and kits
 

@@ -728,6 +728,41 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   lift the mode clear, or as many times less mass. With no stepper and no task it is information. This is
   `assembly.frequency`'s question asked of the frame: that finding estimates a machine's arm from its tool's
   stiffness, this one solves the frame it stands on.
+- A printed beam in the frame (`"printed"` on its beam item, in the plastic its `"material"` names) is solved with the
+  figures printing gives it, and its stress is held to its plastic's strength for its pose: along its layers lying
+  down, across them standing up (PETG HF: 34 and 23 MPa). `beam.creep` holds its stress, which a frame carries for
+  months, to 0.15 of that strength (`PRINTED_DEFAULTS.creep` of `@rulecad/frames`, an estimate).
+- `beam.printable`, given `"frame": { "printed": "petg" }` (or `{ "material", "walls", "infill", "pose" }`): each beam
+  is tried printed in that plastic, as the kit's printable profile of its size (`profile-2020-printed` for a 20 mm
+  square beam; another section stays as it is, by name), lying down (spliced where it is longer than the bed, its
+  strength then half the whole beam's, `PRINTED_DEFAULTS.splice_share`) and standing up where it fits the printer's
+  height. The frame is solved again with that beam printed and every other as it is, and the beam is held to six
+  margins, each 1 where it just holds: every sag the frame checks (each load's point, each named point, each guide)
+  and the beam along its length, against the same limits as `frame.deflection`; its stress against its strength with
+  twice the margin; Euler's load with twice the margin; its stress against the creep limit; every sag again with the
+  beam's modulus at half (`PRINTED_DEFAULTS.creep_modulus`, an estimate), its sag as it creeps; and where the task's
+  moves shake the frame, its lowest mode at twice their rate. The least is the beam's margin. A beam that holds says
+  so (pass), with its pose and grams; one that does not says it needs its own material and the margin it misses by,
+  `1 / margin`, and on what (info: a design choice, not a fault). It also names the joins that would need changing: a
+  blind, end-tap or anchor join screws into the beam's end, where a printed beam has an insert, and a join on a face
+  other than the top lands where a printed beam is closed; a bracket or a gusset on its top slot takes either. Then
+  the beams that hold alone are printed together and solved once more, any that miss together put back the worst
+  first, and one finding lists those that can be printed (`refs.printable`) and those that stay (`refs.metal`). Every
+  figure rests on the printed section's walls and infill, its plastic's figures and the creep shares (estimates until
+  the beam coupon is measured) and on the joins' springs as they are, which were made for metal beams; the findings
+  say so (`refs.restsOn: 'estimate'`). A 250 mm 2020 case of twelve beams with 2 kg on a top beam can be printed in
+  PETG whole (its least margin 1.35, its top beam's sag as it creeps); a 400 mm 2020 gantry beam fixed at both ends
+  with 2 kg at its middle and 0.1 mm allowed misses by 9.8 times ("beam.printable: every beam of a case-sized frame").
+- `beam.coupon`: a printed beam held only by two of `"frame": { "supports" }` (no join on it) with a mass on it is the
+  beam coupon. Its sag under each mass, F L³ / 48 E I between two bars, and the mass it breaks at (where its stress
+  reaches its strength) are predictions `cad measured` takes as `<beam>.sag=<mm>` and `<beam>.break=<kg>`. The sag
+  gives the modulus a printed beam bends at (the solve is linear in it: the modulus taken times the sag predicted
+  over the sag measured), the break its strength (its own weight's stress plus the stress a kilogram causes times the
+  mass), each written as measured to the workspace's copy of the plastic's set: `beam_modulus` and `beam_strength`
+  for one printed lying down, `beam_modulus_z` and `beam_strength_z` standing up. A printed beam then takes them
+  before the plastic's own figures, and its creep limit follows the strength. `"resting"` in `frame.supports` holds a
+  beam from moving and from twisting about its own length, free to bend, as a beam lying across a round bar is. The
+  bench's `beam-test` assembly (MEASURE.md, rows 38 and 39) is the coupon.
 - `cad beams` also writes `exports/<project>/<assembly>.frame-sag.svg`, the check view: the frame as drawn in grey
   and the shape it takes in red, from the front and from the side, scaled and saying by how much; and
   `<assembly>.frame-mode.svg`, the lowest mode animated, the frame swinging through the mode's shape and back, its
@@ -753,6 +788,10 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 | A join's play s (frame.square) | 0.1 to 0.3 mm by kind; end-tap 0.25 mm | `JOIN_PLAY` in `@rulecad/frames`, estimates; end-tap is half ISO 273's medium clearance for M5 (5.5 mm) |
 | A beam's twist at the tool | twist per metre × length × π / 180 × the tool's distance from the beam's axis | The profile's `twist_per_metre` (MISUMI's JIS special grade figure for its 2020 HFS5) |
 | A frame's growth (frame.heat) | α L ΔT, α = 23.4e-6 /K | 6063 aluminium (Wikipedia's table; suppliers' 6063-T5 sheets 23.4 to 23.5 µm/m °C), a community figure where the alloy's set gives none |
+| A printed beam's creep limit | 0.15 × its strength for its pose | Waseem et al. (2020), Polymers 12, 2962: printed PLA held at 0.3 of its strength broke in 1.2 to 2.3 hours; half that share an estimate |
+| A printed beam's sag as it creeps | the frame solved with its modulus × 0.5 | An estimate (`PRINTED_DEFAULTS.creep_modulus`), until a sustained load on the beam coupon measures it |
+| The beam coupon's sag, between two bars L apart | F L³ / (48 E I) | Roark's Formulas for Stress and Strain, table 8.1, case 1e (simply supported, load at the middle) |
+| The beam coupon's modulus and strength | E × sag predicted / sag measured; stress of its own weight + stress per kg × kg at break | The solve is linear in E and in the load |
 | A printed fitting's softening | the plastic's heat deflection temperature, ISO 75 at 0.45 MPa, warned within 10 °C | The plastic's set (`pla.softening` 57 °C, `petg.softening` 69 °C, Bambu's data sheets); the 10 °C an estimate |
 
 A worked check: a 2020 shelf frame, legs 400 mm, a 600 mm front beam joined blind to the legs 390 mm up, 5 kg at its

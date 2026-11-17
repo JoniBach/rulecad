@@ -6,6 +6,14 @@ What changed in each release, for someone upgrading a workspace.
 
 ### Added
 
+- `beamCreep(b, { stress | moment, sag, limit })`: `beam.creep`, a printed beam's sustained stress against
+  `PRINTED_DEFAULTS.creep` (0.15) of its strength for its pose, and its sag as it creeps (`creep_modulus`, 0.5). Both
+  estimates. `PRINTED_DEFAULTS.splice_share` (0.5): what a splice carries of the whole beam's moment. `b.printed.creep`
+  holds the limit.
+- A printed beam takes the beam coupon's measured figures from its plastic's set before the plastic's own:
+  `beam_modulus`, `beam_strength` lying down, `beam_modulus_z`, `beam_strength_z` standing up (`b.printed.coupon`
+  names them, `b.printed.modulusKind` says what the modulus rests on).
+
 - `JOIN_PLAY`: each join kind's play, how far the end of `a` may sit off where it was squared once its screws are
   tight, in mm. Every one an estimate (end-tap from ISO 273's medium clearance for M5).
 - `squareness(width, height, { tolerance, cuts, plays })`: the beams whose cut lengths set the opening, each with its
