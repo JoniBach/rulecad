@@ -440,7 +440,8 @@ function measuredOf(s) {
 /**
  * frame.square for each bay of a frame, in the assembly's findings shape: the diagonals to measure and the difference to
  * accept, each cut and join's share of it, and a prediction cad measured takes (frame.square.<beams>=<the difference
- * measured>): once measured, it says whether the bay is square within what its parts allow.
+ * measured, either sign, since which diagonal is the longer says only which way it leans>): once measured, it says
+ * whether the bay is square within what its parts allow.
  */
 export function frameSquareChecks(s, f) {
   if (!s.joins?.length) return;
@@ -452,7 +453,7 @@ export function frameSquareChecks(s, f) {
     const parts = `${q.terms.map((x) => `${x.term} ${mm(x.value)}`).join(', ')} mm`;
     const rests = soft.length ? ` It rests on estimates (${soft.map((x) => x.term).join(', ')}): measure the diagonals once it is squared and tightened, and give their difference to cad measured ${s.project}/${s.name} ${name}=<mm>` : '';
     let level = 'info', said = '';
-    if (m) { const over = m.measured > q.accept + 1e-9; level = over ? 'warn' : 'pass'; said = ` Measured ${mm(m.measured)} mm (${m.date}): ${over ? `${mm(m.measured / q.accept)} times what its cuts and joins allow, so it leans: loosen its joins, push the long diagonal's corners together, tighten and measure again` : 'within what its cuts and joins allow'}.`; }
+    if (m) { const d = Math.abs(m.measured), over = d > q.accept + 1e-9; level = over ? 'warn' : 'pass'; said = ` Measured ${mm(m.measured)} mm (${m.date}${m.measured < 0 ? `, ${mm(d)} mm either way` : ''}): ${over ? `${mm(d / q.accept)} times what its cuts and joins allow, so it leans: loosen its joins, push the long diagonal's corners together, tighten and measure again` : 'within what its cuts and joins allow'}.`; }
     f(level, `the bay of ${b.name}: ${q.text}. Its share: ${parts}.${said}${m ? '' : rests}`, level === 'warn' ? `${b.beams.join('-')}: out of square` : null,
       { code: 'frame.square', predict: { name, figure: `the difference between the diagonals of the bay of ${b.name}, inside corner to inside corner, squared and tightened`, value: q.accept, unit: 'mm' },
         values: { ...q.findings[0].values, ...(m ? { measured: m.measured } : {}) }, refs: { beams: b.beams, joins: b.joins, tolerance: b.tolFrom } });

@@ -3356,6 +3356,14 @@ test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loos
     // the ledger keeps both, predicted against measured
     const ledger = fs.readFileSync(at('ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.deepEqual(ledger.map((e) => [e.name, e.predicted, e.measured]), [['frame.square.p1-p2-x1-x3', 1.04, 0.6], ['frame.square.p1-p2-x1-x3', 1.04, 1.5]]);
+    // a difference recorded the other way round (d1 - d2 with d2 the longer) is the same lean: its size is what counts.
+    // -3 mm is 3 / 1.04 = 2.885 times what its parts allow, so it leans; -0.6 mm is within, so it passes
+    cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=-3');
+    [m] = check('side');
+    assert.equal(m.level, 'warn'); assert.equal(m.values.measured, -3); assert.match(m.text, /Measured -3 mm \(\d{4}-\d\d-\d\d, 3 mm either way\): 2\.88 times what its cuts and joins allow, so it leans/);
+    cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=-0.6');
+    [m] = check('side');
+    assert.equal(m.level, 'pass'); assert.match(m.text, /Measured -0\.6 mm \(\d{4}-\d\d-\d\d, 0\.6 mm either way\): within what its cuts and joins allow\./);
   } finally { done(); }
 });
 
