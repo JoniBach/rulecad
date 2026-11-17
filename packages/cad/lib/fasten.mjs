@@ -535,7 +535,9 @@ export function fastenOf(s, worlds, opts = {}) {
       const missing = members.filter((_, j) => !raw[j]);
       sc.at = ax.O; sc.between = [ax.O, ax.O];
       if (missing.length) return say('fasten.holes', 'fail', `${missing.map((m) => m.name).join(' and ')} ${missing.length > 1 ? 'are' : 'is'} nowhere on the screw's axis (nothing of ${missing.length > 1 ? 'them' : 'it'} within ${mm(R)} mm of it)${yoke ? `: a screw that ends in ${x.into}, the part under its head, goes through one side of it and into the other, along its anchor's axis` : ': the parts are not where the joint needs them'}`);
-      const mid = (r) => (r[0] + r[1]) / 2, flip = yoke ? false : members.length > 1 ? mid(raw.at(-1)) < mid(raw[0]) : true;
+      // (a part astride what it is screwed into, a saddle's two legs either side of a beam, is centred on it: the anchor's
+      // axis, out toward the head, then says the way)
+      const mid = (r) => (r[0] + r[1]) / 2, flip = yoke ? false : members.length > 1 ? (Math.abs(mid(raw.at(-1)) - mid(raw[0])) < 1e-3 ? true : mid(raw.at(-1)) < mid(raw[0])) : true;
       const D = flip ? ax.D.map((c) => -c) : ax.D, O = ax.O, at = (z) => add(O, D, z);
       const runs = members.map((m, j) => ({ ...m, segs: side(j, along(m.parts, O, ax.D, R, flip)) }));
       for (const r of runs) r.reach = reachOf(r, r.segs);

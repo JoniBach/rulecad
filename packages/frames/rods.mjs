@@ -173,13 +173,16 @@ function legScrews(what, p, F, o, k) {
  * pocket from its inner face (a bearing block at each end). Sized from a load along the beam at the rods' height to about
  * twice the margin, by beam formulas. It prints on its outer face, the rods' holes upright.
  * @param {string | object} profile
- * @param {{ face?: string, rod?: string, bearing?: string, spacing?: number, height?: number, screw?: string, nut?: string, support?: string | null, load?: number, thread?: string, head?: 'cap' | 'button', printer?: object, material?: string | object, given?: object }} [o]
+ * @param {{ face?: string, end?: 'a' | 'b', rod?: string, bearing?: string, spacing?: number, height?: number, screw?: string, leadNut?: string, support?: string | null, load?: number, thread?: string, head?: 'cap' | 'button', nut?: string, printer?: object, material?: string | object, given?: object }} [o]
+ *   end: a (its outer face toward end a, the default) or b (turned to face b); leadNut: the lead screw's nut's set; nut: the slot nuts' kind
  * @returns {object} its model
  */
 export function rodHolderModel(profile, o = {}) {
   const what = 'rodHolderModel';
-  options(what, o ?? {}, ['face', 'rod', 'bearing', 'spacing', 'height', 'screw', 'nut', 'support', 'load', 'thread', 'head', 'printer', 'material', 'given']);
-  const L = rodsLayout(profile, { face: o.face, rod: o.rod, bearing: o.bearing, spacing: o.spacing, height: o.height, screw: o.screw, nut: o.nut, support: o.support, given: o.given });
+  options(what, o ?? {}, ['face', 'end', 'rod', 'bearing', 'spacing', 'height', 'screw', 'leadNut', 'support', 'load', 'thread', 'head', 'nut', 'printer', 'material', 'given']);
+  const end = o.end ?? 'a';
+  if (!['a', 'b'].includes(end)) throw new Error(`${what}: end is a or b, the end of the stretch it holds: at b it is turned to face a (got ${shown(o.end)})`);
+  const L = rodsLayout(profile, { face: o.face, rod: o.rod, bearing: o.bearing, spacing: o.spacing, height: o.height, screw: o.screw, nut: o.leadNut, support: o.support, given: o.given });
   const p = profileOf(what, profile, o.given ?? {}), F = L.frame, k = partSetup(what, o), wall = ROD_DEFAULTS.wall.value, s = L.spacing, h = L.height, d = L.rod.d;
   const S = loadOf(what, o.load, ROD_DEFAULTS.load.value), ls = legScrews(what, p, F, o, k), sup = L.support;
   const comp = k.pr.rules?.hole_comp?.value ?? 0.1, rodHole = r3(d + comp), Rtop = Math.max(d / 2 + wall, sup ? sup.D / 2 + wall : 0), top = r3(up(h + Rtop, 0.5)), y0 = r3(F.yc - s / 2 - d / 2 - wall), y1 = r3(F.yc + s / 2 + d / 2 + wall);
@@ -189,11 +192,16 @@ export function rodHolderModel(profile, o = {}) {
   const shape = saddleLoop(F, k.fit, ls.legT, ls.zLeg, y0, y1, top);
   const screwHole = L.screw ? r3(L.screw.d + 2 * k.fit + 1) : 0, pocket = sup ? r3(sup.D - ROD_DEFAULTS.press.value + comp) : 0;
   const screws = F.sides.map((x, i) => ({ thread: ls.thread, head: ls.head, grip: ls.legT, side: x.name, at: [r3(legs / 2), r3(x.out > 0 ? shape.R1 + ls.legT : shape.L1 - ls.legT), x.z], axis: [0, -x.out, 0], nut: ls.sds[i].nut.name, nutKind: ls.sds[i].nut.nutKind, length: ls.fits?.lengths[i] ?? null }));
-  const m = { kind: 'fitting', fitting: 'rod-holder', guide: 'rods', name: `rod-holder-${L.rod.set}-${short(p.name)}-${F.name}${sup ? `-${sup.set.replace(/^bearing-/, '')}` : ''}`, title: `printed holder for two ${L.rod.set} rods${sup ? ` and a ${sup.set}` : ''} on ${p.name}'s ${F.name} face`,
+  // at end b, the same part turned half round about the beam's middle line over the face: its outer face looks toward b
+  const turn = end === 'b' ? (q) => [r3(-q[0]), r3(2 * F.yc - q[1]), q[2]] : (q) => q, axisOf = end === 'b' ? (v) => [v[0] ? -v[0] : 0, v[1] ? -v[1] : 0, v[2]] : (v) => v;
+  for (const q of screws) { q.at = turn(q.at); q.axis = axisOf(q.axis); const i = F.sides.findIndex((sd) => sd.out === Math.sign(q.at[1] - F.yc)); Object.assign(q, { side: F.sides[i].name, nut: ls.sds[i].nut.name, nutKind: ls.sds[i].nut.nutKind, length: ls.fits?.lengths[i] ?? null }); } // (turned, each leg is on the other side)
+  if (end === 'b') screws.reverse();
+  const anchors = { r1: { at: [0, r3(F.yc - s / 2), h], axis: [1, 0, 0], ref: [0, 0, 1] }, r2: { at: [0, r3(F.yc + s / 2), h], axis: [1, 0, 0], ref: [0, 0, 1] }, screw: { at: [0, F.yc, h], axis: [1, 0, 0], ref: [0, 0, 1] }, ...(sup ? { s1: { at: [r3(t - sup.width), F.yc, h], axis: [1, 0, 0], ref: [0, 0, 1] } } : {}) };
+  for (const a of Object.values(anchors)) { a.at = turn(a.at); a.axis = axisOf(a.axis); }
+  const m = { kind: 'fitting', fitting: 'rod-holder', guide: 'rods', end, name: `rod-holder-${L.rod.set}-${short(p.name)}-${F.name}${sup ? `-${sup.set.replace(/^bearing-/, '')}` : ''}`, title: `printed holder for two ${L.rod.set} rods${sup ? ` and a ${sup.set}` : ''} on ${p.name}'s ${F.name} face`,
     profile: p.name, face: F.name, frame: F, rod: L.rod.set, spacing: s, height: h, thickness: t, legs, top, legT: ls.legT, zLeg: ls.zLeg, y0, y1, outline: shape.loop, rodHole, screwHole, support: sup ? { set: sup.set, pocket, depth: sup.width, D: sup.D } : null,
     thread: ls.thread, head: ls.head, screws, hardware: [], load: { force: S, what: `${mm(S)} N along the beam at the rods' ${mm(h)} mm height` }, stress, margin,
-    anchors: { r1: { at: [0, r3(F.yc - s / 2), h], axis: [1, 0, 0], ref: [0, 0, 1] }, r2: { at: [0, r3(F.yc + s / 2), h], axis: [1, 0, 0], ref: [0, 0, 1] }, screw: { at: [0, F.yc, h], axis: [1, 0, 0], ref: [0, 0, 1] }, ...(sup ? { s1: { at: [r3(t - sup.width), F.yc, h], axis: [1, 0, 0], ref: [0, 0, 1] } } : {}) },
-    size: { along: t, legs, across: r3(shape.R0 - shape.L0), height: r3(top - ls.zLeg) }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
+    anchors, size: { along: t, legs, across: r3(shape.R0 - shape.L0), height: r3(top - ls.zLeg) }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['load', 'wall', 'press'].map((x) => ({ name: `ROD_DEFAULTS.${x}`, value: ROD_DEFAULTS[x].value, kind: ROD_DEFAULTS[x].kind }))] };
   keep(m, k); weigh(m, rodHolder(m), k.density);
   m.findings.push(screwFinding(ls, 'leg'));
@@ -207,72 +215,90 @@ export function rodHolder(m, o = {}) {
   // print frame: X = y, Y = z, Z = x (its outer face on the bed)
   const pr = printerOf('rodHolder', m.pr ?? null), F = m.frame, P = flat2(1), parts = [prismZ(m.outline.map(P), 0, m.thickness)];
   for (const sd of [-1, 1]) if (m.legs > m.thickness) { const yIn = sd < 0 ? F.yc - F.across - m.fit : F.yc + F.across + m.fit, yOut = yIn + sd * m.legT; parts.push(prismZ([[yIn, m.zLeg], [yOut, m.zLeg], [yOut, 0], [yIn, 0]].map(P), 0, m.legs)); }
-  const cuts = [m.anchors.r1.at, m.anchors.r2.at].map(([, y, z]) => discZ(y, z, m.rodHole, -1, m.legs + 1));
+  const back = m.end === 'b' ? (q) => [-q[0], 2 * F.yc - q[1], q[2]] : (q) => q, ax = m.end === 'b' ? (v) => [-v[0], -v[1], v[2]] : (v) => v; // (drawn as at end a)
+  const cuts = [m.anchors.r1.at, m.anchors.r2.at].map(back).map(([, y, z]) => discZ(y, z, m.rodHole, -1, m.legs + 1));
   if (m.screwHole) cuts.push(discZ(F.yc, m.height, m.screwHole, -1, m.thickness + 1));
   if (m.support) cuts.push(discZ(F.yc, m.height, m.support.pocket, m.thickness - m.support.depth, m.thickness + 1));
   for (const sd of [-1, 1]) cuts.push(discZ(sd < 0 ? F.yc - F.across - m.fit : F.yc + F.across + m.fit, 0, 2 * ROD_DEFAULTS.relief.value, -1, m.legs + 1));
-  for (const q of m.screws) cuts.push(hole(q.thread, { kind: 'clearance', into: q.axis[1] > 0 ? '+x' : '-x', at: [q.at[1] - q.axis[1], q.at[2], q.at[0]], depth: m.legT + 2, printer: pr }));
+  for (const q0 of m.screws) { const q = { at: back(q0.at), axis: ax(q0.axis) }; cuts.push(hole(q0.thread, { kind: 'clearance', into: q.axis[1] > 0 ? '+x' : '-x', at: [q.at[1] - q.axis[1], q.at[2], q.at[0]], depth: m.legT + 2, printer: pr })); }
   const g = combine(parts, cuts, o.ops ?? null);
-  return Object.assign(o.pose === 'fit' ? toFit(g, [[0, 1, 0], [0, 0, 1], [1, 0, 0]], [0, 0, 0]) : g, { model: m });
+  if (o.pose !== 'fit') return Object.assign(g, { model: m });
+  const fit = toFit(g, [[0, 1, 0], [0, 0, 1], [1, 0, 0]], [0, 0, 0]);
+  return Object.assign(m.end === 'b' ? transform([-1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0, 2 * F.yc, 0, 1], fit) : fit, { model: m });
 }
 
 // ---------- the motor plate ----------
 /**
  * A printed plate that holds a motor of the catalogue on a beam, its shaft along the beam over a face: a saddle standing
- * across the beam, legs screwed into the side faces' slots, and the motor's mount cut from its own rules (its mounting
- * holes, the boss's pocket and the shaft's hole, as @rulecad/motors' mount() cuts them; the screws' clearance holes are
- * @rulecad/fixings'). The motor's mounting face lies on the plate's outer face, its body outside, the offset of a geared
- * motor's body away from the face. Sized from a load at the shaft to about twice the margin, by beam formulas; its legs
- * reach out under the motor so its screws have room. It prints on its inner face.
+ * across the beam, its legs screwed into the side faces' slots, two screws a leg so the motor's torque is held by shear,
+ * and the motor's mount cut from its own rules (its mounting holes, the boss's pocket and the shaft's hole, as
+ * @rulecad/motors' mount() cuts them; the screws' clearance holes are @rulecad/fixings'). The motor's mounting face lies on
+ * the plate's outer face, its body outside, a geared motor's body offset away from the face. The plate is at least half
+ * as thick again as the motor's screws (as @rulecad/motors asks) and sized from a load at the shaft to about twice the
+ * margin; where its shaft would reach too little into a coupler past it, a recess in its inner face takes the coupler in.
+ * It prints on its outer face: the boss's pocket ends in a 45° cone, the recess opens up.
  * @param {string | object} profile
- * @param {{ motor: string, face?: string, height?: number, load?: number, thread?: string, head?: 'cap' | 'button', nut?: string, printer?: object, material?: string | object, given?: object }} o
- *   motor: its rule set (28byj48, nema14, nema17); height: the shaft's over the face (default the least the body clears)
- * @returns {object} its model, with anchors motor (where the motor's own frame goes), coupler and shaft
+ * @param {{ motor: string, face?: string, height?: number, coupler?: { length: number, D: number }, load?: number, thread?: string, head?: 'cap' | 'button', nut?: string, printer?: object, material?: string | object, given?: object }} o
+ *   motor: its rule set (28byj48, nema14, nema17); height: the shaft's over the face (default the least the body clears);
+ *   coupler: its length and diameter, where one goes on the shaft (default coupler-5-8's figures for a 5 mm shaft)
+ * @returns {object} its model, with anchors motor (where the motor's own frame goes) and coupler (where its face is)
  */
 export function motorPlateModel(profile, o = {}) {
   const what = 'motorPlateModel';
-  options(what, o ?? {}, ['motor', 'face', 'height', 'load', 'thread', 'head', 'nut', 'printer', 'material', 'given']);
+  options(what, o ?? {}, ['motor', 'face', 'height', 'coupler', 'load', 'thread', 'head', 'nut', 'printer', 'material', 'given']);
   if (o.motor == null) throw new Error(`${what}: motor is the motor's rule set, one of ${known('motor').join(', ')}`);
   const p = profileOf(what, profile, o.given ?? {}), F = faceOf(what, p, o.face), k = partSetup(what, o), mo = motorFigures(what, setOf(what, 'motor', 'motor', o.motor)), gap = ROD_DEFAULTS.gap.value, wall = ROD_DEFAULTS.wall.value;
   const least = r3(mo.body.size / 2 - mo.offset + gap), h = o.height ?? r3(up(least, 0.5));
   if (!(isNum(h) && h >= least - 1e-9)) throw new Error(`${what}: height is the shaft's height over the face, mm, at least ${mm(least)} so ${mo.set}'s body clears it (got ${shown(o.height)})`);
+  const cs = o.coupler ?? (SETS['coupler-5-8'] && Math.abs(fig(SETS['coupler-5-8'], 'bore_a') - mo.shaft.d) < 1e-6 ? { length: fig(SETS['coupler-5-8'], 'length'), D: fig(SETS['coupler-5-8'], 'outer_diameter') } : null);
+  if (cs != null && !(isNum(cs.length) && cs.length > 0 && isNum(cs.D) && cs.D > 0)) throw new Error(`${what}: coupler is { length, D } in mm (got ${shown(o.coupler)})`);
   const S = loadOf(what, o.load, ROD_DEFAULTS.load.value), ls = legScrews(what, p, F, o, k), comp = k.pr.rules?.hole_comp?.value ?? 0.1;
   // the motor's holes in the part's (y, z): its x across the beam the other way, its y down toward the face
-  const at = ([mx, my]) => [r3(F.yc - mx), r3(h - my)], holes = mo.holes.map(at), clear = holeModel(mo.thread, { kind: 'clearance', printer: k.pr }).diameter;
+  const at = ([mx, my]) => [r3(F.yc - mx), r3(h - my)], holes = mo.holes.map(at), major = fixingModel(mo.thread).major, clear = holeModel(mo.thread, { kind: 'clearance', printer: k.pr }).diameter;
   const ys = holes.map((q) => q[0]), zs = holes.map((q) => q[1]), rim = clear / 2 + wall + 1;
   const y0 = r3(Math.min(...ys) - rim), y1 = r3(Math.max(...ys) + rim), top = r3(up(Math.max(...zs) + rim, 0.5));
   const pocket = mo.boss.d ? r3(mo.boss.d + 2 * k.fit + comp) : 0, pocketDepth = mo.boss.h ? r3(mo.boss.h + 2 * k.layer) : 0, shaftHole = r3(mo.shaft.d + 2 * k.fit + comp + 0.4);
-  const b = y1 - y0, M = S * h, t0 = Math.max(up(FITTING_DEFAULTS.least.value * fixingModel(mo.thread).major, k.layer), pocketDepth + 3 * k.layer, bendT(M, b, k.S, want()));
-  const t = r3(up(t0, k.layer)), legs = r3(Math.max(t, ls.along)), margin = r3(bendMargin(M, b, t, k.S)), stress = r3((6 * M) / (b * t * t));
-  const shape = saddleLoop(F, k.fit, ls.legT, ls.zLeg, y0, y1, top);
-  // the screws into the slots, through the legs' middle, out under the motor (the legs reach from its inner face out)
-  const xm = r3(t - legs / 2), screws = F.sides.map((x, i) => ({ thread: ls.thread, head: ls.head, grip: ls.legT, side: x.name, at: [xm, r3(x.out > 0 ? shape.R1 + ls.legT : shape.L1 - ls.legT), x.z], axis: [0, -x.out, 0], nut: ls.sds[i].nut.name, nutKind: ls.sds[i].nut.nutKind, length: ls.fits?.lengths[i] ?? null }));
-  const shaftOut = r3(mo.shaft.length - t);
+  const b = y1 - y0, M = S * h, t0 = Math.max(up(1.5 * major, k.layer), pocketDepth + 3 * k.layer, bendT(M, b, k.S, want()));
+  const t = r3(up(t0, k.layer)), margin = r3(bendMargin(M, b, t, k.S)), stress = r3((6 * M) / (b * t * t));
+  // the coupler: its face where the shaft goes its own diameter into it, or the shaft's flat's length, whichever is more;
+  // a recess in the inner face takes it in where that is inside the plate
+  const want_ = Math.min(cs ? cs.length / 2 : Infinity, Math.max(mo.shaft.d, mo.shaft.flat ?? 0)), face = r3(Math.max(0, mo.shaft.length - want_));
+  const recess = cs && face < t + gap / 2 - 1e-9 ? { d: r3(cs.D + 2 * gap), depth: r3(t - (face - gap / 2)) } : null, couplerAt = recess ? face : r3(t + gap / 2);
+  if (recess && t - recess.depth < pocketDepth + pocket / 2 - shaftHole / 2 - 1e-9 + 2 * k.layer && t - recess.depth < 2 * k.layer) throw new Error(`${what}: ${mo.set}'s ${mm(mo.shaft.length)} mm shaft is too short to reach a coupler through a ${mm(t)} mm plate`);
+  // the screws into the slots: two a leg along the beam, the legs reaching in from its outer face
+  const legs = r3(Math.max(t, 2 * ls.along)), xs = [r3(ls.along / 2), r3(legs - ls.along / 2)];
+  const screws = F.sides.flatMap((x, i) => xs.map((xm) => ({ thread: ls.thread, head: ls.head, grip: ls.legT, side: x.name, at: [xm, r3(x.out > 0 ? F.yc + F.across + k.fit + ls.legT : F.yc - F.across - k.fit - ls.legT), x.z], axis: [0, -x.out, 0], nut: ls.sds[i].nut.name, nutKind: ls.sds[i].nut.nutKind, length: ls.fits?.lengths[i] ?? null })));
+  const shape = saddleLoop(F, k.fit, ls.legT, ls.zLeg, y0, y1, top), engaged = r3(mo.shaft.length - couplerAt);
   const m = { kind: 'fitting', fitting: 'motor-plate', name: `motor-plate-${mo.set}-${short(p.name)}-${F.name}`, title: `printed plate for the motor ${mo.set} on ${p.name}'s ${F.name} face`, profile: p.name, face: F.name, frame: F, motor: mo.set, mount: mo,
-    height: h, thickness: t, legs, top, legT: ls.legT, zLeg: ls.zLeg, y0, y1, outline: shape.loop, holes: holes.map((q) => ({ at: q, diameter: r3(clear) })), thread: ls.thread, head: ls.head, screws, shaftOut,
+    height: h, thickness: t, legs, top, legT: ls.legT, zLeg: ls.zLeg, y0, y1, outline: shape.loop, holes: holes.map((q) => ({ at: q, diameter: r3(clear) })), thread: ls.thread, head: ls.head, screws, engaged, recess,
     pocket: { d: pocket, depth: pocketDepth }, shaftHole, hardware: [], load: { force: S, what: `${mm(S)} N along the beam at the shaft's ${mm(h)} mm height` }, stress, margin,
-    anchors: { motor: { at: [0, F.yc, h], axis: [1, 0, 0], ref: [0, -1, 0] }, shaft: { at: [0, F.yc, h], axis: [1, 0, 0], ref: [0, 0, 1] }, coupler: { at: [r3(t + ROD_DEFAULTS.gap.value / 2), F.yc, h], axis: [1, 0, 0], ref: [0, 0, 1] } },
+    anchors: { motor: { at: [0, F.yc, h], axis: [1, 0, 0], ref: [0, -1, 0] }, coupler: { at: [couplerAt, F.yc, h], axis: [1, 0, 0], ref: [0, 0, 1] } },
     size: { along: t, legs, across: r3(shape.R0 - shape.L0), height: r3(top - ls.zLeg) }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['load', 'wall', 'gap'].map((x) => ({ name: `ROD_DEFAULTS.${x}`, value: ROD_DEFAULTS[x].value, kind: ROD_DEFAULTS[x].kind }))] };
   keep(m, k); weigh(m, motorPlate(m), k.density);
-  m.findings.push(screwFinding(ls, 'leg'));
-  m.findings.push(finding('info', `${mo.set} on its mounting face at the plate's outer face, from its own rules: ${mo.holes.length} ${mo.thread} clearance holes (${mm(clear)} mm${mo.tapped ? `, into the motor's own thread` : ', through its ears to a nut'}), its ${mm(mo.boss.d)} mm boss in a ${mm(pocketDepth)} mm pocket, its shaft through a ${mm(shaftHole)} mm hole and ${mm(shaftOut)} mm past the plate's inner face`, 'fitting.motor', { values: { holes: mo.holes.length, thread: mo.thread, clearance: r3(clear), pocket, pocketDepth, shaftOut } }));
-  closingFindings(m, { S: k.S, sizeText: `${mm(b)} mm across, ${mm(top)} mm over the face, ${mm(t)} mm along the beam, legs ${mm(legs)} mm along it; ${ls.thread} into the slots either side`, marginText: `under ${m.load.what}, it bends at the face to ${mm(stress)} MPa`, pose: 'on its inner face, the boss\'s pocket opening up' });
+  m.findings.push(screwFinding(ls, 'leg, two a leg,'));
+  m.findings.push(finding('info', `${mo.set} on its mounting face at the plate's outer face, from its own rules: ${mo.holes.length} ${mo.thread} clearance holes (${mm(clear)} mm${mo.tapped ? ', into the motor\'s own thread' : ', through its ears to a nut'}) through ${mm(t)} mm, its ${mm(mo.boss.d)} mm boss in a ${mm(pocketDepth)} mm pocket, its shaft through a ${mm(shaftHole)} mm hole${cs ? ` and ${mm(engaged)} mm into the coupler${recess ? `, which sits ${mm(recess.depth)} mm into a ${mm(recess.d)} mm recess in the inner face` : ''}` : ''}`, 'fitting.motor', { values: { holes: mo.holes.length, thread: mo.thread, clearance: r3(clear), pocket, pocketDepth, engaged, recess } }));
+  closingFindings(m, { S: k.S, sizeText: `${mm(b)} mm across, ${mm(top)} mm over the face, ${mm(t)} mm along the beam, legs ${mm(legs)} mm along it; four ${ls.thread} into the slots either side`, marginText: `under ${m.load.what}, it bends at the face to ${mm(stress)} MPa`, pose: 'on its outer face, the boss\'s pocket ending in a 45° cone' });
   return m;
 }
-/** A motor plate's solid: as it prints (on its inner face) or in its fitted frame. @param {object} m motorPlateModel's @param {{ pose?: 'print' | 'fit', ops?: object }} [o] @returns {object} */
+/** A motor plate's solid: as it prints (on its outer face) or in its fitted frame. @param {object} m motorPlateModel's @param {{ pose?: 'print' | 'fit', ops?: object }} [o] @returns {object} */
 export function motorPlate(m, o = {}) {
   if (m?.fitting !== 'motor-plate') throw new Error(`motorPlate: give a motor plate's model (motorPlateModel), not ${shown(m)}`);
-  // print frame: X = -y, Y = z, Z = t - x (its inner face on the bed; the legs reach out to x = t - legs)
-  const pr = printerOf('motorPlate', m.pr ?? null), F = m.frame, P = flat2(-1), t = m.thickness, parts = [prismZ(m.outline.map(P), 0, t)];
+  // print frame: X = y, Y = z, Z = x (its outer face on the bed, the legs reaching up)
+  const pr = printerOf('motorPlate', m.pr ?? null), F = m.frame, P = flat2(1), t = m.thickness, parts = [prismZ(m.outline.map(P), 0, t)];
   for (const sd of [-1, 1]) { const yIn = sd < 0 ? F.yc - F.across - m.fit : F.yc + F.across + m.fit, yOut = yIn + sd * m.legT; parts.push(prismZ([[yIn, m.zLeg], [yOut, m.zLeg], [yOut, 0], [yIn, 0]].map(P), 0, m.legs)); }
-  const cuts = m.holes.map((q) => discZ(-q.at[0], q.at[1], q.diameter, -1, t + 1));
-  cuts.push(discZ(-F.yc, m.height, m.shaftHole, -1, t + 1));
-  if (m.pocket.d && m.pocket.depth) cuts.push(discZ(-F.yc, m.height, m.pocket.d, t - m.pocket.depth, t + 1));
-  for (const sd of [-1, 1]) cuts.push(discZ(-(sd < 0 ? F.yc - F.across - m.fit : F.yc + F.across + m.fit), 0, 2 * ROD_DEFAULTS.relief.value, -1, m.legs + 1));
-  for (const q of m.screws) cuts.push(hole(q.thread, { kind: 'clearance', into: q.axis[1] > 0 ? '-x' : '+x', at: [-(q.at[1] - q.axis[1]), q.at[2], t - q.at[0]], depth: m.legT + 2, printer: pr }));
+  const cuts = m.holes.map((q) => discZ(q.at[0], q.at[1], q.diameter, -1, t + 1));
+  cuts.push(discZ(F.yc, m.height, m.shaftHole, -1, m.legs + 1));
+  // the boss's pocket from the bed, its roof a 45° cone down to the shaft's hole: nothing to bridge
+  if (m.pocket.d && m.pocket.depth) {
+    const R = m.pocket.d / 2, r = m.shaftHole / 2, z1 = m.pocket.depth;
+    cuts.push(translate([F.yc, m.height, 0], jscad.extrusions.extrudeRotate({ segments: 48 }, polygon({ points: [[0, -1], [R, -1], [R, z1], [r, z1 + R - r], [0, z1 + R - r]] }))));
+  }
+  if (m.recess) cuts.push(discZ(F.yc, m.height, m.recess.d, t - m.recess.depth, m.legs + 1));
+  for (const sd of [-1, 1]) cuts.push(discZ(sd < 0 ? F.yc - F.across - m.fit : F.yc + F.across + m.fit, 0, 2 * ROD_DEFAULTS.relief.value, -1, m.legs + 1));
+  for (const q of m.screws) cuts.push(hole(q.thread, { kind: 'clearance', into: q.axis[1] > 0 ? '+x' : '-x', at: [q.at[1] - q.axis[1], q.at[2], q.at[0]], depth: m.legT + 2, printer: pr }));
   const g = combine(parts, cuts, o.ops ?? null);
-  return Object.assign(o.pose === 'fit' ? toFit(g, [[0, -1, 0], [0, 0, 1], [-1, 0, 0]], [0, 0, t]) : g, { model: m });
+  return Object.assign(o.pose === 'fit' ? toFit(g, [[0, 1, 0], [0, 0, 1], [1, 0, 0]], [0, 0, 0]) : g, { model: m });
 }
 
 // ---------- the carriage ----------
@@ -283,14 +309,14 @@ export function motorPlate(m, o = {}) {
  * beam down past the switch's lever. Sized from a load on its middle, between the bearings, by beam formulas. It prints on
  * its far end, the pockets opening up and the flag on the bed.
  * @param {string | object} profile
- * @param {{ face?: string, rod?: string, bearing?: string, spacing?: number, height?: number, screw?: string, nut?: string, flag?: { y: number, z: number }, load?: number, printer?: object, material?: string | object, given?: object }} [o]
+ * @param {{ face?: string, rod?: string, bearing?: string, spacing?: number, height?: number, screw?: string, leadNut?: string, flag?: { y: number, z: number }, load?: number, printer?: object, material?: string | object, given?: object }} [o]
  *   flag: where its tip reaches, in its frame (y across, z over the face: below 0 is beside the beam)
  * @returns {object} its model, with anchors slide (its joint), lm1 and lm2 (the bearings), nut and top
  */
 export function rodCarriageModel(profile, o = {}) {
   const what = 'rodCarriageModel';
-  options(what, o ?? {}, ['face', 'rod', 'bearing', 'spacing', 'height', 'screw', 'nut', 'flag', 'load', 'printer', 'material', 'given']);
-  const L = rodsLayout(profile, { face: o.face, rod: o.rod, bearing: o.bearing, spacing: o.spacing, height: o.height, screw: o.screw, nut: o.nut, given: o.given });
+  options(what, o ?? {}, ['face', 'rod', 'bearing', 'spacing', 'height', 'screw', 'leadNut', 'flag', 'load', 'printer', 'material', 'given']);
+  const L = rodsLayout(profile, { face: o.face, rod: o.rod, bearing: o.bearing, spacing: o.spacing, height: o.height, screw: o.screw, nut: o.leadNut, given: o.given });
   const p = profileOf(what, profile, o.given ?? {}), F = L.frame, k = partSetup(what, o), comp = k.pr.rules?.hole_comp?.value ?? 0.1, wall = ROD_DEFAULTS.wall.value, s = L.spacing, h = L.height, { length: Lc, width: Wc, bottom: zb, top: zt } = L.carriage, B = L.bearing, nut = L.nut;
   const S = loadOf(what, o.load, ROD_DEFAULTS.load.value), pocket = r3(B.D - ROD_DEFAULTS.press.value + comp), bore = r3(L.rod.d + 2 * k.fit + 1);
   const nutBore = nut ? r3(nut.body + 2 * k.fit + comp) : 0;

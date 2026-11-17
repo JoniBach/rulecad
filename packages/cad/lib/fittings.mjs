@@ -26,6 +26,7 @@ const MORE = {
   'device-mount': ['deviceMountModel', 'deviceMount'], 'fan-mount': ['fanMountModel', 'fanMount'], 'drag-chain-end': ['dragChainEndModel', 'dragChainEnd'], 'din-rail': ['dinRailAdapterModel', 'dinRailAdapter'],
   'cable-clip': ['cableClipModel', 'cableClip'], 'tie-anchor': ['tieAnchorModel', 'tieAnchor'], 'spool-holder': ['spoolHolderModel', 'spoolHolder'],
   'rail-jig': ['railJigModel', 'railJig'], 'wheel-plate': ['wheelsModel', 'wheelPlate'], slider: ['sliderModel', 'slider'],
+  'rod-holder': ['rodHolderModel', 'rodHolder'], 'rod-carriage': ['rodCarriageModel', 'rodCarriage'], 'motor-plate': ['motorPlateModel', 'motorPlate'], 'endstop-mount': ['endstopMountModel', 'endstopMount'],
 };
 // the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
 const TONGUED = ['panel-clip', 'magnet-catch', 'panel-corner', 'cable-clip', 'tie-anchor', 'spool-holder', 'rail-jig', 'slider'];
