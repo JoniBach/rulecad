@@ -2,7 +2,7 @@
 
 [The tutorial](TUTORIAL.md) ends with a wall hook checked against its screw. These examples carry on from there, one
 for each thing the [README](README.md) describes after that: parts, variants and releases, joints and poses, a model
-from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, a motor, a robot joint, a machine sized from its task, and a bracket screwed on. Each is a few files and the commands to run
+from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, a motor, a robot joint, a machine sized from its task, a bracket screwed on, and a frame of beams with a moving axis. Each is a few files and the commands to run
 them. The tests write every file here and run every command, so what you read is what works.
 
 They start from a workspace `npm create rulecad my-designs` makes, as the tutorial does, and run in order: later
@@ -6406,3 +6406,343 @@ the strength figures under `fasten.load` are not, and their findings say so. Pri
 nut pockets and slots at three fits, a counterbore and printed threads. Its results go back with `cad measured
 benchmarks/fixings-test <rule>=<figure>`, and every design drawn from `v.fixings` follows them the next time it is
 built.
+
+## 16. A frame: beams, joins and an axis
+
+A small box of aluminium extrusion with a moving axis along its top: the kind of frame a camera slider, a plotter or a
+test rig starts from. Every beam is one profile, MISUMI's 2020 (`2020-misumi-hfs5`), placed by its two ends, so its
+length is where its ends are. The joins say how beams hold each other: a blind join hides a screw inside the corner, a
+printed bracket goes on the outside. Feet and end caps finish the posts. Two rods on the top front rail carry a printed
+carriage, driven by a lead screw from a NEMA 17. A printed plate for a board is screwed into a slot. Then the frame is
+cut, drilled and printed from what the check worked out: the cut list, a sheet for each beam, the jigs, one plate of
+printed parts and the order to build it in. Two mistakes follow, each caught by name.
+
+```json projects/frame/project.json
+{
+  "name": "frame",
+  "title": "A frame with a moving axis",
+  "printer": "x1c",
+  "material": "PLA",
+  "objects": ["plate"]
+}
+```
+
+### The plate
+
+The board plate is the one part drawn by hand. It lies on a beam's slotted face, two M4 holes from `v.fixings` along
+its middle, so both screws go into one slot's nuts. Its thickness is chosen with its screws: 3 mm of plate and the
+slot's 2 mm lip leave an M4x8 a hex nut's height of thread in a slot nut without reaching the slot's floor.
+
+```json projects/frame/objects/plate.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "plate",
+  "title": "Board plate",
+  "version": "0.1.0",
+  "uses": ["x1c"],
+  "material": "PLA",
+  "orientation": "Flat, the face that lies on the beam down",
+  "variables": {
+    "thick": { "value": "x1c.layer * 15", "unit": "mm", "rule": "The plate: whole layers, and thin enough that an M4x8 screw reaches a nut's height of thread in the slot nut", "tweak": { "min": 2, "max": 4 } },
+    "long": { "value": 70, "unit": "mm", "rule": "Along the beam: a small board and a screw beyond each end of it", "tweak": { "min": 40, "max": 120 } },
+    "wide": { "value": 20, "unit": "mm", "rule": "Across the beam: as wide as its face", "tweak": { "min": 20, "max": 60 } },
+    "pitch": { "value": 50, "unit": "mm", "rule": "Between the two screws", "tweak": { "min": 10, "max": 100 } },
+    "round": { "value": 3, "unit": "mm", "rule": "The plate's corners, rounded" }
+  }
+}
+```
+
+```js projects/frame/objects/plate.js
+// A printed plate a board screws to, held on a beam's slotted face by two M4 screws into slot nuts.
+import jscad from '@jscad/modeling'
+const { roundedRectangle } = jscad.primitives
+const { extrudeLinear } = jscad.extrusions
+
+export function main (v) {
+  const plate = extrudeLinear({ height: v.thick }, roundedRectangle({ size: [v.long, v.wide], roundRadius: v.round }))
+  return v.ops.subtract(plate, ...[-1, 1].map((s) => v.fixings.hole('M4', { depth: v.thick, at: [s * v.pitch / 2, 0, v.thick] })))
+}
+```
+
+```sh
+npx cad check frame/plate
+```
+
+### The box
+
+Up is z, and the box stands on its feet at z = 0. Four posts, `p1` to `p4`, stand 200 mm tall at the corners of a
+300 by 260 mm rectangle (their centres 280 by 240 mm apart). Four rails run along x between them, `x1` and `x2` at
+30 mm up, `x3` and `x4` at 170 mm, and four along y, `y1` and `y2` at 10 mm up, `y3` and `y4` at 190 mm. Each beam is
+placed by `from` and `to`, the middles of its two ends, so a rail between two posts starts and stops at their faces.
+An address names a place on a beam: `p1.back@30` is the face of `p1` that looks back along x, 30 mm from its end `a`;
+`x1.top@50%` is half way along the top face of `x1`.
+
+- **Blind joins.** Twelve of the sixteen corners are `blind`: the rail's end is tapped M5, a button-head screw sits
+  inside the post's slot under its lips, and an access hole across the post lets a hex key reach it. Nothing shows
+  from outside, and the rail stays as long as the gap.
+- **Printed brackets.** The two bottom rails along y, `y1` and `y2`, are held by `bracket` joins with `"fitting":
+  "printed"`: a corner bracket from `@rulecad/frames`, drawn from the profile's slot, sized from a 100 N load, on two
+  M4 screws into slot nuts. Their nuts are `drop-in`, since those slots are closed at both ends by the time the
+  brackets go on.
+- **Feet and caps.** A printed `foot` on each post's end `a`, screwed into the end's bore, which the post's own `ops`
+  tap M5 as the foot asks. A printed `end-cap` on each end `b`, pushed on: its pegs go 5 mm into the slots and the bore,
+  a press fit (`"min": -5`).
+- **The axis.** A `rods` guide on the top face of `x3`, from 100 to 250 mm along it: two 8 mm rods in printed holders,
+  a printed carriage on two LM8UU bearings. A `screw` guide drives it: a printed motor plate before the first holder,
+  a NEMA 17 on it, a coupler and an 8 mm lead T8 screw, a 608 bearing for the screw in each holder and the lead nut on
+  the carriage. Every part is placed by the guide from the beam's addresses. The holders' and the plate's screws go
+  into `x3`'s side slots, closed at both ends by its joins, so the guide's `"nut"` is `drop-in` too. The driver is set
+  to 1.2 A, where the motor's case stays under PLA's softening point.
+- **The board plate.** At `x1.top@50%`, fastened into `x1`'s top slot on drop-in nuts. No screw length is given: the
+  check chooses the shortest sold that fits.
+- **Loads.** The carriage carries 0.5 kg, and the axis pushes 20 N along the rods (a cable chain's drag, or a tool
+  pressed along the way: a figure to replace with the task's own).
+
+```json projects/frame/assemblies/box.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A box of 2020 with a moving axis",
+  "kind": "fit",
+  "description": "Four posts, four rails along x and four along y, all one profile placed by their ends. Blind joins at every corner but the two bottom rails along y, which are held by printed brackets. Printed feet and end caps on the posts. A carriage on two rods along the top front rail, driven by a lead screw from a NEMA 17, and a board plate on the bottom front rail.",
+  "items": [
+    { "id": "p1", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [10, 10, 0], "to": [10, 10, 200] },
+    { "id": "p2", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [290, 10, 0], "to": [290, 10, 200] },
+    { "id": "p3", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [290, 250, 0], "to": [290, 250, 200] },
+    { "id": "p4", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [10, 250, 0], "to": [10, 250, 200] },
+    { "id": "x1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 10, 30], "to": [280, 10, 30] },
+    { "id": "x2", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 250, 30], "to": [280, 250, 30] },
+    { "id": "x3", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 10, 170], "to": [280, 10, 170] },
+    { "id": "x4", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 250, 170], "to": [280, 250, 170] },
+    { "id": "y1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [10, 20, 10], "to": [10, 240, 10] },
+    { "id": "y2", "beam": { "profile": "2020-misumi-hfs5" }, "from": [290, 20, 10], "to": [290, 240, 10] },
+    { "id": "y3", "beam": { "profile": "2020-misumi-hfs5" }, "from": [10, 20, 190], "to": [10, 240, 190] },
+    { "id": "y4", "beam": { "profile": "2020-misumi-hfs5" }, "from": [290, 20, 190], "to": [290, 240, 190] },
+    { "id": "foot1", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p1.a" },
+    { "id": "foot2", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p2.a" },
+    { "id": "foot3", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p3.a" },
+    { "id": "foot4", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p4.a" },
+    { "id": "cap1", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p1.b" },
+    { "id": "cap2", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p2.b" },
+    { "id": "cap3", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p3.b" },
+    { "id": "cap4", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p4.b" },
+    { "id": "plate", "object": "plate", "at": "x1.top@50%" }
+  ],
+  "joins": [
+    { "kind": "blind", "a": "x1.a", "b": "p1.back@30" }, { "kind": "blind", "a": "x1.b", "b": "p2.front@30" },
+    { "kind": "blind", "a": "x2.a", "b": "p4.back@30" }, { "kind": "blind", "a": "x2.b", "b": "p3.front@30" },
+    { "kind": "blind", "a": "x3.a", "b": "p1.back@170" }, { "kind": "blind", "a": "x3.b", "b": "p2.front@170" },
+    { "kind": "blind", "a": "x4.a", "b": "p4.back@170" }, { "kind": "blind", "a": "x4.b", "b": "p3.front@170" },
+    { "kind": "bracket", "a": "y1.a", "b": "p1.top@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y1.b", "b": "p4.bottom@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y2.a", "b": "p2.top@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y2.b", "b": "p3.bottom@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "blind", "a": "y3.a", "b": "p1.top@190" }, { "kind": "blind", "a": "y3.b", "b": "p4.bottom@190" },
+    { "kind": "blind", "a": "y4.a", "b": "p2.top@190" }, { "kind": "blind", "a": "y4.b", "b": "p3.bottom@190" }
+  ],
+  "fits": [
+    { "a": "cap1", "b": "p1", "fastens": true, "min": -5, "note": "An end cap, its pegs pushed 5 mm into the slots and the bore" },
+    { "a": "cap2", "b": "p2", "fastens": true, "min": -5, "note": "An end cap, its pegs pushed 5 mm into the slots and the bore" },
+    { "a": "cap3", "b": "p3", "fastens": true, "min": -5, "note": "An end cap, its pegs pushed 5 mm into the slots and the bore" },
+    { "a": "cap4", "b": "p4", "fastens": true, "min": -5, "note": "An end cap, its pegs pushed 5 mm into the slots and the bore" }
+  ],
+  "guides": [
+    { "kind": "rods", "on": "x3.top", "from": 100, "length": 150, "nut": "drop-in" },
+    { "kind": "screw", "guide": "g1", "screw": "t8-screw", "motor": { "model": "nema17", "current": 1.2 } }
+  ],
+  "fasten": [
+    { "screw": "M5 cap", "through": ["foot1"], "into": "p1", "at": ["foot1.b1"], "note": "Foot 1" },
+    { "screw": "M5 cap", "through": ["foot2"], "into": "p2", "at": ["foot2.b1"], "note": "Foot 2" },
+    { "screw": "M5 cap", "through": ["foot3"], "into": "p3", "at": ["foot3.b1"], "note": "Foot 3" },
+    { "screw": "M5 cap", "through": ["foot4"], "into": "p4", "at": ["foot4.b1"], "note": "Foot 4" },
+    { "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "drop-in", "note": "The board plate" }
+  ],
+  "loads": [
+    { "mass": 0.5, "at": "g1-carriage-1.top", "note": "What the carriage carries" },
+    { "joint": "g1-1", "force": 20, "note": "A push along the rods: a cable chain's drag, or a tool pressed along the way" }
+  ]
+}
+```
+
+```sh
+npx cad check frame/box
+npx cad check frame/box --sweep --steps 12
+```
+
+What the check says, piece by piece:
+
+- `join.geometry`: each of the sixteen ends meets its face square and flush, where `b` says, on the slot's centre line.
+  `join.end`: all 24 beam ends are joined or capped.
+- A blind join's screw, followed as any `fasten` is: an M5x12 button, 10 mm into the rail's own tapped thread (two
+  diameters in aluminium, `engagement.aluminium`), its head bearing on the post's lips from inside: 17.9 mm² of
+  aluminium either side of the opening takes 3677 N, so it is tightened to 3.68 N m at most.
+- A bracket: 4.8 mm thick and 4.07 g, 2.86 times under PLA's strength at its 100 N by finite elements, two M4x10 cap
+  screws, each into a drop-in nut with 4 mm of thread.
+- The feet: an M5x16 cap through each foot's 5 mm floor and 11 mm into the post's tapped end.
+- The board plate: each screw over the centre line of `x1`'s top slot (`fasten.slot`), at 105 and 155 mm from its end
+  a; M4x8 button chosen, 3.8 mm into its nut and 1 mm short of the slot's floor. `frame.nut`: the drop-in nuts go in
+  through the slot's opening, anywhere along it.
+- The axis: the carriage slides 99.5 mm (`guide.travel`); the motor's shaft goes 12.5 mm into the coupler, half of
+  it, so it stops short of the screw coming in from the other end (`guide.coupler`). `motor.torque`: 127.2 N at the
+  carriage against the 20 N asked, 6.36 times over; it moves at 80 mm/s, and holds with the power off on the motor's
+  detent (0.012 against 0.025 N m). `motor.heat`: the case reaches 53.8 °C at 1.2 A, under PLA's 57 °C.
+  `joint.moment`: 556 g carried, the worse bearing takes 2.7 N against an LM8UU's 400 N.
+- `frame.square`: each bay's two diagonals, to measure when building it. The two sides along x have a 260 by 120 mm
+  opening: each diagonal 286.36 mm, and a difference of up to 0.91 mm to accept from beams cut to ±0.5 mm.
+- `join.stiffness`: what each join puts at the rail's end when the frame is solved. A blind join is 1.5 N·m/mrad in
+  bending and 0.3 in twist, an estimate; a bracket's bending, 0.095 N·m/mrad, is its own by finite elements, and the
+  slot nuts and lips are in neither. Both stay estimates until the joint rig (issue 264) measures one.
+
+The sweep moves the carriage from one end of its travel to the other, 0 to 99.5 mm in 12 steps: nothing collides.
+
+### Strong enough, and small
+
+Each printed part is sized from a named load to about twice the margin, where its load sizes it at all:
+
+| Part | Grams | Load it is sized for | Margin |
+|---|---|---|---|
+| Corner bracket (× 4) | 4.1 | 100 N across the rail at its screw | 2.86, by finite elements |
+| Carriage | 23.6 | 50 N on its middle, between its bearings | 6.04 |
+| Motor plate | 10.5 | 50 N along the beam at the shaft's height | 4.95 |
+| Rod holder (× 2) | 17.6 | 50 N along the beam at the rods' height | 24.3 |
+| Foot (× 4) | 7.0 | 250 N down the post | 78.8 |
+| End cap (× 4) | 1.3 | none: pushed on | |
+| Board plate | 5.1 | its screws' seat: 1124 N under each head | |
+
+The bracket is the part its load sizes: thinner, it would bend past its margin. The others are sized by what they hold
+rather than what they carry: the carriage by its two bearings' pockets and the nut's bore, the holder by the 608
+bearing pressed into it, the plate by the motor's boss and its four screws, the foot by the counterbore its screw's
+head sinks into. Each is as small as those allow. The margins under 2.86 come from beam formulas or coarse finite
+elements on PLA's 39 MPa (`pla.strength`, a community figure), so each is an estimate, and the finding says so.
+
+### Cut, drilled and tapped
+
+```sh
+npx cad list frame/box
+npx cad beams frame/box
+npx cad beams frame/box --jigs
+```
+
+`cad list` gives the cut list. The beams come in seven marks, beams cut and drilled alike sharing one: `A`, the four
+rails along x at 260 mm, each tapped M5 18.5 mm deep at both ends; `B`, the two bracket-held rails at 220 mm, cut
+square and nothing more; `C`, the two top rails along y, tapped; and `D` to `G`, the four posts at 200 mm, each tapped
+at its foot, with three access holes on the faces its rails meet. All twelve come out of one 4000 mm bar, with a
+3 mm kerf and 10 mm trimmed off its first end, leaving a 1234 mm offcut. Then the bought parts (the rods, bearings,
+coupler, screw, nut and motor), the fasteners by size with the packs to buy (12 × M5x12 button for the blind joins,
+16 × M4x10 cap and 18 drop-in nuts for the brackets, the holders and the motor plate, 4 × M5x16 cap for the feet,
+2 × M4x8 button for the board plate), and 124 g printed in 17 parts, about 134 minutes of printing.
+
+`cad beams` writes a cut-and-drill sheet for each mark, `exports/frame/box.beam-A.svg` and on: its length, each
+operation dimensioned from end `a`, and which face is up. `--jigs` makes the jigs the beams take, as one plate,
+`exports/frame/box.jigs.3mf`: a tap guide for the M5 ends, a cut-length stop for each length (260, 220 and 200 mm),
+two drill guides for the posts' access holes (one 30 mm from an end, one 10 mm), and a squaring corner of each hand
+for the blind joins, 8 jigs in 12 parts. Each is marked with what it is for, and prints without supports.
+
+### Printed on one plate
+
+```sh
+npx cad plates frame/box
+```
+
+Every printed part of the frame goes on one plate of the X1C's bed, laid as each prints: the four brackets, the four
+feet and caps, the two rod holders, the carriage, the motor plate and the board plate, 17 parts and 124 g, spaced by
+the first layer's rule (0.84 mm). The plate is written as an assembly, `box-base-1`, and checked as one print: no
+overhang past 45°, nothing in mid-air, nothing too near its neighbour on the first layer.
+
+### Built in order
+
+```sh
+npx cad order frame/box
+```
+
+`cad order` takes the frame from bars to square in 37 numbered steps:
+
+1. Cut the beams, mark by mark, from the one bar.
+2. Drill and tap each mark as its sheet shows, and write the item on each beam.
+3. Side 1, the front (`p1`, `p2`, `x1` and `x3`), built flat on the bench, a join at a time, each with its screw, its
+   3 mm hex key and its torque (steps 3 to 6), then squared by its diagonals and its joins tightened (step 7).
+4. Side 2, the back, the same (steps 8 to 12).
+5. The rails along y go on side 1 (steps 13 to 16), and side 2 goes on as one (step 17): the heads of its blind joins
+   slide into the posts' slots from their ends.
+6. The two bays along y are squared (step 18).
+7. The rest is mounted: the feet and caps, the board plate, the holders, the carriage, the motor plate, the rods,
+   the bearings, the motor, the coupler, the screw and its nut (steps 19 to 37).
+
+It ends with each kind of join's tightening: the twelve blind joins to 3.68 N m (what the lips take), the four bracket
+joins to 0.68 N m (what the PLA under each head takes).
+
+### Two mistakes, caught
+
+A trapped nut. The board plate on its rail between two posts, its nuts `slide-in`, which go into a slot only from an
+open end:
+
+```json projects/frame/assemblies/trapped.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The board plate on slide-in nuts",
+  "kind": "fit",
+  "items": [
+    { "id": "p1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [10, 10, 0], "to": [10, 10, 200] },
+    { "id": "p2", "beam": { "profile": "2020-misumi-hfs5" }, "from": [290, 10, 0], "to": [290, 10, 200] },
+    { "id": "x1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 10, 30], "to": [280, 10, 30] },
+    { "id": "plate", "object": "plate", "at": "x1.top@50%" }
+  ],
+  "joins": [
+    { "kind": "blind", "a": "x1.a", "b": "p1.back@30" }, { "kind": "blind", "a": "x1.b", "b": "p2.front@30" }
+  ],
+  "fasten": [
+    { "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "slide-in", "note": "The board plate" }
+  ]
+}
+```
+
+`npx cad check frame/trapped` fails on `frame.nut`, and names the nut that would do:
+
+```text
+✗ The board plate: 2 slide-in nuts (slot-nut-6-misumi-m4-slide-in) go into x1's top slot at 105 and 155 mm, between x1's end a (the blind join of x1.a to p1.back@30) and x1's end b (the blind join of x1.b to p2.front@30), which close it at both ends: a slide-in nut goes in only from an open end. slot-nut-6-misumi-m4-drop-in (an M4 drop-in nut) goes in through the opening anywhere: give "nut": "drop-in"
+```
+
+and `npx cad order frame/trapped` refuses to give an order:
+
+```text
+frame/trapped: x1's top slot: 2 slide-in nuts (slot-nut-6-misumi-m4-slide-in) for plate would be shut in between the blind join of x1.a to p1.back@30 and the blind join of x1.b to p2.front@30: whichever of the two is made second shuts them in, and a nut loaded before it can never be taken out or replaced: give "nut": "drop-in" (slot-nut-6-misumi-m4-drop-in), which goes in through the opening anywhere
+```
+
+A plate drawn for the wrong slot spacing. The same plate turned across a wider rail, a 2040 whose top face has two
+slots 20 mm apart, with its holes drawn 30 mm apart, as a 30 series beam's slots are:
+
+```json projects/frame/assemblies/spacing.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A plate drawn for 30 mm slots on a 2040",
+  "kind": "fit",
+  "items": [
+    { "id": "x1", "beam": { "profile": "2040-misumi-hfs5" }, "from": [0, 0, 10], "to": [260, 0, 10] },
+    { "id": "plate", "object": "plate", "at": [130, 0, 20], "rotate": [0, 0, 90], "set": { "pitch": 30, "long": 44 } }
+  ],
+  "fasten": [
+    { "screw": "M4 button", "through": ["plate"], "into": "x1.top", "holes": "plate.body", "nut": "drop-in", "note": "The board plate" }
+  ]
+}
+```
+
+`npx cad check frame/spacing` fails on `fasten.slot`, for each screw:
+
+```text
+✗ The board plate, screw 1 (hole at -15, 0, 1.5): plate's hole is 5 mm off the centre line of x1's top.1 slot, where its 4.6 mm hole lets an M4 screw move 0.3 mm: the screw meets the face beside the slot, not its nut. x1's top slots are 20 mm apart. Move the hole 5 mm, or plate is drawn for another profile
+✗ The board plate, screw 2 (hole at 15, 0, 1.5): plate's hole is 5 mm off the centre line of x1's top.2 slot, where its 4.6 mm hole lets an M4 screw move 0.3 mm: the screw meets the face beside the slot, not its nut. x1's top slots are 20 mm apart. Move the hole 5 mm, or plate is drawn for another profile
+```
+
+### The build page
+
+`npx cad link frame/box --md` gives a link to the model page. Its Build button opens the shopping list, the cut list
+and each beam's sheet, the plate drawn on its bed, and "Building the frame": the 37 steps, each a button that shows the
+frame at that step, with the torques and the diagonals as tables. The carriage is a slider on the page, so the axis
+can be run along its travel.
+
+### What rests on estimates
+
+The beams' sections, the slot nuts, the rods, the bearings, the screw and the motor come from their makers' figures.
+Three things do not, and their findings say so: each join's stiffness, until the joint rig (issue 264) measures one;
+the torque a blind join's head puts on the lips, which counts their bearing and not their bending; and the printed
+parts' margins, which rest on PLA's strength and on beam formulas or coarse finite elements. The frame's own sag and
+sway under the carriage's load, and its lowest frequency, come with the frame checks (issues 265 to 267).
