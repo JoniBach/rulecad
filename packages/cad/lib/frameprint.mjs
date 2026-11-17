@@ -22,7 +22,7 @@
 // (beam_modulus, or beam_modulus_z for one printed standing up) and the stress it breaks at (beam_strength, _z).
 // Units: mm, N, N·mm, MPa, kg.
 import { frame as solveFrame, subdivide } from '@rulecad/fea/frame';
-import { PRINTED_SERIES, PRINTED_DEFAULTS, beamCreep, printerFigures } from '@rulecad/frames';
+import { PRINTED_SERIES, PRINTED_DEFAULTS, JOINS, beamCreep, printerFigures } from '@rulecad/frames';
 import { beamOf } from './beams.mjs';
 
 const G = 9.80665;
@@ -121,6 +121,20 @@ function evaluate(s, fm, ctx, cands, targets) {
   return out;
 }
 
+// The joins on a beam a printed one would not take as drawn: a blind, end-tap or anchor join screws into its end, and a
+// printed beam has inserts there, no bore to tap or pocket; a join whose screw heads or nuts ride in a slot of the beam's
+// face needs that face slotted, and a printable profile has one slot, on top
+const INTO_END = ['blind', 'end-tap', 'anchor'];
+function joinsToChange(fm, b) {
+  const out = [];
+  for (const x of fm.joins) {
+    const kind = x.j.kind;
+    if (x.A === b && INTO_END.includes(kind)) out.push({ join: x.j.index, label: x.j.label, why: `${x.j.label} screws into its end ${x.e}, where a printed beam has an insert, no bore to tap or pocket` });
+    else if (x.B === b && JOINS[kind]?.slot && String(x.j.address ?? '').split(/[.@]/)[0] !== 'top') out.push({ join: x.j.index, label: x.j.label, why: `${x.j.label} lands on its ${String(x.j.address).split(/[.@]/)[0]} face, which a printed beam has closed` });
+  }
+  return out;
+}
+
 // what a margin is, in a few words
 function sayMargin(r, k) {
   const m = r.margins[k], x = (v) => (v === Infinity ? 'free' : `${n3(v, 2)}`);
@@ -162,12 +176,14 @@ export function printableCheck(s, fm, f, ctx) {
   for (const { b, why } of none) f('info', `${b.id} stays ${b.alloy ?? 'as it is'}: ${why}`, null, { code: 'beam.printable', between: [r4(b.A), r4(add(b.A, scale(b.u, b.L)))], refs: { beam: b.id, material: opts.material, printable: false } });
   for (const r of best.values()) {
     const c = r.c, b = c.b, ok = r.least >= 1, order = Object.keys(r.margins).filter((k) => r.margins[k] !== Infinity).sort((p, q) => r.margins[p] - r.margins[q]);
+    const change = b.m.printed ? [] : joinsToChange(fm, b), joinsSaid = change.length ? `. Its joins as drawn need changing to print it: ${change.map((x) => x.why).join('; ')}. A bracket or a gusset on its top slot takes it, its spring then a printed fitting's` : '';
+    r.change = change;
     const text = ok
-      ? `${b.id} can be printed in ${plastic}, ${poseSaid(c)} (${c.profile}, ${n3(c.grams, 1)} g): its least margin is ${n3(r.least, 2)} times, ${said[r.governs]}. ${order.map((k) => sayMargin(r, k)).join('; ')}. It rests on ${rests}`
+      ? `${b.id} can be printed in ${plastic}, ${poseSaid(c)} (${c.profile}, ${n3(c.grams, 1)} g): its least margin is ${n3(r.least, 2)} times, ${said[r.governs]}. ${order.map((k) => sayMargin(r, k)).join('; ')}${joinsSaid}. It rests on ${rests}`
       : `${b.id} needs ${b.alloy ?? 'its own material'}: printed in ${plastic}, ${poseSaid(c)} (${c.profile}), it misses by ${n3(1 / r.least, 2)} times on ${said[r.governs]}. ${order.map((k) => sayMargin(r, k)).join('; ')}. It rests on ${rests}`;
     f(ok ? 'pass' : 'info', text, null, { code: 'beam.printable', at: r4(add(b.A, scale(b.u, b.L / 2))), between: [r4(b.A), r4(add(b.A, scale(b.u, b.L)))],
       values: { margin: r3(r.least), misses: ok ? null : r3(1 / r.least), grams: r3(c.grams), modulus: c.E, strength: r3(c.strength), margins: Object.fromEntries(Object.entries(r.margins).map(([k, v]) => [k, r3(v)])), sag: r3(r.def?.sag), limit: r3(r.def?.limit.value), creepSag: r3(r.creepSag?.sag) },
-      refs: { beam: b.id, material: opts.material, printable: ok, pose: c.pose, spliced: c.spliced, profile: c.profile, governs: r.governs, alloy: b.alloy, restsOn: 'estimate' } });
+      refs: { beam: b.id, material: opts.material, printable: ok, pose: c.pose, spliced: c.spliced, profile: c.profile, governs: r.governs, alloy: b.alloy, joins: change.map((x) => x.join), restsOn: 'estimate' } });
   }
   // those that pass alone, printed together: put back the one that misses most until all of them hold
   let together = [...best.values()].filter((r) => r.least >= 1).map((r) => r.c), back = [], least = null;
@@ -177,11 +193,13 @@ export function printableCheck(s, fm, f, ctx) {
     back.push(worst.c.b.id); together = together.filter((c) => c !== worst.c);
   }
   const all = fm.beams.size, metal = [...fm.beams.keys()].filter((id) => !together.some((c) => c.b.id === id));
+  const changes = [...new Set(together.flatMap((c) => best.get(c.b.id).change ?? []).map((x) => x.join))];
+  const changeSaid = changes.length ? `. ${changes.length} of its joins need changing to a bracket or a gusset on a printed beam's top slot (each beam's finding says which)` : '';
   const text = together.length === all
     ? `every beam of the frame can be printed in ${plastic} (${all}), printed together and solved once more: the least margin is ${sayMargin(least, least.governs)}${['deflection', 'creepSag', 'frequency'].includes(least.governs) ? '' : ` at ${least.c.b.id}`}; ${n3(together.reduce((t, c) => t + c.grams, 0), 0)} g of ${plastic} in all`
     : `${together.length} of the frame's ${all} beams can be printed in ${plastic}${together.length ? ` (${together.map((c) => c.b.id).join(', ')}), printed together and solved once more, the least margin ${sayMargin(least, least.governs)}` : ''}; ${metal.join(', ')} stay${metal.length === 1 ? 's' : ''} as ${metal.length === 1 ? 'it is' : 'they are'}${back.length ? `, of them ${back.join(', ')} passing alone but not printed with the rest` : ''}`;
-  f(together.length === all ? 'pass' : 'info', `${text}. It rests on ${rests}`, null, { code: 'beam.printable', values: { printable: together.length, beams: all, margin: r3(least?.least), grams: r3(together.reduce((t, c) => t + c.grams, 0)) },
-    refs: { material: opts.material, printable: together.map((c) => c.b.id), metal, back, governs: least?.governs ?? null, poses: Object.fromEntries(together.map((c) => [c.b.id, c.pose])), restsOn: 'estimate' } });
+  f(together.length === all ? 'pass' : 'info', `${text}${changeSaid}. It rests on ${rests}`, null, { code: 'beam.printable', values: { printable: together.length, beams: all, margin: r3(least?.least), grams: r3(together.reduce((t, c) => t + c.grams, 0)) },
+    refs: { material: opts.material, printable: together.map((c) => c.b.id), metal, back, governs: least?.governs ?? null, joins: changes, poses: Object.fromEntries(together.map((c) => [c.b.id, c.pose])), restsOn: 'estimate' } });
 }
 
 /**
@@ -214,7 +232,7 @@ export function couponChecks(s, fm, f, ctx) {
         { code: 'beam.coupon', at: r4(fm.nodes[node]), values: { sag: r3(sag), kg: l.kg, span: r3(span), modulus: E, inertia: p.section.inertiaX },
           predict: { name: `${b.id}.sag`, figure: `sag of the beam coupon ${b.id} under ${l.kg} kg`, value: r3(sag), unit: 'mm', coupon: { rule: `${mat}.beam_modulus${z}`, kind: 'modulus', base: E, sag, unit: 'MPa', what: `${n3(l.kg, 3)} kg at ${l.where}, across ${n3(span, 1)} mm` } },
           refs: { beam: b.id, rule: `${mat}.beam_modulus${z}`, pose: p.pose, kind: p.modulusKind } });
-      f('info', `${b.id}, the beam coupon: it breaks at about ${n3(breaks, 2)} kg hung at ${l.where}, where its stress reaches ${S} MPa (${p.coupon?.strength ? `${p.coupon.strength}, measured` : `${mat}'s strength ${lying ? 'along' : 'across'} its layers, ${p.strengthKind}`}). Add mass until it breaks, last of all, and write the mass it broke at: cad measured ${s.project}/${s.name} ${b.id}.break=<kg>, and the strength goes to ${mat}.beam_strength${z}`, null,
+      f('info', `${b.id}, the beam coupon: it breaks at about ${n3(breaks, 2)} kg hung at ${l.where}, where its stress reaches ${S} MPa (${p.coupon?.strength ? `${p.coupon.strength}, measured` : `${mat}'s strength ${lying ? 'along' : 'across'} its layers, ${p.strengthKind}`}). Last of all, pull it down there until it breaks (a luggage scale on the cord, its peak in kg), and write that: cad measured ${s.project}/${s.name} ${b.id}.break=<kg>, and the strength goes to ${mat}.beam_strength${z}`, null,
         { code: 'beam.coupon', at: r4(fm.nodes[node]), values: { breaks: r3(breaks), strength: S, perKg: r3(perKg), self: r3(self) },
           predict: { name: `${b.id}.break`, figure: `mass the beam coupon ${b.id} breaks at`, value: r3(breaks), unit: 'kg', coupon: { rule: `${mat}.beam_strength${z}`, kind: 'strength', base: S, perKg, self, unit: 'MPa', what: `hung at ${l.where}, across ${n3(span, 1)} mm` } },
           refs: { beam: b.id, rule: `${mat}.beam_strength${z}`, pose: p.pose, kind: p.strengthKind } });

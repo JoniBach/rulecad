@@ -4455,3 +4455,137 @@ test('a printed beam in an assembly: a printed part weighed by its walls and inf
     assert.match(cad('check', 'frame/frame'), /item x1: printed.pose is lying \(on its bottom face, layers along the beam\) or standing/);
   } finally { done(); }
 });
+
+test('beam.printable: every beam of a case-sized frame can be printed in PETG; a 400 mm gantry beam needs aluminium, by the margin it misses by; a printed beam in the frame checked at its pose\'s strength, with its creep', async () => {
+  const { ws, done } = workspace();
+  try {
+    const { beamModel } = await import('@rulecad/frames');
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const write = (name, x) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify(x));
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/${name}');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^(beam\\.(printable|creep)|frame\\.(solve|deflection|stress))$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+
+    // 1. a case: four 2020 legs 250 mm tall, rings of four 240 mm beams joined blind 240 and 10 mm up, 2 kg on the
+    // middle of a top beam, every beam tried printed in PETG ("frame": { "printed": "petg" })
+    const ring = (n, h) => [beam(`x${n}`, [10, 0, h], [250, 0, h]), beam(`x${n + 1}`, [10, 260, h], [250, 260, h]), beam(`y${n}`, [0, 10, h], [0, 250, h]), beam(`y${n + 1}`, [260, 10, h], [260, 250, h])];
+    const joins = (n, h) => [[`x${n}.a`, 'z1.back'], [`x${n}.b`, 'z2.front'], [`x${n + 1}.a`, 'z3.back'], [`x${n + 1}.b`, 'z4.front'], [`y${n}.a`, 'z1.top'], [`y${n}.b`, 'z3.bottom'], [`y${n + 1}.a`, 'z2.top'], [`y${n + 1}.b`, 'z4.bottom']].map(([a, b]) => ({ kind: 'blind', a, b: `${b}@${h}` }));
+    const box = { title: 'Case', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 250]), beam('z2', [260, 0, 0], [260, 0, 250]), beam('z3', [0, 260, 0], [0, 260, 250]), beam('z4', [260, 260, 0], [260, 260, 250]), ...ring(1, 240), ...ring(3, 10)],
+      joins: [...joins(1, 240), ...joins(3, 10)], loads: [{ mass: 2, at: 'x1.top@50%' }], frame: { printed: 'petg' } };
+    write('case', box);
+    let r = probe('case');
+    const each = r.filter((x) => x.code === 'beam.printable' && x.refs.beam), all = r.find((x) => x.code === 'beam.printable' && !x.refs.beam);
+    assert.equal(each.length, 12);
+    assert.ok(each.every((x) => x.level === 'pass' && x.refs.printable && x.values.margin >= 1 && x.refs.profile === 'profile-2020-printed'), JSON.stringify(each.map((x) => [x.refs.beam, x.values.margin])));
+    // the most loaded, x1 (2 kg at its middle): its own sag, stress, creep and Euler's load each a margin, the least its creep sag
+    const x1 = each.find((x) => x.refs.beam === 'x1');
+    assert.deepEqual(Object.keys(x1.values.margins).sort(), ['buckling', 'creep', 'creepSag', 'deflection', 'stress']);
+    assert.ok(x1.values.margins.creepSag < x1.values.margins.deflection, 'it sags more as it creeps');
+    assert.match(x1.text, /^x1 can be printed in PETG, lying down \(profile-2020-printed, 62\.2 g\): its least margin is [\d.]+ times, its sag as it creeps\. .* It rests on the printed section's walls and infill, its plastic's figures and the creep shares \(estimates until the beam coupon is measured\), and 16 joins' springs .* as they are, made for metal beams$/);
+    // its blind joins screw into its ends, where a printed beam has inserts: said, to be changed to a bracket or a gusset
+    assert.equal(x1.refs.joins.length, 2);
+    assert.match(x1.text, /Its joins as drawn need changing to print it: blind join of x1\.a to z1\.back@240 screws into its end a, where a printed beam has an insert, no bore to tap or pocket; .*A bracket or a gusset on its top slot takes it/);
+    // all twelve printed together and solved once more: still within every limit
+    assert.equal(all.level, 'pass');
+    assert.deepEqual([all.values.printable, all.values.beams, all.refs.metal, all.refs.restsOn], [12, 12, [], 'estimate']);
+    assert.ok(all.values.margin >= 1 && all.values.margin < Math.min(...each.map((x) => x.values.margin)), 'printed together, the frame is softer than with any one printed');
+    assert.match(all.text, /^every beam of the frame can be printed in PETG \(12\), printed together and solved once more: the least margin is [\d.]+ on sag as it creeps \([\d.]+ mm at x1\.top@50%\); \d+ g of PETG in all\. 16 of its joins need changing to a bracket or a gusset/);
+    // refused by name
+    write('case', { ...box, frame: { printed: { material: 'petg', colour: 'red' } } });
+    assert.deepEqual(probe('case').filter((x) => x.code === 'frame.solve').map((x) => x.text), ['frame: frame.printed has no "colour": it takes material, walls, infill, pose']);
+
+    // 2. a gantry beam: 2020, 400 mm, held fixed at both ends, a carriage (a 608 standing in for it, 2 kg on it) on a
+    // slide along it, the sag allowed 0.1 mm (the gantry's accuracy, frame.limit). In aluminium it passes; printed in
+    // PETG it is longer than the X1C's 256 mm bed, so it lies down spliced, and it misses.
+    // Hand calculation, the carriage at mid-span (as drawn), a beam fixed at both ends:
+    //   F = (2 + 0.012) kg x 9.80665 = 19.73 N (2 kg and the 608's 12 g); w its own weight per mm
+    //   sag = F L³ / (192 E I) + w L⁴ / (384 E I), L = 400, E = 1810 MPa (PETG HF along its layers), I the printed
+    //   2020's second moment from its walls and infill (printedSection, read from beamModel here)
+    //   aluminium: E I = 69972 x 7420: 19.73 x 400³ / (192 x 69972 x 7420) = 0.0127 mm, under 0.1: it passes
+    //   printed: the misses-by figure is the sag as it creeps over 0.1 mm: sag / 0.5 (PRINTED_DEFAULTS.creep_modulus) / 0.1
+    const gantry = { title: 'Gantry', kind: 'fit', items: [beam('x1', [0, 0, 300], [400, 0, 300]), { id: 'cart', bought: 'bearing-608' }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 200], axis: [0, 0, 1] }, child: { item: 'cart', at: [0, 0, 0], axis: [0, 0, 1] }, min: -150, max: 150 }],
+      loads: [{ mass: 2, at: 'cart.bore' }], frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' }, limit: 0.1, printed: 'petg' } };
+    write('gantry', gantry);
+    r = probe('gantry');
+    const g = r.find((x) => x.code === 'beam.printable' && x.refs.beam === 'x1'), gAll = r.find((x) => x.code === 'beam.printable' && !x.refs.beam);
+    assert.equal(r.find((x) => x.code === 'frame.deflection').level, 'pass', 'in aluminium it holds');
+    const pm = beamModel('profile-2020-printed', { length: 400, material: 'petg', printed: true }), EI = 1810 * pm.figures.inertiaX.value, w = (pm.mass / 400) * 9.80665 / 1000;
+    const sag = (19.73 * 400 ** 3) / (192 * EI) + (w * 400 ** 4) / (384 * EI);
+    assert.ok(Math.abs(g.values.sag - sag) / sag < 0.02, `solved ${g.values.sag} mm against the hand's ${sag}`);
+    assert.ok(Math.abs(g.values.misses - (sag / 0.5) / 0.1) / g.values.misses < 0.02, `misses by ${g.values.misses} against ${(sag / 0.5) / 0.1}`);
+    assert.deepEqual([g.level, g.refs.printable, g.refs.governs, g.refs.spliced, g.refs.alloy, g.values.strength], ['info', false, 'creepSag', true, 'al6n01-t5', 17]);
+    assert.match(g.text, new RegExp(`^x1 needs al6n01-t5: printed in PETG, lying down, spliced \\(400 mm, longer than the bed\\) \\(profile-2020-printed\\), it misses by ${g.values.misses.toFixed(2).replace('.', '\\.')} times on its sag as it creeps\\. [\\d.]+ on sag as it creeps \\([\\d.]+ mm at cart\\.bore\\); [\\d.]+ on sag \\([\\d.]+ mm at cart\\.bore against 0\\.1 mm, the assembly's frame\\.limit\\)`));
+    assert.match(g.text, /on stress \([\d.]+ MPa against 17 MPa as spliced/, 'a splice carries half: 0.5 x 34 MPa');
+    assert.deepEqual([gAll.level, gAll.refs.printable, gAll.refs.metal], ['info', [], ['x1']]);
+    assert.match(gAll.text, /^0 of the frame's 1 beams can be printed in PETG; x1 stays as it is/);
+
+    // 3. the material on a beam: a 240 mm gantry beam printed in PETG standing up, in the frame as it is. Its stress is
+    // held to PETG's 23 MPa across its layers (strength_z), not 34 along them, and its creep is checked
+    write('gantry', { ...gantry, items: [{ id: 'x1', beam: { profile: 'profile-2020-printed', material: 'petg', printed: { pose: 'standing' } }, from: [0, 0, 300], to: [240, 0, 300] }, gantry.items[1]],
+      joints: [{ ...gantry.joints[0], parent: { ...gantry.joints[0].parent, at: [0, 10, 120] }, min: -100, max: 100 }], frame: { supports: gantry.frame.supports, limit: 1 } });
+    r = probe('gantry');
+    const creep = r.find((x) => x.code === 'beam.creep'), stress = r.find((x) => x.code === 'frame.stress');
+    assert.deepEqual([creep.level, creep.refs.beam, creep.refs.pose, creep.values.strength, creep.values.limit], ['pass', 'x1', 'standing', 23, 3.45]);
+    assert.match(creep.text, /^x1: a sustained [\d.]+ MPa against the 3\.45 MPa it may hold for months \(0\.15 of its 23 MPa across its layers/);
+    assert.deepEqual([stress.level, stress.values.strength], ['pass', 23]);
+    assert.match(stress.text, /against petg's 23 MPa/);
+    // (its own beam.printable says how it prints; the frame's, with refs.printable, only where frame.printed asks)
+    assert.ok(!r.some((x) => x.code === 'beam.printable' && x.refs?.printable !== undefined), 'beam.printable across the frame only where frame.printed asks');
+  } finally { done(); }
+});
+
+test('cad measured from the beam coupon: its sag becomes the modulus a printed beam bends at, the mass it broke at its strength, each in the plastic\'s set as measured, and the predictions move', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/benchmarks', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'benchmarks', material: 'PLA', objects: [] }));
+    fs.copyFileSync(new URL('../../examples/bench/projects/benchmarks/assemblies/beam-test.json', import.meta.url), at('assemblies/beam-test.json'));
+    const check = () => JSON.parse(cad('check', 'benchmarks/beam-test', '--json')).findings;
+    const coupon = (f, id, what) => f.find((x) => x.code === 'beam.coupon' && x.refs.beam === id && x.predict.name === `${id}.${what}`);
+    const before = check();
+    // Hand calculation: a beam on two bars 220 mm apart, 2 kg at its middle: sag = F L³ / (48 E I), F = 2 x 9.80665 = 19.613 N.
+    // k1 printed lying down in PLA: E 2680 MPa (pla.modulus), I its printed section's (2805.31 mm⁴ from 3 walls and 40%
+    // infill): 19.613 x 220³ / (48 x 2680 x 2805.31) = 0.5787 mm. It breaks where M = S Z: the stress a kilogram at the
+    // middle causes is (9.80665 x 220 / 4) / Z = 539.4 / 364.3 = 1.48 MPa (Z = I / 7.7 mm to its furthest fibre); so at
+    // (39 - its own weight's 0.027) / 1.48 = 26.3 kg. k2 stands, so across its layers: E 2160, S 0.6 x 39 = 23.4 (an estimate).
+    const s1 = coupon(before, 'k1', 'sag'), b1 = coupon(before, 'k1', 'break'), s2 = coupon(before, 'k2', 'sag'), b2 = coupon(before, 'k2', 'break');
+    const I = s1.values.inertia, hand = (19.613 * 220 ** 3) / (48 * 2680 * I);
+    assert.ok(Math.abs(I - 2805.31) < 1, `I ${I}`);
+    assert.ok(Math.abs(s1.predict.value - hand) < 0.002, `${s1.predict.value} against ${hand}`);
+    assert.ok(Math.abs(s2.predict.value - (19.613 * 220 ** 3) / (48 * 2160 * I)) < 0.002);
+    assert.ok(Math.abs(b1.predict.value - 26.33) < 0.1 && Math.abs(b2.predict.value - (23.4 - 0.027) / 1.48) < 0.1, `${b1.predict.value} ${b2.predict.value}`);
+    assert.deepEqual([s1.refs.rule, b1.refs.rule, s2.refs.rule, b2.refs.rule], ['pla.beam_modulus', 'pla.beam_strength', 'pla.beam_modulus_z', 'pla.beam_strength_z']);
+    assert.match(s1.text, /^k1 is the beam coupon, printed lying down, across 220 mm between k1\.bottom@10 and k1\.bottom@230: 2 kg at k1\.bottom@50% sags it 0\.579 mm, .*cad measured benchmarks\/beam-test k1\.sag=<mm>, and the modulus goes to pla\.beam_modulus$/);
+    assert.ok(!before.some((x) => x.level === 'fail'), JSON.stringify(before.filter((x) => x.level === 'fail')));
+    // written back: a sag of 0.7 mm on k1 and a break at 12 kg on k2
+    const out = cad('measured', 'benchmarks/beam-test', 'k1.sag=0.7', 'k2.break=12');
+    assert.match(out, /k1\.sag: measured 0\.7 mm, predicted 0\.579/);
+    const rules = JSON.parse(fs.readFileSync(path.join(ws, 'rules/pla.json'), 'utf8')).rules, today = new Date().toISOString().slice(0, 10);
+    // the modulus scales as the sag: 2680 x 0.5787 / 0.7; the strength is its stress at 12 kg: 0.027 + 1.48 x 12
+    assert.equal(rules.beam_modulus.value, Number(((2680 * s1.predict.coupon.sag) / 0.7).toPrecision(4)));
+    assert.equal(rules.beam_strength_z.value, Number((b2.predict.coupon.self + b2.predict.coupon.perKg * 12).toPrecision(4)));
+    for (const k of ['beam_modulus', 'beam_strength_z']) { const x = rules[k]; assert.deepEqual([x.kind, x.checked, x.unit], ['measured', today, 'MPa'], k); assert.match(x.source, /the beam coupon/, k); }
+    assert.match(rules.beam_modulus.rule, /^The modulus a printed beam of PLA bends at, printed lying down/);
+    assert.match(rules.beam_modulus.source, /0\.7 mm sag of k1 under 2 kg at k1\.bottom@50%, across 220 mm, against 0\.579 mm at 2680 MPa/);
+    assert.match(rules.beam_strength_z.rule, /^The stress a printed beam of PLA breaks at in bending, printed standing up/);
+    assert.ok(!rules.beam_strength && !rules.beam_modulus_z, 'only what was measured');
+    assert.equal(JSON.parse(fs.readFileSync(new URL('../rules/pla.json', import.meta.url), 'utf8')).rules.beam_modulus, undefined, 'the kit\'s own set is untouched');
+    // checked again: the coupon's sag is now the one measured, and the figures say they rest on the coupon
+    const after = check(), s1b = coupon(after, 'k1', 'sag'), b2b = coupon(after, 'k2', 'break');
+    assert.ok(Math.abs(s1b.predict.value - 0.7) < 0.002, `${s1b.predict.value}`);
+    assert.ok(Math.abs(b2b.predict.value - 12) < 0.05, `${b2b.predict.value}`);
+    assert.match(s1b.text, /from pla's modulus along its layers [\d.]+ MPa \(pla\.beam_modulus, measured\)/);
+    assert.match(b2b.text, /\(pla\.beam_strength_z, measured\)/);
+    assert.match(after.find((x) => x.code === 'beam.mass' && /k1/.test(x.text)).text, /\(pla\.beam_modulus, measured, from the beam coupon/);
+    // refused by name: a sag of nothing
+    assert.match(cad('measured', 'benchmarks/beam-test', 'k1.sag=0'), /k1\.sag: a sag is above 0/);
+    assert.match(cad('history', 'benchmarks/beam-test'), /k1\.sag: measured 0\.7 mm, predicted 0\.579/);
+  } finally { done(); }
+});
