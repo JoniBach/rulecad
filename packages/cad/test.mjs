@@ -4250,10 +4250,29 @@ test('frame checks: an open cube racks with a low stiffness and one brace stiffe
     r = probe('gantry');
     assert.ok(by('frame.frequency')[0].values.Hz > v.Hz * 1.5, JSON.stringify(by('frame.frequency')[0].values));
 
-    // 3. what the machine excites: a task's moves, ramping to its speed at its accel; a slow ramp passes, a ramp of
-    // 10 ms (100 Hz, against a 74 Hz mode) fails, saying how much stiffer it must be
-    // (the mode drawn: cad beams writes it animated beside the sag)
+    // 3. what the machine excites, read as the task and the drives give it (set on the built assembly here, as a task
+    // needs a whole machine): a task's moves ramping to 100 mm/s, and a stepper's full-step rate at its working speed.
+    // A ramp of 50 ms (20 Hz) passes at 3.7 times; one of 20 ms (50 Hz) warns, under twice; one of 10 ms (100 Hz,
+    // over the mode itself) fails, each saying how much stiffer the beam must be. A NEMA 17 (1.8°, 200 full steps a
+    // turn) at 22.3 rpm steps at 22.3 / 60 × 200 = 74.3 Hz, on the mode: it warns that the frame rings at that speed
     write('gantry', gantry);
+    const excite = (task, drives) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { frameChecks } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/framecheck.mjs')).href)});
+      const { placeItems, jointValues, mul } = await import('@rulecad/model-link');
+      const s = await buildAssembly('frame/gantry'), out = [];
+      s.task = ${JSON.stringify(task)}; s.motion.drives = ${JSON.stringify(drives)};
+      frameChecks(s, (level, text, card, extra) => out.push({ level, text, ...extra }), { placeItems, jointValues, mul });
+      console.log(JSON.stringify(out.filter((x) => x.code === 'frame.frequency')));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }))[0];
+    assert.deepEqual(['pass', 'warn', 'fail'].map((_, i) => excite({ speed: 100, accel: [2000, 5000, 10000][i] }, []).level), ['pass', 'warn', 'fail']);
+    const slow = excite({ speed: 100, accel: 2000 }, []), fast = excite({ speed: 100, accel: 10000 }, []);
+    assert.match(slow.text, /The machine excites: the task's moves, ramping to 100 mm\/s in 0\.05 s, 20 Hz\. 3\.7 times over the moves' 20 Hz, where 2 is wanted$/);
+    assert.match(fast.text, /under 2 times the moves' 100 Hz\. To lift it to 200 Hz takes about 7\.\d+ times the stiffness where x1 moves/);
+    const stepped = excite(null, [{ id: 'm', model: { name: 'nema17', stepAngle: 1.8 }, spec: { speed: 22.3 } }]);
+    assert.equal(stepped.level, 'warn');
+    assert.match(stepped.text, /m's full steps at 22\.3 rpm, 74\.3 Hz\. A mode within 20% of m's full steps at 22\.3 rpm \(the mode at 7\d\.\d Hz\): it rings while the motor runs at that speed/);
+    assert.equal(stepped.refs.excites[0].from, 'the motor item\'s speed');
     assert.match(cad('beams', 'frame/gantry'), /the frame's lowest mode, 7\d\.?\d* Hz, animated \(a check view\): exports[\\/]frame[\\/]gantry\.frame-mode\.svg/);
     const svg = fs.readFileSync(path.join(ws, 'exports/frame/gantry.frame-mode.svg'), 'utf8');
     assert.match(svg, /<animate attributeName="points"/);

@@ -109,6 +109,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   measure and write back with `cad measured`, never a figure to tune. `frame.deflection` gives each sag twice, on
   the joins' springs and with the joins rigid: report the first with what it rests on (`refs.restsOn`), never the
   rigid one alone. Say where the frame stands with `"frame": { "supports" }` or fitted feet, not by moving beams.
+  `frame.rack` gives the racking stiffness each way and the gain each change (gussets, a brace, a panel) solves to:
+  report the stiffness, the gain and the change it advises, and say the push and the joins' springs are estimates.
+  `frame.frequency` gives the lowest mode against what the machine excites: report it with its pose, and look at
+  `<assembly>.frame-mode.svg` from `cad beams` to see what moves.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),

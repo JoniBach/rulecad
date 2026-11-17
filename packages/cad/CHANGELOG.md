@@ -17,7 +17,12 @@ and head, the parts it passes through and the part it ends in.
   the model holds. A mass on a slide along a beam is solved at each end of its travel, and a beam riding a moving
   joint weighs on the frame as a load. `refs.restsOn` is `estimate` whenever any join's spring is one. `cad beams` writes the
   deflected shape as a check view, `<assembly>.frame-sag.svg`.
-- **Schema:** `"frame": { "supports", "limit", "points" }` on an assembly.
+- **Racking and frequency** (#267): `frame.rack` racks the frame each way with a side push at its top, gives its
+  stiffness, and solves gussets, one brace and a panel in each open bay with each one's gain, advising the cheapest
+  that reaches the limit. A panel on a bay is a shear web in the model (its clips' grip an estimate). `frame.frequency`
+  gives the lowest modes with every carried mass, in the worst pose, against steppers' full-step rates and the task's
+  moves. `cad beams` writes the lowest mode animated, `<assembly>.frame-mode.svg`.
+- **Schema:** `"frame": { "supports", "limit", "points", "rack": { "load", "limit" } }` on an assembly.
 
 ### Changed
 

@@ -669,7 +669,7 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   adds one.
 
 **The frame solved.** `cad check` solves an assembly that has joins (or a `"frame"`) as a frame of beam elements
-(`@rulecad/fea/frame`) and reports four findings:
+(`@rulecad/fea/frame`) and reports six findings:
 
 - `frame.solve` says what the model holds: the beams, the nodes (each beam is cut where a join, a mounted item, a
   load, a named point or a support meets it), where it is held, the poses solved, and each join's spring with what
@@ -697,9 +697,35 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   with no strength in the kit (blind, end-tap, a bought fitting) has its largest moment said.
 - `frame.buckling`: each beam in compression against Euler's load with both ends pinned, and the whole frame's first
   buckling factor with the joins' springs (each beam cut in four).
+- `frame.rack`: each way across the frame (named by the world axis it is nearest), a side push at its top, shared
+  among the top corners of its bays, and the sway it causes, with the joins' springs and rigid, as a stiffness in
+  N/mm. The push is `"frame": { "rack": { "load": 100 } }` in N, else 20 N (`frame.push`, an estimate: a hand
+  steadying it). The limit is `"rack": { "limit" }` in mm, else the task's accuracy, else the height over 400. Then
+  each change is solved, in the best open bay that way alone and in every open bay that way: gussets at the bay's
+  corners (the gusset join's bending added to each corner join's spring in the bay's plane), one diagonal brace (a
+  bar of the bay's lightest beam's section, pinned at both corners), and a 3 mm acrylic panel. Each gives its
+  stiffness and how many times the open frame's it is. Over the limit it warns, naming the cheapest change that
+  brings it under, in the order gussets, brace, panel, one bay before every bay (`frame.order`). Where bracing every
+  bay that way makes it ten times stiffer or more, the text calls the open stiffness low: the open bays hold the
+  push by their joins' bending alone. A bay is four beams joined round a rectangle in one plane; its corners are the
+  nodes where their axes cross.
+- A panel (not a door) on a bay of the frame is a shear web in the model: one diagonal bar across the bay, pinned at
+  both corners, as stiff along it as the sheet in shear in series with its clips' grip. The clips' grip
+  (`frame.clip`, 200 N/mm a clip) is an estimate, and `frame.solve` says so; the panel's weight goes to its bay's
+  four corners.
+- `frame.frequency`: the lowest three modes in each pose, the worst named, with each beam's own mass and every
+  carried item's and load's mass at the node it is carried at (its rotary inertia about that node is left out), with
+  the joins' springs and rigid. Against what the machine excites: each stepper's full-step rate at its working speed
+  (a mode within 20% of it, `frame.band`, rings while the motor runs at that speed: a warning), and the task's moves
+  (a move ramping to the task's speed at its accel, else 500 mm/s², shakes the frame at about one over the ramp's
+  time; the lowest mode under twice that warns, under it fails). A warning says how many times the stiffness would
+  lift the mode clear, or as many times less mass. With no stepper and no task it is information. This is
+  `assembly.frequency`'s question asked of the frame: that finding estimates a machine's arm from its tool's
+  stiffness, this one solves the frame it stands on.
 - `cad beams` also writes `exports/<project>/<assembly>.frame-sag.svg`, the check view: the frame as drawn in grey
-  and the shape it takes in red, from the front and from the side, scaled and saying by how much. It is a picture of
-  the solve, never part of the model.
+  and the shape it takes in red, from the front and from the side, scaled and saying by how much; and
+  `<assembly>.frame-mode.svg`, the lowest mode animated, the frame swinging through the mode's shape and back, its
+  largest movement drawn as a tenth of the frame's size. Both are pictures of the solve, never part of the model.
 
 | Figure | Formula | Source |
 |---|---|---|
@@ -708,11 +734,24 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 | A beam in compression | P = π² E I / L² (both ends pinned) | Euler's column; Roark's Formulas for Stress and Strain, 7th ed., table 15.1, case 1a |
 | A printed fitting's moment | design load × its distance from the corner × its margin | The fitting's own finite-element margin at its design load, scaled linearly |
 | The solve | Timoshenko beam elements, end springs condensed out | `@rulecad/fea/frame` (its README lists its sources) |
+| Sway limit with nothing tighter | height / 400 | ASCE/SEI 7-22, Commentary to Appendix C, CC.2.2: drift limits in common use are 1/600 to 1/400 of the height |
+| Racking stiffness | push / mean sway of the top corners | Definition; each change solved in the model, not estimated |
+| A panel's bar along its diagonal d (bay a by h, sheet t) | G t d² / (a h), in series with d² n k_c / (4 (a + h)²) for n clips of k_c each | Shear of a plate, γ = τ / G; the clips by their strain energy under a shear flow F / a round the edges |
+| A sheet's G | E / 2(1 + ν): acrylic 3300 MPa, ν 0.37 | Evonik PLEXIGLAS GS technical information (polycarbonate and aluminium: typical figures, marked community) |
+| A move's frequency | 1 / t, t = speed / accel | A working figure (`frame.ramp`); the lowest mode wanted at twice it |
+| A stepper's full-step rate | rpm / 60 × 360 / step angle | The motor's step angle and its working speed (`workingSpeed`) |
+| A beam fixed at both ends, mass M at its middle (the check of the modal solve) | f = (1/2π) √(192 E I / (L³ (M + 0.375 m))) | Blevins, Formulas for Natural Frequency and Mode Shape (1979), table 8-8 |
 
 A worked check: a 2020 shelf frame, legs 400 mm, a 600 mm front beam joined blind to the legs 390 mm up, 5 kg at its
 middle, sags 0.215 mm by hand with the joins rigid (a beam whose ends turn with the corners the legs and the side
 beams' twist hold) and 0.310 mm with the blind joins' estimated 1.5 N·m/mrad springs; the solve gives the same to three
 figures (`packages/cad/test.mjs`, "frame checks: a shelf frame").
+
+Two more: a 2020 gantry beam, 600 mm, fixed at both ends, with 2.01 kg carried at its middle, rings first at 74.2 Hz;
+the formula above gives 74.2 Hz (192 E I / L³ = 461.5 N/mm, M + 0.375 m = 2.1225 kg). An open 2020 cube, 420 mm
+square and 400 mm tall, two rings of four beams joined blind to its legs, racks at about 63 N/mm under a push at its
+top; one diagonal brace makes it about 2.6 times stiffer (the bay across from it still racks, and the rings twist),
+a brace in both bays that way about 240 times ("frame checks: an open cube racks").
 
 **Fastening into a slot.** A `fasten` whose `into` is a slot on a beam ends in a slot nut under the slot's lips:
 
