@@ -874,6 +874,30 @@ lip less the `fit` deep. A drill guide's stop is as thick as keeps it from bendi
 (0.05 mm) under the load. @rulecad/cad generates the whole set from an assembly: `cad beams <project>/<assembly>
 --jigs`.
 
+## Squaring a frame
+
+A rectangular bay is square when its two diagonals are equal. A tape from one inside corner to the opposite one, then
+across the other two, measures it, and the difference between the two readings says how far the bay leans.
+`squareness(width, height, { tolerance? })` gives the diagonal of an opening (inside face to inside face) and the
+difference to accept: what the cut tolerance of the beams allows with every corner square. Two opposite sides cut to
+±t can differ by 2t, which moves one diagonal against the other by up to 2t times that side over the diagonal; the
+longer side gives the most.
+
+```js
+import { squareness } from '@rulecad/frames'
+
+const q = squareness(260, 200)   // a 260 × 200 mm opening, beams cut to ±0.5 mm (CUT_DEFAULTS.tolerance)
+q.diagonal   // 328.02 mm, each
+q.accept     // 0.79 mm: the most the two may differ by
+q.lean       // 0.143°: a bay leaning by that much has diagonals that differ by 0.79 mm
+squareness(260, 200, { tolerance: 0.1 }).accept   // 0.16 mm, for a saw that holds 0.1 mm
+```
+
+A bay whose diagonals differ by more than `accept` leans: loosen its joins, push the corners at the ends of the long
+diagonal together, tighten and measure again. Joint play is a second source, left to the frame checks of issue 268.
+@rulecad/cad finds every bay of an assembly (four beams joined in a rectangle in one plane) and puts its diagonals on
+the frame's build (`cad order`) and in `frame.square`.
+
 ## Slot nuts
 
 A slot nut is a rule set in `@rulecad/rules` (`"part": "slot_nut"`), one for each maker, slot, thread and kind:
@@ -1027,6 +1051,7 @@ kit's.
 | A bush and the tool's lean | d = D + slip + hole_comp; lean = atan(slip / l), l = 2 D | The printer's `slip` and `hole_comp` (x1c), the bush `JIG_DEFAULTS.bush` diameters long, an estimate |
 | A tap guide's sleeve | w = √(2 · 6 F h / (B S)) | A wall B wide and h deep bent by F at its rim |
 | A squaring corner's square | atan(slip / l_a) + atan(slip / l_b) | Each tongue's play over its length, held to `JIG_DEFAULTS.square` (0.5°, cad's `JOIN_CHECK.square`) |
+| A bay's diagonals | d = √(w² + h²); accept = 2 t max(w, h) / d; lean δ = accept d / (2 w h) | Diagonals √(w² + h² ± 2 w h sin δ) of a bay leaning δ; t the cut tolerance, `CUT_DEFAULTS.tolerance` (MISUMI's ±0.5 mm, an estimate for other saws) or the profile's `cut_tolerance` |
 | A length gauge | n = ⌈L / (bed − 2 e)⌉ pieces of L / n, within ±n × 0.1 mm | `JIG_DEFAULTS.edge` and `.gaugeError`, an estimate: check it with a rule |
 | A V-wheel's seat | d = (T − f) / 2 / tan(θ / 2); the axle R − d from the face, T the track's width, f the rim's flat, θ the V | The wheel's flanks lying on the track's |
 | A wheel's flank load | N = π r l p² / E*, E* = E / (1 − ν²); radial 2 N cos(θ / 2), axial N sin(θ / 2) | Hertz line contact, a cylinder on a flat (Roark's Formulas for Stress and Strain, table 14.1, case 2b); r the radius at the contact's middle, l the flank's slant length, the track rigid: `WHEEL_DEFAULTS.curvature`, an estimate |
@@ -1129,6 +1154,7 @@ lists them.
 | `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
 | `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
 | `JIG_KINDS`, `JIG_DEFAULTS`, `drillGuideModel(beam, op, { from?, load? })`, `drillGuide(m, { pose?, mark? })`, `tapGuideModel(beam, op, { shank?, load? })`, `tapGuide(m, { pose?, mark? })`, `lengthStopModel(profile, length, { load? })`, `lengthStop(m, { part?, mark? })`, `squareCornerModel({ profile, face?, end?, length? }, { profile, face?, edge? }, { hand?, load? })`, `squareCorner(m, { pose?, mark? })` | Jigs for hand tools: a drill guide and a tap guide from a beam's operations, a cut-length stop with its gauge, and a squaring corner; each takes `printer` and `material` too |
+| `squareness(width, height, { tolerance? })` | A bay's two diagonals, inside corner to inside corner, and the difference between them to accept, with the lean it stands for |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |

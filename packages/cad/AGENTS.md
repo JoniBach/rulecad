@@ -141,6 +141,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   a slot's centre line, with the distance: move the hole. `frame.nut` fails slide-in nuts in a slot that joins close
   at both ends: use the kind it names (`"nut": "drop-in"`). `frame.preload` lists nuts to load before a join; tell
   the user, and `cad order` shows them on the step.
+- **A frame's build is `cad order`**: from bars to a square frame in numbered steps (cut, drill and tap, sides built
+  flat and squared, nuts to load, joins with their torque, the diagonals, then the rest). Give the user its steps and
+  its diagonals (`frame.square`: each and the difference to accept). If it is refused for a slot's nuts, change the
+  nut to the kind it names; never reorder the joins to get round it.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in
