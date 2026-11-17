@@ -3,8 +3,9 @@
 // it: a length with its mass, its anchors, the operations on it (cut, mitre, tap, holes, pockets, notches) and its solid;
 // and a frame's cut list (the bars to buy and the cuts on each) and a cut-and-drill sheet for each kind of beam; and joins
 // between beams by kind (the operations on both, the screws, a stiffness for the solver); and printed fittings for those
-// joins (a corner bracket, gusset and splice plates), sized from a named load by finite elements. More fittings and the
-// guides follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
+// joins (a corner bracket, gusset and splice plates), sized from a named load by finite elements; panels cut to a bay
+// and the printed parts that hold them, a door's hinges, handle, latch and catch, and the parts for a beam's end (caps,
+// feet, levelling feet, castor plates, stacking feet). The guides follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
 //
 // Every profile, slot family and slot nut is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the
@@ -18,3 +19,6 @@ export { CUT_DEFAULTS, beamMarks, packBars, cutList, cutListText } from './cutli
 export { beamSheet } from './cutsheet.mjs';
 export { slotNutModel, nutFit, slotNut, nutFor, carrierModel, carrier, CARRIER_DEFAULTS, NUT_KINDS } from './slotnut.mjs';
 export { FITTINGS, FITTING_DEFAULTS, bracketModel, bracket, plateModel, plate, fittingFE } from './fitting.mjs';
+export { SHEETS, PANEL_DEFAULTS, panelModel, panel, panelClipModel, panelClip, panelCornerModel, panelCorner, slotCoverModel, slotCover, panelEdgeModel, panelEdge, gasketStripModel, gasketStrip } from './panel.mjs';
+export { DOOR_DEFAULTS, hingeModel, hinge, handleModel, handle, latchModel, latch, magnetCatchModel, magnetCatch } from './door.mjs';
+export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';

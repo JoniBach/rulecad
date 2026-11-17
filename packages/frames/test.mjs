@@ -932,3 +932,92 @@ test('gusset plates (L, T, cross) and a splice plate from one generator: each pa
   assert.throws(() => plateModel('2020-misumi-hfs5', { shape: 'Y' }), /plateModel: shape is L, T, cross or splice \(got "Y"\)/);
   assert.throws(() => plateModel('2020-misumi-hfs5', { count: 0 }), /count is the screws on each arm, a whole number from 1 to 6 \(got 0\)/);
 });
+
+// ---------- panels, doors and ends ----------
+test('a panel is a sheet by material and thickness, cut to size, weighed by its maker\'s density; a thickness not stocked warns', () => {
+  const { panelModel, panel, SHEETS } = frames;
+  const p = panelModel('acrylic', 3, { size: [300, 200], holes: [{ thread: 'M3', at: [10, 10] }] });
+  assert.deepEqual([p.size, p.thickness, p.sheet], [[300, 200], 3, 'acrylic']);
+  const hole = (Math.PI * p.holes[0].diameter ** 2) / 4, area = 300 * 200 - (4 - Math.PI) * 1 - hole;
+  assert.ok(Math.abs(p.grams - (area * 3 * SHEETS.acrylic.density.value) / 1000) < 1e-3, `${p.grams} g`);
+  assert.equal(SHEETS.acrylic.density.kind, 'spec'); assert.match(SHEETS.acrylic.density.source, /ISO 1183/);
+  assert.deepEqual(p.findings.map((f) => [f.code, f.level]), [['panel.size', 'info'], ['panel.thickness', 'pass']]);
+  assert.equal(panelModel('acrylic', 3.5, { size: [100, 100] }).findings[1].level, 'warn');
+  const bb = jscad.measurements.measureBoundingBox(panel(p));
+  assert.deepEqual(bb.map((v) => v.map((x) => +x.toFixed(2) + 0)), [[0, 0, 0], [300, 200, 3]]);
+  assert.throws(() => panelModel('glass', 3, { size: [1, 1] }), /sheet is one of acrylic, polycarbonate, aluminium \(got "glass"\)/);
+  assert.throws(() => panelModel('acrylic', 3, { size: [100] }), /size is \[x, y\] in mm/);
+  assert.throws(() => panelModel('acrylic', 3, { size: [100, 100], holes: [{ thread: 'M3', at: [99, 50] }] }), /hole 1 at \[99, 50\] is off the 100 x 100 mm panel/);
+});
+
+test('the parts that hold a panel: a clip, a corner, an in-slot edge, a slot cover and a gasket strip, each print-ready and weighed', async () => {
+  const { panelClipModel, panelClip, panelCornerModel, panelCorner, panelEdgeModel, panelEdge, slotCoverModel, slotCover, gasketStripModel, gasketStrip } = frames;
+  const clip = panelClipModel('2020-misumi-hfs5', { sheet: 3 });
+  // its step as deep as the sheet; then thick enough that a sold screw fits the slot nut; the panel's edge clear of the screw
+  assert.equal(clip.section.some(([y, z]) => z === 3 && y > clip.edge), true); assert.ok(clip.height > 3 && clip.margin >= 2, `${clip.height} ${clip.margin}`);
+  assert.equal(coded(clip, 'fitting.screw')[0].level, 'pass'); assert.equal(clip.screws[0].length - clip.height > 0, true);
+  assert.ok(clip.edge > clip.screws[0].at[1] + 2.75, 'the panel stops clear of the screw\'s hole');
+  assert.equal(coded(clip, 'fitting.margin')[0].level, 'pass'); assert.ok(clip.grams > 0.5 && clip.grams < 5, `${clip.grams} g`);
+  // a thicker sheet, a taller clip; a heavier load, a thicker reach over the panel
+  assert.ok(panelClipModel('2020-misumi-hfs5', { sheet: 6 }).height > clip.height);
+  assert.ok(panelClipModel('2020-misumi-hfs5', { sheet: 3, load: 200 }).thickness > clip.thickness);
+  await prints(panelClip(clip), 'a clip on its side');
+  const fb = jscad.measurements.measureBoundingBox(panelClip(clip, { pose: 'fit' }));
+  assert.deepEqual([+fb[0][0].toFixed(2), +fb[1][0].toFixed(2), +fb[1][2].toFixed(2)], [-10, 10, clip.height]);
+  const corner = panelCornerModel('2020-misumi-hfs5', { sheet: 3 });
+  assert.ok(corner.margin >= 2); assert.ok(corner.screws.every((s) => Math.hypot(s.at[0], s.at[1]) > 10), 'its screws past the crossing beam');
+  await prints(panelCorner(corner), 'a corner, top face down');
+  const edge = panelEdgeModel('2020-misumi-hfs5', { sheet: 3, length: 100 });
+  assert.equal(edge.groove, 3.4); assert.ok(edge.wall >= 0.84); await prints(panelEdge(edge), 'an in-slot edge');
+  assert.throws(() => panelEdgeModel('2020-misumi-hfs5', { sheet: 5, length: 100 }), /a 5 mm sheet in slot-6-misumi's 6 mm opening leaves walls of 0\.1 mm, under the 0\.84 mm two of x1c's lines make: a sheet of 3\.52 mm or less/);
+  const cover = slotCoverModel('2020-misumi-hfs5', { length: 100 });
+  assert.ok(cover.grams > 1); await prints(slotCover(cover), 'a slot cover, flange down');
+  const gasket = gasketStripModel({ gap: 10.2, length: 100 });
+  assert.equal(gasket.material, 'petg'); assert.equal(coded(gasket, 'fitting.margin')[0].level, 'pass'); await prints(gasketStrip(gasket), 'a gasket strip');
+  assert.throws(() => panelClipModel('2020-misumi-hfs5', {}), /panelClipModel: sheet is the panel's thickness in mm/);
+  assert.throws(() => panelClipModel('2020-misumi-hfs5', { sheet: 3, load: -1 }), /load is the force pushing the panel out at one clip, in N, above 0/);
+});
+
+test('a door\'s hinge swings the door out and away from the frame; its handle, latch and magnet catch print and are sized', async () => {
+  const { hingeModel, hinge, handleModel, handle, latchModel, latch, magnetCatchModel, magnetCatch } = frames;
+  const h = hingeModel('2020-misumi-hfs5', { sheet: 3 }), [ya, za] = h.axis;
+  assert.equal(ya, -10, 'its axis over the beam\'s outer edge'); assert.equal(za, h.standoff + 3, 'at the door\'s outer face');
+  assert.ok(h.standoff >= h.leaf + 2.75 + 1 - 1e-9, 'the door passes over the frame leaf\'s heads');
+  assert.ok(h.margin >= 2); assert.equal(coded(h, 'fitting.pin')[0].level, 'pass'); assert.match(h.hardware[0].name, /^M4x40 cap$/);
+  // the door's section turned about the axis from shut to 180° never comes down to the frame leaf or the beams
+  const door = []; for (let y = h.edge; y < 200; y += 2) for (const z of [h.standoff, h.standoff + 3]) door.push([y, z]);
+  let low = Infinity;
+  for (let a = 0; a <= 180; a += 5) { const t = (a * Math.PI) / 180; for (const [y, z] of door) { const dy = y - ya, dz = z - za; low = Math.min(low, za + dy * Math.sin(t) + dz * Math.cos(t)); } }
+  assert.ok(low >= h.standoff - 1e-9, `the door comes down to ${low} mm`);
+  await prints(hinge(h), 'the frame leaf as it lies'); await prints(hinge(h, { part: 'door' }), 'the door leaf face down');
+  const leaf = jscad.measurements.measureBoundingBox(hinge(h, { part: 'door', pose: 'fit' }));
+  assert.ok(leaf[0][2] >= za - h.radius - 1e-6 && leaf[0][2] > h.leaf, 'the door\'s knuckle clears the frame\'s leaf');
+  const hd = handleModel({ sheet: 3 });
+  assert.ok(hd.margin >= 2); assert.equal(coded(hd, 'fitting.screw')[0].level, 'pass'); await prints(handle(hd), 'a handle on its side');
+  const l = latchModel('2020-misumi-hfs5', { sheet: 3, standoff: h.standoff });
+  assert.ok(l.post >= h.standoff + 3); assert.ok(l.margin >= 2); await prints(latch(l), 'a latch, tab down');
+  const c = magnetCatchModel('2020-misumi-hfs5', { standoff: h.standoff });
+  assert.ok(c.top < h.standoff && c.step + 2.75 < h.standoff); await prints(magnetCatch(c), 'a magnet catch on its side');
+  assert.throws(() => magnetCatchModel('2020-misumi-hfs5', { standoff: 3 }), /a 3 mm standoff leaves/);
+  assert.throws(() => hingeModel('2020-misumi-hfs5', { sheet: 3, pin: 'Q9' }), /hingeModel: pin and screw are threads/);
+});
+
+test('the parts for a beam\'s end: an end cap, a foot, a levelling foot, a castor plate and a stacking foot, each print-ready and weighed', async () => {
+  const { endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } = frames;
+  const cap = endCapModel('2020-misumi-hfs5');
+  assert.equal(cap.pegs.length, 5, 'four slots and the bore'); await prints(endCap(cap), 'an end cap, plate down');
+  const fb = jscad.measurements.measureBoundingBox(endCap(cap, { pose: 'fit' }));
+  assert.equal(+fb[0][2].toFixed(2), -cap.plug, 'fitted, its pegs into the beam');
+  for (const [m, g, what] of [[footModel('2020-misumi-hfs5'), foot, 'a foot'], [stackingFootModel('2020-misumi-hfs5'), stackingFoot, 'a stacking foot'], [castorPlateModel('2020-misumi-hfs5', { holes: [38, 38], thread: 'M6' }), castorPlate, 'a castor plate']]) {
+    assert.equal(coded(m, 'fitting.screw')[0].level, 'pass', what); assert.deepEqual(m.ops, [{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }], what);
+    assert.ok(m.margin >= 2 && m.grams > 0, what); await prints(g(m), what);
+  }
+  const lev = levellingFootModel('2020-misumi-hfs5');
+  assert.deepEqual([lev.stud, lev.range, lev.parts], ['M12', 10, ['body', 'pad']]); assert.ok(lev.margin >= 2);
+  await prints(levellingFoot(lev), 'a levelling foot\'s body'); await prints(levellingFoot(lev, { part: 'pad' }), 'its pad');
+  const bought = levellingFootModel('2020-misumi-hfs5', { stud: 'M8' });
+  assert.deepEqual(bought.hardware.map((x) => x.kind), ['nut', 'foot']); await prints(levellingFoot(bought), 'a body for a bought stud');
+  assert.throws(() => castorPlateModel('2020-misumi-hfs5', { holes: [20, 20], thread: 'M6' }), /the castor's holes 20 x 20 mm apart lie 10 mm from the middle, under the beam's outline and an M6 head/);
+  assert.throws(() => footModel('tube-al-20x20x2'), /has no bore with a thread in its end/);
+  assert.throws(() => endCapModel('2020-misumi-hfs5', { end: 'c' }), /end is a or b/);
+});
