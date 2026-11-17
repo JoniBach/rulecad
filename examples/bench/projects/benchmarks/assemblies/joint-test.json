@@ -95,17 +95,32 @@
     {
       "id": "h1",
       "object": "joint-hanger",
-      "at": "c1.b"
+      "at": "c1.b",
+      "rotate": [
+        0,
+        0,
+        -90
+      ]
     },
     {
       "id": "h2",
       "object": "joint-hanger",
-      "at": "c2.b"
+      "at": "c2.b",
+      "rotate": [
+        0,
+        0,
+        -90
+      ]
     },
     {
       "id": "h3",
       "object": "joint-hanger",
-      "at": "c3.b"
+      "at": "c3.b",
+      "rotate": [
+        0,
+        0,
+        -90
+      ]
     },
     {
       "id": "gauge",
