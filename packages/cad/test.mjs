@@ -3274,3 +3274,74 @@ test('bought fittings: a T plate, an inner connector and an anchor in joins, an 
     assert.match(cad('check', 'frame/bought'), /join 1: .*fitting-motedis-plate-t-20 is a joining plate, and a hidden join takes an inner connector: fitting-motedis-plate-t-20 goes in a gusset or splice join/);
   } finally { done(); }
 });
+
+test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitch, its carriage slides its travel in a sweep, and a carriage loaded past its moment rating fails', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/slide', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'slide', material: 'PLA', objects: [] }));
+    const x1 = { id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [400, 0, 0] };
+    const write = (name, a) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: name, kind: 'fit', ...a }));
+    // a long carriage with 2 kg 100 mm ahead of its middle; the printed jig parked past the rail's end
+    write('axis', { items: [x1, { id: 'jig', fitting: { kind: 'rail-jig', profile: '2020-misumi-hfs5', rail: 'rail-mgn12' }, at: 'x1.top@375' }], fits: [{ a: 'jig', b: 'x1', fastens: true, note: 'snapped over x1' }],
+      guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12H', on: 'x1.top', from: 50, length: 300 }], loads: [{ mass: 2, at: { item: 'g1-carriage-1', at: [100, 0, 13] } }] });
+    // a standard carriage with 4 kg 400 mm ahead: 15.7 N m against its 13.72 N m pitch rating
+    write('heavy', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 50, length: 300 }], loads: [{ mass: 4, at: { item: 'g1-carriage-1', at: [400, 0, 13] } }] });
+    // an MGN7's M2 screws on a 2020, whose slot nuts start at M3; and an MGN12 run into a beam joined across its face
+    write('small', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn7', on: 'x1.top', length: 200, from: 100 }] });
+    write('crossed', { items: [x1, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [300, 0, 10], to: [300, 0, 210] }], joins: [{ kind: 'blind', a: 'y1.a', b: 'x1.top@300' }], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 20, length: 300 }] });
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly, sweep } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs'), { terms } = await lib('task.mjs');
+      const s = await buildAssembly('slide/${name}'), l = shoppingList(s), centre = (p) => { const t = p.triangles.flat(); return [0, 1, 2].map((k) => t.reduce((a, q) => a + q[k], 0) / t.length); };
+      console.log(JSON.stringify({ joints: s.motion.joints.filter((j) => j.type !== 'fixed').map((j) => [j.id, j.type, j.dofs[0]]), poses: Object.keys(s.motion.poses),
+        bought: l.bought.map((b) => [b.qty, b.set, b.variant, b.part, b.length ?? null]), fasteners: l.fasteners.map((x) => [x.qty, x.fastener]), printed: l.printed.map((p) => p.id),
+        screws: s.parts.filter((p) => /^fasten-\\d+-screw/.test(p.name ?? '')).map((p) => +centre(p)[0].toFixed(2)).sort((a, b) => a - b),
+        terms: s.motion.joints.some((j) => j.id === 'g1-1') ? terms(s, { names: ['g1-1'] })[0].terms.map((x) => [x.term, x.kind, x.value]) : [],
+        sweep: s.motion.joints.some((j) => j.id === 'g1-1') ? sweep(s, { steps: 12 }).map(({ level, text, values }) => ({ level, text, values })) : [],
+        findings: checkAssembly(s).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const by = (r, code) => r.findings.filter((x) => x.code === code);
+    const axis = probe('axis');
+    // the rail and its carriage are bought; twelve M3 screws into twelve of the slot's own M3 nuts, 25 mm apart
+    assert.deepEqual(axis.bought.filter((b) => b[1] === 'rail-mgn12'), [[1, 'rail-mgn12', 'MGN12H', 'carriage', null], [1, 'rail-mgn12', null, 'rail', 300]]);
+    assert.deepEqual(axis.fasteners, [[12, 'M3x8 cap'], [12, 'slot-nut-6-misumi-m3-slide-in']]);
+    assert.equal(axis.screws.length, 12); assert.deepEqual(axis.screws.slice(1).map((x, i) => +(x - axis.screws[i]).toFixed(2)), Array(11).fill(25));
+    assert.deepEqual([axis.screws[0], axis.screws[11]], [62.5, 337.5], 'from 50 mm, 12.5 mm in from each end of the rail');
+    assert.deepEqual([...new Set(by(axis, 'guide.fit').map((x) => x.level))], ['pass']);
+    for (const code of ['fasten.holes', 'fasten.slot', 'fasten.length', 'fasten.engagement', 'fasten.seat']) assert.deepEqual([...new Set(by(axis, code).map((x) => x.level))], ['pass'], code);
+    assert.deepEqual(axis.findings.filter((x) => x.level === 'fail' || (x.level === 'warn' && !/^(frame|fasten\.order)/.test(x.code))).map((x) => `${x.code} ${x.text}`), []);
+    // its carriage on a sliding joint through the travel the lengths allow, both ends a pose; the sweep is clear
+    assert.deepEqual(axis.joints, [['g1-1', 'prismatic', [0, 254.2, 0]]], 'from 0 to its travel, at 0 as drawn'); assert.ok(axis.poses.includes('g1-a') && axis.poses.includes('g1-b'));
+    assert.deepEqual(axis.sweep.map((x) => [x.level, x.values.from, x.values.to]), [['pass', 0, 254.2]]);
+    assert.match(by(axis, 'guide.travel')[0].text, /1 MGN12H, 45\.8 mm long with its seals, travel 254\.2 mm/);
+    // its carriage's loads within its ratings: 2 kg 100 mm out pitches it 1.96 N m
+    const [jm] = by(axis, 'joint.moment');
+    assert.equal(jm.level, 'pass'); assert.ok(Math.abs(jm.values.moment[1] - 2 * 9.80665 * 0.1) < 0.01, `pitch ${jm.values.moment[1]}`); assert.equal(jm.refs.carriage, 'g1-carriage-1');
+    // the rail's terms in the error budget, and the jig printed
+    assert.deepEqual(axis.terms.map((x) => x.slice(0, 2)), [['rail parallelism', 'spec'], ['carriage play', 'spec'], ['beam straightness', 'spec'], ['beam sag', 'estimate']]);
+    assert.match(by(axis, 'guide.budget')[0].text, /rail parallelism 0\.017 mm \(spec\), carriage play 0\.01 mm \(spec\)/);
+    assert.deepEqual(axis.printed, ['jig']); assert.match(by(axis, 'guide.jig').find((x) => x.refs?.guide === 'g1').text, /"kind": "rail-jig"/); assert.match(by(axis, 'guide.jig').find((x) => /^jig/.test(x.text)).text, /centres the rail to within 0.4 mm/);
+    // past its moment rating it fails, and says which
+    const heavy = by(probe('heavy'), 'joint.moment')[0];
+    assert.equal(heavy.level, 'fail'); assert.match(heavy.text, /g1-carriage-1 \(MGN12C\) on g1: .* MP 13\.72 .* past its pitch rating/); assert.ok(heavy.values.margin < 1);
+    // a rail whose screws no slot nut takes: guide.fit says so, and no screws are guessed
+    const small = probe('small');
+    assert.match(by(small, 'guide.fit').find((x) => x.level === 'fail').text, /no M2 slot nut is made for slot-6-misumi: rail-mgn7's holes take M2, and the nuts there take M3, M4, M5/);
+    assert.deepEqual(small.fasteners, []);
+    // a rail run into a beam joined across its face fails, naming the join
+    assert.match(by(probe('crossed'), 'guide.fit').find((x) => x.level === 'fail').text, /runs into y1 joined at x1\.top@300 at 290 to 310 mm/);
+    // refused by name
+    write('bad', { items: [x1], guides: [{ kind: 'wheels', rail: 'rail-mgn12', on: 'x1.top', length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: kind is rail \(a miniature linear rail\); wheels, rods and sliders are not built yet/);
+    write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top@20', length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: on is a beam's slotted face, as x1\.top; where along it is "from"/);
+    write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', from: 200, length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: the rail runs from 200 to 500 mm along x1, which is 400 mm long/);
+    write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12X', on: 'x1.top', length: 300 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: rail-mgn12 has no carriage "MGN12X": it has MGN12C, MGN12H/);
+    write('bad', { items: [x1], guides: [{ kind: 'rail', rail: 'rail-mgn12', on: 'x1.top', length: 300, speed: 3 }] });
+    assert.match(cad('check', 'slide/bad'), /guide 1: a guide has no "speed"|guides\/0.*speed/);
+  } finally { done(); }
+});

@@ -118,8 +118,9 @@ function speedCheck(s, f) {
   else f('pass', `${t.tool} moves ${say}`, null, { code, at, values });
 }
 
-// Each joint's error terms: step resolution from its motor, and what the assembly says of its play, its twist and so on
-function terms(s, c) {
+// Each joint's error terms: step resolution from its motor, what the assembly says of its play, its twist and so on, and a
+// guide's rail's (its parallelism, its carriage's play, the beam's straightness and sag)
+export function terms(s, c) {
   const motion = s.motion, specs = new Map((s.a.joints || []).map((j) => [j.id, j]));
   return c.names.map((id) => {
     const out = [], t = trainFrom(motion, id), d = motion.drives.find((x) => x.joint === t.root), spec = specs.get(id);

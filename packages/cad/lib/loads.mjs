@@ -27,9 +27,9 @@ function solidOf(tris) {
   return { volume: Math.abs(V), centroid: V ? c.map((x) => x / V) : [0, 0, 0] };
 }
 
-/** Each moving thing's mass in kg and its centre in its item's frame. */
+/** Each moving thing's mass in kg and its centre in its item's frame (read from the parts as they stand: at the pose the assembly was built in). */
 export function massesOf(s, { placeItems, jointValues }) {
-  const motion = s.motion, ids = motion.items.map((x) => x[0]), W = placeItems(motion, jointValues(motion, motion.pose ?? undefined)), density = materialOf(s.project).density, out = [];
+  const motion = s.motion, ids = motion.items.map((x) => x[0]), W = placeItems(motion, s.jointValues ?? jointValues(motion, motion.pose ?? undefined)), density = materialOf(s.project).density, out = [];
   ids.forEach((id, k) => {
     const parts = s.parts.filter((p) => p.item === id && p.role !== 'support'); if (!parts.length) return;
     const o = s.objects.find((x) => x.id === id || String(x.id).startsWith(`${id}.`)), reference = parts.every((p) => p.role === 'reference');
