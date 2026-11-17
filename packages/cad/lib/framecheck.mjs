@@ -92,11 +92,14 @@ function baysOf(beams, joins, nodes, nodeAt) {
 }
 
 /**
- * A panel on a bay as a shear web: one diagonal bar across the bay, pinned at both ends, as stiff along it as the sheet
+ * A panel on a bay as a shear web: one diagonal bar across the bay, free to bend at both ends, as stiff along it as the sheet
  * in shear in series with its clips' grip. Racked along a side of the bay (width a, height h, diagonal d), a bar of
  * stiffness k along it gives k (a/d)²; the sheet in shear gives G t a / h, so the sheet's bar is G t d² / (a h). The
  * clips: shear flow q = F/a round all four edges, each of n clips (k_c each, at a pitch 2(a + h)/n) carrying q times
  * its pitch; their strain energy equal to F δ / 2 gives d² n k_c / (4 (a + h)²) for the clips' bar. The two in series.
+ * Its ends: a ball at one corner and pinned at the other. Both free to bend, so it carries only its pull or push; the
+ * pinned end holds its spin, so a solve that splits it into pieces (modes, buckling) finds no free twist at the inner
+ * nodes. It carries no twist into the frame either, as the ball end lets it turn freely about its own length.
  * @param {{ corners: string[], size: number[] }} bay @param {string} sheet @param {number} t mm @param {number} clips how many hold it (0: worked out from the pitch) @param {string} id
  */
 function webOf(bay, sheet, t, clips, id) {
@@ -104,7 +107,7 @@ function webOf(bay, sheet, t, clips, id) {
   const n = clips > 0 ? clips : 2 * (Math.max(2, Math.ceil(a / PANEL_DEFAULTS.pitch.value) + 1) + Math.max(2, Math.ceil(h / PANEL_DEFAULTS.pitch.value) + 1));
   const sheetBar = (Gs * t * d * d) / (a * h), clipBar = (d * d * n * FRAME_CHECK.clip.value) / (4 * (a + h) ** 2), k = 1 / (1 / sheetBar + 1 / clipBar), A = (k * d) / WEB_E;
   return { id, sheet, thickness: t, clips: n, sheetBar, clipBar, k, rests: [{ name: `${sheet} sheet`, E: m.E, nu: m.nu, kind: m.kind, source: m.source }, { name: 'frame.clip', value: FRAME_CHECK.clip.value, kind: FRAME_CHECK.clip.kind }],
-    element: { id: `panel ${id}`, a: bay.corners[0], b: bay.corners[2], section: { A, Iy: A * (d / 10) ** 2, Iz: A * (d / 10) ** 2, J: A * (d / 10) ** 2 }, material: { E: WEB_E, G: WEB_E / 2.6, density: 0 }, ends: { a: 'ball', b: 'ball' } } };
+    element: { id: `panel ${id}`, a: bay.corners[0], b: bay.corners[2], section: { A, Iy: A * (d / 10) ** 2, Iz: A * (d / 10) ** 2, J: A * (d / 10) ** 2 }, material: { E: WEB_E, G: WEB_E / 2.6, density: 0 }, ends: { a: 'ball', b: 'pinned' } } };
 }
 
 // what a join's spring rests on, in a few words
@@ -276,7 +279,7 @@ export function frameModelOf(s, helpers) {
   // bays: four beams joined round a rectangle in one plane, two each way; each corner the node where two of their axes
   // cross (the station a join put on the beam it lands on)
   const bays = baysOf(beams, joins.filter((x) => beams.has(x.A.id) && beams.has(x.B.id)), nodes, nodeAt);
-  // each panel on a bay as a shear web: one diagonal bar, pinned at both ends, as stiff along it as the sheet in shear in
+  // each panel on a bay as a shear web: one diagonal bar, free to bend at both ends, as stiff along it as the sheet in shear in
   // series with its clips' grip
   const webs = [], heldSheets = [];
   for (const p of sheets) {
@@ -518,7 +521,7 @@ function rackCheck(s, fm, f, { restsJoins, restsOn }) {
       : `There is no open bay of four joined beams ${name} to brace${over ? ': join beams round the sides to make one, then brace it' : ''}`}`;
     f(over ? 'warn' : 'pass', text, over ? `racks ${name}: ${n3(sway, 2)} mm` : null, { code: 'frame.rack', at: r4(fm.nodes[top[0]]),
       values: { load: r3(F), sway: r3(sway), stiffness: r3(k), rigid: r3(rigid), rigidStiffness: r3(k0), limit: r3(lim.value), height: r3(H), options: options.map((o) => ({ kind: o.kind, bays: o.bays.map((b) => b.name), every: o.every, sway: r3(o.sway), stiffness: r3(o.stiffness), gain: r3(o.gain) })) },
-      refs: { direction: name, dir: r4(dir), top, low: !!loose, limit: lim.from, load: loadFrom, restsOn, advise: pick ? { kind: pick.kind, bays: pick.bays.map((b) => b.name) } : null, panels: fm.webs.map((w) => ({ id: w.id, sheet: w.sheet, clips: w.clips, rests: w.rests })) } });
+      refs: { direction: name, dir: r4(dir), top, low: !!loose, limit: lim.from, load: loadFrom, restsOn, advise: over && pick ? { kind: pick.kind, bays: pick.bays.map((b) => b.name) } : null, panels: fm.webs.map((w) => ({ id: w.id, sheet: w.sheet, clips: w.clips, rests: w.rests })) } });
   }
 }
 

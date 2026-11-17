@@ -4172,7 +4172,7 @@ test('frame checks: an open cube racks with a low stiffness and one brace stiffe
     const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
       const s = await buildAssembly('frame/${name}');
-      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|rack|frequency)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|rack|frequency|buckling)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     let r;
     const by = (code) => r.filter((x) => x.code === code), rack = (dir) => by('frame.rack').find((x) => x.refs.direction === dir);
@@ -4201,6 +4201,9 @@ test('frame checks: an open cube racks with a low stiffness and one brace stiffe
     assert.ok(option('gusset', false).gain > 1.1 && option('gusset', false).gain < option('brace', false).gain, JSON.stringify(x.values.options));
     assert.ok(option('panel', true).gain > option('gusset', true).gain, JSON.stringify(x.values.options));
     assert.equal(rack('along y').values.stiffness, open, 'the cube is the same both ways');
+    // within its limit, it advises nothing: the options are solved and said, but no change is named in refs
+    assert.match(x.text, /It stands within the limit as it is$/);
+    assert.equal(x.refs.advise, null);
 
     // a heavier push, 100 N: over the limit, and the cheapest change that brings it under is advised by name. The
     // sway is linear in the push, so it is 5 times the 20 N figure (each rounded to 3 places) and the stiffness the same
@@ -4226,6 +4229,13 @@ test('frame checks: an open cube racks with a low stiffness and one brace stiffe
     assert.ok(paneled.values.stiffness > open * 1.5, `${paneled.values.stiffness} against ${open} N/mm`);
     assert.ok(paneled.values.options.every((o) => !o.bays.some((b) => ['x1', 'z1', 'z2', 'x3'].every((id) => b.split('-').includes(id)))), JSON.stringify(paneled.values.options));
     assert.equal(paneled.refs.panels[0].rests[0].kind, 'spec');
+    // the web is split into pieces for the modes and the whole-frame buckling (subdivide), and still holds: one end a
+    // ball, the other pinned, so nothing inside it spins free. The modes, the buckling factor and the mode view are found
+    const pf = by('frame.frequency')[0], pb = by('frame.buckling').find((q) => /whole frame/.test(q.text));
+    assert.match(pf.text, /^the lowest mode is \d+(\.\d)? Hz/);
+    assert.ok(pf.values.Hz > 5 && pf.values.carried > 0.5, JSON.stringify(pf.values));
+    assert.ok(pb && pb.values.factor > 1, JSON.stringify(by('frame.buckling')));
+    assert.match(cad('beams', 'frame/cube'), /the frame's lowest mode, \d+(\.\d+)? Hz, animated \(a check view\): exports[\\/]frame[\\/]cube\.frame-mode\.svg/);
 
     // 2. a gantry beam: 2020, 600 mm, held fixed at both ends, with a carriage at mid-span (a 608 bearing standing in for
     // it, 2 kg carried on it), on a slide 200 mm either way. The lowest mode is with it at mid-span (as drawn).
