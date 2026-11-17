@@ -2821,7 +2821,7 @@ test('beam cut list and sheets: a box of twelve beams lists three lengths, the b
   } finally { done(); }
 });
 
-test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a cut-length stop per length and a squaring corner, each marked, printing without supports, each guide\'s bush where the beam\'s sheet puts the hole', () => {
+test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a cut-length stop per length and a squaring corner of each hand, each lying whole on its beams where the assembly puts it, each marked, printing without supports, each guide\'s bush where the beam\'s sheet puts the hole', () => {
   const { ws, cad, done } = workspace();
   try {
     const at = (f) => path.join(ws, 'projects/frame', f);
@@ -2847,8 +2847,56 @@ test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a c
     assert.deepEqual(r.jigs.map((x) => [x.kind, x.name, x.mark]), [
       ['drill-guide', 'drill-guide-2020-misumi-hfs5-5.3-at-10', 'ABCD'], ['drill-guide', 'drill-guide-2020-misumi-hfs5-5.3-at-30', 'ABCD'],
       ['length-stop', 'length-stop-2020-misumi-hfs5-300', 'ABCD 300'], ['tap-guide', 'tap-guide-2020-misumi-hfs5-M5', 'EF'],
-      ['length-stop', 'length-stop-2020-misumi-hfs5-260', 'E 260'], ['length-stop', 'length-stop-2020-misumi-hfs5-220', 'F 220'], ['square-corner', 'square-corner-2020-misumi-hfs5', 'ABCDEF']]);
-    assert.equal(of('square-corner')[0].for.length, 16); assert.equal(of('tap-guide')[0].for.length, 4);
+      ['length-stop', 'length-stop-2020-misumi-hfs5-260', 'E 260'], ['length-stop', 'length-stop-2020-misumi-hfs5-220', 'F 220'],
+      ['square-corner', 'square-corner-2020-misumi-hfs5', 'ABCDEF'], ['square-corner', 'square-corner-2020-misumi-hfs5-left', 'ABCDEF']]);
+    assert.equal(of('tap-guide')[0].for.length, 4);
+    // a squaring corner's arm b runs one way along b: at a post's end only one hand lies on the post, so the box takes both,
+    // each for the eight joins whose post runs its way from the beam, every tongue whole on its beam (58 and 78 mm)
+    assert.deepEqual(of('square-corner').map((x) => [x.for.length, [...new Set(x.for.map((w) => w.hand))]]), [[8, ['right']], [8, ['left']]]);
+    assert.deepEqual(of('square-corner')[1].for.map((w) => w.text).sort(), ['blind join of x1.b to p2.front@30', 'blind join of x2.a to p4.back@30', 'blind join of x3.a to p1.back@270', 'blind join of x4.b to p3.front@270',
+      'blind join of y1.a to p1.top@10', 'blind join of y2.b to p3.bottom@10', 'blind join of y3.b to p4.bottom@290', 'blind join of y4.a to p2.top@290']);
+    for (const w of of('square-corner').flatMap((x) => x.for)) assert.deepEqual(w.on, { a: 58, b: 78 }, w.text);
+    // measured on the solids, each corner fitted where the assembly puts it: its tongues lie whole on their beams (none of
+    // either inside the beam's envelope made 400 mm longer past an end; for a, past its far end, as b's tongue crosses the
+    // line of a beyond the end that meets b), its plate meets no beam; the other hand, put
+    // on the joins given the left, would hang its b tongue past the post's end
+    const fitted = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { jigsOf } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/jigs.mjs')).href)});
+      const { squareCorner, squareCornerModel, beam } = await import(${JSON.stringify(import.meta.resolve('@rulecad/frames'))});
+      const { placeItems } = await import(${JSON.stringify(import.meta.resolve('@rulecad/model-link'))});
+      const jscad = (await import(${JSON.stringify(import.meta.resolve('@jscad/modeling'))})).default;
+      const { intersect } = jscad.booleans, { measureVolume, measureBoundingBox } = jscad.measurements, { transform } = jscad.transforms, { cuboid } = jscad.primitives;
+      const s = await buildAssembly('frame/box'), { jigs } = jigsOf(s), placed = placeItems(s.motion, s.jointValues);
+      const col = (W) => [W[0], W[4], W[8], 0, W[1], W[5], W[9], 0, W[2], W[6], W[10], 0, W[3], W[7], W[11], 1];
+      const mul = (P, Q) => Array.from({ length: 16 }, (_, i) => { const c = Math.floor(i / 4), r = i % 4; return P[r] * Q[4 * c] + P[4 + r] * Q[4 * c + 1] + P[8 + r] * Q[4 * c + 2] + P[12 + r] * Q[4 * c + 3]; });
+      const items = s.objects.filter((o) => o.beam).map((o) => { const W = col(placed[s.motion.items.findIndex((x) => x[0] === o.id)]), B = o.beam;
+        const longer = (z0, z1) => transform(W, cuboid({ size: [B.profile.width, B.profile.height, z1 - z0], center: [0, 0, (z0 + z1) / 2] }));
+        return { id: o.id, B, W, env: transform(W, beam(B, { display: 'link' })), longer: longer(-400, B.length + 400), past: { a: longer(0, B.length + 400), b: longer(-400, B.length) } }; });
+      const over = (g, h) => { const [a0, a1] = measureBoundingBox(g), [b0, b1] = measureBoundingBox(h); return [0, 1, 2].every((k) => a0[k] < b1[k] && b0[k] < a1[k]); };
+      const vol = (g, h) => (over(g, h) ? measureVolume(intersect(g, h)) : 0), hang = (g, x, far) => vol(g, far ? x.past[far] : x.longer) - vol(g, x.env);
+      const out = [];
+      for (const j of jigs.filter((x) => x.kind === 'square-corner')) for (const w of j.for) {
+        const g = transform(w.fit, squareCorner(j.model)), [A, B] = w.items.map((id) => items.find((x) => x.id === id));
+        const row = { text: w.text, hand: w.hand, inA: vol(g, A.env), inB: vol(g, B.env), hangA: hang(g, A, w.end), hangB: hang(g, B), others: items.filter((x) => !w.items.includes(x.id)).map((x) => vol(g, x.env)).reduce((t, v) => t + v, 0) };
+        if (w.hand === 'left') { const m = squareCornerModel({ profile: A.B.profile, face: w.faces[0], end: w.end, length: A.B.length }, { profile: B.B.profile, face: w.faces[1], edge: w.edge }, { hand: 'right' }); row.rightHangs = hang(transform(mul(A.W, m.fit), squareCorner(m)), B); }
+        out.push(row);
+      }
+      // a tapped end no guide can be drawn for (its bore gone) is a jig.tap warning, the other jigs still made
+      for (const o of s.objects) if (o.beam) for (const x of o.beam.ops) if (x.op === 'tap') x.bores = [x.end + '.9'];
+      const t = jigsOf(s);
+      console.log(JSON.stringify({ rows: out, tap: { kinds: [...new Set(t.jigs.map((x) => x.kind))], findings: t.findings.map((f) => f.level + ' ' + f.code + ' ' + f.text) } }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    assert.equal(fitted.rows.length, 16);
+    assert.deepEqual(fitted.tap.kinds, ['drill-guide', 'length-stop', 'square-corner']);
+    assert.equal(fitted.tap.findings.length, 4);
+    assert.match(fitted.tap.findings[0], /^warn jig\.tap mark E \(x1, x2, x3, x4\), operation \d+: no tap guide: profile-2020-misumi-hfs5 x 260's op \d+ \(tap at a\.1\) taps bore a\.9, which profile-2020-misumi-hfs5 x 260 does not have: end a has a\.1/);
+    for (const f of fitted.rows) {
+      assert.ok(f.inA > 100 && f.inB > 100, `${f.text}: its tongues in the slots (${f.inA}, ${f.inB} mm³)`);
+      assert.ok(f.hangA < 0.01 && f.hangB < 0.01, `${f.text}: ${f.hangA} and ${f.hangB} mm³ of tongue past the beams' ends`);
+      assert.ok(f.others < 0.01, `${f.text}: it meets ${f.others} mm³ of the other beams`);
+      if (f.hand === 'left') assert.ok(f.rightHangs > 100, `${f.text}: the right-handed corner would hang ${f.rightHangs} mm³ past the post's end`);
+    }
     // every guide's bush where the sheet dimensions its hole, for all 16 access holes in the posts, from whichever end is nearer
     const holes = of('drill-guide').flatMap((x) => x.for);
     assert.equal(holes.length, 16);
@@ -2856,9 +2904,9 @@ test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a c
     assert.deepEqual([...new Set(holes.map((w) => w.sheetText))].sort(), ['10.0', '270.0', '290.0', '30.0']);
     // each prints without supports, and says its grams and margin
     for (const x of r.jigs) { assert.deepEqual(x.checks.flatMap((c) => c.issues), [], x.name); assert.ok(x.margin >= 2 && x.grams > 1, `${x.name}: ${x.grams} g at ${x.margin}×`); assert.ok(x.findings.some((f) => f.code === 'fitting.mass')); }
-    assert.ok(of('square-corner')[0].findings.some((f) => f.code === 'jig.square' && f.level === 'pass'));
-    // laid out as one plate: 7 jigs, three of the stops with a gauge in two pieces
-    assert.deepEqual(r.plates.map((p) => [p.file.replace(/\\/g, '/'), p.parts.length]), [['exports/frame/box.jigs.3mf', 12]]);
+    for (const x of of('square-corner')) assert.ok(x.findings.some((f) => f.code === 'jig.square' && f.level === 'pass'), x.name);
+    // laid out as one plate: 8 jigs, three of the stops with a gauge in two pieces
+    assert.deepEqual(r.plates.map((p) => [p.file.replace(/\\/g, '/'), p.parts.length]), [['exports/frame/box.jigs.3mf', 13]]);
     assert.ok(fs.statSync(path.join(ws, 'exports/frame/box.jigs.3mf')).size > 1000);
     assert.deepEqual(r.findings, []);
     // the text form; a hole too far from both ends for one print is a warning in place of a guide
@@ -2902,7 +2950,10 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
       const s = await buildAssembly('frame/frame'), out = { hardware: s.hardware.map((h) => [h.fasten, h.kind, h.name]), findings: checkAssembly(s).filter((f) => /^(fasten|frame\\.(nut|preload)|join\\.geometry|overlap)/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) };
       if (${order}) { const { buildData } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/buildpage.mjs')).href)}); out.order = (await buildData(s)).build.order; }
-      console.log(JSON.stringify(out));
+      // a tapped end no guide can be drawn for (its bore gone) is a jig.tap warning, the other jigs still made
+      for (const o of s.objects) if (o.beam) for (const x of o.beam.ops) if (x.op === 'tap') x.bores = [x.end + '.9'];
+      const t = jigsOf(s);
+      console.log(JSON.stringify({ rows: out, tap: { kinds: [...new Set(t.jigs.map((x) => x.kind))], findings: t.findings.map((f) => f.level + ' ' + f.code + ' ' + f.text) } }));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     let r = probe(true);
     const by = (code, fasten) => r.findings.filter((x) => x.code === code && (fasten == null || x.refs?.fasten === fasten));
