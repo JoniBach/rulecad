@@ -37,3 +37,4 @@ export { GUIDE_KINDS, GUIDE_DEFAULTS, rails, railModel, rail, carriage, carriage
 export { WHEEL_DEFAULTS, wheels, trackFit, wheelsModel, wheelPlate, vWheel, wheelMargin, sliderModel, slider } from './wheels.mjs';
 export { ROD_DEFAULTS, rodsLayout, rodHolderModel, rodHolder, motorPlateModel, motorPlate, rodCarriageModel, rodCarriage, endstopMountModel, endstopMount, rodMargin } from './rods.mjs';
 export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';
+export { JIG_KINDS, JIG_DEFAULTS, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner } from './jig.mjs';
