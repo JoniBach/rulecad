@@ -404,13 +404,15 @@ export function endstopMountModel(profile, o = {}) {
   const need = engagement(th, { depth: 1, material: k.mat.name }).need, lens = [...(fixingModel(th).figures.lengths?.value ?? [])].sort((a, b) => a - b), Ls = lens.find((x) => x - dep >= need - 1e-9);
   if (Ls == null) throw new Error(`${what}: no ${th} screw sold passes ${sw.name}'s ${mm(dep)} mm and ${mm(need)} mm into ${k.mat.name}`);
   const pilot = r3(up(Ls - dep + FIX.tip_room.value + k.layer, k.layer)), cb = counterboreModelOf(sd.thread, k), least = up(FITTING_DEFAULTS.least.value * sc.major, k.layer);
-  const t0 = Math.max(pilot + 2 * k.layer, cb.depth + least), fits = sold(t0, k.layer, [sd], sd.thread), tb = fits ? fits.t : r3(up(t0, k.layer));
+  // the screw's grip under its counterbore a thickness a length sold takes; the counterbore as deep as the rest
+  const fits = sold(least, k.layer, [sd], sd.thread), grip = fits ? fits.t : least, tb = r3(up(Math.max(grip + cb.depth, pilot + 2 * k.layer), k.layer));
+  cb.depth = r3(tb - grip);
   const lever = ROD_DEFAULTS.lever.value, gap = ROD_DEFAULTS.gap.value, xs = r3(lever + gap + cb.diameter / 2 + FITTING_DEFAULTS.reach.value), x0 = r3(-ROD_DEFAULTS.wall.value), x1 = r3(xs + cb.diameter / 2 + ROD_DEFAULTS.wall.value);
   const W = r3(w), M = S * (tb + dep), stress = r3((6 * M) / (W * tb * tb)), margin = r3(bendMargin(M, W, tb, k.S));
   const holes = [-1, 1].map((q) => [r3(len / 2), r3(q * (sp / 2))]); // (the switch's holes along its width, at its body's mid-length)
   const m = { kind: 'fitting', fitting: 'endstop-mount', name: `endstop-mount-${sw.name}-${short(p.name)}-${sd.face.replace('.', '-')}`, title: `printed mount for the switch ${sw.name} on ${p.name}'s ${sd.face} face`, profile: p.name, face: sd.face, switch: sw.name, toward,
     thickness: tb, outline: [[x0, -W / 2], [x1, -W / 2], [x1, W / 2], [x0, W / 2]], counterbore: cb, holes, pilot, switchScrew: { thread: th, length: Ls },
-    thread: sd.thread, head: 'cap', screws: [{ thread: sd.thread, head: 'cap', grip: r3(tb - cb.depth), at: [xs, 0, r3(tb - cb.depth)], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null }],
+    thread: sd.thread, head: 'cap', screws: [{ thread: sd.thread, head: 'cap', grip, at: [xs, 0, grip], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null }],
     lever: { x: lever, out: r3(tb + dep / 2), reach: r3(0.6 * w), width: Math.min(4, dep) },
     hardware: [{ name: `${th}x${Ls} cap`, kind: 'screw', thread: th, length: Ls, head: 'cap', count: 2, why: `${sw.name} to its mount, ${mm(need)} mm into ${k.mat.name}` }],
     load: { force: S, what: `${mm(S)} N on the switch, across the face` }, stress, margin,
@@ -429,7 +431,7 @@ const counterboreModelOf = (thread, k) => { const c = counterbore(thread, { head
 export function endstopMount(m, o = {}) {
   if (m?.fitting !== 'endstop-mount') throw new Error(`endstopMount: give an endstop mount's model (endstopMountModel), not ${shown(m)}`);
   const t = m.thickness, pr = printerOf('endstopMount', m.pr ?? null), body = prismZ(m.outline, 0, t), q = m.screws[0];
-  const cuts = [counterbore(q.thread, { head: 'cap', printer: pr, into: '-z', at: [q.at[0], q.at[1], t], length: t + 1 })];
+  const cuts = [counterbore(q.thread, { head: 'cap', printer: pr, into: '-z', at: [q.at[0], q.at[1], t], depth: m.counterbore.depth, length: t + 1 })];
   for (const [x, y] of m.holes) cuts.push(hole(m.switchScrew.thread, { kind: 'pilot', into: '-z', at: [x, y * m.toward, t], depth: m.pilot, printer: pr }));
   const g = combine([body], cuts, o.ops ?? null);
   return Object.assign(g, { model: m });
