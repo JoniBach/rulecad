@@ -5,7 +5,7 @@
 // fasten's are. Once built, the checks: join.geometry (the end meets the face square and flush, where the join says,
 // on a slot where the kind needs one), join.end (every beam end is joined or capped), join.stiffness (each join's
 // spring for a frame's solve, an estimate that says so), and join.fitting (a kind whose fitting comes later).
-import { JOINS, joinModel } from '@rulecad/frames';
+import { JOINS, JOIN_SCALE, joinModel } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
 import { beamOf, beamPlace, framesContext } from './beams.mjs';
 import { joinFitting, fittedStiffness } from './fittings.mjs';
@@ -113,6 +113,15 @@ function mitreOf(what, ia, ea, ib, eb, num) {
   return { angle: +(90 - phi / 2).toFixed(6), a, b };
 }
 
+// What a join's spring rests on, in words: the joint rig's measurement and its date, or an estimate until it is measured
+function restsOn(k) {
+  const b = k.measured?.bending, t = k.measured?.twist;
+  if (b && t) return `measured on the joint rig on ${b}${t !== b ? ` (twist on ${t})` : ''}`;
+  if (b) return `bending measured on the joint rig on ${b}; twist an estimate until the rig measures it`;
+  if (t) return `twist measured on the joint rig on ${t}; bending an estimate until the rig measures it`;
+  return 'an estimate, until the joint rig (issue 264) measures it';
+}
+
 /** The ends of each beam item a join or an item placed at it covers: Set of "x1.a". */
 function covered(s) {
   const out = new Set();
@@ -167,26 +176,80 @@ export function joinChecks(s, f) {
         f(ok ? 'pass' : 'fail', `${j.label}: ${ok ? `the axes of ${ai} and ${bi} meet at the corner, their ends ${mm(gap)} mm apart` : wl <= 1e-9 ? `${ai} and ${bi} lie along one line, where a ${j.kind} join meets at a corner` : miss > place ? `the axes of ${ai} and ${bi} pass ${mm(miss)} mm apart, where a ${j.kind} join's meet at the corner` : `${ai}'s end ${j.end} and ${bi}'s end ${j.address} are ${mm(gap)} mm apart, more than the beams' ${mm(reach)} mm across: they do not meet`}`, ok ? null : `${j.label}: geometry`, { code: 'join.geometry', at: A.at.map(r3), between: [A.at.map(r3), B.at.map(r3)], values, refs });
       }
     }
-    // the spring this join puts at a's end in a frame's solve: an estimate, and it says so
+    // the spring this join puts at a's end in a frame's solve: measured on the joint rig with its date, or an estimate
+    // until it is, and it says which
     const k = m.stiffness;
     if (k.bought) {
       const set = k.bought.set, own = k.bought.own;
-      f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(3)} N·m/mrad in bending and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}, ${own ? `${set}'s own figures from its rule set (${k.kind}: ${k.bought.rule})` : `the ${j.kind} join's estimate, as ${set} gives none`}: an estimate, until the joint rig (issue 264) measures it`, null,
-        { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, ...(j.fitted ? { item: j.fitted.item } : {}), set, kind_of_value: k.kind, end: k.end, rests: k.rests } });
+      f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(3)} N·m/mrad in bending and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}, ${own ? `${set}'s own figures from its rule set (${k.kind}: ${k.bought.rule})` : `the ${j.kind} join's ${k.measured?.bending ? 'figures' : 'estimate'}, as ${set} gives none`}: ${restsOn(k)}`, null,
+        { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, ...(j.fitted ? { item: j.fitted.item } : {}), set, kind_of_value: k.kind, measured: k.measured, end: k.end, rests: k.rests } });
       continue;
     }
     if (k.fitting) {
-      const fm = k.fitting;
-      f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(3)} N·m/mrad in bending, ${j.fitted.item}'s own by finite elements (${fm.linear} N/mm at its screw under ${fm.load} N, ${fm.margin} times under its plastic's strength, ${fm.grams} g), and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}: the slot nuts and lips are not in either, so both are an estimate of the joint until the joint rig (issue 264) measures it`, null,
-        { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, item: j.fitted.item, kind_of_value: 'estimate', end: k.end, rests: k.rests } });
+      const fm = k.fitting, shared = fm.shareKind === 'measured';
+      f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(3)} N·m/mrad in bending, ${shared ? `${j.fitted.item}'s own by finite elements (${(fm.fe / 1e6).toFixed(3)}) times the ${+fm.share.toFixed(3)} a printed ${j.kind} join keeps of it, measured on the joint rig on ${k.measured.bending}` : `${j.fitted.item}'s own by finite elements`} (${fm.linear} N/mm at its screw under ${fm.load} N, ${fm.margin} times under its plastic's strength, ${fm.grams} g), and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}: ${shared ? `twist ${k.measured.twist ? `measured on the joint rig on ${k.measured.twist}` : 'an estimate until the rig measures it'}` : 'the slot nuts and lips are not in either, so both are an estimate of the joint until the joint rig (issue 264) measures it'}`, null,
+        { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, item: j.fitted.item, kind_of_value: shared && k.measured.twist ? 'measured' : 'estimate', measured: k.measured, end: k.end, rests: k.rests } });
       continue;
     }
-    f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(2)} N·m/mrad in bending and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}${k.printed ? ', a printed fitting\'s share of a bought one\'s' : ''}${k.scale !== 1 ? `, scaled ${+k.scale.toFixed(2)}× for the profile's size` : ''}: an estimate, until the joint rig (issue 264) measures it`, null,
-      { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, kind_of_value: 'estimate', end: k.end, rests: k.rests } });
+    f('info', `${j.label}: taken as ${(k.bending / 1e6).toFixed(2)} N·m/mrad in bending and ${(k.twist / 1e6).toFixed(2)} N·m/mrad in twist at ${ai}'s end ${j.end}${k.printed ? ', a printed fitting\'s share of a bought one\'s' : ''}${k.scale !== 1 ? `, scaled ${+k.scale.toFixed(2)}× for the profile's size` : ''}: ${restsOn(k)}`, null,
+      { code: 'join.stiffness', values: { bending: k.bending, twist: k.twist }, refs: { ...refs, kind_of_value: k.kind, measured: k.measured, end: k.end, rests: k.rests } });
   }
+  dropChecks(s, f, worlds);
   // every beam end joined or capped
   const ends = covered(s), beams = s.objects.filter((o) => o.beam && !o.unplaced && ids.includes(o.id)), open = [];
   for (const o of beams) for (const e of ['a', 'b']) if (!ends.has(`${o.id}.${e}`)) open.push(`${o.id}.${e}`);
   if (open.length) f('warn', `${open.length} beam end${open.length > 1 ? 's are' : ' is'} neither joined nor capped: ${open.join(', ')}. Give each a join, or an item at the end (an end cap or a foot, ${'"at": "' + open[0] + '"'})`, `${open.length} open end${open.length > 1 ? 's' : ''}`, { code: 'join.end', values: { open: open.length }, refs: { ends: open } });
   else f('pass', `every beam end is joined or capped (${beams.length * 2} ends)`, null, { code: 'join.end' });
+}
+
+/**
+ * join.drop: a beam held by one join at one end and by nothing else, a mass hung on it (on the beam, or on an item placed
+ * on it), is a cantilever from that join, as on the joint rig. Its drop under the mass is the beam's own bending and the
+ * join's turning: d = F L³ / (3 E I) + F L² / k, L from b's face to the load along the beam, E I the beam's across the
+ * load, k the join's bending spring. Each is a prediction cad measured takes (<beam>.drop=<mm>): the measured drop less
+ * the beam's own gives the join's spring, F L² / (d - F L³ / 3 E I), written to the rule the spring came from.
+ * @param {object} s a built assembly @param {Function} f the findings' sink @param {number[][]} worlds each item's place
+ */
+function dropChecks(s, f, worlds) {
+  const loads = (s.motion.loads || []).map((l, i) => ({ ...l, at: s.a.loads?.[i]?.at })).filter((l) => l.mass != null), ids = s.motion.items.map((x) => x[0]);
+  if (!loads.length) return;
+  const items = s.a.items || [], G = s.motion.gravity, g = Math.hypot(...G) || 1, down = G.map((c) => c / g);
+  const pt = (W, p) => [0, 1, 2].map((r) => W[4 * r] * p[0] + W[4 * r + 1] * p[1] + W[4 * r + 2] * p[2] + W[4 * r + 3]);
+  const dir = (W, v) => [0, 1, 2].map((r) => W[4 * r] * v[0] + W[4 * r + 1] * v[1] + W[4 * r + 2] * v[2]);
+  for (const j of s.joins) {
+    const [id] = j.items, e = j.end[0], other = e === 'a' ? 'b' : 'a';
+    // held by this join alone: in no other join, as a or b
+    if (s.joins.some((x) => x !== j && x.items.includes(id))) continue;
+    const on = new Set([id, ...items.filter((it) => typeof it.at === 'string' && it.at.trim().startsWith(`${id}.`)).map((it) => it.id)]);
+    const mine = loads.filter((l) => on.has(ids[l.item]));
+    if (!mine.length) continue;
+    const beam = s.objects.find((o) => o.id === id)?.beam, W = worlds[ids.indexOf(id)], fig = beam?.figures, mat = beam?.material;
+    const E = mat?.modulus, Ix = fig?.inertiaX?.value, Iy = fig?.inertiaY?.value, k = j.model.stiffness.bending;
+    if (!(E > 0 && Ix > 0 && Iy > 0 && W)) { f('info', `${j.label}: ${id} hangs from this join alone, but its profile gives no second moments or its material no modulus, so its drop is not predicted`, null, { code: 'join.drop', refs: { join: j.index, beam: id } }); continue; }
+    const len = beam.length, root = pt(W, [0, 0, e === 'a' ? 0 : len]), tip = pt(W, [0, 0, e === 'a' ? len : 0]);
+    const u = [0, 1, 2].map((c) => (tip[c] - root[c]) / len), sx = dir(W, [1, 0, 0]), sy = dir(W, [0, 1, 0]);
+    for (const l of mine) {
+      const P = pt(worlds[l.item], [l.frame[3], l.frame[7], l.frame[11]]), L = [0, 1, 2].reduce((a, c) => a + (P[c] - root[c]) * u[c], 0);
+      const across = down.map((c, q) => c - u[q] * [0, 1, 2].reduce((a, r) => a + down[r] * u[r], 0)), share = Math.hypot(...across);
+      const F = l.mass * 9.80665 * share, dx = [0, 1, 2].reduce((a, c) => a + across[c] * sx[c], 0) / (share || 1), dy = [0, 1, 2].reduce((a, c) => a + across[c] * sy[c], 0) / (share || 1);
+      if (!(L > 0) || !(share > 1e-6)) continue;
+      const beamDrop = ((F * L ** 3) / (3 * E)) * (dx * dx / Iy + dy * dy / Ix), joinDrop = (F * L * L) / k, drop = beamDrop + joinDrop;
+      const rule = writesTo(j), name = `${id}.drop`, where = l.at ?? `${id}`;
+      const trust = restsOn(j.model.stiffness);
+      f('info', `${j.label}: ${id} hangs from it alone, so ${l.mass} kg at ${where}, ${mm(L)} mm out from ${j.items[1]}'s face, drops it ${n3(drop)} mm: ${n3(beamDrop)} mm the beam's own bending (E ${E} MPa, I ${Math.round(dx * dx > 0.5 ? Iy : Ix)} mm⁴) and ${n3(joinDrop)} mm the join turning on its ${(k / 1e6).toFixed(3)} N·m/mrad spring (${trust}). Measure it with a dial indicator and write it back: cad measured ${s.project}/${s.name} ${name}=<mm>, and the spring goes to ${rule.rule}`, null,
+        { code: 'join.drop', at: P.map(r3), values: { drop: n3(drop), beam: n3(beamDrop), join: n3(joinDrop), force: n3(F), arm: n3(L), bending: k },
+          predict: { name, figure: `drop of ${id} at ${where} under ${l.mass} kg`, value: n3(drop), unit: 'mm', rig: { force: F, arm: L, beam: beamDrop, spring: k, rule: rule.rule, per: rule.per, unit: rule.unit, what: rule.what, join: j.label } },
+          refs: { join: j.index, kind: j.kind, beam: id, rule: rule.rule } });
+    }
+  }
+}
+const n3 = (x) => +Number(x).toFixed(3);
+
+// The rule a join's measured spring is written to, and what to multiply the spring by to get it: a bought fitting's own
+// bending_stiffness; a printed fitting's share of its finite-element figure; else the kind's figure for a 20 mm profile
+function writesTo(j) {
+  const k = j.model.stiffness, key = j.kind.replace(/-/g, '_');
+  if (k.bought) return { rule: `${k.bought.set}.bending_stiffness`, per: 1, unit: 'N mm/rad', what: `${k.bought.set}'s bending stiffness, holding a beam's end` };
+  if (k.fitting) return { rule: `joins.${key}_printed_share`, per: 1 / k.fitting.fe, unit: '', what: `a ${j.kind} join with a printed fitting, as a share of the fitting's own bending stiffness by finite elements (${(k.fitting.fe / 1e6).toFixed(3)} N·m/mrad for ${k.fitting.name})` };
+  return { rule: `joins.${key}_bending`, per: 1 / ((k.scale ?? 1) * (k.printed ? JOIN_SCALE.printed.value : 1)), unit: 'N mm/rad', what: `a ${j.kind} join's bending stiffness, for a 20 mm series profile` };
 }

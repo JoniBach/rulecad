@@ -1,0 +1,129 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "joint-gauge",
+  "title": "Joint rig: dial arm",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "m5",
+    "m4",
+    "pla",
+    "dial-indicator"
+  ],
+  "engine": "manifold",
+  "orientation": "Upside down: the arm's top face on the bed, one plain first layer, the foot standing up from it. Two M5x25 button-head screws into slide-in slot nuts in the base beam's top slot; an M4 x 16 across the clamp, its nut in the pocket. Tighten the clamp just enough to hold the stem",
+  "description": "Stands on the joint rig's base beam over one rig beam's join and reaches out over that beam, holding a dial indicator's 8 mm stem so its plunger rests on the hanger's top edge, in line with the hook. It stands on the base beam beside the join, so the base beam twisting under the load turns the arm and the rig beam together and reads nothing. Its underside clears the rig beam by a few millimetres. One arm serves all three rig beams: move it along the slot. MEASURE.md, rows 34 to 36.",
+  "variables": {
+    "rig": {
+      "value": 150,
+      "unit": "mm",
+      "rule": "The rig beam's length: the joint-test assembly's c1, c2 and c3"
+    },
+    "hanger": {
+      "value": "x1c.layer * 15",
+      "unit": "mm",
+      "rule": "The hanger's thickness (joint-hanger's thick): the plunger lands on its middle, over the hook"
+    },
+    "face": {
+      "value": 10,
+      "unit": "mm",
+      "rule": "From the base beam's top face's middle to its front face: half the 20 mm profile"
+    },
+    "reach": {
+      "value": "face + rig + hanger / 2",
+      "unit": "mm",
+      "rule": "From the slot's middle to the stem's axis: over the hanger's middle"
+    },
+    "wide": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The arm across: the stem's bore with plastic each side, and an M4 nut's pocket beside the slit"
+    },
+    "high": {
+      "value": 15.4,
+      "unit": "mm",
+      "rule": "The arm's depth: about the stem's length, so the clamp holds most of it, stiff enough (sag_per_newton) that the dial's spring bending it reads next to nothing, and with the gap a 19.4 mm foot, so a sold M5x25 button screw engages its slot nut fully and stops short of the slot's floor"
+    },
+    "gap": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The arm's underside over the rig beam's top: clear of it, and close enough that a 10 mm plunger reaches the hanger"
+    },
+    "foot": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The foot along the base beam: room for two screws either side of the arm"
+    },
+    "pitch": {
+      "value": 28,
+      "unit": "mm",
+      "rule": "Between the foot's two screws, along the slot"
+    },
+    "fillet": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "The 45° fill under the arm where it leaves the foot, and the rounds where the arm meets the foot in plan: no square inside corner"
+    },
+    "round": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Outside corners in plan, rounded so they stay down"
+    },
+    "bore": {
+      "value": "dial_indicator.stem + x1c.hole_comp",
+      "unit": "mm",
+      "rule": "The indicator's stem, a close fit before clamping"
+    },
+    "slit": {
+      "value": "x1c.line * 4",
+      "unit": "mm",
+      "rule": "The clamp's slit, from the bore to the tip"
+    },
+    "lip": {
+      "value": "x1c.wall_min * 2",
+      "unit": "mm",
+      "rule": "Plastic round the bore and past the nut's pocket"
+    },
+    "pinch": {
+      "value": "reach + bore / 2 + lip + 4",
+      "unit": "mm",
+      "rule": "The clamp's M4 screw, across the slit beyond the bore: half an M4 nut's width past the bore's plastic"
+    },
+    "tip": {
+      "value": "pinch + 4 + lip",
+      "unit": "mm",
+      "rule": "The arm's far end, past the clamp's screw"
+    },
+    "inertia": {
+      "value": "wide * high * high * high / 12",
+      "rule": "The arm's section, a solid rectangle, in mm⁴ (a unit the variables do not carry)"
+    },
+    "sag_per_newton": {
+      "value": "reach * reach * reach / (3 * pla.modulus * inertia)",
+      "rule": "How far the arm's tip moves for each newton the plunger presses up, in mm per N: a cantilever from the foot. While a drop is read the dial's spring changes by a small part of its force, so this times that change is all the arm adds to a reading"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes"
+    }
+  },
+  "anchors": {
+    "foot": {
+      "at": [
+        0,
+        0,
+        "gap + high"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  }
+}

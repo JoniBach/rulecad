@@ -48,7 +48,7 @@ const threadSet = (t, given) => { const k = String(t).toLowerCase().replace(/\./
  * @typedef {{ value: any, unit?: string, kind: string, source: string, rule?: string, checked?: string }} Figure
  * @typedef {{ kind: 'slot-nut', name: string, title: string, slot: string, thread: string, major: number | null, nutKind: string, entry: string,
  *   length: number, width: number, height: number, tongueWidth: number | null, tongueHeight: number, boltLength: number | null,
- *   hold: Figure | null, torque: Figure | null, material: string, density: Figure, volume: number, mass: number,
+ *   hold: Figure | null, holdAlong: Figure | null, torque: Figure | null, material: string, density: Figure, volume: number, mass: number,
  *   figures: Record<string, Figure>, bought: true, printed: false, findings: object[] }} SlotNut
  *   volume (mm³) and mass (g) are worked out from the drawn block (body, tongue, less the thread's hole; a T-bolt's shank added)
  */
@@ -85,12 +85,15 @@ export function slotNutModel(which, change = {}, given = {}) {
   const slot = find(given)(v('slot')), opening = slot?.part === 'slot' ? slot.rules.opening?.value : null, tw = tongueWidth ?? (tongueHeight && opening ? r3(opening - 0.2) : 0);
   const bore = nutKind === 't-bolt' || !major ? 0 : (Math.PI * major * major) / 4;
   const volume = r3(width * length * height + tw * length * tongueHeight - bore * (height + tongueHeight) + (nutKind === 't-bolt' && major ? (Math.PI * major * major * Math.max(0, boltLength - (tw ? tongueHeight : 0))) / 4 : 0));
-  const mass = r3((volume * density.value) / 1000), hold = figures.hold ?? null, out = [];
+  const mass = r3((volume * density.value) / 1000), hold = figures.hold ?? null, along = figures.hold_along ?? null, out = [];
   out.push(finding('info', `${name} weighs ${mm(mass)} g: its drawn block, ${mm(volume)} mm³, at ${density.value} g/cm³ (${material})`, 'slot_nut.mass', { values: { mass, volume, density: density.value } }));
-  if (hold) out.push(finding('info', `it holds ${hold.value} N straight out of the slot: ${hold.kind === 'spec' ? 'the maker\'s figure' : `an estimate (${hold.rule})`}`, 'slot_nut.hold', { values: { hold: hold.value }, refs: { kind: hold.kind } }));
+  const trust = (f) => (f.kind === 'spec' ? 'the maker\'s figure' : f.kind === 'measured' ? `measured${f.checked ? ` on ${f.checked}` : ''} (${f.source})` : `an estimate (${f.rule})`);
+  if (hold) out.push(finding('info', `it holds ${hold.value} N straight out of the slot: ${trust(hold)}`, 'slot_nut.hold', { values: { hold: hold.value }, refs: { kind: hold.kind } }));
+  // along the slot: the pull at which it slips, tightened; only a test gives it (the joint rig's luggage scale)
+  if (along) out.push(finding('info', `tightened, it slips along the slot at ${along.value} N: ${trust(along)}`, 'slot_nut.hold_along', { values: { hold_along: along.value }, refs: { kind: along.kind } }));
   const title = `${v('thread')} ${nutKind}${nutKind === 't-bolt' ? ` x ${boltLength}` : ' nut'} for ${v('slot')}`;
   return { kind: 'slot-nut', name, title, slot: v('slot'), thread: v('thread'), major, nutKind, entry: v('nut_entry'), length, width, height, tongueWidth: tw || null, tongueHeight, boltLength,
-    hold, torque: figures.tightening_torque ?? null, material, density, volume, mass, figures, bought: true, printed: false, findings: out };
+    hold, holdAlong: along, torque: figures.tightening_torque ?? null, material, density, volume, mass, figures, bought: true, printed: false, findings: out };
 }
 
 /**

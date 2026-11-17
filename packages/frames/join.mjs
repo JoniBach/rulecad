@@ -70,17 +70,56 @@ export const JOIN_TAP = { value: 1.5, unit: 'diameters', rule: 'A join taps the 
 const classOf = (mat) => { const E = mat?.modulus; return E == null ? 'aluminium' : E < 20000 ? 'plastic' : E < 100000 ? 'aluminium' : 'steel'; };
 
 /**
+ * The rule set a workspace keeps its measured joins in, by name: "joins" (part "joins"). The kit holds no file of it:
+ * its starting figures are JOIN_STIFFNESS's estimates, and cad measured writes a copy into the workspace the first time
+ * the joint rig is measured, each figure the rig measured then marked measured with its date.
+ */
+export const JOIN_SET = 'joins';
+const ruleKey = (kind) => kind.replace(/-/g, '_');
+/** The kinds whose fitting can be printed (a bracket, a gusset, a splice), each with a share of its fitting's own stiffness. */
+const SHARED = Object.keys(JOINS).filter((k) => JOINS[k].printed);
+/**
+ * A printed fitting's joint as a share of the fitting's own stiffness by finite elements: the slot nuts, the lips and
+ * the contact are not in that figure, so the joint is softer. 1 until the joint rig measures it.
+ * @param {string} kind
+ */
+const printedShare = (kind) => ({ value: 1, unit: '', rule: `A ${kind} join with a printed fitting, as a share of the fitting's own bending stiffness by finite elements: that figure leaves out the slot nuts, the lips and where the faces touch, so the joint is softer than it. Taken whole until the joint rig measures the joint`, kind: 'estimate', source: 'A working figure of @rulecad/frames, with no measurement behind it: the joint rig (issue 264) measures it and cad measured replaces it', checked: CHECKED });
+
+/**
+ * The joins rule set as the kit starts it: each kind's bending and twist (<kind>_bending, <kind>_twist, a kind's
+ * hyphen as an underscore: end_tap_bending) from JOIN_STIFFNESS, and for each kind with a printed fitting its share
+ * (<kind>_printed_share). cad measured writes the workspace's copy from it.
+ * @returns {{ name: string, part: string, _doc: string, rules: Record<string, { value: number, unit: string, rule: string, kind: string, source: string, checked: string }> }}
+ */
+export function joinRuleSet() {
+  const rules = {};
+  for (const [kind, s] of Object.entries(JOIN_STIFFNESS)) for (const k of ['bending', 'twist']) rules[`${ruleKey(kind)}_${k}`] = { ...s[k], unit: 'N mm/rad' };
+  for (const kind of SHARED) rules[`${ruleKey(kind)}_printed_share`] = printedShare(kind);
+  return { _doc: 'How stiff each kind of join between two beams is, for a 20 mm series profile: the springs at a beam\'s end in a frame\'s solve. Started from @rulecad/frames\' estimates (JOIN_STIFFNESS); the joint rig (examples/bench/projects/benchmarks/MEASURE.md) measures them and cad measured writes each here as measured.', name: JOIN_SET, part: 'joins', rules };
+}
+
+// A figure of the workspace's joins set where it has one, else the kit's
+const ownRule = (given, key) => { const r = given?.sets?.[JOIN_SET]?.rules?.[key]; return r && typeof r.value === 'number' && Number.isFinite(r.value) && r.value > 0 ? r : null; };
+const measuredOn = (r) => (r?.kind === 'measured' ? r.checked ?? null : null);
+
+/**
  * The stiffness a join of this kind is taken to have between these beams, as numbers and as an end join for
- * @rulecad/fea/frame ({ rx: twist, ry, rz: bending, in N·mm/rad }), with what it rests on.
- * @param {string} kind @param {object} beam the beam whose end is joined (a) @param {{ fitting?: 'printed' | 'bought' }} [o]
+ * @rulecad/fea/frame ({ rx: twist, ry, rz: bending, in N·mm/rad }), with what it rests on. A figure the workspace's
+ * joins set holds (given.sets.joins, measured on the joint rig) is taken before the kit's estimate; measured says the
+ * date each was measured, or null.
+ * @param {string} kind @param {object} beam the beam whose end is joined (a) @param {{ fitting?: 'printed' | 'bought', given?: { sets?: object } }} [o]
+ * @returns {{ bending: number, twist: number, scale: number, printed: boolean, end: { rx: number, ry: number, rz: number }, kind: string, measured: { bending: string | null, twist: string | null }, share: object | null, rests: object[] }}
  */
 export function joinStiffness(kind, beam, o = {}) {
   const s = JOIN_STIFFNESS[kind];
   if (!s) throw new Error(`joinStiffness: no kind of join ${shown(kind)}: there are ${Object.keys(JOINS).join(', ')}`);
+  const key = ruleKey(kind), rb = ownRule(o.given, `${key}_bending`) ?? s.bending, rt = ownRule(o.given, `${key}_twist`) ?? s.twist;
+  const share = SHARED.includes(kind) ? ownRule(o.given, `${key}_printed_share`) ?? printedShare(kind) : null;
   const w = Math.max(beam.profile.width, beam.profile.height), scale = (w / 20) ** JOIN_SCALE.size.value, printed = o.fitting === 'printed' && JOINS[kind].fitting && kind !== 'printed' ? JOIN_SCALE.printed.value : 1;
-  const bending = s.bending.value * scale * printed, twist = s.twist.value * scale * printed;
-  return { bending, twist, scale, printed: printed !== 1, end: { rx: twist, ry: bending, rz: bending }, kind: 'estimate',
-    rests: [s.bending, s.twist, ...(scale !== 1 ? [JOIN_SCALE.size] : []), ...(printed !== 1 ? [JOIN_SCALE.printed] : [])].map((r) => ({ value: r.value, unit: r.unit, kind: r.kind, source: r.source })) };
+  const bending = rb.value * scale * printed, twist = rt.value * scale * printed, measured = { bending: measuredOn(rb), twist: measuredOn(rt) };
+  const named = (r, k) => ({ value: r.value, unit: r.unit, kind: r.kind, source: r.source, name: `${JOIN_SET}.${key}_${k}`, ...(r.kind === 'measured' ? { checked: r.checked } : {}) });
+  return { bending, twist, scale, printed: printed !== 1, end: { rx: twist, ry: bending, rz: bending }, kind: measured.bending && measured.twist ? 'measured' : 'estimate', measured, share,
+    rests: [named(rb, 'bending'), named(rt, 'twist'), ...(scale !== 1 ? [JOIN_SCALE.size] : []), ...(printed !== 1 ? [JOIN_SCALE.printed] : [])].map((r) => ({ value: r.value, unit: r.unit, kind: r.kind, source: r.source, ...(r.name ? { name: r.name } : {}), ...(r.checked ? { checked: r.checked } : {}) })) };
 }
 
 const boughtKindOf = (name, given) => { try { return boughtFittingModel(name, { given }).fittingKind; } catch { return null; } };
@@ -93,8 +132,8 @@ const boughtKindOf = (name, given) => { try { return boughtFittingModel(name, { 
 export function boughtStiffness(kind, beam, fm) {
   const k = joinStiffness(kind, beam);
   if (!fm.stiffness) return { ...k, bought: { set: fm.set, own: false } };
-  const bending = fm.stiffness.bending, twist = fm.stiffness.twist ?? k.twist;
-  return { bending, twist, scale: 1, printed: false, end: { rx: twist, ry: bending, rz: bending }, kind: fm.stiffness.kind, bought: { set: fm.set, own: true, rule: fm.stiffness.rule, source: fm.stiffness.source },
+  const bending = fm.stiffness.bending, twist = fm.stiffness.twist ?? k.twist, measured = { bending: fm.stiffness.measured?.bending ?? null, twist: fm.stiffness.twist != null ? fm.stiffness.measured?.twist ?? null : k.measured.twist };
+  return { bending, twist, scale: 1, printed: false, end: { rx: twist, ry: bending, rz: bending }, kind: fm.stiffness.kind, measured, share: null, bought: { set: fm.set, own: true, rule: fm.stiffness.rule, source: fm.stiffness.source },
     rests: fm.stiffness.rests.map((r) => ({ value: r.value, unit: r.unit, kind: r.kind, source: `${r.name}: ${r.source}` })) };
 }
 

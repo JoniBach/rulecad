@@ -26,7 +26,7 @@
 export * from './profile.mjs';
 export { beamModel, beam, beamAnchor, printable } from './beam.mjs';
 export { OPS, OP_DEFAULTS } from './ops.mjs';
-export { JOINS, JOIN_STIFFNESS, JOIN_SCALE, JOIN_TAP, joinStiffness, joinModel, boughtStiffness } from './join.mjs';
+export { JOINS, JOIN_STIFFNESS, JOIN_SCALE, JOIN_TAP, JOIN_SET, joinRuleSet, joinStiffness, joinModel, boughtStiffness } from './join.mjs';
 export { BOUGHT_KINDS, boughtFittings, boughtFittingModel, boughtFitting, printedCost } from './bought.mjs';
 export { CUT_DEFAULTS, beamMarks, packBars, cutList, cutListText } from './cutlist.mjs';
 export { beamSheet } from './cutsheet.mjs';

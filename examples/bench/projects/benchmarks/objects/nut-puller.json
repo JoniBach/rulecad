@@ -1,0 +1,108 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
+  "name": "nut-puller",
+  "title": "Joint rig: nut puller",
+  "version": "0.1.0",
+  "uses": [
+    "x1c",
+    "m5",
+    "pla"
+  ],
+  "engine": "manifold",
+  "orientation": "Flat on the bed, either face down: one plain plate. One screw through it into the slot nut under test",
+  "description": "A tab screwed to one slot nut in the joint rig's base beam, with a hole at its end for a luggage scale's hook: pull along the slot until the nut slips, and read the scale. Its screw hole takes M5 and smaller; the plate is sized so the screw's shank bearing on it holds about twice a 50 kg luggage scale's top reading (load_margin, an M4 the smallest screw). MEASURE.md, row 37.",
+  "variables": {
+    "wide": {
+      "value": 20,
+      "unit": "mm",
+      "rule": "As wide as the beam's 20 mm face"
+    },
+    "long": {
+      "value": 44,
+      "unit": "mm",
+      "rule": "Along the slot: the screw near one end, the hook's hole near the other"
+    },
+    "thick": {
+      "value": "x1c.layer * 32",
+      "unit": "mm",
+      "rule": "6.4 mm: what the smallest screw's shank bearing on the plate needs to hold about twice the scale's top reading (load_margin), and the thickness at which a sold M5x12 button screw engages a slot nut fully and stops short of the slot's floor"
+    },
+    "hook": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "The hole for the scale's hook or a loop of cord"
+    },
+    "screw_x": {
+      "value": "0 - long / 2 + wide / 2",
+      "unit": "mm",
+      "rule": "The screw, a face's width in from the far end: over the slot nut"
+    },
+    "hook_x": {
+      "value": "long / 2 - edge - hook / 2",
+      "unit": "mm",
+      "rule": "The hook's hole, at the end the scale pulls toward"
+    },
+    "edge": {
+      "value": 6,
+      "unit": "mm",
+      "rule": "Plastic past the hook's hole, which the hook would tear out"
+    },
+    "round": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The plate's corners, rounded so they stay down"
+    },
+    "pull": {
+      "value": 490,
+      "unit": "N",
+      "rule": "The most a common luggage scale reads, 50 kg, at 9.81 N/kg: the pull the tab is sized for"
+    },
+    "shank": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "The smallest screw the slot nuts under test take, M4: its shank bears on the plate hardest"
+    },
+    "bearing": {
+      "value": "pull / (shank * thick)",
+      "unit": "MPa",
+      "rule": "The pressure of the screw's shank on the plate at the scale's top reading"
+    },
+    "tear": {
+      "value": "pull / ((wide - hook) * thick)",
+      "unit": "MPa",
+      "rule": "The stress beside the hook's hole at the scale's top reading"
+    },
+    "shear": {
+      "value": "pull / (2 * edge * thick)",
+      "unit": "MPa",
+      "rule": "The shear on the two planes the hook would tear out along"
+    },
+    "load_margin": {
+      "value": "min(pla.strength / bearing, pla.strength / tear, pla.strength * 0.577 / shear)",
+      "rule": "The weakest way the tab fails, over PLA's strength (shear at 0.577 of it, one over the square root of 3, von Mises; bearing taken at the strength itself, on the safe side): the kit asks about twice"
+    },
+    "segments": {
+      "value": 48,
+      "rule": "Facets on round holes"
+    }
+  },
+  "anchors": {
+    "screw": {
+      "at": [
+        "screw_x",
+        0,
+        "thick"
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "ref": [
+        1,
+        0,
+        0
+      ]
+    }
+  }
+}

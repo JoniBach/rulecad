@@ -234,14 +234,15 @@ export function joinFitting(j, i, { ia, ib, A, B, m, ends, place: placeOf }, num
 }
 
 /**
- * A join's stiffness once its printed fitting is drawn: the fitting's own bending stiffness by finite elements, its twist
- * still the estimate, in the shape @rulecad/frames' joinStiffness gives.
+ * A join's stiffness once its printed fitting is drawn: the fitting's own bending stiffness by finite elements, times
+ * the share of it the joint keeps (the joins set's <kind>_printed_share: 1 until the joint rig measures it), its twist
+ * still the kind's, in the shape @rulecad/frames' joinStiffness gives.
  * @param {object} k joinStiffness's @param {object} fm the fitting's model
  */
 export function fittedStiffness(k, fm) {
-  const bending = fm.stiffness.bending;
-  return { ...k, bending, end: { rx: k.twist, ry: bending, rz: bending }, fitting: { name: fm.name, bending, linear: fm.stiffness.linear, margin: fm.margin, grams: fm.grams, load: fm.load.force },
-    rests: [{ value: bending, unit: 'N·mm/rad', kind: 'derived', source: `${fm.name}: by finite elements on the printed fitting as drawn; the slot nuts and lips not in it` }, ...k.rests.slice(1)] };
+  const share = k.share ?? { value: 1, kind: 'estimate' }, fe = fm.stiffness.bending, bending = fe * share.value;
+  return { ...k, bending, end: { rx: k.twist, ry: bending, rz: bending }, measured: { ...(k.measured ?? {}), bending: share.kind === 'measured' ? share.checked ?? null : null }, fitting: { name: fm.name, bending, fe, share: share.value, shareKind: share.kind, linear: fm.stiffness.linear, margin: fm.margin, grams: fm.grams, load: fm.load.force },
+    rests: [{ value: fe, unit: 'N·mm/rad', kind: 'derived', source: `${fm.name}: by finite elements on the printed fitting as drawn; the slot nuts and lips not in it` }, ...(share.value !== 1 || share.kind === 'measured' ? [{ value: share.value, unit: '', kind: share.kind, source: share.source, ...(share.checked ? { checked: share.checked } : {}) }] : []), ...k.rests.slice(1)] };
 }
 
 /**

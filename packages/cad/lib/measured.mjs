@@ -2,8 +2,11 @@
 // the estimate was (in the workspace's copy of the rule set), or a measurement of something a check predicts (a figure
 // no rule holds, like the pen's error at the far corner), runs the assembly's checks either side, says what moved, and
 // keeps a ledger of predicted against measured beside prints.jsonl. The rules the fixings coupon measures (a pilot or an
-// insert hole per thread, the nut fits, the thread gap and flank form) and the slot coupon's fits need no --rule: what
-// each is comes from here; a slot's figures go in the workspace's copy of its set, checked as a slot.
+// insert hole per thread, the nut fits, the thread gap and flank form), the slot coupon's fits and a slot nut's hold
+// along its slot need no --rule: what each is comes from here; a slot's figures go in the workspace's copy of its set,
+// checked as a slot. A drop measured on the joint rig (join.drop's <beam>.drop) also writes the join's spring, worked
+// out from it, to the rule the spring came from: the joins set (the workspace's copy, started from @rulecad/frames'
+// estimates), a bought fitting's set, or a printed fitting's share of its finite-element figure.
 import fs from 'node:fs';
 import path from 'node:path';
 import { setAt } from './jsonedit.mjs';
@@ -11,7 +14,7 @@ import { CadError } from './errors.mjs';
 import { paths, WS, RULE_DIRS, printerOf } from './workspace.mjs';
 import { loadRuleSet } from './rules.mjs';
 import { buildAssembly, checkAssembly, assemblyPath } from './assembly.mjs';
-import { slotModel } from '@rulecad/frames';
+import { slotModel, JOIN_SET, joinRuleSet } from '@rulecad/frames';
 import { fixingsContext } from './design.mjs';
 import { fixingsFor, threads } from '@rulecad/fixings';
 
@@ -28,8 +31,11 @@ function ruleFile(name) {
   const dot = name.indexOf('.');
   if (dot < 1) throw new CadError('measured.name', `"${name}": name a rule as <set>.<rule> (x1c.press), or a prediction by its check's code (task.accuracy)`);
   const set = name.slice(0, dot), rule = name.slice(dot + 1);
+  const file = path.join(WS, 'rules', `${set}.json`);
+  // the joins set has no file in the kit: the workspace's copy starts from @rulecad/frames' estimates
+  if (set === JOIN_SET && !RULE_DIRS.some((d) => fs.existsSync(path.join(d, `${set}.json`)))) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(joinRuleSet(), null, 2) + '\n'); }
   const data = loadRuleSet(set); // (copies the tool's set into the workspace, the first time: the measurement goes in your copy)
-  return { set, rule, data, file: path.join(WS, 'rules', `${set}.json`) };
+  return { set, rule, data, file };
 }
 
 // The slot coupon (examples/bench/projects/benchmarks/MEASURE.md, rows 29 to 33): the two fits it measures, which a
@@ -44,6 +50,17 @@ function slotRule(project, set, key, data) {
         : `Clearance each side a slot printed in a part is opened by, so a bought slot nut slides in it: the tightest printed slot on ${SLOT_COUPON} a slide-in nut ran the length of by hand without catching. For printed beams and plates with slots`, kind: 'measured' };
   }
   if (data.part === 'slot' && data.rules?.[key]) return { source: `calipers on your own beam (${SLOT_COUPON}, row 32)` };
+  return null;
+}
+
+// The joint rig (examples/bench/projects/benchmarks/MEASURE.md, rows 34 to 37): a join's bending spring, written to the
+// joins set or a bought fitting's set, and a slot nut's hold along its slot, which no maker publishes, so a nut's set
+// has no rule for it until it is measured
+const RIG = 'the joint rig (examples/bench/projects/benchmarks/MEASURE.md)';
+function rigRule(set, key, data) {
+  if (data.part === 'slot_nut' && key === 'hold_along') return { unit: 'N', predicted: null, was: 'no figure: no maker publishes it', source: `${RIG}, a luggage scale`,
+    rule: `The pull along its slot at which this nut slips, its screw tightened as its maker says (or firmly by hand with a hex key where it says nothing): the reading on ${RIG}'s luggage scale as the nut moved` };
+  if (set === JOIN_SET || (data.part === 'fitting' && /_stiffness$/.test(key))) return { source: RIG };
   return null;
 }
 
@@ -94,24 +111,35 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
   if (!Object.keys(values).length) throw new CadError('measured.usage', 'usage: cad measured <project>/<assembly> <name>=<value> … [--unit mm] [--source "how it was measured"]');
   const before = await findingsOf(ref), entries = [], predictions = predictionsOf(before);
   const writes = [], slots = new Map(); // (every value is checked before any is written, so a refusal leaves the rule sets as they were)
+  // a rule's new value, checked before anything is written (a refusal leaves the rule sets as they were)
+  const writeRule = (k, value, { from = null, unit: u = unit } = {}) => {
+    const { set, rule: key, data, file } = ruleFile(k);
+    const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? rigRule(set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
+    if (known?.allowed && !known.allowed.includes(value)) throw new CadError('measured.value', `${k} is ${known.allowed.join(' or ')}: the flank forms the coupon prints (got ${value})`);
+    if (!old && !rule && !known) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
+    const had = old ?? known, prior = typeof had?.value === 'number' ? had.value : known?.predicted ?? null;
+    if (u && had?.unit && u !== had.unit) throw new CadError('measured.unit', `${k} is in ${had.unit}, and this is in ${u}: give it in ${had.unit}`);
+    const entry = { value, unit: u ?? had?.unit ?? '', rule: (from ? null : rule) ?? had.rule, kind: 'measured', source: [source || known?.source || 'measured on the bench', from].filter(Boolean).join(': '), checked: date };
+    if (data.part === 'slot') slots.set(set, { data, change: { ...slots.get(set)?.change, [key]: value } });
+    writes.push([file, key, entry]);
+    entries.push({ date, assembly: name, name: k, figure: entry.rule, unit: entry.unit, predicted: prior, was: old ? old.kind : known?.was ?? known?.kind ?? null, measured: value, ratio: prior ? value / prior : null, ...(source ? { source } : {}) });
+  };
   for (const [k, value] of Object.entries(values)) {
     if (!Number.isFinite(value)) throw new CadError('measured.value', `${k}: a measurement is a number (got ${value})`);
     const named = predictions.filter((x) => x.code === k || x.predict.name === k);
     if (named.length) {
       const p = named[0].predict;
       entries.push({ date, assembly: name, name: k, code: named[0].code, figure: p.figure, unit: p.unit, predicted: p.value, measured: value, ratio: p.value ? value / p.value : null, ...(source ? { source } : {}) });
+      // a drop on the joint rig: what the beam bends of it is the beam's own; the rest is the join turning, so its spring
+      if (p.rig) {
+        const r = p.rig, n = (x) => String(Number(Number(x).toFixed(3)));
+        if (!(value > r.beam)) throw new CadError('measured.value', `${k}: ${n(value)} mm is no more than the ${n(r.beam)} mm the beam bends by itself under ${n(r.force)} N at ${n(r.arm)} mm, so the join would be stiffer than solid metal: read the drop again, from the dial's reading with the mass hung less its reading without`);
+        const spring = (r.force * r.arm * r.arm) / (value - r.beam), figure = Number((spring * r.per).toPrecision(4));
+        writeRule(r.rule, figure, { unit: r.unit, from: `${n(value)} mm drop of ${k.replace(/\.drop$/, '')} under ${n(r.force)} N at ${n(r.arm)} mm (${r.join}), less the beam's own ${n(r.beam)} mm, is a spring of ${(spring / 1e6).toFixed(3)} N·m/mrad` });
+      }
       continue;
     }
-    const { set, rule: key, data, file } = ruleFile(k);
-    const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
-    if (known?.allowed && !known.allowed.includes(value)) throw new CadError('measured.value', `${k} is ${known.allowed.join(' or ')}: the flank forms the coupon prints (got ${value})`);
-    if (!old && !rule && !known) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
-    const had = old ?? known, prior = typeof had?.value === 'number' ? had.value : known?.predicted ?? null;
-    if (unit && had?.unit && unit !== had.unit) throw new CadError('measured.unit', `${k} is in ${had.unit}, and this is in ${unit}: give it in ${had.unit}`);
-    const entry = { value, unit: unit ?? had?.unit ?? '', rule: rule ?? had.rule, kind: 'measured', source: source || known?.source || 'measured on the bench', checked: date };
-    if (data.part === 'slot') slots.set(set, { data, change: { ...slots.get(set)?.change, [key]: value } });
-    writes.push([file, key, entry]);
-    entries.push({ date, assembly: name, name: k, figure: entry.rule, unit: entry.unit, predicted: prior, was: old ? old.kind : known?.was ?? known?.kind ?? null, measured: value, ratio: prior ? value / prior : null, ...(source ? { source } : {}) });
+    writeRule(k, value);
   }
   // a slot's figures together still make a slot (an opening narrower than its cavity, lips thinner than it is deep)
   for (const [set, { data, change }] of slots) { try { slotModel(data, change); } catch (e) { throw new CadError('measured.value', `${set}: ${e.message.replace(/^slotModel: /, '')}`); } }
