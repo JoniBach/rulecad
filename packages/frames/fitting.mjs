@@ -55,24 +55,29 @@ export const FITTINGS = {
 const SHAPES = ['L', 'T', 'cross'];
 
 // ---------- shared ----------
-const printerOf = (what, p) => {
+/** @internal A printer's rule set from what is given (x1c where nothing is). @param {string} what @param {any} p @returns {any} */
+export const printerOf = (what, p) => {
   if (p == null) return x1c;
   if (typeof p !== 'object' || Array.isArray(p)) throw new Error(`${what}: printer is a rule set ({ name, rules }) or its values ({ fit: 0.2, layer: 0.2 }), not ${shown(p)}`);
   return p.rules ? p : { name: p.name ?? 'the printer', rules: Object.fromEntries(Object.entries(p).filter(([, v]) => isNum(v)).map(([k, v]) => [k, { value: v, kind: 'given', source: 'given as a number' }])) };
 };
-const pfig = (pr, k) => (isNum(pr.rules?.[k]?.value) ? pr.rules[k].value : x1c.rules[k].value);
+/** @internal A printer's figure, x1c's where it has none. @param {any} pr @param {string} k @returns {number} */
+export const pfig = (pr, k) => (isNum(pr.rules?.[k]?.value) ? pr.rules[k].value : x1c.rules[k].value);
 const MATERIALS = { pla, petg };
-const materialOf = (what, m) => {
+/** @internal A plastic's rule set, pla or petg by name. @param {string} what @param {any} m @returns {any} */
+export const materialOf = (what, m) => {
   const set = typeof m === 'string' ? MATERIALS[m.toLowerCase()] : m?.rules ? m : null;
   if (!set) throw new Error(`${what}: material is pla, petg or a material's rule set with strength, modulus and density (got ${shown(m)})`);
   for (const k of ['strength', 'modulus', 'density']) if (!isNum(set.rules[k]?.value)) throw new Error(`${what}: ${set.name} has no ${k}`);
   return set;
 };
-const options = (what, o, keys) => {
+/** @internal Options refused by name. @param {string} what @param {any} o @param {string[]} keys */
+export const options = (what, o, keys) => {
   if (o == null || typeof o !== 'object' || Array.isArray(o)) throw new Error(`${what}: options are { ${keys.join(', ')} } (got ${shown(o)})`);
   for (const k of Object.keys(o)) if (!keys.includes(k)) throw new Error(`${what}: no option "${k}": it takes ${keys.join(', ')}`);
 };
-const profileOf = (what, p, given) => {
+/** @internal A profile's model by name or model. @param {string} what @param {any} p @param {any} given @returns {any} */
+export const profileOf = (what, p, given) => {
   if (p?.kind === 'profile') return p;
   if (typeof p !== 'string') throw new Error(`${what}: the profile is a profile's name ('2020-misumi-hfs5') or its model (profileModel) (got ${shown(p)})`);
   try { return profileModel(p, {}, given); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^profileModel: /, '')}`); }
@@ -80,7 +85,8 @@ const profileOf = (what, p, given) => {
 
 // A face's slot, the cell's width across it, the thread its nuts are made for (the largest, where none is asked) and
 // how deep a tongue may reach into its opening: the lip, less the tallest nut tongue of that thread, less the fit
-function slotSide(what, p, face, thread, nut, fit, given) {
+/** @internal A face's slot, its cell, its nuts' thread and a tongue's room. @param {string} what @param {any} p @param {any} face @param {any} thread @param {any} nut @param {number} fit @param {any} given @returns {any} */
+export function slotSide(what, p, face, thread, nut, fit, given) {
   const m = /^(top|bottom|front|back)(?:\.(\d+))?$/.exec(String(face ?? ''));
   if (!m) throw new Error(`${what}: face is top, bottom, front or back, with .2 for its second slot (got ${shown(face)})`);
   const places = p.faces[m[1]], i = m[2] ? +m[2] : 1, place = places?.[i - 1];
@@ -100,7 +106,8 @@ function slotSide(what, p, face, thread, nut, fit, given) {
 }
 
 // A polygon's concave corners (counter-clockwise loop) rounded by r: an arc tangent to both edges
-function roundConcave(loop, r, only = null, steps = 10) {
+/** @internal A loop's concave corners rounded by r. @param {number[][]} loop @param {number} r @param {any} [only] @param {number} [steps] @returns {number[][]} */
+export function roundConcave(loop, r, only = null, steps = 10) {
   const pts = loop.filter((p, i) => { const q = loop[(i + 1) % loop.length]; return Math.hypot(p[0] - q[0], p[1] - q[1]) > 1e-9; }), out = [], n = pts.length;
   for (let i = 0; i < n; i++) {
     const a = pts[(i + n - 1) % n], p = pts[i], b = pts[(i + 1) % n];
@@ -118,7 +125,8 @@ function roundConcave(loop, r, only = null, steps = 10) {
   return out;
 }
 const area2 = (pts) => pts.reduce((s, p, i) => s + p[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * p[1], 0) / 2;
-const ccw = (pts) => (area2(pts) > 0 ? pts : [...pts].reverse());
+/** @internal A loop turned counter-clockwise. @param {number[][]} pts @returns {number[][]} */
+export const ccw = (pts) => (area2(pts) > 0 ? pts : [...pts].reverse());
 function inPoly(pts, x, y) {
   let c = false;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; }
@@ -131,13 +139,15 @@ const TURNS = { xyz: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], yzx: [0, 1, 0, 0, 0, 
 const clean = (g) => generalize({ snap: true, triangulate: true }, g);
 // The parts joined and the cutters taken away: by JSCAD, cleaned, or by the booleans handed in ({ union, subtract }: a
 // workspace's Manifold, whose result is watertight for the overlap check that follows)
-const combine = (parts, cuts, ops) => (ops ? ops.subtract(ops.union(...parts), ...cuts) : clean(subtract(union(...parts), ...cuts)));
+/** @internal Parts joined, cutters taken away. @param {any[]} parts @param {any[]} cuts @param {any} ops @returns {any} */
+export const combine = (parts, cuts, ops) => (ops ? ops.subtract(ops.union(...parts), ...cuts) : clean(subtract(union(...parts), ...cuts)));
 const prism = (loop, h, turn = 'xyz', at = [0, 0, 0]) => translate(at, transform([...TURNS[turn], 0, 0, 0, 1], extrudeLinear({ height: h }, polygon({ points: ccw(loop) }))));
 
 // A tongue's section across its slot: n out of the contact face (0 to depth), a across from a0 to a1; its side toward
 // -a leans 45° where it prints over the bed (lean), so it needs no support; its roots rounded by the fit, sunk into
 // the body by `sink` so the union is one solid
-function tongueLoop(a0, a1, depth, lean, root, sink = 0.5) {
+/** @internal A tongue's section. @param {number} a0 @param {number} a1 @param {number} depth @param {boolean} lean @param {number} root @param {number} [sink] @returns {number[][]} */
+export function tongueLoop(a0, a1, depth, lean, root, sink = 0.5) {
   const pts = [[-sink, a0 - 2 * root], [0, a0 - 2 * root], [0, a0], [depth, a0 + (lean ? depth : 0)], [depth, a1], [0, a1], [0, a1 + 2 * root], [-sink, a1 + 2 * root]];
   return roundConcave(ccw(pts), root, null, 6);
 }
@@ -229,7 +239,8 @@ function tipWindow(sd, thread) {
 }
 const soldOf = (thread) => { try { return [...(fixingModel(thread).figures.lengths?.value ?? [])].sort((a, b) => a - b); } catch { return []; } };
 // The least thickness from t up, in steps, at which every side takes a sold screw; with the lengths, or null
-function sold(t, step, sides, thread) {
+/** @internal The least thickness from t at which every side takes a sold screw. @param {number} t @param {number} step @param {any[]} sides @param {string} thread @returns {any} */
+export function sold(t, step, sides, thread) {
   const lengths = soldOf(thread), wins = sides.map((sd) => tipWindow(sd, thread));
   if (!lengths.length) return null;
   for (let k = 0; k <= 80; k++) {
@@ -240,7 +251,8 @@ function sold(t, step, sides, thread) {
 }
 
 // The figures a screw's head and hole give a fitting
-function screwOf(what, thread, head, pr) {
+/** @internal A screw's head and hole figures. @param {string} what @param {string} thread @param {string} head @param {any} pr @returns {any} */
+export function screwOf(what, thread, head, pr) {
   let fx;
   try { fx = fixingModel(thread); } catch (e) { throw new Error(`${what}: thread: ${String(e.message).replace(/^\w+: /, '')}`); }
   const fig = head === 'cap' ? 'head' : `${head}_head`, dk = fx.figures[fig]?.value;
