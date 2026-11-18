@@ -1751,3 +1751,66 @@ test('a printed beam\'s creep: a sustained stress against a share of its strengt
   assert.match(m.findings.find((x) => x.code === 'beam.mass').text, /at 1500 MPa along its layers \(petg\.beam_modulus, measured, from the beam coupon/);
   assert.match(lying.findings.find((x) => x.code === 'beam.mass').text, /All estimates until the beam coupon is measured/);
 });
+
+test('frame generators: a box asked for by its inside size has its butting beams one profile width shorter at each end than the uprights they meet; another profile changes every length; refusals by name', () => {
+  const { box, portal, table, gantry, shelf, frameModel } = frames;
+  const lengths = (m) => Object.fromEntries(m.beams.map((b) => [b.id, b.length]));
+  // A box inside 300 x 300 x 350 in 2020 (p = 20), joined blind: the uprights run through, every other beam butts.
+  // Hand: outside = inside + 2p each way = 340 x 340 x 390. Uprights: the outside height, 390 = 350 + 2 x 20. A beam
+  // across butts at both ends against an upright's face: 340 - 20 - 20 = 300, the inside. So an upright of the same
+  // inside span (300) would be 300 + 2 x 20 = 340: the two differ by the profile's width at each butting end.
+  const m = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'blind' });
+  assert.deepEqual([m.inside, m.outside, m.arrangement], [[300, 300, 350], [340, 340, 390], 'face']);
+  assert.deepEqual(m.lengths.map((l) => [l.length, l.count]), [[390, 4], [300, 8]]);
+  const cube = box({ inside: [300, 300, 300], profile: '2020-misumi-hfs5' }), L = lengths(cube);
+  assert.equal(L.z1 - L.x1, 2 * 20, 'an upright and a beam butting into it across the same inside differ by one width at each end');
+  // every butting end meets its upright's face at the beam's own centre line: x1 at 10 mm up (p / 2), the top ring at 340 - 10
+  assert.deepEqual(m.joins.slice(0, 2), [{ kind: 'blind', a: 'x1.a', b: 'z1.back@10' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@10' }]);
+  assert.deepEqual(m.joins.find((j) => j.a === 'y3.a'), { kind: 'blind', a: 'y3.a', b: 'z1.top@380' });
+  assert.equal(m.joins.length, 16); assert.deepEqual(m.ends.map((e) => e.at), ['z1.a', 'z1.b', 'z2.a', 'z2.b', 'z3.a', 'z3.b', 'z4.a', 'z4.b']);
+  assert.deepEqual(m.beams.find((b) => b.id === 'x1'), { id: 'x1', role: 'across', length: 300, from: [20, 10, 10], to: [320, 10, 10] });
+  // The same request in 3030 (p = 30): inside the same, so the butting beams stay 300 and the uprights grow by 2 x 10;
+  // asked by the outside instead (340 x 340 x 390), the uprights stay 390 and every butting beam loses 2 x 10 = 20 mm
+  const big = box({ inside: [300, 300, 350], profile: '3030-item-6', join: 'blind' });
+  assert.deepEqual([big.outside, big.lengths.map((l) => [l.length, l.count])], [[360, 360, 410], [[410, 4], [300, 8]]]);
+  assert.deepEqual(big.joins[0], { kind: 'blind', a: 'x1.a', b: 'z1.back@15' });
+  const out20 = box({ outside: [340, 340, 390], profile: '2020-misumi-hfs5' }), out30 = box({ outside: [340, 340, 390], profile: '3030-item-6' });
+  for (const b of out20.beams) assert.equal(lengths(out30)[b.id], b.role === 'upright' ? b.length : b.length - 2 * (30 - 20), b.id);
+  // a profile whose end has several bores: the join screws into the threaded one in the middle (3030-misumi-hfs6's a.1)
+  assert.equal(box({ inside: [300, 300, 350], profile: '3030-misumi-hfs6' }).joins[0].a, 'x1.a.1');
+  // a cube join: every beam butts into a corner node, so every one is as long as the inside it bounds
+  const nodes = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'cube' });
+  assert.deepEqual([nodes.arrangement, nodes.lengths.map((l) => [l.length, l.count]), nodes.ends.length], ['node', [[350, 4], [300, 8]], 0]);
+  assert.deepEqual(nodes.joins.slice(0, 2), [{ kind: 'cube', a: 'y1.a', b: 'x1.a' }, { kind: 'cube', a: 'z1.a', b: 'x1.a' }]);
+  // feet under the uprights, caps on the other open ends, a bought set by name
+  assert.deepEqual(box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', feet: 'levelling', caps: 'fitting-motedis-end-cap-20-b6' }).ends.slice(0, 2), [{ id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot' }, { id: 'cap-z1-b', at: 'z1.b', bought: 'fitting-motedis-end-cap-20-b6', role: 'cap' }]);
+  // the siblings: a portal [width, height]; a table, its legs the clear height plus the ring; a shelf's equal bays; a gantry's travel
+  const pt = portal({ outside: [500, 400], profile: '2020-misumi-hfs5' });
+  assert.deepEqual([pt.inside, pt.lengths.map((l) => [l.length, l.count])], [[460, 0, 380], [[460, 1], [400, 2]]]);
+  assert.deepEqual(table({ inside: [600, 400, 700], profile: '2020-misumi-hfs5' }).lengths.map((l) => [l.length, l.count]), [[720, 4], [600, 2], [400, 2]]);
+  // a shelf 600 mm inside with one ring between: (600 - 20) / 2 = 290 mm clear above and below it
+  const sh = shelf({ inside: [400, 300, 600], profile: '2020-misumi-hfs5' });
+  assert.deepEqual([sh.bay, sh.beams.filter((b) => b.role === 'across').map((b) => b.from[2])], [290, [10, 10, 320, 320, 630, 630]]);
+  // a gantry: g spans the outside (440) on the top side beams; travel = outside depth 540 - 2 x 20 - 2 x 2 clear - 20 = 476
+  const g = gantry({ inside: [400, 500, 200], profile: '2020-misumi-hfs5' });
+  assert.deepEqual([g.moving.length, g.moving.travel, g.moving.track, g.beams.filter((b) => b.role === 'across').length], [440, 476, 'y3', 2]);
+  // braces: that side's joins carry a printed corner bracket; panels: one sheet over a side, on drop-in nuts
+  const bp = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } });
+  assert.deepEqual(bp.joins.filter((j) => j.kind === 'bracket').map((j) => j.a), ['y1.a', 'y1.b', 'y3.a', 'y3.b']);
+  assert.deepEqual(bp.panels, [{ id: 'panel-back', sheet: 'acrylic', thickness: 3, bay: ['x2', 'z4', 'x4', 'z3'], out: [0, 1, 0], nut: 'drop-in' }]);
+  // refused by name, before any maths
+  const no = (o, re, kind = 'box') => assert.throws(() => frameModel(kind, { profile: '2020-misumi-hfs5', ...o }), re);
+  no({ inside: [300, 300, 300] }, /no kind of frame "dome": there are box, portal, table, gantry, shelf/, 'dome');
+  no({}, /is asked for by one size: inside .* or outside .*\(got neither\)/);
+  no({ inside: [300, 300, 300], outside: [340, 340, 340] }, /\(got both\)/);
+  no({ outside: [30, 340, 340] }, /an outside width of 30 mm leaves no room inside: its beams take 40 mm of it/);
+  no({ inside: [300, 300, 300], profile: '2040-misumi-hfs5' }, /takes a square profile, and 2040-misumi-hfs5 is 40 x 20 mm/);
+  no({ inside: [300, 300, 300], join: 'mitre' }, /join is one of blind, end-tap, bracket, gusset, hidden, anchor, cube \(got "mitre"\): a mitre join is two mitred ends/);
+  no({ inside: [300, 300, 300], profile: 'tube-al-20x20x2' }, /a blind join screws into the bore in a beam's end, and tube-al-20x20x2 has none: join it with bracket or gusset/);
+  no({ inside: [300, 300, 300], join: 'cube', feet: 'foot' }, /feet stand under an upright beam's end, and with a cube join every end of a box's goes into a corner node/);
+  no({ inside: [300, 300, 300], braces: ['top'] }, /braces: "top" is not a side of a box closed by four beams: it has front, back, left, right/);
+  no({ inside: [600, 400, 700], panels: { sheet: 'acrylic', thickness: 3 } }, /has no side closed by four beams for a panel/, 'table');
+  no({ inside: [300, 300, 300], shelves: 2 }, /a box has no shelves: give them on a shelf/);
+  no({ inside: [300, 300, 100], shelves: 5 }, /5 shelves of 20 mm leave no clear bay in 100 mm/, 'shelf');
+  no({ inside: [300, 300] }, /inside is \[width, depth, height\]/);
+});

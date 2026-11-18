@@ -145,6 +145,9 @@ export function frameModel(kind, o = {}) {
   const braced = new Set(o.braces ?? []);
   const sideOf = (b) => { const m = b.from.map((v, k) => (v + b.to[k]) / 2), out = []; if (b.role !== 'along' && Math.abs(m[1] - h) < 1e-6) out.push('front'); if (b.role !== 'along' && Math.abs(m[1] - (OD - h)) < 1e-6 && kind !== 'portal') out.push('back'); if (b.role !== 'across' && Math.abs(m[0] - h) < 1e-6) out.push('left'); if (b.role !== 'across' && Math.abs(m[0] - (OW - h)) < 1e-6) out.push('right'); return out; };
   const endOf = (b, e) => ({ at: e === 'a' ? b.from : b.to, out: unit(sub(e === 'a' ? b.from : b.to, e === 'a' ? b.to : b.from)) });
+  // the bore a blind or end-tap join screws into: where the end has several, the threaded one nearest the middle
+  const threaded = P.bores.map((b, k) => ({ k, b, r: Math.hypot(...(b.at ?? [0, 0])) })).filter((x) => x.b.thread).sort((u, v) => u.r - v.r)[0];
+  const bore = ['blind', 'end-tap'].includes(join.kind) && P.bores.length > 1 && threaded ? `.${threaded.k + 1}` : '';
   const joinOf = (braceSide) => (braceSide ? { kind: 'bracket', fitting: 'printed', nut: 'drop-in' } : { ...join });
   if (arrangement === 'face') {
     for (const b of beams.filter((x) => x.role !== 'upright')) for (const e of ['a', 'b']) {
@@ -153,7 +156,7 @@ export function frameModel(kind, o = {}) {
       if (!post) throw new Error(`${w}: ${b.id}'s end ${e} meets no upright beam (this is a fault in the generator, not in the request)`);
       const face = faceOf(post, E.out.map((c) => -c)), along = r3(E.at[2] - post.from[2]);
       const side = sideOf(b).find((s) => braced.has(s));
-      joins.push({ ...joinOf(side), a: `${b.id}.${e}`, b: `${post.id}.${face}@${mm(along)}` });
+      joins.push({ ...joinOf(side), a: `${b.id}.${e}${side ? '' : bore}`, b: `${post.id}.${face}@${mm(along)}` });
     }
   } else {
     // ends grouped by the node they reach; one beam's end is the node's hub (the beam along x, else along y), every
@@ -178,7 +181,7 @@ export function frameModel(kind, o = {}) {
 
   // the ends no join covers: feet under the uprights' lower ends, caps on the rest
   const covered = new Set();
-  for (const j of joins) { covered.add(j.a); if (/\.[ab]$/.test(j.b)) covered.add(j.b); }
+  for (const j of joins) { covered.add(j.a.split('.').slice(0, 2).join('.')); if (/\.[ab]$/.test(j.b)) covered.add(j.b); }
   for (const b of beams) for (const e of ['a', 'b']) {
     const at = `${b.id}.${e}`;
     if (covered.has(at)) continue;
