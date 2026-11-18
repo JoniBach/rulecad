@@ -4427,6 +4427,70 @@ test('frame checks: an open cube racks with a low stiffness and one brace stiffe
   } finally { done(); }
 });
 
+test('generated frames: a box asked for by its inside size expands into beams one profile width shorter at each butting end, checks clean with its joins and feet, changes every length with the profile, and writes out to edit by hand', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    const probe = (n) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/${n}'), f = checkAssembly(s);
+      console.log(JSON.stringify({ lengths: Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, +o.beam.length.toFixed(3)])), items: s.items.map((i) => i.id),
+        joints: s.motion.joints.filter((j) => j.type !== 'fixed').map((j) => [j.id, j.type, j.dofs[0]]), poses: Object.keys(s.motion.poses),
+        geometry: f.filter((x) => x.code === 'join.geometry').map((x) => [x.level, x.values.gap]), generated: f.find((x) => x.code === 'frame.generated') ?? null,
+        bad: f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.code + ': ' + x.text) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // 1. The specification's own example: a box round 300 x 300 x 350 mm in 2020 (p = 20 mm), joined blind, on levelling
+    // feet. Hand: the uprights run through, so each is the outside height, 350 + 2 x 20 = 390 mm; every other beam butts
+    // against two uprights' faces, so each is its outside span less a width at each end, 340 - 20 - 20 = 300 mm, the
+    // inside. Its 16 blind joins meet flush (gap 0), its 4 lower ends stand on feet and its 4 upper ends are capped, and
+    // nothing in its check fails or warns: the joins' operations, screws, the feet, the caps, the cut list, the order
+    const ask = { kind: 'box', inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' };
+    write('box', { frame: ask });
+    let r = probe('box');
+    assert.deepEqual(r.bad, []);
+    assert.deepEqual(Object.entries(r.lengths).map(([id, l]) => `${id} ${l}`), ['z1 390', 'z2 390', 'z3 390', 'z4 390', 'x1 300', 'x2 300', 'y1 300', 'y2 300', 'x3 300', 'x4 300', 'y3 300', 'y4 300']);
+    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0]));
+    assert.ok(['foot-z1', 'cap-z1-b', 'foot-z4', 'cap-z4-b'].every((id) => r.items.includes(id)), r.items.join(', '));
+    assert.deepEqual([r.generated.values.inside, r.generated.values.outside, r.generated.refs.arrangement], [[300, 300, 350], [340, 340, 390], 'face']);
+    assert.match(r.generated.text, /^generated: a box of 2020-misumi-hfs5 \(20 mm\), joined blind: the upright beams run through and the rest butt against their faces; inside 300 x 300 x 350 mm, outside 340 x 340 x 390 mm; 4 x 390 mm: z1, z2, z3, z4; 8 x 300 mm/);
+    // 2. The same request in 3030 (p = 30 mm): every length follows. Inside the same, the butting beams stay the inside,
+    // 300 mm, and the uprights are 350 + 2 x 30 = 410 mm; every join still meets flush, now 15 mm (p / 2) from the ends
+    write('box', { frame: { ...ask, profile: '3030-item-6', feet: undefined } });
+    r = probe('box');
+    assert.deepEqual(Object.values(r.lengths), [410, 410, 410, 410, 300, 300, 300, 300, 300, 300, 300, 300]);
+    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0]));
+    // asked by its outside, 340 x 340 x 390, the uprights are that height in either profile and each butting beam is
+    // 340 - 2 x 30 = 280 mm in 3030 where it was 300 in 2020
+    write('box', { frame: { ...ask, inside: undefined, outside: [340, 340, 390], profile: '3030-item-6', feet: undefined } });
+    assert.deepEqual(Object.values(probe('box').lengths), [390, 390, 390, 390, 280, 280, 280, 280, 280, 280, 280, 280]);
+    // 3. cad frame says what it expands into; --expand writes it into the assembly, which builds the same frame by hand
+    write('box', { frame: { ...ask, limit: 2 } });
+    assert.match(cad('frame', 'frame/box'), /frame\/box: a box of 2020-misumi-hfs5 \(20 mm\), joined blind[^]*inside 300 x 300 x 350 mm, outside 340 x 340 x 390 mm\n  4 x 390 mm: z1, z2, z3, z4\n  8 x 300 mm: x1, x2, y1, y2, x3, x4, y3, y4\n16 joins \(blind\); 8 end fittings \(levelling-foot, end-cap\)/);
+    assert.match(cad('frame', 'frame/box', '--expand'), /wrote projects[\\/]frame[\\/]assemblies[\\/]box\.json: the box as 12 beams, 16 joins and 8 fittings, to edit by hand \(its "frame" keeps only how it is solved\)/);
+    const written = JSON.parse(fs.readFileSync(file('box'), 'utf8'));
+    assert.deepEqual([written.frame, written.items.length, written.joins.length, written.items[4], written.joins[0]], [{ limit: 2 }, 20, 16, { id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [20, 10, 10], to: [320, 10, 10] }, { kind: 'blind', a: 'x1.a', b: 'z1.back@10' }]);
+    r = probe('box');
+    assert.deepEqual([r.bad, r.generated, Object.values(r.lengths).join(' ')], [[], null, '390 390 390 390 300 300 300 300 300 300 300 300']);
+    assert.match(cad('frame', 'frame/box'), /asks for no generated frame/);
+    // an item of the assembly's own named as the frame names its parts is refused by name
+    write('clash', { frame: ask, items: [{ id: 'z1', beam: { profile: '2020-misumi-hfs5', length: 100 } }] });
+    assert.match(cad('check', 'frame/clash'), /frame: the box names its parts z1, z2, z3 \.\., and this assembly already has z1: rename it/);
+    // 4. A gantry: its moving beam rides the left top side beam on a sliding joint through 476 mm (the outside depth
+    // 540 less the two uprights, 2 x 2 mm clear and its own 20 mm), and its caps and feet are held by the beams they are
+    // on, so nothing is loose; a box braced on its left side (printed corner brackets) with a back panel checks clean too
+    write('gantry', { frame: { kind: 'gantry', inside: [400, 500, 200], profile: '2020-misumi-hfs5', feet: 'levelling' } });
+    r = probe('gantry');
+    assert.deepEqual([r.bad, r.joints, r.poses, r.lengths.g], [[], [['gantry', 'prismatic', [0, 476, 0]]], ['gantry-front', 'gantry-back'], 440]);
+    write('braced', { frame: { kind: 'box', inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } } });
+    r = probe('braced');
+    assert.deepEqual(r.bad, []);
+    assert.ok(['y1-z1-bracket', 'y3-z3-bracket', 'panel-back'].every((id) => r.items.includes(id)), r.items.join(', '));
+  } finally { done(); }
+});
+
 test('a printed beam in an assembly: a printed part weighed by its walls and infill, off the cut list, laid on a plate as it prints, its tapped end an insert', () => {
   const { ws, cad, done } = workspace();
   try {
