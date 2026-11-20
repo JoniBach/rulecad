@@ -171,7 +171,7 @@
       "value": "1 2",
       "type": "text",
       "max": 20,
-      "rule": "M2 holes where four keys meet, below these rows (0 the top row), either side of the middle column: in the gaps, under the keycaps' corners"
+      "rule": "Mounting holes where four keys meet, below these rows (0 the top row), either side of the middle column: in the gaps, under the keycaps' corners (each hole sized by the board's mount(), from its thread's set)"
     },
     "finish": {
       "value": 1,
