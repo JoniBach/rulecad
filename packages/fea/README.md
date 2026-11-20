@@ -129,8 +129,15 @@ result carries its `axes`, so nothing has to be guessed.
   and `modes(model)` do it in one call. A model with `loose: 'hold'` is solved even where part of it can move with
   nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on
   its axis): each such freedom is held, `loose` names it by node, and a solve whose loads would do work moving the
-  frame that way is refused (`fea.frame.mechanism`, with `driven: true`). The modes and buckling are then those of
-  the frame held there.
+  frame that way is refused (`fea.frame.mechanism`, with `driven: true`). The modes count those freedoms free:
+  each way that moves mass unresisted comes back as a mode of 0 Hz, marked `free: true`, and the rest are the
+  frame's own, whichever freedom was held. They are the modes of `K + s M` (s the held frame's lowest eigenvalue),
+  which has the same shapes as `K` against `M` with every eigenvalue raised by s. Buckling gives a factor of 0 when
+  the loads lean the frame the way it is free (its squeezed members turning with it, `vᵀ B v > 0` for that way v,
+  B the geometric stiffness's negative): the frame tips over under any share of its loads before anything buckles,
+  and `tipped` names the freedoms. When the loads pull it back (a frame hanging from its pins), the factors are of
+  the frame held there, so they can only be higher than the true ones, and `rests` names the freedoms. When the
+  loads leave that way alone (a strut spinning on its axis), the factors are exact.
 - `statics({ loads, gravity, masses, samples })`: `displacements` and `reactions` by node, each `[x, y, z, rx, ry,
   rz]` in global axes; `deflection: { most, node }`; and `elements`, each with its `length`, `axes`, the `ends`
   forces its nodes put on it (local axes), `axial` (its mean axial force, tension positive), and `along`: at each
@@ -142,7 +149,8 @@ result carries its `axes`, so nothing has to be guessed.
 - `buckling({ count })`: `factors`, lowest first, and `modes`, each `{ factor, shape }`: the loads times the factor
   buckle the frame into the shape (by node, largest movement 1). `statics` is the solve it came from. The first
   factor is always quick; more of them cost more when slender members are in tension.
-- `modes({ count })`: `frequencies` in Hz, lowest first, and `modes`, each `{ frequency, shape }`.
+- `modes({ count })`: `frequencies` in Hz, lowest first, and `modes`, each `{ frequency, shape }` (and `free: true`
+  on a mode of 0 Hz where the frame moves with nothing resisting).
 - `sizing(model, o)`: each group of members given the lightest section from a list that meets limits on
   deflection, stress, buckling and frequency (below).
 - `subdivide(model, pieces)` cuts every element into equal pieces. One element cannot bow between its own ends, so

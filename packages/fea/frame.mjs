@@ -101,7 +101,7 @@
  * @property {{ most: number, node: string }} deflection the largest movement of any node, and which
  */
 /** @typedef {{ factor: number, shape: Record<string, Six> }} BucklingMode the loads times `factor` buckle the frame into `shape` (largest movement 1) */
-/** @typedef {{ frequency: number, shape: Record<string, Six> }} VibrationMode Hz, and the shape (largest movement 1) */
+/** @typedef {{ frequency: number, shape: Record<string, Six>, free?: true }} VibrationMode Hz, and the shape (largest movement 1); free: a mode of 0 Hz, the frame moving where nothing holds it (loose: 'hold') */
 
 const FREEDOMS = ['x', 'y', 'z', 'rx', 'ry', 'rz'];
 /** @returns {never} */
@@ -454,14 +454,19 @@ const condensedLoad = (el, fb) => { if (!el.T) return fb; const fc = new Float64
  * @param {{ shear?: boolean }} [o] shear: false ignores the sections' shear areas (Euler-Bernoulli beams)
  * @returns {{
  *   statics: (o?: { loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number>, samples?: number }) => StaticResult,
- *   buckling: (o?: { count?: number, loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number> }) => { factors: number[], modes: BucklingMode[], statics: StaticResult },
+ *   buckling: (o?: { count?: number, loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number> }) => { factors: number[], modes: BucklingMode[], statics: StaticResult, tipped?: { node: string, freedom: string }[], rests?: { node: string, freedom: string }[] },
  *   modes: (o?: { count?: number, masses?: Record<string, number> }) => { frequencies: number[], modes: VibrationMode[] },
  *   freedoms: number, nodes: string[], loose: { node: string, freedom: string }[] }}
  *   statics, buckling and modes use the model's own loads, gravity and masses unless given others (another load case
  *   on the same factorisation). samples: stations along each element (11). count: how many modes (1 for buckling, 6
  *   for vibration; fewer come back if the frame has fewer). freedoms: how many unknowns were solved for. loose: the
- *   freedoms held where nothing resists them (the model's loose: 'hold'), by node; none otherwise. The modes and
- *   buckling are then of the frame held there, as nothing else holds it.
+ *   freedoms held where nothing resists them (the model's loose: 'hold'), by node; none otherwise. The statics stand
+ *   with them held, as the loads do no work there. The modes count them free: each way that moves mass unresisted
+ *   is a mode of 0 Hz (marked free), and the rest are the frame's own, whatever freedom was held. Buckling where the
+ *   loads lean the frame that way (its squeezed members turning with it) gives a factor of 0, the frame tipping over
+ *   before anything buckles, with the ways named as `tipped`; where the loads pull it back (a frame hanging from its
+ *   pins), the factors are of the frame held there, so at most the true ones, and the ways are named as `rests`;
+ *   where the loads leave it alone (a strut spinning on its axis), the factors are exact.
  */
 export function frame(model, o = {}) {
   const f = read(model, o), { ids, N, els, held, ground } = f;
@@ -602,6 +607,30 @@ export function frame(model, o = {}) {
     const s = statics(c), axial = s.elements.map((e) => e.axial), size = Math.max(...axial.map(Math.abs));
     if (!axial.some((a) => a < -1e-9 * Math.max(size, 1e-300))) refuse('compression', 'no element is in compression under these loads, so nothing can buckle: buckling needs a load that squeezes at least one element along its length');
     const B = assemble((el) => toGlobal(el.kg, el.R), axial.map((a) => -a)), block = 2 * count + 16;
+    // Where the frame is held only by the hold (loose: 'hold'), K v = 0 along the way v it moves unresisted, so
+    // vᵀ (K − λ B) v = −λ vᵀ B v. If the loads lean on that way (vᵀ B v > 0, as a frame on pinned feet with its posts
+    // squeezed leans over), K − λ B loses its positive definiteness at any λ above 0: the frame tips over under any
+    // share of its loads, before anything buckles, and the factor is 0. A way the loads leave alone (B v = 0) does not
+    // change the factors: each shape has one copy with the held freedom at 0, of the same energies, so the hold is
+    // exact. A way the loads hold up (vᵀ B v < 0, a frame hanging from its pins) is stiffer held than it is: the
+    // factors are then at most the true ones' upper bound, and the ways are named as `rests`.
+    const rests = [];
+    if (ways.length) {
+      let bmax = 0;
+      for (let i = 0; i < n; i++) bmax = Math.max(bmax, Math.abs(B.v[diagonal(B, i)]));
+      const tipped = [];
+      for (const w of ways) {
+        const Bv = multiply(B, w.v);
+        let g = 0, vv = 0, bb = 0;
+        for (let q = 0; q < n; q++) { g += w.v[q] * Bv[q]; vv += w.v[q] * w.v[q]; bb += Bv[q] * Bv[q]; }
+        const tol = 1e-6 * bmax * vv;
+        if (g > tol || (g >= -tol && Math.sqrt(bb) > 1e-6 * bmax * Math.sqrt(vv))) tipped.push(w); else if (g < -tol) rests.push({ node: w.node, freedom: w.freedom });
+      }
+      if (tipped.length) {
+        const shown = tipped.slice(0, count).map((w) => ({ factor: 0, shape: shapeOf(w.v) }));
+        return { factors: shown.map((m) => m.factor), modes: shown, statics: s, tipped: tipped.map(({ node, freedom }) => ({ node, freedom })) };
+      }
+    }
     // K φ = λ B φ, B = −Kg, for the smallest λ above 0. B is indefinite: with the loads reversed, whatever is in
     // tension would buckle, and those (negative) factors can be far smaller in size and crowd the iteration. So it
     // is shifted to just under the first factor: K − σ B has a Cholesky factor exactly when σ is under it (and over
@@ -621,7 +650,7 @@ export function frame(model, o = {}) {
     }
     const { values, vectors } = lowest(shifted.solve, B, count, block);
     const modes = values.map((mu, i) => ({ factor: low + 1 / mu, shape: shapeOf(vectors[i]) }));
-    return { factors: modes.map((m) => m.factor), modes, statics: s };
+    return { factors: modes.map((m) => m.factor), modes, statics: s, ...(rests.length ? { rests } : {}) };
   }
 
   function modes(c = {}) {
@@ -631,9 +660,26 @@ export function frame(model, o = {}) {
     if (!els.some((el) => el.perLength > 0) && !lumped.some((m) => m > 0)) refuse('mass', 'nothing in the frame has mass, so it has no frequencies: give the materials a density (g/cm³), or lump masses (kg) at nodes');
     const M = assemble((el) => toGlobal(el.m, el.R));
     for (let i = 0; i < n; i++) if (back[i] % 6 < 3) M.v[diagonal(M, i)] += lumped[Math.floor(back[i] / 6)];
-    const { values, vectors } = lowest(factor.solve, M, count);
-    // K in N/mm against M in kg: ω² = 1000 / μ (a newton is a kg·m/s², and the lengths are mm)
-    const found = values.map((mu, i) => ({ frequency: Math.sqrt(1000 / mu) / (2 * Math.PI), shape: shapeOf(vectors[i]) }));
+    // Where the frame is held only by the hold (loose: 'hold'), the hold would stand in for a support that is not
+    // there and lift every frequency (by how much depends on where it lands). So the modes are those of K + s M
+    // instead, positive definite wherever the free way moves mass, with s the held frame's lowest λ (ω² / 1000):
+    // K x = λ M x exactly when (K + s M) x = (λ + s) M x, so each way that moves mass unresisted comes back as a
+    // mode of λ = 0 (0 Hz, marked free) and the rest are the frame's own, with nothing held. A way that moves no
+    // mass is still held in K + s M, which changes nothing (K v = M v = 0: each shape has a copy with it at 0).
+    let solveM = factor.solve, shift = 0;
+    if (factor.loose.length) {
+      const rough = lowest(factor.solve, M, 1, undefined, 1e-3, 60);
+      shift = rough.values.length ? 1 / rough.values[0] : 1;
+      const A = profile(first);
+      for (let i = 0; i < A.v.length; i++) A.v[i] = K.v[i] + shift * M.v[i];
+      solveM = factorise(A).solve;
+    }
+    const { values, vectors } = lowest(solveM, M, count);
+    // K in N/mm against M in kg: ω² = 1000 λ, λ = 1 / μ − s (a newton is a kg·m/s², and the lengths are mm)
+    const found = values.map((mu, i) => {
+      const lambda = 1 / mu - shift, free = shift > 0 && lambda < 1e-6 * shift;
+      return { frequency: free ? 0 : Math.sqrt(1000 * lambda) / (2 * Math.PI), shape: shapeOf(vectors[i]), ...(free ? { free: true } : {}) };
+    });
     return { frequencies: found.map((m) => m.frequency), modes: found };
   }
 
@@ -651,7 +697,8 @@ export const statics = (model, o = {}) => frame(model, o).statics(o);
  * buckling, from the geometric stiffness of each element's axial force in the static solve. The first factor is
  * always quick to find; asking for more costs more where slender members are in tension.
  * @param {FrameModel} model @param {{ shear?: boolean, count?: number }} [o] count: how many modes (1)
- * @returns {{ factors: number[], modes: BucklingMode[], statics: StaticResult }}
+ * @returns {{ factors: number[], modes: BucklingMode[], statics: StaticResult, tipped?: { node: string, freedom: string }[], rests?: { node: string, freedom: string }[] }}
+ *   tipped and rests: with loose: 'hold', as `frame` says
  */
 export const buckling = (model, o = {}) => frame(model, o).buckling(o);
 /**

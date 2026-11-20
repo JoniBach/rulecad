@@ -137,6 +137,49 @@ test('frame: a portal in one plane on pinned feet, free to sway out of it, is he
   assert.throws(() => frame({ ...portal, loose: 'maybe' }), (e) => e.code === 'fea.frame.input' && /loose is "maybe": 'refuse'/.test(e.message));
 });
 
+test('frame: a frame held where nothing holds it has modes of 0 Hz there and the rest its own, and tips over (factor 0) when its squeezed members lean it that way', () => {
+  // Buckling. The pinned portal again, its posts squeezed by 1000 N at each corner. Out of its plane it turns about
+  // the line through its feet with nothing resisting: K v = 0 for that way v, and each post's compression N gives
+  // vᵀ B v = N θ² h > 0 for it, so vᵀ (K − λ B) v = −λ N θ² h < 0 for any factor λ above 0: it leans over under any
+  // share of its load. Held at a foot's rx it would have buckled at 0.936 of its load, and at the rail's middle at
+  // 2.02 (the factor followed the hold); the true factor is 0.
+  const h = 400, L = 600, sec = { A: 200, Iy: 20000, Iz: 20000, J: 1e4 };
+  const posts = (top) => ({ nodes: { A: [0, 0, h - top], B: [0, 0, top], M: [L / 2, 0, top], C: [L, 0, top], D: [L, 0, h - top] },
+    elements: [['AB', 'A', 'B'], ['BM', 'B', 'M'], ['MC', 'M', 'C'], ['DC', 'D', 'C']].map(([id, a, b]) => ({ id, a, b, section: sec, material: alu })), supports: { A: 'pinned', D: 'pinned' }, loose: 'hold' });
+  const standing = frame(posts(h)).buckling({ loads: [{ node: 'B', force: [0, 0, -1000] }, { node: 'C', force: [0, 0, -1000] }] });
+  assert.deepEqual(standing.factors, [0]);
+  assert.equal(standing.tipped.length, 1, JSON.stringify(standing.tipped));
+  const M = standing.modes[0].shape.M;
+  assert.ok(Math.abs(M[1] - 1) < 1e-9 && Math.abs(M[0]) < 1e-9 && Math.abs(M[2]) < 1e-9, `the rail moves 1 across the plane: ${M}`);
+  // The same portal hanging from its pins, its rail pushed in by 100 N at each end: the posts hang in tension, which
+  // pulls the frame back as it turns (vᵀ B v < 0), so it does not tip; the figure is with it held, and named so.
+  const hanging = frame(posts(0)).buckling({ loads: [{ node: 'B', force: [100, 0, -1000] }, { node: 'C', force: [-100, 0, -1000] }] });
+  assert.ok(hanging.factors[0] > 1 && !hanging.tipped, JSON.stringify(hanging.factors));
+  assert.equal(hanging.rests.length, 1);
+  // A strut pinned at both ends spins on its axis, a way its load leaves alone (B v = 0): held, its factor is Euler's
+  // exactly, P = π² E I / L² (Timoshenko and Gere 1961, chapter 2).
+  const bar = { A: 200, Iy: 20000, Iz: 10000, J: 1e4 }, Lc = 1000, P = 1000;
+  const strut = buckling(subdivide({ nodes: { foot: [0, 0, 0], top: [0, 0, Lc] }, elements: [{ id: 'col', a: 'foot', b: 'top', section: bar, material: alu }], supports: { foot: 'pinned', top: { x: true, y: true } }, loads: [{ node: 'top', force: [0, 0, -P] }], loose: 'hold' }, 8), { shear: false });
+  close('a strut pinned at both ends, free to spin: Euler', strut.factors[0] * P, (Math.PI ** 2 * alu.E * bar.Iz) / Lc ** 2);
+  assert.ok(!strut.tipped && !strut.rests);
+
+  // Modes. A bar 500 mm long (no density) pinned at a, b on a spring of k = 2 N/mm along z, 0.5 kg at b. Along y, b
+  // swings about a with nothing resisting: a mode of 0 Hz. Along z it turns about a as a rigid bar on the spring:
+  //   ω² = k / m = 2 N/mm / 0.5 kg = 4000 s⁻²,  f = √4000 / 2π = 10.066 Hz.
+  // Along the bar, b on its stiffness E A / L = 70000 × 200 / 500 = 28000 N/mm:  f = √(28000 × 1000 / 0.5) / 2π = 1191.0 Hz.
+  // Held at a's rz (where a hold could land), b would have had a cantilever's 3 E I / L³ = 33.6 N/mm along y and a
+  // mode of 41.3 Hz that the frame has not.
+  const swing = (supports) => frame({ nodes: { a: [0, 0, 0], b: [500, 0, 0] }, elements: [{ id: 'bar', a: 'a', b: 'b', section: sec, material: { E: 70000, nu: 0.33 } }], supports, masses: { b: 0.5 }, loose: 'hold' }).modes({ count: 3 });
+  const m = swing({ a: 'pinned', b: { z: 2 } });
+  assert.equal(m.frequencies[0], 0); assert.equal(m.modes[0].free, true);
+  assert.ok(Math.abs(Math.abs(m.modes[0].shape.b[1]) - 1) < 1e-9, 'the free mode swings b along y');
+  close('the swinging bar on its spring', m.frequencies[1], Math.sqrt(4000) / (2 * Math.PI), 1e-6);
+  close('the swinging bar along its length', m.frequencies[2], Math.sqrt((28000 * 1000) / 0.5) / (2 * Math.PI), 1e-6);
+  assert.ok(!m.modes[1].free && !m.modes[2].free);
+  const clamped = swing({ a: { x: true, y: true, z: true, rz: true }, b: { z: 2 } }).frequencies;
+  close('held at a\'s rz by hand: the cantilever mode the free bar has not', clamped[1], Math.sqrt((3 * 70000 * 20000 / 500 ** 3) * 1000 / 0.5) / (2 * Math.PI), 1e-6);
+});
+
 test('frame: a torsion bar twists by T L / G J', () => {
   // Roark, chapter 10: the twist of a uniform bar under an end torque
   const L = 300, T = 5000, r = statics(cantilever({ L, model: { loads: [{ node: 'b', moment: [T, 0, 0] }] } }));
