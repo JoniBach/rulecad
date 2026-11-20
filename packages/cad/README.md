@@ -545,7 +545,11 @@ An item can be a beam, a length of an aluminium extrusion, a tube or a bar from 
   on a plate as it prints by `cad plates`, off the cut list. `"printed": { "pose": "standing", "walls": 4, "infill":
   0.6, "end": "nut" }` says how it prints; a tapped end becomes a heat-set insert (or a captive nut). The printable
   profiles (`2020-printed` and its sizes) print lying down; another profile prints standing up, and its findings say
-  so where it cannot lie down.
+  so where it cannot lie down. Standing up, a metal profile's tapped end takes its screw in its bore's place (an
+  insert, or with `"end": "nut"` a captive nut: MISUMI's 2020 takes an M3 nut), and a printed beam in its place is
+  drawn with its ends' fixings cut in, so a screw into its end is followed into them. A foot under it names that
+  thread (`"fitting": { "kind": "foot", "profile": "2020-misumi-hfs5", "thread": "M3" }`); a screw of another thread
+  into a printed end fails `fasten.end` and names the thread to use. EXAMPLES chapter 17 prints a whole case so.
 - Placed by its ends, end `a` is at `from` and end `b` at `to`; at roll 0 its top faces up (+z), or +y when it stands
   upright, and `"roll"` turns it about its own axis, in degrees. Or place it with `at` and `rotate` as any item, in its
   own frame: end `a` at the origin, the beam up +z, its top +y. The face names and a picture are in the
@@ -696,6 +700,7 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   `estimate` while any join's spring is one, even where the springs change no figure; `measured` when every join's
   is; `beams` with no joins); the rigid figure is the least the sag can be. The limit is a rail's own parallelism
   under a guide, else `"frame": { "limit": 0.2 }`, else the task's accuracy, else the beam's span over 360. Over it fails.
+  A sag is given in mm to three places, or to three figures where three places read 0 (0.000352 mm).
 - `frame.stress`: the largest stress in each beam (axial and bending, from the section moduli) against its alloy's
   strength, and the bending moment at each join against what its printed fitting takes (its design load at its
   screw's distance from the corner, times its margin by finite elements). Under 2 times warns, under 1 fails. A join

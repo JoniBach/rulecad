@@ -454,6 +454,15 @@ beam coupon is the bench's `beam-test`: two printed 1515 beams across two bars, 
 it, every printed beam's stiffness and strength rest on the data sheet and the section's estimates. Still to come: a
 splice in a cad assembly.
 
+Built (issue 274): EXAMPLES chapter 17, a case for a Raspberry Pi 4 with every beam printed. Drawn in MISUMI's 2020,
+`"printed": "petg"` says all 13 beams could be printed (least margin 26.6 printed together); printed, the posts and
+rails stand up from MISUMI's section to keep their slots, and the cross beam under the board lies down from the
+printable 2020. A beam printed standing from a metal's profile takes its end's screw in its bore's place (MISUMI's
+2020: an M3 captive nut), a foot names that thread, and a printed beam in an assembly is drawn with its ends' fixings,
+so a screw into one is checked. The sag under the board is 0.000352 mm in aluminium and 0.009 mm printed, against
+0.361 mm. A 300 mm rail is longer than the bed and is spliced with a printed splice plate (a `splice` join). The kit
+is one plate of 73 PETG parts, 592 g, that prints clean.
+
 ### 4.10 Generated frames and kits
 
 A frame can be asked for by what it is for:

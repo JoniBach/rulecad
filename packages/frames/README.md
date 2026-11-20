@@ -428,6 +428,23 @@ angle, and are solid below it. `printedProfile(series, { nut, printer, pull, mat
 Every figure in these sets is `derived`, its source naming the nuts and the printer's rules it comes from. Another
 printer gives other figures: `printedProfile(20, { printer: { overhang: 50 } })` slopes the lips at 40°.
 
+### A metal's profile printed standing up
+
+A beam that needs a slot in more than its top face prints standing up from any profile, its section exact. A metal's
+profile names no printed end, so standing up a tapped end takes its screw in the place of its one threaded bore: the
+largest thread whose screw passes up the bore (its major no wider than the bore) and whose fixing fits the plastic
+round the bore's middle, the bore itself left out. An insert's hole must be no narrower than the bore, with its wall
+round it; a captive nut's corners need a line to spare. MISUMI's 2020 has a 4.2 mm bore and 4 mm of plastic round it:
+an M4 insert needs 5.7 / 2 + 2.1 = 4.95 mm and does not fit (`beam.end` fails and says none does), and with
+`"end": "nut"` an M3 nut needs 5.5 / cos 30° / 2 + 0.42 = 3.6 mm and does. Under a captive nut the bore is filled from
+the end to the screw's hole's far end, so the 3.5 mm hole and the nut's slot are cut in plastic and the screw's hole
+runs on into the bore.
+
+A foot under such an end takes its thread: `footModel('2020-misumi-hfs5', { thread: 'M3' })` draws the counterbore
+and the screw for M3 and says the screw goes into the printed end's own fixing (refused by name: a thread whose
+screw does not pass the bore). `printedInPlace(b)` draws a printed beam in its own frame, as `beam()` does, with its
+ends' inserts or nuts cut in: what an assembly checks a screw into its end against.
+
 ### What a printed beam is worth
 
 `printedSection(profile, { walls, infill })` lays a shell `walls` lines thick inside every outline of the section and

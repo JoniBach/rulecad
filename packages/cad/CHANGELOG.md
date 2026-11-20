@@ -9,6 +9,12 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- **Printed beams' ends in a frame**: a printed beam in its place is drawn with its ends' inserts or captive nuts
+  (and collides by them), so a screw into its end is followed into its fixing; a beam printed standing from a metal's
+  profile takes its end's screw in its bore's place; a foot item takes `"thread"` for such an end; a screw of another
+  thread into a printed end fails `fasten.end` and names the thread. EXAMPLES chapter 17, a Raspberry Pi 4 case with
+  every beam printed, checked in aluminium and printed, its kit.
+
 - **A kit**: `cad kit <project>/<assembly>` writes `exports/<project>/<assembly>-kit/`, one folder to build it from
   without the model: `README.md` (what the checks say, what to buy, what to print, the jigs, the cut list, the drilling
   and tapping, the build step by step with its torques and diagonals), `buy.csv`, each plate's 3MF and the jigs', each
@@ -35,6 +41,9 @@ and head, the parts it passes through and the part it ends in.
 
 ### Fixed
 
+- A slot nut in a printed slot with sloped lips warned on every screw (`fasten.end`): the nut's fit note, which
+  @rulecad/frames gives at info level, was raised to a warning. It is said in the text and passes.
+- `frame.deflection` gave a stiff frame's sag as 0 mm: under 0.001 mm it is given to three figures.
 - `fasten.seat` read a counterbore's floor in a part with a drawn thread (a levelling foot's body) as a cone and
   failed it: such a part is measured at even steps, and now also at every face square to the screw's axis.
 

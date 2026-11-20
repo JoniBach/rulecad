@@ -124,6 +124,9 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   rests on estimates (the printed section, creep) until the beam coupon is measured, and name the joins it says need
   changing. A `beam.coupon` sag or break is a prediction to measure on the bench and write back with `cad measured`,
   never a figure to tune; `beam.creep` fails a printed beam held too hard for months: a deeper section or aluminium.
+  A beam that needs slots in more than its top face prints standing up from the metal's profile
+  (`"printed": { "pose": "standing", "end": "nut" }`): its tapped end takes the thread `beam.end` names, and a foot
+  under it takes that `"thread"`. Report each printed beam's pose, grams and the sag `frame.deflection` gives.
 - **A frame for a size starts from a generator**: `"frame": { "kind": "box", "inside": [w, d, h], "profile",
   "join": "blind" }` (also portal, table, gantry, shelf) expands into beams, joins, feet and caps before anything is
   checked. Ask by `inside` for what it must enclose, `outside` for what it must fit in; never work the lengths out by

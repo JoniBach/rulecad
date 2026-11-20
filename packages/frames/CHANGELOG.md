@@ -6,6 +6,13 @@ What changed in each release, for someone upgrading a workspace.
 
 ### Added
 
+- A beam printed standing from a metal's profile takes a tapped end's screw in its one threaded bore's place: the
+  largest thread whose screw passes up the bore and whose insert (no narrower than the bore, with its wall) or
+  captive nut (its corners and a line) fits round the bore's middle; under a captive nut the bore is filled to the
+  screw's hole's end. MISUMI's 2020 standing takes an M3 captive nut (`"end": "nut"`); an insert has no room.
+- `footModel(profile, { thread })`: a foot under a printed end, its screw that end's thread.
+- `printedInPlace(b)`: a printed beam in its own frame with its ends' inserts or nuts cut in.
+
 - A generated frame's printed foot (`foot`, `levelling`, `stacking`) carries its end's `tap` and its `screw`, from the
   foot's own model; with a join that drills the uprights (blind, end-tap, hidden, anchor) the bottom ring rises by the
   tap's depth (`lift` on the model), so its holes clear the tapped end. A box round 300 x 300 x 350 in 2020 on feet:
