@@ -4572,6 +4572,48 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
   } finally { done(); }
 });
 
+test('frame sizing: a drawn table written in moves a deeper rail down its legs so every join lands on its leg, or writes nothing and says why', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // A table 1200 x 400 mm inside, 750 mm clear, in 2020 joined blind, on levelling feet, 40 kg at the middle of each
+    // long rail, drawn by hand (the generated frame expanded): legs 770 mm, the long rails' centre lines at 760 mm, their
+    // tops level with the legs' tops at 770. Sized within HFS5 the long rails stand 2060 on edge: 1200 mm at 40 kg
+    // (392.3 N) sags 392.3 x 1200³ / (48 x 69 972 x I) simply supported (Roark's, table 8.1, case 1e), against 1200 / 360
+    // = 3.333 mm; 2040 on edge breaks it, 2060 does not. Kept on its line, a 2060 would stand 30 mm each side of 760, to
+    // 790, past the legs' 770 mm tops, and its end's bores at 740, 760 and 780 mm up the leg (20 mm apart): 780 is off
+    // the leg and the frame would not build. So it moves down 20 mm, its top kept at 770, its bores at 720, 740 and 760
+    const profiles = ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'];
+    const loads = [{ mass: 40, at: 'x1.top@50%' }, { mass: 40, at: 'x2.top@50%' }];
+    fs.writeFileSync(file('d'), JSON.stringify({ title: 'd', kind: 'fit', frame: { kind: 'table', inside: [1200, 400, 750], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' }, loads }));
+    cad('frame', 'frame/d', '--expand');
+    const drawn = JSON.parse(fs.readFileSync(file('d'), 'utf8'));
+    assert.deepEqual([drawn.frame, drawn.items.find((x) => x.id === 'x1').from, drawn.joins[0]], [undefined, [20, 10, 760], { kind: 'blind', a: 'x1.a', b: 'z1.back@760' }]);
+    drawn.frame = { size: { profiles } };
+    fs.writeFileSync(file('d'), JSON.stringify(drawn));
+    fs.writeFileSync(file('e'), JSON.stringify({ ...drawn, title: 'e' }));
+    assert.match(cad('frame', 'frame/d', '--size', '--write'), /x1, x2 \| 2060-misumi-hfs5 turned[\s\S]*wrote projects[\\/]frame[\\/]assemblies[\\/]d\.json/);
+    const w = JSON.parse(fs.readFileSync(file('d'), 'utf8'));
+    assert.deepEqual([w.items.find((x) => x.id === 'x1'), w.items.find((x) => x.id === 'z1'), w.items.find((x) => x.id === 'y1')], [{ id: 'x1', beam: { profile: '2060-misumi-hfs5' }, from: [20, 10, 740], to: [1220, 10, 740], roll: 90 },
+      { id: 'z1', beam: { profile: '2020-misumi-hfs5' }, from: [10, 10, 0], to: [10, 10, 770] }, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [10, 20, 760], to: [10, 420, 760] }]);
+    assert.deepEqual(w.joins.filter((j) => /^x1\.a/.test(j.a)).map((j) => j.b), ['z1.back@720', 'z1.back@740', 'z1.back@760']);
+    // it builds and checks with nothing failing; the one warning is the table's racking, as drawn
+    const bad = cad('check', 'frame/d').split('\n').filter((l) => /^\s*[✗!]/.test(l));
+    assert.deepEqual(bad.map((l) => l.trim().slice(0, 18)), ['! racked along y: '], bad.join('\n'));
+    // Where the move does not fit the rail's other end (its far legs start at 750 mm and run up, so moving down 20 mm
+    // would put the rail's foot 10 mm below them), nothing is written and the refusal names the join and the beam
+    const e = JSON.parse(fs.readFileSync(file('e'), 'utf8'));
+    for (const it of e.items) if (it.id === 'z2' || it.id === 'z4') { it.from[2] = 750; it.to[2] = 1500; }
+    for (const j of e.joins) j.b = j.b.replace(/^(z[24]\.\w+)@760$/, '$1@10');
+    fs.writeFileSync(file('e'), JSON.stringify(e));
+    const before = fs.readFileSync(file('e'), 'utf8');
+    assert.match(cad('frame', 'frame/e', '--size', '--write'), /the sized profiles do not fit as drawn, so nothing is written: join x1\.a\.3 would meet z1 at 780 mm, past its 770 mm/);
+    assert.equal(fs.readFileSync(file('e'), 'utf8'), before);
+  } finally { done(); }
+});
+
 test('a printed beam in an assembly: a printed part weighed by its walls and infill, off the cut list, laid on a plate as it prints, its tapped end an insert', () => {
   const { ws, cad, done } = workspace();
   try {

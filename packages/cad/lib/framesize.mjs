@@ -162,7 +162,8 @@ export function sizeChecks(s, f, helpers) {
  * turned), and each printed end fitting on it drawn for the new profile. Each beam keeps its line (its axis), so a
  * deeper profile stands about its middle; where a beam's end butts against another's face and that face moves with
  * the other's new size, the end moves with it (the beam's length follows). A generated frame's rings keep their outer faces (a table's top
- * stays level with its legs' tops). A blind or end-tap join whose end now
+ * stays level with its legs' tops); a drawn beam whose new size would stand past the end of the beam it meets moves
+ * along that beam by as much, if the move fits at its other end, and otherwise nothing is written (refused by name). A blind or end-tap join whose end now
  * has several bores (a 20 x 40) becomes one join a bore, each at its own place on the beam it meets. A generated frame
  * is written out expanded, as cad frame --expand does, as its generator takes one profile.
  * @param {object} raw the assembly as read @param {object} expanded the generated frame expanded (expandFrame's) @param {object} r frameSizing's
@@ -191,6 +192,27 @@ export function writeSizing(raw, expanded, r) {
       const d = side * (half(was(b.id), up) - half(now(b.id), up));
       if (Math.abs(d) > 1e-9) lift.set(b.id, up.map((v) => v * d));
     }
+  }
+  // a beam whose end meets another's face keeps its line, unless its new size would stand past that beam's end (a
+  // rail flush with its legs' tops, now deeper): then it moves across its length, along the beam it meets, by as much,
+  // so its face there stays where it was. The move must fit at every end it has (its other end's beam), else it stays
+  // and the guard below refuses
+  for (const id of by.keys()) {
+    if (lift.has(id) || !numeric(items.get(id))) continue;
+    const b = r.fm.beams.get(id), ends = new Map();
+    for (const j of out.joins ?? []) {
+      const ma = /^([\w-]+)\.([ab])(?:\.\d+)?$/.exec(String(j.a ?? '')), mb = /^([\w-]+)\.[a-z]+(?:\.\d+)?@/.exec(String(j.b ?? ''));
+      if (!ma || ma[1] !== id || !mb || !r.fm.beams.has(mb[1]) || mb[1] === id) continue;
+      // where this end's line meets the other beam, along it, and how far the beam stands each way of it, as drawn and as sized
+      const post = r.fm.beams.get(mb[1]), P = ma[2] === 'a' ? b.A : b.A.map((v, k) => v + b.u[k] * b.L), at = dot(P.map((v, k) => v - post.A[k]), post.u);
+      const hw = half(was(id), post.u), hn = half(now(id), post.u);
+      ends.set(`${ma[2]} ${mb[1]}`, { post, at, hn, lo: Math.min(0, at - hw), hi: Math.max(post.L, at + hw) });
+    }
+    const fits = (e, d) => e.at + d + e.hn <= e.hi + 1e-6 && e.at + d - e.hn >= e.lo - 1e-6;
+    const need = [...ends.values()].find((e) => !fits(e, 0));
+    if (!need) continue;
+    const d = need.at + need.hn > need.hi ? need.hi - (need.at + need.hn) : need.lo - (need.at - need.hn), v = need.post.u.map((x) => x * d);
+    if ([...ends.values()].every((e) => fits(e, dot(v, e.post.u)))) lift.set(id, v);
   }
   for (const [id, v] of lift) { const it = items.get(id); if (numeric(it)) { it.from = it.from.map((x, k) => r3(x + v[k])); it.to = it.to.map((x, k) => r3(x + v[k])); } else lift.delete(id); }
   for (const j of out.joins ?? []) {
@@ -228,5 +250,12 @@ export function writeSizing(raw, expanded, r) {
     const post = r.fm.beams.get(mb[1]);
     return bores.map((bo, k) => { const o = q.ax.X.map((v, c) => v * bo.at[0] + q.ax.Y[c] * bo.at[1]); return { ...j, a: `${ma[1]}.${ma[2]}.${k + 1}`, b: `${mb[1]}.${mb[2]}@${r3(Number(mb[3]) + dot(o, post.u))}` }; });
   });
+  // nothing is written that would not build: every join's place on the beam it meets lies on that beam
+  for (const j of out.joins ?? []) {
+    const mb = /^([\w-]+)\.[a-z]+(?:\.\d+)?@(-?[\d.]+)$/.exec(String(j.b ?? ''));
+    if (!mb || !r.fm.beams.has(mb[1])) continue;
+    const it = items.get(mb[1]), L = numeric(it) ? Math.hypot(...it.to.map((v, k) => v - it.from[k])) : r.fm.beams.get(mb[1]).L, s = Number(mb[2]), at = mb[2].startsWith('-') ? L + s : s;
+    if (at < -1e-6 || at > L + 1e-6) throw new Error(`the sized profiles do not fit as drawn, so nothing is written: join ${j.a} would meet ${mb[1]} at ${n3(at)} mm, past its ${n3(L)} mm (a deeper beam there stands past the end of the one it meets, and its ends do not agree on a move); give that group a profile no deeper (frame.size.groups and profiles), or move the beam by hand`);
+  }
   return out;
 }

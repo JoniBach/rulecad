@@ -16,7 +16,9 @@ and head, the parts it passes through and the part it ends in.
   moves), in every pose, by `@rulecad/fea/frame`'s `sizing`. `frame.size` names, for each group, the limit its next
   lighter profile breaks and the margin as chosen. `cad frame <project>/<assembly> --size` prints the table and
   `--write` writes the profiles in (a quarter roll for a 2040 on edge, its end fittings, ends moved to the faces they
-  meet, a join a bore at a two-bore end, a generated frame written out expanded with its rings' outer faces kept).
+  meet, a join a bore at a two-bore end, a generated frame written out expanded with its rings' outer faces kept,
+  a drawn beam that would stand past the end of the beam it meets moved along it, and nothing written where a join
+  would land off its beam).
   `FRAME_SIZING` (`profiles`, `match`).
 - `"frame": { "kind", "inside" | "outside", "profile", "join", "feet", "caps", "braces", "panels", "shelves" }`:
   a box, portal, table, gantry or shelf generated from a size, expanded into beams, joins and their ends before

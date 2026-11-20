@@ -1072,7 +1072,7 @@ async function frameCommand(ref) {
       fs.writeFileSync(file, `${JSON.stringify(writeSizing(raw, raw.frame?.kind != null ? expandFrame(raw, s.num).a : raw, r), null, 2)}\n`);
       if (opt('json')) return console.log(JSON.stringify({ ...out, file: path.relative(WS, file) }, null, 2));
       console.log(sizingText(r).join('\n'));
-      return console.log(`wrote ${path.relative(WS, file)}: ${rows.reduce((t, x) => t + x.beams.length, 0)} beams given their profiles${raw.frame?.kind != null ? ' (the generated frame written out expanded, as --expand does, as a generator takes one profile)' : ''}; their lines are kept, so check the joins and ends of any beam that changed size`);
+      return console.log(`wrote ${path.relative(WS, file)}: ${rows.reduce((t, x) => t + x.beams.length, 0)} beams given their profiles${raw.frame?.kind != null ? ' (the generated frame written out expanded, as --expand does, as a generator takes one profile)' : ''}; their lines are kept (a deeper beam that would stand past the end of the one it meets moves along it), so check the joins and ends of any beam that changed size`);
     }
     if (opt('json')) return console.log(JSON.stringify(out, null, 2));
     return console.log(`${ref}: ${sizingText(r).join('\n')}\n(cad frame ${ref} --size --write writes these profiles into the assembly)`);

@@ -972,7 +972,10 @@ drop to 2020 and the grouped beams to 1.95 kg.
 and its printed end fittings drawn for it. A generated frame is written out expanded, as `--expand` does, since a
 generator takes one profile; its rings keep their outer faces (a table's top stays level with its legs' tops). A
 beam's end that butts against a face moves with that face as the other beam changes size, and a blind or end-tap
-join at an end that now has two bores (a 2040) becomes a join a bore. Otherwise beams keep their lines. Check the
+join at an end that now has two bores (a 2040) becomes a join a bore. A drawn beam whose new depth would stand past
+the end of the beam it meets (a rail flush with its legs' tops, now a 2060) moves along that beam by as much, so its
+face there stays where it was, if the move fits at its other end too; where it does not, nothing is written and the
+refusal names the join and the beam. Otherwise beams keep their lines. Check the
 written frame: its join checks say where a profile's screws do not fit another's slots, so choose the list from one
 family whose joins fit each other (MISUMI HFS5's 2020 to 2080 share one slot and one end thread).
 
