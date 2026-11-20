@@ -6,6 +6,10 @@ What changed in each release, for someone upgrading a workspace.
 
 ### Added
 
+- `box`, `portal`, `table`, `gantry`, `shelf` and `frameModel(kind, o)`: a frame from the volume it encloses
+  (`inside`) or fits in (`outside`), in one square profile, its corners arranged for its join (`FRAME_JOINS`: the
+  uprights run through for a join against a face, every beam into a node for a cube), with feet, end caps, braces
+  and panels. `FRAME_KINDS`, `FRAME_FEET`, `FRAME_GEN.clear`.
 - `beamCreep(b, { stress | moment, sag, limit })`: `beam.creep`, a printed beam's sustained stress against
   `PRINTED_DEFAULTS.creep` (0.15) of its strength for its pose, and its sag as it creeps (`creep_modulus`, 0.5). Both
   estimates. `PRINTED_DEFAULTS.splice_share` (0.5): what a splice carries of the whole beam's moment. `b.printed.creep`

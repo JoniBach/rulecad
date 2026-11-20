@@ -1174,6 +1174,56 @@ the slot by caliper, and `cad measured` writes the results back: the fit to the 
 `carrierModel` takes its `slot_fit` before its `fit`; a design's `v.frames` reads the workspace's slot sets before the
 kit's.
 
+## Frames from a size
+
+A frame can be asked for by the volume it encloses or the one it must fit in. Each generator gives plain data: its
+beams placed by their ends, the joins between them, the fittings for the ends no join covers, and any panels, so
+the result can be built, checked, written out and edited by hand.
+
+```js
+import { box } from '@rulecad/frames';
+const m = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' });
+m.outside;  // [340, 340, 390]
+m.lengths;  // [{ length: 390, count: 4, ids: ['z1', 'z2', 'z3', 'z4'] }, { length: 300, count: 8, ids: ['x1', ..] }]
+m.joins[0]; // { kind: 'blind', a: 'x1.a', b: 'z1.back@10' }
+m.ends[0];  // { id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot' }
+```
+
+| Generator | What it is | Size |
+|---|---|---|
+| `box(o)` | Four upright beams (`z1` to `z4`) and a ring of four beams at the bottom and at the top | `[width, depth, height]` |
+| `portal(o)` | Two legs and a beam across their tops, standing in the x-z plane | `[width, height]` |
+| `table(o)` | Four legs and a ring at the top; the height is the clear height under the ring | `[width, depth, height]` |
+| `gantry(o)` | A box without its top beams across, and a beam `g` lying across the two top side beams, riding along y (`moving`: its track, direction and travel) | `[width, depth, height]` |
+| `shelf(o)` | A box with `shelves` rings between (default 1), spacing its height into equal clear bays | `[width, depth, height]` |
+
+`frameModel(kind, o)` is any of them by name. The options: `inside` or `outside` (one of them), `profile` (square:
+2020, 3030, 4040), `join` (a kind, or `{ kind, fitting, screw }`), `feet` (`foot`, `levelling`, `castor`, `stacking`,
+or a bought set's name), `caps` (`true`, `false` or a bought set's name), `braces` and `panels.sides` (the upright
+sides `front`, `back`, `left`, `right`), `panels` (`{ sheet, thickness, sides }`), `shelves`, and `given` (other rule
+sets, as `profileModel` takes them).
+
+The corners follow the join (`FRAME_JOINS`):
+
+- A join against a face (blind, end-tap, bracket, gusset, hidden, anchor): the upright beams run the whole height and
+  every other beam butts against their faces. The outside is the inside plus the profile's width `p` on each side,
+  `inside + 2p`, and a butting beam is its outside span less `p` at each end, the inside. A box round 300 x 300 x 350
+  in 2020 has uprights of 350 + 2 x 20 = 390 mm and butting beams of 300 mm; in 3030, 410 and 300 mm. Each join meets
+  its upright's face on the beam's centre line, `p / 2` from the frame's outside.
+- A cube join: every beam butts into a corner node, so each is as long as the inside it bounds, and the node takes
+  the `p` x `p` x `p` corner.
+- A table adds `p` to the height (its ring), a gantry `3p` (both rings and its moving beam), a portal `2p` to the
+  width and `p` to the height.
+
+Where an end has several bores (`3030-misumi-hfs6`), a blind or end-tap join screws into the threaded one nearest the
+middle (`x1.a.1`). A gantry's moving beam stops `FRAME_GEN.clear` (2 mm, a working figure) short of the uprights at
+each end of its travel. Braces put a printed corner bracket, on drop-in nuts, at each join of the sides named; a
+panel is one sheet over a side, from its lowest beam to its highest.
+
+Refused by name: an unknown kind or option, no size or both, a size that leaves no room inside, a profile that is not
+square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, feet on a box,
+shelf or gantry with cube corners (no upright end reaches the floor), braces with cube corners, and a side with no bay.
+
 ## Formulas
 
 | What | Formula | Source |

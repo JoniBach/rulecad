@@ -868,6 +868,57 @@ a brace in both bays that way about 240 times ("frame checks: an open cube racks
   17.9 mm² of al6n01-t5 at 205 MPa takes 3677 N, 3.68 N m. The lips' bending is not counted: an estimate, until the
   joint rig (issue 264) measures one.
 
+### A frame from a size
+
+A frame can be asked for by what it must hold, at the top of an assembly, in place of its beams:
+
+```json
+"frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-misumi-hfs5", "join": "blind", "feet": "levelling" }
+```
+
+Before anything else is worked out, it expands into beam items placed by their ends, joins between them, a fitting
+on every end no join covers, and any panels and braces asked for: everything after (the joins' operations and
+screws, the cut list, the frame checks, the build page) sees a hand-drawn frame. `cad check` says what it made
+(`frame.generated`: the kind, the inside and outside, the beams by length, the joins and the ends).
+
+- `"kind"`: `box` (four upright beams `z1` to `z4` and a ring of four at the bottom and at the top), `portal` (two
+  legs and a beam across their tops, in the x-z plane), `table` (four legs and a ring at the top), `gantry` (a box
+  without its two top beams across, and a beam `g` lying across the two top side beams, sliding along them on the
+  joint `gantry`, with the poses `gantry-front` and `gantry-back`) or `shelf` (a box with `"shelves"` rings between,
+  default 1, spacing its height into equal clear bays). Beams across x are `x1`, `x2` .., along y `y1` .., by ring
+  from the bottom. The frame's outside starts at the origin.
+- `"inside"` is the clear volume it encloses, `[width, depth, height]` in mm; `"outside"` is the volume it must fit
+  in. Give one. A portal takes `[width, height]`. A table's height is the clear height under its ring, a gantry's
+  under its side beams.
+- `"profile"`: one square profile for every beam (2020, 3030, 4040 ..). A profile of two cells (2040) is refused:
+  its beams would face differently by how they lie.
+- `"join"` sets the corners, as a kind or `{ "kind", "fitting", "screw" }`. With a join against a face (`blind`,
+  `end-tap`, `bracket`, `gusset`, `hidden`, `anchor`) the upright beams run through, top to bottom, and every other
+  beam butts against their faces, so it is shorter than the outside span it closes by the profile's width at each
+  end. With `cube` every beam butts into a corner node and is as long as the inside it bounds. A box round 300 x 300
+  x 350 in 2020 has uprights of 390 mm and eight beams of 300 mm; in 3030, uprights of 410 mm and the same 300 mm.
+  Where an end has several bores, a blind or end-tap join screws into the threaded one in the middle.
+- `"feet"`: `foot`, `levelling`, `castor` or `stacking` (printed) or a bought foot's set by name, under the upright
+  beams' lower ends. `"caps"`: the other open ends take printed end caps (`true`, the default), a bought end cap's
+  set by name, or nothing (`false`, and `join.end` names them).
+- `"braces"`: the upright sides (`front`, `back`, `left`, `right`) whose corners are stiffened against racking: each
+  join in that side takes a printed corner bracket on drop-in nuts. `"panels"`: `{ "sheet", "thickness", "sides" }`,
+  one sheet over each side named (every side with a bay by default), on drop-in nuts.
+- Refused by name, before anything is built: no size or both, a size that leaves no room for the beams, a profile
+  that is not square, a join no generator arranges (mitre, splice, pivot, a printed node), a blind join on a profile
+  with no bore in its ends, feet with cube corners on a box, a side with no bay, and an item of the assembly's own
+  with a name the frame gives.
+- `"frame"`'s other keys (`supports`, `limit`, `rack` ..) still say how it is solved.
+
+`cad frame <project>/<assembly>` prints what it expands into; `--expand` writes the expansion into the assembly (its
+`"frame"` keeps only how it is solved), to edit by hand from there; `--json` gives either as data. `@rulecad/frames`
+has the generators on their own: `box`, `portal`, `table`, `gantry`, `shelf` and `frameModel(kind, o)`.
+
+Two limits to know. With `end-tap` joins, or a large profile's long blind screws (4040), the two screws into one
+upright at a corner cross inside it at one height, and the overlap check fails them: draw that corner by hand with
+one ring a profile's width higher. Panels on two sides that meet at an upright put their clips' nuts at the same
+heights in its two slots, where they touch.
+
 ### Building it
 
 Once an assembly is checked, these say how to make it. They all read the assembly itself, so they can't disagree with it.
@@ -921,6 +972,7 @@ Once an assembly is checked, these say how to make it. They all read the assembl
   none of a build that is refused): a part no order can reach fails by name, and a part sealed inside another too. A fit can say where a screw is driven from with `"access": "<item>.<anchor>"`, the anchor's z pointing out along the screw: whatever stands on that line goes on after the screw, and if it has to go on first the screw can't be reached at all. Works on an assembly's own items; a component (an assembly used as an item) goes on as one step.
 - `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by filament so each plate is one colour change, spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`). A frame's printed fittings (a join's bracket, a guide's holders and plate, a foot or an end cap) go on as their item's `fitting` with `"pose": "print"`, laid as each prints.
 - `cad list <project>/<assembly>` lists the beams' **cut list** after the bought parts: each mark (beams that are the same, one profile, length and set of operations, share a mark, A, B, C), its count, grams each and work, then each profile's lengths to cut, the bars to buy in the lengths it is sold in, and the cuts on each bar in order with its offcut. Every cut takes the saw's 3 mm kerf and each bar's first end is trimmed 10 mm (`CUT_DEFAULTS` in `@rulecad/frames`, each with its source); the packing is first-fit decreasing. `cad check` adds the cut list's findings (`frame.cut`): a beam longer than any length sold fails, two lengths nearer than the cut tolerance can hold apart warn, and beams of one mark are reminded to be cut against one stop. Each beam's mark is in its label in the preview and the link (`x1: mark A, profile-2020-misumi-hfs5 x 300 mm`).
+- `cad frame <project>/<assembly>`: a generated frame (`"frame": { "kind" }`, "A frame from a size" above): its inside and outside, its beams by length, its joins and its ends. `--expand` writes them into the assembly to edit by hand; `--json` gives the same as data.
 - `cad beams <project>/<assembly>`: a cut-and-drill sheet for each mark, written to `exports/<project>/<assembly>.beam-<mark>.svg`, in mm so it prints to scale at 100%: the section at end a with each face named and the taps marked, a view of each face with work on it (that face up, end a on the left), every operation dimensioned from end a to 0.1 mm, and the operations in order, each tap with its thread and depth. The build page lists the sheets with the cut list.
 - `cad beams <project>/<assembly> --jigs`: the jigs its beams take, made from the assembly and written as a plate, `exports/<project>/<assembly>.jigs.3mf` (`.jigs-2.3mf` and on where one bed is not enough). A **drill guide** for each distinct hole across a beam (an access hole, a drilled hole, a counterbore's hole): it stops on the nearer end, keys into the face's slot and holds a bush for the drill where the sheet dimensions the hole. A **tap guide** for each tapped end, a **cut-length stop** for each length (a block for the saw's fence and a printed gauge as long as the cut), and a **squaring corner** for each pair of profiles and hand a blind or end-tap join takes. A corner is an L whose arm b runs along beam b one way only, so where a beam meets a post near the post's end, only one hand lies on the post: each join gets the corner laid on a pair of faces the two beams share (the outer pair first) and of the hand whose tongues lie whole on both beams, its plate clear of every other beam. A box with beams near both ends of its posts takes both hands. Where no corner fits, a `jig.square` warning says why (how much of a tongue lies past a beam's end, which beam the plate meets): square that join with an engineer's square. Distinct means drawn the same: one guide serves every hole of its size at its distance from an end. Each is marked with the marks it is for (`ABCD`, `E 260`), cut into a face that faces up as it prints, printchecked, and listed with its grams, its margin and what it is for: each hole by mark and sheet number (`A3`), with its bush's distance from end a beside the sheet's figure. A hole too far from both ends for one print gives a `jig.drill` warning in place of a guide; mark it from the sheet. A tapped end no guide can be drawn for gives a `jig.tap` warning in place of its guide. `--json` gives the same, `--preview` a picture of the plate. The jigs are `@rulecad/frames`' (`drillGuideModel`, `tapGuideModel`, `lengthStopModel`, `squareCornerModel`).
 - `cad wires <project>/<assembly>`: the wiring sheet, printed and written to `exports/<project>/<assembly>.wiring.md` (`cad machine` writes it too): each wire's length through every pose with its service loop, gauge, colour, connectors and board pins. Wires also show faint along their routes in `cad preview` and in the link, moving with the joints, and are never parts: no overlap check sees them.

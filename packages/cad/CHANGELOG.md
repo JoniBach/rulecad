@@ -9,6 +9,14 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- `"frame": { "kind", "inside" | "outside", "profile", "join", "feet", "caps", "braces", "panels", "shelves" }`:
+  a box, portal, table, gantry or shelf generated from a size, expanded into beams, joins and their ends before
+  anything is built; `frame.generated` says what it made. `cad frame <project>/<assembly>` prints it and `--expand`
+  writes it into the assembly to edit by hand. An assembly with a generated frame needs no `items`.
+- The assembly order takes a fitting without the tongue or pegs it stands in a slot or a beam's end with, as the
+  overlap check does (two end caps on one beam no longer lock it in), and a part placed on another goes on after it
+  whatever its fastening's distance from the base says. A fitting at a beam's end is held by that beam
+  (`assembly.loose` no longer names a gantry's end caps and feet).
 - **Which beams can be printed**: `"frame": { "printed": "petg" }` (or `{ material, walls, infill, pose }`) tries each
   beam of the frame printed in that plastic (the kit's printable profile of its size, lying down, spliced past the
   bed, or standing up), solves the frame again and holds the beam to the frame's sags, its stress and Euler's load
