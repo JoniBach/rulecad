@@ -57,7 +57,7 @@ const DRILLS_POST = ['blind', 'end-tap', 'hidden', 'anchor'];
 const feetFix = new Map(); // (each kind's tap and screw in each profile, worked out once)
 function footFix(kind, profile, given) {
   const key = `${kind}|${typeof profile === 'string' ? profile : profile?.name}|${JSON.stringify(given ?? {})}`;
-  if (!feetFix.has(key)) { const m = FOOT_MODELS[kind](profile, { end: 'a', ...(given ? { given } : {}) }), t = m.ops.find((x) => x.op === 'tap'), sc = m.screws.find((x) => x.into === 'bore'); feetFix.set(key, t && sc ? { thread: t.thread, depth: t.depth, head: sc.head } : null); }
+  if (!feetFix.has(key)) { const m = FOOT_MODELS[kind](profile, { end: 'a', ...(given ? { given } : {}) }), t = m.ops.find((x) => x.op === 'tap'), sc = m.screws.find((x) => x.into === 'bore'); feetFix.set(key, t && sc ? { thread: t.thread, depth: t.depth, head: sc.head, bore: t.at.slice(1) } : null); }
   return feetFix.get(key);
 }
 
@@ -235,7 +235,7 @@ export function frameModel(kind, o = {}) {
     const at = `${b.id}.${e}`;
     if (covered.has(at)) continue;
     const low = b.role === 'upright' && e === 'a' && b.from[2] < 1e-6;
-    if (low && o.feet != null) ends.push({ id: `foot-${b.id}`, at, ...(FRAME_FEET[o.feet] ? { fitting: FRAME_FEET[o.feet] } : { bought: o.feet }), role: 'foot', ...(fix ? { tap: { op: 'tap', at: e, thread: fix.thread, depth: fix.depth }, screw: `${fix.thread} ${fix.head}` } : {}) });
+    if (low && o.feet != null) ends.push({ id: `foot-${b.id}`, at, ...(FRAME_FEET[o.feet] ? { fitting: FRAME_FEET[o.feet] } : { bought: o.feet }), role: 'foot', ...(fix ? { tap: { op: 'tap', at: `${e}${fix.bore}`, thread: fix.thread, depth: fix.depth }, screw: `${fix.thread} ${fix.head}` } : {}) });
     else if (caps) ends.push({ id: `cap-${b.id}-${e}`, at, ...(caps === true ? { fitting: 'end-cap' } : { bought: caps }), role: 'cap' });
   }
 

@@ -653,6 +653,12 @@ The tap is as deep as the thread engagement asks in the beam's metal (two diamet
 `@rulecad/fixings`), with the screw's tip room and one and a half diameters more (`JOIN_TAP`), so that a screw of a
 sold length both engages fully and stops short of the bottom. `options.screw` names another screw (`'M5x12 button'`).
 
+That is deeper than a maker's own end tapping: MISUMI cuts M5 15 mm deep in its 2020 and M8 24 mm in its 3030 (the
+profile's `bore_thread` rule, from its catalogue), where the kit taps 18.5 and 29 mm. The kit's depth is the one it
+sizes from, for a workshop tapping its own ends; the screws it then chooses stop well inside the maker's depth too (a
+foot's M5x16 through its 5 mm floor reaches 11 mm into the end, its M8x25 through 8 mm reaches 17 mm), so a beam
+bought tapped serves, and `fasten.length` checks the screw against the tap drawn.
+
 A mitre's cuts depend on where the beams are, so they are given: `options.mitre` is `{ angle, a: { about, long }, b:
 { about, long } }`, the angle each end is cut from square (45° for a square corner, 90° less half the angle between
 the beams), the face each beam sees the corner on, and the side its length is measured on, the outside of the
@@ -1027,7 +1033,9 @@ printcheck as drawn. A part's frame is a mount's: x along the beam, y across, z 
 | `stackingFootModel(profile)` | A plate on the end with a socket under it that fits over the end of the same profile below | Beam side down |
 
 A part screwed into the end says the tap the end needs (`ops`: `{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }`,
-as a join's tap) and the screw sold that engages the aluminium and stops inside it. Each part's frame is the end's
+as a join's tap) and the screw sold that engages the aluminium and stops inside it. Where the end has several bores
+it taps the threaded one alone, by its number (MISUMI's 3030: `a.1`, the 6.8 mm M8 bore, not its four 4.2 mm corner
+holes); a tap op at a whole end does the same, taking every bore only where none is named for a thread. Each part's frame is the end's
 address on the beam (`x1.a`): z out of the end, x along the beam's top. Seen from outside end a the section lies
 mirrored, so a section's point (x, y) is at (y, x) there and at (y, −x) at end b.
 

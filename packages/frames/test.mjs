@@ -1942,6 +1942,20 @@ test('profile choices: a profile as a sizing takes it, its section in a beam\'s 
   assert.throws(() => frames.profileChoices({ kind: 'beam' }), /profileChoices: give a profile's model/);
 });
 
+test('MISUMI\'s 3030 has five bores in each end and only the middle one is for M8: a foot, a generated frame\'s foot and a tap at the whole end tap that one alone', () => {
+  // its rule set: the middle bore 6.8 mm (M8's tap drill), the four corner holes 4.2 mm with no thread named
+  const foot = frames.footModel('3030-misumi-hfs6');
+  assert.deepEqual(foot.ops.map((o) => `${o.op} ${o.at} ${o.thread}`), ['tap a.1 M8']);
+  const m = frames.box({ inside: [300, 300, 200], profile: '3030-misumi-hfs6', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' });
+  assert.deepEqual(m.ends.filter((e) => e.tap).map((e) => e.tap.at), ['a.1', 'a.1', 'a.1', 'a.1']);
+  const b = beamModel('3030-misumi-hfs6', { length: 300, ops: [{ op: 'tap', at: 'a', depth: 20 }] });
+  assert.equal(b.ops[0].line, 'tap M8 in bore a.1, 20 mm deep (tap drill Ø6.8 mm; the bore is Ø6.8)');
+  // a profile whose end bores are all for a thread keeps tapping them all (MISUMI's 2040: two M5 bores)
+  assert.match(beamModel('2040-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', depth: 20 }] }).ops[0].line, /^tap M5 in end a's bores a\.1, a\.2, 20 mm deep/);
+  // a 2020 (one bore) keeps its plain address
+  assert.deepEqual(frames.footModel('2020-misumi-hfs5').ops.map((o) => o.at), ['a']);
+});
+
 test('a generated frame\'s joins against its profile: a blind or end-tap screw the slot cannot take is refused by name, a printed fitting takes a nut the kit has for the slot, and a printed gusset lies on the face looking out', () => {
   const { box } = frames, ask = { inside: [300, 250, 350] };
   // MISUMI's 4040 ends are tapped M12 (bore 10.5) and its slot opens 10 mm: an M12 screw, 12 mm, does not pass between

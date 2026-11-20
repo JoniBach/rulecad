@@ -123,7 +123,10 @@ export function opsOf(b, list, anchorOf, { printed = false } = {}) {
     // ---- a tap in an end bore ----
     if (o.op === 'tap') {
       if (!p.bores.length) throw new Error(`${ow}: ${p.name} has no bore in its ends to tap (no bore_diameter): a tap is cut in an end bore, so this profile takes none. Fasten into a slot, or drill and tap across it`);
-      const which = at.length > 1 ? b.bores.filter((x) => x.name === at) : b.bores.filter((x) => x.end === end);
+      // (a whole end's tap goes in the bores made for a thread, where it has any: MISUMI's 3030 taps its M8 centre bore,
+      // not its four 4.2 mm corner holes; with none named, in every bore of the end)
+      const inEnd = b.bores.filter((x) => x.end === end), threaded = inEnd.filter((x) => x.thread);
+      const which = at.length > 1 ? b.bores.filter((x) => x.name === at) : threaded.length ? threaded : inEnd;
       if (!which.length) throw new Error(`${ow}: ${b.name} has no bore ${at}: it has ${b.bores.map((x) => x.name).join(', ')}`);
       const thread = o.thread ?? which[0].thread;
       if (thread == null) throw new Error(`${ow}: ${p.name}'s bores name no thread (bore_thread): give one, { thread: 'M5' }`);

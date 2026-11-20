@@ -156,6 +156,13 @@ test('--machine frame: a box from its inside size and profile checks clean on a 
     assert.throws(() => make('a', '--size', '50x50x50', '--profile', '3030-misumi-hfs6'), /--size in 3030-misumi-hfs6 is width and depth 100 to 800 mm/);
     assert.throws(() => make('b', '--profile', '4040-item-8'), /--profile is 2020-misumi-hfs5, 2020-openbuilds, 3030-misumi-hfs6: the profiles this box checks clean in \(got "4040-item-8"/);
     assert.throws(() => execFileSync(process.execPath, [CREATE, path.join(root, 'c'), '--no-install', '--machine', 'arm', '--size', '300x300x350'], { stdio: 'pipe' }), /--size is for --machine frame/);
+    // a size inside the ranges whose beams' cut lengths lie under 1 mm apart, which two cuts at ±0.5 mm cannot hold
+    // apart (frame.cut warns). Hand: a 2020 box's uprights are the height and 2 x 20 + 18.5 = 58.5 mm, so at 300 high
+    // 358.5 mm, 0.5 from a 358 or 359 mm width; a 3030 box's are the height and 60, 260 at 200 high, 0.5 from 260.5
+    assert.throws(() => make('a', '--size', '358x300x300'), /--size 358x300x300 in 2020-misumi-hfs5 cuts the width's beams at 358 mm and the upright's at 358\.5 mm, 0\.5 mm apart: two cuts at ±0\.5 mm cannot hold them apart \(cad check warns frame\.cut\)\. Make them one length or 1 mm apart or more \(the uprights are the height and 58\.5 mm\)/);
+    assert.throws(() => make('a', '--size', '300x359x300'), /cuts the depth's beams at 359 mm and the upright's at 358\.5 mm/);
+    assert.throws(() => make('a', '--size', '300.5x299.7x350'), /cuts the width's beams at 300\.5 mm and the depth's at 299\.7 mm, 0\.8 mm apart/);
+    assert.throws(() => make('a', '--size', '260.5x300x200', '--profile', '3030-misumi-hfs6'), /cuts the width's beams at 260\.5 mm and the upright's at 260 mm, 0\.5 mm apart[^]*the height and 60 mm/);
     assert.deepEqual(fs.readdirSync(root), [], 'nothing written for a refusal');
     // each profile offered, made and checked as a person would after npm install: no check fails or warns. The default
     // first (300 x 300 x 350 in 2020-misumi-hfs5), then each profile at the largest and the smallest corner of the sizes
@@ -165,7 +172,11 @@ test('--machine frame: a box from its inside size and profile checks clean on a 
     // check measures it 648.5 mm (the inside and the rings and feet), over 400 = 1.62 mm; it sways 1.33 (blind joins); sag limit
     // 1400 / 360 = 3.89 mm, it sags 3.35. For 3030 at 800 x 800 x 300: 0.81 mm against 0.86
     const sizes = { '2020-misumi-hfs5': ['1400x1400x600', '50x50x50'], '2020-openbuilds': ['1400x1400x600', '50x50x50'], '3030-misumi-hfs6': ['800x800x300', '100x100x100'] };
-    const cases = [['box', [], '2020-misumi-hfs5', 'blind', '300 x 300 x 350'], ...Object.entries(sizes).flatMap(([profile, two]) => two.map((size, i) => [`${profile}-${i ? 'least' : 'most'}`, ['--profile', profile, '--size', size], profile, profile.startsWith('3030') ? 'bracket' : 'blind', size.replaceAll('x', ' x ')]))];
+    // and the closest lengths it takes, exactly 1 mm apart (frame.cut warns under 2 x 0.5 mm): 2020 at 357.5 wide beside
+    // its 358.5 mm uprights, 300.5 deep beside 299.5 wide; 3030 at 261 wide beside its 260 mm uprights
+    const near = [['2020-misumi-hfs5', '357.5x300x300'], ['2020-misumi-hfs5', '299.5x300.5x350'], ['3030-misumi-hfs6', '261x300x200']];
+    const cases = [['box', [], '2020-misumi-hfs5', 'blind', '300 x 300 x 350'], ...Object.entries(sizes).flatMap(([profile, two]) => two.map((size, i) => [`${profile}-${i ? 'least' : 'most'}`, ['--profile', profile, '--size', size], profile, profile.startsWith('3030') ? 'bracket' : 'blind', size.replaceAll('x', ' x ')])),
+      ...near.map(([profile, size], i) => [`near-${i}`, ['--profile', profile, '--size', size], profile, profile.startsWith('3030') ? 'bracket' : 'blind', size.replaceAll('x', ' x ')])];
     for (const [name, args, profile, join, shown] of cases) {
       const made = make(name, ...args), dir = path.join(root, name);
       assert.match(made, new RegExp(`a box frame round ${shown} mm inside, in ${profile}`));
@@ -178,6 +189,11 @@ test('--machine frame: a box from its inside size and profile checks clean on a 
       assert.ok(r.findings, JSON.stringify(r.error ?? r));
       assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code}: ${x.text}`), [], `${name}: checks clean`);
       for (const code of ['frame.generated', 'frame.deflection', 'frame.stress', 'frame.buckling', 'frame.rack', 'frame.frequency', 'assembly.order']) assert.ok(r.findings.some((x) => x.code === code), `${name}: ${code}`);
+      // MISUMI's 3030 has five bores in each end, and only the middle one (6.8 mm) is for M8: a foot taps that one alone
+      if (profile === '3030-misumi-hfs6' && name.endsWith('least')) {
+        const fr = JSON.parse(execFileSync(process.execPath, [CAD, 'frame', 'frame/box', '--json'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 })).frame;
+        assert.deepEqual(fr.ends.filter((e) => e.tap).map((e) => `${e.tap.at} ${e.tap.thread}`), Array(4).fill('a.1 M8'));
+      }
       if (name !== 'box') continue;
       // the default's kit: one folder with the plates, the jigs, a sheet per mark, the shopping list and the build page.
       // Hand: the uprights are 350 + 2 x 20 + 18.5 = 408.5 mm (the bottom ring raised clear of the feet's 18.5 mm taps),

@@ -33,11 +33,15 @@ for (const [flag, only] of [['--size', 'frame'], ['--profile', 'frame'], ['--she
 // Found by cad check: 2020 boxes 1400 x 1400 x 700 sway 1.82 mm against 1.87 (blind joins), the top beam at 1600 wide
 // sags 4.38 mm against 4.44; a 3030 box on printed brackets 600 x 600 x 350 sways 1.04 mm against 0.99, 800 x 800 x 300
 // 0.81 against 0.86. Another profile, or a size outside these, is the frame's to make by hand: cad check says what it needs.
+// rise: how much longer an upright is than the inside height (two profile widths, and with blind joins the 18.5 mm
+// the bottom ring rises to clear the feet's tapped ends); its cut length beside the width's and the depth's must be one
+// length or 1 mm apart or more (two cuts at the profile's ±0.5 mm, cad check's frame.cut)
 const FRAME_PROFILES = {
-  '2020-misumi-hfs5': { join: 'blind', feet: 'levelling', sides: [50, 1400], height: [50, 600], why: 'blind joins (a screw in each end, its head in the other beam\'s slot), printed levelling feet' },
-  '2020-openbuilds': { join: 'blind', feet: 'levelling', sides: [50, 1400], height: [50, 600], why: 'blind joins, printed levelling feet' },
-  '3030-misumi-hfs6': { join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot', sides: [100, 800], height: [100, 300], why: 'printed corner brackets on drop-in nuts, printed feet' },
+  '2020-misumi-hfs5': { join: 'blind', feet: 'levelling', sides: [50, 1400], height: [50, 600], rise: 58.5, why: 'blind joins (a screw in each end, its head in the other beam\'s slot), printed levelling feet' },
+  '2020-openbuilds': { join: 'blind', feet: 'levelling', sides: [50, 1400], height: [50, 600], rise: 58.5, why: 'blind joins, printed levelling feet' },
+  '3030-misumi-hfs6': { join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot', sides: [100, 800], height: [100, 300], rise: 60, why: 'printed corner brackets on drop-in nuts, printed feet' },
 };
+const CUT_APART = 1; // mm: two cuts at ±0.5 mm (the profiles' cut_tolerance, MISUMI's "L Dimension Tolerance ±0.5mm")
 // --machine frame's size and profile, refused by name before anything is written
 const frameAsk = machine === 'frame' ? (() => {
   const size = optionValue('--size') ?? '300x300x350', profile = optionValue('--profile') ?? '2020-misumi-hfs5', p = FRAME_PROFILES[profile];
@@ -46,6 +50,12 @@ const frameAsk = machine === 'frame' ? (() => {
   if (!p) { console.error(`--profile is ${Object.keys(FRAME_PROFILES).join(', ')}: the profiles this box checks clean in (got "${profile}"; for another, make the box and change its "profile", "join" and "feet" by hand)`); process.exit(1); }
   const [w, d, h] = inside, within = ([lo, hi], x) => x >= lo && x <= hi;
   if (!within(p.sides, w) || !within(p.sides, d) || !within(p.height, h)) { console.error(`--size in ${profile} is width and depth ${p.sides.join(' to ')} mm, height ${p.height.join(' to ')} mm: the sizes its box checks clean in (got "${size}"; for another size, make one in range and change its "inside" by hand: cad check says what it needs)`); process.exit(1); }
+  // the beams' cut lengths: the width's and the depth's beams are the inside, the uprights the height and the rise
+  const cuts = [['width', w], ['depth', d], ['upright', +(h + p.rise).toFixed(3)]];
+  for (const [i, [n1, a]] of cuts.entries()) for (const [n2, b] of cuts.slice(i + 1)) {
+    const gap = Math.abs(a - b);
+    if (gap > 1e-6 && gap < CUT_APART - 1e-9) { console.error(`--size ${size} in ${profile} cuts the ${n1}'s beams at ${a} mm and the ${n2}'s at ${b} mm, ${+gap.toFixed(3)} mm apart: two cuts at ±0.5 mm cannot hold them apart (cad check warns frame.cut). Make them one length or ${CUT_APART} mm apart or more${n2 === 'upright' ? ` (the uprights are the height and ${p.rise} mm)` : ''}`); process.exit(1); }
+  }
   return { inside, profile, ...p };
 })() : null;
 if (fs.existsSync(dir) && fs.readdirSync(dir).length) { console.error(`${dir} isn't empty: name a new folder (npm create rulecad my-designs)`); process.exit(1); }

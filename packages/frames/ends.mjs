@@ -146,7 +146,9 @@ function padModel(what, kind, profile, o, keys, printedEnd = null) {
   const b = printedEnd != null ? { ...bore, thread: printedEnd, printed: true } : bore;
   loadOk(what, o.load, 'the force on the foot, down the beam');
   const F = o.load ?? END_DEFAULTS.load.value, sc = screwOf(what, b.thread, 'cap', k.pr), rim = END_DEFAULTS.rim.value;
-  return { end, p, k, rect, map, b, F, sc, rim };
+  // (the tap goes in that bore alone: where the end has several, by its number, a.1, so the others stay plain holes)
+  const tapAt = p.bores.length > 1 ? `${end}.${p.bores.indexOf(bore) + 1}` : end;
+  return { end, p, k, rect, map, b, F, sc, rim, tapAt };
 }
 
 /**
@@ -163,7 +165,7 @@ export function footModel(profile, o = {}) {
   const area = (p.width + 2 * rim) * (p.height + 2 * rim) - (Math.PI * (sc.dk + 1) ** 2) / 4, stress = r3(F / area), margin = r3(k.S / stress), fits = b.printed ? { thread: b.thread, floor, printed: true, length: null, tap: null } : { ...endScrew(b.thread, floor), floor };
   const at = s.map(b.at);
   const m = { kind: 'fitting', fitting: 'foot', name: `foot-${short(p)}`, title: `printed foot for ${short(p)}`, profile: p.name, end: s.end, thread: b.thread, thickness: t, floor, sink, rim, outline: s.rect(rim, rim + (p.cornerRadius ?? 0)), bore: at,
-    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, ...(fits.tap != null ? { depth: fits.tap } : {}) }],
+    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, ...(fits.tap != null ? { depth: fits.tap } : {}) }],
     load: { force: F, what: `${F} N down the beam onto the floor` }, stress, margin, size: { thickness: t, floor, rim }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['rim', 'load'].map((x) => ({ name: `END_DEFAULTS.${x}`, value: END_DEFAULTS[x].value, kind: END_DEFAULTS[x].kind }))] };
   weigh(m, foot(m, { printer: k.pr }), k.density);
@@ -207,7 +209,7 @@ export function levellingFootModel(profile, o = {}) {
   const side = F / 10, root = st.core, stress = r3(printed ? (32 * side * threadLen) / (Math.PI * root ** 3) : F / ((Math.PI / 4) * (across ** 2 - (st.major + 0.6) ** 2))), margin = r3(k.S / stress);
   const m = { kind: 'fitting', fitting: 'levelling-foot', name: `levelling-foot-${short(p)}-${printed ? `printed-${stud.toLowerCase()}` : stud.toLowerCase()}`, title: `printed levelling foot for ${short(p)}, ${printed ? `a printed ${stud} thread` : `a bought ${stud} stud`}`,
     profile: p.name, end: s.end, thread: b.thread, stud, printed, range, engage, floor, well, height: r3(floor + well + threadLen + (printed ? 0 : nutH)), across, pad, bore: at, nut: printed ? null : nutModel(stud).name,
-    parts: printed ? ['body', 'pad'] : ['body'], screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }],
+    parts: printed ? ['body', 'pad'] : ['body'], screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, depth: fits.tap }],
     hardware: printed ? [] : [{ kind: 'nut', name: nutModel(stud).name, thread: stud, count: 1 }, { kind: 'foot', name: `a levelling foot on an ${stud} stud`, thread: stud, count: 1 }],
     load: { force: F, what: printed ? `${F} N down the foot, and a tenth of it across the pad's stem` : `${F} N down the stud's nut onto the body` }, stress, margin, size: { height: r3(floor + well + threadLen + nutH), range, across }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['stud', 'range', 'engage', 'load'].map((x) => ({ name: `END_DEFAULTS.${x}`, value: END_DEFAULTS[x].value, kind: END_DEFAULTS[x].kind }))] };
@@ -264,7 +266,7 @@ export function castorPlateModel(profile, o = {}) {
   const m = { kind: 'fitting', fitting: 'castor-plate', name: `castor-plate-${short(p)}-${mm(o.holes[0])}x${mm(o.holes[1])}-${o.thread.toLowerCase()}`, title: `printed castor plate for ${short(p)}, castor holes ${mm(o.holes[0])} x ${mm(o.holes[1])} mm, ${o.thread}`,
     profile: p.name, end: s.end, thread: b.thread, bolt: o.thread, holes: o.holes, thickness: t, floor, sink, outline: roundRect([[-X, -Y], [X, Y]], 2), bore: at,
     screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], 0], axis: [0, 0, 1], into: 'bore', length: fits.length }, ...corners.map(([x, y]) => ({ thread: o.thread, head: 'cap', grip: t, at: [x, y, 0], axis: [0, 0, 1], into: 'castor' }))],
-    ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }], load: { force: F, what: `${F} N up the castor, half on each pair of its bolts, ${mm(Math.min(hx, hy) - half)} mm past the beam's edge` }, stress, margin, size: { thickness: t, x: 2 * X, y: 2 * Y },
+    ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, depth: fits.tap }], load: { force: F, what: `${F} N up the castor, half on each pair of its bolts, ${mm(Math.min(hx, hy) - half)} mm past the beam's edge` }, stress, margin, size: { thickness: t, x: 2 * X, y: 2 * Y },
     volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [], rests: [{ name: `${k.mat.name}.strength`, value: k.S }, { name: 'END_DEFAULTS.load', value: END_DEFAULTS.load.value, kind: END_DEFAULTS.load.kind }] };
   weigh(m, castorPlate(m, { printer: k.pr }), k.density);
   // (its screw into the end goes in from the castor's side, before the castor)
@@ -296,7 +298,7 @@ export function stackingFootModel(profile, o = {}) {
   const area = 2 * (p.width + p.height + 4 * k.fit) * wall, stress = r3(F / ((p.width + 2 * wall) * (p.height + 2 * wall) - Math.PI * (sc.dk / 2 + 0.5) ** 2)), margin = r3(k.S / stress);
   const m = { kind: 'fitting', fitting: 'stacking-foot', name: `stacking-foot-${short(p)}`, title: `printed stacking foot for ${short(p)}`, profile: p.name, end: s.end, thread: b.thread, thickness: t, floor, sink, depth, wall,
     outline: s.rect(k.fit + wall, (p.cornerRadius ?? 0) + k.fit + wall), socket: s.rect(k.fit, (p.cornerRadius ?? 0) + k.fit), bore: at, wallArea: r3(area),
-    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }],
+    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, depth: fits.tap }],
     load: { force: F, what: `${F} N of the frame above on the beam below, through the floor` }, stress, margin, size: { thickness: t, depth, wall }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['socket', 'load'].map((x) => ({ name: `END_DEFAULTS.${x}`, value: END_DEFAULTS[x].value, kind: END_DEFAULTS[x].kind }))] };
   weigh(m, stackingFoot(m, { printer: k.pr }), k.density);
