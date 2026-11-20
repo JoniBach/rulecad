@@ -43,5 +43,5 @@ export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel,
 export { JIG_KINDS, JIG_DEFAULTS, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner } from './jig.mjs';
 export { squareness } from './square.mjs';
 export { PRINTED_DEFAULTS, PRINTED_SERIES, PRINTED_CHECKED, printedProfile, printedSection, printerFigures, beamCreep } from './printing.mjs';
-export { printedBeam, spliceModel, splice } from './printed.mjs';
+export { printedBeam, printedInPlace, spliceModel, splice } from './printed.mjs';
 export { FRAME_KINDS, FRAME_JOINS, FRAME_FEET, FRAME_GEN, frameModel, box, portal, table, gantry, shelf } from './generate.mjs';

@@ -51,6 +51,18 @@ function endCutters(b, e, pl) {
   return [nutTrap(fix.thread, { axis: pl.lying ? 'x' : 'z', into: pl.across(1), depth: b.profile.width / 2 + ex, at: pl.point([-b.profile.width / 2, ey, zMid]) }), hole(fix.thread, { kind: 'clearance', into, depth: deep, through: false, at: pl.point([ex, ey, z0]) })];
 }
 
+// A captive nut in a bore's place (a standing print of a profile with a bore): the bore filled from the end to the
+// screw's hole's far end, so the screw's hole and the nut's slot are cut in plastic, not lost in the wider bore, and
+// the screw's hole runs on into the bore past it (an insert's hole is no narrower than the bore: nothing to fill)
+function endPlugs(b, e, pl) {
+  const fix = b.printed.ends[e];
+  if (!fix?.bore || fix.kind !== 'nut') return [];
+  const sign = e === 'a' ? 1 : -1, deep = fix.wall + fix.height + fixingModel(fix.thread).major;
+  const [ex, ey] = fix.at, mid = (e === 'a' ? 0 : b.length) + (sign * deep) / 2, [x, y, z] = pl.point([ex, ey, mid]);
+  const size = pl.lying ? [deep, fix.bore + 0.2, fix.bore + 0.2] : [fix.bore + 0.2, fix.bore + 0.2, deep];
+  return [cuboid({ size, center: [x, y, z] })];
+}
+
 /**
  * A printed beam as it prints: lying on its bottom face along x from end a at x = 0, or standing on end a, with its
  * operations cut and each end's heat-set insert hole or captive nut's slot and screw hole. printcheck's check() reads it
@@ -62,6 +74,25 @@ function endCutters(b, e, pl) {
 export function printedBeam(m, o = {}) {
   const b = printedModel('printedBeam', m, o), pl = placer(b);
   let g = pl.solid(beam(b, { display: 'preview' }));
+  const plugs = [...endPlugs(b, 'a', pl), ...endPlugs(b, 'b', pl)];
+  if (plugs.length) g = union(g, ...plugs);
+  const cuts = [...endCutters(b, 'a', pl), ...endCutters(b, 'b', pl)];
+  if (cuts.length) g = subtract(g, ...cuts);
+  return Object.assign(g, { model: b });
+}
+
+/**
+ * A printed beam in its place, in the beam's own frame as beam() draws it, with each end's heat-set insert hole or
+ * captive nut's slot and screw hole cut in (and a bore filled where a fixing takes its place), so a screw into its end
+ * finds them, as the fasten checks read a part.
+ * @param {object} m a printed beam's model (beamModel with printed) @param {object} [o] beam()'s options (display)
+ * @returns {object} a JSCAD geom3, with .model the beam's
+ */
+export function printedInPlace(m, o = {}) {
+  const b = printedModel('printedInPlace', m, {}), pl = { ...placer({ ...b, printed: { ...b.printed, pose: 'standing' } }) };
+  let g = beam(b, o);
+  const plugs = [...endPlugs(b, 'a', pl), ...endPlugs(b, 'b', pl)];
+  if (plugs.length) g = union(g, ...plugs);
   const cuts = [...endCutters(b, 'a', pl), ...endCutters(b, 'b', pl)];
   if (cuts.length) g = subtract(g, ...cuts);
   return Object.assign(g, { model: b });

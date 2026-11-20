@@ -303,20 +303,23 @@ export function printedOf(b, pr, ends) {
     out.push(finding(margin >= PRINTED_DEFAULTS.margin.value - 1e-9 ? 'pass' : 'warn', `${said}: its ${face} slot's lips and walls hold ${mm(hold)} N on ${nut.name} (${mm(margin)} times a ${pr.pull} N pull${margin < PRINTED_DEFAULTS.margin.value ? `, under the ${PRINTED_DEFAULTS.margin.value} times a printed part is sized for` : ''}), the ${h.governs === 'wall' ? 'walls' : 'lips'} the weaker: the lips bend at their roots${s.lipAngle > 0 ? ', and the nut\'s corners push the side walls apart on the sloped lips' : ''}. An estimate, from ${sLip} MPa in the lips and ${sWall} MPa in the walls (${lying ? `the plastic's strength ${flat ? 'along its layers in the lips, across them in the walls' : 'across its layers in the lips, along them in the walls'}` : 'across its layers, standing up'}) and the pull spread one lip's thickness beyond the nut`, 'beam.slot', { values: { hold, margin, pull: pr.pull, stress: r3(st.stress), lip: sLip, wall: sWall }, refs: { face, slot: s.name, nut: nut.name, governs: h.governs, kind: 'estimate' } }));
   }
   // ---- the ends: an insert or a captive nut in place of a tap ----
-  const endFix = {};
+  const endFix = {}, fromBore = p.end?.thread || lying ? null : boreEnd(p, pr.end, line);
   for (const e of ['a', 'b']) {
     if (ends[e] === 'cut') continue;
-    const thread = p.end?.thread;
-    if (!thread) { out.push(finding('fail', `${said}: end ${e} is to take a screw, and ${p.name} names no end_thread or end_at for a printed end: give the profile them, or join the end another way (a bracket)`, 'beam.end', { rule: 'end_thread', refs: { end: e } })); continue; }
-    const f = fixingModel(thread).figures, at = p.end.at, room = roomAt(p, at);
+    const thread = p.end?.thread ?? fromBore?.thread;
+    if (!thread) { out.push(finding('fail', `${said}: end ${e} is to take a screw, and ${p.name} names no end_thread or end_at for a printed end${lying ? '' : ', and has no one threaded bore whose place an insert can take'}: give the profile them, or join the end another way (a bracket)`, 'beam.end', { rule: 'end_thread', refs: { end: e } })); continue; }
+    // (standing up, a profile with no end figures of its own takes its fixing in its bore's place, the bore opened to it:
+    // the screw passes up the bore, and the room is the plastic round the bore's middle, the bore itself left out)
+    const f = fixingModel(thread).figures, at = p.end?.thread ? p.end.at : fromBore.at, room = fromBore ? fromBore.room : roomAt(p, at);
+    const where = fromBore ? `, in its ${mm(fromBore.diameter)} mm bore's place (the largest thread whose screw passes up the bore and whose ${ends[e] === 'insert' ? 'insert' : 'nut'} fits round it${fromBore.fits ? '' : ': none does'})` : '';
     if (ends[e] === 'insert') {
       const need = f.insert_hole.value / 2 + f.insert_wall.value;
-      endFix[e] = { kind: 'insert', thread, at, depth: f.insert_depth.value, hole: f.insert_hole.value, wall: f.insert_wall.value };
-      out.push(finding(room >= need - 1e-9 ? 'pass' : 'fail', `${said}: end ${e} takes ${thread} in a heat-set insert (a ${mm(f.insert_hole.value)} mm hole ${mm(f.insert_depth.value)} mm deep) in place of a tap: ${mm(room)} mm of plastic round its middle, ${room >= need - 1e-9 ? 'room for' : 'short of'} the hole and its ${mm(f.insert_wall.value)} mm wall (${thread.toLowerCase()}.insert_wall)`, 'beam.end', { values: { room, need }, refs: { end: e, thread, fixing: 'insert' } }));
+      endFix[e] = { kind: 'insert', thread, at, depth: f.insert_depth.value, hole: f.insert_hole.value, wall: f.insert_wall.value, ...(fromBore ? { bore: fromBore.diameter } : {}) };
+      out.push(finding(room >= need - 1e-9 ? 'pass' : 'fail', `${said}: end ${e} takes ${thread} in a heat-set insert (a ${mm(f.insert_hole.value)} mm hole ${mm(f.insert_depth.value)} mm deep) in place of a tap${where}: ${mm(room)} mm of plastic round its middle, ${room >= need - 1e-9 ? 'room for' : 'short of'} the hole and its ${mm(f.insert_wall.value)} mm wall (${thread.toLowerCase()}.insert_wall)`, 'beam.end', { values: { room, need }, refs: { end: e, thread, fixing: 'insert', ...(fromBore ? { bore: fromBore.diameter } : {}) } }));
     } else {
       const flats = f.nut_flats.value, corner = flats / COS30, need = corner / 2 + line, wallE = r3(Math.max(PRINTED_DEFAULTS.end_wall.value * fixingModel(thread).major, 2 * line));
-      endFix[e] = { kind: 'nut', thread, at, wall: wallE, flats, height: f.nut_height.value };
-      out.push(finding(room >= need - 1e-9 ? 'pass' : 'fail', `${said}: end ${e} takes ${thread} in a captive nut slid in from its front face, ${mm(wallE)} mm in from the end, in place of a tap: ${mm(room)} mm of plastic round the screw's line, ${room >= need - 1e-9 ? 'room for' : 'short of'} the nut's corners and a line`, 'beam.end', { values: { room, need, wall: wallE }, refs: { end: e, thread, fixing: 'nut' } }));
+      endFix[e] = { kind: 'nut', thread, at, wall: wallE, flats, height: f.nut_height.value, ...(fromBore ? { bore: fromBore.diameter } : {}) };
+      out.push(finding(room >= need - 1e-9 ? 'pass' : 'fail', `${said}: end ${e} takes ${thread} in a captive nut slid in from its front face, ${mm(wallE)} mm in from the end, in place of a tap${where}: ${mm(room)} mm of plastic round the screw's line, ${room >= need - 1e-9 ? 'room for' : 'short of'} the nut's corners and a line`, 'beam.end', { values: { room, need, wall: wallE }, refs: { end: e, thread, fixing: 'nut' } }));
     }
   }
   b.bought = false;
@@ -368,9 +371,22 @@ export function beamCreep(b, o = {}) {
 }
 
 // How far a point of the section is from the nearest edge of its outline (its outside, its slots): the room round an end's fixing
-function roomAt(p, at) {
+// A standing print's end where its profile names none: in the one threaded bore's place, the largest thread whose screw
+// passes up the bore (its major no wider than the bore) and whose fixing fits the plastic round the bore's middle, the
+// bore left out: an insert's hole no narrower than the bore, with its wall; a captive nut's corners and a line. Where
+// none fits, the largest whose screw passes, so the end's finding says what it is short of
+function boreEnd(p, kind, line) {
+  const bores = (p.bores ?? []).filter((x) => x.thread);
+  if (bores.length !== 1) return null;
+  const [bore] = bores, room = roomAt(p, bore.at, bore.diameter / 2), passes = END_THREADS.filter((t) => fixingModel(t).major <= bore.diameter + 1e-9);
+  const fits = (t) => { const f = fixingModel(t).figures; return kind === 'insert' ? f.insert_hole.value >= bore.diameter - 1e-9 && f.insert_hole.value / 2 + f.insert_wall.value <= room + 1e-9 : f.nut_flats.value / COS30 / 2 + line <= room + 1e-9; };
+  const thread = passes.find(fits) ?? passes[0];
+  return thread ? { thread, at: bore.at, diameter: bore.diameter, room, fits: fits(thread) } : null;
+}
+// (skip: a loop that lies wholly within this of `at`, a bore round it, is left out)
+function roomAt(p, at, skip = -1) {
   let d = Infinity;
-  for (const loop of outline(p).loops) for (let i = 0; i < loop.length; i++) {
+  for (const loop of outline(p).loops) if (!(skip > 0 && loop.every(([x, y]) => Math.hypot(x - at[0], y - at[1]) <= skip + 0.05))) for (let i = 0; i < loop.length; i++) {
     const [x1, y1] = loop[i], [x2, y2] = loop[(i + 1) % loop.length], dx = x2 - x1, dy = y2 - y1, l = dx * dx + dy * dy, s = l ? Math.max(0, Math.min(1, ((at[0] - x1) * dx + (at[1] - y1) * dy) / l)) : 0;
     d = Math.min(d, Math.hypot(at[0] - x1 - s * dx, at[1] - y1 - s * dy));
   }

@@ -17,7 +17,7 @@ import * as frames from '@rulecad/frames';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { beamModel, beam, beamAnchor, cutList, beamMarks, beamSheet, printedBeam } from '@rulecad/frames';
+import { beamModel, beam, beamAnchor, cutList, beamMarks, beamSheet, printedBeam, printedInPlace } from '@rulecad/frames';
 import { frame } from '@rulecad/model-link';
 import { RULE_DIRS, paths } from './workspace.mjs';
 import { named } from './parts.mjs';
@@ -106,9 +106,9 @@ export function beamBuilt(it, num, id, context = framesContext()) {
 // of its section the walls and infill lay (cad list weighs it by that), its anchors and figures as a bought beam's
 function printedBuilt(it, m, id) {
   const sec = m.printed.section, laid = !!it.beam.laid, label = `${m.profile.name} x ${mm(m.length)} mm, printed ${m.printed.pose === 'lying' ? 'lying down' : 'standing up'}`;
-  const parts = named({ body: laid ? printedBeam(m) : beam(m) }, { body: { label } });
+  const parts = named({ body: laid ? printedBeam(m) : printedInPlace(m) }, { body: { label } }); // (in its place, its ends' inserts or nuts cut in, as a screw into them is checked)
   parts[0].fill = +(sec.plastic / sec.solid.area).toFixed(4);
-  if (!laid) parts[0].collide = named({ body: beam(m, { display: 'link' }) }, { body: { label } })[0].geometry;
+  if (!laid) parts[0].collide = named({ body: printedInPlace(m, { display: 'link' }) }, { body: { label } })[0].geometry;
   const anchors = laid ? {} : Object.fromEntries(Object.entries(m.anchors).map(([k, a]) => [k, { at: a.origin, axis: a.axis, ref: a.ref }]));
   const values = { length: m.length, width: m.profile.width, height: m.profile.height, grams: m.mass, design: m.printed.design };
   const entries = Object.entries(m.figures).filter(([, f]) => typeof f?.value === 'number').map(([k, f]) => ({ name: `${m.profile.name}.printed.${k}`, value: f.value, unit: f.unit, rule: `The printed beam's ${k}, from its walls and infill`, kind: f.kind, source: f.source, checked: '2026-11-17', set: m.profile.name }));

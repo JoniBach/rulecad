@@ -79,7 +79,8 @@ function rooted(loop, h, r, z0 = 0) {
   return union(translate([0, 0, z0], extrudeLinear({ height: h }, g)), hull(slab(wide, z0), slab(g, z0 + r)));
 }
 function ending(m, k, fits) {
-  if (fits) m.findings.unshift(finding(fits.length ? 'pass' : 'warn', fits.length ? `${fits.thread}x${fits.length} cap into the end's tapped bore: through ${mm(fits.floor)} mm of floor, ${mm(fits.need)} mm or more into the aluminium, inside a tap ${mm(fits.tap)} mm deep (the beam's end is tapped ${fits.thread} that deep: a tap op at its bore)` : `no ${fits.thread} cap screw sold reaches ${mm(fits.need)} mm into the tapped end and stops inside a ${mm(fits.tap)} mm tap: the fasten check chooses`, 'fitting.screw', { values: { length: fits.length, need: fits.need, tap: fits.tap, floor: fits.floor } }));
+  if (fits?.printed) m.findings.unshift(finding('info', `${fits.thread} cap through ${mm(fits.floor)} mm of floor into the printed end's own ${fits.thread} fixing, a heat-set insert or a captive nut in its bore's place (the beam's printed ends say which): the fasten check chooses its length`, 'fitting.screw', { values: { floor: fits.floor } }));
+  else if (fits) m.findings.unshift(finding(fits.length ? 'pass' : 'warn', fits.length ? `${fits.thread}x${fits.length} cap into the end's tapped bore: through ${mm(fits.floor)} mm of floor, ${mm(fits.need)} mm or more into the aluminium, inside a tap ${mm(fits.tap)} mm deep (the beam's end is tapped ${fits.thread} that deep: a tap op at its bore)` : `no ${fits.thread} cap screw sold reaches ${mm(fits.need)} mm into the tapped end and stops inside a ${mm(fits.tap)} mm tap: the fasten check chooses`, 'fitting.screw', { values: { length: fits.length, need: fits.need, tap: fits.tap, floor: fits.floor } }));
   void k;
 }
 
@@ -124,8 +125,14 @@ export function endCap(m, o = {}) {
 
 // ---------- feet ----------
 // A pad on the end: the outline grown by rim, a counterbore for the screw into the end's bore from its far side
-function padModel(what, kind, profile, o, keys) {
-  const { end, p, k, rect, map } = endSetup(what, profile, o, keys), b = boreOf(what, p);
+function padModel(what, kind, profile, o, keys, printedEnd = null) {
+  const { end, p, k, rect, map } = endSetup(what, profile, o, keys), bore = boreOf(what, p);
+  // (a foot's thread given: the end is a printed beam's, its screw into an insert or a captive nut in the bore's place)
+  if (printedEnd != null) {
+    let fx; try { fx = fixingModel(printedEnd); } catch { throw new Error(`${what}: thread is the printed end's thread, as 'M3' (got ${shown(printedEnd)})`); }
+    if (fx.major > bore.diameter + 1e-9) throw new Error(`${what}: an ${printedEnd} screw does not pass up ${p.name}'s ${mm(bore.diameter)} mm bore: a printed end takes a thread no wider than its bore`);
+  }
+  const b = printedEnd != null ? { ...bore, thread: printedEnd, printed: true } : bore;
   loadOk(what, o.load, 'the force on the foot, down the beam');
   const F = o.load ?? END_DEFAULTS.load.value, sc = screwOf(what, b.thread, 'cap', k.pr), rim = END_DEFAULTS.rim.value;
   return { end, p, k, rect, map, b, F, sc, rim };
@@ -135,16 +142,17 @@ function padModel(what, kind, profile, o, keys) {
  * A printed foot under a beam's end: a pad the beam's outline and a rim wider, screwed into the end's tapped bore
  * through a counterbore in its underside. It prints as it stands, the beam's side down. Its margin is the plastic's
  * strength over the bearing stress under the named load.
- * @param {string | object} profile @param {{ end?: 'a' | 'b', load?: number, printer?: object, material?: string | object, given?: object }} [o]
+ * @param {string | object} profile @param {{ end?: 'a' | 'b', thread?: string, load?: number, printer?: object, material?: string | object, given?: object }} [o]
+ *   thread: for a printed beam's end, which takes a screw of this thread in an insert or a captive nut in its bore's place
  * @returns {object} its model: screws (into the bore), ops (the tap the beam's end needs)
  */
 export function footModel(profile, o = {}) {
-  const what = 'footModel', s = padModel(what, 'foot', profile, o, ['end', 'load', 'printer', 'material', 'given']), { p, k, b, F, sc, rim } = s;
+  const what = 'footModel', s = padModel(what, 'foot', profile, o, ['end', 'thread', 'load', 'printer', 'material', 'given'], o.thread ?? null), { p, k, b, F, sc, rim } = s;
   const floor = Math.max(up(FITTING_DEFAULTS.least.value * sc.major, k.layer), up(4 * k.layer, k.layer)), sink = up((fixingModel(b.thread).figures.head_height?.value ?? sc.major) + 0.5, k.layer), t = r3(floor + sink);
-  const area = (p.width + 2 * rim) * (p.height + 2 * rim) - (Math.PI * (sc.dk + 1) ** 2) / 4, stress = r3(F / area), margin = r3(k.S / stress), fits = { ...endScrew(b.thread, floor), floor };
+  const area = (p.width + 2 * rim) * (p.height + 2 * rim) - (Math.PI * (sc.dk + 1) ** 2) / 4, stress = r3(F / area), margin = r3(k.S / stress), fits = b.printed ? { thread: b.thread, floor, printed: true, length: null, tap: null } : { ...endScrew(b.thread, floor), floor };
   const at = s.map(b.at);
   const m = { kind: 'fitting', fitting: 'foot', name: `foot-${short(p)}`, title: `printed foot for ${short(p)}`, profile: p.name, end: s.end, thread: b.thread, thickness: t, floor, sink, rim, outline: s.rect(rim, rim + (p.cornerRadius ?? 0)), bore: at,
-    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }],
+    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, ...(fits.tap != null ? { depth: fits.tap } : {}) }],
     load: { force: F, what: `${F} N down the beam onto the floor` }, stress, margin, size: { thickness: t, floor, rim }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['rim', 'load'].map((x) => ({ name: `END_DEFAULTS.${x}`, value: END_DEFAULTS[x].value, kind: END_DEFAULTS[x].kind }))] };
   weigh(m, foot(m, { printer: k.pr }), k.density);
