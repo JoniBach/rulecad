@@ -69,6 +69,10 @@
  * @property {FrameLoad[]} [loads]
  * @property {Vec3} [gravity] N/kg (m/s²), acting on every element's mass and every lumped mass: [0, 0, -9.81]
  * @property {Record<string, number>} [masses] lumped masses by node, kg (weight under gravity, and inertia in modes)
+ * @property {'refuse' | 'hold'} [loose] what a mechanism does: 'refuse' (left out) refuses the model; 'hold' holds
+ *   each freedom nothing resists and solves on, so long as the loads of each solve do no work moving it that way (a
+ *   frame in one plane on pinned feet, free to sway out of it, under loads in its plane): the frame's `loose` names
+ *   them, and a solve whose loads would move one is refused
  */
 /** @typedef {[number, number, number, number, number, number]} Six x, y, z, then about x, y, z */
 /**
@@ -452,10 +456,12 @@ const condensedLoad = (el, fb) => { if (!el.T) return fb; const fc = new Float64
  *   statics: (o?: { loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number>, samples?: number }) => StaticResult,
  *   buckling: (o?: { count?: number, loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number> }) => { factors: number[], modes: BucklingMode[], statics: StaticResult },
  *   modes: (o?: { count?: number, masses?: Record<string, number> }) => { frequencies: number[], modes: VibrationMode[] },
- *   freedoms: number, nodes: string[] }}
+ *   freedoms: number, nodes: string[], loose: { node: string, freedom: string }[] }}
  *   statics, buckling and modes use the model's own loads, gravity and masses unless given others (another load case
  *   on the same factorisation). samples: stations along each element (11). count: how many modes (1 for buckling, 6
- *   for vibration; fewer come back if the frame has fewer). freedoms: how many unknowns were solved for.
+ *   for vibration; fewer come back if the frame has fewer). freedoms: how many unknowns were solved for. loose: the
+ *   freedoms held where nothing resists them (the model's loose: 'hold'), by node; none otherwise. The modes and
+ *   buckling are then of the frame held there, as nothing else holds it.
  */
 export function frame(model, o = {}) {
   const f = read(model, o), { ids, N, els, held, ground } = f;
@@ -494,12 +500,31 @@ export function frame(model, o = {}) {
     }
   }
   const factor = n ? factorise(K) : { solve: (b) => new Float64Array(0), loose: [] };
-  if (factor.loose.length) {
-    const loose = factor.loose.map((i) => ({ node: ids[Math.floor(back[i] / 6)], freedom: FREEDOMS[back[i] % 6] }));
-    const by = new Map(); for (const l of loose) by.set(l.node, [...(by.get(l.node) || []), l.freedom]);
-    const list = [...by].slice(0, 8).map(([node, fr]) => `node ${said(node)} (${fr.join(', ')})`).join('; ');
-    refuse('mechanism', `the frame is a mechanism: it can still move with nothing resisting, at ${list}${by.size > 8 ? `, and ${by.size - 8} more nodes` : ''}. Hold those freedoms with a support, or join the elements there more stiffly (a pinned end frees its bending rotations and still carries twist, so a strut pinned at both ends can spin: make one end 'ball')`, { loose });
-  }
+  if (model.loose !== undefined && model.loose !== 'refuse' && model.loose !== 'hold') refuse('input', `loose is ${said(model.loose)}: 'refuse' (a mechanism refuses the model) or 'hold' (each freedom nothing resists is held, while the loads do not move it)`);
+  const loose = factor.loose.map((i) => ({ node: ids[Math.floor(back[i] / 6)], freedom: FREEDOMS[back[i] % 6] }));
+  const listOf = (ls) => { const by = new Map(); for (const l of ls) by.set(l.node, [...(by.get(l.node) || []), l.freedom]); return `${[...by].slice(0, 8).map(([node, fr]) => `node ${said(node)} (${fr.join(', ')})`).join('; ')}${by.size > 8 ? `, and ${by.size - 8} more nodes` : ''}`; };
+  if (loose.length && model.loose !== 'hold') refuse('mechanism', `the frame is a mechanism: it can still move with nothing resisting, at ${listOf(loose)}. Hold those freedoms with a support, or join the elements there more stiffly (a pinned end frees its bending rotations and still carries twist, so a strut pinned at both ends can spin: make one end 'ball')`, { loose });
+  // Each loose freedom i was held by a pivot many orders stiffer than the frame, which is K + D eᵢ eᵢᵀ; then
+  // (K + D eᵢ eᵢᵀ)⁻¹ eᵢ is the way the frame moves unresisted (K's null vector v, over D vᵢ). Scaled so it moves
+  // 1 mm at most (or turns 1 / span where nothing moves), a load p does p · v of work moving it: none, and the hold
+  // carries nothing, so the solve stands as the frame's own.
+  const span0 = f.span || 1;
+  const ways = factor.loose.map((i, k) => {
+    const e = new Float64Array(n); e[i] = 1;
+    const v = factor.solve(e);
+    let most = 0, turn = 0;
+    for (let q = 0; q < n; q++) { const a = Math.abs(v[q]); if (back[q] % 6 < 3) most = Math.max(most, a); else turn = Math.max(turn, a); }
+    const s = most > 1e-9 * turn * span0 ? 1 / most : 1 / (turn * span0);
+    for (let q = 0; q < n; q++) v[q] *= s;
+    return { ...loose[k], v };
+  });
+  // the loads (as the free freedoms' forces) that move the frame where it is held only by the hold: refused by name
+  const driven = (p) => {
+    let size = 0;
+    for (let q = 0; q < n; q++) size += Math.abs(p[q]) * (back[q] % 6 < 3 ? 1 : 1 / span0);
+    return ways.filter((w) => { let work = 0; for (let q = 0; q < n; q++) work += p[q] * w.v[q]; return Math.abs(work) > 1e-6 * size; });
+  };
+  const refuseDriven = (p) => { const d = driven(p); if (d.length) refuse('mechanism', `the loads move the frame where nothing holds it, at ${listOf(d)}: it would move with nothing resisting. Hold those freedoms with a support, or join the elements there more stiffly`, { loose: d.map(({ node, freedom }) => ({ node, freedom })), driven: true }); };
   const shapeOf = (x) => { // a vector over the free freedoms as each node's six: its largest movement 1, and that one positive
     const u = new Float64Array(6 * N);
     for (let i = 0; i < n; i++) u[back[i]] = x[i];
@@ -522,7 +547,9 @@ export function frame(model, o = {}) {
       for (let q = 0; q < 4; q++) { const g = toGlobal3(el.R, fc, 3 * q), at = 6 * (q < 2 ? el.a : el.b) + 3 * (q % 2); for (let k = 0; k < 3; k++) p[at + k] += g[k]; }
       return { fb, fc };
     });
-    const x = factor.solve(Float64Array.from(back, (d) => p[d])), u = new Float64Array(6 * N), residual = Float64Array.from(nodal, (v) => -v);
+    const pf = Float64Array.from(back, (d) => p[d]);
+    if (ways.length) refuseDriven(pf);
+    const x = factor.solve(pf), u = new Float64Array(6 * N), residual = Float64Array.from(nodal, (v) => -v);
     for (let i = 0; i < n; i++) u[back[i]] = x[i];
     for (const { node, v } of idle) { const o = 6 * node + 3, along = u[o] * v[0] + u[o + 1] * v[1] + u[o + 2] * v[2]; for (let c = 0; c < 3; c++) u[o + c] = held[o + c] || Math.abs(v[c]) === 1 ? 0 : u[o + c] - along * v[c]; }
     let most = 0, mostAt = 0;
@@ -610,7 +637,7 @@ export function frame(model, o = {}) {
     return { frequencies: found.map((m) => m.frequency), modes: found };
   }
 
-  return { statics, buckling, modes, freedoms: n, nodes: ids };
+  return { statics, buckling, modes, freedoms: n, nodes: ids, loose };
 }
 
 /**

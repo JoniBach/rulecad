@@ -101,6 +101,42 @@ test('frame: a portal frame with a side load sways as slope-deflection says', ()
   }
 });
 
+test('frame: a portal in one plane on pinned feet, free to sway out of it, is held that way with loose: \'hold\' and sags under a load in its plane as slope-deflection says; a push across it is refused', () => {
+  // Columns AB and DC of height h on pinned feet A and D, a beam B-M-C of span L across their tops, rigid corners, all
+  // one second moment I, a load P down at the middle M. Out of the frame's plane nothing holds it: both columns lean
+  // about their feet together, and the beam goes with them. In its plane, by slope-deflection (the symmetric case:
+  // no sway, corner B turns θ, C turns −θ):
+  //   column, far end pinned:  M_BA = 3 E I θ / h.   beam, with θ and −θ at its ends:  M_BC = 2 E I θ / L − P L / 8.
+  //   Corner B in balance:  3 E I θ / h + 2 E I θ / L = P L / 8,  so the corner moment is
+  //   M = (P L / 8) (3 / h) / (3 / h + 2 / L) = (P L / 8) · 3 L / (3 L + 2 h),
+  //   and the middle sags  δ = P L³ / 48 E I − M L² / 8 E I  (a simple span less its end moments' hogging).
+  //   h = 400, L = 600, P = 100 N, E = 70000, I = 20000:  M = 7500 × 1800 / 2600 = 5192.3 N·mm,
+  //   δ = 100 × 600³ / (48 × 1.4e9) − 5192.3 × 600² / (8 × 1.4e9) = 0.32143 − 0.16690 = 0.15453 mm.
+  // The area is made huge so the members keep their lengths, as the hand method assumes.
+  const h = 400, L = 600, P = 100, I = 20000, sec = { A: 1e9, Iy: I, Iz: I, J: 1e4 }, EI = alu.E * I;
+  const portal = { nodes: { A: [0, 0, 0], B: [0, 0, h], M: [L / 2, 0, h], C: [L, 0, h], D: [L, 0, 0] },
+    elements: [['AB', 'A', 'B'], ['BM', 'B', 'M'], ['MC', 'M', 'C'], ['DC', 'D', 'C']].map(([id, a, b]) => ({ id, a, b, section: sec, material: alu })),
+    supports: { A: 'pinned', D: 'pinned' }, loads: [{ node: 'M', force: [0, 0, -P] }] };
+  // refused as it was: a mechanism, unless the model asks for it to be held
+  assert.throws(() => statics(portal), (e) => e.code === 'fea.frame.mechanism' && e.loose.length === 1);
+  const held = frame({ ...portal, loose: 'hold' });
+  assert.equal(held.loose.length, 1, JSON.stringify(held.loose));
+  const M = ((P * L) / 8) * (3 * L) / (3 * L + 2 * h), want = (P * L ** 3) / (48 * EI) - (M * L ** 2) / (8 * EI);
+  const r = held.statics();
+  close('pinned portal held out of its plane: the middle\'s sag', -r.displacements.M[2], want, 1e-4);
+  close('pinned portal: the corner moment', Math.abs(r.elements[0].ends.b[4]), M, 1e-4);
+  assert.ok(Math.abs(r.displacements.M[1]) < 1e-9, 'nothing moves out of the plane');
+  // a push across the plane does work on the free sway: refused by name, with the freedom
+  assert.throws(() => held.statics({ loads: [{ node: 'M', force: [0, 10, 0] }] }), (e) => e.code === 'fea.frame.mechanism' && e.driven === true && /the loads move the frame where nothing holds it, at node "[A-Z]" \(r?[xyz]\)/.test(e.message));
+  // the same frame with fixed feet needs no hold, and holds nothing
+  assert.deepEqual(frame({ ...portal, supports: { A: 'fixed', D: 'fixed' }, loose: 'hold' }).loose, []);
+  // a lone beam pinned at both ends spins on its axis: held, it sags as a simple span, P L³ / 48 E I
+  const lone = frame({ nodes: { a: [0, 0, 0], m: [L / 2, 0, 0], b: [L, 0, 0] }, elements: [{ id: 'one', a: 'a', b: 'm', section: sec, material: alu }, { id: 'two', a: 'm', b: 'b', section: sec, material: alu }], supports: { a: 'pinned', b: 'pinned' }, loads: [{ node: 'm', force: [0, 0, -P] }], loose: 'hold' });
+  assert.ok(lone.loose.some((l) => l.freedom === 'rx'), JSON.stringify(lone.loose));
+  close('a beam pinned at both ends, held from spinning: its sag', -lone.statics().displacements.m[2], (P * L ** 3) / (48 * EI), 1e-4);
+  assert.throws(() => frame({ ...portal, loose: 'maybe' }), (e) => e.code === 'fea.frame.input' && /loose is "maybe": 'refuse'/.test(e.message));
+});
+
 test('frame: a torsion bar twists by T L / G J', () => {
   // Roark, chapter 10: the twist of a uniform bar under an end torque
   const L = 300, T = 5000, r = statics(cantilever({ L, model: { loads: [{ node: 'b', moment: [T, 0, 0] }] } }));

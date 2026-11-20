@@ -125,8 +125,12 @@ result carries its `axes`, so nothing has to be guessed.
 **What each solve returns.**
 
 - `frame(model, { shear })` reads and checks the model, assembles and factorises it, and returns `{ statics,
-  buckling, modes, freedoms, nodes }`. `shear: false` ignores the shear areas. `statics(model)`, `buckling(model)`
-  and `modes(model)` do it in one call.
+  buckling, modes, freedoms, nodes, loose }`. `shear: false` ignores the shear areas. `statics(model)`, `buckling(model)`
+  and `modes(model)` do it in one call. A model with `loose: 'hold'` is solved even where part of it can move with
+  nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on
+  its axis): each such freedom is held, `loose` names it by node, and a solve whose loads would do work moving the
+  frame that way is refused (`fea.frame.mechanism`, with `driven: true`). The modes and buckling are then those of
+  the frame held there.
 - `statics({ loads, gravity, masses, samples })`: `displacements` and `reactions` by node, each `[x, y, z, rx, ry,
   rz]` in global axes; `deflection: { most, node }`; and `elements`, each with its `length`, `axes`, the `ends`
   forces its nodes put on it (local axes), `axial` (its mean axial force, tension positive), and `along`: at each

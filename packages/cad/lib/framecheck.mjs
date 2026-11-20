@@ -302,7 +302,9 @@ export function frameModelOf(s, helpers) {
   }
   const supportMap = {};
   for (const sp of supports.filter(keep)) supportMap[nodeAt(sp.beam, sp.z)] = sp.how === 'fixed' ? 'fixed' : { x: true, y: true, z: true, ...(sp.twist ? { [sp.twist]: true } : {}) };
-  const withSprings = (rigid) => ({ nodes, sections, materials, supports: supportMap, gravity: scale(down, G),
+  // (a freedom nothing holds, which the loads do not move, is held for the solve and named in frame.solve: a frame in
+  // one plane on pinned feet sways out of it, a beam pinned at both ends spins on its axis)
+  const withSprings = (rigid) => ({ nodes, sections, materials, supports: supportMap, gravity: scale(down, G), loose: 'hold',
     elements: elements.map((q) => { const sp = rigid ? [] : springs.filter((p) => p.el === q); return sp.length ? { ...q, ends: Object.fromEntries(sp.map((p) => [p.end, { rx: p.x.k.twist, ry: p.x.k.bending, rz: p.x.k.bending }])) } : q; }) });
 
   // the loads at each pose: every carried item's and load's weight as a force and a moment at its node
@@ -347,7 +349,8 @@ export function frameChecks(s, f, helpers) {
   if (fm.empty) { if (fm.missing.length) f('info', `the frame is not solved: ${fm.missing.join(', ')} ${fm.missing.length > 1 ? 'give' : 'gives'} no modulus, shear modulus or second moments`, null, { code: 'frame.solve', refs: { beams: fm.missing } }); return null; }
   const solved = solveAll(fm);
   if (solved.error) { const guessed = fm.supports.every((x) => x.why === 'a lowest end'); f(guessed ? 'info' : 'warn', `the frame is not solved: ${solved.error}. Its supports: ${fm.supports.map((x) => `${x.where} (${x.why})`).join(', ') || 'none'}${guessed ? '. Say where it is held: "frame": { "supports": { "z1.a": "pinned" } }, or fit its feet' : ''}`, guessed ? null : 'frame: not solved', { code: 'frame.solve', refs: { supports: fm.supports.map((x) => x.where), code: solved.code } }); return null; }
-  const { results } = solved, down = fm.down, margin = FRAME_CHECK.margin.value;
+  const { results } = solved, down = fm.down, margin = FRAME_CHECK.margin.value, held = solved.loose ?? [];
+  const heldList = [...held.reduce((m, l) => m.set(l.node, [...(m.get(l.node) ?? []), l.freedom]), new Map())].map(([n, fr]) => `${n} (${fr.join(', ')})`).join(', ');
   // what the joins rest on, counted by kind
   const kinds = new Map();
   for (const x of fm.joins) { const key = `${x.j.kind}${x.j.fitting ? ` (${x.j.fitting})` : ''}: ${restsWord(x.k)}`; kinds.set(key, (kinds.get(key) ?? 0) + 1); }
@@ -356,8 +359,8 @@ export function frameChecks(s, f, helpers) {
   // what every figure rests on: the joins' springs are an estimate while any is, whether or not they move a figure
   const restsOn = estimates ? 'estimate' : fm.joins.length ? 'measured' : 'beams';
   const rests = fm.joins.map((x) => ({ join: x.j.index, kind: x.j.kind, bending: x.k.bending, twist: x.k.twist, value: restsWord(x.k) }));
-  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${fm.carried.length} item${fm.carried.length > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins, or moving)` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
-    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
+  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${fm.carried.length} item${fm.carried.length > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${held.length ? `. Nothing holds it at ${heldList}: it can move there with nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on its own axis). Its loads do not move it that way, so it is held there for these figures, and a push that way finds it free (frame.rack). Hold it with "frame": { "supports" } fixed or resting, or join it into a box` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins)` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
+    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, held, riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
 
   // ---- frame.deflection: each load's point, each named point, every guide ----
   const worst = (fn) => { let w = null; for (const r of results) { const v = fn(r.spring, r), v0 = fn(r.rigid, r); if (!w || v.sag > w.sag) w = { ...v, rigid: v0.sag, case: { ...r.case, alone: r.alone } }; } return w; };
@@ -519,7 +522,16 @@ function rackCheck(s, fm, f, { restsJoins, restsOn }) {
   const made = (kind, bays) => ({ ...base, elements: kind === 'gusset' ? gussetOn(bays, els) : [...els, ...bays.flatMap(kind === 'brace' ? brace : panel)] });
   const what = { gusset: 'gussets at the corners of', brace: 'one diagonal brace in', panel: `a ${RACK_PANEL.thickness} mm ${RACK_PANEL.sheet} panel on` };
   for (const { dir, name } of sideways(down)) {
-    const sway = swayOf(base, dir), rigid = swayOf(fm.rigid, dir), k = F / sway, k0 = F / rigid;
+    let sway, rigid;
+    try { sway = swayOf(base, dir); rigid = swayOf(fm.rigid, dir); } catch (e) {
+      if (e.code !== 'fea.frame.mechanism' || !e.driven) throw e;
+      // a frame free to move this way (one plane on pinned feet, pushed across it): the push finds nothing to hold it
+      const at = e.loose.map((l) => `${l.node} (${l.freedom})`).join(', ');
+      f('warn', `racked ${name}: nothing holds the frame that way, so ${n3(F, 1)} N pushed at the top (${loadFrom}) moves it with nothing resisting, free at ${at}. Fix its feet ("frame": { "supports" } fixed), or join beams across it to make a bay that way and brace it`, `racks ${name}: nothing holds it`,
+        { code: 'frame.rack', at: r4(fm.nodes[top[0]]), values: { load: r3(F), limit: r3(lim.value), height: r3(H) }, refs: { direction: name, dir: r4(dir), top, free: e.loose, limit: lim.from, load: loadFrom, restsOn, advise: null } });
+      continue;
+    }
+    const k = F / sway, k0 = F / rigid;
     const open = fm.bays.filter((b, i) => Math.abs(dot(b.n, down)) < 0.1 && Math.abs(dot(b.n, dir)) < 0.1 && !fm.sheets.some((p) => p.bay === i));
     const options = [];
     for (const kind of FRAME_CHECK.order.value) {
@@ -650,16 +662,20 @@ export function writeFrameMode(s) {
 
 // every pose's solve, with the springs and rigid; and, as drawn, each load alone
 function solveAll(fm) {
-  let fs, fr;
+  let fs, fr, results;
   try { fs = solveFrame(fm.model); fr = solveFrame(fm.rigid); } catch (e) { return { error: e.message, code: e.code }; }
+  try { results = solveCases(fm, fs, fr); } catch (e) { if (e.code !== 'fea.frame.mechanism') throw e; return { error: e.message, code: e.code }; }
+  // each element's start along its beam, for sagAlong
+  for (const r of results) for (const res of [r.spring, r.rigid]) for (const e of res.elements) if (e.of != null) { const b = fm.beams.get(e.of), el = fm.model.elements.find((q) => q.id === e.id); e._from = dot(sub(fm.nodes[el.a], b.A), b.u); }
+  return { results, loose: fs.loose };
+}
+function solveCases(fm, fs, fr) {
   const results = fm.cases.map((c) => {
     const loads = fm.nodeLoads(c.values), spring = fs.statics({ loads }), rigid = fr.statics({ loads }), out = { case: c, loads, spring, rigid, values: c.values };
     { out.alone = new Map(); for (const l of fm.loads) { const ll = fm.nodeLoads(c.values, l), n = ll[0]?.node; if (!n) continue; out.alone.set(l, { sag: sagAt(fs.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down), rigid: sagAt(fr.statics({ loads: ll, gravity: [0, 0, 0] }), n, fm.down) }); } }
     return out;
   });
-  // each element's start along its beam, for sagAlong
-  for (const r of results) for (const res of [r.spring, r.rigid]) for (const e of res.elements) if (e.of != null) { const b = fm.beams.get(e.of), el = fm.model.elements.find((q) => q.id === e.id); e._from = dot(sub(fm.nodes[el.a], b.A), b.u); }
-  return { results };
+  return results;
 }
 
 /**

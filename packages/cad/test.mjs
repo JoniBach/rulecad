@@ -4360,6 +4360,57 @@ test('frame checks: a figure on estimated joins says so even where the springs c
   } finally { done(); }
 });
 
+test('frame checks: a portal in one plane on pinned feet and a beam pinned at both ends solve, held where nothing holds them, and the portal sags as slope-deflection says; a push across the portal finds it free', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/portal.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/portal');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection|rack)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // 1. two 2020 posts 400 mm tall on pinned feet, a 600 mm rail x1 joined blind between them 390 mm up, 5 kg at its
+    // middle. Out of the frame's plane nothing holds it (both posts lean about their feet together); in it, the hand
+    // figure for the 5 kg alone with the joins rigid, by slope-deflection (symmetric, so no sway; the corner turns θ):
+    //   E = 69972 MPa, I = 7420 mm⁴ (the profile's figures), A = 183 mm², P = 5 × 9.80665 = 49.03 N, the rail's span
+    //   l = 600 mm, a rigid link e = 10 mm from each post's axis to the rail's end, the post h = 390 mm to the join.
+    //   Post, foot pinned:  M = 3 E I θ / h.   Rail, ends turning θ and −θ:  M_end = P l / 8 − 2 E I θ / l.
+    //   At the post's node the rail's end moment and its shear P/2 on the link:  3 E I θ / h = M_end + P e / 2,
+    //   so θ = (P l / 8 + P e / 2) / (3 E I / h + 2 E I / l) = 3922.7 / (3.9937e6 + 1.7307e6) = 6.853e-4 rad,
+    //   M_end = 3677.5 − 1185.9 = 2491.6 N·mm.
+    //   Sag:  P l³ / 48 E I − M_end l² / 8 E I = 0.4250 − 0.2160 = 0.2090 mm, plus the link's drop θ e = 0.0069 mm
+    //   and the post's shortening (P/2) h / E A = 0.0007 mm: 0.2166 mm.
+    //   With the joins' springs (1.5e6 N·mm/rad in bending, the blind join's estimate) between the rail's end turning
+    //   θb and the post's node turning θp:  P l / 8 − 2 E I θb / l = k (θb − θp)  and  k (θb − θp) + P e / 2 = 3 E I θp / h
+    //   give θb = 1.3273e-3, θp = 4.070e-4, M_end = 1380.4 N·mm, and a sag of 0.4250 − 0.1197 + 0.0041 + 0.0007 = 0.3102 mm.
+    const portal = { title: 'Portal', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 400]), beam('z2', [620, 0, 0], [620, 0, 400]), beam('x1', [10, 0, 390], [610, 0, 390])],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], loads: [{ mass: 5, at: 'x1.top@50%' }], frame: { supports: { 'z1.a': 'pinned', 'z2.a': 'pinned' } } };
+    write(portal);
+    let r = probe();
+    const solve = r.find((x) => x.code === 'frame.solve'), sag = r.find((x) => x.code === 'frame.deflection');
+    assert.equal(solve.level, 'info', solve.text);
+    assert.match(solve.text, /Nothing holds it at z2\.b \(rx\): it can move there with nothing resisting \(a frame in one plane on pinned feet sways out of that plane/);
+    assert.deepEqual(solve.refs.held, [{ node: 'z2.b', freedom: 'rx' }]);
+    assert.ok(sag, 'the sag is solved, not left to estimates');
+    assert.ok(Math.abs(sag.values.aloneRigid / 0.2166 - 1) < 0.01, `rigid ${sag.values.aloneRigid} mm against 0.2166 by hand`);
+    assert.ok(Math.abs(sag.values.alone / 0.3102 - 1) < 0.01, `springs ${sag.values.alone} mm against 0.3102 by hand`);
+    const rack = r.filter((x) => x.code === 'frame.rack'), across = rack.find((x) => x.refs.direction === 'along y');
+    assert.ok(rack.find((x) => x.refs.direction === 'along x').values.stiffness > 0, 'racked in its plane, it has a stiffness');
+    assert.equal(across.level, 'warn');
+    assert.match(across.text, /racked along y: nothing holds the frame that way, so 20 N pushed at the top \(frame\.push, an estimate\) moves it with nothing resisting/);
+    // 2. a lone beam pinned at both ends spins on its axis with nothing resisting: held, it sags as a simple span
+    write({ title: 'Lone', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300])], loads: [{ mass: 3, at: 'x1.top@50%' }], frame: { supports: { 'x1.a': 'pinned', 'x1.b': 'pinned' } } });
+    r = probe();
+    assert.match(r.find((x) => x.code === 'frame.solve').text, /Nothing holds it at x1\.b \(rx\)/);
+    // the 3 kg alone: P l³ / 48 E I = 29.42 × 600³ / (48 × 69972 × 7420) = 0.2550 mm
+    assert.ok(Math.abs(r.find((x) => x.code === 'frame.deflection').values.alone / 0.2550 - 1) < 0.01);
+  } finally { done(); }
+});
+
 test('frame checks: an open cube racks with a low stiffness and one brace stiffens it many times, gussets and a panel solved beside it; a gantry beam\'s frequency with its carriage at mid-span agrees with the formula for a loaded beam; the mode drawn', () => {
   const { ws, cad, done } = workspace();
   try {
