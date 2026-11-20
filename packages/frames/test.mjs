@@ -657,9 +657,11 @@ test('slot nuts: every published nut fits the slot it is made for, weighs what i
     assert.ok(n.hold && n.hold.value > 0 && n.hold.unit === 'N', `${name} says what it holds`);
     if (n.hold.kind !== 'spec') { assert.equal(n.hold.kind, 'estimate'); assert.match(n.hold.rule, /estimate until it is tested \(Frames 2\.13\)/); }
     else assert.match(n.hold.source, /Bosch Rexroth/, 'only Rexroth rates a pull among these makers');
-    // its mass is its drawn block's: the solid's volume at steel's density
+    // its mass is its block's (body, tongue, less the hole) at steel's density; the solid is that block cut back to its
+    // slot's flanks, so it is no more than the block and most of it (the most cut, 12 %, is Rexroth's M4 drop-in, 10 mm
+    // across in a cavity that closes in to 5.9 mm)
     const g = slotNut(n), v = jscad.measurements.measureVolume(g);
-    within(v, n.volume, 0.03, `${name}'s solid against its volume`); within(n.mass, (n.volume * n.density.value) / 1000, 1e-3, `${name}'s mass`);
+    assert.ok(v <= n.volume * 1.03 && v >= n.volume * 0.85, `${name}'s solid, ${v} mm³, against its block's ${n.volume}`); within(n.mass, (n.volume * n.density.value) / 1000, 1e-3, `${name}'s mass`);
     assert.ok(n.mass > 0.3 && n.mass < 20, `${name} weighs ${n.mass} g`);
   }
   // a figure from the sheet: Rexroth's 6 mm sliding block holds 3000 N with M5; MISUMI's HNTT5 is 10 x 10, 3.3 under its 0.8 tongue
@@ -677,6 +679,16 @@ test('slot nuts: every published nut fits the slot it is made for, weighs what i
   // the solid: pulled up under the lips, its tongue in the opening
   const bb = jscad.measurements.measureBoundingBox(slotNut('slot-nut-6-misumi-m5-slide-in'));
   assert.deepEqual(bb.map((p) => p.map((x) => +x.toFixed(3))), [[-5, -5, -5.3], [5, 5, -1.2]]);
+  // and held inside its slot's cavity: a nut's sides are shaped to the flanks it sits on. slot-6-misumi is 12 mm wide
+  // under its 2 mm lips, its flanks closing at 45 degrees to a 5.9 mm floor 6 mm down, so they start at
+  // 6 - (12 - 5.9) / 2 = 2.95 mm and the cavity is 5.9 + 2 x (6 - d) wide at a depth d below that. A drop-in 10 mm
+  // across, its body 2 to 5.3 mm down: at 5.3 mm the cavity is 5.9 + 1.4 = 7.3 mm wide, so no point of the solid lies
+  // more than 3.65 mm off the slot's middle there (the block drawn whole reached 5). Two such nuts at one height in
+  // the neighbouring slots of a 2020 then stand apart, as they do in the aluminium
+  const half = (d) => (d <= 2.95 ? 6 : 5.9 / 2 + (6 - d));
+  const pts = jscad.geometries.geom3.toPolygons(slotNut('slot-nut-6-misumi-m4-drop-in')).flatMap((q) => q.vertices);
+  for (const [, y, z] of pts) if (-z > 2 + 1e-6) assert.ok(Math.abs(y) <= half(-z) + 1e-3, `a point ${y.toFixed(3)} mm off the middle at ${(-z).toFixed(3)} mm down, past the flank at ${half(-z).toFixed(3)}`);
+  assert.ok(pts.some(([, y, z]) => Math.abs(-z - 5.3) < 1e-6 && Math.abs(Math.abs(y) - 3.65) < 1e-3), 'it reaches the flank at its floor');
   assert.throws(() => slotNutModel('slot-nut-6-misumi-m7-slide-in'), /no slot nut "slot-nut-6-misumi-m7-slide-in"/);
   assert.throws(() => slotNutModel('slot-nut-6-misumi-m5-slide-in', { weight: 3 }), /has no figure "weight"/);
 });
@@ -1794,6 +1806,17 @@ test('frame generators: a box asked for by its inside size has its butting beams
   // a gantry: g spans the outside (440) on the top side beams; travel = outside depth 540 - 2 x 20 - 2 x 2 clear - 20 = 476
   const g = gantry({ inside: [400, 500, 200], profile: '2020-misumi-hfs5' });
   assert.deepEqual([g.moving.length, g.moving.travel, g.moving.track, g.beams.filter((b) => b.role === 'across').length], [440, 476, 'y3', 2]);
+  // g lies on its track, between the uprights' tops. Hand: outside height = 200 + 3 x 20 = 260; the top side beams'
+  // centre line is 20 + 200 + 10 = 230, so their top face is 240; g's centre is 240 + 10 = 250, its top 260, level
+  // with the uprights' tops and the outside height it reports (it once floated a width higher, at 270)
+  const track = g.beams.find((b) => b.id === 'y3'), up = g.beams.find((b) => b.id === 'z1');
+  assert.deepEqual([track.from[2] + 10, g.moving.from[2] - 10, g.moving.from[2] + 10, up.to[2], g.outside[2]], [240, 240, 260, 260, 260]);
+  // a printed fitting's slot nuts go in through the opening (drop-in), since every butting beam is shut at both ends
+  // by its joins and a slide-in nut could not reach its place; another kind that goes in that way may be named
+  const br = box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } });
+  assert.deepEqual([br.joins.length, new Set(br.joins.map((j) => `${j.kind} ${j.fitting} ${j.nut}`))], [16, new Set(['bracket printed drop-in'])]);
+  assert.equal(box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed', nut: 'hammer' } }).joins[0].nut, 'hammer');
+  assert.equal(box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: 'bracket' }).joins[0].nut, undefined, 'no fitting chosen, no nut');
   // braces: that side's joins carry a printed corner bracket; panels: one sheet over a side, on drop-in nuts
   const bp = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } });
   assert.deepEqual(bp.joins.filter((j) => j.kind === 'bracket').map((j) => j.a), ['y1.a', 'y1.b', 'y3.a', 'y3.b']);
@@ -1813,4 +1836,7 @@ test('frame generators: a box asked for by its inside size has its butting beams
   no({ inside: [300, 300, 300], shelves: 2 }, /a box has no shelves: give them on a shelf/);
   no({ inside: [300, 300, 100], shelves: 5 }, /5 shelves of 20 mm leave no clear bay in 100 mm/, 'shelf');
   no({ inside: [300, 300] }, /inside is \[width, depth, height\]/);
+  no({ inside: [300, 300, 300], join: { kind: 'bracket', fitting: 'printed', nut: 'slide-in' } }, /join.nut is a slot nut that goes in through the slot's opening, drop-in, roll-in, hammer, t-bolt: every butting beam of a generated frame is shut at both ends/);
+  no({ inside: [300, 300, 300], join: { kind: 'bracket', nut: 'drop-in' } }, /join.nut names the slot nuts a printed fitting is drawn for: give "fitting": "printed"/);
+  no({ inside: [300, 300, 300], join: { kind: 'bracket', brace: 2 } }, /join takes kind, fitting, screw and nut \(got "brace"\)/);
 });

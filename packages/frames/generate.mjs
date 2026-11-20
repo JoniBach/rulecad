@@ -41,6 +41,7 @@ export const FRAME_GEN = {
 };
 
 const KEYS = ['inside', 'outside', 'profile', 'join', 'feet', 'caps', 'braces', 'panels', 'shelves', 'given'];
+const THROUGH = ['drop-in', 'roll-in', 'hammer', 't-bolt']; // (the slot nuts that go in through the opening)
 const SIDE_OUT = { front: [0, -1, 0], back: [0, 1, 0], left: [-1, 0, 0], right: [1, 0, 0] };
 
 /**
@@ -52,7 +53,7 @@ const SIDE_OUT = { front: [0, -1, 0], back: [0, 1, 0], left: [-1, 0, 0], right: 
  * or both, a size that leaves no room for the beams, a profile that is not square, a join the generators do not
  * arrange, a blind or end-tap join on a profile with no bore in its ends, feet with a cube join, and a side with no bay.
  * @param {string} kind box, portal, table, gantry or shelf (FRAME_KINDS)
- * @param {{ inside?: number[], outside?: number[], profile: string, join?: string | { kind: string, fitting?: string, screw?: string }, feet?: string | null, caps?: boolean | string, braces?: string[], panels?: { sheet: string, thickness: number, sides?: string[] }, shelves?: number, given?: object }} o
+ * @param {{ inside?: number[], outside?: number[], profile: string, join?: string | { kind: string, fitting?: string, screw?: string, nut?: string }, feet?: string | null, caps?: boolean | string, braces?: string[], panels?: { sheet: string, thickness: number, sides?: string[] }, shelves?: number, given?: object }} o
  * @returns {{ kind: string, profile: string, width: number, join: object, arrangement: 'face' | 'node', inside: number[], outside: number[], beams: object[], joins: object[], ends: object[], panels: object[], moving: object | null, lengths: { length: number, count: number, ids: string[] }[] }}
  */
 export function frameModel(kind, o = {}) {
@@ -74,11 +75,16 @@ export function frameModel(kind, o = {}) {
   if (Math.abs(P.width - P.height) > 1e-9) throw new Error(`${w}: a generated frame takes a square profile, and ${o.profile} is ${mm(P.width)} x ${mm(P.height)} mm: its beams would face differently by which way they lie. Choose a square one (2020, 3030, 4040), or write the frame out (cad frame --expand) and change its beams by hand`);
   const p = P.width;
   // the join, and the arrangement it asks for
-  const join = typeof o.join === 'string' ? { kind: o.join } : o.join == null ? { kind: 'blind' } : o.join;
-  if (!join || typeof join !== 'object' || Array.isArray(join)) throw new Error(`${w}: join is a kind (blind) or { kind, fitting, screw } (got ${shown(o.join)})`);
-  for (const k of Object.keys(join)) if (!['kind', 'fitting', 'screw'].includes(k)) throw new Error(`${w}: join takes kind, fitting and screw (got "${k}")`);
+  const join = typeof o.join === 'string' ? { kind: o.join } : o.join == null ? { kind: 'blind' } : { ...o.join };
+  if (!join || typeof join !== 'object' || Array.isArray(o.join)) throw new Error(`${w}: join is a kind (blind) or { kind, fitting, screw, nut } (got ${shown(o.join)})`);
+  for (const k of Object.keys(join)) if (!['kind', 'fitting', 'screw', 'nut'].includes(k)) throw new Error(`${w}: join takes kind, fitting, screw and nut (got "${k}")`);
   const arrangement = FRAME_JOINS[join.kind];
   if (!arrangement) throw new Error(`${w}: join is one of ${Object.keys(FRAME_JOINS).join(', ')} (got ${shown(join.kind)})${JOINS[join.kind] ? `: a ${join.kind} join is ${JOINS[join.kind].what}, and no generator arranges corners for it. Generate with blind and change the joins by hand` : ''}`);
+  // a printed fitting's slot nuts: every butting beam is shut at both ends by the joins there, so a nut that slides in
+  // from an end cannot reach its place. The generator asks for nuts that go in through the slot's opening (drop-in)
+  if (join.nut != null && join.fitting !== 'printed') throw new Error(`${w}: join.nut names the slot nuts a printed fitting is drawn for: give "fitting": "printed" on a bracket or gusset join, or leave nut out (got ${shown(join.nut)})`);
+  if (join.nut != null && !THROUGH.includes(join.nut)) throw new Error(`${w}: join.nut is a slot nut that goes in through the slot's opening, ${THROUGH.join(', ')}: every butting beam of a generated frame is shut at both ends by its joins, so a nut that slides in from an end cannot reach its place (got ${shown(join.nut)})`);
+  if (join.fitting === 'printed' && join.nut == null) join.nut = 'drop-in';
   if (['blind', 'end-tap'].includes(join.kind) && !P.bores.length) throw new Error(`${w}: a ${join.kind} join screws into the bore in a beam's end, and ${o.profile} has none: join it with bracket or gusset`);
   if (arrangement === 'node' && o.feet != null && !['table', 'portal'].includes(kind)) throw new Error(`${w}: feet stand under an upright beam's end, and with a cube join every end of a ${kind}'s goes into a corner node: leave feet out (the node's own foot comes with the cube's fitting), or join with blind`);
   if (arrangement === 'node' && o.braces?.length) throw new Error(`${w}: braces put a printed corner bracket at each of a side's joins against a face, and a cube join's beams meet at nodes: brace a frame joined blind (or by another face join)`);
@@ -190,10 +196,12 @@ export function frameModel(kind, o = {}) {
     else if (caps) ends.push({ id: `cap-${b.id}-${e}`, at, ...(caps === true ? { fitting: 'end-cap' } : { bought: caps }), role: 'cap' });
   }
 
-  // a gantry's moving beam: across the two top side beams, lying on them, from the front to the back
+  // a gantry's moving beam: across the two top side beams, lying on them, from the front to the back. The uprights run
+  // one width above the side beams, to the outside height, so g lies between their tops: its bottom on the side beams'
+  // top faces (OH - p), its top level with the uprights' (OH), and FRAME_GEN.clear keeps it off them at either end
   let moving = null;
   if (kind === 'gantry') {
-    const clear = FRAME_GEN.clear.value, z = OH + h, start = p + clear + h, travel = r3(OD - 2 * p - 2 * clear - p);
+    const clear = FRAME_GEN.clear.value, z = OH - h, start = p + clear + h, travel = r3(OD - 2 * p - 2 * clear - p);
     if (!(travel > 0)) throw new Error(`${w}: its depth leaves the moving beam no travel: ${mm(inside[1])} mm inside, less the beam's own ${mm(p)} mm and ${mm(clear)} mm clear at each end (FRAME_GEN.clear)`);
     const track = beams.find((b) => b.role === 'along' && Math.abs(b.from[2] - rings.at(-1)) < 1e-6 && Math.abs(b.from[0] - h) < 1e-6);
     moving = { id: 'g', role: 'moving', length: r3(OW), from: [0, r3(start), r3(z)], to: [r3(OW), r3(start), r3(z)], track: track.id, along: [0, 1, 0], travel };

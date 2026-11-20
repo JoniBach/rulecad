@@ -14,8 +14,8 @@ import petg from '@rulecad/rules/petg.json' with { type: 'json' };
 import { SETS, FIELDS } from './catalogue.mjs';
 import { profileModel, slotModel, slotPath, slotNuts } from './profile.mjs';
 
-const { cuboid, cylinder, polygon } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { subtract, union } = jscad.booleans;
-const { translate, transform } = jscad.transforms, { measureVolume } = jscad.measurements;
+const { cuboid, cylinder, polygon } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { subtract, union, intersect } = jscad.booleans;
+const { translate, transform, rotateX, rotateZ } = jscad.transforms, { measureVolume } = jscad.measurements;
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const mm = (x) => String(+Number(x).toFixed(2));
@@ -50,7 +50,8 @@ const threadSet = (t, given) => { const k = String(t).toLowerCase().replace(/\./
  *   length: number, width: number, height: number, tongueWidth: number | null, tongueHeight: number, boltLength: number | null,
  *   hold: Figure | null, holdAlong: Figure | null, torque: Figure | null, material: string, density: Figure, volume: number, mass: number,
  *   figures: Record<string, Figure>, bought: true, printed: false, findings: object[] }} SlotNut
- *   volume (mm³) and mass (g) are worked out from the drawn block (body, tongue, less the thread's hole; a T-bolt's shank added)
+ *   volume (mm³) and mass (g) are worked out from the block (body, tongue, less the thread's hole; a T-bolt's shank added);
+ *   the solid slotNut draws is that block cut back to its slot's flanks, up to 12 % less, so the mass errs heavy
  */
 
 /**
@@ -124,6 +125,8 @@ export function nutFit(nut, slot, given = {}) {
 /**
  * A bought nut's reference solid in the slot's frame (x along, y across, z out of the face, the face at z = 0): its
  * body pulled up under the lips, its tongue in the opening, the thread's hole through it; a T-bolt's shank standing out.
+ * Where its slot's set is known, the body and tongue are cut back to the slot's cavity (its flanks), as a nut's sides are
+ * shaped to sit on them.
  * @param {SlotNut | string} nut @param {{ at?: number[], display?: 'preview' | 'link', given?: object }} [o]
  *   at: where its middle goes on the face (default the origin); display: link draws the body alone
  * @returns {object} a JSCAD geom3, with .model
@@ -135,6 +138,14 @@ export function slotNut(nut, o = {}) {
   const body = translate([0, 0, -lip - n.height / 2], cuboid({ size: [n.length, n.width, n.height] }));
   if (display === 'link') return Object.assign(translate(at, body), { model: n });
   let solid = n.tongueHeight && n.tongueWidth ? union(body, translate([0, 0, -lip + n.tongueHeight / 2], cuboid({ size: [n.length, n.tongueWidth, n.tongueHeight] }))) : body;
+  // held to its slot's cavity: a nut's sides are shaped to the flanks it sits on, so where the drawing's box would
+  // reach past them (a drop-in 10 mm across, in a cavity 7.3 mm wide where its body ends) it is cut back to them, and
+  // two nuts at one height in the neighbouring slots of a beam stand apart, as they do in the aluminium
+  if (slot?.part === 'slot') {
+    const path = slotPath(slotModel(n.slot, {}, o.given)).map(([u, v]) => [u, -v]), mouth = path[0][0];
+    const prism = extrudeLinear({ height: n.length + 2 }, polygon({ points: [...path, [-mouth, 1], [mouth, 1]] }));
+    solid = intersect(solid, translate([-n.length / 2 - 1, 0, 0], rotateZ(Math.PI / 2, rotateX(Math.PI / 2, prism))));
+  }
   if (n.major && n.nutKind === 't-bolt') solid = union(solid, translate([0, 0, -lip + n.boltLength / 2], cylinder({ radius: n.major / 2, height: n.boltLength, segments: 24 })));
   else if (n.major) solid = subtract(solid, translate([0, 0, -lip], cylinder({ radius: n.major / 2, height: 2 * (n.height + n.tongueHeight) + 2, segments: 24 })));
   return Object.assign(translate(at, solid), { model: n });
