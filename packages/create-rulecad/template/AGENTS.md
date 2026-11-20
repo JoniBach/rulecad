@@ -21,7 +21,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - When a part must fit something whose model exists (a maker's CAD, a model site), measure that model:
   `npx cad measure <file> --rules <name> --source <url> --licence "…"`. Look at the drawing in `.preview/measure/`,
   then rename the draft rules for what they are and say in each `rule` what the feature does.
-- For a beam (an aluminium extrusion) the kit has no profile for, measure the maker's model or a DXF of its section:
+- For a beam (an aluminium extrusion) the kit has no profile for, write its profile from the maker's spec sheet:
+  `npx cad rules draft profile <name>` writes every field as a draft; fill each the sheet gives (its value, `"kind":
+  "spec"`, the sheet, page and address as `source`, the date), delete the rest, and run `npx cad rules check <name>`
+  until it has no `rules.draft` warning and no section figure more than 5% off its outline (fix the typed figure, never
+  the check), then `npx cad rules draw <name>` and look at the drawing beside the sheet's. Or measure the maker's model or a DXF of its section:
   `npx cad measure <beam.stl|section.dxf> --profile <name> --source <url> --licence "…"`. It writes a draft profile
   set and the section's outline into this workspace's `rules/`. Look at the drawing, check the slot figures against
   the maker's sheet, and never copy the outline out of the workspace: it is the maker's shape.
@@ -93,6 +97,12 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   drawn: one axis through the stack, a clearance hole in each part passed, a pilot, insert or nut at the far end, the
   length chosen from what is sold, thread engaged, the seat under the head and the key's way to it, and `cad list`
   counts the screws. Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
+- **A frame is beams and joins, never loose boxes.** Each beam is a `"beam"` item of a profile from a rule set (the
+  kit's or one in `rules/`, never sizes typed into an object), placed by its ends; each meeting of two beams is a
+  declared join, and its drilling, tapping, screws and nuts follow from it: never draw a join's holes or type its
+  screws. Every join's stiffness and play is an estimate until the joint rig measures it, so every frame figure that
+  rests on one (sag, sway, frequency, the diagonals to accept) is reported as resting on an estimate. The frames guide
+  (docs/guides/building-frames.md, on the docs site) walks a profile from its sheet to a checked box.
 - **Beams are held to each other by a join**, not a fasten: `{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }`
   (`npx cad add join …`), `b` the place on the other beam where a's end meets it. A blind or end-tap join taps a's end,
   drills b and adds its screw to the fasten checks and the list. A bracket, gusset or splice join with `"fitting":
