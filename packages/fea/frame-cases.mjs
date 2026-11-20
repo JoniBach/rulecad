@@ -3,7 +3,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { frame, statics, buckling, modes, subdivide, elementMatrices } from '@rulecad/fea/frame';
+import { frame, statics, buckling, modes, subdivide, elementMatrices, sizing } from '@rulecad/fea/frame';
 import { grid, analyse } from '@rulecad/fea';
 
 // Aluminium, and a 20 × 30 mm solid bar: 20 along local y, 30 along local z
@@ -363,4 +363,124 @@ test('frame: subdivide keeps the answer, the joints and the loads; the module is
   assert.deepEqual(pkg.exports['./frame'], { types: './frame.d.mts', default: './frame.mjs' });
   assert.ok(pkg.files.includes('frame.mjs') && pkg.files.includes('frame.d.mts'));
   assert.ok(!/frame\.mjs/.test(fs.readFileSync(new URL('./fea.mjs', import.meta.url), 'utf8')), 'the main entry does not load it');
+});
+
+// Sizing: square solid aluminium bars of side b as the choices (I = b⁴ / 12, W = b³ / 6, 2.7 g/cm³, strength 205 MPa)
+const strong = { ...alu, strength: 205 };
+const square = (b) => ({ name: `bar ${b}`, section: { A: b * b, Iy: b ** 4 / 12, Iz: b ** 4 / 12, J: 0.141 * b ** 4, cy: b / 2, cz: b / 2 }, material: strong }); // (J = 0.141 b⁴ for a square, Roark's table 10.1)
+
+test('frame sizing: a beam is given the lightest bar that keeps its sag and stress in their limits, the limit that set it named; a looser limit gives a lighter bar', () => {
+  // A 1000 mm beam on two supports, 1000 N at its middle, in two elements of one member. Hand: sag = P L³ / 48 E I
+  // (Roark's, table 8.1, case 1e), so a 2 mm limit wants I ≥ 1000 x 1000³ / (48 x 70000 x 2) = 148 810 mm⁴: bar 30
+  // (67 500) sags 1000e9 / (48 x 70000 x 67 500) = 4.409 mm, 2.20 times over; bar 40 (213 333) sags 1.395 mm. Loosened to
+  // 5 mm it wants I ≥ 59 524: bar 30 (4.409 mm, 1.13 times inside), and bar 20 (13 333) sags 22.32 mm, 4.46 times over.
+  const model = { nodes: { a: [0, 0, 0], m: [500, 0, 0], b: [1000, 0, 0] }, elements: [{ id: 'l', of: 'beam', a: 'a', b: 'm', section: square(20).section, material: strong }, { id: 'r', of: 'beam', a: 'm', b: 'b', section: square(20).section, material: strong }],
+    supports: { a: { x: true, y: true, z: true, rx: true }, b: { y: true, z: true } }, loads: [{ node: 'm', force: [0, 0, -1000] }] };
+  const choices = [40, 20, 50, 30].map(square); // (in any order: they are ranked by mass)
+  const run = (limit, margin = 2) => sizing(model, { groups: { beam: ['beam'] }, choices, limits: { deflection: [{ node: 'm', limit }], stress: { margin } } });
+  const tight = run(2), loose = run(5);
+  assert.ok(tight.ok && loose.ok);
+  const [t] = tight.groups, [l] = loose.groups;
+  assert.deepEqual([t.choice, t.lighter, t.governs.limit, t.governs.where, l.choice, l.lighter, l.governs.limit], ['bar 40', 'bar 30', 'deflection', 'm', 'bar 30', 'bar 20', 'deflection']);
+  close('sizing: bar 40 sags P L³ / 48 E I', t.governs.value, 1e12 / (48 * 70000 * 40 ** 4 / 12));
+  close('sizing: bar 30 is 2.20 times over 2 mm', t.governs.broken, 1e12 / (48 * 70000 * 30 ** 4 / 12) / 2);
+  close('sizing: bar 40 is 1.43 times inside 2 mm', t.margin, 2 / (1e12 / (48 * 70000 * 40 ** 4 / 12)));
+  close('sizing: bar 20 is 4.46 times over 5 mm', l.governs.broken, 1e12 / (48 * 70000 * 20 ** 4 / 12) / 5);
+  // mass: 1 m of bar 40 at 2.7 g/cm³ is 1600 mm² x 1000 mm x 2.7e-6 kg/mm³ = 4.32 kg; of bar 30, 2.43 kg
+  close('sizing: the mass of bar 40', tight.total, 4.32, 1e-9);
+  assert.ok(loose.total < tight.total, 'a looser limit gives a lighter beam');
+  // Stress sets it where the margin asks more: M = P L / 4 = 250 000 N·mm; bar 30 (W = 4500 mm³) carries 55.6 MPa, which
+  // a margin of 4 puts 4 x 55.6 / 205 = 1.084 times over; bar 40 (W = 10 667) carries 23.4 MPa
+  const st = run(5, 4).groups[0];
+  assert.deepEqual([st.choice, st.governs.limit, st.governs.where], ['bar 40', 'stress', 'beam']);
+  close('sizing: bar 30 at 4 times its stress', st.governs.broken, 4 * (250000 / 4500) / 205);
+  // nothing in the list meets it: the nearest, and by how much it misses
+  const none = sizing(model, { groups: { beam: ['beam'] }, choices: [20, 30].map(square), limits: { deflection: [{ node: 'm', limit: 2 }] } });
+  assert.deepEqual([none.ok, none.groups[0].choice, none.worst.limit], [false, 'bar 30', 'deflection']);
+  close('sizing: the nearest misses by its sag over the limit', none.worst.ratio, 1e12 / (48 * 70000 * 30 ** 4 / 12) / 2);
+  // a member's sag along it: the worst station is the middle, the same as the node's
+  const along = sizing(model, { groups: { beam: ['beam'] }, choices, limits: { deflection: [{ member: 'beam', limit: 2 }] } });
+  assert.equal(along.groups[0].choice, 'bar 40');
+  close('sizing: a member\'s worst sag along it', along.checks.find((c) => c.where === 'beam').value, 1e12 / (48 * 70000 * 40 ** 4 / 12));
+});
+
+test('frame sizing: a table\'s long rails are given a heavier bar than its legs, each group by the limit that set it; steps come near the lightest with fewer solves', () => {
+  // Legs 700 mm on pinned feet, a top ring of rails 600 (x) and 400 (y) joined rigidly, 20 kg (196.2 N) at the middle
+  // of each long rail, its own weight too. Limits: the long rails' middles sag no more than 600 / 360 mm, each member
+  // twice under its strength and twice under Euler's load (K 1), the frame's first buckling factor 2 or more, and the
+  // lowest mode, with the 40 kg ringing on the rails, 2 Hz or more (a table on pinned feet sways on its legs' bending)
+  const s0 = square(20).section, W = 600, D = 400, H = 700;
+  const nodes = { f1: [0, 0, 0], f2: [W, 0, 0], f3: [0, D, 0], f4: [W, D, 0], t1: [0, 0, H], t2: [W, 0, H], t3: [0, D, H], t4: [W, D, H], m1: [W / 2, 0, H], m2: [W / 2, D, H] };
+  const el = (id, of, a, b) => ({ id, of, a, b, section: s0, material: strong });
+  const model = { nodes, elements: [el('z1', 'z1', 'f1', 't1'), el('z2', 'z2', 'f2', 't2'), el('z3', 'z3', 'f3', 't3'), el('z4', 'z4', 'f4', 't4'), el('x1a', 'x1', 't1', 'm1'), el('x1b', 'x1', 'm1', 't2'), el('x2a', 'x2', 't3', 'm2'), el('x2b', 'x2', 'm2', 't4'), el('y1', 'y1', 't1', 't3'), el('y2', 'y2', 't2', 't4')],
+    supports: { f1: 'pinned', f2: 'pinned', f3: 'pinned', f4: 'pinned' }, gravity: [0, 0, -9.81], loads: [{ node: 'm1', force: [0, 0, -196.2] }, { node: 'm2', force: [0, 0, -196.2] }] };
+  const o = (limit, search) => ({ groups: { legs: ['z1', 'z2', 'z3', 'z4'], long: ['x1', 'x2'], short: ['y1', 'y2'] }, choices: [10, 12, 15, 20, 25, 30, 35, 40].map(square), search,
+    limits: { deflection: [{ node: 'm1', limit }, { node: 'm2', limit }], stress: { margin: 2 }, buckling: { factor: 2, euler: 1 }, frequency: { Hz: 2 } }, cases: [{ label: 'two 20 kg', inertia: { m1: 20, m2: 20 } }] });
+  const every = sizing(model, o(W / 360, 'every')), steps = sizing(model, o(W / 360, 'steps'));
+  const pick = (r) => Object.fromEntries(r.groups.map((g) => [g.name, g.choice]));
+  assert.ok(every.ok && steps.ok);
+  // every design ranked by mass is the lightest; steps, a design no lighter, here within a fifth of it, from fewer solves
+  assert.deepEqual(pick(every), { legs: 'bar 15', long: 'bar 20', short: 'bar 15' });
+  assert.ok(steps.total >= every.total - 1e-9 && steps.total < 1.2 * every.total && steps.tried < every.tried, `steps: ${steps.total} kg from ${steps.tried} designs; every: ${every.total} kg from ${every.tried}`);
+  const g = Object.fromEntries(every.groups.map((x) => [x.name, x]));
+  assert.ok(g.long.mass / g.long.length > g.legs.mass / g.legs.length, `the long rails' bar (${g.long.choice}) is heavier a metre than the legs' (${g.legs.choice})`);
+  for (const x of every.groups) assert.ok(x.governs && x.governs.broken > 1 && x.margin >= 1, `${x.name}: ${x.choice} is set by a limit its next lighter bar breaks`);
+  assert.deepEqual([g.legs.governs.limit, g.long.governs.limit, g.long.governs.where, g.short.governs.limit], ['frequency', 'deflection', 'm1', 'frequency']);
+  // every check the design passes, each within its limit
+  assert.ok(every.checks.every((c) => c.ratio <= 1) && every.checks.some((c) => c.limit === 'buckling' && c.where === 'frame') && every.checks.some((c) => c.limit === 'buckling' && c.where === 'z1 (Euler)'));
+  // a frequency floor halved lightens the frame
+  const soft = sizing(model, { ...o(W / 360, 'every'), limits: { ...o(W / 360).limits, frequency: { Hz: 1 } } });
+  assert.ok(soft.ok && soft.total < every.total, `${soft.total} kg against ${every.total} kg`);
+});
+
+test('frame sizing: a frequency floor sets a cantilever\'s bar as one mass on a spring says; every model given is held to the stress limit', () => {
+  // A 500 mm cantilever with 2 kg at its tip that rings and does not weigh (inertia). Hand: k = 3 E I / L³ and, by
+  // Rayleigh, the beam adds 33/140 of its own mass at the tip (Blevins 1979, table 8-8), f = √(1000 k / m) / 2π.
+  // Bar 30: k = 3 x 70000 x 67 500 / 500³ = 113.4 N/mm; m = 2 + 0.2357 x 1.215 = 2.286 kg; f = 35.4 Hz.
+  // Bar 20: k = 22.40 N/mm; m = 2 + 0.2357 x 0.54 = 2.127 kg; f = 16.3 Hz. A floor of 30 Hz takes bar 30.
+  const model = { nodes: { a: [0, 0, 0], b: [500, 0, 0] }, elements: [{ id: 'arm', a: 'a', b: 'b', section: square(20).section, material: strong }], supports: { a: 'fixed' } };
+  const r = sizing(model, { groups: { arm: ['arm'] }, choices: [20, 30, 40].map(square), limits: { frequency: { Hz: 30 } }, cases: [{ inertia: { b: 2 } }] });
+  const [g] = r.groups, hz = (b) => { const I = b ** 4 / 12, k = (3 * 70000 * I) / 500 ** 3, m = 2 + (33 / 140) * (b * b * 500 * 2.7e-6); return Math.sqrt((1000 * k) / m) / (2 * Math.PI); };
+  assert.deepEqual([g.choice, g.governs.limit], ['bar 30', 'frequency']);
+  close('sizing: bar 30 rings as a mass on a spring', g.governs.value, hz(30), 0.01);
+  close('sizing: bar 20 falls short of 30 Hz', g.governs.broken, 30 / hz(20), 0.01);
+  // The stress limit holds in every model given, the first and the rest (a frame with its joins' springs, and the same
+  // frame with them rigid, where a join's moment is larger). Here the second carries twice the first's tip load: the
+  // root moment P L is 100 000 N·mm in the first, so bar 20 (W 1333 mm³) carries 75 MPa, under 205 / 2; in the second
+  // 150 MPa, over it, which sets bar 30 (66.7 MPa there)
+  const one = { ...model, loads: [{ node: 'b', force: [0, 0, -200] }] }, two = { ...model, loads: [{ node: 'b', force: [0, 0, -400] }] };
+  const o = { groups: { arm: ['arm'] }, choices: [20, 30, 40].map(square), limits: { stress: { margin: 2 } } };
+  assert.equal(sizing(one, o).groups[0].choice, 'bar 20');
+  const both = sizing([one, two], o).groups[0];
+  assert.deepEqual([both.choice, both.governs.limit], ['bar 30', 'stress']);
+  close('sizing: bar 20 under the second model is over half its strength', both.governs.broken, 2 * (200000 / (20 ** 3 / 6)) / 205);
+});
+
+test('frame sizing: what is wrong with a request is said by name, before any solve', () => {
+  const model = { nodes: { a: [0, 0, 0], b: [500, 0, 0] }, elements: [{ id: 'arm', a: 'a', b: 'b', section: square(20).section, material: strong }], supports: { a: 'fixed' }, loads: [{ node: 'b', force: [0, 0, -10] }] };
+  const ok = { groups: { arm: ['arm'] }, choices: [square(20)], limits: { stress: { margin: 2 } } };
+  const bad = (change, code, text) => assert.throws(() => sizing(model, { ...ok, ...change }), (e) => { assert.equal(e.code, `fea.frame.${code}`, e.message); assert.match(e.message, text); return true; });
+  bad({ shape: 1 }, 'input', /sizing has no option "shape"/);
+  bad({ groups: {} }, 'input', /groups is \{ name: \[members\] \}/);
+  bad({ groups: { arm: ['leg'] } }, 'input', /group "arm" names member "leg", and no element is it or a piece of it/);
+  bad({ groups: { arm: ['arm'], also: ['arm'] } }, 'input', /member "arm" is in group "arm" and in group "also"/);
+  bad({ choices: [] }, 'input', /choices is a list/);
+  bad({ choices: [{ name: 'x', section: { A: 1, Iy: 0, Iz: 1, J: 1 } }] }, 'section', /choice "x"'s section has Iy = 0/);
+  bad({ choices: [square(20), square(20)] }, 'input', /choice "bar 20" is listed twice/);
+  bad({ limits: {} }, 'input', /limits is \{ deflection, stress, buckling, frequency \}/);
+  bad({ limits: { sag: 1 } }, 'input', /limits has no "sag"/);
+  bad({ limits: { deflection: [{ node: 'q', limit: 1 }] } }, 'node', /names node "q"/);
+  bad({ limits: { deflection: [{ node: 'b', limit: 0 }] } }, 'input', /limits.deflection 1's limit \(mm\) is above 0/);
+  bad({ limits: { frequency: { Hz: -1 } } }, 'input', /limits.frequency.Hz is above 0/);
+  bad({ by: 'cost' }, 'input', /sizing by cost, and choice "bar 20" gives no cost per metre/);
+  bad({ only: { arm: ['bar 99'] } }, 'input', /only.arm names "bar 99", which is not a choice/);
+  bad({ search: 'all' }, 'input', /search is 'every'/);
+  // by cost where every choice gives one: the cheaper, though heavier
+  const r = sizing(model, { ...ok, by: 'cost', choices: [{ ...square(20), cost: 9 }, { ...square(30), cost: 4 }] });
+  assert.deepEqual([r.by, r.groups[0].choice, r.total], ['cost', 'bar 30', 2]);
+  // a choice turned a quarter: a 20 x 40 bar standing on edge is stiffer that way, at the same mass, and is chosen
+  const flat = { name: 'flat', section: { A: 800, Iy: (40 * 20 ** 3) / 12, Iz: (20 * 40 ** 3) / 12, J: 0.229 * 40 * 20 ** 3, cy: 20, cz: 10 }, material: strong };
+  const t = sizing(model, { groups: { arm: ['arm'] }, choices: [flat, { ...flat, name: 'on edge', roll: 90 }], limits: { deflection: [{ node: 'b', limit: 0.05 }] } });
+  assert.equal(t.groups[0].choice, 'on edge');
+  assert.equal(t.model.elements[0].roll, 90);
 });

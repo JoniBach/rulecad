@@ -1840,3 +1840,20 @@ test('frame generators: a box asked for by its inside size has its butting beams
   no({ inside: [300, 300, 300], join: { kind: 'bracket', nut: 'drop-in' } }, /join.nut names the slot nuts a printed fitting is drawn for: give "fitting": "printed"/);
   no({ inside: [300, 300, 300], join: { kind: 'bracket', brace: 2 } }, /join takes kind, fitting, screw and nut \(got "brace"\)/);
 });
+
+test('profile choices: a profile as a sizing takes it, its section in a beam\'s own axes from the sheet, its alloy and mass; one not square comes turned too', () => {
+  const [sq] = frames.profileChoices(frames.profileModel('2020-misumi-hfs5'));
+  // MISUMI HFS5-2020: 183 mm², 7420 mm⁴ each way, 0.5 kg/m, in A6N01S-T5 (69 972 MPa, 205 MPa)
+  assert.deepEqual([sq.name, sq.roll, sq.section.A, sq.section.Iy, sq.section.Iz, sq.mass, sq.material.E, sq.material.strength, sq.material.density], ['2020-misumi-hfs5', 0, 183, 7420, 7420, 0.5, 69972, 205, 2.7]);
+  assert.ok(sq.section.J > 0 && sq.section.Wy > 0 && sq.section.Wz > 0);
+  assert.equal(frames.profileChoices(frames.profileModel('2020-misumi-hfs5')).length, 1, 'a square one comes once');
+  // a 2040 is described lying flat: inertia_x (13 580 mm⁴) resists bending across its 20 mm height, as Iy, the
+  // second moment a beam's own z (its top) bends against; turned a quarter it stands on edge
+  const [flat, edge] = frames.profileChoices(frames.profileModel('2040-misumi-hfs5'));
+  assert.deepEqual([flat.name, flat.roll, flat.section.Iy, flat.section.Iz, edge.name, edge.roll, edge.section.Iy, edge.mass], ['2040-misumi-hfs5', 0, 13580, 51300, '2040-misumi-hfs5 turned', 90, 13580, 0.88]);
+  // a plain tube, worked out from its outline: the same shape, so a frame of tubes is sized alike
+  const [tube] = frames.profileChoices(frames.profileModel('tube-al-25x25x2'));
+  // hand: (25⁴ - 21⁴) / 12 = (390 625 - 194 481) / 12 = 16 345.3 mm⁴, area 25² - 21² = 184 mm²
+  assert.ok(Math.abs(tube.section.Iy - 16345.33) < 0.5 && Math.abs(tube.section.A - 184) < 0.01, JSON.stringify(tube.section));
+  assert.throws(() => frames.profileChoices({ kind: 'beam' }), /profileChoices: give a profile's model/);
+});
