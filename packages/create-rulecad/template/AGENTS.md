@@ -124,6 +124,11 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   rests on estimates (the printed section, creep) until the beam coupon is measured, and name the joins it says need
   changing. A `beam.coupon` sag or break is a prediction to measure on the bench and write back with `cad measured`,
   never a figure to tune; `beam.creep` fails a printed beam held too hard for months: a deeper section or aluminium.
+- **A frame for a size starts from a generator**: `"frame": { "kind": "box", "inside": [w, d, h], "profile",
+  "join": "blind" }` (also portal, table, gantry, shelf) expands into beams, joins, feet and caps before anything is
+  checked. Ask by `inside` for what it must enclose, `outside` for what it must fit in; never work the lengths out by
+  hand. Read `frame.generated` for what it made, and `npx cad frame <project>/<assembly> --expand` to write it out
+  when it needs changes a generator cannot make, then edit the beams and joins as a hand-drawn frame.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),
