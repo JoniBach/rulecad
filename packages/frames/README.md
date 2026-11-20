@@ -1198,7 +1198,7 @@ m.ends[0];  // { id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'fo
 | `shelf(o)` | A box with `shelves` rings between (default 1), spacing its height into equal clear bays | `[width, depth, height]` |
 
 `frameModel(kind, o)` is any of them by name. The options: `inside` or `outside` (one of them), `profile` (square:
-2020, 3030, 4040), `join` (a kind, or `{ kind, fitting, screw }`), `feet` (`foot`, `levelling`, `castor`, `stacking`,
+2020, 3030, 4040), `join` (a kind, or `{ kind, fitting, screw, nut }`), `feet` (`foot`, `levelling`, `castor`, `stacking`,
 or a bought set's name), `caps` (`true`, `false` or a bought set's name), `braces` and `panels.sides` (the upright
 sides `front`, `back`, `left`, `right`), `panels` (`{ sheet, thickness, sides }`), `shelves`, and `given` (other rule
 sets, as `profileModel` takes them).
@@ -1217,8 +1217,16 @@ The corners follow the join (`FRAME_JOINS`):
 
 Where an end has several bores (`3030-misumi-hfs6`), a blind or end-tap join screws into the threaded one nearest the
 middle (`x1.a.1`). A gantry's moving beam stops `FRAME_GEN.clear` (2 mm, a working figure) short of the uprights at
-each end of its travel. Braces put a printed corner bracket, on drop-in nuts, at each join of the sides named; a
-panel is one sheet over a side, from its lowest beam to its highest.
+each end of its travel; it lies on the top side beams between the uprights' tops, which run one width above the side
+beams, so its top is the outside height. A printed fitting (`{ kind: 'bracket', fitting: 'printed' }`, or a gusset)
+sits on drop-in nuts, since every butting beam is shut at both ends by its joins and a slide-in nut could not reach
+its place; `nut` names another kind that goes in through the opening (roll-in, hammer, t-bolt), and slide-in or a nut
+with no printed fitting is refused. Braces put a printed corner bracket, on drop-in nuts, at each join of the sides
+named; a panel is one sheet over a side, from its lowest beam to its highest.
+
+A slot nut's solid (`slotNut`) is its block cut back to its slot's cavity: its sides are shaped to the flanks it sits
+on, so two nuts at one height in neighbouring slots of a beam stand apart, as they do in the aluminium. Its mass stays
+the whole block's, up to 12 % heavy.
 
 Refused by name: an unknown kind or option, no size or both, a size that leaves no room inside, a profile that is not
 square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, feet on a box,

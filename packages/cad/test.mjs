@@ -4436,8 +4436,9 @@ test('generated frames: a box asked for by its inside size expands into beams on
     const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
     const probe = (n) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { bounds } = await import('@rulecad/printcheck');
       const s = await buildAssembly('frame/${n}'), f = checkAssembly(s);
-      console.log(JSON.stringify({ lengths: Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, +o.beam.length.toFixed(3)])), items: s.items.map((i) => i.id),
+      console.log(JSON.stringify({ z: Object.fromEntries(s.parts.filter((p) => ['g.body', 'y3.body', 'z1.body'].includes(p.name)).map((p) => { const b = bounds(p.triangles); return [p.name.split('.')[0], [+b.lo[2].toFixed(2), +b.hi[2].toFixed(2)]]; })), lengths: Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, +o.beam.length.toFixed(3)])), items: s.items.map((i) => i.id),
         joints: s.motion.joints.filter((j) => j.type !== 'fixed').map((j) => [j.id, j.type, j.dofs[0]]), poses: Object.keys(s.motion.poses),
         geometry: f.filter((x) => x.code === 'join.geometry').map((x) => [x.level, x.values.gap]), generated: f.find((x) => x.code === 'frame.generated') ?? null,
         bad: f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.code + ': ' + x.text) }));
@@ -4484,6 +4485,15 @@ test('generated frames: a box asked for by its inside size expands into beams on
     write('gantry', { frame: { kind: 'gantry', inside: [400, 500, 200], profile: '2020-misumi-hfs5', feet: 'levelling' } });
     r = probe('gantry');
     assert.deepEqual([r.bad, r.joints, r.poses, r.lengths.g], [[], [['gantry', 'prismatic', [0, 476, 0]]], ['gantry-front', 'gantry-back'], 440]);
+    // and g lies on y3, its bottom on y3's top face and its top level with the uprights' and the outside height. Hand:
+    // outside 200 + 3 x 20 = 260; y3's centre 20 + 200 + 10 = 230, so it spans 220 to 240; g spans 240 to 260
+    assert.deepEqual([r.z.y3, r.z.g, r.z.z1], [[220, 240], [240, 260], [0, 260]]);
+    // 5. Joined by printed corner brackets: their slot nuts drop in through the opening (every butting beam is shut at
+    // both ends by its brackets, so a slide-in nut could not reach its place), and nothing fails. It warns only that
+    // the frame racks: 16 printed brackets are softer than blind joins, a finding about the frame, not a fault
+    write('bracket', { frame: { kind: 'box', inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } } });
+    r = probe('bracket');
+    assert.deepEqual([...new Set(r.bad.map((x) => x.split(':')[0]))], ['frame.rack'], r.bad.join('\n'));
     write('braced', { frame: { kind: 'box', inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } } });
     r = probe('braced');
     assert.deepEqual(r.bad, []);

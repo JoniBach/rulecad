@@ -51,7 +51,8 @@ const SIDE_OUT = { front: [0, -1, 0], back: [0, 1, 0], left: [-1, 0, 0], right: 
  * a gantry's moving beam (moving: { id, length, from, to, track, along, travel }), and its sizes: inside and outside
  * [x, y, z] (a portal's y is the profile's width) and the cut lengths. Refused by name: an unknown kind or key, no size
  * or both, a size that leaves no room for the beams, a profile that is not square, a join the generators do not
- * arrange, a blind or end-tap join on a profile with no bore in its ends, feet with a cube join, and a side with no bay.
+ * arrange, a blind or end-tap join on a profile with no bore in its ends, a join's nut that slides in or that has no
+ * printed fitting to hold, feet with a cube join, and a side with no bay.
  * @param {string} kind box, portal, table, gantry or shelf (FRAME_KINDS)
  * @param {{ inside?: number[], outside?: number[], profile: string, join?: string | { kind: string, fitting?: string, screw?: string, nut?: string }, feet?: string | null, caps?: boolean | string, braces?: string[], panels?: { sheet: string, thickness: number, sides?: string[] }, shelves?: number, given?: object }} o
  * @returns {{ kind: string, profile: string, width: number, join: object, arrangement: 'face' | 'node', inside: number[], outside: number[], beams: object[], joins: object[], ends: object[], panels: object[], moving: object | null, lengths: { length: number, count: number, ids: string[] }[] }}

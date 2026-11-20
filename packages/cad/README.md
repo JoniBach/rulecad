@@ -892,12 +892,18 @@ screws, the cut list, the frame checks, the build page) sees a hand-drawn frame.
   under its side beams.
 - `"profile"`: one square profile for every beam (2020, 3030, 4040 ..). A profile of two cells (2040) is refused:
   its beams would face differently by how they lie.
-- `"join"` sets the corners, as a kind or `{ "kind", "fitting", "screw" }`. With a join against a face (`blind`,
+- `"join"` sets the corners, as a kind or `{ "kind", "fitting", "screw", "nut" }`. With a join against a face (`blind`,
   `end-tap`, `bracket`, `gusset`, `hidden`, `anchor`) the upright beams run through, top to bottom, and every other
   beam butts against their faces, so it is shorter than the outside span it closes by the profile's width at each
   end. With `cube` every beam butts into a corner node and is as long as the inside it bounds. A box round 300 x 300
   x 350 in 2020 has uprights of 390 mm and eight beams of 300 mm; in 3030, uprights of 410 mm and the same 300 mm.
-  Where an end has several bores, a blind or end-tap join screws into the threaded one in the middle.
+  Where an end has several bores, a blind or end-tap join screws into the threaded one in the middle. A printed
+  fitting (`"fitting": "printed"` on `bracket` or `gusset`) sits on drop-in nuts: every butting beam is shut at both
+  ends by its joins, so a nut that slides in from an end could not reach its place. `"nut"` names another kind that
+  goes in through the slot's opening (`roll-in`, `hammer`, `t-bolt`); `slide-in` is refused. With no fitting named,
+  each join warns `join.fitting` until one is chosen, as a hand-drawn join does.
+- A gantry's outside height is its inside plus three widths: the two rings and `g`, which lies on the top side beams
+  between the uprights' tops, its top level with theirs.
 - `"feet"`: `foot`, `levelling`, `castor` or `stacking` (printed) or a bought foot's set by name, under the upright
   beams' lower ends. `"caps"`: the other open ends take printed end caps (`true`, the default), a bought end cap's
   set by name, or nothing (`false`, and `join.end` names them).
@@ -916,8 +922,9 @@ has the generators on their own: `box`, `portal`, `table`, `gantry`, `shelf` and
 
 Two limits to know. With `end-tap` joins, or a large profile's long blind screws (4040), the two screws into one
 upright at a corner cross inside it at one height, and the overlap check fails them: draw that corner by hand with
-one ring a profile's width higher. Panels on two sides that meet at an upright put their clips' nuts at the same
-heights in its two slots, where they touch.
+one ring a profile's width higher. With printed `gusset` joins, a corner's plate can land on the face where the third
+beam of that corner butts, and the overlap and build order checks fail it: join a generated frame by `bracket`, or
+write it out (`--expand`) and move those plates by hand.
 
 ### Building it
 
