@@ -589,7 +589,8 @@ export function marginAt(c, q, point) {
     const d = sub(point, two.p1), r = Math.hypot(dot(d, two.u), dot(d, two.v));
     return Math.min(least, two.l1 + two.l2 - r, r - Math.abs(two.l1 - two.l2));
   }
-  if (cartesian(c)) return least;
+  // axes that only slide have no span to stretch: their margin is how far each stands from the ends of its travel
+  if (cartesian(c) || (Number.isFinite(least) && m.free.every((i) => c.joints[i].type === 'prismatic'))) return least;
   const p = pose(c, expand(c, zeros(c))).links.map((l) => [l.A[3], l.A[7], l.A[11]]);
   p.push(pose(c, expand(c, zeros(c))).tip);
   const span = p.slice(1).reduce((t, x, i) => t + norm(sub(x, p[i])), 0);
