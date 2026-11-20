@@ -84,6 +84,7 @@ export async function assemblyModel(s, { title, versions, filaments: fil = {}, n
   }
   const model = {
     title, version: versions, src: `${s.project}/${s.name}`, // object versions are in version: the file name stays short
+    ...(s.a?.show === 'built' ? { show: 'built' } : {}), // its references drawn solid on the page
     rules: [],
     ...sheet([...new Map(s.objects.filter((o) => o.built?.entries).map((o) => [o.objName, o.built.entries])).entries()], { noRules }),
     // Its boards' 2D views (copper, schematic), so one link holds the whole build: tabs over the 3D model

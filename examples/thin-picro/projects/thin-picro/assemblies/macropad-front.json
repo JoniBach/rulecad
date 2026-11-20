@@ -1,6 +1,7 @@
 {
   "title": "Macropad, module on top: MX keys and a 2.0 in display",
   "kind": "fit",
+  "show": "built",
   "uses": [
     "mx"
   ],

@@ -141,6 +141,7 @@ function problems(m) {
   if (m.steps != null && !stepsOk(m.steps)) return ['broken step file'];
   if (m.wires != null && !wiresOk(m.wires)) return ['broken wires'];
   if (m.build != null && !plain(m.build)) return ['broken build page'];
+  if (m.show != null && m.show !== 'built') return ['broken show'];
   if (m.parts != null && (!Array.isArray(m.parts) || m.parts.some((x) => !Array.isArray(x) || x.slice(0, 3).some((name, k) => (k === 2 && name == null ? false : typeof name !== 'string' || name.length > LIMITS.text)) || !Number.isInteger(x[3]) || !Number.isInteger(x[4]) || x[3] < 0 || x[4] < 0 || x[3] + x[4] > m.t.length / 3))) return ['broken parts list'];
   return [];
 }
@@ -182,6 +183,7 @@ function motionOk(mo, places) {
 //     point] | null], stroke matching a block's.
 //   wires: [[id, [[item (index, -1 fixed), x, y, z], …]]], routes drawn faint, moving with their items; never parts.
 //   build: the build page's content, read as text and numbers (the shopping list, plates, wiring, steps, settings).
+//   show (optional): 'built', an assembly shown as the thing built: its references drawn solid, as its parts are.
 const INT = 2 ** 31;
 const int = (x) => Number.isInteger(x) && Math.abs(x) < INT;
 const text = (x) => typeof x === 'string' && x.length <= LIMITS.text;

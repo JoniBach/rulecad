@@ -116,7 +116,7 @@ function show(model) {
   const effective = (p) => {
     if (!p.visible || (p.role === 'support' && !view.supports) || (p.role === 'reference' && !view.references)) return 'hidden';
     if (view.step && !view.step.shown.has(itemOf(p))) return 'hidden'; // an assembly step: only what's on by then
-    return p.style !== 'auto' ? p.style : p.role !== 'part' ? 'faint' : view.mode;
+    return p.style !== 'auto' ? p.style : p.role === 'part' || (p.role === 'reference' && model.show === 'built') ? view.mode : 'faint'; // (show: built: references as the thing built)
   };
   const apply = () => {
     for (const p of parts) {

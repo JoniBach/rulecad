@@ -1,6 +1,7 @@
 {
   "title": "Macropad, module behind the top row: Choc keys",
   "kind": "fit",
+  "show": "built",
   "uses": [
     "mx"
   ],
