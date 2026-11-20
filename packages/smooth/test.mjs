@@ -111,10 +111,12 @@ test('a track leaving a small pad at an angle is redrawn to leave square to the 
 });
 
 test('an exit with no room square to the pad is left, and said', () => {
-  // a wall of another net's copper just past the pad's outer end and above and below it
-  const json = boardWith([[wire(-0.5, 0), wire(-3, 2.5)], [wire(-0.9, -2), wire(-0.9, 2)], [wire(-2, 0.45), wire(1, 0.45)], [wire(-2, -0.45), wire(1, -0.45)]],
-    [[-0.5, 0], [0.5, 0], [5, 5], [6, 6]]);
-  const { left } = finishCircuit(json);
+  // a track leaving a pad at 45°, clear of everything; small pads of other nets just past the pad's right and top edges,
+  // where a square exit would run
+  const json = boardWith([[wire(0, 0), wire(2, 2)]], [[0, 0]]);
+  for (const [x, y, i] of [[0.55, 0, 1], [0, 0.6, 2]]) json.push({ type: 'pcb_smtpad', pcb_smtpad_id: `o${i}`, pcb_port_id: `op${i}`, shape: 'circle', x, y, radius: 0.1, layer: 'top' });
+  const { left, exits } = finishCircuit(json);
+  assert.equal(exits.length, 0);
   assert.ok(left.some((l) => l.kind === 'exit'));
 });
 
