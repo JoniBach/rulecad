@@ -4588,6 +4588,10 @@ test('frame sizing: a drawn table written in moves a deeper rail down its legs s
     const profiles = ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'];
     const loads = [{ mass: 40, at: 'x1.top@50%' }, { mass: 40, at: 'x2.top@50%' }];
     fs.writeFileSync(file('d'), JSON.stringify({ title: 'd', kind: 'fit', frame: { kind: 'table', inside: [1200, 400, 750], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' }, loads }));
+    // On cad's default list (11 choices, 3 groups, 1331 designs: by steps) it is sized as the HFS5 list sizes it, though
+    // 3030 and a 20 x N lying flat are heavier than a 2040 on edge and weaker this way: the steps pass over them
+    const def = JSON.parse(cad('frame', 'frame/d', '--size', '--json'));
+    assert.deepEqual([def.ok, def.search, def.groups.map((x) => x.choice), def.total], [true, 'steps', ['2020-misumi-hfs5', '2060-misumi-hfs5 turned', '2020-misumi-hfs5'], 4.964]);
     cad('frame', 'frame/d', '--expand');
     const drawn = JSON.parse(fs.readFileSync(file('d'), 'utf8'));
     assert.deepEqual([drawn.frame, drawn.items.find((x) => x.id === 'x1').from, drawn.joins[0]], [undefined, [20, 10, 760], { kind: 'blind', a: 'x1.a', b: 'z1.back@760' }]);
