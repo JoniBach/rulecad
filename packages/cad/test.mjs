@@ -4464,6 +4464,53 @@ test('frame checks: a lid across the top of a corner-post box is a shear web on 
   } finally { done(); }
 });
 
+test('frame checks: a gantry beam\'s weight is shared between the two side beams it lies on; what rides a beam left out is named as not weighed; frame.limit holds every sag; the Euler check says what it rests on', async () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/g.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/g');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // 1. a generated gantry: g (340 mm) lies across the top side beams y3 and y4, its joint on y3 10 mm from g's end a
+    // and y4's axis 330 mm along it. By the lever rule g's weight at its middle (170 mm) goes (330 − 170) / 320 = 50%
+    // to each; with its joint's beam carrying it all, y4 under g sagged by its own weight alone
+    write({ title: 'Gantry', kind: 'fit', frame: { kind: 'gantry', inside: [300, 400, 200], profile: '2020-misumi-hfs5', join: 'blind', points: ['y3.top@50%', 'y4.top@50%'] } });
+    let r = probe();
+    const solve = r.find((x) => x.code === 'frame.solve'), g = solve.refs.riding.find((x) => x.id === 'g');
+    assert.match(solve.text, /g rides on gantry, its [\d.]+ kg weighed on the frame, shared as it lies: 50% on y3, 50% on y4/);
+    assert.deepEqual(g.on.map((x) => [x.beam, +x.share.toFixed(3)]), [['y3', 0.5], ['y4', 0.5]]);
+    const sag = (w) => r.find((x) => x.code === 'frame.deflection' && x.refs.where === w).values.rigid;
+    assert.ok(Math.abs(sag('y4.top@50%') / sag('y3.top@50%') - 1) < 0.1, `the two side beams sag alike: y3 ${sag('y3.top@50%')}, y4 ${sag('y4.top@50%')} mm`);
+    // 2. a beam g riding a slide on y5, which no join holds to the frame: y5 is left out, and g and the load on y5 with it,
+    // each named as not weighed
+    const P = { profile: '2020-misumi-hfs5' };
+    const portal = { title: 'Off', kind: 'fit', items: [{ id: 'z1', beam: P, from: [0, 0, 0], to: [0, 0, 400] }, { id: 'z2', beam: P, from: [620, 0, 0], to: [620, 0, 400] }, { id: 'x1', beam: P, from: [10, 0, 390], to: [610, 0, 390] }, { id: 'y5', beam: P, from: [0, 300, 500], to: [600, 300, 500] }, { id: 'g', beam: { ...P, length: 300 } }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'y5', at: [0, 10, 100], axis: [0, 0, 1] }, child: { item: 'g', at: [0, 0, 150], axis: [0, 0, 1] }, min: 0, max: 200 }],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], loads: [{ mass: 2, at: 'y5.top@50%' }, { mass: 1, at: 'x1.top@50%' }], frame: { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed' }, limit: 0.05 } };
+    write(portal);
+    r = probe();
+    const off = r.find((x) => x.code === 'frame.solve');
+    assert.match(off.text, /Not weighed on the frame, as the beam carrying it is left out: g \(on y5\), load 1 at y5\.top@50% \(on y5\)/);
+    assert.deepEqual(off.refs.off.map((x) => x.id), ['g', 'load 1 at y5.top@50%']);
+    // 3. frame.limit holds the sag at a load's point too, not a named point's alone
+    const load = r.find((x) => x.code === 'frame.deflection' && x.refs.where === 'x1.top@50%');
+    assert.equal(load.values.limit, 0.05);
+    assert.equal(load.refs.limit, 'the assembly\'s frame.limit');
+    const { schema } = await import('./lib/schema.mjs');
+    const limitSays = JSON.stringify(schema('assembly')).match(/"limit":\{"\$ref":"#\/\$defs\/expr","description":"([^"]*)"/)?.[1] ?? '';
+    assert.match(limitSays, /every frame\.deflection finding/);
+    // 4. the Euler check's rule says it rests on ends held from moving sideways, and where a sway frame's posts are checked
+    const { FRAME_CHECK } = await import('./lib/framecheck.mjs');
+    assert.match(FRAME_CHECK.euler.rule, /held from moving sideways/);
+    assert.match(FRAME_CHECK.euler.rule, /free to sway .* whole frame's own buckling factor/);
+  } finally { done(); }
+});
+
 test('frame checks: an open cube racks with a low stiffness and one brace stiffens it many times, gussets and a panel solved beside it; a gantry beam\'s frequency with its carriage at mid-span agrees with the formula for a loaded beam; the mode drawn', () => {
   const { ws, cad, done } = workspace();
   try {

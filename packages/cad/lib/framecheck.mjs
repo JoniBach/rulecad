@@ -47,7 +47,7 @@ export const FRAME_CHECK = {
   sag: { value: 360, unit: 'span per mm', rule: 'Where nothing else sets a limit, a beam may sag by its span over this much: a floor member\'s limit under the load it carries, a starting figure for a frame that holds things still. A guide\'s own tolerance, the assembly\'s frame.limit or its task\'s accuracy set a tighter one', kind: 'default', source: 'International Building Code, Table 1604.3, floor members under live load, l/360 (as reproduced in 780 CMR 1604.3, Massachusetts State Building Code); a building\'s serviceability figure taken as a frame\'s starting point', checked: '2026-11-17' },
   margin: { value: 2, unit: '×', rule: 'A beam, a join or a beam in compression is checked against about twice its load: under this margin it warns, under 1 it fails', kind: 'default', source: 'The kit\'s standard of sizing from the load with about twice the margin (issue 240)', checked: '2026-11-17' },
   link: { value: 1000, unit: '×', rule: 'A join\'s link from b\'s axis to a\'s end is a beam this many times stiffer than the stiffest beam it joins: rigid beside them, and not so stiff that the solve loses its digits', kind: 'default', source: 'A working figure of @rulecad/cad: doubles keep about 16 digits, and a ratio of 1000 costs 3 of them', checked: '2026-11-17' },
-  euler: { value: 1, unit: '', rule: 'A beam in compression is checked against Euler\'s load for its length with both ends pinned (effective length factor 1): a join holds an end more than a pin does, so this is the low end of what it carries', kind: 'default', source: 'Euler\'s column, P = π² E I / (K L)², K = 1 for both ends pinned (Roark\'s Formulas for Stress and Strain, 7th ed., table 15.1, case 1a)', checked: '2026-11-17' },
+  euler: { value: 1, unit: '', rule: 'A beam in compression is checked against Euler\'s load for its length with both ends pinned (effective length factor 1). That rests on its ends being held from moving sideways, as in a braced bay or on fixed feet, where a join holding an end more than a pin does only raises the load. A post of a frame free to sway (an open frame on pinned feet) buckles sooner, at an effective length factor of 2 or more: that is left to the whole frame\'s own buckling factor, frame.buckling\'s second finding, solved with the joins\' springs', kind: 'default', source: 'Euler\'s column, P = π² E I / (K L)², K = 1 for both ends pinned (Roark\'s Formulas for Stress and Strain, 7th ed., table 15.1, case 1a)', checked: '2026-11-17' },
   push: { value: 20, unit: 'N', rule: 'Where the assembly gives no frame.rack.load, the side push a frame is racked by at its top: a hand steadying it, or a bump while working at it. The stiffness it reports does not depend on this figure; only the sway against the limit does', kind: 'estimate', source: 'A working figure of @rulecad/cad, with no measurement behind it', checked: '2026-11-17' },
   sway: { value: 400, unit: 'height per mm', rule: 'Where nothing else sets a limit, a frame may sway at its top by its height over this much under the side push: the lenient end of the drift limits in common use for buildings under wind, taken as a frame\'s starting point. The task\'s accuracy or frame.rack.limit set a tighter one', kind: 'default', source: 'ASCE/SEI 7-22, Commentary to Appendix C, section CC.2.2: drift limits in common usage are on the order of 1/600 to 1/400 of the building or storey height', checked: '2026-11-17' },
   order: { value: ['gusset', 'brace', 'panel'], unit: '', rule: 'The changes that stiffen a bay against racking, cheapest first: gussets at its corners (four printed or bought plates), one diagonal brace (a length of the bay\'s own profile and two fittings), a panel (a sheet and its clips). The first in this order that brings the sway under the limit is advised, in one bay before every bay that way', kind: 'default', source: 'A working order of @rulecad/cad, by the parts each needs; cad list prices them', checked: '2026-11-17' },
@@ -174,7 +174,27 @@ export function frameModelOf(s, helpers) {
   // where an item's chain of mounts meets a still beam: that joint, and whether anything on the way moves
   const mountOf = (k) => { let mover = null; for (let i = k, n = 0; n < 99; n++) { const j = byChild.get(i); if (!j) return null; if (moving(j)) mover = mover ?? j; if (beams.has(ids[j.parent])) return { beam: beams.get(ids[j.parent]), joint: j, mover }; i = j.parent; } return null; };
   // a mount's station on its beam at a set of joint values: a slide along the beam moves it
-  const mountStation = (mt, values) => { const j = mt.joint, z = j.a[11], v = j.type === 'prismatic' ? (values[j.id]?.[0] ?? 0) : 0; return Math.max(0, Math.min(mt.beam.L, z + v * j.a[10])); };
+  // (a beam a riding beam also rests on, parallel to its joint's beam: the same station there, turned by sign and moved by shift)
+  const mountStation = (mt, values) => { const j = mt.joint, z = j.a[11], v = j.type === 'prismatic' ? (values[j.id]?.[0] ?? 0) : 0; return Math.max(0, Math.min(mt.beam.L, (mt.shift ?? 0) + (mt.sign ?? 1) * (z + v * j.a[10]))); };
+
+  // the beams a riding beam o (item k, its joint mt on a still beam) lies on: its joint's beam, at the joint's anchor
+  // along o, and one other still beam parallel to it, square to o, its axis as far below o's and under o's length.
+  // Each takes the share of o's weight the lever rule gives (o's weight at its middle); null where there is no other
+  // such beam, more than one, or o's middle is not between them (then its joint's beam carries it all)
+  const restsOn = (o, k, mt) => {
+    const W = worlds[k], u = [W[2], W[6], W[10]], O = rowsAt(W, [0, 0, 0]), L = o.beam.length, T = mt.beam;
+    if (Math.abs(dot(u, T.u)) > 1e-3) return null;
+    const s1 = mt.joint.b[11], P1 = rowsAt(W, [0, 0, s1]), drop = dot(sub(add(T.A, scale(T.u, dot(sub(P1, T.A), T.u))), P1), down);
+    const others = [...beams.values()].filter((b) => b !== T && Math.abs(Math.abs(dot(b.u, T.u)) - 1) < 1e-6).map((b) => {
+      const s2 = dot(sub(b.A, O), u), P2 = add(O, scale(u, s2)), foot = add(b.A, scale(b.u, dot(sub(P2, b.A), b.u)));
+      return { b, s2, gap: Math.hypot(...sub(sub(foot, P2), scale(down, dot(sub(foot, P2), down)))), drop: dot(sub(foot, P2), down) };
+    }).filter((x) => x.s2 >= -1e-6 && x.s2 <= L + 1e-6 && Math.abs(x.s2 - s1) > 1 && x.gap < 1 && Math.abs(x.drop - drop) < 1);
+    if (others.length !== 1) return null;
+    const { b, s2 } = others[0], c = L / 2, p1 = (s2 - c) / (s2 - s1);
+    if (!(p1 >= 0 && p1 <= 1)) return null;
+    const sign = Math.sign(dot(b.u, T.u)), shift = dot(sub(T.A, b.A), b.u);
+    return [{ mount: mt, part: p1, s: s1 }, { mount: { ...mt, beam: b, sign, shift }, part: 1 - p1, s: s2 }];
+  };
 
   // the poses: as drawn, each named pose, and each moving joint mounted on a beam at either end of its travel (a slide in
   // its middle too)
@@ -202,13 +222,17 @@ export function frameModelOf(s, helpers) {
   }
   // a beam riding a moving joint (a gantry's cross beam on its carriages): its sheet's weight at its middle, carried
   // where its chain of mounts meets a still beam, like any mounted item
+  // A riding beam lying across two parallel beams at one level (a gantry's beam on its two side beams) rests on both,
+  // though its joint is on one: its weight is shared between them by the lever rule, as a beam on two supports
   const rides = [];
   for (const { o, k } of riding) {
     const kg = (o.beam.weight?.sheet ?? o.beam.mass ?? 0) / 1000, mt = mountOf(k), on = byChild.get(k);
     if (!(kg > 0)) { unknown.push(o.id); continue; }
     if (!mt) { loose.push(o.id); continue; }
-    carried.push({ id: o.id, item: k, kg, centre: [0, 0, o.beam.length / 2], mount: mt });
-    rides.push({ id: o.id, joint: (mt.mover ?? on)?.id ?? null, kg });
+    const share = mt.joint.child === k ? restsOn(o, k, mt) : null;
+    if (share) for (const x of share) carried.push({ id: o.id, item: k, kg: kg * x.part, centre: [0, 0, x.s], mount: x.mount });
+    else carried.push({ id: o.id, item: k, kg, centre: [0, 0, o.beam.length / 2], mount: mt });
+    rides.push({ id: o.id, joint: (mt.mover ?? on)?.id ?? null, kg, on: share ? share.map((x) => ({ beam: x.mount.beam.id, share: x.part })) : [{ beam: mt.beam.id, share: 1 }] });
   }
   const loads = [];
   (motion.loads || []).forEach((l, i) => {
@@ -341,7 +365,9 @@ export function frameModelOf(s, helpers) {
     return out;
   };
   const kept = new Set(carried.filter(keep).map((c) => c.id));
-  return { beams, left, missing, loose, unknown, riding: rides.filter((x) => kept.has(x.id)), carried: carried.filter(keep), loads: loads.filter(keep), points, guides: guides.filter(keep), supports: supports.filter(keep), joins: joins.filter((x) => beams.has(x.A.id)),
+  // what is mounted only on beams left out (not held by a support through joins): not weighed, and named
+  const off = [...new Map([...carried, ...loads].filter((c) => !keep(c) && !kept.has(c.id)).map((c) => [c.id ?? `load ${c.index + 1} at ${c.where}`, (c.mount?.beam ?? c.beam).id]))].map(([id, on]) => ({ id, on }));
+  return { beams, left, missing, loose, unknown, off, riding: rides.filter((x) => kept.has(x.id)), carried: carried.filter(keep), loads: loads.filter(keep), points, guides: guides.filter(keep), supports: supports.filter(keep), joins: joins.filter((x) => beams.has(x.A.id)),
     cases, down, nodes, nodeAt, model: withSprings(false), rigid: withSprings(true), nodeLoads, nodeMasses, bays, webs, sheets: heldSheets, laid, elements, mountStation, worlds, axisOf: (j) => axisOf(motion, worlds, j, mul) };
 }
 
@@ -375,8 +401,8 @@ export function frameChecks(s, f, helpers) {
   // what every figure rests on: the joins' springs are an estimate while any is, whether or not they move a figure
   const restsOn = estimates ? 'estimate' : fm.joins.length ? 'measured' : 'beams';
   const rests = fm.joins.map((x) => ({ join: x.j.index, kind: x.j.kind, bending: x.k.bending, twist: x.k.twist, value: restsWord(x.k) }));
-  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${fm.carried.length} item${fm.carried.length > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${fm.laid.length ? `. ${fm.laid.map((p) => `${p.id} lies on ${p.beams.join(', ')}, which are not joined round it as a bay: its ${n3(p.kg, 3)} kg is spread along them, and it is no shear web`).join('; ')}` : ''}${held.length ? `. Nothing holds it at ${heldList}: it can move there with nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on its own axis). Its loads do not move it that way, so it is held there for these figures, and a push that way finds it free (frame.rack). Hold it with "frame": { "supports" } fixed or resting, or join it into a box` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins)` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
-    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, held, laid: fm.laid.map((p) => ({ id: p.id, kg: r3(p.kg), beams: p.beams })), riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
+  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${new Set(fm.carried.map((c) => c.id)).size} item${new Set(fm.carried.map((c) => c.id)).size > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame${x.on.length > 1 ? `, shared as it lies: ${x.on.map((q) => `${n3(q.share * 100, 0)}% on ${q.beam}`).join(', ')}` : `, all of it on ${x.on[0].beam}, the beam its joint is on`}`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${fm.laid.length ? `. ${fm.laid.map((p) => `${p.id} lies on ${p.beams.join(', ')}, which are not joined round it as a bay: its ${n3(p.kg, 3)} kg is spread along them, and it is no shear web`).join('; ')}` : ''}${held.length ? `. Nothing holds it at ${heldList}: it can move there with nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on its own axis). Its loads do not move it that way, so it is held there for these figures, and a push that way finds it free (frame.rack). Hold it with "frame": { "supports" } fixed or resting, or join it into a box` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins)` : ''}${fm.off.length ? `. Not weighed on the frame, as the beam carrying it is left out: ${fm.off.map((x) => `${x.id} (on ${x.on})`).join(', ')}` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
+    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, off: fm.off, held, laid: fm.laid.map((p) => ({ id: p.id, kg: r3(p.kg), beams: p.beams })), riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
 
   // ---- frame.deflection: each load's point, each named point, every guide ----
   const worst = (fn) => { let w = null; for (const r of results) { const v = fn(r.spring, r), v0 = fn(r.rigid, r); if (!w || v.sag > w.sag) w = { ...v, rigid: v0.sag, case: { ...r.case, alone: r.alone } }; } return w; };
@@ -403,7 +429,7 @@ export function frameChecks(s, f, helpers) {
     const w = worst((r) => sagAlong(r, g.beam, g.from, g.to, down)), own = g.tolerance ? { value: g.tolerance.value, from: `the rail's own parallelism over its length (${g.tolerance.note ?? g.tolerance.term})` } : null;
     report(`${g.beam.id} under guide ${g.id}, between ${n3(g.from, 1)} and ${n3(g.to, 1)} mm`, `${g.id}`, g.beam, w, own, null, add(g.beam.A, scale(g.beam.u, w.z)));
     // kept for the error budget: the task's terms take the beam's sag along the guide from here (lib/task.mjs terms)
-    (s.frameGuideSag ??= new Map()).set(g.id, { sag: r3(w.sag), rigid: r3(w.rigid), pose: w.case.label, restsOn, beam: g.beam.id });
+    (s.frameGuideSag ??= new Map()).set(g.id, { sag: sagR(w.sag), rigid: sagR(w.rigid), pose: w.case.label, restsOn, beam: g.beam.id });
   }
 
   // ---- frame.stress: the worst in each beam against its alloy; the moment at each join against its fitting ----

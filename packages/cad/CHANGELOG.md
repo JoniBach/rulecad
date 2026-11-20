@@ -50,6 +50,23 @@ and head, the parts it passes through and the part it ends in.
 
 ### Fixed
 
+- A frame in one plane on pinned feet (two posts and a rail, a generated portal) and a beam pinned at both ends were
+  left unsolved as mechanisms, their sag falling back to estimates. The part nothing holds (the plane's sway, the
+  beam's spin) is held for the figures while the loads do not move it, `frame.solve` names it (`refs.held`) and
+  `frame.rack` warns that a push across finds the frame free. With @rulecad/fea's `loose: 'hold'`.
+- A panel across the top of a corner-post box (its rails joined to the posts, not to each other) was no shear web and
+  its weight was dropped as "not on a beam". It is a web on its bay now; a panel whose beams make no bay is weighed
+  along them (`refs.laid`).
+- A gantry beam put all its weight on the side beam its joint is on; it is shared between the two it lies on by the
+  lever rule (`refs.riding[].on`). What rides or is loaded on a beam left out of the frame is named as not weighed
+  (`refs.off`), where it vanished.
+- `frame.size`: the step search stalled where two groups tied for the worst figure; a group at its lightest profile
+  took its margin without the sag at its own nodes; with nothing fitting, the nearest design was ranked by a partial
+  check. Each is fixed in @rulecad/fea's sizing.
+- A sag under 0.1 mm is given to three figures (0.0521 mm, not 0.052; 0.00123, not 0.001), in the task's error budget too.
+- The schema said `frame.limit` held the sag at a named point; it holds every `frame.deflection` finding, as the code
+  did. The Euler check's rule (`frame.euler`) says it rests on ends held from moving sideways, and that a sway frame's
+  posts are the whole frame's buckling factor's to judge.
 - A slot nut in a printed slot with sloped lips warned on every screw (`fasten.end`): the nut's fit note, which
   @rulecad/frames gives at info level, was raised to a warning. It is said in the text.
 - A slot nut's thread was counted from under the lips where the nut seats lower, under lips that slope underneath

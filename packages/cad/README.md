@@ -719,8 +719,14 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   "z1.a": "pinned", "z2.a": "fixed" } }` says; else at the beam ends a foot, levelling foot, castor plate or
   stacking foot (printed or bought) is fitted to; else at its lowest beam ends. Feet and lowest ends are pinned: held
   from moving and free to turn, as a foot stands on a floor. Beams no support holds through joins are left out by
-  name. A beam that rides a moving joint (a gantry's cross beam on its carriages) is a load on the frame, named as
-  riding (`refs.riding`), not part of it.
+  name, and so is what is mounted only on them, as not weighed (`refs.off`). A beam that rides a moving joint (a
+  gantry's cross beam on its carriages) is a load on the frame, named as riding (`refs.riding`), not part of it;
+  lying across two parallel beams at one level (a gantry's beam on its two side beams), its weight is shared between
+  them by the lever rule, though its joint is on one, and `refs.riding` gives each share. Where part of the frame can
+  move with nothing resisting it (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both
+  ends spins on its own axis) and its loads do not move it that way, it is held there for the figures, and
+  `frame.solve` names each such freedom (`refs.held`); `frame.rack` then warns that a push that way finds it free.
+  Loads that would move it that way leave the frame unsolved, with the freedoms named.
 - The loads: each beam's own weight (its sheet's mass per metre), each item mounted on a beam (its mass at its
   centre, as a force and a moment at the node where its chain of mounts meets the beam; a riding beam's sheet weight
   at its middle the same way) and each `mass` in `"loads"`.
@@ -732,13 +738,15 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   `estimate` while any join's spring is one, even where the springs change no figure; `measured` when every join's
   is; `beams` with no joins); the rigid figure is the least the sag can be. The limit is a rail's own parallelism
   under a guide, else `"frame": { "limit": 0.2 }`, else the task's accuracy, else the beam's span over 360. Over it fails.
-  A sag is given in mm to three places, or to three figures where three places read 0 (0.000352 mm).
+  A sag is given in mm to three places, or to three figures under 0.1 mm (0.00123 mm, 0.000352 mm).
 - `frame.stress`: the largest stress in each beam (axial and bending, from the section moduli) against its alloy's
   strength, and the bending moment at each join against what its printed fitting takes (its design load at its
   screw's distance from the corner, times its margin by finite elements). Under 2 times warns, under 1 fails. A join
   with no strength in the kit (blind, end-tap, a bought fitting) has its largest moment said.
 - `frame.buckling`: each beam in compression against Euler's load with both ends pinned, and the whole frame's first
-  buckling factor with the joins' springs (each beam cut in four).
+  buckling factor with the joins' springs (each beam cut in four). The first rests on the beam's ends being held from
+  moving sideways (a braced bay, fixed feet); a post of a frame free to sway on pinned feet buckles sooner, and the
+  second, the whole frame's factor, is the figure that takes that in (`frame.euler`).
 - `frame.rack`: each way across the frame (named by the world axis it is nearest), a side push at its top, shared
   among the top corners of its bays, and the sway it causes, with the joins' springs and rigid, as a stiffness in
   N/mm. The push is `"frame": { "rack": { "load": 100 } }` in N, else 20 N (`frame.push`, an estimate: a hand
@@ -750,13 +758,15 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   brings it under, in the order gussets, brace, panel, one bay before every bay (`frame.order`), and names it in
   `refs.advise` (null where the frame stands within its limit). Where bracing every
   bay that way makes it ten times stiffer or more, the text calls the open stiffness low: the open bays hold the
-  push by their joins' bending alone. A bay is four beams joined round a rectangle in one plane; its corners are the
-  nodes where their axes cross.
+  push by their joins' bending alone. A bay is four beams round a rectangle in one plane, each neighbouring pair
+  joined to each other or both joined to one beam at one place (the top of a corner-post box, whose rails join the
+  posts); its corners are the nodes where their axes cross.
 - A panel (not a door) on a bay of the frame is a shear web in the model: one diagonal bar across the bay, free to bend
   at both corners (a ball at one, pinned at the other, so it carries no twist and nothing in it spins free when the
   modes split it into pieces), as stiff along it as the sheet in shear in series with its clips' grip. The clips' grip
   (`frame.clip`, 200 N/mm a clip) is an estimate, and `frame.solve` says so; the panel's weight goes to its bay's
-  four corners.
+  four corners. A panel whose beams make no bay is no web, and its weight is spread along those of its beams in the
+  frame, an equal share on each (`refs.laid`).
 - `frame.frequency`: the lowest three modes in each pose, the worst named, with each beam's own mass and every
   carried item's and load's mass at the node it is carried at (its rotary inertia about that node is left out), with
   the joins' springs and rigid. Against what the machine excites: each stepper's full-step rate at its working speed
