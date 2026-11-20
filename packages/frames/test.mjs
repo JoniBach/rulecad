@@ -1645,6 +1645,34 @@ test('a printed beam\'s ends: a captive nut or an insert in place of a tap, each
   assert.match(coded(plainBar, 'beam.end')[0].text, /names no end_thread or end_at for a printed end/);
 });
 
+test('a beam printed standing from a profile with a bore takes its end\'s screw in the bore\'s place: a captive nut where an insert has no room, the bore filled under it; a foot takes that thread; drawn in place with its ends', async () => {
+  const { beamModel, printedBeam, printedInPlace, footModel } = frames;
+  const end = (o) => coded(beamModel('2020-misumi-hfs5', { length: 120, material: 'petg', printed: { pose: 'standing', ...o }, ops: [{ op: 'tap', at: 'a' }] }), 'beam.end')[0];
+  // MISUMI's 2020 names no end figures; its 4.2 mm bore leaves 4 mm of plastic round its middle (the slots' floors).
+  // An M5 screw does not pass the bore (5 > 4.2), so M4 is the largest. Its insert needs 5.7 / 2 + 2.1 = 4.95 mm: no room
+  const ins = end({});
+  assert.equal(ins.level, 'fail'); assert.match(ins.text, /end a takes M4 in a heat-set insert .* in its 4\.2 mm bore's place .*: none does\): 4 mm of plastic round its middle, short of the hole/);
+  // A captive nut: M4's corners need 7 / cos 30° / 2 + 0.42 = 4.46 mm, M3's 5.5 / cos 30° / 2 + 0.42 = 3.6 mm: M3 fits
+  const nut = end({ end: 'nut' });
+  assert.equal(nut.level, 'pass', nut.text); assert.deepEqual([nut.refs.thread, nut.refs.fixing, nut.values.room], ['M3', 'nut', 4]);
+  assert.ok(Math.abs(nut.values.need - (5.5 / Math.cos(Math.PI / 6) / 2 + 0.42)) < 1e-6, String(nut.values.need));
+  // drawn as it prints and in its place: it prints clean, and in place the bore is filled where the screw's 3.5 mm hole
+  // and the nut's slot are cut, so 1 mm in from the end there is plastic between the hole and the bore's wall
+  const b = beamModel('2020-misumi-hfs5', { length: 120, material: 'petg', printed: { pose: 'standing', end: 'nut' }, ops: [{ op: 'tap', at: 'a' }, { op: 'tap', at: 'b' }] });
+  await prints(printedBeam(b), 'a standing post with a captive nut in each end');
+  const { intersect, subtract } = jscad.booleans, { measureVolume } = jscad.measurements, { cylinder } = jscad.primitives, placed = printedInPlace(b);
+  const ring = (z) => measureVolume(intersect(placed, subtract(cylinder({ radius: 2.05, height: 1, center: [0, 0, z], segments: 32 }), cylinder({ radius: 1.8, height: 1, center: [0, 0, z], segments: 32 }))));
+  assert.ok(ring(1) > 2, `filled under the nut: ${ring(1)} mm³ between the 3.5 mm hole and the 4.2 mm bore`);
+  assert.ok(ring(60) < 0.05, `the bore open in the middle: ${ring(60)} mm³`);
+  // the foot under it: its screw the printed end's thread, its tap op that thread, its text the printed end's
+  const ft = footModel('2020-misumi-hfs5', { material: 'petg', thread: 'M3' });
+  assert.deepEqual([ft.thread, ft.screws[0].thread, ft.ops[0].thread], ['M3', 'M3', 'M3']);
+  assert.match(coded(ft, 'fitting.screw')[0].text, /^M3 cap through 3 mm of floor into the printed end's own M3 fixing/);
+  await prints(frames.foot(ft), 'a foot for an M3 printed end');
+  assert.throws(() => footModel('2020-misumi-hfs5', { thread: 'M6' }), /an M6 screw does not pass up profile-2020-misumi-hfs5's 4\.2 mm bore/);
+  assert.throws(() => footModel('2020-misumi-hfs5', { thread: 'big' }), /thread is the printed end's thread, as 'M3'/);
+});
+
 test('operations on a printed beam are features of the print: holes sized by the printer, a hole on its side a teardrop', async () => {
   const { opCutters } = await import('./ops.mjs');
   // the X1C's M4 clearance: 4.5 + its hole_comp 0.1 = 4.6 (machined, 4.5 as drawn)

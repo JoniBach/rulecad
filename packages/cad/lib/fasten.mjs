@@ -454,6 +454,21 @@ function beamTap(s, B, O, D) {
   return out;
 }
 
+// A printed beam's end the screw goes into, where its line runs up that end's fixing: the thread its insert or
+// captive nut takes (the beam's printed ends), so a screw of another thread is refused by name
+function printedEnd(s, B, O, D) {
+  for (const p of B.parts) {
+    const b = s.objects.find((o) => o.id === p.leaf)?.beam;
+    if (!b?.printed?.ends || !p.m) continue;
+    for (const [e, fix] of Object.entries(b.printed.ends)) {
+      const z = e === 'a' ? 0 : b.length, P = vec3.transform([0, 0, 0], [fix.at[0], fix.at[1], z], p.m), q = vec3.transform([0, 0, 0], [fix.at[0], fix.at[1], e === 'a' ? 1 : b.length - 1], p.m);
+      const Z = unit([q[0] - P[0], q[1] - P[1], q[2] - P[2]]), off = Math.hypot(...cross(add(P, O, -1), D));
+      if (Math.abs(Math.abs(dot(Z, D)) - 1) < 1e-6 && off <= FASTEN.align.value) return { end: e, thread: fix.thread, kind: fix.kind };
+    }
+  }
+  return null;
+}
+
 /**
  * An assembly's fasten relations, worked out from its parts as they stand: each screw followed along its axis, what
  * was measured, what was found, and the hardware to place.
@@ -721,7 +736,8 @@ export function fastenOf(s, worlds, opts = {}) {
           say('fasten.end', 'pass', `ends in ${an(nm.name)} ${nm.name} ${end.nut.seated ? `in its seat in ${x.into}, ${mm(seatNut.across)} mm across the flats for the nut's ${mm(nm.flats)} mm` : `on the far face of ${x.into}`}, past a ${mm(end.d)} mm clearance hole`, { ...endValues, flats: nm.flats });
         }
       } else {
-        const bt = beamTap(s, B, O, D);
+        const bt = beamTap(s, B, O, D), pe = bt ? null : printedEnd(s, B, O, D);
+        if (pe && pe.thread !== fx.thread) { say('fasten.end', 'fail', `${x.into}'s end ${pe.end} is printed with ${an(pe.thread)} ${pe.thread} ${pe.kind === 'nut' ? 'captive nut' : 'heat-set insert'} in place of a tap, and the screw is ${fx.thread}: use ${an(pe.thread)} ${pe.thread} screw (a printed foot takes it as "thread": "${pe.thread}")`, { thread: pe.thread }); bad = true; return; }
         if (bt && bt.thread !== fx.thread) { say('fasten.end', 'fail', `${x.into}'s bore ${bt.bore} is tapped ${bt.thread}, and the screw is ${fx.thread}: use ${an(bt.thread)} ${bt.thread} screw, or tap it ${fx.thread}`); bad = true; return; }
         if (bt) { end.kind = 'tap'; end.blind = bt.depth < bt.length - 1e-6; end.depth = Math.min(bt.depth, bt.length); end.beamTap = bt; }
         const hit = bt ? null : kinds.filter((c) => Math.abs(end.d - c.hole.diameter) <= sizeTol).sort((p, q) => Math.abs(end.d - p.hole.diameter) - Math.abs(end.d - q.hole.diameter))[0];

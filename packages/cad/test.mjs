@@ -4722,6 +4722,48 @@ test('a printed beam in an assembly: a printed part weighed by its walls and inf
   } finally { done(); }
 });
 
+test('a printed beam\'s end in a frame: a post printed standing takes a foot\'s screw in a captive nut in its bore\'s place, a screw of another thread is refused by name, a nut on a printed slot\'s sloped lips is said and passes, and a stiff frame\'s sag is given to three figures', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PETG', objects: [] }));
+    const findings = (name) => { const out = cad('check', `frame/${name}`, '--json'), r = JSON.parse(out); assert.ok(r.findings, out); return r.findings; };
+    // a post of MISUMI's 2020 printed standing (its four slots kept), a rail of the kit's printable 2020 lying down,
+    // a printed bracket on drop-in nuts between them, and a printed foot under the post screwed into its end
+    const post = { id: 'p1', beam: { profile: '2020-misumi-hfs5', material: 'petg', printed: { pose: 'standing', pull: 50, end: 'nut' }, ops: [{ op: 'tap', at: 'a' }] }, from: [10, 10, 0], to: [10, 10, 120] };
+    const frame = (foot, screw) => ({ title: 'Post', kind: 'fit', items: [post, { id: 'x1', beam: { profile: '2020-printed', material: 'petg', printed: true }, from: [20, 10, 10], to: [160, 10, 10] },
+      { id: 'foot1', fitting: { kind: 'foot', profile: '2020-misumi-hfs5', ...foot }, at: 'p1.a' }, { id: 'cap1', fitting: { kind: 'end-cap', profile: '2020-misumi-hfs5' }, at: 'p1.b' }],
+      joins: [{ kind: 'bracket', a: 'x1.a', b: 'p1.back@10', fitting: 'printed', nut: 'drop-in' }],
+      fasten: [{ screw: screw, through: ['foot1'], into: 'p1', at: ['foot1.b1'], note: 'Foot 1' }] });
+    fs.writeFileSync(at('assemblies/post.json'), JSON.stringify(frame({ thread: 'M3' }, 'M3 cap')));
+    const f = findings('post'), said = (code, re) => f.filter((x) => x.code === code && re.test(x.text));
+    // the post's end: its 4.2 mm bore leaves 4 mm of plastic round its middle, so an M3 nut (5.5 mm across the flats,
+    // 5.5 / cos 30° = 6.35 mm across its corners, half 3.18, and a 0.42 mm line: 3.6 mm) fits, and its screw passes the bore
+    assert.equal(said('beam.end', /^p1: profile-2020-misumi-hfs5 x 120, printed standing up: end a takes M3 in a captive nut/).length, 1);
+    const end = said('fasten.end', /^Foot 1/)[0];
+    assert.equal(end.level, 'pass', end.text); assert.match(end.text, /ends in an M3 hex nut in its seat in p1, [\d.]+ mm across the flats for the nut's 5\.5 mm, past a 3\.5 mm clearance hole/);
+    assert.deepEqual(f.filter((x) => x.code === 'overlap' && x.level !== 'pass').map((x) => x.text), [], 'the nut in its slot in the post as drawn');
+    // the bracket's nut in the printed rail's top slot: the sloped lips said, and no warning for it
+    const nut = said('fasten.end', /the bracket into x1/)[0];
+    assert.equal(nut.level, 'pass', nut.text); assert.match(nut.text, /slot-6-printed-2020's lips slope underneath at 45°, so it seats 3\.95 mm under the face/);
+    // a foot drawn for the aluminium post's M5 tap: its screw refused by name, with the thread the printed end takes
+    fs.writeFileSync(at('assemblies/post.json'), JSON.stringify(frame({}, 'M5 cap')));
+    const m5 = findings('post').find((x) => x.code === 'fasten.end' && /^Foot 1/.test(x.text));
+    assert.equal(m5.level, 'fail'); assert.match(m5.text, /p1's end a is printed with an M3 captive nut in place of a tap, and the screw is M5: use an M3 screw \(a printed foot takes it as "thread": "M3"\)/);
+    // a stiff frame's sag, where three places read 0: a 100 mm aluminium 2020 held fixed at both ends, under its own weight
+    // Hand: w = 0.5 kg/m x 9.80665 / 1000 = 0.0049 N/mm (the sheet's mass per metre, read below), E I = 69000 x 7420 here
+    // read from the beam's model; fixed both ends, sag = w L⁴ / (384 E I): about 2.5e-6 mm, given to three figures
+    const { beamModel } = await import('@rulecad/frames'), m = beamModel('2020-misumi-hfs5', { length: 100 });
+    fs.writeFileSync(at('assemblies/stiff.json'), JSON.stringify({ title: 'Stiff', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 10], to: [100, 0, 10] }],
+      frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' }, points: ['x1.top@50%'] } }));
+    const sag = findings('stiff').find((x) => x.code === 'frame.deflection'), w = (m.figures.massPerMetre.value * 9.80665) / 1000, EI = m.material.modulus * m.figures.inertiaX.value;
+    const hand = (w * 100 ** 4) / (384 * EI);
+    assert.ok(sag.values.sag > 0 && Math.abs(sag.values.sag - hand) / hand < 0.05, `${sag.values.sag} mm against the hand's ${hand}`);
+    assert.match(sag.text, /^x1 at x1\.top@50% sags \d\.\d+e-\d mm|^x1 at x1\.top@50% sags 0\.00000\d+ mm/);
+  } finally { done(); }
+});
+
 test('beam.printable: every beam of a case-sized frame can be printed in PETG; a 400 mm gantry beam needs aluminium, by the margin it misses by; a printed beam in the frame checked at its pose\'s strength, with its creep', async () => {
   const { ws, done } = workspace();
   try {

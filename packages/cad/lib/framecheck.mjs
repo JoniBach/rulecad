@@ -36,6 +36,8 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const rowsAt = (W, p) => [0, 1, 2].map((k) => W[4 * k] * p[0] + W[4 * k + 1] * p[1] + W[4 * k + 2] * p[2] + W[4 * k + 3]);
 const n3 = (x, d = 3) => String(+Number(x).toFixed(d)), r3 = (x) => +Number(x).toFixed(3), r4 = (p) => p.map(r3);
 const fig = (x) => String(+Number(x).toPrecision(3));
+// a sag in mm to three places, or where that reads 0, to three figures (a stiff frame's micrometres are still a figure)
+const sagN = (x) => (r3(x) !== 0 || !x ? n3(x) : fig(x)), sagR = (x) => (r3(x) !== 0 || !x ? r3(x) : +Number(x).toPrecision(3));
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 
 /** The working figures of the frame checks, each with what it rests on. */
@@ -367,8 +369,8 @@ export function frameChecks(s, f, helpers) {
   };
   const report = (what, where, b, w, own, alone, P) => {
     const lim = limitFor(b, own), level = w.sag > lim.value ? 'fail' : 'pass', soft = estimates && w.sag > w.rigid * 1.001;
-    const text = `${what} sags ${n3(w.sag)} mm${fm.cases.length > 1 ? `, worst ${w.case.label}` : ''}, with the joins' springs; ${n3(w.rigid)} mm with the joins rigid${alone ? ` (of these, ${n3(alone.sag)} and ${n3(alone.rigid)} mm from ${alone.what} alone)` : ''}. ${soft ? `The first rests on ${restsJoins}, so the true sag lies near it, and the rigid figure is the least it can be` : `It rests on ${restsJoins}`}: against ${n3(lim.value)} mm, ${lim.from}${level === 'fail' ? `: ${n3(w.sag / lim.value, 2)} times over. Stiffen the beam (a deeper profile), shorten its span, or stiffen its joins` : ''}`;
-    f(level, text, level === 'fail' ? `${where}: sags ${n3(w.sag, 2)} mm` : null, { code: 'frame.deflection', at: r4(P), values: { sag: r3(w.sag), rigid: r3(w.rigid), limit: r3(lim.value), ...(alone ? { alone: r3(alone.sag), aloneRigid: r3(alone.rigid) } : {}) },
+    const text = `${what} sags ${sagN(w.sag)} mm${fm.cases.length > 1 ? `, worst ${w.case.label}` : ''}, with the joins' springs; ${sagN(w.rigid)} mm with the joins rigid${alone ? ` (of these, ${sagN(alone.sag)} and ${sagN(alone.rigid)} mm from ${alone.what} alone)` : ''}. ${soft ? `The first rests on ${restsJoins}, so the true sag lies near it, and the rigid figure is the least it can be` : `It rests on ${restsJoins}`}: against ${n3(lim.value)} mm, ${lim.from}${level === 'fail' ? `: ${n3(w.sag / lim.value, 2)} times over. Stiffen the beam (a deeper profile), shorten its span, or stiffen its joins` : ''}`;
+    f(level, text, level === 'fail' ? `${where}: sags ${n3(w.sag, 2)} mm` : null, { code: 'frame.deflection', at: r4(P), values: { sag: sagR(w.sag), rigid: sagR(w.rigid), limit: r3(lim.value), ...(alone ? { alone: sagR(alone.sag), aloneRigid: sagR(alone.rigid) } : {}) },
       refs: { beam: b.id, where, pose: w.case.label, limit: lim.from, rests, restsOn } });
   };
   for (const l of fm.loads) {
