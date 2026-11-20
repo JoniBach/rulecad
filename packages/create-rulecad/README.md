@@ -56,7 +56,11 @@ clean in:
 The largest sizes are where its checks stop passing: wider, the top front beam sags past its width over 360 under
 the 5 kg load; taller, a 20 N push at the top sways it past its height over 400 (the printed brackets of the 3030 box
 give more than the blind joins of the 2020 ones, so it is clean only up to 300 mm tall). Under 100 mm the 3030
-brackets crowd each other. Another profile, or a size outside these, is refused by name, before anything is written:
+brackets crowd each other. Inside the ranges, a size whose beams' cut lengths lie under 1 mm apart (and are not one
+length) is refused too: two cuts at ±0.5 mm cannot hold them apart. A 2020 box's uprights are its height and 58.5 mm
+(two widths and the 18.5 mm its bottom ring rises over the feet's taps), a 3030 box's its height and 60 mm, so 358 x
+300 x 300 in 2020 (358 mm beams, 358.5 mm uprights) is refused, and 357.5 x 300 x 300 is made. Another profile, or a
+size outside these, is refused by name, before anything is written:
 make the box in range and change its `"inside"`, `"profile"`, `"join"` or `"feet"` by hand, and `cad check` says
 what that needs. `npx cad kit frame/box` writes the
 folder to build it from without the model: the build page, the shopping list, the plates to print, the jigs and each

@@ -15,6 +15,10 @@ screw by thread and head, the parts it passes through and the part it ends in.
   frame/box` writes the folder to build it from. Each profile takes the sizes its box checks clean in (2020: width
   and depth 50 to 1400 mm, height 50 to 600 mm; 3030: 100 to 800 mm, height 100 to 300 mm); a size outside them, or
   a profile it cannot make, is refused before anything is written, and so is a frame's flag on another machine.
+  So is a size inside them whose beams' cut lengths (the width's, the depth's and the uprights') lie under 1 mm
+  apart and not one length, which two cuts at ±0.5 mm cannot hold apart (358 x 300 x 300 in 2020: 358 mm beams beside
+  358.5 mm uprights); cad check warned `frame.cut` there. The 3030 box's feet tap M8 in each upright's middle bore
+  alone, where the kit's beam sheets said all five.
 - The template's AGENTS.md follows cad's: the kit, plates by material, and the frame template.
 
 ## 0.3.17: frames in the agents' notes (Frames 2)
