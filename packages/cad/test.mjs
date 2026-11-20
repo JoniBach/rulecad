@@ -104,12 +104,15 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     const draft = read('rules/my-2020.json');
     assert.deepEqual(Object.keys(draft.rules), Object.keys(vocabulary.drafts.profile)); assert.equal(draft.part, 'profile');
     for (const [k, r] of Object.entries(draft.rules)) { assert.equal(r.kind, 'estimate', k); assert.match(r.rule, /^DRAFT, not read from a sheet yet: /); assert.equal(r.unit, vocabulary.fields[k].unit, `${k} in its unit`); }
-    assert.match(cad('rules', 'check', 'my-2020'), /1 of 1 rule sets pass/);
+    // it checks as it stands, and says by name that its figures are still the draft's until each is filled or deleted
+    const drafted = cad('rules', 'check', 'my-2020'); assert.match(drafted, /1 of 1 rule sets pass \(1 with something to know\)/);
+    assert.match(drafted, new RegExp(`WARN  ${Object.keys(draft.rules).length} of its ${Object.keys(draft.rules).length} figures are still the draft's, not read from a sheet: family, series, .* and \\d+ more\\. Fill each from the maker's sheet .*\\(rules\\.draft\\)`));
+    assert.deepEqual(JSON.parse(run('rules', 'check', 'my-2020', '--json').stdout)[0].findings.find((x) => x.code === 'rules.draft').refs.rules, Object.keys(draft.rules));
     assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /already exists \(--force replaces it\)/);
     assert.match(cad('rules', 'draft', 'profile'), /usage: cad rules draft profile <name>/);
     cad('rules', 'draft', 'slot', 'my-slot'); cad('rules', 'draft', 'slot_nut', 'my-nut');
     assert.deepEqual(Object.keys(read('rules/my-slot.json').rules), Object.keys(vocabulary.drafts.slot)); assert.deepEqual(Object.keys(read('rules/my-nut.json').rules), Object.keys(vocabulary.drafts.slot_nut));
-    assert.match(cad('rules', 'check', 'my-slot', 'my-nut'), /2 of 2 rule sets pass/);
+    assert.match(cad('rules', 'check', 'my-slot', 'my-nut'), /2 of 2 rule sets pass \(2 with something to know\)/);
     cad('rules', 'draw', 'my-slot'); for (const t of ['>6<', '>12<', '>2<', 'track 9', 'floor 6']) assert.ok(fs.readFileSync(path.join(ws, 'my-slot.svg'), 'utf8').includes(t), `the slot's drawing shows ${t}`);
     cad('rules', 'draw', 'my-nut'); assert.ok(fs.readFileSync(path.join(ws, 'my-nut.svg'), 'utf8').includes('slide-in nut, M5, for slot-6'));
     // a person fills the drafts from MISUMI's page for HFS5-2020: the figures the sheet has, its page as the source, the rest deleted
@@ -133,7 +136,7 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     const w = run('rules', 'check', 'wide'); assert.equal(w.status, 1); assert.match(w.stdout, /FAIL {2}wide: its flanks would start above the underside of its lips.*\(slot\.model\)/);
     // a slot nut against its slot
     const nut = read('rules/my-nut.json'); nut.rules.slot.value = 'slot-6-misumi';
-    write('rules/my-nut.json', nut); assert.match(cad('rules', 'check', 'my-nut'), /1 of 1 rule sets pass\n$/);
+    write('rules/my-nut.json', nut); assert.match(cad('rules', 'check', 'my-nut'), /^my-nut: passes, 1 to know\n {2}WARN {2}12 of its 12 figures are still the draft's.*\(rules\.draft\)\n1 of 1 rule sets pass \(1 with something to know\)\n$/, 'it fits its slot: the only thing to know is that it is still a draft');
     nut.rules.width.value = 13; nut.rules.height.value = 5; write('rules/my-nut.json', nut);
     const n = run('rules', 'check', 'my-nut'); assert.equal(n.status, 1); assert.match(n.stdout, /it is 13 mm across, and slot-6-misumi is 12 mm wide under its lips/); assert.match(n.stdout, /it is 5 mm tall, and slot-6-misumi has 4 mm under its lips/);
     // a measured outline beside the set takes the drawn one's place, through its schema

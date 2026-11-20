@@ -73,6 +73,15 @@ function partFindings(set, name, file, all) {
   return out;
 }
 
+// A draft's figures not yet read from a sheet: cad rules draft writes each with a rule and a source that start "DRAFT",
+// and a set that still has one checks and draws as it stands, so it is said by name until each is filled or deleted
+function draftLeft(set) {
+  const left = Object.entries(set.rules && typeof set.rules === 'object' ? set.rules : {}).filter(([, r]) => r && typeof r === 'object' && [r.rule, r.source].some((x) => /^DRAFT\b/.test(String(x ?? '')))).map(([k]) => k);
+  if (!left.length) return [];
+  const n = Object.keys(set.rules).length, named = left.length > 8 ? `${left.slice(0, 8).join(', ')} and ${left.length - 8} more` : left.join(', ');
+  return [{ level: 'warn', code: 'rules.draft', text: `${left.length} of its ${n} figures are still the draft's, not read from a sheet: ${named}. Fill each from the maker's sheet (its value, the sheet and page as its source, the date) or delete it`, values: { count: left.length, total: n }, refs: { rules: left } }];
+}
+
 /** Every named set checked (or all of them): [{ name, file, findings, notes? }]. A finding's level is fail, warn or info;
  * notes: what is said and never fails */
 export function checkSets(names = []) {
@@ -80,6 +89,7 @@ export function checkSets(names = []) {
   return (names.length ? names.map((n) => [n, fileOf(n)]) : [...all]).map(([name, file]) => {
     const set = readSet(file), findings = checkRuleSet(set, v), notes = notesOf(set, file);
     if (!findings.length && ['profile', 'slot', 'slot_nut'].includes(set.part)) findings.push(...partFindings(set, name, file, all));
+    findings.push(...draftLeft(set));
     return { name, file, findings, ...(notes.length ? { notes } : {}) };
   });
 }
