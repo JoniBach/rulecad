@@ -461,7 +461,7 @@ printable 2020. A beam printed standing from a metal's profile takes its end's s
 2020: an M3 captive nut), a foot names that thread, and a printed beam in an assembly is drawn with its ends' fixings,
 so a screw into one is checked. The sag under the board is 0.000352 mm in aluminium and 0.009 mm printed, against
 0.361 mm. A 300 mm rail is longer than the bed and is spliced with a printed splice plate (a `splice` join). The kit
-is one plate of 73 PETG parts, 592 g, that prints clean.
+is one plate of 73 PETG parts, 593 g, that prints clean.
 
 ### 4.10 Generated frames and kits
 

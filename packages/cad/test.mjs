@@ -1928,6 +1928,16 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.ok(ofPr('frame.rack').length === 2 && ofPr('frame.rack').every((x) => x.level === 'pass'));
     assert.equal(ofPr('assembly.order')[0].values.steps, 47);
     assert.ok(ofPr('beam.printable').every((x) => x.level === 'pass') && ofPr('beam.printable').length === 13, 'every beam prints, standing or lying');
+    // the gussets' screws into m1's printable slot: its lips slope 45° underneath, so the drop-in nut (10 mm wide, its
+    // tongue 0.8) seats 2 + (10 - 6.1) / 2 = 3.95 mm down and its thread starts at 3.15; the gusset, MISUMI's slot under
+    // its other arm, is 4.6 mm thick so M4x12 (its tip 12 - 4.6 = 7.4 mm in) has the 3.2 mm a hex nut asks, where
+    // M4x10 through 4.4 mm reached 5.6 and had 2.45. Every screw into a nut has its thread
+    const intoM1 = ofPr('fasten.length').filter((x) => /the gusset into m1/.test(x.text));
+    assert.equal(intoM1.length, 2); assert.ok(intoM1.every((x) => /M4x12 cap chosen, the shortest sold that fits: 8\.55 mm under its head \(m1-x\d-gusset and the 3\.95 mm down to its nut's seat/.test(x.text)), intoM1.map((x) => x.text).join('\n'));
+    assert.ok(ofPr('fasten.engagement').length > 40 && ofPr('fasten.engagement').every((x) => x.level === 'pass'));
+    const spliced = JSON.parse(run(ws, ['check', 'case/spliced', '--json']).out).findings;
+    assert.deepEqual(spliced.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    assert.deepEqual(spliced.filter((x) => x.code === 'fasten.engagement').map((x) => [x.level, x.values.engaged]), [['pass', 4.1], ['pass', 4.1]]);
     const longRail = run(ws, ['check', 'case/long']);
     assert.equal(longRail.code, 1); assert.match(longRail.out, /✗ r1: profile-2020-printed x 300, printed lying down: 300 mm long, and x1c's bed is 256 mm: splice it in two/);
     const foot17 = run(ws, ['check', 'case/foot']);

@@ -42,7 +42,15 @@ and head, the parts it passes through and the part it ends in.
 ### Fixed
 
 - A slot nut in a printed slot with sloped lips warned on every screw (`fasten.end`): the nut's fit note, which
-  @rulecad/frames gives at info level, was raised to a warning. It is said in the text and passes.
+  @rulecad/frames gives at info level, was raised to a warning. It is said in the text.
+- A slot nut's thread was counted from under the lips where the nut seats lower, under lips that slope underneath
+  (the printable slots, `slot_nut.seat`): an M4 drop-in nut in the printable 2020's slot seats 3.95 mm down, not 2, so
+  its thread runs from 3.15 mm. `fasten.length` and `fasten.engagement` now count from the seat: an M4x10 through a
+  4.4 mm plate engaged 2.45 mm and passed as 4.1. A screw into such a slot may now need the next length.
+- A printed gusset or splice plate between beams of two profiles (MISUMI's 2020 and the printable 2020) is drawn for
+  both: each arm's tongue and nuts are its own beam's slot's, and it is thickened until a length sold fits both (its
+  name gains `-to-<profile>`). Printed size: chapter 17's T gusset, 4.4 to 4.6 mm thick, with M4x12 into the
+  printable slot; its splice plate, 4 to 4.6 mm.
 - `frame.deflection` gave a stiff frame's sag as 0 mm: under 0.001 mm it is given to three figures.
 - `fasten.seat` read a counterbore's floor in a part with a drawn thread (a levelling foot's body) as a cone and
   failed it: such a part is measured at even steps, and now also at every face square to the screw's axis.

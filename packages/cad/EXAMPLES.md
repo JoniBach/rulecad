@@ -7018,14 +7018,18 @@ X1C's 256 mm. The cross beam needs its top slot alone, for the gussets and the b
 npx cad check case/printed
 ```
 
-It checks with nothing failing and nothing warning, 1100 checks passing:
+It checks with nothing failing and nothing warning, 1102 checks passing:
 
 - Each post: `beam.printable` says it prints standing on end a with no supports; `beam.end` says end a takes an M3
   captive nut in its bore's place, with 4 mm of plastic round the screw's line for the nut's corners and a line.
 - Each foot: an M3x10 cap through the foot's 3 mm floor into the post's nut in its seat (`fasten.end`), the nut
   5.5 mm across its flats in a 5.7 mm slot.
-- Each bracket's and gusset's nut in a slot: in the posts and rails, MISUMI's slot; in `m1`, the printable slot,
-  whose lips slope underneath at 45°, so a drop-in nut seats 3.95 mm under the face, said and passing.
+- Each bracket's and gusset's nut in a slot: in the posts and rails, MISUMI's slot, its thread from 1.2 mm under the
+  face; in `m1`, the printable slot, whose lips slope underneath at 45°, so a drop-in nut, 10 mm wide in its 6.1 mm
+  opening, seats 2 + (10 − 6.1) / 2 = 3.95 mm under the face and its thread runs from 3.15 to 7.25 mm. Each gusset
+  has MISUMI's slot under one arm and the printable slot under the other, so it is drawn for both (`fitting.screw`):
+  4.6 mm thick, the least at which a length sold fits each, M4x10 into the rails (its tip 5.4 mm in) and M4x12 into
+  `m1` (its tip 7.4 mm in, 0.45 mm short of the floor). Each screw has the 3.2 mm of thread a hex nut's height asks.
 - The board on its mount: M2.5x8 cap screws, the largest whose 4.5 mm heads sit whole on the board, its holes 3.5 mm
   from its edges; 6.4 mm of PETG engaged in each pilot.
 - `frame.deflection`: under the board, `m1` sags 0.009 mm with the joins' springs, 0.007 mm with them rigid, against
@@ -7057,16 +7061,16 @@ Each printed part is sized from a named load to about twice the margin, where it
 | Rail, standing (× 8) | 31.3 along x, 29.1 along y | 50 N pulling a nut out of a slot | 3.07 |
 | Cross beam, lying | 33.8 | 100 N pulling a nut out of its slot | 4.2 |
 | Corner bracket (× 16) | 4.5 | 100 N across the rail at its screw | 3.09, by finite elements |
-| T gusset (× 2) | 9.0 | 100 N in its plane at its farthest screw | 5.76, by finite elements |
+| T gusset (× 2) | 9.4 | 100 N in its plane at its farthest screw | 5.97, by finite elements |
 | Board mount | 27.1 | 50 N on the board at its farthest hole | 4.62 |
 | Fan mount | 17.5 | 50 N on the fan at its farthest hole | 5.65 |
 | Panel clip (× 32) | 1.6 | 30 N pushing the panel out | 2.12 |
 | Foot (× 4) | 4.6 | 250 N down the post | 73.8 |
 | End cap (× 4) | 1.3 | none: pushed on | |
 
-The beams are sized by their slots, not their bending: the frame's highest stress is 0.04 MPa, in `x1`, 636 times
+The beams are sized by their slots, not their bending: the frame's highest stress is 0.04 MPa, in `x1`, 633 times
 under PETG's 23 MPa across its layers. The bracket and the clip are the parts their loads size; the
-mounts are sized by their screws' bosses and the board's and fan's holes, the foot by its counterbore. 592 g in all,
+mounts are sized by their screws' bosses and the board's and fan's holes, the foot by its counterbore. 593 g in all,
 73 parts.
 
 ### Two mistakes, caught
@@ -7116,9 +7120,11 @@ their top faces, two M4 screws into drop-in nuts in each half's slot:
 npx cad check case/spliced
 ```
 
-Both halves print lying down, and the plate is 4 mm thick, 3.22 g, 4.4 times under PETG's strength at 100 N by
-finite elements; its stiffness, 0.142 N·m/mrad, is its own, the slot nuts and lips left out, an estimate until the
-joint rig measures one.
+Both halves print lying down, and the plate is 4.6 mm thick, 3.7 g, 4.88 times under PETG's strength at 100 N by
+finite elements. Its thickness is set by its screws, not its load: the nuts seat 3.95 mm down under the halves' sloped
+lips, so an M4x12 through 4.6 mm reaches 7.4 mm into the slot and has the 3.2 mm of thread asked, where an M4x10
+through the 4 mm the load needs would have 2.85. Its stiffness, 0.152 N·m/mrad, is its own, the slot nuts and lips
+left out, an estimate until the joint rig measures one.
 
 A foot drawn for the aluminium post. The printed post with its foot as the aluminium case had it, an M5 screw for the
 post's tapped bore:
@@ -7154,13 +7160,14 @@ npx cad kit case/printed
 - `README.md`: what the checks say, what to buy (the board, the four panels cut to size, the screws and nuts in
   packs), what to print, and the build in 47 steps.
 - `buy.csv`: the same shopping list as a table.
-- `print/printed-base-1.3mf`: one plate of PETG with every printed part on it, 73 parts and 592 g, about 654 minutes,
+- `print/printed-base-1.3mf`: one plate of PETG with every printed part on it, 73 parts and 593 g, about 654 minutes,
   laid out as each prints: the posts and rails on their ends, the cross beam on its bottom face, the brackets on their
   sides, the feet and the mounts on their beam sides. It prints clean: no overhang past 45°, nothing in mid-air.
 
 There is no cut list, no drilling and no jigs: nothing is cut from a bar. The fasteners, as the kit lists them:
 
-- 44 × M4x10 cap, with 44 drop-in nuts, for the brackets and the gussets.
+- 40 × M4x10 cap for the brackets and the gussets into the rails, 4 × M4x12 cap for the gussets into `m1`, with 44
+  drop-in nuts.
 - 32 × M5x10 button, for the panels' clips, and 4 × M5x12 button for the fan mount and the board's mount, with 36
   roll-in nuts.
 - 4 × M3x10 cap, with 4 M3 hex nuts, for the feet.

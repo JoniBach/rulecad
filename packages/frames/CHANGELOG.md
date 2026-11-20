@@ -12,6 +12,8 @@ What changed in each release, for someone upgrading a workspace.
   screw's hole's end. MISUMI's 2020 standing takes an M3 captive nut (`"end": "nut"`); an insert has no room.
 - `footModel(profile, { thread })`: a foot under a printed end, its screw that end's thread.
 - `printedInPlace(b)`: a printed beam in its own frame with its ends' inserts or nuts cut in.
+- `plateModel(profile, { other })`: a gusset or splice plate whose beam a is of another profile with the same face
+  names; a's arms take its slot's tongue and nuts, and the plate is thickened until a length sold fits both slots.
 
 - A generated frame's printed foot (`foot`, `levelling`, `stacking`) carries its end's `tap` and its `screw`, from the
   foot's own model; with a join that drills the uprights (blind, end-tap, hidden, anchor) the bottom ring rises by the
@@ -63,6 +65,13 @@ What changed in each release, for someone upgrading a workspace.
 
 - `cutList`'s `tolerance`, given, is taken before a profile's own `cut_tolerance` (the maker's figure is for its
   cut service; a workshop's saw is its own).
+
+### Fixed
+
+- A fitting's screw window (the lengths `sold` finds for a bracket, a plate, a panel's clip, a door's or a mount's
+  thickness) counted a slot nut's thread from under the lips where the nut seats lower, under lips that slope
+  underneath (`nutFit`'s `slot_nut.seat`): an M4 drop-in in the printable 2020 seats 3.95 mm down, so its thread
+  starts at 3.15 mm, not 1.2. A fitting on a printable slot may come out thicker so a sold screw fits.
 
 ## 0.1.8: joins, fittings, guides, jigs and the build (Frames 2)
 
