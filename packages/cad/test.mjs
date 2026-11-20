@@ -4360,7 +4360,7 @@ test('frame checks: a figure on estimated joins says so even where the springs c
   } finally { done(); }
 });
 
-test('frame checks: a portal in one plane on pinned feet and a beam pinned at both ends solve, held where nothing holds them, and the portal sags as slope-deflection says; a push across the portal finds it free', () => {
+test('frame checks: a portal in one plane on pinned feet and a beam pinned at both ends solve, held where nothing holds them, and the portal sags as slope-deflection says; a push across the portal finds it free, it tips over rather than buckles, and its lowest mode is 0 Hz', () => {
   const { ws, done } = workspace();
   try {
     const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/portal.json');
@@ -4371,7 +4371,7 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
       const s = await buildAssembly('frame/portal');
-      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection|rack)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection|rack|buckling|frequency)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
     `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
     // 1. two 2020 posts 400 mm tall on pinned feet, a 600 mm rail x1 joined blind between them 390 mm up, 5 kg at its
     // middle. Out of the frame's plane nothing holds it (both posts lean about their feet together); in it, the hand
@@ -4402,6 +4402,21 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     assert.ok(rack.find((x) => x.refs.direction === 'along x').values.stiffness > 0, 'racked in its plane, it has a stiffness');
     assert.equal(across.level, 'warn');
     assert.match(across.text, /racked along y: nothing holds the frame that way, so 20 N pushed at the top \(frame\.push, an estimate\) moves it with nothing resisting/);
+    // Out of its plane the frame turns about the line through its feet, and its posts are squeezed (each carries half
+    // the rail and the 5 kg): turned by θ, each post's compression N does N θ² h of work leaning it further, so
+    // nothing in the frame stops it at any share of its load. It tips over: factor 0 (held at the post's top it read
+    // 2.5, a support the frame has not). Its lowest mode is 0 Hz, that same lean; the next is its own, in its plane.
+    const whole = r.find((x) => x.code === 'frame.buckling' && /whole frame/.test(x.text));
+    assert.equal(whole.level, 'fail', whole.text);
+    assert.equal(whole.values.factor, 0);
+    assert.match(whole.text, /the whole frame tips over under its load as drawn before anything buckles: nothing holds it at z2\.b \(rx\)/);
+    assert.deepEqual(whole.refs.tipped, [{ node: 'z2.b', freedom: 'rx' }]);
+    const mode = r.find((x) => x.code === 'frame.frequency');
+    assert.equal(mode.level, 'warn', mode.text);
+    assert.equal(mode.values.Hz, 0); assert.equal(mode.values.free, 1);
+    assert.match(mode.text, /the lowest mode is 0 Hz: nothing holds the frame at z2\.b \(rx\), so it moves that way with nothing resisting/);
+    assert.ok(mode.values.modes[1] > 1, JSON.stringify(mode.values.modes));
+    assert.match(solve.text, /its modes and buckling count it free \(frame\.frequency, frame\.buckling\)/);
     // 2. a lone beam pinned at both ends spins on its axis with nothing resisting: held, it sags as a simple span
     write({ title: 'Lone', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300])], loads: [{ mass: 3, at: 'x1.top@50%' }], frame: { supports: { 'x1.a': 'pinned', 'x1.b': 'pinned' } } });
     r = probe();
