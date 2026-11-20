@@ -893,7 +893,8 @@ function rulesSheet(rows) {
 }
 
 // ---------- 2D views ----------
-// A board's copper and its schematic come in the link as SVG drawings ([[name, svg]]). They're shown as images (an
+// A board's copper and its schematic, and a frame's cut-and-drill sheets (Beams: A, B ..), come in the link as SVG
+// drawings ([[name, svg]]). They're shown as images (an
 // <img> never runs anything inside an SVG), in tabs over the 3D view, with choices inside the Board tab. A link carries
 // "Board: both sides" with each element's copper layer marked (data-pcb-layer): a view of each layer is made here (front,
 // inner 1, inner 2 ..., back, as many as the board has), by a style inside the drawing hiding the others.
@@ -960,11 +961,19 @@ function flatViews(model) {
   flat.addEventListener('wheel', (e) => { e.preventDefault(); zoom(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
   flat.addEventListener('dblclick', fit);
   new ResizeObserver(() => { if (current?.g) fit(); }).observe(flat);
-  // From the 3D model: pick the board (or its copper) and a button opens its flat view
-  const board = groups.find((g) => /board/i.test(g.name)), jump = $('jump');
-  if (board) {
-    jump.onclick = () => open(board, board.items[0]);
-    addEventListener('cad:select', (e) => { jump.hidden = !(e.detail && /pcb|copper/i.test(`${e.detail.name} ${e.detail.label}`)) || !!current?.g; });
+  // From the 3D model: pick the board (or its copper) and a button opens its flat view; pick a beam (labelled by its
+  // mark: "mark A: ...") and a button opens its cut-and-drill sheet, a view of the Beams tab
+  const board = groups.find((g) => /board/i.test(g.name)), beams = groups.find((g) => g.name === 'Beams'), jump = $('jump');
+  let to = null;
+  if (board || beams) {
+    jump.onclick = () => { if (to) open(to.g, to.item); };
+    addEventListener('cad:select', (e) => {
+      const d = e.detail, mark = d && /^mark (\w+):/.exec(d.label ?? '')?.[1], sheet = mark && beams?.items.find((i) => i.label === mark);
+      to = sheet ? { g: beams, item: sheet } : board && d && /pcb|copper/i.test(`${d.name} ${d.label}`) ? { g: board, item: board.items[0] } : null;
+      jump.textContent = sheet ? `Sheet ${mark} ›` : 'Board view ›';
+      jump.title = sheet ? `Mark ${mark}'s cut-and-drill sheet, to scale` : 'Show this board flat, from above';
+      jump.hidden = !to || !!current?.g;
+    });
   }
   // A phone, or more views than sit in a row: the picker button stands for the tabs
   const views = tabs.parentElement, pick = $('pick'), narrow = matchMedia(DRAWER);

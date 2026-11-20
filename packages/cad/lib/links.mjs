@@ -9,6 +9,8 @@ import { pcbEngine } from './design.mjs';
 import { shapes, motionData, checkAssembly, wireRoutesOf } from './assembly.mjs';
 import { slotOf } from './threemf.mjs';
 import { taskData, stepsData, buildData, ledgerRows } from './buildpage.mjs';
+import { beamSheet } from '@rulecad/frames';
+import { cutListOf } from './beams.mjs';
 
 /** The project's filaments: { base: { slot: 1, … }, legend: { slot: 2, … } } in project.json. @param {string} project */
 export const filaments = (project) => readJson(path.join(paths.project(project), 'project.json')).filaments || {};
@@ -69,7 +71,10 @@ async function fabOf(boards) {
 
 /** A built assembly as a model: each shape once and placed (nine keys cost one keycap), its boards' views, its joints. */
 export async function assemblyModel(s, { title, versions, filaments: fil = {}, noRules = false, steps }) {
-  const placed = shapes(s.parts), list = placed.shapes.length ? placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: p.object || p.label, slot: slotOf(fil, p.filament), triangles: triangles(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; }) : [];
+  // a beam is labelled by its mark (beams that are the same share one, as the cut list and the sheets name them), so the
+  // parts list groups them and a beam picked shows its mark
+  const marks = new Map(s.objects.filter((o) => o.mark).map((o) => [o.id, o.mark])), labelOf = (q, p) => (marks.has(q.item) ? `mark ${marks.get(q.item)}: ${String(q.label).replace(/^[^:]*: mark \w+, /, '')}` : p.object || p.label);
+  const placed = shapes(s.parts), list = placed.shapes.length ? placed.place.map(([i, ...m], n) => { const p = placed.shapes[i].part; return { shape: i, role: p.role, label: labelOf(s.parts[n], p), slot: slotOf(fil, p.filament), triangles: triangles(placed.shapes[i].triangles), matrix: m, name: s.parts[n].name }; }) : [];
   // A pose that sets items' variables draws some parts differently (a flexure bent): each such part's shape in that
   // pose goes in the link as a "pose" part, placed as the part is, to be swapped in when the page shows the pose
   const alts = [];
@@ -96,6 +101,9 @@ export async function assemblyModel(s, { title, versions, filaments: fil = {}, n
     })()),
     ...fromShapes(list),
   };
+  // each mark's cut-and-drill sheet, as a 2D view (Beams: A, B ..): a beam picked in the model opens its own
+  const cut = marks.size ? cutListOf(s) : null;
+  if (cut) model.views = [...(model.views ?? []), ...cut.marks.map((m) => [`Beams: ${m.mark}`, beamSheet(m.beam, { mark: m.mark, items: m.items, grams: m.grams }).svg])];
   Object.assign(model, motionData(s));
   if (alts.length) { // the shapes parts take in other poses, on the same items, and which pose shows which
     model.motion.part.push(...alts.map((x) => model.motion.part[x.of]));

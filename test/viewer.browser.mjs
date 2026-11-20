@@ -325,3 +325,69 @@ test('a machine: the pen follows a drag, a step file plays to its end, the build
   }
 });
 const box2 = (run) => run(`(() => { const s = document.getElementById('stage').getBoundingClientRect(), b = document.getElementById('build').getBoundingClientRect(); return [b.left >= s.right - 1, b.width > 200]; })()`);
+
+test('a frame: its beams marked in the parts list, and a beam picked opens its cut-and-drill sheet', { skip: !CHROME && 'no Chrome', timeout: 180000 }, async () => {
+  const CAD = fileURLToPath(new URL('../packages/cad/bin/cad.mjs', import.meta.url));
+  execFileSync(process.execPath, [fileURLToPath(new URL('../packages/viewer/scripts/build.mjs', import.meta.url))], { stdio: 'ignore' });
+  const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'viewer-frame-'));
+  fs.writeFileSync(path.join(ws, 'package.json'), JSON.stringify({ type: 'module' }));
+  fs.symlinkSync(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(ws, 'node_modules'), 'junction');
+  fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
+  fs.writeFileSync(path.join(ws, 'projects/frame/project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+  // a box 200 x 200 x 200 in 2020 joined blind, no feet: uprights 240 mm (marks A to D, each drilled its own way), the
+  // eight butting beams 200 mm (mark E)
+  fs.writeFileSync(path.join(ws, 'projects/frame/assemblies/box.json'), JSON.stringify({ title: 'Box', kind: 'fit', frame: { kind: 'box', inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: 'blind' } }));
+  const out = execFileSync(process.execPath, [CAD, 'link', 'frame/box', '--long'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }), url = out.match(/view\s+(\S+)/)?.[1];
+  assert.ok(url, out);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'viewer-f-'));
+  const server = http.createServer((q, r) => {
+    const f = path.join(SITE, decodeURIComponent(new URL(q.url, 'http://x').pathname).replace(/^\/$/, '/index.html'));
+    if (!f.startsWith(SITE) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { r.writeHead(404); return r.end(); }
+    r.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r);
+  }).listen(0);
+  const port = server.address().port, errors = [];
+  let chrome;
+  try {
+    chrome = await startChrome({ profile: `${dir}/profile`, size: '1200,800', ...GL });
+    const sock = new WebSocket(chrome.wsUrl); await new Promise((r) => sock.addEventListener('open', r, { once: true }));
+    let id = 0; const waiting = new Map();
+    sock.addEventListener('message', (e) => {
+      const m = JSON.parse(e.data);
+      if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+      if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description ?? m.params.exceptionDetails.text);
+      if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error' && !/favicon|Failed to load resource/.test(m.params.entry.text)) errors.push(m.params.entry.text);
+    });
+    const send = (method, params = {}, sessionId) => new Promise((r, no) => { const i = ++id; waiting.set(i, r); sock.send(JSON.stringify({ id: i, method, params, sessionId })); setTimeout(() => no(new Error(`Chrome didn't answer ${method}`)), 30000).unref(); });
+    const { result: { targetId } } = await send('Target.createTarget', { url: 'about:blank' });
+    const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
+    await send('Runtime.enable', {}, sessionId); await send('Log.enable', {}, sessionId); await send('Page.enable', {}, sessionId);
+    const run = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId); if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description ?? 'page error'); return r.result.result.value; };
+    const until = async (expr, ms = 45000) => { for (const t = Date.now(); Date.now() - t < ms; await new Promise((r) => setTimeout(r, 150))) if (await run(expr).catch(() => false)) return true; return false; };
+    await send('Page.navigate', { url: `http://localhost:${port}/${url.slice(url.indexOf('#'))}` }, sessionId);
+    assert.ok(await until(`document.getElementById('title')?.textContent === 'Box'`), 'the frame link opens');
+    // the parts list: a row a mark, the eight butting beams one row of eight copies
+    const rows = await run(`[...document.querySelectorAll('#tree li.group > .line')].map((l) => l.querySelector('.name').textContent + ' ' + l.querySelector('.role').textContent)`);
+    for (const m of ['A', 'B', 'C', 'D']) assert.ok(rows.some((r) => r.startsWith(`mark ${m}: profile-2020-misumi-hfs5 x 240 mm`)), `mark ${m}: ${rows.join(' | ')}`);
+    assert.ok(rows.some((r) => /^mark E: profile-2020-misumi-hfs5 x 200 mm reference ×8$/.test(r)), rows.join(' | '));
+    assert.equal(await run(`document.getElementById('jump').hidden`), true, 'nothing picked, no sheet offered');
+    // pick an upright: its sheet is offered, and opens to scale in the Beams tab
+    await run(`[...document.querySelectorAll('#tree li.group > .line')].find((l) => l.querySelector('.name').textContent.startsWith('mark C:')).click(); true`);
+    assert.ok(await until(`!document.getElementById('jump').hidden && document.getElementById('jump').textContent === 'Sheet C ›'`), `the sheet offered: ${await run(`document.getElementById('jump').textContent`)}`);
+    await run(`document.getElementById('jump').click(); true`);
+    assert.ok(await until(`document.getElementById('stage').classList.contains('flat') && !document.getElementById('flat').hidden && document.querySelector('#flat img').naturalWidth > 0`), 'the sheet is shown');
+    assert.deepEqual(await run(`[[...document.querySelectorAll('#tabs button.on')].map((b) => b.textContent), [...document.querySelectorAll('#subtabs button.on')].map((b) => b.textContent)]`), [['Beams'], ['C']]);
+    assert.match(await run(`fetch(document.querySelector('#flat img').src).then((r) => r.text())`), /Mark C: profile-2020-misumi-hfs5 x 240.0 mm[\s\S]*1 off: z1/, 'mark C\'s own sheet, its item named');
+    fs.writeFileSync(new URL('./viewer-frame.png', import.meta.url), Buffer.from((await send('Page.captureScreenshot', { format: 'png' }, sessionId)).result.data, 'base64'));
+    // back to the model; one of the eight butting beams picked offers mark E's
+    await run(`[...document.querySelectorAll('#tabs button')].find((b) => b.textContent === '3D').click(); true`);
+    await run(`const g = [...document.querySelectorAll('#tree li.group')].find((l) => l.querySelector('.name').textContent.startsWith('mark E:')); g.querySelector('.line').click(); true`);
+    await run(`[...document.querySelectorAll('#tree li.copy')].find((l) => l.querySelector('.name').textContent === 'y3').click(); true`);
+    assert.ok(await until(`document.getElementById('jump').textContent === 'Sheet E ›' && !document.getElementById('jump').hidden`), 'mark E offered for y3');
+    assert.deepEqual(errors, [], 'no script errors');
+    sock.close();
+  } finally {
+    server.close();
+    await chrome?.stop();
+    try { fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(ws, { recursive: true, force: true }); } catch {}
+  }
+});
