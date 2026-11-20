@@ -2,7 +2,7 @@
 // with a parts panel to show, hide and restyle each part, tick the parts a download holds, make print files (STL,
 // or a 3MF in Bambu Studio's layout) in the browser, and slice it layer by layer with its islands in red. Nothing is uploaded:
 // the model lives in the link (or, for a short link, in the Gist it names).
-import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, posesOf, stl, threemf, filename, thingOf, jointValues, placeItems, mul, inv, DOFS, compactSteps } from './model-link.mjs';
+import { parseHash, decode, encode, fromGist, fromTriangles, fromSTL, triangles, partsOf, posesOf, stl, threemf, filename, fabName, thingOf, jointValues, placeItems, mul, inv, DOFS, compactSteps } from './model-link.mjs';
 import { check } from './printcheck.mjs';
 import { WebGLRenderer, Scene, PerspectiveCamera, BufferGeometry, Float32BufferAttribute, Mesh, MeshLambertMaterial, LineSegments,
   LineBasicMaterial, AmbientLight, DirectionalLight, Group, WireframeGeometry, Raycaster, Vector2, Vector3, Box3, Plane, Points, PointsMaterial } from './three.min.js';
@@ -12,13 +12,14 @@ const DRAWER = '(max-width: 760px), (pointer: coarse) and (max-width: 1100px)'; 
 const status = (t) => { $('status').textContent = t; };
 
 // A print file of the parts ticked (pick: { keep, name }), or of every printed part
-// A board's fab zip, as the link carries it: the bytes saved as they are
+// A board's fab zip, as the link carries it: the bytes saved as they are, under a name JLCPCB's upload takes (older
+// links carry names with @ and dots, which it refuses)
 function saveFab(f) {
   const bytes = Uint8Array.from(atob(f.zip), (c) => c.charCodeAt(0));
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([bytes], { type: 'application/zip' })), download: f.name });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([bytes], { type: 'application/zip' })), download: fabName(f.name) });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  status(`Downloaded ${f.name}: upload it to JLCPCB as it is`);
+  status(`Downloaded ${fabName(f.name)}: upload it to JLCPCB as it is`);
 }
 
 async function download(model, kind, pick = {}) {
