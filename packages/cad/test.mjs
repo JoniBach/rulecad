@@ -4784,6 +4784,16 @@ test('a printed beam\'s end in a frame: a post printed standing takes a foot\'s 
     // the bracket's nut in the printed rail's top slot: the sloped lips said, and no warning for it
     const nut = said('fasten.end', /the bracket into x1/)[0];
     assert.equal(nut.level, 'pass', nut.text); assert.match(nut.text, /slot-6-printed-2020's lips slope underneath at 45°, so it seats 3\.95 mm under the face/);
+    // and its thread is counted from that seat, not from under the lips: the drop-in nut (10 mm wide, 3.3 high, its
+    // tongue 0.8) in the 6.1 mm opening with 2 mm lips sloped 45°, seat = 2 + (10 - 6.1) / 2 x tan 45° = 3.95 mm, so its
+    // thread runs from 3.95 - 0.8 = 3.15 to 3.15 + 3.3 + 0.8 = 7.25 mm under the face (from under the lips it would read
+    // 1.2 to 5.3, and a screw whose tip is 5.6 mm in would pass with 2.45 mm engaged, under the 3.2 mm a hex nut asks)
+    assert.match(nut.text, /4\.1 mm of M4 thread from 3\.15 to 7\.25 mm under the face/);
+    const len = said('fasten.length', /the bracket into x1/)[0], eng = said('fasten.engagement', /the bracket into x1/)[0];
+    // the bracket's 5.2 mm under the head and the 3.95 mm to the seat: 9.15 mm; M4x12's tip 12 - 5.2 = 6.8 mm in, so
+    // 6.8 - 3.15 = 3.65 mm engaged (M4x10's would be 1.65), its floor 7.85 mm down, 1.05 mm past the tip
+    assert.equal(len.level, 'pass', len.text); assert.match(len.text, /M4x12 cap chosen, the shortest sold that fits: 9\.15 mm under its head \(x1-p1-bracket and the 3\.95 mm down to its nut's seat under the slot's sloped 2 mm lips\), 3\.65 mm into its nut, its tip 6\.8 mm into the slot and 1\.05 mm short of its floor/);
+    assert.equal(eng.level, 'pass', eng.text); assert.equal(eng.values.engaged, 3.65);
     // a foot drawn for the aluminium post's M5 tap: its screw refused by name, with the thread the printed end takes
     fs.writeFileSync(at('assemblies/post.json'), JSON.stringify(frame({}, 'M5 cap')));
     const m5 = findings('post').find((x) => x.code === 'fasten.end' && /^Foot 1/.test(x.text));
