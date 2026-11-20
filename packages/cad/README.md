@@ -44,6 +44,7 @@ npx cad import-kle layout.json keyboard/mine     # a layout from keyboard-layout
 npx cad clone <github link to a .kicad_pcb> sea_picro   # a published board's circuit, into rules/, to redraw by rules
 npx cad measure cover.3mf --rules cover          # a model from elsewhere, measured into draft rules
 npx cad measure beam.stl --profile profile-2020-mine   # a beam's profile from its maker's model or a DXF of its section
+npx cad rules draft profile 2020-mine   # a beam's profile to fill from its maker's spec sheet; then cad rules check and draw
 npx cad match legion-go/rail cover.3mf           # how closely a design matches that model, both ways
 ```
 
@@ -277,6 +278,17 @@ Then `cad rules check <name>` and `cad rules draw <name>`, which use the measure
 add what a model cannot say: the maker, the alloy, a material set for its mass, the thread its bore taps to. The
 outline is the model's shape, so it goes into your own workspace and nowhere else: the kit publishes no maker's
 outline, and under a non-commercial, no-derivatives or share-alike licence the command says to keep it there.
+
+**A beam's profile from its spec sheet.** `cad rules draft profile <name>` writes `rules/<name>.json` with every field
+a profile can have, each with a starting value, `"kind": "estimate"`, and a rule and source that start `DRAFT`
+(`cad rules draft slot <name>` and `slot_nut <name>` do the same for a slot family and a slot nut). Fill each field the
+sheet gives (its value, `"kind": "spec"`, the sheet and page as `source`, the date as `checked`) and delete the rest.
+`cad rules check <name>` then holds it to the vocabulary, draws the section from its dimensions and its slot
+family's, and warns where the sheet's area, second moments or mass per metre differ from the drawn outline's by more
+than 5% (`profile.section.*`); while any field still holds the draft's value it warns `rules.draft`, naming each.
+`cad rules draw <name>` writes `<name>.svg`, the section to scale with each slot and bore dimensioned, to hold against
+the sheet's drawing. [The frames guide](https://jonibach.github.io/rulecad/docs/building-frames/) walks one from a
+sheet to a checked box.
 
 ## Assemblies
 
@@ -530,6 +542,23 @@ An item can be a motor instead of a printed object: `{ "id": "drive", "motor": {
 - `cad preview` of an assembly with a motor draws each one at work beside the picture, as SVG: `<assembly>-<motor>-curve.svg`, its torque against speed at the output with the load and the working speed marked, and `<assembly>-<motor>-train.svg`, the torque from its shaft through each stage to the joint with the load, against what the load needs there, and whether it holds with the power on and off. The numbers are the check's.
 
 ### Beams
+
+A frame is beams and the joins between them, every beam a profile from a rule set and every join declared, so its
+drilling, screws and stiffness follow. [The frames guide](https://jonibach.github.io/rulecad/docs/building-frames/)
+walks one from a spec sheet to a checked box; this section is the reference. In commands:
+
+| Command | What it does |
+|---|---|
+| `cad rules draft profile <name>`, `cad rules check <name>`, `cad rules draw <name>` | A profile from its spec sheet, checked and drawn (Models from elsewhere, above) |
+| `cad measure <beam.stl> --profile <name>` (or a DXF) | A profile from the maker's model or a DXF of its section |
+| `cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0` | A beam placed by its ends |
+| `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120` | Two beams joined (Joins, below) |
+| `cad frame <project>/<assembly>` | A generated frame's beams and joins (`--expand` writes them out; `--size` chooses the lightest profiles) |
+| `cad check <project>/<assembly>` | The joins, screws and nuts, then the frame solved: `frame.deflection`, `frame.stress`, `frame.buckling`, `frame.rack`, `frame.frequency`, `frame.square`, `frame.heat`, `beam.printable`; `--sweep` slides each guide through its travel |
+| `cad list`, `cad beams` (`--jigs`), `cad order`, `cad plates`, `cad kit` | The cut list and what to buy, a sheet per beam and the jigs, the build from bars to a square frame, the printed parts on plates, and all of it in one folder (Building it, below) |
+| `cad measured <project>/<assembly> frame.square.<bay>=<mm>` | A squared bay's diagonal difference, measured; the joint rig's and the beam coupon's figures the same way |
+
+Guides (rails, V-wheels, rods, a printed slider, a lead screw) put motion on a beam: Guides, below.
 
 An item can be a beam, a length of an aluminium extrusion, a tube or a bar from `@rulecad/frames`:
 

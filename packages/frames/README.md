@@ -44,10 +44,21 @@ cut, and fastens to them:
   dimensions a hole (`drillGuideModel`), a tap guide over an end (`tapGuideModel`), a cut-length stop with its gauge
   (`lengthStopModel`) and a squaring corner (`squareCornerModel`).
 
-A whole frame from these, a box of 2020 with a motor-driven axis, cut, drilled, printed on one plate and built in
-order, is chapter 16 of [the worked examples](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md).
-More fittings (a three-way corner, a hidden-corner cover, a printed node) and a belt drive follow in later releases.
-The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+- **Squaring**: a bay's two diagonals and the difference to accept, stacked from its cuts and its joins' play
+  (`squareness`), and the printed squaring corner that holds a join at 90° while it is tightened.
+- **Frames from a size**: generators for a box, a portal, a table, a gantry and a shelf (`box`, `portal`, `table`,
+  `gantry`, `shelf`, `frameModel`), asked for by the space inside or outside, that expand into beams, joins, feet and
+  caps; and each profile as choices for `@rulecad/fea/frame`'s sizing (`profileChoices`), so the lightest profile that
+  meets a frame's limits can be chosen beam group by beam group.
+
+A frame is solved as a structure by `@rulecad/fea/frame` (beam elements, each join a spring at the beam's end), and
+cad's checks read it: sag, stress, buckling, racking, the lowest modes, heat, squareness, and which beams could be
+printed. [The frames guide](https://jonibach.github.io/rulecad/docs/building-frames/) walks a profile from its maker's
+spec sheet to a checked box, built square, in commands. A whole frame, a box of 2020 with a motor-driven axis, cut,
+drilled, printed on one plate and built in order, is chapter 16 of
+[the worked examples](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md), and chapter 17 prints
+every beam of a small case. More fittings (a three-way corner, a hidden-corner cover, a printed node) and a belt drive
+follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling
@@ -1462,12 +1473,15 @@ out from the nuts' sizes and the X1C's rules, so they are `derived` and as good 
 | `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
 | `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
 | `JIG_KINDS`, `JIG_DEFAULTS`, `drillGuideModel(beam, op, { from?, load? })`, `drillGuide(m, { pose?, mark? })`, `tapGuideModel(beam, op, { shank?, load? })`, `tapGuide(m, { pose?, mark? })`, `lengthStopModel(profile, length, { load? })`, `lengthStop(m, { part?, mark? })`, `squareCornerModel({ profile, face?, end?, length? }, { profile, face?, edge? }, { hand?, load? })`, `squareCorner(m, { pose?, mark? })` | Jigs for hand tools: a drill guide and a tap guide from a beam's operations, a cut-length stop with its gauge, and a squaring corner; each takes `printer` and `material` too |
+| `FRAME_KINDS`, `FRAME_JOINS`, `FRAME_FEET`, `FRAME_GEN`, `frameModel(kind, o)`, `box(o)`, `portal(o)`, `table(o)`, `gantry(o)`, `shelf(o)` | Frames from a size: the kinds, the joins and feet a generator takes, its working figures, and each generator's beams, joins and ends (Frames from a size) |
 | `squareness(width, height, { tolerance?, cuts?, plays? })` | A bay's two diagonals, inside corner to inside corner, and the difference between them to accept, stacked from its cuts and its joins' play, with the lean it stands for |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
 | `beamModel(profile, { length, ends?, ops?, material?, given?, cells?, printed? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations; printed, a printed part |
 | `printedProfile(series, { nut?, printer?, pull?, material? })`, `PRINTED_SERIES` | A printable profile and its slot as rule sets, and the nut each size is drawn round |
 | `printedSection(profile, { walls?, infill?, line?, between? })`, `PRINTED_DEFAULTS`, `printerFigures(what, printer)` | A printed section's figures from its walls and infill (`between: [x0, x1]`: the part between two upright cuts, as a splice's half); the working figures printed beams use; a printer's figures |
 | `printedBeam(m)` | A printed beam's solid as it prints, its ends' inserts or nuts cut in |
+| `printedInPlace(m)` | A printed beam's solid in its own frame, as `beam()` draws one, with its ends' fixings cut in |
+| `beamCreep(b, { stress, sag?, limit? })`, `PRINTED_CHECKED` | A printed beam held for months: its stress against the creep limit, and its sag as it creeps (`beam.creep`); the date the printed figures were checked |
 | `spliceModel(beam, { at?, moment?, thread?, printer? })`, `splice(model)` | A splice for a printed beam longer than the bed, and its two halves as they print |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre?, given? })` | A join: the operations on each beam, its screws, its fitting (printed, or a bought set by name), its stiffness, what to know |
