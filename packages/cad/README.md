@@ -718,14 +718,20 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   width off that axis) and its spring (`join.stiffness`) at that end. It is held where `"frame": { "supports": {
   "z1.a": "pinned", "z2.a": "fixed" } }` says; else at the beam ends a foot, levelling foot, castor plate or
   stacking foot (printed or bought) is fitted to; else at its lowest beam ends. Feet and lowest ends are pinned: held
-  from moving and free to turn, as a foot stands on a floor. Beams no support holds through joins are left out by
+  from moving and free to turn, as a foot stands on a floor. Where lowest ends pinned would leave the frame free to
+  move (two posts and a rail leaning over out of their plane, a beam on the floor rolling with a post on it), a beam
+  lying with both ends lowest rests on its face (held from twisting about its length) and a beam standing on its
+  lowest end stands on its end face (fixed), and `frame.solve` says so. Beams no support holds through joins are left out by
   name, and so is what is mounted only on them, as not weighed (`refs.off`). A beam that rides a moving joint (a
   gantry's cross beam on its carriages) is a load on the frame, named as riding (`refs.riding`), not part of it;
   lying across two parallel beams at one level (a gantry's beam on its two side beams), its weight is shared between
   them by the lever rule, though its joint is on one, and `refs.riding` gives each share. Where part of the frame can
   move with nothing resisting it (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both
-  ends spins on its own axis) and its loads do not move it that way, it is held there for the figures, and
-  `frame.solve` names each such freedom (`refs.held`); `frame.rack` then warns that a push that way finds it free.
+  ends spins on its own axis) and its loads do not move it that way, it is held there for the sag and the stresses,
+  and `frame.solve` names each such freedom (`refs.held`); `frame.rack` then warns that a push that way finds it
+  free. The modes and buckling count it free: `frame.frequency` gives a lowest mode of 0 Hz and warns, and where
+  the frame's squeezed beams lean it that way (a portal on pinned feet), `frame.buckling` fails it as tipping over
+  before anything buckles, at a factor of 0 (`refs.tipped`).
   Loads that would move it that way leave the frame unsolved, with the freedoms named.
 - The loads: each beam's own weight (its sheet's mass per metre), each item mounted on a beam (its mass at its
   centre, as a force and a moment at the node where its chain of mounts meets the beam; a riding beam's sheet weight

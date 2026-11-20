@@ -4417,6 +4417,14 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     assert.match(mode.text, /the lowest mode is 0 Hz: nothing holds the frame at z2\.b \(rx\), so it moves that way with nothing resisting/);
     assert.ok(mode.values.modes[1] > 1, JSON.stringify(mode.values.modes));
     assert.match(solve.text, /its modes and buckling count it free \(frame\.frequency, frame\.buckling\)/);
+    // with no supports said, its lowest ends are guessed: pinned would leave it free, so each post stands on its end
+    // face, held from turning (fixed), and nothing is held, tips or rings at 0 Hz
+    write({ ...portal, frame: undefined });
+    const guessed = probe(), gs = guessed.find((x) => x.code === 'frame.solve');
+    assert.match(gs.text, /held at z1\.a \(fixed, a lowest end, standing on its end face\), z2\.a \(fixed, a lowest end, standing on its end face\)/);
+    assert.deepEqual(gs.refs.held, []);
+    assert.equal(guessed.find((x) => x.code === 'frame.buckling' && /whole frame/.test(x.text)).level, 'pass');
+    assert.ok(guessed.find((x) => x.code === 'frame.frequency').values.Hz > 1);
     // 2. a lone beam pinned at both ends spins on its axis with nothing resisting: held, it sags as a simple span
     write({ title: 'Lone', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300])], loads: [{ mass: 3, at: 'x1.top@50%' }], frame: { supports: { 'x1.a': 'pinned', 'x1.b': 'pinned' } } });
     r = probe();

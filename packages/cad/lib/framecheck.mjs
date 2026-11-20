@@ -337,13 +337,34 @@ export function frameModelOf(s, helpers) {
     const w = webOf(bay, p.sheet, p.thickness, p.items.length, p.id);
     webs.push(w); heldSheets.push({ ...p, bay: bays.indexOf(bay) }); elements.push(w.element);
   }
-  const supportMap = {};
-  for (const sp of supports.filter(keep)) supportMap[nodeAt(sp.beam, sp.z)] = sp.how === 'fixed' ? 'fixed' : { x: true, y: true, z: true, ...(sp.twist ? { [sp.twist]: true } : {}) };
+  const supportMap = {}, mapSupports = () => { for (const sp of supports.filter(keep)) supportMap[nodeAt(sp.beam, sp.z)] = sp.how === 'fixed' ? 'fixed' : { x: true, y: true, z: true, ...(sp.twist ? { [sp.twist]: true } : {}) }; };
+  mapSupports();
   // (a freedom nothing holds, which the loads do not move, is held for the solve and named in frame.solve: a frame in
   // one plane on pinned feet sways out of it, a beam pinned at both ends spins on its axis)
   const withSprings = (rigid) => ({ nodes, sections, materials, supports: supportMap, gravity: scale(down, G), loose: 'hold',
     elements: elements.map((q) => { const sp = rigid ? [] : springs.filter((p) => p.el === q); return sp.length ? { ...q, ends: Object.fromEntries(sp.map((p) => [p.end, { rx: p.x.k.twist, ry: p.x.k.bending, rz: p.x.k.bending }])) } : q; }) });
 
+  // Supports guessed at the lowest ends are pinned. Where that leaves the frame free to move (two posts and a rail
+  // leaning over out of their plane, a beam on the floor rolling on its axis with a post on it), the guess takes
+  // what a beam on the floor has: a beam with both ends lowest lies on its face and rests (held from twisting about
+  // its length, as "resting" holds it), and a beam standing on its lowest end stands on its end face, held from
+  // turning (fixed). Supports said in "frame": { "supports" } or by feet are never changed.
+  const axisOfBeam = (b) => b.u.findIndex((c) => Math.abs(Math.abs(c) - 1) < 1e-6);
+  const guessed = supports.filter((x) => x.why === 'a lowest end' && keep(x));
+  if (guessed.length && supports.every((x) => x.why === 'a lowest end')) {
+    let free = [];
+    // (in the model as solved and in the pieces modes and buckling are solved in, where a freedom can show that
+    // rounding hid in the whole: either says the frame is free)
+    for (const rigid of [false, true]) for (const m of [withSprings(rigid), subdivide(withSprings(rigid), 4)]) try { free.push(...solveFrame(m).loose); } catch { /* refused: said by the solve itself */ }
+    if (free.length) {
+      for (const x of guessed) {
+        const lies = supports.some((y) => y !== x && y.beam === x.beam) && axisOfBeam(x.beam) >= 0, stands = Math.abs(dot(x.beam.u, down)) > 1 - 1e-6;
+        if (lies) Object.assign(x, { how: 'resting', why: 'a lowest end of a beam lying on its face', twist: `r${'xyz'[axisOfBeam(x.beam)]}` });
+        else if (stands) Object.assign(x, { how: 'fixed', why: 'a lowest end, standing on its end face' });
+      }
+      mapSupports();
+    }
+  }
   // the loads at each pose: every carried item's and load's weight as a force and a moment at its node
   const nodeLoads = (values, only) => {
     const W = placeItems(motion, values), out = [];
@@ -390,7 +411,7 @@ export function frameChecks(s, f, helpers) {
   if (!fm) return null;
   if (fm.empty) { if (fm.missing.length) f('info', `the frame is not solved: ${fm.missing.join(', ')} ${fm.missing.length > 1 ? 'give' : 'gives'} no modulus, shear modulus or second moments`, null, { code: 'frame.solve', refs: { beams: fm.missing } }); return null; }
   const solved = solveAll(fm);
-  if (solved.error) { const guessed = fm.supports.every((x) => x.why === 'a lowest end'); f(guessed ? 'info' : 'warn', `the frame is not solved: ${solved.error}. Its supports: ${fm.supports.map((x) => `${x.where} (${x.why})`).join(', ') || 'none'}${guessed ? '. Say where it is held: "frame": { "supports": { "z1.a": "pinned" } }, or fit its feet' : ''}`, guessed ? null : 'frame: not solved', { code: 'frame.solve', refs: { supports: fm.supports.map((x) => x.where), code: solved.code } }); return null; }
+  if (solved.error) { const guessed = fm.supports.every((x) => x.why.startsWith('a lowest end')); f(guessed ? 'info' : 'warn', `the frame is not solved: ${solved.error}. Its supports: ${fm.supports.map((x) => `${x.where} (${x.why})`).join(', ') || 'none'}${guessed ? '. Say where it is held: "frame": { "supports": { "z1.a": "pinned" } }, or fit its feet' : ''}`, guessed ? null : 'frame: not solved', { code: 'frame.solve', refs: { supports: fm.supports.map((x) => x.where), code: solved.code } }); return null; }
   const { results } = solved, down = fm.down, margin = FRAME_CHECK.margin.value, held = solved.loose ?? [];
   const heldList = [...held.reduce((m, l) => m.set(l.node, [...(m.get(l.node) ?? []), l.freedom]), new Map())].map(([n, fr]) => `${n} (${fr.join(', ')})`).join(', ');
   // what the joins rest on, counted by kind
@@ -638,7 +659,7 @@ function frequencyCheck(s, fm, f, { restsJoins, restsOn, heldList }) {
   const level0 = !excites.length ? 'info' : (moves.length && low < need / margin) ? 'fail' : (low < need || near.length) ? 'warn' : 'pass', level = free && (level0 === 'info' || level0 === 'pass') ? 'warn' : level0;
   const target = Math.max(need, ...near.map((x) => x.Hz * (1 + band)));
   const advice = free ? `. Hold it there with "frame": { "supports" } fixed, brace it, or join it into a box: then it has a mode to lift` : level === 'warn' || level === 'fail' ? `. To lift it to ${n3(target, 1)} Hz takes about ${n3((target / low) ** 2, 2)} times the stiffness where ${beam} moves (a deeper profile, a shorter span, stiffer joins or a brace), or as many times less mass moving with it` : '';
-  const text = `the lowest mode is ${n3(low, 1)} Hz${free ? `: nothing holds the frame at ${heldList}, so it moves that way with nothing resisting${free > 1 ? ` (${free} such modes)` : ''}` : ''}${fm.cases.length > 1 ? `, worst ${worst.c.label}` : ''}, ${beam} moving most${fm.joins.length ? `, with the joins' springs; ${n3(rigid, 1)} Hz with the joins rigid` : ''}. Its next: ${hz.slice(1).map((h) => `${n3(h, 1)} Hz`).join(', ')}. With ${n3(own, 3)} kg of beams and ${n3(carried, 3)} kg carried, each item's mass at the node it is carried at (its rotary inertia left out); it rests on ${restsJoins}. ${excites.length
+  const text = `the lowest mode is ${n3(low, 1)} Hz${free ? `: nothing holds the frame${heldList ? ` at ${heldList}` : ''}, so it moves that way with nothing resisting${free > 1 ? ` (${free} such modes)` : ''}` : ''}${fm.cases.length > 1 ? `, worst ${worst.c.label}` : ''}, ${beam} moving most${fm.joins.length ? `, with the joins' springs; ${n3(rigid, 1)} Hz with the joins rigid` : ''}. Its next: ${hz.slice(1).map((h) => `${n3(h, 1)} Hz`).join(', ')}. With ${n3(own, 3)} kg of beams and ${n3(carried, 3)} kg carried, each item's mass at the node it is carried at (its rotary inertia left out); it rests on ${restsJoins}. ${excites.length
     ? `The machine excites: ${excites.map((x) => `${x.what}, ${n3(x.Hz, 1)} Hz`).join('; ')}. ${near.length ? `A mode within ${band * 100}% of ${near.map((x) => `${x.what} (the mode${x.modes.length > 1 ? 's' : ''} at ${x.modes.join(' and ')} Hz)`).join(', ')}: it rings while the motor runs at that speed` : ''}${near.length && moves.length ? '; ' : ''}${moves.length ? (low < need ? `under ${margin} times the moves' ${n3(need / margin, 1)} Hz` : `${n3(low / (need / margin), 1)} times over the moves' ${n3(need / margin, 1)} Hz, where ${margin} is wanted`) : ''}`
     : 'Nothing named excites it: no stepper drives a joint and the assembly has no task'}${advice}`;
   f(level, text.replace(/\. $/, ''), level === 'warn' || level === 'fail' ? `frame mode ${n3(low, 1)} Hz` : null, { code: 'frame.frequency', at: r4(fm.nodes[lead[0]] ?? fm.nodes[Object.keys(fm.nodes)[0]]),
