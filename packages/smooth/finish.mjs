@@ -142,6 +142,7 @@ export function finishCircuit(json, { movable = () => true, clearance, stubs = [
                 if (!clearOf(from, x, p0.layer, w, n, was) || !clearOf(x, p2, p0.layer, w2, n, was)) continue
                 const X = { ...p1, x: x.x, y: x.y }
                 for (const tr of [t, o]) if (tr.rulecad_kept && !tr.rulecad_squared) tr.rulecad_squared = { a: { ...tr.route[0] }, b: { ...tr.route.at(-1) } }
+                t.rulecad_pair = o.rulecad_pair = `${t.pcb_trace_id}+${o.pcb_trace_id}` // (redrawn together: undone together)
                 o.route = oi === 0 ? [{ ...or[0], x: x.x, y: x.y }, ...or.slice(1)] : [...or.slice(1).reverse(), { ...or[0], x: x.x, y: x.y }]
                 done = { x: X, j: k + 1 }; break
               }

@@ -311,12 +311,28 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
 export async function finishTracks(out, board) {
   const { finishCircuit } = await import('@rulecad/smooth');
   const { runAllChecks } = await import('@tscircuit/checks');
-  const errors = async (json) => new Set((await runAllChecks(structuredClone(json))).filter((e) => /_error$/.test(e.type)).map((e) => e.type + (e.message || '')));
-  const before = await errors(out);
-  const { json } = finishCircuit(out, { ...(board.clearance ? { clearance: board.clearance } : {}) });
-  const after = await errors(json);
-  if ([...after].some((e) => !before.has(e))) return; // (the checks name what's left unfinished)
-  out.splice(0, out.length, ...json);
+  // each error by its kind and the elements in it, as smoothRouted keys them
+  const errors = async (json) => (await runAllChecks(structuredClone(json))).filter((e) => /_error$/.test(e.type))
+    .map((e) => JSON.stringify([e.type, ...[...new Set(JSON.stringify(e).match(/pcb_[a-z_]+?_\d+/g) || [])].sort()]));
+  const before = new Set(await errors(out)), was = new Map(out.filter((e) => e.type === 'pcb_trace').map((e) => [e.pcb_trace_id, e]));
+  let { json } = finishCircuit(out, { ...(board.clearance ? { clearance: board.clearance } : {}) });
+  // A change the design checks then find in a new error is undone (a pair redrawn together, both), the rest kept
+  for (let round = 0; round < 6; round++) {
+    const fresh = (await errors(json)).filter((e) => !before.has(e));
+    if (!fresh.length) return void out.splice(0, out.length, ...json);
+    const named = new Set(fresh.flatMap((e) => JSON.parse(e).slice(1)));
+    const pairs = new Set(json.filter((e) => e.type === 'pcb_trace' && named.has(e.pcb_trace_id) && e.rulecad_pair).map((e) => e.rulecad_pair));
+    const undo = (e) => e.type === 'pcb_trace' && (named.has(e.pcb_trace_id) || (e.rulecad_pair && pairs.has(e.rulecad_pair)));
+    let undone = 0;
+    json = json.flatMap((e) => {
+      if (!undo(e)) return [e];
+      if (e.rulecad_fill) { undone++; return []; } // a fill: taken away
+      const o = was.get(e.pcb_trace_id);
+      if (o && o !== e) { undone++; return [o]; } // a redrawn track: as it was
+      return [e];
+    });
+    if (!undone) break; // (a new error in nothing the finish changed: leave the board as it was)
+  }
 }
 
 export async function smoothRouted(out, board) {
