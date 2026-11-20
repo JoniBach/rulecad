@@ -86,12 +86,13 @@ export function expandJoins(a, num, context = framesContext(), material = 'pla')
     for (const sc of m.screws) { mine.push(first + fasten.length); fasten.push({ screw: sc.screw, through: [ends.b.id], into: ends.a.id, at: [`${ends.a.id}.${sc.bore}`], note: label, join: i, ...(lips ? { lips } : {}) }); }
     joins.push({ index: i, kind: j.kind, a: j.a, b: j.b, items: [ends.a.id, ends.b.id], end: ends.a.rest, address: ends.b.rest, label, fitting: j.fitting ?? null, model: m, fasten: mine, ...(fitted ? { fitted: { item: fitted.item.id, model: fitted.model } } : {}) });
   });
-  // each beam's own ops first; a join's op where the beam has none like it at that place (a tap at a and at a.1 are one)
+  // each beam's own ops first; a join's op where the beam has none like it at that place (a tap of the whole end a
+  // covers a tap at a.1; a tap at a.1 does not cover one at a.2, a 20 x 40's other bore)
   const withOps = items.map((it) => {
     const add = extra.get(it.id);
     if (!add) return it;
     const own = it.beam.ops || [], ops = [...own];
-    for (const op of add) if (!ops.some((g) => g?.op === op.op && (sameAt(g.at, op.at) || (op.op === 'tap' && String(g.at).trim()[0] === op.at[0])))) ops.push(op);
+    for (const op of add) if (!ops.some((g) => g?.op === op.op && (sameAt(g.at, op.at) || (op.op === 'tap' && (String(g.at).trim() === op.at[0] || (op.at.length === 1 && String(g.at).trim()[0] === op.at)))))) ops.push(op);
     return { ...it, beam: { ...it.beam, ops } };
   });
   return { a: { ...a, items: [...withOps, ...added], ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}) }, joins };

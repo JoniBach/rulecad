@@ -159,16 +159,58 @@ export function sizeChecks(s, f, helpers) {
 
 /**
  * The assembly with the sizing's profiles written in: each grouped beam's profile (and a quarter roll where it was
- * turned), and each printed end fitting on it drawn for the new profile. A generated frame is written out expanded,
- * as cad frame --expand does, as its generator takes one profile. Beams keep their lines, so a deeper profile stands
- * about its middle: check its joins and ends after.
- * @param {object} raw the assembly as read @param {object} expanded the assembly as built (generated frames expanded) @param {object} r frameSizing's
+ * turned), and each printed end fitting on it drawn for the new profile. Each beam keeps its line (its axis), so a
+ * deeper profile stands about its middle; where a beam's end butts against another's face and that face moves with
+ * the other's new size, the end moves with it (the beam's length follows). A generated frame's rings keep their outer faces (a table's top
+ * stays level with its legs' tops). A blind or end-tap join whose end now
+ * has several bores (a 20 x 40) becomes one join a bore, each at its own place on the beam it meets. A generated frame
+ * is written out expanded, as cad frame --expand does, as its generator takes one profile.
+ * @param {object} raw the assembly as read @param {object} expanded the generated frame expanded (expandFrame's) @param {object} r frameSizing's
  * @returns {object}
  */
 export function writeSizing(raw, expanded, r) {
-  const out = structuredClone(raw.frame?.kind != null ? expanded : raw), by = new Map();
+  const out = structuredClone(raw.frame?.kind != null ? expanded : raw), by = new Map(), context = framesContext();
   for (const x of r.rows) for (const id of x.beams) by.set(id, x);
+  const models = new Map(), modelOf = (name) => { if (!models.has(name)) models.set(name, profileModel(name, {}, givenFor(context, name))); return models.get(name); };
+  // each beam's section axes in the world, as drawn and as written: x across its width, y up its height, u along it
+  const axes = (b, roll) => { const X = [b.W[0], b.W[4], b.W[8]], Y = [b.W[1], b.W[5], b.W[9]], c = Math.cos(roll * Math.PI / 180), sn = Math.sin(roll * Math.PI / 180); return { X: X.map((v, k) => c * v + sn * Y[k]), Y: Y.map((v, k) => c * v - sn * X[k]), u: b.u }; };
+  const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+  const was = (id) => { const b = r.fm.beams.get(id); return { b, profile: modelOf(b.m.profile.name), ax: axes(b, 0) }; };
+  const now = (id) => { const x = by.get(id), w = was(id); return x ? { b: w.b, profile: modelOf(x.profile), ax: axes(w.b, x.roll) } : w; };
+  const half = (q, dir) => (Math.abs(dot(dir, q.ax.X)) * q.profile.width + Math.abs(dot(dir, q.ax.Y)) * q.profile.height) / 2;
+  const items = new Map((out.items ?? []).map((it) => [it.id, it])), numeric = (it) => Array.isArray(it?.from) && Array.isArray(it?.to) && [...it.from, ...it.to].every((v) => typeof v === 'number');
+  // a generated frame's rings keep their outer faces: the top ring its top (a table's top stays flat and level with its
+  // legs' tops), the bottom ring of a box its bottom, the rings between their middles; a drawn frame keeps every line
+  const lift = new Map();
+  if (raw.frame?.kind != null) {
+    const up = r.fm.down.map((v) => -v), flat = [...by.keys()].map((id) => r.fm.beams.get(id)).filter((b) => Math.abs(dot(b.u, up)) < 1e-6);
+    const height = (b) => dot(b.A, up), all = [...r.fm.beams.values()].filter((b) => Math.abs(dot(b.u, up)) < 1e-6).map(height), top = Math.max(...all), low = Math.min(...all);
+    for (const b of flat) {
+      const side = Math.abs(height(b) - top) < 1e-6 ? 1 : Math.abs(height(b) - low) < 1e-6 && !['table', 'portal'].includes(raw.frame.kind) ? -1 : 0;
+      if (!side) continue;
+      const d = side * (half(was(b.id), up) - half(now(b.id), up));
+      if (Math.abs(d) > 1e-9) lift.set(b.id, up.map((v) => v * d));
+    }
+  }
+  for (const [id, v] of lift) { const it = items.get(id); if (numeric(it)) { it.from = it.from.map((x, k) => r3(x + v[k])); it.to = it.to.map((x, k) => r3(x + v[k])); } else lift.delete(id); }
+  for (const j of out.joins ?? []) {
+    const ma = /^([\w-]+)\./.exec(String(j.a ?? '')), mb = /^([\w-]+)\.([a-z]+(?:\.\d+)?)@(-?[\d.]+)$/.exec(String(j.b ?? ''));
+    if (ma && mb && lift.has(ma[1]) && r.fm.beams.has(mb[1])) j.b = `${mb[1]}.${mb[2]}@${r3(Number(mb[3]) + dot(lift.get(ma[1]), r.fm.beams.get(mb[1]).u))}`;
+  }
+  // ends against faces: each moves as the face it meets moves
+  for (const j of out.joins ?? []) {
+    const ma = /^([\w-]+)\.([ab])(\.\d+)?$/.exec(String(j.a ?? '')), mb = /^([\w-]+)\.[a-z]+(\.\d+)?@/.exec(String(j.b ?? ''));
+    if (!ma || !mb || !r.fm.beams.has(ma[1]) || !r.fm.beams.has(mb[1]) || !by.has(mb[1])) continue;
+    const it = items.get(ma[1]);
+    if (!numeric(it)) continue;
+    const a = r.fm.beams.get(ma[1]), out_ = ma[2] === 'a' ? a.u.map((v) => -v) : a.u, shift = half(was(mb[1]), out_) - half(now(mb[1]), out_);
+    if (Math.abs(shift) < 1e-9 || it._moved?.[ma[2]]) continue;
+    const key = ma[2] === 'a' ? 'from' : 'to';
+    it[key] = it[key].map((v, k) => r3(v + out_[k] * shift));
+    (it._moved ??= {})[ma[2]] = true;
+  }
   for (const it of out.items ?? []) {
+    delete it._moved;
     const x = by.get(it.id);
     if (x && it.beam) {
       it.beam = { ...it.beam, profile: x.profile };
@@ -177,5 +219,14 @@ export function writeSizing(raw, expanded, r) {
     const on = typeof it.at === 'string' ? by.get(it.at.split('.')[0]) : null;
     if (on && it.fitting?.profile) it.fitting = { ...it.fitting, profile: on.profile };
   }
+  // a blind or end-tap join at an end that now has several bores: one join a bore, each where its bore meets the face
+  if (out.joins) out.joins = out.joins.flatMap((j) => {
+    const ma = /^([\w-]+)\.([ab])$/.exec(String(j.a ?? '')), mb = /^([\w-]+)\.([a-z]+(?:\.\d+)?)@(-?[\d.]+)$/.exec(String(j.b ?? ''));
+    if (!ma || !mb || !['blind', 'end-tap'].includes(j.kind) || !by.has(ma[1]) || !r.fm.beams.has(mb[1])) return [j];
+    const q = now(ma[1]), bores = q.profile.bores;
+    if (bores.length < 2) return [j];
+    const post = r.fm.beams.get(mb[1]);
+    return bores.map((bo, k) => { const o = q.ax.X.map((v, c) => v * bo.at[0] + q.ax.Y[c] * bo.at[1]); return { ...j, a: `${ma[1]}.${ma[2]}.${k + 1}`, b: `${mb[1]}.${mb[2]}@${r3(Number(mb[3]) + dot(o, post.u))}` }; });
+  });
   return out;
 }
