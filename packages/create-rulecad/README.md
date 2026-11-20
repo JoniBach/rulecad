@@ -41,18 +41,23 @@ npx cad kit frame/box
 ```
 
 `--machine frame` makes a box frame of aluminium extrusion in `projects/frame`, asked for by its inside size
-(`--size`, width x depth x height in mm, each 50 to 2000; default 300x300x350) in one profile (`--profile`). Its
+(`--size`, width x depth x height in mm; default 300x300x350) in one profile (`--profile`). Its
 beams, joins, feet and end caps are generated from that each time it is built (`"frame": { "kind": "box" }` in
 `projects/frame/assemblies/box.json`), with a 5 kg load on its top front beam to change to what it carries. Each
-profile offered comes with the join and feet its box checks clean with, on a fresh install:
+profile offered comes with the join and feet its box checks clean with, on a fresh install, and the sizes it checks
+clean in:
 
-| `--profile` | Joins | Feet |
-|---|---|---|
-| `2020-misumi-hfs5` (the default) | blind: a screw in each butting beam's end, its head in the upright's slot | printed levelling feet |
-| `2020-openbuilds` | blind | printed levelling feet |
-| `3030-misumi-hfs6` | printed corner brackets on drop-in slot nuts | printed feet |
+| `--profile` | Joins | Feet | Width and depth | Height |
+|---|---|---|---|---|
+| `2020-misumi-hfs5` (the default) | blind: a screw in each butting beam's end, its head in the upright's slot | printed levelling feet | 50 to 1400 mm | 50 to 600 mm |
+| `2020-openbuilds` | blind | printed levelling feet | 50 to 1400 mm | 50 to 600 mm |
+| `3030-misumi-hfs6` | printed corner brackets on drop-in slot nuts | printed feet | 100 to 800 mm | 100 to 300 mm |
 
-Another profile is refused by name, before anything is written: make the box in one of these and change its
-`"profile"`, `"join"` and `"feet"` by hand, and `cad check` says what that needs. `npx cad kit frame/box` writes the
+The largest sizes are where its checks stop passing: wider, the top front beam sags past its width over 360 under
+the 5 kg load; taller, a 20 N push at the top sways it past its height over 400 (the printed brackets of the 3030 box
+give more than the blind joins of the 2020 ones, so it is clean only up to 300 mm tall). Under 100 mm the 3030
+brackets crowd each other. Another profile, or a size outside these, is refused by name, before anything is written:
+make the box in range and change its `"inside"`, `"profile"`, `"join"` or `"feet"` by hand, and `cad check` says
+what that needs. `npx cad kit frame/box` writes the
 folder to build it from without the model: the build page, the shopping list, the plates to print, the jigs and each
 beam's cut-and-drill sheet. It does not ask: with no `--size` or `--profile` it makes the default.

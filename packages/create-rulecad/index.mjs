@@ -5,7 +5,8 @@
 //                         on a stand (chapter 14), sized when it is made, with its task, bought parts, wires and firmware;
 //                         or a box frame of extrusion generated from its inside size, with its checks and its kit
 //   --sheet a5 --accuracy 0.3 (for --machine arm), --robot 1.5 (for --machine leg), --size 300x300x350 --profile
-//                         2020-misumi-hfs5 (for --machine frame): the sizes it is made to
+//                         2020-misumi-hfs5 (for --machine frame, each profile within the sizes its box checks clean in):
+//                         the sizes it is made to
 //   --no-install   make the files only
 //   --share gist   short model links: each model you share is stored in a secret GitHub Gist (needs gh, signed in)
 //   --share long   links that carry the whole model (nothing is uploaded; too long for chat on bigger models)
@@ -24,19 +25,27 @@ const dir = path.resolve(args.find((a, i) => !a.startsWith('--') && !VALUED.has(
 const machine = optionValue('--machine'), MACHINES = ['arm', 'leg', 'frame'];
 if (machine !== null && !MACHINES.includes(machine)) { console.error(`--machine is ${MACHINES.slice(0, -1).join(', ')} or ${MACHINES.at(-1)} (got "${machine}")`); process.exit(1); }
 for (const [flag, only] of [['--size', 'frame'], ['--profile', 'frame'], ['--sheet', 'arm'], ['--accuracy', 'arm'], ['--robot', 'leg']]) if (optionValue(flag) !== null && machine !== only) { console.error(`${flag} is for --machine ${only}`); process.exit(1); }
-// The profiles a generated box is made in, each with the join and feet its box checks clean with on a fresh install
-// (the create-rulecad test checks every one). Another profile is the frame's to choose by hand: cad check says what it needs.
+// The profiles a generated box is made in, each with the join and feet its box checks clean with on a fresh install,
+// and the inside sizes it checks clean in: width and depth (sides) and height, each from its least to its most, in mm.
+// A box grows worse as any side grows (the top front beam sags with the width, and a side push at the top racks it
+// more as it gets taller and wider), so the box is clean wherever its largest corner is; the smallest is set by the
+// fittings (a 3030 box under 100 mm crowds its brackets). The create-rulecad test checks both corners of every one.
+// Found by cad check: 2020 boxes 1400 x 1400 x 700 sway 1.82 mm against 1.87 (blind joins), the top beam at 1600 wide
+// sags 4.38 mm against 4.44; a 3030 box on printed brackets 600 x 600 x 350 sways 1.04 mm against 0.99, 800 x 800 x 300
+// 0.81 against 0.86. Another profile, or a size outside these, is the frame's to make by hand: cad check says what it needs.
 const FRAME_PROFILES = {
-  '2020-misumi-hfs5': { join: 'blind', feet: 'levelling', why: 'blind joins (a screw in each end, its head in the other beam\'s slot), printed levelling feet' },
-  '2020-openbuilds': { join: 'blind', feet: 'levelling', why: 'blind joins, printed levelling feet' },
-  '3030-misumi-hfs6': { join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot', why: 'printed corner brackets on drop-in nuts, printed feet' },
+  '2020-misumi-hfs5': { join: 'blind', feet: 'levelling', sides: [50, 1400], height: [50, 600], why: 'blind joins (a screw in each end, its head in the other beam\'s slot), printed levelling feet' },
+  '2020-openbuilds': { join: 'blind', feet: 'levelling', sides: [50, 1400], height: [50, 600], why: 'blind joins, printed levelling feet' },
+  '3030-misumi-hfs6': { join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot', sides: [100, 800], height: [100, 300], why: 'printed corner brackets on drop-in nuts, printed feet' },
 };
 // --machine frame's size and profile, refused by name before anything is written
 const frameAsk = machine === 'frame' ? (() => {
   const size = optionValue('--size') ?? '300x300x350', profile = optionValue('--profile') ?? '2020-misumi-hfs5', p = FRAME_PROFILES[profile];
   const inside = /^\d+(\.\d+)?x\d+(\.\d+)?x\d+(\.\d+)?$/i.test(size) ? size.toLowerCase().split('x').map(Number) : null;
-  if (!inside || inside.some((x) => !(x >= 50 && x <= 2000))) { console.error(`--size is the inside width x depth x height in mm, each 50 to 2000, as 300x300x350 (got "${size}")`); process.exit(1); }
+  if (!inside) { console.error(`--size is the inside width x depth x height in mm, as 300x300x350 (got "${size}")`); process.exit(1); }
   if (!p) { console.error(`--profile is ${Object.keys(FRAME_PROFILES).join(', ')}: the profiles this box checks clean in (got "${profile}"; for another, make the box and change its "profile", "join" and "feet" by hand)`); process.exit(1); }
+  const [w, d, h] = inside, within = ([lo, hi], x) => x >= lo && x <= hi;
+  if (!within(p.sides, w) || !within(p.sides, d) || !within(p.height, h)) { console.error(`--size in ${profile} is width and depth ${p.sides.join(' to ')} mm, height ${p.height.join(' to ')} mm: the sizes its box checks clean in (got "${size}"; for another size, make one in range and change its "inside" by hand: cad check says what it needs)`); process.exit(1); }
   return { inside, profile, ...p };
 })() : null;
 if (fs.existsSync(dir) && fs.readdirSync(dir).length) { console.error(`${dir} isn't empty: name a new folder (npm create rulecad my-designs)`); process.exit(1); }

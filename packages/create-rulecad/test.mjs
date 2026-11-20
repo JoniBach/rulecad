@@ -145,15 +145,30 @@ test('--machine frame: a box from its inside size and profile checks clean on a 
   try {
     // refused by name before anything is written: a size that is not three numbers, a profile it does not make the box
     // in, and a frame's flag on another machine
-    assert.throws(() => make('a', '--size', '300x300'), /--size is the inside width x depth x height in mm, each 50 to 2000, as 300x300x350 \(got "300x300"\)/);
+    assert.throws(() => make('a', '--size', '300x300'), /--size is the inside width x depth x height in mm, as 300x300x350 \(got "300x300"\)/);
+    // a size its box does not check clean in, refused for the profile asked: 2000 x 2000 x 2000 in 2020 sags 10.66 mm
+    // against 5.56 and sways 20.1 mm against 5.12; 800 x 600 x 1000 in 3030 on printed brackets sways 7.6 mm against
+    // 2.61; and 50 mm in 3030 crowds its brackets into each other
+    assert.throws(() => make('a', '--size', '2000x2000x2000'), /--size in 2020-misumi-hfs5 is width and depth 50 to 1400 mm, height 50 to 600 mm: the sizes its box checks clean in \(got "2000x2000x2000"/);
+    assert.throws(() => make('a', '--size', '1400x1401x600'), /--size in 2020-misumi-hfs5 is width and depth 50 to 1400 mm/);
+    assert.throws(() => make('a', '--size', '300x300x601', '--profile', '2020-openbuilds'), /--size in 2020-openbuilds is width and depth 50 to 1400 mm, height 50 to 600 mm/);
+    assert.throws(() => make('a', '--size', '800x600x1000', '--profile', '3030-misumi-hfs6'), /--size in 3030-misumi-hfs6 is width and depth 100 to 800 mm, height 100 to 300 mm/);
+    assert.throws(() => make('a', '--size', '50x50x50', '--profile', '3030-misumi-hfs6'), /--size in 3030-misumi-hfs6 is width and depth 100 to 800 mm/);
     assert.throws(() => make('b', '--profile', '4040-item-8'), /--profile is 2020-misumi-hfs5, 2020-openbuilds, 3030-misumi-hfs6: the profiles this box checks clean in \(got "4040-item-8"/);
     assert.throws(() => execFileSync(process.execPath, [CREATE, path.join(root, 'c'), '--no-install', '--machine', 'arm', '--size', '300x300x350'], { stdio: 'pipe' }), /--size is for --machine frame/);
     assert.deepEqual(fs.readdirSync(root), [], 'nothing written for a refusal');
-    // each profile offered, made and checked as a person would after npm install: no check fails or warns. The defaults
-    // first (300 x 300 x 350 in 2020-misumi-hfs5), then the others at another size
-    for (const [name, args, profile, join] of [['box', [], '2020-misumi-hfs5', 'blind'], ['ob', ['--profile', '2020-openbuilds', '--size', '250x200x300'], '2020-openbuilds', 'blind'], ['hfs6', ['--profile', '3030-misumi-hfs6', '--size', '400x300x350'], '3030-misumi-hfs6', 'bracket']]) {
+    // each profile offered, made and checked as a person would after npm install: no check fails or warns. The default
+    // first (300 x 300 x 350 in 2020-misumi-hfs5), then each profile at the largest and the smallest corner of the sizes
+    // it takes. A box only gets worse as a side grows (the top beam's sag grows with the width, the sway under a side
+    // push with the height and the width across it), so clean at the largest corner is clean below it; the smallest
+    // is where fittings crowd. Hand for the largest 2020 corner, 1400 x 1400 x 600: sway limit the frame's height, as cad
+    // check measures it 648.5 mm (the inside and the rings and feet), over 400 = 1.62 mm; it sways 1.33 (blind joins); sag limit
+    // 1400 / 360 = 3.89 mm, it sags 3.35. For 3030 at 800 x 800 x 300: 0.81 mm against 0.86
+    const sizes = { '2020-misumi-hfs5': ['1400x1400x600', '50x50x50'], '2020-openbuilds': ['1400x1400x600', '50x50x50'], '3030-misumi-hfs6': ['800x800x300', '100x100x100'] };
+    const cases = [['box', [], '2020-misumi-hfs5', 'blind', '300 x 300 x 350'], ...Object.entries(sizes).flatMap(([profile, two]) => two.map((size, i) => [`${profile}-${i ? 'least' : 'most'}`, ['--profile', profile, '--size', size], profile, profile.startsWith('3030') ? 'bracket' : 'blind', size.replaceAll('x', ' x ')]))];
+    for (const [name, args, profile, join, shown] of cases) {
       const made = make(name, ...args), dir = path.join(root, name);
-      assert.match(made, new RegExp(`a box frame round ${name === 'box' ? '300 x 300 x 350' : name === 'ob' ? '250 x 200 x 300' : '400 x 300 x 350'} mm inside, in ${profile}`));
+      assert.match(made, new RegExp(`a box frame round ${shown} mm inside, in ${profile}`));
       assert.match(made, /npx cad check frame\/box/);
       const a = JSON.parse(fs.readFileSync(path.join(dir, 'projects/frame/assemblies/box.json'), 'utf8'));
       assert.equal(a.frame.profile, profile); assert.equal(a.frame.join.kind ?? a.frame.join, join);
@@ -161,8 +176,8 @@ test('--machine frame: a box from its inside size and profile checks clean on a 
       fs.symlinkSync(MODULES, path.join(dir, 'node_modules'), 'junction'); // stands in for npm install
       const r = JSON.parse(execFileSync(process.execPath, [CAD, 'check', 'frame/box', '--json'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 }));
       assert.ok(r.findings, JSON.stringify(r.error ?? r));
-      assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code}: ${x.text}`), [], `${profile}: checks clean`);
-      for (const code of ['frame.generated', 'frame.deflection', 'frame.stress', 'frame.buckling', 'frame.rack', 'frame.frequency', 'assembly.order']) assert.ok(r.findings.some((x) => x.code === code), `${profile}: ${code}`);
+      assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code}: ${x.text}`), [], `${name}: checks clean`);
+      for (const code of ['frame.generated', 'frame.deflection', 'frame.stress', 'frame.buckling', 'frame.rack', 'frame.frequency', 'assembly.order']) assert.ok(r.findings.some((x) => x.code === code), `${name}: ${code}`);
       if (name !== 'box') continue;
       // the default's kit: one folder with the plates, the jigs, a sheet per mark, the shopping list and the build page.
       // Hand: the uprights are 350 + 2 x 20 + 18.5 = 408.5 mm (the bottom ring raised clear of the feet's 18.5 mm taps),
