@@ -10,6 +10,7 @@
   "files": [
     "smooth.mjs",
     "finish.mjs",
+    "finish.d.mts",
     "smooth.d.mts",
     "README.md",
     "LICENSE"
