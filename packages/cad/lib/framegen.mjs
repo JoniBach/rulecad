@@ -37,12 +37,19 @@ export function frameOf(a, num, context = framesContext()) {
 /**
  * The items, joins, joint and poses a generated frame adds, in the assembly's own words.
  * @param {object} m frameOf's @param {object} a the assembly @param {(x: any) => number} num
- * @returns {{ items: object[], joins: object[], joints: object[], poses: Record<string, object> | null }}
+ * A printed foot is screwed into its upright's end: the end tapped (the beam's ops) and a fasten of the foot's screw.
+ * @returns {{ items: object[], joins: object[], fasten: object[], joints: object[], poses: Record<string, object> | null }}
  */
 export function frameParts(m, a, num) {
-  const profile = m.profile, items = [];
+  const profile = m.profile, items = [], fasten = [];
   for (const b of m.beams) items.push({ id: b.id, beam: { profile }, from: b.from, to: b.to });
-  for (const e of m.ends) items.push(e.fitting ? { id: e.id, fitting: { kind: e.fitting, profile }, at: e.at } : { id: e.id, bought: e.bought, at: e.at });
+  for (const e of m.ends) {
+    items.push(e.fitting ? { id: e.id, fitting: { kind: e.fitting, profile }, at: e.at } : { id: e.id, bought: e.bought, at: e.at });
+    if (!e.tap) continue;
+    const [beamId] = e.at.split('.'), bi = items.find((x) => x.id === beamId);
+    bi.beam.ops = [...(bi.beam.ops ?? []), { ...e.tap }];
+    fasten.push({ screw: e.screw, through: [e.id], into: beamId, at: [`${e.id}.b1`], note: `${e.id} screwed into ${beamId}'s end ${e.tap.at}` });
+  }
   for (const p of m.panels) items.push({ id: p.id, panel: { sheet: p.sheet, thickness: p.thickness, bay: p.bay, out: p.out, nut: p.nut } });
   const joints = [];
   let poses = null;
@@ -57,7 +64,7 @@ export function frameParts(m, a, num) {
     joints.push({ id: 'gantry', type: 'prismatic', parent: { item: track.id, at: local(meet), axis: local(g.along, false), ref: local([0, 0, 1], false) }, child: { item: g.id, at: [0, -h, r3(track.from[0] - g.from[0])], axis: [1, 0, 0], ref: [0, 1, 0] }, min: 0, max: g.travel, label: 'Gantry' });
     poses = { 'gantry-front': { gantry: 0 }, 'gantry-back': { gantry: g.travel } };
   }
-  return { items, joins: m.joins.map((j) => ({ ...j })), joints, poses };
+  return { items, joins: m.joins.map((j) => ({ ...j })), fasten, joints, poses };
 }
 
 /**
@@ -76,6 +83,7 @@ export function expandFrame(a, num, context = framesContext()) {
   if (parts.joints.length && (a.joints || []).some((j) => j.id === 'gantry')) throw new Error('frame: a gantry\'s moving beam slides on a joint named gantry, and this assembly already has one: rename it');
   const rest = Object.fromEntries(Object.entries(a.frame).filter(([k]) => !FRAME_GEN_KEYS.includes(k)));
   const out = { ...a, items: [...parts.items, ...(a.items || [])], joins: [...parts.joins, ...(a.joins || [])] };
+  if (parts.fasten.length) out.fasten = [...parts.fasten, ...(a.fasten || [])];
   if (parts.joints.length) out.joints = [...parts.joints, ...(a.joints || [])];
   if (parts.poses && !a.poses) out.poses = parts.poses;
   if (Object.keys(rest).length) out.frame = rest; else delete out.frame;
@@ -87,7 +95,7 @@ export function frameText(m) {
   const s = (v) => v.map((x) => +x.toFixed(2)).join(' x ');
   const size = m.kind === 'portal' ? (v) => s([v[0], v[2]]) : s;
   const lines = [`a ${m.kind} of ${m.profile} (${m.width} mm), joined ${m.join.kind}${m.join.fitting ? ` (${m.join.fitting})` : ''}: ${m.arrangement === 'face' ? 'the upright beams run through and the rest butt against their faces' : 'every beam butts into a corner node'}`,
-    `inside ${size(m.inside)} mm, outside ${size(m.outside)} mm${m.shelves ? `; ${m.shelves} shelves, each bay ${+m.bay.toFixed(2)} mm clear` : ''}`];
+    `inside ${size(m.inside)} mm, outside ${size(m.outside)} mm${m.shelves ? `; ${m.shelves} shelves, each bay ${+m.bay.toFixed(2)} mm clear` : ''}${m.lift ? `; the bottom ring stands ${+m.lift.toFixed(2)} mm up the uprights, so its joins' holes clear the feet's tapped ends` : ''}`];
   for (const l of m.lengths) lines.push(`  ${l.count} x ${+l.length.toFixed(2)} mm: ${l.ids.join(', ')}`);
   lines.push(`${m.joins.length} joins (${[...new Set(m.joins.map((j) => j.kind))].join(', ')}); ${m.ends.length} end fittings${m.ends.length ? ` (${[...new Set(m.ends.map((e) => e.fitting ?? e.bought))].join(', ')})` : ''}${m.panels.length ? `; ${m.panels.length} panels` : ''}${m.moving ? `; g rides ${m.moving.track} through ${m.moving.travel} mm on the joint gantry` : ''}`);
   return lines;

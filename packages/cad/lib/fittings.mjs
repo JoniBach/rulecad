@@ -70,6 +70,25 @@ export function plasticOf(project) {
 }
 
 /**
+ * The printed parts that come with a fitting the assembly places one part of: a printed levelling foot's pad, where an
+ * item places its body and none its pad at the same address (a generated frame's feet). The pad is printed and screwed
+ * in by hand once the body is on, so it goes on a plate and on the list, and is not placed in the model.
+ * @param {object} s a built assembly @returns {{ id: string, of: string, fitting: object, grams: number }[]}
+ */
+export function companions(s) {
+  const items = s.items ?? [], out = [];
+  for (const o of s.objects) {
+    if (o.unplaced || o.fitting?.fitting !== 'levelling-foot' || !o.fitting.printed) continue;
+    const it = items.find((x) => x.id === o.id);
+    if (!it?.fitting || (it.fitting.part ?? 'body') !== 'body') continue;
+    if (items.some((x) => x.fitting?.kind === 'levelling-foot' && x.fitting.part === 'pad' && JSON.stringify(x.at) === JSON.stringify(it.at))) continue;
+    const { pose, ...spec } = it.fitting;
+    out.push({ id: `${o.id}-pad`, of: o.id, fitting: { ...spec, part: 'pad' }, grams: o.fitting.padGrams });
+  }
+  return out;
+}
+
+/**
  * A fitting's model from an item's "fitting" (or a join's), refused by name where a key is not one it takes.
  * @param {object} spec { kind: bracket | gusset | splice, profile, other, face, otherFace, shape, brace, load, count, thread, head, nut }
  * @param {object} context framesContext()'s @param {string | object} [material] pla, petg or a material's rule set (plasticOf) @param {string} [what] who asks

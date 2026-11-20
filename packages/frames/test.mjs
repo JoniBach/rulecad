@@ -1794,8 +1794,22 @@ test('frame generators: a box asked for by its inside size has its butting beams
   const nodes = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'cube' });
   assert.deepEqual([nodes.arrangement, nodes.lengths.map((l) => [l.length, l.count]), nodes.ends.length], ['node', [[350, 4], [300, 8]], 0]);
   assert.deepEqual(nodes.joins.slice(0, 2), [{ kind: 'cube', a: 'y1.a', b: 'x1.a' }, { kind: 'cube', a: 'z1.a', b: 'x1.a' }]);
-  // feet under the uprights, caps on the other open ends, a bought set by name
-  assert.deepEqual(box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', feet: 'levelling', caps: 'fitting-motedis-end-cap-20-b6' }).ends.slice(0, 2), [{ id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot' }, { id: 'cap-z1-b', at: 'z1.b', bought: 'fitting-motedis-end-cap-20-b6', role: 'cap' }]);
+  // feet under the uprights, caps on the other open ends, a bought set by name. A printed foot is screwed into its
+  // upright's end: the end tapped as the foot's model says (M5, 18.5 mm, its end screw's length and a margin) and its M5
+  // cap screw named, for cad to fasten
+  const footed = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', feet: 'levelling', caps: 'fitting-motedis-end-cap-20-b6' });
+  assert.deepEqual(footed.ends.slice(0, 2), [{ id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot', tap: { op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }, screw: 'M5 cap' }, { id: 'cap-z1-b', at: 'z1.b', bought: 'fitting-motedis-end-cap-20-b6', role: 'cap' }]);
+  // A blind join drills an access hole across the upright at the bottom ring's centre line, 10 mm up (p / 2): Ø5.3 for
+  // the M5 key, so 7.35 to 12.65 mm up, inside the foot's 18.5 mm tap. The bottom ring rises by the tap's depth: its
+  // centre line at 10 + 18.5 = 28.5 mm, its holes from 25.85 mm up, clear of the tap. Inside stays 350 between the
+  // rings; the outside height grows by the lift, 390 + 18.5 = 408.5, and the uprights with it
+  assert.deepEqual([footed.lift, footed.outside, footed.lengths.map((l) => [l.length, l.count])], [18.5, [340, 340, 408.5], [[408.5, 4], [300, 8]]]);
+  assert.deepEqual([footed.joins[0], footed.joins.find((j) => j.a === 'y3.a')], [{ kind: 'blind', a: 'x1.a', b: 'z1.back@28.5' }, { kind: 'blind', a: 'y3.a', b: 'z1.top@398.5' }]);
+  // a join that drills nothing in the uprights (a printed bracket on slot nuts) keeps the ring at the bottom; plain
+  // printed feet take their tap and screw too; a bought foot is the set's to say
+  const bracketed = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' });
+  assert.deepEqual([bracketed.lift, bracketed.outside[2], bracketed.ends[0].screw], [0, 390, 'M5 cap']);
+  assert.equal(box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', feet: 'fitting-motedis-foot-m6-d19' }).ends[0].tap, undefined);
   // the siblings: a portal [width, height]; a table, its legs the clear height plus the ring; a shelf's equal bays; a gantry's travel
   const pt = portal({ outside: [500, 400], profile: '2020-misumi-hfs5' });
   assert.deepEqual([pt.inside, pt.lengths.map((l) => [l.length, l.count])], [[460, 0, 380], [[460, 1], [400, 2]]]);

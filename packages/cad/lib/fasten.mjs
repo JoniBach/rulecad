@@ -165,12 +165,13 @@ const same = (a, b) => {
  *   near: the faces within R, in the axis's own coordinates, for further slices; x, y: the directions across the axis
  */
 export function profile(tris, O, D, R) {
-  const f = frameOf(O, D), near = [], hits = [], cuts = new Set();
+  const f = frameOf(O, D), near = [], hits = [], cuts = new Set(), flats = new Set();
   for (const poly of tris) for (const t of fan(poly)) {
     const q = t.map(f.to);
     if (Math.min(q[0][0], q[1][0], q[2][0]) > R || Math.max(q[0][0], q[1][0], q[2][0]) < -R || Math.min(q[0][1], q[1][1], q[2][1]) > R || Math.max(q[0][1], q[1][1], q[2][1]) < -R) continue;
     near.push(q);
     for (const p of q) cuts.add(Math.round(p[2] * 1e6) / 1e6);
+    if (Math.abs(q[0][2] - q[1][2]) < 1e-6 && Math.abs(q[0][2] - q[2][2]) < 1e-6) flats.add(Math.round(q[0][2] * 1e6) / 1e6); // (a face square to the axis: a seat, a floor)
     // where the axis itself goes through this face, and which way the face looks
     const [a, b, c] = q, det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
     if (Math.abs(det) < 1e-12) continue;
@@ -184,7 +185,8 @@ export function profile(tris, O, D, R) {
   for (let i = 0; i < hits.length;) { let j = i, net = 0; while (j < hits.length && hits[j][0] - hits[i][0] < 1e-6) net += hits[j++][1]; if (net) walls.push([hits[i][0], net > 0 ? -1 : 1]); i = j; }
   const solidAt = (z) => { let depth = 0; for (const [w, s] of walls) { if (w > z) break; depth += s; } return depth > 0; };
   let zs = [...cuts].sort((a, b) => a - b);
-  if (zs.length > 600) { const lo = zs[0], hi = zs.at(-1); zs = Array.from({ length: 401 }, (_, i) => lo + ((hi - lo) * i) / 400); } // (a drawn thread: sampled evenly)
+  // (a drawn thread: sampled evenly, and at every face square to the axis, so a counterbore's floor is a step, not a cone)
+  if (zs.length > 600) { const lo = zs[0], hi = zs.at(-1); zs = [...new Set([...Array.from({ length: 401 }, (_, i) => lo + ((hi - lo) * i) / 400), ...flats])].sort((a, b) => a - b); }
   const segs = [];
   for (let i = 0; i + 1 < zs.length; i++) {
     const z0 = zs[i], z1 = zs[i + 1], len = z1 - z0; if (len < 1e-5) continue;

@@ -11,6 +11,7 @@
 // Axes: x is the width, y the depth, z up; the frame's outside starts at the origin. Units: mm.
 import { profileModel } from './profile.mjs';
 import { JOINS } from './join.mjs';
+import { footModel, levellingFootModel, stackingFootModel } from './ends.mjs';
 
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const r3 = (x) => +x.toFixed(3);
@@ -43,6 +44,16 @@ export const FRAME_GEN = {
 const KEYS = ['inside', 'outside', 'profile', 'join', 'feet', 'caps', 'braces', 'panels', 'shelves', 'given'];
 const THROUGH = ['drop-in', 'roll-in', 'hammer', 't-bolt']; // (the slot nuts that go in through the opening)
 const SIDE_OUT = { front: [0, -1, 0], back: [0, 1, 0], left: [-1, 0, 0], right: [1, 0, 0] };
+// the printed feet screwed into an upright's end, by the model that says the tap and screw they take
+const FOOT_MODELS = { foot: footModel, 'levelling-foot': levellingFootModel, 'stacking-foot': stackingFootModel };
+// the joins that drill an upright where a butting beam meets it (an access hole for the key, a clearance hole)
+const DRILLS_POST = ['blind', 'end-tap', 'hidden', 'anchor'];
+const feetFix = new Map(); // (each kind's tap and screw in each profile, worked out once)
+function footFix(kind, profile, given) {
+  const key = `${kind}|${typeof profile === 'string' ? profile : profile?.name}|${JSON.stringify(given ?? {})}`;
+  if (!feetFix.has(key)) { const m = FOOT_MODELS[kind](profile, { end: 'a', ...(given ? { given } : {}) }), t = m.ops.find((x) => x.op === 'tap'), sc = m.screws.find((x) => x.into === 'bore'); feetFix.set(key, t && sc ? { thread: t.thread, depth: t.depth, head: sc.head } : null); }
+  return feetFix.get(key);
+}
 
 /**
  * A frame from a size: its beams (each { id, role, length, from, to }, placed by its ends, a its from), its joins
@@ -90,6 +101,12 @@ export function frameModel(kind, o = {}) {
   if (arrangement === 'node' && o.feet != null && !['table', 'portal'].includes(kind)) throw new Error(`${w}: feet stand under an upright beam's end, and with a cube join every end of a ${kind}'s goes into a corner node: leave feet out (the node's own foot comes with the cube's fitting), or join with blind`);
   if (arrangement === 'node' && o.braces?.length) throw new Error(`${w}: braces put a printed corner bracket at each of a side's joins against a face, and a cube join's beams meet at nodes: brace a frame joined blind (or by another face join)`);
   if (o.feet != null && (typeof o.feet !== 'string' || (!FRAME_FEET[o.feet] && !o.feet.startsWith('fitting-')))) throw new Error(`${w}: feet is ${Object.keys(FRAME_FEET).join(', ')}, or a bought foot's set by name (fitting-motedis-foot-m6-d19) (got ${shown(o.feet)})`);
+  // a printed foot is screwed into its upright's end bore: its tap and screw, from its own model. Where the join drills
+  // the uprights (an access or clearance hole across, at the bottom ring's centre line), the bottom ring rises up the
+  // uprights by the tap's depth, so those holes, within half a width of its centre line, stand clear of the tapped end
+  let fix = null;
+  if (FOOT_MODELS[FRAME_FEET[o.feet]]) { try { fix = footFix(FRAME_FEET[o.feet], o.profile, o.given); } catch (e) { throw new Error(`${w}: feet: ${String(e.message).replace(/^\w+: /, '')}`); } }
+  const lift = fix && arrangement === 'face' && ['box', 'shelf', 'gantry'].includes(kind) && DRILLS_POST.includes(join.kind) ? r3(fix.depth) : 0;
   const caps = o.caps ?? true;
   if (typeof caps !== 'boolean' && !(typeof caps === 'string' && caps.startsWith('fitting-'))) throw new Error(`${w}: caps is true (printed end caps), false (none) or a bought end cap's set by name (fitting-motedis-end-cap-20-b6) (got ${shown(o.caps)})`);
   for (const k of ['braces', 'panels']) {
@@ -105,7 +122,7 @@ export function frameModel(kind, o = {}) {
   }
 
   // the inside and outside, [x, y, z]: what the beams add round the inside, by kind
-  const add = kind === 'portal' ? [2 * p, 0, p] : kind === 'table' ? [2 * p, 2 * p, p] : kind === 'gantry' ? [2 * p, 2 * p, 3 * p] : [2 * p, 2 * p, 2 * p];
+  const add = kind === 'portal' ? [2 * p, 0, p] : kind === 'table' ? [2 * p, 2 * p, p] : kind === 'gantry' ? [2 * p, 2 * p, 3 * p + lift] : [2 * p, 2 * p, 2 * p + lift];
   const given3 = kind === 'portal' ? [size[0], null, size[1]] : size;
   const inside = [0, 1, 2].map((k) => (kind === 'portal' && k === 1 ? 0 : by === 'inside' ? given3[k] : given3[k] - add[k]));
   const outside = inside.map((v, k) => (kind === 'portal' && k === 1 ? p : v + add[k]));
@@ -120,7 +137,7 @@ export function frameModel(kind, o = {}) {
   const beam = (id, role, from, to) => { const length = r3(Math.hypot(...to.map((v, k) => v - from[k]))); beams.push({ id, role, length, from: from.map(r3), to: to.map(r3) }); return id; };
 
   // the levels: the heights of the rings' centre lines, from the bottom
-  const rings = kind === 'table' ? [OH - h] : kind === 'portal' ? [OH - h] : Array.from({ length: shelves + 2 }, (_, k) => k * (bay + p) + h);
+  const rings = kind === 'table' ? [OH - h] : kind === 'portal' ? [OH - h] : Array.from({ length: shelves + 2 }, (_, k) => k * (bay + p) + h + lift);
   const xs = [h, OW - h], ys = kind === 'portal' ? [h] : [h, OD - h];
   const corners = ys.flatMap((y) => xs.map((x) => [x, y])); // z1 (front left), z2 (front right), z3 (back left), z4 (back right)
   const top = kind === 'gantry' ? rings.length - 1 : -1; // (a gantry's top ring has no beams across x: g rides there)
@@ -193,7 +210,7 @@ export function frameModel(kind, o = {}) {
     const at = `${b.id}.${e}`;
     if (covered.has(at)) continue;
     const low = b.role === 'upright' && e === 'a' && b.from[2] < 1e-6;
-    if (low && o.feet != null) ends.push({ id: `foot-${b.id}`, at, ...(FRAME_FEET[o.feet] ? { fitting: FRAME_FEET[o.feet] } : { bought: o.feet }), role: 'foot' });
+    if (low && o.feet != null) ends.push({ id: `foot-${b.id}`, at, ...(FRAME_FEET[o.feet] ? { fitting: FRAME_FEET[o.feet] } : { bought: o.feet }), role: 'foot', ...(fix ? { tap: { op: 'tap', at: e, thread: fix.thread, depth: fix.depth }, screw: `${fix.thread} ${fix.head}` } : {}) });
     else if (caps) ends.push({ id: `cap-${b.id}-${e}`, at, ...(caps === true ? { fitting: 'end-cap' } : { bought: caps }), role: 'cap' });
   }
 
@@ -223,7 +240,7 @@ export function frameModel(kind, o = {}) {
   const lengths = [];
   for (const b of [...beams, ...(moving ? [moving] : [])]) { const l = lengths.find((x) => Math.abs(x.length - b.length) < 1e-6); if (l) { l.count++; l.ids.push(b.id); } else lengths.push({ length: b.length, count: 1, ids: [b.id] }); }
   lengths.sort((u, v) => v.length - u.length);
-  return { kind, profile: o.profile, width: p, join, arrangement, by, inside: inside.map(r3), outside: outside.map(r3), ...(kind === 'shelf' ? { shelves, bay: r3(bay) } : {}), beams, joins, ends, panels, moving, lengths };
+  return { kind, profile: o.profile, width: p, join, arrangement, by, lift, inside: inside.map(r3), outside: outside.map(r3), ...(kind === 'shelf' ? { shelves, bay: r3(bay) } : {}), beams, joins, ends, panels, moving, lengths };
 }
 
 const sub = (a, b) => a.map((v, k) => v - b[k]);

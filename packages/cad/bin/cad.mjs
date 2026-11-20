@@ -1045,15 +1045,26 @@ async function platesCommand(what, ref) {
   }
   const { platesOf, checkPlate } = await import('../lib/plates.mjs'), gap = opt('gap') != null ? Number(opt('gap')) : undefined;
   if (gap != null && !(gap > 0)) throw new Error(`--gap is a distance in mm, above 0 (got ${opt('gap')})`);
-  const r = await platesOf(s, { write: true, gap }), results = [];
+  // a frame's jigs (its beams' drill and tap guides, length stops and squaring corners) on beds of their own, in the
+  // project's plastic: exports/<project>/<assembly>.jigs.3mf, as cad beams --jigs writes them (--no-jigs leaves them)
+  const { cutListOf } = await import('../lib/beams.mjs'), jigs = !opt('no-jigs') && cutListOf(s) ? await (await import('../lib/jigs.mjs')).writeJigs(s) : null;
+  let r;
+  try { r = await platesOf(s, { write: true, gap }); } catch (e) { if (e.code !== 'plates.empty' || !jigs?.jigs.length) throw e; r = { bed: null, gap: null, plates: [], touched: [], removed: [], findings: [] }; } // (bought fittings only: the jigs are what it prints)
+  const results = [];
   for (const p of r.plates.filter((x) => !x.stood)) results.push({ name: p.name, findings: await checkPlate(`${s.project}/${p.name}`) });
-  const fails = [...r.findings, ...results.flatMap((x) => x.findings)].some((x) => x.level === 'fail');
-  if (opt('json')) { console.log(JSON.stringify({ assembly: ref, bed: r.bed, gap: r.gap, plates: r.plates, repacked: r.touched, removed: r.removed, findings: r.findings, checks: results }, null, 2)); process.exitCode = fails ? 1 : 0; return; }
+  const jigRows = jigs ? { plates: jigs.plates.map((p) => ({ ...p, file: path.relative(WS, p.file) })), count: jigs.jigs.length, grams: +jigs.jigs.reduce((t, x) => t + x.grams, 0).toFixed(1), findings: jigs.findings } : null;
+  const fails = [...r.findings, ...results.flatMap((x) => x.findings), ...(jigs?.findings ?? [])].some((x) => x.level === 'fail');
+  if (opt('json')) { console.log(JSON.stringify({ assembly: ref, bed: r.bed, gap: r.gap, plates: r.plates, repacked: r.touched, removed: r.removed, findings: r.findings, checks: results, ...(jigRows ? { jigs: jigRows } : {}) }, null, 2)); process.exitCode = fails ? 1 : 0; return; }
   report(r.findings);
-  say(`${ref}: ${r.plates.length} plate${r.plates.length === 1 ? '' : 's'}, parts ${r.gap} mm apart (the first layer's rule)`);
-  for (const p of r.plates) say(`  ${p.name}${p.stood ? ' (unchanged)' : ''}: ${p.filament}, ${p.parts.length} part${p.parts.length === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min: ${p.parts.map((x) => x.id).join(', ')}`);
+  if (r.plates.length) say(`${ref}: ${r.plates.length} plate${r.plates.length === 1 ? '' : 's'}, parts ${r.gap} mm apart (the first layer's rule)`);
+  for (const p of r.plates) say(`  ${p.name}${p.stood ? ' (unchanged)' : ''}: ${p.material}, ${p.filament}, ${p.parts.length} part${p.parts.length === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min: ${p.parts.map((x) => x.id).join(', ')}`);
   if (r.removed.length) say(`  removed ${r.removed.join(', ')} (nothing is on them now)`);
   for (const x of results) { const bad = x.findings.filter((y) => (y.level === 'fail' || y.level === 'warn') && y.code !== 'rules.estimate'); say(`  ${x.name}: ${bad.length ? `${bad.length} to look at` : 'prints clean'}`); for (const y of bad) say(`    [${y.level}] ${y.text}`); }
+  if (jigRows?.count) {
+    say(`${ref}: ${jigRows.count} jig${jigRows.count === 1 ? '' : 's'} for its beams, ${jigRows.grams} g, on ${jigRows.plates.length} plate${jigRows.plates.length === 1 ? '' : 's'} of their own (cad beams ${ref} --jigs says what each is for)`);
+    for (const p of jigRows.plates) say(`  ${p.file}: ${p.material}, ${p.parts.length} part${p.parts.length === 1 ? '' : 's'}`);
+    for (const f of jigRows.findings) say(`  [${f.level}] ${f.text}`);
+  }
   process.exitCode = fails ? 1 : 0;
 }
 
