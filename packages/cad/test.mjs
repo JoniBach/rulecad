@@ -1902,6 +1902,43 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.equal(shut.code, 1); assert.match(shut.out, /would be shut in between the blind join of x1\.a to p1\.back@30 and the blind join of x1\.b to p2\.front@30/);
     const wide = run(ws, ['check', 'frame/spacing']);
     assert.equal(wide.code, 1); assert.equal((wide.out.match(/✗ The board plate, screw [12] \(hole at -?15, 0, 1\.5\): plate's hole is 5 mm off the centre line of x1's top\.[12] slot/g) || []).length, 2, wide.out);
+    // The case of printed beams (chapter 17): drawn in aluminium, every beam could be printed in PETG; printed (posts and
+    // rails standing, the cross beam lying), it checks clean, its posts' ends an M3 captive nut each; the sag under the
+    // board for both; a rail longer than the bed refused and spliced; a foot for the aluminium post refused by name; the kit
+    const al = JSON.parse(run(ws, ['check', 'case/aluminium', '--json']).out).findings, pr = JSON.parse(run(ws, ['check', 'case/printed', '--json']).out).findings;
+    for (const f of [al, pr]) assert.deepEqual(f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    const each = al.filter((x) => x.code === 'beam.printable' && x.refs?.beam), all17 = al.find((x) => x.code === 'beam.printable' && x.refs?.printable && !x.refs.beam);
+    assert.equal(each.length, 13); assert.ok(each.every((x) => x.level === 'pass' && x.refs.printable && x.values.margin > 50), JSON.stringify(each.map((x) => [x.refs.beam, x.values.margin])));
+    assert.match(all17.text, /^every beam of the frame can be printed in PETG \(13\), printed together and solved once more: the least margin is [\d.]+ on sag as it creeps/);
+    // the sag under the board, both ways. By hand, m1 alone (PETG lying, E 1810 MPa, I 7604.94 mm⁴ from the printed
+    // section, 130 mm): held fixed at its ends, the board and its mount, (0.05 + 0.0271) kg x 9.80665 = 0.756 N at the
+    // middle, and its own 33.8 g (w = 0.00255 N/mm): F L³ / (192 E I) + w L⁴ / (384 E I) = 0.00063 + 0.00014 = 0.00077 mm,
+    // the least the frame's rigid figure can be (it adds x1 and x2 bending under m1's ends). Each printed beam is 38
+    // (m1: 69972 x 7420 / (1810 x 7604.94)) to 48 times (standing: / (1540 x 7066.7)) as soft as its aluminium one, and
+    // the printed brackets' springs are the same in both, so the printed sag is more than 10 and less than 48 times the
+    // aluminium one
+    const sag17 = (f) => f.find((x) => x.code === 'frame.deflection' && /^m1 at m1\.top@50%/.test(x.text)).values;
+    const sAl = sag17(al), sPr = sag17(pr);
+    assert.ok(sAl.sag > 0 && sAl.sag < 0.001, `aluminium ${sAl.sag} mm`); assert.ok(sPr.rigid >= 0.00077 && sPr.sag < sPr.limit, JSON.stringify(sPr));
+    assert.ok(sPr.sag / sAl.sag > 10 && sPr.sag / sAl.sag < 48, `printed ${sPr.sag} mm against aluminium ${sAl.sag} mm`);
+    assert.equal(sPr.limit, 0.361);
+    const ofPr = (c) => pr.filter((x) => x.code === c);
+    assert.equal(ofPr('beam.end').filter((x) => /end a takes M3 in a captive nut .* in its 4\.2 mm bore's place/.test(x.text)).length, 4);
+    assert.equal(ofPr('fasten.end').filter((x) => /^Foot \d, .*ends in an M3 hex nut in its seat in p\d/.test(x.text)).length, 4);
+    assert.ok(ofPr('frame.rack').length === 2 && ofPr('frame.rack').every((x) => x.level === 'pass'));
+    assert.equal(ofPr('assembly.order')[0].values.steps, 47);
+    assert.ok(ofPr('beam.printable').every((x) => x.level === 'pass') && ofPr('beam.printable').length === 13, 'every beam prints, standing or lying');
+    const longRail = run(ws, ['check', 'case/long']);
+    assert.equal(longRail.code, 1); assert.match(longRail.out, /✗ r1: profile-2020-printed x 300, printed lying down: 300 mm long, and x1c's bed is 256 mm: splice it in two/);
+    const foot17 = run(ws, ['check', 'case/foot']);
+    assert.equal(foot17.code, 1); assert.match(foot17.out, /✗ Foot 1, an M5 cap screw: p1's end a is printed with an M3 captive nut in place of a tap, and the screw is M5: use an M3 screw/);
+    // the kit: no bars, no sheets, one plate that prints clean
+    const kit = path.join(ws, 'exports/case/printed-kit');
+    assert.deepEqual(fs.readdirSync(kit).sort(), ['README.md', 'buy.csv', 'print']); assert.deepEqual(fs.readdirSync(path.join(kit, 'print')), ['printed-base-1.3mf']);
+    const page = fs.readFileSync(path.join(kit, 'README.md'), 'utf8');
+    const row = page.split('\n').find((l) => l.startsWith('| print/printed-base-1.3mf | PETG |'));
+    assert.equal(row.split(' | ')[2].split(', ').length, 73, 'every printed part on the one plate'); assert.match(row, /\| \d+ \| \d+ \| clean \|$/);
+    assert.match(page, /^\| 1 \| rpi4 \| board \|/m);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -4752,8 +4789,9 @@ test('a printed beam\'s end in a frame: a post printed standing takes a foot\'s 
     const m5 = findings('post').find((x) => x.code === 'fasten.end' && /^Foot 1/.test(x.text));
     assert.equal(m5.level, 'fail'); assert.match(m5.text, /p1's end a is printed with an M3 captive nut in place of a tap, and the screw is M5: use an M3 screw \(a printed foot takes it as "thread": "M3"\)/);
     // a stiff frame's sag, where three places read 0: a 100 mm aluminium 2020 held fixed at both ends, under its own weight
-    // Hand: w = 0.5 kg/m x 9.80665 / 1000 = 0.0049 N/mm (the sheet's mass per metre, read below), E I = 69000 x 7420 here
-    // read from the beam's model; fixed both ends, sag = w L⁴ / (384 E I): about 2.5e-6 mm, given to three figures
+    // Hand: w = 0.5 kg/m x 9.80665 / 1000 = 0.0049033 N/mm (the sheet's mass per metre), E I = 69972 x 7420 N mm²
+    // (al6n01-t5 and the sheet's second moment, both read from the beam's model below); fixed at both ends,
+    // sag = w L⁴ / (384 E I) = 0.0049033 x 100⁴ / (384 x 69972 x 7420) = 2.46e-6 mm, given to three figures
     const { beamModel } = await import('@rulecad/frames'), m = beamModel('2020-misumi-hfs5', { length: 100 });
     fs.writeFileSync(at('assemblies/stiff.json'), JSON.stringify({ title: 'Stiff', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 10], to: [100, 0, 10] }],
       frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' }, points: ['x1.top@50%'] } }));

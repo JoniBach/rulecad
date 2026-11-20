@@ -2,7 +2,7 @@
 
 [The tutorial](TUTORIAL.md) ends with a wall hook checked against its screw. These examples carry on from there, one
 for each thing the [README](README.md) describes after that: parts, variants and releases, joints and poses, a model
-from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, a motor, a robot joint, a machine sized from its task, a bracket screwed on, and a frame of beams with a moving axis. Each is a few files and the commands to run
+from elsewhere, an optimised part, a board, a mechanism printed flat, gears, a gearbox, a motor, a robot joint, a machine sized from its task, a bracket screwed on, a frame of beams with a moving axis, and a case of printed beams as a kit. Each is a few files and the commands to run
 them. The tests write every file here and run every command, so what you read is what works.
 
 They start from a workspace `npm create rulecad my-designs` makes, as the tutorial does, and run in order: later
@@ -6771,3 +6771,411 @@ Five things do not, and their findings say so:
 
 The frame's own sag and sway under the carriage's load, and its lowest frequency, come with the frame checks (issues
 265 to 267).
+
+## 17. Printed beams: a small case as a kit
+
+A case for a Raspberry Pi 4 with every beam printed: no bar to buy, no saw, no tap. The frame is drawn first in
+aluminium, MISUMI's 2020 (`2020-misumi-hfs5`), and the check is asked which of its beams could be printed in PETG
+instead. All of them can, by a wide margin, so the case is drawn again with every beam printed: four posts and eight
+rails printed standing up, so they keep the four slots of MISUMI's section, and the cross beam under the board printed
+lying down from the kit's printable 2020 (`2020-printed`), whose one slot faces up. Printed brackets hold the corners,
+printed gussets the cross beam, a 3 mm acrylic panel closes each side, and the feet, end caps, the board's mount and a
+fan mount all come from the kit's fittings. The frame's sag under the board is reported for both materials. A rail
+longer than the printer's bed is spliced, a foot drawn for the aluminium post is caught, and the whole case is written
+out as a kit: one plate to print and a page to build it from.
+
+```json projects/case/project.json
+{
+  "name": "case",
+  "title": "A printed case for a small computer board",
+  "printer": "x1c",
+  "material": "PETG",
+  "objects": []
+}
+```
+
+PETG rather than PLA: a board in a closed case runs warm, and PETG softens later.
+
+### The board
+
+The board is bought, so it is a rule set: its size, its four mounting holes and their diameter from the Raspberry Pi 4
+Model B product brief (Raspberry Pi Ltd, April 2024). The brief gives no mass and no board thickness: the mass is what
+shops list (45 to 50 g, a community figure) and the thickness is the common 1.6 mm board (an estimate). Weigh and
+measure yours.
+
+```json rules/rpi4.json
+{
+  "_doc": "Raspberry Pi 4 Model B, the board alone, from the maker's product brief. Board in the x-y plane, the USB and Ethernet end at +x, seen from above.",
+  "name": "rpi4",
+  "part": "board",
+  "rules": {
+    "body_width": { "value": 85, "unit": "mm", "rule": "The board's length, along x", "kind": "spec", "source": "Raspberry Pi 4 Model B product brief (Raspberry Pi Ltd, April 2024), Physical specification, https://pip.raspberrypi.com/categories/545-raspberry-pi-4-model-b", "checked": "2026-11-20" },
+    "body_depth": { "value": 56, "unit": "mm", "rule": "The board's width, along y", "kind": "spec", "source": "Raspberry Pi 4 Model B product brief (Raspberry Pi Ltd, April 2024), Physical specification, https://pip.raspberrypi.com/categories/545-raspberry-pi-4-model-b", "checked": "2026-11-20" },
+    "mount_holes": { "value": [-39, -24.5, 19, -24.5, -39, 24.5, 19, 24.5], "unit": "mm", "rule": "The four mounting holes, centres from the board's middle, x then y for each: 3.5 mm in from the end away from the USB sockets and 58 mm on, 3.5 mm in from each long edge and 49 mm apart", "kind": "spec", "source": "Raspberry Pi 4 Model B product brief (Raspberry Pi Ltd, April 2024), Physical specification, https://pip.raspberrypi.com/categories/545-raspberry-pi-4-model-b", "checked": "2026-11-20" },
+    "mount_hole_diameter": { "value": 2.7, "unit": "mm", "rule": "The mounting holes, for M2.5 screws", "kind": "spec", "source": "Raspberry Pi 4 Model B product brief (Raspberry Pi Ltd, April 2024), Physical specification, https://pip.raspberrypi.com/categories/545-raspberry-pi-4-model-b", "checked": "2026-11-20" },
+    "board_thickness": { "value": 1.6, "unit": "mm", "rule": "The board through its mounting holes: the brief does not give it, so the common 1.6 mm board is taken. Measure yours", "kind": "estimate", "source": "The common 1.6 mm FR-4 board; the maker's brief gives no thickness", "checked": "2026-11-20" },
+    "mass": { "value": 0.05, "unit": "kg", "rule": "The board as sold, without a case: shops list 45 to 50 g, and the maker publishes none. Weigh yours", "kind": "community", "source": "Shop listings: Heltec, 50 g, https://heltec.org/?p=81049; othoba.com, 45 g, https://othoba.com/raspberry-pi-4-model-b-4gb-for-high-performance-general-purpose-computer-incorporating-a-quad-core-64-bit-arm-cortex-a72-cpu-dishantech-bd-940248", "checked": "2026-11-20" }
+  }
+}
+```
+
+### The case in aluminium
+
+Up is z, and the case stands on its feet at z = 0. Four posts, `p1` to `p4`, stand 120 mm tall at the corners of a
+180 by 170 mm rectangle. Rails join them at 10 mm and at 110 mm up: `x1` to `x4` along x, `y1` to `y4` along y, each
+placed by its two ends so it runs from post face to post face. `x2` and `x4` run from `p3` to `p4`, right to left: a
+gusset lies on the side of its two beams that b's direction turns toward a's, so with `x2` drawn that way the gusset at
+the cross beam's far end lies on top, as the near one does.
+
+- **The corners.** Every rail is held to its post by a `bracket` join with `"fitting": "printed"`: a corner bracket
+  from `@rulecad/frames`, sized from a 100 N load, on two M4 screws into drop-in nuts. A bracket lies in the corner
+  on the rail's top or bottom face and the post's face, so it needs a slot in both.
+- **The cross beam.** `m1` runs along y in the middle of the bottom, from `x1` to `x2`, held at each end by a printed
+  `gusset`: a T plate on the top faces of both beams.
+- **The board.** `pi` is the bought board on a printed mount (`"mount"`) in the middle of `m1`'s top slot, turned so
+  its long side lies across the beam. Its four M2.5 screws go down through its holes into pilots in the mount's bosses;
+  the mount's two M5 screws go into roll-in nuts in the slot.
+- **The fan.** A printed `fan-mount` for a 40 mm fan on the inner face of the back top rail, `x4`, on two M5 screws.
+- **The sides.** A 3 mm acrylic `panel` in each side, its clips screwed into the slots that face out. A clip's nut
+  goes into a slot already closed at both ends, so the panels take roll-in nuts (`"nut": "roll-in"`).
+- **Feet and caps.** A printed `foot` under each post, an M5 screw through it into the post's tapped end, and a
+  printed `end-cap` on each post's top.
+- **The sag.** `"frame": { "points": ["m1.top@50%"] }` asks for the sag under the board. Nothing is hung there by
+  hand: the board and its mount are items on `m1`, so their mass is where they are.
+- **Printed instead.** `"printed": "petg"` asks, for each beam, whether it could be printed in PETG.
+
+```json projects/case/assemblies/aluminium.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The case in aluminium",
+  "kind": "fit",
+  "description": "Four posts and two rings of MISUMI 2020, a cross beam under the board, printed brackets at the corners and gussets at the cross beam, a panel in each side, feet and caps, the board on its mount and a fan mount; each beam tried printed in PETG.",
+  "items": [
+    { "id": "p1", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [10, 10, 0], "to": [10, 10, 120] },
+    { "id": "p2", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [170, 10, 0], "to": [170, 10, 120] },
+    { "id": "p3", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [170, 160, 0], "to": [170, 160, 120] },
+    { "id": "p4", "beam": { "profile": "2020-misumi-hfs5", "ops": [{ "op": "tap", "at": "a", "thread": "M5", "depth": 18.5 }] }, "from": [10, 160, 0], "to": [10, 160, 120] },
+    { "id": "x1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 10, 10], "to": [160, 10, 10] },
+    { "id": "x2", "beam": { "profile": "2020-misumi-hfs5" }, "from": [160, 160, 10], "to": [20, 160, 10] },
+    { "id": "y1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [10, 20, 10], "to": [10, 150, 10] },
+    { "id": "y2", "beam": { "profile": "2020-misumi-hfs5" }, "from": [170, 20, 10], "to": [170, 150, 10] },
+    { "id": "x3", "beam": { "profile": "2020-misumi-hfs5" }, "from": [20, 10, 110], "to": [160, 10, 110] },
+    { "id": "x4", "beam": { "profile": "2020-misumi-hfs5" }, "from": [160, 160, 110], "to": [20, 160, 110] },
+    { "id": "y3", "beam": { "profile": "2020-misumi-hfs5" }, "from": [10, 20, 110], "to": [10, 150, 110] },
+    { "id": "y4", "beam": { "profile": "2020-misumi-hfs5" }, "from": [170, 20, 110], "to": [170, 150, 110] },
+    { "id": "m1", "beam": { "profile": "2020-misumi-hfs5" }, "from": [90, 20, 10], "to": [90, 150, 10] },
+    { "id": "foot1", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p1.a" },
+    { "id": "foot2", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p2.a" },
+    { "id": "foot3", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p3.a" },
+    { "id": "foot4", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p4.a" },
+    { "id": "cap1", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p1.b" },
+    { "id": "cap2", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p2.b" },
+    { "id": "cap3", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p3.b" },
+    { "id": "cap4", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p4.b" },
+    { "id": "front", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["x1", "p2", "x3", "p1"], "out": [0, -1, 0], "nut": "roll-in" } },
+    { "id": "back", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["x2", "p3", "x4", "p4"], "out": [0, 1, 0], "nut": "roll-in" } },
+    { "id": "left", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["y1", "p4", "y3", "p1"], "out": [-1, 0, 0], "nut": "roll-in" } },
+    { "id": "right", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["y2", "p3", "y4", "p2"], "out": [1, 0, 0], "nut": "roll-in" } },
+    { "id": "pi", "bought": "rpi4", "mount": { "on": "m1.top@65", "turn": 90, "nut": "roll-in" } },
+    { "id": "fan", "fitting": { "kind": "fan-mount", "profile": "2020-misumi-hfs5", "size": 40 }, "at": "x4.back@70" }
+  ],
+  "joins": [
+    { "kind": "bracket", "a": "x1.a", "b": "p1.back@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x1.b", "b": "p2.front@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x2.a", "b": "p3.front@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x2.b", "b": "p4.back@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y1.a", "b": "p1.top@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y1.b", "b": "p4.bottom@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y2.a", "b": "p2.top@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y2.b", "b": "p3.bottom@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x3.a", "b": "p1.back@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x3.b", "b": "p2.front@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x4.a", "b": "p3.front@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x4.b", "b": "p4.back@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y3.a", "b": "p1.top@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y3.b", "b": "p4.bottom@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y4.a", "b": "p2.top@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y4.b", "b": "p3.bottom@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "gusset", "a": "m1.a", "b": "x1.back@70", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "gusset", "a": "m1.b", "b": "x2.back@70", "fitting": "printed", "nut": "drop-in" }
+  ],
+  "fasten": [
+    { "screw": "M5 cap", "through": ["foot1"], "into": "p1", "at": ["foot1.b1"], "note": "Foot 1" },
+    { "screw": "M5 cap", "through": ["foot2"], "into": "p2", "at": ["foot2.b1"], "note": "Foot 2" },
+    { "screw": "M5 cap", "through": ["foot3"], "into": "p3", "at": ["foot3.b1"], "note": "Foot 3" },
+    { "screw": "M5 cap", "through": ["foot4"], "into": "p4", "at": ["foot4.b1"], "note": "Foot 4" },
+    { "screw": "M5 button", "through": ["fan"], "into": "x4.back", "at": ["fan.b1", "fan.b2"], "nut": "roll-in", "note": "The fan mount" }
+  ],
+  "frame": { "points": ["m1.top@50%"], "printed": "petg" }
+ }
+```
+
+```sh
+npx cad check case/aluminium
+```
+
+The frame checks with nothing failing and nothing warning. Under the board, `m1` sags 0.000352 mm with the joins'
+springs (`frame.deflection`), against 0.361 mm allowed (its 130 mm span over 360). Then `beam.printable` takes each
+beam in turn, puts the kit's printable 2020 in its place in PETG, solves the frame again and holds the beam to the
+frame's sags, its stress and buckling with twice the margin, a creep limit and its sag as it creeps:
+
+- Every one of the 13 beams can be printed. The least margin of each is from 70 (`x1` and `x2`, on their sag as they
+  creep: they carry the cross beam's ends) to 368 (the bottom side rails); `m1` under the board 82, the posts over 200.
+- All 13 printed together and solved once more, the least margin is 26.6, on `m1`'s sag as it creeps (0.014 mm), with
+  438 g of PETG in all.
+- 14 of the joins need changing to print it that way: the kit's printable 2020 has one slot, in its top face, and a
+  bracket landing on a post's side face, or a panel's clip, needs a slot there.
+
+So every beam could be either: aluminium, or PETG. What decides how each is printed is how many of its faces need a
+slot.
+
+### Every beam printed
+
+A beam lying down prints with its layers along it, strong in bending, but only a slot facing up prints without
+supports, so the kit's printable profiles have one. A beam standing on its end prints its section exactly as drawn,
+every slot included, but its layers lie across it, so it bends at PETG's strength across its layers, 23 MPa against
+34 along them, and its slots' lips hold less. In this case the posts and the rails each need three or four slotted
+faces: the brackets' and the panels'. They print standing up, from MISUMI's own section, each no taller than the
+X1C's 256 mm. The cross beam needs its top slot alone, for the gussets and the board's mount, so it lies down.
+
+- **`"printed"` on a beam.** `{ "pose": "standing", "pull": 50 }` for the posts and rails: `pull` is the design pull
+  on a slot nut. At 100 N, the kit's default, a standing slot's lips hold 1.56 times, under the twice a printed part
+  is sized for; at 50 N they hold 3.07 times. 50 N is a hand pressing on a closed case.
+- **The posts' ends.** A tapped end of a printed beam becomes a fixing of the print. MISUMI's section has a 4.2 mm
+  bore and names no printed end of its own, so standing up the end takes its screw in the bore's place: an M4 heat-set
+  insert needs 4.95 mm of plastic round its middle and the section has 4, so it takes an M3 captive nut (`"end":
+  "nut"`), slid in from the side 4.5 mm in from the end, its screw up the bore. The foot is drawn for that thread
+  (`"thread": "M3"`), and its screw is an M3.
+- **The rest** is as in aluminium: the same joins, fittings, panels and board.
+
+```json projects/case/assemblies/printed.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The case, every beam printed",
+  "kind": "fit",
+  "description": "Four posts and two rings of beams, all printed in PETG: those that need four slotted faces standing up from MISUMI's 2020, the cross beam under the board lying down from the kit's printable 2020. Printed brackets at the corners, gussets at the cross beam, a panel in each side, feet and caps, the board on its mount and a fan mount.",
+  "items": [
+    { "id": "p1", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50, "end": "nut" }, "ops": [{ "op": "tap", "at": "a" }] }, "from": [10, 10, 0], "to": [10, 10, 120] },
+    { "id": "p2", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50, "end": "nut" }, "ops": [{ "op": "tap", "at": "a" }] }, "from": [170, 10, 0], "to": [170, 10, 120] },
+    { "id": "p3", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50, "end": "nut" }, "ops": [{ "op": "tap", "at": "a" }] }, "from": [170, 160, 0], "to": [170, 160, 120] },
+    { "id": "p4", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50, "end": "nut" }, "ops": [{ "op": "tap", "at": "a" }] }, "from": [10, 160, 0], "to": [10, 160, 120] },
+    { "id": "x1", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [20, 10, 10], "to": [160, 10, 10] },
+    { "id": "x2", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [160, 160, 10], "to": [20, 160, 10] },
+    { "id": "y1", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [10, 20, 10], "to": [10, 150, 10] },
+    { "id": "y2", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [170, 20, 10], "to": [170, 150, 10] },
+    { "id": "x3", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [20, 10, 110], "to": [160, 10, 110] },
+    { "id": "x4", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [160, 160, 110], "to": [20, 160, 110] },
+    { "id": "y3", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [10, 20, 110], "to": [10, 150, 110] },
+    { "id": "y4", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50 } }, "from": [170, 20, 110], "to": [170, 150, 110] },
+    { "id": "m1", "beam": { "profile": "2020-printed", "material": "petg", "printed": true }, "from": [90, 20, 10], "to": [90, 150, 10] },
+    { "id": "foot1", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5", "thread": "M3" }, "at": "p1.a" },
+    { "id": "foot2", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5", "thread": "M3" }, "at": "p2.a" },
+    { "id": "foot3", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5", "thread": "M3" }, "at": "p3.a" },
+    { "id": "foot4", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5", "thread": "M3" }, "at": "p4.a" },
+    { "id": "cap1", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p1.b" },
+    { "id": "cap2", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p2.b" },
+    { "id": "cap3", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p3.b" },
+    { "id": "cap4", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p4.b" },
+    { "id": "front", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["x1", "p2", "x3", "p1"], "out": [0, -1, 0], "nut": "roll-in" } },
+    { "id": "back", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["x2", "p3", "x4", "p4"], "out": [0, 1, 0], "nut": "roll-in" } },
+    { "id": "left", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["y1", "p4", "y3", "p1"], "out": [-1, 0, 0], "nut": "roll-in" } },
+    { "id": "right", "panel": { "sheet": "acrylic", "thickness": 3, "bay": ["y2", "p3", "y4", "p2"], "out": [1, 0, 0], "nut": "roll-in" } },
+    { "id": "pi", "bought": "rpi4", "mount": { "on": "m1.top@65", "turn": 90, "nut": "roll-in" } },
+    { "id": "fan", "fitting": { "kind": "fan-mount", "profile": "2020-misumi-hfs5", "size": 40 }, "at": "x4.back@70" }
+  ],
+  "joins": [
+    { "kind": "bracket", "a": "x1.a", "b": "p1.back@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x1.b", "b": "p2.front@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x2.a", "b": "p3.front@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x2.b", "b": "p4.back@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y1.a", "b": "p1.top@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y1.b", "b": "p4.bottom@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y2.a", "b": "p2.top@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y2.b", "b": "p3.bottom@10", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x3.a", "b": "p1.back@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x3.b", "b": "p2.front@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x4.a", "b": "p3.front@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "x4.b", "b": "p4.back@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y3.a", "b": "p1.top@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y3.b", "b": "p4.bottom@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y4.a", "b": "p2.top@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "bracket", "a": "y4.b", "b": "p3.bottom@110", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "gusset", "a": "m1.a", "b": "x1.back@70", "fitting": "printed", "nut": "drop-in" },
+    { "kind": "gusset", "a": "m1.b", "b": "x2.back@70", "fitting": "printed", "nut": "drop-in" }
+  ],
+  "fasten": [
+    { "screw": "M3 cap", "through": ["foot1"], "into": "p1", "at": ["foot1.b1"], "note": "Foot 1" },
+    { "screw": "M3 cap", "through": ["foot2"], "into": "p2", "at": ["foot2.b1"], "note": "Foot 2" },
+    { "screw": "M3 cap", "through": ["foot3"], "into": "p3", "at": ["foot3.b1"], "note": "Foot 3" },
+    { "screw": "M3 cap", "through": ["foot4"], "into": "p4", "at": ["foot4.b1"], "note": "Foot 4" },
+    { "screw": "M5 button", "through": ["fan"], "into": "x4.back", "at": ["fan.b1", "fan.b2"], "nut": "roll-in", "note": "The fan mount" }
+  ],
+  "frame": { "points": ["m1.top@50%"] }
+ }
+```
+
+```sh
+npx cad check case/printed
+```
+
+It checks with nothing failing and nothing warning, 1100 checks passing:
+
+- Each post: `beam.printable` says it prints standing on end a with no supports; `beam.end` says end a takes an M3
+  captive nut in its bore's place, with 4 mm of plastic round the screw's line for the nut's corners and a line.
+- Each foot: an M3x10 cap through the foot's 3 mm floor into the post's nut in its seat (`fasten.end`), the nut
+  5.5 mm across its flats in a 5.7 mm slot.
+- Each bracket's and gusset's nut in a slot: in the posts and rails, MISUMI's slot; in `m1`, the printable slot,
+  whose lips slope underneath at 45°, so a drop-in nut seats 3.95 mm under the face, said and passing.
+- The board on its mount: M2.5x8 cap screws, the largest whose 4.5 mm heads sit whole on the board, its holes 3.5 mm
+  from its edges; 6.4 mm of PETG engaged in each pilot.
+- `frame.deflection`: under the board, `m1` sags 0.009 mm with the joins' springs, 0.007 mm with them rigid, against
+  0.361 mm. `frame.rack`: 20 N pushed at the top sways it 0.072 mm along x and 0.074 mm along y, against 0.275 mm (its
+  height, 110 mm between the rails, over 400): the panels hold it. `frame.frequency`: the lowest mode 139.7 Hz.
+- `assembly.order`: it goes together in 47 steps, nothing trapped.
+
+The sag under the board, both ways:
+
+| Frame | Sag at `m1.top@50%`, joins' springs | Joins rigid | Allowed |
+|---|---|---|---|
+| Aluminium, `case/aluminium` | 0.000352 mm | 0.000223 mm | 0.361 mm |
+| Printed in PETG, `case/printed` | 0.009 mm | 0.007 mm | 0.361 mm |
+
+The printed case sags about 26 times as much as the aluminium one: PETG's 1810 MPa along its layers (1540 standing)
+against the aluminium's 69972 makes each beam 38 to 48 times as soft (with each section's second moment), and the printed brackets' springs, the same in both,
+make up the rest. Both are far inside the limit. As a check by hand: `m1` alone, pinned at its ends, under the board
+and its mount at its middle (0.05 + 0.027 kg, 0.756 N) and its own 33.8 g, sags 0.756 × 130³ / (48 × 1810 × 7605) +
+5 × 0.00255 × 130⁴ / (384 × 1810 × 7605) = 0.0025 + 0.0007 = 0.0032 mm; the frame's 0.009 mm adds `x1` and `x2`
+bending under its ends and the joins giving.
+
+### Strong enough, and small
+
+Each printed part is sized from a named load to about twice the margin, where its load sizes it at all:
+
+| Part | Grams | Load it is sized for | Margin |
+|---|---|---|---|
+| Post, standing (× 4) | 26.8 | 50 N pulling a nut out of a slot | 3.07 |
+| Rail, standing (× 8) | 31.3 along x, 29.1 along y | 50 N pulling a nut out of a slot | 3.07 |
+| Cross beam, lying | 33.8 | 100 N pulling a nut out of its slot | 4.2 |
+| Corner bracket (× 16) | 4.5 | 100 N across the rail at its screw | 3.09, by finite elements |
+| T gusset (× 2) | 9.0 | 100 N in its plane at its farthest screw | 5.76, by finite elements |
+| Board mount | 27.1 | 50 N on the board at its farthest hole | 4.62 |
+| Fan mount | 17.5 | 50 N on the fan at its farthest hole | 5.65 |
+| Panel clip (× 32) | 1.6 | 30 N pushing the panel out | 2.12 |
+| Foot (× 4) | 4.6 | 250 N down the post | 73.8 |
+| End cap (× 4) | 1.3 | none: pushed on | |
+
+The beams are sized by their slots, not their bending: the frame's highest stress is 0.04 MPa, in `x1`, 636 times
+under PETG's 23 MPa across its layers. The bracket and the clip are the parts their loads size; the
+mounts are sized by their screws' bosses and the board's and fan's holes, the foot by its counterbore. 592 g in all,
+73 parts.
+
+### Two mistakes, caught
+
+A rail longer than the bed. A wider case might take a 300 mm rail, printed lying down:
+
+```json projects/case/assemblies/long.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A 300 mm rail, printed whole",
+  "kind": "fit",
+  "items": [
+    { "id": "r1", "beam": { "profile": "2020-printed", "material": "petg", "printed": true }, "from": [0, 0, 10], "to": [300, 0, 10] },
+    { "id": "cap1", "fitting": { "kind": "end-cap", "profile": "2020-printed" }, "at": "r1.a" },
+    { "id": "cap2", "fitting": { "kind": "end-cap", "profile": "2020-printed" }, "at": "r1.b" }
+  ],
+  "frame": { "supports": { "r1.a": "fixed", "r1.b": "fixed" } }
+}
+```
+
+`npx cad check case/long` fails on `beam.printable`:
+
+```text
+✗ r1: profile-2020-printed x 300, printed lying down: 300 mm long, and x1c's bed is 256 mm: splice it in two (splice()), or stand it up if it is no taller than the printer
+```
+
+Spliced where it must be: two halves of 150 mm, end to end, held by a `splice` join with a printed splice plate on
+their top faces, two M4 screws into drop-in nuts in each half's slot:
+
+```json projects/case/assemblies/spliced.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "The 300 mm rail in two halves, spliced",
+  "kind": "fit",
+  "items": [
+    { "id": "r1", "beam": { "profile": "2020-printed", "material": "petg", "printed": true }, "from": [0, 0, 10], "to": [150, 0, 10] },
+    { "id": "r2", "beam": { "profile": "2020-printed", "material": "petg", "printed": true }, "from": [150, 0, 10], "to": [300, 0, 10] },
+    { "id": "cap1", "fitting": { "kind": "end-cap", "profile": "2020-printed" }, "at": "r1.a" },
+    { "id": "cap2", "fitting": { "kind": "end-cap", "profile": "2020-printed" }, "at": "r2.b" }
+  ],
+  "joins": [{ "kind": "splice", "a": "r1.b", "b": "r2.a", "fitting": "printed", "nut": "drop-in" }],
+  "frame": { "supports": { "r1.a": "fixed", "r2.b": "fixed" } }
+}
+```
+
+```sh
+npx cad check case/spliced
+```
+
+Both halves print lying down, and the plate is 4 mm thick, 3.22 g, 4.4 times under PETG's strength at 100 N by
+finite elements; its stiffness, 0.142 N·m/mrad, is its own, the slot nuts and lips left out, an estimate until the
+joint rig measures one.
+
+A foot drawn for the aluminium post. The printed post with its foot as the aluminium case had it, an M5 screw for the
+post's tapped bore:
+
+```json projects/case/assemblies/foot.json
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "A foot drawn for an aluminium post",
+  "kind": "fit",
+  "items": [
+    { "id": "p1", "beam": { "profile": "2020-misumi-hfs5", "material": "petg", "printed": { "pose": "standing", "pull": 50, "end": "nut" }, "ops": [{ "op": "tap", "at": "a" }] }, "from": [10, 10, 0], "to": [10, 10, 120] },
+    { "id": "foot1", "fitting": { "kind": "foot", "profile": "2020-misumi-hfs5" }, "at": "p1.a" },
+    { "id": "cap1", "fitting": { "kind": "end-cap", "profile": "2020-misumi-hfs5" }, "at": "p1.b" }
+  ],
+  "fasten": [{ "screw": "M5 cap", "through": ["foot1"], "into": "p1", "at": ["foot1.b1"], "note": "Foot 1" }]
+}
+```
+
+`npx cad check case/foot` fails on `fasten.end`, and names the screw that would do:
+
+```text
+✗ Foot 1, an M5 cap screw: p1's end a is printed with an M3 captive nut in place of a tap, and the screw is M5: use an M3 screw (a printed foot takes it as "thread": "M3")
+```
+
+### The kit
+
+```sh
+npx cad kit case/printed
+```
+
+`cad kit` checks the case, refuses it if anything fails, and writes `exports/case/printed-kit/`:
+
+- `README.md`: what the checks say, what to buy (the board, the four panels cut to size, the screws and nuts in
+  packs), what to print, and the build in 47 steps.
+- `buy.csv`: the same shopping list as a table.
+- `print/printed-base-1.3mf`: one plate of PETG with every printed part on it, 73 parts and 592 g, about 654 minutes,
+  laid out as each prints: the posts and rails on their ends, the cross beam on its bottom face, the brackets on their
+  sides, the feet and the mounts on their beam sides. It prints clean: no overhang past 45°, nothing in mid-air.
+
+There is no cut list, no drilling and no jigs: nothing is cut from a bar. The fasteners, as the kit lists them:
+
+- 44 × M4x10 cap, with 44 drop-in nuts, for the brackets and the gussets.
+- 32 × M5x10 button, for the panels' clips, and 4 × M5x12 button for the fan mount and the board's mount, with 36
+  roll-in nuts.
+- 4 × M3x10 cap, with 4 M3 hex nuts, for the feet.
+- 4 × M2.5x8 cap, for the board.
+
+### What rests on estimates
+
+The board's size and holes, MISUMI's section and the slot nuts come from their makers' figures. These do not, and the
+findings say so:
+
+- A printed beam's stiffness and strength: its walls and infill (three walls, 40%), PETG's figures, and across its
+  layers 0.6 of its strength along them where the plastic gives no figure of its own, until the beam coupon (the bench's
+  `beam-test`, MEASURE.md rows 38 and 39) measures them.
+- The creep limits that `beam.printable` holds a printed beam to, and the sag as it creeps.
+- Each join's stiffness: the printed brackets' and gussets' own by finite elements, the slot nuts and lips left out.
+- A slot's hold in plastic, and the 50 N pull the standing beams are sized for.
+- The board's mass, a shop's figure, and its thickness. The fan is not modelled: its mount is, and its mass is not in
+  the frame's solve.
