@@ -53,7 +53,10 @@ and head, the parts it passes through and the part it ends in.
 - A frame in one plane on pinned feet (two posts and a rail, a generated portal) and a beam pinned at both ends were
   left unsolved as mechanisms, their sag falling back to estimates. The part nothing holds (the plane's sway, the
   beam's spin) is held for the figures while the loads do not move it, `frame.solve` names it (`refs.held`) and
-  `frame.rack` warns that a push across finds the frame free. With @rulecad/fea's `loose: 'hold'`.
+  `frame.rack` warns that a push across finds the frame free. With @rulecad/fea's `loose: 'hold'`. The hold carries
+  only the sag and the stresses: the modes and buckling count that freedom free. A portal on pinned feet with its
+  posts squeezed tips over, so `frame.buckling` fails it at a factor of 0 (it passed at 2.5 times its load, read off
+  the hold), and `frame.frequency` gives its lowest mode as 0 Hz and warns (it said 1.8 Hz).
 - A panel across the top of a corner-post box (its rails joined to the posts, not to each other) was no shear web and
   its weight was dropped as "not on a beam". It is a web on its bay now; a panel whose beams make no bay is weighed
   along them (`refs.laid`).
