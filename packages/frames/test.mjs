@@ -1027,6 +1027,25 @@ test('a door\'s hinge swings the door out and away from the frame; its handle, l
   assert.throws(() => hingeModel('2020-misumi-hfs5', { sheet: 3, pin: 'Q9' }), /hingeModel: pin and screw are threads/);
 });
 
+test('a gusset from MISUMI\'s 2020 onto the kit\'s printed 2020 keys each arm into its own slot and is thickened until a sold screw fits both, counted from where the nut seats under the printed slot\'s sloped lips', async () => {
+  const { plateModel, plate } = frames;
+  const m = plateModel('2020-misumi-hfs5', { shape: 'T', face: 'top', other: '2020-printed', nut: 'drop-in', material: 'petg' });
+  assert.equal(m.name, 'gusset-t-2020-misumi-hfs5-to-2020-printed-m4'); assert.equal(m.other, 'profile-2020-printed');
+  assert.deepEqual([...new Set(m.tongues.map((t) => `${t.leg} ${t.slot}`))], ['b slot-6-misumi', 'a slot-6-printed-2020']);
+  // Hand, the M4 drop-in nut (3.3 mm high, its tongue 0.8; 4.1 mm of thread, a hex nut's 3.2 asked), the floor kept 0.3:
+  //   MISUMI's slot, 2 mm lips square underneath, floor 6 mm down: thread from 2 - 0.8 = 1.2, so the tip from
+  //   1.2 + 3.2 = 4.4 to 6 - 0.3 = 5.7 mm under the face
+  //   the printed slot, 2 mm lips sloped 45° underneath, 6.1 mm open: the 10 mm nut seats 2 + (10 - 6.1) / 2 = 3.95 mm
+  //   down, its thread from 3.15, so the tip from 6.35 to 7.85 - 0.3 = 7.55
+  //   the 4.4 mm plate b alone gives (M4x10 into MISUMI's) leaves M4x12 7.6 mm into the printed slot, past 7.55, and
+  //   M4x10 5.6, short of 6.35; 4.6 mm (the next layer up) takes M4x10 (tip 5.4) and M4x12 (tip 7.4)
+  const screw = m.findings.find((f) => f.code === 'fitting.screw');
+  assert.deepEqual(screw.values, { lengths: [10, 12], windows: [{ lo: 4.4, hi: 5.7 }, { lo: 6.35, hi: 7.55 }] });
+  assert.equal(m.thickness, 4.6); assert.equal(plateModel('2020-misumi-hfs5', { shape: 'T', face: 'top', nut: 'drop-in', material: 'petg' }).thickness, 4.4);
+  assert.deepEqual([...new Set(m.screws.map((q) => `${q.leg} M4x${q.length}`))], ['b M4x10', 'a M4x12']);
+  await prints(plate(m), 'gusset onto a printed 2020');
+});
+
 test('the parts for a beam\'s end: an end cap, a foot, a levelling foot, a castor plate and a stacking foot, each print-ready and weighed', async () => {
   const { endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } = frames;
   const cap = endCapModel('2020-misumi-hfs5');

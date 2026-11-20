@@ -233,7 +233,8 @@ function sizeBy(start, least, step, solve, want) {
 // or all the nut has), and the floor's margin short of the slot's floor. A fitting t thick takes a screw of a sold
 // length L where t + lo <= L <= t + hi.
 function tipWindow(sd, thread) {
-  const n = sd.nut, tongue = n.tongueHeight ?? 0, from = sd.slot.lip - tongue, has = tongue + n.height;
+  // (its thread starts where it seats, its tongue up from there: under the lips, or lower where they slope underneath, nutFit's slot_nut.seat)
+  const n = sd.nut, tongue = n.tongueHeight ?? 0, seat = n.fits?.find((q) => q.code === 'slot_nut.seat')?.values?.seat ?? sd.slot.lip, from = seat - tongue, has = tongue + n.height;
   let hex = has; try { hex = fixingModel(thread).figures.nut_height?.value ?? has; } catch {}
   return { lo: r3(from + Math.min(has, hex)), hi: r3(sd.slot.cavityDepth - FITTING_DEFAULTS.floor.value) };
 }
@@ -425,18 +426,21 @@ export function bracket(m, o = {}) {
  */
 /**
  * A printed flat plate over a joint: a gusset (shape L, T or cross) or a splice plate (shape splice), on the faces of
- * beams of one profile that lie in one plane. Each arm runs along a beam's slot with `count` screws into slot nuts and
+ * beams that lie in one plane, of one profile or, with other, beam a of another whose faces have the same names (a
+ * printed 2020 on MISUMI's). Each arm runs along a beam's slot with `count` screws into slot nuts and
  * a tongue that keys into the slot; the inside corners are rounded half an arm's width. Sized from the named load (in
  * the plate's plane, across beam a at its farthest screw, b's screws held) by finite elements to about twice the
  * margin. It prints contact face up, its tongues on top.
- * @param {string | object} profile @param {{ shape?: 'L' | 'T' | 'cross' | 'splice', face?: string, thread?: string, head?: 'cap' | 'button', nut?: string, count?: number, load?: number, width?: number,
- *   printer?: object, material?: string | object, given?: object, cache?: object }} [o] count: screws on each arm (default 2)
+ * @param {string | object} profile @param {{ shape?: 'L' | 'T' | 'cross' | 'splice', other?: string | object, face?: string, thread?: string, head?: 'cap' | 'button', nut?: string, count?: number, load?: number, width?: number,
+ *   printer?: object, material?: string | object, given?: object, cache?: object }} [o] count: screws on each arm (default 2);
+ *   other: beam a's profile where it differs from b's: a's arms' tongues and nuts are its slot's, and the plate is
+ *   thickened until a sold screw fits the slots of both
  * @returns {Plate}
  */
 export function plateModel(profile, o = {}) {
   const what = 'plateModel';
-  options(what, o, ['shape', 'face', 'thread', 'head', 'nut', 'count', 'load', 'width', 'printer', 'material', 'given', 'cache']);
-  const given = o.given ?? {}, p = profileOf(what, profile, given), shape = o.shape ?? 'L';
+  options(what, o, ['shape', 'other', 'face', 'thread', 'head', 'nut', 'count', 'load', 'width', 'printer', 'material', 'given', 'cache']);
+  const given = o.given ?? {}, p = profileOf(what, profile, given), pa = o.other == null ? null : profileOf(what, o.other, given), shape = o.shape ?? 'L';
   if (![...SHAPES, 'splice'].includes(shape)) throw new Error(`${what}: shape is L, T, cross or splice (got ${shown(o.shape)})`);
   const count = o.count ?? 2;
   if (!(Number.isInteger(count) && count >= 1 && count <= 6)) throw new Error(`${what}: count is the screws on each arm, a whole number from 1 to 6 (got ${shown(o.count)})`);
@@ -447,6 +451,8 @@ export function plateModel(profile, o = {}) {
   if (!['cap', 'button'].includes(head)) throw new Error(`${what}: head is cap or button (got ${shown(o.head)})`);
   const pr = printerOf(what, o.printer), mat = materialOf(what, o.material ?? 'pla'), fit = pfig(pr, 'fit'), layer = pfig(pr, 'layer');
   const sd = slotSide(what, p, o.face ?? 'front', o.thread, o.nut, fit, given), sc = screwOf(what, sd.thread, head, pr);
+  // beam a of another profile (a printed 2020 on MISUMI's): its arms' tongues and nuts are its own slot's, and its screws' length is held to its slot too
+  const sa = pa && pa.name !== p.name ? slotSide(what, pa, o.face ?? 'front', sd.thread, o.nut, fit, given) : null, sideOf = (leg) => (leg === 'a' && sa ? sa : sd);
   const F = o.load ?? FITTING_DEFAULTS.load.value, E = mat.rules.modulus.value, nu = mat.rules.poisson?.value ?? 0.36, S = mat.rules.strength.value, want = FITTING_DEFAULTS.margin.value;
   const w = r3(o.width ?? sd.cell), half = w / 2, R = r3(half), reach = FITTING_DEFAULTS.reach.value;
   if (w < sc.dk + 2 * reach) throw new Error(`${what}: an arm ${mm(w)} mm wide leaves no room round ${sc.thread}'s ${mm(sc.dk)} mm head: ${mm(sc.dk + 2 * reach)} mm or more`);
@@ -480,23 +486,23 @@ export function plateModel(profile, o = {}) {
   };
   const least = r3(Math.max(FITTING_DEFAULTS.least.value * sc.major, 2 * layer));
   let r = sizeBy(least, least, layer, solve, want);
-  const fits = sold(r.t, layer, [sd], sd.thread), sizedT = r.t;
+  const fits = sold(r.t, layer, sa ? [sd, sa] : [sd], sd.thread), sizedT = r.t, lengthOf = (leg) => fits?.lengths[leg === 'a' && sa ? 1 : 0] ?? null;
   if (fits && fits.t > r.t + 1e-9) r = solve(fits.t);
   const { t, fe, margin, far } = r;
   const linear = r3(F / Math.max(fe.deflection, 1e-9)), bending = Math.round((F * far * far) / Math.max(fe.deflection, 1e-9));
-  const fitting = shape === 'splice' ? 'splice' : 'gusset', short = p.name.replace(/^profile-/, '');
-  const model = { kind: 'fitting', fitting, shape, name: `${fitting === 'splice' ? 'splice' : `gusset-${shape.toLowerCase()}`}-${short}-${sd.thread.toLowerCase()}${count !== 2 ? `-x${count}` : ''}`,
-    title: `printed ${fitting === 'splice' ? 'splice plate' : `${shape} gusset`} for ${short}, ${sd.thread}, ${count} screw${count > 1 ? 's' : ''} an arm`,
-    profile: p.name, face: sd.face, thread: sd.thread, head, width: w, thickness: r3(t), arm, round: R, hole: sc.hd, outline, count, pitch,
-    tongues: dirs.map(([dx, dy, leg]) => ({ leg, along: [dx, dy], slot: sd.slot.name, ...sd.tongue, nut: sd.nut.name })),
-    screws: screws.map((q) => ({ leg: q.leg, thread: sd.thread, head, grip: r3(t), at: [q.at[0], q.at[1], 0], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null })), sized: r3(sizedT),
+  const fitting = shape === 'splice' ? 'splice' : 'gusset', short = p.name.replace(/^profile-/, ''), shortA = sa ? pa.name.replace(/^profile-/, '') : null;
+  const model = { kind: 'fitting', fitting, shape, name: `${fitting === 'splice' ? 'splice' : `gusset-${shape.toLowerCase()}`}-${short}${sa ? `-to-${shortA}` : ''}-${sd.thread.toLowerCase()}${count !== 2 ? `-x${count}` : ''}`,
+    title: `printed ${fitting === 'splice' ? 'splice plate' : `${shape} gusset`} for ${short}${sa ? ` and ${shortA}` : ''}, ${sd.thread}, ${count} screw${count > 1 ? 's' : ''} an arm`,
+    profile: p.name, ...(sa ? { other: pa.name } : {}), face: sd.face, thread: sd.thread, head, width: w, thickness: r3(t), arm, round: R, hole: sc.hd, outline, count, pitch,
+    tongues: dirs.map(([dx, dy, leg]) => ({ leg, along: [dx, dy], slot: sideOf(leg).slot.name, ...sideOf(leg).tongue, nut: sideOf(leg).nut.name })),
+    screws: screws.map((q) => ({ leg: q.leg, thread: sd.thread, head, grip: r3(t), at: [q.at[0], q.at[1], 0], axis: [0, 0, -1], nut: sideOf(q.leg).nut.name, nutKind: sideOf(q.leg).nut.nutKind, length: lengthOf(q.leg) })), sized: r3(sizedT),
     load: { force: F, what: `${F} N in the plate's plane across beam a at its farthest screw, ${mm(far)} mm from the joint, b's screws held`, at: [...(screws.find((q) => q.leg === 'a' && Math.abs(Math.hypot(...q.at) - far) < 1e-6)?.at ?? [0, 0]), 0], direction: shape === 'splice' ? [0, 1, 0] : [1, 0, 0] },
     stiffness: { linear, bending, kind: 'derived', rule: `By finite elements on the plate as drawn, b's screws held under their heads and ${F} N in its plane on a's farthest: ${linear} N/mm there, and ${bending} N mm/rad about the joint (the force times that screw's distance squared, over its movement). The slot nuts, the lips and the screws' own give are not in it, so the joint is softer: an estimate until the joint rig (issue 264) measures it` },
     stress: fe.stress, margin: r3(margin), deflection: fe.deflection, fe, volume: 0, grams: 0, material: mat.name, printer: pr.name, findings: [],
     rests: [{ name: `${mat.name}.strength`, value: S }, { name: `${mat.name}.modulus`, value: E }, { name: `${pr.name}.fit`, value: fit }, ...['margin', 'least', 'reach', 'end', 'pitch', 'cells'].map((k) => ({ name: `FITTING_DEFAULTS.${k}`, value: FITTING_DEFAULTS[k].value, kind: FITTING_DEFAULTS[k].kind }))] };
   const solid = plateSolid(model, pr);
   model.volume = r3(measureVolume(solid)); model.grams = r3((model.volume * mat.rules.density.value) / 1000);
-  addFindings(model, { least, S, F, sc, sides: { b: sd }, pr, pose: 'contact face up, its head side on the bed', fits });
+  addFindings(model, { least, S, F, sc, sides: { b: sd, ...(sa ? { a: sa } : {}) }, pr, pose: 'contact face up, its head side on the bed', fits });
   return model;
 }
 
