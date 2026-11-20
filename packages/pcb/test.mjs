@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from '@rulecad/variables';
 import { createRequire } from 'node:module';
 const loadRuleSet = (name) => createRequire(import.meta.url)(`@rulecad/rules/${name}.json`); // the published sets, read as they are
-import { grid, keyboard, hybridSwitch, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders, mount, holes } from '@rulecad/pcb';
+import { grid, keyboard, hybridSwitch, do35, stripModel, laneOrder, fromKicad, render, checks, fabFiles, kicadFiles, viaHoleGaps, views, light, part, header, xiao, qwiic, jstph, shape, parts, solids, outputs, fromKicadPcb, clone, sameCircuit, learnPlacement, arrange, placementChecks, padsOnBoard, withFootprint, addPins, moveGroup, wrlMesh, stepBounds, partModels, pinHeaders, mount, holes } from '@rulecad/pcb';
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 import { layerChanges, routeInput, neckDown, slideClear, arrowPath, stubChains } from './circuit.mjs';
 import { smoothCircuit } from '@rulecad/smooth';
@@ -811,4 +811,21 @@ test('a hybrid footprint takes an MX or a Choc v1 switch: both switches\' pins, 
   const json = await render({ center: { x: 0, y: 0 }, width: 22, height: 22, parts: [k], traces: [] });
   const sc = json.find((e) => e.type === 'schematic_component'), ports = json.filter((e) => e.type === 'schematic_port' && e.schematic_component_id === sc.schematic_component_id);
   assert.equal(ports.length, 2);
+});
+
+test('a DO-35 diode: cathode and anode 0.3 in apart, the cathode square, a body and leads through the board in 3D', () => {
+  const d = Object.fromEntries(Object.entries(loadRuleSet('do35').rules).map(([k, r]) => [k, r.value]));
+  const D = do35('D1', 10, 5, d, { rotation: 90 });
+  assert.deepEqual(D.pads.map((q) => q.pin), ['cathode', 'anode']);
+  assert.equal(D.pads[1].x - D.pads[0].x, d.pitch);
+  assert.ok(D.pads[0].rect && !D.pads[1].rect, 'the cathode\'s pad is square');
+  const zs = D.model.boxes.flatMap((b) => [b.min[2], b.max[2]]);
+  assert.ok(Math.min(...zs) < -1.6 && Math.max(...zs) <= d.body_d + 1e-9, 'leads through the board, the body lying on it');
+  assert.equal(D.rotation, 90);
+});
+
+test('a strip\'s 3D model: a socket\'s body on the board, or a header\'s spacer with its pins', () => {
+  const s = stripModel(8, { height: 8.5 }), h = stripModel(4, { kind: 'pins' });
+  assert.equal(s.boxes.length, 9); assert.equal(s.boxes[0].max[2], 8.5);
+  assert.equal(h.boxes.length, 5); assert.ok(h.boxes[1].max[2] > h.boxes[0].max[2], 'pins above the spacer');
 });

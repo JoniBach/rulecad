@@ -1,0 +1,77 @@
+{
+  "_doc": "A 2.0 in ST7789 240 x 320 SPI display breakout (8-pin header: GND VCC SCL SDA RES DC CS BL), as an assembly shows it plugged in. Sellers' sizes differ: measure your own and change these.",
+  "name": "st7789_2in",
+  "rules": {
+    "width": {
+      "value": 61,
+      "unit": "mm",
+      "rule": "Board length, the header's short edge to the other",
+      "kind": "estimate",
+      "source": "Typical 2.0 in ST7789V 240 x 320 SPI breakout with an 8-pin 0.1 in header: sellers give 60 x 36.5 mm (https://www.icstation.com/inch-display-module-240x320-st7789v-driver-serial-port-module-p-15899.html) to 61.1 x 36.5 mm; measure yours",
+      "checked": "2026-11-20"
+    },
+    "height": {
+      "value": 36.5,
+      "unit": "mm",
+      "rule": "Board height, along its short edge (the header's)",
+      "kind": "estimate",
+      "source": "Typical 2.0 in ST7789V 240 x 320 SPI breakout with an 8-pin 0.1 in header: sellers give 60 x 36.5 mm (https://www.icstation.com/inch-display-module-240x320-st7789v-driver-serial-port-module-p-15899.html) to 61.1 x 36.5 mm; measure yours",
+      "checked": "2026-11-20"
+    },
+    "thickness": {
+      "value": 1.6,
+      "unit": "mm",
+      "rule": "Board thickness",
+      "kind": "estimate",
+      "source": "Typical 2.0 in ST7789V 240 x 320 SPI breakout with an 8-pin 0.1 in header: sellers give 60 x 36.5 mm (https://www.icstation.com/inch-display-module-240x320-st7789v-driver-serial-port-module-p-15899.html) to 61.1 x 36.5 mm; measure yours",
+      "checked": "2026-11-20"
+    },
+    "panel_w": {
+      "value": 47.8,
+      "unit": "mm",
+      "rule": "Glass panel length",
+      "kind": "spec",
+      "source": "ST7789V 2.0 in panels: 34.6 x 47.8 x 1.95 mm, active area 30.6 x 40.8 mm (https://goldenmorninglcd.com/tft-display-module/2-inch-240x320-st7789v-gmt020-02/)",
+      "checked": "2026-11-20"
+    },
+    "panel_h": {
+      "value": 34.6,
+      "unit": "mm",
+      "rule": "Glass panel height",
+      "kind": "spec",
+      "source": "ST7789V 2.0 in panels: 34.6 x 47.8 x 1.95 mm, active area 30.6 x 40.8 mm (https://goldenmorninglcd.com/tft-display-module/2-inch-240x320-st7789v-gmt020-02/)",
+      "checked": "2026-11-20"
+    },
+    "panel_t": {
+      "value": 1.95,
+      "unit": "mm",
+      "rule": "Glass panel thickness",
+      "kind": "spec",
+      "source": "ST7789V 2.0 in panels: 34.6 x 47.8 x 1.95 mm, active area 30.6 x 40.8 mm (https://goldenmorninglcd.com/tft-display-module/2-inch-240x320-st7789v-gmt020-02/)",
+      "checked": "2026-11-20"
+    },
+    "panel_in": {
+      "value": 3.5,
+      "unit": "mm",
+      "rule": "The panel's near edge in from the board's far end (the header at the other)",
+      "kind": "estimate",
+      "source": "Typical 2.0 in ST7789V 240 x 320 SPI breakout with an 8-pin 0.1 in header: sellers give 60 x 36.5 mm (https://www.icstation.com/inch-display-module-240x320-st7789v-driver-serial-port-module-p-15899.html) to 61.1 x 36.5 mm; measure yours",
+      "checked": "2026-11-20"
+    },
+    "header_in": {
+      "value": 1.27,
+      "unit": "mm",
+      "rule": "The header's pins in from the board's short edge",
+      "kind": "estimate",
+      "source": "Typical 2.0 in ST7789V 240 x 320 SPI breakout with an 8-pin 0.1 in header: sellers give 60 x 36.5 mm (https://www.icstation.com/inch-display-module-240x320-st7789v-driver-serial-port-module-p-15899.html) to 61.1 x 36.5 mm; measure yours",
+      "checked": "2026-11-20"
+    },
+    "pins": {
+      "value": 8,
+      "rule": "Header pins",
+      "kind": "estimate",
+      "source": "Typical 2.0 in ST7789V 240 x 320 SPI breakout with an 8-pin 0.1 in header: sellers give 60 x 36.5 mm (https://www.icstation.com/inch-display-module-240x320-st7789v-driver-serial-port-module-p-15899.html) to 61.1 x 36.5 mm; measure yours",
+      "checked": "2026-11-20"
+    }
+  }
+}

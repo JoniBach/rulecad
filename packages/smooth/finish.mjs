@@ -113,7 +113,10 @@ export function finishCircuit(json, { movable = () => true, clearance, stubs = [
   // ---- acute corners ----
   // Every point where track segments of one layer meet (a shared end, or an end on another segment's middle): each
   // pair of arms closer than 90° gets a piece across the corner, far enough out that the notch between them is covered
-  const segs = [];
+  let segs = [];
+  for (let round = 0, pending = []; ; round++) {
+  segs = []; pending = [];
+  let rerooted = 0;
   for (const t of json.filter((e) => e.type === 'pcb_trace')) for (let i = 0; i + 1 < t.route.length; i++) {
     const a = t.route[i], b = t.route[i + 1];
     if (a.route_type === 'wire' && b.route_type === 'wire' && a.layer === b.layer && len(sub(a, b)) > EPS) segs.push({ a, b, layer: a.layer, w: Math.min(a.width ?? 0.15, b.width ?? 0.15), t, net: net(t) });
@@ -138,13 +141,28 @@ export function finishCircuit(json, { movable = () => true, clearance, stubs = [
       if (covered(j.p, A.dir, B.dir, notch, j.layer, A.s.net, [A.s, B.s])) continue; // copper there already (a pad, a via, a fill): no notch
       const want = (notch + w / 2) / Math.cos(half); // the piece's inner edge through the notch's corner
       const r = Math.min(want, A.reach, B.reach), a = add(j.p, A.dir, r), b = add(j.p, B.dir, r);
-      if (r < want - 1e-6 || !clearOf(a, b, j.layer, w, A.s.net)) { left.push({ kind: 'acute', at: { x: j.p.x, y: j.p.y }, layer: j.layer, angle: th, why: r < want - 1e-6 ? 'arms too short to cover the notch' : 'no room across the corner' }); continue; }
+      // A very sharp corner whose shorter arm ends (the track bends away) while its copper still overlaps the other's: that
+      // track leaves from the other one instead, square to it, where it bends away (a T-junction). The corner it makes
+      // there has long arms, filled next round
+      if (r < want - 1e-6) {
+        const [S, O] = A.reach <= B.reach ? [A, B] : [B, A], route = S.s.t.route
+        const endAt = key(route[0]) === key(j.p) ? 0 : key(route.at(-1)) === key(j.p) ? route.length - 1 : -1
+        const F = add(j.p, S.dir, S.reach), along = dot(sub(F, j.p), O.dir), Q = add(j.p, O.dir, along)
+        if (endAt >= 0 && along > 0 && along < O.reach && len(sub(F, Q)) <= O.w / 2 + 1e-9 && movable(S.s.t)) {
+          route[endAt] = { ...route[endAt], x: Q.x, y: Q.y }; rerooted++; stale = true
+          exits.push({ trace: S.s.t.pcb_trace_id, at: { x: j.p.x, y: j.p.y }, rerooted: true, kept: !!S.s.t.rulecad_kept }); continue
+        }
+      }
+      if (r < want - 1e-6 || !clearOf(a, b, j.layer, w, A.s.net)) { pending.push({ kind: 'acute', at: { x: j.p.x, y: j.p.y }, layer: j.layer, angle: th, why: r < want - 1e-6 ? 'arms too short to cover the notch' : 'no room across the corner' }); continue; }
       const base = A.s.t;
       json.push({ type: 'pcb_trace', pcb_trace_id: `${base.pcb_trace_id}_fill_${fills.length}`, source_trace_id: base.source_trace_id, subcircuit_id: base.subcircuit_id,
         route: [{ route_type: 'wire', x: a.x, y: a.y, width: w, layer: j.layer }, { route_type: 'wire', x: b.x, y: b.y, width: w, layer: j.layer }], rulecad_fill: true });
       fills.push({ at: { x: j.p.x, y: j.p.y }, angle: th, layer: j.layer }); stale = true;
     }
   }
+  if (!rerooted || round >= 2) { left.push(...pending); break; }
+  }
+
   return { json, exits, fills, left };
 
   // Is the notch's corner (notch out along the bisector of two arms from p) inside copper of the net already: a pad,

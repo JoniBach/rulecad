@@ -136,6 +136,31 @@ export function hybridSwitch(name, x, y, m, c, sch = {}) {
     holes: [hole(0, 0, Math.max(m.pcb_centre_hole, c.pcb_centre_hole)), hole(-pegX, 0, pegD), hole(pegX, 0, pegD)],
     courtyard: { w: Math.max(m.pcb_body, c.pcb_body), h: Math.max(m.pcb_body, c.pcb_body) } };
 }
+// A DO-35 axial diode (a 1N4148: d, the do35 rules) lying flat between its two leads, bent down 0.3 in apart: cathode
+// on the left (a square pad, and the band on its body), anode on the right, turned by rotation. Its 3D model is the body
+// and the leads, through the board (thickness) and trimmed below it
+export function do35(name, x, y, d, { rotation = 0, thickness = 1.6, sch = {}, mpn = '1N4148', layer = 'top' } = {}) {
+  const h = d.pitch / 2, bl = d.body_length / 2, r = d.body_d / 2, l = d.lead_d / 2, axis = r; // the body's axis, a radius up
+  return { name, ftype: 'simple_diode', mpn, package: 'DO-35, axial, 0.3 in', x, y, layer, rotation, sch, bom: false, place: false,
+    pads: [{ pin: 'cathode', x: -h, y: 0, hole: d.drill, outer: d.pad, rect: { w: d.pad, h: d.pad, offset: [0, 0] } }, pad('anode', h, 0, d.drill, d.pad)],
+    courtyard: null,
+    model: { boxes: [
+      { min: [-bl, -r, 0], max: [bl, r, 2 * r] }, // the glass body (a box round it)
+      ...[-1, 1].flatMap((s) => [
+        { min: [Math.min(s * bl, s * h) - (s > 0 ? 0 : l), -l, axis - l], max: [Math.max(s * bl, s * h) + (s > 0 ? l : 0), l, axis + l] }, // out along the axis
+        { min: [s * h - l, -l, -thickness - d.lead_out], max: [s * h + l, l, axis + l] }]) ] } }; // bent down through the board
+}
+
+// A single-row 0.1 in strip's 3D model, for header() parts (its pins along the part's y, as header() lays them):
+// kind 'socket', a female socket's body (height tall) on the board; 'pins', a male header's spacer on the board and its
+// pins above it (pin_above past the spacer) and through it
+export function stripModel(n, { pitch = 2.54, kind = 'socket', height = 8.5, spacer = 2.5, pin = 0.64, pin_above = 6, thickness = 1.6, below = 3 } = {}) {
+  const half = (n * pitch) / 2, ys = Array.from({ length: n }, (_, i) => ((n - 1) / 2 - i) * pitch);
+  if (kind === 'socket') return { boxes: [{ min: [-pitch / 2, -half, 0], max: [pitch / 2, half, height] },
+    ...ys.map((y) => ({ min: [-pin / 2, y - pin / 2, -thickness - below], max: [pin / 2, y + pin / 2, 0] }))] };
+  return { boxes: [{ min: [-pitch / 2, -half, 0], max: [pitch / 2, half, spacer] }, ...ys.map((y) => ({ min: [-pin / 2, y - pin / 2, -thickness - below], max: [pin / 2, y + pin / 2, spacer + pin_above] }))] };
+}
+
 export function header(name, x, y, r, o = {}) {
   const n = o.pins, two = (o.rows ?? 1) === 2, pads = [];
   for (let i = 0; i < n; i++) {
@@ -1125,7 +1150,8 @@ export function solids(json, { thickness, smooth = 16, models }) { // models: { 
 // size, mm, in the layout's frame) and, with the Pico under it, the Pico's centre
 export function outputs(json, matrix) {
   const b = json.find((e) => e.type === 'pcb_board');
-  return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(b.outline ? { board_outline: b.outline } : {}), ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}) };
+  return { board_x: b.center.x, board_y: b.center.y, board_w: b.width, board_d: b.height, ...(b.outline ? { board_outline: b.outline } : {}), ...(matrix?.pico ? { pico_x: matrix.pico.x, pico_y: matrix.pico.y } : {}),
+    ...Object.fromEntries(Object.entries(matrix?.place || {}).filter(([, n]) => typeof n === 'number')) }; // (where a board puts what an assembly mounts on it: matrix.place, numbers by name)
 }
 
 /**

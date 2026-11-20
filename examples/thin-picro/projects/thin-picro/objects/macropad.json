@@ -2,38 +2,184 @@
   "$schema": "https://jonibach.github.io/rulecad/schemas/object.schema.json",
   "name": "macropad",
   "title": "Macropad for the thin module",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "engine": "pcb",
   "role": "board",
-  "uses": ["mx", "choc", "jlcpcb", "thin_picro_pins"],
-  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: twelve keys in three columns and four rows; the module's USB-C on the top edge. Front: the module above the keys, display sockets below them. Rear: the module under the top row, parts facing down.",
-  "parts": { "board": { "label": "PCB" } },
-  "variants": { "front": { "mount": "front" }, "rear": { "mount": "rear" } },
+  "uses": [
+    "mx",
+    "choc",
+    "do35",
+    "jlcpcb",
+    "thin_picro_pins",
+    "st7789_2in"
+  ],
+  "orientation": "A circuit board, made by a fab (JLCPCB), not printed. Seen from above: twelve keys in three columns and four rows, a DO-35 diode in the gaps beside each; the module's USB-C on the top edge. Front: the module above the keys, display sockets at its ends. Rear: the module under the top row, parts facing down.",
+  "parts": {
+    "board": {
+      "label": "PCB"
+    }
+  },
+  "variants": {
+    "front": {
+      "mount": "front"
+    },
+    "rear": {
+      "mount": "rear"
+    }
+  },
   "variables": {
-    "mount": { "value": "front", "choice": ["front", "rear"], "rule": "front: the module on top, beyond the keys, with display sockets; rear: the module under the top row of keys, on pin headers, the board no bigger than the keys", "label": "Module", "show": true },
-    "rows": { "value": 4, "rule": "Rows of keys", "label": "Rows" },
-    "cols": { "value": 3, "rule": "Columns of keys: three, the module's end columns being three key widths apart", "label": "Columns" },
-    "key_gpio": { "value": "20 21 22 23 26 27 28 29 5 6 7 8", "type": "text", "max": 80, "rule": "The twelve GPIO the keys take, along the module's bottom row: not 0 and 1 (UART, for a split keyboard's halves), 2 and 3 (I2C display), 4 (spare) or the display's pins" },
-    "module_gap": { "value": 0.5, "unit": "mm", "rule": "Front: the module's bottom edge this far beyond the top row of keys' square" },
-    "castle_out": { "value": 1.0, "unit": "mm", "rule": "Front: each pin's pad reaches this far beyond the module's edge, for the solder fillet on a castellated half hole" },
-    "strip": { "value": 7, "unit": "mm", "rule": "Front: the strip below the keys for the display sockets and their labels" },
-    "socket_in": { "value": 3, "unit": "mm", "rule": "Front: each display socket's end pin this far in from the keys' side edge" },
-    "label_gap": { "value": 0.4, "unit": "mm", "rule": "Silkscreen labels this far from the pads they name" },
-    "margin": { "value": 4.5, "unit": "mm", "rule": "Front: board edge beyond the module's pads and the sockets, with room for an M2 hole in each corner" },
-    "display_scl": { "value": 14, "rule": "SPI display: SCL (clock), the module's display column", "interface": true },
-    "display_sda": { "value": 15, "rule": "SPI display: SDA (data out)", "interface": true },
-    "display_res": { "value": 16, "rule": "SPI display: RES (reset)", "interface": true },
-    "display_dc": { "value": 12, "rule": "SPI display: DC (data or command)", "interface": true },
-    "display_cs": { "value": 13, "rule": "SPI display: CS (chip select)", "interface": true },
-    "display_blk": { "value": 9, "rule": "SPI display: BLK (an LCD's backlight)", "interface": true },
-    "i2c_scl": { "value": 3, "rule": "I2C display: SCL, GPIO3 (I2C1)", "interface": true },
-    "i2c_sda": { "value": 2, "rule": "I2C display: SDA, GPIO2 (I2C1)", "interface": true },
-    "via_hole": { "value": 0.3, "unit": "mm", "rule": "The router's vias: a 0.3 mm hole, JLCPCB's standard (no extra charge), with the ring it recommends" },
-    "socket_turn": { "value": 90, "rule": "The display sockets turned to lie along the board's bottom edge, pin 1 on the left (and their pins' names turned to run up the board)" },
-    "label_char": { "value": 0.75, "rule": "Silkscreen: a character's width, as a share of its height (tscircuit's font)" },
-    "sch_grid": { "value": 3, "rule": "Schematic: parts this far apart" },
-    "track": { "value": 0.25, "unit": "mm", "rule": "Signal track width: well over JLCPCB's least on a cheap two-layer board" },
-    "clearance": { "value": 0.2, "unit": "mm", "rule": "Copper to copper, kept by the router" },
-    "thickness": { "value": "jlcpcb.thickness", "unit": "mm", "rule": "Board thickness: JLCPCB's standard" }
+    "mount": {
+      "value": "front",
+      "choice": [
+        "front",
+        "rear"
+      ],
+      "rule": "front: the module on top, beyond the keys, with display sockets at its ends; rear: the module under the top row of keys, on pin headers, the board no bigger than the keys and the module",
+      "label": "Module",
+      "show": true
+    },
+    "rows": {
+      "value": 4,
+      "rule": "Rows of keys",
+      "label": "Rows"
+    },
+    "cols": {
+      "value": 3,
+      "rule": "Columns of keys: three, the module's end columns being three key widths apart",
+      "label": "Columns"
+    },
+    "module_gap": {
+      "value": 0.5,
+      "unit": "mm",
+      "rule": "Front: the module's bottom edge this far beyond the top row of keys' square"
+    },
+    "castle_out": {
+      "value": 1.0,
+      "unit": "mm",
+      "rule": "Front: each pin's pad reaches this far beyond the module's edge, for the solder fillet on a castellated half hole"
+    },
+    "label_gap": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Silkscreen labels this far from the pads they name"
+    },
+    "display_scl": {
+      "value": 14,
+      "rule": "SPI display: SCL (clock), the module's display column",
+      "interface": true
+    },
+    "display_sda": {
+      "value": 15,
+      "rule": "SPI display: SDA (data out)",
+      "interface": true
+    },
+    "display_res": {
+      "value": 16,
+      "rule": "SPI display: RES (reset)",
+      "interface": true
+    },
+    "display_dc": {
+      "value": 12,
+      "rule": "SPI display: DC (data or command)",
+      "interface": true
+    },
+    "display_cs": {
+      "value": 13,
+      "rule": "SPI display: CS (chip select)",
+      "interface": true
+    },
+    "display_blk": {
+      "value": 9,
+      "rule": "SPI display: BLK (an LCD's backlight)",
+      "interface": true
+    },
+    "i2c_scl": {
+      "value": 3,
+      "rule": "I2C display: SCL, GPIO3 (I2C1)",
+      "interface": true
+    },
+    "i2c_sda": {
+      "value": 2,
+      "rule": "I2C display: SDA, GPIO2 (I2C1)",
+      "interface": true
+    },
+    "via_hole": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "The router's vias: a 0.3 mm hole, JLCPCB's standard (no extra charge), with the ring it recommends"
+    },
+    "socket_turn": {
+      "value": 180,
+      "rule": "The display sockets turned so pin 1 (GND) is at the bottom of the column, as in the module's own display column"
+    },
+    "label_char": {
+      "value": 0.75,
+      "rule": "Silkscreen: a character's width, as a share of its height (tscircuit's font)"
+    },
+    "sch_grid": {
+      "value": 3,
+      "rule": "Schematic: parts this far apart"
+    },
+    "track": {
+      "value": 0.25,
+      "unit": "mm",
+      "rule": "Signal track width: well over JLCPCB's least on a cheap two-layer board"
+    },
+    "clearance": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Copper to copper, kept by the router"
+    },
+    "thickness": {
+      "value": "jlcpcb.thickness",
+      "unit": "mm",
+      "rule": "Board thickness: JLCPCB's standard"
+    },
+    "row_gpio": {
+      "value": "26 27 28 29",
+      "type": "text",
+      "max": 40,
+      "rule": "The rows' GPIO (each row's diodes' cathodes), along the module's bottom row: 26 to 29, beside the columns'"
+    },
+    "col_gpio": {
+      "value": "20 21 22",
+      "type": "text",
+      "max": 40,
+      "rule": "The columns' GPIO (each column's switches' pin 1): 20 to 22. GPIO 0 and 1 (UART), 2 and 3 (I2C display) and the SPI display's pins stay free"
+    },
+    "diode_turn": {
+      "value": 90,
+      "rule": "Each diode turned to lie along its gap between two columns of switches, its cathode down"
+    },
+    "socket_gap": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Front: each display socket's pins this far beyond the module's pads"
+    },
+    "socket_height": {
+      "value": 8.5,
+      "unit": "mm",
+      "rule": "A standard 0.1 in female socket's height",
+      "source": "KiCad footprint library, Connector_PinSocket_2.54mm (8.5 mm sockets)"
+    },
+    "edge_keep": {
+      "value": 0.6,
+      "unit": "mm",
+      "rule": "Front: the board's edge this far beyond the module's pads and the sockets' pads (over JLCPCB's 0.3 mm copper to edge)"
+    },
+    "mount_rows": {
+      "value": "1 2",
+      "type": "text",
+      "max": 20,
+      "rule": "M2 holes where four keys meet, below these rows (0 the top row), either side of the middle column: in the gaps, under the keycaps' corners"
+    },
+    "finish": {
+      "value": 1,
+      "rule": "1: tracks finished for the fab once routed (square pad exits, acute corners filled); 0 to compare without",
+      "tweak": {
+        "min": 0,
+        "max": 1
+      }
+    }
   }
 }

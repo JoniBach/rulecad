@@ -17,6 +17,7 @@ it comes from and when it was checked, so a design built on it can be traced and
 | `oem` | OEM keycap profile: heights and top tilt per row (from KeyV2) | 12 |
 | `pico` | Raspberry Pi Pico: outline, headers, the GPIO on each pin | 18 |
 | `promicro` | Pro Micro controller | 9 |
+| `do35` | DO-35 axial diodes (1N4148): lead pitch, pads and drill, body size, for through-hole keyboard matrices | 7 |
 | `sod123` | SOD-123 diode footprint | 3 |
 | `xiao` | Seeed Studio XIAO modules: outline, headers, the pin on each pad | 8 |
 | `qwiic` | Qwiic / STEMMA QT sockets (JST SH, 4 pins): land pattern and pinout | 10 |

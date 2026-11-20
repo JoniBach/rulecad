@@ -181,42 +181,39 @@ When ordering, choose 4 layers and castellated holes. The BOM carries Sea-Picro'
 
 ## Macropads to test it on
 
-`thin-picro/macropad` is a 3 × 4 macropad for trying the module out, in two variants. Both have twelve keys on a
+`thin-picro/macropad` is a 3 × 4 macropad for trying the module out, a through-hole build, in two variants, each with
+an assembly (`assemblies/macropad-front.json`, `macropad-rear.json`) showing it built. Both have twelve keys on a
 footprint that takes either a Cherry MX or a Kailh Choc v1 switch (soldered: `hybridSwitch` in @rulecad/pcb, Choc's
-holes from `rules/choc.json`), each key wired straight to a GPIO of its own: no matrix, no diodes. The module's pins
-come from `rules/thin_picro_pins.json`, read from the module's KiCad board by `scripts/module-pins.mjs`, so the
-macropads build in seconds without routing the module. Neither board has parts for JLCPCB to place: order bare boards,
-and solder the switches, sockets and module yourself.
+holes from `rules/choc.json`), in a 4-row × 3-column matrix with a 1N4148 (DO-35, `rules/do35.json`) per key, lying in
+the gap beside its switch on the front, its cathode down. M2 holes sit where four keys meet, below rows 1 and 2. The
+module's pins come from `rules/thin_picro_pins.json`, read from the module's KiCad board by `scripts/module-pins.mjs`,
+so the macropads build without routing the module. Nothing on them is for JLCPCB to place: order bare boards and
+solder the switches, diodes, sockets and module yourself. Both are finished for the fab: every track leaves its pad
+square, no tracks meet at an acute angle.
 
-- **`macropad:front`**, 70.7 × 109.2 mm: the module on top, above the keys, on one long pad per pin. Each pad takes the
+- **`macropad:front`**, 67.6 × 105.7 mm: the module on top, above the keys, on one long pad per pin. Each pad takes the
   module either way: soldered flat by its castellated edges (the pad reaches 1 mm past the module's edge for the
-  fillet), or on 0.1 in pin headers in sockets, so one module can move between boards. Below the keys, two display
-  sockets: SPI in the module's display order (GND VCC SCL SDA RES DC CS BLK, GPIO 14 15 16 12 13 9: a 7-pin SSD1322
-  OLED or an 8-pin ST7789 LCD) and I2C (GND VCC SCL SDA on GPIO 3 and 2: the common SSD1306 OLEDs). An M2 hole in each
-  corner.
+  fillet), or on 0.1 in pin headers in sockets, so one module can move between boards. At the module's right end, an
+  8-pin socket in its display order (GND VCC SCL SDA RES DC CS BLK, GPIO 14 15 16 12 13 9), set so a 2.0 in ST7789
+  display (`rules/st7789_2in.json`, sellers' sizes: measure yours) plugs in and lies flat over the module, clear of
+  the keys; it reaches up past the board's top edge, so the board has a tab there for the socket. At the left end, a
+  4-pin I2C socket (GND VCC SCL SDA on GPIO 3 and 2: SSD1306 OLEDs). The assembly shows MX switches with DSA keycaps
+  and the display plugged in.
 - **`macropad:rear`**, 59.7 × 76.9 mm, no bigger than the keys and the module: the module under the top row of keys,
   parts facing down, on pin headers. Its bottom row of pins comes up through the gap between the top two rows of keys,
-  and its end columns up the board's two sides (three key widths apart: what `span` is for). Trim the switches' legs
-  before fitting the module: MX legs reach about 1.7 mm below a 1.6 mm board and Choc's about 1.4 mm, against a
-  standard header's 2.5 mm spacer.
+  and its end columns up the board's two sides (three key widths apart: what `span` is for). The top row's outer
+  gaps hold those pins, so one of its diodes sits in the row below. Trim the switches' legs and the diodes' leads
+  before fitting the module (MX legs reach about 1.7 mm below a 1.6 mm board, Choc's about 1.4 mm, against a standard
+  header's 2.5 mm spacer). The assembly shows Choc switches with low-profile keycaps.
 
-Keys and their GPIO (the export's `-matrix.json` has them for firmware):
-
-| | Front | Rear |
-|---|---|---|
-| Left column, top to bottom | GP20 21 22 23 | GP8 7 6 5 |
-| Middle column | GP26 27 28 29 | GP29 28 27 26 |
-| Right column | GP5 6 7 8 | GP23 22 21 20 |
-
-The rear board's columns read the other way because the module is upside down under it. GPIO 0 and 1 (UART, for a
-split keyboard's halves) and 4 are left free on both.
+Matrix (both boards, `-matrix.json` in the export for firmware): rows GP26 27 28 29 (top to bottom), columns GP20 21
+22 (left to right as seen on the front board), diodes from each switch to its row (COL2ROW).
 
 ```sh
 npx cad check thin-picro/macropad:front    # and :rear
+npx cad check thin-picro/macropad-front    # the assembly: switches, keycaps, module, display
 npx cad export thin-picro/macropad:front
 ```
-
-Both pass every check, KiCad's design-rule check included, with all tracks autorouted on two layers.
 
 ## Licence
 

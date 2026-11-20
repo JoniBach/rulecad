@@ -3,6 +3,11 @@
   "description": "A long, thin RP2040 module for keyboards: Sea-Picro's circuit, redrawn with castellated pins on three sides and USB-C on the fourth.",
   "objects": [
     "module",
-    "macropad"
+    "macropad",
+    "mx-switch",
+    "keycap",
+    "choc-switch",
+    "choc-keycap",
+    "display"
   ]
 }

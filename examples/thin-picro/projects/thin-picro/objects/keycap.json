@@ -1,0 +1,303 @@
+{
+  "name": "keycap",
+  "title": "MX keycap",
+  "version": "0.6.0",
+  "uses": [
+    "x1c",
+    "mx",
+    "oem"
+  ],
+  "material": "PLA",
+  "orientation": "Upright, skirt on the bed, no slicer supports. A pillar under the post holds it up while printing, and thin ribs hold up the roof where it would span too far (keys wider than 1u, and every oem cap): snip them out. An oem cap's top is tilted and sits back from the stem, as sculpted keycaps do; its walls stay under 45\u00b0. A legend is inlaid flush in the top, a few layers deep, as its own part: it prints in the legend filament (the AMS swaps only for those top layers).",
+  "parts": {
+    "cap": {
+      "label": "Keycap"
+    },
+    "legend": {
+      "label": "Legend",
+      "filament": "legend",
+      "display": false,
+      "optional": true
+    },
+    "pillar": {
+      "role": "support",
+      "label": "Breakaway supports"
+    }
+  },
+  "variables": {
+    "profile": {
+      "value": "dsa",
+      "choice": [
+        "dsa",
+        "oem"
+      ],
+      "unit": "",
+      "rule": "Shape of the top: dsa, the same on every row (flat, spherical dish); or oem, sculpted row by row (tilted top, cylindrical dish), the most common profile",
+      "label": "Profile",
+      "interface": true
+    },
+    "row": {
+      "value": "R3",
+      "choice": [
+        "R1",
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "unit": "",
+      "rule": "Which row's sculpt, for oem: R1 the number row, R2 the Q row, R3 the home row, R4 the Shift and bottom rows",
+      "interface": true
+    },
+    "units": {
+      "value": 1,
+      "unit": "u",
+      "rule": "Width in keys: 1u, or wider for Tab, Shift and the like (up to 2u: wider keys need stabilizers)",
+      "label": "Width",
+      "show": true,
+      "interface": true,
+      "tweak": {
+        "min": 1,
+        "max": 2
+      }
+    },
+    "base": {
+      "value": "mx.cap_base",
+      "unit": "mm",
+      "rule": "1u keycap base",
+      "label": "Base",
+      "show": true,
+      "interface": true
+    },
+    "length": {
+      "value": "base + (units - 1) * mx.pitch",
+      "unit": "mm",
+      "rule": "Base along the row: one key pitch more for each extra unit, so the gap to the next key stays the same",
+      "interface": true
+    },
+    "top": {
+      "value": 12.7,
+      "unit": "mm",
+      "rule": "Top surface of a DSA cap, 0.5 in (the oem top comes from its rules)",
+      "source": "DSA profile",
+      "label": "Top",
+      "show": true,
+      "tweak": {
+        "min": 10,
+        "max": 15
+      }
+    },
+    "height": {
+      "value": 7.6,
+      "unit": "mm",
+      "rule": "DSA height, the same on every row (oem heights come from its rules, row by row)",
+      "source": "DSA profile",
+      "label": "Height",
+      "show": true,
+      "tweak": {
+        "min": 6,
+        "max": 12
+      }
+    },
+    "wall": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "Side walls: three print lines"
+    },
+    "roof": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "Material under the deepest point of the dish"
+    },
+    "dish": {
+      "value": 1.0,
+      "unit": "mm",
+      "rule": "Depth of the spherical dish at the centre",
+      "label": "Dish",
+      "tweak": {
+        "min": 0,
+        "max": 2
+      }
+    },
+    "dish_radius": {
+      "value": 30,
+      "unit": "mm",
+      "rule": "Radius of the sphere that cuts the dish"
+    },
+    "corner_base": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Corner radius at the skirt"
+    },
+    "corner_top": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "Corner radius at the top"
+    },
+    "corner_inner": {
+      "value": "max(corner_base - wall, 0.5)",
+      "unit": "mm",
+      "rule": "Inside corners follow the outside, less the wall"
+    },
+    "slot": {
+      "value": "mx.slot + x1c.hole_comp",
+      "unit": "mm",
+      "rule": "Cross slot across: spec plus hole compensation",
+      "label": "Slot",
+      "show": true,
+      "interface": true
+    },
+    "slot_arm": {
+      "value": "mx.slot_arm + x1c.hole_comp",
+      "unit": "mm",
+      "rule": "Cross slot arm width: spec plus hole compensation",
+      "label": "Slot arm",
+      "show": true,
+      "interface": true
+    },
+    "slot_depth": {
+      "value": "mx.slot_depth",
+      "unit": "mm",
+      "rule": "Depth of the cross slot",
+      "interface": true
+    },
+    "post": {
+      "value": "mx.post",
+      "unit": "mm",
+      "rule": "Round post around the slot",
+      "interface": true
+    },
+    "support_gap": {
+      "value": "x1c.support_gap",
+      "unit": "mm",
+      "rule": "Gap between the post and its breakaway pillar"
+    },
+    "lift": {
+      "value": 1,
+      "unit": "mm",
+      "rule": "Post ends this far above the skirt, so the cap rests on the stem, not the switch"
+    },
+    "smooth": {
+      "value": 48,
+      "unit": "segments",
+      "rule": "Segments in curves: enough to look round, few enough for the mirror's 2,000-face limit"
+    },
+    "corner_smooth": {
+      "value": 16,
+      "unit": "segments",
+      "rule": "Segments in the rounded corners"
+    },
+    "sliver": {
+      "value": 0.01,
+      "unit": "mm",
+      "rule": "Thickness of the outlines that are hulled into the shell"
+    },
+    "overcut": {
+      "value": 0.02,
+      "unit": "mm",
+      "rule": "Cuts reach this far past a surface so they break through cleanly"
+    },
+    "rib": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "Breakaway ribs under a wide roof: two lines thick"
+    },
+    "rib_span": {
+      "value": "x1c.bridge - x1c.line * 2",
+      "unit": "mm",
+      "rule": "Widest gap left between ribs: a little under the printer's bridge"
+    },
+    "legend": {
+      "type": "text",
+      "value": "",
+      "max": 6,
+      "unit": "",
+      "rule": "Legend inlaid in the top, in the legend filament (empty: none)",
+      "label": "Legend",
+      "interface": false
+    },
+    "legend_anchor": {
+      "type": "anchor",
+      "value": "mc",
+      "unit": "",
+      "rule": "Where the legend sits on the top: one of 9 places (tl tc tr, ml mc mr, bl bc br)"
+    },
+    "legend2": {
+      "type": "text",
+      "value": "",
+      "max": 6,
+      "unit": "",
+      "rule": "A second legend, such as the shifted character above the plain one (empty: none)"
+    },
+    "legend2_anchor": {
+      "type": "anchor",
+      "value": "tc",
+      "unit": "",
+      "rule": "Where the second legend sits (the shifted character: top centre)"
+    },
+    "legend_size": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Legend height",
+      "tweak": {
+        "min": 2,
+        "max": 8
+      }
+    },
+    "legend_stroke": {
+      "value": "x1c.line * 2",
+      "unit": "mm",
+      "rule": "Legend lines are two print lines wide, so they print solid"
+    },
+    "legend_depth": {
+      "value": "x1c.layer * 4",
+      "unit": "mm",
+      "rule": "Legend inlay depth: four layers of the legend filament"
+    },
+    "legend_pad": {
+      "value": "x1c.line * 3",
+      "unit": "mm",
+      "rule": "Legend stays this far inside the top's edge: three print lines"
+    }
+  },
+  "display": {
+    "smooth": 24,
+    "corner_smooth": 6,
+    "legend": "",
+    "legend2": ""
+  },
+  "variants": {
+    "dsa": {
+      "profile": "dsa"
+    },
+    "oem-r1": {
+      "profile": "oem",
+      "row": "R1"
+    },
+    "oem-r2": {
+      "profile": "oem",
+      "row": "R2"
+    },
+    "oem-r3": {
+      "profile": "oem",
+      "row": "R3"
+    },
+    "oem-r4": {
+      "profile": "oem",
+      "row": "R4"
+    },
+    "legend-f": {
+      "profile": "oem",
+      "row": "R3",
+      "legend": "F"
+    },
+    "legend-shift": {
+      "profile": "oem",
+      "row": "R1",
+      "legend": ";",
+      "legend_anchor": "bc",
+      "legend2": ":",
+      "legend2_anchor": "tc",
+      "legend_size": 3
+    }
+  }
+}

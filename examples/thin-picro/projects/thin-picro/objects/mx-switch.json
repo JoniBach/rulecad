@@ -1,0 +1,22 @@
+{
+  "name": "mx-switch",
+  "title": "Cherry MX switch on a board (reference)",
+  "version": "0.1.0",
+  "role": "reference",
+  "uses": ["mx"],
+  "orientation": "Not printed: a model of the switch to check fits against, soldered to a board without a plate. The board's top is z = 0.",
+  "parts": {
+    "housing": { "label": "Housing" },
+    "stem": { "label": "Stem" },
+    "post": { "label": "Centre post, in its hole" }
+  },
+  "variables": {
+    "plate_at": { "value": "mx.plate_to_pcb", "unit": "mm", "rule": "Where a plate's top would be: the bottom housing reaches down from here to the board" },
+    "stem_top": { "value": "mx.height_pcb", "unit": "mm", "rule": "Top of the stem above the board", "interface": true },
+    "housing_top": { "value": "stem_top - mx.stem_height", "unit": "mm", "rule": "Top of the housing, where the stem comes out: a keycap sits on it", "interface": true },
+    "post_d": { "value": "mx.pcb_centre_hole - 0.2", "unit": "mm", "rule": "The centre post, a little under its 4 mm hole" },
+    "post_below": { "value": 1.6, "unit": "mm", "rule": "The centre post's length into the board (it reaches through a 1.6 mm board)" },
+    "smooth": { "value": 16, "rule": "Segments round the post" },
+    "sliver": { "value": 0.01, "unit": "mm", "rule": "Thickness of the outlines that are hulled into the housing" }
+  }
+}

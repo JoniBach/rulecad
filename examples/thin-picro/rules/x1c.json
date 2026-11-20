@@ -1,0 +1,150 @@
+{
+  "_doc": "Bambu Lab X1 Carbon with the stock 0.4 mm nozzle and Bambu Studio defaults. kind: spec (manufacturer), default (slicer setting), community (widely used rule of thumb), measured (your own test print; beats the rest), estimate (a reasoned guess: measure it).",
+  "name": "x1c",
+  "rules": {
+    "bed": {
+      "value": 256,
+      "unit": "mm",
+      "rule": "Build volume is 256 \u00d7 256 \u00d7 256 mm",
+      "kind": "spec",
+      "source": "https://dyer.lafayette.edu/makerspace/bambu-lab-x1-carbon/",
+      "checked": "2026-10-11"
+    },
+    "nozzle": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Stock hardened steel nozzle",
+      "kind": "spec",
+      "source": "https://dyer.lafayette.edu/makerspace/bambu-lab-x1-carbon/",
+      "checked": "2026-10-11"
+    },
+    "line": {
+      "value": 0.42,
+      "unit": "mm",
+      "rule": "Bambu Studio's default line width for a 0.4 mm nozzle: walls are whole numbers of lines",
+      "kind": "default",
+      "source": "Bambu Studio 0.4 mm nozzle process profile",
+      "checked": "2026-10-11"
+    },
+    "layer": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Default layer height; heights that matter should be whole numbers of layers",
+      "kind": "default",
+      "source": "Bambu Studio 0.20 mm Standard profile",
+      "checked": "2026-10-11"
+    },
+    "wall_min": {
+      "value": "line * 2",
+      "unit": "mm",
+      "rule": "Thinnest wall worth printing: two lines",
+      "kind": "community",
+      "source": "Common FDM practice",
+      "checked": "2026-10-11"
+    },
+    "hole_comp": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "Printed holes and slots come out small: widen them by this much",
+      "kind": "community",
+      "source": "Common FDM practice; tune with a test print",
+      "checked": "2026-10-11"
+    },
+    "fit": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Gap between parts that slide together",
+      "kind": "community",
+      "source": "Common FDM practice; tune with a test print",
+      "checked": "2026-10-11"
+    },
+    "press": {
+      "value": 0.05,
+      "unit": "mm",
+      "rule": "How much smaller across a printed bore is than a bought part pressed into it, once printed (a ball bearing's outer race): hole_comp is added as well",
+      "kind": "estimate",
+      "source": "A reasoned guess, half a typical 0.1 mm hole error; measure it with the seats coupon (examples/bench/projects/benchmarks/objects/seats-coupon)",
+      "checked": "2026-11-09"
+    },
+    "slip": {
+      "value": 0.1,
+      "unit": "mm",
+      "rule": "How much larger across a printed bore is than a bought part that slides into it by hand, once printed: hole_comp is added as well",
+      "kind": "estimate",
+      "source": "A reasoned guess; measure it with the seats coupon (examples/bench/projects/benchmarks/objects/seats-coupon)",
+      "checked": "2026-11-09"
+    },
+    "print_flow": {
+      "value": 12,
+      "unit": "mm³/s",
+      "rule": "Average plastic laid per second over a whole print, walls, travel and all: for estimating minutes from a part's volume",
+      "kind": "estimate",
+      "source": "A rule of thumb for a 0.4 mm nozzle on default settings; check it against a real print's time",
+      "checked": "2026-11-09"
+    },
+    "print_gap": {
+      "value": 0.3,
+      "unit": "mm",
+      "rule": "Narrowest gap between parts printed in place, side by side, that still prints apart (a flexure and the frame round it, a shuttle in its slot): the gap each side, not the total",
+      "kind": "estimate",
+      "source": "A reasoned guess for a 0.42 mm line; measure it with the fit test plate (examples/bench/projects/launcher/objects/fittest)",
+      "checked": "2026-11-01"
+    },
+    "overhang": {
+      "value": 45,
+      "unit": "\u00b0",
+      "rule": "Steepest overhang from vertical that prints without supports",
+      "kind": "community",
+      "source": "Common FDM practice",
+      "checked": "2026-10-11"
+    },
+    "bridge": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Widest gap a flat underside can span with no support (the widest circle that fits in it)",
+      "kind": "community",
+      "source": "https://grandavehousing.calpoly.edu/news/iibambu-lab-x1-carbon-support",
+      "checked": "2026-10-11"
+    },
+    "support_gap": {
+      "value": "layer",
+      "unit": "mm",
+      "rule": "Gap between a built-in breakaway support and the part: one layer, so it snaps off",
+      "kind": "community",
+      "source": "dmote-keycap printing advice (0.2 mm lift), https://cljdoc.org/d/dmote-keycap/dmote-keycap/0.8.0/doc/printing-advice",
+      "checked": "2026-10-11"
+    },
+    "chamfer": {
+      "value": 0.4,
+      "unit": "mm",
+      "rule": "Chamfer bottom edges instead of rounding them, against first-layer squish",
+      "kind": "community",
+      "source": "Common FDM practice",
+      "checked": "2026-10-11"
+    },
+    "foot": {
+      "value": 0.15,
+      "unit": "mm",
+      "rule": "How far the first layer spreads each side as it is squashed on to the bed (elephant's foot): two parts printed in place must stand print_gap plus twice this apart there, or they print as one",
+      "kind": "community",
+      "source": "Bambu Studio's default elephant foot compensation, 0.15 mm, the amount it shrinks the first layer by to undo the spread",
+      "checked": "2026-11-07"
+    },
+    "thread_gap": {
+      "value": 0.2,
+      "unit": "mm",
+      "rule": "Gap between the flanks of a printed screw thread and the thread it screws into, measured on the radius (twice this across the diameter). A printed pair is drawn half of it each; a printed thread for a bought screw or nut takes all of it. An internal thread gets hole_comp as well, as any printed hole does",
+      "kind": "estimate",
+      "source": "A reasoned guess, the same as fit, the gap between parts that slide together; the fixings coupon prints M6 to M12 threads at three clearances to measure it (docs/fixings-and-frames.md, section 2.5)",
+      "checked": "2026-11-15"
+    },
+    "pilot_m3": {
+      "value": 2.9,
+      "unit": "mm",
+      "rule": "Hole to draw for an M3 screw to form its own thread in PLA: 2.9 mm and 3.0 mm drawn both hold the screw straight, and smaller holes send it in at an angle. Drawn as it is: no hole compensation",
+      "kind": "measured",
+      "source": "fit bar, examples/bench/projects/benchmarks/MEASURE.md row 5, PLA",
+      "checked": "2026-11-10"
+    }
+  }
+}

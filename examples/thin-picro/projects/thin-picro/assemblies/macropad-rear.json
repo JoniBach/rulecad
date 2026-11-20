@@ -1,0 +1,15 @@
+{
+  "title": "Macropad, module behind the top row: Choc keys",
+  "kind": "fit",
+  "uses": ["mx"],
+  "note": "The rear-mount macropad built: twelve Choc v1 switches soldered to the board (no plate) with low-profile keycaps, a DO-35 diode in the gaps between the switches, and the thin module under the top row, parts facing down, on pin headers up through the gaps between the keys (the header's 2.5 mm spacer between the boards). The board's underside is z = 0.",
+  "requires": { "macropad": "^0.2.0", "choc-switch": "^0.1.0", "choc-keycap": "^0.1.0", "module": "^0.7.2" },
+  "items": [
+    { "id": "pcb", "object": "macropad:rear" },
+    { "id": "module", "object": "module:with-headers", "at": ["pcb.module_x", "pcb.module_y", -2.5], "rotate": [0, 180, 0] },
+    { "id": "switch", "object": "choc-switch", "at": ["pcb.key_x0", "pcb.key_y0", "pcb.thickness"],
+      "repeat": { "x": { "count": "pcb.cols", "step": "mx.pitch" }, "y": { "count": "pcb.rows", "step": "-mx.pitch" } } },
+    { "id": "cap", "object": "choc-keycap", "at": ["pcb.key_x0", "pcb.key_y0", "pcb.thickness + switch.stem_top"],
+      "repeat": { "x": { "count": "pcb.cols", "step": "mx.pitch" }, "y": { "count": "pcb.rows", "step": "-mx.pitch" } } }
+  ]
+}
