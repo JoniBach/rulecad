@@ -52,6 +52,7 @@ export const DELIBERATE = [
   { file: 'examples/thin-picro/projects/thin-picro/objects/module.json', name: 'hole_d', why: 'The module is a drop-in for a Raspberry Pi Pico, so its two holes are the Pico\'s 2.1 mm, and cases made for a Pico fit it. It goes through v.pcb.mount(\'M2\', ..., { d }), which reads the M2 set and refuses a hole that would not pass the screw; the set\'s clearance (2.4 mm) would move the fab drill' },
   { file: 'examples/thin-picro/projects/thin-picro/objects/module.json', name: 'hole_keepout', why: 'A router keepout round each hole, not a hole: the rule names the M2 head only to say why it is under the head\'s radius (wider crowds the tracks to the right-hand pins, so a nylon screw or washer is asked for)' },
   { file: 'examples/bench/projects/benchmarks/objects/servo-arm.json', name: 'slot', why: 'The screws a servo horn comes with are self-tapping screws sized by the horn\'s holes, no thread a fixings set holds; the slot takes them wherever the holes fall. Moving it to the M2 clearance would widen a printed slot for a screw nobody named' },
+  { file: 'packages/cad/EXAMPLES.md', block: 'rules/rpi4.json', name: 'mount_hole_diameter', why: 'A bought board\'s own holes, 2.7 mm as the maker\'s product brief draws them, in the board\'s rule set: a fact about the Raspberry Pi 4, never a hole a printed part gets. The frames device mount reads it to choose the largest thread it passes from @rulecad/fixings (M2.5), whose set sizes the pilots in the printed mount' },
   { file: 'examples/bench/projects/benchmarks/objects/servo-arm.json', name: 'middle', why: 'Room over the horn\'s middle for its screw\'s head and a driver, not a hole the screw passes: the horn screw goes into the servo\'s spline, and sg90.horn_screw names it' },
 ];
 
@@ -72,7 +73,7 @@ export const SWEPT = [
   { place: 'packages/cad/lib/sheet.mjs', why: 'A nut\'s data-sheet drawing marks its flange holes 3.5 mm where its rule set gives none: a drawing of the bought nut, never a hole a printed part gets' },
   { place: 'examples/bench/projects/arm/objects/zcar.json', why: 'The T8 nut\'s flange holes read t8_nut.mount_hole_diameter, the bought nut\'s own rule set, through shapes\' nutTrap: no thread typed by hand' },
 ];
-const deliberate = (file, name) => DELIBERATE.find((d) => d.file === file && d.name === name);
+const deliberate = (file, name, block) => DELIBERATE.find((d) => d.file === file && d.name === name && (d.block || '') === (block || '')); // (block: a document's JSON block, by its path)
 
 const usesFixings = (js) => /\bv\.fixings\b/.test(js);
 const variablesOf = (o) => ({ ...(o && typeof o.variables === 'object' ? o.variables : {}), ...(o && typeof o.rules === 'object' ? o.rules : {}) });
@@ -124,7 +125,7 @@ export function inventory({ root = ROOT, files = filesOf(root), read } = {}) {
       for (const [name, v] of Object.entries(variablesOf({ variables: o?.variables }))) { const kind = kindOf(v), d = kind && deliberate(f, name); if (kind) (d ? kept : items).push({ place: m[1], file: f, name, kind, value: v.value, rule: v.rule, ...(d ? { why: d.why } : {}) }); }
     } else if (/\.md$/.test(f)) {
       const text = read(f);
-      if (text) for (const x of documentItems(f, text)) items.push({ place: f, ...x });
+      if (text) for (const x of documentItems(f, text)) { const d = deliberate(f, x.name, x.block); (d ? kept : items).push({ place: f, ...x, ...(d ? { why: d.why } : {}) }); }
     } else if ((m = f.match(/^packages\/([^/]+)\/(?:.*\/)?[^/]+\.mjs$/)) && !['rules', 'fixings'].includes(m[1]) && !/(^|\/)test[^/]*\.mjs$|\.test\.mjs$/.test(f)) {
       const text = CATALOGUES.some((c) => c.file === f) ? '' : read(f) || '';
       for (const s of text.matchAll(/^\s*import\s+\w+\s+from\s+'@rulecad\/rules\/([\w-]+)\.json'/gm)) if (SET_FILE.test(s[1])) items.push({ place: `packages/${m[1]}`, file: f, name: s[1], kind: 'table' });
