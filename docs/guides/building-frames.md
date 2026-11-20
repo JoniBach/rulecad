@@ -105,7 +105,7 @@ against the sheet's 183. Had the area been typed as 250, it would say:
   WARN  area: the sheet says 250 mm², the drawn outline comes to 182.5 (-27.0%, more than 5%): ...  (profile.section.area)
 ```
 
-A field still holding the draft's value is a warning too (`rules.draft`), naming each, so a set half filled is never
+A field whose source still starts `DRAFT` is a warning too (`rules.draft`), naming each, so a set half filled is never
 taken for a finished one. A slot family that does not exist fails, and names the ones that do.
 
 `cad rules draw` writes `2020-acme.svg`: the section to scale with every slot and bore dimensioned, and the figures
