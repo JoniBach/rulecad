@@ -1263,10 +1263,13 @@ Where an end has several bores (`3030-misumi-hfs6`), a blind or end-tap join scr
 middle (`x1.a.1`). A gantry's moving beam stops `FRAME_GEN.clear` (2 mm, a working figure) short of the uprights at
 each end of its travel; it lies on the top side beams between the uprights' tops, which run one width above the side
 beams, so its top is the outside height. A printed fitting (`{ kind: 'bracket', fitting: 'printed' }`, or a gusset)
-sits on drop-in nuts, since every butting beam is shut at both ends by its joins and a slide-in nut could not reach
-its place; `nut` names another kind that goes in through the opening (roll-in, hammer, t-bolt), and slide-in or a nut
-with no printed fitting is refused. Braces put a printed corner bracket, on drop-in nuts, at each join of the sides
-named; a panel is one sheet over a side, from its lowest beam to its highest.
+sits on nuts that go in through the slot's opening, since every butting beam is shut at both ends by its joins and a
+slide-in nut could not reach its place: the first of drop-in, roll-in, hammer and t-bolt the kit has for the slot
+(drop-in on MISUMI's 2020, roll-in on item's 4040). `nut` names one of those; slide-in, a kind the kit has none of for
+the slot, or a nut with no printed fitting is refused. A printed gusset's join names the upright's face that looks out
+of the frame (`face`), so the plate never lands on the face where the corner's third beam butts. Braces put a printed
+corner bracket, on the same nuts, at each join of the sides named; a panel is one sheet over a side, from its lowest
+beam to its highest.
 
 A printed foot (`foot`, `levelling`, `stacking`) is screwed into its upright's end bore: its end carries the `tap`
 the foot's own model asks for and the `screw` that holds it, for the assembly to tap and fasten. A join that drills
@@ -1283,8 +1286,12 @@ on, so two nuts at one height in neighbouring slots of a beam stand apart, as th
 the whole block's, up to 12 % heavy.
 
 Refused by name: an unknown kind or option, no size or both, a size that leaves no room inside, a profile that is not
-square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, feet on a box,
-shelf or gantry with cube corners (no upright end reaches the floor), braces with cube corners, and a side with no bay.
+square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, a blind or
+end-tap screw wider than the slot's opening (M12 in the 10 mm slots of MISUMI's and Bosch's 4040), a blind join's
+head that does not go into the slot's cavity or under its lips (Bosch's 2020: an M6 button head 3.3 mm high under
+3 mm lips; give `join.screw`, or another join), a printed fitting or braces on a slot the kit has no nut for that goes
+in through its opening (item's 3030), feet on a box, shelf or gantry with cube corners (no upright end reaches the
+floor), braces with cube corners, and a side with no bay.
 
 ### Profiles as choices for sizing
 

@@ -12,7 +12,7 @@ import { placeItems } from '@rulecad/model-link';
 import { beamOf, beamPlace, framesContext } from './beams.mjs';
 import { joinFitting, fittedStiffness } from './fittings.mjs';
 
-const KEYS = ['kind', 'a', 'b', 'fitting', 'screw', 'brace', 'load', 'nut', 'note'];
+const KEYS = ['kind', 'a', 'b', 'fitting', 'screw', 'brace', 'load', 'nut', 'face', 'note'];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const mm = (x) => String(+Number(x).toFixed(2)), r3 = (x) => +x.toFixed(3);
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -66,6 +66,7 @@ export function expandJoins(a, num, context = framesContext(), material = 'pla')
     catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^(joinModel|beamAnchor): /, '')}`); }
     for (const [side, ops] of [['a', m.a.ops], ['b', m.b.ops]]) { const id = ends[side].id; if (ops.length) extra.set(id, [...(extra.get(id) || []), ...ops]); }
     const label = j.note || `${j.kind} join of ${j.a} to ${j.b}`, mine = [];
+    if (j.face != null && !(j.kind === 'gusset' && j.fitting === 'printed')) throw new Error(`${what}: face names the face of b a printed gusset lies on: give it on a gusset join with "fitting": "printed", or leave face out`);
     for (const k of ['brace', 'load', 'nut']) if (j[k] != null && !(m.fitting?.printed && j.fitting === 'printed')) throw new Error(`${what}: ${k} is for a printed fitting: give "fitting": "printed" on a ${Object.keys(JOINS).filter((x) => JOINS[x].printed).join(', ')} join, or leave ${k} out`);
     // a printed fitting: its item, placed from where the beams are, and a fasten for each leg into its beam's slot
     let fitted = null;

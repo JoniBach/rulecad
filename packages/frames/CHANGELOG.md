@@ -6,6 +6,16 @@ What changed in each release, for someone upgrading a workspace.
 
 ### Added
 
+- The generators refuse by name, before anything is built, a blind or end-tap screw that does not pass between the
+  slot's lips (M12 in MISUMI's and Bosch's 4040) and a blind join's head that does not fit under them (Bosch's 2020:
+  an M6 button head 3.3 mm high under 3 mm lips), where `cad check` failed them before. A printed fitting's or a
+  brace's slot nut is the first of drop-in, roll-in, hammer and t-bolt the kit has for the slot (roll-in on item's
+  4040, where drop-in was asked and drawing the fitting threw), a kind the kit lacks is refused naming one it has,
+  and a slot with none (item's 3030) is refused. A printed gusset join names the post's face that looks out of the
+  frame (`face`), so it never lands where the corner's third beam butts.
+- `bracketModel` and `plateModel` asked for a nut kind the slot has none of name the kinds it has, where they said
+  "thread is a thread as written (got nothing)".
+
 - A beam printed standing from a metal's profile takes a tapped end's screw in its one threaded bore's place: the
   largest thread whose screw passes up the bore and whose insert (no narrower than the bore, with its wall) or
   captive nut (its corners and a line) fits round the bore's middle; under a captive nut the bore is filled to the

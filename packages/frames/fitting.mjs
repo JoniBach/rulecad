@@ -98,7 +98,12 @@ export function slotSide(what, p, face, thread, nut, fit, given) {
   let t = thread, nuts;
   if (t == null) {
     for (const c of ['M10', 'M8', 'M6', 'M5', 'M4', 'M3']) { nuts = nutsOf(c); if (nuts.length) { t = c; break; } }
-    if (t == null) { try { nutFor(p, face, 'M5', { given }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^nutFor: /, '')}`); } }
+    if (t == null) {
+      try { nutFor(p, face, 'M5', { given }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^nutFor: /, '')}`); }
+      // (nuts are made for the slot, none of the kind asked: say which kinds there are)
+      const made = [...new Set(['M10', 'M8', 'M6', 'M5', 'M4', 'M3'].flatMap((c) => NUT_KINDS.filter((kind) => { try { return !!nutFor(p, face, c, { kind, given }); } catch { return false; } })))];
+      throw new Error(`${what}: no ${nut} slot nut from M3 to M10 is made for ${p.name}'s ${face} face (${slot.name}): ${made.length ? `the kit has ${made.join(', ')} nuts for it: give nut as one of those` : 'give a nut set of your own in given.sets'}`);
+    }
   } else nuts = nutsOf(t);
   if (!nuts.length) { try { nutFor(p, face, t, { ...(nut ? { kind: nut } : {}), given }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^nutFor: /, '')}`); } }
   const tallest = Math.max(...nuts.map((n) => n.tongueHeight ?? 0)), depth = r3(slot.lip - tallest - fit);

@@ -9,6 +9,12 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- **A gusset's face**: a printed gusset join takes `"face"`, the face of b it lies on (one of the two square to a);
+  the other one than its beams' directions give turns the L over. A generated frame names the face looking out of
+  the frame, so its printed gussets no longer land where a corner's third beam butts (a box joined by printed
+  gussets checked with 8 overlaps and an unreachable plate; it now checks clean). `face` on any other join, or a face
+  not square to a, is refused by name.
+
 - **A draft said by name**: `cad rules check` warns `rules.draft` while a set made by `cad rules draft` still has
   figures not read from a sheet (a rule or source starting `DRAFT`), naming each, so a half-filled profile, slot or
   slot nut is never taken for a finished one. No printed size moves.

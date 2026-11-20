@@ -16,6 +16,8 @@
 import { profileModel } from './profile.mjs';
 import { JOINS } from './join.mjs';
 import { footModel, levellingFootModel, stackingFootModel } from './ends.mjs';
+import { nutFor } from './slotnut.mjs';
+import { fixingModel } from '@rulecad/fixings';
 
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const r3 = (x) => +x.toFixed(3);
@@ -100,8 +102,17 @@ export function frameModel(kind, o = {}) {
   // from an end cannot reach its place. The generator asks for nuts that go in through the slot's opening (drop-in)
   if (join.nut != null && join.fitting !== 'printed') throw new Error(`${w}: join.nut names the slot nuts a printed fitting is drawn for: give "fitting": "printed" on a bracket or gusset join, or leave nut out (got ${shown(join.nut)})`);
   if (join.nut != null && !THROUGH.includes(join.nut)) throw new Error(`${w}: join.nut is a slot nut that goes in through the slot's opening, ${THROUGH.join(', ')}: every butting beam of a generated frame is shut at both ends by its joins, so a nut that slides in from an end cannot reach its place (got ${shown(join.nut)})`);
-  if (join.fitting === 'printed' && join.nut == null) join.nut = 'drop-in';
+  // the slot nut a printed fitting (the join's, or a brace's bracket) is drawn for: the first that goes in through the
+  // opening and that the kit (or given) has for the profile's slot, drop-in first
+  const slotted = Object.keys(P.faces).filter((f) => P.faces[f].some((q) => q.slot)), nutKinds = (kind) => ['M3', 'M4', 'M5', 'M6', 'M8', 'M10'].some((t) => slotted.every((f) => { try { return !!nutFor(P, f, t, { kind, given: o.given ?? {} }); } catch { return false; } }));
+  const throughNut = () => THROUGH.find(nutKinds) ?? null, slotNames = [...new Set(slotted.flatMap((f) => P.faces[f].filter((q) => q.slot).map((q) => q.slot)))].join(', ');
+  if (join.fitting === 'printed' && join.nut == null) {
+    join.nut = throughNut();
+    if (!join.nut) throw new Error(`${w}: a printed ${join.kind} is held by slot nuts that go in through the slot's opening (${THROUGH.join(', ')}), and the kit has none for ${o.profile}'s slot (${slotNames}): give a nut set of your own in given.sets, or join it with blind or end-tap`);
+  }
+  if (join.fitting === 'printed' && join.nut != null && !nutKinds(join.nut)) throw new Error(`${w}: the kit has no ${join.nut} slot nut for ${o.profile}'s slot (${slotNames})${throughNut() ? `: ${throughNut()} has one` : ': give a nut set of your own in given.sets, or join it with blind or end-tap'}`);
   if (['blind', 'end-tap'].includes(join.kind) && !P.bores.length) throw new Error(`${w}: a ${join.kind} join screws into the bore in a beam's end, and ${o.profile} has none: join it with bracket or gusset`);
+  if (['blind', 'end-tap'].includes(join.kind)) screwFits(w, P, join, o.profile, slotNames);
   if (arrangement === 'node' && o.feet != null && !['table', 'portal'].includes(kind)) throw new Error(`${w}: feet stand under an upright beam's end, and with a cube join every end of a ${kind}'s goes into a corner node: leave feet out (the node's own foot comes with the cube's fitting), or join with blind`);
   if (arrangement === 'node' && o.braces?.length) throw new Error(`${w}: braces put a printed corner bracket at each of a side's joins against a face, and a cube join's beams meet at nodes: brace a frame joined blind (or by another face join)`);
   if (o.feet != null && (typeof o.feet !== 'string' || (!FRAME_FEET[o.feet] && !o.feet.startsWith('fitting-')))) throw new Error(`${w}: feet is ${Object.keys(FRAME_FEET).join(', ')}, or a bought foot's set by name (fitting-motedis-foot-m6-d19) (got ${shown(o.feet)})`);
@@ -179,7 +190,9 @@ export function frameModel(kind, o = {}) {
   // the bore a blind or end-tap join screws into: where the end has several, the threaded one nearest the middle
   const threaded = P.bores.map((b, k) => ({ k, b, r: Math.hypot(...(b.at ?? [0, 0])) })).filter((x) => x.b.thread).sort((u, v) => u.r - v.r)[0];
   const bore = ['blind', 'end-tap'].includes(join.kind) && P.bores.length > 1 && threaded ? `.${threaded.k + 1}` : '';
-  const joinOf = (braceSide) => (braceSide ? { kind: 'bracket', fitting: 'printed', nut: 'drop-in' } : { ...join });
+  const braceNut = braced.size && arrangement === 'face' ? throughNut() : null;
+  if (braced.size && arrangement === 'face' && !braceNut) throw new Error(`${w}: braces put a printed corner bracket at each of a side's joins, held by slot nuts that go in through the slot's opening (${THROUGH.join(', ')}), and the kit has none for ${o.profile}'s slot (${slotNames}): give a nut set of your own in given.sets, or leave braces out`);
+  const joinOf = (braceSide) => (braceSide ? { kind: 'bracket', fitting: 'printed', nut: braceNut } : { ...join });
   if (arrangement === 'face') {
     for (const b of beams.filter((x) => x.role !== 'upright')) for (const e of ['a', 'b']) {
       const E = endOf(b, e), meet = E.at.map((v, k) => v + E.out[k] * h); // the centre line of the beam it meets
@@ -187,7 +200,12 @@ export function frameModel(kind, o = {}) {
       if (!post) throw new Error(`${w}: ${b.id}'s end ${e} meets no upright beam (this is a fault in the generator, not in the request)`);
       const face = faceOf(post, E.out.map((c) => -c)), along = r3(E.at[2] - post.from[2]);
       const side = sideOf(b).find((s) => braced.has(s));
-      joins.push({ ...joinOf(side), a: `${b.id}.${e}${side ? '' : bore}`, b: `${post.id}.${face}@${mm(along)}` });
+      // a printed gusset lies on a face of the post square to this beam: the one looking out of the frame, so it never
+      // lands on the face where the corner's third beam butts (across the frame's middle from the post)
+      const k = Math.abs(E.out[0]) > 0.5 ? 1 : 0, out = [0, 0, 0];
+      out[k] = post.from[k] < (k === 0 ? OW : OD) / 2 ? -1 : 1;
+      const plate = !side && join.kind === 'gusset' && join.fitting === 'printed' ? { face: faceOf(post, out) } : {};
+      joins.push({ ...joinOf(side), a: `${b.id}.${e}${side ? '' : bore}`, b: `${post.id}.${face}@${mm(along)}`, ...plate });
     }
   } else {
     // ends grouped by the node they reach; one beam's end is the node's hub (the beam along x, else along y), every
@@ -248,6 +266,25 @@ export function frameModel(kind, o = {}) {
   for (const b of [...beams, ...(moving ? [moving] : [])]) { const l = lengths.find((x) => Math.abs(x.length - b.length) < 1e-6); if (l) { l.count++; l.ids.push(b.id); } else lengths.push({ length: b.length, count: 1, ids: [b.id] }); }
   lengths.sort((u, v) => v.length - u.length);
   return { kind, profile: o.profile, width: p, join, arrangement, by, lift, inside: inside.map(r3), outside: outside.map(r3), ...(kind === 'shelf' ? { shelves, bay: r3(bay) } : {}), beams, joins, ends, panels, moving, lengths };
+}
+
+// A blind or end-tap join's screw against the profile's slots, refused by name where the check would fail it: the
+// screw passes between a slot's lips (blind: into its cavity; end-tap: right across the post), and a blind join's
+// button head goes into the cavity under the lips, as cad's fasten.clearance and fasten.seat read them
+function screwFits(w, P, join, profile, slotNames) {
+  const bores = P.bores.filter((b) => b.thread), bore = bores.sort((u, v) => Math.hypot(...(u.at ?? [0, 0])) - Math.hypot(...(v.at ?? [0, 0])))[0];
+  const [thread, head = join.kind === 'blind' ? 'button' : 'cap'] = join.screw ? String(join.screw).trim().split(/\s+/) : [bore?.thread];
+  if (!thread) return;
+  let fx;
+  try { fx = fixingModel(thread.replace(/x\d+(\.\d+)?$/, '')); } catch { return; } // (joinModel refuses a screw it cannot read)
+  const f = fx.figures, val = (k) => f[k]?.value ?? null, across = head === 'button' ? val('button_head') : val('head'), high = head === 'button' ? val('button_head_height') : val('head_height');
+  const others = () => `join it with ${join.kind === 'blind' ? 'end-tap or ' : ''}bracket (or gusset)${join.kind === 'blind' ? ', or give a screw whose head fits (join.screw)' : ''}`;
+  for (const name of new Set(Object.values(P.faces).flat().filter((q) => q.slot).map((q) => q.slot))) {
+    const sl = P.slots[name], room = sl.straight > 0 ? sl.straight : sl.cavityDepth - sl.lip;
+    if (fx.major > sl.opening + 1e-9) throw new Error(`${w}: ${join.kind === 'end-tap' ? 'an' : 'a'} ${join.kind} join's ${thread} screw (${profile}'s end thread) passes between the lips of the post's slot, and ${name} opens ${mm(sl.opening)} mm, narrower than its ${mm(fx.major)} mm: ${others()}`);
+    if (join.kind === 'blind' && across != null && across > sl.cavityWidth + 1e-9) throw new Error(`${w}: a blind join's ${thread} ${head} head, ${mm(across)} mm across, goes into the post's slot, and ${name} is ${mm(sl.cavityWidth)} mm wide under its lips: ${others()}`);
+    if (join.kind === 'blind' && high != null && high > room + 1e-9) throw new Error(`${w}: a blind join's ${thread} ${head} head, ${mm(high)} mm high, goes under the lips of the post's slot, and ${name} has ${mm(room)} mm there: ${others()}`);
+  }
 }
 
 const sub = (a, b) => a.map((v, k) => v - b[k]);

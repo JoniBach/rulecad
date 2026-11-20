@@ -1897,7 +1897,9 @@ test('frame generators: a box asked for by its inside size has its butting beams
   // by its joins and a slide-in nut could not reach its place; another kind that goes in that way may be named
   const br = box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } });
   assert.deepEqual([br.joins.length, new Set(br.joins.map((j) => `${j.kind} ${j.fitting} ${j.nut}`))], [16, new Set(['bracket printed drop-in'])]);
-  assert.equal(box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed', nut: 'hammer' } }).joins[0].nut, 'hammer');
+  assert.equal(box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed', nut: 'roll-in' } }).joins[0].nut, 'roll-in');
+  // (the kit makes no hammer nut for MISUMI's 6 mm slot: refused here, where the fitting would have found none to draw)
+  assert.throws(() => box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed', nut: 'hammer' } }), /the kit has no hammer slot nut for 2020-misumi-hfs5's slot \(slot-6-misumi\): drop-in has one/);
   assert.equal(box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: 'bracket' }).joins[0].nut, undefined, 'no fitting chosen, no nut');
   // braces: that side's joins carry a printed corner bracket; panels: one sheet over a side, on drop-in nuts
   const bp = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } });
@@ -1938,6 +1940,33 @@ test('profile choices: a profile as a sizing takes it, its section in a beam\'s 
   // hand: (25⁴ - 21⁴) / 12 = (390 625 - 194 481) / 12 = 16 345.3 mm⁴, area 25² - 21² = 184 mm²
   assert.ok(Math.abs(tube.section.Iy - 16345.33) < 0.5 && Math.abs(tube.section.A - 184) < 0.01, JSON.stringify(tube.section));
   assert.throws(() => frames.profileChoices({ kind: 'beam' }), /profileChoices: give a profile's model/);
+});
+
+test('a generated frame\'s joins against its profile: a blind or end-tap screw the slot cannot take is refused by name, a printed fitting takes a nut the kit has for the slot, and a printed gusset lies on the face looking out', () => {
+  const { box } = frames, ask = { inside: [300, 250, 350] };
+  // MISUMI's 4040 ends are tapped M12 (bore 10.5) and its slot opens 10 mm: an M12 screw, 12 mm, does not pass between
+  // the lips, blind (into the cavity) or end-tap (right across the post). Bosch's 4040 L the same (10 mm, M12)
+  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: 'blind' }), /a blind join's M12 screw \(4040-misumi-hfs8's end thread\) passes between the lips of the post's slot, and slot-10-misumi opens 10 mm, narrower than its 12 mm: join it with end-tap or bracket \(or gusset\)/);
+  assert.throws(() => box({ ...ask, profile: '4040-bosch-l', join: 'end-tap' }), /an end-tap join's M12 screw .* slot-10-bosch opens 10 mm, narrower than its 12 mm: join it with bracket \(or gusset\)/);
+  // Bosch's 2020 takes M6 (bore 5.5): its button head is 3.3 mm high (ISO 7380), and its slot has 3 mm under the lips
+  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there/);
+  // ones that fit pass: MISUMI's 2020 (M5 in 6 mm, its button head 2.75 high), item's 4040 (M8 in 8 mm)
+  for (const profile of ['2020-misumi-hfs5', '4040-item-8', '3030-misumi-hfs6']) assert.equal(box({ ...ask, profile, join: 'blind' }).joins.length, 16, profile);
+  // a printed fitting's nuts go in through the slot's opening: item's 4040 has no drop-in in the kit, so roll-in, the
+  // next; a nut kind the kit lacks for the slot is refused naming one it has, and a slot with none at all (item's 3030)
+  // is refused before a fitting is drawn
+  assert.deepEqual([...new Set(box({ ...ask, profile: '4040-item-8', join: { kind: 'bracket', fitting: 'printed' } }).joins.map((j) => j.nut))], ['roll-in']);
+  assert.deepEqual([...new Set(box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } }).joins.map((j) => j.nut))], ['drop-in']);
+  assert.throws(() => box({ ...ask, profile: '4040-item-8', join: { kind: 'bracket', fitting: 'printed', nut: 'drop-in' } }), /the kit has no drop-in slot nut for 4040-item-8's slot \(slot-8-item\): roll-in has one/);
+  assert.throws(() => box({ ...ask, profile: '3030-item-6', join: { kind: 'gusset', fitting: 'printed' } }), /a printed gusset is held by slot nuts that go in through the slot's opening \(drop-in, roll-in, hammer, t-bolt\), and the kit has none for 3030-item-6's slot \(slot-6-item\)/);
+  assert.throws(() => box({ ...ask, profile: '3030-item-6', braces: ['left'] }), /braces put a printed corner bracket at each of a side's joins, held by slot nuts that go in through the slot's opening \(drop-in, roll-in, hammer, t-bolt\), and the kit has none for 3030-item-6's slot \(slot-6-item\)/);
+  assert.throws(() => frames.bracketModel('4040-item-8', { nut: 'drop-in' }), /no drop-in slot nut from M3 to M10 is made for profile-4040-item-8's top face \(slot-8-item\): the kit has roll-in, hammer nuts for it: give nut as one of those/);
+  // printed gussets: each on the post's face square to its beam that looks out of the box. x1 runs along x at the
+  // front (y = 10, under the middle 145 + 20 = 165): its gusset looks -y, the post's bottom face (roll 0: top is +y);
+  // x2 at the back looks +y (top); y1 along y at the left looks -x (front), y2 at the right +x (back)
+  const g = box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed' } }), faceOf = (id) => [...new Set(g.joins.filter((j) => j.a.startsWith(`${id}.`)).map((j) => j.face))];
+  assert.deepEqual(['x1', 'x2', 'y1', 'y2'].map(faceOf), [['bottom'], ['top'], ['front'], ['back']]);
+  assert.ok(box({ ...ask, profile: '2020-misumi-hfs5', join: 'blind' }).joins.every((j) => j.face === undefined), 'a face only on a printed gusset');
 });
 
 test('a generated frame on a 30 series profile: levelling feet on a stud whose bore passes the M8 head, end-tap screws apart, access holes inside the slot', async () => {

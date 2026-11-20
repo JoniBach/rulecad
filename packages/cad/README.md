@@ -651,7 +651,8 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   - A bracket goes on the side of a with more of b, its base leg on b's face and its upright on a's face that looks
     along b; refused by name where its leg would run past b's end there.
   - A gusset lies on a face of each beam that looks the same way, in one plane: an L at a corner, a T where b runs
-    on both sides of a; refused where its arm has no room.
+    on both sides of a; refused where its arm has no room. Which face follows from the beams' directions; `"face"`
+    names the other one of b's two faces square to a (the L turned over), so it can miss a third beam at the corner.
   - A splice plate lies across two ends on a face they share.
   - `"brace": true` braces a bracket; `"load"` (N) is the design load it is sized to about twice the margin at
     (default 100); `"nut"` chooses the slot nuts' kind.
@@ -953,10 +954,13 @@ screws, the cut list, the frame checks, the build page) sees a hand-drawn frame.
   x 350 in 2020 has uprights of 390 mm and eight beams of 300 mm (with no feet: printed feet raise the bottom ring,
   below); in 3030, uprights of 410 mm and the same 300 mm.
   Where an end has several bores, a blind or end-tap join screws into the threaded one in the middle. A printed
-  fitting (`"fitting": "printed"` on `bracket` or `gusset`) sits on drop-in nuts: every butting beam is shut at both
-  ends by its joins, so a nut that slides in from an end could not reach its place. `"nut"` names another kind that
-  goes in through the slot's opening (`roll-in`, `hammer`, `t-bolt`); `slide-in` is refused. With no fitting named,
-  each join warns `join.fitting` until one is chosen, as a hand-drawn join does.
+  fitting (`"fitting": "printed"` on `bracket` or `gusset`) sits on nuts that go in through the slot's opening: every
+  butting beam is shut at both ends by its joins, so a nut that slides in from an end could not reach its place. It
+  takes the first of `drop-in`, `roll-in`, `hammer` and `t-bolt` the kit has for the profile's slot (drop-in on
+  MISUMI's 2020, roll-in on item's 4040); `"nut"` names one of them, and `slide-in` is refused. A printed gusset lies
+  on the face of its upright that looks out of the frame (its join's `"face"`), so it never lands where the corner's
+  third beam butts. With no fitting named, each join warns `join.fitting` until one is chosen, as a hand-drawn join
+  does.
 - A gantry's outside height is its inside plus three widths: the two rings and `g`, which lies on the top side beams
   between the uprights' tops, its top level with theirs.
 - `"feet"`: `foot`, `levelling`, `castor` or `stacking` (printed) or a bought foot's set by name, under the upright
@@ -973,19 +977,25 @@ screws, the cut list, the frame checks, the build page) sees a hand-drawn frame.
   one sheet over each side named (every side with a bay by default), on drop-in nuts.
 - Refused by name, before anything is built: no size or both, a size that leaves no room for the beams, a profile
   that is not square, a join no generator arranges (mitre, splice, pivot, a printed node), a blind join on a profile
-  with no bore in its ends, feet with cube corners on a box, a side with no bay, and an item of the assembly's own
-  with a name the frame gives.
+  with no bore in its ends, a blind or end-tap screw that does not pass between the slot's lips (M12 in the 10 mm
+  slots of MISUMI's and Bosch's 4040) or a blind join's head that does not fit under them (Bosch's 2020: an M6 button
+  head 3.3 mm high under 3 mm lips), a printed fitting or a brace on a slot the kit has no nut for that goes in
+  through its opening (item's 3030, MISUMI's and Bosch's 4040), feet with cube corners on a box, a side with no bay,
+  and an item of the assembly's own with a name the frame gives.
 - `"frame"`'s other keys (`supports`, `limit`, `rack` ..) still say how it is solved.
 
 `cad frame <project>/<assembly>` prints what it expands into; `--expand` writes the expansion into the assembly (its
 `"frame"` keeps only how it is solved), to edit by hand from there; `--json` gives either as data. `@rulecad/frames`
 has the generators on their own: `box`, `portal`, `table`, `gantry`, `shelf` and `frameModel(kind, o)`.
 
-Two limits to know. With `end-tap` joins, or a large profile's long blind screws (4040), the two screws into one
-upright at a corner cross inside it at one height, and the overlap check fails them: draw that corner by hand with
-one ring a profile's width higher. With printed `gusset` joins, a corner's plate can land on the face where the third
-beam of that corner butts, and the overlap and build order checks fail it: join a generated frame by `bracket`, or
-write it out (`--expand`) and move those plates by hand.
+What a generated box checks to, joined three ways in MISUMI's, Bosch's and item's 2020, 3030 and 4040 (each taken
+or refused as above): `blind` checks clean wherever it is taken. `end-tap` takes each ring's beams along y one width
+above its beams across x, so no two screws cross inside an upright; its screws' clearance holes cross the upright's
+slots, and wherever that hole is wider than the slot's opening (every one of these but MISUMI's 2020: M5's 5.5 mm in
+item's 5 mm, M6's 6.6 mm in Bosch's 6 mm, M8's 9 mm in an 8 mm slot) `beam.op` warns that the lips are cut there,
+twice for each join. `bracket` with a printed fitting checks clean or warns only `frame.rack`, the frame's sway.
+Bosch's 2020 and 4040 L sections also warn `beam.mass`: their drawn outlines leave out hollows the sheet's mass counts, and the frame
+is weighed by the sheet's figure.
 
 ### The lightest profiles
 

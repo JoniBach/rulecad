@@ -4702,7 +4702,7 @@ test('generated frames: a box asked for by its inside size expands into beams on
     write('box', { frame: { ...ask, profile: '3030-item-6', feet: undefined } });
     r = probe('box');
     assert.deepEqual(Object.values(r.lengths), [410, 410, 410, 410, 300, 300, 300, 300, 300, 300, 300, 300]);
-    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0]));
+    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0])); assert.deepEqual(r.bad, []);
     // asked by its outside, 340 x 340 x 390, the uprights are that height in either profile and each butting beam is
     // 340 - 2 x 30 = 280 mm in 3030 where it was 300 in 2020
     write('box', { frame: { ...ask, inside: undefined, outside: [340, 340, 390], profile: '3030-item-6', feet: undefined } });
@@ -4740,6 +4740,30 @@ test('generated frames: a box asked for by its inside size expands into beams on
     r = probe('braced');
     assert.deepEqual(r.bad, []);
     assert.ok(['y1-z1-bracket', 'y3-z3-bracket', 'panel-back'].every((id) => r.items.includes(id)), r.items.join(', '));
+    // 6. Across the series and makers, with blind joins: MISUMI's and Bosch's 3030 (M8 in an 8 mm slot, the access hole
+    // 6.3 mm, inside the opening) and item's 4040 (M8, 8 mm) check clean with nothing warned. (MISUMI's and Bosch's 4040
+    // take M12 in a 10 mm slot, and Bosch's 2020 an M6 button head 3.3 mm high under 3 mm lips: the generator refuses
+    // those by name, frames' test.) By printed gussets: each lies on the post's face looking out of the box, so none
+    // lands on the face where the corner's third beam butts, and the box checks clean. By printed brackets in item's
+    // 4040, whose slot the kit has no drop-in nut for: its roll-in nuts, chosen by the generator, and it checks clean
+    for (const profile of ['3030-misumi-hfs6', '3030-bosch', '4040-item-8']) {
+      write('box', { frame: { kind: 'box', inside: [300, 250, 350], profile, join: 'blind', feet: 'foot' } });
+      assert.deepEqual(probe('box').bad, [], profile);
+    }
+    write('gussets', { frame: { kind: 'box', inside: [300, 250, 350], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed' }, feet: 'foot' } });
+    r = probe('gussets');
+    assert.deepEqual(r.bad, []); assert.equal(r.items.filter((id) => /-gusset$/.test(id)).length, 16);
+    // written out, each gusset join names its face; a face not square to a, or a face on another kind, is refused by name
+    cad('frame', 'frame/gussets', '--expand');
+    const g = JSON.parse(fs.readFileSync(file('gussets'), 'utf8'));
+    assert.deepEqual([g.joins[0].b, g.joins[0].face], ['z1.back@10', 'bottom']);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], face: 'back' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: face is the face of z1 a printed gusset lies on, square to x1: top or bottom \(got "back"\)/);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ kind: 'blind', a: g.joins[0].a, b: g.joins[0].b, face: 'bottom' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: face names the face of b a printed gusset lies on: give it on a gusset join with "fitting": "printed", or leave face out/);
+    write('item', { frame: { kind: 'box', inside: [300, 250, 350], profile: '4040-item-8', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' } });
+    r = probe('item');
+    assert.deepEqual(r.bad, []); assert.ok(r.items.some((id) => /-bracket$/.test(id)));
   } finally { done(); }
 });
 
