@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // npm create rulecad [folder]: a new rulecad workspace with designs to start from (a soap tray, and a box whose lid is
 // screwed on: a fasten, its holes from v.fixings), then npm install.
-//   --machine arm | leg   start from a whole machine instead: the arm drawn on a sheet (EXAMPLES chapter 12) or a leg on a stand
-//                         (chapter 14), sized when it is made, with its task, bought parts, wires and firmware
-//   --sheet a5 --accuracy 0.3 (for --machine arm), --robot 1.5 (for --machine leg): the sizes it is made to
+//   --machine arm | leg | frame   start from a whole machine instead: the arm drawn on a sheet (EXAMPLES chapter 12), a leg
+//                         on a stand (chapter 14), sized when it is made, with its task, bought parts, wires and firmware;
+//                         or a box frame of extrusion generated from its inside size, with its checks and its kit
+//   --sheet a5 --accuracy 0.3 (for --machine arm), --robot 1.5 (for --machine leg), --size 300x300x350 --profile
+//                         2020-misumi-hfs5 (for --machine frame): the sizes it is made to
 //   --no-install   make the files only
 //   --share gist   short model links: each model you share is stored in a secret GitHub Gist (needs gh, signed in)
 //   --share long   links that carry the whole model (nothing is uploaded; too long for chat on bigger models)
@@ -15,12 +17,28 @@ import readline from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2), install = !args.includes('--no-install');
-const VALUED = new Set(['--share', '--machine', '--sheet', '--accuracy', '--robot']);
+const VALUED = new Set(['--share', '--machine', '--sheet', '--accuracy', '--robot', '--size', '--profile']);
 const optionValue = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] ?? '' : null);
 // The folder is the argument that isn't an option, or an option's value
 const dir = path.resolve(args.find((a, i) => !a.startsWith('--') && !VALUED.has(args[i - 1])) || 'my-designs'), name = path.basename(dir);
-const machine = optionValue('--machine'), MACHINES = ['arm', 'leg'];
-if (machine !== null && !MACHINES.includes(machine)) { console.error(`--machine is ${MACHINES.join(' or ')} (got "${machine}")`); process.exit(1); }
+const machine = optionValue('--machine'), MACHINES = ['arm', 'leg', 'frame'];
+if (machine !== null && !MACHINES.includes(machine)) { console.error(`--machine is ${MACHINES.slice(0, -1).join(', ')} or ${MACHINES.at(-1)} (got "${machine}")`); process.exit(1); }
+for (const [flag, only] of [['--size', 'frame'], ['--profile', 'frame'], ['--sheet', 'arm'], ['--accuracy', 'arm'], ['--robot', 'leg']]) if (optionValue(flag) !== null && machine !== only) { console.error(`${flag} is for --machine ${only}`); process.exit(1); }
+// The profiles a generated box is made in, each with the join and feet its box checks clean with on a fresh install
+// (the create-rulecad test checks every one). Another profile is the frame's to choose by hand: cad check says what it needs.
+const FRAME_PROFILES = {
+  '2020-misumi-hfs5': { join: 'blind', feet: 'levelling', why: 'blind joins (a screw in each end, its head in the other beam\'s slot), printed levelling feet' },
+  '2020-openbuilds': { join: 'blind', feet: 'levelling', why: 'blind joins, printed levelling feet' },
+  '3030-misumi-hfs6': { join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot', why: 'printed corner brackets on drop-in nuts, printed feet' },
+};
+// --machine frame's size and profile, refused by name before anything is written
+const frameAsk = machine === 'frame' ? (() => {
+  const size = optionValue('--size') ?? '300x300x350', profile = optionValue('--profile') ?? '2020-misumi-hfs5', p = FRAME_PROFILES[profile];
+  const inside = /^\d+(\.\d+)?x\d+(\.\d+)?x\d+(\.\d+)?$/i.test(size) ? size.toLowerCase().split('x').map(Number) : null;
+  if (!inside || inside.some((x) => !(x >= 50 && x <= 2000))) { console.error(`--size is the inside width x depth x height in mm, each 50 to 2000, as 300x300x350 (got "${size}")`); process.exit(1); }
+  if (!p) { console.error(`--profile is ${Object.keys(FRAME_PROFILES).join(', ')}: the profiles this box checks clean in (got "${profile}"; for another, make the box and change its "profile", "join" and "feet" by hand)`); process.exit(1); }
+  return { inside, profile, ...p };
+})() : null;
 if (fs.existsSync(dir) && fs.readdirSync(dir).length) { console.error(`${dir} isn't empty: name a new folder (npm create rulecad my-designs)`); process.exit(1); }
 
 const TEMPLATE = fileURLToPath(new URL('./template/', import.meta.url));
@@ -44,7 +62,16 @@ console.log(`made ${path.relative(process.cwd(), dir) || '.'}: a soap tray and a
 
 // A machine: copy it in, and size it to what was asked
 const SHEETS = { a6: [148, 105], a5: [210, 148], a4: [297, 210] };
+function frameSized() {
+  const { inside, profile, join, feet, why } = frameAsk;
+  fs.cpSync(fileURLToPath(new URL('./machines/frame/', import.meta.url)), dir, { recursive: true });
+  const file = path.join(dir, 'projects/frame/assemblies/box.json'), a = JSON.parse(fs.readFileSync(file, 'utf8'));
+  a.title = `Box frame ${inside.join(' x ')}`; Object.assign(a.frame, { inside, profile, join, feet });
+  fs.writeFileSync(file, `${JSON.stringify(a, null, 2)}\n`);
+  console.log(`  a box frame round ${inside.join(' x ')} mm inside, in ${profile}: ${why}: projects/frame/assemblies/box.json`);
+}
 async function sized() {
+  if (machine === 'frame') return frameSized();
   const arm = machine === 'arm', o = { sheet: optionValue('--sheet'), accuracy: optionValue('--accuracy'), robot: optionValue('--robot') };
   const asking = process.stdin.isTTY && process.stdout.isTTY && o.sheet === null && o.accuracy === null && o.robot === null;
   if (asking) {
@@ -82,7 +109,9 @@ async function sized() {
 }
 if (machine) {
   await sized();
-  fs.appendFileSync(readme, `\n## The machine\n\nA ${machine === 'arm' ? 'two-link arm that draws' : 'leg on a test stand'}, in \`projects/${machine}\`, made by \`--machine ${machine}\`: its task, bought parts, wires and firmware are in the assembly (EXAMPLES chapters 12 and 14 explain every part). \`npx cad check ${machine === 'arm' ? 'arm/arm' : 'leg/stand'}\` first.\n`);
+  fs.appendFileSync(readme, machine === 'frame'
+    ? '\n## The frame\n\nA box frame of aluminium extrusion in `projects/frame`, made by `--machine frame`. Its assembly, `projects/frame/assemblies/box.json`, asks for it by its inside size (`"frame": { "kind": "box", "inside": [...] }`): the beams, joins, feet and end caps are generated from that when it is built, and a load on its top says what it carries. `npx cad check frame/box` checks it (the joins, the screws, the feet, the cut list, its sag, stress, buckling, racking and lowest mode); `npx cad frame frame/box` says what it expands into; `npx cad kit frame/box` writes the folder to build it from (the plates to print, the cut list and each beam\'s sheet, the screws and bought parts, the build steps).\n'
+    : `\n## The machine\n\nA ${machine === 'arm' ? 'two-link arm that draws' : 'leg on a test stand'}, in \`projects/${machine}\`, made by \`--machine ${machine}\`: its task, bought parts, wires and firmware are in the assembly (EXAMPLES chapters 12 and 14 explain every part). \`npx cad check ${machine === 'arm' ? 'arm/arm' : 'leg/stand'}\` first.\n`);
 }
 
 // How models are shared: short links need somewhere to keep the model (a secret Gist); long links carry it
@@ -104,5 +133,5 @@ if (share === 'gist') {
     : 'short links are on, but the gh command isn\'t installed or signed in: install it from cli.github.com and run gh auth login');
 } else console.log(`model links carry the whole model${share ? '' : ' (no --share given)'}; for short ones later, add "shorten": "gist" to "targets" in cad.config.json`);
 if (install) execSync('npm install', { cwd: dir, stdio: 'inherit' });
-const start = machine === 'arm' ? 'arm/arm' : machine === 'leg' ? 'leg/stand' : 'home/soap-tray';
-console.log(`\n  cd ${path.relative(process.cwd(), dir)}\n  npx cad check ${start}\n  npx cad preview ${start}${machine === 'arm' ? '\n  npx cad plot arm/arm projects/arm/drawings/test.svg' : ''}\n\nREADME.md says what's where.`);
+const start = machine === 'arm' ? 'arm/arm' : machine === 'leg' ? 'leg/stand' : machine === 'frame' ? 'frame/box' : 'home/soap-tray';
+console.log(`\n  cd ${path.relative(process.cwd(), dir)}\n  npx cad check ${start}\n  npx cad preview ${start}${machine === 'arm' ? '\n  npx cad plot arm/arm projects/arm/drawings/test.svg' : machine === 'frame' ? '\n  npx cad kit frame/box' : ''}\n\nREADME.md says what's where.`);

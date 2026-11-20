@@ -118,7 +118,7 @@ test('--machine arm sizes itself, refuses what it cannot make, and asks no one w
     assert.match(make('by-default', '--machine', 'arm'), /A5 sheet at 0\.3 mm/, 'no flags and no terminal: the defaults');
     assert.match(make('a-leg', '--machine', 'leg', '--robot', '2'), /2 kg robot/);
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'a-leg/rules/leg.json'), 'utf8')).rules.robot.value, 2);
-    assert.throws(() => make('x', '--machine', 'hexapod'), /--machine is arm or leg/);
+    assert.throws(() => make('x', '--machine', 'hexapod'), /--machine is arm, leg or frame/);
     assert.throws(() => make('y', '--machine', 'arm', '--sheet', 'a3'), /--sheet is a6, a5, a4/);
     assert.throws(() => make('z', '--machine', 'arm', '--accuracy', '0'), /--accuracy is above 0/);
     assert.ok(!fs.existsSync(path.join(root, 'hexapod')), 'an option\'s value is not the folder');
@@ -136,5 +136,33 @@ test('--machine leg: the stand checks with no failures, and its step of a gait c
     assert.equal(fails.length, 0, fails.map((x) => x.text).join('\n'));
     assert.ok(r.findings.find((x) => x.code === 'gait.clearance'), 'its step');
     assert.match(execFileSync(process.execPath, [CAD, 'animate', 'leg/stand'], { cwd: dir, encoding: 'utf8' }), /stand-gait\.svg/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('--machine frame: a box from its inside size and profile checks clean on a fresh install, in every profile offered', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'create-machine-'));
+  const make = (name, ...a) => execFileSync(process.execPath, [CREATE, path.join(root, name), '--no-install', '--machine', 'frame', ...a], { encoding: 'utf8', stdio: 'pipe' });
+  try {
+    // refused by name before anything is written: a size that is not three numbers, a profile it does not make the box
+    // in, and a frame's flag on another machine
+    assert.throws(() => make('a', '--size', '300x300'), /--size is the inside width x depth x height in mm, each 50 to 2000, as 300x300x350 \(got "300x300"\)/);
+    assert.throws(() => make('b', '--profile', '4040-item-8'), /--profile is 2020-misumi-hfs5, 2020-openbuilds, 3030-misumi-hfs6: the profiles this box checks clean in \(got "4040-item-8"/);
+    assert.throws(() => execFileSync(process.execPath, [CREATE, path.join(root, 'c'), '--no-install', '--machine', 'arm', '--size', '300x300x350'], { stdio: 'pipe' }), /--size is for --machine frame/);
+    assert.deepEqual(fs.readdirSync(root), [], 'nothing written for a refusal');
+    // each profile offered, made and checked as a person would after npm install: no check fails or warns. The defaults
+    // first (300 x 300 x 350 in 2020-misumi-hfs5), then the others at another size
+    for (const [name, args, profile, join] of [['box', [], '2020-misumi-hfs5', 'blind'], ['ob', ['--profile', '2020-openbuilds', '--size', '250x200x300'], '2020-openbuilds', 'blind'], ['hfs6', ['--profile', '3030-misumi-hfs6', '--size', '400x300x350'], '3030-misumi-hfs6', 'bracket']]) {
+      const made = make(name, ...args), dir = path.join(root, name);
+      assert.match(made, new RegExp(`a box frame round ${name === 'box' ? '300 x 300 x 350' : name === 'ob' ? '250 x 200 x 300' : '400 x 300 x 350'} mm inside, in ${profile}`));
+      assert.match(made, /npx cad check frame\/box/);
+      const a = JSON.parse(fs.readFileSync(path.join(dir, 'projects/frame/assemblies/box.json'), 'utf8'));
+      assert.equal(a.frame.profile, profile); assert.equal(a.frame.join.kind ?? a.frame.join, join);
+      assert.match(fs.readFileSync(path.join(dir, 'README.md'), 'utf8'), /## The frame[^]*npx cad kit frame\/box/);
+      fs.symlinkSync(MODULES, path.join(dir, 'node_modules'), 'junction'); // stands in for npm install
+      const r = JSON.parse(execFileSync(process.execPath, [CAD, 'check', 'frame/box', '--json'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 }));
+      assert.ok(r.findings, JSON.stringify(r.error ?? r));
+      assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code}: ${x.text}`), [], `${profile}: checks clean`);
+      for (const code of ['frame.generated', 'frame.deflection', 'frame.stress', 'frame.buckling', 'frame.rack', 'frame.frequency', 'assembly.order']) assert.ok(r.findings.some((x) => x.code === code), `${profile}: ${code}`);
+    }
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
