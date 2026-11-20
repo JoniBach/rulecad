@@ -106,7 +106,7 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     assert.ok(await until(`document.getElementById('title')?.textContent === 'board'`), 'the board link opens');
     await run(`[...document.querySelectorAll('#tabs button')].find((b) => b.textContent === 'Board').click(); true`);
     assert.equal(await run(`[...document.querySelectorAll('#subtabs button')].map((b) => b.textContent).join(', ')`), 'both sides, front, back');
-    // A board link with its fab zip: a button that saves those bytes as they are, under their name
+    // A board link with its fab zip: a button that saves those bytes as they are, under a name JLCPCB's upload takes
     const zipBytes = Buffer.from('PK\x03\x04 a fab zip, as the link carries it');
     const withFab = await encode({ title: 'board fab', ...fromTriangles(tee), views: [['Board: both sides', board]], fab: [{ name: 'board@1.0.0-fab.zip', zip: zipBytes.toString('base64') }] });
     await run(`location.hash = '#m=${withFab}'; location.reload(); true`).catch(() => {});
@@ -114,7 +114,7 @@ test('drop an STL: drawn, checked, linked', { skip: !CHROME && 'no Chrome', time
     assert.equal(await run(`[...document.querySelectorAll('.actions button')].map((b) => b.textContent).join(', ')`), 'Download for JLCPCB, Download STL, Download 3MF, Copy link');
     const saved = await run(`new Promise((done) => { HTMLAnchorElement.prototype.click = function () { fetch(this.href).then((r) => r.arrayBuffer()).then((b) => done([this.download, [...new Uint8Array(b)]])); };
       document.querySelector('.actions .fab').click(); })`);
-    assert.deepEqual(saved, ['board@1.0.0-fab.zip', [...zipBytes]], 'the zip, byte for byte, under its own name');
+    assert.deepEqual(saved, ['board-v1_0_0-fab.zip', [...zipBytes]], 'the zip, byte for byte, under a name JLCPCB takes (no @ or dots)');
     assert.equal(await run(`(location.hash = '#m=${link}', location.reload(), true)`).catch(() => true), true);
     assert.ok(await until(`document.getElementById('title')?.textContent === 'board'`) && !(await run(`!!document.querySelector('.actions .fab')`)), 'no fab zip, no button');
     // A 4-layer board: a view of each copper layer, the inner ones (its planes) in order between front and back

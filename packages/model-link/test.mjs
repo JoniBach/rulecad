@@ -141,6 +141,17 @@ test('STL edge cases: a binary file of NaNs is damaged, an upper-case text STL i
   assert.throws(() => fromTriangles([[[0, 0, 0], [1, 0, 0]]]), /three corners or more/);
 });
 
+test('a fab zip is named as JLCPCB takes it: no @, dots, spaces or the words it refuses', async () => {
+  const { fabName } = await import('./model-link.mjs');
+  assert.equal(fabName('module@0.7.1-fab.zip'), 'module-v0_7_1-fab.zip');
+  assert.equal(fabName('macropad-pcb@0.2.1-fab'), 'macropad-pcb-v0_2_1-fab.zip');
+  for (const n of ['converter (copy)@1.0-fab.zip', 'Eval board.zip', '@@.zip', '']) {
+    const f = fabName(n);
+    assert.match(f, /^[A-Za-z0-9_-]+\.zip$/, n);
+    assert.doesNotMatch(f, /eval|copy|convert|confirm/i, n);
+  }
+});
+
 test('a board\'s fab zip rides in its link, by name and bytes; a name that could leave its folder, or bytes that aren\'t base64, are refused', async () => {
   const { encode, decode, check, fromTriangles } = await import('@rulecad/model-link');
   const m = { title: 'board', ...fromTriangles([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]), fab: [{ name: 'module@0.7.1-fab.zip', zip: Buffer.from('PK').toString('base64') }] };
