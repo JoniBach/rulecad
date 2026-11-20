@@ -36,8 +36,10 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const rowsAt = (W, p) => [0, 1, 2].map((k) => W[4 * k] * p[0] + W[4 * k + 1] * p[1] + W[4 * k + 2] * p[2] + W[4 * k + 3]);
 const n3 = (x, d = 3) => String(+Number(x).toFixed(d)), r3 = (x) => +Number(x).toFixed(3), r4 = (p) => p.map(r3);
 const fig = (x) => String(+Number(x).toPrecision(3));
-// a sag in mm to three places, or where that reads 0, to three figures (a stiff frame's micrometres are still a figure)
-const sagN = (x) => (r3(x) !== 0 || !x ? n3(x) : fig(x)), sagR = (x) => (r3(x) !== 0 || !x ? r3(x) : +Number(x).toPrecision(3));
+// a sag in mm to three places, or where that gives fewer than three figures (under 0.1 mm), to three figures: a stiff
+// frame's micrometres are still figures
+const small = (x) => x && Math.abs(x) < 0.1;
+const sagN = (x) => (small(x) ? fig(x) : n3(x)), sagR = (x) => (small(x) ? +Number(x).toPrecision(3) : r3(x));
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 
 /** The working figures of the frame checks, each with what it rests on. */
@@ -65,10 +67,18 @@ export const SHEET_STIFFNESS = {
 const WEB_E = 1000;
 const unitv = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l); };
 
-// The bays of a frame: four beams joined round a rectangle in one plane, two each way. Each corner is the node nearest
-// where two neighbouring beams' axes cross, on either of them (a join puts a station on the beam it lands on there).
+// The bays of a frame: four beams round a rectangle in one plane, two each way, each neighbouring pair joined to each
+// other or both joined to one beam at one place (the top of a corner-post box: its rails join the posts, not each
+// other). Each corner is the node nearest where two neighbouring beams' axes cross, on either of them or on the beam
+// both join (a join puts a station on the beam it lands on there).
 function baysOf(beams, joins, nodes, nodeAt) {
-  const linked = (p, q) => joins.some((x) => (x.A.id === p && x.B.id === q) || (x.A.id === q && x.B.id === p));
+  const direct = (p, q) => joins.some((x) => (x.A.id === p && x.B.id === q) || (x.A.id === q && x.B.id === p));
+  const reachOf = (id) => { const m = beams.get(id).m.profile; return Math.max(m.width, m.height); };
+  // the beams p and q both join at one place: a's end on b's axis within a profile's width of the other's
+  const memo = new Map(), via = (p, q) => { const key = `${p}|${q}`; if (!memo.has(key)) memo.set(key, through(p, q)); return memo.get(key); };
+  const through = (p, q) => { const out = new Set(); for (const x of joins) for (const y of joins) { if (x === y) continue; const [xo, xr, xz] = x.A.id === p ? [p, x.B.id, x.zb] : x.B.id === p ? [p, x.A.id, x.za] : [];
+    const [yo, yr, yz] = y.A.id === q ? [q, y.B.id, y.zb] : y.B.id === q ? [q, y.A.id, y.za] : []; if (xo && yo && xr === yr && xr !== p && xr !== q && Math.abs(xz - yz) <= reachOf(xr)) out.add(xr); } return [...out]; };
+  const linked = (p, q) => direct(p, q) || via(p, q).length > 0;
   const ids = [...beams.keys()], out = [], seen = new Set();
   const par = (p, q) => Math.abs(Math.abs(dot(p.u, q.u)) - 1) < 1e-3, square = (p, q) => Math.abs(dot(p.u, q.u)) < 1e-3;
   for (const a of ids) for (const b of ids) if (b !== a && linked(a, b)) for (const c of ids) if (c !== a && c !== b && linked(b, c)) for (const d of ids) {
@@ -83,7 +93,7 @@ function baysOf(beams, joins, nodes, nodeAt) {
     const corners = B.map((p, i) => {
       const q = B[(i + 1) % 4], X = add(p.A, scale(p.u, dot(sub(q.A, p.A), p.u)));
       let best = null, gap = Infinity;
-      for (const r of [p, q]) for (const z of r.stations) { const nm = nodeAt(r, z), g = Math.hypot(...sub(nodes[nm], X)); if (g < gap) { gap = g; best = nm; } }
+      for (const r of [p, q, ...via(p.id, q.id).map((id) => beams.get(id))]) for (const z of r.stations) { const nm = nodeAt(r, z), g = Math.hypot(...sub(nodes[nm], X)); if (g < gap) { gap = g; best = nm; } }
       return gap <= reach ? best : null;
     });
     if (corners.some((x) => !x) || new Set(corners).size < 4) continue;
@@ -179,8 +189,9 @@ export function frameModelOf(s, helpers) {
 
   // what weighs on the frame: items (beams' own weight is the elements'), and the masses of "loads"
   const masses = massesOf(s, { placeItems, jointValues }), carried = [], loose = [], unknown = [];
-  // a panel (not a door) on a bay of frame beams is a shear web of the frame: its weight goes to its bay's corners
-  const sheets = (s.panels ?? []).filter((p) => !p.door && p.bay?.every((id) => beams.has(id))).map((p) => ({ ...p, kg: (p.model?.grams ?? 0) / 1000 }));
+  // a panel (not a door) on a bay of frame beams is a shear web of the frame: its weight goes to its bay's corners; on
+  // beams that make no bay, its weight is spread along those of the frame
+  const sheets = (s.panels ?? []).filter((p) => !p.door && p.bay?.some((id) => beams.has(id))).map((p) => ({ ...p, kg: (p.model?.grams ?? 0) / 1000 }));
   for (const q of masses) {
     if (beams.has(q.id) || left.includes(q.id) || riding.some((x) => x.o.id === q.id) || sheets.some((p) => p.id === q.id)) continue;
     if (!q.known) { unknown.push(q.id); continue; }
@@ -293,10 +304,12 @@ export function frameModelOf(s, helpers) {
   const bays = baysOf(beams, joins.filter((x) => beams.has(x.A.id) && beams.has(x.B.id)), nodes, nodeAt);
   // each panel on a bay as a shear web: one diagonal bar, free to bend at both ends, as stiff along it as the sheet in shear in
   // series with its clips' grip
-  const webs = [], heldSheets = [];
+  // a panel whose beams make no bay (not joined round it) is no web, but it lies on its beams: its weight is spread
+  // along each of them, a quarter each
+  const webs = [], heldSheets = [], laid = [];
   for (const p of sheets) {
     const bay = bays.find((b) => b.beams.length === p.bay.length && p.bay.every((id) => b.beams.includes(id)));
-    if (!bay) { loose.push(p.id); continue; }
+    if (!bay) { const on = p.bay.filter((id) => beams.has(id)); if (p.kg > 0 && on.length) laid.push({ id: p.id, kg: p.kg, beams: on }); else if (!on.length) loose.push(p.id); continue; }
     const w = webOf(bay, p.sheet, p.thickness, p.items.length, p.id);
     webs.push(w); heldSheets.push({ ...p, bay: bays.indexOf(bay) }); elements.push(w.element);
   }
@@ -314,6 +327,7 @@ export function frameModelOf(s, helpers) {
     for (const c of only ? [] : carried.filter(keep)) put(c.mount.beam, mountStation(c.mount, values), rowsAt(W[c.item], c.centre), c.kg);
     for (const l of loads.filter(keep)) { if (only && only !== l) continue; const C = rowsAt(W[l.item], l.point); if (l.beam) put(l.beam, l.z, C, l.kg); else put(l.mount.beam, mountStation(l.mount, values), C, l.kg); }
     for (const p of only ? [] : heldSheets) for (const n of bays[p.bay].corners) out.push({ node: n, force: scale(down, (p.kg / 4) * G), moment: [0, 0, 0] });
+    for (const p of only ? [] : laid) for (const id of p.beams) { const b = beams.get(id), w = scale(down, ((p.kg / p.beams.length) * G) / b.L); for (const q of elements) if (q.of === id) out.push({ element: q.id, spread: w }); }
     return out;
   };
   // the same masses for a modal solve: each at the node it is carried at, in kg (its offset's rotary inertia left out)
@@ -322,11 +336,13 @@ export function frameModelOf(s, helpers) {
     for (const c of carried.filter(keep)) put(c.mount.beam, mountStation(c.mount, values), c.kg);
     for (const l of loads.filter(keep)) { if (l.beam) put(l.beam, l.z, l.kg); else put(l.mount.beam, mountStation(l.mount, values), l.kg); }
     for (const p of heldSheets) for (const n of bays[p.bay].corners) out[n] = (out[n] ?? 0) + p.kg / 4;
+    // (a panel laid on its beams: each beam's share at its elements' ends, half an element's length each)
+    for (const p of laid) for (const id of p.beams) { const b = beams.get(id); for (const q of elements) if (q.of === id) { const share = (p.kg / p.beams.length) * Math.hypot(...sub(nodes[q.b], nodes[q.a])) / b.L / 2; out[q.a] = (out[q.a] ?? 0) + share; out[q.b] = (out[q.b] ?? 0) + share; } }
     return out;
   };
   const kept = new Set(carried.filter(keep).map((c) => c.id));
   return { beams, left, missing, loose, unknown, riding: rides.filter((x) => kept.has(x.id)), carried: carried.filter(keep), loads: loads.filter(keep), points, guides: guides.filter(keep), supports: supports.filter(keep), joins: joins.filter((x) => beams.has(x.A.id)),
-    cases, down, nodes, nodeAt, model: withSprings(false), rigid: withSprings(true), nodeLoads, nodeMasses, bays, webs, sheets: heldSheets, elements, mountStation, worlds, axisOf: (j) => axisOf(motion, worlds, j, mul) };
+    cases, down, nodes, nodeAt, model: withSprings(false), rigid: withSprings(true), nodeLoads, nodeMasses, bays, webs, sheets: heldSheets, laid, elements, mountStation, worlds, axisOf: (j) => axisOf(motion, worlds, j, mul) };
 }
 
 // the downward movement of a node, and along a beam between two stations (the worst of the element stations there)
@@ -359,8 +375,8 @@ export function frameChecks(s, f, helpers) {
   // what every figure rests on: the joins' springs are an estimate while any is, whether or not they move a figure
   const restsOn = estimates ? 'estimate' : fm.joins.length ? 'measured' : 'beams';
   const rests = fm.joins.map((x) => ({ join: x.j.index, kind: x.j.kind, bending: x.k.bending, twist: x.k.twist, value: restsWord(x.k) }));
-  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${fm.carried.length} item${fm.carried.length > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${held.length ? `. Nothing holds it at ${heldList}: it can move there with nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on its own axis). Its loads do not move it that way, so it is held there for these figures, and a push that way finds it free (frame.rack). Hold it with "frame": { "supports" } fixed or resting, or join it into a box` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins)` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
-    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, held, riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
+  f('info', `the frame is solved as ${fm.beams.size} beam${fm.beams.size > 1 ? 's' : ''} on ${Object.keys(fm.nodes).length} nodes, held at ${fm.supports.map((x) => `${x.where} (${x.how}, ${x.why})`).join(', ')}, under its own weight${fm.carried.length ? `, ${fm.carried.length} item${fm.carried.length > 1 ? 's' : ''} mounted on it` : ''}${fm.loads.length ? ` and ${fm.loads.length} load${fm.loads.length > 1 ? 's' : ''}` : ''}, in ${fm.cases.length} pose${fm.cases.length > 1 ? 's' : ''}; ${restsJoins}${estimates ? `, ${estimates} of them an estimate until the joint rig (issue 264) measures it, so each figure is given with the joins rigid too` : ''}${fm.riding.length ? `. ${fm.riding.map((x) => `${x.id} rides on ${x.joint}, its ${n3(x.kg, 3)} kg weighed on the frame`).join('; ')}` : ''}${fm.webs.length ? `. ${fm.webs.map((w) => `${w.id} is a shear web on its bay, ${n3(w.k, 0)} N/mm along its diagonal (${w.clips} clips, their grip an estimate)`).join('; ')}` : ''}${fm.laid.length ? `. ${fm.laid.map((p) => `${p.id} lies on ${p.beams.join(', ')}, which are not joined round it as a bay: its ${n3(p.kg, 3)} kg is spread along them, and it is no shear web`).join('; ')}` : ''}${held.length ? `. Nothing holds it at ${heldList}: it can move there with nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on its own axis). Its loads do not move it that way, so it is held there for these figures, and a push that way finds it free (frame.rack). Hold it with "frame": { "supports" } fixed or resting, or join it into a box` : ''}${fm.left.length ? `. Left out: ${fm.left.join(', ')} (not held by a support through joins)` : ''}${fm.loose.length ? `. Not on a beam, so not weighed on the frame: ${fm.loose.join(', ')}` : ''}${fm.unknown.length ? `. No mass known for ${fm.unknown.join(', ')}` : ''}`, null,
+    { code: 'frame.solve', values: { beams: fm.beams.size, nodes: Object.keys(fm.nodes).length, cases: fm.cases.length, joins: fm.joins.length, estimates }, refs: { supports: fm.supports.map((x) => x.where), left: fm.left, held, laid: fm.laid.map((p) => ({ id: p.id, kg: r3(p.kg), beams: p.beams })), riding: fm.riding.map((x) => ({ ...x, kg: r3(x.kg) })), loose: fm.loose, rests } });
 
   // ---- frame.deflection: each load's point, each named point, every guide ----
   const worst = (fn) => { let w = null; for (const r of results) { const v = fn(r.spring, r), v0 = fn(r.rigid, r); if (!w || v.sag > w.sag) w = { ...v, rigid: v0.sag, case: { ...r.case, alone: r.alone } }; } return w; };

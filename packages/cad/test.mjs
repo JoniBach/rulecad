@@ -4411,6 +4411,59 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
   } finally { done(); }
 });
 
+test('frame checks: a lid across the top of a corner-post box is a shear web on its bay, weighed at its corners; a panel on beams that make no bay is weighed along them, never dropped', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/box.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a 400 x 300 x 350 box of 2020: four posts, and at the top and the bottom two rails each way joined blind to the
+    // posts (not to each other), as a corner-post box is built
+    const P = { profile: '2020-misumi-hfs5' }, W = 400, D = 300, H = 350, items = [], joins = [];
+    [[0, 0], [W, 0], [0, D], [W, D]].forEach(([x, y], i) => items.push({ id: `z${i + 1}`, beam: P, from: [x, y, 0], to: [x, y, H] }));
+    for (const [o, z] of [[0, H - 10], [2, 10]]) {
+      items.push({ id: `x${o + 1}`, beam: P, from: [10, 0, z], to: [W - 10, 0, z] }, { id: `x${o + 2}`, beam: P, from: [10, D, z], to: [W - 10, D, z] }, { id: `y${o + 1}`, beam: P, from: [0, 10, z], to: [0, D - 10, z] }, { id: `y${o + 2}`, beam: P, from: [W, 10, z], to: [W, D - 10, z] });
+      joins.push({ kind: 'blind', a: `x${o + 1}.a`, b: `z1.back@${z}` }, { kind: 'blind', a: `x${o + 1}.b`, b: `z2.front@${z}` }, { kind: 'blind', a: `x${o + 2}.a`, b: `z3.back@${z}` }, { kind: 'blind', a: `x${o + 2}.b`, b: `z4.front@${z}` },
+        { kind: 'blind', a: `y${o + 1}.a`, b: `z1.top@${z}` }, { kind: 'blind', a: `y${o + 1}.b`, b: `z3.bottom@${z}` }, { kind: 'blind', a: `y${o + 2}.a`, b: `z2.top@${z}` }, { kind: 'blind', a: `y${o + 2}.b`, b: `z4.bottom@${z}` });
+    }
+    const lid = { id: 'lid', panel: { sheet: 'acrylic', thickness: 3, bay: ['x1', 'y2', 'x2', 'y1'], out: [0, 0, 1] } };
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/box');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^(frame\\.(solve|deflection|frequency)|panel\\.size)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const box = { title: 'Box', kind: 'fit', items, joins, frame: { points: ['x1.top@50%'] } };
+    write(box);
+    const bare = probe(), carriedOf = (r) => r.find((x) => x.code === 'frame.frequency').values.carried, sagOf = (r) => r.find((x) => x.code === 'frame.deflection').values.rigid;
+    // 1. the lid on the top: its rails join the posts, so its bay's corners are the posts' nodes at the rails' height;
+    // it is a shear web there, and its weight is carried (its clips were the only mass weighed before)
+    write({ ...box, items: [...items, lid] });
+    let r = probe();
+    const solve = r.find((x) => x.code === 'frame.solve');
+    assert.match(solve.text, /lid is a shear web on its bay, \d+ N\/mm along its diagonal/);
+    assert.doesNotMatch(solve.text, /not weighed on the frame: lid/);
+    const grams = /([\d.]+) g/.exec(r.find((x) => x.code === 'panel.size').text)?.[1];
+    // the lid's own mass is in what the frame carries: the carried mass grows by at least the sheet's grams
+    const kg = carriedOf(r) - carriedOf(bare);
+    assert.ok(kg > 0.3 && (!grams || kg >= Number(grams) / 1000 - 1e-3), `carried grew by ${kg} kg, the lid ${grams} g`);
+    // (a web's weight is set at its bay's corners, on the posts, so the rails between carry none of it)
+    // 2. the same lid with the side rails y1 and y2 joined to nothing (left out of the frame): x1 and x2 make no bay,
+    // and the lid lies on them, its weight spread along both
+    write({ ...box, items: [...items, lid], joins: joins.filter((j) => !/^y[12]\./.test(j.a)) });
+    r = probe();
+    const laid = r.find((x) => x.code === 'frame.solve');
+    assert.match(laid.text, /lid lies on x1, x2, which are not joined round it as a bay: its [\d.]+ kg is spread along them, and it is no shear web/);
+    assert.deepEqual(laid.refs.laid.map((p) => p.beams), [['x1', 'x2']]);
+    assert.ok(laid.refs.laid[0].kg > 0.3 && !laid.refs.loose.includes('lid'), JSON.stringify(laid.refs));
+    // laid along x1, half its weight on x1: x1's middle sags more than with the same rails bare. A sag this small is
+    // given to three figures (it read 0.001 to three places, one figure)
+    const without = (write({ ...box, joins: joins.filter((j) => !/^y[12]\./.test(j.a)) }), probe());
+    assert.ok(sagOf(r) > sagOf(without) * 1.05, `x1 under half the lid ${sagOf(r)} mm, bare ${sagOf(without)} mm`);
+    assert.ok(sagOf(without) < 0.1 && String(sagOf(without)).replace(/^0\.0*/, '').length >= 3, `three figures: ${sagOf(without)}`);
+  } finally { done(); }
+});
+
 test('frame checks: an open cube racks with a low stiffness and one brace stiffens it many times, gussets and a panel solved beside it; a gantry beam\'s frequency with its carriage at mid-span agrees with the formula for a loaded beam; the mode drawn', () => {
   const { ws, cad, done } = workspace();
   try {
