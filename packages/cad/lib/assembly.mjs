@@ -53,6 +53,7 @@ import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
 import { expandFrame, frameText } from './framegen.mjs';
 import { frameChecks } from './framecheck.mjs';
+import { sizeChecks } from './framesize.mjs';
 import { frameHeatChecks } from './frameheat.mjs';
 import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
@@ -999,6 +1000,7 @@ export function checkAssembly(s) {
   powerChecks(s, f);
   loadChecks(s, f, { placeItems, jointValues, mul });
   frameChecks(s, f, { placeItems, jointValues, mul });
+  sizeChecks(s, f, { placeItems, jointValues, mul });
   gripChecks(s, f);
   gaitChecks(s, f, { jointValues, placeItems, sweepOne: (v) => clashesOf(s.at(v), named) });
   taskChecks(s, f);

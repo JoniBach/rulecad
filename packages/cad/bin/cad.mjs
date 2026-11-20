@@ -100,6 +100,8 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
   cad frame <project>/<assembly>    a generated frame ("frame": { "kind": "box", "inside": [..] }): its size, its beams by length, its joins and ends
                                      --expand: written into the assembly as its beams, joins and end fittings, to edit by hand [--json]
+                                     --size: any frame's beams, by group, each given the lightest profile from frame.size.profiles that meets
+                                     its limits, as a table naming the limit that set each; --write writes the profiles in [--json]
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
                                      --jigs: the jigs its beams take, as a plate in exports/ (a drill guide per distinct hole across a beam, a tap
                                      guide per tapped end, a cut-length stop per length, a squaring corner per square join), each marked with its beam [--preview]
@@ -145,7 +147,7 @@ const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'val
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
-  'unit', 'rule', 'label', 'from', 'out', 'jigs', 'expand', // cad set, cad rules, cad beams, cad frame
+  'unit', 'rule', 'label', 'from', 'out', 'jigs', 'expand', 'size', 'write', // cad set, cad rules, cad beams, cad frame
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
   'kind', 'fitting']; // cad add join
@@ -157,7 +159,7 @@ const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join <project>/<assem
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs', 'expand'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs', 'expand', 'size', 'write'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -1060,6 +1062,21 @@ async function frameCommand(ref) {
   if (!isAssembly(ref)) throw new Error(`cad frame works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
   const { expandFrame, frameText } = await import('../lib/framegen.mjs'), { assemblyPath } = await import('../lib/assembly.mjs');
   const file = assemblyPath(ref), raw = readJson(file);
+  if (opt('size')) {
+    const { frameSizing, sizingText, writeSizing, sizeOption } = await import('../lib/framesize.mjs'), { placeItems, jointValues, mul } = await import('@rulecad/model-link');
+    const s = await buildAssembly(ref), r = frameSizing(s, { placeItems, jointValues, mul }, sizeOption(s) ?? undefined);
+    if (!r) throw new Error(`${ref} has no frame to size: its beams need joins between them, or "frame": { "supports" }`);
+    const rows = r.rows, out = { assembly: ref, ok: r.ok, total: r.total, drawn: r.drawn, tried: r.tried, search: r.search, groups: rows, limits: r.limits };
+    if (opt('write')) {
+      if (!r.ok) throw new Error(`${ref}: no profile in the list meets every limit, so nothing is written (cad frame ${ref} --size says how near it comes)`);
+      fs.writeFileSync(file, `${JSON.stringify(writeSizing(raw, raw.frame?.kind != null ? expandFrame(raw, s.num).a : raw, r), null, 2)}\n`);
+      if (opt('json')) return console.log(JSON.stringify({ ...out, file: path.relative(WS, file) }, null, 2));
+      console.log(sizingText(r).join('\n'));
+      return console.log(`wrote ${path.relative(WS, file)}: ${rows.reduce((t, x) => t + x.beams.length, 0)} beams given their profiles${raw.frame?.kind != null ? ' (the generated frame written out expanded, as --expand does, as a generator takes one profile)' : ''}; their lines are kept, so check the joins and ends of any beam that changed size`);
+    }
+    if (opt('json')) return console.log(JSON.stringify(out, null, 2));
+    return console.log(`${ref}: ${sizingText(r).join('\n')}\n(cad frame ${ref} --size --write writes these profiles into the assembly)`);
+  }
   if (raw.frame?.kind == null) throw new Error(`${ref} asks for no generated frame: give it "frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-misumi-hfs5", "join": "blind" }`);
   const s = await buildAssembly(ref), m = s.generated, out = expandFrame(raw, s.num).a;
   if (opt('expand')) {

@@ -722,8 +722,8 @@ const SIZE_KEYS = ['groups', 'choices', 'only', 'limits', 'cases', 'bounds', 'by
  *     lighter: string | null, governs: (SizingCheck & { lighter: string, broken: number }) | null, margin: number | null }[],
  *   checks: SizingCheck[], worst: SizingCheck | null, model: FrameModel }}
  *   ok: the limits are met (else the design that came nearest, and its checks say by how much); total: kg (or cost) of
- *   the grouped members; tried: designs solved; each group's length (mm), mass (kg) and cost; lighter: the next lighter
- *   choice; governs: the limit that lighter choice breaks, its ratio there as `broken`; margin: how many times inside
+ *   the grouped members; tried: designs solved; each group's length (mm), mass (kg) and cost; lighter: the next choice
+ *   that weighs (or costs) less; governs: the limit that lighter choice breaks, its ratio there as `broken`; margin: how many times inside
  *   that limit the design is, as chosen; model: the frame with the chosen sections
  */
 export function sizing(model, o = {}) {
@@ -914,10 +914,11 @@ export function sizing(model, o = {}) {
   if (!pick) pick = best.p;
   const final = evaluate(pick);
   const results = groups.map((g, k) => {
-    const c = g.list[pick[k]], lighter = pick[k] > 0 ? g.list[pick[k] - 1] : null;
+    // the next lighter choice: the heaviest that weighs less (one of the same weight, a section turned, is no lighter)
+    const c = g.list[pick[k]], at = g.list.findLastIndex((x) => g.price(x) < g.price(c) * (1 - 1e-9)), lighter = at >= 0 ? g.list[at] : null;
     let governs = null, margin = null;
     if (lighter) {
-      const q = [...pick]; q[k]--;
+      const q = [...pick]; q[k] = at;
       const w = worstOf(evaluate(q).checks.filter((x) => x.ratio > 1));
       if (w) { const now = final.checks.find((x) => x.limit === w.limit && x.where === w.where); governs = { ...(now ?? w), lighter: lighter.name, broken: w.ratio }; margin = now ? 1 / now.ratio : null; }
     }
