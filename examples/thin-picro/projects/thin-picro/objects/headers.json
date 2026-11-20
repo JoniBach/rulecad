@@ -1,0 +1,23 @@
+{
+  "name": "headers",
+  "title": "The module's pin headers (reference)",
+  "version": "0.1.0",
+  "role": "reference",
+  "uses": ["thin_picro_pins"],
+  "orientation": "Not printed: 0.1 in male headers between the module and a board above it. The board's underside is z = 0.",
+  "parts": {
+    "spacer": { "label": "Plastic spacers" },
+    "pins": { "label": "Pins" }
+  },
+  "variables": {
+    "flip": { "value": -1, "rule": "-1: the module upside down under the board, so its pins mirrored left to right; 1: as seen from above", "tweak": { "min": -1, "max": 1 } },
+    "pitch": { "value": 2.54, "unit": "mm", "rule": "Header pitch, 0.1 in" },
+    "gap": { "value": 0.04, "unit": "mm", "rule": "Each pin's spacer a hair under the pitch, so neighbours don't touch in the model" },
+    "spacer": { "value": 2.5, "unit": "mm", "rule": "The plastic spacer's height, between the boards", "source": "Standard 0.1 in male headers (2.5 mm spacer)" },
+    "pin": { "value": 0.64, "unit": "mm", "rule": "A square pin's side", "source": "Standard 0.1 in headers (0.64 mm square pins)" },
+    "module_t": { "value": 1.6, "unit": "mm", "rule": "The module's thickness" },
+    "board_t": { "value": 1.6, "unit": "mm", "rule": "The board's thickness" },
+    "below": { "value": 0.5, "unit": "mm", "rule": "Pins trimmed this far past the module" },
+    "above": { "value": 1, "unit": "mm", "rule": "Pins trimmed this far above the board, between the switches" }
+  }
+}

@@ -8,6 +8,7 @@
     "keycap",
     "choc-switch",
     "choc-keycap",
-    "display"
+    "display",
+    "headers"
   ]
 }

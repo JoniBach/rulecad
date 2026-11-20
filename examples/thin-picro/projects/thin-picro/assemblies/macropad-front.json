@@ -1,16 +1,56 @@
 {
   "title": "Macropad, module on top: MX keys and a 2.0 in display",
   "kind": "fit",
-  "uses": ["mx"],
+  "uses": [
+    "mx"
+  ],
   "note": "The front-mount macropad built: twelve MX switches soldered to the board (no plate) with DSA keycaps, a DO-35 diode in the gap beside each, the thin module soldered flat on its castellated pads above the keys, and a 2.0 in ST7789 display in the SPI socket at the module's right end, lying over the module. The board's underside is z = 0.",
-  "requires": { "macropad": "^0.2.0", "mx-switch": "^0.1.0", "keycap": "^0.6.0", "module": "^0.7.2", "display": "^0.1.0" },
+  "requires": {
+    "macropad": "^0.2.0",
+    "module": "^0.7.2",
+    "display": "^0.1.0"
+  },
   "items": [
-    { "id": "pcb", "object": "macropad:front" },
-    { "id": "module", "object": "module", "at": ["pcb.module_x", "pcb.module_y", "pcb.thickness"] },
-    { "id": "switch", "object": "mx-switch", "at": ["pcb.key_x0", "pcb.key_y0", "pcb.thickness"],
-      "repeat": { "x": { "count": "pcb.cols", "step": "mx.pitch" }, "y": { "count": "pcb.rows", "step": "-mx.pitch" } } },
-    { "id": "cap", "object": "keycap:dsa", "at": ["pcb.key_x0", "pcb.key_y0", "pcb.thickness + switch.housing_top - cap.lift"],
-      "repeat": { "x": { "count": "pcb.cols", "step": "mx.pitch" }, "y": { "count": "pcb.rows", "step": "-mx.pitch" } } },
-    { "id": "display", "object": "display", "at": ["pcb.spi_x", "pcb.spi_y", "pcb.thickness + pcb.socket_height"] }
+    {
+      "id": "pcb",
+      "object": "macropad:front"
+    },
+    {
+      "id": "module",
+      "object": "module",
+      "at": [
+        "pcb.module_x",
+        "pcb.module_y",
+        "pcb.thickness"
+      ]
+    },
+    {
+      "id": "key",
+      "assembly": "key-mx",
+      "at": [
+        "pcb.key_x0",
+        "pcb.key_y0",
+        "pcb.thickness"
+      ],
+      "repeat": {
+        "x": {
+          "count": "pcb.cols",
+          "step": "mx.pitch"
+        },
+        "y": {
+          "count": "pcb.rows",
+          "step": "-mx.pitch"
+        }
+      }
+    },
+    {
+      "id": "display",
+      "object": "display",
+      "at": [
+        "pcb.spi_x",
+        "pcb.spi_y",
+        "pcb.thickness + pcb.socket_height"
+      ]
+    }
   ]
 }

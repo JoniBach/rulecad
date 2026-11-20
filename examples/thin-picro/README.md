@@ -84,7 +84,7 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 ## Status
 
-59.7 × 21.0 mm. It routes in about 40 minutes, and `cad check` passes everything:
+59.7 × 21.0 mm. It routes in about 40 minutes (a route is cached once found), and `cad check` passes everything but the finish (below):
 - the circuit is Sea-Picro's, plus the added 3V3 and two GND pins
 - Sea-Picro's own routing, kept exactly as it was (but for 7 escapes cut back, and its VBUS bridge moved with the socket)
 - the placement
@@ -95,6 +95,12 @@ Every size is a variable in `module.json`: the pin counts, where the USB-C socke
 
 One warning stays: the 34 half holes' copper ring is 0.2 mm, Sea-Picro's, over JLCPCB's least and under the 0.25 mm
 it recommends.
+
+0.7.2 is finished for the fab (`finish: true`), after an engineer's review of 0.7.1 flagged sharp track angles and
+tracks leaving pads at an angle: tracks crossing an SMD pad's edge at an angle went from 75 to 15 (measured from the
+KiCad files), acute corners from 13 to 4. What's left has no room to change without moving other nets' copper: 12
+exits and 1 corner in Sea-Picro's own layout round the RP2040 (reported as the source's), and 4 exits and 3 corners on
+routed tracks at vias and the USB-C pad, which the finish check fails on and names.
 
 The autorouter is sensitive here: a shift of a tenth of a millimetre can take a layout from passing to dozens of
 clearance errors. This one was found by trying small moves of the core and the mounting holes in turn (the first hole
