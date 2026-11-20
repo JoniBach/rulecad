@@ -124,6 +124,18 @@ export const part = (name, footprint, x, y, o = {}) => chip(name, x, y, o, { foo
  * A pin header from rules (r: pitch, drill, pad; row_spacing for two rows): o.pins pins per row, o.rows 1 or 2.
  * Two rows are numbered as a DIP: 1 to n down the left, n + 1 to 2n up the right.
  */
+// A footprint that takes either switch: a Cherry MX (m: the mx rules) or a Kailh Choc v1 (c: the choc rules), soldered.
+// The centre hole is the wider of the two (MX's: a Choc's post sits in it); each side's two locating pegs, 0.42 mm
+// apart, share one hole round both of theirs. Each switch's two pins keep their own holes: pin1 is MX's pin 1 and
+// Choc's pin 1 (2.7 mm apart, behind the centre), pin2 MX's pin 2 and Choc's pin 2, each pair one pin, joined by a track
+export function hybridSwitch(name, x, y, m, c, sch = {}) {
+  const pegX = (m.pcb_peg_x + c.pcb_peg_x) / 2, pegD = Math.abs(m.pcb_peg_x - c.pcb_peg_x) + Math.max(m.pcb_peg_hole, c.pcb_peg_hole); // round both pegs' holes
+  return { name, ftype: 'simple_switch', mpn: 'Cherry MX or Kailh Choc v1 (PCB mount)', package: 'Cherry MX / Kailh Choc v1 hybrid, PCB mount', x, y, layer: 'top', sch,
+    pads: [pad('pin1', m.pcb_pin1_x, m.pcb_pin1_y, m.pcb_pin_drill, m.pcb_pin_pad), pad('pin1', c.pcb_pin1_x, c.pcb_pin1_y, c.pcb_pin_drill, c.pcb_pin_pad),
+      pad('pin2', m.pcb_pin2_x, m.pcb_pin2_y, m.pcb_pin_drill, m.pcb_pin_pad), pad('pin2', c.pcb_pin2_x, c.pcb_pin2_y, c.pcb_pin_drill, c.pcb_pin_pad)],
+    holes: [hole(0, 0, Math.max(m.pcb_centre_hole, c.pcb_centre_hole)), hole(-pegX, 0, pegD), hole(pegX, 0, pegD)],
+    courtyard: { w: Math.max(m.pcb_body, c.pcb_body), h: Math.max(m.pcb_body, c.pcb_body) } };
+}
 export function header(name, x, y, r, o = {}) {
   const n = o.pins, two = (o.rows ?? 1) === 2, pads = [];
   for (let i = 0; i < n; i++) {
@@ -1319,7 +1331,12 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
       : { level: 'pass', text: `${castellated.length} castellated holes on the edge, ${mm(Math.min(...castellated.map((e) => e.hole_diameter)))} mm or more, ${mm(gap)} mm apart (JLCPCB: ${j.castellated_drill_min ?? 0.6} / ${j.castellated_gap_min ?? 0.6} mm). Order with castellated holes` });
   }
   out.push(Math.max(b.width, b.height) <= j.cheap_size ? { level: 'pass', text: `${size}: within JLCPCB's lowest price (${j.cheap_size} × ${j.cheap_size} mm)` } : { level: 'info', text: `${size}: over ${j.cheap_size} × ${j.cheap_size} mm, priced by quote` });
-  if (matrix) {
+  if (matrix?.direct) { // keys wired straight to a GPIO each, no matrix: every key its own pin
+    const gpio = Object.values(matrix.direct);
+    out.push(new Set(gpio).size === gpio.length
+      ? { level: 'pass', text: `direct wiring: ${gpio.length} keys, each on a GPIO of its own (${Object.entries(matrix.direct).map(([k, g]) => `${k} ${g}`).join(', ')})` }
+      : { level: 'fail', text: 'direct wiring: two keys share a GPIO' });
+  } else if (matrix) {
     const cells = new Set(matrix.keys.map((k) => `${k.row},${k.col}`)), gpio = [...Object.values(matrix.rows), ...Object.values(matrix.cols)];
     out.push(cells.size === matrix.keys.length && new Set(gpio).size === gpio.length
       ? { level: 'pass', text: `matrix: ${matrix.keys.length} keys on ${Object.keys(matrix.rows).length} rows × ${Object.keys(matrix.cols).length} columns, ${gpio.length} GPIO (rows ${Object.values(matrix.rows).join(' ')}; columns ${Object.values(matrix.cols).join(' ')})` }

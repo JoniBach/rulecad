@@ -1,0 +1,238 @@
+{
+  "_doc": "Cherry MX switches and keycaps. Cherry publishes the keycap's slot; no official spec exists for the switch stem, so stem sizes are measured by the community. kind as in x1c.json, plus estimate: a reasoned guess nothing confirms yet. Measure it, then make it measured.",
+  "name": "mx",
+  "rules": {
+    "pitch": {
+      "value": 19.05,
+      "unit": "mm",
+      "rule": "Key spacing, 1u = 0.75 in",
+      "kind": "spec",
+      "source": "Cherry MX keyboard layout convention",
+      "checked": "2026-10-11"
+    },
+    "slot": {
+      "value": 4.1,
+      "unit": "mm",
+      "rule": "Keycap cross slot is 4.1 (+0.05) mm across",
+      "kind": "spec",
+      "source": "Cherry MX keycap spec, via https://deskthority.net/viewtopic.php?p=245862",
+      "checked": "2026-10-11"
+    },
+    "slot_arm": {
+      "value": 1.17,
+      "unit": "mm",
+      "rule": "Keycap cross slot arms are 1.17 ± 0.02 mm wide",
+      "kind": "spec",
+      "source": "Cherry MX keycap spec, via https://deskthority.net/viewtopic.php?p=245862",
+      "checked": "2026-10-11"
+    },
+    "stem": {
+      "value": 4.0,
+      "unit": "mm",
+      "rule": "Switch stem cross is about 4 × 4 mm",
+      "kind": "community",
+      "source": "User measurements, https://deskthority.net/viewtopic.php?p=245862",
+      "checked": "2026-10-11"
+    },
+    "post": {
+      "value": 5.5,
+      "unit": "mm",
+      "rule": "Round post around the keycap's slot, as on most MX keycaps",
+      "kind": "community",
+      "source": "Common keycap designs",
+      "checked": "2026-10-11"
+    },
+    "slot_depth": {
+      "value": 4.0,
+      "unit": "mm",
+      "rule": "Depth of the cross slot in the post",
+      "kind": "community",
+      "source": "Common keycap designs",
+      "checked": "2026-10-11"
+    },
+    "cap_base": {
+      "value": 18.2,
+      "unit": "mm",
+      "rule": "1u keycap width at the bottom: leaves about 0.85 mm between neighbours",
+      "kind": "community",
+      "source": "DSA and Cherry profile keycaps",
+      "checked": "2026-10-11"
+    },
+    "stem_arm_h": {
+      "value": 1.275,
+      "unit": "mm",
+      "rule": "Switch stem's horizontal cross arm: 1.25 to 1.30 mm thick (middle of the range)",
+      "kind": "community",
+      "source": "https://deskthority.net/wiki/Cherry_MX",
+      "checked": "2026-10-11"
+    },
+    "stem_arm_v": {
+      "value": 1.075,
+      "unit": "mm",
+      "rule": "Switch stem's vertical cross arm: 1.05 to 1.10 mm thick (middle of the range)",
+      "kind": "community",
+      "source": "https://deskthority.net/wiki/Cherry_MX",
+      "checked": "2026-10-11"
+    },
+    "stem_height": {
+      "value": 3.7,
+      "unit": "mm",
+      "rule": "Switch stem stands about 3.7 mm above its slider",
+      "kind": "community",
+      "source": "https://deskthority.net/wiki/Cherry_MX",
+      "checked": "2026-10-11"
+    },
+    "travel": {
+      "value": 4,
+      "unit": "mm",
+      "rule": "Total key travel",
+      "kind": "spec",
+      "source": "https://deskthority.net/wiki/Cherry_MX",
+      "checked": "2026-10-11"
+    },
+    "height_pcb": {
+      "value": 15.2,
+      "unit": "mm",
+      "rule": "Switch top (stem) is 15.2 mm above the PCB, with no keycap",
+      "kind": "spec",
+      "source": "https://deskthority.net/wiki/Cherry_MX",
+      "checked": "2026-10-11"
+    },
+    "plate_to_pcb": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "Plate top to PCB top",
+      "kind": "spec",
+      "source": "https://wiki.ai03.com/books/case-and-plate-design/page/switch-dimensions-and-physical-specifications/revisions/97",
+      "checked": "2026-10-11"
+    },
+    "cutout": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "Plate cutout, square",
+      "kind": "spec",
+      "source": "https://wiki.ai03.com/books/case-and-plate-design/page/switch-dimensions-and-physical-specifications/revisions/97",
+      "checked": "2026-10-11"
+    },
+    "plate": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "Plate thickness",
+      "kind": "spec",
+      "source": "https://wiki.ai03.com/books/case-and-plate-design/page/switch-dimensions-and-physical-specifications/revisions/97",
+      "checked": "2026-10-11"
+    },
+    "housing": {
+      "value": 15.6,
+      "unit": "mm",
+      "rule": "Top housing width where it sits on the plate",
+      "kind": "community",
+      "source": "Common MX switch drawings",
+      "checked": "2026-10-11"
+    },
+    "housing_top": {
+      "value": 11.5,
+      "unit": "mm",
+      "rule": "Top housing width at its top surface (it tapers): not found in any source",
+      "kind": "estimate",
+      "source": "Estimate: measure a switch with calipers",
+      "checked": "2026-10-11"
+    },
+    "below_plate": {
+      "value": 8.5,
+      "unit": "mm",
+      "rule": "Switch and its pins reach this far below the plate's top: a case under a handwired plate must clear it",
+      "kind": "community",
+      "source": "https://adamws.github.io/3d-printed-keyboard-prototype-with-freecad/ (\"anything above 8.5 mm should cover switch pins\")",
+      "checked": "2026-10-12"
+    },
+    "relief": {
+      "value": 15,
+      "unit": "mm",
+      "rule": "Opening under the 1.5 mm clip layer of a thicker plate, so the switch's latches can spring out: nobody publishes a size",
+      "kind": "estimate",
+      "source": "Estimate: thick plates are undercut to 1.5 mm (https://www.keebtalk.com/t/fat-plates/2787); test that a switch clicks in",
+      "checked": "2026-10-12"
+    },
+    "pcb_pin1_x": {
+      "value": 2.54,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 1, right of the switch's centre (seen from above, the back of the board up)",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_pin1_y": {
+      "value": 5.08,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 1, behind the switch's centre",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_pin2_x": {
+      "value": -3.81,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 2, left of the centre",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_pin2_y": {
+      "value": 2.54,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 2, behind the centre",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_pin_drill": {
+      "value": 1.5,
+      "unit": "mm",
+      "rule": "PCB footprint: drill for the two electrical pins",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_pin_pad": {
+      "value": 2.2,
+      "unit": "mm",
+      "rule": "PCB footprint: copper pad around each electrical pin",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_centre_hole": {
+      "value": 4.0,
+      "unit": "mm",
+      "rule": "PCB footprint: unplated hole for the switch's centre post",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_peg_x": {
+      "value": 5.08,
+      "unit": "mm",
+      "rule": "PCB footprint: the two fixing pegs (PCB-mount switches), either side of the centre",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_peg_hole": {
+      "value": 1.7,
+      "unit": "mm",
+      "rule": "PCB footprint: unplated holes for the fixing pegs",
+      "kind": "community",
+      "source": "KiCad footprint library, Button_Switch_Keyboard.pretty/SW_Cherry_MX_1.00u_PCB.kicad_mod (from Cherry's MX catalogue, http://cherryamericas.com/wp-content/uploads/2014/12/mx_cat.pdf), https://gitlab.com/kicad/libraries/kicad-footprints",
+      "checked": "2026-10-14"
+    },
+    "pcb_body": {
+      "value": 14,
+      "unit": "mm",
+      "rule": "The switch's bottom housing sits on the PCB in this square: nothing taller than a pad goes under it on the top side",
+      "kind": "community",
+      "source": "https://wiki.ai03.com/books/case-and-plate-design/page/switch-dimensions-and-physical-specifications/revisions/97",
+      "checked": "2026-10-14"
+    }
+  }
+}

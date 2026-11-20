@@ -3,6 +3,22 @@
 What changed in each release, for someone upgrading a workspace. A **drilled size** here is a dimension the fab
 makes (a hole's diameter in the drill file). Each release says whether any drilled or printed size moved, and why.
 
+## 0.5.5: a footprint for MX or Choc switches, and direct-wired keys
+
+### Added
+
+- `hybridSwitch(name, x, y, mx, choc)`: one footprint that takes a Cherry MX or a Kailh Choc v1 switch, soldered.
+  Both switches' pins keep their own holes, a pair per pin (pin1: MX's pin 1 and Choc's pin 1; pin2 likewise), joined
+  by a track. The centre hole is MX's 4.0 mm (a Choc post fits it); each side's two pegs, 0.42 mm apart, share one
+  hole round both (2.12 mm).
+- A switch or diode with more than one pad on a pin draws as one symbol in the schematic, as chips already did.
+- Checks: a board whose keys are wired straight to GPIO (`matrix.direct`, `{ K1: 'GP20', ... }`) is checked for no
+  GPIO used twice, in place of the row and column check.
+
+### Drilled and printed sizes that moved
+
+None: existing footprints are unchanged.
+
 ## 0.5.4: a board's mounting holes named by thread (Fixings 3)
 
 ### What reads fixings now

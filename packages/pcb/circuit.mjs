@@ -841,11 +841,14 @@ function schematic(out, add, placed, board, port, netOf = new Map()) {
     const symbol = symbols[part.ftype === 'simple_diode' ? 'diode_down' : 'spst_switch_right'];
     const c = add('schematic_component', { center: { x: s.x, y: s.y }, rotation: 0, size: symbol.size, source_component_id: comp.source_component_id,
       is_box_with_pins: true, symbol_name: part.ftype === 'simple_diode' ? 'diode_down' : 'spst_switch_right', schematic_group_id: 'schematic_group_0' });
-    sourcePorts.forEach((sp, i) => {
+    // one symbol pin per pin: a pin with more than one pad (a hybrid switch's) draws its other pads as that one
+    const firsts = sourcePorts.filter((sp, i) => sourcePorts.findIndex((o) => o.name === sp.name) === i);
+    firsts.forEach((sp, i) => {
       const q = symbol.ports[i], center = { x: s.x + q.x - symbol.center.x, y: s.y + q.y - symbol.center.y };
       sch.set(sp.source_port_id, add('schematic_port', { schematic_component_id: c.schematic_component_id, center, source_port_id: sp.source_port_id,
         facing_direction: part.ftype === 'simple_diode' ? (i ? 'down' : 'up') : (i ? 'right' : 'left'), distance_from_component_edge: 0.4 }));
     });
+    for (const sp of sourcePorts) if (!sch.has(sp.source_port_id)) sch.set(sp.source_port_id, sch.get(firsts.find((o) => o.name === sp.name).source_port_id));
   }
   // A wire between two parts' pins (L-shaped), or for a connection to the chip, a label at each end naming the pin
   const labelled = new Set(placed.filter((p) => p.at).map((p) => p.part.name));

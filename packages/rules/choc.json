@@ -1,0 +1,110 @@
+{
+  "_doc": "Kailh Choc v1 (PG1350) low-profile switches: the PCB footprint. Positions from the switch's centre, seen from above, y up (behind the switch is +y). kind as in x1c.json.",
+  "name": "choc",
+  "rules": {
+    "pitch": {
+      "value": 19.05,
+      "unit": "mm",
+      "rule": "Key spacing on a board that also takes MX switches (Choc's own is 18 x 17 mm)",
+      "kind": "spec",
+      "source": "Cherry MX keyboard layout convention: a hybrid MX/Choc board keeps MX spacing",
+      "checked": "2026-11-20"
+    },
+    "pcb_pin1_x": {
+      "value": 0,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 1, on the centre line",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_pin1_y": {
+      "value": 5.9,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 1, behind the centre",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_pin2_x": {
+      "value": 5,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 2, right of the centre",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_pin2_y": {
+      "value": 3.8,
+      "unit": "mm",
+      "rule": "PCB footprint: pin 2, behind the centre",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_pin_drill": {
+      "value": 1.27,
+      "unit": "mm",
+      "rule": "PCB footprint: drill for the two electrical pins",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_pin_pad": {
+      "value": 2.032,
+      "unit": "mm",
+      "rule": "PCB footprint: copper pad round each electrical pin",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_centre_hole": {
+      "value": 3.429,
+      "unit": "mm",
+      "rule": "PCB footprint: unplated hole for the switch's centre post",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_peg_x": {
+      "value": 5.5,
+      "unit": "mm",
+      "rule": "PCB footprint: the two locating pegs, either side of the centre",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_peg_hole": {
+      "value": 1.7018,
+      "unit": "mm",
+      "rule": "PCB footprint: unplated holes for the locating pegs",
+      "kind": "community",
+      "source": "ergogen's Kailh Choc v1 footprint, https://github.com/ergogen/ergogen/blob/master/src/footprints/choc.js (KiCad frame, y down; turned to y up here), MIT",
+      "checked": "2026-11-20"
+    },
+    "pcb_body": {
+      "value": 15,
+      "unit": "mm",
+      "rule": "The switch's housing seen from above: 15 x 15 mm, nothing taller than a pad under it",
+      "kind": "spec",
+      "source": "Kailh PG1350 drawing, as quoted at https://deskthority.net/wiki/Kailh_PG1350_series (15 x 15 x 8 mm)",
+      "checked": "2026-11-20"
+    },
+    "height_pcb": {
+      "value": 8,
+      "unit": "mm",
+      "rule": "Switch height above the PCB, without a keycap (with a 1.2 mm plate the housing sits on the plate)",
+      "kind": "spec",
+      "source": "Kailh PG1350 drawing, as quoted at https://deskthority.net/wiki/Kailh_PG1350_series",
+      "checked": "2026-11-20"
+    },
+    "pin_length": {
+      "value": 3,
+      "unit": "mm",
+      "rule": "Electrical pins below the housing (they reach through a 1.6 mm board by about 1.4 mm before trimming)",
+      "kind": "estimate",
+      "source": "Kailh PG1350 drawing (3.0 mm pins): measure a switch to confirm",
+      "checked": "2026-11-20"
+    }
+  }
+}

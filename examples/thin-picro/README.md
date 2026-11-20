@@ -5,7 +5,7 @@ other long edge. It can sit along a keyboard's back edge, with the cable straigh
 board behind a row of keys, its end columns of pins coming up between switches.
 
 It is [Sea-Picro](https://github.com/joshajohnson/sea-picro) by Josh Johnson, redrawn: the same circuit, a new shape.
-Sea-Picro is a keyboard controller with an RP2040, 16 MB of flash, USB-C, and its pins brought out as castellated
+Sea-Picro is a keyboard controller with an RP2040, flash, USB-C, and its pins brought out as castellated
 holes with 0.1 in header holes beside them.
 
 ## How it's made
@@ -106,6 +106,9 @@ needs KiCad installed: KiCad plots the Gerbers and drill files from the board it
 because this board's rounded pads beside its planes, and the USB-C socket's slotted legs, are more than the other
 Gerber writer can draw. Before ordering, **check the pinout** below against your keyboard's wiring.
 
+**Flash:** 8 MB. The board file this module is read from fits a GD25Q64 (64 Mbit, LCSC C395511); the Sea-Picro EXT
+sold ready-made has 16 MB.
+
 ## Pinout
 
 Seen from above, USB-C at the top. Places run up each end from the bottom corner, and along the bottom from the left.
@@ -175,6 +178,45 @@ npx cad export thin-picro/module     # Gerbers, drill files, BOM and placement f
 ```
 
 When ordering, choose 4 layers and castellated holes. The BOM carries Sea-Picro's LCSC part numbers.
+
+## Macropads to test it on
+
+`thin-picro/macropad` is a 3 × 4 macropad for trying the module out, in two variants. Both have twelve keys on a
+footprint that takes either a Cherry MX or a Kailh Choc v1 switch (soldered: `hybridSwitch` in @rulecad/pcb, Choc's
+holes from `rules/choc.json`), each key wired straight to a GPIO of its own: no matrix, no diodes. The module's pins
+come from `rules/thin_picro_pins.json`, read from the module's KiCad board by `scripts/module-pins.mjs`, so the
+macropads build in seconds without routing the module. Neither board has parts for JLCPCB to place: order bare boards,
+and solder the switches, sockets and module yourself.
+
+- **`macropad:front`**, 70.7 × 109.2 mm: the module on top, above the keys, on one long pad per pin. Each pad takes the
+  module either way: soldered flat by its castellated edges (the pad reaches 1 mm past the module's edge for the
+  fillet), or on 0.1 in pin headers in sockets, so one module can move between boards. Below the keys, two display
+  sockets: SPI in the module's display order (GND VCC SCL SDA RES DC CS BLK, GPIO 14 15 16 12 13 9: a 7-pin SSD1322
+  OLED or an 8-pin ST7789 LCD) and I2C (GND VCC SCL SDA on GPIO 3 and 2: the common SSD1306 OLEDs). An M2 hole in each
+  corner.
+- **`macropad:rear`**, 59.7 × 76.9 mm, no bigger than the keys and the module: the module under the top row of keys,
+  parts facing down, on pin headers. Its bottom row of pins comes up through the gap between the top two rows of keys,
+  and its end columns up the board's two sides (three key widths apart: what `span` is for). Trim the switches' legs
+  before fitting the module: MX legs reach about 1.7 mm below a 1.6 mm board and Choc's about 1.4 mm, against a
+  standard header's 2.5 mm spacer.
+
+Keys and their GPIO (the export's `-matrix.json` has them for firmware):
+
+| | Front | Rear |
+|---|---|---|
+| Left column, top to bottom | GP20 21 22 23 | GP8 7 6 5 |
+| Middle column | GP26 27 28 29 | GP29 28 27 26 |
+| Right column | GP5 6 7 8 | GP23 22 21 20 |
+
+The rear board's columns read the other way because the module is upside down under it. GPIO 0 and 1 (UART, for a
+split keyboard's halves) and 4 are left free on both.
+
+```sh
+npx cad check thin-picro/macropad:front    # and :rear
+npx cad export thin-picro/macropad:front
+```
+
+Both pass every check, KiCad's design-rule check included, with all tracks autorouted on two layers.
 
 ## Licence
 
