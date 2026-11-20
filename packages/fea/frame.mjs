@@ -896,6 +896,8 @@ export function sizing(model, o = {}) {
     return r;
   };
   const worstOf = (checks) => checks.reduce((p, q) => (!p || q.ratio > p.ratio ? q : p), null);
+  // how far past the limits a design is in all: what still separates two designs whose worst figures tie
+  const excess = (checks) => checks.reduce((t, c) => t + Math.max(0, c.ratio - 1), 0);
 
   // the search
   const sizes = groups.map((g) => g.list.length), combos = sizes.reduce((t, n) => t * n, 1);
@@ -906,27 +908,38 @@ export function sizing(model, o = {}) {
     const walk = (k, p) => { if (k === groups.length) { all.push(p); return; } for (let i = 0; i < sizes[k]; i++) walk(k + 1, [...p, i]); };
     walk(0, []);
     all.sort((p, q) => measure(p) - measure(q));
+    const near = [];
     for (const p of all) {
       const r = evaluate(p, true);
       if (r.ok && evaluate(p).ok) { pick = p; break; }
-      const w = worstOf(r.checks);
-      if (!best || (w && w.ratio < best.w.ratio)) best = { p, w };
+      near.push({ p, low: worstOf(r.checks)?.ratio ?? 0 });
+    }
+    // nothing fits: the nearest by every limit's figure, not by the quick look that stops at the first stage that
+    // breaks one. The quick look's worst is never more than the whole's, so designs are taken in its order and
+    // stop once no later one can come nearer
+    if (!pick) for (const c of near.sort((a, b) => a.low - b.low)) {
+      if (best && c.low >= best.w.ratio) break;
+      const w = worstOf(evaluate(c.p).checks);
+      if (!best || (w && w.ratio < best.w.ratio)) best = { p: c.p, w };
     }
   } else {
     let p = groups.map(() => 0);
     for (let n = 0; n < 100 * groups.length; n++) {
-      const r = evaluate(p), w = worstOf(r.checks)?.ratio ?? 0;
+      const r = evaluate(p), w = worstOf(r.checks)?.ratio ?? 0, e = excess(r.checks);
       if (r.ok) break;
       // each group up to the lightest heavier choice that helps (and those of the same weight, a section turned): a
-      // choice heavier but weaker this way (a 30 x 30 after a 20 x 40 on edge, a 20 x 60 lying flat) is passed over
+      // choice heavier but weaker this way (a 30 x 30 after a 20 x 40 on edge, a 20 x 60 lying flat) is passed over.
+      // It helps where it lowers the worst figure; where two groups tie for the worst, neither can alone, so a step
+      // that leaves the worst as it was and lowers how far past the limits the design is in all helps too (less)
       let step = null;
       groups.forEach((g, k) => {
         let found = null;
         for (let j = p[k] + 1; j < sizes[k]; j++) {
           if (found != null && g.price(g.list[j]) > found * (1 + 1e-9)) break;
           const q = [...p]; q[k] = j;
-          const wq = worstOf(evaluate(q).checks)?.ratio ?? 0, gain = (w - wq) / Math.max(measure(q) - measure(p), 1e-12);
-          if (wq < w) { found ??= g.price(g.list[j]); if (!step || gain > step.gain) step = { q, gain }; }
+          const rq = evaluate(q), wq = worstOf(rq.checks)?.ratio ?? 0, eq = excess(rq.checks), dm = Math.max(measure(q) - measure(p), 1e-12);
+          const better = wq < w * (1 - 1e-9) ? (w - wq) / dm : wq <= w * (1 + 1e-9) && eq < e * (1 - 1e-9) ? (1e-9 * (e - eq)) / dm : null;
+          if (better != null) { found ??= g.price(g.list[j]); if (!step || better > step.gain) step = { q, gain: better }; }
         }
       });
       if (!step) break;
@@ -954,7 +967,9 @@ export function sizing(model, o = {}) {
       const w = worstOf(evaluate(q).checks.filter((x) => x.ratio > 1));
       if (w) { const now = final.checks.find((x) => x.limit === w.limit && x.where === w.where); governs = { ...(now ?? w), lighter: lighter.name, broken: w.ratio }; margin = now ? 1 / now.ratio : null; }
     }
-    if (margin == null) { const own = final.checks.filter((x) => g.members.some((m) => x.where === String(m) || x.where === `${m} (Euler)`)), w = worstOf(own.length ? own : final.checks); margin = w ? 1 / w.ratio : null; }
+    // no lighter choice: the margin is the group's own checks', its members' and the nodes its members run between
+    const mine = new Set(g.idx.flatMap((i) => [String(els[i].a), String(els[i].b)]));
+    if (margin == null) { const own = final.checks.filter((x) => g.members.some((m) => x.where === String(m) || x.where === `${m} (Euler)`) || (x.limit === 'deflection' && mine.has(x.where))), w = worstOf(own.length ? own : final.checks); margin = w ? 1 / w.ratio : null; }
     return { name: g.name, members: g.members, choice: c.name, length: g.length, mass: g.price(c, 'mass'), cost: g.price(c, 'cost'), lighter: lighter?.name ?? null, governs, margin };
   });
   return { ok, by, search, tried, total: measure(pick), groups: results, checks: final.checks, worst: worstOf(final.checks), model: final.model ?? apply(base, pick) };

@@ -510,6 +510,37 @@ test('frame sizing: a frequency floor sets a cantilever\'s bar as one mass on a 
   close('sizing: bar 20 under the second model is over half its strength', both.governs.broken, 2 * (200000 / (20 ** 3 / 6)) / 205);
 });
 
+test('frame sizing: steps go on where two groups tie for the worst; a group at its lightest choice keeps the sag on its own nodes in its margin; the nearest design when nothing fits is ranked by every limit', () => {
+  // 1. Two identical beams, 1000 mm simply supported, 1000 N at each middle, in two groups. With bar 20 each sags
+  // P L³ / 48 E I = 1000 × 1000³ / (48 × 70000 × 13333.3) = 22.32 mm against 5 mm: both 4.46 times over, a tie. No
+  // single group stepping up lowers the worst (the other still has it), so the search stalled on bar 20, bar 20.
+  // Bar 30: I = 67500, 4.409 mm, 0.882 of the limit; bar 25 (I = 32552, 9.14 mm) fails. Both groups need bar 30.
+  const nodes = { a1: [0, 0, 0], m1: [500, 0, 0], b1: [1000, 0, 0], a2: [0, 100, 0], m2: [500, 100, 0], b2: [1000, 100, 0] };
+  const elements = [['a1', 'm1', 'p'], ['m1', 'b1', 'p'], ['a2', 'm2', 'q'], ['m2', 'b2', 'q']].map(([a, b, of], i) => ({ id: `e${i}`, of, a, b, section: square(20).section, material: strong }));
+  const twin = { nodes, elements, supports: { a1: { x: true, y: true, z: true, rx: true }, b1: { y: true, z: true }, a2: { x: true, y: true, z: true, rx: true }, b2: { y: true, z: true } }, loads: [{ node: 'm1', force: [0, 0, -1000] }, { node: 'm2', force: [0, 0, -1000] }] };
+  const tie = sizing(twin, { groups: { p: ['p'], q: ['q'] }, choices: [20, 25, 30, 35].map(square), search: 'steps', limits: { deflection: [{ node: 'm1', limit: 5 }, { node: 'm2', limit: 5 }] } });
+  assert.ok(tie.ok, JSON.stringify(tie.worst));
+  assert.deepEqual(tie.groups.map((g) => g.choice), ['bar 30', 'bar 30']);
+  close('sizing: tied twins, the sag with bar 30', tie.checks.find((c) => c.where === 'm1').value, 1e12 / (48 * 70000 * 30 ** 4 / 12));
+  // 2. One of them alone, 500 N at its middle, bar 20 the lightest choice: it sags 500 × 1000³ / (48 × 70000 ×
+  // 13333.3) = 11.16 mm against 12 mm (0.930 of it), and its stress is (P L / 4) / (b³ / 6) = 125000 / 1333.3 =
+  // 93.75 MPa against 205 (0.457 of it). Its margin is the nearer, 12 / 11.16 = 1.075, not the stress's 2.19.
+  const one = { ...twin, nodes: { a1: nodes.a1, m1: nodes.m1, b1: nodes.b1 }, elements: elements.slice(0, 2), supports: { a1: twin.supports.a1, b1: twin.supports.b1 }, loads: [{ node: 'm1', force: [0, 0, -500] }] };
+  const lone = sizing(one, { groups: { p: ['p'] }, choices: [20, 25].map(square), limits: { deflection: [{ node: 'm1', limit: 12 }], stress: { margin: 1 } } });
+  assert.equal(lone.groups[0].choice, 'bar 20');
+  close('sizing: a lightest group\'s margin from the sag at its own node', lone.groups[0].margin, 12 / (500e9 / (48 * 70000 * 20 ** 4 / 12)));
+  // 3. A cantilever 500 mm with 100 N at its tip may be "light" (I = 39683 mm⁴, 0.5 kg/m) or "heavy" (I = 54113,
+  // 40 kg/m). Tip sag F L³ / 3 E I = 1.25e10 / (2.1e5 I): light 1.500 mm, heavy 1.100 mm, against 1 mm. Their lowest
+  // modes, 1.875² / 2π √(E I / m L⁴): light about 166 Hz, heavy about 21.7 Hz, against 70 Hz: heavy 3.23 times under.
+  // Neither fits; the nearer is light (1.5 times over at worst), though heavy is nearer by the sag alone (1.1).
+  const ch = (name, I, mass) => ({ name, section: { A: 100, Iy: I, Iz: I, J: I }, material: alu, mass });
+  const arm = { nodes: { a: [0, 0, 0], b: [500, 0, 0] }, elements: [{ id: 'arm', a: 'a', b: 'b', section: ch('x', 1000).section, material: alu }], supports: { a: 'fixed' }, loads: [{ node: 'b', force: [0, 0, -100] }] };
+  const none = sizing(arm, { groups: { arm: ['arm'] }, choices: [ch('light', 39683, 0.5), ch('heavy', 54113, 40)], search: 'every', limits: { deflection: [{ node: 'b', limit: 1 }], frequency: { Hz: 70 } } });
+  assert.equal(none.ok, false);
+  assert.equal(none.groups[0].choice, 'light');
+  close('sizing: the nearest design, by every limit', none.worst.ratio, 1.25e10 / (2.1e5 * 39683), 1e-3);
+});
+
 test('frame sizing: what is wrong with a request is said by name, before any solve', () => {
   const model = { nodes: { a: [0, 0, 0], b: [500, 0, 0] }, elements: [{ id: 'arm', a: 'a', b: 'b', section: square(20).section, material: strong }], supports: { a: 'fixed' }, loads: [{ node: 'b', force: [0, 0, -10] }] };
   const ok = { groups: { arm: ['arm'] }, choices: [square(20)], limits: { stress: { margin: 2 } } };
