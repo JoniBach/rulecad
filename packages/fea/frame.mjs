@@ -702,7 +702,7 @@ const SIZE_KEYS = ['groups', 'choices', 'only', 'limits', 'cases', 'bounds', 'by
  * The lightest section for each group of members that meets the limits: each group (members that must match, a pair
  * of rails, four posts) is given one of the choices, and the frame is solved under each load case for every design
  * tried. With few designs (every, 512) every one is ranked by mass and the first that meets the limits is the
- * lightest; with more, the lightest is found by steps (each group up a step where it helps most for its mass, until
+ * lightest; with more, the lightest is found by steps (each group up to its lightest heavier choice that helps, the one that helps most for its mass, until
  * the limits are met, then each down as far as the limits allow), which is near the lightest but not proven so. Each
  * group's result names the limit that set it: the one its next lighter choice would break, with the other groups as
  * chosen. The geometry stays as drawn: only sections, materials and rolls change, and members outside every group
@@ -890,12 +890,17 @@ export function sizing(model, o = {}) {
     for (let n = 0; n < 100 * groups.length; n++) {
       const r = evaluate(p), w = worstOf(r.checks)?.ratio ?? 0;
       if (r.ok) break;
+      // each group up to the lightest heavier choice that helps (and those of the same weight, a section turned): a
+      // choice heavier but weaker this way (a 30 x 30 after a 20 x 40 on edge, a 20 x 60 lying flat) is passed over
       let step = null;
       groups.forEach((g, k) => {
-        if (p[k] + 1 >= sizes[k]) return;
-        const q = [...p]; q[k]++;
-        const wq = worstOf(evaluate(q).checks)?.ratio ?? 0, gain = (w - wq) / Math.max(measure(q) - measure(p), 1e-12);
-        if (wq < w && (!step || gain > step.gain)) step = { q, gain };
+        let found = null;
+        for (let j = p[k] + 1; j < sizes[k]; j++) {
+          if (found != null && g.price(g.list[j]) > found * (1 + 1e-9)) break;
+          const q = [...p]; q[k] = j;
+          const wq = worstOf(evaluate(q).checks)?.ratio ?? 0, gain = (w - wq) / Math.max(measure(q) - measure(p), 1e-12);
+          if (wq < w) { found ??= g.price(g.list[j]); if (!step || gain > step.gain) step = { q, gain }; }
+        }
       });
       if (!step) break;
       p = step.q;

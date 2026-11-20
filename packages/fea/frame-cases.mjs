@@ -433,6 +433,24 @@ test('frame sizing: a table\'s long rails are given a heavier bar than its legs,
   assert.ok(soft.ok && soft.total < every.total, `${soft.total} kg against ${every.total} kg`);
 });
 
+test('frame sizing: steps pass over a heavier choice that is weaker this way, to the lightest that meets the limits, as every design does', () => {
+  // The 1000 mm beam on two supports, 1000 N at its middle, its sag held to 5 mm. Three choices by mass: bar 20 (400 mm²,
+  // I 13 333 mm⁴), a 60 x 10 plate lying flat (600 mm², I = 60 x 10³ / 12 = 5000 mm⁴) and bar 30 (900 mm², I 67 500).
+  // Hand, P L³ / 48 E I (Roark's, table 8.1, case 1e): bar 20 sags 1e12 / (48 x 70000 x 13 333) = 22.32 mm, the plate
+  // 1e12 / (48 x 70000 x 5000) = 59.52 mm (heavier, and weaker), bar 30 4.409 mm, inside 5. A search that only steps
+  // to the next choice by mass stops at bar 20, as the plate does not help, and wrongly finds nothing that meets it
+  const model = { nodes: { a: [0, 0, 0], m: [500, 0, 0], b: [1000, 0, 0] }, elements: ['a', 'm'].map((a, i) => ({ id: `beam${i + 1}`, of: 'beam', a, b: ['m', 'b'][i], section: square(20).section, material: strong })),
+    supports: { a: { x: true, y: true, z: true, rx: true }, b: { y: true, z: true } }, loads: [{ node: 'm', force: [0, 0, -1000] }] };
+  const plate = { name: 'plate 60 x 10', section: { A: 600, Iy: (60 * 10 ** 3) / 12, Iz: (10 * 60 ** 3) / 12, J: 0.291 * 60 * 10 ** 3, cy: 30, cz: 5 }, material: strong }; // (J = 0.291 b t³ at b/t 6, Roark's table 10.1)
+  const o = (search) => ({ groups: { beam: ['beam'] }, choices: [square(20), plate, square(30)], search, limits: { deflection: [{ node: 'm', limit: 5 }] } });
+  const steps = sizing(model, o('steps')), every = sizing(model, o('every'));
+  assert.deepEqual([steps.ok, steps.groups[0].choice, every.groups[0].choice], [true, 'bar 30', 'bar 30']);
+  close('sizing: bar 30 sags 4.409 mm', 5 / steps.groups[0].margin, 1e12 / (48 * 70000 * 30 ** 4 / 12));
+  // the limit that set it names the next lighter choice, the plate, and how far over it goes
+  assert.equal(steps.groups[0].governs.lighter, 'plate 60 x 10');
+  close('sizing: the plate is 11.9 times over 5 mm', steps.groups[0].governs.broken, 1e12 / (48 * 70000 * 5000) / 5);
+});
+
 test('frame sizing: a frequency floor sets a cantilever\'s bar as one mass on a spring says; every model given is held to the stress limit', () => {
   // A 500 mm cantilever with 2 kg at its tip that rings and does not weigh (inertia). Hand: k = 3 E I / L³ and, by
   // Rayleigh, the beam adds 33/140 of its own mass at the tip (Blevins 1979, table 8-8), f = √(1000 k / m) / 2π.

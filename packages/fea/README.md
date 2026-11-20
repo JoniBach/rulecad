@@ -250,8 +250,9 @@ r.groups[0];  // { name: 'legs', choice: 'bar 10', lighter: null, governs: null 
 **The search.** With few designs (`every`, 512, or `search: 'every'`), every design is ranked by mass and solved in
 that order until one meets every limit, which makes it the lightest; a design is dropped at the first stage
 (statics, then buckling, then modes) that breaks a limit. With more, `search: 'steps'`: from every group at its
-lightest, the group whose next heavier choice cuts the worst limit's use most for its added mass steps up, until the
-limits are met; then each group, the heaviest first, steps down as far as the limits allow, until nothing moves. Steps
+lightest, each group looks up its list for the lightest heavier choice that cuts the worst limit's use (passing over
+one that is heavier but weaker this way, a 30 x 30 after a 20 x 40 on edge), and the group that cuts it most for its
+added mass steps up to it, until the limits are met; then each group, the heaviest first, steps down as far as the limits allow, until nothing moves. Steps
 solve far fewer designs and land near the lightest, not always on it (a table in the tests: within a fifth).
 
 **What set each choice.** A group's `governs` is the limit its next lighter choice breaks with the other groups as
