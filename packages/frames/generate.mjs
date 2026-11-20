@@ -7,6 +7,10 @@
 // hidden, anchor) has the upright beams run through, top to bottom, and every other beam butt against their faces, so
 // a butting beam is shorter than the span it closes by the profile's width at each end. A cube join puts every beam's
 // end into a three-way corner node, so every beam is as long as the inside it bounds and the corners are the nodes'.
+// An end-tap join's screw runs right across the upright it meets, so two of them at one height on an upright (one from
+// a beam across, one from a beam along) would cross inside it: with end-tap, each ring's beams along (y) sit one width
+// above its beams across (x), and a table's one width below, so each screw has the upright to itself. The rings are
+// that width deeper, and the outside grows by it.
 //
 // Axes: x is the width, y the depth, z up; the frame's outside starts at the origin. Units: mm.
 import { profileModel } from './profile.mjs';
@@ -107,6 +111,8 @@ export function frameModel(kind, o = {}) {
   let fix = null;
   if (FOOT_MODELS[FRAME_FEET[o.feet]]) { try { fix = footFix(FRAME_FEET[o.feet], o.profile, o.given); } catch (e) { throw new Error(`${w}: feet: ${String(e.message).replace(/^\w+: /, '')}`); } }
   const lift = fix && arrangement === 'face' && ['box', 'shelf', 'gantry'].includes(kind) && DRILLS_POST.includes(join.kind) ? r3(fix.depth) : 0;
+  // end-tap: the beams along a ring stand one width off its beams across, so their screws do not cross in the uprights
+  const st = join.kind === 'end-tap' && kind !== 'portal' ? p : 0;
   const caps = o.caps ?? true;
   if (typeof caps !== 'boolean' && !(typeof caps === 'string' && caps.startsWith('fitting-'))) throw new Error(`${w}: caps is true (printed end caps), false (none) or a bought end cap's set by name (fitting-motedis-end-cap-20-b6) (got ${shown(o.caps)})`);
   for (const k of ['braces', 'panels']) {
@@ -122,31 +128,32 @@ export function frameModel(kind, o = {}) {
   }
 
   // the inside and outside, [x, y, z]: what the beams add round the inside, by kind
-  const add = kind === 'portal' ? [2 * p, 0, p] : kind === 'table' ? [2 * p, 2 * p, p] : kind === 'gantry' ? [2 * p, 2 * p, 3 * p + lift] : [2 * p, 2 * p, 2 * p + lift];
+  const add = kind === 'portal' ? [2 * p, 0, p] : kind === 'table' ? [2 * p, 2 * p, p + st] : kind === 'gantry' ? [2 * p, 2 * p, 3 * p + lift + st] : [2 * p, 2 * p, 2 * p + lift + 2 * st];
   const given3 = kind === 'portal' ? [size[0], null, size[1]] : size;
   const inside = [0, 1, 2].map((k) => (kind === 'portal' && k === 1 ? 0 : by === 'inside' ? given3[k] : given3[k] - add[k]));
   const outside = inside.map((v, k) => (kind === 'portal' && k === 1 ? p : v + add[k]));
-  const bay = shelves ? (inside[2] - shelves * p) / (shelves + 1) : inside[2];
+  const bay = shelves ? (inside[2] - shelves * (p + st)) / (shelves + 1) : inside[2];
   const short = [0, 1, 2].filter((k) => !(kind === 'portal' && k === 1) && !(inside[k] > 0));
   if (short.length || !(bay > 0)) {
     const k = short[0] ?? 2, n = spec.size[kind === 'portal' && k === 2 ? 1 : k];
-    throw new Error(`${w}: ${by === 'outside' ? `an outside ${n} of ${mm(given3[k])} mm leaves no room inside: its beams take ${mm(add[k])} mm of it in ${o.profile}` : `the ${n} is above 0`}${!(bay > 0) && !short.length ? `: ${shelves} shelves of ${mm(p)} mm leave no clear bay in ${mm(inside[2])} mm` : ''}`);
+    throw new Error(`${w}: ${by === 'outside' ? `an outside ${n} of ${mm(given3[k])} mm leaves no room inside: its beams take ${mm(add[k])} mm of it in ${o.profile}` : `the ${n} is above 0`}${!(bay > 0) && !short.length ? `: ${shelves} shelves of ${mm(p)} mm leave no clear bay in ${mm(inside[2])} mm${st ? ` (an end-tap ring takes two widths)` : ''}` : ''}`);
   }
   const [OW, OD, OH] = outside, h = p / 2;
   const beams = [], joins = [], ends = [], panels = [];
   const beam = (id, role, from, to) => { const length = r3(Math.hypot(...to.map((v, k) => v - from[k]))); beams.push({ id, role, length, from: from.map(r3), to: to.map(r3) }); return id; };
 
   // the levels: the heights of the rings' centre lines, from the bottom
-  const rings = kind === 'table' ? [OH - h] : kind === 'portal' ? [OH - h] : Array.from({ length: shelves + 2 }, (_, k) => k * (bay + p) + h + lift);
+  const rings = kind === 'table' ? [OH - h] : kind === 'portal' ? [OH - h] : Array.from({ length: shelves + 2 }, (_, k) => k * (bay + p + st) + h + lift);
   const xs = [h, OW - h], ys = kind === 'portal' ? [h] : [h, OD - h];
   const corners = ys.flatMap((y) => xs.map((x) => [x, y])); // z1 (front left), z2 (front right), z3 (back left), z4 (back right)
   const top = kind === 'gantry' ? rings.length - 1 : -1; // (a gantry's top ring has no beams across x: g rides there)
+  const alongAt = (z, r) => (r === top ? z : kind === 'table' ? z - st : z + st); // (a ring's beams along y, end-tap's off its beams across)
   if (arrangement === 'face') {
     corners.forEach(([x, y], i) => beam(`z${i + 1}`, 'upright', [x, y, 0], [x, y, OH]));
     let nx = 0, ny = 0;
     rings.forEach((z, r) => {
       if (r !== top) for (const y of ys) beam(`x${++nx}`, 'across', [p, y, z], [OW - p, y, z]);
-      if (kind !== 'portal') for (const x of xs) beam(`y${++ny}`, 'along', [x, p, z], [x, OD - p, z]);
+      if (kind !== 'portal') for (const x of xs) beam(`y${++ny}`, 'along', [x, p, alongAt(z, r)], [x, OD - p, alongAt(z, r)]);
     });
   } else {
     // every beam into the corner nodes: the uprights in a length between each pair of rings

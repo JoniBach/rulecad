@@ -46,7 +46,7 @@ const DRILL_KINDS = ['clearance', 'close', 'loose', 'tap'];
 export const OP_DEFAULTS = {
   edge: { value: 1, unit: 'diameters', rule: 'How near an end a hole across the beam may come: its centre at least one diameter from the end, so the metal between its edge and the end is at least half a diameter. A workshop rule of thumb for a hole near an edge in thin metal, not taken from a standard here: a hole nearer may tear out or burst the end under load', kind: 'estimate', source: 'workshop practice, not checked against a standard', checked: CHECKED },
   seat: { value: 0.75, unit: 'mm', rule: 'Room each side of a head in a machined counterbore. DIN 974-1 sets counterbore diameters for socket head screws; this figure is read as about what it gives for M5 (a 10 mm seat round an 8.5 mm head), and was not checked against the standard here', kind: 'estimate', source: 'DIN 974-1 (not checked here)', checked: CHECKED },
-  key: { value: 0.5, unit: 'mm', rule: 'Room across an access hole round a hex key\'s corners, where no clearance figure of the thread is wide enough: the hole is the smallest of the thread\'s clearance holes wider than the key across its corners (head_key / cos 30°), else the corners and this', kind: 'estimate', source: 'a working allowance, not a standard', checked: CHECKED },
+  key: { value: 0.5, unit: 'mm', rule: 'Room across an access hole round a hex key\'s corners, where no clearance figure of the thread will do: the hole is the smallest of the thread\'s clearance holes wider than the key across its corners (head_key / cos 30°) and no wider than the slot it is drilled in, else the corners and this, up to the next tenth of a millimetre', kind: 'estimate', source: 'a working allowance, not a standard', checked: CHECKED },
   radius: { value: 1.5, unit: 'mm', rule: 'The corner radius of a milled pocket where none is given: a 3 mm end mill\'s, a small cutter a workshop commonly has. A milled pocket\'s inside corners are never sharper than its cutter', kind: 'estimate', source: 'workshop practice, not checked against a standard', checked: CHECKED },
 };
 
@@ -171,8 +171,12 @@ export function opsOf(b, list, anchorOf, { printed = false } = {}) {
             key = fig ? (isNum(fig.figures[figure]?.value) ? fig.figures[figure].value : null) : null;
             if (diameter == null && key == null) throw new Error(`${thread}'s set names no hex key for a ${head} head (${figure}) to size an access hole for: give a diameter`);
             if (diameter == null) {
-              const corners = key / Math.cos(Math.PI / 6), fit = ['clearance_close', 'clearance', 'clearance_loose'].map((n) => [n, fig.figures[n]?.value]).find(([, v]) => isNum(v) && v > corners);
-              diameter = fit ? fit[1] : r3(corners + OP_DEFAULTS.key.value); rest = fit ? `${fig.set}.${fit[0]}` : 'OP_DEFAULTS.key';
+              // the hole only passes the key: a clearance drill of the thread's where one is wider than the key's corners
+              // and no wider than the slot it is drilled in (and, right through, the slot it comes out in), else the
+              // key's corners and OP_DEFAULTS.key, up to the next tenth of a millimetre (a drill size)
+              const far = through === 'beam' ? farSlot(b, place) : null, room = Math.min(...[place.slot, far?.slot].filter(Boolean).map((n) => p.slots[n].opening), Infinity);
+              const corners = key / Math.cos(Math.PI / 6), fit = ['clearance_close', 'clearance', 'clearance_loose'].map((n) => [n, fig.figures[n]?.value]).find(([, v]) => isNum(v) && v > corners && v <= room + 1e-9);
+              diameter = fit ? fit[1] : r3(Math.ceil((corners + OP_DEFAULTS.key.value) * 10 - 1e-6) / 10); rest = fit ? `${fig.set}.${fit[0]}` : 'OP_DEFAULTS.key';
             }
           } else {
             const c = counterboreModel(thread, { printer: MADE, ...(o.head ? { head: o.head } : {}), ...(diameter != null ? { diameter } : {}), ...(o.depth != null ? { depth: o.depth } : {}) });
@@ -263,7 +267,7 @@ function holeChecks(b, op, i, findings, D, place) {
     if (D > s.opening + 1e-9) findings.push({ level: 'warn', code: 'beam.op', text: `${b.name}: the ${op.op} at ${op.at} (Ø${mm(D)} mm) is wider than ${place.name}'s slot opening (${mm(s.opening)} mm): it breaks into the slot's lips, and a nut there loses its grip. A smaller hole, or a notch if that is meant`, values: { diameter: D, opening: s.opening }, refs: { op: i, at: op.at, slot: place.slot } });
   }
   if (op.through === 'beam') {
-    const far = b.places.find((q) => q.slot && Math.abs(q.normal[0] + place.normal[0]) < 1e-9 && Math.abs(q.normal[1] + place.normal[1]) < 1e-9 && Math.abs(place.normal[0] * (q.at[1] - place.at[1]) - place.normal[1] * (q.at[0] - place.at[0])) < 1e-6);
+    const far = farSlot(b, place);
     if (far && op.diameter > p.slots[far.slot].opening + 1e-9) findings.push({ level: 'warn', code: 'beam.op', text: `${b.name}: the ${op.op} at ${op.at} runs right through and comes out in ${far.name}'s slot (opening ${mm(p.slots[far.slot].opening)} mm) at Ø${mm(op.diameter)} mm: it breaks into that slot's lips`, values: { diameter: op.diameter, opening: p.slots[far.slot].opening }, refs: { op: i, at: op.at, slot: far.slot } });
   }
   for (const bo of p.bores) {
@@ -271,6 +275,10 @@ function holeChecks(b, op, i, findings, D, place) {
     if (reach - bo.diameter / 2 > op.depth || off >= op.diameter / 2 + bo.diameter / 2 - 1e-9 || off < 1e-6) continue;
     findings.push({ level: 'warn', code: 'beam.op', text: `${b.name}: the ${op.op} at ${op.at} (Ø${mm(op.diameter)} mm) breaks into the side of the bore at ${mm(bo.at[0])}, ${mm(bo.at[1])} (Ø${mm(bo.diameter)}), ${mm(off)} mm off its centre: line the hole up with the bore, or keep it clear`, values: { offset: r3(off), diameter: op.diameter, bore: bo.diameter }, refs: { op: i, at: op.at } });
   }
+}
+// The slotted place on the far side of a beam from a place, on the same line through it (where a hole right through comes out)
+function farSlot(b, place) {
+  return b.places.find((q) => q.slot && Math.abs(q.normal[0] + place.normal[0]) < 1e-9 && Math.abs(q.normal[1] + place.normal[1]) < 1e-9 && Math.abs(place.normal[0] * (q.at[1] - place.at[1]) - place.normal[1] * (q.at[0] - place.at[0])) < 1e-6);
 }
 // The end a cut nearest it: how much metal is left between its edge and the end
 function nearEnd(b, op, i, findings, half, plain = false) {

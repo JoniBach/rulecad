@@ -1918,3 +1918,47 @@ test('profile choices: a profile as a sizing takes it, its section in a beam\'s 
   assert.ok(Math.abs(tube.section.Iy - 16345.33) < 0.5 && Math.abs(tube.section.A - 184) < 0.01, JSON.stringify(tube.section));
   assert.throws(() => frames.profileChoices({ kind: 'beam' }), /profileChoices: give a profile's model/);
 });
+
+test('a generated frame on a 30 series profile: levelling feet on a stud whose bore passes the M8 head, end-tap screws apart, access holes inside the slot', async () => {
+  const { box, table, levellingFootModel, levellingFoot, beamModel } = frames;
+  // levelling feet: the body's M8 cap screw goes in through the printed stud's bore. Hand: an M8 cap head is 13 mm
+  // across (dk); M12's bore is 0.8 x 12 = 9.6 mm, Tr16x4's 16 - 4 = 12 mm (DIN 103's D1), both under 13 mm; Tr20x4's
+  // 20 - 4 = 16 mm passes. So a 30 series foot takes Tr20x4, and a 20 series (M5, 8.5 mm head) keeps M12
+  const lev = levellingFootModel('3030-bosch');
+  assert.deepEqual([lev.stud, lev.printed, lev.thread], ['Tr20x4', true, 'M8']); assert.ok(lev.margin >= 2 && lev.grams > 0);
+  await prints(levellingFoot(lev), 'a 30 series levelling foot\'s body'); await prints(levellingFoot(lev, { part: 'pad' }), 'its Tr20x4 pad');
+  assert.equal(levellingFootModel('2020-misumi-hfs5').stud, 'M12');
+  assert.throws(() => levellingFootModel('3030-bosch', { stud: 'Tr16x4' }), /a printed Tr16x4 stud's bore \(12 mm\) is too small for M8's 13 mm head to pass: give stud "Tr20x4", or leave stud out and the foot takes it/);
+  const footed = box({ inside: [400, 250, 300], profile: '3030-bosch', feet: 'levelling' });
+  assert.equal(footed.ends.find((e) => e.role === 'foot').screw, 'M8 cap');
+  // end-tap: each screw runs right across the upright it meets, so a ring's beams along y stand one width (30 mm) above
+  // its beams across x, and no two screws share a height on an upright. Hand: outside height 300 + 2 x 30 (the rings)
+  // + 2 x 30 (the stagger) = 420 mm; the bottom ring's x beams at 15 mm, its y beams at 45
+  for (const p of ['2020-misumi-hfs5', '3030-bosch']) {
+    const w = p.startsWith('30') ? 30 : 20, f = box({ inside: [400, 250, 300], profile: p, join: 'end-tap' });
+    assert.equal(f.outside[2], 300 + 4 * w, p);
+    const y1 = f.beams.find((b) => b.id === 'y1'), x1 = f.beams.find((b) => b.id === 'x1');
+    assert.deepEqual([x1.from[2], y1.from[2]], [w / 2, 1.5 * w], p);
+    for (const z of f.beams.filter((b) => b.role === 'upright')) {
+      const at = f.joins.filter((j) => j.b.startsWith(`${z.id}.`)).map((j) => j.b.split('@')[1]);
+      assert.equal(new Set(at).size, at.length, `${p}: ${z.id}'s end-tap screws each at a height of their own (${at})`);
+    }
+    // the clear inside: from the bottom y beams' top (45 + 15 = 60 on 3030) to the top x beams' bottom
+    const x3 = f.beams.find((b) => b.id === 'x3');
+    assert.equal(x3.from[2] - w / 2 - (y1.from[2] + w / 2), 300, p);
+  }
+  // a table's ring: its beams along y one width below those across, so the clear height under them is still the inside's
+  const t = table({ inside: [400, 250, 300], profile: '2020-misumi-hfs5', join: 'end-tap' });
+  assert.deepEqual([t.outside[2], t.beams.find((b) => b.id === 'y1').from[2] - 10], [340, 300]);
+  // blind joins keep their rings level
+  const bl = box({ inside: [400, 250, 300], profile: '3030-bosch' });
+  assert.deepEqual([bl.outside[2], bl.beams.find((b) => b.id === 'y1').from[2]], [360, 15]);
+  // an access hole only passes the hex key. Hand: an M8 button head takes a 5 mm key, 5 / cos 30° = 5.77 mm across its
+  // corners; M8's close clearance (8.4 mm) is wider than the 8 mm slot it is drilled in and comes out in, so the hole is
+  // the corners and 0.5 mm (OP_DEFAULTS.key), 6.27, up to a 6.3 mm drill. On 2020 M5's 5.3 mm fits the 6 mm slot
+  const op = (p, thread) => beamModel(p, { length: 300, ops: [{ op: 'access', at: 'front.1@120', thread, head: 'button', through: 'beam' }] });
+  const b30 = op('3030-bosch', 'M8'), a30 = b30.ops.find((o) => o.op === 'access');
+  assert.deepEqual([a30.diameter, a30.key, a30.rule], [6.3, 5, 'OP_DEFAULTS.key']);
+  assert.deepEqual(b30.findings.filter((x) => x.code === 'beam.op'), [], 'no lip broken on either side');
+  assert.deepEqual([op('2020-misumi-hfs5', 'M5').ops.find((o) => o.op === 'access').diameter], [5.3]);
+});

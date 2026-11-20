@@ -103,11 +103,23 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /a draft profile in rules.my-2020\.json, every figure an estimate/);
     const draft = read('rules/my-2020.json');
     assert.deepEqual(Object.keys(draft.rules), Object.keys(vocabulary.drafts.profile)); assert.equal(draft.part, 'profile');
-    for (const [k, r] of Object.entries(draft.rules)) { assert.equal(r.kind, 'estimate', k); assert.match(r.rule, /^DRAFT, not read from a sheet yet: /); assert.equal(r.unit, vocabulary.fields[k].unit, `${k} in its unit`); }
+    for (const [k, r] of Object.entries(draft.rules)) { assert.equal(r.kind, 'estimate', k); assert.match(r.source, /^DRAFT, not read from a sheet yet: /); assert.doesNotMatch(r.rule, /DRAFT/, `${k}'s rule is the field's own sentence, which a person keeps`); assert.equal(r.unit, vocabulary.fields[k].unit, `${k} in its unit`); }
     // it checks as it stands, and says by name that its figures are still the draft's until each is filled or deleted
     const drafted = cad('rules', 'check', 'my-2020'); assert.match(drafted, /1 of 1 rule sets pass \(1 with something to know\)/);
     assert.match(drafted, new RegExp(`WARN  ${Object.keys(draft.rules).length} of its ${Object.keys(draft.rules).length} figures are still the draft's, not read from a sheet: family, series, .* and \\d+ more\\. Fill each from the maker's sheet .*\\(rules\\.draft\\)`));
     assert.deepEqual(JSON.parse(run('rules', 'check', 'my-2020', '--json').stdout)[0].findings.find((x) => x.code === 'rules.draft').refs.rules, Object.keys(draft.rules));
+    // filled as the guide says, field by field: its value, kind spec, the sheet as its source, the date, the rule left
+    // as the draft wrote it. Every figure then counts as read (the draft's rule once said DRAFT, and the warning stayed)
+    const lit = read('rules/my-2020.json'), hfs5 = published('profile-2020-misumi-hfs5').rules;
+    lit.name = 'lit-2020';
+    for (const k of Object.keys(lit.rules)) { if (hfs5[k] && k !== 'slot') Object.assign(lit.rules[k], { value: hfs5[k].value, kind: 'spec', source: 'MISUMI HFS5-2020, catalogue p. 2-529', checked: '2026-11-20' }); else if (k !== 'slot') delete lit.rules[k]; }
+    Object.assign(lit.rules.slot, { value: 'slot-6-misumi', kind: 'spec', source: 'MISUMI HFS5-2020, catalogue p. 2-529', checked: '2026-11-20' });
+    write('rules/lit-2020.json', lit);
+    assert.ok(!JSON.parse(run('rules', 'check', 'lit-2020', '--json').stdout)[0].findings.some((x) => x.code === 'rules.draft'), 'a literal fill leaves no rules.draft');
+    // a figure from a PDF's draft keeps its DRAFT rule until a person names it: still the draft's while it is an estimate
+    lit.rules.width = { ...lit.rules.width, rule: 'DRAFT: name and check me. From: "20 x 20"', kind: 'estimate' }; write('rules/lit-2020.json', lit);
+    assert.deepEqual(JSON.parse(run('rules', 'check', 'lit-2020', '--json').stdout)[0].findings.find((x) => x.code === 'rules.draft').refs.rules, ['width']);
+    fs.rmSync(path.join(ws, 'rules/lit-2020.json'));
     assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /already exists \(--force replaces it\)/);
     assert.match(cad('rules', 'draft', 'profile'), /usage: cad rules draft profile <name>/);
     cad('rules', 'draft', 'slot', 'my-slot'); cad('rules', 'draft', 'slot_nut', 'my-nut');
