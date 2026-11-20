@@ -1078,7 +1078,7 @@ async function kitCommand(ref) {
   const shown = { assembly: ref, dir: path.relative(WS, r.dir), files: r.files, plates: r.plates.map(({ name, material, filament, parts, grams, minutes, file, issues }) => ({ name, material, filament, parts: parts.length, grams, minutes, file, issues })), jigs: r.jigs, sheets: r.sheets, steps: r.steps, warnings: r.findings.map((f) => f.text) };
   if (opt('json')) return console.log(JSON.stringify(shown, null, 2));
   say(`${ref}: the kit to build it from, in ${shown.dir}${path.sep}`);
-  say(`  README.md: what the checks say, what to buy, what to print, the cut list, the drilling and tapping, and the build in ${r.steps} steps`);
+  say(`  README.md: what the checks say, what to buy, what to print${r.sheets.length ? ', the cut list, the drilling and tapping' : ''}${r.steps ? `, and the build in ${r.steps} steps` : ''}`);
   say('  buy.csv: the shopping list');
   for (const p of shown.plates) say(`  ${p.file}: ${p.material}, ${p.parts} part${p.parts === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min${p.issues.length ? ` (${p.issues.length} to look at)` : ''}`);
   for (const p of r.jigs?.plates ?? []) say(`  ${p.file}: ${r.jigs.count} jigs for the beams, ${p.parts} parts`);

@@ -4673,6 +4673,26 @@ test('cad plates and cad kit: plates by material, a frame\'s jigs and its feet\'
   } finally { done(); }
 });
 
+test('a kit of fittings alone for a named profile (examples/bench fittings/kit-2020): brackets, levelling feet, end caps, panel clips and nut carriers check clean, list the nuts the carriers hold and go on one plate', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.cpSync(fileURLToPath(new URL('../../examples/bench/projects/fittings/', import.meta.url)), path.join(ws, 'projects/fittings'), { recursive: true });
+    const r = JSON.parse(cad('check', 'fittings/kit-2020', '--json'));
+    assert.ok(r.findings, JSON.stringify(r.error ?? r));
+    assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    // a carrier for an M3 nut in MISUMI's 6 mm slot: 11 mm long, it holds about 794 N (the 1.85 mm over the nut shears
+    // first: @rulecad/frames' README table), over twice the 100 N it is sized for
+    assert.match(r.findings.find((x) => x.code === 'carrier.hold' && /^carrier-1:/.test(x.text)).text, /each nut holds about 794 N/);
+    assert.equal(r.findings.filter((x) => x.code === 'carrier.printable' && x.level === 'pass').length, 8);
+    assert.match(cad('list', 'fittings/kit-2020'), /8 ×\s+M3 hex nut\s+1 pack of 10, 2 spare\s+carrier-1 \(held in the carrier, slid in from the side\)/);
+    assert.match(cad('plates', 'fittings/kit-2020'), /kit-2020-base-1: pla, base, 32 parts, [\d.]+ g, about \d+ min: (?=.*carrier-8)(?=.*foot-4-pad)(?=.*bracket-1)(?=.*clip-8)/);
+    // refused by name: an M5 nut is too big for a carrier in a 6 mm slot
+    const a = JSON.parse(fs.readFileSync(path.join(ws, 'projects/fittings/assemblies/kit-2020.json'), 'utf8'));
+    fs.writeFileSync(path.join(ws, 'projects/fittings/assemblies/m5.json'), JSON.stringify({ title: 'm5', kind: 'fit', items: [{ id: 'c', fitting: { ...a.items.find((x) => x.id === 'carrier-1').fitting, thread: 'M5' } }] }));
+    assert.match(cad('check', 'fittings/m5'), /item c: .*M5/);
+  } finally { done(); }
+});
+
 test('a printed beam in an assembly: a printed part weighed by its walls and infill, off the cut list, laid on a plate as it prints, its tapped end an insert', () => {
   const { ws, cad, done } = workspace();
   try {

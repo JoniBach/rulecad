@@ -27,6 +27,7 @@ const MORE = {
   'device-mount': ['deviceMountModel', 'deviceMount'], 'fan-mount': ['fanMountModel', 'fanMount'], 'drag-chain-end': ['dragChainEndModel', 'dragChainEnd'], 'din-rail': ['dinRailAdapterModel', 'dinRailAdapter'],
   'cable-clip': ['cableClipModel', 'cableClip'], 'tie-anchor': ['tieAnchorModel', 'tieAnchor'], 'spool-holder': ['spoolHolderModel', 'spoolHolder'],
   'rail-jig': ['railJigModel', 'railJig'], 'wheel-plate': ['wheelsModel', 'wheelPlate'], slider: ['sliderModel', 'slider'],
+  'nut-carrier': ['carrierModel', 'carrier', { pose: { fit: 'slot', print: 'print' } }],
   'rod-holder': ['rodHolderModel', 'rodHolder'], 'rod-carriage': ['rodCarriageModel', 'rodCarriage'], 'motor-plate': ['motorPlateModel', 'motorPlate'], 'endstop-mount': ['endstopMountModel', 'endstopMount'],
 };
 // the kinds whose tongue or stem stands in the slot, inside the beam's envelope: the overlap check measures them without it
@@ -118,8 +119,12 @@ function moreModel(spec, context, material, what) {
   if (o.profile !== false && typeof profile !== 'string') throw new Error(`${what}: a ${kind} is drawn for a profile: give "profile", as 2020-misumi-hfs5 (got ${shown(profile)})`);
   if (o.profile === false && profile != null) throw new Error(`${what}: a ${kind} is drawn for no profile: leave profile out`);
   // (a gasket strip is PETG, which springs back, unless the item says otherwise; the rest take the project's plastic)
-  try { return o.profile === false ? frames[model]({ ...(kind === 'gasket-strip' ? {} : { material }), ...rest }) : frames[model](profile, { given: givenFor(context, profile), material, ...rest }); }
-  catch (e) { throw new Error(`${what}: ${String(e?.message ?? e).replace(/^\w+: /, '')}`); }
+  try {
+    const m = o.profile === false ? frames[model]({ ...(kind === 'gasket-strip' ? {} : { material }), ...rest }) : frames[model](profile, { given: givenFor(context, profile), material, ...rest });
+    // (a printed carrier in a slot is its own kind of model: named here as a fitting, with the nut or insert it holds to buy)
+    if (kind === 'nut-carrier') return { ...m, fitting: 'nut-carrier', hardware: [{ kind: m.holds === 'insert' ? 'insert' : 'nut', name: `${m.thread} ${m.holds === 'insert' ? 'heat-set insert' : 'hex nut'}`, thread: m.thread, count: m.count ?? 1, why: `held in the carrier, ${m.holds === 'insert' ? 'pressed in from below' : 'slid in from the side'}` }] };
+    return m;
+  } catch (e) { throw new Error(`${what}: ${String(e?.message ?? e).replace(/^\w+: /, '')}`); }
 }
 
 /**
@@ -155,7 +160,7 @@ export async function fittingBuilt(it, id, context, material = 'pla') {
 // door leaf's, through the door); a hinge's door leaf and a levelling foot's pad carry no findings or hardware of their own
 function moreBuilt(it, id, m, ops, pose = 'fit') {
   const [, solid, o = {}] = MORE[it.fitting.kind], part = it.fitting.part ?? o.parts?.[0], second = o.parts && part !== o.parts[0];
-  const draw = (x) => { const f = (y) => frames[solid](m, { pose, ...(part ? { part } : {}), ...x, ...y }); try { return f(ops ? { ops } : {}); } catch { return f({}); } };
+  const drawn = o.pose?.[pose] ?? pose, draw = (x) => { const f = (y) => frames[solid](m, { pose: drawn, ...(part ? { part } : {}), ...x, ...y }); try { return f(ops ? { ops } : {}); } catch { return f({}); } };
   const parts = named({ body: draw({}) }, { body: { label: `${m.title}${part ? `, ${part}` : ''}` } });
   if (TONGUED.includes(m.fitting) && pose === 'fit') parts[0].collide = named({ body: draw({ tongues: false }) }, {})[0].geometry;
   if (IN_SLOT.includes(m.fitting) && pose === 'fit') { const { intersect } = jscad.booleans, { cuboid } = jscad.primitives, above = intersect(parts[0].geometry, cuboid({ size: [1e4, 1e4, 1e3], center: [0, 0, 500] })); parts[0].collide = above; }
