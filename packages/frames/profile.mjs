@@ -418,6 +418,28 @@ export function beamFigures(model, o = {}) {
 }
 
 /**
+ * A profile as the choices a frame's sizing takes (@rulecad/fea/frame's sizing): its section in a beam's own axes
+ * (Iy the second moment about the section's x, which resists bending across its height; Iz about its y), its alloy
+ * (modulus, Poisson's ratio, density and strength) and its mass per metre, the sheet's where it gives one. A profile
+ * that is not square comes twice: as drawn, and turned a quarter about its length (roll 90, named "<name> turned"; names without "profile-"), so
+ * a 20 x 40 can be tried lying flat and standing on edge. Plain data, so a frame of tubes sized by the same solver
+ * reads the same.
+ * @param {Profile} model
+ * @returns {{ name: string, profile: string, roll: number, section: { A: number, Iy: number, Iz: number, J: number, Wy: number, Wz: number },
+ *   material: { E: number, nu: number | undefined, density: number | undefined, strength: number | undefined, name: string | undefined }, mass: number | undefined, title: string }[]}
+ *   Refused by name: a profile with no alloy's modulus to bend it by.
+ */
+export function profileChoices(model) {
+  const m = isModel('profileChoices', model), F = beamFigures(m), mat = m.material;
+  if (!(mat?.modulus > 0)) throw new Error(`profileChoices: ${m.name} names no material with a modulus, so it cannot be sized: give it one (material: al6063-t5)`);
+  const section = { A: F.area.value, Iy: F.inertiaX.value, Iz: F.inertiaY.value, J: F.torsion.value, Wy: F.modulusX.value, Wz: F.modulusY.value };
+  const material = { E: mat.modulus, nu: mat.poisson ?? undefined, density: mat.density ?? undefined, strength: mat.strength ?? undefined, name: mat.name };
+  const short = m.name.replace(/^profile-/, ''), one = { name: short, profile: short, roll: 0, section, material, mass: F.massPerMetre.value ?? undefined, title: m.title };
+  if (Math.abs(m.width - m.height) < 1e-9 && Math.abs(section.Iy - section.Iz) <= 1e-6 * section.Iy) return [one];
+  return [one, { ...one, name: `${short} turned`, roll: 90, title: `${m.title}, turned a quarter` }];
+}
+
+/**
  * What a check of a profile finds, in the kit's one shape: slots that do not fit inside the section or run into each
  * other, a bore that a slot or a hollow breaks into, a bore too wide or too tight for the thread it is tapped to, and
  * section figures on the sheet that the drawn outline does not bear out. 'fail' is a set that cannot be right, 'warn' one to look at, 'info' something to know (a bore that leaves a thin thread). An empty list is a clean pass.

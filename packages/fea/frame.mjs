@@ -658,3 +658,271 @@ export function subdivide(model, pieces = 4) {
   const loads = (model.loads || []).flatMap((l) => (l && 'element' in l && parts.has(String(l.element)) ? parts.get(String(l.element)).map((element) => ({ ...l, element })) : [l]));
   return { ...model, nodes, elements, ...(model.loads ? { loads } : {}) };
 }
+
+// ---- sizing: the lightest section for each group of members that meets the limits ----
+
+/**
+ * @typedef {object} SizingChoice One section a group of members may be given
+ * @property {string} name its name in the results (a profile's, a tube's size)
+ * @property {FrameSection} section in the member's own axes, as drawn
+ * @property {FrameMaterial & { strength?: number }} [material] its own material (the member's if left out); strength
+ *   in MPa, for the stress limit
+ * @property {number} [mass] kg per metre (else the section's area times the material's density)
+ * @property {number} [cost] per metre, in any one currency, for sizing by cost
+ * @property {number} [roll] degrees added to the member's roll: the same section turned about its length (a 20 x 40
+ *   standing on edge in place of lying flat)
+ */
+/**
+ * @typedef {object} SizingLimits What every design must meet; leave one out and it sets nothing
+ * @property {({ node: string | number, limit: number, along?: Vec3 } | { member: string | number, limit: number, from?: number, to?: number, along?: Vec3 })[]} [deflection]
+ *   a node, or a member between two distances from its start (mm, its whole length if left out), moves no more than
+ *   limit mm along `along` (gravity's direction, else the whole movement)
+ * @property {{ margin: number }} [stress] each member's peak stress times margin stays under its material's strength
+ * @property {{ factor: number, euler?: number }} [buckling] the whole frame's first buckling factor is at least
+ *   factor; with euler (the effective length factor K), each member in compression also carries factor times its
+ *   force under Euler's load π² E I / (K L)², I the lesser second moment (the grouped members only)
+ * @property {{ Hz: number }} [frequency] the lowest mode is at least this
+ */
+/**
+ * @typedef {object} SizingCheck one limit's figure in one design
+ * @property {'deflection' | 'stress' | 'buckling' | 'frequency'} limit
+ * @property {string} where the node, member or 'frame' it is about
+ * @property {number} value the figure: mm, MPa, a factor or Hz
+ * @property {number} allowed what the limit allows of it
+ * @property {number} ratio how much of the limit it uses (1 is at the limit; over 1 fails)
+ * @property {string} [case] the load case it is worst in
+ */
+
+const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+const named = (v, table) => (typeof v === 'string' ? table?.[v] : v);
+const SIZE_LIMITS = ['deflection', 'stress', 'buckling', 'frequency'];
+const SIZE_KEYS = ['groups', 'choices', 'only', 'limits', 'cases', 'bounds', 'by', 'pieces', 'search', 'every'];
+
+/**
+ * The lightest section for each group of members that meets the limits: each group (members that must match, a pair
+ * of rails, four posts) is given one of the choices, and the frame is solved under each load case for every design
+ * tried. With few designs (every, 512) every one is ranked by mass and the first that meets the limits is the
+ * lightest; with more, the lightest is found by steps (each group up a step where it helps most for its mass, until
+ * the limits are met, then each down as far as the limits allow), which is near the lightest but not proven so. Each
+ * group's result names the limit that set it: the one its next lighter choice would break, with the other groups as
+ * chosen. The geometry stays as drawn: only sections, materials and rolls change, and members outside every group
+ * keep theirs. Refused by name: unknown options, a member in no element or in two groups, a choice with no section,
+ * a limit that is not above 0, and sizing by cost where a choice has none.
+ * @param {FrameModel | FrameModel[]} model the frame; or a list, the first the frame and the rest the same frame
+ *   joined other ways (its joins rigid), whose stress is checked too, as a join's moment grows as it stiffens
+ * @param {{ groups: Record<string, (string | number)[]>, choices: SizingChoice[], only?: Record<string, string[]>,
+ *   limits: SizingLimits, cases?: { label?: string, loads?: FrameLoad[], masses?: Record<string, number>, inertia?: Record<string, number> }[],
+ *   by?: 'mass' | 'cost', pieces?: number, search?: 'every' | 'steps', every?: number }} o
+ *   groups: members by group name, each an element's id or the member its pieces came from (`of`); only: the
+ *   choices a group may take, by name (all of them if left out); cases: load cases (the model's own if left out),
+ *   loads and masses as statics takes them, and inertia: masses whose weight is already in loads, which ring in the
+ *   modes only; by: what is least (mass); pieces: each member cut into this many for buckling and modes (4)
+ * @returns {{ ok: boolean, by: 'mass' | 'cost', search: 'every' | 'steps', tried: number, total: number,
+ *   groups: { name: string, members: (string | number)[], choice: string, length: number, mass: number, cost: number | null,
+ *     lighter: string | null, governs: (SizingCheck & { lighter: string, broken: number }) | null, margin: number | null }[],
+ *   checks: SizingCheck[], worst: SizingCheck | null, model: FrameModel }}
+ *   ok: the limits are met (else the design that came nearest, and its checks say by how much); total: kg (or cost) of
+ *   the grouped members; tried: designs solved; each group's length (mm), mass (kg) and cost; lighter: the next lighter
+ *   choice; governs: the limit that lighter choice breaks, its ratio there as `broken`; margin: how many times inside
+ *   that limit the design is, as chosen; model: the frame with the chosen sections
+ */
+export function sizing(model, o = {}) {
+  const models = Array.isArray(model) ? model : [model], base = models[0];
+  if (!base || typeof base !== 'object' || !Array.isArray(base.elements)) refuse('input', 'sizing takes a frame, { nodes, elements, supports, loads }, or a list of frames: the first the frame, the rest it joined other ways');
+  if (!o || typeof o !== 'object') refuse('input', 'sizing takes { groups, choices, limits }');
+  for (const k of Object.keys(o)) if (!SIZE_KEYS.includes(k)) refuse('input', `sizing has no option "${k}": it takes ${SIZE_KEYS.join(', ')}`);
+  const by = o.by ?? 'mass', pieces = o.pieces ?? 4, every = o.every ?? 512;
+  if (!['mass', 'cost'].includes(by)) refuse('input', `by is 'mass' or 'cost' (got ${said(o.by)})`);
+  if (!(Number.isInteger(pieces) && pieces >= 1)) refuse('input', `pieces is a whole number from 1 (got ${said(o.pieces)})`);
+  if (o.search != null && !['every', 'steps'].includes(o.search)) refuse('input', `search is 'every' (rank every design by mass and take the first that meets the limits) or 'steps' (got ${said(o.search)})`);
+  // the choices
+  if (!Array.isArray(o.choices) || !o.choices.length) refuse('input', 'choices is a list of { name, section, material, mass }: the sections a group may be given');
+  const choices = new Map();
+  for (const [i, c] of o.choices.entries()) {
+    if (!c || typeof c !== 'object' || typeof c.name !== 'string' || !c.name) refuse('input', `choice ${i + 1} is ${said(c)}: a choice is { name, section, material, mass, cost, roll }`);
+    if (choices.has(c.name)) refuse('input', `choice ${said(c.name)} is listed twice`);
+    if (!c.section || typeof c.section !== 'object') refuse('section', `choice ${said(c.name)} has no section: { A, Iy, Iz, J } in mm² and mm⁴`);
+    for (const key of ['A', 'Iy', 'Iz', 'J']) if (!(c.section[key] > 0)) refuse('section', `choice ${said(c.name)}'s section has ${key} = ${said(c.section[key])}: it needs ${key} above 0`);
+    if (c.material != null && !(c.material?.E > 0)) refuse('material', `choice ${said(c.name)}'s material has no E above 0 (got ${said(c.material)})`);
+    for (const key of ['mass', 'cost']) if (c[key] != null && !(c[key] >= 0)) refuse('input', `choice ${said(c.name)}'s ${key} is per metre, 0 or more (got ${said(c[key])})`);
+    if (c.roll != null && !Number.isFinite(c.roll)) refuse('axes', `choice ${said(c.name)}'s roll is degrees (got ${said(c.roll)})`);
+    if (by === 'cost' && !(c.cost >= 0)) refuse('input', `sizing by cost, and choice ${said(c.name)} gives no cost per metre: give every choice a cost, or size by mass`);
+    choices.set(c.name, c);
+  }
+  // the groups: each member's elements
+  if (!o.groups || typeof o.groups !== 'object' || Array.isArray(o.groups) || !Object.keys(o.groups).length) refuse('input', 'groups is { name: [members] }: the members that must take one section, by element id or by the member their pieces came from');
+  const els = base.elements, whose = new Map(), groups = [];
+  for (const [name, list] of Object.entries(o.groups)) {
+    if (!Array.isArray(list) || !list.length) refuse('input', `group ${said(name)} is a list of members (got ${said(list)})`);
+    const idx = [];
+    for (const m of list) {
+      const mine = els.map((e, i) => (String(e.of ?? e.id ?? i) === String(m) || String(e.id ?? i) === String(m) ? i : -1)).filter((i) => i >= 0);
+      if (!mine.length) refuse('input', `group ${said(name)} names member ${said(m)}, and no element is it or a piece of it`);
+      if (whose.has(String(m))) refuse('input', `member ${said(m)} is in group ${said(whose.get(String(m)))} and in group ${said(name)}: a member takes one section`);
+      whose.set(String(m), name); idx.push(...mine);
+    }
+    const allowed = o.only?.[name] ?? [...choices.keys()];
+    if (!Array.isArray(allowed) || !allowed.length) refuse('input', `only.${name} is a list of the choices group ${said(name)} may take`);
+    for (const c of allowed) if (!choices.has(c)) refuse('input', `only.${name} names ${said(c)}, which is not a choice (choices: ${[...choices.keys()].join(', ')})`);
+    groups.push({ name, members: list, idx, allowed });
+  }
+  for (const k of Object.keys(o.only ?? {})) if (!groups.some((g) => g.name === k)) refuse('input', `only names group ${said(k)}, and there is no such group`);
+  // the limits
+  const L = o.limits;
+  if (!L || typeof L !== 'object' || !Object.keys(L).length) refuse('input', `limits is { ${SIZE_LIMITS.join(', ')} }: at least one`);
+  for (const k of Object.keys(L)) if (!SIZE_LIMITS.includes(k)) refuse('input', `limits has no "${k}": it takes ${SIZE_LIMITS.join(', ')}`);
+  const pos = (v, what) => { if (!(v > 0) || !Number.isFinite(v)) refuse('input', `${what} is above 0 (got ${said(v)})`); return v; };
+  const nodePos = (n) => { const p = base.nodes[n]; if (!isVec3(p)) refuse('node', `a deflection limit names node ${said(n)}, which is not in nodes`, { node: n }); return p; };
+  const g0 = base.gravity && Math.hypot(...base.gravity) > 0 ? base.gravity.map((v) => v / Math.hypot(...base.gravity)) : null;
+  const deflection = (L.deflection ?? []).map((d, i) => {
+    if (!d || typeof d !== 'object') refuse('input', `limits.deflection ${i + 1} is { node, limit } or { member, limit, from, to } (got ${said(d)})`);
+    pos(d.limit, `limits.deflection ${i + 1}'s limit (mm)`);
+    if (d.along != null && !(isVec3(d.along) && Math.hypot(...d.along) > 0)) refuse('input', `limits.deflection ${i + 1}'s along is a direction [x, y, z] (got ${said(d.along)})`);
+    const along = d.along ? d.along.map((v) => v / Math.hypot(...d.along)) : g0;
+    if (d.node != null) { nodePos(d.node); return { ...d, along }; }
+    const mine = els.filter((e, k) => String(e.of ?? e.id ?? k) === String(d.member));
+    if (!mine.length) refuse('input', `limits.deflection ${i + 1} names member ${said(d.member)}, and no element is a piece of it`);
+    const start = nodePos(mine[0].a), end = nodePos(mine[mine.length - 1].b), len = Math.hypot(...end.map((v, k) => v - start[k]));
+    return { ...d, along, start, dir: end.map((v, k) => (v - start[k]) / len), from: d.from ?? 0, to: d.to ?? len };
+  });
+  if (L.stress) pos(L.stress.margin, 'limits.stress.margin');
+  if (L.buckling) { pos(L.buckling.factor, 'limits.buckling.factor'); if (L.buckling.euler != null) pos(L.buckling.euler, 'limits.buckling.euler'); }
+  if (L.frequency) pos(L.frequency.Hz, 'limits.frequency.Hz');
+  const cases = (o.cases ?? [{}]).map((c, i) => ({ label: c.label ?? (o.cases ? `case ${i + 1}` : 'as given'), loads: c.loads, masses: c.masses, inertia: c.inertia }));
+  if (!cases.length) refuse('input', 'cases is a list of load cases, at least one');
+
+  // each group's choices, lightest first, and what one weighs and costs over the group's length
+  const lengthOf = (i) => { const e = els[i], a = nodePos(e.a), b = nodePos(e.b); return Math.hypot(...a.map((v, k) => v - b[k])); };
+  const materialOf = (i) => named(els[i].material, base.materials);
+  const perMetre = (c, i, key) => (key === 'cost' ? c.cost ?? null : c.mass ?? (c.section.A * ((c.material ?? materialOf(i))?.density ?? 0)) / 1000);
+  for (const g of groups) {
+    g.length = g.idx.reduce((t, i) => t + lengthOf(i), 0);
+    g.price = (c, key = by) => { const v = g.idx.map((i) => perMetre(c, i, key)); return v.some((x) => x == null) ? null : g.idx.reduce((t, i, k) => t + (v[k] * lengthOf(i)) / 1000, 0); };
+    g.list = g.allowed.map((n) => choices.get(n)).sort((p, q) => g.price(p) - g.price(q));
+  }
+  const measure = (pick) => groups.reduce((t, g, k) => t + g.price(g.list[pick[k]]), 0);
+
+  // a design: the frame with each group's choice in place
+  const apply = (m, pick) => {
+    const out = m.elements.map((e) => ({ ...e }));
+    groups.forEach((g, k) => { const c = g.list[pick[k]]; for (const i of g.idx) {
+      const e = out[i], mat = { ...(c.material ?? materialOf(i)) };
+      if (c.mass != null) mat.density = (c.mass / c.section.A) * 1000; // (kg/m over mm² is g/mm³, a thousand g/cm³)
+      e.section = c.section; e.material = mat; if (c.roll) e.roll = (e.roll ?? 0) + c.roll;
+    } });
+    return { ...m, elements: out };
+  };
+  const strengthOf = (m, e) => { const mat = named(e.material, m.materials); return mat?.strength > 0 ? mat.strength : null; };
+  const memberOf = (e, i) => String(e.of ?? e.id ?? i);
+  const memo = new Map();
+  let tried = 0;
+  // every limit's figures for a design; with quick, stop at the first stage that breaks one
+  const evaluate = (pick, quick = false) => {
+    const key = pick.join(',') + (quick ? '' : '!');
+    if (memo.has(key)) return memo.get(key);
+    if (!quick && memo.has(pick.join(',')) && memo.get(pick.join(',')).complete) return memo.get(pick.join(','));
+    tried++;
+    const m = apply(base, pick), checks = [], worse = (c) => { const was = checks.find((q) => q.limit === c.limit && q.where === c.where); if (!was) checks.push(c); else if (c.ratio > was.ratio) Object.assign(was, c); };
+    const solved = frame(m), stats = cases.map((c) => solved.statics({ loads: c.loads, masses: c.masses }));
+    // deflection
+    stats.forEach((s, ci) => {
+      for (const d of deflection) {
+        let v = 0;
+        const along = (u) => Math.abs(d.along ? dot(u, d.along) : Math.hypot(...u));
+        if (d.node != null) v = along(s.displacements[d.node].slice(0, 3));
+        else s.elements.forEach((r, i) => { if (memberOf(m.elements[i], i) !== String(d.member)) return; const a = m.nodes[m.elements[i].a]; r.along.x.forEach((x, k) => { const p = a.map((c, j) => c + r.axes[0][j] * x), z = dot(p.map((c, j) => c - d.start[j]), d.dir); if (z >= d.from - 1e-6 && z <= d.to + 1e-6) v = Math.max(v, along(r.along.d[k])); }); });
+        worse({ limit: 'deflection', where: d.node != null ? String(d.node) : String(d.member), value: v, allowed: d.limit, ratio: v / d.limit, case: cases[ci].label });
+      }
+    });
+    // stress, in the frame and every other way of joining it
+    if (L.stress) {
+      const sets = [{ m, stats }, ...models.slice(1).map((b) => { const mb = apply(b, pick), fb = frame(mb); return { m: mb, stats: cases.map((c) => fb.statics({ loads: c.loads, masses: c.masses })) }; })];
+      for (const { m: mm, stats: ss } of sets) ss.forEach((s, ci) => s.elements.forEach((r, i) => {
+        const e = mm.elements[i], st = strengthOf(mm, e);
+        if (!r.stress || !st) return;
+        worse({ limit: 'stress', where: memberOf(e, i), value: r.stress.peak, allowed: st / L.stress.margin, ratio: (r.stress.peak * L.stress.margin) / st, case: cases[ci].label });
+      }));
+    }
+    // each member against Euler's load
+    if (L.buckling?.euler) {
+      const per = new Map();
+      const grouped = new Set(groups.flatMap((g) => g.idx));
+      stats.forEach((s, ci) => s.elements.forEach((r, i) => { if (!grouped.has(i)) return; const id = memberOf(m.elements[i], i), p = per.get(id) ?? { N: 0, L: 0, I: Infinity, E: 0, ci }; if (ci === 0) p.L += r.length; const sec = named(m.elements[i].section, m.sections), mat = named(m.elements[i].material, m.materials); p.I = Math.min(p.I, sec.Iy, sec.Iz); p.E = mat.E; if (-r.axial > p.N) { p.N = -r.axial; p.ci = ci; } per.set(id, p); }));
+      for (const [id, p] of per) if (p.N > 0) { const Pcr = (Math.PI ** 2 * p.E * p.I) / (L.buckling.euler * p.L) ** 2; worse({ limit: 'buckling', where: `${id} (Euler)`, value: Pcr / p.N, allowed: L.buckling.factor, ratio: (L.buckling.factor * p.N) / Pcr, case: cases[p.ci].label }); }
+    }
+    const broke = () => checks.some((c) => c.ratio > 1);
+    if (quick && broke()) { const r = { checks, ok: false, complete: false }; memo.set(key, r); return r; }
+    const fine = (L.buckling || L.frequency) ? frame(subdivide(m, pieces)) : null;
+    if (L.buckling) cases.forEach((c, ci) => {
+      try { const f = fine.buckling({ loads: c.loads, masses: c.masses, count: 1 }).factors[0]; worse({ limit: 'buckling', where: 'frame', value: f, allowed: L.buckling.factor, ratio: L.buckling.factor / f, case: c.label }); }
+      catch (e) { if (e.code !== 'fea.frame.compression') throw e; }
+    });
+    if (quick && broke()) { const r = { checks, ok: false, complete: false }; memo.set(key, r); return r; }
+    if (L.frequency) cases.forEach((c) => {
+      const masses = { ...(c.masses ?? base.masses ?? {}) };
+      for (const [n, kg] of Object.entries(c.inertia ?? {})) masses[n] = (masses[n] ?? 0) + kg;
+      const hz = fine.modes({ count: 1, masses }).frequencies[0];
+      worse({ limit: 'frequency', where: 'frame', value: hz, allowed: L.frequency.Hz, ratio: L.frequency.Hz / hz, case: c.label });
+    });
+    const r = { checks, ok: !broke(), complete: true, model: m };
+    memo.set(pick.join(','), r); memo.set(key, r);
+    return r;
+  };
+  const worstOf = (checks) => checks.reduce((p, q) => (!p || q.ratio > p.ratio ? q : p), null);
+
+  // the search
+  const sizes = groups.map((g) => g.list.length), combos = sizes.reduce((t, n) => t * n, 1);
+  const search = o.search ?? (combos <= every ? 'every' : 'steps');
+  let pick = null, best = null;
+  if (search === 'every') {
+    const all = [];
+    const walk = (k, p) => { if (k === groups.length) { all.push(p); return; } for (let i = 0; i < sizes[k]; i++) walk(k + 1, [...p, i]); };
+    walk(0, []);
+    all.sort((p, q) => measure(p) - measure(q));
+    for (const p of all) {
+      const r = evaluate(p, true);
+      if (r.ok && evaluate(p).ok) { pick = p; break; }
+      const w = worstOf(r.checks);
+      if (!best || (w && w.ratio < best.w.ratio)) best = { p, w };
+    }
+  } else {
+    let p = groups.map(() => 0);
+    for (let n = 0; n < 100 * groups.length; n++) {
+      const r = evaluate(p), w = worstOf(r.checks)?.ratio ?? 0;
+      if (r.ok) break;
+      let step = null;
+      groups.forEach((g, k) => {
+        if (p[k] + 1 >= sizes[k]) return;
+        const q = [...p]; q[k]++;
+        const wq = worstOf(evaluate(q).checks)?.ratio ?? 0, gain = (w - wq) / Math.max(measure(q) - measure(p), 1e-12);
+        if (wq < w && (!step || gain > step.gain)) step = { q, gain };
+      });
+      if (!step) break;
+      p = step.q;
+    }
+    if (evaluate(p).ok) {
+      // then each group down as far as the limits allow, the heaviest first, until nothing moves
+      for (let moved = true; moved;) {
+        moved = false;
+        const order = groups.map((g, k) => k).sort((a, b) => groups[b].price(groups[b].list[p[b]]) - groups[a].price(groups[a].list[p[a]]));
+        for (const k of order) for (let i = 0; i < p[k]; i++) { const q = [...p]; q[k] = i; if (evaluate(q).ok) { p = q; moved = true; break; } }
+      }
+      pick = p;
+    } else best = { p, w: worstOf(evaluate(p).checks) };
+  }
+  const ok = !!pick;
+  if (!pick) pick = best.p;
+  const final = evaluate(pick);
+  const results = groups.map((g, k) => {
+    const c = g.list[pick[k]], lighter = pick[k] > 0 ? g.list[pick[k] - 1] : null;
+    let governs = null, margin = null;
+    if (lighter) {
+      const q = [...pick]; q[k]--;
+      const w = worstOf(evaluate(q).checks.filter((x) => x.ratio > 1));
+      if (w) { const now = final.checks.find((x) => x.limit === w.limit && x.where === w.where); governs = { ...(now ?? w), lighter: lighter.name, broken: w.ratio }; margin = now ? 1 / now.ratio : null; }
+    }
+    if (margin == null) { const own = final.checks.filter((x) => g.members.some((m) => x.where === String(m) || x.where === `${m} (Euler)`)), w = worstOf(own.length ? own : final.checks); margin = w ? 1 / w.ratio : null; }
+    return { name: g.name, members: g.members, choice: c.name, length: g.length, mass: g.price(c, 'mass'), cost: g.price(c, 'cost'), lighter: lighter?.name ?? null, governs, margin };
+  });
+  return { ok, by, search, tried, total: measure(pick), groups: results, checks: final.checks, worst: worstOf(final.checks), model: final.model ?? apply(base, pick) };
+}
