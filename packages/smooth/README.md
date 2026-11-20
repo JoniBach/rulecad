@@ -41,6 +41,23 @@ For any other board description, `smooth(tracks, obstacles, { clearance, outline
 `{ capsule: { a, b, r } }` or `{ polygon: [{ x, y }, ...] }`. The layer may be `'*'` for every layer, and an
 optional `clear` overrides the clearance.
 
+## Finishing: square exits and no acute angles
+
+`finishCircuit(json, { movable, clearance, stubs })` finishes a board's tracks the way a fab's engineer asks:
+
+- **Square exits:** a track leaving a surface-mount pad at an angle is redrawn to leave straight out of the pad's
+  nearest edge, for a short run past it (`stubs`, tried longest first: 0.3, 0.2, 0.12 mm) before it turns, never
+  through a new bend sharper than a right angle. A small part whose tracks pull off its pads at an angle can be drawn
+  up on one end as its solder melts (tombstoning); square exits pull evenly.
+- **Acute corners:** where two tracks of a net meet at under 90° (a bend, a junction, at a via or a pad), a short piece of
+  the same copper is laid across the corner, so the notch between them, where etchant pools (an acid trap), becomes two
+  obtuse corners. A corner whose notch is already inside copper of its net (a pad, a via) isn't one.
+- Every new piece keeps the board's clearance from all other copper and the edge. What it can't finish is in `left`.
+
+It returns `{ json, exits, fills, left }`. A redrawn kept track (`rulecad_kept`) carries its first shape as
+`rulecad_squared`; fill copper is a track of its own, marked `rulecad_fill`. `unfinished(json)` lists what a board still
+has: `{ exits, acute }`, for checks.
+
 The straight runs can be at any angle; they aren't snapped to 45°. Check the board again after smoothing, as with any
 change to copper. `@rulecad/pcb` does that itself: with `smooth: true`, it smooths the router's tracks, and puts back
 any track the design checks then find in a new error.

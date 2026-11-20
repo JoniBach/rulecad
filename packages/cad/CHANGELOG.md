@@ -5,6 +5,18 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the screw by thread
 and head, the parts it passes through and the part it ends in.
 
+## 0.7.58: routes kept between builds
+
+### Added
+
+- The autorouter's results are kept in the workspace's `.cache/routes`, by their exact input (@rulecad/pcb's route
+  cache): a board rebuilt for anything but its routing (a change to the library, its finish or its checks) reuses its
+  route instead of searching again. `CAD_NO_CACHE` turns it off with the rest of the cache.
+
+### Printed sizes that moved
+
+None.
+
 ## 0.7.57: frames in assemblies (Frames 2)
 
 ### Added

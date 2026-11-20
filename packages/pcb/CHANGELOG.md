@@ -3,7 +3,7 @@
 What changed in each release, for someone upgrading a workspace. A **drilled size** here is a dimension the fab
 makes (a hole's diameter in the drill file). Each release says whether any drilled or printed size moved, and why.
 
-## 0.5.5: a footprint for MX or Choc switches, and direct-wired keys
+## 0.5.5: tracks finished for the fab, a route cache, a footprint for MX or Choc switches
 
 ### Added
 
@@ -12,12 +12,19 @@ makes (a hole's diameter in the drill file). Each release says whether any drill
   by a track. The centre hole is MX's 4.0 mm (a Choc post fits it); each side's two pegs, 0.42 mm apart, share one
   hole round both (2.12 mm).
 - A switch or diode with more than one pad on a pin draws as one symbol in the schematic, as chips already did.
+- `finish: true` on a board: once routed, every track leaves its surface-mount pads square to the pad's edge, and
+  every acute corner between tracks of a net is filled (`@rulecad/smooth` 0.2's `finishCircuit`), kept tracks too. A
+  new check reports any left: it fails a board that asks for finishing, and tells any other board. The kept-routing
+  check counts a source's track redrawn to leave its pad square (the same ends) as the source's.
+- A route cache: with `RULECAD_ROUTE_CACHE` set to a folder (cad sets its workspace's `.cache/routes`), the autorouter's
+  result for an input it has routed before is read back, not searched again: a board changed only after routing
+  (its finish, repairs, checks, or the library) builds in seconds, not minutes.
 - Checks: a board whose keys are wired straight to GPIO (`matrix.direct`, `{ K1: 'GP20', ... }`) is checked for no
   GPIO used twice, in place of the row and column check.
 
 ### Drilled and printed sizes that moved
 
-None: existing footprints are unchanged.
+None: existing footprints are unchanged. A board with `finish: true` gets new copper (square exits, corner fills).
 
 ## 0.5.4: a board's mounting holes named by thread (Fixings 3)
 

@@ -155,7 +155,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
         subcircuit_id: SUB, rulecad_model: { ...m, source: path, x: part.x, y: part.y, rotation: part.rotation ?? 0, layer: part.layer } }); }
   }
   // (the vias the router may make: the board's sizes, else ones with the ring a fab recommends, 0.3 in 0.8)
-  add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length,
+  add('pcb_board', { source_board_id: sourceBoard.source_board_id, subcircuit_id: SUB, center: board.center, thickness: board.thickness, num_layers: copper.length, ...(board.finish ? { rulecad_finish: true } : {}),
     width: board.width, height: board.height, ...(board.outline ? { outline: board.outline.map(({ x, y }) => ({ x, y })) } : {}), material: 'fr4', ...FAB_MINIMUMS,
     ...(board.fab ? { min_trace_width: board.fab.track_min, min_trace_to_pad_edge_clearance: board.fab.gap_min, min_pad_edge_to_pad_edge_clearance: board.fab.gap_min, min_via_hole_edge_to_via_hole_edge_clearance: board.fab.gap_min } : {}), // (the fab's own, when the board names its rules)
     min_via_hole_diameter: board.route_via?.hole ?? board.via_hole ?? 0.3, min_via_pad_diameter: board.route_via?.pad ?? board.via_pad ?? 0.8 });
@@ -289,6 +289,7 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
     if (board.smooth) await smoothRouted(out, board);
     if (board.via_hole_gap) await viaHoleRepair(out, board.via_hole_gap, board.neck);
     if (board.track_gap && board.neck) await gapRepair(out, board.track_gap, board.neck);
+    if (board.finish) await finishTracks(out, board);
   }
   if (planeNets) await pours(out, add, board, planeNets, netOf);
   if (board.silk?.length) clearSilkAfter(out, add, board);
@@ -303,6 +304,21 @@ export async function circuitJson(board, { route = defaultRouter } = {}) {
 // from the pin). Each cut is recorded (rulecad_trimmed on the track, rulecad_shortened on a shortened stub segment) and
 // the checks name it. A track the design checks then find in a new error goes back as it was; if a cut is in one, the
 // board is smoothed again without cuts
+// The tracks finished as a fab's engineer asks (@rulecad/smooth's finishCircuit): every track leaving a surface-mount pad
+// square to its edge, and every acute corner between tracks of a net filled. Kept tracks are finished too (a redrawn
+// one carries rulecad_squared: its first shape, which the checks know as the source's). If the design checks then find
+// a new error, the board goes back as it was before finishing
+export async function finishTracks(out, board) {
+  const { finishCircuit } = await import('@rulecad/smooth');
+  const { runAllChecks } = await import('@tscircuit/checks');
+  const errors = async (json) => new Set((await runAllChecks(structuredClone(json))).filter((e) => /_error$/.test(e.type)).map((e) => e.type + (e.message || '')));
+  const before = await errors(out);
+  const { json } = finishCircuit(out, { ...(board.clearance ? { clearance: board.clearance } : {}) });
+  const after = await errors(json);
+  if ([...after].some((e) => !before.has(e))) return; // (the checks name what's left unfinished)
+  out.splice(0, out.length, ...json);
+}
+
 export async function smoothRouted(out, board) {
   const { smoothCircuit } = await import('@rulecad/smooth');
   const { runAllChecks } = await import('@tscircuit/checks');
@@ -1081,6 +1097,20 @@ export async function neckDown(json, traces, neck) {
 // The autorouter's pipelines, tried in order until one routes the board: its own, then its others, each a different search
 const PIPELINES = ['AutoroutingPipelineSolver', 'AutoroutingPipelineSolver4', 'AutoroutingPipelineSolver5', 'AutoroutingPipelineSolver6', 'AutoroutingPipelineSolver8'];
 
+// The route cache: a file per router input, named by its hash and the router's version. Nothing (null) when unset
+async function routeCache(input) {
+  const dir = typeof process !== 'undefined' && process.env?.RULECAD_ROUTE_CACHE;
+  if (!dir) return null;
+  const [fs, path, crypto, { createRequire }] = await Promise.all([import('node:fs'), import('node:path'), import('node:crypto'), import('node:module')]);
+  let version = '?';
+  try { version = createRequire(import.meta.url)('@tscircuit/capacity-autorouter/package.json').version; } catch {}
+  const file = path.join(dir, `${crypto.createHash('sha256').update(JSON.stringify([version, input])).digest('hex')}.json`);
+  return {
+    read: () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } },
+    write: (traces) => { try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, JSON.stringify(traces)); } catch {} }, // (a cache that can't be written is only slower)
+  };
+}
+
 async function routeOnce(json, toRoute, board, limit = 0) {
   // The autorouter uses JavaScript features from Node 22 (iterator helpers): say so, rather than fail inside it
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error(`routing a board's remaining connections needs Node 22 or newer (this is Node ${process.versions.node}); boards drawn wholly by rule build on Node 20`);
@@ -1090,6 +1120,12 @@ async function routeOnce(json, toRoute, board, limit = 0) {
   // two-sided board: "a layer transition without a via"), or what it hands back fails here (a pad left without a
   // track, a track through a part), the next one: a different search from the start
   const pipelines = [...new Set([board.pipeline || PIPELINES[0], ...PIPELINES])], tried = [];
+  // A route already found for this very input (RULECAD_ROUTE_CACHE: a folder; cad sets its workspace's .cache/routes):
+  // its tracks as the router handed them back, so a board whose routing is unchanged builds in seconds, not the
+  // router's minutes, while what comes after routing (repairs, smoothing, the finish) can still change
+  const cache = await routeCache([srj, pipelines, board.effort ?? null, limit ? 'repair' : 'route']);
+  const hit = cache?.read();
+  if (hit) try { return routedTraces({ getOutputSimplifiedPcbTraces: () => structuredClone(hit) }, srj, json); } catch {} // (a stale one: route again)
   for (const name of pipelines) {
     if (!router[name]) continue;
     const solver = new router[name](srj, { cacheProvider: null, ...(board.effort ? { effort: board.effort } : {}) }); // effort: how hard it searches (1, the router's own)
@@ -1097,7 +1133,7 @@ async function routeOnce(json, toRoute, board, limit = 0) {
     try { while (!solver.solved && !solver.failed) { solver.step(); if (limit && Date.now() > limit) throw Object.assign(new Error('a repair took too long'), { late: true }); } }
     catch (e) { if (e.late) throw e; solver.failed = true; solver.error = solver.error || e.message; }
     if (solver.failed) { tried.push(`${name}: ${solver.error || 'no reason given'}`); continue; }
-    try { return routedTraces(solver, srj, json); } catch (e) { tried.push(`${name}: ${e.message}`); }
+    try { const done = routedTraces(solver, srj, json); cache?.write(solver.getOutputSimplifiedPcbTraces()); return done; } catch (e) { tried.push(`${name}: ${e.message}`); }
   }
   throw new Error(tried.length > 1 ? `the autorouter couldn't route every connection, with any of its pipelines (${tried.join('; ')})` : tried[0]?.replace(/^\w+: /, '') || 'the autorouter has none of its pipelines');
 }

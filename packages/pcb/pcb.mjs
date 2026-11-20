@@ -1227,10 +1227,13 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     const theirs = (layer, width, a, b) => tracksAt.has(seg(layer, width, a, b));
     const laid = traces.filter((t) => t.rulecad_kept), isVia = (t) => t.route[1]?.route_type === 'via';
     const along = (o, p) => { const dx = o.b.x - o.a.x, dy = o.b.y - o.a.y, l = Math.hypot(dx, dy); return Math.abs((p.x - o.a.x) * dy - (p.y - o.a.y) * dx) / l < 1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l > -1e-4 && ((p.x - o.a.x) * dx + (p.y - o.a.y) * dy) / l < l + 1e-4; };
+    let squared = 0;
     const cutBy = [], moved = laid.filter((t) => {
       if (isVia(t)) return !viasAt.has(key(t.route[0].x, t.route[0].y));
       const [p, q] = t.route, w = p.width, layer = p.layer;
       if (t.route.length === 2 && theirs(layer, w, p, q)) return false;
+      const sq = t.rulecad_squared; // the source's segment, redrawn to leave its pad square: the same ends
+      if (sq && theirs(layer, w, sq.a, sq.b) && key(t.route[0].x, t.route[0].y) === key(sq.a.x, sq.a.y) && key(t.route.at(-1).x, t.route.at(-1).y) === key(sq.b.x, sq.b.y)) { squared++; return false; }
       const o = t.rulecad_shortened; // a piece of the source's segment, from one of its ends
       if (o && t.route.length === 2 && theirs(layer, w, o.a, o.b) && along(o, p) && along(o, q) && [p, q].some((r) => [o.a, o.b].some((e) => key(e.x, e.y) === key(r.x, r.y)))) {
         cutBy.push(Math.hypot(o.b.x - o.a.x, o.b.y - o.a.y) - Math.hypot(q.x - p.x, q.y - p.y)); return false;
@@ -1243,7 +1246,16 @@ export async function checks(json, v, matrix, source) { // source: a clone's { c
     const escapes = traces.reduce((n, t) => n + (t.rulecad_cut || 0), 0);
     const vias = laid.filter(isVia).length, short = laid.filter((t) => t.rulecad_shortened).length, total = cutBy.reduce((n, d) => n + d, 0);
     out.push(moved.length || strays.length ? { level: 'fail', text: `${moved.length + strays.length} of the source's own tracks and vias aren't where the source has them` }
-      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias - short} tracks and ${vias} vias exactly where the source has them${cutBy.length ? `, but for ${escapes} escapes cut back where a routed track turned straight back on them (${gone.length} segments gone, ${short} shortened: ${mm(total)} mm of track in all)` : ''} (only the router's tracks are tidied)` });
+      : { level: 'pass', text: `the source's own routing as it was: ${laid.length - vias - short} tracks and ${vias} vias exactly where the source has them${cutBy.length ? `, but for ${escapes} escapes cut back where a routed track turned straight back on them (${gone.length} segments gone, ${short} shortened: ${mm(total)} mm of track in all)` : ''} ${squared ? `; ${squared} of them redrawn to leave their pads square (the same ends)` : ''} (only the router's tracks are tidied)` });
+  }
+  // What a fab's engineer flags in tracks: one leaving a surface-mount pad at an angle (a small part can tombstone, drawn
+  // up on one end as its solder melts) and acute corners between tracks of a net (acid traps). A board that asks for
+  // finishing (finish: true) fails on any left; others are told
+  {
+    const { unfinished } = await import('@rulecad/smooth');
+    const u = unfinished(json), asked = !!json.find((e) => e.type === 'pcb_board')?.rulecad_finish, at = (l) => l.slice(0, 4).map((x) => `${mm(x.at.x)}, ${mm(x.at.y)}`).join('; ');
+    out.push(!u.exits.length && !u.acute.length ? { level: 'pass', text: `finish: every track leaves its SMD pad square to the pad's edge, and no tracks meet at an acute angle${asked ? '' : ''}` }
+      : { level: asked ? 'fail' : 'warn', text: `finish: ${[u.exits.length && `${u.exits.length} tracks leave an SMD pad at an angle (${at(u.exits)})`, u.acute.length && `${u.acute.length} acute corners between tracks (${at(u.acute)})`].filter(Boolean).join('; ')}${asked ? '' : ' (finish: true on the board squares and fills them)'}` });
   }
   // Tracks and the gaps between them, measured from the board as drawn (not the design's variables): the narrowest
   // track, and the nearest two tracks of different connections come on one layer, edge to edge

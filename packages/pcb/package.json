@@ -41,7 +41,7 @@
     "@rulecad/fixings": "^0.1.3",
     "@rulecad/rules": "^0.3.7",
     "@resvg/resvg-js": "2.6.2",
-    "@rulecad/smooth": "^0.1.2",
+    "@rulecad/smooth": "^0.2.0",
     "@tscircuit/capacity-autorouter": "0.0.982",
     "@tscircuit/checks": "0.0.264",
     "@tscircuit/circuit-json-util": "0.0.122",

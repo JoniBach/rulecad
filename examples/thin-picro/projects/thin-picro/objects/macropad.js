@@ -103,7 +103,7 @@ export function main (v) {
   silk.push({ text: rear ? 'module behind the top row: parts facing down, USB-C to the top edge' : 'module: castellated or on headers, USB-C to this edge', x: mc.x, y: rear ? keyBottom + P : mc.y, size: text, layer: side })
 
   return {
-    board: { outline, thickness: v.thickness, autoroute: true, track: v.track, clearance: v.clearance, smooth: true, layers: 2,
+    board: { outline, thickness: v.thickness, autoroute: true, track: v.track, clearance: v.clearance, smooth: true, finish: true, layers: 2,
       silk_line: line, silk_text: text, via_hole: v.via_hole, via_pad: v.via_hole + 2 * v.jlcpcb.annular, fab: v.jlcpcb, // (vias with the ring the fab recommends)
       parts, nets, silk, holes },
     matrix,
