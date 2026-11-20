@@ -163,6 +163,19 @@ test('--machine frame: a box from its inside size and profile checks clean on a 
       assert.ok(r.findings, JSON.stringify(r.error ?? r));
       assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code}: ${x.text}`), [], `${profile}: checks clean`);
       for (const code of ['frame.generated', 'frame.deflection', 'frame.stress', 'frame.buckling', 'frame.rack', 'frame.frequency', 'assembly.order']) assert.ok(r.findings.some((x) => x.code === code), `${profile}: ${code}`);
+      if (name !== 'box') continue;
+      // the default's kit: one folder with the plates, the jigs, a sheet per mark, the shopping list and the build page.
+      // Hand: the uprights are 350 + 2 x 20 + 18.5 = 408.5 mm (the bottom ring raised clear of the feet's 18.5 mm taps),
+      // the eight butting beams the inside, 300 mm; each foot is held by one M5x16 cap screw
+      const k = JSON.parse(execFileSync(process.execPath, [CAD, 'kit', 'frame/box', '--json'], { cwd: dir, encoding: 'utf8', maxBuffer: 1 << 26 })), kit = path.join(dir, k.dir);
+      assert.deepEqual(k.files, ['README.md', 'buy.csv', 'print/box-base-1.3mf', 'print/box.jigs.3mf', 'sheets/beam-A.svg', 'sheets/beam-B.svg', 'sheets/beam-C.svg', 'sheets/beam-D.svg', 'sheets/beam-E.svg']);
+      const readme = fs.readFileSync(path.join(kit, 'README.md'), 'utf8');
+      assert.match(readme, /^# Box frame 300 x 300 x 350: the kit\n/);
+      assert.match(readme, /none fail, none warn/);
+      assert.match(readme, /\| E \| 8 \| profile-2020-misumi-hfs5 \| 300 \| x1, x2, y1, y2, x3, x4, y3, y4 \|/);
+      assert.match(readme, /\| C \| 1 \| profile-2020-misumi-hfs5 \| 408\.5 \| z1 \|/);
+      assert.match(readme, /\| 4 \| M5x16 cap \|/);
+      assert.match(readme, /\n26\. cap-z4-b \(fitting:end-cap-2020-misumi-hfs5\) goes on\n/, 'the build to its last step');
     }
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

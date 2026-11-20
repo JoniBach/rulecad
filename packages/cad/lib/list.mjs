@@ -91,7 +91,7 @@ export function listText(ref, l) {
     if (l.totals.pack) out.push(`  (packs of ${l.totals.pack.size}: ${l.totals.pack.rule}, ${/^[aeiou]/.test(l.totals.pack.kind) ? 'an' : 'a'} ${l.totals.pack.kind}; masses are estimates from each piece's outline)`);
   }
   if (l.wires.length) { out.push('', 'Wire'); for (const w of l.wires) row([`  ${w.length} mm of`, w.gauge ?? 'gauge not given', `in ${w.runs.join(', ')}`]); }
-  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}`]); }
+  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}${p.with ? ` (comes with ${p.with}: printed beside it, screwed into it by hand)` : ''}`]); }
   out.push('', `Total: ${l.totals.printedGrams} g printed, about ${l.totals.minutes} min of printing (an estimate from volume and the printer's flow), ${l.totals.fixingsGrams ? `${l.totals.fixingsGrams} g of fixings, ` : ''}${l.totals.machineGrams} g as a machine${l.totals.noMassFor ? ` (no mass given for ${l.totals.noMassFor.join(', ')})` : ''}`);
   if (l.cost) {
     const c = l.cost, parts = [];

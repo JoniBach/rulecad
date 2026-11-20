@@ -4124,7 +4124,7 @@ test('guides on a frame: a rods guide on a beam joined at both ends shuts its ho
     assert.doesNotMatch(drop, /✗/, drop);
     assert.equal((drop.match(/✓ g1: g1-holder-[ab]'s leg into x1's (front|back) slot: 1 drop-in nut \(slot-nut-6-misumi-m4-drop-in\) goes into x1's (front|back) slot through its opening, anywhere along it/g) || []).length, 4, drop);
     // its printed fittings on a plate: each item's fitting laid as it prints ("pose": "print"), checked as one print
-    assert.match(cad('plates', 'frame/frame'), /frame-base-1: base, 3 parts, [\d.]+ g, about \d+ min: (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1)\n\s+frame-base-1: prints clean/);
+    assert.match(cad('plates', 'frame/frame'), /frame-base-1: pla, base, 3 parts, [\d.]+ g, about \d+ min: (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1)\n\s+frame-base-1: prints clean/);
     const plate = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/frame-base-1.json'), 'utf8'));
     assert.deepEqual(plate.items.map((it) => [it.fitting?.kind, it.fitting?.pose]).sort(), [['rod-carriage', 'print'], ['rod-holder', 'print'], ['rod-holder', 'print']]);
     const onIt = cad('check', 'frame/frame-base-1');
@@ -4566,7 +4566,7 @@ test('frame sizing: a table under a named load gets heavier long rails than legs
     assert.match(cad('frame', 'frame/hfs5', '--size', '--write'), /wrote projects[\\/]frame[\\/]assemblies[\\/]hfs5\.json: 8 beams given their profiles \(the generated frame written out expanded/);
     const w = JSON.parse(fs.readFileSync(file('hfs5'), 'utf8'));
     assert.deepEqual([w.frame, w.items.find((x) => x.id === 'x1'), w.items.find((x) => x.id === 'z1')], [{ size: { profiles: ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'] } },
-      { id: 'x1', beam: { profile: '2040-misumi-hfs5' }, from: [20, 10, 700], to: [820, 10, 700], roll: 90 }, { id: 'z1', beam: { profile: '2020-misumi-hfs5' }, from: [10, 10, 0], to: [10, 10, 720] }]);
+      { id: 'x1', beam: { profile: '2040-misumi-hfs5' }, from: [20, 10, 700], to: [820, 10, 700], roll: 90 }, { id: 'z1', beam: { profile: '2020-misumi-hfs5', ops: [{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }] }, from: [10, 10, 0], to: [10, 10, 720] }]); // (its foot's tap: the generator's)
     assert.deepEqual(w.joins.slice(0, 2), [{ kind: 'blind', a: 'x1.a.1', b: 'z1.back@690' }, { kind: 'blind', a: 'x1.a.2', b: 'z1.back@710' }]);
     // it checks with nothing failing; the one warning is the table's racking, which its 2020 drawing has as well
     const bad = (n) => cad('check', `frame/${n}`).split('\n').filter((l) => /^\s*[✗!]/.test(l));
@@ -4607,7 +4607,7 @@ test('frame sizing: a drawn table written in moves a deeper rail down its legs s
     assert.match(cad('frame', 'frame/d', '--size', '--write'), /x1, x2 \| 2060-misumi-hfs5 turned[\s\S]*wrote projects[\\/]frame[\\/]assemblies[\\/]d\.json/);
     const w = JSON.parse(fs.readFileSync(file('d'), 'utf8'));
     assert.deepEqual([w.items.find((x) => x.id === 'x1'), w.items.find((x) => x.id === 'z1'), w.items.find((x) => x.id === 'y1')], [{ id: 'x1', beam: { profile: '2060-misumi-hfs5' }, from: [20, 10, 740], to: [1220, 10, 740], roll: 90 },
-      { id: 'z1', beam: { profile: '2020-misumi-hfs5' }, from: [10, 10, 0], to: [10, 10, 770] }, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [10, 20, 760], to: [10, 420, 760] }]);
+      { id: 'z1', beam: { profile: '2020-misumi-hfs5', ops: [{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }] }, from: [10, 10, 0], to: [10, 10, 770] }, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [10, 20, 760], to: [10, 420, 760] }]);
     assert.deepEqual(w.joins.filter((j) => /^x1\.a/.test(j.a)).map((j) => j.b), ['z1.back@720', 'z1.back@740', 'z1.back@760']);
     // it builds and checks with nothing failing; the one warning is the table's racking, as drawn
     const bad = cad('check', 'frame/d').split('\n').filter((l) => /^\s*[✗!]/.test(l));
@@ -4621,6 +4621,55 @@ test('frame sizing: a drawn table written in moves a deeper rail down its legs s
     const before = fs.readFileSync(file('e'), 'utf8');
     assert.match(cad('frame', 'frame/e', '--size', '--write'), /the sized profiles do not fit as drawn, so nothing is written: join x1\.a\.3 would meet z1 at 780 mm, past its 770 mm/);
     assert.equal(fs.readFileSync(file('e'), 'utf8'), before);
+  } finally { done(); }
+});
+
+test('cad plates and cad kit: plates by material, a frame\'s jigs and its feet\'s pads beside its fittings, and one folder to build a generated box from without the model', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    // 1. One plate is one plastic: a printed beam in PETG in a PLA project goes on a plate of its own, named for it
+    write('mix', { items: [{ id: 'p1', beam: { profile: '2020-printed', length: 120, printed: true, material: 'petg' }, from: [0, 0, 0], to: [120, 0, 0] }, { id: 'br', fitting: { kind: 'bracket', profile: '2020-misumi-hfs5' }, at: [0, 80, 0] }] });
+    const mix = cad('plates', 'frame/mix');
+    assert.match(mix, /mix-base-1: pla, base, 1 part, [\d.]+ g, about \d+ min: br\n/, mix);
+    assert.match(mix, /mix-petg-base-1: petg, base, 1 part, [\d.]+ g, about \d+ min: p1\n/, mix);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file('mix-petg-base-1'), 'utf8')).packed.material, 'petg');
+    // 2. A generated box 200 x 200 x 200 in 2020 joined blind on printed levelling feet. Hand: each foot's M5 cap screw
+    // seats on the body's 5 mm floor and needs 2 diameters, 10 mm, of thread in aluminium, so M5x16 (5 + 11) is the
+    // shortest sold and M5x12 (5 + 7) too short; the tap is 18.5 mm, so the bottom ring rises 18.5 mm and the uprights
+    // are 200 + 2 x 20 + 18.5 = 258.5 mm. The plates hold the bodies, the caps and the four pads the bodies screw onto
+    // (printed, not placed); the jigs go on plates of their own
+    write('box', { frame: { kind: 'box', inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' } });
+    const plates = cad('plates', 'frame/box');
+    assert.match(plates, /box-base-1: pla, base, 12 parts, [\d.]+ g, about \d+ min: (?=.*foot-z1-pad)(?=.*cap-z4-b)(?=.*foot-z4)/, plates);
+    assert.match(plates, /frame\/box: \d+ jigs for its beams, [\d.]+ g, on 1 plate of their own \(cad beams frame\/box --jigs says what each is for\)\n\s+exports[\\/]frame[\\/]box\.jigs\.3mf: pla, \d+ parts/, plates);
+    assert.match(cad('list', 'frame/box'), /foot-z1-pad \(comes with foot-z1: printed beside it, screwed into it by hand\)/);
+    assert.doesNotMatch(cad('plates', 'frame/box', '--no-jigs'), /jigs/);
+    // 3. The kit: one folder, written only for a design that checks clean
+    const k = JSON.parse(cad('kit', 'frame/box', '--json')), dir = path.join(ws, k.dir);
+    assert.equal(k.dir.split(path.sep).join('/'), 'exports/frame/box-kit');
+    assert.deepEqual(k.files, ['README.md', 'buy.csv', 'print/box-base-1.3mf', 'print/box.jigs.3mf', 'sheets/beam-A.svg', 'sheets/beam-B.svg', 'sheets/beam-C.svg', 'sheets/beam-D.svg', 'sheets/beam-E.svg']);
+    for (const f of k.files.filter((x) => x.endsWith('.3mf'))) assert.equal(fs.readFileSync(path.join(dir, f)).subarray(0, 2).toString(), 'PK', `${f} is a 3MF (a zip)`);
+    assert.match(fs.readFileSync(path.join(dir, 'sheets/beam-A.svg'), 'utf8'), /^<svg[^>]*width="[\d.]+mm"/, 'a sheet to scale');
+    const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8'), buy = fs.readFileSync(path.join(dir, 'buy.csv'), 'utf8');
+    for (const h of ['# box: the kit', '## In this folder', '## What the checks say', '## What to buy', '### Bars', '### Screws, nuts and inserts', '## What to print', '### Jigs', '## Cut', '## Drill and tap', '## Build', '### Tightening, by kind of join', '### Diagonals']) assert.ok(readme.includes(`\n${h}\n`) || readme.startsWith(`${h}\n`), h);
+    assert.match(readme, /`cad check frame\/box`: \d+ checks pass, none fail, none warn\./);
+    assert.match(readme, /\| C \| 1 \| profile-2020-misumi-hfs5 \| 258\.5 \| z1 \|/);
+    assert.match(readme, /\| C \| tap M5 x 18\.5 at a; access Ø5\.3 at front\.1@28\.5;[^|]*\| sheets\/beam-C\.svg \|/);
+    assert.match(readme, /\| 4 \| M5x16 cap \| 1 pack of 10, 6 spare \| foot-z1 screwed into z1's end a;/);
+    assert.match(readme, /foot-z1 \(fitting:levelling-foot-2020-misumi-hfs5-printed-m12-body\) goes on\n {3}- foot-z1 screwed into z1's end a \(1 × M5x16 cap\) with a 4 mm hex key[^\n]*\n {3}- Then screw foot-z1-pad \(printed beside it\) into foot-z1 by hand/);
+    assert.match(readme, /: sheets\/beam-A\.svg\n/, 'a step names the sheet in the kit');
+    assert.doesNotMatch(readme, /exports[\\/]|—/, 'nothing points outside the folder; no em dashes');
+    assert.match(buy, /^kind,quantity,what,buy,for\n/);
+    assert.match(buy, /\nscrew,4,M5x16 cap,1 pack of 10,foot-z1 screwed into z1's end a;/);
+    // 4. Refused by name: a design that fails its check, and an object that is not an assembly
+    write('bad', { items: [{ id: 'a1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [100, 0, 0] }, { id: 'a2', beam: { profile: '2020-misumi-hfs5' }, from: [50, 0, 0], to: [150, 0, 0] }] });
+    assert.match(cad('kit', 'frame/bad'), /frame\/bad: cad check fails 1 check \(a1\.body and a2\.body overlap[^)]*\), and a kit is written only for a design that checks with nothing failing: cad check frame\/bad/);
+    assert.ok(!fs.existsSync(path.join(ws, 'exports/frame/bad-kit')));
+    assert.match(cad('kit', 'frame/none'), /cad kit works on an assembly \(<project>\/<assembly>\), and there is no "frame\/none"/);
   } finally { done(); }
 });
 
@@ -4644,7 +4693,7 @@ test('a printed beam in an assembly: a printed part weighed by its walls and inf
     assert.doesNotMatch(list, /profile-2020-printed x 240 mm\s+a beam/);
     // on a plate, laid as it prints: on its bottom face, along x
     const plates = cad('plates', 'frame/frame');
-    assert.match(plates, /frame-base-1: base, 1 part, [\d.]+ g, about \d+ min: x1\n\s+frame-base-1: prints clean/, plates);
+    assert.match(plates, /frame-base-1: pla, base, 1 part, [\d.]+ g, about \d+ min: x1\n\s+frame-base-1: prints clean/, plates);
     const plate = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/frame-base-1.json'), 'utf8'));
     assert.deepEqual(plate.items.map((it) => [it.beam?.profile, it.beam?.laid, it.beam?.length]), [['2020-printed', true, 240]]);
     // refused by name: printed as a word
