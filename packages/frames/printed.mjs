@@ -104,8 +104,10 @@ export function printedInPlace(m, o = {}) {
  *
  * Over the lap each half keeps one side of the section, split by an upright cut down the middle, so both print lying
  * down with every cut face upright. At each end of the lap one half carries the whole moment on its half of the
- * section, and between them two screws across the lap pass it from one half to the other as a couple. So the joint
- * carries the least of the two halves' sections (each at the plastic's strength along its layers) and the screws' couple.
+ * section, and between them two screws across the lap pass it from one half to the other as a couple. Each half still
+ * carries the whole moment at its first screw, where the screw's hole and its head's seat or nut's pocket cut its
+ * section, so each half is read there, net of them, as well as between the screws. So the joint carries the least of the
+ * two halves' sections (each at the plastic's strength along its layers) and the screws' couple.
  * The lap is sized so the screws are not the weak part: from twice the height, longer until they carry what the joint
  * must, or what the halves' sections can, whichever is less. What it must carry is the moment given, or what the beam
  * itself breaks at there: the beam's design moment times the margin times the share a spread load on a simply supported
@@ -133,7 +135,7 @@ export function spliceModel(m, o = {}) {
   // ---- the halves over the lap: a keeps x below the cut, b above it, each with walls on its cut face ----
   const secA = printedSection(p, { walls: b.printed.walls, infill: b.printed.infill, line, between: [-Infinity, -g / 2] });
   const secB = printedSection(p, { walls: b.printed.walls, infill: b.printed.infill, line, between: [g / 2, Infinity] });
-  const zA = r3(secA.inertiaX / secA.reach[0]), zB = r3(secB.inertiaX / secB.reach[0]), capA = r3(S * zA), capB = r3(S * zB);
+  const zA = r3(secA.inertiaX / secA.reach[0]), zB = r3(secB.inertiaX / secB.reach[0]);
   // ---- the screws: across the lap, a button head in a seat in a's front face (-x), a nut in a pocket in b's back face (+x), both
   // lying on their side as teardrops; as low as the head's seat leaves plastic to the bed, and under the slot's floor ----
   const threads = o.thread ? [o.thread] : ['M5', 'M4', 'M3'];
@@ -154,6 +156,15 @@ export function spliceModel(m, o = {}) {
   }
   if (!pick) throw new Error(`${what}: ${p.name}: no thread of ${threads.join(', ')} has a button head's seat and a nut's pocket that fit across it under the slot's floor with ${mm(room)} mm of plastic round them: a larger section`);
   const { thread, fx, cb, np, y: ys, pocket, tA, tB } = pick, d = fx.major;
+  // ---- each half at its first screw: it still carries the whole moment there, on its half of the section with the
+  // screw's hole cut through it (a teardrop, its point r root 2 over the axis) and, at its face, the head's seat (a) or
+  // the nut's pocket (b); read through the screw's axis, each cut an outline with walls of its own ----
+  const drop = (r) => [ys - r, ys + r * Math.SQRT2], [h0, h1] = drop(cb.hole / 2), [s0, s1] = drop(cb.diameter / 2);
+  const holesA = [[-W / 2 - 1, W / 2 + 1, h0, h1], [-W / 2 - 1, -W / 2 + cb.depth, s0, s1]];
+  const holesB = [[-W / 2 - 1, W / 2 + 1, h0, h1], [W / 2 - pocket, W / 2 + 1, ys - np.corner / 2, ys + np.corner / 2]];
+  const netA = printedSection(p, { walls: b.printed.walls, infill: b.printed.infill, line, between: [-Infinity, -g / 2], holes: holesA });
+  const netB = printedSection(p, { walls: b.printed.walls, infill: b.printed.infill, line, between: [g / 2, Infinity], holes: holesB });
+  const nA = r3(Math.min(zA, netA.inertiaX / netA.reach[0])), nB = r3(Math.min(zB, netB.inertiaX / netB.reach[0])), capA = r3(S * nA), capB = r3(S * nB);
   // ---- what one screw carries across the cut: the plastic of either half crushed under it (bearing, at the strength
   // across the layers, since it pushes up or down through them), torn out to the nearer of the bed and the slot's floor
   // (two planes sheared across the layers at that strength over root 3, von Mises), or the screw sheared ----
@@ -163,17 +174,27 @@ export function spliceModel(m, o = {}) {
   // ---- the lap: from twice the height, longer until the screws carry what the joint must or the halves can; placed where the bed lets it be furthest from the middle ----
   const edge = r3(2.5 * d), margin = PRINTED_DEFAULTS.margin.value, failMoment = b.printed.design * margin, halves = Math.min(capA, capB);
   const share = (z) => (4 * z * (L - z)) / (L * L);
-  let lap = r3(PRINTED_DEFAULTS.lap.value * H), at = null, need = null, couple = null;
+  const lap0 = r3(PRINTED_DEFAULTS.lap.value * H), range = (x) => [Math.max(L + x / 2 - bed, x / 2), Math.min(bed - x / 2, L - x / 2)];
+  let lap = lap0, at = null, need = null, couple = null, last = null;
   for (let tries = 0; tries < 400; tries++, lap = r3(lap + line)) {
-    const lo = Math.max(L + lap / 2 - bed, lap / 2), hi = Math.min(bed - lap / 2, L - lap / 2);
+    const [lo, hi] = range(lap);
     if (lo > hi + 1e-9) break;
     at = o.at ?? (Math.abs(lo - L / 2) >= Math.abs(hi - L / 2) ? lo : hi);
     if (o.at != null && (o.at < lo - 1e-9 || o.at > hi + 1e-9)) break;
     need = o.moment != null ? o.moment * margin : share(at) * failMoment; couple = per * (lap - 2 * edge);
+    last = { lap, at, need, couple };
     if (couple >= Math.min(need, halves) - 1e-9) break;
   }
-  const lo = Math.max(L + lap / 2 - bed, lap / 2), hi = Math.min(bed - lap / 2, L - lap / 2);
-  if (lo > hi + 1e-9 || (o.at != null && (o.at < lo - 1e-9 || o.at > hi + 1e-9)) || couple < Math.min(need, halves) - 1e-9) throw new Error(`${what}: ${b.name}: no lap with two ${thread} screws carries ${mm(Math.min(need ?? 0, halves) / 1000)} N·m within ${P.name}'s ${mm(bed)} mm bed${o.at != null ? ` with its middle at ${mm(o.at)} mm` : ''}: splice it in three, give the moment the frame puts there (moment), or a larger section`);
+  const nm0 = (x) => `${mm(x / 1000)} N·m`;
+  if (!last) { // (no lap fits at all: say the longest beam, or the places, the shortest lap fits)
+    const [lo, hi] = range(lap0), atSaid = o.at != null ? ` with its middle at ${mm(o.at)} mm` : '';
+    throw new Error(`${what}: ${b.name}: no splice fits ${P.name}'s ${mm(bed)} mm bed${atSaid}: its shortest lap is ${mm(lap0)} mm (${PRINTED_DEFAULTS.lap.value} times the ${mm(H)} mm height), so two halves hold a beam of ${mm(2 * bed - lap0)} mm at most${lo <= hi + 1e-9 ? `, its lap's middle between ${mm(lo)} and ${mm(hi)} mm from end a` : ''}: ${lo <= hi + 1e-9 ? 'give at in that range, or ' : ''}shorten the beam, or splice it in three (two splices, each half under the bed)`);
+  }
+  if (last.couple < Math.min(last.need, halves) - 1e-9) {
+    const can = Math.min(last.couple, halves);
+    throw new Error(`${what}: ${b.name}: the longest lap ${P.name}'s ${mm(bed)} mm bed lets halves have${o.at != null ? ` with its middle at ${mm(o.at)} mm` : ''} (${mm(last.lap)} mm) carries ${nm0(can)} with two ${thread} screws (${mm(per)} N each, ${mm(last.lap - 2 * edge)} mm apart), under the ${nm0(Math.min(last.need, halves))} it must: a moment of ${nm0(can / margin)} or less there fits (moment, with the ${margin} times margin over it), or splice it in three, or a larger section`);
+  }
+  ({ lap, at, need, couple } = last);
   const cap = Math.min(couple, capA, capB), weakest = cap === couple ? 'screws' : capA <= capB ? 'a' : 'b';
   const zs = [r3(at - lap / 2 + edge), r3(at + lap / 2 - edge)], arm = r3(zs[1] - zs[0]), key = r3(PRINTED_DEFAULTS.cheek.value * line);
   const kz = r3(Math.max(2 * line, Math.min(H, arm - 2 * (cb.diameter / 2 + room)))); // (the key between the screws, clear of their seats)
@@ -184,14 +205,14 @@ export function spliceModel(m, o = {}) {
   out.push(finding(Math.max(lenA, lenB) <= bed + 1e-9 ? 'pass' : 'fail', `${said}: its halves are ${mm(lenA)} and ${mm(lenB)} mm long, each on ${P.name}'s ${mm(bed)} mm bed, lying down with no support (over the lap each keeps one side of the section, cut upright down the middle)`, 'splice.fit', { values: { a: lenA, b: lenB, bed } }));
   out.push(finding('info', o.moment != null ? `${said}: its lap's middle is ${mm(at)} mm from end a, where the frame puts ${nm(o.moment)}` : `${said}: its lap's middle is ${mm(at)} mm from end a, as far from the middle as the bed lets it be: a spread load on a simply supported span puts ${Math.round(share(at) * 100)}% of its greatest moment there (an assumed loading; give the frame's moment where it is known)`, 'splice.place', { values: { at, share: r3(share(at)), lap } }));
   const asked = o.moment != null ? `${margin} times the ${nm(o.moment)} given` : `the ${nm(need)} the beam itself breaks at there (${nm(failMoment)} at its middle, times ${Math.round(share(at) * 100)}%)`;
-  const parts = `the half toward a's section over the lap ${nm(capA)} (${mm(zA)} mm³ at ${S} MPa along its layers), the half toward b's ${nm(capB)} (${mm(zB)} mm³), and two ${thread} screws ${mm(arm)} mm apart as a couple ${nm(couple)}, each holding ${mm(per)} N across the cut: the least of the plastic crushed under it (${mm(bearing)} N), torn out to the bed or the slot's floor (${mm(tear)} N), both at ${sAcross} MPa across the layers, and the screw sheared (${mm(shank)} N)`;
+  const parts = `the half toward a's section at its first screw ${nm(capA)} (${mm(nA)} mm³ at ${S} MPa along its layers, the screw's hole and the head's seat cut through it; ${mm(zA)} mm³ between the screws), the half toward b's ${nm(capB)} (${mm(nB)} mm³ with the hole and the nut's pocket; ${mm(zB)} mm³), and two ${thread} screws ${mm(arm)} mm apart as a couple ${nm(couple)}, each holding ${mm(per)} N across the cut: the least of the plastic crushed under it (${mm(bearing)} N), torn out to the bed or the slot's floor (${mm(tear)} N), both at ${sAcross} MPa across the layers, and the screw sheared (${mm(shank)} N)`;
   out.push(finding(cap >= need - 1e-9 ? 'pass' : 'fail', cap >= need - 1e-9 ? `${said}: it carries ${nm(cap)}, ${asked}: ${parts}. An estimate, from the halves' printed sections and plastic at its strength`
     : `${said}: it carries ${nm(cap)}, under ${asked}: ${parts}. Over the lap each end of it is carried by half the section, so a splice carries about half what the beam does: give the moment the frame puts there (moment), up to ${nm(cap / margin)}, or splice where the moment is less`,
-  'splice.strength', { values: { capacity: r3(cap), need: r3(need), a: capA, b: capB, couple: r3(couple), per: r3(per), bearing, tear, shank, arm, modulusA: zA, modulusB: zB }, refs: { thread, weakest, kind: 'estimate' } }));
+  'splice.strength', { values: { capacity: r3(cap), need: r3(need), a: capA, b: capB, couple: r3(couple), per: r3(per), bearing, tear, shank, arm, modulusA: zA, modulusB: zB, netA: nA, netB: nB }, refs: { thread, weakest, kind: 'estimate' } }));
   out.push(finding('info', `${said}: ${thread} x ${pick.length} button-head screws across the lap ${mm(ys - -H / 2)} mm over the bed, their heads in seats ${mm(cb.depth)} mm deep in the front face of the half toward a, their nuts in pockets ${mm(pocket)} mm deep in the back face of the half toward b, all on their side as teardrops. A key ${mm(key)} mm deep and ${mm(kz)} mm long steps the cut in the middle of the lap and locks the halves along the beam`, 'splice.screw', { values: { length: pick.length, height: r3(ys + H / 2), seat: cb.depth, pocket, key, keyLength: kz }, refs: { thread } }));
   return { kind: 'splice', beam: b, name: `splice in ${b.name}`, at: r3(at), lap, fit: g, key, keyLength: kz,
     screws: zs.map((z) => ({ thread, head: 'button', length: pick.length, at: [-W / 2 + cb.depth, ys, z], axis: [1, 0, 0], seat: cb.depth, pocket, hole: np.hole })),
-    halves: { a: { modulus: zA, capacity: capA, section: secA }, b: { modulus: zB, capacity: capB, section: secB } }, pieces,
+    halves: { a: { modulus: zA, net: nA, capacity: capA, section: secA, netSection: netA }, b: { modulus: zB, net: nB, capacity: capB, section: secB, netSection: netB } }, pieces,
     capacity: r3(cap), couple: r3(couple), need: r3(need), share: r3(share(at)), findings: out };
 }
 

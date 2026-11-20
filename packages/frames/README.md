@@ -514,10 +514,11 @@ into a key that locks the halves along the beam. Two screws cross the lap under 
 seats in the front face, nuts in pockets in the back face, all on their side as teardrops, and the slot stays free for
 its nuts. `splice(model)` draws the two halves as they print.
 
-At each end of the lap one half carries the whole moment on its half of the section; between them the two screws pass
-it across as a couple, each pushing on the plastic of both halves. So the joint carries the least of three things:
-the section of the half toward a, that of the half toward b, each at the plastic's strength along its layers, and the
-screws' couple. A screw's share is the least of the plastic crushed under it, the plastic torn out to the bed or the
+At each end of the lap one half carries the whole moment on its half of the section, and it still carries all of it
+at its first screw, where the screw's hole and the head's seat (a) or the nut's pocket (b) cut that half section.
+Between the screws the two of them pass the moment across as a couple, each pushing on the plastic of both halves. So
+the joint carries the least of three things: the half toward a's section net of its holes at its first screw, the
+same of the half toward b, each at the plastic's strength along its layers, and the screws' couple. A screw's share is the least of the plastic crushed under it, the plastic torn out to the bed or the
 slot's floor (both across the layers, since the screw pushes up or down through them) and the screw sheared. The lap
 starts at twice the height and grows until the screws carry what the joint must, or what the halves can if that is
 less. The lap goes as far from the middle as the bed lets both halves be.
@@ -525,10 +526,14 @@ less. The lap goes as far from the middle as the bed lets both halves be.
 What the joint must carry is the moment given (`moment`, N·mm) times the margin of 2, or, with none given, what the
 beam itself breaks at there: twice its design moment times 4 z (L - z) / L², a spread load on a simply supported span.
 Half a section carries about half the whole, so a splice carries about half what the beam does, and with no moment
-given `splice.strength` fails and says what moment it does carry. A 400 mm printed 2020 on the X1C: halves of 196.6
-and 256 mm, its halves' sections 361 and 364 mm³ (the whole beam's 718 mm³), 14.1 N·m against the 27.4 N·m the beam
-breaks at there, so it fails. With 50 N hung in its middle (5 N·m at most), it passes: M4 x 16 screws, each holding
-435 N (torn out to the bed), on a 43.4 mm lap.
+given `splice.strength` fails and says what moment it does carry. A 400 mm printed 2020 on the X1C: halves of 192.8
+and 256 mm, its halves' sections 361 and 364 mm³ between the screws and 354 and 321 mm³ at their first screws (the
+whole beam's 718 mm³), 12.5 N·m against the 27.3 N·m the beam breaks at there, so it fails. With 50 N hung in its
+middle (5 N·m at most), it passes: M4 x 16 screws, each holding 435 N (torn out to the bed), on a 43.4 mm lap.
+
+Where no splice fits, `spliceModel` refuses by name and says what would: the longest beam two halves hold on the bed
+(twice the bed less the shortest lap, twice the height), the range a lap's middle may take, or, where the longest lap
+the bed allows is still too weak, what it carries and the moment that fits.
 
 ## The cut list
 
@@ -1310,7 +1315,8 @@ solver. Refused by name: a profile whose material gives no modulus.
 | Section modulus | W = I / the distance from the centroid to the furthest fibre | Beam theory |
 | A printed beam's creep limit | 0.15 × its strength for its pose (`PRINTED_DEFAULTS.creep`) | An estimate: Waseem et al. (2020), Multi-Response Optimization of Tensile Creep Behavior of PLA 3D Printed Parts, Polymers 12, 2962, table 3: printed PLA held at 15 MPa (0.3 of its filament's 50 MPa) broke in 1.2 to 2.3 hours at 25 °C |
 | A printed beam's sag as it creeps | short-term sag / 0.5 (`PRINTED_DEFAULTS.creep_modulus`) | An estimate, with no measurement behind it |
-| A spliced beam's strength | 0.5 × the whole beam's (`PRINTED_DEFAULTS.splice_share`) | `splice()`: each half keeps about half the section over the lap (361.5 and 363.9 mm³ of a printed 2020's 717.6 mm³) |
+| A spliced beam's strength | 0.5 × the whole beam's (`PRINTED_DEFAULTS.splice_share`) | `splice()`: each half keeps about half the section over the lap (361.5 and 363.9 mm³ of a printed 2020's 717.6 mm³; 353.6 and 320.7 mm³ net of a screw's hole and its seat or pocket) |
+| A half's section at its first screw | Z = I / c of the half section less the screw's hole (a teardrop, r below the axis and r √2 above) and its seat or pocket, each with walls round it | Beam theory, the net section through the holes; the teardrop's 45° roof |
 | A printed part's plastic | cost = grams / 1000 × the material's `cost` (EUR/kg) | The material's rule set (Bambu Lab's EU store for `pla` and `petg`) |
 | Torsion constant | Solve ∇²φ = −2 in the metal with φ = 0 on the outside and φ constant over each hole, the constant fixed by ∮ ∂φ/∂n ds = −2 A_hole round it. Then J = 2 ∫φ dA over metal and holes | Prandtl's stress function: Timoshenko and Goodier, *Theory of Elasticity*, the chapter on torsion |
 | The solve | Square cells over the section (about 40 000), the five-point Laplacian with the wall half a cell from a cell's centre, one unknown for each hole, conjugate gradients | A finite-difference scheme; checked against the closed forms below |

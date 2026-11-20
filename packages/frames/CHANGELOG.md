@@ -48,7 +48,13 @@ What changed in each release, for someone upgrading a workspace.
   `PRINTED_DEFAULTS`, `PRINTED_SERIES`, `printerFigures`. `spliceModel` and `splice`: a keyed lap with two screws
   joining two halves of a beam longer than the bed, cut upright down the section's middle over the lap, checked on
   each half's section and the screws' couple (a splice carries about half what the beam does: give the frame's
-  moment). `printedSection` takes `between`, the part of a section between two upright cuts.
+  moment). `printedSection` takes `between`, the part of a section between two upright cuts, and `holes`, boxes
+  taken out of it with walls round them.
+- A splice's halves are also read at their first screws, net of the screw's hole and the head's seat or the nut's
+  pocket, where each still carries the whole moment (`halves.a.net`, `netA` and `netB` in `splice.strength`). Where no
+  splice fits the bed, the refusal says the longest beam, the range of `at`, or the moment that fits, never 0 N·m.
+- A printed beam standing up reads its slots' hold at the plastic's strength along its layers: the lips and walls
+  bend in the section, which is the layer (2020 MISUMI standing: 2.6 times a 100 N pull, read before as 1.56).
 
 ### Changed
 

@@ -185,9 +185,10 @@ export function printedProfile(series, o = {}) {
  * come from the shell and from the infill at its share times infill_stiffness; mass from the plastic laid. Every figure
  * is an estimate until a printed coupon is measured.
  * @param {import('./profile.mjs').Profile} p a profile's model
- * @param {{ walls?: number, infill?: number, line?: number, cells?: number, between?: [number, number] }} [o] walls: lines (PRINTED_DEFAULTS.walls); infill: 0 to 1; line: mm (the X1C's);
+ * @param {{ walls?: number, infill?: number, line?: number, cells?: number, between?: [number, number], holes?: [number, number, number, number][] }} [o] walls: lines (PRINTED_DEFAULTS.walls); infill: 0 to 1; line: mm (the X1C's);
  *   between: [x0, x1], the part of the section between two upright cuts (a splice's half over its lap), the cuts outlines
- *   with walls of their own
+ *   with walls of their own; holes: [x0, x1, y0, y1] boxes taken out of the section (a screw's hole across it, cut through
+ *   its axis), each an outline with walls of its own
  * @returns {{ area: number, shell: number, inner: number, plastic: number, centroid: [number, number], inertiaX: number, inertiaY: number,
  *   solid: { area: number, inertiaX: number, inertiaY: number }, modulusX: number, modulusY: number, reach: [number, number], walls: number, infill: number, thickness: number }}
  *   plastic: the area of plastic laid (shell, and inner times infill), for the mass; area, inertiaX, inertiaY: weighted for stiffness (mm², mm⁴);
@@ -201,12 +202,14 @@ export function printedSection(p, o = {}) {
   if (!(isNum(infill) && infill >= 0 && infill <= 1)) throw new Error(`${what}: infill is a share from 0 to 1, 0.4 for 40% (got ${shown(o.infill)})`);
   const cut = o.between ?? [-Infinity, Infinity];
   if (!(Array.isArray(cut) && cut.length === 2 && cut.every((x) => typeof x === 'number' && !Number.isNaN(x)) && cut[0] < cut[1])) throw new Error(`${what}: between is [x0, x1], two upright cuts across the section in mm, x0 under x1 (got ${shown(o.between)})`);
+  const holes = o.holes ?? [];
+  if (!(Array.isArray(holes) && holes.every((q) => Array.isArray(q) && q.length === 4 && q.every(isNum) && q[0] < q[1] && q[2] < q[3]))) throw new Error(`${what}: holes is a list of [x0, x1, y0, y1] boxes taken out of the section in mm, x0 under x1 and y0 under y1 (got ${shown(o.holes)})`);
   const { loops } = outline(p), segs = [];
   let xa = Infinity, xb = -Infinity, ya = Infinity, yb = -Infinity;
   for (const loop of loops) for (let i = 0; i < loop.length; i++) { const a = loop[i], b = loop[(i + 1) % loop.length]; segs.push([a[0], a[1], b[0], b[1]]); xa = Math.min(xa, a[0]); xb = Math.max(xb, a[0]); ya = Math.min(ya, a[1]); yb = Math.max(yb, a[1]); }
-  const edges = [...segs, ...cut.filter(isNum).map((x) => [x, ya, x, yb])]; // (a cut is an outline of the part printed: it has walls too)
+  const edges = [...segs, ...cut.filter(isNum).map((x) => [x, ya, x, yb]), ...holes.flatMap(([x0, x1, y0, y1]) => [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]])]; // (a cut or a hole is an outline of the part printed: it has walls too)
   const t = walls * line, k = infill * PRINTED_DEFAULTS.infill_stiffness.value, n = Math.round(Math.sqrt(o.cells ?? 40000)), h = Math.max(xb - xa, yb - ya) / n, cell = h * h;
-  const inside = (x, y) => { if (x < cut[0] || x > cut[1]) return false; let c = false; for (const [x1, y1, x2, y2] of segs) if ((y1 > y) !== (y2 > y) && x < x1 + ((y - y1) * (x2 - x1)) / (y2 - y1)) c = !c; return c; };
+  const inside = (x, y) => { if (x < cut[0] || x > cut[1] || holes.some(([x0, x1, y0, y1]) => x > x0 && x < x1 && y > y0 && y < y1)) return false; let c = false; for (const [x1, y1, x2, y2] of segs) if ((y1 > y) !== (y2 > y) && x < x1 + ((y - y1) * (x2 - x1)) / (y2 - y1)) c = !c; return c; };
   const dist = (x, y) => { let d = Infinity; for (const [x1, y1, x2, y2] of edges) { const dx = x2 - x1, dy = y2 - y1, l = dx * dx + dy * dy, s = l ? Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / l)) : 0, ex = x - x1 - s * dx, ey = y - y1 - s * dy; d = Math.min(d, ex * ex + ey * ey); } return Math.sqrt(d); };
   let shell = 0, inner = 0, A = 0, Sx = 0, Sy = 0, A1 = 0, S1x = 0, S1y = 0, ka = Infinity, kb = -Infinity, la = Infinity, lb = -Infinity;
   const pts = [];
@@ -295,12 +298,13 @@ export function printedOf(b, pr, ends) {
   for (const face of ['top', 'bottom', 'front', 'back']) for (const q of p.faces[face]) if (q.slot) {
     const s = p.slots[q.slot], nut = widestNut(s), wall = (face === 'top' || face === 'bottom' ? p.width : p.height) / (face === 'top' || face === 'bottom' ? p.cells[0] : p.cells[1]) / 2 - s.cavityWidth / 2;
     if (!nut) { out.push(finding('info', `${said}: no nut set of ${s.nutFamily} fits its ${face} slot, so its hold is not worked out`, 'beam.slot', { refs: { face, slot: s.name } })); continue; }
-    // a plate bends with its stress running from its root out across it: lying down, a top or bottom slot's lips lie in
-    // the layers (along them) and its walls stand through them (across); a side slot's the other way round; standing up, all across
+    // a plate bends with its stress running from its root out across it, in the plane of the section: lying down, a top or
+    // bottom slot's lips lie in the layers (along them) and its walls stand through them (across), a side slot's the other
+    // way round; standing up, the section is the layer, so every lip and wall bends along the layers
     const st = lipStress(s, wall, { width: v(nut, 'width'), length: v(nut, 'length') }, pr.pull, PRINTED_DEFAULTS.spread.value), flat = face === 'top' || face === 'bottom';
-    const sLip = lying && flat ? sAlong : sAcross, sWall = lying && !flat ? sAlong : sAcross, h = slotHold(st, pr.pull, sLip, sWall), { hold, margin } = h;
+    const sLip = !lying || flat ? sAlong : sAcross, sWall = !lying || !flat ? sAlong : sAcross, h = slotHold(st, pr.pull, sLip, sWall), { hold, margin } = h;
     slots.push({ face, slot: s.name, nut: nut.name, hold, margin, governs: h.governs });
-    out.push(finding(margin >= PRINTED_DEFAULTS.margin.value - 1e-9 ? 'pass' : 'warn', `${said}: its ${face} slot's lips and walls hold ${mm(hold)} N on ${nut.name} (${mm(margin)} times a ${pr.pull} N pull${margin < PRINTED_DEFAULTS.margin.value ? `, under the ${PRINTED_DEFAULTS.margin.value} times a printed part is sized for` : ''}), the ${h.governs === 'wall' ? 'walls' : 'lips'} the weaker: the lips bend at their roots${s.lipAngle > 0 ? ', and the nut\'s corners push the side walls apart on the sloped lips' : ''}. An estimate, from ${sLip} MPa in the lips and ${sWall} MPa in the walls (${lying ? `the plastic's strength ${flat ? 'along its layers in the lips, across them in the walls' : 'across its layers in the lips, along them in the walls'}` : 'across its layers, standing up'}) and the pull spread one lip's thickness beyond the nut`, 'beam.slot', { values: { hold, margin, pull: pr.pull, stress: r3(st.stress), lip: sLip, wall: sWall }, refs: { face, slot: s.name, nut: nut.name, governs: h.governs, kind: 'estimate' } }));
+    out.push(finding(margin >= PRINTED_DEFAULTS.margin.value - 1e-9 ? 'pass' : 'warn', `${said}: its ${face} slot's lips and walls hold ${mm(hold)} N on ${nut.name} (${mm(margin)} times a ${pr.pull} N pull${margin < PRINTED_DEFAULTS.margin.value ? `, under the ${PRINTED_DEFAULTS.margin.value} times a printed part is sized for` : ''}), the ${h.governs === 'wall' ? 'walls' : 'lips'} the weaker: the lips bend at their roots${s.lipAngle > 0 ? ', and the nut\'s corners push the side walls apart on the sloped lips' : ''}. An estimate, from ${sLip} MPa in the lips and ${sWall} MPa in the walls (${lying ? `the plastic's strength ${flat ? 'along its layers in the lips, across them in the walls' : 'across its layers in the lips, along them in the walls'}` : 'along its layers, standing up: the section is the layer'}) and the pull spread one lip's thickness beyond the nut`, 'beam.slot', { values: { hold, margin, pull: pr.pull, stress: r3(st.stress), lip: sLip, wall: sWall }, refs: { face, slot: s.name, nut: nut.name, governs: h.governs, kind: 'estimate' } }));
   }
   // ---- the ends: an insert or a captive nut in place of a tap ----
   const endFix = {}, fromBore = p.end?.thread || lying ? null : boreEnd(p, pr.end, line);
