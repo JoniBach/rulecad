@@ -471,6 +471,18 @@ A kit is everything a person needs to build it: `cad plates` lays out the printe
 cut list, the fixings and the bought parts, `cad beams` the sheets, and the build page the order, the nuts to load
 first and the diagonals to measure. `npm create rulecad my-frame --machine frame` starts from a working box.
 
+Built (issue 273): `cad kit <project>/<assembly>` writes one folder to build a frame from without opening the model:
+the build page as `README.md` (what the checks say, the bars, bought parts and screws to buy, the plates and jigs to
+print, the cut list with the cuts on each bar, each mark's drilling and tapping, the build in numbered steps with its
+torques and diagonals), `buy.csv`, each plate's 3MF, the jigs' plates and each mark's sheet; it refuses a design whose
+check fails. `cad plates` lays out every printed fitting and printed beam by material and filament, with the frame's
+jigs on plates of their own. A generated frame's printed feet are now screwed into tapped upright ends, and the bottom
+ring rises clear of the tap where the join drills the uprights (a box round 300 x 300 x 350 in 2020 on feet has
+uprights of 408.5 mm). `npm create rulecad my-frame --machine frame --size 300x300x350 --profile 2020-misumi-hfs5`
+makes a box with a load on it that checks clean on a fresh install, in each profile offered. `examples/bench`
+has `fittings/kit-2020`, a kit of fittings alone for 2020 (brackets, levelling feet, end caps, panel clips and nut
+carriers). In a link, each beam is labelled by its mark and a beam picked opens its sheet in a Beams tab.
+
 ## 5. What stays open for the printer
 
 A 3D printer is a later plan. This one is written so that plan chooses freely:

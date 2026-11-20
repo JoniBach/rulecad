@@ -174,6 +174,12 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   nut to the kind it names; never reorder the joins to get round it. Where a side is built on the frame, not flat,
   the build says why; pass that on. Its load and "Slide ... screw into ... head first" steps give each nut and head a
   way into its slot: pass them on as written. `cad check` counts the same steps.
+- **To hand a build to someone, write its kit**: `npx cad kit <project>/<assembly>` writes
+  `exports/<project>/<assembly>-kit/` (the build page as README.md, buy.csv, each plate's 3MF and the jigs', each
+  mark's sheet; `--pictures` adds the steps' pictures). It refuses a design whose check fails: fix the failures, never
+  hand on a kit of one. `npx cad plates` lays out every printed part by material, with a frame's jigs beside them.
+  A new frame project can start from `npm create rulecad my-frame --machine frame --size 300x300x350 --profile
+  2020-misumi-hfs5`.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in

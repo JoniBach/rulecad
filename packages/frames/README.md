@@ -1183,10 +1183,10 @@ the result can be built, checked, written out and edited by hand.
 ```js
 import { box } from '@rulecad/frames';
 const m = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' });
-m.outside;  // [340, 340, 390]
-m.lengths;  // [{ length: 390, count: 4, ids: ['z1', 'z2', 'z3', 'z4'] }, { length: 300, count: 8, ids: ['x1', ..] }]
-m.joins[0]; // { kind: 'blind', a: 'x1.a', b: 'z1.back@10' }
-m.ends[0];  // { id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot' }
+m.outside;  // [340, 340, 408.5]: the bottom ring raised 18.5 mm, clear of the feet's taps (below)
+m.lengths;  // [{ length: 408.5, count: 4, ids: ['z1', 'z2', 'z3', 'z4'] }, { length: 300, count: 8, ids: ['x1', ..] }]
+m.joins[0]; // { kind: 'blind', a: 'x1.a', b: 'z1.back@28.5' }
+m.ends[0];  // { id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot', tap: { op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }, screw: 'M5 cap' }
 ```
 
 | Generator | What it is | Size |
@@ -1223,6 +1223,16 @@ sits on drop-in nuts, since every butting beam is shut at both ends by its joins
 its place; `nut` names another kind that goes in through the opening (roll-in, hammer, t-bolt), and slide-in or a nut
 with no printed fitting is refused. Braces put a printed corner bracket, on drop-in nuts, at each join of the sides
 named; a panel is one sheet over a side, from its lowest beam to its highest.
+
+A printed foot (`foot`, `levelling`, `stacking`) is screwed into its upright's end bore: its end carries the `tap`
+the foot's own model asks for and the `screw` that holds it, for the assembly to tap and fasten. A join that drills
+the uprights where a butting beam meets them (blind, end-tap, hidden, anchor: an access or clearance hole across the
+upright, on the ring's centre line) would cross that tap at the bottom ring, so the bottom ring rises up the uprights
+by the tap's depth (`lift`), and every ring with it. The inside stays as asked; the outside height grows by `lift`.
+In 2020 on levelling feet: the tap is M5, 18.5 mm deep; the bottom ring's centre line moves from 10 to 28.5 mm up,
+so its Ø5.3 access holes span 25.85 to 31.15 mm, clear of the tap; the uprights are 350 + 2 x 20 + 18.5 = 408.5 mm.
+A bracket or gusset on slot nuts drills nothing in the uprights, and its bottom ring stays at `p / 2`. A bought foot
+says its own tap, and lifts nothing.
 
 A slot nut's solid (`slotNut`) is its block cut back to its slot's cavity: its sides are shaped to the flanks it sits
 on, so two nuts at one height in neighbouring slots of a beam stand apart, as they do in the aluminium. Its mass stays

@@ -5,6 +5,17 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## Unreleased: a frame to start from (Frames 3)
+
+### Added
+
+- `--machine frame --size 300x300x350 --profile 2020-misumi-hfs5`: a box frame generated from its inside size, with
+  a load on its top, that checks clean on a fresh install in each profile offered (2020-misumi-hfs5 and
+  2020-openbuilds joined blind on printed levelling feet, 3030-misumi-hfs6 on printed brackets and feet); `cad kit
+  frame/box` writes the folder to build it from. A size or profile it cannot make is refused before anything is
+  written, and so is a frame's flag on another machine.
+- The template's AGENTS.md follows cad's: the kit, plates by material, and the frame template.
+
 ## 0.3.17: frames in the agents' notes (Frames 2)
 
 ### Changed

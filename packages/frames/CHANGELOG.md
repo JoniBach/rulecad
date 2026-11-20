@@ -6,6 +6,11 @@ What changed in each release, for someone upgrading a workspace.
 
 ### Added
 
+- A generated frame's printed foot (`foot`, `levelling`, `stacking`) carries its end's `tap` and its `screw`, from the
+  foot's own model; with a join that drills the uprights (blind, end-tap, hidden, anchor) the bottom ring rises by the
+  tap's depth (`lift` on the model), so its holes clear the tapped end. A box round 300 x 300 x 350 in 2020 on feet:
+  outside 340 x 340 x 408.5, uprights 408.5 mm.
+
 - `profileChoices(profile)`: a profile as the choices `@rulecad/fea/frame`'s `sizing` takes: its section in a beam's
   own axes, its alloy (modulus, Poisson's ratio, density, strength) and mass per metre; one that is not square twice,
   as drawn and turned a quarter (`roll` 90, "<name> turned").

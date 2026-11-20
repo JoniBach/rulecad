@@ -30,3 +30,29 @@ sheet, and the streamer for an Uno. `--machine leg` makes a leg on a test stand,
 terminal with neither given it asks; given a flag, or with no terminal, it uses the defaults without asking. The arm and the leg
 are explained part by part in EXAMPLES chapters 12 and 14, and [the machines guide](https://jonibach.github.io/rulecad/docs/machines/)
 walks the arm from task to drawing.
+
+## A frame to start from
+
+```sh
+npm create rulecad my-frame --machine frame --size 300x300x350 --profile 2020-misumi-hfs5
+cd my-frame
+npx cad check frame/box
+npx cad kit frame/box
+```
+
+`--machine frame` makes a box frame of aluminium extrusion in `projects/frame`, asked for by its inside size
+(`--size`, width x depth x height in mm, each 50 to 2000; default 300x300x350) in one profile (`--profile`). Its
+beams, joins, feet and end caps are generated from that each time it is built (`"frame": { "kind": "box" }` in
+`projects/frame/assemblies/box.json`), with a 5 kg load on its top front beam to change to what it carries. Each
+profile offered comes with the join and feet its box checks clean with, on a fresh install:
+
+| `--profile` | Joins | Feet |
+|---|---|---|
+| `2020-misumi-hfs5` (the default) | blind: a screw in each butting beam's end, its head in the upright's slot | printed levelling feet |
+| `2020-openbuilds` | blind | printed levelling feet |
+| `3030-misumi-hfs6` | printed corner brackets on drop-in slot nuts | printed feet |
+
+Another profile is refused by name, before anything is written: make the box in one of these and change its
+`"profile"`, `"join"` and `"feet"` by hand, and `cad check` says what that needs. `npx cad kit frame/box` writes the
+folder to build it from without the model: the build page, the shopping list, the plates to print, the jigs and each
+beam's cut-and-drill sheet. It does not ask: with no `--size` or `--profile` it makes the default.

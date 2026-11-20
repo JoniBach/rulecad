@@ -9,6 +9,35 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- **A kit**: `cad kit <project>/<assembly>` writes `exports/<project>/<assembly>-kit/`, one folder to build it from
+  without the model: `README.md` (what the checks say, what to buy, what to print, the jigs, the cut list, the drilling
+  and tapping, the build step by step with its torques and diagonals), `buy.csv`, each plate's 3MF and the jigs', each
+  mark's sheet, and with `--pictures` the whole and each step. Refused by name for an assembly whose check fails
+  (`kit.check`) or that has nothing to build from (`kit.empty`).
+- `cad plates` groups by material as well as filament: a printed beam in its own `"material"` gets a plate of its
+  own (`<assembly>-petg-base-1`; `packed.material` in the plate's file, schema first). A frame's jigs are written
+  beside the plates, in the project's plastic (`--no-jigs` leaves them); the jigs now take the project's plastic
+  (PLA unchanged). A levelling foot's pad is printed beside its body and listed by `cad list`.
+- A `nut-carrier` fitting item: `@rulecad/frames`' printed carrier for a hex nut or an insert in a slot (`face`,
+  `thread`, `holds`, `load`), its nut or insert on the list. `examples/bench` has `fittings/kit-2020`, a kit of
+  fittings alone for 2020.
+- A link of a frame labels each beam by its mark (`mark A: profile-2020-misumi-hfs5 x 300 mm`, so the parts list
+  groups them) and carries each mark's cut-and-drill sheet as a view (`Beams: A`); the viewer offers a picked beam's.
+
+### Changed
+
+- **A generated frame's printed feet are screwed on**: each printed foot, levelling foot or stacking foot's upright
+  is tapped at its end as the foot says (M5, 18.5 mm deep in 2020) and a `fasten` holds the foot (an M5x16 cap screw
+  on the list). Where the join drills the uprights (blind, end-tap, hidden, anchor), the bottom ring rises by the
+  tap's depth so its access holes clear the tap: a box round 300 x 300 x 350 in 2020 on feet now has uprights of
+  408.5 mm, not 390, and its bottom joins at 28.5 mm. Before, the feet had no screw and the tap was missing from the
+  sheets. `cad frame --expand` writes the tap and the fasten.
+
+### Fixed
+
+- `fasten.seat` read a counterbore's floor in a part with a drawn thread (a levelling foot's body) as a cone and
+  failed it: such a part is measured at even steps, and now also at every face square to the screw's axis.
+
 - **The lightest profiles**: `"frame": { "size": { "profiles", "groups", "limits", "by" } }` gives each group of beams
   that must match (named, or found: one profile, one direction, one length) the lightest profile from the list that
   meets the frame's own limits (each sag as `frame.deflection` holds it, stress with the joins' springs and rigid,
