@@ -9,6 +9,15 @@ and head, the parts it passes through and the part it ends in.
 
 ### Added
 
+- **The lightest profiles**: `"frame": { "size": { "profiles", "groups", "limits", "by" } }` gives each group of beams
+  that must match (named, or found: one profile, one direction, one length) the lightest profile from the list that
+  meets the frame's own limits (each sag as `frame.deflection` holds it, stress with the joins' springs and rigid,
+  the frame's buckling and each grouped beam's Euler load with `frame.margin`, and the lowest mode against the task's
+  moves), in every pose, by `@rulecad/fea/frame`'s `sizing`. `frame.size` names, for each group, the limit its next
+  lighter profile breaks and the margin as chosen. `cad frame <project>/<assembly> --size` prints the table and
+  `--write` writes the profiles in (a quarter roll for a 2040 on edge, its end fittings, ends moved to the faces they
+  meet, a join a bore at a two-bore end, a generated frame written out expanded with its rings' outer faces kept).
+  `FRAME_SIZING` (`profiles`, `match`).
 - `"frame": { "kind", "inside" | "outside", "profile", "join", "feet", "caps", "braces", "panels", "shelves" }`:
   a box, portal, table, gantry or shelf generated from a size, expanded into beams, joins and their ends before
   anything is built; `frame.generated` says what it made. `cad frame <project>/<assembly>` prints it and `--expand`
@@ -74,6 +83,12 @@ and head, the parts it passes through and the part it ends in.
 - On a sliding joint, `task.accuracy` names its biggest term in mm alone, no longer with a degree sign.
 - `frame.deflection` names a load hung on an item by that item and its point (`g1-carriage-1 at (0, 0, 13)`), where it
   said `[object Object]`.
+
+### Fixed
+
+- Two joins at one beam end's two bores (a 2040's `a.1` and `a.2`) now tap both: the second tap was taken for the
+  first, and its screw met an untapped 4.2 mm bore (`fasten`: no hole for M5).
+
 
 ## 0.7.57: frames in assemblies (Frames 2)
 

@@ -112,7 +112,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   `frame.rack` gives the racking stiffness each way and the gain each change (gussets, a brace, a panel) solves to:
   report the stiffness, the gain and the change it advises, and say the push and the joins' springs are estimates.
   `frame.frequency` gives the lowest mode against what the machine excites: report it with its pose, and look at
-  `<assembly>.frame-mode.svg` from `cad beams` to see what moves. A task on a guide counts the beam's sag (the
+  `<assembly>.frame-mode.svg` from `cad beams` to see what moves. To choose profiles, give `"frame": { "size": {
+  "profiles": [...] } }` and read `frame.size` (or `npx cad frame <project>/<assembly> --size`): report each group's
+  profile with the limit that set it and its margin, never pick a profile by hand where the sizing can; write it with
+  `--size --write` and check again, as its joins and lengths change. A task on a guide counts the beam's sag (the
   frame's own figure where the frame is solved), straightness and twist in `task.accuracy`: report the biggest term
   as it is named. `frame.heat` (given `"frame": { "heat": { "air": 45 } }`) says how much the frame grows and holds
   each printed fitting to its plastic's softening point: move a failing fitting from the heat or print it in a plastic

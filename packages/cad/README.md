@@ -926,6 +926,72 @@ one ring a profile's width higher. With printed `gusset` joins, a corner's plate
 beam of that corner butts, and the overlap and build order checks fail it: join a generated frame by `bracket`, or
 write it out (`--expand`) and move those plates by hand.
 
+### The lightest profiles
+
+`"frame": { "size": { ... } }` chooses, for each group of beams that must match, the lightest profile from a list
+that meets the frame's own limits, by `@rulecad/fea/frame`'s `sizing` on the frame the checks solve (every pose, the
+joins' springs, the loads and mounted items):
+
+```json
+"frame": { "kind": "table", "inside": [800, 500, 700], "profile": "2020-misumi-hfs5", "join": "blind",
+  "size": { "profiles": ["1010-makerbeam", "1515-openbeam", "2020-misumi-hfs5", "2040-misumi-hfs5", "3030-misumi-hfs6", "4040-misumi-hfs8"] } },
+"loads": [{ "mass": 30, "at": "x1.top@50%" }, { "mass": 30, "at": "x2.top@50%" }, { "mass": 10, "at": "y1.top@50%" }, { "mass": 10, "at": "y2.top@50%" }]
+```
+
+- `"profiles"`: the sets to choose from (default `FRAME_SIZING.profiles`: MISUMI's HFS5, HFS6 and HFS8 series from
+  2020 to 4080). A profile that is not square is tried lying as drawn and turned a quarter about its length ("2040
+  turned": standing on edge). The workspace's own sets are read before the kit's.
+- `"groups"`: `{ "rails": ["x1", "x2", "y1", "y2"] }`, beams that take one profile together. The rest group by
+  themselves: beams of one profile lying the same way whose lengths agree within 0.5 mm (`FRAME_SIZING.match`), so a
+  table's four legs are one group and each pair of rails another.
+- `"limits"`: in place of the checks' own. Left out, each is the check's: the sag at each load, named point and guide
+  as `frame.deflection` holds it (a guide's rail parallelism, `frame.limit`, the task's accuracy, else the span over
+  360; a load that moves with a joint anywhere along its beam), each beam's stress with the joins' springs and with
+  them rigid against its alloy's strength `frame.margin` (2) times over, the frame's first buckling factor and each
+  grouped beam's Euler load (K 1) the same, and the lowest mode at twice the task's moves where it has a task.
+  `"deflection"` (mm, at every load, point and guide), `"stress"` and `"buckling"` (margins) and `"frequency"` (Hz)
+  replace them.
+- `"by"`: `mass`. No profile set in the kit gives a price per metre yet, so `cost` is refused by name.
+
+`cad check` gives `frame.size`: each group's profile, its mass, the limit that set it and how many times inside that
+limit it stands. `cad frame <project>/<assembly> --size` prints the table:
+
+```
+sized: 2.56 kg of grouped beams (drawn 2.74 kg), 66 designs solved (every design ranked by mass)
+group | profile | kg | set by | margin
+z1, z2, z3, z4 | 1515-openbeam (drawn 2020-misumi-hfs5) | 0.855 | buckling: with 1010-makerbeam, the frame's buckling factor breaks its limit 2.68 times over | 1.28x
+x1, x2 | 2040-misumi-hfs5 turned (drawn 2020-misumi-hfs5) | 1.408 | deflection: with 2020-misumi-hfs5, the sag at x2@400 breaks its limit 2.31 times over | 2.41x
+y1, y2 | 1515-openbeam (drawn 2020-misumi-hfs5) | 0.297 | deflection: with 1010-makerbeam, the sag at y2@250 breaks its limit 2.39 times over | 1.17x
+```
+
+"Set by" is the limit the group's next lighter profile breaks, the other groups as chosen: what stops it being any
+lighter. A group already at the lightest in the list says so. With `"limits": { "deflection": 6 }` the long rails
+drop to 2020 and the grouped beams to 1.95 kg.
+
+`--write` writes the profiles into the assembly: each grouped beam's profile, a quarter `roll` where it was turned,
+and its printed end fittings drawn for it. A generated frame is written out expanded, as `--expand` does, since a
+generator takes one profile; its rings keep their outer faces (a table's top stays level with its legs' tops). A
+beam's end that butts against a face moves with that face as the other beam changes size, and a blind or end-tap
+join at an end that now has two bores (a 2040) becomes a join a bore. Otherwise beams keep their lines. Check the
+written frame: its join checks say where a profile's screws do not fit another's slots, so choose the list from one
+family whose joins fit each other (MISUMI HFS5's 2020 to 2080 share one slot and one end thread).
+
+What it rests on: the joins' springs are as drawn (an estimate until the joint rig measures them) and do not change
+with the profile; the sizing solves the drawn layout, with each beam's line where it is drawn, so a figure on the
+written frame differs a little (the table in HFS5, its 2040 rails lowered 10 mm to keep its top level, sags 0.87 mm
+at a long rail's middle as sized and 0.83 mm as written). With 512 designs or fewer every one is ranked by mass and the first that meets the limits is the
+lightest; with more, the search goes by steps and lands near the lightest. Racking (`frame.rack`) is not a sizing
+limit: it is a bay's to brace, not a beam's to thicken.
+
+| What | Formula | Source |
+|---|---|---|
+| A design's mass | the sum over grouped beams of length × the profile's mass per metre | The profile's set (the maker's sheet) |
+| Sag limit (default) | span / 360 | `FRAME_CHECK.sag`: IBC Table 1604.3 |
+| Stress | `margin × (abs(N)/A + abs(My)/Wy + abs(Mz)/Wz) ≤ strength`, worst of springs and rigid | `@rulecad/fea/frame`; Roark's, chapter 8 |
+| Euler load of a grouped beam | `π² E I / (K L)² ≥ margin × N`, I the lesser second moment, K 1 | Roark's, table 15.1, case 1a |
+| Frequency floor (with a task) | `2 × speed / accel` Hz | `frame.frequency`: a move ramping in t seconds shakes the frame at about 1/t |
+| What set a group | the limit with the largest use, over 1, when the group takes its next lighter profile | This package |
+
 ### Building it
 
 Once an assembly is checked, these say how to make it. They all read the assembly itself, so they can't disagree with it.

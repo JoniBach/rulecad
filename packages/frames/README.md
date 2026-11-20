@@ -1232,6 +1232,24 @@ Refused by name: an unknown kind or option, no size or both, a size that leaves 
 square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, feet on a box,
 shelf or gantry with cube corners (no upright end reaches the floor), braces with cube corners, and a side with no bay.
 
+### Profiles as choices for sizing
+
+`profileChoices(profileModel('2040-misumi-hfs5'))` gives a profile as the choices `@rulecad/fea/frame`'s `sizing`
+takes, so a frame's beams can be given the lightest profiles that meet its limits (cad does this for
+`"frame": { "size" }`):
+
+```js
+const [flat, edge] = profileChoices(profileModel('2040-misumi-hfs5'));
+flat;  // { name: '2040-misumi-hfs5', roll: 0, section: { A: 324, Iy: 13580, Iz: 51300, J, Wy, Wz }, material: { E: 69972, nu: 0.33, density: 2.7, strength: 205 }, mass: 0.88 }
+edge;  // the same, named '2040-misumi-hfs5 turned', roll: 90: standing on edge
+```
+
+The section is in a beam's own axes: `Iy` is the profile's `inertia_x`, which resists bending across its height (a
+beam's top is the section's +y), `Iz` its `inertia_y`. The mass per metre is the sheet's where it gives one. A
+profile that is not square comes twice, as drawn and turned a quarter about its length; a square one once. A plain
+tube or bar comes the same way, its figures worked out from its outline, so a frame of tubes is sized by the same
+solver. Refused by name: a profile whose material gives no modulus.
+
 ## Formulas
 
 | What | Formula | Source |
@@ -1396,6 +1414,7 @@ out from the nuts' sizes and the X1C's rules, so they are `derived` and as good 
 | `outline(model)`, `readOutline(json)` | The section as loops; a measured outline held to its format |
 | `section(model, { torsion?, cells? })` | Section figures from the outline, beside the sheet's |
 | `beamFigures(model, { cells? })` | The figures to design a beam with: the sheet's where it gives one, the outline's where it does not |
+| `profileChoices(model)` | The profile as choices for `@rulecad/fea/frame`'s `sizing`: section, alloy, mass per metre; turned a quarter too where it is not square |
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |

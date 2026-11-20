@@ -6,6 +6,9 @@ What changed in each release, for someone upgrading a workspace.
 
 ### Added
 
+- `profileChoices(profile)`: a profile as the choices `@rulecad/fea/frame`'s `sizing` takes: its section in a beam's
+  own axes, its alloy (modulus, Poisson's ratio, density, strength) and mass per metre; one that is not square twice,
+  as drawn and turned a quarter (`roll` 90, "<name> turned").
 - `box`, `portal`, `table`, `gantry`, `shelf` and `frameModel(kind, o)`: a frame from the volume it encloses
   (`inside`) or fits in (`outside`), in one square profile, its corners arranged for its join (`FRAME_JOINS`: the
   uprights run through for a join against a face, every beam into a node for a cube), with feet, end caps, braces
