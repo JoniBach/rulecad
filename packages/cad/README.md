@@ -280,12 +280,15 @@ outline is the model's shape, so it goes into your own workspace and nowhere els
 outline, and under a non-commercial, no-derivatives or share-alike licence the command says to keep it there.
 
 **A beam's profile from its spec sheet.** `cad rules draft profile <name>` writes `rules/<name>.json` with every field
-a profile can have, each with a starting value, `"kind": "estimate"`, and a rule and source that start `DRAFT`
+a profile can have, each with a starting value, `"kind": "estimate"`, a rule saying what the field is and a source
+that starts `DRAFT`
 (`cad rules draft slot <name>` and `slot_nut <name>` do the same for a slot family and a slot nut). Fill each field the
 sheet gives (its value, `"kind": "spec"`, the sheet and page as `source`, the date as `checked`) and delete the rest.
 `cad rules check <name>` then holds it to the vocabulary, draws the section from its dimensions and its slot
 family's, and warns where the sheet's area, second moments or mass per metre differ from the drawn outline's by more
-than 5% (`profile.section.*`); while any field still holds the draft's value it warns `rules.draft`, naming each.
+than 5% (`profile.section.*`: check the typed figure first; if it is right the drawing lacks a shape, such as corner
+hollows, and the frame checks use the sheet's figures anyway); while any field's source is still the draft's it warns
+`rules.draft`, naming each.
 `cad rules draw <name>` writes `<name>.svg`, the section to scale with each slot and bore dimensioned, to hold against
 the sheet's drawing. [The frames guide](https://jonibach.github.io/rulecad/docs/building-frames/) walks one from a
 sheet to a checked box.

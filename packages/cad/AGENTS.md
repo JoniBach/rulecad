@@ -24,8 +24,10 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - For a beam (an aluminium extrusion) the kit has no profile for, write its profile from the maker's spec sheet:
   `npx cad rules draft profile <name>` writes every field as a draft; fill each the sheet gives (its value, `"kind":
   "spec"`, the sheet, page and address as `source`, the date), delete the rest, and run `npx cad rules check <name>`
-  until it has no `rules.draft` warning and no section figure more than 5% off its outline (fix the typed figure, never
-  the check), then `npx cad rules draw <name>` and look at the drawing beside the sheet's. Or measure the maker's model or a DXF of its section:
+  until it has no `rules.draft` warning. A section figure warned off its outline (`profile.section.*`) is first a typed
+  figure to hold against the sheet; if it is right, add the corner hollows the drawing shows as estimates, or measure
+  the section's DXF, and say in your report what is left: the checks use the sheet's figures. Never change the check;
+  then `npx cad rules draw <name>` and look at the drawing beside the sheet's. Or measure the maker's model or a DXF of its section:
   `npx cad measure <beam.stl|section.dxf> --profile <name> --source <url> --licence "…"`. It writes a draft profile
   set and the section's outline into this workspace's `rules/`. Look at the drawing, check the slot figures against
   the maker's sheet, and never copy the outline out of the workspace: it is the maker's shape.

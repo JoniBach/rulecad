@@ -1961,4 +1961,10 @@ test('a generated frame on a 30 series profile: levelling feet on a stud whose b
   assert.deepEqual([a30.diameter, a30.key, a30.rule], [6.3, 5, 'OP_DEFAULTS.key']);
   assert.deepEqual(b30.findings.filter((x) => x.code === 'beam.op'), [], 'no lip broken on either side');
   assert.deepEqual([op('2020-misumi-hfs5', 'M5').ops.find((o) => o.op === 'access').diameter], [5.3]);
+  // a section warned off its drawn outline (the guide's remedy): Bosch Rexroth's 30 x 30 draws 328.9 mm² against the
+  // sheet's 310 (+6.1%: the bore's notches and inner webs are not drawn), and the frame's figures are the sheet's
+  const P30 = frames.profileModel('3030-bosch'), warned = frames.profileFindings(P30).filter((x) => x.level === 'warn').map((x) => x.code);
+  assert.deepEqual(warned, ['profile.section.area', 'profile.section.torsion_constant']);
+  const fig = frames.beamFigures(P30);
+  assert.deepEqual([fig.area.value, fig.area.from, fig.inertiaX.value, fig.torsion.value, fig.massPerMetre.value], [310, 'sheet', 28000, 2900, 0.9]);
 });

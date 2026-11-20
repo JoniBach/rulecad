@@ -328,7 +328,10 @@ b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm
 Sizes named by a thread come from `@rulecad/fixings` as a machine cuts them: the thread's figure as drawn, with no
 printer's hole compensation and no teardrop roof. An access hole is the smallest of the thread's clearance holes
 wider than its hex key across the corners, the key of the head it is for (an M5 cap screw's is 4 mm, an M5 button
-head's 3 mm). A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
+head's 3 mm), and no wider than the slot it is drilled in (and, right through, the slot it comes out in). Where no
+clearance hole fits, it is the key's corners and `OP_DEFAULTS.key` (0.5 mm), up to the next tenth of a millimetre: an
+M8 button head's 5 mm key (5.77 mm across its corners) takes a 6.3 mm hole, inside an 8 mm slot where M8's 8.4 mm
+close clearance would cut the lips. A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
 wall goes as deep as the first run of metal along its line through the section, worked out from the outline.
 
 Each worked-out operation in `model.ops` keeps its `distance` from end a (0 and the length for the ends), its `face`
@@ -1014,7 +1017,7 @@ printcheck as drawn. A part's frame is a mount's: x along the beam, y across, z 
 |---|---|---|
 | `endCapModel(profile)` | A plate the beam's outline, pegs pushed into each slot's opening and the bore, their roots chamfered 45°; `endCap(m, { tongues: false })` is the plate alone, as an overlap check measures it | Plate down |
 | `footModel(profile)` | A pad 2 mm past the beam each way, screwed into the end's tapped bore through a counterbore in its underside | As it stands |
-| `levellingFootModel(profile, { stud? })` | A body screwed into the end's bore and a pad that screws up and down a printed M12 thread (10 mm of travel, 12 mm always engaged); or, with `stud: 'M8'`, an M8 nut sunk in the body for a bought foot's stud | As they stand, threads upright |
+| `levellingFootModel(profile, { stud? })` | A body screwed into the end's bore and a pad that screws up and down a printed thread (10 mm of travel, one diameter always engaged): the first of `END_DEFAULTS.studs` (M12, Tr16x4, Tr20x4, Tr24x5) whose bore passes the end screw's head, so M12 on a 20 series (M5) and Tr20x4 on a 30 or 40 series (M8, a 13 mm head); `stud: 'Tr24x5'` names one. Or, with `stud: 'M8'`, an M8 nut sunk in the body for a bought foot's stud | As they stand, threads upright |
 | `castorPlateModel(profile, { holes, thread })` | A plate for a castor whose hole spacing (from its maker's drawing) and bolts are given, screwed into the end's bore. Refused where the castor's bolts' heads would sit under the beam | Beam side down |
 | `stackingFootModel(profile)` | A plate on the end with a socket under it that fits over the end of the same profile below | Beam side down |
 
@@ -1242,6 +1245,10 @@ The corners follow the join (`FRAME_JOINS`):
   `inside + 2p`, and a butting beam is its outside span less `p` at each end, the inside. A box round 300 x 300 x 350
   in 2020 has uprights of 350 + 2 x 20 = 390 mm and butting beams of 300 mm; in 3030, 410 and 300 mm. Each join meets
   its upright's face on the beam's centre line, `p / 2` from the frame's outside.
+- An end-tap join: its screw runs right across the upright, so two at one height (one from a beam across, one from a
+  beam along) would cross inside it. Each ring's beams along y stand one width above its beams across x (a table's one
+  width below), and each ring takes `2p` of the height: a box round 400 x 250 x 300 in 2020 stands 300 + 4 x 20 = 380
+  mm high.
 - A cube join: every beam butts into a corner node, so each is as long as the inside it bounds, and the node takes
   the `p` x `p` x `p` corner.
 - A table adds `p` to the height (its ring), a gantry `3p` (both rings and its moving beam), a portal `2p` to the
@@ -1331,7 +1338,8 @@ solver. Refused by name: a profile whose material gives no modulus.
 | A clip's or a latch's least reach over the sheet | t = √(6 M k / (b S)), M = F × the lever, b the part's width, k the margin asked (2) | Beam theory for a cantilever bent at its root (σ = 6M / b t²) |
 | A hinge's risers | σ = 6 F z_a / (2 l (2R)²), F across the pin at height z_a, two risers each l long and 2R deep | The same, two risers sharing the load |
 | A handle's grip | σ = 6 (F s / 4) / (b h²), F at the middle of a grip s between its feet | A simply supported beam with a load at its middle: M = F s / 4 |
-| A levelling foot's stem | σ = 32 (F / 10) L / (π d_r³), d_r = 0.8 × the thread's major diameter | A round stem bent at its root by a side push of a tenth of the load, an estimate of uneven ground |
+| A levelling foot's stem | σ = 32 (F / 10) L / (π d_r³), d_r = 0.8 × an M thread's major diameter, d - P for a trapezoidal one | A round stem bent at its root by a side push of a tenth of the load, an estimate of uneven ground |
+| A levelling foot's stud | the first of M12, Tr16x4, Tr20x4, Tr24x5 with d_r ≥ the end screw's head + 2 × the printer's fit | DIN 103's internal minor diameters D1 = d - P (12, 16, 19 mm); an M8 cap head is 13 mm, so Tr20x4 |
 | A foot's bearing | p = F / A, A the pad less the counterbore | |
 | A gasket's wall strain | ε = 3 t δ / (2 L²), against S / E | A cantilever pushed δ at its tip, its strain at the root |
 | A panel's mass | m = (a b − (4 − π) r² − Σ holes) × T × ρ / 1000 | A rounded rectangle's area, times its thickness and density |

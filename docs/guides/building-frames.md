@@ -53,12 +53,16 @@ npx cad rules draft profile 2020-acme
 ```
 
 This writes `rules/2020-acme.json` with every field a profile can have, each with a starting value, `"kind":
-"estimate"`, and a rule and source that start `DRAFT`. Open it beside the sheet and, for each field:
+"estimate"`, a rule that says what the field is, and a source that starts `DRAFT`. Open it beside the sheet and, for
+each field:
 
 - the sheet gives the figure: put in the value, change `kind` to `spec`, write the sheet's name, its page and its
-  address in `source`, and today's date in `checked`;
+  address in `source`, and today's date in `checked`. The rule can stay as the draft wrote it, or say what the sheet
+  says;
 - the sheet has no figure for it: delete the field. The model works out what it needs from the rest (the corner
-  bores, the hollows and the section figures are optional);
+  bores, the hollows and the section figures are optional). A section drawn with closed hollows in its corners is the
+  exception: keep `corner_hollow_width` and `corner_hollow_wall`, scaled off the drawing, with `kind` `estimate` and
+  a rule that says so, or its drawn outline is solid where the real one is hollow;
 - you measured it yourself with calipers: `kind` is `measured`, and `source` says how.
 
 What a spec sheet usually gives, and the field each goes in:
@@ -85,8 +89,15 @@ npx cad rules draw 2020-acme
 
 `cad rules check` holds the set to the vocabulary (every value with its unit, rule, kind, source and date), builds
 the profile's model, draws its section from the dimensions, and works out the section's area and second moments from
-that outline. Where the sheet's figure differs from the outline's by more than 5%, it warns: a dimension is off, or
-the section has a shape its dimensions do not describe. The walk's set passes: the drawn section comes to 182.49 mm²
+that outline. Where the sheet's figure differs from the outline's by more than 5% (10% for a second moment, 15% for
+the torsion constant), it warns: a dimension is off, or the section has a shape its dimensions do not describe.
+First hold the typed figure against the sheet: a slip of a digit or a unit (cm⁴ typed as mm⁴) is the usual cause. If
+it is right, the drawing lacks a shape: add the corner hollows the drawing shows, as estimates, or measure the maker's
+section from its DXF (`npx cad measure section.dxf --profile <name>`) for the true outline. A warning left after that
+is the drawing's shortfall, and harmless: the frame checks take the area, second moments, torsion constant and mass
+from the sheet wherever it gives them, and the drawn outline only for the figures it does not. The kit's own Bosch
+Rexroth 30 x 30 set keeps two such warnings (area +6.1%, torsion constant +36.9%: its bore's notches and inner webs
+are not drawn). The walk's set passes: the drawn section comes to 182.49 mm²
 against the sheet's 183. Had the area been typed as 250, it would say:
 
 ```
@@ -166,7 +177,7 @@ shopping list and into the screw checks, and its stiffness into the frame's solu
 | Kind | What it is | Use it when |
 |---|---|---|
 | `blind` | A screw in a's tapped end, its head in b's slot, tightened through an access hole across b | A clean outside and a stiff corner, and you can tap and drill |
-| `end-tap` | A screw through a hole across b into a's tapped end | The simplest machined corner; its head shows on b's far face |
+| `end-tap` | A screw through a hole across b into a's tapped end | The simplest machined corner; its head shows on b's far face. A generated frame sets each ring's beams along one width above its beams across, so the two screws across an upright miss each other. On a 30 mm profile with an M8 bore in an 8 mm slot, the 9 mm hole cuts the slot's lips (a warning): use blind there |
 | `bracket` | A corner bracket on slot nuts, printed (`"fitting": "printed"`) or bought (a set's name) | No machining, and a corner you can move along the slot |
 | `gusset` | A flat plate (L, T or cross) over the joint | Stiffening a bay against racking |
 | `splice` | Two beams end to end, joined by a plate | A beam longer than you can buy or print |
@@ -283,7 +294,8 @@ mark's sheet. It refuses a design whose check fails.
 - Every join's stiffness and play is an estimate until the joint rig measures it: the sway, the frequencies and the
   diagonals to accept all rest on them, and say so.
 - A spec sheet's section figures are taken as printed; the outline the kit draws is from the interface dimensions, so
-  a section with webs the sheet does not dimension comes out a little different (a warning past 5%).
+  a section with webs or hollows the sheet does not dimension comes out different (a warning past 5%), and the checks
+  use the sheet's figures. Only a measured outline (`cad measure`) is the true shape.
 - The kit draws a generated frame's corners for `blind`, `end-tap`, `bracket`, `gusset`, `hidden`, `anchor` and
   `cube` joins; a mitred, spliced, pivoting or printed-node corner is drawn by hand (`cad frame --expand`).
 
