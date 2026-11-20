@@ -742,7 +742,11 @@ How it is sized:
 3. **For a screw that is sold.** A screw into a slot nut must engage the nut's thread fully and stop short of the
    slot's floor, which leaves a window of a few tenths of a millimetre for its tip. The fitting is thickened, a layer
    at a time, until a length sold lands in that window on every leg (an M5x12 through 6.4 mm on a 2020), as cad's
-   fasten check will hold it.
+   fasten check will hold it. The nut's thread is counted from where it seats: under the lips, or lower where they
+   slope underneath (the printable profiles' slots: an M4 drop-in nut seats 3.95 mm down in the printable 2020, not 2).
+   A plate whose beam a is of another profile (`{ other: '2020-printed' }`, the same face names) keys each arm into
+   its own beam's slot and is thickened until a length sold fits both: a T gusset from MISUMI's 2020 onto the
+   printable 2020 is 4.6 mm, M4x10 into MISUMI's slot and M4x12 into the printable one.
 
 The finite elements' results are kept in memory, and in a cache handed in (`{ cache: { get, set } }`: cad keeps them
 in `.cache/fitting`). Each fitting's findings, in the kit's one shape: `fitting.size`, `fitting.tongue`,
@@ -1448,7 +1452,7 @@ out from the nuts' sizes and the X1C's rules, so they are `derived` and as good 
 | `slotNutModel`, `nutFit`, `slotNut`, `nutFor`, `NUT_KINDS` | A bought slot nut, how it sits in a slot, its solid, the one for a face, and the kinds (above) |
 | `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
 | `bracketModel(profile, { other?, face?, otherFace?, thread?, head?, nut?, brace?, load?, width?, printer?, material?, cache? })`, `bracket(m, { pose?, tongues?, ops? })` | A printed corner bracket's model and its solid |
-| `plateModel(profile, { shape?, face?, thread?, head?, nut?, count?, load?, width?, printer?, material?, cache? })`, `plate(m, { pose?, tongues?, ops? })` | A printed gusset (L, T, cross) or splice plate, and its solid |
+| `plateModel(profile, { shape?, other?, face?, thread?, head?, nut?, count?, load?, width?, printer?, material?, cache? })`, `plate(m, { pose?, tongues?, ops? })` | A printed gusset (L, T, cross) or splice plate, and its solid |
 | `FITTINGS`, `FITTING_DEFAULTS`, `fittingFE(o)` | The kinds of printed fitting; the margins and working figures they are drawn with; the finite elements on a part |
 | `SHEETS`, `PANEL_DEFAULTS`, `panelModel(sheet, thickness, { size, corner?, holes? })`, `panel(m, { ops? })` | Sheets by material, the panel parts' working figures, a panel's model and its solid |
 | `panelClipModel`, `panelClip`, `panelCornerModel`, `panelCorner`, `panelEdgeModel`, `panelEdge`, `slotCoverModel`, `slotCover`, `gasketStripModel`, `gasketStrip` | The printed parts that hold a panel, each a model and its solid (`{ pose: 'print' \| 'fit' }`) |
