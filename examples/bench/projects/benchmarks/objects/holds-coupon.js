@@ -18,7 +18,7 @@ const { measureBoundingBox } = jscad.measurements
 export function main (v) {
   const f = v.fixings, base = v.base, wall = v.wall, seg = v.segments
   const fig = (x) => String(Number(x.toFixed(2))) // a figure as it is labelled and written back
-  const around = (centre, n, step) => Array.from({ length: n }, (_, i) => Number((centre + (i - (n - 1) / 2) * step).toFixed(3)))
+  const around = (centre, n, step) => Array.from({ length: n }, (_, i) => Number((centre + (i - (n - 1) / 2) * step).toFixed(v.places)))
   const width = (text) => { const [lo, hi] = measureBoundingBox(v.shapes.text({ text, height: v.label, stroke: v.stroke })); return hi[0] - lo[0] }
   const say = (text, x, y, z) => translate([x, y, z], extrudeLinear({ height: v.emboss }, v.shapes.text({ text, height: v.label, stroke: v.stroke })))
   // the printer as plain values with one figure changed: each feature in a row is drawn as if the printer's rule were its figure
@@ -33,31 +33,46 @@ export function main (v) {
   // ---------- the plate's rows ----------
   // Snap pin sockets: a hole through a boss as thick as the pin's shaft is long, at three clearances round the kit's
   const sockets = (d) => {
-    const name = `snap pin ${d}x${v.shaft}`, c0 = f.pinModel(name).hole.clearance / 2, cs = around(c0, 3, v.step)
+    const name = `snap pin ${d}x${v.shaft}`, c0 = f.pinModel(name).hole.clearance / 2, cs = around(c0, v.fits, v.step)
     return { name: `S${d}`, items: cs.map((c) => ({ label: fig(c), ...round(d + 2 * Math.max(...cs) + 2 * wall, v.shaft, (x, y) => f.pinHole(name, { printer: printer('snap_clearance', c), at: [x, y, v.shaft], depth: v.shaft, through: true })) })) }
   }
   // Plain pins: blind holes from the top, pressed (the figure is how much smaller than the pin, before hole_comp) or slipping
   const pins = (pin, label, fit) => {
     const key = fit === 'press' ? 'pin_press' : 'pin_slip', c0 = f.pinModel(pin, { fit }).hole.clearance, x0 = fit === 'press' ? -c0 : c0
-    const xs = around(x0, 3, fit === 'press' ? v.press_step : v.step), d = f.pinModel(pin, { fit: 'slip', printer: printer('pin_slip', Math.max(...xs)) }).hole.diameter, top = base + v.pin_depth
+    const xs = around(x0, v.fits, fit === 'press' ? v.press_step : v.step), d = f.pinModel(pin, { fit: 'slip', printer: printer('pin_slip', Math.max(...xs)) }).hole.diameter, top = base + v.pin_depth
     return { name: label, items: xs.map((x) => ({ label: fig(x), ...round(d + 2 * wall, top, (cx, cy) => f.pinHole(pin, { fit, printer: printer(key, x), at: [cx, cy, top], depth: v.pin_depth })) })) }
   }
-  // Magnet pockets: as deep as the magnet, the base under it, a push-out hole through that
+  // Magnet pockets: as deep as the magnet, with the kit's lead-in at the mouth, the plate's base under it and a push-out
+  // hole through that. A press pocket is the magnet less the figure, past hole_comp; a ribbed pocket is the kit's glue
+  // pocket with three crush ribs whose tips stand the figure inside the magnet. The kit's seat is read once for the
+  // figures it draws from (a press either side of the kit's is a test piece, not a design: fixings would rightly fail it),
+  // and the pockets are cut with the design's own booleans
+  const bore = (d, depth, lead, x, y, top) => v.ops.union(
+    translate([x, y, top - depth / 2 + 1 / 2], cylinder({ radius: d / 2, height: depth + 1, segments: seg })),
+    translate([x, y, top - lead / 2], cylinderElliptic({ height: lead, startRadius: [d / 2, d / 2], endRadius: [d / 2 + lead, d / 2 + lead], segments: seg })))
+  const ribbed = (q, x, y, top) => v.ops.subtract(bore(q.diameter, q.depth, q.lead, x, y, top), ...Array.from({ length: q.ribs.count }, (_, i) => {
+    const t = (2 * Math.PI * i) / q.ribs.count + Math.PI / 2, out = q.diameter / 2 + q.ribs.radius - q.ribs.protrude, low = top - q.depth - 1, high = top - q.lead
+    return translate([x + out * Math.cos(t), y + out * Math.sin(t), (low + high) / 2], cylinder({ radius: q.ribs.radius, height: high - low, segments: seg / 2 }))
+  }))
   const magnets = (size, label, fit) => {
-    const name = `disc magnet ${size}`, s0 = f.magnetSeatModel(name, { fit }), key = fit === 'press' ? 'magnet_press' : 'magnet_crush'
-    const x0 = fit === 'press' ? -s0.pocket.clearance : s0.rests.find((r) => r.name.endsWith(key)).value, xs = around(x0, 3, v.step)
-    const top = base + s0.pocket.depth, across = s0.pocket.nominal[0] + 2 * (s0.pocket.lead ?? 0) + 2 * wall
-    return { name: label, items: xs.map((x) => ({ label: fig(x), ...round(across, top, (cx, cy) => v.ops.union(f.magnetSeat(name, { fit, printer: printer(key, x), at: [cx, cy, top] }), through(v.push, cx, cy, top))) })) }
+    const name = `disc magnet ${size}`, key = fit === 'press' ? 'magnet_press' : 'magnet_crush', s0 = f.magnetSeatModel(name, { fit }), q0 = s0.pocket
+    const x0 = fit === 'press' ? -q0.clearance : s0.rests.find((r) => r.name.endsWith(key)).value, xs = around(x0, v.fits, v.step)
+    const top = base + q0.depth, across = q0.nominal[0] + q0.comp + 2 * q0.lead + 2 * wall
+    return { name: label, items: xs.map((x) => ({ label: fig(x), ...round(across, top, (cx, cy) => v.ops.union(fit === 'press' ? bore(q0.nominal[0] + q0.comp - x, q0.depth, q0.lead, cx, cy, top)
+      : ribbed(f.magnetSeatModel(name, { fit, printer: printer(key, x) }).pocket, cx, cy, top), through(v.push, cx, cy, top))) })) }
   }
-  // Printed nuts for printed bolts: a thread drawn half the gap off its basic profile (the bolt takes the other half)
+  // Printed nuts for printed bolts: a boss a hex nut's height tall (rounded up to whole layers), a thread through it and
+  // the plate drawn half the gap off its basic profile (the bolt takes the other half), as deep as printedBoltModel
+  // takes a nut's thread to be when it works out the bolt's strength
   const nuts = (t) => {
-    const g0 = f.holeModel(t, { kind: 'thread', mate: 'printed' }).threaded.clearance, gaps = around(g0, 3, v.step)
-    const made = gaps.map((gap) => f.holeModel(t, { kind: 'thread', mate: 'printed', gap })), across = Math.max(...made.map((h) => h.diameter)) + 2 * wall
-    return { name: `${t}N`, items: gaps.map((gap, i) => ({ label: fig(gap), ...round(across, base + made[i].depth, (x, y) => f.hole(t, { kind: 'thread', mate: 'printed', gap, at: [x, y, base + made[i].depth] })) })), gaps, depths: made.map((h) => h.depth) }
+    const g0 = f.holeModel(t, { kind: 'thread', mate: 'printed' }).threaded.clearance, gaps = around(g0, v.fits, v.step), high = Math.ceil(f.nutModel(t).height / v.x1c.layer - v.tiny) * v.x1c.layer
+    const made = gaps.map((gap) => f.holeModel(t, { kind: 'thread', mate: 'printed', gap, depth: high, through: true })), across = Math.max(...made.map((h) => h.diameter)) + 2 * wall
+    return { name: `${t}N`, items: gaps.map((gap) => ({ label: fig(gap), ...round(across, high, (x, y) => f.hole(t, { kind: 'thread', mate: 'printed', gap, depth: high, through: true, at: [x, y, high] })) })), gaps, high }
   }
 
+
   const n8 = nuts('M8'), n10 = nuts('M10')
-  const rows = [[sockets(3), sockets(4)], [pins('dowel 3x12', 'D3P', 'press'), pins('dowel 3x12', 'D3S', 'slip')],
+  const rows = [[sockets(v.small_pin), sockets(v.large_pin)], [pins('dowel 3x12', 'D3P', 'press'), pins('dowel 3x12', 'D3S', 'slip')],
     [pins('filament pin 1.75x12', 'FP', 'press'), pins('filament pin 1.75x12', 'FS', 'slip')],
     [magnets('6x3', '6x3', 'press'), magnets('8x3', '8x3', 'press'), magnets('8x3', '8x3R', 'ribs')], [n8, n10]]
   const solids = [], cuts = [], labels = []
@@ -81,14 +96,15 @@ export function main (v) {
 
   // ---------- the loose pieces, in a row behind the plate ----------
   // Marks: one, two or three notches down the side of a bolt's head or a pin's foot, for the first, second and third figure
-  const notches = (count, radius, height) => Array.from({ length: count }, (_, i) => cylinder({ radius: v.notch, height: 2 * height, center: [radius * Math.cos(i * Math.PI / 3), radius * Math.sin(i * Math.PI / 3), 0], segments: 16 }))
+  const turn = (v.notch_turn * Math.PI) / v.half_turn
+  const notches = (count, radius, height) => Array.from({ length: count }, (_, i) => cylinder({ radius: v.notch, height: 2 * height, center: [radius * Math.cos(i * turn), radius * Math.sin(i * turn), 0], segments: seg / 2 }))
   let x = v.gap, deep = 0
   const place = (name, solid, across) => { out[name] = translate([x + across / 2, y + v.gap + across / 2, 0], solid); x += across + v.gap * 2; deep = Math.max(deep, across) }
-  // Printed bolts standing on their heads, one for each of the nuts' gaps, short enough not to reach the nut's floor
+  // Printed bolts standing on their heads, one for each of the nuts' gaps, long enough to go through the nut and on
   for (const [t, n] of [['M8', n8], ['M10', n10]]) {
     n.gaps.forEach((gap, i) => {
-      const length = Math.floor(n.depths[i] * v.engaged), b = f.printedBolt(`${t}x${length} hex printed`, { gap }), across = b.screw.headDiameter
-      place(`bolt-${t.toLowerCase()}-${fig(gap)}`, v.ops.subtract(b, ...notches(i + 1, (across / 2) * Math.cos(Math.PI / 6), b.screw.headHeight)), across + v.gap)
+      const length = Math.round(n.high * v.engaged), b = f.printedBolt(`${t}x${length} hex printed`, { gap }), across = b.screw.headDiameter
+      place(`bolt-${t.toLowerCase()}-${fig(gap)}`, v.ops.subtract(b, ...notches(i + 1, (across / 2) * Math.cos(turn / 2), b.screw.headHeight)), across + v.gap)
     })
   }
   // The pull bolt: an M8 printed bolt for a bought steel nut, its shank turned down to a waist that breaks within the
@@ -100,8 +116,8 @@ export function main (v) {
     place('pull-bolt', v.ops.subtract(b, ring), b.screw.headDiameter + v.gap)
   }
   // Snap pins standing on their feet, three barb depths for each socket row, the split ending a millimetre above the foot
-  for (const d of [3, 4]) {
-    around(v.barb, 3, v.barb_step).forEach((lip, i) => {
+  for (const d of [v.small_pin, v.large_pin]) {
+    around(v.barb, v.fits, v.barb_step).forEach((lip, i) => {
       const r = d / 2, rise = r + lip, slot = v.shaft - 1 + lip + rise, p = f.pin(`snap pin ${d}x${v.shaft} barb ${lip}`, { slot }), foot = d * 2
       place(`snap-pin-${d}-${fig(lip)}`, v.ops.subtract(p, ...notches(i + 1, foot / 2, 2)), foot + 2)
     })
