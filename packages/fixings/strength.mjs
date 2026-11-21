@@ -26,7 +26,7 @@ const options = (what, o, example) => { if (o == null || typeof o !== 'object' |
 
 // A material from what a function was handed: a kit set's name ('PLA'), the workspace's set of that name (sets), or a
 // rule set itself. Its class is told by its stiffness: under 20 GPa a plastic, under 100 GPa an aluminium, else a steel.
-function materialOf(what, material, sets) {
+export function materialOf(what, material, sets) {
   if (material == null) throw new Error(`${what}: give a material, what the thread is in or the head sits on: ${MATERIALS.join(', ')}, or a rule set with a strength ({ name, rules })`);
   let set = null;
   if (typeof material === 'object' && material.rules && typeof material.rules === 'object') set = material;
@@ -36,10 +36,10 @@ function materialOf(what, material, sets) {
     if (!set) throw new Error(`${what}: no material "${material}". There are: ${MATERIALS.join(', ')}. For another, hand in its rule set ({ name, rules: { strength, modulus } }), or the workspace's sets with it in`);
   } else throw new Error(`${what}: material is a material's name (${MATERIALS.join(', ')}) or its rule set ({ name, rules }), not ${shown(material)}`);
   const name = set.name ?? 'the material', num = (k) => { const f = set.rules[k]; if (f && !(isNum(f.value) && f.value > 0)) throw new Error(`${what}: ${name}.${k} is a number above 0 (got ${shown(f.value)})`); return f ? { ...f, name: `${name}.${k}` } : null; };
-  const strength = num('strength'), across = num('strength_z'), modulus = num('modulus');
+  const strength = num('strength'), across = num('strength_z'), modulus = num('modulus'), density = num('density');
   if (!strength) throw new Error(`${what}: ${name} has no strength in its rule set: a tensile or yield strength in MPa is needed`);
   if (!modulus) throw new Error(`${what}: ${name} has no modulus in its rule set, which tells a plastic from a metal`);
-  return { name, cls: modulus.value < 20000 ? 'plastic' : modulus.value < 100000 ? 'aluminium' : 'steel', strength, across, modulus };
+  return { name, cls: modulus.value < 20000 ? 'plastic' : modulus.value < 100000 ? 'aluminium' : 'steel', strength, across, modulus, density };
 }
 // The class of material an engagement rule is read by: a class by name, or a material's
 function classOf(what, material, sets) {
@@ -48,7 +48,7 @@ function classOf(what, material, sets) {
   return materialOf(what, material, sets);
 }
 // The weaker of a printed material's two strengths, with what it says about itself
-function weakest(mat) {
+export function weakest(mat) {
   const f = mat.across && mat.across.value < mat.strength.value ? mat.across : mat.strength;
   const note = mat.cls !== 'plastic' ? '' : mat.across ? ` (${f.name}, the weaker way of the print)` : ` (${mat.name} has no strength across its layers, strength_z: the strength along them is used, and a screw standing across the layers may hold less)`;
   return { f, note };

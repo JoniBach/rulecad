@@ -19,6 +19,7 @@
     "threads.mjs",
     "strength.mjs",
     "draw.mjs",
+    "pins.mjs",
     "fixings.d.mts",
     "model.d.mts",
     "holes.d.mts",
@@ -27,6 +28,7 @@
     "threads.d.mts",
     "strength.d.mts",
     "draw.d.mts",
+    "pins.d.mts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"

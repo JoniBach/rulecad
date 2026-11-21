@@ -12,6 +12,8 @@ const { fixingModel, parseName, threads, GRAMMAR, HEADS, NUTS, DEFAULTS, holeMod
   threadModel, thread, THREAD_FORMS, engagement, stripping, preload, torqueFor, seating, lengthFor, screwGroup, screwLoad, MATERIALS, MATERIAL_CLASSES, ENDS } = fixings;
 const { measureBoundingBox: bb, measureVolume: vol } = jscad.measurements, { geom3 } = jscad.geometries, { subtract, union, intersect } = jscad.booleans;
 const { cuboid, cylinder } = jscad.primitives, { translate, rotateX, rotateY } = jscad.transforms;
+// Pins name no thread: their own refusals are held in the pins tests
+const PIN_FUNCTIONS = ['pinModel', 'pinHole', 'pin', 'snapPin', 'snapSocket', 'snapPinModel', 'parsePin', 'isPinName'];
 const near = (a, b, tol, what) => assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} against ${b} (±${tol})`);
 const json = (path) => JSON.parse(fs.readFileSync(new URL(path, import.meta.url), 'utf8'));
 const tris = (g) => geom3.toPolygons(g).flatMap((p) => p.vertices.slice(1, -1).map((_, i) => [p.vertices[0], p.vertices[i + 1], p.vertices[i + 2]].map((v) => [...v])));
@@ -856,7 +858,7 @@ test('refused by name before any geometry: a pocket, a seat or a blind hole deep
     assert.throws(() => f('M3', 'deep'), /the second argument is its options/, `${name}: options that are no options`);
   }
   assert.throws(() => lengthFor(6, 'M7', { into: 'nut' }), /no thread "M7"/); assert.throws(() => lengthFor(6, 'M3', 'nut'), /the second argument is its options/);
-  for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function' && !['fixingModel', 'parseName', 'threads', 'printable', 'fixingsFor', 'lengthFor', 'screwGroup'].includes(k))) assert.ok(every[name], `${name} is held to these refusals`);
+  for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function' && !['fixingModel', 'parseName', 'threads', 'printable', 'fixingsFor', 'lengthFor', 'screwGroup', ...PIN_FUNCTIONS].includes(k))) assert.ok(every[name], `${name} is held to these refusals`); // (pins name no thread: their refusals are tested with them)
 });
 
 test('printable: every drawn feature says how it prints, and what is bought says so', () => {
@@ -917,4 +919,104 @@ test('the README: its examples run as written, the first prints what it says, an
   assert.ok(readme.includes(GRAMMAR), 'the grammar, word for word');
   assert.ok(!/[\u2014\u2013]/.test(readme), 'no dashes used as punctuation');
   for (const name of Object.keys(fixings).filter((k) => typeof fixings[k] === 'function')) assert.ok(readme.includes(name.replace(/Model$/, '')), `${name} is described`);
+});
+
+// ---------- pins ----------
+const { pinModel, pinHole, pin, snapPin, snapSocket, snapPinModel, parsePin, isPinName, PIN_GRAMMAR, PIN_KINDS } = fixings;
+const pla = json('../rules/pla.json'), pins = json('../rules/pins.json');
+
+test('a snap pin by name: its socket from the printer\'s snap_clearance, its forces from two snap hooks worked out here', () => {
+  const m = pinModel('snap pin 4x6');
+  assert.deepEqual([m.type, m.name, m.diameter, m.length, m.made, m.fit], ['snap', 'snap pin 4x6', 4, 6, 'printed', 'snap']);
+  // the socket: the 4 mm peg plus x1c.snap_clearance (0.2 mm) each side, as drawn: 4 + 2 × 0.2 = 4.4 mm
+  assert.equal(x1c.rules.snap_clearance.value, 0.2); assert.equal(x1c.rules.snap_clearance.kind, 'estimate');
+  assert.deepEqual([m.hole.diameter, m.hole.comp, m.hole.rules], [4.4, 0, ['x1c.snap_clearance']]);
+  assert.equal(fixingsFor({ printer: { name: 'mine', rules: { snap_clearance: { value: 0.25, unit: 'mm', kind: 'measured', source: 'my coupon' } } } }).pinModel('snap pin 4x6').hole.diameter, 4.5, 'a measured clearance moves the socket');
+  // Each half is a snap hook: L = slot = 3 × 4 = 12 mm, t = (4 - gap 1) / 2 = 1.5 mm, w = 0.8 × 4 = 3.2 mm, E = pla.modulus 2680 MPa.
+  //   k = E w t³ / 4L³ = 2680 × 3.2 × 3.375 / (4 × 1728) = 4.1875 N/mm; P = k × barb 0.4 = 1.675 N per half
+  //   insertion at a 45° lead, μ 0.3: W = P (μ + tan 45) / (1 - μ tan 45) = 1.675 × 1.3 / 0.7 = 3.1107 N per half, 6.22 N for both
+  //   strain at the root: 3 t y / 2 L² = 3 × 1.5 × 0.4 / (2 × 144) = 0.00625
+  assert.equal(pla.rules.modulus.value, 2680);
+  near(m.snap.force, 3.35, 0.005, 'both halves closed by the barb'); near(m.snap.insertion, 6.22, 0.005, 'pushed in'); near(m.snap.removal, 6.22, 0.005, 'a 45° back lets go as it went in'); near(m.snap.strain, 0.00625, 1e-4, 'strain at the root');
+  const plain = snapPinModel({ diameter: 4 }, { E: 2680 });
+  near(plain.insertion, 2 * (1.675 * 1.3) / 0.7, 1e-9, 'snapPinModel: the same sum'); assert.ok(snapPinModel({ diameter: 4, back: 90 }, { E: 2680 }).holds && pinModel('snap pin 4x6', { back: 90 }).snap.removal === Infinity);
+  // mass: the drawn pin's volume × pla.density 1.26 g/cm³
+  near(m.grams, (vol(snapPin({ diameter: 4, length: 6 })) * 1.26) / 1000, 1e-3, 'weighed from its solid');
+  assert.ok(m.findings.some((f) => f.code === 'pin.snap' && /6\.22 N to push in and 6\.22 N to pull out/.test(f.text)));
+  assert.ok(m.rests.some((r) => r.name === 'x1c.snap_clearance' && r.kind === 'estimate'), 'it says what it rests on');
+  assert.deepEqual(parsePin('snap pin 2.5x4 barb 0.3'), { kind: 'snap', diameter: 2.5, length: 4, barb: 0.3, standard: null });
+  assert.equal(pinModel('snap pins 3x5 barb 0.6').name, 'snap pin 3x5 barb 0.6');
+});
+
+test('a snap pin fits its part or is refused by name: too long rattles, too short never clicks', () => {
+  assert.equal(pinModel('snap pin 4x6', { thickness: 6 }).findings.find((f) => f.code === 'pin.length').level, 'pass');
+  assert.equal(pinModel('snap pin 4x6', { thickness: 5.6 }).findings.find((f) => f.code === 'pin.length').level, 'pass', 'within fixings.snap_play, 0.5 mm');
+  assert.throws(() => pinModel('snap pin 4x8', { thickness: 6 }), /pinModel: snap pin 4x8's shaft is 8 mm long, and the parts it goes through are 6 mm thick: it is too long for its part, so the barb clicks out 2 mm past the far face/);
+  assert.throws(() => pinModel('snap pin 4x5', { thickness: 6 }), /too short for its part, and the barb never clicks out/);
+  assert.equal(DEFAULTS.snap_play.kind, 'estimate');
+});
+
+test('a 3 mm dowel: press and slip holes from the printer\'s rules, a teardrop on its side, its shear and the hole\'s bearing', () => {
+  // press: 3 + x1c.hole_comp 0.1 - x1c.pin_press 0.05 = 3.05 mm; slip: 3 + 0.1 + x1c.pin_slip 0.2 = 3.3 mm
+  const press = pinModel('dowel 3x12'), slip = pinModel('dowel 3x12', { fit: 'slip' });
+  assert.deepEqual([press.hole.diameter, slip.hole.diameter], [3.05, 3.3]);
+  assert.deepEqual([press.fit, press.made, press.standard], ['press', 'bought', 'ISO 8734']);
+  for (const k of ['pin_press', 'pin_slip']) assert.equal(x1c.rules[k].kind, 'estimate');
+  assert.equal(pinModel('dowel 3x12', { printer: { hole_comp: 0.15, pin_press: 0.1 } }).hole.diameter, 3.05, 'a printer\'s own figures: 3 + 0.15 - 0.1');
+  // on its side the hole gets a 45° roof; standing it is round, and the solid is the drawn diameter across
+  assert.equal(pinModel('dowel 3x12', { axis: 'x' }).hole.teardrop, true); assert.equal(press.hole.teardrop, false);
+  const cut = pinHole('dowel 3x12', { depth: 6 }), box = bb(cut);
+  near(box[1][0] - box[0][0], 3.05, 0.01, 'the press hole across'); assert.equal(cut.model.hole.diameter, 3.05);
+  const side = bb(pinHole('dowel 3x12', { axis: 'y', depth: 6 })); assert.ok(side[1][2] - 3.05 / 2 > 0.5, 'a teardrop stands taller than its circle');
+  // Strength, at 30 N across the pin, in 12 mm of PLA parts (6 mm grip each side):
+  //   shear: pins.dowel_shear 158.8 MPa × π 3² / 4 = 7.0686 mm² → 1122.5 N (one plane)
+  //   bearing: pla.strength 39 MPa × d 3 mm × grip 6 mm = 702 N; the margin is the less over the load: 702 / 30 = 23.4
+  //   mass: 7.0686 mm² × 12 mm × 7.85 g/cm³ / 1000 = 0.666 g
+  assert.equal(pins.rules.dowel_shear.value, 158.8); near(275 / Math.sqrt(3), 158.8, 0.05, 'S275 over √3');
+  const m = pinModel('dowel 3x12', { load: 30, thickness: 12 });
+  assert.deepEqual([m.shear, m.bearing, m.margin, m.governs, m.grams], [1122.5, 702, 23.4, 'bearing', 0.666]);
+  assert.equal(m.findings.find((f) => f.code === 'pin.strength').level, 'pass');
+  assert.equal(pinModel('dowel 3x12', { load: 500, thickness: 12 }).findings.find((f) => f.code === 'pin.strength').level, 'warn', '702 / 500 = 1.4: under twice');
+  assert.equal(pinModel('dowel 3x12', { load: 800, thickness: 12 }).findings.find((f) => f.code === 'pin.strength').level, 'fail');
+  // too long for its part, by name, with the longest that fits
+  assert.throws(() => pinModel('dowel 3x20', { thickness: 12 }), /dowel 3x20 is 20 mm long, and the parts it goes in hold 12 mm of it: it is too long for its part, and stands 8 mm proud\. The longest dowel that fits is 12 mm/);
+  assert.deepEqual(parsePin('dowel 4x16 ISO 2338'), { kind: 'dowel', diameter: 4, length: 16, barb: null, standard: 'ISO 2338' });
+});
+
+test('filament and printed pins: the filament\'s diameter and tolerance, a printed pin\'s shear across its layers', () => {
+  const f = pinModel('filament pin 1.75x12', { load: 10 });
+  assert.deepEqual([f.hole.diameter, f.made, f.pinMaterial], [1.8, 'cut', 'pla']); // 1.75 + 0.1 - 0.05
+  // shear: pla.strength 39 × 1/√3 × π 1.75² / 4 = 22.517 × 2.4053 = 54.2 N
+  near(f.shear, 54.2, 0.05, 'a filament pin in shear');
+  assert.ok(f.findings.some((x) => x.code === 'pin.tolerance' && /± 0\.03 mm/.test(x.text)));
+  const p = pinModel('printed pin 4x10', { fit: 'slip' }); assert.deepEqual([p.hole.diameter, p.made], [4.3, 'printed']);
+  const s = pin('printed pin 4x10'), b = bb(s); near(b[1][2] - b[0][2], 10, 1e-6, 'drawn standing, its length up'); near(b[1][0] - b[0][0], 4, 0.02, 'and its diameter across');
+  assert.ok(isPinName('dowel 3x12') && !isPinName('Two push pins') && !isPinName('M3x10'));
+  assert.ok(PIN_GRAMMAR.includes('snap pin') && PIN_KINDS.length === 4);
+});
+
+test('pins are refused by name before any sums: what is no pin, a size not sold, a pin too thin to print, options a pin has not', () => {
+  assert.throws(() => pinModel('Two push pins'), /pin name: "Two push pins" is no pin\. A pin is its kind, then diameter x length/);
+  assert.throws(() => pinModel('dowel 3.5x12'), /no ISO 8734 dowel is 3\.5 mm across: the nearest are 3 and 4 mm/);
+  assert.throws(() => pinModel('dowel 3x13'), /a dowel is not sold 13 mm long: the nearest are 12 and 14 mm/);
+  assert.equal(pinModel('dowel 3x13', { anyLength: true }).length, 13);
+  assert.throws(() => pinModel('filament pin 2.85x10'), /a filament pin is the printer's filament, 1\.75 mm across/);
+  assert.throws(() => pinModel('printed pin 1.5x10'), /under fixings\.pin_least, 2 mm/);
+  assert.throws(() => pinModel('snap pin 4x6', { fit: 'press' }), /a snap pin's fit is its socket's/);
+  assert.throws(() => pinModel('dowel 3x12', { pull: 5 }), /pull is along a snap pin/);
+  assert.throws(() => pinModel('dowel 3x12', { fit: 'tight' }), /fit is press or slip/);
+  assert.throws(() => pinModel('dowel 3x12 barb 0.4'), /only a snap pin has a barb/);
+  assert.throws(() => pinModel('dowel 3x12', 'deep'), /the second argument is its options/);
+  assert.throws(() => pinModel('snap pin 4x6', { gap: 4 }), /gap is the split's width, 0 mm or more and narrower than the 4 mm peg/);
+  assert.throws(() => snapPinModel({ diameter: 4 }, { E: 0 }), /snapPinModel: the material needs a modulus E above 0 MPa/);
+  assert.throws(() => pinModel('dowel 3x12', { material: 'cheese' }), /no material "cheese"/);
+});
+
+test('snapSocket draws the clearance the X1C\'s rule gives, the 0.2 mm it always drew', () => {
+  near(vol(snapSocket({ diameter: 4, depth: 6 })), vol(snapSocket({ diameter: 4, depth: 6, clearance: 0.2 })), 1e-9, 'the default is the rule');
+});
+
+test('the README names pins with the grammar the code reads, word for word', () => {
+  const readme = fs.readFileSync(new URL('./README.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(readme.includes('\n## Pins\n'), 'a section on pins'); assert.ok(readme.includes(PIN_GRAMMAR), 'the pin grammar, word for word');
 });

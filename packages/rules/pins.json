@@ -1,0 +1,53 @@
+{
+  "_doc": "Plain pins for joining printed parts: bought steel dowels (ISO 8734, hardened and ground; ISO 2338, unhardened) and a length of 1.75 mm filament. The holes they go in take their fit from the printer's rules (x1c.pin_press, x1c.pin_slip); a printed pin's figures are the plastic's. Read by @rulecad/fixings' pinModel. kind as in x1c.json.",
+  "name": "pins",
+  "rules": {
+    "dowel_diameters": {
+      "value": [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16, 20],
+      "unit": "mm",
+      "rule": "The diameters an ISO 8734 dowel (parallel pin, hardened, tolerance m6) is sold in",
+      "kind": "community",
+      "source": "OPAC, parallel pins ISO 8734 (100Cr6, 550 to 650 HV30, m6), https://www.opac.net/en/producto-166-iso-8734",
+      "checked": "2026-11-21"
+    },
+    "dowel_lengths": {
+      "value": [3, 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+      "unit": "mm",
+      "rule": "The lengths an ISO 8734 dowel is sold in, over all diameters: each diameter comes in a run of them, short for a thin pin and long for a thick one. The rounded ends are within the length",
+      "kind": "community",
+      "source": "OPAC, parallel pins ISO 8734, https://www.opac.net/en/producto-166-iso-8734 (the length grid); Fabory, parallel pin hardened m6, DIN 6325 (the length includes the rounded ends), https://www.fabory.com/en_PL/parallel-pin-%28dowel-pin%29-hardened%2c-m6-din-6325-steel-60%c2%b12hrc-plain/p/39080",
+      "checked": "2026-11-21"
+    },
+    "dowel_tolerance": {
+      "value": "m6",
+      "rule": "An ISO 8734 dowel's diameter is ground to m6: a few microns over its nominal size, far under a printed hole's error, so the hole is sized from the nominal diameter",
+      "kind": "spec",
+      "source": "ISO 8734:1997, as Bossard lists it (DIN 6325, withdrawn, ~ISO 8734, tolerance m6, 60 HRC), https://www.bossard.com/us-en/eshop/dowel-pins/parallel-pins-hardened-ground/p/857/",
+      "checked": "2026-11-21"
+    },
+    "dowel_shear": {
+      "value": 158.8,
+      "unit": "MPa",
+      "rule": "The shear strength a steel dowel is taken to have: mild steel's, the S275 yield of 275 MPa over the square root of 3. A hardened ISO 8734 pin (550 to 650 HV30) is several times stronger, so this understates it; an unhardened ISO 2338 pin is about this. No maker's shear figure for these pins was found, so it is an estimate. The printed hole round the pin gives way long before the pin does",
+      "kind": "estimate",
+      "source": "S275 yield strength, EN 10025-2 (the kit's s275 rule set), over √3 by the von Mises criterion (fixings.shear_ratio); hardness of ISO 8734 type A from OPAC, https://www.opac.net/en/producto-166-iso-8734",
+      "checked": "2026-11-21"
+    },
+    "filament_diameter": {
+      "value": 1.75,
+      "unit": "mm",
+      "rule": "The diameter of the filament the X1C prints: a cut length of it is a pin with no hardware to buy",
+      "kind": "spec",
+      "source": "Bambu Lab PLA Basic technical data sheet V2.0 (diameter 1.75 mm), https://cdn.shopify.com/s/files/1/0380/5149/files/Bambu_PLA_Basic_Technical_Data_Sheet.pdf",
+      "checked": "2026-11-21"
+    },
+    "filament_tolerance": {
+      "value": 0.03,
+      "unit": "mm",
+      "rule": "How far a filament's diameter may be from 1.75 mm either way: a filament pin's fit is only as good as this, so measure the reel you cut it from",
+      "kind": "community",
+      "source": "Retailers' listings of Bambu Lab PLA Basic (1.75 mm, ± 0.03 mm), for example B&H, https://www.bhphotovideo.com/c/product/1940029-REG/bambu_lab_a00_b9_1_75_1000_spl_pla_basic_blue.html; Bambu's own data sheet gives no tolerance",
+      "checked": "2026-11-21"
+    }
+  }
+}

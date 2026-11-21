@@ -732,50 +732,10 @@ export function pinJointCheck({ pin: d, width: w, clearance = 0.2, lift = 0.2 },
   return out;
 }
 
-/**
- * A snap pin: a peg with a barbed, slotted head that pushes into a hole and clicks behind it, its two halves bending
- * inward as cantilevers on the way through. Printed standing up: the barb's lead is a cone and its back a 45°
- * chamfer by default, so nothing overhangs past the printer's limit; a square back (back 90) holds for good but
- * overhangs by the lip. The halves are modelled as snap hooks of the slot's length, the peg's half-thickness and
- * four fifths of its diameter wide (a half-round's worth), with the lip as the undercut.
- * @param {{ diameter: number, length: number, lip?: number, slot?: number, gap?: number, lead?: number, back?: number, head?: number }} p
- *   diameter: the peg's; length: the shaft below the barb; lip: the barb's overhang (default 0.4); slot: the split's
- *   length down from the tip (default 3 × diameter); gap: the split's width (default 1); lead: the tip cone's angle
- *   from the axis, degrees (default 45); back: the barb's back angle (default 45); head: a flange at the foot, its
- *   radius past the peg (default diameter / 2)
- * @param {{ union: Function, subtract: Function }} [ops] the booleans to build it with: a design's v.ops, so a design on
- *   Manifold gets a pin Manifold reads as a closed solid (JSCAD's own leave seams it can't)
- */
-export function snapPin({ diameter: d, length: L, lip = 0.4, slot, gap = 1, lead = 45, back = 45, head }, ops = { union, subtract }) {
-  const r = d / 2, s = slot ?? 3 * d, flange = head ?? r, seg = 48;
-  const fall = back >= 90 ? 0 : lip / Math.tan((back * Math.PI) / 180), rise = (r + lip) / Math.tan((lead * Math.PI) / 180);
-  const foot = cylinder({ radius: r + flange, height: 2, center: [0, 0, 1], segments: seg }), shaft = cylinder({ radius: r, height: L + fall + 0.01, center: [0, 0, 2 + (L + fall) / 2], segments: seg });
-  const z0 = 2 + L, barbBack = jscad.primitives.cylinderElliptic({ height: Math.max(fall, 0.01), startRadius: [r, r], endRadius: [r + lip, r + lip], center: [0, 0, z0 + Math.max(fall, 0.01) / 2], segments: seg });
-  const barbTip = jscad.primitives.cylinderElliptic({ height: rise, startRadius: [r + lip, r + lip], endRadius: [0.01, 0.01], center: [0, 0, z0 + fall + rise / 2], segments: seg });
-  const split = block(0, 0, z0 + fall + rise - s / 2 + 1, [2 * (r + lip) + 2, gap, s + 2]);
-  return ops.subtract(ops.union(foot, shaft, barbBack, barbTip), split);
-}
-/**
- * The socket for a snap pin: a block with a hole the peg's diameter plus the clearance, through it, so the barb
- * clicks out on the far side.
- * @param {{ diameter: number, depth: number, clearance?: number, wall?: number }} p depth: the block's thickness along
- *   the pin (the shaft's length, so the barb clears); clearance: round the peg (default 0.2); wall: round the hole
- */
-export function snapSocket({ diameter: d, depth, clearance = 0.2, wall = 3 }) {
-  const Ro = d / 2 + clearance + wall;
-  return subtract(block(0, 0, depth / 2, [2 * Ro, 2 * Ro, depth]), cylinder({ radius: d / 2 + clearance, height: depth + 2, center: [0, 0, depth / 2], segments: 48 }));
-}
-/**
- * @param {{ diameter: number, lip?: number, slot?: number, gap?: number, lead?: number, back?: number }} p
- * @param {Material & { friction?: number }} m
- * @returns {Model & { force: number, insertion: number, removal: number, holds: boolean, undercut: (strain: number) => number }}
- *   as a snap hook's, for both halves together
- */
-export function snapPinModel({ diameter: d, lip = 0.4, slot, gap = 1, lead = 45, back = 45 }, m) {
-  need('snapPinModel', arguments[0], arguments[1]);
-  const half = snapHookModel({ length: slot ?? 3 * d, thickness: (d - gap) / 2, width: 0.8 * d, undercut: lip, lead, back }, m);
-  return { ...half, stiffness: 2 * half.stiffness, force: 2 * half.force, insertion: 2 * half.insertion, removal: 2 * half.removal };
-}
+// A snap pin, its socket and its forces: a fixing, so they live in @rulecad/fixings (its pins), which works the two
+// halves' snap-hook sums itself. They are re-exported here unchanged, so a design that calls v.flexures.snapPin draws
+// the same pin it always has; fixings' pinModel('snap pin 4x6') sizes one by name, its socket from the printer's rules.
+export { snapPin, snapSocket, snapPinModel } from '@rulecad/fixings';
 
 /**
  * A travel stop: a post each side of a flexure's moving end, placed where the material's strain limit says the travel

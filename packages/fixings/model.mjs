@@ -54,6 +54,8 @@ export const DEFAULTS = {
   tip_room: { value: 1, unit: 'mm', rule: 'A screw\'s tip stops at least this far short of the bottom of a blind hole, so it tightens on its head and not on its tip: an estimate, the millimetre an insert\'s blind hole is given past the insert', kind: 'estimate', source: 'A working figure of this package, after insert_depth in the thread rule sets (the insert\'s length and 1 mm)', checked: '2026-11-15' },
   load_margin: { value: 2, unit: '× load', rule: 'A printed joint is sized to hold about twice the load it is given', kind: 'default', source: 'The kit\'s standard for printed parts: sized from the load with about twice the margin', checked: '2026-11-15' },
   clamp_friction: { value: 0.3, unit: '× clamp force', rule: 'The friction between two printed parts clamped by screws, for whether a joint slips before its screws bear on their holes: an estimate. No measured figure for PLA on PLA at rest was found; the figures found are for printed PLA sliding on steel, about 0.38 to 0.57, and 0.3 is taken under them', kind: 'estimate', source: 'Sliding friction of printed PLA on steel: Pawlak, kinetic 0.49 (https://yadda.icm.edu.pl/baztech/element/bwmeta1.element.baztech-f7c60c77-2f7e-4c4f-8d4e-f962d0c503e7/c/pawlak.pdf), and Sirin et al., Rapid Prototyping Journal 2023, 0.38 to 0.57 pin on disc (https://www.emerald.com/insight/content/doi/10.1108/RPJ-03-2022-0081/full/html); to be measured on the fixings coupon', checked: '2026-11-15' },
+  snap_play: { value: 0.5, unit: 'mm', rule: 'A snap pin\'s shaft may be at most this much longer than the parts it goes through: the barb clicks out that far past the far face. Longer, and the pin rattles in its hole', kind: 'estimate', source: 'A working figure of this package: the launcher\'s pins are drawn 0.2 mm (x1c.fit) longer than their parts. To be measured on the fixings coupon', checked: '2026-11-21' },
+  pin_least: { value: 2, unit: 'mm', rule: 'The thinnest snap pin or printed plain pin: under this a peg is a few print lines across and breaks as it goes in. Thinner pins are filament or steel', kind: 'estimate', source: 'A working figure of this package: about five 0.42 mm lines across, the thinnest the kit draws a snap pin (2.5 mm, the tensioner\'s) less a margin. To be measured on the fixings coupon', checked: '2026-11-21' },
   brass_density: { value: 8.47, unit: 'g/cm³', rule: 'Density of free-machining brass CW614N (CuZn39Pb3), taken for a heat-set insert. The insert maker\'s sheet names no alloy, so the alloy is assumed', kind: 'estimate', source: 'Aalco, CW614N brass rod datasheet, https://www.aalco.co.uk/datasheets/Copper-and-Copper-Alloys-CW614N-Brass-Rod_31.ashx', checked: '2026-11-15' }
 };
 
@@ -342,7 +344,7 @@ export function fixingOf(what, m, o = {}) {
 }
 
 // ---------- the printer ----------
-const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press', 'thread_gap'];
+const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press', 'thread_gap', 'snap_clearance', 'pin_press', 'pin_slip'];
 /**
  * @typedef {{ name: string, figure: (k: string) => (Figure & { name: string, borrowed?: boolean }) | null, n: (k: string) => number, cite: (k: string) => string, rest: (k: string) => object }} Printer
  *   figure: a rule of the printer's own (never borrowed); n: a basic clearance as a number, the printer's own or, where it
@@ -351,7 +353,7 @@ const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overh
 /**
  * The printer's rules as fixings reads them. Handed nothing, the kit's X1C. Handed a rule set ({ name, rules }), its
  * figures with their kinds and sources. Handed plain numbers (a design's v.x1c), those, marked as given. A basic
- * clearance the printer lacks (hole_comp, fit, layer, line, chamfer, bridge, overhang, slip, press, thread_gap) is borrowed from the X1C
+ * clearance the printer lacks (hole_comp, fit, layer, line, chamfer, bridge, overhang, slip, press, thread_gap, snap_clearance, pin_press, pin_slip) is borrowed from the X1C
  * and cited as the X1C's; a measured figure (pilot_m3) is never borrowed, since it was measured on that machine.
  * @param {string} what @param {object} [p] @returns {Printer}
  */

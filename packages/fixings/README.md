@@ -485,6 +485,65 @@ as `petg` has), the weaker of the two is taken; where it has none (`pla`), the f
 a torque scatters by a quarter to a third either way. Take the results as a first check, keep a working load to half
 of what they give, and test a joint that matters.
 
+## Pins
+
+A pin holds two printed parts together with no thread. Four kinds are drawn and sized here:
+
+- a **snap pin**, a printed peg split down its middle with a barb at its tip, which clicks through its hole and holds;
+- a **dowel**, a bought steel pin (ISO 8734, hardened and ground, or ISO 2338, unhardened);
+- a **filament pin**, a cut length of the printer's 1.75 mm filament, with nothing to buy;
+- a **printed pin**, a plain printed peg.
+
+`pinModel(name, options)` gives a pin's numbers by name: the hole it goes in, its mass, what it carries in shear and
+what the printed hole takes in bearing, and for a snap pin the force to push it in and pull it out. `pinHole` is the
+hole to subtract (round standing up, a teardrop lying on its side) and `pin` the pin's own solid. A plain pin is
+pressed in (`fit: 'press'`, the default: it grips) or slides in (`fit: 'slip'`: it turns, a hinge pin). Each hole
+takes its size from the printer's rules: a snap pin's socket is the peg plus `snap_clearance` each side, as drawn; a
+plain pin's hole is the pin plus `hole_comp`, less `pin_press` or plus `pin_slip`. All three are estimates until the
+fixings coupon measures them. Given the `thickness` it goes through, a pin that does not fit its part is refused by
+name: a plain pin longer than the parts stands proud, and a snap pin's shaft must be as long as the parts and at most
+`snap_play` (0.5 mm) longer, or its barb never clicks out or rattles.
+
+A pin's name is read by this grammar:
+
+```
+pin      = kind diameter "x" length { word }        snap pin 4x6, dowel 3x12, filament pin 1.75x12, printed pin 4x10
+kind     = "snap pin" | "dowel" | "filament pin" | "printed pin"      ("pins" and "dowel pin" are read too)
+diameter = number                                    mm: the peg's, below a snap pin's barb
+length   = number [ "mm" ]                           mm: a snap pin's shaft from its foot to its barb; a plain pin's whole length
+word     = "barb" number                             a snap pin's barb past its peg (default 0.4)
+         | "ISO 8734" | "ISO 2338"                   a dowel's standard: hardened and ground (the default), or unhardened
+```
+
+```js
+import { pinModel, pinHole, pin } from '@rulecad/fixings';
+
+const snap = pinModel('snap pin 4x6', { thickness: 6, pull: 2 });
+console.log(snap.hole.diameter, snap.snap.insertion, snap.snap.removal, snap.grams);
+for (const fit of ['press', 'slip']) console.log(fit, pinModel('dowel 3x12', { fit }).hole.diameter);
+const dowel = pinModel('dowel 3x12', { thickness: 12, load: 30 });
+console.log(dowel.shear, dowel.bearing, dowel.margin, dowel.governs);
+const cut = pinHole('dowel 3x12', { fit: 'slip', axis: 'x', depth: 8 }), solid = pin('snap pin 4x6');
+console.log(cut.model.hole.teardrop, solid.model.name);
+try { pinModel('dowel 3x20', { thickness: 12 }); } catch (e) { console.log(e.message.slice(0, 96)); }
+```
+
+```text
+4.4 6.22 6.22 0.191
+press 3.05
+slip 3.3
+1122.5 702 23.4 bearing
+true snap pin 4x6
+pinModel: dowel 3x20 is 20 mm long, and the parts it goes in hold 12 mm of it: it is too long fo
+```
+
+`snapPin`, `snapSocket` and `snapPinModel` draw and size a snap pin from plain figures (diameter, shaft length, barb,
+slot, gap, lead and back angles, head), as `@rulecad/flexures` drew them before they moved here. Flexures re-exports
+them unchanged, so `v.flexures.snapPin` draws the same pin it always has. `parsePin` reads a name and `isPinName`
+says whether a text is one. In an assembly, a fit's `fastener` can name pins (`{ "pin": "snap pin 4x6", "count": 2 }`):
+`cad check` finds their holes, checks them against these figures and the pins' length against the parts, and `cad
+list` and `cad order` name them.
+
 ## Refusals and printability
 
 Bad input is refused by name before any geometry is made, with what would be accepted:
@@ -499,6 +558,7 @@ Bad input is refused by name before any geometry is made, with what would be acc
 | A material with no rule set (`'nylon'`) | The materials there are |
 | A printed thread too fine for the printer, or on its side with no flat | The smallest thread that would print; the flat |
 | A stack no sold screw fits | The nearest length and by how much it misses |
+| A pin too long or too short for its part (`thickness`), a dowel size not sold, a pin thinner than `pin_least` | How long the pin is against the parts, the nearest sizes |
 
 `printable(x)` gives what a printer can make of anything this package draws, as findings: pass a model or the solid
 made from it. A hole, a seat or a printed thread gives its `.printable` finding for the direction it was drawn for
@@ -554,7 +614,8 @@ hole: depth is a number above 0, in mm (got -2)
   the PT screws (the maker's factor for ABS), the engagement rules, the printer's `hole_comp`, `fit` and `bridge`,
   the two layers a nut pocket is sunk, and the three quarters of proof load a fully tightened screw is taken to carry.
 - **Estimates**: pilots for M1.6, M5 and up, and every inch size (nobody has published one); the printer's `slip`,
-  `press` and `thread_gap`; the layers and line a printed thread needs; the layer left over a nut put in mid-print;
+  `press`, `thread_gap`, `snap_clearance`, `pin_press` and `pin_slip`; a steel dowel's shear strength and the play a
+  snap pin's shaft may have; the layers and line a printed thread needs; the layer left over a nut put in mid-print;
   a material's shear strength (its tensile strength over √3) and what it bears under a head (its strength); the nut
   factor K (0.2); the diameter of thread asked in an insert; the millimetre kept at a screw's tip; and every mass.
   A mass comes from the part's outline, with no socket and no knurls, and an insert's alloy is assumed.
@@ -597,6 +658,11 @@ with its `rule`, `kind` and `source`.
 | Pull on each screw of a group | P = Fz / n + b x + c y, with Σ P y = Mx and Σ P x = -My about the centroid; screws in a line tip about the clamped face's edge, P = M / (n × pivot) | An estimate of this package: the plane through the centroid holds while the parts stay pressed together. No source was read for it |
 | A screw under its load | the screw: (Fp + k P)² + 3 (k S)² = proof load²; the thread: Fp + k P = strip load; the clamp: μ (Fp - k P) = k S; the margin is the least k of the first two | Von Mises on the stress area; the screw takes the whole pull and the clamp loses the whole pull, each the safe side for a part far softer than the screw. μ is `fixings.clamp_friction`, an estimate |
 | A screw's length | grip = stack + washer - sunk; engaged = length - grip; fits where need ≤ engaged ≤ room | Geometry, with the rules for need and room in the table under `lengthFor` |
+| A snap pin's half | k = E w t³ / 4L³, with L the slot, t = (d - gap) / 2, w = 0.8 d; strain at the root 3 t y / 2 L² for the barb y | The cantilever snap-fit (BASF and Bayer snap-fit design guides), as `@rulecad/flexures` models a snap hook |
+| Push in and pull out | W = 2 k y (μ + tan α) / (1 - μ tan α), α the lead or back angle; holds where α is 90° or μ tan α ≥ 1 | The same guides |
+| A pin's shear | F = τ π d² / 4 × planes, a snap pin's area less its slot (gap × d); τ = strength / √3, or `pins.dowel_shear` for steel | Von Mises; the dowel's figure is an estimate that understates a hardened pin |
+| The hole's bearing | F = strength × d × grip, the grip half the parts' thickness unless given | Projected area, as a screw's seat is taken; an estimate |
+| A pin's mass | m = ρ π d² / 4 L, a snap pin's from its drawn solid | Geometry, with the plastic's or steel's density |
 
 VDI 2230 and Machinery's Handbook are named because the plan asked for them. Neither was read at first hand for
 this package: the handbook's thread shear area and stress area are applied as the pages above give them, and VDI
