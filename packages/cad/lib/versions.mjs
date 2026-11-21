@@ -82,9 +82,13 @@ export function packageVersion(name, from = import.meta.url) {
 const ENGINE_LIBS = ['@tscircuit/capacity-autorouter', '@tscircuit/footprinter', '@tscircuit/checks', 'schematic-symbols'];
 const engineLibs = () => ENGINE_LIBS.map((n) => `${n}@${packageVersion(n, import.meta.resolve('@rulecad/pcb'))}`).join(' ');
 const engineHash = (code) => crypto.createHash('sha256').update(`${code.trimEnd()}\n${engineLibs()}`).digest('hex').slice(0, 16);
+// The board engine's code: @rulecad/pcb's modules, and @rulecad/smooth's, which a board's build runs too (smoothing its
+// tracks, finishing them): a change to either is a change to what a board builds, so it must miss the cache
+const sources = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n');
 export const engineId = () => {
-  const dir = path.dirname(fileURLToPath(import.meta.resolve('@rulecad/pcb')));
-  return engineHash(fs.readdirSync(dir).filter((f) => f.endsWith('.mjs') && f !== 'test.mjs').sort().map((f) => fs.readFileSync(path.join(dir, f), 'utf8')).join('\n'));
+  const pcb = import.meta.resolve('@rulecad/pcb'), dir = path.dirname(fileURLToPath(pcb));
+  const smooth = path.dirname(createRequire(pcb).resolve('@rulecad/smooth'));
+  return engineHash(`${sources(dir)}\n${sources(smooth)}`);
 };
 // From a tag's message, or for releases before tags recorded it, from the engine's code in the repo at the tag
 function taggedEngine(tag) {
