@@ -2,7 +2,8 @@
 
 Compliant mechanisms for printed parts: flexures that move by bending instead of turning on a pin. Each one is a
 JSCAD shape and a model: its stiffness, the strain its material sees at a travel, and the travel a strain allows.
-No dependencies but JSCAD. Part of [rulecad](https://github.com/JoniBach/rulecad).
+Needs JSCAD, [`@rulecad/fea`](https://github.com/JoniBach/rulecad/tree/main/packages/fea) for its finite-element checks, and
+[`@rulecad/fixings`](https://github.com/JoniBach/rulecad/tree/main/packages/fixings), whose snap pins it passes on. Part of [rulecad](https://github.com/JoniBach/rulecad).
 
 ```js
 import { leaf, leafModel, parallelGuide, parallelGuideModel, serpentine, notchHinge, notchHingeModel, printable } from '@rulecad/flexures';
@@ -39,7 +40,7 @@ printable({ ...spring, travel: 5 }, { line: 0.42, layer: 0.2, wall_min: 0.84 }, 
 | `ratchetWheel`, `ratchetPawl` | Saw teeth on a pin and a leaf pawl: a one-way click | `ratchetModel`: the pawl's `lift` a tooth high and the `click` along the rim | the pawl's, at the tooth height |
 | `foldedGuide` | A shuttle on two folds, each a beam out to a floating truss and back to an anchor: a compound guide in a shorter box | E w t³ / L³ | 3t(δ/2) / L²; no drift |
 | `pinJoint` | A pin, a ring with an arm and a cap, printed in place a support gap apart: the joint to compare the flexures against | not compliant: `pinJointCheck` reads the printer's fit and support gap, and gives the ring's play | — |
-| `snapPin`, `snapSocket` | A barbed, slotted peg that clicks into a hole, printed standing | `snapPinModel`: two snap hooks' worth of `force`, `insertion` and `removal` | 3ty / 2L² in each half |
+| `snapPin`, `snapSocket` | A barbed, slotted peg that clicks into a hole, printed standing. These live in `@rulecad/fixings` now and are passed on here unchanged | `snapPinModel`: two snap hooks' worth of `force`, `insertion` and `removal` | 3ty / 2L² in each half |
 | `travelStop` | Two posts at a leaf's tip where the strain limit says its travel must end, less a margin: the rule as a shape | — | `at`: factor × travel(strainLimit) |
 | `contactLeaf` | A leaf with a stop bar beside it: free until the beam touches, stiffer after; two rates in one spring | `first` the leaf's, `second` a cantilever propped at the stop (12EI / b²(3a + 4b), b past the stop), meeting at `contact` | 3tδ / 2L² before contact, then the larger of the root's and the stop's moments |
 | `parallelogram` | A four-bar with a notch hinge at each corner: the coupler moves sideways and stays parallel, rising a little | 4K / L² at the coupler | the hinges' at θ = asin(δ / L) |
@@ -394,6 +395,15 @@ and the gaps its support gap, and how far the ring can rock. `snapPin` and `snap
 click: a barbed peg split down the middle, each half a snap hook, pushed into a hole; `snapPinModel` gives the
 forces, and the barb's back angle decides whether it holds for good (90) or can be pulled apart (45, the default,
 which also prints standing with no overhang).
+
+**Where snap pins live.** A snap pin's job is to hold two parts together, so `snapPin`, `snapSocket` and
+`snapPinModel` moved to [`@rulecad/fixings`](https://github.com/JoniBach/rulecad/tree/main/packages/fixings), with the
+snap-hook sums they need written there. This package passes the same three functions on, so `v.flexures.snapPin`,
+the launcher and the joints sampler draw exactly what they drew before. Use fixings for a new design: there a snap
+pin is also named (`snap pin 4x6`), its socket takes its clearance from the printer's `snap_clearance`, its mass and
+its push-in and pull-out forces are reported, an assembly's fit can name it, and the holds coupon
+(`examples/bench/projects/benchmarks/objects/holds-coupon`) measures its socket and barb. Everything whose bending is
+its job stays here: `snapHook`, the ratchets, `pinJoint` printed in place, and the travel and angle stops.
 
 In a lamina, a curve joint given a `pin` turns on a pin printed in place instead of bending about its own middle:
 `{ kind: 'curve', params, from: 'slide', to: 'pawl', pin: { d: 3, at: [x, y], under } }`. The post stands on the

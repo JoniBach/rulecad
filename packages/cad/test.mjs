@@ -2330,6 +2330,82 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('cad measured from the holds coupon: each pin, socket and magnet fit, the snap pins\' barb and a plastic\'s strength across its layers round-trip, and a figure no fit can be is refused', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // a plate with a dowel's press hole and an 8x3 magnet's press pocket, drawn from the printer's rules
+    const js = `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const f = v.fixings, top = v.thick
+  return v.ops.subtract(cuboid({ size: [v.width, v.width, top], center: [0, 0, top / 2] }), f.pinHole('dowel 3x12', { fit: 'press', at: [-v.apart, 0, top], depth: v.deep }), f.magnetSeat('disc magnet 8x3', { fit: 'press', at: [v.apart, 0, top] }))
+}
+`;
+    object(ws, 'home/plate', { uses: ['x1c'], engine: 'manifold', variables: { width: { value: 30, unit: 'mm', rule: 'Room for both' }, thick: { value: 'x1c.layer * 40', unit: 'mm', rule: 'The holes and a floor' }, deep: { value: 6, unit: 'mm', rule: 'The dowel\'s hole' }, apart: { value: 7, unit: 'mm', rule: 'Each from the middle' } } }, js);
+    fs.writeFileSync(path.join(ws, 'projects/home/project.json'), JSON.stringify({ name: 'home', material: 'PLA', objects: ['plate'] }));
+    fs.mkdirSync(path.join(ws, 'projects/home/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/home/assemblies/coupon.json'), JSON.stringify({ title: 'Coupon', kind: 'fit', items: [{ id: 'plate', object: 'plate' }] }));
+    const drawn = () => JSON.parse(cad('check', 'home/plate', '--json')).findings;
+    const hole = (f) => f.find((x) => x.code === 'pin.hole').values.diameter;
+    // before: 3 + x1c.hole_comp 0.1 - x1c.pin_press 0.05 = 3.05 mm
+    assert.equal(hole(drawn()), 3.05);
+    const own = (n) => path.join(ws, `rules/${n}.json`), written = (n, k) => fs.existsSync(own(n)) && JSON.parse(fs.readFileSync(own(n), 'utf8')).rules[k]?.kind === 'measured';
+    // refused by name, with what would be accepted, and nothing written: a diameter given for a clearance, and a strength
+    // across the layers above PLA's 39 MPa along them
+    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=3'), /x1c\.pin_press is from 0 to 0\.3 mm: how much smaller a hole is drawn than the pin it grips, .* \(got 3\)/);
+    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0'), /x1c\.snap_clearance is above 0 and up to 0\.5 mm: its gap is drawn with no hole compensation, so at 0 the printed socket comes out smaller than the peg/);
+    assert.match(cad('measured', 'home/coupon', 'pla.strength_z=45'), /pla\.strength_z is above 0 and no more than pla\.strength, 39 MPa: a print holds less across its layers than along them/);
+    assert.ok(!written('x1c', 'snap_clearance') && !written('pla', 'strength_z'), 'nothing written');
+    const out = cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=0.1', 'x1c.pin_slip=0.25', 'x1c.magnet_press=0.05', 'x1c.magnet_glue=0.15', 'x1c.magnet_crush=0.3', 'x1c.snap_barb=0.5', 'pla.strength_z=21.5');
+    // each against what the kit drew it from
+    assert.match(out, /x1c\.snap_clearance: measured 0\.15 mm, predicted 0\.2 \(estimate\), ratio 0\.75/);
+    assert.match(out, /x1c\.pin_press: measured 0\.1 mm, predicted 0\.05 \(estimate\), ratio 2\n/);
+    assert.match(out, /x1c\.pin_slip: measured 0\.25 mm, predicted 0\.2/);
+    assert.match(out, /x1c\.magnet_press: measured 0\.05 mm, predicted 0\.1 \(estimate\)/);
+    assert.match(out, /x1c\.magnet_glue: measured 0\.15 mm, predicted 0\.1/);
+    assert.match(out, /x1c\.magnet_crush: measured 0\.3 mm, predicted 0\.2/);
+    assert.match(out, /x1c\.snap_barb: measured 0\.5 mm, predicted 0\.4 \(barb 0\.4, the default\)/);
+    assert.match(out, /pla\.strength_z: measured 21\.5 MPa, predicted 39 \(pla\.strength, along the layers: no figure across them\)/);
+    // in the workspace's copies of the printer's and the plastic's sets, each measured, dated, from the coupon
+    const x1c = JSON.parse(fs.readFileSync(own('x1c'), 'utf8')).rules, pla = JSON.parse(fs.readFileSync(own('pla'), 'utf8')).rules, today = new Date().toISOString().slice(0, 10);
+    for (const [k, value] of [['snap_clearance', 0.15], ['pin_press', 0.1], ['pin_slip', 0.25], ['magnet_press', 0.05], ['magnet_glue', 0.15], ['magnet_crush', 0.3], ['snap_barb', 0.5]]) {
+      assert.deepEqual([x1c[k].value, x1c[k].unit, x1c[k].kind, x1c[k].checked], [value, 'mm', 'measured', today], k); assert.match(x1c[k].source, /holds coupon/, k); assert.doesNotMatch(x1c[k].rule, /estimate|until/, k);
+    }
+    assert.deepEqual([pla.strength_z.value, pla.strength_z.unit, pla.strength_z.kind], [21.5, 'MPa', 'measured']); assert.match(pla.strength_z.rule, /across its printed layers: the pull bolt/);
+    assert.equal(pla.strength.value, 39, 'the strength along the layers is untouched');
+    // and the plate is drawn from them: the dowel's press hole 3 + 0.1 - 0.1 = 3 mm, the magnet's pocket 8 + 0.1 - 0.05 = 8.05 mm
+    const after = drawn();
+    assert.equal(hole(after), 3);
+    assert.ok(after.some((x) => /8\.05 mm/.test(x.text) && /x1c\.magnet_press/.test(x.text)), 'the pocket from the measured press');
+    assert.match(cad('history', 'home/coupon'), /x1c\.pin_press: measured 0\.1 mm, predicted 0\.05/);
+    // 0 is a real fit for a slip and for crush ribs, both past hole_comp: the coupon's lowest row is at 0 once centred on
+    // 0.1 (0.1 - x1c.hole_comp 0.1). A snap socket's 0 is still refused: its gap has no hole compensation (above)
+    const zero = cad('measured', 'home/coupon', 'x1c.pin_slip=0', 'x1c.magnet_crush=0');
+    assert.match(zero, /x1c\.pin_slip: measured 0 mm, predicted 0\.25/); assert.match(zero, /x1c\.magnet_crush: measured 0 mm, predicted 0\.3/);
+    const x1c0 = JSON.parse(fs.readFileSync(own('x1c'), 'utf8')).rules; assert.deepEqual([x1c0.pin_slip.value, x1c0.magnet_crush.value], [0, 0]);
+  } finally { done(); }
+});
+
+test('the holds coupon\'s pull bolt is long enough for the blocks MEASURE.md row 47 clamps it between: their thickness, a washer and a steel nut on full thread, the waist hanging below', async () => {
+  const { screwModel, nutModel, washerModel, threadModel } = await import('@rulecad/fixings');
+  const bench = fileURLToPath(new URL('../../examples/bench/projects/benchmarks/', import.meta.url));
+  const v = Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(bench + 'objects/holds-coupon.json', 'utf8')).variables).map(([k, x]) => [k, x.value]));
+  const row = fs.readFileSync(bench + 'MEASURE.md', 'utf8').split(/\r?\n/).find((l) => l.startsWith('| 47 |'));
+  const blocks = Number(row.match(/blocks are no more than (\d+(?:\.\d+)?) mm thick/)?.[1]);
+  assert.ok(blocks > 0, 'row 47 says how thick the blocks may be');
+  // As holds-coupon.js draws it, standing on its head: the head k tall, a millimetre of shank, a 45° cone down from the
+  // thread's radius R to the waist's r, the waist, a cone back up; full thread from z2 to the tip at k + pull_length
+  const k = screwModel(`M8x${v.pull_length} hex`).headHeight, R = 8 / 2, r = v.waist / 2, z2 = k + 1 + (R - r) + v.waist_length + (R - r);
+  const thread = k + v.pull_length - z2, needed = blocks + washerModel('M8').thickness + nutModel('M8').height + threadModel('M8', { length: 10 }).pitch;
+  // By hand: k = 5.3 (ISO 4017 M8 head), the 3.5 mm waist 3.5 mm long, z2 = 5.3 + 1 + 2.25 + 3.5 + 2.25 = 14.3, so pull_length
+  // 45 leaves 5.3 + 45 - 14.3 = 36 mm of full thread above the waist. The blocks (20) + an ISO 7089 washer (1.6) + an ISO
+  // 4032 nut at its tallest (6.8) + a pitch to start the nut on (1.25) = 29.65 mm: it fits, 6.35 mm to spare. At pull_length 30 there were 18 mm, room for
+  // blocks of 8.35 mm at most: an 18 mm plywood offcut left the waist inside the gap, out of the cord's reach
+  assert.equal(Number(z2.toFixed(6)), 14.3); assert.equal(Number(thread.toFixed(6)), 36); assert.equal(Number(needed.toFixed(6)), 29.65);
+  assert.ok(thread >= needed, `${thread} mm of thread above the waist holds blocks ${blocks} mm thick, a washer and a nut (${needed} mm)`);
+  assert.ok(blocks >= 18, 'an 18 mm plywood offcut, the common board, is thin enough');
+});
+
 test('cad measured from the joint rig: a drop read on the dial becomes the join\'s spring, measured, in the rule it came from, and the prediction moves to match; a slot nut\'s hold along its slot lands in its set', async () => {
   const { ws, cad, done } = workspace();
   try {
@@ -3645,7 +3721,7 @@ test('panels and doors: a bay closed with a 3 mm panel lists the panel\'s size a
     assert.match(swept, /sweep door-hinge, 0 to 120° in 24 steps: nothing collides/);
     assert.doesNotMatch(swept, /✗/);
     const dl = cad('list', 'frame/door');
-    assert.match(dl, /2 ×\s+M4x40 cap/); assert.match(dl, /2 ×\s+M4 lock nut/); assert.match(dl, /1 ×\s+10 x 3 mm disc magnet/); assert.match(dl, /acrylic sheet, 3 mm cut 377\.9 x 286 mm/);
+    assert.match(dl, /2 ×\s+M4x40 cap/); assert.match(dl, /2 ×\s+M4 lock nut/); assert.match(dl, /1 ×\s+disc magnet 10x3 N35/); assert.match(dl, /acrylic sheet, 3 mm cut 377\.9 x 286 mm/);
     // with its turn-button latch shut over the door, the sweep finds the door can't open: it lifts into the tab within
     // its first degree, so the sweep also tries it 0.5° off shut, finer than its 5° steps (which jump past the tab)
     write('door', { door: { hinge: 'z1', latch: true } });
@@ -5312,5 +5388,224 @@ test('cad measured from the beam coupon: its sag becomes the modulus a printed b
     // refused by name: a sag of nothing
     assert.match(cad('measured', 'benchmarks/beam-test', 'k1.sag=0'), /k1\.sag: a sag is above 0/);
     assert.match(cad('history', 'benchmarks/beam-test'), /k1\.sag: measured 0\.7 mm, predicted 0\.579/);
+  } finally { done(); }
+});
+
+test('pins in an assembly: a lid on two snap pins is listed, its sockets checked, and a pin too long for its part refused by name', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // A plate 30 × 20 mm, its thickness and its two holes set: the holes drawn with v.fixings.pinHole for the pin named,
+    // or a plain cylinder of a given size (bore) to try a wrong one
+    object(ws, 'pins/plate', { uses: ['x1c'], variables: {
+      thick: { value: 3, unit: 'mm', rule: 'The plate', tweak: { min: 1, max: 20 } },
+      bore: { value: 0, unit: 'mm', rule: 'A hole typed by hand (0: the pin\'s own)', tweak: { min: 0, max: 8 } },
+      pin: { value: 'snap pin 4x6', choice: ['snap pin 4x6', 'dowel 3x6'], rule: 'The pin its holes are drawn for' } } }, `import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+export function main (v) {
+  const plate = cuboid({ size: [30, 20, v.thick], center: [0, 0, v.thick / 2] })
+  const cut = (x) => (v.bore ? cylinder({ radius: v.bore / 2, height: v.thick * 3, center: [x, 0, v.thick / 2], segments: 48 }) : v.fixings.pinHole(v.pin, { at: [x, 0, v.thick], depth: v.thick, through: true }))
+  return v.ops.subtract(plate, cut(-10), cut(10))
+}
+`);
+    fs.writeFileSync(path.join(ws, 'projects/pins/project.json'), JSON.stringify({ name: 'pins', material: 'PLA', objects: ['plate'] }));
+    const file = path.join(ws, 'projects/pins/assemblies/lid.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const write = (fastener, lid = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its base', kind: 'fit',
+      items: [{ id: 'base', object: 'plate' }, { id: 'lid', object: 'plate', at: [0, 0, 3], set: lid }],
+      fits: [{ a: 'lid', b: 'base', min: 0, note: 'The lid, pinned to the base', fastener }] }));
+    const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'pins/lid', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    const pinsOf = (all) => all.filter((x) => x.code === 'fit.pin');
+    // Two snap pins 4x6 through 3 + 3 mm of plates, in sockets drawn 4 + 2 × x1c.snap_clearance 0.2 = 4.4 mm
+    write({ pin: 'snap pin 4x6', count: 2, load: 20 });
+    let found = check(), p = pinsOf(found);
+    assert.deepEqual(p.map((x) => x.level), ['pass'], JSON.stringify(p));
+    assert.match(p[0].text, /The lid, pinned to the base: 2 × snap pin 4x6 in sockets drawn 4\.4 mm \(x1c\.snap_clearance\), each the right length for lid and base/);
+    const load = found.find((x) => x.code === 'fit.pin.load'); assert.ok(load && /carries .* N in shear/.test(load.text), JSON.stringify(load));
+    // listed, by name, as a printed pin with its grams (no packs: it is printed), and named in its build step
+    const l = JSON.parse(cad('list', 'pins/lid', '--json')).fasteners.find((x) => x.fastener === 'snap pin 4x6');
+    assert.deepEqual([l.qty, l.kind, l.made, l.packs], [2, 'pin', 'printed', undefined], JSON.stringify(l)); assert.ok(l.grams > 0.1 && l.grams < 0.3, `${l.grams} g`);
+    const order = JSON.parse(cad('order', 'pins/lid', '--json'));
+    assert.ok(order.steps.some((st) => /The lid, pinned to the base \(2 × snap pin 4x6\)/.test(st.text)), JSON.stringify(order.steps));
+    // a pin too long for its part: an 8 mm shaft through 6 mm of plates rattles 2 mm past the far face
+    write({ pin: 'snap pin 4x8', count: 2 });
+    p = pinsOf(check());
+    assert.ok(p.length === 2 && p.every((x) => x.level === 'fail'), JSON.stringify(p));
+    assert.match(p[0].text, /The lid, pinned to the base: pin 1 at .* in lid and base: snap pin 4x8's shaft is 8 mm long, and the parts it goes through are 6 mm thick: it is too long for its part/);
+    assert.equal(p[0].card, 'The lid, pinned to the base: pin too long'); assert.deepEqual(p[0].values, { length: 8, room: 6 });
+    // a socket drawn by hand too small: 4.2 mm, where the pin wants 4.4
+    write({ pin: 'snap pin 4x6', count: 2 }, { bore: 4.2 });
+    p = pinsOf(check());
+    assert.ok(p.some((x) => x.level === 'fail' && /lid's hole is drawn 4\.2 mm, and snap pin 4x6 wants 4\.4 mm \(x1c\.snap_clearance\): too small, it will not go in/.test(x.text)), JSON.stringify(p));
+    // more pins named than holes drawn
+    write({ pin: 'snap pin 4x6', count: 3 });
+    assert.match(pinsOf(check())[0].text, /3 × snap pin 4x6 wanted, and only 2 holes about its 4\.4 mm hole lead from lid into base/);
+    // a 3 mm dowel in press-fit holes drawn for it (3 + 0.1 - 0.05 = 3.05 mm), 6 mm long in 6 mm of plates
+    const write3 = (fastener, lid = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its base', kind: 'fit',
+      items: [{ id: 'base', object: 'plate', set: { pin: 'dowel 3x6' } }, { id: 'lid', object: 'plate', at: [0, 0, 3], set: { pin: 'dowel 3x6', ...lid } }],
+      fits: [{ a: 'lid', b: 'base', min: 0, note: 'The lid, pinned to the base', fastener }] }));
+    write3({ pin: 'dowel 3x6', count: 2, fit: 'press' });
+    p = pinsOf(check());
+    assert.deepEqual(p.map((x) => x.level), ['pass'], JSON.stringify(p)); assert.match(p[0].text, /2 × dowel 3x6 in holes drawn to press 3\.05 mm/);
+    const dowel = JSON.parse(cad('list', 'pins/lid', '--json')).fasteners.find((x) => x.fastener === 'dowel 3x6');
+    assert.deepEqual([dowel.kind, dowel.made, dowel.qty, dowel.packs], ['pin', 'bought', 2, 1], 'a bought dowel is bought in packs');
+    // a press hole drawn at the pin's bare 3 mm (hole_comp left out) is not the 3.05 mm press hole: it is 0.05 mm off,
+    // under fasten's 0.06 mm tolerance, so the press hole is matched to within half its step from the bare pin,
+    // |3.05 - 3| / 2 = 0.025 mm, and the 3 mm hole fails as too small
+    write3({ pin: 'dowel 3x6', count: 2, fit: 'press' }, { bore: 3 });
+    p = pinsOf(check());
+    assert.ok(p.some((x) => x.level === 'fail' && /lid's hole is drawn 3 mm, and dowel 3x6 wants 3\.05 mm for a press fit .*: too small/.test(x.text)), JSON.stringify(p));
+    write3({ pin: 'dowel 3x6', count: 2, fit: 'slip' });
+    assert.match(pinsOf(check()).find((x) => x.level === 'fail').text, /drawn 3\.05 mm, and dowel 3x6 wants 3\.3 mm for a slip fit \(x1c\.hole_comp, x1c\.pin_slip\): too small/);
+    // a pin the schema does not know is refused by name
+    write({ pin: 'snap pin 4x6', colour: 'red' });
+    const r = spawnSync(process.execPath, [BIN, 'check', 'pins/lid', '--json'], { cwd: ws, encoding: 'utf8' });
+    assert.match(`${r.stdout}${r.stderr}`, /pins have no \\?"colour\\?": a fastener naming pins takes pin, count, fit, load, pull/);
+    const { schema, validate } = await import('./lib/schema.mjs'), asm = (fastener) => ({ title: 't', kind: 'fit', items: [], fits: [{ a: 'lid', b: 'base', fastener }] });
+    assert.deepEqual(validate(asm({ pin: 'snap pin 4x6', count: 2, fit: 'press', load: 20, pull: 5 }), schema('assembly')), [], 'the schema takes pins');
+    assert.ok(validate(asm({ pin: 'snap pin 4x6', colour: 'red' }), schema('assembly')).some((x) => /colour/.test(`${x.path} ${x.message}`)), 'and names what it does not');
+    assert.deepEqual(validate(asm('Two push pins'), schema('assembly')), [], 'words still do');
+    // the free-text form keeps working: named as written, not checked
+    write('Two push pins');
+    assert.equal(pinsOf(check()).length, 0);
+    assert.ok(JSON.parse(cad('list', 'pins/lid', '--json')).fasteners.some((x) => x.fastener === 'Two push pins' && x.qty === 1));
+  } finally { done(); }
+});
+
+test('magnets in an assembly: a lid held by two 8x3 magnets reports their pull, its pockets come from the rules, and a shallow, thin-floored or wrong pocket fails by name', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // A box 30 × 20 mm with two pockets in its top face for the magnets, drawn with v.fixings.magnetSeat for the fit named,
+    // or a plain cylinder of a given size and depth (bore, deep) to try a wrong one; a plain lid lies on it
+    object(ws, 'mag/box', { uses: ['x1c'], variables: {
+      thick: { value: 6, unit: 'mm', rule: 'The box\'s top', tweak: { min: 1, max: 20 } },
+      bore: { value: 0, unit: 'mm', rule: 'A pocket typed by hand (0: the magnet\'s own)', tweak: { min: 0, max: 12 } },
+      deep: { value: 3, unit: 'mm', rule: 'A hand-typed pocket\'s depth', tweak: { min: 0.5, max: 10 } },
+      fit: { value: 'press', choice: ['press', 'glue'], rule: 'The fit its pockets are drawn for' } } }, `import jscad from '@jscad/modeling'
+const { cuboid, cylinder } = jscad.primitives
+export function main (v) {
+  const box = cuboid({ size: [30, 20, v.thick], center: [0, 0, v.thick / 2] })
+  const cut = (x) => (v.bore ? cylinder({ radius: v.bore / 2, height: v.deep + 0.1, center: [x, 0, v.thick - v.deep / 2 + 0.05], segments: 48 }) : v.fixings.magnetSeat('disc magnet 8x3', { fit: v.fit, at: [x, 0, v.thick] }))
+  return v.ops.subtract(box, cut(-8), cut(8))
+}
+`);
+    object(ws, 'mag/lid', { variables: { w: { value: 30, unit: 'mm' }, d: { value: 20, unit: 'mm' }, h: { value: 2, unit: 'mm' } } }, BOX);
+    fs.writeFileSync(path.join(ws, 'projects/mag/project.json'), JSON.stringify({ name: 'mag', material: 'PLA', objects: ['box', 'lid'] }));
+    const file = path.join(ws, 'projects/mag/assemblies/lid.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const write = (fastener, box = {}) => fs.writeFileSync(file, JSON.stringify({ title: 'A lid on its box', kind: 'fit',
+      items: [{ id: 'box', object: 'box', set: box }, { id: 'lid', object: 'lid', at: [0, 0, 'box.thick'] }],
+      fits: [{ a: 'lid', b: 'box', min: 0, note: 'The lid, held by magnets', fastener }] }));
+    const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'mag/lid', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    const of = (all, code) => all.filter((x) => x.code === code);
+    // Two N35 discs 8 x 3 mm. By hand: the seller's 8 x 3 disc is N45 and pulls 14.7 N (magnets.disc_8x3_pull, supermagnete
+    // S-08-03-N); as N35, by the square of the middles of the grades' remanence (magnets.remanence_*): N35 (1.17 + 1.21) / 2
+    // = 1.19 T, N45 (1.32 + 1.37) / 2 = 1.345 T, so 14.7 × (1.19 / 1.345)² = 14.7 × 0.78279 = 11.507 N each, 23.014 N for two:
+    // 2.3 times a 10 N pull. Each press pocket: 8 + x1c.hole_comp 0.1 - x1c.magnet_press 0.1 = 8 mm across, 3 mm deep.
+    write({ magnet: 'disc magnet 8x3', count: 2, load: 10 });
+    let found = check(), m = of(found, 'fit.magnet');
+    assert.deepEqual(m.map((x) => x.level), ['pass'], JSON.stringify(m));
+    assert.match(m[0].text, /The lid, held by magnets: 2 × disc magnet 8x3 N35 in press pockets drawn 8 mm \(x1c\.hole_comp, x1c\.magnet_press\) in box, each deep enough for the magnet/);
+    const load = of(found, 'fit.magnet.load')[0];
+    assert.equal(load.level, 'pass', JSON.stringify(load)); assert.match(load.text, /disc magnet 8x3 N35 pulls 11\.51 N touching steel/); assert.match(load.text, /2 × disc magnet 8x3 N35 pull 23\.01 N together: a pull of 10 N is held 2\.3 times over/);
+    assert.ok(Math.abs(load.values.total - 2 * 14.7 * (1.19 / 1.345) ** 2) < 0.01, 'the pull worked by hand');
+    // listed by name, as bought magnets with their grams (8 × 8 × π/4 × 3 = 150.8 mm³ at magnets.density 7.5: 1.131 g), and named in the build step
+    const l = JSON.parse(cad('list', 'mag/lid', '--json')).fasteners.find((x) => x.fastener === 'disc magnet 8x3 N35');
+    assert.deepEqual([l.qty, l.kind, l.made, l.grams], [2, 'magnet', 'bought', 1.131], JSON.stringify(l));
+    assert.ok(JSON.parse(cad('order', 'mag/lid', '--json')).steps.some((st) => /The lid, held by magnets \(2 × disc magnet 8x3 N35\)/.test(st.text)));
+    // glued pockets are 8 + 0.1 + x1c.magnet_glue 0.1 = 8.2 mm, and found as such
+    write({ magnet: 'disc magnet 8x3', count: 2 }, { fit: 'glue' });
+    m = of(check(), 'fit.magnet'); assert.deepEqual(m.map((x) => x.level), ['pass']); assert.match(m[0].text, /in glue pockets drawn 8\.2 mm \(x1c\.hole_comp, x1c\.magnet_glue\)/);
+    // a pocket 2 mm deep: the 3 mm magnet stands 1 mm proud
+    write({ magnet: 'disc magnet 8x3', count: 2 }, { bore: 8, deep: 2 });
+    m = of(check(), 'fit.magnet'); assert.ok(m.length === 2 && m.every((x) => x.level === 'fail'), JSON.stringify(m));
+    assert.match(m[0].text, /box's pocket at .* is 2 mm deep, and disc magnet 8x3 N35 is 3 mm thick: it stands 1 mm proud of the face/); assert.equal(m[0].card, 'The lid, held by magnets: pocket shallow in box');
+    // a box 3.4 mm thick leaves a 0.4 mm floor under each 3 mm pocket, under fixings.magnet_floor's 3 layers (0.6 mm)
+    write({ magnet: 'disc magnet 8x3', count: 2 }, { thick: 3.4 });
+    m = of(check(), 'fit.magnet'); assert.ok(m.length === 2 && m.every((x) => x.level === 'fail'), JSON.stringify(m));
+    assert.match(m[0].text, /leaves a floor of 0\.4 mm under the magnet, under fixings\.magnet_floor's 3 layers \(0\.6 mm at x1c\.layer 0\.2 mm\)/);
+    // a pocket typed by hand 7.6 mm across: too small; more magnets than pockets
+    write({ magnet: 'disc magnet 8x3', count: 2 }, { bore: 7.6 });
+    assert.ok(of(check(), 'fit.magnet').some((x) => x.level === 'fail' && /box's pocket at .* is drawn 7\.6 mm, and disc magnet 8x3 N35 wants 8 mm for a press fit .*: too small, it will not go in/.test(x.text)));
+    write({ magnet: 'disc magnet 8x3', count: 3 });
+    assert.match(of(check(), 'fit.magnet')[0].text, /3 × disc magnet 8x3 N35 wanted, and only 2 pockets about its 8 or 8\.2 or 8\.2 mm are drawn in lid or box/);
+    // refused by name before anything is measured: a stray key, a size with no seller's pull
+    write({ magnet: 'disc magnet 8x3', count: 2, strength: 4 });
+    let r = spawnSync(process.execPath, [BIN, 'check', 'mag/lid'], { cwd: ws, encoding: 'utf8' }); assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /magnets have no "strength": a fastener naming magnets takes magnet, count, fit, load, gap/);
+    write({ magnet: 'disc magnet 7x3', count: 2 });
+    r = spawnSync(process.execPath, [BIN, 'check', 'mag/lid'], { cwd: ws, encoding: 'utf8' }); assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /there is no seller's pull for a disc magnet 7x3/);
+  } finally { done(); }
+});
+
+test('a printed bolt in a fasten: an M8 printed bolt into a printed thread is listed as a printed part, held to its load by its plastic\'s strength, and an M5 one refused naming M6', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    // A base 40 × 20 × 24 mm with two M8 threads printed in it, 22 mm deep, and a bracket 6 mm thick with two clearance holes
+    object(ws, 'pb/base', { uses: ['x1c'], variables: { thread: { value: 'M8', choice: ['M8', 'M5'], rule: 'The thread' }, kind: { value: 'thread', choice: ['thread', 'pilot', 'insert', 'tap'], rule: 'The holes the bolts end in' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) {
+  const block = cuboid({ size: [40, 20, 24], center: [0, 0, 12] })
+  return v.ops.subtract(block, ...[-12, 12].map((x) => v.fixings.hole(v.thread, { kind: v.kind, depth: 22, at: [x, 0, 24] })))
+}
+`);
+    object(ws, 'pb/bracket', { uses: ['x1c'], anchors: { h1: { at: [-12, 0, 6], axis: [0, 0, 1] }, h2: { at: [12, 0, 6], axis: [0, 0, 1] } }, variables: { thread: { value: 'M8', choice: ['M8', 'M5'], rule: 'The thread' } } }, `import jscad from '@jscad/modeling'
+const { cuboid } = jscad.primitives
+export function main (v) { return v.ops.subtract(cuboid({ size: [40, 20, 6], center: [0, 0, 3] }), ...[-12, 12].map((x) => v.fixings.hole(v.thread, { depth: 6, at: [x, 0, 6] }))) }
+`);
+    fs.writeFileSync(path.join(ws, 'projects/pb/project.json'), JSON.stringify({ name: 'pb', material: 'PLA', objects: ['base', 'bracket'] }));
+    const file = path.join(ws, 'projects/pb/assemblies/joint.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const write = (screw, kg, thread = 'M8', kind = 'thread') => fs.writeFileSync(file, JSON.stringify({ title: 'A bracket on printed bolts', kind: 'fit', gravity: [0, 0, 1], loads: [{ mass: kg, at: 'bracket.h2' }],
+      items: [{ id: 'base', object: 'base', set: { thread, kind } }, { id: 'bracket', object: 'bracket', at: [0, 0, 24], set: { thread } }],
+      fits: [{ a: 'bracket', b: 'base', min: 0, max: 0.05, note: 'The bracket sits on the base' }],
+      fasten: [{ screw, through: ['bracket'], into: 'base', at: ['bracket.h1', 'bracket.h2'] }] }));
+    const check = () => { const r = spawnSync(process.execPath, [BIN, 'check', 'pb/joint', '--json'], { cwd: ws, encoding: 'utf8' }); const out = (() => { try { return JSON.parse(r.stdout); } catch { return null; } })(); if (!out?.findings) assert.fail(`${r.stdout}${r.stderr}`); return out.findings; };
+    // 20 kg hung over screw 2 pulls it with about 20 × 9.80665 = 196.1 N (and the bracket's own few grams). By hand, the M8
+    // printed bolt's root as drawn: the basic minor 8 - 2 × (5/8)(√3/2)(1.25) = 6.6467 mm, less its half of x1c.thread_gap
+    // (0.1 mm) each side, 6.446 mm; (π/4) 6.446² = 32.634 mm² at pla.strength 39 MPa (no strength_z, so the strength along
+    // the layers stands for it) = 1272.7 N. Its teeth in 24 mm of printed thread shear over 0.75 π D1 Le = 0.75 π × 6.6467
+    // × Le, far more. So it breaks at 1272.7 N: 1272.7 / 196.1 = 6.49 times the pull, about.
+    write('M8 hex printed', 20);
+    const found = check(), load = found.find((x) => x.code === 'fasten.load' && x.values?.margin != null);
+    assert.ok(load, JSON.stringify(found.filter((x) => /fasten/.test(x.code))));
+    assert.deepEqual(found.filter((x) => /^fasten/.test(x.code) && x.level === 'fail').map((x) => x.text), [], 'the joint is whole: its holes, its printed thread, its length');
+    assert.ok(found.some((x) => x.code === 'fasten.end' && /in a thread drawn to print/.test(x.text)), 'it ends in the thread printed in the base: a printed pair');
+    assert.equal(load.level, 'pass', load.text); assert.match(load.text, /M8x\d+ hex printed in pla, done up by hand, with 196\.\d N of pull and 0 N of shear: it breaks along at about 1272\.7 N \(tension\)/);
+    assert.ok(Math.abs(load.values.margin - 1272.7 / load.values.tension) < 0.01 && load.values.margin > 6.4 && load.values.margin < 6.6, `${load.values.margin}`);
+    assert.ok(!/Tighten to/.test(load.text), 'a printed bolt is done up by hand: no torque');
+    // its head's seat is still read against the plastic it sits on (seating at a force given, not a steel screw's proof load)
+    const seat = found.find((x) => x.code === 'fasten.seat' && /hex printed|flat seat/.test(x.text));
+    assert.ok(seat && /on pla \(\d+ MPa\)/.test(seat.text) && !/no strength is known/.test(seat.text), seat?.text);
+    // listed with the printed parts, by name, and not as a bought screw
+    const list = JSON.parse(cad('list', 'pb/joint', '--json')), bolt = list.printed.find((p) => /^M8x\d+ hex printed$/.test(p.id));
+    assert.ok(bolt && bolt.count === 2 && bolt.grams > 2, JSON.stringify(list.printed)); assert.ok(!list.fasteners.some((f) => /M8/.test(f.fastener)), JSON.stringify(list.fasteners));
+    assert.match(cad('list', 'pb/joint'), /M8x\d+ hex printed \(2 printed bolts, standing on their heads/);
+    // worded for a bolt that is printed and done up by hand: no tightening torque under its head, no wrench, no "sold" length
+    const said = (code) => found.filter((x) => x.code === code).map((x) => x.text).join(' | ');
+    assert.match(said('fasten.length'), /M8x\d+ hex printed chosen, the shortest that fits \(a printed bolt is printed to any whole millimetre\)/); assert.ok(!/sold/.test(said('fasten.length')), said('fasten.length'));
+    assert.match(said('fasten.seat'), /done up by hand, with no torque to tighten to/); assert.ok(!/tightening of|N m/.test(said('fasten.seat')), said('fasten.seat'));
+    assert.match(said('fasten.access'), /a 13 mm socket or spanner turned by hand reaches the head/);
+    // Into a pilot: a plastic bolt forms no thread in plastic, so the end is refused by name, pointing at a printed thread, a nut or an insert
+    write('M8 hex printed', 20, 'M8', 'pilot');
+    const pilot = check().filter((x) => x.code === 'fasten.end');
+    assert.ok(pilot.length && pilot.every((x) => x.level === 'fail'), JSON.stringify(pilot));
+    assert.match(pilot[0].text, /M8 hex printed is a printed bolt: a plastic thread cannot form its own thread in plastic\. Print the thread in base \(v\.fixings\.hole\('M8', \{ kind: 'thread' \}\)\), or end it in a nut or a heat-set insert/);
+    // Into a heat-set insert or a tapped hole: a standard thread, so the bolt takes the whole 0.2 mm x1c.thread_gap and not half.
+    // By hand: root radius 3.3234 - 0.2 = 3.1234 mm, 6.246 mm across; (π/4) 6.246² = 30.640 mm² × 39 MPa = 1195.0 N (not the
+    // 1272.7 N of a printed pair). Its teeth in the insert (0.75 π × 6.6467 × Le at 22.517 MPa) shear above 1195 N for any Le
+    // over 3.4 mm, so tension governs: 1195.0 / 196.1 = 6.09 times the pull
+    for (const kind of ['insert', 'tap']) {
+      write('M8 hex printed', 20, 'M8', kind);
+      const got = check(), l2 = got.find((x) => x.code === 'fasten.load' && x.values?.margin != null);
+      assert.ok(l2, `${kind}: ${JSON.stringify(got.filter((x) => /fasten/.test(x.code)).map((x) => x.text))}`);
+      assert.match(l2.text, /breaks along at about 1195 N \(tension\)/, `${kind}: ${l2.text}`);
+      assert.ok(Math.abs(l2.values.margin - 1195 / l2.values.tension) < 0.01, `${kind}: ${l2.values.margin}`);
+    }
+    // 150 kg: about 1471 N, more than it breaks at
+    write('M8 hex printed', 150);
+    assert.equal(check().find((x) => x.code === 'fasten.load' && x.values?.margin != null).level, 'fail');
+    // an M5 printed bolt: its 0.8 mm pitch is finer than five 0.2 mm layers, so it is refused, naming M6
+    write('M5 hex printed', 1);
+    const r = spawnSync(process.execPath, [BIN, 'check', 'pb/joint'], { cwd: ws, encoding: 'utf8' });
+    assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /fasten 1: M5 has a 0\.8 mm pitch, finer than x1c prints.*The smallest metric thread that would print is M6/s);
   } finally { done(); }
 });

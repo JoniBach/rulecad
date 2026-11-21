@@ -441,6 +441,37 @@ set your own in `rules/packs.json`) with the spares said. `--json` gives each li
 thread, length, head, grams, mass, packs, buy, spare, from }`, the totals add `fixingsGrams` to the machine's mass,
 and the build page's list shows the same.
 
+### Pins, magnets and printed bolts
+
+Two parts held with no steel screw are a fit with `"fastens": true` whose `fastener` names what holds them, in a form
+the schema defines, so it is found, checked and counted as a screw is. Each is sized by `@rulecad/fixings`, which
+draws its hole or pocket from the printer's rules:
+
+```json
+{ "a": "lid", "b": "box", "fastens": true, "fastener": { "pin": "snap pin 4x6", "count": 2, "pull": 5 } }
+{ "a": "lid", "b": "box", "fastens": true, "fastener": { "pin": "dowel 3x12", "count": 2, "fit": "press", "load": 30 } }
+{ "a": "lid", "b": "box", "fastens": true, "fastener": { "magnet": "disc magnet 8x3", "count": 2, "load": 10 } }
+```
+
+- **Pins** (`fit.pin`): a snap pin, a steel dowel, a length of filament or a printed pin. `cad check` finds round holes
+  in part a whose axis goes on into part b, holds each to the hole fixings draws for that pin (a snap pin's socket, a
+  plain pin's press or slip hole), and measures the parts along the axis: a pin too long or too short for its parts
+  fails by name, and so do fewer holes than `count`. `load` (across the joint) and `pull` (along the pins) are held
+  to about twice the margin.
+- **Magnets** (`fit.magnet`): round pockets in either part, each matched to a press, glued or ribbed pocket for that
+  magnet; a pocket too shallow, a floor too thin to print or the wrong size fails by name. `load` is held against
+  their pull, across `gap` where something lies between.
+- **Printed bolts** are a fasten's: `"screw": "M8x20 hex printed"`. Below the printer's smallest thread it is refused
+  by name (M5 at 0.2 mm layers names M6); its load is held to the plastic's strength by how it prints, and no wrench
+  torque is said, since a printed thread is done up by hand.
+
+`cad list` lists pins (printed, cut or bought) and magnets (bought) with their grams, and printed bolts among the
+printed parts; `cad order` names each on its step. A fastener given as text (`"fastener": "push pin"`) is listed as
+written, unchecked. The fits these rest on (`x1c.snap_clearance`, `pin_press`, `pin_slip`, `magnet_press`,
+`magnet_glue`, `magnet_crush`, and a plastic's `strength_z`) are estimates until the holds coupon measures them:
+`examples/bench/projects/benchmarks/MEASURE.md`, rows 40 to 47, and `cad measured benchmarks/fixings-test
+x1c.pin_press=<figure>`, which refuses a figure no fit of its kind can be.
+
 ### Joints and poses
 
 Things that move (a lid, a hinged screen, a drawer, a ball head) are one assembly with joints, not one assembly per

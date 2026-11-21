@@ -945,3 +945,11 @@ test('snapPin builds with the booleans it is given: on Manifold, a pin Manifold 
   assert.equal(m.stats.fallbacks, before, 'unions with no fall back to JSCAD');
   assert.ok(Math.abs(jscad.measurements.measureVolume(pin) - jscad.measurements.measureVolume(snapPin({ diameter: 2.5, length: 4, lip: 0.3, back: 90 }))) < 0.5, 'the same pin either way');
 });
+
+test('snap pins live in @rulecad/fixings: flexures re-exports the very functions, so a pin it drew before is drawn the same', async () => {
+  const fixings = await import('@rulecad/fixings'), fs = await import('node:fs');
+  assert.equal(snapPin, fixings.snapPin); assert.equal(snapSocket, fixings.snapSocket); assert.equal(snapPinModel, fixings.snapPinModel);
+  const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  assert.ok(pkg.dependencies['@rulecad/fixings'], 'flexures depends on fixings');
+  assert.ok(!JSON.parse(fs.readFileSync(new URL('../fixings/package.json', import.meta.url), 'utf8')).dependencies['@rulecad/flexures'], 'and never the other way');
+});

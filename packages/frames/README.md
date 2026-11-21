@@ -822,7 +822,7 @@ A door is a panel that stands off the faces on printed hinges:
 | `hingeModel(profile, { sheet })` | The frame's leaf on the hinge beam's face, two screws into slot nuts, its two knuckles risen over the beam's outer edge; the door's leaf on the door's outer face, its knuckle between them, two screws through the door into nuts; an M4 cap screw and lock nut for the pin | The frame's leaf as it lies, the door's face down, the pin's hole a teardrop |
 | `handleModel({ sheet })` | A grip between two feet 64 mm apart, screwed from inside the door into a pilot in each foot | On its side |
 | `latchModel(profile, { sheet, standoff })` | A turn button: a post screwed into a slot nut, a tab that turns over the door's edge | Tab down |
-| `magnetCatchModel(profile, { standoff })` | A block under the door's edge with a disc magnet pressed into its tower; a steel washer stuck to the door is the strike | On its side |
+| `magnetCatchModel(profile, { standoff })` | A block under the door's edge with a disc magnet glued into its tower (its pocket the magnet and the printer's `fit`, its pull from `@rulecad/fixings`' `magnetSeatModel`); a steel washer stuck to the door is the strike | On its side |
 
 The door stands off the faces by the frame's leaf, a button head and 1 mm (10.2 mm for M5 on a 2020), so it passes
 over the heads. The hinge's axis lies over the beam's outer edge at the door's outer face, and the door's edge on the
@@ -1456,8 +1456,10 @@ until then a set gives the same stiffness as a join with `"fitting": "bought"`, 
 Panels' densities are the makers' (Evonik's PLEXIGLAS GS, Covestro's Makrolon GP, Aalco's 5754 sheet); the
 thicknesses stocked are `community`. The panel parts' loads, a clip's grip, the barb, the squeeze, a hinge's
 clearance, the handle's room for the fingers and the magnet's size are working figures or estimates
-(`PANEL_DEFAULTS`, `DOOR_DEFAULTS`, `END_DEFAULTS` say which); their margins are by beam formulas, and the magnet's
-pull is not checked, as no maker's figure is held.
+(`PANEL_DEFAULTS`, `DOOR_DEFAULTS`, `END_DEFAULTS` say which); their margins are by beam formulas. The magnet's
+pocket is the magnet and the printer's `fit`; its pull across the half millimetre to the strike is `@rulecad/fixings`' `magnetSeatModel`'s: a seller's
+figure for the six disc sizes its `magnets` rule set holds, scaled to N35 and across the gap (estimates); another size's
+pull is not checked.
 
 The service parts read a device's holes from its rule set: Mean Well's LRS specification sheets give each supply's
 base holes, thread and screw reach (`spec`); Arduino's UNO R3 datasheet gives the Uno's four holes under the CNC

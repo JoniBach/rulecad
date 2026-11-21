@@ -54,6 +54,9 @@ export const DEFAULTS = {
   tip_room: { value: 1, unit: 'mm', rule: 'A screw\'s tip stops at least this far short of the bottom of a blind hole, so it tightens on its head and not on its tip: an estimate, the millimetre an insert\'s blind hole is given past the insert', kind: 'estimate', source: 'A working figure of this package, after insert_depth in the thread rule sets (the insert\'s length and 1 mm)', checked: '2026-11-15' },
   load_margin: { value: 2, unit: '× load', rule: 'A printed joint is sized to hold about twice the load it is given', kind: 'default', source: 'The kit\'s standard for printed parts: sized from the load with about twice the margin', checked: '2026-11-15' },
   clamp_friction: { value: 0.3, unit: '× clamp force', rule: 'The friction between two printed parts clamped by screws, for whether a joint slips before its screws bear on their holes: an estimate. No measured figure for PLA on PLA at rest was found; the figures found are for printed PLA sliding on steel, about 0.38 to 0.57, and 0.3 is taken under them', kind: 'estimate', source: 'Sliding friction of printed PLA on steel: Pawlak, kinetic 0.49 (https://yadda.icm.edu.pl/baztech/element/bwmeta1.element.baztech-f7c60c77-2f7e-4c4f-8d4e-f962d0c503e7/c/pawlak.pdf), and Sirin et al., Rapid Prototyping Journal 2023, 0.38 to 0.57 pin on disc (https://www.emerald.com/insight/content/doi/10.1108/RPJ-03-2022-0081/full/html); to be measured on the fixings coupon', checked: '2026-11-15' },
+  snap_play: { value: 0.5, unit: 'mm', rule: 'A snap pin\'s shaft may be at most this much longer than the parts it goes through: the barb clicks out that far past the far face. Longer, and the pin rattles in its hole', kind: 'estimate', source: 'A working figure of this package: the launcher\'s pins are drawn 0.2 mm (x1c.fit) longer than their parts. No coupon row measures it, so it stays an estimate: snap pins a step longer each through one plate, the longest that does not rattle, would measure it', checked: '2026-11-21' },
+  pin_least: { value: 2, unit: 'mm', rule: 'The thinnest snap pin or printed plain pin: under this a peg is a few print lines across and breaks as it goes in. Thinner pins are filament or steel', kind: 'estimate', source: 'A working figure of this package: about five 0.42 mm lines across, the thinnest the kit draws a snap pin (2.5 mm, the tensioner\'s) less a margin. No coupon row measures it (the holds coupon\'s thinnest snap pin is 3 mm), so it stays an estimate: snap pins of 1.5, 2 and 2.5 mm pushed through their sockets, the thinnest that does not break, would measure it', checked: '2026-11-21' },
+  magnet_floor: { value: 3, unit: 'layers', rule: 'The least floor left under a magnet\'s pocket: three solid layers, so the floor prints whole and the magnet cannot be pulled through it. A floor the magnet pulls through is also its gap, so thinner pulls harder', kind: 'estimate', source: 'A working figure of this package, after Bambu Studio\'s default of three bottom shell layers. No coupon row measures it (the holds coupon\'s pockets have a hole under them), so it stays an estimate: pockets with floors of 2, 3 and 4 layers, the thinnest a magnet does not pull through or show through, would measure it', checked: '2026-11-21' },
   brass_density: { value: 8.47, unit: 'g/cm³', rule: 'Density of free-machining brass CW614N (CuZn39Pb3), taken for a heat-set insert. The insert maker\'s sheet names no alloy, so the alloy is assumed', kind: 'estimate', source: 'Aalco, CW614N brass rod datasheet, https://www.aalco.co.uk/datasheets/Copper-and-Copper-Alloys-CW614N-Brass-Rod_31.ashx', checked: '2026-11-15' }
 };
 
@@ -93,7 +96,8 @@ export const GRAMMAR = [
   'word    = "cap" | "button" | "countersunk" | "hex" | "set" | "pan"      a screw\'s head form',
   '        | [ "hex" | "square" | "lock" ] "nut"                           a nut (hex if not said)',
   '        | "washer" | "insert"                                           a plain washer, a heat-set insert',
-  '        | a variant of the thread\'s rule set                            torx, on a PT screw'
+  '        | a variant of the thread\'s rule set                            torx, on a PT screw',
+  '        | "printed"                                                     a screw or nut printed with its thread, not bought'
 ].join('\n');
 
 /** The head forms a screw's name can say. */
@@ -110,8 +114,8 @@ const inches = (text) => { const [whole, frac] = /\//.test(text) ? (/\s/.test(te
 /**
  * A fixing's name read by the grammar, before any rule set is looked at.
  * @param {string} name 'M3', 'M3x12 cap', '1/4-20 x 1/2 cap', 'M4 lock nut', 'K30x10 pan torx'
- * @returns {{ thread: string, form: 'metric' | 'unified' | 'plastic', length: number | null, unit: 'mm' | 'in' | null, item: 'thread' | 'screw' | 'nut' | 'washer' | 'insert', head: string | null, nut: string | null, extra: string[] }}
- *   length: as written, in unit (null: the thread's own, mm or inches); extra: words left for the rule set's variants
+ * @returns {{ thread: string, form: 'metric' | 'unified' | 'plastic', length: number | null, unit: 'mm' | 'in' | null, item: 'thread' | 'screw' | 'nut' | 'washer' | 'insert', head: string | null, nut: string | null, extra: string[], printed?: boolean }}
+ *   length: as written, in unit (null: the thread's own, mm or inches); extra: words left for the rule set's variants; printed: the word printed was said
  */
 export function parseName(name) {
   const what = 'fixing name', help = `A name is a thread, then a length and what it is where it has them: 'M3', 'M3x12 cap', '1/4-20 x 1/2 button', 'M4 lock nut', 'M3 insert'`;
@@ -126,14 +130,15 @@ export function parseName(name) {
   const l = /^\s*[x×*]\s*(\d+\s+\d+\/\d+|\d+\/\d+|\d*\.?\d+)\s*(mm\b|in\b|"|”)?/i.exec(tail);
   if (l) { length = inches(l[1]); unit = l[2] ? (/mm/i.test(l[2]) ? 'mm' : 'in') : null; tail = tail.slice(l[0].length); if (!(length > 0)) throw new Error(`${what}: "${name}": a length is above 0 (got ${l[1]})`); }
   else if (/^\s*[x×*]/.test(tail)) throw new Error(`${what}: "${name}": after the x comes a length (M3x12, 1/4-20 x 1/2). ${help}`);
-  const words = tail.toLowerCase().split(/[\s,]+/).filter(Boolean).filter((w) => !NOISE.includes(w));
+  const all = tail.toLowerCase().split(/[\s,]+/).filter(Boolean).filter((w) => !NOISE.includes(w)), printed = all.includes('printed'), words = all.filter((w) => w !== 'printed');
   const items = words.filter((w) => ITEMS.includes(w));
   if (items.length > 1) throw new Error(`${what}: "${name}" names ${items.join(' and ')}: one thing at a time`);
   const item = items[0] ?? null, others = words.filter((w) => !ITEMS.includes(w)), table = item === 'nut' ? NUT_WORDS : item ? {} : HEAD_WORDS;
   const forms = [...new Set(others.filter((w) => w in table).map((w) => table[w]))], extra = others.filter((w) => !(w in table));
   if (forms.length > 1) throw new Error(`${what}: "${name}" says ${forms.join(' and ')}: ${item === 'nut' ? 'a nut is one of' : 'a head is one of'} ${(item === 'nut' ? NUTS : HEADS).join(', ')}`);
   if (item === 'nut' || item === 'washer') { if (length != null) throw new Error(`${what}: "${name}": a ${item} has no length`); }
-  return { thread, form, length, unit, item: item ?? (length != null || forms[0] ? 'screw' : 'thread'), head: item ? null : forms[0] ?? null, nut: item === 'nut' ? forms[0] ?? 'hex' : null, extra };
+  if (printed && (item === 'washer' || item === 'insert' || form === 'plastic')) throw new Error(`${what}: "${name}": only a screw or a nut is printed with its thread${form === 'plastic' ? ' (a screw for plastic forms its own thread, and is bought)' : ''}`);
+  return { thread, form, length, unit, item: item ?? (length != null || forms[0] ? 'screw' : 'thread'), head: item ? null : forms[0] ?? null, nut: item === 'nut' ? forms[0] ?? 'hex' : null, extra, ...(printed ? { printed: true } : {}) };
 }
 
 // ---------- rule sets by thread ----------
@@ -312,7 +317,7 @@ export function fixingModel(name, change = {}, opts = {}) {
     m.head = headOf(what, m, p.head ?? (m.made.heads.includes('cap') ? 'cap' : m.made.heads[0]));
     // (the list of lengths is the socket cap screw's: a set screw is sold shorter, so its length is not held to it)
     if (given != null && m.head.form === 'set') m.length = positive(what, 'length', given);
-    else if (given != null) Object.assign(m, lengthOf(what, m, given, !!opts?.anyLength));
+    else if (given != null) Object.assign(m, lengthOf(what, m, given, !!opts?.anyLength || !!p.printed)); // (a printed screw is printed at any length)
   } else if (p.item === 'nut') m.nut = nutOf(what, m, p.nut);
   else if (p.item === 'washer') { if (!m.made.washer) throw new Error(`${what}: ${m.thread} has no washer in its rule set (${set.name})`); }
   else if (p.item === 'insert') {
@@ -324,9 +329,10 @@ export function fixingModel(name, change = {}, opts = {}) {
     }
     m.length = figure(what, m, 'insert_length');
   }
-  const also = m.variant ? ` ${m.variant}` : '';
+  const also = `${m.variant ? ` ${m.variant}` : ''}${p.printed ? ' printed' : ''}`;
+  if (p.printed) m.printed = true;
   m.name = m.item === 'thread' ? `${m.thread}${also}` : m.item === 'screw' ? `${screwName(m, m.length, m.head.form)}${also}`
-    : m.item === 'nut' ? `${m.thread} ${m.nut.kind} nut` : m.item === 'washer' ? `${m.thread} washer` : form === 'unified' ? `${m.thread} x ${mm(m.length)} mm insert` : `${m.thread}x${mm(m.length)} insert`;
+    : m.item === 'nut' ? `${m.thread} ${m.nut.kind} nut${also}` : m.item === 'washer' ? `${m.thread} washer` : form === 'unified' ? `${m.thread} x ${mm(m.length)} mm insert` : `${m.thread}x${mm(m.length)} insert`;
   return m;
 }
 
@@ -342,7 +348,7 @@ export function fixingOf(what, m, o = {}) {
 }
 
 // ---------- the printer ----------
-const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press', 'thread_gap'];
+const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overhang', 'slip', 'press', 'thread_gap', 'snap_clearance', 'pin_press', 'pin_slip', 'magnet_press', 'magnet_glue', 'magnet_crush'];
 /**
  * @typedef {{ name: string, figure: (k: string) => (Figure & { name: string, borrowed?: boolean }) | null, n: (k: string) => number, cite: (k: string) => string, rest: (k: string) => object }} Printer
  *   figure: a rule of the printer's own (never borrowed); n: a basic clearance as a number, the printer's own or, where it
@@ -351,7 +357,7 @@ const BASICS = ['hole_comp', 'fit', 'layer', 'line', 'chamfer', 'bridge', 'overh
 /**
  * The printer's rules as fixings reads them. Handed nothing, the kit's X1C. Handed a rule set ({ name, rules }), its
  * figures with their kinds and sources. Handed plain numbers (a design's v.x1c), those, marked as given. A basic
- * clearance the printer lacks (hole_comp, fit, layer, line, chamfer, bridge, overhang, slip, press, thread_gap) is borrowed from the X1C
+ * clearance the printer lacks (hole_comp, fit, layer, line, chamfer, bridge, overhang, slip, press, thread_gap, snap_clearance, pin_press, pin_slip, magnet_press, magnet_glue, magnet_crush) is borrowed from the X1C
  * and cited as the X1C's; a measured figure (pilot_m3) is never borrowed, since it was measured on that machine.
  * @param {string} what @param {object} [p] @returns {Printer}
  */

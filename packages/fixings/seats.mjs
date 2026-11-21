@@ -329,8 +329,10 @@ export function insertBoss(m, o = {}) {
  */
 export function printable(x) {
   const bought = (thread, item) => [finding('fail', `${a(thread)} ${item === 'thread' ? 'fixing' : item} is bought and fitted, not printed: its hole and its seat are what print (hole, counterbore, nutPocket)${['screw', 'nut'].includes(item) ? `, or draw it with its thread to print it ({ display: 'thread' })` : ''}`, 'fixing.printable')];
+  if (x?.kind === 'fixing' && x.printed) return [finding('info', `${x.name} is printed with its thread: printedBoltModel('${x.name}') says how its thread prints and what it holds`, 'fixing.printable')];
   if (x?.kind === 'fixing') return bought(x.thread, x.item);
   const model = x?.model && Array.isArray(x.model.findings) ? x.model : x?.model?.model && Array.isArray(x.model.model.findings) ? x.model.model : x;
+  if (model?.kind === 'magnet') return [finding('fail', `${model.name} is bought and fitted, not printed: its pocket is what prints (magnetSeat)`, 'magnet.printable')];
   if (!model || !Array.isArray(model.findings)) throw new Error(`printable: give a fixing's model, or a hole's, a seat's or a thread's (holeModel, counterboreModel, nutPocketModel, threadModel), not ${shown(x)}`);
   const found = model.findings.filter((f) => typeof f.code === 'string' && f.code.endsWith('.printable'));
   return !found.length && ['screw', 'nut', 'washer', 'insert'].includes(model.item) ? bought(model.thread, model.item) : found;

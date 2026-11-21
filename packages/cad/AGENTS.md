@@ -195,6 +195,12 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   hand on a kit of one. `npx cad plates` lays out every printed part by material, with a frame's jigs beside them.
   A new frame project can start from `npm create rulecad my-frame --machine frame --size 300x300x350 --profile
   2020-misumi-hfs5`.
+- What holds parts with no steel screw is named in the fit's `fastener`, never typed in a note:
+  `{ "pin": "snap pin 4x6", "count": 2 }`, `{ "pin": "dowel 3x12", "fit": "press" }`, or
+  `{ "magnet": "disc magnet 8x3", "count": 2, "load": 10 }`, with the holes or pockets drawn by `v.fixings.pinHole(...)`
+  and `v.fixings.magnetSeat(...)` under the same name. `cad check` then finds and checks them and `cad list` counts
+  them. A bolt to print is a fasten's screw with the word printed (`"M8x20 hex printed"`). Snap pins live in
+  `v.fixings` now (`v.flexures.snapPin` still draws the same pin); snap hooks and ratchets stay in `v.flexures`.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in
