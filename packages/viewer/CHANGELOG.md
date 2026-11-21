@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased: a frame's sheets (Frames 3)
+## 0.3.12: a frame's sheets (Frames 3)
 
 ### Added
 

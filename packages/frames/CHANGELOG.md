@@ -2,7 +2,7 @@
 
 What changed in each release, for someone upgrading a workspace.
 
-## Unreleased: squareness from cuts and joins' play, and printed beams (Frames 3)
+## 0.1.9: squareness from cuts and joins' play, and printed beams (Frames 3)
 
 ### Added
 
