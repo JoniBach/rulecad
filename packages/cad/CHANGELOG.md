@@ -17,11 +17,14 @@ and head, the parts it passes through and the part it ends in.
   `frame.join.fitting`), `cad move <project>/<assembly> <id> --at | --to [--rotate]` and `cad remove
   <project>/<assembly> <id | list.n | id.field> [--with-refs]`. `cad add` also takes `guide`, `load` and `wire`, and any
   field as `field=value`. Each keeps the file's layout, checks the edit against the schema and what it could break (a
-  generated frame must still expand, the names an entry gives must be there) before it writes, refuses a bad one by
-  name with nothing written (`project.exists`, `assembly.exists`, `project.printer`, `edit.kind`, `frame.refused`,
-  `edit.address`, `edit.ambiguous`, `edit.generated`, `edit.referenced`, `edit.renumber`, `edit.move`), takes
+  generated frame must still expand, the names an entry gives must be there, and every other entry's names that were
+  there before must still be: a beam renamed or removed, a frame changed or removed, a joint's parent and child, a
+  pose's joints) before it writes, refuses a bad one by name with nothing written (`project.exists`,
+  `assembly.exists`, `project.printer`, `project.material`, `edit.kind`, `frame.refused`, `edit.address`,
+  `edit.ambiguous`, `edit.generated`, `edit.referenced`, `edit.dangling`, `edit.renumber`, `edit.move`), takes
   `--dry-run`, and with `--json` says what changed and the checks. `cad remove` of a beam a join uses is refused,
-  naming the join.
+  naming the join; so is `cad remove frame` where a join uses the frame's beams, and the removal of any guide before
+  one with no id of its own, which is named by place.
 - `schemas/project.schema.json`: the project file's fields.
 
 ### Changed

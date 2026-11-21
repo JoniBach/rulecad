@@ -102,8 +102,9 @@ shell. A text standing where an object is asked for is its kind: `"join": "blind
 `frame.join.fitting=printed` keeps the blind.
 
 Each command keeps the file's layout, checks the edit against the schema and against what it could break (a
-generated frame must still expand; a join's beams, a fit's parts, a fasten's items, a guide's beam and a placed item's
-address must be there), and refuses a bad one by name with nothing written: `--json` gives the refusal as `{ "error": {
+generated frame must still expand; a join's beams, a fit's parts, a fasten's items, a guide's beam, a joint's parent
+and child, a pose's joints and a placed item's address must be there, in the entry changed and in every other entry
+that had them before), and refuses a bad one by name with nothing written: `--json` gives the refusal as `{ "error": {
 "code", "message", "file", "path", "refs" } }`. `--dry-run` does it all and writes nothing. Done, it prints each change
 (`set frame.feet: "levelling" → "foot"`) and the checks; `--json` gives `{ "command", "file", "written", "dryRun",
 "changes": [{ "op", "path", "before", "after" }], "findings" }`, the findings in the kit's one shape. A generated
