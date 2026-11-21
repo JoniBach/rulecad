@@ -273,7 +273,10 @@ export function joinFitting(j, i, { ia, ib, A, B, m, ends, place: placeOf }, num
   if (flip && (A.profile.name !== B.profile.name || aq.slot !== bq.slot)) throw new Error(`${what}: a printed gusset turned onto ${ib.id}'s ${j.face} face puts the arm drawn for ${ib.id}'s slot in ${ia.id}'s, and ${ia.id}'s ${aq.face} face (${aq.slot}) and ${ib.id}'s ${bq.face} face (${bq.slot}) differ: leave face out, or join with a bracket`);
   if (!splice) {
     const reach = fm.width / 2 + fm.arm, { room } = shapeAt;
-    if (!flip && Math.min(room.a, room.b) + fm.width / 2 >= reach) { shape = 'T'; fm = fittingModel({ ...spec0, shape }, context, material, what); } // (an L only, turned over: a T's bar would lie along a)
+    const fits = Math.min(room.a, room.b) + fm.width / 2 >= reach;
+    if (j.shape === 'T' && flip) throw new Error(`${what}: shape T: a printed gusset turned onto ${ib.id}'s ${j.face} face is an L only (a T's bar would lie along ${ia.id}): give shape L, or leave face out`);
+    if (j.shape === 'T' && !fits) throw new Error(`${what}: shape T: a printed T gusset's bar runs ${mm(fm.arm)} mm along ${ib.id} on both sides of ${ia.id}, and there is ${mm(Math.min(room.a, room.b))} mm on one side: give shape L, or leave shape out`);
+    if (!flip && fits && j.shape !== 'L') { shape = 'T'; fm = fittingModel({ ...spec0, shape }, context, material, what); } // (an L only, turned over: a T's bar would lie along a)
     else if (Math.max(room.a, room.b) + fm.width / 2 < reach - 1e-6) throw new Error(`${what}: a printed gusset's ${mm(fm.arm)} mm arm runs past ${ib.id}'s ends: there is ${mm(Math.max(room.a, room.b))} mm beside ${ia.id}, and it needs ${mm(fm.arm)}. A bracket will do`);
     if (A.length < fm.arm - 1e-6) throw new Error(`${what}: a printed gusset's ${mm(fm.arm)} mm arm is longer than ${ia.id} (${mm(A.length)} mm)`);
   } else if (Math.min(A.length, B.length) < fm.arm - 1e-6) throw new Error(`${what}: a printed splice plate's ${mm(fm.arm)} mm arms are longer than ${A.length < B.length ? ia.id : ib.id}`);

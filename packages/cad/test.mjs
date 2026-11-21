@@ -4798,6 +4798,25 @@ test('generated frames: a box asked for by its inside size expands into beams on
     assert.match(cad('check', 'frame/gussets'), /join 1: face is the face of z1 a printed gusset lies on, square to x1: top or bottom \(got "back"\)/);
     fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ kind: 'blind', a: g.joins[0].a, b: g.joins[0].b, face: 'bottom' }, ...g.joins.slice(1)] }));
     assert.match(cad('check', 'frame/gussets'), /join 1: face names the face of b a printed gusset lies on: give it on a gusset join with "fitting": "printed", or leave face out/);
+    // a gusset's shape: T only where b runs on both sides of a far enough for its bar (a box's corner has none below its
+    // bottom ring), never turned over onto the other face, and only on a printed gusset
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], shape: 'T' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: shape T: a printed gusset turned onto z1's bottom face is an L only \(a T's bar would lie along x1\): give shape L, or leave face out/);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], face: undefined, shape: 'T' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: shape T: a printed T gusset's bar runs [\d.]+ mm along z1 on both sides of x1, and there is 0 mm on one side: give shape L, or leave shape out/);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ kind: 'blind', a: g.joins[0].a, b: g.joins[0].b, shape: 'L' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: shape names a printed gusset's shape \(L or T\): give it on a gusset join with "fitting": "printed", or leave shape out/);
+    // a gantry in 3030 by printed gussets: its uprights run one width (30 mm) above the top side beams, room for a T's
+    // bar, but a T there puts the inside round between its bar and the arm along the side beam where the moving beam's
+    // end cap passes at either end of its travel (an overlap of about 52 mm³ at rest). Its top side beams' gussets are
+    // Ls, so it checks clean, in MISUMI's 3030 at two sizes and in Bosch's
+    for (const [profile, inside] of [['3030-misumi-hfs6', [400, 500, 200]], ['3030-misumi-hfs6', [400, 300, 350]], ['3030-bosch', [400, 500, 200]]]) {
+      write('gantry3030', { frame: { kind: 'gantry', inside, profile, join: { kind: 'gusset', fitting: 'printed' }, feet: 'levelling' } });
+      assert.deepEqual(probe('gantry3030').bad, [], `${profile} ${inside}`);
+    }
+    cad('frame', 'frame/gantry3030', '--expand');
+    const ls = JSON.parse(fs.readFileSync(file('gantry3030'), 'utf8')).joins.filter((j) => j.shape).map((j) => `${j.a} ${j.shape}`);
+    assert.deepEqual(ls, ['y3.a L', 'y3.b L', 'y4.a L', 'y4.b L']);
     write('item', { frame: { kind: 'box', inside: [300, 250, 350], profile: '4040-item-8', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' } });
     r = probe('item');
     assert.deepEqual(r.bad, []); assert.ok(r.items.some((id) => /-bracket$/.test(id)));

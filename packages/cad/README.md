@@ -653,6 +653,9 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   - A gusset lies on a face of each beam that looks the same way, in one plane: an L at a corner, a T where b runs
     on both sides of a; refused where its arm has no room. Which face follows from the beams' directions; `"face"`
     names the other one of b's two faces square to a (the L turned over), so it can miss a third beam at the corner.
+    `"shape"` (`"L"` or `"T"`) asks for one: an L where a T would fit (a generated gantry's top side beams, where a
+    T's bar would stand in the moving beam's path), and a T is refused by name where b lacks room on one side or the
+    plate is turned over.
   - A splice plate lies across two ends on a face they share.
   - `"brace": true` braces a bracket; `"load"` (N) is the design load it is sized to about twice the margin at
     (default 100); `"nut"` chooses the slot nuts' kind.

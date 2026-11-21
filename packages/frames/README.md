@@ -1288,7 +1288,10 @@ sits on nuts that go in through the slot's opening, since every butting beam is 
 slide-in nut could not reach its place: the first of drop-in, roll-in, hammer and t-bolt the kit has for the slot
 (drop-in on MISUMI's 2020, roll-in on item's 4040). `nut` names one of those; slide-in, a kind the kit has none of for
 the slot, or a nut with no printed fitting is refused. A printed gusset's join names the upright's face that looks out
-of the frame (`face`), so the plate never lands on the face where the corner's third beam butts. Braces put a printed
+of the frame (`face`), so the plate never lands on the face where the corner's third beam butts. On a gantry's top
+side beams it also names `shape: 'L'`: the uprights run one width above those beams, room for a T's bar, but the
+inside round between that bar and the arm along the side beam would stand where the moving beam's end and end cap
+pass at either end of its travel. Braces put a printed
 corner bracket, on the same nuts, at each join of the sides named; a panel is one sheet over a side, from its lowest
 beam to its highest.
 

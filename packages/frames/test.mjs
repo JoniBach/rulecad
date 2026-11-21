@@ -2016,6 +2016,11 @@ test('a generated frame\'s joins against its profile: a blind or end-tap screw t
   const g = box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed' } }), faceOf = (id) => [...new Set(g.joins.filter((j) => j.a.startsWith(`${id}.`)).map((j) => j.face))];
   assert.deepEqual(['x1', 'x2', 'y1', 'y2'].map(faceOf), [['bottom'], ['top'], ['front'], ['back']]);
   assert.ok(box({ ...ask, profile: '2020-misumi-hfs5', join: 'blind' }).joins.every((j) => j.face === undefined), 'a face only on a printed gusset');
+  // a gantry's top side beams carry its moving beam, whose ends and end caps pass beside the posts' tops: their gussets
+  // are Ls (a T's bar would rise there), every other join's shape is cad's to choose
+  const gg = frames.gantry({ inside: [400, 500, 200], profile: '3030-misumi-hfs6', join: { kind: 'gusset', fitting: 'printed' } });
+  assert.deepEqual(gg.joins.filter((j) => j.shape).map((j) => `${j.a} ${j.shape}`), ['y3.a L', 'y3.b L', 'y4.a L', 'y4.b L']);
+  assert.ok(box({ ...ask, profile: '3030-misumi-hfs6', join: { kind: 'gusset', fitting: 'printed' } }).joins.every((j) => j.shape === undefined), 'a box names no shape');
 });
 
 test('a generated frame\'s end-tap join is refused by name where its clearance hole across the post is wider than the slot\'s opening, and its remedies offer only screws that check clean', () => {

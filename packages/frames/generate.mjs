@@ -204,7 +204,11 @@ export function frameModel(kind, o = {}) {
       // lands on the face where the corner's third beam butts (across the frame's middle from the post)
       const k = Math.abs(E.out[0]) > 0.5 ? 1 : 0, out = [0, 0, 0];
       out[k] = post.from[k] < (k === 0 ? OW : OD) / 2 ? -1 : 1;
-      const plate = !side && join.kind === 'gusset' && join.fitting === 'printed' ? { face: faceOf(post, out) } : {};
+      // On a gantry's top side beams (the moving beam's track) it is an L: the post runs one width above them, so a T's
+      // bar would rise beside the post, and the inside round between it and the arm along the side beam stands in the
+      // moving beam's path, where its end and end cap pass at either end of its travel
+      const track = kind === 'gantry' && b.role === 'along' && Math.abs(E.at[2] - rings.at(-1)) < 1e-6;
+      const plate = !side && join.kind === 'gusset' && join.fitting === 'printed' ? { face: faceOf(post, out), ...(track ? { shape: 'L' } : {}) } : {};
       joins.push({ ...joinOf(side), a: `${b.id}.${e}${side ? '' : bore}`, b: `${post.id}.${face}@${mm(along)}`, ...plate });
     }
   } else {
