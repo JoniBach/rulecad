@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { treeOf, objectsOf, compare, materialise, run, SHARED } from '../scripts/dimension-diff.mjs';
+import { treeOf, objectsOf, compare, materialise, run, measuresAt, memoryLimit, SHARED } from '../scripts/dimension-diff.mjs';
 
 test('the diff between a commit and itself is empty, and builds nothing', () => {
   const objects = objectsOf(treeOf('HEAD'));
@@ -68,4 +68,25 @@ test('a worker past its memory budget hands the rest of its list to a fresh one,
     process.env.DIMENSION_DIFF_RSS_MB = '100000'; // (none is: one worker for the list)
     assert.equal((await run(dir, 'packages/create-rulecad/template', ['home/box', 'home/lid'])).workers, 1);
   } finally { if (was == null) delete process.env.DIMENSION_DIFF_RSS_MB; else process.env.DIMENSION_DIFF_RSS_MB = was; fs.rmSync(slow, { recursive: true, force: true }); }
+});
+
+test('a build past the memory limit is stopped mid-build, reported not measured, and the rest of the list goes on; a later run at the same limit skips it', async () => {
+  const tree = treeOf('HEAD'), slow = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-slow-')), cache = fs.mkdtempSync(path.join(os.tmpdir(), 'rulecad-dd-')), was = process.env.DIMENSION_DIFF_LIMIT_MB;
+  try {
+    // the default: half the machine's memory, shared by the jobs (16 GB and --jobs 1: 8192 MB; --jobs 4: 2048 MB)
+    delete process.env.DIMENSION_DIFF_LIMIT_MB;
+    assert.equal(memoryLimit(1), Math.floor(os.totalmem() / 1048576 / 2)); assert.equal(memoryLimit(4), Math.floor(os.totalmem() / 1048576 / 8));
+    // 1 MB is below a bare Node process (about 40 MB), so each worker is stopped before its first build is done
+    const dir = materialise('HEAD', tree, slow), stopped = await run(dir, 'packages/create-rulecad/template', ['home/box', 'home/lid'], () => {}, 1);
+    assert.equal(stopped.workers, 2, 'a fresh worker for the rest of the list'); assert.deepEqual([...stopped.keys()].sort(), ['home/box', 'home/lid']);
+    for (const [n, r] of stopped) { assert.equal(r.memory, 1, n); assert.match(r.error, /^not measured: its build passed 1 MB \(it held \d+ MB when stopped; DIMENSION_DIFF_LIMIT_MB\)$/); }
+    // through measuresAt: kept, so the same limit reads it back and builds nothing; a higher limit builds it again
+    process.env.DIMENSION_DIFF_LIMIT_MB = '1';
+    const only = 'create-rulecad/template/home/box', first = await measuresAt('HEAD', { only, jobs: 1, cache });
+    assert.equal(first.built, 1); assert.equal([...first.measures.values()][0].memory, 1);
+    assert.equal((await measuresAt('HEAD', { only, jobs: 1, cache })).built, 0, 'stopped at this limit before: skipped');
+    process.env.DIMENSION_DIFF_LIMIT_MB = '100000';
+    const more = await measuresAt('HEAD', { only, jobs: 1, cache }), r = [...more.measures.values()][0];
+    assert.equal(more.built, 1); assert.ok(r.parts && !r.error, JSON.stringify(r));
+  } finally { if (was == null) delete process.env.DIMENSION_DIFF_LIMIT_MB; else process.env.DIMENSION_DIFF_LIMIT_MB = was; fs.rmSync(slow, { recursive: true, force: true }); fs.rmSync(cache, { recursive: true, force: true }); }
 });
