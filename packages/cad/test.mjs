@@ -2381,6 +2381,26 @@ export function main (v) {
   } finally { done(); }
 });
 
+test('the holds coupon\'s pull bolt is long enough for the blocks MEASURE.md row 47 clamps it between: their thickness, a washer and a steel nut on full thread, the waist hanging below', async () => {
+  const { screwModel, nutModel, washerModel, threadModel } = await import('@rulecad/fixings');
+  const bench = fileURLToPath(new URL('../../examples/bench/projects/benchmarks/', import.meta.url));
+  const v = Object.fromEntries(Object.entries(JSON.parse(fs.readFileSync(bench + 'objects/holds-coupon.json', 'utf8')).variables).map(([k, x]) => [k, x.value]));
+  const row = fs.readFileSync(bench + 'MEASURE.md', 'utf8').split(/\r?\n/).find((l) => l.startsWith('| 47 |'));
+  const blocks = Number(row.match(/blocks are no more than (\d+(?:\.\d+)?) mm thick/)?.[1]);
+  assert.ok(blocks > 0, 'row 47 says how thick the blocks may be');
+  // As holds-coupon.js draws it, standing on its head: the head k tall, a millimetre of shank, a 45° cone down from the
+  // thread's radius R to the waist's r, the waist, a cone back up; full thread from z2 to the tip at k + pull_length
+  const k = screwModel(`M8x${v.pull_length} hex`).headHeight, R = 8 / 2, r = v.waist / 2, z2 = k + 1 + (R - r) + v.waist_length + (R - r);
+  const thread = k + v.pull_length - z2, needed = blocks + washerModel('M8').thickness + nutModel('M8').height + threadModel('M8', { length: 10 }).pitch;
+  // By hand: k = 5.3 (ISO 4017 M8 head), z2 = 5.3 + 1 + 2.5 + 6 + 2.5 = 17.3, so pull_length 45 leaves 5.3 + 45 - 17.3 = 33 mm
+  // of full thread above the waist. The blocks (20) + an ISO 7089 washer (1.6) + an ISO 4032 nut at its tallest (6.8) + a
+  // pitch to start the nut on (1.25) = 29.65 mm: it fits, 3.35 mm to spare. At pull_length 30 there were 18 mm, room for
+  // blocks of 8.35 mm at most: an 18 mm plywood offcut left the waist inside the gap, out of the cord's reach
+  assert.equal(Number(z2.toFixed(6)), 17.3); assert.equal(Number(thread.toFixed(6)), 33); assert.equal(Number(needed.toFixed(6)), 29.65);
+  assert.ok(thread >= needed, `${thread} mm of thread above the waist holds blocks ${blocks} mm thick, a washer and a nut (${needed} mm)`);
+  assert.ok(blocks >= 18, 'an 18 mm plywood offcut, the common board, is thin enough');
+});
+
 test('cad measured from the joint rig: a drop read on the dial becomes the join\'s spring, measured, in the rule it came from, and the prediction moves to match; a slot nut\'s hold along its slot lands in its set', async () => {
   const { ws, cad, done } = workspace();
   try {

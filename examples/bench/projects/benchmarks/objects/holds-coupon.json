@@ -23,7 +23,7 @@
     "push": { "value": 2, "unit": "mm", "rule": "The hole under each magnet pocket, to push a pressed magnet out with a 1.75 mm filament or a small screwdriver" },
     "engaged": { "value": 2, "rule": "A printed bolt's length as a multiple of its nut's height: it goes right through the nut, with as much again to hold it by" },
     "tiny": { "value": 1e-6, "rule": "What a height may be over a whole number of layers and still count as that number" },
-    "pull_length": { "value": 30, "unit": "mm", "rule": "The pull bolt's length under its head: room for the waist and a bought M8 nut's full height of thread beyond it" },
+    "pull_length": { "value": 45, "unit": "mm", "rule": "The pull bolt's length under its head: the waist, then 33 mm of full thread, room for blocks up to 20 mm thick (MEASURE.md row 47: an 18 mm plywood offcut), an M8 washer (1.6 mm), a bought M8 nut (6.8 mm at most) and a pitch to start the nut on" },
     "waist": { "value": 3, "unit": "mm", "rule": "The pull bolt's waist, across: 7.07 mm², which breaks at about 28 kg if the plastic holds 39 MPa across its layers, within a 50 kg luggage scale's reach with room for a stronger print" },
     "waist_length": { "value": 6, "unit": "mm", "rule": "The waist's straight length, twice its diameter, so it breaks in the waist and not where the cones meet the shank" },
     "small_pin": { "value": 3, "unit": "mm", "rule": "The smaller snap pin: the thinnest the kit draws a sampler's pins, above fixings.pin_least (2 mm) by half again" },
