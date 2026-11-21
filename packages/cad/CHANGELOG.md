@@ -56,6 +56,13 @@ and head, the parts it passes through and the part it ends in.
 
 ### Changed
 
+- **Guessed supports said**: where a frame has no feet and no `"frame": { "supports" }`, and its lowest ends pinned
+  would leave it free, the guess stands its posts fixed on their end faces (and lays a lying beam on its face). That
+  hid the frame's freedom: a 2020 portal with no supports passed `frame.rack` along y at 0.411 mm though it is free
+  that way, and racked along x at 0.259 mm where pinned feet give 1.669 mm and a warning. `frame.solve` now warns
+  that the supports are guessed, names what pinned feet would leave free (`refs.free`) and the ends held
+  (`refs.guessed`), and asks for feet or `frame.supports`; `frame.rack`, `frame.buckling` and `frame.frequency` say
+  they rest on the guess.
 - **A generated frame's printed feet are screwed on**: each printed foot, levelling foot or stacking foot's upright
   is tapped at its end as the foot says (M5, 18.5 mm deep in 2020) and a `fasten` holds the foot (an M5x16 cap screw
   on the list). Where the join drills the uprights (blind, end-tap, hidden, anchor), the bottom ring rises by the

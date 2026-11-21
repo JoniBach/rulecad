@@ -4447,6 +4447,21 @@ test('frame checks: a portal in one plane on pinned feet and a beam pinned at bo
     assert.deepEqual(gs.refs.held, []);
     assert.equal(guessed.find((x) => x.code === 'frame.buckling' && /whole frame/.test(x.text)).level, 'pass');
     assert.ok(guessed.find((x) => x.code === 'frame.frequency').values.Hz > 1);
+    // and the guess is said: nobody gave those fixed ends, and on pinned feet the portal is free out of its plane (the
+    // tip-over above), so the solve warns and every figure that rests on them says so. Racked along x it sways 0.259 mm
+    // here where pinned feet gave 1.669 mm and a warning, and along y it passes at 0.411 mm though pinned feet leave it free
+    assert.equal(gs.level, 'warn', gs.text);
+    assert.match(gs.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), and on its lowest ends pinned, as a foot stands on a floor, it would be free at z2\.b \(rx\)\. So it is solved with z1\.a and z2\.a fixed, standing on their end faces, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives\. Give it feet, or say how it is held in "frame": \{ "supports" \}/);
+    assert.deepEqual([gs.refs.guessed, gs.refs.free], [['z1.a', 'z2.a'], [{ node: 'z2.b', freedom: 'rx' }]]);
+    const onGuess = guessed.filter((x) => ['frame.rack', 'frame.buckling', 'frame.frequency'].includes(x.code));
+    assert.deepEqual([...new Set(onGuess.map((x) => x.code))].sort(), ['frame.buckling', 'frame.frequency', 'frame.rack']);
+    for (const x of onGuess) {
+      assert.match(x.text, /\. This rests on supports guessed, not given: z1\.a and z2\.a fixed, standing on their end faces, where pinned feet would leave the frame free at z2\.b \(rx\)$/, x.text);
+      assert.deepEqual(x.refs.guessed, ['z1.a', 'z2.a'], x.code);
+    }
+    assert.deepEqual(guessed.filter((x) => x.code === 'frame.rack').map((x) => [x.refs.direction, x.values.sway]), [['along x', 0.259], ['along y', 0.411]]);
+    // supports given (the pinned feet above) are no guess: nothing of it is said
+    assert.ok(r.every((x) => !/supports guessed/.test(x.text) && x.refs?.guessed == null));
     // 2. a lone beam pinned at both ends spins on its axis with nothing resisting: held, it sags as a simple span
     write({ title: 'Lone', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300])], loads: [{ mass: 3, at: 'x1.top@50%' }], frame: { supports: { 'x1.a': 'pinned', 'x1.b': 'pinned' } } });
     r = probe();

@@ -722,7 +722,11 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   from moving and free to turn, as a foot stands on a floor. Where lowest ends pinned would leave the frame free to
   move (two posts and a rail leaning over out of their plane, a beam on the floor rolling with a post on it), a beam
   lying with both ends lowest rests on its face (held from twisting about its length) and a beam standing on its
-  lowest end stands on its end face (fixed), and `frame.solve` says so. Beams no support holds through joins are left out by
+  lowest end stands on its end face (fixed). That guess is a support nobody gave, which holds the frame where pinned
+  feet would leave it free (the portal tipping over out of its plane, below), so `frame.solve` warns: it names the
+  freedoms pinned feet would leave (`refs.free`) and the ends held in their place (`refs.guessed`), says that every
+  sag, rack, buckling and frequency figure rests on them, and asks for feet or `"frame": { "supports" }`.
+  `frame.rack`, `frame.buckling` and `frame.frequency` each say they rest on the guess (`refs.guessed`). Beams no support holds through joins are left out by
   name, and so is what is mounted only on them, as not weighed (`refs.off`). A beam that rides a moving joint (a
   gantry's cross beam on its carriages) is a load on the frame, named as riding (`refs.riding`), not part of it;
   lying across two parallel beams at one level (a gantry's beam on its two side beams), its weight is shared between
