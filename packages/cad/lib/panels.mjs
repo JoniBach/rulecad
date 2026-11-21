@@ -108,7 +108,7 @@ export function expandPanels(a, num, context = framesContext(), material = 'pla'
       return { at: `${e.id}.${e.place.name}@${dist}`, ...(dot(ylocal, yIn) > 0 ? {} : { rotate: [0, 0, 180] }), dist, x: dot(ylocal, yIn) > 0 ? e.d : e.d.map((c) => -c), part };
     };
     const pointOn = (e, s) => add(add(add([0, 0, 0], e.ax, e.c), span(e).q, s), out, h); // the slot line at s along the edge
-    const record = { id: it.id, sheet, thickness: T, door: !!door, items: [], fasten: [] };
+    const record = { id: it.id, sheet, thickness: T, door: !!door, bay: [...P.bay], items: [], fasten: [] };
     if (!door) {
       const pitch = P.pitch != null ? num(P.pitch) : PANEL_DEFAULTS.pitch.value;
       if (!(pitch > 0)) throw new Error(`${what}: pitch is the most between clips along an edge, in mm, above 0 (got ${shown(P.pitch)})`);

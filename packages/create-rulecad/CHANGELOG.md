@@ -5,6 +5,22 @@ print (a hole's diameter, a seat's depth, a part's outline). Each release lists 
 it makes, with its reason. A **fasten** is an entry in an assembly's `"fasten"` list: one screwed joint, naming the
 screw by thread and head, the parts it passes through and the part it ends in.
 
+## 0.3.18: a frame to start from (Frames 3)
+
+### Added
+
+- `--machine frame --size 300x300x350 --profile 2020-misumi-hfs5`: a box frame generated from its inside size, with
+  a load on its top, that checks clean on a fresh install in each profile offered (2020-misumi-hfs5 and
+  2020-openbuilds joined blind on printed levelling feet, 3030-misumi-hfs6 on printed brackets and feet); `cad kit
+  frame/box` writes the folder to build it from. Each profile takes the sizes its box checks clean in (2020: width
+  and depth 50 to 1400 mm, height 50 to 600 mm; 3030: 100 to 800 mm, height 100 to 300 mm); a size outside them, or
+  a profile it cannot make, is refused before anything is written, and so is a frame's flag on another machine.
+  So is a size inside them whose beams' cut lengths (the width's, the depth's and the uprights') lie under 1 mm
+  apart and not one length, which two cuts at ±0.5 mm cannot hold apart (358 x 300 x 300 in 2020: 358 mm beams beside
+  358.5 mm uprights); cad check warned `frame.cut` there. The 3030 box's feet tap M8 in each upright's middle bore
+  alone, where the kit's beam sheets said all five.
+- The template's AGENTS.md follows cad's: the kit, plates by material, and the frame template.
+
 ## 0.3.17: frames in the agents' notes (Frames 2)
 
 ### Changed

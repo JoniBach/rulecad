@@ -73,6 +73,18 @@ function partFindings(set, name, file, all) {
   return out;
 }
 
+// A draft's figures not yet read from a sheet: cad rules draft profile writes each with a source that starts "DRAFT"
+// (its rule is the field's own sentence, which stays), and cad rules draft from a PDF writes each figure's rule
+// "DRAFT: name and check me" while its kind is estimate. A set that still has one checks and draws as it stands, so it
+// is said by name until each is filled (a source of its own, or a rule of its own and kind spec) or deleted
+const isDraft = (r) => /^DRAFT\b/.test(String(r.source ?? '')) || (/^DRAFT\b/.test(String(r.rule ?? '')) && r.kind === 'estimate');
+function draftLeft(set) {
+  const left = Object.entries(set.rules && typeof set.rules === 'object' ? set.rules : {}).filter(([, r]) => r && typeof r === 'object' && isDraft(r)).map(([k]) => k);
+  if (!left.length) return [];
+  const n = Object.keys(set.rules).length, named = left.length > 8 ? `${left.slice(0, 8).join(', ')} and ${left.length - 8} more` : left.join(', ');
+  return [{ level: 'warn', code: 'rules.draft', text: `${left.length} of its ${n} figures are still the draft's, not read from a sheet: ${named}. Fill each from the maker's sheet (its value, the sheet and page as its source, the date) or delete it`, values: { count: left.length, total: n }, refs: { rules: left } }];
+}
+
 /** Every named set checked (or all of them): [{ name, file, findings, notes? }]. A finding's level is fail, warn or info;
  * notes: what is said and never fails */
 export function checkSets(names = []) {
@@ -80,6 +92,7 @@ export function checkSets(names = []) {
   return (names.length ? names.map((n) => [n, fileOf(n)]) : [...all]).map(([name, file]) => {
     const set = readSet(file), findings = checkRuleSet(set, v), notes = notesOf(set, file);
     if (!findings.length && ['profile', 'slot', 'slot_nut'].includes(set.part)) findings.push(...partFindings(set, name, file, all));
+    findings.push(...draftLeft(set));
     return { name, file, findings, ...(notes.length ? { notes } : {}) };
   });
 }
@@ -490,9 +503,10 @@ export function draftPart(part, name) {
   const v = vocabulary(), fields = v.drafts?.[part];
   if (!fields) return null;
   const stamp = new Date().toISOString().slice(0, 10), rules = {};
-  for (const [k, value] of Object.entries(fields)) rules[k] = { value, ...(v.fields[k]?.unit != null ? { unit: v.fields[k].unit } : {}), rule: `DRAFT, not read from a sheet yet: ${v.fields[k]?.says ?? k}`, kind: 'estimate', source: 'DRAFT: give the sheet, its page and the date you read it', checked: stamp };
+  for (const [k, value] of Object.entries(fields)) rules[k] = { value, ...(v.fields[k]?.unit != null ? { unit: v.fields[k].unit } : {}), rule: sentence(v.fields[k]?.says ?? k), kind: 'estimate', source: 'DRAFT, not read from a sheet yet: give the sheet, its page and the date you read it', checked: stamp };
   return { _doc: `A draft ${part.replace('_', ' ')}: every field the vocabulary has for one, each with a starting value. Put in the figures from the maker's sheet, with the sheet and its page as the source and today's date, and change each kind to spec as you go. Delete what the sheet has no figure for (cad rules check says which a ${part.replace('_', ' ')} needs). Then cad rules check ${name}, and cad rules draw ${name} to hold against the sheet's drawing.`, name, part, rules };
 }
+const sentence = (t) => { const x = String(t).trim(); return x ? x[0].toUpperCase() + x.slice(1) : x; };
 export const draftParts = () => Object.keys(vocabulary().drafts || {});
 
 /** Every figure a datasheet's text gives, as a rule set of estimates for a person to name and check. @returns {{ set: object, found: number }} */

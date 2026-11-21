@@ -35,14 +35,30 @@ cut, and fastens to them:
   carriage on V-wheels in a V-slot's tracks (`wheelsModel`), where each wheel's axle goes from the track and its rim
   (`trackFit`), its eccentrics' preload range and each wheel's load against its rating (`wheelMargin`); and a printed
   slider in or over a slot (`sliderModel`).
+- **Printed beams**: a beam printed in plastic in place of one cut from stock (`beamModel`'s `printed`): printable
+  profiles that lie down to print with no support (`printedProfile`, published as `profile-1515-printed` to
+  `profile-4040-printed`), its figures from its walls and infill (`printedSection`), its ends' heat-set inserts or
+  captive nuts, its solid as it prints (`printedBeam`), and a keyed splice for a beam longer than the bed
+  (`spliceModel`, `splice`).
 - **Jigs**: printed jigs for hand tools from a beam's operations: a drill guide that puts a bush where the sheet
   dimensions a hole (`drillGuideModel`), a tap guide over an end (`tapGuideModel`), a cut-length stop with its gauge
   (`lengthStopModel`) and a squaring corner (`squareCornerModel`).
 
-A whole frame from these, a box of 2020 with a motor-driven axis, cut, drilled, printed on one plate and built in
-order, is chapter 16 of [the worked examples](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md).
-More fittings (a three-way corner, a hidden-corner cover, a printed node) and a belt drive follow in later releases.
-The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
+- **Squaring**: a bay's two diagonals and the difference to accept, stacked from its cuts and its joins' play
+  (`squareness`), and the printed squaring corner that holds a join at 90° while it is tightened.
+- **Frames from a size**: generators for a box, a portal, a table, a gantry and a shelf (`box`, `portal`, `table`,
+  `gantry`, `shelf`, `frameModel`), asked for by the space inside or outside, that expand into beams, joins, feet and
+  caps; and each profile as choices for `@rulecad/fea/frame`'s sizing (`profileChoices`), so the lightest profile that
+  meets a frame's limits can be chosen beam group by beam group.
+
+A frame is solved as a structure by `@rulecad/fea/frame` (beam elements, each join a spring at the beam's end), and
+cad's checks read it: sag, stress, buckling, racking, the lowest modes, heat, squareness, and which beams could be
+printed. [The frames guide](https://jonibach.github.io/rulecad/docs/building-frames/) walks a profile from its maker's
+spec sheet to a checked box, built square, in commands. A whole frame, a box of 2020 with a motor-driven axis, cut,
+drilled, printed on one plate and built in order, is chapter 16 of
+[the worked examples](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md), and chapter 17 prints
+every beam of a small case. More fittings (a three-way corner, a hidden-corner cover, a printed node) and a belt drive
+follow in later releases. The plan is [issue 240](https://github.com/JoniBach/rulecad/issues/240).
 
 ```sh
 npm install @rulecad/frames @jscad/modeling
@@ -294,8 +310,15 @@ const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [
   { op: 'tap', at: 'a', thread: 'M5' },          // M5 in end a's bore, 10 mm deep: 2 diameters for aluminium
   { op: 'access', at: 'top@-10', thread: 'M5' }, // a Ø5.3 mm hole 10 mm from end b, for an M5 cap screw's 4 mm key
 ] });
-b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm; the bore is Ø4.2)', 'cut end a square', ...
+b.ops.map((o) => o.line); // 'tap M5 in bore a.1, ...', 'cut end a square', 'access hole Ø5.3 mm in top.1, ...', 'cut end b square'
+workOrder(b);             // [1, 3, 2, 0]: the order they are done in, as the sheet numbers them
 ```
+
+`b.ops` lists the operations in their place along the beam, from end a, and everything that reads a beam (the cut
+list's marks and summary, the joins, the checks) reads them so. `workOrder(b)` gives their indexes in the order they
+are done, and a beam's sheet numbers them so: each end cut (square or mitred) and deburred, then the holes, pockets and
+notches across it from end a, then the taps in its end bores. A jig's label (`C4`) and a guide's warnings use the
+sheet's number; `drillGuideModel` and `tapGuideModel` take the index into `b.ops`.
 
 | Operation | What it is | Where | Takes |
 |---|---|---|---|
@@ -312,7 +335,10 @@ b.ops.map((o) => o.line); // 'tap M5 in bore a.1, 10 mm deep (tap drill Ø4.2 mm
 Sizes named by a thread come from `@rulecad/fixings` as a machine cuts them: the thread's figure as drawn, with no
 printer's hole compensation and no teardrop roof. An access hole is the smallest of the thread's clearance holes
 wider than its hex key across the corners, the key of the head it is for (an M5 cap screw's is 4 mm, an M5 button
-head's 3 mm). A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
+head's 3 mm), and no wider than the slot it is drilled in (and, right through, the slot it comes out in). Where no
+clearance hole fits, it is the key's corners and `OP_DEFAULTS.key` (0.5 mm), up to the next tenth of a millimetre: an
+M8 button head's 5 mm key (5.77 mm across its corners) takes a 6.3 mm hole, inside an 8 mm slot where M8's 8.4 mm
+close clearance would cut the lips. A counterbore leaves `OP_DEFAULTS.seat` round the head. A hole through one
 wall goes as deep as the first run of metal along its line through the section, worked out from the outline.
 
 Each worked-out operation in `model.ops` keeps its `distance` from end a (0 and the length for the ends), its `face`
@@ -332,8 +358,10 @@ meet; a hole that crosses a tapped thread; a hole whose edge leaves less than ha
 (`OP_DEFAULTS.edge`, warn), or runs off it (fail). Thread engagement is `@rulecad/fixings`' `engagement` in the beam's
 alloy: a thread tapped in a 1.9 mm slot floor gets a warning that aluminium wants 2 diameters. Refused by name: an
 operation the kit does not have, a key it does not take, an address of the wrong kind, a tap in a profile with no end
-bore, a thread too small for the bore, two cuts at one end, a mitre that leaves no short side, and any operation on a
-printed profile (they become features of the print in a later release).
+bore, a thread too small for the bore, two cuts at one end, a mitre that leaves no short side, and an operation on a
+beam of a printed profile that is not said to be printed. On a printed beam the operations are features of the
+print: holes sized by the printer (its hole compensation added), and a hole lying on its side as it prints a teardrop
+(see [Printed beams](#printed-beams)).
 
 ### The solid
 
@@ -359,8 +387,160 @@ Light 40 mm sections (Bosch Rexroth 40x40L, item's light Line 8, Motedis I-type 
 hollows and hooked lips the dimensions do not describe, and come out 8 to 21% heavy. Their beams say so
 (`beam.mass`, warn) and name the sheet's mass to use instead; their `figures` are the sheet's.
 
-`printable(x)` takes a beam's model, its solid or a profile's model, and fails it: a beam of a profile is bought and
-cut, and what prints is the parts that fasten to it. Printed beams come in a later release.
+`printable(x)` takes a beam's model, its solid or a profile's model. A beam given `printed` gets its `beam.printable`
+findings (below); any other beam, and a profile, fails: it is bought and cut, and what prints is the parts that fasten
+to it.
+
+## Printed beams
+
+Aluminium is about twenty times as stiff as PLA and does not creep, so a printed beam suits a case, an enclosure or a
+light frame, seldom a gantry. A beam given `printed` is a printed part: it has a mass from the plastic laid, it goes on
+a plate, and it stays off the cut list.
+
+```js
+import { beamModel, printedBeam, spliceModel, splice, nutFor } from '@rulecad/frames';
+
+const b = beamModel('2020-printed', { length: 240, printed: true, ends: 'tapped' });
+b.printed.pose;            // 'lying': on its bottom face, its layers along it
+b.mass;                    // 61.8 g of PLA at 3 walls and 40% infill
+b.ends.a;                  // { kind: 'insert', thread: 'M4' }: a heat-set insert in place of a tap
+printedBeam(b);            // the solid as it prints, on the bed from x = 0, for printcheck
+nutFor(b.profile, 'top', 'M4', { kind: 'drop-in' }).name; // 'slot-nut-6-misumi-m4-drop-in'
+```
+
+`printed` is `true`, or `{ pose, walls, infill, end, pull, printer }`:
+
+| Option | What | Default |
+|---|---|---|
+| `pose` | `lying`: on its bottom face, the layers along the beam, strong in bending. `standing`: on end a, the section the layer, exact, but bending across its layers | `lying` |
+| `walls` | Lines of solid wall round every outline of the section | 3 |
+| `infill` | The share of the inside the infill fills, 0 to 1 | 0.4 |
+| `end` | What a tapped end becomes: `insert` (a heat-set insert) or `nut` (a captive nut slid in from the front face) | `insert` |
+| `pull` | The design pull on a nut in its slot, N | 100 |
+| `printer` | A printer's rule set or values | the kit's X1C |
+
+A beam of a metal's profile printed is printed in PLA unless `material` names another plastic.
+
+### Printable profiles
+
+A standard slot does not print lying down. Its lips' undersides hang flat over the cavity when it faces up; facing
+the bed its floor is a ceiling wider than a bridge; in a side face the upper lip's edge starts in mid-air. So the kit's
+printable profiles have one slot, in the top face, with the undersides of its lips sloped at the printer's overhang
+angle, and are solid below it. `printedProfile(series, { nut, printer, pull, material })` works one out:
+
+- **The opening**: the slot family's, or its nuts' widest tongue and a fit, whichever is wider, plus the printer's
+  hole compensation.
+- **The cavity**: the widest of the family's nuts of that kind and a fit, the walls beside it a whole number of
+  lines (the thickest that leave that room). A hex nut is held by its flats, so the cavity stays under its corners.
+- **The lips**: the family's thickness in whole layers, thicker where the design pull needs it; their undersides at
+  90° less the overhang (45° on the X1C), so a nut seats on its top corners, lower than under flat lips. `nutFit`
+  measures its room from there and says so (`slot_nut.seat`).
+- **The floor**: under the nut with a fit, its corners chamfered (no square inside corner).
+- **The ends**: the largest thread whose heat-set insert, its wall and a line each side, fits under the slot
+  (`end_thread`, `end_at`).
+
+| Profile | Its slot takes | Opening | Cavity | Depth | Lip | End |
+|---|---|---|---|---|---|---|
+| `profile-1515-printed` | OpenBeam's M3 hex nut (`slot-nut-3-openbeam-m3-hex`) | 3.3 | 5.76 | 5.7 | 1.6 | M3 |
+| `profile-2020-printed` | MISUMI's 6 mm slot drop-ins (M3, M4) | 6.1 | 10.76 | 7.85 | 2 | M4 |
+| `profile-3030-printed` | MISUMI's 8 mm slot drop-ins (M3 to M6) | 8.1 | 15.72 | 11.55 | 2 | M6 |
+| `profile-4040-printed` | MISUMI's 8 mm slot drop-ins (M3 to M6) | 8.1 | 15.64 | 11.55 | 2 | M8 |
+
+Every figure in these sets is `derived`, its source naming the nuts and the printer's rules it comes from. Another
+printer gives other figures: `printedProfile(20, { printer: { overhang: 50 } })` slopes the lips at 40°.
+
+### A metal's profile printed standing up
+
+A beam that needs a slot in more than its top face prints standing up from any profile, its section exact. A metal's
+profile names no printed end, so standing up a tapped end takes its screw in the place of its one threaded bore: the
+largest thread whose screw passes up the bore (its major no wider than the bore) and whose fixing fits the plastic
+round the bore's middle, the bore itself left out. An insert's hole must be no narrower than the bore, with its wall
+round it; a captive nut's corners need a line to spare. MISUMI's 2020 has a 4.2 mm bore and 4 mm of plastic round it:
+an M4 insert needs 5.7 / 2 + 2.1 = 4.95 mm and does not fit (`beam.end` fails and says none does), and with
+`"end": "nut"` an M3 nut needs 5.5 / cos 30° / 2 + 0.42 = 3.6 mm and does. Under a captive nut the bore is filled from
+the end to the screw's hole's far end, so the 3.5 mm hole and the nut's slot are cut in plastic and the screw's hole
+runs on into the bore.
+
+A foot under such an end takes its thread: `footModel('2020-misumi-hfs5', { thread: 'M3' })` draws the counterbore
+and the screw for M3 and says the screw goes into the printed end's own fixing (refused by name: a thread whose
+screw does not pass the bore). `printedInPlace(b)` draws a printed beam in its own frame, as `beam()` does, with its
+ends' inserts or nuts cut in: what an assembly checks a screw into its end against.
+
+### What a printed beam is worth
+
+`printedSection(profile, { walls, infill })` lays a shell `walls` lines thick inside every outline of the section and
+counts the inside at the infill's share, on a raster of the outline. Its stiffness figures replace the profile's
+(`figures`, every one `estimate`), the material's modulus is the one for the pose (`modulus` along the layers,
+`modulus_z` across them), and the frame checks solve a printed beam with them. Its findings:
+
+| Finding | What it says |
+|---|---|
+| `beam.printable` | How it prints and what stops it: a slot in a side face, lips that hang out, a bed slot's floor wider than a bridge, a hollow along it, a length past the bed (splice it) or past the printer's height |
+| `beam.mass` | Its grams, the plastic laid by walls and infill, and how much of a solid section's stiffness it keeps |
+| `beam.strength` | The moment it is designed to carry: the plastic's strength for its pose over twice the margin, times I over the furthest fibre |
+| `beam.slot` | Each slot's hold in plastic on the widest nut made for it: the lips bending at their roots, and sloped lips pushing the side walls apart |
+| `beam.end` | Each end's insert or captive nut, against the room round it |
+
+Standing, a beam bends across its layers: on the material's `strength_z`, or 0.6 of its strength where it gives none
+(PLA's sheet gives none; PETG's gives 0.68).
+
+A slot's lips and side walls are each checked at the strength the way their bending stress runs. A plate bends with
+its stress running from its root out across it. Lying down, a top slot's lips lie flat in the layers, so they bend
+along them, and its side walls stand up through the layers, so their stress runs up them, across the layers. The
+walls govern the kit's printed slots: `profile-2020-printed` holds 427 N on MISUMI's M4 drop-in in PLA (23.4 MPa
+across the layers), 4.3 times a 100 N pull.
+
+### Creep, and the beam coupon's figures
+
+A printed beam in a frame holds its load for months, and plastic creeps under a held load. `beamCreep(b, { stress })`
+(or `{ moment }` in N·mm, over the printed section's modulus) holds the sustained stress to `PRINTED_DEFAULTS.creep`,
+0.15, of its strength for its pose: 5.1 MPa for PETG lying down, 3.45 MPa standing up. Over it fails `beam.creep`. With
+`{ sag, limit }` it also says the sag it creeps to, the short-term sag over `PRINTED_DEFAULTS.creep_modulus` (0.5).
+Both shares are estimates and the finding says so: printed PLA held at 0.3 of its strength broke within hours in one
+study (Waseem et al., 2020), and the kit takes half that share with no long test behind it.
+
+```js
+const b = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: true });
+beamCreep(b, { stress: 2.55 })    // { level: 'pass', code: 'beam.creep', values: { limit: 5.1, margin: 2, ... } }
+beamCreep(b, { stress: 1, sag: 0.3, limit: 0.5 })   // fails: 0.3 mm creeps to about 0.6 mm
+```
+
+The beam coupon (`cad measured` from the bench's `beam-test`, MEASURE.md rows 38 and 39) measures what a printed beam
+of walls and infill is worth. It writes four rules to the plastic's set: `beam_modulus` and `beam_strength` for a beam
+printed lying down, `beam_modulus_z` and `beam_strength_z` standing up, each the figure that makes `printedSection`'s
+section bend and break as the coupon did. A printed beam takes each before the plastic's own `modulus`, `strength` (or
+their `_z`), says so in `beam.mass` (`b.printed.coupon` names the rules it took), and its creep limit follows the
+strength measured. Until then its figures are the data sheet's and the section's estimates.
+
+### A splice for a beam longer than the bed
+
+`spliceModel(beam, { at, moment, thread })` joins two halves printed lying down with a lap. Over the lap the section
+is cut upright down its middle: the half toward end a keeps its front side, the half toward end b its back side, so
+every cut face stands upright and both halves print with no support. In the middle of the lap the cut steps sideways
+into a key that locks the halves along the beam. Two screws cross the lap under the slot's floor: button heads in
+seats in the front face, nuts in pockets in the back face, all on their side as teardrops, and the slot stays free for
+its nuts. `splice(model)` draws the two halves as they print.
+
+At each end of the lap one half carries the whole moment on its half of the section, and it still carries all of it
+at its first screw, where the screw's hole and the head's seat (a) or the nut's pocket (b) cut that half section.
+Between the screws the two of them pass the moment across as a couple, each pushing on the plastic of both halves. So
+the joint carries the least of three things: the half toward a's section net of its holes at its first screw, the
+same of the half toward b, each at the plastic's strength along its layers, and the screws' couple. A screw's share is the least of the plastic crushed under it, the plastic torn out to the bed or the
+slot's floor (both across the layers, since the screw pushes up or down through them) and the screw sheared. The lap
+starts at twice the height and grows until the screws carry what the joint must, or what the halves can if that is
+less. The lap goes as far from the middle as the bed lets both halves be.
+
+What the joint must carry is the moment given (`moment`, N·mm) times the margin of 2, or, with none given, what the
+beam itself breaks at there: twice its design moment times 4 z (L - z) / L², a spread load on a simply supported span.
+Half a section carries about half the whole, so a splice carries about half what the beam does, and with no moment
+given `splice.strength` fails and says what moment it does carry. A 400 mm printed 2020 on the X1C: halves of 192.8
+and 256 mm, its halves' sections 361 and 364 mm³ between the screws and 354 and 321 mm³ at their first screws (the
+whole beam's 718 mm³), 12.5 N·m against the 27.3 N·m the beam breaks at there, so it fails. With 50 N hung in its
+middle (5 N·m at most), it passes: M4 x 16 screws, each holding 435 N (torn out to the bed), on a 43.4 mm lap.
+
+Where no splice fits, `spliceModel` refuses by name and says what would: the longest beam two halves hold on the bed
+(twice the bed less the shortest lap, twice the height), the range a lap's middle may take, or, where the longest lap
+the bed allows is still too weak, what it carries and the moment that fits.
 
 ## The cut list
 
@@ -422,7 +602,7 @@ beam is drawn 1:1, 1:2, 1:5, 1:10 and on, the smallest that keeps it within 200 
 2:1 or 1:1. On it: the section seen from end a with top up and each face named, and each tapped bore with its thread
 and depth; a view of each face that has work on it, or a mitre seen from it, with that face up and end a on the left,
 every slot's centre line, and each operation numbered and dimensioned from end a to 0.1 mm; and the operations in
-order from end a, each with its full line. A face only a few mm wide at a small scale is drawn wider across, and the
+the order they are done (the ends cut, the holes from end a, the taps), each with its full line. A face only a few mm wide at a small scale is drawn wider across, and the
 view says by how much. It returns `{ svg, scale, faces, dimensions }`, `dimensions` being each operation's figure as
 the sheet prints it.
 
@@ -479,6 +659,12 @@ take.
 The tap is as deep as the thread engagement asks in the beam's metal (two diameters in aluminium, from
 `@rulecad/fixings`), with the screw's tip room and one and a half diameters more (`JOIN_TAP`), so that a screw of a
 sold length both engages fully and stops short of the bottom. `options.screw` names another screw (`'M5x12 button'`).
+
+That is deeper than a maker's own end tapping: MISUMI cuts M5 15 mm deep in its 2020 and M8 24 mm in its 3030 (the
+profile's `bore_thread` rule, from its catalogue), where the kit taps 18.5 and 29 mm. The kit's depth is the one it
+sizes from, for a workshop tapping its own ends; the screws it then chooses stop well inside the maker's depth too (a
+foot's M5x16 through its 5 mm floor reaches 11 mm into the end, its M8x25 through 8 mm reaches 17 mm), so a beam
+bought tapped serves, and `fasten.length` checks the screw against the tap drawn.
 
 A mitre's cuts depend on where the beams are, so they are given: `options.mitre` is `{ angle, a: { about, long }, b:
 { about, long } }`, the angle each end is cut from square (45° for a square corner, 90° less half the angle between
@@ -588,7 +774,11 @@ How it is sized:
 3. **For a screw that is sold.** A screw into a slot nut must engage the nut's thread fully and stop short of the
    slot's floor, which leaves a window of a few tenths of a millimetre for its tip. The fitting is thickened, a layer
    at a time, until a length sold lands in that window on every leg (an M5x12 through 6.4 mm on a 2020), as cad's
-   fasten check will hold it.
+   fasten check will hold it. The nut's thread is counted from where it seats: under the lips, or lower where they
+   slope underneath (the printable profiles' slots: an M4 drop-in nut seats 3.95 mm down in the printable 2020, not 2).
+   A plate whose beam a is of another profile (`{ other: '2020-printed' }`, the same face names) keys each arm into
+   its own beam's slot and is thickened until a length sold fits both: a T gusset from MISUMI's 2020 onto the
+   printable 2020 is 4.6 mm, M4x10 into MISUMI's slot and M4x12 into the printable one.
 
 The finite elements' results are kept in memory, and in a cache handed in (`{ cache: { get, set } }`: cad keeps them
 in `.cache/fitting`). Each fitting's findings, in the kit's one shape: `fitting.size`, `fitting.tongue`,
@@ -845,12 +1035,14 @@ printcheck as drawn. A part's frame is a mount's: x along the beam, y across, z 
 |---|---|---|
 | `endCapModel(profile)` | A plate the beam's outline, pegs pushed into each slot's opening and the bore, their roots chamfered 45°; `endCap(m, { tongues: false })` is the plate alone, as an overlap check measures it | Plate down |
 | `footModel(profile)` | A pad 2 mm past the beam each way, screwed into the end's tapped bore through a counterbore in its underside | As it stands |
-| `levellingFootModel(profile, { stud? })` | A body screwed into the end's bore and a pad that screws up and down a printed M12 thread (10 mm of travel, 12 mm always engaged); or, with `stud: 'M8'`, an M8 nut sunk in the body for a bought foot's stud | As they stand, threads upright |
+| `levellingFootModel(profile, { stud? })` | A body screwed into the end's bore and a pad that screws up and down a printed thread (10 mm of travel, one diameter always engaged): the first of `END_DEFAULTS.studs` (M12, Tr16x4, Tr20x4, Tr24x5) whose bore passes the end screw's head, so M12 on a 20 series (M5) and Tr20x4 on a 30 or 40 series (M8, a 13 mm head); `stud: 'Tr24x5'` names one. Or, with `stud: 'M8'`, an M8 nut sunk in the body for a bought foot's stud | As they stand, threads upright |
 | `castorPlateModel(profile, { holes, thread })` | A plate for a castor whose hole spacing (from its maker's drawing) and bolts are given, screwed into the end's bore. Refused where the castor's bolts' heads would sit under the beam | Beam side down |
 | `stackingFootModel(profile)` | A plate on the end with a socket under it that fits over the end of the same profile below | Beam side down |
 
 A part screwed into the end says the tap the end needs (`ops`: `{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }`,
-as a join's tap) and the screw sold that engages the aluminium and stops inside it. Each part's frame is the end's
+as a join's tap) and the screw sold that engages the aluminium and stops inside it. Where the end has several bores
+it taps the threaded one alone, by its number (MISUMI's 3030: `a.1`, the 6.8 mm M8 bore, not its four 4.2 mm corner
+holes); a tap op at a whole end does the same, taking every bore only where none is named for a thread. Each part's frame is the end's
 address on the beam (`x1.a`): z out of the end, x along the beam's top. Seen from outside end a the section lies
 mirrored, so a section's point (x, y) is at (y, x) there and at (y, −x) at end b.
 
@@ -913,9 +1105,36 @@ squareness(260, 200, { tolerance: 0.1 }).accept   // 0.16 mm, for a saw that hol
 ```
 
 A bay whose diagonals differ by more than `accept` leans: loosen its joins, push the corners at the ends of the long
-diagonal together, tighten and measure again. Joint play is a second source, left to the frame checks of issue 268.
-@rulecad/cad finds every bay of an assembly (four beams joined in a rectangle in one plane) and puts its diagonals on
-the frame's build (`cad order`) and in `frame.square`.
+diagonal together, tighten and measure again.
+
+The terms stack as an arm's error budget stacks its joints. `cuts` names the beams whose cut lengths set the opening,
+each along the width or the height: a beam cut t long moves one diagonal against the other by t × span / d. `plays`
+names each join's play s along the beam it meets (`JOIN_PLAY[kind].value`, an estimate for every kind), which moves a
+corner along that beam, s × span / d. `accept` is their sum, the worst case, and `rss` their root-sum-square; `terms`
+lists each one's share.
+
+```js
+import { squareness, JOIN_PLAY } from '@rulecad/frames'
+
+const slip = JOIN_PLAY.blind.value   // 0.1 mm
+const cuts = [{ name: 'x1', along: 'width' }, { name: 'x3', along: 'width' }]
+const plays = ['width', 'width', 'height', 'height'].map((along, i) => ({ name: `j${i + 1}`, along, slip }))
+const q = squareness(260, 200, { cuts, plays })
+q.accept   // 1.07 mm: 2 × 0.5 × 260 / d + 2 × 0.1 × 260 / d + 2 × 0.1 × 200 / d, d = 328.02
+q.rss      // 0.58 mm
+squareness(260, 200, { cuts, plays, tolerance: 1 }).accept   // 1.87 mm: the cut terms double, 0.79 mm more
+```
+
+@rulecad/cad finds every bay of an assembly (four beams joined in a rectangle in one plane), names the beams whose
+ends butt the bay's others as its cuts and the joins between them as its plays, and puts its diagonals on the frame's
+build (`cad order`) and in `frame.square`.
+
+| Figure | Formula | Source |
+|---|---|---|
+| A diagonal | d = √(w² + h²) | Pythagoras |
+| A side's share of the diagonal difference | x × side / d for a change x in that side | ∂d/∂w = w / d |
+| The lean a difference stands for | δ = difference × d / (2 w h) | Diagonals √(w² + h² ± 2 w h sin δ) of a bay leaning by δ |
+| A join's play | 0.1 to 0.3 mm by kind; end-tap 0.25 | `JOIN_PLAY`: estimates; end-tap is half ISO 273's medium clearance for M5 (5.5 mm) |
 
 ## Slot nuts
 
@@ -1010,6 +1229,123 @@ the slot by caliper, and `cad measured` writes the results back: the fit to the 
 `carrierModel` takes its `slot_fit` before its `fit`; a design's `v.frames` reads the workspace's slot sets before the
 kit's.
 
+## Frames from a size
+
+A frame can be asked for by the volume it encloses or the one it must fit in. Each generator gives plain data: its
+beams placed by their ends, the joins between them, the fittings for the ends no join covers, and any panels, so
+the result can be built, checked, written out and edited by hand.
+
+```js
+import { box } from '@rulecad/frames';
+const m = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' });
+m.outside;  // [340, 340, 408.5]: the bottom ring raised 18.5 mm, clear of the feet's taps (below)
+m.lengths;  // [{ length: 408.5, count: 4, ids: ['z1', 'z2', 'z3', 'z4'] }, { length: 300, count: 8, ids: ['x1', ..] }]
+m.joins[0]; // { kind: 'blind', a: 'x1.a', b: 'z1.back@28.5' }
+m.ends[0];  // { id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot', tap: { op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }, screw: 'M5 cap' }
+```
+
+| Generator | What it is | Size |
+|---|---|---|
+| `box(o)` | Four upright beams (`z1` to `z4`) and a ring of four beams at the bottom and at the top | `[width, depth, height]` |
+| `portal(o)` | Two legs and a beam across their tops, standing in the x-z plane. It lies in one plane, so it stands only with its feet held down (bolted to a bench or a wall); cad refuses a generated portal until `frame.supports` says so | `[width, height]` |
+| `table(o)` | Four legs and a ring at the top; the height is the clear height under the ring | `[width, depth, height]` |
+| `gantry(o)` | A box without its top beams across, and a beam `g` lying across the two top side beams, riding along y (`moving`: its track, direction and travel) | `[width, depth, height]` |
+| `shelf(o)` | A box with `shelves` rings between (default 1), spacing its height into equal clear bays | `[width, depth, height]` |
+
+`frameModel(kind, o)` is any of them by name. The options: `inside` or `outside` (one of them), `profile` (square:
+2020, 3030, 4040), `join` (a kind, or `{ kind, fitting, screw, nut }`), `feet` (`foot`, `levelling`, `castor`, `stacking`,
+or a bought set's name), `caps` (`true`, `false` or a bought set's name), `braces` and `panels.sides` (the upright
+sides `front`, `back`, `left`, `right`), `panels` (`{ sheet, thickness, sides }`), `shelves`, and `given` (other rule
+sets, as `profileModel` takes them).
+
+The corners follow the join (`FRAME_JOINS`):
+
+- A join against a face (blind, end-tap, bracket, gusset, hidden, anchor): the upright beams run the whole height and
+  every other beam butts against their faces. The outside is the inside plus the profile's width `p` on each side,
+  `inside + 2p`, and a butting beam is its outside span less `p` at each end, the inside. A box round 300 x 300 x 350
+  in 2020 has uprights of 350 + 2 x 20 = 390 mm and butting beams of 300 mm; in 3030, 410 and 300 mm. Each join meets
+  its upright's face on the beam's centre line, `p / 2` from the frame's outside.
+- An end-tap join: its screw passes a clearance hole drilled right across the upright (ISO 273's medium series for the
+  end thread), which comes out through the slot on both sides. Where the hole is wider than the slot's opening it
+  breaks the lips (`beam.op` warns twice a join), so the generators refuse end-tap there by name, with both figures
+  and the joins to use instead. Of the kit's profiles, MISUMI's 2020 (M5, 5.5 mm in a 6 mm opening) and OpenBuilds'
+  2020 (5.5 mm in 6.25 mm) take it; item's 2020 (5.5 in 5), Bosch's 2020 (M6, 6.6 in 6), item's 3030 (6.6 in 6.2),
+  MISUMI's and Bosch's 3030 and item's 4040 (M8, 9 in 8), and MISUMI's and Bosch's 4040 (M12, 13.5 in 10) do not, and
+  no smaller thread cuts in their end bores. Its screw runs right across the upright, so two at one height (one from
+  a beam across, one from a beam along) would cross inside it. Each ring's beams along y stand one width above its beams across x (a table's one
+  width below), and each ring takes `2p` of the height: a box round 400 x 250 x 300 in 2020 stands 300 + 4 x 20 = 380
+  mm high.
+- A cube join: every beam butts into a corner node, so each is as long as the inside it bounds, and the node takes
+  the `p` x `p` x `p` corner.
+- A table adds `p` to the height (its ring), a gantry `3p` (both rings and its moving beam), a portal `2p` to the
+  width and `p` to the height.
+
+Where an end has several bores (`3030-misumi-hfs6`), a blind or end-tap join screws into the threaded one nearest the
+middle (`x1.a.1`). A gantry's moving beam stops `FRAME_GEN.clear` (2 mm, a working figure) short of the uprights at
+each end of its travel; it lies on the top side beams between the uprights' tops, which run one width above the side
+beams, so its top is the outside height. A printed fitting (`{ kind: 'bracket', fitting: 'printed' }`, or a gusset)
+sits on nuts that go in through the slot's opening, since every butting beam is shut at both ends by its joins and a
+slide-in nut could not reach its place: the first of drop-in, roll-in, hammer and t-bolt the kit has for the slot
+(drop-in on MISUMI's 2020, roll-in on item's 4040). `nut` names one of those; slide-in, a kind the kit has none of for
+the slot, or a nut with no printed fitting is refused. A printed gusset's join names the upright's face that looks out
+of the frame (`face`), so the plate never lands on the face where the corner's third beam butts. On a gantry's top
+side beams it also names `shape: 'L'`: the uprights run one width above those beams, room for a T's bar, but the
+inside round between that bar and the arm along the side beam would stand where the moving beam's end and end cap
+pass at either end of its travel. Braces put a printed
+corner bracket, on the same nuts, at each join of the sides named; a panel is one sheet over a side, from its lowest
+beam to its highest.
+
+A printed foot (`foot`, `levelling`, `stacking`) is screwed into its upright's end bore: its end carries the `tap`
+the foot's own model asks for and the `screw` that holds it, for the assembly to tap and fasten. A join that drills
+the uprights where a butting beam meets them (blind, end-tap, hidden, anchor: an access or clearance hole across the
+upright, on the ring's centre line) would cross that tap at the bottom ring, so the bottom ring rises up the uprights
+by the tap's depth (`lift`), and every ring with it. The inside stays as asked; the outside height grows by `lift`.
+In 2020 on levelling feet: the tap is M5, 18.5 mm deep; the bottom ring's centre line moves from 10 to 28.5 mm up,
+so its Ø5.3 access holes span 25.85 to 31.15 mm, clear of the tap; the uprights are 350 + 2 x 20 + 18.5 = 408.5 mm.
+A bracket or gusset on slot nuts drills nothing in the uprights, and its bottom ring stays at `p / 2`. A bought foot
+says its own tap, and lifts nothing.
+
+A slot nut's solid (`slotNut`) is its block cut back to its slot's cavity: its sides are shaped to the flanks it sits
+on, so two nuts at one height in neighbouring slots of a beam stand apart, as they do in the aluminium. Its mass stays
+the whole block's, up to 12 % heavy.
+
+Refused by name: an unknown kind or option, no size or both, a size that leaves no room inside, a profile that is not
+square, a join no generator arranges, a blind or end-tap join on a profile with no bore in its ends, a blind or
+end-tap screw wider than the slot's opening (M12 in the 10 mm slots of MISUMI's and Bosch's 4040), an end-tap
+screw whose clearance hole across the post (ISO 273's medium series) is wider than the slot's opening (see below), a
+`join.screw`
+whose thread is no wider than the end bore it is cut in (M8 in MISUMI's 10.5 mm bore, M4 in item's 4.3 mm one), a
+blind join's head that does not go into the slot's cavity or under its lips (Bosch's 2020: an M6 button head 3.3 mm
+high under 3 mm lips), a printed fitting or braces on a slot the kit has no nut for that goes
+in through its opening (item's 3030), feet on a box, shelf or gantry with cube corners (no upright end reaches the
+floor), braces with cube corners, and a side with no bay.
+
+Each refusal names what is left: the screws from M3 to M12 that would fit (as `join.screw`), and the other joins the
+generator takes for that profile, each one that checks clean: a screw or an end-tap join is named only where its
+clearance hole across the post fits the slot's opening. Some profiles have none of those. In MISUMI's and Bosch's 4040 no thread both cuts in
+the end bore (10.5 and 10 mm) and passes the 10 mm opening, so they take no blind or end-tap join, and the kit has no
+slot nut for their 10 mm slots, so no printed fitting either. What is left there: a bracket or gusset with no fitting,
+taken and checked by its estimate (`join.fitting` warns that no fitting is drawn for it), or a slot nut set of your own
+in `given.sets` with a printed bracket or gusset.
+
+### Profiles as choices for sizing
+
+`profileChoices(profileModel('2040-misumi-hfs5'))` gives a profile as the choices `@rulecad/fea/frame`'s `sizing`
+takes, so a frame's beams can be given the lightest profiles that meet its limits (cad does this for
+`"frame": { "size" }`):
+
+```js
+const [flat, edge] = profileChoices(profileModel('2040-misumi-hfs5'));
+flat;  // { name: '2040-misumi-hfs5', roll: 0, section: { A: 324, Iy: 13580, Iz: 51300, J, Wy, Wz }, material: { E: 69972, nu: 0.33, density: 2.7, strength: 205 }, mass: 0.88 }
+edge;  // the same, named '2040-misumi-hfs5 turned', roll: 90: standing on edge
+```
+
+The section is in a beam's own axes: `Iy` is the profile's `inertia_x`, which resists bending across its height (a
+beam's top is the section's +y), `Iz` its `inertia_y`. The mass per metre is the sheet's where it gives one. A
+profile that is not square comes twice, as drawn and turned a quarter about its length; a square one once. A plain
+tube or bar comes the same way, its figures worked out from its outline, so a frame of tubes is sized by the same
+solver. Refused by name: a profile whose material gives no modulus.
+
 ## Formulas
 
 | What | Formula | Source |
@@ -1019,6 +1355,10 @@ kit's.
 | Second moments about the origin's axes | Iₓ = Σ (yᵢ² + yᵢ yᵢ₊₁ + yᵢ₊₁²) cᵢ / 12, I_y the same in x, I_xy = Σ (xᵢ yᵢ₊₁ + 2 xᵢ yᵢ + 2 xᵢ₊₁ yᵢ₊₁ + xᵢ₊₁ yᵢ) cᵢ / 24 | Steger, "On the calculation of arbitrary moments of polygons" (1996) |
 | Moved to the centroid | I about the centroid = I about the origin − A d² | The parallel axis theorem |
 | Section modulus | W = I / the distance from the centroid to the furthest fibre | Beam theory |
+| A printed beam's creep limit | 0.15 × its strength for its pose (`PRINTED_DEFAULTS.creep`) | An estimate: Waseem et al. (2020), Multi-Response Optimization of Tensile Creep Behavior of PLA 3D Printed Parts, Polymers 12, 2962, table 3: printed PLA held at 15 MPa (0.3 of its filament's 50 MPa) broke in 1.2 to 2.3 hours at 25 °C |
+| A printed beam's sag as it creeps | short-term sag / 0.5 (`PRINTED_DEFAULTS.creep_modulus`) | An estimate, with no measurement behind it |
+| A spliced beam's strength | 0.5 × the whole beam's (`PRINTED_DEFAULTS.splice_share`) | `splice()`: each half keeps about half the section over the lap (361.5 and 363.9 mm³ of a printed 2020's 717.6 mm³; 353.6 and 320.7 mm³ net of a screw's hole and its seat or pocket) |
+| A half's section at its first screw | Z = I / c of the half section less the screw's hole (a teardrop, r below the axis and r √2 above) and its seat or pocket, each with walls round it | Beam theory, the net section through the holes; the teardrop's 45° roof |
 | A printed part's plastic | cost = grams / 1000 × the material's `cost` (EUR/kg) | The material's rule set (Bambu Lab's EU store for `pla` and `petg`) |
 | Torsion constant | Solve ∇²φ = −2 in the metal with φ = 0 on the outside and φ constant over each hole, the constant fixed by ∮ ∂φ/∂n ds = −2 A_hole round it. Then J = 2 ∫φ dA over metal and holes | Prandtl's stress function: Timoshenko and Goodier, *Theory of Elasticity*, the chapter on torsion |
 | The solve | Square cells over the section (about 40 000), the five-point Laplacian with the wall half a cell from a cell's centre, one unknown for each hole, conjugate gradients | A finite-difference scheme; checked against the closed forms below |
@@ -1031,6 +1371,11 @@ kit's.
 | A mitre's short side | L − w tan θ for each mitred end, w the section's side across the cut and θ the angle from square | Trigonometry |
 | Tap depth, by default | 2 × the major diameter in aluminium (1 in steel, 2.5 in plastic) | The engagement rule set in `@rulecad/rules`, through `@rulecad/fixings` |
 | A join's tap depth | engagement + tip room + 1.5 × the major diameter (M5 in aluminium: 10 + 1 + 7.5 = 18.5 mm) | `engagement` and `tip_room` from `@rulecad/fixings`; `JOIN_TAP`, a working figure |
+| A printed section | shell: the cells within walls x line of the outline count 1, the rest the infill's share (a cell the shell's edge crosses in part); I = Σ w (y - ȳ)² dA about the stiffness-weighted centroid | A rule of mixtures on a raster; an estimate until a printed coupon is bent |
+| A printed beam's design moment | M = (S / 2) I / c, S the plastic's strength for its pose (strength along the layers, strength_z or 0.6 x strength across them) | Beam theory; the kit's twice margin |
+| A printed lip's hold | flat lips: σ = 6 (F / 2) a / (b t²), a from the lip's root to the middle of the nut's bearing; sloped lips also push the wall out by (F / 2) tan θ, σ = 6 (F / 2) tan θ h / (b w²); b = nut length + 2 lips; each at the strength its stress runs in (lying down, a top slot's lips along the layers, its walls across them) | Cantilever bending; the spread a working figure |
+| A splice screw's hold, across the cut | the least of d t S_z (bearing), 2 e t S_z / √3 (torn out to the nearer of the bed and the slot's floor, e from the hole's edge) and A_s S_proof / √3 (the screw sheared); t the thinner half's plastic beside the head's seat or the nut's pocket, S_z the strength across the layers | Bearing and tear-out of a pinned plate; von Mises' shear yield; ISO 898-1 for the proof stress |
+| A splice's capacity | M = least of S Z_a, S Z_b and F (lap - 2 x 2.5 d), Z the half's printed section modulus over the lap (`printedSection` with `between`), against 2 x the moment given, or 2 x the design moment x 4 z (L - z) / L² | Each half alone at its end of the lap; two screws as a couple; a spread load on a simply supported span |
 | A join's stiffness for another size | k = k₂₀ × (w / 20)³, w the profile's larger side in mm | `JOIN_SCALE.size`, an estimate |
 | A join's spring from the joint rig | k = F L² / (d − F L³ / 3 E I): d the measured drop of a beam held out by the join, F the weight hung at L from the face it meets, E I the beam's across the load | A cantilever's tip deflection, F L³ / 3 E I, plus its root turning on a spring, F L / k, times L (Euler-Bernoulli beam theory; the beam's shear left out, under 1% of the drop of the rig's 150 mm beams) |
 | A beam's centre of mass | (x̄, ȳ, L / 2): the section's centroid, half way along | A prism of constant section and one material |
@@ -1041,7 +1386,8 @@ kit's.
 | A clip's or a latch's least reach over the sheet | t = √(6 M k / (b S)), M = F × the lever, b the part's width, k the margin asked (2) | Beam theory for a cantilever bent at its root (σ = 6M / b t²) |
 | A hinge's risers | σ = 6 F z_a / (2 l (2R)²), F across the pin at height z_a, two risers each l long and 2R deep | The same, two risers sharing the load |
 | A handle's grip | σ = 6 (F s / 4) / (b h²), F at the middle of a grip s between its feet | A simply supported beam with a load at its middle: M = F s / 4 |
-| A levelling foot's stem | σ = 32 (F / 10) L / (π d_r³), d_r = 0.8 × the thread's major diameter | A round stem bent at its root by a side push of a tenth of the load, an estimate of uneven ground |
+| A levelling foot's stem | σ = 32 (F / 10) L / (π d_r³), d_r = 0.8 × an M thread's major diameter, d - P for a trapezoidal one | A round stem bent at its root by a side push of a tenth of the load, an estimate of uneven ground |
+| A levelling foot's stud | the first of M12, Tr16x4, Tr20x4, Tr24x5 with d_r ≥ the end screw's head + 2 × the printer's fit | DIN 103's internal minor diameters D1 = d - P (12, 16, 19 mm); an M8 cap head is 13 mm, so Tr20x4 |
 | A foot's bearing | p = F / A, A the pad less the counterbore | |
 | A gasket's wall strain | ε = 3 t δ / (2 L²), against S / E | A cantilever pushed δ at its tip, its strain at the root |
 | A panel's mass | m = (a b − (4 − π) r² − Σ holes) × T × ρ / 1000 | A rounded rectangle's area, times its thickness and density |
@@ -1151,6 +1497,12 @@ light), Motedis (B-type and I-type), OpenBuilds' V-Slot and C-Beam, MakerBeam, M
 inch series, generic stock in 20, 30 and 40 mm, and plain tube, angle, channel and bar in any size. `profiles()`
 lists them.
 
+A printed beam's figures are estimates: its walls and infill are the kit's defaults (`PRINTED_DEFAULTS`), the
+infill is taken to carry load in proportion to how much of it there is, a nut's pull is spread one lip's thickness
+beyond it, and plastic across its layers is 0.6 of its strength along them where the material gives no figure. A beam
+coupon bent between two supports (`cad measured`) is how they get replaced. The printable profiles' sets are worked
+out from the nuts' sizes and the X1C's rules, so they are `derived` and as good as those.
+
 ## Exports
 
 | Export | What |
@@ -1160,13 +1512,14 @@ lists them.
 | `outline(model)`, `readOutline(json)` | The section as loops; a measured outline held to its format |
 | `section(model, { torsion?, cells? })` | Section figures from the outline, beside the sheet's |
 | `beamFigures(model, { cells? })` | The figures to design a beam with: the sheet's where it gives one, the outline's where it does not |
+| `profileChoices(model)` | The profile as choices for `@rulecad/fea/frame`'s `sizing`: section, alloy, mass per metre; turned a quarter too where it is not square |
 | `profileFindings(model, { torsion?, cells? })` | What a check finds |
 | `polygonSection(loops)`, `torsionConstant(loops, { cells?, tolerance? })`, `signedArea(loop)` | The formulas on plain loops |
 | `profiles()`, `slots()`, `slotNuts()` | The names in the catalogue |
 | `slotNutModel`, `nutFit`, `slotNut`, `nutFor`, `NUT_KINDS` | A bought slot nut, how it sits in a slot, its solid, the one for a face, and the kinds (above) |
 | `carrierModel(where, options)`, `carrier(m, { pose?, ...options })`, `CARRIER_DEFAULTS` | A printed carrier for a nut or an insert, its solid, and the margins it is drawn with |
 | `bracketModel(profile, { other?, face?, otherFace?, thread?, head?, nut?, brace?, load?, width?, printer?, material?, cache? })`, `bracket(m, { pose?, tongues?, ops? })` | A printed corner bracket's model and its solid |
-| `plateModel(profile, { shape?, face?, thread?, head?, nut?, count?, load?, width?, printer?, material?, cache? })`, `plate(m, { pose?, tongues?, ops? })` | A printed gusset (L, T, cross) or splice plate, and its solid |
+| `plateModel(profile, { shape?, other?, face?, thread?, head?, nut?, count?, load?, width?, printer?, material?, cache? })`, `plate(m, { pose?, tongues?, ops? })` | A printed gusset (L, T, cross) or splice plate, and its solid |
 | `FITTINGS`, `FITTING_DEFAULTS`, `fittingFE(o)` | The kinds of printed fitting; the margins and working figures they are drawn with; the finite elements on a part |
 | `SHEETS`, `PANEL_DEFAULTS`, `panelModel(sheet, thickness, { size, corner?, holes? })`, `panel(m, { ops? })` | Sheets by material, the panel parts' working figures, a panel's model and its solid |
 | `panelClipModel`, `panelClip`, `panelCornerModel`, `panelCorner`, `panelEdgeModel`, `panelEdge`, `slotCoverModel`, `slotCover`, `gasketStripModel`, `gasketStrip` | The printed parts that hold a panel, each a model and its solid (`{ pose: 'print' \| 'fit' }`) |
@@ -1176,21 +1529,29 @@ lists them.
 | `WHEEL_DEFAULTS`, `wheels()`, `trackFit(profile, face, wheel)`, `wheelsModel(profile, { wheel?, face?, wheels?, pitch?, load?, printer?, material? })`, `wheelPlate(m, { pose? })`, `vWheel(m, { eccentric?, collide? })`, `wheelMargin(m, { force, moment })`, `sliderModel(profile, { face?, mode?, length?, load?, printer?, material? })`, `slider(m, { pose?, tongues? })` | Guides on the beam itself: where a V-wheel seats in a track (or why it cannot), a carriage on V-wheels (its plate, wheels, eccentrics' range, ratings and hardware), each wheel's load against its rating, and a printed slider in or over a slot |
 | `ROD_DEFAULTS`, `rodsLayout(profile, { face?, rod?, bearing?, spacing?, height?, screw?, nut?, support?, coupler?, motor? })`, `rodHolderModel(profile, { end?, spacing?, height?, screw?, leadNut?, support?, load?, ... })`, `rodHolder(m, { pose? })`, `motorPlateModel(profile, { motor, height?, coupler?, load?, ... })`, `motorPlate(m, { pose? })`, `rodCarriageModel(profile, { spacing?, height?, screw?, leadNut?, flag?, load?, ... })`, `rodCarriage(m, { pose? })`, `endstopMountModel(profile, { face, switch?, toward?, load?, ... })`, `endstopMount(m)`, `rodMargin(m, { force, moment })` | Rod guides and their drive: the layout from the sets, printed rod holders (with the screw's bearing), a motor plate for any catalogue motor, a carriage with its bearings, lead nut and endstop flag, an endstop's mount, and the bearings' loads against their rating |
 | `JIG_KINDS`, `JIG_DEFAULTS`, `drillGuideModel(beam, op, { from?, load? })`, `drillGuide(m, { pose?, mark? })`, `tapGuideModel(beam, op, { shank?, load? })`, `tapGuide(m, { pose?, mark? })`, `lengthStopModel(profile, length, { load? })`, `lengthStop(m, { part?, mark? })`, `squareCornerModel({ profile, face?, end?, length? }, { profile, face?, edge? }, { hand?, load? })`, `squareCorner(m, { pose?, mark? })` | Jigs for hand tools: a drill guide and a tap guide from a beam's operations, a cut-length stop with its gauge, and a squaring corner; each takes `printer` and `material` too |
-| `squareness(width, height, { tolerance? })` | A bay's two diagonals, inside corner to inside corner, and the difference between them to accept, with the lean it stands for |
+| `FRAME_KINDS`, `FRAME_JOINS`, `FRAME_FEET`, `FRAME_GEN`, `frameModel(kind, o)`, `box(o)`, `portal(o)`, `table(o)`, `gantry(o)`, `shelf(o)` | Frames from a size: the kinds, the joins and feet a generator takes, its working figures, and each generator's beams, joins and ends (Frames from a size) |
+| `squareness(width, height, { tolerance?, cuts?, plays? })` | A bay's two diagonals, inside corner to inside corner, and the difference between them to accept, stacked from its cuts and its joins' play, with the lean it stands for |
 | `END_DEFAULTS`, `endCapModel`, `endCap`, `footModel`, `foot`, `levellingFootModel`, `levellingFoot(m, { part: 'body' \| 'pad' })`, `castorPlateModel`, `castorPlate`, `stackingFootModel`, `stackingFoot` | The printed parts for a beam's end |
-| `beamModel(profile, { length, ends?, ops?, material?, given?, cells? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations |
+| `beamModel(profile, { length, ends?, ops?, material?, given?, cells?, printed? })` | A beam's model: mass, centre of mass, figures, places, anchors, operations; printed, a printed part |
+| `printedProfile(series, { nut?, printer?, pull?, material? })`, `PRINTED_SERIES` | A printable profile and its slot as rule sets, and the nut each size is drawn round |
+| `printedSection(profile, { walls?, infill?, line?, between? })`, `PRINTED_DEFAULTS`, `printerFigures(what, printer)` | A printed section's figures from its walls and infill (`between: [x0, x1]`: the part between two upright cuts, as a splice's half); the working figures printed beams use; a printer's figures |
+| `printedBeam(m)` | A printed beam's solid as it prints, its ends' inserts or nuts cut in |
+| `printedInPlace(m)` | A printed beam's solid in its own frame, as `beam()` draws one, with its ends' fixings cut in |
+| `beamCreep(b, { stress, sag?, limit? })`, `PRINTED_CHECKED` | A printed beam held for months: its stress against the creep limit, and its sag as it creeps (`beam.creep`); the date the printed figures were checked |
+| `spliceModel(beam, { at?, moment?, thread?, printer? })`, `splice(model)` | A splice for a printed beam longer than the bed, and its two halves as they print |
 | `OPS`, `OP_DEFAULTS` | The operations and what each takes; the allowances they are checked and sized by |
 | `joinModel(kind, { beam, end }, { beam, address }, { screw?, fitting?, mitre?, given? })` | A join: the operations on each beam, its screws, its fitting (printed, or a bought set by name), its stiffness, what to know |
 | `BOUGHT_KINDS`, `boughtFittings(given?)`, `boughtFittingModel(set, { profile?, other?, join?, given? })`, `boughtFitting(m, { pose? })`, `boughtStiffness(kind, beam, m)`, `printedCost(grams, material)` | Bought fittings: the kinds and the join kinds that take each, the sets, one set's model (screws, holes, price, stiffness, fit), its reference solid, a join's stiffness with it, and a printed part's plastic beside its price |
-| `JOINS`, `JOIN_STIFFNESS`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting?, given? })` | The kinds; each kind's stiffness, all estimates; the scales and the tap depth; one join's stiffness as an end join, a workspace's measured figure first |
+| `JOINS`, `JOIN_STIFFNESS`, `JOIN_PLAY`, `JOIN_SCALE`, `JOIN_TAP`, `joinStiffness(kind, beam, { fitting?, given? })` | The kinds; each kind's stiffness and its play once tightened (mm), all estimates; the scales and the tap depth; one join's stiffness as an end join, a workspace's measured figure first |
 | `JOIN_SET`, `joinRuleSet()` | The name of the rule set measured joins go in (`joins`), and that set as the kit starts it |
 | `beam(m, { display?, tracks?, ...beamModel's })` | A beam's solid, `link` or `preview`; a link with its V tracks cut (`tracks`) |
 | `beamAnchor(beam, address)` | An anchor by its address, with a distance along a face |
 | `cutList(beams, { kerf?, trim?, tolerance?, stock? })`, `cutListText(c)` | The cut list: marks, the bars to buy, the cut order and offcut on each, `frame.cut` findings |
 | `packBars(pieces, lengths, { kerf?, trim? })`, `beamMarks(beams)` | The packing alone; the beams by mark |
 | `CUT_DEFAULTS` | The kerf, trim, cut tolerance and assumed stock length, each with what it rests on |
+| `workOrder(beam)` | A beam's operations' indexes in the order they are done, as its sheet numbers them |
 | `beamSheet(beam, { mark?, items?, grams? })` | A beam's cut-and-drill sheet, SVG to scale |
-| `printable(x)` | A beam or profile is bought: one `beam.printable` failure |
+| `printable(x)` | A printed beam's `beam.printable` findings; a bought beam or a profile, one failure |
 | `DEFAULTS` | The allowances a check uses, each with what it rests on |
 | `status` | `{ release: 'ready', plan }` |
 

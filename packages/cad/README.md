@@ -44,6 +44,7 @@ npx cad import-kle layout.json keyboard/mine     # a layout from keyboard-layout
 npx cad clone <github link to a .kicad_pcb> sea_picro   # a published board's circuit, into rules/, to redraw by rules
 npx cad measure cover.3mf --rules cover          # a model from elsewhere, measured into draft rules
 npx cad measure beam.stl --profile profile-2020-mine   # a beam's profile from its maker's model or a DXF of its section
+npx cad rules draft profile 2020-mine   # a beam's profile to fill from its maker's spec sheet; then cad rules check and draw
 npx cad match legion-go/rail cover.3mf           # how closely a design matches that model, both ways
 ```
 
@@ -277,6 +278,20 @@ Then `cad rules check <name>` and `cad rules draw <name>`, which use the measure
 add what a model cannot say: the maker, the alloy, a material set for its mass, the thread its bore taps to. The
 outline is the model's shape, so it goes into your own workspace and nowhere else: the kit publishes no maker's
 outline, and under a non-commercial, no-derivatives or share-alike licence the command says to keep it there.
+
+**A beam's profile from its spec sheet.** `cad rules draft profile <name>` writes `rules/<name>.json` with every field
+a profile can have, each with a starting value, `"kind": "estimate"`, a rule saying what the field is and a source
+that starts `DRAFT`
+(`cad rules draft slot <name>` and `slot_nut <name>` do the same for a slot family and a slot nut). Fill each field the
+sheet gives (its value, `"kind": "spec"`, the sheet and page as `source`, the date as `checked`) and delete the rest.
+`cad rules check <name>` then holds it to the vocabulary, draws the section from its dimensions and its slot
+family's, and warns where the sheet's area, second moments or mass per metre differ from the drawn outline's by more
+than 5% (`profile.section.*`: check the typed figure first; if it is right the drawing lacks a shape, such as corner
+hollows, and the frame checks use the sheet's figures anyway); while any field's source is still the draft's it warns
+`rules.draft`, naming each.
+`cad rules draw <name>` writes `<name>.svg`, the section to scale with each slot and bore dimensioned, to hold against
+the sheet's drawing. [The frames guide](https://jonibach.github.io/rulecad/docs/building-frames/) walks one from a
+sheet to a checked box.
 
 ## Assemblies
 
@@ -531,6 +546,23 @@ An item can be a motor instead of a printed object: `{ "id": "drive", "motor": {
 
 ### Beams
 
+A frame is beams and the joins between them, every beam a profile from a rule set and every join declared, so its
+drilling, screws and stiffness follow. [The frames guide](https://jonibach.github.io/rulecad/docs/building-frames/)
+walks one from a spec sheet to a checked box; this section is the reference. In commands:
+
+| Command | What it does |
+|---|---|
+| `cad rules draft profile <name>`, `cad rules check <name>`, `cad rules draw <name>` | A profile from its spec sheet, checked and drawn (Models from elsewhere, above) |
+| `cad measure <beam.stl> --profile <name>` (or a DXF) | A profile from the maker's model or a DXF of its section |
+| `cad add beam <project>/<assembly> --id x1 --profile 2020-misumi-hfs5 --from 0,0,0 --to 300,0,0` | A beam placed by its ends |
+| `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120` | Two beams joined (Joins, below) |
+| `cad frame <project>/<assembly>` | A generated frame's beams and joins (`--expand` writes them out; `--size` chooses the lightest profiles) |
+| `cad check <project>/<assembly>` | The joins, screws and nuts, then the frame solved: `frame.deflection`, `frame.stress`, `frame.buckling`, `frame.rack`, `frame.frequency`, `frame.square`, `frame.heat`, `beam.printable`; `--sweep` slides each guide through its travel |
+| `cad list`, `cad beams` (`--jigs`), `cad order`, `cad plates`, `cad kit` | The cut list and what to buy, a sheet per beam and the jigs, the build from bars to a square frame, the printed parts on plates, and all of it in one folder (Building it, below) |
+| `cad measured <project>/<assembly> frame.square.<bay>=<mm>` | A squared bay's diagonal difference, measured; the joint rig's and the beam coupon's figures the same way |
+
+Guides (rails, V-wheels, rods, a printed slider, a lead screw) put motion on a beam: Guides, below.
+
 An item can be a beam, a length of an aluminium extrusion, a tube or a bar from `@rulecad/frames`:
 
 ```json
@@ -540,8 +572,16 @@ An item can be a beam, a length of an aluminium extrusion, a tube or a bar from 
 - `"profile"` names the profile (`2020-misumi-hfs5`, `profile-4040-item-8`, or a set in this workspace's `rules/`).
   `"length"` is mm from end `a` to end `b`, a number or an expression (`"x1.length"`). Placed by its ends, the length
   may be left out: it is the distance from `from` to `to`, and a length that disagrees with them is refused with both.
-  `"material"` names a material set in place of the profile's alloy. `"printed": true` is for printed beams, a later
-  release: it is refused by name for now.
+  `"material"` names a material set in place of the profile's alloy. `"printed": true` makes it a printed part
+  (`@rulecad/frames` printed beams): drawn solid, weighed on `cad list` by the plastic its walls and infill lay, laid
+  on a plate as it prints by `cad plates`, off the cut list. `"printed": { "pose": "standing", "walls": 4, "infill":
+  0.6, "end": "nut" }` says how it prints; a tapped end becomes a heat-set insert (or a captive nut). The printable
+  profiles (`2020-printed` and its sizes) print lying down; another profile prints standing up, and its findings say
+  so where it cannot lie down. Standing up, a metal profile's tapped end takes its screw in its bore's place (an
+  insert, or with `"end": "nut"` a captive nut: MISUMI's 2020 takes an M3 nut), and a printed beam in its place is
+  drawn with its ends' fixings cut in, so a screw into its end is followed into them. A foot under it names that
+  thread (`"fitting": { "kind": "foot", "profile": "2020-misumi-hfs5", "thread": "M3" }`); a screw of another thread
+  into a printed end fails `fasten.end` and names the thread to use. EXAMPLES chapter 17 prints a whole case so.
 - Placed by its ends, end `a` is at `from` and end `b` at `to`; at roll 0 its top faces up (+z), or +y when it stands
   upright, and `"roll"` turns it about its own axis, in degrees. Or place it with `at` and `rotate` as any item, in its
   own frame: end `a` at the origin, the beam up +z, its top +y. The face names and a picture are in the
@@ -611,7 +651,11 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   - A bracket goes on the side of a with more of b, its base leg on b's face and its upright on a's face that looks
     along b; refused by name where its leg would run past b's end there.
   - A gusset lies on a face of each beam that looks the same way, in one plane: an L at a corner, a T where b runs
-    on both sides of a; refused where its arm has no room.
+    on both sides of a; refused where its arm has no room. Which face follows from the beams' directions; `"face"`
+    names the other one of b's two faces square to a (the L turned over), so it can miss a third beam at the corner.
+    `"shape"` (`"L"` or `"T"`) asks for one: an L where a T would fit (a generated gantry's top side beams, where a
+    T's bar would stand in the moving beam's path), and a T is refused by name where b lacks room on one side or the
+    plate is turned over.
   - A splice plate lies across two ends on a face they share.
   - `"brace": true` braces a bracket; `"load"` (N) is the design load it is sized to about twice the margin at
     (default 100); `"nut"` chooses the slot nuts' kind.
@@ -622,7 +666,8 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 - The printed parts for panels, doors, beams' ends and services are fitting items too (@rulecad/frames' README,
   Panels and doors, Ends and feet, Services): `"kind"` is `panel-clip`, `panel-corner`, `slot-cover`, `panel-edge`, `gasket-strip`,
   `hinge`, `handle`, `latch`, `magnet-catch`, `end-cap`, `foot`, `levelling-foot`, `castor-plate`,
-  `stacking-foot` or `rail-jig` (`"rail": "rail-mgn12"`), with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
+  `stacking-foot`, `nut-carrier` (a printed block that slides in a slot holding a hex nut or a heat-set insert: `"face"`,
+  `"thread"`, `"holds"`, `"load"`; the nut it holds goes on the list) or `rail-jig` (`"rail": "rail-mgn12"`), with the model's own options (`"sheet": 3`, `"length": 200`). A hinge is two items, `"part":
   "frame"` and `"part": "door"`, and a levelling foot's pad is `"part": "pad"`. An end part goes at the end's address
   (`"at": "x1.a"`); its anchor `b1` is its screw's, and its `ops` say the tap the end needs. In a mechanism, hold it
   as anything else is held: a foot by a `fasten` of its screw into the beam (`{ "screw": "M5 cap", "through": ["foot1"],
@@ -668,6 +713,163 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
 - `cad add join <project>/<assembly> --kind blind --a y1.a --b x1.back@120 [--screw "M5 button"] [--fitting printed]`
   adds one.
 
+**The frame solved.** `cad check` solves an assembly that has joins (or a `"frame"`) as a frame of beam elements
+(`@rulecad/fea/frame`) and reports six findings:
+
+- `frame.solve` says what the model holds: the beams, the nodes (each beam is cut where a join, a mounted item, a
+  load, a named point or a support meets it), where it is held, the poses solved, and each join's spring with what
+  it rests on. A join puts the end of `a` on a node at `b`'s axis through a rigid link (the end stands half `b`'s
+  width off that axis) and its spring (`join.stiffness`) at that end. It is held where `"frame": { "supports": {
+  "z1.a": "pinned", "z2.a": "fixed" } }` says; else at the beam ends a foot, levelling foot, castor plate or
+  stacking foot (printed or bought) is fitted to; else at its lowest beam ends. Feet and lowest ends are pinned: held
+  from moving and free to turn, as a foot stands on a floor. Where lowest ends pinned would leave the frame free to
+  move (two posts and a rail leaning over out of their plane, a beam on the floor rolling with a post on it), a beam
+  lying with both ends lowest rests on its face (held from twisting about its length) and a beam standing on its
+  lowest end stands on its end face (fixed). That guess is a support nobody gave, which holds the frame where pinned
+  feet would leave it free (the portal tipping over out of its plane, below), so `frame.solve` warns: it names the
+  freedoms pinned feet would leave (`refs.free`) and the ends held in their place (`refs.guessed`), says that every
+  sag, rack, buckling and frequency figure rests on them, and asks for feet or `"frame": { "supports" }`.
+  `frame.rack`, `frame.buckling` and `frame.frequency` each say they rest on the guess (`refs.guessed`). Beams no support holds through joins are left out by
+  name, and so is what is mounted only on them, as not weighed (`refs.off`). A beam that rides a moving joint (a
+  gantry's cross beam on its carriages) is a load on the frame, named as riding (`refs.riding`), not part of it;
+  lying across two parallel beams at one level (a gantry's beam on its two side beams), its weight is shared between
+  them by the lever rule, though its joint is on one, and `refs.riding` gives each share. Where part of the frame can
+  move with nothing resisting it (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both
+  ends spins on its own axis) and its loads do not move it that way, it is held there for the sag and the stresses,
+  and `frame.solve` names each such freedom (`refs.held`); `frame.rack` then warns that a push that way finds it
+  free. The modes and buckling count it free: `frame.frequency` gives a lowest mode of 0 Hz and warns, and where
+  the frame's squeezed beams lean it that way (a portal on pinned feet), `frame.buckling` fails it as tipping over
+  before anything buckles, at a factor of 0 (`refs.tipped`).
+  Loads that would move it that way leave the frame unsolved, with the freedoms named.
+- The loads: each beam's own weight (its sheet's mass per metre), each item mounted on a beam (its mass at its
+  centre, as a force and a moment at the node where its chain of mounts meets the beam; a riding beam's sheet weight
+  at its middle the same way) and each `mass` in `"loads"`.
+  A mass on a moving joint mounted on a beam, such as a carriage on a guide, is solved at each end of its travel
+  (a slide in its middle too), at every named pose and as drawn; the worst is named.
+- `frame.deflection`: the sag at each load's point, at each place in `"frame": { "points": ["x2.top@50%"] }` and
+  along every guide's travel, with the joins' springs and with the joins rigid, and the load's own share. The first
+  rests on the joins' springs, estimates until the joint rig measures them, and the finding says so (`refs.restsOn`:
+  `estimate` while any join's spring is one, even where the springs change no figure; `measured` when every join's
+  is; `beams` with no joins); the rigid figure is the least the sag can be. The limit is a rail's own parallelism
+  under a guide, else `"frame": { "limit": 0.2 }`, else the task's accuracy, else the beam's span over 360. Over it fails.
+  A sag is given in mm to three places, or to three figures under 0.1 mm (0.00123 mm, 0.000352 mm).
+- `frame.stress`: the largest stress in each beam (axial and bending, from the section moduli) against its alloy's
+  strength, and the bending moment at each join against what its printed fitting takes (its design load at its
+  screw's distance from the corner, times its margin by finite elements). Under 2 times warns, under 1 fails. A join
+  with no strength in the kit (blind, end-tap, a bought fitting) has its largest moment said.
+- `frame.buckling`: each beam in compression against Euler's load with both ends pinned, and the whole frame's first
+  buckling factor with the joins' springs (each beam cut in four). The first rests on the beam's ends being held from
+  moving sideways (a braced bay, fixed feet); a post of a frame free to sway on pinned feet buckles sooner, and the
+  second, the whole frame's factor, is the figure that takes that in (`frame.euler`).
+- `frame.rack`: each way across the frame (named by the world axis it is nearest), a side push at its top, shared
+  among the top corners of its bays, and the sway it causes, with the joins' springs and rigid, as a stiffness in
+  N/mm. The push is `"frame": { "rack": { "load": 100 } }` in N, else 20 N (`frame.push`, an estimate: a hand
+  steadying it). The limit is `"rack": { "limit" }` in mm, else the task's accuracy, else the height over 400. Then
+  each change is solved, in the best open bay that way alone and in every open bay that way: gussets at the bay's
+  corners (the gusset join's bending added to each corner join's spring in the bay's plane), one diagonal brace (a
+  bar of the bay's lightest beam's section, pinned at both corners), and a 3 mm acrylic panel. Each gives its
+  stiffness and how many times the open frame's it is. Over the limit it warns, naming the cheapest change that
+  brings it under, in the order gussets, brace, panel, one bay before every bay (`frame.order`), and names it in
+  `refs.advise` (null where the frame stands within its limit). Where bracing every
+  bay that way makes it ten times stiffer or more, the text calls the open stiffness low: the open bays hold the
+  push by their joins' bending alone. A bay is four beams round a rectangle in one plane, each neighbouring pair
+  joined to each other or both joined to one beam at one place (the top of a corner-post box, whose rails join the
+  posts); its corners are the nodes where their axes cross.
+- A panel (not a door) on a bay of the frame is a shear web in the model: one diagonal bar across the bay, free to bend
+  at both corners (a ball at one, pinned at the other, so it carries no twist and nothing in it spins free when the
+  modes split it into pieces), as stiff along it as the sheet in shear in series with its clips' grip. The clips' grip
+  (`frame.clip`, 200 N/mm a clip) is an estimate, and `frame.solve` says so; the panel's weight goes to its bay's
+  four corners. A panel whose beams make no bay is no web, and its weight is spread along those of its beams in the
+  frame, an equal share on each (`refs.laid`).
+- `frame.frequency`: the lowest three modes in each pose, the worst named, with each beam's own mass and every
+  carried item's and load's mass at the node it is carried at (its rotary inertia about that node is left out), with
+  the joins' springs and rigid. Against what the machine excites: each stepper's full-step rate at its working speed
+  (a mode within 20% of it, `frame.band`, rings while the motor runs at that speed: a warning), and the task's moves
+  (a move ramping to the task's speed at its accel, else 500 mm/s², shakes the frame at about one over the ramp's
+  time; the lowest mode under twice that warns, under it fails). A warning says how many times the stiffness would
+  lift the mode clear, or as many times less mass. With no stepper and no task it is information. This is
+  `assembly.frequency`'s question asked of the frame: that finding estimates a machine's arm from its tool's
+  stiffness, this one solves the frame it stands on.
+- A printed beam in the frame (`"printed"` on its beam item, in the plastic its `"material"` names) is solved with the
+  figures printing gives it, and its stress is held to its plastic's strength for its pose: along its layers lying
+  down, across them standing up (PETG HF: 34 and 23 MPa). `beam.creep` holds its stress, which a frame carries for
+  months, to 0.15 of that strength (`PRINTED_DEFAULTS.creep` of `@rulecad/frames`, an estimate).
+- `beam.printable`, given `"frame": { "printed": "petg" }` (or `{ "material", "walls", "infill", "pose" }`): each beam
+  is tried printed in that plastic, as the kit's printable profile of its size (`profile-2020-printed` for a 20 mm
+  square beam; another section stays as it is, by name), lying down (spliced where it is longer than the bed, its
+  strength then half the whole beam's, `PRINTED_DEFAULTS.splice_share`) and standing up where it fits the printer's
+  height. The frame is solved again with that beam printed and every other as it is, and the beam is held to six
+  margins, each 1 where it just holds: every sag the frame checks (each load's point, each named point, each guide)
+  and the beam along its length, against the same limits as `frame.deflection`; its stress against its strength with
+  twice the margin; Euler's load with twice the margin; its stress against the creep limit; every sag again with the
+  beam's modulus at half (`PRINTED_DEFAULTS.creep_modulus`, an estimate), its sag as it creeps; and where the task's
+  moves shake the frame, its lowest mode at twice their rate. The least is the beam's margin. Where the frame as drawn
+  already misses a sag (`frame.deflection` fails there in the beams' own material), that is no fault of printing: there
+  the printed beam is held to the drawn frame's own sag and 2% more, so it misses only where printing it makes that
+  sag worse, and the frame's finding names each such point (`refs.missed`). A beam that holds says
+  so (pass), with its pose and grams; one that does not says it needs its own material and the margin it misses by,
+  `1 / margin`, and on what (info: a design choice, not a fault). It also names the joins that would need changing: a
+  blind, end-tap or anchor join screws into the beam's end, where a printed beam has an insert, and a join on a face
+  other than the top lands where a printed beam is closed; a bracket or a gusset on its top slot takes either. Then
+  the beams that hold alone are printed together and solved once more, any that miss together put back the worst
+  first, and one finding lists those that can be printed (`refs.printable`) and those that stay (`refs.metal`). Every
+  figure rests on the printed section's walls and infill, its plastic's figures and the creep shares (estimates until
+  the beam coupon is measured) and on the joins' springs as they are, which were made for metal beams; the findings
+  say so (`refs.restsOn: 'estimate'`). A 250 mm 2020 case of twelve beams with 2 kg on a top beam can be printed in
+  PETG whole (its least margin 1.35, its top beam's sag as it creeps); a 400 mm 2020 gantry beam fixed at both ends
+  with 2 kg at its middle and 0.1 mm allowed misses by 9.8 times ("beam.printable: every beam of a case-sized frame").
+- `beam.coupon`: a printed beam held only by two of `"frame": { "supports" }` (no join on it) with a mass on it is the
+  beam coupon. Its sag under each mass, F L³ / 48 E I between two bars, and the mass it breaks at (where its stress
+  reaches its strength) are predictions `cad measured` takes as `<beam>.sag=<mm>` and `<beam>.break=<kg>`. The sag
+  gives the modulus a printed beam bends at (the solve is linear in it: the modulus taken times the sag predicted
+  over the sag measured), the break its strength (its own weight's stress plus the stress a kilogram causes times the
+  mass), each written as measured to the workspace's copy of the plastic's set: `beam_modulus` and `beam_strength`
+  for one printed lying down, `beam_modulus_z` and `beam_strength_z` standing up. A printed beam then takes them
+  before the plastic's own figures, and its creep limit follows the strength. `"resting"` in `frame.supports` holds a
+  beam from moving and from twisting about its own length, free to bend, as a beam lying across a round bar is. The
+  bench's `beam-test` assembly (MEASURE.md, rows 38 and 39) is the coupon.
+- `cad beams` also writes `exports/<project>/<assembly>.frame-sag.svg`, the check view: the frame as drawn in grey
+  and the shape it takes in red, from the front and from the side, scaled and saying by how much; and
+  `<assembly>.frame-mode.svg`, the lowest mode animated, the frame swinging through the mode's shape and back, its
+  largest movement drawn as a tenth of the frame's size, in the two views that hold that movement (it starts at one
+  extreme, so a viewer that shows no animation shows the mode at its largest). Both are pictures of the solve, never part of the model.
+
+| Figure | Formula | Source |
+|---|---|---|
+| Sag limit with nothing tighter | span / 360 | International Building Code, Table 1604.3, floor members under live load (as reproduced in 780 CMR 1604.3) |
+| Beam stress | \|N\| / A + \|My\| / Wy + \|Mz\| / Wz | Beam theory; the section moduli from the profile's rule set |
+| A beam in compression | P = π² E I / L² (both ends pinned) | Euler's column; Roark's Formulas for Stress and Strain, 7th ed., table 15.1, case 1a |
+| A printed fitting's moment | design load × its distance from the corner × its margin | The fitting's own finite-element margin at its design load, scaled linearly |
+| The solve | Timoshenko beam elements, end springs condensed out | `@rulecad/fea/frame` (its README lists its sources) |
+| Sway limit with nothing tighter | height / 400 | ASCE/SEI 7-22, Commentary to Appendix C, CC.2.2: drift limits in common use are 1/600 to 1/400 of the height |
+| Racking stiffness | push / mean sway of the top corners | Definition; each change solved in the model, not estimated |
+| A panel's bar along its diagonal d (bay a by h, sheet t) | G t d² / (a h), in series with d² n k_c / (4 (a + h)²) for n clips of k_c each | Shear of a plate, γ = τ / G; the clips by their strain energy under a shear flow F / a round the edges |
+| A sheet's G | E / 2(1 + ν): acrylic 3300 MPa, ν 0.37 | Evonik PLEXIGLAS GS technical information (polycarbonate and aluminium: typical figures, marked community) |
+| A move's frequency | 1 / t, t = speed / accel | A working figure (`frame.ramp`); the lowest mode wanted at twice it |
+| A stepper's full-step rate | rpm / 60 × 360 / step angle | The motor's step angle and its working speed (`workingSpeed`) |
+| A beam fixed at both ends, mass M at its middle (the check of the modal solve) | f = (1/2π) √(192 E I / (L³ (M + 0.375 m))) | Blevins, Formulas for Natural Frequency and Mode Shape (1979), table 8-8 |
+| A beam fixed at both ends, load P at its middle (the check of a guide's sag in the error budget) | P L³ / (192 E I) | Roark's Formulas for Stress and Strain, table 8.1, case 1d |
+| A bay's diagonal difference to accept (frame.square) | Σ t × span / d over the beams that set the opening, plus Σ s × span / d over its joins; root-sum-square beside it | The derivative of d = √(w² + h²) with a side, ∂d/∂w = w / d; stacked as an arm's error budget stacks its joints |
+| A join's play s (frame.square) | 0.1 to 0.3 mm by kind; end-tap 0.25 mm | `JOIN_PLAY` in `@rulecad/frames`, estimates; end-tap is half ISO 273's medium clearance for M5 (5.5 mm) |
+| A beam's twist at the tool | twist per metre × length × π / 180 × the tool's distance from the beam's axis | The profile's `twist_per_metre` (MISUMI's JIS special grade figure for its 2020 HFS5) |
+| A frame's growth (frame.heat) | α L ΔT, α = 23.4e-6 /K | 6063 aluminium (Wikipedia's table; suppliers' 6063-T5 sheets 23.4 to 23.5 µm/m °C), a community figure where the alloy's set gives none |
+| A printed beam's creep limit | 0.15 × its strength for its pose | Waseem et al. (2020), Polymers 12, 2962: printed PLA held at 0.3 of its strength broke in 1.2 to 2.3 hours; half that share an estimate |
+| A printed beam's sag as it creeps | the frame solved with its modulus × 0.5 | An estimate (`PRINTED_DEFAULTS.creep_modulus`), until a sustained load on the beam coupon measures it |
+| The beam coupon's sag, between two bars L apart | F L³ / (48 E I) | Roark's Formulas for Stress and Strain, table 8.1, case 1e (simply supported, load at the middle) |
+| The beam coupon's modulus and strength | E × sag predicted / sag measured; stress of its own weight + stress per kg × kg at break | The solve is linear in E and in the load |
+| A printed fitting's softening | the plastic's heat deflection temperature, ISO 75 at 0.45 MPa, warned within 10 °C | The plastic's set (`pla.softening` 57 °C, `petg.softening` 69 °C, Bambu's data sheets); the 10 °C an estimate |
+
+A worked check: a 2020 shelf frame, legs 400 mm, a 600 mm front beam joined blind to the legs 390 mm up, 5 kg at its
+middle, sags 0.215 mm by hand with the joins rigid (a beam whose ends turn with the corners the legs and the side
+beams' twist hold) and 0.310 mm with the blind joins' estimated 1.5 N·m/mrad springs; the solve gives the same to three
+figures (`packages/cad/test.mjs`, "frame checks: a shelf frame").
+
+Two more: a 2020 gantry beam, 600 mm, fixed at both ends, with 2.01 kg carried at its middle, rings first at 74.2 Hz;
+the formula above gives 74.2 Hz (192 E I / L³ = 461.5 N/mm, M + 0.375 m = 2.1225 kg). An open 2020 cube, 420 mm
+square and 400 mm tall, two rings of four beams joined blind to its legs, racks at about 63 N/mm under a push at its
+top; one diagonal brace makes it about 2.6 times stiffer (the bay across from it still racks, and the rings twist),
+a brace in both bays that way about 240 times ("frame checks: an open cube racks").
+
 **Fastening into a slot.** A `fasten` whose `into` is a slot on a beam ends in a slot nut under the slot's lips:
 
 ```json
@@ -699,15 +901,183 @@ address stands for the faces near it, as `item@anchor` does (`"within"`, 10 mm b
   (`5. Load 2 × slot-nut-6-misumi-m4-slide-in into y1's top slot through its end a, for plate2, before the blind join
   of y1.a to p1.top@170 closes it`).
 - `frame.square`: each bay of the frame (four beams joined in a rectangle in one plane), with its two diagonals,
-  inside corner to inside corner, and the difference between them to accept: twice the cut tolerance times the longer
-  side over the diagonal, what the beams' lengths allow with every corner square (`squareness` in `@rulecad/frames`).
-  A 260 × 200 mm opening of beams cut to ±0.5 mm: each diagonal 328.02 mm, accept up to 0.79 mm. Joint play is not in
-  it yet (issue 268).
+  inside corner to inside corner, and the difference between them to accept, stacked from its parts as an arm's
+  error budget stacks its joints (`squareness` in `@rulecad/frames`). Each beam of the bay whose end butts another
+  beam of the bay sets the opening along it by its cut length: cut t long or short, it moves one diagonal against the
+  other by t × span / d (span the opening along that beam, d the diagonal). Each join of the bay's beams lets the end
+  of `a` sit off by its play s along `b` (`JOIN_PLAY`, an estimate for every kind): s × span / d, span the opening
+  along `b`. The difference to accept is their sum, the worst case, with their root-sum-square beside it, and the
+  finding lists each term. The cut tolerance is the assembly's `"frame": { "cut": { "tolerance": 1 } }` where given
+  (this workshop's saw, also taken by the cut list), else the profile's `cut_tolerance`, else 0.5 mm. A 260 × 200 mm
+  opening of MISUMI 2020 (d = 328.02 mm) with its two rails butting the posts and four blind joins: 2 × 0.5 × 260 / d
+  + 4 × 0.1 × 200 / d = 1.04 mm, 0.57 mm root-sum-square; at ±1 mm it widens by 2 × 0.5 × 260 / d = 0.79 mm, to 1.83.
+  Each bay is a prediction: once squared and tightened, measure both diagonals and give their difference to
+  `cad measured <project>/<assembly> frame.square.<beams>=<mm>` (the name is in the finding, `frame.square.p1-p2-x1-x3`).
+  The ledger keeps it against the prediction, and the finding then says the difference measured: within what the
+  cuts and joins allow passes, more warns that the bay leans. The build page's bays carry the same figures.
+- `frame.heat`, where the assembly gives `"frame": { "heat": { "air": 45, "built": 20, "heaters": [{ "name": "bed",
+  "at": [150, 150, 60], "temperature": 60, "reach": 40 }] } }`: the frame grows from the air it was built in (`built`,
+  20 °C where left out) to the air it runs in by its alloy's expansion, ΔL = α L ΔT, for the longest beam and for the
+  span of its beams each way (α from the alloy's set where it gives `expansion`, else 23.4e-6 /K for 6063, a community
+  figure). A frame of one alloy grows alike every way, so it stays square. Each printed fitting is held to its plastic's
+  `softening` (the heat deflection temperature its set gives, ISO 75 at 0.45 MPa) at the air's temperature, or a
+  heater's where its drawn parts come within the heater's `reach` of its middle: over it fails, within 10 °C of it
+  warns (`FRAME_HEAT.margin`, an estimate), and the rest pass in one finding naming the nearest. Bad input is refused by
+  name (`frame.heat.heaters 1: reach is how far ...`).
 - A blind or end-tap join's head on a slot's lips: `fasten.seat` gives what the lips take, the head's circle less the
   strip of the opening across it (A = π D² / 4 - 2 (c √(R² - c²) + R² asin(c / R)), R half the head, c half the opening), at the beam alloy's strength, and the torque for that force (T = K d F, the nut
   factor an estimate), or the screw tightened fully where that is less. An M5 button head on a MISUMI 6 mm slot:
   17.9 mm² of al6n01-t5 at 205 MPa takes 3677 N, 3.68 N m. The lips' bending is not counted: an estimate, until the
   joint rig (issue 264) measures one.
+
+### A frame from a size
+
+A frame can be asked for by what it must hold, at the top of an assembly, in place of its beams:
+
+```json
+"frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-misumi-hfs5", "join": "blind", "feet": "levelling" }
+```
+
+Before anything else is worked out, it expands into beam items placed by their ends, joins between them, a fitting
+on every end no join covers, and any panels and braces asked for: everything after (the joins' operations and
+screws, the cut list, the frame checks, the build page) sees a hand-drawn frame. `cad check` says what it made
+(`frame.generated`: the kind, the inside and outside, the beams by length, the joins and the ends).
+
+- `"kind"`: `box` (four upright beams `z1` to `z4` and a ring of four at the bottom and at the top), `portal` (two
+  legs and a beam across their tops, in the x-z plane; it lies in one plane, so on its feet alone it tips over out of
+  it, and it is refused by name until `"supports"` says its feet are held down, as
+  `"supports": { "z1.a": "fixed", "z2.a": "fixed" }` for a portal bolted to a bench or a wall), `table` (four legs and a ring at the top), `gantry` (a box
+  without its two top beams across, and a beam `g` lying across the two top side beams, sliding along them on the
+  joint `gantry`, with the poses `gantry-front` and `gantry-back`) or `shelf` (a box with `"shelves"` rings between,
+  default 1, spacing its height into equal clear bays). Beams across x are `x1`, `x2` .., along y `y1` .., by ring
+  from the bottom. The frame's outside starts at the origin.
+- `"inside"` is the clear volume it encloses, `[width, depth, height]` in mm; `"outside"` is the volume it must fit
+  in. Give one. A portal takes `[width, height]`. A table's height is the clear height under its ring, a gantry's
+  under its side beams.
+- `"profile"`: one square profile for every beam (2020, 3030, 4040 ..). A profile of two cells (2040) is refused:
+  its beams would face differently by how they lie.
+- `"join"` sets the corners, as a kind or `{ "kind", "fitting", "screw", "nut" }`. With a join against a face (`blind`,
+  `end-tap`, `bracket`, `gusset`, `hidden`, `anchor`) the upright beams run through, top to bottom, and every other
+  beam butts against their faces, so it is shorter than the outside span it closes by the profile's width at each
+  end. With `cube` every beam butts into a corner node and is as long as the inside it bounds. A box round 300 x 300
+  x 350 in 2020 has uprights of 390 mm and eight beams of 300 mm (with no feet: printed feet raise the bottom ring,
+  below); in 3030, uprights of 410 mm and the same 300 mm.
+  Where an end has several bores, a blind or end-tap join screws into the threaded one in the middle. A printed
+  fitting (`"fitting": "printed"` on `bracket` or `gusset`) sits on nuts that go in through the slot's opening: every
+  butting beam is shut at both ends by its joins, so a nut that slides in from an end could not reach its place. It
+  takes the first of `drop-in`, `roll-in`, `hammer` and `t-bolt` the kit has for the profile's slot (drop-in on
+  MISUMI's 2020, roll-in on item's 4040); `"nut"` names one of them, and `slide-in` is refused. A printed gusset lies
+  on the face of its upright that looks out of the frame (its join's `"face"`), so it never lands where the corner's
+  third beam butts. With no fitting named, each join warns `join.fitting` until one is chosen, as a hand-drawn join
+  does.
+- A gantry's outside height is its inside plus three widths: the two rings and `g`, which lies on the top side beams
+  between the uprights' tops, its top level with theirs.
+- `"feet"`: `foot`, `levelling`, `castor` or `stacking` (printed) or a bought foot's set by name, under the upright
+  beams' lower ends. A printed foot, levelling foot or stacking foot is screwed into its upright's end: the end is
+  tapped as the foot's model says (an M5 tap 18.5 mm deep in 2020) and a `fasten` holds it (an M5x16 cap screw), so
+  the tap is on the sheet, the screw on the list and its step in the build. Where the join drills the uprights
+  (`blind`, `end-tap`, `hidden`, `anchor`: an access or clearance hole at the bottom ring's centre line), the bottom
+  ring rises up the uprights by the tap's depth, so those holes stand clear of the tapped end: the box above has
+  uprights of 350 + 2 x 20 + 18.5 = 408.5 mm, its inside still 300 x 300 x 350. A levelling foot's pad is printed
+  beside its body (`cad plates`, `cad list`) and screwed in by hand. `"caps"`: the other open ends take printed end caps (`true`, the default), a bought end cap's
+  set by name, or nothing (`false`, and `join.end` names them).
+- `"braces"`: the upright sides (`front`, `back`, `left`, `right`) whose corners are stiffened against racking: each
+  join in that side takes a printed corner bracket on drop-in nuts. `"panels"`: `{ "sheet", "thickness", "sides" }`,
+  one sheet over each side named (every side with a bay by default), on drop-in nuts.
+- Refused by name, before anything is built: no size or both, a size that leaves no room for the beams, a profile
+  that is not square, a join no generator arranges (mitre, splice, pivot, a printed node), a blind join on a profile
+  with no bore in its ends, a blind or end-tap screw that does not pass between the slot's lips (M12 in the 10 mm
+  slots of MISUMI's and Bosch's 4040), an end-tap join whose clearance hole across the post is wider than the slot's
+  opening (below), or a blind join's head that does not fit under them (Bosch's 2020: an M6 button
+  head 3.3 mm high under 3 mm lips), a printed fitting or a brace on a slot the kit has no nut for that goes in
+  through its opening (item's 3030, MISUMI's and Bosch's 4040), feet with cube corners on a box, a side with no bay,
+  and an item of the assembly's own with a name the frame gives.
+- `"frame"`'s other keys (`supports`, `limit`, `rack` ..) still say how it is solved.
+
+`cad frame <project>/<assembly>` prints what it expands into; `--expand` writes the expansion into the assembly (its
+`"frame"` keeps only how it is solved), to edit by hand from there; `--json` gives either as data. `@rulecad/frames`
+has the generators on their own: `box`, `portal`, `table`, `gantry`, `shelf` and `frameModel(kind, o)`.
+
+What a generated box checks to, joined three ways in MISUMI's, Bosch's and item's 2020, 3030 and 4040 (each taken
+or refused as above): `blind` checks clean wherever it is taken. `end-tap` takes each ring's beams along y one width
+above its beams across x, so no two screws cross inside an upright. Its screw passes a clearance hole drilled across
+the upright (ISO 273's medium series for the end thread), through the slot on both sides, and where that hole is wider
+than the slot's opening it would break the lips (`beam.op` warns twice a join). So the generator takes end-tap only
+where the hole fits: MISUMI's 2020 (M5, 5.5 mm in a 6 mm opening) and OpenBuilds' 2020 (5.5 mm in 6.25 mm), both
+clean. It refuses it by name, with both figures and what to use instead, in item's 2020 (5.5 in 5), Bosch's 2020 (M6,
+6.6 in 6), item's 3030 (6.6 in 6.2), MISUMI's and Bosch's 3030 and item's 4040 (M8, 9 in 8), and MISUMI's and
+Bosch's 4040 (M12, 13.5 in 10); no smaller thread cuts in those end bores. `bracket` with a printed fitting checks clean or warns only `frame.rack`, the frame's sway.
+Bosch's 2020 and 4040 L sections also warn `beam.mass`: their drawn outlines leave out hollows the sheet's mass counts, and the frame
+is weighed by the sheet's figure.
+
+### The lightest profiles
+
+`"frame": { "size": { ... } }` chooses, for each group of beams that must match, the lightest profile from a list
+that meets the frame's own limits, by `@rulecad/fea/frame`'s `sizing` on the frame the checks solve (every pose, the
+joins' springs, the loads and mounted items):
+
+```json
+"frame": { "kind": "table", "inside": [800, 500, 700], "profile": "2020-misumi-hfs5", "join": "blind",
+  "size": { "profiles": ["1010-makerbeam", "1515-openbeam", "2020-misumi-hfs5", "2040-misumi-hfs5", "3030-misumi-hfs6", "4040-misumi-hfs8"] } },
+"loads": [{ "mass": 30, "at": "x1.top@50%" }, { "mass": 30, "at": "x2.top@50%" }, { "mass": 10, "at": "y1.top@50%" }, { "mass": 10, "at": "y2.top@50%" }]
+```
+
+- `"profiles"`: the sets to choose from (default `FRAME_SIZING.profiles`: MISUMI's HFS5, HFS6 and HFS8 series from
+  2020 to 4080). A profile that is not square is tried lying as drawn and turned a quarter about its length ("2040
+  turned": standing on edge). The workspace's own sets are read before the kit's.
+- `"groups"`: `{ "rails": ["x1", "x2", "y1", "y2"] }`, beams that take one profile together. The rest group by
+  themselves: beams of one profile lying the same way whose lengths agree within 0.5 mm (`FRAME_SIZING.match`), so a
+  table's four legs are one group and each pair of rails another.
+- `"limits"`: in place of the checks' own. Left out, each is the check's: the sag at each load, named point and guide
+  as `frame.deflection` holds it (a guide's rail parallelism, `frame.limit`, the task's accuracy, else the span over
+  360; a load that moves with a joint anywhere along its beam), each beam's stress with the joins' springs and with
+  them rigid against its alloy's strength `frame.margin` (2) times over, the frame's first buckling factor and each
+  grouped beam's Euler load (K 1) the same, and the lowest mode at twice the task's moves where it has a task.
+  `"deflection"` (mm, at every load, point and guide), `"stress"` and `"buckling"` (margins) and `"frequency"` (Hz)
+  replace them.
+- `"by"`: `mass`. No profile set in the kit gives a price per metre yet, so `cost` is refused by name.
+
+`cad check` gives `frame.size`: each group's profile, its mass, the limit that set it and how many times inside that
+limit it stands. `cad frame <project>/<assembly> --size` prints the table:
+
+```
+sized: 2.56 kg of grouped beams (drawn 2.74 kg), 66 designs solved (every design ranked by mass)
+group | profile | kg | set by | margin
+z1, z2, z3, z4 | 1515-openbeam (drawn 2020-misumi-hfs5) | 0.855 | buckling: with 1010-makerbeam, the frame's buckling factor breaks its limit 2.68 times over | 1.28x
+x1, x2 | 2040-misumi-hfs5 turned (drawn 2020-misumi-hfs5) | 1.408 | deflection: with 2020-misumi-hfs5, the sag at x2@400 breaks its limit 2.31 times over | 2.41x
+y1, y2 | 1515-openbeam (drawn 2020-misumi-hfs5) | 0.297 | deflection: with 1010-makerbeam, the sag at y2@250 breaks its limit 2.39 times over | 1.17x
+```
+
+"Set by" is the limit the group's next lighter profile breaks, the other groups as chosen: what stops it being any
+lighter. A group already at the lightest in the list says so. With `"limits": { "deflection": 6 }` the long rails
+drop to 2020 and the grouped beams to 1.95 kg.
+
+`--write` writes the profiles into the assembly: each grouped beam's profile, a quarter `roll` where it was turned,
+and its printed end fittings drawn for it. A generated frame is written out expanded, as `--expand` does, since a
+generator takes one profile; its rings keep their outer faces (a table's top stays level with its legs' tops). A
+beam's end that butts against a face moves with that face as the other beam changes size, and a blind or end-tap
+join at an end that now has two bores (a 2040) becomes a join a bore. A drawn beam whose new depth would stand past
+the end of the beam it meets (a rail flush with its legs' tops, now a 2060) moves along that beam by as much, so its
+face there stays where it was, if the move fits at its other end too; where it does not, nothing is written and the
+refusal names the join and the beam. Otherwise beams keep their lines. Check the
+written frame: its join checks say where a profile's screws do not fit another's slots, so choose the list from one
+family whose joins fit each other (MISUMI HFS5's 2020 to 2080 share one slot and one end thread).
+
+What it rests on: the joins' springs are as drawn (an estimate until the joint rig measures them) and do not change
+with the profile; the sizing solves the drawn layout, with each beam's line where it is drawn, so a figure on the
+written frame differs a little (the table in HFS5, its 2040 rails lowered 10 mm to keep its top level, sags 0.87 mm
+at a long rail's middle as sized and 0.83 mm as written). With 512 designs or fewer every one is ranked by mass and the first that meets the limits is the
+lightest; with more, the search goes by steps and lands near the lightest. Racking (`frame.rack`) is not a sizing
+limit: it is a bay's to brace, not a beam's to thicken.
+
+| What | Formula | Source |
+|---|---|---|
+| A design's mass | the sum over grouped beams of length × the profile's mass per metre | The profile's set (the maker's sheet) |
+| Sag limit (default) | span / 360 | `FRAME_CHECK.sag`: IBC Table 1604.3 |
+| Stress | `margin × (abs(N)/A + abs(My)/Wy + abs(Mz)/Wz) ≤ strength`, worst of springs and rigid | `@rulecad/fea/frame`; Roark's, chapter 8 |
+| Euler load of a grouped beam | `π² E I / (K L)² ≥ margin × N`, I the lesser second moment, K 1 | Roark's, table 15.1, case 1a |
+| Frequency floor (with a task) | `2 × speed / accel` Hz | `frame.frequency`: a move ramping in t seconds shakes the frame at about 1/t |
+| What set a group | the limit with the largest use, over 1, when the group takes its next lighter profile | This package |
 
 ### Building it
 
@@ -760,8 +1130,10 @@ Once an assembly is checked, these say how to make it. They all read the assembl
 - `assembly.order` is `cad check`'s finding on it, with the count of `cad order`'s steps (a frame's build from bars to
   square where the assembly has joins, failing where that build is refused; `fasten.access` names the same steps, and
   none of a build that is refused): a part no order can reach fails by name, and a part sealed inside another too. A fit can say where a screw is driven from with `"access": "<item>.<anchor>"`, the anchor's z pointing out along the screw: whatever stands on that line goes on after the screw, and if it has to go on first the screw can't be reached at all. Works on an assembly's own items; a component (an assembly used as an item) goes on as one step.
-- `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by filament so each plate is one colour change, spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`). A frame's printed fittings (a join's bracket, a guide's holders and plate, a foot or an end cap) go on as their item's `fitting` with `"pose": "print"`, laid as each prints.
-- `cad list <project>/<assembly>` lists the beams' **cut list** after the bought parts: each mark (beams that are the same, one profile, length and set of operations, share a mark, A, B, C), its count, grams each and work, then each profile's lengths to cut, the bars to buy in the lengths it is sold in, and the cuts on each bar in order with its offcut. Every cut takes the saw's 3 mm kerf and each bar's first end is trimmed 10 mm (`CUT_DEFAULTS` in `@rulecad/frames`, each with its source); the packing is first-fit decreasing. `cad check` adds the cut list's findings (`frame.cut`): a beam longer than any length sold fails, two lengths nearer than the cut tolerance can hold apart warn, and beams of one mark are reminded to be cut against one stop. Each beam's mark is in its label in the preview and the link (`x1: mark A, profile-2020-misumi-hfs5 x 300 mm`).
+- `cad plates <project>/<assembly>`: every printed part laid out on beds, in its print orientation (as it's drawn), grouped by material and filament so each plate is one plastic and one colour change (a printed beam in its own `"material"`, PETG in a PLA project, goes on a plate named `<assembly>-petg-<filament>-<n>`; `packed.material` in its file), spaced by the first layer's rule (the printer's `print_gap` plus twice its `foot`, up to whole lines; `--gap` for your own). They're written as `kind: "plate"` assemblies called `<assembly>-<filament>-<n>` and checked as prints; `cad export` makes each one's 3MF. Each plate remembers what's on it by its build's hash (`"packed"` in its file): a changed part re-packs only its plate, so the other plates keep their files untouched, and a part too big for the bed is said by name (`plate.bed`). A frame's printed fittings (a join's bracket, a guide's holders and plate, a foot or an end cap) go on as their item's `fitting` with `"pose": "print"`, laid as each prints, and a levelling foot's pad beside its body. A frame's jigs (`cad beams --jigs`, below) are written beside them on plates of their own, in the project's plastic (`--no-jigs` leaves them).
+- `cad kit <project>/<assembly>`: one folder to build it from without opening the model, `exports/<project>/<assembly>-kit/`, to hand to someone else: `README.md` (what the checks say, what to buy, what to print with each plate's material, grams and minutes, the jigs and what each is for, the cut list with the cuts on each bar, each mark's drilling and tapping, and the build step by step with its screws, keys, torques and the diagonals to measure), `buy.csv` (the bars, bought parts and fixings in packs), `print/` (each plate's 3MF and the jigs'), `sheets/beam-<mark>.svg` (each mark's sheet, to scale) and, with `--pictures`, `pictures/` (the whole and each step, which needs Chrome). It is written whole each time, and only for an assembly that `cad check` passes with nothing failing: one that fails is refused by name (`kit.check`, with the failures), and so is one with nothing to build from. `--json` lists the files. A frame's step that names a sheet names it by its file in the folder. Laying out the plates reads the printer's rule set (`x1c`), and on a fresh workspace that copies it into `rules/`, as any command that uses a tool's rule set does: the workspace keeps every rule its designs depend on. `cad kit` says which sets it copied (`copied` in `--json`).
+- `cad list <project>/<assembly>` lists the beams' **cut list** after the bought parts: each mark (beams that are the same, one profile, length and set of operations, share a mark, A, B, C), its count, grams each and work, then each profile's lengths to cut, the bars to buy in the lengths it is sold in, and the cuts on each bar in order with its offcut. Every cut takes the saw's 3 mm kerf and each bar's first end is trimmed 10 mm (`CUT_DEFAULTS` in `@rulecad/frames`, each with its source); the packing is first-fit decreasing. `cad check` adds the cut list's findings (`frame.cut`): a beam longer than any length sold fails, two lengths nearer than the cut tolerance can hold apart warn, and beams of one mark are reminded to be cut against one stop. Each beam's mark is in its label in the preview (`x1: mark A, profile-2020-misumi-hfs5 x 300 mm`) and in the link, where the parts list groups the beams by it (`mark A: profile-2020-misumi-hfs5 x 300 mm`, x8). The link carries each mark's cut-and-drill sheet as a view of a **Beams** tab, and a beam picked in the model offers its own (`Sheet A ›`).
+- `cad frame <project>/<assembly>`: a generated frame (`"frame": { "kind" }`, "A frame from a size" above): its inside and outside, its beams by length, its joins and its ends. `--expand` writes them into the assembly to edit by hand; `--json` gives the same as data.
 - `cad beams <project>/<assembly>`: a cut-and-drill sheet for each mark, written to `exports/<project>/<assembly>.beam-<mark>.svg`, in mm so it prints to scale at 100%: the section at end a with each face named and the taps marked, a view of each face with work on it (that face up, end a on the left), every operation dimensioned from end a to 0.1 mm, and the operations in order, each tap with its thread and depth. The build page lists the sheets with the cut list.
 - `cad beams <project>/<assembly> --jigs`: the jigs its beams take, made from the assembly and written as a plate, `exports/<project>/<assembly>.jigs.3mf` (`.jigs-2.3mf` and on where one bed is not enough). A **drill guide** for each distinct hole across a beam (an access hole, a drilled hole, a counterbore's hole): it stops on the nearer end, keys into the face's slot and holds a bush for the drill where the sheet dimensions the hole. A **tap guide** for each tapped end, a **cut-length stop** for each length (a block for the saw's fence and a printed gauge as long as the cut), and a **squaring corner** for each pair of profiles and hand a blind or end-tap join takes. A corner is an L whose arm b runs along beam b one way only, so where a beam meets a post near the post's end, only one hand lies on the post: each join gets the corner laid on a pair of faces the two beams share (the outer pair first) and of the hand whose tongues lie whole on both beams, its plate clear of every other beam. A box with beams near both ends of its posts takes both hands. Where no corner fits, a `jig.square` warning says why (how much of a tongue lies past a beam's end, which beam the plate meets): square that join with an engineer's square. Distinct means drawn the same: one guide serves every hole of its size at its distance from an end. Each is marked with the marks it is for (`ABCD`, `E 260`), cut into a face that faces up as it prints, printchecked, and listed with its grams, its margin and what it is for: each hole by mark and sheet number (`A3`), with its bush's distance from end a beside the sheet's figure. A hole too far from both ends for one print gives a `jig.drill` warning in place of a guide; mark it from the sheet. A tapped end no guide can be drawn for gives a `jig.tap` warning in place of its guide. `--json` gives the same, `--preview` a picture of the plate. The jigs are `@rulecad/frames`' (`drillGuideModel`, `tapGuideModel`, `lengthStopModel`, `squareCornerModel`).
 - `cad wires <project>/<assembly>`: the wiring sheet, printed and written to `exports/<project>/<assembly>.wiring.md` (`cad machine` writes it too): each wire's length through every pose with its service loop, gauge, colour, connectors and board pins. Wires also show faint along their routes in `cad preview` and in the link, moving with the joints, and are never parts: no overlap check sees them.
@@ -852,7 +1224,15 @@ slotted face, its holes read from its own rule set (@rulecad/frames' README, Ser
   the rating, under 2 times over it warns. How they combine is an estimate, said as one.
 - A task whose chain runs through a carriage's joint counts the rail's terms in its error budget (`task.accuracy`):
   its running parallelism and its carriage's play from its rule set (`spec`), the beam's straightness over the rail
-  from the profile's, and the beam's sag (an estimate).
+  from the profile's, and the beam's sag. Where the frame is solved (the assembly has joins or a `"frame"`), the sag is
+  the frame's own figure along the guide's travel, worst over the poses (`frame.deflection`), tagged as the frame's
+  figures are (`estimate` while any join's spring is, `measured`, or `derived` with no joins); else it is the rail's
+  own estimate, the beam pinned at its ends under its own and its carriages' weight. The beam's twist is a term too:
+  the profile's `twist_per_metre` over the guide's length turns the carriage about the beam's axis, which moves the
+  tool by that angle times the tool's distance from the axis (3.33° a metre over 500 mm with the tool 23 mm from the
+  axis: 1.665° × π / 180 × 23 = 0.668 mm). Wheels and sliders, which run on the beam itself, take its straightness and
+  twist the same way; rods and screws span between holders at their ends and take neither. A slide is solved at the
+  middle of its travel as well as at its ends, where a carriage between two supports bends its beam most.
 - Refused by name: a kind not built yet (a belt), a face that is not a beam's slotted face, `on` with a distance (that
   is `from`), a rail past the beam's end, a carriage its set has not got, and a rail too short for its carriages.
 

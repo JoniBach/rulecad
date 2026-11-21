@@ -59,6 +59,28 @@ export const JOIN_STIFFNESS = {
   splice: guess('splice', 5e6, 3e6, 'two ends held by a plate along both beams'),
   printed: guess('printed', 5e5, 3e5, 'a printed node: plastic, so far softer than the aluminium it joins'),
 };
+// One kind's play: how far the end of a may sit off where it was squared, along the beam it meets, once its screws are tight
+const slip = (kind, value, why, source = 'A working guess of @rulecad/frames, made without a measurement or a published figure: measuring a squared bay\'s diagonals (cad measured) shows what it comes to') => ({ value, unit: 'mm', rule: `How far the end of a beam in a ${kind} join may sit off where it was squared, along the beam it meets, once its screws are tightened: ${why}`, kind: 'estimate', source, checked: '2026-11-17' });
+
+/**
+ * Each kind's play, in mm: how far the end of a may move along the beam it meets between squaring a bay and its screws
+ * being tight. frame.square stacks it with the cut tolerances across a bay's diagonals. Every one is an estimate.
+ * @type {Record<string, { value: number, unit: string, rule: string, kind: string, source: string, checked: string }>}
+ */
+export const JOIN_PLAY = {
+  blind: slip('blind', 0.1, 'its head slides in the slot until it clamps, so it sits where it was pushed, less what turning the key drags it'),
+  'end-tap': slip('end-tap', 0.25, 'its screw passes a hole drilled across b, which sets where it goes to within half the hole\'s clearance: an M5 in ISO 273\'s medium 5.5 mm hole', 'Half the clearance of ISO 273\'s medium series for M5 (5.5 mm, the m5 rule set\'s clearance), taken for every thread a 20 series end tap takes'),
+  bracket: slip('bracket', 0.2, 'its slot nuts slide until clamped, and its own screws sit in clearance holes in the bracket, so the corner it holds may turn a little as they are tightened'),
+  gusset: slip('gusset', 0.1, 'a plate over the joint with two or more screws each side: its wide stance holds the corner where it was squared'),
+  cube: slip('cube', 0.2, 'a three-way corner: the ends sit in its sockets with a clearance'),
+  hidden: slip('hidden', 0.1, 'an inner connector clamped in the slots, held by friction and a set screw'),
+  anchor: slip('anchor', 0.1, 'an anchor connector pulled tight in its pocket'),
+  mitre: slip('mitre', 0.2, 'two mitred ends held by a corner key or plate, which sits in the slots with a clearance'),
+  pivot: slip('pivot', 0.3, 'a pivot: its pin in its bore with a clearance'),
+  splice: slip('splice', 0.1, 'two ends held by a plate along both beams'),
+  printed: slip('printed', 0.2, 'a printed node: the ends sit in its sockets with the printer\'s fit'),
+};
+
 /** A printed fitting's stiffness beside a bought one's, and the size scale, each with what it rests on. */
 export const JOIN_SCALE = {
   printed: { value: 0.3, unit: '', rule: 'A printed fitting\'s stiffness as a share of the bought one\'s: PLA or PETG has a modulus of about 2 to 3.5 GPa against cast aluminium\'s 70 GPa, and a printed fitting is drawn thicker to make some of that up', kind: 'estimate', source: 'A working guess of @rulecad/frames: the joint rig (issue 264) measures it', checked: CHECKED },

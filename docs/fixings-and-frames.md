@@ -431,6 +431,38 @@ beams of a frame can be printed within its deflection, frequency and creep limit
 - **A beam coupon.** A short printed beam bent between two supports gives the stiffness and strength the checks
   use, by `cad measured`.
 
+Built (issue 269): the kit's printable profiles, `profile-1515-printed` to `profile-4040-printed`, have one slot, in
+the top face, its lips sloped underneath at the printer's overhang angle, and are solid below with a heat-set insert or
+a captive nut in each end; a slot in a side face would hang its upper lip in mid-air, and one on the bed leaves too
+little under it for an end's insert. `"printed": true` on a beam makes a printed part with its mass and section figures
+from its walls and infill (estimates), on a plate and off the cut list. A splice is a lap cut upright down the
+section's middle, a key where the cut steps sideways and two screws across it; it is checked on each half's section
+and the screws' couple, and carries about half what the beam does, so it passes where the frame's moment there is
+within that. A 240 mm printed 2020 prints lying down with no support and takes MISUMI's M4 drop-in nut; a 400 mm one
+splices into halves of 196.6 and 256 mm on the X1C, and carries 50 N hung in its middle.
+
+Built (issue 270): `"frame": { "printed": "petg" }` tries each beam of a frame printed in that plastic, lying down
+(spliced past the bed, at half the strength) or standing up, solves the frame again, and holds the beam to the frame's
+sags, its stress and buckling with twice the margin, a creep limit of 0.15 of its strength (`beam.creep`, an
+estimate resting on a published creep rupture test of printed PLA), its sag as it creeps (its modulus halved, an
+estimate) and the task's moves; each beam says its least margin or the margin it misses by, and the joins that would
+need changing, and those that hold are printed together and solved once more. A 250 mm 2020 case of twelve beams with
+2 kg on a top beam can be printed whole in PETG; a 400 mm 2020 gantry beam with 2 kg at its middle and 0.1 mm allowed
+misses by 9.8 times on its sag as it creeps. A printed beam in a frame is checked at its strength for its pose. The
+beam coupon is the bench's `beam-test`: two printed 1515 beams across two bars, its sag and its break written back by
+`cad measured` as the plastic's `beam_modulus` and `beam_strength` (`_z` standing). Until a person prints and measures
+it, every printed beam's stiffness and strength rest on the data sheet and the section's estimates. Still to come: a
+splice in a cad assembly.
+
+Built (issue 274): EXAMPLES chapter 17, a case for a Raspberry Pi 4 with every beam printed. Drawn in MISUMI's 2020,
+`"printed": "petg"` says all 13 beams could be printed (least margin 26.6 printed together); printed, the posts and
+rails stand up from MISUMI's section to keep their slots, and the cross beam under the board lies down from the
+printable 2020. A beam printed standing from a metal's profile takes its end's screw in its bore's place (MISUMI's
+2020: an M3 captive nut), a foot names that thread, and a printed beam in an assembly is drawn with its ends' fixings,
+so a screw into one is checked. The sag under the board is 0.000352 mm in aluminium and 0.009 mm printed, against
+0.361 mm. A 300 mm rail is longer than the bed and is spliced with a printed splice plate (a `splice` join). The kit
+is one plate of 73 PETG parts, 593 g, that prints clean.
+
 ### 4.10 Generated frames and kits
 
 A frame can be asked for by what it is for:
@@ -447,6 +479,18 @@ profile from a list that meets the deflection and frequency limits.
 A kit is everything a person needs to build it: `cad plates` lays out the printed fittings, `cad list` gives the
 cut list, the fixings and the bought parts, `cad beams` the sheets, and the build page the order, the nuts to load
 first and the diagonals to measure. `npm create rulecad my-frame --machine frame` starts from a working box.
+
+Built (issue 273): `cad kit <project>/<assembly>` writes one folder to build a frame from without opening the model:
+the build page as `README.md` (what the checks say, the bars, bought parts and screws to buy, the plates and jigs to
+print, the cut list with the cuts on each bar, each mark's drilling and tapping, the build in numbered steps with its
+torques and diagonals), `buy.csv`, each plate's 3MF, the jigs' plates and each mark's sheet; it refuses a design whose
+check fails. `cad plates` lays out every printed fitting and printed beam by material and filament, with the frame's
+jigs on plates of their own. A generated frame's printed feet are now screwed into tapped upright ends, and the bottom
+ring rises clear of the tap where the join drills the uprights (a box round 300 x 300 x 350 in 2020 on feet has
+uprights of 408.5 mm). `npm create rulecad my-frame --machine frame --size 300x300x350 --profile 2020-misumi-hfs5`
+makes a box with a load on it that checks clean on a fresh install, in each profile offered. `examples/bench`
+has `fittings/kit-2020`, a kit of fittings alone for 2020 (brackets, levelling feet, end caps, panel clips and nut
+carriers). In a link, each beam is labelled by its mark and a beam picked opens its sheet in a Beams tab.
 
 ## 5. What stays open for the printer
 

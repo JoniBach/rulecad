@@ -1,0 +1,70 @@
+{
+  "_doc": "The slot of the kit's printed 30 x 30 mm beam (profile-3030-printed): the slot-8-misumi family's drop-in nuts (slot-nut-8-misumi-m3-drop-in, slot-nut-8-misumi-m4-drop-in, slot-nut-8-misumi-m5-drop-in, slot-nut-8-misumi-m6-drop-in) go in it, and it prints lying down facing up with no support. The undersides of its lips slope at the printer's overhang angle, so its nuts bear on their top corners, not their whole top. Worked out from those nuts' sizes and the printer's rules by @rulecad/frames printedProfile; a printer with other rules gives other figures.",
+  "name": "slot-8-printed-3030",
+  "part": "slot",
+  "rules": {
+    "opening": {
+      "value": 8.1,
+      "unit": "mm",
+      "rule": "Between the lips: slot-8-misumi's 8 mm or its nuts' widest tongue and a fit, whichever is wider, widened by the printer's hole compensation, since a printed gap comes out narrow",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-8-misumi.opening, slot-nut-8-misumi-m3-drop-in, slot-nut-8-misumi-m4-drop-in, slot-nut-8-misumi-m5-drop-in, slot-nut-8-misumi-m6-drop-in (tongue_width) and x1c.fit, x1c.hole_comp",
+      "checked": "2026-11-17"
+    },
+    "lip_thickness": {
+      "value": 2,
+      "unit": "mm",
+      "rule": "slot-8-misumi's lip in whole layers, thicker where a nut's pull of 100 N needs it: its lips and side walls hold 782.24 N in pla, 7.82 times that pull, the side walls the weaker: the lips lie in the layers and bend along them at 39 MPa, the walls stand through the layers and bend across them at 23.4 MPa (an estimate: one lip's spread each side of the nut)",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-8-misumi.lip_thickness, x1c.layer, pla.strength, pla.strength x PRINTED_DEFAULTS.across and PRINTED_DEFAULTS pull, spread and margin",
+      "checked": "2026-11-17"
+    },
+    "lip_angle": {
+      "value": 45,
+      "unit": "deg",
+      "rule": "The undersides of the lips slope at the printer's overhang angle from the face, so they print over the cavity with no support when the beam lies down with its slot up",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from x1c.overhang",
+      "checked": "2026-11-17"
+    },
+    "cavity_width": {
+      "value": 15.72,
+      "unit": "mm",
+      "rule": "The widest of its nuts and a fit, the wall beside it 17 whole lines (7.14 mm)",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-nut-8-misumi-m3-drop-in, slot-nut-8-misumi-m4-drop-in, slot-nut-8-misumi-m5-drop-in, slot-nut-8-misumi-m6-drop-in (width) and x1c.fit, x1c.line",
+      "checked": "2026-11-17"
+    },
+    "cavity_depth": {
+      "value": 11.55,
+      "unit": "mm",
+      "rule": "To the floor: the nut's corners bear on the sloping lips 5.45 mm under the face, then its height, a fit and the floor's chamfer",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-nut-8-misumi-m3-drop-in, slot-nut-8-misumi-m4-drop-in, slot-nut-8-misumi-m5-drop-in, slot-nut-8-misumi-m6-drop-in (height) and x1c.fit, x1c.chamfer",
+      "checked": "2026-11-17"
+    },
+    "floor_width": {
+      "value": 14.92,
+      "unit": "mm",
+      "rule": "The floor less a chamfer at each side: no square inside corner where the wall meets the floor",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from x1c.chamfer",
+      "checked": "2026-11-17"
+    },
+    "flank_angle": {
+      "value": 45,
+      "unit": "deg",
+      "rule": "The floor's chamfers at 45 degrees",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from x1c.chamfer",
+      "checked": "2026-11-17"
+    },
+    "nut_family": {
+      "value": "slot-8-misumi",
+      "rule": "It takes the nuts made for slot-8-misumi: their sizes fit it (nutFit says so for each)",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-8-misumi",
+      "checked": "2026-11-17"
+    }
+  }
+}

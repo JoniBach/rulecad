@@ -14,6 +14,7 @@
 // its contact face is at Z = t. Units: mm, N, degrees, grams.
 import jscad from '@jscad/modeling';
 import { outline } from './profile.mjs';
+import { workOrder } from './beam.mjs';
 import { profileOf, options, roundConcave, ccw, combine, tongueLoop, pfig, FITTING_DEFAULTS } from './fitting.mjs';
 import { partSetup, weigh, closingFindings } from './panel.mjs';
 
@@ -74,13 +75,14 @@ function spanOf(p, place, dir) {
   const pts = outline(p).loops.flat(), d = pts.map(([x, y]) => (x - place.at[0]) * dir[0] + (y - place.at[1]) * dir[1]);
   return { lo: r3(Math.min(...d)), hi: r3(Math.max(...d)), deep: r3(Math.max(...pts.map(([x, y]) => (place.at[0] - x) * place.normal[0] + (place.at[1] - y) * place.normal[1]))) };
 }
-const opName = (b, i) => `${b.name}'s op ${i + 1} (${b.ops[i].op}${b.ops[i].at ? ` at ${b.ops[i].at}` : ''})`;
+// (named by its number on the sheet, the order it is done in)
+const opName = (b, i) => `${b.name}'s op ${workOrder(b).indexOf(i) + 1} (${b.ops[i].op}${b.ops[i].at ? ` at ${b.ops[i].at}` : ''})`;
 const opOf = (what, b, op, kinds) => {
   if (b?.kind !== 'beam') throw new Error(`${what}: give a beam's model (beamModel), not ${shown(b)}`);
   const i = isNum(op) ? op : b.ops.indexOf(op);
   const x = b.ops[i];
   const fits = b.ops.map((y, k) => (kinds.includes(y.op) ? `${k} (${y.op} at ${y.at})` : null)).filter(Boolean);
-  if (!x || !kinds.includes(x.op)) throw new Error(`${what}: give one of ${b.name}'s ${kinds.join(' or ')} operations, by its index in the model's ops (the sheet's number less one) or the op itself: ${fits.length ? `it has ${fits.join(', ')}` : 'it has none'} (got ${shown(isNum(op) ? op : op?.op ?? op)})`);
+  if (!x || !kinds.includes(x.op)) throw new Error(`${what}: give one of ${b.name}'s ${kinds.join(' or ')} operations, by its index in the model's ops (in their place from end a) or the op itself: ${fits.length ? `it has ${fits.join(', ')}` : 'it has none'} (got ${shown(isNum(op) ? op : op?.op ?? op)})`);
   return { x, i };
 };
 
@@ -93,7 +95,7 @@ const opOf = (what, b, op, kinds) => {
  * on its outer face, the stop and the tongue standing up. Refused by name: not a hole across, a closed face, a hole
  * too far from both ends for one print.
  * @param {object} b the beam's model (beamModel)
- * @param {number | object} op the hole's index in b.ops (the sheet's number less one), or the op itself
+ * @param {number | object} op the hole's index in b.ops (in their place from end a, where the sheet numbers them in the order they are done: workOrder), or the op itself
  * @param {{ from?: 'a' | 'b', load?: number, printer?: object, material?: string | object }} [o] from: the end the stop is on (the nearer where not given)
  * @returns {object} its model: name, title, profile, beam, op, from, distance, bush, plate, stop, tongue, size, fit (the 4x4 turn from the print frame to the beam's), findings
  */

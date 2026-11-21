@@ -1,0 +1,6 @@
+{
+  "name": "frame",
+  "description": "A box frame of aluminium extrusion, generated from its inside size: its beams, joins, feet and caps, checked, with its kit (cad kit frame/box).",
+  "material": "PLA",
+  "objects": []
+}

@@ -9,7 +9,9 @@ The libraries' documentation site, published beside the model page at https://jo
   and `cad link` on it.
 - `md.mjs` turns the READMEs into HTML (no dependency).
 - `guides/` holds guides that stand on their own, one Markdown file each, built into a page of their own and listed on the
-  index (`machines.md`: the arm from task to drawing, in commands; `pilot-insert-nut.md`: choosing what a screw grips at its far end).
+  index (`machines.md`: the arm from task to drawing, in commands, and a machine on a frame; `building-frames.md`: a profile from
+  its spec sheet to a checked box, built square; `pilot-insert-nut.md`: choosing what a screw grips at its far end). A guide
+  is never named as a library: its page would replace the library's.
 - `src/` holds the style, the 3D stage the demos share, and one demo module per package.
 
 ```sh

@@ -12,7 +12,7 @@ import { placeItems } from '@rulecad/model-link';
 import { beamOf, beamPlace, framesContext } from './beams.mjs';
 import { joinFitting, fittedStiffness } from './fittings.mjs';
 
-const KEYS = ['kind', 'a', 'b', 'fitting', 'screw', 'brace', 'load', 'nut', 'note'];
+const KEYS = ['kind', 'a', 'b', 'fitting', 'screw', 'brace', 'load', 'nut', 'face', 'shape', 'note'];
 const shown = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
 const mm = (x) => String(+Number(x).toFixed(2)), r3 = (x) => +x.toFixed(3);
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -66,6 +66,9 @@ export function expandJoins(a, num, context = framesContext(), material = 'pla')
     catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^(joinModel|beamAnchor): /, '')}`); }
     for (const [side, ops] of [['a', m.a.ops], ['b', m.b.ops]]) { const id = ends[side].id; if (ops.length) extra.set(id, [...(extra.get(id) || []), ...ops]); }
     const label = j.note || `${j.kind} join of ${j.a} to ${j.b}`, mine = [];
+    if (j.face != null && !(j.kind === 'gusset' && j.fitting === 'printed')) throw new Error(`${what}: face names the face of b a printed gusset lies on: give it on a gusset join with "fitting": "printed", or leave face out`);
+    if (j.shape != null && !(j.kind === 'gusset' && j.fitting === 'printed')) throw new Error(`${what}: shape names a printed gusset's shape (L or T): give it on a gusset join with "fitting": "printed", or leave shape out`);
+    if (j.shape != null && !['L', 'T'].includes(j.shape)) throw new Error(`${what}: shape is a printed gusset's shape, L or T (got ${JSON.stringify(j.shape)})`);
     for (const k of ['brace', 'load', 'nut']) if (j[k] != null && !(m.fitting?.printed && j.fitting === 'printed')) throw new Error(`${what}: ${k} is for a printed fitting: give "fitting": "printed" on a ${Object.keys(JOINS).filter((x) => JOINS[x].printed).join(', ')} join, or leave ${k} out`);
     // a printed fitting: its item, placed from where the beams are, and a fasten for each leg into its beam's slot
     let fitted = null;
@@ -86,12 +89,13 @@ export function expandJoins(a, num, context = framesContext(), material = 'pla')
     for (const sc of m.screws) { mine.push(first + fasten.length); fasten.push({ screw: sc.screw, through: [ends.b.id], into: ends.a.id, at: [`${ends.a.id}.${sc.bore}`], note: label, join: i, ...(lips ? { lips } : {}) }); }
     joins.push({ index: i, kind: j.kind, a: j.a, b: j.b, items: [ends.a.id, ends.b.id], end: ends.a.rest, address: ends.b.rest, label, fitting: j.fitting ?? null, model: m, fasten: mine, ...(fitted ? { fitted: { item: fitted.item.id, model: fitted.model } } : {}) });
   });
-  // each beam's own ops first; a join's op where the beam has none like it at that place (a tap at a and at a.1 are one)
+  // each beam's own ops first; a join's op where the beam has none like it at that place (a tap of the whole end a
+  // covers a tap at a.1; a tap at a.1 does not cover one at a.2, a 20 x 40's other bore)
   const withOps = items.map((it) => {
     const add = extra.get(it.id);
     if (!add) return it;
     const own = it.beam.ops || [], ops = [...own];
-    for (const op of add) if (!ops.some((g) => g?.op === op.op && (sameAt(g.at, op.at) || (op.op === 'tap' && String(g.at).trim()[0] === op.at[0])))) ops.push(op);
+    for (const op of add) if (!ops.some((g) => g?.op === op.op && (sameAt(g.at, op.at) || (op.op === 'tap' && (String(g.at).trim() === op.at[0] || (op.at.length === 1 && String(g.at).trim()[0] === op.at)))))) ops.push(op);
     return { ...it, beam: { ...it.beam, ops } };
   });
   return { a: { ...a, items: [...withOps, ...added], ...(fasten.length ? { fasten: [...(a.fasten || []), ...fasten] } : {}) }, joins };

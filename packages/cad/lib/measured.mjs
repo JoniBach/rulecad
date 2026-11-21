@@ -6,7 +6,9 @@
 // along its slot need no --rule: what each is comes from here; a slot's figures go in the workspace's copy of its set,
 // checked as a slot. A drop measured on the joint rig (join.drop's <beam>.drop) also writes the join's spring, worked
 // out from it, to the rule the spring came from: the joins set (the workspace's copy, started from @rulecad/frames'
-// estimates), a bought fitting's set, or a printed fitting's share of its finite-element figure.
+// estimates), a bought fitting's set, or a printed fitting's share of its finite-element figure. The beam coupon's sag
+// and the mass it broke at (beam.coupon's <beam>.sag and <beam>.break) write the modulus and strength a printed beam has
+// to its plastic's set (beam_modulus, beam_strength; _z standing up).
 import fs from 'node:fs';
 import path from 'node:path';
 import { setAt } from './jsonedit.mjs';
@@ -17,6 +19,7 @@ import { buildAssembly, checkAssembly, assemblyPath } from './assembly.mjs';
 import { slotModel, JOIN_SET, joinRuleSet } from '@rulecad/frames';
 import { fixingsContext } from './design.mjs';
 import { fixingsFor, threads } from '@rulecad/fixings';
+import { couponFigure } from './frameprint.mjs';
 
 const today = () => new Date().toISOString().slice(0, 10), n = (x) => String(Number(Number(x).toFixed(4)));
 export const ledgerFile = (project) => path.join(paths.project(project), 'ledger.jsonl');
@@ -76,6 +79,19 @@ function rigRule(set, key, data) {
   return null;
 }
 
+// The beam coupon (examples/bench/projects/benchmarks/MEASURE.md, rows 38 and 39): the modulus a printed beam bends at
+// and the stress it breaks at, which no plastic's data sheet gives for a beam of walls and infill, so a plastic's set has
+// no rule for them until the coupon is measured
+const BEAM_COUPON = 'the beam coupon (examples/bench/projects/benchmarks/MEASURE.md)';
+function couponRule(set, key, data) {
+  const m = key.match(/^beam_(modulus|strength)(_z)?$/);
+  if (!m || data.rules?.density == null) return null;
+  const how = m[2] ? 'printed standing up, bent across its layers' : 'printed lying down, its layers along it';
+  return { unit: 'MPa', source: BEAM_COUPON, predicted: data.rules?.[m[2] && data.rules[`${m[1]}_z`] ? `${m[1]}_z` : m[1]]?.value ?? null, was: `${set}.${m[1]}${m[2] && data.rules[`${m[1]}_z`] ? '_z' : ''}, the data sheet's`,
+    measuredRule: m[1] === 'modulus' ? `The modulus a printed beam of ${set.toUpperCase()} bends at, ${how}, with its section counted from its walls and infill (@rulecad/frames printedSection): the sag of ${BEAM_COUPON} under a hung mass, measured with a dial, and the solve's sag scaled to it. A printed beam takes it before the plastic's own modulus`
+      : `The stress a printed beam of ${set.toUpperCase()} breaks at in bending, ${how}, its section counted from its walls and infill: the mass ${BEAM_COUPON} broke at, as the stress the solve gives under it. A printed beam takes it before the plastic's own strength, and its creep limit follows it` };
+}
+
 // The printer's rules the fixings read that a printer's set may not hold yet, each measured on the fixings coupon
 // (examples/bench/projects/benchmarks/MEASURE.md): what it is, its unit, and what the kit drew before it was measured,
 // so the ledger shows predicted against measured. A pilot or an insert hole is per thread, and may name a plastic
@@ -126,7 +142,7 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
   // a rule's new value, checked before anything is written (a refusal leaves the rule sets as they were)
   const writeRule = (k, value, { from = null, unit: u = unit } = {}) => {
     const { set, rule: key, data, file, text, copied } = ruleFile(k);
-    const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? rigRule(set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
+    const old = data.rules?.[key], known = slotRule(project, set, key, data) ?? rigRule(set, key, data) ?? couponRule(set, key, data) ?? fixingsRule(project, set, key) ?? (old ? null : kitRule(set, key));
     if (known?.allowed && !known.allowed.includes(value)) throw new CadError('measured.value', `${k} is ${known.allowed.join(' or ')}: the flank forms the coupon prints (got ${value})`);
     if (!old && !rule && !known) throw new CadError('measured.rule', `${set} has no rule "${key}" (and no check here predicts "${k}"): --rule "what it is" to add it (checks: ${[...new Set(predictions.map((x) => x.code))].join(', ') || 'none'})`);
     const had = old ?? known, prior = typeof had?.value === 'number' ? had.value : known?.predicted ?? null;
@@ -149,6 +165,12 @@ export async function recordMeasured(ref, values, { unit, source, rule, date = t
         if (!(value > r.beam)) throw new CadError('measured.value', `${k}: ${n(value)} mm is no more than the ${n(r.beam)} mm the beam bends by itself under ${n(r.force)} N at ${n(r.arm)} mm, so the join would be stiffer than solid metal: read the drop again, from the dial's reading with the mass hung less its reading without`);
         const spring = (r.force * r.arm * r.arm) / (value - r.beam), figure = Number((spring * r.per).toPrecision(4));
         writeRule(r.rule, figure, { unit: r.unit, from: `${n(value)} mm drop of ${k.replace(/\.drop$/, '')} under ${n(r.force)} N at ${n(r.arm)} mm (${r.join}), less the beam's own ${n(r.beam)} mm, is a spring of ${(spring / 1e6).toFixed(3)} N·m/mrad` });
+      }
+      // the beam coupon: the modulus from its sag, the strength from the mass it broke at
+      if (p.coupon) {
+        const c = p.coupon, figure = couponFigure(c, p.value, value);
+        if (!(value > 0)) throw new CadError('measured.value', `${k}: a ${c.kind === 'modulus' ? 'sag' : 'mass'} is above 0 (got ${value})`);
+        writeRule(c.rule, figure, { unit: c.unit, from: c.kind === 'modulus' ? `${n(value)} mm sag of ${k.replace(/\.sag$/, '')} under ${c.what}, against ${n(p.value)} mm at ${n(c.base)} MPa` : `broke at ${n(value)} kg ${c.what}, ${n(c.perKg)} MPa a kilogram on its own weight's ${n(c.self)} MPa` });
       }
       continue;
     }

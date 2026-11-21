@@ -21,7 +21,13 @@ variable says which rule it comes from. Follow these steps; they're what makes a
 - When a part must fit something whose model exists (a maker's CAD, a model site), measure that model:
   `npx cad measure <file> --rules <name> --source <url> --licence "…"`. Look at the drawing in `.preview/measure/`,
   then rename the draft rules for what they are and say in each `rule` what the feature does.
-- For a beam (an aluminium extrusion) the kit has no profile for, measure the maker's model or a DXF of its section:
+- For a beam (an aluminium extrusion) the kit has no profile for, write its profile from the maker's spec sheet:
+  `npx cad rules draft profile <name>` writes every field as a draft; fill each the sheet gives (its value, `"kind":
+  "spec"`, the sheet, page and address as `source`, the date), delete the rest, and run `npx cad rules check <name>`
+  until it has no `rules.draft` warning. A section figure warned off its outline (`profile.section.*`) is first a typed
+  figure to hold against the sheet; if it is right, add the corner hollows the drawing shows as estimates, or measure
+  the section's DXF, and say in your report what is left: the checks use the sheet's figures. Never change the check;
+  then `npx cad rules draw <name>` and look at the drawing beside the sheet's. Or measure the maker's model or a DXF of its section:
   `npx cad measure <beam.stl|section.dxf> --profile <name> --source <url> --licence "…"`. It writes a draft profile
   set and the section's outline into this workspace's `rules/`. Look at the drawing, check the slot figures against
   the maker's sheet, and never copy the outline out of the workspace: it is the maker's shape.
@@ -93,6 +99,12 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   drawn: one axis through the stack, a clearance hole in each part passed, a pilot, insert or nut at the far end, the
   length chosen from what is sold, thread engaged, the seat under the head and the key's way to it, and `cad list`
   counts the screws. Report what it finds with its numbers, and fix the part, never the relation, to make it pass.
+- **A frame is beams and joins, never loose boxes.** Each beam is a `"beam"` item of a profile from a rule set (the
+  kit's or one in `rules/`, never sizes typed into an object), placed by its ends; each meeting of two beams is a
+  declared join, and its drilling, tapping, screws and nuts follow from it: never draw a join's holes or type its
+  screws. Every join's stiffness and play is an estimate until the joint rig measures it, so every frame figure that
+  rests on one (sag, sway, frequency, the diagonals to accept) is reported as resting on an estimate. The frames guide
+  (docs/guides/building-frames.md, on the docs site) walks a profile from its sheet to a checked box.
 - **Beams are held to each other by a join**, not a fasten: `{ "kind": "blind", "a": "y1.a", "b": "x1.back@120" }`
   (`npx cad add join …`), `b` the place on the other beam where a's end meets it. A blind or end-tap join taps a's end,
   drills b and adds its screw to the fasten checks and the list. A bracket, gusset or splice join with `"fitting":
@@ -106,7 +118,32 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   fitting comes later (`join.fitting`). Move the beam to fix `join.geometry`, never the address, unless the
   address is what was wrong; `join.stiffness` says whether it rests on an estimate or on the joint rig's
   measurement (and its date): report it as it says. A `join.drop` is a prediction for a beam held by one join, to
-  measure and write back with `cad measured`, never a figure to tune.
+  measure and write back with `cad measured`, never a figure to tune. `frame.deflection` gives each sag twice, on
+  the joins' springs and with the joins rigid: report the first with what it rests on (`refs.restsOn`), never the
+  rigid one alone. Say where the frame stands with `"frame": { "supports" }` or fitted feet, not by moving beams.
+  `frame.rack` gives the racking stiffness each way and the gain each change (gussets, a brace, a panel) solves to:
+  report the stiffness, the gain and the change it advises, and say the push and the joins' springs are estimates.
+  `frame.frequency` gives the lowest mode against what the machine excites: report it with its pose, and look at
+  `<assembly>.frame-mode.svg` from `cad beams` to see what moves. To choose profiles, give `"frame": { "size": {
+  "profiles": [...] } }` and read `frame.size` (or `npx cad frame <project>/<assembly> --size`): report each group's
+  profile with the limit that set it and its margin, never pick a profile by hand where the sizing can; write it with
+  `--size --write` and check again, as its joins and lengths change. A task on a guide counts the beam's sag (the
+  frame's own figure where the frame is solved), straightness and twist in `task.accuracy`: report the biggest term
+  as it is named. `frame.heat` (given `"frame": { "heat": { "air": 45 } }`) says how much the frame grows and holds
+  each printed fitting to its plastic's softening point: move a failing fitting from the heat or print it in a plastic
+  that softens higher, never raise the softening figure. `beam.printable` (given `"frame": { "printed": "petg" }`)
+  says which beams could be printed and the margin each misses by: report the margin and what governs it, say it
+  rests on estimates (the printed section, creep) until the beam coupon is measured, and name the joins it says need
+  changing. A `beam.coupon` sag or break is a prediction to measure on the bench and write back with `cad measured`,
+  never a figure to tune; `beam.creep` fails a printed beam held too hard for months: a deeper section or aluminium.
+  A beam that needs slots in more than its top face prints standing up from the metal's profile
+  (`"printed": { "pose": "standing", "end": "nut" }`): its tapped end takes the thread `beam.end` names, and a foot
+  under it takes that `"thread"`. Report each printed beam's pose, grams and the sag `frame.deflection` gives.
+- **A frame for a size starts from a generator**: `"frame": { "kind": "box", "inside": [w, d, h], "profile",
+  "join": "blind" }` (also portal, table, gantry, shelf) expands into beams, joins, feet and caps before anything is
+  checked. Ask by `inside` for what it must enclose, `outside` for what it must fit in; never work the lengths out by
+  hand. Read `frame.generated` for what it made, and `npx cad frame <project>/<assembly> --expand` to write it out
+  when it needs changes a generator cannot make, then edit the beams and joins as a hand-drawn frame.
 - **Beams are cut and drilled by hand from their sheets and jigs**: `npx cad beams <project>/<assembly>` writes a
   cut-and-drill sheet per mark, and `--jigs` writes the jigs as a plate in `exports/` (a drill guide per distinct
   hole across a beam, a tap guide per tapped end, a cut-length stop per length, a squaring corner of the hand each square join takes),
@@ -146,10 +183,18 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   the user, and `cad order` shows them on the step.
 - **A frame's build is `cad order`**: from bars to a square frame in numbered steps (cut, drill and tap, sides built
   flat and squared, nuts to load, joins with their torque, the diagonals, then the rest). Give the user its steps and
-  its diagonals (`frame.square`: each and the difference to accept). If it is refused for a slot's nuts, change the
+  its diagonals (`frame.square`: each and the difference to accept, stacked from the cut tolerances and the joins'
+  play; `"frame": { "cut": { "tolerance": 1 } }` where the user's saw holds less than the profile's figure). Once
+  squared, the difference they measure goes back with `cad measured <ref> frame.square.<beams>=<mm>`. If it is refused for a slot's nuts, change the
   nut to the kind it names; never reorder the joins to get round it. Where a side is built on the frame, not flat,
   the build says why; pass that on. Its load and "Slide ... screw into ... head first" steps give each nut and head a
   way into its slot: pass them on as written. `cad check` counts the same steps.
+- **To hand a build to someone, write its kit**: `npx cad kit <project>/<assembly>` writes
+  `exports/<project>/<assembly>-kit/` (the build page as README.md, buy.csv, each plate's 3MF and the jigs', each
+  mark's sheet; `--pictures` adds the steps' pictures). It refuses a design whose check fails: fix the failures, never
+  hand on a kit of one. `npx cad plates` lays out every printed part by material, with a frame's jigs beside them.
+  A new frame project can start from `npm create rulecad my-frame --machine frame --size 300x300x350 --profile
+  2020-misumi-hfs5`.
 - A fit with `"fastens": true` is for what holds parts without screws (pins, a press, a clip). An older assembly with
   a holes fit (`{ "holes": "pcb.board", "into": "case.body", … }`) and a fit that fastens the same parts gets a
   `fasten.suggest` note from `cad check`: `npx cad add fasten <project>/<assembly> --from-fits` puts the fasten in

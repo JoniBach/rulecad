@@ -3,6 +3,18 @@
 What changed in each release, for someone upgrading a workspace. A rule set's **values** are the figures designs
 read (`m3.clearance`, `x1c.hole_comp`). Each release says whether any value changed, and why.
 
+## 0.3.17: printed beams (Frames 3)
+
+### Added
+
+- `profile-1515-printed`, `profile-2020-printed`, `profile-3030-printed`, `profile-4040-printed` and their slots
+  (`slot-3-printed-1515`, `slot-6-printed-2020`, `slot-8-printed-3030`, `slot-8-printed-4040`): beams to print lying
+  down, worked out by `@rulecad/frames` `printedProfile` from their nuts and the X1C's rules (every value `derived`).
+- `slot-nut-3-openbeam-m3-hex`: the plain M3 nut OpenBeam's slot captures.
+- Vocabulary: `end_thread` and `end_at`, a printed profile's end fixing.
+
+No existing value changed.
+
 ## 0.3.16: fittings, rails, wheels and the joint rig (Frames 2)
 
 ### Added

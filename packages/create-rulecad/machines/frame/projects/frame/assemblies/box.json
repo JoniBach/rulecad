@@ -1,0 +1,14 @@
+{
+  "title": "Box frame",
+  "kind": "fit",
+  "frame": {
+    "kind": "box",
+    "inside": [300, 300, 350],
+    "profile": "2020-misumi-hfs5",
+    "join": "blind",
+    "feet": "levelling"
+  },
+  "loads": [
+    { "mass": 5, "at": "x3.top@50%", "note": "5 kg set on the middle of the top's front beam: change it to what the box carries" }
+  ]
+}

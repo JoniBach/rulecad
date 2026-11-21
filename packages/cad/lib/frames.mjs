@@ -26,7 +26,8 @@ export function framesContext(dir) {
     for (const f of files) {
       try {
         const raw = fs.readFileSync(path.join(d, f), 'utf8'), s = JSON.parse(raw);
-        if (into === sets ? s?.rules && typeof s.rules === 'object' && ['profile', 'slot', 'slot_nut', 'material', 'thread', 'fitting', 'joins'].includes(s.part) : Array.isArray(s?.loops)) { into[s.name ?? f.slice(0, -5)] = s; text.push(raw); }
+        // (a plastic's or a metal's set has no part: it is a material by its density, and the beam coupon measures into it)
+        if (into === sets ? s?.rules && typeof s.rules === 'object' && (['profile', 'slot', 'slot_nut', 'material', 'thread', 'fitting', 'joins'].includes(s.part) || (s.part == null && typeof s.rules.density?.value === 'number')) : Array.isArray(s?.loops)) { into[s.name ?? f.slice(0, -5)] = s; text.push(raw); }
       } catch {} // (a broken set is cad rules check's to name)
     }
   }

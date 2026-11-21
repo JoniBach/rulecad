@@ -35,11 +35,22 @@ export const END_DEFAULTS = {
   root: rule(0.4, 'mm', 'A peg\'s root is chamfered this much at 45°, so it has no square inside corner', 'default', 'A working figure of @rulecad/frames: the printer\'s chamfer (x1c.chamfer)'),
   rim: rule(2, 'mm', 'A foot reaches this far past the beam\'s outline each way', 'default', 'A working figure of @rulecad/frames'),
   load: rule(250, 'N', 'The design load on one foot or castor where none is given: a quarter of a 100 kg machine with some over', 'default', 'A working figure of @rulecad/frames, so every foot is sized and compared at one named load'),
-  stud: rule('M12', '', 'A printed levelling foot\'s thread: coarse enough to print well and to turn by hand', 'default', 'A working figure of @rulecad/frames: @rulecad/fixings prints threads of M6 and over'),
+  stud: rule('M12', '', 'A printed levelling foot\'s thread: coarse enough to print well and to turn by hand. Where the screw into the beam\'s end is too big a head to pass its bore, the foot takes the first of END_DEFAULTS.studs that it does pass', 'default', 'A working figure of @rulecad/frames: @rulecad/fixings prints threads of M6 and over'),
+  studs: rule(['M12', 'Tr16x4', 'Tr20x4', 'Tr24x5'], '', 'The printed levelling foot\'s threads, in order of size: the foot takes the first whose bore (its minor diameter: 0.8 of an M thread\'s, the diameter less the pitch for a trapezoidal one) passes the head of the screw into the beam\'s end. Trapezoidal threads print well large and turn smoothly', 'spec', 'DIN 103 (ISO metric trapezoidal threads): Tr16x4, Tr20x4 and Tr24x5 with internal minor diameters 12, 16 and 19 mm, as tabled at amesweb.info/Screws/trapezoidal-thread-chart.aspx; M12 from @rulecad/fixings'),
   range: rule(10, 'mm', 'How far a levelling foot\'s pad screws in and out', 'default', 'A working figure of @rulecad/frames'),
   engage: rule(1, '× diameter', 'A levelling foot\'s pad keeps at least this much of its thread engaged at its lowest', 'estimate', 'A working figure of @rulecad/frames: a printed thread\'s engagement'),
   socket: rule(5, 'mm', 'How deep a stacking foot\'s socket goes over the end of the beam below', 'default', 'A working figure of @rulecad/frames'),
 };
+
+// A levelling foot's stud: its major diameter and the bore through it (an M thread's from @rulecad/fixings, its core
+// taken as 0.8 of the major; a trapezoidal one's minor diameter, its diameter less its pitch, as DIN 103 gives)
+const TR_STUD = /^tr\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)$/i;
+function studOf(stud) {
+  const t = TR_STUD.exec(String(stud).trim());
+  if (t) return { major: Number(t[1]), core: r3(Number(t[1]) - Number(t[2])) };
+  const f = fixingModel(stud);
+  return { major: f.major, core: r3(f.major * 0.8) };
+}
 
 // The end's place of a section's point
 const toEnd = (end) => (end === 'b' ? ([sx, sy]) => [sy, -sx] : ([sx, sy]) => [sy, sx]);
@@ -79,7 +90,8 @@ function rooted(loop, h, r, z0 = 0) {
   return union(translate([0, 0, z0], extrudeLinear({ height: h }, g)), hull(slab(wide, z0), slab(g, z0 + r)));
 }
 function ending(m, k, fits) {
-  if (fits) m.findings.unshift(finding(fits.length ? 'pass' : 'warn', fits.length ? `${fits.thread}x${fits.length} cap into the end's tapped bore: through ${mm(fits.floor)} mm of floor, ${mm(fits.need)} mm or more into the aluminium, inside a tap ${mm(fits.tap)} mm deep (the beam's end is tapped ${fits.thread} that deep: a tap op at its bore)` : `no ${fits.thread} cap screw sold reaches ${mm(fits.need)} mm into the tapped end and stops inside a ${mm(fits.tap)} mm tap: the fasten check chooses`, 'fitting.screw', { values: { length: fits.length, need: fits.need, tap: fits.tap, floor: fits.floor } }));
+  if (fits?.printed) m.findings.unshift(finding('info', `${fits.thread} cap through ${mm(fits.floor)} mm of floor into the printed end's own ${fits.thread} fixing, a heat-set insert or a captive nut in its bore's place (the beam's printed ends say which): the fasten check chooses its length`, 'fitting.screw', { values: { floor: fits.floor } }));
+  else if (fits) m.findings.unshift(finding(fits.length ? 'pass' : 'warn', fits.length ? `${fits.thread}x${fits.length} cap into the end's tapped bore: through ${mm(fits.floor)} mm of floor, ${mm(fits.need)} mm or more into the aluminium, inside a tap ${mm(fits.tap)} mm deep (the beam's end is tapped ${fits.thread} that deep: a tap op at its bore)` : `no ${fits.thread} cap screw sold reaches ${mm(fits.need)} mm into the tapped end and stops inside a ${mm(fits.tap)} mm tap: the fasten check chooses`, 'fitting.screw', { values: { length: fits.length, need: fits.need, tap: fits.tap, floor: fits.floor } }));
   void k;
 }
 
@@ -124,27 +136,36 @@ export function endCap(m, o = {}) {
 
 // ---------- feet ----------
 // A pad on the end: the outline grown by rim, a counterbore for the screw into the end's bore from its far side
-function padModel(what, kind, profile, o, keys) {
-  const { end, p, k, rect, map } = endSetup(what, profile, o, keys), b = boreOf(what, p);
+function padModel(what, kind, profile, o, keys, printedEnd = null) {
+  const { end, p, k, rect, map } = endSetup(what, profile, o, keys), bore = boreOf(what, p);
+  // (a foot's thread given: the end is a printed beam's, its screw into an insert or a captive nut in the bore's place)
+  if (printedEnd != null) {
+    let fx; try { fx = fixingModel(printedEnd); } catch { throw new Error(`${what}: thread is the printed end's thread, as 'M3' (got ${shown(printedEnd)})`); }
+    if (fx.major > bore.diameter + 1e-9) throw new Error(`${what}: an ${printedEnd} screw does not pass up ${p.name}'s ${mm(bore.diameter)} mm bore: a printed end takes a thread no wider than its bore`);
+  }
+  const b = printedEnd != null ? { ...bore, thread: printedEnd, printed: true } : bore;
   loadOk(what, o.load, 'the force on the foot, down the beam');
   const F = o.load ?? END_DEFAULTS.load.value, sc = screwOf(what, b.thread, 'cap', k.pr), rim = END_DEFAULTS.rim.value;
-  return { end, p, k, rect, map, b, F, sc, rim };
+  // (the tap goes in that bore alone: where the end has several, by its number, a.1, so the others stay plain holes)
+  const tapAt = p.bores.length > 1 ? `${end}.${p.bores.indexOf(bore) + 1}` : end;
+  return { end, p, k, rect, map, b, F, sc, rim, tapAt };
 }
 
 /**
  * A printed foot under a beam's end: a pad the beam's outline and a rim wider, screwed into the end's tapped bore
  * through a counterbore in its underside. It prints as it stands, the beam's side down. Its margin is the plastic's
  * strength over the bearing stress under the named load.
- * @param {string | object} profile @param {{ end?: 'a' | 'b', load?: number, printer?: object, material?: string | object, given?: object }} [o]
+ * @param {string | object} profile @param {{ end?: 'a' | 'b', thread?: string, load?: number, printer?: object, material?: string | object, given?: object }} [o]
+ *   thread: for a printed beam's end, which takes a screw of this thread in an insert or a captive nut in its bore's place
  * @returns {object} its model: screws (into the bore), ops (the tap the beam's end needs)
  */
 export function footModel(profile, o = {}) {
-  const what = 'footModel', s = padModel(what, 'foot', profile, o, ['end', 'load', 'printer', 'material', 'given']), { p, k, b, F, sc, rim } = s;
+  const what = 'footModel', s = padModel(what, 'foot', profile, o, ['end', 'thread', 'load', 'printer', 'material', 'given'], o.thread ?? null), { p, k, b, F, sc, rim } = s;
   const floor = Math.max(up(FITTING_DEFAULTS.least.value * sc.major, k.layer), up(4 * k.layer, k.layer)), sink = up((fixingModel(b.thread).figures.head_height?.value ?? sc.major) + 0.5, k.layer), t = r3(floor + sink);
-  const area = (p.width + 2 * rim) * (p.height + 2 * rim) - (Math.PI * (sc.dk + 1) ** 2) / 4, stress = r3(F / area), margin = r3(k.S / stress), fits = { ...endScrew(b.thread, floor), floor };
+  const area = (p.width + 2 * rim) * (p.height + 2 * rim) - (Math.PI * (sc.dk + 1) ** 2) / 4, stress = r3(F / area), margin = r3(k.S / stress), fits = b.printed ? { thread: b.thread, floor, printed: true, length: null, tap: null } : { ...endScrew(b.thread, floor), floor };
   const at = s.map(b.at);
   const m = { kind: 'fitting', fitting: 'foot', name: `foot-${short(p)}`, title: `printed foot for ${short(p)}`, profile: p.name, end: s.end, thread: b.thread, thickness: t, floor, sink, rim, outline: s.rect(rim, rim + (p.cornerRadius ?? 0)), bore: at,
-    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }],
+    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, ...(fits.tap != null ? { depth: fits.tap } : {}) }],
     load: { force: F, what: `${F} N down the beam onto the floor` }, stress, margin, size: { thickness: t, floor, rim }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['rim', 'load'].map((x) => ({ name: `END_DEFAULTS.${x}`, value: END_DEFAULTS[x].value, kind: END_DEFAULTS[x].kind }))] };
   weigh(m, foot(m, { printer: k.pr }), k.density);
@@ -169,11 +190,15 @@ export function foot(m, o = {}) {
  */
 export function levellingFootModel(profile, o = {}) {
   const what = 'levellingFootModel', s = padModel(what, 'levelling', profile, o, ['end', 'stud', 'range', 'load', 'printer', 'material', 'given']), { p, k, b, F, sc } = s;
-  const printed = o.stud == null || o.stud === 'printed', stud = printed ? END_DEFAULTS.stud.value : o.stud, range = o.range ?? END_DEFAULTS.range.value;
+  const tr = typeof o.stud === 'string' && TR_STUD.test(o.stud.trim()), auto = o.stud == null || o.stud === 'printed', printed = auto || tr, range = o.range ?? END_DEFAULTS.range.value;
   if (!(isNum(range) && range > 0 && range <= 40)) throw new Error(`${what}: range is how far the pad screws in and out, in mm, above 0 and up to 40 (got ${shown(o.range)})`);
-  let st; try { st = fixingModel(stud); } catch (e) { throw new Error(`${what}: stud is 'printed' or a bought foot's thread, as 'M8' (got ${shown(o.stud)}): ${String(e.message).replace(/^\w+: /, '')}`); }
+  // the printed thread: the first of END_DEFAULTS.studs whose bore passes the head of the screw into the beam's end
+  const passes = (x) => studOf(x).core >= sc.dk + 2 * k.fit, first = END_DEFAULTS.studs.value.find(passes);
+  let stud = auto ? first : tr ? o.stud.trim().replace(/^tr/i, 'Tr') : o.stud, st;
+  if (auto && !stud) throw new Error(`${what}: no printed stud of ${END_DEFAULTS.studs.value.join(', ')} (END_DEFAULTS.studs) has a bore wide enough for ${b.thread}'s ${mm(sc.dk)} mm head to pass: give a bought foot's stud, as 'M10'`);
+  try { st = studOf(stud); } catch (e) { throw new Error(`${what}: stud is 'printed' (the first of ${END_DEFAULTS.studs.value.join(', ')} that fits), a printed trapezoidal thread as 'Tr20x4', or a bought foot's thread, as 'M8' (got ${shown(o.stud)}): ${String(e.message).replace(/^\w+: /, '')}`); }
   const head = fixingModel(b.thread).figures.head_height?.value ?? sc.major;
-  if (st.major * 0.8 < sc.dk + 2 * k.fit && printed) throw new Error(`${what}: an ${stud} stud's bore is too small for ${b.thread}'s ${mm(sc.dk)} mm head to pass: a coarser stud`);
+  if (printed && !passes(stud)) throw new Error(`${what}: a printed ${stud} stud's bore (${mm(st.core)} mm) is too small for ${b.thread}'s ${mm(sc.dk)} mm head to pass${first ? `: give stud ${JSON.stringify(first)}, or leave stud out and the foot takes it` : ''}`);
   const floor = up(Math.max(FITTING_DEFAULTS.least.value * sc.major, 4 * k.layer), k.layer), well = up(head + 0.5, k.layer), engage = r3(END_DEFAULTS.engage.value * st.major);
   const nutH = printed ? 0 : nutModel(stud).height, threadLen = r3(engage + range), height = r3(floor + well + threadLen + (printed ? 0 : 0)), wall = up(3 * k.line, 0.1) * 2;
   const across = r3(Math.max(Math.min(p.width, p.height), st.major + 2 * wall + (printed ? 0 : st.major * 0.8))), pad = r3(across + 2 * s.rim);
@@ -181,10 +206,10 @@ export function levellingFootModel(profile, o = {}) {
   // the pad's stem in bending at its root under a side push of a tenth of the load, as on uneven ground
   // printed: the pad's stem bent at its root by a side push of a tenth of the load, as on uneven ground; bought (a steel
   // stud): the body's floor bearing the load
-  const side = F / 10, root = st.major * 0.8, stress = r3(printed ? (32 * side * threadLen) / (Math.PI * root ** 3) : F / ((Math.PI / 4) * (across ** 2 - (st.major + 0.6) ** 2))), margin = r3(k.S / stress);
+  const side = F / 10, root = st.core, stress = r3(printed ? (32 * side * threadLen) / (Math.PI * root ** 3) : F / ((Math.PI / 4) * (across ** 2 - (st.major + 0.6) ** 2))), margin = r3(k.S / stress);
   const m = { kind: 'fitting', fitting: 'levelling-foot', name: `levelling-foot-${short(p)}-${printed ? `printed-${stud.toLowerCase()}` : stud.toLowerCase()}`, title: `printed levelling foot for ${short(p)}, ${printed ? `a printed ${stud} thread` : `a bought ${stud} stud`}`,
     profile: p.name, end: s.end, thread: b.thread, stud, printed, range, engage, floor, well, height: r3(floor + well + threadLen + (printed ? 0 : nutH)), across, pad, bore: at, nut: printed ? null : nutModel(stud).name,
-    parts: printed ? ['body', 'pad'] : ['body'], screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }],
+    parts: printed ? ['body', 'pad'] : ['body'], screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, depth: fits.tap }],
     hardware: printed ? [] : [{ kind: 'nut', name: nutModel(stud).name, thread: stud, count: 1 }, { kind: 'foot', name: `a levelling foot on an ${stud} stud`, thread: stud, count: 1 }],
     load: { force: F, what: printed ? `${F} N down the foot, and a tenth of it across the pad's stem` : `${F} N down the stud's nut onto the body` }, stress, margin, size: { height: r3(floor + well + threadLen + nutH), range, across }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['stud', 'range', 'engage', 'load'].map((x) => ({ name: `END_DEFAULTS.${x}`, value: END_DEFAULTS[x].value, kind: END_DEFAULTS[x].kind }))] };
@@ -202,10 +227,10 @@ export function levellingFoot(m, o = {}) {
   if (m?.fitting !== 'levelling-foot') throw new Error(`levellingFoot: give a levelling foot's model (levellingFootModel), not ${shown(m)}`);
   const part = o.part ?? 'body', pr = o.printer, fx = pr ? { printer: pr } : {}, [cx, cy] = m.bore, R = m.across / 2;
   if (!['body', 'pad'].includes(part) || (part === 'pad' && !m.printed)) throw new Error(`levellingFoot: part is body${m.printed ? ' or pad' : ''} (got ${shown(o.part)})`);
-  const st = fixingModel(m.stud), body = m.floor + m.well + (m.printed ? m.engage + m.range : nutModel(m.stud).height + m.range);
+  const st = studOf(m.stud), body = m.floor + m.well + (m.printed ? m.engage + m.range : nutModel(m.stud).height + m.range);
   if (part === 'body') {
     const outer = translate([cx, cy, 0], cylinder({ radius: R, height: body, center: [0, 0, body / 2], segments: 48 }));
-    const cuts = [counterbore(m.thread, { head: 'cap', depth: m.well + 0.01, diameter: st.major * 0.8, length: m.floor + m.well + 2, into: '-z', at: [cx, cy, m.floor + m.well], ...fx })];
+    const cuts = [counterbore(m.thread, { head: 'cap', depth: m.well + 0.01, diameter: st.core, length: m.floor + m.well + 2, into: '-z', at: [cx, cy, m.floor + m.well], ...fx })];
     if (m.printed) cuts.push(translate([cx, cy, m.floor + m.well], printedThread(m.stud, { length: body - m.floor - m.well, internal: true, ...fx })));
     else cuts.push(nutPocket(m.stud, { at: [cx, cy, body], into: '-z', ...fx }), translate([cx, cy, m.floor + m.well - 0.01], cylinder({ radius: st.major / 2 + 0.3, height: body, center: [0, 0, body / 2], segments: 32 })));
     return Object.assign(combine([outer], cuts, o.ops), { model: m });
@@ -241,7 +266,7 @@ export function castorPlateModel(profile, o = {}) {
   const m = { kind: 'fitting', fitting: 'castor-plate', name: `castor-plate-${short(p)}-${mm(o.holes[0])}x${mm(o.holes[1])}-${o.thread.toLowerCase()}`, title: `printed castor plate for ${short(p)}, castor holes ${mm(o.holes[0])} x ${mm(o.holes[1])} mm, ${o.thread}`,
     profile: p.name, end: s.end, thread: b.thread, bolt: o.thread, holes: o.holes, thickness: t, floor, sink, outline: roundRect([[-X, -Y], [X, Y]], 2), bore: at,
     screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], 0], axis: [0, 0, 1], into: 'bore', length: fits.length }, ...corners.map(([x, y]) => ({ thread: o.thread, head: 'cap', grip: t, at: [x, y, 0], axis: [0, 0, 1], into: 'castor' }))],
-    ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }], load: { force: F, what: `${F} N up the castor, half on each pair of its bolts, ${mm(Math.min(hx, hy) - half)} mm past the beam's edge` }, stress, margin, size: { thickness: t, x: 2 * X, y: 2 * Y },
+    ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, depth: fits.tap }], load: { force: F, what: `${F} N up the castor, half on each pair of its bolts, ${mm(Math.min(hx, hy) - half)} mm past the beam's edge` }, stress, margin, size: { thickness: t, x: 2 * X, y: 2 * Y },
     volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [], rests: [{ name: `${k.mat.name}.strength`, value: k.S }, { name: 'END_DEFAULTS.load', value: END_DEFAULTS.load.value, kind: END_DEFAULTS.load.kind }] };
   weigh(m, castorPlate(m, { printer: k.pr }), k.density);
   // (its screw into the end goes in from the castor's side, before the castor)
@@ -273,7 +298,7 @@ export function stackingFootModel(profile, o = {}) {
   const area = 2 * (p.width + p.height + 4 * k.fit) * wall, stress = r3(F / ((p.width + 2 * wall) * (p.height + 2 * wall) - Math.PI * (sc.dk / 2 + 0.5) ** 2)), margin = r3(k.S / stress);
   const m = { kind: 'fitting', fitting: 'stacking-foot', name: `stacking-foot-${short(p)}`, title: `printed stacking foot for ${short(p)}`, profile: p.name, end: s.end, thread: b.thread, thickness: t, floor, sink, depth, wall,
     outline: s.rect(k.fit + wall, (p.cornerRadius ?? 0) + k.fit + wall), socket: s.rect(k.fit, (p.cornerRadius ?? 0) + k.fit), bore: at, wallArea: r3(area),
-    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.end, thread: b.thread, depth: fits.tap }],
+    screws: [{ thread: b.thread, head: 'cap', grip: floor, at: [at[0], at[1], floor], axis: [0, 0, -1], into: 'bore', length: fits.length }], ops: [{ op: 'tap', at: s.tapAt, thread: b.thread, depth: fits.tap }],
     load: { force: F, what: `${F} N of the frame above on the beam below, through the floor` }, stress, margin, size: { thickness: t, depth, wall }, volume: 0, grams: 0, material: k.mat.name, printer: k.pr.name, findings: [],
     rests: [{ name: `${k.mat.name}.strength`, value: k.S }, ...['socket', 'load'].map((x) => ({ name: `END_DEFAULTS.${x}`, value: END_DEFAULTS[x].value, kind: END_DEFAULTS[x].kind }))] };
   weigh(m, stackingFoot(m, { printer: k.pr }), k.density);

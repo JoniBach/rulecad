@@ -17,16 +17,17 @@
 // linear bearings, driven by a lead screw from a printed motor plate for the catalogue's motors, with an endstop's
 // printed mount and a flag on the carriage; and jigs for hand tools from a beam's operations (a drill guide, a tap
 // guide, a cut-length stop and a squaring corner); and a bay squared by its diagonals (their length and the difference
-// to accept, from the cut tolerance). Belts follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
+// to accept, from the cut tolerance); and frames from a size (a box, a portal, a table, a gantry on its base and a shelf,
+// asked for by the volume they enclose or fit within, their beams' lengths following the profile and the join). Belts follow: the plan is https://github.com/JoniBach/rulecad/issues/240.
 //
 // Every profile, slot family, slot nut, bought fitting and rail is a rule set in @rulecad/rules, so the numbers are open data and live
 // there. A section is drawn in x (across, its width) and y (up, its height), with the middle of its envelope at the
 // origin; a beam runs along z from end a at z = 0. Its faces are top (+y), bottom (-y), front (-x) and back (+x).
 // Units: mm, grams, degrees.
 export * from './profile.mjs';
-export { beamModel, beam, beamAnchor, printable } from './beam.mjs';
+export { beamModel, beam, beamAnchor, printable, workOrder } from './beam.mjs';
 export { OPS, OP_DEFAULTS } from './ops.mjs';
-export { JOINS, JOIN_STIFFNESS, JOIN_SCALE, JOIN_TAP, JOIN_SET, joinRuleSet, joinStiffness, joinModel, boughtStiffness } from './join.mjs';
+export { JOINS, JOIN_STIFFNESS, JOIN_PLAY, JOIN_SCALE, JOIN_TAP, JOIN_SET, joinRuleSet, joinStiffness, joinModel, boughtStiffness } from './join.mjs';
 export { BOUGHT_KINDS, boughtFittings, boughtFittingModel, boughtFitting, printedCost } from './bought.mjs';
 export { CUT_DEFAULTS, beamMarks, packBars, cutList, cutListText } from './cutlist.mjs';
 export { beamSheet } from './cutsheet.mjs';
@@ -41,3 +42,6 @@ export { ROD_DEFAULTS, rodsLayout, rodHolderModel, rodHolder, motorPlateModel, m
 export { END_DEFAULTS, endCapModel, endCap, footModel, foot, levellingFootModel, levellingFoot, castorPlateModel, castorPlate, stackingFootModel, stackingFoot } from './ends.mjs';
 export { JIG_KINDS, JIG_DEFAULTS, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner } from './jig.mjs';
 export { squareness } from './square.mjs';
+export { PRINTED_DEFAULTS, PRINTED_SERIES, PRINTED_CHECKED, printedProfile, printedSection, printerFigures, beamCreep } from './printing.mjs';
+export { printedBeam, printedInPlace, spliceModel, splice } from './printed.mjs';
+export { FRAME_KINDS, FRAME_JOINS, FRAME_FEET, FRAME_GEN, frameModel, box, portal, table, gantry, shelf } from './generate.mjs';
