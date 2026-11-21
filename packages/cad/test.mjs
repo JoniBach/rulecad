@@ -1359,7 +1359,9 @@ test('an optimisation\'s densities are kept by everything that makes them: the p
   const { densitiesKey, densityCode } = await import('./lib/optimise.mjs');
   const code = densityCode(), problem = { space: { size: [30, 12] } }, key = densitiesKey(problem, code);
   assert.equal(densitiesKey(problem), key, 'the code read is the code that runs');
-  assert.match(code.cad, /^function holdEmpty\(spec\)/); assert.doesNotMatch(code.solver, /shapes from results/);
+  assert.match(code.cad, /^function holdEmpty\(spec\)/);
+  // the call that hands the problem to the solver, with its settings, is in it too: a setting added there (tol, move) optimises again
+  assert.match(code.cad, /optimise\(spec, \{ backend: threadsBackend/); assert.doesNotMatch(code.solver, /shapes from results/);
   assert.equal(code.threads, fs.readFileSync(fileURLToPath(import.meta.resolve('@rulecad/fea/threads')), 'utf8'));
   // a change to any one piece (cad's own holdEmpty among them, which the key once left out) moves the key, and so does
   // the problem; scripts/dimension-diff.mjs shares the densities between commits on this key alone

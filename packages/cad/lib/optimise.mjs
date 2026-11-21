@@ -112,10 +112,11 @@ const digest = (x) => crypto.createHash('sha256').update(JSON.stringify(x)).dige
  * that readies the problem for the solver (holdEmpty). Drawing a shape from the densities is not in it.
  * @returns {{ version: number, solver: string, fea: string, threads: string, cad: string }}
  */
-export const densityCode = () => ({ version: VERSION, solver: source('@rulecad/topopt').split('// ---------- shapes from results ----------')[0], fea: source('@rulecad/fea'), threads: source('@rulecad/fea/threads'), cad: holdEmpty.toString() });
+export const densityCode = () => ({ version: VERSION, solver: source('@rulecad/topopt').split('// ---------- shapes from results ----------')[0], fea: source('@rulecad/fea'), threads: source('@rulecad/fea/threads'), cad: `${holdEmpty.toString()}\n${optimised.toString()}` });
 /**
  * The key an optimisation's densities are kept by (.cache/densities/<key>.json): the problem and every piece of
- * densityCode, so a change to any of them optimises again, in this checkout or in another commit's copy that shares
+ * densityCode (cad's own share is holdEmpty and optimised, which readies the problem and calls the solver with its
+ * settings), so a change to any of them optimises again, in this checkout or in another commit's copy that shares
  * the folder (scripts/dimension-diff.mjs).
  * @param {object} problem readProblem's problem @param {ReturnType<typeof densityCode>} [code] @returns {string}
  */

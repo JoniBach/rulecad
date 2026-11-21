@@ -56,6 +56,9 @@ and head, the parts it passes through and the part it ends in.
 
 ### Changed
 
+- **An optimisation's saved densities are kept by everything that makes them:** the problem, topopt's solver, the
+  FE and its threads backend, and cad's own code that readies the problem and calls the solver with its settings. A
+  change to any of them optimises again. Each problem already saved is optimised once more the first time it is run.
 - **A generated portal says how it is held**: a portal lies in one plane, and on its two feet (each holding a leg's end
   from moving, not from turning) it tips over out of that plane: every generated portal failed `frame.buckling`
   (factor 0) or warned `frame.solve`, whatever its join or profile. `"frame": { "kind": "portal" }` is now refused by
