@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jonibach.github.io/rulecad/schemas/project.schema.json",
+  "title": "rulecad project",
+  "description": "A project's own file, projects/<name>/project.json: what it is, the plastic and printer its parts are made for, and its objects. cad new <project> writes it, cad set <project> field=value changes it, cad new <project>/<object> lists each object.",
+  "type": "object",
+  "required": ["name"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "description": "The project's folder name: lower case, with dashes" },
+    "title": { "type": "string", "description": "What the project is, in a few words, for its pages and lists" },
+    "description": { "type": "string", "description": "A sentence or two on what it is for" },
+    "material": { "type": "string", "description": "The plastic its parts print in unless a part says otherwise: PLA or PETG, or a rule set in rules/ that gives strength, modulus and density. Printed fittings are sized from it" },
+    "printer": { "type": "string", "description": "The printer rule set its prints are checked against (bed, overhang, layer), as x1c; left out, cad.config.json's printer" },
+    "objects": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }, "description": "Its objects, by name, as cad new <project>/<object> lists them" },
+    "filaments": {
+      "type": "object",
+      "description": "Its filaments, by name, for parts that print in more than one (a part's \"filament\": \"legend\"): each in its AMS slot",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "slot": { "type": "integer", "description": "The AMS slot it loads from, 1 to 16" },
+          "material": { "type": "string", "description": "Its plastic, where it differs from the project's" },
+          "colour": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}
