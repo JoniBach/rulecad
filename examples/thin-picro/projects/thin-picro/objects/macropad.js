@@ -78,18 +78,20 @@ export function main (v) {
   const place = { module_x: mc.x, module_y: mc.y, key_x0: keyLeft + P / 2, key_y0: 0, flip }
   let tabTop = null, xs = [-L / 2, L / 2]
   if (!rear) {
-    // SPI at the right end: a display lies over the module with its header in it, its bottom edge level with the
-    // module's (clear of the keys), so the socket's centre is half the display's height up from there
+    // SPI at the right end, each pin straight across from the module's own display column (the same heights): a
+    // display lies over the module with its header in it, lifted on a tall socket (display_stack) clear of the top row
+    // of keycaps that it reaches over
     nets.GND = pinOf('GND').map((p) => `U1.pin${p.pin}`) // (all of them: joined inside the module anyway, and no pad left off a net for a track to pass over)
     nets['3V3'] = [`U1.pin${pinOf('3V3').find((p) => p.side === 'right').pin}`]
     const spi = ['GND', '3V3', `GP${v.display_scl}`, `GP${v.display_sda}`, `GP${v.display_res}`, `GP${v.display_dc}`, `GP${v.display_cs}`, `GP${v.display_blk}`]
     const i2c = ['GND', '3V3', `GP${v.i2c_scl}`, `GP${v.i2c_sda}`]
-    const sx = L / 2 + v.castle_out + v.socket_gap, sy = mc.y - H / 2 + v.st7789_2in.height / 2
+    const column = pins.filter((p) => p.side === 'right').map((p) => at(p.hole).y)
+    const sx = L / 2 + v.castle_out + v.socket_gap, sy = column.reduce((n, y) => n + y, 0) / column.length // (the module's column, pitch for pitch)
     const ix = -sx, iy = mc.y
     // header(): pin 1 at the top of the column; turned half round, pin 1 (GND) at the bottom, as the module's own column
-    const strip = (n) => v.pcb.stripModel(n, { pitch: mod.pitch, height: v.socket_height, thickness: v.thickness })
-    parts.push({ ...v.pcb.header('J1', sx, sy, sockets, { pins: spi.length, rotation: v.socket_turn, mpn: `1 × ${spi.length} female header, ${mod.pitch} mm`, model: strip(spi.length), sch: { x: -v.cols * v.sch_grid, y: -v.sch_grid } }), bom: false, place: false },
-      { ...v.pcb.header('J2', ix, iy, sockets, { pins: i2c.length, rotation: v.socket_turn, mpn: `1 × ${i2c.length} female header, ${mod.pitch} mm`, model: strip(i2c.length), sch: { x: -v.cols * v.sch_grid, y: -v.rows * v.sch_grid } }), bom: false, place: false })
+    const strip = (n, height) => v.pcb.stripModel(n, { pitch: mod.pitch, height, thickness: v.thickness })
+    parts.push({ ...v.pcb.header('J1', sx, sy, sockets, { pins: spi.length, rotation: v.socket_turn, mpn: `1 × ${spi.length} female header, ${mod.pitch} mm`, model: strip(spi.length, v.display_stack), sch: { x: -v.cols * v.sch_grid, y: -v.sch_grid } }), bom: false, place: false },
+      { ...v.pcb.header('J2', ix, iy, sockets, { pins: i2c.length, rotation: v.socket_turn, mpn: `1 × ${i2c.length} female header, ${mod.pitch} mm`, model: strip(i2c.length, v.socket_height), sch: { x: -v.cols * v.sch_grid, y: -v.rows * v.sch_grid } }), bom: false, place: false })
     const join = (part, list) => list.forEach((s, i) => { (nets[s] ||= [`U1.pin${(pinOf(s).find((p) => p.side !== 'bottom') || pinOf(s)[0]).pin}`]).push(`${part}.pin${i + 1}`) })
     join('J1', spi); join('J2', i2c)
     // each pin's name on the back, beside the socket (the front is under the display)
@@ -97,7 +99,7 @@ export function main (v) {
     names(sx, sy, ['GND', 'VCC', 'SCL', 'SDA', 'RES', 'DC', 'CS', 'BLK'], -1); names(ix, iy, ['GND', 'VCC', 'SCL', 'SDA'], 1)
     tabTop = sy + (spi.length * mod.pitch) / 2 + v.edge_keep
     xs = [ix - ring / 2 - v.edge_keep, sx + ring / 2 + v.edge_keep]
-    Object.assign(place, { spi_x: sx, spi_y: sy, i2c_x: ix, i2c_y: iy })
+    Object.assign(place, { spi_x: sx, spi_y: sy, spi_top: v.display_stack, i2c_x: ix, i2c_y: iy })
   }
 
   // ---- the board ----

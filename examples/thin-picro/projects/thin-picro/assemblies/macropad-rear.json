@@ -7,7 +7,7 @@
   ],
   "note": "The rear-mount macropad built: twelve Choc v1 switches soldered to the board (no plate) with low-profile keycaps, a DO-35 diode in the gaps between the switches, and the thin module under the top row, parts facing down, on pin headers up through the gaps between the keys (the header's 2.5 mm spacer between the boards). The board's underside is z = 0.",
   "requires": {
-    "macropad": "^0.2.0",
+    "macropad": "^0.3.0",
     "choc-switch": "^0.1.0",
     "choc-keycap": "^0.1.0",
     "module": "^0.7.2",

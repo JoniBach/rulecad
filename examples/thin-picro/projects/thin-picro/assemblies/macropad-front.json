@@ -5,9 +5,9 @@
   "uses": [
     "mx"
   ],
-  "note": "The front-mount macropad built: twelve MX switches soldered to the board (no plate) with DSA keycaps, a DO-35 diode in the gap beside each, the thin module soldered flat on its castellated pads above the keys, and a 2.0 in ST7789 display in the SPI socket at the module's right end, lying over the module. The board's underside is z = 0.",
+  "note": "The front-mount macropad built: twelve MX switches soldered to the board (no plate) with DSA keycaps, a DO-35 diode in the gap beside each, the thin module soldered flat on its castellated pads above the keys, and a 2.0 in ST7789 display on a tall socket at the module's right end, its pins level with the module's display column, lying over the module and the top row of keys. The board's underside is z = 0.",
   "requires": {
-    "macropad": "^0.2.0",
+    "macropad": "^0.3.0",
     "module": "^0.7.2",
     "display": "^0.1.0"
   },
@@ -50,8 +50,17 @@
       "at": [
         "pcb.spi_x",
         "pcb.spi_y",
-        "pcb.thickness + pcb.socket_height"
+        "pcb.thickness + pcb.spi_top"
       ]
+    }
+  ],
+  "fits": [
+    {
+      "a": "display.board",
+      "b": "key-0-0.cap",
+      "min": 0.5,
+      "note": "The display's board clears the top row's keycaps (it reaches over them)",
+      "label": "Display over the keys"
     }
   ]
 }
