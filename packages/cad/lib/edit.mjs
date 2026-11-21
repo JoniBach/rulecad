@@ -243,15 +243,19 @@ export function parseSetting(s) {
   return parseValue(t);
 }
 
+// An address's parts: x1.at.0 is ["x1", "at", 0]; a key with a dot in it goes in brackets and quotes, as
+// frame.supports["z1.a"], and joins[3] is joins.3
+export const segmentsOf = (a) => [...String(a).matchAll(/\["((?:[^"\\]|\\.)*)"\]|\[(\d+)\]|([^.[\]]+)/g)].map((m) => (m[1] != null ? m[1] : m[2] != null ? Number(m[2]) : /^\d+$/.test(m[3]) ? Number(m[3]) : m[3]));
+
 // An address in an assembly, as a path into its JSON: x1.at (an entry by its id), joins.3.kind or joins[3].kind (by its
 // place), frame.join (a top-level field). Refused by name: an id nothing has, one two lists share, a generated frame's.
 function addressPath(json, address, { ref, file, entry = false }) {
-  const segs = String(address).replace(/\[(\d+)\]/g, '.$1').split('.').filter((x) => x !== '');
+  const segs = segmentsOf(address);
   if (!segs.length) throw new CadError('edit.address', 'give what to change, as <id>.<field>, <list>.<n>.<field> or a top-level field', { file });
-  const rest = (from) => segs.slice(from).map((x) => (/^\d+$/.test(x) ? Number(x) : x));
+  const rest = (from) => segs.slice(from);
   const [first] = segs;
-  if (LISTS.includes(first) && /^\d+$/.test(segs[1] ?? '')) {
-    const n = Number(segs[1]), len = (json[first] || []).length;
+  if (LISTS.includes(first) && typeof segs[1] === 'number') {
+    const n = segs[1], len = (json[first] || []).length;
     if (n >= len) throw new CadError('edit.address', `${ref} has ${len ? `${len} ${first} (${first}.0 to ${first}.${len - 1})` : `no ${first}`}: there is no ${first}.${n}`, { file });
     return { path: [first, n, ...rest(2)], entry: [first, n] };
   }
@@ -279,7 +283,7 @@ function setDeep(text, p, value) {
   }
   return setAt(text, p, value);
 }
-const shownPath = (p) => p.join('.');
+const shownPath = (p) => p.map((k) => (typeof k === 'string' && /[.[\]"]/.test(k) ? `[${JSON.stringify(k)}]` : `.${k}`)).join('').replace(/^\./, '');
 
 /**
  * Change fields of an assembly: { address: value }, each address an entry's field by its id (x1.at, hinge.max) or its
@@ -433,13 +437,13 @@ export function setProject(project, changes, { dryRun = false } = {}) {
   let text = before;
   const done = [], fields = Object.keys(schema('project').properties).filter((k) => !['$schema', 'objects', 'name'].includes(k));
   for (const [address, value] of Object.entries(changes)) {
-    const p = String(address).split('.').filter(Boolean);
+    const p = segmentsOf(address);
     if (p[0] === 'objects') throw new CadError('edit.address', 'a project\'s objects are listed by cad new <project>/<object>, as each is made', { file });
     if (p[0] === 'name') throw new CadError('edit.address', `a project's name is its folder's: to rename ${project}, rename projects/${project} and its name together`, { file });
     if (!fields.includes(p[0])) throw new CadError('edit.address', `a project has no field "${p[0]}" (fields: ${fields.join(', ')})`, { file, path: p[0] });
     const was = getAt(text, p);
     text = setDeep(text, p, value);
-    done.push({ op: 'set', path: p.join('.'), ...(was !== undefined ? { before: was } : {}), after: value });
+    done.push({ op: 'set', path: shownPath(p), ...(was !== undefined ? { before: was } : {}), after: value });
   }
   return finish({ file, before, text, kind: 'project', changes: done, dryRun, findings: projectFindings(JSON.parse(text), project) });
 }
@@ -451,15 +455,23 @@ export function setProject(project, changes, { dryRun = false } = {}) {
  * @param {string} ref project/assembly
  * @param {{ title?: string, kind?: string, description?: string, frame?: object, dryRun?: boolean }} [fields]
  */
-export function newAssembly(ref, { title, kind = 'fit', description, frame, dryRun = false } = {}) {
+export function newAssembly(ref, { title, kind = 'fit', description, frame, fields = {}, dryRun = false } = {}) {
   const [project, name] = String(ref || '').split('/');
   if (!NAME.test(project || '') || !NAME.test(name || '')) throw new CadError('edit.name', `an assembly is <project>/<name>, each lower case with dashes (got ${JSON.stringify(ref)})`);
   const file = path.join(paths.project(project), 'assemblies', `${name}.json`);
   if (fs.existsSync(file)) throw new CadError('assembly.exists', `projects/${project}/assemblies/${name}.json is already there: change it with cad set, cad add, cad move and cad remove`, { file });
   if (kind !== 'fit') throw new CadError('edit.kind', `an assembly's kind is fit (got ${JSON.stringify(kind)}): a mechanism is a fit with joints (cad add joint), a machine a fit with a task, and a plate is written by cad plates`, { file });
   const json = { $schema: 'https://jonibach.github.io/rulecad/schemas/assembly.schema.json', title: title ?? name, kind, ...(description ? { description } : {}), ...(frame ? { frame } : { items: [] }) };
-  const text = laidOut(json), args = { ref, file, before: '', text, kind: 'assembly', changes: [{ op: 'make', path: `assemblies/${name}.json`, after: json }], touched: [] };
-  finish({ ...args, dryRun: true }); // checked before anything is written, the project too
+  // its other fields as cad set takes them, before it is checked: a portal's supports, its loads
+  let text = laidOut(json);
+  const top = Object.keys(schema('assembly').properties);
+  for (const [address, value] of Object.entries(fields)) {
+    const p = segmentsOf(address);
+    if (!top.includes(p[0])) throw new CadError('edit.address', `an assembly has no field "${p[0]}" (fields: ${top.filter((k) => k !== '$schema').join(', ')})`, { file });
+    text = setDeep(text, p, value);
+  }
+  const args = { ref, file, before: '', text, kind: 'assembly', changes: [{ op: 'make', path: `assemblies/${name}.json`, after: JSON.parse(text) }], touched: [] };
+  try { finish({ ...args, dryRun: true }); } catch (e) { throw Object.assign(e, { message: e.message.replace(/^not changed: /, 'not made: ') }); } // checked before anything is written, the project too
   const made = [];
   if (!fs.existsSync(projectFile(project))) made.push(newProject(project, { dryRun }));
   const r = finish({ ...args, dryRun });

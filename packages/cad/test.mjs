@@ -1239,6 +1239,98 @@ test('cad set and cad add: edits that keep the file as it was, and refuse to bre
   } finally { done(); }
 });
 
+test('workspace edits: cad new makes a project and an assembly, cad set, cad move and cad remove change them, each checked first, refused by name with nothing written, with --dry-run and --json', () => {
+  const { ws, cad, done } = workspace();
+  const file = (f) => path.join(ws, 'projects', f), read = (f) => fs.readFileSync(file(f), 'utf8'), json = (...a) => JSON.parse(cad(...a, '--json'));
+  const refused = (out, code) => { const e = JSON.parse(out).error; assert.equal(e?.code, code, out); return e; };
+  try {
+    // a project: its project.json, laid out as the edits lay one out; PLA unless given
+    assert.match(cad('new', 'frame', '--title', 'A box frame', '--printer', 'x1c'), /projects\/frame\/project\.json\n {2}made project\.json\n {2}✓ matches the project schema\n {2}✓ prints are checked against x1c/);
+    assert.deepEqual(JSON.parse(read('frame/project.json')), { $schema: 'https://jonibach.github.io/rulecad/schemas/project.schema.json', name: 'frame', title: 'A box frame', printer: 'x1c', material: 'PLA', objects: [] });
+    refused(cad('new', 'frame', '--json'), 'project.exists');
+    refused(cad('new', 'shed', '--printer', 'nope', '--json'), 'project.printer');
+    assert.ok(!fs.existsSync(file('shed')), 'a refused project is not made');
+    const p = json('new', 'shed', '--dry-run');
+    assert.deepEqual([p.command, p.file, p.written, p.dryRun, p.changes[0].op, p.changes[0].after.name, p.findings[0].code], ['new', 'projects/shed/project.json', false, true, 'make', 'shed', 'schema']);
+    assert.ok(!fs.existsSync(file('shed')), 'a dry run writes nothing');
+    // the project's own fields
+    const before = read('frame/project.json');
+    const m = json('set', 'frame', 'material=PETG', 'description=Four posts and two rings');
+    assert.deepEqual(m.changes.map((c) => [c.path, c.before, c.after]), [['material', 'PLA', 'PETG'], ['description', undefined, 'Four posts and two rings']]);
+    assert.deepEqual(m.findings.map((f) => [f.level, f.code]), [['pass', 'schema'], ['pass', 'project.printer'], ['pass', 'project.material']]);
+    assert.equal(read('frame/project.json').split('\n').slice(0, 4).join('\n'), before.split('\n').slice(0, 4).join('\n'), 'the lines it did not change are as they were');
+    refused(cad('set', 'frame', 'objects=[a]', '--json'), 'edit.address');
+    assert.match(cad('set', 'frame', 'colour=red'), /a project has no field "colour" \(fields: title, description, material, printer, filaments\)/);
+    assert.match(cad('set', 'frame', 'material=nylon'), /! project frame: its material is "nylon", and printed fittings are sized from their plastic's strength, modulus and density/, 'a plastic no fitting could be sized from is said, not refused: only printed fittings need it');
+    // an empty assembly that checks
+    const e = json('new', 'frame/empty', '--assembly', '--title', 'Nothing yet');
+    assert.deepEqual([e.file, e.written, e.changes[0].after], ['projects/frame/assemblies/empty.json', true, { $schema: 'https://jonibach.github.io/rulecad/schemas/assembly.schema.json', title: 'Nothing yet', kind: 'fit', items: [] }]);
+    assert.doesNotMatch(cad('check', 'frame/empty'), /✗/);
+    refused(cad('new', 'frame/empty', '--assembly', '--json'), 'assembly.exists');
+    assert.match(cad('new', 'frame/arm', '--assembly', '--kind', 'mechanism'), /an assembly's kind is fit \(got "mechanism"\): a mechanism is a fit with joints/);
+    // one in a project not made yet makes the project first; a refused one makes neither
+    assert.match(cad('new', 'bench/portal', '--assembly', '--frame', 'portal', '--inside', '300,200', '--profile', '2020-misumi-hfs5'), /^not made: frame: a portal stands in one plane/);
+    assert.ok(!fs.existsSync(file('bench')), 'refused: no project, no assembly');
+    const portal = json('new', 'bench/portal', '--assembly', '--frame', 'portal', '--inside', '300,200', '--profile', '2020-misumi-hfs5', 'frame.supports["z1.a"]=fixed', 'frame.supports["z2.a"]=fixed');
+    assert.deepEqual(portal.made, ['projects/bench/project.json', 'projects/bench/assemblies/portal.json']);
+    assert.deepEqual(JSON.parse(read('bench/assemblies/portal.json')).frame.supports, { 'z1.a': 'fixed', 'z2.a': 'fixed' });
+    // a generated box: what it expands into is said as it is made
+    const box = json('new', 'frame/box', '--assembly', '--title', 'Box frame', '--frame', 'box', '--inside', '300,300,350', '--profile', '2020-misumi-hfs5', '--join', 'blind', '--feet', 'levelling');
+    const gen = box.findings.find((f) => f.code === 'frame.generated');
+    assert.deepEqual([gen.level, gen.values.outside, gen.values.beams, gen.values.joins], ['pass', [340, 340, 408.5], 12, 16], '350 + 2 x 20 + 18.5 = 408.5 mm uprights, 12 beams and 16 joins');
+    assert.match(read('frame/assemblies/box.json'), /"inside": \[300, 300, 350\],/, 'a short list of numbers on one line, as people write them');
+    // cad set: a string standing for its kind takes a field of its own; a generated beam is named as that
+    const s = json('set', 'frame/box', 'frame.join.fitting=printed', 'frame.feet=foot');
+    assert.deepEqual(s.changes.map((c) => [c.op, c.path, c.after]), [['set', 'frame.join.fitting', 'printed'], ['set', 'frame.feet', 'foot']]);
+    assert.deepEqual(JSON.parse(read('frame/assemblies/box.json')).frame.join, { kind: 'blind', fitting: 'printed' });
+    assert.match(cad('set', 'frame/box', 'frame.join=bracket', '--dry-run'), /dry run, nothing written: projects\/frame\/assemblies\/box\.json\n {2}would be set frame\.join: \{"kind":"blind","fitting":"printed"\} → "bracket"/);
+    assert.equal(JSON.parse(read('frame/assemblies/box.json')).frame.join.kind, 'blind', 'the dry run wrote nothing');
+    const kept = read('frame/assemblies/box.json');
+    assert.match(cad('set', 'frame/box', 'frame.join=end-tap', 'frame.profile=2020-bosch'), /^not changed: frame: a box: an end-tap join's M6 screw/, 'a frame the generator refuses');
+    assert.equal(read('frame/assemblies/box.json'), kept, 'and nothing written');
+    assert.match(cad('set', 'frame/box', 'x1.at=[0,0,0]'), /x1 is made by frame\/box's generated frame \(a box\), so it is not in the file to change: .*cad frame frame\/box --expand/);
+    refused(cad('set', 'frame/box', 'nope.at=1', '--json'), 'edit.address');
+    refused(cad('set', 'frame/box', 'frame.inside=[300,300]', '--json'), 'frame.refused');
+    // cad add names a generated frame's beams: a load, and a guide with its fields as field=value
+    assert.match(cad('add', 'load', 'frame/box', '--mass', '5', '--at', 'x3.top@50%', '--note', 'On the top front beam'), /added a load to projects\/frame\/assemblies\/box\.json \(loads\.0\)/);
+    const g = json('add', 'guide', 'frame/box', '--kind', 'rail', 'rail=rail-mgn12', 'carriage=MGN12H', 'on=x3.top', 'from=25', 'length=250', 'nut=drop-in');
+    assert.deepEqual(g.added, { kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12H', on: 'x3.top', from: 25, length: 250, nut: 'drop-in' });
+    assert.match(cad('add', 'guide', 'frame/box', '--kind', 'rail', 'on=q9.top'), /guide on: no beam "q9" in frame\/box \(beams: z1, z2, z3, z4, x1, x2, y1, y2, x3, x4, y3, y4\)/);
+    assert.match(cad('add', 'join', 'frame/box', '--kind', 'blind', '--a', 'x1.a', '--b', 'z1.back@100'), /added a join/, 'a join may name the generated beams');
+    // beams of its own: a join that uses one keeps it, named
+    cad('new', 'frame/tee', '--assembly');
+    cad('add', 'beam', 'frame/tee', '--id', 'x1', '--profile', '2020-misumi-hfs5', '--from', '0,10,10', '--to', '300,10,10');
+    cad('add', 'beam', 'frame/tee', '--id', 'y1', '--profile', '2020-misumi-hfs5', '--from', '120,20,10', '--to', '120,220,10');
+    cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'y1.a', '--b', 'x1.back@120');
+    const tee = read('frame/assemblies/tee.json');
+    const r = refused(cad('remove', 'frame/tee', 'x1', '--json'), 'edit.referenced');
+    assert.equal(r.message, 'x1 is named by joins.0 (blind y1.a to x1.back@120): remove it first, or add --with-refs to remove it with x1');
+    assert.deepEqual(r.refs, ['joins.0 (blind y1.a to x1.back@120)']);
+    assert.equal(read('frame/assemblies/tee.json'), tee, 'refused: nothing written');
+    const w = json('remove', 'frame/tee', 'x1', '--with-refs');
+    assert.deepEqual(w.changes.map((c) => [c.path, c.because]), [['items.0', undefined], ['joins.0', 'names x1']]);
+    const left = JSON.parse(read('frame/assemblies/tee.json'));
+    assert.deepEqual([left.items.map((x) => x.id), left.joins], [['y1'], []]);
+    // a field, and a guide whose going would rename the guides after it
+    assert.match(cad('remove', 'frame/tee', 'y1.roll'), /has no y1\.roll to remove/);
+    cad('add', 'beam', 'frame/tee', '--id', 'x2', '--profile', '2020-misumi-hfs5', '--from', '0,10,10', '--to', '300,10,10', '--roll', '90');
+    assert.deepEqual(json('remove', 'frame/tee', 'x2.roll').changes.map((c) => [c.op, c.path, c.before]), [['remove', 'items.1.roll', 90]]);
+    cad('add', 'guide', 'frame/tee', '--kind', 'rods', 'on=x2.top', 'from=100', 'length=150');
+    cad('add', 'guide', 'frame/tee', '--kind', 'screw', 'guide=g1', 'screw=t8-screw', 'motor.model=nema17');
+    assert.match(cad('remove', 'frame/tee', 'guides.0', '--with-refs'), /guides\.0 has no id of its own, so it is g1 by its place, and the guides after it would each be renamed \(g2 would become g1\)/);
+    cad('set', 'frame/tee', 'guides.0.id=rods', 'guides.1.id=drive', 'guides.1.guide=rods');
+    assert.match(cad('remove', 'frame/tee', 'rods'), /rods is named by guides\.1 \(screw\): remove it first/, 'the screw guide drives the rods');
+    // cad move: a beam placed by its ends moves both; an item to an address; a beam is not put at an address
+    const mv = json('move', 'frame/tee', 'y1', '--at', '150,20,10');
+    assert.deepEqual(mv.changes.map((c) => [c.path, c.after]), [['items.0.from', [150, 20, 10]], ['items.0.to', [150, 220, 10]]], 'end b keeps its offset: 120 + 30 = 150 and 220');
+    cad('add', 'item', 'frame/tee', '--id', 'cap', '--at', '0,0,0', 'fitting.kind=end-cap', 'fitting.profile=2020-misumi-hfs5');
+    assert.deepEqual(json('move', 'frame/tee', 'cap', '--to', 'y1.b').changes.map((c) => [c.path, c.before, c.after]), [['items.2.at', [0, 0, 0], 'y1.b']]);
+    assert.match(cad('move', 'frame/tee', 'cap', '--to', 'q1.b'), /item at: no item "q1" in frame\/tee/);
+    assert.match(cad('move', 'frame/tee', 'y1', '--to', 'x2.top@50%'), /y1 is a beam placed by its two ends: move it with --at x,y,z/);
+    assert.match(cad('move', 'frame/tee', 'rods', '--at', '120'), /set guides\.0\.from: 100 → 120/, 'a guide along its face');
+  } finally { done(); }
+});
+
 test('sandbox: a design can make shapes, but not read or write files, reach the network or start programs', () => {
   const { ws, cad, done } = workspace();
   try {
