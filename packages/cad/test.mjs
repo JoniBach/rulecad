@@ -4409,6 +4409,75 @@ test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s
   } finally { done(); }
 });
 
+test('guides: a belt X axis on a 2020 built by the edit commands, an MGN12H carriage on a GT2 belt from a NEMA 17, checks clean; its motor margin, travel a turn and belt length agree with hand sums; a moved idler rubs and a long belt uses up the tensioner, each by name', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const run = (...a) => { const out = cad(...a); assert.doesNotMatch(out, /✗|exit 1|Error/, `cad ${a.join(' ')}: ${out}`); return out; };
+    run('new', 'axis', '--material', 'PLA', '--printer', 'x1c');
+    run('new', 'axis/x-belt', '--assembly', '--title', 'A belt X axis on a 2020');
+    run('add', 'item', 'axis/x-belt', 'id=x1', 'beam.profile=2020-misumi-hfs5', 'from=[0,0,0]', 'to=[400,0,0]');
+    run('add', 'guide', 'axis/x-belt', '--kind', 'rail', 'rail=rail-mgn12', 'carriage=MGN12H', 'on=x1.top', 'from=30', 'length=300');
+    run('add', 'guide', 'axis/x-belt', '--kind', 'belt', 'guide=g1', 'motor.model=nema17', 'motor.microsteps=16', 'motor.current=1.2', 'accel=3000');
+    run('add', 'load', 'axis/x-belt', 'mass=0.5', 'at=g1-carriage-1.top');
+    // the same axis with its idler moved 12 mm across, and with its belt cut 22 mm long
+    const dir = path.join(ws, 'projects/axis/assemblies');
+    for (const n of ['x-moved', 'x-long']) fs.copyFileSync(path.join(dir, 'x-belt.json'), path.join(dir, `${n}.json`));
+    run('set', 'axis/x-moved', 'g2.across=12'); run('set', 'axis/x-long', 'g2.cut=830');
+    // a belt names a rail guide by its id: refused by name, nothing written
+    const before = fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8');
+    assert.match(cad('add', 'guide', 'axis/x-belt', '--kind', 'belt', 'guide=g9', 'motor.model=nema17'), /no guide "g9"/);
+    assert.equal(fs.readFileSync(path.join(dir, 'x-belt.json'), 'utf8'), before);
+    // (a file, not node -e: the motor mount's finite elements start worker threads, which hang under -e)
+    const probe = (name) => { fs.writeFileSync(path.join(ws, 'probe.mjs'), `
+      const lib = (f) => import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib')).href)} + '/' + f);
+      const { buildAssembly, checkAssembly } = await lib('assembly.mjs'), { shoppingList } = await lib('list.mjs'), { terms } = await lib('task.mjs'), { motorModel, performance } = await import('@rulecad/motors');
+      const s = await buildAssembly('axis/${name}'), findings = checkAssembly(s), l = shoppingList(s);
+      console.log(JSON.stringify({ bought: l.bought.map((b) => [b.qty, b.set, b.part, b.length ?? null]), printed: l.printed.map((p) => [p.id, p.grams]), fasteners: l.fasteners.map((x) => [x.qty, x.fastener]),
+        terms: terms(s, { names: ['g1-1'] })[0].terms.map((x) => [x.term, x.kind, x.value]), torque600: performance(motorModel('nema17'), { speed: 600 }).motor.torque,
+        findings: findings.map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs })) }));
+      process.exit(0);
+    `); return JSON.parse(execFileSync(process.execPath, [path.join(ws, 'probe.mjs')], { cwd: ws, encoding: 'utf8', maxBuffer: 1 << 26, env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } })); };
+    const by = (r, code) => r.findings.filter((x) => x.code === code), bad = (r) => r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => `${x.code} ${x.text}`);
+    const axis = probe('x-belt');
+    assert.deepEqual(bad(axis), [], 'the belt axis checks clean');
+    // the parts it placed: the plate, the clamp and the idler block printed; the belt bought by the metre, its pulley and idler
+    assert.deepEqual(axis.printed.map((p) => p[0]), ['g2-plate', 'g2-clamp', 'g2-idler-block']);
+    assert.deepEqual(axis.bought.filter((b) => ['belt', 'pulley', 'idler', 'motor'].includes(b[2])).map((b) => [b[1], b[3]]), [['gt2-belt-6', 1000], ['idler-gt2-toothed-20', null], ['nema17', null], ['pulley-gt2-20', null]]);
+    for (const f of ['2 × M3x6 cap', '2 × M5x12 cap', '3 × M5x16 cap', '1 × M5 heat-set insert']) assert.ok(axis.fasteners.some(([q, n]) => `${q} × ${n}` === f), `${f}: ${JSON.stringify(axis.fasteners)}`);
+    // travel a turn: 20 teeth × 2 mm = 40 mm; at the NEMA 17's working 600 rpm, 600 / 60 × 40 = 400 mm/s
+    assert.equal(by(axis, 'guide.drive')[0].values.mmPerTurn, 40);
+    assert.match(by(axis, 'motor.speed')[0].text, /moves at 400 mm\/s with g2-motor at 600 rpm/);
+    // the motor's margin by hand: it pushes the carriage (54 g), the clamp and the 0.5 kg load at 3000 mm/s²,
+    // F = (0.5 + 0.054 + clamp) × 3; the motor gives its torque at 600 rpm, scaled by 1.2 A of its rated 2 A, through the
+    // belt's 0.95 at a 40 / 2π = 6.366 mm pitch radius: F_avail = τ × 0.6 × 0.95 × 2π × 1000 / 40
+    const clamp = axis.printed.find((p) => p[0] === 'g2-clamp')[1] / 1000, need = ((0.5 + 0.054 + clamp) * 3000) / 1000, give = (axis.torque600 * 0.6 * 0.95 * 2 * Math.PI * 1000) / 40;
+    const mt = by(axis, 'motor.torque').find((x) => x.values?.margin != null);
+    assert.ok(Math.abs(mt.values.needed - need) < 0.01, `${mt.values.needed} N needed against ${need} by hand`);
+    assert.ok(Math.abs((mt.values.available * 2 * Math.PI * 1000) / 40 - give) < 0.05, `${mt.text} against ${give} N by hand`);
+    assert.ok(Math.abs(mt.values.margin - give / need) < 0.05 && mt.level === 'pass', mt.text);
+    // the belt's length by hand: the runs twice from the pulley at x = -22.15 to the idler at 364, less the 2 mm between
+    // its ends in the clamp, half round each 12.73 mm pitch circle: 2 × 386.15 - 2 + π × 12.731 = 810.296 mm; cut 808 mm
+    const bl = by(axis, 'belt.length')[0].values;
+    assert.ok(Math.abs(bl.path - (2 * (364 + 22.15) - 2 + Math.PI * 12.731)) < 0.01, `${bl.path}`);
+    assert.deepEqual([bl.cut, bl.buy], [808, 1000]);
+    for (const code of ['belt.tension', 'belt.rub', 'belt.line', 'belt.tensioner', 'motor.axis']) assert.deepEqual([...new Set(by(axis, code).map((x) => x.level))], ['pass'], code);
+    // the error budget: a 1.8° step at 1/16 over 40 mm a turn is 1.8 / 16 / 360 × 40 = 0.0125 mm; the belt's stretch is
+    // the push over its stiffness, F × span / 16902 (2817 N a unit of strain a mm, 6 mm wide)
+    const st = by(axis, 'belt.stretch')[0].values, terms = Object.fromEntries(axis.terms.map(([t, , v]) => [t, v]));
+    assert.ok(Math.abs(terms.step - 0.0125) < 1e-9, `${terms.step}`);
+    assert.ok(Math.abs(terms['belt stretch'] - (need * st.span) / (2817 * 6)) < 1e-4, `${terms['belt stretch']}`);
+    // the idler 12 mm across: off square, and its return run rubs the clamp toward the far end of the travel
+    const moved = probe('x-moved');
+    assert.deepEqual(by(moved, 'belt.rub').map((x) => [x.level, x.refs.run, x.refs.part]), [['fail', 'the return run', 'the clamp']]);
+    assert.equal(by(moved, 'belt.line')[0].level, 'fail');
+    // cut 830 mm, the belt reaches its tension only with the block (830 × 1.001479 - 810.296) / 2 = 10.47 mm toward the
+    // beam's end, past the 4 mm of slot left there
+    const long = probe('x-long'), tn = by(long, 'belt.tensioner')[0];
+    assert.equal(tn.level, 'fail'); assert.match(tn.text, /the tensioner's travel is used up; cut the belt/);
+    assert.ok(Math.abs(tn.values.offset - (830 * (1 + 25 / 16903) - 810.296) / 2) < 0.01, `${tn.values.offset}`);
+  } finally { done(); }
+});
+
 test('guides: chapter 13\'s Z axis rebuilt on a beam, its rods, screw, motor and endstop all placed by addresses, gives its motor checks the same margin; a screw drives only rods, and an endstop out of reach is refused with where it would go', () => {
   const { ws, cad, done } = workspace();
   try {
