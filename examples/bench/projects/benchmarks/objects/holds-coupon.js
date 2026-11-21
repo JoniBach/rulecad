@@ -31,9 +31,10 @@ export function main (v) {
   const through = (d, x, y, top) => translate([x, y, top / 2], cylinder({ radius: d / 2, height: top + 2, segments: seg }))
 
   // ---------- the plate's rows ----------
-  // Snap pin sockets: a hole through a boss as thick as the pin's shaft is long, at three clearances round the kit's
+  // Snap pin sockets: a hole through a boss as thick as the pin's shaft is long, at three clearances round the kit's.
+  // The lowest stays a step above 0: a socket's gap has no hole compensation, so at 0 it prints smaller than its peg
   const sockets = (d) => {
-    const name = `snap pin ${d}x${v.shaft}`, c0 = f.pinModel(name).hole.clearance / 2, cs = around(c0, v.fits, v.step)
+    const name = `snap pin ${d}x${v.shaft}`, c0 = f.pinModel(name).hole.clearance / 2, cs = around(Math.max(c0, (v.step * (v.fits + 1)) / 2), v.fits, v.step)
     return { name: `S${d}`, items: cs.map((c) => ({ label: fig(c), ...round(d + 2 * Math.max(...cs) + 2 * wall, v.shaft, (x, y) => f.pinHole(name, { printer: printer('snap_clearance', c), at: [x, y, v.shaft], depth: v.shaft, through: true })) })) }
   }
   // Plain pins: blind holes from the top, pressed (the figure is how much smaller than the pin, before hole_comp) or slipping

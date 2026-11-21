@@ -2353,7 +2353,7 @@ export function main (v) {
     // refused by name, with what would be accepted, and nothing written: a diameter given for a clearance, and a strength
     // across the layers above PLA's 39 MPa along them
     assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=3'), /x1c\.pin_press is from 0 to 0\.3 mm: how much smaller a hole is drawn than the pin it grips, .* \(got 3\)/);
-    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0'), /x1c\.snap_clearance is above 0 and up to 0\.5 mm: a socket with no clearance pinches the peg/);
+    assert.match(cad('measured', 'home/coupon', 'x1c.snap_clearance=0'), /x1c\.snap_clearance is above 0 and up to 0\.5 mm: its gap is drawn with no hole compensation, so at 0 the printed socket comes out smaller than the peg/);
     assert.match(cad('measured', 'home/coupon', 'pla.strength_z=45'), /pla\.strength_z is above 0 and no more than pla\.strength, 39 MPa: a print holds less across its layers than along them/);
     assert.ok(!written('x1c', 'snap_clearance') && !written('pla', 'strength_z'), 'nothing written');
     const out = cad('measured', 'home/coupon', 'x1c.snap_clearance=0.15', 'x1c.pin_press=0.1', 'x1c.pin_slip=0.25', 'x1c.magnet_press=0.05', 'x1c.magnet_glue=0.15', 'x1c.magnet_crush=0.3', 'x1c.snap_barb=0.5', 'pla.strength_z=21.5');
@@ -2378,6 +2378,11 @@ export function main (v) {
     assert.equal(hole(after), 3);
     assert.ok(after.some((x) => /8\.05 mm/.test(x.text) && /x1c\.magnet_press/.test(x.text)), 'the pocket from the measured press');
     assert.match(cad('history', 'home/coupon'), /x1c\.pin_press: measured 0\.1 mm, predicted 0\.05/);
+    // 0 is a real fit for a slip and for crush ribs, both past hole_comp: the coupon's lowest row is at 0 once centred on
+    // 0.1 (0.1 - x1c.hole_comp 0.1). A snap socket's 0 is still refused: its gap has no hole compensation (above)
+    const zero = cad('measured', 'home/coupon', 'x1c.pin_slip=0', 'x1c.magnet_crush=0');
+    assert.match(zero, /x1c\.pin_slip: measured 0 mm, predicted 0\.25/); assert.match(zero, /x1c\.magnet_crush: measured 0 mm, predicted 0\.3/);
+    const x1c0 = JSON.parse(fs.readFileSync(own('x1c'), 'utf8')).rules; assert.deepEqual([x1c0.pin_slip.value, x1c0.magnet_crush.value], [0, 0]);
   } finally { done(); }
 });
 

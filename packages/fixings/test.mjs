@@ -1202,3 +1202,14 @@ test('a printed bolt has no proof load: screwLoad, preload, torqueFor, stripping
   assert.throws(() => printedBoltModel('M8x20 hex printed', { material: 'al6061' }), /al6061 is an aluminium, not a plastic/);
   assert.throws(() => printedBoltModel('M8 insert'), /M8x12\.7 insert is an insert, not a bolt/);
 });
+
+test('the working figures no coupon measures say so: snap_play, pin_least and magnet_floor stay estimates, each naming what would measure it', () => {
+  // The holds coupon measures the printer's fits (snap_clearance, pin_press, pin_slip, magnet_press, magnet_glue,
+  // magnet_crush) and the snap barb; none of its rows measures these three, so none may claim a coupon measures it
+  for (const k of ['snap_play', 'pin_least', 'magnet_floor']) {
+    const f = DEFAULTS[k];
+    assert.equal(f.kind, 'estimate', k);
+    assert.doesNotMatch(f.source, /to be measured on the fixings coupon/i, k);
+    assert.match(f.source, /No coupon row measures it.*so it stays an estimate: .+ would measure it/, k);
+  }
+});
