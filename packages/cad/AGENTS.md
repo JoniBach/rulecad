@@ -184,6 +184,13 @@ variable says which rule it comes from. Follow these steps; they're what makes a
   Never draw the holders, motor plate, coupler or carriage yourself: the guides place them by addresses and give the
   motor its lead screw. Report the travel, `motor.torque`'s margin, `guide.coupler`, the bearings' `joint.moment`, the
   endstop's home, and each printed part's grams and margin; if the endstop is refused, use the address it names.
+  A belt drives a rail's carriage: `{ "kind": "belt", "guide": "g1", "motor": { "model": "nema17" }, "accel": 3000 }`
+  (`npx cad add guide <project>/<assembly> --kind belt guide=g1 motor.model=nema17 accel=3000`). Never draw the
+  pulley, idler, belt, plate or clamp yourself: the guide places them by addresses. Report `belt.length` (cut and
+  buy), `belt.tension`, `motor.torque`'s margin and the travel a turn, `belt.tensioner`'s room, and each printed part's
+  grams and margin; say the tension and the belt's thickness are estimates. A `belt.rub` or `belt.line` fail means the
+  idler or the part it names moves, never the belt's figures; a `belt.tensioner` fail means cutting the belt to the
+  length it names.
 - **A part screwed onto a beam is a `fasten` into a slot**: `"into": "x1.top"` (or `x1.top.2`, or `x1.top@120`, the
   middle of its screws), the
   part's holes drawn with `v.fixings` at the slot's spacing, `"nut"` the slot nut's kind. `fasten.slot` fails a hole off

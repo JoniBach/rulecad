@@ -2,6 +2,28 @@
 
 What changed in each release, for someone upgrading a workspace.
 
+## Unreleased
+
+### Added
+
+- `belts.mjs` (FR4.2): a belt drive on a rail's carriage. `beltLayout` from the belt's, pulley's, idler's and motor's
+  sets and the carriage's figures: the belt's height and lines, its path by the pitch line (`beltPath`), the length to
+  cut (whole teeth) and to buy (by the metre), its stretch, the idler block's place and room. `beltPlateModel` and
+  `beltPlate` (a flat motor plate past the beam's end, its tab in the face's slot), `beltClampModel` and `beltClamp` (a
+  toothed clamp for both belt ends on the carriage's tapped holes), `beltIdlerModel` and `beltIdler` (the idler's
+  block and tensioner, sliding in the face's slot), each print-ready with its grams and margin; `beltRub` (each run
+  against the beam, the rail, the carriage and the clamp through the travel); `BELT_DEFAULTS`, each figure with what
+  it rests on. The catalogue gains `gt2-belt-6`, `pulley-gt2-16`, `pulley-gt2-20`, `idler-gt2-toothed-20` and
+  `idler-gt2-smooth-20`.
+
+### Printed sizes that moved
+
+None: the parts are new.
+
+### What a workspace should change
+
+Nothing.
+
 ## 0.1.10: the magnet catch's pocket from @rulecad/fixings (Fixings 4)
 
 ### Changed

@@ -27,9 +27,21 @@ and head, the parts it passes through and the part it ends in.
   one with no id of its own, which is named by place. `cad new <project>/<assembly> --assembly --material PETG
   --printer x1c` makes the project with them where it is not there, and refuses them by name where it is.
 - `schemas/project.schema.json`: the project file's fields.
+- Belt guides (`"kind": "belt"`, FR4.2): a GT2 belt drives a rail guide's one carriage from a motor under a printed
+  plate past the beam's end a, round a toothed idler on a printed block past the rail's end (the tensioner: it slides
+  along the beam's slot), its ends in a printed clamp on the carriage. The motor reads the belt's ratio (40 mm a turn
+  for a 20 tooth GT2 pulley) and is held to the push of the carriage at its acceleration; the belt goes on `cad list`
+  by the metre; `belt.length`, `belt.tension`, `belt.rub` (swept through the travel), `belt.line`, `belt.tensioner`
+  and `belt.stretch` (a term of the error budget). The schema has the guide's keys and the fittings `belt-plate`,
+  `belt-clamp` and `belt-idler`. The example is `examples/bench` `axes/x-belt`, written by the edit commands.
 
 ### Changed
 
+- `motor.axis` passes a motor driving a belt with its shaft square to the slide (a belt's pulley), as well as one on
+  the slide's axis as before. `motor.holds` leaves out a belt's push at its acceleration, which is not there at rest.
+- A rail's carriage carries its tapped holes as its mount: a `fasten` into a carriage ends in its own thread, held to
+  the depth HIWIN gives (`carriage_thread_depth`), as a motor's or a supply's mounting holes are.
+- A belt guide is no longer refused as "not built yet"; a screw on a rail is refused saying a rail is driven by a belt.
 - `cad add join`, `cad add fasten` and `cad add fit` accept a generated frame's beams (they were refused as not in the
   assembly), and `cad add item` and `cad add load` refuse an address on an item the assembly does not have.
 - `cad add` prints the place it added at (`added a join to … (joins.3)`), and its `--json` is `{ command, file,

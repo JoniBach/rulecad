@@ -1382,13 +1382,48 @@ it, the switch's mount where its address says:
   `nut`. The motor drives the carriage's joint with `leadscrew` from the screw's set (its lead and diameter) and
   `friction` (default the set's, an estimate), so `motor.torque`, `motor.speed` and `motor.holds` read the drive's
   ratio as they do any lead screw. `guide.drive` and `guide.coupler` (how far the shaft reaches into the coupler) say
-  what was placed. A belt is not built yet; a screw on a rail or wheels is refused.
+  what was placed. A screw on a rail or wheels is refused: a rail's carriage is driven by a belt.
 - An endstop's printed mount (`endstop-mount`) goes at a side face's address (`endstop.at`), the switch (`switch`,
   default `endstop-10t85`) on it; a flag on the carriage's far end meets its lever. Where that happens is the joint's
   lower end and its `home` (`guide.endstop`). A switch the flag cannot reach, or a mount over a holder's leg, is
   refused, naming the address where it trips at the travel's start.
 - Each carriage's loads are shared between its bearings at every pose (`joint.moment`) against their static rating;
   a moment on one bush is taken as a couple along it, an estimate, said as one.
+
+A timing belt drives a rail's one carriage: a pulley on a motor at the beam's end a, a toothed idler past the rail's
+end, both belt ends in a printed clamp on the carriage. The belt guide names the rail guide and the motor, and places
+the rest by addresses (`examples/bench` `axes/x-belt` is one, written by the edit commands):
+
+```json
+"guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H", "on": "x1.top", "from": 30, "length": 300 },
+           { "kind": "belt", "guide": "g1", "motor": { "model": "nema17", "microsteps": 16, "current": 1.2 }, "accel": 3000 }]
+```
+
+- It adds a printed motor plate (`belt-plate`, `<id>-plate`) at `<beam>.<face>@0`, its tab screwed into the face's slot
+  and the motor (`<id>-motor`) hanging under it past the beam's end; the pulley (`pulley`, default `pulley-gt2-20`;
+  `<id>-pulley`) on the motor's shaft; a printed clamp (`belt-clamp`, `<id>-clamp`) at the carriage's `top`, screwed
+  into the carriage's own tapped holes; and the idler (`idler`, default `idler-gt2-toothed-20`; `<id>-idler`) on a
+  printed block (`belt-idler`, `<id>-idler-block`) past the rail's end, which is the tensioner: its two screws go into
+  slot nuts in the beam's slot, so loosened it slides along it. `idlerAt` places the block (default room short of the
+  beam's end b), `across` moves the idler's axle off the belt's square line, `tension` sets each span (default 25 N, an
+  estimate), `cut` says the length the belt is cut to, `belt` its set (default `gt2-belt-6`). The rail starts after
+  the plate's tab and ends before the block, or the guide is refused naming where to put it.
+- The motor drives the carriage's joint with `belt` from the sets (the pulley's teeth, the belt's pitch, stiffness and
+  width), so `motor.torque`, `motor.speed` and the step's term in the error budget read 20 × 2 = 40 mm a turn. Its
+  load is what the belt pushes: everything the carriage carries at `accel` (the guide's, else the task's, else 1000
+  mm/s²), a load on the joint that `motor.holds` leaves out (it is not there at rest). Its shaft turns square to the
+  travel (`motor.axis`).
+- `belt.length` gives the path by the belt's pitch line, the length to cut it (whole teeth that stretch to the path at
+  the tension) and to buy, rounded up to whole metres (`cad list` shows `gt2-belt-6 x 1000 mm`). `belt.tension` holds
+  each span, with the push, between the belt's least static tension and its rated tension. `belt.rub` fails a run that
+  rubs the beam, the rail, the carriage or the clamp anywhere through the travel, naming the run, the part and where.
+  `belt.line` fails an idler off the pulley's line past 0.25° (an estimate). `belt.tensioner` says where the block
+  must slide along its slot to tension the belt as cut, and fails when the slot has no room left there, saying how
+  much shorter or longer to cut it. `belt.stretch` gives the belt's stretch under the push, the term `belt stretch` in
+  a task's error budget.
+- The belt is drawn where the carriage starts its travel and left out of the overlap check: its runs move with the
+  carriage, so `belt.rub` holds them through the whole travel. The plate, the clamp and the block each report their
+  grams, their margin and how they print, and pass printcheck as drawn.
 
 ## Optimised parts
 
