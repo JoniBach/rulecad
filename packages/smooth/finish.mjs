@@ -77,12 +77,12 @@ export function finishCircuit(json, { movable = () => true, clearance, stubs = [
 
   // ---- jitter ----
   // A routed track's points closer than `jitter` to the last one kept (a doubled point, a 0.01 mm zigzag) dropped: its
-  // copper moves less than that, and the corners they make aren't real. Ends, vias, layer and width changes stay
+  // copper moves less than that, and the corners they make aren't real. Ends, vias and layer changes stay
   for (const t of traces) {
     if (!movable(t) || t.rulecad_kept) continue;
     const r = t.route, out = [r[0]];
     for (let i = 1; i < r.length; i++) {
-      const p = r[i], q = out.at(-1), keep = i === r.length - 1 || p.route_type !== 'wire' || q.route_type !== 'wire' || p.layer !== q.layer || p.width !== q.width || r[i + 1]?.route_type !== 'wire'
+      const p = r[i], q = out.at(-1), keep = i === r.length - 1 || p.route_type !== 'wire' || q.route_type !== 'wire' || p.layer !== q.layer || r[i + 1]?.route_type !== 'wire' // (a width change over less than jitter is no change)
       if (keep || len(sub(p, q)) >= jitter) out.push(p)
     }
     if (out.length !== r.length) { t.route = out; stale = true }
@@ -220,6 +220,10 @@ export function finishCircuit(json, { movable = () => true, clearance, stubs = [
           if (!S.s.t.rulecad_squared) S.s.t.rulecad_squared = { a: { ...route[0] }, b: { ...route.at(-1) } }
           S.s.t.rulecad_rerooted = true
           route[endAt] = { ...route[endAt], x: Q.x, y: Q.y }; rerooted++; stale = true
+          // where it bent away is now a hair from where it joins (under jitter): that point goes, or it would make a
+          // new hook of its own; the track leaves the other straight from the join (a corner there is filled next round)
+          const nb = endAt === 0 ? 1 : route.length - 2
+          if (route.length > 2 && route[nb].route_type === 'wire' && route[nb].layer === route[endAt].layer && len(sub(route[nb], Q)) < jitter) route.splice(nb, 1)
           exits.push({ trace: S.s.t.pcb_trace_id, at: { x: j.p.x, y: j.p.y }, rerooted: true, kept: !!S.s.t.rulecad_kept }); continue
         }
       }

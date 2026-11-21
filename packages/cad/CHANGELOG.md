@@ -51,9 +51,15 @@ they are found, checked and counted.
   cache): a board rebuilt for anything but its routing (a change to the library, its finish or its checks) reuses its
   route instead of searching again. `CAD_NO_CACHE` turns it off with the rest of the cache.
 
+### Fixed
+
+- A board's cached build now misses when @rulecad/smooth changes, not only @rulecad/pcb: its build runs smooth's
+  smoothing and finish, so a change there could leave a board built by the old code (the engine id hashes both).
+
 ### Printed sizes that moved
 
 None.
+
 ## 0.7.58: frame checks (Frames 3)
 
 ### Added
