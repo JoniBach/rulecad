@@ -101,18 +101,21 @@ function tensionOf(what, T) {
  * two spans pulling on the pulley at the belt's height, and the motor's weight), and as the belt's height over the
  * face asks: the pulley's band is over the carriage. It prints flat on its face side, every hole upright.
  * @param {string | object} profile
- * @param {{ face?: string, motor?: string, pulley?: string, belt?: string, across?: number, least?: number, tension?: number, thread?: string, head?: 'cap' | 'button', nut?: string, printer?: object, material?: string | object, given?: object }} [o]
- *   across: the pulley's middle off the slot's line, mm; least: the least height of the belt's middle over the face
+ * @param {{ face?: string, motor?: string, pulley?: string, belt?: string, across?: number, least?: number, lift?: number, tension?: number, thread?: string, head?: 'cap' | 'button', nut?: string, printer?: object, material?: string | object, given?: object }} [o]
+ *   across: the pulley's middle off the slot's line, mm; least: the least height of the belt's middle over the face;
+ *   lift: how much further up its shaft the pulley stands, mm (default 0: 1 mm over the plate), to raise the belt
+ *   without a thicker plate
  * @returns {object} its model, with anchors motor (the motor's own frame: its face, its shaft out along z) and pulley
  */
 export function beltPlateModel(profile, o = {}) {
   const what = 'beltPlateModel';
-  options(what, o ?? {}, ['face', 'motor', 'pulley', 'belt', 'across', 'least', 'tension', 'thread', 'head', 'nut', 'printer', 'material', 'given']);
+  options(what, o ?? {}, ['face', 'motor', 'pulley', 'belt', 'across', 'least', 'lift', 'tension', 'thread', 'head', 'nut', 'printer', 'material', 'given']);
   const p = profileOf(what, profile, o.given ?? {}), k = partSetup(what, o), S = setsOf(what, o), mo = motorOf(what, o.motor ?? 'nema17'), gap = 1, wall = 2;
   if (Math.abs(mo.shaft.d - S.pulley.bore) > 1e-9) throw new Error(`${what}: ${S.pulley.set}'s ${mm(S.pulley.bore)} mm bore does not go on ${mo.set}'s ${mm(mo.shaft.d)} mm shaft`);
   const face = o.face ?? 'top', sd = slotSide(what, p, face, o.thread, o.nut, k.fit, o.given ?? {}), sc = screwOf(what, sd.thread, o.head ?? 'cap', k.pr);
-  const T = tensionOf(what, o.tension), across = o.across ?? 0, least = o.least ?? 0;
+  const T = tensionOf(what, o.tension), across = o.across ?? 0, least = o.least ?? 0, lift = o.lift ?? 0;
   if (!isNum(across) || !isNum(least)) throw new Error(`${what}: across and least are mm (got ${shown(o.across)}, ${shown(o.least)})`);
+  if (!(isNum(lift) && lift >= 0)) throw new Error(`${what}: lift is how much further up its shaft the pulley stands, mm, 0 or more (got ${shown(o.lift)})`);
   const xm = r3(-(mo.body / 2 + gap)), clear = holeModel(mo.thread, { kind: 'clearance', printer: k.pr }).diameter, rim = clear / 2 + wall + 1;
   const half = Math.max(...mo.holes.map((h) => Math.abs(h[0]))) + rim, x0 = r3(xm - half), y0 = r3(across - half), y1 = r3(across + half);
   // the band's middle over the plate's top: past the gap the pulley stands off it, its band at its far end
@@ -120,17 +123,17 @@ export function beltPlateModel(profile, o = {}) {
   // the tab's two screws along the slot, from the beam's end
   const endBy = r3(up(Math.max(sc.dk / 2 + FITTING_DEFAULTS.reach.value, sc.hd), 0.5)), pitch = r3(up(Math.max(sc.dk, sd.nut.length ?? 0) + FITTING_DEFAULTS.pitch.value, 0.5)), xs = [endBy, r3(endBy + pitch)], x1 = r3(xs[1] + endBy);
   // its thickness: the motor's screws, the bend at the beam's end, the belt's height; then a length of slot screw sold
-  const W = (mo.mass ?? 0) * 9.80665, b = y1 - y0, Mof = (t) => 2 * T * (t + band - t / 2) + W * Math.abs(xm);
+  const W = (mo.mass ?? 0) * 9.80665, b = y1 - y0, Mof = (t) => 2 * T * (t + band + lift - t / 2) + W * Math.abs(xm);
   let t = Math.max(up(1.5 * fixingModel(mo.thread).major, k.layer), up(least - band, k.layer));
   for (let i = 0; i < 40 && bendMargin(Mof(t), b, t, k.S) < want(); i++) t = r3(t + k.layer);
   t = r3(up(t, k.layer));
   const fits = sold(t, k.layer, [sd], sd.thread);
   if (fits) t = fits.t;
-  const z0 = r3(t + gap), top = r3(z0 + S.pulley.body), height = r3(t + band), M = Mof(t), margin = r3(bendMargin(M, b, t, k.S)), stress = r3((6 * M) / (b * t * t));
+  const z0 = r3(t + gap + lift), top = r3(z0 + S.pulley.body), height = r3(t + band + lift), M = Mof(t), margin = r3(bendMargin(M, b, t, k.S)), stress = r3((6 * M) / (b * t * t));
   if (top > mo.shaft.length + 1e-9 && mo.shaft.length - z0 < S.pulley.body / 2) throw new Error(`${what}: ${S.pulley.set} stands ${mm(z0)} to ${mm(top)} mm over ${mo.set}'s face on a ${mm(mo.shaft.length)} mm shaft, less than half on: a thinner plate, or a belt lower over the carriage`);
   const pocket = r3(mo.boss.d + 2 * k.fit + (k.pr.rules?.hole_comp?.value ?? 0.1));
   const m = { kind: 'fitting', fitting: 'belt-plate', guide: 'belt', name: `belt-plate-${mo.set}-${short(p.name)}-${sd.face.replace('.', '-')}`, title: `printed plate for the motor ${mo.set} and its ${S.pulley.set} on ${p.name}'s ${sd.face} face`,
-    profile: p.name, face: sd.face, motor: mo.set, pulley: S.pulley.set, belt: S.belt.set, thickness: t, height, across, outline: roundedRect(x0, y0, x1, y1, 3), x0, x1, y0, y1, motorAt: [xm, across],
+    profile: p.name, face: sd.face, motor: mo.set, pulley: S.pulley.set, belt: S.belt.set, thickness: t, height, across, lift, outline: roundedRect(x0, y0, x1, y1, 3), x0, x1, y0, y1, motorAt: [xm, across],
     holes: mo.holes.map(([hx, hy]) => ({ at: [r3(xm + hx), r3(across + hy)], diameter: r3(clear) })), boss: pocket, thread: sd.thread, head: sc.head,
     screws: xs.map((x) => ({ thread: sd.thread, head: sc.head, grip: t, at: [x, 0, t], axis: [0, 0, -1], nut: sd.nut.name, nutKind: sd.nut.nutKind, length: fits?.lengths[0] ?? null })),
     pulleyAt: { at: [xm, across, z0], top, band: height }, engaged: r3(Math.min(mo.shaft.length, top) - z0), hardware: [],
@@ -188,13 +191,16 @@ export function beltClampModel(o = {}) {
   const tau = (BELT_DEFAULTS.shear.value * k.S), perTooth = tau * (B.pitch / 2) * B.width, n = Math.max(BELT_DEFAULTS.mesh.value, Math.ceil((T * want()) / perTooth));
   const gapMid = BELT_DEFAULTS.clamp_gap.value, xsHoles = ch.holes.map((h) => Math.abs(h[0])), L = r3(Math.max(2 * n * B.pitch + gapMid, 2 * Math.max(...xsHoles) + ch.cb.diameter + 2 * wall)), mesh = Math.floor((L - gapMid) / 2 / B.pitch);
   const half = B.thickness / 2 + k.fit, yLo = r3(ch.y - half - B.tooth - wall), yHi = r3(Math.max(...ch.holes.map((h) => h[1])) + ch.cb.diameter / 2 + wall), top = r3(up(rise + B.width / 2 + 0.25, k.layer));
-  // the screws: the shortest length sold that goes as deep as steel asks into the carriage's thread and no deeper than
-  // it is (carriageDepth), the plastic under each head at least the thread's diameter; the counterbore takes the rest
+  // the screws: the shortest length sold that goes as deep as steel asks into the carriage's thread, and a layer more
+  // where the hole is that deep (so the counterbore's floor, printed to the nearest layer, never leaves it short), and
+  // no deeper than the hole is (carriageDepth); the plastic under each head at least the thread's diameter; the
+  // counterbore takes the rest
   const depth = o.carriageDepth ?? null, major = fixingModel(o.thread).major, least = engagement(o.thread, { depth: 1, material: 'steel' }).need, lens = [...(fixingModel(o.thread).figures.lengths?.value ?? [])].sort((a, b) => a - b);
   if (depth != null && !(isNum(depth) && depth > 0)) throw new Error(`${what}: carriageDepth is the carriage's tapped holes' depth, mm (got ${shown(o.carriageDepth)})`);
-  const Ls = lens.find((x) => r3(x - Math.min(least, depth ?? least)) >= major - 1e-9 && r3(x - Math.min(least, depth ?? least)) <= top - 1e-9);
-  if (Ls == null) throw new Error(`${what}: no ${o.thread} cap screw sold reaches ${mm(least)} mm into the carriage through ${mm(major)} to ${mm(top)} mm of clamp`);
-  const grip = r3(Ls - Math.min(least, depth ?? least)), cbDepth = r3(top - grip), margin = r3((mesh * perTooth) / T);
+  const into = r3(Math.min(least, depth ?? least) + Math.max(0, Math.min(k.layer, (depth ?? Infinity) - least)));
+  const Ls = lens.find((x) => r3(x - into) >= major - 1e-9 && r3(x - into) <= top - 1e-9);
+  if (Ls == null) throw new Error(`${what}: no ${o.thread} cap screw sold reaches ${mm(into)} mm into the carriage through ${mm(major)} to ${mm(top)} mm of clamp`);
+  const grip = r3(Ls - into), cbDepth = r3(top - grip), margin = r3((mesh * perTooth) / T);
   const m = { kind: 'fitting', fitting: 'belt-clamp', guide: 'belt', name: `belt-clamp-${B.set}-${o.thread}-${mm(o.width)}`, title: `printed clamp for the two ends of ${B.set} on a carriage`, belt: B.set,
     length: L, yLo, yHi, top, floor, channel: { y: ch.y, half, tooth: B.tooth, pitch: B.pitch }, mesh, gap: gapMid, counterbore: { diameter: ch.cb.diameter, depth: cbDepth }, thread: o.thread, head: 'cap',
     screws: ch.holes.map(([x, y]) => ({ thread: o.thread, head: 'cap', grip, at: [x, y, grip], axis: [0, 0, -1], length: Ls })), hardware: [],
@@ -303,16 +309,18 @@ const seg = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
  * together, a plate or a block that meets the rail, a motor whose shaft the pulley does not fit.
  * @param {string | object} profile
  * @param {{ face?: string, beam: number, rail: { from: number, length: number, width: number, height: number }, carriage: { top: number, width: number, length: number, clearance?: number, holes: number[][], thread: string, rest: number, travel: number },
- *   motor?: string, pulley?: string, idler?: string, belt?: string, tension?: number, across?: number, idlerAt?: number, cut?: number, thread?: string, nut?: string, printer?: object, material?: string | object, given?: object }} o
+ *   motor?: string, pulley?: string, idler?: string, belt?: string, tension?: number, across?: number, idlerAt?: number, cut?: number, height?: number, thread?: string, nut?: string, printer?: object, material?: string | object, given?: object }} o
  *   beam: its length; rail: where it lies along the face and its section; carriage: its top over the face, its size, its
  *   tapped holes, its middle along the rail at the start of its travel (rest) and its travel; across: the idler's axle
  *   off the line that squares the belt, mm; idlerAt: the block's end toward a, mm along the beam (default it ends at
- *   end b); cut: the belt's length as cut, mm (default the length that sets the tension with the block in the middle of its slots)
+ *   end b); cut: the belt's length as cut, mm (default the length that sets the tension with the block in the middle of its slots);
+ *   height: the belt's middle over the face, mm (default the least the clamp's floor over the carriage takes; give more
+ *   for room under the return run over the carriage's free holes)
  * @returns {object} the layout
  */
 export function beltLayout(profile, o = {}) {
   const what = 'beltLayout';
-  options(what, o ?? {}, ['face', 'beam', 'rail', 'carriage', 'motor', 'pulley', 'idler', 'belt', 'tension', 'across', 'idlerAt', 'cut', 'thread', 'nut', 'printer', 'material', 'given']);
+  options(what, o ?? {}, ['face', 'beam', 'rail', 'carriage', 'motor', 'pulley', 'idler', 'belt', 'tension', 'across', 'idlerAt', 'cut', 'height', 'thread', 'nut', 'printer', 'material', 'given']);
   const p = profileOf(what, profile, o.given ?? {}), k = partSetup(what, o), S = setsOf(what, o), B = S.belt, T = tensionOf(what, o.tension), gap = 1, face = o.face ?? 'top';
   const c = o.carriage, rail = o.rail;
   if (!c || !rail || !isNum(o.beam)) throw new Error(`${what}: beam, rail and carriage are the beam's length, the rail's place and the carriage's figures`);
@@ -321,8 +329,15 @@ export function beltLayout(profile, o = {}) {
   const pass = { printer: o.printer, material: o.material }, rp = S.pulley.pd / 2, ri = S.idler.pd / 2;
   // the working run's line: the clamp's channel, beside the carriage's holes; the pulley's and idler's middles off it
   const ch = channelOf(what, c, k.pr, k.fit, B), yw = ch.y, yp = r3(yw - rp), yi = r3(yw - ri + across);
-  const least = r3(c.top + 2 + B.width / 2 + 0.25);
-  const plate = beltPlateModel(p, { face, motor: o.motor, pulley: S.pulley.set, belt: B.set, across: yp, least, tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}), ...pass, given: o.given });
+  // the belt's least height: the clamp's 2 mm floor under its channel over the carriage, or higher where it is given
+  // (room under the belt for what is screwed to the carriage's free holes)
+  const lowest = r3(c.top + 2 + B.width / 2 + 0.25);
+  if (o.height != null && !(isNum(o.height) && o.height >= lowest - 1e-9)) throw new Error(`${what}: height is the belt's middle over the face, mm, at least ${mm(lowest)} (the carriage's ${mm(c.top)} mm top, the clamp's 2 mm floor and half the belt's ${mm(B.width)} mm width with 0.25 mm) (got ${shown(o.height)})`);
+  // (a belt higher than that: the plate as thick as for the least, the pulley further up its shaft)
+  const least = lowest, plateWith = (lift) => beltPlateModel(p, { face, motor: o.motor, pulley: S.pulley.set, belt: B.set, across: yp, least, ...(lift ? { lift } : {}), tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}), ...pass, given: o.given });
+  let plate = plateWith(0);
+  const lift = o.height != null && o.height > plate.height + 1e-9 ? r3(o.height - plate.height) : 0;
+  if (lift) plate = plateWith(lift);
   const zb = plate.height, xp = plate.motorAt[0];
   if (rail.from < plate.x1 + gap - 1e-9) throw new Error(`${what}: the motor's plate takes the first ${mm(plate.x1)} mm of the face, and the rail starts ${mm(rail.from)} mm along it: start the rail at ${mm(plate.x1 + gap)} mm or more`);
   const clamp = beltClampModel({ belt: B.set, carriageHoles: c.holes, ...(c.depth != null ? { carriageDepth: c.depth } : {}), thread: c.thread, width: c.width, length: c.length, rise: r3(zb - c.top), tension: T, ...pass });
@@ -349,7 +364,7 @@ export function beltLayout(profile, o = {}) {
   const F0 = faceFrame(what, p, face);
   const line = r3((Math.atan2(Math.abs(across), xi0 - xp) * 180) / Math.PI);
   const common = { belt: B.set, tension: T, ...(o.thread ? { thread: o.thread } : {}), ...(o.nut ? { nut: o.nut } : {}) };
-  const specs = { plate: { face, motor: plate.motor, pulley: S.pulley.set, across: yp, least, ...common }, clamp: { belt: B.set, carriageHoles: c.holes, thread: c.thread, width: c.width, length: c.length, rise: r3(zb - c.top), tension: T },
+  const specs = { plate: { face, motor: plate.motor, pulley: S.pulley.set, across: yp, least, ...(lift ? { lift } : {}), ...common }, clamp: { belt: B.set, carriageHoles: c.holes, thread: c.thread, width: c.width, length: c.length, rise: r3(zb - c.top), tension: T },
     idler: { face, idler: S.idler.set, rise: zb, across: yi, stretch, ...common } };
   if (c.depth != null) specs.clamp.carriageDepth = c.depth;
   return { kind: 'belt-layout', profile: p.name, face, sets: S, specs, tension: T, height: zb, working: yw, pulley: { x: xp, y: yp, r: rp }, idler: { x: xi0, y: yi, r: ri, block: blockAt, offset, room: { a: r3(blockAt - end - gap), b: r3(o.beam - blockAt - idler.length) }, want: idler.room },
@@ -379,16 +394,24 @@ export function path(g) {
 /**
  * Where a belt's runs pass the beam, the rail, the carriage and its clamp through the carriage's travel: each run's band
  * (the belt's thickness across it, its width over the face) against each part's box, at each of the layout's samples.
- * A run that overlaps a part rubs it. The working runs end at the clamp, so they are not held against it.
- * @param {object} L beltLayout's @returns {{ rubs: object[], least: { clearance: number, run: string, part: string, at: number } }}
+ * A run that overlaps a part rubs it. The working runs end at the clamp, so they are not held against it. What else the
+ * carriage carries (a plate, a bracket, a toolhead) is held the same way, by its box, moving with the carriage.
+ * @param {object} L beltLayout's
+ * @param {{ carried?: { part: string, lo: number[], hi: number[] }[] }} [o] carried: boxes in the face's frame, x from
+ *   the carriage's middle (y across and z over the face as the layout's)
+ * @returns {{ rubs: object[], least: { clearance: number, run: string, part: string, at: number } }}
  */
-export function beltRub(L) {
+export function beltRub(L, o = {}) {
+  options('beltRub', o ?? {}, ['carried']);
+  const carried = o.carried ?? [];
+  if (!Array.isArray(carried) || !carried.every((b) => typeof b?.part === 'string' && [b.lo, b.hi].every((v) => Array.isArray(v) && v.length === 3 && v.every(isNum)))) throw new Error(`beltRub: carried is a list of { part, lo: [x, y, z], hi: [x, y, z] } boxes, mm (got ${shown(o.carried)})`);
   const B = L.sets.belt, c = L.carriage, r = L.rail, ch = L.clamp, zb = L.height, t = B.thickness / 2, w = B.width / 2, F = L.beamFrame;
   const boxesAt = (xc) => [
     { part: 'the beam', lo: [-Infinity, F.yc - F.across, -F.deep], hi: [Infinity, F.yc + F.across, 0], all: true },
     { part: 'the rail', lo: [r.from, -r.width / 2, 0], hi: [r.from + r.length, r.width / 2, r.height], all: true },
     { part: 'the carriage', lo: [xc - c.length / 2, -c.width / 2, c.clearance ?? 0], hi: [xc + c.length / 2, c.width / 2, c.top], all: true },
     { part: 'the clamp', lo: [xc - ch.length / 2, ch.yLo, c.top], hi: [xc + ch.length / 2, ch.yHi, c.top + ch.top], all: false },
+    ...carried.map((b) => ({ part: b.part, lo: [xc + b.lo[0], b.lo[1], b.lo[2]], hi: [xc + b.hi[0], b.hi[1], b.hi[2]], all: true, carried: true })),
   ];
   const rubs = [];
   let least = null;
@@ -406,7 +429,7 @@ export function beltRub(L) {
           worst = Math.min(worst, Math.max(gx, gy, gz));
         }
         if (!least || worst < least.clearance) least = { clearance: r3(worst), run: run.name, part: b.part, at: xc };
-        if (worst < 0 && !rubs.some((x) => x.run === run.name && x.part === b.part)) rubs.push({ run: run.name, part: b.part, at: xc, depth: r3(-worst) });
+        if (worst < 0 && !rubs.some((x) => x.run === run.name && x.part === b.part)) rubs.push({ run: run.name, part: b.part, at: xc, depth: r3(-worst), ...(b.carried ? { carried: true, top: r3(b.hi[2]) } : {}) });
       }
     }
   }

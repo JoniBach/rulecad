@@ -118,15 +118,18 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 function loadAt(motion, loads, worlds, j, mul) {
   const { O, Z } = axisOf(motion, worlds, j, mul), byChild = new Map(motion.joints.map((x) => [x.child, x]));
   const beyond = (k) => { for (let i = k, n = 0; i >= 0 && n < 99; n++) { const x = byChild.get(i); if (!x) return false; if (x === j) return true; i = x.parent; } return false; };
-  let total = 0;
+  let total = 0, push = 0;
   for (const l of loads) {
-    if (l.joint === j.id) total += l.value;
+    if (l.joint === j.id && l.belt) push += Math.abs(l.value);
+    else if (l.joint === j.id) total += l.value;
     else if (l.mass != null && beyond(l.item)) {
       const X = rowsAt(worlds[l.item], [l.frame[3], l.frame[7], l.frame[11]]), g = motion.gravity || [0, 0, -1], F = g.map((c) => (c * l.mass * G) / Math.hypot(...g));
       total += j.type === 'prismatic' ? dot(Z, F) : dot(Z, cross(sub(X, O), F)) / 1000;
     }
   }
-  return total;
+  // (a belt's push at the carriage's acceleration goes either way along the travel, so it adds to the rest in the
+  // direction that makes it worse: on a vertical axis, the weight plus the push upward, never the weight less it)
+  return push ? total + (total < 0 ? -push : push) : total;
 }
 
 // The worst load on a joint: at each named pose, and with the motor run through its range
