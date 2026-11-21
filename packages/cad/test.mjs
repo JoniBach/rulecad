@@ -2517,8 +2517,14 @@ test('loads on an upright arm: a tipping moment on its bearing, or printed clips
     write(asm({ bearings: ['b1'] }, 0.14)); assert.ok(by(check(), 'motor.accel').values.alpha < by(f, 'motor.accel').values.alpha, 'more payload, less acceleration');
     write(asm({ bearings: ['b1'] }, 2)); const stall = by(check(), 'motor.accel'); assert.equal(stall.level, 'fail'); assert.match(stall.text, /shoulder stalls/);
     write(asm({ clips: ['c1', 'c2', 'c3'], pitch: 40, cell: 0.5 }, 0.5));
-    const clip = by(check(), 'joint.moment'); assert.match(clip.text, /3 printed clips, the worst \(c\d\) at [\d.]+ MPa/); assert.ok(clip.values.stress > 0);
-    assert.equal(clip.level, 'fail', clip.text);
+    const clipped = check(), clip = by(clipped, 'joint.moment'); assert.match(clip.text, /3 printed clips, the worst \(c\d\) at [\d.]+ MPa/); assert.ok(clip.values.stress > 0);
+    assert.equal(clip.level, 'fail', clip.text); assert.match(clip.text, /FE on 0\.5 mm cells/);
+    // The clips' cell is theirs alone: each link keeps its own, a third of its thinnest side, 8 / 3 = 2.67 mm (the link
+    // is 170 x 12 x 8 mm). At the clips' 0.5 mm the link was 340 x 24 x 16 = 130 560 cells: 3 GB and over ten minutes.
+    assert.deepEqual(by(clipped, 'link.deflection').values.rows.map((x) => +x.cell.toFixed(3)), [2.667, 2.667]);
+    write(asm({ clips: ['c1', 'c2', 'c3'], pitch: 40, cell: 0.5, linkCell: 2 }, 0.5));
+    // linkCell is the shoulder's, so it sets the upper link alone; the forearm, beyond the elbow, keeps its 2.67 mm
+    const fine = by(check(), 'link.deflection'); assert.deepEqual(fine.values.rows.map((x) => +x.cell.toFixed(3)), [2, 2.667]); assert.match(fine.text, /a person can refine with "linkCell" on the joint's support/);
     write(asm(undefined)); assert.equal(by(check(), 'joint.moment').level, 'warn');
   } finally { done(); }
 });
