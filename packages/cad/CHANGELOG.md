@@ -62,6 +62,13 @@ and head, the parts it passes through and the part it ends in.
   tap's depth so its access holes clear the tap: a box round 300 x 300 x 350 in 2020 on feet now has uprights of
   408.5 mm, not 390, and its bottom joins at 28.5 mm. Before, the feet had no screw and the tap was missing from the
   sheets. `cad frame --expand` writes the tap and the fasten.
+- **A joint support's `"cell"` is its clips' alone**: it sets the FE cell of the printed clips under that joint, and
+  no longer the cell of the link bent beyond it (`link.deflection`). That link takes the new `"linkCell"` on the
+  same support; without it the link keeps its own cell, a third of its thinnest side, 1 to 4 mm. A workspace that
+  set `"cell"` to refine `link.deflection` now gets the default link cell, and its drop at the tool can move: put
+  the same figure in `"linkCell"` to keep it. The finding now names `"linkCell"`. A 170 mm link under 0.5 mm clips
+  was meshed at 0.5 mm (130 560 cells, about 3 GB and over ten minutes); it is now meshed at 2.67 mm. No printed
+  size moves.
 
 ### Fixed
 

@@ -2529,6 +2529,22 @@ test('loads on an upright arm: a tipping moment on its bearing, or printed clips
   } finally { done(); }
 });
 
+test('docs: the key a joint support takes to refine link.deflection is the one the finding names, in the schema, the worked examples and the changelog', () => {
+  const read = (f) => fs.readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+  // the finding tells a person which key refines it; that key is the one the code reads
+  const loads = read('./lib/loads.mjs'), key = loads.match(/a person can refine with "(\w+)" on the joint's support/)?.[1];
+  assert.equal(key, 'linkCell'); assert.match(loads, new RegExp(`sup\\?\\.${key} != null`));
+  const support = JSON.parse(read('./schemas/assembly.schema.json')).$defs.joint.properties.support.properties;
+  assert.ok(support[key], `support.${key} is in the schema`); assert.match(support.cell.description, /clips/);
+  // EXAMPLES.md: every place that tells a reader to refine link.deflection by finer cells names that key
+  const advice = read('./EXAMPLES.md').split('\n').filter((l) => /link\.deflection/.test(l) && /finer cells/.test(l));
+  assert.ok(advice.length >= 1, 'the upright arm chapter says how to refine link.deflection');
+  for (const l of advice) { assert.match(l, new RegExp(`\`"${key}": [\\d.]+\` on the joint's \`support\``)); assert.doesNotMatch(l, /`"cell": [\d.]+` on the joint's `support`/); }
+  // the changelog's unreleased section says the support's "cell" stopped refining the link, and names the new key
+  const log = read('./CHANGELOG.md'), unreleased = log.slice(log.indexOf('## Unreleased'), log.indexOf('\n## ', log.indexOf('## Unreleased') + 1));
+  assert.match(unreleased, new RegExp(`"cell"\`? is its clips' alone\\*\\*[\\s\\S]*\`"${key}"\``));
+});
+
 test('a gait in an assembly: a crawl checked through its cycle, motors against its torque, and legs that collide found', async () => {
   const { ws, done } = workspace();
   try {
