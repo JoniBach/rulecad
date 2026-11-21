@@ -96,8 +96,13 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
   cad plot <project>/<assembly> <drawing.svg>   plans a drawing on the machine: a step file in exports/, an animation in
                                     .preview/, and any stroke refused [--calibrate: the calibration drawing] [--tol 0.1] [--json]
   cad order <project>/<assembly>    the order it goes together in, each step with its fasteners; a frame from bars to square: cut, drill, sides built flat, nuts to load, joins with their torque, diagonals [--preview: an exploded picture of each step in .preview/]
-  cad plates <project>/<assembly>   every printed part on beds, by filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate [--gap mm] [--json]
+  cad plates <project>/<assembly>   every printed part on beds, by material and filament, spaced by the first-layer rule: written as plate assemblies and checked; a changed part re-packs only its plate; a frame's jigs on plates of their own [--gap mm] [--no-jigs] [--json]
+  cad kit <project>/<assembly>      the folder to build it from without the model, in exports/: README.md (checks, what to buy and print, cut list, drilling, the build step by step), buy.csv, the plates' 3MFs, the jigs, each beam's sheet [--pictures] [--json]
   cad list <project>/<assembly>     what it takes to build: bought parts by set, the beams' cut list and bars to buy, every screw, nut and insert in packs, wire, printed parts in grams
+  cad frame <project>/<assembly>    a generated frame ("frame": { "kind": "box", "inside": [..] }): its size, its beams by length, its joins and ends
+                                     --expand: written into the assembly as its beams, joins and end fittings, to edit by hand [--json]
+                                     --size: any frame's beams, by group, each given the lightest profile from frame.size.profiles that meets
+                                     its limits, as a table naming the limit that set each; --write writes the profiles in [--json]
   cad beams <project>/<assembly>    a cut-and-drill sheet for each mark of beam (beams that are the same share one), to scale, written to exports/ [--json]
                                      --jigs: the jigs its beams take, as a plate in exports/ (a drill guide per distinct hole across a beam, a tap
                                      guide per tapped end, a cut-length stop per length, a squaring corner per square join), each marked with its beam [--preview]
@@ -139,11 +144,11 @@ const HELP = `cad: JSCAD designs you can trace, check, share and print (rulecad)
 
 // Every command and option there is: a misspelt one is refused by name, not passed over
 const COMMANDS = ['new', 'import-kle', 'clone', 'agents', 'trust', 'rules', 'values', 'set', 'add', 'why', 'check', 'preview', 'animate', 'optimise', 'optimize', 'export',
-  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'beams', 'wires', 'machine', 'plot', 'plates', 'order', 'match', 'variants', 'compare', 'help'];
+  'show', 'link', 'status', 'release', 'history', 'diff', 'printed', 'measure', 'measured', 'list', 'beams', 'frame', 'wires', 'machine', 'plot', 'plates', 'order', 'kit', 'match', 'variants', 'compare', 'help'];
 const OPTIONS = ['table', 'calibrate', 'check', 'turns', 'preview', 'gap', 'no-steps', 'all', 'along', 'at', 'bump', 'depth', 'dry-run', 'explode', 'force', 'fresh', 'json', 'licence', 'license', 'long', 'm', 'material', 'md', 'name', 'new',
   'no-models', 'no-pictures', 'no-rules', 'note', 'open', 'part', 'place', 'pose', 'profile', 'progress', 'push', 'result', 'rules', 'samples', 'set', 'short', 'source', 'steps',
   'sweep', 'tol', 'trailer', 'ttl', 'version', 'watch', 'line',
-  'unit', 'rule', 'label', 'from', 'out', 'jigs', // cad set, cad rules, cad beams
+  'unit', 'rule', 'label', 'from', 'out', 'jigs', 'no-jigs', 'expand', 'size', 'write', 'pictures', // cad set, cad rules, cad beams, cad frame, cad plates, cad kit
   'a', 'b', 'min', 'max', 'poses', 'id', 'type', 'parent', 'child', 'follow', 'value', 'ratio', 'object', 'assembly', 'variant', 'rotate', 'to', 'roll', // cad add
   'screw', 'through', 'into', 'holes', 'nut', 'washer', 'length', 'torque', 'from-fits', // cad add fasten
   'kind', 'fitting']; // cad add join
@@ -155,7 +160,7 @@ const USAGE = { add: 'fit|joint|item|beam|loop|pose|fasten|join <project>/<assem
 const args = process.argv.slice(2);
 // Options that stand alone. Every other takes the value after it: --name value, or -m for one-letter names
 // (--sweep, --watch and --nut take one or not).
-const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs'];
+const FLAGS = ['table', 'calibrate', 'check', 'preview', 'no-steps', 'all', 'dry-run', 'explode', 'force', 'fresh', 'json', 'long', 'md', 'new', 'no-models', 'no-pictures', 'no-rules', 'open', 'progress', 'push', 'short', 'washer', 'from-fits', 'jigs', 'no-jigs', 'pictures', 'expand', 'size', 'write'];
 const opt = (k) => {
   const i = args.findIndex((a) => a === `--${k}` || (k.length === 1 && a === `-${k}`));
   if (i < 0) return undefined;
@@ -472,8 +477,10 @@ async function main() {
   if (cmd === 'compare') return compareVariants(locate(ref), pos[2], pos[3]);
   if (cmd === 'measured') return measuredCommand(ref);
   if (cmd === 'list' || cmd === 'wires' || cmd === 'beams') return listCommand(cmd, ref);
+  if (cmd === 'frame') return frameCommand(ref);
   if (cmd === 'machine' || cmd === 'plot') return machineCommand(cmd, ref);
   if (cmd === 'plates' || cmd === 'order') return platesCommand(cmd, ref);
+  if (cmd === 'kit') return kitCommand(ref);
   if (cmd === 'history') return history(ref);
   if (cmd === 'diff') return diff(locate(ref), pos[2], pos[3] || null);
   if (cmd === 'printed') return printed(locate(ref));
@@ -715,17 +722,7 @@ async function assembly(cmd, ref) {
   if (cmd === 'check') {
     say(`${title} (${a.kind || 'fit'}: ${versions})`);
     // Each pose (or the one asked for): what's the same in every pose is said once, the rest under the pose's name
-    const poses = pose ? [pose] : Object.keys(s.motion.poses);
-    const file = path.join(paths.project(s.project), 'assemblies', `${s.name}.json`), layouts = new Set((a.items || []).map((i) => i.repeat?.layout).filter((l) => l && !l.includes('/')));
-    const schemaProblems = [...(fs.existsSync(file) ? schemaFindings(JSON.parse(fs.readFileSync(file, 'utf8')), 'assembly', path.relative(WS, file)) : []),
-      ...[...layouts].map((l) => path.join(paths.project(s.project), 'layouts', `${l}.json`)).filter((f) => fs.existsSync(f)).flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'layout', path.relative(WS, f)))];
-    let findings = checkAssembly(s);
-    if (poses.length > 1) {
-      const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
-      findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}`, code: 'poses', refs: { poses } }, ...each[0][1].filter(same),
-        ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
-    }
-    findings.unshift(...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]));
+    const findings = assemblyFindings(s, a, pose);
     if (opt('sweep')) findings.push(...sweep(s, { joint: typeof opt('sweep') === 'string' ? opt('sweep') : undefined, steps: Number(opt('steps')) || 24, progress: showProgress }));
     if (a.kind === 'plate') findings.push(...check(printed.flatMap((p) => p.triangles), rules(printerOf(s.project)), { parts: printed }));
     process.exitCode = report(findings, { assembly: ref, title, kind: a.kind || 'fit', ...(pose ? { pose } : {}) }) ? 1 : 0;
@@ -1041,16 +1038,98 @@ async function platesCommand(what, ref) {
   }
   const { platesOf, checkPlate } = await import('../lib/plates.mjs'), gap = opt('gap') != null ? Number(opt('gap')) : undefined;
   if (gap != null && !(gap > 0)) throw new Error(`--gap is a distance in mm, above 0 (got ${opt('gap')})`);
-  const r = await platesOf(s, { write: true, gap }), results = [];
+  // a frame's jigs (its beams' drill and tap guides, length stops and squaring corners) on beds of their own, in the
+  // project's plastic: exports/<project>/<assembly>.jigs.3mf, as cad beams --jigs writes them (--no-jigs leaves them)
+  const { cutListOf } = await import('../lib/beams.mjs'), jigs = !opt('no-jigs') && cutListOf(s) ? await (await import('../lib/jigs.mjs')).writeJigs(s) : null;
+  let r;
+  try { r = await platesOf(s, { write: true, gap }); } catch (e) { if (e.code !== 'plates.empty' || !jigs?.jigs.length) throw e; r = { bed: null, gap: null, plates: [], touched: [], removed: [], findings: [] }; } // (bought fittings only: the jigs are what it prints)
+  const results = [];
   for (const p of r.plates.filter((x) => !x.stood)) results.push({ name: p.name, findings: await checkPlate(`${s.project}/${p.name}`) });
-  const fails = [...r.findings, ...results.flatMap((x) => x.findings)].some((x) => x.level === 'fail');
-  if (opt('json')) { console.log(JSON.stringify({ assembly: ref, bed: r.bed, gap: r.gap, plates: r.plates, repacked: r.touched, removed: r.removed, findings: r.findings, checks: results }, null, 2)); process.exitCode = fails ? 1 : 0; return; }
+  const jigRows = jigs ? { plates: jigs.plates.map((p) => ({ ...p, file: path.relative(WS, p.file) })), count: jigs.jigs.length, grams: +jigs.jigs.reduce((t, x) => t + x.grams, 0).toFixed(1), findings: jigs.findings } : null;
+  const fails = [...r.findings, ...results.flatMap((x) => x.findings), ...(jigs?.findings ?? [])].some((x) => x.level === 'fail');
+  if (opt('json')) { console.log(JSON.stringify({ assembly: ref, bed: r.bed, gap: r.gap, plates: r.plates, repacked: r.touched, removed: r.removed, findings: r.findings, checks: results, ...(jigRows ? { jigs: jigRows } : {}) }, null, 2)); process.exitCode = fails ? 1 : 0; return; }
   report(r.findings);
-  say(`${ref}: ${r.plates.length} plate${r.plates.length === 1 ? '' : 's'}, parts ${r.gap} mm apart (the first layer's rule)`);
-  for (const p of r.plates) say(`  ${p.name}${p.stood ? ' (unchanged)' : ''}: ${p.filament}, ${p.parts.length} part${p.parts.length === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min: ${p.parts.map((x) => x.id).join(', ')}`);
+  if (r.plates.length) say(`${ref}: ${r.plates.length} plate${r.plates.length === 1 ? '' : 's'}, parts ${r.gap} mm apart (the first layer's rule)`);
+  for (const p of r.plates) say(`  ${p.name}${p.stood ? ' (unchanged)' : ''}: ${p.material}, ${p.filament}, ${p.parts.length} part${p.parts.length === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min: ${p.parts.map((x) => x.id).join(', ')}`);
   if (r.removed.length) say(`  removed ${r.removed.join(', ')} (nothing is on them now)`);
   for (const x of results) { const bad = x.findings.filter((y) => (y.level === 'fail' || y.level === 'warn') && y.code !== 'rules.estimate'); say(`  ${x.name}: ${bad.length ? `${bad.length} to look at` : 'prints clean'}`); for (const y of bad) say(`    [${y.level}] ${y.text}`); }
+  if (jigRows?.count) {
+    say(`${ref}: ${jigRows.count} jig${jigRows.count === 1 ? '' : 's'} for its beams, ${jigRows.grams} g, on ${jigRows.plates.length} plate${jigRows.plates.length === 1 ? '' : 's'} of their own (cad beams ${ref} --jigs says what each is for)`);
+    for (const p of jigRows.plates) say(`  ${p.file}: ${p.material}, ${p.parts.length} part${p.parts.length === 1 ? '' : 's'}`);
+    for (const f of jigRows.findings) say(`  [${f.level}] ${f.text}`);
+  }
   process.exitCode = fails ? 1 : 0;
+}
+
+// An assembly's findings as cad check gives them: each pose (or the one asked for), what is the same in every pose
+// said once and the rest under the pose's name, after its files' schema check. cad kit counts the same list
+function assemblyFindings(s, a, pose) {
+  const poses = pose ? [pose] : Object.keys(s.motion.poses);
+  const file = path.join(paths.project(s.project), 'assemblies', `${s.name}.json`), layouts = new Set((a.items || []).map((i) => i.repeat?.layout).filter((l) => l && !l.includes('/')));
+  const schemaProblems = [...(fs.existsSync(file) ? schemaFindings(JSON.parse(fs.readFileSync(file, 'utf8')), 'assembly', path.relative(WS, file)) : []),
+    ...[...layouts].map((l) => path.join(paths.project(s.project), 'layouts', `${l}.json`)).filter((f) => fs.existsSync(f)).flatMap((f) => schemaFindings(JSON.parse(fs.readFileSync(f, 'utf8')), 'layout', path.relative(WS, f)))];
+  let findings = checkAssembly(s);
+  if (poses.length > 1) {
+    const each = poses.map((p) => [p, checkAssembly(s.at(p))]), same = (x) => each.every(([, list]) => list.some((y) => y.text === x.text && y.level === x.level));
+    findings = [{ level: 'pass', text: `${poses.length} poses checked: ${poses.join(', ')}`, code: 'poses', refs: { poses } }, ...each[0][1].filter(same),
+      ...each.flatMap(([p, list]) => list.filter((x) => !same(x)).map((x) => ({ ...x, text: `${p}: ${x.text}`, ...(x.card ? { card: `${p}: ${x.card}` } : {}), refs: { ...x.refs, pose: p } })))];
+  }
+  findings.unshift(...(schemaProblems.length ? schemaProblems : [{ level: 'pass', text: 'files match their schemas', code: 'schema' }]));
+  return findings;
+}
+
+// cad kit: the folder to build an assembly from, without the model (lib/kit.mjs)
+async function kitCommand(ref) {
+  if (!isAssembly(ref)) throw new Error(`cad kit works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  // (laying out its plates reads the printer's rule set: a fresh workspace gets its own copy in rules/, as cad plates
+  // gives it, and the kit says which it copied)
+  const rulesDir = path.join(WS, 'rules'), had = new Set(fs.existsSync(rulesDir) ? fs.readdirSync(rulesDir) : []);
+  const s = await buildAssembly(ref), { writeKit } = await import('../lib/kit.mjs');
+  const r = await writeKit(s, assemblyFindings(s, s.a, undefined), { pictures: !!opt('pictures'), preview });
+  const copied = (fs.existsSync(rulesDir) ? fs.readdirSync(rulesDir) : []).filter((f) => f.endsWith('.json') && !had.has(f)).map((f) => `rules/${f}`);
+  const shown = { assembly: ref, dir: path.relative(WS, r.dir), files: r.files, copied, plates: r.plates.map(({ name, material, filament, parts, grams, minutes, file, issues }) => ({ name, material, filament, parts: parts.length, grams, minutes, file, issues })), jigs: r.jigs, sheets: r.sheets, steps: r.steps, warnings: r.findings.map((f) => f.text) };
+  if (opt('json')) return console.log(JSON.stringify(shown, null, 2));
+  say(`${ref}: the kit to build it from, in ${shown.dir}${path.sep}`);
+  say(`  README.md: what the checks say, what to buy, what to print${r.sheets.length ? ', the cut list, the drilling and tapping' : ''}${r.steps ? `, and the build in ${r.steps} steps` : ''}`);
+  say('  buy.csv: the shopping list');
+  for (const p of shown.plates) say(`  ${p.file}: ${p.material}, ${p.parts} part${p.parts === 1 ? '' : 's'}, ${p.grams} g, about ${p.minutes} min${p.issues.length ? ` (${p.issues.length} to look at)` : ''}`);
+  for (const p of r.jigs?.plates ?? []) say(`  ${p.file}: ${r.jigs.count} jigs for the beams, ${p.parts} parts`);
+  for (const x of r.sheets) say(`  ${x.file}: mark ${x.mark} (${x.items.join(', ')})`);
+  const pics = r.files.filter((f) => f.startsWith('pictures/'));
+  if (pics.length) say(`  pictures/: ${pics.length} pictures (the whole, and the steps of the build)`);
+  for (const w of shown.warnings) say(`  warning: ${w}`);
+  for (const f of copied) say(`and copied ${f} into this workspace: the rule set its plates were laid out by, yours to keep and edit (the next kit reads your copy)`);
+}
+
+// cad frame: a generated frame as it expands, and --expand writes the expansion into the assembly, to edit by hand
+async function frameCommand(ref) {
+  if (!isAssembly(ref)) throw new Error(`cad frame works on an assembly (<project>/<assembly>), and there is no "${ref}"`);
+  const { expandFrame, frameText } = await import('../lib/framegen.mjs'), { assemblyPath } = await import('../lib/assembly.mjs');
+  const file = assemblyPath(ref), raw = readJson(file);
+  if (opt('size')) {
+    const { frameSizing, sizingText, writeSizing, sizeOption } = await import('../lib/framesize.mjs'), { placeItems, jointValues, mul } = await import('@rulecad/model-link');
+    const s = await buildAssembly(ref), r = frameSizing(s, { placeItems, jointValues, mul }, sizeOption(s) ?? undefined);
+    if (!r) throw new Error(`${ref} has no frame to size: its beams need joins between them, or "frame": { "supports" }`);
+    const rows = r.rows, out = { assembly: ref, ok: r.ok, total: r.total, drawn: r.drawn, tried: r.tried, search: r.search, groups: rows, limits: r.limits };
+    if (opt('write')) {
+      if (!r.ok) throw new Error(`${ref}: no profile in the list meets every limit, so nothing is written (cad frame ${ref} --size says how near it comes)`);
+      fs.writeFileSync(file, `${JSON.stringify(writeSizing(raw, raw.frame?.kind != null ? expandFrame(raw, s.num).a : raw, r), null, 2)}\n`);
+      if (opt('json')) return console.log(JSON.stringify({ ...out, file: path.relative(WS, file) }, null, 2));
+      console.log(sizingText(r).join('\n'));
+      return console.log(`wrote ${path.relative(WS, file)}: ${rows.reduce((t, x) => t + x.beams.length, 0)} beams given their profiles${raw.frame?.kind != null ? ' (the generated frame written out expanded, as --expand does, as a generator takes one profile)' : ''}; their lines are kept (a deeper beam that would stand past the end of the one it meets moves along it), so check the joins and ends of any beam that changed size`);
+    }
+    if (opt('json')) return console.log(JSON.stringify(out, null, 2));
+    return console.log(`${ref}: ${sizingText(r).join('\n')}\n(cad frame ${ref} --size --write writes these profiles into the assembly)`);
+  }
+  if (raw.frame?.kind == null) throw new Error(`${ref} asks for no generated frame: give it "frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-misumi-hfs5", "join": "blind" }`);
+  const s = await buildAssembly(ref), m = s.generated, out = expandFrame(raw, s.num).a;
+  if (opt('expand')) {
+    fs.writeFileSync(file, `${JSON.stringify(out, null, 2)}\n`);
+    if (opt('json')) return console.log(JSON.stringify({ assembly: ref, file: path.relative(WS, file), frame: m }, null, 2));
+    return console.log(`wrote ${path.relative(WS, file)}: the ${m.kind} as ${m.beams.length + (m.moving ? 1 : 0)} beams, ${m.joins.length} joins and ${m.ends.length + m.panels.length} fittings, to edit by hand (its "frame" keeps only how it is solved)`);
+  }
+  if (opt('json')) return console.log(JSON.stringify({ assembly: ref, frame: m, expanded: out }, null, 2));
+  console.log(`${ref}: ${frameText(m).join('\n')}\n(cad frame ${ref} --expand writes these into the assembly, to edit by hand)`);
 }
 
 async function listCommand(what, ref) {
@@ -1080,6 +1159,9 @@ async function listCommand(what, ref) {
     if (opt('json')) return console.log(JSON.stringify(sheets.map((x) => ({ ...x, file: path.relative(WS, x.file) })), null, 2));
     if (!sheets.length) return console.log(`${ref} has no beams`);
     for (const x of sheets) say(`  mark ${x.mark} (${x.items.join(', ')}), 1:${x.scale}: ${path.relative(WS, x.file)}`);
+    const { writeFrameShape, writeFrameMode } = await import('../lib/framecheck.mjs'), sag = writeFrameShape(s), mode = writeFrameMode(s);
+    if (sag) say(`  the frame's sag, drawn ${+sag.scale.toPrecision(3)} times its size (a check view): ${path.relative(WS, sag.file)}`);
+    if (mode) say(`  the frame's lowest mode, ${+mode.Hz.toPrecision(3)} Hz, animated (a check view): ${path.relative(WS, mode.file)}`);
     return;
   }
   const { wiresFor } = await import('../lib/assembly.mjs'), { wiringSheet } = await import('../lib/wires.mjs'), rows = wiresFor(s);

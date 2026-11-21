@@ -12,6 +12,7 @@ test/viewer-pen.png
 test/viewer-play.png
 test/viewer-build.png
 test/viewer-pen-phone.png
+test/viewer-frame.png
 packages/*/*.d.mts
 /rules/
 docs/_site/

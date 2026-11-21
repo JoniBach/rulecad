@@ -204,6 +204,8 @@
     "bore_diameter": { "unit": "mm", "says": "the bore through the centre of each cell of a profile, as extruded" },
     "bore_thread": { "says": "the thread a profile's centre bore is tapped to, as its thread set writes it: M5" },
     "bore_at": { "says": "where a profile's bores are: cells for the centre of every cell (the default), none, or their centres from the middle of the section as x,y pairs with semicolons between (-10,0; 10,0)" },
+    "end_thread": { "says": "a printed profile's end fixing: the thread a heat-set insert or a captive nut in each end takes, in place of a tapped bore, as its thread set writes it: M4" },
+    "end_at": { "says": "where a printed profile's end fixing sits, from the middle of the section, as x,y: 0,-3.9" },
     "corner_bore_diameter": { "unit": "mm", "says": "a hole in each corner of a profile, as extruded" },
     "corner_bore_thread": { "says": "the thread a profile's corner holes are tapped to, as its thread set writes it" },
     "corner_bore_inset": { "unit": "mm", "says": "a corner hole's centre from each of the two faces it sits between" },

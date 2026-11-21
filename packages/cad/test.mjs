@@ -103,13 +103,28 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /a draft profile in rules.my-2020\.json, every figure an estimate/);
     const draft = read('rules/my-2020.json');
     assert.deepEqual(Object.keys(draft.rules), Object.keys(vocabulary.drafts.profile)); assert.equal(draft.part, 'profile');
-    for (const [k, r] of Object.entries(draft.rules)) { assert.equal(r.kind, 'estimate', k); assert.match(r.rule, /^DRAFT, not read from a sheet yet: /); assert.equal(r.unit, vocabulary.fields[k].unit, `${k} in its unit`); }
-    assert.match(cad('rules', 'check', 'my-2020'), /1 of 1 rule sets pass/);
+    for (const [k, r] of Object.entries(draft.rules)) { assert.equal(r.kind, 'estimate', k); assert.match(r.source, /^DRAFT, not read from a sheet yet: /); assert.doesNotMatch(r.rule, /DRAFT/, `${k}'s rule is the field's own sentence, which a person keeps`); assert.equal(r.unit, vocabulary.fields[k].unit, `${k} in its unit`); }
+    // it checks as it stands, and says by name that its figures are still the draft's until each is filled or deleted
+    const drafted = cad('rules', 'check', 'my-2020'); assert.match(drafted, /1 of 1 rule sets pass \(1 with something to know\)/);
+    assert.match(drafted, new RegExp(`WARN  ${Object.keys(draft.rules).length} of its ${Object.keys(draft.rules).length} figures are still the draft's, not read from a sheet: family, series, .* and \\d+ more\\. Fill each from the maker's sheet .*\\(rules\\.draft\\)`));
+    assert.deepEqual(JSON.parse(run('rules', 'check', 'my-2020', '--json').stdout)[0].findings.find((x) => x.code === 'rules.draft').refs.rules, Object.keys(draft.rules));
+    // filled as the guide says, field by field: its value, kind spec, the sheet as its source, the date, the rule left
+    // as the draft wrote it. Every figure then counts as read (the draft's rule once said DRAFT, and the warning stayed)
+    const lit = read('rules/my-2020.json'), hfs5 = published('profile-2020-misumi-hfs5').rules;
+    lit.name = 'lit-2020';
+    for (const k of Object.keys(lit.rules)) { if (hfs5[k] && k !== 'slot') Object.assign(lit.rules[k], { value: hfs5[k].value, kind: 'spec', source: 'MISUMI HFS5-2020, catalogue p. 2-529', checked: '2026-11-20' }); else if (k !== 'slot') delete lit.rules[k]; }
+    Object.assign(lit.rules.slot, { value: 'slot-6-misumi', kind: 'spec', source: 'MISUMI HFS5-2020, catalogue p. 2-529', checked: '2026-11-20' });
+    write('rules/lit-2020.json', lit);
+    assert.ok(!JSON.parse(run('rules', 'check', 'lit-2020', '--json').stdout)[0].findings.some((x) => x.code === 'rules.draft'), 'a literal fill leaves no rules.draft');
+    // a figure from a PDF's draft keeps its DRAFT rule until a person names it: still the draft's while it is an estimate
+    lit.rules.width = { ...lit.rules.width, rule: 'DRAFT: name and check me. From: "20 x 20"', kind: 'estimate' }; write('rules/lit-2020.json', lit);
+    assert.deepEqual(JSON.parse(run('rules', 'check', 'lit-2020', '--json').stdout)[0].findings.find((x) => x.code === 'rules.draft').refs.rules, ['width']);
+    fs.rmSync(path.join(ws, 'rules/lit-2020.json'));
     assert.match(cad('rules', 'draft', 'profile', 'my-2020'), /already exists \(--force replaces it\)/);
     assert.match(cad('rules', 'draft', 'profile'), /usage: cad rules draft profile <name>/);
     cad('rules', 'draft', 'slot', 'my-slot'); cad('rules', 'draft', 'slot_nut', 'my-nut');
     assert.deepEqual(Object.keys(read('rules/my-slot.json').rules), Object.keys(vocabulary.drafts.slot)); assert.deepEqual(Object.keys(read('rules/my-nut.json').rules), Object.keys(vocabulary.drafts.slot_nut));
-    assert.match(cad('rules', 'check', 'my-slot', 'my-nut'), /2 of 2 rule sets pass/);
+    assert.match(cad('rules', 'check', 'my-slot', 'my-nut'), /2 of 2 rule sets pass \(2 with something to know\)/);
     cad('rules', 'draw', 'my-slot'); for (const t of ['>6<', '>12<', '>2<', 'track 9', 'floor 6']) assert.ok(fs.readFileSync(path.join(ws, 'my-slot.svg'), 'utf8').includes(t), `the slot's drawing shows ${t}`);
     cad('rules', 'draw', 'my-nut'); assert.ok(fs.readFileSync(path.join(ws, 'my-nut.svg'), 'utf8').includes('slide-in nut, M5, for slot-6'));
     // a person fills the drafts from MISUMI's page for HFS5-2020: the figures the sheet has, its page as the source, the rest deleted
@@ -133,7 +148,7 @@ test('cad rules for a beam\'s profile: a draft filled from a maker\'s sheet pass
     const w = run('rules', 'check', 'wide'); assert.equal(w.status, 1); assert.match(w.stdout, /FAIL {2}wide: its flanks would start above the underside of its lips.*\(slot\.model\)/);
     // a slot nut against its slot
     const nut = read('rules/my-nut.json'); nut.rules.slot.value = 'slot-6-misumi';
-    write('rules/my-nut.json', nut); assert.match(cad('rules', 'check', 'my-nut'), /1 of 1 rule sets pass\n$/);
+    write('rules/my-nut.json', nut); assert.match(cad('rules', 'check', 'my-nut'), /^my-nut: passes, 1 to know\n {2}WARN {2}12 of its 12 figures are still the draft's.*\(rules\.draft\)\n1 of 1 rule sets pass \(1 with something to know\)\n$/, 'it fits its slot: the only thing to know is that it is still a draft');
     nut.rules.width.value = 13; nut.rules.height.value = 5; write('rules/my-nut.json', nut);
     const n = run('rules', 'check', 'my-nut'); assert.equal(n.status, 1); assert.match(n.stdout, /it is 13 mm across, and slot-6-misumi is 12 mm wide under its lips/); assert.match(n.stdout, /it is 5 mm tall, and slot-6-misumi has 4 mm under its lips/);
     // a measured outline beside the set takes the drawn one's place, through its schema
@@ -1340,6 +1355,20 @@ test('host: the core builds and checks a design from a workspace in memory, writ
   assert.deepEqual(JSON.parse(out), { size: [16.8, 16.8, 16.8], onDisk: false, cached: true, rules: true });
 });
 
+test('an optimisation\'s densities are kept by everything that makes them: the problem, topopt\'s solver, the FE\'s code and its threads backend, and cad\'s own code that readies the problem, so a change in any is never read as the old result', async () => {
+  const { densitiesKey, densityCode } = await import('./lib/optimise.mjs');
+  const code = densityCode(), problem = { space: { size: [30, 12] } }, key = densitiesKey(problem, code);
+  assert.equal(densitiesKey(problem), key, 'the code read is the code that runs');
+  assert.match(code.cad, /^function holdEmpty\(spec\)/);
+  // the call that hands the problem to the solver, with its settings, is in it too: a setting added there (tol, move) optimises again
+  assert.match(code.cad, /optimise\(spec, \{ backend: threadsBackend/); assert.doesNotMatch(code.solver, /shapes from results/);
+  assert.equal(code.threads, fs.readFileSync(fileURLToPath(import.meta.resolve('@rulecad/fea/threads')), 'utf8'));
+  // a change to any one piece (cad's own holdEmpty among them, which the key once left out) moves the key, and so does
+  // the problem; scripts/dimension-diff.mjs shares the densities between commits on this key alone
+  for (const k of Object.keys(code)) assert.notEqual(densitiesKey(problem, { ...code, [k]: typeof code[k] === 'number' ? code[k] + 1 : `${code[k]}\n` }), key, k);
+  assert.notEqual(densitiesKey({ space: { size: [30, 13] } }, code), key);
+});
+
 test('optimising a problem: cad optimise draws it and caches it, a design builds from it, cad check analyses it', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -1358,6 +1387,13 @@ test('optimising a problem: cad optimise draws it and caches it, a design builds
       analysis: [{ problem: 'arm', max_deflection: 1, volume: 760, tolerance: 0.05 }] }));
     fs.writeFileSync(path.join(project, 'objects', 'arm.js'), "import jscad from '@jscad/modeling'\nexport function main (v) { return jscad.extrusions.extrudeLinear({ height: v.t }, v.shapes.optimisedOutline(v.problems[v.problem])) }\n");
     const first = cad('optimise', 'beam/arm');
+    // its densities are kept under densitiesKey of its problem
+    const kept = fs.readdirSync(path.join(ws, '.cache', 'densities')).filter((f) => f.endsWith('.json'));
+    const want = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { readProblem, densitiesKey } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/optimise.mjs')).href)});
+      console.log(densitiesKey((await readProblem('beam', 'arm')).problem));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }).trim();
+    assert.deepEqual(kept, [`${want}.json`]);
     assert.match(first, /down: moves [\d.]+ mm along its load, [\d.]+ N\/mm/);
     assert.match(first, /settled/);
     assert.ok(fs.existsSync(path.join(ws, '.preview', 'beam', 'arm-optimised.svg')));
@@ -1902,6 +1938,53 @@ test('the worked examples: every file and command in EXAMPLES.md works as writte
     assert.equal(shut.code, 1); assert.match(shut.out, /would be shut in between the blind join of x1\.a to p1\.back@30 and the blind join of x1\.b to p2\.front@30/);
     const wide = run(ws, ['check', 'frame/spacing']);
     assert.equal(wide.code, 1); assert.equal((wide.out.match(/✗ The board plate, screw [12] \(hole at -?15, 0, 1\.5\): plate's hole is 5 mm off the centre line of x1's top\.[12] slot/g) || []).length, 2, wide.out);
+    // The case of printed beams (chapter 17): drawn in aluminium, every beam could be printed in PETG; printed (posts and
+    // rails standing, the cross beam lying), it checks clean, its posts' ends an M3 captive nut each; the sag under the
+    // board for both; a rail longer than the bed refused and spliced; a foot for the aluminium post refused by name; the kit
+    const al = JSON.parse(run(ws, ['check', 'case/aluminium', '--json']).out).findings, pr = JSON.parse(run(ws, ['check', 'case/printed', '--json']).out).findings;
+    for (const f of [al, pr]) assert.deepEqual(f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    const each = al.filter((x) => x.code === 'beam.printable' && x.refs?.beam), all17 = al.find((x) => x.code === 'beam.printable' && x.refs?.printable && !x.refs.beam);
+    assert.equal(each.length, 13); assert.ok(each.every((x) => x.level === 'pass' && x.refs.printable && x.values.margin > 50), JSON.stringify(each.map((x) => [x.refs.beam, x.values.margin])));
+    assert.match(all17.text, /^every beam of the frame can be printed in PETG \(13\), printed together and solved once more: the least margin is [\d.]+ on sag as it creeps/);
+    // the sag under the board, both ways. By hand, m1 alone (PETG lying, E 1810 MPa, I 7604.94 mm⁴ from the printed
+    // section, 130 mm): held fixed at its ends, the board and its mount, (0.05 + 0.0271) kg x 9.80665 = 0.756 N at the
+    // middle, and its own 33.8 g (w = 0.00255 N/mm): F L³ / (192 E I) + w L⁴ / (384 E I) = 0.00063 + 0.00014 = 0.00077 mm,
+    // the least the frame's rigid figure can be (it adds x1 and x2 bending under m1's ends). Each printed beam is 38
+    // (m1: 69972 x 7420 / (1810 x 7604.94)) to 48 times (standing: / (1540 x 7066.7)) as soft as its aluminium one, and
+    // the printed brackets' springs are the same in both, so the printed sag is more than 10 and less than 48 times the
+    // aluminium one
+    const sag17 = (f) => f.find((x) => x.code === 'frame.deflection' && /^m1 at m1\.top@50%/.test(x.text)).values;
+    const sAl = sag17(al), sPr = sag17(pr);
+    assert.ok(sAl.sag > 0 && sAl.sag < 0.001, `aluminium ${sAl.sag} mm`); assert.ok(sPr.rigid >= 0.00077 && sPr.sag < sPr.limit, JSON.stringify(sPr));
+    assert.ok(sPr.sag / sAl.sag > 10 && sPr.sag / sAl.sag < 48, `printed ${sPr.sag} mm against aluminium ${sAl.sag} mm`);
+    assert.equal(sPr.limit, 0.361);
+    const ofPr = (c) => pr.filter((x) => x.code === c);
+    assert.equal(ofPr('beam.end').filter((x) => /end a takes M3 in a captive nut .* in its 4\.2 mm bore's place/.test(x.text)).length, 4);
+    assert.equal(ofPr('fasten.end').filter((x) => /^Foot \d, .*ends in an M3 hex nut in its seat in p\d/.test(x.text)).length, 4);
+    assert.ok(ofPr('frame.rack').length === 2 && ofPr('frame.rack').every((x) => x.level === 'pass'));
+    assert.equal(ofPr('assembly.order')[0].values.steps, 47);
+    assert.ok(ofPr('beam.printable').every((x) => x.level === 'pass') && ofPr('beam.printable').length === 13, 'every beam prints, standing or lying');
+    // the gussets' screws into m1's printable slot: its lips slope 45° underneath, so the drop-in nut (10 mm wide, its
+    // tongue 0.8) seats 2 + (10 - 6.1) / 2 = 3.95 mm down and its thread starts at 3.15; the gusset, MISUMI's slot under
+    // its other arm, is 4.6 mm thick so M4x12 (its tip 12 - 4.6 = 7.4 mm in) has the 3.2 mm a hex nut asks, where
+    // M4x10 through 4.4 mm reached 5.6 and had 2.45. Every screw into a nut has its thread
+    const intoM1 = ofPr('fasten.length').filter((x) => /the gusset into m1/.test(x.text));
+    assert.equal(intoM1.length, 2); assert.ok(intoM1.every((x) => /M4x12 cap chosen, the shortest sold that fits: 8\.55 mm under its head \(m1-x\d-gusset and the 3\.95 mm down to its nut's seat/.test(x.text)), intoM1.map((x) => x.text).join('\n'));
+    assert.ok(ofPr('fasten.engagement').length > 40 && ofPr('fasten.engagement').every((x) => x.level === 'pass'));
+    const spliced = JSON.parse(run(ws, ['check', 'case/spliced', '--json']).out).findings;
+    assert.deepEqual(spliced.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    assert.deepEqual(spliced.filter((x) => x.code === 'fasten.engagement').map((x) => [x.level, x.values.engaged]), [['pass', 4.1], ['pass', 4.1]]);
+    const longRail = run(ws, ['check', 'case/long']);
+    assert.equal(longRail.code, 1); assert.match(longRail.out, /✗ r1: profile-2020-printed x 300, printed lying down: 300 mm long, and x1c's bed is 256 mm: splice it in two/);
+    const foot17 = run(ws, ['check', 'case/foot']);
+    assert.equal(foot17.code, 1); assert.match(foot17.out, /✗ Foot 1, an M5 cap screw: p1's end a is printed with an M3 captive nut in place of a tap, and the screw is M5: use an M3 screw/);
+    // the kit: no bars, no sheets, one plate that prints clean
+    const kit = path.join(ws, 'exports/case/printed-kit');
+    assert.deepEqual(fs.readdirSync(kit).sort(), ['README.md', 'buy.csv', 'print']); assert.deepEqual(fs.readdirSync(path.join(kit, 'print')), ['printed-base-1.3mf']);
+    const page = fs.readFileSync(path.join(kit, 'README.md'), 'utf8');
+    const row = page.split('\n').find((l) => l.startsWith('| print/printed-base-1.3mf | PETG |'));
+    assert.equal(row.split(' | ')[2].split(', ').length, 73, 'every printed part on the one plate'); assert.match(row, /\| [\d.]+ \| [\d.]+ \| clean \|$/);
+    assert.match(page, /^\| 1 \| rpi4 \| board \|/m);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -2455,10 +2538,33 @@ test('loads on an upright arm: a tipping moment on its bearing, or printed clips
     write(asm({ bearings: ['b1'] }, 0.14)); assert.ok(by(check(), 'motor.accel').values.alpha < by(f, 'motor.accel').values.alpha, 'more payload, less acceleration');
     write(asm({ bearings: ['b1'] }, 2)); const stall = by(check(), 'motor.accel'); assert.equal(stall.level, 'fail'); assert.match(stall.text, /shoulder stalls/);
     write(asm({ clips: ['c1', 'c2', 'c3'], pitch: 40, cell: 0.5 }, 0.5));
-    const clip = by(check(), 'joint.moment'); assert.match(clip.text, /3 printed clips, the worst \(c\d\) at [\d.]+ MPa/); assert.ok(clip.values.stress > 0);
-    assert.equal(clip.level, 'fail', clip.text);
+    const clipped = check(), clip = by(clipped, 'joint.moment'); assert.match(clip.text, /3 printed clips, the worst \(c\d\) at [\d.]+ MPa/); assert.ok(clip.values.stress > 0);
+    assert.equal(clip.level, 'fail', clip.text); assert.match(clip.text, /FE on 0\.5 mm cells/);
+    // The clips' cell is theirs alone: each link keeps its own, a third of its thinnest side, 8 / 3 = 2.67 mm (the link
+    // is 170 x 12 x 8 mm). At the clips' 0.5 mm the link was 340 x 24 x 16 = 130 560 cells: 3 GB and over ten minutes.
+    assert.deepEqual(by(clipped, 'link.deflection').values.rows.map((x) => +x.cell.toFixed(3)), [2.667, 2.667]);
+    write(asm({ clips: ['c1', 'c2', 'c3'], pitch: 40, cell: 0.5, linkCell: 2 }, 0.5));
+    // linkCell is the shoulder's, so it sets the upper link alone; the forearm, beyond the elbow, keeps its 2.67 mm
+    const fine = by(check(), 'link.deflection'); assert.deepEqual(fine.values.rows.map((x) => +x.cell.toFixed(3)), [2, 2.667]); assert.match(fine.text, /a person can refine with "linkCell" on the joint's support/);
     write(asm(undefined)); assert.equal(by(check(), 'joint.moment').level, 'warn');
   } finally { done(); }
+});
+
+test('docs: the key a joint support takes to refine link.deflection is the one the finding names, in the schema, the worked examples and the changelog', () => {
+  const read = (f) => fs.readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
+  // the finding tells a person which key refines it; that key is the one the code reads
+  const loads = read('./lib/loads.mjs'), key = loads.match(/a person can refine with "(\w+)" on the joint's support/)?.[1];
+  assert.equal(key, 'linkCell'); assert.match(loads, new RegExp(`sup\\?\\.${key} != null`));
+  const support = JSON.parse(read('./schemas/assembly.schema.json')).$defs.joint.properties.support.properties;
+  assert.ok(support[key], `support.${key} is in the schema`); assert.match(support.cell.description, /clips/);
+  // EXAMPLES.md: every place that tells a reader to refine link.deflection by finer cells names that key
+  const advice = read('./EXAMPLES.md').split('\n').filter((l) => /link\.deflection/.test(l) && /finer cells/.test(l));
+  assert.ok(advice.length >= 1, 'the upright arm chapter says how to refine link.deflection');
+  for (const l of advice) { assert.match(l, new RegExp(`\`"${key}": [\\d.]+\` on the joint's \`support\``)); assert.doesNotMatch(l, /`"cell": [\d.]+` on the joint's `support`/); }
+  // the changelog's newest section (Unreleased until a version is set, then that version) says the support's "cell"
+  // stopped refining the link, and names the new key
+  const log = read('./CHANGELOG.md'), top = log.indexOf('\n## ') + 1, newest = log.slice(top, log.indexOf('\n## ', top + 1));
+  assert.match(newest, new RegExp(`"cell"\`? is its clips' alone\\*\\*[\\s\\S]*\`"${key}"\``));
 });
 
 test('a gait in an assembly: a crawl checked through its cycle, motors against its torque, and legs that collide found', async () => {
@@ -2775,7 +2881,7 @@ test('beams in an assembly: four placed by their ends make a rectangle, a plate 
     refused((b) => { b.items[1].at = 'x1.top@-101'; }, /"top@-101" is past the end of .* it is 100 mm long/);
     refused((b) => { b.loops = [{ a: 'plate.centre', b: 'x1.side@20' }]; }, /x1: profile-2040-misumi-hfs5 x 100 has no "side@20": it has a, b, a\.1/);
     refused((b) => { b.items[0].beam.length = 120; }, /item x1: its length is 120 mm, and its ends are 100 mm apart/);
-    refused((b) => { b.items[0].beam.printed = true; }, /item x1: a printed beam \("printed": true\) is a later release/);
+    refused((b) => { b.items[0].beam.printed = 'yes'; }, /item x1: beam.printed is true, false, or how it prints/);
     refused((b) => { b.items[0].beam.colour = 'red'; }, /item x1: a beam has no "colour": it takes profile, length, printed, material/);
     refused((b) => { delete b.items[0].from; delete b.items[0].to; delete b.items[0].roll; }, /item x1: give the beam a length, or place it by its ends/);
     // cad add beam: one placed by its ends, kept to the schema
@@ -2814,7 +2920,7 @@ test('beam operations in an assembly: an end tapped M5 and an access hole by exp
     const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/ops'), pattern); };
     refused((b) => { b.items[0].beam.profile = 'tube-al-20x20x2'; b.items[0].beam.ops = [{ op: 'tap', at: 'a', thread: 'M5' }]; }, /item x1: profile-tube-al-20x20x2 x 300: ops\[0\] \(tap\): profile-tube-al-20x20x2 has no bore in its ends to tap/);
     refused((b) => { b.items[0].beam.ops = [{ op: 'weld', at: 'a' }]; }, /no operation "weld": there are cut, mitre, tap/);
-    refused((b) => { b.items[0].beam.printed = true; }, /a printed beam \("printed": true\) is a later release, and its ops become features of the print then/);
+    refused((b) => { b.items[0].beam.laid = true; }, /item x1: beam.laid draws a printed beam as it prints: true or false, with printed \(got true on a bought beam\)/);
   } finally { done(); }
 });
 
@@ -2880,7 +2986,7 @@ test('joins between beams: a blind join taps one end and drills an access hole a
     // refused by name: a join on an item that is not a beam, a key a join does not take; cad add join kept to the beams
     const refused = (change, pattern) => { const b = JSON.parse(JSON.stringify(a)); change(b); write(b); assert.match(cad('check', 'frame/tee'), pattern); };
     refused((b) => { b.joins = [{ kind: 'blind', a: 'z1.a', b: 'x1.back@120' }]; }, /join 1: a is on a beam item of this assembly, and z1 is not an item \(beams: x1, y1\)/);
-    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, brace, load, nut, note/);
+    refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'x1.back@120', glue: true }]; }, /join 1: a join has no "glue": it takes kind, a, b, fitting, screw, brace, load, nut, face, shape, note/);
     refused((b) => { b.joins = [{ kind: 'blind', a: 'y1.a', b: 'y1.back@120' }]; }, /join 1: a and b are on one beam, y1/);
     write({ ...a, joins: [] });
     assert.match(cad('add', 'join', 'frame/tee', '--kind', 'blind', '--a', 'y1.a', '--b', 'x1.back@120'), /added a join/);
@@ -2915,7 +3021,7 @@ test('beam cut list and sheets: a box of twelve beams lists three lengths, the b
     assert.match(cad('beams', 'frame/box'), /mark D \(z1\), 1:2: exports[\\/]frame[\\/]box\.beam-D\.svg/);
     assert.deepEqual(fs.readdirSync(path.join(ws, 'exports/frame')).filter((f) => f.endsWith('.svg')).sort(), ['box.beam-A.svg', 'box.beam-B.svg', 'box.beam-C.svg', 'box.beam-D.svg']);
     const svg = fs.readFileSync(path.join(ws, 'exports/frame/box.beam-D.svg'), 'utf8');
-    for (const t of ['>207.5<', '>Mark D: profile-2020-misumi-hfs5 x 220.0 mm<', '>(1) a.1: tap M5 x 10 deep<', '>top face up: seen from the top, end a on the left<']) assert.ok(svg.includes(t), `the sheet shows ${t}`);
+    for (const t of ['>207.5<', '>Mark D: profile-2020-misumi-hfs5 x 220.0 mm<', '>(4) a.1: tap M5 x 10 deep<', '>top face up: seen from the top, end a on the left<']) assert.ok(svg.includes(t), `the sheet shows ${t}`);
     // each beam's mark in its label, the cut list's findings on cad check, and the sheets on the build page
     const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
       const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
@@ -3022,11 +3128,11 @@ test('jigs: a box\'s sixteen blind joins give its drill guides, a tap guide, a c
     assert.ok(fs.statSync(path.join(ws, 'exports/frame/box.jigs.3mf')).size > 1000);
     assert.deepEqual(r.findings, []);
     // the text form; a hole too far from both ends for one print is a warning in place of a guide
-    assert.match(cad('beams', 'frame/box', '--jigs'), /drill-guide-2020-misumi-hfs5-5\.3-at-30 \[ABCD\]: 11\.\d+ g, 6\.66× at its load, prints clean: for A3 \(p2: access hole Ø5\.3 mm in back\.1, 30 mm from end a/);
+    assert.match(cad('beams', 'frame/box', '--jigs'), /drill-guide-2020-misumi-hfs5-5\.3-at-30 \[ABCD\]: 11\.\d+ g, 6\.66× at its load, prints clean: for A4 \(p2: access hole Ø5\.3 mm in back\.1, 30 mm from end a/);
     fs.writeFileSync(at('assemblies/long.json'), JSON.stringify({ title: 'Long', kind: 'fit', items: [{ id: 'l1', beam: { ...P, ops: [{ op: 'access', at: 'top@500', thread: 'M5' }] }, from: [0, 0, 0], to: [1000, 0, 0] }] }));
     const l = JSON.parse(cad('beams', 'frame/long', '--jigs', '--json'));
     assert.deepEqual(l.jigs.map((x) => x.kind), ['length-stop']);
-    assert.match(l.findings[0].text, /mark A \(l1\), operation 2: no drill guide: .* is 500 mm from end a and 500 mm from end b: a guide that reaches it is [\d.]+ mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
+    assert.match(l.findings[0].text, /mark A \(l1\), operation 3: no drill guide: .* is 500 mm from end a and 500 mm from end b: a guide that reaches it is [\d.]+ mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
   } finally { done(); }
 });
 
@@ -3189,10 +3295,15 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
       '4. Side 1 (p1, p2, x1 and x3)', '5. Side 1 (p1, p2, x1 and x3)', '6. Side 1 (p1, p2, x1 and x3)',
       '7. Load 2 × slot-nut-6-misumi-m4-slide-in into p1\'s back slot through its end b, for bracket, before cap1 goes on', '8. Square side 1, then tighten its joins']);
     assert.match(steps[3], /x1 goes on, joined to p1$/); assert.match(steps[5], /x3 goes on, joined to p1 and p2$/);
-    assert.match(steps[7], /measure both diagonals, inside corner to inside corner: each 328\.02 mm across the 260 × 200 mm opening; accept a difference of up to 0\.79 mm \(beams cut to ±0\.5 mm, every corner square\), about 0\.14° of lean\. Push the corners of the long diagonal together until the two are within that, then tighten each join to its torque and measure again$/);
+    // side 1's 260 × 200 opening (d = 328.024): x1 and x3 butt the posts, so their cuts set the width, 0.5 × 260 / d =
+    // 0.39631 each; four blind joins land on the posts, 0.1 mm of play each along the height, 0.1 × 200 / d = 0.06097.
+    // Worst 2 × 0.39631 + 4 × 0.06097 = 1.0365 -> 1.04; rss √(2 × 0.39631² + 4 × 0.06097²) = 0.5736 -> 0.57
+    assert.match(steps[7], /measure both diagonals, inside corner to inside corner: each 328\.02 mm across the 260 × 200 mm opening; accept a difference of up to 1\.04 mm \(beams cut to ±0\.5 mm and the play of 4 joins, stacked worst case, every corner square; 0\.57 mm root-sum-square\), about 0\.19° of lean\. Push the corners of the long diagonal together until the two are within that, then tighten each join to its torque and measure again$/);
     assert.match(steps[12], /^13\. Square side 2, then tighten its joins: /); assert.match(steps[17], /^18\. Side 2 goes on as one, joined to y2, y4, y1 and y3$/);
     assert.match(steps[18], /^19\. Square the frame, then tighten its joins: .*then tighten each join to its torque and measure again$/);
-    assert.match(text, /p1, p4, y1 and y3: measure both diagonals, inside corner to inside corner: each 340\.59 mm across the 220 × 260 mm opening; accept a difference of up to 0\.76 mm/);
+    // the 220 × 260 bays (d = 340.588): y1 and y3 butt the posts and set the 220 mm width, 2 × 0.5 × 220 / d = 0.64592;
+    // four joins' play along the 260 mm posts, 4 × 0.1 × 260 / d = 0.30535: 0.9513 -> 0.95 (the posts' own cuts set nothing)
+    assert.match(text, /p1, p4, y1 and y3: measure both diagonals, inside corner to inside corner: each 340\.59 mm across the 220 × 260 mm opening; accept a difference of up to 0\.95 mm/);
     assert.deepEqual(steps.slice(19).map((l) => l.replace(/^\d+\. /, '')), ['foot1, cap1 (cap) go on', 'bracket (plate) goes on', 'plate goes on', 'foot2, cap2, foot4, cap4, foot3, cap3 (cap) go on']);
     // each join's screw with its key and torque: the lips of the post's slot under the head take 3677 N on 17.9 mm²
     assert.match(text, /4\. Side 1 \(p1, p2, x1 and x3\): x1 goes on, joined to p1\n\s+blind join of x1\.a to p1\.back@30 \(1 × M5x12 button\) with a 3 mm hex key, to 3\.68 N m at most \(what the seat takes\)\n\s+Snug for now: tightened to its torque at step 8, once square\n/);
@@ -3206,7 +3317,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.deepEqual([st[0].shown, st[9].shown.sort(), st[9].now, st[12].shown.sort(), st[17].now, st[17].shown.length, st[17].dir.map(Math.abs)], [[], ['p3', 'x2'], ['x2'], ['p3', 'p4', 'x2', 'x4'], ['p3', 'p4', 'x2', 'x4'], 12, [0, 0, 1]]);
     assert.deepEqual(json.frame.notFlat, []);
     assert.deepEqual(json.frame.sides.map((x) => x.beams), [['p1', 'p2', 'x1', 'x3'], ['p3', 'p4', 'x2', 'x4']]);
-    assert.deepEqual(json.frame.bays.map((x) => [x.beams.join(), x.width, x.height, x.square.diagonal, x.square.accept]), [['p1,p2,x1,x3', 260, 200, 328.02, 0.79], ['p1,p4,y1,y3', 220, 260, 340.59, 0.76], ['p2,p3,y2,y4', 220, 260, 340.59, 0.76], ['p3,p4,x2,x4', 260, 200, 328.02, 0.79]]);
+    assert.deepEqual(json.frame.bays.map((x) => [x.beams.join(), x.width, x.height, x.square.diagonal, x.square.accept]), [['p1,p2,x1,x3', 260, 200, 328.02, 1.04], ['p1,p4,y1,y3', 220, 260, 340.59, 0.95], ['p2,p3,y2,y4', 220, 260, 340.59, 0.95], ['p3,p4,x2,x4', 260, 200, 328.02, 1.04]]);
     assert.deepEqual(json.frame.torques.map((x) => [x.kind, x.joins, x.torque]), [['blind', 16, 3.68]]);
     // on cad check: frame.square for each bay, and the seat under a blind join's head with what its lips take
     const r = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
@@ -3220,7 +3331,7 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     assert.match(r.nut, /go into p1's back slot before a join closes its way, from end a, past 30 and 250 mm \(foot1 off until then\), before the first made of the blind join of x1\.a to p1\.back@30 and the blind join of x3\.a to p1\.back@250, each of which closes that way \(or through end b before cap1 goes on\) \(frame\.preload\)$/);
     assert.deepEqual([r.preload.joins, r.preload.way], [[4, 0], 'a']);
     assert.equal(r.steps, 23, 'cad check counts the frame build\'s steps');
-    assert.deepEqual(r.square, [['info', 'p1,p2,x1,x3', 0.79], ['info', 'p1,p4,y1,y3', 0.76], ['info', 'p2,p3,y2,y4', 0.76], ['info', 'p3,p4,x2,x4', 0.79]]);
+    assert.deepEqual(r.square, [['info', 'p1,p2,x1,x3', 1.04], ['info', 'p1,p4,y1,y3', 0.95], ['info', 'p2,p3,y2,y4', 0.95], ['info', 'p3,p4,x2,x4', 1.04]]);
     assert.deepEqual([r.seat.level, r.seat.values.area, r.seat.values.limit, r.seat.values.torque], ['pass', 17.94, 205, 3.68]);
     assert.match(r.seat.text, /on al6n01-t5 \(205 MPa\) the 17\.9 mm² either side of the opening takes 3677 N, a tightening of 3\.68 N m \(the lips' bending not counted: an estimate\)/);
     assert.deepEqual(r.page, { steps: 23, bays: [328.02, 340.59, 340.59, 328.02], torques: 1, stuck: null });
@@ -3271,6 +3382,94 @@ export function main () { return cuboid({ size: [20, 20, 3], center: [0, 0, 1.5]
     const midSteps = midText.split('\n').filter((l) => /^\s+\d+\. /.test(l)).map((l) => l.trim().replace(/^\d+\. /, '')), x4At = midSteps.indexOf('x4 goes on, joined to p4 and m');
     assert.match(midSteps[x4At - 1], /^Slide an M5x12 button screw into x4's front slot head first, through its end a, to 130 mm, for the blind join of m\.b to x4\.front@130, /);
     assert.doesNotMatch(midText, /Side 2/);
+  } finally { done(); }
+});
+
+test('frame.heat: a frame grows with the air it runs in by its alloy\'s expansion, and a printed fitting near a heater is held to its plastic\'s softening point', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // one side of a 2020 box (posts 300 mm at x 10 and 290, rails at 30 and 250 mm), a printed PLA foot on p1 and a
+    // printed end cap on p2's top; a heated bed's edge 30 mm under p1's foot
+    const P = { profile: '2020-misumi-hfs5' }, items = [{ id: 'p1', beam: P, from: [10, 10, 0], to: [10, 10, 300] }, { id: 'p2', beam: P, from: [290, 10, 0], to: [290, 10, 300] }], joins = [];
+    for (const [n, z] of [['x1', 30], ['x3', 250]]) { items.push({ id: n, beam: P, from: [20, 10, z], to: [280, 10, z] }); joins.push({ kind: 'blind', a: `${n}.a`, b: `p1.back@${z}` }, { kind: 'blind', a: `${n}.b`, b: `p2.front@${z}` }); }
+    items.push({ id: 'foot1', fitting: { kind: 'foot', profile: '2020-misumi-hfs5' }, at: 'p1.a' }, { id: 'cap2', fitting: { kind: 'end-cap', profile: '2020-misumi-hfs5' }, at: 'p2.b' });
+    const write = (name, heat) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Warm', kind: 'fit', items, joins, frame: { heat } }));
+    const bed = { name: 'bed', at: [10, 10, -30], temperature: 60, reach: 30 };
+    write('warm', { air: 45, heaters: [bed] }); write('warmer', { air: 50 }); write('none', {}); write('bad', { air: 45, heaters: [{ ...bed, reach: 0 }] });
+    const check = (name) => { const r = spawnSync(process.execPath, [BIN, 'check', `frame/${name}`, '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === 'frame.heat'); };
+    const warm = check('warm'), grow = warm.find((x) => x.values?.grows);
+    // growth by hand, ΔT = 45 - 20 = 25 °C, α = 23.4e-6 /K (FRAME_HEAT.expansion, a community figure): the beams span
+    // 280 mm in x (axis to axis), 300 mm in z: 23.4e-6 × 280 × 25 = 0.1638 mm and 23.4e-6 × 300 × 25 = 0.1755 mm
+    assert.deepEqual([grow.values.change, grow.values.size, grow.values.grows], [25, [280, 0, 300], [0.1638, 0, 0.1755]]);
+    assert.match(grow.text, /^at 45 °C the frame is 25 °C warmer than the 20 °C it was built in, so it grows by 0\.164 mm over the 280 mm its beams span in x, 0\.176 mm over the 300 mm its beams span in z; the longest beam, p1 \(300 mm\), by 0\.176 mm/);
+    assert.deepEqual(grow.refs.expansion, ['FRAME_HEAT.expansion']);
+    // the foot is within the bed's reach, so at 60 °C, over PLA's 57 °C (its heat deflection temperature); the cap is in
+    // the 45 °C air, 12 °C under, past the 10 °C margin
+    const foot = warm.find((x) => x.refs?.item === 'foot1');
+    assert.equal(foot.level, 'fail'); assert.deepEqual([foot.values.temperature, foot.values.softening, foot.values.spare], [60, 57, -3]);
+    assert.match(foot.text, /^foot1 \(foot-2020-misumi-hfs5, PLA\) works at 60 °C \(bed, [\d.]+ mm away\), 3 °C over its 57 °C softening point/);
+    const pass = warm.find((x) => x.level === 'pass');
+    assert.match(pass.text, /^1 printed fitting stays at least 10 °C under its plastic's softening point: the nearest is cap2 \(PLA\), 45 °C \(the air\) against 57 °C/);
+    // at 50 °C both are within 10 °C of softening: each warned
+    assert.deepEqual(check('warmer').filter((x) => x.refs?.item).map((x) => [x.level, x.refs.item, x.values?.spare]), [['warn', 'foot1', 7], ['warn', 'cap2', 7]]);
+    // refused by name
+    assert.match(check('none')[0].text, /frame\.heat gives neither air nor heaters/);
+    assert.match(check('bad')[0].text, /frame\.heat\.heaters 1: reach is how far from its middle a part is taken at its temperature, mm above 0 \(got 0\)/);
+  } finally { done(); }
+});
+
+test('frame.square: a bay\'s diagonals stack its cuts and its joins\' play, loosening the cut tolerance widens it by the hand stack, and cad measured takes the difference measured', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    // one side of a 2020 box: posts p1 and p2 300 mm tall at x 10 and 290, rails x1 and x3 at z 30 and 250 blind-joined
+    // into them. The opening is 260 × 200 mm (d = √(260² + 200²) = 328.024 mm)
+    const P = { profile: '2020-misumi-hfs5' }, items = [{ id: 'p1', beam: P, from: [10, 10, 0], to: [10, 10, 300] }, { id: 'p2', beam: P, from: [290, 10, 0], to: [290, 10, 300] }], joins = [];
+    for (const [n, z] of [['x1', 30], ['x3', 250]]) { items.push({ id: n, beam: P, from: [20, 10, z], to: [280, 10, z] }); joins.push({ kind: 'blind', a: `${n}.a`, b: `p1.back@${z}` }, { kind: 'blind', a: `${n}.b`, b: `p2.front@${z}` }); }
+    const write = (name, frame) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify({ title: 'Side', kind: 'fit', items, joins, ...(frame ? { frame } : {}) }));
+    write('side'); write('loose', { cut: { tolerance: 1 } }); write('bad', { cut: { tolerance: -1 } });
+    const check = (name, code = 'frame.square') => { const r = spawnSync(process.execPath, [BIN, 'check', `frame/${name}`, '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }); const j = JSON.parse(r.stdout); assert.ok(j.findings, r.stdout); return j.findings.filter((x) => x.code === code); };
+    const [side] = check('side'), [loose] = check('loose');
+    // Hand stack, MISUMI's ±0.5 mm cut (its set's cut_tolerance): x1 and x3 butt the posts, so their cut lengths set the
+    // 260 mm width, each 0.5 × 260 / 328.024 = 0.39631 mm of diagonal difference; the four blind joins land on the posts,
+    // each 0.1 mm of play (JOIN_PLAY.blind, an estimate) along the 200 mm height, 0.1 × 200 / 328.024 = 0.06097 mm.
+    // Worst: 2 × 0.39631 + 4 × 0.06097 = 1.03651 mm. The posts' own cut lengths set no opening, so they add nothing.
+    assert.equal(side.values.accept, 1.04); assert.equal(side.predict.value, 1.04); assert.equal(side.predict.name, 'frame.square.p1-p2-x1-x3');
+    assert.deepEqual(side.values.terms.map((x) => [x.term, x.value, x.kind]), [['x1 cut', 0.396, 'spec'], ['x3 cut', 0.396, 'spec'], ['join 1 (blind) play', 0.061, 'estimate'], ['join 2 (blind) play', 0.061, 'estimate'], ['join 3 (blind) play', 0.061, 'estimate'], ['join 4 (blind) play', 0.061, 'estimate']]);
+    assert.deepEqual(side.refs.tolerance, ['profile-2020-misumi-hfs5.cut_tolerance']);
+    assert.match(side.text, /It rests on estimates \(join 1 \(blind\) play, .*\): measure the diagonals once it is squared and tightened, and give their difference to cad measured frame\/side frame\.square\.p1-p2-x1-x3=<mm>/);
+    // loosened to ±1 mm (a hand saw, frame.cut.tolerance): the two cut terms double, 2 × 1 × 260 / 328.024 = 1.58524, so
+    // the accepted difference widens by 2 × 0.5 × 260 / 328.024 = 0.79262 mm, to 1.03651 + 0.79262 = 1.82913 -> 1.83
+    assert.equal(loose.values.accept, 1.83); assert.ok(Math.abs(loose.values.accept - side.values.accept - 0.79262) < 0.011);
+    assert.deepEqual(loose.values.terms.slice(0, 2).map((x) => [x.value, x.kind]), [[0.793, 'given'], [0.793, 'given']]);
+    assert.deepEqual(loose.refs.tolerance, ['the assembly\'s frame.cut.tolerance']);
+    // the cut list takes the workshop's tolerance too
+    assert.ok(check('loose', 'frame.cut').some((x) => /mark C \(x1, x3\): 2 beams of 260 mm, each cut to ±1 mm, may differ by up to 2 mm/.test(x.text)));
+    // refused by name
+    const bad = spawnSync(process.execPath, [BIN, 'check', 'frame/bad', '--json'], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } });
+    assert.match(JSON.parse(bad.stdout).error.message, /frame\.cut\.tolerance is how far a cut may be from the length asked, either way, a number of mm, 0 or more \(got -1\)/);
+    // measured: 0.6 mm is within, so it passes; 1.5 mm is more than its parts allow, so it leans
+    assert.match(cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=0.6', '--source', 'tape, inside corners'), /frame\.square\.p1-p2-x1-x3: measured 0\.6 mm, predicted 1\.04/);
+    let [m] = check('side');
+    assert.equal(m.level, 'pass'); assert.equal(m.values.measured, 0.6); assert.match(m.text, /Measured 0\.6 mm \(\d{4}-\d\d-\d\d\): within what its cuts and joins allow\./);
+    cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=1.5');
+    [m] = check('side');
+    assert.equal(m.level, 'warn'); assert.match(m.text, /Measured 1\.5 mm \(\d{4}-\d\d-\d\d\): 1\.44 times what its cuts and joins allow, so it leans: loosen its joins/);
+    // the ledger keeps both, predicted against measured
+    const ledger = fs.readFileSync(at('ledger.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(ledger.map((e) => [e.name, e.predicted, e.measured]), [['frame.square.p1-p2-x1-x3', 1.04, 0.6], ['frame.square.p1-p2-x1-x3', 1.04, 1.5]]);
+    // a difference recorded the other way round (d1 - d2 with d2 the longer) is the same lean: its size is what counts.
+    // -3 mm is 3 / 1.04 = 2.885 times what its parts allow, so it leans; -0.6 mm is within, so it passes
+    cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=-3');
+    [m] = check('side');
+    assert.equal(m.level, 'warn'); assert.equal(m.values.measured, -3); assert.match(m.text, /Measured -3 mm \(\d{4}-\d\d-\d\d, 3 mm either way\): 2\.88 times what its cuts and joins allow, so it leans/);
+    cad('measured', 'frame/side', 'frame.square.p1-p2-x1-x3=-0.6');
+    [m] = check('side');
+    assert.equal(m.level, 'pass'); assert.match(m.text, /Measured -0\.6 mm \(\d{4}-\d\d-\d\d, 0\.6 mm either way\): within what its cuts and joins allow\./);
   } finally { done(); }
 });
 
@@ -3818,6 +4017,50 @@ test('guides: an MGN12 rail on a 2020 beam lists its nuts and screws at its pitc
   } finally { done(); }
 });
 
+test('the frame in a machine\'s error budget: an axis on a beam carries the beam\'s sag, solved with the frame, its straightness and its twist into task.accuracy as named terms', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/slide', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'slide', material: 'PLA', objects: [] }));
+    // a 600 mm 2020 beam 300 mm up, held fixed at both ends, an MGN12 rail 500 mm long on its top with an MGN12H
+    // carriage carrying 2 kg; the task: the carriage's top along x, 0.4 mm either side of 4 mm allowed
+    const a = { title: 'Axis', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 300], to: [600, 0, 300] }],
+      guides: [{ kind: 'rail', rail: 'rail-mgn12', carriage: 'MGN12H', on: 'x1.top', from: 50, length: 500 }], loads: [{ mass: 2, at: { item: 'g1-carriage-1', at: [0, 0, 13] } }],
+      frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' } }, task: { tool: 'g1-carriage-1.top', volume: { x: [100, 500], y: [0, 0], z: [323, 323] }, accuracy: 4 } };
+    const { frame, ...loose } = a;
+    fs.writeFileSync(at('assemblies/axis.json'), JSON.stringify(a)); fs.writeFileSync(at('assemblies/held.json'), JSON.stringify(loose));
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('slide/${name}');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^(task\\.accuracy|frame\\.deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const r = probe('axis'), acc = r.find((x) => x.code === 'task.accuracy'), guide = r.find((x) => x.code === 'frame.deflection' && x.refs.where === 'g1'), load = r.find((x) => x.code === 'frame.deflection' && x.refs.where !== 'g1');
+    const term = (f, name) => f.values.terms.find((x) => x.term === name);
+    // the beam's sag is a named term, the frame's own figure along the rail, at the slide's middle (227.1 of its 454.2 mm
+    // travel puts the carriage at x = 300, mid-span), where the frame checks solved it worst
+    assert.equal(guide.refs.pose, 'g1-1 at 227.1');
+    assert.deepEqual([term(acc, 'beam sag').mm, term(acc, 'beam sag').kind], [guide.values.sag, 'derived']);
+    assert.match(term(acc, 'beam sag').note, /^x1 under g1, solved with the frame, g1-1 at 227\.1: [\d.]+ mm with its joins rigid$/);
+    // the 2 kg's own share, by hand: a beam fixed at both ends with a load P at its middle sags P L³ / (192 E I)
+    // (Roark, table 8.1, case 1d): 2 × 9.80665 × 600³ / (192 × 69972 × 7420) = 19.6133 × 2.16e8 / 9.9683e10 = 0.0425 mm
+    assert.ok(Math.abs(load.values.alone - 0.0425) < 0.001, `${load.values.alone}`);
+    // twist: 3.33° a metre (the profile's JIS figure) over the 500 mm rail is 1.665°, turning the carriage about x1's axis;
+    // its top is 23 mm from that axis (10 to the beam's face, 13 to the carriage's top): 1.665 × π / 180 × 23 = 0.6684 mm
+    assert.deepEqual([term(acc, 'beam twist').mm, term(acc, 'beam twist').kind], [0.6684, 'spec']);
+    // straightness from the rail's own terms (4.33 mm a metre over 500 mm), and the worst case is every term summed
+    assert.equal(term(acc, 'beam straightness').mm, 2.165);
+    assert.ok(Math.abs(acc.values.worst - acc.values.terms.reduce((t, x) => t + x.mm, 0)) < 1e-9);
+    assert.deepEqual(acc.values.terms.map((x) => x.term), ['rail parallelism', 'carriage play', 'beam straightness', 'beam sag', 'beam twist']);
+    assert.match(acc.text, /Biggest: g1-1's beam straightness, 2\.165 mm\./); // (mm on a slide, not degrees)
+    // with no frame to solve (no joins, no frame key) the rail's own estimate stands: pinned ends, its own and the
+    // carriage's weight only (railTerms), so it neither knows the 2 kg nor how the beam is held
+    const held = probe('held'), hacc = held.find((x) => x.code === 'task.accuracy');
+    assert.equal(held.filter((x) => x.code === 'frame.deflection').length, 0);
+    assert.equal(term(hacc, 'beam sag').kind, 'estimate'); assert.match(term(hacc, 'beam sag').note, /pinned at its ends/); assert.notEqual(term(hacc, 'beam sag').mm, guide.values.sag);
+  } finally { done(); }
+});
+
 test('guides: a carriage on V-wheels for a V-slot 2040 comes from the profile\'s rules, rolls its travel in a sweep clear of the beam, and the same guide on a plain T-slot is refused with why; a printed slider slides its stretch', () => {
   const { ws, cad, done } = workspace();
   try {
@@ -3987,10 +4230,1087 @@ test('guides on a frame: a rods guide on a beam joined at both ends shuts its ho
     assert.doesNotMatch(drop, /✗/, drop);
     assert.equal((drop.match(/✓ g1: g1-holder-[ab]'s leg into x1's (front|back) slot: 1 drop-in nut \(slot-nut-6-misumi-m4-drop-in\) goes into x1's (front|back) slot through its opening, anywhere along it/g) || []).length, 4, drop);
     // its printed fittings on a plate: each item's fitting laid as it prints ("pose": "print"), checked as one print
-    assert.match(cad('plates', 'frame/frame'), /frame-base-1: base, 3 parts, [\d.]+ g, about \d+ min: (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1)\n\s+frame-base-1: prints clean/);
+    assert.match(cad('plates', 'frame/frame'), /frame-base-1: pla, base, 3 parts, [\d.]+ g, about \d+ min: (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1), (g1-holder-a|g1-holder-b|g1-carriage-1)\n\s+frame-base-1: prints clean/);
     const plate = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/frame-base-1.json'), 'utf8'));
     assert.deepEqual(plate.items.map((it) => [it.fitting?.kind, it.fitting?.pose]).sort(), [['rod-carriage', 'print'], ['rod-holder', 'print'], ['rod-holder', 'print']]);
     const onIt = cad('check', 'frame/frame-base-1');
     assert.doesNotMatch(onIt, /[✗!] /, onIt); assert.match(onIt, /no parts overlap \(3 object instances\)/);
+  } finally { done(); }
+});
+
+test('frame checks: a shelf frame with 5 kg at mid-span sags as a hand calculation says with rigid joins, more on the joins\' estimated springs, and says which it rests on; its supports, limit, stress and buckling', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/shelf.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // four legs 400 mm tall (z), a front and a back beam 600 mm long between them (x1, x2), two sides 300 mm long
+    // (y1, y2), all 2020, each end joined blind to a leg's face 390 mm up; 5 kg on x1's top at mid-span
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to }), H = 390;
+    const shelf = { title: 'Shelf', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 400]), beam('z2', [620, 0, 0], [620, 0, 400]), beam('z3', [0, 320, 0], [0, 320, 400]), beam('z4', [620, 320, 0], [620, 320, 400]),
+      beam('x1', [10, 0, H], [610, 0, H]), beam('x2', [10, 320, H], [610, 320, H]), beam('y1', [0, 10, H], [0, 310, H]), beam('y2', [620, 10, H], [620, 310, H])],
+    joins: [['x1.a', 'z1.back'], ['x1.b', 'z2.front'], ['x2.a', 'z3.back'], ['x2.b', 'z4.front'], ['y1.a', 'z1.top'], ['y1.b', 'z3.bottom'], ['y2.a', 'z2.top'], ['y2.b', 'z4.bottom']].map(([a, b]) => ({ kind: 'blind', a, b: `${b}@390` })),
+    loads: [{ mass: 5, at: 'x1.top@50%', note: '5 kg at mid-span' }] };
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/shelf');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection|stress|buckling)$/.test(f.code)).map(({ level, code, text, values, refs, at }) => ({ level, code, text, values, refs, at }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    write(shelf);
+    let r = probe();
+    const by = (code) => r.filter((x) => x.code === code), sag = () => by('frame.deflection')[0];
+    // the model: 8 beams, the four leg feet the lowest ends, held pinned; every join's spring an estimate
+    assert.match(by('frame.solve')[0].text, /8 beams on 21 nodes, held at z1\.a \(pinned, a lowest end\), z2\.a \(pinned, a lowest end\), z3\.a \(pinned, a lowest end\), z4\.a \(pinned, a lowest end\)/);
+    assert.match(by('frame.solve')[0].text, /8 joins' springs \(8 blind: an estimate\), 8 of them an estimate until the joint rig \(issue 264\) measures it/);
+    // The hand calculation, the 5 kg alone. x1 spans L = 600 mm between the legs' faces, each end on a rigid offset
+    // e = 10 mm from a leg's axis; P = 5 × 9.80665 = 49.03 N at mid-span. 2020 HFS5: I = 7420 mm⁴, A = 183 mm²,
+    // J = 809.3 mm⁴ (worked out from the outline); A6N01: E = 69972 MPa, G = E / 2(1 + 0.33) = 26305 MPa.
+    // Each front corner turns by θ (the load is symmetric, so the corners turn equally and nothing sways). What holds
+    // a corner from turning, K: the leg, pinned at its foot h = 390 mm below, 3EI/h = 3.994e6 N·mm/rad; and the side
+    // beam twisting (GJ/Ls = 26305 × 809.3 / 300 = 7.096e4) in series with the back corner, which its leg (3EI/h) and
+    // the back beam (2EI/L = 1.731e6, turned the same way at both ends) hold: 1 / (1/7.096e4 + 1/5.725e6) = 7.009e4.
+    // K = 3.994e6 + 7.009e4 = 4.064e6 N·mm/rad.
+    // x1 as a beam fixed at both ends that turn by θ: its end moment M = PL/8 − (2EI/L) θ; the corner carries M and
+    // the end shear P/2 on the offset e: M + Pe/2 = K θ, so θ = (PL/8 + Pe/2) / (K + 2EI/L)
+    //   = (3677.5 + 245.2) / (4.064e6 + 1.731e6) = 6.770e-4 rad, and M = 3677.5 − 1.731e6 × 6.770e-4 = 2505.9 N·mm.
+    // Mid-span sag: the offset's drop e θ, the simply supported beam's PL³/48EI less the end moments' M L²/8EI, and the
+    // leg's shortening (P/2) h / EA:
+    //   0.00677 + 0.42498 − 0.21719 + 0.00075 = 0.2153 mm, joins rigid.
+    // With each join a spring k = 1.5e6 N·mm/rad (blind, an estimate) at the beam's end, in series: the beam's end turns
+    // θ + M/k. With r = (2EI/L)/k = 1.154: M = (PL/8 − (2EI/L) θ) / (1 + r), and the corner's θ = (PL/8 / (1 + r) +
+    // Pe/2) / (K' + (2EI/L) / (1 + r)), K' the same with the side beam's two twist springs (3e5 each) and the back beam's
+    // two bending springs in its chain: θ = 4.030e-4, M = 1383.6 N·mm, sag = 0.3098 mm.
+    const hand = { rigid: 0.21531, spring: 0.30984 };
+    const v = sag().values;
+    assert.ok(Math.abs(v.aloneRigid - hand.rigid) / hand.rigid < 0.01, `rigid joins: ${v.aloneRigid} mm against the hand's ${hand.rigid}`);
+    assert.ok(Math.abs(v.alone - hand.spring) / hand.spring < 0.01, `the joins' springs: ${v.alone} mm against the hand's ${hand.spring}`);
+    assert.ok(v.alone > v.aloneRigid * 1.3, 'the estimated springs give the larger sag');
+    // with the frame's own weight beside the 5 kg: a little more, both ways; under span / 360 = 1.667 mm, and it says
+    // which figure rests on what
+    assert.deepEqual([sag().level, v.limit, v.sag > v.alone, v.rigid > v.aloneRigid], ['pass', 1.667, true, true]);
+    assert.match(sag().text, /^x1 at x1\.top@50% sags 0\.3\d\d mm, with the joins' springs; 0\.2\d\d mm with the joins rigid \(of these, 0\.31 and 0\.215 mm from the 5 kg there alone\)\. The first rests on 8 joins' springs \(8 blind: an estimate\), so the true sag lies near it, and the rigid figure is the least it can be: against 1\.667 mm, x1's span, 600 mm, over 360/);
+    assert.equal(sag().refs.restsOn, 'estimate');
+    assert.deepEqual(sag().at.map(Math.round), [310, 0, 390]);
+    // stress: x1 the most stressed, far under A6N01's 205 MPa; the blind joins' moments said, with no strength to
+    // check them against; buckling: the legs in compression, the most loaded carrying about half the 5 kg and its share of the weight
+    const st = by('frame.stress');
+    assert.match(st.find((x) => x.level === 'pass').text, /every beam stays under its alloy's strength with 2 times to spare: the most stressed is x1, 8\.\d+ MPa against 205 MPa/);
+    assert.match(st.find((x) => x.level === 'info').text, /8 joins \(blind\) have no strength in the kit to check against: the largest moment is 2\.\d+ N·m bending/);
+    const legs = by('frame.buckling').find((x) => x.values.compression);
+    assert.ok(legs.values.compression > 24.5 && legs.values.compression < 30, JSON.stringify(legs.values));
+    assert.match(by('frame.buckling').find((x) => x.values.factor).text, /the whole frame, with the joins' springs, buckles first at \d+(\.\d)? times its load as drawn/);
+
+    // measured joins: the workspace's joins set with blind's springs measured on the joint rig: the same figures, and
+    // the finding says it rests on measured joins
+    fs.mkdirSync(path.join(ws, 'rules'), { recursive: true });
+    const rule = (value) => ({ value, unit: 'N mm/rad', rule: 'measured on the joint rig', kind: 'measured', source: 'the joint rig', checked: '2026-11-17' });
+    fs.writeFileSync(path.join(ws, 'rules/joins.json'), JSON.stringify({ name: 'joins', part: 'joins', rules: { blind_bending: rule(1.5e6), blind_twist: rule(3e5) } }));
+    r = probe();
+    assert.match(sag().text, /It rests on 8 joins' springs \(8 blind: measured\): against/);
+    assert.equal(sag().refs.restsOn, 'measured');
+    fs.rmSync(path.join(ws, 'rules/joins.json'));
+
+    // feet: a foot on each leg's end a holds the frame there; fixed supports (said in "frame") hold it more stiffly;
+    // a limit of 0.2 mm fails it, saying by how much; 300 kg fails x1's alloy
+    write({ ...shelf, items: [...shelf.items, ...['z1', 'z2', 'z3', 'z4'].map((z, i) => ({ id: `f${i + 1}`, fitting: { kind: 'foot', profile: P }, at: `${z}.a` }))] });
+    r = probe();
+    assert.match(by('frame.solve')[0].text, /held at z1\.a \(pinned, f1, a foot\), z2\.a \(pinned, f2, a foot\)/);
+    const pinned = sag().values.alone;
+    write({ ...shelf, frame: { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed', 'z3.a': 'fixed', 'z4.a': 'fixed' }, limit: 0.2 } });
+    r = probe();
+    assert.match(by('frame.solve')[0].text, /held at z1\.a \(fixed, frame\.supports\)/);
+    assert.ok(sag().values.alone < pinned, `fixed feet ${sag().values.alone} mm, pinned ${pinned}`);
+    assert.equal(sag().level, 'fail');
+    assert.match(sag().text, /against 0\.2 mm, the assembly's frame\.limit: 1\.\d+ times over\. Stiffen the beam/);
+    write({ ...shelf, loads: [{ mass: 300, at: 'x1.top@50%' }] });
+    r = probe();
+    const x1 = by('frame.stress').find((x) => x.refs.beam === 'x1');
+    assert.equal(x1.level, 'fail');
+    assert.match(x1.text, /^x1: \d+\.\d+ MPa at worst .* against al6n01-t5's 205 MPa: 0\.\d+ times under it, where about 2 is wanted/);
+    // a moving mass: a cart sliding along x2 (a bearing standing in for it, 2 kg on it), from 50 to 300 mm along: solved
+    // at each end of its travel, in its middle and as drawn, the worst named; and a named point, x2's middle
+    write({ ...shelf, items: [...shelf.items, { id: 'cart', bought: 'bearing-608' }], joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x2', at: [0, 10, 50], axis: [0, 0, 1] }, child: { item: 'cart', at: [0, 0, 0], axis: [0, 0, 1] }, min: 0, max: 250 }],
+      loads: [...shelf.loads, { mass: 2, at: 'cart.bore' }], frame: { points: ['x2.top@50%'] } });
+    r = probe();
+    assert.match(by('frame.solve')[0].text, /1 item mounted on it and 2 loads, in 4 poses/);
+    const cart = by('frame.deflection').find((x) => x.refs.where === 'cart.bore'), mid = by('frame.deflection').find((x) => x.refs.where === 'x2.top@50%');
+    assert.deepEqual([cart.refs.pose, mid.refs.pose, Math.round(cart.at[0])], ['slide at 250', 'slide at 250', 310]);
+    assert.ok(cart.values.alone > 0.05 && cart.values.sag > cart.values.alone, JSON.stringify(cart.values));
+    // refused by name: a support on what is not a beam of the frame
+    write({ ...shelf, frame: { supports: { 'q9.a': 'pinned' } } });
+    r = probe();
+    assert.deepEqual(by('frame.solve').map((x) => [x.level, x.text]), [['fail', 'frame: frame.supports: "q9.a" is on a beam of the frame, as z1.a or x1.bottom@50% (beams: z1, z2, z3, z4, x1, x2, y1, y2)']]);
+    // the check view: cad beams draws the sag, scaled and saying so
+    write(shelf);
+    assert.match(cad('beams', 'frame/shelf'), /the frame's sag, drawn [\d.]+ times its size \(a check view\): exports[\\/]frame[\\/]shelf\.frame-sag\.svg/);
+    assert.match(fs.readFileSync(path.join(ws, 'exports/frame/shelf.frame-sag.svg'), 'utf8'), /deflection drawn [\d.]+ times its size \(scaled\): 0\.3\d\d mm at most/);
+  } finally { done(); }
+});
+
+test('frame checks: a figure on estimated joins says so even where the springs change nothing, and a beam riding a moving joint weighs on the frame', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/portal.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a portal: two 2020 legs 400 mm tall, fixed at their feet, a 600 mm beam x1 joined blind between them 390 mm up
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const portal = { title: 'Portal', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 400]), beam('z2', [620, 0, 0], [620, 0, 400]), beam('x1', [10, 0, 390], [610, 0, 390])],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], frame: { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed' } } };
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/portal');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r;
+    const by = (code) => r.filter((x) => x.code === code), point = (where) => by('frame.deflection').find((x) => x.refs.where === where);
+
+    // 1. the middle of leg z1 hardly sags at all, with the joins' springs or rigid: the two figures match, yet both
+    // rest on the two blind joins' estimated springs, and refs.restsOn says so
+    write({ ...portal, loads: [{ mass: 5, at: 'x1.top@50%' }], frame: { ...portal.frame, points: ['z1.top@50%'] } });
+    r = probe();
+    const leg = point('z1.top@50%');
+    assert.match(leg.text, /It rests on 2 joins' springs \(2 blind: an estimate\)/);
+    assert.equal(leg.refs.restsOn, 'estimate');
+    assert.equal(point('x1.top@50%').refs.restsOn, 'estimate');
+
+    // 2. a 2 m beam g rides a slide along x1 (from 100 to 400 mm along it), its middle on the slide: g is not part of
+    // the frame, and its whole weight hangs on x1 where the slide is. The hand check is superposition: x1 is linear,
+    // so x1's sag 400 mm along with g at the slide's far end equals its sag with g's mass set down as a load on
+    // x1.top@400 (its centre straight above the node: no moment, the force alone), within 1%
+    const ride = { ...portal, items: [...portal.items, { id: 'g', beam: { profile: P, length: 2000 } }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 100], axis: [0, 0, 1] }, child: { item: 'g', at: [0, 0, 1000], axis: [0, 0, 1] }, min: 0, max: 300 }],
+      frame: { ...portal.frame, points: ['x1.top@400'] } };
+    write(ride);
+    r = probe();
+    const solve = by('frame.solve')[0], g = solve.refs.riding.find((x) => x.id === 'g');
+    assert.doesNotMatch(solve.text, /Left out/);
+    assert.match(solve.text, /g rides on slide, its [\d.]+ kg weighed on the frame/);
+    // 2020 HFS5 weighs about 0.5 kg/m (its sheet's mass per metre): 2 m of it about 1 kg
+    assert.ok(g.kg > 0.8 && g.kg < 1.3, JSON.stringify(g));
+    const riding = point('x1.top@400');
+    assert.equal(riding.refs.pose, 'slide at 300');
+    write({ ...portal, loads: [{ mass: g.kg, at: 'x1.top@400' }], frame: { ...portal.frame, points: ['x1.top@400'] } });
+    r = probe();
+    const set = point('x1.top@400');
+    assert.ok(Math.abs(riding.values.sag - set.values.sag) / set.values.sag < 0.01, `riding ${riding.values.sag} mm, set down ${set.values.sag} mm`);
+    assert.ok(Math.abs(riding.values.rigid - set.values.rigid) / set.values.rigid < 0.01, `rigid: riding ${riding.values.rigid} mm, set down ${set.values.rigid} mm`);
+    // and without g at all, x1 sags less: its weight was not dropped
+    write({ ...portal, frame: { ...portal.frame, points: ['x1.top@400'] } });
+    r = probe();
+    assert.ok(point('x1.top@400').values.sag < riding.values.sag * 0.8, `bare ${point('x1.top@400').values.sag} mm, with g ${riding.values.sag} mm`);
+  } finally { done(); }
+});
+
+test('frame checks: a portal in one plane on pinned feet and a beam pinned at both ends solve, held where nothing holds them, and the portal sags as slope-deflection says; a push across the portal finds it free, it tips over rather than buckles, and its lowest mode is 0 Hz', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/portal.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/portal');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection|rack|buckling|frequency)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // 1. two 2020 posts 400 mm tall on pinned feet, a 600 mm rail x1 joined blind between them 390 mm up, 5 kg at its
+    // middle. Out of the frame's plane nothing holds it (both posts lean about their feet together); in it, the hand
+    // figure for the 5 kg alone with the joins rigid, by slope-deflection (symmetric, so no sway; the corner turns θ):
+    //   E = 69972 MPa, I = 7420 mm⁴ (the profile's figures), A = 183 mm², P = 5 × 9.80665 = 49.03 N, the rail's span
+    //   l = 600 mm, a rigid link e = 10 mm from each post's axis to the rail's end, the post h = 390 mm to the join.
+    //   Post, foot pinned:  M = 3 E I θ / h.   Rail, ends turning θ and −θ:  M_end = P l / 8 − 2 E I θ / l.
+    //   At the post's node the rail's end moment and its shear P/2 on the link:  3 E I θ / h = M_end + P e / 2,
+    //   so θ = (P l / 8 + P e / 2) / (3 E I / h + 2 E I / l) = 3922.7 / (3.9937e6 + 1.7307e6) = 6.853e-4 rad,
+    //   M_end = 3677.5 − 1185.9 = 2491.6 N·mm.
+    //   Sag:  P l³ / 48 E I − M_end l² / 8 E I = 0.4250 − 0.2160 = 0.2090 mm, plus the link's drop θ e = 0.0069 mm
+    //   and the post's shortening (P/2) h / E A = 0.0007 mm: 0.2166 mm.
+    //   With the joins' springs (1.5e6 N·mm/rad in bending, the blind join's estimate) between the rail's end turning
+    //   θb and the post's node turning θp:  P l / 8 − 2 E I θb / l = k (θb − θp)  and  k (θb − θp) + P e / 2 = 3 E I θp / h
+    //   give θb = 1.3273e-3, θp = 4.070e-4, M_end = 1380.4 N·mm, and a sag of 0.4250 − 0.1197 + 0.0041 + 0.0007 = 0.3102 mm.
+    const portal = { title: 'Portal', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 400]), beam('z2', [620, 0, 0], [620, 0, 400]), beam('x1', [10, 0, 390], [610, 0, 390])],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], loads: [{ mass: 5, at: 'x1.top@50%' }], frame: { supports: { 'z1.a': 'pinned', 'z2.a': 'pinned' } } };
+    write(portal);
+    let r = probe();
+    const solve = r.find((x) => x.code === 'frame.solve'), sag = r.find((x) => x.code === 'frame.deflection');
+    assert.equal(solve.level, 'info', solve.text);
+    assert.match(solve.text, /Nothing holds it at z2\.b \(rx\): it can move there with nothing resisting \(a frame in one plane on pinned feet sways out of that plane/);
+    assert.deepEqual(solve.refs.held, [{ node: 'z2.b', freedom: 'rx' }]);
+    assert.ok(sag, 'the sag is solved, not left to estimates');
+    assert.ok(Math.abs(sag.values.aloneRigid / 0.2166 - 1) < 0.01, `rigid ${sag.values.aloneRigid} mm against 0.2166 by hand`);
+    assert.ok(Math.abs(sag.values.alone / 0.3102 - 1) < 0.01, `springs ${sag.values.alone} mm against 0.3102 by hand`);
+    const rack = r.filter((x) => x.code === 'frame.rack'), across = rack.find((x) => x.refs.direction === 'along y');
+    assert.ok(rack.find((x) => x.refs.direction === 'along x').values.stiffness > 0, 'racked in its plane, it has a stiffness');
+    assert.equal(across.level, 'warn');
+    assert.match(across.text, /racked along y: nothing holds the frame that way, so 20 N pushed at the top \(frame\.push, an estimate\) moves it with nothing resisting/);
+    // Out of its plane the frame turns about the line through its feet, and its posts are squeezed (each carries half
+    // the rail and the 5 kg): turned by θ, each post's compression N does N θ² h of work leaning it further, so
+    // nothing in the frame stops it at any share of its load. It tips over: factor 0 (held at the post's top it read
+    // 2.5, a support the frame has not). Its lowest mode is 0 Hz, that same lean; the next is its own, in its plane.
+    const whole = r.find((x) => x.code === 'frame.buckling' && /whole frame/.test(x.text));
+    assert.equal(whole.level, 'fail', whole.text);
+    assert.equal(whole.values.factor, 0);
+    assert.match(whole.text, /the whole frame tips over under its load as drawn before anything buckles: nothing holds it at z2\.b \(rx\)/);
+    assert.deepEqual(whole.refs.tipped, [{ node: 'z2.b', freedom: 'rx' }]);
+    const mode = r.find((x) => x.code === 'frame.frequency');
+    assert.equal(mode.level, 'warn', mode.text);
+    assert.equal(mode.values.Hz, 0); assert.equal(mode.values.free, 1);
+    assert.match(mode.text, /the lowest mode is 0 Hz: nothing holds the frame at z2\.b \(rx\), so it moves that way with nothing resisting/);
+    assert.ok(mode.values.modes[1] > 1, JSON.stringify(mode.values.modes));
+    assert.match(solve.text, /its modes and buckling count it free \(frame\.frequency, frame\.buckling\)/);
+    // with no supports said, its lowest ends are guessed: pinned would leave it free, so each post stands on its end
+    // face, held from turning (fixed), and nothing is held, tips or rings at 0 Hz
+    write({ ...portal, frame: undefined });
+    const guessed = probe(), gs = guessed.find((x) => x.code === 'frame.solve');
+    assert.match(gs.text, /held at z1\.a \(fixed, a lowest end, standing on its end face\), z2\.a \(fixed, a lowest end, standing on its end face\)/);
+    assert.deepEqual(gs.refs.held, []);
+    assert.equal(guessed.find((x) => x.code === 'frame.buckling' && /whole frame/.test(x.text)).level, 'pass');
+    assert.ok(guessed.find((x) => x.code === 'frame.frequency').values.Hz > 1);
+    // and the guess is said: nobody gave those fixed ends, and on pinned feet the portal is free out of its plane (the
+    // tip-over above), so the solve warns and every figure that rests on them says so. Racked along x it sways 0.259 mm
+    // here where pinned feet gave 1.669 mm and a warning, and along y it passes at 0.411 mm though pinned feet leave it free
+    assert.equal(gs.level, 'warn', gs.text);
+    assert.match(gs.text, /Its supports are guessed: nothing says where it is held \(no feet, no "frame": \{ "supports" \}\), and on its lowest ends pinned, as a foot stands on a floor, it would be free at z2\.b \(rx\)\. So it is solved with z1\.a and z2\.a fixed, standing on their end faces, and every sag, rack, buckling and frequency figure rests on those ends held from turning, which nothing in the assembly gives\. Give it feet, or say how it is held in "frame": \{ "supports" \}/);
+    assert.deepEqual([gs.refs.guessed, gs.refs.free], [['z1.a', 'z2.a'], [{ node: 'z2.b', freedom: 'rx' }]]);
+    const onGuess = guessed.filter((x) => ['frame.rack', 'frame.buckling', 'frame.frequency'].includes(x.code));
+    assert.deepEqual([...new Set(onGuess.map((x) => x.code))].sort(), ['frame.buckling', 'frame.frequency', 'frame.rack']);
+    for (const x of onGuess) {
+      assert.match(x.text, /\. This rests on supports guessed, not given: z1\.a and z2\.a fixed, standing on their end faces, where pinned feet would leave the frame free at z2\.b \(rx\)$/, x.text);
+      assert.deepEqual(x.refs.guessed, ['z1.a', 'z2.a'], x.code);
+    }
+    assert.deepEqual(guessed.filter((x) => x.code === 'frame.rack').map((x) => [x.refs.direction, x.values.sway]), [['along x', 0.259], ['along y', 0.411]]);
+    // supports given (the pinned feet above) are no guess: nothing of it is said
+    assert.ok(r.every((x) => !/supports guessed/.test(x.text) && x.refs?.guessed == null));
+    // 2. a lone beam pinned at both ends spins on its axis with nothing resisting: held, it sags as a simple span
+    write({ title: 'Lone', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300])], loads: [{ mass: 3, at: 'x1.top@50%' }], frame: { supports: { 'x1.a': 'pinned', 'x1.b': 'pinned' } } });
+    r = probe();
+    assert.match(r.find((x) => x.code === 'frame.solve').text, /Nothing holds it at x1\.b \(rx\)/);
+    // the 3 kg alone: P l³ / 48 E I = 29.42 × 600³ / (48 × 69972 × 7420) = 0.2550 mm
+    assert.ok(Math.abs(r.find((x) => x.code === 'frame.deflection').values.alone / 0.2550 - 1) < 0.01);
+  } finally { done(); }
+});
+
+test('frame checks: a lid across the top of a corner-post box is a shear web on its bay, weighed at its corners; a panel on beams that make no bay is weighed along them, never dropped', () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/box.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a 400 x 300 x 350 box of 2020: four posts, and at the top and the bottom two rails each way joined blind to the
+    // posts (not to each other), as a corner-post box is built
+    const P = { profile: '2020-misumi-hfs5' }, W = 400, D = 300, H = 350, items = [], joins = [];
+    [[0, 0], [W, 0], [0, D], [W, D]].forEach(([x, y], i) => items.push({ id: `z${i + 1}`, beam: P, from: [x, y, 0], to: [x, y, H] }));
+    for (const [o, z] of [[0, H - 10], [2, 10]]) {
+      items.push({ id: `x${o + 1}`, beam: P, from: [10, 0, z], to: [W - 10, 0, z] }, { id: `x${o + 2}`, beam: P, from: [10, D, z], to: [W - 10, D, z] }, { id: `y${o + 1}`, beam: P, from: [0, 10, z], to: [0, D - 10, z] }, { id: `y${o + 2}`, beam: P, from: [W, 10, z], to: [W, D - 10, z] });
+      joins.push({ kind: 'blind', a: `x${o + 1}.a`, b: `z1.back@${z}` }, { kind: 'blind', a: `x${o + 1}.b`, b: `z2.front@${z}` }, { kind: 'blind', a: `x${o + 2}.a`, b: `z3.back@${z}` }, { kind: 'blind', a: `x${o + 2}.b`, b: `z4.front@${z}` },
+        { kind: 'blind', a: `y${o + 1}.a`, b: `z1.top@${z}` }, { kind: 'blind', a: `y${o + 1}.b`, b: `z3.bottom@${z}` }, { kind: 'blind', a: `y${o + 2}.a`, b: `z2.top@${z}` }, { kind: 'blind', a: `y${o + 2}.b`, b: `z4.bottom@${z}` });
+    }
+    const lid = { id: 'lid', panel: { sheet: 'acrylic', thickness: 3, bay: ['x1', 'y2', 'x2', 'y1'], out: [0, 0, 1] } };
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/box');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^(frame\\.(solve|deflection|frequency)|panel\\.size)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    const box = { title: 'Box', kind: 'fit', items, joins, frame: { points: ['x1.top@50%'] } };
+    write(box);
+    const bare = probe(), carriedOf = (r) => r.find((x) => x.code === 'frame.frequency').values.carried, sagOf = (r) => r.find((x) => x.code === 'frame.deflection').values.rigid;
+    // 1. the lid on the top: its rails join the posts, so its bay's corners are the posts' nodes at the rails' height;
+    // it is a shear web there, and its weight is carried (its clips were the only mass weighed before)
+    write({ ...box, items: [...items, lid] });
+    let r = probe();
+    const solve = r.find((x) => x.code === 'frame.solve');
+    assert.match(solve.text, /lid is a shear web on its bay, \d+ N\/mm along its diagonal/);
+    assert.doesNotMatch(solve.text, /not weighed on the frame: lid/);
+    const grams = /([\d.]+) g/.exec(r.find((x) => x.code === 'panel.size').text)?.[1];
+    // the lid's own mass is in what the frame carries: the carried mass grows by at least the sheet's grams
+    const kg = carriedOf(r) - carriedOf(bare);
+    assert.ok(kg > 0.3 && (!grams || kg >= Number(grams) / 1000 - 1e-3), `carried grew by ${kg} kg, the lid ${grams} g`);
+    // (a web's weight is set at its bay's corners, on the posts, so the rails between carry none of it)
+    // 2. the same lid with the side rails y1 and y2 joined to nothing (left out of the frame): x1 and x2 make no bay,
+    // and the lid lies on them, its weight spread along both
+    write({ ...box, items: [...items, lid], joins: joins.filter((j) => !/^y[12]\./.test(j.a)) });
+    r = probe();
+    const laid = r.find((x) => x.code === 'frame.solve');
+    assert.match(laid.text, /lid lies on x1, x2, which are not joined round it as a bay: its [\d.]+ kg is spread along them, and it is no shear web/);
+    assert.deepEqual(laid.refs.laid.map((p) => p.beams), [['x1', 'x2']]);
+    assert.ok(laid.refs.laid[0].kg > 0.3 && !laid.refs.loose.includes('lid'), JSON.stringify(laid.refs));
+    // laid along x1, half its weight on x1: x1's middle sags more than with the same rails bare. A sag this small is
+    // given to three figures (it read 0.001 to three places, one figure)
+    const without = (write({ ...box, joins: joins.filter((j) => !/^y[12]\./.test(j.a)) }), probe());
+    assert.ok(sagOf(r) > sagOf(without) * 1.05, `x1 under half the lid ${sagOf(r)} mm, bare ${sagOf(without)} mm`);
+    assert.ok(sagOf(without) < 0.1 && String(sagOf(without)).replace(/^0\.0*/, '').length >= 3, `three figures: ${sagOf(without)}`);
+  } finally { done(); }
+});
+
+test('frame checks: a gantry beam\'s weight is shared between the two side beams it lies on; what rides a beam left out is named as not weighed; frame.limit holds every sag; the Euler check says what it rests on', async () => {
+  const { ws, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = at('assemblies/g.json');
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (x) => fs.writeFileSync(file, JSON.stringify(x));
+    const probe = () => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/g');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|deflection)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // 1. a generated gantry: g (340 mm) lies across the top side beams y3 and y4, its joint on y3 10 mm from g's end a
+    // and y4's axis 330 mm along it. By the lever rule g's weight at its middle (170 mm) goes (330 − 170) / 320 = 50%
+    // to each; with its joint's beam carrying it all, y4 under g sagged by its own weight alone
+    write({ title: 'Gantry', kind: 'fit', frame: { kind: 'gantry', inside: [300, 400, 200], profile: '2020-misumi-hfs5', join: 'blind', points: ['y3.top@50%', 'y4.top@50%'] } });
+    let r = probe();
+    const solve = r.find((x) => x.code === 'frame.solve'), g = solve.refs.riding.find((x) => x.id === 'g');
+    assert.match(solve.text, /g rides on gantry, its [\d.]+ kg weighed on the frame, shared as it lies: 50% on y3, 50% on y4/);
+    assert.deepEqual(g.on.map((x) => [x.beam, +x.share.toFixed(3)]), [['y3', 0.5], ['y4', 0.5]]);
+    const sag = (w) => r.find((x) => x.code === 'frame.deflection' && x.refs.where === w).values.rigid;
+    assert.ok(Math.abs(sag('y4.top@50%') / sag('y3.top@50%') - 1) < 0.1, `the two side beams sag alike: y3 ${sag('y3.top@50%')}, y4 ${sag('y4.top@50%')} mm`);
+    // 2. a beam g riding a slide on y5, which no join holds to the frame: y5 is left out, and g and the load on y5 with it,
+    // each named as not weighed
+    const P = { profile: '2020-misumi-hfs5' };
+    const portal = { title: 'Off', kind: 'fit', items: [{ id: 'z1', beam: P, from: [0, 0, 0], to: [0, 0, 400] }, { id: 'z2', beam: P, from: [620, 0, 0], to: [620, 0, 400] }, { id: 'x1', beam: P, from: [10, 0, 390], to: [610, 0, 390] }, { id: 'y5', beam: P, from: [0, 300, 500], to: [600, 300, 500] }, { id: 'g', beam: { ...P, length: 300 } }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'y5', at: [0, 10, 100], axis: [0, 0, 1] }, child: { item: 'g', at: [0, 0, 150], axis: [0, 0, 1] }, min: 0, max: 200 }],
+      joins: [{ kind: 'blind', a: 'x1.a', b: 'z1.back@390' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@390' }], loads: [{ mass: 2, at: 'y5.top@50%' }, { mass: 1, at: 'x1.top@50%' }], frame: { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed' }, limit: 0.05 } };
+    write(portal);
+    r = probe();
+    const off = r.find((x) => x.code === 'frame.solve');
+    assert.match(off.text, /Not weighed on the frame, as the beam carrying it is left out: g \(on y5\), load 1 at y5\.top@50% \(on y5\)/);
+    assert.deepEqual(off.refs.off.map((x) => x.id), ['g', 'load 1 at y5.top@50%']);
+    // 3. frame.limit holds the sag at a load's point too, not a named point's alone
+    const load = r.find((x) => x.code === 'frame.deflection' && x.refs.where === 'x1.top@50%');
+    assert.equal(load.values.limit, 0.05);
+    assert.equal(load.refs.limit, 'the assembly\'s frame.limit');
+    const { schema } = await import('./lib/schema.mjs');
+    const limitSays = JSON.stringify(schema('assembly')).match(/"limit":\{"\$ref":"#\/\$defs\/expr","description":"([^"]*)"/)?.[1] ?? '';
+    assert.match(limitSays, /every frame\.deflection finding/);
+    // 4. the Euler check's rule says it rests on ends held from moving sideways, and where a sway frame's posts are checked
+    const { FRAME_CHECK } = await import('./lib/framecheck.mjs');
+    assert.match(FRAME_CHECK.euler.rule, /held from moving sideways/);
+    assert.match(FRAME_CHECK.euler.rule, /free to sway .* whole frame's own buckling factor/);
+  } finally { done(); }
+});
+
+test('frame checks: an open cube racks with a low stiffness and one brace stiffens it many times, gussets and a panel solved beside it; a gantry beam\'s frequency with its carriage at mid-span agrees with the formula for a loaded beam; the mode drawn', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const write = (name, x) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify(x));
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/${name}');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^frame\\.(solve|rack|frequency|buckling)$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    let r;
+    const by = (code) => r.filter((x) => x.code === code), rack = (dir) => by('frame.rack').find((x) => x.refs.direction === dir);
+
+    // 1. an open cube: four 2020 legs 400 mm tall, a ring of four beams joined blind to them 390 mm up and another 10 mm
+    // up, the lowest ends pinned. Four upright bays, two each way, none braced.
+    const ring = (n, h) => [beam(`x${n}`, [10, 0, h], [410, 0, h]), beam(`x${n + 1}`, [10, 420, h], [410, 420, h]), beam(`y${n}`, [0, 10, h], [0, 410, h]), beam(`y${n + 1}`, [420, 10, h], [420, 410, h])];
+    const joins = (n, h) => [[`x${n}.a`, 'z1.back'], [`x${n}.b`, 'z2.front'], [`x${n + 1}.a`, 'z3.back'], [`x${n + 1}.b`, 'z4.front'], [`y${n}.a`, 'z1.top'], [`y${n}.b`, 'z3.bottom'], [`y${n + 1}.a`, 'z2.top'], [`y${n + 1}.b`, 'z4.bottom']].map(([a, b]) => ({ kind: 'blind', a, b: `${b}@${h}` }));
+    const cube = { title: 'Cube', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 400]), beam('z2', [420, 0, 0], [420, 0, 400]), beam('z3', [0, 420, 0], [0, 420, 400]), beam('z4', [420, 420, 0], [420, 420, 400]), ...ring(1, 390), ...ring(3, 10)],
+      joins: [...joins(1, 390), ...joins(3, 10)] };
+    write('cube', cube);
+    r = probe('cube');
+    // the default push, 20 N (an estimate) shared among the four top corners: the cube sways within its height over 400,
+    // but its stiffness is low: the open bays hold the push by the blind joins' bending alone (16 estimated springs). The
+    // rigid joins bound it from the stiff side. A brace in each of the two bays that way makes it many times stiffer.
+    const x = rack('along x'), open = x.values.stiffness;
+    assert.equal(x.level, 'pass');
+    assert.match(x.text, /^racked along x: 20 N pushed at the top \(frame\.push, an estimate\) sways it 0\.\d+ mm with the joins' springs, \d+(\.\d)? N\/mm \(low: its open bays hold the push by their joins' bending alone\); 0\.\d+ mm, \d+ N\/mm, with the joins rigid\. It rests on 16 joins' springs \(16 blind: an estimate\): against 0\.975 mm, its height, 390 mm, over 400 \(frame\.sway\)/);
+    assert.ok(open > 20 && open < 150 && x.values.rigidStiffness > open * 2, JSON.stringify(x.values));
+    const option = (kind, every) => x.values.options.find((o) => o.kind === kind && o.every === every);
+    // one brace: the gain, said and solved; every bay that way braced: the cube is a truss that way, far stiffer still
+    assert.ok(option('brace', false).gain > 2, JSON.stringify(option('brace', false)));
+    assert.match(x.text, new RegExp(`one diagonal brace in [xyz\\d-]+ makes it [\\d.]+ N/mm \\(${option('brace', false).gain.toFixed(1).replace('.', '\\.')} times\\)`));
+    assert.ok(option('brace', true).gain > 50, JSON.stringify(option('brace', true)));
+    // gussets and a panel, each solved: both stiffen it, gussets least (they stiffen the corners, not the bay's shear)
+    assert.ok(option('gusset', false).gain > 1.1 && option('gusset', false).gain < option('brace', false).gain, JSON.stringify(x.values.options));
+    assert.ok(option('panel', true).gain > option('gusset', true).gain, JSON.stringify(x.values.options));
+    assert.equal(rack('along y').values.stiffness, open, 'the cube is the same both ways');
+    // within its limit, it advises nothing: the options are solved and said, but no change is named in refs
+    assert.match(x.text, /It stands within the limit as it is$/);
+    assert.equal(x.refs.advise, null);
+
+    // a heavier push, 100 N: over the limit, and the cheapest change that brings it under is advised by name. The
+    // sway is linear in the push, so it is 5 times the 20 N figure (each rounded to 3 places) and the stiffness the same
+    write('cube', { ...cube, frame: { rack: { load: 100 } } });
+    r = probe('cube');
+    const heavy = rack('along x');
+    assert.equal(heavy.level, 'warn');
+    assert.ok(Math.abs(heavy.values.sway - 5 * x.values.sway) < 0.005 && Math.abs(heavy.values.stiffness - open) < 0.01, `${heavy.values.sway} against 5 × ${x.values.sway}`);
+    const pick = heavy.values.options.filter((o) => !o.every).concat(heavy.values.options.filter((o) => o.every)).find((o) => o.sway <= heavy.values.limit);
+    assert.deepEqual(heavy.refs.advise, { kind: pick.kind, bays: pick.bays });
+    assert.match(heavy.text, /times over\. Solved with each change: .*The cheapest that brings it under the limit: /);
+    // refused by name
+    write('cube', { ...cube, frame: { rack: { push: 100 } } });
+    r = probe('cube');
+    assert.deepEqual(by('frame.solve').map((q) => q.text), ['frame: frame.rack has no "push": it takes load (N) and limit (mm)']);
+
+    // a panel on the front bay is a shear web of the frame: frame.solve says so with its clips' grip an estimate, and
+    // racking along x the frame is stiffer than open, and no longer offers that bay
+    write('cube', { ...cube, items: [...cube.items, { id: 'front', panel: { sheet: 'acrylic', thickness: 3, bay: ['x1', 'z2', 'x3', 'z1'], out: [0, -1, 0] } }] });
+    r = probe('cube');
+    assert.match(by('frame.solve')[0].text, /front is a shear web on its bay, \d+ N\/mm along its diagonal \(\d+ clips, their grip an estimate\)/);
+    const paneled = rack('along x');
+    assert.ok(paneled.values.stiffness > open * 1.5, `${paneled.values.stiffness} against ${open} N/mm`);
+    assert.ok(paneled.values.options.every((o) => !o.bays.some((b) => ['x1', 'z1', 'z2', 'x3'].every((id) => b.split('-').includes(id)))), JSON.stringify(paneled.values.options));
+    assert.equal(paneled.refs.panels[0].rests[0].kind, 'spec');
+    // the web is split into pieces for the modes and the whole-frame buckling (subdivide), and still holds: one end a
+    // ball, the other pinned, so nothing inside it spins free. The modes, the buckling factor and the mode view are found
+    const pf = by('frame.frequency')[0], pb = by('frame.buckling').find((q) => /whole frame/.test(q.text));
+    assert.match(pf.text, /^the lowest mode is \d+(\.\d)? Hz/);
+    assert.ok(pf.values.Hz > 5 && pf.values.carried > 0.5, JSON.stringify(pf.values));
+    assert.ok(pb && pb.values.factor > 1, JSON.stringify(by('frame.buckling')));
+    assert.match(cad('beams', 'frame/cube'), /the frame's lowest mode, \d+(\.\d+)? Hz, animated \(a check view\): exports[\\/]frame[\\/]cube\.frame-mode\.svg/);
+
+    // 2. a gantry beam: 2020, 600 mm, held fixed at both ends, with a carriage at mid-span (a 608 bearing standing in for
+    // it, 2 kg carried on it), on a slide 200 mm either way. The lowest mode is with it at mid-span (as drawn).
+    // The hand calculation: a beam fixed at both ends with a mass M at its middle, by Rayleigh's method with the static
+    // shape (Blevins, Formulas for Natural Frequency and Mode Shape, 1979, table 8-8: M + 0.375 m of the beam's own m):
+    //   k = 192 E I / L³ = 192 × 69972 × 7420 / 600³ = 461.50 N/mm (2020 HFS5, I = 7420 mm⁴; A6N01, E = 69972 MPa)
+    //   f = (1 / 2π) √(1000 k / (M + 0.375 m)), with M ≈ 2.01 kg (2 kg and the bearing) and m ≈ 0.3 kg (0.5 kg/m):
+    //   √(461500 / 2.1225) / 2π = 74.2 Hz. The test takes M and m as the finding says them.
+    const gantry = { title: 'Gantry', kind: 'fit', items: [beam('x1', [0, 0, 300], [600, 0, 300]), { id: 'cart', bought: 'bearing-608' }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 300], axis: [0, 0, 1] }, child: { item: 'cart', at: [0, 0, 0], axis: [0, 0, 1] }, min: -200, max: 200 }],
+      loads: [{ mass: 2, at: 'cart.bore' }], frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' } } };
+    write('gantry', gantry);
+    r = probe('gantry');
+    const fq = by('frame.frequency')[0], v = fq.values, hand = Math.sqrt((1000 * 192 * 69972 * 7420) / 600 ** 3 / (v.carried + 0.375 * v.beams)) / (2 * Math.PI);
+    assert.ok(v.carried > 2 && v.carried < 2.1 && v.beams > 0.25 && v.beams < 0.35, JSON.stringify(v));
+    assert.ok(Math.abs(v.Hz - hand) / hand < 0.01, `solved ${v.Hz} Hz against the formula's ${hand}`);
+    assert.equal(fq.refs.pose, 'as drawn');
+    assert.equal(fq.level, 'info');
+    assert.match(fq.text, /^the lowest mode is 7\d\.\d Hz, worst as drawn, x1 moving most\. Its next: .* Nothing named excites it/);
+    // with the carriage at the end of its travel, 100 mm from a support, the beam rings higher
+    write('gantry', { ...gantry, joints: [{ ...gantry.joints[0], min: -200, max: -200 }] });
+    r = probe('gantry');
+    assert.ok(by('frame.frequency')[0].values.Hz > v.Hz * 1.5, JSON.stringify(by('frame.frequency')[0].values));
+
+    // 3. what the machine excites, read as the task and the drives give it (set on the built assembly here, as a task
+    // needs a whole machine): a task's moves ramping to 100 mm/s, and a stepper's full-step rate at its working speed.
+    // A ramp of 50 ms (20 Hz) passes at 3.7 times; one of 20 ms (50 Hz) warns, under twice; one of 10 ms (100 Hz,
+    // over the mode itself) fails, each saying how much stiffer the beam must be. A NEMA 17 (1.8°, 200 full steps a
+    // turn) at 22.3 rpm steps at 22.3 / 60 × 200 = 74.3 Hz, on the mode: it warns that the frame rings at that speed
+    write('gantry', gantry);
+    const excite = (task, drives) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { frameChecks } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/framecheck.mjs')).href)});
+      const { placeItems, jointValues, mul } = await import('@rulecad/model-link');
+      const s = await buildAssembly('frame/gantry'), out = [];
+      s.task = ${JSON.stringify(task)}; s.motion.drives = ${JSON.stringify(drives)};
+      frameChecks(s, (level, text, card, extra) => out.push({ level, text, ...extra }), { placeItems, jointValues, mul });
+      console.log(JSON.stringify(out.filter((x) => x.code === 'frame.frequency')));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }))[0];
+    assert.deepEqual(['pass', 'warn', 'fail'].map((_, i) => excite({ speed: 100, accel: [2000, 5000, 10000][i] }, []).level), ['pass', 'warn', 'fail']);
+    const slow = excite({ speed: 100, accel: 2000 }, []), fast = excite({ speed: 100, accel: 10000 }, []);
+    assert.match(slow.text, /The machine excites: the task's moves, ramping to 100 mm\/s in 0\.05 s, 20 Hz\. 3\.7 times over the moves' 20 Hz, where 2 is wanted$/);
+    assert.match(fast.text, /under 2 times the moves' 100 Hz\. To lift it to 200 Hz takes about 7\.\d+ times the stiffness where x1 moves/);
+    const stepped = excite(null, [{ id: 'm', model: { name: 'nema17', stepAngle: 1.8 }, spec: { speed: 22.3 } }]);
+    assert.equal(stepped.level, 'warn');
+    assert.match(stepped.text, /m's full steps at 22\.3 rpm, 74\.3 Hz\. A mode within 20% of m's full steps at 22\.3 rpm \(the mode at 7\d\.\d Hz\): it rings while the motor runs at that speed/);
+    assert.equal(stepped.refs.excites[0].from, 'the motor item\'s speed');
+    assert.match(cad('beams', 'frame/gantry'), /the frame's lowest mode, 7\d\.?\d* Hz, animated \(a check view\): exports[\\/]frame[\\/]gantry\.frame-mode\.svg/);
+    const svg = fs.readFileSync(path.join(ws, 'exports/frame/gantry.frame-mode.svg'), 'utf8');
+    assert.match(svg, /<animate attributeName="points"/);
+    assert.match(svg, /lowest mode 7\d\.\d Hz, as drawn, x1 moving most/);
+  } finally { done(); }
+});
+
+test('generated frames: a box asked for by its inside size expands into beams one profile width shorter at each butting end, checks clean with its joins and feet, changes every length with the profile, and writes out to edit by hand', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    const probe = (n) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const { bounds } = await import('@rulecad/printcheck');
+      const s = await buildAssembly('frame/${n}'), f = checkAssembly(s);
+      console.log(JSON.stringify({ z: Object.fromEntries(s.parts.filter((p) => ['g.body', 'y3.body', 'z1.body'].includes(p.name)).map((p) => { const b = bounds(p.triangles); return [p.name.split('.')[0], [+b.lo[2].toFixed(2), +b.hi[2].toFixed(2)]]; })), lengths: Object.fromEntries(s.objects.filter((o) => o.beam).map((o) => [o.id, +o.beam.length.toFixed(3)])), items: s.items.map((i) => i.id),
+        joints: s.motion.joints.filter((j) => j.type !== 'fixed').map((j) => [j.id, j.type, j.dofs[0]]), poses: Object.keys(s.motion.poses),
+        geometry: f.filter((x) => x.code === 'join.geometry').map((x) => [x.level, x.values.gap]), fastened: f.filter((x) => x.code === 'fasten.length' && /^foot-/.test(x.text)).map((x) => [x.text.split(' ')[0], x.text.split(' ')[3].split(\"'\")[0], x.text.split(': ')[1].split(' chosen')[0]]), generated: f.find((x) => x.code === 'frame.generated') ?? null,
+        bad: f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.code + ': ' + x.text) }));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // 1. The specification's own example: a box round 300 x 300 x 350 mm in 2020 (p = 20 mm), joined blind, on levelling
+    // feet. Hand: the uprights run through; every other beam butts against two uprights' faces, so each is its outside
+    // span less a width at each end, 340 - 20 - 20 = 300 mm, the inside. Each foot is screwed into its upright's end,
+    // tapped M5 18.5 mm, and the bottom ring's blind joins drill an access hole across the upright at the ring's centre
+    // line (Ø5.3), so the ring rises 18.5 mm, clear of the tap: the uprights are 350 + 2 x 20 + 18.5 = 408.5 mm. Its 16
+    // blind joins meet flush (gap 0), its 4 lower ends stand on feet screwed in by an M5 cap screw each, its 4 upper ends
+    // are capped, and nothing in its check fails or warns: the joins' operations, screws, the feet's screws and seats,
+    // the caps, the cut list, the order
+    const ask = { kind: 'box', inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' };
+    write('box', { frame: ask });
+    let r = probe('box');
+    assert.deepEqual(r.bad, []);
+    assert.deepEqual(Object.entries(r.lengths).map(([id, l]) => `${id} ${l}`), ['z1 408.5', 'z2 408.5', 'z3 408.5', 'z4 408.5', 'x1 300', 'x2 300', 'y1 300', 'y2 300', 'x3 300', 'x4 300', 'y3 300', 'y4 300']);
+    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0]));
+    assert.ok(['foot-z1', 'cap-z1-b', 'foot-z4', 'cap-z4-b'].every((id) => r.items.includes(id)), r.items.join(', '));
+    assert.deepEqual([r.generated.values.inside, r.generated.values.outside, r.generated.refs.arrangement], [[300, 300, 350], [340, 340, 408.5], 'face']);
+    assert.match(r.generated.text, /^generated: a box of 2020-misumi-hfs5 \(20 mm\), joined blind: the upright beams run through and the rest butt against their faces; inside 300 x 300 x 350 mm, outside 340 x 340 x 408\.5 mm; the bottom ring stands 18\.5 mm up the uprights, so its joins' holes clear the feet's tapped ends; 4 x 408\.5 mm: z1, z2, z3, z4; 8 x 300 mm/);
+    assert.deepEqual(r.fastened, [['foot-z1', 'z1', 'M5x16 cap'], ['foot-z2', 'z2', 'M5x16 cap'], ['foot-z3', 'z3', 'M5x16 cap'], ['foot-z4', 'z4', 'M5x16 cap']]);
+    // 2. The same request in 3030 (p = 30 mm): every length follows. Inside the same, the butting beams stay the inside,
+    // 300 mm, and the uprights are 350 + 2 x 30 = 410 mm; every join still meets flush, now 15 mm (p / 2) from the ends
+    write('box', { frame: { ...ask, profile: '3030-item-6', feet: undefined } });
+    r = probe('box');
+    assert.deepEqual(Object.values(r.lengths), [410, 410, 410, 410, 300, 300, 300, 300, 300, 300, 300, 300]);
+    assert.deepEqual(r.geometry, Array(16).fill(['pass', 0])); assert.deepEqual(r.bad, []);
+    // asked by its outside, 340 x 340 x 390, the uprights are that height in either profile and each butting beam is
+    // 340 - 2 x 30 = 280 mm in 3030 where it was 300 in 2020
+    write('box', { frame: { ...ask, inside: undefined, outside: [340, 340, 390], profile: '3030-item-6', feet: undefined } });
+    assert.deepEqual(Object.values(probe('box').lengths), [390, 390, 390, 390, 280, 280, 280, 280, 280, 280, 280, 280]);
+    // 3. cad frame says what it expands into; --expand writes it into the assembly, which builds the same frame by hand
+    write('box', { frame: { ...ask, limit: 2 } });
+    assert.match(cad('frame', 'frame/box'), /frame\/box: a box of 2020-misumi-hfs5 \(20 mm\), joined blind[^]*inside 300 x 300 x 350 mm, outside 340 x 340 x 408\.5 mm; the bottom ring stands 18\.5 mm up the uprights[^\n]*\n  4 x 408\.5 mm: z1, z2, z3, z4\n  8 x 300 mm: x1, x2, y1, y2, x3, x4, y3, y4\n16 joins \(blind\); 8 end fittings \(levelling-foot, end-cap\)/);
+    assert.match(cad('frame', 'frame/box', '--expand'), /wrote projects[\\/]frame[\\/]assemblies[\\/]box\.json: the box as 12 beams, 16 joins and 8 fittings, to edit by hand \(its "frame" keeps only how it is solved\)/);
+    const written = JSON.parse(fs.readFileSync(file('box'), 'utf8'));
+    assert.deepEqual([written.frame, written.items.length, written.joins.length, written.items[4], written.joins[0]], [{ limit: 2 }, 20, 16, { id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [20, 10, 28.5], to: [320, 10, 28.5] }, { kind: 'blind', a: 'x1.a', b: 'z1.back@28.5' }]);
+    assert.deepEqual([written.items[0].beam.ops, written.fasten[0]], [[{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }], { screw: 'M5 cap', through: ['foot-z1'], into: 'z1', at: ['foot-z1.b1'], note: 'foot-z1 screwed into z1\'s end a' }]);
+    r = probe('box');
+    assert.deepEqual([r.bad, r.generated, Object.values(r.lengths).join(' ')], [[], null, '408.5 408.5 408.5 408.5 300 300 300 300 300 300 300 300']);
+    assert.match(cad('frame', 'frame/box'), /asks for no generated frame/);
+    // an item of the assembly's own named as the frame names its parts is refused by name
+    write('clash', { frame: ask, items: [{ id: 'z1', beam: { profile: '2020-misumi-hfs5', length: 100 } }] });
+    assert.match(cad('check', 'frame/clash'), /frame: the box names its parts z1, z2, z3 \.\., and this assembly already has z1: rename it/);
+    // 4. A gantry: its moving beam rides the left top side beam on a sliding joint through 476 mm (the outside depth
+    // 540 less the two uprights, 2 x 2 mm clear and its own 20 mm), and its caps and feet are held by the beams they are
+    // on, so nothing is loose; a box braced on its left side (printed corner brackets) with a back panel checks clean too
+    write('gantry', { frame: { kind: 'gantry', inside: [400, 500, 200], profile: '2020-misumi-hfs5', feet: 'levelling' } });
+    r = probe('gantry');
+    assert.deepEqual([r.bad, r.joints, r.poses, r.lengths.g], [[], [['gantry', 'prismatic', [0, 476, 0]]], ['gantry-front', 'gantry-back'], 440]);
+    // and g lies on y3, its bottom on y3's top face and its top level with the uprights' and the outside height. Hand:
+    // its feet tap the uprights' ends 18.5 mm and its bottom ring rises by that; outside 200 + 3 x 20 + 18.5 = 278.5;
+    // y3's centre 18.5 + 20 + 200 + 10 = 248.5, so it spans 238.5 to 258.5; g spans 258.5 to 278.5
+    assert.deepEqual([r.z.y3, r.z.g, r.z.z1], [[238.5, 258.5], [258.5, 278.5], [0, 278.5]]);
+    // 5. Joined by printed corner brackets: their slot nuts drop in through the opening (every butting beam is shut at
+    // both ends by its brackets, so a slide-in nut could not reach its place), and nothing fails. It warns only that
+    // the frame racks: 16 printed brackets are softer than blind joins, a finding about the frame, not a fault
+    write('bracket', { frame: { kind: 'box', inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } } });
+    r = probe('bracket');
+    assert.deepEqual([...new Set(r.bad.map((x) => x.split(':')[0]))], ['frame.rack'], r.bad.join('\n'));
+    write('braced', { frame: { kind: 'box', inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } } });
+    r = probe('braced');
+    assert.deepEqual(r.bad, []);
+    assert.ok(['y1-z1-bracket', 'y3-z3-bracket', 'panel-back'].every((id) => r.items.includes(id)), r.items.join(', '));
+    // 6. Across the series and makers, with blind joins: MISUMI's and Bosch's 3030 (M8 in an 8 mm slot, the access hole
+    // 6.3 mm, inside the opening) and item's 4040 (M8, 8 mm) check clean with nothing warned. (MISUMI's and Bosch's 4040
+    // take M12 in a 10 mm slot, and Bosch's 2020 an M6 button head 3.3 mm high under 3 mm lips: the generator refuses
+    // those by name, frames' test.) By printed gussets: each lies on the post's face looking out of the box, so none
+    // lands on the face where the corner's third beam butts, and the box checks clean. By printed brackets in item's
+    // 4040, whose slot the kit has no drop-in nut for: its roll-in nuts, chosen by the generator, and it checks clean
+    for (const profile of ['3030-misumi-hfs6', '3030-bosch', '4040-item-8']) {
+      write('box', { frame: { kind: 'box', inside: [300, 250, 350], profile, join: 'blind', feet: 'foot' } });
+      assert.deepEqual(probe('box').bad, [], profile);
+    }
+    write('gussets', { frame: { kind: 'box', inside: [300, 250, 350], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed' }, feet: 'foot' } });
+    r = probe('gussets');
+    assert.deepEqual(r.bad, []); assert.equal(r.items.filter((id) => /-gusset$/.test(id)).length, 16);
+    // written out, each gusset join names its face; a face not square to a, or a face on another kind, is refused by name
+    cad('frame', 'frame/gussets', '--expand');
+    const g = JSON.parse(fs.readFileSync(file('gussets'), 'utf8'));
+    assert.deepEqual([g.joins[0].b, g.joins[0].face], ['z1.back@10', 'bottom']);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], face: 'back' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: face is the face of z1 a printed gusset lies on, square to x1: top or bottom \(got "back"\)/);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ kind: 'blind', a: g.joins[0].a, b: g.joins[0].b, face: 'bottom' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: face names the face of b a printed gusset lies on: give it on a gusset join with "fitting": "printed", or leave face out/);
+    // a gusset's shape: T only where b runs on both sides of a far enough for its bar (a box's corner has none below its
+    // bottom ring), never turned over onto the other face, and only on a printed gusset
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], shape: 'T' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: shape T: a printed gusset turned onto z1's bottom face is an L only \(a T's bar would lie along x1\): give shape L, or leave face out/);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ ...g.joins[0], face: undefined, shape: 'T' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: shape T: a printed T gusset's bar runs [\d.]+ mm along z1 on both sides of x1, and there is 0 mm on one side: give shape L, or leave shape out/);
+    fs.writeFileSync(file('gussets'), JSON.stringify({ ...g, joins: [{ kind: 'blind', a: g.joins[0].a, b: g.joins[0].b, shape: 'L' }, ...g.joins.slice(1)] }));
+    assert.match(cad('check', 'frame/gussets'), /join 1: shape names a printed gusset's shape \(L or T\): give it on a gusset join with "fitting": "printed", or leave shape out/);
+    // a gantry in 3030 by printed gussets: its uprights run one width (30 mm) above the top side beams, room for a T's
+    // bar, but a T there puts the inside round between its bar and the arm along the side beam where the moving beam's
+    // end cap passes at either end of its travel (an overlap of about 52 mm³ at rest). Its top side beams' gussets are
+    // Ls, so it checks clean, in MISUMI's 3030 at two sizes and in Bosch's
+    for (const [profile, inside] of [['3030-misumi-hfs6', [400, 500, 200]], ['3030-misumi-hfs6', [400, 300, 350]], ['3030-bosch', [400, 500, 200]]]) {
+      write('gantry3030', { frame: { kind: 'gantry', inside, profile, join: { kind: 'gusset', fitting: 'printed' }, feet: 'levelling' } });
+      assert.deepEqual(probe('gantry3030').bad, [], `${profile} ${inside}`);
+    }
+    cad('frame', 'frame/gantry3030', '--expand');
+    const ls = JSON.parse(fs.readFileSync(file('gantry3030'), 'utf8')).joins.filter((j) => j.shape).map((j) => `${j.a} ${j.shape}`);
+    assert.deepEqual(ls, ['y3.a L', 'y3.b L', 'y4.a L', 'y4.b L']);
+    write('item', { frame: { kind: 'box', inside: [300, 250, 350], profile: '4040-item-8', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' } });
+    r = probe('item');
+    assert.deepEqual(r.bad, []); assert.ok(r.items.some((id) => /-bracket$/.test(id)));
+  } finally { done(); }
+});
+
+test('generated frames: a portal, which lies in one plane and tips over on its feet alone, is refused by name until its feet are said to be held down, and then checks clean in 2020 joined blind and in 3030 and 4040 by printed gussets', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    const probe = (n) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const f = checkAssembly(await buildAssembly('frame/${n}'));
+      console.log(JSON.stringify(f.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.code + ': ' + x.text)));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+    // Two legs and a beam across, in the x-z plane, on levelling feet. A foot stops a leg's end moving and lets it
+    // turn, so nothing holds the portal out of its plane: checked as it stands it fails frame.buckling (it tips over,
+    // factor 0) and frame.rack finds it free along y, whatever the join. So the generator refuses it by name, before
+    // any check, and says how to hold it
+    const ask = { kind: 'portal', inside: [400, 350], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' };
+    write('portal', { frame: ask });
+    assert.match(cad('check', 'frame/portal'), /frame: a portal stands in one plane \(x-z\) on its two feet[^]*it tips over sideways \(frame\.buckling fails it, frame\.rack finds it free along y\)\. Say how its feet are held down, bolted to a bench or a wall: "supports": \{ "z1\.a": "fixed", "z2\.a": "fixed" \}; or, to stand free, generate a table or a box/);
+    // its feet bolted down, it checks clean: in 2020 joined blind, and by printed gussets in MISUMI's and Bosch's 3030
+    // and item's 4040 (each checked with nothing failed or warned)
+    const held = { supports: { 'z1.a': 'fixed', 'z2.a': 'fixed' } };
+    write('portal', { frame: { ...ask, ...held } });
+    assert.deepEqual(probe('portal'), []);
+    for (const profile of ['3030-misumi-hfs6', '3030-bosch', '4040-item-8']) {
+      write('portal', { frame: { ...ask, profile, join: { kind: 'gusset', fitting: 'printed' }, ...held } });
+      assert.deepEqual(probe('portal'), [], profile);
+    }
+  } finally { done(); }
+});
+
+test('frame sizing: a table under a named load gets heavier long rails than legs, each group\'s profile named by the limit that set it, lighter as the limit loosens, and written in to check clean', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    const sized = (n) => { const out = cad('frame', `frame/${n}`, '--size', '--json'); try { return JSON.parse(out); } catch { assert.fail(out); } };
+    // A table 800 x 500 mm inside, 700 mm clear under its top ring, in 2020 joined blind, on levelling feet: legs z1..z4
+    // 720 mm, long rails x1, x2 800 mm, short rails y1, y2 500 mm. The named load: a tabletop's 80 kg, 30 kg at the
+    // middle of each long rail and 10 kg at the middle of each short one. The list runs from 1010 to 4040
+    const table = { kind: 'table', inside: [800, 500, 700], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' };
+    const loads = [{ mass: 30, at: 'x1.top@50%', note: 'the tabletop on the front rail' }, { mass: 30, at: 'x2.top@50%', note: 'on the back rail' }, { mass: 10, at: 'y1.top@50%', note: 'on the left rail' }, { mass: 10, at: 'y2.top@50%', note: 'on the right rail' }];
+    const profiles = ['1010-makerbeam', '1515-openbeam', '2020-misumi-hfs5', '2040-misumi-hfs5', '3030-misumi-hfs6', '4040-misumi-hfs8'];
+    write('table', { frame: { ...table, size: { profiles } }, loads });
+    const r = sized('table'), g = Object.fromEntries(r.groups.map((x) => [x.group, x]));
+    assert.ok(r.ok && r.search === 'every', JSON.stringify(r));
+    assert.deepEqual(Object.keys(g), ['z1, z2, z3, z4', 'x1, x2', 'y1, y2'], 'beams grouped by themselves: one profile, one direction, one length');
+    const legs = g['z1, z2, z3, z4'], rails = g['x1, x2'], short = g['y1, y2'];
+    // the long rails' profile is heavier than the legs': 2040 standing on edge (0.88 kg/m) against 1515 (0.297 kg/m)
+    assert.deepEqual([legs.choice, rails.choice, short.choice, rails.profile, rails.roll], ['1515-openbeam', '2040-misumi-hfs5 turned', '1515-openbeam', '2040-misumi-hfs5', 90]);
+    assert.ok(rails.kg / rails.length > legs.kg / legs.length);
+    // each choice names the limit that set it: the next lighter profile breaks it, and as chosen it is met
+    assert.deepEqual([legs.governs.limit, legs.governs.where, legs.governs.lighter, rails.governs.limit, rails.governs.lighter, short.governs.limit, short.governs.lighter], ['buckling', 'frame', '1010-makerbeam', 'deflection', '2020-misumi-hfs5', 'deflection', '1010-makerbeam']);
+    for (const x of [legs, rails, short]) assert.ok(x.governs.broken > 1 && x.margin >= 1, `${x.group}: ${JSON.stringify(x.governs)} margin ${x.margin}`);
+    // Hand, for the long rails' sag under their own 30 kg (294.2 N) at the middle of 800 mm: simply supported it is
+    // P L³ / 48 E I and with both ends fixed a quarter of that (Roark's, table 8.1, cases 1e and 1d); the blind joins'
+    // springs hold the ends part way. 2040 on edge (I 51 300 mm⁴, E 69 972 MPa): 294.2 x 800³ / (48 x 69 972 x 51 300)
+    // = 0.874 mm, and 0.219 mm fixed; its own 0.88 kg/m adds 5 w L⁴ / 384 E I = 0.013 mm at most. Against the limit,
+    // 800 / 360 = 2.222 mm. 2020 (I 7420): 6.04 and 1.51 mm, so the lighter rail breaks it
+    const sag = 2.222 / rails.margin, lighter = rails.governs.broken * 2.222;
+    assert.ok(sag > 0.219 && sag < 1.1 * (0.874 + 0.013), `2040 on edge sags ${sag} mm`);
+    assert.ok(lighter > 2.222 && lighter > 1.51 && lighter < 6.04 * 1.1, `2020 sags ${lighter} mm`);
+    assert.ok(r.limits.some((l) => l.limit === 'deflection' && l.what === 'x1.top@50%' && Math.abs(l.value - 800 / 360) < 1e-3 && /frame\.sag/.test(l.from)));
+    // loosening the limit lightens the result: 6 mm allowed at every load, and the long rails drop to 2020
+    write('loose', { frame: { ...table, size: { profiles, limits: { deflection: 6 } } }, loads });
+    const lo = sized('loose');
+    assert.ok(lo.ok && lo.total < r.total, `${lo.total} kg against ${r.total} kg`);
+    assert.equal(lo.groups.find((x) => x.group === 'x1, x2').choice, '2020-misumi-hfs5');
+    // beams named in groups take one profile together; the check says the sizing as a finding
+    write('grouped', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'x2', 'y1', 'y2'] } } }, loads });
+    const gr = sized('grouped');
+    assert.deepEqual(gr.groups.map((x) => [x.group, x.choice]), [['rails', '2040-misumi-hfs5 turned'], ['z1, z2, z3, z4', '1515-openbeam']]);
+    const check = cad('check', 'frame/table');
+    assert.match(check, /sized: z1, z2, z3, z4: 1515-openbeam, 0\.855 kg, set by buckling: with 1010-makerbeam, the frame's buckling factor breaks its limit [\d.]+ times over[^;]*; x1, x2: 2040-misumi-hfs5 turned, 1\.408 kg, set by deflection/);
+    // refused by name
+    write('bad', { frame: { ...table, size: { profiles, groups: { rails: ['x1', 'q9'] } } }, loads });
+    assert.match(cad('frame', 'frame/bad', '--size'), /frame\.size\.groups\.rails: q9 is not a beam of the frame \(its beams: z1, z2/);
+    write('bad', { frame: { ...table, size: { profiles: ['2020-nobody'] } }, loads });
+    assert.match(cad('frame', 'frame/bad', '--size'), /frame\.size\.profiles: .*2020-nobody/);
+    write('bad', { frame: { ...table, size: { shape: 1 } }, loads });
+    assert.match(cad('check', 'frame/bad'), /frame\.size has no "shape": it takes profiles, groups, limits, by/);
+    // Written in: one family (MISUMI HFS5, whose joins fit each other), so the written frame builds. The long rails
+    // stand 2040 on edge, their tops kept level with the legs' (the ring's centre line drops from 710 to 700 mm), and
+    // each blind join at a rail's end becomes one join a bore, at 690 and 710 mm up the leg (the bores 20 mm apart)
+    write('hfs5', { frame: { ...table, size: { profiles: ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'] } }, loads });
+    assert.match(cad('frame', 'frame/hfs5', '--size', '--write'), /wrote projects[\\/]frame[\\/]assemblies[\\/]hfs5\.json: 8 beams given their profiles \(the generated frame written out expanded/);
+    const w = JSON.parse(fs.readFileSync(file('hfs5'), 'utf8'));
+    assert.deepEqual([w.frame, w.items.find((x) => x.id === 'x1'), w.items.find((x) => x.id === 'z1')], [{ size: { profiles: ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'] } },
+      { id: 'x1', beam: { profile: '2040-misumi-hfs5' }, from: [20, 10, 700], to: [820, 10, 700], roll: 90 }, { id: 'z1', beam: { profile: '2020-misumi-hfs5', ops: [{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }] }, from: [10, 10, 0], to: [10, 10, 720] }]); // (its foot's tap: the generator's)
+    assert.deepEqual(w.joins.slice(0, 2), [{ kind: 'blind', a: 'x1.a.1', b: 'z1.back@690' }, { kind: 'blind', a: 'x1.a.2', b: 'z1.back@710' }]);
+    // it checks with nothing failing; the one warning is the table's racking, which its 2020 drawing has as well
+    const bad = (n) => cad('check', `frame/${n}`).split('\n').filter((l) => /^\s*[✗!]/.test(l));
+    assert.deepEqual(bad('hfs5').map((l) => l.trim().slice(0, 18)), ['! racked along y: '], bad('hfs5').join('\n'));
+    write('drawn', { frame: table, loads });
+    assert.ok(bad('drawn').some((l) => /racked along y/.test(l)));
+    // sized again, the written frame keeps its profiles
+    assert.deepEqual(sized('hfs5').groups.map((x) => x.choice), ['2020-misumi-hfs5', '2040-misumi-hfs5', '2020-misumi-hfs5']);
+  } finally { done(); }
+});
+
+test('frame sizing: a drawn table written in moves a deeper rail down its legs so every join lands on its leg, or writes nothing and says why', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // A table 1200 x 400 mm inside, 750 mm clear, in 2020 joined blind, on levelling feet, 40 kg at the middle of each
+    // long rail, drawn by hand (the generated frame expanded): legs 770 mm, the long rails' centre lines at 760 mm, their
+    // tops level with the legs' tops at 770. Sized within HFS5 the long rails stand 2060 on edge: 1200 mm at 40 kg
+    // (392.3 N) sags 392.3 x 1200³ / (48 x 69 972 x I) simply supported (Roark's, table 8.1, case 1e), against 1200 / 360
+    // = 3.333 mm; 2040 on edge breaks it, 2060 does not. Kept on its line, a 2060 would stand 30 mm each side of 760, to
+    // 790, past the legs' 770 mm tops, and its end's bores at 740, 760 and 780 mm up the leg (20 mm apart): 780 is off
+    // the leg and the frame would not build. So it moves down 20 mm, its top kept at 770, its bores at 720, 740 and 760
+    const profiles = ['2020-misumi-hfs5', '2040-misumi-hfs5', '2060-misumi-hfs5', '2080-misumi-hfs5'];
+    const loads = [{ mass: 40, at: 'x1.top@50%' }, { mass: 40, at: 'x2.top@50%' }];
+    fs.writeFileSync(file('d'), JSON.stringify({ title: 'd', kind: 'fit', frame: { kind: 'table', inside: [1200, 400, 750], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' }, loads }));
+    // On cad's default list (11 choices, 3 groups, 1331 designs: by steps) it is sized as the HFS5 list sizes it, though
+    // 3030 and a 20 x N lying flat are heavier than a 2040 on edge and weaker this way: the steps pass over them
+    const def = JSON.parse(cad('frame', 'frame/d', '--size', '--json'));
+    assert.deepEqual([def.ok, def.search, def.groups.map((x) => x.choice), def.total], [true, 'steps', ['2020-misumi-hfs5', '2060-misumi-hfs5 turned', '2020-misumi-hfs5'], 4.964]);
+    cad('frame', 'frame/d', '--expand');
+    const drawn = JSON.parse(fs.readFileSync(file('d'), 'utf8'));
+    assert.deepEqual([drawn.frame, drawn.items.find((x) => x.id === 'x1').from, drawn.joins[0]], [undefined, [20, 10, 760], { kind: 'blind', a: 'x1.a', b: 'z1.back@760' }]);
+    drawn.frame = { size: { profiles } };
+    fs.writeFileSync(file('d'), JSON.stringify(drawn));
+    fs.writeFileSync(file('e'), JSON.stringify({ ...drawn, title: 'e' }));
+    assert.match(cad('frame', 'frame/d', '--size', '--write'), /x1, x2 \| 2060-misumi-hfs5 turned[\s\S]*wrote projects[\\/]frame[\\/]assemblies[\\/]d\.json/);
+    const w = JSON.parse(fs.readFileSync(file('d'), 'utf8'));
+    assert.deepEqual([w.items.find((x) => x.id === 'x1'), w.items.find((x) => x.id === 'z1'), w.items.find((x) => x.id === 'y1')], [{ id: 'x1', beam: { profile: '2060-misumi-hfs5' }, from: [20, 10, 740], to: [1220, 10, 740], roll: 90 },
+      { id: 'z1', beam: { profile: '2020-misumi-hfs5', ops: [{ op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }] }, from: [10, 10, 0], to: [10, 10, 770] }, { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [10, 20, 760], to: [10, 420, 760] }]);
+    assert.deepEqual(w.joins.filter((j) => /^x1\.a/.test(j.a)).map((j) => j.b), ['z1.back@720', 'z1.back@740', 'z1.back@760']);
+    // it builds and checks with nothing failing; the one warning is the table's racking, as drawn
+    const bad = cad('check', 'frame/d').split('\n').filter((l) => /^\s*[✗!]/.test(l));
+    assert.deepEqual(bad.map((l) => l.trim().slice(0, 18)), ['! racked along y: '], bad.join('\n'));
+    // Where the move does not fit the rail's other end (its far legs start at 750 mm and run up, so moving down 20 mm
+    // would put the rail's foot 10 mm below them), nothing is written and the refusal names the join and the beam
+    const e = JSON.parse(fs.readFileSync(file('e'), 'utf8'));
+    for (const it of e.items) if (it.id === 'z2' || it.id === 'z4') { it.from[2] = 750; it.to[2] = 1500; }
+    for (const j of e.joins) j.b = j.b.replace(/^(z[24]\.\w+)@760$/, '$1@10');
+    fs.writeFileSync(file('e'), JSON.stringify(e));
+    const before = fs.readFileSync(file('e'), 'utf8');
+    assert.match(cad('frame', 'frame/e', '--size', '--write'), /the sized profiles do not fit as drawn, so nothing is written: join x1\.a\.3 would meet z1 at 780 mm, past its 770 mm/);
+    assert.equal(fs.readFileSync(file('e'), 'utf8'), before);
+  } finally { done(); }
+});
+
+test('cad plates and cad kit: plates by material, a frame\'s jigs and its feet\'s pads beside its fittings, and one folder to build a generated box from without the model', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f), file = (n) => at(`assemblies/${n}.json`);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const write = (n, x) => fs.writeFileSync(file(n), JSON.stringify({ title: n, kind: 'fit', ...x }));
+    // 1. One plate is one plastic: a printed beam in PETG in a PLA project goes on a plate of its own, named for it
+    write('mix', { items: [{ id: 'p1', beam: { profile: '2020-printed', length: 120, printed: true, material: 'petg' }, from: [0, 0, 0], to: [120, 0, 0] }, { id: 'br', fitting: { kind: 'bracket', profile: '2020-misumi-hfs5' }, at: [0, 80, 0] }] });
+    const mix = cad('plates', 'frame/mix');
+    assert.match(mix, /mix-base-1: pla, base, 1 part, [\d.]+ g, about \d+ min: br\n/, mix);
+    assert.match(mix, /mix-petg-base-1: petg, base, 1 part, [\d.]+ g, about \d+ min: p1\n/, mix);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file('mix-petg-base-1'), 'utf8')).packed.material, 'petg');
+    // 2. A generated box 200 x 200 x 200 in 2020 joined blind on printed levelling feet. Hand: each foot's M5 cap screw
+    // seats on the body's 5 mm floor and needs 2 diameters, 10 mm, of thread in aluminium, so M5x16 (5 + 11) is the
+    // shortest sold and M5x12 (5 + 7) too short; the tap is 18.5 mm, so the bottom ring rises 18.5 mm and the uprights
+    // are 200 + 2 x 20 + 18.5 = 258.5 mm. The plates hold the bodies, the caps and the four pads the bodies screw onto
+    // (printed, not placed); the jigs go on plates of their own
+    write('box', { frame: { kind: 'box', inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: 'blind', feet: 'levelling' } });
+    const plates = cad('plates', 'frame/box');
+    assert.match(plates, /box-base-1: pla, base, 12 parts, [\d.]+ g, about \d+ min: (?=.*foot-z1-pad)(?=.*cap-z4-b)(?=.*foot-z4)/, plates);
+    assert.match(plates, /frame\/box: \d+ jigs for its beams, [\d.]+ g, on 1 plate of their own \(cad beams frame\/box --jigs says what each is for\)\n\s+exports[\\/]frame[\\/]box\.jigs\.3mf: pla, \d+ parts/, plates);
+    assert.match(cad('list', 'frame/box'), /foot-z1-pad \(comes with foot-z1: printed beside it, screwed into it by hand\)/);
+    assert.doesNotMatch(cad('plates', 'frame/box', '--no-jigs'), /jigs/);
+    // 3. The kit: one folder, written only for a design that checks clean. Laying out its plates reads the printer's
+    // rule set: in a workspace without its own copy, the kit copies x1c into rules/ and says so (once)
+    fs.rmSync(path.join(ws, 'rules/x1c.json'), { force: true });
+    const k = JSON.parse(cad('kit', 'frame/box', '--json')), dir = path.join(ws, k.dir);
+    assert.deepEqual(k.copied, ['rules/x1c.json']); assert.ok(fs.existsSync(path.join(ws, 'rules/x1c.json')));
+    assert.match(cad('kit', 'frame/box'), /frame\/box: the kit to build it from/); assert.doesNotMatch(cad('kit', 'frame/box'), /and copied rules/);
+    assert.equal(k.dir.split(path.sep).join('/'), 'exports/frame/box-kit');
+    assert.deepEqual(k.files, ['README.md', 'buy.csv', 'print/box-base-1.3mf', 'print/box.jigs.3mf', 'sheets/beam-A.svg', 'sheets/beam-B.svg', 'sheets/beam-C.svg', 'sheets/beam-D.svg', 'sheets/beam-E.svg']);
+    for (const f of k.files.filter((x) => x.endsWith('.3mf'))) assert.equal(fs.readFileSync(path.join(dir, f)).subarray(0, 2).toString(), 'PK', `${f} is a 3MF (a zip)`);
+    assert.match(fs.readFileSync(path.join(dir, 'sheets/beam-A.svg'), 'utf8'), /^<svg[^>]*width="[\d.]+mm"/, 'a sheet to scale');
+    const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8'), buy = fs.readFileSync(path.join(dir, 'buy.csv'), 'utf8');
+    for (const h of ['# box: the kit', '## In this folder', '## What the checks say', '## What to buy', '### Bars', '### Screws, nuts and inserts', '## What to print', '### Jigs', '## Cut', '## Drill and tap', '## Build', '### Tightening, by kind of join', '### Diagonals']) assert.ok(readme.includes(`\n${h}\n`) || readme.startsWith(`${h}\n`), h);
+    // it counts what cad check counts, the files' schema check included
+    const passing = JSON.parse(cad('check', 'frame/box', '--json')).findings.filter((f) => f.level === 'pass').length;
+    assert.match(readme, new RegExp(`\`cad check frame/box\`: ${passing} checks pass, none fail, none warn\\.`));
+    // where each upright stands, without the pictures: a plan of the corners. Hand: the box is 200 + 2 x 20 = 240 mm
+    // outside, so the uprights' centre lines stand 10 mm in from each side, at x and y of 10 and 230
+    assert.match(readme, /## Where the uprights stand\n\nSeen from above, x to the right and y away from you: the front is the side nearest you \(least y\), the left the side of least x\. Each upright stands with its end a down\./);
+    assert.match(readme, /\| z1 \| front left \| 10, 10 \| [A-Z] \|\n\| z2 \| front right \| 230, 10 \| [A-Z] \|\n\| z3 \| back left \| 10, 230 \| [A-Z] \|\n\| z4 \| back right \| 230, 230 \| [A-Z] \|/);
+    assert.match(readme, /\| C \| 1 \| profile-2020-misumi-hfs5 \| 258\.5 \| z1 \|/);
+    assert.match(readme, /\| C \| tap M5 x 18\.5 at a; access Ø5\.3 at front\.1@28\.5;[^|]*\| sheets\/beam-C\.svg \|/);
+    assert.match(readme, /\| 4 \| M5x16 cap \| 1 pack of 10, 6 spare \| foot-z1 screwed into z1's end a;/);
+    assert.match(readme, /foot-z1 \(fitting:levelling-foot-2020-misumi-hfs5-printed-m12-body\) goes on\n {3}- foot-z1 screwed into z1's end a \(1 × M5x16 cap\) with a 4 mm hex key[^\n]*\n {3}- Then screw foot-z1-pad \(printed beside it\) into foot-z1 by hand/);
+    assert.match(readme, /: sheets\/beam-A\.svg\n/, 'a step names the sheet in the kit');
+    assert.doesNotMatch(readme, /exports[\\/]|—/, 'nothing points outside the folder; no em dashes');
+    assert.match(buy, /^kind,quantity,what,buy,for\n/);
+    assert.match(buy, /\nscrew,4,M5x16 cap,1 pack of 10,foot-z1 screwed into z1's end a;/);
+    // 4. Refused by name: a design that fails its check, and an object that is not an assembly
+    write('bad', { items: [{ id: 'a1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 0], to: [100, 0, 0] }, { id: 'a2', beam: { profile: '2020-misumi-hfs5' }, from: [50, 0, 0], to: [150, 0, 0] }] });
+    assert.match(cad('kit', 'frame/bad'), /frame\/bad: cad check fails 1 check \(a1\.body and a2\.body overlap[^)]*\), and a kit is written only for a design that checks with nothing failing: cad check frame\/bad/);
+    assert.ok(!fs.existsSync(path.join(ws, 'exports/frame/bad-kit')));
+    assert.match(cad('kit', 'frame/none'), /cad kit works on an assembly \(<project>\/<assembly>\), and there is no "frame\/none"/);
+  } finally { done(); }
+});
+
+test('a kit of fittings alone for a named profile (examples/bench fittings/kit-2020): brackets, levelling feet, end caps, panel clips and nut carriers check clean, list the nuts the carriers hold and go on one plate', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.cpSync(fileURLToPath(new URL('../../examples/bench/projects/fittings/', import.meta.url)), path.join(ws, 'projects/fittings'), { recursive: true });
+    const r = JSON.parse(cad('check', 'fittings/kit-2020', '--json'));
+    assert.ok(r.findings, JSON.stringify(r.error ?? r));
+    assert.deepEqual(r.findings.filter((x) => x.level === 'fail' || x.level === 'warn').map((x) => x.text), []);
+    // a carrier for an M3 nut in MISUMI's 6 mm slot: 11 mm long, it holds about 794 N (the 1.85 mm over the nut shears
+    // first: @rulecad/frames' README table), over twice the 100 N it is sized for
+    assert.match(r.findings.find((x) => x.code === 'carrier.hold' && /^carrier-1:/.test(x.text)).text, /each nut holds about 794 N/);
+    assert.equal(r.findings.filter((x) => x.code === 'carrier.printable' && x.level === 'pass').length, 8);
+    assert.match(cad('list', 'fittings/kit-2020'), /8 ×\s+M3 hex nut\s+1 pack of 10, 2 spare\s+carrier-1 \(held in the carrier, slid in from the side\)/);
+    assert.match(cad('plates', 'fittings/kit-2020'), /kit-2020-base-1: pla, base, 32 parts, [\d.]+ g, about \d+ min: (?=.*carrier-8)(?=.*foot-4-pad)(?=.*bracket-1)(?=.*clip-8)/);
+    // refused by name: an M5 nut is too big for a carrier in a 6 mm slot
+    const a = JSON.parse(fs.readFileSync(path.join(ws, 'projects/fittings/assemblies/kit-2020.json'), 'utf8'));
+    fs.writeFileSync(path.join(ws, 'projects/fittings/assemblies/m5.json'), JSON.stringify({ title: 'm5', kind: 'fit', items: [{ id: 'c', fitting: { ...a.items.find((x) => x.id === 'carrier-1').fitting, thread: 'M5' } }] }));
+    assert.match(cad('check', 'fittings/m5'), /item c: .*M5/);
+  } finally { done(); }
+});
+
+test('a printed beam in an assembly: a printed part weighed by its walls and infill, off the cut list, laid on a plate as it prints, its tapped end an insert', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    fs.mkdirSync(path.join(ws, 'projects/frame/assemblies'), { recursive: true });
+    fs.writeFileSync(path.join(ws, 'projects/frame/project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    // a printed 2020 240 mm long beside a bought one, its end a tapped: printed, an M4 heat-set insert
+    const file = path.join(ws, 'projects/frame/assemblies/frame.json'), a = { title: 'Frame', kind: 'fit', items: [
+      { id: 'x1', beam: { profile: '2020-printed', printed: true, ops: [{ op: 'tap', at: 'a' }] }, from: [0, 0, 0], to: [240, 0, 0] },
+      { id: 'y1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 100, 0], to: [240, 100, 0] }] };
+    fs.writeFileSync(file, JSON.stringify(a));
+    const check = cad('check', 'frame/frame');
+    assert.match(check, /✓ x1: profile-2020-printed x 240, printed lying down on its bottom face: its layers run along it/, check);
+    assert.match(check, /✓ x1: .*end a takes M4 in a heat-set insert/);
+    // on the list: x1 printed, by the plastic its walls and infill lay (PLA 1.26 g/cm³: 204.2 mm² x 240 mm = 61.8 g), y1 bought and cut
+    const list = cad('list', 'frame/frame');
+    assert.match(list, /6\d\.\d+ g\s+about \d+ min\s+x1/, list);
+    assert.match(list, /1 ×\s+profile-2020-misumi-hfs5 x 240 mm\s+a beam/);
+    assert.doesNotMatch(list, /profile-2020-printed x 240 mm\s+a beam/);
+    // on a plate, laid as it prints: on its bottom face, along x
+    const plates = cad('plates', 'frame/frame');
+    assert.match(plates, /frame-base-1: pla, base, 1 part, [\d.]+ g, about \d+ min: x1\n\s+frame-base-1: prints clean/, plates);
+    const plate = JSON.parse(fs.readFileSync(path.join(ws, 'projects/frame/assemblies/frame-base-1.json'), 'utf8'));
+    assert.deepEqual(plate.items.map((it) => [it.beam?.profile, it.beam?.laid, it.beam?.length]), [['2020-printed', true, 240]]);
+    // refused by name: printed as a word
+    a.items[0].beam.printed = { pose: 'upside-down' }; fs.writeFileSync(file, JSON.stringify(a));
+    assert.match(cad('check', 'frame/frame'), /item x1: printed.pose is lying \(on its bottom face, layers along the beam\) or standing/);
+  } finally { done(); }
+});
+
+test('a printed beam\'s end in a frame: a post printed standing takes a foot\'s screw in a captive nut in its bore\'s place, a screw of another thread is refused by name, a nut on a printed slot\'s sloped lips is said and passes, and a stiff frame\'s sag is given to three figures', async () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PETG', objects: [] }));
+    const findings = (name) => { const out = cad('check', `frame/${name}`, '--json'), r = JSON.parse(out); assert.ok(r.findings, out); return r.findings; };
+    // a post of MISUMI's 2020 printed standing (its four slots kept), a rail of the kit's printable 2020 lying down,
+    // a printed bracket on drop-in nuts between them, and a printed foot under the post screwed into its end
+    const post = { id: 'p1', beam: { profile: '2020-misumi-hfs5', material: 'petg', printed: { pose: 'standing', pull: 50, end: 'nut' }, ops: [{ op: 'tap', at: 'a' }] }, from: [10, 10, 0], to: [10, 10, 120] };
+    const frame = (foot, screw) => ({ title: 'Post', kind: 'fit', items: [post, { id: 'x1', beam: { profile: '2020-printed', material: 'petg', printed: true }, from: [20, 10, 10], to: [160, 10, 10] },
+      { id: 'foot1', fitting: { kind: 'foot', profile: '2020-misumi-hfs5', ...foot }, at: 'p1.a' }, { id: 'cap1', fitting: { kind: 'end-cap', profile: '2020-misumi-hfs5' }, at: 'p1.b' }],
+      joins: [{ kind: 'bracket', a: 'x1.a', b: 'p1.back@10', fitting: 'printed', nut: 'drop-in' }],
+      fasten: [{ screw: screw, through: ['foot1'], into: 'p1', at: ['foot1.b1'], note: 'Foot 1' }] });
+    fs.writeFileSync(at('assemblies/post.json'), JSON.stringify(frame({ thread: 'M3' }, 'M3 cap')));
+    const f = findings('post'), said = (code, re) => f.filter((x) => x.code === code && re.test(x.text));
+    // the post's end: its 4.2 mm bore leaves 4 mm of plastic round its middle, so an M3 nut (5.5 mm across the flats,
+    // 5.5 / cos 30° = 6.35 mm across its corners, half 3.18, and a 0.42 mm line: 3.6 mm) fits, and its screw passes the bore
+    assert.equal(said('beam.end', /^p1: profile-2020-misumi-hfs5 x 120, printed standing up: end a takes M3 in a captive nut/).length, 1);
+    const end = said('fasten.end', /^Foot 1/)[0];
+    assert.equal(end.level, 'pass', end.text); assert.match(end.text, /ends in an M3 hex nut in its seat in p1, [\d.]+ mm across the flats for the nut's 5\.5 mm, past a 3\.5 mm clearance hole/);
+    assert.deepEqual(f.filter((x) => x.code === 'overlap' && x.level !== 'pass').map((x) => x.text), [], 'the nut in its slot in the post as drawn');
+    // the bracket's nut in the printed rail's top slot: the sloped lips said, and no warning for it
+    const nut = said('fasten.end', /the bracket into x1/)[0];
+    assert.equal(nut.level, 'pass', nut.text); assert.match(nut.text, /slot-6-printed-2020's lips slope underneath at 45°, so it seats 3\.95 mm under the face/);
+    // and its thread is counted from that seat, not from under the lips: the drop-in nut (10 mm wide, 3.3 high, its
+    // tongue 0.8) in the 6.1 mm opening with 2 mm lips sloped 45°, seat = 2 + (10 - 6.1) / 2 x tan 45° = 3.95 mm, so its
+    // thread runs from 3.95 - 0.8 = 3.15 to 3.15 + 3.3 + 0.8 = 7.25 mm under the face (from under the lips it would read
+    // 1.2 to 5.3, and a screw whose tip is 5.6 mm in would pass with 2.45 mm engaged, under the 3.2 mm a hex nut asks)
+    assert.match(nut.text, /4\.1 mm of M4 thread from 3\.15 to 7\.25 mm under the face/);
+    const len = said('fasten.length', /the bracket into x1/)[0], eng = said('fasten.engagement', /the bracket into x1/)[0];
+    // the bracket's 5.2 mm under the head and the 3.95 mm to the seat: 9.15 mm; M4x12's tip 12 - 5.2 = 6.8 mm in, so
+    // 6.8 - 3.15 = 3.65 mm engaged (M4x10's would be 1.65), its floor 7.85 mm down, 1.05 mm past the tip
+    assert.equal(len.level, 'pass', len.text); assert.match(len.text, /M4x12 cap chosen, the shortest sold that fits: 9\.15 mm under its head \(x1-p1-bracket and the 3\.95 mm down to its nut's seat under the slot's sloped 2 mm lips\), 3\.65 mm into its nut, its tip 6\.8 mm into the slot and 1\.05 mm short of its floor/);
+    assert.equal(eng.level, 'pass', eng.text); assert.equal(eng.values.engaged, 3.65);
+    // a foot drawn for the aluminium post's M5 tap: its screw refused by name, with the thread the printed end takes
+    fs.writeFileSync(at('assemblies/post.json'), JSON.stringify(frame({}, 'M5 cap')));
+    const m5 = findings('post').find((x) => x.code === 'fasten.end' && /^Foot 1/.test(x.text));
+    assert.equal(m5.level, 'fail'); assert.match(m5.text, /p1's end a is printed with an M3 captive nut in place of a tap, and the screw is M5: use an M3 screw \(a printed foot takes it as "thread": "M3"\)/);
+    // a stiff frame's sag, where three places read 0: a 100 mm aluminium 2020 held fixed at both ends, under its own weight
+    // Hand: w = 0.5 kg/m x 9.80665 / 1000 = 0.0049033 N/mm (the sheet's mass per metre), E I = 69972 x 7420 N mm²
+    // (al6n01-t5 and the sheet's second moment, both read from the beam's model below); fixed at both ends,
+    // sag = w L⁴ / (384 E I) = 0.0049033 x 100⁴ / (384 x 69972 x 7420) = 2.46e-6 mm, given to three figures
+    const { beamModel } = await import('@rulecad/frames'), m = beamModel('2020-misumi-hfs5', { length: 100 });
+    fs.writeFileSync(at('assemblies/stiff.json'), JSON.stringify({ title: 'Stiff', kind: 'fit', items: [{ id: 'x1', beam: { profile: '2020-misumi-hfs5' }, from: [0, 0, 10], to: [100, 0, 10] }],
+      frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' }, points: ['x1.top@50%'] } }));
+    const sag = findings('stiff').find((x) => x.code === 'frame.deflection'), w = (m.figures.massPerMetre.value * 9.80665) / 1000, EI = m.material.modulus * m.figures.inertiaX.value;
+    const hand = (w * 100 ** 4) / (384 * EI);
+    assert.ok(sag.values.sag > 0 && Math.abs(sag.values.sag - hand) / hand < 0.05, `${sag.values.sag} mm against the hand's ${hand}`);
+    assert.match(sag.text, /^x1 at x1\.top@50% sags \d\.\d+e-\d mm|^x1 at x1\.top@50% sags 0\.00000\d+ mm/);
+  } finally { done(); }
+});
+
+test('beam.printable: every beam of a case-sized frame can be printed in PETG; a 400 mm gantry beam needs aluminium, by the margin it misses by; a printed beam in the frame checked at its pose\'s strength, with its creep', async () => {
+  const { ws, done } = workspace();
+  try {
+    const { beamModel } = await import('@rulecad/frames');
+    const at = (f) => path.join(ws, 'projects/frame', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'frame', material: 'PLA', objects: [] }));
+    const P = '2020-misumi-hfs5', beam = (id, from, to) => ({ id, beam: { profile: P }, from, to });
+    const write = (name, x) => fs.writeFileSync(at(`assemblies/${name}.json`), JSON.stringify(x));
+    const probe = (name) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', `
+      const { buildAssembly, checkAssembly } = await import(${JSON.stringify(pathToFileURL(path.join(path.dirname(BIN), '../lib/assembly.mjs')).href)});
+      const s = await buildAssembly('frame/${name}');
+      console.log(JSON.stringify(checkAssembly(s).filter((f) => /^(beam\\.(printable|creep)|frame\\.(solve|deflection|stress))$/.test(f.code)).map(({ level, code, text, values, refs }) => ({ level, code, text, values, refs }))));
+    `], { cwd: ws, encoding: 'utf8', env: { ...process.env, CAD_TRUSTED: path.join(ws, '.trusted.json') } }));
+
+    // 1. a case: four 2020 legs 250 mm tall, rings of four 240 mm beams joined blind 240 and 10 mm up, 2 kg on the
+    // middle of a top beam, every beam tried printed in PETG ("frame": { "printed": "petg" })
+    const ring = (n, h) => [beam(`x${n}`, [10, 0, h], [250, 0, h]), beam(`x${n + 1}`, [10, 260, h], [250, 260, h]), beam(`y${n}`, [0, 10, h], [0, 250, h]), beam(`y${n + 1}`, [260, 10, h], [260, 250, h])];
+    const joins = (n, h) => [[`x${n}.a`, 'z1.back'], [`x${n}.b`, 'z2.front'], [`x${n + 1}.a`, 'z3.back'], [`x${n + 1}.b`, 'z4.front'], [`y${n}.a`, 'z1.top'], [`y${n}.b`, 'z3.bottom'], [`y${n + 1}.a`, 'z2.top'], [`y${n + 1}.b`, 'z4.bottom']].map(([a, b]) => ({ kind: 'blind', a, b: `${b}@${h}` }));
+    const box = { title: 'Case', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, 250]), beam('z2', [260, 0, 0], [260, 0, 250]), beam('z3', [0, 260, 0], [0, 260, 250]), beam('z4', [260, 260, 0], [260, 260, 250]), ...ring(1, 240), ...ring(3, 10)],
+      joins: [...joins(1, 240), ...joins(3, 10)], loads: [{ mass: 2, at: 'x1.top@50%' }], frame: { printed: 'petg' } };
+    write('case', box);
+    let r = probe('case');
+    const each = r.filter((x) => x.code === 'beam.printable' && x.refs.beam), all = r.find((x) => x.code === 'beam.printable' && !x.refs.beam);
+    assert.equal(each.length, 12);
+    assert.ok(each.every((x) => x.level === 'pass' && x.refs.printable && x.values.margin >= 1 && x.refs.profile === 'profile-2020-printed'), JSON.stringify(each.map((x) => [x.refs.beam, x.values.margin])));
+    // the most loaded, x1 (2 kg at its middle): its own sag, stress, creep and Euler's load each a margin, the least its creep sag
+    const x1 = each.find((x) => x.refs.beam === 'x1');
+    assert.deepEqual(Object.keys(x1.values.margins).sort(), ['buckling', 'creep', 'creepSag', 'deflection', 'stress']);
+    assert.ok(x1.values.margins.creepSag < x1.values.margins.deflection, 'it sags more as it creeps');
+    assert.match(x1.text, /^x1 can be printed in PETG, lying down \(profile-2020-printed, 62\.2 g\): its least margin is [\d.]+ times, its sag as it creeps\. .* It rests on the printed section's walls and infill, its plastic's figures and the creep shares \(estimates until the beam coupon is measured\), and 16 joins' springs .* as they are, made for metal beams$/);
+    // its blind joins screw into its ends, where a printed beam has inserts: said, to be changed to a bracket or a gusset
+    assert.equal(x1.refs.joins.length, 2);
+    assert.match(x1.text, /Its joins as drawn need changing to print it: blind join of x1\.a to z1\.back@240 screws into its end a, where a printed beam has an insert, no bore to tap or pocket; .*A bracket or a gusset on its top slot takes it/);
+    // all twelve printed together and solved once more: still within every limit
+    assert.equal(all.level, 'pass');
+    assert.deepEqual([all.values.printable, all.values.beams, all.refs.metal, all.refs.restsOn], [12, 12, [], 'estimate']);
+    assert.ok(all.values.margin >= 1 && all.values.margin < Math.min(...each.map((x) => x.values.margin)), 'printed together, the frame is softer than with any one printed');
+    assert.match(all.text, /^every beam of the frame can be printed in PETG \(12\), printed together and solved once more: the least margin is [\d.]+ on sag as it creeps \([\d.]+ mm at x1\.top@50%\); \d+ g of PETG in all\. 16 of its joins need changing to a bracket or a gusset/);
+    // refused by name
+    write('case', { ...box, frame: { printed: { material: 'petg', colour: 'red' } } });
+    assert.deepEqual(probe('case').filter((x) => x.code === 'frame.solve').map((x) => x.text), ['frame: frame.printed has no "colour": it takes material, walls, infill, pose']);
+
+    // 2. a gantry beam: 2020, 400 mm, held fixed at both ends, a carriage (a 608 standing in for it, 2 kg on it) on a
+    // slide along it, the sag allowed 0.1 mm (the gantry's accuracy, frame.limit). In aluminium it passes; printed in
+    // PETG it is longer than the X1C's 256 mm bed, so it lies down spliced, and it misses.
+    // Hand calculation, the carriage at mid-span (as drawn), a beam fixed at both ends:
+    //   F = (2 + 0.012) kg x 9.80665 = 19.73 N (2 kg and the 608's 12 g); w its own weight per mm
+    //   sag = F L³ / (192 E I) + w L⁴ / (384 E I), L = 400, E = 1810 MPa (PETG HF along its layers), I the printed
+    //   2020's second moment from its walls and infill (printedSection, read from beamModel here)
+    //   aluminium: E I = 69972 x 7420: 19.73 x 400³ / (192 x 69972 x 7420) = 0.0127 mm, under 0.1: it passes
+    //   printed: the misses-by figure is the sag as it creeps over 0.1 mm: sag / 0.5 (PRINTED_DEFAULTS.creep_modulus) / 0.1
+    const gantry = { title: 'Gantry', kind: 'fit', items: [beam('x1', [0, 0, 300], [400, 0, 300]), { id: 'cart', bought: 'bearing-608' }],
+      joints: [{ id: 'slide', type: 'prismatic', parent: { item: 'x1', at: [0, 10, 200], axis: [0, 0, 1] }, child: { item: 'cart', at: [0, 0, 0], axis: [0, 0, 1] }, min: -150, max: 150 }],
+      loads: [{ mass: 2, at: 'cart.bore' }], frame: { supports: { 'x1.a': 'fixed', 'x1.b': 'fixed' }, limit: 0.1, printed: 'petg' } };
+    write('gantry', gantry);
+    r = probe('gantry');
+    const g = r.find((x) => x.code === 'beam.printable' && x.refs.beam === 'x1'), gAll = r.find((x) => x.code === 'beam.printable' && !x.refs.beam);
+    assert.equal(r.find((x) => x.code === 'frame.deflection').level, 'pass', 'in aluminium it holds');
+    const pm = beamModel('profile-2020-printed', { length: 400, material: 'petg', printed: true }), EI = 1810 * pm.figures.inertiaX.value, w = (pm.mass / 400) * 9.80665 / 1000;
+    const sag = (19.73 * 400 ** 3) / (192 * EI) + (w * 400 ** 4) / (384 * EI);
+    assert.ok(Math.abs(g.values.sag - sag) / sag < 0.02, `solved ${g.values.sag} mm against the hand's ${sag}`);
+    assert.ok(Math.abs(g.values.misses - (sag / 0.5) / 0.1) / g.values.misses < 0.02, `misses by ${g.values.misses} against ${(sag / 0.5) / 0.1}`);
+    assert.deepEqual([g.level, g.refs.printable, g.refs.governs, g.refs.spliced, g.refs.alloy, g.values.strength], ['info', false, 'creepSag', true, 'al6n01-t5', 17]);
+    assert.match(g.text, new RegExp(`^x1 needs al6n01-t5: printed in PETG, lying down, spliced \\(400 mm, longer than the bed\\) \\(profile-2020-printed\\), it misses by ${g.values.misses.toFixed(2).replace('.', '\\.')} times on its sag as it creeps\\. [\\d.]+ on sag as it creeps \\([\\d.]+ mm at cart\\.bore\\); [\\d.]+ on sag \\([\\d.]+ mm at cart\\.bore against 0\\.1 mm, the assembly's frame\\.limit\\)`));
+    assert.match(g.text, /on stress \([\d.]+ MPa against 17 MPa as spliced/, 'a splice carries half: 0.5 x 34 MPa');
+    assert.deepEqual([gAll.level, gAll.refs.printable, gAll.refs.metal], ['info', [], ['x1']]);
+    assert.match(gAll.text, /^0 of the frame's 1 beams can be printed in PETG; x1 stays as it is/);
+
+    // 3. the material on a beam: a 240 mm gantry beam printed in PETG standing up, in the frame as it is. Its stress is
+    // held to PETG's 23 MPa across its layers (strength_z), not 34 along them, and its creep is checked
+    write('gantry', { ...gantry, items: [{ id: 'x1', beam: { profile: 'profile-2020-printed', material: 'petg', printed: { pose: 'standing' } }, from: [0, 0, 300], to: [240, 0, 300] }, gantry.items[1]],
+      joints: [{ ...gantry.joints[0], parent: { ...gantry.joints[0].parent, at: [0, 10, 120] }, min: -100, max: 100 }], frame: { supports: gantry.frame.supports, limit: 1 } });
+    r = probe('gantry');
+    const creep = r.find((x) => x.code === 'beam.creep'), stress = r.find((x) => x.code === 'frame.stress');
+    assert.deepEqual([creep.level, creep.refs.beam, creep.refs.pose, creep.values.strength, creep.values.limit], ['pass', 'x1', 'standing', 23, 3.45]);
+    assert.match(creep.text, /^x1: a sustained [\d.]+ MPa against the 3\.45 MPa it may hold for months \(0\.15 of its 23 MPa across its layers/);
+    assert.deepEqual([stress.level, stress.values.strength], ['pass', 23]);
+    assert.match(stress.text, /against petg's 23 MPa/);
+    // (its own beam.printable says how it prints; the frame's, with refs.printable, only where frame.printed asks)
+    assert.ok(!r.some((x) => x.code === 'beam.printable' && x.refs?.printable !== undefined), 'beam.printable across the frame only where frame.printed asks');
+
+    // 4. a sag the frame as drawn already misses is no fault of printing. A 300 x 200 x 180 case, 1.5 kg at 30% of a top
+    // beam, the sag allowed 0.0075 mm: in aluminium it already sags about 0.0083 mm there (frame.deflection fails). A
+    // printed beam is held there to the drawn frame's own sag and 2% more (DRAWN_SLACK): y3, a side beam far from the
+    // load, leaves that sag as it is (0.00833 mm printed against 0.0085 = 1.02 x 0.00833), so it can be printed; z3, the
+    // leg under the loaded beam's nearer end, nearly doubles it (about 0.014 mm), and x2, the loaded beam, sags many
+    // times more, so both still need aluminium. Before, every beam was held to the 0.0075 mm the drawn frame misses, and
+    // all twelve were reported as needing aluminium.
+    {
+      const W = 300, D = 200, H = 180;
+      const ring2 = (n, h) => [beam(`x${n}`, [10, 0, h], [W - 10, 0, h]), beam(`x${n + 1}`, [10, D, h], [W - 10, D, h]), beam(`y${n}`, [0, 10, h], [0, D - 10, h]), beam(`y${n + 1}`, [W, 10, h], [W, D - 10, h])];
+      write('tight', { title: 'Tight case', kind: 'fit', items: [beam('z1', [0, 0, 0], [0, 0, H]), beam('z2', [W, 0, 0], [W, 0, H]), beam('z3', [0, D, 0], [0, D, H]), beam('z4', [W, D, 0], [W, D, H]), ...ring2(1, H - 10), ...ring2(3, 10)],
+        joins: [...joins(1, H - 10), ...joins(3, 10)], loads: [{ mass: 1.5, at: 'x2.top@30%' }], frame: { printed: 'petg', limit: 0.0075 } });
+      r = probe('tight');
+      const deflection = r.find((x) => x.code === 'frame.deflection' && x.level === 'fail');
+      assert.ok(deflection, 'in aluminium the frame already misses its sag');
+      const one = (id) => r.find((x) => x.code === 'beam.printable' && x.refs.beam === id), sum = r.find((x) => x.code === 'beam.printable' && !x.refs.beam);
+      const y3 = one('y3'), z3 = one('z3'), x2 = one('x2');
+      assert.deepEqual([y3.level, y3.refs.printable], ['pass', true], y3.text);
+      assert.ok(y3.values.drawnSag > 0.0075 && Math.abs(y3.values.margins.deflection - 1.02) < 0.005, `y3 held to the drawn ${y3.values.drawnSag} mm and 2%: ${y3.values.margins.deflection}`);
+      assert.match(y3.text, /on sag \([\d.]+ mm at x2\.top@30% against [\d.]+ mm, the frame as drawn \([\d.]+ mm, already past its 0\.0075 mm there, printed or not\) and 2% more\)/);
+      for (const b of [z3, x2]) assert.deepEqual([b.level, b.refs.printable], ['info', false], b.text);
+      assert.ok(z3.values.sag > 1.5 * z3.values.drawnSag, 'printing z3 makes the sag much worse');
+      assert.ok(sum.values.printable > 0 && sum.refs.printable.includes('y3') && !sum.refs.printable.includes('x2'), sum.text);
+      assert.deepEqual(sum.refs.missed, ['x2.top@30%', 'x2 along its length']);
+      assert.match(sum.text, /As drawn, unprinted, the frame already misses [\d.]+ mm at x2\.top@30% \(against 0\.0075 mm\).*\(frame\.deflection says so\): there a printed beam is held to the frame as drawn, within 2%, and blamed only where printing it makes that sag worse/);
+    }
+  } finally { done(); }
+});
+
+test('cad measured from the beam coupon: its sag becomes the modulus a printed beam bends at, the mass it broke at its strength, each in the plastic\'s set as measured, and the predictions move', () => {
+  const { ws, cad, done } = workspace();
+  try {
+    const at = (f) => path.join(ws, 'projects/benchmarks', f);
+    fs.mkdirSync(at('assemblies'), { recursive: true });
+    fs.writeFileSync(at('project.json'), JSON.stringify({ name: 'benchmarks', material: 'PLA', objects: [] }));
+    fs.copyFileSync(new URL('../../examples/bench/projects/benchmarks/assemblies/beam-test.json', import.meta.url), at('assemblies/beam-test.json'));
+    const check = () => JSON.parse(cad('check', 'benchmarks/beam-test', '--json')).findings;
+    const coupon = (f, id, what) => f.find((x) => x.code === 'beam.coupon' && x.refs.beam === id && x.predict.name === `${id}.${what}`);
+    const before = check();
+    // Hand calculation: a beam on two bars 220 mm apart, 2 kg at its middle: sag = F L³ / (48 E I), F = 2 x 9.80665 = 19.613 N.
+    // k1 printed lying down in PLA: E 2680 MPa (pla.modulus), I its printed section's (2805.31 mm⁴ from 3 walls and 40%
+    // infill): 19.613 x 220³ / (48 x 2680 x 2805.31) = 0.5787 mm. It breaks where M = S Z: the stress a kilogram at the
+    // middle causes is (9.80665 x 220 / 4) / Z = 539.4 / 364.3 = 1.48 MPa (Z = I / 7.7 mm to its furthest fibre); so at
+    // (39 - its own weight's 0.027) / 1.48 = 26.3 kg. k2 stands, so across its layers: E 2160, S 0.6 x 39 = 23.4 (an estimate).
+    const s1 = coupon(before, 'k1', 'sag'), b1 = coupon(before, 'k1', 'break'), s2 = coupon(before, 'k2', 'sag'), b2 = coupon(before, 'k2', 'break');
+    const I = s1.values.inertia, hand = (19.613 * 220 ** 3) / (48 * 2680 * I);
+    assert.ok(Math.abs(I - 2805.31) < 1, `I ${I}`);
+    assert.ok(Math.abs(s1.predict.value - hand) < 0.002, `${s1.predict.value} against ${hand}`);
+    assert.ok(Math.abs(s2.predict.value - (19.613 * 220 ** 3) / (48 * 2160 * I)) < 0.002);
+    assert.ok(Math.abs(b1.predict.value - 26.33) < 0.1 && Math.abs(b2.predict.value - (23.4 - 0.027) / 1.48) < 0.1, `${b1.predict.value} ${b2.predict.value}`);
+    assert.deepEqual([s1.refs.rule, b1.refs.rule, s2.refs.rule, b2.refs.rule], ['pla.beam_modulus', 'pla.beam_strength', 'pla.beam_modulus_z', 'pla.beam_strength_z']);
+    assert.match(s1.text, /^k1 is the beam coupon, printed lying down, across 220 mm between k1\.bottom@10 and k1\.bottom@230: 2 kg at k1\.bottom@50% sags it 0\.579 mm, .*cad measured benchmarks\/beam-test k1\.sag=<mm>, and the modulus goes to pla\.beam_modulus$/);
+    assert.ok(!before.some((x) => x.level === 'fail'), JSON.stringify(before.filter((x) => x.level === 'fail')));
+    // written back: a sag of 0.7 mm on k1 and a break at 12 kg on k2
+    const out = cad('measured', 'benchmarks/beam-test', 'k1.sag=0.7', 'k2.break=12');
+    assert.match(out, /k1\.sag: measured 0\.7 mm, predicted 0\.579/);
+    const rules = JSON.parse(fs.readFileSync(path.join(ws, 'rules/pla.json'), 'utf8')).rules, today = new Date().toISOString().slice(0, 10);
+    // the modulus scales as the sag: 2680 x 0.5787 / 0.7; the strength is its stress at 12 kg: 0.027 + 1.48 x 12
+    assert.equal(rules.beam_modulus.value, Number(((2680 * s1.predict.coupon.sag) / 0.7).toPrecision(4)));
+    assert.equal(rules.beam_strength_z.value, Number((b2.predict.coupon.self + b2.predict.coupon.perKg * 12).toPrecision(4)));
+    for (const k of ['beam_modulus', 'beam_strength_z']) { const x = rules[k]; assert.deepEqual([x.kind, x.checked, x.unit], ['measured', today, 'MPa'], k); assert.match(x.source, /the beam coupon/, k); }
+    assert.match(rules.beam_modulus.rule, /^The modulus a printed beam of PLA bends at, printed lying down/);
+    assert.match(rules.beam_modulus.source, /0\.7 mm sag of k1 under 2 kg at k1\.bottom@50%, across 220 mm, against 0\.579 mm at 2680 MPa/);
+    assert.match(rules.beam_strength_z.rule, /^The stress a printed beam of PLA breaks at in bending, printed standing up/);
+    assert.ok(!rules.beam_strength && !rules.beam_modulus_z, 'only what was measured');
+    assert.equal(JSON.parse(fs.readFileSync(new URL('../rules/pla.json', import.meta.url), 'utf8')).rules.beam_modulus, undefined, 'the kit\'s own set is untouched');
+    // checked again: the coupon's sag is now the one measured, and the figures say they rest on the coupon
+    const after = check(), s1b = coupon(after, 'k1', 'sag'), b2b = coupon(after, 'k2', 'break');
+    assert.ok(Math.abs(s1b.predict.value - 0.7) < 0.002, `${s1b.predict.value}`);
+    assert.ok(Math.abs(b2b.predict.value - 12) < 0.05, `${b2b.predict.value}`);
+    assert.match(s1b.text, /from pla's modulus along its layers [\d.]+ MPa \(pla\.beam_modulus, measured\)/);
+    assert.match(b2b.text, /\(pla\.beam_strength_z, measured\)/);
+    assert.match(after.find((x) => x.code === 'beam.mass' && /k1/.test(x.text)).text, /\(pla\.beam_modulus, measured, from the beam coupon/);
+    // refused by name: a sag of nothing
+    assert.match(cad('measured', 'benchmarks/beam-test', 'k1.sag=0'), /k1\.sag: a sag is above 0/);
+    assert.match(cad('history', 'benchmarks/beam-test'), /k1\.sag: measured 0\.7 mm, predicted 0\.579/);
   } finally { done(); }
 });

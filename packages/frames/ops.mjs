@@ -11,7 +11,7 @@ import { fixingModel, holeModel, counterboreModel, engagement } from '@rulecad/f
 import { outline } from './profile.mjs';
 
 const { cylinder, cuboid, polygon, roundedRectangle } = jscad.primitives, { extrudeLinear } = jscad.extrusions;
-const { transform, rotateX, translate } = jscad.transforms;
+const { transform, rotateX, translate } = jscad.transforms, { union } = jscad.booleans;
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const mm = (x) => String(+Number(x).toFixed(2));
@@ -46,7 +46,7 @@ const DRILL_KINDS = ['clearance', 'close', 'loose', 'tap'];
 export const OP_DEFAULTS = {
   edge: { value: 1, unit: 'diameters', rule: 'How near an end a hole across the beam may come: its centre at least one diameter from the end, so the metal between its edge and the end is at least half a diameter. A workshop rule of thumb for a hole near an edge in thin metal, not taken from a standard here: a hole nearer may tear out or burst the end under load', kind: 'estimate', source: 'workshop practice, not checked against a standard', checked: CHECKED },
   seat: { value: 0.75, unit: 'mm', rule: 'Room each side of a head in a machined counterbore. DIN 974-1 sets counterbore diameters for socket head screws; this figure is read as about what it gives for M5 (a 10 mm seat round an 8.5 mm head), and was not checked against the standard here', kind: 'estimate', source: 'DIN 974-1 (not checked here)', checked: CHECKED },
-  key: { value: 0.5, unit: 'mm', rule: 'Room across an access hole round a hex key\'s corners, where no clearance figure of the thread is wide enough: the hole is the smallest of the thread\'s clearance holes wider than the key across its corners (head_key / cos 30°), else the corners and this', kind: 'estimate', source: 'a working allowance, not a standard', checked: CHECKED },
+  key: { value: 0.5, unit: 'mm', rule: 'Room across an access hole round a hex key\'s corners, where no clearance figure of the thread will do: the hole is the smallest of the thread\'s clearance holes wider than the key across its corners (head_key / cos 30°) and no wider than the slot it is drilled in, else the corners and this, up to the next tenth of a millimetre', kind: 'estimate', source: 'a working allowance, not a standard', checked: CHECKED },
   radius: { value: 1.5, unit: 'mm', rule: 'The corner radius of a milled pocket where none is given: a 3 mm end mill\'s, a small cutter a workshop commonly has. A milled pocket\'s inside corners are never sharper than its cutter', kind: 'estimate', source: 'workshop practice, not checked against a standard', checked: CHECKED },
 };
 
@@ -84,10 +84,10 @@ function spans(loops, p, d) {
  * @param {(b: object, address: string) => object} anchorOf beamAnchor
  * @returns {{ ops: object[], findings: object[] }}
  */
-export function opsOf(b, list, anchorOf) {
-  const what = `${b.name}: ops`, out = [], findings = [], p = b.profile, L = b.length;
+export function opsOf(b, list, anchorOf, { printed = false } = {}) {
+  const what = `${b.name}: ops`, out = [], findings = [], p = b.profile, L = b.length, MADE = printed ? undefined : MACHINED; // (printed: the printer's holes, @rulecad/fixings' X1C, compensated as a printed hole comes out small)
   if (!Array.isArray(list)) throw new Error(`${what} is a list of operations, [{ op: 'tap', at: 'a' }] (got ${shown(list)})`);
-  if (list.length && p.family === 'printed') throw new Error(`${what}: ${p.name} is a printed profile: operations on a printed beam become features of the print, a later release (Frames 3.5)`);
+  if (list.length && p.family === 'printed' && !printed) throw new Error(`${what}: ${p.name} is a printed profile: a beam of it is printed ({ printed: true }), and its operations are features of the print`);
   const loops = outline(p).loops, cls = classOf(b.material);
   list.forEach((o, i) => {
     const w = `${what}[${i}]`;
@@ -123,13 +123,16 @@ export function opsOf(b, list, anchorOf) {
     // ---- a tap in an end bore ----
     if (o.op === 'tap') {
       if (!p.bores.length) throw new Error(`${ow}: ${p.name} has no bore in its ends to tap (no bore_diameter): a tap is cut in an end bore, so this profile takes none. Fasten into a slot, or drill and tap across it`);
-      const which = at.length > 1 ? b.bores.filter((x) => x.name === at) : b.bores.filter((x) => x.end === end);
+      // (a whole end's tap goes in the bores made for a thread, where it has any: MISUMI's 3030 taps its M8 centre bore,
+      // not its four 4.2 mm corner holes; with none named, in every bore of the end)
+      const inEnd = b.bores.filter((x) => x.end === end), threaded = inEnd.filter((x) => x.thread);
+      const which = at.length > 1 ? b.bores.filter((x) => x.name === at) : threaded.length ? threaded : inEnd;
       if (!which.length) throw new Error(`${ow}: ${b.name} has no bore ${at}: it has ${b.bores.map((x) => x.name).join(', ')}`);
       const thread = o.thread ?? which[0].thread;
       if (thread == null) throw new Error(`${ow}: ${p.name}'s bores name no thread (bore_thread): give one, { thread: 'M5' }`);
       if (typeof thread !== 'string') throw new Error(`${ow}: thread is a thread's name, such as M5 (got ${shown(thread)})`);
       let h;
-      try { h = holeModel(thread, { kind: 'tap', material: cls, printer: MACHINED, lead: 0 }); } catch (e) { throw new Error(`${ow}: ${String(e.message).replace(/^hole: /, '')}`); }
+      try { h = holeModel(thread, { kind: 'tap', material: cls, printer: MADE, lead: 0 }); } catch (e) { throw new Error(`${ow}: ${String(e.message).replace(/^hole: /, '')}`); }
       const fig = fixFigures(thread);
       const depth = num('depth') ?? h.depth, bore = which[0].diameter;
       if (bore >= fig.major - 1e-9) throw new Error(`${ow}: ${p.name}'s bore is Ø${mm(bore)} mm, as wide as an ${thread} thread (Ø${mm(fig.major)}): no thread can be cut in it. Give a smaller thread, or leave the end cut`);
@@ -164,18 +167,22 @@ export function opsOf(b, list, anchorOf) {
             kind = o.kind ?? 'clearance';
             if (!DRILL_KINDS.includes(kind)) throw new Error(`kind is ${DRILL_KINDS.join(', ')} (got ${shown(o.kind)})`);
             if (thread == null && kind !== 'clearance') throw new Error(`a ${kind} hole is sized by its thread: give thread`);
-            if (thread != null && diameter == null) { const h = holeModel(thread, { kind, printer: MACHINED, lead: 0, depth: deep, through: true }); diameter = h.diameter; rest = h.basis.rule; }
+            if (thread != null && diameter == null) { const h = holeModel(thread, { kind, printer: MADE, lead: 0, depth: deep, through: true }); diameter = h.diameter; rest = h.basis.rule; }
           } else if (o.op === 'access') {
             const head = o.head ?? 'cap', figure = ACCESS_KEYS[head];
             if (!figure) throw new Error(`head is the screw's head the key turns, ${Object.keys(ACCESS_KEYS).join(', ')} (got ${shown(o.head)})`);
             key = fig ? (isNum(fig.figures[figure]?.value) ? fig.figures[figure].value : null) : null;
             if (diameter == null && key == null) throw new Error(`${thread}'s set names no hex key for a ${head} head (${figure}) to size an access hole for: give a diameter`);
             if (diameter == null) {
-              const corners = key / Math.cos(Math.PI / 6), fit = ['clearance_close', 'clearance', 'clearance_loose'].map((n) => [n, fig.figures[n]?.value]).find(([, v]) => isNum(v) && v > corners);
-              diameter = fit ? fit[1] : r3(corners + OP_DEFAULTS.key.value); rest = fit ? `${fig.set}.${fit[0]}` : 'OP_DEFAULTS.key';
+              // the hole only passes the key: a clearance drill of the thread's where one is wider than the key's corners
+              // and no wider than the slot it is drilled in (and, right through, the slot it comes out in), else the
+              // key's corners and OP_DEFAULTS.key, up to the next tenth of a millimetre (a drill size)
+              const far = through === 'beam' ? farSlot(b, place) : null, room = Math.min(...[place.slot, far?.slot].filter(Boolean).map((n) => p.slots[n].opening), Infinity);
+              const corners = key / Math.cos(Math.PI / 6), fit = ['clearance_close', 'clearance', 'clearance_loose'].map((n) => [n, fig.figures[n]?.value]).find(([, v]) => isNum(v) && v > corners && v <= room + 1e-9);
+              diameter = fit ? fit[1] : r3(Math.ceil((corners + OP_DEFAULTS.key.value) * 10 - 1e-6) / 10); rest = fit ? `${fig.set}.${fit[0]}` : 'OP_DEFAULTS.key';
             }
           } else {
-            const c = counterboreModel(thread, { printer: MACHINED, ...(o.head ? { head: o.head } : {}), ...(diameter != null ? { diameter } : {}), ...(o.depth != null ? { depth: o.depth } : {}) });
+            const c = counterboreModel(thread, { printer: MADE, ...(o.head ? { head: o.head } : {}), ...(diameter != null ? { diameter } : {}), ...(o.depth != null ? { depth: o.depth } : {}) });
             seat = { diameter: c.diameter, depth: c.depth, head: c.head }; diameter = c.hole; rest = `${fig.set}.clearance`;
           }
         } catch (e) { throw new Error(`${ow}: ${String(e.message).replace(/^(hole|counterbore): /, '')}`); }
@@ -263,7 +270,7 @@ function holeChecks(b, op, i, findings, D, place) {
     if (D > s.opening + 1e-9) findings.push({ level: 'warn', code: 'beam.op', text: `${b.name}: the ${op.op} at ${op.at} (Ø${mm(D)} mm) is wider than ${place.name}'s slot opening (${mm(s.opening)} mm): it breaks into the slot's lips, and a nut there loses its grip. A smaller hole, or a notch if that is meant`, values: { diameter: D, opening: s.opening }, refs: { op: i, at: op.at, slot: place.slot } });
   }
   if (op.through === 'beam') {
-    const far = b.places.find((q) => q.slot && Math.abs(q.normal[0] + place.normal[0]) < 1e-9 && Math.abs(q.normal[1] + place.normal[1]) < 1e-9 && Math.abs(place.normal[0] * (q.at[1] - place.at[1]) - place.normal[1] * (q.at[0] - place.at[0])) < 1e-6);
+    const far = farSlot(b, place);
     if (far && op.diameter > p.slots[far.slot].opening + 1e-9) findings.push({ level: 'warn', code: 'beam.op', text: `${b.name}: the ${op.op} at ${op.at} runs right through and comes out in ${far.name}'s slot (opening ${mm(p.slots[far.slot].opening)} mm) at Ø${mm(op.diameter)} mm: it breaks into that slot's lips`, values: { diameter: op.diameter, opening: p.slots[far.slot].opening }, refs: { op: i, at: op.at, slot: far.slot } });
   }
   for (const bo of p.bores) {
@@ -271,6 +278,10 @@ function holeChecks(b, op, i, findings, D, place) {
     if (reach - bo.diameter / 2 > op.depth || off >= op.diameter / 2 + bo.diameter / 2 - 1e-9 || off < 1e-6) continue;
     findings.push({ level: 'warn', code: 'beam.op', text: `${b.name}: the ${op.op} at ${op.at} (Ø${mm(op.diameter)} mm) breaks into the side of the bore at ${mm(bo.at[0])}, ${mm(bo.at[1])} (Ø${mm(bo.diameter)}), ${mm(off)} mm off its centre: line the hole up with the bore, or keep it clear`, values: { offset: r3(off), diameter: op.diameter, bore: bo.diameter }, refs: { op: i, at: op.at } });
   }
+}
+// The slotted place on the far side of a beam from a place, on the same line through it (where a hole right through comes out)
+function farSlot(b, place) {
+  return b.places.find((q) => q.slot && Math.abs(q.normal[0] + place.normal[0]) < 1e-9 && Math.abs(q.normal[1] + place.normal[1]) < 1e-9 && Math.abs(place.normal[0] * (q.at[1] - place.at[1]) - place.normal[1] * (q.at[0] - place.at[0])) < 1e-6);
 }
 // The end a cut nearest it: how much metal is left between its edge and the end
 function nearEnd(b, op, i, findings, half, plain = false) {
@@ -296,11 +307,12 @@ function wedge(b, m) {
 
 /**
  * The cutters a beam's operations take out of its solid, in the beam's frame. Mitres alone where only the envelope
- * matters (a link's box); every hole, pocket and notch for a preview.
- * @param {object} b a beam's model, with its ops @param {{ envelope?: boolean }} [o]
+ * matters (a link's box); every hole, pocket and notch for a preview. up: the way up as the beam prints (a printed
+ * beam's), so a hole lying on its side is a teardrop with its point that way and prints with no support.
+ * @param {object} b a beam's model, with its ops @param {{ envelope?: boolean, up?: number[] | null }} [o]
  * @returns {object[]} JSCAD geom3s to subtract
  */
-export function opCutters(b, { envelope = false } = {}) {
+export function opCutters(b, { envelope = false, up = null } = {}) {
   const out = [];
   for (const op of b.ops ?? []) {
     if (op.op === 'mitre') { out.push(wedge(b, op)); continue; }
@@ -311,7 +323,14 @@ export function opCutters(b, { envelope = false } = {}) {
     }
     const f = op.anchor && op.face ? frameOf(op.anchor) : null;
     if (!f) continue;
-    const down = (r, depth) => cylinder({ radius: r, height: depth + OUT, segments: SEGMENTS, center: [0, 0, (OUT - depth) / 2] });
+    // a hole down the face's normal; on its side as the beam prints, a teardrop: its point toward up, 45° each side
+    const u = up ? [f[0] * up[0] + f[1] * up[1] + f[2] * up[2], f[4] * up[0] + f[5] * up[1] + f[6] * up[2]] : null, side = u && Math.hypot(...u) > 0.1 ? u.map((c) => c / Math.hypot(...u)) : null;
+    const down = (r, depth) => {
+      const c = cylinder({ radius: r, height: depth + OUT, segments: SEGMENTS, center: [0, 0, (OUT - depth) / 2] });
+      if (!side) return c;
+      const [ux, uy] = side, k = Math.SQRT1_2, tip = polygon({ points: [[r * Math.SQRT2 * ux, r * Math.SQRT2 * uy], [r * (k * ux - k * uy), r * (k * uy + k * ux)], [r * (k * ux + k * uy), r * (k * uy - k * ux)]] }); // (the point, then the tangents a quarter turn either side of it, counter-clockwise)
+      return union(c, translate([0, 0, -depth], extrudeLinear({ height: depth + OUT }, tip)));
+    };
     if (op.op === 'access' || op.op === 'drill') out.push(transform(f, down(op.diameter / 2, op.depth)));
     if (op.op === 'counterbore') out.push(transform(f, down(op.seat.diameter / 2, op.seat.depth)), transform(f, down(op.diameter / 2, op.depth)));
     if (op.op === 'pocket') {

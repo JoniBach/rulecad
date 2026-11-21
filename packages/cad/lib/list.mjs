@@ -12,6 +12,7 @@ import { readJson } from './host.mjs';
 import path from 'node:path';
 import { volume } from './mesh.mjs';
 import { wiresFor } from './assembly.mjs';
+import { companions } from './fittings.mjs';
 import { cutListOf, cutListData } from './beams.mjs';
 import { cutListText, printedCost } from '@rulecad/frames';
 
@@ -30,9 +31,12 @@ export function printedParts(s) {
   const by = new Map();
   for (const p of s.parts) {
     if (p.role !== 'part' && p.role != null) continue;
-    const key = p.leaf ?? p.item, mm3 = volume(p.triangles), o = by.get(key) ?? { id: key, object: p.object ?? null, volume: 0 };
+    // (a printed beam's part is drawn solid and printed with walls and infill: its fill is the share of plastic laid)
+    const key = p.leaf ?? p.item, mm3 = volume(p.triangles) * (p.fill ?? 1), o = by.get(key) ?? { id: key, object: p.object ?? null, volume: 0 };
     o.volume += mm3; by.set(key, o);
   }
+  // and what comes with a placed part, printed beside it (a levelling foot's pad), by its model's grams
+  for (const c of companions(s)) if (c.grams > 0) by.set(c.id, { id: c.id, object: null, volume: (c.grams / mat.density) * 1000, with: c.of });
   return [...by.values()].map((o) => ({ ...o, volume: n(o.volume, 0), grams: n((o.volume / 1000) * mat.density), minutes: n(o.volume / flow / 60, 0) }));
 }
 
@@ -87,7 +91,7 @@ export function listText(ref, l) {
     if (l.totals.pack) out.push(`  (packs of ${l.totals.pack.size}: ${l.totals.pack.rule}, ${/^[aeiou]/.test(l.totals.pack.kind) ? 'an' : 'a'} ${l.totals.pack.kind}; masses are estimates from each piece's outline)`);
   }
   if (l.wires.length) { out.push('', 'Wire'); for (const w of l.wires) row([`  ${w.length} mm of`, w.gauge ?? 'gauge not given', `in ${w.runs.join(', ')}`]); }
-  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}`]); }
+  if (l.printed.length) { out.push('', `Printed (${l.totals.material})`); for (const p of l.printed) row([`  ${String(p.grams).padStart(7)} g`, `about ${p.minutes} min`, `${p.id}${p.object && p.object !== p.id ? ` (${p.object})` : ''}${p.with ? ` (comes with ${p.with}: printed beside it, screwed into it by hand)` : ''}`]); }
   out.push('', `Total: ${l.totals.printedGrams} g printed, about ${l.totals.minutes} min of printing (an estimate from volume and the printer's flow), ${l.totals.fixingsGrams ? `${l.totals.fixingsGrams} g of fixings, ` : ''}${l.totals.machineGrams} g as a machine${l.totals.noMassFor ? ` (no mass given for ${l.totals.noMassFor.join(', ')})` : ''}`);
   if (l.cost) {
     const c = l.cost, parts = [];

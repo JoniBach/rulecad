@@ -8,15 +8,16 @@
 import jscad from '@jscad/modeling';
 import { profileModel, section, beamFigures, outline, DEFAULTS } from './profile.mjs';
 import { opsOf, opCutters } from './ops.mjs';
+import { printOptions, printedOf } from './printing.mjs';
 
 const { cuboid, cylinder, polygon } = jscad.primitives, { extrudeLinear } = jscad.extrusions, { subtract } = jscad.booleans;
 const isNum = (x) => typeof x === 'number' && Number.isFinite(x);
 const shown = (v) => { const s = v === undefined ? 'nothing' : JSON.stringify(v) ?? String(v); return s.length > 80 ? `${s.slice(0, 77)}...` : s; };
 const mm = (x) => String(+Number(x).toFixed(2));
 const FACES = ['top', 'bottom', 'front', 'back'];
-const END_KINDS = ['cut', 'tapped'];
+const END_KINDS = ['cut', 'tapped'], PRINTED_ENDS = ['cut', 'tapped', 'insert', 'nut'];
 const DISPLAYS = ['link', 'preview'];
-const OPTIONS = ['length', 'ends', 'ops', 'material', 'given', 'cells', 'display', 'tracks'];
+const OPTIONS = ['length', 'ends', 'ops', 'material', 'given', 'cells', 'display', 'tracks', 'printed'];
 const ROUND = ['round-tube', 'round-bar'];
 
 /**
@@ -37,18 +38,40 @@ const ROUND = ['round-tube', 'round-bar'];
  *   rests: object[], findings: object[] }} Beam
  */
 
-// ends: one kind for both, [a, b], or { a, b }
-function endsOf(what, ends, m) {
+// ends: one kind for both, [a, b], or { a, b }; a printed beam's may be an insert or a captive nut as well
+function endsOf(what, ends, m, printed = null) {
   const pair = ends == null ? ['cut', 'cut'] : typeof ends === 'string' ? [ends, ends] : Array.isArray(ends) ? ends : typeof ends === 'object' ? [ends.a ?? 'cut', ends.b ?? 'cut'] : null;
   if (!pair || pair.length !== 2) throw new Error(`${what}: ends is ${END_KINDS.join(' or ')} for both ends, [a, b], or { a, b } (got ${shown(ends)})`);
   if (ends && typeof ends === 'object' && !Array.isArray(ends)) for (const k of Object.keys(ends)) if (!['a', 'b'].includes(k)) throw new Error(`${what}: ends names end a and end b (got "${k}")`);
   const threaded = m.bores.filter((b) => b.thread != null);
   return Object.fromEntries(pair.map((k, i) => {
     const end = 'ab'[i];
+    if (printed) {
+      if (!PRINTED_ENDS.includes(k)) throw new Error(`${what}: a printed beam's end ${end} is ${PRINTED_ENDS.join(', ')} (tapped is printed as the beam's printed.end, ${printed.end}) (got ${shown(k)})`);
+      const fix = k === 'tapped' ? printed.end : k;
+      return [end, { kind: fix, thread: fix === 'cut' ? null : m.end?.thread ?? null }];
+    }
     if (!END_KINDS.includes(k)) throw new Error(`${what}: end ${end} is ${END_KINDS.join(' or ')} (got ${shown(k)}). A mitre, a drilled hole and the rest are operations: { ops: [{ op: 'mitre', at: 'a', angle: 45, about: 'top' }] }`);
     if (k === 'tapped' && !threaded.length) throw new Error(`${what}: end ${end} is tapped, and ${m.name} has no bore with a thread to tap (bore_thread): leave it cut, or give the profile a bore_thread`);
     return [end, { kind: k, thread: k === 'tapped' ? threaded[0].thread : null }];
   }));
+}
+
+// The order an operation is done in: the ends cut (square or mitred), then deburred, the holes, pockets and notches
+// across the beam, then the taps in its end bores
+const WORK = { cut: 0, mitre: 0, deburr: 1, tap: 3 };
+
+/**
+ * A beam's operations in the order they are done, as its sheet numbers them: the ends cut (square or mitred) and
+ * deburred, the holes, pockets and notches across it from end a, then the taps in its end bores. The model's own ops
+ * stay in their place along the beam from end a; this gives their indexes in work order, so an operation's number on
+ * the sheet is its place in this list plus one.
+ * @param {{ ops: { op: string, distance: number }[] }} b a beam's model (beamModel)
+ * @returns {number[]} the indexes into b.ops, in the order the operations are done
+ */
+export function workOrder(b) {
+  if (!Array.isArray(b?.ops)) throw new Error(`workOrder: give a beam's model (beamModel), with its ops (got ${shown(b)})`);
+  return b.ops.map((x, i) => i).sort((i, k) => (WORK[b.ops[i].op] ?? 2) - (WORK[b.ops[k].op] ?? 2) || b.ops[i].distance - b.ops[k].distance || i - k);
 }
 
 /**
@@ -69,16 +92,18 @@ export function beamModel(profile, o = {}) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error(`${what}: the second argument is { length, ends, material } (got ${shown(o)})`);
   for (const k of Object.keys(o)) if (!OPTIONS.includes(k)) throw new Error(`${what}: no option "${k}": it takes ${OPTIONS.join(', ')}`);
   if (!(isNum(o.length) && o.length > 0)) throw new Error(`${what}: length is a number above 0, in mm from end a to end b (got ${shown(o.length)})`);
-  const given = o.given ?? {};
+  const given = o.given ?? {}, pr = o.printed != null && o.printed !== false ? printOptions(what, o.printed) : null;
   const base = profile?.kind === 'profile' ? profile : profileModel(profile, {}, given);
   let m = base;
-  const changed = o.material != null && o.material !== base.material?.name;
+  // printed: in the profile's plastic, or PLA where the profile is a metal's (a printed beam of an aluminium section)
+  const material = o.material ?? (pr && !base.material?.figures?.softening ? 'pla' : undefined);
+  const changed = material != null && material !== base.material?.name;
   if (changed) {
-    if (typeof o.material !== 'string') throw new Error(`${what}: material is a material set's name, such as al6063-t5 (got ${shown(o.material)})`);
+    if (typeof material !== 'string') throw new Error(`${what}: material is a material set's name, such as al6063-t5 (got ${shown(o.material)})`);
     // the same profile in another material: its own figures, the material changed, and the measured outline kept
-    m = profileModel({ name: m.name, part: 'profile', rules: m.figures }, { material: o.material }, { ...given, ...(m.measured ? { outline: m.measured } : {}) });
+    m = profileModel({ name: m.name, part: 'profile', rules: m.figures }, { material }, { ...given, ...(m.measured ? { outline: m.measured } : {}) });
   }
-  const L = o.length, ends = endsOf(what, o.ends, m), s = section(m, { torsion: false }), fig = beamFigures(m, { cells: o.cells });
+  const L = o.length, ends = endsOf(what, o.ends, m, pr), s = section(m, { torsion: false }), fig = beamFigures(m, { cells: o.cells });
   if (changed) fig.massPerMetre = { value: s.massPerMetre, unit: 'kg/m', kind: 'derived', source: `worked out from the ${s.measured ? 'measured' : 'drawn'} outline of ${m.name} and the density of ${m.material?.name}`, from: 'outline' };
   const density = m.material?.density ?? null, mass = density != null ? (s.area * L * density) / 1000 : null; // mm² x mm x g/cm³ / 1000 = g
   const sheetMass = !changed && m.sheet.massPerMetre != null ? m.sheet.massPerMetre * L : null; // kg/m x mm = g
@@ -114,14 +139,16 @@ export function beamModel(profile, o = {}) {
   // operations: those given, a tap for an end said to be tapped, and a square cut at an end with no cut of its own
   const given_ = o.ops ?? [];
   if (!Array.isArray(given_)) throw new Error(`${what}: ops is a list of operations, [{ op: 'tap', at: 'a' }] (got ${shown(o.ops)})`);
-  const list = [...given_];
+  // printed: a tap at an end is the beam's printed end (an insert or a captive nut), a feature of the print, not an operation
+  const list = pr ? given_.filter((x) => { if (x?.op !== 'tap' || !/^[ab](\.|$)/.test(String(x.at ?? '').trim())) return true; const e = String(x.at).trim()[0]; ends[e] = { kind: pr.end, thread: m.end?.thread ?? null }; return false; }) : [...given_];
   for (const e of ['a', 'b']) if (ends[e].kind === 'tapped' && !list.some((x) => x?.op === 'tap' && String(x.at ?? '').trim()[0] === e)) list.push({ op: 'tap', at: e });
   let done;
-  try { done = opsOf(b, list, beamAnchor); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); }
+  try { done = opsOf(b, list, beamAnchor, { printed: !!pr }); } catch (e) { throw new Error(`${what}: ${String(e.message).replace(/^beamAnchor: /, '')}`); }
   for (const x of done.ops) if (x.op === 'tap') { ends[x.end] = { kind: 'tapped', thread: x.thread }; for (const bo of bores) if (x.bores.includes(bo.name)) bo.tapped = true; }
-  for (const e of ['a', 'b']) if (!done.ops.some((x) => x.end === e && (x.op === 'cut' || x.op === 'mitre'))) done.ops.push({ op: 'cut', at: e, end: e, face: null, place: null, distance: e === 'a' ? 0 : L, line: `cut end ${e} square`, implied: true });
+  if (!pr) for (const e of ['a', 'b']) if (!done.ops.some((x) => x.end === e && (x.op === 'cut' || x.op === 'mitre'))) done.ops.push({ op: 'cut', at: e, end: e, face: null, place: null, distance: e === 'a' ? 0 : L, line: `cut end ${e} square`, implied: true });
+  // in their place along the beam from end a, as everything reads them (the sheet lists them in work order, workOrder)
   b.ops = done.ops.sort((p, q) => p.distance - q.distance); b.findings.push(...done.findings);
-  return b;
+  return pr ? printedOf(b, pr, { a: ends.a.kind, b: ends.b.kind }) : b;
 }
 
 /**
@@ -143,7 +170,7 @@ export function beam(m, o = {}) {
   if (display === 'link') solid = ROUND.includes(p.family) ? cylinder({ radius: p.width / 2, height: L, segments: 12, center: [0, 0, L / 2] }) : cuboid({ size: [p.width, p.height, L], center: [0, 0, L / 2] });
   else solid = extrudeLinear({ height: L }, polygon({ points: outline(p).loops }));
   if (display === 'link' && o.tracks) { const tracks = trackCutters(p, L); if (tracks.length) solid = subtract(solid, ...tracks); }
-  const cuts = opCutters(b, { envelope: display === 'link' }); // (a link keeps its box, cut only where an end is mitred)
+  const cuts = opCutters(b, { envelope: display === 'link', up: b.printed ? (b.printed.pose === 'lying' ? [0, 1, 0] : [0, 0, 1]) : null }); // (a link keeps its box, cut only where an end is mitred; a printed beam's holes on their side are teardrops)
   if (cuts.length) solid = subtract(solid, ...cuts);
   return Object.assign(solid, { model: b, display });
 }
@@ -188,14 +215,16 @@ export function beamAnchor(b, address) {
 }
 
 /**
- * What a printer can make of it, as findings. A beam of a profile is bought and cut from stock, and so is a profile:
- * both fail. Printed beams are a later release.
- * @param {Beam | Profile | object} x a beam's or a profile's model, or a solid beam() made
- * @returns {{ level: 'fail', code: string, text: string }[]}
+ * What a printer can make of it, as findings. A printed beam (beamModel's printed) says how it prints and what stops it:
+ * a slot in a side face lying down, lips that hang out over the cavity, a length past the bed. A beam of a profile not
+ * printed is bought and cut from stock, and so is a profile: both fail.
+ * @param {Beam | Profile | object} x a beam's or a profile's model, or a solid beam() or printedBeam() made
+ * @returns {{ level: 'pass' | 'fail', code: string, text: string }[]}
  */
 export function printable(x) {
   const m = x?.model?.kind === 'beam' ? x.model : x;
-  if (m?.kind === 'beam') return [{ level: 'fail', code: 'beam.printable', text: `${m.name} is a bought beam: cut from ${m.profile.name} stock and fitted, not printed. What prints is the parts that fasten to it` }];
+  if (m?.kind === 'beam' && m.printed) return m.findings.filter((f) => f.code === 'beam.printable');
+  if (m?.kind === 'beam') return [{ level: 'fail', code: 'beam.printable', text: `${m.name} is a bought beam: cut from ${m.profile.name} stock and fitted, not printed. What prints is the parts that fasten to it; a beam given { printed: true } prints (profile-2020-printed lies down)` }];
   if (m?.kind === 'profile') return [{ level: 'fail', code: 'beam.printable', text: `${m.name} is a bought profile: beams of it are cut from stock, not printed` }];
   throw new Error(`printable: give a beam's model (beamModel), a profile's (profileModel), or a solid beam() made, not ${shown(x)}`);
 }

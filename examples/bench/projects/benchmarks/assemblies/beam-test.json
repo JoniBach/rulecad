@@ -1,0 +1,41 @@
+{
+  "$schema": "https://jonibach.github.io/rulecad/schemas/assembly.schema.json",
+  "title": "Beam coupon",
+  "kind": "fit",
+  "description": "The beam coupon, for cad measured: two printed 1515 beams 240 mm long, one printed lying down (k1) and one standing up (k2), each resting on two round bars 220 mm apart with 2 kg hung from its middle. Each one's sag is predicted (beam.coupon): read it with the joint rig's dial and write it back with cad measured benchmarks/beam-test k1.sag=<mm> (MEASURE.md, row 38), and the modulus a printed beam bends at goes to the plastic's set as measured. Then pull each down at its middle with the luggage scale until it breaks: k1.break=<kg> (row 39), and the stress it breaks at goes there too. Printed in PLA; for PETG, change both beams' material to petg and print again.",
+  "items": [
+    {
+      "id": "k1",
+      "beam": {
+        "profile": "profile-1515-printed",
+        "material": "pla",
+        "printed": { "pose": "lying" }
+      },
+      "from": [0, 0, 7.5],
+      "to": [240, 0, 7.5]
+    },
+    {
+      "id": "k2",
+      "beam": {
+        "profile": "profile-1515-printed",
+        "material": "pla",
+        "printed": { "pose": "standing" }
+      },
+      "from": [0, 60, 7.5],
+      "to": [240, 60, 7.5]
+    }
+  ],
+  "frame": {
+    "limit": 2,
+    "supports": {
+      "k1.bottom@10": "resting",
+      "k1.bottom@230": "resting",
+      "k2.bottom@10": "resting",
+      "k2.bottom@230": "resting"
+    }
+  },
+  "loads": [
+    { "mass": 2, "at": "k1.bottom@50%", "note": "2 kg hung from k1's middle" },
+    { "mass": 2, "at": "k2.bottom@50%", "note": "2 kg hung from k2's middle" }
+  ]
+}

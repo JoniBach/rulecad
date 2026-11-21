@@ -461,8 +461,11 @@ test('beams refuse bad input by name, with what would be accepted', () => {
 test('operations on a beam: an end tapped M5 and an access hole 10 mm from the other end, both in its solid', () => {
   const V = jscad.measurements.measureVolume;
   const b = beamModel('2020-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', thread: 'M5' }, { op: 'access', at: 'top@-10', thread: 'M5' }] });
-  // dimensioned from end a, in order along the beam, with a square cut at each end that has no cut of its own
+  // dimensioned from end a, in their place along the beam, with a square cut at each end that has no cut of its own
   assert.deepEqual(b.ops.map((o) => `${o.op} ${o.at} ${o.distance}${o.implied ? ' implied' : ''}`), ['tap a 0', 'cut a 0 implied', 'access top@-10 290', 'cut b 300 implied']);
+  // the order they are done in, as the sheet numbers them: the ends cut, the holes across from end a, the taps last
+  assert.deepEqual(frames.workOrder(b).map((i) => `${b.ops[i].op} ${b.ops[i].at}`), ['cut a', 'cut b', 'access top@-10', 'tap a']);
+  assert.throws(() => frames.workOrder({}), /workOrder: give a beam's model \(beamModel\), with its ops \(got \{\}\)/);
   const tap = b.ops[0], access = b.ops[2];
   // the tap through fixings: its tap drill, and 2 diameters of thread for aluminium (the engagement rule set)
   assert.deepEqual([tap.thread, tap.bores, tap.tapDrill, tap.major, tap.depth, tap.engagement.class, tap.engagement.enough], ['M5', ['a.1'], 4.2, 5, 10, 'aluminium', true]);
@@ -614,6 +617,9 @@ test('frame.cut: a beam longer than any length sold, lengths the cut tolerance c
   assert.ok(say.some((t) => /^warn profile-2020-misumi-hfs5: mark C \(x1\) at 300 mm and mark B \(x2, x3\) at 300\.4 mm differ by 0\.4 mm, less than two cuts at ±0\.5 mm can hold apart/.test(t)), say.join('\n'));
   assert.ok(say.some((t) => /^info mark B \(x2, x3\): 2 beams of 300\.4 mm, each cut to ±0\.5 mm, may differ by up to 1 mm/.test(t)));
   assert.deepEqual(c.stock[0].unpacked.map((u) => u.item), ['long']); assert.ok(c.findings.every((f) => f.code === 'frame.cut'));
+  // a workshop's own tolerance, given, is taken before the maker's cut_tolerance (MISUMI's ±0.5 is for its cut service)
+  const own = frames.cutList([B('x2', 300.4), B('x3', 300.4)], { tolerance: 1 });
+  assert.equal(own.stock[0].tolerance, 1); assert.ok(own.findings.some((f) => /each cut to ±1 mm, may differ by up to 2 mm/.test(f.text) && f.refs.rule === 'tolerance (given)'));
   // no sold length in its set: 6 m assumed (an estimate); cut to length by the maker: each beam bought at its length
   const g = frames.cutList([B('g1', 500, 'angle-al-25x25x3'), B('g2', 500, 'angle-al-25x25x3')]).stock[0];
   assert.deepEqual([g.supply, g.lengths, g.buy], ['assumed', [6000], [{ length: 6000, count: 1 }]]);
@@ -631,7 +637,9 @@ test('a cut-and-drill sheet: to scale, each operation from end a to 0.1 mm, the 
   assert.deepEqual(sh.dimensions, [{ op: 3, distance: 207.5, text: '207.5' }]);
   assert.match(sh.svg, />207\.5</); assert.match(sh.svg, />top face up: seen from the top, end a on the left</);
   assert.match(sh.svg, />Mark D: profile-2020-misumi-hfs5 x 220\.0 mm</); assert.match(sh.svg, />1 off: z1/);
-  assert.match(sh.svg, />\(1\) a\.1: tap M5 x 10 deep</); assert.match(sh.svg, />tap M5 in bore a\.1, 10 mm deep/);
+  // in the order they are done: both ends cut (1, 2), the access hole (3), the tap last (4)
+  assert.match(sh.svg, />\(4\) a\.1: tap M5 x 10 deep</); assert.match(sh.svg, />Operations, in the order to do them: the ends cut, the holes from end a, the taps</);
+  assert.deepEqual([...sh.svg.matchAll(/>(\d)\.<\/text><text[^>]*>([a-z]+) {2}·/g)].map((x) => `${x[1]} ${x[2]}`), ['1 cut', '2 cut', '3 access', '4 tap']); assert.match(sh.svg, />tap M5 in bore a\.1, 10 mm deep/);
   assert.match(sh.svg, /width="297mm"/); assert.ok(!/NaN|undefined/.test(sh.svg), 'no NaN on the sheet');
   // a mitre about the top is seen from the top; a hole in the front gets the front's view; long beams drawn smaller
   const m = frames.beamSheet(beamModel('2020-misumi-hfs5', { length: 1200, ops: [{ op: 'mitre', at: 'b', angle: 45, about: 'top' }, { op: 'drill', at: 'front@100.25', diameter: 5 }] }));
@@ -649,14 +657,16 @@ test('slot nuts: every published nut fits the slot it is made for, weighs what i
   for (const name of names) {
     const n = slotNutModel(name), slot = slotModel(n.slot);
     assert.deepEqual(nutFit(n, slot).filter((f) => f.level === 'fail'), [], `${name} goes in ${n.slot}`);
-    assert.match(name, /^slot-nut-\d+(-[a-z0-9]+)*-m\d-(slide-in|drop-in|roll-in|hammer|square|t-bolt)$/);
+    assert.match(name, /^slot-nut-\d+(-[a-z0-9]+)*-m\d-(slide-in|drop-in|roll-in|hammer|square|t-bolt|hex)$/);
     assert.equal(name.split('-').slice(-2).join('-').replace(/^m\d-/, ''), n.nutKind); assert.equal(n.thread.toLowerCase(), name.match(/-(m\d)-/)[1]);
     assert.ok(n.hold && n.hold.value > 0 && n.hold.unit === 'N', `${name} says what it holds`);
     if (n.hold.kind !== 'spec') { assert.equal(n.hold.kind, 'estimate'); assert.match(n.hold.rule, /estimate until it is tested \(Frames 2\.13\)/); }
     else assert.match(n.hold.source, /Bosch Rexroth/, 'only Rexroth rates a pull among these makers');
-    // its mass is its drawn block's: the solid's volume at steel's density
+    // its mass is its block's (body, tongue, less the hole) at steel's density; the solid is that block cut back to its
+    // slot's flanks, so it is no more than the block and most of it (the most cut, 12 %, is Rexroth's M4 drop-in, 10 mm
+    // across in a cavity that closes in to 5.9 mm)
     const g = slotNut(n), v = jscad.measurements.measureVolume(g);
-    within(v, n.volume, 0.03, `${name}'s solid against its volume`); within(n.mass, (n.volume * n.density.value) / 1000, 1e-3, `${name}'s mass`);
+    assert.ok(v <= n.volume * 1.03 && v >= n.volume * 0.85, `${name}'s solid, ${v} mm³, against its block's ${n.volume}`); within(n.mass, (n.volume * n.density.value) / 1000, 1e-3, `${name}'s mass`);
     assert.ok(n.mass > 0.3 && n.mass < 20, `${name} weighs ${n.mass} g`);
   }
   // a figure from the sheet: Rexroth's 6 mm sliding block holds 3000 N with M5; MISUMI's HNTT5 is 10 x 10, 3.3 under its 0.8 tongue
@@ -674,6 +684,16 @@ test('slot nuts: every published nut fits the slot it is made for, weighs what i
   // the solid: pulled up under the lips, its tongue in the opening
   const bb = jscad.measurements.measureBoundingBox(slotNut('slot-nut-6-misumi-m5-slide-in'));
   assert.deepEqual(bb.map((p) => p.map((x) => +x.toFixed(3))), [[-5, -5, -5.3], [5, 5, -1.2]]);
+  // and held inside its slot's cavity: a nut's sides are shaped to the flanks it sits on. slot-6-misumi is 12 mm wide
+  // under its 2 mm lips, its flanks closing at 45 degrees to a 5.9 mm floor 6 mm down, so they start at
+  // 6 - (12 - 5.9) / 2 = 2.95 mm and the cavity is 5.9 + 2 x (6 - d) wide at a depth d below that. A drop-in 10 mm
+  // across, its body 2 to 5.3 mm down: at 5.3 mm the cavity is 5.9 + 1.4 = 7.3 mm wide, so no point of the solid lies
+  // more than 3.65 mm off the slot's middle there (the block drawn whole reached 5). Two such nuts at one height in
+  // the neighbouring slots of a 2020 then stand apart, as they do in the aluminium
+  const half = (d) => (d <= 2.95 ? 6 : 5.9 / 2 + (6 - d));
+  const pts = jscad.geometries.geom3.toPolygons(slotNut('slot-nut-6-misumi-m4-drop-in')).flatMap((q) => q.vertices);
+  for (const [, y, z] of pts) if (-z > 2 + 1e-6) assert.ok(Math.abs(y) <= half(-z) + 1e-3, `a point ${y.toFixed(3)} mm off the middle at ${(-z).toFixed(3)} mm down, past the flank at ${half(-z).toFixed(3)}`);
+  assert.ok(pts.some(([, y, z]) => Math.abs(-z - 5.3) < 1e-6 && Math.abs(Math.abs(y) - 3.65) < 1e-3), 'it reaches the flank at its floor');
   assert.throws(() => slotNutModel('slot-nut-6-misumi-m7-slide-in'), /no slot nut "slot-nut-6-misumi-m7-slide-in"/);
   assert.throws(() => slotNutModel('slot-nut-6-misumi-m5-slide-in', { weight: 3 }), /has no figure "weight"/);
 });
@@ -768,7 +788,7 @@ test('joins: a blind join taps the end of a and puts an access hole across b in 
   assert.deepEqual([hole.key, hole.rule], [3, 'm5.clearance_close']);
   assert.match(hole.line, /access hole Ø5\.3 mm in front\.1, 120 mm from end a, 14 mm deep \(through to the far side\) for a 3 mm key/);
   assert.throws(() => beamModel(B.profile, { length: 300, ops: [{ op: 'access', at: 'front@120', thread: 'M5', head: 'pan' }] }), /head is the screw's head the key turns, cap, button, countersunk \(got "pan"\)/);
-  assert.equal(beamModel(A.profile, { length: 200, ops: j.a.ops }).ops[0].engagement.enough, true);
+  assert.equal(beamModel(A.profile, { length: 200, ops: j.a.ops }).ops.find((x) => x.op === 'tap').engagement.enough, true);
   // an end-tap join: a clearance hole right through b instead, and a cap screw
   const e = joinModel('end-tap', { beam: A, end: 'a' }, { beam: B, address: 'back@120' });
   assert.deepEqual([e.b.ops, e.screws[0].screw], [[{ op: 'drill', at: 'front.1@120', thread: 'M5', kind: 'clearance', through: 'beam' }], 'M5 cap']);
@@ -1010,6 +1030,25 @@ test('a door\'s hinge swings the door out and away from the frame; its handle, l
   assert.ok(c.top < h.standoff && c.step + 2.75 < h.standoff); await prints(magnetCatch(c), 'a magnet catch on its side');
   assert.throws(() => magnetCatchModel('2020-misumi-hfs5', { standoff: 3 }), /a 3 mm standoff leaves/);
   assert.throws(() => hingeModel('2020-misumi-hfs5', { sheet: 3, pin: 'Q9' }), /hingeModel: pin and screw are threads/);
+});
+
+test('a gusset from MISUMI\'s 2020 onto the kit\'s printed 2020 keys each arm into its own slot and is thickened until a sold screw fits both, counted from where the nut seats under the printed slot\'s sloped lips', async () => {
+  const { plateModel, plate } = frames;
+  const m = plateModel('2020-misumi-hfs5', { shape: 'T', face: 'top', other: '2020-printed', nut: 'drop-in', material: 'petg' });
+  assert.equal(m.name, 'gusset-t-2020-misumi-hfs5-to-2020-printed-m4'); assert.equal(m.other, 'profile-2020-printed');
+  assert.deepEqual([...new Set(m.tongues.map((t) => `${t.leg} ${t.slot}`))], ['b slot-6-misumi', 'a slot-6-printed-2020']);
+  // Hand, the M4 drop-in nut (3.3 mm high, its tongue 0.8; 4.1 mm of thread, a hex nut's 3.2 asked), the floor kept 0.3:
+  //   MISUMI's slot, 2 mm lips square underneath, floor 6 mm down: thread from 2 - 0.8 = 1.2, so the tip from
+  //   1.2 + 3.2 = 4.4 to 6 - 0.3 = 5.7 mm under the face
+  //   the printed slot, 2 mm lips sloped 45° underneath, 6.1 mm open: the 10 mm nut seats 2 + (10 - 6.1) / 2 = 3.95 mm
+  //   down, its thread from 3.15, so the tip from 6.35 to 7.85 - 0.3 = 7.55
+  //   the 4.4 mm plate b alone gives (M4x10 into MISUMI's) leaves M4x12 7.6 mm into the printed slot, past 7.55, and
+  //   M4x10 5.6, short of 6.35; 4.6 mm (the next layer up) takes M4x10 (tip 5.4) and M4x12 (tip 7.4)
+  const screw = m.findings.find((f) => f.code === 'fitting.screw');
+  assert.deepEqual(screw.values, { lengths: [10, 12], windows: [{ lo: 4.4, hi: 5.7 }, { lo: 6.35, hi: 7.55 }] });
+  assert.equal(m.thickness, 4.6); assert.equal(plateModel('2020-misumi-hfs5', { shape: 'T', face: 'top', nut: 'drop-in', material: 'petg' }).thickness, 4.4);
+  assert.deepEqual([...new Set(m.screws.map((q) => `${q.leg} M4x${q.length}`))], ['b M4x10', 'a M4x12']);
+  await prints(plate(m), 'gusset onto a printed 2020');
 });
 
 test('the parts for a beam\'s end: an end cap, a foot, a levelling foot, a castor plate and a stacking foot, each print-ready and weighed', async () => {
@@ -1432,7 +1471,7 @@ test('jigs: a drill guide\'s bush sits where the beam\'s sheet dimensions the ho
   assert.throws(() => drillGuideModel(b, 2, { from: 'c' }), /from is the end the stop goes on, a or b/);
   const long = beamModel('2020-misumi-hfs5', { length: 1000, ops: [{ op: 'access', at: 'top@500', thread: 'M5' }] });
   assert.throws(() => drillGuideModel(long, long.ops.findIndex((x) => x.op === 'access')), /is 500 mm from end a and 500 mm from end b: a guide that reaches it is \d+(\.\d+)? mm long, more than the 236 mm the printer's 256 mm bed takes\. Mark this hole from the sheet/);
-  assert.throws(() => tapGuideModel(b, 0, { shank: 4 }), /shank is the tap's shank across in mm, at least its 5 mm thread/);
+  assert.throws(() => tapGuideModel(b, b.ops.findIndex((x) => x.op === 'tap'), { shank: 4 }), /shank is the tap's shank across in mm, at least its 5 mm thread/);
   assert.throws(() => lengthStopModel('2020-misumi-hfs5', -1), /length is the cut in mm, above 0/);
   assert.throws(() => squareCornerModel({ profile: '2020-misumi-hfs5', face: 'side' }, { profile: '2020-misumi-hfs5' }), /a's profile-2020-misumi-hfs5 has no face "side"/);
   assert.throws(() => squareCornerModel({ profile: 'tube-al-20x20x2' }, { profile: '2020-misumi-hfs5' }), /top face is closed: a squaring corner keys into a slot on each beam/);
@@ -1453,6 +1492,37 @@ test('squareness: a bay\'s two diagonals and the difference to accept, what the 
   assert.throws(() => frames.squareness(0, 200), /squareness: width is the bay's opening, inside face to inside face, a number of mm above 0 \(got 0\)/);
   assert.throws(() => frames.squareness(260, 200, { kerf: 3 }), /squareness: no option "kerf": it takes tolerance/);
   assert.throws(() => frames.squareness(260, 200, { tolerance: -1 }), /tolerance is how far a cut may be from its length either way/);
+  // printed beams are not cut: said as printed, each term and the reason (the same 0.79 mm: 2 x 0.5 x 260 / 328.02)
+  const pr = frames.squareness(260, 200, { cuts: [{ name: 'p1', along: 'width', printed: true }, { name: 'p2', along: 'width', printed: true }] });
+  assert.equal(pr.accept, 0.79); assert.deepEqual(pr.terms.map((x) => x.term), ['p1 printed', 'p2 printed']);
+  assert.match(pr.text, /\(beams printed to ±0\.5 mm, every corner square\)/); assert.doesNotMatch(pr.text, /cut to/);
+  const mixed = frames.squareness(260, 200, { cuts: [{ name: 'x1', along: 'width', tolerance: 0.5 }, { name: 'p1', along: 'width', printed: true, tolerance: 0.3 }] });
+  assert.match(mixed.text, /\(beams cut to ±0\.5 mm and beams printed to ±0\.3 mm, every corner square\)/);
+});
+
+test('squareness stacks each cut and each join\'s play as an error budget stacks its joints: worst case summed, root-sum-square beside it', () => {
+  // 260 × 200, d = 328.024 mm. Two rails along the width cut to ±0.5: 0.5 × 260 / 328.024 = 0.39631 each.
+  // Four blind joins, each 0.1 mm of play (JOIN_PLAY.blind), two along the width (lever 260/d) and two along the height
+  // (lever 200/d): 0.1 × 260 / d = 0.07926 and 0.1 × 200 / d = 0.06097.
+  // Worst: 2 × 0.39631 + 2 × 0.07926 + 2 × 0.06097 = 1.07309 -> 1.07; rss: √(2 × 0.39631² + 2 × 0.07926² + 2 × 0.06097²) = 0.58153 -> 0.58
+  const d = Math.hypot(260, 200), slip = frames.JOIN_PLAY.blind.value;
+  assert.equal(slip, 0.1); assert.equal(frames.JOIN_PLAY.blind.kind, 'estimate');
+  for (const [k, r] of Object.entries(frames.JOIN_PLAY)) { assert.ok(frames.JOINS[k], k); for (const f of ['value', 'unit', 'rule', 'kind', 'source', 'checked']) assert.ok(r[f] != null, `${k}.${f}`); }
+  const cuts = [{ name: 'x1', along: 'width' }, { name: 'x3', along: 'width' }], plays = [['width', 'j1'], ['width', 'j2'], ['height', 'j3'], ['height', 'j4']].map(([along, name]) => ({ name, along, slip }));
+  const q = frames.squareness(260, 200, { cuts, plays });
+  const hand = 2 * (0.5 * 260) / d + 2 * (0.1 * 260) / d + 2 * (0.1 * 200) / d;
+  assert.ok(Math.abs(hand - 1.07309) < 1e-4, `${hand}`);
+  assert.deepEqual([q.accept, q.rss], [1.07, 0.58]);
+  assert.deepEqual(q.terms.map((x) => [x.term, x.value, x.kind]), [['x1 cut', 0.396, 'estimate'], ['x3 cut', 0.396, 'estimate'], ['j1 play', 0.079, 'estimate'], ['j2 play', 0.079, 'estimate'], ['j3 play', 0.061, 'estimate'], ['j4 play', 0.061, 'estimate']]);
+  assert.match(q.text, /accept a difference of up to 1\.07 mm \(beams cut to ±0\.5 mm and the play of 4 joins, stacked worst case, every corner square; 0\.58 mm root-sum-square\)/);
+  // loosening the cut tolerance to ±1 widens it by 2 × 0.5 × 260 / d = 0.79262 mm, the cut terms' own lever
+  const loose = frames.squareness(260, 200, { cuts, plays, tolerance: 1 });
+  assert.ok(Math.abs(loose.accept - q.accept - 0.79) < 0.011, `${loose.accept} - ${q.accept}`);
+  // a beam with its own tolerance, and refusals by name
+  assert.equal(frames.squareness(260, 200, { cuts: [{ name: 'x1', along: 'width', tolerance: 0 }, { name: 'x3', along: 'width' }] }).accept, 0.4);
+  assert.throws(() => frames.squareness(260, 200, { cuts: [{ name: 'x1', along: 'up' }] }), /squareness: cuts 1 is \{ name, along: 'width' or 'height' \}/);
+  assert.throws(() => frames.squareness(260, 200, { plays: [{ name: 'j1', along: 'width' }] }), /squareness: plays 1: slip is the join's play along the beam it meets/);
+  assert.throws(() => frames.squareness(260, 200, { plays: 3 }), /squareness: plays is a list/);
 });
 
 test('measured joins: the joins set starts from the estimates, a measured figure is taken before the kit\'s and says when, and a slot nut says its hold along the slot', () => {
@@ -1478,4 +1548,551 @@ test('measured joins: the joins set starts from the estimates, a measured figure
   assert.equal(slotNutModel('slot-nut-6-misumi-m5-slide-in').holdAlong, null);
   const m = slotNutModel('slot-nut-6-misumi-m5-slide-in', {}, { sets: { 'slot-nut-6-misumi-m5-slide-in': own } });
   assert.deepEqual([m.holdAlong.value, m.findings.find((x) => x.code === 'slot_nut.hold_along').text], [420, 'tightened, it slips along the slot at 420 N: measured on 2026-12-01 (the joint rig)']);
+});
+
+// ---------- printed beams (Frames 3.5, issue 269) ----------
+test('printable profiles: each worked out from its slot family\'s nuts and the printer, the published sets the same', () => {
+  const { printedProfile, PRINTED_SERIES } = frames;
+  for (const n of Object.keys(PRINTED_SERIES).map(Number)) {
+    const { profile, slot } = printedProfile(n);
+    for (const s of [profile, slot]) assert.deepEqual({ _doc: s._doc, name: s.name, part: s.part, rules: s.rules }, ruleSet(s.name), `${s.name}: the published set is printedProfile(${n})'s: regenerate it after a change`);
+  }
+  // By hand, 2020 round MISUMI's 6 mm drop-ins (10 wide, 3.3 high, a 5.8 x 0.8 tongue) on the X1C (line 0.42, fit 0.2,
+  // hole_comp 0.1, chamfer 0.4, overhang 45):
+  //   opening = max(6, 5.8 + 0.2) + 0.1 = 6.1; walls: floor((20 - (10 + 0.2)) / (2 x 0.42)) = 11 lines = 4.62, cavity 20 - 9.24 = 10.76
+  //   lip: MISUMI's 2 mm, whole layers; lips slope at 90 - 45 = 45 deg, so a nut seats at 2 + (10 - 6.1) / 2 = 3.95 under the face
+  //   depth = 3.95 + 3.3 + 0.2 + 0.4 = 7.85; floor = 10.76 - 2 x 0.4 = 9.96; solid under it 20 - 7.85 = 12.15
+  //   ends: an M5 insert needs 6.5 + 2 x 2.6 + 2 x 0.42 = 12.54 > 12.15; M4 needs 5.7 + 2 x 2.1 + 0.84 = 10.74: M4, at 0, -7.85 / 2
+  //   hold at 100 N: along the slot 6 + 2 x 2 = 10; the wall pushed out by 50 N, 7.85 - 3.95 = 3.9 below the seat:
+  //   6 x 50 x 3.9 / (10 x 4.62^2) = 5.482 MPa; the lip's root 2 + 2.33 = 4.33 thick, 0.38 out: 6 x 50 x 0.38 / (10 x 4.33^2) = 0.608 MPa
+  //   lying down, the lips lie in the layers and bend along them (PLA 39 MPa); the walls stand up through the layers and
+  //   their bending stress runs up them, across the layers: PLA gives no strength_z, so 0.6 x 39 = 23.4 MPa (PRINTED_DEFAULTS.across)
+  //   lips 39 / 0.608 = 64 times; walls 23.4 / 5.482 = 4.27 times: the wall governs, 427 N (at 39 MPa it would read 711 N)
+  //   PETG gives 23 MPa across its layers (strength_z): 23 / 5.482 = 4.20 times, 420 N
+  const { slot, profile, values } = printedProfile(20), r = (k) => slot.rules[k].value;
+  assert.deepEqual(['opening', 'lip_thickness', 'lip_angle', 'cavity_width', 'cavity_depth', 'floor_width', 'flank_angle', 'nut_family'].map(r), [6.1, 2, 45, 10.76, 7.85, 9.96, 45, 'slot-6-misumi']);
+  assert.deepEqual([values.wallLines, values.wall, values.solid, values.endThread, values.endAt], [11, 4.62, 12.15, 'M4', [0, -3.925]]);
+  const wallStress = (6 * 50 * 3.9) / (10 * 4.62 ** 2);
+  assert.ok(Math.abs(values.hold - (100 * 23.4) / wallStress) < 0.5, `hold ${values.hold}`);
+  assert.ok(Math.abs(printedProfile(20, { material: 'petg' }).values.hold - (100 * 23) / wallStress) < 0.5, 'PETG: its own strength across its layers');
+  assert.match(slot.rules.lip_thickness.rule, /hold 426\.89 N in pla, 4\.27 times that pull, the side walls the weaker: .* the walls stand through the layers and bend across them at 23\.4 MPa/);
+  assert.deepEqual([profile.rules.slot_top.value, profile.rules.slot.value, profile.rules.end_thread.value, profile.rules.end_at.value], ['slot-6-printed-2020', 'closed', 'M4', '0,-3.925']);
+  // 15: OpenBeam's M3 hex nut, held by its flats: a cavity of whole lines between 5.5 + 0.2 and its corners 6.35 less 0.2: 15 - 2 x 11 x 0.42 = 5.76
+  assert.equal(printedProfile(15).values.cavityWidth, 5.76);
+  // another printer: a 50 deg overhang leans the lips 40 deg, a wider line makes the walls another whole number
+  assert.equal(printedProfile(20, { printer: { overhang: 50 } }).slot.rules.lip_angle.value, 40);
+  assert.equal(printedProfile(20, { printer: { line: 0.45 } }).values.wall, 4.5);
+  // the slot takes its family's nuts: nutFor finds MISUMI's M4 drop-in for it, seated on the sloped lips
+  const nut = frames.nutFor('profile-2020-printed', 'top', 'M4', { kind: 'drop-in' });
+  assert.equal(nut.name, 'slot-nut-6-misumi-m4-drop-in');
+  assert.deepEqual(nut.fits.map((f) => `${f.level} ${f.code}`), ['info slot_nut.seat']); assert.equal(nut.fits[0].values.seat, 3.95);
+  // seated on the slope there is 7.85 - 3.95 = 3.9 mm of room for its 3.3; measured from the lip's 2 mm it would read 5.85
+  assert.deepEqual(frames.nutFit(frames.slotNutModel('slot-nut-6-misumi-m4-drop-in', { height: 3.95 }), frames.slotModel('slot-6-printed-2020')).map((f) => `${f.level} ${f.rule}`), ['fail height', 'info lip_angle']);
+  // refused by name
+  assert.throws(() => printedProfile(25), /the kit draws 15, 20, 30, 40 mm; for 25 mm name the slot nut/);
+  assert.throws(() => printedProfile(20, { nut: 'slot-6-misumi' }), /nut is a slot nut's set/);
+  assert.throws(() => printedProfile(20, { infill: 0.3 }), /no option "infill": it takes nut, printer, pull and material/);
+  assert.throws(() => printedProfile(20, { material: 'al6063-t5' }), /material is a plastic's set with a strength and a softening point/);
+  assert.throws(() => printedProfile(15, { nut: 'slot-nut-8-misumi-m5-drop-in' }), /a 15 mm section has no wall of whole 0.42 mm lines that leaves 15.2 mm/);
+});
+
+test('a printed section from its walls and infill: a solid square by the textbook, a shell, and between', () => {
+  const { printedSection } = frames, bar = profileModel('profile-bar', { width: 20, height: 20 });
+  // solid (infill 1): b h^3 / 12 = 20^4 / 12 = 13333 mm^4, 400 mm^2
+  const solid = printedSection(bar, { walls: 1, infill: 1 });
+  within(solid.inertiaX, 20 ** 4 / 12, 0.005, 'solid'); within(solid.area, 400, 0.005, 'solid area');
+  // a shell three lines thick (1.26 mm), no infill: (20^4 - 17.48^4) / 12 = 5553 mm^4, 400 - 17.48^2 = 94.4 mm^2
+  const shell = printedSection(bar, { walls: 3, infill: 0 });
+  within(shell.inertiaX, (20 ** 4 - 17.48 ** 4) / 12, 0.02, 'shell'); within(shell.plastic, 400 - 17.48 ** 2, 0.02, 'shell plastic');
+  // 40% infill: the inside counts at 0.4 (PRINTED_DEFAULTS.infill_stiffness 1): 5553 + 0.4 x 17.48^4 / 12 = 8665
+  const mid = printedSection(bar, { walls: 3, infill: 0.4 });
+  within(mid.inertiaX, (20 ** 4 - 17.48 ** 4) / 12 + (0.4 * 17.48 ** 4) / 12, 0.02, '40% infill'); within(mid.plastic, 94.4 + 0.4 * 17.48 ** 2, 0.02, 'plastic laid');
+  assert.throws(() => printedSection(bar, { walls: 2.5 }), /walls is a whole number of lines/);
+  assert.throws(() => printedSection(bar, { infill: 40 }), /infill is a share from 0 to 1/);
+});
+
+test('a 240 mm printed 2020 beam prints lying down with no support, takes a bought drop-in nut, and has inserts for ends', async () => {
+  const b = beamModel('2020-printed', { length: 240, printed: true, ends: 'tapped' });
+  assert.equal(b.bought, false); assert.equal(b.printed.pose, 'lying'); assert.match(b.title, /printed lying down$/);
+  assert.deepEqual(printable(b).map((f) => f.level), ['pass']);
+  // its mass is the plastic laid: the shell and 40% of the inside, times 240 mm and PLA's 1.26 g/cm^3
+  const sec = b.printed.section;
+  assert.ok(Math.abs(b.mass - (sec.plastic * 240 * 1.26) / 1000) < 1e-3); assert.ok(b.mass > 50 && b.mass < 70, `${b.mass} g`);
+  assert.equal(coded(b, 'beam.mass')[0].refs.kind, 'estimate'); assert.equal(b.figures.inertiaX.kind, 'estimate'); assert.equal(b.material.modulus, 2680);
+  // designed to carry the strength along its layers over the margin: 39 / 2 x I / c
+  assert.ok(Math.abs(b.printed.design - (19.5 * sec.inertiaX) / sec.reach[0]) < 0.01);
+  // tapped ends become M4 heat-set inserts, the cut list's square cuts no operation of a print
+  assert.deepEqual([b.ends.a, b.ends.b], [{ kind: 'insert', thread: 'M4' }, { kind: 'insert', thread: 'M4' }]); assert.deepEqual(b.ops, []);
+  assert.ok(coded(b, 'beam.end').every((f) => f.level === 'pass'));
+  // the slot's hold on the beam is the profile's: its walls, upright as it lies, bend across the layers at 0.6 x 39 MPa
+  assert.equal(coded(b, 'beam.slot')[0].level, 'pass'); assert.ok(Math.abs(b.printed.slots[0].hold - frames.printedProfile(20).values.hold) < 1e-6 && b.printed.slots[0].governs === 'wall');
+  assert.deepEqual([coded(b, 'beam.slot')[0].values.lip, coded(b, 'beam.slot')[0].values.wall], [39, 23.4]);
+  // as it prints: on its bottom face along x, the slot on top (a 1 mm slab across the top at mid-length is 20 x 10 less the 6.1 opening)
+  const g = frames.printedBeam(b), bb = jscad.measurements.measureBoundingBox(g);
+  assert.deepEqual(bb.map((p) => p.map((x) => +x.toFixed(3) + 0)), [[0, -10, 0], [240, 10, 20]]);
+  const slab = jscad.booleans.intersect(g, jscad.primitives.cuboid({ size: [10, 30, 1], center: [120, 0, 19.5] }));
+  within(jscad.measurements.measureVolume(slab), 10 * (20 - 6.1), 0.001, 'the slot is open at the top');
+  // the inserts' holes are in both ends: a probe 5 mm into each end, round the insert's line, is mostly hole
+  for (const x of [2.5, 237.5]) { const probe = jscad.primitives.cuboid({ size: [5, 3, 3], center: [x, 0, 10 - 3.925] }); assert.ok(jscad.measurements.measureVolume(jscad.booleans.intersect(g, probe)) < 0.5 * 45, `the insert's hole at x ${x}`); }
+  await prints(g, 'a 240 mm printed 2020 lying down');
+  // a bought drop-in nut: MISUMI's M4, in its top slot
+  assert.equal(frames.nutFor(b.profile, 'top', 'M4', { kind: 'drop-in' }).name, 'slot-nut-6-misumi-m4-drop-in');
+});
+
+test('a printed beam stands or lies as it says, and is refused by name where it cannot print so', async () => {
+  // an aluminium section lying down: its side slots hang in mid-air, its top lips are flat ledges, its bed slot's floor too wide to bridge
+  const al = beamModel('2020-misumi-hfs5', { length: 200, printed: true });
+  assert.equal(al.material.name, 'pla', 'printed in PLA where the profile is a metal\'s');
+  assert.deepEqual(printable(al).map((f) => `${f.level} ${f.rule}`), ['fail slot_front', 'fail slot_back', 'fail lip_angle', 'fail floor_width']);
+  // standing up it prints, exact, and bends across its layers: PLA gives no strength across them, so 0.6 x 39 = 23.4 MPa
+  const st = beamModel('2020-misumi-hfs5', { length: 200, printed: { pose: 'standing' } });
+  assert.deepEqual(printable(st).map((f) => f.level), ['pass']); assert.equal(st.printed.strength, 23.4); assert.equal(st.printed.strengthKind, 'estimate'); assert.equal(st.material.modulus, 2160);
+  // its lips, standing up, bend in the section, which is the layer: along the layers, at 39 MPa, not across them at 23.4.
+  // A 100 N pull stresses each lip's root 15 MPa, so they hold 39 / 15 = 2.6 times it, 260 N (at 23.4 MPa it read 1.56
+  // times, a warning, as if they bent across the layers)
+  for (const f of coded(st, 'beam.slot')) { assert.deepEqual([f.level, f.values.lip, f.values.wall, f.values.stress, f.values.margin], ['pass', 39, 39, 15, 2.6]); assert.match(f.text, /along its layers, standing up: the section is the layer/); }
+  await prints(frames.printedBeam(st), 'a standard 2020 standing up');
+  // past the bed: lying, splice it; standing, lie it down
+  assert.match(printable(beamModel('2020-printed', { length: 300, printed: true }))[0].text, /300 mm long, and x1c's bed is 256 mm: splice it in two/);
+  assert.match(printable(beamModel('2020-printed', { length: 300, printed: { pose: 'standing' } }))[0].text, /x1c prints 256 mm high: lie it down/);
+  // more walls and infill: heavier and stiffer
+  const light = beamModel('2020-printed', { length: 200, printed: { walls: 2, infill: 0.15 } }), heavy = beamModel('2020-printed', { length: 200, printed: { walls: 4, infill: 0.8 } });
+  assert.ok(heavy.mass > light.mass && heavy.figures.inertiaX.value > light.figures.inertiaX.value);
+  // refused by name
+  assert.throws(() => beamModel('2020-printed', { length: 200, printed: { pose: 'sideways' } }), /printed.pose is lying \(on its bottom face, layers along the beam\) or standing/);
+  assert.throws(() => beamModel('2020-printed', { length: 200, printed: { colour: 'red' } }), /printed has no "colour": it takes pose, walls, infill, printer, end, pull/);
+  assert.throws(() => beamModel('2020-printed', { length: 200, printed: { infill: 2 } }), /printed.infill is a share from 0 to 1/);
+  assert.throws(() => beamModel('2020-printed', { length: 200, printed: true, ends: 'welded' }), /a printed beam's end a is cut, tapped, insert, nut/);
+  assert.throws(() => frames.printedBeam(beamModel('2020-printed', { length: 200 })), /printedBeam: profile-2020-printed x 200 is a bought beam: give one printed/);
+});
+
+test('a printed beam\'s ends: a captive nut or an insert in place of a tap, each printing as it lies or stands', async () => {
+  // a tap at an end is the printed end: a nut slid in from the front face, 1.5 x 4 = 6 mm in from the end
+  const b = beamModel('2020-printed', { length: 120, printed: { end: 'nut' }, ops: [{ op: 'tap', at: 'a' }] });
+  assert.deepEqual([b.ends.a.kind, b.ends.b.kind], ['nut', 'cut']); assert.equal(b.printed.ends.a.wall, 6);
+  await prints(frames.printedBeam(b), 'a captive nut at end a, lying');
+  await prints(frames.printedBeam(beamModel('2020-printed', { length: 120, printed: { pose: 'standing' }, ends: ['insert', 'nut'] })), 'an insert going up from the bed, a nut slid in from the side, standing');
+  // a section with no end_thread has no printed end: said by name
+  const plainBar = beamModel('profile-bar', { length: 100, printed: true, ends: 'insert' });
+  assert.match(coded(plainBar, 'beam.end')[0].text, /names no end_thread or end_at for a printed end/);
+});
+
+test('a beam printed standing from a profile with a bore takes its end\'s screw in the bore\'s place: a captive nut where an insert has no room, the bore filled under it; a foot takes that thread; drawn in place with its ends', async () => {
+  const { beamModel, printedBeam, printedInPlace, footModel } = frames;
+  const end = (o) => coded(beamModel('2020-misumi-hfs5', { length: 120, material: 'petg', printed: { pose: 'standing', ...o }, ops: [{ op: 'tap', at: 'a' }] }), 'beam.end')[0];
+  // MISUMI's 2020 names no end figures; its 4.2 mm bore leaves 4 mm of plastic round its middle (the slots' floors).
+  // An M5 screw does not pass the bore (5 > 4.2), so M4 is the largest. Its insert needs 5.7 / 2 + 2.1 = 4.95 mm: no room
+  const ins = end({});
+  assert.equal(ins.level, 'fail'); assert.match(ins.text, /end a takes M4 in a heat-set insert .* in its 4\.2 mm bore's place .*: none does\): 4 mm of plastic round its middle, short of the hole/);
+  // A captive nut: M4's corners need 7 / cos 30° / 2 + 0.42 = 4.46 mm, M3's 5.5 / cos 30° / 2 + 0.42 = 3.6 mm: M3 fits
+  const nut = end({ end: 'nut' });
+  assert.equal(nut.level, 'pass', nut.text); assert.deepEqual([nut.refs.thread, nut.refs.fixing, nut.values.room], ['M3', 'nut', 4]);
+  assert.ok(Math.abs(nut.values.need - (5.5 / Math.cos(Math.PI / 6) / 2 + 0.42)) < 1e-6, String(nut.values.need));
+  // drawn as it prints and in its place: it prints clean, and in place the bore is filled where the screw's 3.5 mm hole
+  // and the nut's slot are cut, so 1 mm in from the end there is plastic between the hole and the bore's wall
+  const b = beamModel('2020-misumi-hfs5', { length: 120, material: 'petg', printed: { pose: 'standing', end: 'nut' }, ops: [{ op: 'tap', at: 'a' }, { op: 'tap', at: 'b' }] });
+  await prints(printedBeam(b), 'a standing post with a captive nut in each end');
+  const { intersect, subtract } = jscad.booleans, { measureVolume } = jscad.measurements, { cylinder } = jscad.primitives, placed = printedInPlace(b);
+  const ring = (z) => measureVolume(intersect(placed, subtract(cylinder({ radius: 2.05, height: 1, center: [0, 0, z], segments: 32 }), cylinder({ radius: 1.8, height: 1, center: [0, 0, z], segments: 32 }))));
+  assert.ok(ring(1) > 2, `filled under the nut: ${ring(1)} mm³ between the 3.5 mm hole and the 4.2 mm bore`);
+  assert.ok(ring(60) < 0.05, `the bore open in the middle: ${ring(60)} mm³`);
+  // the foot under it: its screw the printed end's thread, its tap op that thread, its text the printed end's
+  const ft = footModel('2020-misumi-hfs5', { material: 'petg', thread: 'M3' });
+  assert.deepEqual([ft.thread, ft.screws[0].thread, ft.ops[0].thread], ['M3', 'M3', 'M3']);
+  assert.match(coded(ft, 'fitting.screw')[0].text, /^M3 cap through 3 mm of floor into the printed end's own M3 fixing/);
+  await prints(frames.foot(ft), 'a foot for an M3 printed end');
+  assert.throws(() => footModel('2020-misumi-hfs5', { thread: 'M6' }), /an M6 screw does not pass up profile-2020-misumi-hfs5's 4\.2 mm bore/);
+  assert.throws(() => footModel('2020-misumi-hfs5', { thread: 'big' }), /thread is the printed end's thread, as 'M3'/);
+});
+
+test('operations on a printed beam are features of the print: holes sized by the printer, a hole on its side a teardrop', async () => {
+  const { opCutters } = await import('./ops.mjs');
+  // the X1C's M4 clearance: 4.5 + its hole_comp 0.1 = 4.6 (machined, 4.5 as drawn)
+  const b = beamModel('2020-printed', { length: 160, printed: true, ops: [{ op: 'drill', at: 'front@40', thread: 'M4' }, { op: 'drill', at: 'top@120', diameter: 3 }] });
+  assert.match(b.ops[0].line, /^drill Ø4\.6 mm in front\.1, 40 mm from end a/);
+  // lying down, the front hole lies on its side: its cutter rises r root 2 = 2.3 x 1.414 = 3.25 over its axis, a teardrop's point;
+  // the top one stands up, round. Not printed (no way up), the same hole is round: 2.3 over its axis
+  const top = (cutters, i) => +jscad.measurements.measureBoundingBox(cutters[i])[1][1].toFixed(2);
+  assert.equal(top(opCutters(b, { up: [0, 1, 0] }), 0), +(2.3 * Math.SQRT2).toFixed(2));
+  assert.equal(top(opCutters(b, {}), 0), 2.3);
+  await prints(frames.printedBeam(b), 'a printed beam with a hole through its side and one down from the top');
+  // a printed profile's beam is printed: operations on one not said to be are refused by name
+  assert.throws(() => beamModel('2020-printed', { length: 160, ops: [{ op: 'drill', at: 'top@20', diameter: 3 }] }), /profile-2020-printed is a printed profile: a beam of it is printed \(\{ printed: true \}\), and its operations are features of the print/);
+});
+
+test('a 400 mm printed 2020 is spliced in two: a keyed lap that prints lying down, each half of the section and the screws checked', async () => {
+  const b = beamModel('2020-printed', { length: 400, printed: true, ends: 'tapped' });
+  // the frame's moment: 50 N hung in the middle of the beam as a 400 mm simply supported span puts 50 / 2 x 400 / 2 =
+  // 5000 N.mm at its middle, the most anywhere on it, so at least as much as at the lap; the joint must carry twice that
+  const s = frames.spliceModel(b, { moment: 5000 });
+  assert.deepEqual(s.findings.map((f) => `${f.level} ${f.code}`), ['pass splice.fit', 'info splice.place', 'pass splice.strength', 'info splice.screw']);
+  // each half on the 256 mm bed; the lap as far from the middle as that allows: at = L + lap / 2 - bed
+  assert.ok(s.pieces.every((p) => p.length <= 256 + 1e-9)); assert.ok(Math.abs(s.at - (400 + s.lap / 2 - 256)) < 1e-6);
+  // By hand, the screws: an M4 button head's seat is 8.1 across, a teardrop whose point rises 4.05 x root 2 = 5.73 over
+  // its axis; under the slot's floor (y 2.15) less two lines: y = min((2.15 - 10) / 2, 2.15 - 0.84 - 5.73) = -4.42, its
+  // seat's foot 4.42 + 4.05 = 8.47 down, 1.53 over the bed (M5's 10 mm seat would reach under the bed's two lines).
+  // An M4 x 16 from the seat (2.2 deep) reaches 2.2 + 16 = 18.2 of the 20, so the nut's pocket is 20 - 18.2 + 3.2 = 5 deep.
+  // One screw across the cut, the thinner half 10 - 0.1 - 5 = 4.9 mm thick, plastic at 0.6 x 39 = 23.4 MPa across its layers:
+  //   bearing 4 x 4.9 x 23.4 = 458.6 N; torn out to the bed, e = 10 - 4.42 - 4.6 / 2 = 3.28 mm, two planes at 23.4 / root 3:
+  //   2 x 3.28 x 4.9 x 13.51 = 434.5 N, the least
+  const [sc] = s.screws, st = s.findings[2].values, e = 10 - 4.418 - 2.3;
+  assert.deepEqual([sc.thread, sc.length, sc.head, sc.pocket], ['M4', 16, 'button', 5]);
+  assert.ok(Math.abs(st.bearing - 4 * 4.9 * 23.4) < 0.05 && Math.abs(st.per - (2 * e * 4.9 * 23.4) / Math.sqrt(3)) < 0.5, `per screw ${st.per}`);
+  // the couple: per x arm; the joint carries the least of it and each half's section, and passes twice the moment given
+  assert.ok(Math.abs(s.couple - st.per * st.arm) < 1e-3); assert.equal(s.capacity, Math.min(s.couple, st.a, st.b)); assert.ok(s.capacity >= 2 * 5000);
+  // each half's section over the lap is about half the beam's: its modulus 40 to 60% of the whole printed section's
+  for (const h of ['a', 'b']) { const r = s.halves[h].modulus / b.printed.section.modulusX; assert.ok(r > 0.4 && r < 0.6, `${h}: ${r}`); }
+  // both halves print lying down; together they weigh the beam less the holes
+  const [A, B] = frames.splice(s);
+  for (const [g, what] of [[A, 'the half toward a'], [B, 'the half toward b']]) { const bb = jscad.measurements.measureBoundingBox(g); assert.ok(bb[0][0] > -1e-6 && bb[1][0] <= 256 + 1e-6 && Math.abs(bb[0][2]) < 1e-6, what); await prints(g, what); }
+  assert.ok(A.grams + B.grams < b.mass && A.grams + B.grams > 0.95 * b.mass, `${A.grams} + ${B.grams} against ${b.mass}`);
+  // as drawn, half a 1 mm into the lap keeps about half the section (a 0.5 mm slab across it, against one where it is whole)
+  const z0 = s.at - s.lap / 2, slab = (x) => jscad.measurements.measureVolume(jscad.booleans.intersect(A, jscad.primitives.cuboid({ size: [0.5, 40, 40], center: [x, 0, 10] }))) / 0.5;
+  const ratio = slab(z0 + 1) / slab(20); assert.ok(ratio > 0.45 && ratio < 0.55, `half a over the lap keeps ${ratio} of the section`);
+  // with no moment given, the joint must carry what the beam breaks at there: a lap halves the section, so it fails, said
+  const full = frames.spliceModel(b), f = full.findings[2], share = (4 * full.at * (400 - full.at)) / 400 ** 2;
+  assert.equal(f.level, 'fail'); assert.ok(Math.abs(full.need - share * 2 * b.printed.design) < 1e-3); assert.ok(full.capacity < 0.55 * full.need);
+  assert.match(f.text, /a splice carries about half what the beam does: give the moment the frame puts there \(moment\), up to 6\.\d+ N·m/);
+  // a smaller moment: the shortest lap does, placed the same way
+  const easy = frames.spliceModel(b, { moment: 2000 });
+  assert.equal(easy.lap, 40); assert.match(easy.findings[1].text, /where the frame puts 2 N·m/); assert.equal(easy.findings[2].level, 'pass');
+  // refused by name
+  assert.throws(() => frames.spliceModel(beamModel('2020-printed', { length: 400, printed: { pose: 'standing' } })), /prints standing up: a splice joins halves printed lying down/);
+  // a lap's middle where no half fits the bed: refused with where it may go. The shortest lap is 2 x 20 = 40 mm, so its
+  // middle is at least 400 + 20 - 256 = 164 mm from end a (half b on the bed) and at most 256 - 20 = 236 (half a)
+  assert.throws(() => frames.spliceModel(b, { at: 100 }), /no splice fits x1c's 256 mm bed with its middle at 100 mm: its shortest lap is 40 mm \(2 times the 20 mm height\), so two halves hold a beam of 472 mm at most, its lap's middle between 164 and 236 mm from end a: give at in that range/);
+  // a beam too long for two halves at all: 2 x 256 - 80 = 432 mm of 4040, said, not "0 N·m"
+  const long = () => frames.spliceModel(beamModel('4040-printed', { length: 500, printed: true, ends: 'tapped' }), { moment: 30000 });
+  assert.throws(long, /no splice fits x1c's 256 mm bed: its shortest lap is 80 mm \(2 times the 40 mm height\), so two halves hold a beam of 432 mm at most: shorten the beam, or splice it in three/);
+  assert.throws(long, (e) => !/ 0 N·m/.test(e.message));
+  // a moment no lap the bed allows carries: what the longest lap does carry, and the moment that fits. 470 mm in two
+  // halves of 256 leaves a lap of 2 x 256 - 470 = 42 mm at most; grown from 40 in lines of 0.42, the longest is 41.68.
+  // Its screws sit 2.5 x 4 = 10 mm in from each end of it, 21.68 apart: 434.53 N x 21.68 = 9.42 N·m, so 4.71 N·m with the margin
+  assert.throws(() => frames.spliceModel(beamModel('2020-printed', { length: 470, printed: true, ends: 'tapped' }), { moment: 6000 }), /the longest lap x1c's 256 mm bed lets halves have \(41\.68 mm\) carries 9\.42 N·m with two M4 screws \(434\.53 N each, 21\.68 mm apart\), under the 12 N·m it must: a moment of 4\.71 N·m or less there fits/);
+  assert.throws(() => frames.spliceModel(beamModel('2020-misumi-hfs5', { length: 400, printed: true })), /has a slot where the splice's screws go/);
+  assert.throws(() => frames.spliceModel(b, { lap: 50 }), /no option "lap": it takes at, moment, thread and printer/);
+});
+
+test('a splice\'s strength is the least of its halves\' sections and its screws: a solid bar by the textbook', () => {
+  // a solid 20 x 20 PLA bar (infill 1), 400 mm: whole, Z = b h^2 / 6 = 20 x 20^2 / 6 = 1333 mm^3, 52 N·m at 39 MPa.
+  // Over the lap each half is 10 less half the 0.2 fit wide: Z = 9.9 x 20^2 / 6 = 660 mm^3, 25.74 N·m. At each end of
+  // the lap that half carries the whole moment alone, so the joint can carry no more than that, however many screws
+  const bar = beamModel(profileModel('profile-bar', { width: 20, height: 20 }), { length: 400, printed: { infill: 1 } });
+  within(bar.printed.section.modulusX, 20 * 20 ** 2 / 6, 0.01, 'the whole bar');
+  const s = frames.spliceModel(bar), st = s.findings[2].values;
+  for (const h of ['a', 'b']) within(s.halves[h].modulus, (9.9 * 20 ** 2) / 6, 0.01, `half ${h}`);
+  // At its first screw each half still carries the whole moment, and the screw's hole and its seat or pocket cut its
+  // section (read through the screw's axis). The bar takes M5 at y = 0: its 5.6 mm hole a teardrop from -2.8 to
+  // 2.8 x root 2 = 3.96 right across the half. Half a: its head's seat, 10 across and 2.8 deep from its face, a teardrop
+  // from -5 to 7.07, so 9.9 - 2.8 = 7.1 wide from -5 to -2.8 and from 3.96 to 7.07, 9.9 wide beyond. By rectangles:
+  //   A = 9.9 x 5 + 7.1 x 2.2 + 7.1 x 3.11 + 9.9 x 2.93 = 116.2 mm², centroid -0.54, I = 5920 mm⁴,
+  //   Z = 5920 / (10 + 0.54) = 561.7 mm³ (against 660 between the screws), 21.9 N·m at 39 MPa.
+  // Half b: its nut's pocket 5.9 deep and 9.35 across the corners, -4.68 to 4.68: 9.9 - 5.9 = 4 wide there, Z = 600.2 mm³
+  within(s.halves.a.net, 561.7, 0.01, 'half a at its first screw'); within(s.halves.b.net, 600.2, 0.01, 'half b at its first screw');
+  within(st.a, 39 * 561.7, 0.01, 'half a carries');
+  // the screws were made to carry what the halves do (the less of that and what is asked); the halves govern
+  assert.ok(s.couple >= Math.min(st.a, st.b) - 1e-6); assert.equal(s.capacity, Math.min(st.a, st.b));
+  assert.equal(s.findings[2].level, 'fail'); assert.ok(Math.abs(s.capacity / s.need - 561.7 / 1333) < 0.03, `${s.capacity} of ${s.need}`);
+  // a moment within half of it passes: 10 N·m given, 20 N·m with the margin, under 21.9
+  assert.equal(frames.spliceModel(bar, { moment: 10000 }).findings[2].level, 'pass');
+  assert.equal(frames.spliceModel(bar, { moment: 13000 }).findings[2].level, 'fail');
+  assert.throws(() => frames.printedSection(bar.profile, { holes: [[0, 1, 2]] }), /holes is a list of \[x0, x1, y0, y1\] boxes taken out of the section in mm/);
+  assert.throws(() => frames.printedSection(bar.profile, { between: [1, -1] }), /between is \[x0, x1\], two upright cuts across the section in mm, x0 under x1/);
+});
+
+test('a printed beam\'s creep: a sustained stress against a share of its strength for its pose, and its sag as it creeps; the beam coupon\'s figures taken before the plastic\'s', () => {
+  const { beamCreep, PRINTED_DEFAULTS } = frames;
+  const lying = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: true });
+  const standing = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: { pose: 'standing' } });
+  // Hand calculation (PETG HF, petg.json): along its layers (lying) 34 MPa, across (standing) 23 MPa (strength_z).
+  //   creep limit lying = 0.15 x 34 = 5.1 MPa; standing = 0.15 x 23 = 3.45 MPa (PRINTED_DEFAULTS.creep, an estimate)
+  //   2.55 MPa sustained, lying: 5.1 / 2.55 = 2 times under: passes. Standing: 3.45 / 2.55 = 1.353: passes.
+  //   6 MPa lying: 5.1 / 6 = 0.85: fails, and the text says it the right way round: 6 / 5.1 = 1.18 times over (to two places).
+  //   10 MPa lying: 10 / 5.1 = 1.96 times over (its margin 5.1 / 10 = 0.51).
+  assert.equal(PRINTED_DEFAULTS.creep.kind, 'estimate'); assert.match(PRINTED_DEFAULTS.creep.source, /Waseem et al\. \(2020\).*15 MPa.*1\.2 to 2\.3 hours/);
+  assert.deepEqual([lying.printed.creep.limit, standing.printed.creep.limit], [5.1, 3.45]);
+  const a = beamCreep(lying, { stress: 2.55 });
+  assert.deepEqual([a.level, a.code, a.values.margin, a.refs.kind, a.refs.pose], ['pass', 'beam.creep', 2, 'estimate', 'lying']);
+  assert.match(a.text, /a sustained 2\.55 MPa against the 5\.1 MPa it may hold for months \(0\.15 of its 34 MPa along its layers, PRINTED_DEFAULTS\.creep, an estimate\): 2 times under it/);
+  assert.equal(beamCreep(standing, { stress: 2.55 }).values.margin, 1.353);
+  const over = beamCreep(lying, { stress: 6 });
+  assert.equal(over.level, 'fail'); assert.match(over.text, /: 1\.18 times over it, so it creeps on toward breaking/); assert.doesNotMatch(over.text, /times under/);
+  const ten = beamCreep(beamModel('profile-2020-printed', { length: 200, material: 'petg', printed: true }), { stress: 10 });
+  assert.deepEqual([ten.level, ten.values.margin], ['fail', 0.51]); assert.match(ten.text, /a sustained 10 MPa against the 5\.1 MPa .*: 1\.96 times over it, so it creeps on toward breaking/); assert.doesNotMatch(ten.text, /times under/);
+  // a moment: stress = M / Z, Z the printed section's (printedSection's modulusX)
+  const Z = lying.printed.section.modulusX;
+  assert.equal(beamCreep(lying, { moment: 2.55 * Z }).values.stress, 2.55);
+  // the sag it creeps to: 0.3 mm short-term over 0.5 (creep_modulus) = 0.6 mm, over a 0.5 mm limit: 1.2 times over
+  const sag = beamCreep(lying, { stress: 1, sag: 0.3, limit: 0.5 });
+  assert.deepEqual([sag.level, sag.values.creep], ['fail', 0.6]); assert.match(sag.text, /its 0\.3 mm sag creeps to about 0\.6 mm .*1\.2 times over the 0\.5 mm allowed/);
+  assert.equal(beamCreep(lying, { stress: 1, sag: 0.2, limit: 0.5 }).level, 'pass');
+  // refused by name
+  assert.throws(() => beamCreep(beamModel('2020-misumi-hfs5', { length: 240 }), { stress: 1 }), /beamCreep: .* is not a printed beam/);
+  assert.throws(() => beamCreep(lying, {}), /give the sustained load as stress/);
+  assert.throws(() => beamCreep(lying, { stress: 1, sag: 1 }), /sag and limit go together/);
+  assert.throws(() => beamCreep(lying, { load: 1 }), /no option "load"/);
+  // the beam coupon's figures, in a copy of the plastic's set (as cad measured writes it): a printed beam takes them
+  // before the plastic's own, each for its pose, and its creep limit follows the strength measured
+  const petg = structuredClone(SETS.petg), got = (value) => ({ value, unit: 'MPa', rule: 'From the beam coupon', kind: 'measured', source: 'this test', checked: '2026-11-17' });
+  petg.rules.beam_modulus = got(1500); petg.rules.beam_strength = got(30); petg.rules.beam_modulus_z = got(1200);
+  const given = { sets: { petg } };
+  const m = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: true, given }), z = beamModel('profile-2020-printed', { length: 240, material: 'petg', printed: { pose: 'standing' }, given });
+  assert.deepEqual([m.material.modulus, m.printed.strength, m.printed.strengthKind, m.printed.coupon.modulus, m.printed.modulusKind, m.printed.creep.limit], [1500, 30, 'measured', 'petg.beam_modulus', 'measured', 4.5]);
+  assert.deepEqual([z.material.modulus, z.printed.strength, z.printed.coupon.strength], [1200, 23, null], 'standing: its own coupon figure where measured, the plastic\'s across the layers where not');
+  assert.match(m.findings.find((x) => x.code === 'beam.mass').text, /at 1500 MPa along its layers \(petg\.beam_modulus, measured, from the beam coupon/);
+  assert.match(lying.findings.find((x) => x.code === 'beam.mass').text, /All estimates until the beam coupon is measured/);
+});
+
+test('frame generators: a box asked for by its inside size has its butting beams one profile width shorter at each end than the uprights they meet; another profile changes every length; refusals by name', () => {
+  const { box, portal, table, gantry, shelf, frameModel } = frames;
+  const lengths = (m) => Object.fromEntries(m.beams.map((b) => [b.id, b.length]));
+  // A box inside 300 x 300 x 350 in 2020 (p = 20), joined blind: the uprights run through, every other beam butts.
+  // Hand: outside = inside + 2p each way = 340 x 340 x 390. Uprights: the outside height, 390 = 350 + 2 x 20. A beam
+  // across butts at both ends against an upright's face: 340 - 20 - 20 = 300, the inside. So an upright of the same
+  // inside span (300) would be 300 + 2 x 20 = 340: the two differ by the profile's width at each butting end.
+  const m = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'blind' });
+  assert.deepEqual([m.inside, m.outside, m.arrangement], [[300, 300, 350], [340, 340, 390], 'face']);
+  assert.deepEqual(m.lengths.map((l) => [l.length, l.count]), [[390, 4], [300, 8]]);
+  const cube = box({ inside: [300, 300, 300], profile: '2020-misumi-hfs5' }), L = lengths(cube);
+  assert.equal(L.z1 - L.x1, 2 * 20, 'an upright and a beam butting into it across the same inside differ by one width at each end');
+  // every butting end meets its upright's face at the beam's own centre line: x1 at 10 mm up (p / 2), the top ring at 340 - 10
+  assert.deepEqual(m.joins.slice(0, 2), [{ kind: 'blind', a: 'x1.a', b: 'z1.back@10' }, { kind: 'blind', a: 'x1.b', b: 'z2.front@10' }]);
+  assert.deepEqual(m.joins.find((j) => j.a === 'y3.a'), { kind: 'blind', a: 'y3.a', b: 'z1.top@380' });
+  assert.equal(m.joins.length, 16); assert.deepEqual(m.ends.map((e) => e.at), ['z1.a', 'z1.b', 'z2.a', 'z2.b', 'z3.a', 'z3.b', 'z4.a', 'z4.b']);
+  assert.deepEqual(m.beams.find((b) => b.id === 'x1'), { id: 'x1', role: 'across', length: 300, from: [20, 10, 10], to: [320, 10, 10] });
+  // The same request in 3030 (p = 30): inside the same, so the butting beams stay 300 and the uprights grow by 2 x 10;
+  // asked by the outside instead (340 x 340 x 390), the uprights stay 390 and every butting beam loses 2 x 10 = 20 mm
+  const big = box({ inside: [300, 300, 350], profile: '3030-item-6', join: 'blind' });
+  assert.deepEqual([big.outside, big.lengths.map((l) => [l.length, l.count])], [[360, 360, 410], [[410, 4], [300, 8]]]);
+  assert.deepEqual(big.joins[0], { kind: 'blind', a: 'x1.a', b: 'z1.back@15' });
+  const out20 = box({ outside: [340, 340, 390], profile: '2020-misumi-hfs5' }), out30 = box({ outside: [340, 340, 390], profile: '3030-item-6' });
+  for (const b of out20.beams) assert.equal(lengths(out30)[b.id], b.role === 'upright' ? b.length : b.length - 2 * (30 - 20), b.id);
+  // a profile whose end has several bores: the join screws into the threaded one in the middle (3030-misumi-hfs6's a.1)
+  assert.equal(box({ inside: [300, 300, 350], profile: '3030-misumi-hfs6' }).joins[0].a, 'x1.a.1');
+  // a cube join: every beam butts into a corner node, so every one is as long as the inside it bounds
+  const nodes = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: 'cube' });
+  assert.deepEqual([nodes.arrangement, nodes.lengths.map((l) => [l.length, l.count]), nodes.ends.length], ['node', [[350, 4], [300, 8]], 0]);
+  assert.deepEqual(nodes.joins.slice(0, 2), [{ kind: 'cube', a: 'y1.a', b: 'x1.a' }, { kind: 'cube', a: 'z1.a', b: 'x1.a' }]);
+  // feet under the uprights, caps on the other open ends, a bought set by name. A printed foot is screwed into its
+  // upright's end: the end tapped as the foot's model says (M5, 18.5 mm, its end screw's length and a margin) and its M5
+  // cap screw named, for cad to fasten
+  const footed = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', feet: 'levelling', caps: 'fitting-motedis-end-cap-20-b6' });
+  assert.deepEqual(footed.ends.slice(0, 2), [{ id: 'foot-z1', at: 'z1.a', fitting: 'levelling-foot', role: 'foot', tap: { op: 'tap', at: 'a', thread: 'M5', depth: 18.5 }, screw: 'M5 cap' }, { id: 'cap-z1-b', at: 'z1.b', bought: 'fitting-motedis-end-cap-20-b6', role: 'cap' }]);
+  // A blind join drills an access hole across the upright at the bottom ring's centre line, 10 mm up (p / 2): Ø5.3 for
+  // the M5 key, so 7.35 to 12.65 mm up, inside the foot's 18.5 mm tap. The bottom ring rises by the tap's depth: its
+  // centre line at 10 + 18.5 = 28.5 mm, its holes from 25.85 mm up, clear of the tap. Inside stays 350 between the
+  // rings; the outside height grows by the lift, 390 + 18.5 = 408.5, and the uprights with it
+  assert.deepEqual([footed.lift, footed.outside, footed.lengths.map((l) => [l.length, l.count])], [18.5, [340, 340, 408.5], [[408.5, 4], [300, 8]]]);
+  assert.deepEqual([footed.joins[0], footed.joins.find((j) => j.a === 'y3.a')], [{ kind: 'blind', a: 'x1.a', b: 'z1.back@28.5' }, { kind: 'blind', a: 'y3.a', b: 'z1.top@398.5' }]);
+  // a join that drills nothing in the uprights (a printed bracket on slot nuts) keeps the ring at the bottom; plain
+  // printed feet take their tap and screw too; a bought foot is the set's to say
+  const bracketed = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' });
+  assert.deepEqual([bracketed.lift, bracketed.outside[2], bracketed.ends[0].screw], [0, 390, 'M5 cap']);
+  assert.equal(box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', feet: 'fitting-motedis-foot-m6-d19' }).ends[0].tap, undefined);
+  // the siblings: a portal [width, height]; a table, its legs the clear height plus the ring; a shelf's equal bays; a gantry's travel
+  const pt = portal({ outside: [500, 400], profile: '2020-misumi-hfs5' });
+  assert.deepEqual([pt.inside, pt.lengths.map((l) => [l.length, l.count])], [[460, 0, 380], [[460, 1], [400, 2]]]);
+  assert.deepEqual(table({ inside: [600, 400, 700], profile: '2020-misumi-hfs5' }).lengths.map((l) => [l.length, l.count]), [[720, 4], [600, 2], [400, 2]]);
+  // a shelf 600 mm inside with one ring between: (600 - 20) / 2 = 290 mm clear above and below it
+  const sh = shelf({ inside: [400, 300, 600], profile: '2020-misumi-hfs5' });
+  assert.deepEqual([sh.bay, sh.beams.filter((b) => b.role === 'across').map((b) => b.from[2])], [290, [10, 10, 320, 320, 630, 630]]);
+  // a gantry: g spans the outside (440) on the top side beams; travel = outside depth 540 - 2 x 20 - 2 x 2 clear - 20 = 476
+  const g = gantry({ inside: [400, 500, 200], profile: '2020-misumi-hfs5' });
+  assert.deepEqual([g.moving.length, g.moving.travel, g.moving.track, g.beams.filter((b) => b.role === 'across').length], [440, 476, 'y3', 2]);
+  // g lies on its track, between the uprights' tops. Hand: outside height = 200 + 3 x 20 = 260; the top side beams'
+  // centre line is 20 + 200 + 10 = 230, so their top face is 240; g's centre is 240 + 10 = 250, its top 260, level
+  // with the uprights' tops and the outside height it reports (it once floated a width higher, at 270)
+  const track = g.beams.find((b) => b.id === 'y3'), up = g.beams.find((b) => b.id === 'z1');
+  assert.deepEqual([track.from[2] + 10, g.moving.from[2] - 10, g.moving.from[2] + 10, up.to[2], g.outside[2]], [240, 240, 260, 260, 260]);
+  // a printed fitting's slot nuts go in through the opening (drop-in), since every butting beam is shut at both ends
+  // by its joins and a slide-in nut could not reach its place; another kind that goes in that way may be named
+  const br = box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } });
+  assert.deepEqual([br.joins.length, new Set(br.joins.map((j) => `${j.kind} ${j.fitting} ${j.nut}`))], [16, new Set(['bracket printed drop-in'])]);
+  assert.equal(box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed', nut: 'roll-in' } }).joins[0].nut, 'roll-in');
+  // (the kit makes no hammer nut for MISUMI's 6 mm slot: refused here, where the fitting would have found none to draw)
+  assert.throws(() => box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed', nut: 'hammer' } }), /the kit has no hammer slot nut for 2020-misumi-hfs5's slot \(slot-6-misumi\): drop-in has one/);
+  assert.equal(box({ inside: [200, 200, 200], profile: '2020-misumi-hfs5', join: 'bracket' }).joins[0].nut, undefined, 'no fitting chosen, no nut');
+  // braces: that side's joins carry a printed corner bracket; panels: one sheet over a side, on drop-in nuts
+  const bp = box({ inside: [300, 300, 350], profile: '2020-misumi-hfs5', braces: ['left'], panels: { sheet: 'acrylic', thickness: 3, sides: ['back'] } });
+  assert.deepEqual(bp.joins.filter((j) => j.kind === 'bracket').map((j) => j.a), ['y1.a', 'y1.b', 'y3.a', 'y3.b']);
+  assert.deepEqual(bp.panels, [{ id: 'panel-back', sheet: 'acrylic', thickness: 3, bay: ['x2', 'z4', 'x4', 'z3'], out: [0, 1, 0], nut: 'drop-in' }]);
+  // refused by name, before any maths
+  const no = (o, re, kind = 'box') => assert.throws(() => frameModel(kind, { profile: '2020-misumi-hfs5', ...o }), re);
+  no({ inside: [300, 300, 300] }, /no kind of frame "dome": there are box, portal, table, gantry, shelf/, 'dome');
+  no({}, /is asked for by one size: inside .* or outside .*\(got neither\)/);
+  no({ inside: [300, 300, 300], outside: [340, 340, 340] }, /\(got both\)/);
+  no({ outside: [30, 340, 340] }, /an outside width of 30 mm leaves no room inside: its beams take 40 mm of it/);
+  no({ inside: [300, 300, 300], profile: '2040-misumi-hfs5' }, /takes a square profile, and 2040-misumi-hfs5 is 40 x 20 mm/);
+  no({ inside: [300, 300, 300], join: 'mitre' }, /join is one of blind, end-tap, bracket, gusset, hidden, anchor, cube \(got "mitre"\): a mitre join is two mitred ends/);
+  no({ inside: [300, 300, 300], profile: 'tube-al-20x20x2' }, /a blind join screws into the bore in a beam's end, and tube-al-20x20x2 has none: join it with bracket or gusset/);
+  no({ inside: [300, 300, 300], join: 'cube', feet: 'foot' }, /feet stand under an upright beam's end, and with a cube join every end of a box's goes into a corner node/);
+  no({ inside: [300, 300, 300], braces: ['top'] }, /braces: "top" is not a side of a box closed by four beams: it has front, back, left, right/);
+  no({ inside: [600, 400, 700], panels: { sheet: 'acrylic', thickness: 3 } }, /has no side closed by four beams for a panel/, 'table');
+  no({ inside: [300, 300, 300], shelves: 2 }, /a box has no shelves: give them on a shelf/);
+  no({ inside: [300, 300, 100], shelves: 5 }, /5 shelves of 20 mm leave no clear bay in 100 mm/, 'shelf');
+  no({ inside: [300, 300] }, /inside is \[width, depth, height\]/);
+  no({ inside: [300, 300, 300], join: { kind: 'bracket', fitting: 'printed', nut: 'slide-in' } }, /join.nut is a slot nut that goes in through the slot's opening, drop-in, roll-in, hammer, t-bolt: every butting beam of a generated frame is shut at both ends/);
+  no({ inside: [300, 300, 300], join: { kind: 'bracket', nut: 'drop-in' } }, /join.nut names the slot nuts a printed fitting is drawn for: give "fitting": "printed"/);
+  no({ inside: [300, 300, 300], join: { kind: 'bracket', brace: 2 } }, /join takes kind, fitting, screw and nut \(got "brace"\)/);
+});
+
+test('profile choices: a profile as a sizing takes it, its section in a beam\'s own axes from the sheet, its alloy and mass; one not square comes turned too', () => {
+  const [sq] = frames.profileChoices(frames.profileModel('2020-misumi-hfs5'));
+  // MISUMI HFS5-2020: 183 mm², 7420 mm⁴ each way, 0.5 kg/m, in A6N01S-T5 (69 972 MPa, 205 MPa)
+  assert.deepEqual([sq.name, sq.roll, sq.section.A, sq.section.Iy, sq.section.Iz, sq.mass, sq.material.E, sq.material.strength, sq.material.density], ['2020-misumi-hfs5', 0, 183, 7420, 7420, 0.5, 69972, 205, 2.7]);
+  assert.ok(sq.section.J > 0 && sq.section.Wy > 0 && sq.section.Wz > 0);
+  assert.equal(frames.profileChoices(frames.profileModel('2020-misumi-hfs5')).length, 1, 'a square one comes once');
+  // a 2040 is described lying flat: inertia_x (13 580 mm⁴) resists bending across its 20 mm height, as Iy, the
+  // second moment a beam's own z (its top) bends against; turned a quarter it stands on edge
+  const [flat, edge] = frames.profileChoices(frames.profileModel('2040-misumi-hfs5'));
+  assert.deepEqual([flat.name, flat.roll, flat.section.Iy, flat.section.Iz, edge.name, edge.roll, edge.section.Iy, edge.mass], ['2040-misumi-hfs5', 0, 13580, 51300, '2040-misumi-hfs5 turned', 90, 13580, 0.88]);
+  // a plain tube, worked out from its outline: the same shape, so a frame of tubes is sized alike
+  const [tube] = frames.profileChoices(frames.profileModel('tube-al-25x25x2'));
+  // hand: (25⁴ - 21⁴) / 12 = (390 625 - 194 481) / 12 = 16 345.3 mm⁴, area 25² - 21² = 184 mm²
+  assert.ok(Math.abs(tube.section.Iy - 16345.33) < 0.5 && Math.abs(tube.section.A - 184) < 0.01, JSON.stringify(tube.section));
+  assert.throws(() => frames.profileChoices({ kind: 'beam' }), /profileChoices: give a profile's model/);
+});
+
+test('MISUMI\'s 3030 has five bores in each end and only the middle one is for M8: a foot, a generated frame\'s foot and a tap at the whole end tap that one alone', () => {
+  // its rule set: the middle bore 6.8 mm (M8's tap drill), the four corner holes 4.2 mm with no thread named
+  const foot = frames.footModel('3030-misumi-hfs6');
+  assert.deepEqual(foot.ops.map((o) => `${o.op} ${o.at} ${o.thread}`), ['tap a.1 M8']);
+  const m = frames.box({ inside: [300, 300, 200], profile: '3030-misumi-hfs6', join: { kind: 'bracket', fitting: 'printed' }, feet: 'foot' });
+  assert.deepEqual(m.ends.filter((e) => e.tap).map((e) => e.tap.at), ['a.1', 'a.1', 'a.1', 'a.1']);
+  const b = beamModel('3030-misumi-hfs6', { length: 300, ops: [{ op: 'tap', at: 'a', depth: 20 }] });
+  assert.equal(b.ops.find((x) => x.op === 'tap').line, 'tap M8 in bore a.1, 20 mm deep (tap drill Ø6.8 mm; the bore is Ø6.8)');
+  // a profile whose end bores are all for a thread keeps tapping them all (MISUMI's 2040: two M5 bores)
+  assert.match(beamModel('2040-misumi-hfs5', { length: 300, ops: [{ op: 'tap', at: 'a', depth: 20 }] }).ops.find((x) => x.op === 'tap').line, /^tap M5 in end a's bores a\.1, a\.2, 20 mm deep/);
+  // a 2020 (one bore) keeps its plain address
+  assert.deepEqual(frames.footModel('2020-misumi-hfs5').ops.map((o) => o.at), ['a']);
+});
+
+test('a generated frame\'s joins against its profile: a blind or end-tap screw the slot cannot take is refused by name, a printed fitting takes a nut the kit has for the slot, and a printed gusset lies on the face looking out', () => {
+  const { box } = frames, ask = { inside: [300, 250, 350] };
+  // MISUMI's 4040 ends are tapped M12 (bore 10.5) and its slot opens 10 mm: an M12 screw, 12 mm, does not pass between
+  // the lips, blind (into the cavity) or end-tap (right across the post). Bosch's 4040 L the same (bore 10, M12). A
+  // thread cut in the bore must be wider than it (over 10.5 mm: M12 of M3 to M12) and pass the 10 mm opening (M10 at
+  // most): none does both, so neither profile takes a blind or an end-tap join. The kit has no slot-10 nut that goes in
+  // through the opening, so no printed fitting either: the refusals say the two ways left, and never send the user to a
+  // join that is itself refused
+  const left = /Join it with a bracket or gusset with no fitting \(taken, and checked by its estimate: join\.fitting warns that no fitting is drawn for it\), or give a slot nut set of your own for slot-10-\w+ in given\.sets and join with a printed bracket or gusset\. The kit has no other join for 4040-\S+ that checks clean$/;
+  for (const profile of ['4040-misumi-hfs8', '4040-bosch-l']) for (const kind of ['blind', 'end-tap']) {
+    assert.throws(() => box({ ...ask, profile, join: kind }), (x) => (assert.match(x.message, left), assert.match(x.message, new RegExp(`no screw from M3 to M12 cuts a thread in the Ø10(\\.5)? mm end bore.*, so ${profile} takes no ${kind} join`)), true));
+  }
+  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: 'blind' }), /a blind join's M12 screw \(4040-misumi-hfs8's end thread\) passes between the lips of the post's slot, and slot-10-misumi opens 10 mm, narrower than its 12 mm/);
+  for (const kind of ['bracket', 'gusset']) assert.throws(() => box({ ...ask, profile: '4040-bosch-l', join: { kind, fitting: 'printed' } }), /the kit has none for 4040-bosch-l's slot \(slot-10-bosch\): give a nut set of your own in given\.sets, or join it with a bracket or gusset with no fitting \(taken, and checked by its estimate: join\.fitting warns that no fitting is drawn for it\)\. The kit has no other join for 4040-bosch-l that checks clean$/);
+  // the way left is taken, as the refusals say
+  assert.equal(box({ ...ask, profile: '4040-misumi-hfs8', join: 'bracket' }).joins.length, 16);
+  // a screw given in join.screw is cut in the end bore, so its thread must be wider than the bore: M8 (8 mm) in
+  // MISUMI's 10.5 mm bore, and M4 in item's 2020 (bore 4.3), cut nothing. Refused before the build, naming the screws
+  // that fit (item's 2020: M5, 5 mm, over 4.3 and within the 5 mm opening, its button head 2.75 high under 3 mm)
+  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: { kind: 'blind', screw: 'M8 button' } }), /a blind join's M8 screw \(join\.screw\) is cut in 4040-misumi-hfs8's end bore, and the bore is Ø10\.5 mm, as wide as its 8 mm thread, so no thread can be cut in it: no screw from M3 to M12/);
+  assert.throws(() => box({ ...ask, profile: '4040-misumi-hfs8', join: { kind: 'end-tap', screw: 'M8 cap' } }), /an end-tap join's M8 screw \(join\.screw\) is cut in 4040-misumi-hfs8's end bore/);
+  assert.throws(() => box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M4 button' } }), /a blind join's M4 screw \(join\.screw\) is cut in 2020-item-5's end bore, and the bore is Ø4\.3 mm, as wide as its 4 mm thread, so no thread can be cut in it: give join\.screw M5 button, which fit, or join it with a bracket or gusset with no fitting/);
+  assert.equal(box({ ...ask, profile: '2020-item-5', join: { kind: 'blind', screw: 'M5 button' } }).joins.length, 16);
+  // Bosch's 2020 takes M6 (bore 5.5): its button head is 3.3 mm high (ISO 7380), and its slot has 3 mm under the lips.
+  // No other thread cuts in 5.5 mm and passes its 6 mm opening, so blind is out: end-tap (M6 across the post) and a
+  // printed fitting (the kit has a drop-in nut for slot-6-bosch) would be the joins left. End-tap's M6 passes a 6.6 mm
+  // clearance hole (ISO 273 medium) across the post, wider than the 6 mm opening, so it is refused too (beam.op would
+  // warn), and the remedy offers only the printed fitting
+  assert.throws(() => box({ ...ask, profile: '2020-bosch', join: 'blind' }), /a blind join's M6 screw \(2020-bosch's end thread\): its button head, 3\.3 mm high, goes under the lips of the post's slot, and slot-6-bosch has 3 mm there: .*so 2020-bosch takes no blind join\. Join it with a printed bracket or gusset \(fitting printed\)$/);
+  // MISUMI's 2020 end-tap: M5's 5.5 mm hole within the 6 mm opening, said plainly
+  assert.throws(() => box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'blind', screw: 'M8 button' } }), /or join it with end-tap, or a printed bracket or gusset \(fitting printed\)$/);
+  assert.equal(box({ ...ask, profile: '2020-misumi-hfs5', join: 'end-tap' }).joins.length, 16);
+  // ones that fit pass: MISUMI's 2020 (M5 in 6 mm, its button head 2.75 high), item's 4040 (M8 in 8 mm)
+  for (const profile of ['2020-misumi-hfs5', '4040-item-8', '3030-misumi-hfs6']) assert.equal(box({ ...ask, profile, join: 'blind' }).joins.length, 16, profile);
+  // a printed fitting's nuts go in through the slot's opening: item's 4040 has no drop-in in the kit, so roll-in, the
+  // next; a nut kind the kit lacks for the slot is refused naming one it has, and a slot with none at all (item's 3030)
+  // is refused before a fitting is drawn
+  assert.deepEqual([...new Set(box({ ...ask, profile: '4040-item-8', join: { kind: 'bracket', fitting: 'printed' } }).joins.map((j) => j.nut))], ['roll-in']);
+  assert.deepEqual([...new Set(box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'bracket', fitting: 'printed' } }).joins.map((j) => j.nut))], ['drop-in']);
+  assert.throws(() => box({ ...ask, profile: '4040-item-8', join: { kind: 'bracket', fitting: 'printed', nut: 'drop-in' } }), /the kit has no drop-in slot nut for 4040-item-8's slot \(slot-8-item\): roll-in has one/);
+  assert.throws(() => box({ ...ask, profile: '3030-item-6', join: { kind: 'gusset', fitting: 'printed' } }), /a printed gusset is held by slot nuts that go in through the slot's opening \(drop-in, roll-in, hammer, t-bolt\), and the kit has none for 3030-item-6's slot \(slot-6-item\)/);
+  assert.throws(() => box({ ...ask, profile: '3030-item-6', braces: ['left'] }), /braces put a printed corner bracket at each of a side's joins, held by slot nuts that go in through the slot's opening \(drop-in, roll-in, hammer, t-bolt\), and the kit has none for 3030-item-6's slot \(slot-6-item\)/);
+  assert.throws(() => frames.bracketModel('4040-item-8', { nut: 'drop-in' }), /no drop-in slot nut from M3 to M10 is made for profile-4040-item-8's top face \(slot-8-item\): the kit has roll-in, hammer nuts for it: give nut as one of those/);
+  // printed gussets: each on the post's face square to its beam that looks out of the box. x1 runs along x at the
+  // front (y = 10, under the middle 145 + 20 = 165): its gusset looks -y, the post's bottom face (roll 0: top is +y);
+  // x2 at the back looks +y (top); y1 along y at the left looks -x (front), y2 at the right +x (back)
+  const g = box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'gusset', fitting: 'printed' } }), faceOf = (id) => [...new Set(g.joins.filter((j) => j.a.startsWith(`${id}.`)).map((j) => j.face))];
+  assert.deepEqual(['x1', 'x2', 'y1', 'y2'].map(faceOf), [['bottom'], ['top'], ['front'], ['back']]);
+  assert.ok(box({ ...ask, profile: '2020-misumi-hfs5', join: 'blind' }).joins.every((j) => j.face === undefined), 'a face only on a printed gusset');
+  // a gantry's top side beams carry its moving beam, whose ends and end caps pass beside the posts' tops: their gussets
+  // are Ls (a T's bar would rise there), every other join's shape is cad's to choose
+  const gg = frames.gantry({ inside: [400, 500, 200], profile: '3030-misumi-hfs6', join: { kind: 'gusset', fitting: 'printed' } });
+  assert.deepEqual(gg.joins.filter((j) => j.shape).map((j) => `${j.a} ${j.shape}`), ['y3.a L', 'y3.b L', 'y4.a L', 'y4.b L']);
+  assert.ok(box({ ...ask, profile: '3030-misumi-hfs6', join: { kind: 'gusset', fitting: 'printed' } }).joins.every((j) => j.shape === undefined), 'a box names no shape');
+});
+
+test('a generated frame\'s end-tap join is refused by name where its clearance hole across the post is wider than the slot\'s opening, and its remedies offer only screws that check clean', () => {
+  const { box } = frames, ask = { inside: [300, 250, 350] };
+  // ISO 273's medium clearance for the end thread against the slot's opening. Clean: MISUMI's 2020 (M5, 5.5 in 6) and
+  // OpenBuilds' 2020 (M5, 5.5 in 6.25). Wider: item's 2020 (M5, 5.5 in 5), Bosch's 2020 (M6, 6.6 in 6), item's 3030
+  // (M6, 6.6 in 6.2), MISUMI's and Bosch's 3030 and item's 4040 (M8, 9 in 8). No smaller thread cuts in those bores
+  for (const profile of ['2020-misumi-hfs5', '2020-openbuilds']) assert.equal(box({ ...ask, profile, join: 'end-tap' }).joins.length, 16, profile);
+  const wide = [['2020-item-5', 'M5', 5.5, 'slot-5-item', 5, 'blind'], ['2020-bosch', 'M6', 6.6, 'slot-6-bosch', 6, 'a printed bracket or gusset \\(fitting printed\\)'], ['3030-item-6', 'M6', 6.6, 'slot-6-item', 6.2, 'blind'],
+    ['3030-misumi-hfs6', 'M8', 9, 'slot-8-misumi', 8, 'blind, or a printed bracket or gusset \\(fitting printed\\)'], ['3030-bosch', 'M8', 9, 'slot-8-bosch', 8, 'blind, or a printed bracket or gusset \\(fitting printed\\)'], ['4040-item-8', 'M8', 9, 'slot-8-item', 8, 'blind, or a printed bracket or gusset \\(fitting printed\\)']];
+  for (const [profile, thread, hole, slot, open, instead] of wide) {
+    const re = new RegExp(`an end-tap join's ${thread} screw \\(${profile}'s end thread\\) passes a Ø${String(hole).replace('.', '\\.')} mm clearance hole drilled across the post \\(ISO 273's medium series\\), and ${slot} opens ${String(open).replace('.', '\\.')} mm, so the hole breaks into the slot's lips.*so ${profile} takes no end-tap join\\. Join it with ${instead}$`);
+    assert.throws(() => box({ ...ask, profile, join: 'end-tap' }), re, profile);
+  }
+  // a given screw too, and a remedy names only the screws whose hole fits: M6 cap (6.6 mm) is never offered in a 6 mm
+  // or 6.25 mm opening
+  for (const profile of ['2020-misumi-hfs5', '2020-openbuilds']) {
+    assert.throws(() => box({ ...ask, profile, join: { kind: 'end-tap', screw: 'M6 cap' } }), /an end-tap join's M6 screw \(join\.screw\) passes a Ø6\.6 mm clearance hole .*: give join\.screw M5 cap, which fit, or join it with blind/, profile);
+    assert.throws(() => box({ ...ask, profile, join: { kind: 'end-tap', screw: 'M8 cap' } }), /: give join\.screw M5 cap, which fit,/, profile);
+  }
+  // and a blind refusal offers end-tap only where it would check clean: plainly on MISUMI's 2020, never on Bosch's
+  assert.throws(() => box({ ...ask, profile: '2020-misumi-hfs5', join: { kind: 'blind', screw: 'M8 button' } }), /or join it with end-tap, or a printed bracket or gusset \(fitting printed\)$/);
+  assert.throws(() => box({ ...ask, profile: '3030-item-6', join: { kind: 'blind', screw: 'M8 button' } }), (x) => (assert.doesNotMatch(x.message, /end-tap/), true));
+});
+
+test('a generated frame on a 30 series profile: levelling feet on a stud whose bore passes the M8 head, end-tap screws apart, access holes inside the slot', async () => {
+  const { box, table, levellingFootModel, levellingFoot, beamModel } = frames;
+  // levelling feet: the body's M8 cap screw goes in through the printed stud's bore. Hand: an M8 cap head is 13 mm
+  // across (dk); M12's bore is 0.8 x 12 = 9.6 mm, Tr16x4's 16 - 4 = 12 mm (DIN 103's D1), both under 13 mm; Tr20x4's
+  // 20 - 4 = 16 mm passes. So a 30 series foot takes Tr20x4, and a 20 series (M5, 8.5 mm head) keeps M12
+  const lev = levellingFootModel('3030-bosch');
+  assert.deepEqual([lev.stud, lev.printed, lev.thread], ['Tr20x4', true, 'M8']); assert.ok(lev.margin >= 2 && lev.grams > 0);
+  await prints(levellingFoot(lev), 'a 30 series levelling foot\'s body'); await prints(levellingFoot(lev, { part: 'pad' }), 'its Tr20x4 pad');
+  assert.equal(levellingFootModel('2020-misumi-hfs5').stud, 'M12');
+  assert.throws(() => levellingFootModel('3030-bosch', { stud: 'Tr16x4' }), /a printed Tr16x4 stud's bore \(12 mm\) is too small for M8's 13 mm head to pass: give stud "Tr20x4", or leave stud out and the foot takes it/);
+  const footed = box({ inside: [400, 250, 300], profile: '3030-bosch', feet: 'levelling' });
+  assert.equal(footed.ends.find((e) => e.role === 'foot').screw, 'M8 cap');
+  // end-tap: each screw runs right across the upright it meets, so a ring's beams along y stand one width (20 mm) above
+  // its beams across x, and no two screws share a height on an upright. Hand: outside height 300 + 2 x 20 (the rings)
+  // + 2 x 20 (the stagger) = 380 mm; the bottom ring's x beams at 10 mm, its y beams at 30. (No 30 series profile of the
+  // kit's takes end-tap: M8's 9 mm hole across the post is wider than its 8 mm opening, and item's M6 6.6 in 6.2)
+  for (const p of ['2020-misumi-hfs5', '2020-openbuilds']) {
+    const w = 20, f = box({ inside: [400, 250, 300], profile: p, join: 'end-tap' });
+    assert.equal(f.outside[2], 300 + 4 * w, p);
+    const y1 = f.beams.find((b) => b.id === 'y1'), x1 = f.beams.find((b) => b.id === 'x1');
+    assert.deepEqual([x1.from[2], y1.from[2]], [w / 2, 1.5 * w], p);
+    for (const z of f.beams.filter((b) => b.role === 'upright')) {
+      const at = f.joins.filter((j) => j.b.startsWith(`${z.id}.`)).map((j) => j.b.split('@')[1]);
+      assert.equal(new Set(at).size, at.length, `${p}: ${z.id}'s end-tap screws each at a height of their own (${at})`);
+    }
+    // the clear inside: from the bottom y beams' top (30 + 10 = 40) to the top x beams' bottom
+    const x3 = f.beams.find((b) => b.id === 'x3');
+    assert.equal(x3.from[2] - w / 2 - (y1.from[2] + w / 2), 300, p);
+  }
+  // a table's ring: its beams along y one width below those across, so the clear height under them is still the inside's
+  const t = table({ inside: [400, 250, 300], profile: '2020-misumi-hfs5', join: 'end-tap' });
+  assert.deepEqual([t.outside[2], t.beams.find((b) => b.id === 'y1').from[2] - 10], [340, 300]);
+  // blind joins keep their rings level
+  const bl = box({ inside: [400, 250, 300], profile: '3030-bosch' });
+  assert.deepEqual([bl.outside[2], bl.beams.find((b) => b.id === 'y1').from[2]], [360, 15]);
+  // an access hole only passes the hex key. Hand: an M8 button head takes a 5 mm key, 5 / cos 30° = 5.77 mm across its
+  // corners; M8's close clearance (8.4 mm) is wider than the 8 mm slot it is drilled in and comes out in, so the hole is
+  // the corners and 0.5 mm (OP_DEFAULTS.key), 6.27, up to a 6.3 mm drill. On 2020 M5's 5.3 mm fits the 6 mm slot
+  const op = (p, thread) => beamModel(p, { length: 300, ops: [{ op: 'access', at: 'front.1@120', thread, head: 'button', through: 'beam' }] });
+  const b30 = op('3030-bosch', 'M8'), a30 = b30.ops.find((o) => o.op === 'access');
+  assert.deepEqual([a30.diameter, a30.key, a30.rule], [6.3, 5, 'OP_DEFAULTS.key']);
+  assert.deepEqual(b30.findings.filter((x) => x.code === 'beam.op'), [], 'no lip broken on either side');
+  assert.deepEqual([op('2020-misumi-hfs5', 'M5').ops.find((o) => o.op === 'access').diameter], [5.3]);
+  // a section warned off its drawn outline (the guide's remedy): Bosch Rexroth's 30 x 30 draws 328.9 mm² against the
+  // sheet's 310 (+6.1%: the bore's notches and inner webs are not drawn), and the frame's figures are the sheet's
+  const P30 = frames.profileModel('3030-bosch'), warned = frames.profileFindings(P30).filter((x) => x.level === 'warn').map((x) => x.code);
+  assert.deepEqual(warned, ['profile.section.area', 'profile.section.torsion_constant']);
+  const fig = frames.beamFigures(P30);
+  assert.deepEqual([fig.area.value, fig.area.from, fig.inertiaX.value, fig.torsion.value, fig.massPerMetre.value], [310, 'sheet', 28000, 2900, 0.9]);
 });

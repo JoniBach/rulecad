@@ -199,3 +199,21 @@ for the flexures package's lamina tools, next.
 
 To measure: the pull it holds before the pawl gives (buckles or slips), the force on the crank at 50 and 100 N, and
 whether the clicks are crisp.
+
+## A kit of fittings for 2020
+
+`fittings/kit-2020` is a set of printed fittings for one profile, MISUMI's 2020 (HFS5), standing alone: no beams, only
+what you print to keep beside the bars. Each is drawn from the profile's own rules and sized from its load.
+
+| Items | Fitting | What holds it, to buy |
+|---|---|---|
+| `bracket-1` .. `bracket-4` | A corner bracket (`bracket`), sized for 100 N at its screw, on drop-in nuts | Two M4x10 cap screws and two M4 drop-in slot nuts each, as its `fitting.screw` finding says |
+| `foot-1` .. `foot-4` | A levelling foot (`levelling-foot`): a body and a pad on a printed M12 thread; the pad is printed beside its body | One M5x16 cap screw each, into the beam's end, tapped M5 |
+| `cap-1` .. `cap-4` | An end cap (`end-cap`), its pegs pressed into the end | Nothing |
+| `clip-1` .. `clip-8` | A clip for a 3 mm panel (`panel-clip`) | One M5x10 button screw and an M5 slot nut each, as its `fitting.screw` finding says |
+| `carrier-1` .. `carrier-8` | A printed carrier for an M3 nut (`nut-carrier`), sliding in the slot like a slide-in nut; each holds about 794 N (an estimate: the plastic over the nut shears first) | One M3 hex nut each, on the list |
+
+`npx cad check fittings/kit-2020` checks each one; `npx cad plates fittings/kit-2020` lays them out on one bed (95 g of
+PLA, about 100 minutes); `npx cad kit fittings/kit-2020` writes the folder to hand on: the plate's 3MF, the list and a
+page saying what each is. The screws for the brackets, feet and clips depend on what they join, so a frame's own kit
+lists them with its joins; the carriers' nuts are listed here, since the carriers hold them.

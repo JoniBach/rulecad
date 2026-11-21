@@ -69,6 +69,10 @@
  * @property {FrameLoad[]} [loads]
  * @property {Vec3} [gravity] N/kg (m/s²), acting on every element's mass and every lumped mass: [0, 0, -9.81]
  * @property {Record<string, number>} [masses] lumped masses by node, kg (weight under gravity, and inertia in modes)
+ * @property {'refuse' | 'hold'} [loose] what a mechanism does: 'refuse' (left out) refuses the model; 'hold' holds
+ *   each freedom nothing resists and solves on, so long as the loads of each solve do no work moving it that way (a
+ *   frame in one plane on pinned feet, free to sway out of it, under loads in its plane): the frame's `loose` names
+ *   them, and a solve whose loads would move one is refused
  */
 /** @typedef {[number, number, number, number, number, number]} Six x, y, z, then about x, y, z */
 /**
@@ -97,7 +101,7 @@
  * @property {{ most: number, node: string }} deflection the largest movement of any node, and which
  */
 /** @typedef {{ factor: number, shape: Record<string, Six> }} BucklingMode the loads times `factor` buckle the frame into `shape` (largest movement 1) */
-/** @typedef {{ frequency: number, shape: Record<string, Six> }} VibrationMode Hz, and the shape (largest movement 1) */
+/** @typedef {{ frequency: number, shape: Record<string, Six>, free?: true }} VibrationMode Hz, and the shape (largest movement 1); free: a mode of 0 Hz, the frame moving where nothing holds it (loose: 'hold') */
 
 const FREEDOMS = ['x', 'y', 'z', 'rx', 'ry', 'rz'];
 /** @returns {never} */
@@ -450,12 +454,19 @@ const condensedLoad = (el, fb) => { if (!el.T) return fb; const fc = new Float64
  * @param {{ shear?: boolean }} [o] shear: false ignores the sections' shear areas (Euler-Bernoulli beams)
  * @returns {{
  *   statics: (o?: { loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number>, samples?: number }) => StaticResult,
- *   buckling: (o?: { count?: number, loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number> }) => { factors: number[], modes: BucklingMode[], statics: StaticResult },
+ *   buckling: (o?: { count?: number, loads?: FrameLoad[], gravity?: Vec3, masses?: Record<string, number> }) => { factors: number[], modes: BucklingMode[], statics: StaticResult, tipped?: { node: string, freedom: string }[], rests?: { node: string, freedom: string }[] },
  *   modes: (o?: { count?: number, masses?: Record<string, number> }) => { frequencies: number[], modes: VibrationMode[] },
- *   freedoms: number, nodes: string[] }}
+ *   freedoms: number, nodes: string[], loose: { node: string, freedom: string }[] }}
  *   statics, buckling and modes use the model's own loads, gravity and masses unless given others (another load case
  *   on the same factorisation). samples: stations along each element (11). count: how many modes (1 for buckling, 6
- *   for vibration; fewer come back if the frame has fewer). freedoms: how many unknowns were solved for.
+ *   for vibration; fewer come back if the frame has fewer). freedoms: how many unknowns were solved for. loose: the
+ *   freedoms held where nothing resists them (the model's loose: 'hold'), by node; none otherwise. The statics stand
+ *   with them held, as the loads do no work there. The modes count them free: each way that moves mass unresisted
+ *   is a mode of 0 Hz (marked free), and the rest are the frame's own, whatever freedom was held. Buckling where the
+ *   loads lean the frame that way (its squeezed members turning with it) gives a factor of 0, the frame tipping over
+ *   before anything buckles, with the ways named as `tipped`; where the loads pull it back (a frame hanging from its
+ *   pins), the factors are of the frame held there, so at most the true ones, and the ways are named as `rests`;
+ *   where the loads leave it alone (a strut spinning on its axis), the factors are exact.
  */
 export function frame(model, o = {}) {
   const f = read(model, o), { ids, N, els, held, ground } = f;
@@ -494,12 +505,31 @@ export function frame(model, o = {}) {
     }
   }
   const factor = n ? factorise(K) : { solve: (b) => new Float64Array(0), loose: [] };
-  if (factor.loose.length) {
-    const loose = factor.loose.map((i) => ({ node: ids[Math.floor(back[i] / 6)], freedom: FREEDOMS[back[i] % 6] }));
-    const by = new Map(); for (const l of loose) by.set(l.node, [...(by.get(l.node) || []), l.freedom]);
-    const list = [...by].slice(0, 8).map(([node, fr]) => `node ${said(node)} (${fr.join(', ')})`).join('; ');
-    refuse('mechanism', `the frame is a mechanism: it can still move with nothing resisting, at ${list}${by.size > 8 ? `, and ${by.size - 8} more nodes` : ''}. Hold those freedoms with a support, or join the elements there more stiffly (a pinned end frees its bending rotations and still carries twist, so a strut pinned at both ends can spin: make one end 'ball')`, { loose });
-  }
+  if (model.loose !== undefined && model.loose !== 'refuse' && model.loose !== 'hold') refuse('input', `loose is ${said(model.loose)}: 'refuse' (a mechanism refuses the model) or 'hold' (each freedom nothing resists is held, while the loads do not move it)`);
+  const loose = factor.loose.map((i) => ({ node: ids[Math.floor(back[i] / 6)], freedom: FREEDOMS[back[i] % 6] }));
+  const listOf = (ls) => { const by = new Map(); for (const l of ls) by.set(l.node, [...(by.get(l.node) || []), l.freedom]); return `${[...by].slice(0, 8).map(([node, fr]) => `node ${said(node)} (${fr.join(', ')})`).join('; ')}${by.size > 8 ? `, and ${by.size - 8} more nodes` : ''}`; };
+  if (loose.length && model.loose !== 'hold') refuse('mechanism', `the frame is a mechanism: it can still move with nothing resisting, at ${listOf(loose)}. Hold those freedoms with a support, or join the elements there more stiffly (a pinned end frees its bending rotations and still carries twist, so a strut pinned at both ends can spin: make one end 'ball')`, { loose });
+  // Each loose freedom i was held by a pivot many orders stiffer than the frame, which is K + D eᵢ eᵢᵀ; then
+  // (K + D eᵢ eᵢᵀ)⁻¹ eᵢ is the way the frame moves unresisted (K's null vector v, over D vᵢ). Scaled so it moves
+  // 1 mm at most (or turns 1 / span where nothing moves), a load p does p · v of work moving it: none, and the hold
+  // carries nothing, so the solve stands as the frame's own.
+  const span0 = f.span || 1;
+  const ways = factor.loose.map((i, k) => {
+    const e = new Float64Array(n); e[i] = 1;
+    const v = factor.solve(e);
+    let most = 0, turn = 0;
+    for (let q = 0; q < n; q++) { const a = Math.abs(v[q]); if (back[q] % 6 < 3) most = Math.max(most, a); else turn = Math.max(turn, a); }
+    const s = most > 1e-9 * turn * span0 ? 1 / most : 1 / (turn * span0);
+    for (let q = 0; q < n; q++) v[q] *= s;
+    return { ...loose[k], v };
+  });
+  // the loads (as the free freedoms' forces) that move the frame where it is held only by the hold: refused by name
+  const driven = (p) => {
+    let size = 0;
+    for (let q = 0; q < n; q++) size += Math.abs(p[q]) * (back[q] % 6 < 3 ? 1 : 1 / span0);
+    return ways.filter((w) => { let work = 0; for (let q = 0; q < n; q++) work += p[q] * w.v[q]; return Math.abs(work) > 1e-6 * size; });
+  };
+  const refuseDriven = (p) => { const d = driven(p); if (d.length) refuse('mechanism', `the loads move the frame where nothing holds it, at ${listOf(d)}: it would move with nothing resisting. Hold those freedoms with a support, or join the elements there more stiffly`, { loose: d.map(({ node, freedom }) => ({ node, freedom })), driven: true }); };
   const shapeOf = (x) => { // a vector over the free freedoms as each node's six: its largest movement 1, and that one positive
     const u = new Float64Array(6 * N);
     for (let i = 0; i < n; i++) u[back[i]] = x[i];
@@ -522,7 +552,9 @@ export function frame(model, o = {}) {
       for (let q = 0; q < 4; q++) { const g = toGlobal3(el.R, fc, 3 * q), at = 6 * (q < 2 ? el.a : el.b) + 3 * (q % 2); for (let k = 0; k < 3; k++) p[at + k] += g[k]; }
       return { fb, fc };
     });
-    const x = factor.solve(Float64Array.from(back, (d) => p[d])), u = new Float64Array(6 * N), residual = Float64Array.from(nodal, (v) => -v);
+    const pf = Float64Array.from(back, (d) => p[d]);
+    if (ways.length) refuseDriven(pf);
+    const x = factor.solve(pf), u = new Float64Array(6 * N), residual = Float64Array.from(nodal, (v) => -v);
     for (let i = 0; i < n; i++) u[back[i]] = x[i];
     for (const { node, v } of idle) { const o = 6 * node + 3, along = u[o] * v[0] + u[o + 1] * v[1] + u[o + 2] * v[2]; for (let c = 0; c < 3; c++) u[o + c] = held[o + c] || Math.abs(v[c]) === 1 ? 0 : u[o + c] - along * v[c]; }
     let most = 0, mostAt = 0;
@@ -575,6 +607,30 @@ export function frame(model, o = {}) {
     const s = statics(c), axial = s.elements.map((e) => e.axial), size = Math.max(...axial.map(Math.abs));
     if (!axial.some((a) => a < -1e-9 * Math.max(size, 1e-300))) refuse('compression', 'no element is in compression under these loads, so nothing can buckle: buckling needs a load that squeezes at least one element along its length');
     const B = assemble((el) => toGlobal(el.kg, el.R), axial.map((a) => -a)), block = 2 * count + 16;
+    // Where the frame is held only by the hold (loose: 'hold'), K v = 0 along the way v it moves unresisted, so
+    // vᵀ (K − λ B) v = −λ vᵀ B v. If the loads lean on that way (vᵀ B v > 0, as a frame on pinned feet with its posts
+    // squeezed leans over), K − λ B loses its positive definiteness at any λ above 0: the frame tips over under any
+    // share of its loads, before anything buckles, and the factor is 0. A way the loads leave alone (B v = 0) does not
+    // change the factors: each shape has one copy with the held freedom at 0, of the same energies, so the hold is
+    // exact. A way the loads hold up (vᵀ B v < 0, a frame hanging from its pins) is stiffer held than it is: the
+    // factors are then at most the true ones' upper bound, and the ways are named as `rests`.
+    const rests = [];
+    if (ways.length) {
+      let bmax = 0;
+      for (let i = 0; i < n; i++) bmax = Math.max(bmax, Math.abs(B.v[diagonal(B, i)]));
+      const tipped = [];
+      for (const w of ways) {
+        const Bv = multiply(B, w.v);
+        let g = 0, vv = 0, bb = 0;
+        for (let q = 0; q < n; q++) { g += w.v[q] * Bv[q]; vv += w.v[q] * w.v[q]; bb += Bv[q] * Bv[q]; }
+        const tol = 1e-6 * bmax * vv;
+        if (g > tol || (g >= -tol && Math.sqrt(bb) > 1e-6 * bmax * Math.sqrt(vv))) tipped.push(w); else if (g < -tol) rests.push({ node: w.node, freedom: w.freedom });
+      }
+      if (tipped.length) {
+        const shown = tipped.slice(0, count).map((w) => ({ factor: 0, shape: shapeOf(w.v) }));
+        return { factors: shown.map((m) => m.factor), modes: shown, statics: s, tipped: tipped.map(({ node, freedom }) => ({ node, freedom })) };
+      }
+    }
     // K φ = λ B φ, B = −Kg, for the smallest λ above 0. B is indefinite: with the loads reversed, whatever is in
     // tension would buckle, and those (negative) factors can be far smaller in size and crowd the iteration. So it
     // is shifted to just under the first factor: K − σ B has a Cholesky factor exactly when σ is under it (and over
@@ -594,7 +650,7 @@ export function frame(model, o = {}) {
     }
     const { values, vectors } = lowest(shifted.solve, B, count, block);
     const modes = values.map((mu, i) => ({ factor: low + 1 / mu, shape: shapeOf(vectors[i]) }));
-    return { factors: modes.map((m) => m.factor), modes, statics: s };
+    return { factors: modes.map((m) => m.factor), modes, statics: s, ...(rests.length ? { rests } : {}) };
   }
 
   function modes(c = {}) {
@@ -604,13 +660,30 @@ export function frame(model, o = {}) {
     if (!els.some((el) => el.perLength > 0) && !lumped.some((m) => m > 0)) refuse('mass', 'nothing in the frame has mass, so it has no frequencies: give the materials a density (g/cm³), or lump masses (kg) at nodes');
     const M = assemble((el) => toGlobal(el.m, el.R));
     for (let i = 0; i < n; i++) if (back[i] % 6 < 3) M.v[diagonal(M, i)] += lumped[Math.floor(back[i] / 6)];
-    const { values, vectors } = lowest(factor.solve, M, count);
-    // K in N/mm against M in kg: ω² = 1000 / μ (a newton is a kg·m/s², and the lengths are mm)
-    const found = values.map((mu, i) => ({ frequency: Math.sqrt(1000 / mu) / (2 * Math.PI), shape: shapeOf(vectors[i]) }));
+    // Where the frame is held only by the hold (loose: 'hold'), the hold would stand in for a support that is not
+    // there and lift every frequency (by how much depends on where it lands). So the modes are those of K + s M
+    // instead, positive definite wherever the free way moves mass, with s the held frame's lowest λ (ω² / 1000):
+    // K x = λ M x exactly when (K + s M) x = (λ + s) M x, so each way that moves mass unresisted comes back as a
+    // mode of λ = 0 (0 Hz, marked free) and the rest are the frame's own, with nothing held. A way that moves no
+    // mass is still held in K + s M, which changes nothing (K v = M v = 0: each shape has a copy with it at 0).
+    let solveM = factor.solve, shift = 0;
+    if (factor.loose.length) {
+      const rough = lowest(factor.solve, M, 1, undefined, 1e-3, 60);
+      shift = rough.values.length ? 1 / rough.values[0] : 1;
+      const A = profile(first);
+      for (let i = 0; i < A.v.length; i++) A.v[i] = K.v[i] + shift * M.v[i];
+      solveM = factorise(A).solve;
+    }
+    const { values, vectors } = lowest(solveM, M, count);
+    // K in N/mm against M in kg: ω² = 1000 λ, λ = 1 / μ − s (a newton is a kg·m/s², and the lengths are mm)
+    const found = values.map((mu, i) => {
+      const lambda = 1 / mu - shift, free = shift > 0 && lambda < 1e-6 * shift;
+      return { frequency: free ? 0 : Math.sqrt(1000 * lambda) / (2 * Math.PI), shape: shapeOf(vectors[i]), ...(free ? { free: true } : {}) };
+    });
     return { frequencies: found.map((m) => m.frequency), modes: found };
   }
 
-  return { statics, buckling, modes, freedoms: n, nodes: ids };
+  return { statics, buckling, modes, freedoms: n, nodes: ids, loose };
 }
 
 /**
@@ -624,7 +697,8 @@ export const statics = (model, o = {}) => frame(model, o).statics(o);
  * buckling, from the geometric stiffness of each element's axial force in the static solve. The first factor is
  * always quick to find; asking for more costs more where slender members are in tension.
  * @param {FrameModel} model @param {{ shear?: boolean, count?: number }} [o] count: how many modes (1)
- * @returns {{ factors: number[], modes: BucklingMode[], statics: StaticResult }}
+ * @returns {{ factors: number[], modes: BucklingMode[], statics: StaticResult, tipped?: { node: string, freedom: string }[], rests?: { node: string, freedom: string }[] }}
+ *   tipped and rests: with loose: 'hold', as `frame` says
  */
 export const buckling = (model, o = {}) => frame(model, o).buckling(o);
 /**
@@ -657,4 +731,293 @@ export function subdivide(model, pieces = 4) {
   });
   const loads = (model.loads || []).flatMap((l) => (l && 'element' in l && parts.has(String(l.element)) ? parts.get(String(l.element)).map((element) => ({ ...l, element })) : [l]));
   return { ...model, nodes, elements, ...(model.loads ? { loads } : {}) };
+}
+
+// ---- sizing: the lightest section for each group of members that meets the limits ----
+
+/**
+ * @typedef {object} SizingChoice One section a group of members may be given
+ * @property {string} name its name in the results (a profile's, a tube's size)
+ * @property {FrameSection} section in the member's own axes, as drawn
+ * @property {FrameMaterial & { strength?: number }} [material] its own material (the member's if left out); strength
+ *   in MPa, for the stress limit
+ * @property {number} [mass] kg per metre (else the section's area times the material's density)
+ * @property {number} [cost] per metre, in any one currency, for sizing by cost
+ * @property {number} [roll] degrees added to the member's roll: the same section turned about its length (a 20 x 40
+ *   standing on edge in place of lying flat)
+ */
+/**
+ * @typedef {object} SizingLimits What every design must meet; leave one out and it sets nothing
+ * @property {({ node: string | number, limit: number, along?: Vec3 } | { member: string | number, limit: number, from?: number, to?: number, along?: Vec3 })[]} [deflection]
+ *   a node, or a member between two distances from its start (mm, its whole length if left out), moves no more than
+ *   limit mm along `along` (gravity's direction, else the whole movement)
+ * @property {{ margin: number }} [stress] each member's peak stress times margin stays under its material's strength
+ * @property {{ factor: number, euler?: number }} [buckling] the whole frame's first buckling factor is at least
+ *   factor; with euler (the effective length factor K), each member in compression also carries factor times its
+ *   force under Euler's load π² E I / (K L)², I the lesser second moment (the grouped members only)
+ * @property {{ Hz: number }} [frequency] the lowest mode is at least this
+ */
+/**
+ * @typedef {object} SizingCheck one limit's figure in one design
+ * @property {'deflection' | 'stress' | 'buckling' | 'frequency'} limit
+ * @property {string} where the node, member or 'frame' it is about
+ * @property {number} value the figure: mm, MPa, a factor or Hz
+ * @property {number} allowed what the limit allows of it
+ * @property {number} ratio how much of the limit it uses (1 is at the limit; over 1 fails)
+ * @property {string} [case] the load case it is worst in
+ */
+
+const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+const named = (v, table) => (typeof v === 'string' ? table?.[v] : v);
+const SIZE_LIMITS = ['deflection', 'stress', 'buckling', 'frequency'];
+const SIZE_KEYS = ['groups', 'choices', 'only', 'limits', 'cases', 'bounds', 'by', 'pieces', 'search', 'every'];
+
+/**
+ * The lightest section for each group of members that meets the limits: each group (members that must match, a pair
+ * of rails, four posts) is given one of the choices, and the frame is solved under each load case for every design
+ * tried. With few designs (every, 512) every one is ranked by mass and the first that meets the limits is the
+ * lightest; with more, the lightest is found by steps (each group up to its lightest heavier choice that helps, the one that helps most for its mass, until
+ * the limits are met, then each down as far as the limits allow), which is near the lightest but not proven so. Each
+ * group's result names the limit that set it: the one its next lighter choice would break, with the other groups as
+ * chosen. The geometry stays as drawn: only sections, materials and rolls change, and members outside every group
+ * keep theirs. Refused by name: unknown options, a member in no element or in two groups, a choice with no section,
+ * a limit that is not above 0, and sizing by cost where a choice has none.
+ * @param {FrameModel | FrameModel[]} model the frame; or a list, the first the frame and the rest the same frame
+ *   joined other ways (its joins rigid), whose stress is checked too, as a join's moment grows as it stiffens
+ * @param {{ groups: Record<string, (string | number)[]>, choices: SizingChoice[], only?: Record<string, string[]>,
+ *   limits: SizingLimits, cases?: { label?: string, loads?: FrameLoad[], masses?: Record<string, number>, inertia?: Record<string, number> }[],
+ *   by?: 'mass' | 'cost', pieces?: number, search?: 'every' | 'steps', every?: number }} o
+ *   groups: members by group name, each an element's id or the member its pieces came from (`of`); only: the
+ *   choices a group may take, by name (all of them if left out); cases: load cases (the model's own if left out),
+ *   loads and masses as statics takes them, and inertia: masses whose weight is already in loads, which ring in the
+ *   modes only; by: what is least (mass); pieces: each member cut into this many for buckling and modes (4)
+ * @returns {{ ok: boolean, by: 'mass' | 'cost', search: 'every' | 'steps', tried: number, total: number,
+ *   groups: { name: string, members: (string | number)[], choice: string, length: number, mass: number, cost: number | null,
+ *     lighter: string | null, governs: (SizingCheck & { lighter: string, broken: number }) | null, margin: number | null }[],
+ *   checks: SizingCheck[], worst: SizingCheck | null, model: FrameModel }}
+ *   ok: the limits are met (else the design that came nearest, and its checks say by how much); total: kg (or cost) of
+ *   the grouped members; tried: designs solved; each group's length (mm), mass (kg) and cost; lighter: the next choice
+ *   that weighs (or costs) less; governs: the limit that lighter choice breaks, its ratio there as `broken`; margin: how many times inside
+ *   that limit the design is, as chosen; model: the frame with the chosen sections
+ */
+export function sizing(model, o = {}) {
+  const models = Array.isArray(model) ? model : [model], base = models[0];
+  if (!base || typeof base !== 'object' || !Array.isArray(base.elements)) refuse('input', 'sizing takes a frame, { nodes, elements, supports, loads }, or a list of frames: the first the frame, the rest it joined other ways');
+  if (!o || typeof o !== 'object') refuse('input', 'sizing takes { groups, choices, limits }');
+  for (const k of Object.keys(o)) if (!SIZE_KEYS.includes(k)) refuse('input', `sizing has no option "${k}": it takes ${SIZE_KEYS.join(', ')}`);
+  const by = o.by ?? 'mass', pieces = o.pieces ?? 4, every = o.every ?? 512;
+  if (!['mass', 'cost'].includes(by)) refuse('input', `by is 'mass' or 'cost' (got ${said(o.by)})`);
+  if (!(Number.isInteger(pieces) && pieces >= 1)) refuse('input', `pieces is a whole number from 1 (got ${said(o.pieces)})`);
+  if (o.search != null && !['every', 'steps'].includes(o.search)) refuse('input', `search is 'every' (rank every design by mass and take the first that meets the limits) or 'steps' (got ${said(o.search)})`);
+  // the choices
+  if (!Array.isArray(o.choices) || !o.choices.length) refuse('input', 'choices is a list of { name, section, material, mass }: the sections a group may be given');
+  const choices = new Map();
+  for (const [i, c] of o.choices.entries()) {
+    if (!c || typeof c !== 'object' || typeof c.name !== 'string' || !c.name) refuse('input', `choice ${i + 1} is ${said(c)}: a choice is { name, section, material, mass, cost, roll }`);
+    if (choices.has(c.name)) refuse('input', `choice ${said(c.name)} is listed twice`);
+    if (!c.section || typeof c.section !== 'object') refuse('section', `choice ${said(c.name)} has no section: { A, Iy, Iz, J } in mm² and mm⁴`);
+    for (const key of ['A', 'Iy', 'Iz', 'J']) if (!(c.section[key] > 0)) refuse('section', `choice ${said(c.name)}'s section has ${key} = ${said(c.section[key])}: it needs ${key} above 0`);
+    if (c.material != null && !(c.material?.E > 0)) refuse('material', `choice ${said(c.name)}'s material has no E above 0 (got ${said(c.material)})`);
+    for (const key of ['mass', 'cost']) if (c[key] != null && !(c[key] >= 0)) refuse('input', `choice ${said(c.name)}'s ${key} is per metre, 0 or more (got ${said(c[key])})`);
+    if (c.roll != null && !Number.isFinite(c.roll)) refuse('axes', `choice ${said(c.name)}'s roll is degrees (got ${said(c.roll)})`);
+    if (by === 'cost' && !(c.cost >= 0)) refuse('input', `sizing by cost, and choice ${said(c.name)} gives no cost per metre: give every choice a cost, or size by mass`);
+    choices.set(c.name, c);
+  }
+  // the groups: each member's elements
+  if (!o.groups || typeof o.groups !== 'object' || Array.isArray(o.groups) || !Object.keys(o.groups).length) refuse('input', 'groups is { name: [members] }: the members that must take one section, by element id or by the member their pieces came from');
+  const els = base.elements, whose = new Map(), groups = [];
+  for (const [name, list] of Object.entries(o.groups)) {
+    if (!Array.isArray(list) || !list.length) refuse('input', `group ${said(name)} is a list of members (got ${said(list)})`);
+    const idx = [];
+    for (const m of list) {
+      const mine = els.map((e, i) => (String(e.of ?? e.id ?? i) === String(m) || String(e.id ?? i) === String(m) ? i : -1)).filter((i) => i >= 0);
+      if (!mine.length) refuse('input', `group ${said(name)} names member ${said(m)}, and no element is it or a piece of it`);
+      if (whose.has(String(m))) refuse('input', `member ${said(m)} is in group ${said(whose.get(String(m)))} and in group ${said(name)}: a member takes one section`);
+      whose.set(String(m), name); idx.push(...mine);
+    }
+    const allowed = o.only?.[name] ?? [...choices.keys()];
+    if (!Array.isArray(allowed) || !allowed.length) refuse('input', `only.${name} is a list of the choices group ${said(name)} may take`);
+    for (const c of allowed) if (!choices.has(c)) refuse('input', `only.${name} names ${said(c)}, which is not a choice (choices: ${[...choices.keys()].join(', ')})`);
+    groups.push({ name, members: list, idx, allowed });
+  }
+  for (const k of Object.keys(o.only ?? {})) if (!groups.some((g) => g.name === k)) refuse('input', `only names group ${said(k)}, and there is no such group`);
+  // the limits
+  const L = o.limits;
+  if (!L || typeof L !== 'object' || !Object.keys(L).length) refuse('input', `limits is { ${SIZE_LIMITS.join(', ')} }: at least one`);
+  for (const k of Object.keys(L)) if (!SIZE_LIMITS.includes(k)) refuse('input', `limits has no "${k}": it takes ${SIZE_LIMITS.join(', ')}`);
+  const pos = (v, what) => { if (!(v > 0) || !Number.isFinite(v)) refuse('input', `${what} is above 0 (got ${said(v)})`); return v; };
+  const nodePos = (n) => { const p = base.nodes[n]; if (!isVec3(p)) refuse('node', `a deflection limit names node ${said(n)}, which is not in nodes`, { node: n }); return p; };
+  const g0 = base.gravity && Math.hypot(...base.gravity) > 0 ? base.gravity.map((v) => v / Math.hypot(...base.gravity)) : null;
+  const deflection = (L.deflection ?? []).map((d, i) => {
+    if (!d || typeof d !== 'object') refuse('input', `limits.deflection ${i + 1} is { node, limit } or { member, limit, from, to } (got ${said(d)})`);
+    pos(d.limit, `limits.deflection ${i + 1}'s limit (mm)`);
+    if (d.along != null && !(isVec3(d.along) && Math.hypot(...d.along) > 0)) refuse('input', `limits.deflection ${i + 1}'s along is a direction [x, y, z] (got ${said(d.along)})`);
+    const along = d.along ? d.along.map((v) => v / Math.hypot(...d.along)) : g0;
+    if (d.node != null) { nodePos(d.node); return { ...d, along }; }
+    const mine = els.filter((e, k) => String(e.of ?? e.id ?? k) === String(d.member));
+    if (!mine.length) refuse('input', `limits.deflection ${i + 1} names member ${said(d.member)}, and no element is a piece of it`);
+    const start = nodePos(mine[0].a), end = nodePos(mine[mine.length - 1].b), len = Math.hypot(...end.map((v, k) => v - start[k]));
+    return { ...d, along, start, dir: end.map((v, k) => (v - start[k]) / len), from: d.from ?? 0, to: d.to ?? len };
+  });
+  if (L.stress) pos(L.stress.margin, 'limits.stress.margin');
+  if (L.buckling) { pos(L.buckling.factor, 'limits.buckling.factor'); if (L.buckling.euler != null) pos(L.buckling.euler, 'limits.buckling.euler'); }
+  if (L.frequency) pos(L.frequency.Hz, 'limits.frequency.Hz');
+  const cases = (o.cases ?? [{}]).map((c, i) => ({ label: c.label ?? (o.cases ? `case ${i + 1}` : 'as given'), loads: c.loads, masses: c.masses, inertia: c.inertia }));
+  if (!cases.length) refuse('input', 'cases is a list of load cases, at least one');
+
+  // each group's choices, lightest first, and what one weighs and costs over the group's length
+  const lengthOf = (i) => { const e = els[i], a = nodePos(e.a), b = nodePos(e.b); return Math.hypot(...a.map((v, k) => v - b[k])); };
+  const materialOf = (i) => named(els[i].material, base.materials);
+  const perMetre = (c, i, key) => (key === 'cost' ? c.cost ?? null : c.mass ?? (c.section.A * ((c.material ?? materialOf(i))?.density ?? 0)) / 1000);
+  for (const g of groups) {
+    g.length = g.idx.reduce((t, i) => t + lengthOf(i), 0);
+    g.price = (c, key = by) => { const v = g.idx.map((i) => perMetre(c, i, key)); return v.some((x) => x == null) ? null : g.idx.reduce((t, i, k) => t + (v[k] * lengthOf(i)) / 1000, 0); };
+    g.list = g.allowed.map((n) => choices.get(n)).sort((p, q) => g.price(p) - g.price(q));
+  }
+  const measure = (pick) => groups.reduce((t, g, k) => t + g.price(g.list[pick[k]]), 0);
+
+  // a design: the frame with each group's choice in place
+  const apply = (m, pick) => {
+    const out = m.elements.map((e) => ({ ...e }));
+    groups.forEach((g, k) => { const c = g.list[pick[k]]; for (const i of g.idx) {
+      const e = out[i], mat = { ...(c.material ?? materialOf(i)) };
+      if (c.mass != null) mat.density = (c.mass / c.section.A) * 1000; // (kg/m over mm² is g/mm³, a thousand g/cm³)
+      e.section = c.section; e.material = mat; if (c.roll) e.roll = (e.roll ?? 0) + c.roll;
+    } });
+    return { ...m, elements: out };
+  };
+  const strengthOf = (m, e) => { const mat = named(e.material, m.materials); return mat?.strength > 0 ? mat.strength : null; };
+  const memberOf = (e, i) => String(e.of ?? e.id ?? i);
+  const memo = new Map();
+  let tried = 0;
+  // every limit's figures for a design; with quick, stop at the first stage that breaks one
+  const evaluate = (pick, quick = false) => {
+    const key = pick.join(',') + (quick ? '' : '!');
+    if (memo.has(key)) return memo.get(key);
+    if (!quick && memo.has(pick.join(',')) && memo.get(pick.join(',')).complete) return memo.get(pick.join(','));
+    tried++;
+    const m = apply(base, pick), checks = [], worse = (c) => { const was = checks.find((q) => q.limit === c.limit && q.where === c.where); if (!was) checks.push(c); else if (c.ratio > was.ratio) Object.assign(was, c); };
+    const solved = frame(m), stats = cases.map((c) => solved.statics({ loads: c.loads, masses: c.masses }));
+    // deflection
+    stats.forEach((s, ci) => {
+      for (const d of deflection) {
+        let v = 0;
+        const along = (u) => Math.abs(d.along ? dot(u, d.along) : Math.hypot(...u));
+        if (d.node != null) v = along(s.displacements[d.node].slice(0, 3));
+        else s.elements.forEach((r, i) => { if (memberOf(m.elements[i], i) !== String(d.member)) return; const a = m.nodes[m.elements[i].a]; r.along.x.forEach((x, k) => { const p = a.map((c, j) => c + r.axes[0][j] * x), z = dot(p.map((c, j) => c - d.start[j]), d.dir); if (z >= d.from - 1e-6 && z <= d.to + 1e-6) v = Math.max(v, along(r.along.d[k])); }); });
+        worse({ limit: 'deflection', where: d.node != null ? String(d.node) : String(d.member), value: v, allowed: d.limit, ratio: v / d.limit, case: cases[ci].label });
+      }
+    });
+    // stress, in the frame and every other way of joining it
+    if (L.stress) {
+      const sets = [{ m, stats }, ...models.slice(1).map((b) => { const mb = apply(b, pick), fb = frame(mb); return { m: mb, stats: cases.map((c) => fb.statics({ loads: c.loads, masses: c.masses })) }; })];
+      for (const { m: mm, stats: ss } of sets) ss.forEach((s, ci) => s.elements.forEach((r, i) => {
+        const e = mm.elements[i], st = strengthOf(mm, e);
+        if (!r.stress || !st) return;
+        worse({ limit: 'stress', where: memberOf(e, i), value: r.stress.peak, allowed: st / L.stress.margin, ratio: (r.stress.peak * L.stress.margin) / st, case: cases[ci].label });
+      }));
+    }
+    // each member against Euler's load
+    if (L.buckling?.euler) {
+      const per = new Map();
+      const grouped = new Set(groups.flatMap((g) => g.idx));
+      stats.forEach((s, ci) => s.elements.forEach((r, i) => { if (!grouped.has(i)) return; const id = memberOf(m.elements[i], i), p = per.get(id) ?? { N: 0, L: 0, I: Infinity, E: 0, ci }; if (ci === 0) p.L += r.length; const sec = named(m.elements[i].section, m.sections), mat = named(m.elements[i].material, m.materials); p.I = Math.min(p.I, sec.Iy, sec.Iz); p.E = mat.E; if (-r.axial > p.N) { p.N = -r.axial; p.ci = ci; } per.set(id, p); }));
+      for (const [id, p] of per) if (p.N > 0) { const Pcr = (Math.PI ** 2 * p.E * p.I) / (L.buckling.euler * p.L) ** 2; worse({ limit: 'buckling', where: `${id} (Euler)`, value: Pcr / p.N, allowed: L.buckling.factor, ratio: (L.buckling.factor * p.N) / Pcr, case: cases[p.ci].label }); }
+    }
+    const broke = () => checks.some((c) => c.ratio > 1);
+    if (quick && broke()) { const r = { checks, ok: false, complete: false }; memo.set(key, r); return r; }
+    const fine = (L.buckling || L.frequency) ? frame(subdivide(m, pieces)) : null;
+    if (L.buckling) cases.forEach((c, ci) => {
+      try { const f = fine.buckling({ loads: c.loads, masses: c.masses, count: 1 }).factors[0]; worse({ limit: 'buckling', where: 'frame', value: f, allowed: L.buckling.factor, ratio: L.buckling.factor / f, case: c.label }); }
+      catch (e) { if (e.code !== 'fea.frame.compression') throw e; }
+    });
+    if (quick && broke()) { const r = { checks, ok: false, complete: false }; memo.set(key, r); return r; }
+    if (L.frequency) cases.forEach((c) => {
+      const masses = { ...(c.masses ?? base.masses ?? {}) };
+      for (const [n, kg] of Object.entries(c.inertia ?? {})) masses[n] = (masses[n] ?? 0) + kg;
+      const hz = fine.modes({ count: 1, masses }).frequencies[0];
+      worse({ limit: 'frequency', where: 'frame', value: hz, allowed: L.frequency.Hz, ratio: L.frequency.Hz / hz, case: c.label });
+    });
+    const r = { checks, ok: !broke(), complete: true, model: m };
+    memo.set(pick.join(','), r); memo.set(key, r);
+    return r;
+  };
+  const worstOf = (checks) => checks.reduce((p, q) => (!p || q.ratio > p.ratio ? q : p), null);
+  // how far past the limits a design is in all: what still separates two designs whose worst figures tie
+  const excess = (checks) => checks.reduce((t, c) => t + Math.max(0, c.ratio - 1), 0);
+
+  // the search
+  const sizes = groups.map((g) => g.list.length), combos = sizes.reduce((t, n) => t * n, 1);
+  const search = o.search ?? (combos <= every ? 'every' : 'steps');
+  let pick = null, best = null;
+  if (search === 'every') {
+    const all = [];
+    const walk = (k, p) => { if (k === groups.length) { all.push(p); return; } for (let i = 0; i < sizes[k]; i++) walk(k + 1, [...p, i]); };
+    walk(0, []);
+    all.sort((p, q) => measure(p) - measure(q));
+    const near = [];
+    for (const p of all) {
+      const r = evaluate(p, true);
+      if (r.ok && evaluate(p).ok) { pick = p; break; }
+      near.push({ p, low: worstOf(r.checks)?.ratio ?? 0 });
+    }
+    // nothing fits: the nearest by every limit's figure, not by the quick look that stops at the first stage that
+    // breaks one. The quick look's worst is never more than the whole's, so designs are taken in its order and
+    // stop once no later one can come nearer
+    if (!pick) for (const c of near.sort((a, b) => a.low - b.low)) {
+      if (best && c.low >= best.w.ratio) break;
+      const w = worstOf(evaluate(c.p).checks);
+      if (!best || (w && w.ratio < best.w.ratio)) best = { p: c.p, w };
+    }
+  } else {
+    let p = groups.map(() => 0);
+    for (let n = 0; n < 100 * groups.length; n++) {
+      const r = evaluate(p), w = worstOf(r.checks)?.ratio ?? 0, e = excess(r.checks);
+      if (r.ok) break;
+      // each group up to the lightest heavier choice that helps (and those of the same weight, a section turned): a
+      // choice heavier but weaker this way (a 30 x 30 after a 20 x 40 on edge, a 20 x 60 lying flat) is passed over.
+      // It helps where it lowers the worst figure; where two groups tie for the worst, neither can alone, so a step
+      // that leaves the worst as it was and lowers how far past the limits the design is in all helps too (less)
+      let step = null;
+      groups.forEach((g, k) => {
+        let found = null;
+        for (let j = p[k] + 1; j < sizes[k]; j++) {
+          if (found != null && g.price(g.list[j]) > found * (1 + 1e-9)) break;
+          const q = [...p]; q[k] = j;
+          const rq = evaluate(q), wq = worstOf(rq.checks)?.ratio ?? 0, eq = excess(rq.checks), dm = Math.max(measure(q) - measure(p), 1e-12);
+          const better = wq < w * (1 - 1e-9) ? (w - wq) / dm : wq <= w * (1 + 1e-9) && eq < e * (1 - 1e-9) ? (1e-9 * (e - eq)) / dm : null;
+          if (better != null) { found ??= g.price(g.list[j]); if (!step || better > step.gain) step = { q, gain: better }; }
+        }
+      });
+      if (!step) break;
+      p = step.q;
+    }
+    if (evaluate(p).ok) {
+      // then each group down as far as the limits allow, the heaviest first, until nothing moves
+      for (let moved = true; moved;) {
+        moved = false;
+        const order = groups.map((g, k) => k).sort((a, b) => groups[b].price(groups[b].list[p[b]]) - groups[a].price(groups[a].list[p[a]]));
+        for (const k of order) for (let i = 0; i < p[k]; i++) { const q = [...p]; q[k] = i; if (evaluate(q).ok) { p = q; moved = true; break; } }
+      }
+      pick = p;
+    } else best = { p, w: worstOf(evaluate(p).checks) };
+  }
+  const ok = !!pick;
+  if (!pick) pick = best.p;
+  const final = evaluate(pick);
+  const results = groups.map((g, k) => {
+    // the next lighter choice: the heaviest that weighs less (one of the same weight, a section turned, is no lighter)
+    const c = g.list[pick[k]], at = g.list.findLastIndex((x) => g.price(x) < g.price(c) * (1 - 1e-9)), lighter = at >= 0 ? g.list[at] : null;
+    let governs = null, margin = null;
+    if (lighter) {
+      const q = [...pick]; q[k] = at;
+      const w = worstOf(evaluate(q).checks.filter((x) => x.ratio > 1));
+      if (w) { const now = final.checks.find((x) => x.limit === w.limit && x.where === w.where); governs = { ...(now ?? w), lighter: lighter.name, broken: w.ratio }; margin = now ? 1 / now.ratio : null; }
+    }
+    // no lighter choice: the margin is the group's own checks', its members' and the nodes its members run between
+    const mine = new Set(g.idx.flatMap((i) => [String(els[i].a), String(els[i].b)]));
+    if (margin == null) { const own = final.checks.filter((x) => g.members.some((m) => x.where === String(m) || x.where === `${m} (Euler)`) || (x.limit === 'deflection' && mine.has(x.where))), w = worstOf(own.length ? own : final.checks); margin = w ? 1 / w.ratio : null; }
+    return { name: g.name, members: g.members, choice: c.name, length: g.length, mass: g.price(c, 'mass'), cost: g.price(c, 'cost'), lighter: lighter?.name ?? null, governs, margin };
+  });
+  return { ok, by, search, tried, total: measure(pick), groups: results, checks: final.checks, worst: worstOf(final.checks), model: final.model ?? apply(base, pick) };
 }

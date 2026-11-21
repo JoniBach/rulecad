@@ -279,7 +279,8 @@ test('profiles and slots: one maker one set, named for size and maker, every fig
     if (r.groove_width) assert.ok(r.groove_depth.value > 0 && r.groove_width.value < (r.floor_width ?? r.cavity_width).value, `${name}: a groove is narrower than the floor it is in`);
     assert.equal(byName[r.nut_family.value]?.part, 'slot', `${name}.nut_family names a slot set`);
     if (/-(misumi|bosch)/.test(name)) { for (const k of ['opening', 'lip_thickness', 'cavity_width', 'cavity_depth']) assert.equal(r[k].kind, 'spec', `${name}.${k} is printed on the maker's page`); assert.equal(r.floor_width.kind, 'estimate', `${name}.floor_width is scaled off the drawing, and says so`); assert.match(r.floor_width.rule, /Not dimensioned/); }
-    if (!/-(misumi|bosch|motedis|item|openbuilds|makerbeam|openbeam|8020)/.test(name)) for (const x of Object.values(r)) assert.equal(x.kind, 'community', `${name}: a generic slot is community`);
+    if (/-printed-/.test(name)) for (const x of Object.values(r)) { assert.equal(x.kind, 'derived', `${name}: a printed slot is worked out`); assert.match(x.source, /^worked out by @rulecad\/frames printedProfile from /, `${name}: it names what it is worked out from`); }
+    else if (!/-(misumi|bosch|motedis|item|openbuilds|makerbeam|openbeam|8020)/.test(name)) for (const x of Object.values(r)) assert.equal(x.kind, 'community', `${name}: a generic slot is community`);
   }
   // two makers' 2020 differ where their slots do
   assert.notDeepEqual(['lip_thickness', 'cavity_depth'].map((k) => rulesOf('slot-6-misumi')[k].value), ['lip_thickness', 'cavity_depth'].map((k) => rulesOf('slot-6-bosch')[k].value));
@@ -292,8 +293,23 @@ test('profiles and slots: one maker one set, named for size and maker, every fig
 });
 
 
+test('printed profiles: 15, 20, 30 and 40, each slotted on top only and every figure worked out from a nut and the printer', () => {
+  const byName = Object.fromEntries(sets.map((s) => [s.name, s.set])), printed = sets.filter((s) => s.set.part === 'profile' && s.set.rules.family?.value === 'printed');
+  assert.deepEqual(printed.map((s) => s.name).sort(), ['profile-1515-printed', 'profile-2020-printed', 'profile-3030-printed', 'profile-4040-printed']);
+  for (const { name, set: { rules: r, _doc } } of printed) {
+    assert.match(name, /^profile-(\d\d)\1-printed$/, `${name}: profile-<size>-printed`);
+    for (const [k, x] of Object.entries(r)) { assert.ok(vocabulary.fields[k], `${name}.${k} is a name in the vocabulary`); assert.equal(x.kind, 'derived', `${name}.${k} is worked out`); assert.match(x.source, /printedProfile/, `${name}.${k} says what works it out`); }
+    // one slot, facing up as it prints; a side or the bed would print in mid-air or leave no room for an end's insert
+    assert.equal(r.slot.value, 'closed'); assert.equal(byName[r.slot_top.value]?.part, 'slot', `${name}.slot_top names a slot set`);
+    for (const k of ['slot_bottom', 'slot_front', 'slot_back', 'bore_diameter', 'area', 'inertia_x', 'mass_per_metre']) assert.equal(r[k], undefined, `${name} has no ${k}: its figures come from its walls and infill`);
+    assert.ok(byName[r.material.value]?.rules.softening, `${name}.material names a plastic`);
+    assert.ok(byName[r.end_thread.value.toLowerCase().replace('.', '_')]?.rules.insert_hole, `${name}.end_thread names a thread with an insert`);
+    assert.match(_doc, /lying down/);
+  }
+});
+
 test('plain sections: a base set to each family, ready sizes named for what they are, and no figure a sheet would have to give', () => {
-  const byName = Object.fromEntries(sets.map((s) => [s.name, s.set])), plain = sets.filter((s) => s.set.part === 'profile' && !['t-slot', 'v-slot'].includes(s.set.rules.family?.value));
+  const byName = Object.fromEntries(sets.map((s) => [s.name, s.set])), plain = sets.filter((s) => s.set.part === 'profile' && !['t-slot', 'v-slot', 'printed'].includes(s.set.rules.family?.value));
   const families = ['tube', 'round-tube', 'angle', 'channel', 'bar', 'round-bar', 'custom'];
   for (const f of families) assert.equal(byName[`profile-${f}`]?.rules.family.value, f, `profile-${f} is the base set of the ${f} family`);
   assert.ok(plain.length >= families.length + 8, 'the families and a few ready sizes');

@@ -126,6 +126,16 @@ test('XY and XYZ axes are found and solved directly', () => {
   refused(() => ik(xyz, [1, 2]), 'ik.target', /x, y, z|\[x, y, z\]/);
 });
 
+test('a single slide far from the origin: its reach margin is how far it stands from the ends of its travel', () => {
+  // a carriage on a rail 400 mm up and 300 mm along, sliding 0 to 200 mm along x: one prismatic joint, so no arm's span
+  // to measure; along a line from x = 350 to 450 the nearest end of travel is 50 mm from either end of the line
+  const slide = chain({ joints: [{ name: 'g', type: 'prismatic', origin: [300, 10, 400], axis: [1, 0, 0], limits: [0, 200] }] });
+  const r = reach(slide, { volume: { x: [350, 450], y: [10, 10], z: [400, 400] }, step: 10 });
+  assert.equal(r.summary.reachable, r.summary.total);
+  near(r.summary.margin, 50, 1e-9, 'the least margin, by hand: 350 - 300 = 50 from the start, 500 - 450 = 50 from the end');
+  assert.ok(r.samples.every((x) => x.margin >= 50 - 1e-9), 'no sample is said to be out of reach by a span it never had');
+});
+
 test('a spatial arm solves numerically from a named start and reports when it cannot', () => {
   const c = chain({ joints: [
     { name: 'waist', type: 'revolute', origin: [0, 0, 80], axis: [0, 0, 1], limits: [-170, 170] },

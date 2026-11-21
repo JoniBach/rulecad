@@ -48,12 +48,20 @@ test('a typed 2.9 is caught: as a named pilot, a thread set read by hand, or a b
 test('a screw size kept on purpose has its reason, names a variable still in its file, and is counted nowhere', () => {
   for (const d of DELIBERATE) {
     assert.ok(typeof d.why === 'string' && d.why.length > 40, `${d.file} ${d.name}: give the reason it stays typed`);
-    const o = JSON.parse(fs.readFileSync(`${ROOT}/${d.file}`, 'utf8'));
-    assert.ok(o.variables?.[d.name], `${d.file} has no variable ${d.name}: take it out of DELIBERATE`);
+    const text = fs.readFileSync(`${ROOT}/${d.file}`, 'utf8').replace(/\r\n/g, '\n');
+    // (a document's JSON block, by its path: the block is still there and holds the value as a rule or a variable)
+    const o = d.block ? JSON.parse(text.match(new RegExp('^```json[ \\t]+' + d.block.replace(/[.]/g, '\\.') + '[^\\n]*\\n([\\s\\S]*?)^```', 'm'))?.[1] ?? 'null') : JSON.parse(text);
+    assert.ok(o?.variables?.[d.name] || o?.rules?.[d.name], `${d.file}${d.block ? ` ${d.block}` : ''} has no ${d.name}: take it out of DELIBERATE`);
   }
   for (const s of SWEPT) assert.ok(fs.existsSync(`${ROOT}/${s.place}`) && s.why.length > 40, `${s.place}: a place swept, with what was found there`);
   const r = inventory();
-  assert.deepEqual(r.deliberate.map((x) => x.name).sort(), ['hole_d', 'hole_keepout']);
+  assert.deepEqual(r.deliberate.map((x) => x.name).sort(), ['hole_d', 'hole_keepout', 'mount_hole_diameter']);
+  // a bought board's own hole size in a document's rule set (chapter 17's rules/rpi4.json) is kept by its block: the
+  // same name in another block of the same document is counted
+  assert.deepEqual(r.deliberate.filter((x) => x.block).map((x) => [x.place, x.block, x.value]), [['packages/cad/EXAMPLES.md', 'rules/rpi4.json', 2.7]]);
+  const doc = 'packages/cad/EXAMPLES.md', other = '\n## Another\n\n```json rules/other-board.json\n{ "rules": { "mount_hole_diameter": { "value": 2.7, "unit": "mm", "rule": "The mounting holes, for M2.5 screws" } } }\n```\n';
+  const readDoc = (f) => fs.readFileSync(`${ROOT}/${f}`, 'utf8') + (f === doc ? other : '');
+  assert.deepEqual(against(inventory({ files: filesOf(ROOT), read: readDoc }), record).map((x) => [x.place, x.kind, x.now - x.was]), [[doc, 'named', 1]]);
   assert.ok(!r.items.some((x) => DELIBERATE.some((d) => d.file === x.file && d.name === x.name)));
   // the same variable in another object is counted: the reason is for that one place
   const files = filesOf(ROOT), extra = 'examples/bench/projects/bench/objects/added.json';

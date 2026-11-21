@@ -125,8 +125,19 @@ result carries its `axes`, so nothing has to be guessed.
 **What each solve returns.**
 
 - `frame(model, { shear })` reads and checks the model, assembles and factorises it, and returns `{ statics,
-  buckling, modes, freedoms, nodes }`. `shear: false` ignores the shear areas. `statics(model)`, `buckling(model)`
-  and `modes(model)` do it in one call.
+  buckling, modes, freedoms, nodes, loose }`. `shear: false` ignores the shear areas. `statics(model)`, `buckling(model)`
+  and `modes(model)` do it in one call. A model with `loose: 'hold'` is solved even where part of it can move with
+  nothing resisting (a frame in one plane on pinned feet sways out of that plane; a beam pinned at both ends spins on
+  its axis): each such freedom is held, `loose` names it by node, and a solve whose loads would do work moving the
+  frame that way is refused (`fea.frame.mechanism`, with `driven: true`). The modes count those freedoms free:
+  each way that moves mass unresisted comes back as a mode of 0 Hz, marked `free: true`, and the rest are the
+  frame's own, whichever freedom was held. They are the modes of `K + s M` (s the held frame's lowest eigenvalue),
+  which has the same shapes as `K` against `M` with every eigenvalue raised by s. Buckling gives a factor of 0 when
+  the loads lean the frame the way it is free (its squeezed members turning with it, `vᵀ B v > 0` for that way v,
+  B the geometric stiffness's negative): the frame tips over under any share of its loads before anything buckles,
+  and `tipped` names the freedoms. When the loads pull it back (a frame hanging from its pins), the factors are of
+  the frame held there, so they can only be higher than the true ones, and `rests` names the freedoms. When the
+  loads leave that way alone (a strut spinning on its axis), the factors are exact.
 - `statics({ loads, gravity, masses, samples })`: `displacements` and `reactions` by node, each `[x, y, z, rx, ry,
   rz]` in global axes; `deflection: { most, node }`; and `elements`, each with its `length`, `axes`, the `ends`
   forces its nodes put on it (local axes), `axial` (its mean axial force, tension positive), and `along`: at each
@@ -138,7 +149,10 @@ result carries its `axes`, so nothing has to be guessed.
 - `buckling({ count })`: `factors`, lowest first, and `modes`, each `{ factor, shape }`: the loads times the factor
   buckle the frame into the shape (by node, largest movement 1). `statics` is the solve it came from. The first
   factor is always quick; more of them cost more when slender members are in tension.
-- `modes({ count })`: `frequencies` in Hz, lowest first, and `modes`, each `{ frequency, shape }`.
+- `modes({ count })`: `frequencies` in Hz, lowest first, and `modes`, each `{ frequency, shape }` (and `free: true`
+  on a mode of 0 Hz where the frame moves with nothing resisting).
+- `sizing(model, o)`: each group of members given the lightest section from a list that meets limits on
+  deflection, stress, buckling and frequency (below).
 - `subdivide(model, pieces)` cuts every element into equal pieces. One element cannot bow between its own ends, so
   buckling and modes want members in pieces: a pinned column's Euler load is 22% out with one element, 0.8% with
   two and 0.05% with four. Statics is exact with one.
@@ -207,6 +221,61 @@ A braced box of 50 beams (108 unknowns) solves statically in about 3 ms on a lap
   and no moved supports.
 - Behind a spring or a release, mass and geometric stiffness are reduced as at rest (Guyan's reduction), which
   is why buckling and modes want members cut into pieces.
+
+### Sizing: the lightest sections that meet the limits
+
+`sizing(model, o)` chooses a section for each group of members (members that must match: a pair of rails, four
+posts) from a list, so the frame meets its limits for the least mass, or the least cost where every choice gives
+one. Each design is the same frame with its groups' sections, materials and rolls changed, solved under every load
+case. A frame of tubes from a layout optimiser and a frame of extrusions from an assembly go through the same solver
+and the same limits.
+
+```js
+import { sizing } from '@rulecad/fea/frame';
+
+const bar = (b) => ({ name: `bar ${b}`, section: { A: b * b, Iy: b ** 4 / 12, Iz: b ** 4 / 12, J: 0.141 * b ** 4, cy: b / 2, cz: b / 2 },
+  material: { E: 70000, nu: 0.33, density: 2.7, strength: 205 } });
+// model: a table, four 700 mm legs on pinned feet and a ring of rails 600 x 400 mm joined rigidly, its own weight
+// and 20 kg at the middle of each long rail (nodes m1 and m2)
+const r = sizing(model, {
+  groups: { legs: ['z1', 'z2', 'z3', 'z4'], rails: ['x1', 'x2'], ends: ['y1', 'y2'] },   // by element id, or by `of`
+  choices: [10, 15, 20, 25, 30].map(bar),
+  limits: { deflection: [{ node: 'm1', limit: 1.7 }, { node: 'm2', limit: 1.7 }], stress: { margin: 2 }, buckling: { factor: 2, euler: 1 } },
+});
+r.groups[1];  // { name: 'rails', choice: 'bar 20', mass: 1.296, lighter: 'bar 15',
+              //   governs: { limit: 'deflection', where: 'm1', value: 0.92, allowed: 1.7, broken: 1.51 }, margin: 1.84 }
+r.groups[0];  // { name: 'legs', choice: 'bar 10', lighter: null, governs: null }: the lightest in the list meets them
+```
+
+| Part | Shape | Notes |
+|---|---|---|
+| `groups` | `{ name: [members] }` | Each member an element's `id`, or the member its pieces came from (`of`). Members in no group keep their sections |
+| `choices` | `[{ name, section, material, mass, cost, roll }]` | `material` its own (the member's if left out), with `strength` in MPa for the stress limit; `mass` and `cost` per metre (mass from the area and density if left out); `roll` degrees added to the member's roll, the same section turned (a 20 x 40 on edge) |
+| `only` | `{ group: [choice names] }` | The choices a group may take (all of them if left out) |
+| `limits.deflection` | `[{ node, limit, along }]` or `[{ member, limit, from, to, along }]` | mm, along `along` (gravity's direction, else the whole movement); a member between two distances from its start |
+| `limits.stress` | `{ margin }` | Each member's peak `abs(N)/A + abs(My)/Wy + abs(Mz)/Wz`, times the margin, under its material's strength |
+| `limits.buckling` | `{ factor, euler }` | The whole frame's first buckling factor at least `factor` (members cut into `pieces`, 4); with `euler` (the effective length factor K) each grouped member in compression also carries `factor` times its force under `π² E I / (K L)²`, I the lesser second moment |
+| `limits.frequency` | `{ Hz }` | The lowest mode at least this |
+| `cases` | `[{ label, loads, masses, inertia }]` | Load cases: `loads` and `masses` as `statics` takes them; `inertia` masses whose weight is already in `loads` and which ring in the modes only |
+| a model list | `[frame, ...others]` | The others are the same frame joined other ways (its joins rigid), same elements in the same order: each is held to the stress limit too |
+
+**The search.** With few designs (`every`, 512, or `search: 'every'`), every design is ranked by mass and solved in
+that order until one meets every limit, which makes it the lightest; a design is dropped at the first stage
+(statics, then buckling, then modes) that breaks a limit. With more, `search: 'steps'`: from every group at its
+lightest, each group looks up its list for the lightest heavier choice that cuts the worst limit's use (passing over
+one that is heavier but weaker this way, a 30 x 30 after a 20 x 40 on edge), and the group that cuts it most for its
+added mass steps up to it, until the limits are met; then each group, the heaviest first, steps down as far as the limits allow, until nothing moves. Steps
+solve far fewer designs and land near the lightest, not always on it (a table in the tests: within a fifth).
+
+**What set each choice.** A group's `governs` is the limit its next lighter choice breaks with the other groups as
+chosen, the worst there by `broken` (its use of the limit, over 1). A choice of the same weight (the same section
+turned) is not lighter. `margin` is how many times inside that limit the chosen design is. A group at the lightest
+choice has no `governs`, and its margin is its own members' nearest check. Where no design meets the limits, `ok` is
+false and the result is the design that came nearest, with `worst` saying which limit it breaks and by how much.
+
+**Limits of sizing.** The geometry stays as drawn: a deeper section moves no node, so joints that hang off a
+member's face by its width keep their drawn offsets. The search is over the list given; it does not invent a section.
+
 
 ## Sources
 

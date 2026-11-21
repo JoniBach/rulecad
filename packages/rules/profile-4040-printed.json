@@ -1,0 +1,97 @@
+{
+  "_doc": "The kit's printed 40 x 40 mm beam, to print lying down with no support: one slot, in its top face (slot-8-printed-4040), taking slot-8-misumi's nuts; the other faces closed, since a slot in a side face hangs its upper lip in mid-air when it lies down; solid under the slot, with a heat-set insert or a captive nut (M8) in place of a tapped end. What it weighs and bends like comes from the walls and infill it is printed with (printedSection). Worked out by @rulecad/frames printedProfile from its nuts' sizes and the printer's rules.",
+  "name": "profile-4040-printed",
+  "part": "profile",
+  "rules": {
+    "family": {
+      "value": "printed",
+      "rule": "A section printed in plastic",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from @rulecad/frames printedProfile",
+      "checked": "2026-11-17"
+    },
+    "series": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "The size it is drawn to, as the aluminium series of that size",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from the size asked",
+      "checked": "2026-11-17"
+    },
+    "cells_across": {
+      "value": 1,
+      "unit": "",
+      "rule": "One cell",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from the size asked",
+      "checked": "2026-11-17"
+    },
+    "cells_up": {
+      "value": 1,
+      "unit": "",
+      "rule": "One cell high",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from the size asked",
+      "checked": "2026-11-17"
+    },
+    "width": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "Across the section",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from the size asked",
+      "checked": "2026-11-17"
+    },
+    "height": {
+      "value": 40,
+      "unit": "mm",
+      "rule": "Up the section",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from the size asked",
+      "checked": "2026-11-17"
+    },
+    "corner_radius": {
+      "value": 0,
+      "unit": "mm",
+      "rule": "Square outside corners: a round on the bottom edges would overhang the bed",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from x1c.chamfer",
+      "checked": "2026-11-17"
+    },
+    "slot": {
+      "value": "closed",
+      "rule": "Faces are closed where slot_top does not say otherwise: a side face's slot hangs its upper lip in mid-air lying down, and a slot on the bed leaves too little under it for an end's insert",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from printedProfile",
+      "checked": "2026-11-17"
+    },
+    "slot_top": {
+      "value": "slot-8-printed-4040",
+      "rule": "One slot, in the top face, which faces up as the beam prints",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from slot-8-printed-4040",
+      "checked": "2026-11-17"
+    },
+    "end_thread": {
+      "value": "M8",
+      "rule": "The largest thread whose heat-set insert, with its wall and a line each side, fits in the 28.45 mm under the slot",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from m8.insert_hole, insert_wall and x1c.line",
+      "checked": "2026-11-17"
+    },
+    "end_at": {
+      "value": "0,-5.775",
+      "rule": "The end's insert or nut in the middle of the solid under the slot, from the middle of the section (x,y)",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from the slot's depth",
+      "checked": "2026-11-17"
+    },
+    "material": {
+      "value": "pla",
+      "rule": "Printed in pla unless the beam says another plastic",
+      "kind": "derived",
+      "source": "worked out by @rulecad/frames printedProfile from pla rule set",
+      "checked": "2026-11-17"
+    }
+  }
+}

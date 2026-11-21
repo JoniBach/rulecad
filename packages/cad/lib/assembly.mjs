@@ -51,6 +51,10 @@ import { orderChecks } from './order.mjs';
 import { beamBuilt, beamPlace, beamAddress, beamFindings, marksOf, framesContext } from './beams.mjs';
 import { fittingBuilt, fittingFindings, plasticOf } from './fittings.mjs';
 import { expandJoins, joinChecks } from './joins.mjs';
+import { expandFrame, frameText } from './framegen.mjs';
+import { frameChecks } from './framecheck.mjs';
+import { sizeChecks } from './framesize.mjs';
+import { frameHeatChecks } from './frameheat.mjs';
 import { expandPanels, panelBuilt, panelFindings, PANEL_CHECK } from './panels.mjs';
 import { expandServices, serviceFindings } from './services.mjs';
 import { expandGuides, guideBuilt, guideFindings } from './guides.mjs';
@@ -113,6 +117,9 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     return v;
   };
   const num = (x) => evaluate(x, lookup);
+  // A generated frame (lib/framegen.mjs): "frame": { "kind": "box", "inside": [..] } into beams, joins and their ends, first
+  let generated = null;
+  if (a.frame && typeof a.frame === 'object' && !Array.isArray(a.frame)) ({ a, frame: generated } = expandFrame(a, num, framesContext()));
   // Joins between beams (lib/joins.mjs): their operations go on the beams and their screws into fasten before anything is built
   let joins = [];
   if (a.joins != null) ({ a, joins } = expandJoins(a, num, undefined, plasticOf(project)));
@@ -268,7 +275,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
         for (const p of src.b.parts) {
           if (p.role === 'support' && a.kind !== 'plate') continue; // supports are snipped off before parts go together
           out.push({ name: `${id}.${p.name}`, item: id, leaf: id, object: src.objName, role: src.role === 'reference' ? 'reference' : p.role, label: `${id}: ${marks.has(id) ? `mark ${marks.get(id)}, ` : ''}${p.label}`,
-            ...(p.filament ? { filament: p.filament } : {}), ...(p.mirror === false ? { mirror: false } : {}), part: p.name,
+            ...(p.filament ? { filament: p.filament } : {}), ...(p.mirror === false ? { mirror: false } : {}), ...(p.fill != null ? { fill: p.fill } : {}), part: p.name,
             geometry: transform(m, p.geometry), ...(p.collide ? { collide: transform(m, p.collide) } : {}), polygons: move(p.polygons), triangles: move(p.triangles),
             shape: `${key}:${p.name}`, hash: `${src.b.hash}:${p.name}`, local: p.polygons, localTriangles: p.triangles, m });
         }
@@ -327,7 +334,7 @@ export async function buildAssembly(ref, stack = [], overrides = {}, opts = {}) 
     const v = jointValues(motion, p), moved = partsAt(placeItems(motion, v));
     return { ...s, parts: moved, fastened: null, pose: typeof p === 'string' ? p : null, jointValues: v, polygons: moved.flatMap((x) => x.polygons), triangles: moved.flatMap((x) => x.triangles) };
   };
-  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, panels, mounts, runs, guides, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
+  const s = { a, project, name, items, parts, objects, fits, requires, values, num, seen, motion, wires, task, gait, fastened, hardware, joins, generated, panels, mounts, runs, guides, pose: typeof pose === 'string' ? pose : null, jointValues: jv, at,
     polygons: parts.flatMap((p) => p.polygons), triangles: parts.flatMap((p) => p.triangles) };
   return s;
 }
@@ -937,6 +944,8 @@ export function checkAssembly(s) {
       const ids = s.motion.items.map((x) => x[0]), top = (n) => String(n).split(/[.@]/)[0];
       // (a beam placed by its ends is the frame, held where it is drawn: what is screwed to it is held by it)
       const held = new Set([ids[0], ...s.motion.joints.filter((j) => !j.at).map((j) => ids[j.child]), ...s.items.filter((it) => it.beam && it.from != null).map((it) => it.id)]), links = s.fits.filter((x) => x.fastens).map((x) => [top(x.a), top(x.b)]);
+      // (a fitting at a beam's end, an end cap pressed into it or a foot screwed into its bore, is held by that beam)
+      for (const it of s.a.items || []) { const m = typeof it.at === 'string' && (it.fitting || it.bought) ? /^([\w-]+)\.[ab]$/.exec(it.at.trim()) : null; if (m && s.items.some((x) => x.id === m[1] && x.beam)) links.push([it.id, m[1]]); }
       for (let grew = true; grew;) { grew = false; for (const [a, b] of links) { if (held.has(a) && !held.has(b)) { held.add(b); grew = true; } if (held.has(b) && !held.has(a)) { held.add(a); grew = true; } } }
       const placed = new Set(s.objects.filter((o) => !o.unplaced && o.role !== 'reference').map((o) => top(o.id)));
       const loose = ids.filter((id) => !held.has(id) && placed.has(id));
@@ -979,15 +988,19 @@ export function checkAssembly(s) {
   panelFindings(s, f);
   serviceFindings(s, f);
   guideFindings(s, f);
+  if (s.generated) { const m = s.generated, [what, ...more] = frameText(m); f('info', `generated: ${what}; ${more.map((x) => x.trim()).join('; ')}`, null, { code: 'frame.generated', values: { inside: m.inside, outside: m.outside, lengths: m.lengths.map(({ length, count }) => ({ length, count })) }, refs: { kind: m.kind, profile: m.profile, join: m.join.kind, arrangement: m.arrangement, by: m.by } }); }
   joinChecks(s, f);
   slotNutChecks(s, f);
   frameSquareChecks(s, f);
+  frameHeatChecks(s, f);
   massFinding(s, f);
   runningChecks(s, f, { axisOf, placeItems, jointValues, mul });
   if (s.wires?.length) wireChecks(s, f, { placeItems, jointValues, mul });
   motorChecks(s, f, { placeItems, jointValues, mul }, materialOf(s.project));
   powerChecks(s, f);
   loadChecks(s, f, { placeItems, jointValues, mul });
+  frameChecks(s, f, { placeItems, jointValues, mul });
+  sizeChecks(s, f, { placeItems, jointValues, mul });
   gripChecks(s, f);
   gaitChecks(s, f, { jointValues, placeItems, sweepOne: (v) => clashesOf(s.at(v), named) });
   taskChecks(s, f);

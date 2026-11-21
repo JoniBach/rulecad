@@ -1,0 +1,379 @@
+{
+  "title": "Fittings for 2020 (MISUMI HFS5)",
+  "kind": "fit",
+  "note": "A kit of printed fittings alone, for one profile: four corner brackets on drop-in nuts, four levelling feet (each a body and its pad), four end caps, eight clips for a 3 mm panel and eight carriers for an M3 nut. Each is drawn from the profile's own rules and sized from its load; they stand apart here, laid out as a set, and cad plates puts them on beds.",
+  "items": [
+    {
+      "id": "bracket-1",
+      "fitting": {
+        "kind": "bracket",
+        "profile": "2020-misumi-hfs5",
+        "nut": "drop-in"
+      },
+      "at": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "bracket-2",
+      "fitting": {
+        "kind": "bracket",
+        "profile": "2020-misumi-hfs5",
+        "nut": "drop-in"
+      },
+      "at": [
+        50,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "bracket-3",
+      "fitting": {
+        "kind": "bracket",
+        "profile": "2020-misumi-hfs5",
+        "nut": "drop-in"
+      },
+      "at": [
+        100,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "bracket-4",
+      "fitting": {
+        "kind": "bracket",
+        "profile": "2020-misumi-hfs5",
+        "nut": "drop-in"
+      },
+      "at": [
+        150,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "foot-1",
+      "fitting": {
+        "kind": "levelling-foot",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        0,
+        70,
+        0
+      ]
+    },
+    {
+      "id": "foot-2",
+      "fitting": {
+        "kind": "levelling-foot",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        50,
+        70,
+        0
+      ]
+    },
+    {
+      "id": "foot-3",
+      "fitting": {
+        "kind": "levelling-foot",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        100,
+        70,
+        0
+      ]
+    },
+    {
+      "id": "foot-4",
+      "fitting": {
+        "kind": "levelling-foot",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        150,
+        70,
+        0
+      ]
+    },
+    {
+      "id": "cap-1",
+      "fitting": {
+        "kind": "end-cap",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        0,
+        130,
+        0
+      ]
+    },
+    {
+      "id": "cap-2",
+      "fitting": {
+        "kind": "end-cap",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        40,
+        130,
+        0
+      ]
+    },
+    {
+      "id": "cap-3",
+      "fitting": {
+        "kind": "end-cap",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        80,
+        130,
+        0
+      ]
+    },
+    {
+      "id": "cap-4",
+      "fitting": {
+        "kind": "end-cap",
+        "profile": "2020-misumi-hfs5"
+      },
+      "at": [
+        120,
+        130,
+        0
+      ]
+    },
+    {
+      "id": "clip-1",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        0,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "clip-2",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        30,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "clip-3",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        60,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "clip-4",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        90,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "clip-5",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        120,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "clip-6",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        150,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "clip-7",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        180,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "clip-8",
+      "fitting": {
+        "kind": "panel-clip",
+        "profile": "2020-misumi-hfs5",
+        "sheet": 3
+      },
+      "at": [
+        210,
+        170,
+        0
+      ]
+    },
+    {
+      "id": "carrier-1",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        0,
+        220,
+        0
+      ]
+    },
+    {
+      "id": "carrier-2",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        25,
+        220,
+        0
+      ]
+    },
+    {
+      "id": "carrier-3",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        50,
+        220,
+        0
+      ]
+    },
+    {
+      "id": "carrier-4",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        75,
+        220,
+        0
+      ]
+    },
+    {
+      "id": "carrier-5",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        100,
+        220,
+        0
+      ]
+    },
+    {
+      "id": "carrier-6",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        125,
+        220,
+        0
+      ]
+    },
+    {
+      "id": "carrier-7",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        150,
+        220,
+        0
+      ]
+    },
+    {
+      "id": "carrier-8",
+      "fitting": {
+        "kind": "nut-carrier",
+        "profile": "2020-misumi-hfs5",
+        "face": "top",
+        "thread": "M3",
+        "load": 100
+      },
+      "at": [
+        175,
+        220,
+        0
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "_doc": "A plain M3 hex nut (ISO 4032, as DIN 934) in the slot of OpenBeam, which is made to capture one, so no special T-nut is needed. It slides in from an open end of the slot, flats against the slot's walls. Sizes are the standard nut's, from the kit's m3 thread set; its hold in aluminium is not published.",
+  "name": "slot-nut-3-openbeam-m3-hex",
+  "part": "slot_nut",
+  "rules": {
+    "slot": {
+      "value": "slot-3-openbeam",
+      "rule": "OpenBeam's slots are \"designed to capture a regular DIN934 M3 nut\"",
+      "kind": "spec",
+      "source": "OpenBeam USA, \"About\" page as the Internet Archive saved it on 2017-07-16, http://www.openbeamusa.com/about/",
+      "checked": "2026-11-17"
+    },
+    "thread": {
+      "value": "M3",
+      "rule": "Thread M3, the nut OpenBeam names",
+      "kind": "spec",
+      "source": "OpenBeam USA, \"About\" page as the Internet Archive saved it on 2017-07-16, http://www.openbeamusa.com/about/",
+      "checked": "2026-11-17"
+    },
+    "nut_kind": {
+      "value": "hex",
+      "rule": "A plain hexagon nut, held from turning by its flats against the slot's walls",
+      "kind": "spec",
+      "source": "OpenBeam USA, \"About\" page as the Internet Archive saved it on 2017-07-16, http://www.openbeamusa.com/about/",
+      "checked": "2026-11-17"
+    },
+    "length": {
+      "value": 6.35,
+      "unit": "mm",
+      "rule": "Along the slot: across the nut's corners, 5.5 across its flats over cos 30 degrees",
+      "kind": "derived",
+      "source": "m3.nut_flats (ISO 4032, ISO 4032 (hexagon regular nuts, style 1), as tabulated at https://www.fasteners.eu/standards/ISO/4032/ and https://fasten.it/norms/norm/din_en_iso_4032 (DIN EN ISO 4032:2013-04), and in the standard's own table 1 (ISO 4032:1999) at https://cdn.standards.iteh.ai/samples/26382/0f8d850e82f741f5b13e5ed78b236426/ISO-4032-1999.pdf)",
+      "checked": "2026-11-17"
+    },
+    "width": {
+      "value": 5.5,
+      "unit": "mm",
+      "rule": "Across the slot: across its flats",
+      "kind": "spec",
+      "source": "m3.nut_flats (ISO 4032, ISO 4032 (hexagon regular nuts, style 1), as tabulated at https://www.fasteners.eu/standards/ISO/4032/ and https://fasten.it/norms/norm/din_en_iso_4032 (DIN EN ISO 4032:2013-04), and in the standard's own table 1 (ISO 4032:1999) at https://cdn.standards.iteh.ai/samples/26382/0f8d850e82f741f5b13e5ed78b236426/ISO-4032-1999.pdf)",
+      "checked": "2026-11-17"
+    },
+    "height": {
+      "value": 2.4,
+      "unit": "mm",
+      "rule": "Its thickness",
+      "kind": "spec",
+      "source": "m3.nut_height (ISO 4032, ISO 4032 (hexagon regular nuts, style 1), as tabulated at https://www.fasteners.eu/standards/ISO/4032/ and https://fasten.it/norms/norm/din_en_iso_4032 (DIN EN ISO 4032:2013-04), and in the standard's own table 1 (ISO 4032:1999) at https://cdn.standards.iteh.ai/samples/26382/0f8d850e82f741f5b13e5ed78b236426/ISO-4032-1999.pdf)",
+      "checked": "2026-11-17"
+    },
+    "nut_entry": {
+      "value": "end",
+      "rule": "Wider than the slot's opening across its flats, so it slides in from an open end",
+      "kind": "derived",
+      "source": "m3.nut_flats against slot-3-openbeam.opening",
+      "checked": "2026-11-17"
+    },
+    "material": {
+      "value": "steel",
+      "rule": "A plain steel nut",
+      "kind": "community",
+      "source": "ISO 4032 property class 8 steel nuts, as sold",
+      "checked": "2026-11-17"
+    },
+    "hold": {
+      "value": 850,
+      "unit": "N",
+      "rule": "Half Rexroth's T-nut in a 6 mm slot (M4, 1700 N): a smaller nut under thinner lips (1.41 mm). An estimate until it is tested (Frames 2.13): OpenBeam gives no figure for this nut",
+      "kind": "estimate",
+      "source": "Bosch Rexroth, Basic Mechanic Elements MGE 14.0 (3 842 540 392, 2019-07), page 3-4 to 3-9; slot-3-openbeam.lip_thickness",
+      "checked": "2026-11-17"
+    }
+  }
+}

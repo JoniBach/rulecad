@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import jscad from '@jscad/modeling';
-import { JOINS, beamSheet, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner, JIG_KINDS } from '@rulecad/frames';
+import { JOINS, beamSheet, workOrder, drillGuideModel, drillGuide, tapGuideModel, tapGuide, lengthStopModel, lengthStop, squareCornerModel, squareCorner, JIG_KINDS } from '@rulecad/frames';
 import { placeItems } from '@rulecad/model-link';
 import { text } from '@rulecad/shapes';
 import { check as printCheck } from '@rulecad/printcheck';
@@ -17,6 +17,7 @@ import { paths, printerOf } from './workspace.mjs';
 import { peekRuleSet } from './rules.mjs';
 import { threemf } from './threemf.mjs';
 import { cutListOf } from './beams.mjs';
+import { plasticOf } from './fittings.mjs';
 
 const { measureBoundingBox } = jscad.measurements, { translate } = jscad.transforms, { geom3 } = jscad.geometries;
 const mm = (x) => String(+Number(x).toFixed(2)), r3 = (x) => +x.toFixed(3);
@@ -80,29 +81,31 @@ function cornerFit(m, F, ai, bi, beams, worlds) {
  * @returns {{ jigs: { kind: string, name: string, model: object, for: object[], label: string }[], findings: object[] }}
  */
 export function jigsOf(s) {
-  const c = cutListOf(s), jigs = new Map(), findings = [], printer = printerFor(s.project).set ?? undefined;
+  const c = cutListOf(s), jigs = new Map(), findings = [], printer = printerFor(s.project).set ?? undefined, fx = { ...(printer ? { printer } : {}), material: plasticOf(s.project) }; // (printed in the project's plastic, as its fittings are)
   const warn = (code, txt, refs) => findings.push({ level: 'warn', code, text: txt, refs });
   const add = (key, kind, model, who) => { if (!jigs.has(key)) jigs.set(key, { kind, name: model.name, model, for: [] }); jigs.get(key).for.push(who); };
   if (!c) return { jigs: [], findings };
   for (const mk of c.marks) {
     const b = mk.beam, sheet = beamSheet(b, { mark: mk.mark, items: mk.items });
+    // (each operation by its number on the sheet, the order it is done in; i is its index in the model's ops)
+    const order = workOrder(b), step = (i) => order.indexOf(i) + 1;
     b.ops.forEach((x, i) => {
-      const who = { mark: mk.mark, items: mk.items, op: i + 1, at: x.at, line: x.line };
+      const n = step(i), who = { mark: mk.mark, items: mk.items, op: n, at: x.at, line: x.line };
       if (HOLES.includes(x.op)) {
         try {
-          const m = drillGuideModel(b, i, { ...(printer ? { printer } : {}) }), z = r3(m.fit[6] * m.bush.at[1] + m.fit[14]); // (the bush's axis, fitted: its distance from end a)
-          const dim = sheet.dimensions.find((d) => d.op === i + 1);
-          add(`drill|${m.name}|${m.profile}|${m.plate.span.join(',')}`, 'drill-guide', m, { ...who, label: `${mk.mark}${i + 1}`, from: m.from, distance: m.bush.at[1], bush: z, sheet: dim ? dim.distance : null, sheetText: dim ? dim.text : null });
-        } catch (e) { warn('jig.drill', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${i + 1}: no drill guide: ${strip(e)}`, { mark: mk.mark, op: i + 1 }); }
+          const m = drillGuideModel(b, i, fx), z = r3(m.fit[6] * m.bush.at[1] + m.fit[14]); // (the bush's axis, fitted: its distance from end a)
+          const dim = sheet.dimensions.find((d) => d.op === n);
+          add(`drill|${m.name}|${m.profile}|${m.plate.span.join(',')}`, 'drill-guide', m, { ...who, label: `${mk.mark}${n}`, from: m.from, distance: m.bush.at[1], bush: z, sheet: dim ? dim.distance : null, sheetText: dim ? dim.text : null });
+        } catch (e) { warn('jig.drill', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${n}: no drill guide: ${strip(e)}`, { mark: mk.mark, op: n }); }
       }
       if (x.op === 'tap') {
         try {
-          const m = tapGuideModel(b, i, { ...(printer ? { printer } : {}) });
-          add(`tap|${m.name}|${m.profile}|${JSON.stringify(m.bores)}`, 'tap-guide', m, { ...who, label: `${mk.mark}${i + 1}`, end: x.end, bores: x.bores });
-        } catch (e) { warn('jig.tap', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${i + 1}: no tap guide: ${strip(e)}`, { mark: mk.mark, op: i + 1 }); }
+          const m = tapGuideModel(b, i, fx);
+          add(`tap|${m.name}|${m.profile}|${JSON.stringify(m.bores)}`, 'tap-guide', m, { ...who, label: `${mk.mark}${n}`, end: x.end, bores: x.bores });
+        } catch (e) { warn('jig.tap', `mark ${mk.mark} (${mk.items.join(', ')}), operation ${n}: no tap guide: ${strip(e)}`, { mark: mk.mark, op: n }); }
       }
     });
-    const m = lengthStopModel(b.profile, b.length, { ...(printer ? { printer } : {}) });
+    const m = lengthStopModel(b.profile, b.length, fx);
     add(`length|${b.profile.name}|${b.length}`, 'length-stop', m, { mark: mk.mark, items: mk.items, label: `${mk.mark} ${mm(b.length)}`, length: b.length });
   }
   // a squaring corner for each square join: on a face of each beam in one plane, of the hand whose arm b lies on b, its
@@ -122,7 +125,7 @@ export function jigsOf(s) {
       if (dot(fa.n, fb.n) < 1 - 1e-6 || Math.abs(dot(fa.n, fa.at.map((v, k) => v - fb.at[k]))) > 0.05) continue;
       const out = dot(fa.n, fb.at.map((v, k) => v - middle[k])), edge = dot(fb.along, away) > 0 ? 'hi' : 'lo';
       for (const hand of ['right', 'left']) {
-        const m = corner({ profile: A.profile, face: pa.name, end, length: A.length }, { profile: B.profile, face: pb.name, edge }, { hand, ...(printer ? { printer } : {}) });
+        const m = corner({ profile: A.profile, face: pa.name, end, length: A.length }, { profile: B.profile, face: pb.name, edge }, { hand, ...fx });
         tried.push({ pa, pb, hand, out, m, fit: mul(colMajor(Wa), m.fit), ...cornerFit(m, mul(colMajor(Wa), m.fit), ai, bi, beams, worlds) });
       }
     }
@@ -196,7 +199,7 @@ export const jigFile = (s, n, of) => paths.exports(s.project, `${s.name}.jigs${o
 export async function writeJigs(s, { write = true } = {}) {
   const { jigs, findings } = jigsOf(s), { check } = printerFor(s.project), dir = paths.exports(s.project), base = `${s.name}.jigs`;
   if (write && fs.existsSync(dir)) for (const f of fs.readdirSync(dir)) if (f.startsWith(base) && f.endsWith('.3mf')) fs.rmSync(path.join(dir, f));
-  const parts = [], rows = [];
+  const parts = [], rows = [], material = () => { const p = plasticOf(s.project); return typeof p === 'string' ? p : p.name; };
   for (const x of jigs) {
     const made = jigParts(x), checks = [];
     for (const p of made) {
@@ -207,7 +210,7 @@ export async function writeJigs(s, { write = true } = {}) {
       for (const f of issues) findings.push({ level: f.level, code: 'jig.print', text: `${p.name}: ${f.text}`, refs: { jig: x.name, check: f.code } });
     }
     const m = x.model;
-    rows.push({ kind: x.kind, name: x.name, mark: x.label, for: x.for, grams: m.grams, margin: m.margin, size: m.size, checks, findings: m.findings.map(({ level, code, text: t, values }) => ({ level, code, text: t, ...(values ? { values } : {}) })) });
+    rows.push({ kind: x.kind, name: x.name, mark: x.label, for: x.for, material: m.material, grams: m.grams, margin: m.margin, size: m.size, checks, findings: m.findings.map(({ level, code, text: t, values }) => ({ level, code, text: t, ...(values ? { values } : {}) })) });
   }
   const gap = Math.max(2, Math.ceil((check.print_gap + 2 * check.foot) / check.line - 1e-6) * check.line), beds = parts.length ? pack(parts, check.bed, gap) : [];
   const plates = [];
@@ -215,7 +218,7 @@ export async function writeJigs(s, { write = true } = {}) {
     const file = jigFile(s, n + 1, beds.length), half = check.bed / 2 - gap;
     const objects = b.parts.map((p) => ({ name: p.name, parts: [{ name: p.name, triangles: p.tris.map((t) => t.map((v) => [v[0] + p.at[0] - half, v[1] + p.at[1] - half, v[2]])), slot: 1 }] }));
     if (write) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, await threemf(objects, { title: `${s.a.title || s.name}: jigs` })); }
-    plates.push({ file, parts: b.parts.map((p) => p.name), objects });
+    plates.push({ file, material: material(), parts: b.parts.map((p) => p.name), objects });
   }
   return { jigs: rows, plates: plates.map(({ objects, ...p }) => p), findings, parts: plates.flatMap((p) => p.objects) };
 }

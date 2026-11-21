@@ -67,7 +67,7 @@ export async function buildData(s) {
   const machine = s.task ? await guard(() => machineOf(s)) : null;
   // each mark's cut-and-drill sheet, by its file in the exports (cad beams writes them), and whether it is there yet
   const beams = await guard(() => { const c = cutListOf(s); return c ? { sheets: c.marks.map((m) => ({ mark: m.mark, items: m.items, file: ['exports', s.project, path.basename(sheetFile(s, m.mark))].join('/'), written: fs.existsSync(sheetFile(s, m.mark)) })) } : null; });
-  const frame = s.joins?.length ? await guard(() => { const { steps, sides, notFlat, bays, torques, stuck } = frameBuild(s); return { steps, sides: sides.map((x) => ({ beams: x.beams, name: x.name })), notFlat, bays: bays.map((b) => ({ beams: b.beams, name: b.name, width: b.width, height: b.height, diagonal: b.square.diagonal, accept: b.square.accept, lean: b.square.lean })), torques, stuck }; }) : null; // (from bars to a square frame)
+  const frame = s.joins?.length ? await guard(() => { const { steps, sides, notFlat, bays, torques, stuck } = frameBuild(s); return { steps, sides: sides.map((x) => ({ beams: x.beams, name: x.name })), notFlat, bays: bays.map((b) => ({ beams: b.beams, name: b.name, width: b.width, height: b.height, diagonal: b.square.diagonal, accept: b.square.accept, rss: b.square.rss, lean: b.square.lean, terms: b.square.terms })), torques, stuck }; }) : null; // (from bars to a square frame)
   // a frame's build is its one sequence, from bars to square with the rest mounted: the assembly order is not shown beside it
   return { build: { list, wires, plates, order: frame && !frame.error ? null : order, machine, beams, ...(frame ? { frame } : {}) } };
 }

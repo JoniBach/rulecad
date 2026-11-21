@@ -117,6 +117,50 @@ npx cad measured arm/arm arm.play_shoulder=0.03 arm.twist_shoulder=0.015
 predicted against measured grows. `npx cad check arm/arm` then gives you the budget that the arm actually has. The figures above are
 examples: use what your bench says, not these.
 
+## A machine on a frame
+
+The arm stands on its own base. A machine with axes along beams (a slider, a plotter, a gantry) stands on a frame
+instead, and the frame is part of its error budget: the beam the axis runs on sags, is never quite straight, and
+twists. Build the frame first, from [the frames guide](../building-frames/), then put the axis and the task on it in
+the same assembly. Here, the box from that guide with a rail along its top front beam:
+
+```json
+{
+  "title": "Box frame with an axis",
+  "kind": "fit",
+  "frame": { "kind": "box", "inside": [300, 300, 350], "profile": "2020-misumi-hfs5", "join": "blind", "feet": "levelling" },
+  "guides": [{ "kind": "rail", "rail": "rail-mgn12", "carriage": "MGN12H", "on": "x3.top", "from": 25, "length": 250, "nut": "drop-in" }],
+  "loads": [{ "mass": 1, "at": "g1-carriage-1.top", "note": "A 1 kg tool on the carriage" }],
+  "task": { "tool": "g1-carriage-1.top", "volume": { "x": [100, 240], "y": [10, 10], "z": [421.5, 421.5] }, "accuracy": 0.5, "speed": 100, "accel": 1000 }
+}
+```
+
+- The guide places the rail on beam `x3`'s top slot, its screws into drop-in nuts (the blind joins close the slot at
+  both ends, so slide-in nuts could never get in: `frame.nut` fails them and names the drop-in), and the carriage on a
+  sliding joint `g1-1` with its true travel, 204.2 mm here.
+- The task names the tool (the carriage's top), the line it must cover, the accuracy, and the moves: 100 mm/s,
+  reached at 1000 mm/s².
+
+`npx cad check frame/slide` then reads the frame for the machine:
+
+- `task.reach`: the carriage covers the line, 32.1 mm from the end of its travel at worst.
+- `frame.deflection`: the beam under the rail sags 0.013 mm with the joins' springs, held against the task's 0.5 mm
+  and against the rail's own running parallelism (0.016 mm over 250 mm).
+- `frame.rack`: the side sway is held against the task's accuracy too: 0.308 mm against 0.5 mm.
+- `frame.frequency`: the moves ramp to speed in 0.1 s, which shakes the frame at about 10 Hz; its lowest mode, 24.1 Hz,
+  is 2.4 times that, where 2 is wanted.
+- `task.accuracy` fails: the carriage can be out by 1.456 mm at worst against 0.5 mm, and it names the biggest term,
+  the beam's straightness: MISUMI's figure of 4.33 mm a metre, over the 250 mm rail, is 1.083 mm. A stiffer beam
+  would not help, since the beam's sag is a hundredth of that; a straighter one would, or a rail fixed to a ground
+  plate, or an accuracy the task can live with.
+- `task.speed` warns that nothing drives the slide: a `screw` guide with a motor (`{ "kind": "screw", "guide": "g1",
+  "motor": { "model": "nema17" } }`) gives it one, and then the motor's torque, heat and speed are checked as the arm's
+  are.
+
+Every frame figure here rests on the joins' springs, which are estimates until the joint rig measures one; the check
+says so on each line, and so should you. [Examples chapter 16](https://github.com/JoniBach/rulecad/blob/main/packages/cad/EXAMPLES.md#16-a-frame-beams-joins-and-an-axis)
+builds a frame with a lead-screw axis and its motor in full.
+
 ## What this does not do
 
 The kit predicts statics, reach, speed, heat and an error budget. It does not predict how a machine shakes, how a print creeps over
@@ -133,6 +177,8 @@ authors yet; the arm's figures that rest on estimates say so.
 | Through a gearbox | `T_out = T_motor x ratio x efficiency` | Compound planetary 38:1, about 47%, an estimate until measured |
 | Driver current | `Imax = Vref x 2` on a DRV8825 with 0.1 ohm sense resistors | The driver's data sheet |
 | Error at the pen | `sum(angle x lever)` worst case, root of sum of squares otherwise | The Jacobian of the arm |
+| A beam's straightness under a rail | `straightness per metre x rail length`: 4.33 x 0.25 = 1.083 mm | The profile's tolerance (MISUMI, JIS special grade) |
+| What a move excites | `1 / t` Hz for a move ramping to speed in `t = speed / accel` s: 100 / 1000 = 0.1 s, 10 Hz | `frame.frequency` in cad |
 
 ## Sources
 
