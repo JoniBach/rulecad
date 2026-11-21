@@ -398,6 +398,11 @@ export function placeItems(motion, values) {
 // cap@0.6.0.stl; with what was picked, if not everything: staggered-cap-2-4.3mf
 export const filename = (m, ext, picked = '') => `${[String(m.src || m.title || 'model').split('/').pop(), m.set && m.set.replace(/,/g, '-'), picked].filter(Boolean).join('-').replace(/[^\w@.=-]+/g, '-')}.${ext}`;
 
+// A fab zip's name as JLCPCB's upload takes it: letters, digits, _ and - before .zip, and none of the words it refuses
+// (eval, copy, convert, confirm). So module@0.7.1-fab.zip is saved as module-v0_7_1-fab.zip
+export const fabName = (name) => `${String(name).replace(/\.zip$/i, '').replace(/@/g, '-v').replace(/[^A-Za-z0-9_-]+/g, '_')
+  .replace(/eval|copy|convert|confirm/gi, (w) => `${w[0]}_${w.slice(1)}`).replace(/^[_-]+|[_-]+$/g, '') || 'board-fab'}.zip`;
+
 // Which parts a file holds: all the printed ones (references are only there to check a fit), or the indices picked
 // keep: which parts, as a Set of their places in partsOf(m), or a function of each part and its place
 const chosen = (m, keep) => partsOf(m).filter((x, i) => (keep ? (typeof keep === 'function' ? keep(x, i) : keep.has(i)) : x[1] !== 'reference'));

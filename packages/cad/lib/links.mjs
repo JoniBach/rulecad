@@ -59,11 +59,11 @@ export async function objectModel(b, { title, version, src, set, filaments: fil 
 // Each board's fab zip (cad export's: Gerbers, drill files, BOM, placement), for the page to offer as a download. A
 // board whose files can't be made here (one that needs KiCad, without it) goes without, and says why
 async function fabOf(boards) {
-  const pcb = await pcbEngine(), { zip } = await import('@rulecad/model-link'), fab = [];
+  const pcb = await pcbEngine(), { zip, fabName } = await import('@rulecad/model-link'), fab = [];
   for (const [name, version, b] of boards) {
     try {
       const files = await pcb.fabFiles(b.circuit, name, { source: b.source });
-      fab.push({ name: `${name}${version ? `@${version}` : ''}-fab.zip`.replace(/[^\w@.+-]/g, '-'), zip: Buffer.from(await zip(Object.entries(files))).toString('base64') });
+      fab.push({ name: fabName(`${name}${version ? `@${version}` : ''}-fab`), zip: Buffer.from(await zip(Object.entries(files))).toString('base64') });
     } catch (e) { console.error(`  ${name}: no fab zip in the link (${String(e.message || e).split('\n')[0]})`); }
   }
   return fab.length ? { fab } : {};
