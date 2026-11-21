@@ -6,15 +6,17 @@ What changed in each release, for someone upgrading a workspace.
 
 ### Changed
 
-- `magnetCatchModel` takes its magnet's pocket and pull from `@rulecad/fixings` `magnetSeatModel`: a glued pocket
-  (the magnet, `x1c.hole_comp` and `x1c.magnet_glue`, 10.2 mm for a 10 x 3 mm disc, as before), and the magnet's pull
-  across the 0.5 mm gap to its strike. The model gains `pocketDiameter` and `pull`, and a `fitting.magnet` finding
+- `magnetCatchModel` takes its magnet's pull from `@rulecad/fixings` `magnetSeatModel` (a glued seat), across the
+  0.5 mm gap to its strike. Its pocket stays the magnet and the printer's `fit` (10.2 mm for a 10 x 3 mm disc on the
+  X1C), on every printer: fixings' glue pocket, the magnet with `hole_comp` and `magnet_glue`, is the same on the X1C
+  but would move on a printer whose `fit` is not `hole_comp` + 0.1. The model gains `pocketDiameter` and `pull`, and a `fitting.magnet` finding
   says both. The magnet on the shopping list is named as fixings names it, `disc magnet 10x3 N35`, with its grams. A
   size the magnets set has no pull for still builds, its pull `null`.
 
 ### Printed sizes that moved
 
-None. The catch was built for 10 x 3, 8 x 3 and 12 x 3 magnets before and after: the same solid each time.
+None. The catch was built for 10 x 3, 8 x 3 and 12 x 3 magnets before and after: the same solid each time, and a
+printer with another `fit` draws the pocket it drew before (10.3 mm at a 0.3 mm fit).
 
 ### What a workspace should change
 

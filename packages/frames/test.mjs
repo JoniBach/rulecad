@@ -1031,7 +1031,11 @@ test('a door\'s hinge swings the door out and away from the frame; its handle, l
   assert.throws(() => magnetCatchModel('2020-misumi-hfs5', { standoff: 3 }), /a 3 mm standoff leaves/);
   // its magnet's seat is @rulecad/fixings': a glued pocket, 10 + x1c.hole_comp 0.1 + x1c.magnet_glue 0.1 = 10.2 mm, the figure
   // the catch has drawn since 0.1 (the magnet and x1c.fit 0.2); its magnet listed by name, and its pull across the 0.5 mm to the strike
-  assert.equal(c.pocketDiameter, 10.2); assert.equal(c.hardware[0].name, 'disc magnet 10x3 N35'); assert.ok(c.pull > 10 && c.pull < 14.72, `${c.pull} N`);
+  assert.equal(c.pocketDiameter, 10.2); assert.equal(c.hardware[0].name, 'disc magnet 10x3 N35');
+  // and on any printer: the magnet and that printer's fit. A printer with fit 0.3 and hole_comp 0.15 draws 10 + 0.3 = 10.3 mm
+  // as before, not fixings' glue pocket 10 + 0.15 + x1c.magnet_glue 0.1 = 10.25 mm
+  const alt = magnetCatchModel('2020-misumi-hfs5', { standoff: h.standoff, printer: { name: 'alt', layer: 0.2, line: 0.42, fit: 0.3, hole_comp: 0.15 } });
+  assert.equal(alt.pocketDiameter, 10.3); assert.match(alt.findings.find((f) => f.code === 'fitting.size').text, /pocket 10\.3 mm across \(the magnet and alt\.fit 0\.3 mm\)/); assert.ok(c.pull > 10 && c.pull < 14.72, `${c.pull} N`);
   assert.match(c.findings.find((f) => f.code === 'fitting.magnet').text, /disc magnet 10x3 N35 pulls 14\.72 N touching steel.*across a 0\.5 mm gap/);
   assert.equal(magnetCatchModel('2020-misumi-hfs5', { standoff: h.standoff, magnet: [9, 3] }).pull, null, 'a size with no seller\'s figure: its pull is not checked, and it still builds');
   assert.throws(() => hingeModel('2020-misumi-hfs5', { sheet: 3, pin: 'Q9' }), /hingeModel: pin and screw are threads/);
